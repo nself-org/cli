@@ -6,6 +6,9 @@
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+set -euo pipefail
+
+
 # Source OAuth base
 if [[ -f "$SCRIPT_DIR/oauth-base.sh" ]]; then
   source "$SCRIPT_DIR/oauth-base.sh"

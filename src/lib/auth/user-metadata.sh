@@ -14,6 +14,9 @@
 # Usage: metadata_set <user_id> <key> <value> [value_type]
 # value_type: string (default), number, boolean, json
 metadata_set() {
+
+set -euo pipefail
+
   local user_id="$1"
   local key="$2"
   local value="$3"

@@ -9,6 +9,9 @@
 
 # Check if a password meets complexity requirements
 check_password_strength() {
+
+set -euo pipefail
+
   local password="$1"
   local min_length="${2:-12}"
   local require_uppercase="${3:-true}"

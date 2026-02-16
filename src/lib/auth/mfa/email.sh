@@ -8,6 +8,9 @@
 
 # Email MFA configuration
 readonly EMAIL_CODE_LENGTH=6
+
+set -euo pipefail
+
 readonly EMAIL_CODE_EXPIRY=600 # 10 minutes
 readonly EMAIL_MAX_ATTEMPTS=5
 readonly EMAIL_RATE_LIMIT=120 # 2 minutes between sends

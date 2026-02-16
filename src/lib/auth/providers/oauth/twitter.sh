@@ -4,6 +4,9 @@
 
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 [[ -f "$SCRIPT_DIR/../oauth-core.sh" ]] && source "$SCRIPT_DIR/../oauth-core.sh"
 
 readonly TWITTER_AUTH_ENDPOINT="https://twitter.com/i/oauth2/authorize"

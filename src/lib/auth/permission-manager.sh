@@ -13,6 +13,9 @@
 # Usage: permission_create <resource> <action> <description>
 # Example: permission_create "users" "create" "Create new users"
 permission_create() {
+
+set -euo pipefail
+
   local resource="$1"
   local action="$2"
   local description="${3:-}"

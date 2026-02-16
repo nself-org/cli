@@ -5,6 +5,9 @@
 
 # Get the directory where this script is located
 SECURITY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 LIB_ROOT="$(dirname "$SECURITY_LIB_DIR")"
 
 # Source dependencies

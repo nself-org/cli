@@ -8,6 +8,9 @@
 
 # Backup codes configuration
 readonly BACKUP_CODE_COUNT=10
+
+set -euo pipefail
+
 readonly BACKUP_CODE_LENGTH=8
 readonly BACKUP_CODE_FORMAT="XXXX-XXXX" # 4 chars hyphen 4 chars
 

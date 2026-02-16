@@ -8,6 +8,9 @@
 
 # Hook types
 readonly HOOK_PRE_SIGNUP="pre_signup"
+
+set -euo pipefail
+
 readonly HOOK_POST_SIGNUP="post_signup"
 readonly HOOK_PRE_LOGIN="pre_login"
 readonly HOOK_POST_LOGIN="post_login"

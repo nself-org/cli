@@ -6,6 +6,9 @@
 # Magic link expiry (15 minutes)
 readonly MAGIC_LINK_EXPIRY_SECONDS=900
 
+set -euo pipefail
+
+
 # Generate a magic link token
 # Usage: generate_magic_link_token
 generate_magic_link_token() {

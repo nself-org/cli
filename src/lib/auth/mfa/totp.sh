@@ -8,6 +8,9 @@
 
 # TOTP configuration
 readonly TOTP_PERIOD=30      # Time step in seconds
+
+set -euo pipefail
+
 readonly TOTP_DIGITS=6       # Code length
 readonly TOTP_WINDOW=1       # Allow ±1 time window
 readonly TOTP_ISSUER="nself" # Issuer name for QR codes

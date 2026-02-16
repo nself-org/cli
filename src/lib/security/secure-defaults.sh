@@ -7,6 +7,9 @@
 
 # Get the directory where this script is located
 SECURE_DEFAULTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 LIB_ROOT="$(dirname "$SECURE_DEFAULTS_DIR")"
 
 # Source dependencies

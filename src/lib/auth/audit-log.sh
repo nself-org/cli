@@ -4,6 +4,9 @@
 
 
 audit_init() {
+
+set -euo pipefail
+
   local container=$(docker ps --filter 'name=postgres' --format '{{.Names}}' | head -1)
   docker exec -i "$container" psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-nself_db}" <<'EOSQL' >/dev/null 2>&1
 CREATE SCHEMA IF NOT EXISTS audit;

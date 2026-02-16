@@ -8,6 +8,9 @@
 
 # MFA policy types
 readonly MFA_POLICY_REQUIRED="required"     # MFA always required
+
+set -euo pipefail
+
 readonly MFA_POLICY_OPTIONAL="optional"     # MFA optional
 readonly MFA_POLICY_ROLE_BASED="role_based" # Required for certain roles
 readonly MFA_POLICY_IP_BASED="ip_based"     # Required for certain IPs

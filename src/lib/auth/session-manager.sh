@@ -7,6 +7,9 @@
 
 # Session defaults
 readonly SESSION_DEFAULT_TTL=900   # 15 minutes
+
+set -euo pipefail
+
 readonly REFRESH_TOKEN_TTL=2592000 # 30 days
 readonly MAX_SESSIONS_PER_USER=10
 

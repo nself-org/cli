@@ -7,6 +7,9 @@
 
 # API key defaults
 readonly APIKEY_PREFIX="nself"
+
+set -euo pipefail
+
 readonly APIKEY_LENGTH=32
 readonly APIKEY_DEFAULT_EXPIRY=31536000 # 1 year
 

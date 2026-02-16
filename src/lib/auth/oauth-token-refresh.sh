@@ -8,6 +8,9 @@
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 NSELF_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Source dependencies

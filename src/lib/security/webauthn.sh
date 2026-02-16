@@ -9,6 +9,9 @@
 
 # Generate a cryptographically secure random challenge for WebAuthn
 generate_webauthn_challenge() {
+
+set -euo pipefail
+
   local challenge_length="${1:-32}" # 32 bytes default
 
   if command -v openssl >/dev/null 2>&1; then

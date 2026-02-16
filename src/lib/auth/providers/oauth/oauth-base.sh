@@ -11,6 +11,9 @@
 
 # OAuth grant types
 readonly OAUTH_GRANT_AUTHORIZATION_CODE="authorization_code"
+
+set -euo pipefail
+
 readonly OAUTH_GRANT_REFRESH_TOKEN="refresh_token"
 
 # OAuth response types

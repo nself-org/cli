@@ -7,6 +7,9 @@
 
 # JWT defaults
 readonly JWT_ALGORITHM="RS256"
+
+set -euo pipefail
+
 readonly JWT_ACCESS_TOKEN_TTL=900      # 15 minutes
 readonly JWT_REFRESH_TOKEN_TTL=2592000 # 30 days
 readonly JWT_ISSUER="nself"

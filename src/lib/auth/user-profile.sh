@@ -13,6 +13,9 @@
 # Create or update user profile
 # Usage: profile_set <user_id> <field> <value>
 profile_set() {
+
+set -euo pipefail
+
   local user_id="$1"
   local field="$2"
   local value="$3"

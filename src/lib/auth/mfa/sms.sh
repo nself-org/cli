@@ -8,6 +8,9 @@
 
 # SMS MFA configuration
 readonly SMS_CODE_LENGTH=6
+
+set -euo pipefail
+
 readonly SMS_CODE_EXPIRY=300 # 5 minutes
 readonly SMS_MAX_ATTEMPTS=3
 readonly SMS_RATE_LIMIT=60 # 1 minute between sends

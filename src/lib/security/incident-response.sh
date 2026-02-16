@@ -9,6 +9,9 @@
 
 # Detect and create incident for brute force attack
 detect_brute_force_incident() {
+
+set -euo pipefail
+
   local user_id="$1"
   local failed_attempts="$2"
   local time_window="$3"

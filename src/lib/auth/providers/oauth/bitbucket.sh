@@ -4,6 +4,9 @@
 
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 [[ -f "$SCRIPT_DIR/../oauth-core.sh" ]] && source "$SCRIPT_DIR/../oauth-core.sh"
 
 readonly BITBUCKET_AUTH_ENDPOINT="https://bitbucket.org/site/oauth2/authorize"

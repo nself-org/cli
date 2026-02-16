@@ -13,6 +13,9 @@
 # Usage: hash_password <password>
 # Returns: bcrypt hash string
 hash_password() {
+
+set -euo pipefail
+
   local password="$1"
 
   if [[ -z "$password" ]]; then

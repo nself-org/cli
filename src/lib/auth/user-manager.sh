@@ -9,6 +9,9 @@
 # Source dependencies
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+set -euo pipefail
+
+
 # Source password utilities
 if [[ -f "$SCRIPT_DIR/password-utils.sh" ]]; then
   source "$SCRIPT_DIR/password-utils.sh"
