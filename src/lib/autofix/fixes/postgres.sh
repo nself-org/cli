@@ -4,6 +4,9 @@
 # Track what fix was applied
 LAST_FIX_DESCRIPTION=""
 
+set -euo pipefail
+
+
 get_last_fix_description() {
   echo "$LAST_FIX_DESCRIPTION"
 }

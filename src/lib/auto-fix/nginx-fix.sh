@@ -4,6 +4,9 @@
 
 # Fix nginx restart loop
 fix_nginx_restart_loop() {
+
+set -euo pipefail
+
   local container_name="${1:-${PROJECT_NAME}_nginx}"
   local verbose="${2:-false}"
 

@@ -3,6 +3,9 @@
 # docker.sh - Fix Docker issues
 
 fix_docker_build() {
+
+set -euo pipefail
+
   local issue="$1"
 
   case "$issue" in

@@ -6,6 +6,9 @@
 
 # Source dependencies
 AUTOFIX_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+set -euo pipefail
+
 source "$AUTOFIX_DIR/error-analyzer.sh"
 source "$AUTOFIX_DIR/state-tracker.sh"
 source "$AUTOFIX_DIR/pre-checks.sh"

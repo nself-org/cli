@@ -6,6 +6,9 @@
 
 AUTOFIX_STATE_DIR="/tmp/nself-autofix-state"
 
+set -euo pipefail
+
+
 init_autofix_state() {
   mkdir -p "$AUTOFIX_STATE_DIR"
 }

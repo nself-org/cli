@@ -6,6 +6,9 @@
 
 # Source all autofix handlers
 AUTOFIX_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+set -euo pipefail
+
 for handler in "$AUTOFIX_DIR"/*.sh; do
   if [[ -f "$handler" ]] && [[ "$handler" != *"dispatcher.sh" ]]; then
     source "$handler"

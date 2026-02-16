@@ -4,6 +4,9 @@
 
 # Source utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "$SCRIPT_DIR/../utils/display.sh" 2>/dev/null || true
 
 # Validate and fix PROJECT_NAME

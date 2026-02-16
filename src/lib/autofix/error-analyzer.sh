@@ -5,6 +5,9 @@
 # Returns error codes that map to specific fix strategies
 
 analyze_error() {
+
+set -euo pipefail
+
   local service_logs="$1"
 
   # Postgres port 5433 connection refused

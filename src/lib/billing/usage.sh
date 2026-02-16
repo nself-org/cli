@@ -10,6 +10,9 @@
 
 # Prevent multiple sourcing
 [[ -n "${NSELF_BILLING_USAGE_LOADED:-}" ]] && return 0
+
+set -euo pipefail
+
 NSELF_BILLING_USAGE_LOADED=1
 
 # Source dependencies (namespaced to avoid clobbering caller's SCRIPT_DIR)

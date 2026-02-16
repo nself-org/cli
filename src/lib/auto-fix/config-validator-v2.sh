@@ -2,6 +2,9 @@
 
 
 CONFIG_VALIDATOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "${CONFIG_VALIDATOR_DIR}/../utils/display.sh"
 source "${CONFIG_VALIDATOR_DIR}/../utils/output-formatter.sh"
 

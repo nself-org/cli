@@ -4,6 +4,9 @@
 
 # List of fixable errors (limited scope)
 readonly AUTO_FIXABLE_ERRORS=(
+
+set -euo pipefail
+
   "docker_build"
   "port_conflict_self"
   "dependency_missing"

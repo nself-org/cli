@@ -2,6 +2,9 @@
 
 
 AUTO_FIXER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "${AUTO_FIXER_DIR}/../utils/display.sh"
 source "${AUTO_FIXER_DIR}/../utils/output-formatter.sh"
 

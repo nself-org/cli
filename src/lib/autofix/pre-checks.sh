@@ -6,6 +6,9 @@
 
 # Source platform compatibility utilities
 PRECHECKS_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+set -euo pipefail
+
 source "$PRECHECKS_DIR/../utils/platform-compat.sh" 2>/dev/null || true
 
 run_pre_checks() {

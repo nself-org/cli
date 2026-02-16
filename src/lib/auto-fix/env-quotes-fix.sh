@@ -5,6 +5,9 @@
 
 # Define logging functions if not already defined
 if ! command -v log_warning >/dev/null 2>&1; then
+
+set -euo pipefail
+
   log_warning() { echo "⚠ $1" >&2; }
 fi
 if ! command -v log_info >/dev/null 2>&1; then

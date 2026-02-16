@@ -6,6 +6,9 @@
 
 # Source dependencies
 AUTOFIX_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+set -euo pipefail
+
 source "$AUTOFIX_DIR/../utils/display.sh" 2>/dev/null || true
 source "$AUTOFIX_DIR/../utils/docker.sh" 2>/dev/null || true
 

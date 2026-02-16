@@ -2,6 +2,9 @@
 
 
 fix_postgres_connection() {
+
+set -euo pipefail
+
   local service_name="$1"
   local service_logs="$2"
   local strategy="${3:-restart_postgres}"

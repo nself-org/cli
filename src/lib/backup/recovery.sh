@@ -5,6 +5,9 @@
 
 # Restore from backup
 backup_restore() {
+
+set -euo pipefail
+
   local backup_id="$1"
   local target_database="${2:-${POSTGRES_DB:-nself_db}}"
   local point_in_time="${3:-}" # Optional: ISO 8601 timestamp

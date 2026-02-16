@@ -3,6 +3,9 @@
 # ports.sh - Fix port conflicts
 
 fix_port_conflict() {
+
+set -euo pipefail
+
   local port="$1"
   local service="$2"
 

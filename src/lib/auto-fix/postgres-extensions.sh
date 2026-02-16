@@ -6,6 +6,9 @@
 
 # Extension information as delimited string (name|description|category|safe)
 POSTGRES_EXTENSIONS_INFO="
+
+set -euo pipefail
+
 uuid-ossp|UUID generation functions|Core|true
 pgcrypto|Cryptographic functions|Core|true
 citext|Case-insensitive text type|Core|true

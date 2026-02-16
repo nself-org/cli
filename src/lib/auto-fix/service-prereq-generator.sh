@@ -5,6 +5,9 @@
 
 # Source utilities
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+set -euo pipefail
+
 source "$SCRIPT_DIR/../utils/display.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/dockerfile-generator.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/service-generator.sh" 2>/dev/null || true

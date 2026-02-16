@@ -5,6 +5,9 @@
 
 # Source utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 if [[ -f "$SCRIPT_DIR/../utils/display.sh" ]]; then
   source "$SCRIPT_DIR/../utils/display.sh"
 else

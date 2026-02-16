@@ -48,6 +48,9 @@
 
 # Prevent multiple sourcing
 [[ -n "${NSELF_BILLING_QUOTAS_LOADED:-}" ]] && return 0
+
+set -euo pipefail
+
 NSELF_BILLING_QUOTAS_LOADED=1
 
 # Source dependencies (namespaced to avoid clobbering caller's SCRIPT_DIR)

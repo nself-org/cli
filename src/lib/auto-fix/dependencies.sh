@@ -3,6 +3,9 @@
 # dependencies.sh - Fix missing dependencies
 
 fix_missing_dependency() {
+
+set -euo pipefail
+
   local dep_type="$1"
 
   case "$dep_type" in

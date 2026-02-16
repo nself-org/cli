@@ -6,6 +6,9 @@
 # Source required utilities
 source "${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}/lib/utils/display.sh" 2>/dev/null || true
 
+set -euo pipefail
+
+
 # Retention policy constants
 readonly RETENTION_POLICY_AGE="age"
 readonly RETENTION_POLICY_COUNT="count"

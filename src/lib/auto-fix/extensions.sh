@@ -4,6 +4,9 @@
 
 # Source utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "$SCRIPT_DIR/../utils/display.sh"
 
 # Source platform compatibility for safe_sed_inline

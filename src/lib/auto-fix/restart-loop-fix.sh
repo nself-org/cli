@@ -3,6 +3,9 @@
 # Auto-fix common restart loop issues
 
 fix_restart_loops() {
+
+set -euo pipefail
+
   local project_name="${PROJECT_NAME:-nself}"
   local fixed_any=false
 

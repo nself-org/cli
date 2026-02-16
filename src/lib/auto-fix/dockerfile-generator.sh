@@ -5,6 +5,9 @@
 
 # Source utilities - don't override parent SCRIPT_DIR
 DOCKERFILE_GEN_SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+set -euo pipefail
+
 source "$DOCKERFILE_GEN_SCRIPT_DIR/../utils/display.sh" 2>/dev/null || true
 
 # Generate appropriate Dockerfile based on service name and context

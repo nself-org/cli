@@ -5,6 +5,9 @@
 
 # Fix missing node modules for BullMQ workers
 fix_bullmq_dependencies() {
+
+set -euo pipefail
+
   local service_name="$1"
   local project_name="${PROJECT_NAME:-nself}"
 

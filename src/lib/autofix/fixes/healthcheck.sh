@@ -5,6 +5,9 @@
 
 # Fix healthcheck commands for containers that have wget but not curl
 fix_healthcheck_commands() {
+
+set -euo pipefail
+
   local service_name="$1"
   local project_name="${PROJECT_NAME:-nself}"
   local container_name="${project_name}_${service_name}"

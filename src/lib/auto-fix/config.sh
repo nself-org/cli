@@ -3,6 +3,9 @@
 # config.sh - Fix configuration issues
 
 fix_missing_config() {
+
+set -euo pipefail
+
   local config_file="$1"
 
   if [[ "$config_file" == ".env.local" ]]; then

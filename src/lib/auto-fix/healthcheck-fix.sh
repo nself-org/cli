@@ -3,6 +3,9 @@
 # Auto-fix health check issues in docker-compose.yml
 
 fix_healthchecks() {
+
+set -euo pipefail
+
   local compose_file="${1:-docker-compose.yml}"
   local fixed=false
 

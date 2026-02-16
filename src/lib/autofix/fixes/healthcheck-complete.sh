@@ -5,6 +5,9 @@
 
 # Add health endpoint to Node.js/NestJS services
 add_nodejs_health_endpoint() {
+
+set -euo pipefail
+
   local service_name="$1"
   local service_dir="$2"
   local port="${3:-3000}"

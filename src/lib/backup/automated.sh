@@ -5,6 +5,9 @@
 
 # Backup types
 readonly BACKUP_TYPE_FULL="full"
+
+set -euo pipefail
+
 readonly BACKUP_TYPE_INCREMENTAL="incremental"
 readonly BACKUP_TYPE_DIFFERENTIAL="differential"
 
