@@ -920,5 +920,5 @@ google.golang.org/protobuf v1.31.0
 ## See Also
 
 - [Service Code Generation Guide](../guides/SERVICE-CODE-GENERATION.md)
-- [Custom Services Guide](SERVICES_CUSTOM)
-- [Architecture Overview](../architecture/ARCHITECTURE)
+- [Custom Services Guide](SERVICES_CUSTOM.md)
+- [Architecture Overview](../architecture/ARCHITECTURE.md)
