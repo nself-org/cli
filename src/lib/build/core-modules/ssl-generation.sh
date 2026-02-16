@@ -5,6 +5,9 @@
 
 # Generate self-signed SSL certificates
 generate_ssl_certificates() {
+
+set -euo pipefail
+
   local domain="${1:-localhost}"
   local output_dir="${2:-ssl/certificates}"
 

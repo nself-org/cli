@@ -5,6 +5,9 @@
 
 # Define standard project directory structure
 get_project_directories() {
+
+set -euo pipefail
+
   # Always needed directories
   cat <<EOF
 nginx/conf.d

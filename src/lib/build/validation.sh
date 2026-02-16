@@ -4,6 +4,9 @@
 
 # Source auto-fix utilities
 VALIDATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 if [[ -f "$VALIDATION_DIR/../auto-fix/env-quotes-fix.sh" ]]; then
   source "$VALIDATION_DIR/../auto-fix/env-quotes-fix.sh"
 fi

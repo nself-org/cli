@@ -4,6 +4,9 @@
 
 # Generate nginx configuration
 generate_nginx_config() {
+
+set -euo pipefail
+
   local force="${1:-false}"
 
   # Check if nginx config already exists

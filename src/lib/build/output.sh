@@ -4,6 +4,9 @@
 
 # Color codes (portable)
 setup_colors() {
+
+set -euo pipefail
+
   if [[ -t 1 ]]; then
     COLOR_RED='\033[0;31m'
     COLOR_GREEN='\033[0;32m'

@@ -4,6 +4,9 @@
 
 # Source platform compatibility utilities
 TEMPLATES_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+set -euo pipefail
+
 source "$TEMPLATES_DIR/../../utils/platform-compat.sh" 2>/dev/null || true
 
 # Get template name

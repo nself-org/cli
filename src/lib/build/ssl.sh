@@ -5,6 +5,9 @@
 # Source platform compatibility functions
 source "$(dirname "${BASH_SOURCE[0]}")/../utils/platform-compat.sh" 2>/dev/null || true
 
+set -euo pipefail
+
+
 # Generate SSL certificates
 generate_ssl_certificates() {
   local force="${1:-false}"

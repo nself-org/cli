@@ -5,6 +5,9 @@
 
 # Source change detection module
 ORCHESTRATOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 if [[ -f "$ORCHESTRATOR_DIR/change-detection.sh" ]]; then
   source "$ORCHESTRATOR_DIR/change-detection.sh"
 fi

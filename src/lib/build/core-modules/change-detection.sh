@@ -4,6 +4,9 @@
 
 # Initialize change tracking
 init_change_tracking() {
+
+set -euo pipefail
+
   export BUILD_STATE_DIR=".nself/build-state"
   mkdir -p "$BUILD_STATE_DIR"
 

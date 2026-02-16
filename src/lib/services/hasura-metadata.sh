@@ -4,6 +4,9 @@
 
 # Generate per-app schema configuration
 hasura::generate_app_schemas() {
+
+set -euo pipefail
+
   local base_domain="${BASE_DOMAIN:-localhost}"
   local app_count="${FRONTEND_APP_COUNT:-0}"
 

@@ -5,6 +5,9 @@
 
 # Prevent multiple sourcing
 [[ -n "${NSELF_DB_CORE_LOADED:-}" ]] && return 0
+
+set -euo pipefail
+
 NSELF_DB_CORE_LOADED=true
 
 # Source utilities

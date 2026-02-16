@@ -3,6 +3,9 @@
 # This creates .env.computed with all derived variables that docker-compose.yml references
 
 generate_computed_env() {
+
+set -euo pipefail
+
   local output_file="${1:-.env.computed}"
 
   # Read current environment to get base values

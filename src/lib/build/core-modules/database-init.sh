@@ -5,6 +5,9 @@
 
 # Generate PostgreSQL initialization scripts
 generate_postgres_init() {
+
+set -euo pipefail
+
   local project_name="${1:-${PROJECT_NAME:-nself}}"
   local postgres_db="${POSTGRES_DB:-$project_name}"
   local postgres_user="${POSTGRES_USER:-postgres}"

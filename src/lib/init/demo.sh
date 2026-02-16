@@ -8,6 +8,9 @@
 # Source required utilities
 DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+set -euo pipefail
+
+
 # Source display utilities for consistent styling
 if [[ -f "$DEMO_DIR/../utils/display.sh" ]]; then
   source "$DEMO_DIR/../utils/display.sh"

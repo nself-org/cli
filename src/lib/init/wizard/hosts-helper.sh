@@ -4,6 +4,9 @@
 
 # Check if domain resolves to localhost
 check_domain_resolution() {
+
+set -euo pipefail
+
   local domain="$1"
 
   # Skip for standard domains

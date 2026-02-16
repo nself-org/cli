@@ -4,6 +4,9 @@
 
 TEMPLATE_DIR="${NSELF_TEMPLATES:-${NSELF_ROOT:-/usr/local/lib/nself}/src/templates}/services"
 
+set -euo pipefail
+
+
 # Find all Dockerfile templates with npm ci
 for file in $(find "$TEMPLATE_DIR" -name "Dockerfile.template" -type f); do
   if grep -q "npm ci" "$file"; then

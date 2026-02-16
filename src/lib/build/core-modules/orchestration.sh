@@ -5,6 +5,9 @@
 
 # Load all core modules
 load_core_modules() {
+
+set -euo pipefail
+
   local module_dir="$(dirname "${BASH_SOURCE[0]}")"
   local lib_dir="$(dirname "$module_dir")"
 

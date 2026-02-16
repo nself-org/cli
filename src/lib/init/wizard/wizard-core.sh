@@ -5,6 +5,9 @@
 
 # Get script directory
 WIZARD_CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 STEPS_DIR="$WIZARD_CORE_DIR/steps"
 
 # Source step modules

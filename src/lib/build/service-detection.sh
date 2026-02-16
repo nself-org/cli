@@ -5,6 +5,9 @@
 
 # Detect which services are enabled using smart defaults
 detect_enabled_services() {
+
+set -euo pipefail
+
   # Core services - always enabled unless explicitly disabled
   export POSTGRES_ENABLED="${POSTGRES_ENABLED:-true}"
   export HASURA_ENABLED="${HASURA_ENABLED:-true}"

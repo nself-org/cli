@@ -5,6 +5,9 @@
 # Get script directory for sourcing utilities
 PROMPTS_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+set -euo pipefail
+
+
 # Source display utilities for standard headers
 source "$PROMPTS_SCRIPT_DIR/../../utils/display.sh"
 

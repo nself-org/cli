@@ -4,6 +4,9 @@
 
 # Apply pending migrations
 migrate_up() {
+
+set -euo pipefail
+
   cli_header "nself db migrate up"
   cli_subheader "Apply pending database migrations"
 

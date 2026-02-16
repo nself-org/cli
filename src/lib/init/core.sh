@@ -4,6 +4,9 @@
 # Source platform compatibility for safe_sed_inline
 # (use INIT_MODULE_DIR below for module sourcing; this is just for the compat fallback)
 _INIT_CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "$_INIT_CORE_DIR/../utils/platform-compat.sh" 2>/dev/null || source "$_INIT_CORE_DIR/../../lib/utils/platform-compat.sh" 2>/dev/null || {
   # Fallback definition
   safe_sed_inline() {

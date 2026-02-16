@@ -10,6 +10,9 @@
 
 # Prevent multiple sourcing
 [[ -n "${NSELF_SAFE_QUERY_LOADED:-}" ]] && return 0
+
+set -euo pipefail
+
 NSELF_SAFE_QUERY_LOADED=1
 
 # ============================================================================

@@ -4,6 +4,9 @@
 
 # Generate graceful shutdown for Node.js/Express services
 generate_nodejs_shutdown() {
+
+set -euo pipefail
+
   cat <<'EOF'
 // =============================================================================
 // GRACEFUL SHUTDOWN HANDLER

@@ -10,6 +10,9 @@
 # Outputs: Help text to stdout
 # Returns: 0
 show_init_help() {
+
+set -euo pipefail
+
   # Ensure display variables are set for help text
   local BULLET="${BULLET:--}"
   local ARROW="${ARROW:-->}"

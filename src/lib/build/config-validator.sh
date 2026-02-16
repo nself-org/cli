@@ -4,6 +4,9 @@
 
 # Source display utilities (namespaced to avoid clobbering caller's SCRIPT_DIR)
 _BUILD_VALIDATOR_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+set -euo pipefail
+
 if [[ -f "$_BUILD_VALIDATOR_DIR/../utils/display.sh" ]]; then
   source "$_BUILD_VALIDATOR_DIR/../utils/display.sh"
 fi

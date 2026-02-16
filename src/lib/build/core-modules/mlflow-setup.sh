@@ -4,6 +4,9 @@
 
 # Generate MLflow Dockerfile with psycopg2
 generate_mlflow_dockerfile() {
+
+set -euo pipefail
+
   local mlflow_dir="${1:-mlflow}"
 
   # Only generate if MLflow is enabled

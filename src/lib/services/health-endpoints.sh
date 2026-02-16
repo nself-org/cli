@@ -4,6 +4,9 @@
 
 # Generate health endpoint code for Node.js/Express services
 generate_nodejs_health_endpoint() {
+
+set -euo pipefail
+
   cat <<'EOF'
 // =============================================================================
 // PRODUCTION HEALTH ENDPOINTS

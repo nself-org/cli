@@ -5,6 +5,9 @@
 
 # Determine directories (namespaced to avoid clobbering caller globals)
 WIZARD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 INIT_LIB_DIR="$(dirname "$WIZARD_DIR")"
 _WIZARD_ROOT_DIR="$(dirname "$(dirname "$(dirname "$INIT_LIB_DIR")")")"
 

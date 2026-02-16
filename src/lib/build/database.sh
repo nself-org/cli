@@ -4,6 +4,9 @@
 
 # Generate database initialization
 generate_database_init() {
+
+set -euo pipefail
+
   local force="${1:-false}"
 
   # Check if init-db.sql already exists

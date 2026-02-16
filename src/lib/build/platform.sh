@@ -4,6 +4,9 @@
 
 # Detect platform and set compatibility flags
 detect_build_platform() {
+
+set -euo pipefail
+
   PLATFORM=""
   IS_MAC=false
   IS_LINUX=false

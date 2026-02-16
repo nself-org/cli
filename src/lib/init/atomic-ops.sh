@@ -7,6 +7,9 @@
 
 # Source dependencies if not already loaded
 if [[ -z "${INIT_E_SUCCESS:-}" ]]; then
+
+set -euo pipefail
+
   source "$(dirname "${BASH_SOURCE[0]}")/config.sh"
 fi
 if [[ -z "${SUPPORTS_COLOR:-}" ]]; then

@@ -10,6 +10,9 @@
 # Outputs: Sets global OS variable
 # Returns: 0
 detect_platform() {
+
+set -euo pipefail
+
   case "$OSTYPE" in
     linux*) OS="linux" ;;
     darwin*) OS="macos" ;;

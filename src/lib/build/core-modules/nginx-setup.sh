@@ -5,6 +5,9 @@
 
 # Generate main nginx.conf
 generate_nginx_conf() {
+
+set -euo pipefail
+
   local project_name="${1:-nself}"
   local base_domain="${2:-localhost}"
 

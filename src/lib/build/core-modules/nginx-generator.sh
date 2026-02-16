@@ -6,6 +6,9 @@
 # Determine SSL certificate directory name based on domain
 # Returns: directory name for SSL certs (e.g., "localhost", "nself-org", "example-com")
 get_ssl_cert_dir() {
+
+set -euo pipefail
+
   local domain="${BASE_DOMAIN:-localhost}"
 
   # For localhost or *.localhost domains, use localhost

@@ -6,6 +6,9 @@
 # Get the root directory
 BUILD_MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+set -euo pipefail
+
+
 # Source the unified SSL API
 if [[ -f "$BUILD_MODULE_DIR/ssl/api.sh" ]]; then
   source "$BUILD_MODULE_DIR/ssl/api.sh"

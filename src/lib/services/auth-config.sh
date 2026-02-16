@@ -4,6 +4,9 @@
 
 # Get all allowed redirect URLs for auth service
 auth::get_allowed_redirect_urls() {
+
+set -euo pipefail
+
   local base_domain="${BASE_DOMAIN:-localhost}"
   local urls=()
 

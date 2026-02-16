@@ -5,6 +5,9 @@
 # Source utilities
 # Use BASH_SOURCE[0] to get the actual file location, not where it's sourced from
 SERVICE_BUILDER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 SCRIPT_DIR="$SERVICE_BUILDER_DIR"
 
 # Only source if not already loaded (avoid re-sourcing in nested calls)

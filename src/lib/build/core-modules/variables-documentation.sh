@@ -4,6 +4,9 @@
 
 # Generate runtime variables documentation
 generate_runtime_variables_doc() {
+
+set -euo pipefail
+
   local output_file="${1:-RUNTIME_VARIABLES.md}"
 
   cat >"$output_file" <<'EOF'

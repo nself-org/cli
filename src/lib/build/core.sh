@@ -5,6 +5,9 @@
 
 # Get the correct script directory
 CORE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 _BUILD_LIB_ROOT="$(dirname "$CORE_SCRIPT_DIR")"
 
 # Source the original utilities that build.sh needs

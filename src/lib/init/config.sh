@@ -7,6 +7,9 @@
 
 # Guard against multiple sourcing
 if [[ -n "${INIT_CONFIG_SOURCED:-}" ]]; then
+
+set -euo pipefail
+
   return 0
 fi
 INIT_CONFIG_SOURCED=1

@@ -4,6 +4,9 @@
 
 # Global variables for detection results
 DETECTED_FRAMEWORK=""
+
+set -euo pipefail
+
 DETECTED_LANGUAGE=""
 DETECTED_DATABASE=""
 DETECTED_SERVICES=()

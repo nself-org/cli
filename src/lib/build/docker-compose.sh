@@ -5,6 +5,9 @@
 # Source platform compatibility functions
 source "$(dirname "${BASH_SOURCE[0]}")/../utils/platform-compat.sh" 2>/dev/null || true
 
+set -euo pipefail
+
+
 # Source computed env generator (Bug #12 fix)
 source "$(dirname "${BASH_SOURCE[0]}")/generate-computed-env.sh" 2>/dev/null || true
 

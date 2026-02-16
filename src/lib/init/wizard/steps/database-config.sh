@@ -5,6 +5,9 @@
 
 # Configure database settings
 wizard_database_config() {
+
+set -euo pipefail
+
   local config_array_name="$1"
   local project_name="${2:-myproject}"
 

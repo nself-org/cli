@@ -5,6 +5,9 @@
 
 # Setup monitoring configuration files
 setup_monitoring_configs() {
+
+set -euo pipefail
+
   local monitoring_enabled="${MONITORING_ENABLED:-false}"
   local grafana_enabled="${GRAFANA_ENABLED:-$monitoring_enabled}"
   local loki_enabled="${LOKI_ENABLED:-$monitoring_enabled}"

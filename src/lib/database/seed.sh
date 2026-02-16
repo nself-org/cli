@@ -4,6 +4,9 @@
 
 # Apply seed data
 seed_database() {
+
+set -euo pipefail
+
   local env_override=""
   local reset=false
 

@@ -5,6 +5,9 @@
 
 # Get the root directory where templates are stored
 get_templates_root() {
+
+set -euo pipefail
+
   # Try to find the templates directory
   local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   local templates_dir=""
