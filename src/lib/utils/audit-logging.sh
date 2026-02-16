@@ -277,8 +277,12 @@ audit_system() {
 # AUDIT QUERY AND REPORTING
 # =============================================================================
 
-# Query audit logs
+# Query audit logs with optional filtering
 # Args: [category] [action] [user] [since_date]
+# Date format: ISO8601 (YYYY-MM-DD)
+# Examples:
+#   audit_query "" "" "" "2026-02-01"  # All events since Feb 1
+#   audit_query "AUTH" "" "" "2026-01-15"  # Auth events since Jan 15
 audit_query() {
   local filter_category="${1:-}"
   local filter_action="${2:-}"
@@ -309,10 +313,56 @@ audit_query() {
     results=$(printf "%s" "$results" | grep "|${filter_user}|" || printf "")
   fi
 
-  # TODO: Add date filtering
-  # if [[ -n "$filter_since" ]]; then
-  #   # Complex date comparison
-  # fi
+  # Date filtering (supports ISO8601 dates and relative formats)
+  if [[ -n "$filter_since" ]]; then
+    local since_epoch
+
+    # Try to parse as date (ISO8601 format: YYYY-MM-DD)
+    if [[ "$filter_since" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+      # Direct ISO date format
+      if command -v date >/dev/null 2>&1; then
+        if date --version 2>/dev/null | grep -q GNU; then
+          # GNU date (Linux)
+          since_epoch=$(date -d "$filter_since" +%s 2>/dev/null || echo "0")
+        else
+          # BSD date (macOS)
+          since_epoch=$(date -j -f "%Y-%m-%d" "$filter_since" +%s 2>/dev/null || echo "0")
+        fi
+      else
+        since_epoch="0"
+      fi
+    else
+      # Relative format (e.g., "7d", "2w", "1h")
+      # Not implemented yet - fall back to showing all
+      since_epoch="0"
+    fi
+
+    # Filter results by timestamp if we got a valid epoch
+    if [[ "$since_epoch" != "0" ]]; then
+      local filtered_results=""
+      while IFS='|' read -r timestamp event_id category action user hostname pid details checksum; do
+        # Extract date from timestamp (format: "YYYY-MM-DD HH:MM:SS UTC")
+        local log_date="${timestamp%% *}"
+        local log_epoch
+
+        if date --version 2>/dev/null | grep -q GNU; then
+          # GNU date (Linux)
+          log_epoch=$(date -d "$log_date" +%s 2>/dev/null || echo "0")
+        else
+          # BSD date (macOS)
+          log_epoch=$(date -j -f "%Y-%m-%d" "$log_date" +%s 2>/dev/null || echo "0")
+        fi
+
+        # Include if log timestamp >= filter timestamp
+        if [[ "$log_epoch" -ge "$since_epoch" ]]; then
+          filtered_results="${filtered_results}${timestamp}|${event_id}|${category}|${action}|${user}|${hostname}|${pid}|${details}|${checksum}"$'\n'
+        fi
+      done <<< "$results"
+
+      # Remove trailing newline
+      results="${filtered_results%$'\n'}"
+    fi
+  fi
 
   # Format output
   if [[ -z "$results" ]]; then

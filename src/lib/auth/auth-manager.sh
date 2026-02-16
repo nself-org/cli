@@ -515,7 +515,8 @@ auth_create_session() {
   local ip_address="${2:-}"
   local user_agent="${3:-}"
 
-  # TODO: Implement in AUTH-004
+  # TODO (v1.0): Implement session management (AUTH-004)
+  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-002)
   log_warning "auth_create_session not yet implemented (AUTH-004)"
   return 1
 }
@@ -525,7 +526,8 @@ auth_create_session() {
 auth_validate_session() {
   local token="$1"
 
-  # TODO: Implement in AUTH-004
+  # TODO (v1.0): Implement session management (AUTH-004)
+  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-002)
   log_warning "auth_validate_session not yet implemented (AUTH-004)"
   return 1
 }
@@ -535,7 +537,8 @@ auth_validate_session() {
 auth_revoke_session() {
   local session_id="$1"
 
-  # TODO: Implement in AUTH-004
+  # TODO (v1.0): Implement session management (AUTH-004)
+  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-002)
   log_warning "auth_revoke_session not yet implemented (AUTH-004)"
   return 1
 }
@@ -545,7 +548,8 @@ auth_revoke_session() {
 auth_list_sessions() {
   local user_id="$1"
 
-  # TODO: Implement in AUTH-004
+  # TODO (v1.0): Implement session management (AUTH-004)
+  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-002)
   log_warning "auth_list_sessions not yet implemented (AUTH-004)"
   return 1
 }
@@ -1023,7 +1027,8 @@ auth_login_anonymous() {
 auth_login_oauth() {
   local provider="$1"
 
-  # TODO: Implement in OAUTH-003+
+  # TODO (v1.0+): Implement OAuth login flow (OAUTH-003+)
+  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-004)
   log_warning "auth_login_oauth not yet implemented (OAUTH-003+)"
   return 1
 }
@@ -1044,7 +1049,8 @@ auth_generate_token() {
 auth_hash_password() {
   local password="$1"
 
-  # TODO: Implement bcrypt hashing
+  # TODO (v1.0): Implement bcrypt password hashing (SECURITY CRITICAL)
+  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-003)
   log_warning "auth_hash_password not yet implemented"
   return 1
 }
@@ -1055,7 +1061,8 @@ auth_verify_password() {
   local password="$1"
   local hash="$2"
 
-  # TODO: Implement bcrypt verification
+  # TODO (v1.0): Implement bcrypt password verification (SECURITY CRITICAL)
+  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-003)
   log_warning "auth_verify_password not yet implemented"
   return 1
 }

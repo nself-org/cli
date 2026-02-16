@@ -494,7 +494,8 @@ registry_marketplace_ratings() {
   # Stub: Would fetch from marketplace API
   printf "Fetching ratings for %s from marketplace...\n" "$plugin_name"
 
-  # TODO: Implement marketplace ratings API
+  # TODO (v1.0+): Implement marketplace ratings API (or keep GitHub-based workflow)
+  # See: .ai/roadmap/v1.0/deferred-features.md (PLUGIN-001)
   printf "Marketplace ratings not yet available\n"
   return 0
 }
@@ -579,7 +580,8 @@ registry_marketplace_publish() {
   fi
 
   # Upload to marketplace
-  # TODO: Implement actual API upload
+  # TODO (v1.0+): Implement actual API upload (or keep GitHub PR workflow)
+  # See: .ai/roadmap/v1.0/deferred-features.md (PLUGIN-002)
   printf "  Checksum: sha256:%s\n" "$checksum"
   printf "\nMarketplace publishing not yet implemented\n"
   printf "Submit manually to: https://github.com/acamarata/nself-plugins\n"
@@ -598,7 +600,8 @@ registry_marketplace_report() {
 
   printf "Reporting issue for %s...\n" "$plugin_name"
 
-  # TODO: Implement marketplace issue reporting API
+  # TODO (v1.0+): Implement marketplace issue reporting API (or keep GitHub Issues)
+  # See: .ai/roadmap/v1.0/deferred-features.md (PLUGIN-003)
   printf "Please report issues at:\n"
   printf "https://github.com/acamarata/nself-plugins/issues\n"
 

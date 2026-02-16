@@ -716,7 +716,8 @@ plugin_validate_signature() {
     return 0
   fi
 
-  # TODO: Implement GPG signature verification
+  # TODO (v1.0): Implement GPG signature verification
+  # See: .ai/roadmap/v1.0/deferred-features.md (SECURITY-001)
   printf "Info: Signature validation not yet implemented\n"
   return 0
 }

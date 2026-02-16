@@ -1564,7 +1564,8 @@ send_tenant_email() {
   local tenant_smtp_pass="${AUTH_SMTP_PASS:-}"
   local tenant_smtp_sender="${AUTH_SMTP_SENDER:-noreply@${BASE_DOMAIN:-localhost}}"
 
-  # TODO: Load tenant-specific SMTP config from database
+  # TODO (v1.0): Load tenant-specific SMTP config from database
+  # See: .ai/roadmap/v1.0/deferred-features.md (WHITELABEL-001)
   # For now, use global SMTP config
 
   if [[ -z "$tenant_smtp_host" ]]; then

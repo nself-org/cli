@@ -2000,7 +2000,8 @@ cmd_provision() {
     return 0
   fi
 
-  # TODO: Implement provisioning logic
+  # TODO (v1.0+): Implement provisioning logic (or document manual steps)
+  # See: .ai/roadmap/v1.0/deferred-features.md (DEPLOY-001)
 
   cli_success "Provisioning complete"
 }

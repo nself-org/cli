@@ -381,8 +381,9 @@ jwt_generate_access_token() {
   token_claims=$(echo "$claims_json" | jq --arg sub "$user_id" --arg iss "$issuer" --arg exp "$exp" \
     '. + {sub: $sub, iss: $iss, exp: ($exp | tonumber), iat: now}')
 
-  # TODO: Sign with active private key using jose/jwt library
-  # For now, return unsigned token (development only)
+  # TODO (v1.0): Sign with active private key using jose/jwt library (SECURITY CRITICAL)
+  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-001)
+  # For now, return unsigned token (development only - NOT PRODUCTION READY)
   echo "$token_claims" | base64
   return 0
 }
