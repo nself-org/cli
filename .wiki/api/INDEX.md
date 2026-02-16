@@ -28,7 +28,6 @@ nself provides multiple APIs for accessing your backend services, including Grap
 | API | Documentation |
 |-----|---------------|
 | **Billing API** | [Billing API Reference](../reference/api/BILLING-API.md) |
-| **OAuth API** | [OAuth API Reference](../reference/api/OAUTH-API.md) |
 | **White-Label API** | [White-Label API Reference](../reference/api/WHITE-LABEL-API.md) |
 
 ### Plugin APIs

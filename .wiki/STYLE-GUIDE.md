@@ -109,7 +109,7 @@ When a new version is released, update:
 Use this format for version-specific notes:
 
 ```markdown
-> **v0.9.8:** Brief note about change. [Link to details](path/to/doc.md)
+> **v0.9.8:** Brief note about change. 
 ```
 
 **Example**:
@@ -390,7 +390,7 @@ Use **relative paths** from current file:
 ```
 
 **DO NOT use**:
-- ❌ Absolute paths: `/docs/getting-started/Quick-Start.md`
+- ❌ Absolute paths: `/do../getting-started/Quick-Start.md`
 - ❌ URLs: `https://github.com/acamarata/nself/blob/main/docs/...`
 
 ### External Links
@@ -548,8 +548,8 @@ Brief description of what's in this directory.
 
 ## Contents
 
-- [File 1](file1.md) - Description
-- [File 2](file2.md) - Description
+- [File 1](database.md) - Description
+- [File 2](users.md) - Description
 ```
 
 ---
@@ -651,7 +651,7 @@ nself/migrations/
 ## Next Steps
 
 - [Seeding Data](DB.md#seeding)
-- [Backup & Restore](../guides/BACKUP_GUIDE.md)
+- [Backup & Restore](../guides/BACKUP-RECOVERY.md)
 ````
 
 ---

@@ -357,7 +357,7 @@ nself deploy backup
 
 Data never leaves your infrastructure unless you explicitly export or deploy it.
 
-**[View Backup Guide](../guides/BACKUP_GUIDE.md)** | **[Architecture](../architecture/ARCHITECTURE.md)**
+**[View Backup Guide](../guides/BACKUP-RECOVERY.md)** | **[Architecture](../architecture/ARCHITECTURE.md)**
 
 ---
 
@@ -999,7 +999,7 @@ aws s3 cp nself/backups/ s3://my-backups/ --recursive
 nself deploy backup prod --s3 s3://my-backups/
 ```
 
-**[View Backup Guide](../guides/BACKUP_GUIDE.md)** | **[Deployment](../guides/Deployment.md)**
+**[View Backup Guide](../guides/BACKUP-RECOVERY.md)** | **[Deployment](../guides/Deployment.md)**
 
 ---
 

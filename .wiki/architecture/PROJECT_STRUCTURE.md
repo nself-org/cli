@@ -294,5 +294,5 @@ A complete nself deployment includes 30+ integrated services:
 - [Service Templates](../reference/SERVICE_TEMPLATES.md) - Available service templates
 - [Docker Compose](BUILD_ARCHITECTURE.md) - Container orchestration details
 - [SSL Configuration](../configuration/SSL.md) - Certificate management
-- [Backup & Recovery](../guides/BACKUP_GUIDE.md) - Data protection strategies
+- [Backup & Recovery](../guides/BACKUP-RECOVERY.md) - Data protection strategies
 - [Custom Services](../services/SERVICES_CUSTOM.md) - Building custom microservices

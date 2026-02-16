@@ -530,6 +530,6 @@ MONITORING_ENABLED=true
 
 - [Configuration Overview](README.md) - Configuration guide
 - [Search Services](../services/SEARCH.md) - Search services configuration
-- [Backup Guide](../guides/BACKUP_GUIDE.md) - Backup configuration
+- [Backup Guide](../guides/BACKUP-RECOVERY.md) - Backup configuration
 - [Troubleshooting](../guides/TROUBLESHOOTING.md) - Common issues
 - [Architecture](../architecture/ARCHITECTURE.md) - System architecture

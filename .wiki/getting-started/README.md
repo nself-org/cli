@@ -238,7 +238,7 @@ nself help db
 - **[Organization Management](../guides/ORGANIZATION-MANAGEMENT.md)** - Multi-tenancy
 - **[Billing & Usage](../guides/BILLING-AND-USAGE.md)** - Usage tracking
 - **[Security](../guides/SECURITY.md)** - Production security best practices
-- **[Backup & Recovery](../guides/BACKUP_GUIDE.md)** - Database backups
+- **[Backup & Recovery](../guides/BACKUP-RECOVERY.md)** - Database backups
 
 ## Need Help?
 

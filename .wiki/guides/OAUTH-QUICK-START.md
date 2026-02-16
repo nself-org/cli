@@ -83,7 +83,6 @@ Your OAuth authentication is now working.
 ## Next Steps
 
 - [Complete OAuth Setup Guide](./OAUTH-SETUP.md)
-- [OAuth API Reference](../reference/api/OAUTH-API.md)
 - [OAuth CLI Reference](../commands/oauth.md)
 - [Security Best Practices](./OAUTH-SETUP.md#security-best-practices)
 

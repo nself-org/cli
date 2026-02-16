@@ -164,14 +164,14 @@ nself start
 grep -r "https://github.com/acamarata/nself/blob/main/docs" docs/ --include="*.md"
 
 # Find absolute /docs paths
-grep -r "\](/docs/" docs/ --include="*.md"
+grep -r "\](/" docs/ --include="*.md"
 ```
 
 **Fix pattern**:
 ```markdown
 # Wrong (absolute):
-[Quick Start](/docs/getting-started/Quick-Start.md)
-[Quick Start](https://github.com/.../docs/getting-started/Quick-Start.md)
+[Quick Start](../getting-started/Quick-Start.md)
+[Quick Start](https://github.com/.../do../getting-started/Quick-Start.md)
 
 # Correct (relative):
 # From /docs/README.md:
@@ -247,7 +247,7 @@ echo "Code blocks without language: $MISSING_LANG"
 # 4. Check for absolute links
 echo
 echo "Checking for absolute paths in links..."
-ABS_LINKS=$(grep -r "\](/docs/" docs/ --include="*.md" | wc -l)
+ABS_LINKS=$(grep -r "\](/" docs/ --include="*.md" | wc -l)
 echo "Absolute link paths: $ABS_LINKS"
 
 # 5. Summary
@@ -291,7 +291,7 @@ if [ -n "$MD_FILES" ]; then
     fi
 
     # Check for absolute paths
-    if grep -q "\](/docs/" "$file"; then
+    if grep -q "\](/" "$file"; then
       echo "⚠️  Warning: $file contains absolute /docs/ paths"
     fi
   done
@@ -410,7 +410,7 @@ git commit -m "docs: update to version 0.9.8"
    - Version history table: Added v0.9.7 and v0.9.8
    - Footer date: Updated to January 31, 2026
 
-2. `/docs/getting-started/Quick-Start.md`
+2. `/do../getting-started/Quick-Start.md`
    - Version note: v0.9.6 → v0.9.7+ (for historical accuracy)
 
 3. **NEW FILES CREATED**:

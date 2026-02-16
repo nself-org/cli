@@ -26,7 +26,7 @@
 | Run migrations | [db command](../commands/DB.md#migrations) |
 | Seed test data | [db seed](../commands/DB.md#seeding) |
 | Generate mock data | [db mock](../commands/DB.md#mock-data) |
-| Create backups | [Backup Guide](../guides/BACKUP_GUIDE.md) |
+| Create backups | [Backup Guide](../guides/BACKUP-RECOVERY.md) |
 | Generate TypeScript types | [db types](../commands/DB.md#types) |
 | Connect from frontend | [API Reference](../reference/api/README.md) |
 

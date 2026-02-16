@@ -56,6 +56,14 @@ Guides for specific features:
 
 ---
 
+## Migration & Updates
+
+For users upgrading or migrating:
+
+- **[Deprecated Commands Migration](DEPRECATED-COMMANDS-MIGRATION.md)** ⚠️ - Command consolidation (v0.9.9+)
+
+---
+
 ## Troubleshooting
 
 When things go wrong:

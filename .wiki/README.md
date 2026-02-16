@@ -204,7 +204,6 @@ nself db schema apply schema.dbml # Import → migrate → seed
 - **[API Overview](reference/api/README.md)** - API documentation
 - **[GraphQL API](architecture/API.md)** - Hasura GraphQL reference
 - **[Billing API](reference/api/BILLING-API.md)** - Billing endpoints
-- **[OAuth API](reference/api/OAUTH-API.md)** - OAuth endpoints
 - **[White-Label API](reference/api/WHITE-LABEL-API.md)** - White-label endpoints
 
 ### Troubleshooting

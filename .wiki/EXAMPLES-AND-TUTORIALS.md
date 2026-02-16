@@ -46,7 +46,7 @@ Printable cheat sheets for common commands, database operations, deployment, tro
 
 ## 📚 Complete Resource Index
 
-### Tutorials (docs/tutorials/)
+### Tutorials (tutorials/)
 
 | Tutorial | File | Difficulty | Time |
 |----------|------|------------|------|
@@ -75,7 +75,7 @@ Printable cheat sheets for common commands, database operations, deployment, tro
 
 ---
 
-### Quick Reference (docs/reference/)
+### Quick Reference (reference/)
 
 | Reference | File | Purpose |
 |-----------|------|---------|
@@ -190,7 +190,7 @@ Printable cheat sheets for common commands, database operations, deployment, tro
 
 ## 🎥 Video Resources
 
-### Available Scripts (docs/tutorials/VIDEO-SCRIPTS.md)
+### Available Scripts (tutorials/VIDEO-SCRIPTS.md)
 
 - **Video 1:** Getting Started (5 min)
 - **Video 2:** Building Your First API (10 min)

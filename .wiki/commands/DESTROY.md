@@ -618,4 +618,4 @@ A: Only data in Docker volumes is lost. Rebuild with `nself build && nself start
 **Version:** nself v1.0.0+
 **Command Type:** Destructive
 **Safety Level:** Interactive (with --force bypass)
-**Related Docs:** [Backup Guide](../guides/BACKUP_GUIDE.md), [Stop Command](STOP.md)
+**Related Docs:** [Backup Guide](../guides/BACKUP-RECOVERY.md), [Stop Command](STOP.md)

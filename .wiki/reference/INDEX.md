@@ -17,7 +17,6 @@ This section contains quick reference materials, cheat sheets, and comprehensive
 
 - **[API Documentation](api/README.md)** - Complete API reference
 - **[Billing API](api/BILLING-API.md)** - Billing and subscription endpoints
-- **[OAuth API](api/OAUTH-API.md)** - OAuth provider endpoints
 - **[White-Label API](api/WHITE-LABEL-API.md)** - Branding and customization endpoints
 
 ## Command Quick Reference

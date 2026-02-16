@@ -1,8 +1,8 @@
 # nself v0.9.9
 
-### [Home](Home)
-### [Documentation](README)
-### [Commands](COMMANDS)
+### [Home](Home.md)
+### [Documentation](README.md)
+### [Commands](COMMANDS.md)
 ### [Root Structure Policy](ROOT-STRUCTURE-POLICY)
 
 ---
@@ -20,9 +20,8 @@
 ## Commands (v1.0)
 
 - [Commands Index](commands/INDEX)
+- [**Command Tree**](commands/COMMAND-TREE-V1) ⭐ Authoritative Reference
 - [Command by Use Case](commands/COMMAND-USE-CASES)
-- [Commands Overview](commands/README)
-- [Command Tree](commands/COMMAND-TREE-V1)
 - [SPORT Command Matrix](commands/SPORT-COMMAND-MATRIX)
 - [Quick Reference](reference/COMMAND-REFERENCE)
 
@@ -128,6 +127,7 @@
 - [Billing & Usage](guides/BILLING-AND-USAGE)
 - [Security](guides/SECURITY)
 - [Troubleshooting](guides/TROUBLESHOOTING)
+- [**Deprecated Commands Migration**](guides/DEPRECATED-COMMANDS-MIGRATION) ⚠️
 
 ---
 
@@ -177,7 +177,6 @@
 ### API Reference
 - [GraphQL API](architecture/API)
 - [Billing API](reference/api/BILLING-API)
-- [OAuth API](reference/api/OAUTH-API)
 - [White-Label API](reference/api/WHITE-LABEL-API)
 
 ---

@@ -2,6 +2,8 @@
 
 **Visual reference showing which commands consolidate into which categories**
 
+> 📖 **For detailed migration instructions, see**: [Deprecated Commands Migration Guide](../guides/DEPRECATED-COMMANDS-MIGRATION.md)
+
 ---
 
 ## 77 Commands → 13 Categories

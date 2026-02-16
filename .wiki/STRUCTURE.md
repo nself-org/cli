@@ -422,7 +422,6 @@ When linking between docs, use relative paths:
 [Environment Variables](configuration/ENVIRONMENT-VARIABLES.md)
 
 # From guides/ to reference/api/
-[OAuth API](reference/api/OAUTH-API.md)
 ```
 
 ---

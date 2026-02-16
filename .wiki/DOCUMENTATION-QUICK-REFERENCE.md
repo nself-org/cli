@@ -99,7 +99,7 @@ const user: User = { ... };
 ✅ [Quick Start](getting-started/Quick-Start.md)
 ✅ [Commands](commands/README.md)
 
-❌ [Quick Start](/docs/getting-started/Quick-Start.md)
+❌ [Quick Start](../getting-started/Quick-Start.md)
 ❌ [Quick Start](https://github.com/.../docs/...)
 ```
 
@@ -124,7 +124,7 @@ const user: User = { ... };
 ### Version Note
 
 ```markdown
-> **v0.9.8:** Brief note. [Link](path/to/doc.md)
+> **v0.9.8:** Brief note. 
 ```
 
 ### Warning

@@ -9,7 +9,7 @@ Last Updated: January 31, 2026
 ## Quick Links
 
 - **New to nself?** → [Getting Started](getting-started/Quick-Start.md)
-- **Commands?** → [CLI Reference Complete](commands/CLI-REFERENCE-COMPLETE.md)
+- **Commands?** → [Command Tree v1.0](commands/COMMAND-TREE-V1.md)
 - **Production Deployment?** → [Production Guide](deployment/PRODUCTION-COMPLETE.md)
 - **API?** → [API Reference](api/API-REFERENCE-COMPLETE.md)
 - **Troubleshooting?** → [Troubleshooting Guide](troubleshooting/COMPLETE-TROUBLESHOOTING-GUIDE.md)
@@ -36,8 +36,8 @@ Last Updated: January 31, 2026
 ### 2. Commands (72 docs + 1 complete reference)
 
 **Complete CLI documentation:**
-- **[CLI Reference Complete](commands/CLI-REFERENCE-COMPLETE.md)** ⭐ NEW - All 295 subcommands
-- [Command Tree v1.0](commands/COMMAND-TREE-V1.md) - Hierarchical structure
+- **[Command Tree v1.0](commands/COMMAND-TREE-V1.md)** ⭐ Authoritative Reference - All 31 commands + 295 subcommands
+- [Commands by Use Case](commands/COMMAND-USE-CASES.md) - Find commands by task
 - Individual command documentation:
   - Core: [init](commands/INIT.md), [build](commands/BUILD.md), [start](commands/START.md), [stop](commands/STOP.md), [restart](commands/RESTART.md)
   - Database: [db](commands/DB.md) (14 subcommands)

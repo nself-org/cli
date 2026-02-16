@@ -12,11 +12,10 @@ Different views for different needs:
 
 | View | Best For | Link |
 |------|----------|------|
-| **Command Tree** | Seeing the full hierarchy at a glance | [COMMAND-TREE-V1.md](COMMAND-TREE-V1.md) |
-| **Complete Reference** | Full syntax, options, and examples for every command | [COMMANDS.md](COMMANDS.md) |
+| **Command Tree** ⭐ | Complete hierarchy, syntax, and descriptions - **Authoritative Reference** | [COMMAND-TREE-V1.md](COMMAND-TREE-V1.md) |
+| **Command by Use Case** | Finding the right command for what you want to do | [COMMAND-USE-CASES.md](COMMAND-USE-CASES.md) |
 | **SPORT Command Matrix** | Verifying runtime coverage (no gaps) | [SPORT-COMMAND-MATRIX.md](SPORT-COMMAND-MATRIX.md) |
 | **Quick Reference** | Printable cheat sheet for daily use | [../reference/COMMAND-REFERENCE.md](../reference/COMMAND-REFERENCE.md) |
-| **Command by Use Case** | Finding the right command for what you want to do | [COMMAND-USE-CASES.md](COMMAND-USE-CASES.md) |
 
 ---
 
@@ -217,7 +216,7 @@ Third-party integrations via the plugin system.
 | [plugin](PLUGIN.md) status | Show plugin health and configuration | `nself plugin status [plugin]` |
 | [plugin](PLUGIN.md) create | Scaffold a new plugin for development | `nself plugin create <name>` |
 
-**Available plugins:** [Stripe](../plugins/stripe), [GitHub](../plugins/github), [Shopify](../plugins/shopify)
+**Available plugins:** [Stripe](/plugins/stripe), [GitHub](/plugins/github), [Shopify](/plugins/shopify)
 
 ---
 
