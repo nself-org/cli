@@ -5,6 +5,9 @@
 
 # Degradation configuration
 DEGRADATION_CONFIG="${DEGRADATION_CONFIG:-./degradation.conf}"
+
+set -euo pipefail
+
 DEGRADATION_STATE="${DEGRADATION_STATE:-/tmp/nself-degradation-state}"
 
 # Service priority levels

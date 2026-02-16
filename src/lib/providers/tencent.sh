@@ -3,6 +3,9 @@
 
 PROVIDER_NAME="tencent"
 
+set -euo pipefail
+
+
 provider_tencent_init() {
   log_info "Initializing Tencent Cloud provider..."
   local config_dir="${HOME}/.nself/providers"

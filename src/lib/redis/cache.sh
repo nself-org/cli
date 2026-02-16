@@ -6,6 +6,9 @@
 # Default cache TTL (1 hour)
 readonly CACHE_DEFAULT_TTL=3600
 
+set -euo pipefail
+
+
 # Cache set
 redis_cache_set() {
   local key="$1"

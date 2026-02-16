@@ -4,6 +4,9 @@
 
 
 PROVIDER_NAME="linode"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="Linode"
 
 LINODE_DEFAULT_REGION="${LINODE_DEFAULT_REGION:-us-east}"

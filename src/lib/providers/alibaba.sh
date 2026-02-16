@@ -2,6 +2,9 @@
 # alibaba.sh - Alibaba Cloud provider (ACK Kubernetes, Asia-focused)
 
 PROVIDER_NAME="alibaba"
+
+set -euo pipefail
+
 ALIBABA_API_URL="https://ecs.aliyuncs.com"
 
 provider_alibaba_init() {

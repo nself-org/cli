@@ -2,6 +2,9 @@
 # kamatera.sh - Kamatera provider (excellent hourly billing)
 
 PROVIDER_NAME="kamatera"
+
+set -euo pipefail
+
 KAMATERA_API_URL="https://console.kamatera.com/service/server"
 
 provider_kamatera_init() {

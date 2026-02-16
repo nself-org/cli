@@ -4,6 +4,9 @@
 
 
 PROVIDER_NAME="hetzner"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="Hetzner Cloud"
 
 HETZNER_DEFAULT_LOCATION="${HETZNER_DEFAULT_LOCATION:-nbg1}"

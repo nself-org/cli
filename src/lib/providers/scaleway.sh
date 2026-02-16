@@ -4,6 +4,9 @@
 
 
 PROVIDER_NAME="scaleway"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="Scaleway"
 
 SCALEWAY_DEFAULT_ZONE="${SCALEWAY_DEFAULT_ZONE:-fr-par-1}"

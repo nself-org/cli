@@ -3,6 +3,9 @@
 
 PROVIDER_NAME="ssdnodes"
 
+set -euo pipefail
+
+
 # Note: SSDNodes uses a portal-based system, API access limited
 # This provider focuses on manual provisioning with SSH automation
 

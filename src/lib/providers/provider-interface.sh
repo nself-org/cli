@@ -6,6 +6,9 @@
 # Get script directory
 PROVIDER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+set -euo pipefail
+
+
 # Source utilities
 [[ -z "${DISPLAY_SOURCED:-}" ]] && source "$PROVIDER_LIB_DIR/../utils/display.sh"
 

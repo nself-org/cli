@@ -2,6 +2,9 @@
 # yandex.sh - Yandex Cloud provider (MKS Kubernetes, Russia/CIS focused)
 
 PROVIDER_NAME="yandex"
+
+set -euo pipefail
+
 YANDEX_API_URL="https://compute.api.cloud.yandex.net/compute/v1"
 
 provider_yandex_init() {

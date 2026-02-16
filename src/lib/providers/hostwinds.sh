@@ -2,6 +2,9 @@
 # hostwinds.sh - Hostwinds provider (managed VPS option)
 PROVIDER_NAME="hostwinds"
 
+set -euo pipefail
+
+
 provider_hostwinds_init() {
   log_info "Initializing Hostwinds provider..."
   local config_dir="${HOME}/.nself/providers"

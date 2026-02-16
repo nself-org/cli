@@ -2,6 +2,9 @@
 # time4vps.sh - Time4VPS provider (Lithuanian budget VPS)
 
 PROVIDER_NAME="time4vps"
+
+set -euo pipefail
+
 TIME4VPS_API_URL="https://billing.time4vps.com/api"
 
 provider_time4vps_init() {

@@ -4,6 +4,9 @@
 
 
 PROVIDER_NAME="digitalocean"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="DigitalOcean"
 
 # DigitalOcean default settings

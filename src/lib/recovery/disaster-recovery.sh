@@ -5,6 +5,9 @@
 
 # Recovery configuration
 RECOVERY_DIR="${RECOVERY_DIR:-./recovery}"
+
+set -euo pipefail
+
 RECOVERY_LOG="${RECOVERY_LOG:-$RECOVERY_DIR/recovery.log}"
 MAX_RECOVERY_ATTEMPTS="${MAX_RECOVERY_ATTEMPTS:-3}"
 

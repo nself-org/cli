@@ -7,6 +7,9 @@
 
 # Source dependencies
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 if [[ -f "$SCRIPT_DIR/core.sh" ]]; then
   source "$SCRIPT_DIR/core.sh"
 fi

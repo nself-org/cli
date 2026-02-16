@@ -7,6 +7,9 @@
 
 # Encryption defaults
 readonly ENCRYPTION_ALGORITHM="aes-256-cbc"
+
+set -euo pipefail
+
 readonly KEY_SIZE=32 # 256 bits
 readonly KEY_ROTATION_DAYS=90
 

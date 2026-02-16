@@ -12,6 +12,9 @@
 # Initialize audit system
 # Usage: audit_init
 audit_init() {
+
+set -euo pipefail
+
   # Get PostgreSQL container
   local container
   container=$(docker ps --filter 'name=postgres' --format '{{.Names}}' | head -1)

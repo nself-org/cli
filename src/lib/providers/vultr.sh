@@ -4,6 +4,9 @@
 
 
 PROVIDER_NAME="vultr"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="Vultr"
 
 VULTR_DEFAULT_REGION="${VULTR_DEFAULT_REGION:-ewr}"

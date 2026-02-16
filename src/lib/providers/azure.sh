@@ -4,6 +4,9 @@
 
 
 PROVIDER_NAME="azure"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="Microsoft Azure"
 
 # Azure default settings

@@ -5,6 +5,9 @@
 
 # Redis connection defaults
 readonly REDIS_DEFAULT_HOST="${REDIS_HOST:-localhost}"
+
+set -euo pipefail
+
 readonly REDIS_DEFAULT_PORT="${REDIS_PORT:-6379}"
 readonly REDIS_DEFAULT_DB="${REDIS_DB:-0}"
 readonly REDIS_DEFAULT_TIMEOUT="${REDIS_TIMEOUT:-5}"

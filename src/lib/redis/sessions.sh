@@ -6,6 +6,9 @@
 # Default session TTL (30 days)
 readonly SESSION_DEFAULT_TTL=2592000
 
+set -euo pipefail
+
+
 # Create session in Redis
 redis_session_create() {
   local session_id="$1"

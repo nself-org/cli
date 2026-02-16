@@ -4,6 +4,9 @@
 
 
 PROVIDER_NAME="contabo"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="Contabo"
 
 # Contabo regions

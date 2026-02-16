@@ -3,6 +3,9 @@
 
 PROVIDER_NAME="buyvm"
 
+set -euo pipefail
+
+
 # Note: BuyVM uses Stallion portal-based provisioning
 # Known for excellent storage slabs and DDoS protection
 

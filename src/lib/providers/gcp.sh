@@ -4,6 +4,9 @@
 
 
 PROVIDER_NAME="gcp"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="Google Cloud Platform"
 
 # GCP default settings

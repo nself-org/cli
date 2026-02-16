@@ -4,6 +4,9 @@
 
 
 PROVIDER_NAME="aws"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="Amazon Web Services"
 
 # AWS default regions

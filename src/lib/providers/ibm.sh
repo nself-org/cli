@@ -3,6 +3,9 @@
 
 
 PROVIDER_NAME="ibm"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="IBM Cloud"
 
 IBM_REGIONS=("us-south" "us-east" "eu-gb" "eu-de" "jp-tok" "au-syd" "jp-osa" "br-sao" "ca-tor")

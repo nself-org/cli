@@ -7,6 +7,9 @@
 
 # Rate limit defaults
 readonly RATE_LIMIT_WINDOW=60        # 60 seconds (1 minute)
+
+set -euo pipefail
+
 readonly RATE_LIMIT_MAX_REQUESTS=100 # 100 requests per window
 readonly RATE_LIMIT_BURST=20         # Allow burst of 20 requests
 

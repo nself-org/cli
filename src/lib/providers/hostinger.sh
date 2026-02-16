@@ -3,6 +3,9 @@
 
 
 PROVIDER_NAME="hostinger"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="Hostinger"
 
 HOSTINGER_REGIONS=("us" "eu" "asia" "sa")

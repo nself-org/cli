@@ -5,6 +5,9 @@
 
 # Distributed rate limit check using Redis
 redis_rate_limit_check() {
+
+set -euo pipefail
+
   local key="$1"
   local max_requests="$2"
   local window_seconds="$3"

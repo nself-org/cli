@@ -4,6 +4,9 @@
 
 
 PROVIDER_NAME="upcloud"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="UpCloud"
 
 # UpCloud zones

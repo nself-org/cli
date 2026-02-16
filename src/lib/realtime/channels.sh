@@ -8,6 +8,9 @@
 
 # Source dependencies
 REALTIME_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "$REALTIME_LIB_DIR/../utils/output.sh"
 source "$REALTIME_LIB_DIR/../utils/docker.sh"
 

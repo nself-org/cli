@@ -2,6 +2,9 @@
 # exoscale.sh - Exoscale provider (Swiss quality, GDPR-compliant, SKS Kubernetes)
 
 PROVIDER_NAME="exoscale"
+
+set -euo pipefail
+
 EXOSCALE_API_URL="https://api.exoscale.com/v2"
 
 provider_exoscale_init() {

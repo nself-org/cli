@@ -4,6 +4,9 @@
 
 
 PROVIDER_NAME="oracle"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="Oracle Cloud Infrastructure"
 
 # OCI regions

@@ -3,6 +3,9 @@
 
 
 PROVIDER_NAME="netcup"
+
+set -euo pipefail
+
 PROVIDER_DISPLAY_NAME="Netcup"
 
 NETCUP_REGIONS=("de" "at" "us")

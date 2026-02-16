@@ -3,6 +3,9 @@
 
 PROVIDER_NAME="racknerd"
 
+set -euo pipefail
+
+
 # Note: RackNerd uses portal-based provisioning
 # This provider handles SSH deployment to existing servers
 
