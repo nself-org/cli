@@ -3,6 +3,9 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+set -euo pipefail
+
+
 # Intercept --help before delegating
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   printf "DEPRECATION NOTICE\n\n"

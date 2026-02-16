@@ -4,6 +4,9 @@
 # Don't use set -e - we handle all errors explicitly
 set -uo pipefail
 
+set -euo pipefail
+
+
 # Get script directory with absolute path
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI_SCRIPT_DIR="$SCRIPT_DIR"

@@ -2,7 +2,7 @@
 
 # status.sh - Detailed service status with resource usage
 
-set -e
+set -euo pipefail
 
 # Source shared utilities
 CLI_SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"

@@ -3,7 +3,7 @@
 # bench.sh - Performance benchmarking and load testing
 # v0.4.6 - Part of the Scaling & Performance release
 
-set -e
+set -euo pipefail
 
 # Source shared utilities
 CLI_SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"

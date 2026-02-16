@@ -3,7 +3,7 @@
 # migrate.sh - Cross-environment migration and vendor migration
 # v0.4.8 - Sprint 20: Migration & Upgrade Tools
 
-set -e
+set -euo pipefail
 
 # Source shared utilities
 CLI_SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"

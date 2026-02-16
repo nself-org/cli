@@ -4,6 +4,9 @@
 
 set -uo pipefail
 
+set -euo pipefail
+
+
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$SCRIPT_DIR/../lib"

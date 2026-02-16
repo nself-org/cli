@@ -4,6 +4,9 @@
 
 set -o pipefail
 
+set -euo pipefail
+
+
 # Source shared utilities
 CLI_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$CLI_SCRIPT_DIR/../lib/utils/env.sh" 2>/dev/null || true

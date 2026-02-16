@@ -5,6 +5,9 @@
 
 # Determine root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 LIB_DIR="$SCRIPT_DIR/../lib"
 

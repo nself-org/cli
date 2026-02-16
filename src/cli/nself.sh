@@ -4,6 +4,9 @@
 # Use error handling but allow sourcing to fail gracefully
 set -o pipefail
 
+set -euo pipefail
+
+
 # Get script directory (resolve symlinks)
 _script="${BASH_SOURCE[0]}"
 while [[ -L "$_script" ]]; do

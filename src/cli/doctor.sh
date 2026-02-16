@@ -2,7 +2,7 @@
 
 # doctor.sh - System diagnostics and health checks for nself
 
-set -e
+set -euo pipefail
 
 # Source shared utilities
 CLI_SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"

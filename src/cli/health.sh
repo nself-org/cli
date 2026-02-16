@@ -3,7 +3,7 @@
 # health.sh - Health check management and monitoring
 # v0.4.6 - Feedback implementation
 
-set -e
+set -euo pipefail
 
 # Source shared utilities
 CLI_SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"

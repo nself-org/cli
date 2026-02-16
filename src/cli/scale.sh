@@ -2,7 +2,7 @@
 
 # scale.sh - Resource scaling management
 
-set -e
+set -euo pipefail
 
 # Source shared utilities
 CLI_SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
