@@ -417,8 +417,8 @@ nself build && nself restart
 
 ## Related Documentation
 
-- [Services Overview](SERVICES)
-- [Optional Services](SERVICES_OPTIONAL)
-- [Monitoring Bundle](MONITORING-BUNDLE)
-- [Environment Configuration](../configuration/ENVIRONMENT-VARIABLES)
-- [Troubleshooting](../guides/TROUBLESHOOTING)
+- [Services Overview](SERVICES.md)
+- [Optional Services](SERVICES_OPTIONAL.md)
+- [Monitoring Bundle](MONITORING-BUNDLE.md)
+- [Environment Configuration](../configuration/ENVIRONMENT-VARIABLES.md)
+- [Troubleshooting](../guides/TROUBLESHOOTING.md)

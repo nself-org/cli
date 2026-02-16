@@ -170,7 +170,7 @@ grep -r "\](/" docs/ --include="*.md"
 **Fix pattern**:
 ```markdown
 # Wrong (absolute):
-[Quick Start](../getting-started/Quick-Start.md)
+[Quick Start](getting-started/Quick-Start.md)
 [Quick Start](https://github.com/.../do../getting-started/Quick-Start.md)
 
 # Correct (relative):

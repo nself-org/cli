@@ -4,26 +4,26 @@ nself provides a comprehensive Backend-as-a-Service platform with three categori
 
 ## Service Categories
 
-### [Required Services](SERVICES_REQUIRED) (4 services)
+### [Required Services](SERVICES_REQUIRED.md) (4 services)
 Core infrastructure that every nself project needs:
 - **PostgreSQL** - Primary database
 - **Hasura** - GraphQL API engine
 - **Auth** - Authentication service
 - **Nginx** - Reverse proxy and routing
 
-### [Optional Services](SERVICES_OPTIONAL) (Variable)
+### [Optional Services](SERVICES_OPTIONAL.md) (Variable)
 Additional services you can enable based on your needs:
-- **[Monitoring Bundle](MONITORING-BUNDLE)** - Complete observability stack (10 services total)
+- **[Monitoring Bundle](MONITORING-BUNDLE.md)** - Complete observability stack (10 services total)
   - Prometheus, Grafana, Loki, Promtail, Tempo, Alertmanager
   - cAdvisor, Node Exporter, Postgres Exporter, Redis Exporter
-- **[nself Admin](NSELF_ADMIN)** - Web-based management interface for your entire deployment
+- **[nself Admin](NSELF_ADMIN.md)** - Web-based management interface for your entire deployment
 - **Mail Services** - Email sending and testing (MailPit for dev, SMTP for production)
 - **Search Services** - Full-text search engines (MeiliSearch, Typesense, Sonic)
 - **Storage Services** - Object storage and file management (MinIO, nHost Storage)
 - **ML Services** - Machine learning infrastructure (MLflow, Label Studio, BentoML)
 - **Cache Services** - Redis and caching layers
 
-### [Custom Services](SERVICES_CUSTOM) (Up to 10)
+### [Custom Services](SERVICES_CUSTOM.md) (Up to 10)
 Your own microservices built from templates or custom code:
 - Backend APIs (REST, GraphQL, gRPC)
 - Background workers and job processors
@@ -38,7 +38,7 @@ Just the required services for basic functionality.
 ### Typical Development (15-20 services)
 Required + Redis + Mail + Search + a few custom services.
 
-### [Full Demo Setup](DEMO_SETUP) (24 services)
+### [Full Demo Setup](DEMO_SETUP.md) (24 services)
 Our comprehensive demo configuration includes:
 - **Required Services (4)**: PostgreSQL, Hasura, Auth, Nginx
 - **Optional Services (16)**:
@@ -50,7 +50,7 @@ Our comprehensive demo configuration includes:
   - `go_grpc` - Go gRPC service
   - `python_api` - Python FastAPI for ML
 
-[→ See Complete Demo Documentation](DEMO_SETUP)
+[→ See Complete Demo Documentation](DEMO_SETUP.md)
 
 ### Maximum Configuration (40+ services)
 All available services enabled with maximum custom services.
@@ -112,14 +112,14 @@ After starting, services are available at:
 
 ## Next Steps
 
-1. Review [Required Services](SERVICES_REQUIRED) to understand core components
-2. Explore [Optional Services](SERVICES_OPTIONAL) for additional capabilities
-3. Learn about [Custom Services](SERVICES_CUSTOM) to build your own backends
-4. Check [Monitoring Bundle](MONITORING-BUNDLE) for observability setup
+1. Review [Required Services](SERVICES_REQUIRED.md) to understand core components
+2. Explore [Optional Services](SERVICES_OPTIONAL.md) for additional capabilities
+3. Learn about [Custom Services](SERVICES_CUSTOM.md) to build your own backends
+4. Check [Monitoring Bundle](MONITORING-BUNDLE.md) for observability setup
 
 ## Related Documentation
 
-- [Environment Configuration](../configuration/ENVIRONMENT-VARIABLES)
-- [Docker Compose Structure](../architecture/ARCHITECTURE)
-- [Service Templates](SERVICE-TEMPLATES)
-- [Networking & Routing](../architecture/ARCHITECTURE)
+- [Environment Configuration](../configuration/ENVIRONMENT-VARIABLES.md)
+- [Docker Compose Structure](../architecture/ARCHITECTURE.md)
+- [Service Templates](SERVICE-TEMPLATES.md)
+- [Networking & Routing](../architecture/ARCHITECTURE.md)

@@ -719,6 +719,6 @@ Choose Typesense if you need:
 
 ## Related Documentation
 
-- [Search Services](SEARCH) - General search documentation
-- [Search Configuration](../configuration/ENVIRONMENT-VARIABLES) - Search environment variables
-- [Services Overview](SERVICES) - All available services
+- [Search Services](SEARCH.md) - General search documentation
+- [Search Configuration](../configuration/ENVIRONMENT-VARIABLES.md) - Search environment variables
+- [Services Overview](SERVICES.md) - All available services

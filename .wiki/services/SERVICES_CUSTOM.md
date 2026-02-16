@@ -392,7 +392,7 @@ deploy:
 
 ## Related Documentation
 
-- [Services Overview](SERVICES)
-- [Service Templates](SERVICE-TEMPLATES)
-- [Docker Compose Structure](../architecture/ARCHITECTURE)
-- [Monitoring Bundle](MONITORING-BUNDLE)
+- [Services Overview](SERVICES.md)
+- [Service Templates](SERVICE-TEMPLATES.md)
+- [Docker Compose Structure](../architecture/ARCHITECTURE.md)
+- [Monitoring Bundle](MONITORING-BUNDLE.md)

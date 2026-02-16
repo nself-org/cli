@@ -217,7 +217,7 @@ All required services include health checks:
 
 ## Related Documentation
 
-- [Services Overview](SERVICES)
-- [Optional Services](SERVICES_OPTIONAL)
-- [Environment Configuration](../configuration/ENVIRONMENT-VARIABLES)
-- [Architecture Overview](../architecture/ARCHITECTURE)
+- [Services Overview](SERVICES.md)
+- [Optional Services](SERVICES_OPTIONAL.md)
+- [Environment Configuration](../configuration/ENVIRONMENT-VARIABLES.md)
+- [Architecture Overview](../architecture/ARCHITECTURE.md)

@@ -21,7 +21,7 @@ nself provides a **provider-agnostic search interface**, allowing you to switch 
   - Built-in dashboard
 - **Resource Usage**: Medium (500MB-2GB RAM)
 - **Use Case**: E-commerce, documentation, general search
-- **Documentation**: [Search Services](SEARCH)
+- **Documentation**: [Search Services](SEARCH.md)
 
 ### 2. Typesense
 **Best for**: Real-time search with instant results

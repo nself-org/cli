@@ -216,7 +216,7 @@ Third-party integrations via the plugin system.
 | [plugin](PLUGIN.md) status | Show plugin health and configuration | `nself plugin status [plugin]` |
 | [plugin](PLUGIN.md) create | Scaffold a new plugin for development | `nself plugin create <name>` |
 
-**Available plugins:** [Stripe](/plugins/stripe), [GitHub](/plugins/github), [Shopify](/plugins/shopify)
+**Available plugins:** [Stripe](../plugins/stripe.md), [GitHub](../plugins/github.md), [Shopify](../plugins/shopify.md)
 
 ---
 

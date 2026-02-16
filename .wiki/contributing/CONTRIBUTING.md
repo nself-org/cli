@@ -4,10 +4,7 @@ Thank you for your interest in contributing to nself! We welcome contributions f
 
 ## 📚 Complete Documentation
 
-For complete contributing guidelines, please visit our [Contributing Documentation](contributing/).
-
 **Essential Reading:**
-- **[Contributing Guide](contributing/)** - Complete guidelines and workflow
 - **[Development Setup](DEVELOPMENT.md)** - Environment setup and coding standards
 - **[Cross-Platform Compatibility](CROSS-PLATFORM-COMPATIBILITY.md)** - **CRITICAL** - Bash 3.2+, POSIX compliance rules
 - **[Code of Conduct](CODE_OF_CONDUCT.md)** - Community standards
@@ -214,7 +211,6 @@ nself stop --volumes
 
 ### Resources
 
-- **[Full Contributing Guide](contributing/)** - Complete documentation
 - **[FAQ](../getting-started/FAQ.md)** - Common questions
 - **[Troubleshooting](../guides/TROUBLESHOOTING.md)** - Common issues
 - **[Architecture Docs](../architecture/README.md)** - System design
@@ -248,5 +244,3 @@ Contributors are recognized in:
 ---
 
 **Thank you for contributing to nself!** Your contributions help make backend infrastructure accessible to everyone.
-
-For complete guidelines, see our [Contributing Documentation](contributing/).

@@ -4,7 +4,7 @@ Optional services extend your ɳSelf deployment with additional capabilities. En
 
 ## Service Categories
 
-### [Monitoring Bundle](MONITORING-BUNDLE) (10 services)
+### [Monitoring Bundle](MONITORING-BUNDLE.md) (10 services)
 Complete observability stack with metrics, logs, traces, and alerting.
 **Note:** This is a bundle of 10 optional services that can be enabled together.
 
@@ -26,7 +26,7 @@ Complete observability stack with metrics, logs, traces, and alerting.
 - **KeyDB** - Redis-compatible with better performance
 
 ### Admin Tools
-- **[ɳAdmin](NSELF_ADMIN)** - Web-based ɳSelf project management
+- **[ɳAdmin](NSELF_ADMIN.md)** - Web-based ɳSelf project management
 
 ### ML Services
 - **MLflow** - ML experiment tracking
@@ -128,7 +128,7 @@ MLFLOW_ARTIFACTS_BUCKET=mlflow-artifacts
 - Tracks: Parameters, metrics, artifacts
 - Model registry included
 
-### [ɳAdmin](NSELF_ADMIN)
+### [ɳAdmin](NSELF_ADMIN.md)
 **Purpose:** Comprehensive web-based management interface for your entire nself deployment
 ```bash
 NSELF_ADMIN_ENABLED=true
@@ -138,7 +138,7 @@ NSELF_ADMIN_ROUTE=admin.${BASE_DOMAIN}
 - URL: `https://admin.<domain>`
 - Features: Service monitoring, configuration management, database admin, log viewing
 - Real-time status updates via WebSocket
-- → [Full Documentation](NSELF_ADMIN)
+- → [Full Documentation](NSELF_ADMIN.md)
 
 ## Resource Impact
 
@@ -234,7 +234,7 @@ NSELF_ADMIN_ENABLED=true
 
 ## Related Documentation
 
-- [Services Overview](SERVICES)
-- [Required Services](SERVICES_REQUIRED)
-- [Custom Services](SERVICES_CUSTOM)
-- [Monitoring Bundle](MONITORING-BUNDLE)
+- [Services Overview](SERVICES.md)
+- [Required Services](SERVICES_REQUIRED.md)
+- [Custom Services](SERVICES_CUSTOM.md)
+- [Monitoring Bundle](MONITORING-BUNDLE.md)

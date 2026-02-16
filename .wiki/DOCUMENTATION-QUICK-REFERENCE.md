@@ -99,7 +99,7 @@ const user: User = { ... };
 ✅ [Quick Start](getting-started/Quick-Start.md)
 ✅ [Commands](commands/README.md)
 
-❌ [Quick Start](../getting-started/Quick-Start.md)
+❌ [Quick Start](getting-started/Quick-Start.md)
 ❌ [Quick Start](https://github.com/.../docs/...)
 ```
 

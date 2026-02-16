@@ -273,9 +273,9 @@ docker compose scale <service>=<count>
 
 ## Related Documentation
 
-- [Required Services Detail](SERVICES_REQUIRED)
-- [Optional Services Detail](SERVICES_OPTIONAL)
-- [Monitoring Bundle Detail](MONITORING-BUNDLE)
-- [Custom Services Guide](SERVICES_CUSTOM)
-- [Demo Setup](DEMO_SETUP)
-- [nself Admin](NSELF_ADMIN)
+- [Required Services Detail](SERVICES_REQUIRED.md)
+- [Optional Services Detail](SERVICES_OPTIONAL.md)
+- [Monitoring Bundle Detail](MONITORING-BUNDLE.md)
+- [Custom Services Guide](SERVICES_CUSTOM.md)
+- [Demo Setup](DEMO_SETUP.md)
+- [nself Admin](NSELF_ADMIN.md)

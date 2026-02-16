@@ -275,13 +275,13 @@ This guide is organized by task, not by command name. If you know WHAT you want 
 | I want to... | Command | Details |
 |---|---|---|
 | See available plugins | `nself plugin list` | [plugin](PLUGIN.md) |
-| Install the Stripe plugin | `nself plugin install stripe` | [../plugins/stripe](/plugins/stripe) |
-| Install the GitHub plugin | `nself plugin install github` | [../plugins/github](/plugins/github) |
-| Install the Shopify plugin | `nself plugin install shopify` | [../plugins/shopify](/plugins/shopify) |
+| Install the Stripe plugin | `nself plugin install stripe` | [../plugins/stripe](../plugins/stripe.md) |
+| Install the GitHub plugin | `nself plugin install github` | [../plugins/github](../plugins/github.md) |
+| Install the Shopify plugin | `nself plugin install shopify` | [../plugins/shopify](../plugins/shopify.md) |
 | Update all plugins | `nself plugin update --all` | [plugin](PLUGIN.md) |
 | Check for plugin updates | `nself plugin updates` | [plugin](PLUGIN.md) |
 | Remove a plugin | `nself plugin remove stripe` | [plugin](PLUGIN.md) |
-| Create a custom plugin | `nself plugin create my-plugin` | [../plugins/development](../plugins/development) |
+| Create a custom plugin | `nself plugin create my-plugin` | [../plugins/development](../plugins/development.md) |
 
 ---
 

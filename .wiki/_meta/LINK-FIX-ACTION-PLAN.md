@@ -131,8 +131,8 @@ For files that exist elsewhere, create redirects:
 
 This documentation has been reorganized. See:
 
-- [Infrastructure Consolidation](../migrations/INFRA-CONSOLIDATION.md)
-- [infra Command Reference](../commands/DEPLOY.md#infra-subcommands)
+- `[Infrastructure Consolidation](../migrations/INFRA-CONSOLIDATION.md)`
+- `[infra Command Reference](../commands/DEPLOY.md#infra-subcommands)`
 ```
 
 2. **`security/SSL-SETUP.md`**
@@ -141,8 +141,8 @@ This documentation has been reorganized. See:
 
 See the complete SSL configuration guide:
 
-- [SSL Configuration](../configuration/SSL.md)
-- [Production Security Checklist](./PRODUCTION-SECURITY-CHECKLIST.md)
+- `[SSL Configuration](../configuration/SSL.md)`
+- `[Production Security Checklist](../guides/PRODUCTION-SECURITY-CHECKLIST.md)`
 ```
 
 ### Fix Example Path Links
@@ -233,7 +233,7 @@ fi
 ### 4. Find All References to a File
 ```bash
 # Find all links to a specific file
-grep -r "FIRST-PROJECT" docs/ | grep -o '\[.*\](.*FIRST-PROJECT.*)'
+grep -r "FIRST-PROJECT" docs/ | grep -o '\[.*\]`(.*FIRST-PROJECT.*)`'
 ```
 
 ## Notes
