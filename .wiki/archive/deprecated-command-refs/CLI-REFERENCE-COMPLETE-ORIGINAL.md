@@ -99,8 +99,8 @@ nself init --skip-git
 6. Validates dependencies (Docker, Docker Compose)
 
 **Related:**
-- [Getting Started Guide](../getting-started/Quick-Start.md)
-- [Configuration Guide](../configuration/ENVIRONMENT-VARIABLES.md)
+- [Getting Started Guide](../../getting-started/Quick-Start.md)
+- [Configuration Guide](../../configuration/ENVIRONMENT-VARIABLES.md)
 - [init Command Deep Dive](INIT.md)
 
 ---
@@ -190,8 +190,8 @@ monitoring/
 - Use `--clean` to start fresh
 
 **Related:**
-- [Build Architecture](../architecture/BUILD_ARCHITECTURE.md)
-- [Service Templates](../services/SERVICE-TEMPLATES.md)
+- [Build Architecture](../../architecture/BUILD_ARCHITECTURE.md)
+- [Service Templates](../../services/SERVICE-TEMPLATES.md)
 - [build Command Deep Dive](BUILD.md)
 
 ---
@@ -302,7 +302,7 @@ NSELF_SKIP_HEALTH_CHECKS=true nself start
 ```
 
 **Related:**
-- [Start Command Options](../configuration/START-COMMAND-OPTIONS.md)
+- [Start Command Options](../../configuration/START-COMMAND-OPTIONS.md)
 - [Health Checks](HEALTH.md)
 - [start Command Deep Dive](START.md)
 
@@ -598,7 +598,7 @@ nself logs --format json
 
 **Related:**
 - [logs Command Deep Dive](LOGS.md)
-- [Monitoring Guide](../guides/MONITORING-COMPLETE.md)
+- [Monitoring Guide](../../guides/MONITORING-COMPLETE.md)
 
 ---
 
@@ -681,7 +681,7 @@ nself admin --no-open
 **Default URL:** `https://admin.local.nself.org` (or your configured domain)
 
 **Related:**
-- [Admin UI Guide](../configuration/Admin-UI.md)
+- [Admin UI Guide](../../configuration/Admin-UI.md)
 - [admin Command Deep Dive](ADMIN.md)
 
 ---
@@ -765,8 +765,8 @@ Application:
 
 **Related Documentation:**
 - [Command Tree v1.0](COMMAND-TREE-V1.md) - Hierarchical command structure
-- [Quick Reference](../reference/QUICK-REFERENCE-CARDS.md) - Common command patterns
-- [Command Consolidation Map](../architecture/COMMAND-CONSOLIDATION-MAP.md) - Legacy to v1.0 mapping
+- [Quick Reference](../../reference/QUICK-REFERENCE-CARDS.md) - Common command patterns
+- [Command Consolidation Map](../../architecture/COMMAND-CONSOLIDATION-MAP.md) - Legacy to v1.0 mapping
 
 ---
 

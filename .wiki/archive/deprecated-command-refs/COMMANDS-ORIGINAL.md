@@ -395,7 +395,7 @@ NSELF_HEALTH_CHECK_REQUIRED=80
 NSELF_SKIP_HEALTH_CHECKS=false
 ```
 
-**See:** [START.md](START.md), [docs/configuration/START-COMMAND-OPTIONS.md](../configuration/START-COMMAND-OPTIONS.md)
+**See:** [START.md](START.md), [docs/configuration/START-COMMAND-OPTIONS.md](../../configuration/START-COMMAND-OPTIONS.md)
 
 ---
 
@@ -1191,7 +1191,7 @@ nself storage test
 nself storage graphql-setup
 ```
 
-**See:** [storage.md](storage.md), [File Upload Guide](../guides/file-upload-pipeline.md)
+**See:** [storage.md](storage.md), [File Upload Guide](../../guides/file-upload-pipeline.md)
 
 ---
 
@@ -2940,7 +2940,7 @@ nself plugin shopify customers list
 nself plugin shopify webhook status
 ```
 
-**See:** [PLUGIN.md](PLUGIN.md), [Plugin Directory](../plugins/index.md)
+**See:** [PLUGIN.md](PLUGIN.md), [Plugin Directory](../../plugins/index.md)
 
 ---
 
@@ -3353,7 +3353,7 @@ NSELF_SKIP_HOOKS=false
 NSELF_DEFAULT_PROVIDER=digitalocean
 ```
 
-**See:** [Environment Configuration](../configuration/ENVIRONMENT-VARIABLES.md)
+**See:** [Environment Configuration](../../configuration/ENVIRONMENT-VARIABLES.md)
 
 ---
 
@@ -3416,10 +3416,10 @@ A comprehensive reorganization proposal is in progress to improve discoverabilit
 - 4-phase rollout over 6-12 months
 
 **See:**
-- [Command Reorganization Proposal](../architecture/COMMAND-REORGANIZATION-PROPOSAL.md)
-- [Visual Command Guide](../architecture/COMMAND-REORGANIZATION-VISUAL.md)
-- [Command Consolidation Map](../architecture/COMMAND-CONSOLIDATION-MAP.md)
-- [Implementation Checklist](../architecture/COMMAND-REORGANIZATION-CHECKLIST.md)
+- [Command Reorganization Proposal](../../architecture/COMMAND-REORGANIZATION-PROPOSAL.md)
+- [Visual Command Guide](../../architecture/COMMAND-REORGANIZATION-VISUAL.md)
+- [Command Consolidation Map](../../architecture/COMMAND-CONSOLIDATION-MAP.md)
+- [Implementation Checklist](../../architecture/COMMAND-REORGANIZATION-CHECKLIST.md)
 
 ---
 

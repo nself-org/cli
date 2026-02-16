@@ -10,5 +10,5 @@ A complete SaaS template with multi-tenancy, billing, and team management.
 - Subscription billing
 - Custom domains
 
-For the complete nself documentation, see [Home](../../Home.md).
+For the complete nself documentation, see [Home](../../../Home.md).
 

@@ -17,7 +17,7 @@ Create tables for:
 2. Posts
 3. Comments
 
-See [Database Guide](../../guides/DATABASE-WORKFLOW.md) for detailed schema setup.
+See [Database Guide](../../../guides/DATABASE-WORKFLOW.md) for detailed schema setup.
 
 ## Authentication Setup
 
@@ -26,7 +26,7 @@ Configure user authentication:
 - JWT tokens
 - Session management
 
-See [Authentication Guide](../../guides/AUTHENTICATION.md) for complete setup.
+See [Authentication Guide](../../../guides/AUTHENTICATION.md) for complete setup.
 
 ## Next Steps
 

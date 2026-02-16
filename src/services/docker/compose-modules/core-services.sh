@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
 # core-services.sh - Generate core service definitions for docker-compose
 # This module handles PostgreSQL, Hasura, Auth, MinIO, and Redis services
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
 
 # security-preflight.sh - Production security validation before deployment
 # POSIX-compliant, no Bash 4+ features

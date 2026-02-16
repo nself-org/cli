@@ -386,7 +386,7 @@ Use **relative paths** from current file:
 ```markdown
 [Quick Start](getting-started/Quick-Start.md)
 [Database Commands](commands/DB.md)
-[View Architecture](../architecture/ARCHITECTURE.md)
+[View Architecture](/architecture/ARCHITECTURE.md)
 ```
 
 **DO NOT use**:
@@ -548,8 +548,8 @@ Brief description of what's in this directory.
 
 ## Contents
 
-- [File 1](database.md) - Description
-- [File 2](users.md) - Description
+- [File 1](/configuration/DATABASE.md) - Description
+- [File 2](/commands/tenant/README.md) - Description
 ```
 
 ---
@@ -650,8 +650,8 @@ nself/migrations/
 
 ## Next Steps
 
-- [Seeding Data](DB.md#seeding)
-- [Backup & Restore](../guides/BACKUP-RECOVERY.md)
+- [Seeding Data](/commands/db/README.md#seeding)
+- [Backup & Restore](/guides/BACKUP-RECOVERY.md)
 ````
 
 ---
