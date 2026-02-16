@@ -61,7 +61,7 @@ curl -sSL https://install.nself.org | bash
 nself version
 ```
 
-*Screen: Output shows: nself v0.9.8*
+*Screen: Output shows: nself v0.9.9*
 
 **Voiceover:**
 "Perfect! nself is installed. Now let's create our first project."

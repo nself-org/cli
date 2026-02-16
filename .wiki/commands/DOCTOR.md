@@ -1,6 +1,6 @@
 # nself doctor - System Diagnostics
 
-**Version 0.9.8** | Run comprehensive system health checks
+**Version 0.9.9** | Run comprehensive system health checks
 
 ---
 

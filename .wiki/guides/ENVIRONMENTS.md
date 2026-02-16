@@ -1,6 +1,6 @@
 # nself Environments Guide
 
-**Version 0.9.8** | Managing development, staging, and production environments
+**Version 0.9.9** | Managing development, staging, and production environments
 
 ---
 

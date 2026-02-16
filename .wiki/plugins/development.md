@@ -1,6 +1,6 @@
 # Plugin Development Guide
 
-**Version 0.9.8** | Create custom plugins for nself
+**Version 0.9.9** | Create custom plugins for nself
 
 ---
 
@@ -1087,4 +1087,4 @@ Submit a pull request to the [nself-plugins repository](https://github.com/acama
 
 ---
 
-*Last Updated: January 2026 | Version 0.9.8*
+*Last Updated: January 2026 | Version 0.9.9*

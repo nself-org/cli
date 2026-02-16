@@ -164,6 +164,27 @@ enable_monitoring() {
     update_env_file "MONITORING_PROFILE" "$profile"
   fi
 
+  # Ensure secure Grafana password is set
+  if [[ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]] || [[ "${GRAFANA_ADMIN_PASSWORD}" == "admin-password-change-me" ]]; then
+    log_info "Generating secure Grafana admin password..."
+    local grafana_password
+    if command -v openssl >/dev/null 2>&1; then
+      grafana_password=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
+    elif [[ -r /dev/urandom ]]; then
+      grafana_password=$(tr -dc 'A-Za-z0-9!@#$%^&*' < /dev/urandom | head -c 32)
+    else
+      # Last resort: use $RANDOM (weak but better than hardcoded)
+      grafana_password=""
+      local chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*"
+      for ((i=0; i<32; i++)); do
+        grafana_password="${grafana_password}${chars:RANDOM%${#chars}:1}"
+      done
+    fi
+    update_env_file "GRAFANA_ADMIN_PASSWORD" "$grafana_password"
+    export GRAFANA_ADMIN_PASSWORD="$grafana_password"
+    log_success "Generated secure Grafana password (32 chars)"
+  fi
+
   # Apply profile settings
   apply_monitoring_profile "$effective_profile"
 
@@ -199,9 +220,15 @@ enable_monitoring() {
   fi
 
   echo ""
-  echo "Default Grafana credentials:"
+  echo "Grafana credentials:"
   echo "  Username: ${GRAFANA_ADMIN_USER:-admin}"
-  echo "  Password: ${GRAFANA_ADMIN_PASSWORD:-admin-password-change-me}"
+  if [[ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
+    echo "  Password: ${GRAFANA_ADMIN_PASSWORD}"
+    echo ""
+    log_info "Store these credentials securely - password will not be shown again"
+  else
+    log_error "GRAFANA_ADMIN_PASSWORD not set - this should not happen"
+  fi
 }
 
 # Disable monitoring
@@ -1080,7 +1107,7 @@ EOF
     container_name: \${PROJECT_NAME:-nself}_grafana
     environment:
       - GF_SECURITY_ADMIN_USER=\${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=\${GRAFANA_ADMIN_PASSWORD:-admin-password-change-me}
+      - GF_SECURITY_ADMIN_PASSWORD=\${GRAFANA_ADMIN_PASSWORD}
       - GF_AUTH_ANONYMOUS_ENABLED=\${GRAFANA_ANONYMOUS_ENABLED:-false}
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
       - GF_USERS_DEFAULT_THEME=\${GRAFANA_DEFAULT_THEME:-dark}

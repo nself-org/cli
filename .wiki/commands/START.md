@@ -1,6 +1,6 @@
 # nself start - Start Services
 
-**Version 0.9.8** | Start all nself services with smart health checking
+**Version 0.9.9** | Start all nself services with smart health checking
 
 ---
 
@@ -456,4 +456,4 @@ open https://grafana.local.nself.org       # Grafana
 
 ---
 
-*Last Updated: January 2026 | Version 0.9.8*
+*Last Updated: January 2026 | Version 0.9.9*

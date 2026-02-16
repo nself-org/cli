@@ -1,6 +1,6 @@
 # nself Example Projects
 
-This directory contains complete, production-ready example projects demonstrating various use cases for nself v0.9.8.
+This directory contains complete, production-ready example projects demonstrating various use cases for nself v0.9.9.
 
 ## Available Examples
 

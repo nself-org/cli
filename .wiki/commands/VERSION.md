@@ -1,6 +1,6 @@
 # nself version - Version Information
 
-**Version 0.9.8** | Display version information
+**Version 0.9.9** | Display version information
 
 ---
 

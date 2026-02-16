@@ -1,6 +1,6 @@
 # nself stop - Stop Services
 
-**Version 0.9.8** | Stop and manage running nself services
+**Version 0.9.9** | Stop and manage running nself services
 
 ---
 
@@ -377,4 +377,4 @@ nself build && nself start
 
 ---
 
-*Last Updated: January 2026 | Version 0.9.8*
+*Last Updated: January 2026 | Version 0.9.9*

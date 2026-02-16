@@ -4,7 +4,7 @@
 
 **The Complete Self-Hosted Backend Platform**
 
-[![Version](https://img.shields.io/badge/version-0.9.8-blue.svg)](releases/v0.9.8.md)
+[![Version](https://img.shields.io/badge/version-0.9.9-blue.svg)](releases/v0.9.8.md)
 [![License](https://img.shields.io/badge/license-Personal%20Free%20%7C%20Commercial-green.svg)](LICENSE.md)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)]()
 
@@ -457,7 +457,7 @@ We welcome contributions! Whether it's bug reports, feature requests, documentat
 
 <div align="center">
 
-**Version 0.9.8** · **January 31, 2026** · **[Commands](COMMANDS.md)** · **[Changelog](CHANGELOG.md)** · **[License](LICENSE.md)**
+**Version 0.9.9** · **January 31, 2026** · **[Commands](COMMANDS.md)** · **[Changelog](CHANGELOG.md)** · **[License](LICENSE.md)**
 
 *ɳSelf - The complete self-hosted backend platform*
 

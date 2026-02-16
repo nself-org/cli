@@ -289,4 +289,4 @@ For managed cloud services, Supabase and Nhost are excellent alternatives.
 ---
 
 **Comparison Updated**: January 31, 2026
-**Based on**: nself v0.9.8, Supabase v2024.01, Nhost v2024.01, Firebase v2024.01
+**Based on**: nself v0.9.9, Supabase v2024.01, Nhost v2024.01, Firebase v2024.01

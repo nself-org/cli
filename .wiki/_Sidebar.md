@@ -1,4 +1,4 @@
-# nself v0.9.8
+# nself v0.9.9
 
 ### [Home](Home)
 ### [Documentation](README)

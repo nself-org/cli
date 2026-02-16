@@ -954,7 +954,7 @@ cmd_auth_create_user() {
     read -rs password
     echo ""
     if [[ -z "$password" ]]; then
-      password=$(openssl rand -base64 16 2>/dev/null || echo "default123")
+      password=$(generate_secure_password 16)
       cli_info "Generated password: $password"
     fi
   fi
@@ -1112,18 +1112,49 @@ apply_hasura_auth_metadata() {
   fi
 }
 
+# Generate secure random password
+# Returns: 16-character password with mixed case, numbers, and symbols
+# Compatible with Bash 3.2 (macOS), Linux, WSL
+generate_secure_password() {
+  local length="${1:-16}"
+
+  # Try openssl first (most portable)
+  if command -v openssl >/dev/null 2>&1; then
+    # Generate base64 random bytes, remove special chars openssl adds, take first N chars
+    openssl rand -base64 32 | tr -d '/+=' | head -c "$length"
+    return 0
+  fi
+
+  # Fallback to /dev/urandom (Linux, macOS, WSL)
+  if [[ -r /dev/urandom ]]; then
+    # Read random bytes, convert to alphanumeric + some symbols
+    tr -dc 'A-Za-z0-9!@#$%^&*' < /dev/urandom | head -c "$length"
+    return 0
+  fi
+
+  # Last resort: use $RANDOM (weak but better than hardcoded)
+  local password=""
+  local chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*"
+  for ((i=0; i<length; i++)); do
+    password="${password}${chars:RANDOM%${#chars}:1}"
+  done
+  printf "%s" "$password"
+}
+
 # Create default staff users
 create_default_auth_users() {
   # Load environment for password
   load_env_with_priority 2>/dev/null || true
 
-  local default_password="${AUTH_DEFAULT_PASSWORD:-npass123}"
+  # Generate secure random password or use environment override
+  local default_password="${AUTH_DEFAULT_PASSWORD:-$(generate_secure_password 16)}"
 
   create_nhost_auth_user "owner@nself.org" "$default_password" "owner" "Platform Owner"
   create_nhost_auth_user "admin@nself.org" "$default_password" "admin" "Administrator"
   create_nhost_auth_user "support@nself.org" "$default_password" "support" "Support Staff"
 
   cli_success "Created 3 default users (password: $default_password)"
+  cli_info "Store this password securely - it will not be shown again"
 }
 
 # Verify auth service health

@@ -1,6 +1,6 @@
 # nself urls - Service URLs
 
-**Version 0.9.8** | Display all accessible URLs for your nself services
+**Version 0.9.9** | Display all accessible URLs for your nself services
 
 ---
 
@@ -633,4 +633,4 @@ nself urls --category monitoring --plain
 
 ---
 
-*Last Updated: January 2026 | Version 0.9.8*
+*Last Updated: January 2026 | Version 0.9.9*

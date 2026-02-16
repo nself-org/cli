@@ -103,36 +103,74 @@ cmd_list() {
   printf "%-15s %-10s %-12s %-35s\n" "NAME" "VERSION" "CATEGORY" "DESCRIPTION"
   printf "%-15s %-10s %-12s %-35s\n" "----" "-------" "--------" "-----------"
 
-  # Extract plugin names using grep/sed (Bash 3.2 compatible)
-  local plugins
-  plugins=$(printf '%s' "$registry" | grep -o '"[a-z-]*":{' | sed 's/"//g;s/:{//')
-
   local count=0
-  for plugin in $plugins; do
-    local version description category
-    version=$(printf '%s' "$registry" | grep -A10 "\"$plugin\"" | grep '"version"' | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-    description=$(printf '%s' "$registry" | grep -A10 "\"$plugin\"" | grep '"description"' | head -1 | sed 's/.*"description"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-    category=$(printf '%s' "$registry" | grep -A10 "\"$plugin\"" | grep '"category"' | head -1 | sed 's/.*"category"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
 
-    # Filter by installed
-    if [[ "$show_installed_only" == "true" ]] && ! is_plugin_installed "$plugin"; then
-      continue
-    fi
+  # If showing installed only, read from local plugin.json files
+  if [[ "$show_installed_only" == "true" ]]; then
+    # Iterate over installed plugins
+    for plugin_dir in "$PLUGIN_DIR"/*/; do
+      [[ -d "$plugin_dir" ]] || continue
+      local plugin=$(basename "$plugin_dir")
 
-    # Filter by category
-    if [[ -n "$filter_category" ]] && [[ "$category" != "$filter_category" ]]; then
-      continue
-    fi
+      # Skip shared utilities
+      [[ "$plugin" == "_shared" ]] && continue
 
-    # Check if installed
-    local installed=""
-    if is_plugin_installed "$plugin"; then
-      installed=" [installed]"
-    fi
+      # Check if it has plugin.json
+      if [[ ! -f "$plugin_dir/plugin.json" ]]; then
+        continue
+      fi
 
-    printf "%-15s %-10s %-12s %-35s%s\n" "$plugin" "$version" "$category" "${description:0:35}" "$installed"
-    ((count++))
-  done
+      # Read from local plugin.json
+      local version description category
+      if command -v jq >/dev/null 2>&1; then
+        version=$(jq -r '.version // "1.0.0"' "$plugin_dir/plugin.json" 2>/dev/null)
+        description=$(jq -r '.description // ""' "$plugin_dir/plugin.json" 2>/dev/null)
+        category=$(jq -r '.category // "general"' "$plugin_dir/plugin.json" 2>/dev/null)
+      else
+        version=$(grep '"version"' "$plugin_dir/plugin.json" | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+        description=$(grep '"description"' "$plugin_dir/plugin.json" | head -1 | sed 's/.*"description"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+        category=$(grep '"category"' "$plugin_dir/plugin.json" | head -1 | sed 's/.*"category"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+      fi
+
+      # Set defaults if empty
+      version="${version:-1.0.0}"
+      category="${category:-general}"
+
+      # Filter by category
+      if [[ -n "$filter_category" ]] && [[ "$category" != "$filter_category" ]]; then
+        continue
+      fi
+
+      printf "%-15s %-10s %-12s %-35s%s\n" "$plugin" "$version" "$category" "${description:0:35}" " [installed]"
+      ((count++))
+    done
+  else
+    # Show from registry (all available plugins)
+    # Extract plugin names using grep/sed (Bash 3.2 compatible)
+    local plugins
+    plugins=$(printf '%s' "$registry" | grep -o '"[a-z-]*":{' | sed 's/"//g;s/:{//')
+
+    for plugin in $plugins; do
+      local version description category
+      version=$(printf '%s' "$registry" | grep -A10 "\"$plugin\"" | grep '"version"' | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+      description=$(printf '%s' "$registry" | grep -A10 "\"$plugin\"" | grep '"description"' | head -1 | sed 's/.*"description"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+      category=$(printf '%s' "$registry" | grep -A10 "\"$plugin\"" | grep '"category"' | head -1 | sed 's/.*"category"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+
+      # Filter by category
+      if [[ -n "$filter_category" ]] && [[ "$category" != "$filter_category" ]]; then
+        continue
+      fi
+
+      # Check if installed
+      local installed=""
+      if is_plugin_installed "$plugin"; then
+        installed=" [installed]"
+      fi
+
+      printf "%-15s %-10s %-12s %-35s%s\n" "$plugin" "$version" "$category" "${description:0:35}" "$installed"
+      ((count++))
+    done
+  fi
 
   if [[ $count -eq 0 ]]; then
     if [[ "$show_installed_only" == "true" ]]; then

@@ -1,6 +1,6 @@
 # Complete Troubleshooting Guide
 
-**Version 0.9.8** | Symptom → Diagnosis → Solution
+**Version 0.9.9** | Symptom → Diagnosis → Solution
 
 ---
 

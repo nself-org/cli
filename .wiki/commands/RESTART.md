@@ -1,6 +1,6 @@
 # nself restart - Restart Services
 
-**Version 0.9.8** | Stop and start services
+**Version 0.9.9** | Stop and start services
 
 ---
 

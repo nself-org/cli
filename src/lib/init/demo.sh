@@ -115,14 +115,14 @@ POSTGRES_DB=demo-app_db
 # Network configuration
 DOCKER_NETWORK=demo-app_network
 
-# Auth configuration
-AUTH_JWT_SECRET=demo-jwt-secret-key-minimum-32-characters-long
+# Auth configuration (generated securely for demo)
+AUTH_JWT_SECRET=demo-jwt-$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
 AUTH_SMTP_USER=
 AUTH_SMTP_PASS=
 
 # Hasura configuration
-HASURA_GRAPHQL_ADMIN_SECRET=demo-admin-secret
-HASURA_GRAPHQL_JWT_SECRET='{"type":"HS256","key":"demo-jwt-secret-key-minimum-32-characters-long"}'
+HASURA_GRAPHQL_ADMIN_SECRET=demo-admin-$(openssl rand -base64 16 | tr -d '/+=' | head -c 24)
+HASURA_GRAPHQL_JWT_SECRET='{"type":"HS256","key":"'$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)'"}'
 DATABASE_URL=postgres://postgres:postgres@postgres:5432/demo-app_db
 
 # Add any personal overrides below:

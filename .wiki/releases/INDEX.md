@@ -2,17 +2,17 @@
 
 Complete release history and roadmap for nself - Self-Hosted Infrastructure Manager.
 
-**Current Stable Version:** v0.9.8
+**Current Stable Version:** v0.9.9
 
 ---
 
 ## Latest Release
 
-### [v0.9.8](v0.9.8.md) - Current Stable
+### [v0.9.9](v0.9.9.md) - Current Stable
 
 **Released:** February 2026
 
-**Status:** Production Ready ✅
+**Status:** QA & Stabilization ✅
 
 **Highlights:**
 - **80% Test Coverage**: 700+ tests across unit, integration, and E2E
@@ -22,7 +22,7 @@ Complete release history and roadmap for nself - Self-Hosted Infrastructure Mana
 - **Production Features**: Health endpoints, graceful shutdown, automated backups
 - **Quality Metrics**: Benchmarks, security audits, cross-platform verification
 
-**[View Release Notes →](v0.9.8.md)**
+**[View Release Notes →](v0.9.9.md)**
 
 ---
 
@@ -347,4 +347,4 @@ NSELF_VERSION=v0.4.1 bash <(curl -sSL https://install.nself.org)
 
 ---
 
-**Last Updated:** January 31, 2026 | **Current Version:** v0.9.8
+**Last Updated:** February 16, 2026 | **Current Version:** v0.9.9

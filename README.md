@@ -1,15 +1,15 @@
 # ɳSelf - Complete Self-Hosted Backend Platform
 
-[![Version](https://img.shields.io/badge/version-0.9.8-blue.svg)](https://github.com/acamarata/nself/releases)
-[![Status](https://img.shields.io/badge/status-production--ready-brightgreen.svg)](https://github.com/acamarata/nself/releases/tag/v0.9.8)
+[![Version](https://img.shields.io/badge/version-0.9.9-blue.svg)](https://github.com/acamarata/nself/releases)
+[![Status](https://img.shields.io/badge/status-production--ready-brightgreen.svg)](https://github.com/acamarata/nself/releases/tag/v0.9.9)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)](#-prerequisites)
 [![Docker](https://img.shields.io/badge/docker-required-blue.svg)](https://www.docker.com/get-started)
 [![CI Status](https://github.com/acamarata/nself/actions/workflows/ci.yml/badge.svg)](https://github.com/acamarata/nself/actions)
 [![Security Scan](https://github.com/acamarata/nself/actions/workflows/security-scan.yml/badge.svg)](https://github.com/acamarata/nself/actions/workflows/security-scan.yml)
-[![Test Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen.svg)](.wiki/releases/v0.9.8.md)
+[![Test Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen.svg)](.wiki/releases/v0.9.9.md)
 [![License](https://img.shields.io/badge/license-Personal%20Free%20%7C%20Commercial-green.svg)](LICENSE)
 
-> **✅ PRODUCTION READY**: ɳSelf v0.9.8 is production-ready with 80% test coverage (700+ tests), 100% documentation, enterprise security, and battle-tested infrastructure. Complete feature parity with Supabase/Nhost plus unique advantages: multi-tenancy, built-in billing, white-label customization, and deploy-anywhere flexibility.
+> **✅ PRODUCTION READY**: ɳSelf v0.9.9 is production-ready with 80% test coverage (700+ tests), 100% documentation, enterprise security, and battle-tested infrastructure. Complete feature parity with Supabase/Nhost plus unique advantages: multi-tenancy, built-in billing, white-label customization, and deploy-anywhere flexibility.
 >
 > ɳSelf orchestrates production-grade services (PostgreSQL, Hasura, Redis, MinIO) with enterprise features on top: security hardening, multi-tenancy, billing integration, and 295+ CLI commands. Same powerful infrastructure as commercial BaaS platforms, but fully under your control.
 >
@@ -616,7 +616,7 @@ nself build --force     # Force rebuild
 - **[Migration from Firebase](.wiki/migrations/FROM-FIREBASE.md)** - Auth & Firestore
 
 ### Release Information
-- **[Release Notes](.wiki/releases/v0.9.8.md)** - What's new in v0.9.8
+- **[Release Notes](.wiki/releases/v0.9.9.md)** - What's new in v0.9.9
 - **[Roadmap](.wiki/releases/ROADMAP.md)** - Development roadmap
 - **[Changelog](.wiki/releases/CHANGELOG.md)** - Version history
 - **[All Releases](.wiki/releases/INDEX.md)** - Complete release history
@@ -697,7 +697,7 @@ See [LICENSE](LICENSE) for full terms.
 
 | Version | Date | Focus |
 |---------|------|-------|
-| **v0.9.8** | Feb 2026 | Production Ready (current) |
+| **v0.9.9** | Feb 2026 | Production Ready (current) |
 | v0.9.7 | Jan 31, 2026 | Security & CI/CD Complete |
 | v0.9.6 | Jan 30, 2026 | Command Consolidation |
 | v0.9.5 | Jan 30, 2026 | Feature Parity & Security |
@@ -710,7 +710,7 @@ See [LICENSE](LICENSE) for full terms.
 
 <div align="center">
 
-**ɳSelf v0.9.8** - Built with ❤️ for developers who value quality, performance, and control
+**ɳSelf v0.9.9** - Built with ❤️ for developers who value quality, performance, and control
 
 **Ready for v1.0 LTS** 🚀
 

@@ -177,10 +177,17 @@ rollback_migrations() {
 
   log_info "Rolling back $steps migration(s)..."
 
+  # Verify admin secret is set
+  if [[ -z "${HASURA_GRAPHQL_ADMIN_SECRET:-}" ]]; then
+    log_error "HASURA_GRAPHQL_ADMIN_SECRET is not set"
+    log_info "Set this in your .env file or environment"
+    return 1
+  fi
+
   # Use Hasura CLI to rollback migrations
   if command -v hasura &>/dev/null; then
     cd hasura
-    hasura migrate apply --down "$steps" --admin-secret "${HASURA_GRAPHQL_ADMIN_SECRET:-admin123}"
+    hasura migrate apply --down "$steps" --admin-secret "${HASURA_GRAPHQL_ADMIN_SECRET}"
     cd ..
     log_success "Rolled back $steps migration(s)"
   else

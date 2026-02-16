@@ -4,9 +4,9 @@
 [Released](#released) | [Planned (v0.4.x)](#planned-v04x-series) | [Plugins (v0.4.8)](#v048---plugin-system) | [v0.5.0 LTS](#v050---production-ready-lts)
 
 ## Current Status Summary
-- **v0.9.8 (Current)**: Production Ready - 80% test coverage, 100% docs, UX polish
-- **v0.9.9 (Next)**: QA Release - Bug fixes, final testing before v1.0
-- **v1.0.0 (Target Q1 2026)**: LTS Release - Long-term support, stable API
+- **v0.9.9 (Current)**: QA & Stabilization Release - Bug fixes, security hardening, final testing before v1.0
+- **v1.0.0 (Target Q1 2026)**: LTS Release - Long-term support commitment, stable API, production-proven
+- **Previous**: v0.9.8 - Production Ready foundation
 
 ---
 

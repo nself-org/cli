@@ -4,7 +4,7 @@
 
 **The Complete Self-Hosted Backend Platform**
 
-[![Version](https://img.shields.io/badge/version-0.9.8-blue.svg)](releases/v0.9.8.md)
+[![Version](https://img.shields.io/badge/version-0.9.9-blue.svg)](releases/v0.9.9.md)
 [![License](https://img.shields.io/badge/license-Personal%20Free%20%7C%20Commercial-green.svg)](LICENSE.md)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)]()
 [![Status](https://img.shields.io/badge/status-stable-brightgreen.svg)]()
@@ -35,10 +35,10 @@
 ```bash
 brew install acamarata/nself/nself    # Homebrew
 npm install -g nself-cli              # npm
-docker pull acamarata/nself:0.9.8     # Docker
+docker pull acamarata/nself:0.9.9     # Docker
 ```
 
-**Next:** v0.9.9 (Documentation cleanup) → v1.0.0 LTS | **[Full Roadmap](releases/ROADMAP.md)**
+**Current:** v0.9.9 (QA/Stabilization) → **Next:** v1.0.0 LTS (Q1 2026) | **[Full Roadmap](releases/ROADMAP.md)**
 
 ---
 
@@ -395,7 +395,7 @@ We welcome contributions! Whether it's bug reports, feature requests, documentat
 
 <div align="center">
 
-**Version 0.9.8** · **February 2026**
+**Version 0.9.9** · **February 2026**
 
 *ɳSelf - The complete self-hosted backend platform*
 

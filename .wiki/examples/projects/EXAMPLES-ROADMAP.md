@@ -1,6 +1,6 @@
 # nself Examples Roadmap
 
-This document outlines the complete example project suite for nself v0.9.8.
+This document outlines the complete example project suite for nself v0.9.9.
 
 ## Status Overview
 

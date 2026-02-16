@@ -1,6 +1,6 @@
 # nself reset - Reset Project
 
-**Version 0.9.8** | Reset project to initial state
+**Version 0.9.9** | Reset project to initial state
 
 ---
 

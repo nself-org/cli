@@ -1,6 +1,6 @@
 # nself update - Update nself
 
-**Version 0.9.8** | Update nself CLI to latest version
+**Version 0.9.9** | Update nself CLI to latest version
 
 ---
 

@@ -1,6 +1,6 @@
 # nself restore - Database Restore
 
-**Version 0.9.8** | Restore database from backup
+**Version 0.9.9** | Restore database from backup
 
 ---
 

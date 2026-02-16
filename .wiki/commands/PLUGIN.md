@@ -1,6 +1,6 @@
 # nself plugin - Plugin Management
 
-**Version 0.9.8** | Extend nself with third-party integrations
+**Version 0.9.9** | Extend nself with third-party integrations
 
 ---
 

@@ -1,6 +1,6 @@
 # SSL Configuration
 
-**Version 0.9.8** | SSL/TLS certificate configuration
+**Version 0.9.9** | SSL/TLS certificate configuration
 
 ---
 

@@ -15,9 +15,11 @@ MOCKED_COMMANDS=()
 ORIGINAL_COMMANDS_LIST=""
 
 # Try to use associative array if available (Bash 4+)
+HAS_ASSOC_ARRAYS=false
 if declare -A _test_assoc 2>/dev/null; then
   declare -A ORIGINAL_COMMANDS
   unset _test_assoc
+  HAS_ASSOC_ARRAYS=true
 fi
 
 # Mock a command with a custom function
@@ -28,7 +30,7 @@ mock_command() {
 
   # Save original if it exists
   if command -v "$cmd" >/dev/null 2>&1; then
-    if [[ -n "${ORIGINAL_COMMANDS:-}" ]]; then
+    if [[ "$HAS_ASSOC_ARRAYS" == "true" ]]; then
       ORIGINAL_COMMANDS["$cmd"]=$(command -v "$cmd")
     else
       ORIGINAL_COMMANDS_LIST="$ORIGINAL_COMMANDS_LIST|$cmd:$(command -v "$cmd")"

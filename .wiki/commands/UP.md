@@ -1,6 +1,6 @@
 # nself up - Start Services (Legacy)
 
-**Version 0.9.8** | Start all services
+**Version 0.9.9** | Start all services
 
 ---
 

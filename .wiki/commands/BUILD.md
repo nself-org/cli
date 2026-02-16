@@ -1,6 +1,6 @@
 # nself build - Configuration Generation
 
-**Version 0.9.8** | Generate Docker Compose, Nginx, and service configurations
+**Version 0.9.9** | Generate Docker Compose, Nginx, and service configurations
 
 ---
 
@@ -554,4 +554,4 @@ docker compose config --quiet && echo "Valid" || echo "Invalid"
 
 ---
 
-*Last Updated: January 2026 | Version 0.9.8*
+*Last Updated: January 2026 | Version 0.9.9*

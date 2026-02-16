@@ -1,6 +1,6 @@
 # nself logs - Service Logs
 
-**Version 0.9.8** | View and stream container logs
+**Version 0.9.9** | View and stream container logs
 
 ---
 

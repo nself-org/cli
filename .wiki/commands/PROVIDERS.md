@@ -1,6 +1,6 @@
 # nself providers - Cloud Providers (Legacy)
 
-**Version 0.9.8** | Manage cloud providers
+**Version 0.9.9** | Manage cloud providers
 
 ---
 

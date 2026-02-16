@@ -188,9 +188,21 @@ fix_jwt_configuration() {
 
   # Generate secure JWT secret if none exists or too short
   if [[ -z "$jwt_secret" ]] || [[ ${#jwt_secret} -lt 32 ]]; then
+    # Try openssl first (most portable)
     jwt_secret=$(openssl rand -base64 32 2>/dev/null | tr -d '\n' | head -c 32)
+
+    # Fallback to /dev/urandom (Linux, macOS, WSL)
+    if [[ -z "$jwt_secret" ]] && [[ -r /dev/urandom ]]; then
+      jwt_secret=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)
+    fi
+
+    # Last resort: use $RANDOM (weak but better than hardcoded)
     if [[ -z "$jwt_secret" ]]; then
-      jwt_secret="demo-jwt-secret-key-minimum-32-characters-long"
+      jwt_secret=""
+      local chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+      for ((i=0; i<32; i++)); do
+        jwt_secret="${jwt_secret}${chars:RANDOM%${#chars}:1}"
+      done
     fi
     [ "$verbose" = "true" ] && echo "  Generated JWT secret"
   fi

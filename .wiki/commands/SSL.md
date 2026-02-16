@@ -1,6 +1,6 @@
 # nself ssl - SSL Certificate Management
 
-**Version 0.9.8** | Manage SSL/TLS certificates
+**Version 0.9.9** | Manage SSL/TLS certificates
 
 ---
 

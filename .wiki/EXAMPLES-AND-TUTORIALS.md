@@ -240,7 +240,7 @@ Printable cheat sheets for common commands, database operations, deployment, tro
 
 ## 📊 Resource Statistics
 
-### Current Status (v0.9.8)
+### Current Status (v0.9.9)
 
 - **Total Tutorials:** 11 (9 complete, 2 planned)
 - **Total Examples:** 6 (2 complete, 4 planned)

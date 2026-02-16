@@ -20,8 +20,8 @@
 ## Version Format
 
 - **Current**: `0.9.8` (check `/src/VERSION`)
-- **In prose**: `nself v0.9.8`
-- **In badges**: `version-0.9.8-blue`
+- **In prose**: `nself v0.9.9`
+- **In badges**: `version-0.9.9-blue`
 - **In links**: `[Release Notes](releases/v0.9.8.md)`
 
 ---
@@ -149,7 +149,7 @@ nself status
 
 - [ ] Code blocks have language identifiers
 - [ ] Links are relative paths
-- [ ] Version is current (0.9.8)
+- [ ] Version is current (0.9.9)
 - [ ] Brand name is `nself` in code
 - [ ] Placeholders use `<kebab-case>`
 - [ ] Headers use sentence case

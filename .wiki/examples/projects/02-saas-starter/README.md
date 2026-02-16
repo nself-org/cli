@@ -91,7 +91,7 @@ A complete, production-ready SaaS application template with multi-tenancy, billi
 
 ### Prerequisites
 
-- nself v0.9.8+
+- nself v0.9.9+
 - Node.js 18+
 - Stripe account (for billing)
 - Docker & Docker Compose

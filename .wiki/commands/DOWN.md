@@ -1,6 +1,6 @@
 # nself down - Stop Services (Legacy)
 
-**Version 0.9.8** | Stop all services
+**Version 0.9.9** | Stop all services
 
 ---
 

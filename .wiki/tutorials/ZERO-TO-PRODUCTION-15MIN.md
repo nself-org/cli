@@ -73,7 +73,7 @@ curl -sSL https://install.nself.org | bash
 **Verify installation:**
 ```bash
 nself version
-# Should output: nself v0.9.8
+# Should output: nself v0.9.9
 ```
 
 ---

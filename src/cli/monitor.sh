@@ -115,7 +115,13 @@ open_grafana_dashboard() {
   echo ""
   echo "Credentials:"
   echo "  Username: ${GRAFANA_ADMIN_USER:-admin}"
-  echo "  Password: ${GRAFANA_ADMIN_PASSWORD:-admin-password-change-me}"
+  if [[ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]]; then
+    echo "  Password: Check .env.local or .env.secrets for GRAFANA_ADMIN_PASSWORD"
+  else
+    log_error "GRAFANA_ADMIN_PASSWORD not set - monitoring may not be properly configured"
+    echo "  Run 'nself metrics enable' to configure monitoring properly"
+  fi
+  echo ""
 
   # Try to open in browser
   if command -v open &>/dev/null; then

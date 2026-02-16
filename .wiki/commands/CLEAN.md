@@ -2,7 +2,7 @@
 
 > **DEPRECATED COMMAND NAME**: This command was formerly `nself clean` in v0.x. It has been consolidated to `nself backup clean` in v1.0. The old command name may still work as an alias.
 
-**Version 0.9.8** | Remove containers, volumes, and images
+**Version 0.9.9** | Remove containers, volumes, and images
 
 ---
 

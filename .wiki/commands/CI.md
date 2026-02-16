@@ -2,7 +2,7 @@
 
 > **DEPRECATED COMMAND NAME**: This command was formerly `nself ci` in v0.x. It has been consolidated to `nself dev ci` in v1.0. The old command name may still work as an alias.
 
-**Version 0.9.8** | Generate CI/CD pipeline configuration
+**Version 0.9.9** | Generate CI/CD pipeline configuration
 
 ---
 

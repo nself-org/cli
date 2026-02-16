@@ -1,6 +1,6 @@
 # Frequently Asked Questions (FAQ)
 
-**Version 0.9.8** | Comprehensive answers to common questions about ɳSelf
+**Version 0.9.9** | Comprehensive answers to common questions about ɳSelf
 
 ---
 

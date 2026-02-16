@@ -1,6 +1,6 @@
 # nself admin - Admin Dashboard
 
-**Version 0.9.8** | Open the nself admin dashboard
+**Version 0.9.9** | Open the nself admin dashboard
 
 ---
 

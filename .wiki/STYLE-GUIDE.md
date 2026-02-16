@@ -77,13 +77,13 @@ nself is based on Nhost's architecture.
 
 **Always use**: The version from `/src/VERSION`
 
-**Current version**: `0.9.8` (as of January 31, 2026)
+**Current version**: `0.9.8` (as of February 16, 2026)
 
 ### Version Format
 
 - Use semantic versioning: `vX.Y.Z`
-- Include `v` prefix in prose: "nself v0.9.8"
-- Omit `v` in badges: `version-0.9.8-blue`
+- Include `v` prefix in prose: "nself v0.9.9"
+- Omit `v` in badges: `version-0.9.9-blue`
 
 ### Updating Versions
 
@@ -91,7 +91,7 @@ When a new version is released, update:
 
 1. **Badge references**:
 ```markdown
-[![Version](https://img.shields.io/badge/version-0.9.8-blue.svg)](releases/v0.9.8.md)
+[![Version](https://img.shields.io/badge/version-0.9.9-blue.svg)](releases/v0.9.8.md)
 ```
 
 2. **Release notes links**:
@@ -662,7 +662,7 @@ Before submitting new docs:
 
 - [ ] Brand name is `nself` (lowercase) in code/commands
 - [ ] Brand name is `ɳSelf` in titles where appropriate
-- [ ] Version is current (`0.9.8` as of Jan 2026)
+- [ ] Version is current (`0.9.8` as of Feb 2026)
 - [ ] All code blocks have language identifiers
 - [ ] Placeholders are consistent
 - [ ] Commands use correct syntax

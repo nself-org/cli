@@ -1,6 +1,6 @@
 # nself provision - Server Provisioning
 
-**Version 0.9.8** | Provision cloud servers
+**Version 0.9.9** | Provision cloud servers
 
 ---
 

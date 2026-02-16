@@ -458,7 +458,7 @@ grep -rl "v0\.9\.6" docs/ --include="*.md" | sort
 
 ## Quick Reference
 
-**Current Version**: 0.9.8 (as of January 31, 2026)
+**Current Version**: 0.9.8 (as of February 16, 2026)
 
 **Style Standards**: See [STYLE-GUIDE.md](STYLE-GUIDE.md)
 

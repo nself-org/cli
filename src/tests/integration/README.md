@@ -475,4 +475,4 @@ For issues with integration tests:
 
 **Integration Test Suite Version**: 0.9.8
 **Last Updated**: 2026-01-31
-**Compatibility**: nself v0.9.8+
+**Compatibility**: nself v0.9.9+

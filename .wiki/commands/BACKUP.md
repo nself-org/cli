@@ -1,6 +1,6 @@
 # nself backup - Database Backup
 
-**Version 0.9.8** | Create database backups
+**Version 0.9.9** | Create database backups
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **DEPRECATED COMMAND NAME**: This command was formerly `nself sync` in v0.x. It has been consolidated to `nself deploy sync` in v1.0. The old command name may still work as an alias.
 
-**Version 0.9.8** | Synchronize data and configuration between environments
+**Version 0.9.9** | Synchronize data and configuration between environments
 
 ---
 

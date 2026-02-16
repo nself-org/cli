@@ -1,6 +1,6 @@
 # nself status - Service Status
 
-**Version 0.9.8** | Monitor and inspect nself service health
+**Version 0.9.9** | Monitor and inspect nself service health
 
 ---
 
@@ -566,4 +566,4 @@ esac
 
 ---
 
-*Last Updated: January 2026 | Version 0.9.8*
+*Last Updated: January 2026 | Version 0.9.9*

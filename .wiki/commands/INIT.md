@@ -1,6 +1,6 @@
 # nself init - Project Initialization
 
-**Version 0.9.8** | Create and configure new nself projects
+**Version 0.9.9** | Create and configure new nself projects
 
 ---
 
@@ -540,4 +540,4 @@ nself db schema scaffold basic
 
 ---
 
-*Last Updated: January 2026 | Version 0.9.8*
+*Last Updated: January 2026 | Version 0.9.9*

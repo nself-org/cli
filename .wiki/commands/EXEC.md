@@ -1,6 +1,6 @@
 # nself exec - Execute Commands
 
-**Version 0.9.8** | Run commands inside service containers
+**Version 0.9.9** | Run commands inside service containers
 
 ---
 

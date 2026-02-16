@@ -2,7 +2,7 @@
 
 > **DEPRECATED COMMAND NAME**: This command was formerly `nself rollback` in v0.x. It has been consolidated to `nself backup rollback` in v1.0. The old command name may still work as an alias. For deployment rollbacks, use `nself deploy rollback`.
 
-**Version 0.9.8** | Roll back to previous deployment
+**Version 0.9.9** | Roll back to previous deployment
 
 ---
 

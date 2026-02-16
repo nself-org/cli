@@ -1,6 +1,6 @@
 # nself help - Command Help
 
-**Version 0.9.8** | Display help information
+**Version 0.9.9** | Display help information
 
 ---
 

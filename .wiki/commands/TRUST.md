@@ -1,6 +1,6 @@
 # nself trust - Trust SSL Certificates
 
-**Version 0.9.8** | Install root CA to system trust store
+**Version 0.9.9** | Install root CA to system trust store
 
 ---
 

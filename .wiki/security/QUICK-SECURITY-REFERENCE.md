@@ -1,4 +1,4 @@
-# Quick Security Reference - nself v0.9.8
+# Quick Security Reference - nself v0.9.9
 
 **For**: Developers and DevOps Engineers
 **Updated**: January 31, 2026

@@ -1,6 +1,6 @@
 # nself Security Guide
 
-**Version 0.9.8** | Security best practices for nself deployments
+**Version 0.9.9** | Security best practices for nself deployments
 
 ---
 

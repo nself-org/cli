@@ -1,6 +1,6 @@
 # nself completion - Shell Completion
 
-**Version 0.9.8** | Generate shell completion scripts
+**Version 0.9.9** | Generate shell completion scripts
 
 ---
 

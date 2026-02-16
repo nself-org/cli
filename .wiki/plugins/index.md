@@ -1,6 +1,6 @@
 # nself Plugins
 
-**Version 0.9.8** | Extend nself with third-party integrations
+**Version 0.9.9** | Extend nself with third-party integrations
 
 ---
 
@@ -607,4 +607,4 @@ Topics covered:
 
 ---
 
-*Last Updated: January 2026 | Version 0.9.8*
+*Last Updated: January 2026 | Version 0.9.9*
