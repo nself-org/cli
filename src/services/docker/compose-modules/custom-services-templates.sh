@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # custom-services-templates.sh - Generate Docker services from template-based CS_ variables
 
 # Generate custom service from template-based CS_ variable

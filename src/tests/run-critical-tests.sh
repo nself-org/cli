@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # run-critical-tests.sh - Run critical path tests for coverage improvements
 #
 # This script runs the new test files added to improve coverage from 30% to 60%+

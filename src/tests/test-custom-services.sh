@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Test custom services system
 
 set -e

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -uo pipefail
 # providers.sh - OAuth provider management library
 # Part of nself - POSIX-compliant, Bash 3.2+ compatible
 #

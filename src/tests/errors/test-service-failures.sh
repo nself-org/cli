@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 # test-service-failures.sh - Service startup and runtime error tests
 # Tests realistic service failure scenarios

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # integration-helpers.sh - Core utilities for integration testing
 #
 # Provides helper functions for setting up, managing, and cleaning up

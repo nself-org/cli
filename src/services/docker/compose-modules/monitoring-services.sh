@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # monitoring-services.sh - Generate monitoring and search service definitions
 # This module handles MLflow, search engines, logging, and monitoring services
 # SECURITY: All monitoring services bind to 127.0.0.1 only - access via nginx proxy

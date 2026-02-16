@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 # run-edge-case-tests.sh - Run all edge case tests
 # Comprehensive test suite for boundary values and edge cases

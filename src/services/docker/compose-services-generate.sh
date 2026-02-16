@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 # services-compose.sh - Generate docker-compose.yml for services
 

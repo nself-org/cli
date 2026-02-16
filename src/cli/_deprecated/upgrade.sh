@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # upgrade.sh - DEPRECATED - Redirects to nself deploy upgrade
 # This file is kept for backward compatibility only
 # Use: nself deploy upgrade instead

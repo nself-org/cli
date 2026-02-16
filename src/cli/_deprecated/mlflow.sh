@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # mlflow.sh - DEPRECATED - Use 'nself service mlflow' instead
 # This file maintained for backward compatibility only
 

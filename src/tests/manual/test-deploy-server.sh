@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Manual test script for deploy server management features
 # Tests all 10 implemented features
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 #
 # nself Usage Tracking - Comprehensive Demo
 # Demonstrates all major usage tracking features

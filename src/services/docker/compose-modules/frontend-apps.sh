@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # frontend-apps.sh - Frontend apps configuration (for nginx routing only)
 # NOTE: Frontend apps run EXTERNALLY - this module does not create containers
 # Frontend configuration is used only for nginx proxy routing and API setup

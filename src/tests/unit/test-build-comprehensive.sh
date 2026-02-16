@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Comprehensive unit tests for nself build command
 # Tests all modules and functions for Bash 3.2 compatibility
 

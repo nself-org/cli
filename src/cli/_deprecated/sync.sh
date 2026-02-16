@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # sync.sh - DEPRECATED - Redirects to nself deploy sync
 # This file is kept for backward compatibility only
 # Use: nself deploy sync instead

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # custom-services.sh - Generate custom service definitions
 # This module handles dynamic custom service generation
 

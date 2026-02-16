@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # nginx.sh - Nginx service generation for docker-compose
 # Generates environment-aware nginx configuration
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 # test-boundary-values.sh - Tests for boundary value validation
 # Tests edge cases with minimum, maximum, and invalid boundary values

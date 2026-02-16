@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Simple test for environment file precedence
 
 echo "Testing Environment File Precedence System"

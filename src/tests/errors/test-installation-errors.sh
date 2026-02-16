@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 # test-installation-errors.sh - Installation and setup error scenario tests
 # Tests realistic errors users encounter during installation and setup

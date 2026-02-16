@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 # test-configuration-errors.sh - Configuration error scenario tests
 # Tests realistic configuration errors users encounter

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # utility-services.sh - Generate utility service definitions
 # This module handles Mailpit, Adminer, BullMQ Dashboard, and other utility services
 

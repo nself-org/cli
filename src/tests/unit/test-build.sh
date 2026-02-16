@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test-build.sh - Unit tests for build modules
 
 # Test framework

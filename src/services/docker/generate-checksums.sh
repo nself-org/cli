@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 # generate-checksums.sh - Generate SHA256 checksums for nself files
 

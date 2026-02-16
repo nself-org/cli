@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 # error-message-demo.sh - Demonstration of improved error messages
 # Shows before/after comparison of error handling

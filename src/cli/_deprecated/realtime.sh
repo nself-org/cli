@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # realtime.sh - DEPRECATED - Use 'nself service realtime' instead
 # This file maintained for backward compatibility only
 

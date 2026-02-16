@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -uo pipefail
 #
 # Environment Control Mocks
 # Provides infrastructure to control environment for branch testing

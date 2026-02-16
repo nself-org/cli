@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # email.sh - DEPRECATED - Use 'nself service email' instead
 # This file maintained for backward compatibility only
 

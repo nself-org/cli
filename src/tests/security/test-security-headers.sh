@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test-security-headers.sh - Security headers testing
 # POSIX-compliant, no Bash 4+ features
 

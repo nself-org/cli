@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 # run-error-tests.sh - Run all error scenario tests
 # Comprehensive test suite for error handling and messages

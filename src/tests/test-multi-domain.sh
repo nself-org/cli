@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Test multi-domain custom services system
 
 set -e

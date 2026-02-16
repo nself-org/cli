@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # plugin-services.sh - Generate Docker services for installed nself plugins
 
 # Constants

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # monitoring-exporters.sh - Generate monitoring exporter services
 # SECURITY: All exporters bind to 127.0.0.1 only - Prometheus scrapes internally via Docker network
 

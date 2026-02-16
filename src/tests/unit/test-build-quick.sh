@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Quick test runner for build modules with better error handling
 
 # Determine the nself root directory

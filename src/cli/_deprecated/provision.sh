@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # provision.sh - DEPRECATED - Redirects to nself deploy provision
 # This file is kept for backward compatibility only
 # Use: nself deploy provision instead

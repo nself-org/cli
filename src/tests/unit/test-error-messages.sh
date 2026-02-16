@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 # test-error-messages.sh - Tests for error message library
 # Verifies error messages are clear, actionable, and cross-platform compatible

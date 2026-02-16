@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # mlflow-improved.sh - Improved MLflow service generation
 
 # Generate improved MLflow service with proper database handling

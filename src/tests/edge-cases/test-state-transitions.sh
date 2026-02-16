@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 # test-state-transitions.sh - Tests for service state transition edge cases
 # Tests unusual state transitions and idempotency

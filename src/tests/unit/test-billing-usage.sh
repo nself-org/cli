@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 #
 # nself Test Suite - Billing Usage Tracking
 # Tests for usage.sh functionality

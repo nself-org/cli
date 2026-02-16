@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # redis.sh - DEPRECATED - Use 'nself service redis' instead
 # This file maintained for backward compatibility only
 

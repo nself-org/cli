@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test_framework.sh - Core testing utilities for nself
 #
 # This framework enables modular testing where each function can be

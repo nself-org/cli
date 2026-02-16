@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # Unit tests for whitelabel themes system
 # Tests theme creation, management, CSS generation, and database integration
 

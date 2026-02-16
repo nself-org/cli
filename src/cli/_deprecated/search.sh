@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # search.sh - DEPRECATED - Use 'nself service search' instead
 # This file maintained for backward compatibility only
 

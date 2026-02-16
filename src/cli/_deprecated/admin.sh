@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # admin.sh - DEPRECATED - Use 'nself service admin' instead
 # This file maintained for backward compatibility only
 

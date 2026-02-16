@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # servers.sh - DEPRECATED - Redirects to nself deploy server
 # This file is kept for backward compatibility only
 # Use: nself deploy server instead
