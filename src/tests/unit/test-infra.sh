@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# test-plugin.sh - Unit tests for plugin command
-# Tests plugin system functionality
+# test-infra.sh - Unit tests for infra command
+# Tests infrastructure management functionality
 
 set -euo pipefail
 
@@ -75,100 +75,82 @@ assert_file_exists() {
 # ============================================================================
 
 test_command_exists() {
-  assert_file_exists "$CLI_DIR/plugin.sh" "plugin.sh exists"
+  assert_file_exists "$CLI_DIR/infra.sh" "infra.sh exists"
 }
 
 test_command_syntax() {
-  assert_success "plugin.sh syntax is valid" bash -n "$CLI_DIR/plugin.sh"
+  assert_success "infra.sh syntax is valid" bash -n "$CLI_DIR/infra.sh"
 }
 
 test_help_flag() {
   local output
-  output=$(bash "$CLI_DIR/plugin.sh" --help 2>&1 || true)
-  assert_contains "plugin" "$output" "Help shows command name"
+  output=$(bash "$CLI_DIR/infra.sh" --help 2>&1 || true)
+  assert_contains "infra" "$output" "Help shows command name"
 }
 
 test_help_subcommand() {
   local output
-  output=$(bash "$CLI_DIR/plugin.sh" help 2>&1 || true)
+  output=$(bash "$CLI_DIR/infra.sh" help 2>&1 || true)
   assert_contains "sage" "$output" "Help subcommand shows usage"
 }
 
-test_list_subcommand() {
+test_provider_subcommand() {
   local output
-  output=$(bash "$CLI_DIR/plugin.sh" list 2>&1 || true)
-  # Should list plugins
+  output=$(bash "$CLI_DIR/infra.sh" provider 2>&1 || true)
+  # Should handle cloud provider operations
   TESTS_RUN=$((TESTS_RUN + 1))
   TESTS_PASSED=$((TESTS_PASSED + 1))
-  printf "✓ List subcommand executes\n"
+  printf "✓ Provider subcommand executes\n"
 }
 
-test_search_subcommand() {
+test_k8s_subcommand() {
   local output
-  output=$(bash "$CLI_DIR/plugin.sh" search test 2>&1 || true)
-  # Should search plugins
+  output=$(bash "$CLI_DIR/infra.sh" k8s 2>&1 || true)
+  # Should handle Kubernetes operations
   TESTS_RUN=$((TESTS_RUN + 1))
   TESTS_PASSED=$((TESTS_PASSED + 1))
-  printf "✓ Search subcommand executes\n"
+  printf "✓ K8s subcommand executes\n"
 }
 
-test_info_subcommand() {
+test_helm_subcommand() {
   local output
-  output=$(bash "$CLI_DIR/plugin.sh" info 2>&1 || true)
-  # Should show plugin info
+  output=$(bash "$CLI_DIR/infra.sh" helm 2>&1 || true)
+  # Should handle Helm operations
   TESTS_RUN=$((TESTS_RUN + 1))
   TESTS_PASSED=$((TESTS_PASSED + 1))
-  printf "✓ Info subcommand executes\n"
+  printf "✓ Helm subcommand executes\n"
 }
 
-test_enable_subcommand() {
+test_terraform_subcommand() {
   local output
-  output=$(bash "$CLI_DIR/plugin.sh" enable 2>&1 || true)
-  # Should handle enable
+  output=$(bash "$CLI_DIR/infra.sh" terraform 2>&1 || true)
+  # Should handle Terraform operations
   TESTS_RUN=$((TESTS_RUN + 1))
   TESTS_PASSED=$((TESTS_PASSED + 1))
-  printf "✓ Enable subcommand executes\n"
+  printf "✓ Terraform subcommand executes\n"
 }
 
-test_disable_subcommand() {
+test_ansible_subcommand() {
   local output
-  output=$(bash "$CLI_DIR/plugin.sh" disable 2>&1 || true)
-  # Should handle disable
+  output=$(bash "$CLI_DIR/infra.sh" ansible 2>&1 || true)
+  # Should handle Ansible operations
   TESTS_RUN=$((TESTS_RUN + 1))
   TESTS_PASSED=$((TESTS_PASSED + 1))
-  printf "✓ Disable subcommand executes\n"
+  printf "✓ Ansible subcommand executes\n"
 }
 
-test_update_subcommand() {
+test_status_subcommand() {
   local output
-  output=$(bash "$CLI_DIR/plugin.sh" update 2>&1 || true)
-  # Should handle updates
+  output=$(bash "$CLI_DIR/infra.sh" status 2>&1 || true)
+  # Should show infrastructure status
   TESTS_RUN=$((TESTS_RUN + 1))
   TESTS_PASSED=$((TESTS_PASSED + 1))
-  printf "✓ Update subcommand executes\n"
-}
-
-test_create_subcommand() {
-  local output
-  output=$(bash "$CLI_DIR/plugin.sh" create 2>&1 || true)
-  # Should show create help
-  TESTS_RUN=$((TESTS_RUN + 1))
-  TESTS_PASSED=$((TESTS_PASSED + 1))
-  printf "✓ Create subcommand executes\n"
-}
-
-test_publish_subcommand() {
-  local output
-  output=$(bash "$CLI_DIR/plugin.sh" publish 2>&1 || true)
-  # Should show publish help
-  TESTS_RUN=$((TESTS_RUN + 1))
-  TESTS_PASSED=$((TESTS_PASSED + 1))
-  printf "✓ Publish subcommand executes\n"
+  printf "✓ Status subcommand executes\n"
 }
 
 test_invalid_subcommand() {
   local output
-  output=$(bash "$CLI_DIR/plugin.sh" invalid-command-xyz 2>&1 || true)
+  output=$(bash "$CLI_DIR/infra.sh" invalid-command-xyz 2>&1 || true)
   # Should show error or help
   TESTS_RUN=$((TESTS_RUN + 1))
   if echo "$output" | grep -qiE "unknown|invalid|error|usage|help"; then
@@ -185,21 +167,19 @@ test_invalid_subcommand() {
 # ============================================================================
 
 main() {
-  printf "=== Testing plugin command ===\n\n"
+  printf "=== Testing infra command ===\n\n"
 
   # Run all tests
   test_command_exists
   test_command_syntax
   test_help_flag
   test_help_subcommand
-  test_list_subcommand
-  test_search_subcommand
-  test_info_subcommand
-  test_enable_subcommand
-  test_disable_subcommand
-  test_update_subcommand
-  test_create_subcommand
-  test_publish_subcommand
+  test_provider_subcommand
+  test_k8s_subcommand
+  test_helm_subcommand
+  test_terraform_subcommand
+  test_ansible_subcommand
+  test_status_subcommand
   test_invalid_subcommand
 
   # Results

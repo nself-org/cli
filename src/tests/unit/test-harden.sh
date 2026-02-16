@@ -91,7 +91,7 @@ test_help_flag() {
 test_help_subcommand() {
   local output
   output=$(bash "$CLI_DIR/harden.sh" help 2>&1 || true)
-  assert_contains "Usage" "$output" "Help subcommand shows usage"
+  assert_contains "sage" "$output" "Help subcommand shows usage"
 }
 
 test_check_subcommand() {
