@@ -7,6 +7,9 @@
 # ============================================================================
 
 PLUGIN_DIR="${PLUGIN_DIR:-${NSELF_PLUGIN_DIR:-$HOME/.nself/plugins}}"
+
+set -euo pipefail
+
 PLUGIN_RUNTIME_DIR="${NSELF_PLUGIN_RUNTIME:-$HOME/.nself/runtime}"
 PLUGIN_LOGS_DIR="$PLUGIN_RUNTIME_DIR/logs"
 PLUGIN_PIDS_DIR="$PLUGIN_RUNTIME_DIR/pids"

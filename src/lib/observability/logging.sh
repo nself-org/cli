@@ -5,6 +5,9 @@
 
 # Log levels
 readonly LOG_LEVEL_DEBUG=10
+
+set -euo pipefail
+
 readonly LOG_LEVEL_INFO=20
 readonly LOG_LEVEL_WARN=30
 readonly LOG_LEVEL_ERROR=40

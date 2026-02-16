@@ -4,6 +4,9 @@
 
 # Source utilities (namespaced to avoid clobbering caller globals)
 _HOOKS_SHARED_DIR="$(dirname "${BASH_SOURCE[0]}")/.."
+
+set -euo pipefail
+
 source "$_HOOKS_SHARED_DIR/utils/display.sh" 2>/dev/null || true
 
 # Post-command cleanup

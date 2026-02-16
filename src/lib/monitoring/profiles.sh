@@ -4,6 +4,9 @@
 
 # Get monitoring profile based on environment
 get_monitoring_profile() {
+
+set -euo pipefail
+
   local profile="${MONITORING_PROFILE:-auto}"
 
   if [[ "$profile" == "auto" ]]; then

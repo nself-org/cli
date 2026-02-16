@@ -3,6 +3,9 @@
 
 # Detect package manager
 detect_package_manager() {
+
+set -euo pipefail
+
   if command -v apt-get >/dev/null 2>&1; then
     echo "apt"
   elif command -v brew >/dev/null 2>&1; then

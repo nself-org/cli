@@ -10,6 +10,9 @@
 # Primary registry endpoint (Cloudflare Worker)
 PLUGIN_REGISTRY_URL="${NSELF_PLUGIN_REGISTRY:-https://plugins.nself.org}"
 
+set -euo pipefail
+
+
 # Fallback to GitHub raw (when primary is unavailable)
 PLUGIN_REGISTRY_FALLBACK="https://raw.githubusercontent.com/acamarata/nself-plugins/main/registry.json"
 

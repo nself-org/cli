@@ -5,6 +5,9 @@
 
 # Initialize health check storage
 health_init() {
+
+set -euo pipefail
+
   local container=$(docker ps --filter 'name=postgres' --format '{{.Names}}' | head -1)
   [[ -z "$container" ]] && {
     echo "ERROR: PostgreSQL not found" >&2

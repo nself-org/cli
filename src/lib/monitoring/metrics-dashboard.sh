@@ -5,6 +5,9 @@
 
 # Metrics configuration
 METRICS_INTERVAL="${METRICS_INTERVAL:-5}"
+
+set -euo pipefail
+
 METRICS_HISTORY_SIZE="${METRICS_HISTORY_SIZE:-100}"
 METRICS_FILE="${METRICS_FILE:-/tmp/nself-metrics.json}"
 

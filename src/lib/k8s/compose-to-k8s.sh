@@ -4,6 +4,9 @@
 
 # Conversion configuration
 K8S_API_VERSION_DEPLOYMENT="apps/v1"
+
+set -euo pipefail
+
 K8S_API_VERSION_SERVICE="v1"
 K8S_API_VERSION_INGRESS="networking.k8s.io/v1"
 K8S_API_VERSION_CONFIGMAP="v1"

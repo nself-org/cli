@@ -4,7 +4,7 @@
 # Mission: Help users escape vendor lock-in
 # v0.4.8
 
-set -e
+set -euo pipefail
 
 # Import utilities
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"

@@ -8,6 +8,9 @@
 # ============================================================================
 
 PLUGIN_REGISTRY_URL="${NSELF_PLUGIN_REGISTRY:-https://raw.githubusercontent.com/acamarata/nself-plugins/main/registry.json}"
+
+set -euo pipefail
+
 PLUGIN_DIR="${NSELF_PLUGIN_DIR:-$HOME/.nself/plugins}"
 PLUGIN_CACHE_DIR="${NSELF_PLUGIN_CACHE:-$HOME/.nself/cache/plugins}"
 

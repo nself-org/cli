@@ -4,6 +4,9 @@
 
 # Terminal control functions
 term_save_cursor() {
+
+set -euo pipefail
+
   tput sc 2>/dev/null || true
 }
 
