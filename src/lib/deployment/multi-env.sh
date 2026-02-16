@@ -5,6 +5,9 @@
 
 # Environment configurations
 ENVIRONMENTS_DIR="${ENVIRONMENTS_DIR:-./environments}"
+
+set -euo pipefail
+
 CURRENT_ENV_FILE="${CURRENT_ENV_FILE:-./.current-env}"
 
 # Initialize environment directory

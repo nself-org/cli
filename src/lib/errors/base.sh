@@ -6,6 +6,9 @@
 # Error registry - track all errors found
 # Bash 3.2 compatible: use delimited-string maps instead of associative arrays
 ERROR_REGISTRY=""
+
+set -euo pipefail
+
 ERROR_FIXES=""
 ERROR_ACTIONS=""
 

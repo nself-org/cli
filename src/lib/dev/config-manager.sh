@@ -5,6 +5,9 @@
 
 # Validate configuration
 config_validate() {
+
+set -euo pipefail
+
   local config_file="${1:-.env}"
 
   [[ ! -f "$config_file" ]] && {

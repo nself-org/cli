@@ -5,6 +5,9 @@
 
 # Initialize development environment
 dev_init() {
+
+set -euo pipefail
+
   echo "Setting up development environment..."
 
   # Create dev directories

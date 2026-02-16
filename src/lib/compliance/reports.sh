@@ -5,6 +5,9 @@
 
 # Generate compliance report
 compliance_generate_report() {
+
+set -euo pipefail
+
   local standard="${1:-all}"
   local output_format="${2:-json}" # json, html, pdf
   local output_file="${3:-/tmp/compliance_report.json}"

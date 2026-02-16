@@ -5,6 +5,9 @@
 
 # Required ports for nself services using parallel arrays
 REQUIRED_PORTS_KEYS=(nginx_http nginx_https postgres hasura auth minio minio_console redis mailpit_smtp mailpit_ui)
+
+set -euo pipefail
+
 REQUIRED_PORTS_VALUES=(80 443 5432 8080 4000 9000 9001 6379 1025 8025)
 
 # Simple string-based caches

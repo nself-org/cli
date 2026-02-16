@@ -7,6 +7,9 @@
 # Get template path for a service definition
 # Format: language:framework or just framework
 get_service_template() {
+
+set -euo pipefail
+
   local service_def="$1"
   # Get template base dynamically
   local template_base=""

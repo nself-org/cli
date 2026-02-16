@@ -4,6 +4,9 @@
 
 # Create deployment snapshot
 create_deployment_snapshot() {
+
+set -euo pipefail
+
   local label="${1:-$(date +%Y%m%d_%H%M%S)}"
   local deploy_dir=".nself/deployments/$label"
 

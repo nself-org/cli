@@ -5,6 +5,9 @@
 
 # Initialize test environment
 init_test_environment() {
+
+set -euo pipefail
+
   local test_dir="${1:-.nself/test}"
 
   printf "Initializing test environment...\n"

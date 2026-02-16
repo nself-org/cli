@@ -5,6 +5,9 @@
 
 # Compliance standards
 readonly COMPLIANCE_GDPR="gdpr"
+
+set -euo pipefail
+
 readonly COMPLIANCE_SOC2="soc2"
 readonly COMPLIANCE_HIPAA="hipaa"
 

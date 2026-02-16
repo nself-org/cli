@@ -5,6 +5,9 @@
 
 # Quick environment check
 quick_env_check() {
+
+set -euo pipefail
+
   if [[ ! -f ".env.local" ]]; then
     log_error "No .env.local found"
     log_info "Run: nself init"

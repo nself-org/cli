@@ -5,6 +5,9 @@
 
 # Source all error handlers
 ERROR_LIB_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+set -euo pipefail
+
 source "$ERROR_LIB_DIR/base.sh"
 source "$ERROR_LIB_DIR/handlers/ports.sh"
 source "$ERROR_LIB_DIR/handlers/docker.sh"

@@ -5,6 +5,9 @@
 
 # Get Hasura GraphQL endpoint
 get_hasura_endpoint() {
+
+set -euo pipefail
+
   local project_name="${PROJECT_NAME:-nself}"
   local base_domain="${BASE_DOMAIN:-localhost}"
 

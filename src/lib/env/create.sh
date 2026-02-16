@@ -5,6 +5,9 @@
 
 # Get the directory where this script is located
 ENV_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 LIB_ROOT="$(dirname "$ENV_LIB_DIR")"
 
 # Source dependencies

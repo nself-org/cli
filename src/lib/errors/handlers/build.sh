@@ -5,6 +5,9 @@
 
 # Analyze build errors
 analyze_build_failure() {
+
+set -euo pipefail
+
   local error_output="$1"
 
   echo ""

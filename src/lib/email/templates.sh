@@ -3,6 +3,9 @@
 # Part of nself v0.6.0 - Phase 2
 
 template_welcome() {
+
+set -euo pipefail
+
   cat <<TEMPLATE
 Subject: Welcome to ${PROJECT_NAME:-nself}!
 

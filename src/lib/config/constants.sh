@@ -5,6 +5,9 @@
 # Mark as sourced to prevent double-sourcing
 export CONSTANTS_SOURCED=1
 
+set -euo pipefail
+
+
 # Exit codes
 readonly EXIT_SUCCESS=0
 readonly EXIT_GENERAL_ERROR=1

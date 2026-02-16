@@ -7,6 +7,9 @@
 # export PROJECT_NAME="${PROJECT_NAME:-nself}"
 export BASE_DOMAIN="${BASE_DOMAIN:-localhost}"
 
+set -euo pipefail
+
+
 # Prefer .env.runtime (merged runtime config) if it exists, otherwise use ENV_FILE or default to .env
 if [[ -f ".env.runtime" ]]; then
   export ENV_FILE=".env.runtime"

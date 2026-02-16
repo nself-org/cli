@@ -7,6 +7,9 @@
 
 # Generate a secure random password
 generate_password() {
+
+set -euo pipefail
+
   local length="${1:-16}"
   openssl rand -base64 "$length" | tr -d "=+/" | cut -c1-"$length"
 }
