@@ -5,6 +5,9 @@
 # Get template metadata
 # Returns: name|language|description|features|dependencies
 get_template_metadata() {
+
+set -euo pipefail
+
   local template_name="$1"
 
   case "$template_name" in
