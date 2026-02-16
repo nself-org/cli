@@ -5,6 +5,9 @@
 
 # Namespaced to avoid clobbering caller's SCRIPT_DIR
 _OUTPUT_FMT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "${_OUTPUT_FMT_DIR}/display.sh"
 
 # Unicode box drawing characters

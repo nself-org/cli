@@ -12,6 +12,9 @@
 # Get script directory (namespaced to avoid clobbering caller's SCRIPT_DIR)
 _ENV_MERGER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+set -euo pipefail
+
+
 # Source env-detection for helper functions
 if [[ -f "$_ENV_MERGER_DIR/env-detection.sh" ]]; then
   source "$_ENV_MERGER_DIR/env-detection.sh"

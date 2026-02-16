@@ -4,6 +4,9 @@
 
 # Check if a hosts entry exists
 hosts_entry_exists() {
+
+set -euo pipefail
+
   local domain="$1"
   grep -q "127\.0\.0\.1.*[[:space:]]${domain}[[:space:]]*" /etc/hosts 2>/dev/null ||
     grep -q "127\.0\.0\.1.*[[:space:]]${domain}$" /etc/hosts 2>/dev/null

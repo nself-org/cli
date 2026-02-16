@@ -4,6 +4,9 @@
 
 # Check if running in nself source directory
 check_not_in_source() {
+
+set -euo pipefail
+
   if [[ -f "bin/nself" ]] && [[ -d "src/cli" ]] && [[ -d "src/lib" ]] && [[ -f "install.sh" ]]; then
     log_error "Cannot run nself commands in the nself source repository!"
     echo ""

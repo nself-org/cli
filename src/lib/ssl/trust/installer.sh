@@ -4,6 +4,9 @@
 
 # Source dependencies
 TRUST_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+set -euo pipefail
+
 source "$TRUST_LIB_DIR/core/os-detection.sh"
 source "$TRUST_LIB_DIR/generators/mkcert.sh"
 

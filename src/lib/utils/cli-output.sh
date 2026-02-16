@@ -12,6 +12,9 @@
 
 # Prevent double-sourcing
 [[ "${CLI_OUTPUT_SOURCED:-}" == "1" ]] && return 0
+
+set -euo pipefail
+
 export CLI_OUTPUT_SOURCED=1
 
 # Source dependencies (namespaced to avoid clobbering caller's SCRIPT_DIR)

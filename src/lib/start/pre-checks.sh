@@ -5,6 +5,9 @@
 
 # Source error messages library (namespaced to avoid clobbering caller's SCRIPT_DIR)
 _START_PRECHECKS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "${_START_PRECHECKS_DIR}/../utils/error-messages.sh" 2>/dev/null || true
 
 # Check if services are already running

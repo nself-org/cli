@@ -4,6 +4,9 @@
 
 # Source templates for create_environment_file function
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 CLI_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")/cli"
 if [[ -f "$CLI_DIR/wizard/templates.sh" ]]; then
   source "$CLI_DIR/wizard/templates.sh"

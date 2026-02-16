@@ -4,6 +4,9 @@
 # Platform detection and compatibility utilities
 
 detect_platform() {
+
+set -euo pipefail
+
   case "$OSTYPE" in
     darwin*) PLATFORM="macos" ;;
     linux*) PLATFORM="linux" ;;

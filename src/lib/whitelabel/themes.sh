@@ -15,6 +15,9 @@
 
 # Color definitions for output (guard against double-declaration when sourced together)
 [[ -z "${RED:-}" ]] && readonly RED='\033[0;31m'
+
+set -euo pipefail
+
 [[ -z "${GREEN:-}" ]] && readonly GREEN='\033[0;32m'
 [[ -z "${YELLOW:-}" ]] && readonly YELLOW='\033[1;33m'
 [[ -z "${BLUE:-}" ]] && readonly BLUE='\033[0;34m'

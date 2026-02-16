@@ -5,6 +5,9 @@
 
 # Check if a container is in a restart loop
 is_container_restarting() {
+
+set -euo pipefail
+
   local container_name="$1"
 
   # Get restart count and status

@@ -5,6 +5,9 @@
 
 # Check if all expected services are running and healthy
 check_all_services_healthy() {
+
+set -euo pipefail
+
   local verbose="${1:-false}"
 
   # Check if docker-compose.yml exists

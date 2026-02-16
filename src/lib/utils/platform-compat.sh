@@ -5,6 +5,9 @@
 
 # Platform-safe sed inline editing
 safe_sed_inline() {
+
+set -euo pipefail
+
   local file="$1"
   shift # Remove file from arguments
 

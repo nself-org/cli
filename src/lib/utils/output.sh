@@ -7,6 +7,9 @@
 
 # Source display.sh if not already loaded (use local variable to avoid conflicts)
 if [[ -z "${DISPLAY_SOURCED:-}" ]]; then
+
+set -euo pipefail
+
   _OUTPUT_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   source "$_OUTPUT_SH_DIR/display.sh"
   unset _OUTPUT_SH_DIR

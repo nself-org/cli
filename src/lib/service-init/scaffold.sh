@@ -4,6 +4,9 @@
 
 # Source dependencies
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "$SCRIPT_DIR/../utils/platform-compat.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/templates-metadata.sh" 2>/dev/null || true
 

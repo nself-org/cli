@@ -6,6 +6,9 @@
 
 # Prevent double-sourcing
 [[ "${ERROR_MESSAGES_SOURCED:-}" == "1" ]] && return 0
+
+set -euo pipefail
+
 export ERROR_MESSAGES_SOURCED=1
 
 # Source dependencies (namespaced to avoid clobbering caller's SCRIPT_DIR)

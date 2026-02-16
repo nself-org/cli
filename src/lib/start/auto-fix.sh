@@ -5,6 +5,9 @@
 
 # Source platform compatibility utilities (namespaced to avoid clobbering caller's SCRIPT_DIR)
 _START_AUTOFIX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "$_START_AUTOFIX_DIR/../utils/platform-compat.sh" 2>/dev/null || {
   # Fallback definition if not found
   safe_sed_inline() {

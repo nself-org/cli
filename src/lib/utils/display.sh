@@ -4,6 +4,9 @@
 
 # Prevent double-sourcing
 [[ "${DISPLAY_SOURCED:-}" == "1" ]] && return 0
+
+set -euo pipefail
+
 export DISPLAY_SOURCED=1
 
 # Color definitions (using printf for portability)

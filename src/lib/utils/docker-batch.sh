@@ -7,6 +7,9 @@
 # Batch get container info for multiple containers
 # Returns: JSON array with container info
 batch_get_container_info() {
+
+set -euo pipefail
+
   local project_name="${PROJECT_NAME:-nself}"
 
   # Get all containers in one call

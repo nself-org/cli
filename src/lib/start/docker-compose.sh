@@ -5,6 +5,9 @@
 
 # Source error messages library (namespaced to avoid clobbering caller's SCRIPT_DIR)
 _START_COMPOSE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "${_START_COMPOSE_DIR}/../utils/error-messages.sh" 2>/dev/null || true
 
 # Get the appropriate docker compose command

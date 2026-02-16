@@ -3,7 +3,7 @@
 # blue-green.sh - Zero-downtime upgrades using blue-green deployment
 # v0.4.8
 
-set -e
+set -euo pipefail
 
 # Import utilities
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"

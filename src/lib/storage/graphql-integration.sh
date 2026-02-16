@@ -5,6 +5,9 @@
 
 # Source required utilities
 GRAPHQL_INTEGRATION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 # Check if display.sh was already sourced from parent
 if [[ "${DISPLAY_SOURCED:-0}" != "1" ]]; then
   source "${GRAPHQL_INTEGRATION_DIR}/../utils/display.sh"

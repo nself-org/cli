@@ -6,6 +6,9 @@
 # Get the library directory
 SSL_API_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+set -euo pipefail
+
+
 # Source all modules
 source "$SSL_API_LIB_DIR/core/os-detection.sh"
 source "$SSL_API_LIB_DIR/generators/mkcert.sh"

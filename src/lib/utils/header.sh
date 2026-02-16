@@ -4,6 +4,9 @@
 
 # Constants for header formatting
 HEADER_WIDTH=60
+
+set -euo pipefail
+
 CONTENT_WIDTH=56 # 60 - 2 borders - 2 spaces on each side
 BORDER_CHAR="═"
 CORNER_TL="╔"

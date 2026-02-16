@@ -4,6 +4,9 @@
 
 # Detect the operating system
 detect_os() {
+
+set -euo pipefail
+
   local os_type=""
   local os_variant=""
 

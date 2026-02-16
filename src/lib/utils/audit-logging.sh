@@ -6,6 +6,9 @@
 
 # Prevent double-sourcing
 [[ "${AUDIT_LOGGING_SOURCED:-}" == "1" ]] && return 0
+
+set -euo pipefail
+
 export AUDIT_LOGGING_SOURCED=1
 
 # Source dependencies (namespaced to avoid clobbering caller's SCRIPT_DIR)

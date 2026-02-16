@@ -4,6 +4,9 @@
 
 # Get the directory where this script is located
 SSL_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "$SSL_LIB_DIR/../utils/display.sh" 2>/dev/null || true
 
 # Check if certificate needs renewal

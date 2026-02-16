@@ -4,6 +4,9 @@
 
 # Source display utilities for colors (only if not already sourced)
 if [[ -z "${DISPLAY_SOURCED:-}" ]]; then
+
+set -euo pipefail
+
   SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
   source "$SCRIPT_DIR/display.sh"
 fi

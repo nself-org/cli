@@ -6,6 +6,9 @@
 
 # Detect best available compression tool
 get_best_compressor() {
+
+set -euo pipefail
+
   # Priority: zstd (fastest) > pigz (parallel gzip) > gzip (standard)
   if command -v zstd >/dev/null 2>&1; then
     echo "zstd"

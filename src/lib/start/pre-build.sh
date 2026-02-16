@@ -4,6 +4,9 @@
 
 # Pre-build services that have build contexts
 pre_build_services() {
+
+set -euo pipefail
+
   local project="${1:-nself}"
   local env_file="${2:-.env.runtime}"
   local verbose="${3:-false}"

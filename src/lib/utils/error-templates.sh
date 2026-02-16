@@ -2,6 +2,9 @@
 
 
 source "$(dirname "${BASH_SOURCE[0]}")/display.sh"
+
+set -euo pipefail
+
 source "$(dirname "${BASH_SOURCE[0]}")/output-formatter.sh"
 
 # Professional error message templates for common issues

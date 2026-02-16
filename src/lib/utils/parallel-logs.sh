@@ -6,6 +6,9 @@
 
 # Temporary directory for log streams
 LOG_STREAM_DIR="/tmp/nself-logs-$$"
+
+set -euo pipefail
+
 LOG_PIDS=()
 
 # Cleanup function for parallel logs

@@ -10,6 +10,9 @@
 
 # Validate function name follows snake_case
 validate_function_name() {
+
+set -euo pipefail
+
   local name="$1"
 
   if [[ "$name" =~ ^[a-z][a-z0-9_]*$ ]]; then

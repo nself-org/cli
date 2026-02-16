@@ -10,6 +10,9 @@
 #   3. ENV from .env file (read from file, not environment variable)
 #   4. Default to "dev"
 detect_environment() {
+
+set -euo pipefail
+
   local env=""
 
   # First check command-line TARGET_ENV (highest priority)

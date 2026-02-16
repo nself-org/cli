@@ -5,6 +5,9 @@
 
 # Find next available port
 find_available_port() {
+
+set -euo pipefail
+
   local start_port="${1:-8000}"
   local max_port="${2:-9999}"
   local current_port=$start_port

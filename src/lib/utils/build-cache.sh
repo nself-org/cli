@@ -6,6 +6,9 @@
 
 # Cache directory
 CACHE_DIR="${NSELF_CACHE_DIR:-.nself/cache}"
+
+set -euo pipefail
+
 CACHE_MANIFEST="$CACHE_DIR/build-manifest.txt"
 
 # Initialize cache system

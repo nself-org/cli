@@ -4,6 +4,9 @@
 
 # Source display utilities
 UTILS_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+set -euo pipefail
+
 source "$UTILS_DIR/display.sh" 2>/dev/null || true
 
 # Validate domain name

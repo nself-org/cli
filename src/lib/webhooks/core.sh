@@ -7,6 +7,9 @@
 
 # Webhook defaults
 readonly WEBHOOK_TIMEOUT=30
+
+set -euo pipefail
+
 readonly WEBHOOK_MAX_RETRIES=3
 readonly WEBHOOK_RETRY_DELAY=60
 

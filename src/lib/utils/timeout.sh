@@ -6,6 +6,9 @@
 
 # Check if we have a native timeout command
 if command -v timeout >/dev/null 2>&1; then
+
+set -euo pipefail
+
   TIMEOUT_CMD="timeout"
 elif command -v gtimeout >/dev/null 2>&1; then
   TIMEOUT_CMD="gtimeout"

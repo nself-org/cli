@@ -7,6 +7,9 @@
 
 # Source safe query library
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 source "${SCRIPT_DIR}/../database/safe-query.sh"
 
 # Get admin statistics overview

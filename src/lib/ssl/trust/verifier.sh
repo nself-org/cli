@@ -4,6 +4,9 @@
 
 # Source dependencies
 VERIFIER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+set -euo pipefail
+
 source "$VERIFIER_LIB_DIR/core/os-detection.sh"
 source "$VERIFIER_LIB_DIR/generators/mkcert.sh"
 

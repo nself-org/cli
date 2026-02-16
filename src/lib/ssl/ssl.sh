@@ -4,6 +4,9 @@
 
 # Get the directory where this script is located
 SSL_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 # Go up 3 levels: ssl -> lib -> src -> nself root (only if not already set)
 NSELF_ROOT="${NSELF_ROOT:-$(cd "$SSL_LIB_DIR/../../.." && pwd)}"
 TEMPLATES_DIR="$NSELF_ROOT/templates"

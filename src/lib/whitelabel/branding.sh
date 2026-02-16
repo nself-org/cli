@@ -6,6 +6,9 @@
 
 # Get script directory and source dependencies (namespaced to avoid clobbering caller globals)
 BRANDING_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 _BRANDING_LIB_ROOT="$(dirname "$BRANDING_LIB_DIR")"
 
 # Source dependencies

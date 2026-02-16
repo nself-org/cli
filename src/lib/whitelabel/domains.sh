@@ -7,6 +7,9 @@
 
 # Get the directory where this script is located (namespaced to avoid clobbering caller globals)
 WHITELABEL_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+set -euo pipefail
+
 _WHITELABEL_LIB_ROOT="$(dirname "$WHITELABEL_LIB_DIR")"
 
 # Source dependencies
