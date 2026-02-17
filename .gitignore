@@ -76,15 +76,16 @@ FEEDP.md
 
 # AI agent directories (private)
 .ai/
-.claude
-.codex
+.claude/
+.codex/
+.cursor/
 
 # Standard entries (added by global compliance)
 Thumbs.db
 .secrets/
 *.key
 *.pem
-build/
+/build/
 .cache/
 *.tmp
 *.temp
@@ -93,4 +94,3 @@ coverage/
 test-results/
 TRACKING.md
 PLAN.md
-.claude/

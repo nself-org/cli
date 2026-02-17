@@ -815,6 +815,56 @@ CS_3=admin-api:express-ts:8003:admin
 
 ---
 
+### CS_N_WEBSOCKET - WebSocket Support
+
+**Variable:** `CS_N_WEBSOCKET=true|false`
+
+**Default:** `false`
+
+**Example:**
+```bash
+CS_1=relay:socketio-ts:8001:relay
+CS_1_WEBSOCKET=true                     # Enable WebSocket proxy support
+```
+
+**What it does:**
+When enabled, the generated nginx config for this service includes WebSocket upgrade headers and a long-lived read timeout (86400s) for persistent connections:
+
+```nginx
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection 'upgrade';
+proxy_cache_bypass $http_upgrade;
+proxy_read_timeout 86400;
+```
+
+Without this flag, the service uses standard HTTP proxying with a 60s read timeout.
+
+**Use Cases:**
+- **Real-time applications:** Chat, notifications, live updates
+- **WebSocket relay:** Session forwarding, remote access
+- **Live dashboards:** Streaming data visualization
+- **Collaborative editing:** Multi-user real-time editing
+
+**Example Configurations:**
+
+**Socket.IO Real-Time Service:**
+```bash
+CS_1=realtime:socketio-ts:8001:ws
+CS_1_WEBSOCKET=true
+CS_1_MEMORY=512M
+CS_1_REPLICAS=2
+CS_1_REDIS_PREFIX=ws:
+CS_1_ENV=CORS_ORIGIN=https://app.example.com
+```
+
+**REST API (no WebSocket needed):**
+```bash
+CS_2=api:express-ts:8002:api
+# CS_2_WEBSOCKET not set — standard HTTP proxy (default)
+```
+
+---
+
 ### CS_N_DEV_DOMAIN - Development Domain Override
 
 **Variable:** `CS_N_DEV_DOMAIN=<domain>`

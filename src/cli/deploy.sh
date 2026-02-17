@@ -90,10 +90,15 @@ ${CLI_BOLD}Remote Server Management:${CLI_RESET}
 
 ${CLI_BOLD}Infrastructure Provisioning:${CLI_RESET}
   provision <provider>  Provision infrastructure on cloud provider
-    --size <size>       Instance size: small, medium, large
+    --name <name>       Server name (default: PROJECT_NAME-server)
+    --size <size>       Instance size: tiny, small, medium, large, xlarge
     --region <region>   Deployment region
+    --token <token>     API token (or set HCLOUD_TOKEN / provider env var)
+    --ssh-key <name>    SSH key name to attach
     --dry-run           Preview without executing
     --estimate          Show cost estimate only
+    --sizes             List available sizes for provider
+    --regions           List available regions for provider
 
   Providers: aws, gcp, azure, do, hetzner, linode, vultr, ionos, ovh, scaleway
 
@@ -127,7 +132,9 @@ ${CLI_BOLD}Examples:${CLI_RESET}
 
   # Provisioning
   nself deploy provision hetzner --size medium
-  nself deploy provision do --estimate
+  nself deploy provision hetzner --estimate
+  nself deploy provision hetzner --sizes
+  nself deploy provision hetzner --token \$HETZNER_CLAWDE_TOKEN --name clawde-api
 
   # Sync
   nself deploy sync pull staging
@@ -1951,23 +1958,64 @@ cmd_provision() {
     cli_info "Supported providers:"
     printf "  aws, gcp, azure, do, hetzner, linode, vultr, ionos, ovh, scaleway\n"
     printf "\n"
-    cli_info "Usage: nself deploy provision <provider> [--size small|medium|large]\n"
+    cli_info "Usage: nself deploy provision <provider> [options]\n"
+    printf "\n"
+    cli_info "Options:"
+    printf "  --name <name>       Server name (default: PROJECT_NAME-server)\n"
+    printf "  --size <size>       Instance size: tiny, small, medium, large, xlarge\n"
+    printf "  --region <region>   Deployment region\n"
+    printf "  --token <token>     API token (overrides env var / hcloud context)\n"
+    printf "  --ssh-key <name>    SSH key name to attach\n"
+    printf "  --dry-run           Preview without executing\n"
+    printf "  --estimate          Show cost estimate only\n"
+    printf "  --sizes             List available sizes for provider\n"
+    printf "  --regions           List available regions for provider\n"
     return 1
   fi
 
+  # Source provider interface
+  source "$LIB_DIR/providers/provider-interface.sh" 2>/dev/null || {
+    cli_error "Provider system not available"
+    return 1
+  }
+
+  # Validate provider
+  if ! provider_is_supported "$provider"; then
+    cli_error "Unsupported provider: $provider"
+    cli_info "Run: nself deploy provision  (to see supported providers)"
+    return 1
+  fi
+
+  local server_name=""
   local size="small"
   local region=""
+  local api_token=""
+  local ssh_key=""
   local dry_run=false
   local estimate_only=false
+  local list_sizes=false
+  local list_regions=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --name)
+        server_name="$2"
+        shift 2
+        ;;
       --size)
         size="$2"
         shift 2
         ;;
       --region)
         region="$2"
+        shift 2
+        ;;
+      --token)
+        api_token="$2"
+        shift 2
+        ;;
+      --ssh-key)
+        ssh_key="$2"
         shift 2
         ;;
       --dry-run)
@@ -1978,35 +2026,235 @@ cmd_provision() {
         estimate_only=true
         shift
         ;;
+      --sizes)
+        list_sizes=true
+        shift
+        ;;
+      --regions)
+        list_regions=true
+        shift
+        ;;
+      -h | --help)
+        cmd_provision
+        return 0
+        ;;
       *)
+        cli_warning "Unknown option: $1"
         shift
         ;;
     esac
   done
 
+  # Load the provider module
+  provider_load "$provider" || {
+    cli_error "Failed to load provider module: $provider"
+    return 1
+  }
+
+  # Handle --sizes: list available sizes and exit
+  if [[ "$list_sizes" == "true" ]]; then
+    show_command_header "nself deploy provision" "Available Sizes: $provider"
+    printf "\n"
+    provider_list_sizes "$provider"
+    return 0
+  fi
+
+  # Handle --regions: list available regions and exit
+  if [[ "$list_regions" == "true" ]]; then
+    show_command_header "nself deploy provision" "Available Regions: $provider"
+    printf "\n"
+    provider_list_regions "$provider"
+    return 0
+  fi
+
+  # Validate size
+  if ! provider_validate_size "$size"; then
+    cli_error "Invalid size: $size"
+    cli_info "Valid sizes: tiny, small, medium, large, xlarge"
+    cli_info "Run: nself deploy provision $provider --sizes"
+    return 1
+  fi
+
+  # Resolve server name from PROJECT_NAME if not provided
+  if [[ -z "$server_name" ]]; then
+    local project_name="${PROJECT_NAME:-nself}"
+    server_name="${project_name}-server"
+  fi
+
+  # Resolve API token: --token flag > env vars > hcloud context
+  _provision_resolve_token "$provider" "$api_token"
+
   show_command_header "nself deploy provision" "Infrastructure Provisioning"
   printf "\n"
 
+  # Get cost estimate
+  local cost_range=""
+  cost_range=$(provider_estimate_cost "$provider" "$size" 2>/dev/null || printf "N/A")
+
+  # Show provisioning plan
   cli_section "Provisioning Plan"
-  printf "  Provider: %s\n" "$provider"
-  printf "  Size:     %s\n" "$size"
-  printf "  Region:   %s\n" "${region:-default}"
+  local size_specs
+  size_specs=$(provider_normalize_size "$size" "all")
+  local vcpu ram disk
+  vcpu=$(provider_normalize_size "$size" "vcpu")
+  ram=$(provider_normalize_size "$size" "ram")
+  disk=$(provider_normalize_size "$size" "disk")
+
+  printf "  Provider:    %s\n" "$provider"
+  printf "  Server:      %s\n" "$server_name"
+  printf "  Size:        %s (%s vCPU, %s MB RAM, %s GB disk)\n" "$size" "$vcpu" "$ram" "$disk"
+  printf "  Region:      %s\n" "${region:-default}"
+  if [[ -n "$ssh_key" ]]; then
+    printf "  SSH Key:     %s\n" "$ssh_key"
+  fi
+  printf "  Est. Cost:   ~\$%s/month\n" "$cost_range"
   printf "\n"
 
-  if [[ "$dry_run" == "true" ]]; then
-    cli_info "Dry run mode - showing what would be created"
-    return 0
-  fi
-
+  # Handle --estimate: show cost only
   if [[ "$estimate_only" == "true" ]]; then
-    cli_info "Cost estimate: \$XX/month"
+    cli_section "Cost Details"
+    printf "  Size '%s' on %s: ~\$%s/month\n" "$size" "$provider" "$cost_range"
+    printf "\n"
+    cli_info "Compare all providers: nself deploy provision <provider> --sizes"
     return 0
   fi
 
-  # TODO (v1.0+): Implement provisioning logic (or document manual steps)
-  # See: .ai/roadmap/v1.0/deferred-features.md (DEPLOY-001)
+  # Handle --dry-run: show plan only
+  if [[ "$dry_run" == "true" ]]; then
+    cli_info "Dry run mode - no resources will be created"
+    printf "\n"
+    cli_info "Remove --dry-run to provision this server"
+    return 0
+  fi
 
-  cli_success "Provisioning complete"
+  # Confirm before provisioning (this creates real infrastructure)
+  printf "  This will create a real server and incur charges.\n"
+  printf "  Continue? [y/N] "
+  local confirm=""
+  read -r confirm
+  if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+    cli_info "Provisioning cancelled"
+    return 0
+  fi
+  printf "\n"
+
+  # Provision the server
+  cli_info "Provisioning $provider server: $server_name ($size)..."
+
+  local provision_args="$server_name $size"
+  if [[ -n "$region" ]]; then
+    provision_args="$server_name $size $region"
+  fi
+
+  if provider_provision "$provider" $provision_args; then
+    printf "\n"
+
+    # Get the server IP
+    local server_ip=""
+    server_ip=$(provider_get_ip "$provider" "$server_name" 2>/dev/null || printf "")
+
+    if [[ -n "$server_ip" ]]; then
+      cli_success "Server provisioned successfully"
+      printf "\n"
+      cli_section "Server Details"
+      printf "  Name:    %s\n" "$server_name"
+      printf "  IP:      %s\n" "$server_ip"
+      printf "  Provider: %s\n" "$provider"
+      printf "\n"
+
+      # Save server info to local state
+      _provision_save_server "$server_name" "$provider" "$server_ip" "$size" "$region"
+
+      cli_section "Next Steps"
+      printf "  1. Point your domain DNS to %s\n" "$server_ip"
+      printf "  2. Initialize the server:\n"
+      printf "     nself deploy server init root@%s --domain YOUR_DOMAIN\n" "$server_ip"
+      printf "  3. Deploy your project:\n"
+      printf "     nself deploy staging  (or production)\n"
+    else
+      cli_success "Server provisioned (check provider console for details)"
+    fi
+  else
+    cli_error "Provisioning failed"
+    return 1
+  fi
+}
+
+# Resolve API token for a provider from --token flag, env vars, or existing config
+_provision_resolve_token() {
+  local provider="$1"
+  local explicit_token="$2"
+
+  # Explicit --token flag takes priority
+  if [[ -n "$explicit_token" ]]; then
+    case "$provider" in
+      hetzner)
+        export HCLOUD_TOKEN="$explicit_token"
+        ;;
+      digitalocean | do)
+        export DIGITALOCEAN_ACCESS_TOKEN="$explicit_token"
+        ;;
+      linode)
+        export LINODE_TOKEN="$explicit_token"
+        ;;
+      vultr)
+        export VULTR_API_KEY="$explicit_token"
+        ;;
+      aws)
+        # AWS uses key pairs, not single token — explicit token not applicable
+        cli_warning "AWS uses key pairs. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY instead."
+        ;;
+      *)
+        # Generic: set as provider-specific env var
+        local upper_provider
+        upper_provider=$(printf '%s' "$provider" | tr '[:lower:]' '[:upper:]')
+        export "${upper_provider}_API_TOKEN=$explicit_token"
+        ;;
+    esac
+    return 0
+  fi
+
+  # Check for project-specific env vars (e.g., HETZNER_CLAWDE_TOKEN, HETZNER_NSELF_TOKEN)
+  case "$provider" in
+    hetzner)
+      # Priority: HCLOUD_TOKEN > HETZNER_*_TOKEN vars from .env or vault
+      if [[ -z "${HCLOUD_TOKEN:-}" ]]; then
+        # Check for project-specific tokens loaded from env cascade
+        local project_name="${PROJECT_NAME:-}"
+        if [[ -n "$project_name" ]]; then
+          local upper_project
+          upper_project=$(printf '%s' "$project_name" | tr '[:lower:]' '[:upper:]')
+          local project_token_var="HETZNER_${upper_project}_TOKEN"
+          local project_token="${!project_token_var:-}"
+          if [[ -n "$project_token" ]]; then
+            export HCLOUD_TOKEN="$project_token"
+            return 0
+          fi
+        fi
+        # Fallback: check for generic HETZNER_TOKEN
+        if [[ -n "${HETZNER_TOKEN:-}" ]]; then
+          export HCLOUD_TOKEN="$HETZNER_TOKEN"
+        fi
+      fi
+      ;;
+  esac
+}
+
+# Save provisioned server info to local state
+_provision_save_server() {
+  local name="$1"
+  local provider="$2"
+  local ip="$3"
+  local size="$4"
+  local region="${5:-default}"
+
+  mkdir -p "$SERVERS_DIR"
+
+  # Append server entry (simple format — one line per server)
+  local timestamp
+  timestamp=$(date +%Y-%m-%dT%H:%M:%S)
+  printf '{"name":"%s","provider":"%s","ip":"%s","size":"%s","region":"%s","created":"%s"}\n' \
+    "$name" "$provider" "$ip" "$size" "$region" "$timestamp" >>"$SERVERS_FILE"
 }
 
 # =============================================================================

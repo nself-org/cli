@@ -780,6 +780,20 @@ generate_custom_routes() {
         local cs_port_var="CS_${i}_PORT"
         local cs_port="${!cs_port_var:-$((8000 + i))}"
 
+        # Check if WebSocket support is enabled
+        local cs_ws_var="CS_${i}_WEBSOCKET"
+        local cs_ws="${!cs_ws_var:-false}"
+
+        # Build WebSocket headers block if enabled
+        local ws_headers=""
+        local ws_timeout="60s"
+        if [[ "$cs_ws" == "true" ]]; then
+          ws_headers="        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_cache_bypass \$http_upgrade;"
+          ws_timeout="86400"
+        fi
+
         cat >"nginx/sites/custom-${cs_name}.conf" <<EOF
 # Custom Service: $cs_name
 server {
@@ -793,15 +807,16 @@ server {
     location / {
         proxy_pass http://${cs_name}:${cs_port};
         proxy_http_version 1.1;
-        proxy_set_header Host \$host;
+${ws_headers:+${ws_headers}
+}        proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
 
-        # API timeouts
+        # Timeouts
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+        proxy_read_timeout ${ws_timeout};
     }
 
     # Health check endpoint
