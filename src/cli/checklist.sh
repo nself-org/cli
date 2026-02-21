@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # checklist.sh - Production readiness checklist
-# Part of nself v0.9.8 - Production Features
+# Part of nself v0.9.9 - Security Hardening
 
 set -euo pipefail
 
