@@ -680,6 +680,6 @@ AND (tablename LIKE 'billing_%' OR tablename LIKE 'whitelabel_%');
 ## Support
 
 For issues or questions about RLS:
-- GitHub Issues: https://github.com/acamarata/nself/issues
+- GitHub Issues: https://github.com/nself-org/cli/issues
 - Documentation: https://docs.nself.org
 - Community: https://discord.gg/nself

@@ -405,8 +405,8 @@ chmod +x setup-branding.sh
 ## Getting Help
 
 - **Documentation**: https://docs.nself.org/whitelabel
-- **Examples**: https://github.com/acamarata/nself/tree/main/src/examples/whitelabel
-- **Issues**: https://github.com/acamarata/nself/issues
+- **Examples**: https://github.com/nself-org/cli/tree/main/src/examples/whitelabel
+- **Issues**: https://github.com/nself-org/cli/issues
 - **Discord**: https://discord.gg/nself
 
 ---

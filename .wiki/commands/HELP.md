@@ -64,8 +64,8 @@ Help output includes:
 
 For detailed documentation:
 
-- **Wiki**: https://github.com/acamarata/nself/wiki
-- **Commands**: https://github.com/acamarata/nself/wiki/commands/COMMANDS
+- **Wiki**: https://github.com/nself-org/cli/wiki
+- **Commands**: https://github.com/nself-org/cli/wiki/commands/COMMANDS
 
 ---
 

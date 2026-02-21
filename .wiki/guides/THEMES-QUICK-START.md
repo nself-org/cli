@@ -428,7 +428,7 @@ nself whitelabel theme activate <name> --tenant=<id> # Activate for tenant
 
 - **Documentation**: `docs/whitelabel/THEMES.md`
 - **Tests**: `src/tests/unit/test-whitelabel-themes.sh`
-- **Issues**: https://github.com/acamarata/nself/issues
+- **Issues**: https://github.com/nself-org/cli/issues
 - **Community**: https://community.nself.org
 
 ## License

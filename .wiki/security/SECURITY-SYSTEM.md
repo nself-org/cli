@@ -507,7 +507,7 @@ Security features integrate with:
 
 For issues and questions:
 - Documentation: https://docs.nself.org/security
-- GitHub Issues: https://github.com/acamarata/nself/issues
+- GitHub Issues: https://github.com/nself-org/cli/issues
 - Discord: https://discord.gg/nself
 
 ## License

@@ -15,7 +15,7 @@ Guide for contributing to ɳSelf development.
 
 ```bash
 # Clone repository
-git clone https://github.com/acamarata/nself.git
+git clone https://github.com/nself-org/cli.git
 cd nself
 
 # Install dependencies
@@ -241,9 +241,9 @@ Brief description of changes
 
 ### Getting Help
 
-- [GitHub Discussions](https://github.com/acamarata/nself/discussions)
+- [GitHub Discussions](https://github.com/nself-org/cli/discussions)
 - [Discord Community](https://discord.gg/nself)
-- [Issue Tracker](https://github.com/acamarata/nself/issues)
+- [Issue Tracker](https://github.com/nself-org/cli/issues)
 
 ### Contributing Areas
 

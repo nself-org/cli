@@ -545,11 +545,11 @@ A successful cross-platform implementation has:
 
 ## Additional Resources
 
-- [platform-compat.sh](https://github.com/acamarata/nself/blob/main/src/lib/utils/platform-compat.sh) - Compatibility utilities (source code)
-- [test-init.yml](https://github.com/acamarata/nself/blob/main/.github/workflows/test-init.yml) - CI workflow configuration (source code)
+- [platform-compat.sh](https://github.com/nself-org/cli/blob/main/src/lib/utils/platform-compat.sh) - Compatibility utilities (source code)
+- [test-init.yml](https://github.com/nself-org/cli/blob/main/.github/workflows/test-init.yml) - CI workflow configuration (source code)
 - [CONTRIBUTING.md](CONTRIBUTING.md) - General contribution guidelines
 - [Bash 3.2 Documentation](https://www.gnu.org/software/bash/manual/bash-3.2.0.html)
 
 ---
 
-**Questions?** Open an issue at https://github.com/acamarata/nself/issues
+**Questions?** Open an issue at https://github.com/nself-org/cli/issues

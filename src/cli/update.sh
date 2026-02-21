@@ -17,7 +17,7 @@ source "$SCRIPT_DIR/../lib/hooks/pre-command.sh"
 source "$SCRIPT_DIR/../lib/hooks/post-command.sh"
 
 # Constants
-GITHUB_REPO_OWNER="acamarata"
+GITHUB_REPO_OWNER="nself-org"
 GITHUB_REPO_NAME="nself"
 DOCKER_IMAGE="acamarata/nself-admin"
 

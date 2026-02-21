@@ -44,25 +44,25 @@ esac
 case "$DISTRO" in
   ubuntu|debian|raspbian)
     echo "Detected Debian-based system. Installing nself v${NSELF_VERSION}..."
-    curl -sSL "https://raw.githubusercontent.com/acamarata/nself/v${NSELF_VERSION}/releases/v${NSELF_VERSION}/install-debian.sh" | bash
+    curl -sSL "https://raw.githubusercontent.com/nself-org/cli/v${NSELF_VERSION}/releases/v${NSELF_VERSION}/install-debian.sh" | bash
     ;;
   rhel|centos|fedora|rocky|almalinux)
     echo "Detected RHEL-based system. Installing nself v${NSELF_VERSION}..."
-    curl -sSL "https://raw.githubusercontent.com/acamarata/nself/v${NSELF_VERSION}/releases/v${NSELF_VERSION}/install-rhel.sh" | bash
+    curl -sSL "https://raw.githubusercontent.com/nself-org/cli/v${NSELF_VERSION}/releases/v${NSELF_VERSION}/install-rhel.sh" | bash
     ;;
   macos)
     echo "Detected macOS. Installing nself v${NSELF_VERSION}..."
     if command -v brew >/dev/null 2>&1; then
       echo "Using Homebrew..."
-      brew tap acamarata/nself
+      brew tap nself-org/nself
       brew install nself
     else
       echo "Homebrew not found. Using universal installer..."
-      curl -sSL "https://raw.githubusercontent.com/acamarata/nself/v${NSELF_VERSION}/releases/v${NSELF_VERSION}/install.sh" | bash
+      curl -sSL "https://raw.githubusercontent.com/nself-org/cli/v${NSELF_VERSION}/releases/v${NSELF_VERSION}/install.sh" | bash
     fi
     ;;
   *)
     echo "Using universal installer for nself v${NSELF_VERSION}..."
-    curl -sSL "https://raw.githubusercontent.com/acamarata/nself/v${NSELF_VERSION}/releases/v${NSELF_VERSION}/install.sh" | bash
+    curl -sSL "https://raw.githubusercontent.com/nself-org/cli/v${NSELF_VERSION}/releases/v${NSELF_VERSION}/install.sh" | bash
     ;;
 esac

@@ -350,4 +350,4 @@ nself status
 
 ---
 
-> **Need a new template?** [Submit a feature request](https://github.com/acamarata/nself/issues) or contribute your own template following the existing patterns.
+> **Need a new template?** [Submit a feature request](https://github.com/nself-org/cli/issues) or contribute your own template following the existing patterns.

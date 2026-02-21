@@ -29,7 +29,7 @@ Updates the Homebrew formula for macOS/Linux distribution.
 ```
 
 **Prerequisites:**
-- Homebrew tap repository (e.g., `acamarata/homebrew-nself`)
+- Homebrew tap repository (e.g., `nself-org/homebrew-nself`)
 - Homebrew installed locally for testing
 
 ### 🐳 update-docker.sh

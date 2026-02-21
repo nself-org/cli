@@ -1055,7 +1055,7 @@ nself restart
 ## Support & Resources
 
 ### nself Community
-- **GitHub**: https://github.com/acamarata/nself
+- **GitHub**: https://github.com/nself-org/cli
 - **Discord**: https://discord.gg/nself
 - **Docs**: https://nself.org/docs
 

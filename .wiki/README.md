@@ -442,9 +442,9 @@ We welcome contributions! Whether it's bug reports, feature requests, documentat
 
 ## Links
 
-- **GitHub**: [github.com/acamarata/nself](https://github.com/acamarata/nself)
-- **Issues**: [Report bugs](https://github.com/acamarata/nself/issues)
-- **Discussions**: [Ask questions](https://github.com/acamarata/nself/discussions)
+- **GitHub**: [github.com/nself-org/cli](https://github.com/nself-org/cli)
+- **Issues**: [Report bugs](https://github.com/nself-org/cli/issues)
+- **Discussions**: [Ask questions](https://github.com/nself-org/cli/discussions)
 - **Plugin Registry**: [plugins.nself.org](https://plugins.nself.org)
 - **Commands**: [Top-level command index](COMMANDS.md)
 - **Roadmap**: [Future plans](releases/ROADMAP.md)

@@ -529,8 +529,8 @@ nself <command> --help
 ```
 
 ### Community
-- GitHub Issues: [github.com/acamarata/nself/issues](https://github.com/acamarata/nself/issues)
-- Discussions: [github.com/acamarata/nself/discussions](https://github.com/acamarata/nself/discussions)
+- GitHub Issues: [github.com/nself-org/cli/issues](https://github.com/nself-org/cli/issues)
+- Discussions: [github.com/nself-org/cli/discussions](https://github.com/nself-org/cli/discussions)
 
 ---
 

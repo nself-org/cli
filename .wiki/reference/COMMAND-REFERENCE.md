@@ -791,8 +791,8 @@ nself version --check                  # Check updates
 ```
 
 **Documentation:**
-- GitHub: https://github.com/acamarata/nself
-- Wiki: https://github.com/acamarata/nself/wiki
+- GitHub: https://github.com/nself-org/cli
+- Wiki: https://github.com/nself-org/cli/wiki
 - Complete Reference: [docs/commands/COMMANDS.md](../commands/COMMANDS.md)
 
 ---

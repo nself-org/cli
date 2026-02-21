@@ -490,7 +490,7 @@ Save as PDF for quick reference on mobile devices.
 
 ## Additional Resources
 
-- **Full Documentation:** [docs.nself.org](https://github.com/acamarata/nself/wiki)
+- **Full Documentation:** [docs.nself.org](https://github.com/nself-org/cli/wiki)
 - **Command Reference:** [docs/commands/COMMAND-TREE-V1.md](../commands/COMMAND-TREE-V1.md)
 - **Examples:** [Examples](../examples/README.md)
 - **Tutorials:** [Tutorials](../tutorials/README.md)

@@ -6,7 +6,7 @@
 set -e
 
 VERSION="${1:-}"
-DOCKER_REPO="acamarata/nself"
+DOCKER_REPO="nself-org/cli"
 PLATFORMS="linux/amd64,linux/arm64"
 
 if [[ -z "$VERSION" ]]; then
@@ -73,7 +73,7 @@ WORKDIR /workspace
 LABEL org.opencontainers.image.title="nself" \
       org.opencontainers.image.description="Self-hosted infrastructure manager" \
       org.opencontainers.image.url="https://nself.org" \
-      org.opencontainers.image.source="https://github.com/acamarata/nself" \
+      org.opencontainers.image.source="https://github.com/nself-org/cli" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.vendor="nself" \
       org.opencontainers.image.licenses="MIT"

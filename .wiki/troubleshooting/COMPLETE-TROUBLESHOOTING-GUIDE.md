@@ -1134,7 +1134,7 @@ nself logs -f --timestamps
    ```
 
 4. **Search existing issues:**
-   - GitHub: https://github.com/acamarata/nself/issues
+   - GitHub: https://github.com/nself-org/cli/issues
    - Discord: https://discord.gg/nself
 
 ### Filing a Bug Report

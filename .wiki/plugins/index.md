@@ -523,7 +523,7 @@ nself plugin list --category devops
 | Square | Billing | POS and payments | Q3 2026 |
 | Airtable | Productivity | Spreadsheet/database sync | Q3 2026 |
 
-See the [plugin roadmap](https://github.com/acamarata/nself-plugins/blob/main/docs/PLANNED.md) for the full list.
+See the [plugin roadmap](https://github.com/nself-org/plugins/blob/main/docs/PLANNED.md) for the full list.
 
 ---
 
@@ -601,9 +601,9 @@ Topics covered:
 
 ## External Resources
 
-- [Plugin Registry](https://github.com/acamarata/nself-plugins) - Official plugin repository
+- [Plugin Registry](https://github.com/nself-org/plugins) - Official plugin repository
 - [Plugin API](https://plugins.nself.org) - Registry API endpoint
-- [Plugin Roadmap](https://github.com/acamarata/nself-plugins/blob/main/docs/PLANNED.md) - Upcoming plugins
+- [Plugin Roadmap](https://github.com/nself-org/plugins/blob/main/docs/PLANNED.md) - Upcoming plugins
 
 ---
 

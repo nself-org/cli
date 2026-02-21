@@ -600,5 +600,5 @@ seed_token_<uuid>
 ---
 
 **Questions? Issues?**
-- GitHub: https://github.com/acamarata/nself/issues
+- GitHub: https://github.com/nself-org/cli/issues
 - Docs: https://docs.nself.org

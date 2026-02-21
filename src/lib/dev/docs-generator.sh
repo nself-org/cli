@@ -208,7 +208,7 @@ Official SDKs are available for:
 ## Support
 
 For issues or questions:
-- GitHub: https://github.com/acamarata/nself
+- GitHub: https://github.com/nself-org/cli
 - Documentation: https://docs.nself.org
 EOF
 

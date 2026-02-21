@@ -454,11 +454,12 @@ nself auth config --set mfa_required=true
 |----------|--------|-------------|
 | **Google** | ✅ Fully supported | [Google OAuth Setup](../guides/OAUTH-SETUP.md#google) |
 | **GitHub** | ✅ Fully supported | [GitHub OAuth Setup](../guides/OAUTH-SETUP.md#github) |
-| **Apple** | ✅ Fully supported | [Apple OAuth Setup](../guides/OAUTH-SETUP.md#apple) |
-| **Facebook** | 🔄 Planned | Coming soon |
-| **Microsoft** | 🔄 Planned | Coming soon |
-| **Twitter/X** | 🔄 Planned | Coming soon |
-| **LinkedIn** | 🔄 Planned | Coming soon |
+| **Microsoft** | ✅ Fully supported | [Microsoft OAuth Setup](../guides/OAUTH-SETUP.md#microsoft) |
+| **Slack** | ✅ Fully supported | [Slack OAuth Setup](../guides/OAUTH-SETUP.md#slack) |
+| **Apple** | 🔄 Planned (v1.0) | Implementation in progress |
+| **Facebook** | 🔄 Planned (v1.0+) | Awaiting implementation |
+| **Twitter/X** | 🔄 Planned (v1.0+) | Awaiting implementation |
+| **LinkedIn** | 🔄 Planned (v1.0+) | Awaiting implementation |
 
 ---
 

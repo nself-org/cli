@@ -36,7 +36,7 @@ All running in Docker containers on your own infrastructure.
 curl -sSL https://install.nself.org | bash
 
 # Or via Homebrew (macOS)
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 
 # Verify installation
@@ -245,8 +245,8 @@ nself help db
 - **[FAQ](../getting-started/FAQ.md)** - Common questions
 - **[Troubleshooting](../guides/TROUBLESHOOTING.md)** - Common issues
 - **[Doctor Command](../commands/DOCTOR.md)** - Automated diagnostics
-- **[GitHub Issues](https://github.com/acamarata/nself/issues)** - Report bugs
-- **[GitHub Discussions](https://github.com/acamarata/nself/discussions)** - Ask questions
+- **[GitHub Issues](https://github.com/nself-org/cli/issues)** - Report bugs
+- **[GitHub Discussions](https://github.com/nself-org/cli/discussions)** - Ask questions
 
 ## Platform Requirements
 

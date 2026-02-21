@@ -12,7 +12,7 @@ set -e
 
 # Configuration
 NSELF_VERSION="0.3.9"
-NSELF_REPO="acamarata/nself"
+NSELF_REPO="nself-org/cli"
 INSTALL_DIR="${NSELF_HOME:-/usr/local/nself}"
 BIN_DIR="/usr/local/bin"
 GITHUB_URL="https://github.com/${NSELF_REPO}"
@@ -187,8 +187,8 @@ main() {
   echo "  nself build"
   echo "  nself start"
   echo ""
-  echo "Documentation: https://github.com/acamarata/nself/docs/"
-  echo "Report issues: https://github.com/acamarata/nself/issues"
+  echo "Documentation: https://github.com/nself-org/cli/docs/"
+  echo "Report issues: https://github.com/nself-org/cli/issues"
   echo ""
 }
 

@@ -1520,4 +1520,4 @@ Organizations in nself provide a powerful, flexible system for managing workspac
 
 By combining these elements, you can implement enterprise-grade access control tailored to your specific needs.
 
-For questions or support, refer to the [nself documentation](https://nself.org) or open an issue on [GitHub](https://github.com/acamarata/nself).
+For questions or support, refer to the [nself documentation](https://nself.org) or open an issue on [GitHub](https://github.com/nself-org/cli).

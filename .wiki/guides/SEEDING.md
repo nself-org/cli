@@ -740,5 +740,5 @@ mv 10_products.sql 002_products.sql
 ---
 
 **Questions? Issues?**
-- GitHub: https://github.com/acamarata/nself/issues
+- GitHub: https://github.com/nself-org/cli/issues
 - Docs: https://docs.nself.org

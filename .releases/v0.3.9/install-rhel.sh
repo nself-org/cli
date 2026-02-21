@@ -7,7 +7,7 @@
 set -e
 
 NSELF_VERSION="0.3.9"
-NSELF_REPO="acamarata/nself"
+NSELF_REPO="nself-org/cli"
 GITHUB_URL="https://github.com/${NSELF_REPO}"
 
 # Colors

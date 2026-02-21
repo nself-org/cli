@@ -477,7 +477,7 @@ psql $DATABASE_URL -c "SELECT 1"
 
 ## Complete Example Repository
 
-See the [nself-chat](https://github.com/acamarata/nself-chat) repository for a complete working example with:
+See the [nself-chat](https://github.com/nself-org/cli-chat) repository for a complete working example with:
 - File uploads
 - Drag & drop
 - Image previews
@@ -488,7 +488,7 @@ See the [nself-chat](https://github.com/acamarata/nself-chat) repository for a c
 
 Need help?
 - [Documentation](https://docs.nself.org)
-- [GitHub Issues](https://github.com/acamarata/nself/issues)
+- [GitHub Issues](https://github.com/nself-org/cli/issues)
 - [Discord Community](https://discord.gg/nself)
 
 ## What's Next?

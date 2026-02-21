@@ -50,7 +50,7 @@ nself version
 ### Alternative: Manual installation
 
 ```bash
-git clone https://github.com/acamarata/nself.git ~/.nself
+git clone https://github.com/nself-org/cli.git ~/.nself
 echo 'export PATH="$PATH:$HOME/.nself/bin"' >> ~/.bashrc
 source ~/.bashrc
 ```
@@ -812,7 +812,7 @@ PGBOUNCER_ENABLED=true nself build
 ## Support
 
 - **Documentation**: https://docs.nself.org
-- **GitHub Issues**: https://github.com/acamarata/nself/issues
+- **GitHub Issues**: https://github.com/nself-org/cli/issues
 - **Discord**: https://discord.gg/nself
 - **Email**: support@nself.org
 

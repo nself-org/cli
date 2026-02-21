@@ -17,7 +17,7 @@ set -e
 DEFAULT_INSTALL_MODE="user"  # user, system, docker, portable
 DEFAULT_INSTALL_DIR="$HOME/.nself"
 DEFAULT_BRANCH="main"
-DEFAULT_REPO="acamarata/nself"
+DEFAULT_REPO="nself-org/cli"
 NSELF_VERSION="${NSELF_VERSION:-}"  # Allow version override
 FULL_INSTALL="${FULL_INSTALL:-false}"  # Install all files including examples, scripts, tests
 

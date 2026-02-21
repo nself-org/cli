@@ -6,7 +6,7 @@ All package files have been prepared for the v0.4.0 release across multiple plat
 
 ### Step 1: Create GitHub Release (Required)
 
-1. Go to: https://github.com/acamarata/nself/releases/new
+1. Go to: https://github.com/nself-org/cli/releases/new
 2. Tag: `v0.4.0` (already created and pushed)
 3. Title: `nself v0.4.0 - Production-Ready Release`
 4. Description: Use the release notes provided
@@ -14,21 +14,21 @@ All package files have been prepared for the v0.4.0 release across multiple plat
 6. Publish release
 
 After publishing, GitHub will automatically create the source tarball at:
-`https://github.com/acamarata/nself/archive/refs/tags/v0.4.0.tar.gz`
+`https://github.com/nself-org/cli/archive/refs/tags/v0.4.0.tar.gz`
 
 ### Step 2: Calculate SHA256 for Homebrew
 
 Once the GitHub release is published, calculate the SHA256:
 
 ```bash
-curl -sL "https://github.com/acamarata/nself/archive/refs/tags/v0.4.0.tar.gz" | shasum -a 256
+curl -sL "https://github.com/nself-org/cli/archive/refs/tags/v0.4.0.tar.gz" | shasum -a 256
 ```
 
 Then update `.releases/homebrew/nself.rb` with the actual SHA256 (currently shows PLACEHOLDER).
 
 ### Step 3: Update Homebrew (macOS/Linux)
 
-**Repository**: https://github.com/acamarata/homebrew-nself
+**Repository**: https://github.com/nself-org/homebrew-nself
 
 #### Option A: Automated Script
 ```bash
@@ -45,7 +45,7 @@ This will:
 #### Option B: Manual Update
 ```bash
 # Clone or update tap repository
-cd ~/homebrew-nself || git clone https://github.com/acamarata/homebrew-nself.git ~/homebrew-nself
+cd ~/homebrew-nself || git clone https://github.com/nself-org/homebrew-nself.git ~/homebrew-nself
 cd ~/homebrew-nself
 
 # Update Formula/nself.rb
@@ -56,7 +56,7 @@ git push
 
 Users install with:
 ```bash
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 ```
 
@@ -65,7 +65,7 @@ brew install nself
 - **Version**: 0.4.0
 - **Tag**: v0.4.0
 - **Status**: Production-Ready
-- **Source**: https://github.com/acamarata/nself/archive/refs/tags/v0.4.0.tar.gz
+- **Source**: https://github.com/nself-org/cli/archive/refs/tags/v0.4.0.tar.gz
 - **Release Notes**: See `/docs/releases/v0.4.0.md`
 
 ## Post-Release Checklist
@@ -86,8 +86,8 @@ For v0.4.0, focus on:
 
 ## Support
 
-- **GitHub**: https://github.com/acamarata/nself
-- **Issues**: https://github.com/acamarata/nself/issues
+- **GitHub**: https://github.com/nself-org/cli
+- **Issues**: https://github.com/nself-org/cli/issues
 
 ---
 

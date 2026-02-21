@@ -973,7 +973,7 @@ nself plugin stripe payout retry payout-id
 ## Support
 
 - **Documentation**: https://docs.nself.org
-- **GitHub**: https://github.com/acamarata/nself
+- **GitHub**: https://github.com/nself-org/cli
 - **Discord**: https://discord.gg/nself
 
 ---

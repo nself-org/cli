@@ -1,7 +1,7 @@
 class Nself < Formula
   desc "ɳSelf v0.9.8: Production Ready - Complete testing, documentation, and production features for v1.0 LTS"
   homepage "https://nself.org"
-  url "https://github.com/acamarata/nself/archive/refs/tags/v0.9.8.tar.gz"
+  url "https://github.com/nself-org/cli/archive/refs/tags/v0.9.8.tar.gz"
   sha256 "PLACEHOLDER_SHA256"
   license "Source-Available"
   version "0.9.8"

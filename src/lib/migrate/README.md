@@ -407,9 +407,9 @@ nself migrate from firebase --collections="users,posts,comments"
 
 ## Need Help?
 
-- **Documentation:** https://github.com/acamarata/nself/wiki/Migrations
-- **Issues:** https://github.com/acamarata/nself/issues
-- **Discussions:** https://github.com/acamarata/nself/discussions
+- **Documentation:** https://github.com/nself-org/cli/wiki/Migrations
+- **Issues:** https://github.com/nself-org/cli/issues
+- **Discussions:** https://github.com/nself-org/cli/discussions
 - **Discord:** [Coming soon]
 
 ---

@@ -46,13 +46,13 @@ curl -sSL https://install.nself.org | bash
 
 ### Homebrew (macOS)
 ```bash
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 ```
 
 ### Docker
 ```bash
-docker pull ghcr.io/acamarata/nself:0.3.9
+docker pull ghcr.io/nself-org/cli:0.3.9
 ```
 
 ## 🛠️ Components
@@ -95,9 +95,9 @@ nself status
 
 ## 📚 Documentation
 
-- [Commands Reference](https://github.com/acamarata/nself/blob/main/docs/COMMANDS.md)
-- [Installation Guide](https://github.com/acamarata/nself/blob/main/docs/INSTALLATION.md)
-- [Configuration](https://github.com/acamarata/nself/blob/main/docs/CONFIGURATION.md)
+- [Commands Reference](https://github.com/nself-org/cli/blob/main/docs/COMMANDS.md)
+- [Installation Guide](https://github.com/nself-org/cli/blob/main/docs/INSTALLATION.md)
+- [Configuration](https://github.com/nself-org/cli/blob/main/docs/CONFIGURATION.md)
 
 ## 🐛 Bug Fixes
 
@@ -112,7 +112,7 @@ nself status
 
 ## 💬 Community
 
-- GitHub Issues: [Report bugs or request features](https://github.com/acamarata/nself/issues)
+- GitHub Issues: [Report bugs or request features](https://github.com/nself-org/cli/issues)
 - Telegram: [@nself_updates](https://t.me/nself_updates)
 - Discord: Coming soon
 
@@ -126,4 +126,4 @@ MIT License - Free for personal use
 
 ---
 
-**Full Changelog**: https://github.com/acamarata/nself/compare/v0.3.8...v0.3.9
+**Full Changelog**: https://github.com/nself-org/cli/compare/v0.3.8...v0.3.9

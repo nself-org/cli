@@ -376,12 +376,12 @@ No high-priority issues currently.
 ## Contact & Support
 
 ### For Developers
-- **Issues**: https://github.com/acamarata/nself/issues
-- **Discussions**: https://github.com/acamarata/nself/discussions
-- **Pull Requests**: https://github.com/acamarata/nself/pulls
+- **Issues**: https://github.com/nself-org/cli/issues
+- **Discussions**: https://github.com/nself-org/cli/discussions
+- **Pull Requests**: https://github.com/nself-org/cli/pulls
 
 ### For Users
-- **Documentation**: https://github.com/acamarata/nself/wiki
+- **Documentation**: https://github.com/nself-org/cli/wiki
 - **Tutorials**: docs/tutorials/
 - **Examples**: docs/examples/
 

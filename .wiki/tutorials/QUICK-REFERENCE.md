@@ -406,7 +406,7 @@ https://admin.myapp.com          (Admin)
 ## Support Resources
 
 - **Docs**: https://docs.nself.org
-- **GitHub**: https://github.com/acamarata/nself
+- **GitHub**: https://github.com/nself-org/cli
 - **Discord**: https://discord.gg/nself
 - **Email**: support@nself.org
 

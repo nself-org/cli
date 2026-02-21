@@ -673,8 +673,8 @@ query {
   "author": "nself Team",
   "category": "billing",
   "minNselfVersion": "0.4.5",
-  "repository": "https://github.com/acamarata/nself-plugins",
-  "homepage": "https://github.com/acamarata/nself-plugins/tree/main/plugins/stripe",
+  "repository": "https://github.com/nself-org/plugins",
+  "homepage": "https://github.com/nself-org/plugins/tree/main/plugins/stripe",
 
   "requires": {
     "env": ["STRIPE_API_KEY"],
@@ -1031,7 +1031,7 @@ nself plugin refresh
 curl https://plugins.nself.org/health
 
 # Use fallback
-curl https://raw.githubusercontent.com/acamarata/nself-plugins/main/registry.json
+curl https://raw.githubusercontent.com/nself-org/plugins/main/registry.json
 ```
 
 ---

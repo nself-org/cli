@@ -4,7 +4,7 @@
 
 ### GitHub Release
 - **Status**: PUBLISHED
-- **URL**: https://github.com/acamarata/nself/releases/tag/v0.3.9
+- **URL**: https://github.com/nself-org/cli/releases/tag/v0.3.9
 - **Assets**: All 8 files uploaded successfully
   - nself-v0.3.9.tar.gz
   - install.sh
@@ -18,9 +18,9 @@
 ### Docker Images
 - **Status**: BUILT (Ready to push)
 - **Tags Created**:
-  - ghcr.io/acamarata/nself:0.3.9
-  - ghcr.io/acamarata/nself:latest
-  - ghcr.io/acamarata/nself:0.3
+  - ghcr.io/nself-org/cli:0.3.9
+  - ghcr.io/nself-org/cli:latest
+  - ghcr.io/nself-org/cli:0.3
 - **Tested**: ✅ Version command works
 
 ### Homebrew Tap
@@ -37,9 +37,9 @@
 echo $GITHUB_TOKEN | docker login ghcr.io -u acamarata --password-stdin
 
 # Push all tags
-docker push ghcr.io/acamarata/nself:0.3.9
-docker push ghcr.io/acamarata/nself:latest
-docker push ghcr.io/acamarata/nself:0.3
+docker push ghcr.io/nself-org/cli:0.3.9
+docker push ghcr.io/nself-org/cli:latest
+docker push ghcr.io/nself-org/cli:0.3
 ```
 
 ### 2. Publish Homebrew Tap
@@ -50,7 +50,7 @@ docker push ghcr.io/acamarata/nself:0.3
 
 # Then push the tap
 cd ~/Sites/homebrew-nself
-git remote add origin git@github.com:acamarata/homebrew-nself.git
+git remote add origin git@github.com:nself-org/homebrew-nself.git
 git push -u origin main
 ```
 
@@ -67,14 +67,14 @@ Once Docker and Homebrew are pushed:
 curl -sSL https://install.nself.org | bash
 
 # Homebrew
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 
 # Docker
-docker pull ghcr.io/acamarata/nself:0.3.9
+docker pull ghcr.io/nself-org/cli:0.3.9
 
 # Direct download
-wget https://github.com/acamarata/nself/releases/download/v0.3.9/install.sh
+wget https://github.com/nself-org/cli/releases/download/v0.3.9/install.sh
 chmod +x install.sh
 ./install.sh
 ```

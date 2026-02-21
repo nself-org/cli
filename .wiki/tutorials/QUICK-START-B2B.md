@@ -1000,7 +1000,7 @@ HASURA_GRAPHQL_RATE_LIMIT={"unique_params":"IP","max_reqs_per_min":100}
 ## Support
 
 - **Documentation**: https://docs.nself.org
-- **GitHub**: https://github.com/acamarata/nself
+- **GitHub**: https://github.com/nself-org/cli
 - **Discord**: https://discord.gg/nself
 
 ---

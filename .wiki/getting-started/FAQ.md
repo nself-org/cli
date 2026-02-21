@@ -247,7 +247,7 @@ Firebase migration is more complex due to NoSQL → SQL transformation, but nsel
 
 **Migration tools coming in v0.5.0** will automate much of this process.
 
-**[View Database Tools](../commands/DB.md)** | **[Contact for Migration Support](https://github.com/acamarata/nself/discussions)**
+**[View Database Tools](../commands/DB.md)** | **[Contact for Migration Support](https://github.com/nself-org/cli/discussions)**
 
 ---
 
@@ -436,8 +436,8 @@ nself handles SSH, Docker setup, zero-downtime deployment, and health checks aut
 - Troubleshooting: [../guides/TROUBLESHOOTING.md](../guides/TROUBLESHOOTING.md)
 
 **Community Support:**
-- GitHub Discussions: [Ask questions](https://github.com/acamarata/nself/discussions)
-- GitHub Issues: [Report bugs](https://github.com/acamarata/nself/issues)
+- GitHub Discussions: [Ask questions](https://github.com/nself-org/cli/discussions)
+- GitHub Issues: [Report bugs](https://github.com/nself-org/cli/issues)
 
 **Before Reporting:**
 ```bash
@@ -472,13 +472,13 @@ This installs to `~/.nself/` and adds to your PATH automatically.
 
 **Homebrew (macOS/Linux):**
 ```bash
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 ```
 
 **Manual Installation:**
 ```bash
-git clone https://github.com/acamarata/nself.git ~/.nself
+git clone https://github.com/nself-org/cli.git ~/.nself
 echo 'export PATH="$PATH:$HOME/.nself/bin"' >> ~/.bashrc
 source ~/.bashrc
 ```
@@ -1106,7 +1106,7 @@ More complex due to NoSQL → SQL transformation:
 **Migration assistance:**
 Automated migration tools coming in v0.5.0. Contact via GitHub Discussions for migration support.
 
-**[View Database Tools](../commands/DB.md)** | **[Community Support](https://github.com/acamarata/nself/discussions)**
+**[View Database Tools](../commands/DB.md)** | **[Community Support](https://github.com/nself-org/cli/discussions)**
 
 ---
 
@@ -1237,7 +1237,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES TO dev_readwrite;
 1. **Documentation** (you're reading it!)
    - [Quick Start Guide](Quick-Start.md)
    - [Troubleshooting](../guides/TROUBLESHOOTING.md)
-   - [Video tutorials](https://github.com/acamarata/nself#videos) (coming soon)
+   - [Video tutorials](https://github.com/nself-org/cli#videos) (coming soon)
 
 2. **Automated Diagnostics:**
    ```bash
@@ -1257,12 +1257,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES TO dev_readwrite;
    - Ask questions
    - Share solutions
    - Request features
-   - [Join discussions](https://github.com/acamarata/nself/discussions)
+   - [Join discussions](https://github.com/nself-org/cli/discussions)
 
 2. **GitHub Issues:**
    - Report bugs
    - Include `nself doctor` output
-   - [Submit issues](https://github.com/acamarata/nself/issues)
+   - [Submit issues](https://github.com/nself-org/cli/issues)
 
 **Commercial Support:**
 
@@ -1275,7 +1275,7 @@ For enterprises needing:
 
 Contact via GitHub Discussions or email (coming soon).
 
-**[View Troubleshooting Guide](../guides/TROUBLESHOOTING.md)** | **[Community](https://github.com/acamarata/nself/discussions)**
+**[View Troubleshooting Guide](../guides/TROUBLESHOOTING.md)** | **[Community](https://github.com/nself-org/cli/discussions)**
 
 ---
 

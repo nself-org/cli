@@ -510,8 +510,8 @@ services:
 - [Video Tutorial](https://youtube.com/nself-admin-tutorial)
 - [API Documentation](../architecture/API.md#admin-ui)
 - [Security Guide](../guides/SECURITY.md)
-- [Custom Widgets Guide](https://github.com/acamarata/nself-admin-widgets)
+- [Custom Widgets Guide](https://github.com/nself-org/cli-admin-widgets)
 
 ---
 
-**Need help?** Check [FAQ](../getting-started/FAQ.md) or [create an issue](https://github.com/acamarata/nself/issues)
+**Need help?** Check [FAQ](../getting-started/FAQ.md) or [create an issue](https://github.com/nself-org/cli/issues)

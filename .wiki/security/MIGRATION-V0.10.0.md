@@ -1155,7 +1155,7 @@ echo "Rollback performed at $(date)" >> /var/log/nself/rollback.log
 echo "Reason: [describe issue]" >> /var/log/nself/rollback.log
 
 # Report issue
-# https://github.com/acamarata/nself/issues
+# https://github.com/nself-org/cli/issues
 
 # Plan retry
 # - Identify root cause
@@ -1208,7 +1208,7 @@ If you encounter issues:
 1. **Check troubleshooting section** (above)
 2. **Review logs:** `docker-compose logs`
 3. **Run audit:** `nself audit security`
-4. **Check GitHub issues:** https://github.com/acamarata/nself/issues
+4. **Check GitHub issues:** https://github.com/nself-org/cli/issues
 5. **Create new issue** with:
    - Migration step where issue occurred
    - Error messages

@@ -4,16 +4,16 @@
 
 ### 1. GitHub Release ✅
 - **Status**: LIVE
-- **URL**: https://github.com/acamarata/nself/releases/tag/v0.3.9
+- **URL**: https://github.com/nself-org/cli/releases/tag/v0.3.9
 - **Assets**: All 8 files uploaded
 - **Direct Download**: Working
 
 ### 2. Homebrew (macOS) ✅
 - **Status**: LIVE
-- **Repository**: https://github.com/acamarata/homebrew-nself
+- **Repository**: https://github.com/nself-org/homebrew-nself
 - **Installation**:
 ```bash
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 ```
 
@@ -40,9 +40,9 @@ Docker images are built and tagged locally:
 - acamarata/nself:0.3.9
 - acamarata/nself:latest
 - acamarata/nself:0.3
-- ghcr.io/acamarata/nself:0.3.9
-- ghcr.io/acamarata/nself:latest
-- ghcr.io/acamarata/nself:0.3
+- ghcr.io/nself-org/cli:0.3.9
+- ghcr.io/nself-org/cli:latest
+- ghcr.io/nself-org/cli:0.3
 
 **To push to Docker Hub:**
 ```bash
@@ -63,9 +63,9 @@ docker push acamarata/nself:0.3
 ```bash
 export GITHUB_TOKEN=ghp_YOUR_TOKEN_HERE
 echo $GITHUB_TOKEN | docker login ghcr.io -u acamarata --password-stdin
-docker push ghcr.io/acamarata/nself:0.3.9
-docker push ghcr.io/acamarata/nself:latest
-docker push ghcr.io/acamarata/nself:0.3
+docker push ghcr.io/nself-org/cli:0.3.9
+docker push ghcr.io/nself-org/cli:latest
+docker push ghcr.io/nself-org/cli:0.3
 ```
 
 ## 📊 INSTALLATION METHODS AVAILABLE NOW
@@ -79,25 +79,25 @@ curl -sSL https://install.nself.org | bash
 curl -sSL https://acamarata.github.io/install.nself.org/ | bash
 
 # Direct from GitHub
-curl -sSL https://raw.githubusercontent.com/acamarata/nself/v0.3.9/releases/v0.3.9/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/nself-org/cli/v0.3.9/releases/v0.3.9/install.sh | bash
 ```
 
 ### macOS (Homebrew) ✅
 ```bash
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 ```
 
 ### Ubuntu/Debian
 ```bash
-wget https://github.com/acamarata/nself/releases/download/v0.3.9/install-debian.sh
+wget https://github.com/nself-org/cli/releases/download/v0.3.9/install-debian.sh
 chmod +x install-debian.sh
 ./install-debian.sh
 ```
 
 ### RHEL/CentOS/Fedora
 ```bash
-wget https://github.com/acamarata/nself/releases/download/v0.3.9/install-rhel.sh
+wget https://github.com/nself-org/cli/releases/download/v0.3.9/install-rhel.sh
 chmod +x install-rhel.sh
 ./install-rhel.sh
 ```
@@ -108,12 +108,12 @@ chmod +x install-rhel.sh
 docker pull acamarata/nself:0.3.9
 
 # GitHub Container Registry
-docker pull ghcr.io/acamarata/nself:0.3.9
+docker pull ghcr.io/nself-org/cli:0.3.9
 ```
 
 ### Manual
 ```bash
-wget https://github.com/acamarata/nself/archive/v0.3.9.tar.gz
+wget https://github.com/nself-org/cli/archive/v0.3.9.tar.gz
 tar -xzf v0.3.9.tar.gz
 cd nself-0.3.9
 ./install.sh
@@ -125,8 +125,8 @@ Your Telegram announcement is ready to post. Once Docker images are pushed, all 
 
 ## 🔗 LIVE URLS
 
-- **GitHub Release**: https://github.com/acamarata/nself/releases/tag/v0.3.9
-- **Homebrew Tap**: https://github.com/acamarata/homebrew-nself
+- **GitHub Release**: https://github.com/nself-org/cli/releases/tag/v0.3.9
+- **Homebrew Tap**: https://github.com/nself-org/homebrew-nself
 - **Web Installer Repo**: https://github.com/acamarata/install.nself.org
 - **Web Installer**: https://acamarata.github.io/install.nself.org/
 

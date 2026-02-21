@@ -2285,7 +2285,7 @@ If you encounter issues:
 2. Run diagnostics: `nself whitelabel diagnose`
 3. Check documentation: `nself whitelabel docs`
 4. Community forum: https://community.nself.org
-5. File issue: https://github.com/acamarata/nself/issues
+5. File issue: https://github.com/nself-org/cli/issues
 
 ---
 
@@ -2327,7 +2327,7 @@ nself whitelabel test
 ```
 
 For additional examples and templates, see:
-- GitHub: https://github.com/acamarata/nself-examples/whitelabel
+- GitHub: https://github.com/nself-org/cli-examples/whitelabel
 - Templates: https://templates.nself.org/whitelabel
 
 ---

@@ -284,13 +284,13 @@ Most answers are in the docs. Use Ctrl+F to search.
 See working code in [examples/](examples/)
 
 ### 3. Search Issues
-Someone may have asked: [GitHub Issues](https://github.com/acamarata/nself/issues)
+Someone may have asked: [GitHub Issues](https://github.com/nself-org/cli/issues)
 
 ### 4. Ask Community
-Start discussion: [GitHub Discussions](https://github.com/acamarata/nself/discussions)
+Start discussion: [GitHub Discussions](https://github.com/nself-org/cli/discussions)
 
 ### 5. Report Bug
-Found a bug? [Report it](https://github.com/acamarata/nself/issues/new)
+Found a bug? [Report it](https://github.com/nself-org/cli/issues/new)
 
 ---
 
@@ -322,16 +322,16 @@ What do you think of the examples and tutorials?
 - 💡 What should we add?
 - 🐛 Found an issue?
 
-[Share your feedback →](https://github.com/acamarata/nself/discussions)
+[Share your feedback →](https://github.com/nself-org/cli/discussions)
 
 ---
 
 ## 🔗 Important Links
 
-- **Main Documentation:** [GitHub Wiki](https://github.com/acamarata/nself/wiki)
-- **GitHub Repository:** [acamarata/nself](https://github.com/acamarata/nself)
-- **Issues & Bugs:** [GitHub Issues](https://github.com/acamarata/nself/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/acamarata/nself/discussions)
+- **Main Documentation:** [GitHub Wiki](https://github.com/nself-org/cli/wiki)
+- **GitHub Repository:** [nself-org/cli](https://github.com/nself-org/cli)
+- **Issues & Bugs:** [GitHub Issues](https://github.com/nself-org/cli/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/nself-org/cli/discussions)
 - **Examples:** [examples/](examples/)
 - **Tutorials:** [docs/tutorials/](tutorials/)
 

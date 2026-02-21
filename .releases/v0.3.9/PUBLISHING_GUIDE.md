@@ -47,7 +47,7 @@ chmod +x ./update-homebrew-tap.sh
 
 # Or manually:
 # 1. Create/update tap repository
-git clone git@github.com:acamarata/homebrew-nself.git ~/Sites/homebrew-nself
+git clone git@github.com:nself-org/homebrew-nself.git ~/Sites/homebrew-nself
 cd ~/Sites/homebrew-nself
 
 # 2. Copy and update formula
@@ -69,15 +69,15 @@ chmod +x ./push-docker-images.sh
 
 # Or manually:
 # 1. Build image
-docker build -t ghcr.io/acamarata/nself:0.3.9 .
+docker build -t ghcr.io/nself-org/cli:0.3.9 .
 
 # 2. Login to GHCR
 echo $GITHUB_TOKEN | docker login ghcr.io -u acamarata --password-stdin
 
 # 3. Push images
-docker push ghcr.io/acamarata/nself:0.3.9
-docker tag ghcr.io/acamarata/nself:0.3.9 ghcr.io/acamarata/nself:latest
-docker push ghcr.io/acamarata/nself:latest
+docker push ghcr.io/nself-org/cli:0.3.9
+docker tag ghcr.io/nself-org/cli:0.3.9 ghcr.io/nself-org/cli:latest
+docker push ghcr.io/nself-org/cli:latest
 ```
 
 ### 4. Web Installer (install.nself.org)
@@ -125,21 +125,21 @@ rpm --addsign nself-0.3.9-1.x86_64.rpm
 After publishing, verify each distribution method:
 
 ### ✅ GitHub Release
-- [ ] Release visible at https://github.com/acamarata/nself/releases/tag/v0.3.9
+- [ ] Release visible at https://github.com/nself-org/cli/releases/tag/v0.3.9
 - [ ] All assets uploaded and downloadable
 - [ ] Release notes formatted correctly
 
 ### ✅ Homebrew
 ```bash
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 nself version  # Should show 0.3.9
 ```
 
 ### ✅ Docker
 ```bash
-docker pull ghcr.io/acamarata/nself:0.3.9
-docker run --rm ghcr.io/acamarata/nself:0.3.9 version
+docker pull ghcr.io/nself-org/cli:0.3.9
+docker run --rm ghcr.io/nself-org/cli:0.3.9 version
 ```
 
 ### ✅ Quick Install
@@ -151,12 +151,12 @@ nself version  # Should show 0.3.9
 ### ✅ Direct Downloads
 ```bash
 # Debian/Ubuntu
-wget https://raw.githubusercontent.com/acamarata/nself/v0.3.9/releases/v0.3.9/install-debian.sh
+wget https://raw.githubusercontent.com/nself-org/cli/v0.3.9/releases/v0.3.9/install-debian.sh
 chmod +x install-debian.sh
 ./install-debian.sh
 
 # RHEL/CentOS
-wget https://raw.githubusercontent.com/acamarata/nself/v0.3.9/releases/v0.3.9/install-rhel.sh
+wget https://raw.githubusercontent.com/nself-org/cli/v0.3.9/releases/v0.3.9/install-rhel.sh
 chmod +x install-rhel.sh
 ./install-rhel.sh
 ```
@@ -202,15 +202,15 @@ If issues are discovered:
 3. **Docker**
    ```bash
    # Can't delete, but can update :latest tag
-   docker tag ghcr.io/acamarata/nself:0.3.8 ghcr.io/acamarata/nself:latest
-   docker push ghcr.io/acamarata/nself:latest
+   docker tag ghcr.io/nself-org/cli:0.3.8 ghcr.io/nself-org/cli:latest
+   docker push ghcr.io/nself-org/cli:latest
    ```
 
 ## Support Resources
 
-- GitHub Issues: https://github.com/acamarata/nself/issues
-- Release Notes: https://github.com/acamarata/nself/releases/tag/v0.3.9
-- Documentation: https://github.com/acamarata/nself/tree/v0.3.9/docs
+- GitHub Issues: https://github.com/nself-org/cli/issues
+- Release Notes: https://github.com/nself-org/cli/releases/tag/v0.3.9
+- Documentation: https://github.com/nself-org/cli/tree/v0.3.9/docs
 
 ## Notes
 

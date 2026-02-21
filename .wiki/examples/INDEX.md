@@ -236,7 +236,7 @@ examples/
 ### External Resources
 - **Documentation:** https://docs.nself.org
 - **Community:** https://discord.gg/nself
-- **GitHub:** https://github.com/acamarata/nself
+- **GitHub:** https://github.com/nself-org/cli
 - **Support:** support@nself.org
 
 ### Stripe Resources
@@ -254,8 +254,8 @@ examples/
 ## Contributing
 
 Found a typo or have a suggestion?
-- **Issues:** https://github.com/acamarata/nself/issues
-- **Pull Requests:** https://github.com/acamarata/nself/pulls
+- **Issues:** https://github.com/nself-org/cli/issues
+- **Pull Requests:** https://github.com/nself-org/cli/pulls
 
 ## License
 

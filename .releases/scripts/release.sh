@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-REPO="acamarata/nself"
+REPO="nself-org/cli"
 VERSION="${1:-}"
 BRANCH="main"
 

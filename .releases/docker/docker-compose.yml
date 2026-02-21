@@ -1,6 +1,6 @@
 services:
   nself:
-    image: acamarata/nself:latest
+    image: nself-org/cli:latest
     container_name: nself-cli
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

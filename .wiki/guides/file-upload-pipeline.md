@@ -738,6 +738,6 @@ Files must be > 100MB for multipart upload progress tracking. For smaller files,
 ## Support
 
 For issues or questions:
-- [GitHub Issues](https://github.com/acamarata/nself/issues)
+- [GitHub Issues](https://github.com/nself-org/cli/issues)
 - [Discord Community](https://discord.gg/nself)
 - [Documentation](https://docs.nself.org)

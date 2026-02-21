@@ -547,7 +547,7 @@ Security tests run automatically on:
 - Security issues: security@nself.org
 - General support: support@nself.org
 - Documentation: https://docs.nself.org/security
-- GitHub issues: https://github.com/acamarata/nself/issues
+- GitHub issues: https://github.com/nself-org/cli/issues
 
 ### Reporting Security Vulnerabilities
 

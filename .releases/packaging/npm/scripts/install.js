@@ -22,12 +22,12 @@ function installNself() {
     if (process.platform === 'win32') {
       // Windows installation
       console.log('For Windows, please run in WSL or use PowerShell:');
-      console.log('irm https://raw.githubusercontent.com/acamarata/nself/main/install.ps1 | iex');
+      console.log('irm https://raw.githubusercontent.com/nself-org/cli/main/install.ps1 | iex');
       return;
     }
     
     // Unix-like systems
-    execSync('curl -fsSL https://raw.githubusercontent.com/acamarata/nself/main/install.sh | bash', {
+    execSync('curl -fsSL https://raw.githubusercontent.com/nself-org/cli/main/install.sh | bash', {
       stdio: 'inherit'
     });
     
@@ -35,7 +35,7 @@ function installNself() {
   } catch (error) {
     console.error('❌ Failed to install nself:', error.message);
     console.error('Please install manually:');
-    console.error('curl -fsSL https://raw.githubusercontent.com/acamarata/nself/main/install.sh | bash');
+    console.error('curl -fsSL https://raw.githubusercontent.com/nself-org/cli/main/install.sh | bash');
     process.exit(1);
   }
 }

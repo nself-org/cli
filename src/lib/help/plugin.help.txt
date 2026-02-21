@@ -260,7 +260,7 @@ PLUGIN REGISTRY
     https://plugins.nself.org
 
   Fallback Registry:
-    https://github.com/acamarata/nself-plugins
+    https://github.com/nself-org/plugins
 
   Local Cache:
     ~/.nself/cache/plugins/registry.json
@@ -430,5 +430,5 @@ MORE INFORMATION
   Plugin Registry:   https://plugins.nself.org
   Plugin Docs:       https://docs.nself.org/plugins
   Development:       https://docs.nself.org/plugins/development
-  GitHub:            https://github.com/acamarata/nself-plugins
+  GitHub:            https://github.com/nself-org/plugins
   Support:           support@nself.org

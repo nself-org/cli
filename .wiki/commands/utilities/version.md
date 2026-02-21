@@ -92,7 +92,7 @@ nself CLI v0.9.9
 
 Latest release: v0.9.9
 Release date: 2026-02-10
-Release notes: https://github.com/acamarata/nself/releases/tag/v0.9.9
+Release notes: https://github.com/nself-org/cli/releases/tag/v0.9.9
 ```
 
 Or if update available:
@@ -201,7 +201,7 @@ nself exec redis redis-server --version
 ### Update Sources
 
 1. **GitHub Releases** (primary)
-   - https://github.com/acamarata/nself/releases
+   - https://github.com/nself-org/cli/releases
 
 2. **Homebrew** (macOS/Linux)
    - brew info nself
@@ -286,7 +286,7 @@ nself version
 
 ```bash
 # Clone
-git clone https://github.com/acamarata/nself
+git clone https://github.com/nself-org/cli
 cd nself
 
 # Build
@@ -340,4 +340,4 @@ fi
 - [Installation Guide](../../installation/README.md)
 - [Upgrade Guide](../../guides/UPGRADE.md)
 - [Changelog](../../releases/CHANGELOG.md)
-- [GitHub Releases](https://github.com/acamarata/nself/releases)
+- [GitHub Releases](https://github.com/nself-org/cli/releases)

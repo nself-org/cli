@@ -75,7 +75,7 @@ Best for: Single server, simple setup
 ssh user@production-server.com
 
 # Clone nself
-git clone https://github.com/acamarata/nself.git
+git clone https://github.com/nself-org/cli.git
 cd nself
 
 # Create production directory

@@ -139,7 +139,7 @@ nself staging sync [db|files] [--force]
 **Options:**
 - `--force, -f` - Skip confirmation
 
-**Note:** This is a placeholder command that provides guidance. Implement according to your infrastructure.
+**Note:** This subcommand outlines the recommended workflow for production-to-staging data sync. For the current implementation, use `nself deploy staging` (this command is deprecated).
 
 **Typical sync workflow:**
 1. Create production database backup

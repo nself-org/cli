@@ -18,7 +18,7 @@ This section provides introductory documentation for new users, including instal
 ### macOS
 ```bash
 # Homebrew
-brew install acamarata/nself/nself
+brew install nself-org/nself/nself
 
 # Or curl install
 curl -sSL https://install.nself.org | bash
@@ -30,7 +30,7 @@ curl -sSL https://install.nself.org | bash
 curl -sSL https://install.nself.org | bash
 
 # Or manual download
-wget https://github.com/acamarata/nself/releases/latest/download/nself-linux-amd64
+wget https://github.com/nself-org/cli/releases/latest/download/nself-linux-amd64
 ```
 
 ### Windows (WSL)
@@ -163,9 +163,9 @@ See **[FAQ](../getting-started/FAQ.md)** for more questions and answers.
 - [Troubleshooting](../guides/TROUBLESHOOTING.md)
 
 ### Community
-- [GitHub Discussions](https://github.com/acamarata/nself/discussions)
-- [GitHub Issues](https://github.com/acamarata/nself/issues)
-- [Examples Repository](https://github.com/acamarata/nself-examples)
+- [GitHub Discussions](https://github.com/nself-org/cli/discussions)
+- [GitHub Issues](https://github.com/nself-org/cli/issues)
+- [Examples Repository](https://github.com/nself-org/cli-examples)
 
 ### Help Commands
 ```bash

@@ -5,7 +5,7 @@ Install nself on your system.
 ## macOS
 
 ```bash
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 ```
 
@@ -32,7 +32,7 @@ Use Windows Subsystem for Linux and follow Linux instructions.
 ## From Source
 
 ```bash
-git clone https://github.com/acamarata/nself.git
+git clone https://github.com/nself-org/cli.git
 cd nself
 ./install.sh
 ```

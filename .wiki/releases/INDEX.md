@@ -299,12 +299,12 @@ NSELF_VERSION=v0.4.1 bash <(curl -sSL https://install.nself.org)
 | Method | Command | Platforms |
 |--------|---------|-----------|
 | **curl (Primary)** | `curl -sSL https://install.nself.org \| bash` | macOS, Linux, WSL |
-| **Homebrew** | `brew install acamarata/nself/nself` | macOS, Linux |
+| **Homebrew** | `brew install nself-org/nself/nself` | macOS, Linux |
 | **npm** | `npm install -g nself-cli` | All |
 | **apt-get** | See Debian package | Ubuntu, Debian |
 | **dnf/yum** | See RPM package | Fedora, RHEL |
 | **AUR** | `yay -S nself` | Arch Linux |
-| **Docker** | `docker pull acamarata/nself:latest` | All |
+| **Docker** | `docker pull nself-org/cli:latest` | All |
 
 ---
 
@@ -326,7 +326,7 @@ NSELF_VERSION=v0.4.1 bash <(curl -sSL https://install.nself.org)
 ### Release Notifications
 
 - **Watch Repository**: Get notified of new releases on GitHub
-- **Release Notes**: Subscribe to [Discussions](https://github.com/acamarata/nself/discussions)
+- **Release Notes**: Subscribe to [Discussions](https://github.com/nself-org/cli/discussions)
 - **Changelog**: Check [CHANGELOG.md](../CHANGELOG.md) for detailed changes
 
 ---
@@ -342,8 +342,8 @@ NSELF_VERSION=v0.4.1 bash <(curl -sSL https://install.nself.org)
 
 ## Support
 
-- **Issues**: [Report bugs](https://github.com/acamarata/nself/issues)
-- **Discussions**: [Ask questions](https://github.com/acamarata/nself/discussions)
+- **Issues**: [Report bugs](https://github.com/nself-org/cli/issues)
+- **Discussions**: [Ask questions](https://github.com/nself-org/cli/discussions)
 
 ---
 

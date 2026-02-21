@@ -42,14 +42,14 @@ curl -sSL https://install.nself.org | bash
 ### npm
 
 ```bash
-npm update -g @acamarata/nself
+npm update -g @nself-org/cli
 ```
 
 ### Manual
 
 ```bash
 # Download latest
-git clone https://github.com/acamarata/nself.git
+git clone https://github.com/nself-org/cli.git
 cd nself
 ./install.sh
 ```
@@ -88,7 +88,7 @@ If an update causes issues:
 
 ```bash
 # Homebrew
-brew install acamarata/nself/nself@0.4.7
+brew install nself-org/nself/nself@0.4.7
 
 # Manual
 git checkout v0.4.7

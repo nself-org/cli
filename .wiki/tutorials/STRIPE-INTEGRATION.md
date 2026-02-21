@@ -995,7 +995,7 @@ nself logs | grep stripe
 
 - **Stripe Support**: support@stripe.com
 - **nself Discord**: https://discord.gg/nself
-- **GitHub Issues**: https://github.com/acamarata/nself/issues
+- **GitHub Issues**: https://github.com/nself-org/cli/issues
 
 ---
 

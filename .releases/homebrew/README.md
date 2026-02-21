@@ -6,7 +6,7 @@ To install nself via Homebrew:
 
 ```bash
 # Add the tap
-brew tap acamarata/nself
+brew tap nself-org/nself
 
 # Install nself
 brew install nself
@@ -20,7 +20,7 @@ To update the formula for a new release:
 2. Update the URL to point to the new release tag
 3. Calculate the SHA256 of the release tarball:
    ```bash
-   curl -L https://github.com/acamarata/nself/archive/refs/tags/vX.X.X.tar.gz | shasum -a 256
+   curl -L https://github.com/nself-org/cli/archive/refs/tags/vX.X.X.tar.gz | shasum -a 256
    ```
 4. Update the sha256 field in the formula
 5. Test locally:

@@ -6,7 +6,7 @@
 set -e
 
 VERSION="${1:-}"
-TAP_REPO="acamarata/homebrew-nself"
+TAP_REPO="nself-org/homebrew-nself"
 FORMULA_NAME="nself"
 
 if [[ -z "$VERSION" ]]; then
@@ -25,7 +25,7 @@ cd "$TEMP_DIR"
 
 # Download release tarball to calculate SHA256
 echo "⬇️  Downloading release tarball..."
-wget -q "https://github.com/acamarata/nself/archive/refs/tags/${VERSION}.tar.gz"
+wget -q "https://github.com/nself-org/cli/archive/refs/tags/${VERSION}.tar.gz"
 SHA256=$(shasum -a 256 "${VERSION}.tar.gz" | cut -d' ' -f1)
 echo "✓ SHA256: ${SHA256}"
 
@@ -50,10 +50,10 @@ cat > "Formula/${FORMULA_NAME}.rb" << EOF
 class Nself < Formula
   desc "Self-hosted infrastructure manager for developers"
   homepage "https://nself.org"
-  url "https://github.com/acamarata/nself/archive/refs/tags/${VERSION}.tar.gz"
+  url "https://github.com/nself-org/cli/archive/refs/tags/${VERSION}.tar.gz"
   sha256 "${SHA256}"
   license "MIT"
-  head "https://github.com/acamarata/nself.git", branch: "main"
+  head "https://github.com/nself-org/cli.git", branch: "main"
 
   depends_on "docker"
   depends_on "bash" if OS.linux?
@@ -87,7 +87,7 @@ class Nself < Formula
         nself build
         nself start
       
-      Documentation: https://github.com/acamarata/nself
+      Documentation: https://github.com/nself-org/cli
     EOS
   end
 

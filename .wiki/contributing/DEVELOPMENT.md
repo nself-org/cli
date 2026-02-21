@@ -21,7 +21,7 @@ Be respectful, inclusive, and professional. We're building infrastructure tools 
 
 1. **Fork the repository**
    ```bash
-   git clone https://github.com/acamarata/nself.git
+   git clone https://github.com/nself-org/cli.git
    cd nself
    ```
 
@@ -345,8 +345,8 @@ AI agents should reference these when making changes.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/acamarata/nself/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/acamarata/nself/discussions)
+- **Issues**: [GitHub Issues](https://github.com/nself-org/cli/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/nself-org/cli/discussions)
 - **Support Development**: [Patreon](https://patreon.com/acamarata)
 
 ## License

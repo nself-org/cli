@@ -416,7 +416,7 @@ upgrade_check_updates() {
     cli_info "Checking for updates..."
 
     local latest_version
-    latest_version=$(curl -s https://api.github.com/repos/acamarata/nself/releases/latest |
+    latest_version=$(curl -s https://api.github.com/repos/nself-org/cli/releases/latest |
       grep '"tag_name"' |
       sed -E 's/.*"v?([0-9.]+)".*/\1/' 2>/dev/null || echo "")
 

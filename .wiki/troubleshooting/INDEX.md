@@ -195,7 +195,7 @@ brew update
 
 # Reinstall nself
 brew uninstall nself
-brew install acamarata/nself/nself
+brew install nself-org/nself/nself
 
 # Check version
 nself version
@@ -316,8 +316,8 @@ nself status --json
 
 ### Community Support
 
-- [GitHub Discussions](https://github.com/acamarata/nself/discussions)
-- [GitHub Issues](https://github.com/acamarata/nself/issues)
+- [GitHub Discussions](https://github.com/nself-org/cli/discussions)
+- [GitHub Issues](https://github.com/nself-org/cli/issues)
 - [Discord Community](https://discord.gg/nself)
 
 ### Reporting Bugs
@@ -341,7 +341,7 @@ nself logs > logs.txt
 nself status --verbose > status.txt
 ```
 
-Create issue at: [github.com/acamarata/nself/issues](https://github.com/acamarata/nself/issues)
+Create issue at: [github.com/nself-org/cli/issues](https://github.com/nself-org/cli/issues)
 
 ---
 

@@ -979,7 +979,7 @@ echo "All tests passed!"
 
 ### Submit to Registry
 
-Submit a pull request to the [nself-plugins repository](https://github.com/acamarata/nself-plugins):
+Submit a pull request to the [nself-plugins repository](https://github.com/nself-org/plugins):
 
 1. Fork the repository
 2. Add your plugin to `plugins/` directory

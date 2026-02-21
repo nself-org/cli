@@ -20,13 +20,13 @@
   ],
   "author": "acamarata <contact@acamarata.com>",
   "license": "MIT",
-  "homepage": "https://github.com/acamarata/nself",
+  "homepage": "https://github.com/nself-org/cli",
   "repository": {
     "type": "git",
-    "url": "https://github.com/acamarata/nself.git"
+    "url": "https://github.com/nself-org/cli.git"
   },
   "bugs": {
-    "url": "https://github.com/acamarata/nself/issues"
+    "url": "https://github.com/nself-org/cli/issues"
   },
   "engines": {
     "node": ">=14.0.0"

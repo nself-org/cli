@@ -357,7 +357,7 @@ Planned help files for additional commands:
 
 For questions or suggestions about help documentation:
 
-- Create issue: https://github.com/acamarata/nself/issues
+- Create issue: https://github.com/nself-org/cli/issues
 - Email: docs@nself.org
 - Slack: #documentation channel
 

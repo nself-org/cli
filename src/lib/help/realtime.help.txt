@@ -436,5 +436,5 @@ MORE INFORMATION
   Documentation:     https://docs.nself.org/realtime
   WebSocket API:     https://docs.nself.org/realtime/websocket-api
   Client SDKs:       https://docs.nself.org/realtime/client-sdks
-  Examples:          https://github.com/acamarata/nself/tree/main/src/examples/realtime
+  Examples:          https://github.com/nself-org/cli/tree/main/src/examples/realtime
   Support:           support@nself.org

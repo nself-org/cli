@@ -886,7 +886,7 @@ Planned features for future releases:
 For issues, questions, or contributions:
 
 - **Documentation**: https://docs.nself.org/whitelabel
-- **GitHub Issues**: https://github.com/acamarata/nself/issues
+- **GitHub Issues**: https://github.com/nself-org/cli/issues
 - **Discord**: https://discord.gg/nself
 - **Email**: support@nself.org
 

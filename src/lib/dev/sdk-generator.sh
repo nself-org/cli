@@ -844,7 +844,7 @@ setup(
     description="Official Python SDK for nself backends",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/acamarata/nself",
+    url="https://github.com/nself-org/cli",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",

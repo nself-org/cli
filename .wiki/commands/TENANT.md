@@ -522,7 +522,7 @@ For multi-tenant setup assistance:
 
 - **Documentation**: https://docs.nself.org/multi-tenant
 - **Examples**: https://docs.nself.org/multi-tenant/examples
-- **Issues**: https://github.com/acamarata/nself/issues
+- **Issues**: https://github.com/nself-org/cli/issues
 - **Support**: support@nself.org
 
 ---

@@ -233,8 +233,8 @@ Links to related tutorials and advanced topics.
 - **[Services Guide](../services/SERVICES.md)** - Service configurations
 
 ### Community
-- **[GitHub Issues](https://github.com/acamarata/nself/issues)** - Report bugs
-- **[GitHub Discussions](https://github.com/acamarata/nself/discussions)** - Ask questions
+- **[GitHub Issues](https://github.com/nself-org/cli/issues)** - Report bugs
+- **[GitHub Discussions](https://github.com/nself-org/cli/discussions)** - Ask questions
 - **[Discord](https://discord.gg/nself)** - Live chat
 
 ### Support
@@ -247,9 +247,9 @@ Links to related tutorials and advanced topics.
 
 Found an issue in a tutorial? Have a suggestion?
 
-1. **Open an issue**: [GitHub Issues](https://github.com/acamarata/nself/issues)
+1. **Open an issue**: [GitHub Issues](https://github.com/nself-org/cli/issues)
 2. **Submit a PR**: [Contributing Guide](../contributing/CONTRIBUTING.md)
-3. **Request a tutorial**: [Discussions](https://github.com/acamarata/nself/discussions)
+3. **Request a tutorial**: [Discussions](https://github.com/nself-org/cli/discussions)
 
 ---
 
@@ -271,7 +271,7 @@ Found an issue in a tutorial? Have a suggestion?
 - [ ] **Deployment: DigitalOcean** - DO deployment
 - [ ] **Deployment: Kubernetes** - K8s deployment
 
-**Want a specific tutorial?** [Request it here](https://github.com/acamarata/nself/discussions)
+**Want a specific tutorial?** [Request it here](https://github.com/nself-org/cli/discussions)
 
 ---
 

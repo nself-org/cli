@@ -1227,8 +1227,8 @@ nself deploy sync --help
 
 ### Community Support
 
-- **GitHub Issues**: https://github.com/acamarata/nself/issues
-- **Discussions**: https://github.com/acamarata/nself/discussions
+- **GitHub Issues**: https://github.com/nself-org/cli/issues
+- **Discussions**: https://github.com/nself-org/cli/discussions
 - **Discord**: https://discord.gg/nself
 
 ### Reporting Issues

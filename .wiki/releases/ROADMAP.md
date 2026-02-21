@@ -901,9 +901,9 @@ completion, interactive, docs, config
 5. Performance benchmarks
 
 ### How to Contribute
-- **GitHub**: [github.com/acamarata/nself](https://github.com/acamarata/nself)
-- **Issues**: [Report Bugs](https://github.com/acamarata/nself/issues)
-- **Discussions**: [Feature Requests & Ideas](https://github.com/acamarata/nself/discussions)
+- **GitHub**: [github.com/nself-org/cli](https://github.com/nself-org/cli)
+- **Issues**: [Report Bugs](https://github.com/nself-org/cli/issues)
+- **Discussions**: [Feature Requests & Ideas](https://github.com/nself-org/cli/discussions)
 - **Testing**: Help test new features in development
 
 ---

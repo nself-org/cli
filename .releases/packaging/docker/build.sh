@@ -2,7 +2,7 @@
 set -e
 
 VERSION="0.9.8"
-IMAGE_NAME="acamarata/nself"
+IMAGE_NAME="nself-org/cli"
 
 echo "Building Docker image for nself v${VERSION}"
 

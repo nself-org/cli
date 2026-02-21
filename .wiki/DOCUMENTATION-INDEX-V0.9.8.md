@@ -570,12 +570,12 @@ Last Updated: January 31, 2026
 ## Support
 
 **Documentation Issues:**
-- GitHub: https://github.com/acamarata/nself/issues
+- GitHub: https://github.com/nself-org/cli/issues
 - Tag: `documentation`
 
 **Questions:**
 - Discord: https://discord.gg/nself
-- Discussions: https://github.com/acamarata/nself/discussions
+- Discussions: https://github.com/nself-org/cli/discussions
 
 **Professional Support:**
 - Email: support@nself.org

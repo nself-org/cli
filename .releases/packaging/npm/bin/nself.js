@@ -39,7 +39,7 @@ function main() {
   
   if (!nselfPath) {
     console.error('Error: nself not found. Please install nself first:');
-    console.error('curl -fsSL https://raw.githubusercontent.com/acamarata/nself/main/install.sh | bash');
+    console.error('curl -fsSL https://raw.githubusercontent.com/nself-org/cli/main/install.sh | bash');
     process.exit(1);
   }
 

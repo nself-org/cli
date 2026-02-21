@@ -42,7 +42,7 @@ Complete beginners who want to understand what nself is and how to get started.
 
 *Screen: Type command*
 ```bash
-brew install acamarata/nself/nself
+brew install nself-org/nself/nself
 ```
 
 **Voiceover:**
@@ -223,8 +223,8 @@ nself deploy push production
 
 *Screen: nself logo with links*
 - Documentation: docs.nself.org
-- GitHub: github.com/acamarata/nself
-- Examples: github.com/acamarata/nself/examples
+- GitHub: github.com/nself-org/cli
+- Examples: github.com/nself-org/cli/examples
 
 ---
 

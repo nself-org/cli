@@ -236,7 +236,7 @@ Now that you have nself running, check out:
 - **Documentation**: `nself help`
 - **Command Help**: `nself help <command>`
 - **Health Check**: `nself doctor`
-- **Community**: [GitHub Issues](https://github.com/acamarata/nself/issues)
+- **Community**: [GitHub Issues](https://github.com/nself-org/cli/issues)
 
 ---
 

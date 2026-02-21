@@ -298,15 +298,15 @@ We follow a code of conduct to ensure a welcoming community:
 ### Getting Help
 
 **Documentation Issues:**
-- Open issue: [GitHub Issues](https://github.com/acamarata/nself/issues)
+- Open issue: [GitHub Issues](https://github.com/nself-org/cli/issues)
 - Tag: `documentation`
 
 **Code Questions:**
-- GitHub Discussions: [Discussions](https://github.com/acamarata/nself/discussions)
+- GitHub Discussions: [Discussions](https://github.com/nself-org/cli/discussions)
 - Tag: `question`
 
 **Bug Reports:**
-- GitHub Issues: [Issues](https://github.com/acamarata/nself/issues)
+- GitHub Issues: [Issues](https://github.com/nself-org/cli/issues)
 - Tag: `bug`
 - Include: nself version, OS, steps to reproduce
 

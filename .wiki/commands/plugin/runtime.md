@@ -426,4 +426,4 @@ nself build && nself start
 
 - [Plugin System Overview](README.md)
 - [Plugin Development Guide](/commands/plugin/README.md)
-- [nself-plugins Repository](https://github.com/acamarata/nself-plugins)
+- [nself-plugins Repository](https://github.com/nself-org/plugins)

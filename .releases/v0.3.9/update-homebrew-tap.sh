@@ -6,7 +6,7 @@
 set -e
 
 VERSION="0.3.9"
-GITHUB_USER="acamarata"
+GITHUB_USER="nself-org"
 TAP_REPO="homebrew-nself"
 
 echo "Setting up Homebrew tap for nself v${VERSION}..."
@@ -28,7 +28,7 @@ This tap provides the nself formula for Homebrew installation.
 ## Installation
 
 ```bash
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 ```
 

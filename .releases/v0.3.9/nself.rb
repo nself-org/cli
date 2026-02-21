@@ -1,7 +1,7 @@
 class Nself < Formula
   desc "Self-hosted backend platform with Hasura, Auth, Storage, and more"
   homepage "https://nself.org"
-  url "https://github.com/acamarata/nself/archive/v0.3.9.tar.gz"
+  url "https://github.com/nself-org/cli/archive/v0.3.9.tar.gz"
   sha256 "9c20d0613c6dbc08a54a252ca4a92148135099b91409734a59414dd9725d2222"
   license "MIT"
   version "0.3.9"
@@ -48,8 +48,8 @@ class Nself < Formula
         Storage: http://storage.localhost
         Admin UI: http://localhost:3100 (run 'nself admin enable')
       
-      Documentation: https://github.com/acamarata/nself/docs/
-      Report issues: https://github.com/acamarata/nself/issues
+      Documentation: https://github.com/nself-org/cli/docs/
+      Report issues: https://github.com/nself-org/cli/issues
     EOS
   end
 

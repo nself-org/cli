@@ -466,8 +466,8 @@ Once you've completed this example:
 
 ## Support
 
-- **Issues:** [GitHub Issues](https://github.com/acamarata/nself/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/acamarata/nself/discussions)
+- **Issues:** [GitHub Issues](https://github.com/nself-org/cli/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/nself-org/cli/discussions)
 
 ## License
 

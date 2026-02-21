@@ -153,8 +153,8 @@ show_general_help() {
   echo
   printf "${COLOR_DIM}LEARN MORE${COLOR_RESET}\n"
   printf "  Docs:    https://nself.org/docs\n"
-  printf "  GitHub:  https://github.com/acamarata/nself\n"
-  printf "  Issues:  https://github.com/acamarata/nself/issues\n"
+  printf "  GitHub:  https://github.com/nself-org/cli\n"
+  printf "  Issues:  https://github.com/nself-org/cli/issues\n"
   echo
 }
 

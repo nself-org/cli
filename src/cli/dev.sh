@@ -310,8 +310,8 @@ cmd_docs() {
   local section="${1:-}"
 
   # Documentation URLs
-  local WIKI_URL="https://github.com/acamarata/nself/wiki"
-  local REPO_URL="https://github.com/acamarata/nself"
+  local WIKI_URL="https://github.com/nself-org/cli/wiki"
+  local REPO_URL="https://github.com/nself-org/cli"
 
   local url="$WIKI_URL"
 

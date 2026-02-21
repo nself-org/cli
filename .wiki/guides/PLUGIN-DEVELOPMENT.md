@@ -73,7 +73,7 @@ Unlike Custom Services (CS_N) which are independent backend applications, plugin
 
 | Type | Source | Support | Quality |
 |------|--------|---------|---------|
-| **Official** | `acamarata/nself-plugins` | Full support | Production-tested |
+| **Official** | `nself-org/plugins` | Full support | Production-tested |
 | **Community** | Third-party repos | Community | Varies |
 | **Local** | Your filesystem | Self-maintained | Custom |
 
@@ -81,7 +81,7 @@ Unlike Custom Services (CS_N) which are independent backend applications, plugin
 
 The plugin registry is a centralized catalog hosted at:
 - **Primary**: `https://plugins.nself.org` (Cloudflare Worker)
-- **Fallback**: `https://raw.githubusercontent.com/acamarata/nself-plugins/main/registry.json`
+- **Fallback**: `https://raw.githubusercontent.com/nself-org/plugins/main/registry.json`
 
 Registry provides:
 - Plugin discovery and search
@@ -2734,7 +2734,7 @@ git push origin v1.0.0
 nself plugin publish --registry https://plugins.nself.org
 
 # Or manually submit PR to registry repo
-# https://github.com/acamarata/nself-plugins
+# https://github.com/nself-org/plugins
 ```
 
 Registry entry format:
@@ -3084,7 +3084,7 @@ This guide covered everything needed to create nself plugins:
 
 ### Next Steps
 
-1. Review the [Official Plugin Example](https://github.com/acamarata/nself-plugins/tree/main/plugins/nself-stripe)
+1. Review the [Official Plugin Example](https://github.com/nself-org/plugins/tree/main/plugins/nself-stripe)
 2. Use `nself plugin init` to scaffold a new plugin
 3. Test locally with `nself plugin install .`
 4. Publish to the registry when ready
@@ -3092,7 +3092,7 @@ This guide covered everything needed to create nself plugins:
 ### Resources
 
 - **Plugin Registry**: https://plugins.nself.org
-- **Official Plugins**: https://github.com/acamarata/nself-plugins
+- **Official Plugins**: https://github.com/nself-org/plugins
 - **Documentation**: https://docs.nself.org/plugins
 - **Discord**: https://discord.gg/nself
 

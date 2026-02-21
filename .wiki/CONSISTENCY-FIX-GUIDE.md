@@ -161,7 +161,7 @@ nself start
 **Find absolute links**:
 ```bash
 # Find absolute GitHub URLs
-grep -r "https://github.com/acamarata/nself/blob/main/docs" docs/ --include="*.md"
+grep -r "https://github.com/nself-org/cli/blob/main/docs" docs/ --include="*.md"
 
 # Find absolute /docs paths
 grep -r "\](/" docs/ --include="*.md"

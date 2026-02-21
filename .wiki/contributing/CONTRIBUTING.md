@@ -217,8 +217,8 @@ nself stop --volumes
 
 ### Communication
 
-- **Issues**: [Bug reports and features](https://github.com/acamarata/nself/issues)
-- **Discussions**: [Questions and ideas](https://github.com/acamarata/nself/discussions)
+- **Issues**: [Bug reports and features](https://github.com/nself-org/cli/issues)
+- **Discussions**: [Questions and ideas](https://github.com/nself-org/cli/discussions)
 
 ---
 

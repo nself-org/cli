@@ -444,5 +444,5 @@ MORE INFORMATION
   Documentation:     https://docs.nself.org/developer-tools
   SDK Reference:     https://docs.nself.org/sdk
   Testing Guide:     https://docs.nself.org/testing
-  Examples:          https://github.com/acamarata/nself/tree/main/examples
+  Examples:          https://github.com/nself-org/cli/tree/main/examples
   Support:           support@nself.org

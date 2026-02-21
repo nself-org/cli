@@ -367,7 +367,7 @@ BILLING_USAGE_TRACKING_ENABLED=true
 ## Getting Help
 
 - **Documentation:** https://docs.nself.org
-- **Examples:** https://github.com/acamarata/nself/tree/main/examples
+- **Examples:** https://github.com/nself-org/cli/tree/main/examples
 - **Community:** https://discord.gg/nself
 - **Support:** support@nself.org
 
@@ -375,8 +375,8 @@ BILLING_USAGE_TRACKING_ENABLED=true
 
 Found an issue or have a suggestion for these examples?
 
-1. Open an issue: https://github.com/acamarata/nself/issues
-2. Submit a PR: https://github.com/acamarata/nself/pulls
+1. Open an issue: https://github.com/nself-org/cli/issues
+2. Submit a PR: https://github.com/nself-org/cli/pulls
 
 ## License
 

@@ -289,7 +289,7 @@ nself help --web start
 ### Wiki Documentation
 
 Full documentation available at:
-- **GitHub Wiki**: https://github.com/acamarata/nself/wiki
+- **GitHub Wiki**: https://github.com/nself-org/cli/wiki
 - **Website**: https://nself.org/docs
 
 ## Help Topics
@@ -423,5 +423,5 @@ nself help start --no-color
 ## See Also
 
 - [Online Documentation](https://docs.nself.org)
-- [GitHub Wiki](https://github.com/acamarata/nself/wiki)
+- [GitHub Wiki](https://github.com/nself-org/cli/wiki)
 - [Quick Start Guide](../../quick-start/README.md)

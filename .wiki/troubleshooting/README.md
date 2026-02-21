@@ -261,9 +261,9 @@ nself <command> --help
 
 ### Community & Support
 
-- **GitHub Issues:** [Report bugs or request features](https://github.com/acamarata/nself/issues)
-- **Discussions:** [Ask questions](https://github.com/acamarata/nself/discussions)
-- **Examples:** [Browse example projects](https://github.com/acamarata/nself/tree/main/examples)
+- **GitHub Issues:** [Report bugs or request features](https://github.com/nself-org/cli/issues)
+- **Discussions:** [Ask questions](https://github.com/nself-org/cli/discussions)
+- **Examples:** [Browse example projects](https://github.com/nself-org/cli/tree/main/examples)
 
 ### Debugging Tips
 

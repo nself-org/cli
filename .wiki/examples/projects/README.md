@@ -189,10 +189,10 @@ See `CONTRIBUTING.md` in the root directory for guidelines.
 
 ## Support
 
-- **Documentation:** [docs.nself.org](https://github.com/acamarata/nself/wiki)
+- **Documentation:** [docs.nself.org](https://github.com/nself-org/cli/wiki)
 - **Tutorials:** [Tutorials](../../tutorials/README.md)
-- **Issues:** [GitHub Issues](https://github.com/acamarata/nself/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/acamarata/nself/discussions)
+- **Issues:** [GitHub Issues](https://github.com/nself-org/cli/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/nself-org/cli/discussions)
 
 ## License
 

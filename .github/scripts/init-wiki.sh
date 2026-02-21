@@ -6,7 +6,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DOCS_DIR="$REPO_ROOT/.wiki"
-WIKI_REPO="https://github.com/acamarata/nself.wiki.git"
+WIKI_REPO="https://github.com/nself-org/cli.wiki.git"
 WIKI_DIR="/tmp/nself-wiki-$$"
 
 if [[ ! -d "$DOCS_DIR" ]]; then

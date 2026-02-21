@@ -22,9 +22,9 @@ export GITHUB_TOKEN=ghp_YOUR_TOKEN_HERE
 echo $GITHUB_TOKEN | docker login ghcr.io -u acamarata --password-stdin
 
 # Push images
-docker push ghcr.io/acamarata/nself:0.3.9
-docker push ghcr.io/acamarata/nself:latest
-docker push ghcr.io/acamarata/nself:0.3
+docker push ghcr.io/nself-org/cli:0.3.9
+docker push ghcr.io/nself-org/cli:latest
+docker push ghcr.io/nself-org/cli:0.3
 ```
 
 ## Alternative: Use Docker Hub Instead
@@ -36,9 +36,9 @@ If you prefer Docker Hub:
 docker login -u acamarata
 
 # Tag for Docker Hub
-docker tag ghcr.io/acamarata/nself:0.3.9 acamarata/nself:0.3.9
-docker tag ghcr.io/acamarata/nself:0.3.9 acamarata/nself:latest
-docker tag ghcr.io/acamarata/nself:0.3.9 acamarata/nself:0.3
+docker tag ghcr.io/nself-org/cli:0.3.9 acamarata/nself:0.3.9
+docker tag ghcr.io/nself-org/cli:0.3.9 acamarata/nself:latest
+docker tag ghcr.io/nself-org/cli:0.3.9 acamarata/nself:0.3
 
 # Push to Docker Hub
 docker push acamarata/nself:0.3.9

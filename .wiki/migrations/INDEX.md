@@ -243,8 +243,8 @@ nself auth import-from-nhost users.json
 
 ### Community Support
 
-- [GitHub Discussions](https://github.com/acamarata/nself/discussions)
-- [Migration Examples](https://github.com/acamarata/nself-examples/migrations)
+- [GitHub Discussions](https://github.com/nself-org/cli/discussions)
+- [Migration Examples](https://github.com/nself-org/cli-examples/migrations)
 - [Discord Community](https://discord.gg/nself)
 
 ### Professional Services

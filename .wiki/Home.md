@@ -11,7 +11,7 @@
 
 *Deploy a complete backend in minutes, not days with ɳSelf.*
 
-**[Quick Start](getting-started/Quick-Start.md)** | **[Installation](getting-started/Installation.md)** | **[Commands](COMMANDS.md)** | **[Documentation](README.md)** | **[GitHub](https://github.com/acamarata/nself)**
+**[Quick Start](getting-started/Quick-Start.md)** | **[Installation](getting-started/Installation.md)** | **[Commands](COMMANDS.md)** | **[Documentation](README.md)** | **[GitHub](https://github.com/nself-org/cli)**
 
 </div>
 
@@ -33,9 +33,9 @@
 
 **Distribution:**
 ```bash
-brew install acamarata/nself/nself    # Homebrew
+brew install nself-org/nself/nself    # Homebrew
 npm install -g nself-cli              # npm
-docker pull acamarata/nself:0.9.9     # Docker
+docker pull nself-org/cli:0.9.9     # Docker
 ```
 
 **Current:** v0.9.9 (QA/Stabilization) → **Next:** v1.0.0 LTS (Q1 2026) | **[Full Roadmap](releases/ROADMAP.md)**
@@ -371,9 +371,9 @@ nself has been thoroughly audited for security vulnerabilities.
 
 ## Links
 
-- **[GitHub Repository](https://github.com/acamarata/nself)**
-- **[Report Issues](https://github.com/acamarata/nself/issues)**
-- **[Discussions](https://github.com/acamarata/nself/discussions)**
+- **[GitHub Repository](https://github.com/nself-org/cli)**
+- **[Report Issues](https://github.com/nself-org/cli/issues)**
+- **[Discussions](https://github.com/nself-org/cli/discussions)**
 - **[Plugin Registry](https://plugins.nself.org)**
 - **[Commands](COMMANDS.md)**
 - **[Roadmap](releases/ROADMAP.md)**
@@ -403,7 +403,7 @@ We welcome contributions! Whether it's bug reports, feature requests, documentat
 
 **Resources:** [Full Documentation](README.md) · [Changelog](releases/CHANGELOG.md) · [Security Audit](security/SECURITY-AUDIT.md) · [License](LICENSE.md)
 
-**Community:** [GitHub](https://github.com/acamarata/nself) · [Issues](https://github.com/acamarata/nself/issues) · [Discussions](https://github.com/acamarata/nself/discussions)
+**Community:** [GitHub](https://github.com/nself-org/cli) · [Issues](https://github.com/nself-org/cli/issues) · [Discussions](https://github.com/nself-org/cli/discussions)
 
 **Path to v1.0:** [v0.9.9 Plan](releases/v0.9.9-PLAN.md) → [v1.0 Plan](releases/v1.0.0-PLAN.md)
 

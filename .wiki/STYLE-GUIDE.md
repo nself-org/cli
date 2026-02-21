@@ -391,7 +391,7 @@ Use **relative paths** from current file:
 
 **DO NOT use**:
 - ❌ Absolute paths: `/do../getting-started/Quick-Start.md`
-- ❌ URLs: `https://github.com/acamarata/nself/blob/main/docs/...`
+- ❌ URLs: `https://github.com/nself-org/cli/blob/main/docs/...`
 
 ### External Links
 

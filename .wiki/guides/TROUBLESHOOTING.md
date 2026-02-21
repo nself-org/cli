@@ -55,7 +55,7 @@ bash: nself: command not found
 
 2. **Reinstall nself:**
    ```bash
-   curl -sSL https://raw.githubusercontent.com/acamarata/nself/main/install.sh | bash
+   curl -sSL https://raw.githubusercontent.com/nself-org/cli/main/install.sh | bash
    ```
 
 3. **Fix PATH manually:**
@@ -84,12 +84,12 @@ Permission denied
 
 1. **Install to user directory (recommended):**
    ```bash
-   curl -sSL https://raw.githubusercontent.com/acamarata/nself/main/install.sh | bash
+   curl -sSL https://raw.githubusercontent.com/nself-org/cli/main/install.sh | bash
    ```
 
 2. **System-wide installation (not recommended):**
    ```bash
-   sudo curl -sSL https://raw.githubusercontent.com/acamarata/nself/main/install.sh | bash
+   sudo curl -sSL https://raw.githubusercontent.com/nself-org/cli/main/install.sh | bash
    ```
 
 ---
@@ -672,7 +672,7 @@ nself init
 2. **Reinstall:**
    ```bash
    rm -rf ~/.nself
-   curl -sSL https://raw.githubusercontent.com/acamarata/nself/main/install.sh | bash
+   curl -sSL https://raw.githubusercontent.com/nself-org/cli/main/install.sh | bash
    ```
 
 ---
@@ -689,7 +689,7 @@ If these solutions don't resolve your issue:
    ```
 
 2. **Check GitHub Issues:**
-   https://github.com/acamarata/nself/issues
+   https://github.com/nself-org/cli/issues
 
 3. **Create a new issue with:**
    - nself version

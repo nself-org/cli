@@ -643,6 +643,6 @@ Already implemented via `user_api` zone. Uses `Authorization` header instead of 
 ## Support
 
 For issues or questions:
-- GitHub Issues: https://github.com/acamarata/nself/issues
+- GitHub Issues: https://github.com/nself-org/cli/issues
 - Documentation: https://docs.nself.org
 - Security: security@nself.org

@@ -3,15 +3,15 @@
 ## ✅ ALL DISTRIBUTION CHANNELS LIVE
 
 ### 1. GitHub Release ✅
-- **URL**: https://github.com/acamarata/nself/releases/tag/v0.3.9
+- **URL**: https://github.com/nself-org/cli/releases/tag/v0.3.9
 - **Assets**: 8 files uploaded
 - **Downloads**: Available immediately
 
 ### 2. Homebrew (macOS) ✅
-- **Tap**: https://github.com/acamarata/homebrew-nself
+- **Tap**: https://github.com/nself-org/homebrew-nself
 - **Installation**: 
   ```bash
-  brew tap acamarata/nself
+  brew tap nself-org/nself
   brew install nself
   ```
 
@@ -24,7 +24,7 @@
   ```
 
 ### 4. Linux Package Repository ✅
-- **Repository**: https://github.com/acamarata/nself-packages
+- **Repository**: https://github.com/nself-org/cli-packages
 - **GitHub Pages**: https://acamarata.github.io/nself-packages/
 - **Universal Installer**:
   ```bash
@@ -47,14 +47,14 @@
 ### macOS
 ```bash
 # Homebrew (recommended)
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 
 # Quick install
 curl -sSL https://acamarata.github.io/install.nself.org/ | bash
 
 # Manual
-wget https://github.com/acamarata/nself/releases/download/v0.3.9/install.sh
+wget https://github.com/nself-org/cli/releases/download/v0.3.9/install.sh
 bash install.sh
 ```
 
@@ -64,7 +64,7 @@ bash install.sh
 curl -sSL https://acamarata.github.io/install.nself.org/ | bash
 
 # Method 2: Direct script
-wget https://github.com/acamarata/nself/releases/download/v0.3.9/install-debian.sh
+wget https://github.com/nself-org/cli/releases/download/v0.3.9/install-debian.sh
 chmod +x install-debian.sh
 ./install-debian.sh
 
@@ -78,7 +78,7 @@ curl -sSL https://acamarata.github.io/nself-packages/install-linux.sh | bash
 curl -sSL https://acamarata.github.io/install.nself.org/ | bash
 
 # Method 2: Direct script
-wget https://github.com/acamarata/nself/releases/download/v0.3.9/install-rhel.sh
+wget https://github.com/nself-org/cli/releases/download/v0.3.9/install-rhel.sh
 chmod +x install-rhel.sh
 ./install-rhel.sh
 
@@ -104,7 +104,7 @@ curl -sSL https://acamarata.github.io/nself-packages/install-linux.sh | bash
 curl -sSL https://acamarata.github.io/nself-packages/install-linux.sh | bash
 
 # Or manual installation
-wget https://github.com/acamarata/nself/archive/v0.3.9.tar.gz
+wget https://github.com/nself-org/cli/archive/v0.3.9.tar.gz
 tar -xzf v0.3.9.tar.gz
 cd nself-0.3.9
 ./install.sh
@@ -130,7 +130,7 @@ curl -sSL https://acamarata.github.io/nself-packages/scripts/verify-installation
 ## 📊 RELEASE METRICS
 
 ### Repositories Created
-1. ✅ acamarata/homebrew-nself (Homebrew tap)
+1. ✅ nself-org/homebrew-nself (Homebrew tap)
 2. ✅ acamarata/install.nself.org (Web installer)
 3. ✅ acamarata/nself-packages (Linux packages)
 
@@ -177,8 +177,8 @@ All distribution channels are LIVE and functional. Users can install nself v0.3.
 
 ## 🔗 QUICK LINKS
 
-- **Main Release**: https://github.com/acamarata/nself/releases/tag/v0.3.9
-- **Homebrew Tap**: https://github.com/acamarata/homebrew-nself
+- **Main Release**: https://github.com/nself-org/cli/releases/tag/v0.3.9
+- **Homebrew Tap**: https://github.com/nself-org/homebrew-nself
 - **Web Installer**: https://acamarata.github.io/install.nself.org/
 - **Linux Packages**: https://acamarata.github.io/nself-packages/
 

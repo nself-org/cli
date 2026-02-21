@@ -682,5 +682,5 @@ async function secureFileUpload(file: File, userId: string) {
 ## Support
 
 For security concerns:
-- [Security Policy](https://github.com/acamarata/nself/security/policy)
+- [Security Policy](https://github.com/nself-org/cli/security/policy)
 - Email: security@nself.org

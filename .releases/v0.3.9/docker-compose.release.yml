@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   nself:
-    image: ghcr.io/acamarata/nself:0.3.9
+    image: ghcr.io/nself-org/cli:0.3.9
     container_name: nself-cli
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

@@ -208,8 +208,8 @@ Progress toward 100% coverage:
 ### CI/CD
 
 - [Coverage Workflow](../../.github/workflows/coverage.yml) - GitHub Actions
-- [Latest CI Run](https://github.com/acamarata/nself/actions/workflows/coverage.yml) - Build status
-- [Codecov Dashboard](https://codecov.io/gh/acamarata/nself) - External coverage tracking
+- [Latest CI Run](https://github.com/nself-org/cli/actions/workflows/coverage.yml) - Build status
+- [Codecov Dashboard](https://codecov.io/gh/nself-org/cli) - External coverage tracking
 
 ## Coverage Goals
 

@@ -78,7 +78,7 @@ For comprehensive plugin documentation, see:
 
 - **[Plugin Registry](https://plugins.nself.org)** - Browse all available plugins
 - **[Plugin Development Guide](development.md)** - Create your own plugins
-- **[GitHub Discussions](https://github.com/acamarata/nself/discussions)** - Request new plugins
+- **[GitHub Discussions](https://github.com/nself-org/cli/discussions)** - Request new plugins
 
 ---
 

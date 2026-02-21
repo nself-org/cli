@@ -636,4 +636,4 @@ grep "⚠ WARNING" test-report.txt | wc -l
 
 **Last Updated:** January 31, 2026
 **Maintained By:** nself Core Team
-**Questions:** See [GitHub Issues](https://github.com/acamarata/nself/issues)
+**Questions:** See [GitHub Issues](https://github.com/nself-org/cli/issues)

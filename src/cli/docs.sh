@@ -10,8 +10,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/utils/display.sh"
 
 # Documentation URLs
-WIKI_URL="https://github.com/acamarata/nself/wiki"
-REPO_URL="https://github.com/acamarata/nself"
+WIKI_URL="https://github.com/nself-org/cli/wiki"
+REPO_URL="https://github.com/nself-org/cli"
 
 show_help() {
   cat <<EOF

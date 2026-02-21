@@ -14,7 +14,7 @@ set -euo pipefail
 
 
 # Fallback to GitHub raw (when primary is unavailable)
-PLUGIN_REGISTRY_FALLBACK="https://raw.githubusercontent.com/acamarata/nself-plugins/main/registry.json"
+PLUGIN_REGISTRY_FALLBACK="https://raw.githubusercontent.com/nself-org/plugins/main/registry.json"
 
 # Cache configuration
 PLUGIN_CACHE_DIR="${NSELF_PLUGIN_CACHE:-$HOME/.nself/cache/plugins}"
@@ -587,7 +587,7 @@ registry_marketplace_publish() {
   # See: .ai/roadmap/v1.0/deferred-features.md (PLUGIN-002)
   printf "  Checksum: sha256:%s\n" "$checksum"
   printf "\nMarketplace publishing not yet implemented\n"
-  printf "Submit manually to: https://github.com/acamarata/nself-plugins\n"
+  printf "Submit manually to: https://github.com/nself-org/plugins\n"
 
   # Cleanup
   rm -f "$tarball"
@@ -606,7 +606,7 @@ registry_marketplace_report() {
   # TODO (v1.0+): Implement marketplace issue reporting API (or keep GitHub Issues)
   # See: .ai/roadmap/v1.0/deferred-features.md (PLUGIN-003)
   printf "Please report issues at:\n"
-  printf "https://github.com/acamarata/nself-plugins/issues\n"
+  printf "https://github.com/nself-org/plugins/issues\n"
 
   return 0
 }

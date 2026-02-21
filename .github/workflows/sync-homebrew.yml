@@ -52,7 +52,7 @@ jobs:
         id: sha256
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          URL="https://github.com/acamarata/nself/archive/refs/tags/v${VERSION}.tar.gz"
+          URL="https://github.com/nself-org/cli/archive/refs/tags/v${VERSION}.tar.gz"
 
           # Download and calculate SHA256
           SHA256=$(curl -sL "$URL" | shasum -a 256 | cut -d' ' -f1)
@@ -71,7 +71,7 @@ jobs:
           SHA256="${{ steps.sha256.outputs.sha256 }}"
 
           # Update the formula file
-          sed -i "s|url \"https://github.com/acamarata/nself/archive/refs/tags/v.*\.tar\.gz\"|url \"https://github.com/acamarata/nself/archive/refs/tags/v${VERSION}.tar.gz\"|" .releases/homebrew/nself.rb
+          sed -i "s|url \"https://github.com/nself-org/cli/archive/refs/tags/v.*\.tar\.gz\"|url \"https://github.com/nself-org/cli/archive/refs/tags/v${VERSION}.tar.gz\"|" .releases/homebrew/nself.rb
           sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" .releases/homebrew/nself.rb
           sed -i "s|version \".*\"|version \"${VERSION}\"|" .releases/homebrew/nself.rb
 
@@ -84,7 +84,7 @@ jobs:
         continue-on-error: true
         uses: actions/checkout@v4
         with:
-          repository: acamarata/homebrew-nself
+          repository: nself-org/homebrew-nself
           token: ${{ secrets.HOMEBREW_TAP_TOKEN || github.token }}
           path: homebrew-tap
 

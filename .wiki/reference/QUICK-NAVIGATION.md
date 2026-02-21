@@ -284,8 +284,8 @@ nself plugin stripe sync
 1. **Search the docs** - Use your browser's search (Cmd/Ctrl + F)
 2. **Check the FAQ** - [FAQ](../getting-started/FAQ.md)
 3. **View all commands** - [Commands Overview](../commands/COMMANDS.md)
-4. **Ask the community** - [GitHub Discussions](https://github.com/acamarata/nself/discussions)
-5. **Report an issue** - [GitHub Issues](https://github.com/acamarata/nself/issues)
+4. **Ask the community** - [GitHub Discussions](https://github.com/nself-org/cli/discussions)
+5. **Report an issue** - [GitHub Issues](https://github.com/nself-org/cli/issues)
 
 ---
 

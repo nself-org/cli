@@ -587,6 +587,6 @@ check_storage_quota() {
 ## Support
 
 For issues or questions:
-- GitHub: https://github.com/acamarata/nself/issues
+- GitHub: https://github.com/nself-org/cli/issues
 - Documentation: https://docs.nself.org/billing/quotas
 - Community: https://discord.gg/nself

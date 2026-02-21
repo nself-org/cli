@@ -7,7 +7,7 @@
 set -e
 
 VERSION="0.3.9"
-REPO="acamarata/nself"
+REPO="nself-org/cli"
 RELEASE_DIR="$(dirname "$0")"
 
 # Colors

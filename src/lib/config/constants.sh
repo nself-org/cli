@@ -40,6 +40,6 @@ readonly MB=$((1024 * KB))
 readonly GB=$((1024 * MB))
 
 # Version info
-readonly NSELF_VERSION="0.9.8"
+readonly NSELF_VERSION="0.9.9"
 readonly MIN_DOCKER_VERSION="20.10.0"
 readonly MIN_COMPOSE_VERSION="2.0.0"

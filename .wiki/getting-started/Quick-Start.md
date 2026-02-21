@@ -28,7 +28,7 @@ curl -sSL https://install.nself.org | bash
 
 Or manual installation:
 ```bash
-git clone https://github.com/acamarata/nself.git ~/.nself
+git clone https://github.com/nself-org/cli.git ~/.nself
 echo 'export PATH="$PATH:$HOME/.nself/bin"' >> ~/.bashrc
 source ~/.bashrc
 ```
@@ -326,8 +326,8 @@ nself trust              # Trust SSL certs
 ## Help
 
 - **[Troubleshooting](../guides/TROUBLESHOOTING.md)** - Common issues
-- **[GitHub Issues](https://github.com/acamarata/nself/issues)** - Report bugs
-- **[Discussions](https://github.com/acamarata/nself/discussions)** - Ask questions
+- **[GitHub Issues](https://github.com/nself-org/cli/issues)** - Report bugs
+- **[Discussions](https://github.com/nself-org/cli/discussions)** - Ask questions
 
 ---
 

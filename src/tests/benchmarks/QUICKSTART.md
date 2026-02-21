@@ -195,7 +195,7 @@ done
 ./run-all-benchmarks.sh --help
 ```
 
-For issues: https://github.com/acamarata/nself/issues
+For issues: https://github.com/nself-org/cli/issues
 
 ---
 

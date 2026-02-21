@@ -3456,10 +3456,10 @@ nself version --check
 
 ### Documentation
 
-- **GitHub**: https://github.com/acamarata/nself
-- **Wiki**: https://github.com/acamarata/nself/wiki
-- **Issues**: https://github.com/acamarata/nself/issues
-- **Discussions**: https://github.com/acamarata/nself/discussions
+- **GitHub**: https://github.com/nself-org/cli
+- **Wiki**: https://github.com/nself-org/cli/wiki
+- **Issues**: https://github.com/nself-org/cli/issues
+- **Discussions**: https://github.com/nself-org/cli/discussions
 
 ---
 

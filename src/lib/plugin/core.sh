@@ -7,7 +7,7 @@
 # Plugin Registry
 # ============================================================================
 
-PLUGIN_REGISTRY_URL="${NSELF_PLUGIN_REGISTRY:-https://raw.githubusercontent.com/acamarata/nself-plugins/main/registry.json}"
+PLUGIN_REGISTRY_URL="${NSELF_PLUGIN_REGISTRY:-https://raw.githubusercontent.com/nself-org/plugins/main/registry.json}"
 
 set -euo pipefail
 

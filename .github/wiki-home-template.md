@@ -1,24 +1,24 @@
 # nself Wiki
 
-> **Source of truth**: documentation is maintained in [`/.wiki`](https://github.com/acamarata/nself/tree/main/.wiki) in the main repository and synchronized to this wiki by GitHub Actions.
+> **Source of truth**: documentation is maintained in [`/.wiki`](https://github.com/nself-org/cli/tree/main/.wiki) in the main repository and synchronized to this wiki by GitHub Actions.
 
 ## Quick Links
 
 ### Start Here
-- [Home](https://github.com/acamarata/nself/blob/main/.wiki/Home.md)
-- [Documentation Index](https://github.com/acamarata/nself/blob/main/.wiki/README.md)
-- [Sidebar](https://github.com/acamarata/nself/blob/main/.wiki/_Sidebar.md)
+- [Home](https://github.com/nself-org/cli/blob/main/.wiki/Home.md)
+- [Documentation Index](https://github.com/nself-org/cli/blob/main/.wiki/README.md)
+- [Sidebar](https://github.com/nself-org/cli/blob/main/.wiki/_Sidebar.md)
 
 ### Core Docs
-- [Architecture](https://github.com/acamarata/nself/blob/main/.wiki/architecture/ARCHITECTURE.md)
-- [Commands](https://github.com/acamarata/nself/blob/main/.wiki/commands/COMMANDS.md)
-- [Configuration](https://github.com/acamarata/nself/blob/main/.wiki/configuration/README.md)
-- [Deployment](https://github.com/acamarata/nself/blob/main/.wiki/deployment/README.md)
+- [Architecture](https://github.com/nself-org/cli/blob/main/.wiki/architecture/ARCHITECTURE.md)
+- [Commands](https://github.com/nself-org/cli/blob/main/.wiki/commands/COMMANDS.md)
+- [Configuration](https://github.com/nself-org/cli/blob/main/.wiki/configuration/README.md)
+- [Deployment](https://github.com/nself-org/cli/blob/main/.wiki/deployment/README.md)
 
 ### Project Tracking
-- [Roadmap](https://github.com/acamarata/nself/blob/main/.wiki/releases/ROADMAP.md)
-- [Changelog](https://github.com/acamarata/nself/blob/main/.wiki/CHANGELOG.md)
-- [License](https://github.com/acamarata/nself/blob/main/.wiki/LICENSE.md)
+- [Roadmap](https://github.com/nself-org/cli/blob/main/.wiki/releases/ROADMAP.md)
+- [Changelog](https://github.com/nself-org/cli/blob/main/.wiki/CHANGELOG.md)
+- [License](https://github.com/nself-org/cli/blob/main/.wiki/LICENSE.md)
 
 ## Contributor Rules
 
@@ -28,5 +28,5 @@
 
 ## Support Development
 
-- [GitHub Issues](https://github.com/acamarata/nself/issues)
+- [GitHub Issues](https://github.com/nself-org/cli/issues)
 - [Support on Patreon](https://patreon.com/acamarata)

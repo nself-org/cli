@@ -7,7 +7,7 @@ set -e
 
 VERSION="0.3.9"
 REGISTRY="ghcr.io"
-NAMESPACE="acamarata"
+NAMESPACE="nself-org"
 IMAGE="nself"
 
 echo "Building and pushing Docker images for nself v${VERSION}..."

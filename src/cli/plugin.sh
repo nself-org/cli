@@ -47,8 +47,8 @@ fi
 PLUGIN_DIR="${NSELF_PLUGIN_DIR:-$HOME/.nself/plugins}"
 PLUGIN_CACHE_DIR="${NSELF_PLUGIN_CACHE:-$HOME/.nself/cache/plugins}"
 PLUGIN_REGISTRY_URL="${NSELF_PLUGIN_REGISTRY:-https://plugins.nself.org}"
-PLUGIN_REGISTRY_FALLBACK="https://raw.githubusercontent.com/acamarata/nself-plugins/main/registry.json"
-PLUGIN_REPO_URL="https://github.com/acamarata/nself-plugins"
+PLUGIN_REGISTRY_FALLBACK="https://raw.githubusercontent.com/nself-org/plugins/main/registry.json"
+PLUGIN_REPO_URL="https://github.com/nself-org/plugins"
 
 # ============================================================================
 # PLUGIN MANAGEMENT
@@ -1153,7 +1153,7 @@ Available Plugins:
 
 Registry:
   Primary:  https://plugins.nself.org
-  Fallback: https://github.com/acamarata/nself-plugins
+  Fallback: https://github.com/nself-org/plugins
 
 Environment:
   NSELF_PLUGIN_DIR        Plugin installation directory (~/.nself/plugins)

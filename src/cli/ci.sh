@@ -169,7 +169,7 @@ jobs:
 
       - name: Install nself
         run: |
-          curl -fsSL https://raw.githubusercontent.com/acamarata/nself/main/install.sh | bash
+          curl -fsSL https://raw.githubusercontent.com/nself-org/cli/main/install.sh | bash
           echo "\$HOME/.local/bin" >> \$GITHUB_PATH
 
       - name: Build & validate
@@ -264,7 +264,7 @@ docker-test:
     - docker:24-dind
   before_script:
     - apk add --no-cache bash curl
-    - curl -fsSL https://raw.githubusercontent.com/acamarata/nself/main/install.sh | bash
+    - curl -fsSL https://raw.githubusercontent.com/nself-org/cli/main/install.sh | bash
   script:
     - cp .env.example .env || echo "PROJECT_NAME=$project_name" > .env
     - nself build

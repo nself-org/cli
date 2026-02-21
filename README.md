@@ -1,11 +1,11 @@
 # ɳSelf - Complete Self-Hosted Backend Platform
 
-[![Version](https://img.shields.io/badge/version-0.9.9-blue.svg)](https://github.com/acamarata/nself/releases)
-[![Status](https://img.shields.io/badge/status-production--ready-brightgreen.svg)](https://github.com/acamarata/nself/releases/tag/v0.9.9)
+[![Version](https://img.shields.io/badge/version-0.9.9-blue.svg)](https://github.com/nself-org/cli/releases)
+[![Status](https://img.shields.io/badge/status-production--ready-brightgreen.svg)](https://github.com/nself-org/cli/releases/tag/v0.9.9)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)](#-prerequisites)
 [![Docker](https://img.shields.io/badge/docker-required-blue.svg)](https://www.docker.com/get-started)
-[![CI Status](https://github.com/acamarata/nself/actions/workflows/ci.yml/badge.svg)](https://github.com/acamarata/nself/actions)
-[![Security Scan](https://github.com/acamarata/nself/actions/workflows/security-scan.yml/badge.svg)](https://github.com/acamarata/nself/actions/workflows/security-scan.yml)
+[![CI Status](https://github.com/nself-org/cli/actions/workflows/ci.yml/badge.svg)](https://github.com/nself-org/cli/actions)
+[![Security Scan](https://github.com/nself-org/cli/actions/workflows/security-scan.yml/badge.svg)](https://github.com/nself-org/cli/actions/workflows/security-scan.yml)
 [![Test Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen.svg)](.wiki/releases/v0.9.9.md)
 [![License](https://img.shields.io/badge/license-Personal%20Free%20%7C%20Commercial-green.svg)](LICENSE)
 
@@ -130,19 +130,19 @@ The installer will:
 
 **macOS/Linux (Homebrew)**
 ```bash
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 ```
 
 **Direct from GitHub**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/acamarata/nself/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nself-org/cli/main/install.sh | bash
 ```
 
 **Docker**
 ```bash
-docker pull acamarata/nself:latest
-docker run -it acamarata/nself:latest version
+docker pull nself-org/cli:latest
+docker run -it nself-org/cli:latest version
 ```
 
 ### Updating ɳSelf
@@ -687,10 +687,10 @@ See [LICENSE](LICENSE) for full terms.
 ## 🔗 Links
 
 - **[Official Website](https://nself.org)** - Project homepage
-- **[Documentation](https://github.com/acamarata/nself/wiki)** - Complete nself documentation
-- **[GitHub Repository](https://github.com/acamarata/nself)** - Source code
-- **[Report Issues](https://github.com/acamarata/nself/issues)** - We'd love your feedback!
-- **[Discussions](https://github.com/acamarata/nself/discussions)** - Community discussions
+- **[Documentation](https://github.com/nself-org/cli/wiki)** - Complete nself documentation
+- **[GitHub Repository](https://github.com/nself-org/cli)** - Source code
+- **[Report Issues](https://github.com/nself-org/cli/issues)** - We'd love your feedback!
+- **[Discussions](https://github.com/nself-org/cli/discussions)** - Community discussions
 - **[Commercial Licensing](https://nself.org/commercial)** - For business use
 
 ## 🔄 Version History

@@ -14,7 +14,7 @@ cp .releases/packaging/rpm/nself.spec ~/rpmbuild/SPECS/
 
 # Download source tarball
 cd ~/rpmbuild/SOURCES
-curl -L -o "v${VERSION}.tar.gz" "https://github.com/acamarata/nself/archive/v${VERSION}.tar.gz"
+curl -L -o "v${VERSION}.tar.gz" "https://github.com/nself-org/cli/archive/v${VERSION}.tar.gz"
 
 # Build the RPM
 cd ~/rpmbuild

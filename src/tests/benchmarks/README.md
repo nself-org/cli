@@ -591,7 +591,7 @@ When system optimizations improve performance:
 For questions or issues with benchmarks:
 
 - **Documentation**: `/.wiki/performance/`
-- **Issues**: https://github.com/acamarata/nself/issues
+- **Issues**: https://github.com/nself-org/cli/issues
 - **Community**: https://discord.gg/nself
 
 ---

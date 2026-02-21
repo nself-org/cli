@@ -973,4 +973,4 @@ To add a new provider or improve existing implementations:
 **nself Version:** 0.9.6+
 **Maintainer:** nself core team
 
-For issues or questions, visit: https://github.com/acamarata/nself/issues
+For issues or questions, visit: https://github.com/nself-org/cli/issues

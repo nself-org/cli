@@ -34,19 +34,19 @@ wget -qO- https://install.nself.org | bash
 
 ### 2. Homebrew (macOS)
 ```bash
-brew tap acamarata/nself
+brew tap nself-org/nself
 brew install nself
 ```
 
 ### 3. Docker
 ```bash
-docker pull ghcr.io/acamarata/nself:0.3.9
-docker run --rm -it ghcr.io/acamarata/nself:0.3.9 help
+docker pull ghcr.io/nself-org/cli:0.3.9
+docker run --rm -it ghcr.io/nself-org/cli:0.3.9 help
 ```
 
 ### 4. Manual Installation
 ```bash
-wget https://github.com/acamarata/nself/archive/v0.3.9.tar.gz
+wget https://github.com/nself-org/cli/archive/v0.3.9.tar.gz
 tar -xzf v0.3.9.tar.gz
 cd nself-0.3.9
 ./install.sh
@@ -54,14 +54,14 @@ cd nself-0.3.9
 
 ### 5. Debian/Ubuntu
 ```bash
-wget https://raw.githubusercontent.com/acamarata/nself/v0.3.9/releases/v0.3.9/install-debian.sh
+wget https://raw.githubusercontent.com/nself-org/cli/v0.3.9/releases/v0.3.9/install-debian.sh
 chmod +x install-debian.sh
 ./install-debian.sh
 ```
 
 ### 6. RHEL/CentOS/Fedora
 ```bash
-wget https://raw.githubusercontent.com/acamarata/nself/v0.3.9/releases/v0.3.9/install-rhel.sh
+wget https://raw.githubusercontent.com/nself-org/cli/v0.3.9/releases/v0.3.9/install-rhel.sh
 chmod +x install-rhel.sh
 ./install-rhel.sh
 ```
@@ -119,11 +119,11 @@ shasum -a 256 nself-v0.3.9.tar.gz
 ## Support
 
 ### Documentation
-- GitHub: https://github.com/acamarata/nself/docs/
-- Release Notes: https://github.com/acamarata/nself/releases/tag/v0.3.9
+- GitHub: https://github.com/nself-org/cli/docs/
+- Release Notes: https://github.com/nself-org/cli/releases/tag/v0.3.9
 
 ### Issues
-- GitHub Issues: https://github.com/acamarata/nself/issues
+- GitHub Issues: https://github.com/nself-org/cli/issues
 
 ### Community
 - Discord: Coming soon

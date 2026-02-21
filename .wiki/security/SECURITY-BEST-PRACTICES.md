@@ -579,7 +579,7 @@ nself doctor                          # Diagnostics
 For security issues or questions:
 
 - **Security Email:** security@nself.org
-- **GitHub Issues:** [github.com/acamarata/nself/issues](https://github.com/acamarata/nself/issues)
+- **GitHub Issues:** [github.com/nself-org/cli/issues](https://github.com/nself-org/cli/issues)
 - **Documentation:** [nself.org/docs/security](https://nself.org/docs/security)
 
 **Report security vulnerabilities privately to:** security@nself.org
