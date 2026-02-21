@@ -2,9 +2,10 @@
 # start.sh - Professional start command with clean progress indicators
 # Matches the style of nself build command
 
-set -uo pipefail
-
 set -euo pipefail
+
+# Trap unexpected exits and print context so failures are never silent
+trap '_rc=$?; if [[ $_rc -ne 0 ]]; then printf "\n[nself start] unexpected exit (code %s) at line %s\n" "$_rc" "${LINENO:-?}" >&2; fi' EXIT
 
 
 # Get script directory
@@ -296,8 +297,8 @@ start_services() {
   # Project name priority: COMPOSE_PROJECT_NAME > PROJECT_NAME > .env > dirname
   local project_name="${COMPOSE_PROJECT_NAME:-${PROJECT_NAME:-}}"
   if [[ -z "$project_name" ]] && [[ -f ".env" ]]; then
-    project_name=$(grep "^COMPOSE_PROJECT_NAME=" .env 2>/dev/null | cut -d= -f2-)
-    [[ -z "$project_name" ]] && project_name=$(grep "^PROJECT_NAME=" .env 2>/dev/null | cut -d= -f2-)
+    project_name=$(grep "^COMPOSE_PROJECT_NAME=" .env 2>/dev/null | cut -d= -f2- || true)
+    [[ -z "$project_name" ]] && project_name=$(grep "^PROJECT_NAME=" .env 2>/dev/null | cut -d= -f2- || true)
   fi
   if [[ -z "$project_name" ]]; then
     project_name=$(basename "$PWD")
