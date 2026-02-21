@@ -1,3 +1,0 @@
-This repo's wiki and release documentation legitimately reference AI tool names
-(Claude Code, nself CLI AI integrations, GitHub Actions using Claude). The global
-pre-commit AI-terms check is opted out here to allow those references.
