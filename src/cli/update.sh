@@ -19,7 +19,7 @@ source "$SCRIPT_DIR/../lib/hooks/post-command.sh"
 # Constants
 GITHUB_REPO_OWNER="nself-org"
 GITHUB_REPO_NAME="nself"
-DOCKER_IMAGE="acamarata/nself-admin"
+DOCKER_IMAGE="nself/nself-admin"
 
 # Show help for update command
 show_update_help() {

@@ -2,7 +2,7 @@
 set -e
 
 VERSION="${1:-0.3.7}"
-DOCKER_USER="acamarata"
+DOCKER_USER="nself"
 IMAGE_NAME="nself"
 
 echo "Building Docker image for nself v${VERSION}..."

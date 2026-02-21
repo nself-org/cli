@@ -83,7 +83,7 @@ EOF
 EOF
   else
     cat <<EOF
-    image: acamarata/nself-admin:\${NSELF_ADMIN_VERSION:-latest}
+    image: nself/nself-admin:\${NSELF_ADMIN_VERSION:-latest}
 EOF
   fi
 

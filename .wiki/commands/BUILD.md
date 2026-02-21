@@ -275,7 +275,7 @@ Included when `*_ENABLED=true`:
 | `MEILISEARCH_ENABLED` | meilisearch | getmeili/meilisearch:v1.6 |
 | `FUNCTIONS_ENABLED` | functions | nhost/functions:latest |
 | `MLFLOW_ENABLED` | mlflow | ghcr.io/mlflow/mlflow:v2.10.0 |
-| `NSELF_ADMIN_ENABLED` | nself-admin | ghcr.io/acamarata/nself-admin:latest |
+| `NSELF_ADMIN_ENABLED` | nself-admin | ghcr.io/nself/nself-admin:latest |
 
 ### Monitoring Bundle
 
