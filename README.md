@@ -9,13 +9,6 @@
 [![Test Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen.svg)](.wiki/releases/v0.9.9.md)
 [![License](https://img.shields.io/badge/license-Personal%20Free%20%7C%20Commercial-green.svg)](LICENSE)
 
-> **✅ PRODUCTION READY**: ɳSelf v0.9.9 is production-ready with 80% test coverage (700+ tests), 100% documentation, enterprise security, and battle-tested infrastructure. Complete feature parity with Supabase/Nhost plus unique advantages: multi-tenancy, built-in billing, white-label customization, and deploy-anywhere flexibility.
->
-> ɳSelf orchestrates production-grade services (PostgreSQL, Hasura, Redis, MinIO) with enterprise features on top: security hardening, multi-tenancy, billing integration, and 295+ CLI commands. Same powerful infrastructure as commercial BaaS platforms, but fully under your control.
->
-> **Path to v1.0 LTS**: v0.9.9 (QA) → v1.0.0 (Q1 2026) with 2-year support commitment. [View Roadmap](.wiki/releases/ROADMAP.md)
-
----
 
 <div align="center">
 
@@ -30,8 +23,6 @@ curl -sSL https://install.nself.org | bash
 **One command. Complete backend. Your infrastructure.**
 
 [Quick Start](#-quick-start---3-commands-to-backend-bliss) • [Features](#-why-nself) • [Documentation](.wiki/Home.md) • [Roadmap](.wiki/releases/ROADMAP.md)
-
-**Repo policy**: [Root Structure Policy](.wiki/ROOT-STRUCTURE-POLICY.md)
 
 </div>
 
@@ -710,7 +701,7 @@ See [LICENSE](LICENSE) for full terms.
 
 <div align="center">
 
-**ɳSelf v0.9.9** - Built with ❤️ for developers who value quality, performance, and control
+**ɳSelf v0.9.9** — Built by [nself](https://nself.org) · [GitHub](https://github.com/nself-org/cli)
 
 **Ready for v1.0 LTS** 🚀
 
