@@ -23,10 +23,10 @@
 ## Contributor Rules
 
 1. Edit docs in `/.wiki` only.
-2. Keep private planning and scratch files in hidden control folders (`/.codex` or project-specific dirs), never in public wiki docs.
+2. Keep private planning and scratch files in hidden control folders (project-specific dirs like `/.ai`), never in public wiki docs.
 3. Keep root clean; avoid ad-hoc markdown reports in repository root.
 
 ## Support Development
 
 - [GitHub Issues](https://github.com/nself-org/cli/issues)
-- [Support on Patreon](https://patreon.com/acamarata)
+- [Support nself](https://nself.org/commercial)
