@@ -757,19 +757,40 @@ topological_sort_plugins() {
 # Batch Operations
 # ============================================================================
 
-# Start all installed plugins (respecting dependencies)
+# Start plugins (respecting dependencies)
+# Usage: start_all_plugins [project_list_file]
+#   project_list_file: path to a file with one plugin name per line.
+#                      If provided, only those plugins are started.
+#                      If omitted, all globally installed plugins are started.
 start_all_plugins() {
+  local project_list_file="${1:-}"
   ensure_runtime_dirs
 
   local count=0
   local failed=0
 
-  # Get plugins in dependency order
+  # Get plugins in dependency order (full global list)
   local sorted_plugins
   sorted_plugins=$(topological_sort_plugins)
 
   if [[ -z "$sorted_plugins" ]]; then
-    log_info "No plugins installed"
+    return 0
+  fi
+
+  # If a project list file is given, filter to only those plugins
+  if [[ -n "$project_list_file" ]] && [[ -f "$project_list_file" ]]; then
+    local filtered=""
+    while IFS= read -r name; do
+      [[ -z "$name" ]] && continue
+      if grep -qx "$name" "$project_list_file" 2>/dev/null; then
+        filtered="${filtered}${name}
+"
+      fi
+    done <<< "$sorted_plugins"
+    sorted_plugins="$filtered"
+  fi
+
+  if [[ -z "$sorted_plugins" ]]; then
     return 0
   fi
 
@@ -783,15 +804,17 @@ start_all_plugins() {
     fi
   done <<< "$sorted_plugins"
 
-  if [[ $count -eq 0 ]]; then
-    log_info "No plugins installed"
+  if [[ $count -eq 0 ]] && [[ $failed -eq 0 ]]; then
     return 0
   fi
 
   printf "\n"
-  log_success "Started $count plugins"
+  if [[ $count -gt 0 ]]; then
+    log_success "Started $count plugin(s)"
+  fi
   if [[ $failed -gt 0 ]]; then
-    log_warning "$failed plugins failed to start"
+    # Soft warning — plugin failures never look like project failures
+    printf "  %d plugin(s) failed to start (logs: %s/)\n" "$failed" "$PLUGIN_LOGS_DIR"
   fi
 }
 

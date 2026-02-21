@@ -241,6 +241,16 @@ cmd_install() {
 
   log_success "Plugin '$plugin_name' installed successfully!"
 
+  # Record in project plugin list if running inside a project directory
+  if [[ -f ".env" ]]; then
+    mkdir -p ".nself"
+    local project_list=".nself/plugins"
+    if ! grep -qx "$plugin_name" "$project_list" 2>/dev/null; then
+      printf '%s\n' "$plugin_name" >> "$project_list"
+      log_info "Registered in project plugin list: $project_list"
+    fi
+  fi
+
   # Check for system dependencies
   if declare -f check_plugin_dependencies >/dev/null 2>&1; then
     printf "\n"

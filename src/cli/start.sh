@@ -791,29 +791,42 @@ start_services() {
     fi
 
     # ========================================================
-    # AUTO-START INSTALLED PLUGINS
-    # Plugins installed via nself plugin install are started
-    # automatically after Docker services are healthy.
+    # AUTO-START PLUGINS (per-project scoped)
+    #
+    # If .nself/plugins exists in the project directory:
+    #   - Non-empty file → start only listed plugins (per-project mode)
+    #   - Empty file     → no plugins for this project (silent)
+    # If .nself/plugins does NOT exist:
+    #   - Backward-compat: start all globally installed plugins
     # ========================================================
     local plugin_dir="${NSELF_PLUGIN_DIR:-$HOME/.nself/plugins}"
-    if [[ -d "$plugin_dir" ]] && command -v start_all_plugins >/dev/null 2>&1; then
-      # Check if any plugins are installed (exclude _shared directory)
-      local has_plugins=false
-      for _pdir in "$plugin_dir"/*/plugin.json; do
-        if [[ -f "$_pdir" ]]; then
-          local _pname
-          _pname=$(dirname "$_pdir")
-          _pname=$(basename "$_pname")
-          if [[ "$_pname" != "_shared" ]]; then
-            has_plugins=true
-            break
-          fi
+    local project_plugin_list=".nself/plugins"
+    if command -v start_all_plugins >/dev/null 2>&1; then
+      if [[ -f "$project_plugin_list" ]]; then
+        # Per-project mode
+        if [[ -s "$project_plugin_list" ]]; then
+          printf "\n${COLOR_CYAN}Starting project plugins...${COLOR_RESET}\n"
+          start_all_plugins "$project_plugin_list"
         fi
-      done
-
-      if [[ "$has_plugins" == "true" ]]; then
-        printf "\n${COLOR_CYAN}Starting installed plugins...${COLOR_RESET}\n"
-        start_all_plugins
+        # Empty file → no plugins for this project; output nothing
+      elif [[ -d "$plugin_dir" ]]; then
+        # Global fallback: start all globally installed plugins
+        local has_plugins=false
+        for _pdir in "$plugin_dir"/*/plugin.json; do
+          if [[ -f "$_pdir" ]]; then
+            local _pname
+            _pname=$(dirname "$_pdir")
+            _pname=$(basename "$_pname")
+            if [[ "$_pname" != "_shared" ]]; then
+              has_plugins=true
+              break
+            fi
+          fi
+        done
+        if [[ "$has_plugins" == "true" ]]; then
+          printf "\n${COLOR_CYAN}Starting installed plugins...${COLOR_RESET}\n"
+          start_all_plugins
+        fi
       fi
     fi
 
