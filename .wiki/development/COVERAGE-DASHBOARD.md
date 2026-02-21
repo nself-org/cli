@@ -249,7 +249,7 @@ Progress toward 100% coverage:
 
 ### Top Contributors (Coverage)
 
-1. **acamarata** - 650 tests added
+1. nself-org - 650 tests added
 2. **CI Bot** - 50 automated tests
 3. **Contributors** - Various improvements
 

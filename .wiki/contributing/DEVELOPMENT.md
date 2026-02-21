@@ -347,7 +347,7 @@ AI agents should reference these when making changes.
 
 - **Issues**: [GitHub Issues](https://github.com/nself-org/cli/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/nself-org/cli/discussions)
-- **Support Development**: [Patreon](https://patreon.com/acamarata)
+- **Support Development**: [nself.org/commercial](https://nself.org/commercial)
 
 ## License
 
