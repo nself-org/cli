@@ -23,6 +23,7 @@ Plugins provide:
 - [Usage](#usage)
 - [Commands](#commands)
 - [Plugin Registry](#plugin-registry)
+- [Pro Plugins License](#pro-plugins-license)
 - [Update Management](#update-management)
 - [Plugin Actions](#plugin-actions)
 - [Environment Variables](#environment-variables)
@@ -238,6 +239,63 @@ Database
 Service
   Container:  myapp_stripe_webhook
   Status:     Running (healthy)
+```
+
+---
+
+## Pro Plugins License
+
+Some plugins require a Pro Plugins license. These are the 49 production-grade integrations in the [plugins-pro](https://nself.org/pricing) collection.
+
+### Getting a License
+
+Get a license at [https://nself.org/pricing](https://nself.org/pricing). A single license covers all 49 Pro Plugins.
+
+Once you have a key, add it to your `.env`:
+
+```bash
+NSELF_PLUGIN_LICENSE_KEY=nself_pro_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### `nself plugin license`
+
+Manage your Pro Plugins license.
+
+| Subcommand | Description |
+| ---------- | ----------- |
+| `show` | Show current license key and validation status (default) |
+| `validate` | Force-validate license key against the API |
+| `plugins` | List all 49 Pro Plugins covered by a license |
+
+**Examples:**
+
+```bash
+# Check license status
+nself plugin license
+
+# Force validate against API
+nself plugin license validate
+
+# See which plugins require a license
+nself plugin license plugins
+```
+
+### License Key Format
+
+License keys follow this format:
+
+```
+nself_pro_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Keys must start with `nself_pro_` and be at least 32 characters.
+
+### Offline Mode
+
+If the validation server is unreachable, the CLI falls back to cached validation results (24-hour TTL). To skip remote validation entirely:
+
+```bash
+NSELF_LICENSE_SKIP_VERIFY=1 nself plugin install <name>
 ```
 
 ---

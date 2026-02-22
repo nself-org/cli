@@ -697,6 +697,12 @@ Plugin Management:
   status [plugin]                            # Plugin status
   create <name>                              # Create new plugin
 
+Plugin License:
+  license                                    # Show Pro license status
+  license show                               # Show license key and status
+  license validate                           # Validate key against API
+  license plugins                            # List Pro Plugins covered
+
 Plugin Runtime:
   start [plugin] [--all]                     # Start plugins
   stop [plugin] [--all]                      # Stop plugins
@@ -710,7 +716,7 @@ Plugin Actions:
   <plugin> <action> [args...]                # Run plugin action
 ```
 
-**Total subcommands:** 15+ (plugin-specific actions)
+**Total subcommands:** 19+ (plugin-specific actions)
 
 ---
 

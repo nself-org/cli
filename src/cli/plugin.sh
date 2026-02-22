@@ -24,6 +24,7 @@ source "$CLI_SCRIPT_DIR/../lib/plugin/core.sh" 2>/dev/null || true
 source "$CLI_SCRIPT_DIR/../lib/plugin/registry.sh" 2>/dev/null || true
 source "$CLI_SCRIPT_DIR/../lib/plugin/dependencies.sh" 2>/dev/null || true
 source "$CLI_SCRIPT_DIR/../lib/plugin/runtime.sh" 2>/dev/null || true
+source "$CLI_SCRIPT_DIR/../lib/plugin/licensing.sh" 2>/dev/null || true
 source "$CLI_SCRIPT_DIR/../lib/utils/cli-output.sh" 2>/dev/null || true
 
 # Fallbacks if display.sh didn't load
@@ -231,6 +232,13 @@ cmd_install() {
     printf "\nAvailable plugins:\n"
     cmd_list
     return 1
+  fi
+
+  # Check license entitlement before downloading
+  if declare -f license_check_entitlement >/dev/null 2>&1; then
+    if ! license_check_entitlement "$plugin_name"; then
+      return 1
+    fi
   fi
 
   # Download and install
@@ -1048,6 +1056,72 @@ cmd_refresh() {
 }
 
 # ============================================================================
+# LICENSE MANAGEMENT
+# ============================================================================
+
+# Manage the Pro Plugins license key
+cmd_plugin_license() {
+  local subcmd="${1:-show}"
+  shift || true
+
+  case "$subcmd" in
+    show | status)
+      license_show_status
+      ;;
+
+    validate)
+      local license_key="${NSELF_PLUGIN_LICENSE_KEY:-}"
+      if [[ -z "$license_key" ]]; then
+        log_error "No license key configured."
+        printf "Add to your .env: NSELF_PLUGIN_LICENSE_KEY=nself_pro_...\n"
+        printf "Get a license at: %s\n" "${NSELF_PRICING_URL:-https://nself.org/pricing}"
+        return 1
+      fi
+      if ! license_validate_format "$license_key"; then
+        log_error "Invalid license key format."
+        printf "Key must start with 'nself_pro_' and be at least 32 characters.\n"
+        return 1
+      fi
+      log_info "Validating license against server..."
+      if license_validate_remote "$license_key"; then
+        log_success "License is valid."
+      else
+        log_error "License validation failed. Check or renew at: ${NSELF_PRICING_URL:-https://nself.org/pricing}"
+        return 1
+      fi
+      ;;
+
+    plugins | list)
+      printf "\nPro Plugins (require license):\n\n"
+      for plugin_name in $NSELF_PRO_PLUGINS; do
+        printf "  %s\n" "$plugin_name"
+      done
+      printf "\nTotal: $(printf '%s' "$NSELF_PRO_PLUGINS" | wc -w | tr -d ' ') pro plugins\n"
+      printf "Details: %s\n\n" "${NSELF_PRICING_URL:-https://nself.org/pricing}"
+      ;;
+
+    help | --help | -h)
+      printf "Usage: nself plugin license <subcommand>\n\n"
+      printf "Subcommands:\n"
+      printf "  show       Show current license key and status (default)\n"
+      printf "  validate   Force-validate license key against the API\n"
+      printf "  plugins    List all Pro Plugins covered by a license\n"
+      printf "\nEnvironment:\n"
+      printf "  NSELF_PLUGIN_LICENSE_KEY   Your Pro Plugins license key\n"
+      printf "\nExample .env configuration:\n"
+      printf "  NSELF_PLUGIN_LICENSE_KEY=nself_pro_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+      printf "\nGet a license at: %s\n\n" "${NSELF_PRICING_URL:-https://nself.org/pricing}"
+      ;;
+
+    *)
+      log_error "Unknown subcommand: $subcmd"
+      printf "Run 'nself plugin license help' for usage.\n"
+      return 1
+      ;;
+  esac
+}
+
+# ============================================================================
 # HELP
 # ============================================================================
 
@@ -1078,6 +1152,11 @@ Commands:
     --quiet, -q             Output only update info (for scripts)
 
   refresh                 Force refresh the plugin registry cache
+
+  license [subcommand]    Manage Pro Plugins license
+    show                    Show current license status (default)
+    validate                Validate license key against API
+    plugins                 List all Pro Plugins covered by license
 
   check-deps <name>       Check system dependencies for a plugin
   install-deps <name>     Install missing system dependencies
@@ -1136,6 +1215,11 @@ Examples:
   nself plugin check-deps stripe
   nself plugin install-deps stripe
 
+  # License
+  nself plugin license               # Show license status
+  nself plugin license validate      # Force-validate against API
+  nself plugin license plugins       # List all Pro Plugins
+
 Plugin Features:
   • Lifecycle states (starting/running/stopping/stopped/failed)
   • Dependency management (automatic startup ordering)
@@ -1156,10 +1240,11 @@ Registry:
   Fallback: https://github.com/nself-org/plugins
 
 Environment:
-  NSELF_PLUGIN_DIR        Plugin installation directory (~/.nself/plugins)
-  NSELF_PLUGIN_REGISTRY   Custom registry URL (default: https://plugins.nself.org)
+  NSELF_PLUGIN_DIR          Plugin installation directory (~/.nself/plugins)
+  NSELF_PLUGIN_REGISTRY     Custom registry URL (default: https://plugins.nself.org)
   NSELF_REGISTRY_CACHE_TTL  Registry cache TTL in seconds (default: 300)
-  NSELF_PLUGIN_RUNTIME    Plugin runtime directory (~/.nself/runtime)
+  NSELF_PLUGIN_RUNTIME      Plugin runtime directory (~/.nself/runtime)
+  NSELF_PLUGIN_LICENSE_KEY  Pro Plugins license key (nself_pro_...)
 
 "
 }
@@ -1314,6 +1399,9 @@ main() {
       ;;
     health)
       health_check_all
+      ;;
+    license)
+      cmd_plugin_license "$@"
       ;;
     -h | --help | help | "")
       show_help
