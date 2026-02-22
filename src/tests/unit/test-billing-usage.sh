@@ -24,16 +24,16 @@ TESTS_FAILED=0
 test_name=""
 test_setup() {
   test_name="$1"
-  ((TESTS_RUN++))
+  TESTS_RUN=$((TESTS_RUN + 1))
 }
 
 test_pass() {
-  ((TESTS_PASSED++))
+  TESTS_PASSED=$((TESTS_PASSED + 1))
   printf "\033[32m✓\033[0m %s\n" "$test_name"
 }
 
 test_fail() {
-  ((TESTS_FAILED++))
+  TESTS_FAILED=$((TESTS_FAILED + 1))
   printf "\033[31m✗\033[0m %s\n" "$test_name"
   printf "  Error: %s\n" "$1"
 }
