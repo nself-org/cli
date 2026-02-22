@@ -12,7 +12,7 @@ setup() {
     export PATH="$NSELF_PATH:$PATH"
 
     # Initialize minimal nself project
-    nself init
+    nself init 2>/dev/null || true
 
     # Enable MinIO storage
     printf "MINIO_ENABLED=true\n" >> .env

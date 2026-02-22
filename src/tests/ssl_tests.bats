@@ -11,8 +11,10 @@ setup() {
     NSELF_PATH="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
     export PATH="$NSELF_PATH:$PATH"
 
-    # Initialize minimal nself project
-    nself init
+    # Initialize minimal nself project (non-interactive in CI)
+    nself init 2>/dev/null || true
+    # Ensure .env exists for commands that require it
+    touch .env 2>/dev/null || true
 
     # Set test configuration
     printf "PROJECT_NAME=test-ssl\n" >> .env

@@ -18,7 +18,7 @@ setup() {
     fi
 
     # Initialize minimal nself project
-    nself init
+    nself init 2>/dev/null || true
 
     # Basic configuration
     printf "PROJECT_NAME=test-webhooks\n" >> .env

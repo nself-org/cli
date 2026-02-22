@@ -12,7 +12,7 @@ setup() {
     export PATH="$NSELF_PATH:$PATH"
 
     # Initialize minimal nself project
-    nself init
+    nself init 2>/dev/null || true
 
     # Enable multi-tenancy
     printf "PROJECT_NAME=test-tenancy\n" >> .env

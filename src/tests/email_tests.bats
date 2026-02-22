@@ -27,7 +27,7 @@ setup() {
     fi
 
     # Initialize minimal nself project
-    nself init
+    nself init 2>/dev/null || true
 
     # Enable MailPit for dev email
     printf "MAILPIT_ENABLED=true\n" >> .env

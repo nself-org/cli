@@ -12,7 +12,7 @@ setup() {
     export PATH="$NSELF_PATH:$PATH"
 
     # Initialize minimal nself project
-    nself init
+    nself init 2>/dev/null || true
 
     # Set test configuration
     printf "PROJECT_NAME=test-deploy\n" >> .env

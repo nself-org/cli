@@ -7,11 +7,13 @@
 
 # Generate a secure random password
 generate_password() {
-
-set -euo pipefail
-
   local length="${1:-16}"
-  openssl rand -base64 "$length" | tr -d "=+/" | cut -c1-"$length"
+  if command -v openssl >/dev/null 2>&1; then
+    local bytes=$(( (length * 4 / 3) + 16 ))
+    openssl rand -base64 "$bytes" | tr -d "=+/\n" | head -c "$length"
+  else
+    LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$length"
+  fi
 }
 
 # Apply smart defaults for any missing environment variables

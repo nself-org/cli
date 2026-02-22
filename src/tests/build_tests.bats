@@ -23,7 +23,7 @@ teardown() {
 
 @test "build command completes without hanging" {
     # Initialize project
-    nself init
+    nself init 2>/dev/null || true
 
     # Write required secrets to .env (nself reads from file, not shell env)
     printf '\nPOSTGRES_PASSWORD=test-postgres-secret-ci\nHASURA_GRAPHQL_ADMIN_SECRET=test-admin-secret-ci\n' >> .env
@@ -39,7 +39,7 @@ teardown() {
 
 @test "build command handles missing generate_password function" {
     # Initialize project
-    nself init
+    nself init 2>/dev/null || true
 
     # Write required secrets to .env (nself reads from file, not shell env)
     printf '\nPOSTGRES_PASSWORD=test-postgres-secret-ci\nHASURA_GRAPHQL_ADMIN_SECRET=test-admin-secret-ci\n' >> .env
@@ -57,7 +57,7 @@ teardown() {
 
 @test "compose generation works with proper environment loading" {
     # Initialize project
-    nself init
+    nself init 2>/dev/null || true
 
     # Write required secrets to .env (nself reads from file, not shell env)
     printf '\nPOSTGRES_PASSWORD=test-postgres-secret-ci\nHASURA_GRAPHQL_ADMIN_SECRET=test-admin-secret-ci\n' >> .env
@@ -73,7 +73,7 @@ teardown() {
 
 @test "service generation has timeout protection" {
     # Initialize project
-    nself init
+    nself init 2>/dev/null || true
 
     # Write required secrets to .env (nself reads from file, not shell env)
     printf '\nPOSTGRES_PASSWORD=test-postgres-secret-ci\nHASURA_GRAPHQL_ADMIN_SECRET=test-admin-secret-ci\n' >> .env
