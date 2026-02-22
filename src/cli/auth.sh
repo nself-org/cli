@@ -512,6 +512,11 @@ cmd_auth_ssl() {
       elif command -v openssl >/dev/null 2>&1; then
         # Fallback: generate self-signed certificate with openssl
         local domain="${1:-localhost}"
+        # Validate domain format (letters, numbers, dots, hyphens only — prevents injection)
+        if ! printf "%s" "$domain" | grep -qE "^[A-Za-z0-9._-]+$"; then
+          cli_error "Invalid domain name: $domain (only letters, numbers, dots, hyphens allowed)"
+          return 1
+        fi
         local ssl_dir="ssl"
         mkdir -p "$ssl_dir"
         openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
