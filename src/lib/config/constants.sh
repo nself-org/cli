@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 
 # constants.sh - Global constants
+#
+# Note: No set -euo pipefail here; library files must not alter parent shell
+# options when sourced. See encryption.sh comment for full rationale.
+# readonly declarations would also fail on second source under set -e without
+# the guard below.
 
-# Mark as sourced to prevent double-sourcing
+# Double-source guard (MUST be before readonly declarations)
+[[ -n "${CONSTANTS_SOURCED:-}" ]] && return 0
 export CONSTANTS_SOURCED=1
-
-set -euo pipefail
 
 
 # Exit codes

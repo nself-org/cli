@@ -284,6 +284,11 @@ apply_validation_fixes() {
     env_file=".env.${ENV:-dev}"
   fi
 
+  # If no env file exists, nothing to fix
+  if [[ ! -f "$env_file" ]]; then
+    return 0
+  fi
+
   # Backup the file to _backup/timestamp structure
   local timestamp="$(date +%Y%m%d_%H%M%S)"
   local backup_dir="_backup/${timestamp}"

@@ -808,7 +808,7 @@ validate_template_content() {
   local template_file="$1"
 
   # Check for dangerous patterns
-  if grep -qE '\$\(|\`|eval|exec|source|bash|sh' "$template_file" 2>/dev/null; then
+  if grep -qE '\$\(|`|eval|exec|source|bash|sh' "$template_file" 2>/dev/null; then
     printf "${RED}Error: Template contains potentially dangerous code${NC}\n" >&2
     return 1
   fi

@@ -384,10 +384,59 @@ jwt_generate_access_token() {
   token_claims=$(echo "$claims_json" | jq --arg sub "$user_id" --arg iss "$issuer" --arg exp "$exp" \
     '. + {sub: $sub, iss: $iss, exp: ($exp | tonumber), iat: now}')
 
-  # TODO (v1.0): Sign with active private key using jose/jwt library (SECURITY CRITICAL)
-  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-001)
-  # For now, return unsigned token (development only - NOT PRODUCTION READY)
-  echo "$token_claims" | base64
+  # Retrieve active private key from database
+  local container
+  container=$(docker ps --filter 'name=postgres' --format '{{.Names}}' | head -1)
+
+  if [[ -z "$container" ]]; then
+    echo "ERROR: PostgreSQL container not found" >&2
+    return 1
+  fi
+
+  local private_key_pem
+  private_key_pem=$(docker exec -i "$container" psql \
+    -U "${POSTGRES_USER:-postgres}" \
+    -d "${POSTGRES_DB:-nself_db}" \
+    -t -c \
+    "SELECT private_key FROM auth.jwt_keys WHERE is_active = TRUE ORDER BY created_at DESC LIMIT 1;" \
+    2>/dev/null | xargs)
+
+  if [[ -z "$private_key_pem" ]] || [[ "$private_key_pem" == "null" ]]; then
+    echo "ERROR: No active JWT signing key found. Run 'nself auth setup' first." >&2
+    return 1
+  fi
+
+  # Build RS256 header and payload (base64url-encoded)
+  local header='{"alg":"RS256","typ":"JWT"}'
+  local header_b64
+  header_b64=$(printf '%s' "$header" | base64 | tr '+/' '-_' | tr -d '=')
+  local payload_b64
+  payload_b64=$(printf '%s' "$token_claims" | base64 | tr '+/' '-_' | tr -d '=')
+
+  local signing_input="${header_b64}.${payload_b64}"
+
+  # Write private key and signing input to temp files, sign with openssl
+  local tmpkey tmpsig
+  tmpkey=$(mktemp)
+  tmpsig=$(mktemp)
+  printf '%s' "$private_key_pem" > "$tmpkey"
+  chmod 600 "$tmpkey"
+
+  printf '%s' "$signing_input" | openssl dgst -sha256 -sign "$tmpkey" > "$tmpsig" 2>/dev/null
+  local sign_rc=$?
+  rm -f "$tmpkey"
+
+  if [[ "$sign_rc" -ne 0 ]]; then
+    rm -f "$tmpsig"
+    echo "ERROR: JWT signing failed" >&2
+    return 1
+  fi
+
+  local sig_b64
+  sig_b64=$(base64 < "$tmpsig" | tr '+/' '-_' | tr -d '=')
+  rm -f "$tmpsig"
+
+  printf '%s.%s.%s' "$header_b64" "$payload_b64" "$sig_b64"
   return 0
 }
 

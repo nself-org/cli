@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 
 # defaults.sh - Default configuration values
+#
+# Note: No set -euo pipefail here; library files must not alter parent shell
+# options when sourced. See encryption.sh comment for full rationale.
 
 # Project defaults
 # Don't set a default PROJECT_NAME - let each command handle it
 # export PROJECT_NAME="${PROJECT_NAME:-nself}"
 export BASE_DOMAIN="${BASE_DOMAIN:-localhost}"
-
-set -euo pipefail
 
 
 # Prefer .env.runtime (merged runtime config) if it exists, otherwise use ENV_FILE or default to .env

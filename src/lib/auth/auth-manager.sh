@@ -511,50 +511,228 @@ auth_get_provider_config() {
 # Session Management (Placeholders for AUTH-004+)
 # ============================================================================
 
-# Create a new session
+# Create a new session in auth.sessions and return the session token.
+# The session record is written directly to PostgreSQL (same DB used by
+# auth_login_email). No local file store is used — the DB is the source
+# of truth.
+#
 # Usage: auth_create_session <user_id> [ip_address] [user_agent]
+# Returns: session token (plain text) on stdout, exit 0 on success
 auth_create_session() {
   local user_id="$1"
   local ip_address="${2:-}"
   local user_agent="${3:-}"
 
-  # TODO (v1.0): Implement session management (AUTH-004)
-  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-002)
-  log_warning "auth_create_session not yet implemented (AUTH-004)"
-  return 1
+  if [[ -z "$user_id" ]]; then
+    log_error "auth_create_session: user_id required"
+    return 1
+  fi
+
+  local container
+  container=$(docker ps --filter 'name=postgres' --format '{{.Names}}' | head -1)
+
+  if [[ -z "$container" ]]; then
+    log_error "PostgreSQL container not found. Run 'nself start' first."
+    return 1
+  fi
+
+  # Generate a cryptographically random session token (64 hex chars = 32 bytes)
+  local session_token
+  session_token=$(openssl rand -hex 32 2>/dev/null || \
+    dd if=/dev/urandom bs=32 count=1 2>/dev/null | \
+    od -An -tx1 | tr -d ' \\n')
+
+  if [[ -z "$session_token" ]]; then
+    log_error "Failed to generate session token"
+    return 1
+  fi
+
+  # Compute expiry timestamp (UTC) using portable date arithmetic.
+  # macOS Bash 3.2 ships with BSD date; Linux ships with GNU date.
+  # Try GNU date first, fall back to BSD date.
+  local expires_at
+  expires_at=$(date -u -d "+${AUTH_SESSION_EXPIRY_SECONDS} seconds" "+%Y-%m-%d %H:%M:%S" 2>/dev/null || \
+               date -u -v+${AUTH_SESSION_EXPIRY_SECONDS}S "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
+
+  if [[ -z "$expires_at" ]]; then
+    log_error "Failed to compute session expiry"
+    return 1
+  fi
+
+  # Escape single quotes in user-agent to prevent SQL injection.
+  local safe_ua
+  safe_ua=$(printf "%s" "$user_agent" | sed "s/\'/''/g")
+  local safe_ip="${ip_address:-NULL}"
+
+  # Build the INSERT, handling optional ip_address (stored as INET — pass NULL
+  # when empty because PostgreSQL rejects an empty string for INET columns).
+  local insert_sql
+  if [[ -z "$ip_address" ]]; then
+    insert_sql="INSERT INTO auth.sessions (user_id, token, expires_at, user_agent)
+      VALUES ('$user_id', '$session_token', '$expires_at'::timestamptz, '$safe_ua');"
+  else
+    insert_sql="INSERT INTO auth.sessions (user_id, token, expires_at, ip_address, user_agent)
+      VALUES ('$user_id', '$session_token', '$expires_at'::timestamptz, '$ip_address'::inet, '$safe_ua');"
+  fi
+
+  if ! docker exec -i "$container" psql \
+      -U "${POSTGRES_USER:-postgres}" \
+      -d "${POSTGRES_DB:-nself_db}" \
+      -c "$insert_sql" >/dev/null 2>&1; then
+    log_error "Failed to insert session into database"
+    return 1
+  fi
+
+  # Emit just the token so callers can capture it: token=$(auth_create_session ...)
+  printf "%s" "$session_token"
+  return 0
 }
 
-# Validate a session token
+# Validate a session token against auth.sessions.
+# Checks that the token exists, has not been revoked, and has not expired.
+#
 # Usage: auth_validate_session <token>
+# Returns: JSON row on stdout and exit 0 when valid; exit 1 when invalid/expired.
 auth_validate_session() {
   local token="$1"
 
-  # TODO (v1.0): Implement session management (AUTH-004)
-  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-002)
-  log_warning "auth_validate_session not yet implemented (AUTH-004)"
-  return 1
+  if [[ -z "$token" ]]; then
+    log_error "auth_validate_session: token required"
+    return 1
+  fi
+
+  local container
+  container=$(docker ps --filter 'name=postgres' --format '{{.Names}}' | head -1)
+
+  if [[ -z "$container" ]]; then
+    log_error "PostgreSQL container not found. Run 'nself start' first."
+    return 1
+  fi
+
+  # A session is valid when:
+  #   - revoked_at IS NULL  (not explicitly revoked)
+  #   - expires_at > NOW()  (not expired)
+  local row
+  row=$(docker exec -i "$container" psql \
+    -U "${POSTGRES_USER:-postgres}" \
+    -d "${POSTGRES_DB:-nself_db}" \
+    -t -A -c \
+    "SELECT row_to_json(s)
+     FROM auth.sessions s
+     WHERE token = '$token'
+       AND revoked_at IS NULL
+       AND expires_at > NOW()
+     LIMIT 1;" 2>/dev/null || echo "")
+
+  row=$(printf "%s" "$row" | tr -d ' \r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' )
+
+  if [[ -z "$row" ]]; then
+    return 1
+  fi
+
+  printf "%s" "$row"
+  return 0
 }
 
-# Revoke a session
-# Usage: auth_revoke_session <session_id>
+# Revoke a session by setting revoked_at to NOW().
+# The session record is kept for audit purposes; it is simply marked inactive.
+#
+# Usage: auth_revoke_session <session_id_or_token>
+# Accepts either the session UUID (id) or the opaque session token.
 auth_revoke_session() {
   local session_id="$1"
 
-  # TODO (v1.0): Implement session management (AUTH-004)
-  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-002)
-  log_warning "auth_revoke_session not yet implemented (AUTH-004)"
-  return 1
+  if [[ -z "$session_id" ]]; then
+    log_error "auth_revoke_session: session_id or token required"
+    return 1
+  fi
+
+  local container
+  container=$(docker ps --filter 'name=postgres' --format '{{.Names}}' | head -1)
+
+  if [[ -z "$container" ]]; then
+    log_error "PostgreSQL container not found. Run 'nself start' first."
+    return 1
+  fi
+
+  # Match on either the UUID primary key (id) or the opaque token column.
+  # This lets callers pass whichever they have available.
+  local rows_affected
+  rows_affected=$(docker exec -i "$container" psql \
+    -U "${POSTGRES_USER:-postgres}" \
+    -d "${POSTGRES_DB:-nself_db}" \
+    -t -A -c \
+    "UPDATE auth.sessions
+     SET revoked_at = NOW()
+     WHERE revoked_at IS NULL
+       AND (id::text = '$session_id' OR token = '$session_id');" 2>/dev/null || echo "0")
+
+  # psql UPDATE output: "UPDATE N" — extract N
+  rows_affected=$(printf "%s" "$rows_affected" | grep -o '[0-9]*' | tail -1)
+
+  if [[ "${rows_affected:-0}" -eq 0 ]]; then
+    log_warning "No active session found for: $session_id"
+    return 1
+  fi
+
+  log_info "Session revoked: $session_id"
+  return 0
 }
 
-# List user sessions
+# List all active (non-expired, non-revoked) sessions for a user.
+# Prints one line per session with: session_id, created_at, expires_at,
+# ip_address, user_agent (truncated to 40 chars).
+#
 # Usage: auth_list_sessions <user_id>
 auth_list_sessions() {
   local user_id="$1"
 
-  # TODO (v1.0): Implement session management (AUTH-004)
-  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-002)
-  log_warning "auth_list_sessions not yet implemented (AUTH-004)"
-  return 1
+  if [[ -z "$user_id" ]]; then
+    log_error "auth_list_sessions: user_id required"
+    return 1
+  fi
+
+  local container
+  container=$(docker ps --filter 'name=postgres' --format '{{.Names}}' | head -1)
+
+  if [[ -z "$container" ]]; then
+    log_error "PostgreSQL container not found. Run 'nself start' first."
+    return 1
+  fi
+
+  local results
+  results=$(docker exec -i "$container" psql \
+    -U "${POSTGRES_USER:-postgres}" \
+    -d "${POSTGRES_DB:-nself_db}" \
+    -t -A -c \
+    "SELECT id, created_at::text, expires_at::text,
+            COALESCE(ip_address::text, \'(none)\'),
+            LEFT(COALESCE(user_agent, \'(none)\'), 40)
+     FROM auth.sessions
+     WHERE user_id = '$user_id'
+       AND revoked_at IS NULL
+       AND expires_at > NOW()
+     ORDER BY created_at DESC;" 2>/dev/null || echo "")
+
+  if [[ -z "$results" ]]; then
+    log_info "No active sessions for user: $user_id"
+    return 0
+  fi
+
+  # Print header
+  printf "  %-36s  %-19s  %-19s  %-15s  %s\n" \
+    "Session ID" "Created At" "Expires At" "IP" "User Agent"
+  printf "  %s\n" "$(printf '%0.s-' $(seq 1 110))"
+
+  # Print each row (psql -A -t outputs pipe-separated values with -F)
+  while IFS='|' read -r sid created expires ip ua; do
+    printf "  %-36s  %-19s  %-19s  %-15s  %s\n" \
+      "$sid" "$created" "$expires" "$ip" "$ua"
+  done <<EOF_SESSIONS
+$results
+EOF_SESSIONS
+
+  return 0
 }
 
 # ============================================================================
@@ -1047,26 +1225,93 @@ auth_generate_token() {
   openssl rand -hex "$length" 2>/dev/null || head -c "$length" /dev/urandom | xxd -p
 }
 
-# Hash a password
+# Hash a password using bcrypt (htpasswd) or SHA-512 crypt (openssl fallback)
 # Usage: auth_hash_password <password>
 auth_hash_password() {
   local password="$1"
 
-  # TODO (v1.0): Implement bcrypt password hashing (SECURITY CRITICAL)
-  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-003)
-  log_warning "auth_hash_password not yet implemented"
+  if [[ -z "$password" ]]; then
+    log_error "auth_hash_password: password required"
+    return 1
+  fi
+
+  # Prefer bcrypt via htpasswd (Apache utils, cost factor 12)
+  if command -v htpasswd >/dev/null 2>&1; then
+    local hash
+    hash=$(htpasswd -nbB -C 12 "" "$password" 2>/dev/null | cut -d: -f2)
+    if [[ -n "$hash" ]]; then
+      printf '%s' "$hash"
+      return 0
+    fi
+  fi
+
+  # Fall back to SHA-512 crypt via openssl (OpenSSL 1.1.1+)
+  if openssl passwd -6 "" >/dev/null 2>&1; then
+    local hash
+    hash=$(openssl passwd -6 "$password" 2>/dev/null)
+    if [[ -n "$hash" ]]; then
+      printf '%s' "$hash"
+      return 0
+    fi
+  fi
+
+  # Last resort: delegate to password-utils.sh hash_password if sourced
+  if declare -f hash_password >/dev/null 2>&1; then
+    hash_password "$password"
+    return $?
+  fi
+
+  log_error "auth_hash_password: no password hashing tool available (need htpasswd or openssl 1.1.1+)"
   return 1
 }
 
-# Verify a password
+# Verify a password against a stored hash
 # Usage: auth_verify_password <password> <hash>
 auth_verify_password() {
   local password="$1"
   local hash="$2"
 
-  # TODO (v1.0): Implement bcrypt password verification (SECURITY CRITICAL)
-  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-003)
-  log_warning "auth_verify_password not yet implemented"
+  if [[ -z "$password" ]] || [[ -z "$hash" ]]; then
+    return 1
+  fi
+
+  # bcrypt hashes ($2y$, $2b$, $2a$) — verify via htpasswd temp file
+  if [[ "$hash" == '$2'* ]]; then
+    if command -v htpasswd >/dev/null 2>&1; then
+      local tmpfile
+      tmpfile=$(mktemp)
+      printf ':%s\n' "$hash" > "$tmpfile"
+      htpasswd -v -b "$tmpfile" "" "$password" >/dev/null 2>&1
+      local result=$?
+      rm -f "$tmpfile"
+      return $result
+    fi
+    # bcrypt hash but no htpasswd — delegate to password-utils.sh if available
+    if declare -f verify_password >/dev/null 2>&1; then
+      verify_password "$password" "$hash"
+      return $?
+    fi
+    log_error "auth_verify_password: cannot verify bcrypt hash (install apache2-utils for htpasswd)"
+    return 1
+  fi
+
+  # SHA-512 crypt hashes ($6$) — verify via openssl
+  if [[ "$hash" == '$6$'* ]]; then
+    local salt
+    salt=$(printf '%s' "$hash" | cut -d'$' -f3)
+    local computed
+    computed=$(openssl passwd -6 -salt "$salt" "$password" 2>/dev/null)
+    [[ "$computed" == "$hash" ]]
+    return $?
+  fi
+
+  # Delegate to password-utils.sh verify_password for any other hash format
+  if declare -f verify_password >/dev/null 2>&1; then
+    verify_password "$password" "$hash"
+    return $?
+  fi
+
+  log_error "auth_verify_password: unrecognised hash format"
   return 1
 }
 
