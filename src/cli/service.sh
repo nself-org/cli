@@ -179,7 +179,10 @@ source "$SCRIPT_DIR/../lib/utils/platform-compat.sh" 2>/dev/null || true
 
 # Source service init utilities
 source "$SCRIPT_DIR/../lib/service-init/templates-metadata.sh" 2>/dev/null || true
+# Save SCRIPT_DIR before sourcing scaffold.sh — it overwrites SCRIPT_DIR with its own dir
+_SERVICE_SCRIPT_DIR="$SCRIPT_DIR"
 source "$SCRIPT_DIR/../lib/service-init/scaffold.sh" 2>/dev/null || true
+SCRIPT_DIR="$_SERVICE_SCRIPT_DIR"  # Restore after scaffold.sh overwrites it
 
 # Source storage utilities
 source "$SCRIPT_DIR/../lib/storage/upload-pipeline.sh" 2>/dev/null || true
@@ -584,7 +587,7 @@ cmd_service_status() {
 
   if ! is_service_enabled "$service"; then
     log_warning "Service $service is not enabled"
-    return 1
+    return 0  # Status queries always exit 0; output communicates the state
   fi
 
   local container_name

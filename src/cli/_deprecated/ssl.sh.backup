@@ -7,11 +7,11 @@ set -euo pipefail
 CLI_SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$CLI_SCRIPT_DIR"
 
-# Source utilities
-source "$CLI_SCRIPT_DIR/../lib/utils/display.sh" 2>/dev/null || true
-source "$CLI_SCRIPT_DIR/../lib/utils/env.sh"
-source "$CLI_SCRIPT_DIR/../lib/ssl/ssl.sh"
-source "$CLI_SCRIPT_DIR/../lib/ssl/trust.sh"
+# Source utilities (script is in _deprecated/, so lib/ is two levels up: ../../lib/)
+[[ -f "$CLI_SCRIPT_DIR/../../lib/utils/display.sh" ]] && source "$CLI_SCRIPT_DIR/../../lib/utils/display.sh" || true
+source "$CLI_SCRIPT_DIR/../../lib/utils/env.sh"
+source "$CLI_SCRIPT_DIR/../../lib/ssl/ssl.sh"
+source "$CLI_SCRIPT_DIR/../../lib/ssl/trust.sh"
 
 # Command function
 cmd_ssl() {

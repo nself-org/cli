@@ -41,7 +41,9 @@ plugin_list_installed() {
     fi
   done
 
-  printf '%s\n' "${plugins[@]}"
+  if [[ ${#plugins[@]} -gt 0 ]]; then
+    printf '%s\n' "${plugins[@]}"
+  fi
 }
 
 # Check if plugin is compatible with current nself version

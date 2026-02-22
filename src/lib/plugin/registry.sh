@@ -177,7 +177,9 @@ registry_list_installed() {
     fi
   done
 
-  printf '%s\n' "${plugins[@]}"
+  if [[ ${#plugins[@]} -gt 0 ]]; then
+    printf '%s\n' "${plugins[@]}"
+  fi
 }
 
 # Get installed plugin version
