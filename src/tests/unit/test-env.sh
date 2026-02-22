@@ -347,8 +347,10 @@ test_env_delete_prevents_current() {
     env::create "current-env" "local" >/dev/null 2>&1
     env::switch "current-env" "true" >/dev/null 2>&1
 
-    # Try to delete current environment
-    if env::delete "current-env" "true" 2>&1 | grep -qi "cannot delete\|active"; then
+    # Try to delete current environment (capture output separately to avoid pipefail issue)
+    local del_output
+    del_output=$(env::delete "current-env" "true" 2>&1) || true
+    if echo "$del_output" | grep -qi "cannot delete\|active"; then
       pass_test "Cannot delete current active environment"
     else
       fail_test "Should prevent deletion of current environment"

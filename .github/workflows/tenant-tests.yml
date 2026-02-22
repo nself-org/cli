@@ -57,6 +57,7 @@ jobs:
           sed -i 's/^POSTGRES_DB=.*/POSTGRES_DB=nself_test/' .env
           sed -i 's/^POSTGRES_USER=.*/POSTGRES_USER=postgres/' .env
           sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=postgres/' .env
+          sed -i 's/^HASURA_GRAPHQL_ADMIN_SECRET=.*/HASURA_GRAPHQL_ADMIN_SECRET=test-admin-secret-ci/' .env
           # Show the final config
           echo "Final .env configuration:"
           cat .env | grep -v PASSWORD
@@ -78,8 +79,9 @@ jobs:
           export POSTGRES_DB=nself_test
           export POSTGRES_USER=postgres
           export POSTGRES_PASSWORD=postgres
-          # Rebuild to generate config with exported values
-          nself build
+          export HASURA_GRAPHQL_ADMIN_SECRET=test-admin-secret-ci
+          # Rebuild to generate config with exported values (--allow-insecure for CI test env)
+          nself build --allow-insecure
           # Verify the extensions SQL uses correct database name
           # ADVISORY: Diagnostic check - file may not contain \c depending on build version
           echo "Checking generated extensions.sql:"
