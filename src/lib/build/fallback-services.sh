@@ -46,9 +46,9 @@ const server = http.createServer((req, res) => {
 });
 
 const port = process.env.AUTH_PORT || process.env.PORT || 4000;
-// Listen on all IPv4 interfaces
-server.listen(port, '0.0.0.0', () => {
-  console.log(`Auth fallback service listening on port ${port} (all interfaces)`);
+// Bind to loopback only — external access is via Nginx
+server.listen(port, '127.0.0.1', () => {
+  console.log(`Auth fallback service listening on 127.0.0.1:${port}`);
 });
 
 // Graceful shutdown
@@ -132,9 +132,9 @@ const server = http.createServer((req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-// Listen on all IPv4 interfaces
-server.listen(port, '0.0.0.0', () => {
-  console.log(`Functions fallback service listening on port ${port} (all interfaces)`);
+// Bind to loopback only — external access is via Nginx
+server.listen(port, '127.0.0.1', () => {
+  console.log(`Functions fallback service listening on 127.0.0.1:${port}`);
 });
 
 // Graceful shutdown
