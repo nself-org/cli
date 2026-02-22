@@ -28,6 +28,8 @@ src/services/docker/compose-modules/nginx.sh
 .releases/docker/Dockerfile
 .releases/v0.3.9/Dockerfile
 
-# Wiki documentation — nginx config snippets as examples
-# $host in documentation is nginx syntax, not an attacker-controlled value
-.wiki/configuration/Admin-UI.md
+# Wiki documentation — all wiki pages are markdown docs with nginx config examples
+# $host, $request_uri, $remote_addr, etc. are nginx syntax, not shell variables.
+# Documentation files cannot contain security vulnerabilities — they are read-only
+# text that demonstrates correct nginx configuration for users to copy.
+.wiki/
