@@ -64,8 +64,8 @@ teardown() {
     export ALERT_STATE_FILE="./test-state.json"
     echo "{}" > "$ALERT_STATE_FILE"
 
-    should_send_alert "test_alert_key" 300
-    [ $? -eq 0 ]
+    run should_send_alert "test_alert_key" 300
+    [ "$status" -eq 0 ]
 }
 
 @test "alerting: should_send_alert respects cooldown period" {

@@ -16,7 +16,7 @@ set -euo pipefail
   fi
 
   # Create nginx directories
-  mkdir -p nginx/{conf.d,routes,ssl,includes} 2>/dev/null || true
+  mkdir -p nginx/{conf.d,routes,ssl,includes,sites} 2>/dev/null || true
 
   # Generate main nginx.conf
   generate_main_nginx_conf

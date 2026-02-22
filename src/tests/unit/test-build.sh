@@ -307,7 +307,7 @@ test_output_functions() {
 
   # Test color setup
   setup_colors
-  assert_true "[[ -n \"\$COLOR_GREEN\" ]] || [[ -t 1 ]]" "Colors should be set or terminal not available"
+  assert_true "[[ -n \"\$COLOR_GREEN\" ]] || [[ ! -t 1 ]]" "Colors should be set when in terminal, or skipped when not in terminal"
 
   # Test output functions don't error
   show_info "Test info" >/dev/null 2>&1
