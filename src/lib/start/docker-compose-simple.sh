@@ -91,7 +91,7 @@ cleanup_init_containers() {
     fi
 
     echo "$init_containers" | while read -r container; do
-      docker rm "$container" >/dev/null 2>&1 || true
+      docker rm -f "$container" >/dev/null 2>&1 || true
     done
 
     if [ "$verbose" = "true" ]; then

@@ -367,6 +367,7 @@ generate_meilisearch_service() {
   meilisearch-init:
     image: busybox:latest
     container_name: \${PROJECT_NAME}_meilisearch_init
+    restart: "no"
     user: root
     networks:
       - \${DOCKER_NETWORK}
