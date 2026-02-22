@@ -53,8 +53,9 @@ generate_mlflow_service_improved() {
           --serve-artifacts
     volumes:
       - mlflow_data:/mlflow/artifacts
+    # SECURITY: Bound to 127.0.0.1 only - access via nginx proxy
     ports:
-      - "\${MLFLOW_PORT:-5005}:\${MLFLOW_PORT:-5005}"
+      - "127.0.0.1:\${MLFLOW_PORT:-5005}:\${MLFLOW_PORT:-5005}"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:\${MLFLOW_PORT:-5005}/health')"]
       interval: 30s

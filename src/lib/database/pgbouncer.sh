@@ -206,8 +206,9 @@ generate_docker_compose_service() {
       PGBOUNCER_POOL_MODE: ${PGBOUNCER_POOL_MODE:-transaction}
       PGBOUNCER_MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-200}
       PGBOUNCER_DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-25}
+    # SECURITY: Bound to 127.0.0.1 only - access via application layer only
     ports:
-      - "\${PGBOUNCER_PORT:-6432}:6432"
+      - "127.0.0.1:\${PGBOUNCER_PORT:-6432}:6432"
     volumes:
       - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
       - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
