@@ -4,8 +4,8 @@
 #
 # Note: No set -euo pipefail here; library files must not alter parent shell
 # options when sourced. See encryption.sh comment for full rationale.
-# readonly declarations would also fail on second source under set -e without
-# the guard below.
+# Note: Arrays are NOT declared readonly — bats-core cannot pass readonly arrays
+# from setup() to @test bodies, causing test failures. Scalar constants remain readonly.
 
 # Double-source guard (MUST be before readonly declarations)
 [[ -n "${CONSTANTS_SOURCED:-}" ]] && return 0
@@ -19,9 +19,9 @@ readonly EXIT_MISUSE=2
 readonly EXIT_CANT_EXEC=126
 readonly EXIT_NOT_FOUND=127
 
-# Service names
-readonly CORE_SERVICES=(postgres hasura minio auth storage)
-readonly OPTIONAL_SERVICES=(redis mailhog webhook-service)
+# Service names (not readonly — readonly arrays are invisible in bats @test bodies)
+CORE_SERVICES=(postgres hasura minio auth storage)
+OPTIONAL_SERVICES=(redis mailhog webhook-service)
 
 # File patterns
 readonly DOCKER_FILE_PATTERN="Dockerfile*"

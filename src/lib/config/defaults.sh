@@ -53,8 +53,8 @@ export REDIS_PORT="${REDIS_PORT:-6379}"
 export NGINX_HTTP_PORT="${NGINX_HTTP_PORT:-80}"
 export NGINX_HTTPS_PORT="${NGINX_HTTPS_PORT:-443}"
 
-# Required environment variables
-export REQUIRED_ENV_VARS=(
+# Required environment variables (not exported — exported arrays are invisible in bats @test bodies)
+REQUIRED_ENV_VARS=(
   "PROJECT_NAME"
   "BASE_DOMAIN"
   "POSTGRES_PASSWORD"
