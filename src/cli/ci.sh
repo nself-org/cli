@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # ci.sh - CI/CD Integration for nself
 # Generate GitHub Actions workflows for nself projects
+# shellcheck disable=SC2259  # SSH heredocs inside template heredocs are intentional;
+#   they become template content in generated .gitlab-ci.yml files, not live shell code.
 
 set -o pipefail
 

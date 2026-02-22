@@ -11,6 +11,8 @@ set -euo pipefail
 # ============================================================================
 
 # Current mock time (Unix timestamp)
+# shellcheck disable=SC2218  # date() is defined later in this file to mock it;
+#   here we intentionally call the system 'date' binary before the mock is installed.
 MOCK_CURRENT_TIME="${MOCK_CURRENT_TIME:-$(date +%s)}"
 
 # Time multiplier for fast-forward (1.0 = real time, 10.0 = 10x speed)

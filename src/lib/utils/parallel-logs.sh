@@ -149,7 +149,7 @@ parallel_tail_logs_colored() {
     local rest=$(echo "$line" | cut -d' ' -f2-)
 
     # Get color for service
-    local color=$(echo -e "$SERVICE_COLOR_MAP" | grep "^${service}=" | cut -d'=' -f2)
+    local color=$(printf '%b' "$SERVICE_COLOR_MAP" | grep "^${service}=" | cut -d'=' -f2)
     if [[ -z "$color" ]]; then
       color="$reset"
     fi
