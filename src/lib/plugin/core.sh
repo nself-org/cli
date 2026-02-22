@@ -890,9 +890,9 @@ plugin_security_scan() {
   return 0
 }
 
-# nself release signing identity (placeholder — replace with real key email/fingerprint
-# once the nself signing key pair is generated and published to keys.openpgp.org).
-NSELF_SIGNING_KEY="${NSELF_SIGNING_KEY:-nself-releases@nself.org}"
+# nself release signing key fingerprint (nself-releases@nself.org, expires 2028-02-22).
+# Key published to hkps://keys.openpgp.org — email verification pending setup of mailbox.
+NSELF_SIGNING_KEY="${NSELF_SIGNING_KEY:-FDE8E7AE3BAD976745F3C5CA439192157535E07E}"
 
 # Keyserver used to import the nself signing key when it is not already in the local
 # GPG keyring.
