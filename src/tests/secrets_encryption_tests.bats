@@ -390,12 +390,15 @@ start_postgres() {
     key1=$(encryption_generate_key)
     key2=$(encryption_generate_key)
 
+    local plaintext="nself-test-unique-value-$(date +%s)-$$"
     local encrypted
-    encrypted=$(encryption_encrypt "test" "$key1")
+    encrypted=$(encryption_encrypt "$plaintext" "$key1")
 
-    # Try to decrypt with different key
+    # Try to decrypt with different key — OpenSSL may exit 0 with garbage output
+    # (valid PKCS7 padding by chance ~0.4%), so check BOTH exit code AND output
     run encryption_decrypt "$encrypted" "$key2"
-    [ "$status" -ne 0 ]
+    # Either non-zero exit (bad padding detected) OR output differs from original
+    [ "$status" -ne 0 ] || [ "$output" != "$plaintext" ]
 }
 
 @test "encryption_decrypt handles invalid format" {

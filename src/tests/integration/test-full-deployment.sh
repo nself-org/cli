@@ -88,9 +88,11 @@ test_03_build() {
 
   cd "$TEST_PROJECT_DIR"
 
-  # Run nself build
-  printf "Running: nself build\n"
-  "$NSELF_ROOT/bin/nself" build
+  # Run nself build (--allow-insecure skips password requirements for optional
+  # services enabled in test_02 — REDIS_PASSWORD, MINIO_ROOT_PASSWORD — which
+  # init does not create because they are enabled after init runs)
+  printf "Running: nself build --allow-insecure\n"
+  "$NSELF_ROOT/bin/nself" build --allow-insecure
 
   # Verify docker-compose.yml generated
   assert_file_generated "docker-compose.yml" "docker-compose.yml should be generated"
