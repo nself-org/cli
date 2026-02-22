@@ -171,6 +171,13 @@ cmd_build() {
   fi
   env="${ENV:-$env}"
 
+  # Sanitize environment variables (PROJECT_NAME, booleans, etc.) before security checks.
+  # validate_environment auto-fixes invalid values and writes them back to .env so that
+  # security validation and all downstream code sees clean values.
+  if command -v validate_environment >/dev/null 2>&1; then
+    validate_environment >/dev/null 2>&1 || true
+  fi
+
   # ============================================================
   # SECURE BY DEFAULT: Security validation before build
   # ============================================================
