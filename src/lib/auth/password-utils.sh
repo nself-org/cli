@@ -65,14 +65,19 @@ verify_password() {
 
   # Check hash type
   if [[ "$stored_hash" == \$2y\$* ]] || [[ "$stored_hash" == \$2b\$* ]] || [[ "$stored_hash" == \$2a\$* ]]; then
-    # bcrypt hash
-    if command -v htpasswd >/dev/null 2>&1; then
-      # Use htpasswd to verify
-      echo "$stored_hash" | htpasswd -vbB -i "" "$password" >/dev/null 2>&1
-      return $?
-    elif command -v python3 >/dev/null 2>&1; then
+    # bcrypt hash — try Python3 first (more reliable cross-platform), then htpasswd
+    if command -v python3 >/dev/null 2>&1 && python3 -c "import bcrypt" >/dev/null 2>&1; then
       python3 -c "import bcrypt; import sys; sys.exit(0 if bcrypt.checkpw('$password'.encode(), '$stored_hash'.encode()) else 1)" 2>/dev/null
       return $?
+    elif command -v htpasswd >/dev/null 2>&1; then
+      # htpasswd -v requires a file; write hash to temp file for verification
+      local tmpfile
+      tmpfile=$(mktemp)
+      printf ":%s\n" "$stored_hash" > "$tmpfile"
+      htpasswd -v -b "$tmpfile" "" "$password" >/dev/null 2>&1
+      local result=$?
+      rm -f "$tmpfile"
+      return $result
     fi
   elif [[ "$stored_hash" == \$pbkdf2\$* ]]; then
     # Our custom PBKDF2 format

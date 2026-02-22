@@ -48,7 +48,7 @@ log_command_completion() {
   local log_file="logs/nself.log"
 
   local status="SUCCESS"
-  [[ $exit_code -ne 0 ]] && status="FAILED"
+  if [[ $exit_code -ne 0 ]]; then status="FAILED"; fi
 
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Completed: nself $command - $status (exit: $exit_code)" >>"$log_file"
 }

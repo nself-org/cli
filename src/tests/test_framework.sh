@@ -10,13 +10,13 @@ set -euo pipefail
 [[ -n "${_TEST_FRAMEWORK_LOADED:-}" ]] && return 0
 readonly _TEST_FRAMEWORK_LOADED=1
 
-# Color definitions for test output
-readonly COLOR_RESET='\033[0m'
-readonly COLOR_RED='\033[0;31m'
-readonly COLOR_GREEN='\033[0;32m'
-readonly COLOR_YELLOW='\033[0;33m'
-readonly COLOR_BLUE='\033[0;34m'
-readonly COLOR_MAGENTA='\033[0;35m'
+# Color definitions for test output (not readonly — avoids conflict when display.sh is sourced)
+COLOR_RESET='\033[0m'
+COLOR_RED='\033[0;31m'
+COLOR_GREEN='\033[0;32m'
+COLOR_YELLOW='\033[0;33m'
+COLOR_BLUE='\033[0;34m'
+COLOR_MAGENTA='\033[0;35m'
 
 # Test counters
 TESTS_RUN=0

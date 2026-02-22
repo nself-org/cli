@@ -70,7 +70,9 @@ log_error() {
 }
 
 log_debug() {
-  [[ "${DEBUG:-false}" == "true" ]] && printf "%b[DEBUG]%b %s\n" "${COLOR_MAGENTA}" "${COLOR_RESET}" "$1"
+  if [[ "${DEBUG:-false}" == "true" ]]; then
+    printf "%b[DEBUG]%b %s\n" "${COLOR_MAGENTA}" "${COLOR_RESET}" "$1"
+  fi
 }
 
 # Export logging functions

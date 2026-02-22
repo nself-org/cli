@@ -8,7 +8,7 @@ setup() {
     cd "$TEST_DIR"
 
     # Resolve nself path dynamically
-    NSELF_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    NSELF_PATH="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
     export PATH="$NSELF_PATH:$PATH"
 
     # Initialize minimal nself project

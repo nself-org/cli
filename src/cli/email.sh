@@ -19,5 +19,10 @@ fi
 printf "\033[0;33m⚠\033[0m  The 'nself email' command is deprecated.\n"
 printf "   Please use: \033[1mnself service email\033[0m\n\n"
 
+# Deprecated wrapper function (maintains backward compatibility)
+email_main() {
+  exec "${SCRIPT_DIR}/service.sh" email "$@"
+}
+
 # Delegate to new command
-exec "${SCRIPT_DIR}/service.sh" email "$@"
+email_main "$@"

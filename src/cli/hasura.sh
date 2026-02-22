@@ -104,3 +104,5 @@ hasura_usage() {
 }
 
 export -f cmd_hasura
+
+[[ "${BASH_SOURCE[0]}" == "${0}" ]] && cmd_hasura "$@"

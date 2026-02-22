@@ -3,8 +3,13 @@
 # Part of nself backup system
 
 
-# Source required utilities
-source "${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")/..}/lib/utils/display.sh" 2>/dev/null || true
+# Source required utilities using BASH_SOURCE[0] for reliable path resolution
+# when this file is sourced from another script that has set SCRIPT_DIR differently
+_PRUNING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+if [[ -f "${_PRUNING_DIR}/../utils/display.sh" ]]; then
+  source "${_PRUNING_DIR}/../utils/display.sh"
+fi
+unset _PRUNING_DIR
 
 set -euo pipefail
 
