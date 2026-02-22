@@ -67,7 +67,7 @@ test_01_setup() {
   cd "$TEST_PROJECT_DIR"
 
   # Initialize project
-  run_nself_command init --simple
+  run_nself_command init --quiet
 
   # Configure backup settings
   cat >>.env <<EOF

@@ -48,7 +48,7 @@ test_01_setup() {
   cd "$TEST_PROJECT_DIR"
 
   # Initialize project
-  run_nself_command init --simple
+  run_nself_command init --quiet
 
   # Configure custom services (CS_1 through CS_4)
   cat >>.env <<EOF

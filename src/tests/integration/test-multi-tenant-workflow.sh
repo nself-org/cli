@@ -59,7 +59,7 @@ test_01_setup() {
   cd "$TEST_PROJECT_DIR"
 
   # Initialize project
-  run_nself_command init --simple
+  run_nself_command init --quiet
 
   # Enable multi-tenancy in .env
   cat >>.env <<EOF
