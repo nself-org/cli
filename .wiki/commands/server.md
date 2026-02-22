@@ -1,5 +1,9 @@
 # nself server (Legacy-Compatible Surface)
 
+> **⚠️ DEPRECATED**: `nself server` is deprecated and will be removed in v1.0.0.
+> Please use `nself deploy server` instead.
+> Run `nself deploy server --help` for full usage information.
+
 Server/VPS management command still present for compatibility and direct workflows.
 
 ## Status

@@ -1,10 +1,10 @@
 class Nself < Formula
   desc "Production-ready self-hosted backend infrastructure"
   homepage "https://nself.org"
-  url "https://github.com/nself-org/cli/archive/refs/tags/v0.4.7.tar.gz"
-  sha256 "133ba89bc55c50327f0c22f9b737405a5345f9cd3004333100e88861555b7aca"
-  license "Source-Available"
-  version "0.4.7"
+  url "https://github.com/nself-org/cli/archive/refs/tags/v0.9.9.tar.gz"
+  sha256 "0000000000000000000000000000000000000000000000000000000000000000" # TODO: update when v0.9.9 release tarball is published
+  license "MIT"
+  version "0.9.9"
 
   depends_on "docker"
   depends_on "docker-compose"

@@ -4,6 +4,8 @@
 
 This is the authoritative command structure after consolidation from 79 → 31 top-level commands.
 
+> **Note on backward-compatibility stubs**: ~34 deprecated command files exist alongside these 31 commands (e.g. `nself email`, `nself ssl`, `nself staging`, `nself helm`). They show a deprecation warning and delegate to the consolidated command. They are NOT part of the v1.0 command surface and will be removed in v1.0.0. If a command you use isn't listed here, check its wiki page for the replacement command.
+
 **New in v0.9.6:**
 - `destroy` - Safe infrastructure destruction with selective targeting
 - `deploy server` - 10 new subcommands for complete VPS lifecycle management

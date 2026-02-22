@@ -1,5 +1,9 @@
 # nself prod
 
+> **⚠️ DEPRECATED**: `nself prod` is deprecated and will be removed in v1.0.0.
+> Please use `nself deploy production` instead.
+> Run `nself deploy --help` for full usage information.
+
 Production environment management, security hardening, and monitoring.
 
 ## Synopsis

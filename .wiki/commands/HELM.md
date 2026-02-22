@@ -1,5 +1,9 @@
 # nself helm - Helm Chart Management
 
+> **⚠️ DEPRECATED**: `nself helm` is deprecated and will be removed in v1.0.0.
+> Please use `nself infra helm` instead.
+> Run `nself infra helm --help` for full usage information.
+
 **Version**: 0.4.7+ | **Status**: Available
 
 ---

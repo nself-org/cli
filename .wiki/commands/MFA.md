@@ -1,5 +1,9 @@
 # nself mfa - Multi-Factor Authentication Management
 
+> **⚠️ DEPRECATED**: `nself mfa` is deprecated and will be removed in v1.0.0.
+> Please use `nself auth mfa` instead.
+> Run `nself auth mfa --help` for full usage information.
+
 **Version**: 0.6.0+
 **Status**: ✅ Production Ready
 **Category**: Authentication & Security

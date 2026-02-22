@@ -1,5 +1,9 @@
 # nself oauth - OAuth Management CLI
 
+> **⚠️ DEPRECATED**: `nself oauth` is deprecated and will be removed in v1.0.0.
+> Please use `nself auth oauth` instead.
+> Run `nself auth oauth --help` for full usage information.
+
 Manage OAuth authentication providers in nself.
 
 ## Synopsis

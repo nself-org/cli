@@ -1,5 +1,9 @@
 # Search Command
 
+> **⚠️ DEPRECATED**: `nself search` is deprecated and will be removed in v1.0.0.
+> Please use `nself service search` instead.
+> Run `nself service search --help` for full usage information.
+
 Configure and manage search services for your nself project.
 
 ## Quick Start

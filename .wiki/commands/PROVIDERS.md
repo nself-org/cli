@@ -1,5 +1,9 @@
 # nself providers - Cloud Providers (Legacy)
 
+> **⚠️ DEPRECATED**: `nself providers` is deprecated and will be removed in v1.0.0.
+> Please use `nself infra provider` instead.
+> Run `nself infra provider --help` for full usage information.
+
 **Version 0.9.9** | Manage cloud providers
 
 ---

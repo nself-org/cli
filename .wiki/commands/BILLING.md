@@ -1,5 +1,9 @@
 # Multi-Tenant Billing Commands
 
+> **⚠️ DEPRECATED**: `nself billing` is deprecated and will be removed in v1.0.0.
+> Please use `nself tenant billing` instead.
+> Run `nself tenant billing --help` for full usage information.
+>
 > **Note:** These commands are part of the multi-tenant features. For single-tenant deployments, most billing features are optional.
 
 Comprehensive billing and usage management for nself multi-tenant deployments. Integrated Stripe payment processing, real-time usage tracking, quota enforcement, and detailed billing analytics.

@@ -1,5 +1,9 @@
 # nself ssl - SSL Certificate Management
 
+> **⚠️ DEPRECATED**: `nself ssl` is deprecated and will be removed in v1.0.0.
+> Please use `nself auth ssl` instead.
+> Run `nself auth ssl --help` for full usage information.
+
 **Version 0.9.9** | Manage SSL/TLS certificates
 
 ---

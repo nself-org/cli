@@ -1,5 +1,9 @@
 # nself servers - Server Management
 
+> **⚠️ DEPRECATED**: `nself servers` is deprecated and will be removed in v1.0.0.
+> Please use `nself deploy server` instead.
+> Run `nself deploy server --help` for full usage information.
+
 **Version 0.4.6** | Server and infrastructure management
 
 ---

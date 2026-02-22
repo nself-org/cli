@@ -1,5 +1,5 @@
 Name:           nself
-Version:        0.9.8
+Version:        0.9.9
 Release:        1%{?dist}
 Summary:        Self-hosted infrastructure manager for developers
 
@@ -47,13 +47,19 @@ cp LICENSE $RPM_BUILD_ROOT/usr/share/doc/nself/
 
 %post
 chmod +x /opt/nself/bin/nself
-echo "nself v0.9.8 installed successfully!"
+echo "nself v0.9.9 installed successfully!"
 echo "Run 'nself help' to get started."
 
 %preun
 # Nothing to do
 
 %changelog
+* Sat Feb 22 2026 acamarata <contact@acamarata.com> - 0.9.9-1
+- Release v0.9.9: Security hardening, CI pipeline fixes, wiki cleanup
+- Port binding security: MLflow and PgBouncer now bind to 127.0.0.1
+- Added deprecation notices to 12 wiki pages for consolidated commands
+- Bash 3.2 compatibility maintained throughout
+
 * Mon Feb 10 2026 acamarata <contact@acamarata.com> - 0.9.8-1
 - Release v0.9.8: Production Readiness & Help Contract
 - Bash 3.2 compatibility (works on macOS default)

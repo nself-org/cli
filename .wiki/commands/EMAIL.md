@@ -1,5 +1,9 @@
 # Email Command
 
+> **⚠️ DEPRECATED**: `nself email` is deprecated and will be removed in v1.0.0.
+> Please use `nself service email` instead.
+> Run `nself service email --help` for full usage information.
+
 Configure and manage email services for your nself project.
 
 ## Quick Start

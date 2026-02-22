@@ -1,5 +1,9 @@
 # nself trust - Trust SSL Certificates
 
+> **⚠️ DEPRECATED**: `nself trust` is deprecated and will be removed in v1.0.0.
+> Please use `nself auth ssl trust` instead.
+> Run `nself auth ssl --help` for full usage information.
+
 **Version 0.9.9** | Install root CA to system trust store
 
 ---
