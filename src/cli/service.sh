@@ -609,7 +609,9 @@ cmd_service_status() {
     return 0
   fi
 
-  docker ps --filter "name=$container_name" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+  # Use || true so docker ps failure (daemon not running) doesn't exit via set -e
+  docker ps --filter "name=$container_name" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || \
+    log_warning "Could not query container status (Docker daemon may not be running)"
 }
 
 # === RESTART SUBCOMMAND ===
