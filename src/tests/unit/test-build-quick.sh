@@ -3,8 +3,8 @@ set -euo pipefail
 # Quick test runner for build modules with better error handling
 
 # Determine the nself root directory
-if [[ -n "$GITHUB_WORKSPACE" ]]; then
-  NSELF_ROOT="$GITHUB_WORKSPACE"
+if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
+  NSELF_ROOT="${GITHUB_WORKSPACE:-}"
 else
   # Local development - find the root by going up from test directory
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -196,7 +196,7 @@ test_wrapper() {
   # Executable check - skip in CI (permissions may not transfer)
   if [[ -x "$NSELF_ROOT/src/cli/build.sh" ]]; then
     test_result "pass" "Build wrapper is executable"
-  elif [[ -n "$GITHUB_WORKSPACE" ]] || [[ -n "$CI" ]]; then
+  elif [[ -n "${GITHUB_WORKSPACE:-}" ]] || [[ -n "${CI:-}" ]]; then
     test_result "skip" "Build wrapper executable check (CI environment)"
   else
     test_result "fail" "Build wrapper not executable"

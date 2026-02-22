@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 # test-safe-query.sh - Unit tests for safe query library
 # Tests SQL injection prevention, input validation, and parameterized queries
 

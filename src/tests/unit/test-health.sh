@@ -45,7 +45,7 @@ test_help() {
 test_health_check() {
   TESTS_RUN=$((TESTS_RUN + 1))
   local help_output
-  help_output=$(bash "$SOURCE_FILE" help 2>&1)
+  help_output=$(bash "$SOURCE_FILE" --help 2>&1 || bash "$SOURCE_FILE" help 2>&1 || true)
 
   if echo "$help_output" | grep -qi "service\|container\|check"; then
     printf "✓ Health check functionality documented\n"

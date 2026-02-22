@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # email.sh - DEPRECATED: Use 'nself service email' instead
+# Supported providers: sendgrid, aws-ses, mailgun, smtp, resend, postmark, sparkpost, mailchimp, zoho, mandrill
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

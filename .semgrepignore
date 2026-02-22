@@ -27,3 +27,7 @@ src/services/docker/compose-modules/nginx.sh
 # These are versioned release bundles, not production deployment targets
 .releases/docker/Dockerfile
 .releases/v0.3.9/Dockerfile
+
+# Wiki documentation — nginx config snippets as examples
+# $host in documentation is nginx syntax, not an attacker-controlled value
+.wiki/configuration/Admin-UI.md

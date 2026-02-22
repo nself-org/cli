@@ -306,13 +306,13 @@ jobs:
 
           # Count test artifacts
           unit_count=$(find . -name "test-results-*" -type d | wc -l)
-          printf "- Unit test shards completed: %d/8\n" "$unit_count"
+          printf -- "- Unit test shards completed: %d/8\n" "$unit_count"
 
           # Check for failures
           if find . -name "*.log" -exec grep -l "FAIL" {} \; 2>/dev/null | grep -q .; then
-            printf "- ⚠️ Some tests failed - review logs\n"
+            printf -- "- ⚠️ Some tests failed - review logs\n"
           else
-            printf "- ✅ All tests passed\n"
+            printf -- "- ✅ All tests passed\n"
           fi
 
           printf "\n## Next Steps\n\n"

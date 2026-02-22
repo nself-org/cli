@@ -29,7 +29,7 @@ test_help() {
   TESTS_RUN=$((TESTS_RUN + 1))
   local help_output
   # Try --help flag first, then help subcommand
-  help_output=$(bash "$SOURCE_FILE" --help 2>&1 || bash "$SOURCE_FILE" help 2>&1 || true)
+  help_output=$(cd /tmp && bash "$SOURCE_FILE" --help 2>&1 || true)
 
   if echo "$help_output" | grep -qi "usage\|command\|help"; then
     printf "✓ Help text present\n"
@@ -45,7 +45,7 @@ test_help() {
 test_command_listing() {
   TESTS_RUN=$((TESTS_RUN + 1))
   local help_output
-  help_output=$(bash "$SOURCE_FILE" help 2>&1)
+  help_output=$(cd /tmp && bash "$SOURCE_FILE" --help 2>&1 || true)
 
   if echo "$help_output" | grep -q "init\|build\|start\|stop"; then
     printf "✓ Main commands listed\n"

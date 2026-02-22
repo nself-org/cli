@@ -32,6 +32,7 @@ setup_test_env() {
   source "$PROJECT_ROOT/src/lib/security/secrets.sh" 2>/dev/null || true
   source "$PROJECT_ROOT/src/lib/security/ssl-letsencrypt.sh" 2>/dev/null || true
   source "$PROJECT_ROOT/src/lib/security/firewall.sh" 2>/dev/null || true
+  set +e  # Re-disable errexit (sourced libs may have re-enabled it)
 }
 
 teardown_test_env() {

@@ -4,8 +4,8 @@ set -euo pipefail
 # Tests all modules and functions for Bash 3.2 compatibility
 
 # Determine the nself root directory
-if [[ -n "$GITHUB_WORKSPACE" ]]; then
-  NSELF_ROOT="$GITHUB_WORKSPACE"
+if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
+  NSELF_ROOT="${GITHUB_WORKSPACE:-}"
 else
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   NSELF_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"

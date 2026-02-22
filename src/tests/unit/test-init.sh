@@ -245,8 +245,9 @@ test_terminal_capabilities() {
   detect_terminal
   assert_equals "true" "$SUPPORTS_UNICODE" "Should support Unicode in xterm with UTF-8"
 
-  # Test color detection - in CI, NO_COLOR or dumb terminal might be set
-  if [[ -z "${NO_COLOR:-}" ]] && [[ "$TERM" != "dumb" ]]; then
+  # Test color detection - only works when stdout is a real terminal
+  # In CI, stdout is not a TTY so -t 1 is false and colors are disabled
+  if [[ -z "${NO_COLOR:-}" ]] && [[ "$TERM" != "dumb" ]] && [[ -t 1 ]]; then
     assert_equals "true" "$SUPPORTS_COLOR" "Should support colors in xterm-256color"
   fi
 
