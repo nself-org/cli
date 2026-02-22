@@ -22,8 +22,10 @@ KEY_ROTATION_DAYS="${KEY_ROTATION_DAYS:-90}"
 # Usage: encryption_generate_key
 # Returns: Base64-encoded 256-bit key
 encryption_generate_key() {
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -base64 "$KEY_SIZE"
+  local _key
+  # Try openssl first; fall through to /dev/urandom if unavailable or fails
+  if command -v openssl >/dev/null 2>&1 && _key=$(openssl rand -base64 "$KEY_SIZE" 2>/dev/null); then
+    echo "$_key"
   else
     head -c "$KEY_SIZE" /dev/urandom | base64
   fi
@@ -33,8 +35,10 @@ encryption_generate_key() {
 # Usage: encryption_generate_iv
 # Returns: Hex-encoded IV
 encryption_generate_iv() {
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 16
+  local _iv
+  # Try openssl first; fall through to /dev/urandom if unavailable or fails
+  if command -v openssl >/dev/null 2>&1 && _iv=$(openssl rand -hex 16 2>/dev/null); then
+    echo "$_iv"
   else
     head -c 16 /dev/urandom | xxd -p | tr -d '\n'
   fi
@@ -368,8 +372,9 @@ encryption_decrypt() {
   fi
 
   # Decrypt using OpenSSL
+  # printf adds trailing newline required by openssl's base64 parser
   local decrypted
-  decrypted=$(echo -n "$ciphertext" | openssl enc -d -aes-256-cbc -K "$(echo -n "$key_data" | base64 -d | xxd -p | tr -d '\n')" -iv "$iv" -base64 2>/dev/null)
+  decrypted=$(printf '%s\n' "$ciphertext" | openssl enc -d -aes-256-cbc -K "$(echo -n "$key_data" | base64 -d | xxd -p | tr -d '\n')" -iv "$iv" -base64 2>/dev/null)
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR: Decryption failed" >&2
