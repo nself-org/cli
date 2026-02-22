@@ -344,6 +344,9 @@ show_service_overview() {
     load_env_with_priority
   fi
 
+  # Aggressively remove any lingering init containers on every status check
+  cleanup_init_containers 2>/dev/null || true
+
   # Performance: Use batch Docker calls if in fast mode (v0.9.8)
   if [[ "${NSELF_FAST_MODE:-false}" == "true" ]] && command -v fast_service_overview >/dev/null 2>&1; then
     # Use optimized batch call
@@ -916,6 +919,9 @@ show_detailed_status() {
 
   # Load environment
   load_env_with_priority 2>/dev/null || true
+
+  # Aggressively remove any lingering init containers on every status check
+  cleanup_init_containers 2>/dev/null || true
 
   local project_name="${PROJECT_NAME:-nself}"
   local base_domain="${BASE_DOMAIN:-local.nself.org}"

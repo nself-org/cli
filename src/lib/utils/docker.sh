@@ -291,15 +291,26 @@ validate_compose_file() {
 cleanup_init_containers() {
   local project="${PROJECT_NAME:-$(project_name)}"
 
-  # Find all exited init containers for this project (both _init and -init patterns)
-  local init_containers=$(docker ps -a \
-    --filter "name=${project}_.*[-_]init" \
+  # Primary: label-based cleanup (catches all nself init containers regardless of naming)
+  local label_containers
+  label_containers=$(docker ps -a \
+    --filter "label=nself.type=init-container" \
     --filter "status=exited" \
-    --format "{{.Names}}" 2>/dev/null)
+    --format "{{.Names}}" 2>/dev/null || true)
 
-  if [[ -n "$init_containers" ]]; then
-    # Remove them silently
-    echo "$init_containers" | xargs docker rm >/dev/null 2>&1 || true
+  # Secondary: name-pattern fallback (catches containers without the label)
+  local name_containers
+  name_containers=$(docker ps -a --format "{{.Names}}" 2>/dev/null \
+    | grep -E "^${project}[-_].*[-_]init$" || true)
+
+  # Combine, deduplicate, remove empty lines
+  local all_containers
+  all_containers=$(printf '%s\n%s\n' "$label_containers" "$name_containers" \
+    | sort -u | grep -v '^$' || true)
+
+  if [[ -n "$all_containers" ]]; then
+    # Force-remove so they can't linger even if still technically running
+    echo "$all_containers" | xargs docker rm -f >/dev/null 2>&1 || true
   fi
 }
 
