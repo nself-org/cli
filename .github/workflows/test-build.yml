@@ -284,6 +284,8 @@ jobs:
           PROJECT_NAME=integrationtest
           BASE_DOMAIN=localhost
           ENV=dev
+          POSTGRES_PASSWORD=ci-test-postgres-secret
+          HASURA_GRAPHQL_ADMIN_SECRET=ci-test-hasura-secret
 
           # Services
           NGINX_ENABLED=true
@@ -305,7 +307,7 @@ jobs:
           # ADVISORY: Build may exit non-zero in CI without full Docker runtime
           # We validate success by checking generated artifacts below
           echo "Running build..."
-          bash $GITHUB_WORKSPACE/src/cli/build.sh --force || echo "::notice::Build exited with code $? (may be expected in CI)"
+          bash $GITHUB_WORKSPACE/src/cli/build.sh --force --allow-insecure || echo "::notice::Build exited with code $? (may be expected in CI)"
 
           # Debug: Show what was created
           echo "Listing directory contents:"
