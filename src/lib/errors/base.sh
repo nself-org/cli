@@ -12,6 +12,15 @@ set -euo pipefail
 ERROR_FIXES=""
 ERROR_ACTIONS=""
 
+# Detect associative array support (Bash 4+ vs Bash 3.2)
+if declare -A _test_assoc_arr 2>/dev/null; then
+  unset _test_assoc_arr
+  _HAS_ASSOC_ARRAYS="true"
+else
+  _HAS_ASSOC_ARRAYS="false"
+fi
+export _HAS_ASSOC_ARRAYS
+
 # Error severity levels
 readonly ERROR_CRITICAL=3 # Cannot continue
 readonly ERROR_MAJOR=2    # Can try to fix

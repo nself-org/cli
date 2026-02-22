@@ -5,9 +5,6 @@
 
 # Configure core project settings
 wizard_core_settings() {
-
-set -euo pipefail
-
   local config_array_name="$1"
 
   clear
