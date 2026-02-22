@@ -57,7 +57,12 @@ jobs:
           else
             brew install bats-core
           fi
-          
+
+      - name: Install nself binary
+        run: |
+          sudo ln -sf "${{ github.workspace }}/bin/nself" /usr/local/bin/nself
+          chmod +x "${{ github.workspace }}/bin/nself"
+
       - name: Run unit tests
         run: |
           cd src/tests
