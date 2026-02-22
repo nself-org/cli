@@ -50,6 +50,7 @@ PLUGIN_CACHE_DIR="${NSELF_PLUGIN_CACHE:-$HOME/.nself/cache/plugins}"
 PLUGIN_REGISTRY_URL="${NSELF_PLUGIN_REGISTRY:-https://plugins.nself.org}"
 PLUGIN_REGISTRY_FALLBACK="https://raw.githubusercontent.com/nself-org/plugins/main/registry.json"
 PLUGIN_REPO_URL="https://github.com/nself-org/plugins"
+NSELF_API_DOWNLOAD_URL="${NSELF_API_URL:-https://api.nself.org}/plugins"
 
 # ============================================================================
 # PLUGIN MANAGEMENT
@@ -246,6 +247,11 @@ cmd_install() {
 
   # Run install script
   run_plugin_installer "$plugin_name"
+
+  # Install plugin-to-plugin dependencies declared in plugin.json
+  if declare -f plugin_install_dependencies >/dev/null 2>&1; then
+    plugin_install_dependencies "$plugin_name" || true
+  fi
 
   log_success "Plugin '$plugin_name' installed successfully!"
 
@@ -891,42 +897,126 @@ download_plugin() {
 
   mkdir -p "$PLUGIN_DIR"
 
-  log_info "Downloading $plugin_name..."
-
-  # Download from GitHub
-  local tarball_url="${PLUGIN_REPO_URL}/archive/refs/heads/main.tar.gz"
   local temp_dir
   temp_dir=$(mktemp -d)
 
-  if ! curl -sL "$tarball_url" | tar -xz -C "$temp_dir" 2>/dev/null; then
-    log_error "Failed to download plugin"
-    rm -rf "$temp_dir"
+  # Paid plugins are served from the API via a signed download URL.
+  # Free plugins come straight from the public GitHub repo.
+  local license_key="${NSELF_PLUGIN_LICENSE_KEY:-}"
+  local use_signed_url=false
+  if declare -f license_is_paid_plugin >/dev/null 2>&1; then
+    if license_is_paid_plugin "$plugin_name" && [[ -n "$license_key" ]]; then
+      use_signed_url=true
+    fi
+  fi
+
+  if [[ "$use_signed_url" == "true" ]]; then
+    log_info "Downloading $plugin_name (pro)..."
+    if ! _download_plugin_signed "$plugin_name" "$license_key" "$temp_dir"; then
+      rm -rf "$temp_dir"
+      return 1
+    fi
+  else
+    log_info "Downloading $plugin_name..."
+    local tarball_url="${PLUGIN_REPO_URL}/archive/refs/heads/main.tar.gz"
+    if ! curl -sL "$tarball_url" | tar -xz -C "$temp_dir" 2>/dev/null; then
+      log_error "Failed to download plugin"
+      rm -rf "$temp_dir"
+      return 1
+    fi
+
+    local plugin_src="$temp_dir/nself-plugins-main/plugins/$plugin_name"
+    if [[ ! -d "$plugin_src" ]]; then
+      log_error "Plugin '$plugin_name' not found in repository"
+      rm -rf "$temp_dir"
+      return 1
+    fi
+
+    rm -rf "$PLUGIN_DIR/$plugin_name"
+    cp -r "$plugin_src" "$PLUGIN_DIR/$plugin_name"
+
+    if [[ -d "$temp_dir/nself-plugins-main/shared" ]]; then
+      mkdir -p "$PLUGIN_DIR/_shared"
+      cp -r "$temp_dir/nself-plugins-main/shared/"* "$PLUGIN_DIR/_shared/"
+    fi
+  fi
+
+  rm -rf "$temp_dir"
+  log_success "Downloaded $plugin_name"
+}
+
+# Fetch a paid plugin via a server-issued signed URL.
+# The API validates the license, generates a time-limited token, and the CLI
+# redeems the token in a second request — keeping the license key out of
+# download logs and caches.
+_download_plugin_signed() {
+  local plugin_name="$1"
+  local license_key="$2"
+  local temp_dir="$3"
+
+  local url_endpoint="${NSELF_API_DOWNLOAD_URL}/${plugin_name}/download-url"
+
+  # Step 1: request a signed download URL from the API
+  local response
+  response=$(curl -sf \
+    -H "X-License-Key: ${license_key}" \
+    -H "X-Domain: ${NSELF_DOMAIN:-}" \
+    "$url_endpoint" 2>/dev/null)
+
+  if [[ -z "$response" ]]; then
+    log_error "Failed to reach plugin distribution service"
+    printf "Check your internet connection or run: nself plugin license validate\n"
     return 1
   fi
 
-  # Find and copy plugin
-  local plugin_src="$temp_dir/nself-plugins-main/plugins/$plugin_name"
+  # Parse HTTP-level errors returned as JSON { "error": "..." }
+  local api_error
+  api_error=$(printf '%s' "$response" | grep -o '"error"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"error"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+  if [[ -n "$api_error" ]]; then
+    log_error "Download authorization failed: $api_error"
+    if [[ "$api_error" == *"expired"* ]] || [[ "$api_error" == *"Invalid license"* ]]; then
+      printf "Renew your license at: https://nself.org/commercial\n"
+    fi
+    return 1
+  fi
 
+  # Extract the signed URL from the JSON response
+  local signed_url
+  signed_url=$(printf '%s' "$response" | grep -o '"url"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+  if [[ -z "$signed_url" ]]; then
+    log_error "Unexpected response from plugin distribution service"
+    return 1
+  fi
+
+  # Step 2: download the tarball using the signed URL (no license key needed here)
+  local tarball="$temp_dir/${plugin_name}.tar.gz"
+  if ! curl -sL -o "$tarball" "$signed_url" 2>/dev/null; then
+    log_error "Failed to download plugin tarball"
+    return 1
+  fi
+
+  if ! tar -xz -C "$temp_dir" -f "$tarball" 2>/dev/null; then
+    log_error "Failed to extract plugin tarball"
+    return 1
+  fi
+
+  # Pro plugins unpack as plugins-pro-main/paid/<plugin_name>/
+  local plugin_src="$temp_dir/plugins-pro-main/paid/$plugin_name"
   if [[ ! -d "$plugin_src" ]]; then
-    log_error "Plugin '$plugin_name' not found in repository"
-    rm -rf "$temp_dir"
+    log_error "Plugin '$plugin_name' not found in downloaded archive"
     return 1
   fi
 
-  # Copy to plugin directory
   rm -rf "$PLUGIN_DIR/$plugin_name"
   cp -r "$plugin_src" "$PLUGIN_DIR/$plugin_name"
 
-  # Copy shared utilities
-  if [[ -d "$temp_dir/nself-plugins-main/shared" ]]; then
+  # Copy shared utilities bundled with the pro repo (if any)
+  if [[ -d "$temp_dir/plugins-pro-main/shared" ]]; then
     mkdir -p "$PLUGIN_DIR/_shared"
-    cp -r "$temp_dir/nself-plugins-main/shared/"* "$PLUGIN_DIR/_shared/"
+    cp -r "$temp_dir/plugins-pro-main/shared/"* "$PLUGIN_DIR/_shared/"
   fi
 
-  # Cleanup
-  rm -rf "$temp_dir"
-
-  log_success "Downloaded $plugin_name"
+  return 0
 }
 
 install_local_plugin() {
@@ -1161,6 +1251,8 @@ Commands:
   check-deps <name>       Check system dependencies for a plugin
   install-deps <name>     Install missing system dependencies
     --check-only            Dry run (show what would be installed)
+  check-conflicts         Scan all installed plugins for dependency conflicts
+    --fix                   Auto-install required versions where possible
 
 Runtime Management:
   start <name>            Start a plugin as external process
@@ -1214,6 +1306,8 @@ Examples:
   # Dependencies
   nself plugin check-deps stripe
   nself plugin install-deps stripe
+  nself plugin check-conflicts         # Scan for version conflicts
+  nself plugin check-conflicts --fix   # Auto-resolve update-needed conflicts
 
   # License
   nself plugin license               # Show license status
@@ -1291,6 +1385,15 @@ main() {
         return 1
       fi
       check_plugin_dependencies "$plugin_name"
+      ;;
+    check-conflicts)
+      local fix_flag="${1:-}"
+      if declare -f plugin_resolve_conflicts >/dev/null 2>&1; then
+        plugin_resolve_conflicts "$fix_flag"
+      else
+        log_error "plugin_resolve_conflicts not available"
+        return 1
+      fi
       ;;
     install-deps)
       local plugin_name="$1"

@@ -329,6 +329,10 @@ plugin_check_dependencies() {
   return $missing
 }
 
+# Guard variable: colon-separated list of plugins currently being installed
+# Prevents infinite recursion when plugins have circular dependencies.
+: "${_NSELF_INSTALLING_DEPS:=}"
+
 # Install plugin dependencies
 plugin_install_dependencies() {
   local plugin_name="$1"
@@ -340,25 +344,200 @@ plugin_install_dependencies() {
   fi
 
   printf "Installing dependencies for %s...\n" "$plugin_name"
+  local failed=0
 
   while IFS='|' read -r dep_name dep_version; do
-    # Skip system dependencies (nself, postgres, node)
+    # Skip system-level dependencies — handled by check_plugin_dependencies
     case "$dep_name" in
       nself|postgres|node)
         continue
         ;;
-      *)
-        # Install plugin dependency
-        if [[ ! -d "$PLUGIN_DIR/$dep_name" ]]; then
-          printf "  Installing dependency: %s@%s\n" "$dep_name" "$dep_version"
-          # Would call plugin install command here
-          # For now, just report
-          printf "  Note: Auto-install of plugin dependencies not yet implemented\n"
-          printf "  Run: nself plugin install %s\n" "$dep_name"
-        fi
+    esac
+
+    # Already installed at a satisfying version — nothing to do
+    if [[ -d "$PLUGIN_DIR/$dep_name" ]]; then
+      local installed_ver
+      installed_ver=$(plugin_get_version "$dep_name" 2>/dev/null || printf "0.0.0")
+      if plugin_version_satisfies "$installed_ver" "$dep_version"; then
+        printf "  %-20s already installed (v%s)\n" "$dep_name" "$installed_ver"
+        continue
+      fi
+    fi
+
+    # Guard against circular dependency chains
+    case ":${_NSELF_INSTALLING_DEPS}:" in
+      *":${dep_name}:"*)
+        printf "  Skipping circular dependency: %s\n" "$dep_name" >&2
+        continue
         ;;
     esac
+
+    printf "  Installing dependency: %s@%s\n" "$dep_name" "$dep_version"
+
+    if declare -f cmd_install >/dev/null 2>&1; then
+      # Track this dep to prevent re-entrant loops
+      local prev_deps="$_NSELF_INSTALLING_DEPS"
+      _NSELF_INSTALLING_DEPS="${_NSELF_INSTALLING_DEPS}:${dep_name}"
+
+      if ! cmd_install "$dep_name"; then
+        printf "  Could not auto-install '%s'. Run: nself plugin install %s\n" \
+          "$dep_name" "$dep_name" >&2
+        failed=$((failed + 1))
+      fi
+
+      _NSELF_INSTALLING_DEPS="$prev_deps"
+    else
+      # cmd_install not in scope — print manual instructions
+      printf "  Run: nself plugin install %s\n" "$dep_name"
+    fi
   done <<<"$dependencies"
+
+  return $failed
+}
+
+# Scan all installed plugins for dependency version conflicts.
+#
+# Collects every plugin-to-plugin dependency requirement, then for each shared
+# dependency checks:
+#   1. Update needed  — installed version doesn't satisfy one or more requirements
+#                       but a single higher version would satisfy all of them.
+#   2. True conflict  — requirements from different plugins are mutually exclusive
+#                       (no single version can satisfy all constraints).
+#
+# Usage: plugin_resolve_conflicts [--fix]
+#   --fix   attempt to auto-install the required version for "update needed" cases
+#
+# Returns 0 if no conflicts, 1 if any conflicts are found.
+plugin_resolve_conflicts() {
+  local fix_mode=false
+  if [[ "${1:-}" == "--fix" ]]; then
+    fix_mode=true
+  fi
+
+  # Build requirement list: newline-separated "dep|requiring_plugin|version_req"
+  local req_lines=""
+  local plugin_dir plugin
+  for plugin_dir in "$PLUGIN_DIR"/*/; do
+    [[ ! -d "$plugin_dir" ]] && continue
+    plugin=$(basename "$plugin_dir")
+    [[ "$plugin" == "_shared" ]] && continue
+
+    local deps
+    deps=$(plugin_get_dependencies "$plugin" 2>/dev/null || true)
+    [[ -z "$deps" ]] && continue
+
+    while IFS='|' read -r dep_name dep_version; do
+      case "$dep_name" in
+        nself|postgres|node|"") continue ;;
+      esac
+      req_lines="${req_lines}${dep_name}|${plugin}|${dep_version}"$'\n'
+    done <<<"$deps"
+  done
+
+  if [[ -z "$req_lines" ]]; then
+    printf "No inter-plugin dependencies found.\n"
+    return 0
+  fi
+
+  local conflicts=0
+  local processed_deps="|"
+
+  # Iterate over unique dep names found in req_lines
+  while IFS='|' read -r dep_name _requirer _version; do
+    [[ -z "$dep_name" ]] && continue
+
+    # Skip already-processed deps
+    case "$processed_deps" in
+      *"|${dep_name}|"*) continue ;;
+    esac
+    processed_deps="${processed_deps}${dep_name}|"
+
+    # Gather all requirements for this specific dep
+    local requirements=""
+    while IFS='|' read -r rdep rrequirer rversion; do
+      [[ "$rdep" != "$dep_name" || -z "$rrequirer" ]] && continue
+      requirements="${requirements}${rrequirer}|${rversion}"$'\n'
+    done <<<"$req_lines"
+
+    [[ -z "$requirements" ]] && continue
+
+    # Find the highest minimum-version across all requirements
+    local max_required="0.0.0"
+    while IFS='|' read -r _rrequirer rversion; do
+      [[ -z "$rversion" ]] && continue
+      local numeric_ver
+      numeric_ver=$(printf '%s' "$rversion" | sed 's/^[><=^~]*//')
+      if plugin_version_compare "$numeric_ver" "$max_required" 2>/dev/null; then
+        max_required="$numeric_ver"
+      fi
+    done <<<"$requirements"
+
+    # Check whether max_required satisfies every individual requirement
+    # (If it doesn't, requirements are mutually exclusive — a true conflict)
+    local true_conflict=false
+    local conflict_detail=""
+    while IFS='|' read -r rrequirer rversion; do
+      [[ -z "$rrequirer" ]] && continue
+      if ! plugin_version_satisfies "$max_required" "$rversion" 2>/dev/null; then
+        true_conflict=true
+        conflict_detail="${conflict_detail}    ${rrequirer} requires ${rversion}"$'\n'
+      fi
+    done <<<"$requirements"
+
+    # Check whether the currently-installed version satisfies all requirements
+    local installed_ver="not installed"
+    local update_needed=false
+    if [[ -d "$PLUGIN_DIR/$dep_name" ]]; then
+      installed_ver=$(plugin_get_version "$dep_name" 2>/dev/null || printf "0.0.0")
+      while IFS='|' read -r _rrequirer rversion; do
+        [[ -z "$rversion" ]] && continue
+        if ! plugin_version_satisfies "$installed_ver" "$rversion" 2>/dev/null; then
+          update_needed=true
+        fi
+      done <<<"$requirements"
+    else
+      update_needed=true
+    fi
+
+    if [[ "$true_conflict" == "true" ]]; then
+      conflicts=$((conflicts + 1))
+      printf "\nConflict: %s\n" "$dep_name"
+      printf "  No single version satisfies all requirements:\n"
+      printf '%s' "$conflict_detail"
+      printf "  Action: update the plugins listed above to agree on a compatible version.\n"
+
+    elif [[ "$update_needed" == "true" ]]; then
+      conflicts=$((conflicts + 1))
+      local req_summary=""
+      while IFS='|' read -r rrequirer rversion; do
+        [[ -z "$rrequirer" ]] && continue
+        req_summary="${req_summary}${rrequirer}(${rversion}) "
+      done <<<"$requirements"
+
+      printf "\nUpdate needed: %s\n" "$dep_name"
+      printf "  Installed:   %s\n" "$installed_ver"
+      printf "  Required by: %s\n" "$req_summary"
+      printf "  Resolution:  nself plugin install %s@%s\n" "$dep_name" "$max_required"
+
+      if [[ "$fix_mode" == "true" ]] && declare -f cmd_install >/dev/null 2>&1; then
+        printf "  Auto-fixing: installing %s@%s...\n" "$dep_name" "$max_required"
+        local prev_deps="$_NSELF_INSTALLING_DEPS"
+        _NSELF_INSTALLING_DEPS="${_NSELF_INSTALLING_DEPS}:${dep_name}"
+        cmd_install "${dep_name}@${max_required}" || printf "  Auto-fix failed for %s\n" "$dep_name" >&2
+        _NSELF_INSTALLING_DEPS="$prev_deps"
+      fi
+    fi
+  done <<<"$req_lines"
+
+  if [[ $conflicts -eq 0 ]]; then
+    printf "All plugin dependencies are compatible.\n"
+    return 0
+  fi
+
+  if [[ "$fix_mode" == "false" ]]; then
+    printf "\n%d conflict(s) found. Run: nself plugin check-conflicts --fix\n" "$conflicts"
+  fi
+  return 1
 }
 
 # ============================================================================

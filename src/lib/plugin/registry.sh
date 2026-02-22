@@ -494,12 +494,46 @@ registry_marketplace_search() {
 registry_marketplace_ratings() {
   local plugin_name="$1"
 
-  # Stub: Would fetch from marketplace API
-  printf "Fetching ratings for %s from marketplace...\n" "$plugin_name"
+  if [ -z "$plugin_name" ]; then
+    printf "Usage: nself plugin ratings <plugin-name>\n" >&2
+    return 1
+  fi
 
-  # TODO (v1.0+): Implement marketplace ratings API (or keep GitHub-based workflow)
-  # See: .ai/roadmap/v1.0/deferred-features.md (PLUGIN-001)
-  printf "Marketplace ratings not yet available\n"
+  printf "Ratings for %s:\n\n" "$plugin_name"
+
+  # Try marketplace API
+  local response
+  if response=$(curl -sf --connect-timeout 5 --max-time 10 \
+    "${PLUGIN_REGISTRY_URL}/plugins/${plugin_name}/ratings" 2>/dev/null); then
+
+    if command -v jq >/dev/null 2>&1; then
+      local avg_score review_count
+      avg_score=$(printf '%s' "$response" | jq -r '.average // 0')
+      review_count=$(printf '%s' "$response" | jq -r '.count // 0')
+      printf "  Average: %s/5  (%s reviews)\n" "$avg_score" "$review_count"
+      printf '%s' "$response" | jq -r '.reviews[]? | "  [\(.rating)/5] \(.author): \(.comment)"' 2>/dev/null
+      return 0
+    fi
+    printf '%s\n' "$response"
+    return 0
+  fi
+
+  # Fallback: check GitHub stars via registry metadata
+  local registry
+  registry=$(registry_fetch 2>/dev/null) || true
+
+  if command -v jq >/dev/null 2>&1 && [ -n "$registry" ]; then
+    local stars
+    stars=$(printf '%s' "$registry" | jq -r ".plugins[\"${plugin_name}\"].stars // empty" 2>/dev/null)
+    if [ -n "$stars" ]; then
+      printf "  GitHub Stars: %s\n" "$stars"
+      printf "  Full reviews: https://plugins.nself.org/plugins/%s\n" "$plugin_name"
+      return 0
+    fi
+  fi
+
+  printf "  Ratings not yet available for %s\n" "$plugin_name"
+  printf "  Submit a review: https://plugins.nself.org/plugins/%s\n" "$plugin_name"
   return 0
 }
 
@@ -582,16 +616,48 @@ registry_marketplace_publish() {
     return 1
   fi
 
-  # Upload to marketplace
-  # TODO (v1.0+): Implement actual API upload (or keep GitHub PR workflow)
-  # See: .ai/roadmap/v1.0/deferred-features.md (PLUGIN-002)
+  # Upload to marketplace API
+  local api_url="${PLUGIN_REGISTRY_URL:-https://plugins.nself.org}"
+  printf "Uploading %s...\n" "$(basename "$tarball")"
+
+  local response
+  if response=$(curl -sf --connect-timeout 10 --max-time 60 \
+    -X POST \
+    -H "Authorization: Bearer ${api_token}" \
+    -H "Accept: application/json" \
+    -F "plugin=@${tarball}" \
+    -F "name=${plugin_name}" \
+    -F "version=${plugin_version}" \
+    -F "checksum=sha256:${checksum}" \
+    "${api_url}/api/v1/plugins/publish" 2>/dev/null); then
+
+    if command -v jq >/dev/null 2>&1; then
+      local pub_status
+      pub_status=$(printf '%s' "$response" | jq -r '.status // "unknown"')
+      if [ "$pub_status" = "published" ]; then
+        local pub_url
+        pub_url=$(printf '%s' "$response" | jq -r '.url // ""')
+        printf "Published successfully!\n"
+        [ -n "$pub_url" ] && printf "URL: %s\n" "$pub_url"
+      else
+        printf "Response: %s\n" "$response"
+      fi
+    else
+      printf '%s\n' "$response"
+    fi
+
+    rm -f "$tarball"
+    return 0
+  fi
+
+  # API unavailable — guide through manual submission
   printf "  Checksum: sha256:%s\n" "$checksum"
-  printf "\nMarketplace publishing not yet implemented\n"
-  printf "Submit manually to: https://github.com/nself-org/plugins\n"
+  printf "\nCould not reach marketplace API. To publish manually:\n"
+  printf "  1. Fork https://github.com/nself-org/plugins\n"
+  printf "  2. Add your plugin directory under free/\n"
+  printf "  3. Open a pull request\n"
 
-  # Cleanup
   rm -f "$tarball"
-
   return 0
 }
 
@@ -601,12 +667,30 @@ registry_marketplace_report() {
   local issue_type="${2:-security}"
   local description="${3:-}"
 
-  printf "Reporting issue for %s...\n" "$plugin_name"
+  printf "Reporting issue for %s (%s)...\n" "$plugin_name" "$issue_type"
 
-  # TODO (v1.0+): Implement marketplace issue reporting API (or keep GitHub Issues)
-  # See: .ai/roadmap/v1.0/deferred-features.md (PLUGIN-003)
-  printf "Please report issues at:\n"
-  printf "https://github.com/nself-org/plugins/issues\n"
+  # Build pre-populated GitHub Issues URL
+  local encoded_title encoded_body issue_url
+  encoded_title="[${issue_type}]%20${plugin_name}"
+  encoded_body="Plugin%3A%20${plugin_name}%0AIssue%20type%3A%20${issue_type}"
+
+  if [ -n "$description" ]; then
+    local encoded_desc
+    encoded_desc=$(printf '%s' "$description" | sed 's/ /%20/g; s/	/%09/g')
+    encoded_body="${encoded_body}%0ADescription%3A%20${encoded_desc}"
+  fi
+
+  encoded_body="${encoded_body}%0A%0A----%0A%0A%3C!--%20Add%20reproduction%20steps%20and%20logs%20--%3E"
+  issue_url="https://github.com/nself-org/plugins/issues/new?title=${encoded_title}&body=${encoded_body}&labels=${issue_type}"
+
+  printf "Issue URL: %s\n" "$issue_url"
+
+  # Try to open in browser
+  if command -v open >/dev/null 2>&1; then
+    open "$issue_url" 2>/dev/null || true
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$issue_url" 2>/dev/null || true
+  fi
 
   return 0
 }
@@ -683,11 +767,36 @@ registry_get_trending() {
   local limit="${1:-10}"
   local timeframe="${2:-week}" # day, week, month
 
-  printf "Fetching trending plugins (%s)...\n" "$timeframe"
+  printf "Trending plugins (%s):\n\n" "$timeframe"
 
-  # Stub: Would fetch from marketplace API
-  printf "Trending plugins not yet available\n"
-  return 1
+  # Try marketplace API
+  local trending
+  if trending=$(curl -sf --connect-timeout 5 --max-time 10 \
+    "${PLUGIN_REGISTRY_URL}/plugins/trending?limit=${limit}&timeframe=${timeframe}" 2>/dev/null); then
+
+    if command -v jq >/dev/null 2>&1; then
+      printf '%s' "$trending" | jq -r '.plugins[]? | "  \(.name)  +\(.delta // "?") installs  \(.description // "")"' 2>/dev/null
+      return 0
+    fi
+    printf '%s\n' "$trending"
+    return 0
+  fi
+
+  # Fallback: list recently updated plugins from registry
+  local registry
+  registry=$(registry_fetch 2>/dev/null) || true
+
+  if command -v jq >/dev/null 2>&1 && [ -n "$registry" ]; then
+    printf '%s' "$registry" | jq -r \
+      '[.plugins | to_entries[] | {name: .key, updated: .value.updated_at, desc: .value.description}]
+      | sort_by(.updated) | reverse | .[0:'"$limit"'][]
+      | "  \(.name)  \(.desc // "")"' 2>/dev/null \
+      && return 0
+  fi
+
+  printf "  Trending data not available\n"
+  printf "  Browse plugins: https://plugins.nself.org\n"
+  return 0
 }
 
 # Get recommended plugins based on installed plugins
@@ -714,8 +823,53 @@ registry_get_recommendations() {
     fi
   fi
 
-  printf "Recommendations not yet available\n"
-  return 1
+  # Rule-based offline recommendations based on installed plugins
+  printf "Recommendations based on your installed plugins:\n\n"
+  local shown=0
+  local plugin
+  for plugin in $(printf '%s' "$installed" | tr ',' '\n'); do
+    case "$plugin" in
+      notifications)
+        printf "  jobs          - Queue processor for scheduled notifications\n"
+        printf "  webhooks      - Trigger notifications from HTTP events\n"
+        shown=1 ;;
+      jobs)
+        printf "  notifications - Deliver notifications from job completion\n"
+        printf "  search        - Full-text search over job history\n"
+        shown=1 ;;
+      github)
+        printf "  webhooks      - Receive GitHub push and PR events\n"
+        printf "  feature-flags - Roll out features per-repo or per-team\n"
+        shown=1 ;;
+      webhooks)
+        printf "  github        - Connect GitHub events to your webhooks\n"
+        printf "  notifications - Forward events to user notifications\n"
+        shown=1 ;;
+      search)
+        printf "  content-progress    - Track progress across searchable content\n"
+        printf "  content-acquisition - Manage content sources for indexing\n"
+        shown=1 ;;
+      invitations)
+        printf "  notifications - Send email or push invitations\n"
+        printf "  feature-flags - Gate features for invited users\n"
+        shown=1 ;;
+      torrent-manager)
+        printf "  content-acquisition - Automate new content acquisition\n"
+        printf "  subtitle-manager    - Download subtitles for acquired media\n"
+        shown=1 ;;
+      link-preview)
+        printf "  mdns          - Discover local services to preview\n"
+        printf "  tokens        - Secure link preview tokens\n"
+        shown=1 ;;
+    esac
+  done
+
+  if [ "$shown" -eq 0 ]; then
+    printf "  Browse available plugins:\n"
+    printf "  https://github.com/nself-org/plugins\n"
+  fi
+
+  return 0
 }
 
 # ============================================================================
