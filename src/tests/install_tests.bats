@@ -10,7 +10,7 @@ setup() {
   export BIN_DIR="$NSELF_DIR/bin"
 
   # Source the color variables and functions from install.sh
-  source <(sed -n '93,160p' ../../install.sh) # Color variables and functions
+  source <(sed -n '111,224p' ../../install.sh) # Color variables and functions
 }
 
 teardown() {

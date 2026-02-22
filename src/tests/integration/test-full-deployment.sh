@@ -33,15 +33,15 @@ trap cleanup EXIT INT TERM
 # ============================================================================
 
 test_01_init_simple() {
-  describe "Test 1: Initialize project with --simple flag"
+  describe "Test 1: Initialize project in quiet mode"
 
   # Create test environment
   TEST_PROJECT_DIR=$(setup_test_project)
   cd "$TEST_PROJECT_DIR"
 
-  # Run nself init
-  printf "Running: nself init --simple\n"
-  "$NSELF_ROOT/bin/nself" init --simple
+  # Run nself init in quiet/non-interactive mode
+  printf "Running: nself init --quiet\n"
+  "$NSELF_ROOT/bin/nself" init --quiet
 
   # Verify critical files exist
   assert_file_exists ".env" ".env file should be created"

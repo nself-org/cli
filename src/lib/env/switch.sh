@@ -86,8 +86,9 @@ env::backup_current_env() {
   fi
 
   # Cleanup old backups (keep last 10)
+  # Use find to avoid pipefail from ls returning 1 when no files match the glob
   local count
-  count=$(ls -1 "$backup_dir"/.env.backup-* 2>/dev/null | wc -l)
+  count=$(find "$backup_dir" -maxdepth 1 -name ".env.backup-*" 2>/dev/null | wc -l)
   if [[ $count -gt 10 ]]; then
     ls -1t "$backup_dir"/.env.backup-* | tail -n +11 | xargs rm -f 2>/dev/null || true
   fi

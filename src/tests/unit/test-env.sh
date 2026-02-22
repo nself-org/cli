@@ -229,10 +229,10 @@ test_env_switch_creates_backup() {
     # Switch
     env::switch "backup-test" >/dev/null 2>&1
 
-    # Check backup was created
+    # Check backup was created (backup files start with dot, use find to include hidden files)
     assert_dir_exists ".env-backups" "Backup directory should exist"
     local backup_count
-    backup_count=$(ls -1 .env-backups/ 2>/dev/null | wc -l)
+    backup_count=$(find .env-backups/ -maxdepth 1 -name ".env.backup-*" 2>/dev/null | wc -l)
     assert_true "[[ $backup_count -gt 0 ]]" "At least one backup should exist"
   else
     skip_test "env::switch not available"

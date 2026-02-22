@@ -206,6 +206,8 @@ jobs:
         with:
           name: coverage-reports
           path: coverage/reports/
+        # ADVISORY: No artifact when kcov is unavailable — not a failure
+        continue-on-error: true
 
       - name: Display summary
         run: |

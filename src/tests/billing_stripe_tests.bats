@@ -16,6 +16,7 @@ setup() {
     export NSELF_ROOT="$NSELF_PATH"
     source "$NSELF_PATH/src/lib/billing/core.sh"
     source "$NSELF_PATH/src/lib/billing/stripe.sh" 2>/dev/null || true
+    set +e  # Reset strict error mode (core.sh enables set -euo pipefail which breaks bats skip)
 
     # Setup test environment variables
     export BILLING_DB_HOST="localhost"
