@@ -1,0 +1,20 @@
+# Semgrep ignore file
+# Files and directories excluded from Semgrep SAST scanning
+
+# Template scaffolding files
+# These files contain nginx configuration, Flask apps, and other service code
+# as templates to be copied by users. Patterns like `proxy_set_header Host $host`
+# and `app.run(host='0.0.0.0')` are intentional for their target environments
+# (nginx reverse proxy and Docker containers respectively).
+src/templates/
+
+# Nginx configuration generators
+# These shell scripts output nginx config via heredocs. Semgrep's nginx rules
+# fire on the string content of these heredocs (which is correct nginx config),
+# not on the shell code itself. The $host / $server_name patterns inside
+# heredocs are nginx variables, not attacker-controlled shell variables.
+src/lib/build/nginx.sh
+src/lib/build/core-modules/nginx-generator.sh
+src/lib/build/core-modules/nginx-setup.sh
+src/lib/services/nginx-generator.sh
+src/lib/ssl/ssl.sh
