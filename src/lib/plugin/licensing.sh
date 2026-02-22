@@ -18,6 +18,7 @@
 
 NSELF_LICENSE_CACHE_DIR="${HOME}/.nself/license"
 NSELF_LICENSE_CACHE_FILE="${NSELF_LICENSE_CACHE_DIR}/cache"
+NSELF_LICENSE_KEY_FILE="${NSELF_LICENSE_CACHE_DIR}/key"
 NSELF_LICENSE_CACHE_TTL=86400  # 24 hours
 NSELF_LICENSE_KEY_PREFIX="nself_pro_"
 NSELF_LICENSE_API_BASE="${NSELF_API_URL:-https://api.nself.org}"
@@ -58,6 +59,51 @@ _license_in_list() {
     fi
   done
   return 1
+}
+
+# ---------------------------------------------------------------------------
+# Public: license_get_key
+# Returns the active license key — env var takes precedence over saved file.
+# Prints the key to stdout; returns 1 if no key is configured.
+# ---------------------------------------------------------------------------
+
+license_get_key() {
+  if [ -n "${NSELF_PLUGIN_LICENSE_KEY:-}" ]; then
+    printf '%s' "$NSELF_PLUGIN_LICENSE_KEY"
+    return 0
+  fi
+  if [ -f "$NSELF_LICENSE_KEY_FILE" ]; then
+    local key
+    key=$(tr -d '[:space:]' < "$NSELF_LICENSE_KEY_FILE" 2>/dev/null)
+    if [ -n "$key" ]; then
+      printf '%s' "$key"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Public: license_save_key <key>
+# Saves license key to ~/.nself/license/key for persistent storage.
+# ---------------------------------------------------------------------------
+
+license_save_key() {
+  local key="$1"
+  mkdir -p "$NSELF_LICENSE_CACHE_DIR" 2>/dev/null
+  printf '%s\n' "$key" > "$NSELF_LICENSE_KEY_FILE"
+  chmod 600 "$NSELF_LICENSE_KEY_FILE" 2>/dev/null
+  # Invalidate cache so the new key is validated fresh
+  rm -f "$NSELF_LICENSE_CACHE_FILE" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# Public: license_clear_key
+# Removes saved license key file and validation cache.
+# ---------------------------------------------------------------------------
+
+license_clear_key() {
+  rm -f "$NSELF_LICENSE_KEY_FILE" "$NSELF_LICENSE_CACHE_FILE" 2>/dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -240,8 +286,9 @@ license_check_entitlement() {
     return 0
   fi
 
-  # Paid plugin — check for license key
-  local license_key="${NSELF_PLUGIN_LICENSE_KEY:-}"
+  # Paid plugin — check for license key (env var or saved key file)
+  local license_key
+  license_key=$(license_get_key) || true
   if [ -z "$license_key" ]; then
     printf '\n'
     printf '  %s requires a Pro Plugins license.\n' "$plugin_name"
@@ -249,8 +296,8 @@ license_check_entitlement() {
     printf '  License:  %s\n' "$NSELF_PRICING_URL"
     printf '  Price:    $9.99/year — covers all 49 Pro Plugins\n'
     printf '\n'
-    printf '  Once you have a key, add it to your .env:\n'
-    printf '    NSELF_PLUGIN_LICENSE_KEY=nself_pro_xxxx...\n'
+    printf '  Save your key:  nself plugin license set nself_pro_xxxx...\n'
+    printf '  Or add to .env: NSELF_PLUGIN_LICENSE_KEY=nself_pro_xxxx...\n'
     printf '\n'
     printf '  Alternatively, implement this plugin as a Custom Service:\n'
     printf '    https://docs.nself.org/custom-services\n'
@@ -283,8 +330,8 @@ license_check_entitlement() {
       printf '\n'
       return 1
       ;;
-    expired)
-      # Cache expired — validate remotely
+    expired|*)
+      # Cache expired or missing — validate remotely
       if license_validate_remote "$license_key"; then
         return 0
       else
@@ -296,8 +343,6 @@ license_check_entitlement() {
       fi
       ;;
   esac
-
-  return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -306,14 +351,21 @@ license_check_entitlement() {
 # ---------------------------------------------------------------------------
 
 license_show_status() {
-  local license_key="${NSELF_PLUGIN_LICENSE_KEY:-}"
+  local license_key
+  license_key=$(license_get_key) || true
+
+  local key_source="env"
+  if [ -z "${NSELF_PLUGIN_LICENSE_KEY:-}" ] && [ -n "$license_key" ]; then
+    key_source="saved"
+  fi
 
   printf '\n  Pro Plugins License Status\n'
   printf '  --------------------------\n'
 
   if [ -z "$license_key" ]; then
-    printf '  Status: No license key set\n'
-    printf '  Get a license: %s\n' "$NSELF_PRICING_URL"
+    printf '  Status:   No license key configured\n'
+    printf '  Set key:  nself plugin license set nself_pro_xxxx...\n'
+    printf '  Get one:  %s\n' "$NSELF_PRICING_URL"
     printf '\n'
     return 0
   fi
@@ -327,6 +379,7 @@ license_show_status() {
 
   local key_display
   key_display=$(printf '%s' "$license_key" | cut -c1-20)
+  printf '  Source:   %s\n' "$key_source"
   printf '  Key: %s...\n' "$key_display"
 
   local cached_status

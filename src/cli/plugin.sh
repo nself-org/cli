@@ -89,13 +89,7 @@ cmd_list() {
     return 0
   fi
 
-  if [[ "$show_installed_only" == "true" ]]; then
-    printf "\n=== Installed Plugins ===\n\n"
-  else
-    printf "\n=== Available Plugins ===\n\n"
-  fi
-
-  # Fetch registry
+  # Fetch free registry
   local registry
   registry=$(fetch_registry)
 
@@ -104,28 +98,21 @@ cmd_list() {
     return 1
   fi
 
-  # Parse and display plugins
-  printf "%-15s %-10s %-12s %-35s\n" "NAME" "VERSION" "CATEGORY" "DESCRIPTION"
-  printf "%-15s %-10s %-12s %-35s\n" "----" "-------" "--------" "-----------"
-
   local count=0
 
-  # If showing installed only, read from local plugin.json files
+  # ── Installed-only view ────────────────────────────────────────────────────
   if [[ "$show_installed_only" == "true" ]]; then
-    # Iterate over installed plugins
+    printf "\n=== Installed Plugins ===\n\n"
+    printf "%-20s %-10s %-12s %-6s %-30s\n" "NAME" "VERSION" "CATEGORY" "TIER" "DESCRIPTION"
+    printf "%-20s %-10s %-12s %-6s %-30s\n" "----" "-------" "--------" "----" "-----------"
+
     for plugin_dir in "$PLUGIN_DIR"/*/; do
       [[ -d "$plugin_dir" ]] || continue
-      local plugin=$(basename "$plugin_dir")
-
-      # Skip shared utilities
+      local plugin
+      plugin=$(basename "$plugin_dir")
       [[ "$plugin" == "_shared" ]] && continue
+      [[ -f "$plugin_dir/plugin.json" ]] || continue
 
-      # Check if it has plugin.json
-      if [[ ! -f "$plugin_dir/plugin.json" ]]; then
-        continue
-      fi
-
-      # Read from local plugin.json
       local version description category
       if command -v jq >/dev/null 2>&1; then
         version=$(jq -r '.version // "1.0.0"' "$plugin_dir/plugin.json" 2>/dev/null)
@@ -136,59 +123,94 @@ cmd_list() {
         description=$(grep '"description"' "$plugin_dir/plugin.json" | head -1 | sed 's/.*"description"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
         category=$(grep '"category"' "$plugin_dir/plugin.json" | head -1 | sed 's/.*"category"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
       fi
-
-      # Set defaults if empty
       version="${version:-1.0.0}"
       category="${category:-general}"
 
-      # Filter by category
       if [[ -n "$filter_category" ]] && [[ "$category" != "$filter_category" ]]; then
         continue
       fi
 
-      printf "%-15s %-10s %-12s %-35s%s\n" "$plugin" "$version" "$category" "${description:0:35}" " [installed]"
-      count=$((count + 1))
-    done
-  else
-    # Show from registry (all available plugins)
-    # Extract plugin names using grep/sed (Bash 3.2 compatible)
-    local plugins
-    plugins=$(printf '%s' "$registry" | grep -o '"[a-z-]*":{' | sed 's/"//g;s/:{//')
-
-    for plugin in $plugins; do
-      local version description category
-      version=$(printf '%s' "$registry" | grep -A10 "\"$plugin\"" | grep '"version"' | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-      description=$(printf '%s' "$registry" | grep -A10 "\"$plugin\"" | grep '"description"' | head -1 | sed 's/.*"description"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-      category=$(printf '%s' "$registry" | grep -A10 "\"$plugin\"" | grep '"category"' | head -1 | sed 's/.*"category"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-
-      # Filter by category
-      if [[ -n "$filter_category" ]] && [[ "$category" != "$filter_category" ]]; then
-        continue
+      local tier="FREE"
+      if declare -f license_is_paid_plugin >/dev/null 2>&1 && license_is_paid_plugin "$plugin"; then
+        tier="PRO"
       fi
 
-      # Check if installed
-      local installed=""
-      if is_plugin_installed "$plugin"; then
-        installed=" [installed]"
-      fi
-
-      printf "%-15s %-10s %-12s %-35s%s\n" "$plugin" "$version" "$category" "${description:0:35}" "$installed"
+      printf "%-20s %-10s %-12s %-6s %-30s\n" "$plugin" "$version" "$category" "$tier" "${description:0:30}"
       count=$((count + 1))
     done
-  fi
 
-  if [[ $count -eq 0 ]]; then
-    if [[ "$show_installed_only" == "true" ]]; then
+    if [[ $count -eq 0 ]]; then
       log_info "No plugins installed"
-    elif [[ -n "$filter_category" ]]; then
-      log_info "No plugins found in category: $filter_category"
     fi
+    printf "\nDetailed status: nself plugin list --installed --detailed\n"
+    return 0
   fi
 
-  printf "\nInstall with: nself plugin install <name>\n"
-  if [[ "$show_installed_only" == "true" ]]; then
-    printf "Detailed status: nself plugin list --installed --detailed\n"
+  # ── Available view (free + pro) ────────────────────────────────────────────
+  local free_count=0
+  local pro_count=0
+  if declare -f license_is_paid_plugin >/dev/null 2>&1; then
+    pro_count=$(printf '%s' "$NSELF_PRO_PLUGINS" | wc -w | tr -d ' ')
   fi
+  local free_plugins
+  free_plugins=$(printf '%s' "$registry" | grep -o '"[a-z-]*":{' | sed 's/"//g;s/:{//')
+  for _p in $free_plugins; do free_count=$((free_count + 1)); done
+
+  printf "\n=== Available Plugins (%d free, %d pro) ===\n\n" "$free_count" "$pro_count"
+  printf "%-20s %-10s %-12s %-6s %-30s\n" "NAME" "VERSION" "CATEGORY" "TIER" "DESCRIPTION"
+  printf "%-20s %-10s %-12s %-6s %-30s\n" "----" "-------" "--------" "----" "-----------"
+
+  # Free plugins from registry
+  for plugin in $free_plugins; do
+    local version description category
+    version=$(printf '%s' "$registry" | grep -A10 "\"$plugin\"" | grep '"version"' | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    description=$(printf '%s' "$registry" | grep -A10 "\"$plugin\"" | grep '"description"' | head -1 | sed 's/.*"description"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    category=$(printf '%s' "$registry" | grep -A10 "\"$plugin\"" | grep '"category"' | head -1 | sed 's/.*"category"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+
+    if [[ -n "$filter_category" ]] && [[ "$category" != "$filter_category" ]]; then
+      continue
+    fi
+
+    local suffix=""
+    if is_plugin_installed "$plugin"; then suffix=" *"; fi
+
+    printf "%-20s %-10s %-12s %-6s %-30s%s\n" "$plugin" "${version:-1.0.0}" "${category:-general}" "FREE" "${description:0:30}" "$suffix"
+    count=$((count + 1))
+  done
+
+  # Pro plugins from hardcoded list (private registry — names only)
+  if declare -f license_is_paid_plugin >/dev/null 2>&1; then
+    local has_license=false
+    if license_get_key >/dev/null 2>&1; then has_license=true; fi
+
+    printf "\n  --- Pro Plugins (license required — %s) ---\n\n" "${NSELF_PRICING_URL:-https://nself.org/pricing}"
+
+    for plugin in $NSELF_PRO_PLUGINS; do
+      if [[ -n "$filter_category" ]]; then
+        # Without full metadata, skip category filter for pro plugins
+        continue
+      fi
+
+      local suffix=""
+      if is_plugin_installed "$plugin"; then suffix=" *"; fi
+
+      if [[ "$has_license" == "true" ]]; then
+        printf "%-20s %-10s %-12s %-6s %-30s%s\n" "$plugin" "1.0.0" "-" "PRO" "Pro Plugin" "$suffix"
+      else
+        printf "%-20s %-10s %-12s %-6s %-30s%s\n" "$plugin" "1.0.0" "-" "PRO" "License required" "$suffix"
+      fi
+      count=$((count + 1))
+    done
+  fi
+
+  if [[ $count -eq 0 ]] && [[ -n "$filter_category" ]]; then
+    log_info "No free plugins found in category: $filter_category"
+  fi
+
+  printf "\n  * = installed\n"
+  printf "\nInstall free:  nself plugin install <name>\n"
+  printf "Install pro:   nself plugin license set <key> && nself plugin install <name>\n"
+  printf "Get a license: %s\n" "${NSELF_PRICING_URL:-https://nself.org/pricing}"
 }
 
 # Install a plugin
@@ -227,12 +249,19 @@ cmd_install() {
   local registry
   registry=$(fetch_registry)
 
-  # Check if plugin exists in registry
-  if ! printf '%s' "$registry" | grep -q "\"$plugin_name\":"; then
-    log_error "Plugin '$plugin_name' not found in registry"
-    printf "\nAvailable plugins:\n"
-    cmd_list
-    return 1
+  # Determine if this is a pro plugin — if so, skip the free registry check
+  local is_pro=false
+  if declare -f license_is_paid_plugin >/dev/null 2>&1 && license_is_paid_plugin "$plugin_name"; then
+    is_pro=true
+  fi
+
+  # For free plugins, verify existence in registry
+  if [[ "$is_pro" == "false" ]]; then
+    if ! printf '%s' "$registry" | grep -q "\"$plugin_name\":"; then
+      log_error "Plugin '$plugin_name' not found in registry"
+      printf "\nRun 'nself plugin list' to see all available plugins.\n"
+      return 1
+    fi
   fi
 
   # Check license entitlement before downloading
@@ -1159,11 +1188,34 @@ cmd_plugin_license() {
       license_show_status
       ;;
 
+    set)
+      local key="${1:-}"
+      if [[ -z "$key" ]]; then
+        log_error "Usage: nself plugin license set <key>"
+        printf "Keys start with 'nself_pro_' — get one at: %s\n" "${NSELF_PRICING_URL:-https://nself.org/pricing}"
+        return 1
+      fi
+      if ! license_validate_format "$key"; then
+        log_error "Invalid license key format."
+        printf "Key must start with 'nself_pro_' and be at least 32 characters.\n"
+        return 1
+      fi
+      license_save_key "$key"
+      log_success "License key saved to ~/.nself/license/key"
+      printf "Run 'nself plugin license validate' to verify with the server.\n"
+      ;;
+
+    clear | remove)
+      license_clear_key
+      log_success "License key removed."
+      ;;
+
     validate)
-      local license_key="${NSELF_PLUGIN_LICENSE_KEY:-}"
+      local license_key
+      license_key=$(license_get_key) || true
       if [[ -z "$license_key" ]]; then
         log_error "No license key configured."
-        printf "Add to your .env: NSELF_PLUGIN_LICENSE_KEY=nself_pro_...\n"
+        printf "Set one with: nself plugin license set nself_pro_...\n"
         printf "Get a license at: %s\n" "${NSELF_PRICING_URL:-https://nself.org/pricing}"
         return 1
       fi
@@ -1193,12 +1245,15 @@ cmd_plugin_license() {
     help | --help | -h)
       printf "Usage: nself plugin license <subcommand>\n\n"
       printf "Subcommands:\n"
+      printf "  set <key>  Save your Pro Plugins license key\n"
+      printf "  clear      Remove saved license key\n"
       printf "  show       Show current license key and status (default)\n"
       printf "  validate   Force-validate license key against the API\n"
       printf "  plugins    List all Pro Plugins covered by a license\n"
-      printf "\nEnvironment:\n"
-      printf "  NSELF_PLUGIN_LICENSE_KEY   Your Pro Plugins license key\n"
-      printf "\nExample .env configuration:\n"
+      printf "\nQuick start:\n"
+      printf "  nself plugin license set nself_pro_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
+      printf "  nself plugin install analytics\n"
+      printf "\nOr add to your .env:\n"
       printf "  NSELF_PLUGIN_LICENSE_KEY=nself_pro_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"
       printf "\nGet a license at: %s\n\n" "${NSELF_PRICING_URL:-https://nself.org/pricing}"
       ;;
@@ -1244,9 +1299,11 @@ Commands:
   refresh                 Force refresh the plugin registry cache
 
   license [subcommand]    Manage Pro Plugins license
-    show                    Show current license status (default)
-    validate                Validate license key against API
-    plugins                 List all Pro Plugins covered by license
+    set <key>               Save your license key persistently
+    clear                   Remove saved license key
+    show                    Show current license key and status (default)
+    validate                Force-validate license key against API
+    plugins                 List all 49 Pro Plugins covered by license
 
   check-deps <name>       Check system dependencies for a plugin
   install-deps <name>     Install missing system dependencies
