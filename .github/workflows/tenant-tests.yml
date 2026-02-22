@@ -116,16 +116,20 @@ jobs:
 
       - name: Run migrations
         run: |
-          cd ~/nself-test
-          # Export environment variables for nself db command
-          export POSTGRES_DB=nself_test
-          export POSTGRES_USER=postgres
-          export POSTGRES_PASSWORD=postgres
-          export PROJECT_NAME=nself-test
-          # Run migrations
-          nself db migrate up
-          # Verify tenant schema exists (use SQL instead of psql meta-command for CI portability)
-          docker exec nself-test_postgres psql -U postgres -d nself_test -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'tenants';" | grep -q tenants
+          # Apply migration 008 directly via psql (avoids migrate_up set -euo pipefail side effects in CI)
+          docker exec -i nself-test_postgres psql -U postgres -d nself_test \
+            < ${{ github.workspace }}/src/database/migrations/008_create_tenant_system.sql
+          echo "Migration 008 applied"
+          # Verify tenant schema was created
+          result=$(docker exec nself-test_postgres psql -U postgres -d nself_test -t -c \
+            "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'tenants';")
+          echo "Schema query result: $result"
+          if echo "$result" | grep -q tenants; then
+            echo "✓ Tenant schema exists"
+          else
+            echo "ERROR: Tenant schema not found"
+            exit 1
+          fi
 
       - name: Run tenant isolation tests
         run: |
