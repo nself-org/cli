@@ -68,10 +68,10 @@ jobs:
         run: |
           cd ~/nself-test
           # Create Hasura-style migration directories (hasura/migrations/default/<version>_<name>/up.sql)
+          # Only migration 008 (core tenant schema) is run in CI — migration 009 modifies
+          # optional service tables (metrics, logs, tracing) that are not started in this test env
           mkdir -p hasura/migrations/default/8_create_tenant_system
           cp ${{ github.workspace }}/src/database/migrations/008_create_tenant_system.sql hasura/migrations/default/8_create_tenant_system/up.sql
-          mkdir -p hasura/migrations/default/9_add_tenant_isolation
-          cp ${{ github.workspace }}/src/database/migrations/009_add_tenant_isolation.sql hasura/migrations/default/9_add_tenant_isolation/up.sql
           # Clean any existing generated files to force regeneration
           rm -rf postgres/ nginx/ docker-compose.yml
           # Export environment variables to ensure build uses them
@@ -124,8 +124,8 @@ jobs:
           export PROJECT_NAME=nself-test
           # Run migrations
           nself db migrate up
-          # Verify tenant schema exists
-          docker exec nself-test_postgres psql -U postgres -d nself_test -c "\dn tenants"
+          # Verify tenant schema exists (use SQL instead of psql meta-command for CI portability)
+          docker exec nself-test_postgres psql -U postgres -d nself_test -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'tenants';" | grep -q tenants
 
       - name: Run tenant isolation tests
         run: |
