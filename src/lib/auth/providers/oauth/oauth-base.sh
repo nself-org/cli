@@ -4,6 +4,11 @@
 #
 # Provides common OAuth 2.0 / OIDC functionality that all providers inherit
 
+# Prevent double-sourcing (readonly variables would fail on re-source)
+[[ "${OAUTH_BASE_SOURCED:-}" == "1" ]] && return 0
+export OAUTH_BASE_SOURCED=1
+
+set -euo pipefail
 
 # ============================================================================
 # OAuth Constants
@@ -11,8 +16,6 @@
 
 # OAuth grant types
 readonly OAUTH_GRANT_AUTHORIZATION_CODE="authorization_code"
-
-set -euo pipefail
 
 readonly OAUTH_GRANT_REFRESH_TOKEN="refresh_token"
 

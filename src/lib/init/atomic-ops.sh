@@ -54,6 +54,34 @@ cleanup_temp_dir() {
   return 0
 }
 
+# Acquire a per-destination file lock using mkdir (atomic on all POSIX systems)
+# Inputs: $1 - destination file path
+# Outputs: Sets ATOMIC_LOCK_DIR variable
+# Returns: 0 when lock acquired (spins until available)
+_atomic_acquire_lock() {
+  local dest="$1"
+  local lock_dir="/tmp/nself-init-lock-$(printf "%s" "$dest" | tr '/' '_')"
+  local attempts=0
+  while ! mkdir "$lock_dir" 2>/dev/null; do
+    attempts=$((attempts + 1))
+    if [ $attempts -ge 50 ]; then
+      # Give up after ~5 seconds to avoid deadlock
+      break
+    fi
+    sleep 0.1
+  done
+  ATOMIC_LOCK_DIR="$lock_dir"
+}
+
+# Release a per-destination file lock
+# Inputs: $1 - lock directory path (from ATOMIC_LOCK_DIR)
+# Returns: 0
+_atomic_release_lock() {
+  local lock_dir="${1:-$ATOMIC_LOCK_DIR}"
+  rmdir "$lock_dir" 2>/dev/null || true
+  ATOMIC_LOCK_DIR=""
+}
+
 # Atomically copy a file with proper permissions
 # Inputs: $1 - source file, $2 - destination file, $3 - permissions (optional)
 # Outputs: Copies file atomically, updates tracking arrays
@@ -81,19 +109,24 @@ atomic_copy() {
     # Set permissions
     chmod "$perms" "$temp_file" 2>/dev/null || true
 
+    # Acquire per-file lock to prevent parallel init race condition
+    _atomic_acquire_lock "$dest"
+
     # Backup existing if present
     if [[ -f "$dest" ]]; then
-      backup_file "$dest" || return $?
+      backup_file "$dest" || { _atomic_release_lock; return $?; }
       MODIFIED_FILES+=("$dest")
     else
       CREATED_FILES+=("$dest")
     fi
 
-    # Move atomically
+    # Move atomically, then release lock
     if mv -f "$temp_file" "$dest" 2>/dev/null; then
+      _atomic_release_lock
       return $INIT_E_SUCCESS
     else
       rm -f "$temp_file" 2>/dev/null
+      _atomic_release_lock
       log_error "Failed to create $dest"
       return $INIT_E_IOERR
     fi
@@ -273,7 +306,7 @@ check_safe_to_proceed() {
 }
 
 # Export functions for use in other scripts
-export -f init_temp_dir cleanup_temp_dir atomic_copy backup_file
+export -f init_temp_dir cleanup_temp_dir atomic_copy backup_file _atomic_acquire_lock _atomic_release_lock
 export -f restore_file rollback_changes cleanup_backups atomic_write
 export -f check_safe_to_proceed
 

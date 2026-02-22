@@ -2,11 +2,10 @@
 
 # platform.sh - Platform detection and compatibility layer for build
 
-# Detect platform and set compatibility flags
-detect_build_platform() {
-
 set -euo pipefail
 
+# Detect platform and set compatibility flags
+detect_build_platform() {
   PLATFORM=""
   IS_MAC=false
   IS_LINUX=false

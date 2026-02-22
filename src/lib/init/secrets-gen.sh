@@ -205,14 +205,9 @@ replace_default_secrets_in_file() {
   temp_file=$(mktemp)
 
   # Define default secrets to replace
-  local -A secret_replacements=(
-    ["POSTGRES_PASSWORD"]="postgres-dev-password"
-    ["HASURA_GRAPHQL_ADMIN_SECRET"]="hasura-admin-secret-dev"
-    ["HASURA_JWT_KEY"]="development-secret-key-minimum-32-characters-long"
-    ["MINIO_ROOT_PASSWORD"]="minioadmin"
-    ["S3_SECRET_KEY"]="storage-secret-key-dev"
-    ["S3_ACCESS_KEY"]="storage-access-key-dev"
-  )
+  # Bash 3.2 compatible: parallel arrays instead of associative array (no local -A)
+  local _sr_keys="POSTGRES_PASSWORD HASURA_GRAPHQL_ADMIN_SECRET HASURA_JWT_KEY MINIO_ROOT_PASSWORD S3_SECRET_KEY S3_ACCESS_KEY"
+  local _sr_vals="postgres-dev-password hasura-admin-secret-dev development-secret-key-minimum-32-characters-long minioadmin storage-secret-key-dev storage-access-key-dev"
 
   # Track if we made any replacements
   local replaced=false
@@ -222,35 +217,41 @@ replace_default_secrets_in_file() {
     local modified_line="$line"
     local line_modified=false
 
-    # Check each secret pattern
-    for var_name in "${!secret_replacements[@]}"; do
-      local default_value="${secret_replacements[$var_name]}"
+    # Check each secret pattern using parallel arrays (Bash 3.2 compatible)
+    local _key_idx=0
+    for var_name in $_sr_keys; do
+      _key_idx=$((_key_idx + 1))
+      local default_value
+      default_value=$(printf "%s" "$_sr_vals" | tr ' ' '\n' | awk "NR==$_key_idx")
 
       # Check if this line sets this variable with the default value
-      if [[ "$line" =~ ^[[:space:]]*${var_name}=[[:space:]]*${default_value}[[:space:]]*$ ]]; then
-        # Generate strong replacement
-        local new_value
+      # Match lines starting with VAR=value (Bash 3.2 compatible, no regex)
+      case "$line" in
+        "${var_name}=${default_value}"|"${var_name}=${default_value} "*)
+          # Generate strong replacement
+          local new_value
 
-        case "$var_name" in
-          *PASSWORD*)
-            # Passwords: 32 char alphanumeric
-            new_value=$(generate_random_secret 32 alphanumeric)
-            ;;
-          *SECRET*|*KEY*)
-            # Secrets/keys: 64 char hex
-            new_value=$(generate_random_secret 64 hex)
-            ;;
-          *)
-            # Default: 32 char hex
-            new_value=$(generate_random_secret 32 hex)
-            ;;
-        esac
+          case "$var_name" in
+            *PASSWORD*)
+              # Passwords: 32 char alphanumeric
+              new_value=$(generate_random_secret 32 alphanumeric)
+              ;;
+            *SECRET*|*KEY*)
+              # Secrets/keys: 64 char hex
+              new_value=$(generate_random_secret 64 hex)
+              ;;
+            *)
+              # Default: 32 char hex
+              new_value=$(generate_random_secret 32 hex)
+              ;;
+          esac
 
-        modified_line="${var_name}=${new_value}"
-        line_modified=true
-        replaced=true
-        break
-      fi
+          modified_line="${var_name}=${new_value}"
+          line_modified=true
+          replaced=true
+          break
+          ;;
+      esac
     done
 
     printf "%s\n" "$modified_line" >>"$temp_file"

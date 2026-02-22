@@ -150,9 +150,9 @@ check_port_conflicts() {
     # Use eval for Bash 3.2 compatibility
     eval "local port=\${$var_name:-$default_port}"
 
-    # Check if port is in use
+    # Check if port is in use (3s timeout to avoid hanging on NFS/macOS issues)
     if command -v lsof >/dev/null 2>&1; then
-      if lsof -Pi :"$port" -t >/dev/null 2>&1; then
+      if timeout 3 lsof -Pi :"$port" -t >/dev/null 2>&1; then
         warnings+=("Port $port (${var_name}) is already in use")
       fi
     fi

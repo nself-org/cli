@@ -256,7 +256,7 @@ preflight_port_check() {
   local failed=0
 
   # Parallel arrays: env var names, default ports, service labels
-  # Bash 3.2 compatible (no associative arrays, no declare -A)
+  # Bash 3.2 compatible — uses parallel arrays instead of associative arrays
   local pf_vars="NGINX_PORT NGINX_SSL_PORT POSTGRES_PORT REDIS_PORT HASURA_PORT MINIO_PORT MINIO_CONSOLE_PORT MAILPIT_SMTP_PORT MAILPIT_UI_PORT"
   local pf_defaults="80 443 5432 6379 8080 9000 9001 1025 8025"
   local pf_labels="nginx HTTP|set NGINX_PORT=<port> in .env nginx HTTPS|set NGINX_SSL_PORT=<port> in .env postgres|set POSTGRES_PORT=<port> in .env redis|set REDIS_PORT=<port> in .env hasura|set HASURA_PORT=<port> in .env minio|set MINIO_PORT=<port> in .env minio-console|set MINIO_CONSOLE_PORT=<port> in .env mailpit-smtp|set MAILPIT_SMTP_PORT=<port> in .env mailpit-ui|set MAILPIT_UI_PORT=<port> in .env"

@@ -27,6 +27,8 @@ if [[ ! -f "$LIB_DIR/database/safe-query.sh" ]]; then
 fi
 
 source "$LIB_DIR/database/safe-query.sh"
+# Restore: safe-query.sh enables set -e; disable it since we test failure cases
+set +e
 
 # ============================================================================
 # Test Framework Functions
