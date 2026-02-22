@@ -59,16 +59,20 @@ test_check_dependencies_all_present() {
 test_check_dependencies_missing_command() {
   local test_name="check_dependencies - Missing command"
 
-  # Mock docker as missing
-  mock_command_exists "docker" "false"
-  mock_command_exists "docker-compose" "true"
+  # Use an empty temp dir as PATH so all required commands appear missing.
+  # mock_command_exists() creates shell functions but doesn't intercept
+  # 'command -v', which is what check_dependencies uses to detect commands.
+  local temp_empty_bin result
+  temp_empty_bin=$(mktemp -d)
 
-  # Test - expect failure
-  if check_dependencies >/dev/null 2>&1; then
+  # Test - expect failure when required commands (git, cat, etc.) aren't on PATH
+  if PATH="$temp_empty_bin" check_dependencies >/dev/null 2>&1; then
     result="unexpected_success"
   else
     result="expected_failure"
   fi
+
+  rm -rf "$temp_empty_bin"
 
   assert_equals "expected_failure" "$result" "Missing command detected"
   BRANCHES_TESTED=$((BRANCHES_TESTED + 2)) # Branch 2 (missing) + Branch 4 (has_issues)

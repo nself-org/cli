@@ -6,6 +6,10 @@ set -euo pipefail
 # tested in isolation. Once a function passes its tests, we can rely
 # on it while developing other parts of the system.
 
+# Guard against double-sourcing (readonly variables would fail on re-source)
+[[ -n "${_TEST_FRAMEWORK_LOADED:-}" ]] && return 0
+readonly _TEST_FRAMEWORK_LOADED=1
+
 # Color definitions for test output
 readonly COLOR_RESET='\033[0m'
 readonly COLOR_RED='\033[0;31m'
