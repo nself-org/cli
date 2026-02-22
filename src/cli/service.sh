@@ -1104,16 +1104,17 @@ cmd_search_index() {
   local master_key
   master_key=$(grep "^MEILI_MASTER_KEY=" .env 2>/dev/null | cut -d'=' -f2 || echo "")
 
-  local auth_header=""
+  # Use array to safely pass the optional Authorization header (avoids unquoted expansion)
+  local auth_header=()
   if [[ -n "$master_key" ]]; then
-    auth_header="-H \"Authorization: Bearer $master_key\""
+    auth_header=(-H "Authorization: Bearer $master_key")
   fi
 
   case "$action" in
     list | ls)
       log_info "Listing indexes..."
-      curl -s "$meilisearch_url/indexes" $auth_header | python3 -m json.tool 2>/dev/null ||
-        curl -s "$meilisearch_url/indexes" $auth_header
+      curl -s "$meilisearch_url/indexes" "${auth_header[@]}" | python3 -m json.tool 2>/dev/null ||
+        curl -s "$meilisearch_url/indexes" "${auth_header[@]}"
       ;;
     create)
       if [[ -z "$index_name" ]]; then
@@ -1121,7 +1122,7 @@ cmd_search_index() {
         return 1
       fi
       log_info "Creating index: $index_name"
-      curl -s -X POST "$meilisearch_url/indexes" $auth_header \
+      curl -s -X POST "$meilisearch_url/indexes" "${auth_header[@]}" \
         -H "Content-Type: application/json" \
         -d "{\"uid\": \"$index_name\", \"primaryKey\": \"id\"}"
       ;;
@@ -1131,7 +1132,7 @@ cmd_search_index() {
         return 1
       fi
       log_info "Deleting index: $index_name"
-      curl -s -X DELETE "$meilisearch_url/indexes/$index_name" $auth_header
+      curl -s -X DELETE "$meilisearch_url/indexes/$index_name" "${auth_header[@]}"
       ;;
     *)
       log_error "Unknown index action: $action"
