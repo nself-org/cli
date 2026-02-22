@@ -1019,6 +1019,12 @@ cmd_email_setup() {
 cmd_email_test() {
   local to="${1:-test@example.com}"
 
+  # Validate email format before inserting into JSON body (prevents injection)
+  if [[ ! "$to" =~ ^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$ ]]; then
+    log_error "Invalid email address: $to"
+    return 1
+  fi
+
   if ! is_service_running "mailpit"; then
     log_error "Email service not running"
     return 1
@@ -1026,7 +1032,7 @@ cmd_email_test() {
 
   log_info "Sending test email to $to..."
 
-  # Use MailPit API
+  # Use MailPit API — $to validated above (RFC-compliant email chars only)
   local mailpit_url="http://localhost:8025"
 
   curl -s -X POST "${mailpit_url}/api/v1/send" \
@@ -1612,6 +1618,11 @@ cmd_storage_upload() {
 
   if [[ -z "$file" ]]; then
     log_error "File path required"
+    return 1
+  fi
+
+  if [[ ! -f "$file" ]]; then
+    printf "File not found: %s\n" "$file" >&2
     return 1
   fi
 
