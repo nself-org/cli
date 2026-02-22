@@ -22,6 +22,7 @@ test_syntax() {
     printf "✗ Syntax validation failed\n"
     return 1
   fi
+}
 
 # Test: Help text exists
 test_help() {
@@ -39,13 +40,12 @@ test_help() {
     return 1
   fi
 }
-}
 
 # Test: Backup subcommands
 test_subcommands() {
   TESTS_RUN=$((TESTS_RUN + 1))
   local help_output
-  help_output=$(bash "$SOURCE_FILE" help 2>&1)
+  help_output=$(bash "$SOURCE_FILE" help 2>&1 || bash "$SOURCE_FILE" --help 2>&1 || true)
 
   if echo "$help_output" | grep -q "create\|restore\|list\|rollback"; then
     printf "✓ Backup subcommands documented\n"

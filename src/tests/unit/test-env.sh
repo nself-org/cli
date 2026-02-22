@@ -150,7 +150,10 @@ test_env_create_prevents_duplicate() {
     env::create "duplicate" "local" >/dev/null 2>&1
 
     # Second create should fail without force
-    if env::create "duplicate" "local" 2>&1 | grep -q "already exists"; then
+    # Capture output separately to avoid pipefail exit status masking grep result
+    local dup_output
+    dup_output=$(env::create "duplicate" "local" 2>&1) || true
+    if echo "$dup_output" | grep -q "already exists"; then
       pass_test "Duplicate environment creation prevented"
     else
       fail_test "Should prevent duplicate environment creation"

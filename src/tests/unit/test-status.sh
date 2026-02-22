@@ -22,6 +22,7 @@ test_syntax() {
     printf "✗ Syntax validation failed\n"
     return 1
   fi
+}
 
 # Test: Help text exists
 test_help() {
@@ -38,7 +39,6 @@ test_help() {
     printf "✗ Help text missing\n"
     return 1
   fi
-}
 }
 
 # Test: Service health checking documented
