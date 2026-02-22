@@ -103,9 +103,9 @@ test_03_build() {
   # Verify postgres initialization
   assert_file_generated "postgres/init/00-init.sql" "postgres init script should be generated"
 
-  # Verify SSL certificates
-  assert_file_generated "ssl/cert.pem" "SSL certificate should be generated"
-  assert_file_generated "ssl/key.pem" "SSL key should be generated"
+  # Verify SSL certificates (build creates ssl/certificates/<domain>/ structure)
+  assert_file_generated "ssl/certificates/localhost/fullchain.pem" "SSL certificate should be generated"
+  assert_file_generated "ssl/certificates/localhost/privkey.pem" "SSL key should be generated"
 
   # Verify docker-compose has required services
   assert_file_contains "docker-compose.yml" "postgres:" "postgres service should be defined"
