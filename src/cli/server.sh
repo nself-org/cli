@@ -1080,9 +1080,11 @@ server_secure() {
 # ============================================================
 
 show_server_help() {
+  printf "\033[0;33m⚠ DEPRECATED:\033[0m 'nself server' has moved to 'nself deploy server'\n\n" >&2
   printf "Usage: nself server <command> [options]\n"
   printf "\n"
   printf "VPS server management for nself deployments\n"
+  printf "(DEPRECATED: use 'nself deploy server' instead)\n"
   printf "\n"
   printf "Commands:\n"
   printf "  init      Initialize a new VPS server for nself\n"

@@ -4,11 +4,14 @@
 #
 # Core rate limiting functionality
 
+# Guard against double-sourcing (readonly variables fail on re-source)
+[[ -n "${_RATE_LIMIT_CORE_LOADED:-}" ]] && return 0
+readonly _RATE_LIMIT_CORE_LOADED=1
+
+set -euo pipefail
 
 # Rate limit defaults
 readonly RATE_LIMIT_WINDOW=60        # 60 seconds (1 minute)
-
-set -euo pipefail
 
 readonly RATE_LIMIT_MAX_REQUESTS=100 # 100 requests per window
 readonly RATE_LIMIT_BURST=20         # Allow burst of 20 requests

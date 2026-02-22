@@ -92,9 +92,9 @@ get_db_connection() {
   local db_user="${POSTGRES_USER:-postgres}"
   local db_name="${POSTGRES_DB:-nself}"
 
-  # Check if PostgreSQL container is running
+  # Check if PostgreSQL container is running (|| true prevents pipefail abort when Docker daemon is not running)
   local pg_container
-  pg_container=$(docker ps --filter 'name=postgres' --format '{{.Names}}' | head -1)
+  pg_container=$(docker ps --filter 'name=postgres' --format '{{.Names}}' 2>/dev/null | head -1) || true
 
   if [[ -n "$pg_container" ]]; then
     echo "docker exec $pg_container psql -U $db_user -d $db_name -t -A -c"
@@ -119,7 +119,7 @@ sql_exec() {
 
 # Check if PostgreSQL is available
 check_postgres() {
-  if ! docker ps --filter 'name=postgres' --format '{{.Names}}' | grep -q postgres; then
+  if ! docker ps --filter 'name=postgres' --format '{{.Names}}' 2>/dev/null | grep -q postgres; then
     print_info "PostgreSQL not running - skipping tests"
     exit 0
   fi
@@ -129,20 +129,20 @@ check_postgres() {
 cleanup_test_data() {
   printf "\nCleaning up test data... "
 
-  # Clean up test connections
-  sql_exec "DELETE FROM realtime.connections WHERE connection_id LIKE 'conn_test_%';" >/dev/null 2>&1
+  # Clean up test connections (|| true: cleanup is best-effort; database may not be running)
+  sql_exec "DELETE FROM realtime.connections WHERE connection_id LIKE 'conn_test_%';" >/dev/null 2>&1 || true
 
   # Clean up test channels
-  sql_exec "DELETE FROM realtime.channels WHERE slug LIKE 'test-%';" >/dev/null 2>&1
+  sql_exec "DELETE FROM realtime.channels WHERE slug LIKE 'test-%';" >/dev/null 2>&1 || true
 
   # Clean up test messages
-  sql_exec "DELETE FROM realtime.messages WHERE user_id = '$TEST_USER_ID';" >/dev/null 2>&1
+  sql_exec "DELETE FROM realtime.messages WHERE user_id = '$TEST_USER_ID';" >/dev/null 2>&1 || true
 
   # Clean up test presence
-  sql_exec "DELETE FROM realtime.presence WHERE user_id = '$TEST_USER_ID';" >/dev/null 2>&1
+  sql_exec "DELETE FROM realtime.presence WHERE user_id = '$TEST_USER_ID';" >/dev/null 2>&1 || true
 
   # Clean up test broadcasts
-  sql_exec "DELETE FROM realtime.broadcasts WHERE user_id = '$TEST_USER_ID';" >/dev/null 2>&1
+  sql_exec "DELETE FROM realtime.broadcasts WHERE user_id = '$TEST_USER_ID';" >/dev/null 2>&1 || true
 
   print_success "Done"
 }

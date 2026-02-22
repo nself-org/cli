@@ -407,6 +407,16 @@ test_11_migration_locking() {
 main() {
   start_suite "Database Migration Workflow Integration Test"
 
+  # Skip gracefully when Docker or nself is not available (requires live stack in CI)
+  if ! docker ps >/dev/null 2>&1; then
+    printf "⚠ Docker not available - skipping workflow tests\n"
+    exit 0
+  fi
+  if [[ -z "${NSELF_ROOT:-}" ]] || [[ ! -x "${NSELF_ROOT}/bin/nself" ]]; then
+    printf "⚠ NSELF_ROOT not set or nself not found - skipping workflow tests\n"
+    exit 0
+  fi
+
   printf "\n=================================================================\n"
   printf "Database Migration Workflow Integration Test\n"
   printf "=================================================================\n\n"

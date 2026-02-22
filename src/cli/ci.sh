@@ -411,11 +411,13 @@ cmd_validate() {
 # ============================================================================
 
 show_help() {
+  printf "\033[0;33m⚠ DEPRECATED:\033[0m 'nself ci' has moved to 'nself dev ci'\n\n" >&2
   cat <<'EOF'
-nself ci - CI/CD Integration
+nself ci - CI/CD Integration (DEPRECATED: use 'nself dev ci' instead)
 
 USAGE:
   nself ci <command> [options]
+  nself dev ci <command> [options]   # Preferred form
 
 COMMANDS:
   init [provider]     Initialize CI/CD configuration
@@ -426,16 +428,16 @@ COMMANDS:
 
 EXAMPLES:
   # Initialize GitHub Actions
-  nself ci init
+  nself dev ci init
 
   # Initialize GitLab CI
-  nself ci init gitlab
+  nself dev ci init gitlab
 
   # Check status
-  nself ci status
+  nself dev ci status
 
   # Validate configuration
-  nself ci validate
+  nself dev ci validate
 
 WORKFLOW FEATURES:
   • Build and test on push/PR

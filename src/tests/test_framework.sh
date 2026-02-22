@@ -529,6 +529,17 @@ describe() {
   printf "\n  \033[34m→\033[0m %s\n" "$description"
 }
 
+# start_suite - Initialize a named test suite
+# Usage: start_suite "Suite Name"
+start_suite() {
+  local suite_name="${1:-Test Suite}"
+  TESTS_RUN=0
+  TESTS_PASSED=0
+  TESTS_FAILED=0
+  TESTS_SKIPPED=0
+  printf "\n\033[1m=== %s ===\033[0m\n\n" "$suite_name"
+}
+
 # run - Run a command and capture output
 run() {
   TEST_OUTPUT=$("$@" 2>&1) || true
@@ -615,3 +626,4 @@ export -f run
 export -f run_expect_fail
 export -f assert_file_permissions
 export -f assert_file_not_contains
+export -f start_suite

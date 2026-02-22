@@ -43,7 +43,8 @@ setup_test_project() {
   mkdir -p "$test_dir"
   cd "$test_dir"
 
-  printf "Test environment: %s\n" "$test_dir"
+  # Print status to stderr so it does not pollute the captured return value
+  printf "Test environment: %s\n" "$test_dir" >&2
   echo "$test_dir"
 }
 

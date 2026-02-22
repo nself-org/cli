@@ -116,10 +116,13 @@ run_test() {
   local tests_skipped=0
 
   if [[ -f "$output_file" ]]; then
-    tests_run=$(grep "Total Tests:" "$output_file" 2>/dev/null | grep -o '[0-9]\+' | head -1 || echo "0")
-    tests_passed=$(grep "Passed:" "$output_file" 2>/dev/null | grep -o '[0-9]\+' | head -1 || echo "0")
-    tests_failed=$(grep "Failed:" "$output_file" 2>/dev/null | grep -o '[0-9]\+' | head -1 || echo "0")
-    tests_skipped=$(grep "Skipped:" "$output_file" 2>/dev/null | grep -o '[0-9]\+' | head -1 || echo "0")
+    # Strip ANSI color codes before parsing to avoid matching color code numbers (e.g. [31m)
+    local clean_output
+    clean_output=$(sed 's/\x1b\[[0-9;]*m//g' "$output_file" 2>/dev/null || cat "$output_file")
+    tests_run=$(printf '%s' "$clean_output" | grep "Total Tests:" 2>/dev/null | grep -o '[0-9]\+' | head -1 || echo "0")
+    tests_passed=$(printf '%s' "$clean_output" | grep "Passed:" 2>/dev/null | grep -o '[0-9]\+' | head -1 || echo "0")
+    tests_failed=$(printf '%s' "$clean_output" | grep "Failed:" 2>/dev/null | grep -o '[0-9]\+' | head -1 || echo "0")
+    tests_skipped=$(printf '%s' "$clean_output" | grep "Skipped:" 2>/dev/null | grep -o '[0-9]\+' | head -1 || echo "0")
   fi
 
   # Update totals

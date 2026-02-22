@@ -12,8 +12,8 @@ source "$SCRIPT_DIR/../../lib/redis/cache.sh"
 
 printf "\n=== Redis Integration Tests ===\n\n"
 
-# Check if Redis is available
-redis_container=$(docker ps --filter 'name=redis' --format '{{.Names}}' | head -1)
+# Check if Redis is available (|| true prevents pipefail abort when Docker daemon is not running)
+redis_container=$(docker ps --filter 'name=redis' --format '{{.Names}}' 2>/dev/null | head -1) || true
 if [[ -z "$redis_container" ]]; then
   printf "⚠ Redis not running - skipping tests\n"
   exit 0

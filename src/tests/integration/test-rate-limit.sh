@@ -10,6 +10,13 @@ source "$SCRIPT_DIR/../../lib/rate-limit/ip-limiter.sh"
 
 printf "\n=== Rate Limiting Tests ===\n\n"
 
+# Check if PostgreSQL (Docker) is available - skip gracefully if not
+pg_container=$(docker ps --filter 'name=postgres' --format '{{.Names}}' 2>/dev/null | head -1) || true
+if [[ -z "$pg_container" ]]; then
+  printf "⚠ PostgreSQL not running - skipping tests\n"
+  exit 0
+fi
+
 # Test 1: IP rate limit (should allow first request)
 printf "Test 1: Allow first request... "
 result=$(ip_rate_limit_check "192.168.1.100" 10 60 2>/dev/null)

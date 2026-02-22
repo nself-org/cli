@@ -25,6 +25,13 @@ assert_equals() {
 
 printf "\n=== Role Management Tests ===\n\n"
 
+# Check if PostgreSQL (Docker) is available - skip gracefully if not
+pg_container=$(docker ps --filter 'name=postgres' --format '{{.Names}}' 2>/dev/null | head -1) || true
+if [[ -z "$pg_container" ]]; then
+  printf "⚠ PostgreSQL not running - skipping tests\n"
+  exit 0
+fi
+
 # Test 1: Create role
 printf "Test 1: Create role... "
 role_id=$(role_create "test-admin" "Test admin role" 2>/dev/null)

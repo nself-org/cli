@@ -11,11 +11,9 @@ CLI_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source the consolidated config command
 source "$CLI_SCRIPT_DIR/config.sh"
 
-# Show deprecation warning
-if [[ -t 1 ]]; then
-  printf "\033[0;33m⚠\033[0m \033[2mDeprecation Notice:\033[0m 'nself vault' is deprecated\n" >&2
-  printf "  \033[2mUse:\033[0m \033[0;36mnself config vault\033[0m instead\n\n" >&2
-fi
+# Show deprecation warning (always, not just in TTY)
+printf "\033[0;33m⚠\033[0m \033[2mDeprecation Notice:\033[0m 'nself vault' is deprecated\n" >&2
+printf "  \033[2mUse:\033[0m \033[0;36mnself config vault\033[0m instead\n\n" >&2
 
 # Redirect to config vault
 cmd_config "vault" "$@"
