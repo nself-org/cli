@@ -6,12 +6,13 @@
 
 
 # Encryption defaults
-readonly ENCRYPTION_ALGORITHM="aes-256-cbc"
-
-set -euo pipefail
-
-readonly KEY_SIZE=32 # 256 bits
-readonly KEY_ROTATION_DAYS=90
+# Note: Library files must not use set -euo pipefail or top-level readonly.
+# Using set -e at top level affects the parent shell when sourced, and readonly
+# declarations fail if the file is sourced more than once (e.g., vault.sh sources
+# this, then a test sources vault.sh — second source hits "readonly variable" error).
+ENCRYPTION_ALGORITHM="${ENCRYPTION_ALGORITHM:-aes-256-cbc}"
+KEY_SIZE="${KEY_SIZE:-32}" # 256 bits
+KEY_ROTATION_DAYS="${KEY_ROTATION_DAYS:-90}"
 
 # ============================================================================
 # Encryption Key Generation

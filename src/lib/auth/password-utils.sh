@@ -13,9 +13,6 @@
 # Usage: hash_password <password>
 # Returns: bcrypt hash string
 hash_password() {
-
-set -euo pipefail
-
   local password="$1"
 
   if [[ -z "$password" ]]; then
@@ -32,9 +29,9 @@ set -euo pipefail
     return 0
   fi
 
-  # Try Python bcrypt as fallback
+  # Try Python bcrypt as fallback — pass password via stdin to avoid injection
   if command -v python3 >/dev/null 2>&1; then
-    python3 -c "import bcrypt; print(bcrypt.hashpw('$password'.encode(), bcrypt.gensalt()).decode())" 2>/dev/null && return 0
+    printf '%s' "$password" | python3 -c "import bcrypt, sys; pwd=sys.stdin.read(); print(bcrypt.hashpw(pwd.encode(), bcrypt.gensalt()).decode())" 2>/dev/null && return 0
   fi
 
   # Try openssl as last resort (less secure, but available everywhere)
@@ -67,7 +64,7 @@ verify_password() {
   if [[ "$stored_hash" == \$2y\$* ]] || [[ "$stored_hash" == \$2b\$* ]] || [[ "$stored_hash" == \$2a\$* ]]; then
     # bcrypt hash — try Python3 first (more reliable cross-platform), then htpasswd
     if command -v python3 >/dev/null 2>&1 && python3 -c "import bcrypt" >/dev/null 2>&1; then
-      python3 -c "import bcrypt; import sys; sys.exit(0 if bcrypt.checkpw('$password'.encode(), '$stored_hash'.encode()) else 1)" 2>/dev/null
+      printf '%s\n%s' "$password" "$stored_hash" | python3 -c "import bcrypt, sys; lines=sys.stdin.read().split('\n', 1); sys.exit(0 if bcrypt.checkpw(lines[0].encode(), lines[1].encode()) else 1)" 2>/dev/null
       return $?
     elif command -v htpasswd >/dev/null 2>&1; then
       # htpasswd -v requires a file; write hash to temp file for verification
