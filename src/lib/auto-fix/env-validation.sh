@@ -325,14 +325,14 @@ validate_all_env() {
   if [[ -f ".env" ]]; then
     log_info "Validating .env..."
     if ! auto_fix_env_file ".env"; then
-      ((errors++))
+      errors=$((errors + 1))
     fi
   fi
 
   if [[ -f ".env.local" ]]; then
     log_info "Validating .env.local..."
     if ! auto_fix_env_file ".env.local"; then
-      ((errors++))
+      errors=$((errors + 1))
     fi
   fi
 
@@ -341,7 +341,7 @@ validate_all_env() {
     if [[ -f "$env_file" ]]; then
       log_info "Validating $env_file..."
       if ! auto_fix_env_file "$env_file"; then
-        ((errors++))
+        errors=$((errors + 1))
       fi
     fi
   done

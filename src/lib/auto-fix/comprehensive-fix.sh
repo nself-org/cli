@@ -108,7 +108,7 @@ EOF
 
         if [[ "$nginx_fixed" == "true" ]]; then
           docker restart ${project_name}_nginx >/dev/null 2>&1
-          ((fixes_applied++))
+          fixes_applied=$((fixes_applied + 1))
           log_success "Fixed nginx configuration"
         fi
       fi
@@ -130,7 +130,7 @@ EOF
           log_info "Creating $db database..."
           docker exec ${project_name}_postgres psql -U postgres -c "CREATE DATABASE $db;" >/dev/null 2>&1
           db_fixed=true
-          ((fixes_applied++))
+          fixes_applied=$((fixes_applied + 1))
           log_success "Created $db database"
         fi
       done
@@ -177,7 +177,7 @@ EOF
         ' docker-compose.yml >docker-compose.yml.tmp && mv docker-compose.yml.tmp docker-compose.yml
 
         healthcheck_fixed=true
-        ((fixes_applied++))
+        fixes_applied=$((fixes_applied + 1))
       fi
 
       # Fix incorrect ports in health checks
@@ -246,7 +246,7 @@ storage:
 overrides:
   metrics_generator_processors: [service-graphs, span-metrics]
 EOF
-      ((fixes_applied++))
+      fixes_applied=$((fixes_applied + 1))
       log_success "Created Tempo configuration"
     fi
 
@@ -291,7 +291,7 @@ ruler:
 analytics:
   reporting_enabled: false
 EOF
-      ((fixes_applied++))
+      fixes_applied=$((fixes_applied + 1))
       log_success "Created Loki configuration"
     fi
 
@@ -320,7 +320,7 @@ scrape_configs:
     static_configs:
       - targets: ['cadvisor:8080']
 EOF
-      ((fixes_applied++))
+      fixes_applied=$((fixes_applied + 1))
       log_success "Created Prometheus configuration"
     fi
   }
@@ -395,7 +395,7 @@ EOF
       done
 
       if [[ "$env_fixed" == "true" ]]; then
-        ((fixes_applied++))
+        fixes_applied=$((fixes_applied + 1))
         log_success "Fixed environment variables"
       fi
     fi

@@ -22,7 +22,7 @@ validate_env_syntax() {
   fi
 
   while IFS= read -r line || [[ -n "$line" ]]; do
-    ((line_num++))
+    line_num=$((line_num + 1))
 
     # Skip empty lines and comments
     [[ -z "$line" ]] && continue

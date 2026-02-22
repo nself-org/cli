@@ -90,7 +90,7 @@ harden_secrets() {
       fi
 
       cli_success "Rotated: $secret_key"
-      ((rotated++))
+      rotated=$((rotated + 1))
     elif grep -qE "^${secret_key}=.{1,23}$" "$env_file" 2>/dev/null; then
       # Also check for short secrets (less than 24 chars)
       local new_value
@@ -113,10 +113,10 @@ harden_secrets() {
       fi
 
       cli_success "Strengthened: $secret_key"
-      ((rotated++))
+      rotated=$((rotated + 1))
     fi
 
-    ((i++))
+    i=$((i + 1))
   done
 
   if [[ $rotated -eq 0 ]]; then

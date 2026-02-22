@@ -29,7 +29,7 @@ set -euo pipefail
           return 99 # Retry
         fi
         sleep 1
-        ((waited++))
+        waited=$((waited + 1))
       done
 
       log_warning "Postgres not ready after ${max_wait} seconds"

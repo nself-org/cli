@@ -60,7 +60,7 @@ pg_query_safe() {
     # Escape single quotes in parameter value by doubling them
     local escaped_param="${param//\'/\'\'}"
     psql_cmd+=(-v "param${param_num}=${escaped_param}")
-    ((param_num++))
+    param_num=$((param_num + 1))
   done
 
   # Execute query with properly quoted array expansion
@@ -255,7 +255,7 @@ pg_insert_returning_id() {
       placeholders+=", "
     fi
     placeholders+=":'param${param_num}'"
-    ((param_num++))
+    param_num=$((param_num + 1))
   done
 
   local query="INSERT INTO $table ($columns) VALUES ($placeholders) RETURNING id"
@@ -287,7 +287,7 @@ pg_update_by_id() {
       set_clause+=", "
     fi
     set_clause+="$col = :'param${param_num}'"
-    ((param_num++))
+    param_num=$((param_num + 1))
   done
 
   # Add ID as last parameter

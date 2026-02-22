@@ -237,7 +237,7 @@ get_call_count() {
   if [[ ${#FUNCTION_CALLS[@]} -gt 0 ]]; then
     for call in "${FUNCTION_CALLS[@]}"; do
       if [[ "$call" == "$func_name:"* ]]; then
-        ((count++))
+        count=$((count + 1))
       fi
     done
   fi

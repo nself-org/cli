@@ -231,7 +231,7 @@ nginx::auto_fix() {
       [[ -f "$conf_file" ]] || continue
       if grep -q "limit_req_zone" "$conf_file"; then
         nginx::fix_rate_limiting "$conf_file"
-        ((fixed_issues++))
+        fixed_issues=$((fixed_issues + 1))
       fi
     done
   fi
@@ -242,7 +242,7 @@ nginx::auto_fix() {
       [[ -f "$conf_file" ]] || continue
       if grep -q "listen.*http2;" "$conf_file"; then
         nginx::fix_http2_directive "$conf_file"
-        ((fixed_issues++))
+        fixed_issues=$((fixed_issues + 1))
       fi
     done
   fi
@@ -260,7 +260,7 @@ nginx::auto_fix() {
           ! grep -q "^\s*realtime:" docker-compose*.yml 2>/dev/null; then
           log_warning "Disabling $filename - referenced services not found"
           mv "$conf_file" "${conf_file}.disabled"
-          ((fixed_issues++))
+          fixed_issues=$((fixed_issues + 1))
         fi
       fi
     done

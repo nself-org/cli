@@ -101,28 +101,28 @@ validate_env_config() {
   for var in "${required_vars[@]}"; do
     if [[ -z "${!var:-}" ]]; then
       log_error "Missing required variable: $var"
-      ((errors++))
+      errors=$((errors + 1))
     fi
   done
 
   # Validate domain
   if [[ -n "${BASE_DOMAIN:-}" ]] && ! is_valid_domain "$BASE_DOMAIN"; then
     log_error "Invalid domain: $BASE_DOMAIN"
-    ((errors++))
+    errors=$((errors + 1))
   fi
 
   # Validate JWT secret if present
   if [[ -n "${HASURA_GRAPHQL_JWT_SECRET:-}" ]]; then
     if ! is_valid_json "$HASURA_GRAPHQL_JWT_SECRET"; then
       log_error "Invalid JSON in HASURA_GRAPHQL_JWT_SECRET"
-      ((errors++))
+      errors=$((errors + 1))
     fi
   fi
 
   # Check for inline comments
   if grep -E '^\s*[A-Z_]+=[^#]*#' "$env_file" >/dev/null 2>&1; then
     log_warning "Inline comments detected (can cause issues)"
-    ((errors++))
+    errors=$((errors + 1))
   fi
 
   # Check for weak passwords
@@ -146,19 +146,19 @@ validate_docker_prerequisites() {
   # Check Docker is installed
   if ! command -v docker >/dev/null 2>&1; then
     log_error "Docker is not installed"
-    ((errors++))
+    errors=$((errors + 1))
   fi
 
   # Check Docker Compose
   if ! docker compose version >/dev/null 2>&1; then
     log_error "Docker Compose v2 is not available"
-    ((errors++))
+    errors=$((errors + 1))
   fi
 
   # Check Docker is running
   if ! docker info >/dev/null 2>&1; then
     log_error "Docker daemon is not running"
-    ((errors++))
+    errors=$((errors + 1))
   fi
 
   return $errors
@@ -177,7 +177,7 @@ validate_ports() {
       if docker ps --filter "publish=$port" --format '{{.Names}}' | grep -q "^${PROJECT_NAME:-nself}_"; then
         log_info "Port $port is used by our container (OK)"
       else
-        ((errors++))
+        errors=$((errors + 1))
       fi
     fi
   done
@@ -192,7 +192,7 @@ validate_permissions() {
   # Check if we can write to current directory
   if ! touch .test_write 2>/dev/null; then
     log_error "Cannot write to current directory"
-    ((errors++))
+    errors=$((errors + 1))
   else
     rm -f .test_write
   fi

@@ -23,10 +23,10 @@ run_test() {
 
   if $test_func; then
     cli_success "PASS: ${test_name}"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     cli_error "FAIL: ${test_name}"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 }
 

@@ -76,7 +76,7 @@ format_bytes() {
 
   while [[ "$bytes" -ge 1024 ]] && [[ "$unit" -lt 4 ]]; do
     bytes=$((bytes / 1024))
-    ((unit++))
+    unit=$((unit + 1))
   done
 
   echo "${bytes}${units[$unit]}"
@@ -162,13 +162,13 @@ draw_service_grid() {
     [[ "$status" != "running" ]] && icon="○"
 
     row="${row}│ ${color}${icon}[0m ${service:0:12}"
-    ((count++))
+    count=$((count + 1))
 
     if [[ $((count % cols)) -eq 0 ]]; then
       # Pad and close row
       while [[ $((count % cols)) -ne 0 ]]; do
         row="${row}│                "
-        ((count++))
+        count=$((count + 1))
       done
       printf "${row}│\n"
       row=""
@@ -179,7 +179,7 @@ draw_service_grid() {
   if [[ -n "$row" ]]; then
     while [[ $((count % cols)) -ne 0 ]]; do
       row="${row}│                "
-      ((count++))
+      count=$((count + 1))
     done
     printf "${row}│\n"
   fi

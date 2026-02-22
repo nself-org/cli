@@ -20,7 +20,7 @@ run_pre_checks() {
   if grep -q "POSTGRES_PORT=5433" .env.local 2>/dev/null && [[ "$expected_port" == "5432" ]]; then
     [[ "$silent" != "true" ]] && printf "${COLOR_BLUE}⠋${COLOR_RESET} Fixing Postgres port configuration..."
     safe_sed_inline ".env.local" 's/POSTGRES_PORT=5433/POSTGRES_PORT=5432/'
-    ((issues_fixed++))
+    issues_fixed=$((issues_fixed + 1))
     [[ "$silent" != "true" ]] && printf "\r${COLOR_GREEN}✓${COLOR_RESET} Fixed Postgres port configuration    \n"
   fi
 
@@ -28,7 +28,7 @@ run_pre_checks() {
   if ! docker network inspect ${PROJECT_NAME:-nself}_default >/dev/null 2>&1; then
     [[ "$silent" != "true" ]] && printf "${COLOR_BLUE}⠋${COLOR_RESET} Creating Docker network..."
     docker network create ${PROJECT_NAME:-nself}_default >/dev/null 2>&1
-    ((issues_fixed++))
+    issues_fixed=$((issues_fixed + 1))
     [[ "$silent" != "true" ]] && printf "\r${COLOR_GREEN}✓${COLOR_RESET} Created Docker network               \n"
   fi
 
@@ -37,7 +37,7 @@ run_pre_checks() {
   if [[ $zombies -gt 0 ]]; then
     [[ "$silent" != "true" ]] && printf "${COLOR_BLUE}⠋${COLOR_RESET} Cleaning up stopped containers..."
     docker ps -aq -f status=exited -f name=${PROJECT_NAME:-nself}_ | xargs docker rm >/dev/null 2>&1
-    ((issues_fixed++))
+    issues_fixed=$((issues_fixed + 1))
     [[ "$silent" != "true" ]] && printf "\r${COLOR_GREEN}✓${COLOR_RESET} Cleaned up stopped containers        \n"
   fi
 
@@ -51,7 +51,7 @@ run_pre_checks() {
       [[ "$silent" != "true" ]] && printf "${COLOR_BLUE}⠋${COLOR_RESET} Restarting Postgres..."
       safe_timeout 10 docker restart "${project_name}_postgres" >/dev/null 2>&1
       sleep 3
-      ((issues_fixed++))
+      issues_fixed=$((issues_fixed + 1))
       [[ "$silent" != "true" ]] && printf "\r${COLOR_GREEN}✓${COLOR_RESET} Restarted Postgres                   \n"
     else
       # Postgres is ready, ensure schemas exist
@@ -70,7 +70,7 @@ run_pre_checks() {
             " >/dev/null 2>&1
 
       [[ "$silent" != "true" ]] && printf "\r${COLOR_GREEN}✓${COLOR_RESET} Database schemas ready                     \n"
-      ((issues_fixed++))
+      issues_fixed=$((issues_fixed + 1))
     fi
   fi
 
@@ -94,7 +94,7 @@ run_pre_checks() {
   }
 }
 EOF
-      ((issues_fixed++))
+      issues_fixed=$((issues_fixed + 1))
       [[ "$silent" != "true" ]] && printf "\r${COLOR_GREEN}✓${COLOR_RESET} Created package.json for $worker_name   \n"
     fi
   done

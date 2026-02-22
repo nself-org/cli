@@ -238,7 +238,7 @@ metadata_set_bulk() {
       value=$(echo "$json_metadata" | jq -r ".$key")
 
       if metadata_set "$user_id" "$key" "$value" "string" 2>/dev/null; then
-        ((count++))
+        count=$((count + 1))
       fi
     fi
   done <<<"$keys"

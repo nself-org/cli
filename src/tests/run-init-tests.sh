@@ -75,12 +75,12 @@ run_unit_tests() {
   if [[ -f "$TEST_DIR/unit/test-init.sh" ]]; then
     if bash "$TEST_DIR/unit/test-init.sh"; then
       print_success "Unit tests passed"
-      ((PASSED_TESTS++))
+      PASSED_TESTS=$((PASSED_TESTS + 1))
     else
       print_error "Unit tests failed"
-      ((FAILED_TESTS++))
+      FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
-    ((TOTAL_TESTS++))
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
   else
     print_warning "Unit test file not found"
   fi
@@ -104,16 +104,16 @@ run_integration_tests() {
   if bash "$CLI_DIR/init.sh" --quiet; then
     if [[ -f .env ]] && [[ -f .env.example ]] && [[ -f .gitignore ]]; then
       print_success "Basic init test passed"
-      ((PASSED_TESTS++))
+      PASSED_TESTS=$((PASSED_TESTS + 1))
     else
       print_error "Basic init test failed: missing files"
-      ((FAILED_TESTS++))
+      FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
   else
     print_error "Basic init test failed: command error"
-    ((FAILED_TESTS++))
+    FAILED_TESTS=$((FAILED_TESTS + 1))
   fi
-  ((TOTAL_TESTS++))
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
   # Cleanup
   cd /
@@ -150,12 +150,12 @@ run_shellcheck() {
 
   if [[ "$has_errors" == false ]]; then
     print_success "ShellCheck passed"
-    ((PASSED_TESTS++))
+    PASSED_TESTS=$((PASSED_TESTS + 1))
   else
     print_error "ShellCheck found issues"
-    ((FAILED_TESTS++))
+    FAILED_TESTS=$((FAILED_TESTS + 1))
   fi
-  ((TOTAL_TESTS++))
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
 }
 
 # Check for Bash 4+ features
@@ -185,11 +185,11 @@ check_bash_compatibility() {
 
   if [[ "$has_issues" == false ]]; then
     print_success "Bash 3.2 compatible"
-    ((PASSED_TESTS++))
+    PASSED_TESTS=$((PASSED_TESTS + 1))
   else
-    ((FAILED_TESTS++))
+    FAILED_TESTS=$((FAILED_TESTS + 1))
   fi
-  ((TOTAL_TESTS++))
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
 }
 
 # Check file permissions
@@ -209,12 +209,12 @@ check_permissions() {
 
   if [[ "$env_perms" == "600" ]]; then
     print_success ".env has correct permissions (600)"
-    ((PASSED_TESTS++))
+    PASSED_TESTS=$((PASSED_TESTS + 1))
   else
     print_error ".env has wrong permissions: $env_perms (expected 600)"
-    ((FAILED_TESTS++))
+    FAILED_TESTS=$((FAILED_TESTS + 1))
   fi
-  ((TOTAL_TESTS++))
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
   # Cleanup
   cd /

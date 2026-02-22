@@ -194,13 +194,13 @@ check_plugin_dependencies() {
           # Check minimum version if specified
           if [[ -n "$min_version" ]] && ! version_compare "$version" "$min_version"; then
             printf "  ${CLI_YELLOW}⚠${CLI_RESET} %-20s v%s ${CLI_YELLOW}(requires ≥%s)${CLI_RESET}\n" "$current_dep" "$version" "$min_version"
-            ((missing_required++))
+            missing_required=$((missing_required + 1))
           else
             printf "  ${CLI_GREEN}✓${CLI_RESET} %-20s v%s\n" "$current_dep" "$version"
           fi
         else
           printf "  ${CLI_RED}✗${CLI_RESET} %-20s ${CLI_RED}not installed${CLI_RESET}\n" "$current_dep"
-          ((missing_required++))
+          missing_required=$((missing_required + 1))
         fi
       fi
     done <<< "$required_deps"
@@ -229,7 +229,7 @@ check_plugin_dependencies() {
           printf "  ${CLI_GREEN}✓${CLI_RESET} %-20s v%s\n" "$current_dep" "$version"
         else
           printf "  ${CLI_DIM}○${CLI_RESET} %-20s ${CLI_DIM}not installed${CLI_RESET}\n" "$current_dep"
-          ((missing_recommended++))
+          missing_recommended=$((missing_recommended + 1))
         fi
       fi
     done <<< "$recommended_deps"

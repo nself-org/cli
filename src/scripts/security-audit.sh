@@ -40,8 +40,8 @@ if [[ -n "$command_injection_files" ]]; then
     grep -n 'docker exec.*\$psql_' "$file" | head -3 | while IFS= read -r line; do
       printf "    ${RED}%s${NC}\n" "$line"
     done
-    ((files_with_issues++))
-    ((total_issues++))
+    files_with_issues=$((files_with_issues + 1))
+    total_issues=$((total_issues + 1))
   done <<< "$command_injection_files"
   printf "\n"
 else
@@ -68,7 +68,7 @@ if [[ -n "$sql_injection_files" ]]; then
     count=$(grep -c "psql.*-c.*'\$" "$file" 2>/dev/null || echo "0")
     if [[ $count -gt 0 ]]; then
       printf "  - %s ${RED}(%d instances)${NC}\n" "$file" "$count"
-      ((files_with_issues++))
+      files_with_issues=$((files_with_issues + 1))
       ((total_issues += count))
     fi
   done <<< "$sql_injection_files"
@@ -97,7 +97,7 @@ if [[ -n "$psql_files" ]]; then
           printf "${YELLOW}⚠ Files using psql without safe-query.sh:${NC}\n"
         fi
         printf "  - %s\n" "$file"
-        ((unsafe_files++))
+        unsafe_files=$((unsafe_files + 1))
       fi
     fi
   done <<< "$psql_files"

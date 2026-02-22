@@ -276,7 +276,7 @@ export_supabase_storage() {
             -H "Authorization: Bearer $service_role_key" \
             "$file_url" \
             -o "$file_path" 2>/dev/null; then
-            ((file_count++))
+            file_count=$((file_count + 1))
           fi
         done
 

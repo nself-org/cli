@@ -72,7 +72,7 @@ quick_docker_check() {
             return 0
           fi
           sleep 1
-          ((count++))
+          count=$((count + 1))
           printf "."
         done
         echo ""
@@ -91,12 +91,12 @@ run_essential_checks() {
 
   # Docker must be running
   if ! quick_docker_check; then
-    ((failed++))
+    failed=$((failed + 1))
   fi
 
   # Environment must exist
   if ! quick_env_check; then
-    ((failed++))
+    failed=$((failed + 1))
   fi
 
   # Check ports (non-critical)

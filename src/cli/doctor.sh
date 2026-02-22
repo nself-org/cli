@@ -293,7 +293,7 @@ check_running_containers() {
 
     if [[ "$health_status" == "healthy" ]]; then
       log_success "$service_name: Healthy"
-      ((healthy++))
+      healthy=$((healthy + 1))
     elif [[ "$health_status" == "unhealthy" ]]; then
       # Check for Tempo distroless image (no shell for health checks)
       if [[ "$service_name" == "tempo" ]]; then
@@ -303,14 +303,14 @@ check_running_containers() {
           local running=$(docker inspect "$container" --format='{{.State.Running}}' 2>/dev/null || echo "false")
           if [[ "$running" == "true" ]]; then
             log_success "$service_name: Running (distroless - no healthcheck)"
-            ((no_health_check++))
+            no_health_check=$((no_health_check + 1))
             continue
           fi
         fi
       fi
       log_error "$service_name: Unhealthy"
       issue_found
-      ((unhealthy++))
+      unhealthy=$((unhealthy + 1))
       # Show last few log lines for unhealthy containers
       log_info "  Recent logs:"
       docker logs --tail 5 "$container" 2>&1 | sed 's/^/    /'
@@ -318,7 +318,7 @@ check_running_containers() {
       log_info "$service_name: Starting..."
     elif [[ "$state" == "running" && "$health_status" == "none" ]]; then
       log_success "$service_name: Running (no health check)"
-      ((no_health_check++))
+      no_health_check=$((no_health_check + 1))
     elif [[ "$state" == "restarting" ]]; then
       log_warning "$service_name: Restarting (check logs for errors)"
       warning_found

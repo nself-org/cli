@@ -209,7 +209,7 @@ retry_with_backoff() {
       delay=$((delay * 2))
     fi
 
-    ((attempt++))
+    attempt=$((attempt + 1))
   done
 
   log_error "All $max_attempts attempts failed"

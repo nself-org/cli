@@ -278,7 +278,7 @@ plugin_check_dependencies() {
         nself_version=$(cat "$(dirname "${BASH_SOURCE[0]}")/../../VERSION" 2>/dev/null || echo "0.0.0")
         if ! plugin_version_satisfies "$nself_version" "$dep_version"; then
           printf "Dependency not satisfied: nself %s (current: %s)\n" "$dep_version" "$nself_version" >&2
-          ((missing++))
+          missing=$((missing + 1))
         fi
         ;;
       postgres)
@@ -288,11 +288,11 @@ plugin_check_dependencies() {
           pg_version=$(psql --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+' | head -1 || echo "0.0")
           if ! plugin_version_satisfies "$pg_version" "$dep_version"; then
             printf "Dependency not satisfied: postgres %s (current: %s)\n" "$dep_version" "$pg_version" >&2
-            ((missing++))
+            missing=$((missing + 1))
           fi
         else
           printf "Dependency not satisfied: postgres %s (not found)\n" "$dep_version" >&2
-          ((missing++))
+          missing=$((missing + 1))
         fi
         ;;
       node)
@@ -302,11 +302,11 @@ plugin_check_dependencies() {
           node_version=$(node --version 2>/dev/null | sed 's/v//' || echo "0.0.0")
           if ! plugin_version_satisfies "$node_version" "$dep_version"; then
             printf "Dependency not satisfied: node %s (current: %s)\n" "$dep_version" "$node_version" >&2
-            ((missing++))
+            missing=$((missing + 1))
           fi
         else
           printf "Dependency not satisfied: node %s (not found)\n" "$dep_version" >&2
-          ((missing++))
+          missing=$((missing + 1))
         fi
         ;;
       *)
@@ -316,11 +316,11 @@ plugin_check_dependencies() {
           installed_version=$(plugin_get_version "$dep_name")
           if ! plugin_version_satisfies "$installed_version" "$dep_version"; then
             printf "Dependency not satisfied: %s %s (current: %s)\n" "$dep_name" "$dep_version" "$installed_version" >&2
-            ((missing++))
+            missing=$((missing + 1))
           fi
         else
           printf "Dependency not satisfied: %s %s (not installed)\n" "$dep_name" "$dep_version" >&2
-          ((missing++))
+          missing=$((missing + 1))
         fi
         ;;
     esac
@@ -724,7 +724,7 @@ plugin_check_env() {
   for var in $required_vars; do
     if [[ -z "${!var:-}" ]]; then
       printf "Missing required variable: %s\n" "$var" >&2
-      ((missing++))
+      missing=$((missing + 1))
     fi
   done
 
@@ -752,7 +752,7 @@ plugin_validate_manifest() {
   for field in "${required_fields[@]}"; do
     if ! grep -q "\"$field\"" "$manifest"; then
       printf "Error: Missing required field: %s\n" "$field" >&2
-      ((errors++))
+      errors=$((errors + 1))
     fi
   done
 
@@ -761,14 +761,14 @@ plugin_validate_manifest() {
   version=$(grep '"version"' "$manifest" | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
   if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$ ]]; then
     printf "Error: Invalid version format (must be semver): %s\n" "$version" >&2
-    ((errors++))
+    errors=$((errors + 1))
   fi
 
   # Check for valid JSON (if jq available)
   if command -v jq >/dev/null 2>&1; then
     if ! jq empty "$manifest" 2>/dev/null; then
       printf "Error: Invalid JSON in plugin.json\n" >&2
-      ((errors++))
+      errors=$((errors + 1))
     fi
   fi
 
@@ -796,19 +796,19 @@ plugin_validate_permissions() {
   # Check for dangerous database permissions
   if grep -q '"drop"' "$manifest"; then
     printf "Warning: Plugin requests DROP permissions\n" >&2
-    ((dangerous_perms++))
+    dangerous_perms=$((dangerous_perms + 1))
   fi
 
   # Check for broad filesystem access
   if grep -q '"\/"' "$manifest"; then
     printf "Warning: Plugin requests root filesystem access\n" >&2
-    ((dangerous_perms++))
+    dangerous_perms=$((dangerous_perms + 1))
   fi
 
   # Check for Docker access
   if grep -A5 '"docker"' "$manifest" | grep -q '"execute"[[:space:]]*:[[:space:]]*true'; then
     printf "Warning: Plugin requests Docker execution permissions\n" >&2
-    ((dangerous_perms++))
+    dangerous_perms=$((dangerous_perms + 1))
   fi
 
   if [[ $dangerous_perms -gt 0 ]]; then
@@ -865,13 +865,13 @@ plugin_security_scan() {
   # Check for suspicious patterns in shell scripts
   if find "$plugin_dir" -name "*.sh" -type f -exec grep -l "eval\|exec\|curl.*|.*bash\|wget.*|.*bash" {} \; 2>/dev/null | grep -q .; then
     printf "  Warning: Found potentially dangerous shell patterns\n"
-    ((issues++))
+    issues=$((issues + 1))
   fi
 
   # Check for hardcoded credentials
   if find "$plugin_dir" -type f -exec grep -l "password\s*=\|api_key\s*=\|secret\s*=" {} \; 2>/dev/null | grep -q .; then
     printf "  Warning: Found potential hardcoded credentials\n"
-    ((issues++))
+    issues=$((issues + 1))
   fi
 
   # Check for network access in unexpected files

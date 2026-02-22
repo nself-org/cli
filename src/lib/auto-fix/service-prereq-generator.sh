@@ -42,12 +42,12 @@ ensure_all_services_exist() {
         if [[ "$context" =~ ^services/ ]]; then
           # It's a microservice, use the service generator
           if check_missing_service "$context"; then
-            ((generated_count++))
+            generated_count=$((generated_count + 1))
           fi
         elif [[ "$context" == "functions" ]] || [[ "$context" == "dashboard" ]]; then
           # It's a system service, use the dockerfile generator
           if generate_dockerfile_for_service "$(basename "$context")" "$context"; then
-            ((generated_count++))
+            generated_count=$((generated_count + 1))
           fi
         fi
       elif [[ ! -f "$context/Dockerfile" ]]; then
@@ -56,7 +56,7 @@ ensure_all_services_exist() {
 
         # Generate just the Dockerfile
         if generate_dockerfile_for_service "$(basename "$context")" "$context"; then
-          ((generated_count++))
+          generated_count=$((generated_count + 1))
         fi
       fi
     fi

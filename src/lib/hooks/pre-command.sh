@@ -131,13 +131,13 @@ check_prerequisites() {
   # Check Docker
   if ! command -v docker >/dev/null 2>&1; then
     log_error "Docker is not installed"
-    ((errors++))
+    errors=$((errors + 1))
   fi
 
   # Check Docker Compose v2
   if ! docker compose version >/dev/null 2>&1; then
     log_error "Docker Compose v2 is not available"
-    ((errors++))
+    errors=$((errors + 1))
   fi
 
   # Check disk space (warn if < 1GB)

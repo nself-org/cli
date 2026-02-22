@@ -147,7 +147,7 @@ cmd_list() {
       fi
 
       printf "%-15s %-10s %-12s %-35s%s\n" "$plugin" "$version" "$category" "${description:0:35}" " [installed]"
-      ((count++))
+      count=$((count + 1))
     done
   else
     # Show from registry (all available plugins)
@@ -173,7 +173,7 @@ cmd_list() {
       fi
 
       printf "%-15s %-10s %-12s %-35s%s\n" "$plugin" "$version" "$category" "${description:0:35}" "$installed"
-      ((count++))
+      count=$((count + 1))
     done
   fi
 
@@ -341,7 +341,7 @@ cmd_update() {
         local name
         name=$(basename "$plugin_dir")
         update_single_plugin "$name"
-        ((found++))
+        found=$((found + 1))
       fi
     done
     if [[ $found -eq 0 ]]; then
@@ -401,7 +401,7 @@ cmd_status() {
         local name
         name=$(basename "$plugin_dir")
         show_plugin_status "$name"
-        ((found++))
+        found=$((found + 1))
       fi
     done
 
@@ -471,13 +471,13 @@ show_plugin_status() {
       while IFS= read -r line; do
         if [[ "$line" =~ \"name\" ]]; then
           local name=$(echo "$line" | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-          ((dep_count++))
+          dep_count=$((dep_count + 1))
 
           # Get verify command from next few lines
           local verify_cmd=$(echo "$required_deps" | grep -A5 "\"name\"[[:space:]]*:[[:space:]]*\"$name\"" | grep '"verify"' | head -1 | sed 's/.*"verify"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
 
           if verify_dependency "$name" "$verify_cmd" 2>/dev/null; then
-            ((dep_ok++))
+            dep_ok=$((dep_ok + 1))
           fi
         fi
       done <<< "$required_deps"
@@ -1093,7 +1093,7 @@ cmd_updates() {
     # Check if any plugins are installed
     local installed_count=0
     for plugin_dir in "$PLUGIN_DIR"/*/; do
-      [[ -f "$plugin_dir/plugin.json" ]] && ((installed_count++))
+      [[ -f "$plugin_dir/plugin.json" ]] && installed_count=$((installed_count + 1))
     done
 
     if [[ $installed_count -eq 0 ]]; then

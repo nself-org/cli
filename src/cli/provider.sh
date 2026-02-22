@@ -405,7 +405,7 @@ cmd_server_create() {
       while [[ -z "$ip" && $attempts -lt 30 ]]; do
         ip=$("provider_${provider}_get_ip" "$server_id" 2>/dev/null) || true
         [[ -z "$ip" ]] && sleep 5
-        ((attempts++))
+        attempts=$((attempts + 1))
       done
 
       if [[ -n "$ip" ]]; then
@@ -842,7 +842,7 @@ _remove_server_from_registry() {
     fi
 
     if [[ $skip -gt 0 ]]; then
-      ((skip--))
+      skip=$((skip - 1))
       continue
     fi
 

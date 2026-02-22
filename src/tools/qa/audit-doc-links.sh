@@ -91,7 +91,7 @@ file_exists() {
 printf "${YELLOW}Scanning files...${NC}\n"
 
 while IFS= read -r file; do
-  ((total_files++))
+  total_files=$((total_files + 1))
 
   relative_path="${file#$DOCS_DIR/}"
   printf "  Checking: %s\n" "$relative_path"
@@ -106,11 +106,11 @@ while IFS= read -r file; do
       link_text="${BASH_REMATCH[1]}"
       link_url="${BASH_REMATCH[2]}"
 
-      ((total_links++))
+      total_links=$((total_links + 1))
 
       # Check if external link
       if [[ "$link_url" =~ ^https?:// ]]; then
-        ((external_links++))
+        external_links=$((external_links + 1))
         continue
       fi
 
@@ -124,7 +124,7 @@ while IFS= read -r file; do
 
       # Check if file exists
       if ! file_exists "$link_file" "$file"; then
-        ((broken_links++))
+        broken_links=$((broken_links + 1))
         printf "${RED}  ✗ BROKEN: %s → %s${NC}\n" "$link_text" "$link_url"
         printf "%s|%s|%s|%s\n" "$relative_path" "$link_text" "$link_url" "$link_file" >> "$BROKEN_LINKS_FILE"
       fi

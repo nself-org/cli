@@ -470,7 +470,7 @@ generate_frontend_routes() {
     IFS=',' read -ra apps <<<"$NEXTJS_APPS"
     for app in "${apps[@]}"; do
       app=$(echo "$app" | xargs)
-      local app_port=$((port_counter++))
+      local app_port=$port_counter=$((port_counter + 1))
       generate_frontend_app_route "$app" "$app_port" "nextjs"
     done
   fi
@@ -480,7 +480,7 @@ generate_frontend_routes() {
     IFS=',' read -ra apps <<<"$REACT_APPS"
     for app in "${apps[@]}"; do
       app=$(echo "$app" | xargs)
-      local app_port=$((port_counter++))
+      local app_port=$port_counter=$((port_counter + 1))
       generate_frontend_app_route "$app" "$app_port" "react"
     done
   fi
@@ -490,7 +490,7 @@ generate_frontend_routes() {
     IFS=',' read -ra apps <<<"$VUE_APPS"
     for app in "${apps[@]}"; do
       app=$(echo "$app" | xargs)
-      local app_port=$((port_counter++))
+      local app_port=$port_counter=$((port_counter + 1))
       generate_frontend_app_route "$app" "$app_port" "vue"
     done
   fi
@@ -500,7 +500,7 @@ generate_frontend_routes() {
     IFS=',' read -ra apps <<<"$ANGULAR_APPS"
     for app in "${apps[@]}"; do
       app=$(echo "$app" | xargs)
-      local app_port=$((port_counter++))
+      local app_port=$port_counter=$((port_counter + 1))
       generate_frontend_app_route "$app" "$app_port" "angular"
     done
   fi
@@ -510,7 +510,7 @@ generate_frontend_routes() {
     IFS=',' read -ra apps <<<"$SVELTE_APPS"
     for app in "${apps[@]}"; do
       app=$(echo "$app" | xargs)
-      local app_port=$((port_counter++))
+      local app_port=$port_counter=$((port_counter + 1))
       generate_frontend_app_route "$app" "$app_port" "svelte"
     done
   fi

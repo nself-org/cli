@@ -117,7 +117,7 @@ start_docker_platform_specific() {
         local count=0
         while ! docker info &>/dev/null && [ $count -lt 30 ]; do
           sleep 2
-          ((count++))
+          count=$((count + 1))
         done
         if docker info &>/dev/null; then
           return 0
@@ -134,7 +134,7 @@ start_docker_platform_specific() {
         local count=0
         while ! docker info &>/dev/null && [ $count -lt 30 ]; do
           sleep 2
-          ((count++))
+          count=$((count + 1))
         done
         if docker info &>/dev/null; then
           return 0

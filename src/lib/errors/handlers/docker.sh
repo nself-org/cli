@@ -77,7 +77,7 @@ fix_docker_not_running() {
           return 0
         fi
         sleep 1
-        ((attempts++))
+        attempts=$((attempts + 1))
       done
 
       log_error "Docker Desktop failed to start within 30 seconds"

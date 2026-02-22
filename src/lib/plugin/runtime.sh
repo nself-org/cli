@@ -297,7 +297,7 @@ prepare_plugin() {
     while kill -0 $install_pid 2>/dev/null; do
       local char="${spin_chars:$((i % ${#spin_chars})):1}"
       printf "\r${COLOR_BLUE}%s${COLOR_RESET} Installing dependencies for $plugin_name..." "$char"
-      ((i++))
+      i=$((i + 1))
       sleep 0.1
     done
     wait $install_pid
@@ -325,7 +325,7 @@ prepare_plugin() {
     while kill -0 $build_pid 2>/dev/null; do
       local char="${spin_chars:$((i % ${#spin_chars})):1}"
       printf "\r${COLOR_BLUE}%s${COLOR_RESET} Building $plugin_name..." "$char"
-      ((i++))
+      i=$((i + 1))
       sleep 0.1
     done
     wait $build_pid
@@ -566,7 +566,7 @@ stop_plugin() {
       local timeout=5
       while kill -0 "$pid" 2>/dev/null && ((timeout > 0)); do
         sleep 1
-        ((timeout--))
+        timeout=$((timeout - 1))
       done
 
       # Force kill if still running (process and any remaining children)
@@ -608,7 +608,7 @@ restart_plugin() {
       local wait_count=0
       while lsof -ti ":$port" >/dev/null 2>&1 && [[ $wait_count -lt 10 ]]; do
         sleep 0.5
-        ((wait_count++))
+        wait_count=$((wait_count + 1))
       done
     else
       sleep 1
@@ -798,9 +798,9 @@ start_all_plugins() {
   while IFS= read -r name; do
     [[ -z "$name" ]] && continue
     if start_plugin "$name"; then
-      ((count++))
+      count=$((count + 1))
     else
-      ((failed++))
+      failed=$((failed + 1))
     fi
   done <<< "$sorted_plugins"
 
@@ -827,7 +827,7 @@ stop_all_plugins() {
     [[ -f "$pid_file" ]] || continue
     local name=$(basename "$pid_file" .pid)
     if stop_plugin "$name" "$force"; then
-      ((count++))
+      count=$((count + 1))
     fi
   done
 
@@ -868,7 +868,7 @@ list_all_plugins() {
       continue
     fi
 
-    ((total++))
+    total=$((total + 1))
 
     # Get state
     local state=$(get_plugin_state "$name")
@@ -878,21 +878,21 @@ list_all_plugins() {
     if is_plugin_running "$name"; then
       pid=$(get_plugin_pid "$name")
       state="running"
-      ((running++))
+      running=$((running + 1))
     elif [[ "$state" == "running" ]]; then
       # State says running but no PID - it crashed
       state="failed"
-      ((failed++))
+      failed=$((failed + 1))
     elif [[ "$state" == "stopped" ]] || [[ "$state" == "failed" ]]; then
       if [[ "$state" == "failed" ]]; then
-        ((failed++))
+        failed=$((failed + 1))
       else
-        ((stopped++))
+        stopped=$((stopped + 1))
       fi
     else
       # Default to stopped if no state file
       state="stopped"
-      ((stopped++))
+      stopped=$((stopped + 1))
     fi
 
     # Get port from .env
@@ -979,7 +979,7 @@ list_running_plugins() {
       fi
 
       printf "%-20s PID: %-8s Port: %s\n" "$name" "$pid" "$port"
-      ((count++))
+      count=$((count + 1))
     fi
   done
 
@@ -1043,9 +1043,9 @@ health_check_all() {
     local name=$(basename "$pid_file" .pid)
 
     if is_plugin_running "$name"; then
-      ((count++))
+      count=$((count + 1))
       if check_plugin_health "$name"; then
-        ((healthy++))
+        healthy=$((healthy + 1))
       fi
     fi
   done

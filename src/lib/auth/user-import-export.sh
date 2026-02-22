@@ -133,7 +133,7 @@ user_import_json() {
 
     if [[ -z "$email" ]]; then
       echo "⚠ Skipping user $i: Missing email" >&2
-      ((skipped++))
+      skipped=$((skipped + 1))
       continue
     fi
 
@@ -141,7 +141,7 @@ user_import_json() {
     if user_get_by_email "$email" >/dev/null 2>&1; then
       if [[ "$skip_existing" == "true" ]]; then
         echo "⚠ Skipping existing user: $email" >&2
-        ((skipped++))
+        skipped=$((skipped + 1))
         continue
       fi
     fi
@@ -151,7 +151,7 @@ user_import_json() {
     user_id=$(user_create "$email" "" "$phone" "{}" 2>&1)
 
     if [[ $? -eq 0 ]] && [[ -n "$user_id" ]]; then
-      ((imported++))
+      imported=$((imported + 1))
 
       # Import profile if present
       local profile_data
@@ -168,7 +168,7 @@ user_import_json() {
       echo "✓ Imported user: $email" >&2
     else
       echo "✗ Failed to import user: $email" >&2
-      ((failed++))
+      failed=$((failed + 1))
     fi
   done
 
@@ -268,7 +268,7 @@ user_import_csv() {
   local failed=0
 
   while IFS=',' read -r id email phone mfa_enabled email_verified phone_verified created_at last_sign_in_at display_name avatar_url bio location website timezone language; do
-    ((line_count++))
+    line_count=$((line_count + 1))
 
     # Skip header
     if [[ $line_count -eq 1 ]]; then
@@ -277,7 +277,7 @@ user_import_csv() {
 
     if [[ -z "$email" ]]; then
       echo "⚠ Skipping line $line_count: Missing email" >&2
-      ((skipped++))
+      skipped=$((skipped + 1))
       continue
     fi
 
@@ -285,7 +285,7 @@ user_import_csv() {
     if user_get_by_email "$email" >/dev/null 2>&1; then
       if [[ "$skip_existing" == "true" ]]; then
         echo "⚠ Skipping existing user: $email" >&2
-        ((skipped++))
+        skipped=$((skipped + 1))
         continue
       fi
     fi
@@ -295,7 +295,7 @@ user_import_csv() {
     user_id=$(user_create "$email" "" "$phone" "{}" 2>&1)
 
     if [[ $? -eq 0 ]] && [[ -n "$user_id" ]]; then
-      ((imported++))
+      imported=$((imported + 1))
 
       # Import profile if present
       if [[ -n "$display_name" ]] || [[ -n "$bio" ]]; then
@@ -315,7 +315,7 @@ user_import_csv() {
       echo "✓ Imported user: $email" >&2
     else
       echo "✗ Failed to import user: $email" >&2
-      ((failed++))
+      failed=$((failed + 1))
     fi
   done <"$input_file"
 
@@ -358,9 +358,9 @@ user_bulk_delete() {
     user_id=$(echo "$user_ids_json" | jq -r ".[$i]")
 
     if user_delete "$user_id" "$hard_delete" >/dev/null 2>&1; then
-      ((deleted++))
+      deleted=$((deleted + 1))
     else
-      ((failed++))
+      failed=$((failed + 1))
     fi
   done
 

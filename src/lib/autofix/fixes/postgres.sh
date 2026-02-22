@@ -100,7 +100,7 @@ fix_postgres_not_running() {
       return 0
     fi
     sleep 1
-    ((waited++))
+    waited=$((waited + 1))
   done
 
   return 1

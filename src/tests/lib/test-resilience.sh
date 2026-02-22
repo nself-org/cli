@@ -114,7 +114,7 @@ retry_test() {
 
     if [[ $attempt -lt $retries ]]; then
       sleep 1
-      ((attempt++))
+      attempt=$((attempt + 1))
     else
       # Last attempt failed - but don't fail test
       printf "${YELLOW}⚠${NC} Command failed after $retries attempts (acceptable)\n" >&2

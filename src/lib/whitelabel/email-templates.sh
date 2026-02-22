@@ -167,7 +167,7 @@ validate_template_variables() {
         CURRENT_YEAR | BRAND_NAME | APP_URL | LOGO_URL | COMPANY_ADDRESS | SUPPORT_EMAIL | SUPPORT_URL) ;;
         *)
           printf "${YELLOW}Warning: Template variable not provided: %s${NC}\n" "$var_name" >&2
-          ((missing_vars++))
+          missing_vars=$((missing_vars + 1))
           ;;
       esac
     fi

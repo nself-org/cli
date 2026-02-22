@@ -203,7 +203,7 @@ check_extension_compatibility() {
   for ext in "${ext_array[@]}"; do
     case "$ext" in
       timescaledb | postgis | citus | orioledb)
-        ((heavy_count++))
+        heavy_count=$((heavy_count + 1))
         ;;
     esac
   done

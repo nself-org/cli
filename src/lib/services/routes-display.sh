@@ -253,12 +253,12 @@ routes::health_check() {
   echo "=============================="
 
   for route in "${routes[@]}"; do
-    ((total++))
+    total=$((total + 1))
     local url="https://$route/health"
 
     if safe_timeout 5 curl -k -s -o /dev/null -w "%{http_code}" "$url" 2>/dev/null | grep -q "200\|404"; then
       echo "  ✅ $route"
-      ((accessible++))
+      accessible=$((accessible + 1))
     else
       echo "  ❌ $route (not responding)"
     fi

@@ -224,19 +224,19 @@ validate_css_security() {
   # Check for JavaScript in CSS (XSS vector)
   if grep -qi 'javascript:' "$css_path" 2>/dev/null; then
     printf "${RED}Error: CSS contains JavaScript references (XSS vector)${NC}\n" >&2
-    ((issues++))
+    issues=$((issues + 1))
   fi
 
   # Check for expression() (IE XSS vector)
   if grep -qi 'expression(' "$css_path" 2>/dev/null; then
     printf "${RED}Error: CSS contains expression() - potential XSS vulnerability${NC}\n" >&2
-    ((issues++))
+    issues=$((issues + 1))
   fi
 
   # Check for behavior: (IE XSS vector)
   if grep -qi 'behavior:' "$css_path" 2>/dev/null; then
     printf "${RED}Error: CSS contains behavior: - potential XSS vulnerability${NC}\n" >&2
-    ((issues++))
+    issues=$((issues + 1))
   fi
 
   # Warn about external URLs (potential data exfiltration)
@@ -1386,19 +1386,19 @@ branding::scan_css_security() {
   # Check for external URLs (potential data exfiltration)
   if grep -q 'url([^)]*//' "$css_path" 2>/dev/null; then
     printf "${YELLOW}Warning: CSS contains external URLs${NC}\n"
-    ((issues++))
+    issues=$((issues + 1))
   fi
 
   # Check for @import (can load external stylesheets)
   if grep -q '@import' "$css_path" 2>/dev/null; then
     printf "${YELLOW}Warning: CSS contains @import statements${NC}\n"
-    ((issues++))
+    issues=$((issues + 1))
   fi
 
   # Check for expression() (IE-specific XSS vector)
   if grep -qi 'expression(' "$css_path" 2>/dev/null; then
     printf "${RED}Error: CSS contains expression() - potential XSS vulnerability${NC}\n"
-    ((issues++))
+    issues=$((issues + 1))
   fi
 
   if [[ $issues -eq 0 ]]; then
@@ -1852,7 +1852,7 @@ clean_unused_assets() {
         if [[ $is_referenced -eq 0 ]] && [[ ! -L "$logo_file" ]]; then
           rm -f "$logo_file"
           printf "  Removed: %s\n" "$basename_file"
-          ((cleaned++))
+          cleaned=$((cleaned + 1))
         fi
       done
     fi
@@ -2005,7 +2005,7 @@ validate_branding_config() {
   if command -v jq >/dev/null 2>&1; then
     if ! jq empty "$config_file" 2>/dev/null; then
       printf "${RED}✗${NC} Invalid JSON\n"
-      ((errors++))
+      errors=$((errors + 1))
     else
       printf "${GREEN}✓${NC} Valid JSON\n"
     fi
@@ -2017,7 +2017,7 @@ validate_branding_config() {
         printf "${GREEN}✓${NC} Field '%s' present\n" "$field"
       else
         printf "${RED}✗${NC} Field '%s' missing\n" "$field"
-        ((errors++))
+        errors=$((errors + 1))
       fi
     done
 
@@ -2032,7 +2032,7 @@ validate_branding_config() {
         printf "${GREEN}✓${NC} Color '%s': %s\n" "$color_name" "$color_value"
       else
         printf "${RED}✗${NC} Invalid color '%s': %s\n" "$color_name" "$color_value"
-        ((errors++))
+        errors=$((errors + 1))
       fi
     done <<<"$colors"
   fi

@@ -110,7 +110,7 @@ validate_environment() {
   for var in "${required_vars[@]}"; do
     if [[ -z "${!var}" ]]; then
       log_error "Missing required variable: $var"
-      ((errors++))
+      errors=$((errors + 1))
     fi
   done
 
@@ -119,13 +119,13 @@ validate_environment() {
     # Check for default passwords
     if [[ "$POSTGRES_PASSWORD" == "localpass123" ]]; then
       log_error "Default password detected in production!"
-      ((errors++))
+      errors=$((errors + 1))
     fi
 
     # Check SSL is enabled
     if [[ "${SSL_MODE:-none}" == "none" ]]; then
       log_error "SSL not enabled for production!"
-      ((errors++))
+      errors=$((errors + 1))
     fi
 
     # Check debug mode
@@ -147,7 +147,7 @@ validate_environment() {
   for port in "${ports[@]}"; do
     if [[ " ${seen_ports[*]} " =~ " ${port} " ]]; then
       log_error "Port conflict detected: $port"
-      ((errors++))
+      errors=$((errors + 1))
     fi
     seen_ports+=("$port")
   done

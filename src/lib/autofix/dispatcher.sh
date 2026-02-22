@@ -130,7 +130,7 @@ fix_redis_connection() {
       return 99 # Retry
     fi
     sleep 1
-    ((waited++))
+    waited=$((waited + 1))
   done
 
   log_error "Redis failed to start after ${max_wait} seconds"

@@ -343,9 +343,9 @@ process_pending_refreshes() {
     fi
 
     if process_token_refresh "$queue_id" "$account_id" "$provider" "$refresh_token" "$attempts"; then
-      ((processed++))
+      processed=$((processed + 1))
     else
-      ((failed++))
+      failed=$((failed + 1))
     fi
   done <<<"$pending_tokens"
 

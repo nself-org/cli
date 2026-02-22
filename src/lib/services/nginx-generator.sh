@@ -495,7 +495,7 @@ nginx::generate_all_configs() {
   # Generate configs for enabled backend services
   while IFS= read -r service; do
     if nginx::generate_service_config "$service" "$conf_dir"; then
-      ((configs_generated++))
+      configs_generated=$((configs_generated + 1))
     fi
   done < <(routes::get_enabled_services)
 
@@ -519,13 +519,13 @@ nginx::generate_all_configs() {
         if [[ -n "$current_app" ]]; then
           # Generate main frontend config
           if nginx::generate_frontend_config "$current_app" "$app_route" "$app_port" "$conf_dir"; then
-            ((configs_generated++))
+            configs_generated=$((configs_generated + 1))
           fi
 
           # Generate API config if remote schema URL is defined
           if [[ -n "$api_route" ]]; then
             if nginx::generate_frontend_api_config "$current_app" "$api_route" "$app_port" "$conf_dir"; then
-              ((configs_generated++))
+              configs_generated=$((configs_generated + 1))
             fi
 
             # Generate per-app auth config ONLY if this app has a remote schema
@@ -537,7 +537,7 @@ nginx::generate_all_configs() {
             # Ensure we don't duplicate if it's already the main auth route
             if [[ "$auth_route" != "${AUTH_ROUTE:-auth.localhost}" ]]; then
               if nginx::generate_frontend_auth_config "$current_app" "$auth_route" "$conf_dir"; then
-                ((configs_generated++))
+                configs_generated=$((configs_generated + 1))
               fi
             fi
           fi
@@ -553,7 +553,7 @@ nginx::generate_all_configs() {
     if [[ "$line" == "---" ]]; then
       if [[ -n "$cs_name" && -n "$cs_type" && -n "$cs_route" && -n "$cs_port" && -n "$cs_container" ]]; then
         if nginx::generate_custom_service_config "$cs_name" "$cs_type" "$cs_route" "$cs_port" "$cs_container" "$conf_dir"; then
-          ((configs_generated++))
+          configs_generated=$((configs_generated + 1))
         fi
       fi
       cs_name="" cs_type="" cs_route="" cs_port="" cs_container=""
@@ -573,7 +573,7 @@ nginx::generate_all_configs() {
   # Handle last custom service if not ended with ---
   if [[ -n "$cs_name" && -n "$cs_type" && -n "$cs_route" && -n "$cs_port" && -n "$cs_container" ]]; then
     if nginx::generate_custom_service_config "$cs_name" "$cs_type" "$cs_route" "$cs_port" "$cs_container" "$conf_dir"; then
-      ((configs_generated++))
+      configs_generated=$((configs_generated + 1))
     fi
   fi
 

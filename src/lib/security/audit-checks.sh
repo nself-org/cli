@@ -32,7 +32,7 @@ check_weak_secrets() {
   for pattern in "${weak_patterns[@]}"; do
     if grep -qi "$pattern" "$env_file" 2>/dev/null; then
       cli_error "Weak secret pattern detected: $pattern"
-      ((issues++))
+      issues=$((issues + 1))
     fi
   done
 
@@ -45,7 +45,7 @@ check_weak_secrets() {
       if [[ "$key" =~ (PASSWORD|SECRET|KEY) && ! "$key" =~ (PUBLIC|ENABLED) ]]; then
         if [[ ${#value} -lt 24 ]]; then
           cli_warning "Secret too short (<24 chars): $key"
-          ((issues++))
+          issues=$((issues + 1))
         fi
       fi
     fi
@@ -62,7 +62,7 @@ check_cors_security() {
   if [[ "$env" == "production" ]]; then
     if grep -q 'CORS.*\*' .env 2>/dev/null; then
       cli_error "Wildcard CORS (*) in production"
-      ((issues++))
+      issues=$((issues + 1))
     fi
   fi
 
@@ -77,7 +77,7 @@ check_exposed_ports() {
   if [[ "$env" == "production" ]]; then
     if [[ "${POSTGRES_EXPOSE_PORT:-false}" == "true" ]]; then
       cli_warning "Database port exposed in production"
-      ((issues++))
+      issues=$((issues + 1))
     fi
   fi
 
@@ -101,7 +101,7 @@ check_container_users() {
       cli_success "$service: running as non-root"
     else
       cli_warning "$service: running as root"
-      ((issues++))
+      issues=$((issues + 1))
     fi
   done
 

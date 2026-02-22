@@ -176,7 +176,7 @@ categorize_service() {
           echo "custom"
           return
         fi
-        ((n++))
+        n=$((n + 1))
       done
 
       # Check legacy CUSTOM_SERVICES
@@ -242,7 +242,7 @@ get_service_status_desc() {
           fi
           return
         fi
-        ((n++))
+        n=$((n + 1))
       done
 
       # Default behavior for unknown services

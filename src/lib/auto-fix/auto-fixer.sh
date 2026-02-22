@@ -263,7 +263,7 @@ apply_all_fixes() {
   local applied_fixes=()
 
   for fix in "${fixes[@]}"; do
-    ((fix_count++))
+    fix_count=$((fix_count + 1))
 
     # Extract fix type for display
     IFS=':' read -ra FIX_PARTS <<<"$fix"

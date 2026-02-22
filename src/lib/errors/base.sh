@@ -44,13 +44,13 @@ ${error_code}_fixable=$fix_available
   if [[ "$fix_available" == "true" ]] && [[ -n "$fix_function" ]]; then
     ERROR_FIXES+="$error_code=$fix_function
 "
-    ((FIXABLE_ERRORS++))
+    FIXABLE_ERRORS=$((FIXABLE_ERRORS + 1))
   fi
 
-  ((ERROR_COUNT++))
+  ERROR_COUNT=$((ERROR_COUNT + 1))
 
   if [[ $severity -eq $ERROR_CRITICAL ]]; then
-    ((CRITICAL_ERRORS++))
+    CRITICAL_ERRORS=$((CRITICAL_ERRORS + 1))
   fi
 }
 
@@ -106,7 +106,7 @@ attempt_fix() {
   log_info "Attempting to fix: $error_msg"
 
   if $fix_function; then
-    ((FIXED_ERRORS++))
+    FIXED_ERRORS=$((FIXED_ERRORS + 1))
     log_success "✓ Fixed successfully"
     return 0
   else
@@ -144,7 +144,7 @@ run_auto_fixes() {
   while IFS='=' read -r k v; do
     [[ -z "$k" ]] && continue
     if attempt_fix "$k"; then
-      ((fixed_count++))
+      fixed_count=$((fixed_count + 1))
     fi
   done <<<"$ERROR_FIXES"
 

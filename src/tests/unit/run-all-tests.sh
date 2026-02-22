@@ -35,13 +35,13 @@ for test_file in "$SCRIPT_DIR"/test-*.sh; do
     continue
   fi
 
-  ((TOTAL_FILES++))
+  TOTAL_FILES=$((TOTAL_FILES + 1))
 
   printf "Running ${YELLOW}%s${NC}...\n" "$test_name"
 
   # Run test and capture output
   if output=$(bash "$test_file" 2>&1); then
-    ((PASSED_FILES++))
+    PASSED_FILES=$((PASSED_FILES + 1))
     printf "${GREEN}✓${NC} %s passed\n\n" "$test_name"
 
     # Extract test counts
@@ -53,7 +53,7 @@ for test_file in "$SCRIPT_DIR"/test-*.sh; do
     TOTAL_PASSED=$((TOTAL_PASSED + tests_passed))
     TOTAL_FAILED=$((TOTAL_FAILED + tests_failed))
   else
-    ((FAILED_FILES++))
+    FAILED_FILES=$((FAILED_FILES + 1))
     printf "${RED}✗${NC} %s failed\n" "$test_name"
     echo "$output"
     printf "\n"

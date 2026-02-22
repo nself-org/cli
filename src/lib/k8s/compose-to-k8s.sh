@@ -82,7 +82,7 @@ k8s_convert_compose() {
         >"$output_dir/${padded}-${service}-configmap.yaml"
     fi
 
-    ((counter++))
+    counter=$((counter + 1))
   done
 
   # Generate ingress if needed
@@ -466,7 +466,7 @@ spec:
       storage: 10Gi
   storageClassName: standard
 EOF
-      ((pvc_counter++))
+      pvc_counter=$((pvc_counter + 1))
     fi
   done
 }

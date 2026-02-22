@@ -63,7 +63,7 @@ SQL
 
     # Skip if already applied
     if echo "$applied_migrations" | grep -q "^\s*${version}\s*$"; then
-      ((applied_count++))
+      applied_count=$((applied_count + 1))
       continue
     fi
 
@@ -87,11 +87,11 @@ INSERT INTO schema_migrations (version, name) VALUES ($version, '$migration_name
 SQL
 
       printf "\r  ${COLOR_GREEN}✓${COLOR_RESET} $migration_name (${duration}s)\n"
-      ((pending_count++))
+      pending_count=$((pending_count + 1))
     else
       printf "\r  ${COLOR_RED}✗${COLOR_RESET} $migration_name (FAILED)\n"
       cli_error "Migration failed. Check SQL syntax and database logs."
-      ((failed_count++))
+      failed_count=$((failed_count + 1))
       break
     fi
   done
@@ -159,14 +159,14 @@ migrate_status() {
   for migration_dir in $(find "$migrations_dir" -maxdepth 1 -type d -name '[0-9]*' | sort); do
     local migration_name=$(basename "$migration_dir")
     local version=$(echo "$migration_name" | cut -d'_' -f1)
-    ((total++))
+    total=$((total + 1))
 
     if echo "$applied_migrations" | grep -q "^\s*${version}\s"; then
       printf "  ${COLOR_GREEN}✓${COLOR_RESET} $migration_name ${COLOR_DIM}(applied)${COLOR_RESET}\n"
-      ((applied++))
+      applied=$((applied + 1))
     else
       printf "  ${COLOR_YELLOW}○${COLOR_RESET} $migration_name ${COLOR_DIM}(pending)${COLOR_RESET}\n"
-      ((pending++))
+      pending=$((pending + 1))
     fi
   done
 

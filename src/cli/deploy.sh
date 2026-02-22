@@ -3010,7 +3010,7 @@ sync_full() {
 
       if rsync -avz -e "$rsync_ssh" hasura/migrations/ "${user}@${host}:${deploy_path}/hasura/migrations/" 2>/dev/null; then
         printf "${CLI_GREEN}OK${CLI_RESET}\n"
-        ((hasura_synced++))
+        hasura_synced=$((hasura_synced + 1))
       else
         printf "${CLI_RED}FAILED${CLI_RESET}\n"
       fi
@@ -3034,7 +3034,7 @@ sync_full() {
 
       if rsync -avz -e "$rsync_ssh" hasura/seeds/ "${user}@${host}:${deploy_path}/hasura/seeds/" 2>/dev/null; then
         printf "${CLI_GREEN}OK${CLI_RESET}\n"
-        ((hasura_synced++))
+        hasura_synced=$((hasura_synced + 1))
       else
         printf "${CLI_RED}FAILED${CLI_RESET}\n"
       fi
@@ -3058,7 +3058,7 @@ sync_full() {
 
       if rsync -avz -e "$rsync_ssh" hasura/metadata/ "${user}@${host}:${deploy_path}/hasura/metadata/" 2>/dev/null; then
         printf "${CLI_GREEN}OK${CLI_RESET}\n"
-        ((hasura_synced++))
+        hasura_synced=$((hasura_synced + 1))
       else
         printf "${CLI_RED}FAILED${CLI_RESET}\n"
       fi

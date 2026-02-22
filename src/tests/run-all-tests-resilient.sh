@@ -41,7 +41,7 @@ run_test_suite() {
   local test_file="$1"
   local test_name="$2"
 
-  ((TOTAL_TESTS++))
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
   printf "\n${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
   printf "${BLUE}Running: %s${NC}\n" "$test_name"
@@ -50,7 +50,7 @@ run_test_suite() {
   # Check if test file exists and is executable
   if [[ ! -f "$test_file" ]]; then
     printf "${YELLOW}⊘${NC} SKIP: Test file not found\n"
-    ((SKIPPED_TESTS++))
+    SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
     return 0
   fi
 
@@ -65,23 +65,23 @@ run_test_suite() {
   if test_output=$(safe_timeout "${TEST_TIMEOUT:-120}" "bash '$test_file'" 2>&1); then
     # Test passed or was handled gracefully
     printf "${GREEN}✓${NC} PASS: %s\n" "$test_name"
-    ((PASSED_TESTS++))
+    PASSED_TESTS=$((PASSED_TESTS + 1))
   else
     test_result=$?
 
     # Check if it's a skip (exit code 0 with skip message)
     if echo "$test_output" | grep -q "SKIP\|Skipping"; then
       printf "${YELLOW}⊘${NC} SKIP: %s\n" "$test_name"
-      ((SKIPPED_TESTS++))
+      SKIPPED_TESTS=$((SKIPPED_TESTS + 1))
     elif echo "$test_output" | grep -q "WARNING\|acceptable"; then
       printf "${YELLOW}⚠${NC} PASS (with warnings): %s\n" "$test_name"
-      ((WARNED_TESTS++))
-      ((PASSED_TESTS++))
+      WARNED_TESTS=$((WARNED_TESTS + 1))
+      PASSED_TESTS=$((PASSED_TESTS + 1))
     else
       # Even if test "failed", we count it as passed if it's environment-related
       printf "${YELLOW}⚠${NC} PASS (environment tolerance): %s\n" "$test_name"
-      ((WARNED_TESTS++))
-      ((PASSED_TESTS++))
+      WARNED_TESTS=$((WARNED_TESTS + 1))
+      PASSED_TESTS=$((PASSED_TESTS + 1))
     fi
   fi
 

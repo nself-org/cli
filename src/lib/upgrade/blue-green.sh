@@ -128,7 +128,7 @@ check_deployment_health() {
         local health=$(docker inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || echo "none")
 
         if [[ "$health" == "healthy" ]] || [[ "$health" == "none" ]]; then
-          ((healthy_count++))
+          healthy_count=$((healthy_count + 1))
         fi
       fi
     done

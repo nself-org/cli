@@ -110,7 +110,7 @@ parse_cs_services() {
     PARSED_SERVICES+=("$name|$framework|$domain|$port|$replicas|$memory|$cpu|$env_vars|$healthcheck|$public|$rate_limit|$table_prefix|$redis_prefix")
 
     # Increment service number
-    ((service_num++))
+    service_num=$((service_num + 1))
   done
 
   # Also check for legacy CUSTOM_SERVICES if no CS_N found

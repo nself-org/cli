@@ -278,7 +278,7 @@ invoice_add_line_items() {
       continue
     fi
 
-    ((line_number++))
+    line_number=$((line_number + 1))
 
     # Create description based on service
     local description

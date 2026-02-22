@@ -95,14 +95,14 @@ set -euo pipefail
         # Count affected rows
         local row_count=$(docker exec "$db_container" psql -U "$db_user" -d "$db_name" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'" 2>/dev/null | tr -d ' ')
         printf "\r  ${CLI_GREEN}✓${CLI_RESET} $seed_name\n"
-        ((applied++))
+        applied=$((applied + 1))
       else
         printf "\r  ${CLI_RED}✗${CLI_RESET} $seed_name (FAILED)\n"
-        ((failed++))
+        failed=$((failed + 1))
       fi
     else
       printf "  ${CLI_DIM}○${CLI_RESET} $seed_name ${CLI_DIM}(skipped for $env)${CLI_RESET}\n"
-      ((skipped++))
+      skipped=$((skipped + 1))
     fi
   done
 

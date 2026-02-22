@@ -549,9 +549,9 @@ vault_rotate_all() {
     environment=$(echo "$secrets" | jq -r ".[$i].environment")
 
     if vault_rotate "$key_name" "$environment" 2>/dev/null; then
-      ((rotated++))
+      rotated=$((rotated + 1))
     else
-      ((failed++))
+      failed=$((failed + 1))
       echo "WARNING: Failed to rotate: $key_name (environment: $environment)" >&2
     fi
   done

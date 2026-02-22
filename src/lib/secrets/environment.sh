@@ -293,16 +293,16 @@ env_sync_all() {
 
       if [[ $? -eq 0 ]]; then
         echo "Skipping $key_name (already exists in $target_env)" >&2
-        ((skipped++))
+        skipped=$((skipped + 1))
         continue
       fi
     fi
 
     # Sync secret
     if env_sync_secret "$key_name" "$source_env" "$target_env" 2>/dev/null; then
-      ((synced++))
+      synced=$((synced + 1))
     else
-      ((failed++))
+      failed=$((failed + 1))
       echo "WARNING: Failed to sync: $key_name" >&2
     fi
   done

@@ -27,7 +27,7 @@ fix_service_dependencies() {
       for dep in $deps; do
         if ! docker ps -q -f name="${project_name}_${dep}" | grep -q .; then
           docker compose up -d "$dep" >/dev/null 2>&1
-          ((deps_started++))
+          deps_started=$((deps_started + 1))
         fi
       done
 

@@ -32,18 +32,18 @@ source "${NSELF_ROOT}/src/lib/database/safe-query.sh"
 test_start() {
   local test_name="$1"
   printf "Testing: %s ... " "$test_name"
-  ((TESTS_RUN++))
+  TESTS_RUN=$((TESTS_RUN + 1))
 }
 
 test_pass() {
   printf "%b✓ PASS%b\n" "${GREEN}" "${NC}"
-  ((TESTS_PASSED++))
+  TESTS_PASSED=$((TESTS_PASSED + 1))
 }
 
 test_fail() {
   local reason="$1"
   printf "%b✗ FAIL%b: %s\n" "${RED}" "${NC}" "$reason"
-  ((TESTS_FAILED++))
+  TESTS_FAILED=$((TESTS_FAILED + 1))
 }
 
 test_warn() {

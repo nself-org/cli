@@ -32,10 +32,10 @@ while IFS= read -r line; do
 
         if [[ -f "$file" ]]; then
             printf "${GREEN}✓${NC} %s → %s\n" "$text" "$url"
-            ((valid++))
+            valid=$((valid + 1))
         else
             printf "${RED}✗${NC} %s → %s (NOT FOUND)\n" "$text" "$url"
-            ((broken++))
+            broken=$((broken + 1))
         fi
     fi
 done < "$SIDEBAR"

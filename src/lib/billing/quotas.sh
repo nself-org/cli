@@ -966,7 +966,7 @@ quota_reset_all_expired() {
     [[ -z "$customer_id" ]] && continue
 
     quota_reset "$customer_id"
-    ((count++))
+    count=$((count + 1))
   done <<<"$expired_customers"
 
   success "Reset quotas for ${count} customers"
@@ -1185,11 +1185,11 @@ quota_monitor_all() {
     customer_id=$(echo "$customer_id" | tr -d ' ')
     [[ -z "$customer_id" ]] && continue
 
-    ((count++))
+    count=$((count + 1))
 
     # Check for alerts
     if quota_check_alerts "$customer_id" "true"; then
-      ((alerts++))
+      alerts=$((alerts + 1))
     fi
   done <<<"$customers"
 
@@ -1240,7 +1240,7 @@ quota_cache_warm() {
 
     # Trigger fast check to populate cache
     quota_check_fast "$service" 0 300 # 5 minute cache
-    ((count++))
+    count=$((count + 1))
   done <<<"$services"
 
   success "Warmed quota cache for ${count} services"

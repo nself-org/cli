@@ -296,7 +296,7 @@ run_tests() {
 
     # Track failed test
     if [[ $test_result -ne 0 ]] && [[ $test_result -ne 255 ]]; then
-      ((TESTS_FAILED++))
+      TESTS_FAILED=$((TESTS_FAILED + 1))
     fi
   done
 

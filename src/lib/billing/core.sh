@@ -102,12 +102,12 @@ billing_validate_config() {
   # Check required database configuration
   if [[ -z "$BILLING_DB_HOST" ]]; then
     error "BILLING_DB_HOST not set"
-    ((errors++))
+    errors=$((errors + 1))
   fi
 
   if [[ -z "$BILLING_DB_NAME" ]]; then
     error "BILLING_DB_NAME not set"
-    ((errors++))
+    errors=$((errors + 1))
   fi
 
   # Check Stripe configuration (optional but recommended)
@@ -122,7 +122,7 @@ billing_validate_config() {
   # Check directories are writable
   if [[ ! -w "$BILLING_DATA_DIR" ]]; then
     error "Billing data directory not writable: ${BILLING_DATA_DIR}"
-    ((errors++))
+    errors=$((errors + 1))
   fi
 
   return $errors

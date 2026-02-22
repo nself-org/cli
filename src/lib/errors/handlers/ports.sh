@@ -102,7 +102,7 @@ scan_port_conflicts() {
       local process=$(get_port_process $port)
       PORT_STATUS="${PORT_STATUS}${service}=conflict\n"
       PORT_CONFLICTS="${PORT_CONFLICTS}${service}=${process}\n"
-      ((conflicts_found++))
+      conflicts_found=$((conflicts_found + 1))
 
       # Find alternative
       if alt_port=$(find_alternative_port $port); then
@@ -180,7 +180,7 @@ fix_port_conflicts() {
             ;;
         esac
 
-        ((fixes_applied++))
+        fixes_applied=$((fixes_applied + 1))
       else
         log_error "Cannot fix port conflict for $service (no alternative found)"
       fi
@@ -270,7 +270,7 @@ stop_conflicting_processes() {
         if [[ -n "$container" ]]; then
           if docker stop "$container"; then
             log_success "Stopped container: $container"
-            ((stopped++))
+            stopped=$((stopped + 1))
           fi
         fi
         ;;

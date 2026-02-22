@@ -298,7 +298,7 @@ warm_cache_for_top_customers() {
         [[ -z "$customer_id" ]] && continue
 
         quota_cache_warm "$customer_id"
-        ((count++))
+        count=$((count + 1))
     done <<< "$top_customers"
 
     echo "Warmed cache for $count customers"

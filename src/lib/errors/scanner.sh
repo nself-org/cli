@@ -145,7 +145,7 @@ check_configuration_files() {
   for file in "${required_files[@]}"; do
     if [[ ! -f "$file" ]]; then
       log_warning "Missing: $file"
-      ((missing++))
+      missing=$((missing + 1))
     else
       log_debug "✓ Found: $file"
     fi

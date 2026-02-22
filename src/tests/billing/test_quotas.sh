@@ -27,15 +27,15 @@ test_assert() {
   local result="$2"
   local expected="${3:-0}"
 
-  ((TESTS_RUN++))
+  TESTS_RUN=$((TESTS_RUN + 1))
 
   if [[ "$result" == "$expected" ]]; then
     printf "${GREEN}✓${NC} %s\n" "$description"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
     return 0
   else
     printf "${RED}✗${NC} %s (expected: %s, got: %s)\n" "$description" "$expected" "$result"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
     return 1
   fi
 }
@@ -213,7 +213,7 @@ test_quota_export_functions() {
   for func in "${functions[@]}"; do
     if ! command -v "$func" >/dev/null 2>&1; then
       printf "${RED}✗${NC} Function not exported: %s\n" "$func"
-      ((missing++))
+      missing=$((missing + 1))
     fi
   done
 

@@ -261,7 +261,7 @@ cmd_reset() {
   for item in "${items_to_remove[@]}"; do
     if [[ -e "$item" ]]; then
       rm -rf "$item"
-      ((removed_count++))
+      removed_count=$((removed_count + 1))
     fi
   done
 
@@ -270,7 +270,7 @@ cmd_reset() {
     for file in $pattern; do
       if [[ -f "$file" ]]; then
         rm -f "$file"
-        ((removed_count++))
+        removed_count=$((removed_count + 1))
       fi
     done
   done
@@ -279,7 +279,7 @@ cmd_reset() {
   for backup_file in .env.*.backup *.old .*.old; do
     if [[ -f "$backup_file" ]]; then
       rm -f "$backup_file"
-      ((removed_count++))
+      removed_count=$((removed_count + 1))
     fi
   done
 
@@ -287,7 +287,7 @@ cmd_reset() {
   for dir in ${project}-*; do
     if [[ -d "$dir" ]]; then
       rm -rf "$dir"
-      ((removed_count++))
+      removed_count=$((removed_count + 1))
     fi
   done
 

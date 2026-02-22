@@ -30,15 +30,15 @@ test_result() {
   case "$status" in
     "pass")
       printf "${GREEN}✓${NC} %s\n" "$message"
-      ((TESTS_PASSED++))
+      TESTS_PASSED=$((TESTS_PASSED + 1))
       ;;
     "fail")
       printf "${RED}✗${NC} %s\n" "$message"
-      ((TESTS_FAILED++))
+      TESTS_FAILED=$((TESTS_FAILED + 1))
       ;;
     "skip")
       printf "${YELLOW}⚠${NC} %s (skipped)\n" "$message"
-      ((TESTS_SKIPPED++))
+      TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
       ;;
   esac
 }

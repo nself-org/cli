@@ -247,7 +247,7 @@ fix_storage() {
         break
       fi
       sleep 2
-      ((retries++))
+      retries=$((retries + 1))
     done
   fi
 
@@ -618,11 +618,11 @@ monitor_all_services() {
     local service_type=$(echo "$container" | sed "s/${project_name}_//")
 
     if ! check_service_health "$container" "$service_type"; then
-      ((unhealthy_count++))
+      unhealthy_count=$((unhealthy_count + 1))
       log_warning "Service $service_type needs attention"
 
       if apply_service_fix "$container" "$service_type"; then
-        ((fixed_count++))
+        fixed_count=$((fixed_count + 1))
         log_success "Applied fix for $service_type"
       fi
     fi

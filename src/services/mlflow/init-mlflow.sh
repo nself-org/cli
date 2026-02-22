@@ -27,7 +27,7 @@ init_mlflow_database() {
     fi
     echo_warning "Waiting for PostgreSQL... (attempt $((retry_count + 1))/$max_retries)"
     sleep 2
-    ((retry_count++))
+    retry_count=$((retry_count + 1))
   done
   
   if [ $retry_count -eq $max_retries ]; then
@@ -61,7 +61,7 @@ init_mlflow_storage() {
     fi
     echo_warning "Waiting for MinIO... (attempt $((retry_count + 1))/$max_retries)"
     sleep 2
-    ((retry_count++))
+    retry_count=$((retry_count + 1))
   done
   
   if [ $retry_count -eq $max_retries ]; then
@@ -93,7 +93,7 @@ wait_for_mlflow() {
     fi
     echo_warning "Waiting for MLflow... (attempt $((retry_count + 1))/$max_retries)"
     sleep 2
-    ((retry_count++))
+    retry_count=$((retry_count + 1))
   done
   
   echo_error "MLflow failed to become ready after $max_retries attempts"

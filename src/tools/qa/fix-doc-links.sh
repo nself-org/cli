@@ -46,7 +46,7 @@ fix_file_links() {
         if ! cmp -s "$file" "$temp_file"; then
             modified=true
             printf "  ${GREEN}✓${NC} Removed docs/ prefix\n"
-            ((fixes_applied++))
+            fixes_applied=$((fixes_applied + 1))
         fi
         rm -f "${temp_file}.bak"
     fi
@@ -57,7 +57,7 @@ fix_file_links() {
         if ! cmp -s "$file" "$temp_file"; then
             modified=true
             printf "  ${GREEN}✓${NC} Removed /.wiki/ prefix\n"
-            ((fixes_applied++))
+            fixes_applied=$((fixes_applied + 1))
         fi
         rm -f "${temp_file}.bak"
     fi
@@ -67,7 +67,7 @@ fix_file_links() {
         if ! cmp -s "$file" "$temp_file"; then
             modified=true
             printf "  ${GREEN}✓${NC} Fixed ../api/ paths\n"
-            ((fixes_applied++))
+            fixes_applied=$((fixes_applied + 1))
         fi
         rm -f "${temp_file}.bak"
     fi
@@ -77,7 +77,7 @@ fix_file_links() {
         if ! cmp -s "$file" "$temp_file"; then
             modified=true
             printf "  ${GREEN}✓${NC} Fixed ../cli/ paths\n"
-            ((fixes_applied++))
+            fixes_applied=$((fixes_applied + 1))
         fi
         rm -f "${temp_file}.bak"
     fi
@@ -87,7 +87,7 @@ fix_file_links() {
         if ! cmp -s "$file" "$temp_file"; then
             modified=true
             printf "  ${GREEN}✓${NC} Fixed SECRETS-MANAGEMENT path\n"
-            ((fixes_applied++))
+            fixes_applied=$((fixes_applied + 1))
         fi
         rm -f "${temp_file}.bak"
     fi
@@ -98,7 +98,7 @@ fix_file_links() {
         if ! cmp -s "$file" "$temp_file"; then
             modified=true
             printf "  ${GREEN}✓${NC} Fixed QUICKSTART → Quick-Start\n"
-            ((fixes_applied++))
+            fixes_applied=$((fixes_applied + 1))
         fi
         rm -f "${temp_file}.bak"
     fi
@@ -108,7 +108,7 @@ fix_file_links() {
         if ! cmp -s "$file" "$temp_file"; then
             modified=true
             printf "  ${GREEN}✓${NC} Fixed Installation.md path\n"
-            ((fixes_applied++))
+            fixes_applied=$((fixes_applied + 1))
         fi
         rm -f "${temp_file}.bak"
     fi
@@ -118,7 +118,7 @@ fix_file_links() {
         if ! cmp -s "$file" "$temp_file"; then
             modified=true
             printf "  ${GREEN}✓${NC} Fixed Quick-Start.md path\n"
-            ((fixes_applied++))
+            fixes_applied=$((fixes_applied + 1))
         fi
         rm -f "${temp_file}.bak"
     fi
@@ -128,7 +128,7 @@ fix_file_links() {
         if ! cmp -s "$file" "$temp_file"; then
             modified=true
             printf "  ${GREEN}✓${NC} Fixed FAQ.md path\n"
-            ((fixes_applied++))
+            fixes_applied=$((fixes_applied + 1))
         fi
         rm -f "${temp_file}.bak"
     fi
@@ -141,7 +141,7 @@ fix_file_links() {
         else
             rm -f "$temp_file"
         fi
-        ((files_modified++))
+        files_modified=$((files_modified + 1))
         return 0
     else
         rm -f "$temp_file"

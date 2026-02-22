@@ -38,4 +38,12 @@ twitter_get_user_info() {
     '{id: $id, username: $username, name: $name, provider: "twitter"}'
 }
 
-export -f twitter_get_auth_url twitter_exchange_code twitter_get_user_info
+twitter_refresh_token() {
+  oauth_refresh_token "$TWITTER_TOKEN_ENDPOINT" "$1" "$2" "$3"
+}
+
+twitter_revoke_token() {
+  oauth_revoke_token "$TWITTER_TOKEN_ENDPOINT" "$1" "$2" "$3"
+}
+
+export -f twitter_get_auth_url twitter_exchange_code twitter_get_user_info twitter_refresh_token twitter_revoke_token

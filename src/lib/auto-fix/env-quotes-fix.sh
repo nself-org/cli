@@ -67,7 +67,7 @@ fix_env_file_quotes() {
       if needs_quotes "$var_value"; then
         # Add quotes around the value
         echo "${var_name}=\"${var_value}\"" >>"$temp_file"
-        ((fixed_count++))
+        fixed_count=$((fixed_count + 1))
         # Log the fix if verbose
         if [[ "${VERBOSE:-false}" == "true" ]] || [[ "${DEBUG:-false}" == "true" ]]; then
           echo "  Fixed: ${var_name}=${var_value} → ${var_name}=\"${var_value}\"" >&2
@@ -103,7 +103,7 @@ validate_env_file() {
   fi
 
   while IFS= read -r line || [[ -n "$line" ]]; do
-    ((line_num++))
+    line_num=$((line_num + 1))
 
     # Skip comments and empty lines
     if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "${line// /}" ]]; then
@@ -116,7 +116,7 @@ validate_env_file() {
       local var_value="${BASH_REMATCH[2]}"
 
       if needs_quotes "$var_value"; then
-        ((issue_count++))
+        issue_count=$((issue_count + 1))
         if [[ "$has_issues" == "false" ]]; then
           has_issues=true
         fi

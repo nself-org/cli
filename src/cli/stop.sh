@@ -245,7 +245,7 @@ cmd_stop() {
 
       local char="${spin_chars:$((i % ${#spin_chars})):1}"
       printf "\r${COLOR_BLUE}%s${COLOR_RESET} Shutting down services... (%d/%d)                    " "$char" "$stopped_count" "$running_count"
-      ((i++))
+      i=$((i + 1))
       sleep 0.1
     done
     wait $compose_pid

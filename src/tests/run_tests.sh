@@ -35,20 +35,20 @@ if ! command -v bats >/dev/null 2>&1; then
   echo -n "Testing install.sh existence... "
   if [ -f "../../install.sh" ]; then
     printf "${GREEN}✓${NC}\n"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     printf "${RED}✗${NC}\n"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 
   # Test 2: Check if nself binary exists
   echo -n "Testing nself binary existence... "
   if [ -f "../../bin/nself" ]; then
     printf "${GREEN}✓${NC}\n"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     printf "${RED}✗${NC}\n"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 
   # Test 3: Check VERSION file
@@ -56,29 +56,29 @@ if ! command -v bats >/dev/null 2>&1; then
   if [ -f "../VERSION" ]; then
     VERSION=$(cat ../VERSION)
     printf "${GREEN}✓${NC} (v%s)\n" "$VERSION"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     printf "${RED}✗${NC}\n"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 
   # Test 4: Check shell script syntax
   echo -n "Testing install.sh syntax... "
   if bash -n ../../install.sh 2>/dev/null; then
     printf "${GREEN}✓${NC}\n"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     printf "${RED}✗${NC}\n"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 
   echo -n "Testing nself.sh syntax... "
   if bash -n ../cli/nself.sh 2>/dev/null; then
     printf "${GREEN}✓${NC}\n"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     printf "${RED}✗${NC}\n"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 
   # Test 5: Check for required functions in install.sh
@@ -87,10 +87,10 @@ if ! command -v bats >/dev/null 2>&1; then
     grep -q "check_requirements" ../../install.sh &&
     grep -q "show_spinner" ../../install.sh; then
     printf "${GREEN}✓${NC}\n"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     printf "${RED}✗${NC}\n"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 
   # Test 6: Check for required functions in nself.sh
@@ -99,10 +99,10 @@ if ! command -v bats >/dev/null 2>&1; then
     grep -q "cmd_init" ../cli/nself.sh &&
     grep -q "show_spinner" ../cli/nself.sh; then
     printf "${GREEN}✓${NC}\n"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     printf "${RED}✗${NC}\n"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 
   echo ""

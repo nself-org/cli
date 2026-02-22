@@ -21,12 +21,12 @@ assert_equals() {
 
   if [[ "$expected" == "$actual" ]]; then
     printf "${GREEN}✓${NC} %s\n" "$message"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     printf "${RED}✗${NC} %s\n" "$message"
     echo "  Expected: '$expected'"
     echo "  Actual: '$actual'"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 }
 
@@ -36,10 +36,10 @@ assert_true() {
 
   if eval "$condition"; then
     printf "${GREEN}✓${NC} %s\n" "$message"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     printf "${RED}✗${NC} %s (condition: %s)\n" "$message" "$condition"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 }
 
@@ -49,10 +49,10 @@ assert_false() {
 
   if ! eval "$condition"; then
     printf "${GREEN}✓${NC} %s\n" "$message"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     printf "${RED}✗${NC} %s (condition: %s)\n" "$message" "$condition"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 }
 
@@ -62,10 +62,10 @@ assert_file_exists() {
 
   if [[ -f "$file" ]]; then
     printf "${GREEN}✓${NC} %s\n" "$message"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     printf "${RED}✗${NC} %s\n" "$message"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 }
 
@@ -75,10 +75,10 @@ assert_dir_exists() {
 
   if [[ -d "$dir" ]]; then
     printf "${GREEN}✓${NC} %s\n" "$message"
-    ((TESTS_PASSED++))
+    TESTS_PASSED=$((TESTS_PASSED + 1))
   else
     printf "${RED}✗${NC} %s\n" "$message"
-    ((TESTS_FAILED++))
+    TESTS_FAILED=$((TESTS_FAILED + 1))
   fi
 }
 

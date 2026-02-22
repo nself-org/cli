@@ -156,7 +156,7 @@ EOF
         wait_time=$((2 ** retry_count))
         warn "Rate limited by Stripe - retrying in ${wait_time}s (attempt $((retry_count + 1))/${max_retries})"
         sleep "$wait_time"
-        ((retry_count++))
+        retry_count=$((retry_count + 1))
         continue
         ;;
       500 | 502 | 503 | 504)
@@ -165,7 +165,7 @@ EOF
         wait_time=$((2 ** retry_count))
         warn "Stripe server error (${http_code}) - retrying in ${wait_time}s (attempt $((retry_count + 1))/${max_retries})"
         sleep "$wait_time"
-        ((retry_count++))
+        retry_count=$((retry_count + 1))
         continue
         ;;
       *)

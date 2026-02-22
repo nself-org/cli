@@ -51,7 +51,7 @@ select_option() {
   local i=1
   for option in "${options[@]}"; do
     echo "  $i) $option"
-    ((i++))
+    i=$((i + 1))
   done
 
   echo ""
@@ -82,7 +82,7 @@ multi_select() {
   local i=1
   for option in "${options[@]}"; do
     echo "  $i) $option"
-    ((i++))
+    i=$((i + 1))
   done
 
   echo ""

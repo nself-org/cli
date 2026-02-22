@@ -88,7 +88,7 @@ suggest_alternative_port() {
       echo "$port"
       return 0
     fi
-    ((port++))
+    port=$((port + 1))
   done
 
   return 1
