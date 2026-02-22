@@ -67,10 +67,11 @@ jobs:
       - name: Build nself
         run: |
           cd ~/nself-test
-          # Copy only tenant-related migration files (008, 009)
-          mkdir -p nself/migrations
-          cp ${{ github.workspace }}/src/database/migrations/008_create_tenant_system.sql nself/migrations/
-          cp ${{ github.workspace }}/src/database/migrations/009_add_tenant_isolation.sql nself/migrations/
+          # Create Hasura-style migration directories (hasura/migrations/default/<version>_<name>/up.sql)
+          mkdir -p hasura/migrations/default/8_create_tenant_system
+          cp ${{ github.workspace }}/src/database/migrations/008_create_tenant_system.sql hasura/migrations/default/8_create_tenant_system/up.sql
+          mkdir -p hasura/migrations/default/9_add_tenant_isolation
+          cp ${{ github.workspace }}/src/database/migrations/009_add_tenant_isolation.sql hasura/migrations/default/9_add_tenant_isolation/up.sql
           # Clean any existing generated files to force regeneration
           rm -rf postgres/ nginx/ docker-compose.yml
           # Export environment variables to ensure build uses them
