@@ -55,7 +55,7 @@ EOF
 
   cat <<EOF
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O /dev/null http://127.0.0.1/ || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O /dev/null http://127.0.0.1/health 2>/dev/null || wget --no-verbose --tries=1 -O /dev/null http://127.0.0.1/ 2>/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

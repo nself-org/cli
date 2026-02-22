@@ -204,3 +204,102 @@ run_pre_checks() {
     return 1
   fi
 }
+
+# Get the name of the process holding a port
+# Bash 3.2 compatible
+get_port_holder() {
+  local port="$1"
+  local holder=""
+
+  if command -v lsof >/dev/null 2>&1; then
+    # macOS/Linux with lsof: get command name from LISTEN row
+    holder=$(lsof -i ":$port" -sTCP:LISTEN -n -P 2>/dev/null | awk 'NR==2{print $1}')
+  elif command -v ss >/dev/null 2>&1; then
+    holder=$(ss -tlnp 2>/dev/null | grep ":$port " | sed -E 's/.*users:\(\("([^"]+)".*/\1/' | head -1)
+  elif command -v netstat >/dev/null 2>&1; then
+    holder=$(netstat -tlnp 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d/ -f2 | head -1)
+  fi
+
+  if [ -z "$holder" ]; then
+    holder="unknown process"
+  fi
+  printf "%s" "$holder"
+}
+
+# Check if a single port is in use on the host (TCP LISTEN)
+# Returns 0 if available, 1 if in use
+host_port_in_use() {
+  local port="$1"
+
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -i ":$port" -sTCP:LISTEN -t >/dev/null 2>&1
+    return $?
+  elif command -v ss >/dev/null 2>&1; then
+    ss -tln 2>/dev/null | grep -q ":$port "
+    return $?
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -tln 2>/dev/null | grep -q ":$port "
+    return $?
+  else
+    # nc fallback: try connecting, if it succeeds something is listening
+    nc -z 127.0.0.1 "$port" 2>/dev/null
+    return $?
+  fi
+}
+
+# Preflight port conflict check
+# Reads configured ports from environment, checks each one, and reports
+# clearly which process holds the port and which .env variable to change.
+# Returns 0 if all ports are free, 1 if any conflict detected.
+# Bash 3.2 compatible: uses parallel arrays, avoids pipeline subshell issue.
+preflight_port_check() {
+  local failed=0
+
+  # Parallel arrays: env var names, default ports, service labels
+  # Bash 3.2 compatible (no associative arrays, no declare -A)
+  local pf_vars="NGINX_PORT NGINX_SSL_PORT POSTGRES_PORT REDIS_PORT HASURA_PORT MINIO_PORT MINIO_CONSOLE_PORT MAILPIT_SMTP_PORT MAILPIT_UI_PORT"
+  local pf_defaults="80 443 5432 6379 8080 9000 9001 1025 8025"
+  local pf_labels="nginx HTTP|set NGINX_PORT=<port> in .env nginx HTTPS|set NGINX_SSL_PORT=<port> in .env postgres|set POSTGRES_PORT=<port> in .env redis|set REDIS_PORT=<port> in .env hasura|set HASURA_PORT=<port> in .env minio|set MINIO_PORT=<port> in .env minio-console|set MINIO_CONSOLE_PORT=<port> in .env mailpit-smtp|set MAILPIT_SMTP_PORT=<port> in .env mailpit-ui|set MAILPIT_UI_PORT=<port> in .env"
+
+  local idx=0
+  for env_var in $pf_vars; do
+    idx=$((idx + 1))
+    local default_port
+    default_port=$(echo "$pf_defaults" | tr ' ' '
+' | awk "NR==$idx")
+    local label_entry
+    label_entry=$(echo "$pf_labels" | tr ' ' '
+' | awk "NR==$idx")
+    local service_name
+    service_name=$(echo "$label_entry" | cut -d'|' -f1)
+    local env_hint
+    env_hint=$(echo "$label_entry" | cut -d'|' -f2)
+
+    # Resolve actual port from environment
+    local actual_port
+    actual_port=$(printenv "$env_var" 2>/dev/null || true)
+    if [ -z "$actual_port" ]; then
+      actual_port="$default_port"
+    fi
+
+    # Skip non-numeric
+    case "$actual_port" in
+      ''|*[!0-9]*) continue ;;
+    esac
+
+    if host_port_in_use "$actual_port"; then
+      local holder
+      holder=$(get_port_holder "$actual_port")
+      printf "${COLOR_RED}ERROR${COLOR_RESET}: Port %s is already in use by '%s' (needed by %s)
+" \
+        "$actual_port" "$holder" "$service_name"
+      printf "       To change it: %s
+" "$env_hint"
+      failed=1
+    fi
+  done
+
+  return $failed
+}
+
+export -f get_port_holder host_port_in_use preflight_port_check

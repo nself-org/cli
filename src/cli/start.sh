@@ -24,6 +24,9 @@ source "$LIB_DIR/security/secure-defaults.sh" 2>/dev/null || true
 # Source plugin runtime for auto-start support
 source "$LIB_DIR/plugin/runtime.sh" 2>/dev/null || true
 
+# Source pre-checks (port conflict detection, environment checks)
+source "$LIB_DIR/start/pre-checks.sh" 2>/dev/null || true
+
 # Smart defaults from environment variables
 HEALTH_CHECK_TIMEOUT="${NSELF_HEALTH_CHECK_TIMEOUT:-120}"
 HEALTH_CHECK_INTERVAL="${NSELF_HEALTH_CHECK_INTERVAL:-2}"
@@ -354,6 +357,16 @@ start_services() {
   fi
 
   update_progress 0 "done"
+
+  # 4b. Pre-flight port conflict check
+  # Check required ports before starting containers to provide clear error messages
+  if command -v preflight_port_check >/dev/null 2>&1; then
+    if ! preflight_port_check; then
+      printf "\n${COLOR_RED}Cannot start: one or more required ports are in use.${COLOR_RESET}\n"
+      printf "Update the port variables shown above in your .env file, then run 'nself build && nself start'\n\n"
+      return 1
+    fi
+  fi
 
   # 5. Clean up containers based on CLEANUP_ON_START setting
   update_progress 1 "running"

@@ -58,6 +58,7 @@ NSELF_START_MODE=smart nself start
 - Keeps running healthy containers
 - Only recreates problematic containers
 - Fastest startup for ongoing development
+- Automatically removes exited init containers (e.g., `minio_init`) after startup
 
 ### Fresh Mode
 
@@ -348,16 +349,39 @@ nself start --skip-health-checks
 
 ### Port Already In Use
 
-```bash
-# Check what's using the port
-lsof -i :5432
+`nself start` now checks for port conflicts before launching containers and reports
+clearly which process holds each port and which `.env` variable to change.
 
-# Stop conflicting process or change port in .env
-POSTGRES_PORT=5433
+Example output when Tailscale holds port 443:
 
-# Rebuild and start
-nself build && nself start
 ```
+ERROR: Port 443 is already in use by 'Tailscale' (needed by nginx HTTPS)
+       To change it: set NGINX_SSL_PORT=<port> in .env
+Cannot start: one or more required ports are in use.
+Update the port variables shown above in your .env file, then run 'nself build && nself start'
+```
+
+To resolve:
+
+```bash
+# Option 1: Change the conflicting port in your .env
+NGINX_SSL_PORT=8443
+
+# Then rebuild (regenerates docker-compose.yml with new port)
+nself build && nself start
+
+# Option 2: Stop the conflicting process
+# macOS example - stop Tailscale:
+sudo launchctl stop com.tailscale.ipn.macsys.network-extension
+
+# Option 3: Manually identify the process
+lsof -i :443 -sTCP:LISTEN
+```
+
+Ports checked at startup: `NGINX_PORT` (80), `NGINX_SSL_PORT` (443),
+`POSTGRES_PORT` (5432), `REDIS_PORT` (6379), `HASURA_PORT` (8080),
+`MINIO_PORT` (9000), `MINIO_CONSOLE_PORT` (9001), `MAILPIT_SMTP_PORT` (1025),
+`MAILPIT_UI_PORT` (8025).
 
 ### Container Won't Start
 

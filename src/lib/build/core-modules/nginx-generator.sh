@@ -239,6 +239,14 @@ server {
         root /var/www/certbot;
     }
 
+    # Health check endpoint - returns 200 before any HTTPS redirect
+    # Allows Docker healthchecks to work correctly when SSL_MODE=local
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+
     location / {
         return 301 https://\$host\$request_uri;
     }
