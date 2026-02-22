@@ -11,9 +11,9 @@ if [[ -f "$VALIDATION_DIR/../auto-fix/env-quotes-fix.sh" ]]; then
   source "$VALIDATION_DIR/../auto-fix/env-quotes-fix.sh"
 fi
 
-# Source display utilities for show_warning, show_error, show_info
-if [[ -f "$VALIDATION_DIR/../utils/display.sh" ]]; then
-  source "$VALIDATION_DIR/../utils/display.sh"
+# Source output utilities for show_warning, show_error, show_info
+if [[ -f "$VALIDATION_DIR/output.sh" ]]; then
+  source "$VALIDATION_DIR/output.sh"
 fi
 
 # Source platform utilities for set_default and other functions
