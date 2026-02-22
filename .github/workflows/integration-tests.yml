@@ -72,9 +72,11 @@ jobs:
 
       - name: Run specific test suite
         if: github.event.inputs.test_suite != ''
+        env:
+          TEST_SUITE: ${{ github.event.inputs.test_suite }}
         run: |
           cd src/tests/integration
-          bash run-all-integration-tests.sh --test ${{ github.event.inputs.test_suite }}
+          bash run-all-integration-tests.sh --test "$TEST_SUITE"
 
       - name: Run all integration tests
         if: github.event.inputs.test_suite == ''

@@ -108,7 +108,7 @@ test_no_hardcoded_keys() {
   local found_keys=0
   for pattern in "${key_patterns[@]}"; do
     local matches
-    matches=$(grep -riE "$pattern['\"][a-zA-Z0-9]{20,}" src/lib/ \
+    matches=$(grep -riE "${pattern}['\"][a-zA-Z0-9]{20,}" src/lib/ \
       --exclude="*.md" \
       --exclude=".example" \
       --exclude="test-secrets.sh" \

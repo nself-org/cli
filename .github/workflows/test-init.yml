@@ -58,20 +58,25 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup test environment
+        env:
+          MODE: ${{ matrix.mode }}
         run: |
           # Create temporary test directory
-          export TEST_DIR="/tmp/nself-init-test-${{ matrix.mode }}"
+          export TEST_DIR="/tmp/nself-init-test-${MODE}"
           mkdir -p "$TEST_DIR"
           cd "$TEST_DIR"
 
       - name: Test init (${{ matrix.mode }} mode)
+        env:
+          MODE: ${{ matrix.mode }}
+          WORKSPACE: ${{ github.workspace }}
         run: |
-          cd "/tmp/nself-init-test-${{ matrix.mode }}"
-          
-          case "${{ matrix.mode }}" in
+          cd "/tmp/nself-init-test-${MODE}"
+
+          case "$MODE" in
             basic)
               # Test basic init
-              bash "${{ github.workspace }}/src/cli/init.sh"
+              bash "$WORKSPACE/src/cli/init.sh"
               # Verify files created
               test -f .env
               test -f .env.example
@@ -80,7 +85,7 @@ jobs:
             wizard)
               # Test wizard mode (with complete automated inputs)
               # Skip wizard test on systems without working templates
-              if [[ ! -d "${{ github.workspace }}/src/templates" ]]; then
+              if [[ ! -d "$WORKSPACE/src/templates" ]]; then
                 echo "Skipping wizard test - templates directory not found"
                 exit 0
               fi
@@ -88,22 +93,22 @@ jobs:
               # best-effort simulation that may not complete fully in CI environments
               # Use gtimeout on macOS if available, otherwise skip timeout
               if command -v timeout >/dev/null 2>&1; then
-                printf "TestProject\ndev\n" | timeout 30 bash "${{ github.workspace }}/src/cli/init.sh" --wizard 2>/dev/null || true
+                printf "TestProject\ndev\n" | timeout 30 bash "$WORKSPACE/src/cli/init.sh" --wizard 2>/dev/null || true
               elif command -v gtimeout >/dev/null 2>&1; then
-                printf "TestProject\ndev\n" | gtimeout 30 bash "${{ github.workspace }}/src/cli/init.sh" --wizard 2>/dev/null || true
+                printf "TestProject\ndev\n" | gtimeout 30 bash "$WORKSPACE/src/cli/init.sh" --wizard 2>/dev/null || true
               else
-                printf "TestProject\ndev\n" | bash "${{ github.workspace }}/src/cli/init.sh" --wizard 2>/dev/null || true
+                printf "TestProject\ndev\n" | bash "$WORKSPACE/src/cli/init.sh" --wizard 2>/dev/null || true
               fi
               # ADVISORY: Wizard may not produce all files in CI - accept partial success
               test -f .env || test -f .env.example || exit 0
               ;;
             force)
               # Test force reinit
-              bash "${{ github.workspace }}/src/cli/init.sh"
+              bash "$WORKSPACE/src/cli/init.sh"
               # Modify .env
               echo "TEST_VAR=123" >> .env
               # Force reinit
-              bash "${{ github.workspace }}/src/cli/init.sh" --force
+              bash "$WORKSPACE/src/cli/init.sh" --force
               # Verify .env was recreated
               test -f .env
               ! grep -q "TEST_VAR=123" .env
@@ -112,7 +117,9 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: rm -rf "/tmp/nself-init-test-${{ matrix.mode }}"
+        env:
+          MODE: ${{ matrix.mode }}
+        run: rm -rf "/tmp/nself-init-test-${MODE}"
 
   test-init-shellcheck:
     name: ShellCheck Linting
@@ -201,6 +208,8 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Test file permissions
+        env:
+          WORKSPACE: ${{ github.workspace }}
         run: |
           # Create test directory
           TEST_DIR="/tmp/nself-perm-test"
@@ -208,7 +217,7 @@ jobs:
           cd "$TEST_DIR"
 
           # Run init
-          bash "${{ github.workspace }}/src/cli/init.sh" --quiet
+          bash "$WORKSPACE/src/cli/init.sh" --quiet
 
           # Check .env permissions (should be 600) - platform safe
           if [[ "$(uname)" == "Darwin" ]]; then
