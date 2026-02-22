@@ -70,6 +70,11 @@ if [[ -f "$INIT_MODULE_DIR/demo.sh" ]]; then
   source "$INIT_MODULE_DIR/demo.sh" && DEMO_MODE_AVAILABLE=true
 fi
 
+# Secrets generation module is optional
+if [[ -f "$INIT_MODULE_DIR/secrets-gen.sh" ]]; then
+  source "$INIT_MODULE_DIR/secrets-gen.sh" || true
+fi
+
 # State tracking
 INIT_STATE="$INIT_STATE_IDLE"
 
@@ -208,6 +213,11 @@ init_basic() {
   # Ensure working defaults are present
   ensure_working_defaults ".env"
 
+  # Generate secrets for any empty critical variables
+  if command -v auto_generate_secrets_for_env >/dev/null 2>&1; then
+    auto_generate_secrets_for_env ".env"
+  fi
+
   # Validate configuration
   validate_env_config ".env"
 
@@ -234,6 +244,11 @@ init_full() {
   # Ensure working defaults are present
   ensure_working_defaults ".env"
   ensure_working_defaults ".env.dev"
+
+  # Generate secrets for any empty critical variables
+  if command -v auto_generate_secrets_for_env >/dev/null 2>&1; then
+    auto_generate_secrets_for_env ".env"
+  fi
 
   # Validate configuration
   validate_env_config ".env"
