@@ -25,7 +25,16 @@ cmd_db() {
       db_shell "$@"
       ;;
     backup)
-      db_backup "$@"
+      if [[ "${1:-}" == "list" ]]; then
+        cli_header "nself db backup list"
+        if ls backups/*.sql 2>/dev/null | head -1 > /dev/null 2>&1; then
+          ls -lh backups/*.sql 2>/dev/null
+        else
+          printf "No database backups found in ./backups/\n"
+        fi
+      else
+        db_backup "$@"
+      fi
       ;;
     restore)
       db_restore "$@"

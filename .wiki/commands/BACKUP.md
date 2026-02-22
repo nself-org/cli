@@ -1,5 +1,16 @@
 # nself backup - Database Backup
 
+> **Deprecated:** `nself backup` is a compatibility wrapper. Subcommands have moved:
+>
+> - `nself backup create` → `nself db backup`
+> - `nself backup restore` → `nself db restore`
+> - `nself backup list` → `nself db backup list`
+> - `nself backup rollback` → `nself deploy rollback`
+> - `nself backup reset` → `nself infra reset`
+> - `nself backup clean` → `nself infra clean`
+>
+> This stub will be removed in v1.0.0.
+
 **Version 0.9.9** | Create database backups
 
 ---

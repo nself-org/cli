@@ -352,6 +352,8 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
       exit 0
     fi
   done
+  printf "\033[0;33m⚠\033[0m  WARNING: 'nself perf' is deprecated.\n" >&2
+  printf "   Use: nself service bench|scale|profile|optimize  or  nself db migrate\n\n" >&2
   pre_command "perf" || exit $?
   main "$@"
   exit_code=$?

@@ -1,8 +1,8 @@
 # Infrastructure Commands (infra)
 
 **Command Group:** `nself infra`
-**Subcommands:** 38
-**Categories:** Cloud Providers, Kubernetes, Helm
+**Subcommands:** 51
+**Categories:** Cloud Providers, Kubernetes, Helm, Infrastructure Reset
 
 ---
 
@@ -26,7 +26,11 @@ The `nself infra` command group manages infrastructure deployment, configuration
 nself infra
 ├── provider (10 subcommands) - Cloud provider management
 ├── k8s (15 subcommands)      - Kubernetes operations
-└── helm (13 subcommands)     - Helm chart management
+├── helm (13 subcommands)     - Helm chart management
+└── reset ops (3 subcommands) - Infrastructure destruction and reset
+    ├── destroy               - Safe infrastructure destruction
+    ├── reset                 - Reset to clean state
+    └── clean                 - Clean old Docker resources
 ```
 
 ---

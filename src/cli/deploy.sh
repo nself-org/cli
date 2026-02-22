@@ -3525,7 +3525,13 @@ cmd_deploy() {
       ;;
 
     # Legacy/compatibility subcommands
-    init | check | status | rollback | logs | health)
+    rollback)
+      shift
+      source "$(dirname "${BASH_SOURCE[0]}")/backup.sh"
+      cmd_backup rollback "$@"
+      ;;
+
+    init | check | status | logs | health)
       # These can be implemented or redirect to environment-specific versions
       cli_warning "Legacy command - use 'nself deploy <environment>' instead"
       show_deploy_help

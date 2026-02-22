@@ -235,5 +235,7 @@ export -f cmd_restore
 
 # Run if executed directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  printf "\033[0;33m⚠\033[0m  WARNING: 'nself restore' is deprecated. Use 'nself db restore' instead.\n" >&2
+  printf "   This compatibility wrapper will be removed in v1.0.0\n\n" >&2
   cmd_restore "$@"
 fi

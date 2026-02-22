@@ -4,10 +4,11 @@
 
 This is the authoritative command structure after consolidation from 79 → 31 top-level commands.
 
-> **Note on backward-compatibility stubs**: ~34 deprecated command files exist alongside these 31 commands (e.g. `nself email`, `nself ssl`, `nself staging`, `nself helm`). They show a deprecation warning and delegate to the consolidated command. They are NOT part of the v1.0 command surface and will be removed in v1.0.0. If a command you use isn't listed here, check its wiki page for the replacement command.
+> **Note on backward-compatibility stubs**: ~37 deprecated command files exist alongside these 31 commands (e.g. `nself email`, `nself ssl`, `nself staging`, `nself helm`, `nself destroy`, `nself perf`, `nself backup`). They show a deprecation warning and delegate to the consolidated command. They are NOT part of the v1.0 command surface and will be removed in v1.0.0. If a command you use isn't listed here, check its wiki page for the replacement command.
 
 **New in v0.9.6:**
-- `destroy` - Safe infrastructure destruction with selective targeting
+
+- `infra destroy` - Safe infrastructure destruction with selective targeting (was standalone `nself destroy`)
 - `deploy server` - 10 new subcommands for complete VPS lifecycle management
 - `deploy sync` - 4 subcommands for environment synchronization
 - `infra provider k8s-*` - Unified Kubernetes management across 8 cloud providers
@@ -45,58 +46,6 @@ Stop all services or specific services.
 nself restart [service...]
 ```
 Restart all services or specific services.
-
----
-
-## Infrastructure Management (1 command)
-
-### destroy
-```
-nself destroy [OPTIONS]
-
-Options:
-  -f, --force              Skip all confirmation prompts
-  -y, --yes                Auto-confirm (same as --force)
-  --dry-run                Show what would be destroyed without executing
-  --keep-volumes           Preserve data volumes (keep databases, files, etc.)
-  --containers-only        Only remove Docker containers
-  --volumes-only           Only remove Docker volumes (requires confirmation)
-  --networks-only          Only remove Docker networks
-  --generated-only         Only remove generated files (docker-compose.yml, etc.)
-  --verbose                Show detailed output
-  -h, --help               Show help message
-```
-
-Safe destruction of project infrastructure with configurable scope.
-
-**What Gets Destroyed:**
-- Docker containers (running and stopped)
-- Docker volumes (ALL DATA LOSS) - unless `--keep-volumes`
-- Docker networks
-- Generated files (docker-compose.yml, nginx/, services/, etc.)
-
-**What Gets Preserved:**
-- .env files (all variants)
-- Source code and custom files
-- Docker volumes (if `--keep-volumes` used)
-
-**Safety Features:**
-- Interactive confirmation by default
-- Double confirmation for volume destruction
-- Dry-run mode for preview
-- Selective destruction with `--*-only` flags
-- Color-coded warnings
-
-**Examples:**
-```bash
-nself destroy                        # Interactive (safest)
-nself destroy --dry-run              # Preview only
-nself destroy --keep-volumes         # Preserve data
-nself destroy --containers-only      # Only remove containers
-nself destroy --force                # Non-interactive (automation)
-```
-
-**Related:** [Destroy Command Documentation](DESTROY.md)
 
 ---
 
@@ -206,7 +155,7 @@ Hasura console and migration management.
 
 ---
 
-## Other (11 commands)
+## Complex (9 commands)
 
 ### 1. db - Database Operations
 ```
@@ -219,6 +168,7 @@ Subcommands:
   seed [dataset]                             # Seed data
   mock <table> [--count N]                   # Generate mock data
   backup [--output FILE]                     # Backup database
+  backup list                                # List available backups
   restore <file>                             # Restore from backup
   shell                                      # Interactive psql shell
   query <sql>                                # Execute SQL query
@@ -227,7 +177,7 @@ Subcommands:
   data <import|export> [options]             # Data operations
 ```
 
-**Total subcommands:** 12
+**Total subcommands:** 13
 
 ---
 
@@ -427,9 +377,14 @@ Helm (consolidated from 'helm'):
   helm template                              # Render locally
   helm package                               # Package chart
   helm repo <action>                         # Repository management
+
+Infrastructure Reset (consolidated from 'destroy', 'backup reset/clean'):
+  destroy [OPTIONS]                          # Safe infrastructure destruction (see DESTROY.md for options)
+  reset [--confirm]                          # Reset to clean state
+  clean [--age DAYS]                         # Clean old Docker resources
 ```
 
-**Total subcommands:** 48 (added 10 new K8s abstraction commands)
+**Total subcommands:** 51 (added destroy, reset, clean; added 10 K8s abstraction commands)
 
 **New in v0.9.6 - Kubernetes Abstraction:**
 - Unified CLI across 8 cloud providers
@@ -512,9 +467,15 @@ Realtime (consolidated from 'realtime'):
   realtime init                              # Initialize realtime
   realtime events                            # Event management
   realtime test                              # Test connections
+
+Performance (consolidated from 'perf'):
+  bench [service] [--duration N]             # Benchmark service performance
+  scale <service> <replicas>                 # Scale service replicas
+  profile [service] [--duration N]           # Profile service resource usage
+  optimize [--auto-fix]                      # Get optimization suggestions
 ```
 
-**Total subcommands:** 43
+**Total subcommands:** 47 (added bench, scale, profile, optimize)
 
 ---
 
@@ -619,40 +580,8 @@ Webhooks (consolidated from 'webhooks'):
 
 ---
 
-### 8. perf - Performance & Optimization
-```
-nself perf <subcommand>
+### 8. dev - Developer Tools
 
-Performance:
-  profile [service] [--duration N]           # Profile service
-  bench [service] [--duration N]             # Benchmark service
-  scale <service> <replicas>                 # Scale service
-  migrate [options]                          # Migration tools
-  optimize [--auto-fix]                      # Optimization suggestions
-```
-
-**Total subcommands:** 5
-
----
-
-### 9. backup - Backup & Recovery
-```
-nself backup <subcommand>
-
-Backup Operations:
-  create [--full|--incremental]              # Create backup
-  restore <backup-id> [--target ENV]         # Restore backup
-  list [--filter DATE]                       # List backups
-  rollback [--version N]                     # Rollback changes
-  reset [--confirm]                          # Reset to clean state
-  clean [--age DAYS]                         # Clean old resources
-```
-
-**Total subcommands:** 6
-
----
-
-### 10. dev - Developer Tools
 ```
 nself dev <subcommand>
 
@@ -685,7 +614,8 @@ White-label (consolidated from 'whitelabel'):
 
 ---
 
-### 11. plugin - Plugin System
+### 9. plugin - Plugin System
+
 ```
 nself plugin <subcommand>
 
@@ -762,12 +692,15 @@ Plugin Actions:
 | `trust` | `auth ssl trust` | Trust local certificates |
 | `rate-limit` | `auth rate-limit` | Rate limiting is security |
 | `webhooks` | `auth webhooks` | Webhook security |
-| `bench` | `perf bench` | Benchmarking is performance |
-| `scale` | `perf scale` | Scaling is performance |
-| `migrate` | `perf migrate` | Migration is performance-related |
-| `rollback` | `backup rollback` | Rollback is backup/recovery |
-| `reset` | `backup reset` | Reset is recovery |
-| `clean` | `backup clean` | Cleanup is maintenance |
+| `destroy` | `infra destroy` | Destruction is infrastructure |
+| `bench` | `service bench` | Benchmarking is a service operation |
+| `scale` | `service scale` | Scaling is a service operation |
+| `migrate` | `db migrate` | Migrations are a DB operation |
+| `rollback` | `deploy rollback` | Rollback is a deploy operation |
+| `reset` | `infra reset` | Reset is infrastructure |
+| `clean` | `infra clean` | Cleanup is infrastructure |
+| `perf` | `service bench\|scale\|profile\|optimize` or `db migrate` | Distributed to service and db |
+| `backup` | `db backup\|restore`, `deploy rollback`, `infra reset\|clean` | Distributed across commands |
 | `frontend` | `dev frontend` | Frontend is dev tooling |
 | `ci` | `dev ci` | CI/CD is dev tooling |
 | `docs` | `dev docs` | Documentation is dev tooling |
@@ -777,22 +710,24 @@ Plugin Actions:
 
 ## Summary Statistics
 
-- **Total Top-Level Commands:** 33 (was 79)
-- **Reduction:** 58.2%
+- **Total Top-Level Commands:** 31 (was 79)
+- **Reduction:** 60.8%
 - **Total Subcommands:** 300+
-- **Average Subcommands per TLC:** 9.1
+- **Average Subcommands per TLC:** 9.7
 
 **Category Breakdown:**
-- Core: 5 commands (15%)
-- Utilities: 17 commands (52%)
-- Other: 11 commands (33%)
+- Core: 5 commands (16%)
+- Utilities: 17 commands (55%)
+- Complex: 9 commands (29%)
+- **Total: 5 + 17 + 9 = 31** ✓
 
 **Most Complex Commands (by subcommand count):**
-1. tenant: 50+ subcommands
-2. service: 43 subcommands
-3. infra: 38 subcommands
+
+1. infra: 51 subcommands (added destroy, reset, clean)
+2. tenant: 50+ subcommands
+3. service: 47 subcommands (added bench, scale, profile, optimize)
 4. auth: 38 subcommands
-5. deploy: 23 subcommands
+5. deploy: 33 subcommands
 
 ---
 

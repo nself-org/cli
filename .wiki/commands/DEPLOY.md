@@ -38,7 +38,7 @@ nself deploy staging --force
 | `init` | Initialize deployment configuration |
 | `ssh` | Legacy SSH deployment |
 | `status` | Show deployment status |
-| `rollback` | Rollback to previous deployment |
+| `rollback` | Rollback to previous deployment (delegates to `backup rollback`) |
 | `logs` | View deployment logs |
 | `webhook` | Setup GitHub webhook for auto-deploy |
 | `health` | Check deployment health |
@@ -242,8 +242,24 @@ If you still have issues, check which services are enabled in your .env.
 - Docker and Docker Compose on server
 - rsync on local machine (scp used as fallback)
 
-## See Also
+## Rollback (`nself deploy rollback`)
+
+Roll back to a previous deployment state:
+
+```bash
+nself deploy rollback latest              # Rollback to latest backup
+nself deploy rollback backup <id>         # Rollback to specific backup ID
+nself deploy rollback migration 2         # Rollback 2 database migrations
+nself deploy rollback deployment          # Rollback to previous deployment
+nself deploy rollback --dry-run           # Preview what would be rolled back
+```
+
+> **Migration:** If you were using `nself rollback`, update to `nself deploy rollback`.
+> The standalone `nself rollback` command is deprecated and will be removed in v1.0.0.
+
+## Related Commands
 
 - [ENV.md](ENV.md) - Environment management
 - [PROD.md](PROD.md) - Production configuration
 - [STAGING.md](STAGING.md) - Staging environment
+- [BACKUP.md](BACKUP.md) - Backup and recovery (deprecated — use db/deploy/infra commands)

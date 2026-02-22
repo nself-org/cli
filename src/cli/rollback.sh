@@ -253,6 +253,8 @@ export -f cmd_rollback
 
 # Execute if run directly
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  printf "\033[0;33m⚠\033[0m  WARNING: 'nself rollback' is deprecated. Use 'nself deploy rollback' instead.\n" >&2
+  printf "   This compatibility wrapper will be removed in v1.0.0\n\n" >&2
   cmd_rollback "$@"
   exit $?
 fi

@@ -46,6 +46,9 @@ CATEGORIES:
   provider          Cloud provider infrastructure (26+ providers)
   k8s               Kubernetes infrastructure management
   helm              Helm chart management
+  destroy           Destroy all local project infrastructure (containers, volumes, networks)
+  reset             Reset project to clean state (restore from backup)
+  clean             Clean old backups and stale resources
 
 PROVIDER SUBCOMMANDS (14):
   provider list [--filter TYPE]              # List 26+ providers
@@ -1027,9 +1030,21 @@ main() {
     helm)
       cmd_infra_helm "$@"
       ;;
+    destroy)
+      source "$(dirname "${BASH_SOURCE[0]}")/destroy.sh"
+      cmd_destroy "$@"
+      ;;
+    reset)
+      source "$(dirname "${BASH_SOURCE[0]}")/backup.sh"
+      cmd_backup reset "$@"
+      ;;
+    clean)
+      source "$(dirname "${BASH_SOURCE[0]}")/backup.sh"
+      cmd_backup clean "$@"
+      ;;
     *)
       log_error "Unknown category: $category"
-      printf "\nAvailable categories: provider, k8s, helm\n"
+      printf "\nAvailable categories: provider, k8s, helm, destroy, reset, clean\n"
       printf "Run 'nself infra --help' for more information.\n"
       return 1
       ;;

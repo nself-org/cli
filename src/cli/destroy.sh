@@ -431,6 +431,8 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
       exit 0
     fi
   done
+  printf "\033[0;33m⚠\033[0m  WARNING: 'nself destroy' is deprecated. Use 'nself infra destroy' instead.\n" >&2
+  printf "   This compatibility wrapper will be removed in v1.0.0\n\n" >&2
   pre_command "destroy" || exit $?
   cmd_destroy "$@"
   exit_code=$?

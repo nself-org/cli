@@ -1,6 +1,9 @@
 # nself destroy - Safe Infrastructure Destruction
 
-**Command:** `nself destroy`
+> **Deprecated:** `nself destroy` is a compatibility wrapper. Use `nself infra destroy` instead.
+> This stub will be removed in v1.0.0.
+
+**Command:** `nself infra destroy` (was: `nself destroy`)
 
 Safe destruction of project infrastructure with configurable scope and comprehensive safety features.
 

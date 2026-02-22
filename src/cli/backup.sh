@@ -1185,6 +1185,8 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
       exit 0
     fi
   done
+  printf "\033[0;33m⚠\033[0m  WARNING: 'nself backup' is deprecated.\n" >&2
+  printf "   Use: nself db backup|restore  or  nself deploy rollback  or  nself infra reset|clean\n\n" >&2
   pre_command "backup" || exit $?
   main "$@"
   exit_code=$?

@@ -454,4 +454,46 @@ nself service functions deploy
 
 ---
 
+## Performance (consolidated from `nself perf`)
+
+Performance benchmarking and profiling are now available as `nself service` subcommands.
+
+### Benchmark
+
+```bash
+nself service bench api                       # Benchmark GraphQL API
+nself service bench api --requests 5000       # 5000 requests
+nself service bench api --duration 60         # 60-second test
+```
+
+### Scale
+
+```bash
+nself service scale hasura 3                  # Scale Hasura to 3 replicas
+nself service scale postgres 2                # Scale Postgres to 2 replicas
+```
+
+### Profile
+
+```bash
+nself service profile hasura                  # Profile Hasura resource usage
+nself service profile postgres --duration 30  # 30-second profile
+```
+
+### Optimize
+
+```bash
+nself service optimize                        # Get optimization suggestions
+nself service optimize --auto-fix             # Apply safe optimizations automatically
+```
+
+> **Migration:** If you were using `nself perf`, update your commands:
+> `nself perf bench` → `nself service bench`
+> `nself perf scale` → `nself service scale`
+> `nself perf profile` → `nself service profile`
+> `nself perf optimize` → `nself service optimize`
+> `nself perf migrate` → `nself db migrate`
+
+---
+
 *See also: [CLOUD](CLOUD.md) | [DEPLOY](DEPLOY.md) | [SERVICES_OPTIONAL](../services/SERVICES_OPTIONAL.md)*

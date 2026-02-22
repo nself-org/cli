@@ -1,5 +1,15 @@
 # nself perf - Performance Profiling
 
+> **Deprecated:** `nself perf` is a compatibility wrapper. Subcommands have moved:
+>
+> - `nself perf bench` → `nself service bench`
+> - `nself perf scale` → `nself service scale`
+> - `nself perf profile` → `nself service profile`
+> - `nself perf optimize` → `nself service optimize`
+> - `nself perf migrate` → `nself db migrate`
+>
+> This stub will be removed in v1.0.0.
+
 **Version 0.4.6** | Performance analysis and optimization
 
 ---

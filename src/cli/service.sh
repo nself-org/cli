@@ -367,6 +367,17 @@ EXAMPLES:
   nself service realtime init               # Initialize
   nself service realtime subscribe users    # Subscribe to table
 
+PERFORMANCE (consolidated from perf):
+  bench [service] [--duration N]   Benchmark service performance
+  scale <service> <replicas>       Scale service replicas
+  profile [service] [--duration N] Profile service resource usage
+  optimize [--auto-fix]            Get optimization suggestions
+
+  nself service bench api           # Benchmark API service
+  nself service scale api 3         # Scale API to 3 replicas
+  nself service profile api         # Profile API resource usage
+  nself service optimize            # Get optimization suggestions
+
 OPTIONS:
   -h, --help        Show this help message
   --follow, -f      Follow logs (for logs commands)
@@ -2281,6 +2292,10 @@ main() {
       ;;
     realtime | rt)
       cmd_service_realtime "$@"
+      ;;
+    bench | scale | profile | optimize)
+      source "$(dirname "${BASH_SOURCE[0]}")/perf.sh"
+      cmd_perf "$subcommand" "$@"
       ;;
     *)
       log_error "Unknown subcommand: $subcommand"
