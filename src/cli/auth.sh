@@ -495,6 +495,16 @@ cmd_auth_ssl() {
   shift
 
   case "$action" in
+    help | -h | --help)
+      printf "nself auth ssl - SSL certificate management\n\n"
+      printf "USAGE:\n  nself auth ssl <action>\n\n"
+      printf "ACTIONS:\n"
+      printf "  generate    Generate SSL certificates\n"
+      printf "  install     Install certificates (handled by nself build)\n"
+      printf "  renew       Renew certificates\n"
+      printf "  info        Show certificate information\n"
+      printf "  trust       Trust certificates on this machine\n"
+      ;;
     generate)
       # Delegate to original ssl implementation
       if [[ -f "$CLI_DIR/_deprecated/ssl.sh.backup" ]]; then

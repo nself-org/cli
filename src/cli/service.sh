@@ -1536,6 +1536,16 @@ cmd_service_storage() {
   shift || true
 
   case "$action" in
+    help | -h | --help)
+      printf "nself service storage - Object storage management\n\n"
+      printf "USAGE:\n  nself service storage <subcommand>\n\n"
+      printf "SUBCOMMANDS:\n"
+      printf "  status      Show storage service status\n"
+      printf "  buckets     Manage storage buckets\n"
+      printf "  upload      Upload files\n"
+      printf "  download    Download files\n"
+      printf "  presign     Generate pre-signed URLs\n"
+      ;;
     status)
       cmd_service_status storage
       ;;

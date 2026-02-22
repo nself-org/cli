@@ -6,8 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 set -euo pipefail
 
 
-# Intercept --help before delegating
-if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+# Intercept help/--help before delegating
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ] || [ "${1:-}" = "help" ]; then
   printf "DEPRECATION NOTICE\n\n"
   printf "  'nself storage' is deprecated and will be removed in v1.0.0.\n"
   printf "  Please use: nself service storage\n\n"

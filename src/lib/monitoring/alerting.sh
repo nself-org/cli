@@ -51,7 +51,7 @@ should_send_alert() {
   local cooldown="${2:-300}" # 5 minutes default
 
   # Get last alert time
-  local last_alert=$(grep "\"$alert_key\":" "$ALERT_STATE_FILE" 2>/dev/null | cut -d':' -f2 | tr -d ' ",')
+  local last_alert=$(grep "\"$alert_key\":" "$ALERT_STATE_FILE" 2>/dev/null | cut -d':' -f2 | tr -d ' ",}{')
 
   if [[ -z "$last_alert" ]]; then
     # Never sent this alert
