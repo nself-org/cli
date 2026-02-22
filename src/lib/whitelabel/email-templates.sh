@@ -793,8 +793,15 @@ EOF
 
 html_escape() {
   local input="$1"
+  local result="$input"
   # Escape HTML special characters to prevent XSS
-  printf "%s" "$input" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g; s/'\''/\&#39;/g'
+  # Pure bash string replacement avoids sed/pipe issues with set -e/pipefail
+  result="${result//&/&amp;}"
+  result="${result//</&lt;}"
+  result="${result//>/&gt;}"
+  result="${result//\"/&quot;}"
+  result="${result//\'/&#39;}"
+  printf "%s" "$result"
 }
 
 sanitize_variable_name() {
