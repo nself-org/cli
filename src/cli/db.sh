@@ -42,6 +42,10 @@ cmd_db() {
     reset)
       db_reset "$@"
       ;;
+    hasura)
+      source "$(dirname "${BASH_SOURCE[0]}")/hasura.sh"
+      cmd_hasura "$@"
+      ;;
     help)
       db_help
       ;;
@@ -288,6 +292,7 @@ COMMANDS:
   backup [file]       Create database backup
   restore <file>      Restore from backup
   reset               Reset database (dev only)
+  hasura <sub>        Hasura console and metadata (console, metadata apply/export/reload)
   help                Show this help message
 
 MIGRATION COMMANDS:
@@ -317,6 +322,12 @@ EXAMPLES:
 
   # Reset database (dev only)
   nself db reset
+
+  # Open Hasura Console
+  nself db hasura console
+
+  # Apply Hasura metadata
+  nself db hasura metadata apply
 
 NOTES:
   - Migrations are stored in hasura/migrations/default/

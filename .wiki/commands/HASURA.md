@@ -1,16 +1,28 @@
 # nself hasura
 
-**Version**: v0.9.9  
-**Status**: Active
+> **Deprecated.** `nself hasura` has moved to `nself db hasura`.
+>
+> ```bash
+> # Old (deprecated — removed in v1.0.0)
+> nself db hasura console
+> nself db hasura metadata apply
+>
+> # New
+> nself db hasura console
+> nself db hasura metadata apply
+> ```
+
+**Version**: v0.9.9
+**Status**: Deprecated — use `nself db hasura`
 
 ## Overview
 
-Hasura GraphQL management commands for metadata operations and console access. This command provides convenient wrappers around Hasura CLI operations with automatic configuration from your nself environment.
+Hasura GraphQL management commands for metadata operations and console access. These commands are now part of `nself db hasura` since Hasura management is database-adjacent (metadata tracks schema, permissions, and relationships). This page is kept for reference — see [DB.md](DB.md) for the current documentation.
 
 ## Usage
 
 ```bash
-nself hasura <subcommand> [options]
+nself db hasura <subcommand> [options]
 ```
 
 ## Subcommands
@@ -46,7 +58,7 @@ hasura version
 Apply local metadata to Hasura instance.
 
 ```bash
-nself hasura metadata apply
+nself db hasura metadata apply
 ```
 
 **Requirements:**
@@ -61,7 +73,7 @@ nself hasura metadata apply
 
 **Example:**
 ```bash
-nself hasura metadata apply
+nself db hasura metadata apply
 ```
 
 ### metadata export
@@ -69,7 +81,7 @@ nself hasura metadata apply
 Export metadata from Hasura instance to local files.
 
 ```bash
-nself hasura metadata export
+nself db hasura metadata export
 ```
 
 **Requirements:**
@@ -83,7 +95,7 @@ nself hasura metadata export
 
 **Example:**
 ```bash
-nself hasura metadata export
+nself db hasura metadata export
 ```
 
 ### metadata reload
@@ -91,7 +103,7 @@ nself hasura metadata export
 Reload Hasura metadata cache without restarting.
 
 ```bash
-nself hasura metadata reload
+nself db hasura metadata reload
 ```
 
 **Requirements:**
@@ -105,7 +117,7 @@ nself hasura metadata reload
 
 **Example:**
 ```bash
-nself hasura metadata reload
+nself db hasura metadata reload
 ```
 
 **Use cases:**
@@ -118,7 +130,7 @@ nself hasura metadata reload
 Open Hasura Console in browser.
 
 ```bash
-nself hasura console
+nself db hasura console
 ```
 
 **With Hasura CLI:**
@@ -133,7 +145,7 @@ nself hasura console
 **Examples:**
 ```bash
 # Open console
-nself hasura console
+nself db hasura console
 
 # Or access directly at
 # http://localhost:8080/console
@@ -165,17 +177,17 @@ HASURA_GRAPHQL_ENDPOINT=http://localhost:8080
 
 ```bash
 # 1. Make changes in Hasura Console
-nself hasura console
+nself db hasura console
 
 # 2. Export metadata after changes
-nself hasura metadata export
+nself db hasura metadata export
 
 # 3. Commit metadata to git
 git add hasura/metadata/
 git commit -m "Add users table and permissions"
 
 # 4. Apply to another environment
-nself hasura metadata apply
+nself db hasura metadata apply
 ```
 
 ### Reload After Schema Change
@@ -185,17 +197,17 @@ nself hasura metadata apply
 nself db migrate
 
 # Reload Hasura metadata
-nself hasura metadata reload
+nself db hasura metadata reload
 ```
 
 ### Troubleshoot Metadata Issues
 
 ```bash
 # Export current state
-nself hasura metadata export
+nself db hasura metadata export
 
 # Clear and reapply
-nself hasura metadata apply
+nself db hasura metadata apply
 ```
 
 ## Metadata Directory Structure
@@ -267,7 +279,7 @@ nself restart hasura
 
 ```bash
 # Export current metadata first
-nself hasura metadata export
+nself db hasura metadata export
 
 # Check for conflicts
 diff -r hasura/metadata/ /path/to/backup/

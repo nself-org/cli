@@ -2,9 +2,9 @@
 
 **Complete command hierarchy for nself v1.0**
 
-This is the authoritative command structure after consolidation from 79 → 31 top-level commands.
+This is the authoritative command structure after consolidation from 79 → 30 top-level commands.
 
-> **Note on backward-compatibility stubs**: ~37 deprecated command files exist alongside these 31 commands (e.g. `nself email`, `nself ssl`, `nself staging`, `nself helm`, `nself destroy`, `nself perf`, `nself backup`). They show a deprecation warning and delegate to the consolidated command. They are NOT part of the v1.0 command surface and will be removed in v1.0.0. If a command you use isn't listed here, check its wiki page for the replacement command.
+> **Note on backward-compatibility stubs**: ~38 deprecated command files exist alongside these 30 commands (e.g. `nself email`, `nself ssl`, `nself staging`, `nself helm`, `nself destroy`, `nself perf`, `nself backup`, `nself hasura`). They show a deprecation warning and delegate to the consolidated command. They are NOT part of the v1.0 command surface and will be removed in v1.0.0. If a command you use isn't listed here, check its wiki page for the replacement command.
 
 **New in v0.9.6:**
 
@@ -49,7 +49,7 @@ Restart all services or specific services.
 
 ---
 
-## Utilities (17 commands)
+## Utilities (16 commands)
 
 ### status
 ```
@@ -147,12 +147,6 @@ nself harden [--all] [--check]
 ```
 Security hardening for nself infrastructure.
 
-### hasura
-```
-nself hasura [console|migrations|metadata|seed]
-```
-Hasura console and migration management.
-
 ---
 
 ## Complex (9 commands)
@@ -175,9 +169,13 @@ Subcommands:
   types <language>                           # Generate type definitions
   inspect [table]                            # Database inspection
   data <import|export> [options]             # Data operations
+  hasura console                             # Open Hasura Console
+  hasura metadata apply                      # Apply Hasura metadata
+  hasura metadata export                     # Export Hasura metadata
+  hasura metadata reload                     # Reload metadata cache
 ```
 
-**Total subcommands:** 13
+**Total subcommands:** 17
 
 ---
 
@@ -701,6 +699,7 @@ Plugin Actions:
 | `clean` | `infra clean` | Cleanup is infrastructure |
 | `perf` | `service bench\|scale\|profile\|optimize` or `db migrate` | Distributed to service and db |
 | `backup` | `db backup\|restore`, `deploy rollback`, `infra reset\|clean` | Distributed across commands |
+| `hasura` | `db hasura` | Hasura management is database-adjacent |
 | `frontend` | `dev frontend` | Frontend is dev tooling |
 | `ci` | `dev ci` | CI/CD is dev tooling |
 | `docs` | `dev docs` | Documentation is dev tooling |
@@ -710,16 +709,16 @@ Plugin Actions:
 
 ## Summary Statistics
 
-- **Total Top-Level Commands:** 31 (was 79)
-- **Reduction:** 60.8%
+- **Total Top-Level Commands:** 30 (was 79)
+- **Reduction:** 62.0%
 - **Total Subcommands:** 300+
-- **Average Subcommands per TLC:** 9.7
+- **Average Subcommands per TLC:** 10.0
 
 **Category Breakdown:**
-- Core: 5 commands (16%)
-- Utilities: 17 commands (55%)
-- Complex: 9 commands (29%)
-- **Total: 5 + 17 + 9 = 31** ✓
+- Core: 5 commands (17%)
+- Utilities: 16 commands (53%)
+- Complex: 9 commands (30%)
+- **Total: 5 + 16 + 9 = 30** ✓
 
 **Most Complex Commands (by subcommand count):**
 

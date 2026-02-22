@@ -26,6 +26,7 @@ nself db <subcommand> [OPTIONS]
 | `optimize` | Database maintenance (vacuum, analyze) |
 | `reset` | Reset database to clean state |
 | `status` | Quick database status overview |
+| `hasura` | Hasura console and metadata management |
 
 ---
 
@@ -863,6 +864,68 @@ nself db shell                 # Interactive psql
 nself db data export users     # Export table
 nself db data anonymize        # Anonymize PII
 ```
+
+---
+
+## Hasura
+
+Manage Hasura Console and metadata. Hasura tracks schema, permissions, relationships, and computed fields as metadata. Keeping these alongside your database commands is a natural fit.
+
+### Hasura Commands
+
+```bash
+# Open Hasura Console (with migration tracking)
+nself db hasura console
+
+# Apply local metadata to Hasura
+nself db hasura metadata apply
+
+# Export Hasura metadata to local files
+nself db hasura metadata export
+
+# Reload Hasura metadata cache (no restart)
+nself db hasura metadata reload
+```
+
+### Prerequisites
+
+**Hasura CLI** (optional — required for `console` and `metadata` commands):
+
+```bash
+npm install -g hasura-cli
+hasura version
+```
+
+The `metadata reload` command uses `curl` and works without the Hasura CLI.
+
+### Common Workflows
+
+```bash
+# After database schema change — sync Hasura
+nself db migrate up
+nself db hasura metadata reload
+
+# Work with Hasura Console (changes tracked in metadata files)
+nself db hasura console
+
+# Export and commit metadata after console changes
+nself db hasura metadata export
+git add hasura/metadata/
+git commit -m "Update Hasura permissions"
+
+# Deploy metadata changes to another environment
+nself db hasura metadata apply
+```
+
+### Hasura Environment Variables
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `HASURA_GRAPHQL_ENDPOINT` | `http://localhost:8080` | Hasura API endpoint |
+| `HASURA_PORT` | `8080` | Hasura port |
+| `HASURA_GRAPHQL_ADMIN_SECRET` | (required) | Admin secret |
+
+> **Note:** `nself hasura` is a deprecated compatibility alias. Use `nself db hasura` going forward.
 
 ---
 

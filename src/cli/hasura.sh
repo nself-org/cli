@@ -32,7 +32,7 @@ hasura_metadata() {
 }
 
 metadata_apply() {
-  cli_header "nself hasura metadata apply"
+  cli_header "nself db hasura metadata apply"
   load_env_with_priority true
 
   local hasura_url="${HASURA_GRAPHQL_ENDPOINT:-http://localhost:${HASURA_PORT:-8080}}"
@@ -50,7 +50,7 @@ metadata_apply() {
 }
 
 metadata_export() {
-  cli_header "nself hasura metadata export"
+  cli_header "nself db hasura metadata export"
   load_env_with_priority true
 
   local hasura_url="${HASURA_GRAPHQL_ENDPOINT:-http://localhost:${HASURA_PORT:-8080}}"
@@ -68,7 +68,7 @@ metadata_export() {
 }
 
 metadata_reload() {
-  cli_header "nself hasura metadata reload"
+  cli_header "nself db hasura metadata reload"
   load_env_with_priority true
 
   local hasura_url="${HASURA_GRAPHQL_ENDPOINT:-http://localhost:${HASURA_PORT:-8080}}"
@@ -82,7 +82,7 @@ metadata_reload() {
 }
 
 hasura_console() {
-  cli_header "nself hasura console"
+  cli_header "nself db hasura console"
   load_env_with_priority true
 
   local hasura_url="${HASURA_GRAPHQL_ENDPOINT:-http://localhost:${HASURA_PORT:-8080}}"
@@ -95,14 +95,19 @@ hasura_console() {
 }
 
 hasura_usage() {
-  printf "\nUsage: nself hasura <subcommand>\n\n"
+  printf "\nUsage: nself db hasura <subcommand>\n\n"
   printf "SUBCOMMANDS:\n"
+  printf "  console            Open Hasura Console\n"
   printf "  metadata apply     Apply metadata\n"
   printf "  metadata export    Export metadata\n"
-  printf "  metadata reload    Reload metadata cache\n"
-  printf "  console            Open Hasura Console\n\n"
+  printf "  metadata reload    Reload metadata cache\n\n"
+  printf "NOTE: 'nself hasura' is deprecated. Use 'nself db hasura' instead.\n\n"
 }
 
 export -f cmd_hasura
 
-[[ "${BASH_SOURCE[0]}" == "${0}" ]] && cmd_hasura "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  printf "\033[0;33m⚠\033[0m  WARNING: 'nself hasura' is deprecated. Use 'nself db hasura' instead.\n" >&2
+  printf "   This compatibility wrapper will be removed in v1.0.0\n\n" >&2
+  cmd_hasura "$@"
+fi
