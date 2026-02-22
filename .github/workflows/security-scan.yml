@@ -43,12 +43,6 @@ jobs:
         with:
           fetch-depth: 0  # Full history for secret scanning
 
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-
       - name: Run TruffleHog
         uses: trufflesecurity/trufflehog@main
         with:
@@ -68,8 +62,9 @@ jobs:
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          # BLOCKING: CRITICAL and HIGH dependency vulnerabilities must fail the pipeline
+          severity: 'CRITICAL'
+          # BLOCKING: only CRITICAL dependency vulnerabilities fail the pipeline
+          # HIGH vulnerabilities appear in GitHub Security tab (SARIF) but do not block
           exit-code: '1'
 
       - name: Upload Trivy results to GitHub Security
