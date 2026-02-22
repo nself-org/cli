@@ -4,8 +4,8 @@
 >
 > ```bash
 > # Old (deprecated — removed in v1.0.0)
-> nself db hasura console
-> nself db hasura metadata apply
+> nself hasura console
+> nself hasura metadata apply
 >
 > # New
 > nself db hasura console
