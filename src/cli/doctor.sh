@@ -226,10 +226,10 @@ check_nself_config() {
     start_spinner "Checking essential variables"
     local missing_vars=()
 
-    [[ -z "$PROJECT_NAME" ]] && missing_vars+=("PROJECT_NAME")
-    [[ -z "$BASE_DOMAIN" ]] && missing_vars+=("BASE_DOMAIN")
-    [[ -z "$POSTGRES_PASSWORD" ]] && missing_vars+=("POSTGRES_PASSWORD")
-    [[ -z "$HASURA_GRAPHQL_ADMIN_SECRET" ]] && missing_vars+=("HASURA_GRAPHQL_ADMIN_SECRET")
+    [[ -z "${PROJECT_NAME:-}" ]] && missing_vars+=("PROJECT_NAME")
+    [[ -z "${BASE_DOMAIN:-}" ]] && missing_vars+=("BASE_DOMAIN")
+    [[ -z "${POSTGRES_PASSWORD:-}" ]] && missing_vars+=("POSTGRES_PASSWORD")
+    [[ -z "${HASURA_GRAPHQL_ADMIN_SECRET:-}" ]] && missing_vars+=("HASURA_GRAPHQL_ADMIN_SECRET")
 
     if [[ ${#missing_vars[@]} -eq 0 ]]; then
       stop_spinner "success" "Essential configuration variables are set"
@@ -240,7 +240,7 @@ check_nself_config() {
     fi
 
     # Check for password strength
-    if [[ -n "$POSTGRES_PASSWORD" ]] && [[ ${#POSTGRES_PASSWORD} -lt 12 ]]; then
+    if [[ -n "${POSTGRES_PASSWORD:-}" ]] && [[ ${#POSTGRES_PASSWORD} -lt 12 ]]; then
       log_warning "Postgres password is shorter than 12 characters"
       warning_found
       log_info "Run 'nself prod' to generate secure passwords"

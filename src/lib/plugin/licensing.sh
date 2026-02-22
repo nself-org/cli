@@ -41,7 +41,7 @@ _license_now() {
   date +%s
 }
 
-# _license_log — print to stderr without echo -e
+# _license_log — print to stderr using printf (portable)
 _license_log() {
   printf '%s\n' "$1" >&2
 }
