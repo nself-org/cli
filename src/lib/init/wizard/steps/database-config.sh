@@ -168,7 +168,11 @@ set -euo pipefail
 generate_password() {
   local length="${1:-16}"
   if command -v openssl >/dev/null 2>&1; then
-    openssl rand -base64 "$length" | tr -d "=+/" | head -c "$length"
+    # Request enough bytes to produce at least $length chars after filtering.
+    # Base64 of N bytes = ~4N/3 chars; extra 16 ensures we have enough after
+    # removing =, +, / and newlines (which openssl inserts every 64 chars).
+    local bytes=$(( (length * 4 / 3) + 16 ))
+    openssl rand -base64 "$bytes" | tr -d "=+/\n" | head -c "$length"
   else
     # Fallback to /dev/urandom
     LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$length"

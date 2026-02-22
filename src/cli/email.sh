@@ -24,5 +24,18 @@ email_main() {
   exec "${SCRIPT_DIR}/service.sh" email "$@"
 }
 
+# Backward-compatibility stubs — functionality now lives in 'nself service email'
+validate_config() {
+  exec "${SCRIPT_DIR}/service.sh" email validate "$@"
+}
+
+smtp_preflight_check() {
+  exec "${SCRIPT_DIR}/service.sh" email test "$@"
+}
+
+test_email() {
+  exec "${SCRIPT_DIR}/service.sh" email test "$@"
+}
+
 # Delegate to new command
 email_main "$@"

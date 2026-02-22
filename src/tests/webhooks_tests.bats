@@ -467,12 +467,13 @@ teardown() {
 @test "webhook payload validation with jq" {
     # Test that payloads are valid JSON
     local valid_payload='{"user_id": "123", "email": "test@example.com"}'
-    run echo "$valid_payload" | jq -e '.' >/dev/null
+    # Use jq directly with here-string — avoids pipe-inside-run status capture issue
+    run jq -e '.' <<< "$valid_payload"
     [ "$status" -eq 0 ]
 
     # Invalid JSON should fail
     local invalid_payload='{"user_id": "123", email: test@example.com}'
-    run echo "$invalid_payload" | jq -e '.' >/dev/null
+    run jq -e '.' <<< "$invalid_payload"
     [ "$status" -ne 0 ]
 }
 

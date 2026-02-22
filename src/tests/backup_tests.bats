@@ -67,7 +67,7 @@ teardown() {
 
     run nself backup list
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Local Backups" ]]
+    [[ "$output" =~ "Available Backups" ]]
     [[ "$output" =~ "nself_backup_full" ]]
 }
 

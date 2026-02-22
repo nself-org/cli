@@ -673,8 +673,9 @@ EOF
   [ "$status" -eq 0 ]
 
   # Verify we got all plugins
+  # Use echo (adds trailing newline) so wc -l counts correctly vs printf which strips it
   local count
-  count=$(printf "%s" "$output" | wc -l | tr -d ' ')
+  count=$(echo "$output" | wc -l | tr -d ' ')
   [ "$count" -eq 50 ]
 }
 

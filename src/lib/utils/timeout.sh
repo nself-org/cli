@@ -84,15 +84,23 @@ EOF
 # Usage: portable_stat_mtime <file>
 portable_stat_mtime() {
   local file="$1"
+  local result
 
-  # Try macOS/BSD stat first, then GNU stat
-  if stat -f %m "$file" 2>/dev/null; then
+  # Try GNU stat (Linux) — stat -c %Y returns a pure integer timestamp
+  result=$(stat -c %Y "$file" 2>/dev/null)
+  if [[ "$result" =~ ^[0-9]+$ ]]; then
+    printf "%s\n" "$result"
     return 0
-  elif stat -c %Y "$file" 2>/dev/null; then
-    return 0
-  else
-    return 1
   fi
+
+  # Try macOS/BSD stat — stat -f %m returns a pure integer timestamp
+  result=$(stat -f %m "$file" 2>/dev/null)
+  if [[ "$result" =~ ^[0-9]+$ ]]; then
+    printf "%s\n" "$result"
+    return 0
+  fi
+
+  return 1
 }
 
 # Export functions for use in other scripts

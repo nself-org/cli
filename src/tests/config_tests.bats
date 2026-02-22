@@ -556,6 +556,8 @@ teardown() {
 
 @test "constants readonly variables cannot be changed" {
   local original="${EXIT_SUCCESS}"
-  EXIT_SUCCESS=999 2>/dev/null || true
+  # Assignment to a readonly var aborts the shell under set -e even with || true.
+  # Run in a subshell so the error is contained; the parent's value is unchanged.
+  ( EXIT_SUCCESS=999 ) 2>/dev/null || true
   [[ "${EXIT_SUCCESS}" == "$original" ]]
 }

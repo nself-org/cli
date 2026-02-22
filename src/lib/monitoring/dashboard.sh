@@ -74,7 +74,7 @@ format_bytes() {
   local units=("B" "KB" "MB" "GB" "TB")
   local unit=0
 
-  while [[ "$bytes" -gt 1024 ]] && [[ "$unit" -lt 4 ]]; do
+  while [[ "$bytes" -ge 1024 ]] && [[ "$unit" -lt 4 ]]; do
     bytes=$((bytes / 1024))
     ((unit++))
   done

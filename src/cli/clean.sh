@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/../lib/utils/docker.sh"
 source "$SCRIPT_DIR/../lib/config/smart-defaults.sh"
 
 # Load environment with smart defaults
-load_env_with_defaults >/dev/null 2>&1
+load_env_with_defaults >/dev/null 2>&1 || true
 
 # Command function
 cmd_clean() {

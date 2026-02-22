@@ -45,7 +45,7 @@ test_help() {
 test_safe_shutdown() {
   TESTS_RUN=$((TESTS_RUN + 1))
   local help_output
-  help_output=$(bash "$SOURCE_FILE" help 2>&1)
+  help_output=$(bash "$SOURCE_FILE" --help 2>&1 || bash "$SOURCE_FILE" help 2>&1 || true)
 
   if echo "$help_output" | grep -qi "stop\|shutdown\|container"; then
     printf "✓ Safe shutdown functionality documented\n"

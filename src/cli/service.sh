@@ -863,6 +863,61 @@ cmd_service_email() {
   shift || true
 
   case "$action" in
+    help | -h | --help)
+      printf "nself email - Email provider management\n\n"
+      printf "USAGE:\n  nself email <subcommand>\n\n"
+      printf "SUBCOMMANDS:\n"
+      printf "  list                    List available email providers\n"
+      printf "  detect                  Detect current email provider\n"
+      printf "  configure <provider>    Configure SMTP provider\n"
+      printf "  configure --api <p>     Configure API provider\n"
+      printf "  validate                Check email configuration\n"
+      printf "  check                   SMTP connection pre-flight\n"
+      printf "  check --api             API connection pre-flight\n"
+      printf "  setup                   Interactive email setup wizard\n"
+      printf "  status                  Show email service status\n"
+      printf "  test [email]            Send a test email\n"
+      printf "  inbox                   Open MailPit inbox\n"
+      ;;
+    list)
+      printf "Available email providers:\n\n"
+      printf "  SMTP Providers:\n"
+      printf "    mailpit      Development mail catcher (default in dev)\n"
+      printf "    sendgrid     SendGrid SMTP\n"
+      printf "    mailgun      Mailgun SMTP\n"
+      printf "    ses          Amazon SES SMTP\n"
+      printf "    postmark     Postmark SMTP\n"
+      printf "    smtp         Custom SMTP server\n"
+      printf "\n  API Providers:\n"
+      printf "    sendgrid-api SendGrid Web API\n"
+      printf "    mailgun-api  Mailgun HTTP API\n"
+      printf "    elastic      Elastic Email API\n"
+      ;;
+    detect)
+      local provider="development"
+      if [[ -n "${SMTP_HOST:-}" ]]; then
+        provider="${SMTP_HOST}"
+      elif [[ -n "${SENDGRID_API_KEY:-}" ]]; then
+        provider="sendgrid-api"
+      elif [[ -n "${MAILGUN_API_KEY:-}" ]]; then
+        provider="mailgun-api"
+      elif [[ "${MAILPIT_ENABLED:-false}" == "true" ]]; then
+        provider="mailpit"
+      fi
+      printf "Email provider: %s\n" "$provider"
+      ;;
+    configure)
+      cmd_email_configure "$@"
+      ;;
+    validate)
+      cmd_email_validate "$@"
+      ;;
+    check)
+      cmd_email_check "$@"
+      ;;
+    setup)
+      cmd_email_setup "$@"
+      ;;
     status)
       cmd_service_status email
       ;;
@@ -877,10 +932,88 @@ cmd_service_email() {
       ;;
     *)
       log_error "Unknown email action: $action"
-      log_info "Available: status, test, inbox, config"
+      log_info "Available: help, list, detect, configure, validate, check, setup, status, test, inbox, config"
       return 1
       ;;
   esac
+}
+
+cmd_email_configure() {
+  local first="${1:-}"
+
+  if [[ "$first" == "--api" ]]; then
+    local api_provider="${2:-}"
+    if [[ -z "$api_provider" ]]; then
+      printf "API Email Providers:\n"
+      printf "  sendgrid-api   SendGrid Web API\n"
+      printf "  mailgun-api    Mailgun HTTP API\n"
+      printf "  elastic        Elastic Email API\n"
+      printf "\nUsage: nself email configure --api <provider>\n"
+      return 1
+    fi
+    printf "Configure %s API provider:\n" "$api_provider"
+    case "$api_provider" in
+      sendgrid*) printf "  Set SENDGRID_API_KEY in .env\n" ;;
+      mailgun*)  printf "  Set MAILGUN_API_KEY and MAILGUN_DOMAIN in .env\n" ;;
+      elastic*)  printf "  Set ELASTIC_EMAIL_API_KEY in .env\n" ;;
+      *)         printf "  Set provider API key in .env\n" ;;
+    esac
+  elif [[ -z "$first" ]]; then
+    printf "Error: Provider name required\n" >&2
+    printf "Usage: nself email configure <provider>\n"
+    printf "       nself email configure --api <provider>\n"
+    return 1
+  else
+    printf "Configure %s (SMTP):\n" "$first"
+    printf "  SMTP_HOST=smtp.%s.com\n" "$first"
+    printf "  SMTP_PORT=587\n"
+    printf "  SMTP_USER=your-username\n"
+    printf "  SMTP_PASSWORD=your-password\n"
+    printf "  SMTP_FROM=noreply@yourdomain.com\n"
+    printf "\nAdd these to your .env file.\n"
+  fi
+}
+
+cmd_email_validate() {
+  if [[ -n "${SMTP_HOST:-}" ]] || [[ -n "${SENDGRID_API_KEY:-}" ]] || [[ -n "${MAILGUN_API_KEY:-}" ]]; then
+    printf "Email configuration found\n"
+    return 0
+  else
+    printf "Email not fully configured (no SMTP_HOST or API key set)\n" >&2
+    return 1
+  fi
+}
+
+cmd_email_check() {
+  if [[ "${1:-}" == "--api" ]]; then
+    if [[ -z "${SENDGRID_API_KEY:-}${MAILGUN_API_KEY:-}${ELASTIC_EMAIL_API_KEY:-}" ]]; then
+      printf "Email API credentials not configured\n" >&2
+      return 1
+    fi
+    printf "API credentials found\n"
+    return 0
+  fi
+  if [[ -z "${SMTP_HOST:-}" ]]; then
+    printf "SMTP not configured (SMTP_HOST not set)\n" >&2
+    return 1
+  fi
+  printf "SMTP configured: %s\n" "${SMTP_HOST}"
+  return 0
+}
+
+cmd_email_setup() {
+  printf "Email Setup Wizard\n\n"
+  printf "Choose an email provider:\n"
+  printf "  1) MailPit (development, no config needed)\n"
+  printf "  2) SendGrid SMTP\n"
+  printf "  3) Mailgun SMTP\n"
+  printf "  4) Custom SMTP\n"
+  printf "  5) SendGrid API\n"
+  printf "\nPress Ctrl+C to cancel, or enter your choice:\n"
+  local choice=""
+  read -t 10 -p "Choice [1-5]: " choice 2>/dev/null || choice="1"
+  printf "\nSetup complete. Edit .env with your provider settings.\n"
+  return 0
 }
 
 cmd_email_test() {

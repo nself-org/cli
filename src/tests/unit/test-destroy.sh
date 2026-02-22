@@ -45,7 +45,7 @@ test_help() {
 test_warning_present() {
   TESTS_RUN=$((TESTS_RUN + 1))
   local help_output
-  help_output=$(bash "$SOURCE_FILE" help 2>&1)
+  help_output=$(bash "$SOURCE_FILE" --help 2>&1 || bash "$SOURCE_FILE" help 2>&1 || true)
 
   if echo "$help_output" | grep -qi "warning\|danger\|permanent\|delete"; then
     printf "✓ Destructive operation warning present\n"

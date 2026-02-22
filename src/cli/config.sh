@@ -1163,6 +1163,19 @@ cmd_config_validate() {
   local errors=0
   local warnings=0
 
+  # Load environment file so required-var checks read from .env, not just shell env
+  if [[ -f ".env" ]]; then
+    set -a
+    # shellcheck source=/dev/null
+    source ".env" 2>/dev/null || true
+    set +a
+  elif [[ -f ".env.dev" ]]; then
+    set -a
+    # shellcheck source=/dev/null
+    source ".env.dev" 2>/dev/null || true
+    set +a
+  fi
+
   # Basic configuration validation
   if [[ "$scope" == "all" ]] || [[ "$scope" == "config" ]]; then
     cli_info "Checking configuration files..."

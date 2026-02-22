@@ -881,6 +881,142 @@ next_run_time() {
 }
 
 # =============================================================================
+# VERIFY SUBCOMMAND
+# =============================================================================
+
+cmd_verify() {
+  local backup_name="${1:-}"
+
+  if [[ -z "$backup_name" ]]; then
+    cli_error "Backup name required"
+    printf "Usage: nself backup verify <backup_name>\n"
+    return 1
+  fi
+
+  cli_section "Verifying backup"
+  printf "\n"
+
+  local backup_path=""
+  if [[ -f "$BACKUP_DIR/$backup_name" ]]; then
+    backup_path="$BACKUP_DIR/$backup_name"
+  elif [[ -f "$backup_name" ]]; then
+    backup_path="$backup_name"
+  else
+    cli_error "Backup not found: $backup_name"
+    return 1
+  fi
+
+  cli_info "Checking: $backup_path"
+
+  if tar -tzf "$backup_path" >/dev/null 2>&1; then
+    cli_success "Backup is valid"
+    return 0
+  else
+    cli_error "Backup is corrupt or invalid"
+    return 1
+  fi
+}
+
+# =============================================================================
+# RETENTION SUBCOMMAND
+# =============================================================================
+
+cmd_retention() {
+  local action="${1:-status}"
+  shift || true
+
+  case "$action" in
+    status)
+      cli_section "Backup Retention Configuration"
+      printf "\n"
+      cli_list_item "Retention days:  ${BACKUP_RETENTION_DAYS:-30}"
+      cli_list_item "Maximum backups: ${BACKUP_RETENTION_COUNT:-10}"
+      cli_list_item "Minimum backups: ${BACKUP_RETENTION_MIN:-3}"
+      ;;
+    set)
+      local setting="${1:-}"
+      local value="${2:-}"
+
+      if [[ -z "$setting" ]] || [[ -z "$value" ]]; then
+        cli_error "Usage: nself backup retention set <days|count|min> <value>"
+        return 1
+      fi
+
+      local env_key=""
+      case "$setting" in
+        days) env_key="BACKUP_RETENTION_DAYS" ;;
+        count) env_key="BACKUP_RETENTION_COUNT" ;;
+        min) env_key="BACKUP_RETENTION_MIN" ;;
+        *)
+          cli_error "Unknown setting: $setting (valid: days, count, min)"
+          return 1
+          ;;
+      esac
+
+      if [[ -f ".env" ]]; then
+        local tmp_file
+        tmp_file=$(mktemp)
+        if grep -q "^${env_key}=" .env 2>/dev/null; then
+          grep -v "^${env_key}=" .env > "$tmp_file" || true
+        else
+          cp .env "$tmp_file"
+        fi
+        printf "%s=%s\n" "$env_key" "$value" >> "$tmp_file"
+        cp "$tmp_file" .env
+        rm -f "$tmp_file"
+      else
+        printf "%s=%s\n" "$env_key" "$value" > .env
+      fi
+
+      case "$setting" in
+        days)  cli_success "Retention days set to: $value" ;;
+        count) cli_success "Retention count set to: $value" ;;
+        min)   cli_success "Retention minimum set to: $value" ;;
+      esac
+      ;;
+    *)
+      cli_error "Unknown retention action: $action (valid: status, set)"
+      return 1
+      ;;
+  esac
+}
+
+# =============================================================================
+# CLOUD SUBCOMMAND
+# =============================================================================
+
+cmd_cloud() {
+  local action="${1:-status}"
+  shift || true
+
+  case "$action" in
+    status)
+      cli_section "Cloud Backup Status"
+      printf "\n"
+      local provider="${BACKUP_CLOUD_PROVIDER:-none}"
+      cli_list_item "Provider: $provider"
+      if [[ "$provider" == "none" ]] || [[ -z "$provider" ]]; then
+        cli_info "No cloud provider configured"
+        cli_info "Configure with: nself backup cloud configure <s3|gcs|azure|b2>"
+      fi
+      ;;
+    configure)
+      local provider="${1:-}"
+      if [[ -z "$provider" ]]; then
+        cli_error "Provider required: nself backup cloud configure <s3|gcs|azure|b2>"
+        return 1
+      fi
+      cli_info "Configure $provider cloud backup in .env"
+      cli_list_item "BACKUP_CLOUD_PROVIDER=$provider"
+      ;;
+    *)
+      cli_error "Unknown cloud action: $action (valid: status, configure)"
+      return 1
+      ;;
+  esac
+}
+
+# =============================================================================
 # CLEAN SUBCOMMAND (from clean.sh)
 # =============================================================================
 
@@ -1015,6 +1151,15 @@ main() {
       ;;
     clean)
       cmd_clean "$@"
+      ;;
+    verify)
+      cmd_verify "$@"
+      ;;
+    retention)
+      cmd_retention "$@"
+      ;;
+    cloud)
+      cmd_cloud "$@"
       ;;
     schedule)
       cmd_schedule "$@"

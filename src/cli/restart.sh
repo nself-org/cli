@@ -18,7 +18,7 @@ source "$CLI_SCRIPT_DIR/../lib/utils/platform-compat.sh" 2>/dev/null || true
 # Load environment with smart defaults
 if [[ -f "$CLI_SCRIPT_DIR/../lib/config/smart-defaults.sh" ]]; then
   source "$CLI_SCRIPT_DIR/../lib/config/smart-defaults.sh"
-  load_env_with_defaults >/dev/null 2>&1
+  load_env_with_defaults >/dev/null 2>&1 || true
 fi
 
 # Command function

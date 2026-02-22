@@ -44,4 +44,13 @@ apple_refresh_token() {
   oauth_refresh_token "$APPLE_TOKEN_ENDPOINT" "$client_id" "$client_secret" "$refresh_token"
 }
 
-export -f apple_get_auth_url apple_exchange_code apple_get_user_info apple_refresh_token
+# Usage: apple_revoke_token <client_id> <client_secret> <token>
+apple_revoke_token() {
+  local client_id="$1"
+  local client_secret="$2"
+  local token="$3"
+
+  oauth_revoke_token "$APPLE_TOKEN_ENDPOINT" "$client_id" "$client_secret" "$token"
+}
+
+export -f apple_get_auth_url apple_exchange_code apple_get_user_info apple_refresh_token apple_revoke_token
