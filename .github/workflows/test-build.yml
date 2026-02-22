@@ -279,30 +279,27 @@ jobs:
           mkdir -p integration-test
           cd integration-test
 
-          # Create comprehensive .env
-          cat > .env <<EOF
-          PROJECT_NAME=integrationtest
-          BASE_DOMAIN=localhost
-          ENV=dev
-          POSTGRES_PASSWORD=ci-test-postgres-secret
-          HASURA_GRAPHQL_ADMIN_SECRET=ci-test-hasura-secret
-
-          # Services
-          NGINX_ENABLED=true
-          POSTGRES_ENABLED=true
-          REDIS_ENABLED=true
-          HASURA_ENABLED=true
-          AUTH_ENABLED=true
-          STORAGE_ENABLED=true
-
-          # Ports
-          NGINX_PORT=8080
-          POSTGRES_PORT=5433
-          REDIS_PORT=6380
-          HASURA_PORT=8081
-          AUTH_PORT=4001
-          STORAGE_PORT=5001
-          EOF
+          # Create comprehensive .env (using printf to avoid heredoc indentation
+          # adding leading spaces to each line, which breaks grep-based env parsing)
+          {
+            printf 'PROJECT_NAME=integrationtest\n'
+            printf 'BASE_DOMAIN=localhost\n'
+            printf 'ENV=dev\n'
+            printf 'POSTGRES_PASSWORD=ci-test-postgres-secret\n'
+            printf 'HASURA_GRAPHQL_ADMIN_SECRET=ci-test-hasura-secret\n'
+            printf 'NGINX_ENABLED=true\n'
+            printf 'POSTGRES_ENABLED=true\n'
+            printf 'REDIS_ENABLED=true\n'
+            printf 'HASURA_ENABLED=true\n'
+            printf 'AUTH_ENABLED=true\n'
+            printf 'STORAGE_ENABLED=true\n'
+            printf 'NGINX_PORT=8080\n'
+            printf 'POSTGRES_PORT=5433\n'
+            printf 'REDIS_PORT=6380\n'
+            printf 'HASURA_PORT=8081\n'
+            printf 'AUTH_PORT=4001\n'
+            printf 'STORAGE_PORT=5001\n'
+          } > .env
 
           # ADVISORY: Build may exit non-zero in CI without full Docker runtime
           # We validate success by checking generated artifacts below
