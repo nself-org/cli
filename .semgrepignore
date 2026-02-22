@@ -18,3 +18,12 @@ src/lib/build/core-modules/nginx-generator.sh
 src/lib/build/core-modules/nginx-setup.sh
 src/lib/services/nginx-generator.sh
 src/lib/ssl/ssl.sh
+
+# Service compose modules — nginx.sh outputs nginx config via heredocs
+# $host / $proxy_host are nginx variables inside heredoc strings, not shell vars
+src/services/docker/compose-modules/nginx.sh
+
+# Release artifacts — Dockerfiles intentionally run as root (legacy/minimal images)
+# These are versioned release bundles, not production deployment targets
+.releases/docker/Dockerfile
+.releases/v0.3.9/Dockerfile
