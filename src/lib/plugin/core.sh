@@ -888,18 +888,82 @@ plugin_security_scan() {
   return 0
 }
 
-# Validate plugin signature (stub for future implementation)
+# nself release signing identity (placeholder — replace with real key email/fingerprint
+# once the nself signing key pair is generated and published to keys.openpgp.org).
+NSELF_SIGNING_KEY="${NSELF_SIGNING_KEY:-nself-releases@nself.org}"
+
+# Keyserver used to import the nself signing key when it is not already in the local
+# GPG keyring.
+NSELF_GPG_KEYSERVER="${NSELF_GPG_KEYSERVER:-hkps://keys.openpgp.org}"
+
+# Validate the GPG detached signature of a plugin tarball.
+#
+# Usage:
+#   plugin_validate_signature <plugin_name> <tarball_path> [sig_path]
+#
+# Arguments:
+#   plugin_name   Human-readable name used in log messages.
+#   tarball_path  Absolute or relative path to the downloaded tarball.
+#   sig_path      Optional path to the detached .asc signature file.
+#                 Defaults to <tarball_path>.asc when omitted.
+#
+# Returns:
+#   0  Signature is valid (or gpg is absent — non-blocking warning).
+#   1  Signature is present but invalid.
 plugin_validate_signature() {
   local plugin_name="$1"
-  local signature="${2:-}"
+  local tarball="${2:-}"
+  local sig_file="${3:-}"
 
-  if [[ -z "$signature" ]]; then
-    printf "Info: Plugin not signed\n"
+  # ── 1. Require a tarball path ─────────────────────────────────────────────
+  if [[ -z "$tarball" ]]; then
+    printf "Info: No tarball path supplied to plugin_validate_signature — skipping\n"
     return 0
   fi
 
-  # TODO (v1.0): Implement GPG signature verification
-  # See: .ai/roadmap/v1.0/deferred-features.md (SECURITY-001)
-  printf "Info: Signature validation not yet implemented\n"
-  return 0
+  # ── 2. Derive default sig path when not provided ──────────────────────────
+  if [[ -z "$sig_file" ]]; then
+    sig_file="${tarball}.asc"
+  fi
+
+  # ── 3. Skip silently when no signature file is present ────────────────────
+  if [[ ! -f "$sig_file" ]]; then
+    printf "Info: No signature file found for '%s' — skipping GPG verification\n" "$plugin_name"
+    return 0
+  fi
+
+  # ── 4. Require gpg; warn but do not block when absent ─────────────────────
+  if ! command -v gpg >/dev/null 2>&1; then
+    printf "Warning: gpg not found — cannot verify signature for '%s'\n" "$plugin_name"
+    printf "         Install gpg to enable signature verification.\n"
+    return 0
+  fi
+
+  # ── 5. Import the nself signing key if it is not already trusted ──────────
+  local key_in_ring
+  key_in_ring=$(gpg --list-keys "$NSELF_SIGNING_KEY" 2>/dev/null)
+  if [[ -z "$key_in_ring" ]]; then
+    printf "Info: Importing nself signing key from %s ...\n" "$NSELF_GPG_KEYSERVER"
+    if ! gpg --keyserver "$NSELF_GPG_KEYSERVER" \
+             --recv-keys "$NSELF_SIGNING_KEY" >/dev/null 2>&1; then
+      printf "Warning: Could not import nself signing key — skipping verification\n"
+      printf "         Ensure network access to %s\n" "$NSELF_GPG_KEYSERVER"
+      return 0
+    fi
+  fi
+
+  # ── 6. Verify the detached signature ─────────────────────────────────────
+  local gpg_output
+  if gpg_output=$(gpg --verify "$sig_file" "$tarball" 2>&1); then
+    printf "Info: GPG signature verified for '%s'\n" "$plugin_name"
+    return 0
+  else
+    printf "Error: GPG signature verification FAILED for '%s'\n" "$plugin_name" >&2
+    printf "       Signature file : %s\n" "$sig_file" >&2
+    printf "       Tarball        : %s\n" "$tarball" >&2
+    printf "       GPG output:\n%s\n" "$gpg_output" >&2
+    printf "       Do NOT install this plugin — the download may be corrupted\n" >&2
+    printf "       or tampered with. Report this at https://github.com/nself-org/cli/issues\n" >&2
+    return 1
+  fi
 }
