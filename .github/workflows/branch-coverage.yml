@@ -7,8 +7,8 @@ on:
       - 'src/lib/**/*.sh'
       - 'src/cli/**/*.sh'
       - 'src/tests/**/*.sh'
-      - 'scripts/branch-coverage-analysis.sh'
-      - 'scripts/show-untested-branches.sh'
+      - 'src/tools/qa/branch-coverage-analysis.sh'
+      - 'src/tools/qa/show-untested-branches.sh'
       - '.github/workflows/branch-coverage.yml'
   pull_request:
     branches: [ main, develop ]
@@ -16,8 +16,8 @@ on:
       - 'src/lib/**/*.sh'
       - 'src/cli/**/*.sh'
       - 'src/tests/**/*.sh'
-      - 'scripts/branch-coverage-analysis.sh'
-      - 'scripts/show-untested-branches.sh'
+      - 'src/tools/qa/branch-coverage-analysis.sh'
+      - 'src/tools/qa/show-untested-branches.sh'
       - '.github/workflows/branch-coverage.yml'
 
 jobs:
@@ -31,14 +31,14 @@ jobs:
 
       - name: Set up environment
         run: |
-          chmod +x scripts/branch-coverage-analysis.sh
-          chmod +x scripts/show-untested-branches.sh
+          chmod +x src/tools/qa/branch-coverage-analysis.sh
+          chmod +x src/tools/qa/show-untested-branches.sh
           mkdir -p .coverage
 
       - name: Run branch coverage analysis
         id: coverage
         run: |
-          bash scripts/branch-coverage-analysis.sh > .coverage/analysis-output.txt 2>&1
+          bash src/tools/qa/branch-coverage-analysis.sh > .coverage/analysis-output.txt 2>&1
           cat .coverage/analysis-output.txt
 
       - name: Check coverage threshold
@@ -55,7 +55,7 @@ jobs:
               echo "❌ Branch coverage ${COVERAGE}% is below threshold ${THRESHOLD}%"
               echo ""
               echo "Untested branches:"
-              bash scripts/show-untested-branches.sh
+              bash src/tools/qa/show-untested-branches.sh
               exit 1
             else
               echo "✅ Branch coverage ${COVERAGE}% meets threshold ${THRESHOLD}%"
@@ -65,7 +65,7 @@ jobs:
           fi
 
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: branch-coverage-reports
