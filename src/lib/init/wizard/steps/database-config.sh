@@ -5,9 +5,6 @@
 
 # Configure database settings
 wizard_database_config() {
-
-set -euo pipefail
-
   local config_array_name="$1"
   local project_name="${2:-myproject}"
 
@@ -40,7 +37,10 @@ set -euo pipefail
   else
     prompt_password "Database password" postgres_password
   fi
-  eval "$config_array_name+=('POSTGRES_PASSWORD=$postgres_password')"
+  # Escape single quotes in password to prevent eval injection
+  local _safe_pw
+  _safe_pw=$(printf '%s' "$postgres_password" | sed "s/'/'\\\\''/g")
+  eval "$config_array_name+=('POSTGRES_PASSWORD=$_safe_pw')"
 
   echo ""
 

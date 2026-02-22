@@ -658,8 +658,8 @@ show_service_detail() {
 
   local container_name="${PROJECT_NAME:-nself}_${service_name}"
 
-  # Check if container exists
-  if ! docker ps -a --filter "name=$container_name" --format "{{.Names}}" | grep -q "$container_name"; then
+  # Check if container exists (grep -Fx: fixed-string, exact-line to avoid partial matches)
+  if ! docker ps -a --filter "name=$container_name" --format "{{.Names}}" | grep -Fxq "$container_name"; then
     log_error "Service '$service_name' not found"
     log_info "Available services: $(compose config --services 2>/dev/null | xargs)"
     return 1

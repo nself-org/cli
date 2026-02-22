@@ -836,7 +836,7 @@ _remove_server_from_registry() {
 
   local skip=0
   while IFS= read -r line; do
-    if echo "$line" | grep -q "- name: $name$"; then
+    if [[ "$line" == *"- name: $name" ]]; then
       skip=6 # Skip this entry (6 lines)
       continue
     fi
@@ -863,7 +863,7 @@ _get_server_from_registry() {
   local provider="" server_id="" ip="" region="" size=""
 
   while IFS= read -r line; do
-    if echo "$line" | grep -q "- name: $name$"; then
+    if [[ "$line" == *"- name: $name" ]]; then
       found=1
       continue
     fi

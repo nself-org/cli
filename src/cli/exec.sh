@@ -147,8 +147,8 @@ cmd_exec() {
     return 1
   fi
 
-  # Check if service is running
-  if ! compose ps --services --filter "status=running" 2>/dev/null | grep -q "^${service}$"; then
+  # Check if service is running (grep -Fx: fixed-string exact line to avoid regex metachar issues)
+  if ! compose ps --services --filter "status=running" 2>/dev/null | grep -Fxq "${service}"; then
     log_warning "Service '$service' is not running"
     echo ""
     echo "Start the service with: nself start"

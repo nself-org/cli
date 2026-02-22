@@ -84,8 +84,8 @@ check_service_health() {
 
   local start_time=$(date +%s%N)
 
-  # Check if container exists and is running
-  if docker ps --format "{{.Names}}" 2>/dev/null | grep -q "^${container}$"; then
+  # Check if container exists and is running (grep -Fx: fixed-string exact line)
+  if docker ps --format "{{.Names}}" 2>/dev/null | grep -Fxq "${container}"; then
     # Check health status from Docker
     local health=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "none")
 
