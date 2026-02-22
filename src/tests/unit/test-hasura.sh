@@ -42,7 +42,7 @@ assert_contains() {
 
   TESTS_RUN=$((TESTS_RUN + 1))
 
-  if echo "$actual" | grep -q "$expected"; then
+  if grep -q "$expected" <<< "$actual"; then
     TESTS_PASSED=$((TESTS_PASSED + 1))
     printf "✓ %s\n" "$test_name"
     return 0
@@ -141,7 +141,7 @@ test_invalid_subcommand() {
   output=$(bash "$CLI_DIR/hasura.sh" invalid-command-xyz 2>&1 || true)
   # Should show error or help
   TESTS_RUN=$((TESTS_RUN + 1))
-  if echo "$output" | grep -qiE "unknown|invalid|error|usage|help"; then
+  if grep -qiE "unknown|invalid|error|usage|help" <<< "$output"; then
     TESTS_PASSED=$((TESTS_PASSED + 1))
     printf "✓ Invalid subcommand handled\n"
   else

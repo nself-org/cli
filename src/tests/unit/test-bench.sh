@@ -30,7 +30,7 @@ test_deprecation_warning() {
   local output
   output=$(bash "$SOURCE_FILE" --help 2>&1 || bash "$SOURCE_FILE" help 2>&1 || true)
 
-  if echo "$output" | grep -qi "usage\|subcommand\|option\|nself"; then
+  if grep -qi "usage\|subcommand\|option\|nself" <<< "$output"; then
     printf "✓ Deprecation warning present\n"
     TESTS_PASSED=$((TESTS_PASSED + 1))
     return 0
@@ -46,7 +46,7 @@ test_redirect() {
   local output
   output=$(bash "$SOURCE_FILE" --help 2>&1 || bash "$SOURCE_FILE" help 2>&1 || true)
 
-  if echo "$output" | grep -qi "run\|baseline\|stress\|benchmark"; then
+  if grep -qi "run\|baseline\|stress\|benchmark" <<< "$output"; then
     printf "✓ Redirects to 'nself perf bench'\n"
     TESTS_PASSED=$((TESTS_PASSED + 1))
     return 0

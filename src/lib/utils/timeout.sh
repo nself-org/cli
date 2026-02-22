@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
 
-
 # Portable timeout implementation for cross-platform compatibility
 # Works with Bash 3.2+ and on systems without GNU timeout
 
 # Check if we have a native timeout command
 if command -v timeout >/dev/null 2>&1; then
-
-set -euo pipefail
-
   TIMEOUT_CMD="timeout"
 elif command -v gtimeout >/dev/null 2>&1; then
   TIMEOUT_CMD="gtimeout"
@@ -61,12 +57,13 @@ EOF
   ) &
   local timeout_pid=$!
 
-  # Wait for command to complete
+  # Wait for command to complete — preserve actual exit code
   local exit_code=0
-  if wait "$cmd_pid" 2>/dev/null; then
-    exit_code=0
-  else
-    exit_code=124 # Standard timeout exit code
+  wait "$cmd_pid" 2>/dev/null || exit_code=$?
+  # If killed by signal (exit >= 128: e.g. SIGTERM=143, SIGKILL=137),
+  # use 124 (standard timeout exit code) since our monitor likely killed it
+  if [[ $exit_code -ge 128 ]]; then
+    exit_code=124
   fi
 
   # Clean up timeout monitor

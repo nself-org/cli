@@ -604,6 +604,11 @@ cmd_service_status() {
 
   printf "\n=== %s Status ===\n\n" "$service"
 
+  if ! command -v docker >/dev/null 2>&1; then
+    log_warning "Docker not available - cannot query container status"
+    return 0
+  fi
+
   docker ps --filter "name=$container_name" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 }
 

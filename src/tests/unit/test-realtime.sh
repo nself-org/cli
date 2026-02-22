@@ -30,7 +30,7 @@ test_deprecation_warning() {
   local output
   output=$(bash "$SOURCE_FILE" 2>&1 || true)
 
-  if echo "$output" | grep -qi "deprecat"; then
+  if grep -qi "deprecat" <<< "$output"; then
     printf "✓ Deprecation warning present\n"
     TESTS_PASSED=$((TESTS_PASSED + 1))
     return 0
@@ -46,7 +46,7 @@ test_new_command_mentioned() {
   local output
   output=$(bash "$SOURCE_FILE" 2>&1 || true)
 
-  if echo "$output" | grep -q "service realtime"; then
+  if grep -q "service realtime" <<< "$output"; then
     printf "✓ Mentions 'nself service realtime'\n"
     TESTS_PASSED=$((TESTS_PASSED + 1))
     return 0

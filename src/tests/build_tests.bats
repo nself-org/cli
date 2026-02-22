@@ -22,6 +22,10 @@ teardown() {
 }
 
 @test "build command completes without hanging" {
+    # Skip if Docker is unavailable — build.sh requires Docker to run
+    command -v docker >/dev/null 2>&1 || skip "Docker not installed"
+    portable_timeout 5 docker info >/dev/null 2>&1 || skip "Docker daemon not running"
+
     # Initialize project
     nself init 2>/dev/null || true
 
@@ -38,6 +42,10 @@ teardown() {
 }
 
 @test "build command handles missing generate_password function" {
+    # Skip if Docker is unavailable — build.sh requires Docker to run
+    command -v docker >/dev/null 2>&1 || skip "Docker not installed"
+    portable_timeout 5 docker info >/dev/null 2>&1 || skip "Docker daemon not running"
+
     # Initialize project
     nself init 2>/dev/null || true
 
@@ -56,6 +64,10 @@ teardown() {
 }
 
 @test "compose generation works with proper environment loading" {
+    # Skip if Docker is unavailable — build.sh requires Docker to run
+    command -v docker >/dev/null 2>&1 || skip "Docker not installed"
+    portable_timeout 5 docker info >/dev/null 2>&1 || skip "Docker daemon not running"
+
     # Initialize project
     nself init 2>/dev/null || true
 
@@ -72,6 +84,10 @@ teardown() {
 }
 
 @test "service generation has timeout protection" {
+    # Skip if Docker is unavailable — build.sh requires Docker to run
+    command -v docker >/dev/null 2>&1 || skip "Docker not installed"
+    portable_timeout 5 docker info >/dev/null 2>&1 || skip "Docker daemon not running"
+
     # Initialize project
     nself init 2>/dev/null || true
 

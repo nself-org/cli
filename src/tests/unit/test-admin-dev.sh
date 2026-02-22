@@ -42,7 +42,7 @@ assert_contains() {
 
   TESTS_RUN=$((TESTS_RUN + 1))
 
-  if echo "$actual" | grep -q "$expected"; then
+  if [[ "$actual" == *"$expected"* ]]; then
     TESTS_PASSED=$((TESTS_PASSED + 1))
     printf "✓ %s\n" "$test_name"
     return 0

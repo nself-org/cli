@@ -31,7 +31,7 @@ test_help() {
   # Try --help flag first, then help subcommand
   help_output=$(bash "$SOURCE_FILE" --help 2>&1 || bash "$SOURCE_FILE" help 2>&1 || true)
 
-  if echo "$help_output" | grep -qi "usage\|command\|help"; then
+  if grep -qi "usage\|command\|help" <<< "$help_output"; then
     printf "✓ Help text present\n"
     TESTS_PASSED=$((TESTS_PASSED + 1))
     return 0
@@ -47,7 +47,7 @@ test_url_listing() {
   local help_output
   help_output=$(bash "$SOURCE_FILE" --help 2>&1 || bash "$SOURCE_FILE" help 2>&1 || true)
 
-  if echo "$help_output" | grep -qi "service\|access\|endpoint"; then
+  if grep -qi "service\|access\|endpoint" <<< "$help_output"; then
     printf "✓ Service URL listing documented\n"
     TESTS_PASSED=$((TESTS_PASSED + 1))
     return 0

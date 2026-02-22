@@ -75,8 +75,8 @@ jobs:
           ENV=dev
           EOF
 
-          # Run build and check results
-          if bash $GITHUB_WORKSPACE/src/cli/build.sh; then
+          # Run build and check results (--allow-insecure lets CI proceed without prod secrets)
+          if bash $GITHUB_WORKSPACE/src/cli/build.sh --allow-insecure; then
             echo "::notice::Build succeeded"
           else
             build_exit=$?
@@ -161,7 +161,7 @@ jobs:
           EOF
 
           # Run build (may fail in CI without Docker, that's expected)
-          if bash $GITHUB_WORKSPACE/src/cli/build.sh; then
+          if bash $GITHUB_WORKSPACE/src/cli/build.sh --allow-insecure; then
             # Check generated files if build succeeded
             [[ -f "docker-compose.yml" ]] || exit 1
             [[ -d "nginx" ]] || exit 1
