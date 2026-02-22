@@ -12,7 +12,9 @@ setup() {
     export PATH="$NSELF_PATH:$PATH"
 
     # Initialize minimal nself project for backup testing
-    nself init
+    nself init 2>/dev/null || true
+    # Ensure required secrets are set for any build/validate steps
+    printf '\nPOSTGRES_PASSWORD=test-postgres-secret-ci\nHASURA_GRAPHQL_ADMIN_SECRET=test-admin-secret-ci\n' >> .env 2>/dev/null || true
 
     # Create backup directory
     export BACKUP_DIR="$TEST_DIR/backups"
