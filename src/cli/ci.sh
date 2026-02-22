@@ -299,7 +299,6 @@ EOF
   when: manual
   script:
   - |
-    # shellcheck disable=SC2259
     ssh \$PROD_USER@\$PROD_HOST << 'SSHEOF'
         cd /var/www/$project_name
         nself db backup create pre-deploy

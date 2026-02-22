@@ -195,8 +195,8 @@ check_running_services() {
     running_containers=$(docker ps --filter "label=com.nself.project" --format "{{.Names}}" 2>/dev/null | wc -l)
 
     if [[ "$running_containers" -gt 0 ]]; then
-      log_info "Found $running_containers running nself container(s)"
-      echo "Consider 'nself stop' before reinitializing" >&2
+      printf "ℹ Found %s running nself container(s)\n" "$running_containers" >&2
+      printf "Consider 'nself stop' before reinitializing\n" >&2
     fi
   fi
 
