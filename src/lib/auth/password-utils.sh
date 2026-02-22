@@ -105,9 +105,10 @@ generate_password() {
   local length="${1:-16}"
 
   if command -v openssl >/dev/null 2>&1; then
-    openssl rand -base64 "$length" | tr -d "=+/" | cut -c1-"$length"
+    local bytes=$(( (length * 4 / 3) + 16 ))
+    openssl rand -base64 "$bytes" | tr -d "=+/\n" | head -c "$length"
   else
-    head -c "$length" /dev/urandom | base64 | tr -d "=+/" | cut -c1-"$length"
+    LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$length"
   fi
 }
 

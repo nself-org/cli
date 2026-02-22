@@ -414,7 +414,7 @@ start_postgres() {
 
     encryption_init
 
-    local special="Test!@#$%^&*(){}[]|\\:;\"'<>,.?/~`"
+    local special="Test!@#$%^&*(){}[]|\\:;\"'<>,.?/~\`"
     local encrypted
     encrypted=$(encryption_encrypt "$special")
 

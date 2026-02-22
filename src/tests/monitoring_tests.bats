@@ -77,8 +77,8 @@ teardown() {
     # Create state with recent alert (within cooldown)
     echo "{\"test_key\":$now}" > "$ALERT_STATE_FILE"
 
-    should_send_alert "test_key" 300
-    [ $? -eq 1 ]  # Should not send (within cooldown)
+    run should_send_alert "test_key" 300
+    [ "$status" -eq 1 ]  # Should not send (within cooldown)
 }
 
 @test "alerting: update_alert_state updates timestamp" {
@@ -101,8 +101,8 @@ teardown() {
     mkdir -p "$(dirname "$ALERT_LOG")"
     touch "$ALERT_LOG"
 
-    send_email_alert "Test Subject" "Test Body"
-    [ $? -eq 1 ]  # Should fail without email configured
+    run send_email_alert "Test Subject" "Test Body"
+    [ "$status" -eq 1 ]  # Should fail without email configured
 }
 
 @test "alerting: send_slack_alert requires webhook URL" {
@@ -113,8 +113,8 @@ teardown() {
     mkdir -p "$(dirname "$ALERT_LOG")"
     touch "$ALERT_LOG"
 
-    send_slack_alert "Test message" "warning"
-    [ $? -eq 1 ]  # Should fail without webhook
+    run send_slack_alert "Test message" "warning"
+    [ "$status" -eq 1 ]  # Should fail without webhook
 }
 
 @test "alerting: send_discord_alert requires webhook URL" {
@@ -125,8 +125,8 @@ teardown() {
     mkdir -p "$(dirname "$ALERT_LOG")"
     touch "$ALERT_LOG"
 
-    send_discord_alert "Test message" "warning"
-    [ $? -eq 1 ]  # Should fail without webhook
+    run send_discord_alert "Test message" "warning"
+    [ "$status" -eq 1 ]  # Should fail without webhook
 }
 
 @test "alerting: send_pagerduty_alert requires API key" {
@@ -137,8 +137,8 @@ teardown() {
     mkdir -p "$(dirname "$ALERT_LOG")"
     touch "$ALERT_LOG"
 
-    send_pagerduty_alert "Test message" "warning"
-    [ $? -eq 1 ]  # Should fail without API key
+    run send_pagerduty_alert "Test message" "warning"
+    [ "$status" -eq 1 ]  # Should fail without API key
 }
 
 @test "alerting: monitor_resources checks CPU threshold" {
