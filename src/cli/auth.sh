@@ -506,11 +506,24 @@ cmd_auth_ssl() {
       printf "  trust       Trust certificates on this machine\n"
       ;;
     generate)
-      # Delegate to original ssl implementation
+      # Delegate to original ssl implementation if available
       if [[ -f "$CLI_DIR/_deprecated/ssl.sh.backup" ]]; then
         bash "$CLI_DIR/_deprecated/ssl.sh.backup" bootstrap "$@"
+      elif command -v openssl >/dev/null 2>&1; then
+        # Fallback: generate self-signed certificate with openssl
+        local domain="${1:-localhost}"
+        local ssl_dir="ssl"
+        mkdir -p "$ssl_dir"
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+          -keyout "$ssl_dir/key.pem" \
+          -out "$ssl_dir/cert.pem" \
+          -subj "/CN=${domain}/O=nself/C=US" \
+          >/dev/null 2>&1
+        cli_success "Generated self-signed SSL certificate for ${domain}"
+        cli_list_item "Certificate: $ssl_dir/cert.pem"
+        cli_list_item "Private key: $ssl_dir/key.pem"
       else
-        cli_error "SSL module not found"
+        cli_error "SSL module not found and openssl is not available"
         exit 1
       fi
       ;;

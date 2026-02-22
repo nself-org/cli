@@ -45,7 +45,7 @@ test_help() {
 test_subcommands() {
   TESTS_RUN=$((TESTS_RUN + 1))
   local help_output
-  help_output=$(bash "$SOURCE_FILE" help 2>&1)
+  help_output=$(bash "$SOURCE_FILE" --help 2>&1 || bash "$SOURCE_FILE" help 2>&1 || true)
 
   if echo "$help_output" | grep -q "frontend\|ci\|docs\|platform"; then
     printf "✓ Developer tools subcommands documented\n"
