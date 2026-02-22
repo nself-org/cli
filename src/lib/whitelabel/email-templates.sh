@@ -793,15 +793,11 @@ EOF
 
 html_escape() {
   local input="$1"
-  local result="$input"
   # Escape HTML special characters to prevent XSS
-  # Pure bash string replacement avoids sed/pipe issues with set -e/pipefail
-  result="${result//&/&amp;}"
-  result="${result//</&lt;}"
-  result="${result//>/&gt;}"
-  result="${result//\"/&quot;}"
-  result="${result//\'/&#39;}"
-  printf "%s" "$result"
+  # sed is used instead of bash ${//} replacement because bash 5.1+ treats & in
+  # the replacement string as "the matched text" (like in sed), which would turn
+  # &lt; into <lt; on Ubuntu. sed's \& is the portable cross-platform solution.
+  printf "%s" "$input" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g; s/'\''/\&#39;/g'
 }
 
 sanitize_variable_name() {
@@ -867,8 +863,16 @@ substitute_template_variables() {
       local escaped_value
       escaped_value=$(html_escape "$var_value")
 
-      # Replace all occurrences of {{VAR_NAME}}
-      result="${result//\{\{${var_name}\}\}/${escaped_value}}"
+      # Replace all occurrences of {{VAR_NAME}} using sed.
+      # bash 5.1+ treats & in ${//} replacement as matched text, corrupting
+      # HTML entities like &lt; into <lt;. sed's \& means literal & so we
+      # escape \, / and & in the replacement value first, then call sed.
+      local sed_safe
+      sed_safe=$(printf "%s" "$escaped_value" | sed 's/\\/\\\\/g; s/\//\\\//g; s/&/\\&/g')
+      # In sed BRE, { is literal; \{ is the interval operator. Use bare {{ }} to
+      # match literal double-braces rather than \{\{ which triggers "invalid
+      # repetition count" on BSD sed (macOS).
+      result=$(printf "%s" "$result" | sed "s/{{${var_name}}}/${sed_safe}/g")
     fi
   done
 
