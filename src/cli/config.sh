@@ -1095,7 +1095,9 @@ cmd_config_vault() {
 
     lint)
       # Lint a vault/env file for unquoted special characters that break `source`
-      local lint_file="${1:-${HOME}/.claude/vault.env}"
+      # Default: check NSELF_VAULT_FILE env var, then ~/.nself/vault.env
+      local _dot_dir="${NSELF_VAULT_DIR:-${HOME}/.nself}"
+      local lint_file="${1:-${_dot_dir}/vault.env}"
       local lint_errors=0
 
       cli_section "Vault Lint: ${lint_file}"
@@ -1177,7 +1179,7 @@ cmd_config_vault() {
       printf "  status            Show vault status\n"
       printf "  config            Configure vault settings\n"
       printf "  lint [file]       Lint vault/env file for unquoted special chars\n"
-      printf "                    Default file: ~/.claude/vault.env\n"
+      printf "                    Default file: ~/.nself/vault.env (or NSELF_VAULT_DIR/vault.env)\n"
       ;;
 
     *)
