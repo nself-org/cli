@@ -388,7 +388,7 @@ start_services() {
     # Clean up ONLY containers belonging to this project (label-scoped)
     local existing_containers=$(docker ps -aq --filter "label=com.docker.compose.project=$project_name" 2>/dev/null)
     if [[ -n "$existing_containers" ]]; then
-      docker rm -f $existing_containers >/dev/null 2>&1 || true
+      echo "$existing_containers" | xargs -r docker rm -f >/dev/null 2>&1 || true
     fi
 
     # Clean up project network

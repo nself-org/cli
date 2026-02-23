@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # dependencies.sh - System dependency management for plugins
 
+set -euo pipefail
+
 # Detect package manager
 detect_package_manager() {
-
-set -euo pipefail
 
   if command -v apt-get >/dev/null 2>&1; then
     echo "apt"
@@ -38,7 +38,7 @@ verify_dependency() {
     command_exists "$name"
   else
     # Run custom verification command
-    eval "$verify_cmd" >/dev/null 2>&1
+    bash -c "$verify_cmd" >/dev/null 2>&1
   fi
 }
 
@@ -47,7 +47,7 @@ get_version() {
   local verify_cmd="$1"
   local output
   
-  output=$(eval "$verify_cmd" 2>&1)
+  output=$(bash -c "$verify_cmd" 2>&1)
   
   # Try to extract version number (common patterns)
   if [[ "$output" =~ ([0-9]+\.[0-9]+(\.[0-9]+)?) ]]; then

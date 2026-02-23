@@ -79,7 +79,7 @@ cmd_clean() {
 
     if [[ -n "$stopped" ]]; then
       local count=$(echo "$stopped" | wc -l | tr -d ' ')
-      docker rm $stopped >/dev/null 2>&1
+      echo "$stopped" | xargs -r docker rm >/dev/null 2>&1
       printf "\r${COLOR_GREEN}✓${COLOR_RESET} Removed $count stopped containers                    \n"
     else
       printf "\r${COLOR_GREEN}✓${COLOR_RESET} No stopped containers to clean                       \n"
@@ -174,7 +174,7 @@ cmd_clean() {
       # Also remove any orphaned buildkit containers
       local buildkit_containers=$(docker ps -a --filter "name=buildx_buildkit" -q 2>/dev/null)
       if [[ -n "$buildkit_containers" ]]; then
-        docker rm -f $buildkit_containers >/dev/null 2>&1
+        echo "$buildkit_containers" | xargs -r docker rm -f >/dev/null 2>&1
       fi
 
       if [[ $count -gt 0 ]]; then
@@ -186,7 +186,7 @@ cmd_clean() {
       # Still check for orphaned containers
       local buildkit_containers=$(docker ps -a --filter "name=buildx_buildkit" -q 2>/dev/null)
       if [[ -n "$buildkit_containers" ]]; then
-        docker rm -f $buildkit_containers >/dev/null 2>&1
+        echo "$buildkit_containers" | xargs -r docker rm -f >/dev/null 2>&1
         printf "\r${COLOR_GREEN}✓${COLOR_RESET} Removed orphaned buildkit containers                   \n"
       else
         printf "\r${COLOR_GREEN}✓${COLOR_RESET} No buildx builders to clean                            \n"

@@ -297,7 +297,7 @@ cmd_stop() {
     if [[ -n "$orphaned" ]]; then
       echo
       printf "${COLOR_BLUE}⠋${COLOR_RESET} Cleaning up orphaned containers..."
-      docker rm -f $orphaned >/dev/null 2>&1
+      echo "$orphaned" | xargs -r docker rm -f >/dev/null 2>&1
       printf "\r${COLOR_GREEN}✓${COLOR_RESET} Orphaned containers removed                    \n"
     fi
 
