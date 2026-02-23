@@ -152,7 +152,7 @@ cmd_migrate_env() {
     if [[ "$force" != "true" ]]; then
       log_warning "You are about to migrate to PRODUCTION"
       echo ""
-      read -p "Type 'yes' to confirm: " confirm
+      read -r -p "Type 'yes' to confirm: " confirm
       if [[ "$confirm" != "yes" ]]; then
         log_info "Migration cancelled"
         return 1

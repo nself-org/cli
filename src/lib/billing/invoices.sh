@@ -622,7 +622,7 @@ invoice_send_email() {
   info "Invoice ready to send to: ${recipient}"
   info "PDF: ${pdf_file}"
 
-  # TODO (v1.0): Integrate with email service (SMTP, SendGrid, etc.)
+  # TODO: Integrate with email service (SMTP, SendGrid, etc.)
   # See: .ai/roadmap/v1.0/deferred-features.md (BILLING-001)
   warn "Email sending not yet implemented. PDF generated at: ${pdf_file}"
 

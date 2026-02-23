@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # licensing.sh — Plugin license validation
 #
 # Validates nself Pro Plugins licenses before paid plugin installation.

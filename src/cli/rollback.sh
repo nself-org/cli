@@ -34,7 +34,7 @@ cmd_rollback() {
       if [[ -z "$backup_id" ]]; then
         list_available_backups
         echo
-        read -p "Enter backup ID to rollback to: " backup_id
+        read -r -p "Enter backup ID to rollback to: " backup_id
       fi
       rollback_to_backup "$backup_id"
       ;;

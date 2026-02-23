@@ -127,7 +127,7 @@ cmd_clean() {
 
       echo
       log_warning "This will delete all data in project volumes!"
-      read -p "Are you sure? (y/N): " confirm
+      read -r -p "Are you sure? (y/N): " confirm
 
       if [[ "$confirm" == "y" ]] || [[ "$confirm" == "Y" ]]; then
         echo "$project_volumes" | xargs docker volume rm >/dev/null 2>&1

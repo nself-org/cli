@@ -1160,7 +1160,7 @@ quota_send_alert_notification() {
   local percent="$3"
   local severity="$4"
 
-  # TODO (v1.0): Implement notification system (email, webhook, SMS)
+  # TODO: Implement notification system (email, webhook, SMS)
   # See: .ai/roadmap/v1.0/deferred-features.md (BILLING-002)
   # For now, just log
   billing_log "NOTIFICATION" "quota_alert" "$service" "{\"severity\":\"$severity\",\"percent\":$percent}"

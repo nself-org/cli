@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # password-utils.sh - Password hashing and verification utilities
 # Part of nself v0.6.0 - Phase 1 Sprint 1 (AUTH-004)
 #

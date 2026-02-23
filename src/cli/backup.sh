@@ -298,7 +298,7 @@ cmd_restore() {
   fi
 
   cli_warning "This will overwrite existing data!"
-  read -p "Are you sure? (y/N): " confirm
+  read -r -p "Are you sure? (y/N): " confirm
   if [[ "$confirm" != "y" ]] && [[ "$confirm" != "Y" ]]; then
     cli_info "Restore cancelled"
     return 0
@@ -546,7 +546,7 @@ cmd_rollback() {
       local backup_id="${2:-}"
       if [[ -z "$backup_id" ]]; then
         cmd_list
-        read -p "Enter backup ID to rollback to: " backup_id
+        read -r -p "Enter backup ID to rollback to: " backup_id
       fi
       cmd_restore "$backup_id"
       ;;
@@ -611,7 +611,7 @@ cmd_reset() {
   printf "\n"
 
   if [[ "$force_reset" != "true" ]]; then
-    read -p "Are you sure you want to reset everything? (y/N): " confirm
+    read -r -p "Are you sure you want to reset everything? (y/N): " confirm
     if [[ "$confirm" != "y" ]] && [[ "$confirm" != "Y" ]]; then
       cli_info "Reset cancelled"
       return 1
@@ -1092,7 +1092,7 @@ cmd_clean() {
   # Clean volumes
   if [[ "$clean_all" == "true" ]] || [[ "$clean_volumes" == "true" ]]; then
     cli_warning "This will delete all data in project volumes!"
-    read -p "Are you sure? (y/N): " confirm
+    read -r -p "Are you sure? (y/N): " confirm
     if [[ "$confirm" == "y" ]] || [[ "$confirm" == "Y" ]]; then
       local volumes=$(docker volume ls --filter "name=${project_name}" -q)
       if [[ -n "$volumes" ]]; then

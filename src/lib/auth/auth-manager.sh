@@ -1208,7 +1208,7 @@ auth_login_anonymous() {
 auth_login_oauth() {
   local provider="$1"
 
-  # TODO (v1.0+): Implement OAuth login flow (OAUTH-003+)
+  # TODO: Implement OAuth login flow (OAUTH-003+)
   # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-004)
   log_warning "auth_login_oauth not yet implemented (OAUTH-003+)"
   return 1

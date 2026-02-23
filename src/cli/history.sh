@@ -500,7 +500,7 @@ cmd_clear() {
   echo ""
 
   if [[ "$force" != "true" ]]; then
-    read -p "Type 'DELETE' to confirm: " confirm
+    read -r -p "Type 'DELETE' to confirm: " confirm
     if [[ "$confirm" != "DELETE" ]]; then
       log_info "Clear cancelled"
       return 1

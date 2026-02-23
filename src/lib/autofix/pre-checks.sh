@@ -36,7 +36,7 @@ run_pre_checks() {
   local zombies=$(docker ps -aq -f status=exited -f name=${PROJECT_NAME:-nself}_ 2>/dev/null | wc -l)
   if [[ $zombies -gt 0 ]]; then
     [[ "$silent" != "true" ]] && printf "${COLOR_BLUE}⠋${COLOR_RESET} Cleaning up stopped containers..."
-    docker ps -aq -f status=exited -f name=${PROJECT_NAME:-nself}_ | xargs docker rm >/dev/null 2>&1
+    docker ps -aq -f status=exited -f name=${PROJECT_NAME:-nself}_ | xargs -r docker rm >/dev/null 2>&1
     issues_fixed=$((issues_fixed + 1))
     [[ "$silent" != "true" ]] && printf "\r${COLOR_GREEN}✓${COLOR_RESET} Cleaned up stopped containers        \n"
   fi
