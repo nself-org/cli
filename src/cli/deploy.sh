@@ -213,7 +213,7 @@ deploy_environment() {
     user=$(grep '"user"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
     port=$(grep '"port"' "$env_dir/server.json" 2>/dev/null | sed 's/[^0-9]//g')
     deploy_path=$(grep '"deploy_path"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
-    project_subdir=$(grep '"project_subdir"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
+    project_subdir=$(grep '"project_subdir"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4 || true)
     user="${user:-root}"
     port="${port:-22}"
     deploy_path="${deploy_path:-/var/www/nself}"
@@ -2365,7 +2365,7 @@ sync_pull() {
   port=$(grep '"port"' "$env_dir/server.json" 2>/dev/null | sed 's/[^0-9]//g')
   key_file=$(grep '"key"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
   deploy_path=$(grep '"deploy_path"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
-  project_subdir=$(grep '"project_subdir"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
+  project_subdir=$(grep '"project_subdir"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4 || true)
 
   user="${user:-root}"
   port="${port:-22}"
@@ -2522,7 +2522,7 @@ sync_push() {
   port=$(grep '"port"' "$env_dir/server.json" 2>/dev/null | sed 's/[^0-9]//g')
   key_file=$(grep '"key"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
   deploy_path=$(grep '"deploy_path"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
-  project_subdir=$(grep '"project_subdir"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
+  project_subdir=$(grep '"project_subdir"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4 || true)
 
   user="${user:-root}"
   port="${port:-22}"
@@ -2631,10 +2631,30 @@ sync_push() {
   done
 
   if [[ $push_errors -eq 0 ]]; then
+    # Merge .env.secrets into .env on the remote so docker-compose can read all
+    # variables via ${VAR} substitution. Docker Compose only auto-reads .env —
+    # .env.secrets is NOT picked up automatically. Since .env was just pushed fresh
+    # (config-only), appending secrets here never creates duplicates.
+    if [[ -f "$env_dir/.env" ]] && [[ -f "$env_dir/.env.secrets" ]]; then
+      cli_info "Merging .env.secrets into .env for docker-compose..."
+      local merge_ok=false
+      if ssh "${ssh_args[@]}" "${user}@${host}" "
+        cd '$deploy_path' 2>/dev/null || exit 1
+        printf '\n# Secrets (auto-merged from .env.secrets by nself deploy sync push)\n' >> .env
+        grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .env.secrets >> .env 2>/dev/null || true
+        echo 'merge_ok'
+      " 2>/dev/null | grep -q "merge_ok"; then
+        merge_ok=true
+        cli_success "Merged .env.secrets into .env"
+      else
+        cli_warning "Could not auto-merge .env.secrets — run manually: cat .env.secrets >> .env"
+      fi
+    fi
     printf "\n"
     cli_success "Sync complete: local → $target"
     printf "\n"
     cli_info "Files synced to: ${user}@${host}:${deploy_path}"
+    cli_info "Run 'nself deploy $target' to apply changes"
   else
     printf "\n"
     cli_warning "Sync completed with $push_errors error(s)"
@@ -2769,7 +2789,7 @@ sync_full() {
   port=$(grep '"port"' "$env_dir/server.json" 2>/dev/null | sed 's/[^0-9]//g')
   key_file=$(grep '"key"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
   deploy_path=$(grep '"deploy_path"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
-  project_subdir=$(grep '"project_subdir"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
+  project_subdir=$(grep '"project_subdir"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4 || true)
 
   user="${user:-root}"
   port="${port:-22}"
