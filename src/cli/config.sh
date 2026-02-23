@@ -1093,12 +1093,91 @@ cmd_config_vault() {
       fi
       ;;
 
+    lint)
+      # Lint a vault/env file for unquoted special characters that break `source`
+      local lint_file="${1:-${HOME}/.claude/vault.env}"
+      local lint_errors=0
+
+      cli_section "Vault Lint: ${lint_file}"
+
+      if [[ ! -f "$lint_file" ]]; then
+        cli_error "File not found: $lint_file"
+        return 1
+      fi
+
+      printf "  Scanning for unquoted special characters...\n\n"
+
+      local lineno=0
+      while IFS= read -r line; do
+        lineno=$((lineno + 1))
+
+        # Skip blank lines and comments
+        case "$line" in
+          "" | "#"*) continue ;;
+        esac
+
+        # Only check KEY=VALUE lines
+        case "$line" in
+          *=*)
+            local key val
+            key="${line%%=*}"
+            val="${line#*=}"
+
+            # Skip already-quoted values (start with ' or ")
+            case "$val" in
+              '"'*'"' | "'"*"'") continue ;;
+            esac
+
+            # Check for dangerous unquoted characters in the value
+            local found_chars=""
+            case "$val" in
+              *"&"*) found_chars="${found_chars}&" ;;
+            esac
+            case "$val" in
+              *"|"*) found_chars="${found_chars}|" ;;
+            esac
+            case "$val" in
+              *"<"*) found_chars="${found_chars}<" ;;
+            esac
+            case "$val" in
+              *">"*) found_chars="${found_chars}>" ;;
+            esac
+            case "$val" in
+              *";"*) found_chars="${found_chars};" ;;
+            esac
+            case "$val" in
+              *'`'*) found_chars="${found_chars}\`" ;;
+            esac
+
+            if [[ -n "$found_chars" ]]; then
+              printf "  ${CLI_RED}Line %d${CLI_RESET}: %s contains unquoted char(s): %s\n" \
+                "$lineno" "$key" "$found_chars"
+              printf "    Value: %s\n" "$val"
+              printf "    Fix:   %s=\"%s\"\n" "$key" "$val"
+              printf "\n"
+              lint_errors=$((lint_errors + 1))
+            fi
+            ;;
+        esac
+      done < "$lint_file"
+
+      if [[ $lint_errors -eq 0 ]]; then
+        cli_success "No issues found in ${lint_file}"
+        return 0
+      else
+        cli_error "${lint_errors} issue(s) found — quote the values shown above"
+        return 1
+      fi
+      ;;
+
     --help | -h)
       printf "Usage: nself config vault <subcommand>\n\n"
       printf "Subcommands:\n"
       printf "  init              Initialize vault\n"
       printf "  status            Show vault status\n"
       printf "  config            Configure vault settings\n"
+      printf "  lint [file]       Lint vault/env file for unquoted special chars\n"
+      printf "                    Default file: ~/.claude/vault.env\n"
       ;;
 
     *)
