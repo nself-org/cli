@@ -121,7 +121,7 @@ license_is_paid_plugin() {
 
 # ---------------------------------------------------------------------------
 # Public: license_validate_format <license_key>
-# Offline format check — key must start with nself_pro_ and be >=32 chars.
+# Offline format check — key must start with nself_pro_ or nself_ent_ and be >=32 chars.
 # Returns 0 if valid format, 1 otherwise.
 # ---------------------------------------------------------------------------
 
@@ -130,9 +130,9 @@ license_validate_format() {
   if [ -z "$key" ]; then
     return 1
   fi
-  # Must start with nself_pro_
+  # Must start with nself_pro_ (Pro) or nself_ent_ (Elite)
   case "$key" in
-    nself_pro_*)
+    nself_pro_*|nself_ent_*)
       # Must be at least 32 characters total
       if [ ${#key} -ge 32 ]; then
         return 0
