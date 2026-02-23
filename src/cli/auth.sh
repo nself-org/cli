@@ -395,9 +395,12 @@ cmd_auth_mfa() {
 
   shift
 
-  # Delegate to original mfa implementation
-  if [[ -f "$CLI_DIR/_deprecated/mfa.sh.backup" ]]; then
-    bash "$CLI_DIR/_deprecated/mfa.sh.backup" "$action" "$@"
+  # Source mfa subcommand from lib (moved from _deprecated)
+  local _mfa_lib="$CLI_DIR/../lib/auth/subcommands/mfa.sh"
+  if [[ -f "$_mfa_lib" ]]; then
+    # shellcheck source=/dev/null
+    source "$_mfa_lib"
+    cmd_mfa "$action" "$@"
   else
     cli_error "MFA module not found"
     exit 1
@@ -412,9 +415,12 @@ cmd_auth_roles() {
   local action="${1:-list}"
   shift || true
 
-  # Delegate to original roles implementation
-  if [[ -f "$CLI_DIR/_deprecated/roles.sh.backup" ]]; then
-    bash "$CLI_DIR/_deprecated/roles.sh.backup" "$action" "$@"
+  # Source roles subcommand from lib (moved from _deprecated)
+  local _roles_lib="$CLI_DIR/../lib/auth/subcommands/roles.sh"
+  if [[ -f "$_roles_lib" ]]; then
+    # shellcheck source=/dev/null
+    source "$_roles_lib"
+    cmd_roles "$action" "$@"
   else
     cli_error "Roles module not found"
     exit 1
@@ -429,9 +435,12 @@ cmd_auth_devices() {
   local action="${1:-list}"
   shift || true
 
-  # Delegate to original devices implementation
-  if [[ -f "$CLI_DIR/_deprecated/devices.sh.backup" ]]; then
-    bash "$CLI_DIR/_deprecated/devices.sh.backup" "$action" "$@"
+  # Source devices subcommand from lib (moved from _deprecated)
+  local _devices_lib="$CLI_DIR/../lib/auth/subcommands/devices.sh"
+  if [[ -f "$_devices_lib" ]]; then
+    # shellcheck source=/dev/null
+    source "$_devices_lib"
+    cmd_devices "$action" "$@"
   else
     cli_error "Devices module not found"
     exit 1
@@ -453,9 +462,12 @@ cmd_auth_oauth() {
 
   shift
 
-  # Delegate to original oauth implementation
-  if [[ -f "$CLI_DIR/_deprecated/oauth.sh.backup" ]]; then
-    bash "$CLI_DIR/_deprecated/oauth.sh.backup" "$action" "$@"
+  # Source oauth subcommand from lib (moved from _deprecated)
+  local _oauth_lib="$CLI_DIR/../lib/auth/subcommands/oauth.sh"
+  if [[ -f "$_oauth_lib" ]]; then
+    # shellcheck source=/dev/null
+    source "$_oauth_lib"
+    cmd_oauth "$action" "$@"
   else
     cli_error "OAuth module not found"
     exit 1
@@ -470,9 +482,12 @@ cmd_auth_security() {
   local action="${1:-scan}"
   shift || true
 
-  # Delegate to original security implementation
-  if [[ -f "$CLI_DIR/_deprecated/security.sh.backup" ]]; then
-    bash "$CLI_DIR/_deprecated/security.sh.backup" "$action" "$@"
+  # Source security subcommand from lib (moved from _deprecated)
+  local _security_lib="$CLI_DIR/../lib/auth/subcommands/security.sh"
+  if [[ -f "$_security_lib" ]]; then
+    # shellcheck source=/dev/null
+    source "$_security_lib"
+    cmd_security "$action" "$@"
   else
     cli_error "Security module not found"
     exit 1
@@ -530,25 +545,35 @@ cmd_auth_ssl() {
       fi
       ;;
     renew)
-      if [[ -f "$CLI_DIR/_deprecated/ssl.sh.backup" ]]; then
-        bash "$CLI_DIR/_deprecated/ssl.sh.backup" renew "$@"
+      # Source ssl subcommand from lib (moved from _deprecated)
+      local _ssl_lib="$CLI_DIR/../lib/auth/subcommands/ssl.sh"
+      if [[ -f "$_ssl_lib" ]]; then
+        # shellcheck source=/dev/null
+        source "$_ssl_lib"
+        cmd_ssl renew "$@"
       else
         cli_error "SSL module not found"
         exit 1
       fi
       ;;
     info | status)
-      if [[ -f "$CLI_DIR/_deprecated/ssl.sh.backup" ]]; then
-        bash "$CLI_DIR/_deprecated/ssl.sh.backup" status "$@"
+      local _ssl_lib="$CLI_DIR/../lib/auth/subcommands/ssl.sh"
+      if [[ -f "$_ssl_lib" ]]; then
+        # shellcheck source=/dev/null
+        source "$_ssl_lib"
+        cmd_ssl status "$@"
       else
         cli_error "SSL module not found"
         exit 1
       fi
       ;;
     trust)
-      # Delegate to original trust implementation
-      if [[ -f "$CLI_DIR/_deprecated/trust.sh.backup" ]]; then
-        bash "$CLI_DIR/_deprecated/trust.sh.backup" install "$@"
+      # Source trust subcommand from lib (moved from _deprecated)
+      local _trust_lib="$CLI_DIR/../lib/auth/subcommands/trust.sh"
+      if [[ -f "$_trust_lib" ]]; then
+        # shellcheck source=/dev/null
+        source "$_trust_lib"
+        cmd_trust install "$@"
       else
         cli_error "Trust module not found"
         exit 1
@@ -831,9 +856,12 @@ cmd_auth_webhooks() {
   local action="${1:-list}"
   shift || true
 
-  # Delegate to original webhooks implementation
-  if [[ -f "$CLI_DIR/_deprecated/webhooks.sh.backup" ]]; then
-    bash "$CLI_DIR/_deprecated/webhooks.sh.backup" "$action" "$@"
+  # Source webhooks subcommand from lib (moved from _deprecated)
+  local _webhooks_lib="$CLI_DIR/../lib/auth/subcommands/webhooks.sh"
+  if [[ -f "$_webhooks_lib" ]]; then
+    # shellcheck source=/dev/null
+    source "$_webhooks_lib"
+    cmd_webhooks "$action" "$@"
   else
     cli_error "Webhooks module not found"
     exit 1

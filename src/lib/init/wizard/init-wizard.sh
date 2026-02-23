@@ -85,11 +85,8 @@ prompt_input() {
 
     # Validate pattern
     if [[ "$input_value" =~ $pattern ]]; then
-      # SECURITY: Sanitize input before eval to prevent injection via single quotes
-      # Reject values containing shell-dangerous characters in variable assignment
-      local _sanitized
-      _sanitized=$(printf "%s" "$input_value" | sed "s/'/'\\\\''/" )
-      eval "$var_name='$_sanitized'"
+      # Safe dynamic variable assignment (no eval): export handles name=value safely
+      export "${var_name}=${input_value}"
       break
     else
       echo "Invalid input. Please try again."
@@ -104,10 +101,8 @@ prompt_password() {
   echo -n "$prompt: "
   read -s -r password_value
   echo ""
-  # SECURITY: Sanitize password before eval to prevent injection via single quotes
-  local _sanitized
-  _sanitized=$(printf "%s" "$password_value" | sed "s/'/'\\\\''/" )
-  eval "$var_name='$_sanitized'"
+  # Safe dynamic variable assignment (no eval)
+  export "${var_name}=${password_value}"
 }
 
 confirm_action() {

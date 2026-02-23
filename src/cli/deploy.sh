@@ -3537,6 +3537,9 @@ sync_full() {
       printf "  ${CLI_DIM}Running database commands via docker exec...${CLI_RESET}\n\n"
 
       # Fallback: Run database commands directly via docker exec
+      # NOTE: The following SSH string uses \$ intentionally.
+      # Variables like \$DB_CONTAINER and \$migration_dir are escaped so they
+      # expand on the REMOTE server, not in the local shell. This is correct.
       local db_result
       db_result=$(ssh "${ssh_args[@]}" "${user}@${host}" "
         cd '$deploy_path' 2>/dev/null || exit 1

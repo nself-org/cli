@@ -165,11 +165,16 @@ cmd_clean() {
 
     if [[ -n "$nself_builders" ]]; then
       local count=0
-      for builder_name in $nself_builders; do
+      local _count_file
+      _count_file=$(mktemp)
+      printf '0' > "$_count_file"
+      printf '%s\n' $nself_builders | while IFS= read -r builder_name; do
         if docker buildx rm "$builder_name" >/dev/null 2>&1; then
-          count=$((count + 1))
+          printf '%s' "$(( $(cat "$_count_file") + 1 ))" > "$_count_file"
         fi
       done
+      count=$(cat "$_count_file")
+      rm -f "$_count_file"
 
       # Also remove any orphaned buildkit containers
       local buildkit_containers=$(docker ps -a --filter "name=buildx_buildkit" -q 2>/dev/null)

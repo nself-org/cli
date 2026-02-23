@@ -25,37 +25,48 @@ get_template_name() {
 }
 
 # Get template services
+# Returns colon-delimited strings via export (Bash 3.2 safe, no eval, no declare -A).
+# Callers split on ":" with IFS=: read -ra to get individual service names.
 get_template_services() {
   local template="$1"
   local required_var="$2"
   local optional_var="$3"
 
+  local _req _opt
   case "$template" in
     saas)
-      eval "${required_var}=(\"PostgreSQL\" \"Redis\" \"Authentication\")"
-      eval "${optional_var}=(\"MinIO Storage\" \"Email Service\" \"Search\" \"Admin UI\" \"Functions\" \"Dashboard\")"
+      _req="PostgreSQL:Redis:Authentication"
+      _opt="MinIO Storage:Email Service:Search:Admin UI:Functions:Dashboard"
       ;;
     ecommerce)
-      eval "${required_var}=(\"PostgreSQL\" \"Redis\" \"MinIO Storage\" \"Search\")"
-      eval "${optional_var}=(\"RabbitMQ\" \"Email Service\" \"Admin UI\" \"Dashboard\" \"Functions\")"
+      _req="PostgreSQL:Redis:MinIO Storage:Search"
+      _opt="RabbitMQ:Email Service:Admin UI:Dashboard:Functions"
       ;;
     blog)
-      eval "${required_var}=(\"PostgreSQL\" \"Search\")"
-      eval "${optional_var}=(\"Redis\" \"MinIO Storage\" \"Email Service\" \"Admin UI\")"
+      _req="PostgreSQL:Search"
+      _opt="Redis:MinIO Storage:Email Service:Admin UI"
       ;;
     api)
-      eval "${required_var}=(\"PostgreSQL\" \"Redis\")"
-      eval "${optional_var}=(\"RabbitMQ\" \"MinIO Storage\" \"Email Service\" \"Monitoring\")"
+      _req="PostgreSQL:Redis"
+      _opt="RabbitMQ:MinIO Storage:Email Service:Monitoring"
       ;;
     mobile)
-      eval "${required_var}=(\"PostgreSQL\" \"Redis\" \"Authentication\")"
-      eval "${optional_var}=(\"MinIO Storage\" \"Push Notifications\" \"Functions\" \"WebSockets\")"
+      _req="PostgreSQL:Redis:Authentication"
+      _opt="MinIO Storage:Push Notifications:Functions:WebSockets"
       ;;
     custom)
-      eval "${required_var}=(\"PostgreSQL\")"
-      eval "${optional_var}=(\"Redis\" \"MinIO Storage\" \"Search\" \"Email Service\" \"RabbitMQ\" \"Admin UI\" \"Functions\" \"Dashboard\")"
+      _req="PostgreSQL"
+      _opt="Redis:MinIO Storage:Search:Email Service:RabbitMQ:Admin UI:Functions:Dashboard"
+      ;;
+    *)
+      _req=""
+      _opt=""
       ;;
   esac
+
+  # Assign into caller-named variables via export (safe, no eval)
+  export "${required_var}=${_req}"
+  export "${optional_var}=${_opt}"
 }
 
 # Generate .env.local from template
