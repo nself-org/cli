@@ -374,7 +374,25 @@ nself doctor --fix
   "port": 22,
   "user": "root",
   "key": "~/.ssh/deploy_key",
-  "deploy_path": "/var/www/nself"
+  "deploy_path": "/var/www/nself",
+  "project_subdir": ""
+}
+```
+
+**`deploy_path`** — Where your project lives on the server (default: `/var/www/nself`). Set this if your project is deployed to a custom path (e.g. `/opt/myapp`).
+
+**`project_subdir`** — Optional subdirectory within `deploy_path` where the nself `.env` files and `nself build` should run (used for monorepos). Leave empty for standard deployments.
+
+Example for a monorepo with backend in a subdirectory:
+
+```json
+{
+  "host": "server.example.com",
+  "port": 22,
+  "user": "root",
+  "key": "~/.ssh/deploy_key",
+  "deploy_path": "/opt/myapp",
+  "project_subdir": "backend"
 }
 ```
 

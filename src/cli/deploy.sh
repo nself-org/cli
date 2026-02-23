@@ -205,13 +205,18 @@ deploy_environment() {
   local host=""
   local user="root"
   local port="22"
+  local deploy_path=""
+  local project_subdir=""
 
   if [[ -f "$env_dir/server.json" ]]; then
     host=$(grep '"host"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
     user=$(grep '"user"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
     port=$(grep '"port"' "$env_dir/server.json" 2>/dev/null | sed 's/[^0-9]//g')
+    deploy_path=$(grep '"deploy_path"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
+    project_subdir=$(grep '"project_subdir"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
     user="${user:-root}"
     port="${port:-22}"
+    deploy_path="${deploy_path:-/var/www/nself}"
   fi
 
   if [[ -z "$host" ]]; then
@@ -221,12 +226,22 @@ deploy_environment() {
     return 1
   fi
 
+  # Compute the directory where nself build runs (deploy_path + optional project_subdir)
+  local nself_build_dir="$deploy_path"
+  if [[ -n "$project_subdir" ]]; then
+    nself_build_dir="$deploy_path/$project_subdir"
+  fi
+
   printf "\n"
   cli_section "Deployment Configuration"
   printf "  Environment:  %s\n" "$env_name"
   printf "  Host:         %s\n" "$host"
   printf "  User:         %s\n" "$user"
   printf "  Port:         %s\n" "$port"
+  printf "  Deploy path:  %s\n" "$deploy_path"
+  if [[ -n "$project_subdir" ]]; then
+    printf "  Project dir:  %s\n" "$project_subdir"
+  fi
   printf "\n"
 
   if [[ "$dry_run" == "true" ]]; then
@@ -288,22 +303,24 @@ deploy_environment() {
   # Perform deployment
   cli_info "Deploying to $env_name..."
 
-  # Build on server
-  local deploy_script='
-    cd /var/www/nself 2>/dev/null || cd /opt/nself 2>/dev/null || exit 1
+  # Build remote deploy script using configured paths from server.json
+  local deploy_script
+  deploy_script='cd '"'$deploy_path'"' 2>/dev/null || { echo "ERROR: Cannot access deploy path: '"$deploy_path"'" >&2; exit 1; }
 
     # Pull latest code if git repo
-    if [[ -d ".git" ]]; then
-      git pull origin main 2>/dev/null || true
+    if [ -d .git ]; then
+      git pull origin main 2>/dev/null || git pull 2>/dev/null || true
     fi
 
-    # Run build
+    # Run nself build from the project subdir (where .env files live)
     if command -v nself >/dev/null 2>&1; then
-      nself build
+      cd '"'$nself_build_dir'"' 2>/dev/null || true
+      nself build 2>/dev/null || true
+      cd '"'$deploy_path'"' 2>/dev/null || true
     fi
 
-    # Start with force-recreate for security
-    docker compose up -d --force-recreate
+    # Rebuild images and restart containers
+    docker compose up -d --force-recreate --build
 
     echo "deployment_complete"
   '
