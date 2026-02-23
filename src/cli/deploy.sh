@@ -249,6 +249,15 @@ deploy_environment() {
     return 0
   fi
 
+  # Load environment-specific vars from .environments/<env>/ so the
+  # security pre-flight can read secrets (e.g. POSTGRES_PASSWORD)
+  if [[ -f "$env_dir/.env" ]]; then
+    safe_source_env "$env_dir/.env" 2>/dev/null || true
+  fi
+  if [[ -f "$env_dir/.env.secrets" ]]; then
+    safe_source_env "$env_dir/.env.secrets" 2>/dev/null || true
+  fi
+
   # ============================================================
   # SECURE BY DEFAULT: Production Security Pre-flight
   # ============================================================
@@ -338,12 +347,16 @@ deploy_environment() {
       cli_info "Verifying production security on remote server..."
 
       local verify_script='
+        # Wait for containers to fully bind ports before checking
+        sleep 8
         errors=0
         # Check each sensitive port is NOT exposed externally
-        for port in 6379 5432 7700 9000; do
-          if ss -tlnp 2>/dev/null | grep ":$port" | grep -q "0.0.0.0"; then
-            echo "SECURITY_ERROR: Port $port exposed on 0.0.0.0"
-            errors=$((errors + 1))
+        for svc_port in 6379 5432 7700 9000; do
+          if ss -tlnp 2>/dev/null | grep ":$svc_port " | grep -qv "127.0.0.1:$svc_port\|[::1]:$svc_port"; then
+            if ss -tlnp 2>/dev/null | grep ":$svc_port " | grep -q "0.0.0.0"; then
+              echo "SECURITY_ERROR: Port $svc_port exposed on 0.0.0.0"
+              errors=$((errors + 1))
+            fi
           fi
         done
 
@@ -355,7 +368,7 @@ deploy_environment() {
       '
 
       local verify_result
-      verify_result=$(ssh -o ConnectTimeout=10 -p "$port" "${user}@${host}" "$verify_script" 2>/dev/null || echo "verify_failed")
+      verify_result=$(ssh -o ConnectTimeout=30 -p "$port" "${user}@${host}" "$verify_script" 2>/dev/null || echo "verify_failed")
 
       if echo "$verify_result" | grep -q "security_verified"; then
         cli_success "Production security verification passed"
@@ -363,7 +376,7 @@ deploy_environment() {
         cli_error "SECURITY VIOLATION: Sensitive ports exposed in production"
         echo "$verify_result" | grep "SECURITY_ERROR" || true
         cli_warning "Rolling back deployment..."
-        ssh -o ConnectTimeout=10 -p "$port" "${user}@${host}" "docker compose down" 2>/dev/null || true
+        ssh -o ConnectTimeout=10 -p "$port" "${user}@${host}" "cd '$deploy_path' && docker compose down" 2>/dev/null || true
         return 1
       fi
     else
