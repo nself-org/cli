@@ -25,7 +25,7 @@ get_template_name() {
 }
 
 # Get template services
-# Returns colon-delimited strings via export (Bash 3.2 safe, no eval, no declare -A).
+# Returns colon-delimited strings via export (Bash 3.2 safe, no associative arrays, no eval).
 # Callers split on ":" with IFS=: read -ra to get individual service names.
 get_template_services() {
   local template="$1"
