@@ -352,6 +352,19 @@ deploy_environment() {
   local deploy_result
   deploy_result=$(ssh -i "$ssh_key_path" -o ConnectTimeout=30 -o BatchMode=yes -o StrictHostKeyChecking=accept-new -p "$port" "${user}@${host}" "$deploy_script" 2>&1 || echo "deploy_failed")
 
+  # Check for SSH authentication failure in deploy call
+  local deploy_lower
+  deploy_lower=$(printf "%s" "$deploy_result" | tr '[:upper:]' '[:lower:]')
+  case "$deploy_lower" in
+    *"permission denied"*|*"publickey"*|*"no more authentication"*)
+      cli_error "SSH authentication failed using key: $ssh_key_path"
+      printf "\n"
+      printf "  To use a different key: set SSH_KEY_PATH=~/.ssh/other_key in .environments/%s/.env\n" "$env_name"
+      printf "  Or re-initialize the server: nself deploy server init %s@%s --key /path/to/key --env %s\n" "$user" "$host" "$env_name"
+      return 1
+      ;;
+  esac
+
   if echo "$deploy_result" | grep -q "deployment_complete"; then
     # ============================================================
     # SECURE BY DEFAULT: Post-deployment security verification
@@ -1001,6 +1014,10 @@ server_init() {
         auto_yes="true"
         shift
         ;;
+      --help)
+        show_server_help
+        return 0
+        ;;
       *)
         # First positional arg is host
         if [[ -z "$host" ]]; then
@@ -1027,11 +1044,110 @@ server_init() {
     host="${host#*@}"
   fi
 
+  # Interactive SSH key selection (when not provided and not in --yes mode)
+  if [[ -z "$key_file" ]] && [[ "$auto_yes" != "true" ]]; then
+    # Scan ~/.ssh/ for private key files
+    local ssh_dir="$HOME/.ssh"
+    local found_keys=""
+    local key_count=0
+    if [[ -d "$ssh_dir" ]]; then
+      for candidate in "$ssh_dir"/*; do
+        # Skip non-files
+        [[ -f "$candidate" ]] || continue
+        # Skip known non-key files
+        local basename_candidate
+        basename_candidate=$(basename "$candidate")
+        case "$basename_candidate" in
+          *.pub|known_hosts*|config|authorized_keys|*.old|*.bak|environment) continue ;;
+        esac
+        # Check file header for private key signature
+        local first_line=""
+        first_line=$(head -n 1 "$candidate" 2>/dev/null) || continue
+        case "$first_line" in
+          *"PRIVATE KEY"*|*"OPENSSH"*)
+            key_count=$((key_count + 1))
+            if [[ -n "$found_keys" ]]; then
+              found_keys="$found_keys|$candidate"
+            else
+              found_keys="$candidate"
+            fi
+            ;;
+        esac
+      done
+    fi
+
+    if [[ $key_count -gt 0 ]]; then
+      printf "\n"
+      cli_info "Found SSH keys:"
+      local idx=0
+      local saved_ifs="$IFS"
+      IFS='|'
+      for kpath in $found_keys; do
+        idx=$((idx + 1))
+        printf "  %d) %s\n" "$idx" "$kpath"
+      done
+      IFS="$saved_ifs"
+      printf "\n"
+    fi
+
+    printf "SSH private key path [~/.ssh/id_ed25519]: "
+    local key_input=""
+    read -r key_input
+
+    if [[ -n "$key_input" ]]; then
+      # Check if user entered a number (selecting from the list)
+      case "$key_input" in
+        [0-9]|[0-9][0-9])
+          if [[ $key_count -gt 0 ]] && [[ "$key_input" -ge 1 ]] && [[ "$key_input" -le $key_count ]]; then
+            local pick_idx=0
+            local saved_ifs2="$IFS"
+            IFS='|'
+            for kpath in $found_keys; do
+              pick_idx=$((pick_idx + 1))
+              if [[ $pick_idx -eq "$key_input" ]]; then
+                key_file="$kpath"
+                break
+              fi
+            done
+            IFS="$saved_ifs2"
+          else
+            # Out of range, treat as path
+            key_file="$key_input"
+          fi
+          ;;
+        *)
+          # Treat as a file path
+          key_file="$key_input"
+          ;;
+      esac
+    fi
+
+    # Default to ~/.ssh/id_ed25519 if still empty
+    if [[ -z "$key_file" ]]; then
+      key_file="$HOME/.ssh/id_ed25519"
+    fi
+
+    # Expand tilde if present
+    key_file="${key_file/#\~/$HOME}"
+
+    # Validate the key file exists
+    if [[ ! -f "$key_file" ]]; then
+      cli_error "SSH key file not found: $key_file"
+      return 1
+    fi
+  fi
+
+  # Default key_file for --yes mode
+  if [[ -z "$key_file" ]] && [[ "$auto_yes" == "true" ]]; then
+    key_file="$HOME/.ssh/id_ed25519"
+  fi
+
   printf "\n"
   cli_section "Server Configuration"
   printf "  Host:     %s\n" "$host"
   printf "  User:     %s\n" "$user"
   printf "  Port:     %s\n" "$port"
+  printf "  SSH Key:  %s\n" "$key_file"
   printf "  Domain:   %s\n" "${domain:-<not set>}"
   printf "  Env:      %s\n" "$env_name"
   printf "\n"
@@ -1064,16 +1180,69 @@ server_init() {
   ssh_args+=("-o" "ConnectTimeout=10")
   ssh_args+=("-p" "$port")
 
-  # Test connection
+  # Test connection (capture stderr for actionable errors)
   cli_info "Testing SSH connection..."
-  if ! ssh "${ssh_args[@]}" "${user}@${host}" "echo 'Connection successful'" 2>/dev/null; then
+  local ssh_err_file=""
+  ssh_err_file=$(mktemp 2>/dev/null || mktemp -t nself_ssh_err)
+  if ! ssh "${ssh_args[@]}" "${user}@${host}" "echo 'Connection successful'" 2>"$ssh_err_file"; then
+    local ssh_err=""
+    ssh_err=$(cat "$ssh_err_file" 2>/dev/null)
+    rm -f "$ssh_err_file"
     cli_error "Cannot connect to $host"
-    printf "Check that:\n"
-    printf "  1. The server is accessible\n"
-    printf "  2. SSH is enabled on port %s\n" "$port"
-    printf "  3. Your SSH key is authorized\n"
+    printf "\n"
+
+    # Parse the error for actionable guidance
+    local ssh_err_lower=""
+    ssh_err_lower=$(printf "%s" "$ssh_err" | tr '[:upper:]' '[:lower:]')
+    case "$ssh_err_lower" in
+      *"permission denied"*|*"publickey"*|*"no more authentication"*)
+        printf "  ${CLI_YELLOW}SSH authentication failed using key: %s${CLI_RESET}\n" "$key_file"
+        printf "\n"
+        printf "  To fix:\n"
+        printf "    1. Verify your key is correct:  ssh -i %s %s@%s -p %s\n" "$key_file" "$user" "$host" "$port"
+        printf "    2. Copy your key to the server: ssh-copy-id -i %s %s@%s -p %s\n" "$key_file" "$user" "$host" "$port"
+        printf "    3. Retry with a different key:  nself deploy server init %s --key /path/to/other_key\n" "$host"
+        printf "    4. Or set key in env file:      SSH_KEY_PATH=~/.ssh/other_key in .environments/%s/.env\n" "$env_name"
+        ;;
+      *"connection refused"*)
+        printf "  SSH connection refused on port %s.\n" "$port"
+        printf "\n"
+        printf "  Check that:\n"
+        printf "    1. SSH is running on the server\n"
+        printf "    2. Port %s is open in the firewall\n" "$port"
+        printf "    3. The host address is correct: %s\n" "$host"
+        ;;
+      *"connection timed out"*|*"timed out"*|*"no route"*)
+        printf "  Connection timed out reaching %s:%s.\n" "$host" "$port"
+        printf "\n"
+        printf "  Check that:\n"
+        printf "    1. The server is running and accessible\n"
+        printf "    2. The IP/hostname is correct: %s\n" "$host"
+        printf "    3. No firewall is blocking port %s\n" "$port"
+        ;;
+      *"host key verification"*|*"host key"*)
+        printf "  Host key verification failed for %s.\n" "$host"
+        printf "\n"
+        printf "  To fix:\n"
+        printf "    1. Remove old key: ssh-keygen -R %s\n" "$host"
+        printf "    2. Then retry this command\n"
+        ;;
+      *)
+        # Unknown error: show the raw SSH output
+        if [[ -n "$ssh_err" ]]; then
+          printf "  SSH error: %s\n" "$ssh_err"
+        fi
+        printf "\n"
+        printf "  Check that:\n"
+        printf "    1. The server is accessible at %s:%s\n" "$host" "$port"
+        printf "    2. SSH key %s is authorized on the server\n" "$key_file"
+        printf "    3. User '%s' can log in\n" "$user"
+        ;;
+    esac
+    printf "\n"
     return 1
   fi
+  rm -f "$ssh_err_file"
   cli_success "SSH connection verified"
 
   # Run initialization phases
@@ -1091,6 +1260,25 @@ server_init() {
   # Phase 3: Environment Setup
   cli_section "Phase 3: nself Environment"
   server_init_phase3 "$host" "$user" "$port" "$key_file" "$env_name" "$domain"
+
+  # Save server.json for this environment so `nself deploy <env>` picks up
+  # the chosen SSH key and host details automatically.
+  local env_dir=".environments/$env_name"
+  mkdir -p "$env_dir"
+  cat >"$env_dir/server.json" <<SERVERJSON
+{
+  "name": "$env_name",
+  "type": "remote",
+  "host": "$host",
+  "port": $port,
+  "user": "$user",
+  "key": "$key_file",
+  "deploy_path": "/var/www/nself",
+  "description": "Remote server configuration",
+  "created_at": "$(date -Iseconds 2>/dev/null || date)"
+}
+SERVERJSON
+  cli_success "Server configuration saved to $env_dir/server.json"
 
   printf "\n"
   cli_success "Server initialization complete!"
@@ -1634,6 +1822,13 @@ server_add() {
     return 1
   fi
 
+  # Warn when no SSH key specified
+  if [[ -z "$key_file" ]]; then
+    cli_warning "No SSH key specified. Deployments will default to ~/.ssh/id_ed25519"
+    cli_info "To specify a key: nself deploy server add $name --host $host --key /path/to/key"
+    printf "\n"
+  fi
+
   # Check if environment exists
   local env_dir=".environments/$name"
   if [[ ! -d "$env_dir" ]]; then
@@ -1980,8 +2175,28 @@ Commands:
   ssh       SSH into a server
   info      Show detailed server info
 
+Common Options:
+  --key, -k <path>    SSH private key path (default: ~/.ssh/id_ed25519)
+  --user, -u <user>   SSH user (default: root)
+  --port, -p <port>   SSH port (default: 22)
+  --yes, -y           Skip prompts and use defaults
+
+Init Options:
+  --host, -h <host>   Server hostname or IP (or use positional arg)
+  --domain, -d <dom>  Domain name for SSL/DNS setup
+  --env, -e <name>    Environment name (default: prod)
+  --skip-ssl          Skip SSL certificate setup
+  --skip-dns          Skip DNS configuration
+
+Add Options:
+  --host, -h <host>   Server hostname or IP (required)
+  --path <path>       Deploy path (default: /var/www/nself)
+  --subdir <dir>      Project subdirectory within deploy path
+
 Examples:
   nself deploy server init root@server.example.com --domain example.com
+  nself deploy server init 10.0.0.5 --key ~/.ssh/hetzner_ed25519 --user deploy
+  nself deploy server add prod --host 10.0.0.5 --key ~/.ssh/hetzner_ed25519
   nself deploy server check root@server.example.com
   nself deploy server status
   nself deploy server diagnose prod

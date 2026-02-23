@@ -19,6 +19,8 @@ SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-10}"
 SSH_COMMAND_TIMEOUT="${SSH_COMMAND_TIMEOUT:-300}"
 
 # Test SSH connection to a server
+# Returns 0 on success, 1 on failure
+# On failure, prints actionable error messages to stderr
 ssh::test_connection() {
   local host="$1"
   local user="${2:-root}"
@@ -34,15 +36,53 @@ ssh::test_connection() {
     local expanded_key="${key_file/#\~/$HOME}"
     if [[ ! -f "$expanded_key" ]]; then
       log_error "SSH key file not found: $key_file"
+      printf "  Tried key: %s\n" "$key_file" >&2
+      printf "  Specify a valid key with: --key /path/to/private_key\n" >&2
       return 1
     fi
     ssh_opts="$ssh_opts -i $expanded_key"
   fi
 
-  # Test connection
-  if ssh $ssh_opts -p "$port" "${user}@${host}" "echo 'connection_ok'" 2>/dev/null | grep -q "connection_ok"; then
+  # Test connection (capture stderr for diagnostics)
+  local ssh_err_file=""
+  ssh_err_file=$(mktemp 2>/dev/null || mktemp -t nself_ssh_err)
+  if ssh $ssh_opts -p "$port" "${user}@${host}" "echo 'connection_ok'" 2>"$ssh_err_file" | grep -q "connection_ok"; then
+    rm -f "$ssh_err_file"
     return 0
   else
+    local ssh_err=""
+    ssh_err=$(cat "$ssh_err_file" 2>/dev/null)
+    rm -f "$ssh_err_file"
+
+    # Provide actionable guidance based on the error
+    local ssh_err_lower=""
+    ssh_err_lower=$(printf "%s" "$ssh_err" | tr '[:upper:]' '[:lower:]')
+    case "$ssh_err_lower" in
+      *"permission denied"*|*"publickey"*|*"no more authentication"*)
+        log_error "SSH authentication failed for ${user}@${host}:${port}"
+        if [[ -n "$key_file" ]]; then
+          printf "  Key tried: %s\n" "$key_file" >&2
+        else
+          printf "  No key specified (using SSH agent/defaults)\n" >&2
+        fi
+        printf "  Fix: ssh-copy-id -i <key> -p %s %s@%s\n" "$port" "$user" "$host" >&2
+        printf "  Or:  nself deploy server init %s --key /path/to/key\n" "$host" >&2
+        ;;
+      *"connection refused"*)
+        log_error "SSH connection refused at ${host}:${port}"
+        printf "  Ensure SSH is running and port %s is open\n" "$port" >&2
+        ;;
+      *"timed out"*|*"no route"*)
+        log_error "SSH connection timed out for ${host}:${port}"
+        printf "  Verify the server is running and the address is correct\n" >&2
+        ;;
+      *)
+        log_error "SSH connection failed for ${user}@${host}:${port}"
+        if [[ -n "$ssh_err" ]]; then
+          printf "  SSH error: %s\n" "$ssh_err" >&2
+        fi
+        ;;
+    esac
     return 1
   fi
 }
