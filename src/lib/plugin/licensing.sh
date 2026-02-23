@@ -21,9 +21,9 @@ NSELF_LICENSE_CACHE_FILE="${NSELF_LICENSE_CACHE_DIR}/cache"
 NSELF_LICENSE_KEY_FILE="${NSELF_LICENSE_CACHE_DIR}/key"
 NSELF_LICENSE_CACHE_TTL=86400  # 24 hours
 NSELF_LICENSE_KEY_PREFIX="nself_pro_"
-NSELF_LICENSE_API_BASE="${NSELF_API_URL:-https://api.nself.org}"
-NSELF_LICENSE_VALIDATE_ENDPOINT="${NSELF_LICENSE_API_BASE}/api/licenses/validate"
-NSELF_PRICING_URL="https://nself.org/pricing"
+NSELF_PING_URL="${NSELF_PING_API_URL:-https://ping.nself.org}"
+NSELF_LICENSE_VALIDATE_ENDPOINT="${NSELF_PING_URL}/license/validate"
+NSELF_PRICING_URL="https://nself.org/commercial"
 
 # ---------------------------------------------------------------------------
 # Paid plugin registry
