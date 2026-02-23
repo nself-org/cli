@@ -53,7 +53,19 @@ EOF
     i=$((i + 1))
   done
 
-  cat <<EOF
+  # Generate SSL-aware healthcheck (Bug fix: certbot mode only has HTTPS on port 80)
+  local ssl_mode="${SSL_MODE:-none}"
+  if [[ "$ssl_mode" != "none" ]] && [[ -n "$ssl_mode" ]]; then
+    cat <<EOF
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-check-certificate --no-verbose --tries=1 -O /dev/null https://127.0.0.1/health 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+EOF
+  else
+    cat <<EOF
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O /dev/null http://127.0.0.1/health 2>/dev/null || wget --no-verbose --tries=1 -O /dev/null http://127.0.0.1/ 2>/dev/null || exit 1"]
       interval: 30s
@@ -61,6 +73,7 @@ EOF
       retries: 3
       start_period: 10s
 EOF
+  fi
 }
 
 # Generate environment-aware server blocks
