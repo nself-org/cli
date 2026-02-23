@@ -3009,6 +3009,7 @@ sync_full() {
   printf "\n"
   cli_section "Step 3: Nginx Configuration"
 
+  local nginx_changed=false
   if [[ -d "nginx" ]]; then
     printf "  Syncing nginx directory... "
 
@@ -3018,9 +3019,17 @@ sync_full() {
       [[ -n "$key_file" ]] && rsync_ssh="$rsync_ssh -i ${key_file/#\~/$HOME}"
       rsync_ssh="$rsync_ssh -p $port"
 
-      if rsync -avz --delete -e "$rsync_ssh" nginx/ "${user}@${host}:${deploy_path}/nginx/" 2>/dev/null; then
+      local nginx_changes
+      nginx_changes=$(rsync -avz --delete --itemize-changes -e "$rsync_ssh" nginx/ "${user}@${host}:${deploy_path}/nginx/" 2>/dev/null)
+      local rsync_rc=$?
+      if [[ $rsync_rc -eq 0 ]]; then
         printf "${CLI_GREEN}OK${CLI_RESET}\n"
         files_synced=$((files_synced + 1))
+        # Check if any files actually changed (itemize-changes lines starting with > or < or c)
+        if printf "%s" "$nginx_changes" | grep -qE "^[><c]"; then
+          nginx_changed=true
+          printf "  ${CLI_DIM}nginx files changed — will reload nginx after sync${CLI_RESET}\n"
+        fi
       else
         printf "${CLI_RED}FAILED${CLI_RESET}\n"
       fi
@@ -3035,6 +3044,7 @@ sync_full() {
   printf "\n"
   cli_section "Step 4: Custom Services"
 
+  local changed_services=""
   if [[ -d "services" ]]; then
     printf "  Syncing services directory... "
 
@@ -3043,9 +3053,28 @@ sync_full() {
       [[ -n "$key_file" ]] && rsync_ssh="$rsync_ssh -i ${key_file/#\~/$HOME}"
       rsync_ssh="$rsync_ssh -p $port"
 
-      if rsync -avz --delete -e "$rsync_ssh" services/ "${user}@${host}:${deploy_path}/services/" 2>/dev/null; then
+      local services_changes
+      services_changes=$(rsync -avz --delete --itemize-changes -e "$rsync_ssh" services/ "${user}@${host}:${deploy_path}/services/" 2>/dev/null)
+      local rsync_svc_rc=$?
+      if [[ $rsync_svc_rc -eq 0 ]]; then
         printf "${CLI_GREEN}OK${CLI_RESET}\n"
         files_synced=$((files_synced + 1))
+        # Extract which top-level service directories had changes
+        # rsync --itemize-changes lines starting with > < c indicate actual file transfers
+        # awk extracts the path (2nd field), cut gets the top-level directory name
+        if [[ -n "$services_changes" ]]; then
+          changed_services=$(printf "%s\n" "$services_changes" \
+            | grep -E "^[><c]" \
+            | awk '{print $2}' \
+            | cut -d/ -f1 \
+            | grep -v "^\\.$" \
+            | sort -u \
+            | tr "\n" " " \
+            | sed "s/ $//")
+          if [[ -n "$changed_services" ]]; then
+            printf "  ${CLI_DIM}Changed services: %s (will restart containers)${CLI_RESET}\n" "$changed_services"
+          fi
+        fi
       else
         printf "${CLI_RED}FAILED${CLI_RESET}\n"
       fi
@@ -3136,6 +3165,71 @@ sync_full() {
 
   if [[ $hasura_synced -gt 0 ]]; then
     printf "\n  ${CLI_GREEN}✓${CLI_RESET} Synced %d Hasura directory/directories\n" "$hasura_synced"
+  fi
+
+  # Step 4b: Reload nginx if nginx/ files changed
+  if [[ "$nginx_changed" == "true" ]]; then
+    printf "\n"
+    cli_section "Step 4b: Nginx Reload"
+
+    # Get project name from remote .env for container naming
+    local nginx_project
+    nginx_project=$(ssh "${ssh_args[@]}" "${user}@${host}" \
+      "grep -E '^PROJECT_NAME=' '$deploy_path/.env' 2>/dev/null | cut -d= -f2" 2>/dev/null)
+    nginx_project="${nginx_project:-nself}"
+
+    printf "  Testing nginx config on remote... "
+    local nginx_test_result
+    nginx_test_result=$(ssh "${ssh_args[@]}" "${user}@${host}" \
+      "docker exec ${nginx_project}_nginx nginx -t 2>&1" 2>/dev/null || echo "nginx_test_failed")
+
+    if printf "%s" "$nginx_test_result" | grep -q "syntax is ok"; then
+      printf "${CLI_GREEN}OK${CLI_RESET}\n"
+      printf "  Reloading nginx... "
+      local nginx_reload_result
+      nginx_reload_result=$(ssh "${ssh_args[@]}" "${user}@${host}" \
+        "docker exec ${nginx_project}_nginx nginx -s reload 2>&1" 2>/dev/null || echo "nginx_reload_failed")
+      if printf "%s" "$nginx_reload_result" | grep -q "nginx_reload_failed"; then
+        printf "${CLI_RED}FAILED${CLI_RESET}\n"
+        cli_warning "nginx reload failed — new config may not be active"
+      else
+        printf "${CLI_GREEN}OK${CLI_RESET}\n"
+        cli_success "nginx reloaded with new configuration"
+      fi
+    else
+      printf "${CLI_RED}FAILED${CLI_RESET}\n"
+      cli_warning "nginx config test failed — NOT reloading (old config still active)"
+      printf "\n"
+      printf "%s\n" "$nginx_test_result" | head -10
+      printf "\n"
+      cli_info "Fix the nginx config locally and redeploy"
+    fi
+  fi
+
+  # Step 4c: Restart changed custom service containers
+  if [[ -n "$changed_services" ]]; then
+    printf "\n"
+    cli_section "Step 4c: Restart Changed Custom Services"
+
+    # Get project name from remote .env for container naming
+    local svc_project
+    svc_project=$(ssh "${ssh_args[@]}" "${user}@${host}" \
+      "grep -E '^PROJECT_NAME=' '$deploy_path/.env' 2>/dev/null | cut -d= -f2" 2>/dev/null)
+    svc_project="${svc_project:-nself}"
+
+    for svc_name in $changed_services; do
+      printf "  Restarting %s... " "$svc_name"
+      local restart_result
+      restart_result=$(ssh "${ssh_args[@]}" "${user}@${host}" \
+        "docker restart ${svc_project}_${svc_name} 2>&1" 2>/dev/null || echo "restart_failed")
+      if printf "%s" "$restart_result" | grep -q "restart_failed\|Error\|error"; then
+        printf "${CLI_RED}FAILED${CLI_RESET}\n"
+        cli_warning "Could not restart ${svc_name} — may not be running or name differs"
+      else
+        printf "${CLI_GREEN}OK${CLI_RESET}\n"
+        cli_success "Restarted ${svc_name}"
+      fi
+    done
   fi
 
   # Step 5: Restart services if rebuild enabled
