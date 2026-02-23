@@ -320,6 +320,9 @@ EOF
   echo "" >> docker-compose.yml
   echo "# End of generated docker-compose.yml" >> docker-compose.yml
 
+  # Protect generated file: it may contain variable names for secrets
+  chmod 600 docker-compose.yml 2>/dev/null || true
+
   # Explicitly return success
   return 0
 }
