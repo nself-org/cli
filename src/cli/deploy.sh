@@ -208,12 +208,15 @@ deploy_environment() {
   local deploy_path=""
   local project_subdir=""
 
+  local ssh_key_path=""
   if [[ -f "$env_dir/server.json" ]]; then
     host=$(grep '"host"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
     user=$(grep '"user"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
     port=$(grep '"port"' "$env_dir/server.json" 2>/dev/null | sed 's/[^0-9]//g')
     deploy_path=$(grep '"deploy_path"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4)
     project_subdir=$(grep '"project_subdir"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4 || true)
+    # Read SSH key path from server.json if present
+    ssh_key_path=$(grep '"key"' "$env_dir/server.json" 2>/dev/null | cut -d'"' -f4 || true)
     user="${user:-root}"
     port="${port:-22}"
     deploy_path="${deploy_path:-/var/www/nself}"
@@ -258,6 +261,18 @@ deploy_environment() {
     safe_source_env "$env_dir/.env.secrets" 2>/dev/null || true
   fi
 
+  # Override SSH key from SSH_KEY_PATH env var (set in .env or .env.secrets)
+  # Fall back to server.json "key" value, then default to ~/.ssh/id_ed25519
+  if [[ -n "${SSH_KEY_PATH:-}" ]]; then
+    ssh_key_path="${SSH_KEY_PATH}"
+  fi
+  if [[ -z "$ssh_key_path" ]]; then
+    ssh_key_path="${HOME}/.ssh/id_ed25519"
+  fi
+  # Expand tilde in path
+  ssh_key_path="${ssh_key_path/#\~/$HOME}"
+  printf "  SSH Key:      %s\n" "$ssh_key_path"
+
   # ============================================================
   # SECURE BY DEFAULT: Production Security Pre-flight
   # ============================================================
@@ -297,7 +312,7 @@ deploy_environment() {
     '
 
     local fw_result
-    fw_result=$(ssh -o ConnectTimeout=10 -p "$port" "${user}@${host}" "$firewall_script" 2>/dev/null || echo "ssh_failed")
+    fw_result=$(ssh -i "$ssh_key_path" -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=accept-new -p "$port" "${user}@${host}" "$firewall_script" 2>/dev/null || echo "ssh_failed")
 
     if echo "$fw_result" | grep -q "firewall_configured"; then
       cli_success "Firewall configured (only ports 22, 80, 443 allowed)"
@@ -335,7 +350,7 @@ deploy_environment() {
   '
 
   local deploy_result
-  deploy_result=$(ssh -o ConnectTimeout=30 -p "$port" "${user}@${host}" "$deploy_script" 2>&1 || echo "deploy_failed")
+  deploy_result=$(ssh -i "$ssh_key_path" -o ConnectTimeout=30 -o BatchMode=yes -o StrictHostKeyChecking=accept-new -p "$port" "${user}@${host}" "$deploy_script" 2>&1 || echo "deploy_failed")
 
   if echo "$deploy_result" | grep -q "deployment_complete"; then
     # ============================================================
@@ -368,7 +383,7 @@ deploy_environment() {
       '
 
       local verify_result
-      verify_result=$(ssh -o ConnectTimeout=30 -p "$port" "${user}@${host}" "$verify_script" 2>/dev/null || echo "verify_failed")
+      verify_result=$(ssh -i "$ssh_key_path" -o ConnectTimeout=30 -o BatchMode=yes -o StrictHostKeyChecking=accept-new -p "$port" "${user}@${host}" "$verify_script" 2>/dev/null || echo "verify_failed")
 
       if echo "$verify_result" | grep -q "security_verified"; then
         cli_success "Production security verification passed"
@@ -376,7 +391,7 @@ deploy_environment() {
         cli_error "SECURITY VIOLATION: Sensitive ports exposed in production"
         echo "$verify_result" | grep "SECURITY_ERROR" || true
         cli_warning "Rolling back deployment..."
-        ssh -o ConnectTimeout=10 -p "$port" "${user}@${host}" "cd '$deploy_path' && docker compose down" 2>/dev/null || true
+        ssh -i "$ssh_key_path" -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=accept-new -p "$port" "${user}@${host}" "cd '$deploy_path' && docker compose down" 2>/dev/null || true
         return 1
       fi
     else
