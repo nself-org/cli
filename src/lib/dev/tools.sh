@@ -74,14 +74,17 @@ dev_profile_start() {
   local start_time=$(date +%s%3N)
   local start_mem=$(ps -o rss= -p $$ 2>/dev/null || echo 0)
 
-  echo "{\"name\":\"$profile_name\",\"start_time\":$start_time,\"start_mem\":$start_mem}" >"/tmp/nself_profile_$$.json"
+  local _profile_dir="${XDG_RUNTIME_DIR:-$HOME/.local/run/nself}"
+  mkdir -p "$_profile_dir"
+  echo "{\"name\":\"$profile_name\",\"start_time\":$start_time,\"start_mem\":$start_mem}" >"${_profile_dir}/nself_profile_active.json"
 
   echo "Profiling started: $profile_name"
 }
 
 # Stop profiling
 dev_profile_stop() {
-  local profile_file="/tmp/nself_profile_$$.json"
+  local _profile_dir="${XDG_RUNTIME_DIR:-$HOME/.local/run/nself}"
+  local profile_file="${_profile_dir}/nself_profile_active.json"
 
   if [[ ! -f "$profile_file" ]]; then
     echo "No active profile"

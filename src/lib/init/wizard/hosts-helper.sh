@@ -66,14 +66,16 @@ update_hosts_file() {
   echo "$entries"
   echo ""
 
-  echo -n "Add these entries to /etc/hosts now? (requires sudo) (Y/n): "
+  printf "%s" "Add these entries to /etc/hosts now? (requires sudo) (Y/n): "
   local add_entries
   read add_entries
   add_entries="${add_entries:-y}"
 
   if [[ "$add_entries" == "y" ]] || [[ "$add_entries" == "Y" ]]; then
     # Create temp file with entries
-    local temp_file="/tmp/nself-hosts-$$"
+    local temp_file
+    temp_file=$(mktemp /tmp/nself-hosts.XXXXXX)
+    trap "rm -f '$temp_file'" EXIT
     echo "" >"$temp_file"
     echo "$entries" >>"$temp_file"
 

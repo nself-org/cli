@@ -276,9 +276,9 @@ confirm_action() {
   local response
 
   if [[ "$default" == "y" ]]; then
-    echo -n "$prompt [Y/n]: "
+    printf "%s" "$prompt [Y/n]: "
   else
-    echo -n "$prompt [y/N]: "
+    printf "%s" "$prompt [y/N]: "
   fi
 
   read -r response

@@ -150,7 +150,7 @@ enable_monitoring() {
 
   # Confirm unless forced
   if [[ "$force" != "true" ]]; then
-    echo -n "Continue? [Y/n] "
+    printf "%s" "Continue? [Y/n] "
     read -r response
     if [[ "$response" =~ ^[Nn] ]]; then
       log_info "Cancelled"
@@ -257,7 +257,7 @@ disable_monitoring() {
 
   # Confirm unless forced
   if [[ "$force" != "true" ]]; then
-    echo -n "This will stop all monitoring services. Continue? [Y/n] "
+    printf "%s" "This will stop all monitoring services. Continue? [Y/n] "
     read -r response
     if [[ "$response" =~ ^[Nn] ]]; then
       log_info "Cancelled"

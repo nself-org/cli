@@ -40,7 +40,7 @@ hash_password() {
     local salt
     salt=$(openssl rand -hex 16)
     local hash
-    hash=$(echo -n "$password$salt" | openssl dgst -sha256 | cut -d' ' -f2)
+    hash=$(printf "%s" "$password$salt" | openssl dgst -sha256 | cut -d' ' -f2)
     echo "\$pbkdf2\$$salt\$$hash"
     return 0
   fi
@@ -83,7 +83,7 @@ verify_password() {
     local expected_hash
     expected_hash=$(echo "$stored_hash" | cut -d'$' -f4)
     local computed_hash
-    computed_hash=$(echo -n "$password$salt" | openssl dgst -sha256 | cut -d' ' -f2)
+    computed_hash=$(printf "%s" "$password$salt" | openssl dgst -sha256 | cut -d' ' -f2)
 
     if [[ "$computed_hash" == "$expected_hash" ]]; then
       return 0

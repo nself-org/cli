@@ -100,9 +100,9 @@ EOSQL
     # Hash code for storage (SHA-256)
     local code_hash
     if command -v openssl >/dev/null 2>&1; then
-      code_hash=$(echo -n "$code" | openssl dgst -sha256 | cut -d' ' -f2)
+      code_hash=$(printf "%s" "$code" | openssl dgst -sha256 | cut -d' ' -f2)
     else
-      code_hash=$(echo -n "$code" | sha256sum | cut -d' ' -f1)
+      code_hash=$(printf "%s" "$code" | sha256sum | cut -d' ' -f1)
     fi
 
     # Store in database
@@ -156,9 +156,9 @@ backup_code_verify() {
   # Hash the provided code
   local code_hash
   if command -v openssl >/dev/null 2>&1; then
-    code_hash=$(echo -n "$code" | openssl dgst -sha256 | cut -d' ' -f2)
+    code_hash=$(printf "%s" "$code" | openssl dgst -sha256 | cut -d' ' -f2)
   else
-    code_hash=$(echo -n "$code" | sha256sum | cut -d' ' -f1)
+    code_hash=$(printf "%s" "$code" | sha256sum | cut -d' ' -f1)
   fi
 
   # Check if code exists and is unused

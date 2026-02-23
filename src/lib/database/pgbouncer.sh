@@ -165,11 +165,15 @@ generate_userlist() {
   load_env_with_priority 2>/dev/null || true
 
   local db_user="${POSTGRES_USER:-postgres}"
-  local db_password="${POSTGRES_PASSWORD:-postgres}"
+  local db_password="${POSTGRES_PASSWORD:-}"
+  if [ -z "$db_password" ]; then
+    echo "ERROR: POSTGRES_PASSWORD is required for pgbouncer userlist" >&2
+    return 1
+  fi
 
   # Generate MD5 hash for password
   # Format: "md5" + md5(password + username)
-  local password_hash="md5$(echo -n "${db_password}${db_user}" | md5sum | cut -d' ' -f1 2>/dev/null || echo -n "${db_password}${db_user}" | md5)"
+  local password_hash="md5$(printf "%s" "${db_password}${db_user}" | md5sum | cut -d' ' -f1 2>/dev/null || printf "%s" "${db_password}${db_user}" | md5)"
 
   mkdir -p "$(dirname "$output_file")"
 
@@ -178,7 +182,7 @@ generate_userlist() {
 ;; Format: "username" "password" or "username" "md5hash"
 
 "$db_user" "$password_hash"
-"$PGBOUNCER_ADMIN_USER" "md5$(echo -n "${PGBOUNCER_ADMIN_PASSWORD}${PGBOUNCER_ADMIN_USER}" | md5sum | cut -d' ' -f1 2>/dev/null || echo -n "${PGBOUNCER_ADMIN_PASSWORD}${PGBOUNCER_ADMIN_USER}" | md5)"
+"$PGBOUNCER_ADMIN_USER" "md5$(printf "%s" "${PGBOUNCER_ADMIN_PASSWORD}${PGBOUNCER_ADMIN_USER}" | md5sum | cut -d' ' -f1 2>/dev/null || printf "%s" "${PGBOUNCER_ADMIN_PASSWORD}${PGBOUNCER_ADMIN_USER}" | md5)"
 EOF
 
   chmod 600 "$output_file"

@@ -287,7 +287,7 @@ check_running_containers() {
   local no_health_check=0
 
   for container in "${containers[@]}"; do
-    local service_name=$(echo "$container" | sed "s/^${project_name}_//" | sed 's/_[0-9]*$//')
+    local service_name=$(echo "$container" | sed "s|^${project_name}_||" | sed 's/_[0-9]*$//')
     local health_status=$(docker inspect "$container" --format='{{.State.Health.Status}}' 2>/dev/null || echo "none")
     local state=$(docker inspect "$container" --format='{{.State.Status}}' 2>/dev/null || echo "unknown")
 

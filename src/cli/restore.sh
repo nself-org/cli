@@ -127,7 +127,7 @@ cmd_restore() {
   # Ask for confirmation unless force flag is used
   if [[ "$force" != true ]]; then
     printf "${COLOR_YELLOW}⚠${COLOR_RESET}  This will overwrite existing files\n"
-    echo -n "Continue? [y/N]: "
+    printf "%s" "Continue? [y/N]: "
     read -r response
     if [[ ! "$response" =~ ^[Yy]$ ]]; then
       echo "Restore cancelled"

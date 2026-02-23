@@ -124,7 +124,7 @@ run_test() {
   local test_function="$2"
 
   TESTS_RUN=$((TESTS_RUN + 1))
-  echo -n "Testing $test_name... "
+  printf "%s" "Testing $test_name... "
 
   # Setup clean environment for each test
   setup_test_env

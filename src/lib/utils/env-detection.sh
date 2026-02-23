@@ -124,7 +124,9 @@ with_env() {
 
   # Save current environment
   local original_env="${ENV:-}"
-  local temp_env_file="/tmp/nself_env_backup_$$"
+  local temp_env_file
+  temp_env_file=$(mktemp /tmp/nself_env_backup.XXXXXX)
+  trap "rm -f '$temp_env_file'" EXIT
   env >"$temp_env_file"
 
   # Load target environment

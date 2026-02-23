@@ -152,17 +152,17 @@ display_dashboard() {
     local disk=$(echo "$latest_metrics" | jq '.system.disk' 2>/dev/null || echo "0")
 
     # CPU bar
-    echo -n "CPU:    "
+    printf "%s" "CPU:    "
     draw_bar "$cpu" 100
     printf " %3d%%\n" "$cpu"
 
     # Memory bar
-    echo -n "Memory: "
+    printf "%s" "Memory: "
     draw_bar "$mem" 100
     printf " %3d%%\n" "$mem"
 
     # Disk bar
-    echo -n "Disk:   "
+    printf "%s" "Disk:   "
     draw_bar "$disk" 100
     printf " %3d%%\n" "$disk"
 
@@ -178,7 +178,7 @@ display_dashboard() {
 
     if [[ $total -gt 0 ]]; then
       local health_percent=$((healthy * 100 / total))
-      echo -n "Health: "
+      printf "%s" "Health: "
       draw_health_bar "$health_percent"
       printf " %3d%% (%d/%d services healthy)\n" "$health_percent" "$healthy" "$total"
 
@@ -238,13 +238,13 @@ draw_bar() {
 
   # Draw filled part
   for ((i = 0; i < filled; i++)); do
-    echo -n "█"
+    printf "%s" "█"
   done
 
   # Reset color and draw empty part
   printf "\033[0m"
   for ((i = 0; i < empty; i++)); do
-    echo -n "░"
+    printf "%s" "░"
   done
 }
 
@@ -267,11 +267,11 @@ draw_mini_bar() {
 
   # Draw bar
   for ((i = 0; i < filled; i++)); do
-    echo -n "▰"
+    printf "%s" "▰"
   done
   printf "\033[0m"
   for ((i = 0; i < empty; i++)); do
-    echo -n "▱"
+    printf "%s" "▱"
   done
 }
 

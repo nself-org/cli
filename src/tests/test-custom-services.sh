@@ -56,7 +56,7 @@ source "$SCRIPT_DIR/../../src/lib/services/service-builder.sh"
 echo "✓ Service builder loaded"
 
 # Test parsing
-echo -n "Testing service parsing... "
+printf "%s" "Testing service parsing... "
 parse_custom_services
 if [[ ${#PARSED_SERVICES[@]} -eq 3 ]]; then
   echo "✓ Parsed ${#PARSED_SERVICES[@]} services"
@@ -75,7 +75,7 @@ done
 
 # Test service generation
 echo ""
-echo -n "Testing service generation... "
+printf "%s" "Testing service generation... "
 if build_custom_services >/dev/null 2>&1; then
   echo "✓ Services generated"
 else

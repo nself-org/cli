@@ -5,7 +5,7 @@
 # POSIX-compliant, no Bash 4+ features
 
 # Temporary directory for log streams
-LOG_STREAM_DIR="/tmp/nself-logs-$$"
+LOG_STREAM_DIR=$(mktemp -d /tmp/nself-logs.XXXXXX)
 
 set -euo pipefail
 

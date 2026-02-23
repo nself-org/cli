@@ -158,7 +158,7 @@ resolve_port_conflicts() {
       echo "  Port $port ($service): used by $process"
 
       if [ "$interactive" = "true" ]; then
-        echo -n "    Find alternative port? [Y/n]: "
+        printf "%s" "    Find alternative port? [Y/n]: "
         read -r response
         if [ -z "$response" ] || [ "$response" = "y" ] || [ "$response" = "Y" ]; then
           local new_port=$(find_available_port $((port + 1)))

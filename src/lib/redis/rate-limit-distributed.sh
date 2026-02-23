@@ -251,7 +251,7 @@ redis_rate_limit_cluster() {
   local cluster_nodes="${4:-1}"
 
   # Use consistent hashing to determine which node handles this key
-  local hash=$(echo -n "$key" | md5sum | cut -d' ' -f1)
+  local hash=$(printf "%s" "$key" | md5sum | cut -d' ' -f1)
   local node_id=$((0x${hash:0:8} % cluster_nodes))
 
   local connection_name="node_$node_id"

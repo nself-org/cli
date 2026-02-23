@@ -304,7 +304,7 @@ assess_authenticator_security() {
 # Base64URL encode
 base64url_encode() {
   local input="$1"
-  echo -n "$input" | base64 | tr '+/' '-_' | tr -d '='
+  printf "%s" "$input" | base64 | tr '+/' '-_' | tr -d '='
 }
 
 # Base64URL decode
@@ -315,14 +315,14 @@ base64url_decode() {
   while [[ $((${#padded} % 4)) -ne 0 ]]; do
     padded="${padded}="
   done
-  echo -n "$padded" | tr '_-' '/+' | base64 -d
+  printf "%s" "$padded" | tr '_-' '/+' | base64 -d
 }
 
 # Generate user handle (for WebAuthn)
 generate_user_handle() {
   local user_id="$1"
   # Convert UUID to bytes and base64url encode
-  echo -n "$user_id" | openssl dgst -sha256 -binary | base64 | tr '+/' '-_' | tr -d '='
+  printf "%s" "$user_id" | openssl dgst -sha256 -binary | base64 | tr '+/' '-_' | tr -d '='
 }
 
 # ============================================================================

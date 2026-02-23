@@ -101,7 +101,7 @@ fix_go_modules() {
     local service_dir=""
 
     # Extract service base name (${PROJECT_NAME}-go-go1 -> go1)
-    local base_service=$(echo "$service" | sed "s/^${PROJECT_NAME:-nself}-[^-]*-//")
+    local base_service=$(echo "$service" | sed "s|^${PROJECT_NAME:-nself}-[^-]*-||")
 
     # Check common locations
     if [[ -d "services/go/$base_service" ]]; then

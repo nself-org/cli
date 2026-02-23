@@ -26,7 +26,7 @@ set -euo pipefail
 
   # Get list of running services (remove project prefix)
   local project_name="${PROJECT_NAME:-nself}"
-  local running_services=$(docker ps --format "{{.Names}}" 2>/dev/null | grep "^${project_name}_" | sed "s/^${project_name}_//" | sort)
+  local running_services=$(docker ps --format "{{.Names}}" 2>/dev/null | grep "^${project_name}_" | sed "s|^${project_name}_||" | sort)
 
   # Count running services
   local running_count=0

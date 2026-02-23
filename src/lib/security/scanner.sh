@@ -141,10 +141,10 @@ generate_device_fingerprint() {
   local fingerprint
 
   if command -v openssl >/dev/null 2>&1; then
-    fingerprint=$(echo -n "$fingerprint_data" | openssl dgst -sha256 | awk '{print $2}')
+    fingerprint=$(printf "%s" "$fingerprint_data" | openssl dgst -sha256 | awk '{print $2}')
   else
     # Fallback to simple hash
-    fingerprint=$(echo -n "$fingerprint_data" | cksum | awk '{print $1}')
+    fingerprint=$(printf "%s" "$fingerprint_data" | cksum | awk '{print $1}')
   fi
 
   echo "$fingerprint"

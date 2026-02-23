@@ -106,7 +106,7 @@ fast_get_services() {
   docker ps -a \
     --filter "name=${project_name}_" \
     --format "{{.Names}}" \
-    2>/dev/null | sed "s/^${project_name}_//" | sort -u
+    2>/dev/null | sed "s|^${project_name}_||" | sort -u
 }
 
 # Batch check if services are running

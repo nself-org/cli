@@ -55,7 +55,7 @@ select_option() {
   done
 
   echo ""
-  echo -n "Selection [1]: "
+  printf "%s" "Selection [1]: "
   local choice
   read choice
   choice="${choice:-1}"
@@ -86,7 +86,7 @@ multi_select() {
   done
 
   echo ""
-  echo -n "Selection [none]: "
+  printf "%s" "Selection [none]: "
   local choices
   read choices
   choices="${choices:-none}"
@@ -120,9 +120,9 @@ prompt_input() {
 
   while true; do
     if [[ -n "$default" ]]; then
-      echo -n "$prompt [$default]: "
+      printf "%s" "$prompt [$default]: "
     else
-      echo -n "$prompt: "
+      printf "%s" "$prompt: "
     fi
 
     local input
@@ -155,9 +155,9 @@ prompt_yes_no() {
 
   local yn
   if [[ "$default" == "y" ]]; then
-    echo -n "$prompt (Y/n): "
+    printf "%s" "$prompt (Y/n): "
   else
-    echo -n "$prompt (y/N): "
+    printf "%s" "$prompt (y/N): "
   fi
 
   read yn
@@ -203,7 +203,7 @@ show_spinner() {
 
 # Press any key to continue
 press_any_key() {
-  echo -n "Press any key to continue..."
+  printf "%s" "Press any key to continue..."
   read -n 1 -s
   echo ""
 }

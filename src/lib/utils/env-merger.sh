@@ -25,9 +25,11 @@ fi
 merge_environments() {
   local target_env="${1:-dev}"
   local output_file="${2:-.env.runtime}"
-  local temp_file="/tmp/nself_env_merge_$$"
+  local temp_file
+  temp_file=$(mktemp /tmp/nself_env_merge.XXXXXX)
+  trap "rm -f '$temp_file'" EXIT
 
-  # Clear temp file
+  # Clear temp file (mktemp creates it)
   >"$temp_file"
 
   # Determine cascade order based on target environment

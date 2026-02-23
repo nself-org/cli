@@ -69,11 +69,11 @@ prompt_input() {
   local pattern="${4:-.*}"
 
   while true; do
-    echo -n "$prompt"
+    printf "%s" "$prompt"
     if [[ -n "$default" ]]; then
-      echo -n " [$default]: "
+      printf "%s" " [$default]: "
     else
-      echo -n ": "
+      printf "%s" ": "
     fi
 
     read -r input_value
@@ -98,7 +98,7 @@ prompt_password() {
   local prompt="$1"
   local var_name="$2"
 
-  echo -n "$prompt: "
+  printf "%s" "$prompt: "
   read -s -r password_value
   echo ""
   # Safe dynamic variable assignment (no eval)
@@ -107,7 +107,7 @@ prompt_password() {
 
 confirm_action() {
   local prompt="$1"
-  echo -n "$prompt [y/N]: "
+  printf "%s" "$prompt [y/N]: "
   read -r response
   case "$response" in
     [yY][eE][sS] | [yY]) return 0 ;;

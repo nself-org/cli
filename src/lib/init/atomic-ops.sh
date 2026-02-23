@@ -30,7 +30,7 @@ init_temp_dir() {
   if [[ -z "$TEMP_DIR" ]] || [[ ! -d "$TEMP_DIR" ]]; then
     TEMP_DIR=$(mktemp -d 2>/dev/null) || {
       # Fallback for systems without mktemp
-      TEMP_DIR="/tmp/nself-init-$$-$(date +%s)"
+      TEMP_DIR="/tmp/nself-init-$(date +%s)-${RANDOM}"
       mkdir -p "$TEMP_DIR" || {
         log_error "Failed to create temp directory"
         return $INIT_E_CANTCREAT

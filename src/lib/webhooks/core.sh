@@ -270,7 +270,7 @@ webhook_deliver_async() {
 
   # Generate webhook signature
   local signature
-  signature=$(echo -n "$payload_json" | openssl dgst -sha256 -hmac "$secret" | cut -d' ' -f2)
+  signature=$(printf "%s" "$payload_json" | openssl dgst -sha256 -hmac "$secret" | cut -d' ' -f2)
 
   # Build headers
   local curl_headers=(

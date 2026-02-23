@@ -94,7 +94,7 @@ security_checks() {
   # Check if running as root (not recommended)
   if [[ $EUID -eq 0 ]]; then
     log_warning "Running as root is not recommended for development."
-    echo -n "Continue anyway? (y/N) " >&2
+    printf "%s" "Continue anyway? (y/N) " >&2
     read -r response
     # Bash 3.2 compatible check for yes/no
     case "$response" in

@@ -465,14 +465,17 @@ print_cascaded_vars() {
   local target_env="${1:-${ENV:-dev}}"
 
   # Save current environment
-  local temp_env_file="/tmp/nself_env_before_$$"
+  local temp_env_file
+  temp_env_file=$(mktemp /tmp/nself_env_before.XXXXXX)
+  local temp_env_after
+  temp_env_after=$(mktemp /tmp/nself_env_after.XXXXXX)
+  trap "rm -f '$temp_env_file' '$temp_env_after'" EXIT
   env >"$temp_env_file"
 
   # Load cascaded vars
   get_cascaded_vars "$target_env"
 
   # Show only the vars that were set/changed
-  local temp_env_after="/tmp/nself_env_after_$$"
   env >"$temp_env_after"
 
   echo "# Cascaded environment for: $target_env"

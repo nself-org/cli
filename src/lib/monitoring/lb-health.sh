@@ -280,13 +280,13 @@ display_health_dashboard() {
       health_percent=$((healthy * 100 / total))
     fi
 
-    echo -n "Health: "
+    printf "%s" "Health: "
     for ((i = 0; i < 20; i++)); do
       local threshold=$((i * 5))
       if [[ $health_percent -gt $threshold ]]; then
-        echo -n "█"
+        printf "%s" "█"
       else
-        echo -n "░"
+        printf "%s" "░"
       fi
     done
     printf " %3d%% (%d/%d healthy)\n" "$health_percent" "$healthy" "$total"
@@ -295,7 +295,7 @@ display_health_dashboard() {
     local backends=$(grep "^$pool:" "$BACKEND_POOLS_FILE" | cut -d':' -f2 | tr ',' ' ')
 
     for backend in $backends; do
-      echo -n "  • $backend: "
+      printf "%s" "  • $backend: "
 
       if health_check_endpoint "$backend"; then
         printf "\033[32m● Healthy\033[0m\n"

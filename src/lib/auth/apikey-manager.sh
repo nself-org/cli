@@ -41,9 +41,9 @@ apikey_hash() {
   local api_key="$1"
 
   if command -v openssl >/dev/null 2>&1; then
-    echo -n "$api_key" | openssl dgst -sha256 | cut -d' ' -f2
+    printf "%s" "$api_key" | openssl dgst -sha256 | cut -d' ' -f2
   else
-    echo -n "$api_key" | sha256sum | cut -d' ' -f1
+    printf "%s" "$api_key" | sha256sum | cut -d' ' -f1
   fi
 }
 

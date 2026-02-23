@@ -325,7 +325,7 @@ encryption_encrypt() {
 
   # Encrypt using OpenSSL
   local encrypted
-  encrypted=$(echo -n "$plaintext" | openssl enc -aes-256-cbc -K "$(echo -n "$key_data" | base64 -d | xxd -p | tr -d '\n')" -iv "$iv" -base64 2>/dev/null)
+  encrypted=$(printf "%s" "$plaintext" | openssl enc -aes-256-cbc -K "$(printf "%s" "$key_data" | base64 -d | xxd -p | tr -d '\n')" -iv "$iv" -base64 2>/dev/null)
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR: Encryption failed" >&2
@@ -374,7 +374,7 @@ encryption_decrypt() {
   # Decrypt using OpenSSL
   # printf adds trailing newline required by openssl's base64 parser
   local decrypted
-  decrypted=$(printf '%s\n' "$ciphertext" | openssl enc -d -aes-256-cbc -K "$(echo -n "$key_data" | base64 -d | xxd -p | tr -d '\n')" -iv "$iv" -base64 2>/dev/null)
+  decrypted=$(printf '%s\n' "$ciphertext" | openssl enc -d -aes-256-cbc -K "$(printf "%s" "$key_data" | base64 -d | xxd -p | tr -d '\n')" -iv "$iv" -base64 2>/dev/null)
 
   if [[ $? -ne 0 ]]; then
     echo "ERROR: Decryption failed" >&2

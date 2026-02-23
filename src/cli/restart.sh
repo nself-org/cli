@@ -364,7 +364,7 @@ show_service_urls() {
 
   # Check which services are actually running (remove project prefix)
   local project_name="${PROJECT_NAME:-nself}"
-  local running_services=$(docker ps --format "table {{.Names}}" | grep "^${project_name}_" | sed "s/^${project_name}_//" 2>/dev/null)
+  local running_services=$(docker ps --format "table {{.Names}}" | grep "^${project_name}_" | sed "s|^${project_name}_||" 2>/dev/null)
 
   # Track if any URLs were shown
   local urls_shown=false

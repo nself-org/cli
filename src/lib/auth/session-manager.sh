@@ -75,9 +75,9 @@ EOSQL
   # Hash refresh token for storage
   local refresh_token_hash
   if command -v openssl >/dev/null 2>&1; then
-    refresh_token_hash=$(echo -n "$refresh_token" | openssl dgst -sha256 | cut -d' ' -f2)
+    refresh_token_hash=$(printf "%s" "$refresh_token" | openssl dgst -sha256 | cut -d' ' -f2)
   else
-    refresh_token_hash=$(echo -n "$refresh_token" | sha256sum | cut -d' ' -f1)
+    refresh_token_hash=$(printf "%s" "$refresh_token" | sha256sum | cut -d' ' -f1)
   fi
 
   # Escape metadata
@@ -377,9 +377,9 @@ session_rotate_refresh_token() {
   # Hash new refresh token
   local new_refresh_token_hash
   if command -v openssl >/dev/null 2>&1; then
-    new_refresh_token_hash=$(echo -n "$new_refresh_token" | openssl dgst -sha256 | cut -d' ' -f2)
+    new_refresh_token_hash=$(printf "%s" "$new_refresh_token" | openssl dgst -sha256 | cut -d' ' -f2)
   else
-    new_refresh_token_hash=$(echo -n "$new_refresh_token" | sha256sum | cut -d' ' -f1)
+    new_refresh_token_hash=$(printf "%s" "$new_refresh_token" | sha256sum | cut -d' ' -f1)
   fi
 
   # Update session with new refresh token

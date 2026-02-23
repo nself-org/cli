@@ -57,8 +57,9 @@ setup_firebase_tools() {
   log_info "Setting up Firebase migration tools..."
 
   # Create temporary migration workspace
-  local workspace="/tmp/nself-firebase-migration-$$"
-  mkdir -p "$workspace"
+  local workspace
+  workspace=$(mktemp -d /tmp/nself-firebase-migration.XXXXXX)
+  trap "rm -rf '$workspace'" EXIT
 
   cd "$workspace"
 
