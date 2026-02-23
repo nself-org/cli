@@ -60,8 +60,10 @@ jobs:
 
       - name: Install nself binary
         run: |
-          sudo ln -sf "${{ github.workspace }}/bin/nself" /usr/local/bin/nself
           chmod +x "${{ github.workspace }}/bin/nself"
+          echo "${{ github.workspace }}/bin" >> $GITHUB_PATH
+          # Symlink as fallback for tests that resolve via /usr/local/bin
+          sudo ln -sf "${{ github.workspace }}/bin/nself" /usr/local/bin/nself 2>/dev/null || true
 
       - name: Run unit tests
         run: |
