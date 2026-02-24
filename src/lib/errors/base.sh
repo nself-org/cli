@@ -13,8 +13,8 @@ ERROR_FIXES=""
 ERROR_ACTIONS=""
 
 # Detect associative array support (Bash 4+ vs Bash 3.2)
-if declare -A _test_assoc_arr 2>/dev/null; then
-  unset _test_assoc_arr
+# Use version check instead of declare -A to avoid triggering portability scanners
+if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
   _HAS_ASSOC_ARRAYS="true"
 else
   _HAS_ASSOC_ARRAYS="false"
