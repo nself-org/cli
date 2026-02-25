@@ -27,6 +27,7 @@ cmd_restart() {
   local force_all=false
   local services_to_restart=""
   local verbose=false
+  local skip_build=false
 
   # Parse options
   while [[ $# -gt 0 ]]; do
@@ -42,6 +43,10 @@ cmd_restart() {
         ;;
       --verbose | -v)
         verbose=true
+        shift
+        ;;
+      --skip-build | --no-build)
+        skip_build=true
         shift
         ;;
       --help | -h)
@@ -233,7 +238,30 @@ cmd_restart() {
       printf "${COLOR_BLUE}⠋${COLOR_RESET} Applying changes with minimal downtime..."
 
       local output_file=$(mktemp)
-      if compose up -d --build --remove-orphans 2>&1 >"$output_file"; then
+      # --skip-build: skip image rebuild (use existing images as-is)
+      # Graceful fallback: if --build fails (e.g. missing go.sum), retry without --build
+      local compose_up_success=false
+      if [[ "$skip_build" == "true" ]]; then
+        compose up -d --remove-orphans 2>&1 >"$output_file" && compose_up_success=true
+      else
+        if compose up -d --build --remove-orphans 2>&1 >"$output_file"; then
+          compose_up_success=true
+        else
+          # Build failed — warn and retry with existing images
+          printf "\r${COLOR_YELLOW}⚠${COLOR_RESET}  Image build failed for one or more services          \n"
+          if [[ "$verbose" == "true" ]]; then
+            printf "${COLOR_YELLOW}Build errors:${COLOR_RESET}\n"
+            grep -E "(ERROR|error|failed|Failed|no such file)" "$output_file" 2>/dev/null | head -10 || true
+            echo
+          fi
+          printf "${COLOR_BLUE}⠋${COLOR_RESET} Retrying with existing images (--skip-build)..."
+          compose up -d --remove-orphans 2>&1 >"$output_file" && compose_up_success=true
+          if [[ "$compose_up_success" == "true" ]]; then
+            printf "\r${COLOR_YELLOW}⚠${COLOR_RESET}  Restarted with existing images — fix build errors then run 'nself restart'\n"
+          fi
+        fi
+      fi
+      if [[ "$compose_up_success" == "true" ]]; then
         printf "\r${COLOR_GREEN}✓${COLOR_RESET} Services updated successfully                        \n"
 
         # Show what was recreated
@@ -414,6 +442,7 @@ show_help() {
   echo "  -s, --smart        Smart mode - only restart changed services (default)"
   echo "  -a, --all          Force full restart (stop + start)"
   echo "  -v, --verbose      Show detailed output"
+  echo "  --skip-build       Skip image rebuild, use existing images as-is"
   echo "  -h, --help         Show this help message"
   echo ""
   echo "Examples:"
@@ -421,6 +450,7 @@ show_help() {
   echo "  nself restart postgres          # Restart only postgres"
   echo "  nself restart postgres redis    # Restart specific services"
   echo "  nself restart --all             # Full restart all services"
+  echo "  nself restart --skip-build      # Restart without rebuilding images"
   echo ""
   echo "Smart restart will:"
   echo "  • Detect changes to .env, .env.local, or docker-compose.yml"
