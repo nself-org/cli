@@ -52,6 +52,7 @@ DEBUG=false
 SHOW_HELP=false
 SKIP_HEALTH=false
 FORCE_RECREATE=false
+SKIP_PORT_CHECK=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -88,6 +89,10 @@ while [[ $# -gt 0 ]]; do
       CLEANUP_ON_START="always"
       shift
       ;;
+    --skip-port-check)
+      SKIP_PORT_CHECK=true
+      shift
+      ;;
     --quick)
       HEALTH_CHECK_TIMEOUT=30
       HEALTH_CHECK_REQUIRED=60
@@ -114,6 +119,7 @@ if [[ "$SHOW_HELP" == "true" ]]; then
   echo "  --fresh                Force recreate all containers"
   echo "  --clean-start          Remove all containers before starting"
   echo "  --quick                Quick start with relaxed health checks"
+  echo "  --skip-port-check      Skip pre-flight port availability check"
   echo ""
   echo "Environment Variables (optional):"
   echo "  NSELF_START_MODE              Start mode: smart, fresh, force (default: smart)"
@@ -359,12 +365,19 @@ start_services() {
   update_progress 0 "done"
 
   # 4b. Pre-flight port conflict check
-  # Check required ports before starting containers to provide clear error messages
-  if command -v preflight_port_check >/dev/null 2>&1; then
-    if ! preflight_port_check; then
-      printf "\n${COLOR_RED}Cannot start: one or more required ports are in use.${COLOR_RESET}\n"
-      printf "Update the port variables shown above in your .env file, then run 'nself build && nself start'\n\n"
-      return 1
+  # Load .env first so custom port vars (e.g. NGINX_SSL_PORT=8443) are resolved
+  if command -v load_env_with_priority >/dev/null 2>&1; then
+    load_env_with_priority "true" >/dev/null 2>&1 || true
+  fi
+  # Skip when --fresh (containers will be stopped before docker compose up, so
+  # currently-held ports aren't a real blocker) or when --skip-port-check is set
+  if [[ "$SKIP_PORT_CHECK" != "true" ]] && [[ "$START_MODE" != "fresh" ]]; then
+    if command -v preflight_port_check >/dev/null 2>&1; then
+      if ! preflight_port_check; then
+        printf "\n${COLOR_RED}Cannot start: one or more required ports are in use.${COLOR_RESET}\n"
+        printf "Update the port variables shown above in your .env file, then run 'nself build && nself start'\n\n"
+        return 1
+      fi
     fi
   fi
 

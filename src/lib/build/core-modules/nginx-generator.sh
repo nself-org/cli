@@ -449,8 +449,13 @@ server {
     ssl_certificate /etc/nginx/ssl/${ssl_dir}/fullchain.pem;
     ssl_certificate_key /etc/nginx/ssl/${ssl_dir}/privkey.pem;
 
+    # Lazy resolver: nginx resolves upstream at request time, not at startup.
+    # This prevents nginx from refusing to start when nself-admin is not running.
+    resolver 127.0.0.11 valid=10s;
+    set \$upstream http://${admin_upstream};
+
     location / {
-        proxy_pass http://${admin_upstream};
+        proxy_pass \$upstream;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -812,8 +817,13 @@ server {
     ssl_certificate /etc/nginx/ssl/${ssl_dir}/fullchain.pem;
     ssl_certificate_key /etc/nginx/ssl/${ssl_dir}/privkey.pem;
 
+    # Lazy resolver: nginx resolves upstream at request time, not at startup.
+    # This prevents nginx from refusing to start when this service is not running.
+    resolver 127.0.0.11 valid=10s;
+    set \$upstream http://${cs_name}:${cs_port};
+
     location / {
-        proxy_pass http://${cs_name}:${cs_port};
+        proxy_pass \$upstream;
         proxy_http_version 1.1;
 ${ws_headers:+${ws_headers}
 }        proxy_set_header Host \$host;
@@ -829,7 +839,7 @@ ${ws_headers:+${ws_headers}
 
     # Health check endpoint
     location /health {
-        proxy_pass http://${cs_name}:${cs_port}/health;
+        proxy_pass \$upstream;
         access_log off;
     }
 }

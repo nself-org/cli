@@ -94,6 +94,17 @@ EOF
       - HASURA_ADMIN_SECRET=\${HASURA_GRAPHQL_ADMIN_SECRET}
 EOF
 
+  # Auth JWT secrets — injected when auth service is enabled
+  # Required by custom services that verify nhost-issued JWT tokens
+  if [[ "${AUTH_ENABLED:-false}" == "true" ]]; then
+    cat <<EOF
+      - JWT_SECRET=\${JWT_SECRET}
+      - AUTH_JWT_SECRET=\${AUTH_JWT_SECRET:-\${JWT_SECRET}}
+      - AUTH_JWT_KEY=\${AUTH_JWT_KEY:-\${AUTH_JWT_SECRET}}
+      - HASURA_GRAPHQL_JWT_SECRET=\${HASURA_GRAPHQL_JWT_SECRET}
+EOF
+  fi
+
   # Add volumes ONLY for development (not staging/production)
   # CRITICAL (Bug #23 fix): Skip volume mounts entirely for compiled-language templates.
   # Volume mounts overwrite the compiled binary from the multi-stage Docker build,
