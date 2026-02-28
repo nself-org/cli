@@ -105,14 +105,11 @@ build_ssl_domains() {
     fi
   done
 
-  # Add subdomains with BASE_DOMAIN suffix (e.g., "api.local.nself.org")
+  # Add subdomains with BASE_DOMAIN suffix (e.g., "api.localhost", "*.sites.localhost")
+  # Always append base_domain — dotted routes like "*.sites" are sub-routes, not full domains.
+  # Actual external domains are handled via CS_N_DOMAIN, not through subdomain routes.
   for subdomain in $(printf "%s\n" "${subdomains[@]}" | sort -u); do
-    # Skip if subdomain already contains a domain
-    if [[ "$subdomain" != *.* ]]; then
-      domains+=("${subdomain}.${base_domain}")
-    else
-      domains+=("$subdomain")
-    fi
+    domains+=("${subdomain}.${base_domain}")
   done
 
   # Return unique domains
