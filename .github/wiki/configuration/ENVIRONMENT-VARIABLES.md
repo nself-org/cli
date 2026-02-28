@@ -95,6 +95,7 @@ All monitoring services default to `false`:
 | `HASURA_GRAPHQL_UNAUTHORIZED_ROLE` | `public` | Default unauthorized role |
 | `HASURA_GRAPHQL_ENABLE_ALLOWLIST` | `false` | Enable query allowlist |
 | `HASURA_GRAPHQL_ENABLE_REMOTE_SCHEMA_PERMISSIONS` | `true` | Remote schema permissions |
+| `HASURA_PROJECT_DIR` | `hasura` | Path to the Hasura project directory (contains config.yaml and metadata/). Override if your hasura directory is not at the default `hasura/` path. |
 
 ### Authentication Service
 
@@ -263,6 +264,44 @@ Support for multiple frontend applications:
 | Variable | Example | Description |
 |----------|---------|-------------|
 | `FRONTEND_APPS` | `web:3001:app,admin:3002:admin` | Comma-separated app definitions |
+
+## Internal Routes
+
+Route a custom subdomain to a Docker-internal service (e.g., `api.sites.localhost` → `hasura:8080`). These configs survive `nself build` rebuilds because they are generated deterministically from `.env`.
+
+Up to 20 routes supported (`INTERNAL_ROUTE_1_*` through `INTERNAL_ROUTE_20_*`).
+
+### Per-Route Variables
+
+For each route N (1–20):
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `INTERNAL_ROUTE_N_NAME` | Yes | — | Route identifier. Also used as subdomain if `_SUBDOMAIN` is not set. |
+| `INTERNAL_ROUTE_N_SUBDOMAIN` | No | Same as `_NAME` | Subdomain portion of the URL (e.g., `api.sites` produces `api.sites.{BASE_DOMAIN}`). |
+| `INTERNAL_ROUTE_N_TARGET` | No | `hasura:8080` | Docker-internal upstream (host:port, e.g., `hasura:8080`, `redis:6379`). |
+| `INTERNAL_ROUTE_N_RATE_ZONE` | No | `general` | Nginx rate limit zone (e.g., `graphql_api`, `general`). |
+| `INTERNAL_ROUTE_N_WEBSOCKET` | No | `false` | Set to `true` to add WebSocket upgrade headers (`Upgrade`, `Connection`). |
+
+### Example
+
+```bash
+# .env — route api.sites.localhost → hasura:8080
+INTERNAL_ROUTE_1_NAME=api-sites
+INTERNAL_ROUTE_1_SUBDOMAIN=api.sites
+INTERNAL_ROUTE_1_TARGET=hasura:8080
+INTERNAL_ROUTE_1_RATE_ZONE=graphql_api
+
+# Route ws.sites.localhost → a WebSocket service
+INTERNAL_ROUTE_2_NAME=ws-sites
+INTERNAL_ROUTE_2_SUBDOMAIN=ws.sites
+INTERNAL_ROUTE_2_TARGET=myservice:4000
+INTERNAL_ROUTE_2_WEBSOCKET=true
+```
+
+After adding routes: `nself build && nself restart nginx`
+
+Generated config: `nginx/sites/internal-<name>.conf`
 
 ## Custom Microservices
 

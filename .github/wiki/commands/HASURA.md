@@ -69,7 +69,8 @@ nself db hasura metadata apply
 **What it does:**
 1. Reads `HASURA_GRAPHQL_ADMIN_SECRET` from environment
 2. Determines Hasura endpoint from config
-3. Applies metadata from local directory
+3. Auto-generates `hasura/config.yaml` if missing (see [Config File Auto-Generation](#config-file-auto-generation) below)
+4. Applies metadata from local directory using `--project` and `--endpoint` flags
 
 **Example:**
 ```bash
@@ -151,6 +152,22 @@ nself db hasura console
 # http://localhost:8080/console
 ```
 
+## Config File Auto-Generation
+
+The Hasura CLI v2 requires a `config.yaml` file even when `--endpoint` and `--admin-secret` are passed as flags. It uses `config.yaml` to locate the `metadata_directory`.
+
+`nself db hasura metadata apply`, `metadata export`, and `console` all call `ensure_hasura_config` before running any Hasura CLI command. This function:
+
+1. Checks for `HASURA_PROJECT_DIR` env var, then falls back to looking for `hasura/` in the current directory
+2. Creates `hasura/config.yaml` if the directory exists but the file is missing
+3. Never overwrites an existing `config.yaml`
+
+The generated file sets `metadata_directory: metadata` and the Hasura endpoint. The admin secret is intentionally NOT written to the file — it is passed as `--admin-secret` on the CLI invocation so no secret lands on disk.
+
+If your hasura directory is not at `hasura/` relative to where you run nself commands, set `HASURA_PROJECT_DIR=<path>` in your `.env`.
+
+`nself build` also runs this step, so after a build the file will always be present before you run any hasura commands.
+
 ## Configuration
 
 ### Environment Variables
@@ -162,6 +179,7 @@ The command automatically reads:
 | `HASURA_GRAPHQL_ENDPOINT` | Hasura API endpoint | `http://localhost:8080` |
 | `HASURA_PORT` | Hasura port | `8080` |
 | `HASURA_GRAPHQL_ADMIN_SECRET` | Admin secret for authentication | (required) |
+| `HASURA_PROJECT_DIR` | Path to hasura project directory (contains config.yaml and metadata/) | `hasura` |
 
 ### Example .env
 

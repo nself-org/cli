@@ -17,18 +17,18 @@
 
 ---
 
-## What's New in v0.9.8
+## What's New in v0.9.9
 
-> **Production Ready** - Maximum portability (Bash 3.2+), help contract across all commands, and fail-closed CI/CD. [View Release Notes](releases/v0.9.8.md)
+> **Stability + Developer Experience** - Hasura config auto-generation, internal route support, and continued hardening. [View Release Notes](releases/v0.9.9.md)
 
 **Key Achievements:**
 
 - ✅ **Bash 3.2 Compatible** - Works on macOS default, all Linux, WSL
-- ✅ **Help Contract** - All 31 commands exit 0 with `--help`
+- ✅ **Help Contract** - All 30 commands exit 0 with `--help`
 - ✅ **CI/CD Fail-Closed** - Critical checks fail CI on issues
-- ✅ **15/15 Verification Passing** - 100% test success
-- ✅ **209 Service Templates** - Verified across 17 languages
-- ✅ **Zero Credentials in Git** - Security hardened
+- ✅ **Hasura Config Auto-Gen** - `hasura/config.yaml` generated automatically, no manual setup
+- ✅ **Internal Routes** - Route any subdomain to a Docker-internal service via `INTERNAL_ROUTE_N_*`
+- ✅ **Zero Credentials in Git** - Admin secret never written to config files on disk
 - ✅ **Published to 5 Platforms** - Homebrew, npm, Docker Hub, GitHub, AUR
 
 **Distribution:**
@@ -139,7 +139,7 @@ nself db schema apply schema.dbml # Import → migrate → seed
 │   └──────────────────────────────────────────────────────────┘      │
 │                                                                      │
 │   ┌──────────────────────────────────────────────────────────┐      │
-│   │              PLUGINS (v0.4.8)                             │      │
+│   │              PLUGINS                                        │      │
 │   │   Stripe · GitHub · Shopify · and more                    │      │
 │   └──────────────────────────────────────────────────────────┘      │
 ├─────────────────────────────────────────────────────────────────────┤
@@ -239,7 +239,7 @@ nself tenant branding set-colors --primary #0066cc
 - GraphQL integration generation
 - Commands: `nself service storage` (v0.9.6: consolidated from `nself storage`)
 
-### Plugin System (v0.4.8)
+### Plugin System
 
 **Available Plugins:**
 - **[Stripe](plugins/stripe.md)** - Payment processing
@@ -339,7 +339,8 @@ nself deploy prod
 
 | Version | Date | Focus |
 |---------|------|-------|
-| **v0.9.8** | Feb 2026 | Production Ready (current) |
+| **v0.9.9** | Feb 2026 | Hasura config auto-gen, internal routes (current) |
+| v0.9.8 | Feb 2026 | Production Ready — Bash 3.2 compat, help contract, CI/CD |
 | v0.9.7 | Jan 31, 2026 | Security & CI/CD Complete |
 | v0.9.6 | Jan 30, 2026 | Command Consolidation |
 | v0.9.5 | Jan 30, 2026 | Feature Parity & Security |
