@@ -213,7 +213,7 @@ get_port_holder() {
 
   if command -v lsof >/dev/null 2>&1; then
     # macOS/Linux with lsof: get command name from LISTEN row
-    holder=$(lsof -i ":$port" -sTCP:LISTEN -n -P 2>/dev/null | awk 'NR==2{print $1}')
+    holder=$(lsof -iTCP:$port -sTCP:LISTEN -n -P 2>/dev/null | awk 'NR==2{print $1}')
   elif command -v ss >/dev/null 2>&1; then
     holder=$(ss -tlnp 2>/dev/null | grep ":$port " | sed -E 's/.*users:\(\("([^"]+)".*/\1/' | head -1)
   elif command -v netstat >/dev/null 2>&1; then
@@ -232,7 +232,7 @@ host_port_in_use() {
   local port="$1"
 
   if command -v lsof >/dev/null 2>&1; then
-    lsof -i ":$port" -sTCP:LISTEN -t >/dev/null 2>&1
+    lsof -iTCP:$port -sTCP:LISTEN -t >/dev/null 2>&1
     return $?
   elif command -v ss >/dev/null 2>&1; then
     ss -tln 2>/dev/null | grep -q ":$port "
