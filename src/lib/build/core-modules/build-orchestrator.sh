@@ -146,6 +146,9 @@ detect_all_services() {
 
   # Detect frontend apps
   detect_frontend_apps
+
+  # Detect internal route overrides (INTERNAL_ROUTE_N_*)
+  detect_internal_routes
 }
 
 # Detect custom services
@@ -170,6 +173,36 @@ detect_custom_services() {
 
       # Add to list
       CUSTOM_SERVICES="$CUSTOM_SERVICES $name"
+    fi
+  done
+}
+
+# Detect internal route overrides (INTERNAL_ROUTE_N_*)
+# These create nginx server blocks that route a subdomain to a Docker-internal service.
+# Example: INTERNAL_ROUTE_1_NAME=api-sites INTERNAL_ROUTE_1_SUBDOMAIN=api.sites
+#          INTERNAL_ROUTE_1_TARGET=hasura:8080 INTERNAL_ROUTE_1_RATE_ZONE=graphql_api
+detect_internal_routes() {
+  export INTERNAL_ROUTES=""
+  export INTERNAL_ROUTE_COUNT=0
+
+  local i
+  for i in $(seq 1 20); do
+    local name_var="INTERNAL_ROUTE_${i}_NAME"
+    local name="${!name_var:-}"
+
+    if [[ -n "$name" ]]; then
+      INTERNAL_ROUTE_COUNT=$((INTERNAL_ROUTE_COUNT + 1))
+
+      local subdomain_var="INTERNAL_ROUTE_${i}_SUBDOMAIN"
+      local target_var="INTERNAL_ROUTE_${i}_TARGET"
+      local zone_var="INTERNAL_ROUTE_${i}_RATE_ZONE"
+
+      export "INTERNAL_ROUTE_${i}_NAME=$name"
+      export "INTERNAL_ROUTE_${i}_SUBDOMAIN=${!subdomain_var:-$name}"
+      export "INTERNAL_ROUTE_${i}_TARGET=${!target_var:-hasura:8080}"
+      export "INTERNAL_ROUTE_${i}_RATE_ZONE=${!zone_var:-general}"
+
+      INTERNAL_ROUTES="$INTERNAL_ROUTES $name"
     fi
   done
 }
@@ -240,6 +273,9 @@ build_all_components() {
 
   # Create directory structure
   setup_directories
+
+  # Generate hasura/config.yaml so `nself db hasura` commands work out of the box
+  generate_hasura_config
 
   # Generate SSL certificates (checks if needed internally)
   generate_ssl_certificates "$force"
@@ -404,6 +440,32 @@ copy_custom_service_templates() {
   done
 }
 
+# Generate hasura/config.yaml so `nself db hasura` commands work without
+# requiring users to create this file manually. The admin_secret is intentionally
+# omitted — it is passed as --admin-secret CLI flag so no secret lands on disk.
+generate_hasura_config() {
+  local hasura_dir="${HASURA_PROJECT_DIR:-hasura}"
+  local hasura_url="${HASURA_GRAPHQL_ENDPOINT:-http://localhost:${HASURA_PORT:-8080}}"
+
+  # Only generate if hasura directory already exists (user has a hasura project)
+  # or if HASURA_ENABLED is true (we can create the directory)
+  if [[ ! -d "$hasura_dir" ]]; then
+    if [[ "${HASURA_ENABLED:-true}" == "true" ]]; then
+      mkdir -p "$hasura_dir/metadata"
+    else
+      return 0
+    fi
+  fi
+
+  if [[ -f "$hasura_dir/config.yaml" ]]; then
+    return 0  # Already exists, never overwrite
+  fi
+
+  printf 'version: 3\nendpoint: %s\nmetadata_directory: metadata\nactions:\n  kind: synchronous\n  handler_webhook_baseurl: http://localhost:3000\n' \
+    "$hasura_url" > "$hasura_dir/config.yaml"
+  echo "  → Generated hasura/config.yaml (endpoint: $hasura_url)"
+}
+
 # Count enabled optional services
 count_enabled_optional() {
   local count=0
@@ -422,9 +484,11 @@ export -f orchestrate_build
 export -f load_env_for_detection
 export -f detect_all_services
 export -f detect_custom_services
+export -f detect_internal_routes
 export -f detect_frontend_apps
 export -f build_all_components
 export -f setup_directories
 export -f generate_ssl_certificates
+export -f generate_hasura_config
 export -f copy_custom_service_templates
 export -f count_enabled_optional

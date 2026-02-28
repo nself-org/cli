@@ -31,6 +31,47 @@ hasura_metadata() {
   esac
 }
 
+# Resolve the Hasura project directory.
+# Checks HASURA_PROJECT_DIR env var first, then looks for hasura/ in CWD.
+# Returns the path to use with --project, or empty string if not found.
+get_hasura_project_dir() {
+  if [[ -n "${HASURA_PROJECT_DIR:-}" ]]; then
+    echo "$HASURA_PROJECT_DIR"
+    return
+  fi
+  if [[ -d "hasura" ]]; then
+    echo "hasura"
+    return
+  fi
+  echo ""
+}
+
+# Ensure hasura/config.yaml exists so the Hasura CLI can find its project.
+# The Hasura CLI v2 requires config.yaml even when --endpoint and --admin-secret
+# are passed as flags — it uses config.yaml to locate metadata_directory.
+# We generate the file without the admin_secret (passed as a CLI flag instead)
+# so no secret is written to disk.
+ensure_hasura_config() {
+  local project_dir="${1:-hasura}"
+  local hasura_url="${2:-http://localhost:8080}"
+
+  # Only generate if the directory exists but config.yaml is missing
+  if [[ ! -d "$project_dir" ]]; then
+    return 0
+  fi
+
+  if [[ -f "$project_dir/config.yaml" ]]; then
+    return 0
+  fi
+
+  cli_info "Generating ${project_dir}/config.yaml from environment..."
+  # admin_secret is intentionally omitted — pass it as --admin-secret CLI flag
+  # so the secret never lives in a file on disk.
+  printf 'version: 3\nendpoint: %s\nmetadata_directory: metadata\nactions:\n  kind: synchronous\n  handler_webhook_baseurl: http://localhost:3000\n' \
+    "$hasura_url" > "$project_dir/config.yaml"
+  cli_success "Generated ${project_dir}/config.yaml (admin_secret passed as CLI flag)"
+}
+
 metadata_apply() {
   cli_header "nself db hasura metadata apply"
   load_env_with_priority true
@@ -40,12 +81,24 @@ metadata_apply() {
 
   [[ -z "$admin_secret" ]] && cli_error "HASURA_GRAPHQL_ADMIN_SECRET not set" && exit 1
 
-  if command -v hasura >/dev/null 2>&1; then
-    hasura metadata apply --endpoint "$hasura_url" --admin-secret "$admin_secret"
-  else
+  if ! command -v hasura >/dev/null 2>&1; then
     cli_warning "Hasura CLI not found"
     cli_info "Install: npm install -g hasura-cli"
     exit 1
+  fi
+
+  local project_dir
+  project_dir=$(get_hasura_project_dir)
+
+  if [[ -n "$project_dir" ]]; then
+    ensure_hasura_config "$project_dir" "$hasura_url"
+    hasura metadata apply \
+      --project "$project_dir" \
+      --endpoint "$hasura_url" \
+      --admin-secret "$admin_secret"
+  else
+    # No hasura/ directory — run without --project (user must be inside a hasura project)
+    hasura metadata apply --endpoint "$hasura_url" --admin-secret "$admin_secret"
   fi
 }
 
@@ -58,12 +111,23 @@ metadata_export() {
 
   [[ -z "$admin_secret" ]] && cli_error "HASURA_GRAPHQL_ADMIN_SECRET not set" && exit 1
 
-  if command -v hasura >/dev/null 2>&1; then
-    hasura metadata export --endpoint "$hasura_url" --admin-secret "$admin_secret"
-  else
+  if ! command -v hasura >/dev/null 2>&1; then
     cli_warning "Hasura CLI not found"
     cli_info "Install: npm install -g hasura-cli"
     exit 1
+  fi
+
+  local project_dir
+  project_dir=$(get_hasura_project_dir)
+
+  if [[ -n "$project_dir" ]]; then
+    ensure_hasura_config "$project_dir" "$hasura_url"
+    hasura metadata export \
+      --project "$project_dir" \
+      --endpoint "$hasura_url" \
+      --admin-secret "$admin_secret"
+  else
+    hasura metadata export --endpoint "$hasura_url" --admin-secret "$admin_secret"
   fi
 }
 
@@ -86,11 +150,24 @@ hasura_console() {
   load_env_with_priority true
 
   local hasura_url="${HASURA_GRAPHQL_ENDPOINT:-http://localhost:${HASURA_PORT:-8080}}"
+  local admin_secret="${HASURA_GRAPHQL_ADMIN_SECRET}"
 
-  if command -v hasura >/dev/null 2>&1; then
-    hasura console --endpoint "$hasura_url" --admin-secret "${HASURA_GRAPHQL_ADMIN_SECRET}"
-  else
+  if ! command -v hasura >/dev/null 2>&1; then
     cli_info "Open: $hasura_url/console"
+    return 0
+  fi
+
+  local project_dir
+  project_dir=$(get_hasura_project_dir)
+
+  if [[ -n "$project_dir" ]]; then
+    ensure_hasura_config "$project_dir" "$hasura_url"
+    hasura console \
+      --project "$project_dir" \
+      --endpoint "$hasura_url" \
+      --admin-secret "$admin_secret"
+  else
+    hasura console --endpoint "$hasura_url" --admin-secret "$admin_secret"
   fi
 }
 

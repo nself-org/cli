@@ -73,6 +73,9 @@ generate_nginx_config() {
   # Generate custom service routes
   generate_custom_routes
 
+  # Generate internal route overrides (INTERNAL_ROUTE_N_*)
+  generate_internal_routes
+
   # Generate plugin webhook routes
   generate_plugin_routes
 }
@@ -907,6 +910,97 @@ EOF
   fi
 }
 
+# Generate internal route overrides (INTERNAL_ROUTE_N_*)
+# Routes a subdomain to a Docker-internal service (Hasura, Auth, MinIO, etc.)
+# instead of a host-port frontend. Survives nself build rebuilds because the
+# routes are defined in .env and regenerated deterministically.
+#
+# Required per route:
+#   INTERNAL_ROUTE_N_NAME=api-sites          # identifier (used for filename)
+#   INTERNAL_ROUTE_N_SUBDOMAIN=api.sites     # subdomain prefix (joined with BASE_DOMAIN)
+#   INTERNAL_ROUTE_N_TARGET=hasura:8080      # Docker service:port to proxy to
+# Optional:
+#   INTERNAL_ROUTE_N_RATE_ZONE=graphql_api   # nginx rate limit zone (default: general)
+#   INTERNAL_ROUTE_N_WEBSOCKET=true          # enable WebSocket upgrade headers
+generate_internal_routes() {
+  local base_domain="${BASE_DOMAIN:-localhost}"
+  local ssl_dir
+  ssl_dir=$(get_ssl_cert_dir)
+
+  local i
+  for i in $(seq 1 20); do
+    local name_var="INTERNAL_ROUTE_${i}_NAME"
+    local name="${!name_var:-}"
+
+    if [[ -n "$name" ]]; then
+      local subdomain_var="INTERNAL_ROUTE_${i}_SUBDOMAIN"
+      local target_var="INTERNAL_ROUTE_${i}_TARGET"
+      local zone_var="INTERNAL_ROUTE_${i}_RATE_ZONE"
+      local ws_var="INTERNAL_ROUTE_${i}_WEBSOCKET"
+
+      local subdomain="${!subdomain_var:-$name}"
+      local target="${!target_var:-hasura:8080}"
+      local rate_zone="${!zone_var:-general}"
+      local websocket="${!ws_var:-false}"
+
+      # Build optional WebSocket headers
+      local ws_block=""
+      local read_timeout="60s"
+      if [[ "$websocket" == "true" ]]; then
+        ws_block='        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection '\''upgrade'\'';
+        proxy_cache_bypass $http_upgrade;'
+        read_timeout="86400"
+      fi
+
+      cat >"nginx/sites/internal-${name}.conf" <<EOF
+# Internal Route: ${name} (managed by nself — edit INTERNAL_ROUTE_${i}_* in .env)
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${subdomain}.${base_domain};
+
+    ssl_certificate /etc/nginx/ssl/${ssl_dir}/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/${ssl_dir}/privkey.pem;
+
+    # Rate limiting
+    limit_req zone=${rate_zone} burst=20 nodelay;
+    limit_conn conn_limit_per_ip 10;
+
+    # Lazy resolver: resolves upstream at request time
+    resolver 127.0.0.11 valid=10s;
+    set \$upstream http://${target};
+
+    location / {
+        proxy_pass \$upstream;
+        proxy_http_version 1.1;
+${ws_block:+${ws_block}
+}        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+
+        # Buffer sizes for GraphQL/API responses
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout ${read_timeout};
+    }
+
+    location /health {
+        proxy_pass \$upstream;
+        access_log off;
+    }
+}
+EOF
+      echo "  → Internal route: ${subdomain}.${base_domain} → ${target}"
+    fi
+  done
+}
+
 # Generate plugin webhook routes
 # Routes webhooks to functions service or custom webhook handler
 generate_plugin_routes() {
@@ -1020,5 +1114,6 @@ export -f generate_service_routes
 export -f generate_optional_service_routes
 export -f generate_frontend_routes
 export -f generate_custom_routes
+export -f generate_internal_routes
 export -f generate_plugin_routes
 export -f generate_database_init
