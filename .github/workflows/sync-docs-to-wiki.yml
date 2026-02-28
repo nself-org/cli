@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - '.wiki/**'
+      - '.github/wiki/**'
       - '.github/workflows/sync-docs-to-wiki.yml'
   workflow_dispatch:
 
@@ -33,16 +33,16 @@ jobs:
           find wiki -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
           
           # Copy all wiki source files from main repository
-          cp -r main/.wiki/* wiki/
+          cp -r main/.github/wiki/* wiki/
           
-          # Ensure Home.md exists without overwriting the curated /.wiki/Home.md page
-          if [ ! -f "wiki/Home.md" ] && [ -f "main/.wiki/Home.md" ]; then
-            cp main/.wiki/Home.md wiki/Home.md
+          # Ensure Home.md exists without overwriting the curated /.github/wiki/Home.md page
+          if [ ! -f "wiki/Home.md" ] && [ -f "main/.github/wiki/Home.md" ]; then
+            cp main/.github/wiki/Home.md wiki/Home.md
           elif [ ! -f "wiki/Home.md" ] && [ -f "wiki/README.md" ]; then
             cp wiki/README.md wiki/Home.md
           fi
           
-          # The _Sidebar.md is already copied from .wiki/
+          # The _Sidebar.md is already copied from .github/wiki/
 
       - name: Configure Git
         working-directory: wiki
