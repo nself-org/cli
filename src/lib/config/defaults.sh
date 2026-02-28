@@ -27,8 +27,9 @@ export NSELF_CERTS="${NSELF_CERTS:-$NSELF_SRC/certs}"
 export NSELF_LIB="${NSELF_LIB:-$NSELF_SRC/lib}"
 export NSELF_LOGS="${NSELF_LOGS:-$NSELF_ROOT/logs}"
 
-# Docker defaults - only set COMPOSE_PROJECT_NAME if PROJECT_NAME is defined
+# Docker defaults - only set COMPOSE_PROJECT_NAME and DOCKER_NETWORK if PROJECT_NAME is defined
 [[ -n "${PROJECT_NAME:-}" ]] && export COMPOSE_PROJECT_NAME="${PROJECT_NAME}"
+[[ -n "${PROJECT_NAME:-}" ]] && export DOCKER_NETWORK="${DOCKER_NETWORK:-${PROJECT_NAME}_network}"
 export COMPOSE_ENV_FILE="${ENV_FILE}"
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1

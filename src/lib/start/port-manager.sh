@@ -30,7 +30,7 @@ is_port_available() {
   # Try multiple methods for cross-platform compatibility
   if command -v lsof >/dev/null 2>&1; then
     # macOS/BSD
-    if ! lsof -i :$port >/dev/null 2>&1; then
+    if ! lsof -iTCP:$port -sTCP:LISTEN >/dev/null 2>&1; then
       return 0
     fi
   elif command -v ss >/dev/null 2>&1; then
@@ -57,7 +57,7 @@ get_port_process() {
 
   if command -v lsof >/dev/null 2>&1; then
     # macOS/BSD
-    lsof -i :$port 2>/dev/null | grep LISTEN | awk '{print $2, $1}' | head -1
+    lsof -iTCP:$port -sTCP:LISTEN -P -n 2>/dev/null | awk 'NR==2{print $2, $1}'
   elif command -v ss >/dev/null 2>&1; then
     # Modern Linux
     ss -tlnp 2>/dev/null | grep ":$port " | sed -E 's/.*users:\(\("([^"]+)".*pid=([0-9]+).*/\2 \1/'

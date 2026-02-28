@@ -34,7 +34,7 @@ check_port_available() {
     # Cross-platform port check
     if command -v lsof >/dev/null 2>&1; then
       # macOS/BSD
-      if ! lsof -i :$port >/dev/null 2>&1; then
+      if ! lsof -iTCP:$port -sTCP:LISTEN >/dev/null 2>&1; then
         echo "$port"
         return 0
       fi
