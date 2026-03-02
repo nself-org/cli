@@ -3,8 +3,9 @@
 # Templates are example/starter code, not production code
 src/templates/**
 
-# Documentation contains example nginx configs
+# Documentation contains example nginx configs (code examples, not real code)
 docs/**
+wiki/**
 
 # Test files may have intentional security issues for testing
 src/tests/**

@@ -33,3 +33,5 @@ src/services/docker/compose-modules/nginx.sh
 # Documentation files cannot contain security vulnerabilities — they are read-only
 # text that demonstrates correct nginx configuration for users to copy.
 .wiki/
+.github/wiki/
+.github/docs/
