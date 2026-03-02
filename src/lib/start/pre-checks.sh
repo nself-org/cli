@@ -255,49 +255,55 @@ host_port_in_use() {
 preflight_port_check() {
   local failed=0
 
-  # Parallel arrays: env var names, default ports, service labels
-  # Bash 3.2 compatible — uses parallel arrays instead of associative arrays
-  local pf_vars="NGINX_PORT NGINX_SSL_PORT POSTGRES_PORT REDIS_PORT HASURA_PORT MINIO_PORT MINIO_CONSOLE_PORT MAILPIT_SMTP_PORT MAILPIT_UI_PORT"
-  local pf_defaults="80 443 5432 6379 8080 9000 9001 1025 8025"
-  local pf_labels="nginx HTTP|set NGINX_PORT=<port> in .env nginx HTTPS|set NGINX_SSL_PORT=<port> in .env postgres|set POSTGRES_PORT=<port> in .env redis|set REDIS_PORT=<port> in .env hasura|set HASURA_PORT=<port> in .env minio|set MINIO_PORT=<port> in .env minio-console|set MINIO_CONSOLE_PORT=<port> in .env mailpit-smtp|set MAILPIT_SMTP_PORT=<port> in .env mailpit-ui|set MAILPIT_UI_PORT=<port> in .env"
+  # Get current compose project name to exclude own containers
+  local own_project="${COMPOSE_PROJECT_NAME:-${PROJECT_NAME:-}}"
+  if [ -z "$own_project" ] && [ -f ".env" ]; then
+    own_project=$(grep "^PROJECT_NAME=" .env 2>/dev/null | head -1 | cut -d= -f2- || true)
+  fi
 
-  local idx=0
-  for env_var in $pf_vars; do
-    idx=$((idx + 1))
-    local default_port
-    default_port=$(echo "$pf_defaults" | tr ' ' '
-' | awk "NR==$idx")
-    local label_entry
-    label_entry=$(echo "$pf_labels" | tr ' ' '
-' | awk "NR==$idx")
-    local service_name
-    service_name=$(echo "$label_entry" | cut -d'|' -f1)
-    local env_hint
-    env_hint=$(echo "$label_entry" | cut -d'|' -f2)
+  # Build list of ports held by this project's own containers (space-separated)
+  local own_ports=""
+  if [ -n "$own_project" ]; then
+    own_ports=$(docker ps --filter "label=com.docker.compose.project=$own_project" --format "{{.Ports}}" 2>/dev/null \
+      | grep -oE '(0\.0\.0\.0|127\.0\.0\.1):([0-9]+)' | grep -oE '[0-9]+$' | sort -u | tr '\n' ' ' || true)
+  fi
 
-    # Resolve actual port from environment
+  # Bash 3.2 compatible: check each port individually (no associative arrays)
+  _check_port() {
+    local env_var="$1" default_port="$2" service_name="$3" env_hint="$4"
     local actual_port
     actual_port=$(printenv "$env_var" 2>/dev/null || true)
     if [ -z "$actual_port" ]; then
       actual_port="$default_port"
     fi
-
     # Skip non-numeric
     case "$actual_port" in
-      ''|*[!0-9]*) continue ;;
+      ''|*[!0-9]*) return 0 ;;
     esac
-
+    # Skip ports owned by this project's containers
+    case " $own_ports " in
+      *" $actual_port "*) return 0 ;;
+    esac
     if host_port_in_use "$actual_port"; then
       local holder
       holder=$(get_port_holder "$actual_port")
-      printf "${COLOR_RED}ERROR${COLOR_RESET}: Port %s is already in use by '%s' (needed by %s)
-" \
+      printf "${COLOR_RED}ERROR${COLOR_RESET}: Port %s is already in use by '%s' (needed by %s)\n" \
         "$actual_port" "$holder" "$service_name"
-      printf "       To change it: %s
-" "$env_hint"
-      failed=1
+      printf "       To change it: %s\n" "$env_hint"
+      return 1
     fi
-  done
+    return 0
+  }
+
+  _check_port "NGINX_PORT"          "80"   "nginx HTTP"    "set NGINX_PORT=<port> in .env"          || failed=1
+  _check_port "NGINX_SSL_PORT"      "443"  "nginx HTTPS"   "set NGINX_SSL_PORT=<port> in .env"      || failed=1
+  _check_port "POSTGRES_PORT"       "5432" "postgres"      "set POSTGRES_PORT=<port> in .env"       || failed=1
+  _check_port "REDIS_PORT"          "6379" "redis"         "set REDIS_PORT=<port> in .env"          || failed=1
+  _check_port "HASURA_PORT"         "8080" "hasura"        "set HASURA_PORT=<port> in .env"         || failed=1
+  _check_port "MINIO_PORT"          "9000" "minio"         "set MINIO_PORT=<port> in .env"          || failed=1
+  _check_port "MINIO_CONSOLE_PORT"  "9001" "minio console" "set MINIO_CONSOLE_PORT=<port> in .env"  || failed=1
+  _check_port "MAILPIT_SMTP_PORT"   "1025" "mailpit SMTP"  "set MAILPIT_SMTP_PORT=<port> in .env"   || failed=1
+  _check_port "MAILPIT_UI_PORT"     "8025" "mailpit UI"    "set MAILPIT_UI_PORT=<port> in .env"     || failed=1
 
   return $failed
 }

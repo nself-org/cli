@@ -352,7 +352,17 @@ clear_env_vars_with_prefix() {
 # Ensure PROJECT_NAME is set with auto-generation if needed
 ensure_project_name() {
   if [[ -z "${PROJECT_NAME:-}" ]]; then
-    # Try to get from current directory name (with error handling)
+    # First, check if PROJECT_NAME already exists in .env — respect existing value
+    if [[ -f ".env" ]]; then
+      local file_value
+      file_value=$(grep "^PROJECT_NAME=" ".env" 2>/dev/null | head -1 | cut -d= -f2-)
+      if [[ -n "$file_value" ]]; then
+        export PROJECT_NAME="$file_value"
+        return 0
+      fi
+    fi
+
+    # No value in shell or .env — fall back to directory name
     local dir_name=""
     if command -v pwd >/dev/null 2>&1; then
       dir_name=$(basename "$(pwd 2>/dev/null)" 2>/dev/null) || dir_name=""
@@ -372,7 +382,7 @@ ensure_project_name() {
 
     export PROJECT_NAME="$clean_name"
 
-    # If we have a .env file, add it there too
+    # If we have a .env file, add it there too (only if not already present)
     if [[ -f ".env" ]] && ! grep -q "^PROJECT_NAME=" ".env"; then
       echo "PROJECT_NAME=$clean_name" >>".env"
     fi

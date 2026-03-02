@@ -17,6 +17,8 @@ set -euo pipefail
   local migrations_dir="hasura/migrations/default"
   if [[ ! -d "$migrations_dir" ]]; then
     cli_error "Migrations directory not found: $migrations_dir"
+    cli_info "nSelf uses Hasura-format migrations in hasura/migrations/default/"
+    cli_info "Each migration is a numbered directory with up.sql and down.sql"
     cli_info "Create with: mkdir -p hasura/migrations/default"
     cli_info "Then create a migration: nself db migrate create <name>"
     exit 1

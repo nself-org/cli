@@ -77,9 +77,9 @@ metadata_apply() {
   load_env_with_priority true
 
   local hasura_url="${HASURA_GRAPHQL_ENDPOINT:-http://localhost:${HASURA_PORT:-8080}}"
-  local admin_secret="${HASURA_GRAPHQL_ADMIN_SECRET}"
+  local admin_secret="${HASURA_GRAPHQL_ADMIN_SECRET:-}"
 
-  [[ -z "$admin_secret" ]] && cli_error "HASURA_GRAPHQL_ADMIN_SECRET not set" && exit 1
+  [[ -z "$admin_secret" ]] && cli_error "HASURA_GRAPHQL_ADMIN_SECRET not set. Source .env or set the variable." && exit 1
 
   if ! command -v hasura >/dev/null 2>&1; then
     cli_warning "Hasura CLI not found"
@@ -107,9 +107,9 @@ metadata_export() {
   load_env_with_priority true
 
   local hasura_url="${HASURA_GRAPHQL_ENDPOINT:-http://localhost:${HASURA_PORT:-8080}}"
-  local admin_secret="${HASURA_GRAPHQL_ADMIN_SECRET}"
+  local admin_secret="${HASURA_GRAPHQL_ADMIN_SECRET:-}"
 
-  [[ -z "$admin_secret" ]] && cli_error "HASURA_GRAPHQL_ADMIN_SECRET not set" && exit 1
+  [[ -z "$admin_secret" ]] && cli_error "HASURA_GRAPHQL_ADMIN_SECRET not set. Source .env or set the variable." && exit 1
 
   if ! command -v hasura >/dev/null 2>&1; then
     cli_warning "Hasura CLI not found"
@@ -136,7 +136,9 @@ metadata_reload() {
   load_env_with_priority true
 
   local hasura_url="${HASURA_GRAPHQL_ENDPOINT:-http://localhost:${HASURA_PORT:-8080}}"
-  local admin_secret="${HASURA_GRAPHQL_ADMIN_SECRET}"
+  local admin_secret="${HASURA_GRAPHQL_ADMIN_SECRET:-}"
+
+  [[ -z "$admin_secret" ]] && cli_error "HASURA_GRAPHQL_ADMIN_SECRET not set. Source .env or set the variable." && exit 1
 
   curl -s -X POST \
     -H "Content-Type: application/json" \
@@ -150,7 +152,7 @@ hasura_console() {
   load_env_with_priority true
 
   local hasura_url="${HASURA_GRAPHQL_ENDPOINT:-http://localhost:${HASURA_PORT:-8080}}"
-  local admin_secret="${HASURA_GRAPHQL_ADMIN_SECRET}"
+  local admin_secret="${HASURA_GRAPHQL_ADMIN_SECRET:-}"
 
   if ! command -v hasura >/dev/null 2>&1; then
     cli_info "Open: $hasura_url/console"
