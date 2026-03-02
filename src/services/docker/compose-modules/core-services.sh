@@ -296,6 +296,7 @@ generate_minio_service() {
     labels:
       - "nself.type=init-container"
       - "nself.service=minio"
+      - "nself.auto-remove=true"
 
   # MinIO Object Storage
   # SECURITY: Bound to localhost only - access via nginx reverse proxy

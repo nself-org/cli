@@ -107,6 +107,9 @@ merge_environments() {
     done
   } >"$output_file"
 
+  # Secure the runtime file (contains secrets like DB passwords, JWT keys)
+  chmod 600 "$output_file"
+
   # Cleanup
   rm -f "$temp_file" "$temp_file.bak"
 

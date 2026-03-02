@@ -205,6 +205,8 @@ generate_docker_compose() {
 # Date: $(date '+%Y-%m-%d %H:%M:%S')
 # Build Version: $(cat "$COMPOSE_SCRIPT_DIR/../VERSION" 2>/dev/null || echo "unknown")
 
+name: ${PROJECT_NAME}
+
 networks:
   ${DOCKER_NETWORK}:
     name: ${DOCKER_NETWORK}

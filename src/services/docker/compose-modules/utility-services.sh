@@ -383,6 +383,7 @@ generate_meilisearch_service() {
     labels:
       - "nself.type=init-container"
       - "nself.service=meilisearch"
+      - "nself.auto-remove=true"
 
   # MeiliSearch - Lightning Fast Search
   # SECURITY: Bound to localhost only - access via nginx reverse proxy

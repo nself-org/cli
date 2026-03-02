@@ -258,13 +258,9 @@ cmd_stop() {
     # Clean up any exited init containers
     cleanup_init_containers 2>/dev/null || true
 
-    # Clean up runtime environment file (so changes to .env files take effect on restart)
-    if [[ -f ".env.runtime" ]]; then
-      rm -f .env.runtime
-      if [[ "$verbose" == true ]]; then
-        printf "${COLOR_GREEN}✓${COLOR_RESET} Removed runtime environment file\n"
-      fi
-    fi
+    # Keep .env.runtime on disk so docker compose commands (restart, config, etc.)
+    # continue to work after stop. The file is regenerated on next "nself start"
+    # or "nself restart", and cleaned up by "nself destroy".
 
     # Show additional cleanup info
     if [[ "$remove_volumes" == true ]]; then

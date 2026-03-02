@@ -213,6 +213,80 @@ EOF
   return 0
 }
 
+# Collect multi-level wildcard SANs from dot-routes in frontend apps and custom services.
+# Routes containing a dot (e.g. "*.sites", "api.v2") need their own wildcard SAN because
+# TLS wildcard certs only match a single subdomain level. For example, *.local.nself.org
+# covers admin.local.nself.org but NOT mock.sites.local.nself.org.
+# Returns newline-separated list of additional wildcard domains to add to the cert.
+collect_dot_route_domains() {
+  local base_domain="${1:-local.nself.org}"
+  local dot_domains=""
+  local i
+
+  # Helper: given a route value containing a dot, append the correct SAN(s).
+  # Wildcard-prefixed routes (*.sites) -> *.sites.BASE  (matches any.sites.BASE)
+  # Non-wildcard dot-routes (api.v2)   -> api.v2.BASE   (exact multi-level subdomain)
+  _add_dot_route_san() {
+    local route="$1"
+    case "$route" in
+      \*.*)
+        # Wildcard prefix: strip "*." then add "*.{rest}.base_domain"
+        local route_base="${route#\*.}"
+        dot_domains="${dot_domains}*.${route_base}.${base_domain}
+"
+        ;;
+      *.*)
+        # Non-wildcard dot-route: add the exact multi-level domain
+        dot_domains="${dot_domains}${route}.${base_domain}
+"
+        ;;
+    esac
+  }
+
+  # Frontend apps (FRONTEND_APP_1 through FRONTEND_APP_10, also APP_N)
+  for i in $(seq 1 10); do
+    local app_route_var="FRONTEND_APP_${i}_ROUTE"
+    local alt_route_var="APP_${i}_ROUTE"
+    local route=""
+
+    if [[ -n "${!app_route_var:-}" ]]; then
+      route="${!app_route_var}"
+    elif [[ -n "${!alt_route_var:-}" ]]; then
+      route="${!alt_route_var}"
+    fi
+
+    if [[ -n "$route" ]]; then
+      _add_dot_route_san "$route"
+    fi
+  done
+
+  # Custom services (CS_1 through CS_10)
+  for i in $(seq 1 10); do
+    local cs_var="CS_${i}"
+    local cs_route_var="CS_${i}_ROUTE"
+    local cs_public_var="CS_${i}_PUBLIC"
+
+    if [[ -n "${!cs_var:-}" ]] && [[ "${!cs_public_var:-false}" == "true" ]] && [[ -n "${!cs_route_var:-}" ]]; then
+      _add_dot_route_san "${!cs_route_var}"
+    fi
+  done
+
+  # Internal routes (INTERNAL_ROUTE_1 through INTERNAL_ROUTE_20)
+  for i in $(seq 1 20); do
+    local name_var="INTERNAL_ROUTE_${i}_NAME"
+    local subdomain_var="INTERNAL_ROUTE_${i}_SUBDOMAIN"
+
+    if [[ -n "${!name_var:-}" ]] && [[ -n "${!subdomain_var:-}" ]]; then
+      _add_dot_route_san "${!subdomain_var}"
+    fi
+  done
+
+  # Output unique entries (remove trailing blank line, deduplicate)
+  if [[ -n "$dot_domains" ]]; then
+    printf "%s" "$dot_domains" | sort -u
+  fi
+}
+
 # Generate nself.org wildcard certificate
 generate_nself_org_ssl() {
   local output_dir="${1:-ssl/certificates/nself-org}"
@@ -224,9 +298,42 @@ generate_nself_org_ssl() {
     return 0
   fi
 
-  # Create OpenSSL config for *.nself.org
+  # Collect additional wildcard SANs for dot-routes (e.g. *.sites.local.nself.org)
+  local extra_domains=""
+  extra_domains=$(collect_dot_route_domains "local.nself.org")
+
+  # Build mkcert domain list if mkcert is available
+  if command -v mkcert >/dev/null 2>&1; then
+    local mkcert_domains=()
+    mkcert_domains+=("*.nself.org" "nself.org" "*.local.nself.org" "local.nself.org")
+
+    # Add dot-route wildcard domains
+    if [[ -n "$extra_domains" ]]; then
+      while IFS= read -r domain; do
+        if [[ -n "$domain" ]]; then
+          mkcert_domains+=("$domain")
+        fi
+      done <<EOF
+$extra_domains
+EOF
+    fi
+
+    mkcert -cert-file "$output_dir/fullchain.pem" \
+      -key-file "$output_dir/privkey.pem" \
+      "${mkcert_domains[@]}" >/dev/null 2>&1
+
+    if [[ -f "$output_dir/fullchain.pem" ]] && [[ -f "$output_dir/privkey.pem" ]]; then
+      chmod 644 "$output_dir/fullchain.pem" 2>/dev/null
+      chmod 600 "$output_dir/privkey.pem" 2>/dev/null
+      return 0
+    fi
+  fi
+
+  # Fallback to OpenSSL self-signed
   local temp_config=$(mktemp)
-  cat >"$temp_config" <<'EOF'
+
+  # Write config header
+  cat >"$temp_config" <<'SSLEOF'
 [req]
 default_bits = 2048
 prompt = no
@@ -249,7 +356,20 @@ DNS.1 = *.nself.org
 DNS.2 = nself.org
 DNS.3 = *.local.nself.org
 DNS.4 = local.nself.org
+SSLEOF
+
+  # Append additional dot-route wildcard SANs (DNS.5, DNS.6, ...)
+  local dns_index=5
+  if [[ -n "$extra_domains" ]]; then
+    while IFS= read -r domain; do
+      if [[ -n "$domain" ]]; then
+        printf "DNS.%d = %s\n" "$dns_index" "$domain" >>"$temp_config"
+        dns_index=$((dns_index + 1))
+      fi
+    done <<EOF
+$extra_domains
 EOF
+  fi
 
   # Generate key and certificate
   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
@@ -389,6 +509,7 @@ setup_ssl_certificates() {
 # Export functions
 export -f build_ssl_domains
 export -f build_localhost_subdomains
+export -f collect_dot_route_domains
 export -f generate_ssl_certificates
 export -f generate_localhost_ssl
 export -f generate_nself_org_ssl

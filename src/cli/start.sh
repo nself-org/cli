@@ -430,6 +430,8 @@ start_services() {
   # 8. Determine env file and update project name from runtime
   local env_file=".env"
   if [[ -f ".env.runtime" ]]; then
+    # Ensure restrictive permissions (contains secrets)
+    chmod 600 ".env.runtime" 2>/dev/null || true
     env_file=".env.runtime"
     # Update project_name from runtime file
     project_name=$(grep "^PROJECT_NAME=" .env.runtime 2>/dev/null | cut -d= -f2- || echo "$project_name")
@@ -805,8 +807,9 @@ start_services() {
     printf "\n"
     printf "${COLOR_GREEN}✓${COLOR_RESET} ${COLOR_BOLD}All services started successfully${COLOR_RESET}\n"
 
-    # Clean up any exited init containers (minio_init, meilisearch_init, etc.)
-    cleanup_init_containers 2>/dev/null || true
+    # Aggressively clean up init containers (minio-init, meilisearch-init, etc.)
+    # Wait for them to finish, then force-remove so they never linger in Docker Desktop
+    wait_and_cleanup_init_containers 30 2>/dev/null || true
 
     printf "${COLOR_GREEN}✓${COLOR_RESET} Project: ${COLOR_BOLD}%s${COLOR_RESET} (%s) / BD: %s\n" "$project_name" "$env" "${BASE_DOMAIN:-localhost}"
     printf "${COLOR_GREEN}✓${COLOR_RESET} Services (%s): %s core, %s optional, %s monitoring, %s custom\n" \

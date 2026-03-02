@@ -5,10 +5,10 @@ set -euo pipefail
 
 # Source shared utilities
 CLI_SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
-source "$CLI_SCRIPT_DIR/../lib/utils/env.sh"
-source "$CLI_SCRIPT_DIR/../lib/utils/display.sh"
-source "$CLI_SCRIPT_DIR/../lib/ssl/trust.sh"
-source "$CLI_SCRIPT_DIR/../lib/ssl/ssl.sh"
+source "$CLI_SCRIPT_DIR/../../utils/env.sh"
+source "$CLI_SCRIPT_DIR/../../utils/display.sh"
+source "$CLI_SCRIPT_DIR/../../ssl/trust.sh"
+source "$CLI_SCRIPT_DIR/../../ssl/ssl.sh"
 
 # Helper functions
 

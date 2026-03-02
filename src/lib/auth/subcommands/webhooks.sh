@@ -5,7 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="$SCRIPT_DIR/../lib/webhooks"
+LIB_DIR="$SCRIPT_DIR/../../webhooks"
 
 [[ -f "$LIB_DIR/core.sh" ]] && source "$LIB_DIR/core.sh"
 

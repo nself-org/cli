@@ -4,7 +4,7 @@
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[[ -f "$SCRIPT_DIR/../lib/auth/device-manager.sh" ]] && source "$SCRIPT_DIR/../lib/auth/device-manager.sh"
+[[ -f "$SCRIPT_DIR/../device-manager.sh" ]] && source "$SCRIPT_DIR/../device-manager.sh"
 
 cmd_devices() {
   case "${1:-help}" in

@@ -286,22 +286,24 @@ validate_compose_file() {
 }
 
 # Cleanup exited init containers
-# Init containers (minio_init, meilisearch-init, etc.) are meant to run once and exit
-# They clutter the status display and should be removed after they complete
+# Init containers (minio-init, meilisearch-init, etc.) are meant to run once and exit
+# They clutter Docker Desktop and should be aggressively removed after they complete
 cleanup_init_containers() {
   local project="${PROJECT_NAME:-$(project_name)}"
 
-  # Primary: label-based cleanup (catches all nself init containers regardless of naming)
+  # Primary: label-based cleanup — catches all nself init containers regardless of naming
+  # Do NOT filter by status=exited; also catch created/dead containers and force-remove
   local label_containers
   label_containers=$(docker ps -a \
     --filter "label=nself.type=init-container" \
-    --filter "status=exited" \
     --format "{{.Names}}" 2>/dev/null || true)
 
-  # Secondary: name-pattern fallback (catches containers without the label)
+  # Secondary: name-pattern fallback — catches containers without the label
+  # Match both underscore and hyphen separators, and Docker Compose v2 naming
+  # e.g. project-minio-init-1, project_minio-init_1, project-meilisearch-init-1
   local name_containers
   name_containers=$(docker ps -a --format "{{.Names}}" 2>/dev/null \
-    | grep -E "^${project}[-_].*[-_]init$" || true)
+    | grep -E "^${project}[-_].*([-_]init[-_]|-init-)[0-9]*$|^${project}[-_].*[-_]init$" || true)
 
   # Combine, deduplicate, remove empty lines
   local all_containers
@@ -309,13 +311,53 @@ cleanup_init_containers() {
     | sort -u | grep -v '^$' || true)
 
   if [[ -n "$all_containers" ]]; then
-    # Force-remove so they can't linger even if still technically running
+    # Force-remove so they never linger in Docker Desktop
     echo "$all_containers" | xargs docker rm -f >/dev/null 2>&1 || true
   fi
+}
+
+# Wait for init containers to finish, then aggressively remove them
+# Called after docker compose up to ensure init containers don't linger
+wait_and_cleanup_init_containers() {
+  local project="${PROJECT_NAME:-$(project_name)}"
+  local max_wait="${1:-30}"
+
+  # Find any init containers that are still running
+  local running_init
+  running_init=$(docker ps \
+    --filter "label=nself.type=init-container" \
+    --filter "status=running" \
+    --format "{{.Names}}" 2>/dev/null || true)
+
+  if [[ -z "$running_init" ]]; then
+    # Also check by name pattern for containers without the label
+    running_init=$(docker ps --format "{{.Names}}" 2>/dev/null \
+      | grep -E "^${project}[-_].*([-_]init[-_]|-init-)[0-9]*$|^${project}[-_].*[-_]init$" || true)
+  fi
+
+  if [[ -n "$running_init" ]]; then
+    # Wait for running init containers to exit (they should be quick)
+    local waited=0
+    while [[ $waited -lt $max_wait ]]; do
+      local still_running
+      still_running=$(docker ps \
+        --filter "label=nself.type=init-container" \
+        --filter "status=running" \
+        --format "{{.Names}}" 2>/dev/null || true)
+      if [[ -z "$still_running" ]]; then
+        break
+      fi
+      sleep 1
+      waited=$((waited + 1))
+    done
+  fi
+
+  # Now aggressively remove all init containers regardless of state
+  cleanup_init_containers
 }
 
 # Export all functions
 export -f ensure_docker_running compose project_name container_name
 export -f is_service_running service_health wait_service_healthy
 export -f kill_port_if_ours is_port_available ports_in_use_for_project
-export -f cleanup_stopped_containers cleanup_init_containers get_compose_config validate_compose_file
+export -f cleanup_stopped_containers cleanup_init_containers wait_and_cleanup_init_containers get_compose_config validate_compose_file
