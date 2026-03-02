@@ -409,6 +409,25 @@ start_services() {
     docker network rm "${project_name}_default" >/dev/null 2>&1 || true
   fi
 
+  # Remove orphan containers: named like ${project_name}_* but NOT managed by compose
+  # These block docker compose from taking ownership of services (e.g., a manually-run nginx
+  # left over from a previous session prevents compose from creating unity_nginx with its labels)
+  local orphan_containers
+  orphan_containers=$(docker ps -a --format "{{.Names}}" 2>/dev/null \
+    | grep -E "^${project_name}[-_]" || true)
+  if [[ -n "$orphan_containers" ]]; then
+    while IFS= read -r cname; do
+      [[ -z "$cname" ]] && continue
+      local cproject
+      cproject=$(docker inspect "$cname" \
+        --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)
+      if [[ -z "$cproject" ]]; then
+        # No compose label — orphan. Remove so compose can take ownership.
+        docker rm -f "$cname" >/dev/null 2>&1 || true
+      fi
+    done <<< "$orphan_containers"
+  fi
+
   update_progress 1 "done"
 
   # 6. Source env-merger if available
@@ -694,6 +713,10 @@ start_services() {
         update_progress $i "done"
       fi
     done
+
+    # Init containers (minio-init, meilisearch-init, etc.) finish within seconds of compose up.
+    # Clean them up immediately — do NOT wait until after health checks.
+    cleanup_init_containers 2>/dev/null || true
 
     # ========================================================
     # AUTOMATIC SERVICE READINESS (runs EVERY start)
