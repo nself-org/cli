@@ -390,14 +390,28 @@ start_services() {
   if [[ "$CLEANUP_ON_START" == "always" ]]; then
     should_cleanup=true
   elif [[ "$CLEANUP_ON_START" == "auto" ]]; then
-    # Check if any containers for THIS project are in error state (label-scoped)
-    local error_containers=$(docker ps -a --filter "label=com.docker.compose.project=$project_name" --filter "status=exited" --format "{{.Names}}" 2>/dev/null)
+    # Check if any containers for THIS project are in error/stale state (label-scoped)
+    local error_containers
+    error_containers=$(docker ps -a --filter "label=com.docker.compose.project=$project_name" --filter "status=exited" --format "{{.Names}}" 2>/dev/null)
     if [[ -n "$error_containers" ]]; then
+      should_cleanup=true
+    fi
+    # Also check for containers in 'created' state — these indicate stale Docker Compose
+    # tracking state (phantom containers) left by a previously interrupted start or reset.
+    # The 'created' container cannot be started by ID and blocks compose from re-creating
+    # the service. Running compose down clears this internal tracking state.
+    local created_containers
+    created_containers=$(docker ps -a --filter "label=com.docker.compose.project=$project_name" --filter "status=created" --format "{{.ID}}" 2>/dev/null)
+    if [[ -n "$created_containers" ]]; then
       should_cleanup=true
     fi
   fi
 
   if [[ "$should_cleanup" == "true" ]]; then
+    # Run compose down first to clear any stale container-tracking state (phantom containers).
+    # This is necessary when Docker Compose holds references to containers that were created
+    # but never started and may no longer be findable by docker rm/inspect.
+    docker compose --project-name "$project_name" down --remove-orphans >/dev/null 2>&1 || true
     # Clean up ONLY containers belonging to this project (label-scoped)
     local existing_containers=$(docker ps -aq --filter "label=com.docker.compose.project=$project_name" 2>/dev/null)
     if [[ -n "$existing_containers" ]]; then
@@ -901,17 +915,31 @@ start_services() {
 
     printf "\n${COLOR_RED}✗ Failed to start services${COLOR_RESET}\n\n"
 
-    # Show error details
+    # Show which services DID start (helps diagnose partial success)
+    local started_services
+    started_services=$(docker ps --filter "label=com.docker.compose.project=$project_name" --format "  ✓ {{.Names}}" 2>/dev/null)
+    if [[ -n "$started_services" ]]; then
+      printf "${COLOR_GREEN}Services that started:${COLOR_RESET}\n%s\n\n" "$started_services"
+    fi
+
+    # Show error details — display all stderr output, not just grep-filtered lines,
+    # so errors like "Error response from daemon: No such container" are always visible.
     if [[ -s "$error_output" ]]; then
       printf "${COLOR_RED}Error details:${COLOR_RESET}\n"
-      # Show meaningful errors only
-      grep -E "(ERROR|Error|error|failed|Failed|dependency|unhealthy)" "$error_output" 2>/dev/null | head -5 || true
+      cat "$error_output" | head -20
 
-      # Check specifically for postgres issues
-      if grep -q "demo-app_postgres.*unhealthy\|demo-app_postgres.*Error" "$error_output" 2>/dev/null; then
-        printf "\n${COLOR_YELLOW}PostgreSQL startup issue detected${COLOR_RESET}\n"
-        printf "Check logs with: ${COLOR_DIM}docker logs demo-app_postgres${COLOR_RESET}\n"
+      # Check for known issues and give targeted hints
+      if grep -q "No such container" "$error_output" 2>/dev/null; then
+        printf "\n${COLOR_YELLOW}Tip:${COLOR_RESET} Stale container state detected. Run:\n"
+        printf "  ${COLOR_BLUE}nself start --clean-start${COLOR_RESET}\n"
+      elif grep -q "port is already allocated\|address already in use" "$error_output" 2>/dev/null; then
+        printf "\n${COLOR_YELLOW}Tip:${COLOR_RESET} A required port is already in use.\n"
+        printf "  Check with: ${COLOR_BLUE}nself doctor${COLOR_RESET}\n"
       fi
+    elif [[ -s "$start_output" ]]; then
+      # Some compose versions send errors to stdout
+      printf "${COLOR_RED}Error details:${COLOR_RESET}\n"
+      grep -E "(Error|error|failed|Failed|unhealthy)" "$start_output" 2>/dev/null | head -10 || true
     fi
 
     # In verbose mode, show full output
@@ -920,7 +948,7 @@ start_services() {
       cat "$start_output"
     fi
 
-    printf "\n💡 ${COLOR_DIM}Tip: Run with --verbose for detailed output${COLOR_RESET}\n\n"
+    printf "\n${COLOR_DIM}Tip: Run with --verbose for detailed output${COLOR_RESET}\n\n"
 
     rm -f "$start_output" "$error_output"
     return 1

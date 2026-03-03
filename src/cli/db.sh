@@ -199,6 +199,11 @@ db_restore() {
     fi
   fi
 
+  # Auto-prepend backups/ if no path separator given (mirrors db_backup behavior)
+  if [[ "$backup_file" != */* ]]; then
+    backup_file="backups/$backup_file"
+  fi
+
   # Check if backup file exists
   if [[ ! -f "$backup_file" ]]; then
     cli_error "Backup file not found: $backup_file"
@@ -317,7 +322,9 @@ EXAMPLES:
   # Create backup
   nself db backup
 
-  # Restore from backup
+  # Restore from backup (filename only — nself auto-prepends backups/)
+  nself db restore backup_20260211.sql
+  # Or pass full path explicitly
   nself db restore backups/backup_20260211.sql
 
   # Reset database (dev only)

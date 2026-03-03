@@ -92,6 +92,28 @@ metadata_apply() {
 
   if [[ -n "$project_dir" ]]; then
     ensure_hasura_config "$project_dir" "$hasura_url"
+
+    # Guard: if metadata directory is empty, warn and exit 0 rather than letting
+    # the Hasura CLI emit a cryptic parse-failed error.
+    local metadata_dir="$project_dir/metadata"
+    local metadata_has_content=false
+    if [[ -d "$metadata_dir" ]]; then
+      for _f in "$metadata_dir"/*.yaml "$metadata_dir"/*.json; do
+        if [[ -f "$_f" ]]; then
+          metadata_has_content=true
+          break
+        fi
+      done
+    fi
+
+    if [[ "$metadata_has_content" == "false" ]]; then
+      cli_warning "${metadata_dir}/ is empty — no metadata to apply."
+      printf "  To populate it, either:\n"
+      printf "  1. nself db hasura metadata export  (exports current Hasura state)\n"
+      printf "  2. Track tables via Hasura Console:  nself db hasura console\n"
+      exit 0
+    fi
+
     hasura metadata apply \
       --project "$project_dir" \
       --endpoint "$hasura_url" \
