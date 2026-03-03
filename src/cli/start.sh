@@ -553,9 +553,22 @@ start_services() {
     # Initial delay to let docker compose start
     sleep 0.2
 
+    # Counter for periodic init-container cleanup during compose startup.
+    # Init containers (minio-init, etc.) exit quickly; we clean them as soon as they do
+    # so Docker Desktop never accumulates stopped init containers.
+    local _spinner_tick=0
+
     while ps -p $compose_pid >/dev/null 2>&1; do
       # Update spinner
       spin_index=$(((spin_index + 1) % 10))
+      _spinner_tick=$((_spinner_tick + 1))
+
+      # Every 20 ticks (~2s): remove any init containers that have already exited.
+      # Running this inside the spinner loop handles containers that exit DURING startup
+      # (not just after compose up returns), so they never linger in Docker Desktop.
+      if [[ $((_spinner_tick % 20)) -eq 0 ]]; then
+        ( cleanup_init_containers 2>/dev/null ) || true
+      fi
 
       # Get the last non-empty line from output to see what's happening
       last_line=$(tail -n 10 "$start_output" 2>/dev/null | grep -v "^$" | tail -n 1 || echo "")
@@ -729,8 +742,12 @@ start_services() {
     done
 
     # Init containers (minio-init, meilisearch-init, etc.) finish within seconds of compose up.
-    # Clean them up immediately — do NOT wait until after health checks.
-    cleanup_init_containers 2>/dev/null || true
+    # Poll three times with short waits: handles the race where a container exits right at
+    # the moment compose returns and isn't visible to the first cleanup call yet.
+    for _ic in 1 2 3; do
+      cleanup_init_containers 2>/dev/null || true
+      [[ $_ic -lt 3 ]] && sleep 0.5
+    done
 
     # ========================================================
     # AUTOMATIC SERVICE READINESS (runs EVERY start)
