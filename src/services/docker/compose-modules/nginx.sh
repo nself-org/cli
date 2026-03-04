@@ -4,6 +4,11 @@ set -euo pipefail
 # Generates environment-aware nginx configuration
 
 generate_nginx_service() {
+  # In shared mode, skip per-project nginx container entirely
+  if [[ "${NGINX_MODE:-}" == "shared" ]]; then
+    return 0
+  fi
+
   # Use smart defaults
   local nginx_port="${NGINX_PORT:-80}"
   local nginx_ssl_port="${NGINX_SSL_PORT:-443}"

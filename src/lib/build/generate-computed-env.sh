@@ -86,6 +86,20 @@ EOF
   # Add CORS domain
   printf "HASURA_GRAPHQL_CORS_DOMAIN=%s\n" "$cors_domain" >> "$output_file"
 
+  # Detect NGINX_MODE (shared vs standalone)
+  # If this project is registered in the shared nginx registry, use shared mode
+  local nginx_mode="standalone"
+  local _registry_lib
+  _registry_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../nginx/registry.sh"
+  if [[ -f "$_registry_lib" ]]; then
+    source "$_registry_lib"
+    registry::init 2>/dev/null || true
+    if registry::is_registered "$(pwd)" 2>/dev/null; then
+      nginx_mode="shared"
+    fi
+  fi
+  printf "NGINX_MODE=%s\n" "$nginx_mode" >> "$output_file"
+
   # Add footer
   cat >> "$output_file" <<EOF
 

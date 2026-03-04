@@ -53,16 +53,21 @@ generate_nginx_config() {
   # Clean up old configs first to prevent stale configs for disabled services
   cleanup_nginx_sites
 
-  # Generate main nginx.conf
-  generate_main_nginx_conf
+  # In shared mode, skip main nginx.conf and default server — the shared
+  # nginx container has its own.  Still generate site configs (service routes,
+  # frontend routes, custom routes) because the shared nginx includes them.
+  if [[ "${NGINX_MODE:-}" != "shared" ]]; then
+    # Generate main nginx.conf
+    generate_main_nginx_conf
 
-  # Generate rate limiting configuration
-  generate_rate_limit_config
+    # Generate rate limiting configuration
+    generate_rate_limit_config
 
-  # Generate default server block
-  generate_default_server
+    # Generate default server block
+    generate_default_server
+  fi
 
-  # Generate service routes
+  # Generate service routes (always — shared nginx includes these)
   generate_service_routes
 
   # Generate frontend app routes (skip on Linux servers)
