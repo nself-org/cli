@@ -2,7 +2,7 @@
 
 # conflict-check.sh - Subdomain conflict detection across registered projects
 # Parses server_name directives from nginx site configs and detects duplicates
-# Bash 3.2 compatible — uses printf (not echo flags), no ${var,,}, no declare -A
+# Bash 3.2 compatible — printf only, parallel arrays, no Bash 4+ features
 
 # Prevent double-sourcing
 [[ "${CONFLICT_CHECK_SOURCED:-}" == "1" ]] && return 0
