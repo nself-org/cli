@@ -2,7 +2,7 @@
 
 # shared.sh - Shared nginx container management for multi-project routing
 # Manages a single nginx container that routes traffic to all registered nself projects
-# Bash 3.2 compatible — no echo -e, no ${var,,}, no declare -A, no mapfile
+# Bash 3.2 compatible — uses printf (not echo flags), no ${var,,}, no declare -A
 
 # Prevent double-sourcing
 [[ "${NGINX_SHARED_SOURCED:-}" == "1" ]] && return 0
