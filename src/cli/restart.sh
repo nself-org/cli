@@ -90,14 +90,37 @@ cmd_restart() {
   if [[ -n "$services_to_restart" ]]; then
     show_command_header "nself restart" "Restarting specific services"
 
+    # Remove orphan containers for the requested services before restarting.
+    # An orphan is a container named ${PROJECT}_${service} that exists but has no
+    # compose project label — it was started outside of docker compose and blocks
+    # compose from taking ownership of the service.
+    local _restart_proj="${PROJECT_NAME:-$(basename "$PWD")}"
+    for _svc in $services_to_restart; do
+      local _cname="${_restart_proj}_${_svc}"
+      if docker inspect "$_cname" >/dev/null 2>&1; then
+        local _owner
+        _owner=$(docker inspect "$_cname" \
+          --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)
+        if [[ -z "$_owner" ]]; then
+          docker rm -f "$_cname" >/dev/null 2>&1 || true
+        fi
+      fi
+    done
+
     for service in $services_to_restart; do
       printf "${COLOR_BLUE}⠋${COLOR_RESET} Restarting $service..."
       if compose restart "$service" >/dev/null 2>&1; then
         printf "\r${COLOR_GREEN}✓${COLOR_RESET} Restarted $service                     \n"
+      elif compose up -d "$service" >/dev/null 2>&1; then
+        # Service container was missing — created and started fresh
+        printf "\r${COLOR_GREEN}✓${COLOR_RESET} Started $service                       \n"
       else
         printf "\r${COLOR_RED}✗${COLOR_RESET} Failed to restart $service             \n"
       fi
     done
+
+    # Clean up any exited init containers left from this or previous starts
+    cleanup_init_containers 2>/dev/null || true
 
     echo
     log_success "Service restart completed"
