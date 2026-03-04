@@ -4,8 +4,20 @@ set -euo pipefail
 # Generates environment-aware nginx configuration
 
 generate_nginx_service() {
-  # In shared mode, skip per-project nginx container entirely
-  if [[ "${NGINX_MODE:-}" == "shared" ]]; then
+  # Detect shared mode independently (don't rely on env var ordering).
+  local _cm_mode="${NGINX_MODE:-standalone}"
+  if [[ "$_cm_mode" != "shared" ]]; then
+    local _cm_registry_lib
+    _cm_registry_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../lib/nginx/registry.sh"
+    if [[ -f "$_cm_registry_lib" ]]; then
+      source "$_cm_registry_lib"
+      registry::init 2>/dev/null || true
+      if registry::is_registered "$(pwd)" 2>/dev/null; then
+        _cm_mode="shared"
+      fi
+    fi
+  fi
+  if [[ "$_cm_mode" == "shared" ]]; then
     return 0
   fi
 

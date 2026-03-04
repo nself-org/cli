@@ -316,8 +316,8 @@ cmd_nginx() {
     esac
   done
 
-  # Restore positional arguments
-  set -- "${args[@]}"
+  # Restore positional arguments (Bash 3.2 safe — empty array check)
+  set -- ${args[@]+"${args[@]}"}
   subcommand="${1:-help}"
 
   case "$subcommand" in

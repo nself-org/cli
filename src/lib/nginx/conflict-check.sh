@@ -18,6 +18,54 @@ if [[ -f "$_CONFLICT_LIB_DIR/../utils/display.sh" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# _conflicts_match_domain — Check if a domain matches any in a domain list,
+# with wildcard-aware matching (*.foo matches bar.foo).
+#
+# Args:
+#   $1 — domain to check
+#   $2 — newline-separated list of existing domains
+#
+# Returns:
+#   0 if match found, 1 if no match
+# ---------------------------------------------------------------------------
+_conflicts_match_domain() {
+  local check_domain="$1"
+  local domain_list="$2"
+
+  [[ -z "$domain_list" ]] && return 1
+
+  while IFS= read -r existing; do
+    [[ -z "$existing" ]] && continue
+
+    # Exact match
+    if [[ "$check_domain" == "$existing" ]]; then
+      return 0
+    fi
+
+    # Wildcard: *.foo.bar matches anything.foo.bar
+    # If existing is *.suffix, check if check_domain ends with .suffix
+    if [[ "$existing" == \*.* ]]; then
+      local suffix="${existing#\*}"
+      case "$check_domain" in
+        *"$suffix") return 0 ;;
+      esac
+    fi
+
+    # If check_domain is *.suffix, check if existing ends with .suffix
+    if [[ "$check_domain" == \*.* ]]; then
+      local suffix="${check_domain#\*}"
+      case "$existing" in
+        *"$suffix") return 0 ;;
+      esac
+    fi
+  done <<EOF
+$domain_list
+EOF
+
+  return 1
+}
+
+# ---------------------------------------------------------------------------
 # conflicts::parse_server_names — Extract all server_name values from conf files
 #
 # Args:
@@ -92,7 +140,7 @@ conflicts::check_new_project() {
 
   registry::init 2>/dev/null || true
 
-  local registry_file="$HOME/.nself/nginx/registry.json"
+  local registry_file="${NSELF_REGISTRY_FILE:-$HOME/.nself/nginx/registry.json}"
   if [[ ! -f "$registry_file" ]]; then
     return 0
   fi
@@ -115,24 +163,21 @@ conflicts::check_new_project() {
       local reg_domains
       reg_domains=$(conflicts::parse_server_names "$reg_sites_dir")
 
-      # Compare each new domain against registered domains
-      printf '%s\n' "$new_domains" | while IFS= read -r domain; do
-        if printf '%s\n' "$reg_domains" | grep -qx "$domain" 2>/dev/null; then
+      # Compare each new domain against registered domains (using here-string
+      # to avoid subshell from pipe, so we can set has_conflict directly)
+      while IFS= read -r domain; do
+        [[ -z "$domain" ]] && continue
+        if _conflicts_match_domain "$domain" "$reg_domains"; then
           if type log_error >/dev/null 2>&1; then
             log_error "Domain conflict: '$domain' already claimed by project '$reg_name'"
           else
             printf "ERROR: Domain conflict: '%s' already claimed by project '%s'\n" "$domain" "$reg_name" >&2
           fi
-          # Signal conflict via temp file (subshell can't set parent vars)
-          printf "1" > "/tmp/.nself-conflict-$$"
+          has_conflict=1
         fi
-      done
-
-      # Check for conflict signal from subshell
-      if [[ -f "/tmp/.nself-conflict-$$" ]]; then
-        rm -f "/tmp/.nself-conflict-$$"
-        has_conflict=1
-      fi
+      done <<EOF
+$new_domains
+EOF
     fi
 
     i=$((i + 1))
@@ -171,7 +216,9 @@ conflicts::check_all() {
     return 0
   fi
 
-  # Build domain→project map using parallel arrays (Bash 3.2 compatible)
+  # Build domain->project map using parallel arrays (Bash 3.2 compatible).
+  # Uses here-doc redirect instead of pipe to keep variable mutations in
+  # the current shell (avoids the subshell variable scope problem).
   local all_domains=""
   local all_owners=""
   local has_conflict=0
@@ -188,60 +235,55 @@ conflicts::check_all() {
       local domains
       domains=$(conflicts::parse_server_names "$sites_dir")
 
-      printf '%s\n' "$domains" | while IFS= read -r domain; do
-        if [[ -z "$domain" ]]; then
-          continue
-        fi
-        # Check if domain already seen
-        if printf '%s\n' "$all_domains" | grep -qx "$domain" 2>/dev/null; then
-          # Find existing owner
-          local line_num
-          line_num=$(printf '%s\n' "$all_domains" | grep -nx "$domain" | head -1 | cut -d: -f1)
-          local existing_owner
-          existing_owner=$(printf '%s\n' "$all_owners" | sed -n "${line_num}p")
+      # Check each domain against accumulated list (here-doc, not pipe)
+      while IFS= read -r domain; do
+        [[ -z "$domain" ]] && continue
+
+        # Wildcard-aware match against all previously accumulated domains
+        if [[ -n "$all_domains" ]] && _conflicts_match_domain "$domain" "$all_domains"; then
+          # Find the first matching owner for error message
+          local existing_owner="unknown"
+          local _line_idx=1
+          while IFS= read -r _acc_domain; do
+            if [[ "$_acc_domain" == "$domain" ]] || _conflicts_match_domain "$domain" "$_acc_domain"; then
+              existing_owner=$(printf '%s\n' "$all_owners" | sed -n "${_line_idx}p")
+              break
+            fi
+            _line_idx=$((_line_idx + 1))
+          done <<OWNERS
+$all_domains
+OWNERS
 
           if type log_error >/dev/null 2>&1; then
             log_error "Domain conflict: '$domain' claimed by both '$existing_owner' and '$proj_name'"
           else
             printf "ERROR: Domain conflict: '%s' claimed by both '%s' and '%s'\n" "$domain" "$existing_owner" "$proj_name" >&2
           fi
-          printf "1" > "/tmp/.nself-conflict-all-$$"
+          has_conflict=1
         fi
-      done
+      done <<DOMAINS
+$domains
+DOMAINS
 
-      # Accumulate (outside subshell for the parallel-array approach)
-      local dom_list
-      dom_list=$(conflicts::parse_server_names "$sites_dir")
-      if [[ -n "$dom_list" ]]; then
+      # Accumulate domains and owners (one owner line per domain line)
+      if [[ -n "$domains" ]]; then
+        local owner_lines=""
+        while IFS= read -r _d; do
+          [[ -z "$_d" ]] && continue
+          if [[ -n "$owner_lines" ]]; then
+            owner_lines=$(printf '%s\n%s' "$owner_lines" "$proj_name")
+          else
+            owner_lines="$proj_name"
+          fi
+        done <<DOMS
+$domains
+DOMS
+
         if [[ -n "$all_domains" ]]; then
-          all_domains=$(printf '%s\n%s' "$all_domains" "$dom_list")
-          local owner_lines=""
-          local count
-          count=$(printf '%s\n' "$dom_list" | wc -l | tr -d ' ')
-          local j=0
-          while [[ $j -lt $count ]]; do
-            if [[ -n "$owner_lines" ]]; then
-              owner_lines=$(printf '%s\n%s' "$owner_lines" "$proj_name")
-            else
-              owner_lines="$proj_name"
-            fi
-            j=$((j + 1))
-          done
+          all_domains=$(printf '%s\n%s' "$all_domains" "$domains")
           all_owners=$(printf '%s\n%s' "$all_owners" "$owner_lines")
         else
-          all_domains="$dom_list"
-          local owner_lines=""
-          local count
-          count=$(printf '%s\n' "$dom_list" | wc -l | tr -d ' ')
-          local j=0
-          while [[ $j -lt $count ]]; do
-            if [[ -n "$owner_lines" ]]; then
-              owner_lines=$(printf '%s\n%s' "$owner_lines" "$proj_name")
-            else
-              owner_lines="$proj_name"
-            fi
-            j=$((j + 1))
-          done
+          all_domains="$domains"
           all_owners="$owner_lines"
         fi
       fi
@@ -249,11 +291,6 @@ conflicts::check_all() {
 
     i=$((i + 1))
   done
-
-  if [[ -f "/tmp/.nself-conflict-all-$$" ]]; then
-    rm -f "/tmp/.nself-conflict-all-$$"
-    has_conflict=1
-  fi
 
   return $has_conflict
 }

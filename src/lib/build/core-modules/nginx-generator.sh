@@ -53,10 +53,22 @@ generate_nginx_config() {
   # Clean up old configs first to prevent stale configs for disabled services
   cleanup_nginx_sites
 
-  # In shared mode, skip main nginx.conf and default server — the shared
-  # nginx container has its own.  Still generate site configs (service routes,
-  # frontend routes, custom routes) because the shared nginx includes them.
-  if [[ "${NGINX_MODE:-}" != "shared" ]]; then
+  # Detect shared mode independently (don't rely on env var ordering).
+  # If this project is registered in the shared nginx registry, skip main
+  # nginx.conf and default server — the shared container has its own.
+  # Site configs are still generated because the shared nginx includes them.
+  local _ng_registry_lib
+  _ng_registry_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../nginx/registry.sh"
+  local _ng_mode="${NGINX_MODE:-standalone}"
+  if [[ "$_ng_mode" != "shared" ]] && [[ -f "$_ng_registry_lib" ]]; then
+    source "$_ng_registry_lib"
+    registry::init 2>/dev/null || true
+    if registry::is_registered "$(pwd)" 2>/dev/null; then
+      _ng_mode="shared"
+    fi
+  fi
+
+  if [[ "$_ng_mode" != "shared" ]]; then
     # Generate main nginx.conf
     generate_main_nginx_conf
 

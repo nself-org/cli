@@ -83,8 +83,8 @@ shared::generate_compose() {
   printf '    container_name: %s\n' "$SHARED_NGINX_CONTAINER" >> "$compose_file"
   printf '    restart: unless-stopped\n' >> "$compose_file"
   printf '    ports:\n' >> "$compose_file"
-  printf '      - "80:80"\n' >> "$compose_file"
-  printf '      - "443:443"\n' >> "$compose_file"
+  printf '      - "127.0.0.1:80:80"\n' >> "$compose_file"
+  printf '      - "127.0.0.1:443:443"\n' >> "$compose_file"
   printf '    volumes:\n' >> "$compose_file"
   printf '      - %s:/etc/nginx/nginx.conf:ro\n' "$SHARED_NGINX_CONF" >> "$compose_file"
   printf '      - %s:/etc/nginx/ssl:ro\n' "$SHARED_SSL_DIR" >> "$compose_file"
@@ -149,10 +149,10 @@ shared::generate_main_conf() {
 
 # ---------------------------------------------------------------------------
 # shared::start — Generate configs and start the shared nginx container
-# Args: $1 = registry file path (optional, defaults to ~/.nself/nginx/registry)
+# Args: $1 = registry file path (optional, defaults to ~/.nself/nginx/registry.json)
 # ---------------------------------------------------------------------------
 shared::start() {
-  local registry_file="${1:-$HOME/.nself/nginx/registry}"
+  local registry_file="${1:-$HOME/.nself/nginx/registry.json}"
 
   if [[ ! -f "$registry_file" ]]; then
     log_error "No registry file found at $registry_file"
@@ -162,11 +162,7 @@ shared::start() {
 
   log_info "Starting shared nginx container..."
 
-  # Generate configuration files
-  shared::generate_main_conf
-  shared::generate_compose "$registry_file"
-
-  # Start the container
+  # Start the container (caller is responsible for generating configs first)
   if ! docker compose -f "$SHARED_NGINX_COMPOSE" -p nself-shared up -d 2>/dev/null; then
     # Fallback for older docker-compose
     if command -v docker-compose >/dev/null 2>&1; then
@@ -240,10 +236,10 @@ shared::reload() {
 
 # ---------------------------------------------------------------------------
 # shared::logs — Show container logs
-# Args: $1 = number of tail lines (optional, defaults to 50)
+# Args: $1 = number of tail lines (optional, defaults to 100)
 # ---------------------------------------------------------------------------
 shared::logs() {
-  local tail_lines="${1:-50}"
+  local tail_lines="${1:-100}"
 
   if ! docker ps -a --format '{{.Names}}' | grep -q "^${SHARED_NGINX_CONTAINER}$" 2>/dev/null; then
     log_error "Shared nginx container does not exist"
