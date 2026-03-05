@@ -26,17 +26,38 @@ generate_nginx_service() {
   local nginx_ssl_port="${NGINX_SSL_PORT:-443}"
   local base_domain="${BASE_DOMAIN:-localhost}"
 
+  # Determine bind IP for nginx ports.
+  # In dev, default to 127.0.0.1 to avoid conflicts with Tailscale and other VPN tools.
+  # Override with NGINX_BIND_IP=0.0.0.0 to bind to all interfaces (e.g. for LAN testing).
+  # In prod/staging, default to empty (Docker bind-all) for accessibility.
+  local current_env="${ENV:-dev}"
+  local bind_ip="${NGINX_BIND_IP:-}"
+  if [[ "$current_env" == "dev" ]] && [[ -z "$bind_ip" ]]; then
+    bind_ip="127.0.0.1"
+  fi
+
+  # Build port mapping lines based on bind_ip (resolved at build time)
+  local port_http port_https
+  if [[ -n "$bind_ip" ]]; then
+    port_http="\"${bind_ip}:\${NGINX_PORT:-80}:80\""
+    port_https="\"${bind_ip}:\${NGINX_SSL_PORT:-443}:443\""
+  else
+    port_http="\"\${NGINX_PORT:-80}:80\""
+    port_https="\"\${NGINX_SSL_PORT:-443}:443\""
+  fi
+
   cat <<EOF
   nginx:
     image: nginx:alpine
     container_name: \${PROJECT_NAME:-myproject}_nginx
     restart: unless-stopped
     ports:
-      - "\${NGINX_PORT:-80}:80"
-      - "\${NGINX_SSL_PORT:-443}:443"
+      - ${port_http}
+      - ${port_https}
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/conf.d-${ENV:-dev}:/etc/nginx/conf.d-env:ro
       - ./nginx/sites:/etc/nginx/sites:ro
       - ./nginx/includes:/etc/nginx/includes:ro
       - ./ssl/certificates:/etc/nginx/ssl:ro

@@ -104,7 +104,7 @@ get_frontends() {
     fi
   done
 
-  printf '%s\n' "${frontends[@]}"
+  [[ "${#frontends[@]}" -gt 0 ]] && printf '%s\n' "${frontends[@]}"
 }
 
 # Check if frontend is running
@@ -225,7 +225,13 @@ cmd_list() {
 
   init_frontend
 
-  local frontends=($(get_frontends))
+  local frontends
+  frontends=($(get_frontends)) || true
+
+  if [[ "${#frontends[@]}" -eq 0 ]]; then
+    [[ "$json_mode" == "true" ]] && printf '{"frontends": []}\n' || true
+    return 0
+  fi
 
   if [[ "$json_mode" == "true" ]]; then
     printf '{"frontends": ['

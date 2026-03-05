@@ -43,7 +43,7 @@ format_timestamp() {
 # Function to colorize and clean log output
 # Args: [service_name] - optional, used for single-service logs where service isn't in output
 clean_and_colorize() {
-  local fixed_service="$1" # If provided, use this instead of extracting from line
+  local fixed_service="${1:-}" # If provided, use this instead of extracting from line
 
   while IFS= read -r line; do
     if [[ -z "$line" ]]; then continue; fi

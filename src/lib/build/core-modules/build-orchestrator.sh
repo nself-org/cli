@@ -320,6 +320,7 @@ EOF
 # Setup directory structure
 setup_directories() {
   mkdir -p nginx/{conf.d,sites,includes,routes} 2>/dev/null || true
+  mkdir -p "nginx/conf.d-${ENV:-dev}" 2>/dev/null || true
   mkdir -p ssl/certificates 2>/dev/null || true
   mkdir -p postgres/init 2>/dev/null || true
   mkdir -p services 2>/dev/null || true

@@ -112,6 +112,17 @@ build_ssl_domains() {
     domains+=("${subdomain}.${base_domain}")
   done
 
+  # User-specified extra domains (dev only — mkcert strategy for multi-level wildcard SANs).
+  # Example: EXTRA_SSL_DOMAINS=*.praycalc.local.nself.org,*.app.ummat.local.nself.org
+  if [[ -n "${EXTRA_SSL_DOMAINS:-}" ]]; then
+    local _extra_raw
+    _extra_raw=$(printf "%s" "$EXTRA_SSL_DOMAINS" | tr ',' '\n')
+    while IFS= read -r _d; do
+      _d=$(printf "%s" "$_d" | tr -d ' ')
+      [[ -n "$_d" ]] && domains+=("$_d")
+    done <<< "$_extra_raw"
+  fi
+
   # Return unique domains
   printf "%s\n" "${domains[@]}" | sort -u | tr '\n' ' '
 }

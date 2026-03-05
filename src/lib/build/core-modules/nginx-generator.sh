@@ -237,6 +237,8 @@ http {
 
     # Include all configurations
     include /etc/nginx/conf.d/*.conf;
+    # Include environment-specific configurations (nginx/conf.d-dev/ or nginx/conf.d-prod/)
+    include /etc/nginx/conf.d-env/*.conf;
     include /etc/nginx/sites/*.conf;
 }
 EOF
