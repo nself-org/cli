@@ -55,7 +55,7 @@ EOF
   cat <<EOF
     restart: unless-stopped
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
 EOF
 
   # Add ports if specified

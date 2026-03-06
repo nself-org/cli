@@ -24,7 +24,7 @@ generate_custom_service() {
     image: ${service_image}
     restart: unless-stopped
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
 EOF
 
   # Add command if specified

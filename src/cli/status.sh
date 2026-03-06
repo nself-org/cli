@@ -284,13 +284,22 @@ check_config_drift() {
 
   # Get last container start time (use oldest running container)
   local project_name="${PROJECT_NAME:-nself}"
-  local container_start=$(docker ps --filter "name=${project_name}_" --format "{{.CreatedAt}}" 2>/dev/null | head -1)
-  if [[ -n "$container_start" ]]; then
-    # Convert to epoch (simplified check - just compare dates)
-    last_start_time=$(date -d "$container_start" +%s 2>/dev/null || echo "0")
-    # macOS fallback
-    if [[ "$last_start_time" == "0" ]] && [[ "$(uname)" == "Darwin" ]]; then
-      last_start_time=$(date -j -f "%Y-%m-%d %H:%M:%S" "$container_start" +%s 2>/dev/null || echo "0")
+  local container_id
+  container_id=$(docker ps --filter "name=${project_name}_" --format "{{.ID}}" 2>/dev/null | head -1)
+  if [[ -n "$container_id" ]]; then
+    # Use docker inspect for reliable ISO 8601 timestamp (State.StartedAt
+    # reflects actual start time, not creation time — correct after stop/start)
+    local started_at
+    started_at=$(docker inspect --format '{{.State.StartedAt}}' "$container_id" 2>/dev/null || echo "")
+    if [[ -n "$started_at" ]]; then
+      # Extract just YYYY-MM-DDTHH:MM:SS, strip sub-seconds and timezone
+      started_at="${started_at%%.*}"
+      # Convert to epoch (GNU date)
+      last_start_time=$(date -d "$started_at" +%s 2>/dev/null || echo "0")
+      # macOS fallback (BSD date)
+      if [[ "$last_start_time" == "0" ]] && [[ "$(uname)" == "Darwin" ]]; then
+        last_start_time=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$started_at" +%s 2>/dev/null || echo "0")
+      fi
     fi
   fi
 

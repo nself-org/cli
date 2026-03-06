@@ -72,7 +72,7 @@ get_frontends() {
   local frontends=()
 
   # Check FRONTEND_APP_N pattern
-  for i in {1..10}; do
+  for i in {1..20}; do
     local name_var="FRONTEND_APP_${i}_NAME"
     local port_var="FRONTEND_APP_${i}_PORT"
     local route_var="FRONTEND_APP_${i}_ROUTE"
@@ -87,7 +87,7 @@ get_frontends() {
   done
 
   # Also check APP_N pattern (legacy)
-  for i in {1..10}; do
+  for i in {1..20}; do
     local name_var="APP_${i}_NAME"
     local port_var="APP_${i}_PORT"
 
@@ -268,7 +268,7 @@ cmd_add() {
 
   # Find next available slot
   local slot=0
-  for i in {1..10}; do
+  for i in {1..20}; do
     local name_var="FRONTEND_APP_${i}_NAME"
     if [[ -z "${!name_var:-}" ]]; then
       slot=$i
@@ -277,7 +277,7 @@ cmd_add() {
   done
 
   if [[ "$slot" -eq 0 ]]; then
-    log_error "Maximum frontend apps (10) reached"
+    log_error "Maximum frontend apps (20) reached"
     return 1
   fi
 
@@ -341,7 +341,7 @@ cmd_remove() {
     cp "$env_file" "${env_file}.bak"
 
     # Find the slot
-    for i in {1..10}; do
+    for i in {1..20}; do
       local name_var="FRONTEND_APP_${i}_NAME"
       if [[ "${!name_var:-}" == "$name" ]]; then
         # Comment out the lines
@@ -501,7 +501,7 @@ cmd_env() {
 
   # Find frontend config
   local found=false
-  for i in {1..10}; do
+  for i in {1..20}; do
     local name_var="FRONTEND_APP_${i}_NAME"
     if [[ "${!name_var:-}" == "$name" ]]; then
       found=true

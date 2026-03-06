@@ -26,7 +26,7 @@ generate_tempo_service() {
       - "127.0.0.1:\${TEMPO_PORT:-3200}:3200"
       - "127.0.0.1:14268:14268"  # Jaeger ingest
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     # Note: Tempo uses distroless image (no shell/curl/wget)
     # Health monitoring via Prometheus scraping /ready endpoint instead
     # Container recovery handled by restart: unless-stopped
@@ -57,7 +57,7 @@ generate_alertmanager_service() {
       # SECURITY: Bind to localhost only - prevents external access
       - "127.0.0.1:\${ALERTMANAGER_PORT:-9093}:9093"
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:9093/-/healthy"]
       interval: 30s
@@ -101,7 +101,7 @@ $volumes
       # SECURITY: Bind to localhost only - prevents external access
       - "127.0.0.1:\${CADVISOR_PORT:-8082}:8080"
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     command:
       - '--housekeeping_interval=10s'
       - '--docker_only=true'
@@ -142,7 +142,7 @@ generate_node_exporter_service() {
       # SECURITY: Bind to localhost only - prevents external access
       - "127.0.0.1:\${NODE_EXPORTER_PORT:-9100}:9100"
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9100/metrics"]
       interval: 30s
@@ -173,7 +173,7 @@ generate_postgres_exporter_service() {
       # SECURITY: Bind to localhost only - prevents external access
       - "127.0.0.1:\${POSTGRES_EXPORTER_PORT:-9187}:9187"
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       - postgres
     healthcheck:
@@ -210,7 +210,7 @@ generate_redis_exporter_service() {
       # SECURITY: Bind to localhost only - prevents external access
       - "127.0.0.1:\${REDIS_EXPORTER_PORT:-9121}:9121"
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       - redis
     healthcheck:

@@ -22,7 +22,7 @@ generate_postgres_service() {
     container_name: \${PROJECT_NAME}_postgres
     restart: unless-stopped
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     environment:
       POSTGRES_USER: \${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: \${POSTGRES_PASSWORD}
@@ -84,7 +84,7 @@ generate_hasura_service() {
     restart: unless-stopped
     user: "1001:1001"
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       postgres:
         condition: service_healthy
@@ -112,6 +112,23 @@ EOF
     cat <<EOF
       HASURA_GRAPHQL_UNAUTHORIZED_ROLE: public
 EOF
+  fi
+
+  # Pass through REMOTE_SCHEMA_* env vars for Hasura Remote Schemas (url_from_env)
+  local _var
+  for _var in $(compgen -v | grep '^REMOTE_SCHEMA_' || true); do
+    printf '      %s: ${%s}\n' "$_var" "$_var"
+  done
+
+  # Pass through additional custom env vars listed in HASURA_EXTRA_ENV (comma-separated)
+  if [[ -n "${HASURA_EXTRA_ENV:-}" ]]; then
+    local _extra_var
+    while IFS=',' read -ra _extra_vars; do
+      for _extra_var in "${_extra_vars[@]}"; do
+        _extra_var=$(printf '%s' "$_extra_var" | tr -d ' ')
+        [[ -n "$_extra_var" ]] && printf '      %s: ${%s}\n' "$_extra_var" "$_extra_var"
+      done
+    done <<< "$HASURA_EXTRA_ENV"
   fi
 
   cat <<EOF
@@ -158,7 +175,7 @@ generate_auth_service() {
     container_name: \${PROJECT_NAME}_auth
     restart: unless-stopped
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       postgres:
         condition: service_healthy
@@ -179,7 +196,7 @@ EOF
     container_name: \${PROJECT_NAME}_auth
     restart: unless-stopped
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       postgres:
         condition: service_healthy
@@ -225,22 +242,11 @@ EOF
       AUTH_EMAIL_SIGNIN_EMAIL_VERIFIED_REQUIRED: \${AUTH_EMAIL_SIGNIN_EMAIL_VERIFIED_REQUIRED:-false}
 EOF
 
-  # Add OAuth providers if configured
-  if [[ -n "${AUTH_PROVIDER_GOOGLE_CLIENT_ID:-}" ]]; then
-    cat <<EOF
-      AUTH_PROVIDER_GOOGLE_ENABLED: "true"
-      AUTH_PROVIDER_GOOGLE_CLIENT_ID: \${AUTH_PROVIDER_GOOGLE_CLIENT_ID}
-      AUTH_PROVIDER_GOOGLE_CLIENT_SECRET: \${AUTH_PROVIDER_GOOGLE_CLIENT_SECRET}
-EOF
-  fi
-
-  if [[ -n "${AUTH_PROVIDER_GITHUB_CLIENT_ID:-}" ]]; then
-    cat <<EOF
-      AUTH_PROVIDER_GITHUB_ENABLED: "true"
-      AUTH_PROVIDER_GITHUB_CLIENT_ID: \${AUTH_PROVIDER_GITHUB_CLIENT_ID}
-      AUTH_PROVIDER_GITHUB_CLIENT_SECRET: \${AUTH_PROVIDER_GITHUB_CLIENT_SECRET}
-EOF
-  fi
+  # Auto-passthrough all AUTH_PROVIDER_* env vars (Google, Apple, Facebook, GitHub, Twitter, etc.)
+  local _auth_var
+  for _auth_var in $(compgen -v | grep '^AUTH_PROVIDER_' || true); do
+    printf '      %s: ${%s}\n' "$_auth_var" "$_auth_var"
+  done
 
   cat <<EOF
     ports:
@@ -283,7 +289,7 @@ generate_minio_service() {
     restart: "no"
     user: root
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     volumes:
       - minio_data:/data
     command: >
@@ -306,7 +312,7 @@ generate_minio_service() {
     restart: unless-stopped
     user: "1000:1000"
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       minio-init:
         condition: service_completed_successfully
@@ -404,7 +410,7 @@ generate_redis_service() {
     restart: unless-stopped
     user: "999:999"
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     command: ${redis_cmd}
     volumes:
       - redis_data:/data

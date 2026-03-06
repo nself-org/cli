@@ -83,6 +83,22 @@ EOF
     fi
   fi
 
+  # Derive AUTH_JWT_SECRET (raw key) from HASURA_GRAPHQL_JWT_SECRET
+  # The auth container needs the raw key string, not the JSON wrapper
+  if [[ -n "$hasura_jwt_config" ]]; then
+    local auth_jwt_secret=""
+    if [[ "$hasura_jwt_config" == "{"* ]] && command -v jq >/dev/null 2>&1; then
+      # Extract 'key' field from JSON
+      auth_jwt_secret=$(printf '%s' "$hasura_jwt_config" | jq -r '.key // empty' 2>/dev/null || echo "")
+    elif [[ "$hasura_jwt_config" != "{"* ]]; then
+      # Raw key string — use as-is
+      auth_jwt_secret="$hasura_jwt_config"
+    fi
+    if [[ -n "$auth_jwt_secret" ]]; then
+      printf "AUTH_JWT_SECRET=%s\n" "$auth_jwt_secret" >> "$output_file"
+    fi
+  fi
+
   # Add CORS domain
   printf "HASURA_GRAPHQL_CORS_DOMAIN=%s\n" "$cors_domain" >> "$output_file"
 

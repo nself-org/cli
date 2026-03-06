@@ -17,7 +17,7 @@ generate_mailpit_service() {
     restart: unless-stopped
     user: "1000:1000"
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     environment:
       MP_UI_BIND_ADDR: 0.0.0.0:8025
       MP_SMTP_BIND_ADDR: 0.0.0.0:1025
@@ -91,7 +91,7 @@ EOF
     container_name: \${PROJECT_NAME}_admin
     restart: unless-stopped
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       postgres:
         condition: service_healthy
@@ -165,7 +165,7 @@ generate_functions_service() {
     container_name: \${PROJECT_NAME}_functions
     restart: unless-stopped
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       postgres:
         condition: service_healthy
@@ -193,7 +193,7 @@ EOF
     container_name: \${PROJECT_NAME}_functions
     restart: unless-stopped
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       postgres:
         condition: service_healthy
@@ -236,7 +236,7 @@ generate_backup_service() {
     container_name: \${PROJECT_NAME}_backup
     restart: unless-stopped
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       postgres:
         condition: service_healthy
@@ -292,7 +292,7 @@ DOCKERFILE
     restart: unless-stopped
     user: "1000:1000"
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       postgres:
         condition: service_healthy
@@ -370,7 +370,7 @@ generate_meilisearch_service() {
     restart: "no"
     user: root
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     volumes:
       - meilisearch_data:/meili_data
     command: >
@@ -393,7 +393,7 @@ generate_meilisearch_service() {
     restart: unless-stopped
     user: "1000:1000"
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       meilisearch-init:
         condition: service_completed_successfully
@@ -427,7 +427,7 @@ generate_typesense_service() {
     container_name: \${PROJECT_NAME}_typesense
     restart: unless-stopped
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     environment:
       TYPESENSE_API_KEY: \${SEARCH_API_KEY:-\${TYPESENSE_API_KEY}}
       TYPESENSE_DATA_DIR: /data

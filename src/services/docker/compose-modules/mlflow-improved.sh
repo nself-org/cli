@@ -15,7 +15,7 @@ generate_mlflow_service_improved() {
     container_name: \${PROJECT_NAME}_mlflow
     restart: unless-stopped
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
     depends_on:
       postgres:
         condition: service_healthy

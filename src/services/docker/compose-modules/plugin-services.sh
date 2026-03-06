@@ -59,7 +59,7 @@ YAML
   cat <<YAML
     restart: unless-stopped
     networks:
-      - \${DOCKER_NETWORK}
+      - ${DOCKER_NETWORK}
 YAML
 
   # Add ports if specified
@@ -78,7 +78,7 @@ YAML
       - APP_ENV=\${ENV:-dev}
       - PROJECT_NAME=\${PROJECT_NAME}
       - BASE_DOMAIN=\${BASE_DOMAIN:-localhost}
-      - DOCKER_NETWORK=\${DOCKER_NETWORK}
+      - DOCKER_NETWORK=${DOCKER_NETWORK}
       - SERVICE_NAME=${plugin_name}
       - SERVICE_PORT=${port}
       - PORT=${port}
