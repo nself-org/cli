@@ -325,34 +325,53 @@ security::check_insecure_values() {
 # POST-START SECURITY VERIFICATION
 # ============================================================
 
-# Verify no sensitive ports are exposed after container startup
-# This catches cases where containers might have different config than docker-compose
+# Verify no sensitive ports are exposed after container startup.
+#
+# WHY docker compose port (not ss/netstat):
+#   ss/netstat show ALL system-level listeners, including pre-installed
+#   system services (e.g. a system PostgreSQL on Debian 12 that binds to
+#   0.0.0.0:5432 and is completely unrelated to nself). Using ss caused
+#   false-positive "SECURITY VIOLATION" errors that would stop nself even
+#   when its own containers were correctly bound to 127.0.0.1.
+#
+#   "docker compose port <service> <port>" returns ONLY nself's container
+#   binding (e.g. "127.0.0.1:5432"), making the check precise.
+#
+#   ss/netstat are kept as a last-resort fallback when docker is not
+#   available, but their output is reported as a WARNING (not an error)
+#   because it may include system services outside nself's control.
 security::verify_no_exposed_ports() {
   local errors=0
+  local project_name="${COMPOSE_PROJECT_NAME:-nself}"
 
   printf "\n${COLOR_CYAN}Post-Start Security Check${COLOR_RESET}\n"
   printf "═══════════════════════════════════════\n\n"
 
-  # Check each sensitive port
-  for port in $SENSITIVE_PORTS; do
-    # Check if port is listening on 0.0.0.0
-    local exposed=""
+  # "service:port" pairs — Bash 3.2 compatible (no associative arrays)
+  local svc_port_pairs="redis:6379 postgres:5432 meilisearch:7700 minio:9000 prometheus:9090 grafana:3000"
 
-    # Try ss first (Linux)
-    if command -v ss >/dev/null 2>&1; then
-      exposed=$(ss -tlnp 2>/dev/null | grep ":${port}" | grep "0.0.0.0" || true)
-    # Fallback to netstat
-    elif command -v netstat >/dev/null 2>&1; then
-      exposed=$(netstat -tlnp 2>/dev/null | grep ":${port}" | grep "0.0.0.0" || true)
-    # macOS lsof fallback
-    elif command -v lsof >/dev/null 2>&1; then
-      exposed=$(lsof -i ":${port}" -P -n 2>/dev/null | grep "LISTEN" | grep -v "127.0.0.1" | grep -v "localhost" || true)
+  for pair in $svc_port_pairs; do
+    local svc="${pair%%:*}"
+    local port="${pair##*:}"
+    local binding=""
+
+    # Primary: docker compose port — checks ONLY nself containers, not system services
+    if command -v docker >/dev/null 2>&1; then
+      binding=$(docker compose --project-name "$project_name" port "$svc" "$port" 2>/dev/null || true)
     fi
 
-    if [[ -n "$exposed" ]]; then
-      printf "  ${COLOR_RED}✗${COLOR_RESET} Port %s is exposed to 0.0.0.0 - SECURITY VIOLATION\n" "$port"
-      errors=$((errors + 1))
+    if [[ -n "$binding" ]]; then
+      # binding format: "HOST_IP:HOST_PORT" e.g. "127.0.0.1:5432" or "0.0.0.0:5432"
+      local host_ip="${binding%%:*}"
+      if [[ "$host_ip" == "0.0.0.0" ]] || [[ "$host_ip" == "::" ]]; then
+        printf "  ${COLOR_RED}✗${COLOR_RESET} Port %s (%s): Exposed to %s - SECURITY VIOLATION\n" \
+          "$port" "$svc" "$host_ip"
+        errors=$((errors + 1))
+      else
+        printf "  ${COLOR_GREEN}✓${COLOR_RESET} Port %s: Localhost only (%s)\n" "$port" "$binding"
+      fi
     else
+      # Service not running or port not mapped to host — both are safe
       printf "  ${COLOR_GREEN}✓${COLOR_RESET} Port %s: Not exposed externally\n" "$port"
     fi
   done
@@ -361,6 +380,9 @@ security::verify_no_exposed_ports() {
 
   if [[ $errors -gt 0 ]]; then
     printf "${COLOR_RED}CRITICAL: %d sensitive port(s) exposed to public internet${COLOR_RESET}\n\n" "$errors"
+    printf "This means a nself container has a port bound to 0.0.0.0 instead of 127.0.0.1.\n"
+    printf "Run 'nself build' to regenerate docker-compose.yml with correct bindings.\n"
+    printf "Then run 'nself start' again.\n\n"
     printf "Stopping containers to prevent security breach...\n"
     return 1
   fi

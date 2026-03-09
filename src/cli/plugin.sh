@@ -289,6 +289,10 @@ cmd_install() {
     plugin_install_dependencies "$plugin_name" || true
   fi
 
+  # Sync TypeScript source to project services directory (no-op for Rust plugins)
+  export NSELF_PROJECT_DIR="$(pwd)"
+  sync_plugin_source "$plugin_name"
+
   log_success "Plugin '$plugin_name' installed successfully!"
 
   # Record in project plugin list if running inside a project directory
@@ -418,6 +422,10 @@ update_single_plugin() {
 
   # Download new version
   download_plugin "$plugin_name" "$latest_version"
+
+  # Sync TypeScript source to project services directory (no-op for Rust plugins)
+  export NSELF_PROJECT_DIR="$(pwd)"
+  sync_plugin_source "$plugin_name"
 
   log_success "Updated $plugin_name to $latest_version"
 }
@@ -1060,6 +1068,116 @@ _download_plugin_signed() {
   fi
 
   return 0
+}
+
+# ============================================================================
+# PLUGIN SOURCE SYNC
+# ============================================================================
+
+# sync_plugin_source <plugin_name>
+#
+# Copies TypeScript plugin source from the global plugin store
+# (~/.nself/plugins/<name>/ts/src/) to the project services directory
+# ({project}/services/<name>/src/).
+#
+# WHY THIS EXISTS:
+#   After `nself plugin install` or `nself plugin update`, the new source
+#   lands in PLUGIN_DIR but the project's services/<name>/src/ is NOT
+#   updated. Consequently `nself build` regenerates docker-compose.yml
+#   using the OLD source — the container runs stale code until the user
+#   manually copies files. This function eliminates that manual step.
+#
+# Bash 3.2 compatible — no rsync required (falls back to cp).
+sync_plugin_source() {
+  local plugin_name="$1"
+  local project_dir="${NSELF_PROJECT_DIR:-$(pwd)}"
+
+  # Source: ~/.nself/plugins/<name>/ts/src/
+  local plugin_ts_src="${PLUGIN_DIR}/${plugin_name}/ts/src"
+
+  # Only applies to TypeScript plugins (Rust plugins use pre-compiled binaries)
+  if [[ ! -d "$plugin_ts_src" ]]; then
+    return 0
+  fi
+
+  # Only run inside a project directory (must have .env)
+  if [[ ! -f "${project_dir}/.env" ]]; then
+    return 0
+  fi
+
+  local service_src="${project_dir}/services/${plugin_name}/src"
+  mkdir -p "$service_src"
+
+  # Sync ts/src/ → services/<name>/src/
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "${plugin_ts_src}/" "${service_src}/"
+  else
+    # POSIX cp fallback: overwrites changed files (does not delete removed files,
+    # but is safe for the install/update path since the source is authoritative)
+    cp -r "${plugin_ts_src}/." "${service_src}/"
+  fi
+
+  log_info "Plugin source synced to ${service_src}"
+
+  # Also update package.json if the plugin ships one at ts/package.json
+  local plugin_pkg="${PLUGIN_DIR}/${plugin_name}/ts/package.json"
+  local service_pkg="${project_dir}/services/${plugin_name}/package.json"
+  if [[ -f "$plugin_pkg" ]] && [[ -f "$service_pkg" ]]; then
+    cp "$plugin_pkg" "$service_pkg"
+    log_info "Updated package.json in ${project_dir}/services/${plugin_name}/"
+  fi
+}
+
+# cmd_sync [<plugin_name>]
+#
+# Manually sync plugin TypeScript source to the project services directory.
+# Useful when auto-sync did not run (e.g. plugin was installed from outside
+# the project directory) or to verify sources are up to date.
+#
+# Usage:
+#   nself plugin sync <name>   Sync a specific plugin
+#   nself plugin sync          Sync all installed TypeScript plugins
+cmd_sync() {
+  local plugin_name="${1:-}"
+
+  export NSELF_PROJECT_DIR="$(pwd)"
+
+  if [[ -z "$plugin_name" ]]; then
+    # Sync all installed TypeScript plugins
+    local synced=0
+    for plugin_dir_entry in "${PLUGIN_DIR}"/*/; do
+      if [[ -d "${plugin_dir_entry}ts/src" ]]; then
+        local name
+        name=$(basename "$plugin_dir_entry")
+        if sync_plugin_source "$name"; then
+          synced=$((synced + 1))
+        fi
+      fi
+    done
+    if [[ $synced -eq 0 ]]; then
+      log_info "No TypeScript plugins found to sync"
+    else
+      log_success "Synced ${synced} plugin(s)"
+      printf "\nRun 'nself build' then 'nself restart' to apply.\n"
+    fi
+    return 0
+  fi
+
+  if ! is_plugin_installed "$plugin_name"; then
+    log_error "Plugin '$plugin_name' is not installed"
+    return 1
+  fi
+
+  local plugin_ts_src="${PLUGIN_DIR}/${plugin_name}/ts/src"
+  if [[ ! -d "$plugin_ts_src" ]]; then
+    log_error "Plugin '$plugin_name' does not have TypeScript source at ${plugin_ts_src}"
+    log_info "Rust plugins use pre-compiled binaries and do not need source sync."
+    return 1
+  fi
+
+  sync_plugin_source "$plugin_name"
+  log_success "Synced '$plugin_name'"
+  printf "\nRun: nself build && nself restart %s\n" "$plugin_name"
 }
 
 install_local_plugin() {
@@ -1885,6 +2003,9 @@ main() {
       ;;
     rollback)
       cmd_plugin_rollback "$@"
+      ;;
+    sync | source-sync)
+      cmd_sync "$@"
       ;;
     config)
       cmd_plugin_config "$@"
