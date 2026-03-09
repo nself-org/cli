@@ -66,7 +66,7 @@ ai_usage() {
 cmd_ai() {
   local subcommand="${1:-}"
 
-  if [[ -z "$subcommand" ]]; then
+  if [ -z "$subcommand" ]; then
     ai_usage
     exit 0
   fi
@@ -97,7 +97,7 @@ cmd_ai() {
 cmd_ai_auth() {
   local subcmd="${1:-}"
 
-  if [[ -z "$subcmd" ]]; then
+  if [ -z "$subcmd" ]; then
     cli_error "Auth action required"
     printf "Actions: login, refresh, test, add, list, remove\n"
     exit 1
