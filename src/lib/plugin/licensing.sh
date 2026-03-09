@@ -32,7 +32,7 @@ NSELF_PRICING_URL="https://nself.org/commercial"
 # Mirrors the plugins-pro/paid/ directory.
 # ---------------------------------------------------------------------------
 
-NSELF_PRO_PLUGINS="access-controls activity-feed admin-api ai analytics auth backup bots calendar cdn chat cloudflare cms compliance content-progress devices documents donorbox entitlements epg feature-flags-pro file-processing game-metadata geocoding geolocation idme knowledge-base livekit media-processing meetings moderation object-storage observability paypal photos podcast realtime recording retro-gaming rom-discovery search-pro shopify social sports stream-gateway streaming stripe support tmdb tokens-pro torrent-manager-pro vpn-pro web3 webhooks-pro workflows"
+NSELF_PRO_PLUGINS="access-controls activity-feed admin-api ai analytics auth backup bots browser calendar cdn chat claw cloudflare cms compliance content-progress cron ddns devices documents donorbox entitlements epg feature-flags-pro file-processing game-metadata geocoding geolocation idme knowledge-base livekit media-processing meetings moderation mux notify object-storage observability paypal photos podcast realtime recording retro-gaming rom-discovery search-pro shopify social sports stream-gateway streaming stripe support tmdb tokens-pro torrent-manager-pro voice vpn-pro web3 webhooks-pro workflows"
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -407,4 +407,65 @@ license_show_status() {
 
   printf '\n  Pro Plugins covered: 49 plugins\n'
   printf '  Details: %s\n\n' "$NSELF_PRICING_URL"
+}
+
+# ---------------------------------------------------------------------------
+# Public: license_check_tier_entitlement <plugin_name>
+# Calls /license/validate with plugin_name and checks can_install_plugin.
+# Displays tier-aware error message when upgrade_required=true.
+# Returns 0 if install is allowed, 1 if denied.
+# ---------------------------------------------------------------------------
+
+license_check_tier_entitlement() {
+  local plugin_name="$1"
+
+  # Skip remote check if offline mode
+  if [ "${NSELF_LICENSE_SKIP_VERIFY:-0}" = "1" ]; then
+    return 0
+  fi
+
+  local license_key
+  license_key=$(license_get_key) || true
+  if [ -z "$license_key" ]; then
+    return 1  # No key — handled upstream by license_check_entitlement
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    _license_log "License: curl not found — skipping tier check"
+    return 0
+  fi
+
+  local response http_status body
+  response=$(curl -s -w '\n%{http_code}' \
+    --max-time 10 \
+    --connect-timeout 5 \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "{\"license_key\":\"${license_key}\",\"plugin_name\":\"${plugin_name}\"}" \
+    "${NSELF_LICENSE_VALIDATE_ENDPOINT}" 2>/dev/null)
+
+  http_status=$(printf '%s' "$response" | tail -1)
+  body=$(printf '%s' "$response" | head -1)
+
+  if [ "$http_status" != "200" ]; then
+    # API unreachable — allow install with warning
+    _license_log "License: tier check unreachable (HTTP ${http_status:-unreachable}) — proceeding"
+    return 0
+  fi
+
+  local can_install upgrade_required
+  can_install=$(printf '%s' "$body" | grep -o '"can_install_plugin":[^,}]*' | cut -d':' -f2 | tr -d ' "')
+  upgrade_required=$(printf '%s' "$body" | grep -o '"upgrade_required":[^,}]*' | cut -d':' -f2 | tr -d ' "')
+
+  if [ "$can_install" = "false" ] || [ "$upgrade_required" = "true" ]; then
+    printf '\n'
+    printf '  \033[0;31m[ERROR]\033[0m This plugin requires Max tier ($19/yr).\n'
+    printf '\n'
+    printf '  Upgrade at:    %s\n' "$NSELF_PRICING_URL"
+    printf '  Or run:        nself license upgrade\n'
+    printf '\n'
+    return 1
+  fi
+
+  return 0
 }

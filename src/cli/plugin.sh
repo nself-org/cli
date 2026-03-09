@@ -50,7 +50,7 @@ PLUGIN_CACHE_DIR="${NSELF_PLUGIN_CACHE:-$HOME/.nself/cache/plugins}"
 PLUGIN_REGISTRY_URL="${NSELF_PLUGIN_REGISTRY:-https://plugins.nself.org}"
 PLUGIN_REGISTRY_FALLBACK="https://raw.githubusercontent.com/nself-org/plugins/main/registry.json"
 PLUGIN_REPO_URL="https://github.com/nself-org/plugins"
-NSELF_API_DOWNLOAD_URL="${NSELF_API_URL:-https://api.nself.org}/plugins"
+NSELF_API_DOWNLOAD_URL="${NSELF_PING_API_URL:-${NSELF_PING_URL:-https://ping.nself.org}}/plugins"
 
 # ============================================================================
 # PLUGIN MANAGEMENT
@@ -267,6 +267,13 @@ cmd_install() {
   # Check license entitlement before downloading
   if declare -f license_check_entitlement >/dev/null 2>&1; then
     if ! license_check_entitlement "$plugin_name"; then
+      return 1
+    fi
+  fi
+
+  # Check tier entitlement — shows Max-tier upgrade prompt when needed
+  if declare -f license_check_tier_entitlement >/dev/null 2>&1; then
+    if ! license_check_tier_entitlement "$plugin_name"; then
       return 1
     fi
   fi
@@ -931,7 +938,14 @@ download_plugin() {
 
   # Paid plugins are served from the API via a signed download URL.
   # Free plugins come straight from the public GitHub repo.
-  local license_key="${NSELF_PLUGIN_LICENSE_KEY:-}"
+  # Use license_get_key() which checks both NSELF_PLUGIN_LICENSE_KEY env var
+  # and the persisted ~/.nself/license/key file (set via `nself plugin license set`).
+  local license_key=""
+  if declare -f license_get_key >/dev/null 2>&1; then
+    license_key=$(license_get_key 2>/dev/null || true)
+  else
+    license_key="${NSELF_PLUGIN_LICENSE_KEY:-}"
+  fi
   local use_signed_url=false
   if declare -f license_is_paid_plugin >/dev/null 2>&1; then
     if license_is_paid_plugin "$plugin_name" && [[ -n "$license_key" ]]; then
@@ -1172,6 +1186,309 @@ cmd_refresh() {
       return 1
     fi
   fi
+}
+
+# ============================================================================
+# OUTDATED / VERSION MANIFEST (T-0208)
+# ============================================================================
+
+PLUGIN_MANIFEST_URL="${NSELF_PLUGIN_MANIFEST_URL:-https://plugins.nself.org/manifest.json}"
+
+# cmd_outdated — show installed plugins with current vs latest version
+# Fetches manifest.json from plugins.nself.org and compares installed versions.
+cmd_outdated() {
+  local quiet=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --quiet | -q) quiet=true; shift ;;
+      *) shift ;;
+    esac
+  done
+
+  # Fetch manifest
+  local manifest
+  manifest=$(curl -sf "$PLUGIN_MANIFEST_URL" 2>/dev/null)
+  if [[ -z "$manifest" ]]; then
+    log_error "Failed to fetch plugin manifest from $PLUGIN_MANIFEST_URL"
+    return 1
+  fi
+
+  if ! command -v jq >/dev/null 2>&1; then
+    log_error "jq is required to check plugin versions"
+    return 1
+  fi
+
+  local found_outdated=false
+
+  for plugin_dir in "$PLUGIN_DIR"/*/; do
+    [[ -f "$plugin_dir/plugin.json" ]] || continue
+    local slug installed_ver latest_ver
+    slug=$(jq -r '.name // .slug // ""' "$plugin_dir/plugin.json" 2>/dev/null)
+    installed_ver=$(jq -r '.version // "unknown"' "$plugin_dir/plugin.json" 2>/dev/null)
+    [[ -z "$slug" ]] && continue
+
+    latest_ver=$(printf '%s' "$manifest" | jq -r --arg s "$slug" '.[$s].latest_version // ""' 2>/dev/null)
+    [[ -z "$latest_ver" ]] && continue
+
+    if [[ "$installed_ver" != "$latest_ver" ]]; then
+      if [[ "$quiet" == "true" ]]; then
+        printf '%s %s %s\n' "$slug" "$installed_ver" "$latest_ver"
+      else
+        printf '  %-30s installed: %-10s latest: %s\n' "$slug" "$installed_ver" "$latest_ver"
+      fi
+      found_outdated=true
+    fi
+  done
+
+  if [[ "$found_outdated" == "false" ]]; then
+    if [[ "$quiet" != "true" ]]; then
+      log_success "All installed plugins are up to date"
+    fi
+  fi
+}
+
+# ============================================================================
+# PLUGIN ROLLBACK (T-0309)
+# ============================================================================
+
+# cmd_plugin_rollback — roll back a plugin to its previous or specified version
+#
+# Usage:
+#   nself plugin rollback <name>              Roll back to previous version
+#   nself plugin rollback <name> <version>    Roll back to specific version
+#   nself plugin rollback <name> --list       List available versions from GHCR
+#
+# Bash 3.2 compatible — no declare -A, no ${var,,}, no echo -e
+cmd_plugin_rollback() {
+  local plugin_name="${1:-}"
+  local target_version="${2:-}"
+
+  if [[ -z "$plugin_name" ]]; then
+    log_error "Plugin name required"
+    printf "\nUsage:\n"
+    printf "  nself plugin rollback <name>              Roll back to previous version\n"
+    printf "  nself plugin rollback <name> <version>    Roll back to specific version\n"
+    printf "  nself plugin rollback <name> --list       List available versions\n"
+    return 1
+  fi
+
+  # Validate plugin is installed
+  if ! is_plugin_installed "$plugin_name"; then
+    log_error "Plugin '$plugin_name' is not installed"
+    return 1
+  fi
+
+  local plugin_dir="$PLUGIN_DIR/$plugin_name"
+  local registry_file="$plugin_dir/plugin.json"
+  local current_version=""
+  local previous_version=""
+
+  # Read current version from plugin.json
+  if [[ -f "$registry_file" ]]; then
+    if command -v jq >/dev/null 2>&1; then
+      current_version=$(jq -r '.version // ""' "$registry_file" 2>/dev/null)
+      previous_version=$(jq -r '.previous_version // ""' "$registry_file" 2>/dev/null)
+    else
+      current_version=$(grep '"version"' "$registry_file" | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+      previous_version=$(grep '"previous_version"' "$registry_file" | head -1 | sed 's/.*"previous_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    fi
+  fi
+
+  # --list: show available GHCR tags
+  if [[ "$target_version" == "--list" ]]; then
+    log_info "Fetching available versions for nself-$plugin_name from GHCR..."
+    local tags_url="https://ghcr.io/v2/nself-org/nself-$plugin_name/tags/list"
+    local token
+    # GHCR requires anonymous token exchange for public images
+    token=$(curl -sf "https://ghcr.io/token?scope=repository:nself-org/nself-$plugin_name:pull" | \
+      grep -o '"token":"[^"]*"' | sed 's/"token":"//;s/"$//' 2>/dev/null || true)
+
+    if [[ -n "$token" ]]; then
+      local tags_json
+      tags_json=$(curl -sf -H "Authorization: Bearer $token" "$tags_url" 2>/dev/null || true)
+      if [[ -n "$tags_json" ]]; then
+        printf "Available versions for %s:\n" "$plugin_name"
+        printf '%s' "$tags_json" | grep -o '"[0-9][^"]*"' | tr -d '"' | sort -rV
+        printf "\nCurrent: %s\n" "${current_version:-unknown}"
+        return 0
+      fi
+    fi
+    log_warning "Could not fetch version list from GHCR. Check network connectivity."
+    return 1
+  fi
+
+  # Determine rollback target
+  local rollback_to="$target_version"
+  if [[ -z "$rollback_to" ]]; then
+    if [[ -z "$previous_version" ]]; then
+      log_error "No previous version recorded for '$plugin_name'. Use: nself plugin rollback $plugin_name <version>"
+      return 1
+    fi
+    rollback_to="$previous_version"
+  fi
+
+  if [[ "$rollback_to" == "$current_version" ]]; then
+    log_warning "Plugin '$plugin_name' is already at version $rollback_to"
+    return 0
+  fi
+
+  printf "Rolling back '%s':\n" "$plugin_name"
+  printf "  Current:  %s\n" "${current_version:-unknown}"
+  printf "  Target:   %s\n" "$rollback_to"
+  printf "\nConfirm rollback? [y/N] "
+  local confirm=""
+  read -r confirm
+  case "$confirm" in
+    [yY]|[yY][eE][sS]) ;;
+    *) log_info "Rollback cancelled."; return 0 ;;
+  esac
+
+  local image="ghcr.io/nself-org/nself-$plugin_name:$rollback_to"
+
+  log_info "Pulling image: $image"
+  if ! docker pull "$image" 2>&1; then
+    log_error "Failed to pull image $image. Version may not exist."
+    return 1
+  fi
+
+  log_info "Stopping current plugin..."
+  if declare -f stop_plugin >/dev/null 2>&1; then
+    stop_plugin "$plugin_name" 2>/dev/null || true
+  fi
+
+  # Update the plugin.json to reflect rolled-back version
+  if [[ -f "$registry_file" ]]; then
+    local tmp_file
+    tmp_file=$(mktemp)
+    if command -v jq >/dev/null 2>&1; then
+      jq --arg v "$rollback_to" --arg pv "$current_version" \
+        '.version = $v | .previous_version = $pv' \
+        "$registry_file" > "$tmp_file" && mv "$tmp_file" "$registry_file"
+    fi
+  fi
+
+  # Store rollback image tag in plugin config for docker-compose
+  local config_file="$plugin_dir/config.env"
+  if [[ -f "$config_file" ]]; then
+    if grep -q "^PLUGIN_IMAGE=" "$config_file" 2>/dev/null; then
+      local safe_sed
+      if declare -f safe_sed_inline >/dev/null 2>&1; then
+        safe_sed_inline "s|^PLUGIN_IMAGE=.*|PLUGIN_IMAGE=$image|" "$config_file"
+      else
+        # Portable fallback (macOS + Linux)
+        local tmpf
+        tmpf=$(mktemp)
+        sed "s|^PLUGIN_IMAGE=.*|PLUGIN_IMAGE=$image|" "$config_file" > "$tmpf" && mv "$tmpf" "$config_file"
+      fi
+    else
+      printf "PLUGIN_IMAGE=%s\n" "$image" >> "$config_file"
+    fi
+  fi
+
+  log_info "Starting rolled-back plugin..."
+  if declare -f start_plugin >/dev/null 2>&1; then
+    start_plugin "$plugin_name" 2>/dev/null || true
+  fi
+
+  # Wait for health check
+  local retries=10
+  local healthy=false
+  log_info "Waiting for health check..."
+  while [[ $retries -gt 0 ]]; do
+    if declare -f health_check_plugin >/dev/null 2>&1 && health_check_plugin "$plugin_name" 2>/dev/null; then
+      healthy=true
+      break
+    fi
+    retries=$((retries - 1))
+    sleep 3
+  done
+
+  if [[ "$healthy" == "true" ]]; then
+    log_success "Plugin '$plugin_name' rolled back to $rollback_to and is healthy"
+  else
+    log_warning "Plugin rolled back to $rollback_to but health check did not pass within 30s. Check: nself plugin health"
+  fi
+
+  printf "\nRegistry updated — run 'nself build && nself restart %s' if needed.\n" "$plugin_name"
+}
+
+# ============================================================================
+# PLUGIN CONFIG (T-0208)
+# ============================================================================
+
+# cmd_plugin_config — read/write plugin config from ~/.nself/plugins/<name>/config.env
+cmd_plugin_config() {
+  local plugin_name="${1:-}"
+  shift || true
+  local subcmd="${1:-get}"
+  shift || true
+
+  if [[ -z "$plugin_name" ]]; then
+    log_error "Plugin name required"
+    printf "Usage: nself plugin config <name> get [key]\n"
+    printf "       nself plugin config <name> set <key> <value>\n"
+    return 1
+  fi
+
+  if ! is_plugin_installed "$plugin_name" 2>/dev/null; then
+    log_error "Plugin '$plugin_name' is not installed"
+    return 1
+  fi
+
+  local config_file="$PLUGIN_DIR/$plugin_name/config.env"
+
+  case "$subcmd" in
+    get)
+      local key="${1:-}"
+      if [[ ! -f "$config_file" ]]; then
+        log_info "No config for $plugin_name (config file not found at $config_file)"
+        return 0
+      fi
+      if [[ -n "$key" ]]; then
+        # Get specific key
+        local val
+        val=$(grep -E "^${key}=" "$config_file" 2>/dev/null | head -1 | cut -d= -f2-)
+        if [[ -n "$val" ]]; then
+          printf '%s\n' "$val"
+        else
+          log_warning "Key '$key' not found in config for $plugin_name"
+          return 1
+        fi
+      else
+        # Show all config
+        printf '\nConfig for %s:\n' "$plugin_name"
+        grep -v '^#' "$config_file" 2>/dev/null | grep -v '^$' | while IFS='=' read -r k v; do
+          printf '  %-30s = %s\n' "$k" "$v"
+        done
+      fi
+      ;;
+    set)
+      local key="${1:-}"
+      local value="${2:-}"
+      if [[ -z "$key" ]]; then
+        log_error "Key required: nself plugin config <name> set <key> <value>"
+        return 1
+      fi
+      mkdir -p "$PLUGIN_DIR/$plugin_name"
+      # Upsert the key in config.env
+      if [[ -f "$config_file" ]] && grep -qE "^${key}=" "$config_file" 2>/dev/null; then
+        # Replace existing — use a temp file (Bash 3.2 compatible, no sed -i -e on macOS)
+        local tmp_file
+        tmp_file=$(mktemp)
+        grep -v "^${key}=" "$config_file" > "$tmp_file" 2>/dev/null || true
+        printf '%s=%s\n' "$key" "$value" >> "$tmp_file"
+        mv "$tmp_file" "$config_file"
+      else
+        printf '%s=%s\n' "$key" "$value" >> "$config_file"
+      fi
+      log_success "Set $key for $plugin_name"
+      ;;
+    *)
+      log_error "Unknown config subcommand: $subcmd"
+      printf "Use 'get' or 'set'\n"
+      return 1
+      ;;
+  esac
 }
 
 # ============================================================================
@@ -1562,6 +1879,15 @@ main() {
       ;;
     license)
       cmd_plugin_license "$@"
+      ;;
+    outdated)
+      cmd_outdated "$@"
+      ;;
+    rollback)
+      cmd_plugin_rollback "$@"
+      ;;
+    config)
+      cmd_plugin_config "$@"
       ;;
     -h | --help | help | "")
       show_help
