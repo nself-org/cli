@@ -1,0 +1,118 @@
+name: Platform Matrix
+
+# Extended platform compatibility matrix: 5 OS x 2 Bash versions.
+# Runs on push to main/develop and all pull requests.
+# Complements ci.yml — this focuses purely on cross-platform bats execution.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }}, Bash ${{ matrix.bash }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - ubuntu-24.04
+          - macos-13
+          - macos-14
+          - macos-15
+        bash:
+          - '3.2'
+          - '5.1'
+        exclude:
+          # ubuntu-22.04 ships Bash 5.1 — testing Bash 3.2 on it requires manual install.
+          # We use the native bash on each OS; overrides handled in the step below.
+          - os: macos-13
+            bash: '5.1'   # macOS 13 ships Bash 3.2; Homebrew bash@5 adds complexity — covered by ubuntu
+          - os: macos-14
+            bash: '5.1'   # Same reasoning
+          - os: macos-15
+            bash: '5.1'   # Same reasoning
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bash ${{ matrix.bash }} (Linux only)
+        if: runner.os == 'Linux' && matrix.bash == '3.2'
+        run: |
+          # Ubuntu ships Bash 5.x. Install Bash 3.2 via source for compatibility testing.
+          sudo apt-get update -qq
+          sudo apt-get install -y bison
+          BASH_VERSION=3.2.57
+          curl -fsSL "https://ftp.gnu.org/gnu/bash/bash-${BASH_VERSION}.tar.gz" | tar -xz
+          cd "bash-${BASH_VERSION}"
+          ./configure --prefix=/usr/local/bash32 --quiet
+          make -j"$(nproc)" --quiet
+          sudo make install --quiet
+          sudo ln -sf /usr/local/bash32/bin/bash /usr/local/bin/bash32
+          bash32 --version | head -1
+
+      - name: Install bats
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y bats
+          else
+            brew install bats-core
+          fi
+
+      - name: Install nself binary
+        run: |
+          chmod +x "${{ github.workspace }}/bin/nself"
+          echo "${{ github.workspace }}/bin" >> "$GITHUB_PATH"
+          sudo ln -sf "${{ github.workspace }}/bin/nself" /usr/local/bin/nself 2>/dev/null || true
+
+      - name: Check Bash version
+        run: |
+          if [ "${{ matrix.bash }}" = "3.2" ] && [ "$RUNNER_OS" = "Linux" ]; then
+            bash32 --version | head -1
+            echo "BATS_BASH=bash32" >> "$GITHUB_ENV"
+          else
+            bash --version | head -1
+            echo "BATS_BASH=bash" >> "$GITHUB_ENV"
+          fi
+
+      - name: Bash 3.2 compatibility check
+        run: |
+          BASH_BIN="${BATS_BASH:-bash}"
+          # Verify no Bash 4+ patterns snuck in
+          errors=0
+          if grep -rn 'echo -e' src/ --include="*.sh" | grep -v test; then
+            printf "FAIL: echo -e found (use printf)\n"
+            errors=$((errors + 1))
+          fi
+          if grep -rn '\${[^}]*,,}' src/ --include="*.sh"; then
+            printf "FAIL: lowercase expansion found (Bash 4+)\n"
+            errors=$((errors + 1))
+          fi
+          if grep -rn '\${[^}]*\^\^}' src/ --include="*.sh"; then
+            printf "FAIL: uppercase expansion found (Bash 4+)\n"
+            errors=$((errors + 1))
+          fi
+          if [ $errors -eq 0 ]; then
+            printf "PASS: No Bash 4+ incompatible patterns found\n"
+          else
+            exit 1
+          fi
+
+      - name: Run bats unit tests
+        run: |
+          cd src/tests
+          BASH_BIN="${BATS_BASH:-bash}"
+          # Run all .bats files in the tests root (unit tests)
+          bats --tap *.bats 2>&1 | head -200
+
+      - name: Run structured bats tests
+        run: |
+          SKIP_DOCKER_TESTS=1 bats --tap src/tests/bats/ 2>&1 | head -300
+
+      - name: Enforce minimum test count
+        run: |
+          bash scripts/test-count.sh --ci

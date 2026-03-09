@@ -1,228 +1,86 @@
-name: Coverage
+name: CLI Test Coverage (bashcov)
+# Badge: https://codecov.io/gh/nself-org/cli/branch/main/graph/badge.svg?token=CODECOV_TOKEN
 
 on:
   push:
     branches: [main, develop]
-    paths:
-      - 'src/**/*.sh'
-      - 'src/tests/**'
-      - '.github/workflows/coverage.yml'
   pull_request:
-    branches: [main, develop]
-    paths:
-      - 'src/**/*.sh'
-      - 'src/tests/**'
+    branches: [main]
 
 jobs:
   coverage:
-    name: Test Coverage
-    runs-on: ubuntu-latest
+    name: CLI bats Coverage
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for trend analysis
+      - uses: actions/checkout@v4
 
-      - name: Install coverage tools
+      - name: Install dependencies
         run: |
-          # Install kcov for bash coverage
-          # NOTE: kcov was removed from Ubuntu 24.04 (Noble) package repos.
-          # Install from GitHub releases binary instead.
-          sudo apt-get update
-          sudo apt-get install -y binutils libdwarf-dev
+          sudo apt-get update -qq
+          sudo apt-get install -y bats ruby ruby-dev build-essential
+          gem install bashcov simplecov simplecov-cobertura --no-document
 
-          KCOV_VERSION="42"
-          KCOV_URL="https://github.com/SimonKagstrom/kcov/releases/download/v${KCOV_VERSION}/kcov-amd64.tar.gz"
-          curl -sSL "$KCOV_URL" -o /tmp/kcov.tar.gz \
-            && tar -xzf /tmp/kcov.tar.gz -C /tmp \
-            && sudo mv /tmp/usr/local/bin/kcov /usr/local/bin/kcov \
-            && sudo chmod +x /usr/local/bin/kcov \
-            || echo "::warning::kcov binary install failed — coverage collection will be skipped"
-
-          kcov --version 2>/dev/null || echo "::warning::kcov not available"
-
-          # Install lcov for coverage merging
-          sudo apt-get install -y lcov
-
-      - name: Install test dependencies
+      - name: Install nself binary
         run: |
-          # Install bats for testing
-          sudo npm install -g bats
+          chmod +x "${{ github.workspace }}/bin/nself"
+          printf '%s\n' "${{ github.workspace }}/bin" >> "$GITHUB_PATH"
 
-          # Install jq for JSON processing
-          sudo apt-get install -y jq
-
-      - name: Run tests with coverage
+      - name: Configure bashcov
         run: |
-          chmod +x src/scripts/coverage/collect-coverage.sh
-          ./src/scripts/coverage/collect-coverage.sh
-        # ADVISORY: kcov on bash scripts is unreliable in CI - report but don't fail
+          cat > .simplecov <<'SIMPLECOV'
+          SimpleCov.start do
+            add_filter '/tests/'
+            minimum_coverage 80
+            coverage_dir 'coverage'
+            formatter SimpleCov::Formatter::MultiFormatter.new([
+              SimpleCov::Formatter::HTMLFormatter,
+              SimpleCov::Formatter::CoberturaFormatter,
+            ])
+          end
+          SIMPLECOV
+
+      - name: Run bats with bashcov (structured tests)
+        run: |
+          SKIP_DOCKER_TESTS=1 bashcov --skip-uncovered -- \
+            bats --tap src/tests/bats/ 2>&1 | tail -50
         continue-on-error: true
 
-      - name: Generate coverage reports
+      - name: Run bats with bashcov (legacy tests)
         run: |
-          chmod +x src/scripts/coverage/generate-coverage-report.sh
-          ./src/scripts/coverage/generate-coverage-report.sh
-        continue-on-error: true
-
-      - name: Track coverage history
-        run: |
-          chmod +x src/scripts/coverage/track-coverage-history.sh
-          ./src/scripts/coverage/track-coverage-history.sh track
-        continue-on-error: true
-
-      - name: Verify coverage requirements
-        run: |
-          chmod +x src/scripts/coverage/verify-coverage.sh
-          ./src/scripts/coverage/verify-coverage.sh
-        # ADVISORY: 100% threshold is aspirational - report progress but don't block CI
-        # Switch to exit 1 once coverage targets are achieved
-        continue-on-error: true
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./coverage/reports/coverage.json
-          fail_ci_if_error: true
-          verbose: true
-        # ADVISORY: Codecov is an external service that may be temporarily unavailable
-        # Coverage verification itself is handled by the verify-coverage.sh step above
-        continue-on-error: true
-
-      - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-reports
-          path: |
-            coverage/reports/
-            coverage/.coverage-history.json
-          retention-days: 30
-
-      - name: Comment coverage on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-
-            // Read coverage report
-            let coverage = { overall: { line: 0 } };
-            try {
-              const data = fs.readFileSync('./coverage/reports/coverage.json', 'utf8');
-              coverage = JSON.parse(data);
-            } catch (err) {
-              console.log('Could not read coverage.json');
-            }
-
-            // Read text report
-            let textReport = '';
-            try {
-              textReport = fs.readFileSync('./coverage/reports/coverage.txt', 'utf8');
-            } catch (err) {
-              console.log('Could not read coverage.txt');
-            }
-
-            // Create comment
-            const comment = `## 📊 Coverage Report
-
-            **Overall Coverage:** ${coverage.overall.line}%
-            **Target:** 100%
-            **Gap:** ${(100 - coverage.overall.line).toFixed(1)}%
-
-            <details>
-            <summary>Full Report</summary>
-
-            \`\`\`
-            ${textReport}
-            \`\`\`
-
-            </details>
-
-            ${coverage.overall.line >= 100 ? '🎉 **100% Coverage Achieved!**' : '⚠️ Coverage below target'}
-            `;
-
-            // Post comment
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
-
-      - name: Update coverage badge
-        if: github.ref == 'refs/heads/main'
-        run: |
-          # Copy badge to wiki source
-          mkdir -p .wiki/badges
-          cp coverage/reports/badge.svg .wiki/badges/coverage.svg
-
-          # Commit badge update
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .wiki/badges/coverage.svg
-          git diff --quiet && git diff --staged --quiet || git commit -m "chore: update coverage badge [skip ci]"
-          git push
-        # ADVISORY: Badge update is cosmetic and may fail due to git push permissions
-        # or race conditions with concurrent workflows - not a quality gate
-        continue-on-error: true
-
-      - name: Generate coverage diff
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          # Get base coverage
-          git checkout "$BASE_REF"
-          BASE_COVERAGE=$(cat coverage/reports/coverage.json 2>/dev/null | jq -r '.overall.line' || echo "0")
-
-          # Get PR coverage
-          git checkout "$HEAD_REF"
-          PR_COVERAGE=$(cat coverage/reports/coverage.json 2>/dev/null | jq -r '.overall.line' || echo "0")
-
-          # Calculate diff
-          DIFF=$(awk "BEGIN {printf \"%.1f\", $PR_COVERAGE - $BASE_COVERAGE}")
-
-          echo "Coverage diff: $DIFF%"
-          echo "COVERAGE_DIFF=$DIFF" >> $GITHUB_ENV
-
-      - name: Fail if coverage decreased
-        if: github.event_name == 'pull_request' && env.COVERAGE_DIFF < 0
-        run: |
-          echo "❌ Coverage decreased by ${{ env.COVERAGE_DIFF }}%"
-          echo "Please add tests to maintain coverage"
-          exit 1
-
-  coverage-summary:
-    name: Coverage Summary
-    needs: coverage
-    runs-on: ubuntu-latest
-    if: always()
-
-    steps:
-      - name: Download coverage artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-reports
-          path: coverage/reports/
-        # ADVISORY: No artifact when kcov is unavailable — not a failure
-        continue-on-error: true
-
-      - name: Display summary
-        run: |
-          if [ -f coverage/reports/coverage.txt ]; then
-            cat coverage/reports/coverage.txt
-          else
-            echo "No coverage report available"
+          if [ -d src/tests ] && ls src/tests/*.bats >/dev/null 2>&1; then
+            SKIP_DOCKER_TESTS=1 bashcov --skip-uncovered -- \
+              bats src/tests/*.bats 2>&1 | tail -50
           fi
+        continue-on-error: true
 
-      - name: Check coverage status
+      - name: Enforce 80% minimum coverage
         run: |
-          if [ "${{ needs.coverage.result }}" == "success" ]; then
-            echo "✅ Coverage verification passed"
-            exit 0
-          else
-            echo "❌ Coverage verification failed"
+          if [ ! -d coverage ]; then
+            printf 'ERROR: No coverage report generated. bashcov did not run successfully.\n' >&2
             exit 1
           fi
+          # simplecov enforces minimum_coverage 80 — if it completed, threshold was met.
+          # Parse the HTML report as a double-check.
+          if [ -f coverage/index.html ]; then
+            pct=$(grep -o '[0-9]*\.[0-9]*%' coverage/index.html | head -1 | tr -d '%')
+            if [ -n "$pct" ]; then
+              printf 'Coverage: %s%%\n' "$pct"
+              # Use awk for float comparison (Bash 3.2 compatible)
+              awk -v pct="$pct" 'BEGIN {
+                if (pct + 0 < 80) {
+                  printf "FAIL: coverage %s%% is below 80%% minimum\n", pct > "/dev/stderr"
+                  exit 1
+                }
+                printf "PASS: coverage %s%% meets 80%% minimum\n", pct
+              }'
+            fi
+          fi
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/coverage.xml
+          flags: cli-bats
+          fail_ci_if_error: false

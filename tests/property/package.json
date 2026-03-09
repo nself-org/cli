@@ -1,0 +1,10 @@
+{
+  "name": "cli-property-tests",
+  "type": "module",
+  "scripts": {
+    "test": "node test-validators.js"
+  },
+  "dependencies": {
+    "fast-check": "^3.15.0"
+  }
+}

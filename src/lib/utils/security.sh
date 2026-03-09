@@ -49,7 +49,35 @@ validate_container_name() {
   fi
 }
 
+# Redact known secret patterns from CLI output strings
+# Usage: redacted=$(redact_secrets "$some_output")
+# Replaces: nself_pro_* license keys, bearer tokens, API keys, passwords
+# Bash 3.2+ compatible (no regex lookbehind, no declare -A)
+redact_secrets() {
+  local input="$1"
+  local output="$input"
+
+  # nself license keys: nself_pro_ + 32+ chars
+  output=$(printf '%s' "$output" | sed 's/nself_pro_[A-Za-z0-9_-][A-Za-z0-9_-]*/nself_pro_[REDACTED]/g')
+
+  # Bearer tokens in Authorization headers
+  output=$(printf '%s' "$output" | sed 's/Bearer[[:space:]]*[A-Za-z0-9._-][A-Za-z0-9._-]*/Bearer [REDACTED]/g')
+
+  # Generic API key patterns (sk-*, pk-*, rk-* — Stripe, OpenAI, etc.)
+  output=$(printf '%s' "$output" | sed 's/\bsk-[A-Za-z0-9][A-Za-z0-9_-]*/sk-[REDACTED]/g')
+  output=$(printf '%s' "$output" | sed 's/\bpk_live_[A-Za-z0-9][A-Za-z0-9_-]*/pk_live_[REDACTED]/g')
+  output=$(printf '%s' "$output" | sed 's/\bpk_test_[A-Za-z0-9][A-Za-z0-9_-]*/pk_test_[REDACTED]/g')
+  output=$(printf '%s' "$output" | sed 's/\brk_live_[A-Za-z0-9][A-Za-z0-9_-]*/rk_live_[REDACTED]/g')
+
+  # env var assignments for known secret var names (VALUE redacted, not KEY)
+  # Pattern: VARNAME=<value> where VARNAME contains key/secret/token/password
+  output=$(printf '%s' "$output" | sed 's/\([A-Z_]*\(KEY\|SECRET\|TOKEN\|PASSWORD\|PASSWD\|API_KEY\|APIKEY\)[A-Z_]*\)=[^ ]\{1,\}/\1=[REDACTED]/g')
+
+  printf '%s' "$output"
+}
+
 # Export functions
 export -f generate_secure_password
 export -f sanitize_input
 export -f validate_container_name
+export -f redact_secrets

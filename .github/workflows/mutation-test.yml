@@ -1,0 +1,105 @@
+name: Mutation Testing (CLI)
+
+on:
+  schedule:
+    # Every Sunday at midnight UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      verbose:
+        description: 'Enable verbose output'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  mutation-test:
+    name: CLI Mutation Testing (mutmut)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install mutmut
+        run: pip install mutmut
+
+      - name: Install bats
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y bats
+
+      - name: Make mutation script executable
+        run: chmod +x scripts/mutation-test.sh
+
+      - name: Run mutation tests
+        id: mutation
+        run: |
+          if [ "${{ inputs.verbose }}" = "true" ]; then
+            ./scripts/mutation-test.sh --verbose 2>&1 | tee /tmp/mutation-output.txt
+          else
+            ./scripts/mutation-test.sh 2>&1 | tee /tmp/mutation-output.txt
+          fi
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Extract mutation score
+        id: score
+        run: |
+          SCORE=$(grep 'Overall score' /tmp/mutation-output.txt | grep -o '[0-9]*%' | tr -d '%' || echo "0")
+          echo "score=${SCORE}" >> "$GITHUB_OUTPUT"
+          echo "Mutation score: ${SCORE}%"
+
+      - name: Upload mutation results artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-results-${{ github.run_id }}
+          path: /tmp/mutation-output.txt
+          retention-days: 30
+
+      - name: Create GitHub issue if score below threshold
+        if: steps.score.outputs.score != '' && steps.score.outputs.score < '75'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SCORE="${{ steps.score.outputs.score }}"
+          gh issue create \
+            --title "Mutation score dropped below 75%: ${SCORE}% (run ${{ github.run_id }})" \
+            --body "## Mutation Testing Alert
+
+          The weekly mutation testing run detected a score drop below the 75% threshold.
+
+          **Score:** ${SCORE}%
+          **Run:** ${{ github.run_id }}
+          **Date:** $(date -u '+%Y-%m-%d')
+          **Workflow:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          ### Action Required
+
+          1. Download the artifact from the workflow run above
+          2. Review surviving mutants in each critical file
+          3. Add or improve tests to kill the surviving mutants
+          4. Any surviving mutant in auth/security code must be fixed immediately
+
+          ### Critical Files
+          - \`src/cli/license.sh\`
+          - \`src/lib/plugin/licensing.sh\`
+          - \`src/services/nginx/nginx-setup.sh\`
+          - \`src/services/domain/domain.sh\`
+          " \
+            --label "testing,mutation,quality" \
+            || echo "Note: could not create issue (label may not exist)"
+
+      - name: Fail if mutation script failed
+        if: steps.mutation.outputs.exit_code != '0'
+        run: |
+          echo "Mutation testing failed. See artifact for details."
+          exit 1

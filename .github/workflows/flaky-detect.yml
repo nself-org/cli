@@ -1,0 +1,144 @@
+name: Flakiness Detection — CLI (3x suite runs)
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    # Every Friday at midnight UTC
+    - cron: '0 0 * * 5'
+  workflow_dispatch:
+
+jobs:
+  run-suite:
+    name: CLI Test Suite Run ${{ matrix.run_id }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        run_id: [1, 2, 3]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install bats
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y bats
+
+      - name: Run bats test suite
+        run: |
+          SKIP_DOCKER_TESTS=1 bats src/tests/bats/ --tap 2>&1 | tee /tmp/run-${{ matrix.run_id }}.tap
+        continue-on-error: true
+
+      - name: Upload TAP output
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-tap-run-${{ matrix.run_id }}-${{ github.run_id }}
+          path: /tmp/run-${{ matrix.run_id }}.tap
+          retention-days: 7
+
+  compare-runs:
+    name: Compare Runs — Detect Flaky Tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    needs: [run-suite]
+    if: always()
+
+    steps:
+      - name: Download TAP artifact — run 1
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-tap-run-1-${{ github.run_id }}
+          path: /tmp/tap
+
+      - name: Download TAP artifact — run 2
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-tap-run-2-${{ github.run_id }}
+          path: /tmp/tap
+
+      - name: Download TAP artifact — run 3
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-tap-run-3-${{ github.run_id }}
+          path: /tmp/tap
+
+      - name: Detect flaky tests
+        id: detect
+        run: |
+          python3 - <<'PYEOF'
+          import re
+          import sys
+          import os
+
+          def parse_tap(filepath):
+              """Parse a TAP file and return dict of test_name -> passed (bool)."""
+              results = {}
+              if not os.path.exists(filepath):
+                  print(f"WARNING: TAP file not found: {filepath}", file=sys.stderr)
+                  return results
+              with open(filepath) as f:
+                  for line in f:
+                      line = line.rstrip()
+                      m = re.match(r'^(ok|not ok)\s+\d+\s+-\s+(.+)$', line)
+                      if m:
+                          passed = m.group(1) == 'ok'
+                          name = m.group(2).strip()
+                          results[name] = passed
+              return results
+
+          run1 = parse_tap('/tmp/tap/run-1.tap')
+          run2 = parse_tap('/tmp/tap/run-2.tap')
+          run3 = parse_tap('/tmp/tap/run-3.tap')
+
+          flaky = []
+          all_tests = set(run1.keys()) | set(run2.keys()) | set(run3.keys())
+
+          for test in sorted(all_tests):
+              r1 = run1.get(test)
+              r2 = run2.get(test)
+              r3 = run3.get(test)
+              results = [r for r in [r1, r2, r3] if r is not None]
+              if len(results) < 2:
+                  continue
+              if True in results and False in results:
+                  r1_str = 'pass' if r1 else 'fail' if r1 is not None else 'missing'
+                  r2_str = 'pass' if r2 else 'fail' if r2 is not None else 'missing'
+                  r3_str = 'pass' if r3 else 'fail' if r3 is not None else 'missing'
+                  flaky.append(f"{test} [run1={r1_str} run2={r2_str} run3={r3_str}]")
+
+          report_path = '/tmp/flaky-report.txt'
+          if flaky:
+              with open(report_path, 'w') as f:
+                  f.write("FLAKY CLI TESTS DETECTED\n")
+                  f.write("=" * 60 + "\n")
+                  for t in flaky:
+                      f.write(t + "\n")
+              print(f"FLAKY TESTS ({len(flaky)} found):")
+              for t in flaky:
+                  print(f"  {t}")
+          else:
+              open(report_path, 'w').close()
+              print("No flaky CLI tests detected across 3 runs.")
+
+          sys.exit(1 if flaky else 0)
+          PYEOF
+
+      - name: Upload flaky report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cli-flaky-report-${{ github.run_id }}
+          path: /tmp/flaky-report.txt
+          retention-days: 30
+
+      - name: Fail if flaky tests detected
+        if: steps.detect.outcome == 'failure'
+        run: |
+          echo "Flaky CLI tests detected. See artifact: cli-flaky-report-${{ github.run_id }}"
+          echo "Flaky tests must be fixed within 3 business days before v1.0 ships."
+          cat /tmp/flaky-report.txt
+          exit 1

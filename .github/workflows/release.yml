@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release tarballs
+        run: |
+          mkdir -p dist
+
+          # linux-x86_64
+          tar -czf dist/nself-linux-x86_64.tar.gz \
+            --transform 's|^|nself-linux-x86_64/|' \
+            bin/ src/ install.sh README.md LICENSE
+
+          # linux-arm64 (cross-compiled via tar — Bash scripts, no native compile needed)
+          cp dist/nself-linux-x86_64.tar.gz dist/nself-linux-arm64.tar.gz
+
+          # darwin-arm64
+          cp dist/nself-linux-x86_64.tar.gz dist/nself-darwin-arm64.tar.gz
+
+          # SHA256 hashes
+          sha256sum dist/nself-linux-x86_64.tar.gz > dist/nself-linux-x86_64.tar.gz.sha256
+          sha256sum dist/nself-linux-arm64.tar.gz  > dist/nself-linux-arm64.tar.gz.sha256
+          sha256sum dist/nself-darwin-arm64.tar.gz > dist/nself-darwin-arm64.tar.gz.sha256
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-binaries
+          path: dist/
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-binaries
+          path: dist/
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Read release notes
+        id: notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          NOTES_FILE=".wiki/releases/${VERSION}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            NOTES=$(cat "$NOTES_FILE")
+          else
+            NOTES="nSelf ${VERSION} release."
+          fi
+          # GitHub Actions multiline output
+          {
+            echo "notes<<RELEASE_NOTES_EOF"
+            printf '%s\n' "$NOTES"
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "nSelf ${{ steps.version.outputs.version }}"
+          body: ${{ steps.notes.outputs.notes }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            dist/nself-linux-x86_64.tar.gz
+            dist/nself-linux-arm64.tar.gz
+            dist/nself-darwin-arm64.tar.gz
+            dist/nself-linux-x86_64.tar.gz.sha256
+            dist/nself-linux-arm64.tar.gz.sha256
+            dist/nself-darwin-arm64.tar.gz.sha256

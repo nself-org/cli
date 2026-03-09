@@ -1,4 +1,4 @@
-# nself Test Suite
+# nself CLI Test Suite
 
 ## Structure
 
@@ -251,3 +251,63 @@ open ../../coverage/reports/html/index.html
 ### Path issues
 - Tests assume running from `src/tests` directory
 - Use absolute paths when possible
+
+---
+
+## Bats Test Suite
+
+The primary test runner is [bats-core](https://github.com/bats-core/bats-core).
+All `*_test.bats` and `*_tests.bats` files in this directory are bats tests.
+
+### Running bats tests
+
+```bash
+# Install bats
+brew install bats-core        # macOS
+sudo apt-get install -y bats  # Ubuntu/Debian
+
+# Run all bats tests
+cd src/tests
+bats .
+
+# Run a specific file
+bats plugin_tests.bats
+
+# Run with TAP output (for CI)
+bats --tap .
+
+# Run with detailed output
+bats --verbose-run .
+```
+
+### Bats coverage baseline (v0.9.9 → v1.0.0)
+
+See `COVERAGE.md` for the authoritative coverage state.
+
+| Category | Test file(s) | Status |
+| --- | --- | --- |
+| Command tree (30 top-level cmds) | `command_tree_test.bats` | Added in v1.0 QA |
+| DB commands | `db_commands_test.bats`, `database_tests.bats` | Added in v1.0 QA |
+| Frontend + plugin + license | `commands_test.bats`, `plugins_tests.bats` | Added in v1.0 QA |
+| Security audit | `security_audit_test.bats`, `security_tests.bats` | Added in v1.0 QA |
+| Build security warnings | `build_security_test.bats`, `build_tests.bats` | Added in v1.0 QA |
+| Backup and restore | `backup_restore_test.bats`, `backup_tests.bats` | Added in v1.0 QA |
+| Init / build / start / stop | `integration/build_start_stop_test.bats`, `init_tests.bats` | Added in v1.0 QA |
+| Admin | `admin_tests.bats` | Existing |
+| Auth | `auth_user_tests.bats` | Existing |
+| Config | `config_tests.bats` | Existing |
+| Deploy | `deploy_tests.bats` | Existing |
+| Monitoring | `monitoring_tests.bats` | Existing |
+| Multi-tenancy | `tenant_tests.bats` | Existing |
+| SSL | `ssl_tests.bats` | Existing |
+| Storage | `storage_tests.bats` | Existing |
+| Realtime | `realtime_tests.bats` | Existing |
+| Secrets | `secrets_encryption_tests.bats`, `secrets_vault_tests.bats` | Existing |
+
+### Adding bats tests
+
+1. Create `<feature>_test.bats` in this directory
+2. Add `load test_helper` at the top
+3. Write `@test "description" { ... }` blocks
+4. Run `bats <file>.bats` to verify
+5. Run `bats .` to confirm no regressions

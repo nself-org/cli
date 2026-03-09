@@ -80,6 +80,7 @@ EOF
       - SERVICE_NAME=${service_name}
       - SERVICE_PORT=${service_port}
       - PORT=${service_port}
+      - BIND_ADDRESS=0.0.0.0
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=\${POSTGRES_DB}
@@ -92,6 +93,11 @@ EOF
       - REDIS_URL=redis://redis:6379
       - HASURA_GRAPHQL_ENDPOINT=http://hasura:8080/v1/graphql
       - HASURA_ADMIN_SECRET=\${HASURA_GRAPHQL_ADMIN_SECRET}
+      - DOWNLOAD_SIGNING_KEY=\${DOWNLOAD_SIGNING_KEY:-}
+      - DOWNLOAD_TOKEN_TTL_SECONDS=\${DOWNLOAD_TOKEN_TTL_SECONDS:-900}
+      - API_BASE_URL=\${API_BASE_URL:-}
+      - GITHUB_PAT_PLUGINS=\${GITHUB_PAT_PLUGINS:-}
+      - NSELF_PLUGIN_LICENSE_KEY=\${NSELF_PLUGIN_LICENSE_KEY:-}
 EOF
 
   # Auth JWT secrets — injected when auth service is enabled

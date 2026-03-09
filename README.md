@@ -6,7 +6,7 @@
 [![Docker](https://img.shields.io/badge/docker-required-blue.svg)](https://www.docker.com/get-started)
 [![CI Status](https://github.com/nself-org/cli/actions/workflows/ci.yml/badge.svg)](https://github.com/nself-org/cli/actions)
 [![Security Scan](https://github.com/nself-org/cli/actions/workflows/security-scan.yml/badge.svg)](https://github.com/nself-org/cli/actions/workflows/security-scan.yml)
-[![Test Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen.svg)](.wiki/releases/v0.9.9.md)
+[![Test Coverage](https://codecov.io/gh/nself-org/cli/branch/main/graph/badge.svg?token=CODECOV_TOKEN)](https://codecov.io/gh/nself-org/cli)
 [![License](https://img.shields.io/badge/license-Personal%20Free%20%7C%20Commercial-green.svg)](LICENSE)
 
 

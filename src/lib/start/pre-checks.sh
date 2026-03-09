@@ -253,17 +253,31 @@ host_port_in_use() {
 # Returns 0 if all ports are free, 1 if any conflict detected.
 # Bash 3.2 compatible: uses parallel arrays, avoids pipeline subshell issue.
 preflight_port_check() {
+  # Allow users to bypass the port check when they know their environment is safe.
+  # Useful when running in Docker-in-Docker, custom networking, or other setups
+  # where the pre-flight check produces false positives.
+  # Usage: NSELF_SKIP_PORT_CHECK=true nself start
+  if [ "${NSELF_SKIP_PORT_CHECK:-}" = "true" ]; then
+    return 0
+  fi
+
   local failed=0
 
-  # Get current compose project name to exclude own containers
+  # Get current compose project name to exclude own containers.
+  # Fall back to "nself" (the default project name used by check_existing_services).
   local own_project="${COMPOSE_PROJECT_NAME:-${PROJECT_NAME:-}}"
   if [ -z "$own_project" ] && [ -f ".env" ]; then
     own_project=$(grep "^PROJECT_NAME=" .env 2>/dev/null | head -1 | cut -d= -f2- || true)
   fi
+  # Default: match the project name used when containers were started
+  if [ -z "$own_project" ]; then
+    own_project="nself"
+  fi
 
-  # Build list of ports held by this project's own containers (space-separated)
+  # Build list of ports held by this project's own containers (space-separated).
+  # This prevents false-positive conflicts when nself is already partially running.
   local own_ports=""
-  if [ -n "$own_project" ]; then
+  if command -v docker >/dev/null 2>&1; then
     own_ports=$(docker ps --filter "label=com.docker.compose.project=$own_project" --format "{{.Ports}}" 2>/dev/null \
       | grep -oE '(0\.0\.0\.0|127\.0\.0\.1):([0-9]+)' | grep -oE '[0-9]+$' | sort -u | tr '\n' ' ' || true)
   fi
@@ -287,9 +301,23 @@ preflight_port_check() {
     if host_port_in_use "$actual_port"; then
       local holder
       holder=$(get_port_holder "$actual_port")
+      # docker-proxy holds ports on behalf of Docker containers. Check if the
+      # binding is localhost-only — if so it is safe and is not a conflict.
+      case "$holder" in
+        docker-proxy|docker|containerd*)
+          local docker_binding
+          docker_binding=$(docker ps --format "{{.Ports}}" 2>/dev/null \
+            | grep -oE '(127\.0\.0\.1):'"$actual_port"':' | head -1 || true)
+          if [ -n "$docker_binding" ]; then
+            # Port is held by a Docker container bound to 127.0.0.1 — safe, skip
+            return 0
+          fi
+          ;;
+      esac
       printf "${COLOR_RED}ERROR${COLOR_RESET}: Port %s is already in use by '%s' (needed by %s)\n" \
         "$actual_port" "$holder" "$service_name"
       printf "       To change it: %s\n" "$env_hint"
+      printf "       If this port is used by your own Docker containers, run: NSELF_SKIP_PORT_CHECK=true nself start\n"
       return 1
     fi
     return 0

@@ -312,6 +312,9 @@ generate_service_routes() {
 generate_hasura_route() {
   cat >nginx/sites/hasura.conf <<'EOF'
 # Hasura GraphQL Engine
+# gzip off: compressed JSON breaks keyword monitors (UptimeRobot, etc.)
+gzip off;
+
 location /v1/graphql {
     proxy_pass http://hasura:8080/v1/graphql;
     proxy_http_version 1.1;
@@ -580,6 +583,11 @@ server {
 
     ssl_certificate /etc/nginx/ssl/${BASE_DOMAIN:-localhost}/fullchain.pem;
     ssl_certificate_key /etc/nginx/ssl/${BASE_DOMAIN:-localhost}/privkey.pem;
+
+    # Disable gzip for Hasura API responses — compressed JSON breaks keyword
+    # monitors (e.g. UptimeRobot) that check for plaintext in the response body.
+    # Hasura error responses are tiny (~100 bytes) so compression has no benefit.
+    gzip off;
 
     # Proxy to Hasura with app-specific headers
     location / {

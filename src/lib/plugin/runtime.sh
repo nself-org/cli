@@ -1107,4 +1107,248 @@ export -f list_all_plugins
 export -f list_running_plugins
 export -f check_plugin_health
 export -f health_check_all
+
+# =============================================================================
+# Binary (Rust) Plugin Support — T-0126 / T-0127
+# =============================================================================
+
+# _binary_is_linux — returns 0 on Linux
+_binary_is_linux() {
+  case "$(uname -s 2>/dev/null)" in
+    Linux) return 0 ;;
+    *)     return 1 ;;
+  esac
+}
+
+# plugin_generate_systemd_unit <plugin_name> <binary_path> [systemd_after]
+# Generates ~/.config/systemd/user/<plugin>.service and enables it.
+plugin_generate_systemd_unit() {
+  local plugin_name="$1"
+  local binary_path="$2"
+  local systemd_after="${3:-network.target}"
+  local config_env="${PLUGIN_DIR}/${plugin_name}/config.env"
+  local unit_dir="${HOME}/.config/systemd/user"
+
+  mkdir -p "$unit_dir" 2>/dev/null
+
+  local unit_file="${unit_dir}/${plugin_name}.service"
+
+  {
+    printf '[Unit]\n'
+    printf 'Description=nSelf plugin: %s\n' "$plugin_name"
+    printf 'After=%s\n' "$systemd_after"
+    printf '\n'
+    printf '[Service]\n'
+    printf 'ExecStart=%s --config %s\n' "$binary_path" "$config_env"
+    printf 'Restart=on-failure\n'
+    printf 'RestartSec=5\n'
+    printf '\n'
+    printf '[Install]\n'
+    printf 'WantedBy=default.target\n'
+  } > "$unit_file"
+
+  printf '\033[0;34m[INFO]\033[0m systemd unit written: %s\n' "$unit_file"
+
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user daemon-reload 2>/dev/null || true
+    if systemctl --user enable --now "${plugin_name}.service" 2>/dev/null; then
+      printf '\033[0;32m[SUCCESS]\033[0m %s enabled and started via systemd.\n' "$plugin_name"
+    else
+      printf '\033[0;33m[WARNING]\033[0m systemd enable failed — try: systemctl --user start %s\n' "${plugin_name}.service"
+    fi
+  fi
+}
+
+# _binary_pid_file <plugin_name>
+_binary_pid_file() {
+  printf '%s/%s/pid' "$PLUGIN_DIR" "$1"
+}
+
+# _binary_log_file <plugin_name>
+_binary_log_file() {
+  printf '%s/%s/plugin.log' "$PLUGIN_DIR" "$1"
+}
+
+# _binary_status_file <plugin_name>
+_binary_status_file() {
+  printf '%s/%s/status' "$PLUGIN_DIR" "$1"
+}
+
+# plugin_start_binary <plugin_name> <binary_path> <health_endpoint> [systemd_after]
+# Starts a Rust plugin. Uses systemd on Linux, nohup on macOS.
+# Polls health endpoint for up to 10 seconds.
+plugin_start_binary() {
+  local plugin_name="$1"
+  local binary_path="$2"
+  local health_endpoint="${3:-/health}"
+  local systemd_after="${4:-network.target}"
+  local plugin_dir="${PLUGIN_DIR}/${plugin_name}"
+  local config_env="${plugin_dir}/config.env"
+
+  mkdir -p "$plugin_dir" 2>/dev/null
+
+  if _binary_is_linux; then
+    local unit_file="${HOME}/.config/systemd/user/${plugin_name}.service"
+    if [ ! -f "$unit_file" ]; then
+      plugin_generate_systemd_unit "$plugin_name" "$binary_path" "$systemd_after"
+    else
+      systemctl --user start "${plugin_name}.service" 2>/dev/null && \
+        printf '\033[0;34m[INFO]\033[0m Started %s via systemd.\n' "$plugin_name" || \
+        printf '\033[0;33m[WARNING]\033[0m systemctl start failed.\n'
+    fi
+  else
+    # macOS / fallback: nohup
+    local pid_file
+    pid_file=$(_binary_pid_file "$plugin_name")
+    local log_file
+    log_file=$(_binary_log_file "$plugin_name")
+
+    if [ -f "$pid_file" ]; then
+      local existing_pid
+      existing_pid=$(cat "$pid_file" 2>/dev/null)
+      if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
+        printf '\033[0;33m[WARNING]\033[0m %s already running (PID %s).\n' "$plugin_name" "$existing_pid"
+        return 0
+      fi
+    fi
+
+    if [ ! -x "$binary_path" ]; then
+      printf '\033[0;31m[ERROR]\033[0m Binary not found or not executable: %s\n' "$binary_path" >&2
+      return 1
+    fi
+
+    nohup "$binary_path" --config "$config_env" >> "$log_file" 2>&1 &
+    printf '%s\n' "$!" > "$pid_file"
+    printf '\033[0;34m[INFO]\033[0m Started %s (PID %s)\n' "$plugin_name" "$!"
+  fi
+
+  # Poll health for up to 10s
+  local plugin_port=8080
+  if [ -f "${plugin_dir}/config.env" ]; then
+    local cfg_port
+    cfg_port=$(grep -m1 '^PORT=' "${plugin_dir}/config.env" 2>/dev/null | cut -d'=' -f2)
+    [ -n "$cfg_port" ] && plugin_port="$cfg_port"
+  fi
+  local health_url="http://127.0.0.1:${plugin_port}${health_endpoint}"
+  local attempt=0
+  printf '\033[0;34m[INFO]\033[0m Waiting for health check...\n'
+  while [ "$attempt" -lt 10 ]; do
+    if command -v curl >/dev/null 2>&1; then
+      local s
+      s=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 --connect-timeout 1 "$health_url" 2>/dev/null)
+      if [ "$s" = "200" ]; then
+        printf '\033[0;32m[SUCCESS]\033[0m %s is healthy.\n' "$plugin_name"
+        return 0
+      fi
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+  printf '\033[0;33m[WARNING]\033[0m Health check did not pass within 10s.\n'
+  return 1
+}
+
+# plugin_stop_binary <plugin_name>
+# Stops a Rust plugin (systemd on Linux, PID file on macOS).
+plugin_stop_binary() {
+  local plugin_name="$1"
+
+  if _binary_is_linux && command -v systemctl >/dev/null 2>&1; then
+    if systemctl --user is-active "${plugin_name}.service" >/dev/null 2>&1; then
+      systemctl --user stop "${plugin_name}.service" 2>/dev/null
+      printf '\033[0;32m[SUCCESS]\033[0m %s stopped (systemd).\n' "$plugin_name"
+      return 0
+    fi
+  fi
+
+  local pid_file
+  pid_file=$(_binary_pid_file "$plugin_name")
+  if [ -f "$pid_file" ]; then
+    local pid
+    pid=$(cat "$pid_file" 2>/dev/null)
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null
+      rm -f "$pid_file" 2>/dev/null
+      printf '\033[0;32m[SUCCESS]\033[0m %s stopped (PID %s).\n' "$plugin_name" "$pid"
+    else
+      rm -f "$pid_file" 2>/dev/null
+      printf '\033[0;33m[WARNING]\033[0m %s was not running.\n' "$plugin_name"
+    fi
+  else
+    printf '\033[0;33m[WARNING]\033[0m No PID file for %s.\n' "$plugin_name"
+  fi
+}
+
+# plugin_restart_binary <plugin_name> <binary_path> <health_endpoint> [systemd_after]
+plugin_restart_binary() {
+  local plugin_name="$1"
+  local binary_path="$2"
+  local health_endpoint="${3:-/health}"
+  local systemd_after="${4:-network.target}"
+
+  plugin_stop_binary "$plugin_name"
+  sleep 1
+  plugin_start_binary "$plugin_name" "$binary_path" "$health_endpoint" "$systemd_after"
+}
+
+# plugin_status_binary <plugin_name> <health_endpoint>
+# Checks if binary plugin is running and healthy. Writes to status file.
+plugin_status_binary() {
+  local plugin_name="$1"
+  local health_endpoint="${2:-/health}"
+  local plugin_dir="${PLUGIN_DIR}/${plugin_name}"
+  local status_file
+  status_file=$(_binary_status_file "$plugin_name")
+
+  local plugin_port=8080
+  if [ -f "${plugin_dir}/config.env" ]; then
+    local cfg_port
+    cfg_port=$(grep -m1 '^PORT=' "${plugin_dir}/config.env" 2>/dev/null | cut -d'=' -f2)
+    [ -n "$cfg_port" ] && plugin_port="$cfg_port"
+  fi
+
+  # Check process alive
+  local pid_alive=false
+  if _binary_is_linux && command -v systemctl >/dev/null 2>&1; then
+    if systemctl --user is-active "${plugin_name}.service" >/dev/null 2>&1; then
+      pid_alive=true
+    fi
+  else
+    local pid_file
+    pid_file=$(_binary_pid_file "$plugin_name")
+    if [ -f "$pid_file" ]; then
+      local pid
+      pid=$(cat "$pid_file" 2>/dev/null)
+      [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && pid_alive=true
+    fi
+  fi
+
+  if [ "$pid_alive" = "false" ]; then
+    printf 'stopped' > "$status_file"
+    printf '\033[0;31m[STOPPED]\033[0m %s is not running.\n' "$plugin_name"
+    return 1
+  fi
+
+  local health_url="http://127.0.0.1:${plugin_port}${health_endpoint}"
+  local http_status=0
+  if command -v curl >/dev/null 2>&1; then
+    http_status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 --connect-timeout 2 "$health_url" 2>/dev/null)
+  fi
+
+  if [ "$http_status" = "200" ]; then
+    printf 'healthy' > "$status_file"
+    printf '\033[0;32m[HEALTHY]\033[0m %s is running.\n' "$plugin_name"
+    return 0
+  else
+    printf 'running-unhealthy' > "$status_file"
+    printf '\033[0;33m[UNHEALTHY]\033[0m %s process is up but health check failed (HTTP %s).\n' "$plugin_name" "$http_status"
+    return 1
+  fi
+}
+
+export -f plugin_generate_systemd_unit
+export -f plugin_start_binary
+export -f plugin_stop_binary
+export -f plugin_restart_binary
+export -f plugin_status_binary
 export -f show_plugin_logs

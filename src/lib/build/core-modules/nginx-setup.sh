@@ -163,6 +163,11 @@ server {
     ssl_certificate ${ssl_path}/fullchain.pem;
     ssl_certificate_key ${ssl_path}/privkey.pem;
 
+    # Disable gzip for Hasura API responses — compressed JSON breaks keyword
+    # monitors (e.g. UptimeRobot) that check for plaintext in the response body.
+    # Hasura error responses are tiny (~100 bytes) so compression has no benefit.
+    gzip off;
+
     location / {
         proxy_pass http://hasura:8080;
         proxy_http_version 1.1;
