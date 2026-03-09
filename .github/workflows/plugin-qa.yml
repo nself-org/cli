@@ -42,21 +42,22 @@ jobs:
       fail-fast: false
       matrix:
         plugin:
-          - analytics
-          - backup
-          - cdn
-          - ddns
-          - file-processing
-          - geocoding
-          - geolocation
-          - object-storage
-          - observability
-          - realtime
+          - content-acquisition
+          - content-progress
+          - feature-flags
+          - github
+          - github-runner
+          - invitations
+          - jobs
+          - link-preview
+          - mdns
+          - notifications
           - search
-          - seo-tools
-          - webhook-relay
-          - functions
-          - auth-providers
+          - subtitle-manager
+          - tokens
+          - torrent-manager
+          - vpn
+          - webhooks
 
     steps:
       - name: Checkout
@@ -156,21 +157,22 @@ jobs:
       fail-fast: false
       matrix:
         plugin:
-          - analytics
-          - backup
-          - cdn
-          - ddns
-          - file-processing
-          - geocoding
-          - geolocation
-          - object-storage
-          - observability
-          - realtime
+          - content-acquisition
+          - content-progress
+          - feature-flags
+          - github
+          - github-runner
+          - invitations
+          - jobs
+          - link-preview
+          - mdns
+          - notifications
           - search
-          - seo-tools
-          - webhook-relay
-          - functions
-          - auth-providers
+          - subtitle-manager
+          - tokens
+          - torrent-manager
+          - vpn
+          - webhooks
 
     services:
       docker:
