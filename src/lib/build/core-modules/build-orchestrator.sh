@@ -78,9 +78,11 @@ load_env_for_detection() {
 
   # Load files in cascade order for proper detection
   # .env.dev -> .env.[env] -> .env
+  # CRITICAL: Use { set +u; source "$file"; } to handle env files with unbound
+  # variable references (e.g. ${STAGING_SECRET}) which trigger set -u silently.
   if [[ -f ".env.dev" ]]; then
     set -a
-    source ".env.dev" 2>/dev/null || true
+    { set +u; source ".env.dev"; } 2>/dev/null || true
     set +a
   fi
 
@@ -89,14 +91,14 @@ load_env_for_detection() {
     staging)
       if [[ -f ".env.staging" ]]; then
         set -a
-        source ".env.staging" 2>/dev/null || true
+        { set +u; source ".env.staging"; } 2>/dev/null || true
         set +a
       fi
       ;;
     prod | production)
       if [[ -f ".env.prod" ]]; then
         set -a
-        source ".env.prod" 2>/dev/null || true
+        { set +u; source ".env.prod"; } 2>/dev/null || true
         set +a
       fi
       ;;
@@ -105,7 +107,7 @@ load_env_for_detection() {
   # Load local overrides last
   if [[ -f ".env" ]]; then
     set -a
-    source ".env" 2>/dev/null || true
+    { set +u; source ".env"; } 2>/dev/null || true
     set +a
   fi
 }

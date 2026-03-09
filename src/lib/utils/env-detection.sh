@@ -99,7 +99,10 @@ cascade_env_vars() {
         safe_source_env "$file"
       else
         set -a
-        source "$file" 2>/dev/null || true
+        # Temporarily disable set -u to handle env files that reference
+        # undefined variables (e.g. ${STAGING_SECRET} placeholders).
+        # Use a group command so exports propagate to the current shell.
+        { set +u; source "$file"; } 2>/dev/null || true
         set +a
       fi
       loaded=true

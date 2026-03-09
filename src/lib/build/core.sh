@@ -455,23 +455,26 @@ orchestrate_build() {
     # Load files in cascade order for proper detection
     if [[ -f ".env.dev" ]]; then
       set -a
-      source ".env.dev" 2>/dev/null || true
+      { set +u; source ".env.dev"; } 2>/dev/null || true
       set +a
     fi
 
     # Load environment-specific file
+    # CRITICAL: Use { set +u; source "$file"; } to handle env files that reference
+    # undefined variables (e.g. ${STAGING_SECRET} placeholders), which would
+    # trigger set -u and silently exit even with || true.
     case "$env" in
       staging)
         if [[ -f ".env.staging" ]]; then
           set -a
-          source ".env.staging" 2>/dev/null || true
+          { set +u; source ".env.staging"; } 2>/dev/null || true
           set +a
         fi
         ;;
       prod | production)
         if [[ -f ".env.prod" ]]; then
           set -a
-          source ".env.prod" 2>/dev/null || true
+          { set +u; source ".env.prod"; } 2>/dev/null || true
           set +a
         fi
         ;;
@@ -480,7 +483,7 @@ orchestrate_build() {
     # Load local overrides last
     if [[ -f ".env" ]]; then
       set -a
-      source ".env" 2>/dev/null || true
+      { set +u; source ".env"; } 2>/dev/null || true
       set +a
     fi
   }
@@ -710,7 +713,7 @@ orchestrate_build() {
 
         # Reload environment with fixes
         set -a
-        source "$env_file" 2>/dev/null || true
+        { set +u; source "$env_file"; } 2>/dev/null || true
         set +a
 
         echo "${COLOR_GREEN}✓ Route conflicts auto-fixed${COLOR_RESET}"
@@ -935,7 +938,7 @@ FUNCEOF
         if command -v setup_monitoring_configs >/dev/null 2>&1; then
           # Load env vars for the function
           set -a
-          source "$env_file" 2>/dev/null || true
+          { set +u; source "$env_file"; } 2>/dev/null || true
           set +a
 
           # Run with timeout to prevent hanging
@@ -1158,6 +1161,12 @@ FUNCEOF
   echo ""
   echo "For more help, use: nself help or nself help build"
   echo ""
+
+  # Security warnings — staging/prod only
+  if [[ -f "$_BUILD_LIB_ROOT/security/build-warnings.sh" ]]; then
+    source "$_BUILD_LIB_ROOT/security/build-warnings.sh"
+    run_build_security_warnings
+  fi
 
   return 0
 }

@@ -320,8 +320,8 @@ generate_docker_compose() {
     if (
       set +x
       set -a
-      [[ -f ".env.dev" ]] && source ".env.dev" 2>/dev/null || true
-      [[ -f ".env" ]] && source ".env" 2>/dev/null || true
+      [[ -f ".env.dev" ]] && { set +u; source ".env.dev"; } 2>/dev/null || true
+      [[ -f ".env" ]] && { set +u; source ".env"; } 2>/dev/null || true
       set +a
       bash "$compose_script"
     ) >/dev/null; then
@@ -448,12 +448,12 @@ orchestrate_modular_build() {
     # Fallback: load env files in cascade order
     if [[ -f ".env.dev" ]]; then
       set -a
-      source ".env.dev" 2>/dev/null || true
+      { set +u; source ".env.dev"; } 2>/dev/null || true
       set +a
     fi
     if [[ -f ".env" ]]; then
       set -a
-      source ".env" 2>/dev/null || true
+      { set +u; source ".env"; } 2>/dev/null || true
       set +a
     fi
   fi

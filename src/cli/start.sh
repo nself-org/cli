@@ -758,7 +758,7 @@ start_services() {
     # Load env vars for database configuration
     if [[ -f "$env_file" ]]; then
       set -a
-      source "$env_file" 2>/dev/null || true
+      { set +u; source "$env_file"; } 2>/dev/null || true
       set +a
     fi
 
