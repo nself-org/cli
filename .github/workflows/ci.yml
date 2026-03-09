@@ -204,7 +204,8 @@ jobs:
       - name: Check for echo -e usage (portability issue)
         run: |
           printf "\033[34mChecking for echo -e usage...\033[0m\n"
-          if grep -r 'echo -e' src/lib/ src/cli/ --include="*.sh" | grep -v "test"; then
+          if grep -r 'echo -e' src/lib/ src/cli/ --include="*.sh" \
+             | grep -v "test" | grep -v ':[[:space:]]*#'; then
             printf "\033[31mERROR: Found echo -e usage (use printf instead)\033[0m\n"
             exit 1
           fi
@@ -215,23 +216,25 @@ jobs:
           printf "\033[34mChecking for Bash 4+ features...\033[0m\n"
           errors=0
 
-          # Check for lowercase expansion
-          if grep -r '\${[^}]*,,[^}]*}' src/lib/ src/cli/ --include="*.sh"; then
+          # Check for lowercase expansion (skip comment lines — they document the constraint)
+          if grep -r '\${[^}]*,,[^}]*}' src/lib/ src/cli/ --include="*.sh" \
+             | grep -v ':[[:space:]]*#'; then
             printf "\033[31mERROR: Found lowercase expansion (Bash 4+)\033[0m\n"
             errors=$((errors + 1))
           fi
 
-          # Check for uppercase expansion
-          if grep -r '\${[^}]*\^\^[^}]*}' src/lib/ src/cli/ --include="*.sh"; then
+          # Check for uppercase expansion (skip comment lines)
+          if grep -r '\${[^}]*\^\^[^}]*}' src/lib/ src/cli/ --include="*.sh" \
+             | grep -v ':[[:space:]]*#'; then
             printf "\033[31mERROR: Found uppercase expansion (Bash 4+)\033[0m\n"
             errors=$((errors + 1))
           fi
 
           # Check for associative arrays (allowing files with proper Bash 4 fallback checks)
-          # Files with "declare -A __test" checks are considered compatible
+          # Files with "declare -A __test" checks are considered compatible; skip comment lines
           if grep -r 'declare -A' src/lib/ src/cli/ --include="*.sh" \
              --exclude="ports.sh" --exclude="base.sh" --exclude="provision.sh" \
-             | grep -v "__test"; then
+             | grep -v "__test" | grep -v ':[[:space:]]*#'; then
             printf "\033[31mERROR: Found associative arrays (Bash 4+) without fallback\033[0m\n"
             errors=$((errors + 1))
           fi
