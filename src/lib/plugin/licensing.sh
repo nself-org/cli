@@ -32,7 +32,7 @@ NSELF_PRICING_URL="https://nself.org/commercial"
 # Mirrors the plugins-pro/paid/ directory.
 # ---------------------------------------------------------------------------
 
-NSELF_PRO_PLUGINS="access-controls activity-feed admin-api ai analytics auth backup bots browser calendar cdn chat claw cloudflare cms compliance content-progress cron ddns devices documents donorbox entitlements epg feature-flags-pro file-processing game-metadata geocoding geolocation idme knowledge-base livekit media-processing meetings moderation mux notify object-storage observability paypal photos podcast realtime recording retro-gaming rom-discovery search-pro shopify social sports stream-gateway streaming stripe support tmdb tokens-pro torrent-manager-pro voice vpn-pro web3 webhooks-pro workflows"
+NSELF_PRO_PLUGINS="access-controls activity-feed admin-api ai analytics auth backup bots browser calendar cdn chat claw cloudflare cms compliance content-progress cron ddns devices documents donorbox entitlements epg feature-flags-pro file-processing game-metadata geocoding geolocation google idme knowledge-base livekit media-processing meetings moderation mux notify object-storage observability paypal photos podcast realtime recording retro-gaming rom-discovery search-pro shopify social sports stream-gateway streaming stripe support tmdb tokens-pro torrent-manager-pro voice vpn-pro web3 webhooks-pro workflows"
 
 # ---------------------------------------------------------------------------
 # Internal helpers
