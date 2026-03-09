@@ -379,17 +379,25 @@ deploy_environment() {
         # Wait for containers to fully bind ports before checking
         sleep 8
         errors=0
-        # Check each sensitive port is NOT exposed externally
-        for svc_port in 6379 5432 7700 9000; do
-          if ss -tlnp 2>/dev/null | grep ":$svc_port " | grep -qv "127.0.0.1:$svc_port\|[::1]:$svc_port"; then
-            if ss -tlnp 2>/dev/null | grep ":$svc_port " | grep -q "0.0.0.0"; then
-              echo "SECURITY_ERROR: Port $svc_port exposed on 0.0.0.0"
+        # Use "docker compose port" rather than ss/netstat.
+        # ss shows ALL system listeners including a system postgres at
+        # 0.0.0.0:5432 that has nothing to do with nself, causing false
+        # positives. "docker compose port" checks ONLY nself containers.
+        project_name="${COMPOSE_PROJECT_NAME:-nself}"
+        for pair in redis:6379 postgres:5432 meilisearch:7700 minio:9000; do
+          svc="${pair%%:*}"
+          svc_port="${pair##*:}"
+          binding=$(docker compose --project-name "$project_name" port "$svc" "$svc_port" 2>/dev/null || true)
+          if [ -n "$binding" ]; then
+            host_ip="${binding%%:*}"
+            if [ "$host_ip" = "0.0.0.0" ] || [ "$host_ip" = "::" ]; then
+              echo "SECURITY_ERROR: Port $svc_port ($svc) exposed on $host_ip"
               errors=$((errors + 1))
             fi
           fi
         done
 
-        if [[ $errors -eq 0 ]]; then
+        if [ "$errors" -eq 0 ]; then
           echo "security_verified"
         else
           echo "security_failed"
