@@ -9,7 +9,7 @@ on:
       verbose:
         description: 'Enable verbose output'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 jobs:
@@ -41,8 +41,10 @@ jobs:
 
       - name: Run mutation tests
         id: mutation
+        env:
+          VERBOSE_INPUT: ${{ inputs.verbose }}
         run: |
-          if [ "${{ inputs.verbose }}" = "true" ]; then
+          if [ "$VERBOSE_INPUT" = "true" ]; then
             ./scripts/mutation-test.sh --verbose 2>&1 | tee /tmp/mutation-output.txt
           else
             ./scripts/mutation-test.sh 2>&1 | tee /tmp/mutation-output.txt

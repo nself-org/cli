@@ -73,13 +73,18 @@ jobs:
           echo "${{ github.workspace }}/bin" >> "$GITHUB_PATH"
           sudo ln -sf "${{ github.workspace }}/bin/nself" /usr/local/bin/nself
 
+      - name: Set up plugin test directory
+        run: mkdir -p /tmp/plugin-test-${{ matrix.plugin }}
+
       - name: Verify plugin --help exits 0
+        working-directory: /tmp/plugin-test-${{ matrix.plugin }}
         run: |
           nself plugin info "${{ matrix.plugin }}" --help || true
           nself plugin install "${{ matrix.plugin }}" --help
           printf "PASS: nself plugin install %s --help exits 0\n" "${{ matrix.plugin }}"
 
       - name: Verify plugin schema validation (dry-run)
+        working-directory: /tmp/plugin-test-${{ matrix.plugin }}
         env:
           SKIP_DOCKER_TESTS: '1'
         run: |
@@ -89,6 +94,7 @@ jobs:
           printf "PASS: nself plugin install %s --dry-run exits 0\n" "${{ matrix.plugin }}"
 
       - name: Verify free plugin needs no license key
+        working-directory: /tmp/plugin-test-${{ matrix.plugin }}
         env:
           SKIP_DOCKER_TESTS: '1'
         run: |

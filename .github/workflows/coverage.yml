@@ -19,7 +19,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y bats ruby ruby-dev build-essential
-          gem install bashcov simplecov simplecov-cobertura --no-document
+          sudo gem install bashcov simplecov simplecov-cobertura --no-document
 
       - name: Install nself binary
         run: |

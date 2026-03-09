@@ -3,7 +3,7 @@
 // Tests validate-domain.sh validator against 1000 random inputs
 
 import fc from 'fast-check';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
 
@@ -11,7 +11,11 @@ const VALIDATOR = `${process.cwd()}/src/lib/utils/validate.sh`;
 
 function validateDomain(domain) {
   try {
-    execSync(`bash "${VALIDATOR}" validate_domain "${domain}" 2>/dev/null`, { timeout: 1000 });
+    // Pass domain as a separate argument — avoids shell interpolation entirely
+    execFileSync('bash', [VALIDATOR, 'validate_domain', domain], {
+      timeout: 1000,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
     return true;
   } catch {
     return false;
