@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$SCRIPT_DIR/../src"
 CI_MODE="${1:-}"
 
-# Minimums (update when new test files are added — see .claude/docs/test-coverage.md)
+# Minimums (update when new test files are added — see docs/test-coverage.md)
 MIN_BATS_FILES=66
 MIN_TEST_CASES=1700
 
@@ -35,7 +35,7 @@ if [ "$CI_MODE" = "--ci" ]; then
   fi
 
   if [ "$failed" -eq 1 ]; then
-    printf "\nTest count below baseline — see .claude/docs/test-coverage.md\n" >&2
+    printf "\nTest count below baseline — see docs/test-coverage.md\n" >&2
     exit 1
   fi
 
