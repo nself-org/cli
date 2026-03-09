@@ -215,12 +215,45 @@ cmd_list() {
 
 # Install a plugin
 cmd_install() {
-  local plugin_name="$1"
+  local plugin_name=""
+  local dry_run=false
+
+  # Parse flags before any other logic (Bash 3.2-compatible)
+  for arg in "$@"; do
+    case "$arg" in
+      --help|-h)
+        printf "Usage: nself plugin install <name> [options]\n\n"
+        printf "Install a plugin by name.\n\n"
+        printf "Options:\n"
+        printf "  --dry-run    Show what would be installed without making changes\n"
+        printf "  --help, -h   Show this help text\n\n"
+        printf "Examples:\n"
+        printf "  nself plugin install notify\n"
+        printf "  nself plugin install ai --dry-run\n"
+        return 0
+        ;;
+      --dry-run)
+        dry_run=true
+        ;;
+      -*)
+        ;;
+      *)
+        if [[ -z "$plugin_name" ]]; then
+          plugin_name="$arg"
+        fi
+        ;;
+    esac
+  done
 
   if [[ -z "$plugin_name" ]]; then
     log_error "Plugin name required"
     printf "\nUsage: nself plugin install <name>\n"
     return 1
+  fi
+
+  if [[ "$dry_run" == "true" ]]; then
+    printf "DRY RUN: would install plugin '%s'\n" "$plugin_name"
+    return 0
   fi
 
   # Check if it's a local path
