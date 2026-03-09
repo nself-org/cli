@@ -13,6 +13,12 @@ This is the authoritative command structure after consolidation from 79 → 31 t
 - `deploy sync` - 4 subcommands for environment synchronization
 - `infra provider k8s-*` - Unified Kubernetes management across 8 cloud providers
 
+**New in v0.9.9:**
+
+- `nself mux` - Message routing and webhook delivery management (tokens import/list)
+- `nself ai` - AI plugin management (OAuth login, provider add/list/remove)
+- `nself license` - Pro license key management (set/show/validate/clear/upgrade)
+
 ---
 
 ## Core (5 commands)
@@ -650,6 +656,62 @@ Plugin Actions:
 
 ---
 
+### 11. mux - Message Routing & Webhook Delivery
+
+```text
+nself mux <subcommand>
+
+Token Management:
+  tokens import --file <path.json>           # Bulk-import delivery auth tokens
+  tokens list                                # List stored tokens
+  tokens remove <name>                       # Remove a token
+```
+
+**Total subcommands:** 3
+Requires Pro license ($9/yr). Manages delivery auth credentials for the mux webhook pipeline.
+
+---
+
+### 12. ai - AI Plugin Management
+
+```text
+nself ai <subcommand>
+
+Auth:
+  auth login --provider <anthropic|openai>   # OAuth2 PKCE login for subscription accounts
+  auth add --provider <p> --key <key>        # Add API key for a provider
+  auth list                                  # List configured providers
+  auth remove --provider <p>                 # Remove a provider
+  auth refresh [--provider <p>]              # Refresh OAuth tokens
+  auth test [--provider <p>]                 # Test provider connectivity
+
+Providers:
+  providers list                             # List all supported AI providers
+  providers status                           # Show rate-limit and availability status
+```
+
+**Total subcommands:** 8+
+Requires Max license ($19/yr). Manages AI provider credentials for the nself-ai plugin.
+
+---
+
+### 13. license - Pro License Management
+
+```text
+nself license <subcommand>
+
+  set <key>                                  # Save Pro license key
+  show                                       # Show license key (masked) and tier
+  validate                                   # Validate key against ping.nself.org
+  clear                                      # Remove saved license key
+  upgrade                                    # Open upgrade URL in browser
+```
+
+**Total subcommands:** 5
+Also accessible as `nself plugin license`. Manages the Pro license key used for gated plugin installs.
+
+---
+
 ### 10. nginx - Multi-Project Shared Nginx
 
 ```bash
@@ -730,16 +792,17 @@ Shared Container Management:
 
 ## Summary Statistics
 
-- **Total Top-Level Commands:** 31 (was 79)
-- **Reduction:** 60.8%
-- **Total Subcommands:** 307+
-- **Average Subcommands per TLC:** 9.9
+- **Total Top-Level Commands:** 34 (was 79; 31 at v1.0 baseline + 3 added in v0.9.9)
+- **Reduction from original:** 57%
+- **Total Subcommands:** 323+
+- **Average Subcommands per TLC:** 9.5
 
 **Category Breakdown:**
-- Core: 5 commands (16%)
-- Utilities: 16 commands (52%)
-- Complex: 10 commands (32%)
-- **Total: 5 + 16 + 10 = 31** ✓
+- Core: 5 commands (15%)
+- Utilities: 16 commands (47%)
+- Complex: 10 commands (29%)
+- Plugin shortcuts (v0.9.9): 3 commands (mux, ai, license)
+- **Total: 5 + 16 + 10 + 3 = 34** ✓
 
 **Most Complex Commands (by subcommand count):**
 
