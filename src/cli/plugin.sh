@@ -65,6 +65,20 @@ cmd_list() {
   # Parse arguments
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --help | -h)
+        printf "Usage: nself plugin list [options]\n\n"
+        printf "List available plugins.\n\n"
+        printf "Options:\n"
+        printf "  --installed, -i         Show only installed plugins\n"
+        printf "  --detailed, -d          Show detailed status (with --installed)\n"
+        printf "  --category, -c <cat>    Filter by category (billing, ecommerce, devops)\n"
+        printf "  --help, -h              Show this help text\n\n"
+        printf "Examples:\n"
+        printf "  nself plugin list\n"
+        printf "  nself plugin list --installed\n"
+        printf "  nself plugin list --installed --detailed\n"
+        return 0
+        ;;
       --installed | -i)
         show_installed_only=true
         shift
@@ -352,7 +366,21 @@ cmd_install() {
 
 # Remove a plugin
 cmd_remove() {
-  local plugin_name="$1"
+  case "${1:-}" in
+    --help|-h)
+      printf "Usage: nself plugin remove <name> [options]\n\n"
+      printf "Remove an installed plugin.\n\n"
+      printf "Options:\n"
+      printf "  --delete-data  Also delete plugin database tables\n"
+      printf "  --help, -h     Show this help text\n\n"
+      printf "Examples:\n"
+      printf "  nself plugin remove notify\n"
+      printf "  nself plugin remove stripe --delete-data\n"
+      return 0
+      ;;
+  esac
+
+  local plugin_name="${1:-}"
   local delete_data="${2:-}"
 
   if [[ -z "$plugin_name" ]]; then
@@ -390,6 +418,17 @@ cmd_update() {
   # Parse arguments
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --help | -h)
+        printf "Usage: nself plugin update [name] [options]\n\n"
+        printf "Update a plugin to the latest version.\n\n"
+        printf "Options:\n"
+        printf "  --all, -a    Update all installed plugins\n"
+        printf "  --help, -h   Show this help text\n\n"
+        printf "Examples:\n"
+        printf "  nself plugin update notify\n"
+        printf "  nself plugin update --all\n"
+        return 0
+        ;;
       --all | -a)
         update_all=true
         shift
@@ -465,6 +504,21 @@ update_single_plugin() {
 
 # Show plugin status
 cmd_status() {
+  case "${1:-}" in
+    --help|-h)
+      printf "Usage: nself plugin status [name]\n\n"
+      printf "Show plugin installation status and health.\n\n"
+      printf "Arguments:\n"
+      printf "  name    Optional plugin name for detailed status\n\n"
+      printf "Options:\n"
+      printf "  --help, -h  Show this help text\n\n"
+      printf "Examples:\n"
+      printf "  nself plugin status\n"
+      printf "  nself plugin status notify\n"
+      return 0
+      ;;
+  esac
+
   local plugin_name="${1:-}"
 
   printf "\n=== Installed Plugins ===\n\n"
@@ -2039,6 +2093,45 @@ main() {
       ;;
     sync | source-sync)
       cmd_sync "$@"
+      ;;
+    info)
+      case "${1:-}" in
+        --help|-h|"")
+          printf "Usage: nself plugin info <name>\n\n"
+          printf "Show detailed information about an installed plugin.\n\n"
+          printf "Arguments:\n"
+          printf "  name    Plugin name\n\n"
+          printf "Options:\n"
+          printf "  --help, -h  Show this help text\n\n"
+          printf "Examples:\n"
+          printf "  nself plugin info notify\n"
+          return 0
+          ;;
+      esac
+      local _info_name="$1"
+      if is_plugin_installed "$_info_name"; then
+        show_plugin_status "$_info_name"
+      else
+        log_error "Plugin '$_info_name' is not installed"
+        return 1
+      fi
+      ;;
+    create)
+      case "${1:-}" in
+        --help|-h|"")
+          printf "Usage: nself plugin create <name>\n\n"
+          printf "Scaffold a new plugin from a template.\n\n"
+          printf "Arguments:\n"
+          printf "  name    Name for the new plugin\n\n"
+          printf "Options:\n"
+          printf "  --help, -h  Show this help text\n\n"
+          printf "Examples:\n"
+          printf "  nself plugin create my-plugin\n"
+          return 0
+          ;;
+      esac
+      log_error "Plugin scaffolding is not yet available in this version"
+      return 1
       ;;
     config)
       cmd_plugin_config "$@"

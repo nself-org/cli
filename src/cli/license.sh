@@ -53,6 +53,12 @@ _license_mask_key() {
 # Save a license key to disk.
 # ---------------------------------------------------------------------------
 cmd_set() {
+  case "${1:-}" in
+    --help|-h)
+      cmd_help
+      return 0
+      ;;
+  esac
   local key="${1:-}"
   if [ -z "$key" ]; then
     log_error "Usage: nself license set <key>"
@@ -134,6 +140,12 @@ cmd_show() {
 # Call ping_api /license/validate and display tier + entitlements.
 # ---------------------------------------------------------------------------
 cmd_validate() {
+  case "${1:-}" in
+    --help|-h)
+      cmd_help
+      return 0
+      ;;
+  esac
   local key=""
   if [ -n "${NSELF_PLUGIN_LICENSE_KEY:-}" ]; then
     key="$NSELF_PLUGIN_LICENSE_KEY"
@@ -221,7 +233,21 @@ cmd_validate() {
 # Remove saved license key and cache.
 # ---------------------------------------------------------------------------
 cmd_clear() {
-  rm -f "$NSELF_LICENSE_KEY_FILE" "${HOME}/.nself/license/cache" 2>/dev/null
+  case "${1:-}" in
+    --help|-h)
+      cmd_help
+      return 0
+      ;;
+  esac
+  # Safe removal: verify the parent dir is actually a directory before trying to
+  # remove files inside it. On macOS (case-insensitive FS), ~/.nself/license may
+  # resolve to ~/.nself/LICENSE (the MIT licence text file), which is not a
+  # directory — rm would fail with "Not a directory".
+  local key_dir
+  key_dir="$(dirname "$NSELF_LICENSE_KEY_FILE")"
+  if [ -d "$key_dir" ]; then
+    rm -f "$NSELF_LICENSE_KEY_FILE" "${key_dir}/cache" 2>/dev/null || true
+  fi
   log_success "License key cleared."
 }
 
