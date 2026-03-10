@@ -132,13 +132,19 @@ jobs:
           SKIP_DOCKER_TESTS: '1'
           SKIP_INTEGRATION_TESTS: '1'
         run: |
-          bats --tap src/tests/bats/test-plugin-license-commands.bats 2>&1
+          # Run from /tmp to avoid the source-repo guard in preflight.sh.
+          # The guard exits 1 when cwd contains bin/nself + src/cli + install.sh.
+          mkdir -p /tmp/nself-bats-run
+          cd /tmp/nself-bats-run
+          bats --tap "${{ github.workspace }}/src/tests/bats/test-plugin-license-commands.bats" 2>&1
 
       - name: Run legacy free-plugin install bats
         env:
           SKIP_DOCKER_TESTS: '1'
         run: |
-          bats --tap src/tests/free_plugins_install_test.bats 2>&1 || true
+          mkdir -p /tmp/nself-bats-legacy
+          cd /tmp/nself-bats-legacy
+          bats --tap "${{ github.workspace }}/src/tests/free_plugins_install_test.bats" 2>&1 || true
           # Note: live health-check tests in this file are auto-skipped without Docker.
 
   # ---------------------------------------------------------------------------
