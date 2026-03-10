@@ -1,19 +1,18 @@
 // Property-based tests: CLI port number validation
 // Valid: 1-65535. Invalid: 0, >65535, floats, strings
 import fc from 'fast-check';
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { describe, test } from 'node:test';
 import assert from 'node:assert';
 
 const VALIDATOR = `${process.cwd()}/src/lib/utils/validate.sh`;
 
 function validatePort(port) {
-  try {
-    execSync(`bash "${VALIDATOR}" validate_port "${port}" 2>/dev/null`, { timeout: 1000 });
-    return true;
-  } catch {
-    return false;
-  }
+  const result = spawnSync('bash', [VALIDATOR, 'validate_port', String(port)], {
+    timeout: 1000,
+    stdio: 'pipe',
+  });
+  return result.status === 0;
 }
 
 describe('Port validation — property-based', () => {
