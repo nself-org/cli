@@ -211,30 +211,30 @@ skip_if_no_integration() {
 # Free plugin dry-run installs (no Docker required, no license key required)
 # ---------------------------------------------------------------------------
 
-@test "nself plugin install analytics --dry-run exits 0" {
-  run nself plugin install analytics --dry-run
+@test "nself plugin install search --dry-run exits 0" {
+  run nself plugin install search --dry-run
   assert_success
 }
 
-@test "nself plugin install backup --dry-run exits 0" {
-  run nself plugin install backup --dry-run
+@test "nself plugin install notifications --dry-run exits 0" {
+  run nself plugin install notifications --dry-run
   assert_success
 }
 
-@test "nself plugin install cdn --dry-run exits 0" {
-  run nself plugin install cdn --dry-run
+@test "nself plugin install webhooks --dry-run exits 0" {
+  run nself plugin install webhooks --dry-run
   assert_success
 }
 
-@test "nself plugin install realtime --dry-run exits 0" {
-  run nself plugin install realtime --dry-run
+@test "nself plugin install link-preview --dry-run exits 0" {
+  run nself plugin install link-preview --dry-run
   assert_success
 }
 
 @test "free plugin install does not require a license key" {
   local saved_key="${NSELF_PLUGIN_LICENSE_KEY:-}"
   unset NSELF_PLUGIN_LICENSE_KEY
-  run nself plugin install realtime --dry-run
+  run nself plugin install search --dry-run
   assert_success
   if [ -n "$saved_key" ]; then
     export NSELF_PLUGIN_LICENSE_KEY="$saved_key"
