@@ -340,6 +340,11 @@ cmd_install() {
   export NSELF_PROJECT_DIR="$(pwd)"
   sync_plugin_source "$plugin_name"
 
+  # Symlink plugin-provided CLI binaries (e.g. nclaw) into ~/.nself/bin/
+  if declare -f plugin_symlink_bins >/dev/null 2>&1; then
+    plugin_symlink_bins "$plugin_name" || true
+  fi
+
   log_success "Plugin '$plugin_name' installed successfully!"
 
   # Record in project plugin list if running inside a project directory

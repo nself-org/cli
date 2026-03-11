@@ -969,3 +969,55 @@ plugin_validate_signature() {
     return 1
   fi
 }
+
+# ============================================================================
+# Plugin Binary Symlinking
+# ============================================================================
+
+# plugin_symlink_bins <plugin_name>
+# Reads the "bins" array from a plugin's plugin.json and creates symlinks in
+# ~/.nself/bin/ so the binaries are available in PATH without any manual setup.
+# Called automatically after plugin install.
+# Bash 3.2 compatible — no declare -A, no ${var,,}.
+plugin_symlink_bins() {
+  local plugin_name="$1"
+  local plugin_dir="${PLUGIN_DIR}/${plugin_name}"
+  local plugin_json="${plugin_dir}/plugin.json"
+  local nself_bin="${HOME}/.nself/bin"
+
+  [ -f "$plugin_json" ] || return 0
+
+  # Extract bins array — python3 preferred, jq fallback
+  local bins=""
+  if command -v python3 >/dev/null 2>&1; then
+    bins=$(python3 - "$plugin_json" <<'PYEOF' 2>/dev/null
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    for b in d.get("bins", []):
+        print(b)
+except Exception:
+    pass
+PYEOF
+) || true
+  elif command -v jq >/dev/null 2>&1; then
+    bins=$(jq -r '.bins[]? // empty' "$plugin_json" 2>/dev/null) || true
+  fi
+
+  [ -z "$bins" ] && return 0
+
+  mkdir -p "$nself_bin" 2>/dev/null || true
+
+  local bin_name
+  while IFS= read -r bin_name; do
+    [ -z "$bin_name" ] && continue
+    local src="${plugin_dir}/bin/${bin_name}"
+    local dest="${nself_bin}/${bin_name}"
+    if [ -f "$src" ]; then
+      ln -sf "$src" "$dest" 2>/dev/null || true
+      printf '\033[0;32m[plugin]\033[0m Installed command: %s\n' "$bin_name"
+    fi
+  done <<BINS
+$bins
+BINS
+}
