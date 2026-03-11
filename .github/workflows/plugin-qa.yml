@@ -158,7 +158,7 @@ jobs:
     runs-on: ubuntu-latest
     # Manual test: enable by setting FULL_PLUGIN_QA secret to "1".
     # Requires Docker-in-Docker or a self-hosted runner with Docker available.
-    if: ${{ vars.FULL_PLUGIN_QA == '1' }}
+    if: ${{ vars.FULL_PLUGIN_QA == '1' || false }}
     strategy:
       fail-fast: false
       matrix:

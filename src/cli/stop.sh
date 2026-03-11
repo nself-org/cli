@@ -248,8 +248,7 @@ cmd_stop() {
       i=$((i + 1))
       sleep 0.1
     done
-    wait $compose_pid
-    result=$?
+    result=0; wait $compose_pid || result=$?
   fi
 
   if [[ $result -eq 0 ]]; then
