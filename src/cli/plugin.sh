@@ -341,9 +341,8 @@ cmd_install() {
   sync_plugin_source "$plugin_name"
 
   # Symlink plugin-provided CLI binaries (e.g. nclaw) into ~/.nself/bin/
-  if declare -f plugin_symlink_bins >/dev/null 2>&1; then
-    plugin_symlink_bins "$plugin_name" || true
-  fi
+  # core.sh always defines plugin_symlink_bins; guard via || true for safety (Bash 3.2 compatible)
+  plugin_symlink_bins "$plugin_name" 2>/dev/null || true
 
   log_success "Plugin '$plugin_name' installed successfully!"
 
