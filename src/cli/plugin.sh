@@ -1845,8 +1845,10 @@ Runtime Management:
   stop --all              Stop all running plugins
     --force                 Force-stop all immediately
   restart <name>          Restart a plugin
-  logs <name>             View plugin logs
-    -f, --follow            Follow log output
+  logs <name>             View plugin logs (Docker or file, color-coded)
+    -f, --follow            Follow log output in real time
+    --no-follow             Exit after printing (default)
+    --lines N, -n N         Number of lines to show (default: 100)
   ps | running            List running plugins
   health                  Health check all running plugins
 
@@ -2062,11 +2064,35 @@ main() {
       local plugin_name="$1"
       shift || true
       local follow=false
+      local lines=100
       while [[ $# -gt 0 ]]; do
         case "$1" in
           -f | --follow)
             follow=true
             shift
+            ;;
+          --no-follow)
+            follow=false
+            shift
+            ;;
+          --lines|-n)
+            shift
+            lines="${1:-100}"
+            shift
+            ;;
+          --help|-h)
+            printf "Usage: nself plugin logs <name> [options]\n\n"
+            printf "View plugin container logs with color-coded output.\n\n"
+            printf "Options:\n"
+            printf "  -f, --follow      Follow log output in real time\n"
+            printf "  --no-follow       Exit after printing (default)\n"
+            printf "  --lines N, -n N   Number of lines to show (default: 100)\n"
+            printf "  --help, -h        Show this help text\n\n"
+            printf "Examples:\n"
+            printf "  nself plugin logs ai\n"
+            printf "  nself plugin logs ai -f\n"
+            printf "  nself plugin logs ai --lines 500\n"
+            return 0
             ;;
           *)
             shift
@@ -2075,10 +2101,10 @@ main() {
       done
       if [[ -z "$plugin_name" ]]; then
         log_error "Plugin name required"
-        printf "\nUsage: nself plugin logs <name> [-f|--follow]\n"
+        printf "\nUsage: nself plugin logs <name> [-f|--follow] [--lines N]\n"
         return 1
       fi
-      show_plugin_logs "$plugin_name" "$follow"
+      show_plugin_logs "$plugin_name" "$follow" "$lines"
       ;;
     ps | running)
       list_running_plugins

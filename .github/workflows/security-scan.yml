@@ -216,7 +216,9 @@ jobs:
           printf "\033[34mRunning Docker Bench Security checks...\033[0m\n"
 
           # Check Dockerfiles for security best practices
-          find src/templates -name "Dockerfile*" | while read -r dockerfile; do
+          # Use -q on all grep calls to suppress output (avoids spurious GitHub annotations)
+          # and || true on the pipeline to prevent pipefail from propagating grep exit codes.
+          while IFS= read -r dockerfile; do
             printf "\033[33mChecking: %s\033[0m\n" "$dockerfile"
 
             # Check for USER instruction (non-root)
@@ -229,16 +231,17 @@ jobs:
               printf "\033[33m  INFO: No HEALTHCHECK instruction\033[0m\n"
             fi
 
-            # Check for hardcoded secrets
-            if grep -E "PASSWORD|SECRET|TOKEN|KEY" "$dockerfile" | grep -v "ARG\|ENV"; then
-              printf "\033[31m  WARNING: Possible hardcoded secrets\033[0m\n"
+            # Check for hardcoded secrets (use -q to avoid printing secret content)
+            if grep -qE "PASSWORD|SECRET|TOKEN|KEY" "$dockerfile" && \
+               grep -E "PASSWORD|SECRET|TOKEN|KEY" "$dockerfile" | grep -qvE "^(ARG|ENV)"; then
+              printf "\033[31m  WARNING: Possible hardcoded secrets in %s\033[0m\n" "$dockerfile"
             fi
 
-            # Check for latest tag
-            if grep "^FROM.*:latest" "$dockerfile"; then
+            # Check for latest tag (use -q to avoid printing FROM lines as annotations)
+            if grep -q "^FROM.*:latest" "$dockerfile"; then
               printf "\033[33m  INFO: Using :latest tag (prefer specific versions)\033[0m\n"
             fi
-          done
+          done < <(find src/templates -name "Dockerfile*") || true
 
   security-report:
     name: Generate Security Report

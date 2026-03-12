@@ -103,7 +103,7 @@ teardown() {
   run nself build --check-only
   # May fail if Docker not available — that is acceptable
   # What matters is that the command exists and parses args correctly
-  assert [ "$status" -eq 0 ] || assert_output --partial "error\|warning\|check"
+  assert [ "$status" -eq 0 ] || assert_output --regexp "error|warning|check"
 }
 
 # ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ teardown() {
   nself start
   run nself status
   assert_success
-  assert_output --partial "running\|up\|healthy"
+  assert_output --regexp "running|up|healthy"
 }
 
 @test "nself stop exits 0" {

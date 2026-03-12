@@ -1061,23 +1061,70 @@ health_check_all() {
 # Logs
 # ============================================================================
 
-# Show plugin logs
+# Color-code log output: ERROR lines red, WARN lines yellow
+_colorize_logs() {
+  while IFS= read -r line; do
+    case "$line" in
+      *ERROR*|*error*|*Error*)
+        printf '\033[0;31m%s\033[0m\n' "$line"
+        ;;
+      *WARN*|*warn*|*Warn*|*WARNING*)
+        printf '\033[0;33m%s\033[0m\n' "$line"
+        ;;
+      *)
+        printf '%s\n' "$line"
+        ;;
+    esac
+  done
+}
+
+# Show plugin logs — tries Docker container first, falls back to log file
 show_plugin_logs() {
   local plugin_name="$1"
   local follow="${2:-false}"
+  local lines="${3:-100}"
 
+  # Determine Docker container name (project prefix + plugin name)
+  local project_name="${COMPOSE_PROJECT_NAME:-nself}"
+  local container_name="${project_name}-nself-${plugin_name}-1"
+  # Also try alternate naming: project_nself-plugin-1
+  local container_alt="${project_name}_nself-${plugin_name}_1"
+
+  # Try Docker container logs first
+  if command -v docker >/dev/null 2>&1; then
+    local docker_name=""
+    if docker inspect "$container_name" >/dev/null 2>&1; then
+      docker_name="$container_name"
+    elif docker inspect "$container_alt" >/dev/null 2>&1; then
+      docker_name="$container_alt"
+    elif docker inspect "nself-${plugin_name}" >/dev/null 2>&1; then
+      docker_name="nself-${plugin_name}"
+    fi
+
+    if [[ -n "$docker_name" ]]; then
+      if [[ "$follow" == "true" ]]; then
+        docker logs -f --tail "$lines" "$docker_name" 2>&1 | _colorize_logs
+      else
+        docker logs --tail "$lines" "$docker_name" 2>&1 | _colorize_logs
+      fi
+      return $?
+    fi
+  fi
+
+  # Fall back to log file
   local log_file="$PLUGIN_LOGS_DIR/${plugin_name}.log"
 
   if [[ ! -f "$log_file" ]]; then
     log_error "No logs found for $plugin_name"
-    printf "Log file: %s\n" "$log_file"
+    printf "No Docker container or log file found.\n"
+    printf "Is the plugin running? Check with: nself plugin status\n"
     return 1
   fi
 
   if [[ "$follow" == "true" ]]; then
-    tail -f "$log_file"
+    tail -f -n "$lines" "$log_file" | _colorize_logs
   else
-    tail -50 "$log_file"
+    tail -n "$lines" "$log_file" | _colorize_logs
   fi
 }
 

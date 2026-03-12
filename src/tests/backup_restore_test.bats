@@ -20,6 +20,19 @@ skip_if_no_docker() {
   fi
 }
 
+nself_initialized() {
+  [[ -f ".env" ]] || return 1
+  command -v nself >/dev/null 2>&1 || return 1
+  nself status >/dev/null 2>&1 || return 1
+}
+
+skip_if_no_integration() {
+  skip_if_no_docker
+  if ! nself_initialized; then
+    skip "nself project not initialized (requires nself init + running services)"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Help flags (no Docker required)
 # ---------------------------------------------------------------------------
@@ -61,7 +74,7 @@ skip_if_no_docker() {
 @test "nself backup restore without name fails" {
   run nself backup restore
   assert_failure
-  assert_output --partial "name\|backup\|required\|argument\|usage"
+  assert_output --regexp "name|backup|required|argument|usage"
 }
 
 @test "nself backup delete without name fails" {
@@ -72,7 +85,7 @@ skip_if_no_docker() {
 @test "nself backup restore with nonexistent backup name fails" {
   run nself backup restore --name "backup-that-does-not-exist-zzz"
   assert_failure
-  assert_output --partial "not found\|does not exist\|no backup"
+  assert_output --regexp "not found|does not exist|no backup"
 }
 
 # ---------------------------------------------------------------------------
@@ -80,24 +93,24 @@ skip_if_no_docker() {
 # ---------------------------------------------------------------------------
 
 @test "nself backup create produces a backup file" {
-  skip_if_no_docker
+  skip_if_no_integration
   BACKUP_NAME="test-backup-$(date +%s)"
   run nself backup create --name "$BACKUP_NAME"
   assert_success
-  assert_output --partial "$BACKUP_NAME\|created\|success"
+  assert_output --regexp "$BACKUP_NAME|created|success"
 }
 
 @test "nself backup list shows created backup" {
-  skip_if_no_docker
+  skip_if_no_integration
   BACKUP_NAME="test-list-$(date +%s)"
   nself backup create --name "$BACKUP_NAME"
   run nself backup list
   assert_success
-  assert_output --partial "$BACKUP_NAME"
+  assert_output --regexp "$BACKUP_NAME"
 }
 
 @test "nself backup restore succeeds with valid backup" {
-  skip_if_no_docker
+  skip_if_no_integration
   BACKUP_NAME="test-restore-$(date +%s)"
   nself backup create --name "$BACKUP_NAME"
   run nself backup restore --name "$BACKUP_NAME" --force
@@ -105,7 +118,7 @@ skip_if_no_docker() {
 }
 
 @test "nself backup delete removes a backup" {
-  skip_if_no_docker
+  skip_if_no_integration
   BACKUP_NAME="test-delete-$(date +%s)"
   nself backup create --name "$BACKUP_NAME"
   run nself backup delete --name "$BACKUP_NAME"

@@ -200,7 +200,7 @@ write_minimal_env() {
   assert_success
   run nself status
   assert_success
-  assert_output --partial "running\|healthy\|up"
+  assert_output --regexp "running|healthy|up"
 }
 
 @test "nself stop shuts down all services cleanly" {

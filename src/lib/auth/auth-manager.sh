@@ -1203,15 +1203,226 @@ auth_login_anonymous() {
   return 0
 }
 
-# Login with OAuth provider
+# Find a free TCP port in a given range
+# Usage: _oauth_find_free_port <start> <end>
+_oauth_find_free_port() {
+  local start="${1:-5555}"
+  local end="${2:-5600}"
+  local port="$start"
+  while [[ "$port" -le "$end" ]]; do
+    if ! nc -z localhost "$port" 2>/dev/null; then
+      printf "%d" "$port"
+      return 0
+    fi
+    port=$((port + 1))
+  done
+  return 1
+}
+
+# URL-encode a string — Bash 3.2+ compatible, no external deps
+# Usage: _oauth_url_encode <string>
+_oauth_url_encode() {
+  local str="$1"
+  local encoded=""
+  local i=0
+  local c=""
+  while [[ "$i" -lt "${#str}" ]]; do
+    c="${str:$i:1}"
+    case "$c" in
+      [A-Za-z0-9._~-]) encoded="${encoded}${c}" ;;
+      *) encoded="${encoded}$(printf '%%%02X' "'$c")" ;;
+    esac
+    i=$((i + 1))
+  done
+  printf "%s" "$encoded"
+}
+
+# One-shot HTTP callback server — reads one request, writes HTML response, prints request
+# Usage: _oauth_capture_callback <port> <timeout_secs>
+_oauth_capture_callback() {
+  local port="$1"
+  local timeout_secs="${2:-30}"
+
+  local html_body
+  html_body='<html><head><title>Login complete</title></head><body><h2>Login successful!</h2><p>You can close this tab and return to your terminal.</p><script>window.close();</script></body></html>'
+  local response
+  response="$(printf "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n%s" "$html_body")"
+
+  local request_file
+  request_file=$(mktemp /tmp/nself_oauth_XXXXXX)
+
+  # Source platform-compat for safe_timeout
+  local _compat
+  _compat="${NSELF_ROOT}/src/lib/utils/platform-compat.sh"
+  if [[ -f "$_compat" ]] && ! declare -f safe_timeout >/dev/null 2>&1; then
+    source "$_compat" 2>/dev/null || true
+  fi
+
+  # Determine nc listen syntax (OpenBSD nc: -l PORT; traditional nc: -l -p PORT)
+  if nc -h 2>&1 | grep -q '\-p'; then
+    # Traditional nc (some Linux distros)
+    printf "%s" "$response" | safe_timeout "$timeout_secs" nc -l -p "$port" > "$request_file" 2>/dev/null || true
+  else
+    # OpenBSD nc / macOS nc
+    printf "%s" "$response" | safe_timeout "$timeout_secs" nc -l "$port" > "$request_file" 2>/dev/null || true
+  fi
+
+  cat "$request_file"
+  rm -f "$request_file"
+}
+
+# Login with OAuth provider — browser-based PKCE flow
 # Usage: auth_login_oauth <provider>
 auth_login_oauth() {
-  local provider="$1"
+  local provider="${1:-google}"
 
-  # TODO: Implement OAuth login flow (OAUTH-003+)
-  # See: .ai/roadmap/v1.0/deferred-features.md (AUTH-004)
-  log_warning "auth_login_oauth not yet implemented (OAUTH-003+)"
-  return 1
+  # Validate provider
+  case "$provider" in
+    google|github|apple|facebook|twitter|gitlab|bitbucket) ;;
+    *)
+      log_error "Unsupported OAuth provider: $provider"
+      log_info "Supported: google github apple facebook twitter gitlab bitbucket"
+      return 1
+      ;;
+  esac
+
+  # Source platform-compat
+  local _compat="${NSELF_ROOT}/src/lib/utils/platform-compat.sh"
+  if [[ -f "$_compat" ]] && ! declare -f safe_timeout >/dev/null 2>&1; then
+    source "$_compat" 2>/dev/null || true
+  fi
+
+  # Load environment
+  if declare -f load_env_with_priority >/dev/null 2>&1; then
+    load_env_with_priority 2>/dev/null || true
+  fi
+
+  local base_domain="${BASE_DOMAIN:-local.nself.org}"
+  local auth_url="${AUTH_URL:-https://auth.${base_domain}}"
+  local nself_auth_dir="${HOME}/.nself/auth"
+  mkdir -p "$nself_auth_dir"
+  chmod 700 "$nself_auth_dir"
+
+  # Check nc is available
+  if ! command -v nc >/dev/null 2>&1; then
+    log_error "netcat (nc) is required for OAuth login but was not found"
+    log_info "Install with: brew install netcat (macOS) or apt-get install netcat (Linux)"
+    return 1
+  fi
+
+  # Find a free port for the local callback server
+  local callback_port
+  callback_port=$(_oauth_find_free_port 5555 5600)
+  if [[ -z "$callback_port" ]]; then
+    log_error "No free port available for OAuth callback (tried 5555-5600)"
+    return 1
+  fi
+
+  local callback_url
+  callback_url="http://localhost:${callback_port}/callback"
+  local encoded_callback
+  encoded_callback=$(_oauth_url_encode "$callback_url")
+
+  # Build nHost Auth OAuth URL
+  local oauth_url="${auth_url}/signin/provider/${provider}?redirectTo=${encoded_callback}"
+
+  log_info "Opening browser for ${provider} authentication..."
+  printf "  URL: %s\n" "$oauth_url"
+  printf "\n"
+  log_info "If the browser did not open, visit the URL above manually."
+  printf "\n"
+
+  # Open browser (cross-platform)
+  if command -v open >/dev/null 2>&1; then
+    open "$oauth_url" 2>/dev/null &
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$oauth_url" 2>/dev/null &
+  fi
+
+  log_info "Waiting for OAuth callback (timeout: 30s)..."
+
+  # Listen for one HTTP request on the callback port
+  local raw_request
+  raw_request=$(_oauth_capture_callback "$callback_port" 30)
+
+  if [[ -z "$raw_request" ]]; then
+    log_error "OAuth callback timed out. Authentication cancelled."
+    return 1
+  fi
+
+  # Extract refreshToken from the callback request
+  # nHost Auth sends: GET /callback?refreshToken=xxx&type=signinProvider HTTP/1.1
+  local refresh_token
+  refresh_token=$(printf "%s" "$raw_request" | grep -o 'refreshToken=[^& \n\r]*' | head -1 | cut -d= -f2-)
+
+  if [[ -z "$refresh_token" ]]; then
+    # Check if nHost sent an error
+    local error_param
+    error_param=$(printf "%s" "$raw_request" | grep -o 'error=[^& \n\r]*' | head -1 | cut -d= -f2-)
+    if [[ -n "$error_param" ]]; then
+      log_error "OAuth provider returned error: $error_param"
+    else
+      log_error "No token received from OAuth provider. Please try again."
+    fi
+    return 1
+  fi
+
+  log_info "Exchanging token..."
+
+  # Exchange refresh token for a full session via nHost Auth /token endpoint
+  local token_response
+  token_response=$(curl -s -X POST "${auth_url}/token" \
+    -H "Content-Type: application/json" \
+    -d "{\"refreshToken\": \"${refresh_token}\"}" 2>/dev/null)
+
+  if [[ -z "$token_response" ]]; then
+    log_error "Failed to exchange OAuth token — could not reach auth service"
+    return 1
+  fi
+
+  # Parse response fields (Bash 3.2+ compatible — no jq required)
+  local access_token
+  access_token=$(printf "%s" "$token_response" | grep -o '"accessToken":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+  local new_refresh_token
+  new_refresh_token=$(printf "%s" "$token_response" | grep -o '"refreshToken":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+  local user_id
+  user_id=$(printf "%s" "$token_response" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+  local user_email
+  user_email=$(printf "%s" "$token_response" | grep -o '"email":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+  if [[ -z "$access_token" ]]; then
+    # Try to extract an error message
+    local err_msg
+    err_msg=$(printf "%s" "$token_response" | grep -o '"message":"[^"]*"' | head -1 | cut -d'"' -f4)
+    log_error "Token exchange failed${err_msg:+: $err_msg}"
+    return 1
+  fi
+
+  # Use new refresh token if provided, fall back to original
+  local stored_refresh="${new_refresh_token:-$refresh_token}"
+
+  # Store session in ~/.nself/auth/session.json (mode 600 — owner read only)
+  local session_file="${nself_auth_dir}/session.json"
+  local created_at
+  created_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u '+%Y-%m-%dT%H:%M:%SZ')
+  printf '{\n  "provider": "%s",\n  "userId": "%s",\n  "email": "%s",\n  "accessToken": "%s",\n  "refreshToken": "%s",\n  "createdAt": "%s"\n}\n' \
+    "$provider" \
+    "${user_id:-}" \
+    "${user_email:-}" \
+    "$access_token" \
+    "$stored_refresh" \
+    "$created_at" > "$session_file"
+  chmod 600 "$session_file"
+
+  log_success "Logged in via ${provider}"
+  if [[ -n "${user_email:-}" ]]; then
+    log_info "User: ${user_email}"
+  fi
+  log_info "Session saved to ${session_file}"
+  return 0
 }
 
 # ============================================================================

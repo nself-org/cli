@@ -41,4 +41,4 @@ HELP
 }
 
 export -f cmd_admin
-[[ "${BASH_SOURCE[0]}" == "${0}" ]] && cmd_admin "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then cmd_admin "$@"; fi

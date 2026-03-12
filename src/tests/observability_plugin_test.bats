@@ -60,7 +60,7 @@ skip_if_monitoring_off() {
   run curl -fsS "http://localhost:9100/metrics"
   assert_success
   # Prometheus text format: lines starting with # HELP or metric_name{
-  assert_output --partial "# HELP\|node_"
+  assert_output --regexp "# HELP|node_"
 }
 
 # ---------------------------------------------------------------------------
@@ -79,7 +79,7 @@ skip_if_monitoring_off() {
   skip_if_monitoring_off
   run curl -fsS "http://localhost:9090/metrics"
   assert_success
-  assert_output --partial "go_"
+  assert_output --regexp "go_"
 }
 
 @test "prometheus: /api/v1/targets shows nself targets" {
@@ -87,7 +87,7 @@ skip_if_monitoring_off() {
   skip_if_monitoring_off
   run curl -fsS "http://localhost:9090/api/v1/targets"
   assert_success
-  assert_output --partial "activeTargets\|scrapePool"
+  assert_output --regexp "activeTargets|scrapePool"
 }
 
 # ---------------------------------------------------------------------------
@@ -100,7 +100,7 @@ skip_if_monitoring_off() {
   # Postgres exporter runs on port 9187
   run curl -fsS "http://localhost:9187/metrics"
   assert_success
-  assert_output --partial "pg_\|postgres_"
+  assert_output --regexp "pg_|postgres_"
 }
 
 # ---------------------------------------------------------------------------
@@ -112,7 +112,7 @@ skip_if_monitoring_off() {
   skip_if_monitoring_off
   run curl -fsS "http://localhost:3000/api/health"
   assert_success
-  assert_output --partial "ok\|database"
+  assert_output --regexp "ok|database"
 }
 
 # ---------------------------------------------------------------------------
@@ -124,5 +124,5 @@ skip_if_monitoring_off() {
   skip_if_monitoring_off
   run nself monitoring status
   assert_success
-  assert_output --partial "prometheus\|grafana\|loki"
+  assert_output --regexp "prometheus|grafana|loki"
 }

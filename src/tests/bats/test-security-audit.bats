@@ -90,13 +90,13 @@ teardown() {
   cd "$TEST_PROJECT_DIR"
   run nself security audit --no-docker
   # Should report the short password as a finding.
-  assert_output --partial "POSTGRES_PASSWORD\|postgres password\|too short\|minimum\|weak"
+  assert_output --regexp "POSTGRES_PASSWORD|postgres password|too short|minimum|weak"
 }
 
 @test "nself security audit detects weak HASURA admin secret" {
   cd "$TEST_PROJECT_DIR"
   run nself security audit --no-docker
-  assert_output --partial "admin secret\|ADMIN_SECRET\|too short\|minimum\|weak"
+  assert_output --regexp "admin secret|ADMIN_SECRET|too short|minimum|weak"
 }
 
 @test "nself security audit --format json produces JSON-like output" {
@@ -112,7 +112,7 @@ teardown() {
   # Weak credentials must produce a non-zero exit or at least output findings.
   # Accept exit 0 only if output contains a finding keyword.
   if [ "$status" -eq 0 ]; then
-    assert_output --partial "WARNING\|FAIL\|ISSUE\|weak\|short\|minimum"
+    assert_output --regexp "WARNING|FAIL|ISSUE|weak|short|minimum"
   fi
 }
 
@@ -141,7 +141,7 @@ teardown() {
   run nself build --check
   # Either exits non-zero or produces a warning about weak secrets.
   if [ "$status" -eq 0 ]; then
-    assert_output --partial "warning\|weak\|secret\|minimum"
+    assert_output --regexp "warning|weak|secret|minimum"
   fi
 }
 

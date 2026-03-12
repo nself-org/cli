@@ -208,4 +208,4 @@ HELP
 }
 
 export -f cmd_audit
-[[ "${BASH_SOURCE[0]}" == "${0}" ]] && cmd_audit "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then cmd_audit "$@"; fi

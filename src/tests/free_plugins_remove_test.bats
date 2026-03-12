@@ -96,11 +96,11 @@ load test_helper
 @test "nself plugin remove without name fails" {
   run nself plugin remove
   assert_failure
-  assert_output --partial "name\|plugin\|required\|argument"
+  assert_output --regexp "name|plugin|required|argument"
 }
 
 @test "nself plugin remove unknown plugin fails gracefully" {
   run nself plugin remove no-such-plugin-xyz --dry-run
   assert_failure
-  assert_output --partial "not found\|unknown\|not installed\|error"
+  assert_output --regexp "not found|unknown|not installed|error"
 }

@@ -25,7 +25,11 @@ cmd_db() {
       db_shell "$@"
       ;;
     backup)
-      if [[ "${1:-}" == "list" ]]; then
+      if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        printf "Usage: nself db backup [file|list]\n"
+        printf "\nCreate a database backup or list existing backups.\n"
+        return 0
+      elif [[ "${1:-}" == "list" ]]; then
         cli_header "nself db backup list"
         if ls backups/*.sql 2>/dev/null | head -1 > /dev/null 2>&1; then
           ls -lh backups/*.sql 2>/dev/null
@@ -46,7 +50,7 @@ cmd_db() {
       source "$(dirname "${BASH_SOURCE[0]}")/hasura.sh"
       cmd_hasura "$@"
       ;;
-    help)
+    help | --help | -h)
       db_help
       ;;
     *)
@@ -80,6 +84,15 @@ db_migrate() {
     create)
       migrate_create "$@"
       ;;
+    help | --help | -h)
+      printf "Usage: nself db migrate [up|down|status|create]\n"
+      printf "\nSubcommands:\n"
+      printf "  up      Apply pending migrations\n"
+      printf "  down    Revert last migration\n"
+      printf "  status  Show migration status\n"
+      printf "  create  Create new migration file\n"
+      return 0
+      ;;
     *)
       cli_error "Unknown migrate action: $action"
       printf "Usage: nself db migrate [up|down|status|create]\n"
@@ -90,6 +103,12 @@ db_migrate() {
 
 # Database seeding sub-commands
 db_seed() {
+  if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    printf "Usage: nself db seed [file]\n"
+    printf "\nSeed the database with initial data.\n"
+    return 0
+  fi
+
   # Source seed library
   if [[ -f "$SCRIPT_DIR/../lib/database/seed.sh" ]]; then
     source "$SCRIPT_DIR/../lib/database/seed.sh"
@@ -100,6 +119,12 @@ db_seed() {
 
 # Open database shell
 db_shell() {
+  if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    printf "Usage: nself db shell\n"
+    printf "\nOpen an interactive PostgreSQL shell.\n"
+    return 0
+  fi
+
   cli_header "nself db shell"
   cli_subheader "PostgreSQL interactive shell"
 

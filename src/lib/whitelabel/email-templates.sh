@@ -1571,16 +1571,53 @@ send_tenant_email() {
     return 1
   fi
 
-  # Get tenant-specific SMTP configuration (if available)
+  # Get tenant-specific SMTP configuration — DB first, env var fallback
   local tenant_smtp_host="${AUTH_SMTP_HOST:-}"
   local tenant_smtp_port="${AUTH_SMTP_PORT:-587}"
   local tenant_smtp_user="${AUTH_SMTP_USER:-}"
   local tenant_smtp_pass="${AUTH_SMTP_PASS:-}"
   local tenant_smtp_sender="${AUTH_SMTP_SENDER:-noreply@${BASE_DOMAIN:-localhost}}"
 
-  # TODO: Load tenant-specific SMTP config from database
-  # See: .ai/roadmap/v1.0/deferred-features.md (WHITELABEL-001)
-  # For now, use global SMTP config
+  # Load tenant-specific SMTP config from tenants.tenant_settings (key: smtp_config)
+  # Overwrites env var defaults when a per-tenant config is found in the DB
+  if [[ -n "$tenant_id" ]]; then
+    local _db_lib="${NSELF_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}/src/lib/database/core.sh"
+    if [[ -f "$_db_lib" ]] && ! declare -f db_query_raw >/dev/null 2>&1; then
+      source "$_db_lib" 2>/dev/null || true
+    fi
+
+    if declare -f db_query_raw >/dev/null 2>&1; then
+      local _smtp_json
+      _smtp_json=$(db_query_raw \
+        "SELECT value::text FROM tenants.tenant_settings WHERE tenant_id = '${tenant_id}' AND key = 'smtp_config' LIMIT 1" \
+        2>/dev/null)
+
+      if [[ -n "$_smtp_json" ]] && [[ "$_smtp_json" != "null" ]]; then
+        # Parse SMTP fields — prefer jq, fall back to grep/cut
+        local _db_host _db_port _db_user _db_pass _db_sender
+        if command -v jq >/dev/null 2>&1; then
+          _db_host=$(printf "%s" "$_smtp_json" | jq -r '.host // empty' 2>/dev/null)
+          _db_port=$(printf "%s" "$_smtp_json" | jq -r '.port // empty' 2>/dev/null)
+          _db_user=$(printf "%s" "$_smtp_json" | jq -r '.user // empty' 2>/dev/null)
+          _db_pass=$(printf "%s" "$_smtp_json" | jq -r '.pass // empty' 2>/dev/null)
+          _db_sender=$(printf "%s" "$_smtp_json" | jq -r '.sender // empty' 2>/dev/null)
+        else
+          # Fallback: basic grep-based JSON field extraction
+          _db_host=$(printf "%s" "$_smtp_json" | grep -o '"host"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+          _db_port=$(printf "%s" "$_smtp_json" | grep -o '"port"[[:space:]]*:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
+          _db_user=$(printf "%s" "$_smtp_json" | grep -o '"user"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+          _db_pass=$(printf "%s" "$_smtp_json" | grep -o '"pass"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+          _db_sender=$(printf "%s" "$_smtp_json" | grep -o '"sender"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4)
+        fi
+        # Apply DB values only when non-empty (allows partial override)
+        [[ -n "$_db_host" ]] && tenant_smtp_host="$_db_host"
+        [[ -n "$_db_port" ]] && tenant_smtp_port="$_db_port"
+        [[ -n "$_db_user" ]] && tenant_smtp_user="$_db_user"
+        [[ -n "$_db_pass" ]] && tenant_smtp_pass="$_db_pass"
+        [[ -n "$_db_sender" ]] && tenant_smtp_sender="$_db_sender"
+      fi
+    fi
+  fi
 
   if [[ -z "$tenant_smtp_host" ]]; then
     printf "${YELLOW}Warning: SMTP not configured for tenant: %s${NC}\n" "$tenant_id" >&2

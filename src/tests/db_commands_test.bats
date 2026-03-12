@@ -72,7 +72,7 @@ skip_if_no_docker() {
   run nself db migrate --nonexistent-flag-xyz
   # Should fail with a meaningful message, not a crash/stack trace
   assert_failure
-  assert_output --partial "error\|unknown\|usage\|help"
+  assert_output --regexp "error|unknown|usage|help"
 }
 
 @test "nself db restore without required args fails gracefully" {

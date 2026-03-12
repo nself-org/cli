@@ -293,6 +293,24 @@ cmd_auth_login() {
         provider="${1#*=}"
         shift
         ;;
+      --provider)
+        provider="${2:-}"
+        shift 2
+        ;;
+      --oauth=*)
+        provider="${1#*=}"
+        shift
+        ;;
+      --oauth)
+        # Accept: --oauth google  OR just --oauth (defaults to google)
+        if [[ "${2:-}" != "" ]] && [[ "${2:-}" != --* ]]; then
+          provider="$2"
+          shift 2
+        else
+          provider="google"
+          shift
+        fi
+        ;;
       --email=*)
         email="${1#*=}"
         shift
@@ -324,7 +342,6 @@ cmd_auth_login() {
   if [[ -n "$email" ]] && [[ -n "$password" ]]; then
     auth_login_email "$email" "$password"
   elif [[ -n "$provider" ]]; then
-    cli_warning "OAuth login not yet implemented (OAUTH-003+)"
     auth_login_oauth "$provider"
   elif [[ -n "$phone" ]]; then
     cli_warning "Phone login not yet implemented (AUTH-006)"

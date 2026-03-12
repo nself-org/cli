@@ -622,9 +622,67 @@ invoice_send_email() {
   info "Invoice ready to send to: ${recipient}"
   info "PDF: ${pdf_file}"
 
-  # TODO: Integrate with email service (SMTP, SendGrid, etc.)
-  # See: .ai/roadmap/v1.0/deferred-features.md (BILLING-001)
-  warn "Email sending not yet implemented. PDF generated at: ${pdf_file}"
+  # Attempt delivery via notify plugin if installed, else fall back to SMTP
+  local _notify_plugin_dir="${NSELF_PLUGIN_DIR:-$HOME/.nself/plugins}/notify"
+  local _notify_port="${NOTIFY_PORT:-3712}"
+  local _notify_host="${NOTIFY_HOST:-127.0.0.1}"
+  local _delivery_ok=0
+
+  if [[ -f "${_notify_plugin_dir}/plugin.json" ]] && command -v curl >/dev/null 2>&1; then
+    # Notify plugin is installed — POST to /notify/send
+    local _subject="Invoice ${invoice_id}"
+    local _body="Your invoice ${invoice_id} is attached. PDF path: ${pdf_file}"
+    local _payload
+    _payload=$(printf '{"channels":["Email"],"title":"%s","body":"%s","to":{"email":"%s"}}' \
+      "$_subject" "$_body" "$recipient")
+
+    local _http_status
+    _http_status=$(curl -s -o /dev/null -w "%{http_code}" \
+      -X POST "http://${_notify_host}:${_notify_port}/notify/send" \
+      -H "Content-Type: application/json" \
+      -d "$_payload" \
+      --max-time 10 2>/dev/null)
+
+    if [[ "$_http_status" == "200" ]]; then
+      success "Invoice notification sent via notify plugin to: ${recipient}"
+      _delivery_ok=1
+    else
+      warn "Notify plugin returned HTTP ${_http_status:-unreachable}. Falling back to SMTP."
+    fi
+  fi
+
+  if [[ "$_delivery_ok" -eq 0 ]]; then
+    # Fall back to direct SMTP via swaks
+    local smtp_host="${AUTH_SMTP_HOST:-}"
+    local smtp_port="${AUTH_SMTP_PORT:-587}"
+    local smtp_user="${AUTH_SMTP_USER:-}"
+    local smtp_pass="${AUTH_SMTP_PASS:-}"
+    local smtp_sender="${AUTH_SMTP_SENDER:-noreply@${BASE_DOMAIN:-localhost}}"
+
+    if [[ -z "$smtp_host" ]]; then
+      warn "SMTP not configured. Invoice PDF generated at: ${pdf_file}"
+      printf "%s" "$pdf_file"
+      return 0
+    fi
+
+    if command -v docker >/dev/null 2>&1; then
+      docker run --rm \
+        --network host \
+        boky/swaks \
+        --to "$recipient" \
+        --from "$smtp_sender" \
+        --server "${smtp_host}:${smtp_port}" \
+        --auth-user "$smtp_user" \
+        --auth-password "$smtp_pass" \
+        --tls \
+        --header "Subject: Invoice ${invoice_id}" \
+        --body "Your invoice ${invoice_id} is ready. PDF: ${pdf_file}" \
+        --timeout 30 2>&1 && success "Invoice emailed to: ${recipient}" \
+        || warn "SMTP delivery failed. Invoice PDF at: ${pdf_file}"
+    else
+      warn "Docker not available for SMTP. Invoice PDF at: ${pdf_file}"
+    fi
+  fi
 
   printf "%s" "$pdf_file"
 }

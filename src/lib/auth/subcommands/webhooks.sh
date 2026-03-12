@@ -124,4 +124,4 @@ EOF
 
 export -f cmd_webhooks
 
-[[ "${BASH_SOURCE[0]}" == "${0}" ]] && cmd_webhooks "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then cmd_webhooks "$@"; fi

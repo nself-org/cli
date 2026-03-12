@@ -35,7 +35,7 @@ _write_env() {
   cd "$TEST_PROJECT_DIR"
   run nself build --check
   assert_failure
-  assert_output --partial "admin secret\|ADMIN_SECRET\|too short\|minimum\|characters"
+  assert_output --regexp "admin secret|ADMIN_SECRET|too short|minimum|characters"
 }
 
 @test "nself build rejects postgres password shorter than minimum" {
@@ -45,7 +45,7 @@ _write_env() {
   cd "$TEST_PROJECT_DIR"
   run nself build --check
   assert_failure
-  assert_output --partial "POSTGRES_PASSWORD\|postgres\|too short\|minimum"
+  assert_output --regexp "POSTGRES_PASSWORD|postgres|too short|minimum"
 }
 
 @test "nself build rejects empty admin secret" {
@@ -77,7 +77,7 @@ _write_env() {
   cd "$TEST_PROJECT_DIR"
   run nself build --check
   # Should pass security check (may still fail for other reasons like missing Docker)
-  assert_output --partial "check\|valid\|ok\|pass" || assert_success
+  assert_output --regexp "check|valid|ok|pass" || assert_success
 }
 
 # ---------------------------------------------------------------------------
@@ -92,5 +92,5 @@ _write_env() {
   cd "$TEST_PROJECT_DIR"
   run nself build --check
   # Should warn or fail — JWT secret must be a JSON object with type + key
-  assert_output --partial "JWT\|jwt\|json\|format" || assert_failure
+  assert_output --regexp "JWT|jwt|json|format" || assert_failure
 }

@@ -61,6 +61,12 @@ tenant_init() {
 # ============================================================================
 
 tenant_create() {
+  if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    printf "Usage: nself tenant create <name> [--slug SLUG] [--plan PLAN]\n"
+    printf "\nCreate a new tenant.\n"
+    return 0
+  fi
+
   local name="$1"
   local slug=""
   local plan="free"
@@ -181,6 +187,12 @@ tenant_create_default() {
 }
 
 tenant_list() {
+  if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    printf "Usage: nself tenant list [--json]\n"
+    printf "\nList all tenants.\n"
+    return 0
+  fi
+
   local json_output=false
 
   # Parse arguments

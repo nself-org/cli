@@ -65,21 +65,21 @@ teardown() {
   # .env has no JWT secret — audit must flag it
   run nself security audit --no-docker
   # Audit exits non-zero when issues found, and mentions JWT
-  assert_output --partial "JWT\|jwt"
+  assert_output --regexp "JWT|jwt"
 }
 
 @test "nself security audit detects short admin secret" {
   cd "$TEST_PROJECT_DIR"
   printf 'HASURA_GRAPHQL_ADMIN_SECRET=short\n' >> .env
   run nself security audit --no-docker
-  assert_output --partial "admin secret\|ADMIN_SECRET\|too short\|minimum"
+  assert_output --regexp "admin secret|ADMIN_SECRET|too short|minimum"
 }
 
 @test "nself security audit detects short postgres password" {
   cd "$TEST_PROJECT_DIR"
   printf 'POSTGRES_PASSWORD=weak\n' >> .env
   run nself security audit --no-docker
-  assert_output --partial "POSTGRES_PASSWORD\|postgres password\|too short\|minimum"
+  assert_output --regexp "POSTGRES_PASSWORD|postgres password|too short|minimum"
 }
 
 @test "nself security audit --format json outputs valid json" {
@@ -97,5 +97,5 @@ teardown() {
   cd "$TEST_PROJECT_DIR"
   run nself build --check
   # Either exits non-zero or outputs a warning about weak secrets
-  [ "$status" -ne 0 ] || assert_output --partial "warning\|weak\|secret\|minimum"
+  [ "$status" -ne 0 ] || assert_output --regexp "warning|weak|secret|minimum"
 }

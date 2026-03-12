@@ -72,7 +72,7 @@ load test_helper
 @test "nself plugin install without plugin name fails" {
   run nself plugin install
   assert_failure
-  assert_output --partial "plugin\|name\|required\|usage"
+  assert_output --regexp "plugin|name|required|usage"
 }
 
 @test "nself plugin remove without plugin name fails" {
@@ -112,7 +112,7 @@ load test_helper
 @test "nself license validate without key argument fails" {
   run nself license validate
   assert_failure
-  assert_output --partial "license key\|key\|required\|argument"
+  assert_output --regexp "license key|key|required|argument"
 }
 
 @test "nself license set without key argument fails" {
@@ -123,5 +123,5 @@ load test_helper
 @test "nself license validate with malformed key fails" {
   run nself license validate "not-a-valid-key"
   assert_failure
-  assert_output --partial "invalid\|format\|key"
+  assert_output --regexp "invalid|format|key"
 }

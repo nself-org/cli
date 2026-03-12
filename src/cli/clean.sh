@@ -20,6 +20,7 @@ cmd_clean() {
   local networks=false
   local containers=false
   local builders=false
+  local host_artifacts=false
 
   # Parse options
   while [[ $# -gt 0 ]]; do
@@ -46,6 +47,10 @@ cmd_clean() {
         ;;
       --builders | -b)
         builders=true
+        shift
+        ;;
+      --host-artifacts)
+        host_artifacts=true
         shift
         ;;
       --help | -h)
@@ -199,6 +204,37 @@ cmd_clean() {
     fi
   fi
 
+  # Clean host build artifacts (cargo install temp dirs, pnpm setup dirs)
+  if [[ "$all" == "true" ]] || [[ "$host_artifacts" == "true" ]]; then
+    printf "${COLOR_BLUE}⠋${COLOR_RESET} Cleaning host build artifacts..."
+    local cleaned_count=0
+
+    # cargo install temp dirs — created by `cargo install` on the host, never auto-cleaned
+    if ls /tmp/cargo-install* >/dev/null 2>&1; then
+      local cargo_count
+      cargo_count=$(ls -d /tmp/cargo-install* 2>/dev/null | wc -l | tr -d ' ')
+      rm -rf /tmp/cargo-install* 2>/dev/null || true
+      cleaned_count=$((cleaned_count + cargo_count))
+    fi
+
+    # pnpm official installer dir — left behind by `curl https://get.pnpm.io/install.sh | sh`
+    if [ -d "${HOME}/setup-pnpm" ]; then
+      rm -rf "${HOME}/setup-pnpm" 2>/dev/null || true
+      cleaned_count=$((cleaned_count + 1))
+    fi
+    # Also check /root/setup-pnpm (when run as root)
+    if [ -d "/root/setup-pnpm" ] && [ "$(id -u)" = "0" ]; then
+      rm -rf /root/setup-pnpm 2>/dev/null || true
+      cleaned_count=$((cleaned_count + 1))
+    fi
+
+    if [ "$cleaned_count" -gt 0 ]; then
+      printf "\r${COLOR_GREEN}✓${COLOR_RESET} Removed %d host build artifact(s)                      \n" "$cleaned_count"
+    else
+      printf "\r${COLOR_GREEN}✓${COLOR_RESET} No host build artifacts to clean                       \n"
+    fi
+  fi
+
   # System-wide prune (if --all)
   if [[ "$all" == "true" ]]; then
     echo
@@ -244,8 +280,9 @@ show_help() {
   echo "  -c, --containers   Remove stopped containers"
   echo "  -v, --volumes      Remove project volumes (WARNING: deletes data)"
   echo "  -n, --networks     Remove project networks"
-  echo "  -b, --builders     Remove Docker Buildx builders and buildkit containers"
-  echo "  -a, --all          Clean everything (containers, images, volumes, networks, builders)"
+  echo "  -b, --builders         Remove Docker Buildx builders and buildkit containers"
+  echo "      --host-artifacts   Remove host build artifacts (/tmp/cargo-install*, ~/setup-pnpm)"
+  echo "  -a, --all              Clean everything (containers, images, volumes, networks, builders, artifacts)"
   echo "  -h, --help         Show this help message"
   echo ""
   echo "Examples:"

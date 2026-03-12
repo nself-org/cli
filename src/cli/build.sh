@@ -55,6 +55,7 @@ show_build_help() {
   echo "  --debug               Enable debug mode"
   echo "  --security-report     Show comprehensive security analysis"
   echo "  --allow-insecure      Allow insecure config (DEV ONLY, not for prod)"
+  echo "  --check               Validate config security without building (no Docker required)"
   echo ""
   echo "Examples:"
   echo "  nself build                    # Build with current configuration"
@@ -94,6 +95,7 @@ cmd_build() {
   local no_cache=false
   local allow_insecure=false
   local security_report=false
+  local check_only=false
 
   # Parse arguments
   while [[ $# -gt 0 ]]; do
@@ -130,6 +132,10 @@ cmd_build() {
         security_report=true
         shift
         ;;
+      --check)
+        check_only=true
+        shift
+        ;;
       *)
         echo "Error: Unknown option: $1" >&2
         echo "Use 'nself build --help' for usage information" >&2
@@ -141,6 +147,54 @@ cmd_build() {
   # Export no-cache flag for core.sh
   export NSELF_NO_CACHE="$no_cache"
   export NSELF_ALLOW_INSECURE="$allow_insecure"
+
+  # --check mode: validate config security without building
+  if [[ "$check_only" == "true" ]]; then
+    local check_failed=false
+
+    # Load .env if present
+    if [[ -f ".env" ]]; then
+      # shellcheck disable=SC1091
+      { set +u; source ".env"; } 2>/dev/null || true
+    fi
+
+    # Validate POSTGRES_PASSWORD minimum length (16 chars)
+    local pg_pass="${POSTGRES_PASSWORD:-}"
+    if [[ -z "$pg_pass" ]]; then
+      echo "Error: POSTGRES_PASSWORD is empty (minimum 16 characters required)" >&2
+      check_failed=true
+    elif [[ "${#pg_pass}" -lt 16 ]]; then
+      echo "Error: POSTGRES_PASSWORD too short (${#pg_pass} chars, minimum 16 required)" >&2
+      check_failed=true
+    fi
+
+    # Validate HASURA_GRAPHQL_ADMIN_SECRET minimum length (32 chars)
+    local admin_secret="${HASURA_GRAPHQL_ADMIN_SECRET:-}"
+    if [[ -z "$admin_secret" ]]; then
+      echo "Error: HASURA_GRAPHQL_ADMIN_SECRET is empty (minimum 32 characters required)" >&2
+      check_failed=true
+    elif [[ "${#admin_secret}" -lt 32 ]]; then
+      echo "Error: HASURA_GRAPHQL_ADMIN_SECRET (admin secret) too short (${#admin_secret} chars, minimum 32 required)" >&2
+      check_failed=true
+    fi
+
+    # Validate HASURA_GRAPHQL_JWT_SECRET format (must be JSON object or empty)
+    local jwt_secret="${HASURA_GRAPHQL_JWT_SECRET:-}"
+    if [[ -n "$jwt_secret" ]]; then
+      # JWT secret must be a JSON object with "type" and "key" fields
+      if ! echo "$jwt_secret" | grep -q '^{'; then
+        echo "Warning: HASURA_GRAPHQL_JWT_SECRET should be a JSON object (e.g. {\"type\":\"HS256\",\"key\":\"...\"}) not a plain string" >&2
+        check_failed=true
+      fi
+    fi
+
+    if [[ "$check_failed" == "true" ]]; then
+      return 1
+    fi
+
+    echo "Security check passed — configuration is valid"
+    return 0
+  fi
 
   # Check Docker availability
   if ! command -v docker >/dev/null 2>&1; then

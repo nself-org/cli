@@ -72,6 +72,28 @@ load test_helper
 }
 
 # ---------------------------------------------------------------------------
+# tokens import — 5-token bulk import
+# ---------------------------------------------------------------------------
+
+@test "nself mux tokens import reads 5 fake tokens from file without file-parsing error" {
+  tmpfile="$(mktemp /tmp/mux-tokens-XXXXXX.json)"
+  printf '[
+    {"name":"tok1","token":"Bearer aaa111","description":"Webhook alpha"},
+    {"name":"tok2","token":"Bearer bbb222","description":"Webhook beta"},
+    {"name":"tok3","token":"Bearer ccc333","description":"Webhook gamma"},
+    {"name":"tok4","token":"Bearer ddd444","description":"Webhook delta"},
+    {"name":"tok5","token":"Bearer eee555","description":"Webhook epsilon"}
+  ]' > "$tmpfile"
+  run bash "${BATS_TEST_DIRNAME}/../../cli/mux.sh" tokens import --file "$tmpfile"
+  rm -f "$tmpfile"
+  # No mux service in CI — connection refused is expected. Verify the file was parsed (no
+  # "File not found", "empty", or "not found" errors from our validation code).
+  [[ "$output" != *"not found"* ]]
+  [[ "$output" != *"is empty"* ]]
+  [[ "$output" != *"parse error"* ]]
+}
+
+# ---------------------------------------------------------------------------
 # tokens import — file format handling
 # ---------------------------------------------------------------------------
 

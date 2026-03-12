@@ -1,5 +1,4 @@
 name: CLI Test Coverage (bashcov)
-# Badge: https://codecov.io/gh/nself-org/cli/branch/main/graph/badge.svg?token=CODECOV_TOKEN
 
 on:
   push:
@@ -15,42 +14,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y bats ruby ruby-dev build-essential
-          sudo gem install bashcov simplecov simplecov-cobertura --no-document
+          sudo apt-get install -y bats
+          gem install bashcov simplecov simplecov-cobertura --no-document
 
       - name: Install nself binary
         run: |
           chmod +x "${{ github.workspace }}/bin/nself"
           printf '%s\n' "${{ github.workspace }}/bin" >> "$GITHUB_PATH"
 
-      - name: Configure bashcov
-        run: |
-          cat > .simplecov <<'SIMPLECOV'
-          SimpleCov.start do
-            add_filter '/tests/'
-            minimum_coverage 80
-            coverage_dir 'coverage'
-            formatter SimpleCov::Formatter::MultiFormatter.new([
-              SimpleCov::Formatter::HTMLFormatter,
-              SimpleCov::Formatter::CoberturaFormatter,
-            ])
-          end
-          SIMPLECOV
-
       - name: Run bats with bashcov (structured tests)
         run: |
           SKIP_DOCKER_TESTS=1 bashcov --skip-uncovered -- \
-            bats --tap src/tests/bats/ 2>&1 | tail -50
-        continue-on-error: true
+            bats --tap src/tests/bats/ 2>&1 | tee /tmp/bats-structured.log | tail -80
 
       - name: Run bats with bashcov (legacy tests)
         run: |
           if [ -d src/tests ] && ls src/tests/*.bats >/dev/null 2>&1; then
             SKIP_DOCKER_TESTS=1 bashcov --skip-uncovered -- \
-              bats src/tests/*.bats 2>&1 | tail -50
+              bats src/tests/*.bats 2>&1 | tee /tmp/bats-legacy.log | tail -80
           fi
         continue-on-error: true
 
@@ -60,13 +49,10 @@ jobs:
             printf 'ERROR: No coverage report generated. bashcov did not run successfully.\n' >&2
             exit 1
           fi
-          # simplecov enforces minimum_coverage 80 — if it completed, threshold was met.
-          # Parse the HTML report as a double-check.
           if [ -f coverage/index.html ]; then
             pct=$(grep -o '[0-9]*\.[0-9]*%' coverage/index.html | head -1 | tr -d '%')
             if [ -n "$pct" ]; then
               printf 'Coverage: %s%%\n' "$pct"
-              # Use awk for float comparison (Bash 3.2 compatible)
               awk -v pct="$pct" 'BEGIN {
                 if (pct + 0 < 80) {
                   printf "FAIL: coverage %s%% is below 80%% minimum\n", pct > "/dev/stderr"
@@ -78,9 +64,18 @@ jobs:
           fi
 
       - name: Upload coverage to Codecov
+        if: always()
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/coverage.xml
           flags: cli-bats
           fail_ci_if_error: false
+
+      - name: Upload coverage HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14

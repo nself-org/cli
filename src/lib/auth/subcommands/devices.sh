@@ -34,4 +34,4 @@ HELP
 }
 
 export -f cmd_devices
-[[ "${BASH_SOURCE[0]}" == "${0}" ]] && cmd_devices "$@"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then cmd_devices "$@"; fi

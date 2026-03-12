@@ -128,7 +128,7 @@ skip_if_no_docker() {
   nself plugin install search
   run curl -fsS "http://localhost:3302/health"
   assert_success
-  assert_output --partial "ok\|healthy\|status"
+  assert_output --regexp "ok|healthy|status"
 }
 
 @test "free plugin install webhooks runs health check" {
