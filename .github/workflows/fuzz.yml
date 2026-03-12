@@ -1,0 +1,42 @@
+name: Fuzz Testing (CLI Validators)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/lib/utils/validation.sh'
+      - 'scripts/fuzz-validators.sh'
+  schedule:
+    # Every Saturday at 01:00 UTC (offset from plugins-pro fuzz at 00:00)
+    - cron: '0 1 * * 6'
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: 'Iterations per validator (default: 10000)'
+        required: false
+        default: '10000'
+
+jobs:
+  fuzz-validators:
+    name: Fuzz CLI input validators
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run fuzz tests
+        run: |
+          ITERATIONS="${{ inputs.iterations }}"
+          ITERATIONS="${ITERATIONS:-10000}"
+          bash scripts/fuzz-validators.sh "$ITERATIONS"
+
+      - name: Upload fuzz results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-cli-crash-${{ github.run_id }}
+          path: scripts/fuzz-validators.sh
+          retention-days: 30
