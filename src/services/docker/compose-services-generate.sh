@@ -67,7 +67,7 @@ if [[ "$NESTJS_ENABLED" == "true" ]]; then
     volumes:
       - ./nest/$service/src:/app/src:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:$SERVICE_PORT/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:$SERVICE_PORT/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -162,7 +162,7 @@ if [[ "$GOLANG_ENABLED" == "true" ]]; then
     networks:
       - \${PROJECT_NAME}_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:$SERVICE_PORT/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:$SERVICE_PORT/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -208,7 +208,7 @@ if [[ "$PYTHON_ENABLED" == "true" ]]; then
     volumes:
       - ./py/$service:/app:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:$SERVICE_PORT/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:$SERVICE_PORT/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -70,7 +70,7 @@ EOF
   if [[ -n "$service_port" && "$service_port" != "0" ]]; then
     cat <<EOF
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${service_port}/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:${service_port}/health"]
       interval: 30s
       timeout: 10s
       retries: 5

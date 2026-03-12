@@ -127,7 +127,7 @@ YAML
   if [[ -n "$port" && "$port" != "0" ]]; then
     cat <<YAML
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${port}/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:${port}/health"]
       interval: 30s
       timeout: 10s
       retries: 5
