@@ -139,13 +139,13 @@ const arbInvalidEnvVarName = fc.oneof(
 
 // Valid license key: nself_pro_/nself_max_ prefix + alphanumeric suffix, total ≥42
 const arbLicensePrefix = fc.oneof(fc.constant('nself_pro_'), fc.constant('nself_max_'));
+const ALNUM = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+const arbAlnumSuffix = fc
+  .array(fc.integer({ min: 0, max: ALNUM.length - 1 }), { minLength: 32, maxLength: 64 })
+  .map((indices) => indices.map((i) => ALNUM[i]).join(''));
 const arbValidLicenseKey = fc
-  .tuple(
-    arbLicensePrefix,
-    fc.stringMatching(/^[a-zA-Z0-9]+$/).filter((s) => s.length >= 32)
-  )
-  .map(([prefix, suffix]) => prefix + suffix)
-  .filter((k) => k.length >= 42);
+  .tuple(arbLicensePrefix, arbAlnumSuffix)
+  .map(([prefix, suffix]) => prefix + suffix);
 
 // Invalid license key
 const arbInvalidLicenseKey = fc.oneof(
