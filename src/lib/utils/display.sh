@@ -43,9 +43,17 @@ if [[ -n "${NO_COLOR:-}" ]]; then
   COLOR_BOLD=""
   COLOR_DIM=""
 elif [[ ! -t 1 ]]; then
-  # Not a terminal, but preserve colors for when they're needed
-  # The individual commands can check [[ -t 1 ]] if they want to disable colors
-  : # Do nothing, keep colors defined
+  # Not a terminal — disable colors so piped output and tests get plain text
+  COLOR_RESET=""
+  COLOR_RED=""
+  COLOR_GREEN=""
+  COLOR_YELLOW=""
+  COLOR_BLUE=""
+  COLOR_MAGENTA=""
+  COLOR_CYAN=""
+  COLOR_WHITE=""
+  COLOR_BOLD=""
+  COLOR_DIM=""
 fi
 
 # Logging functions - All commands must use these

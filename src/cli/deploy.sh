@@ -3883,6 +3883,11 @@ cmd_deploy() {
     # Environment deployment
     staging | production | prod | dev | test)
       shift
+      # Handle --help on environment subcommands
+      if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+        show_deploy_help
+        return 0
+      fi
       deploy_environment "$subcommand" "$@"
       ;;
 

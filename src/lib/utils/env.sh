@@ -3,19 +3,30 @@
 
 # Environment loading and management utilities
 
-# Export colors for consistency
-export COLOR_RESET='\033[0m'
-
 set -euo pipefail
 
-export COLOR_BOLD='\033[1m'
-export COLOR_RED='\033[0;31m'
-export COLOR_GREEN='\033[0;32m'
-export COLOR_YELLOW='\033[0;33m'
-export COLOR_BLUE='\033[0;34m'
-export COLOR_MAGENTA='\033[0;35m'
-export COLOR_CYAN='\033[0;36m'
-export COLOR_DIM='\033[2m'
+# Export colors only when writing to a real terminal and NO_COLOR is not set
+if [[ -z "${NO_COLOR:-}" ]] && [[ -t 1 ]]; then
+  export COLOR_RESET=$'\033[0m'
+  export COLOR_BOLD=$'\033[1m'
+  export COLOR_RED=$'\033[0;31m'
+  export COLOR_GREEN=$'\033[0;32m'
+  export COLOR_YELLOW=$'\033[0;33m'
+  export COLOR_BLUE=$'\033[0;34m'
+  export COLOR_MAGENTA=$'\033[0;35m'
+  export COLOR_CYAN=$'\033[0;36m'
+  export COLOR_DIM=$'\033[2m'
+else
+  export COLOR_RESET=""
+  export COLOR_BOLD=""
+  export COLOR_RED=""
+  export COLOR_GREEN=""
+  export COLOR_YELLOW=""
+  export COLOR_BLUE=""
+  export COLOR_MAGENTA=""
+  export COLOR_CYAN=""
+  export COLOR_DIM=""
+fi
 
 # Source the new environment detection module if available
 ENV_UTILS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
