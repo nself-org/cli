@@ -227,10 +227,119 @@ cmd_list() {
   printf "Get a license: %s\n" "${NSELF_PRICING_URL:-https://nself.org/pricing}"
 }
 
+# Return space-separated direct dependencies for a plugin (hardcoded for offline/Bash 3.2).
+# Also checks installed plugin.json when available for dynamically-installed plugins.
+_plugin_deps() {
+  local name="$1"
+  local nself_home="${NSELF_HOME:-$HOME/.nself}"
+  # Check installed plugin manifest first
+  local manifest="${PLUGIN_DIR:-$nself_home/plugins}/$name/plugin.json"
+  # Also check plugin-registry (used by test fixtures)
+  local registry_manifest="$nself_home/plugin-registry/${name}.json"
+  local found_manifest=""
+  [[ -f "$manifest" ]] && found_manifest="$manifest"
+  [[ -z "$found_manifest" && -f "$registry_manifest" ]] && found_manifest="$registry_manifest"
+  if [[ -n "$found_manifest" ]]; then
+    # Extract "dependencies": [...] from plugin.json (Bash 3.2 compatible)
+    # Handles both inline arrays and multi-line arrays
+    local in_deps=false result="" dep inner
+    while IFS= read -r line; do
+      case "$line" in
+        *'"dependencies"'*)
+          in_deps=true
+          case "$line" in
+            *"]"*)
+              # Inline array: "dependencies": ["a", "b"]
+              inner="${line#*\[}"
+              inner="${inner%%\]*}"
+              while [[ "$inner" == *'"'* ]]; do
+                dep="${inner#*\"}"
+                dep="${dep%%\"*}"
+                [[ -n "$dep" ]] && result="$result $dep"
+                inner="${inner#*\"}"
+                inner="${inner#*\"}"
+              done
+              in_deps=false
+              ;;
+          esac
+          continue
+          ;;
+        *"]"*)
+          [[ "$in_deps" == "true" ]] && { in_deps=false; break; }
+          ;;
+        *'"'*)
+          if [[ "$in_deps" == "true" ]]; then
+            dep="${line#*\"}"
+            dep="${dep%%\"*}"
+            [[ -n "$dep" ]] && result="$result $dep"
+          fi
+          ;;
+      esac
+    done < "$found_manifest"
+    printf '%s' "$result"
+    return
+  fi
+  # Fallback: static map for known pro plugins (covers CI / dry-run with no installed plugins)
+  case "$name" in
+    claw)    printf "ai mux notify cron voice browser" ;;
+    mux)     printf "ai google" ;;
+    voice)   printf "ai" ;;
+    browser) printf "ai" ;;
+    ai|google|notify|cron|livekit|stripe|cms|moderation|bots|chat|realtime|entitlements|recording|*)
+             printf "" ;;
+  esac
+}
+
+# Topological sort: given space-separated plugin names, outputs install order (deps first).
+# Outputs one line per plugin as "nself-<name>".  Detects cycles.
+_plugin_topo_sort() {
+  local requested="$*"
+  local visited=""   # space-separated names already output
+  local in_stack=""  # cycle detection
+  local nself_home="${NSELF_HOME:-$HOME/.nself}"
+
+  _visit() {
+    local p="$1"
+    # Skip if already output in this run
+    case " $visited " in *" $p "*) return 0 ;; esac
+    # Cycle detection
+    case " $in_stack " in
+      *" $p "*)
+        printf "Error: circular dependency detected involving '%s'\n" "$p" >&2
+        return 1
+        ;;
+    esac
+    in_stack="$in_stack $p"
+    local deps dep
+    deps=$(_plugin_deps "$p")
+    for dep in $deps; do
+      _visit "$dep" || return 1
+    done
+    in_stack="${in_stack% $p}"
+    in_stack="${in_stack#$p }"
+    # Remove p from anywhere in in_stack (handles edge cases)
+    in_stack=$(printf '%s' "$in_stack" | sed "s/ $p / /g;s/^$p //;s/ $p\$//;s/^$p\$//")
+    visited="$visited $p"
+    # Check if plugin is already installed
+    if [[ -f "$nself_home/plugins/installed/nself-$p" ]]; then
+      printf 'nself-%s (already installed)\n' "$p"
+    else
+      printf 'nself-%s\n' "$p"
+    fi
+  }
+
+  local name
+  for name in $requested; do
+    _visit "$name" || return 1
+  done
+}
+
 # Install a plugin
 cmd_install() {
   local plugin_name=""
   local dry_run=false
+  local order_only=false
+  local extra_names=""
 
   # Parse flags before any other logic (Bash 3.2-compatible)
   for arg in "$@"; do
@@ -239,21 +348,28 @@ cmd_install() {
         printf "Usage: nself plugin install <name> [options]\n\n"
         printf "Install a plugin by name.\n\n"
         printf "Options:\n"
-        printf "  --dry-run    Show what would be installed without making changes\n"
-        printf "  --help, -h   Show this help text\n\n"
+        printf "  --dry-run      Show what would be installed without making changes\n"
+        printf "  --order-only   With --dry-run: print dependency install order only\n"
+        printf "  --help, -h     Show this help text\n\n"
         printf "Examples:\n"
         printf "  nself plugin install notify\n"
         printf "  nself plugin install ai --dry-run\n"
+        printf "  nself plugin install --dry-run --order-only claw\n"
         return 0
         ;;
       --dry-run)
         dry_run=true
+        ;;
+      --order-only)
+        order_only=true
         ;;
       -*)
         ;;
       *)
         if [[ -z "$plugin_name" ]]; then
           plugin_name="$arg"
+        else
+          extra_names="$extra_names $arg"
         fi
         ;;
     esac
@@ -266,6 +382,18 @@ cmd_install() {
   fi
 
   if [[ "$dry_run" == "true" ]]; then
+    # Always run topo sort in dry-run to validate deps and detect cycles.
+    # Use || to prevent set -e from exiting on non-zero before we can check status.
+    local topo_output="" topo_status=0
+    topo_output=$(_plugin_topo_sort "$plugin_name" $extra_names 2>&1) || topo_status=$?
+    if [[ $topo_status -ne 0 ]]; then
+      printf '%s\n' "$topo_output" >&2
+      return $topo_status
+    fi
+    if [[ "$order_only" == "true" ]]; then
+      printf '%s\n' "$topo_output"
+      return 0
+    fi
     printf "DRY RUN: would install plugin '%s'\n" "$plugin_name"
     return 0
   fi
@@ -370,25 +498,53 @@ cmd_install() {
 
 # Remove a plugin
 cmd_remove() {
-  case "${1:-}" in
-    --help|-h)
-      printf "Usage: nself plugin remove <name> [options]\n\n"
-      printf "Remove an installed plugin.\n\n"
-      printf "Options:\n"
-      printf "  --delete-data  Also delete plugin database tables\n"
-      printf "  --help, -h     Show this help text\n\n"
-      printf "Examples:\n"
-      printf "  nself plugin remove notify\n"
-      printf "  nself plugin remove stripe --delete-data\n"
-      return 0
-      ;;
-  esac
+  local plugin_name="" delete_data="" dry_run=false
 
-  local plugin_name="${1:-}"
-  local delete_data="${2:-}"
+  # Parse arguments
+  for _arg in "$@"; do
+    case "$_arg" in
+      --help|-h)
+        printf "Usage: nself plugin remove <name> [options]\n\n"
+        printf "Remove an installed plugin.\n\n"
+        printf "Options:\n"
+        printf "  --dry-run      Show what would be removed without making changes\n"
+        printf "  --delete-data  Also delete plugin database tables\n"
+        printf "  --help, -h     Show this help text\n\n"
+        printf "Examples:\n"
+        printf "  nself plugin remove notify\n"
+        printf "  nself plugin remove stripe --delete-data\n"
+        return 0
+        ;;
+      --dry-run)  dry_run=true ;;
+      --delete-data) delete_data="--delete-data" ;;
+      -*) ;;
+      *) [[ -z "$plugin_name" ]] && plugin_name="$_arg" ;;
+    esac
+  done
+  unset _arg
 
   if [[ -z "$plugin_name" ]]; then
     log_error "Plugin name required"
+    return 1
+  fi
+
+  # Dry-run mode: print intent and exit 0 if plugin is installed OR is a known plugin.
+  # Reject completely unknown plugin names even in dry-run.
+  if [[ "$dry_run" == "true" ]]; then
+    if is_plugin_installed "$plugin_name"; then
+      printf "DRY RUN: would remove plugin '%s'\n" "$plugin_name"
+      return 0
+    fi
+    # Check if it's a known free plugin (hardcoded offline list)
+    case "$plugin_name" in
+      content-acquisition|content-progress|feature-flags|github|github-runner|\
+      invitations|jobs|link-preview|mdns|notifications|search|subtitle-manager|\
+      tokens|torrent-manager|vpn|webhooks)
+        printf "DRY RUN: would remove plugin '%s' (not currently installed)\n" "$plugin_name"
+        return 0
+        ;;
+    esac
+    log_error "Plugin '$plugin_name' is not installed"
     return 1
   fi
 

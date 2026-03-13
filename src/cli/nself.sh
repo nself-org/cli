@@ -22,19 +22,22 @@ CLI_SCRIPT_DIR="$SCRIPT_DIR"
 
 # CRITICAL: Prevent running nself in its own source repository
 # Must run BEFORE sourcing any modules that may create directories as side effects
-_cwd="$(pwd)"
-if [[ -f "$_cwd/bin/nself" ]] && [[ -d "$_cwd/src/cli" ]] && [[ -d "$_cwd/src/lib" ]]; then
-  printf "\033[0;31m[ERROR]\033[0m FATAL: Cannot run nself in its source repository!\n" >&2
-  printf "\033[0;34m[INFO]\033[0m Run in a separate project directory instead.\n"
-  printf "\n  mkdir -p ~/test-project && cd ~/test-project\n  nself init\n\n"
-  exit 1
+# Exception: NSELF_TEST_MODE=1 allows running from source dir in test harness
+if [[ "${NSELF_TEST_MODE:-}" != "1" ]]; then
+  _cwd="$(pwd)"
+  if [[ -f "$_cwd/bin/nself" ]] && [[ -d "$_cwd/src/cli" ]] && [[ -d "$_cwd/src/lib" ]]; then
+    printf "\033[0;31m[ERROR]\033[0m FATAL: Cannot run nself in its source repository!\n" >&2
+    printf "\033[0;34m[INFO]\033[0m Run in a separate project directory instead.\n"
+    printf "\n  mkdir -p ~/test-project && cd ~/test-project\n  nself init\n\n"
+    exit 1
+  fi
+  if [[ -f "$_cwd/src/cli/nself.sh" ]] || { [[ -f "$_cwd/src/VERSION" ]] && [[ -d "$_cwd/src/templates" ]]; }; then
+    printf "\033[0;31m[ERROR]\033[0m FATAL: This appears to be the nself source directory!\n" >&2
+    printf "\033[0;31m[ERROR]\033[0m Please run nself commands in a separate project directory.\n" >&2
+    exit 1
+  fi
+  unset _cwd
 fi
-if [[ -f "$_cwd/src/cli/nself.sh" ]] || { [[ -f "$_cwd/src/VERSION" ]] && [[ -d "$_cwd/src/templates" ]]; }; then
-  printf "\033[0;31m[ERROR]\033[0m FATAL: This appears to be the nself source directory!\n" >&2
-  printf "\033[0;31m[ERROR]\033[0m Please run nself commands in a separate project directory.\n" >&2
-  exit 1
-fi
-unset _cwd
 
 # Source configuration and utilities with error handling
 # Path adjusted for new structure: src/cli -> src/lib
@@ -65,27 +68,30 @@ main() {
   shift || true
 
   # CRITICAL: Prevent running nself in its own repository
-  # Check multiple indicators to ensure we're not in nself source
-  if [[ -f "bin/nself" ]] && [[ -d "src/cli" ]] && [[ -d "src/lib" ]] && [[ -f "install.sh" ]]; then
-    log_error "FATAL: Cannot run nself commands in the nself source repository!"
-    echo ""
-    log_info "nself must be run in a separate project directory."
-    log_info "To create a test project:"
-    echo ""
-    echo "  mkdir -p ~/test-project && cd ~/test-project"
-    echo "  nself init"
-    echo ""
-    log_info "Or use the test directory:"
-    echo "  mkdir -p ~/.nself/test && cd ~/.nself/test"
-    echo "  nself init"
-    exit 1
-  fi
+  # Exception: NSELF_TEST_MODE=1 bypasses source-repo check for test harness
+  if [[ "${NSELF_TEST_MODE:-}" != "1" ]]; then
+    # Check multiple indicators to ensure we're not in nself source
+    if [[ -f "bin/nself" ]] && [[ -d "src/cli" ]] && [[ -d "src/lib" ]] && [[ -f "install.sh" ]]; then
+      log_error "FATAL: Cannot run nself commands in the nself source repository!"
+      echo ""
+      log_info "nself must be run in a separate project directory."
+      log_info "To create a test project:"
+      echo ""
+      echo "  mkdir -p ~/test-project && cd ~/test-project"
+      echo "  nself init"
+      echo ""
+      log_info "Or use the test directory:"
+      echo "  mkdir -p ~/.nself/test && cd ~/.nself/test"
+      echo "  nself init"
+      exit 1
+    fi
 
-  # Additional safety check - look for nself source markers
-  if [[ -f "src/cli/nself.sh" ]] || [[ -f "src/VERSION" && -d "src/templates" ]]; then
-    log_error "FATAL: This appears to be the nself source directory!"
-    log_error "Please run nself commands in a separate project directory."
-    exit 1
+    # Additional safety check - look for nself source markers
+    if [[ -f "src/cli/nself.sh" ]] || [[ -f "src/VERSION" && -d "src/templates" ]]; then
+      log_error "FATAL: This appears to be the nself source directory!"
+      log_error "Please run nself commands in a separate project directory."
+      exit 1
+    fi
   fi
 
   # Handle special flags

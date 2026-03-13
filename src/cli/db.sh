@@ -95,7 +95,7 @@ db_migrate() {
       ;;
     *)
       cli_error "Unknown migrate action: $action"
-      printf "Usage: nself db migrate [up|down|status|create]\n"
+      printf "Run 'nself db migrate --help' for usage.\n"
       exit 1
       ;;
   esac
@@ -198,7 +198,18 @@ db_backup() {
 
 # Restore database from backup
 db_restore() {
-  local backup_file="$1"
+  local backup_file="${1:-}"
+
+  if [[ "$backup_file" == "--help" || "$backup_file" == "-h" ]]; then
+    printf "Usage: nself db restore <backup-file>\n\n"
+    printf "Restore the database from a backup file.\n\n"
+    printf "Arguments:\n"
+    printf "  <backup-file>  Path to the SQL backup file\n\n"
+    printf "Examples:\n"
+    printf "  nself db restore backup_20260211.sql\n"
+    printf "  nself db restore backups/backup_20260211.sql\n"
+    return 0
+  fi
 
   if [[ -z "$backup_file" ]]; then
     cli_error "Backup file required"

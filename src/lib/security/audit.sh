@@ -307,10 +307,32 @@ audit_compliance() {
 
 security_audit_comprehensive() {
   local env_file="${1:-.env}"
+  local no_docker="${2:-false}"
+  local format="${3:-}"
 
   if [[ ! -f "$env_file" ]]; then
     printf "${COLOR_RED}Error:${COLOR_RESET} Environment file not found: %s\n" "$env_file"
     return 1
+  fi
+
+  # JSON format output
+  if [[ "$format" == "json" ]]; then
+    local issues_json="[]"
+    # Check for missing JWT secret
+    local jwt_secret
+    jwt_secret=$(grep "^JWT_SECRET=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'" || true)
+    if [[ -z "$jwt_secret" ]]; then
+      issues_json='[{"severity":"warning","check":"jwt_secret","message":"JWT_SECRET not set"}]'
+    fi
+    # Check admin secret
+    local admin_secret
+    admin_secret=$(grep "^HASURA_GRAPHQL_ADMIN_SECRET=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'" || true)
+    if [[ -z "$admin_secret" ]] || [[ ${#admin_secret} -lt 32 ]]; then
+      issues_json=$(printf '%s' "$issues_json" | sed 's/\]$/,{"severity":"warning","check":"admin_secret","message":"HASURA_GRAPHQL_ADMIN_SECRET too short"}]/')
+      issues_json="${issues_json/,\]/\]}"
+    fi
+    printf '{"status":"complete","env_file":"%s","issues":%s}\n' "$env_file" "$issues_json"
+    return 0
   fi
 
   local total_issues=0

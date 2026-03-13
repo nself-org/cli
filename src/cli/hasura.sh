@@ -27,6 +27,14 @@ hasura_metadata() {
     apply) metadata_apply "$@" ;;
     export) metadata_export "$@" ;;
     reload) metadata_reload "$@" ;;
+    help|--help|-h)
+      printf "Usage: nself db hasura metadata <action>\n\n"
+      printf "Actions:\n"
+      printf "  apply    Apply metadata from hasura/metadata/\n"
+      printf "  export   Export current Hasura metadata\n"
+      printf "  reload   Reload metadata cache\n"
+      return 0
+      ;;
     *) cli_error "Unknown action: $action" && exit 1 ;;
   esac
 }
