@@ -53,8 +53,11 @@ claw_usage() {
   printf "  routing show                                          Show current AI routing config\n"
   printf "  routing set <task_class> <tier_order>                 Update routing for a task class\n"
   printf "  chat \"<message>\" [--model <name>] [--tier <tier>]      Send a one-shot chat message\n"
+  printf "  playbooks list                                        List incident response playbooks\n"
+  printf "  playbooks add --pattern <text> --steps-file <path>   Add a new playbook\n"
+  printf "  playbooks test --id <uuid> [--dry-run]               Test a playbook\n"
   printf "  usage [--today|--week|--month]                        Show AI usage log\n"
-  printf "  stats [--today|--week|--month]                        Show AI usage summary + savings\n"
+  printf "  stats [--today|--week|--month] [--json]               Show AI usage summary + savings\n"
   printf "  admin status                                          Show stack state snapshot\n"
   printf "  admin enable --session <id>                           Enable admin mode for a session\n"
   printf "  admin context [--session <id>]                        Show admin context for a session\n"
@@ -148,6 +151,9 @@ cmd_claw() {
       ;;
     chat)
       cmd_claw_chat "$@"
+      ;;
+    playbooks)
+      cmd_claw_playbooks "$@"
       ;;
     help | --help | -h)
       claw_usage
@@ -406,6 +412,7 @@ cmd_claw_usage() {
 
 cmd_claw_stats() {
   local period="all"
+  local json_flag=false
   local ai_url="${NSELF_AI_URL:-http://localhost:3101}"
   local internal_secret="${PLUGIN_INTERNAL_SECRET:-}"
 
@@ -414,6 +421,7 @@ cmd_claw_stats() {
       --today)  period="today";  shift ;;
       --week)   period="week";   shift ;;
       --month)  period="month";  shift ;;
+      --json)   json_flag=true;  shift ;;
       *) shift ;;
     esac
   done
@@ -426,11 +434,17 @@ cmd_claw_stats() {
   local response=""
   response=$(curl -s \
     -H "x-internal-token: ${internal_secret}" \
-    "${ai_url}/ai/usage/summary?period=${period}" 2>/dev/null)
+    "${ai_url}/ai/stats/summary?period=${period}" 2>/dev/null)
 
   if [ -z "$response" ]; then
     cli_error "No response from ai service at ${ai_url}. Is it running?"
     return 1
+  fi
+
+  # --json: output raw JSON for scripting (T-1078)
+  if [ "$json_flag" = "true" ]; then
+    printf '%s\n' "$response"
+    return 0
   fi
 
   if command -v jq >/dev/null 2>&1; then
@@ -1171,6 +1185,161 @@ cmd_claw_routing() {
     cli_error "ai.sh not found at ${ai_sh}"
     return 1
   fi
+}
+
+# ============================================================================
+# T-1076: playbooks subcommand — incident response playbook management
+# ============================================================================
+
+cmd_claw_playbooks() {
+  local subcmd="${1:-list}"
+  shift || true
+
+  local claw_url="${NSELF_CLAW_URL:-http://localhost:3713}"
+  local internal_secret="${PLUGIN_INTERNAL_SECRET:-}"
+
+  case "$subcmd" in
+    --help|-h)
+      printf "Usage: nself claw playbooks <action> [options]\n\n"
+      printf "Actions:\n"
+      printf "  list                            List all incident response playbooks\n"
+      printf "  add --pattern <text> \\          Add a new playbook\n"
+      printf "      --steps-file <path>\n"
+      printf "  test --id <uuid> [--dry-run]    Test a playbook (dry-run: show steps only)\n\n"
+      printf "Examples:\n"
+      printf "  nself claw playbooks list\n"
+      printf "  nself claw playbooks test --id abc123 --dry-run\n"
+      return 0
+      ;;
+    list)
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+      local response=""
+      response=$(curl -s \
+        -H "x-internal-token: ${internal_secret}" \
+        "${claw_url}/claw/playbooks" 2>/dev/null)
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service at ${claw_url}. Is it running?"
+        return 1
+      fi
+      if command -v jq >/dev/null 2>&1; then
+        local count
+        count=$(printf '%s' "$response" | jq 'if type == "array" then length else (.playbooks | length) end' 2>/dev/null || printf "0")
+        if [ "${count:-0}" -eq 0 ]; then
+          printf "No playbooks configured.\n"
+          printf "Add one with: nself claw playbooks add --pattern \"OOM\" --steps-file steps.json\n"
+          return 0
+        fi
+        printf "\n\033[34m%-38s %-30s %s\033[0m\n" "ID" "Pattern" "Destructive"
+        printf "%-38s %-30s %s\n" "--------------------------------------" "------------------------------" "-----------"
+        printf '%s' "$response" | jq -r '(if type == "array" then . else .playbooks end) // [] | .[] | [
+          (.id // "-"),
+          (.pattern // "-"),
+          (if .requires_confirmation then "yes (confirm)" else "no" end)
+        ] | @tsv' 2>/dev/null | \
+        while IFS=$(printf '\t') read -r id pattern destr; do
+          printf "%-38s %-30s %s\n" "$id" "$pattern" "$destr"
+        done
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+    add)
+      local pattern="" steps_file=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --pattern) pattern="${2:-}"; shift 2 ;;
+          --pattern=*) pattern="${1#*=}"; shift ;;
+          --steps-file) steps_file="${2:-}"; shift 2 ;;
+          --steps-file=*) steps_file="${1#*=}"; shift ;;
+          *) shift ;;
+        esac
+      done
+      if [ -z "$pattern" ]; then
+        cli_error "--pattern required"
+        return 1
+      fi
+      if [ -z "$steps_file" ]; then
+        cli_error "--steps-file required"
+        return 1
+      fi
+      if [ ! -f "$steps_file" ]; then
+        cli_error "Steps file not found: $steps_file"
+        return 1
+      fi
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+      local steps_json
+      steps_json=$(cat "$steps_file" 2>/dev/null)
+      if [ -z "$steps_json" ]; then
+        cli_error "Steps file is empty: $steps_file"
+        return 1
+      fi
+      local body="{\"pattern\":\"${pattern}\",\"steps\":${steps_json}}"
+      local response=""
+      response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -H "x-internal-token: ${internal_secret}" \
+        -d "$body" \
+        "${claw_url}/claw/playbooks" 2>/dev/null)
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service. Is it running?"
+        return 1
+      fi
+      if command -v jq >/dev/null 2>&1; then
+        local new_id
+        new_id=$(printf '%s' "$response" | jq -r '.id // empty' 2>/dev/null)
+        if [ -n "$new_id" ]; then
+          printf "Playbook created: %s\n" "$new_id"
+        else
+          printf '%s\n' "$response"
+        fi
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+    test)
+      local playbook_id="" dry_run=false
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --id) playbook_id="${2:-}"; shift 2 ;;
+          --id=*) playbook_id="${1#*=}"; shift ;;
+          --dry-run) dry_run=true; shift ;;
+          *) shift ;;
+        esac
+      done
+      if [ -z "$playbook_id" ]; then
+        cli_error "--id required"
+        return 1
+      fi
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+      local endpoint="${claw_url}/claw/playbooks/${playbook_id}/test"
+      if [ "$dry_run" = "true" ]; then
+        endpoint="${endpoint}?dry_run=true"
+      fi
+      local response=""
+      response=$(curl -s -X POST \
+        -H "x-internal-token: ${internal_secret}" \
+        "$endpoint" 2>/dev/null)
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service. Is it running?"
+        return 1
+      fi
+      printf '%s\n' "$response"
+      ;;
+    *)
+      cli_error "Unknown playbooks action: $subcmd"
+      printf "Actions: list, add, test\n"
+      return 1
+      ;;
+  esac
 }
 
 # ============================================================================
