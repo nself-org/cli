@@ -28,9 +28,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run fuzz tests
+        env:
+          ITERATIONS_INPUT: ${{ inputs.iterations }}
         run: |
-          ITERATIONS="${{ inputs.iterations }}"
-          ITERATIONS="${ITERATIONS:-10000}"
+          ITERATIONS="${ITERATIONS_INPUT:-10000}"
           bash scripts/fuzz-validators.sh "$ITERATIONS"
 
       - name: Upload fuzz results
