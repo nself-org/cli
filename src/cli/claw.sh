@@ -52,6 +52,7 @@ claw_usage() {
   printf "  gemini remove <email>                                 Remove a Gemini account\n"
   printf "  routing show                                          Show current AI routing config\n"
   printf "  routing set <task_class> <tier_order>                 Update routing for a task class\n"
+  printf "  chat \"<message>\" [--model <name>] [--tier <tier>]      Send a one-shot chat message\n"
   printf "  usage [--today|--week|--month]                        Show AI usage log\n"
   printf "  stats [--today|--week|--month]                        Show AI usage summary + savings\n"
   printf "  admin status                                          Show stack state snapshot\n"
@@ -144,6 +145,9 @@ cmd_claw() {
       ;;
     models)
       cmd_claw_models "$@"
+      ;;
+    chat)
+      cmd_claw_chat "$@"
       ;;
     help | --help | -h)
       claw_usage
@@ -1166,6 +1170,115 @@ cmd_claw_routing() {
   else
     cli_error "ai.sh not found at ${ai_sh}"
     return 1
+  fi
+}
+
+# ============================================================================
+# T-1072: chat subcommand — quick one-shot chat message
+# ============================================================================
+
+cmd_claw_chat() {
+  local message=""
+  local model=""
+  local tier=""
+  local ai_url="${NSELF_AI_URL:-http://localhost:3101}"
+  local internal_secret="${PLUGIN_INTERNAL_SECRET:-}"
+
+  if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    printf "Usage: nself claw chat \"<message>\" [--model <name>] [--tier local|free_gemini|api_key]\n\n"
+    printf "Send a one-shot chat message to the AI and print the response.\n\n"
+    printf "Options:\n"
+    printf "  --model <name>   Use a specific model (e.g. phi4, llama3)\n"
+    printf "  --tier <tier>    Force a routing tier: local, free_gemini, api_key\n\n"
+    printf "Environment:\n"
+    printf "  NSELF_AI_URL           AI plugin base URL (default: http://localhost:3101)\n"
+    printf "  PLUGIN_INTERNAL_SECRET required\n\n"
+    printf "Examples:\n"
+    printf "  nself claw chat \"What is Docker?\"\n"
+    printf "  nself claw chat \"Explain RLS\" --tier local\n"
+    printf "  nself claw chat \"Write a haiku\" --model phi4\n"
+    return 0
+  fi
+
+  # First positional arg is the message
+  if [ $# -gt 0 ]; then
+    case "$1" in
+      --*) ;;
+      *) message="$1"; shift ;;
+    esac
+  fi
+
+  # Parse remaining flags
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --model) model="${2:-}"; shift 2 ;;
+      --model=*) model="${1#*=}"; shift ;;
+      --tier) tier="${2:-}"; shift 2 ;;
+      --tier=*) tier="${1#*=}"; shift ;;
+      *) shift ;;
+    esac
+  done
+
+  if [ -z "$message" ]; then
+    cli_error "Message required. Usage: nself claw chat \"<message>\""
+    return 1
+  fi
+
+  if [ -z "$internal_secret" ]; then
+    cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+    return 1
+  fi
+
+  # Build JSON body — avoid associative arrays for Bash 3.2 compat
+  local body='{"message":"'
+  # Escape special JSON characters in the message
+  local escaped_message
+  escaped_message=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/; s/\t/\\t/g' | tr -d '\n' | sed 's/\\n$//')
+  body="${body}${escaped_message}\",\"stream\":false"
+  if [ -n "$model" ]; then
+    body="${body},\"model\":\"${model}\""
+  fi
+  if [ -n "$tier" ]; then
+    body="${body},\"preferred_tier\":\"${tier}\""
+  fi
+  body="${body}}"
+
+  local response=""
+  response=$(curl -s -X POST \
+    -H "Content-Type: application/json" \
+    -H "x-internal-token: ${internal_secret}" \
+    -d "$body" \
+    "${ai_url}/ai/chat" 2>/dev/null)
+
+  if [ -z "$response" ]; then
+    cli_error "No response from AI service at ${ai_url}. Is it running?"
+    return 1
+  fi
+
+  if command -v jq >/dev/null 2>&1; then
+    # Extract response text and tier info
+    local reply tier_src model_used latency
+    reply=$(printf '%s' "$response" | jq -r '.response // .content // .message // empty' 2>/dev/null)
+    tier_src=$(printf '%s' "$response" | jq -r '.tier_source // empty' 2>/dev/null)
+    model_used=$(printf '%s' "$response" | jq -r '.model // empty' 2>/dev/null)
+    latency=$(printf '%s' "$response" | jq -r '.latency_ms // empty' 2>/dev/null)
+
+    if [ -n "$reply" ]; then
+      printf '%s\n' "$reply"
+      if [ -n "$tier_src" ]; then
+        printf "\n"
+        if [ -n "$model_used" ] && [ -n "$latency" ]; then
+          printf "\033[2m%s • %s • %sms\033[0m\n" "$tier_src" "$model_used" "$latency"
+        elif [ -n "$tier_src" ]; then
+          printf "\033[2m%s\033[0m\n" "$tier_src"
+        fi
+      fi
+    else
+      # Fallback: print raw response
+      printf '%s\n' "$response"
+    fi
+  else
+    printf '%s\n' "$response"
   fi
 }
 
