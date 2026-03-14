@@ -57,7 +57,7 @@ claw_usage() {
   printf "  playbooks add --pattern <text> --steps-file <path>   Add a new playbook\n"
   printf "  playbooks test --id <uuid> [--dry-run]               Test a playbook\n"
   printf "  usage [--today|--week|--month]                        Show AI usage log\n"
-  printf "  stats [--today|--week|--month] [--json]               Show AI usage summary + savings\n"
+  printf "  stats [--json]                                        Show AI usage stats (today + this month)\n"
   printf "  admin status                                          Show stack state snapshot\n"
   printf "  admin enable --session <id>                           Enable admin mode for a session\n"
   printf "  admin context [--session <id>]                        Show admin context for a session\n"
@@ -411,17 +411,14 @@ cmd_claw_usage() {
 # ============================================================================
 
 cmd_claw_stats() {
-  local period="all"
   local json_flag=false
   local ai_url="${NSELF_AI_URL:-http://localhost:3101}"
   local internal_secret="${PLUGIN_INTERNAL_SECRET:-}"
 
   while [ $# -gt 0 ]; do
     case "$1" in
-      --today)  period="today";  shift ;;
-      --week)   period="week";   shift ;;
-      --month)  period="month";  shift ;;
       --json)   json_flag=true;  shift ;;
+      --today|--week|--month) shift ;;  # ignored: endpoint always shows current month
       *) shift ;;
     esac
   done
@@ -434,7 +431,7 @@ cmd_claw_stats() {
   local response=""
   response=$(curl -s \
     -H "x-internal-token: ${internal_secret}" \
-    "${ai_url}/ai/stats/summary?period=${period}" 2>/dev/null)
+    "${ai_url}/ai/stats/summary" 2>/dev/null)
 
   if [ -z "$response" ]; then
     cli_error "No response from ai service at ${ai_url}. Is it running?"
@@ -448,30 +445,43 @@ cmd_claw_stats() {
   fi
 
   if command -v jq >/dev/null 2>&1; then
-    local total_req="" total_tok="" total_cost="" cache_rate="" savings=""
-    local local_ct="" gemini_ct="" api_ct="" cache_ct=""
-    total_req=$(printf '%s' "$response"  | jq -r '.total_requests // 0')
-    total_tok=$(printf '%s' "$response"  | jq -r '.total_tokens // 0')
-    total_cost=$(printf '%s' "$response" | jq -r '.total_cost_usd // 0')
-    cache_rate=$(printf '%s' "$response" | jq -r '(.cache_hit_rate * 100 | round | tostring) + "%"')
-    savings=$(printf '%s' "$response"    | jq -r '"$" + (.estimated_savings_usd | tostring)')
-    local_ct=$(printf '%s' "$response"   | jq -r '.by_tier_source.local // 0')
-    gemini_ct=$(printf '%s' "$response"  | jq -r '.by_tier_source.free_gemini // 0')
-    api_ct=$(printf '%s' "$response"     | jq -r '.by_tier_source.api_key // 0')
-    cache_ct=$(printf '%s' "$response"   | jq -r '.by_tier_source.cache // 0')
+    local req_today="" req_month="" tok_today="" cost_today="" cost_month=""
+    local local_pct="" gemini_pct="" api_pct="" cache_pct="" savings=""
+    req_today=$(printf '%s' "$response"  | jq -r '.requests_today // 0')
+    req_month=$(printf '%s' "$response"  | jq -r '.requests_month // 0')
+    tok_today=$(printf '%s' "$response"  | jq -r '.tokens_today // 0')
+    cost_today=$(printf '%s' "$response" | jq -r '(.cost_usd_today // 0) | "*100|round/100" | @text' 2>/dev/null \
+                 || printf '%s' "$response" | jq -r '.cost_usd_today // 0')
+    cost_month=$(printf '%s' "$response" | jq -r '.cost_usd_month // 0')
+    local_pct=$(printf '%s' "$response"  | jq -r '(.local_requests_pct // 0 | round | tostring) + "%"')
+    gemini_pct=$(printf '%s' "$response" | jq -r '(.free_gemini_pct // 0 | round | tostring) + "%"')
+    api_pct=$(printf '%s' "$response"    | jq -r '(.paid_api_pct // 0 | round | tostring) + "%"')
+    cache_pct=$(printf '%s' "$response"  | jq -r '(.cache_hit_rate // 0 | round | tostring) + "%"')
+    savings=$(printf '%s' "$response"    | jq -r '"$" + (.savings_usd_month // 0 | tostring)')
 
-    printf "\nnClaw AI Usage Summary (%s)\n" "$period"
-    printf "%-30s %s\n" "------------------------------" "-------"
-    printf "  Total requests:          %s\n" "$total_req"
-    printf "  Total tokens:            %s\n" "$total_tok"
-    printf "  Total cost:              \$%s\n" "$total_cost"
-    printf "  Cache hit rate:          %s\n" "$cache_rate"
+    printf "\nnClaw AI Usage Stats\n"
+    printf "%s\n" "-----------------------------"
+    printf "Today:\n"
+    printf "  Requests:                %s\n" "$req_today"
+    printf "  Tokens:                  %s\n" "$tok_today"
+    printf "  Cost:                    \$%s\n" "$cost_today"
+    printf "\nThis Month:\n"
+    printf "  Requests:                %s\n" "$req_month"
+    printf "  Cost:                    \$%s\n" "$cost_month"
     printf "  Estimated savings:       %s\n" "$savings"
-    printf "\nTier Breakdown:\n"
-    printf "  \033[32mLocal (free):            %s\033[0m\n" "$local_ct"
-    printf "  \033[33mFree Gemini:             %s\033[0m\n" "$gemini_ct"
-    printf "  \033[36mCache hits:              %s\033[0m\n" "$cache_ct"
-    printf "  \033[31mPaid API key:            %s\033[0m\n" "$api_ct"
+    printf "\nTier Breakdown (month):\n"
+    printf "  \033[32mLocal (free):            %s\033[0m\n" "$local_pct"
+    printf "  \033[33mFree Gemini:             %s\033[0m\n" "$gemini_pct"
+    printf "  \033[36mCache hits:              %s\033[0m\n" "$cache_pct"
+    printf "  \033[31mPaid API key:            %s\033[0m\n" "$api_pct"
+
+    # Top models (if present)
+    local top_models=""
+    top_models=$(printf '%s' "$response" | jq -r '.top_models[]? | "  " + .model + ": " + (.requests | tostring)' 2>/dev/null)
+    if [ -n "$top_models" ]; then
+      printf "\nTop Models (month):\n"
+      printf '%s\n' "$top_models"
+    fi
     printf "\n"
   else
     printf '%s\n' "$response"
