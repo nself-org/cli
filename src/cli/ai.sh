@@ -57,7 +57,8 @@ ai_usage() {
   printf "  stats [--today|--week|--month]              Show AI usage summary + savings\n"
   printf "  routing show                                Show source-tier routing config\n"
   printf "  routing set  --class <c> --tier <t> --priority <n> [--disable|--enable]\n"
-  printf "                                              Update a routing entry\n\n"
+  printf "                                              Update a routing entry\n"
+  printf "  transcribe <audio-file> [--language <code>] Transcribe audio via Whisper\n\n"
   printf "Environment:\n"
   printf "  NSELF_AI_URL            AI plugin base URL (default: http://localhost:3101)\n"
   printf "  PLUGIN_INTERNAL_SECRET  required for usage/stats/routing commands\n\n"
@@ -77,6 +78,8 @@ ai_usage() {
   printf "  nself ai models install --model phi4-mini\n"
   printf "  nself ai models status\n"
   printf "  nself ai models remove tinyllama\n"
+  printf "  nself ai transcribe audio.ogg\n"
+  printf "  nself ai transcribe audio.ogg --language en\n"
 }
 
 # ============================================================================
@@ -108,6 +111,9 @@ cmd_ai() {
       ;;
     models)
       cmd_ai_models "$@"
+      ;;
+    transcribe)
+      cmd_ai_transcribe "$@"
       ;;
     help | --help | -h)
       ai_usage
@@ -693,6 +699,108 @@ cmd_ai_models() {
       exit 1
       ;;
   esac
+}
+
+# ============================================================================
+# transcribe subcommand — T-1118
+# ============================================================================
+
+cmd_ai_transcribe() {
+  # Upload an audio file to POST /ai/transcribe and print the transcript.
+  # Usage: nself ai transcribe <audio-file> [--language <code>]
+
+  # Show help if first arg is --help/-h or no args given.
+  case "${1:-}" in
+    --help | -h | "")
+      printf "Usage: nself ai transcribe <audio-file> [--language <code>]\n\n"
+      printf "  audio-file   Path to OGG, WAV, MP3, or M4A file\n"
+      printf "  --language   Language code (default: auto-detect). Examples: en, ar, fr\n\n"
+      printf "Requires Whisper installed: nself ai models install --model openai/whisper\n"
+      return 0
+      ;;
+  esac
+
+  local audio_file="${1:-}"
+  shift || true
+
+  local language=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --language) language="$2"; shift 2 ;;
+      -l)         language="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  if [ -z "$audio_file" ]; then
+    cli_error "Audio file path required"
+    printf "Usage: nself ai transcribe <audio-file> [--language <code>]\n" >&2
+    exit 1
+  fi
+
+  if [ ! -f "$audio_file" ]; then
+    cli_error "File not found: $audio_file"
+    exit 1
+  fi
+
+  local ai_url="${NSELF_AI_URL:-http://localhost:3710}"
+  local internal_secret="${PLUGIN_INTERNAL_SECRET:-}"
+
+  if [ -z "$internal_secret" ]; then
+    cli_error "PLUGIN_INTERNAL_SECRET is required"
+    exit 1
+  fi
+
+  log_info "Transcribing $(basename "$audio_file") ..."
+
+  local curl_args=()
+  curl_args+=(-s -X POST)
+  curl_args+=(-H "x-internal-secret: $internal_secret")
+  curl_args+=(-F "audio=@${audio_file}")
+  if [ -n "$language" ]; then
+    curl_args+=(-F "language=$language")
+  fi
+  curl_args+=("${ai_url}/ai/transcribe")
+
+  local response=""
+  response=$(curl "${curl_args[@]}" 2>/dev/null)
+
+  if [ -z "$response" ]; then
+    cli_error "No response from /ai/transcribe. Is nself-ai running?"
+    exit 1
+  fi
+
+  local http_status=""
+  if command -v jq >/dev/null 2>&1; then
+    http_status=$(printf '%s' "$response" | jq -r '.status // empty' 2>/dev/null)
+  fi
+
+  # Handle 503 — Whisper not installed.
+  if [ "$http_status" = "503" ] || printf '%s' "$response" | grep -q '"no_whisper"'; then
+    local msg=""
+    msg=$(printf '%s' "$response" | jq -r '.message // .error // "Whisper not installed"' 2>/dev/null \
+      || printf "Whisper not installed")
+    cli_error "$msg"
+    printf "Install Whisper: nself ai models install --model openai/whisper\n" >&2
+    exit 1
+  fi
+
+  # Print transcript to stdout.
+  if command -v jq >/dev/null 2>&1; then
+    local transcript duration
+    transcript=$(printf '%s' "$response" | jq -r '.transcript // .text // empty' 2>/dev/null)
+    duration=$(printf '%s' "$response" | jq -r '.duration_seconds // empty' 2>/dev/null)
+    if [ -n "$transcript" ]; then
+      printf '%s\n' "$transcript"
+      if [ -n "$duration" ]; then
+        printf "\n\033[2mDuration: %ss\033[0m\n" "$duration"
+      fi
+    else
+      printf '%s\n' "$response"
+    fi
+  else
+    printf '%s\n' "$response"
+  fi
 }
 
 # ============================================================================

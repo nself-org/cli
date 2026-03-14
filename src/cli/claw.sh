@@ -62,6 +62,9 @@ claw_usage() {
   printf "  admin enable --session <id>                           Enable admin mode for a session\n"
   printf "  admin context [--session <id>]                        Show admin context for a session\n"
   printf "  admin refresh                                         Force a fresh stack state snapshot\n"
+  printf "  voice status                                          Show voice feature status + Whisper install\n"
+  printf "  voice enable                                          Enable STT/TTS voice features\n"
+  printf "  voice test [--text <text>]                            Test voice synthesis (TTS)\n"
   printf "  email-rules list                                      List ClawDelegate email routing rules\n"
   printf "  email-rules test-delegate --email <addr>              Test delegate routing for an email\n"
   printf "                            --subject <text>\n"
@@ -81,6 +84,8 @@ claw_usage() {
   printf "  nself claw usage --today\n"
   printf "  nself claw stats --month\n"
   printf "  nself claw admin status\n"
+  printf "  nself claw voice status\n"
+  printf "  nself claw voice test --text 'Hello from ɳClaw'\n"
 }
 
 # ============================================================================
@@ -154,6 +159,9 @@ cmd_claw() {
       ;;
     playbooks)
       cmd_claw_playbooks "$@"
+      ;;
+    voice)
+      cmd_claw_voice "$@"
       ;;
     help | --help | -h)
       claw_usage
@@ -1548,6 +1556,163 @@ cmd_claw_chat() {
   else
     printf '%s\n' "$response"
   fi
+}
+
+# ============================================================================
+# voice subcommand — T-1118
+# ============================================================================
+
+cmd_claw_voice() {
+  local subcmd="${1:-status}"
+  shift || true
+
+  local claw_url="${NSELF_CLAW_URL:-http://localhost:3713}"
+  local ai_url="${NSELF_AI_URL:-http://localhost:3710}"
+  local voice_url="${NSELF_VOICE_URL:-http://localhost:3720}"
+  local internal_secret="${PLUGIN_INTERNAL_SECRET:-}"
+
+  case "$subcmd" in
+
+    status)
+      # Show voice settings + Whisper install status.
+      printf "ɳClaw Voice Status\n"
+      printf "==================\n\n"
+
+      # Voice settings from claw plugin.
+      if [ -n "$internal_secret" ]; then
+        local settings_json=""
+        settings_json=$(curl -s \
+          -H "x-internal-secret: $internal_secret" \
+          "${claw_url}/claw/voice/settings" 2>/dev/null)
+        if [ -n "$settings_json" ] && command -v jq >/dev/null 2>&1; then
+          local stt_enabled tts_enabled
+          stt_enabled=$(printf '%s' "$settings_json" | jq -r '.stt_enabled // false' 2>/dev/null)
+          tts_enabled=$(printf '%s' "$settings_json" | jq -r '.tts_enabled // false' 2>/dev/null)
+          printf "STT (speech-to-text): %s\n" "$stt_enabled"
+          printf "TTS (text-to-speech): %s\n" "$tts_enabled"
+        else
+          printf "Voice settings: not configured (run: nself claw voice enable)\n"
+        fi
+      else
+        printf "Voice settings: PLUGIN_INTERNAL_SECRET not set\n"
+      fi
+
+      # Whisper model status from ai plugin.
+      printf "\n"
+      if [ -n "$internal_secret" ]; then
+        local models_json=""
+        models_json=$(curl -s \
+          -H "x-internal-secret: $internal_secret" \
+          "${ai_url}/ai/models/local" 2>/dev/null)
+        local whisper_status="not installed"
+        if [ -n "$models_json" ] && command -v jq >/dev/null 2>&1; then
+          whisper_status=$(printf '%s' "$models_json" \
+            | jq -r '[.[] | select(.name | test("whisper"; "i"))] | if length > 0 then .[0].name + " (ready)" else "not installed" end' \
+            2>/dev/null || printf "not installed")
+        fi
+        printf "Whisper model: %s\n" "$whisper_status"
+        if [ "$whisper_status" = "not installed" ]; then
+          printf "  Install with: nself ai models install --model openai/whisper\n"
+        fi
+      fi
+
+      # nself-voice plugin availability.
+      printf "\n"
+      local voice_health=""
+      voice_health=$(curl -s --max-time 2 "${voice_url}/health" 2>/dev/null)
+      if [ -n "$voice_health" ]; then
+        printf "nself-voice plugin: running (port %s)\n" "${NSELF_VOICE_URL:-3720}"
+      else
+        printf "nself-voice plugin: not running\n"
+        printf "  Max license required. Install: nself plugin install voice\n"
+      fi
+      ;;
+
+    enable)
+      # Enable STT and TTS features via claw plugin settings endpoint.
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET is required"
+        exit 1
+      fi
+
+      local payload='{"stt_enabled":true,"tts_enabled":true}'
+      local resp=""
+      resp=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -H "x-internal-secret: $internal_secret" \
+        -d "$payload" \
+        "${claw_url}/claw/voice/settings" 2>/dev/null)
+
+      if command -v jq >/dev/null 2>&1; then
+        local ok=""
+        ok=$(printf '%s' "$resp" | jq -r '.ok // .status // empty' 2>/dev/null)
+        if [ "$ok" = "true" ] || [ "$ok" = "ok" ] || [ "$ok" = "updated" ]; then
+          log_success "Voice features enabled (STT + TTS)."
+        else
+          cli_error "Unexpected response: $resp"
+          exit 1
+        fi
+      else
+        printf '%s\n' "$resp"
+      fi
+      ;;
+
+    test)
+      # Test TTS via nself-voice plugin (if running) or print OS TTS fallback message.
+      local text="Hello from ɳClaw. Voice synthesis is working."
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --text) text="$2"; shift 2 ;;
+          *)      shift ;;
+        esac
+      done
+
+      local voice_health=""
+      voice_health=$(curl -s --max-time 2 "${voice_url}/health" 2>/dev/null)
+      if [ -n "$voice_health" ]; then
+        log_info "Sending test request to nself-voice at $voice_url ..."
+        local payload=""
+        payload=$(printf '{"text":"%s","speed":1.0}' "$text")
+        local http_code=""
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+          -X POST \
+          -H "Content-Type: application/json" \
+          -d "$payload" \
+          "${voice_url}/voice/synthesize" 2>/dev/null)
+        if [ "$http_code" = "200" ]; then
+          log_success "nself-voice responded 200 — synthesis route is healthy."
+        else
+          cli_error "nself-voice returned HTTP $http_code for /voice/synthesize"
+          exit 1
+        fi
+      else
+        printf "nself-voice plugin is not running. Using OS TTS only.\n"
+        printf "\n"
+        printf "To enable server TTS (Max license required):\n"
+        printf "  nself plugin install voice\n"
+        printf "  nself build && nself start\n"
+      fi
+      ;;
+
+    help | --help | -h)
+      printf "nself claw voice — voice feature management\n\n"
+      printf "Usage: nself claw voice <status|enable|test> [options]\n\n"
+      printf "Subcommands:\n"
+      printf "  status                   Show STT/TTS settings and Whisper install status\n"
+      printf "  enable                   Enable STT and TTS features\n"
+      printf "  test [--text <text>]     Test voice synthesis endpoint\n\n"
+      printf "Examples:\n"
+      printf "  nself claw voice status\n"
+      printf "  nself claw voice enable\n"
+      printf "  nself claw voice test --text 'Testing one two three'\n"
+      ;;
+
+    *)
+      cli_error "Unknown voice action: $subcmd"
+      printf "Actions: status, enable, test\n"
+      exit 1
+      ;;
+  esac
 }
 
 # ============================================================================
