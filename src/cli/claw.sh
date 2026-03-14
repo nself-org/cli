@@ -1205,10 +1205,13 @@ cmd_claw_playbooks() {
       printf "  list                            List all incident response playbooks\n"
       printf "  add --pattern <text> \\          Add a new playbook\n"
       printf "      --steps-file <path>\n"
+      printf "  edit --id <uuid> [--pattern <text>] [--steps-file <path>]\n"
+      printf "       [--confirm|--no-confirm]    Update an existing playbook\n"
       printf "  test --id <uuid> [--dry-run]    Test a playbook (dry-run: show steps only)\n\n"
       printf "Examples:\n"
       printf "  nself claw playbooks list\n"
       printf "  nself claw playbooks test --id abc123 --dry-run\n"
+      printf "  nself claw playbooks edit --id abc123 --pattern \"oom|killed\"\n"
       return 0
       ;;
     list)
@@ -1295,6 +1298,92 @@ cmd_claw_playbooks() {
         new_id=$(printf '%s' "$response" | jq -r '.id // empty' 2>/dev/null)
         if [ -n "$new_id" ]; then
           printf "Playbook created: %s\n" "$new_id"
+        else
+          printf '%s\n' "$response"
+        fi
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+    edit)
+      # Update an existing playbook (pattern, steps, and/or confirmation flag).
+      # Usage: nself claw playbooks edit --id <uuid> [--pattern <text>] [--steps-file <path>]
+      #                                              [--confirm|--no-confirm] [--enable|--disable]
+      local playbook_id="" pattern="" steps_file="" confirm_flag="" enable_flag=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --id) playbook_id="${2:-}"; shift 2 ;;
+          --id=*) playbook_id="${1#*=}"; shift ;;
+          --pattern) pattern="${2:-}"; shift 2 ;;
+          --pattern=*) pattern="${1#*=}"; shift ;;
+          --steps-file) steps_file="${2:-}"; shift 2 ;;
+          --steps-file=*) steps_file="${1#*=}"; shift ;;
+          --confirm) confirm_flag="true"; shift ;;
+          --no-confirm) confirm_flag="false"; shift ;;
+          --enable) enable_flag="true"; shift ;;
+          --disable) enable_flag="false"; shift ;;
+          *) shift ;;
+        esac
+      done
+      if [ -z "$playbook_id" ]; then
+        cli_error "--id required"
+        return 1
+      fi
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+      # Build JSON patch body
+      local patch_body="{}"
+      if [ -n "$pattern" ] && [ -n "$steps_file" ]; then
+        if [ ! -f "$steps_file" ]; then
+          cli_error "Steps file not found: $steps_file"
+          return 1
+        fi
+        local steps_json
+        steps_json=$(cat "$steps_file" 2>/dev/null)
+        if [ -z "$steps_json" ]; then
+          cli_error "Steps file is empty: $steps_file"
+          return 1
+        fi
+        patch_body="{\"pattern\":\"${pattern}\",\"steps\":${steps_json}}"
+      elif [ -n "$pattern" ]; then
+        patch_body="{\"pattern\":\"${pattern}\"}"
+      elif [ -n "$steps_file" ]; then
+        if [ ! -f "$steps_file" ]; then
+          cli_error "Steps file not found: $steps_file"
+          return 1
+        fi
+        local steps_json
+        steps_json=$(cat "$steps_file" 2>/dev/null)
+        patch_body="{\"steps\":${steps_json}}"
+      fi
+      if [ -n "$confirm_flag" ]; then
+        patch_body=$(printf '%s' "$patch_body" | sed "s/}$/,\"requires_confirmation\":${confirm_flag}}/")
+      fi
+      if [ -n "$enable_flag" ]; then
+        patch_body=$(printf '%s' "$patch_body" | sed "s/}$/,\"enabled\":${enable_flag}}/")
+      fi
+      # Handle empty-body edge case
+      if [ "$patch_body" = "{}" ]; then
+        cli_error "No fields to update. Provide at least one of: --pattern, --steps-file, --confirm, --no-confirm, --enable, --disable"
+        return 1
+      fi
+      local response=""
+      response=$(curl -s -X PATCH \
+        -H "Content-Type: application/json" \
+        -H "x-internal-token: ${internal_secret}" \
+        -d "$patch_body" \
+        "${claw_url}/claw/playbooks/${playbook_id}" 2>/dev/null)
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service. Is it running?"
+        return 1
+      fi
+      if command -v jq >/dev/null 2>&1; then
+        local ok
+        ok=$(printf '%s' "$response" | jq -r '.ok // empty' 2>/dev/null)
+        if [ "$ok" = "true" ]; then
+          log_success "Playbook ${playbook_id} updated."
         else
           printf '%s\n' "$response"
         fi
