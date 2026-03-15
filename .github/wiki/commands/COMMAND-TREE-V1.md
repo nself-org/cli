@@ -18,6 +18,8 @@ This is the authoritative command structure after consolidation from 79 → 31 t
 - `nself mux` - Message routing and webhook delivery management (tokens import/list)
 - `nself ai` - AI plugin management (OAuth login, provider add/list/remove)
 - `nself license` - Pro license key management (set/show/validate/clear/upgrade)
+- `nself claw memories` - Per-user memory management (list/add/delete/clear/stats)
+- `nself claw proactive` - Proactive job scheduler management (status/enable/disable/run)
 
 ---
 
@@ -709,6 +711,94 @@ nself license <subcommand>
 
 **Total subcommands:** 5
 Also accessible as `nself plugin license`. Manages the Pro license key used for gated plugin installs.
+
+---
+
+### 14. claw - ɳClaw AI Assistant Management
+
+```text
+nself claw <subcommand>
+
+Setup:
+  setup [--auto|--status|--reset]            Run onboarding wizard
+
+Models:
+  models list                                List available local AI models
+  models install [--auto|--model <name>]     Install a local AI model
+  models status                              Show model download/ready state
+  models remove <name>                       Remove a local model
+
+AI Accounts:
+  gemini add [chat_id]                       Add a Gemini account via OAuth
+  gemini list                                Show Gemini accounts + quota
+  gemini status                              Show Gemini quota summary
+  gemini remove <email>                      Remove a Gemini account
+
+Routing:
+  routing show                               Show current AI routing config
+  routing set <task_class> <tier_order>      Update routing for a task class
+
+Chat:
+  chat "<message>" [--model] [--tier]        Send a one-shot chat message
+
+Playbooks:
+  playbooks list                             List incident response playbooks
+  playbooks add --pattern <text> --steps-file <path>
+  playbooks test --id <uuid> [--dry-run]
+
+Memories:
+  memories list  --user <id>                 List stored memories for a user
+  memories add   --user <id> --content <text> Add an explicit memory
+  memories delete --id <uuid>                Delete a memory by ID
+  memories clear  --user <id>                Clear all memories for a user
+  memories stats  --user <id>                Show memory counts and limits
+
+Proactive Scheduler:
+  proactive status                           List all jobs and enabled state
+  proactive enable  <job_type>               Enable a job
+  proactive disable <job_type>               Disable a job
+  proactive run                              Preview next morning digest
+
+Usage / Stats:
+  usage [--today|--week|--month]             Show AI usage log
+  stats [--json]                             Show AI usage statistics
+
+Admin:
+  admin status                               Stack state snapshot
+  admin enable --session <id>                Enable admin mode for session
+  admin context [--session <id>]             Show admin context
+  admin refresh                              Force fresh snapshot
+
+Voice:
+  voice status                               Show voice feature status
+  voice enable                               Enable STT/TTS features
+  voice test [--text <text>]                 Test voice synthesis
+
+Knowledge Base:
+  knowledge search <query> [--category] [--top N]
+  knowledge list [<category>]
+  knowledge version
+  knowledge note add --chunk <id> --note <text>
+  knowledge note list [--chunk <id>]
+  knowledge note delete --id <uuid>
+
+API Gateway:
+  api keys list [--json]
+  api keys create --name <n> [--admin] [--rpm <N>]
+  api keys revoke <id>
+  api usage [--key <id>] [--json]
+  api test [--url] [--key] [--verbose]
+
+Email:
+  email-rules list
+  email-rules test-delegate --email <addr> --subject <text>
+  email-threads
+```
+
+**Total subcommands:** 45+
+Requires Max Pro license ($19/yr). Manages the nself-claw AI assistant plugin including
+local models, Gemini accounts, AI routing, per-user memories, proactive scheduled jobs,
+voice features, knowledge base, and the OpenAI-compatible API gateway.
 
 ---
 

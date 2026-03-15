@@ -65,6 +65,26 @@ claw_usage() {
   printf "  voice status                                          Show voice feature status + Whisper install\n"
   printf "  voice enable                                          Enable STT/TTS voice features\n"
   printf "  voice test [--text <text>]                            Test voice synthesis (TTS)\n"
+  printf "  knowledge search <query> [--category <cat>] [--top N] Search the nSelf knowledge base\n"
+  printf "  knowledge list [<category>]                           List knowledge chunks (optionally by category)\n"
+  printf "  knowledge version                                     Show knowledge base version + stats\n"
+  printf "  knowledge note add --chunk <id> --note <text>         Add an operator note to a chunk\n"
+  printf "  knowledge note list [--chunk <id>]                    List operator notes\n"
+  printf "  knowledge note delete --id <uuid>                     Delete an operator note\n"
+  printf "  api keys list [--json]                                List gateway API keys\n"
+  printf "  api keys create --name <n> [--admin] [--rpm <N>]     Create a new gateway API key\n"
+  printf "  api keys revoke <id>                                  Revoke (delete) a gateway API key\n"
+  printf "  api usage [--key <id>] [--json]                       Show gateway usage (all keys or one key)\n"
+  printf "  api test [--url <url>] [--key <key>] [--verbose]      Verify the gateway endpoint responds\n"
+  printf "  memories list --user <id>                             List stored memories for a user\n"
+  printf "  memories add  --user <id> --content <text>           Add an explicit memory\n"
+  printf "  memories delete --id <uuid>                          Delete a memory by ID\n"
+  printf "  memories clear --user <id>                           Clear all memories for a user\n"
+  printf "  memories stats --user <id>                           Show memory counts and limits\n"
+  printf "  proactive status                                      List all scheduled jobs and state\n"
+  printf "  proactive enable  <job_type>                         Enable a proactive job\n"
+  printf "  proactive disable <job_type>                         Disable a proactive job\n"
+  printf "  proactive run                                         Preview next morning digest\n"
   printf "  email-rules list                                      List ClawDelegate email routing rules\n"
   printf "  email-rules test-delegate --email <addr>              Test delegate routing for an email\n"
   printf "                            --subject <text>\n"
@@ -84,6 +104,9 @@ claw_usage() {
   printf "  nself claw usage --today\n"
   printf "  nself claw stats --month\n"
   printf "  nself claw admin status\n"
+  printf "  nself claw api keys list\n"
+  printf "  nself claw api keys create --name myapp --rpm 60\n"
+  printf "  nself claw api test\n"
   printf "  nself claw voice status\n"
   printf "  nself claw voice test --text 'Hello from ɳClaw'\n"
 }
@@ -130,6 +153,9 @@ cmd_claw() {
     setup)
       cmd_claw_setup "$@"
       ;;
+    knowledge)
+      cmd_claw_knowledge "$@"
+      ;;
     email-rules)
       cmd_claw_email_rules "$@"
       ;;
@@ -162,6 +188,15 @@ cmd_claw() {
       ;;
     voice)
       cmd_claw_voice "$@"
+      ;;
+    api)
+      cmd_claw_api "$@"
+      ;;
+    memories)
+      cmd_claw_memories "$@"
+      ;;
+    proactive)
+      cmd_claw_proactive "$@"
       ;;
     help | --help | -h)
       claw_usage
@@ -1711,6 +1746,1055 @@ cmd_claw_voice() {
       cli_error "Unknown voice action: $subcmd"
       printf "Actions: status, enable, test\n"
       exit 1
+      ;;
+  esac
+}
+
+# ============================================================================
+# knowledge subcommand dispatcher (T-1151, T-1152, T-1153)
+# ============================================================================
+
+cmd_claw_knowledge() {
+  local subcmd="${1:-}"
+  local claw_url="${NSELF_CLAW_URL:-http://localhost:3713}"
+
+  if [ -z "$subcmd" ]; then
+    printf "Usage: nself claw knowledge <action> [options]\n"
+    printf "Actions: search, list, version, note\n"
+    return 1
+  fi
+
+  shift
+
+  case "$subcmd" in
+    search)
+      # Usage: nself claw knowledge search <query> [--category <cat>] [--top N] [--json]
+      local query="" category="" top="8" json_flag=0
+
+      query="${1:-}"
+      if [ -n "$query" ]; then shift; fi
+
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --category) category="$2"; shift 2 ;;
+          --top)      top="$2";      shift 2 ;;
+          --json)     json_flag=1;   shift ;;
+          *) shift ;;
+        esac
+      done
+
+      if [ -z "$query" ]; then
+        printf "Usage: nself claw knowledge search <query> [--category <cat>] [--top N] [--json]\n" >&2
+        return 1
+      fi
+
+      local url="${claw_url}/claw/knowledge/search?q=$(printf '%s' "$query" | tr ' ' '+')&top=${top}"
+      if [ -n "$category" ]; then
+        url="${url}&category=$(printf '%s' "$category" | tr ' ' '+')"
+      fi
+
+      local response=""
+      response=$(curl -s "$url" 2>/dev/null)
+
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service at ${claw_url}. Is it running?"
+        return 1
+      fi
+
+      if [ "$json_flag" -eq 1 ]; then
+        printf '%s\n' "$response"
+        return 0
+      fi
+
+      if command -v jq >/dev/null 2>&1; then
+        local count=""
+        count=$(printf '%s' "$response" | jq -r '.chunks | length' 2>/dev/null || printf "0")
+        printf "\033[34mFound %s result(s) for \"%s\"\033[0m\n\n" "$count" "$query"
+
+        printf '%s' "$response" | jq -r '.chunks[] | "\(.title)\t\(.category)\t\(.content[0:100])"' 2>/dev/null \
+          | while IFS=$(printf '\t') read -r title cat snippet; do
+            printf "\033[32m%s\033[0m \033[33m[%s]\033[0m\n" "$title" "$cat"
+            printf "  %s…\n\n" "$snippet"
+          done
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+
+    list)
+      # Usage: nself claw knowledge list [<category>] [--json]
+      local category="" json_flag=0
+
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json_flag=1; shift ;;
+          --*)    shift ;;
+          *)      category="$1"; shift ;;
+        esac
+      done
+
+      local url="${claw_url}/claw/knowledge/search?q=&top=100"
+      if [ -n "$category" ]; then
+        url="${claw_url}/claw/knowledge/search?q=&top=100&category=$(printf '%s' "$category" | tr ' ' '+')"
+      fi
+
+      local response=""
+      response=$(curl -s "$url" 2>/dev/null)
+
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service at ${claw_url}."
+        return 1
+      fi
+
+      if [ "$json_flag" -eq 1 ]; then
+        printf '%s\n' "$response"
+        return 0
+      fi
+
+      if command -v jq >/dev/null 2>&1; then
+        local cat_url="${claw_url}/claw/knowledge/categories"
+        local cats_resp=""
+        cats_resp=$(curl -s "$cat_url" 2>/dev/null)
+        if command -v jq >/dev/null 2>&1 && [ -n "$cats_resp" ]; then
+          printf "\033[34mCategories:\033[0m\n"
+          printf '%s' "$cats_resp" | jq -r '.categories[]?.category // empty' 2>/dev/null \
+            | while read -r cat; do
+              printf "  • %s\n" "$cat"
+            done
+          printf "\n"
+        fi
+
+        printf '%s' "$response" | jq -r '.chunks[] | "\(.id)\t\(.title)\t\(.category)"' 2>/dev/null \
+          | while IFS=$(printf '\t') read -r cid ctitle ccat; do
+            printf "\033[32m%-38s\033[0m  \033[33m%-20s\033[0m  %s\n" "$cid" "$ccat" "$ctitle"
+          done
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+
+    version)
+      # Usage: nself claw knowledge version [--json]
+      local json_flag=0
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --json) json_flag=1; shift ;;
+          *) shift ;;
+        esac
+      done
+
+      local response=""
+      response=$(curl -s "${claw_url}/claw/knowledge/version" 2>/dev/null)
+
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service at ${claw_url}."
+        return 1
+      fi
+
+      if [ "$json_flag" -eq 1 ]; then
+        printf '%s\n' "$response"
+        return 0
+      fi
+
+      if command -v jq >/dev/null 2>&1; then
+        local ver total_chunks schema_ver description
+        ver=$(printf '%s' "$response" | jq -r '.version // "unknown"')
+        total_chunks=$(printf '%s' "$response" | jq -r '.total_chunks // 0')
+        schema_ver=$(printf '%s' "$response" | jq -r '.schema_version // 1')
+        description=$(printf '%s' "$response" | jq -r '.description // ""')
+        printf "\033[34mnSelf Knowledge Base\033[0m\n"
+        printf "  Version:      %s\n" "$ver"
+        printf "  Schema:       v%s\n" "$schema_ver"
+        printf "  Total chunks: %s\n" "$total_chunks"
+        if [ -n "$description" ]; then
+          printf "  Description:  %s\n" "$description"
+        fi
+        printf "\nCategories:\n"
+        printf '%s' "$response" | jq -r '.categories[]? // empty' 2>/dev/null \
+          | while read -r cat; do printf "  • %s\n" "$cat"; done
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+
+    note)
+      # Usage: nself claw knowledge note <add|list|delete> [options]
+      local note_action="${1:-}"
+      if [ -z "$note_action" ]; then
+        printf "Usage: nself claw knowledge note <add|list|delete> [options]\n" >&2
+        return 1
+      fi
+      shift
+
+      case "$note_action" in
+        add)
+          local chunk_id="" note_text=""
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --chunk) chunk_id="$2"; shift 2 ;;
+              --note)  note_text="$2"; shift 2 ;;
+              *) shift ;;
+            esac
+          done
+
+          if [ -z "$chunk_id" ] || [ -z "$note_text" ]; then
+            printf "Usage: nself claw knowledge note add --chunk <id> --note <text>\n" >&2
+            return 1
+          fi
+
+          local payload
+          payload=$(printf '{"chunk_id":"%s","note":"%s"}' "$chunk_id" "$note_text")
+          local response=""
+          response=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "$payload" \
+            "${claw_url}/claw/knowledge/notes" 2>/dev/null)
+
+          if command -v jq >/dev/null 2>&1 && printf '%s' "$response" | jq -e '.id' >/dev/null 2>&1; then
+            local note_id
+            note_id=$(printf '%s' "$response" | jq -r '.id')
+            log_success "Note added (id: ${note_id})"
+          else
+            cli_error "Failed to add note. Response: ${response}"
+            return 1
+          fi
+          ;;
+
+        list)
+          local chunk_id="" json_flag=0
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --chunk) chunk_id="$2"; shift 2 ;;
+              --json)  json_flag=1;   shift ;;
+              *) shift ;;
+            esac
+          done
+
+          local url="${claw_url}/claw/knowledge/notes"
+          if [ -n "$chunk_id" ]; then
+            url="${url}?chunk_id=${chunk_id}"
+          fi
+
+          local response=""
+          response=$(curl -s "$url" 2>/dev/null)
+
+          if [ -z "$response" ]; then
+            cli_error "No response from claw service."
+            return 1
+          fi
+
+          if [ "$json_flag" -eq 1 ]; then
+            printf '%s\n' "$response"
+            return 0
+          fi
+
+          if command -v jq >/dev/null 2>&1; then
+            local count=""
+            count=$(printf '%s' "$response" | jq -r '.notes | length' 2>/dev/null || printf "0")
+            if [ "$count" -eq 0 ]; then
+              log_info "No notes found."
+              return 0
+            fi
+            printf "\033[34m%-36s  %-20s  %s\033[0m\n" "ID" "Chunk" "Note"
+            printf '%s' "$response" | jq -r '.notes[] | "\(.id)\t\(.chunk_id)\t\(.note)"' 2>/dev/null \
+              | while IFS=$(printf '\t') read -r nid nchunk nnote; do
+                printf "%-36s  %-20s  %s\n" "$nid" "$nchunk" "$nnote"
+              done
+          else
+            printf '%s\n' "$response"
+          fi
+          ;;
+
+        delete)
+          local note_id=""
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --id) note_id="$2"; shift 2 ;;
+              *) shift ;;
+            esac
+          done
+
+          if [ -z "$note_id" ]; then
+            printf "Usage: nself claw knowledge note delete --id <uuid>\n" >&2
+            return 1
+          fi
+
+          local response=""
+          response=$(curl -s -X DELETE \
+            "${claw_url}/claw/knowledge/notes/${note_id}" 2>/dev/null)
+
+          if command -v jq >/dev/null 2>&1 && printf '%s' "$response" | jq -e '.deleted' >/dev/null 2>&1; then
+            log_success "Note ${note_id} deleted."
+          else
+            cli_error "Failed to delete note. Response: ${response}"
+            return 1
+          fi
+          ;;
+
+        *)
+          cli_error "Unknown note action: $note_action"
+          printf "Actions: add, list, delete\n"
+          return 1
+          ;;
+      esac
+      ;;
+
+    *)
+      cli_error "Unknown knowledge action: $subcmd"
+      printf "Actions: search, list, version, note\n"
+      return 1
+      ;;
+  esac
+}
+
+# ============================================================================
+# T-1182: api subcommand — gateway API key + usage management
+# ============================================================================
+
+cmd_claw_api() {
+  local subcmd="${1:-}"
+
+  if [ -z "$subcmd" ]; then
+    cli_error "api action required"
+    printf "Actions: keys, usage, test\n"
+    exit 1
+  fi
+
+  shift
+
+  local claw_url="${NSELF_CLAW_URL:-http://localhost:3713}"
+  local internal_secret="${PLUGIN_INTERNAL_SECRET:-}"
+
+  case "$subcmd" in
+
+    keys)
+      # Manage gateway API keys.
+      local keys_action="${1:-list}"
+      shift || true
+
+      case "$keys_action" in
+
+        list)
+          # List all gateway API keys.
+          # Usage: nself claw api keys list [--json]
+          local json_flag=false
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --json) json_flag=true; shift ;;
+              *) shift ;;
+            esac
+          done
+
+          if [ -z "$internal_secret" ]; then
+            cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+            return 1
+          fi
+
+          local response=""
+          response=$(curl -s \
+            -H "x-internal-token: ${internal_secret}" \
+            "${claw_url}/claw/v1/api-keys" 2>/dev/null)
+
+          if [ -z "$response" ]; then
+            cli_error "No response from claw service at ${claw_url}. Is it running?"
+            return 1
+          fi
+
+          if [ "$json_flag" = "true" ]; then
+            printf '%s\n' "$response"
+            return 0
+          fi
+
+          if command -v jq >/dev/null 2>&1; then
+            local count=""
+            count=$(printf '%s' "$response" | jq '.keys | if type == "array" then length else 0 end' 2>/dev/null || true)
+
+            if [ "${count:-0}" -eq 0 ]; then
+              log_info "No API keys found. Create one with: nself claw api keys create --name <name>"
+              return 0
+            fi
+
+            printf "\033[34m%-36s %-20s %-8s %-6s %s\033[0m\n" \
+              "ID" "Name" "RPM" "Admin" "Created"
+            printf "%-36s %-20s %-8s %-6s %s\n" \
+              "------------------------------------" "--------------------" "--------" "------" "-------------------"
+
+            printf '%s' "$response" | jq -r '.keys[] | [
+              .id,
+              (.name // "-"),
+              ((.rpm_limit // 0) | tostring),
+              (if (.admin_allowed // false) then "yes" else "no" end),
+              (.created_at // "-")
+            ] | @tsv' 2>/dev/null | \
+            while IFS=$(printf '\t') read -r key_id key_name rpm_limit is_admin created_at; do
+              printf "%-36s %-20s %-8s %-6s %s\n" \
+                "$key_id" "$key_name" "$rpm_limit" "$is_admin" "$created_at"
+            done
+          else
+            printf '%s\n' "$response"
+          fi
+          ;;
+
+        create)
+          # Create a new gateway API key.
+          # Usage: nself claw api keys create --name <name> [--admin] [--rpm <N>]
+          local key_name="" admin_allowed=false rpm_limit=60
+
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              --name)  key_name="$2";          shift 2 ;;
+              --admin) admin_allowed=true;      shift ;;
+              --rpm)   rpm_limit="$2";          shift 2 ;;
+              *) shift ;;
+            esac
+          done
+
+          if [ -z "$key_name" ]; then
+            cli_error "Missing --name <name>"
+            printf "Usage: nself claw api keys create --name <name> [--admin] [--rpm <N>]\n" >&2
+            return 1
+          fi
+
+          if [ -z "$internal_secret" ]; then
+            cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+            return 1
+          fi
+
+          local safe_name=""
+          safe_name=$(printf '%s' "$key_name" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+          local payload="{\"name\":\"${safe_name}\",\"admin_allowed\":${admin_allowed},\"rpm_limit\":${rpm_limit}}"
+
+          local response=""
+          response=$(curl -s -X POST \
+            -H "x-internal-token: ${internal_secret}" \
+            -H "Content-Type: application/json" \
+            -d "$payload" \
+            "${claw_url}/claw/v1/api-keys" 2>/dev/null)
+
+          if [ -z "$response" ]; then
+            cli_error "No response from claw service at ${claw_url}. Is it running?"
+            return 1
+          fi
+
+          if command -v jq >/dev/null 2>&1; then
+            local new_key="" key_id=""
+            new_key=$(printf '%s' "$response" | jq -r '.key // ""' 2>/dev/null || true)
+            key_id=$(printf '%s' "$response"  | jq -r '.id // ""' 2>/dev/null || true)
+
+            if [ -z "$new_key" ]; then
+              local err=""
+              err=$(printf '%s' "$response" | jq -r '.error // "unknown error"' 2>/dev/null || true)
+              cli_error "Failed to create API key: ${err}"
+              return 1
+            fi
+
+            log_success "API key created."
+            printf "\n"
+            printf "  ID:    %s\n" "$key_id"
+            printf "  Key:   \033[1m%s\033[0m\n" "$new_key"
+            printf "  Admin: %s\n" "$admin_allowed"
+            printf "  RPM:   %s\n" "$rpm_limit"
+            printf "\n"
+            printf "Save this key — it will not be shown again.\n"
+          else
+            printf '%s\n' "$response"
+          fi
+          ;;
+
+        revoke)
+          # Revoke (delete) a gateway API key.
+          # Usage: nself claw api keys revoke <id>
+          local key_id="${1:-}"
+
+          if [ -z "$key_id" ]; then
+            cli_error "Missing key ID"
+            printf "Usage: nself claw api keys revoke <id>\n" >&2
+            return 1
+          fi
+
+          if [ -z "$internal_secret" ]; then
+            cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+            return 1
+          fi
+
+          local safe_id=""
+          safe_id=$(printf '%s' "$key_id" | sed 's/[^a-fA-F0-9-]//g')
+
+          local http_status=""
+          http_status=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            -H "x-internal-token: ${internal_secret}" \
+            "${claw_url}/claw/v1/api-keys/${safe_id}" 2>/dev/null)
+
+          if [ "$http_status" = "200" ] || [ "$http_status" = "204" ]; then
+            log_success "API key ${safe_id} revoked."
+          elif [ "$http_status" = "404" ]; then
+            cli_error "API key not found: ${safe_id}"
+            return 1
+          else
+            cli_error "Failed to revoke API key (HTTP ${http_status})."
+            return 1
+          fi
+          ;;
+
+        help | --help | -h)
+          printf "Usage: nself claw api keys <action> [options]\n"
+          printf "Actions: list, create, revoke\n"
+          ;;
+
+        *)
+          cli_error "Unknown keys action: $keys_action"
+          printf "Actions: list, create, revoke\n"
+          return 1
+          ;;
+      esac
+      ;;
+
+    usage)
+      # Show gateway API usage log.
+      # Usage: nself claw api usage [--key <id>] [--json]
+      local key_id="" json_flag=false
+
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --key)  key_id="$2";   shift 2 ;;
+          --json) json_flag=true; shift ;;
+          *) shift ;;
+        esac
+      done
+
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+
+      local url="${claw_url}/claw/v1/usage"
+      if [ -n "$key_id" ]; then
+        local safe_key_id=""
+        safe_key_id=$(printf '%s' "$key_id" | sed 's/[^a-fA-F0-9-]//g')
+        url="${claw_url}/claw/v1/usage?key_id=${safe_key_id}"
+      fi
+
+      local response=""
+      response=$(curl -s \
+        -H "x-internal-token: ${internal_secret}" \
+        "$url" 2>/dev/null)
+
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service at ${claw_url}. Is it running?"
+        return 1
+      fi
+
+      if [ "$json_flag" = "true" ]; then
+        printf '%s\n' "$response"
+        return 0
+      fi
+
+      if command -v jq >/dev/null 2>&1; then
+        local count=""
+        count=$(printf '%s' "$response" | jq '.usage | if type == "array" then length else 0 end' 2>/dev/null || true)
+
+        if [ "${count:-0}" -eq 0 ]; then
+          log_info "No gateway usage data found."
+          return 0
+        fi
+
+        printf "\033[34m%-36s %-8s %-8s %-6s %s\033[0m\n" \
+          "Key ID" "Prompt" "Compl" "Model" "Time"
+        printf "%-36s %-8s %-8s %-6s %s\n" \
+          "------------------------------------" "--------" "--------" "------" "-------------------"
+
+        printf '%s' "$response" | jq -r '.usage[] | [
+          (.key_id // "-"),
+          ((.prompt_tokens // 0) | tostring),
+          ((.completion_tokens // 0) | tostring),
+          (.model // "-"),
+          (.created_at // "-")
+        ] | @tsv' 2>/dev/null | \
+        while IFS=$(printf '\t') read -r k_id pt ct model ts; do
+          printf "%-36s %-8s %-8s %-6s %s\n" "$k_id" "$pt" "$ct" "$model" "$ts"
+        done
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+
+    test)
+      # Test that the gateway endpoint is reachable and responding.
+      # Usage: nself claw api test [--url <url>] [--key <key>] [--verbose]
+      local base_url="" api_key="" verbose=false
+
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --url)     base_url="$2"; shift 2 ;;
+          --key)     api_key="$2";  shift 2 ;;
+          --verbose) verbose=true;  shift ;;
+          *) shift ;;
+        esac
+      done
+
+      # Derive gateway URL from NSELF_CLAW_URL if not overridden
+      if [ -z "$base_url" ]; then
+        base_url="${NSELF_CLAW_URL:-http://localhost:3713}"
+      fi
+
+      local models_url="${base_url}/v1/models"
+
+      if [ "$verbose" = "true" ]; then
+        log_info "Testing gateway at ${models_url}..."
+      fi
+
+      local http_status="" response=""
+      if [ -n "$api_key" ]; then
+        response=$(curl -s -w "\n__STATUS__%{http_code}" \
+          -H "Authorization: Bearer ${api_key}" \
+          "$models_url" 2>/dev/null)
+      else
+        response=$(curl -s -w "\n__STATUS__%{http_code}" \
+          "$models_url" 2>/dev/null)
+      fi
+
+      http_status=$(printf '%s' "$response" | grep '__STATUS__' | sed 's/__STATUS__//')
+      local body=""
+      body=$(printf '%s' "$response" | grep -v '__STATUS__')
+
+      if [ "$http_status" = "200" ]; then
+        if command -v jq >/dev/null 2>&1; then
+          local model_count=""
+          model_count=$(printf '%s' "$body" | jq '.data | if type == "array" then length else 0 end' 2>/dev/null || true)
+          log_success "Gateway is reachable. ${model_count} models available."
+          if [ "$verbose" = "true" ] && [ -n "$body" ]; then
+            printf '\n'
+            printf '%s' "$body" | jq -r '.data[]? | "  " + .id' 2>/dev/null || true
+            printf '\n'
+          fi
+        else
+          log_success "Gateway is reachable (HTTP 200)."
+        fi
+      elif [ "$http_status" = "401" ]; then
+        cli_error "Gateway returned 401 Unauthorized. Check your API key."
+        return 1
+      elif [ -z "$http_status" ]; then
+        cli_error "No response from gateway at ${base_url}. Is nClaw running?"
+        return 1
+      else
+        cli_error "Gateway returned HTTP ${http_status}."
+        if [ "$verbose" = "true" ] && [ -n "$body" ]; then
+          printf '%s\n' "$body"
+        fi
+        return 1
+      fi
+      ;;
+
+    help | --help | -h)
+      printf "Usage: nself claw api <action> [options]\n"
+      printf "Actions: keys, usage, test\n"
+      ;;
+
+    *)
+      cli_error "Unknown api action: $subcmd"
+      printf "Actions: keys, usage, test\n"
+      return 1
+      ;;
+
+  esac
+}
+
+# ============================================================================
+# memories subcommand — T-1209
+# ============================================================================
+#
+# Usage:
+#   nself claw memories list  --user <id>                 List memories for a user
+#   nself claw memories add   --user <id> --content <text> Add an explicit memory
+#   nself claw memories delete --id <uuid>                Delete a memory by ID
+#   nself claw memories clear  --user <id>                Clear all memories for a user
+#   nself claw memories stats  --user <id>                Show memory stats for a user
+
+cmd_claw_memories() {
+  local subcmd="${1:-list}"
+  shift || true
+
+  local claw_url="${NSELF_CLAW_URL:-http://localhost:3713}"
+  local internal_secret="${PLUGIN_INTERNAL_SECRET:-}"
+
+  case "$subcmd" in
+    --help|-h)
+      printf "Usage: nself claw memories <action> [options]\n\n"
+      printf "Actions:\n"
+      printf "  list  --user <id>                       List stored memories for a user\n"
+      printf "  add   --user <id> --content <text>      Add an explicit memory\n"
+      printf "  delete --id <uuid>                      Delete a memory by ID\n"
+      printf "  clear  --user <id>                      Clear all memories for a user\n"
+      printf "  stats  --user <id>                      Show memory counts and limits\n\n"
+      printf "Examples:\n"
+      printf "  nself claw memories list --user abc123\n"
+      printf "  nself claw memories add --user abc123 --content \"Prefers concise answers\"\n"
+      printf "  nself claw memories delete --id a1b2c3d4-...\n"
+      printf "  nself claw memories clear --user abc123\n"
+      printf "  nself claw memories stats --user abc123\n"
+      return 0
+      ;;
+
+    list)
+      local user_id=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --user) user_id="${2:-}"; shift 2 ;;
+          --user=*) user_id="${1#*=}"; shift ;;
+          *) shift ;;
+        esac
+      done
+      if [ -z "$user_id" ]; then
+        cli_error "--user <id> required"
+        return 1
+      fi
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+      local response=""
+      response=$(curl -s \
+        -H "x-internal-token: ${internal_secret}" \
+        "${claw_url}/claw/memories?user_id=${user_id}" 2>/dev/null)
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service at ${claw_url}. Is it running?"
+        return 1
+      fi
+      if command -v jq >/dev/null 2>&1; then
+        local count
+        count=$(printf '%s' "$response" | jq '.memories | if type == "array" then length else 0 end' 2>/dev/null || printf "0")
+        if [ "${count:-0}" -eq 0 ]; then
+          printf "No memories stored for user %s.\n" "$user_id"
+          return 0
+        fi
+        printf "\n\033[34m%-38s %-12s %s\033[0m\n" "ID" "Source" "Content"
+        printf "%-38s %-12s %s\n" "--------------------------------------" "------------" "-------"
+        printf '%s' "$response" | jq -r '.memories // [] | .[] | [
+          (.id // "-"),
+          (.source // "explicit"),
+          ((.content // "-") | gsub("\n"; " ") | .[0:80])
+        ] | @tsv' 2>/dev/null | \
+        while IFS=$(printf '\t') read -r id src content; do
+          printf "%-38s %-12s %s\n" "$id" "$src" "$content"
+        done
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+
+    add)
+      local user_id="" content=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --user) user_id="${2:-}"; shift 2 ;;
+          --user=*) user_id="${1#*=}"; shift ;;
+          --content) content="${2:-}"; shift 2 ;;
+          --content=*) content="${1#*=}"; shift ;;
+          *) shift ;;
+        esac
+      done
+      if [ -z "$user_id" ]; then
+        cli_error "--user <id> required"
+        return 1
+      fi
+      if [ -z "$content" ]; then
+        cli_error "--content <text> required"
+        return 1
+      fi
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+      # Escape content for JSON using printf
+      local escaped_content
+      escaped_content=$(printf '%s' "$content" | sed 's/\\/\\\\/g; s/"/\\"/g')
+      local body="{\"user_id\":\"${user_id}\",\"content\":\"${escaped_content}\"}"
+      local response=""
+      response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -H "x-internal-token: ${internal_secret}" \
+        -d "$body" \
+        "${claw_url}/claw/memories" 2>/dev/null)
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service. Is it running?"
+        return 1
+      fi
+      if command -v jq >/dev/null 2>&1; then
+        local new_id
+        new_id=$(printf '%s' "$response" | jq -r '.id // empty' 2>/dev/null)
+        if [ -n "$new_id" ]; then
+          log_success "Memory stored: ${new_id}"
+        else
+          printf '%s\n' "$response"
+        fi
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+
+    delete)
+      local mem_id=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --id) mem_id="${2:-}"; shift 2 ;;
+          --id=*) mem_id="${1#*=}"; shift ;;
+          *) shift ;;
+        esac
+      done
+      if [ -z "$mem_id" ]; then
+        cli_error "--id <uuid> required"
+        return 1
+      fi
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+      local http_code=""
+      http_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+        -H "x-internal-token: ${internal_secret}" \
+        "${claw_url}/claw/memories/${mem_id}" 2>/dev/null)
+      if [ "$http_code" = "204" ]; then
+        log_success "Memory deleted."
+      elif [ "$http_code" = "404" ]; then
+        cli_error "Memory not found: ${mem_id}"
+        return 1
+      elif [ -z "$http_code" ] || [ "$http_code" = "000" ]; then
+        cli_error "No response from claw service. Is it running?"
+        return 1
+      else
+        cli_error "Unexpected response: HTTP ${http_code}"
+        return 1
+      fi
+      ;;
+
+    clear)
+      local user_id=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --user) user_id="${2:-}"; shift 2 ;;
+          --user=*) user_id="${1#*=}"; shift ;;
+          *) shift ;;
+        esac
+      done
+      if [ -z "$user_id" ]; then
+        cli_error "--user <id> required"
+        return 1
+      fi
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+      local response=""
+      response=$(curl -s -X DELETE \
+        -H "x-internal-token: ${internal_secret}" \
+        "${claw_url}/claw/memories?user_id=${user_id}" 2>/dev/null)
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service. Is it running?"
+        return 1
+      fi
+      if command -v jq >/dev/null 2>&1; then
+        local deleted
+        deleted=$(printf '%s' "$response" | jq -r '.deleted // 0' 2>/dev/null)
+        log_success "Cleared ${deleted} memories for user ${user_id}."
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+
+    stats)
+      local user_id=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --user) user_id="${2:-}"; shift 2 ;;
+          --user=*) user_id="${1#*=}"; shift ;;
+          *) shift ;;
+        esac
+      done
+      if [ -z "$user_id" ]; then
+        cli_error "--user <id> required"
+        return 1
+      fi
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+      local response=""
+      response=$(curl -s \
+        -H "x-internal-token: ${internal_secret}" \
+        "${claw_url}/claw/memories/stats?user_id=${user_id}" 2>/dev/null)
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service. Is it running?"
+        return 1
+      fi
+      if command -v jq >/dev/null 2>&1; then
+        local total explicit semantic
+        total=$(printf '%s' "$response" | jq -r '.total // 0' 2>/dev/null)
+        explicit=$(printf '%s' "$response" | jq -r '.explicit // 0' 2>/dev/null)
+        semantic=$(printf '%s' "$response" | jq -r '.semantic // 0' 2>/dev/null)
+        printf "Memory stats for user %s:\n" "$user_id"
+        printf "  Total:    %s\n" "$total"
+        printf "  Explicit: %s\n" "$explicit"
+        printf "  Semantic: %s\n" "$semantic"
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+
+    *)
+      cli_error "Unknown memories action: $subcmd"
+      printf "Actions: list, add, delete, clear, stats\n"
+      return 1
+      ;;
+  esac
+}
+
+# ============================================================================
+# proactive subcommand — T-1209
+# ============================================================================
+#
+# Usage:
+#   nself claw proactive status                  List all scheduled jobs + enabled state
+#   nself claw proactive enable  <job_type>      Enable a job
+#   nself claw proactive disable <job_type>      Disable a job
+#   nself claw proactive run                     Preview next digest (no send)
+
+cmd_claw_proactive() {
+  local subcmd="${1:-status}"
+  shift || true
+
+  local claw_url="${NSELF_CLAW_URL:-http://localhost:3713}"
+  local internal_secret="${PLUGIN_INTERNAL_SECRET:-}"
+
+  case "$subcmd" in
+    --help|-h)
+      printf "Usage: nself claw proactive <action> [options]\n\n"
+      printf "Actions:\n"
+      printf "  status                   List all scheduled jobs and their enabled state\n"
+      printf "  enable  <job_type>       Enable a proactive job\n"
+      printf "  disable <job_type>       Disable a proactive job\n"
+      printf "  run                      Preview the next morning digest (does not send)\n\n"
+      printf "Job types: morning_digest, health_report, ssl_check, disk_check, anomaly_detect\n\n"
+      printf "Examples:\n"
+      printf "  nself claw proactive status\n"
+      printf "  nself claw proactive enable morning_digest\n"
+      printf "  nself claw proactive disable health_report\n"
+      printf "  nself claw proactive run\n"
+      return 0
+      ;;
+
+    status)
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+      local response=""
+      response=$(curl -s \
+        -H "x-internal-token: ${internal_secret}" \
+        "${claw_url}/claw/proactive/jobs" 2>/dev/null)
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service at ${claw_url}. Is it running?"
+        return 1
+      fi
+      if command -v jq >/dev/null 2>&1; then
+        local count
+        count=$(printf '%s' "$response" | jq '.jobs | if type == "array" then length else 0 end' 2>/dev/null || printf "0")
+        if [ "${count:-0}" -eq 0 ]; then
+          printf "No proactive jobs configured.\n"
+          return 0
+        fi
+        printf "\n\033[34m%-22s %-10s %-20s %-6s %s\033[0m\n" \
+          "Job Type" "Enabled" "Schedule" "Fails" "Last Run"
+        printf "%-22s %-10s %-20s %-6s %s\n" \
+          "----------------------" "----------" "--------------------" "------" "-------------------"
+        printf '%s' "$response" | jq -r '.jobs // [] | .[] | [
+          (.job_type // "-"),
+          (if .enabled then "yes" else "no" end),
+          (.cron_expr // "-"),
+          ((.failure_count // 0) | tostring),
+          (.last_run_at // "never")
+        ] | @tsv' 2>/dev/null | \
+        while IFS=$(printf '\t') read -r jtype enabled cron fails last; do
+          printf "%-22s %-10s %-20s %-6s %s\n" "$jtype" "$enabled" "$cron" "$fails" "$last"
+        done
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+
+    enable|disable)
+      local job_type="${1:-}"
+      if [ -z "$job_type" ]; then
+        cli_error "job_type required (e.g. morning_digest, ssl_check)"
+        return 1
+      fi
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+      local enabled_val="true"
+      if [ "$subcmd" = "disable" ]; then
+        enabled_val="false"
+      fi
+      local response=""
+      response=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -H "x-internal-token: ${internal_secret}" \
+        -d "{\"enabled\":${enabled_val}}" \
+        "${claw_url}/claw/proactive/jobs/${job_type}/toggle" 2>/dev/null)
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service. Is it running?"
+        return 1
+      fi
+      if command -v jq >/dev/null 2>&1; then
+        local ok
+        ok=$(printf '%s' "$response" | jq -r '.ok // .updated // empty' 2>/dev/null)
+        if [ -n "$ok" ] && [ "$ok" != "false" ] && [ "$ok" != "null" ]; then
+          if [ "$subcmd" = "enable" ]; then
+            log_success "${job_type} enabled."
+          else
+            log_success "${job_type} disabled."
+          fi
+        else
+          printf '%s\n' "$response"
+        fi
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+
+    run)
+      if [ -z "$internal_secret" ]; then
+        cli_error "PLUGIN_INTERNAL_SECRET not set. Source your .env file first."
+        return 1
+      fi
+      local response=""
+      response=$(curl -s \
+        -H "x-internal-token: ${internal_secret}" \
+        "${claw_url}/claw/proactive/digest" 2>/dev/null)
+      if [ -z "$response" ]; then
+        cli_error "No response from claw service at ${claw_url}. Is it running?"
+        return 1
+      fi
+      if command -v jq >/dev/null 2>&1; then
+        local text
+        text=$(printf '%s' "$response" | jq -r '.text // empty' 2>/dev/null)
+        if [ -n "$text" ]; then
+          printf "\n--- Digest preview (not sent) ---\n\n"
+          printf '%s\n' "$text"
+          printf "\n---------------------------------\n"
+        else
+          printf '%s\n' "$response"
+        fi
+      else
+        printf '%s\n' "$response"
+      fi
+      ;;
+
+    *)
+      cli_error "Unknown proactive action: $subcmd"
+      printf "Actions: status, enable, disable, run\n"
+      return 1
       ;;
   esac
 }
