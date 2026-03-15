@@ -432,7 +432,7 @@ cmd_install() {
 
   # For free plugins, verify existence in registry
   if [[ "$is_pro" == "false" ]]; then
-    if ! printf '%s' "$registry" | grep -q "\"$plugin_name\":"; then
+    if ! printf '%s' "$registry" | grep -qE "\"$plugin_name\"[[:space:]]*:|\"name\"[[:space:]]*:[[:space:]]*\"$plugin_name\""; then
       log_error "Plugin '$plugin_name' not found in registry"
       printf "\nRun 'nself plugin list' to see all available plugins.\n"
       return 1

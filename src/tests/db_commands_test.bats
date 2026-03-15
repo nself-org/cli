@@ -89,9 +89,22 @@ skip_if_no_docker() {
 # Live DB tests (Docker required)
 # ---------------------------------------------------------------------------
 
-@test "nself db migrate --status exits 0 with running services" {
+nself_initialized() {
+  [[ -f ".env" ]] || return 1
+  command -v nself >/dev/null 2>&1 || return 1
+  nself status >/dev/null 2>&1 || return 1
+}
+
+skip_if_no_integration() {
   skip_if_no_docker
-  run nself db migrate --status
+  if \! nself_initialized; then
+    skip "nself project not initialized (requires nself init + running services)"
+  fi
+}
+
+@test "nself db migrate status exits 0 with running services" {
+  skip_if_no_integration
+  run nself db migrate status
   assert_success
 }
 

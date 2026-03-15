@@ -20,6 +20,19 @@ skip_if_no_docker() {
   fi
 }
 
+nself_initialized() {
+  [[ -f ".env" ]] || return 1
+  command -v nself >/dev/null 2>&1 || return 1
+  nself status >/dev/null 2>&1 || return 1
+}
+
+skip_if_no_integration() {
+  skip_if_no_docker
+  if ! nself_initialized; then
+    skip "nself project not initialized (requires nself init + running services)"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Dry-run install tests (no Docker required)
 # ---------------------------------------------------------------------------
@@ -124,7 +137,7 @@ skip_if_no_docker() {
 # ---------------------------------------------------------------------------
 
 @test "free plugin install search runs health check" {
-  skip_if_no_docker
+  skip_if_no_integration
   nself plugin install search
   run curl -fsS "http://localhost:3302/health"
   assert_success
@@ -132,7 +145,7 @@ skip_if_no_docker() {
 }
 
 @test "free plugin install webhooks runs health check" {
-  skip_if_no_docker
+  skip_if_no_integration
   nself plugin install webhooks
   # Webhooks plugin uses the main Hasura port — check Hasura is up
   run nself health --service webhooks

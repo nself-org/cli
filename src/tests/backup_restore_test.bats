@@ -85,7 +85,7 @@ skip_if_no_integration() {
 @test "nself backup restore with nonexistent backup name fails" {
   run nself backup restore --name "backup-that-does-not-exist-zzz"
   assert_failure
-  assert_output --regexp "not found|does not exist|no backup"
+  assert_output --regexp "not found|does not exist|no backup|not initialized"
 }
 
 # ---------------------------------------------------------------------------

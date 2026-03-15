@@ -4,6 +4,8 @@
 # Verifies that Prometheus metrics are exported correctly when monitoring is enabled.
 # Requires nself services running with monitoring bundle enabled.
 
+load test_helper
+
 docker_available() {
   command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
 }
