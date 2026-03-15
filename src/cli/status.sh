@@ -668,7 +668,7 @@ show_service_detail() {
   show_header "Detailed Status: $service_name"
   echo ""
 
-  local container_name="${PROJECT_NAME:-nself}_${service_name}"
+  local container_name="${PROJECT_NAME:-nself}_${service_name//-/_}"
 
   # Check if container exists (grep -Fx: fixed-string, exact-line to avoid partial matches)
   if ! docker ps -a --filter "name=$container_name" --format "{{.Names}}" | grep -Fxq "$container_name"; then

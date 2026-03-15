@@ -23,8 +23,8 @@ source "$CLI_SCRIPT_DIR/../lib/utils/parallel-logs.sh" 2>/dev/null || true
 format_service_name() {
   local name="$1"
   # Remove project prefix and clean up
-  name="${name#${PROJECT_NAME}_}"
-  name="${name#${PROJECT_NAME}-}"
+  name="${name#${PROJECT_NAME:-nself}_}"
+  name="${name#${PROJECT_NAME:-nself}-}"
   # Truncate long names to 12 chars (better for longer service names)
   if [[ ${#name} -gt 12 ]]; then
     echo "${name:0:12}"
