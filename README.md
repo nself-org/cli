@@ -401,7 +401,7 @@ Categories include AI and intelligence, real-time communication, media processin
 - `compliance` — GDPR, CCPA, HIPAA, SOC 2, PCI-DSS coverage
 - `auth` — WebAuthn/passkeys, TOTP 2FA, magic links, device-code flow
 
-Pro plugins are source-available. License validated server-side via `ping.nself.org`. Revoked keys render plugins inert on next build.
+Pro plugins are [source-available](https://nself.org/legal/bundle-license). License validated server-side via `ping.nself.org`. Revoked keys render plugins inert on next build.
 
 ---
 
@@ -470,6 +470,9 @@ nself health check
 
 Security hardening runs automatically on every deploy. No license required.
 
+See [Self-hosting: what is and is not included](https://nself.org/docs/self-hosting/boundary) for
+what nSelf provides vs. what you own as the operator (backups, monitoring, on-call, capacity).
+
 ---
 
 ## Requirements
@@ -514,7 +517,7 @@ Tests live in `internal/` alongside the packages they test. Coverage target: 70%
 
 MIT, free for personal and commercial use. See [LICENSE](LICENSE).
 
-The 127 pro plugins are source-available under a separate commercial license. Compiled binaries are distributed through `ping.nself.org` after license validation.
+Pro plugins (count generated from the plugins-pro registry, not hand-typed here) are [source-available](https://nself.org/legal/bundle-license) under the nSelf Bundle License. Compiled binaries are distributed through `ping.nself.org` after license validation.
 
 ---
 
