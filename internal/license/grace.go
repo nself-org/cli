@@ -1,12 +1,14 @@
 // Package license — grace.go implements the license grace period state machine
 // and degradation mode enforcement.
 //
-// States: valid -> grace_soft -> grace_hard -> expired -> revoked
+// States: valid -> grace_soft -> grace_hard -> grace_post_expiry -> expired -> revoked
 // Grace periods:
 //   - <24h offline: proceed silently (valid)
 //   - 24h-7d offline: WARNING banner (grace_soft)
 //   - >7d offline: read-only degraded mode (grace_hard)
-//   - Expired license: refuse to start (expired)
+//   - License expired (server-reported expires_at) but <30d since expiry:
+//     proceed with a warning, writes still allowed (grace_post_expiry)
+//   - License expired and >=30d since expiry: refuse to start (expired)
 //   - Revoked license: refuse to start (revoked)
 package license
 
@@ -25,7 +27,13 @@ const (
 	GraceSoft GraceState = "grace_soft"
 	// GraceHard means the cache is >7d old; paid plugin writes are refused.
 	GraceHard GraceState = "grace_hard"
-	// GraceExpired means the license has expired.
+	// GracePostExpiry means the license's server-reported expiry has passed
+	// but the license is within the PostExpiryGraceWindow (30 days); paid
+	// plugins keep working with a warning.
+	GracePostExpiry GraceState = "grace_post_expiry"
+	// GraceExpired means the license has expired and the post-expiry grace
+	// window (PostExpiryGraceWindow) has also elapsed; paid plugins are
+	// dormant.
 	GraceExpired GraceState = "expired"
 	// GraceRevoked means the license was explicitly revoked.
 	GraceRevoked GraceState = "revoked"
@@ -66,19 +74,21 @@ func DetermineGraceState(entry *CacheEntry) GraceCheckResult {
 	expiresAt := time.Unix(entry.ExpiresAt, 0)
 
 	// Check if the license itself has expired (server-reported expiry).
+	// Commercial promise (Bundle License §4 / licensing.mdx / pricing FAQ):
+	// paid plugins keep working for PostExpiryGraceWindow (30 days) after
+	// expiry before going dormant. See P6-E12-W4-S4-T2.
 	if entry.ExpiresAt > 0 && now.After(expiresAt) {
-		return GraceCheckResult{
-			State:        GraceExpired,
-			CacheAge:     cacheAge,
-			ExpiresAt:    expiresAt,
-			Tier:         entry.Tier,
-			Message:      fmt.Sprintf("License expired on %s. Renew at https://nself.org/pricing", expiresAt.Format("2006-01-02")),
-			CanProceed:   false,
-			WriteAllowed: false,
-		}
+		return postExpiryGraceState(entry, expiresAt, cacheAge, now)
 	}
 
-	// Evaluate based on cache freshness.
+	return cacheFreshnessGraceState(entry, expiresAt, cacheAge)
+}
+
+// cacheFreshnessGraceState evaluates the grace state for a non-expired
+// license based on how long ago the cache was last successfully fetched.
+// Split out of DetermineGraceState to keep that function under the repo's
+// 50-line cap.
+func cacheFreshnessGraceState(entry *CacheEntry, expiresAt time.Time, cacheAge time.Duration) GraceCheckResult {
 	switch {
 	case cacheAge < GraceSoftThreshold:
 		return GraceCheckResult{
@@ -121,6 +131,45 @@ func DetermineGraceState(entry *CacheEntry) GraceCheckResult {
 	}
 }
 
+// postExpiryGraceState evaluates the grace state for a license whose
+// server-reported expiry has passed. Within PostExpiryGraceWindow (30 days)
+// of expiry, paid plugins keep working with a warning (GracePostExpiry).
+// Beyond it, the license goes dormant (GraceExpired). Split out of
+// DetermineGraceState to keep that function under the repo's 50-line cap.
+func postExpiryGraceState(entry *CacheEntry, expiresAt time.Time, cacheAge time.Duration, now time.Time) GraceCheckResult {
+	sinceExpiry := now.Sub(expiresAt)
+	graceDays := int(PostExpiryGraceWindow.Hours() / 24)
+
+	if sinceExpiry <= PostExpiryGraceWindow {
+		remaining := PostExpiryGraceWindow - sinceExpiry
+		return GraceCheckResult{
+			State:     GracePostExpiry,
+			CacheAge:  cacheAge,
+			ExpiresAt: expiresAt,
+			Tier:      entry.Tier,
+			Message: fmt.Sprintf(
+				"License expired on %s. Paid plugins continue to work during a %d-day post-expiry grace period; %s remaining before they go dormant. Renew at https://nself.org/pricing.",
+				expiresAt.Format("2006-01-02"), graceDays, formatDuration(remaining),
+			),
+			CanProceed:   true,
+			WriteAllowed: true,
+		}
+	}
+
+	return GraceCheckResult{
+		State:     GraceExpired,
+		CacheAge:  cacheAge,
+		ExpiresAt: expiresAt,
+		Tier:      entry.Tier,
+		Message: fmt.Sprintf(
+			"License expired on %s. The %d-day post-expiry grace period has ended; paid plugins are now dormant. Renew at https://nself.org/pricing",
+			expiresAt.Format("2006-01-02"), graceDays,
+		),
+		CanProceed:   false,
+		WriteAllowed: false,
+	}
+}
+
 // IsWriteAllowed checks if write operations on paid plugins are permitted
 // given the current grace state.
 func (r GraceCheckResult) IsWriteAllowed() bool {
@@ -129,7 +178,7 @@ func (r GraceCheckResult) IsWriteAllowed() bool {
 
 // NeedsBanner returns true if a warning banner should be displayed.
 func (r GraceCheckResult) NeedsBanner() bool {
-	return r.State == GraceSoft || r.State == GraceHard
+	return r.State == GraceSoft || r.State == GraceHard || r.State == GracePostExpiry
 }
 
 // formatDuration returns a human-readable duration string.

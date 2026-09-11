@@ -91,18 +91,78 @@ func TestDetermineGraceState_HardGrace(t *testing.T) {
 	}
 }
 
-// TestDetermineGraceState_Expired verifies that an expired license returns GraceExpired.
+// TestDetermineGraceState_Expired verifies that a license expired well beyond
+// the 30-day post-expiry grace window (PostExpiryGraceWindow) returns
+// GraceExpired — the terminal, dormant state. A license expired only
+// recently is covered by TestDetermineGraceState_PostExpiryGrace_Day29
+// below (P6-E12-W4-S4-T2: 30-day post-expiry grace, commercial promise).
 func TestDetermineGraceState_Expired(t *testing.T) {
-	entry := makeCacheEntry("nself_pro_testkey", 1, -1) // expires_at is 1h in the past
+	// 31 days past expiry — one day beyond the 30-day grace window.
+	entry := makeCacheEntry("nself_pro_testkey", 1, -31*24)
 	result := DetermineGraceState(entry)
 	if result.State != GraceExpired {
-		t.Errorf("expired entry: state = %q, want %q", result.State, GraceExpired)
+		t.Errorf("31d-past-expiry entry: state = %q, want %q", result.State, GraceExpired)
 	}
 	if result.CanProceed {
-		t.Error("expired entry: CanProceed should be false")
+		t.Error("31d-past-expiry entry: CanProceed should be false (dormant)")
 	}
 	if result.WriteAllowed {
-		t.Error("expired entry: WriteAllowed should be false")
+		t.Error("31d-past-expiry entry: WriteAllowed should be false")
+	}
+}
+
+// TestDetermineGraceState_PostExpiryGrace_Day29 proves the ticket's required
+// case: a license expired 29 days ago still proceeds, with a warning message
+// naming the grace period, per the commercial promise (Bundle License §4,
+// licensing.mdx, pricing FAQ) that paid plugins keep working for 30 days
+// after expiry.
+func TestDetermineGraceState_PostExpiryGrace_Day29(t *testing.T) {
+	entry := makeCacheEntry("nself_pro_testkey", 1, -29*24)
+	result := DetermineGraceState(entry)
+	if result.State != GracePostExpiry {
+		t.Errorf("29d-past-expiry entry: state = %q, want %q", result.State, GracePostExpiry)
+	}
+	if !result.CanProceed {
+		t.Error("29d-past-expiry entry: CanProceed should be true (still within 30-day grace)")
+	}
+	if !result.WriteAllowed {
+		t.Error("29d-past-expiry entry: WriteAllowed should be true (grace period, not read-only)")
+	}
+	if result.Message == "" {
+		t.Error("29d-past-expiry entry: Message should not be empty (warning required)")
+	}
+}
+
+// TestDetermineGraceState_PostExpiryGrace_Day31Dormant proves the ticket's
+// other required case: a license expired 31 days ago (one day past the
+// 30-day post-expiry grace window) goes dormant — CanProceed false.
+func TestDetermineGraceState_PostExpiryGrace_Day31Dormant(t *testing.T) {
+	entry := makeCacheEntry("nself_pro_testkey", 1, -31*24)
+	result := DetermineGraceState(entry)
+	if result.State != GraceExpired {
+		t.Errorf("31d-past-expiry entry: state = %q, want %q", result.State, GraceExpired)
+	}
+	if result.CanProceed {
+		t.Error("31d-past-expiry entry: CanProceed should be false (dormant, grace exhausted)")
+	}
+	if result.WriteAllowed {
+		t.Error("31d-past-expiry entry: WriteAllowed should be false")
+	}
+}
+
+// TestDetermineGraceState_PostExpiryGraceBoundary verifies the exact 30-day
+// boundary: just under 30 days since expiry proceeds; just over goes dormant.
+func TestDetermineGraceState_PostExpiryGraceBoundary(t *testing.T) {
+	underEntry := makeCacheEntry("nself_pro_testkey", 1, -30*24+1) // 1h short of 30d
+	under := DetermineGraceState(underEntry)
+	if under.State != GracePostExpiry || !under.CanProceed {
+		t.Errorf("just-under-30d: state = %q, canProceed = %v, want %q / true", under.State, under.CanProceed, GracePostExpiry)
+	}
+
+	overEntry := makeCacheEntry("nself_pro_testkey", 1, -30*24-1) // 1h past 30d
+	over := DetermineGraceState(overEntry)
+	if over.State != GraceExpired || over.CanProceed {
+		t.Errorf("just-over-30d: state = %q, canProceed = %v, want %q / false", over.State, over.CanProceed, GraceExpired)
 	}
 }
 
@@ -126,7 +186,8 @@ func TestDetermineGraceState_GraceMessageNotEmpty(t *testing.T) {
 		{"valid", makeCacheEntry("k", 1, 720)},
 		{"soft", makeCacheEntry("k", 25, 720)},
 		{"hard", makeCacheEntry("k", 8*24, 720)},
-		{"expired", makeCacheEntry("k", 1, -1)},
+		{"post_expiry_grace", makeCacheEntry("k", 1, -1)},
+		{"expired", makeCacheEntry("k", 1, -31*24)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

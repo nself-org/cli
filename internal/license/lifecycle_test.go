@@ -230,7 +230,10 @@ func TestLifecycle_HardGrace_8d(t *testing.T) {
 	}
 }
 
-// 5. Expired license (server-reported expiry passed) + offline → fail-closed.
+// 5. Expired license (server-reported expiry passed), beyond the 30-day
+// post-expiry grace window (PostExpiryGraceWindow, P6-E12-W4-S4-T2) + offline
+// → fail-closed. A license expired only recently is NOT fail-closed — see
+// TestLifecycle_PostExpiryGrace_StillValid below.
 func TestLifecycle_ExpiredLicense_FailClosed(t *testing.T) {
 	withCachePath(t)
 	t.Setenv("LICENSE_PING_URL", "http://127.0.0.1:19999")
@@ -241,8 +244,8 @@ func TestLifecycle_ExpiredLicense_FailClosed(t *testing.T) {
 		Tier:           "pro",
 		PluginsAllowed: []string{"ai"},
 		FetchedAt:      now.Add(-1 * time.Hour).Unix(),
-		// Expired 1 hour ago — server-reported expiry.
-		ExpiresAt: now.Add(-1 * time.Hour).Unix(),
+		// Expired 31 days ago — one day past the 30-day post-expiry grace window.
+		ExpiresAt: now.Add(-31 * 24 * time.Hour).Unix(),
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -252,10 +255,46 @@ func TestLifecycle_ExpiredLicense_FailClosed(t *testing.T) {
 		t.Fatalf("ValidateFull error: %v", err)
 	}
 	if result.Valid {
-		t.Errorf("expired license must fail-closed, got Valid=true")
+		t.Errorf("license expired beyond the grace window must fail-closed, got Valid=true")
 	}
 	if result.GraceState != GraceExpired {
 		t.Errorf("expected GraceExpired, got %q", result.GraceState)
+	}
+}
+
+// 5b. Expired license within the 30-day post-expiry grace window + offline
+// → still proceeds, with a warning (commercial promise, P6-E12-W4-S4-T2).
+func TestLifecycle_PostExpiryGrace_StillValid(t *testing.T) {
+	withCachePath(t)
+	t.Setenv("LICENSE_PING_URL", "http://127.0.0.1:19999")
+
+	now := time.Now()
+	writeRawCacheEntry(t, &CacheEntry{
+		KeyHash:        HashKey(testKey),
+		Tier:           "pro",
+		PluginsAllowed: []string{"ai"},
+		FetchedAt:      now.Add(-1 * time.Hour).Unix(),
+		// Expired 29 days ago — still within the 30-day post-expiry grace window.
+		ExpiresAt: now.Add(-29 * 24 * time.Hour).Unix(),
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	result, err := ValidateFull(ctx, testKey)
+	if err != nil {
+		t.Fatalf("ValidateFull error: %v", err)
+	}
+	if !result.Valid {
+		t.Errorf("license expired 29 days ago must still proceed (within 30-day grace), got Valid=false")
+	}
+	if result.GraceState != GracePostExpiry {
+		t.Errorf("expected GracePostExpiry, got %q", result.GraceState)
+	}
+	if !result.WriteAllowed {
+		t.Error("post-expiry grace should still allow writes")
+	}
+	if result.Message == "" {
+		t.Error("post-expiry grace should carry a warning message")
 	}
 }
 
