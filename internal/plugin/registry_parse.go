@@ -62,26 +62,42 @@ type pluginEndpointEntry struct {
 	Description string `json:"description"`
 }
 
+// pluginChecksumsEntry holds the registry's nested `checksums` object.
+// `sha256` duplicates the flat `checksum` field (source tarball, kept for
+// backwards compatibility with older registry readers); `platforms` carries
+// one checksum per per-platform binary tarball, keyed by the exact platform
+// string internal/plugin/arch.go's PlatformArch() returns. Only present for
+// a plugin with a binaryName — see PluginManifest.PlatformChecksums.
+type pluginChecksumsEntry struct {
+	SHA256    string            `json:"sha256,omitempty"`
+	Platforms map[string]string `json:"platforms,omitempty"`
+}
+
 // pluginEntry matches the fields present in the array-format (pro)
 // registry as well as the object-format (free) registry.
 // APIEndpoints is kept as json.RawMessage because the live registry returns
 // it as an array of objects while older/local registries use an array of
 // strings. We normalise both into []string during entryToManifest conversion.
 type pluginEntry struct {
-	Name            string   `json:"name"`
-	Version         string   `json:"version"`
-	Description     string   `json:"description"`
-	Category        string   `json:"category"`
-	Tier            string   `json:"tier"`
-	License         string   `json:"license"`
-	LicenseType     string   `json:"licenseType"`
-	Repository      string   `json:"repository"`
-	Checksum        string   `json:"checksum"`
-	DownloadURL     string   `json:"download_url"`
-	RequiresLicense bool     `json:"requires_license"`
-	Tags            []string `json:"tags"`
-	Tables          []string `json:"tables,omitempty"`
-	Port            int      `json:"port,omitempty"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	Category    string `json:"category"`
+	Tier        string `json:"tier"`
+	License     string `json:"license"`
+	LicenseType string `json:"licenseType"`
+	Repository  string `json:"repository"`
+	Checksum    string `json:"checksum"`
+	// Checksums is the nested form carrying per-platform binary tarball
+	// checksums (checksums.platforms) alongside the source-tarball checksum
+	// (checksums.sha256, a duplicate of the flat Checksum field above). See
+	// pluginChecksumsEntry and PluginManifest.PlatformChecksums.
+	Checksums       *pluginChecksumsEntry `json:"checksums,omitempty"`
+	DownloadURL     string                `json:"download_url"`
+	RequiresLicense bool                  `json:"requires_license"`
+	Tags            []string              `json:"tags"`
+	Tables          []string              `json:"tables,omitempty"`
+	Port            int                   `json:"port,omitempty"`
 	// TierPair and Bundles support install-time tier resolution for a slug
 	// served twice (free + pro) as one product — see PluginManifest's doc
 	// comments (interfaces.go) and tier_resolve.go.
@@ -201,6 +217,27 @@ func parseAPIEndpoints(raw json.RawMessage) []string {
 		if ep.Path != "" {
 			out = append(out, ep.Path)
 		}
+	}
+	return out
+}
+
+// normalizePlatformChecksums copies a registry's checksums.platforms map,
+// stripping an optional "sha256:" prefix from each value. The plugins repo
+// writes the sibling checksums.sha256 field with that prefix (see
+// release-tarballs.yml's backfill step); platform checksums are documented
+// to be written as plain hex, but stripping a stray prefix defensively here
+// costs nothing and avoids a checksum that LOOKS present but can never
+// match verifyChecksum's raw hex comparison — which would otherwise surface
+// as an install-time checksum mismatch instead of the registry data error it
+// actually is. Returns nil for an empty/nil input, matching the omitempty
+// contract used throughout this package.
+func normalizePlatformChecksums(raw map[string]string) map[string]string {
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(raw))
+	for platform, checksum := range raw {
+		out[platform] = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(checksum)), "sha256:")
 	}
 	return out
 }

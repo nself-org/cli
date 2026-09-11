@@ -130,29 +130,35 @@ func entryToManifest(e pluginEntry) PluginManifest {
 		implFramework = e.Implementation.Framework
 	}
 
+	var platformChecksums map[string]string
+	if e.Checksums != nil {
+		platformChecksums = normalizePlatformChecksums(e.Checksums.Platforms)
+	}
+
 	return PluginManifest{
-		Name:            e.Name,
-		Version:         e.Version,
-		Description:     e.Description,
-		Category:        e.Category,
-		License:         e.License,
-		LicenseType:     e.LicenseType,
-		Tier:            tier,
-		Repository:      e.Repository,
-		Checksum:        e.Checksum,
-		Tags:            e.Tags,
-		RequiresLicense: e.RequiresLicense,
-		Tables:          e.Tables,
-		Port:            port,
-		TierPair:        e.TierPair,
-		Bundles:         e.Bundles,
-		Dependencies:    parseDependencies(e.Dependencies),
-		APIEndpoints:    parseAPIEndpoints(e.APIEndpoints),
-		Language:        language,
-		Runtime:         runtime,
-		PluginType:      pluginType,
-		BinaryName:      binaryName,
-		CLICommands:     e.CLICommands,
+		Name:              e.Name,
+		Version:           e.Version,
+		Description:       e.Description,
+		Category:          e.Category,
+		License:           e.License,
+		LicenseType:       e.LicenseType,
+		Tier:              tier,
+		Repository:        e.Repository,
+		Checksum:          e.Checksum,
+		PlatformChecksums: platformChecksums,
+		Tags:              e.Tags,
+		RequiresLicense:   e.RequiresLicense,
+		Tables:            e.Tables,
+		Port:              port,
+		TierPair:          e.TierPair,
+		Bundles:           e.Bundles,
+		Dependencies:      parseDependencies(e.Dependencies),
+		APIEndpoints:      parseAPIEndpoints(e.APIEndpoints),
+		Language:          language,
+		Runtime:           runtime,
+		PluginType:        pluginType,
+		BinaryName:        binaryName,
+		CLICommands:       e.CLICommands,
 
 		Author:               e.Author,
 		Homepage:             e.Homepage,
