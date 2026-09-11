@@ -24,10 +24,16 @@ type DiskUsage struct {
 type reclaimTier string
 
 const (
-	// tierAlways reclaims are safe unconditionally: busy or idle, under pressure or
-	// not. Nothing a running job reads lives here (docker dangling images/build
-	// cache/anonymous volumes, old compressed logs, journald history).
-	tierAlways reclaimTier = "always"
+	// The "always" tier (docker dangling images/build cache/anonymous volumes,
+	// old compressed logs, journald history) is safe unconditionally: busy or
+	// idle, under pressure or not, because nothing a running job reads lives
+	// there. It deliberately has no reclaimTier constant. Those three reclaims
+	// report through CleanupResult's DockerPruneOut / LogRotationOut /
+	// JournalVacuumOut fields rather than as per-path ReclaimEntry records,
+	// because the underlying commands report their own freed space and give no
+	// per-path byte attribution. Inventing zero-byte entries just to carry a
+	// tier label would make the reclaimed list read as if nothing was freed.
+	//
 	// tierIdlePerRunner reclaims (runner job workspaces) only run for a runner root
 	// that is individually idle. Never escalated by disk pressure — deleting an
 	// in-progress job's own checkout would break that job outright, the same failure
