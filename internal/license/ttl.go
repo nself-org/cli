@@ -37,9 +37,15 @@ const (
 	// PreExpiryWarnEnd is when the warning stops (cache has expired).
 	PreExpiryWarnEnd = 0
 
-	// PostExpiryGraceWindow is the period where the post-expiry grace message
-	// is shown before hard enforcement begins.
-	PostExpiryGraceWindow = 24 * time.Hour
+	// PostExpiryGraceWindow is how long paid plugins keep working after the
+	// license itself has expired (server-reported expires_at), before the
+	// dormant state begins. This is the commercial promise stated in the
+	// Bundle License §4, licensing.mdx, and pricing FAQ: 30 days. Decided
+	// P6-E12-W4-S4-T2 2026-09 (the promise wins over the prior 24h value,
+	// which was never wired into DetermineGraceState — see grace.go).
+	// Unrelated to FailOpenSoftTTL/FailOpenHardTTL in validator.go, which
+	// govern the OFFLINE (remote-unreachable) window, not post-expiry grace.
+	PostExpiryGraceWindow = 30 * 24 * time.Hour
 )
 
 // CacheTTLForTier returns the appropriate cache TTL for a given tier string.

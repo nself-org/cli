@@ -254,16 +254,19 @@ func TestOffline7DayCacheTTL_ValidateFull_GraceHardFromCache(t *testing.T) {
 
 // --- S193-T04: Revocation flow ---
 
-// TestRevocation_ExpiredLicenseBlocksAccess verifies that an expired license
-// (ExpiresAt in the past) causes CanProceed=false in the grace state machine.
+// TestRevocation_ExpiredLicenseBlocksAccess verifies that a license expired
+// beyond the 30-day post-expiry grace window (PostExpiryGraceWindow,
+// P6-E12-W4-S4-T2) causes CanProceed=false in the grace state machine. A
+// recently-expired license is NOT blocked — see grace_test.go's
+// TestDetermineGraceState_PostExpiryGrace_Day29.
 func TestRevocation_ExpiredLicenseBlocksAccess(t *testing.T) {
-	// License expired 1 day ago.
+	// License expired 31 days ago — one day past the 30-day grace window.
 	entry := &CacheEntry{
 		KeyHash:        HashKey("nself_pro_revoked1234567890abcdef12"),
 		Tier:           "pro",
 		PluginsAllowed: []string{"ai"},
-		FetchedAt:      time.Now().Add(-1 * time.Hour).Unix(),  // fresh cache
-		ExpiresAt:      time.Now().Add(-24 * time.Hour).Unix(), // expired yesterday
+		FetchedAt:      time.Now().Add(-1 * time.Hour).Unix(),       // fresh cache
+		ExpiresAt:      time.Now().Add(-31 * 24 * time.Hour).Unix(), // expired 31d ago
 	}
 	result := DetermineGraceState(entry)
 	if result.State != GraceExpired {
@@ -281,7 +284,8 @@ func TestRevocation_ExpiredLicenseBlocksAccess(t *testing.T) {
 }
 
 // TestRevocation_ValidateFull_ExpiredCacheEntryReturnsInvalid verifies the
-// full validation path returns invalid for an expired license.
+// full validation path returns invalid for a license expired beyond the
+// 30-day post-expiry grace window (PostExpiryGraceWindow, P6-E12-W4-S4-T2).
 func TestRevocation_ValidateFull_ExpiredCacheEntryReturnsInvalid(t *testing.T) {
 	setupCacheDir(t)
 	t.Setenv("LICENSE_PING_URL", "http://127.0.0.1:19999") // unreachable
@@ -293,7 +297,7 @@ func TestRevocation_ValidateFull_ExpiredCacheEntryReturnsInvalid(t *testing.T) {
 		Tier:           "pro",
 		PluginsAllowed: []string{"ai"},
 		FetchedAt:      time.Now().Add(-1 * time.Hour).Unix(),
-		ExpiresAt:      time.Now().Add(-24 * time.Hour).Unix(), // expired
+		ExpiresAt:      time.Now().Add(-31 * 24 * time.Hour).Unix(), // expired 31d ago, past grace
 	}
 	writeCacheRaw(t, entry)
 
@@ -323,13 +327,15 @@ func TestBannerAtWarning_AllStates(t *testing.T) {
 		{GraceValid, true},
 		{GraceSoft, false},
 		{GraceHard, false},
+		{GracePostExpiry, false},
 		{GraceExpired, false},
 		{GraceRevoked, false},
 	}
 	for _, tc := range tests {
 		result := GraceCheckResult{
-			State:    tc.state,
-			CacheAge: 2 * 24 * time.Hour,
+			State:     tc.state,
+			CacheAge:  2 * 24 * time.Hour,
+			ExpiresAt: time.Now().Add(-5 * 24 * time.Hour),
 		}
 		banner := BannerAtWarning(result)
 		if tc.wantNone && banner != "" {
@@ -379,6 +385,7 @@ func TestIsWriteAllowed_AllStates(t *testing.T) {
 		{GraceValid, true},
 		{GraceSoft, true},
 		{GraceHard, false},
+		{GracePostExpiry, true},
 		{GraceExpired, false},
 		{GraceRevoked, false},
 	}
@@ -399,6 +406,7 @@ func TestNeedsBanner_AllStates(t *testing.T) {
 		{GraceValid, false},
 		{GraceSoft, true},
 		{GraceHard, true},
+		{GracePostExpiry, true},
 		{GraceExpired, false},
 		{GraceRevoked, false},
 	}
