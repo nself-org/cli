@@ -240,4 +240,25 @@ type PluginManifest struct {
 	// --detailed` displays it when present (registry entry or local
 	// plugin.json) and shows nothing invented when it is not.
 	UpdatedAt string `json:"updated_at,omitempty"`
+
+	// PlatformChecksums holds one SHA-256 checksum (lowercase hex, no
+	// "sha256:" prefix) per per-platform binary tarball, keyed by the exact
+	// platform string PlatformArch() returns (darwin-arm64, darwin-amd64,
+	// linux-amd64, linux-arm64, windows-amd64). Populated from the registry's
+	// nested `checksums.platforms` object.
+	//
+	// Checksum above is ALWAYS the source tarball's checksum, never a
+	// platform one — the two packages have different bytes, so one flat
+	// field can never validate both (FIX-CLI-plugins-83: a platform tarball
+	// downloaded via binaryPluginDownloadURL was being checked against
+	// Checksum, which could never match). downloadPluginPackageForTier
+	// reports which artifact it fetched; installLocked picks the matching
+	// entry from this map, or Checksum for the source artifact — see
+	// verifyChecksum's caller in installer_locked.go.
+	//
+	// Only present for a plugin with a binaryName. A plugin whose release
+	// predates this field (or a platform the release never built a checksum
+	// for) has no entry here — see downloadPluginPackageForTier's doc
+	// comment for what happens then.
+	PlatformChecksums map[string]string `json:"platform_checksums,omitempty"`
 }

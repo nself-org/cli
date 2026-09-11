@@ -31,16 +31,19 @@ func TestDownloadPluginPackagePrefersPlatformAsset(t *testing.T) {
 		name       string
 		binaryName string
 		wantPath   string
+		wantKind   string
 	}{
 		{
 			name:       "cli plugin asks for its platform build",
 			binaryName: "nself-example",
 			wantPath:   "/releases/download/v1.0.0/example-1.0.0-" + platform + ".tar.gz",
+			wantKind:   platform,
 		},
 		{
 			name:       "service plugin uses the generic package",
 			binaryName: "",
 			wantPath:   "/plugins/example/tarball",
+			wantKind:   ArtifactKindSource,
 		},
 	}
 
@@ -62,11 +65,15 @@ func TestDownloadPluginPackagePrefersPlatformAsset(t *testing.T) {
 
 			t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
 
-			path, err := downloadPluginPackage(context.Background(), "example", "1.0.0", srv.URL, tt.binaryName)
+			path, kind, err := downloadPluginPackage(context.Background(), "example", "1.0.0", srv.URL, tt.binaryName)
 			if err != nil {
 				t.Fatalf("download: %v", err)
 			}
 			_ = path
+
+			if kind != tt.wantKind {
+				t.Errorf("artifact kind = %q, want %q", kind, tt.wantKind)
+			}
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -106,8 +113,12 @@ func TestDownloadPluginPackageFallsBackWhenNoPlatformAsset(t *testing.T) {
 
 	t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
 
-	if _, err := downloadPluginPackage(context.Background(), "example", "1.0.0", srv.URL, "nself-example"); err != nil {
+	_, kind, err := downloadPluginPackage(context.Background(), "example", "1.0.0", srv.URL, "nself-example")
+	if err != nil {
 		t.Fatalf("expected fallback to succeed, got: %v", err)
+	}
+	if kind != ArtifactKindSource {
+		t.Errorf("artifact kind = %q, want %q (fell back to the generic package)", kind, ArtifactKindSource)
 	}
 
 	mu.Lock()

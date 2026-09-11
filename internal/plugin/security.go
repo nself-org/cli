@@ -116,6 +116,44 @@ func verifyChecksum(filePath string, expectedHash string, publishStatus string) 
 	return nil
 }
 
+// resolveArtifactChecksum picks the registry checksum that matches the
+// artifact downloadPluginPackageForTier actually fetched, identified by
+// artifactKind (ArtifactKindSource, or a platform string from PlatformArch()).
+//
+// The source tarball and each platform's binary tarball are different bytes
+// for the same plugin+version, so a source checksum can never validate a
+// platform download or vice versa — comparing the wrong one is not a
+// stricter check, it is a guaranteed-wrong one (plugins#83, the bug this
+// function exists to close).
+//
+// For the source artifact this returns manifest.Checksum verbatim, including
+// when it is empty — verifyChecksum's own warn-and-proceed leniency for a
+// missing SOURCE checksum (FIX-CLI-6, a documented and tracked registry
+// coverage gap) still applies, unchanged, to whatever this returns.
+//
+// For a platform artifact, a missing checksum in
+// manifest.PlatformChecksums[artifactKind] is refused HERE, unconditionally
+// — it never reaches verifyChecksum's lenient empty-string path, and no env
+// var (NSELF_PLUGIN_REQUIRE_CHECKSUM included) changes that. The FIX-CLI-6
+// leniency exists for the source-checksum coverage gap; it was never a
+// license to install an actual downloaded EXECUTABLE with zero
+// verification. A release that predates PlatformChecksums, or one platform's
+// checksum that was never backfilled, are both registry data gaps — the fix
+// is a registry checksum, not a flag that makes the install proceed anyway.
+func resolveArtifactChecksum(manifest PluginManifest, artifactKind string) (string, error) {
+	if artifactKind == ArtifactKindSource || artifactKind == "" {
+		return manifest.Checksum, nil
+	}
+
+	checksum, ok := manifest.PlatformChecksums[artifactKind]
+	if !ok || checksum == "" {
+		return "", fmt.Errorf(
+			"plugin %q: registry has no checksum for platform %q at version %s — refusing to install an unverified binary (report to nself-org/plugins)",
+			manifest.Name, artifactKind, manifest.Version)
+	}
+	return checksum, nil
+}
+
 // verifyPluginSignature verifies that the Ed25519 signature stored in the
 // plugin's registry manifest matches the SHA-256 hash of the downloaded
 // tarball. The public key is pinned in the registry (never fetched at verify

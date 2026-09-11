@@ -24,6 +24,14 @@ import (
 	"github.com/nself-org/cli/internal/license"
 )
 
+// ArtifactKindSource is the artifact kind downloadPluginPackageForTier
+// reports when it fetched the source tarball. Any other value it returns is
+// one of PlatformArch()'s platform strings (darwin-arm64, darwin-amd64,
+// linux-amd64, linux-arm64, windows-amd64), identifying a per-platform
+// binary tarball instead. Callers use this to pick the checksum that
+// actually matches the bytes on disk — see installer_locked.go's Step 5.
+const ArtifactKindSource = "source"
+
 // downloadPlugin fetches the plugin tarball to a temporary file.
 // For paid plugins, it sends the X-License-Key header required by ping.nself.org.
 // For free plugins, it tries the R2-backed worker URL first and falls back to
@@ -35,18 +43,24 @@ import (
 // see license.go's isPaidPluginManifest doc comment for why the name map
 // drifts and the registry fields do not.
 func downloadPlugin(ctx context.Context, name, version, repository string) (string, error) { //nolint:unused // kept: name-only fallback entry point retained deliberately; see qa/bugs/declared-but-never-wired-symbols.md
-	return downloadPluginPackage(ctx, name, version, repository, "")
+	path, _, err := downloadPluginPackage(ctx, name, version, repository, "")
+	return path, err
 }
 
 // downloadPluginPackage fetches a plugin package using the name-only
 // isPaidPlugin fallback. Prefer downloadPluginPackageForTier when a manifest
 // is available (see its doc comment).
-func downloadPluginPackage(ctx context.Context, name, version, repository, binaryName string) (string, error) {
+func downloadPluginPackage(ctx context.Context, name, version, repository, binaryName string) (string, string, error) {
 	return downloadPluginPackageForTier(ctx, name, version, repository, binaryName, isPaidPlugin(name))
 }
 
 // downloadPluginPackageForTier fetches a plugin package, preferring a build
-// for the running platform when the plugin ships a command binary.
+// for the running platform when the plugin ships a command binary. It
+// returns the local temp file path and the kind of artifact it actually
+// fetched (ArtifactKindSource or a platform string) — the caller needs the
+// kind to know which registry checksum applies, since a source tarball and a
+// platform tarball for the same plugin+version have different bytes and
+// therefore different checksums (see PluginManifest.PlatformChecksums).
 //
 // paid must come from the registry manifest (isPaidPluginManifest), not the
 // static paidPlugins name map — that map only lists 59 of 127 registered paid
@@ -61,7 +75,7 @@ func downloadPluginPackage(ctx context.Context, name, version, repository, binar
 // someone on macOS. Those live as per-platform release assets, so they are
 // tried first, with the generic package as the fallback for a plugin whose
 // release predates per-platform assets.
-func downloadPluginPackageForTier(ctx context.Context, name, version, repository, binaryName string, paid bool) (string, error) {
+func downloadPluginPackageForTier(ctx context.Context, name, version, repository, binaryName string, paid bool) (string, string, error) {
 	// Platform-specific package first, for a plugin that provides a command.
 	if binaryName != "" {
 		if platform, err := PlatformArch(); err == nil {
@@ -71,7 +85,7 @@ func downloadPluginPackageForTier(ctx context.Context, name, version, repository
 			}
 			platformURL := binaryPluginDownloadURL(strings.TrimSuffix(repo, ".git"), name, version, platform)
 			if tmp, err := downloadFromURL(ctx, platformURL, nil); err == nil {
-				return tmp, nil
+				return tmp, platform, nil
 			}
 			// Fall through: no per-platform asset for this release.
 		}
@@ -91,7 +105,7 @@ func downloadPluginPackageForTier(ctx context.Context, name, version, repository
 
 	tmp, err := downloadFromURL(ctx, primaryURL, extraHeaders)
 	if err == nil {
-		return tmp, nil
+		return tmp, ArtifactKindSource, nil
 	}
 
 	// If not a paid plugin, attempt GitHub Releases fallback on primary failure.
@@ -100,13 +114,13 @@ func downloadPluginPackageForTier(ctx context.Context, name, version, repository
 		if fallbackURL != primaryURL {
 			tmp2, fallbackErr := downloadFromURL(ctx, fallbackURL, nil)
 			if fallbackErr == nil {
-				return tmp2, nil
+				return tmp2, ArtifactKindSource, nil
 			}
-			return "", fmt.Errorf("download failed: primary %s: %w; fallback %s: %v", primaryURL, err, fallbackURL, fallbackErr)
+			return "", "", fmt.Errorf("download failed: primary %s: %w; fallback %s: %v", primaryURL, err, fallbackURL, fallbackErr)
 		}
 	}
 
-	return "", err
+	return "", "", err
 }
 
 // downloadFromURL fetches a single URL to a temp file and returns the file path.

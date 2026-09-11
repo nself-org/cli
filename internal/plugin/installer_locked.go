@@ -166,20 +166,31 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	// Tier comes from the registry manifest, not the paidPlugins name map,
 	// which has drifted — see isPaidPluginManifest in license.go.
 	paid := isPaidPluginManifest(manifest)
-	archivePath, err := downloadPluginPackageForTier(ctx, name, manifest.Version, manifest.Repository, firstBinary, paid)
+	archivePath, artifactKind, err := downloadPluginPackageForTier(ctx, name, manifest.Version, manifest.Repository, firstBinary, paid)
 	if err != nil {
 		return fmt.Errorf("downloading plugin %q: %w", name, err)
 	}
 	defer func() { _ = os.Remove(archivePath) }()
 
 	// Step 5: Verify checksum before extraction.
+	//
+	// Which checksum applies depends on WHICH artifact Step 4 actually
+	// downloaded — see resolveArtifactChecksum's doc comment.
+	expectedChecksum, err := resolveArtifactChecksum(*manifest, artifactKind)
+	if err != nil {
+		_ = os.Remove(archivePath)
+		return err
+	}
+
 	// A checksum that IS present and wrong always refuses the install. A
-	// MISSING checksum only refuses when NSELF_PLUGIN_REQUIRE_CHECKSUM=1 is
-	// set (default: warn and proceed, for every publishStatus including an
-	// effectively-stable one — registry coverage is 47/177 as of 2026-09-04,
-	// see verifyChecksum's doc comment; FIX-CLI-6).
-	if manifest.Checksum != "" {
-		if err := verifyChecksum(archivePath, manifest.Checksum, manifest.PublishStatus); err != nil {
+	// MISSING checksum for the SOURCE artifact only refuses when
+	// NSELF_PLUGIN_REQUIRE_CHECKSUM=1 is set (default: warn and proceed, for
+	// every publishStatus including an effectively-stable one — registry
+	// coverage is 47/177 as of 2026-09-04, see verifyChecksum's doc comment;
+	// FIX-CLI-6). A platform artifact never reaches this branch with an
+	// empty expectedChecksum — the block above already refused it.
+	if expectedChecksum != "" {
+		if err := verifyChecksum(archivePath, expectedChecksum, manifest.PublishStatus); err != nil {
 			_ = os.Remove(archivePath)
 			return fmt.Errorf("checksum verification for plugin %q: %w", name, err)
 		}

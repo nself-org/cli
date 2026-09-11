@@ -101,6 +101,18 @@ func (r Registry) MarshalJSON() ([]byte, error) {
 			}
 			rawDeps = b
 		}
+		// Checksums re-serialises PlatformChecksums into the nested registry
+		// shape, matching how it was parsed in — see pluginChecksumsEntry.
+		// SHA256 is left empty: the cache's source-tarball checksum lives in
+		// the flat Checksum field below (and always has), so re-populating
+		// the nested duplicate here would just be inventing a value never
+		// read back by anything (entryToManifest sources PlatformChecksums
+		// from Checksums.Platforms only).
+		var checksums *pluginChecksumsEntry
+		if len(p.PlatformChecksums) > 0 {
+			checksums = &pluginChecksumsEntry{Platforms: p.PlatformChecksums}
+		}
+
 		entries = append(entries, pluginEntry{
 			Name:            p.Name,
 			Version:         p.Version,
@@ -112,6 +124,7 @@ func (r Registry) MarshalJSON() ([]byte, error) {
 			Tier:            p.Tier,
 			Repository:      p.Repository,
 			Checksum:        p.Checksum,
+			Checksums:       checksums,
 			Tags:            p.Tags,
 			Tables:          p.Tables,
 			Port:            p.Port,
