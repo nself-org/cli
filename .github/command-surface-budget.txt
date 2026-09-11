@@ -10,4 +10,12 @@
 # teammate's SSH key on an already-deployed host had no CLI path at all.
 # `nself access grant/revoke/list` is the command surface named directly
 # in #238's proposed shape.
-50
+#
+# 2026-09-11: +1 for `runner` (gap G-012). Deliberate exception, not
+# creep: onboarding a self-hosted CI runner host had no CLI path — the
+# dependency manifest (gh/zip/unzip/etc.) was installed and verified by
+# hand, which is exactly how one host silently drifted from another and
+# hid a job failure behind a misleading browser error for hours on
+# 2026-09-11. `nself runner provision/verify` is the surface G-012 names
+# directly.
+51

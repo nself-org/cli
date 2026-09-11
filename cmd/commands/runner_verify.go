@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/runner"
 	"github.com/spf13/cobra"
 )
@@ -76,7 +77,11 @@ func runRunnerVerify(cmd *cobra.Command, args []string) error {
 	}
 
 	if runnerVerifyFoundProblems(reports) {
-		os.Exit(1)
+		// Output already written above — errs.Exit is silent by design
+		// (internal/errs.ExitError.Silent), so main() prints nothing further.
+		// Never call os.Exit directly here: main() is the only os.Exit
+		// caller (internal/repoqa/os_exit_test.go enforces this).
+		return errs.Exit(1)
 	}
 	return nil
 }
