@@ -4,8 +4,16 @@ package maintenance
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"syscall"
 )
+
+// DefaultPressureThreshold is the disk-used percentage at/above which idle-shared
+// cache reclaims run regardless of runner busy state. A full disk fails every job on
+// the box anyway, so waiting for idle past this point is strictly worse than
+// reclaiming now.
+const DefaultPressureThreshold = 85
 
 // GetDiskUsage returns current disk utilisation for the root filesystem ("/").
 func GetDiskUsage() (DiskUsage, error) {
@@ -37,38 +45,152 @@ func GetDiskUsage() (DiskUsage, error) {
 	}, nil
 }
 
-// DiskCleanup runs all three cleanup steps and returns a summary.
-// It never aborts early — it collects all errors and reports at the end.
-func DiskCleanup() CleanupResult {
-	result := CleanupResult{}
+// DiskCleanupOptions configures a DiskCleanup run.
+type DiskCleanupOptions struct {
+	// DryRun reports what would be removed and the space it would free, without
+	// removing anything.
+	DryRun bool
+	// PressureThreshold is the disk-used percentage at/above which idle-shared
+	// reclaims run even while a runner is busy. Zero means DefaultPressureThreshold.
+	PressureThreshold int
+	// Home overrides the home directory used to locate caches. Defaults to $HOME
+	// (falling back to os.UserHomeDir()). Tests inject this to point at a fixture
+	// tree instead of the real user's home.
+	Home string
+	// RunnerRoots overrides runner discovery. Tests inject this to point at fixture
+	// runner trees instead of discovering real installs via systemd/globs.
+	RunnerRoots []RunnerRoot
+	// SharedCacheRoots overrides the absolute (non-home-relative) cache locations
+	// considered for reclaim (default: sharedCacheRoots, e.g. "/opt/pnpm-store").
+	// Tests set this to an empty (non-nil) slice to guarantee nothing outside a
+	// fixture tree is ever touched; nil means "use the default list".
+	SharedCacheRoots []string
+	// UsageOverride, when non-nil, is used instead of calling GetDiskUsage() for the
+	// "before" reading that pressure-escalation compares against threshold. Tests use
+	// this for deterministic threshold behavior instead of depending on the test
+	// machine's real, unpredictable disk usage.
+	UsageOverride *DiskUsage
+}
 
-	before, err := GetDiskUsage()
-	if err != nil {
-		result.Errors = append(result.Errors, fmt.Errorf("read disk usage (before): %w", err))
+// DiskCleanup runs the full cleanup with default options: not a dry run, the default
+// pressure threshold, real runner discovery, and $HOME for caches.
+func DiskCleanup() CleanupResult {
+	return DiskCleanupWithOptions(DiskCleanupOptions{})
+}
+
+// DiskCleanupDryRun runs the full cleanup in dry-run mode: nothing is removed, but the
+// returned CleanupResult's Reclaimed/Skipped/BytesReclaimed report exactly what a real
+// run would have done and why anything was left alone.
+func DiskCleanupDryRun() CleanupResult {
+	return DiskCleanupWithOptions(DiskCleanupOptions{DryRun: true})
+}
+
+// DiskCleanupWithOptions runs disk-cleanup with explicit options. It never aborts
+// early — it collects all errors/skips and reports at the end, tier by tier:
+//
+//  1. tierAlways — docker dangling image/build-cache/anonymous-volume prune, old
+//     compressed log rotation, journald vacuum. Runs unconditionally.
+//  2. tierIdlePerRunner — GitHub Actions runner job workspace directories under
+//     "<root>/_work", one runner root at a time. Only runs for a runner root that
+//     isRunnerBusy reports idle; a busy runner's workspace is always left alone,
+//     pressure or not, because deleting an in-progress job's own checkout breaks
+//     that job outright.
+//  3. tierIdleShared — regenerable package/module caches (go build cache excluded —
+//     see protectedCacheSubpaths). Prefers every runner being idle, but runs anyway
+//     once disk usage is at/above PressureThreshold.
+//
+// protectedRunnerSubdirs and protectedCacheSubpaths are excluded at every tier,
+// unconditionally — see their doc comments in runner_posix.go for the incidents that
+// made them hard exclusions rather than a "prefer not to" default.
+func DiskCleanupWithOptions(opts DiskCleanupOptions) CleanupResult {
+	result := CleanupResult{DryRun: opts.DryRun}
+
+	threshold := opts.PressureThreshold
+	if threshold <= 0 {
+		threshold = DefaultPressureThreshold
+	}
+
+	home := opts.Home
+	if home == "" {
+		home = os.Getenv("HOME")
+	}
+	if home == "" {
+		if h, err := os.UserHomeDir(); err == nil {
+			home = h
+		}
+	}
+
+	var before DiskUsage
+	if opts.UsageOverride != nil {
+		before = *opts.UsageOverride
+	} else {
+		b, err := GetDiskUsage()
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Errorf("read disk usage (before): %w", err))
+		}
+		before = b
 	}
 	result.Before = before
 
-	// 1. Docker prune: images + containers, keep volumes.
-	dockerOut, dockerErr := runCommand("docker", "system", "prune", "-af", "--volumes=false")
-	result.DockerPruneOut = dockerOut
-	if dockerErr != nil {
-		result.Errors = append(result.Errors, fmt.Errorf("docker prune: %w", dockerErr))
-	}
+	underPressure := before.UsedPercent >= threshold
 
-	// 2. Log rotation: delete compressed logs older than 14 days.
-	logOut, logErr := runCommand("find", "/var/log", "-name", "*.gz", "-mtime", "+14", "-delete")
+	// Tier: always safe.
+	dockerOut, dockerErrs := dockerReclaimFunc(opts.DryRun)
+	result.DockerPruneOut = dockerOut
+	result.Errors = append(result.Errors, dockerErrs...)
+
+	logOut, logErr := logRotationFunc(opts.DryRun)
 	result.LogRotationOut = logOut
 	if logErr != nil {
 		// non-fatal — /var/log may not exist on all platforms
 		result.Errors = append(result.Errors, fmt.Errorf("log rotation: %w", logErr))
 	}
 
-	// 3. Journalctl vacuum (Linux only; harmless no-op on macOS).
-	journalOut, journalErr := runCommand("journalctl", "--vacuum-time=7d")
+	journalOut, journalErr := journalVacuumFunc(opts.DryRun)
 	result.JournalVacuumOut = journalOut
 	if journalErr != nil {
-		// non-fatal on macOS
+		// non-fatal on macOS (no journald)
 		result.Errors = append(result.Errors, fmt.Errorf("journalctl vacuum: %w", journalErr))
+	}
+
+	// Tier: per-runner idle-gated job workspaces.
+	roots := opts.RunnerRoots
+	if roots == nil {
+		roots = discoverRunnerRoots()
+	}
+	anyBusy := false
+	for _, root := range roots {
+		if isRunnerBusy(root.Path) {
+			anyBusy = true
+			result.Skipped = append(result.Skipped, SkipEntry{
+				Path:   root.Path,
+				Reason: "runner busy (Runner.Worker running) — job workspace left alone",
+			})
+			continue
+		}
+		b, reclaimed, skipped := reclaimRunnerWork(root.Path, opts.DryRun)
+		result.BytesReclaimed += b
+		result.Reclaimed = append(result.Reclaimed, reclaimed...)
+		result.Skipped = append(result.Skipped, skipped...)
+	}
+
+	// Tier: shared idle-preferred caches, escalated by disk pressure.
+	if home != "" {
+		if !anyBusy || underPressure {
+			sharedRoots := opts.SharedCacheRoots
+			if sharedRoots == nil {
+				sharedRoots = sharedCacheRoots
+			}
+			b, reclaimed, skipped := reclaimCaches(home, sharedRoots, opts.DryRun)
+			result.BytesReclaimed += b
+			result.Reclaimed = append(result.Reclaimed, reclaimed...)
+			result.Skipped = append(result.Skipped, skipped...)
+		} else {
+			result.Skipped = append(result.Skipped, SkipEntry{
+				Path:   filepath.Join(home, ".cache"),
+				Reason: "runner(s) busy and disk usage below pressure threshold — shared caches left alone",
+			})
+		}
 	}
 
 	after, err := GetDiskUsage()
@@ -78,4 +200,34 @@ func DiskCleanup() CleanupResult {
 	result.After = after
 
 	return result
+}
+
+// logRotationFunc and journalVacuumFunc are vars (not plain function calls) so tests
+// can stub them out — disk-cleanup tests must never shell out to real `find`/
+// `journalctl` against the test box's actual /var/log or journald state.
+var (
+	logRotationFunc   = logRotation
+	journalVacuumFunc = journalVacuum
+)
+
+// logRotation deletes compressed logs older than 14 days under /var/log. In dry-run
+// mode it lists what would be deleted (via `find` without `-delete`) instead.
+func logRotation(dryRun bool) (string, error) {
+	if dryRun {
+		out, err := runCommand("find", "/var/log", "-name", "*.gz", "-mtime", "+14")
+		return "would delete:\n" + out, err
+	}
+	return runCommand("find", "/var/log", "-name", "*.gz", "-mtime", "+14", "-delete")
+}
+
+// journalVacuum runs `journalctl --vacuum-time=7d` (Linux only; harmless no-op on
+// macOS, where the command doesn't exist and the resulting error is treated as
+// non-fatal by the caller). In dry-run mode it does nothing — journalctl has no
+// built-in dry-run, and vacuuming is already always-safe, so there's nothing
+// meaningful to preview.
+func journalVacuum(dryRun bool) (string, error) {
+	if dryRun {
+		return "dry-run: journalctl --vacuum-time=7d (skipped, always-safe tier)", nil
+	}
+	return runCommand("journalctl", "--vacuum-time=7d")
 }
