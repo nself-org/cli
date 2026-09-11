@@ -33,20 +33,54 @@ jobs:
             echo "baseline_loaded=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Run plugin search benchmark (p95 <100ms)
-        id: search
+      - name: Run registry network fetch (cold cache, informational)
+        id: network
         run: |
           # `plugin search` requires a query positional arg (Args:
           # cobra.MinimumNArgs(1) in cmd/commands/plugin_search.go) -- calling
           # it with no query fails fast with "requires at least 1 arg(s)",
           # which was making this step measure a cobra parse error instead of
           # a real search. "ai" matches the command's own --help examples.
+          #
+          # This is the FIRST invocation in the job, so the on-disk registry
+          # cache (internal/plugin/registry_cache.go) is cold: the timing
+          # here is DNS + TLS + HTTP GET to plugins.nself.org (a Cloudflare
+          # Worker), not local code. It was previously reported as
+          # "search_ms" and gated at <120ms, which made the job measure
+          # third-party network latency against a code-regression threshold
+          # -- three nightly runs failed at 703-1124ms, none of it search
+          # code. Tracked here as its own informational number; the actual
+          # <100ms/<120ms search SLO is measured warm-cache below, which is
+          # what internal/plugin/REGISTRY-PERF-TARGETS.md targets.
+          CACHE_FILE="$HOME/.nself/cache/plugins/registry.json"
+          rm -f "$CACHE_FILE"
+          start=$(date +%s%N)
+          timeout 5 ./nself plugin search ai --json > /dev/null || true
+          end=$(date +%s%N)
+          ms=$(( (end - start) / 1000000 ))
+          echo "network_ms=$ms" >> $GITHUB_OUTPUT
+          if [ -f "$CACHE_FILE" ]; then
+            echo "cache_warm=true" >> $GITHUB_OUTPUT
+          else
+            echo "cache_warm=false" >> $GITHUB_OUTPUT
+          fi
+          echo "Registry network fetch (cold cache): ${ms}ms"
+
+      - name: Run plugin search benchmark (warm cache, p95 <100ms)
+        id: search
+        run: |
+          # Second invocation in the job. The registry-fetch step above
+          # just wrote the on-disk cache (5-minute TTL), so
+          # plugin.FetchRegistry now takes the readCache() hit instead of
+          # going over the network -- this measures cache read + JSON parse
+          # + query match + JSON marshal, the actual code path the
+          # <100ms/<120ms SLO targets.
           start=$(date +%s%N)
           timeout 5 ./nself plugin search ai --json > /dev/null || true
           end=$(date +%s%N)
           ms=$(( (end - start) / 1000000 ))
           echo "search_ms=$ms" >> $GITHUB_OUTPUT
-          echo "Plugin search: ${ms}ms"
+          echo "Plugin search (warm cache): ${ms}ms"
 
       - name: Run single plugin install benchmark (cold cache <30s)
         id: single
@@ -94,21 +128,35 @@ jobs:
 
       - name: Check regression thresholds
         env:
+          NETWORK_MS: ${{ steps.network.outputs.network_ms }}
+          CACHE_WARM: ${{ steps.network.outputs.cache_warm }}
           SEARCH_MS: ${{ steps.search.outputs.search_ms }}
           SINGLE_MS: ${{ steps.single.outputs.single_ms }}
           BUNDLE_MS: ${{ steps.bundle.outputs.bundle_ms }}
           PARSE_MS: ${{ steps.parse.outputs.parse_ms }}
         run: |
           echo "=== Registry Performance Results ==="
-          echo "search_ms: $SEARCH_MS (target: <100ms, threshold: <120ms)"
+          echo "network_ms: $NETWORK_MS (informational only -- cold-cache fetch latency to plugins.nself.org, not a code-regression gate)"
+          echo "search_ms: $SEARCH_MS (target: <100ms, threshold: <120ms; warm-cache code path only)"
           echo "single_ms: $SINGLE_MS (target: <30s, threshold: <36s)"
           echo "bundle_ms: $BUNDLE_MS (target: <60s, threshold: <72s)"
           echo "parse_ms: $PARSE_MS (target: <50ms, threshold: <60ms)"
 
+          # Network leg: never gates the code-path threshold below. Generous
+          # (10s) and WARN-only -- it exists to surface a genuinely dead/
+          # unreachable registry endpoint, not to fail the job on ordinary
+          # third-party network jitter (703-1124ms was observed as "normal"
+          # across three nights before this split existed).
+          if [ "$NETWORK_MS" -gt 10000 ]; then
+            echo "WARN registry network fetch very slow: ${NETWORK_MS}ms > 10000ms -- check plugins.nself.org edge health (not a code regression, not blocking)"
+          fi
+
           # Fail if >20% regression from targets
           # NOTE: SEARCH_MS, SINGLE_MS, BUNDLE_MS are all in milliseconds
-          if [ "$SEARCH_MS" -gt 120 ]; then
-            echo "FAIL search regression: ${SEARCH_MS}ms > 120ms" && exit 1
+          if [ "$CACHE_WARM" != "true" ]; then
+            echo "WARN registry cache did not warm after the network-fetch step (offline runner or registry outage) -- search_ms of ${SEARCH_MS}ms reflects network, not code; skipping the code-path gate for this run instead of failing on network conditions"
+          elif [ "$SEARCH_MS" -gt 120 ]; then
+            echo "FAIL search regression: ${SEARCH_MS}ms > 120ms (warm-cache code path)" && exit 1
           fi
           if [ "$SINGLE_MS" -gt 36000 ]; then
             echo "FAIL single install regression: ${SINGLE_MS}ms > 36000ms (36s)" && exit 1
@@ -128,6 +176,7 @@ jobs:
       - name: Update baseline on perf/baseline branch
         if: success()
         run: |
+          NETWORK_VAL="${{ steps.network.outputs.network_ms }}"
           SEARCH_VAL="${{ steps.search.outputs.search_ms }}"
           SINGLE_VAL="${{ steps.single.outputs.single_ms }}"
           BUNDLE_VAL="${{ steps.bundle.outputs.bundle_ms }}"
@@ -150,6 +199,7 @@ jobs:
           mkdir -p .github
           cat > .github/registry-perf-baseline.json << JSONEOF
           {
+            "network_ms": $NETWORK_VAL,
             "search_ms": $SEARCH_VAL,
             "single_ms": $SINGLE_VAL,
             "bundle_ms": $BUNDLE_VAL,
@@ -165,5 +215,6 @@ jobs:
         if: failure()
         run: |
           echo "Registry performance regression detected in nightly benchmark"
-          echo "Targets: search <100ms, single <30s, bundle <60s, parse <50ms"
+          echo "Targets: search <100ms (warm cache, code path), single <30s, bundle <60s, parse <50ms"
+          echo "Registry network fetch latency is tracked separately (network_ms) and never fails this gate"
           echo "Review baseline at .github/registry-perf-baseline.json on perf/baseline branch"
