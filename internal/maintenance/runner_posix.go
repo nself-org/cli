@@ -4,9 +4,11 @@ package maintenance
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // RunnerRoot describes one discovered GitHub Actions self-hosted runner install.
@@ -95,6 +97,25 @@ func reclaimRunnerWork(root string, dryRun bool) (bytes int64, reclaimed []Recla
 			skipped = append(skipped, SkipEntry{
 				Path:   full,
 				Reason: "runner-internal directory, never removed (_actions/_tool/_temp/_PipelineMapping)",
+			})
+			continue
+		}
+
+		// A per-runner busy check is necessary but not sufficient: the check
+		// and the removal are not atomic. On 2026-09-11, cleaning workspaces
+		// on runners that reported idle destroyed three live jobs, which
+		// failed with "Directory .../_work/web/web does not exist" — a job had
+		// started in the window between the check and the RemoveAll.
+		//
+		// A running job writes into its workspace constantly, so recent
+		// modification is the signal a process scan cannot give us. Require
+		// the tree to have been untouched for workspaceStaleAfter before
+		// removing it. A merely slow job still touches its workspace; a
+		// finished one cannot.
+		if recentlyModified(full, workspaceStaleAfter) {
+			skipped = append(skipped, SkipEntry{
+				Path:   full,
+				Reason: fmt.Sprintf("modified within %s — treated as an active job workspace", workspaceStaleAfter),
 			})
 			continue
 		}
@@ -219,4 +240,37 @@ func isRunnerBusy(root string) bool {
 		}
 	}
 	return false
+}
+
+// workspaceStaleAfter is how long a runner job workspace must go untouched
+// before disk-cleanup will treat it as abandoned and remove it. This exists
+// because isRunnerBusy alone races: a runner can report idle and begin a job
+// microseconds later. 30 minutes is comfortably longer than the gap between a
+// job's filesystem writes while it runs, and far shorter than the lifetime of
+// a genuinely abandoned checkout.
+// It is a var, not a const, so tests can exercise both sides of the guard
+// without having to backdate every fixture they build.
+var workspaceStaleAfter = 30 * time.Minute
+
+// recentlyModified reports whether any file under root was modified within the
+// last d. It stops at the first hit rather than walking the whole tree, since
+// one recent file is enough to prove the workspace is in use.
+func recentlyModified(root string, d time.Duration) bool {
+	cutoff := time.Now().Add(-d)
+	found := false
+	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // unreadable entry proves nothing; keep looking
+		}
+		info, statErr := entry.Info()
+		if statErr != nil {
+			return nil
+		}
+		if info.ModTime().After(cutoff) {
+			found = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return found
 }

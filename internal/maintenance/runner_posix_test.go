@@ -7,7 +7,19 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+// withoutStalenessGuard disables the workspace staleness window for tests whose
+// fixtures are necessarily brand new. Those tests assert what reclaimRunnerWork
+// removes and protects, not when it defers; the staleness behaviour has its own
+// test (TestReclaimRunnerWork_SkipsRecentlyModifiedWorkspace).
+func withoutStalenessGuard(t *testing.T) {
+	t.Helper()
+	prev := workspaceStaleAfter
+	workspaceStaleAfter = 0
+	t.Cleanup(func() { workspaceStaleAfter = prev })
+}
 
 // mustMkdirWithFile creates dir and a small file inside it so dirSize/removal is
 // exercising real bytes, not an empty directory.
@@ -71,6 +83,7 @@ func withStubbedSideEffects(t *testing.T) {
 // ── _actions/_tool/_temp/_PipelineMapping preserved ────────────────────────────────
 
 func TestReclaimRunnerWork_PreservesProtectedSubdirs(t *testing.T) {
+	withoutStalenessGuard(t)
 	root := t.TempDir()
 	work := filepath.Join(root, "_work")
 
@@ -113,6 +126,7 @@ func TestReclaimRunnerWork_PreservesProtectedSubdirs(t *testing.T) {
 // ── go-build / grype / trivy preserved, unconditionally ────────────────────────────
 
 func TestReclaimCaches_PreservesGoBuildGrypeTrivy(t *testing.T) {
+	withoutStalenessGuard(t)
 	home := t.TempDir()
 	mustMkdirWithFile(t, filepath.Join(home, ".cache", "go-build"), "compiled object")
 	mustMkdirWithFile(t, filepath.Join(home, ".cache", "grype"), "vuln db")
@@ -160,6 +174,7 @@ func TestReclaimCaches_PreservesGoBuildGrypeTrivy(t *testing.T) {
 // shared-cache tier to run even though a runner is busy — protectedCacheSubpaths must
 // still be excluded "at every tier", pressure included.
 func TestDiskCleanupWithOptions_ProtectedCachesSurvivePressureEscalation(t *testing.T) {
+	withoutStalenessGuard(t)
 	home := t.TempDir()
 	mustMkdirWithFile(t, filepath.Join(home, ".cache", "go-build"), "compiled object")
 	mustMkdirWithFile(t, filepath.Join(home, ".cache", "grype"), "vuln db")
@@ -191,6 +206,7 @@ func TestDiskCleanupWithOptions_ProtectedCachesSurvivePressureEscalation(t *test
 // ── per-runner busy detection: clean the idle one, skip the busy one ───────────────
 
 func TestPerRunnerBusyDetection_CleansIdleSkipsBusy(t *testing.T) {
+	withoutStalenessGuard(t)
 	idleRoot := t.TempDir()
 	idleJobDir := filepath.Join(idleRoot, "_work", "nself-org", "cli")
 	mustMkdirWithFile(t, idleJobDir, "idle runner's stale job checkout")
@@ -240,6 +256,7 @@ func TestPerRunnerBusyDetection_CleansIdleSkipsBusy(t *testing.T) {
 // ── pressure escalation triggers above threshold ────────────────────────────────────
 
 func TestPressureEscalation_TriggersAboveThreshold(t *testing.T) {
+	withoutStalenessGuard(t)
 	home := t.TempDir()
 	mustMkdirWithFile(t, filepath.Join(home, "pnpm-store"), "content-addressable store")
 
@@ -287,6 +304,7 @@ func TestPressureEscalation_TriggersAboveThreshold(t *testing.T) {
 // ── dry-run removes nothing ─────────────────────────────────────────────────────────
 
 func TestDiskCleanupWithOptions_DryRunRemovesNothing(t *testing.T) {
+	withoutStalenessGuard(t)
 	home := t.TempDir()
 	mustMkdirWithFile(t, filepath.Join(home, ".cache", "turbo"), "turborepo cache")
 	mustMkdirWithFile(t, filepath.Join(home, "go", "pkg", "mod"), "downloaded module")
@@ -345,5 +363,84 @@ func TestFilterAnonymousVolumes_ExcludesNamedVolumes(t *testing.T) {
 	got := filterAnonymousVolumes(names)
 	if len(got) != 1 || got[0] != names[0] {
 		t.Errorf("filterAnonymousVolumes(%v) = %v; want only the 64-hex anonymous name", names, got)
+	}
+}
+
+// TestReclaimRunnerWork_SkipsRecentlyModifiedWorkspace covers the race that a
+// busy-process check cannot: a runner reports idle, and a job starts before the
+// RemoveAll lands. On 2026-09-11 that destroyed three live jobs on nSelf
+// staging ("Directory .../_work/web/web does not exist"). A live job writes
+// into its workspace constantly, so a recent mtime must veto removal even when
+// the runner looks idle.
+func TestReclaimRunnerWork_SkipsRecentlyModifiedWorkspace(t *testing.T) {
+	root := t.TempDir()
+	work := filepath.Join(root, "_work")
+
+	active := filepath.Join(work, "active-repo", "active-repo")
+	if err := os.MkdirAll(active, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A file written now stands in for a job mid-build.
+	if err := os.WriteFile(filepath.Join(active, "building.log"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stale := filepath.Join(work, "abandoned-repo", "abandoned-repo")
+	if err := os.MkdirAll(stale, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	staleFile := filepath.Join(stale, "old.log")
+	if err := os.WriteFile(staleFile, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Age the whole abandoned tree well past the staleness window.
+	old := time.Now().Add(-2 * workspaceStaleAfter)
+	for _, p := range []string{staleFile, stale, filepath.Join(work, "abandoned-repo")} {
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, reclaimed, skipped := reclaimRunnerWork(root, false)
+
+	if _, err := os.Stat(filepath.Join(work, "active-repo")); err != nil {
+		t.Fatalf("active workspace was removed despite a recent write: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(work, "abandoned-repo")); !os.IsNotExist(err) {
+		t.Fatalf("abandoned workspace should have been reclaimed, stat err = %v", err)
+	}
+
+	var skippedActive bool
+	for _, s := range skipped {
+		if strings.Contains(s.Path, "active-repo") && strings.Contains(s.Reason, "active job workspace") {
+			skippedActive = true
+		}
+	}
+	if !skippedActive {
+		t.Errorf("expected active-repo to be skipped as an active workspace, got skips: %+v", skipped)
+	}
+
+	var reclaimedStale bool
+	for _, r := range reclaimed {
+		if strings.Contains(r.Path, "abandoned-repo") {
+			reclaimedStale = true
+		}
+	}
+	if !reclaimedStale {
+		t.Errorf("expected abandoned-repo to be reclaimed, got: %+v", reclaimed)
+	}
+}
+
+// TestPressureThresholdStaysBelowDoctorHostLimit pins the relationship between
+// this package's escalation point and the doctor host-disk check. doctor fails
+// at 80% used (<20% free); if escalation were at or above that, the box could
+// sit in a band where cleanup is satisfied and doctor is red — the exact state
+// nSelf staging was in on 2026-09-11.
+func TestPressureThresholdStaysBelowDoctorHostLimit(t *testing.T) {
+	const doctorHostDiskUsedLimit = 80
+	if DefaultPressureThreshold >= doctorHostDiskUsedLimit {
+		t.Fatalf("DefaultPressureThreshold (%d) must stay below the doctor host-disk limit (%d%% used); "+
+			"otherwise cleanup never escalates in the band where doctor already fails",
+			DefaultPressureThreshold, doctorHostDiskUsedLimit)
 	}
 }

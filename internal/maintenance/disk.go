@@ -13,7 +13,18 @@ import (
 // cache reclaims run regardless of runner busy state. A full disk fails every job on
 // the box anyway, so waiting for idle past this point is strictly worse than
 // reclaiming now.
-const DefaultPressureThreshold = 85
+//
+// 75, not 85, because this number has to keep a DIFFERENT check satisfied:
+// `nself doctor --deep` fails the host with "Disk free: /: N% free (<20%)" at
+// 80% used. An escalation threshold above that lets the box settle in a band
+// where cleanup is content but doctor is red — which is exactly what happened
+// on nSelf staging on 2026-09-11, where the dogfood gate failed on disk while
+// the daily cleanup timer reported nothing to do. Escalating at 75 keeps the
+// box under doctor's limit with headroom for one large job's working set.
+//
+// Keep this BELOW the doctor host-disk threshold. If that check's limit moves,
+// move this with it.
+const DefaultPressureThreshold = 75
 
 // GetDiskUsage returns current disk utilisation for the root filesystem ("/").
 func GetDiskUsage() (DiskUsage, error) {
