@@ -187,13 +187,13 @@ func TestDNSFailureFailMode(t *testing.T) {
 	})
 
 	t.Run("stale_cache_grace_soft_on_dns_failure", func(t *testing.T) {
-		// Write a stale cache entry (fetched 48h ago — within soft grace window).
+		// Write a stale cache entry (fetched 96h ago — within soft grace window).
 		now := time.Now()
 		entry := &CacheEntry{
 			KeyHash:        HashKey(testKey),
 			Tier:           "pro",
 			PluginsAllowed: []string{"ai", "claw", "mux"},
-			FetchedAt:      now.Add(-48 * time.Hour).Unix(), // 48h ago — GraceSoft range
+			FetchedAt:      now.Add(-96 * time.Hour).Unix(), // 96h ago — GraceSoft range
 			ExpiresAt:      now.Add(30 * 24 * time.Hour).Unix(),
 		}
 		writeCacheEntry(t, entry)
@@ -208,7 +208,7 @@ func TestDNSFailureFailMode(t *testing.T) {
 		if result == nil {
 			t.Fatal("ValidateFull returned nil result")
 		}
-		// 48h-stale cache + DNS failure = Valid with GraceSoft warning
+		// 96h-stale cache + DNS failure = Valid with GraceSoft warning
 		if !result.Valid {
 			t.Errorf("expected Valid=true in GraceSoft window, got Valid=false: %s", result.Message)
 		}

@@ -34,7 +34,7 @@ func TestDetermineGraceState_NilEntry(t *testing.T) {
 	}
 }
 
-// TestDetermineGraceState_Valid verifies that a freshly-fetched entry (< 24h ago) returns GraceValid.
+// TestDetermineGraceState_Valid verifies that a freshly-fetched entry (< 72h ago) returns GraceValid.
 func TestDetermineGraceState_Valid(t *testing.T) {
 	entry := makeCacheEntry("nself_pro_testkey", 1, 720) // fetched 1h ago, expires 720h from now
 	result := DetermineGraceState(entry)
@@ -49,13 +49,13 @@ func TestDetermineGraceState_Valid(t *testing.T) {
 	}
 }
 
-// TestDetermineGraceState_SoftGrace verifies that a 24-7d old entry returns GraceSoft with writes still allowed.
+// TestDetermineGraceState_SoftGrace verifies that a 72h-7d old entry returns GraceSoft with writes still allowed.
 func TestDetermineGraceState_SoftGrace(t *testing.T) {
-	// 25h ago — just past the 24h soft threshold
-	entry := makeCacheEntry("nself_pro_testkey", 25, 720)
+	// 73h ago — just past the 72h soft threshold
+	entry := makeCacheEntry("nself_pro_testkey", 73, 720)
 	result := DetermineGraceState(entry)
 	if result.State != GraceSoft {
-		t.Errorf("25h old entry: state = %q, want %q", result.State, GraceSoft)
+		t.Errorf("73h old entry: state = %q, want %q", result.State, GraceSoft)
 	}
 	if !result.CanProceed {
 		t.Error("grace_soft: CanProceed should be true (allow with warning)")
@@ -65,14 +65,28 @@ func TestDetermineGraceState_SoftGrace(t *testing.T) {
 	}
 }
 
-// TestDetermineGraceState_SoftGraceBoundary verifies the exact 24h boundary.
+// TestDetermineGraceState_JustUnder72h_Silent verifies that an entry just
+// under the 72h soft threshold is silent (GraceValid), per the decided
+// ladder: <72h offline = silent, 72h-7d = warning, >7d = fail closed.
+func TestDetermineGraceState_JustUnder72h_Silent(t *testing.T) {
+	entry := makeCacheEntry("nself_pro_testkey", 71.99, 720)
+	result := DetermineGraceState(entry)
+	if result.State != GraceValid {
+		t.Errorf("71h59m old entry: state = %q, want %q (silent, no warning)", result.State, GraceValid)
+	}
+	if !result.CanProceed || !result.WriteAllowed {
+		t.Error("just-under-72h entry: CanProceed and WriteAllowed should both be true")
+	}
+}
+
+// TestDetermineGraceState_SoftGraceBoundary verifies the exact 72h boundary.
 func TestDetermineGraceState_SoftGraceBoundary(t *testing.T) {
-	// Exactly 24h ago is just at the soft boundary — should be soft or valid depending on impl.
-	entry24h := makeCacheEntry("nself_pro_testkey", 24.01, 720)
-	result := DetermineGraceState(entry24h)
-	// 24h+ means we are in soft grace territory.
+	// Just past 72h is just at the soft boundary — should be soft or valid depending on impl.
+	entry72h := makeCacheEntry("nself_pro_testkey", 72.01, 720)
+	result := DetermineGraceState(entry72h)
+	// 72h+ means we are in soft grace territory.
 	if result.State != GraceSoft && result.State != GraceValid {
-		t.Errorf("24h boundary entry: state = %q, want %q or %q", result.State, GraceSoft, GraceValid)
+		t.Errorf("72h boundary entry: state = %q, want %q or %q", result.State, GraceSoft, GraceValid)
 	}
 }
 
@@ -184,7 +198,7 @@ func TestDetermineGraceState_GraceMessageNotEmpty(t *testing.T) {
 	}{
 		{"nil", nil},
 		{"valid", makeCacheEntry("k", 1, 720)},
-		{"soft", makeCacheEntry("k", 25, 720)},
+		{"soft", makeCacheEntry("k", 73, 720)},
 		{"hard", makeCacheEntry("k", 8*24, 720)},
 		{"post_expiry_grace", makeCacheEntry("k", 1, -1)},
 		{"expired", makeCacheEntry("k", 1, -31*24)},
