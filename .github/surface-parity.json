@@ -187,7 +187,7 @@
       "group_id": "core",
       "wiki_page": true,
       "mcp_tool": false,
-      "env_vars": "undocumented: NSELF_LICENSE_KEY",
+      "env_vars": "documented",
       "openapi": "n/a (see below)"
     },
     {

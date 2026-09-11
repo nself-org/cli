@@ -53,13 +53,13 @@ func TestSimulateOffline_SetsGraceState(t *testing.T) {
 		t.Fatalf("writing test cache: %v", err)
 	}
 
-	// Simulate 2 days offline — should be grace_soft.
-	result, err := SimulateOffline(2)
+	// Simulate 4 days offline — should be grace_soft (72h-7d window).
+	result, err := SimulateOffline(4)
 	if err != nil {
-		t.Fatalf("SimulateOffline(2): %v", err)
+		t.Fatalf("SimulateOffline(4): %v", err)
 	}
 	if result.State != GraceSoft {
-		t.Errorf("expected grace_soft after 2 days, got %s", result.State)
+		t.Errorf("expected grace_soft after 4 days, got %s", result.State)
 	}
 
 	// Simulate 10 days offline — should be grace_hard.

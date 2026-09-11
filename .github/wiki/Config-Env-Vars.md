@@ -24,6 +24,7 @@ All ɳSelf project configuration lives in `.env` (and optionally `.env.local` fo
 - [AI (Zero-Config AI Pool)](#ai-zero-config-ai-pool)
 - [Optional Service Toggles](#optional-service-toggles)
 - [Custom Services (CS\_N)](#custom-services-cs_n)
+- [Licensing](#licensing)
 - [Observability / Profiling](#observability--profiling)
 - [Computed Variables](#computed-variables)
 
@@ -295,6 +296,46 @@ This registers a Node.js service named `ping_api` accessible at `ping.{BASE_DOMA
 | `NSELF_POSTGRES_MODE` | string | `docker` | No | Selects the Postgres runtime. `docker` runs the standard Postgres container (default, fully supported). `wasm` runs the experimental embedded pglite/wasmtime lane. The `wasm` mode is gated behind the Emscripten ABI shim and is not yet production ready. |
 
 ---
+
+## Licensing
+
+Paid Bundle plugins validate a licence key against `ping.nself.org`. The core
+CLI is MIT and needs none of these.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NSELF_LICENSE_KEY` | unset | Your Bundle or ɳSelf+ licence key. |
+| `LICENSE_PING_URL` | `https://ping.nself.org` | Validation endpoint. Point it elsewhere only for testing. |
+| `LICENSE_CACHE_PATH` | `~/.cache/nself/license.json` | Where the signed entitlement cache is stored. |
+| `LICENSE_CHECK_INTERVAL` | `6h` | How often a running stack re-validates. |
+| `LICENSE_OFFLINE_MODE` | `false` | Use the exported cache only; never contact the network. |
+| `LICENSE_SUNSET_AT` | unset | Optional hard cutoff. Zero means no sunset. |
+| `LICENSE_PUBLIC_KEY_OVERRIDE` | unset | Hex Ed25519 public key. Testing only. |
+
+### The offline grace window is not configurable
+
+When the validation server cannot be reached, a valid cached entitlement keeps
+paid plugins running on a fixed ladder: silent for the first period, then a
+warning, then closed. Those lengths are constants in
+`internal/license/grace.go` (`GraceSoftThreshold`, `GraceHardThreshold`) and
+are deliberately not exposed as environment variables. An operator-settable
+ceiling on licence enforcement is not a knob we want to ship. `nself license
+status` prints the live values.
+
+A `LICENSE_GRACE_DAYS` variable was declared in the config struct and
+advertised in a code comment as the way to tune this. Nothing ever read it, so
+setting it did nothing. It was removed rather than wired up, for the reason
+above. If you set it today, delete it. It has never had any effect.
+
+### Escape hatches (not for production)
+
+| Variable | Effect |
+|---|---|
+| `NSELF_LICENSE_FAIL_OPEN=1` | On a network failure only, trust the cached entitlement with no age limit. Intended for CI and air-gapped builds. It never overrides a server that answers, and never overrides a revoked key. |
+| `NSELF_LICENSE_SKIP_VERIFY=1` | Let `nself license import` accept an unsigned cache file. Requires `NSELF_LICENSE_SKIP_VERIFY_FORCE=1` and `--force`. Affects `import` only, never `plugin install`. |
+
+Both defeat protections that exist for a reason. Leave them unset on any
+installation that matters.
 
 ## Observability / Profiling
 

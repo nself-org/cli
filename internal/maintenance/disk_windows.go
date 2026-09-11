@@ -39,17 +39,58 @@ func GetDiskUsage() (DiskUsage, error) {
 	}, nil
 }
 
-// DiskCleanup is a stub on Windows — only Docker prune is attempted.
+// DiskCleanupOptions configures a DiskCleanup run. RunnerRoots/Home/PressureThreshold
+// are accepted for API parity with the POSIX build but are no-ops here — GitHub
+// Actions runner-farm reclaim (job workspaces, go-build/grype/trivy exclusions) is
+// POSIX-shaped and guarded out of the Windows build entirely rather than partially
+// reimplemented against an untested Windows process/path model. Only the docker-prune
+// safety fix applies on both platforms.
+type DiskCleanupOptions struct {
+	DryRun            bool
+	PressureThreshold int
+	Home              string
+	RunnerRoots       []RunnerRoot
+	SharedCacheRoots  []string
+	UsageOverride     *DiskUsage
+}
+
+// RunnerRoot mirrors the POSIX type for API parity; unused on Windows.
+type RunnerRoot struct {
+	Name string
+	Path string
+}
+
+// DiskCleanup runs the full cleanup with default options.
 func DiskCleanup() CleanupResult {
-	result := CleanupResult{}
-	before, _ := GetDiskUsage()
+	return DiskCleanupWithOptions(DiskCleanupOptions{})
+}
+
+// DiskCleanupDryRun runs the cleanup in dry-run mode.
+func DiskCleanupDryRun() CleanupResult {
+	return DiskCleanupWithOptions(DiskCleanupOptions{DryRun: true})
+}
+
+// DiskCleanupWithOptions runs the same docker-prune safety fix as the POSIX build
+// (see dockerReclaim in disk_shared.go). Runner-farm and cache reclaim are not
+// attempted on Windows and are reported as skipped for diagnosability.
+func DiskCleanupWithOptions(opts DiskCleanupOptions) CleanupResult {
+	result := CleanupResult{DryRun: opts.DryRun}
+	var before DiskUsage
+	if opts.UsageOverride != nil {
+		before = *opts.UsageOverride
+	} else {
+		before, _ = GetDiskUsage()
+	}
 	result.Before = before
 
-	dockerOut, dockerErr := runCommand("docker", "system", "prune", "-af", "--volumes=false")
+	dockerOut, dockerErrs := dockerReclaimFunc(opts.DryRun)
 	result.DockerPruneOut = dockerOut
-	if dockerErr != nil {
-		result.Errors = append(result.Errors, fmt.Errorf("docker prune: %w", dockerErr))
-	}
+	result.Errors = append(result.Errors, dockerErrs...)
+
+	result.Skipped = append(result.Skipped, SkipEntry{
+		Path:   "runner workspaces / build caches",
+		Reason: "runner-farm reclaim is not implemented on windows",
+	})
 
 	after, _ := GetDiskUsage()
 	result.After = after

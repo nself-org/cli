@@ -1,10 +1,27 @@
 // Package license — grace.go implements the license grace period state machine
 // and degradation mode enforcement.
 //
+// This file owns the OFFLINE grace ladder — GraceSoftThreshold and
+// GraceHardThreshold below — which is the CLI's single source of truth for
+// "license server unreachable, local cache present" behavior. It was
+// previously described in three places that had drifted apart (validator.go's
+// FailOpenSoftTTL/FailOpenHardTTL, the plugin package's cacheTTL/
+// offlineGraceTTL, and the web docs); those now all read from here. Decided
+// by the two-panel licensing review, P6-E12-W4-S4-T2, 2026-09.
+//
+// grace.go owns these two constants rather than ttl.go because this file
+// implements the live state machine (DetermineGraceState) that branches on
+// them directly — GraceSoft/GraceHard exist only in relation to these
+// thresholds, so the values and the logic that consumes them stay together.
+// ttl.go owns a different axis entirely: tier-based online cache TTLs
+// (TTLFree/TTLPro/TTLPlus) and the post-expiry commercial promise
+// (PostExpiryGraceWindow, 30 days) — see ttl.go's PostExpiryGraceWindow
+// comment for why that constant is NOT the same thing as the thresholds here.
+//
 // States: valid -> grace_soft -> grace_hard -> grace_post_expiry -> expired -> revoked
 // Grace periods:
-//   - <24h offline: proceed silently (valid)
-//   - 24h-7d offline: WARNING banner (grace_soft)
+//   - <72h offline: proceed silently (valid)
+//   - 72h-7d offline: WARNING banner (grace_soft)
 //   - >7d offline: read-only degraded mode (grace_hard)
 //   - License expired (server-reported expires_at) but <30d since expiry:
 //     proceed with a warning, writes still allowed (grace_post_expiry)
@@ -23,7 +40,7 @@ type GraceState string
 const (
 	// GraceValid means the license is validated and current.
 	GraceValid GraceState = "valid"
-	// GraceSoft means the cache is 24h-7d old; show warning banner.
+	// GraceSoft means the cache is 72h-7d old; show warning banner.
 	GraceSoft GraceState = "grace_soft"
 	// GraceHard means the cache is >7d old; paid plugin writes are refused.
 	GraceHard GraceState = "grace_hard"
@@ -39,11 +56,22 @@ const (
 	GraceRevoked GraceState = "revoked"
 )
 
-// GraceSoftThreshold is when the soft grace warning starts (24 hours).
-const GraceSoftThreshold = 24 * time.Hour
+// GraceSoftThreshold is when the soft grace warning starts (72 hours).
+// Below this age the outage is silent: a weekend-length blip on our side
+// (the license server, not the customer's license) must never alarm a
+// paying customer. 72h covers a full Fri-evening-to-Mon-morning outage
+// window with margin.
+const GraceSoftThreshold = 72 * time.Hour
 
-// GraceHardThreshold is when hard degradation begins (7 days).
-// Configurable via LICENSE_GRACE_DAYS env var.
+// GraceHardThreshold is when hard degradation begins (7 days) and the
+// offline ceiling: past this age, access fails closed no matter how the
+// license was last validated. This does NOT widen alongside
+// GraceSoftThreshold, because checker.go's BundleEntitled and the rest of
+// the validation flow send only the license key over the wire, with no
+// per-machine identifier — the local cache is therefore a bare credential,
+// freely copyable between hosts. A longer ceiling would multiply that
+// exposure for every day it grows; 7 days is judged the acceptable tradeoff
+// between outage tolerance and copied-cache exposure.
 const GraceHardThreshold = 7 * 24 * time.Hour
 
 // GraceCheckResult contains the outcome of a grace period check.

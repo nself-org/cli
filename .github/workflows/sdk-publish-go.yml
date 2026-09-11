@@ -63,7 +63,19 @@ jobs:
       - name: Tag SDK module
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          SDK_TAG="sdk/go/${VERSION}"
+          # The tag prefix MUST include the module's major-version suffix.
+          # sdk/go/go.mod declares "github.com/nself-org/cli/sdk/go/v2", and for
+          # a post-v1 module the major suffix is part of the module path, so the
+          # tag Go looks for is "sdk/go/v2/<version>", not "sdk/go/<version>".
+          #
+          # This was wrong from the start: all 25 existing sdk/go/v* tags are
+          # unusable. proxy.golang.org rejects them outright —
+          #   invalid version: sdk/go/go.mod has post-v1 module path
+          #   "github.com/nself-org/cli/sdk/go/v2" at revision sdk/go/v1.3.5
+          # and `go get github.com/nself-org/cli/sdk/go/v2@v1.3.5` falls back to
+          # the root module and fails with "does not contain package". The Go
+          # SDK has therefore never been installable by anyone.
+          SDK_TAG="sdk/go/v2/${VERSION}"
 
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

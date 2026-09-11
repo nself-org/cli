@@ -5,8 +5,8 @@
 //   - Cache valid + within TTL              → Valid
 //   - Cache valid + remote 200 (verified)   → Valid
 //   - Cache valid + remote unreachable + age ≤ 72h  → Valid (FAIL-OPEN, silent)
-//   - Cache valid + remote unreachable + age 72h-14d → Valid (FAIL-OPEN, warning)
-//   - Cache valid + remote unreachable + age > 14d  → FailClosed
+//   - Cache valid + remote unreachable + age 72h-7d → Valid (FAIL-OPEN, warning)
+//   - Cache valid + remote unreachable + age > 7d   → FailClosed
 //   - Cache signature invalid OR tampered           → FailClosed (NEVER fail-open)
 //   - Cache absent + remote unreachable             → FailClosed
 //   - Remote 200 with revoked                       → Revoked (overrides cache)
@@ -51,14 +51,17 @@ const (
 )
 
 // FailOpenSoftTTL is the silent-fail-open window. ≤ this value, no warning.
-// Configurable for tests via the validator's clock; default 72 hours (3 days).
-// Reduced from 7 days (S39.T07) to limit exposure if the license server is
-// unreachable due to network misconfiguration or DNS issues.
-const FailOpenSoftTTL = 72 * time.Hour
+// Alias of GraceSoftThreshold (grace.go) — this file no longer declares its
+// own value. See grace.go's package comment for why that file owns the
+// offline-grace ladder. Configurable for tests via the validator's clock.
+const FailOpenSoftTTL = GraceSoftThreshold
 
 // FailOpenHardTTL is the absolute fail-open ceiling. Beyond this, fail-closed.
-// Default 14 days.
-const FailOpenHardTTL = 14 * 24 * time.Hour
+// Alias of GraceHardThreshold (grace.go). Previously a separate 14-day value;
+// unified to the same 7-day ceiling as the rest of the offline ladder
+// (P6-E12-W4-S4-T2) — see grace.go's GraceHardThreshold comment for why the
+// ceiling does not widen past 7 days.
+const FailOpenHardTTL = GraceHardThreshold
 
 // ValidatorResult is the FAIL-OPEN-aware validation outcome.
 type ValidatorResult struct {

@@ -12,10 +12,10 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/httptimeout"
+	"github.com/nself-org/cli/internal/license"
 )
 
 // ErrRateLimited is returned when the license validation server responds with
@@ -126,13 +126,17 @@ var paidPlugins = map[string]bool{
 }
 
 // cacheTTL is the duration a cached license result remains valid during
-// normal operation (online mode).
-const cacheTTL = 24 * time.Hour
+// normal operation (online mode). Alias of license.GraceSoftThreshold — this
+// package's flat HMAC-signed cache file used to hand-type its own 24h value,
+// which had drifted from the CLI's canonical offline-grace ladder in
+// internal/license/grace.go. Unified P6-E12-W4-S4-T2, 2026-09.
+const cacheTTL = license.GraceSoftThreshold
 
 // offlineGraceTTL is the maximum age of a cached "valid" entry that can be
-// trusted when the network is unavailable. This gives users a 7-day window
-// to work offline without re-validating against the server.
-const offlineGraceTTL = 7 * 24 * time.Hour
+// trusted when the network is unavailable. Alias of license.GraceHardThreshold
+// — same unification as cacheTTL above; the value itself is unchanged (7
+// days) but is no longer a second hand-typed copy of the number.
+const offlineGraceTTL = license.GraceHardThreshold
 
 // IsPaidPlugin returns true if the named plugin requires a license key.
 //
