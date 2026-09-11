@@ -72,13 +72,19 @@ type RegistryCount struct {
 
 // Overlap describes slugs present in both registries.
 //
-// sharedSlugs is every slug in both. dualRegistry is the subset explicitly
-// marked as two genuinely different plugins (counted twice); duplicates is
-// the remainder (counted once, subtracted from the naive sum).
+// sharedSlugs is every slug in both. A shared slug is one two-tier product:
+// the free entry is its free tier, the pro entry its pro tier. Both registry
+// entries carry tier_pair:true, and the product counts once, so tierPairs and
+// duplicates hold the same slugs. Both are emitted because duplicates says
+// what was subtracted from the naive sum and tierPairs says why.
+//
+// There is no counted-twice case. An earlier draft of this model had one,
+// keyed on a dualRegistry flag that no registry entry has ever carried, so the
+// field was always empty and the real rule went unread.
 type Overlap struct {
-	SharedSlugs  []string `json:"sharedSlugs"`
-	DualRegistry []string `json:"dualRegistry"`
-	Duplicates   []string `json:"duplicates"`
+	SharedSlugs []string `json:"sharedSlugs"`
+	TierPairs   []string `json:"tierPairs"`
+	Duplicates  []string `json:"duplicates"`
 }
 
 // Totals is the combined free+pro view before and after de-duplication.
