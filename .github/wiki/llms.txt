@@ -14,7 +14,7 @@ nself build   # generate docker-compose + nginx
 nself start   # boot the stack
 ```
 
-## Commands (50)
+## Commands (51)
 
 ### nself access
 
@@ -792,6 +792,21 @@ Flags:
 - `--verbose` (default false) — Detailed output
 
 Full page: [[cmd-restart]]
+
+### nself runner
+
+Provision and audit self-hosted GitHub Actions CI runner hosts
+
+```
+nself runner <subcommand> [flags]
+```
+
+Subcommands:
+
+- `provision` — Install runner dependencies, user, sudoers, and N runner instances
+- `verify` — Check host(s) against the dependency manifest and report drift
+
+Full page: [[cmd-runner]]
 
 ### nself secrets
 

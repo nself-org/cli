@@ -354,6 +354,12 @@ var errorHarnessCases = []errorHarnessCase{
 	{"verify-sbom", []string{"verify-sbom"}, "(a) no project dir"},
 	{"verify-sbom", []string{"verify-sbom", "--no-such-flag-xyz"}, "(b) invalid flag"},
 	{"verify-sbom", []string{"verify-sbom", "unknownsub_xyz"}, "(c) unknown sub"},
+
+	// ── runner (G-012) ─────────────────────────────────────────────────────
+	// runner root returns cmd.Help() (nil) — soft case (no project required).
+	{"runner", []string{"runner"}, "(a) shows help (no project required)"},
+	{"runner", []string{"runner", "--no-such-flag-xyz"}, "(b) invalid flag"},
+	{"runner", []string{"runner", "unknownsub_xyz"}, "(c) unknown sub"},
 }
 
 // runErrorHarnessCmd executes the given args against a fresh RootCmd clone

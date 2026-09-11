@@ -1,0 +1,175 @@
+# CI Runner Host Dependency Manifest (G-012)
+#
+# Declarative source of truth for what a self-hosted GitHub Actions CI runner
+# host must have installed. Compiled into the binary via go:embed
+# (manifest.go) and read by both `nself runner provision` (install what's
+# missing) and `nself runner verify` (report what's missing/drifted).
+#
+# Every entry here exists because a real job failed without it — see
+# `reason`. Do not remove an entry without checking that reason still holds.
+#
+# apt_package is the Debian/Ubuntu package name `provision` installs.
+# binary, when set, is the command `verify` runs `command -v <binary>` on.
+# When binary is empty, the dependency is a library with no CLI entry point
+# and verify falls back to `dpkg -s <apt_package>`.
+schema_version: 1
+
+runner_user: gha-runner
+work_dir: /opt/actions-runner/_work
+
+dependencies:
+  - name: git
+    apt_package: git
+    binary: git
+    reason: actions/checkout requires git on PATH.
+
+  - name: jq
+    apt_package: jq
+    binary: jq
+    reason: workflow steps and nself-ci parse JSON with jq.
+
+  - name: yq
+    apt_package: yq
+    binary: yq
+    reason: workflow steps parse YAML (compose files, SPORT) with yq.
+
+  - name: gh
+    apt_package: gh
+    binary: gh
+    reason: >-
+      nself ci posts commit statuses via gh OAuth; release workflows use gh
+      release/gh api. Present on one prior runner host and absent on another
+      while both advertised self-hosted,Linux,X64 — the same commit passed or
+      failed depending on which host claimed the job (2026-09-11).
+
+  - name: make
+    apt_package: make
+    binary: make
+    reason: >-
+      release.yml and multiple Makefile-driven build steps require make.
+      Missing on a runner host broke cli release.yml (see
+      project_sentry_runner_ci_tools.md).
+
+  - name: zip
+    apt_package: zip
+    binary: zip
+    reason: release packaging steps shell out to zip; same incident as make/gh above.
+
+  - name: unzip
+    apt_package: unzip
+    binary: unzip
+    reason: release packaging and several actions extract .zip archives.
+
+  - name: curl
+    apt_package: curl
+    binary: curl
+    reason: health checks, artifact downloads, and install scripts use curl.
+
+  - name: docker
+    apt_package: docker.io
+    binary: docker
+    reason: nself-ci runs each job's gate suite in an ephemeral Docker container.
+
+  - name: build-essential
+    apt_package: build-essential
+    binary: gcc
+    reason: >-
+      CGO-enabled Go builds and native Node addons need a C toolchain.
+      build-essential ships no binary of its own; gcc is the proxy check.
+
+  - name: pkg-config
+    apt_package: pkg-config
+    binary: pkg-config
+    reason: native library builds (e.g. libpq, sqlite3) resolve cflags via pkg-config.
+
+  - name: libssl-dev
+    apt_package: libssl-dev
+    binary: ""
+    reason: TLS-linked native builds need OpenSSL headers.
+
+  # --- Playwright / Chromium system libraries -----------------------------
+  # None of these ship a binary; verify checks them via dpkg -s. This is the
+  # exact list `playwright install --with-deps` would have installed had sudo
+  # not required a terminal for the password on the runner service account
+  # (2026-09-11). The `npx playwright install chromium` fallback then
+  # "succeeded" but produced a browser with no shared libs, failing minutes
+  # later as `chrome: error while loading shared libraries: libnspr4.so` —
+  # which then surfaced even later, misleadingly, as a generic Playwright
+  # "Target page, context or browser has been closed". verify's chromium-ldd
+  # check (see verify.go) exists specifically to catch this before a job runs.
+  - name: libnspr4
+    apt_package: libnspr4
+    binary: ""
+    reason: Playwright/Chromium runtime dependency (see note above).
+  - name: libnss3
+    apt_package: libnss3
+    binary: ""
+    reason: Playwright/Chromium runtime dependency.
+  - name: libatk1.0-0t64
+    apt_package: libatk1.0-0t64
+    binary: ""
+    reason: Playwright/Chromium runtime dependency (Ubuntu 24.04 t64 package name).
+  - name: libatk-bridge2.0-0t64
+    apt_package: libatk-bridge2.0-0t64
+    binary: ""
+    reason: Playwright/Chromium runtime dependency (Ubuntu 24.04 t64 package name).
+  - name: libcups2t64
+    apt_package: libcups2t64
+    binary: ""
+    reason: Playwright/Chromium runtime dependency (Ubuntu 24.04 t64 package name).
+  - name: libdrm2
+    apt_package: libdrm2
+    binary: ""
+    reason: Playwright/Chromium runtime dependency.
+  - name: libxkbcommon0
+    apt_package: libxkbcommon0
+    binary: ""
+    reason: Playwright/Chromium runtime dependency.
+  - name: libxcomposite1
+    apt_package: libxcomposite1
+    binary: ""
+    reason: Playwright/Chromium runtime dependency.
+  - name: libxdamage1
+    apt_package: libxdamage1
+    binary: ""
+    reason: Playwright/Chromium runtime dependency.
+  - name: libxfixes3
+    apt_package: libxfixes3
+    binary: ""
+    reason: Playwright/Chromium runtime dependency.
+  - name: libxrandr2
+    apt_package: libxrandr2
+    binary: ""
+    reason: Playwright/Chromium runtime dependency.
+  - name: libgbm1
+    apt_package: libgbm1
+    binary: ""
+    reason: Playwright/Chromium runtime dependency.
+  - name: libpango-1.0-0
+    apt_package: libpango-1.0-0
+    binary: ""
+    reason: Playwright/Chromium runtime dependency.
+  - name: libcairo2
+    apt_package: libcairo2
+    binary: ""
+    reason: Playwright/Chromium runtime dependency.
+  - name: libasound2t64
+    apt_package: libasound2t64
+    binary: ""
+    reason: Playwright/Chromium runtime dependency (Ubuntu 24.04 t64 package name).
+  - name: libatspi2.0-0t64
+    apt_package: libatspi2.0-0t64
+    binary: ""
+    reason: Playwright/Chromium runtime dependency (Ubuntu 24.04 t64 package name).
+  - name: fonts-liberation
+    apt_package: fonts-liberation
+    binary: ""
+    reason: Playwright/Chromium needs a default font set to render pages.
+
+# Paths (glob patterns, expanded per-user at runtime) verify searches for a
+# cached Chromium binary to run `ldd` against. Playwright's default cache
+# location; the primary runner_user's home is always checked, plus any other
+# home directories under /home when running as root.
+chromium_cache_globs:
+  - "%h/.cache/ms-playwright/chromium-*/chrome-linux/chrome"
+  - "%h/.cache/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell"

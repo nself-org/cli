@@ -1900,6 +1900,41 @@
     ]
   },
   {
+    "name": "runner",
+    "path": "nself runner",
+    "short": "Provision and audit self-hosted GitHub Actions CI runner hosts",
+    "hidden": false,
+    "group_id": "advanced",
+    "subcommands": [
+      {
+        "name": "provision",
+        "path": "nself runner provision",
+        "short": "Install runner dependencies, user, sudoers, and N runner instances",
+        "hidden": false,
+        "flags": [
+          "--github-url",
+          "--host",
+          "--install-root",
+          "--instances",
+          "--labels",
+          "--ssh-key",
+          "--token"
+        ]
+      },
+      {
+        "name": "verify",
+        "path": "nself runner verify",
+        "short": "Check host(s) against the dependency manifest and report drift",
+        "hidden": false,
+        "flags": [
+          "--host",
+          "--json",
+          "--ssh-key"
+        ]
+      }
+    ]
+  },
+  {
     "name": "secrets",
     "path": "nself secrets",
     "short": "Manage encrypted project secrets (age encryption)",
