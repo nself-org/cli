@@ -1571,6 +1571,15 @@
         ]
       },
       {
+        "name": "count",
+        "path": "nself plugin count",
+        "short": "Show the authoritative plugin counts (free, pro, advertised)",
+        "hidden": false,
+        "flags": [
+          "--json"
+        ]
+      },
+      {
         "name": "debug",
         "path": "nself plugin debug",
         "short": "Attach a dlv debugger to a running plugin process",

@@ -129,7 +129,7 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 50**
 | `nself migrate` | Detect and migrate legacy artifacts to the current nSelf version | data | detect, firebase, from-bash, from-v099, generate, rollback, run, supabase, watch |
 | `nself oauth` | Manage OAuth provider tokens | account | refresh |
 | `nself ops` | Ops-profile deployment and management | deploy | deploy |
-| `nself plugin` | Manage nSelf plugins | extend | audit-tables, compat-check, debug, dev, disable, enable, info, init, install, inventory, link, list, logs, marketplace, new, outdated, refresh, remove, search, start, status, stop, submit, test, unlink, update, updates |
+| `nself plugin` | Manage nSelf plugins | extend | audit-tables, compat-check, count, debug, dev, disable, enable, info, init, install, inventory, link, list, logs, marketplace, new, outdated, refresh, remove, search, start, status, stop, submit, test, unlink, update, updates |
 | `nself promote` | Promote one environment to another (e.g. staging to prod) | deploy | rollback |
 | `nself remove` | Remove an installed plugin or bundle | extend | — |
 | `nself reset` | Stop containers, remove all data volumes, and clean generated files | core | — |

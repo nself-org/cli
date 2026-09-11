@@ -694,6 +694,7 @@ Subcommands:
 
 - `audit-tables` — Audit np_* table row counts and multi-tenant isolation compliance
 - `compat-check` — Check installed plugins against the current CLI version
+- `count` — Show the authoritative plugin counts (free, pro, advertised)
 - `debug` — Attach a dlv debugger to a running plugin process
 - `dev` — Start a plugin in development mode with hot-reload
 - `disable` — Disable a plugin (excluded from compose on next build)
