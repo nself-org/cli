@@ -6,7 +6,7 @@
 // Coverage (≥10 cases):
 //  1. happy path: server up → ValidateFull populates cache → ValidationResult.Valid=true
 //  2. fresh cache (1h) + server down → fail-open, GraceValid, FromCache=true
-//  3. soft-grace cache (48h) + server down → fail-open with GraceSoft warning
+//  3. soft-grace cache (96h) + server down → fail-open with GraceSoft warning
 //  4. hard-grace cache (8d, > 7d) + server down → still proceeds but WriteAllowed=false
 //  5. expired license + server down → fail-closed, Valid=false
 //  6. server reconnect after offline → cache refreshes, GraceValid restored
@@ -160,8 +160,8 @@ func TestLifecycle_FailOpen_FreshCache_1h(t *testing.T) {
 	}
 }
 
-// 3. FAIL-OPEN at 48h: cache 24-7d → GraceSoft (warning) but still valid.
-func TestLifecycle_FailOpen_SoftGrace_48h(t *testing.T) {
+// 3. FAIL-OPEN at 96h: cache 72h-7d → GraceSoft (warning) but still valid.
+func TestLifecycle_FailOpen_SoftGrace_96h(t *testing.T) {
 	withCachePath(t)
 	srv := canned(t, validateResponseBody{Valid: true, Tier: "pro"}, http.StatusOK)
 	t.Setenv("LICENSE_PING_URL", srv.URL)
@@ -171,7 +171,7 @@ func TestLifecycle_FailOpen_SoftGrace_48h(t *testing.T) {
 		KeyHash:        HashKey(testKey),
 		Tier:           "pro",
 		PluginsAllowed: []string{"ai"},
-		FetchedAt:      now.Add(-48 * time.Hour).Unix(),
+		FetchedAt:      now.Add(-96 * time.Hour).Unix(),
 		ExpiresAt:      now.Add(30 * 24 * time.Hour).Unix(),
 	})
 

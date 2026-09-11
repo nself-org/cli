@@ -43,7 +43,7 @@ type bundleValidateResponse struct {
 // closed outright. Per the two-panel licensing review (2026-09-06), punishing
 // a paying customer for our own outage is the wrong default, so it consults
 // the documented grace-period ladder (grace.go) against the local cache:
-//   - cache < GraceSoftThreshold (24h) old: proceed silently.
+//   - cache < GraceSoftThreshold (72h) old: proceed silently.
 //   - cache < GraceHardThreshold (7d) old: proceed, warn loudly.
 //   - cache >= GraceHardThreshold old, absent, key-mismatched, or the licence
 //     is on the revocation list: fail closed — a network outage buys at most

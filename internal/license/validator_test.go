@@ -4,7 +4,7 @@
 // Boundary conditions:
 //   - cache age 1d  + remote 200            → Valid (live)
 //   - cache age 1d  + remote unreachable    → FailOpen, no warning
-//   - cache age 8d  + remote unreachable    → FailOpen, warning
+//   - cache age 4d  + remote unreachable    → FailOpen, warning
 //   - cache age 15d + remote unreachable    → FailClosed
 //   - cache tampered (signature invalid)    → FailClosed regardless of TTL
 //   - cache absent + remote unreachable     → FailClosed
@@ -177,13 +177,13 @@ func TestValidator_FreshCache_RemoteUnreachable_FailOpenSilent(t *testing.T) {
 	}
 }
 
-// 3) cache valid 8 days, remote unreachable → Valid + warning.
+// 3) cache valid 4 days (within the 72h-7d warning band), remote unreachable → Valid + warning.
 func TestValidator_StaleCache_RemoteUnreachable_FailOpenWithWarning(t *testing.T) {
 	redirectCache(t)
 	now := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
 	key := "nself_pro_testkey1234567890abcdef12345"
 
-	seedCache(t, makeEntry(now, 8*24*time.Hour, 30*24*time.Hour, key))
+	seedCache(t, makeEntry(now, 4*24*time.Hour, 30*24*time.Hour, key))
 
 	warnFn, msgs, mu := captureWarn()
 	res, err := Validate(context.Background(), key, silentOpts(now, errDoer{err: errors.New("dns failure")}, warnFn))
@@ -582,7 +582,7 @@ func TestValidator_NilWarnOnce_DoesNotPanic(t *testing.T) {
 	now := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
 	key := "nself_pro_testkey1234567890abcdef12345"
 
-	seedCache(t, makeEntry(now, 8*24*time.Hour, 30*24*time.Hour, key))
+	seedCache(t, makeEntry(now, 4*24*time.Hour, 30*24*time.Hour, key))
 
 	opts := &ValidatorOptions{
 		Clock:               fixedClock{t: now},

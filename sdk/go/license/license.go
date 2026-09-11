@@ -50,8 +50,12 @@ func (c CachedValidation) RemainingGrace(now time.Time, grace time.Duration) tim
 }
 
 // DefaultGracePeriod is how long a previously-valid key remains acceptable
-// after ping.nself.org becomes unreachable. Seven days mirrors the value used
-// in F07-PRICING-TIERS.md for reconnect grace.
+// after ping.nself.org becomes unreachable. Seven days mirrors the CLI's
+// offline-grace hard ceiling (GraceHardThreshold in
+// internal/license/grace.go). It is a plain duplicate, not an import: this
+// SDK is published as its own Go module (sdk/go/v2) and cannot depend on the
+// CLI's internal/ packages, so the value is kept in sync by hand. If the
+// CLI's ceiling changes, update this constant in the same change.
 const DefaultGracePeriod = 7 * 24 * time.Hour
 
 // CachedValidation is the on-disk record of the last successful validation.

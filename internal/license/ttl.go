@@ -43,8 +43,9 @@ const (
 	// Bundle License §4, licensing.mdx, and pricing FAQ: 30 days. Decided
 	// P6-E12-W4-S4-T2 2026-09 (the promise wins over the prior 24h value,
 	// which was never wired into DetermineGraceState — see grace.go).
-	// Unrelated to FailOpenSoftTTL/FailOpenHardTTL in validator.go, which
-	// govern the OFFLINE (remote-unreachable) window, not post-expiry grace.
+	// Unrelated to GraceSoftThreshold/GraceHardThreshold in grace.go (aliased
+	// by validator.go's FailOpenSoftTTL/FailOpenHardTTL), which govern the
+	// OFFLINE (remote-unreachable) window, not post-expiry grace.
 	PostExpiryGraceWindow = 30 * 24 * time.Hour
 )
 

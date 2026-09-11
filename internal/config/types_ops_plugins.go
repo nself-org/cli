@@ -66,10 +66,17 @@ type BackupConfig struct {
 }
 
 // LicenseConfig holds license validation and grace period configuration.
+//
+// Offline grace-period lengths are NOT configurable here: they are fixed
+// constants in internal/license/grace.go (GraceSoftThreshold,
+// GraceHardThreshold), by design — see checker.go's exposure rationale
+// (grace.go's GraceHardThreshold comment). A prior GraceDays field
+// (env:"LICENSE_GRACE_DAYS") was declared here and referenced in a grace.go
+// comment claiming the ladder was configurable, but nothing in the codebase
+// ever read it. Both were removed together, P6-E12-W4-S4-T2, 2026-09.
 type LicenseConfig struct {
 	PingURL           string    `env:"LICENSE_PING_URL"`            // https://ping.nself.org
 	CachePath         string    `env:"LICENSE_CACHE_PATH"`          // ~/.cache/nself/license.json
-	GraceDays         int       `env:"LICENSE_GRACE_DAYS"`          // 7
 	CheckInterval     string    `env:"LICENSE_CHECK_INTERVAL"`      // 6h
 	OfflineMode       bool      `env:"LICENSE_OFFLINE_MODE"`        // false
 	PublicKeyOverride string    `env:"LICENSE_PUBLIC_KEY_OVERRIDE"` // hex-encoded Ed25519 pubkey for testing

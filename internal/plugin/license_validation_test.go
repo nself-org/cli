@@ -93,7 +93,7 @@ func TestCheckLicenseCache_NoHTTPCallWhenFresh(t *testing.T) {
 	cacheDir := t.TempDir()
 	key := "nself_pro_" + strings.Repeat("f", 22)
 
-	// Write a fresh cache entry (0 seconds old — well within 24h TTL).
+	// Write a fresh cache entry (0 seconds old — well within 72h TTL).
 	writeCacheEntryWithAge(t, cacheDir, key, "valid", 0)
 
 	valid, found := checkLicenseCache(key, cacheDir)
@@ -107,17 +107,18 @@ func TestCheckLicenseCache_NoHTTPCallWhenFresh(t *testing.T) {
 
 // TestCheckLicenseCache_ExpiredEntryIsAMiss verifies that checkLicenseCache
 // returns found=false for a cache entry whose timestamp is older than cacheTTL
-// (24 h). The test writes a cache entry backdated by 25 hours.
+// (72 h, aliased to license.GraceSoftThreshold). The test writes a cache
+// entry backdated by 73 hours.
 func TestCheckLicenseCache_ExpiredEntryIsAMiss(t *testing.T) {
 	cacheDir := t.TempDir()
 	key := "nself_pro_" + strings.Repeat("g", 22)
 
-	// Write a cache entry 25 hours old — expired by 1 hour.
-	writeCacheEntryWithAge(t, cacheDir, key, "valid", 25*time.Hour)
+	// Write a cache entry 73 hours old — expired by 1 hour.
+	writeCacheEntryWithAge(t, cacheDir, key, "valid", 73*time.Hour)
 
 	_, found := checkLicenseCache(key, cacheDir)
 	if found {
-		t.Fatal("expected cache miss for entry older than cacheTTL (24h), got hit")
+		t.Fatal("expected cache miss for entry older than cacheTTL (72h), got hit")
 	}
 }
 
@@ -130,8 +131,8 @@ func TestCheckLicenseCacheOffline_ValidWithinGrace(t *testing.T) {
 	cacheDir := t.TempDir()
 	key := "nself_pro_" + strings.Repeat("h", 22)
 
-	// 48 hours old — expired for online (>24h) but within offline grace (7d).
-	writeCacheEntryWithAge(t, cacheDir, key, "valid", 48*time.Hour)
+	// 96 hours old — expired for online (>72h cacheTTL) but within offline grace (7d).
+	writeCacheEntryWithAge(t, cacheDir, key, "valid", 96*time.Hour)
 
 	valid, found := checkLicenseCacheOffline(key, cacheDir)
 	if !found {
