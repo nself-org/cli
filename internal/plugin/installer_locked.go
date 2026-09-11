@@ -153,12 +153,9 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 		fmt.Fprintf(os.Stderr, "  ✓ %s installed\n", dep)
 	}
 
-	// Step 4: Download the plugin archive.
-	// A plugin that provides a command needs a package built for this platform;
-	// one that does not is source and works anywhere. cliBinaryName returns ""
-	// for the latter, which is most plugins.
-	// A plugin providing a command needs a package built for this platform; one
-	// that does not is source and works anywhere.
+	// Step 4: Download the plugin archive. A plugin that provides a command
+	// needs a package built for this platform; one that does not is source
+	// and works anywhere. cliBinaryName returns "" for the latter (most plugins).
 	var firstBinary string
 	if names := cliBinaryNames(name, manifest); len(names) > 0 {
 		firstBinary = names[0]
@@ -172,23 +169,17 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	}
 	defer func() { _ = os.Remove(archivePath) }()
 
-	// Step 5: Verify checksum before extraction.
-	//
-	// Which checksum applies depends on WHICH artifact Step 4 actually
-	// downloaded — see resolveArtifactChecksum's doc comment.
+	// Step 5: Verify checksum before extraction — resolveArtifactChecksum
+	// picks the checksum matching the artifact Step 4 downloaded.
 	expectedChecksum, err := resolveArtifactChecksum(*manifest, artifactKind)
 	if err != nil {
 		_ = os.Remove(archivePath)
 		return err
 	}
 
-	// A checksum that IS present and wrong always refuses the install. A
-	// MISSING checksum for the SOURCE artifact only refuses when
-	// NSELF_PLUGIN_REQUIRE_CHECKSUM=1 is set (default: warn and proceed, for
-	// every publishStatus including an effectively-stable one — registry
-	// coverage is 47/177 as of 2026-09-04, see verifyChecksum's doc comment;
-	// FIX-CLI-6). A platform artifact never reaches this branch with an
-	// empty expectedChecksum — the block above already refused it.
+	// A present-but-wrong checksum always refuses; an empty one here is
+	// always the SOURCE artifact's — see verifyChecksum's FIX-CLI-6 doc
+	// comment (a missing platform checksum already refused above).
 	if expectedChecksum != "" {
 		if err := verifyChecksum(archivePath, expectedChecksum, manifest.PublishStatus); err != nil {
 			_ = os.Remove(archivePath)
