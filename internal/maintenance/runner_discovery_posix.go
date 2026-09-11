@@ -18,10 +18,21 @@ const runnerRootsEnvVar = "NSELF_MAINTENANCE_RUNNER_ROOTS"
 // used across the nself fleet. Documented here rather than hardcoded to one path so a
 // box with runners under /opt, or under a non-"runner" username, is still discovered
 // even without systemd unit introspection.
+// The "github-runner" entries are not decorative. On nSelf staging the runner
+// serving the web repo is installed at /home/runner/github-runner, which
+// matches none of the actions-runner* patterns. It held 5.1G (2.3G of it job
+// workspaces) and was invisible to a glob set covering only actions-runner*,
+// so it was never eligible for cleanup while the box filled to 100% on
+// 2026-09-11. Any install directory naming convention that is actually in use
+// belongs here, because a runner this never sees is a runner it can never
+// reclaim.
 var defaultRunnerRootGlobs = []string{
 	"/home/*/actions-runner*",
 	"/home/*/*/actions-runner*",
+	"/home/*/github-runner",
+	"/home/*/*/github-runner",
 	"/opt/actions-runner*",
+	"/opt/github-runner*",
 }
 
 // discoverRunnerRoots finds installed GitHub Actions self-hosted runners. It prefers
