@@ -1,0 +1,83 @@
+name: Counts Vendor Sync
+
+# The CLI embeds a vendored copy of plugins/counts.json so `nself plugin count`
+# works offline with no checkouts. A vendored copy is a copy, and a copy drifts:
+# on 2026-09-11 the overlap rule changed in the canonical artifact and the
+# vendored copy kept the old field name for hours, which is exactly the class of
+# drift this whole pipeline exists to remove. Nothing was checking it.
+#
+# nself-org/plugins is PUBLIC, so this needs no token.
+#
+# This compares the vendored copy against the canonical artifact on plugins main,
+# ignoring only generated_at (a wall-clock stamp, expected to differ).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "internal/plugin/count/counts.json"
+      - ".github/workflows/counts-vendor-sync.yml"
+  pull_request:
+    paths:
+      - "internal/plugin/count/counts.json"
+      - ".github/workflows/counts-vendor-sync.yml"
+  schedule:
+    # Nightly: the canonical artifact changes in another repo, so a push here is
+    # not the trigger that matters. This is what actually catches upstream drift.
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: counts-vendor-sync-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-vendored-counts:
+    name: Vendored counts.json matches plugins main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout cli
+        uses: actions/checkout@v4
+
+      - name: Checkout plugins (public, no token required)
+        uses: actions/checkout@v4
+        with:
+          repository: nself-org/plugins
+          path: .plugins-canonical
+          ref: main
+
+      - name: Compare vendored copy against the canonical artifact
+        run: |
+          python3 - <<'PY'
+          import json, sys
+
+          vendored = json.load(open("internal/plugin/count/counts.json"))
+          canonical = json.load(open(".plugins-canonical/counts.json"))
+
+          # generated_at is a wall-clock timestamp and is expected to differ.
+          vendored.pop("generated_at", None)
+          canonical.pop("generated_at", None)
+
+          if vendored == canonical:
+              print(f"vendored counts.json matches plugins main (advertised: {canonical['advertised']})")
+              sys.exit(0)
+
+          print("MISMATCH: the vendored counts.json has drifted from plugins main.", file=sys.stderr)
+          print("Re-vendor it with:", file=sys.stderr)
+          print("  git -C ../plugins show origin/main:counts.json > internal/plugin/count/counts.json", file=sys.stderr)
+          print("", file=sys.stderr)
+
+          only_v = set(vendored) - set(canonical)
+          only_c = set(canonical) - set(vendored)
+          if only_v:
+              print(f"keys only in vendored:  {sorted(only_v)}", file=sys.stderr)
+          if only_c:
+              print(f"keys only in canonical: {sorted(only_c)}", file=sys.stderr)
+          for key in sorted(set(vendored) & set(canonical)):
+              if vendored[key] != canonical[key]:
+                  print(f"differs at {key}:", file=sys.stderr)
+                  print(f"  vendored:  {json.dumps(vendored[key])}", file=sys.stderr)
+                  print(f"  canonical: {json.dumps(canonical[key])}", file=sys.stderr)
+          sys.exit(1)
+          PY
