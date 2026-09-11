@@ -10,4 +10,13 @@
 # teammate's SSH key on an already-deployed host had no CLI path at all.
 # `nself access grant/revoke/list` is the command surface named directly
 # in #238's proposed shape.
-50
+#
+# 2026-09-11: +1 for `server` (gap G-011). Deliberate exception, not
+# creep: `nself access` only manages SSH keys on an already-deployed host
+# and `nself security` only audits one — neither can create, list, resize,
+# or destroy the server itself, so an operator provisioning or tearing down
+# a box had no CLI path and fell back to raw `hcloud server create` /
+# `hcloud server delete`, with none of the backup/IP-protection safety this
+# command enforces. `nself server provision/list/resize/destroy` is the
+# surface G-011 names directly.
+51

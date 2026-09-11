@@ -94,7 +94,7 @@ tree in `cmd/commands/`. Run `make cmd-inventory` to refresh.
 ## Complete index
 
 Generated from the cobra registration tree in `cmd/commands/`.
-Run `make cmd-inventory` to refresh. **Total top-level commands: 50**
+Run `make cmd-inventory` to refresh. **Total top-level commands: 51**
 
 | Command | Short Description | Group | Subcommands |
 |---|---|---|---|
@@ -137,6 +137,7 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 50**
 | `nself secrets` | Manage encrypted project secrets (age encryption) | config | audit, decrypt-on-deploy, edit, get, init, lint, list, list-schedules, rekey, retire, rotate, rotation-log, schedule, set, verify |
 | `nself security` | Server security: audit, setup, and status | advanced | audit, setup, status |
 | `nself self-heal` | Run targeted self-healing routines for nSelf components | observe | — |
+| `nself server` | Provision, list, resize, and destroy Hetzner Cloud servers | advanced | destroy, list, provision, resize |
 | `nself service` | Manage optional services | config | add, configure, disable, enable, list, ps, restart, scale, start, stop, update, upgrade |
 | `nself start` | Boot your nSelf stack | core | — |
 | `nself status` | Show health status of all services | core | — |
