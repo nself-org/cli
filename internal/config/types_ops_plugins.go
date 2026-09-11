@@ -154,6 +154,32 @@ type CustomService struct {
 	// project .env var names to forward into this container in addition to
 	// the fixed core set from coreEnvVars. CS_N_ENV still wins on conflict.
 	EnvPassthrough string
+
+	// Image is CS_N_IMAGE: a pre-built image reference (optionally digest-pinned,
+	// e.g. "minio/minio:RELEASE.2024-01-16T16-07-38Z@sha256:...") to run instead
+	// of building from a Dockerfile. When set, the compose generator emits
+	// `image:` and omits `build:` entirely — mutually exclusive with
+	// CS_N_PATH (G-013: closes the gap where a pinned third-party image had
+	// no CS_N representation and had to be hand-authored into
+	// docker-compose.override.yml).
+	Image string
+
+	// EnvFile is CS_N_ENV_FILE: a project-relative path to a dotenv-format
+	// file whose KEY=VALUE lines are injected into this container. Unlike
+	// CS_N_ENV (a single comma-joined line), a file has no comma/newline
+	// escaping problem, so it is the right vehicle for many vars or values
+	// that themselves contain commas (e.g. SMTP credentials). Precedence:
+	// applied after CS_N_ENV_PASSTHROUGH, before CS_N_ENV (CS_N_ENV always
+	// wins on conflict, per the existing coreEnvVars contract). Same
+	// relative-path rules as BuildPath (no absolute paths, no "..").
+	EnvFile string
+
+	// Volumes is CS_N_VOLUMES: a comma-separated list of extra Docker volume
+	// mounts in "host:container[:mode]" form (e.g.
+	// "./email-templates:/app/templates:ro"), appended to the service's
+	// generated volume list. Closes the gap where a required bind mount
+	// (e.g. a template directory) had no CS_N representation.
+	Volumes string
 }
 
 // FrontendApp represents a frontend application (FRONTEND_APP_1..FRONTEND_APP_20).

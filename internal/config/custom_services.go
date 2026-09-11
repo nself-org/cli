@@ -14,8 +14,8 @@ import (
 //
 // If port is omitted or zero, it auto-assigns 8000+N.
 // Per-service overrides are read from CS_N_PUBLIC, CS_N_MEMORY, CS_N_CPU,
-// CS_N_PORT, CS_N_ROUTE, CS_N_HEALTHCHECK, and CS_N_ENV_PASSTHROUGH
-// environment variables.
+// CS_N_PORT, CS_N_ROUTE, CS_N_HEALTHCHECK, CS_N_ENV_PASSTHROUGH,
+// CS_N_IMAGE, CS_N_ENV_FILE, and CS_N_VOLUMES environment variables.
 func parseCustomServices() ([]CustomService, error) {
 	var services []CustomService
 	for i := 1; i <= 10; i++ {
@@ -74,15 +74,37 @@ func parseCustomServices() ([]CustomService, error) {
 		// Optional build context path override. Rejects absolute paths and
 		// path traversal so a misconfigured env can't escape the project root.
 		if p := os.Getenv(fmt.Sprintf("CS_%d_PATH", i)); p != "" {
-			if strings.HasPrefix(p, "/") {
-				return nil, fmt.Errorf("CS_%d_PATH must be a relative path, got %q", i, p)
-			}
-			for _, seg := range strings.Split(p, "/") {
-				if seg == ".." {
-					return nil, fmt.Errorf("CS_%d_PATH must not contain '..', got %q", i, p)
-				}
+			if err := validateRelativePath(p); err != nil {
+				return nil, fmt.Errorf("CS_%d_PATH %w", i, err)
 			}
 			cs.BuildPath = p
+		}
+
+		// CS_N_IMAGE: run a pre-built (optionally digest-pinned) image instead
+		// of building from a Dockerfile. Mutually exclusive with CS_N_PATH,
+		// which only makes sense for the build path (G-013).
+		cs.Image = os.Getenv(fmt.Sprintf("CS_%d_IMAGE", i))
+		if cs.Image != "" && cs.BuildPath != "" {
+			return nil, fmt.Errorf("CS_%d_IMAGE and CS_%d_PATH are mutually exclusive: a service either builds from a Dockerfile (CS_%d_PATH) or runs a pre-built image (CS_%d_IMAGE), not both", i, i, i, i)
+		}
+
+		// CS_N_ENV_FILE: dotenv-format file of extra env vars, injected at
+		// build time (see coreEnvVars). Same relative-path rules as CS_N_PATH.
+		if p := os.Getenv(fmt.Sprintf("CS_%d_ENV_FILE", i)); p != "" {
+			if err := validateRelativePath(p); err != nil {
+				return nil, fmt.Errorf("CS_%d_ENV_FILE %w", i, err)
+			}
+			cs.EnvFile = p
+		}
+
+		// CS_N_VOLUMES: comma-separated "host:container[:mode]" bind mounts,
+		// appended to the generated service. Each relative host path is
+		// subject to the same traversal check as CS_N_PATH.
+		if v := os.Getenv(fmt.Sprintf("CS_%d_VOLUMES", i)); v != "" {
+			if err := validateCustomServiceVolumes(v); err != nil {
+				return nil, fmt.Errorf("CS_%d_VOLUMES %w", i, err)
+			}
+			cs.Volumes = v
 		}
 
 		// Override port/route if explicitly set
