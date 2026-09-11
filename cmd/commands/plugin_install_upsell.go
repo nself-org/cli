@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/plugin"
+	"github.com/nself-org/cli/internal/plugin/count"
 	"github.com/nself-org/cli/internal/ui"
 )
 
@@ -97,8 +98,21 @@ func maybeShowFreeUpsell(justInstalled int) {
 	// Show upsell on reaching (or crossing) the threshold.
 	if existing < 3 && newCount >= 3 {
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "You've installed 3 free plugins. Unlock all 87 plugins with nSelf+ for $3.99/mo.")
+		fmt.Fprintln(os.Stderr, "You've installed 3 free plugins. "+upsellUnlockLine())
 		fmt.Fprintln(os.Stderr, "  nself.org/plus")
 		fmt.Fprintln(os.Stderr, "")
 	}
+}
+
+// upsellUnlockLine renders the free-tier upsell sentence using the current
+// advertised plugin count, read from the embedded counts.json artifact
+// (internal/plugin/count) instead of a hand-typed number that drifts from
+// the registries. Falls back to a count-free sentence if the artifact ever
+// fails to parse — an upsell message is never worth a hard failure over.
+func upsellUnlockLine() string {
+	a, err := count.Load()
+	if err != nil {
+		return "Unlock every plugin with nSelf+ for $3.99/mo."
+	}
+	return fmt.Sprintf("Unlock all %d plugins with nSelf+ for $3.99/mo.", a.Advertised)
 }
