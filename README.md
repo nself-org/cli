@@ -13,7 +13,7 @@
 
 **Self-hosted backend in 5 minutes**
 
-Complete, production-ready backend stack — PostgreSQL, GraphQL API, Authentication, and Nginx — launched from a single command. Extend with 256 plugins (129 free, 127 paid). MIT licensed core, forever.
+Complete, production-ready backend stack — PostgreSQL, GraphQL API, Authentication, and Nginx — launched from a single command. Extend with free and paid plugins (`nself plugin count` for current totals). MIT licensed core, forever.
 
 **v1.3.5 is out.** See the [changelog](.github/wiki/Changelog.md) for what shipped. [Release notes](https://github.com/nself-org/cli/releases/tag/v1.3.5)
 
@@ -31,7 +31,7 @@ brew install nself-org/nself/nself
 
 ɳSelf is a self-hosted backend platform that gives you the equivalent of a commercial Backend-as-a-Service on your own infrastructure. Run it locally, on a VPS, or on any cloud provider (Kubernetes: planned — see the [k8s plugin](https://nself.org/plugins)).
 
-You get Postgres, Hasura GraphQL, nHost Auth, and Nginx as the always-on core. Add optional services like Redis, MinIO, and Search when you need them. Extend everything with plugins — 129 free MIT plugins and 127 paid plugins covering AI, messaging, media processing, billing, and more.
+You get Postgres, Hasura GraphQL, nHost Auth, and Nginx as the always-on core. Add optional services like Redis, MinIO, and Search when you need them. Extend everything with free MIT plugins and paid plugins covering AI, messaging, media processing, billing, and more — run `nself plugin count` for current totals.
 
 The nself CLI is a single Go binary. No runtime dependencies beyond Docker.
 
@@ -104,8 +104,9 @@ nself build && nself restart
 
 Plugins are the extension layer — install what you need, remove what you don't.
 
-- **129 free MIT plugins** — no license key required
-- **127 paid plugins** — require a membership key (starting at $0.99/mo)
+- **Free MIT plugins** — no license key required
+- **Paid plugins** — require a membership key (starting at $0.99/mo)
+- Run `nself plugin count` for current totals
 
 ```bash
 nself plugin install monitoring    # free: Prometheus + Grafana + Loki
@@ -128,7 +129,7 @@ See [Plugins](#plugins) for the full inventory.
 - 50 CLI commands — full control from the terminal over every service and operation
 - Built-in CI gate (`nself ci`) — replaces external CI for merge enforcement
 - Core services always-on; optional services enable with one line in `.env`
-- 256 plugins extend the stack without touching core config
+- Plugins extend the stack without touching core config (`nself plugin count` for current totals)
 - Multi-tenancy, row-level security, and org management built in
 - Stripe/Paddle billing integration included
 - White-label support — custom domains, branding, email templates
