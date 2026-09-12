@@ -57,8 +57,13 @@ func DockerDeepChecks(ctx context.Context, verbose bool) []CheckResult {
 				status = parts[1]
 			}
 			if strings.Contains(strings.ToLower(status), "unhealthy") {
-				results = append(results, CheckResult{Section: "docker", Name: fmt.Sprintf("Container: %s", cName),
-					Status: "fail", Message: "unhealthy", FixCmd: fmt.Sprintf("docker restart %s", cName)})
+				generic := CheckResult{Section: "docker", Name: fmt.Sprintf("Container: %s", cName),
+					Status: "fail", Message: "unhealthy", FixCmd: fmt.Sprintf("docker restart %s", cName)}
+				// G-014: an "unhealthy" status is only actionable if the
+				// healthcheck command itself can run inside the image —
+				// otherwise "docker restart" is a guess that never helps
+				// (see deep_docker_healthcheck.go).
+				results = append(results, diagnoseUnhealthyContainer(ctx, cName, generic))
 			}
 		}
 	}

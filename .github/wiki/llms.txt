@@ -123,6 +123,7 @@ Flags:
                   monitoring stack; excludes minio, mailpit, admin, functions, search.
 Overrides NSELF_PROFILE env var. Valid values: app, ops.
 - `--quiet` (default false) — Suppress non-error output (for CI use)
+- `--remove-orphans` (default false) — Remove containers with no matching service in the freshly generated compose (G-014). Detection always runs; removal is opt-in.
 - `--security-report` (default false) — Generate security analysis
 - `--verbose` (default false) — Show environment cascade
 

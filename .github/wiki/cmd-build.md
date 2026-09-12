@@ -106,6 +106,7 @@ Each long-running service gets a default pids limit of 100 to prevent fork-bomb 
 | `--no-monorepo` | `false` | Disable automatic monorepo backend detection |
 | `--profile` | `""` | Service profile: curated subset of services to include in docker-compose.yml.   app (default) — full service set, identical to pre-profile behaviour.   ops           — observability + CI server: postgres, hasura, auth, nginx,                   monitoring stack; excludes minio, mailpit, admin, functions, search. Overrides NSELF_PROFILE env var. Valid values: app, ops. |
 | `--quiet`, `-q` | `false` | Suppress non-error output (for CI use) |
+| `--remove-orphans` | `false` | Remove containers with no matching service in the freshly generated compose (G-014). Detection always runs; removal is opt-in. |
 | `--security-report` | `false` | Generate security analysis |
 | `--verbose`, `-v` | `false` | Show environment cascade |
 | `--help`, `-h` | — | Show help |
