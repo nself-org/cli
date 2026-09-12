@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/nself-org/cli/internal/build"
@@ -100,6 +101,13 @@ Exit codes:
 		}
 
 		printStatusTable(report, verbose, healthOnly, metrics)
+
+		// G-014: surface orphaned containers (running with no matching
+		// service in the current compose) here too, not just at build time —
+		// a container can go orphaned between builds if someone removes it
+		// from nself.yaml and never reruns `nself build`. Read-only: status
+		// never removes anything itself.
+		printOrphanStatusHint(ctx, cwd, cfg.ProjectName, filepath.Join(cwd, "docker-compose.yml"))
 
 		// Show installed plugin versions below the service health table.
 		pluginDir := build.DefaultPluginDir()

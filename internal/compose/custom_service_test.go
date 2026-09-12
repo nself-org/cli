@@ -36,7 +36,7 @@ func TestCoreEnvVars_ProjectFields(t *testing.T) {
 	cfg := minimalConfigWithCS()
 	cs := testCS()
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	if env["PROJECT_NAME"] != cfg.ProjectName {
 		t.Errorf("PROJECT_NAME = %q, want %q", env["PROJECT_NAME"], cfg.ProjectName)
@@ -55,7 +55,7 @@ func TestCoreEnvVars_PostgresVars(t *testing.T) {
 	cfg := minimalConfigWithCS()
 	cs := testCS()
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	if env["POSTGRES_HOST"] != "postgres" {
 		t.Errorf("POSTGRES_HOST = %q, want %q", env["POSTGRES_HOST"], "postgres")
@@ -79,7 +79,7 @@ func TestCoreEnvVars_DatabaseURL(t *testing.T) {
 	cfg := minimalConfigWithCS()
 	cs := testCS()
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	dbURL := env["DATABASE_URL"]
 	if !strings.HasPrefix(dbURL, "postgresql://") {
@@ -97,7 +97,7 @@ func TestCoreEnvVars_HasuraEndpoint(t *testing.T) {
 	cfg.Hasura.Port = 8080
 	cs := testCS()
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	want := "http://hasura:8080/v1/graphql"
 	if env["HASURA_GRAPHQL_ENDPOINT"] != want {
@@ -115,7 +115,7 @@ func TestCoreEnvVars_HasuraEndpoint_IgnoresHostPortOverride(t *testing.T) {
 	cfg.Hasura.Port = 8181 // host-mapped port override
 	cs := testCS()
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	want := "http://hasura:8080/v1/graphql"
 	if env["HASURA_GRAPHQL_ENDPOINT"] != want {
@@ -130,7 +130,7 @@ func TestCoreEnvVars_AuthServerURL(t *testing.T) {
 	cfg.Auth.Port = 4000
 	cs := testCS()
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	want := "http://auth:4000"
 	if env["AUTH_SERVER_URL"] != want {
@@ -144,7 +144,7 @@ func TestCoreEnvVars_ServiceFields(t *testing.T) {
 	cfg := minimalConfigWithCS()
 	cs := testCS()
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	if env["SERVICE_NAME"] != cs.Name {
 		t.Errorf("SERVICE_NAME = %q, want %q", env["SERVICE_NAME"], cs.Name)
@@ -164,7 +164,7 @@ func TestCoreEnvVars_RedisAbsent(t *testing.T) {
 	cfg.Redis.Enabled = false
 	cs := testCS()
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	if _, ok := env["REDIS_URL"]; ok {
 		t.Error("REDIS_URL should not be present when Redis is disabled")
@@ -180,7 +180,7 @@ func TestCoreEnvVars_RedisPresent(t *testing.T) {
 	cfg.Redis.Port = 6379
 	cs := testCS()
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	redisURL, ok := env["REDIS_URL"]
 	if !ok {
@@ -198,7 +198,7 @@ func TestCoreEnvVars_MinioAbsent(t *testing.T) {
 	cfg.Minio.Enabled = false
 	cs := testCS()
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	for _, key := range []string{"S3_ENDPOINT", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET"} {
 		if _, ok := env[key]; ok {
@@ -218,7 +218,7 @@ func TestCoreEnvVars_MinioPresent(t *testing.T) {
 	cfg.Minio.DefaultBuckets = "uploads"
 	cs := testCS()
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	if !strings.Contains(env["S3_ENDPOINT"], "minio:9000") {
 		t.Errorf("S3_ENDPOINT should reference minio:9000, got %q", env["S3_ENDPOINT"])
@@ -241,7 +241,7 @@ func TestCoreEnvVars_ExtraEnvOverrides(t *testing.T) {
 	cs := testCS()
 	cs.ExtraEnv = "CUSTOM_KEY=custom_value,ENV=override"
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	if env["CUSTOM_KEY"] != "custom_value" {
 		t.Errorf("CUSTOM_KEY = %q, want %q", env["CUSTOM_KEY"], "custom_value")
@@ -259,7 +259,7 @@ func TestCoreEnvVars_ExtraEnvMalformed(t *testing.T) {
 	cs := testCS()
 	cs.ExtraEnv = "NOEQUALS,VALID_KEY=val"
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	// NOEQUALS has no '=' so it should be ignored.
 	if _, ok := env["NOEQUALS"]; ok {
@@ -280,7 +280,10 @@ func TestBuildCustomService_ContainerName(t *testing.T) {
 	cs := testCS()
 
 	g := NewGenerator(cfg)
-	svc := g.buildCustomService(cs)
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
 
 	want := cfg.ProjectName + "_" + cs.Name
 	if svc.ContainerName != want {
@@ -295,7 +298,10 @@ func TestBuildCustomService_BuildContext(t *testing.T) {
 	cs := testCS()
 
 	g := NewGenerator(cfg)
-	svc := g.buildCustomService(cs)
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
 
 	if svc.Build == nil {
 		t.Fatal("buildCustomService: Build config is nil")
@@ -317,7 +323,10 @@ func TestBuildCustomService_PortMapping(t *testing.T) {
 	cs := testCS()
 
 	g := NewGenerator(cfg)
-	svc := g.buildCustomService(cs)
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
 
 	want := fmt.Sprintf("127.0.0.1:%d:%d", cs.Port, cs.Port)
 	found := false
@@ -341,7 +350,10 @@ func TestBuildCustomService_HealthcheckPort(t *testing.T) {
 	cs := testCS()
 
 	g := NewGenerator(cfg)
-	svc := g.buildCustomService(cs)
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
 
 	if svc.Healthcheck == nil {
 		t.Fatal("buildCustomService: Healthcheck is nil")
@@ -361,7 +373,10 @@ func TestBuildCustomService_DependsOnPostgres(t *testing.T) {
 	cs := testCS()
 
 	g := NewGenerator(cfg)
-	svc := g.buildCustomService(cs)
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
 
 	dep, ok := svc.DependsOn["postgres"]
 	if !ok {
@@ -379,7 +394,10 @@ func TestBuildCustomService_Restart(t *testing.T) {
 	cs := testCS()
 
 	g := NewGenerator(cfg)
-	svc := g.buildCustomService(cs)
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
 
 	if svc.Restart != "unless-stopped" {
 		t.Errorf("Restart = %q, want %q", svc.Restart, "unless-stopped")
@@ -395,7 +413,10 @@ func TestBuildCustomService_ResourceLimits(t *testing.T) {
 	cs.CPU = "0.5"
 
 	g := NewGenerator(cfg)
-	svc := g.buildCustomService(cs)
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
 
 	if svc.Deploy == nil || svc.Deploy.Resources == nil || svc.Deploy.Resources.Limits == nil {
 		t.Fatal("buildCustomService: Deploy resource limits are nil")
@@ -416,7 +437,10 @@ func TestBuildCustomService_Network(t *testing.T) {
 	cs := testCS()
 
 	g := NewGenerator(cfg)
-	svc := g.buildCustomService(cs)
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
 
 	found := false
 	for _, n := range svc.Networks {
@@ -442,7 +466,7 @@ func TestCoreEnvVars_EnvPassthrough_Forwarded(t *testing.T) {
 	cs := testCS()
 	cs.EnvPassthrough = "MY_API_KEY"
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	if env["MY_API_KEY"] != "secret-value" {
 		t.Errorf("MY_API_KEY = %q, want %q", env["MY_API_KEY"], "secret-value")
@@ -459,7 +483,7 @@ func TestCoreEnvVars_EnvPassthrough_MultipleNames(t *testing.T) {
 	cs := testCS()
 	cs.EnvPassthrough = "FOO_VAR, BAR_VAR"
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	if env["FOO_VAR"] != "foo" {
 		t.Errorf("FOO_VAR = %q, want %q", env["FOO_VAR"], "foo")
@@ -477,7 +501,7 @@ func TestCoreEnvVars_EnvPassthrough_AbsentSkipped(t *testing.T) {
 	cs := testCS()
 	cs.EnvPassthrough = "DOES_NOT_EXIST_VAR"
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	if _, ok := env["DOES_NOT_EXIST_VAR"]; ok {
 		t.Error("DOES_NOT_EXIST_VAR should not be present when unset in the process env")
@@ -495,7 +519,7 @@ func TestCoreEnvVars_EnvPassthrough_ExtraEnvWins(t *testing.T) {
 	cs.EnvPassthrough = "SHARED_VAR"
 	cs.ExtraEnv = "SHARED_VAR=from-extra-env"
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	if env["SHARED_VAR"] != "from-extra-env" {
 		t.Errorf("SHARED_VAR = %q, want %q (CS_N_ENV must win over CS_N_ENV_PASSTHROUGH)", env["SHARED_VAR"], "from-extra-env")
@@ -511,7 +535,7 @@ func TestCoreEnvVars_EnvPassthrough_Absent(t *testing.T) {
 	cs := testCS()
 	cs.EnvPassthrough = ""
 
-	env := coreEnvVars(cfg, cs)
+	env := coreEnvVars(cfg, cs, nil)
 
 	// The fixed core set only (PROJECT_NAME..TABLE_PREFIX), per coreEnvVars'
 	// documented design: no Redis/Minio (disabled) and no passthrough/extra-env.
@@ -623,7 +647,10 @@ func TestBuildCustomService_HealthcheckDisabled(t *testing.T) {
 	cs.HealthCheck = "disabled"
 
 	g := NewGenerator(cfg)
-	svc := g.buildCustomService(cs)
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
 
 	if svc.Healthcheck != nil {
 		t.Errorf("Healthcheck = %+v, want nil when CS_N_HEALTHCHECK=disabled", svc.Healthcheck)
@@ -641,7 +668,10 @@ func TestBuildCustomService_HealthcheckCustomPath(t *testing.T) {
 	cs.HealthCheck = "/auth/health"
 
 	g := NewGenerator(cfg)
-	svc := g.buildCustomService(cs)
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
 
 	if svc.Healthcheck == nil {
 		t.Fatal("buildCustomService: Healthcheck is nil")
@@ -660,7 +690,10 @@ func TestBuildCustomService_CoreEnvInjected(t *testing.T) {
 	cs := testCS()
 
 	g := NewGenerator(cfg)
-	svc := g.buildCustomService(cs)
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
 
 	for _, key := range []string{
 		"PROJECT_NAME",

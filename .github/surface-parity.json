@@ -362,6 +362,15 @@
       "openapi": "n/a (see below)"
     },
     {
+      "name": "server",
+      "path": "nself server",
+      "group_id": "advanced",
+      "wiki_page": true,
+      "mcp_tool": false,
+      "env_vars": "n/a",
+      "openapi": "n/a (see below)"
+    },
+    {
       "name": "service",
       "path": "nself service",
       "group_id": "config",

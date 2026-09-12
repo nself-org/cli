@@ -371,6 +371,7 @@
       "--no-monorepo",
       "--profile",
       "--quiet",
+      "--remove-orphans",
       "--security-report",
       "--verbose"
     ]
@@ -2090,6 +2091,74 @@
       "--jwt",
       "--no-print",
       "--to-file"
+    ]
+  },
+  {
+    "name": "server",
+    "path": "nself server",
+    "short": "Provision, list, resize, and destroy Hetzner Cloud servers",
+    "hidden": false,
+    "group_id": "advanced",
+    "subcommands": [
+      {
+        "name": "destroy",
+        "path": "nself server destroy",
+        "short": "Delete a Hetzner Cloud server",
+        "hidden": false,
+        "flags": [
+          "--force-no-backup",
+          "--id",
+          "--json",
+          "--release-ip",
+          "--snapshot",
+          "--snapshot-timeout",
+          "--token",
+          "--token-env"
+        ]
+      },
+      {
+        "name": "list",
+        "path": "nself server list",
+        "short": "List Hetzner Cloud servers",
+        "hidden": false,
+        "flags": [
+          "--json",
+          "--label-selector",
+          "--token",
+          "--token-env"
+        ]
+      },
+      {
+        "name": "provision",
+        "path": "nself server provision",
+        "short": "Create a new Hetzner Cloud server",
+        "hidden": false,
+        "flags": [
+          "--image",
+          "--json",
+          "--label",
+          "--location",
+          "--name",
+          "--ssh-key",
+          "--token",
+          "--token-env",
+          "--type"
+        ]
+      },
+      {
+        "name": "resize",
+        "path": "nself server resize",
+        "short": "Change a server's type (CPU/RAM/disk)",
+        "hidden": false,
+        "flags": [
+          "--id",
+          "--json",
+          "--token",
+          "--token-env",
+          "--type",
+          "--upgrade-disk"
+        ]
+      }
     ]
   },
   {

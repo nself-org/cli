@@ -11,6 +11,15 @@
 # `nself access grant/revoke/list` is the command surface named directly
 # in #238's proposed shape.
 #
+# 2026-09-11: +1 for `server` (gap G-011). Deliberate exception, not
+# creep: `nself access` only manages SSH keys on an already-deployed host
+# and `nself security` only audits one — neither can create, list, resize,
+# or destroy the server itself, so an operator provisioning or tearing down
+# a box had no CLI path and fell back to raw `hcloud server create` /
+# `hcloud server delete`, with none of the backup/IP-protection safety this
+# command enforces. `nself server provision/list/resize/destroy` is the
+# surface G-011 names directly.
+#
 # 2026-09-11: +1 for `runner` (gap G-012). Deliberate exception, not
 # creep: onboarding a self-hosted CI runner host had no CLI path — the
 # dependency manifest (gh/zip/unzip/etc.) was installed and verified by
@@ -18,4 +27,4 @@
 # hid a job failure behind a misleading browser error for hours on
 # 2026-09-11. `nself runner provision/verify` is the surface G-012 names
 # directly.
-51
+52

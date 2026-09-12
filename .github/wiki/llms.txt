@@ -14,7 +14,7 @@ nself build   # generate docker-compose + nginx
 nself start   # boot the stack
 ```
 
-## Commands (51)
+## Commands (52)
 
 ### nself access
 
@@ -123,6 +123,7 @@ Flags:
                   monitoring stack; excludes minio, mailpit, admin, functions, search.
 Overrides NSELF_PROFILE env var. Valid values: app, ops.
 - `--quiet` (default false) — Suppress non-error output (for CI use)
+- `--remove-orphans` (default false) — Remove containers with no matching service in the freshly generated compose (G-014). Detection always runs; removal is opt-in.
 - `--security-report` (default false) — Generate security analysis
 - `--verbose` (default false) — Show environment cascade
 
@@ -872,6 +873,23 @@ Flags:
 - `--to-file` (default "") — Write the new JWT key to this file path (mode 0600) instead of stdout
 
 Full page: [[cmd-self-heal]]
+
+### nself server
+
+Provision, list, resize, and destroy Hetzner Cloud servers
+
+```
+nself server <subcommand> [flags]
+```
+
+Subcommands:
+
+- `destroy` — Delete a Hetzner Cloud server
+- `list` — List Hetzner Cloud servers
+- `provision` — Create a new Hetzner Cloud server
+- `resize` — Change a server's type (CPU/RAM/disk)
+
+Full page: [[cmd-server]]
 
 ### nself service
 

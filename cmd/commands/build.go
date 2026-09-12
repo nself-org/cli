@@ -1,18 +1,15 @@
 package commands
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/migration"
-	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -45,6 +42,7 @@ func init() {
 	buildCmd.Flags().Bool("no-migration-check", false, "Skip v1 artifact detection (for automation/CI)")
 	buildCmd.Flags().Bool("allow-legacy", false, "Bypass v0.9 artifact check and proceed with WARNING (not recommended)")
 	buildCmd.Flags().Bool("no-auto-redis", false, "Disable automatic Redis enablement when a BullMQ-backed plugin is detected")
+	buildCmd.Flags().Bool("remove-orphans", false, "Remove containers with no matching service in the freshly generated compose (G-014). Detection always runs; removal is opt-in.")
 	buildCmd.Flags().String("profile", "", `Service profile: curated subset of services to include in docker-compose.yml.
   app (default) — full service set, identical to pre-profile behaviour.
   ops           — observability + CI server: postgres, hasura, auth, nginx,
@@ -67,6 +65,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	noMigrationCheck, _ := cmd.Flags().GetBool("no-migration-check")
 	allowLegacy, _ := cmd.Flags().GetBool("allow-legacy")
 	noAutoRedis, _ := cmd.Flags().GetBool("no-auto-redis")
+	removeOrphans, _ := cmd.Flags().GetBool("remove-orphans")
 
 	// ── Profile resolution ────────────────────────────────────────────
 	// Priority: --profile flag > NSELF_PROFILE env var > default ("app").
@@ -227,73 +226,12 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		ui.Info("Next step: nself start")
 	}
 
+	// ── G-014: orphan container detection (always on) + removal (opt-in
+	// via --remove-orphans) — see build_orphans.go. Never runs for --check,
+	// which returns before ComposeFile is generated.
+	if !check && result.ComposeFile != "" {
+		reportAndHandleOrphans(workdir, result, removeOrphans, quiet)
+	}
+
 	return nil
-}
-
-// runPluginLifecycleCheck loads the lifecycle store, transitions expired plugins,
-// prints dormant banners, and auto-removes fully-expired plugins.
-// Auto-removal is intentionally build-only (not start) — start is read-only on lifecycle.
-func runPluginLifecycleCheck(quiet bool) {
-	store, err := plugin.LoadLifecycleStore()
-	if err != nil {
-		// Non-fatal: lifecycle store is advisory only.
-		if !quiet {
-			ui.Warn("Could not load plugin lifecycle store: " + err.Error())
-		}
-		return
-	}
-
-	now := time.Now()
-	dormant, autoRemove := store.CheckExpiry(now)
-
-	// Print dormant banners.
-	for _, name := range dormant {
-		if rec, ok := store.Records[name]; ok && !quiet {
-			ui.Warn(plugin.DormantBanner(rec, now))
-		}
-	}
-
-	// Print banners for already-dormant plugins (transitioned in a prior run).
-	for name, rec := range store.Records {
-		if rec.State == plugin.StateDormant {
-			alreadyPrinted := false
-			for _, d := range dormant {
-				if d == name {
-					alreadyPrinted = true
-					break
-				}
-			}
-			if !alreadyPrinted && !quiet {
-				ui.Warn(plugin.DormantBanner(rec, now))
-			}
-		}
-	}
-
-	// Auto-remove expired plugins.
-	for _, name := range autoRemove {
-		if !quiet {
-			ui.Warn(fmt.Sprintf("Removing expired plugin %q (grace period exhausted)", name))
-		}
-		cfg, cfgErr := config.Load(".")
-		if cfgErr != nil {
-			// Fall back to default plugin dir.
-			cfg = &config.Config{}
-		}
-		pluginDir := resolvePluginDir()
-		if removeErr := plugin.Remove(context.Background(), cfg, name, pluginDir, false, true); removeErr != nil {
-			if !quiet {
-				ui.Warn(fmt.Sprintf("Auto-remove of %q failed: %v", name, removeErr))
-			}
-		} else {
-			// Clear the record after successful removal.
-			delete(store.Records, name)
-		}
-	}
-
-	// Persist transitions (dormant → expired state changes).
-	if len(dormant) > 0 || len(autoRemove) > 0 {
-		if saveErr := store.Save(); saveErr != nil && !quiet {
-			ui.Warn("Could not save plugin lifecycle store: " + saveErr.Error())
-		}
-	}
 }

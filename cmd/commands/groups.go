@@ -108,6 +108,7 @@ var commandGroupAssignments = map[string]string{
 	// Advanced & Enterprise.
 	"access":      groupAdvanced,
 	"security":    groupAdvanced,
+	"server":      groupAdvanced,
 	"verify-sbom": groupAdvanced,
 	"runner":      groupAdvanced,
 }

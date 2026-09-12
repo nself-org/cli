@@ -20,6 +20,13 @@ const NginxSitesDir = "nginx/sites"
 type Generator struct {
 	cfg     *config.Config
 	profile ServiceSet
+
+	// workDir anchors CS_N_ENV_FILE reads to the project root. Empty by
+	// default (falls back to the process's current directory — see
+	// loadCustomServiceEnvFile) so existing callers that never set it are
+	// unaffected. Set via WithWorkDir when the caller has an explicit
+	// project directory (e.g. the build orchestrator's st.workdir).
+	workDir string
 }
 
 // NewGenerator creates a compose Generator from the given config using the
@@ -40,6 +47,15 @@ func NewGenerator(cfg *config.Config) *Generator {
 func NewGeneratorWithProfile(cfg *config.Config, name ProfileName) *Generator {
 	set, _ := ProfileForName(name)
 	return &Generator{cfg: cfg, profile: set}
+}
+
+// WithWorkDir sets the project root used to resolve CS_N_ENV_FILE paths and
+// returns the same Generator for chaining. Callers that build compose from a
+// known project directory (rather than assuming os.Getwd()) should always
+// set this — see internal/build/orchestrator_build_compose.go.
+func (g *Generator) WithWorkDir(dir string) *Generator {
+	g.workDir = dir
+	return g
 }
 
 // Generate produces the complete docker-compose.yml as YAML bytes.
@@ -143,7 +159,11 @@ func (g *Generator) buildDockerCompose() (*DockerCompose, error) {
 
 	// Custom services (always pass-through — per-project overrides).
 	for _, cs := range g.cfg.CustomServices {
-		dc.AddService(cs.Name, g.buildCustomService(cs))
+		svcCfg, err := g.buildCustomService(cs)
+		if err != nil {
+			return nil, fmt.Errorf("building custom service %q: %w", cs.Name, err)
+		}
+		dc.AddService(cs.Name, svcCfg)
 	}
 
 	// Nginx — profile-gated (always last — depends on other services).
