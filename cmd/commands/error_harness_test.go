@@ -208,6 +208,11 @@ var errorHarnessCases = []errorHarnessCase{
 	{"security", []string{"security", "--no-such-flag-xyz"}, "(b) invalid flag"},
 	{"security", []string{"security", "unknownsub_xyz"}, "(c) unknown sub"},
 
+	// ── server ─────────────────────────────────────────────────────────────
+	{"server", []string{"server"}, "(a) no project dir"},
+	{"server", []string{"server", "--no-such-flag-xyz"}, "(b) invalid flag"},
+	{"server", []string{"server", "unknownsub_xyz"}, "(c) unknown sub"},
+
 	// ── service ────────────────────────────────────────────────────────────
 	{"service", []string{"service"}, "(a) no project dir"},
 	{"service", []string{"service", "--no-such-flag-xyz"}, "(b) invalid flag"},
