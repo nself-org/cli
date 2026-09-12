@@ -3,6 +3,33 @@
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
 
+## [1.3.6] — 2026-09-12
+
+Ships work that had merged to main but sat unreleased, including a doctor
+false-positive and three server/compose gap-closure features.
+
+### Fixed
+
+- **`nself doctor --deep`'s SEC-HARDENING-06 check fired a false CRITICAL against
+  nginx configs that do rate-limit their auth/API routes.** It only ever grepped
+  for the literal strings `/auth/login` and `/api/`, so nSelf's default one-
+  server-block-per-service layout always failed the check. It now also matches
+  by service identity (a server block's `server_name` against known auth/API
+  route names) and falls back to the original literal-path match for hand-
+  written gateway configs.
+
+### Added
+
+- **`nself server provision` / `list` / `resize` / `destroy`**: manage a
+  Hetzner server's lifecycle directly from the CLI.
+- **Custom services gain `CS_N_IMAGE`, `CS_N_ENV_FILE`, and `CS_N_VOLUMES`**,
+  extending the `CS_N_*` slots beyond image name to full env-file and volume-
+  mount configuration.
+- **`nself build`/`nself start` detect orphaned containers** (with a
+  `--remove-orphans` flag to clean them up) **and flag a compose healthcheck
+  that references a command the image doesn't have**, instead of failing
+  silently at runtime.
+
 ## [1.3.5] — 2026-08-30
 
 Infrastructure-only release. No CLI command or flag behavior changed.
