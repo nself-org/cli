@@ -17,6 +17,7 @@ All ɳSelf project configuration lives in `.env` (and optionally `.env.local` fo
 - [Load Order (Cascade)](#load-order-cascade)
 - [Core Project Settings](#core-project-settings)
 - [PostgreSQL](#postgresql)
+- [Backup and Restore](#backup-and-restore)
 - [Hasura (GraphQL API)](#hasura-graphql-api)
 - [Auth](#auth)
 - [Nginx and SSL](#nginx-and-ssl)
@@ -101,6 +102,36 @@ DATABASE_URL=postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@postgres:5432/{POS
 ```
 
 This value is written to `.env.computed` and should not be set manually.
+
+---
+
+## Backup and Restore
+
+Credentials may come from these variables or from `rclone.conf` / `RCLONE_CONFIG_*`.
+Leaving **both** key variables empty is valid and means "configured elsewhere".
+Setting **exactly one** of the pair is always rejected, because it is never a
+meaningful state: it is a typo or a partial migration between the two accepted
+name pairs, and rclone would otherwise fail silently or send an empty secret.
+
+| Variable | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `BACKUP_S3_BUCKET` | string | *(unset)* | No | Destination bucket for off-box backup copies. App-level: consumed by app backup scripts, not read into the CLI's config struct. |
+| `BACKUP_S3_ACCESS_KEY_ID` | string | *(unset)* | No | Access key for the backup bucket. Must be set together with `BACKUP_S3_SECRET_ACCESS_KEY`. |
+| `BACKUP_S3_SECRET_ACCESS_KEY` | string | *(unset)* | No | Secret key for the backup bucket. Must be set together with `BACKUP_S3_ACCESS_KEY_ID`. |
+| `BACKUP_S3_REGION` | string | *(unset)* | No | Region passed to the storage provider. |
+| `BACKUP_S3_ENDPOINT` | string | *(unset)* | No | Custom endpoint for S3-compatible providers (Backblaze B2, Cloudflare R2, MinIO). Leave unset for AWS S3. |
+| `BACKUP_S3_PREFIX` | string | *(unset)* | No | Key prefix applied to uploaded objects, for sharing one bucket across projects. App-level, like `BACKUP_S3_BUCKET`. |
+| `BACKUP_ACCESS_KEY` | string | *(unset)* | No | **Accepted alias** for `BACKUP_S3_ACCESS_KEY_ID`. The canonical name wins when both are set. |
+| `BACKUP_SECRET_KEY` | string | *(unset)* | No | **Accepted alias** for `BACKUP_S3_SECRET_ACCESS_KEY`. The canonical name wins when both are set. |
+
+**Why the aliases exist.** `BACKUP_ACCESS_KEY` / `BACKUP_SECRET_KEY` were already
+in use in the wild (they are the names in `ntask/backend/.env.example`) but were
+never read into the backup config, so every deployment using them had remote
+upload silently disabled while appearing configured. Both spellings are now
+accepted. Prefer the canonical `BACKUP_S3_*` names in new configuration.
+
+See also `BACKUP_CRITICAL_TABLES` under [PostgreSQL](#postgresql), and
+[[cmd-backup]] for the commands that consume these.
 
 ---
 
