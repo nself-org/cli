@@ -94,7 +94,7 @@ tree in `cmd/commands/`. Run `make cmd-inventory` to refresh.
 ## Complete index
 
 Generated from the cobra registration tree in `cmd/commands/`.
-Run `make cmd-inventory` to refresh. **Total top-level commands: 51**
+Run `make cmd-inventory` to refresh. **Total top-level commands: 52**
 
 | Command | Short Description | Group | Subcommands |
 |---|---|---|---|
@@ -134,6 +134,7 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 51**
 | `nself remove` | Remove an installed plugin or bundle | extend | — |
 | `nself reset` | Stop containers, remove all data volumes, and clean generated files | core | — |
 | `nself restart` | Smart restart with config change detection | core | — |
+| `nself runner` | Provision and audit self-hosted GitHub Actions CI runner hosts | advanced | provision, verify |
 | `nself secrets` | Manage encrypted project secrets (age encryption) | config | audit, decrypt-on-deploy, edit, get, init, lint, list, list-schedules, rekey, retire, rotate, rotation-log, schedule, set, verify |
 | `nself security` | Server security: audit, setup, and status | advanced | audit, setup, status |
 | `nself self-heal` | Run targeted self-healing routines for nSelf components | observe | — |

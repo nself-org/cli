@@ -48,6 +48,7 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself remove` | extend | yes | no | n/a | n/a (see below) |
 | `nself reset` | core | yes | no | n/a | n/a (see below) |
 | `nself restart` | core | yes | yes | n/a | n/a (see below) |
+| `nself runner` | advanced | yes | no | undocumented: GITHUB_RUNNER_TOKEN | n/a (see below) |
 | `nself secrets` | config | yes | no | undocumented: EDITOR | n/a (see below) |
 | `nself security` | advanced | yes | no | n/a | n/a (see below) |
 | `nself self-heal` | observe | yes | no | n/a | n/a (see below) |
@@ -64,4 +65,4 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself verify-sbom` | advanced | yes | no | n/a | n/a (see below) |
 | `nself version` | account | yes | no | undocumented: BENCH_RESULTS_FILE | n/a (see below) |
 
-Total: 51 commands. Missing wiki page: 0. No MCP tool: 34. Env vars found but undocumented: 16.
+Total: 52 commands. Missing wiki page: 0. No MCP tool: 35. Env vars found but undocumented: 17.

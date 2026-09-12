@@ -110,6 +110,7 @@ var commandGroupAssignments = map[string]string{
 	"security":    groupAdvanced,
 	"server":      groupAdvanced,
 	"verify-sbom": groupAdvanced,
+	"runner":      groupAdvanced,
 }
 
 // ApplyCommandGroups registers the groups and assigns each command to one.

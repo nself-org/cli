@@ -326,6 +326,15 @@
       "openapi": "n/a (see below)"
     },
     {
+      "name": "runner",
+      "path": "nself runner",
+      "group_id": "advanced",
+      "wiki_page": true,
+      "mcp_tool": false,
+      "env_vars": "undocumented: GITHUB_RUNNER_TOKEN",
+      "openapi": "n/a (see below)"
+    },
+    {
       "name": "secrets",
       "path": "nself secrets",
       "group_id": "config",
