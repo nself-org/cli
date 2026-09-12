@@ -82,7 +82,10 @@ All variables use the pattern `CS_N_*` where `N` is the slot number (1–10). Va
 | `CS_N_HEALTHCHECK` | string | `/health` | Healthcheck override. A path (e.g. `/auth/health`) probes that path instead of `/health` on the service's own port. A full `CMD ...` / `CMD-SHELL ...` command is passed through verbatim (split on whitespace) for services that need curl, a non-HTTP probe, or a different port. `disabled` / `none` / `false` omits the healthcheck entirely. |
 | `CS_N_TABLE_PREFIX` | string | *(empty)* | Database table prefix for this service's migrations |
 | `CS_N_ENV_PASSTHROUGH` | string | *(empty)* | Comma-separated allowlist of project `.env` var names to forward into this container in addition to the fixed core set. `CS_N_ENV` still wins on a name conflict. |
-| `CS_N_ENV` | string | *(empty)* | Additional env vars to inject, in `KEY=VALUE,KEY=VALUE` format. Always applied last — overrides both the fixed core set and `CS_N_ENV_PASSTHROUGH`. |
+| `CS_N_ENV_FILE` | string | *(empty)* | Project-relative path to a dotenv-format file whose `KEY=VALUE` lines are injected into this container. Applied after `CS_N_ENV_PASSTHROUGH`, before `CS_N_ENV`. Use this instead of `CS_N_ENV` when a value itself contains a comma (e.g. some SMTP passwords) or when there are too many vars for one line. A missing file fails `nself build` rather than silently starting the service without those vars. |
+| `CS_N_ENV` | string | *(empty)* | Additional env vars to inject, in `KEY=VALUE,KEY=VALUE` format. Always applied last — overrides the fixed core set, `CS_N_ENV_PASSTHROUGH`, and `CS_N_ENV_FILE`. |
+| `CS_N_IMAGE` | string | *(empty)* | Run a pre-built image instead of building from a Dockerfile — e.g. `minio/minio:RELEASE.2024-01-16T16-07-38Z@sha256:...` to pin an exact digest. Mutually exclusive with `CS_N_PATH`; when set, no `build:` block is emitted at all. |
+| `CS_N_VOLUMES` | string | *(empty)* | Comma-separated extra bind mounts in `host:container[:mode]` form, e.g. `./email-templates:/app/templates:ro`. Appended to the service's generated volume list. |
 
 All `CS_*` variables are automatically exempt from "unknown env var" warnings.
 
@@ -251,11 +254,12 @@ CS_2_REPLICAS=3
 
 ## Notes
 
-- Custom service images are built from the scaffolded Dockerfile in `./services/{name}/`. To use a pre-built image instead, set `CS_N_IMAGE` directly (advanced usage, see [[Guide-Custom-Services]]).
+- Custom service images are built from the scaffolded Dockerfile in `./services/{name}/`. To use a pre-built image instead, set `CS_N_IMAGE` directly — a full image reference, optionally digest-pinned with `@sha256:...`.
 - The `CS_N_TABLE_PREFIX` variable is used by `nself migrate` to scope migrations to a subdirectory, keeping custom service migrations separate from core schema changes.
 - If a service's health endpoint isn't `/health` on its own port (e.g. an auth service serving `/auth/health`), set `CS_N_HEALTHCHECK=/auth/health` — otherwise Docker probes the wrong path and reports the service unhealthy forever regardless of its actual state.
 - Custom services participate in `nself backup`, the backup bundle includes a dump of any tables matching the `CS_N_TABLE_PREFIX`.
 - Logs from all custom service slots are included in `nself logs --all`.
+- `CS_N_IMAGE`, `CS_N_ENV_FILE`, and `CS_N_VOLUMES` cover the cases that previously forced a hand-authored `docker-compose.override.yml`: a pinned third-party image digest, many/complex injected env vars (e.g. SMTP credentials), and an extra bind mount (e.g. an email-template directory) — see the reference table above.
 
 ---
 

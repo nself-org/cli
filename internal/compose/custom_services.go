@@ -20,10 +20,30 @@ import (
 // decision.
 //
 // Precedence (lowest to highest): fixed defaults → CS_N_ENV_PASSTHROUGH
-// (named allowlist forwarded from the project's resolved env) → CS_N_ENV
-// (explicit overrides, always win).
-func coreEnvVars(cfg *config.Config, svc config.CustomService) map[string]string {
-	env := map[string]string{
+// (named allowlist forwarded from the project's resolved env) → CS_N_ENV_FILE
+// (envFileVars, pre-loaded by the caller from the dotenv file CS_N_ENV_FILE
+// names) → CS_N_ENV (explicit overrides, always win).
+//
+// envFileVars is nil when the service has no CS_N_ENV_FILE — callers pass
+// the map already resolved (rather than a file path) so this function stays
+// pure and easy to unit test without touching the filesystem.
+func coreEnvVars(cfg *config.Config, svc config.CustomService, envFileVars map[string]string) map[string]string {
+	env := fixedCoreEnvVars(cfg, svc)
+	addOptionalStoreEnvVars(env, cfg)
+	applyEnvPassthrough(env, svc)
+	// CS_N_ENV_FILE — merged after passthrough, before CS_N_ENV, so an
+	// explicit CS_N_ENV entry still wins on conflict.
+	for k, v := range envFileVars {
+		env[k] = v
+	}
+	applyExtraEnv(env, svc)
+	return env
+}
+
+// fixedCoreEnvVars returns the always-present base set: project identity,
+// Postgres, Hasura, Auth, and this service's own identity fields.
+func fixedCoreEnvVars(cfg *config.Config, svc config.CustomService) map[string]string {
+	return map[string]string{
 		"PROJECT_NAME":      cfg.ProjectName,
 		"BASE_DOMAIN":       cfg.BaseDomain,
 		"ENV":               cfg.Env,
@@ -47,6 +67,11 @@ func coreEnvVars(cfg *config.Config, svc config.CustomService) map[string]string
 		"SERVICE_ROUTE":               svc.Route,
 		"TABLE_PREFIX":                svc.TablePrefix,
 	}
+}
+
+// addOptionalStoreEnvVars adds REDIS_URL / S3_* connection vars when the
+// corresponding optional service is enabled on the project.
+func addOptionalStoreEnvVars(env map[string]string, cfg *config.Config) {
 	if cfg.Redis.Enabled {
 		env["REDIS_URL"] = fmt.Sprintf("redis://:%s@redis:%d", cfg.Redis.Password, cfg.Redis.Port)
 	}
@@ -56,33 +81,40 @@ func coreEnvVars(cfg *config.Config, svc config.CustomService) map[string]string
 		env["S3_SECRET_KEY"] = cfg.Minio.RootPassword
 		env["S3_BUCKET"] = cfg.Minio.DefaultBuckets
 	}
-	// CS_N_ENV_PASSTHROUGH — explicit allowlist of extra project env vars to
-	// forward into this container beyond the fixed core set above. Applied
-	// before CS_N_ENV so an explicit override still wins on conflict. Names
-	// not present in the resolved env are silently skipped (not an error) so
-	// an allowlist can be shared across environments where a var may be
-	// optional.
-	if svc.EnvPassthrough != "" {
-		for _, name := range strings.Split(svc.EnvPassthrough, ",") {
-			name = strings.TrimSpace(name)
-			if name == "" {
-				continue
-			}
-			if val, ok := os.LookupEnv(name); ok {
-				env[name] = val
-			}
+}
+
+// applyEnvPassthrough forwards the CS_N_ENV_PASSTHROUGH allowlist of project
+// env var names into env. Applied before CS_N_ENV_FILE/CS_N_ENV so either
+// still wins on a name conflict. Names not present in the resolved env are
+// silently skipped (not an error) so an allowlist can be shared across
+// environments where a var may be optional.
+func applyEnvPassthrough(env map[string]string, svc config.CustomService) {
+	if svc.EnvPassthrough == "" {
+		return
+	}
+	for _, name := range strings.Split(svc.EnvPassthrough, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if val, ok := os.LookupEnv(name); ok {
+			env[name] = val
 		}
 	}
-	// CS_N_ENV overrides applied last — user wins
-	if svc.ExtraEnv != "" {
-		for _, pair := range strings.Split(svc.ExtraEnv, ",") {
-			parts := strings.SplitN(pair, "=", 2)
-			if len(parts) == 2 {
-				env[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-			}
+}
+
+// applyExtraEnv merges CS_N_ENV "KEY=VALUE,KEY=VALUE" pairs into env. Always
+// applied last — an explicit CS_N_ENV entry wins over every other source.
+func applyExtraEnv(env map[string]string, svc config.CustomService) {
+	if svc.ExtraEnv == "" {
+		return
+	}
+	for _, pair := range strings.Split(svc.ExtraEnv, ",") {
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) == 2 {
+			env[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 		}
 	}
-	return env
 }
 
 // buildHealthcheck renders the Docker healthcheck for a custom service,
@@ -134,30 +166,39 @@ func buildHealthcheck(cs config.CustomService) *Healthcheck {
 
 // buildCustomService returns the service configuration for a user-defined
 // custom service (CS_1..CS_10). Each custom service is built from a Dockerfile
-// in ./services/{name}/ by default, or from CS_N_PATH when set.
-func (g *Generator) buildCustomService(cs config.CustomService) ServiceConfig {
+// in ./services/{name}/ by default, or from CS_N_PATH when set — unless
+// CS_N_IMAGE names a pre-built image, in which case the service pulls that
+// image and no build: block is emitted at all (G-013).
+//
+// Inputs: cs — the parsed CustomService (CS_N_* env vars already validated
+// by config.parseCustomServices). g.workDir anchors CS_N_ENV_FILE reads.
+// Outputs: the ServiceConfig to emit, or an error if CS_N_ENV_FILE names a
+// file that cannot be read/parsed — a build-time failure is preferred over
+// silently omitting the vars a service needs (e.g. SMTP credentials).
+func (g *Generator) buildCustomService(cs config.CustomService) (ServiceConfig, error) {
 	cfg := g.cfg
 
-	buildContext := cs.BuildPath
-	if buildContext == "" {
-		buildContext = fmt.Sprintf("./services/%s", cs.Name)
+	var envFileVars map[string]string
+	if cs.EnvFile != "" {
+		vars, err := loadCustomServiceEnvFile(g.workDir, cs.EnvFile)
+		if err != nil {
+			return ServiceConfig{}, fmt.Errorf("CS_%d_ENV_FILE: %w", cs.Index, err)
+		}
+		envFileVars = vars
 	}
 
-	return ServiceConfig{
-		Build: &BuildConfig{
-			Context:    buildContext,
-			Dockerfile: "Dockerfile",
-		},
+	svc := ServiceConfig{
 		ContainerName: fmt.Sprintf("%s_%s", cfg.ProjectName, cs.Name),
 		Restart:       "unless-stopped",
 		Networks:      []string{cfg.DockerNetwork},
 		DependsOn: map[string]DepOn{
 			"postgres": {Condition: "service_healthy"},
 		},
-		Environment: coreEnvVars(cfg, cs),
+		Environment: coreEnvVars(cfg, cs, envFileVars),
 		Ports: []string{
 			fmt.Sprintf("127.0.0.1:%d:%d", cs.Port, cs.Port),
 		},
+		Volumes:     parseCustomServiceVolumes(cs.Volumes),
 		Healthcheck: buildHealthcheck(cs),
 		Deploy: &DeployConfig{
 			Resources: &Resources{
@@ -168,4 +209,19 @@ func (g *Generator) buildCustomService(cs config.CustomService) ServiceConfig {
 			},
 		},
 	}
+
+	if cs.Image != "" {
+		svc.Image = cs.Image
+	} else {
+		buildContext := cs.BuildPath
+		if buildContext == "" {
+			buildContext = fmt.Sprintf("./services/%s", cs.Name)
+		}
+		svc.Build = &BuildConfig{
+			Context:    buildContext,
+			Dockerfile: "Dockerfile",
+		}
+	}
+
+	return svc, nil
 }
