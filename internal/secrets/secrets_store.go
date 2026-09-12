@@ -101,8 +101,15 @@ func saveStore(projectRoot, env string, store *SecretStore) error {
 	return nil
 }
 
-// Set adds or updates a secret.
+// Set adds or updates a secret. The value is validated before it ever
+// touches the store — see ValidateSecretValue for the exact rules (empty
+// values, unexpanded shell references, bracketed placeholder tokens, and
+// implausibly short values are all rejected).
 func Set(projectRoot, env, key, value string) error {
+	if err := ValidateSecretValue(key, value); err != nil {
+		slog.Error("secrets_set_rejected", "key_name", key, "env", env, "error", err)
+		return err
+	}
 	store, err := loadStore(projectRoot, env)
 	if err != nil {
 		return err
@@ -162,6 +169,15 @@ func Rotate(projectRoot, env, key string) (string, error) {
 	}
 
 	newValue, hint := generateRotationValue(key)
+	if newValue == "" {
+		// generateRotationValue declines to auto-generate for API keys/
+		// tokens that must be rotated through a provider dashboard. Do NOT
+		// persist that empty value over the existing entry — that would
+		// silently blank a working credential, exactly the failure mode
+		// this whole validation layer exists to prevent. Leave the stored
+		// value untouched and tell the caller what to do instead.
+		return "", fmt.Errorf("secret %q requires manual rotation: %s (existing value left unchanged; use 'nself secrets set %s <new-value>')", key, hint, key)
+	}
 	if hint != "" {
 		slog.Info("rotation hint", "note", hint)
 	}

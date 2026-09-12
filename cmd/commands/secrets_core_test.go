@@ -108,7 +108,7 @@ func TestSecretsList_ReflectsSetSecrets(t *testing.T) {
 			t.Fatalf("expected 0 secrets in a fresh store, got %d", len(keysBefore))
 		}
 
-		if err := secretsSetCmd.RunE(secretsSetCmd, []string{"JWT_SIGNING_KEY", "abc123"}); err != nil {
+		if err := secretsSetCmd.RunE(secretsSetCmd, []string{"JWT_SIGNING_KEY", "abc123def456ghi789jkl012"}); err != nil {
 			t.Fatalf("set: %v", err)
 		}
 

@@ -31,7 +31,8 @@ import (
 )
 
 // TestSecretsRotate_InvalidatesOldValue verifies plain (non-dual-window)
-// rotation actually replaces the value under the original key.
+// rotation actually replaces the value under the original key, for a
+// secret type rotate CAN auto-generate a replacement for (a password).
 func TestSecretsRotate_InvalidatesOldValue(t *testing.T) {
 	requireAge(t)
 	withProjectRoot(t, func(root string) {
@@ -39,21 +40,54 @@ func TestSecretsRotate_InvalidatesOldValue(t *testing.T) {
 		secretsEnvFlag = "dev"
 		defer func() { secretsEnvFlag = "dev" }()
 
-		if err := secretsSetCmd.RunE(secretsSetCmd, []string{"API_TOKEN", "old-compromised-value"}); err != nil {
+		if err := secretsSetCmd.RunE(secretsSetCmd, []string{"SERVICE_PASSWORD", "old-compromised-value-v1"}); err != nil {
 			t.Fatalf("set: %v", err)
 		}
 
 		_ = secretsRotateCmd.Flags().Set("dual-window", "false")
-		if err := secretsRotateCmd.RunE(secretsRotateCmd, []string{"API_TOKEN"}); err != nil {
+		if err := secretsRotateCmd.RunE(secretsRotateCmd, []string{"SERVICE_PASSWORD"}); err != nil {
 			t.Fatalf("rotate: %v", err)
 		}
 
-		newValue, err := secrets.Get(root, "dev", "API_TOKEN")
+		newValue, err := secrets.Get(root, "dev", "SERVICE_PASSWORD")
 		if err != nil {
 			t.Fatalf("get after rotate: %v", err)
 		}
-		if newValue == "old-compromised-value" {
-			t.Fatal("API_TOKEN still holds the pre-rotation value — rotation did not invalidate it")
+		if newValue == "old-compromised-value-v1" {
+			t.Fatal("SERVICE_PASSWORD still holds the pre-rotation value — rotation did not invalidate it")
+		}
+	})
+}
+
+// TestSecretsRotate_ManualRotationType_PreservesOldValueOnError verifies the
+// fix for the 2026-09-11/12 incident class: a secret type rotate cannot
+// auto-generate a replacement for (API keys/tokens, which must be rotated
+// through the provider's dashboard) must error out AND leave the existing
+// value completely untouched — never silently overwrite it with an empty
+// string, which is exactly as destructive as the incident's "${VAR}"
+// reference collapsing to empty on capture.
+func TestSecretsRotate_ManualRotationType_PreservesOldValueOnError(t *testing.T) {
+	requireAge(t)
+	withProjectRoot(t, func(root string) {
+		initSecretsProject(t, root)
+		secretsEnvFlag = "dev"
+		defer func() { secretsEnvFlag = "dev" }()
+
+		if err := secretsSetCmd.RunE(secretsSetCmd, []string{"API_TOKEN", "old-compromised-value-v1"}); err != nil {
+			t.Fatalf("set: %v", err)
+		}
+
+		_ = secretsRotateCmd.Flags().Set("dual-window", "false")
+		if err := secretsRotateCmd.RunE(secretsRotateCmd, []string{"API_TOKEN"}); err == nil {
+			t.Fatal("expected rotate on a manual-rotation-only key (API_TOKEN) to error, got nil")
+		}
+
+		stillThere, err := secrets.Get(root, "dev", "API_TOKEN")
+		if err != nil {
+			t.Fatalf("get after failed rotate: %v", err)
+		}
+		if stillThere != "old-compromised-value-v1" {
+			t.Fatalf("API_TOKEN value changed after a failed rotate — got %q, want the untouched original", stillThere)
 		}
 	})
 }
@@ -69,7 +103,7 @@ func TestSecretsRotateDualWindow_OldValueOnlyReachableViaPrevious(t *testing.T) 
 		secretsEnvFlag = "dev"
 		defer func() { secretsEnvFlag = "dev" }()
 
-		if err := secretsSetCmd.RunE(secretsSetCmd, []string{"SESSION_SECRET", "old-value-v1"}); err != nil {
+		if err := secretsSetCmd.RunE(secretsSetCmd, []string{"SESSION_SECRET", "old-session-secret-original-v1"}); err != nil {
 			t.Fatalf("set: %v", err)
 		}
 
@@ -83,7 +117,7 @@ func TestSecretsRotateDualWindow_OldValueOnlyReachableViaPrevious(t *testing.T) 
 		if err != nil {
 			t.Fatalf("get base after dual-window rotate: %v", err)
 		}
-		if base == "old-value-v1" {
+		if base == "old-session-secret-original-v1" {
 			t.Fatal("base key still returns the OLD value after dual-window rotate — new value never took effect")
 		}
 
@@ -91,8 +125,8 @@ func TestSecretsRotateDualWindow_OldValueOnlyReachableViaPrevious(t *testing.T) 
 		if err != nil {
 			t.Fatalf("get _PREVIOUS: %v", err)
 		}
-		if prev != "old-value-v1" {
-			t.Errorf("SESSION_SECRET_PREVIOUS = %q, want the pre-rotation value %q", prev, "old-value-v1")
+		if prev != "old-session-secret-original-v1" {
+			t.Errorf("SESSION_SECRET_PREVIOUS = %q, want the pre-rotation value %q", prev, "old-session-secret-original-v1")
 		}
 
 		// Retire the old key window: _PREVIOUS must become entirely unreachable.
