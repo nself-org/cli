@@ -229,6 +229,18 @@ func runRestoreTest(ctx context.Context, cfg *config.Config, backupFile string, 
 		smokeCmd := exec.CommandContext(ctx, "docker", smokeArgs...)
 		output, err := smokeCmd.CombinedOutput()
 		if err != nil {
+			// The gate query (user table count) is the one condition this
+			// whole check exists to enforce. If IT errors out — psql auth
+			// failure, container gone, whatever — that is not "unknown,
+			// carry on": failing to even run the assertion is the same
+			// hollow-gate shape as the drill's zero-row bug (a success
+			// returned with no positive check behind it). Every other
+			// smoke query is advisory and may legitimately fail without
+			// aborting the restore-test.
+			if sq.Label == smokeQueryCatalog[0].Label {
+				return fmt.Errorf("%w: could not run the user-table gate query (%s): %s",
+					errs.ErrBackupVerifyFailed, err, strings.TrimSpace(string(output)))
+			}
 			slog.Warn("smoke query error", "label", sq.Label, "error", err)
 			failedQueries++
 			continue

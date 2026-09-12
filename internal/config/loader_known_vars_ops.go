@@ -30,8 +30,14 @@ var knownEnvVarsOps = []string{
 	"BACKUP_S3_REGION",
 	"BACKUP_S3_ENDPOINT",
 	"BACKUP_CRITICAL_TABLES",
-	// App-level backup credential/target aliases seen in real .env files
-	// (e.g. ntask). Not read by the CLI loader (app backup scripts use them).
+	// BACKUP_ACCESS_KEY / BACKUP_SECRET_KEY: shorter aliases for
+	// BACKUP_S3_ACCESS_KEY_ID / BACKUP_S3_SECRET_ACCESS_KEY, used verbatim by
+	// real project .env files (e.g. ntask/backend/.env.example, R2-backed).
+	// These were previously "known" (no warning) but silently unread — remote
+	// backup upload configured this way did nothing. loader_parse_env_ops.go
+	// now accepts either name via firstNonEmpty(), canonical name winning if
+	// both are set. BACKUP_S3_BUCKET / BACKUP_S3_PREFIX remain app-level
+	// (consumed by app backup scripts, not this CLI's config struct).
 	"BACKUP_ACCESS_KEY",
 	"BACKUP_SECRET_KEY",
 	"BACKUP_S3_BUCKET",

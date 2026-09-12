@@ -121,7 +121,14 @@ func createFullBackup(ctx context.Context, cfg *config.Config, backupDir, ts, ta
 		remote = opts.Remote
 	}
 	if remote != "" {
-		if err := uploadToRemote(ctx, outputPath, remote); err != nil {
+		if err := requireCompleteS3Credentials(cfg); err != nil {
+			// Half-configured S3 creds (one of access/secret set, not both)
+			// is worse than none: it looks configured, uploads nothing or
+			// fails opaquely inside rclone, and nobody notices until a
+			// restore is needed. Refuse loudly instead of attempting the
+			// upload with partial credentials.
+			slog.Error("remote upload skipped: incomplete S3 credentials", "error", err, "path", outputPath)
+		} else if err := uploadToRemote(ctx, outputPath, remote, cfg); err != nil {
 			slog.Error("remote upload failed", "error", err, "path", outputPath)
 			// Non-fatal: local backup succeeded.
 		}
@@ -225,35 +232,5 @@ func triggerWALCheckpoint(ctx context.Context, cfg *config.Config) error {
 	}
 
 	slog.Info("WAL checkpoint triggered")
-	return nil
-}
-
-// encryptFile encrypts a file in-place using age with the given recipient public key.
-func encryptFile(path, recipient string) error {
-	encPath := path + ".age"
-	args := []string{"-r", recipient, "-o", encPath, path}
-	cmd := exec.Command("age", args...)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("%w: %s", errs.ErrBackupEncryptFailed, string(output))
-	}
-
-	// Replace original with encrypted version.
-	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("remove unencrypted file: %w", err)
-	}
-	if err := os.Rename(encPath, path+".age"); err != nil {
-		return fmt.Errorf("rename encrypted file: %w", err)
-	}
-
-	return nil
-}
-
-// uploadToRemote uploads a local file to the configured rclone remote.
-func uploadToRemote(ctx context.Context, localPath, remote string) error {
-	args := []string{"copyto", localPath, remote + "/" + filepath.Base(localPath)}
-	cmd := exec.CommandContext(ctx, "rclone", args...)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("%w: %s", errs.ErrBackupRemoteFailed, string(output))
-	}
 	return nil
 }

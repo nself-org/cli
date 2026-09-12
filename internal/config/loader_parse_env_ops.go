@@ -76,11 +76,20 @@ func parseEnvOps(cfg *Config) {
 		RetentionMonthly:    getEnvInt("BACKUP_RETENTION_MONTHLY", 0),
 		RestoreTestSchedule: os.Getenv("BACKUP_RESTORE_TEST_SCHEDULE"),
 		AlertOnFailure:      getEnvBool("BACKUP_ALERT_ON_FAILURE", true),
-		S3AccessKeyID:       os.Getenv("BACKUP_S3_ACCESS_KEY_ID"),
-		S3SecretAccessKey:   os.Getenv("BACKUP_S3_SECRET_ACCESS_KEY"),
-		S3Region:            os.Getenv("BACKUP_S3_REGION"),
-		S3Endpoint:          os.Getenv("BACKUP_S3_ENDPOINT"),
-		CriticalTables:      os.Getenv("BACKUP_CRITICAL_TABLES"),
+		// S3AccessKeyID/S3SecretAccessKey: BACKUP_S3_ACCESS_KEY_ID /
+		// BACKUP_S3_SECRET_ACCESS_KEY is the canonical pair, but real project
+		// .env files (ntask/backend/.env.example, R2-backed) use the shorter
+		// BACKUP_ACCESS_KEY / BACKUP_SECRET_KEY names alongside
+		// BACKUP_S3_ENDPOINT — those were on loader_known_vars_ops.go's list
+		// (so no "unknown env var" warning fired) but never actually read
+		// into this struct, so a project configured that way had remote
+		// backup upload silently do nothing. Both names are accepted here;
+		// the canonical BACKUP_S3_* pair wins if both happen to be set.
+		S3AccessKeyID:     firstNonEmpty(os.Getenv("BACKUP_S3_ACCESS_KEY_ID"), os.Getenv("BACKUP_ACCESS_KEY")),
+		S3SecretAccessKey: firstNonEmpty(os.Getenv("BACKUP_S3_SECRET_ACCESS_KEY"), os.Getenv("BACKUP_SECRET_KEY")),
+		S3Region:          os.Getenv("BACKUP_S3_REGION"),
+		S3Endpoint:        os.Getenv("BACKUP_S3_ENDPOINT"),
+		CriticalTables:    os.Getenv("BACKUP_CRITICAL_TABLES"),
 	}
 
 	cfg.DR = DRConfig{
@@ -141,4 +150,17 @@ func parseEnvOps(cfg *Config) {
 	cfg.LogLevel = os.Getenv("NSELF_LOG_LEVEL")
 	cfg.SkipHealthChecks = getEnvBool("NSELF_SKIP_HEALTH_CHECKS", false)
 	cfg.StopTimeout = getEnvInt("NSELF_STOP_TIMEOUT", 0)
+}
+
+// firstNonEmpty returns the first non-empty string among values, or "" if
+// all are empty. Used for accepting an alias env var name alongside a
+// canonical one without silently preferring whichever happens to be read
+// last.
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
