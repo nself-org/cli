@@ -41,8 +41,9 @@ Separately from the offline ladder, a license whose server-reported expiry has p
 | Variable | Default | Purpose |
 |---|---|---|
 | `LICENSE_CACHE_PATH` | `~/.cache/nself/license.json` | Cache file location. Override for shared CI runners or air-gapped hosts. |
+| `NSELF_LICENSE_FAIL_OPEN` | unset | `=1` replaces the bounded ladder with an **unbounded** cache check on the network-unreachable branch (`checker.go:84-87`). CI and air-gap only. |
 
-The offline thresholds are compile-time constants, not configuration. There is no environment variable that widens or narrows the grace window — tightening posture is done by refreshing more often, not by lowering a cap.
+The 72h and 7d thresholds themselves are compile-time constants, not configuration — nothing tunes them to a different number. `NSELF_LICENSE_FAIL_OPEN=1` does not move them either; it takes a different branch entirely (`bundleEntitledFromCache`, tier check with no time window at all), which is why it must never be set on a production install. It does not disable revocation or override a server that answers 401/403.
 
 ## Manual Refresh
 
