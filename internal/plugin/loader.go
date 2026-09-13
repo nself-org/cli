@@ -5,7 +5,8 @@ package plugin
 // Inputs:  pluginDir string (absolute path to plugin installation directory).
 // Outputs: []PluginInfo or []InstalledPluginInfo; error on directory read failure.
 // Constraints: Registry fetch uses a 30s timeout; pluginDir non-existence returns nil, nil.
-//              Directories without a valid plugin.json are silently skipped.
+//              Directories without a valid plugin.json are skipped, with a warning on
+//              stderr naming the directory and the parse error — never silently.
 // SPORT: list/inventory operations; callers: cmd/plugin/list.go, cmd/plugin/inventory.go
 
 import (
@@ -136,7 +137,27 @@ func listInstalled(pluginDir string) ([]PluginInfo, error) {
 		manifestPath := filepath.Join(pluginDir, entry.Name(), "plugin.json")
 		m, err := parseManifest(manifestPath)
 		if err != nil {
-			continue // skip directories without valid manifests
+			// A directory here is an INSTALLED plugin, so an unreadable
+			// manifest is not the same as "not a plugin" — the plugin is on
+			// disk and the user was told it installed. Swallowing the error
+			// made it vanish from `nself plugin list --installed` with no
+			// output at all, which is indistinguishable from never having
+			// installed it.
+			//
+			// Found 2026-09-13: the free Task Bundle's `notifications` plugin
+			// declares status "deprecated" but carries the flat
+			// deprecated/deprecatedSince/replacedBy fields instead of the
+			// `deprecation` block validateManifest requires, so its manifest
+			// is invalid. `nself plugin install notifications` printed
+			// "installed successfully", the directory and manifest were
+			// written, and the plugin was then invisible to every listing.
+			//
+			// Still a `continue`, deliberately: one bad manifest must not hide
+			// the other seven. But it is now a visible diagnostic.
+			fmt.Fprintf(os.Stderr,
+				"warning: installed plugin %q has an unreadable manifest and is being skipped: %v\n",
+				entry.Name(), err)
+			continue
 		}
 
 		running := false
