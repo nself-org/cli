@@ -26,6 +26,8 @@ Two properties of this table are load-bearing and are the ones most often misrem
 
 **Past 7 days the CLI degrades to read-only — it does not refuse to run.** `CanProceed` stays true and only `WriteAllowed` flips to false. You keep your stack readable and inspectable while offline; you cannot mutate it until you refresh.
 
+**Plugin installs are stricter than ordinary commands.** `bundleEntitledFromGrace` requires `WriteAllowed`, so once the cache passes 7 days a bundle install is *refused outright* rather than degraded — installing is a write. This is why the [offline licensing page](https://nself.org/docs/licensing/offline) describes the ceiling as failing closed while this page describes it as read-only: same threshold, two different call paths. A revoked license is refused at any cache age on both paths.
+
 The 7-day ceiling does **not** widen alongside the soft threshold. Validation sends only the license key over the wire, with no per-machine identifier, so a local cache is a bare copyable credential. Every extra day of ceiling multiplies that exposure, and 7 days is the accepted tradeoff between outage tolerance and copied-cache abuse.
 
 A bad signature is never accepted. Cache age cannot bypass cryptographic verification — the cache carries an Ed25519 signature that is checked locally on every command.
