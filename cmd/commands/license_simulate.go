@@ -18,10 +18,13 @@ Requires LICENSE_ALLOW_SIMULATION=true (disabled by default in production).
 Backdates the license cache to appear as if the system has been offline
 for the specified number of days.
 
+The grace ladder is keyed on GraceSoftThreshold (72h) and GraceHardThreshold
+(7 days), so the days below are chosen to land inside each band.
+
 Examples:
-  nself license simulate-offline 0    # Just went offline
-  nself license simulate-offline 7    # Trigger warning banner
-  nself license simulate-offline 14   # Trigger hard stop
+  nself license simulate-offline 0    # Just went offline — silent
+  nself license simulate-offline 5    # Past 72h — warning, still writable
+  nself license simulate-offline 10   # Past 7 days — read-only
   nself license simulate-offline --clear  # Reset to current time`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
