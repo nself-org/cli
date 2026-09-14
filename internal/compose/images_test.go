@@ -140,3 +140,57 @@ func TestDefaultImageVersions_NoGoModulePaths(t *testing.T) {
 		}
 	}
 }
+
+// TestMinioImageIsRegistryQualified guards the fix for the 2026-09-14 storage
+// outage: MinIO deleted the `minio/minio` repository from Docker Hub, so an
+// unqualified reference resolves to a repository that no longer exists and
+// every generated stack with MINIO_ENABLED=true failed to pull. The Hub API
+// returns "object not found" and every tag answers 401, to anonymous and
+// authenticated requests alike, so this is not something a docker login fixes.
+//
+// Both places that name the image must stay pointed at MinIO's own registry:
+// the DefaultImageVersions pin (used when no MINIO_VERSION is set) and
+// buildMinioService's MINIO_VERSION path. A bare "minio/minio:..." in either
+// is the regression this test exists to catch.
+func TestMinioImageIsRegistryQualified(t *testing.T) {
+	const wantPrefix = "quay.io/minio/minio:"
+
+	if !strings.HasPrefix(MinioImagePath+":", wantPrefix) {
+		t.Fatalf("MinioImagePath = %q, want %q without the tag", MinioImagePath, "quay.io/minio/minio")
+	}
+
+	pinned, ok := DefaultImageVersions["minio"]
+	if !ok {
+		t.Fatal(`DefaultImageVersions has no "minio" entry`)
+	}
+	if !strings.HasPrefix(pinned, wantPrefix) {
+		t.Errorf("DefaultImageVersions[\"minio\"] = %q, want prefix %q", pinned, wantPrefix)
+	}
+}
+
+// TestBuildMinioService_UsesQuayRegistry covers the MINIO_VERSION path, which
+// formats its own image string and so can drift away from the pin above
+// independently. Both an explicit version and the empty-version default are
+// checked, because the empty case builds "…:latest" rather than falling
+// through to DefaultImageVersions.
+func TestBuildMinioService_UsesQuayRegistry(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		version string
+		want    string
+	}{
+		{"explicit version", "RELEASE.2024-10-02T17-50-41Z", "quay.io/minio/minio:RELEASE.2024-10-02T17-50-41Z"},
+		{"empty version defaults to latest", "", "quay.io/minio/minio:latest"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := &Generator{cfg: &config.Config{
+				ProjectName:   "testproject",
+				DockerNetwork: "testproject_network",
+				Minio:         config.MinioConfig{Enabled: true, Version: tc.version},
+			}}
+			if got := g.buildMinioService().Image; got != tc.want {
+				t.Errorf("buildMinioService().Image = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

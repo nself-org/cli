@@ -91,7 +91,9 @@ func (g *Generator) buildMinioService() ServiceConfig {
 	}
 
 	return ServiceConfig{
-		Image:         ResolveImage("minio", fmt.Sprintf("minio/minio:%s", version)),
+		// MinioImagePath, never a bare "minio/minio" — that Docker Hub
+		// repository no longer exists. See the constant's doc comment.
+		Image:         ResolveImage("minio", fmt.Sprintf("%s:%s", MinioImagePath, version)),
 		ContainerName: fmt.Sprintf("%s_minio", g.cfg.ProjectName),
 		Restart:       "unless-stopped",
 		Networks:      []string{g.cfg.DockerNetwork},

@@ -24,7 +24,7 @@ func TestBuildCustomService_ImageSkipsBuild(t *testing.T) {
 	cfg := minimalConfigWithCS()
 	g := NewGenerator(cfg)
 	cs := testCS()
-	cs.Image = "minio/minio:RELEASE.2024-01-16T16-07-38Z@sha256:abc123"
+	cs.Image = "quay.io/minio/minio:RELEASE.2024-01-16T16-07-38Z@sha256:abc123"
 
 	svc, err := g.buildCustomService(cs)
 	if err != nil {
