@@ -38,10 +38,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout cli
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Checkout plugins (public, no token required)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: nself-org/plugins
           path: .plugins-canonical
