@@ -25,7 +25,7 @@ func clearOtherCSSlots(t *testing.T, keep int) {
 // pinned minio image (G-013 evidence row 1).
 func TestCustomServicesImage_Valid(t *testing.T) {
 	t.Setenv("CS_1", "email-storage:go")
-	t.Setenv("CS_1_IMAGE", "quay.io/minio/minio:RELEASE.2024-01-16T16-07-38Z@sha256:abc123")
+	t.Setenv("CS_1_IMAGE", "minio/minio:RELEASE.2024-01-16T16-07-38Z@sha256:abc123")
 	clearOtherCSSlots(t, 1)
 
 	services, err := parseCustomServices()
@@ -35,7 +35,7 @@ func TestCustomServicesImage_Valid(t *testing.T) {
 	if len(services) == 0 {
 		t.Fatal("expected at least one custom service")
 	}
-	want := "quay.io/minio/minio:RELEASE.2024-01-16T16-07-38Z@sha256:abc123"
+	want := "minio/minio:RELEASE.2024-01-16T16-07-38Z@sha256:abc123"
 	if got := services[0].Image; got != want {
 		t.Errorf("Image = %q, want %q", got, want)
 	}

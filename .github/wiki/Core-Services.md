@@ -25,7 +25,7 @@ Added to the stack only when their enabling variable is `true`.
 | Service | Purpose | Enable with | Version override | Default image |
 |---|---|---|---|---|
 | `nself-admin` | nSelf Admin web UI (localhost only; never deployed) | `NSELF_ADMIN_ENABLED=true` | `NSELF_ADMIN_VERSION` | `nself/nself-admin:latest` |
-| `functions` | Serverless function runtime | `FUNCTIONS_ENABLED=true` | `FUNCTIONS_VERSION` | `nhost/functions:0.3.7` |
+| `functions` | Serverless function runtime | `FUNCTIONS_ENABLED=true` | `FUNCTIONS_VERSION` | `nhost/functions:latest` |
 | `mailpit` | Development SMTP catcher — captures outbound mail instead of sending it | `MAILPIT_ENABLED=true` | `MAILPIT_VERSION` | `axllent/mailpit:v1.15` |
 | `meilisearch` | Full-text search index (SEARCH_ENGINE=meilisearch, the default) | `SEARCH_ENABLED=true` | `MEILISEARCH_VERSION` | `getmeili/meilisearch:v1.6` |
 | `minio` | S3-compatible object storage | `MINIO_ENABLED=true` | `MINIO_VERSION` | `quay.io/minio/minio:RELEASE.2024-01-16T16-07-38Z` |
