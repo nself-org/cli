@@ -101,7 +101,7 @@ jobs:
         if: steps.preflight.outputs.proceed == 'true'
         run: |
           cd sdk/ts
-          pnpm install --no-frozen-lockfile
+          pnpm install --frozen-lockfile
 
       - name: Build
         if: steps.preflight.outputs.proceed == 'true'

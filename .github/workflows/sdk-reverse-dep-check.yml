@@ -97,7 +97,7 @@ jobs:
       - name: Build SDK
         run: |
           cd sdk/ts
-          pnpm install --frozen-lockfile=false
+          pnpm install --frozen-lockfile
           pnpm build
       - name: Build minimal consumer linked to SDK
         run: |
