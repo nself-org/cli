@@ -163,7 +163,7 @@ type CustomService struct {
 	EnvPassthrough string
 
 	// Image is CS_N_IMAGE: a pre-built image reference (optionally digest-pinned,
-	// e.g. "minio/minio:RELEASE.2024-01-16T16-07-38Z@sha256:...") to run instead
+	// e.g. "quay.io/minio/minio:RELEASE.2024-01-16T16-07-38Z@sha256:...") to run instead
 	// of building from a Dockerfile. When set, the compose generator emits
 	// `image:` and omits `build:` entirely — mutually exclusive with
 	// CS_N_PATH (G-013: closes the gap where a pinned third-party image had

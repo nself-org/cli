@@ -51,7 +51,7 @@ Optional services are enabled by setting the corresponding environment variable 
 | Service | Toggle | Image | Internal Port | Purpose |
 |---------|--------|-------|---------------|---------|
 | Redis | `REDIS_ENABLED=true` | `redis:7-alpine` | 6379 | Caching, session storage, job queues |
-| Storage (MinIO) | `MINIO_ENABLED=true` | `minio/minio:latest` | 9000 (API), 9001 (console) | S3-compatible object storage |
+| Storage (MinIO) | `MINIO_ENABLED=true` | `quay.io/minio/minio:latest` | 9000 (API), 9001 (console) | S3-compatible object storage |
 | Email | `MAILPIT_ENABLED=true` | `axllent/mailpit:latest` | 1025 (SMTP), 8025 (UI) | Email testing in development , not for production use |
 | Search | `SEARCH_ENABLED=true` | varies | 7700 (MeiliSearch) or 8108 (Typesense) | Full-text search indexing and querying |
 | Functions | `FUNCTIONS_ENABLED=true` | `nhost/functions:latest` | 3008 | Serverless function runtime |

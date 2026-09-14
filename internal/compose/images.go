@@ -16,16 +16,47 @@ import (
 // Intentionally referencing nself/nself-admin (Docker Hub) — never github.com/nself-org/ paths.
 const AdminImagePath = "nself/nself-admin"
 
+// MinioImagePath is the registry path for the MinIO object-storage image.
+//
+// It is REGISTRY-QUALIFIED and must stay that way. MinIO removed the
+// `minio/minio` repository from Docker Hub: as of 2026-09-14 the Hub API
+// returns `{"message":"object not found"}` for it and every tag — including
+// long-published pins such as RELEASE.2024-01-16T16-07-38Z — answers 401 to
+// both anonymous and authenticated manifest requests. A `docker pull` of it
+// fails with "pull access denied for minio/minio, repository does not exist
+// or may require 'docker login'", so every generated stack with
+// MINIO_ENABLED=true could no longer start. Authenticating does NOT help;
+// the repository is gone, not gated.
+//
+// quay.io/minio/minio is MinIO's own registry and serves the same tags
+// anonymously (verified 2026-09-14: :latest, RELEASE.2024-01-16T16-07-38Z
+// and RELEASE.2024-10-02T17-50-41Z all return 200).
+//
+// Both the DefaultImageVersions pin below and buildMinioService's
+// MINIO_VERSION path must build from this constant so the two cannot drift
+// back to an unqualified Docker Hub name.
+const MinioImagePath = "quay.io/minio/minio"
+
 // DefaultImageVersions maps service name to pinned image:tag.
 // Update with each nSelf release.
 var DefaultImageVersions = map[string]string{
-	"postgres":    "pgvector/pgvector:pg16",
-	"hasura":      "hasura/graphql-engine:v2.44.0",
-	"auth":        "nhost/hasura-auth:0.36.0",
-	"nginx":       "nginx:1.25-alpine",
-	"redis":       "redis:7.2-alpine",
-	"minio":       "minio/minio:RELEASE.2024-01-16T16-07-38Z",
-	"functions":   "nhost/functions:0.3.7",
+	"postgres": "pgvector/pgvector:pg16",
+	"hasura":   "hasura/graphql-engine:v2.44.0",
+	"auth":     "nhost/hasura-auth:0.36.0",
+	"nginx":    "nginx:1.25-alpine",
+	"redis":    "redis:7.2-alpine",
+	"minio":    MinioImagePath + ":RELEASE.2024-01-16T16-07-38Z",
+	// nhost/functions:0.3.7 never existed. nhost's 0.x line stops at 0.1.9 and
+	// the repository now tags as <node-major>-<version> (22-2.2.0, 26-2.2.0);
+	// `docker manifest inspect nhost/functions:0.3.7` answers "no such
+	// manifest". Nothing broke because this entry is unreachable in practice:
+	// applyDefaultsFunctions sets FUNCTIONS_VERSION to "latest" when unset, so
+	// buildFunctionsService always passes a non-empty image and ResolveImage
+	// never falls back to this pin. "latest" is therefore what users actually
+	// run, and naming it here makes the pin honest without changing any
+	// emitted compose file. Choosing a real pinned tag is an upgrade decision
+	// (latest is not any of the current 2.2.0 tags), not a drive-by edit.
+	"functions":   "nhost/functions:latest",
 	"mailpit":     "axllent/mailpit:v1.15",
 	"meilisearch": "getmeili/meilisearch:v1.6",
 	"typesense":   "typesense/typesense:0.25.2",

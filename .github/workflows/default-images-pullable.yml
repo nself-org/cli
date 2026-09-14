@@ -1,0 +1,82 @@
+name: Default images pullable
+
+# Every image `nself build` can emit must still exist in its registry.
+#
+# Added 2026-09-14 after MinIO deleted the `minio/minio` repository from Docker
+# Hub. Every generated stack with MINIO_ENABLED=true stopped being able to pull
+# its storage image, and nothing in this repo noticed: the pin was valid the day
+# it was written, and no test or gate re-checks a pin after it lands. The same
+# sweep found nhost/functions:0.3.7, a tag that never existed at all.
+#
+# This gate closes that class of failure. It is deliberately a manifest lookup,
+# not a pull: it costs a few HTTP requests, needs no registry credentials, and
+# cannot be defeated by a warm layer cache on the runner.
+#
+# It runs on a schedule because the failure is external — a pin that passed
+# yesterday can break today with no commit in this repo — and on pushes that
+# touch the image list so a bad pin is caught before it ships.
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'internal/compose/images.go'
+      - 'tools/imagelist/**'
+      - '.github/workflows/default-images-pullable.yml'
+  pull_request:
+    paths:
+      - 'internal/compose/images.go'
+      - 'tools/imagelist/**'
+      - '.github/workflows/default-images-pullable.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Every default image resolves
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Check every default image manifest resolves
+        run: |
+          set -uo pipefail
+
+          # The list comes from compose.DefaultImageVersions itself, so a new
+          # pin is covered the moment it lands and there is no second list.
+          go run ./tools/imagelist > /tmp/default-images.tsv
+          if [ ! -s /tmp/default-images.tsv ]; then
+            echo "::error::imagelist produced no images — the generator or the map is broken"
+            exit 1
+          fi
+
+          failed=0
+          while IFS="$(printf '\t')" read -r service image; do
+            [ -n "${image}" ] || continue
+            if err=$(docker manifest inspect "${image}" 2>&1 >/dev/null); then
+              echo "ok    ${service}  ${image}"
+            else
+              failed=1
+              echo "FAIL  ${service}  ${image}"
+              echo "::error title=${service} image is not pullable::${image} — ${err}"
+            fi
+          done < /tmp/default-images.tsv
+
+          echo
+          if [ "${failed}" -ne 0 ]; then
+            echo "One or more images in internal/compose/images.go no longer resolve."
+            echo "Fix the pin (a registry move needs the new registry-qualified path,"
+            echo "e.g. quay.io/minio/minio), do NOT delete the entry to make this pass."
+            exit 1
+          fi
+          echo "All default images resolve."
