@@ -217,6 +217,7 @@ func createExtensions(ctx context.Context, cfg *config.Config) error {
 //  3. CREATE SCHEMA IF NOT EXISTS auth, storage, public
 //  4. GRANT ALL ON SCHEMA auth, storage, public TO user
 //  5. CREATE EXTENSION IF NOT EXISTS pgcrypto, citext
+//  6. Guarantee public.uuidv7() exists (extension when available, SQL otherwise)
 func InitializeDatabase(ctx context.Context, cfg *config.Config) error {
 	slog.Info("initializing database")
 
@@ -248,6 +249,10 @@ func InitializeDatabase(ctx context.Context, cfg *config.Config) error {
 	}
 
 	if err := createExtensions(ctx, cfg); err != nil {
+		return err
+	}
+
+	if err := ensureUUIDv7(ctx, cfg); err != nil {
 		return err
 	}
 
