@@ -97,4 +97,4 @@ package sdk
 //
 // This value is updated by the sdk-version-sync workflow on every CLI tag
 // to keep SDK and CLI versions in lockstep.
-const Version = "1.3.6"
+const Version = "1.4.0"
