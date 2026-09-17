@@ -106,7 +106,7 @@ query ActiveSubscriptions {
 
 ## Source
 
-Source-available (license required to run): [`plugins-pro/paid/paypal/`](https://github.com/nself-org/plugins-pro/tree/main/paid/paypal)
+Source-available (license required to run): [`bundles/paid/paypal/`](https://github.com/nself-org/bundles/tree/main/paid/paypal)
 
 Note: `plugins-pro` is a private repository. Source access is granted to ɳSelf+ subscribers and Enterprise customers.
 

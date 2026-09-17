@@ -81,7 +81,7 @@ Devices is a Pro, license-gated plugin (`requires_license: true`). Under the Sec
 
 ## Source
 
-Source-available (license required to run): [`plugins-pro/paid/devices/`](https://github.com/nself-org/plugins-pro/tree/main/paid/devices)
+Source-available (license required to run): [`bundles/paid/devices/`](https://github.com/nself-org/bundles/tree/main/paid/devices)
 
 Note: `plugins-pro` is a private repository. Source access is granted to ɳSelf+ subscribers and Enterprise customers.
 

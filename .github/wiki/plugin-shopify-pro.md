@@ -102,7 +102,7 @@ curl -X POST http://localhost/shopify/orders/12345/fulfillments \
 
 ## Source
 
-Source-available (license required to run): [`plugins-pro/paid/shopify/`](https://github.com/nself-org/plugins-pro/tree/main/paid/shopify)
+Source-available (license required to run): [`bundles/paid/shopify/`](https://github.com/nself-org/bundles/tree/main/paid/shopify)
 
 Note: `plugins-pro` is a private repository. Source access is granted to ɳSelf+ subscribers and Enterprise customers.
 

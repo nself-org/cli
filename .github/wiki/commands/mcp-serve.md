@@ -82,4 +82,4 @@ None — `nself mcp` is a core CLI command, no plugin or license required.
 - [MCP specification](https://modelcontextprotocol.io/specification/2025-03-26)
 - [[cmd-doctor]]
 
-Note: `nself.org/plugins/mcp` documents an unrelated paid plugin (`plugins-pro/paid/mcp`, ɳClaw/ClawDE bundles, its own port and tool set), not this core `nself mcp` command.
+Note: `nself.org/plugins/mcp` documents an unrelated paid plugin (`bundles/paid/mcp`, ɳClaw/ClawDE bundles, its own port and tool set), not this core `nself mcp` command.

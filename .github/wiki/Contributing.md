@@ -148,7 +148,7 @@ Breaking changes: add `!` after type (`feat!:`) and document in the PR body.
 
 ## Plugin Development
 
-The CLI loads plugins from `plugins/` (free) and `plugins-pro/` (paid). To add or modify a plugin:
+The CLI loads plugins from `plugins/` (free) and `bundles/` (paid). To add or modify a plugin:
 
 1. Read `.claude/docs/PLUGIN_SYSTEM_SPEC.md`, plugin manifest schema and loader pipeline.
 2. Create or update the plugin directory with a valid `plugin.json` manifest.

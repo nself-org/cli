@@ -108,7 +108,7 @@ curl -X POST http://localhost/stripe/portal/session \
 
 ## Source
 
-Source-available (license required to run): [`plugins-pro/paid/stripe/`](https://github.com/nself-org/plugins-pro/tree/main/paid/stripe)
+Source-available (license required to run): [`bundles/paid/stripe/`](https://github.com/nself-org/bundles/tree/main/paid/stripe)
 
 Note: `plugins-pro` is a private repository. Source access is granted to ɳSelf+ subscribers and Enterprise customers.
 

@@ -92,7 +92,7 @@ curl http://localhost:3722/posts
 
 ## Source
 
-Source-available (license required to run): [`plugins-pro/paid/linkedin/`](https://github.com/nself-org/plugins-pro/tree/main/paid/linkedin)
+Source-available (license required to run): [`bundles/paid/linkedin/`](https://github.com/nself-org/bundles/tree/main/paid/linkedin)
 
 Note: `plugins-pro` is a private repository. Source access is granted to ɳSelf+ subscribers and Enterprise customers.
 

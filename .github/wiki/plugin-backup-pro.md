@@ -28,7 +28,7 @@ Schedules and runs `pg_dump` backups, then streams them directly to S3-compatibl
 | Restore tracking | Basic | Idempotent, resumable, tracked |
 | Retention policies | Fixed | Configurable |
 
-The free plugin (`plugins/free/backup`, port 3050) handles standard scheduled dumps. This pro variant (`plugins-pro/paid/backup`, port 3210) adds scheduling controls, multi-target storage, encryption, and tracked restores.
+The free plugin (`plugins/free/backup`, port 3050) handles standard scheduled dumps. This pro variant (`bundles/paid/backup`, port 3210) adds scheduling controls, multi-target storage, encryption, and tracked restores.
 
 ## Configuration
 
@@ -74,7 +74,7 @@ GET  /health   — Liveness probe
 GET  /         — Plugin index / capability list
 ```
 
-Refer to the plugin's OpenAPI spec under `plugins-pro/paid/backup/` for the full route list.
+Refer to the plugin's OpenAPI spec under `bundles/paid/backup/` for the full route list.
 
 ---
 

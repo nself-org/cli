@@ -22,8 +22,8 @@ func TestLoad_ParsesEmbeddedArtifact(t *testing.T) {
 	if a.Sources.Free.Repo != "nself-org/plugins" {
 		t.Errorf("Sources.Free.Repo = %q, want nself-org/plugins", a.Sources.Free.Repo)
 	}
-	if a.Sources.Pro.Repo != "nself-org/plugins-pro" {
-		t.Errorf("Sources.Pro.Repo = %q, want nself-org/plugins-pro", a.Sources.Pro.Repo)
+	if a.Sources.Pro.Repo != "nself-org/bundles" {
+		t.Errorf("Sources.Pro.Repo = %q, want nself-org/bundles", a.Sources.Pro.Repo)
 	}
 }
 

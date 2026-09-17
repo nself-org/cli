@@ -69,7 +69,7 @@ printf "Syncing README badges to %s across all nSelf repos...\n" "$TARGET_VERSIO
 # Repo list and GitHub org names (parallel arrays — Bash 3.2 compatible)
 # ---------------------------------------------------------------------------
 REPO_NAMES="cli admin nchat nclaw ntask ntv nfamily clawde plugins plugins-pro homebrew-nself"
-GITHUB_REPOS="nself-org/cli nself-org/admin nself-org/nchat nself-org/nclaw nself-org/ntask nself-org/ntv nself-org/nfamily nself-org/clawde nself-org/plugins nself-org/plugins-pro nself-org/homebrew-nself"
+GITHUB_REPOS="nself-org/cli nself-org/admin nself-org/nchat nself-org/nclaw nself-org/ntask nself-org/ntv nself-org/nfamily nself-org/clawde nself-org/plugins nself-org/bundles nself-org/homebrew-nself"
 
 # Build index function using positional parsing (Bash 3.2 safe)
 get_github_repo() {

@@ -22,7 +22,7 @@ nself mail dkim verify --domain example.com
 
 Until it is installed, `nself mail ...` prints an install hint pointing
 here. Full documentation (flags, exit codes, examples) now lives with the
-plugin: https://github.com/nself-org/plugins-pro/tree/main/paid/mail
+plugin: https://github.com/nself-org/bundles/tree/main/paid/mail
 
 `mail` requires an ɳSelf+ or ɳClaw bundle license (the bundle that ships the
 Postmark plugin); without a configured key it exits 2, exactly as it did
