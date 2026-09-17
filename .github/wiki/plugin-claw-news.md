@@ -93,7 +93,7 @@ curl -X POST http://localhost:3718/digest \
 
 ## Source
 
-Source-available (license required to run): [`plugins-pro/paid/claw-news/`](https://github.com/nself-org/plugins-pro/tree/main/paid/claw-news)
+Source-available (license required to run): [`bundles/paid/claw-news/`](https://github.com/nself-org/bundles/tree/main/paid/claw-news)
 
 Note: `plugins-pro` is a private repository. Source access is granted to ɳSelf+ subscribers and Enterprise customers.
 

@@ -125,7 +125,7 @@ curl -X POST -H 'Authorization: Bearer $TOKEN' \
 
 ## Source code
 
-Source-available (license required to run): [`plugins-pro/paid/cloudflare/`](https://github.com/nself-org/plugins-pro/tree/main/paid/cloudflare). The `plugins-pro` repository is private; source access is granted to ɳSelf+ subscribers and Enterprise customers.
+Source-available (license required to run): [`bundles/paid/cloudflare/`](https://github.com/nself-org/bundles/tree/main/paid/cloudflare). The `plugins-pro` repository is private; source access is granted to ɳSelf+ subscribers and Enterprise customers.
 
 ## See Also
 

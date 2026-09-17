@@ -29,7 +29,7 @@ GET https://ping.nself.org/api/deprecation-registry.json
 | **G8** | `GET /api/deprecation-registry.json` on ping.nself.org publishes the full registry |
 | **G9** | `nself api changelog <plugin>` shows the deprecation calendar for a plugin |
 | **G10** | Admin UI panel at `/api/versioning` shows all plugins with API status |
-| **G11** | `plugins-pro/.github/workflows/api-compat.yml` gates PRs that add endpoints without a grace period |
+| **G11** | `bundles/.github/workflows/api-compat.yml` gates PRs that add endpoints without a grace period |
 
 ## Versioning Policy
 

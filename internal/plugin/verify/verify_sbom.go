@@ -31,8 +31,8 @@ func VerifySBOM(ctx context.Context, pluginName, version string, opts SBOMCheckO
 	artifactName := fmt.Sprintf("sbom-%s.cdx.json", version)
 
 	// Download from GitHub Release assets.
-	// URL: https://github.com/nself-org/plugins-pro/releases/download/{version}/{artifactName}
-	url := fmt.Sprintf("https://github.com/nself-org/plugins-pro/releases/download/%s/%s", version, artifactName)
+	// URL: https://github.com/nself-org/bundles/releases/download/{version}/{artifactName}
+	url := fmt.Sprintf("https://github.com/nself-org/bundles/releases/download/%s/%s", version, artifactName)
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

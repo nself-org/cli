@@ -87,7 +87,7 @@ nself_plugin_request_duration_seconds{quantile="0.99"} > 2s for 10m → warning
 ```
 
 Plugin authors can override these by shipping their own rules file under
-`plugins-pro/paid/<plugin>/monitoring/alerts.yml`.
+`bundles/paid/<plugin>/monitoring/alerts.yml`.
 
 ## Verification
 

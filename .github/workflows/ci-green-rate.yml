@@ -34,7 +34,7 @@ jobs:
             "nself-org/nfamily"
             "nself-org/clawde"
             "nself-org/plugins"
-            "nself-org/plugins-pro"
+            "nself-org/bundles"
             "nself-org/web"
           )
 

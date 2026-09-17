@@ -71,7 +71,7 @@ plugins, pricing, endpoints, UI pages) also updates the corresponding documentat
 |---|---|---|
 | `cli/cmd/commands/`, `cli/internal/commands/` | `cli/.github/wiki/commands/` or F02-COMMAND-INVENTORY.md | **CRITICAL** — blocks PR |
 | `.env.example`, `cli/internal/env/` | F09-ENV-VAR-INVENTORY.md or env-vars reference | **CRITICAL** — blocks PR |
-| `plugins-pro/paid/*/plugin.json`, `plugins/free/*/plugin.json` | F03 or F04 PLUGIN-INVENTORY, bundle docs | **CRITICAL** — blocks PR |
+| `bundles/paid/*/plugin.json`, `plugins/free/*/plugin.json` | F03 or F04 PLUGIN-INVENTORY, bundle docs | **CRITICAL** — blocks PR |
 | `web/org/src/` pricing pages | F07-PRICING-TIERS.md | **CRITICAL** — blocks PR |
 | Source files `**/*.ts`, `**/*.go`, `**/*.dart` | Any `.github/wiki/` or `.github/docs/` change in same PR | **MEDIUM** — warning |
 

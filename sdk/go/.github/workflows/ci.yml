@@ -66,9 +66,12 @@ jobs:
 
       - name: Check for private import paths
         run: |
-          # Ensure no private plugins-pro import paths leak into the public SDK
-          if grep -r 'github\.com/nself-org/plugins-pro' --include="*.go" .; then
-            echo "ERROR: private plugins-pro import path found in SDK"
+          # Ensure no private licensed-plugin import paths leak into the
+          # public SDK. The repo was renamed plugins-pro -> bundles and the
+          # old module path still resolves through GitHub's redirect, so
+          # BOTH spellings have to stay blocked.
+          if grep -rE 'github\.com/nself-org/(bundles|plugins-pro)' --include="*.go" .; then
+            echo "ERROR: private licensed-plugin import path found in SDK"
             exit 1
           fi
           echo "Security check passed: no private import paths found"

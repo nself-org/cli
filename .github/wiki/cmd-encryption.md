@@ -22,7 +22,7 @@ nself encryption key-events
 
 Until it is installed, `nself encryption ...` prints an install hint pointing
 here. Full documentation (flags, exit codes, examples) now lives with the
-plugin: https://github.com/nself-org/plugins-pro/tree/main/paid/encryption
+plugin: https://github.com/nself-org/bundles/tree/main/paid/encryption
 
 BYOK encryption requires an ɳSelf+ or Enterprise license (`NSELF_BYOK=true`);
 it has no effect on self-hosted Community deployments.
