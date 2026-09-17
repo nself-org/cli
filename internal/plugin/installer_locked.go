@@ -25,14 +25,12 @@ import (
 // acquired the install lock. Dependency installs call this directly to avoid
 // attempting to re-acquire the lock (which would deadlock).
 func installLocked(ctx context.Context, cfg *config.Config, name string, pluginDir string) error {
-	// Step 1: License check for paid plugins.
-	if isPaidPlugin(name) {
-		if err := checkLicense(ctx, name); err != nil {
-			return err
-		}
-	}
-
-	// Step 2: Fetch registry and locate the plugin.
+	// Step 1: Fetch registry and locate the plugin. The license check runs
+	// AFTER resolution (Step 2b), not here: tier is not a property of the
+	// NAME, so the static paidPlugins map cannot answer it for a tier_pair
+	// slug. cron and notify are each served twice (free and pro) and gating
+	// on the name rejected unlicensed operators before ResolvePlugin could
+	// pick the free entry. This is also the order manager.go calls frozen.
 	cacheDir := defaultCacheDir()
 	reg, err := FetchRegistry(ctx, "", cacheDir)
 	if err != nil {
@@ -49,6 +47,15 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	manifest, err := ResolvePlugin(ctx, reg, name, os.Getenv("NSELF_PLUGIN_INSTALL_TIER"), nil)
 	if err != nil {
 		return err
+	}
+
+	// Step 2b: License check against the RESOLVED manifest. Reads the
+	// registry's own tier/requires_license fields, so it gates exactly what
+	// the registry publishes as paid — tighter than the drifted name map.
+	if isPaidPluginManifest(manifest) {
+		if err := checkLicense(ctx, name); err != nil {
+			return err
+		}
 	}
 
 	// Status check: lifecycle policy enforcement (S58-T01, S58-T02, S58-T03).
@@ -277,24 +284,8 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	// registration (split out — see installer_identity.go).
 	registerPluginIdentityIfEnabled(ctx, pluginDir, name)
 
-	// S71-T02: Emit structured audit log for the granted permission set.
-	// One line per install, consumable by Loki. Never logs secret values —
-	// only the permission strings declared in the manifest.
-	slog.Info("plugin.install.permissions",
-		"plugin", name,
-		"version", manifest.Version,
-		"permissions", manifest.Permissions.Strings(),
-	)
-
-	// S71-T02: Warn via doctor when dangerous permissions are present.
-	logDangerousPermissions(name, manifest.Permissions.Strings())
-
-	fmt.Fprintf(os.Stderr, "\nℹ Run 'nself build' to include %s in your stack.\n", name)
-
-	// S68-T02: Fire-and-forget install-event to plugins.nself.org registry.
-	// Silent, 1s timeout, never blocks the install. Sends only an opaque
-	// SHA-256 hash of the machine fingerprint — no PII in the payload.
-	go postInstallEvent(name)
+	// Step 8: post-install reporting (split out — see installer_finish.go).
+	finishInstall(name, manifest)
 
 	return nil
 }
