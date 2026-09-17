@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -212,19 +213,41 @@ func TestFetchRegistry_MockServer(t *testing.T) {
 // --- Install license check test ---
 
 // TestInstall_PaidPluginRequiresLicense verifies that Install() returns a
-// license error when a paid plugin is requested without a valid license key set.
-// This exercises the IsPaidPlugin + checkLicense path without requiring Docker.
+// license error when a paid plugin is requested without a valid license key.
+//
+// The registry is served from a local httptest server rather than the live
+// one. This test used to reach the network, and only appeared to pass: the
+// license gate ran off the paidPlugins NAME map before any fetch, so the
+// registry response never mattered. Once the gate moved below tier
+// resolution the test started failing on the windows-2022 runner, where the
+// primary registry was unreachable and the GitHub raw fallback — the FREE
+// registry — has no "ai" entry, so the error became "plugin not found in
+// registry". Pinning the registry makes the test hermetic and makes it
+// exercise the path it claims to: fetch -> resolve -> license gate.
 func TestInstall_PaidPluginRequiresLicense(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"plugins":[
+			{"name":"ai","version":"1.1.0","tier":"pro","requires_license":true}
+		]}`)
+	}))
+	defer srv.Close()
+
 	// Ensure no license key is set.
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
 	t.Setenv("NSELF_LICENSE_SKIP_VERIFY", "")
-	// Set HOME to temp dir so no ~/.nself/license/key file is found.
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
+	// Point the home dir at a temp dir so neither ~/.nself/license/key nor a
+	// populated registry cache leaks in. USERPROFILE is the Windows spelling
+	// os.UserHomeDir reads, and omitting it is why this passed locally on
+	// macOS while failing in Windows CI.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	pluginDir := t.TempDir()
 	cfg := &config.Config{}
 
-	// "ai" is a paid plugin per paidPlugins map.
 	err := Install(context.Background(), cfg, "ai", pluginDir)
 	if err == nil {
 		t.Fatal("expected error when installing paid plugin without license, got nil")

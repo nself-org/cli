@@ -150,8 +150,13 @@ func defaultLicenseChecker(ctx context.Context, plugins []string) error {
 			// don't pre-error here so we get the proper "not found" message.
 			continue
 		}
-		// Free plugins don't need a license.
-		if !m.RequiresLicense && !plugin.IsPaidPlugin(name) {
+		// Free plugins don't need a license. The resolved manifest's own
+		// requires_license field is authoritative; the paidPlugins name map
+		// that used to be AND-ed in here is a pre-registry fallback that has
+		// drifted, and for a tier_pair slug (cron, notify) it reports "paid"
+		// even when the entry actually being installed is the free one —
+		// which made a wholly free bundle demand a license key.
+		if !m.RequiresLicense {
 			continue
 		}
 		// Paid plugin: ensure at least one license key is set. We don't
