@@ -556,24 +556,32 @@ run_step 13 "nClaw chat readiness check" \
   bash -c '
     cd '"${PROJECT_DIR}"' || exit 1
 
-    # base_url used to come from `nself env get NSELF_API_URL`. There is no
-    # `env get` subcommand: cobra fell through to the parent, printed the help
-    # text and exited 0, so base_url became that multi-line prose and the
-    # `|| echo` fallback never fired. Every probe then curled a garbage URL.
-    # The stack under test publishes on loopback, so address it directly.
-    base_url="http://localhost:8080"
+    # The old probe built its URL from `nself env get NSELF_API_URL`. There is
+    # no `env get` subcommand: cobra fell through to the parent, printed the
+    # help text and exited 0, so base_url became that multi-line prose and the
+    # `|| echo` fallback never fired. Every probe curled a garbage URL.
+    #
+    # It was also aimed at the wrong place. `nself plugin start` runs a plugin
+    # as a LOCAL BACKGROUND PROCESS (see internal/plugin/runtime_start.go —
+    # PID under ~/.nself/runtime/pids), not a container behind hasura or
+    # nginx. Each plugin listens on its own registered port and serves
+    # /health directly. Ports are canonical in SPORT F10-PORT-REGISTRY:
+    #   3709 = ai, 3710 = plugin-claw
+    CLAW_URL="http://localhost:3710/health"
+    AI_URL="http://localhost:3709/health"
 
     # Steps 9 and 10 INSTALL the plugins; install does not start them, and
     # step 5 ran `nself start` before they existed. Probing here without
     # starting them tests a service that was never running.
     for p in ai claw; do
-      nself plugin start "${p}" >/dev/null 2>&1 || true
+      nself plugin start "${p}" 2>&1 | sed "s/^/  plugin start ${p}: /" || true
     done
 
     probe() {
+      url=$2
       for i in $(seq 1 15); do
         c=$(curl -sS -o "/tmp/golden-path-$1-health.json" -w "%{http_code}" \
-              "${base_url}/$1/health" 2>/dev/null || echo 000)
+              "${url}" 2>/dev/null || echo 000)
         [ "${c}" = "200" ] && { echo "${c}"; return 0; }
         sleep 2
       done
@@ -581,9 +589,9 @@ run_step 13 "nClaw chat readiness check" \
       return 1
     }
 
-    code=$(probe claw) && { echo "claw health: 200 OK"; cat /tmp/golden-path-claw-health.json; exit 0; }
+    code=$(probe claw "${CLAW_URL}") && { echo "claw health: 200 OK"; cat /tmp/golden-path-claw-health.json; exit 0; }
     echo "claw health returned ${code} — checking the ai plugin instead"
-    code2=$(probe ai) && { echo "ai plugin health: 200 OK (claw endpoint not exposed on this build)"; exit 0; }
+    code2=$(probe ai "${AI_URL}") && { echo "ai plugin health: 200 OK (claw endpoint not exposed on this build)"; exit 0; }
 
     echo "Both claw and ai health checks failed (${code} / ${code2})" >&2
     echo "--- plugin state ---" >&2
