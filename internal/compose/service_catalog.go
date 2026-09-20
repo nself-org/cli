@@ -18,6 +18,19 @@ import "sort"
 // TestCatalogCoversGeneratorServices in this package. Image defaults are read
 // from DefaultImageVersions so there is exactly one place to bump a version.
 
+// AdminServiceName is the compose SERVICE name for the nSelf Admin UI.
+//
+// It is deliberately NOT "admin". "admin" is the image pin key (ImageKey
+// below) and the container suffix (`<project>_admin`), so all three names for
+// the same thing differ by one character. Passing "admin" to
+// `docker compose up` fails with "no such service", which is how the E2E
+// golden path broke at step 11: the failure surfaced only as `exit status 1`
+// because Run discards subprocess stderr in non-TTY contexts.
+//
+// Use this constant wherever a compose service name is needed, so the string
+// exists once rather than at each call site.
+const AdminServiceName = "nself-admin"
+
 // ServiceTier says whether a service is part of every stack or opt-in.
 type ServiceTier string
 
@@ -80,7 +93,7 @@ var serviceCatalog = []CatalogEntry{
 	},
 	{
 		// The compose service is "nself-admin"; the image pin key is "admin".
-		Name:       "nself-admin",
+		Name:       AdminServiceName,
 		Tier:       TierOptional,
 		Purpose:    "nSelf Admin web UI (localhost only; never deployed)",
 		EnableEnv:  "NSELF_ADMIN_ENABLED",

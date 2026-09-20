@@ -134,7 +134,7 @@ func (g *Generator) buildDockerCompose() (*DockerCompose, error) {
 		dc.AddService("mailpit", g.buildMailpitService())
 	}
 	if p.AdminUI && g.cfg.Admin.Enabled {
-		dc.AddService("nself-admin", g.buildAdminService())
+		dc.AddService(AdminServiceName, g.buildAdminService())
 	}
 	if p.Functions && g.cfg.Functions.Enabled {
 		dc.AddService("functions", g.buildFunctionsService())

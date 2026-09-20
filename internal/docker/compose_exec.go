@@ -111,18 +111,54 @@ func (c *Compose) Run(ctx context.Context, workdir string, args ...string) error
 		errSink = io.Discard
 	}
 
+	// Always retain a bounded tail of stderr, even when the sink is Discard.
+	// Without this a non-TTY failure (all of CI) reports only "exit status 1"
+	// and throws away the line that says what actually went wrong — that is
+	// how a "no such service" error stayed undiagnosable through a full
+	// release cycle. The tail is capped so a chatty failure cannot grow
+	// unboundedly in memory.
+	errTail := &tailBuffer{limit: stderrTailLimit}
+
 	done := make(chan struct{}, 2)
-	go func() { io.Copy(outSink, stdoutPipe); done <- struct{}{} }() //nolint:errcheck
-	go func() { io.Copy(errSink, stderrPipe); done <- struct{}{} }() //nolint:errcheck
+	go func() { io.Copy(outSink, stdoutPipe); done <- struct{}{} }()                          //nolint:errcheck
+	go func() { io.Copy(io.MultiWriter(errSink, errTail), stderrPipe); done <- struct{}{} }() //nolint:errcheck
 
 	waitErr := cmd.Wait()
 	<-done
 	<-done
 
 	if waitErr != nil {
+		if detail := errTail.String(); detail != "" {
+			return fmt.Errorf("docker %s: %w: %s", strings.Join(args, " "), waitErr, detail)
+		}
 		return fmt.Errorf("docker %s: %w", strings.Join(args, " "), waitErr)
 	}
 	return nil
+}
+
+// stderrTailLimit caps how much stderr is retained for error messages.
+const stderrTailLimit = 2048
+
+// tailBuffer keeps only the LAST limit bytes written to it. Docker puts the
+// actionable line at the end of a failure, so the tail is the useful part.
+type tailBuffer struct {
+	buf   []byte
+	limit int
+}
+
+func (t *tailBuffer) Write(p []byte) (int, error) {
+	n := len(p)
+	t.buf = append(t.buf, p...)
+	if len(t.buf) > t.limit {
+		t.buf = t.buf[len(t.buf)-t.limit:]
+	}
+	return n, nil
+}
+
+// String returns the retained stderr as a single whitespace-collapsed line so
+// it reads cleanly when wrapped into an error.
+func (t *tailBuffer) String() string {
+	return strings.Join(strings.Fields(string(t.buf)), " ")
 }
 
 // parsePorts splits a Docker Compose ports string (e.g. "0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp")
