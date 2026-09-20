@@ -39,6 +39,11 @@ Cloud has no API for that; the only path is snapshot -> new server -> restore.
 A Hetzner Cloud API token is required: set HETZNER_NSELF_TOKEN (or a
 project-scoped equivalent via --token-env, or HCLOUD_TOKEN) in the
 environment, or pass --token explicitly. The token is never logged.`,
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself server` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

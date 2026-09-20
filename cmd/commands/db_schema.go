@@ -18,6 +18,11 @@ Subcommands:
   audit     Report soft-delete status for all tables
   apply     Add soft-delete support to a specific table
   generate  Print migration SQL to stdout without executing`,
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself db soft-delete` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
@@ -53,6 +58,11 @@ var dbFKIndexCmd = &cobra.Command{
 Subcommands:
   audit   Report FK columns with and without indexes
   apply   Create missing FK indexes (use --dry-run to preview)`,
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself db fk-index` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

@@ -37,6 +37,11 @@ Subcommands:
   remove   Remove a server from an environment
   probe    Resolve runtime capability for one or more targets
   migrate  Migrate legacy NSELF_DEPLOY_HOST_* env vars to control-plane.yaml`,
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself env target` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

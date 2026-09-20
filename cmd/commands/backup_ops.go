@@ -20,6 +20,11 @@ Subcommands:
   config     View/set backup configuration
   status     Show backup subsystem status
   init-key   Generate age encryption keypair`,
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself backup` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

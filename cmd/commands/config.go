@@ -19,6 +19,11 @@ Subcommands:
   config validate  Validate configuration against all registered rules
   config export    Export config to a file
   config import    Import config from a file`,
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself config` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

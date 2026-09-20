@@ -72,6 +72,11 @@ var dbSeedGraphCmd = &cobra.Command{
 var dbHasuraCmd = &cobra.Command{
 	Use:   "hasura",
 	Short: "Hasura metadata operations",
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself db hasura` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
@@ -86,6 +91,11 @@ var dbHasuraConsoleCmd = &cobra.Command{
 var dbHasuraMetadataCmd = &cobra.Command{
 	Use:   "metadata",
 	Short: "Manage Hasura metadata",
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself db hasura metadata` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

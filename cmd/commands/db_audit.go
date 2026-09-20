@@ -49,6 +49,12 @@ Subcommands:
 Flags:
   --metadata  Detect Hasura METADATA drift instead (permissions, relationships,
               table tracking) against a live instance — see 'nself db drift --metadata'`,
+	// Without NoArgs an unknown subcommand falls through to this RunE, prints
+	// the help text and exits 0 — a silent success a caller can capture as
+	// real output (see env.go: the golden path curled the help prose as a base
+	// URL). Bare `nself db drift` still prints help, and the --metadata branch
+	// takes no positional args (runDBDriftMetadata ignores them).
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		metadata, _ := cmd.Flags().GetBool("metadata")
 		if metadata {

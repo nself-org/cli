@@ -24,6 +24,11 @@ Subcommands:
   shell     Open psql interactive shell
   reset     Drop and recreate database (DESTRUCTIVE)
   hasura    Hasura metadata operations`,
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself db` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
@@ -34,6 +39,11 @@ Subcommands:
 var dbMigrateCmd = &cobra.Command{
 	Use:   "migrate",
 	Short: "Manage database migrations",
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself db migrate` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

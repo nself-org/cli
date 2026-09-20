@@ -22,6 +22,11 @@ Subcommands:
   apply        Enable RLS + default policies on tables missing them
   apply-table  Enable RLS + default policies on a specific schema.table
   rollback     Print rollback SQL that removes policies and disables RLS`,
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself db rls` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

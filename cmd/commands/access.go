@@ -32,6 +32,11 @@ Every grant and revoke:
 Revoke refuses to remove the last remaining key on a host unless --force is
 given, since that would lock out all SSH access. Pass --dry-run on grant or
 revoke to see the resulting authorized_keys diff without changing anything.`,
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself access` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

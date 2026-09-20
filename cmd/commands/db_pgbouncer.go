@@ -20,6 +20,11 @@ Subcommands:
   status         Show PgBouncer runtime status
   generate       Write config files to .nself/pgbouncer/
   connection-url Print the PgBouncer connection URL`,
+	// Without NoArgs an unknown subcommand falls through to this RunE,
+	// prints the help text and exits 0 — a silent success a caller can
+	// capture as real output (see env.go: the golden path curled the help
+	// prose as a base URL). Bare `nself db pgbouncer` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
