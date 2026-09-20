@@ -554,27 +554,44 @@ run_step 12 "curl localhost:3021/api/health" \
 # Uses a mock prompt to avoid real AI costs in CI.
 run_step 13 "nClaw chat readiness check" \
   bash -c '
-    # Probe the claw health / readiness endpoint directly
-    # (bypasses billing; confirms plugin is wired up)
-    base_url=$(cd '"${PROJECT_DIR}"' && nself env get NSELF_API_URL 2>/dev/null || echo "http://localhost:8080")
-    code=$(curl -sS -o /tmp/golden-path-claw-health.json \
-      -w "%{http_code}" \
-      "${base_url}/claw/health" 2>/dev/null || echo 000)
-    if [ "${code}" = "200" ]; then
-      echo "claw health: 200 OK"
-      cat /tmp/golden-path-claw-health.json
-      exit 0
-    fi
-    echo "claw health returned ${code} — checking alternate endpoint"
-    # Fallback: verify the AI plugin is responding
-    code2=$(curl -sS -o /tmp/golden-path-ai-health.json \
-      -w "%{http_code}" \
-      "${base_url}/ai/health" 2>/dev/null || echo 000)
-    if [ "${code2}" = "200" ]; then
-      echo "ai plugin health: 200 OK (claw endpoint not yet exposed on this build)"
-      exit 0
-    fi
+    cd '"${PROJECT_DIR}"' || exit 1
+
+    # base_url used to come from `nself env get NSELF_API_URL`. There is no
+    # `env get` subcommand: cobra fell through to the parent, printed the help
+    # text and exited 0, so base_url became that multi-line prose and the
+    # `|| echo` fallback never fired. Every probe then curled a garbage URL.
+    # The stack under test publishes on loopback, so address it directly.
+    base_url="http://localhost:8080"
+
+    # Steps 9 and 10 INSTALL the plugins; install does not start them, and
+    # step 5 ran `nself start` before they existed. Probing here without
+    # starting them tests a service that was never running.
+    for p in ai claw; do
+      nself plugin start "${p}" >/dev/null 2>&1 || true
+    done
+
+    probe() {
+      for i in $(seq 1 15); do
+        c=$(curl -sS -o "/tmp/golden-path-$1-health.json" -w "%{http_code}" \
+              "${base_url}/$1/health" 2>/dev/null || echo 000)
+        [ "${c}" = "200" ] && { echo "${c}"; return 0; }
+        sleep 2
+      done
+      echo "${c}"
+      return 1
+    }
+
+    code=$(probe claw) && { echo "claw health: 200 OK"; cat /tmp/golden-path-claw-health.json; exit 0; }
+    echo "claw health returned ${code} — checking the ai plugin instead"
+    code2=$(probe ai) && { echo "ai plugin health: 200 OK (claw endpoint not exposed on this build)"; exit 0; }
+
     echo "Both claw and ai health checks failed (${code} / ${code2})" >&2
+    echo "--- plugin state ---" >&2
+    nself plugin list 2>&1 | head -20 >&2 || true
+    echo "--- containers ---" >&2
+    docker ps -a --format "{{.Names}} {{.Status}} {{.Ports}}" >&2 || true
+    echo "--- listening ports ---" >&2
+    (ss -ltnp 2>/dev/null || netstat -ltn 2>/dev/null) | head -20 >&2 || true
     exit 1
   '
 
