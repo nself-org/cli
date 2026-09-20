@@ -1,0 +1,44 @@
+# NSELF-FIRST EXCEPTION: plugin-fragment — hand-authored plugin service definition, merged by `nself build`. Not side-channel.
+# nself-push plugin Docker Compose service definition
+# Note: The nself CLI generates plugin services automatically from plugin.json
+# and the Dockerfile via plugin-services.sh. This file is a reference for the
+# expected service configuration and can be used for standalone testing.
+
+services:
+  plugin-push:
+    build:
+      context: ${NSELF_PLUGIN_DIR}/../..
+      dockerfile: free/push/Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME}_plugin_push
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3053:3053"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - PORT=3053
+      # APNs credentials (iOS push notifications)
+      - PUSH_APNS_TEAM_ID=${PUSH_APNS_TEAM_ID:-}
+      - PUSH_APNS_KEY_ID=${PUSH_APNS_KEY_ID:-}
+      - PUSH_APNS_KEY_PEM=${PUSH_APNS_KEY_PEM:-}
+      - PUSH_APNS_BUNDLE_ID=${PUSH_APNS_BUNDLE_ID:-}
+      - PUSH_APNS_SANDBOX=${PUSH_APNS_SANDBOX:-0}
+      # FCM credentials (Android push notifications)
+      - PUSH_FCM_PROJECT_ID=${PUSH_FCM_PROJECT_ID:-}
+      - PUSH_FCM_SERVICE_ACCOUNT_JSON=${PUSH_FCM_SERVICE_ACCOUNT_JSON:-}
+      # Retry policy
+      - PUSH_RETRY_MAX_ATTEMPTS=${PUSH_RETRY_MAX_ATTEMPTS:-3}
+      - PUSH_RETRY_BACKOFF_BASE_MS=${PUSH_RETRY_BACKOFF_BASE_MS:-500}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3053/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - ${DOCKER_NETWORK}

@@ -1,0 +1,55 @@
+# NSELF-FIRST EXCEPTION: plugin-fragment — hand-authored plugin service definition, merged by `nself build`. Not side-channel.
+# nself-cron plugin Docker Compose service definition
+# Note: The nself CLI generates plugin services automatically from plugin.json
+# and the Dockerfile via plugin-services.sh. This file serves as a reference
+# for the expected service configuration and can be used for standalone testing.
+
+services:
+  plugin-cron:
+    build:
+      context: ${NSELF_PLUGIN_DIR}/../..
+      dockerfile: free/cron/Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME}_plugin_cron
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3051:3051"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - PORT=3051
+      - CRON_TIMEOUT_SECS=${CRON_TIMEOUT_SECS:-30}
+      - CRON_RETENTION_DAYS=${CRON_RETENTION_DAYS:-90}
+      # Env-driven schedule bootstrap: declare jobs as infrastructure-as-code.
+      # These are upserted into Postgres on startup and survive nself rebuild.
+      # Format: CRON_JOB_<N>_SCHEDULE (cron expr) + CRON_JOB_<N>_COMMAND (callback URL).
+      # Optional: CRON_JOB_<N>_NAME, CRON_JOB_<N>_PAYLOAD (JSON body).
+      - CRON_JOB_1_SCHEDULE=${CRON_JOB_1_SCHEDULE:-}
+      - CRON_JOB_1_COMMAND=${CRON_JOB_1_COMMAND:-}
+      - CRON_JOB_1_NAME=${CRON_JOB_1_NAME:-}
+      - CRON_JOB_1_PAYLOAD=${CRON_JOB_1_PAYLOAD:-}
+      - CRON_JOB_2_SCHEDULE=${CRON_JOB_2_SCHEDULE:-}
+      - CRON_JOB_2_COMMAND=${CRON_JOB_2_COMMAND:-}
+      - CRON_JOB_2_NAME=${CRON_JOB_2_NAME:-}
+      - CRON_JOB_2_PAYLOAD=${CRON_JOB_2_PAYLOAD:-}
+      - CRON_JOB_3_SCHEDULE=${CRON_JOB_3_SCHEDULE:-}
+      - CRON_JOB_3_COMMAND=${CRON_JOB_3_COMMAND:-}
+      - CRON_JOB_3_NAME=${CRON_JOB_3_NAME:-}
+      - CRON_JOB_3_PAYLOAD=${CRON_JOB_3_PAYLOAD:-}
+      - CRON_JOB_4_SCHEDULE=${CRON_JOB_4_SCHEDULE:-}
+      - CRON_JOB_4_COMMAND=${CRON_JOB_4_COMMAND:-}
+      - CRON_JOB_4_NAME=${CRON_JOB_4_NAME:-}
+      - CRON_JOB_4_PAYLOAD=${CRON_JOB_4_PAYLOAD:-}
+      - CRON_JOB_5_SCHEDULE=${CRON_JOB_5_SCHEDULE:-}
+      - CRON_JOB_5_COMMAND=${CRON_JOB_5_COMMAND:-}
+      - CRON_JOB_5_NAME=${CRON_JOB_5_NAME:-}
+      - CRON_JOB_5_PAYLOAD=${CRON_JOB_5_PAYLOAD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3051/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ${DOCKER_NETWORK}
