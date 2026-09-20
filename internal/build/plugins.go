@@ -8,7 +8,8 @@ package build
 // Constraints: the compose-manifest read/write and per-plugin env var
 // computation moved to plugins_manifest.go, and the network-alias rewrite
 // moved to plugins_network_alias.go — both split out (CLI-R12) as pure moves
-// from this file.
+// from this file. The image->build rewrite and obsolete version: strip live
+// in plugins_image_to_build.go (see its header for rationale).
 
 import (
 	"bytes"
@@ -84,6 +85,11 @@ func DiscoverPluginComposeFiles(workdir, pluginDir string) ([]string, error) {
 		if content, readErr := os.ReadFile(absPath); readErr == nil {
 			normalized := normalizeComposeDockerfile(content, pluginDir, entry.Name())
 			normalized = normalizeComposeNetworkAliases(normalized, entry.Name())
+			// Rebuild nself/* images from source instead of pulling
+			// never-published tags, and drop the obsolete version: key —
+			// see plugins_image_to_build.go for the full rationale.
+			normalized = normalizeComposeImageToBuild(normalized, pluginDir, entry.Name())
+			normalized = normalizeComposeDropObsoleteVersion(normalized)
 			if !bytes.Equal(normalized, content) {
 				// Write the corrected file back so the manifest references a valid compose.
 				_ = os.WriteFile(absPath, normalized, 0644)
