@@ -140,8 +140,23 @@ type PluginSystemConfig struct {
 
 // CustomService represents a user-defined custom service (CS_1..CS_10).
 type CustomService struct {
-	Index       int    // 1-10
-	Name        string // parsed from CS_N
+	Index int    // 1-10
+	Name  string // parsed from CS_N, then overwritten with SanitizeName(Name) for
+	// Docker service/container naming (hyphens only, no underscores).
+	// RawName preserves the pre-sanitization value.
+	//
+	// Purpose: a user's CS_N name (e.g. "ping_api") may contain underscores,
+	// which are valid in a directory name but not in a Docker compose
+	// service/container name. parseCustomServices sanitizes Name for that
+	// reason, but internal/compose.defaultCustomServiceBuildContext needs
+	// the original spelling to find the on-disk `services/<name>` directory
+	// the user actually created — using the sanitized Name there produced a
+	// build context ("./services/ping-api") that never matched an existing
+	// directory ("./services/ping_api"), so the image build failed for any
+	// name containing an underscore (see the F13/G-013-adjacent bug this
+	// field fixes). Empty when a CustomService is constructed by hand
+	// (tests, scaffolding) rather than through parseCustomServices.
+	RawName     string
 	Template    string // express-ts, fastapi, etc.
 	Port        int
 	Route       string // empty = internal only

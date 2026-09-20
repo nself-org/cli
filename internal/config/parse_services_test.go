@@ -133,6 +133,57 @@ func TestCustomServicesBuildPath_TraversalRejected(t *testing.T) {
 	}
 }
 
+// TestCustomServicesRawName_Underscore verifies that parseCustomServices
+// preserves the original underscore-bearing name in RawName while Name is
+// sanitized to the hyphenated Docker-safe form. This is the fix for the bug
+// where internal/compose derived the default build context from the
+// sanitized Name and could never find a "services/ping_api" directory on
+// disk (see defaultCustomServiceBuildContext in internal/compose).
+func TestCustomServicesRawName_Underscore(t *testing.T) {
+	t.Setenv("CS_1", "ping_api:go")
+	for i := 2; i <= 10; i++ {
+		t.Setenv("CS_"+itoa(i), "")
+	}
+
+	services, err := parseCustomServices()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(services) == 0 {
+		t.Fatal("expected at least one custom service, got none")
+	}
+	if got := services[0].RawName; got != "ping_api" {
+		t.Errorf("RawName = %q, want %q", got, "ping_api")
+	}
+	if got := services[0].Name; got != "ping-api" {
+		t.Errorf("Name = %q, want %q", got, "ping-api")
+	}
+}
+
+// TestCustomServicesRawName_NoUnderscore verifies that when the configured
+// name has no characters SanitizeName would change, RawName and Name end up
+// identical.
+func TestCustomServicesRawName_NoUnderscore(t *testing.T) {
+	t.Setenv("CS_1", "pingapi:go")
+	for i := 2; i <= 10; i++ {
+		t.Setenv("CS_"+itoa(i), "")
+	}
+
+	services, err := parseCustomServices()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(services) == 0 {
+		t.Fatal("expected at least one custom service, got none")
+	}
+	if services[0].RawName != services[0].Name {
+		t.Errorf("RawName = %q, Name = %q, want equal", services[0].RawName, services[0].Name)
+	}
+	if services[0].Name != "pingapi" {
+		t.Errorf("Name = %q, want %q", services[0].Name, "pingapi")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // T07 — Frontend apps sanitization
 // ---------------------------------------------------------------------------

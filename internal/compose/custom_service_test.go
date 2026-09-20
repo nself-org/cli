@@ -2,6 +2,8 @@ package compose
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -313,6 +315,128 @@ func TestBuildCustomService_BuildContext(t *testing.T) {
 	}
 	if svc.Build.Dockerfile != "Dockerfile" {
 		t.Errorf("Build.Dockerfile = %q, want %q", svc.Build.Dockerfile, "Dockerfile")
+	}
+}
+
+// TestBuildCustomService_BuildContext_RawNameDirWins verifies the DEFECT #13
+// fix: when a CS_N name is sanitized (e.g. "ping_api" -> "ping-api") and a
+// "services/ping_api" directory exists on disk (the raw, originally
+// configured name — what CS_N-name scaffolding actually creates), the
+// default build context points at it instead of the never-existing
+// hyphenated "services/ping-api" path.
+func TestBuildCustomService_BuildContext_RawNameDirWins(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "services", "ping_api"), 0755); err != nil {
+		t.Fatalf("creating fixture raw-name service dir: %v", err)
+	}
+
+	cfg := minimalConfigWithCS()
+	g := NewGenerator(cfg).WithWorkDir(dir)
+	cs := testCS()
+	cs.RawName = "ping_api"
+	cs.Name = "ping-api" // as config.parseCustomServices would sanitize it
+
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
+	if svc.Build == nil {
+		t.Fatal("buildCustomService: Build config is nil")
+	}
+	wantCtx := "./services/ping_api"
+	if svc.Build.Context != wantCtx {
+		t.Errorf("Build.Context = %q, want %q", svc.Build.Context, wantCtx)
+	}
+}
+
+// TestBuildCustomService_BuildContext_SanitizedNameDirFallback verifies that
+// when only the sanitized-name directory exists on disk (no raw-name
+// directory present), the default build context falls back to it rather
+// than pointing at a directory that doesn't exist.
+func TestBuildCustomService_BuildContext_SanitizedNameDirFallback(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "services", "ping-api"), 0755); err != nil {
+		t.Fatalf("creating fixture sanitized-name service dir: %v", err)
+	}
+
+	cfg := minimalConfigWithCS()
+	g := NewGenerator(cfg).WithWorkDir(dir)
+	cs := testCS()
+	cs.RawName = "ping_api"
+	cs.Name = "ping-api"
+
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
+	wantCtx := "./services/ping-api"
+	if svc.Build.Context != wantCtx {
+		t.Errorf("Build.Context = %q, want %q", svc.Build.Context, wantCtx)
+	}
+}
+
+// TestBuildCustomService_BuildContext_NeitherDirExistsUsesRawName verifies
+// that when neither the raw- nor sanitized-name directory exists on disk
+// (e.g. running `nself build` before creating the service directory), the
+// default build context still names the raw (originally configured) path,
+// so the resulting "context not found" build error names the directory the
+// user actually typed rather than a hyphenated variant they never
+// configured.
+func TestBuildCustomService_BuildContext_NeitherDirExistsUsesRawName(t *testing.T) {
+	cfg := minimalConfigWithCS()
+	g := NewGenerator(cfg).WithWorkDir(t.TempDir())
+	cs := testCS()
+	cs.RawName = "ping_api"
+	cs.Name = "ping-api"
+
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
+	wantCtx := "./services/ping_api"
+	if svc.Build.Context != wantCtx {
+		t.Errorf("Build.Context = %q, want %q", svc.Build.Context, wantCtx)
+	}
+}
+
+// TestBuildCustomService_BuildContext_CSPathOverrideUnaffected verifies that
+// CS_N_PATH (cs.BuildPath) still takes precedence over the default-context
+// derivation entirely — the RawName/Name disk probe never runs when an
+// explicit path is set.
+func TestBuildCustomService_BuildContext_CSPathOverrideUnaffected(t *testing.T) {
+	cfg := minimalConfigWithCS()
+	g := NewGenerator(cfg).WithWorkDir(t.TempDir())
+	cs := testCS()
+	cs.RawName = "ping_api"
+	cs.Name = "ping-api"
+	cs.BuildPath = "./backend/services/ping_api"
+
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
+	if svc.Build.Context != cs.BuildPath {
+		t.Errorf("Build.Context = %q, want %q", svc.Build.Context, cs.BuildPath)
+	}
+}
+
+// TestBuildCustomService_BuildContext_RawNameEmptyFallsBackToName verifies
+// backward compatibility: a CustomService with no RawName set (as happens
+// for any hand-built value that skips config.parseCustomServices, e.g. an
+// older caller or a test fixture) still gets a sensible default context
+// derived from Name, with no disk probe and no panic.
+func TestBuildCustomService_BuildContext_RawNameEmptyFallsBackToName(t *testing.T) {
+	cfg := minimalConfigWithCS()
+	g := NewGenerator(cfg) // no WithWorkDir — workDir stays ""
+	cs := testCS()         // RawName left as the zero value ""
+
+	svc, err := g.buildCustomService(cs)
+	if err != nil {
+		t.Fatalf("buildCustomService returned error: %v", err)
+	}
+	wantCtx := "./services/" + cs.Name
+	if svc.Build.Context != wantCtx {
+		t.Errorf("Build.Context = %q, want %q", svc.Build.Context, wantCtx)
 	}
 }
 

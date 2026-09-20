@@ -39,6 +39,12 @@ func parseCustomServices() ([]CustomService, error) {
 		if err := validateCustomServiceName(cs.Name); err != nil {
 			return nil, fmt.Errorf("CS_%d: %w", i, err)
 		}
+		// Preserve the as-configured name before sanitization so callers that
+		// need to resolve an on-disk path (e.g. the compose generator's
+		// default `./services/<name>` build context) can find a directory
+		// named "ping_api" even though the sanitized Docker service name is
+		// "ping-api". See CustomService.RawName for the full rationale.
+		cs.RawName = cs.Name
 		sanitized, err := SanitizeName(cs.Name)
 		if err != nil {
 			return nil, fmt.Errorf("CS_%d has invalid name %q: %w", i, cs.Name, err)
