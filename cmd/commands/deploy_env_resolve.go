@@ -85,6 +85,11 @@ func readEnvFileOverrides(path string) ([]envKV, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. Every .env file in the chain is optional by contract (see
+			// config.Load), so "absent" is a supported state and carries no
+			// overrides. ENOENT only — an .env.secrets that exists and cannot
+			// be opened must error, not deploy a snapshot silently missing the
+			// secrets it was supposed to carry.
 			return nil, nil
 		}
 		return nil, err

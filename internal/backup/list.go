@@ -40,6 +40,11 @@ func List(cfg *config.Config, opts ListOptions) ([]BackupEntry, error) {
 	entries, err := os.ReadDir(backupDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. No backup directory means no backups — `nself backup list`
+			// on a project that has never run one should print an empty list,
+			// not an error. ENOENT only; a backup dir that exists and cannot
+			// be read errors, because "you have no backups" is a dangerous
+			// thing to tell someone about to overwrite something.
 			return []BackupEntry{}, nil
 		}
 		return nil, fmt.Errorf("read backup directory %s: %w", backupDir, err)

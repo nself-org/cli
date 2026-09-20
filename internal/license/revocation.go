@@ -119,6 +119,15 @@ func ReadRevocationCache() (*RevocationCache, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. A cold start has no revocation cache; that is not a
+			// failure and callers already treat (nil, nil) as "no list yet".
+			// Note the asymmetry with the licence cache above: a missing
+			// revocation list fails OPEN (nothing is known to be revoked), and
+			// that is the documented 7-day-window behaviour, not an accident —
+			// see IsRecordRevoked in revocation_refresh_check.go. It is also
+			// why only ENOENT may take this branch: a revocation list we
+			// cannot read must not quietly become a revocation list that is
+			// empty.
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading revocation cache: %w", err)

@@ -158,6 +158,11 @@ func ListBackups(projectDir string) ([]BackupInfo, error) {
 	entries, err := os.ReadDir(backupsBase)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. Nothing has been backed up here yet, so there is nothing
+			// to list or roll back to. ENOENT only: this list is what a
+			// rollback picks from, so an unreadable backup dir must say so
+			// rather than report "no backups available" to someone trying to
+			// undo a migration.
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading backup directory: %w", err)

@@ -83,7 +83,22 @@ func reclaimRunnerWork(root string, dryRun bool) (bytes int64, reclaimed []Recla
 	workDir := filepath.Join(root, "_work")
 	entries, err := os.ReadDir(workDir)
 	if err != nil {
-		return 0, nil, nil // no _work dir yet (fresh install) — nothing to do
+		if os.IsNotExist(err) {
+			// No _work dir yet (fresh install). "Absent" and "already clean"
+			// are the same answer to every caller: there is nothing to reclaim
+			// and nothing was deliberately left behind.
+			return 0, nil, nil
+		}
+		// Any other read failure (ENOTDIR, EACCES, EIO) is NOT "nothing to do".
+		// Returning a bare zero made a runner root we could not even open look
+		// identical to one that was already clean, so a cleanup pass that
+		// reclaimed nothing because it was locked out logged the same
+		// "0 bytes, nothing skipped" as a healthy no-op. Recording it as a skip
+		// is what SkipEntry exists for — see its doc comment in disk_shared.go.
+		return 0, nil, []SkipEntry{{
+			Path:   workDir,
+			Reason: fmt.Sprintf("could not read runner work directory: %v", err),
+		}}
 	}
 
 	for _, e := range entries {

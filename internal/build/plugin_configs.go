@@ -24,6 +24,11 @@ func RenderPluginConfigs(workdir, pluginDir string, cfg *config.Config) (int, er
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. No plugin dir means no plugin configs to render, so zero
+			// files rendered is the accurate count rather than a placeholder.
+			// ENOENT only — an unreadable plugin dir errors, because silently
+			// rendering nothing would produce a build that is missing config
+			// files with no indication anything was skipped.
 			return 0, nil
 		}
 		return 0, fmt.Errorf("reading plugin directory %s: %w", pluginDir, err)

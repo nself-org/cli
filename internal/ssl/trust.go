@@ -222,17 +222,28 @@ func installCALinux(caPath string) error {
 
 // ── Windows ───────────────────────────────────────────────────────────────────
 
-func isCAInstalledWindows(caPath string) (bool, error) {
-	// certutil -store Root lists all trusted root certs. We check for exit 0
-	// with the thumbprint. Simple approach: just check if certutil exits 0.
-	cmd := exec.Command("certutil", "-store", "Root")
-	out, err := cmd.Output()
-	if err != nil {
-		return false, nil
-	}
-	// Read the cert to get its subject for matching.
-	_ = out
-	// On Windows, we treat it as not installed if we can't verify; InstallCA is idempotent.
+// isCAInstalledWindows is an UNIMPLEMENTED probe that deliberately always
+// answers "not installed", and returns a nil error because there is no
+// failure to report — it never inspects anything.
+//
+// Why a constant false is the safe constant here, and why it is not the
+// error-swallowing shape it resembles: the two wrong answers are not
+// symmetric. Over-reporting "not installed" costs one redundant run of
+// installCAWindows, which is idempotent (certutil -addstore on an
+// already-trusted root is a no-op). Over-reporting "installed" skips a needed
+// install and leaves the user with TLS errors and nothing to point at. There
+// is no third state to lose, so there is nothing for a caller to act wrongly
+// on — every caller here (generator_trust.go, trust/status.go, trust/ssl.go)
+// either proceeds to install or reports "not trusted", both of which are
+// accurate for a host we have not checked.
+//
+// It previously ran `certutil -store Root`, discarded the output with `_ = out`
+// and returned false on both branches. That call could not change the result,
+// so it was removed: it only added a process spawn (and a hang risk) to a
+// function whose answer was already fixed. Implementing this properly means
+// matching the CA's thumbprint against the store — see also isCAInstalledLinux,
+// which does path-existence matching rather than a real trust query.
+func isCAInstalledWindows(_ string) (bool, error) {
 	return false, nil
 }
 

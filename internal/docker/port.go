@@ -28,11 +28,28 @@ type PortConflict struct {
 // CheckPort probes a single TCP port on localhost using DialTimeout.
 // It returns true when the port is in use (connection succeeded) and
 // false when the port is available (connection refused or timed out).
+//
+// The error result is structurally always nil — see the dial branch below.
+// Callers keep the two-value signature because it matches CheckAllPorts and
+// CheckAllPortsFiltered, whose errors come from the compose ownership query,
+// not from probing.
 func CheckPort(port int) (bool, error) {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	conn, err := net.DialTimeout("tcp", addr, 1*time.Second)
 	if err != nil {
-		// Connection refused or timed out — port is available.
+		// KEEP. A failed dial IS how a free port answers — ECONNREFUSED and
+		// the timeout are the expected results, not failures, so there is no
+		// error here worth reporting for the overwhelming majority of calls.
+		//
+		// A local-resource failure (EMFILE, ENOMEM) would also land here and
+		// read as "available", and that is the direction to be wrong in: the
+		// caller proceeds to start, and docker refuses the bind with the real
+		// conflict named. The opposite default — treating an indeterminate
+		// probe as a conflict — is precisely what kept the ɳTask staging stack
+		// down, and what checkStartPorts now guards against by warning and
+		// skipping when ownership cannot be established. A port check that is
+		// occasionally too permissive costs one clear error from docker; one
+		// that is too strict blocks a correct start with a wrong explanation.
 		return false, nil
 	}
 	_ = conn.Close()

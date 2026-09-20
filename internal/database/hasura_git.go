@@ -102,6 +102,11 @@ func extractTableNamesFromYAMLDir(tablesDir string) ([]string, error) {
 	entries, err := os.ReadDir(tablesDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. Hasura only creates the tables/ directory once metadata is
+			// exported, so absent == no tables tracked on disk. ENOENT only:
+			// this list is diffed against live metadata, and an unreadable
+			// directory read as "zero tables" would make every live table look
+			// newly added.
 			return nil, nil
 		}
 		return nil, fmt.Errorf("read tables dir %s: %w", tablesDir, err)

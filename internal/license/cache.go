@@ -101,6 +101,8 @@ func ReadCache() (*CacheEntry, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP: cold == absent. checker.go's grace paths collapse them
+			// anyway (`err != nil || entry == nil`), so this fails CLOSED.
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading license cache: %w", err)

@@ -114,6 +114,9 @@ func GetHistory(historyDir string, limit int) ([]HealthReport, error) {
 	f, err := os.Open(p)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. No history file means no health reports recorded yet —
+			// true on every project before the first check, and identical to
+			// an empty file. ENOENT only; other open failures propagate.
 			return nil, nil
 		}
 		return nil, err

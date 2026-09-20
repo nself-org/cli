@@ -38,6 +38,14 @@ func checkReverseDependencies(pluginDir, name string) ([]string, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. No plugin dir means nothing is installed, so nothing can
+			// depend on the plugin being removed — an empty dependent list is
+			// the true answer, not a stand-in for one.
+			//
+			// The distinction matters more here than in the list helpers,
+			// because an empty result AUTHORISES an uninstall. That is why the
+			// guard stays ENOENT-only: a plugin dir we cannot read must error
+			// rather than clear the way for a removal that breaks dependents.
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading plugin directory: %w", err)

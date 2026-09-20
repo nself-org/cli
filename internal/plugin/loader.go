@@ -27,6 +27,11 @@ func ListInstalled(pluginDir string) ([]InstalledPluginInfo, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. No plugin directory means no plugins installed — the
+			// normal state of a fresh install, and identical to an empty
+			// directory from every caller's point of view. Only ENOENT; an
+			// unreadable plugin dir still errors, so "I could not list your
+			// plugins" is never rendered as "you have none".
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading plugin directory: %w", err)
@@ -89,6 +94,8 @@ func LoadManifestsFromDir(pluginDir string) ([]*PluginManifest, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP — same rationale as ListInstalled above: absent dir ==
+			// nothing installed, and only ENOENT takes this branch.
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading plugin directory: %w", err)
@@ -124,6 +131,8 @@ func listInstalled(pluginDir string) ([]PluginInfo, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP — same rationale as ListInstalled above: absent dir ==
+			// nothing installed, and only ENOENT takes this branch.
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading plugin directory: %w", err)

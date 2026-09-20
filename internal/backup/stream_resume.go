@@ -85,6 +85,10 @@ func listResumeStates() ([]ResumeState, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. No state dir means no interrupted transfer to resume,
+			// which is the ordinary case. ENOENT only — an unreadable state
+			// dir errors rather than silently restarting a resumable upload
+			// from byte zero.
 			return nil, nil
 		}
 		return nil, fmt.Errorf("read state dir: %w", err)

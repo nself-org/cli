@@ -89,7 +89,19 @@ func queryPSQL(ctx context.Context, cfg *config.Config, sql string) (string, err
 }
 
 // getSchemaVersion queries np_common.schema_versions for the latest recorded
-// version of the named plugin. Returns (0, nil) if no version row exists.
+// version of the named plugin. Returns (0, nil) when no version row exists —
+// COALESCE(MAX(version),0) makes "no rows" and "version 0" the same answer,
+// which is correct: an unrecorded plugin has applied nothing.
+//
+// A psql FAILURE is a different thing and is returned as an error. It used to
+// be swallowed into that same (0, nil) on the theory that the table "may not
+// exist yet on a fresh instance"; that stopped being reachable once
+// createPluginSchema began creating np_common.schema_versions with a checked
+// execPSQL two statements before this call. What the swallow actually covered
+// was a live failure — container gone, bad credentials, daemon down — reported
+// as "this plugin is at version 0", which sent the installer on to re-run the
+// entire DDL sequence and fail later complaining about CREATE ROLE instead of
+// about the connection.
 func getSchemaVersion(ctx context.Context, cfg *config.Config, pluginName string) (int, error) {
 	sql := fmt.Sprintf(
 		"SELECT COALESCE(MAX(version),0) FROM np_common.schema_versions WHERE plugin = '%s';",
@@ -97,8 +109,7 @@ func getSchemaVersion(ctx context.Context, cfg *config.Config, pluginName string
 	)
 	out, err := queryPSQL(ctx, cfg, sql)
 	if err != nil {
-		// Table may not exist yet on a fresh instance; treat as version 0.
-		return 0, nil
+		return 0, fmt.Errorf("querying schema version for %q: %w", pluginName, err)
 	}
 	if out == "" {
 		return 0, nil

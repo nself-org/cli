@@ -82,6 +82,11 @@ func GetOwnerKey() (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. Absent owner-licence file means no owner key is
+			// configured, which is the normal state for every install that is
+			// not ours. Only ENOENT is folded in; a read that fails for any
+			// other reason is returned, so an unreadable owner key is never
+			// reported as "not an owner".
 			return "", nil
 		}
 		return "", fmt.Errorf("reading owner license: %w", err)

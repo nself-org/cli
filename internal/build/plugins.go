@@ -52,6 +52,10 @@ func DiscoverPluginComposeFiles(workdir, pluginDir string) ([]string, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. No plugin dir means no plugin compose files to merge.
+			// ENOENT only: dropping a plugin compose file on a read error
+			// would build a stack missing services the project declares, and
+			// docker would then report an unrelated failure downstream.
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading plugin directory %s: %w", pluginDir, err)

@@ -219,6 +219,9 @@ func hasRecentBackup(backupDir string, maxAge time.Duration) (bool, error) {
 	entries, err := os.ReadDir(backupDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP: an absent backup dir holds no recent backup — that is the
+			// fact, not a stand-in. ENOENT only, so "could not check" never
+			// reaches an operator as "your backups are stale".
 			return false, nil
 		}
 		return false, fmt.Errorf("read backup directory %s: %w", backupDir, err)

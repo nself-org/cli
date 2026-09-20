@@ -55,6 +55,12 @@ func loadAdminProjects() ([]AdminProject, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. No projects.json means no projects registered yet — the
+			// state of every machine before the first `nself admin` run, and
+			// the same empty list an existing-but-empty file would give.
+			// ENOENT only: saveAdminProjects rewrites this file wholesale, so
+			// an unreadable file read as "no projects" would erase the
+			// existing registrations on the next write.
 			return nil, nil
 		}
 		return nil, err

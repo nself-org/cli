@@ -196,7 +196,15 @@ func health(ctx context.Context, name string, port int) (bool, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, nil
+		// Propagate the transport error instead of flattening it into a plain
+		// "not healthy". The only caller (waitForPluginHealth, runtime_start.go)
+		// keeps polling either way — it stops on ok, not on err — but it stores
+		// this as lastErr and puts it in the message it finally returns.
+		// Returning (false, nil) made every unreachable plugin come out as the
+		// generic "timed out waiting for plugin to become healthy", with no
+		// indication of whether the port was refused, the request never left,
+		// or the context was cancelled.
+		return false, fmt.Errorf("health check for %s: %w", name, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

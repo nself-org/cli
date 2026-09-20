@@ -150,6 +150,10 @@ func LoadStoredManifest(projectDir, fixtureName string) (*FixtureManifest, error
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. No stored manifest means this fixture has never been
+			// seeded, which is exactly what the caller needs to know to decide
+			// to seed it. ENOENT only — an unreadable manifest errors rather
+			// than triggering a re-seed over data that is already there.
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading stored manifest %s: %w", path, err)

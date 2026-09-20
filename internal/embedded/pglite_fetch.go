@@ -145,6 +145,12 @@ func fileMatchesDigest(path, want string, maxAge time.Duration) (bool, error) {
 
 	got, err := sha256HexFile(path)
 	if err != nil {
+		// KEEP, same contract as the branches above: every "no" here means
+		// re-download, and a cached file we cannot hash is exactly as useless
+		// as one that is absent or stale. Nothing is lost by re-fetching, and
+		// downloadAndVerify checks the digest again on the fresh copy, so a
+		// genuinely broken cache path surfaces there with the write/verify
+		// error rather than being retried forever in silence.
 		return false, nil
 	}
 	return got == want, nil

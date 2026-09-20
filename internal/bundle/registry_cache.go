@@ -76,6 +76,10 @@ func readBundlesCache() (*cachedBundlesDoc, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. A cold cache has no last-known-good document; the caller
+			// falls back to a live fetch, which is what it would do for an
+			// error too. ENOENT only, so a corrupt or unreadable cache still
+			// surfaces instead of masquerading as a first run.
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading bundles cache: %w", err)

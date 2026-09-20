@@ -96,6 +96,17 @@ func GetKey() (string, error) {
 	data, err := os.ReadFile(filepath.Join(dir, keyFile))
 	if err != nil {
 		if os.IsNotExist(err) {
+			// KEEP. "No key file" IS "no key configured" — there is no third
+			// state for a caller to get wrong, and the alternative (an error)
+			// would make the unlicensed free tier, which is the majority of
+			// installs, look broken.
+			//
+			// This is narrow on purpose: os.IsNotExist matches ENOENT only.
+			// A permission error, a corrupt mount or an ENOTDIR from a
+			// ~/.nself/license that is a regular file still comes back as an
+			// error below, so "I could not read your licence" never gets
+			// downgraded to "you do not have one" — the failure mode that
+			// would silently deny a paying customer their entitlement.
 			return "", nil
 		}
 		return "", fmt.Errorf("reading license key: %w", err)
