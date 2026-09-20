@@ -26,6 +26,7 @@ package build
 import (
 	"bytes"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -184,20 +185,29 @@ func normalizeComposeDropObsoleteVersion(content []byte) []byte {
 // directory, contains a ".." path component that walks out of it, or (b) the
 // dockerfile value names a directory (anything but a bare filename) — a
 // correctly-scoped context never needs one, since Docker resolves dockerfile
-// relative to context. Rewriting only fires when <pluginDir>/<name>/Dockerfile
-// actually exists; otherwise the plugin is left untouched and a warning names
-// it, because guessing wrong here would trade one silent build failure for
-// another that is harder to diagnose (a Dockerfile that "exists" at the wrong
-// path).
+// relative to context.
+//
+// The rewritten dockerfile value is resolved by resolveDockerfileName: the
+// BASENAME of the originally-authored value when that exact file exists at
+// the installed plugin root (e.g. "paid/nself-alert-router/Dockerfile.golang"
+// -> "Dockerfile.golang" if that file ships there), else the canonical bare
+// "Dockerfile" when that exists, else the plugin is left completely
+// untouched and a warning names it — guessing wrong here would trade one
+// silent build failure for another that is harder to diagnose (a Dockerfile
+// that "exists" at the wrong path, or the wrong Dockerfile entirely when a
+// plugin ships more than one). This is never a substring/text edit on the
+// original value — see normalizeComposeDockerfile's header for why that is
+// unsafe.
 //
 // Idempotent: a fragment already shaped as `context: ${NSELF_PLUGIN_DIR}/<name>`
-// + `dockerfile: Dockerfile` matches neither detection signal and is returned
-// byte-for-byte unchanged, as is a plain `context: .` fragment (relied on by
-// the 31 plugins that never had this bug).
+// + `dockerfile: Dockerfile` (or `dockerfile: Dockerfile.golang`, `dockerfile:
+// Dockerfile.go` — any bare filename with no directory component) matches
+// neither detection signal and is returned byte-for-byte unchanged, as is a
+// plain `context: .` fragment (relied on by the 31 plugins that never had
+// this bug).
 func normalizeComposeBuildContext(content []byte, pluginDir, pluginName string) []byte {
 	lines := strings.Split(string(content), "\n")
 	changed := false
-	var canonical string // lazily resolved: os.Stat only if a rewrite candidate is found
 
 	for i := 0; i < len(lines); i++ {
 		bm := composeBuildLineRE.FindStringSubmatch(lines[i])
@@ -243,17 +253,15 @@ func normalizeComposeBuildContext(content []byte, pluginDir, pluginName string) 
 			continue // already the installed-layout shape
 		}
 
-		if canonical == "" {
-			canonical = canonicalDockerfile(pluginDir, pluginName)
-		}
-		if canonical == "" {
+		resolved := resolveDockerfileName(pluginDir, pluginName, dockerfileVal)
+		if resolved == "" {
 			slog.Warn("plugin compose build context targets the source-repo layout and no installed Dockerfile exists to rewrite it against",
 				"plugin", pluginName, "context", contextVal, "dockerfile", dockerfileVal)
 			continue
 		}
 
 		lines[contextLine] = contextIndent + "context: ${NSELF_PLUGIN_DIR}/" + pluginName
-		lines[dockerfileLine] = dockerfileIndent + "dockerfile: " + canonical
+		lines[dockerfileLine] = dockerfileIndent + "dockerfile: " + resolved
 		changed = true
 	}
 
@@ -261,6 +269,25 @@ func normalizeComposeBuildContext(content []byte, pluginDir, pluginName string) 
 		return content
 	}
 	return []byte(strings.Join(lines, "\n"))
+}
+
+// resolveDockerfileName picks the safe replacement value for a rewritten
+// build.dockerfile: the BASENAME of the originally-authored value when that
+// exact file exists at the installed plugin root (e.g. a source-repo
+// "paid/nself-alert-router/Dockerfile.golang" resolves to "Dockerfile.golang"
+// if that file ships at the plugin root), else the canonical bare
+// "Dockerfile" when that exists, else "" — signaling the caller to leave the
+// block untouched and warn rather than guess. This never does a substring
+// edit on the original value (see normalizeComposeDockerfile's header for
+// why that is unsafe: "Dockerfile.go" is a literal prefix of
+// "Dockerfile.golang").
+func resolveDockerfileName(pluginDir, pluginName, original string) string {
+	if base := filepath.Base(original); base != "" && base != "." && base != string(filepath.Separator) {
+		if _, err := os.Stat(filepath.Join(pluginDir, pluginName, base)); err == nil {
+			return base
+		}
+	}
+	return canonicalDockerfile(pluginDir, pluginName)
 }
 
 // contextEscapesPluginDir reports whether a build.context value walks above

@@ -122,9 +122,22 @@ func canonicalDockerfile(pluginDir, pluginName string) string {
 }
 
 // normalizeComposeDockerfile rewrites a plugin compose YAML in-memory so that
-// any "dockerfile:" directive that references a non-existent file is corrected
-// to point to "Dockerfile" when a canonical Dockerfile exists in the plugin dir.
-// Returns the (possibly unchanged) content.
+// any "dockerfile:" directive that references a non-existent legacy file
+// (left over from the Rust→Go migration) is corrected to point to
+// "Dockerfile" when a canonical Dockerfile exists in the plugin dir. Returns
+// the (possibly unchanged) content.
+//
+// Matching is line-based and exact-value (via composeBuildDockerfileRE, the
+// same "dockerfile:" scalar matcher normalizeComposeBuildContext uses), never
+// a substring/bytes.ReplaceAll. A prior version used
+// bytes.ReplaceAll([]byte("dockerfile: Dockerfile.go"), ...) against the raw
+// file, which also matched inside "dockerfile: Dockerfile.golang" — "Dockerfile.go"
+// is a literal prefix of "Dockerfile.golang" — corrupting it to
+// "dockerfile: Dockerfilelang" (E2E golden path step 13, claw plugin: docker
+// failed with "open Dockerfilelang: no such file or directory"). mux, google,
+// podcast and post ship the identical "Dockerfile.golang" shape and were
+// silently corrupted the same way. Exact per-line value comparison against
+// the legacy set cannot partial-match a longer name.
 func normalizeComposeDockerfile(content []byte, pluginDir, pluginName string) []byte {
 	canonical := canonicalDockerfile(pluginDir, pluginName)
 	if canonical == "" {
@@ -132,18 +145,32 @@ func normalizeComposeDockerfile(content []byte, pluginDir, pluginName string) []
 	}
 
 	// Legacy dockerfile names produced during the Rust→Go migration.
-	legacy := []string{"Dockerfile.go", "Dockerfile.golang", "Dockerfile.rust"}
+	legacy := map[string]bool{"Dockerfile.go": true, "Dockerfile.golang": true, "Dockerfile.rust": true}
 
-	for _, old := range legacy {
+	lines := strings.Split(string(content), "\n")
+	changed := false
+	for i, line := range lines {
+		m := composeBuildDockerfileRE.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		indent, val := m[1], m[2]
+		if !legacy[val] {
+			continue // not one of the known legacy names — never touch
+		}
 		// Only replace when the referenced file does NOT actually exist, to
-		// avoid clobbering plugins that legitimately ship multiple Dockerfiles.
-		oldPath := filepath.Join(pluginDir, pluginName, old)
+		// avoid clobbering plugins that legitimately ship multiple Dockerfiles
+		// (e.g. mux/google/claw/post ship both Dockerfile and Dockerfile.golang
+		// and intentionally build from the latter).
+		oldPath := filepath.Join(pluginDir, pluginName, val)
 		if _, err := os.Stat(oldPath); err == nil {
 			continue // file exists — keep the reference as authored
 		}
-		needle := []byte("dockerfile: " + old)
-		replacement := []byte("dockerfile: " + canonical)
-		content = bytes.ReplaceAll(content, needle, replacement)
+		lines[i] = indent + "dockerfile: " + canonical
+		changed = true
 	}
-	return content
+	if !changed {
+		return content
+	}
+	return []byte(strings.Join(lines, "\n"))
 }
