@@ -162,9 +162,22 @@ func CheckAllPortsFiltered(ctx context.Context, portList []int, workdir string, 
 		return nil, err
 	}
 
+	return filterPortConflicts(portList, owned, CheckPort, holderProcessName)
+}
+
+// filterPortConflicts is the single decision for "is this port actually a
+// problem". Every caller — `nself start`'s pre-flight and `nself doctor`'s
+// port checks — routes through here so the two cannot disagree about the same
+// port on the same machine.
+//
+// A port counts as a conflict only when it is in use AND not held by this
+// project's own compose stack AND not one of Docker Desktop's transient
+// internal holders. probe and holder are injected so the decision is testable
+// without a Docker daemon or a real listener.
+func filterPortConflicts(portList []int, owned map[int]bool, probe func(int) (bool, error), holder func(int) string) ([]PortConflict, error) {
 	var conflicts []PortConflict
 	for _, p := range portList {
-		inUse, err := CheckPort(p)
+		inUse, err := probe(p)
 		if err != nil {
 			return nil, fmt.Errorf("checking port %d: %w", p, err)
 		}
@@ -176,13 +189,23 @@ func CheckAllPortsFiltered(ctx context.Context, portList []int, workdir string, 
 		// via com.docker.backend (the hypervisor process). These are transient
 		// Docker-internal holds — not real conflicts. Skip them so that
 		// stop→start and restart workflows don't false-positive.
-		holder, _ := ports.WhoHoldsPort(p)
-		if holder != nil && isDockerInternalHolder(holder.Name) {
+		if isDockerInternalHolder(holder(p)) {
 			continue
 		}
 		conflicts = append(conflicts, PortConflict{Port: p, InUse: true})
 	}
 	return conflicts, nil
+}
+
+// holderProcessName returns the name of the process holding port, or "" when
+// it cannot be determined. An unknown holder is not treated as Docker-internal
+// — silently skipping what we could not identify would hide real conflicts.
+func holderProcessName(port int) string {
+	holder, _ := ports.WhoHoldsPort(port)
+	if holder == nil {
+		return ""
+	}
+	return holder.Name
 }
 
 // isDockerInternalHolder returns true when the process name belongs to Docker
@@ -202,4 +225,13 @@ func isDockerInternalHolder(name string) bool {
 		}
 	}
 	return false
+}
+
+// CheckPortsUnowned probes portList with an empty ownership set, for the case
+// where there is demonstrably no compose project in the workdir and so nothing
+// of ours can be holding a port. It routes through the same decision as the
+// filtered path, so Docker Desktop's transient internal holders are still not
+// reported as conflicts.
+func CheckPortsUnowned(portList []int) ([]PortConflict, error) {
+	return filterPortConflicts(portList, nil, CheckPort, holderProcessName)
 }

@@ -6,6 +6,7 @@ package commands
 // Constraints: split out of doctor.go (CLI-R12) as a pure move, no behavior change.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,27 +18,68 @@ import (
 	"github.com/nself-org/cli/internal/ports"
 )
 
-// checkPorts probes all reserved ports and reports conflicts.
-func checkPorts(verbose bool) []doctorCheckResult {
-	var results []doctorCheckResult
-	conflicts, err := docker.CheckAllPorts(docker.ReservedPorts)
-	if err != nil {
-		name := "Port check"
-		msg := fmt.Sprintf("error checking ports: %v", err)
-		printCheck("warn", name, msg, verbose)
-		return []doctorCheckResult{{Name: name, Status: "warn", Message: msg}}
+// checkPorts probes the host ports this project cares about and reports only
+// the ones held by a FOREIGN process.
+//
+// It routes through the same resolve-and-filter step as `nself start`. Before
+// that, doctor probed a fixed default list with no ownership filter, so a
+// healthy stack produced six warnings naming its own running containers
+// (80, 443, 5432, 8080, 4000 plus admin on 3021). Warnings that fire on a
+// green run are worse than no warnings: they teach people to skip the output
+// that a real conflict would appear in.
+func checkPorts(ctx context.Context, projectDir string, verbose bool) []doctorCheckResult {
+	envFiles, composeFiles, hasProject := projectPortInputs(projectDir)
+
+	var (
+		portList  []int
+		names     map[int]string
+		conflicts []docker.PortConflict
+	)
+
+	if hasProject {
+		report := projectPortConflicts(ctx, projectDir, envFiles, composeFiles...)
+		portList, names = report.Ports, report.ServiceNames
+
+		if report.OwnershipUnknown() {
+			// Without knowing which ports the project already binds, every one
+			// of them reads as foreign. Say so once instead of emitting a
+			// conflict per port that we cannot stand behind.
+			name := "Port check"
+			msg := fmt.Sprintf("could not determine which ports this project owns (%v); conflict check skipped", report.OwnershipErr)
+			printCheck("warn", name, msg, verbose)
+			return []doctorCheckResult{{Name: name, Status: "warn", Message: msg}}
+		}
+		conflicts = report.Conflicts
+	} else {
+		// Nothing has been built here, so no container of ours can hold a
+		// port: the unfiltered probe of the defaults is the correct answer and
+		// keeps doctor useful before `nself build`.
+		portList, names = docker.ReservedPorts, docker.DefaultPortServiceNames()
+
+		var err error
+		conflicts, err = docker.CheckPortsUnowned(portList)
+		if err != nil {
+			name := "Port check"
+			msg := fmt.Sprintf("error checking ports: %v", err)
+			printCheck("warn", name, msg, verbose)
+			return []doctorCheckResult{{Name: name, Status: "warn", Message: msg}}
+		}
 	}
 
 	if len(conflicts) == 0 {
 		name := "Reserved ports"
-		msg := fmt.Sprintf("all %d reserved ports available", len(docker.ReservedPorts))
+		msg := fmt.Sprintf("all %d project ports are free or already held by this project", len(portList))
 		printCheck("pass", name, msg, verbose)
 		return []doctorCheckResult{{Name: name, Status: "pass", Message: msg}}
 	}
 
 	// Report each conflicting port individually, with holder info when available.
+	var results []doctorCheckResult
 	for _, c := range conflicts {
 		name := fmt.Sprintf("Port %d", c.Port)
+		if svc := names[c.Port]; svc != "" {
+			name = fmt.Sprintf("Port %d (%s)", c.Port, svc)
+		}
 		holder, _ := ports.WhoHoldsPort(c.Port)
 		msg := ports.FormatConflictMessage(c.Port, holder)
 		printCheck("warn", name, msg, verbose)

@@ -217,8 +217,8 @@ Exit codes:
 		if !jsonOut {
 			ui.Section("Port Availability")
 		}
-		checks = append(checks, checkPorts(verbose)...)
-		checks = append(checks, checkServicePortConflicts(cwd, verbose)...)
+		checks = append(checks, checkPorts(ctx, cwd, verbose)...)
+		checks = append(checks, checkServicePortConflicts(ctx, cwd, verbose)...)
 		checks = append(checks, checkHomebrewPostgres(verbose)...)
 
 		// 6. Configuration

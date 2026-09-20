@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/build"
-	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ports"
 	"github.com/nself-org/cli/internal/ui"
 )
@@ -45,34 +44,25 @@ func checkStartPorts(ctx context.Context, opts startOpts, projectDir string, com
 		// queries below fail the moment any plugin is installed.
 		envFiles := build.ComposeEnvFiles(projectDir)
 
-		checkPorts, portServiceMap, derr := docker.DeclaredHostPorts(ctx, projectDir, envFiles, composeFiles...)
-		if derr != nil || len(checkPorts) == 0 {
-			// Fall back to the default list rather than check nothing. Checking
-			// an empty list would be a port check that cannot fail, which is
-			// worse than one that is occasionally too strict.
-			if derr != nil {
-				ui.Warn(fmt.Sprintf("Could not read published ports from compose (%v); using the default port list", derr))
-			}
-			checkPorts = docker.ReservedPorts
-			portServiceMap = docker.DefaultPortServiceNames()
+		report := projectPortConflicts(ctx, projectDir, envFiles, composeFiles...)
+
+		if report.UsedFallbackPorts() {
+			ui.Warn(fmt.Sprintf("Could not read published ports from compose (%v); using the default port list", report.DeclaredErr))
 		}
 
-		conflicts, err := docker.CheckAllPortsFiltered(ctx, checkPorts, projectDir, envFiles, composeFiles...)
-		if err != nil {
+		conflicts := report.Conflicts
+		if report.OwnershipUnknown() {
 			// We could not establish which ports this project already owns.
 			// Reporting conflicts anyway would block a legitimate start over
 			// the project's own running containers, which is a worse failure
 			// than not checking: a real conflict still surfaces when docker
 			// refuses to bind the port.
 			ui.Warn(fmt.Sprintf(
-				"Could not determine which ports this project already owns (%v); skipping the conflict check", err))
+				"Could not determine which ports this project already owns (%v); skipping the conflict check", report.OwnershipErr))
 		} else if len(conflicts) > 0 {
 			var portList []string
 			for _, c := range conflicts {
-				svc := portServiceMap[c.Port]
-				if svc == "" {
-					svc = "unknown service"
-				}
+				svc := report.ServiceName(c.Port)
 				// Attempt to identify the holder process for a richer message.
 				holder, _ := ports.WhoHoldsPort(c.Port)
 				var detail string

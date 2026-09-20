@@ -6,6 +6,7 @@ package commands
 // Constraints: split out of doctor.go (CLI-R12) as a pure move, no behavior change.
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/nself-org/cli/internal/config"
@@ -46,10 +47,15 @@ func checkPluginCompatibility(projectDir string, verbose bool) []doctorCheckResu
 	return results
 }
 
-// checkServicePortConflicts probes configured service ports against enabled services.
-// It catches conflicts between nSelf services (Grafana on 3000, Admin on 3021, etc.)
-// and local dev servers that may already be listening.
-func checkServicePortConflicts(projectDir string, verbose bool) []doctorCheckResult {
+// checkServicePortConflicts probes configured service ports against enabled
+// services. It catches conflicts between nSelf services (Grafana on 3000,
+// Admin on 3021, etc.) and local dev servers that may already be listening.
+//
+// Ports held by this project's own running containers are excluded, via the
+// same ownership filter `nself start` uses. Without it, a healthy stack's own
+// Admin container made doctor report "port 3021 (nSelf Admin) is already in
+// use by another process" — pointing at itself.
+func checkServicePortConflicts(ctx context.Context, projectDir string, verbose bool) []doctorCheckResult {
 	cfg, err := config.Load(projectDir)
 	if err != nil {
 		name := "Service port conflicts"
@@ -87,27 +93,53 @@ func checkServicePortConflicts(projectDir string, verbose bool) []doctorCheckRes
 		return []doctorCheckResult{{Name: name, Status: "pass", Message: msg}}
 	}
 
+	// Resolve which of these ports this project already owns, so its own
+	// containers are not reported as foreign processes.
+	portNums := make([]int, 0, len(ports))
+	for _, sp := range ports {
+		if sp.port != 0 {
+			portNums = append(portNums, sp.port)
+		}
+	}
+
+	envFiles, composeFiles, hasProject := projectPortInputs(projectDir)
+	var conflicts []docker.PortConflict
+	var probeErr error
+	if hasProject {
+		conflicts, probeErr = docker.CheckAllPortsFiltered(ctx, portNums, projectDir, envFiles, composeFiles...)
+	} else {
+		// Nothing built here, so nothing of ours can hold these ports.
+		conflicts, probeErr = docker.CheckPortsUnowned(portNums)
+	}
+	if probeErr != nil {
+		// One honest "could not check" beats a conflict per port that we
+		// cannot attribute to a foreign process.
+		name := "Service port conflicts"
+		msg := fmt.Sprintf("cannot check service ports: %v", probeErr)
+		printCheck("warn", name, msg, verbose)
+		return []doctorCheckResult{{Name: name, Status: "warn", Message: msg}}
+	}
+
+	conflicting := make(map[int]bool, len(conflicts))
+	for _, c := range conflicts {
+		conflicting[c.Port] = true
+	}
+
 	var results []doctorCheckResult
 	for _, sp := range ports {
 		if sp.port == 0 {
 			continue
 		}
 		name := fmt.Sprintf("Port %d (%s)", sp.port, sp.name)
-		inUse, err := docker.CheckPort(sp.port)
-		if err != nil {
-			printCheck("warn", name, fmt.Sprintf("cannot check port: %v", err), verbose)
-			results = append(results, doctorCheckResult{Name: name, Status: "warn", Message: fmt.Sprintf("cannot check port: %v", err)})
-			continue
-		}
-		if inUse {
+		if conflicting[sp.port] {
 			msg := fmt.Sprintf("Warning: port %d (%s) is already in use by another process", sp.port, sp.name)
 			printCheck("warn", name, msg, verbose)
 			results = append(results, doctorCheckResult{Name: name, Status: "warn", Message: msg})
-		} else {
-			msg := fmt.Sprintf("port %d (%s) is available", sp.port, sp.name)
-			printCheck("pass", name, msg, verbose)
-			results = append(results, doctorCheckResult{Name: name, Status: "pass", Message: msg})
+			continue
 		}
+		msg := fmt.Sprintf("port %d (%s) is free or held by this project", sp.port, sp.name)
+		printCheck("pass", name, msg, verbose)
+		results = append(results, doctorCheckResult{Name: name, Status: "pass", Message: msg})
 	}
 	return results
 }
