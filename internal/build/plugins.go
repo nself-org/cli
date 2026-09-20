@@ -89,6 +89,11 @@ func DiscoverPluginComposeFiles(workdir, pluginDir string) ([]string, error) {
 			// never-published tags, and drop the obsolete version: key —
 			// see plugins_image_to_build.go for the full rationale.
 			normalized = normalizeComposeImageToBuild(normalized, pluginDir, entry.Name())
+			// Rewrite a build.context authored for the source-repo layout
+			// (e.g. "${NSELF_PLUGIN_DIR}/../.." + "free/cron/Dockerfile")
+			// to the installed-layout shape — see plugins_image_to_build.go
+			// for the full rationale (defect #10 / E2E golden path step 13).
+			normalized = normalizeComposeBuildContext(normalized, pluginDir, entry.Name())
 			normalized = normalizeComposeDropObsoleteVersion(normalized)
 			if !bytes.Equal(normalized, content) {
 				// Write the corrected file back so the manifest references a valid compose.
