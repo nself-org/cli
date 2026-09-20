@@ -1,38 +1,56 @@
 package build
 
-// Purpose: rewrites a plugin compose fragment's build.context/build.dockerfile
-// pair when the context was authored for the SOURCE REPO layout instead of
-// the INSTALLED layout.
+// Purpose: rewrites a plugin compose fragment's build.context (mapping form
+// or single-line string form) plus its build.dockerfile when the context is
+// anything other than the canonical installed-plugin-dir form.
 // Inputs: a compose fragment's bytes plus the plugin directory/name pair
 // already threaded through DiscoverPluginComposeFiles (plugins.go).
 // Outputs: the (possibly rewritten) compose fragment bytes.
 // Constraints:
 //
-// WHY: a plugin's docker-compose.plugin.yml lives at
-// <repo>/{free,paid}/<name>/docker-compose.plugin.yml in source but is
-// installed to ~/.nself/plugins/<name>/docker-compose.plugin.yml — one path
-// segment shallower, with no {free,paid}/<name> prefix at all. A build
-// context authored against the source layout, e.g.
-// "${NSELF_PLUGIN_DIR}/../.." + "dockerfile: free/cron/Dockerfile" (cron,
-// push) or a bare "../.." + "dockerfile: paid/nself-alert-router/Dockerfile"
-// (nself-alert-router), resolves two levels up from the source repo root to
-// the plugin dir, then back down through free/cron — correct only in that
-// exact tree. Once installed, two levels up from
-// ~/.nself/plugins/cron/docker-compose.plugin.yml is $HOME, which has no
-// free/ directory, so `docker compose build` fails opaquely: "resolve :
-// lstat /home/<user>/free: no such file or directory" (E2E golden path step
-// 13, defect #10). 31 other shipped plugins already use the correct
-// installed-layout shape (`context: .`); ai/claw/mux/voice use
-// `context: ${NSELF_PLUGIN_DIR}/<name>` — this rewrite converges every
-// plugin onto that second shape, which is layout-independent (it names the
-// plugin's own installed directory explicitly rather than climbing to it).
+// WHY: `nself start`/`nself build` invoke `docker compose -f
+// <project>/docker-compose.yml -f ~/.nself/plugins/<name>/docker-compose.
+// plugin.yml ... up -d` with no `--project-directory` flag (see
+// internal/docker/compose.go buildBaseArgs). Docker Compose resolves EVERY
+// relative build.context in EVERY merged -f file against the directory of
+// the FIRST -f file — the project's docker-compose.yml — never against the
+// file that actually declared the context. A plugin fragment's own
+// directory is therefore never the resolution base for anything relative it
+// writes, no matter how "correct" that value looks in isolation: a bare
+// `context: .` resolves to the PROJECT directory, not the plugin's; a
+// `context: ./web` or `context: web` the same, one level down from the
+// project dir instead of the plugin's. This is true of every relative
+// value — there is no shape of relative context that survives being merged
+// as a non-first -f file. The only value that resolves correctly regardless
+// of -f ordering is one that names the plugin's installed directory
+// explicitly: `context: ${NSELF_PLUGIN_DIR}/<name>[/<subpath>]` (ai/claw/mux
+// /voice already ship this shape). This rewrite converges every plugin onto
+// that shape.
 //
-// Detection is two independent signals, either one sufficient: (a) the
-// context value, after substituting ${NSELF_PLUGIN_DIR} for the plugin's own
-// directory, contains a ".." path component that walks out of it, or (b) the
-// dockerfile value names a directory (anything but a bare filename) — a
-// correctly-scoped context never needs one, since Docker resolves dockerfile
-// relative to context.
+// (Live repro, 2026-09-20: `docker compose -f project/docker-compose.yml -f
+// ~/.nself/plugins/browser/docker-compose.plugin.yml config` with browser's
+// `build.context: .` echoes the project directory as the resolved context,
+// not ~/.nself/plugins/browser — confirmed against browser, google, and ~29
+// other licensed plugins that ship the identical bare `.` shape. `nself
+// start` then fails opaquely: "failed to read dockerfile: open Dockerfile:
+// no such file or directory" — E2E golden path step 13, released v1.4.2.)
+//
+// A prior version of this rewrite treated `context: .` (and any other
+// relative value that stayed inside the plugin's own directory once
+// resolved against it) as "already correct" and left it untouched — that
+// was the defect: it assumed the plugin fragment's own directory is a valid
+// resolution base, which Compose's multi -f-file merge semantics never
+// honor. There is no such thing as a relative context that "never had this
+// bug" — 31 plugins shipping a bare `.` were simply never exercised by the
+// E2E golden path's plugin-build step until browser/google were.
+//
+// Detection: any build.context value that is not already the canonical
+// `${NSELF_PLUGIN_DIR}/<pluginName>[/<subpath>]` shape and is not an
+// absolute filesystem path is rewritten — this covers `.`, `./sub`, `sub`,
+// a `${NSELF_PLUGIN_DIR}/../..`-style escape, and a bare `../..` escape
+// alike. A build.dockerfile that names a directory (anything but a bare
+// filename) is also rewritten — a correctly-scoped context never needs one,
+// since Docker resolves dockerfile relative to context.
 //
 // The rewritten dockerfile value is resolved by resolveDockerfileName: the
 // BASENAME of the originally-authored value when that exact file exists at
@@ -47,11 +65,8 @@ package build
 // unsafe.
 //
 // Idempotent: a fragment already shaped as `context: ${NSELF_PLUGIN_DIR}/<name>`
-// + `dockerfile: Dockerfile` (or `dockerfile: Dockerfile.golang`, `dockerfile:
-// Dockerfile.go` — any bare filename with no directory component) matches
-// neither detection signal and is returned byte-for-byte unchanged, as is a
-// plain `context: .` fragment (relied on by the 31 plugins that never had
-// this bug).
+// (optionally + `/<subpath>`) + a bare-filename `dockerfile:` matches
+// neither rewrite signal and is returned byte-for-byte unchanged.
 
 import (
 	"log/slog"
@@ -66,6 +81,14 @@ import (
 // nesting) and captures that indentation to find the block's extent.
 var composeBuildLineRE = regexp.MustCompile(`^(\s*)build:\s*$`)
 
+// composeBuildStringRE matches a service-level `build:` declared as a
+// single-line string (the compose shorthand for "context only, dockerfile
+// defaults to Dockerfile at that context's root") rather than a mapping,
+// e.g. `  widget:\n    build: .` or `    build: ./web`. Captures indentation
+// (group 1) and the raw context value (group 2). Deliberately disjoint from
+// composeBuildLineRE (which requires nothing after the colon).
+var composeBuildStringRE = regexp.MustCompile(`^(\s*)build:\s+(\S+)\s*$`)
+
 // composeBuildContextRE and composeBuildDockerfileRE match a `context:` /
 // `dockerfile:` scalar line inside a build: block, capturing indentation
 // (group 1, reused verbatim on rewrite so we never guess at the author's
@@ -74,73 +97,89 @@ var composeBuildContextRE = regexp.MustCompile(`^(\s*)context:\s*(\S+)\s*$`)
 var composeBuildDockerfileRE = regexp.MustCompile(`^(\s*)dockerfile:\s*(\S+)\s*$`)
 
 // normalizeComposeBuildContext rewrites a plugin compose fragment's
-// build.context/build.dockerfile pair when the context was authored for the
-// source-repo layout instead of the installed layout. See the file header
+// build.context/build.dockerfile pair — mapping form or single-line string
+// form — to the canonical installed-plugin-dir shape. See the file header
 // for the full detection/rewrite rationale.
 func normalizeComposeBuildContext(content []byte, pluginDir, pluginName string) []byte {
 	lines := strings.Split(string(content), "\n")
 	changed := false
 
 	for i := 0; i < len(lines); i++ {
-		bm := composeBuildLineRE.FindStringSubmatch(lines[i])
-		if bm == nil {
+		if bm := composeBuildLineRE.FindStringSubmatch(lines[i]); bm != nil {
+			if rewriteBuildMappingBlock(lines, i, bm[1], pluginDir, pluginName) {
+				changed = true
+			}
 			continue
 		}
-		buildIndent := bm[1]
-
-		// The build: sub-block runs until the next line at or above
-		// buildIndent's own depth (a sibling key such as image:/ports:, or
-		// the next service).
-		blockEnd := len(lines)
-		for j := i + 1; j < len(lines); j++ {
-			trimmed := strings.TrimRight(lines[j], " \t")
-			if trimmed == "" {
+		if sm := composeBuildStringRE.FindStringSubmatch(lines[i]); sm != nil {
+			indent, contextVal := sm[1], sm[2]
+			newVal, ctxChanged := normalizeBuildContextValue(contextVal, pluginName)
+			if !ctxChanged {
 				continue
 			}
-			leading := len(lines[j]) - len(strings.TrimLeft(lines[j], " \t"))
-			if leading <= len(buildIndent) {
-				blockEnd = j
-				break
-			}
+			lines[i] = indent + "build: " + newVal
+			changed = true
 		}
-
-		contextLine, dockerfileLine := -1, -1
-		var contextIndent, contextVal, dockerfileIndent, dockerfileVal string
-		for j := i + 1; j < blockEnd; j++ {
-			if m := composeBuildContextRE.FindStringSubmatch(lines[j]); m != nil {
-				contextLine, contextIndent, contextVal = j, m[1], m[2]
-				continue
-			}
-			if m := composeBuildDockerfileRE.FindStringSubmatch(lines[j]); m != nil {
-				dockerfileLine, dockerfileIndent, dockerfileVal = j, m[1], m[2]
-			}
-		}
-		if contextLine == -1 || dockerfileLine == -1 {
-			continue // not a simple context+dockerfile shape — nothing safe to rewrite
-		}
-
-		escapes := contextEscapesPluginDir(contextVal)
-		hasDirComponent := filepath.ToSlash(filepath.Dir(dockerfileVal)) != "."
-		if !escapes && !hasDirComponent {
-			continue // already the installed-layout shape
-		}
-
-		resolved := resolveDockerfileName(pluginDir, pluginName, dockerfileVal)
-		if resolved == "" {
-			slog.Warn("plugin compose build context targets the source-repo layout and no installed Dockerfile exists to rewrite it against",
-				"plugin", pluginName, "context", contextVal, "dockerfile", dockerfileVal)
-			continue
-		}
-
-		lines[contextLine] = contextIndent + "context: ${NSELF_PLUGIN_DIR}/" + pluginName
-		lines[dockerfileLine] = dockerfileIndent + "dockerfile: " + resolved
-		changed = true
 	}
 
 	if !changed {
 		return content
 	}
 	return []byte(strings.Join(lines, "\n"))
+}
+
+// rewriteBuildMappingBlock handles one `build:` mapping block starting at
+// lines[buildLineIdx]. It finds the block's context:/dockerfile: pair,
+// decides whether either needs rewriting, and mutates lines in place.
+// Returns whether it changed anything.
+func rewriteBuildMappingBlock(lines []string, buildLineIdx int, buildIndent, pluginDir, pluginName string) bool {
+	// The build: sub-block runs until the next line at or above
+	// buildIndent's own depth (a sibling key such as image:/ports:, or the
+	// next service).
+	blockEnd := len(lines)
+	for j := buildLineIdx + 1; j < len(lines); j++ {
+		trimmed := strings.TrimRight(lines[j], " \t")
+		if trimmed == "" {
+			continue
+		}
+		leading := len(lines[j]) - len(strings.TrimLeft(lines[j], " \t"))
+		if leading <= len(buildIndent) {
+			blockEnd = j
+			break
+		}
+	}
+
+	contextLine, dockerfileLine := -1, -1
+	var contextIndent, contextVal, dockerfileIndent, dockerfileVal string
+	for j := buildLineIdx + 1; j < blockEnd; j++ {
+		if m := composeBuildContextRE.FindStringSubmatch(lines[j]); m != nil {
+			contextLine, contextIndent, contextVal = j, m[1], m[2]
+			continue
+		}
+		if m := composeBuildDockerfileRE.FindStringSubmatch(lines[j]); m != nil {
+			dockerfileLine, dockerfileIndent, dockerfileVal = j, m[1], m[2]
+		}
+	}
+	if contextLine == -1 || dockerfileLine == -1 {
+		return false // not a simple context+dockerfile shape — nothing safe to rewrite
+	}
+
+	newContextVal, ctxChanged := normalizeBuildContextValue(contextVal, pluginName)
+	hasDirComponent := filepath.ToSlash(filepath.Dir(dockerfileVal)) != "."
+	if !ctxChanged && !hasDirComponent {
+		return false // already the canonical installed-layout shape
+	}
+
+	resolved := resolveDockerfileName(pluginDir, pluginName, dockerfileVal)
+	if resolved == "" {
+		slog.Warn("plugin compose build context is not the canonical installed-plugin-dir shape and no installed Dockerfile exists to rewrite it against",
+			"plugin", pluginName, "context", contextVal, "dockerfile", dockerfileVal)
+		return false
+	}
+
+	lines[contextLine] = contextIndent + "context: " + newContextVal
+	lines[dockerfileLine] = dockerfileIndent + "dockerfile: " + resolved
+	return true
 }
 
 // resolveDockerfileName picks the safe replacement value for a rewritten
@@ -162,16 +201,72 @@ func resolveDockerfileName(pluginDir, pluginName, original string) string {
 	return canonicalDockerfile(pluginDir, pluginName)
 }
 
-// contextEscapesPluginDir reports whether a build.context value walks above
-// its own base once ${NSELF_PLUGIN_DIR} is substituted with "." (a stand-in
-// for "the directory the token expands to" — NSELF_PLUGIN_DIR is always an
-// absolute, ".."-free path per ComputePluginEnvVars, so the substitution
-// target's exact value never changes whether a ".." component survives
-// filepath.Clean; "." is simplest). A bare relative context with no token at
-// all (nself-alert-router's "../..") is checked the same way: substitution
-// is a no-op when the token is absent, and the raw value is cleaned as-is.
-func contextEscapesPluginDir(context string) bool {
-	substituted := strings.ReplaceAll(context, "${NSELF_PLUGIN_DIR}", ".")
-	cleaned := filepath.ToSlash(filepath.Clean(substituted))
-	return cleaned == ".." || strings.HasPrefix(cleaned, "../")
+// normalizeBuildContextValue computes the canonical replacement for a
+// build.context value and reports whether it differs from the original.
+// The canonical shape is `${NSELF_PLUGIN_DIR}/<pluginName>[/<subpath>]` —
+// the only context form that resolves correctly regardless of which -f
+// file Compose treats as "first" (see file header). Two shapes are left
+// untouched:
+//   - an absolute filesystem path (starts with "/") — not project-relative
+//     at all, so the multi -f-file merge issue this rewrite targets does
+//     not apply to it, and rewriting it would silently redirect a
+//     deliberately external build context.
+//   - the canonical shape itself, `${NSELF_PLUGIN_DIR}/<pluginName>`
+//     optionally followed by a subpath — already correct and idempotent.
+//
+// Every other relative shape is rewritten to the canonical form: `.`
+// collapses to no subpath, `./sub` and `sub` keep "sub" as the preserved
+// subpath, and any value that (once ${NSELF_PLUGIN_DIR} is accounted for)
+// cleans to a path walking above the plugin's own directory — the
+// `${NSELF_PLUGIN_DIR}/../..` and bare `../..` shapes authored against the
+// SOURCE REPO layout — collapses to no subpath, since the escape means the
+// original value cannot be trusted to describe a real subpath; the
+// dockerfile's own basename (resolved separately by resolveDockerfileName)
+// carries the actual file to build from.
+func normalizeBuildContextValue(contextVal, pluginName string) (string, bool) {
+	if strings.HasPrefix(contextVal, "/") {
+		return contextVal, false // absolute filesystem path — leave alone
+	}
+
+	var rel string
+	escaped := false
+
+	if strings.HasPrefix(contextVal, "${NSELF_PLUGIN_DIR}") {
+		remainder := strings.TrimPrefix(strings.TrimPrefix(contextVal, "${NSELF_PLUGIN_DIR}"), "/")
+		switch {
+		case remainder == pluginName:
+			rel = "."
+		case strings.HasPrefix(remainder, pluginName+"/"):
+			rel = strings.TrimPrefix(remainder, pluginName+"/")
+		default:
+			// ${NSELF_PLUGIN_DIR} expands to the GLOBAL plugin dir, not
+			// this plugin's own directory or the source-repo tree — a
+			// remainder that isn't "<pluginName>" or "<pluginName>/..."
+			// (e.g. "../..") always escapes at runtime.
+			escaped = true
+		}
+	} else {
+		rel = contextVal
+	}
+
+	if !escaped {
+		cleaned := filepath.ToSlash(filepath.Clean(rel))
+		switch {
+		case cleaned == ".." || strings.HasPrefix(cleaned, "../"):
+			escaped = true
+		case cleaned == ".":
+			rel = ""
+		default:
+			rel = cleaned
+		}
+	}
+	if escaped {
+		rel = ""
+	}
+
+	newContext := "${NSELF_PLUGIN_DIR}/" + pluginName
+	if rel != "" {
+		newContext += "/" + rel
+	}
+	return newContext, newContext != contextVal
 }

@@ -1,12 +1,15 @@
 package build
 
 // Purpose: table-driven coverage for normalizeComposeBuildContext
-// (plugins_image_to_build.go), the rewrite that fixes a build.context
-// authored for the source-repo layout so it resolves correctly once
-// installed.
+// (plugins_build_context.go), the rewrite that converges every relative
+// build.context — mapping form and single-line string form alike — onto
+// the canonical ${NSELF_PLUGIN_DIR}/<name>[/<subpath>] shape, the only one
+// that resolves correctly once merged as a non-first `docker compose -f`
+// file.
 // Inputs: real shipped plugin compose fragments (testdata/plugin-compose-
 // fixtures/*.yml, copied read-only from plugins/free and plugins-pro/paid)
-// plus small synthetic fragments for the untouched/idempotent shapes.
+// plus small synthetic fragments for the untouched/idempotent/rewritten
+// shapes.
 // Outputs: assertions on the rewritten bytes and on slog.Warn behavior when
 // no Dockerfile exists to rewrite against.
 // Constraints: the fixtures are copies, not symlinks — this package must
@@ -95,24 +98,129 @@ func TestNormalizeComposeBuildContext_RealPluginShapes(t *testing.T) {
 	}
 }
 
-// TestNormalizeComposeBuildContext_DotContextUnchanged verifies the shape
-// used by 31 of the 91 shipped plugin fragments — a plain `context: .` next
-// to `dockerfile: Dockerfile` — is byte-for-byte untouched: it neither
-// escapes the plugin directory nor names a dockerfile directory component.
-func TestNormalizeComposeBuildContext_DotContextUnchanged(t *testing.T) {
+// TestNormalizeComposeBuildContext_RelativeShapesRewritten is the
+// table-driven regression guard for the defect-#10 follow-up (E2E golden
+// path step 13, v1.4.2): docker compose resolves EVERY relative
+// build.context against the directory of the FIRST `-f` file, never the
+// fragment's own directory, so a bare `.`, `./sub`, or `sub` context is just
+// as broken once installed as the already-fixed `..`-escaping shapes — it
+// was never "already correct" the way the prior version of this rewrite
+// assumed. browser and google (and ~29 other licensed plugins) ship the
+// bare `.` shape.
+func TestNormalizeComposeBuildContext_RelativeShapesRewritten(t *testing.T) {
+	cases := []struct {
+		name    string
+		context string
+		wantCtx string
+	}{
+		{name: "bare dot", context: ".", wantCtx: "context: ${NSELF_PLUGIN_DIR}/browser"},
+		{name: "dot-slash subpath", context: "./web", wantCtx: "context: ${NSELF_PLUGIN_DIR}/browser/web"},
+		{name: "bare subpath, no dot-slash", context: "web", wantCtx: "context: ${NSELF_PLUGIN_DIR}/browser/web"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pluginDir := t.TempDir()
+			writeDockerfile(t, pluginDir, "browser")
+
+			in := "services:\n  browser:\n    build:\n      context: " + tc.context + "\n      dockerfile: Dockerfile\n    image: nself/nself-browser:latest\n"
+			out := string(normalizeComposeBuildContext([]byte(in), pluginDir, "browser"))
+
+			if !strings.Contains(out, tc.wantCtx) {
+				t.Errorf("rewritten fragment missing %q:\n%s", tc.wantCtx, out)
+			}
+			if err := assertValidComposeYAML(out); err != nil {
+				t.Fatalf("rewritten fragment is not valid YAML: %v\n%s", err, out)
+			}
+
+			// Idempotent: re-running on the rewritten bytes must be a no-op.
+			twice := normalizeComposeBuildContext([]byte(out), pluginDir, "browser")
+			if string(twice) != out {
+				t.Fatalf("rewrite is not idempotent:\nonce:\n%s\n---\ntwice:\n%s", out, twice)
+			}
+		})
+	}
+}
+
+// TestNormalizeComposeBuildContext_AbsoluteContextUnchanged verifies an
+// absolute filesystem build.context is left completely untouched — it is
+// not project-relative at all, so the multi -f-file merge issue this
+// rewrite targets never applies to it.
+func TestNormalizeComposeBuildContext_AbsoluteContextUnchanged(t *testing.T) {
 	pluginDir := t.TempDir()
-	writeDockerfile(t, pluginDir, "access-controls")
+	writeDockerfile(t, pluginDir, "widget")
 
 	in := `services:
-  access-controls:
+  widget:
     build:
-      context: .
+      context: /opt/custom-build-context
       dockerfile: Dockerfile
-    image: nself/nself-access-controls:latest
 `
-	out := string(normalizeComposeBuildContext([]byte(in), pluginDir, "access-controls"))
+	out := string(normalizeComposeBuildContext([]byte(in), pluginDir, "widget"))
 	if out != in {
-		t.Fatalf("context: . fragment must be left untouched:\ngot:\n%s\nwant (unchanged):\n%s", out, in)
+		t.Fatalf("absolute context fragment must be left untouched:\ngot:\n%s\nwant (unchanged):\n%s", out, in)
+	}
+}
+
+// TestNormalizeComposeBuildContext_PluginDirSubpathUnchanged verifies the
+// canonical shape extended with a subpath —
+// `${NSELF_PLUGIN_DIR}/<name>/<subpath>` — is byte-for-byte untouched and
+// idempotent, same as the bare `${NSELF_PLUGIN_DIR}/<name>` shape.
+func TestNormalizeComposeBuildContext_PluginDirSubpathUnchanged(t *testing.T) {
+	pluginDir := t.TempDir()
+	writeDockerfile(t, pluginDir, "widget")
+
+	in := `services:
+  widget:
+    build:
+      context: ${NSELF_PLUGIN_DIR}/widget/web
+      dockerfile: Dockerfile
+`
+	out := string(normalizeComposeBuildContext([]byte(in), pluginDir, "widget"))
+	if out != in {
+		t.Fatalf("${NSELF_PLUGIN_DIR}/<name>/<subpath> fragment must be left untouched:\ngot:\n%s\nwant (unchanged):\n%s", out, in)
+	}
+}
+
+// TestNormalizeComposeBuildContext_StringFormBuild covers the single-line
+// `build: <context>` shorthand (context only, dockerfile implicitly
+// "Dockerfile" at that context's root) — the sibling shape to the
+// context:/dockerfile: mapping, handled by the same normalizeBuildContext-
+// Value logic.
+func TestNormalizeComposeBuildContext_StringFormBuild(t *testing.T) {
+	cases := []struct {
+		name    string
+		build   string
+		want    string
+		changed bool
+	}{
+		{name: "bare dot rewritten", build: ".", want: "build: ${NSELF_PLUGIN_DIR}/widget", changed: true},
+		{name: "subpath rewritten", build: "./web", want: "build: ${NSELF_PLUGIN_DIR}/widget/web", changed: true},
+		{name: "already canonical unchanged", build: "${NSELF_PLUGIN_DIR}/widget", want: "build: ${NSELF_PLUGIN_DIR}/widget", changed: false},
+		{name: "absolute unchanged", build: "/opt/custom-build-context", want: "build: /opt/custom-build-context", changed: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pluginDir := t.TempDir()
+			writeDockerfile(t, pluginDir, "widget")
+
+			in := "services:\n  widget:\n    build: " + tc.build + "\n    image: nself/nself-widget:latest\n"
+			out := string(normalizeComposeBuildContext([]byte(in), pluginDir, "widget"))
+			want := "services:\n  widget:\n    " + tc.want + "\n    image: nself/nself-widget:latest\n"
+
+			if out != want {
+				t.Fatalf("unexpected rewrite:\ngot:\n%s\nwant:\n%s", out, want)
+			}
+			if err := assertValidComposeYAML(out); err != nil {
+				t.Fatalf("rewritten fragment is not valid YAML: %v\n%s", err, out)
+			}
+
+			twice := normalizeComposeBuildContext([]byte(out), pluginDir, "widget")
+			if string(twice) != out {
+				t.Fatalf("rewrite is not idempotent:\nonce:\n%s\n---\ntwice:\n%s", out, twice)
+			}
+		})
 	}
 }
 
