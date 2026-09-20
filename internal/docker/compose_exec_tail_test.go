@@ -75,6 +75,46 @@ func TestTailBuffer_EmptyStaysEmpty(t *testing.T) {
 	}
 }
 
+func TestTailBuffer_DropsProgressNoiseKeepsError(t *testing.T) {
+	// Mirrors defect #10 (E2E golden path step 13): a plugin image pull
+	// emits pages of per-layer progress noise, and the one line that
+	// actually explains the failure ("resolve : lstat ... no such file or
+	// directory") must survive filtering even though it is written last,
+	// after several KB of noise that would otherwise dominate the tail.
+	tb := &tailBuffer{limit: stderrTailLimit}
+
+	progressLines := []string{
+		" plugin-cron Pulling \n",
+		" plugin-cron Downloading [==========>                              ]  1.2MB/12MB\n",
+		" plugin-cron Downloading [====================>                    ]  5.4MB/12MB\n",
+		" plugin-cron Downloading [==============================>          ]  9.1MB/12MB\n",
+		" plugin-cron Verifying Checksum \n",
+		" plugin-cron Extracting [=================>                        ]   3MB/12MB\n",
+		" plugin-cron Extracting [=================================>        ]   8MB/12MB\n",
+		" plugin-cron Pull complete \n",
+		" plugin-cron Pulled \n",
+	}
+	var noise strings.Builder
+	for noise.Len() < 6000 {
+		for _, l := range progressLines {
+			noise.WriteString(l)
+		}
+	}
+	tb.Write([]byte(noise.String())) //nolint:errcheck
+	const errLine = "resolve : lstat /home/runner/free: no such file or directory"
+	tb.Write([]byte(errLine)) //nolint:errcheck
+
+	got := tb.String()
+	if !strings.Contains(got, errLine) {
+		t.Fatalf("actionable error line was dropped:\n%s", got)
+	}
+	for _, marker := range stderrProgressTokens {
+		if strings.Contains(got, marker) {
+			t.Errorf("progress noise %q survived filtering:\n%s", marker, got)
+		}
+	}
+}
+
 func TestTailBuffer_WriteReportsFullLength(t *testing.T) {
 	// io.MultiWriter treats a short write as an error and would abort the
 	// stderr copy, so Write must always report len(p) even when it drops

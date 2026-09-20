@@ -1,9 +1,8 @@
 package build
 
-// Purpose: normalizes installed plugin docker-compose fragments so a plugin
-// service that names an `image: nself/...` we do not publish is rebuilt from
-// the plugin's own Dockerfile instead, and drops the obsolete Compose
-// `version:` key that recent Docker emits a deprecation warning for.
+// Purpose: rewrites a plugin compose fragment so a service that names an
+// `image: nself/...` we do not publish is rebuilt from the plugin's own
+// Dockerfile instead.
 // Inputs: a compose fragment's bytes plus the plugin directory/name pair
 // already threaded through DiscoverPluginComposeFiles (plugins.go).
 // Outputs: the (possibly rewritten) compose fragment bytes.
@@ -20,11 +19,10 @@ package build
 // A service that already declares `build:` (e.g. google, browser, ai) is
 // left completely untouched — it already builds from source and may keep
 // `image:` alongside `build:` purely as the resulting local tag name.
-// Both rewrites are idempotent: re-running on already-normalized bytes is a
+// This rewrite is idempotent: re-running on already-normalized bytes is a
 // byte-for-byte no-op.
 
 import (
-	"bytes"
 	"regexp"
 	"strings"
 )
@@ -38,12 +36,6 @@ var composeServiceLineRE = regexp.MustCompile(`^  \S.*:\s*$`)
 // namespace are ever candidates for the build: rewrite — third-party images
 // (postgres, redis, meilisearch, ...) never match and are left alone.
 var composeImageNselfRE = regexp.MustCompile(`^(\s*)image:\s*nself/\S+\s*$`)
-
-// obsoleteComposeVersionRE matches the deprecated top-level Compose
-// `version:` key (only ever valid as the very first line of a fragment) plus
-// one immediately following blank line, so removing it doesn't leave a
-// leading blank line ahead of `services:`.
-var obsoleteComposeVersionRE = regexp.MustCompile(`(?m)^version:.*\n\n?`)
 
 // normalizeComposeImageToBuild rewrites a plugin compose fragment so any
 // service-level `image: nself/<name>...` line becomes a `build:` block that
@@ -117,27 +109,4 @@ func normalizeComposeImageToBuild(content []byte, pluginDir, pluginName string) 
 		return content
 	}
 	return []byte(strings.Join(lines, "\n"))
-}
-
-// normalizeComposeDropObsoleteVersion strips a leading top-level
-// `version: "3.8"` (or similar) key from a plugin compose fragment. Docker
-// Compose has treated the top-level `version:` attribute as obsolete since
-// the Compose Specification merge, and warns on every `nself build`/`nself
-// start` for any plugin fragment that still declares one (observed: browser,
-// google). Idempotent — a fragment with no version: line is returned
-// unchanged, and re-running after the first strip is a no-op.
-func normalizeComposeDropObsoleteVersion(content []byte) []byte {
-	loc := obsoleteComposeVersionRE.FindIndex(content)
-	if loc == nil || loc[0] != 0 {
-		// version: is only ever valid (and only ever authored) as the very
-		// first line of the fragment; a match anywhere else is coincidental
-		// and must not be touched.
-		return content
-	}
-	out := make([]byte, 0, len(content)-(loc[1]-loc[0]))
-	out = append(out, content[loc[1]:]...)
-	if bytes.Equal(out, content) {
-		return content
-	}
-	return out
 }

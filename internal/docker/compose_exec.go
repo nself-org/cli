@@ -136,8 +136,18 @@ func (c *Compose) Run(ctx context.Context, workdir string, args ...string) error
 	return nil
 }
 
-// stderrTailLimit caps how much stderr is retained for error messages.
-const stderrTailLimit = 2048
+// stderrTailLimit caps how much stderr is retained for error messages. A
+// cold image pull emits dozens of per-layer progress lines ("Downloading
+// [===>   ]  1.2MB/12MB", "Extracting", "Verifying Checksum", "Pull
+// complete", "Pulled") that dominate the tail and left the one actionable
+// line (e.g. "resolve : lstat ... no such file or directory") barely
+// surviving at the old 2048-byte cap. String() now filters that noise out
+// before collapsing whitespace (see below), but the cap is still raised to
+// 8192 so a failure with several services pulling in parallel — each
+// contributing its own burst of progress lines interleaved with the real
+// error — has enough headroom that the error line's own surrounding context
+// isn't starved out before filtering ever gets to run.
+const stderrTailLimit = 8192
 
 // tailBuffer keeps only the LAST limit bytes written to it. Docker puts the
 // actionable line at the end of a failure, so the tail is the useful part.
@@ -155,10 +165,47 @@ func (t *tailBuffer) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// String returns the retained stderr as a single whitespace-collapsed line so
-// it reads cleanly when wrapped into an error.
+// stderrProgressTokens are literal substrings that identify a Docker
+// pull/build progress line rather than a diagnostic message: either one of
+// the per-layer status words, or "[=" — the leading edge of a progress bar
+// like "[==========>   ]". These lines carry no diagnostic value and, before
+// this filter existed, crowded out the one line that does.
+var stderrProgressTokens = []string{
+	"[=",
+	"Downloading",
+	"Extracting",
+	"Verifying Checksum",
+	"Pull complete",
+	"Pulled",
+}
+
+// isStderrProgressNoise reports whether line is a Docker pull/build progress
+// line that should be dropped from the retained tail.
+func isStderrProgressNoise(line string) bool {
+	for _, token := range stderrProgressTokens {
+		if strings.Contains(line, token) {
+			return true
+		}
+	}
+	return false
+}
+
+// String returns the retained stderr as a single whitespace-collapsed line
+// so it reads cleanly when wrapped into an error, with any progress-style
+// segments (see stderrProgressTokens) dropped first so they cannot bury the
+// one line that actually explains the failure.
 func (t *tailBuffer) String() string {
-	return strings.Join(strings.Fields(string(t.buf)), " ")
+	lines := strings.FieldsFunc(string(t.buf), func(r rune) bool {
+		return r == '\n' || r == '\r'
+	})
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if isStderrProgressNoise(line) {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(strings.Fields(strings.Join(kept, " ")), " ")
 }
 
 // parsePorts splits a Docker Compose ports string (e.g. "0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp")
