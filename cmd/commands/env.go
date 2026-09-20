@@ -23,6 +23,12 @@ Subcommands:
   show    Show current environment config (secrets redacted)
   diff    Compare two environment configs
   copy    Scaffold a new environment from an existing one`,
+	// Without NoArgs, an unknown subcommand falls through to RunE, prints the
+	// help text and exits 0. `nself env get FOO` therefore looked like it
+	// succeeded and emitted this Long description on stdout — the golden path
+	// captured that prose as a base URL and curled it. Reject unknown
+	// subcommands instead; bare `nself env` still prints help.
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

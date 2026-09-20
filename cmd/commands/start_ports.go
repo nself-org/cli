@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ports"
 	"github.com/nself-org/cli/internal/ui"
@@ -38,7 +39,13 @@ func checkStartPorts(ctx context.Context, opts startOpts, projectDir string, com
 		// conflict, and it is what kept the ɳTask staging stack down: its
 		// compose published 5433/8181/4001/6380/9010/9011, every one free,
 		// while start refused over six defaults it does not use.
-		checkPorts, portServiceMap, derr := docker.DeclaredHostPorts(ctx, projectDir, composeFiles...)
+		// Pass the compose env files. An installed plugin's
+		// docker-compose.plugin.yml refers to ${DOCKER_NETWORK}; without them
+		// it resolves to empty and docker rejects the whole project, so both
+		// queries below fail the moment any plugin is installed.
+		envFiles := build.ComposeEnvFiles(projectDir)
+
+		checkPorts, portServiceMap, derr := docker.DeclaredHostPorts(ctx, projectDir, envFiles, composeFiles...)
 		if derr != nil || len(checkPorts) == 0 {
 			// Fall back to the default list rather than check nothing. Checking
 			// an empty list would be a port check that cannot fail, which is
@@ -50,9 +57,15 @@ func checkStartPorts(ctx context.Context, opts startOpts, projectDir string, com
 			portServiceMap = docker.DefaultPortServiceNames()
 		}
 
-		conflicts, err := docker.CheckAllPortsFiltered(ctx, checkPorts, projectDir, composeFiles...)
+		conflicts, err := docker.CheckAllPortsFiltered(ctx, checkPorts, projectDir, envFiles, composeFiles...)
 		if err != nil {
-			ui.Warn(fmt.Sprintf("Port check error: %v", err))
+			// We could not establish which ports this project already owns.
+			// Reporting conflicts anyway would block a legitimate start over
+			// the project's own running containers, which is a worse failure
+			// than not checking: a real conflict still surfaces when docker
+			// refuses to bind the port.
+			ui.Warn(fmt.Sprintf(
+				"Could not determine which ports this project already owns (%v); skipping the conflict check", err))
 		} else if len(conflicts) > 0 {
 			var portList []string
 			for _, c := range conflicts {

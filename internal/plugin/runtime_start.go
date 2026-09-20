@@ -59,6 +59,16 @@ func Start(ctx context.Context, pluginDir string, name string) error {
 		binPath := filepath.Join(pluginDir, name)
 		if _, err := os.Stat(binPath); err != nil {
 			_ = writeState(name, "failed")
+			// A plugin shipping docker-compose.plugin.yml is a compose
+			// service, not a background process: it has no entry point by
+			// design and `nself build` + `nself start` are what run it.
+			// Saying only "no entry point found" reads like a broken install
+			// and sends the caller looking for a missing binary.
+			if _, cErr := os.Stat(filepath.Join(pluginDir, "docker-compose.plugin.yml")); cErr == nil {
+				return fmt.Errorf(
+					"plugin %s runs as a compose service, not a background process; "+
+						"run `nself build && nself start` to bring it up", name)
+			}
 			return fmt.Errorf("no entry point found for plugin %s", name)
 		}
 		cmd = exec.CommandContext(ctx, binPath)

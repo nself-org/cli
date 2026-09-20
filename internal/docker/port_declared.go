@@ -75,8 +75,13 @@ func (p composeConfigPort) publishedPort() int {
 //
 // An error here means "could not determine", never "binds nothing". The caller
 // must fall back to a conservative default list rather than check nothing.
-func DeclaredHostPorts(ctx context.Context, workdir string, composeFiles ...string) ([]int, map[int]string, error) {
+// envFiles are passed as --env-file. Without them an installed plugin's
+// docker-compose.plugin.yml cannot resolve ${DOCKER_NETWORK} and docker
+// rejects the project as invalid, so this returns an error and the caller
+// silently falls back to the default port list.
+func DeclaredHostPorts(ctx context.Context, workdir string, envFiles []string, composeFiles ...string) ([]int, map[int]string, error) {
 	c := NewCompose(composeFiles...)
+	c.EnvFiles = envFiles
 	args := c.buildBaseArgs()
 	args = append(args, "config", "--format", "json")
 

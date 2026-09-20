@@ -528,15 +528,23 @@ run_step 11 "nself admin start" \
 # ── Step 12: curl localhost:3021/api/health → 200 ────────────────────────────
 run_step 12 "curl localhost:3021/api/health" \
   bash -c '
-    for i in 1 2 3 4 5; do
+    # The admin compose service declares start_period: 30s, so the probe has
+    # to outlast that. The old budget was 5 tries x 2s ~= 10s, which is less
+    # than the container is documented to need: measured cold start to a 200
+    # is ~10s, so a green result was luck rather than a margin.
+    for i in $(seq 1 20); do
       code=$(curl -sS -o /dev/null -w "%{http_code}" http://localhost:3021/api/health 2>/dev/null || echo 000)
       if [ "${code}" = "200" ]; then
-        echo "admin health: 200 OK"
+        echo "admin health: 200 OK (after ${i} attempt(s))"
         exit 0
       fi
       sleep 2
     done
     echo "admin health not 200 after retries (last: ${code})" >&2
+    echo "--- admin container state ---" >&2
+    docker ps -a --filter "name=_admin" --format "{{.Names}} {{.Status}}" >&2 || true
+    echo "--- admin health body ---" >&2
+    curl -sS -m 5 http://localhost:3021/api/health 2>&1 | head -c 800 >&2 || true
     exit 1
   '
 [ "${STEP_STATUS[12]}" = "fail" ] && { write_report; exit 1; }
@@ -546,27 +554,64 @@ run_step 12 "curl localhost:3021/api/health" \
 # Uses a mock prompt to avoid real AI costs in CI.
 run_step 13 "nClaw chat readiness check" \
   bash -c '
-    # Probe the claw health / readiness endpoint directly
-    # (bypasses billing; confirms plugin is wired up)
-    base_url=$(cd '"${PROJECT_DIR}"' && nself env get NSELF_API_URL 2>/dev/null || echo "http://localhost:8080")
-    code=$(curl -sS -o /tmp/golden-path-claw-health.json \
-      -w "%{http_code}" \
-      "${base_url}/claw/health" 2>/dev/null || echo 000)
-    if [ "${code}" = "200" ]; then
-      echo "claw health: 200 OK"
-      cat /tmp/golden-path-claw-health.json
-      exit 0
-    fi
-    echo "claw health returned ${code} — checking alternate endpoint"
-    # Fallback: verify the AI plugin is responding
-    code2=$(curl -sS -o /tmp/golden-path-ai-health.json \
-      -w "%{http_code}" \
-      "${base_url}/ai/health" 2>/dev/null || echo 000)
-    if [ "${code2}" = "200" ]; then
-      echo "ai plugin health: 200 OK (claw endpoint not yet exposed on this build)"
-      exit 0
-    fi
+    cd '"${PROJECT_DIR}"' || exit 1
+
+    # The old probe built its URL from `nself env get NSELF_API_URL`. There is
+    # no `env get` subcommand: cobra fell through to the parent, printed the
+    # help text and exited 0, so base_url became that multi-line prose and the
+    # `|| echo` fallback never fired. Every probe curled a garbage URL.
+    #
+    # It was also aimed at the wrong place. `nself plugin start` runs a plugin
+    # as a LOCAL BACKGROUND PROCESS (see internal/plugin/runtime_start.go —
+    # PID under ~/.nself/runtime/pids), not a container behind hasura or
+    # nginx. Each plugin listens on its own registered port and serves
+    # /health directly. Ports are canonical in SPORT F10-PORT-REGISTRY:
+    #   3709 = ai, 3710 = plugin-claw
+    CLAW_URL="http://localhost:3710/health"
+    AI_URL="http://localhost:3709/health"
+
+    # Steps 9 and 10 INSTALL the plugins; install does not run them, and step
+    # 5 ran `nself start` before they existed. Probing here without bringing
+    # them up tests a service that was never running.
+    #
+    # These plugins are COMPOSE services: each installs a
+    # docker-compose.plugin.yml (build: from its own Dockerfile, publishing
+    # 127.0.0.1:<port>) which `nself build` discovers and `nself start`
+    # brings up. `nself plugin start` is the background-process path and
+    # fails here with "no entry point", which is correct but not the flow the
+    # install message points at ("Run nself build to include ai in your
+    # stack").
+    #
+    # The plugin image is built from source on first start and its compose
+    # healthcheck allows start_period: 90s, so this is slow by design.
+    nself build 2>&1 | tail -3 | sed "s/^/  build: /"
+    nself start 2>&1 | tail -5 | sed "s/^/  start: /"
+
+    # 60 x 3s = 180s, to cover the compose healthcheck start_period of 90s
+    # plus the first-start image build.
+    probe() {
+      url=$2
+      for i in $(seq 1 60); do
+        c=$(curl -sS -o "/tmp/golden-path-$1-health.json" -w "%{http_code}" \
+              "${url}" 2>/dev/null || echo 000)
+        [ "${c}" = "200" ] && { echo "${c}"; return 0; }
+        sleep 3
+      done
+      echo "${c}"
+      return 1
+    }
+
+    code=$(probe claw "${CLAW_URL}") && { echo "claw health: 200 OK"; cat /tmp/golden-path-claw-health.json; exit 0; }
+    echo "claw health returned ${code} — checking the ai plugin instead"
+    code2=$(probe ai "${AI_URL}") && { echo "ai plugin health: 200 OK (claw endpoint not exposed on this build)"; exit 0; }
+
     echo "Both claw and ai health checks failed (${code} / ${code2})" >&2
+    echo "--- plugin state ---" >&2
+    nself plugin list 2>&1 | head -20 >&2 || true
+    echo "--- containers ---" >&2
+    docker ps -a --format "{{.Names}} {{.Status}} {{.Ports}}" >&2 || true
+    echo "--- listening ports ---" >&2
+    (ss -ltnp 2>/dev/null || netstat -ltn 2>/dev/null) | head -20 >&2 || true
     exit 1
   '
 

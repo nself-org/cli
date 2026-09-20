@@ -62,15 +62,23 @@ func CheckAllPorts(ports []int) ([]PortConflict, error) {
 // These ports should not be reported as conflicts on startup — they are already
 // owned by nself and will be reused by docker compose up.
 //
-// If the query fails (e.g. no containers are running yet, Docker daemon
-// unreachable) the function returns an empty set and a nil error so that the
-// caller falls back to treating all in-use ports as conflicts.
-func OwnedHostPorts(ctx context.Context, workdir string, composeFiles ...string) (map[int]bool, error) {
+// envFiles are passed to docker compose as --env-file. They are REQUIRED once
+// any plugin compose file is in play: an installed plugin's
+// docker-compose.plugin.yml refers to ${DOCKER_NETWORK}, and without the env
+// file that resolves to empty, so docker rejects the whole project with
+// "service X refers to undefined network : invalid compose project" and this
+// query fails.
+//
+// If the query fails the error is RETURNED rather than swallowed. Reporting
+// "nothing is owned" on a failure turns "I could not tell" into a confident
+// wrong answer: every port the project itself already binds is then reported
+// as a conflict, and `nself start` aborts against its own running stack.
+func OwnedHostPorts(ctx context.Context, workdir string, envFiles []string, composeFiles ...string) (map[int]bool, error) {
 	c := NewCompose(composeFiles...)
+	c.EnvFiles = envFiles
 	containers, err := c.ComposePs(ctx, workdir)
 	if err != nil {
-		// Non-fatal: no running stack means no owned ports.
-		return map[int]bool{}, nil
+		return nil, fmt.Errorf("listing running compose containers: %w", err)
 	}
 
 	owned := make(map[int]bool)
@@ -123,14 +131,18 @@ func extractComposeHostPort(s string) int {
 // compose stack. This prevents false positives where nself's own containers
 // (e.g. postgres bound to 127.0.0.1:5432) are reported as conflicts on restart.
 //
-// workdir and composeFiles are forwarded to OwnedHostPorts. If the compose query
-// fails the function falls back to unfiltered behaviour (all in-use ports are
-// conflicts) so startup never silently succeeds with a real conflict.
-func CheckAllPortsFiltered(ctx context.Context, portList []int, workdir string, composeFiles ...string) ([]PortConflict, error) {
-	owned, err := OwnedHostPorts(ctx, workdir, composeFiles...)
+// workdir, envFiles and composeFiles are forwarded to OwnedHostPorts. If that
+// query fails the error is returned rather than degrading to unfiltered
+// behaviour: unfiltered means the project's own ports read as conflicts, which
+// blocks a legitimate start instead of catching a real one.
+func CheckAllPortsFiltered(ctx context.Context, portList []int, workdir string, envFiles []string, composeFiles ...string) ([]PortConflict, error) {
+	owned, err := OwnedHostPorts(ctx, workdir, envFiles, composeFiles...)
 	if err != nil {
-		// Defensive: owned is already empty on error, so fall through.
-		owned = map[int]bool{}
+		// Do not fall through to an empty set. Without knowing which ports the
+		// project already owns, every one of them looks like a foreign
+		// conflict and start would refuse over its own containers. Let the
+		// caller decide (warn and skip) rather than emit false conflicts.
+		return nil, err
 	}
 
 	var conflicts []PortConflict
