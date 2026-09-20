@@ -36,11 +36,12 @@
 //
 // # Versioning
 //
-// The SDK ships in lockstep with the nSelf CLI release tag. Tag v1.0.12
-// of the cli repository corresponds to v1.0.12 of this module. Consumers
-// should pin to a CLI minor version and accept patch upgrades.
+// The SDK ships in lockstep with the nSelf CLI release tag. The cli
+// repository's release tag corresponds to the same version of this
+// module (currently v1.4.2). Consumers should pin to a CLI minor
+// version and accept patch upgrades.
 //
-//	require github.com/nself-org/cli/sdk/go v1.0.12
+//	require github.com/nself-org/cli/sdk/go v1.4.2
 //
 // # Compatibility
 //
@@ -97,4 +98,4 @@ package sdk
 //
 // This value is updated by the sdk-version-sync workflow on every CLI tag
 // to keep SDK and CLI versions in lockstep.
-const Version = "1.4.1"
+const Version = "1.4.2"

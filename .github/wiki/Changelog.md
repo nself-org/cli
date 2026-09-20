@@ -3,6 +3,25 @@
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
 
+## [1.4.2] - 2026-09-20
+
+Fixes a set of admin and startup issues found in the compose and env
+handling paths.
+
+- `admin start` no longer references a compose service name that does
+  not exist.
+- Compose stderr is no longer discarded when running in a non-TTY
+  session, so failures are visible in logs.
+- The admin container is granted the Docker socket group and runs as
+  the host user instead of root.
+- `nself env` now rejects unknown subcommands instead of silently
+  doing nothing.
+- `nself start` passes env files through to the port check, so it no
+  longer reports its own ports as conflicts.
+- Plugin images build from source when the registry image is not
+  available.
+- Fixed golden-path steps 12 and 13.
+
 ## [1.3.6] — 2026-09-12
 
 Ships work that had merged to main but sat unreleased, including a doctor
