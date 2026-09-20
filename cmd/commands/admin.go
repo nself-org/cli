@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"github.com/nself-org/cli/internal/docker"
 	"net/http"
 	"os"
 	"os/exec"
@@ -21,6 +22,17 @@ func adminPort() string {
 		return p
 	}
 	return "3021"
+}
+
+// adminComposeContext resolves the project directory and compose files used to
+// bring up the admin service on its own. Mirrors how the start path resolves
+// them, but deliberately does not import the start pipeline.
+func adminComposeContext() (string, []string) {
+	projectDir, err := os.Getwd()
+	if err != nil {
+		projectDir = "."
+	}
+	return projectDir, nil
 }
 
 // adminContainerID returns the docker container name for the admin service.
@@ -201,11 +213,21 @@ func runAdminStart(cmd *cobra.Command, args []string) error {
 	startCmd.Stdout = os.Stdout
 	startCmd.Stderr = os.Stderr
 	if err2 := startCmd.Run(); err2 != nil {
-		// Fall back to nself start if docker start fails (first run).
-		nstart := exec.CommandContext(ctx, "nself", "start", "admin")
-		nstart.Stdout = os.Stdout
-		nstart.Stderr = os.Stderr
-		if err3 := nstart.Run(); err3 != nil {
+		// First run: the container does not exist yet, so `docker start`
+		// cannot find it. Bring up ONLY the admin service.
+		//
+		// This used to shell out to `nself start admin`, which does not do
+		// what it reads like: runStart ignores its arguments entirely, so
+		// that call booted the WHOLE stack. On a machine where the stack was
+		// already running (the E2E golden path does exactly this — step 5
+		// starts the stack, step 11 starts admin) it then failed the
+		// whole-stack port preflight against the project's OWN containers,
+		// and ran the AI first-run wizard, which cannot install Ollama
+		// without systemd. Admin is a companion tool; starting it must not
+		// re-run the stack's boot sequence.
+		projectDir, composeFiles := adminComposeContext()
+		c := docker.NewCompose(composeFiles...)
+		if err3 := c.ComposeUpNoDeps(ctx, projectDir, "admin"); err3 != nil {
 			return fmt.Errorf("starting admin: %w", err3)
 		}
 	}
@@ -215,47 +237,6 @@ func runAdminStart(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runAdminStop stops the admin container gracefully (or forcefully with --force).
-func runAdminStop(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-	cid := adminContainerID()
-
-	dockerArgs := []string{"stop"}
-	if adminStopFlags.force {
-		dockerArgs = append(dockerArgs, "-t", "0")
-	}
-	dockerArgs = append(dockerArgs, cid)
-
-	stopCmd := exec.CommandContext(ctx, "docker", dockerArgs...)
-	stopCmd.Stdout = os.Stdout
-	stopCmd.Stderr = os.Stderr
-	if err := stopCmd.Run(); err != nil {
-		return fmt.Errorf("stopping admin container: %w", err)
-	}
-
-	fmt.Println("Admin stopped.")
-	return nil
-}
-
-// runAdminLogs tails or streams admin container logs.
-func runAdminLogs(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-	cid := adminContainerID()
-
-	dockerArgs := []string{"logs"}
-	if adminLogsFlags.follow {
-		dockerArgs = append(dockerArgs, "--follow")
-	}
-	dockerArgs = append(dockerArgs, fmt.Sprintf("--tail=%d", adminLogsFlags.tail))
-	dockerArgs = append(dockerArgs, cid)
-
-	logsCmd := exec.CommandContext(ctx, "docker", dockerArgs...)
-	logsCmd.Stdout = os.Stdout
-	logsCmd.Stderr = os.Stderr
-	return logsCmd.Run()
-}
-
-// runAdminHealth probes GET /health on the admin service.
 func runAdminHealth(cmd *cobra.Command, args []string) error {
 	port := adminPort()
 	url := "http://localhost:" + port + "/health"
