@@ -570,20 +570,32 @@ run_step 13 "nClaw chat readiness check" \
     CLAW_URL="http://localhost:3710/health"
     AI_URL="http://localhost:3709/health"
 
-    # Steps 9 and 10 INSTALL the plugins; install does not start them, and
-    # step 5 ran `nself start` before they existed. Probing here without
-    # starting them tests a service that was never running.
-    for p in ai claw; do
-      nself plugin start "${p}" 2>&1 | sed "s/^/  plugin start ${p}: /" || true
-    done
+    # Steps 9 and 10 INSTALL the plugins; install does not run them, and step
+    # 5 ran `nself start` before they existed. Probing here without bringing
+    # them up tests a service that was never running.
+    #
+    # These plugins are COMPOSE services: each installs a
+    # docker-compose.plugin.yml (build: from its own Dockerfile, publishing
+    # 127.0.0.1:<port>) which `nself build` discovers and `nself start`
+    # brings up. `nself plugin start` is the background-process path and
+    # fails here with "no entry point", which is correct but not the flow the
+    # install message points at ("Run nself build to include ai in your
+    # stack").
+    #
+    # The plugin image is built from source on first start and its compose
+    # healthcheck allows start_period: 90s, so this is slow by design.
+    nself build 2>&1 | tail -3 | sed "s/^/  build: /"
+    nself start 2>&1 | tail -5 | sed "s/^/  start: /"
 
+    # 60 x 3s = 180s, to cover the compose healthcheck start_period of 90s
+    # plus the first-start image build.
     probe() {
       url=$2
-      for i in $(seq 1 15); do
+      for i in $(seq 1 60); do
         c=$(curl -sS -o "/tmp/golden-path-$1-health.json" -w "%{http_code}" \
               "${url}" 2>/dev/null || echo 000)
         [ "${c}" = "200" ] && { echo "${c}"; return 0; }
-        sleep 2
+        sleep 3
       done
       echo "${c}"
       return 1
