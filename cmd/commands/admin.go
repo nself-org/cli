@@ -3,14 +3,16 @@ package commands
 import (
 	"context"
 	"fmt"
-	"github.com/nself-org/cli/internal/docker"
 	"net/http"
 	"os"
 	"os/exec"
 	"time"
 
-	"github.com/nself-org/cli/internal/httptimeout"
 	"github.com/spf13/cobra"
+
+	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/httptimeout"
 )
 
 // adminPort returns the admin UI port from env or falls back to 3021.
@@ -225,9 +227,12 @@ func runAdminStart(cmd *cobra.Command, args []string) error {
 		// and ran the AI first-run wizard, which cannot install Ollama
 		// without systemd. Admin is a companion tool; starting it must not
 		// re-run the stack's boot sequence.
+		// The compose SERVICE is "nself-admin" (compose.AdminServiceName); only
+		// the container is "<project>_admin". Passing "admin" here fails with
+		// "no such service".
 		projectDir, composeFiles := adminComposeContext()
 		c := docker.NewCompose(composeFiles...)
-		if err3 := c.ComposeUpNoDeps(ctx, projectDir, "admin"); err3 != nil {
+		if err3 := c.ComposeUpNoDeps(ctx, projectDir, compose.AdminServiceName); err3 != nil {
 			return fmt.Errorf("starting admin: %w", err3)
 		}
 	}
