@@ -13,7 +13,12 @@ import "github.com/spf13/cobra"
 var startCmd = &cobra.Command{
 	Use:     "start",
 	Aliases: []string{"up"},
-	Short:   "Boot your nSelf stack",
+	// runStart ignores positional arguments entirely — it always boots the
+	// whole stack. Accepting them silently is how `nself admin start` ended
+	// up shelling out to `nself start admin` and booting everything instead
+	// of one service. Reject them loudly rather than appearing to scope.
+	Args:  cobra.NoArgs,
+	Short: "Boot your nSelf stack",
 	Long: `Boot the nSelf stack with health checks and automatic database initialization.
 
 Executes the startup sequence:
