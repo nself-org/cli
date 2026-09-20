@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/config"
@@ -81,16 +82,44 @@ func TestAdminService_GroupAddMatchesSocketResolution(t *testing.T) {
 	}
 }
 
-func TestAdminService_StillRunsAsNonRoot(t *testing.T) {
-	// group_add grants the socket's group, NOT root. If this ever becomes
-	// user: root the group_add work is pointless and the container is running
-	// with far more privilege than it needs.
+func TestAdminService_RunsAsTheHostUser(t *testing.T) {
+	// The admin bind-mounts the project dir read-write and its health check
+	// requires W_OK there, so the container user must own that directory.
+	// A hardcoded 1000:1000 breaks on any host whose user is not uid 1000 —
+	// GitHub Actions' runner is 1001.
 	cfg := minimalCfg()
 	cfg.Admin = config.AdminConfig{Enabled: true, Port: 3021, Version: "latest"}
 	svc := NewGenerator(cfg).buildAdminService()
 
-	if svc.User != "1000:1000" {
-		t.Errorf("admin user = %q, want \"1000:1000\"", svc.User)
+	want, ok := hostUser()
+	if !ok {
+		// Windows: no POSIX uid, keep the documented default.
+		if svc.User != "1000:1000" {
+			t.Errorf("admin user = %q, want the 1000:1000 default when the host uid is unknown", svc.User)
+		}
+		return
+	}
+
+	if svc.User != want {
+		t.Errorf("admin user = %q, want the host user %q", svc.User, want)
+	}
+}
+
+func TestAdminService_DoesNotRunAsRoot(t *testing.T) {
+	// group_add grants the socket's group, not root. Running the whole
+	// container as root would make the group_add work pointless and hand it
+	// far more privilege than it needs. This only holds when the CLI itself
+	// is not being run as root.
+	if u, ok := hostUser(); ok && strings.HasPrefix(u, "0:") {
+		t.Skip("CLI is running as root; the admin legitimately inherits that uid")
+	}
+
+	cfg := minimalCfg()
+	cfg.Admin = config.AdminConfig{Enabled: true, Port: 3021, Version: "latest"}
+	svc := NewGenerator(cfg).buildAdminService()
+
+	if strings.HasPrefix(svc.User, "0:") || svc.User == "root" {
+		t.Errorf("admin must not run as root, got user %q", svc.User)
 	}
 }
 

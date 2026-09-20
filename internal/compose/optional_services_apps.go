@@ -42,11 +42,24 @@ func (g *Generator) buildAdminService() ServiceConfig {
 		groupAdd = []string{gid}
 	}
 
+	// Run as the user that owns the bind-mounted project directory, not a
+	// hardcoded 1000:1000. The admin mounts ./ at /workspace read-write and
+	// its health check requires W_OK there; a container uid that does not own
+	// the directory cannot write to it, so the check fails and /api/health
+	// answers 503. This is invisible on macOS, where Docker Desktop remaps
+	// ownership for bind mounts, and breaks on Linux whenever the host user is
+	// not uid 1000 — GitHub Actions' `runner` is 1001, which is exactly how
+	// this surfaced.
+	adminUser := "1000:1000"
+	if u, ok := hostUser(); ok {
+		adminUser = u
+	}
+
 	return ServiceConfig{
 		Image:         ResolveImage("admin", fmt.Sprintf("%s:%s", AdminImagePath, version)),
 		ContainerName: fmt.Sprintf("%s_admin", g.cfg.ProjectName),
 		Restart:       "unless-stopped",
-		User:          "1000:1000",
+		User:          adminUser,
 		GroupAdd:      groupAdd,
 		Networks:      []string{g.cfg.DockerNetwork},
 		DependsOn: map[string]DepOn{
