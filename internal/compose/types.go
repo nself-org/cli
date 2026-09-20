@@ -117,6 +117,7 @@ type ServiceConfig struct {
 	Restart       string            `yaml:"restart,omitempty"`
 	ShmSize       string            `yaml:"shm_size,omitempty"`
 	User          string            `yaml:"user,omitempty"`
+	GroupAdd      []string          `yaml:"group_add,omitempty"`
 	Networks      []string          `yaml:"networks,omitempty"`
 	DependsOn     map[string]DepOn  `yaml:"depends_on,omitempty"`
 	Environment   map[string]string `yaml:"environment,omitempty"`

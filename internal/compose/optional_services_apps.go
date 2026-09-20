@@ -31,11 +31,23 @@ func (g *Generator) buildAdminService() ServiceConfig {
 		slog.Warn("ADMIN_PASSWORD_HASH is not set — admin UI will start without authentication")
 	}
 
+	// The admin runs as 1000:1000 but mounts the Docker socket, which is
+	// mode 660 owned by root or the docker group. Without the socket's group
+	// the container is denied, `docker version` fails inside it, and the admin
+	// reports itself unhealthy (503 from /api/health) while still passing its
+	// own container healthcheck. Add the group only when we can actually read
+	// the socket's gid; see dockerSocketGroup.
+	var groupAdd []string
+	if gid, ok := dockerSocketGroup(); ok {
+		groupAdd = []string{gid}
+	}
+
 	return ServiceConfig{
 		Image:         ResolveImage("admin", fmt.Sprintf("%s:%s", AdminImagePath, version)),
 		ContainerName: fmt.Sprintf("%s_admin", g.cfg.ProjectName),
 		Restart:       "unless-stopped",
 		User:          "1000:1000",
+		GroupAdd:      groupAdd,
 		Networks:      []string{g.cfg.DockerNetwork},
 		DependsOn: map[string]DepOn{
 			"postgres": {Condition: "service_healthy"},
