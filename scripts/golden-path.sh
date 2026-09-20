@@ -584,8 +584,34 @@ run_step 13 "nClaw chat readiness check" \
     #
     # The plugin image is built from source on first start and its compose
     # healthcheck allows start_period: 90s, so this is slow by design.
-    nself build 2>&1 | tail -3 | sed "s/^/  build: /"
-    nself start 2>&1 | tail -5 | sed "s/^/  start: /"
+    # `nself build`/`nself start` exit status must gate this step. A bare
+    # `cmd | tail -N | sed ...` pipeline reports sed'"'"'s exit status (~always
+    # 0), not the command'"'"'s — and this whole block runs inside a fresh
+    # `bash -c` subshell that does NOT inherit the outer script'"'"'s
+    # `set -uo pipefail` (shell options are not exported to a child bash
+    # process), so the step silently "passed" through a real build/start
+    # failure. Capture each command'"'"'s own $? via `if ! cmd >file 2>&1`,
+    # print the FULL captured output (not just the tail) to stderr and exit 1
+    # on failure so the step actually fails loudly.
+    step13_build_log="$(mktemp /tmp/golden-path-step13-build.XXXXXX)"
+    if ! nself build >"${step13_build_log}" 2>&1; then
+      echo "nself build failed (step 13):" >&2
+      cat "${step13_build_log}" >&2
+      rm -f "${step13_build_log}"
+      exit 1
+    fi
+    tail -3 "${step13_build_log}" | sed "s/^/  build: /"
+    rm -f "${step13_build_log}"
+
+    step13_start_log="$(mktemp /tmp/golden-path-step13-start.XXXXXX)"
+    if ! nself start >"${step13_start_log}" 2>&1; then
+      echo "nself start failed (step 13):" >&2
+      cat "${step13_start_log}" >&2
+      rm -f "${step13_start_log}"
+      exit 1
+    fi
+    tail -5 "${step13_start_log}" | sed "s/^/  start: /"
+    rm -f "${step13_start_log}"
 
     # 60 x 3s = 180s, to cover the compose healthcheck start_period of 90s
     # plus the first-start image build.
