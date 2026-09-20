@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/nself-org/cli/internal/license"
 	"io"
 	"os"
 	"os/exec"
@@ -176,20 +177,23 @@ func defaultLicenseChecker(ctx context.Context, plugins []string) error {
 // hasAnyLicenseKey returns true if the operator has any license key set
 // (env, cache, or legacy key file). Real validation is left to plugin.Install.
 func hasAnyLicenseKey() bool {
-	if os.Getenv("NSELF_PLUGIN_LICENSE_KEY") != "" {
+	// license.CollectLicenseKeys is the canonical accessor: it reads
+	// NSELF_PLUGIN_LICENSE_KEY, the numbered NSELF_LICENSE_KEY_1..10 vars, and
+	// the stored key at ~/.nself/license/key — the exact file that
+	// `nself license set` writes.
+	//
+	// This used to hand-roll the lookup and checked ~/.nself/license.key, a
+	// LEGACY path with a dot where the current store has a directory
+	// separator. The effect was that `nself license set <key>` followed by
+	// `nself bundle install <paid bundle>` reported "no license key
+	// configured" while `nself license status` showed the same key as Active.
+	// Every paying customer hit that. Never re-derive the key locations here.
+	if len(license.CollectLicenseKeys()) > 0 {
 		return true
 	}
-	if os.Getenv("NSELF_PLUGIN_LICENSE_KEY_OWNER") != "" {
-		return true
-	}
-	// Legacy: ~/.nself/license.key
-	home, err := os.UserHomeDir()
-	if err == nil {
-		if _, err := os.Stat(filepath.Join(home, ".nself", "license.key")); err == nil {
-			return true
-		}
-	}
-	return false
+	// The owner all-access key is a vault convenience the canonical collector
+	// does not know about.
+	return os.Getenv("NSELF_PLUGIN_LICENSE_KEY_OWNER") != ""
 }
 
 // isAlreadyInstalled reports whether the plugin's directory exists in pluginDir.
