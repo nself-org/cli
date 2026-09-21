@@ -49,11 +49,16 @@ import (
 // Each file is optional. Missing files are silently skipped.
 func Load(projectDir string) (*Config, error) {
 	// 1. Detect ENV first (needed to pick the correct .env.{ENV} file).
-	env := os.Getenv("ENV")
-	if env == "" {
-		env = "dev"
-	}
+	// Resolution order: process environment wins outright (an operator or
+	// CI already exported ENV=...); otherwise the ENV= key inside the
+	// project's own .env file (the shared, committed base every clone —
+	// including a production server — carries) decides; otherwise "dev".
+	// Without the .env fallback, a bare `nself build` run on a server whose
+	// only signal is .env's ENV=prod silently built a dev compose instead
+	// (wrong images, *.local.nself.org routes, mailpit/nself-admin wired in).
+	env, envSource := resolveEnv(projectDir)
 	env = normalizeEnv(env)
+	slog.Info("ENV resolved for .env cascade", "env", env, "source", envSource)
 
 	// 2. Build the file cascade — canonical order unless the legacy escape
 	// hatch is set.
@@ -156,6 +161,41 @@ func Load(projectDir string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// resolveEnv determines which environment name selects the .env.{ENV}
+// cascade layer, and where that value came from (surfaced via slog and by
+// `nself env explain`).
+//
+// Order: the process environment wins outright — an operator or CI that
+// already exported ENV=... is always honored. Otherwise the ENV= key inside
+// the project's own .env file (the shared, committed base present in every
+// clone, including a bare production checkout with no shell env set) is
+// read directly. Otherwise "dev".
+//
+// The .env fallback is read with a single targeted key lookup rather than
+// running the full cascade, because the full cascade's file selection
+// itself depends on the answer.
+func resolveEnv(projectDir string) (value string, source string) {
+	if v := os.Getenv("ENV"); v != "" {
+		return v, "process environment"
+	}
+	if v, ok := readEnvKeyFromFile(filepath.Join(projectDir, ".env"), "ENV"); ok && v != "" {
+		return v, ".env"
+	}
+	return "dev", "default"
+}
+
+// readEnvKeyFromFile reads a single key's value out of a dotenv-format file
+// without touching os.Environ or loading the rest of the file. Returns
+// ok=false if the file is missing, unreadable, or does not define the key.
+func readEnvKeyFromFile(path, key string) (value string, ok bool) {
+	m, err := godotenv.Read(path)
+	if err != nil {
+		return "", false
+	}
+	v, present := m[key]
+	return v, present
 }
 
 // warnLegacyEnvOrder logs a warning every time the NSELF_LEGACY_ENV_ORDER
