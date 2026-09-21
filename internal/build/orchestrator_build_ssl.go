@@ -40,7 +40,7 @@ func (st *buildState) generateSSLAndNginx() error {
 
 	// ── Step 6: Generate SSL certificates ───────────────────────────
 	sslDir := filepath.Join(st.workdir, "ssl")
-	sslGen := ssl.NewGenerator(st.cfg)
+	sslGen := ssl.NewGenerator(st.cfg).WithExplicitHosts(st.opts.Hosts)
 	sslResult, err := sslGen.GenerateWithResult(sslDir)
 	if err != nil {
 		return fmt.Errorf("generating SSL certificates: %w", err)

@@ -52,6 +52,21 @@ func AddHosts(hostnames []string) (int, error) {
 	return len(toAdd), nil
 }
 
+// canWriteHostsFile reports whether path can be opened for writing without
+// actually modifying it — a pre-flight permission check so the automatic
+// (build-time) hosts path can skip with a warning instead of attempting the
+// write, discovering it can't, and only then falling back to a manual note.
+// Opening with O_WRONLY and no O_TRUNC/O_APPEND never touches the file's
+// contents; the file is closed immediately after the open succeeds.
+func canWriteHostsFile(path string) bool {
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
+}
+
 func addHosts(hostnames []string) error {
 	// Filter out entries that cannot go into /etc/hosts.
 	filtered := filterHostsEntries(hostnames)

@@ -30,6 +30,13 @@ type BuildOptions struct {
 	// behaviour (no regression).  Use "ops" for an observability + CI server.
 	// Valid values: "app" (default), "ops".  See internal/compose/profiles.go.
 	Profile compose.ProfileName
+	// Hosts explicitly opts a build into /etc/hosts management (--hosts)
+	// for a BASE_DOMAIN that ssl.shouldManageHosts's local-dev heuristic
+	// does not recognize. Never overrides the ENV=prod veto — see
+	// internal/ssl/hosts_gate.go. Unset (false) preserves the normal local
+	// dev experience: a recognized local-dev domain is still managed
+	// automatically with no flag.
+	Hosts bool
 }
 
 // BuildResult summarizes what the build produced.
