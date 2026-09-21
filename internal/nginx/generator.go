@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // securityHeaders is the nginx directives block for security headers.
@@ -153,6 +154,11 @@ type defaultConfData struct {
 	HTTPPort int
 	SSLPort  int
 	SSLDir   string
+	// SSLBasePath is the in-container directory the ssl_certificate
+	// directives are rooted at — always nginxtopo.NginxSSLContainerPath,
+	// the same constant the compose nginx service mounts "./ssl" onto. Set
+	// by the generator; not caller-configurable.
+	SSLBasePath string
 	// HasSSL controls whether the HTTPS default_server block is emitted.
 	// Set to false for letsencrypt/custom/none SSL modes so nginx can start
 	// before certificate files exist on disk.
@@ -171,10 +177,11 @@ func (g *Generator) generateDefaultServer() (string, error) {
 	}
 
 	data := defaultConfData{
-		HTTPPort: httpPort,
-		SSLPort:  sslPort,
-		SSLDir:   sslDirName(g.cfg.BaseDomain),
-		HasSSL:   g.hasSSL,
+		HTTPPort:    httpPort,
+		SSLPort:     sslPort,
+		SSLDir:      sslDirName(g.cfg.BaseDomain),
+		SSLBasePath: nginxtopo.NginxSSLContainerPath,
+		HasSSL:      g.hasSSL,
 	}
 	return g.render("default.conf.tmpl", data)
 }
@@ -194,6 +201,9 @@ type ServiceRouteData struct {
 	// target passes through). Set by the generator; see proxyTarget below.
 	ProxyTarget string
 	SSLDir      string
+	// SSLBasePath: see defaultConfData.SSLBasePath above. Set by the
+	// generator in RenderServiceRoute; callers do not populate it.
+	SSLBasePath string
 	RateZone    string
 	Burst       int
 	ConnLimit   int
@@ -229,6 +239,7 @@ func (g *Generator) RenderServiceRoute(data ServiceRouteData) (string, error) {
 	}
 	data.HasSSL = g.hasSSL
 	data.HasTrustedChain = g.hasTrustedChain(data.SSLDir)
+	data.SSLBasePath = nginxtopo.NginxSSLContainerPath
 	data.UpstreamName = upstreamName(data.Route)
 	data.ProxyTarget = proxyTarget(data.Upstream)
 	if data.PathZones == nil {
@@ -286,12 +297,4 @@ func (g *Generator) render(name string, data interface{}) (string, error) {
 		return "", fmt.Errorf("rendering template %s: %w", name, err)
 	}
 	return buf.String(), nil
-}
-
-// sslDirName converts a domain to a directory-safe name by replacing dots with dashes.
-func sslDirName(domain string) string {
-	if domain == "" {
-		return "localhost"
-	}
-	return strings.ReplaceAll(domain, ".", "-")
 }
