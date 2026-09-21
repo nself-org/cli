@@ -241,31 +241,6 @@ func (g *Generator) RenderServiceRoute(data ServiceRouteData) (string, error) {
 	return g.render("service.conf.tmpl", data)
 }
 
-// finalizeServiceRoute fills in every ServiceRouteData field the generator
-// (not the caller) is responsible for computing: HasSSL, HasTrustedChain,
-// SSLBasePath, UpstreamName, ProxyTarget, and a default PathZones.
-//
-// This is the single completion point for ServiceRouteData. It exists
-// because generateAllRoutes' bulk loop in routes.go and RenderServiceRoute
-// used to duplicate this logic, and the loop's copy silently omitted
-// SSLBasePath: every nginx/sites/*.conf written by `nself build` rendered
-// "ssl_certificate /certificates/<dir>/fullchain.pem" (missing the
-// "/etc/nginx/ssl" mount-path prefix service.conf.tmpl expects), so nginx
-// refused to start with "cannot load certificate ...: BIO_new_file() failed"
-// on every fresh SSL-enabled build. Verified on production 2026-09-21.
-// Both call sites must go through this helper so the two paths cannot
-// drift apart again.
-func (g *Generator) finalizeServiceRoute(data *ServiceRouteData) {
-	data.HasSSL = g.hasSSL
-	data.HasTrustedChain = g.hasTrustedChain(data.SSLDir)
-	data.SSLBasePath = nginxtopo.NginxSSLContainerPath
-	data.UpstreamName = upstreamName(data.Route)
-	data.ProxyTarget = proxyTarget(data.Upstream)
-	if data.PathZones == nil {
-		data.PathZones = defaultSecurityPathZones()
-	}
-}
-
 // hasTrustedChain reports whether a chain.pem exists for the given cert
 // directory. Only then is it safe to emit ssl_trusted_certificate: nginx treats
 // a missing file there as fatal and refuses to start.
