@@ -1,6 +1,6 @@
 {
   "name": "@nself/sdk",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "TypeScript consumer SDK for nSelf \u2014 query GraphQL, manage plugins, auth, and admin from any TS/JS app.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

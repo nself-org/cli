@@ -2,6 +2,10 @@
 
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
+## [1.4.5] - 2026-09-21
+
+- fix(nginx): generated nginx/sites/*.conf are rooted at /etc/nginx/ssl again (ssl_certificate paths rendered as /certificates/... in 1.4.4, nginx refused to start) (#448)
+
 
 ## [1.4.4] - 2026-09-20
 
