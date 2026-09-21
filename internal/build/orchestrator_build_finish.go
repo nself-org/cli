@@ -24,7 +24,7 @@ import (
 // writeFinalArtifacts runs Steps 10-12 of Build().
 func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 	// ── Step 10: Write .env.computed ────────────────────────────────
-	pluginEnvVars := ComputePluginEnvVars(st.workdir, st.pluginDir)
+	pluginEnvVars := ComputePluginEnvVars(st.workdir, st.pluginDir, st.cfg)
 	computedPath := filepath.Join(st.workdir, ".env.computed")
 	computedContent := buildEnvComputed(st.cfg, pluginEnvVars)
 	if err := os.WriteFile(computedPath, []byte(computedContent), 0600); err != nil {

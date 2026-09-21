@@ -132,3 +132,15 @@ func parseExtensionList(s string) []string {
 	}
 	return result
 }
+
+// hasExtensionCI reports whether extensions contains name, case-insensitively
+// and with surrounding whitespace ignored. Used by parseEnvCore to make
+// PGVECTOR_ENABLED purely additive against POSTGRES_EXTENSIONS.
+func hasExtensionCI(extensions []string, name string) bool {
+	for _, e := range extensions {
+		if strings.EqualFold(strings.TrimSpace(e), name) {
+			return true
+		}
+	}
+	return false
+}

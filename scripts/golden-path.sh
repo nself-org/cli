@@ -126,6 +126,17 @@ capture_diagnostics() {
       docker logs --tail 40 "${c}" 2>&1 || true
     done
 
+    # An unhealthy container is still docker ps State "running" (health is a
+    # separate field), so the loop above never sees it — a run showing
+    # testproject_notify/testproject_plugin_cron as "(unhealthy)" but
+    # "running" had zero diagnostics explaining why. Health.Log carries the
+    # actual probe output/exit code Docker itself recorded.
+    echo "--- health check log for unhealthy containers ---"
+    for c in $(docker ps -a --format '{{.Names}} {{.Status}}' 2>/dev/null | grep -i unhealthy | awk '{print $1}'); do
+      echo "=== ${c} health log ==="
+      docker inspect --format '{{json .State.Health.Log}}' "${c}" 2>&1 || true
+    done
+
     # Run 35609194858 failed step 13 with only "compose up: docker compose
     # ... up -d: exit status N" — the CLI swallows docker's own stderr, and
     # the block above (plain `docker ps -a`) showed only the 5 core

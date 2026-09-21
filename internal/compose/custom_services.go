@@ -125,10 +125,9 @@ func applyExtraEnv(env map[string]string, svc config.CustomService) {
 //     service's own port via wget (the prior hardcoded behavior).
 //   - a path (e.g. "/auth/health")         — GET that path instead of /health,
 //     still via wget on the service's own port.
-//   - a full command starting with "CMD"
-//     or "CMD-SHELL" (e.g. "CMD-SHELL curl
-//     -f http://localhost:4002/status")    — passed through verbatim as the
-//     compose healthcheck test, split on whitespace. Use this when the
+//   - a full command starting with "CMD" or "CMD-SHELL" (e.g. "CMD-SHELL
+//     curl -f http://localhost:4002/status") — passed through verbatim as
+//     the compose healthcheck test, split on whitespace. Use this when the
 //     service needs curl, a non-HTTP probe, or a port other than its own.
 //   - "disabled" / "none" / "false"
 //     (case-insensitive)                   — no healthcheck is emitted.
@@ -136,6 +135,11 @@ func applyExtraEnv(env map[string]string, svc config.CustomService) {
 // Without this, a service whose health endpoint isn't literally /health on
 // its own port (e.g. auth_server serving /auth/health) is reported unhealthy
 // forever regardless of its actual state.
+// Default probe targets 127.0.0.1, not localhost: on Alpine, wget resolving
+// "localhost" can pick IPv6 (::1) while the app binds only IPv4, failing the
+// probe though the app is fine (prod fix: CS_N_HEALTHCHECK=CMD wget -qO-
+// http://127.0.0.1:...; recurred 2026-09-21). An explicit CS_N_HEALTHCHECK
+// override is passed through verbatim, never rewritten.
 func buildHealthcheck(cs config.CustomService) *Healthcheck {
 	raw := strings.TrimSpace(cs.HealthCheck)
 	switch strings.ToLower(raw) {
@@ -153,7 +157,7 @@ func buildHealthcheck(cs config.CustomService) *Healthcheck {
 		} else if !strings.HasPrefix(path, "/") {
 			path = "/" + path
 		}
-		test = []string{"CMD", "wget", "-qO-", fmt.Sprintf("http://localhost:%d%s", cs.Port, path)}
+		test = []string{"CMD", "wget", "-qO-", fmt.Sprintf("http://127.0.0.1:%d%s", cs.Port, path)}
 	}
 
 	return &Healthcheck{

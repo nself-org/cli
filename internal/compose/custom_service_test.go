@@ -686,21 +686,21 @@ func TestBuildHealthcheck(t *testing.T) {
 			name:       "default_empty_uses_slash_health",
 			raw:        "",
 			port:       8001,
-			wantTest:   []string{"CMD", "wget", "-qO-", "http://localhost:8001/health"},
+			wantTest:   []string{"CMD", "wget", "-qO-", "http://127.0.0.1:8001/health"},
 			wantSubstr: "/health",
 		},
 		{
 			name:       "custom_path_overrides_default",
 			raw:        "/auth/health",
 			port:       4002,
-			wantTest:   []string{"CMD", "wget", "-qO-", "http://localhost:4002/auth/health"},
+			wantTest:   []string{"CMD", "wget", "-qO-", "http://127.0.0.1:4002/auth/health"},
 			wantSubstr: "/auth/health",
 		},
 		{
 			name:       "bare_path_without_leading_slash_normalized",
 			raw:        "status",
 			port:       9000,
-			wantTest:   []string{"CMD", "wget", "-qO-", "http://localhost:9000/status"},
+			wantTest:   []string{"CMD", "wget", "-qO-", "http://127.0.0.1:9000/status"},
 			wantSubstr: "/status",
 		},
 		{
@@ -800,7 +800,7 @@ func TestBuildCustomService_HealthcheckCustomPath(t *testing.T) {
 	if svc.Healthcheck == nil {
 		t.Fatal("buildCustomService: Healthcheck is nil")
 	}
-	want := "http://localhost:4002/auth/health"
+	want := "http://127.0.0.1:4002/auth/health"
 	hcStr := strings.Join(svc.Healthcheck.Test, " ")
 	if !strings.Contains(hcStr, want) {
 		t.Errorf("healthcheck must reference %q, got: %s", want, hcStr)
