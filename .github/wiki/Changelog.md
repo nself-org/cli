@@ -2,6 +2,13 @@
 
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
+## [1.4.6] - 2026-09-21
+
+- fix(build): plugin services get the core environment (ENV, project/network names, DATABASE_URL and POSTGRES_*, Hasura endpoint and admin secret, PLUGIN_INTERNAL_SECRET, NOTIFY_INTERNAL_SECRET) injected into their compose fragments; the ai plugin no longer fails on "PLUGIN_INTERNAL_SECRET required" and mux no longer treats a dev project as production (#451)
+- fix(build): default healthchecks for custom and plugin services probe 127.0.0.1 instead of localhost, which resolves to ::1 on alpine images (#451)
+- fix(config): PGVECTOR_ENABLED=true now adds pgvector to POSTGRES_EXTENSIONS so a fresh init selects the pgvector image and claw migrations succeed (#451)
+- chore(ci): golden-path diagnostics print the health log of every unhealthy container (#451)
+
 ## [1.4.5] - 2026-09-21
 
 - fix(nginx): generated nginx/sites/*.conf are rooted at /etc/nginx/ssl again (ssl_certificate paths rendered as /certificates/... in 1.4.4, nginx refused to start) (#448)
