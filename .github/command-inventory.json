@@ -365,6 +365,7 @@
       "--check",
       "--debug",
       "--force",
+      "--hosts",
       "--no-auto-redis",
       "--no-cache",
       "--no-migration-check",

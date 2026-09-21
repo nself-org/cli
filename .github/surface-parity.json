@@ -133,7 +133,7 @@
       "group_id": "config",
       "wiki_page": true,
       "mcp_tool": true,
-      "env_vars": "documented",
+      "env_vars": "n/a",
       "openapi": "n/a (see below)"
     },
     {

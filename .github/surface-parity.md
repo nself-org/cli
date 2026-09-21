@@ -26,7 +26,7 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself deploy` | deploy | yes | yes | undocumented: NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, VERCEL_TOKEN | n/a (see below) |
 | `nself dev` | core | yes | no | n/a | n/a (see below) |
 | `nself doctor` | core | yes | yes | undocumented: NSELF_PING_API_URL, OLLAMA_BASE_URL, OLLAMA_HOST, PLUGIN_AI_INTERNAL_URL, PLUGIN_INTERNAL_SECRET | n/a (see below) |
-| `nself env` | config | yes | yes | documented | n/a (see below) |
+| `nself env` | config | yes | yes | n/a | n/a (see below) |
 | `nself exec` | core | yes | no | n/a | n/a (see below) |
 | `nself functions` | data | yes | no | n/a | n/a (see below) |
 | `nself generate` | config | yes | no | undocumented: NSELF_HASURA_PROD_ADMIN_SECRET, NSELF_HASURA_PROD_URL, NSELF_HASURA_STAGING_ADMIN_SECRET, NSELF_HASURA_STAGING_URL | n/a (see below) |
