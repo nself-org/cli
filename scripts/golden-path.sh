@@ -135,6 +135,12 @@ capture_diagnostics() {
     for c in $(docker ps -a --format '{{.Names}} {{.Status}}' 2>/dev/null | grep -i unhealthy | awk '{print $1}'); do
       echo "=== ${c} health log ==="
       docker inspect --format '{{json .State.Health.Log}}' "${c}" 2>&1 || true
+
+      echo "=== ${c} (last 60 lines) ==="
+      docker logs --tail 60 "${c}" 2>&1 || true
+
+      echo "=== ${c} live /health probe ==="
+      docker exec "${c}" sh -c 'wget -S -qO- http://127.0.0.1:${PORT:-}/health 2>&1 | head -20 || echo "probe unavailable"' 2>&1 || echo "probe unavailable"
     done
 
     # Run 35609194858 failed step 13 with only "compose up: docker compose
