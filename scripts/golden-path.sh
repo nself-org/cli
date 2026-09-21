@@ -131,7 +131,7 @@ capture_diagnostics() {
     # testproject_notify/testproject_plugin_cron as "(unhealthy)" but
     # "running" had zero diagnostics explaining why. Health.Log carries the
     # actual probe output/exit code Docker itself recorded.
-        echo "--- health check log for unhealthy containers ---"
+    echo "--- health check log for unhealthy containers ---"
     for c in $(docker ps -a --format '{{.Names}} {{.Status}}' 2>/dev/null | grep -i unhealthy | awk '{print $1}'); do
       echo "=== ${c} health log ==="
       docker inspect --format '{{json .State.Health.Log}}' "${c}" 2>&1 || true
