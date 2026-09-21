@@ -125,6 +125,79 @@ capture_diagnostics() {
       echo "=== ${c} (last 40 lines) ==="
       docker logs --tail 40 "${c}" 2>&1 || true
     done
+
+    # Run 35609194858 failed step 13 with only "compose up: docker compose
+    # ... up -d: exit status N" — the CLI swallows docker's own stderr, and
+    # the block above (plain `docker ps -a`) showed only the 5 core
+    # containers: no plugin container had even been created, so there was no
+    # way to tell from the job log whether a plugin image build failed, a
+    # compose file was invalid, or a port collided. Rebuild the exact
+    # docker-compose invocation the CLI itself uses (internal/docker/compose.go
+    # buildBaseArgs: -f <files...> then --env-file <files...>, files sourced
+    # from .nself/compose-files.txt per internal/build/plugins_manifest.go and
+    # .env / .nself/compose.env per internal/build/secrets_template.go
+    # ComposeEnvFiles) and run the diagnostic-only subset of it directly so
+    # docker's own error text reaches this log.
+    echo "--- compose file manifest (.nself/compose-files.txt) ---"
+    if [ -n "${PROJECT_DIR:-}" ] && [ -f "${PROJECT_DIR}/.nself/compose-files.txt" ]; then
+      cat "${PROJECT_DIR}/.nself/compose-files.txt" 2>&1 || true
+    else
+      echo "no .nself/compose-files.txt (project not built yet, or PROJECT_DIR unset)"
+    fi
+
+    compose_args=()
+    if [ -n "${PROJECT_DIR:-}" ] && [ -f "${PROJECT_DIR}/.nself/compose-files.txt" ]; then
+      while IFS= read -r cf; do
+        [ -n "${cf}" ] && compose_args+=(-f "${cf}")
+      done < "${PROJECT_DIR}/.nself/compose-files.txt"
+      [ -f "${PROJECT_DIR}/.env" ] && compose_args+=(--env-file "${PROJECT_DIR}/.env")
+      [ -f "${PROJECT_DIR}/.nself/compose.env" ] && compose_args+=(--env-file "${PROJECT_DIR}/.nself/compose.env")
+    fi
+
+    if [ -n "${PROJECT_DIR:-}" ] && [ "${#compose_args[@]}" -gt 0 ]; then
+      echo "--- docker compose config -q (validates the merged compose file) ---"
+      (cd "${PROJECT_DIR}" && docker compose "${compose_args[@]}" config -q 2>&1) || true
+
+      # Prefer --dry-run (simulates without creating anything) when this
+      # docker compose build supports it; otherwise fall back to
+      # `up -d --no-start` (creates containers but does not start them) so
+      # docker's own build/network/port error text is captured either way.
+      echo "--- docker compose up -d (dry run, surfaces docker's own error text) ---"
+      if docker compose up --help 2>&1 | grep -q -- '--dry-run'; then
+        (cd "${PROJECT_DIR}" && docker compose "${compose_args[@]}" up -d --dry-run 2>&1 | tail -60) || true
+      else
+        (cd "${PROJECT_DIR}" && docker compose "${compose_args[@]}" up -d --no-start 2>&1 | tail -60) || true
+      fi
+
+      echo "--- docker compose ps -a ---"
+      (cd "${PROJECT_DIR}" && docker compose "${compose_args[@]}" ps -a 2>&1) || true
+
+      echo "--- docker compose logs (services not running, last 40 lines each) ---"
+      not_running=$(cd "${PROJECT_DIR}" && docker compose "${compose_args[@]}" ps -a --format '{{.Service}} {{.State}}' 2>/dev/null | awk '$2 != "running" {print $1}')
+      for svc in ${not_running}; do
+        echo "=== compose service: ${svc} (last 40 lines) ==="
+        (cd "${PROJECT_DIR}" && docker compose "${compose_args[@]}" logs --tail 40 "${svc}" 2>&1) || true
+      done
+    else
+      echo "--- skipping docker compose diagnostics: no compose manifest / PROJECT_DIR ---"
+    fi
+
+    # Step 13 keeps its build/start logs on disk (see below) instead of
+    # deleting them on success, specifically so a start failure after a
+    # successful build still shows what the build actually did here.
+    echo "--- step 13 build log (if captured) ---"
+    if [ -f /tmp/golden-path-step13-build.log ]; then
+      tail -60 /tmp/golden-path-step13-build.log 2>&1 || true
+    else
+      echo "no step13 build log on disk"
+    fi
+    echo "--- step 13 start log (if captured) ---"
+    if [ -f /tmp/golden-path-step13-start.log ]; then
+      tail -60 /tmp/golden-path-step13-start.log 2>&1 || true
+    else
+      echo "no step13 start log on disk"
+    fi
+
     echo "--- work dir ---"
     ls -la "${WORK_DIR:-/tmp}" 2>&1 || true
   } > "${diag_file}" 2>&1
@@ -593,25 +666,28 @@ run_step 13 "nClaw chat readiness check" \
     # failure. Capture each command'"'"'s own $? via `if ! cmd >file 2>&1`,
     # print the FULL captured output (not just the tail) to stderr and exit 1
     # on failure so the step actually fails loudly.
-    step13_build_log="$(mktemp /tmp/golden-path-step13-build.XXXXXX)"
+    # Fixed paths, not mktemp: capture_diagnostics(13) tails these back into
+    # the diagnostics block on a later failure in this same step, so a build
+    # log that succeeded is still visible when the following `nself start`
+    # is what actually fails. Reset at the top of the step so a stale file
+    # from a prior run is never mistaken for the current output.
+    step13_build_log="/tmp/golden-path-step13-build.log"
+    rm -f "${step13_build_log}"
     if ! nself build >"${step13_build_log}" 2>&1; then
       echo "nself build failed (step 13):" >&2
       cat "${step13_build_log}" >&2
-      rm -f "${step13_build_log}"
       exit 1
     fi
     tail -3 "${step13_build_log}" | sed "s/^/  build: /"
-    rm -f "${step13_build_log}"
 
-    step13_start_log="$(mktemp /tmp/golden-path-step13-start.XXXXXX)"
+    step13_start_log="/tmp/golden-path-step13-start.log"
+    rm -f "${step13_start_log}"
     if ! nself start >"${step13_start_log}" 2>&1; then
       echo "nself start failed (step 13):" >&2
       cat "${step13_start_log}" >&2
-      rm -f "${step13_start_log}"
       exit 1
     fi
     tail -5 "${step13_start_log}" | sed "s/^/  start: /"
-    rm -f "${step13_start_log}"
 
     # 60 x 3s = 180s, to cover the compose healthcheck start_period of 90s
     # plus the first-start image build.
