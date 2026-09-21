@@ -177,6 +177,59 @@ func TestLoad_CanonicalOrder_EnvAiIsIgnored(t *testing.T) {
 	}
 }
 
+// ── Load() ENV resolution — process env vs .env's own ENV= key ─────────────
+
+// TestLoad_EnvResolvedFromDotEnvFile_WhenProcessEnvUnset verifies the
+// production-server bug fix directly: with no ENV set in the process
+// environment, Load() must read ENV=prod out of the project's own .env file
+// and load .env.prod — not silently default to dev. This is the exact
+// shape of a bare `nself build` run on a checked-out prod project.
+func TestLoad_EnvResolvedFromDotEnvFile_WhenProcessEnvUnset(t *testing.T) {
+	_ = os.Unsetenv("ENV")
+	_ = os.Unsetenv(LegacyEnvOrderVar)
+	t.Cleanup(func() { _ = os.Unsetenv(cascadeTestVar) })
+
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, ".env"), "ENV=prod\n")
+	// Satisfy the prod-only MinIO strong-credential guard (T08) so Load()
+	// exercises the full pipeline through ApplyDefaults, not just cascade
+	// file selection.
+	mustWriteFile(t, filepath.Join(dir, ".env.prod"), cascadeTestVar+"=from-env-prod\n"+
+		"MINIO_ROOT_USER=prod-minio-user\nMINIO_ROOT_PASSWORD=a-strong-unique-password-16plus\n")
+
+	if _, err := Load(dir); err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if got := os.Getenv(cascadeTestVar); got != "from-env-prod" {
+		t.Errorf("got %q, want %q (.env's ENV=prod must select .env.prod)", got, "from-env-prod")
+	}
+}
+
+// TestLoad_ProcessEnv_WinsOverDotEnvFile verifies that an ENV already set in
+// the process environment is never overridden by .env's own ENV= key — the
+// process environment is the higher-priority signal (e.g. CI exporting
+// ENV=staging for a project whose .env still says ENV=prod).
+func TestLoad_ProcessEnv_WinsOverDotEnvFile(t *testing.T) {
+	_ = os.Setenv("ENV", "dev")
+	_ = os.Unsetenv(LegacyEnvOrderVar)
+	t.Cleanup(func() {
+		_ = os.Unsetenv("ENV")
+		_ = os.Unsetenv(cascadeTestVar)
+	})
+
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, ".env"), "ENV=prod\n")
+	mustWriteFile(t, filepath.Join(dir, ".env.dev"), cascadeTestVar+"=from-env-dev\n")
+	mustWriteFile(t, filepath.Join(dir, ".env.prod"), cascadeTestVar+"=from-env-prod\n")
+
+	if _, err := Load(dir); err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if got := os.Getenv(cascadeTestVar); got != "from-env-dev" {
+		t.Errorf("got %q, want %q (process ENV=dev must win over .env's ENV=prod)", got, "from-env-dev")
+	}
+}
+
 // ── Load() — legacy escape hatch ────────────────────────────────────────────
 
 // TestLoad_LegacyOrder_EnvAiWinsLast verifies that with NSELF_LEGACY_ENV_ORDER

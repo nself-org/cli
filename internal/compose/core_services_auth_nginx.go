@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // buildAuthService returns the authentication service configuration.
@@ -178,7 +179,13 @@ func (g *Generator) buildNginxService(dc *DockerCompose) ServiceConfig {
 			fmt.Sprintf("./nginx/conf.d-%s:/etc/nginx/conf.d-%s:ro", cfg.Env, cfg.Env),
 			fmt.Sprintf("./%s:/etc/nginx/sites:ro", NginxSitesDir),
 			"./nginx/includes:/etc/nginx/includes:ro",
-			"./ssl:/etc/nginx/ssl:ro",
+			// Mount target must match nginxtopo.NginxSSLContainerPath — the
+			// same constant the generated confs' ssl_certificate directives
+			// are rooted at (internal/nginx/generator.go). A production box
+			// was found where these had drifted into two independent
+			// hand-typed literals; this is now the one place either side
+			// would need to change.
+			fmt.Sprintf("./ssl:%s:ro", nginxtopo.NginxSSLContainerPath),
 		},
 		// mode=0777 because two different uids write here. The master starts as
 		// root (the generated nginx.conf declares `user nginx;`, which requires

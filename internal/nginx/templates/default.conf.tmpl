@@ -35,8 +35,8 @@ server {
     server_name _;
     server_tokens off;
 
-    ssl_certificate /etc/nginx/ssl/certificates/{{.SSLDir}}/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/certificates/{{.SSLDir}}/privkey.pem;
+    ssl_certificate {{.SSLBasePath}}/certificates/{{.SSLDir}}/fullchain.pem;
+    ssl_certificate_key {{.SSLBasePath}}/certificates/{{.SSLDir}}/privkey.pem;
 
     location /health {
         access_log off;

@@ -79,6 +79,13 @@ func PluginEnv(projectDir string, m *PluginManifest) []string {
 // shim also read. Duplicating the order here instead would recreate exactly the
 // drift that rule exists to prevent.
 //
+// envName itself comes from config.ResolveEnv, the same resolver config.Load
+// and `nself env explain` use (process environment wins; otherwise the
+// project's own .env's ENV= key; otherwise "dev"). A bare os.Getenv("ENV")
+// here would default to "dev" on a production box whose only signal is
+// .env's ENV=prod — a plugin-invoking command would then read .env.dev
+// while `nself build` reads .env.prod for the same project.
+//
 // godotenv.Read is used rather than Load or Overload because those mutate the
 // process environment. This function must not: the CLI's own environment stays
 // as the user left it, and only declared values reach the child.
@@ -90,12 +97,7 @@ func resolveCascade(projectDir string) map[string]string {
 		return nil
 	}
 
-	envName := os.Getenv("ENV")
-	if envName == "" {
-		// Match the loader's default rather than guessing: a project with no
-		// ENV set is a dev project.
-		envName = "dev"
-	}
+	envName, _ := config.ResolveEnv(projectDir)
 
 	merged := make(map[string]string)
 	for _, name := range config.EnvCascadeOrder(envName, config.LegacyOrderActive()) {

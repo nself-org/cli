@@ -43,6 +43,7 @@ func init() {
 	buildCmd.Flags().Bool("allow-legacy", false, "Bypass v0.9 artifact check and proceed with WARNING (not recommended)")
 	buildCmd.Flags().Bool("no-auto-redis", false, "Disable automatic Redis enablement when a BullMQ-backed plugin is detected")
 	buildCmd.Flags().Bool("remove-orphans", false, "Remove containers with no matching service in the freshly generated compose (G-014). Detection always runs; removal is opt-in.")
+	buildCmd.Flags().Bool("hosts", false, "Opt in to /etc/hosts management for a BASE_DOMAIN that isn't a recognized local-dev domain (localhost/*.local.nself.org/*.localhost/*.local). Never overrides ENV=prod, which always skips /etc/hosts.")
 	buildCmd.Flags().String("profile", "", `Service profile: curated subset of services to include in docker-compose.yml.
   app (default) — full service set, identical to pre-profile behaviour.
   ops           — observability + CI server: postgres, hasura, auth, nginx,
@@ -66,6 +67,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	allowLegacy, _ := cmd.Flags().GetBool("allow-legacy")
 	noAutoRedis, _ := cmd.Flags().GetBool("no-auto-redis")
 	removeOrphans, _ := cmd.Flags().GetBool("remove-orphans")
+	hosts, _ := cmd.Flags().GetBool("hosts")
 
 	// ── Profile resolution ────────────────────────────────────────────
 	// Priority: --profile flag > NSELF_PROFILE env var > default ("app").
@@ -177,6 +179,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		SecurityReport: securityReport,
 		NoAutoRedis:    noAutoRedis,
 		Profile:        profile,
+		Hosts:          hosts,
 	}
 
 	result, err := build.Build(workdir, opts)

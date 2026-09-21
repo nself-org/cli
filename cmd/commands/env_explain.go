@@ -52,15 +52,16 @@ func runEnvExplain(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("getting working directory: %w", err)
 	}
 
-	activeEnv := os.Getenv("ENV")
-	if activeEnv == "" {
-		activeEnv = "dev"
-	}
+	// ResolveEnv matches config.Load()'s own resolution exactly (process
+	// ENV wins; otherwise .env's own ENV= key; otherwise "dev") — this
+	// command exists specifically to show the truth of what a build would
+	// do, so it must never diverge from Load()'s actual decision.
+	activeEnv, envSource := config.ResolveEnv(dir)
 	legacy := config.LegacyOrderActive()
 	cascade := config.EnvCascade(dir, activeEnv, legacy)
 
 	if len(args) == 0 {
-		return printCascadeOverview(cascade, activeEnv, legacy)
+		return printCascadeOverview(cascade, activeEnv, envSource, legacy)
 	}
 
 	reveal, _ := cmd.Flags().GetBool("reveal")
@@ -68,15 +69,19 @@ func runEnvExplain(cmd *cobra.Command, args []string) error {
 }
 
 // printCascadeOverview prints every file in load order with existence and
-// precedence, per `nself env explain` (no VAR argument).
-func printCascadeOverview(cascade []config.CascadeFile, activeEnv string, legacy bool) error {
+// precedence, per `nself env explain` (no VAR argument). envSource names
+// where activeEnv came from (config.ResolveEnv: "process environment",
+// ".env", or "default") so an operator can see at a glance whether a
+// mismatch between the box's actual .env and what they expected is a
+// process-env override or a stale .env file.
+func printCascadeOverview(cascade []config.CascadeFile, activeEnv, envSource string, legacy bool) error {
 	mode := "canonical (CLI-R18)"
 	if legacy {
 		mode = fmt.Sprintf("LEGACY — %s=1 is set", config.LegacyEnvOrderVar)
 	}
 
 	fmt.Println()
-	fmt.Printf("Environment: %s   Cascade mode: %s\n\n", ui.C(ui.Bold, activeEnv), mode)
+	fmt.Printf("Environment: %s (from %s)   Cascade mode: %s\n\n", ui.C(ui.Bold, activeEnv), envSource, mode)
 
 	tbl := ui.NewTable("Precedence", "File", "Exists", "Note")
 	last := len(cascade) - 1

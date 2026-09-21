@@ -82,6 +82,62 @@ func TestEnvExplain_NoArgLegacyMode_ShowsWarning(t *testing.T) {
 	}
 }
 
+// TestEnvExplain_NoArg_ReadsEnvFromDotEnvFile verifies `nself env explain`
+// agrees with config.Load(): with no ENV set in the process environment, it
+// must resolve ENV from the project's own .env file (ENV=prod here) and
+// list .env.prod as the active cascade layer — not silently show "dev" the
+// way it did before config.ResolveEnv existed. This is the same
+// production-server bug shape as config.TestLoad_EnvResolvedFromDotEnvFile_WhenProcessEnvUnset:
+// this command exists specifically so an operator can check what a build
+// would actually do, so it must never disagree with Load() about the
+// answer.
+func TestEnvExplain_NoArg_ReadsEnvFromDotEnvFile(t *testing.T) {
+	envExplainProject(t, map[string]string{
+		".env":      "ENV=prod\n",
+		".env.prod": "PROJECT_NAME=demo\n",
+	})
+	_ = os.Unsetenv("ENV")
+	_ = os.Unsetenv("NSELF_LEGACY_ENV_ORDER")
+
+	out, err := captureStdout(t, func() error {
+		return runEnvExplain(envExplainRoot(t), nil)
+	})
+	if err != nil {
+		t.Fatalf("runEnvExplain() error: %v", err)
+	}
+	if !strings.Contains(out, "prod") {
+		t.Errorf("output should show the resolved env as prod:\n%s", out)
+	}
+	if !strings.Contains(out, "from .env") {
+		t.Errorf("output should name .env as the source that decided ENV:\n%s", out)
+	}
+	if !strings.Contains(out, ".env.prod") {
+		t.Errorf("output missing .env.prod as the active cascade layer:\n%s", out)
+	}
+}
+
+// TestEnvExplain_NoArg_ProcessEnvWinsOverDotEnvFile verifies an ENV already
+// set in the process environment is shown as the source, not .env's own
+// ENV= key, matching config.ResolveEnv's precedence.
+func TestEnvExplain_NoArg_ProcessEnvWinsOverDotEnvFile(t *testing.T) {
+	envExplainProject(t, map[string]string{".env": "ENV=prod\n"})
+	_ = os.Setenv("ENV", "staging")
+	t.Cleanup(func() { _ = os.Unsetenv("ENV") })
+
+	out, err := captureStdout(t, func() error {
+		return runEnvExplain(envExplainRoot(t), nil)
+	})
+	if err != nil {
+		t.Fatalf("runEnvExplain() error: %v", err)
+	}
+	if !strings.Contains(out, "staging") {
+		t.Errorf("output should show the resolved env as staging (process env):\n%s", out)
+	}
+	if !strings.Contains(out, "from process environment") {
+		t.Errorf("output should name the process environment as the source:\n%s", out)
+	}
+}
+
 // TestEnvExplain_VarArg_RedactsByDefault verifies that explaining a specific
 // variable shows which file wins but redacts the value unless --reveal.
 func TestEnvExplain_VarArg_RedactsByDefault(t *testing.T) {

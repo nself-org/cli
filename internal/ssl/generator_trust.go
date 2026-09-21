@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,8 +45,30 @@ func (g *Generator) applyTrustAndHosts(domains []string, result *GenerateResult)
 	}
 
 	// ── /etc/hosts ──────────────────────────────────────────────────
+	// Gate first, before anything else touches the filesystem: a
+	// production box was found with 14 *.local.nself.org entries appended
+	// to /etc/hosts by a bare `nself build` run. shouldManageHosts vetoes
+	// ENV=prod unconditionally and otherwise only allows a recognized
+	// local-dev domain shape (or an explicit --hosts opt-in) — see
+	// hosts_gate.go.
+	if !shouldManageHosts(g.cfg.Env, g.cfg.BaseDomain, g.explicitHosts) {
+		slog.Debug("skipping /etc/hosts management — not a local-dev build",
+			"env", g.cfg.Env, "base_domain", g.cfg.BaseDomain)
+		return
+	}
+
 	filtered := filterHostsEntries(domains)
 	if len(filtered) == 0 {
+		return
+	}
+
+	// Permission pre-flight: skip with a warning rather than attempting the
+	// read/write dance and only discovering it can't be written partway
+	// through.
+	if !canWriteHostsFile(hostsFile) {
+		slog.Warn("/etc/hosts is not writable — skipping automatic update",
+			"file", hostsFile, "fix", "sudo nself dns-setup")
+		result.HostsManualNote = hostsManualNote(filtered)
 		return
 	}
 
@@ -68,6 +91,9 @@ func (g *Generator) applyTrustAndHosts(domains []string, result *GenerateResult)
 		result.HostsAdded = 0
 		return
 	}
+
+	// Print what will be written before writing it.
+	slog.Info("adding /etc/hosts entries", "file", hostsFile, "count", len(newEntries), "hosts", newEntries)
 
 	addErr := addHosts(newEntries)
 	if addErr == nil {

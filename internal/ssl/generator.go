@@ -12,11 +12,28 @@ import (
 // Generator creates SSL certificates for all domains in the project configuration.
 type Generator struct {
 	cfg *config.Config
+	// explicitHosts records an operator opt-in (--hosts) to /etc/hosts
+	// management for a domain shape shouldManageHosts's default heuristic
+	// does not recognize as local-dev. Never overrides the cfg.Env=="prod"
+	// veto — see hosts_gate.go. Set via WithExplicitHosts; false by default
+	// (unchanged behavior for every existing caller).
+	explicitHosts bool
 }
 
 // NewGenerator creates an SSL Generator from the given config.
 func NewGenerator(cfg *config.Config) *Generator {
 	return &Generator{cfg: cfg}
+}
+
+// WithExplicitHosts marks that the operator explicitly requested /etc/hosts
+// management for this build (the --hosts flag), overriding
+// shouldManageHosts's local-dev-domain heuristic for an unrecognized domain
+// shape. It never overrides the cfg.Env=="prod" veto. Returns g for
+// chaining, matching the WithWorkDir convention used elsewhere in this CLI
+// (e.g. compose.NewGeneratorWithProfile(...).WithWorkDir(...)).
+func (g *Generator) WithExplicitHosts(v bool) *Generator {
+	g.explicitHosts = v
+	return g
 }
 
 // GenerateResult holds the output of a Generate call including trust/hosts status.

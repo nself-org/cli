@@ -40,7 +40,7 @@ func (st *buildState) generateSSLAndNginx() error {
 
 	// ── Step 6: Generate SSL certificates ───────────────────────────
 	sslDir := filepath.Join(st.workdir, "ssl")
-	sslGen := ssl.NewGenerator(st.cfg)
+	sslGen := ssl.NewGenerator(st.cfg).WithExplicitHosts(st.opts.Hosts)
 	sslResult, err := sslGen.GenerateWithResult(sslDir)
 	if err != nil {
 		return fmt.Errorf("generating SSL certificates: %w", err)
@@ -63,16 +63,32 @@ func (st *buildState) generateSSLAndNginx() error {
 	// Clear stale *.conf files from a previous BASE_DOMAIN before
 	// regenerating — but only in sitesDir's own (unfronted) case. When
 	// fronted, sitesDir belongs to another project's stack, which writes
-	// its own per-service confs into the same directory; blanket-clearing
-	// it would delete that stack's own routes. conf.d/ is hand-managed and
-	// is NOT cleared either way.
+	// its own per-service confs into the same directory; clearing it would
+	// delete that stack's own routes. conf.d/ is hand-managed and is NOT
+	// cleared either way.
+	//
+	// The sweep is additive-safe (nginx_sites_prune.go): the directory's
+	// current contents are snapshotted to .nself/backups/nginx-sites-<ts>/
+	// first, and only files carrying this build's own generated-by marker
+	// are removed — a hand-written conf, or one belonging to another
+	// project sharing the directory, is left in place and warned about
+	// instead of silently deleted (found on a production box: 8 live
+	// routes plus a foreign project's conf were wiped with no backup).
 	if sitesDir == filepath.Join(st.workdir, "nginx", "sites") {
-		if entries, readErr := os.ReadDir(sitesDir); readErr == nil {
-			for _, e := range entries {
-				if !e.IsDir() {
-					_ = os.Remove(filepath.Join(sitesDir, e.Name()))
-				}
-			}
+		if err := backupNginxSites(st.workdir, sitesDir); err != nil {
+			return fmt.Errorf("backing up nginx/sites before regeneration: %w", err)
+		}
+		removed, foreign, pruneErr := pruneGeneratedNginxSites(sitesDir)
+		if pruneErr != nil {
+			return fmt.Errorf("clearing stale nginx/sites confs: %w", pruneErr)
+		}
+		if removed > 0 {
+			slog.Debug("cleared stale generated nginx site confs", "count", removed, "dir", sitesDir)
+		}
+		for _, name := range foreign {
+			slog.Warn("nginx/sites has a file this build did not generate — leaving it in place",
+				"file", filepath.Join(sitesDir, name),
+				"fix", "remove it by hand if it's stale, or relocate it if it belongs to another project")
 		}
 	}
 

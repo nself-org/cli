@@ -48,6 +48,8 @@ nSelf resolves config from several `.env*` files, later files overriding earlier
 
 `.env.ai` no longer exists as a cascade layer (removed in CLI-R18). Its AI-tier config (`AI_*` vars, `NSELF_MASTER_SECRET`) is folded into `.env.secrets`, the file it always belonged with.
 
+**How `ENV` itself is resolved:** the cascade above selects `.env.{dev|staging|prod}` by matching `ENV`, but `ENV` is not read from the shell alone. `config.Load()` (and `nself env explain`, which calls the identical `ResolveEnv` helper so its output can never diverge from what a build actually does) resolves it in this order: the process environment wins outright if `ENV` is exported; otherwise the `ENV=` key inside the project's own committed `.env` file decides; otherwise it defaults to `dev`. This matters on a bare checkout of a production server: without the `.env` fallback, a plain `nself build` with no shell `ENV` set would silently build the dev compose (wrong images, `*.local.nself.org` routes, mailpit/nself-admin wired in) even though `.env` says `ENV=prod`.
+
 **Inspect the cascade for your project:**
 
 ```bash
@@ -67,7 +69,7 @@ These vars control the top-level identity and behavior of a project.
 |---|---|---|---|---|
 | `PROJECT_NAME` | string | *(none)* | **Yes** | Docker container and network namespace. Must be lowercase, 2–30 characters. |
 | `BASE_DOMAIN` | string | `local.nself.org` | No | Root domain used to construct all service subdomains. |
-| `ENV` | enum | `dev` | No | Deployment environment. Accepted values: `dev`, `staging`, `prod`. |
+| `ENV` | enum | `dev` | No | Deployment environment. Accepted values: `dev`, `staging`, `prod`. Resolution order: process environment, then `.env`'s own `ENV=` key, then `dev` — see [Load Order (Cascade)](#load-order-cascade). |
 | `PROJECT_DESCRIPTION` | string | `""` | No | Human-readable description of the project. |
 | `ADMIN_EMAIL` | string | `""` | No | Admin contact email for notifications and certificates. |
 | `DB_ENV_SEEDS` | bool | `true` | No | When `true`, database seed files run automatically on first boot. |
