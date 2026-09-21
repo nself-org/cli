@@ -56,7 +56,7 @@ func Load(projectDir string) (*Config, error) {
 	// Without the .env fallback, a bare `nself build` run on a server whose
 	// only signal is .env's ENV=prod silently built a dev compose instead
 	// (wrong images, *.local.nself.org routes, mailpit/nself-admin wired in).
-	env, envSource := resolveEnv(projectDir)
+	env, envSource := ResolveEnv(projectDir)
 	env = normalizeEnv(env)
 	slog.Info("ENV resolved for .env cascade", "env", env, "source", envSource)
 
@@ -163,7 +163,7 @@ func Load(projectDir string) (*Config, error) {
 	return cfg, nil
 }
 
-// resolveEnv determines which environment name selects the .env.{ENV}
+// ResolveEnv determines which environment name selects the .env.{ENV}
 // cascade layer, and where that value came from (surfaced via slog and by
 // `nself env explain`).
 //
@@ -176,7 +176,7 @@ func Load(projectDir string) (*Config, error) {
 // The .env fallback is read with a single targeted key lookup rather than
 // running the full cascade, because the full cascade's file selection
 // itself depends on the answer.
-func resolveEnv(projectDir string) (value string, source string) {
+func ResolveEnv(projectDir string) (value string, source string) {
 	if v := os.Getenv("ENV"); v != "" {
 		return v, "process environment"
 	}
