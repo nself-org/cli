@@ -3,6 +3,24 @@
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
 
+## [1.4.3] - 2026-09-20
+
+Fixes a set of plugin compose and deploy issues found in the build context
+and restart-order handling paths.
+
+- Every relative build context in a plugin compose fragment is anchored to
+  the installed plugin dir; a bare context of dot no longer resolves
+  against the project dir when compose merges multiple files (#443)
+- `nself deploy` derives its rolling-restart order from the project's
+  compose file instead of a fixed list, so projects without a storage or
+  plugins service no longer abort mid-restart (#444)
+- `nself deploy` builds the same project root it resolved and refuses to
+  restart from a compose file it did not just generate (#444)
+- `nself build --check` is read-only again; it no longer writes generated
+  secrets (#444)
+- `nself deploy --dry-run` lists, per custom service, the env var names it
+  will receive (#444)
+
 ## [1.4.2] - 2026-09-20
 
 Fixes a set of admin and startup issues found in the compose and env
