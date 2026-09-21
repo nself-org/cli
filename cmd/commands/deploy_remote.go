@@ -204,6 +204,9 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	// Discover which services exist in the pushed compose so the rolling order
 	// only restarts real services (e.g. generated composes name object storage
 	// "minio", not "storage" — restarting a nonexistent service aborts deploys).
+	// This must succeed: falling back to a fixed guess list when it fails is
+	// exactly the production incident (deploy_service_order.go) this guards
+	// against, just on the remote path instead of the local one.
 	lsCmd := fmt.Sprintf("cd %s && docker compose config --services", remotePath)
 	lc := exec.CommandContext(ctx, "ssh",
 		"-i", sshKey,
@@ -211,23 +214,25 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 		"-o", "ForwardAgent=no",
 		sshTarget, lsCmd)
 	lc.Env = os.Environ()
-	remoteServices := map[string]bool{}
-	if out, err := lc.CombinedOutput(); err == nil {
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			if s := strings.TrimSpace(line); s != "" {
-				remoteServices[s] = true
-			}
+	out, err := lc.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("remote rolling restart: listing services on %s failed: %w\n%s", sshTarget, err, strings.TrimSpace(string(out)))
+	}
+	var remotePresent []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			remotePresent = append(remotePresent, s)
 		}
 	}
 
+	// Order: core services first (only those present), then every other
+	// present service in the order docker reported them. Plugin discovery
+	// is local-only (deploy_service_order.go), so it does not apply here —
+	// the remote host's plugin fragments aren't visible to this process.
+	order := resolveServiceOrder(remotePresent, nil)
+
 	// Rolling restart on the remote: sequence the services via SSH.
-	for _, svc := range deployServiceOrder {
-		if len(remoteServices) > 0 && !remoteServices[svc] {
-			if !jsonOut {
-				fmt.Printf("  [skip] %s not in remote compose — skipping\n", svc)
-			}
-			continue
-		}
+	for _, svc := range order {
 		restartCmd := fmt.Sprintf("cd %s && docker compose up -d --no-deps %s", remotePath, svc)
 		if !jsonOut {
 			fmt.Printf("  [running] Rolling restart: %s on %s\n", svc, sshTarget)
