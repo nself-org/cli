@@ -129,6 +129,7 @@ When it does write, the build logs exactly which entries it's about to add befor
 | `--check` | `false` | Validate only, don't build |
 | `--debug` | `false` | Enable debug mode |
 | `--force`, `-f` | `false` | Force rebuild all components |
+| `--hosts` | `false` | Opt in to /etc/hosts management for a BASE_DOMAIN that isn't a recognized local-dev domain (localhost/*.local.nself.org/*.localhost/*.local). Never overrides ENV=prod, which always skips /etc/hosts. |
 | `--no-auto-redis` | `false` | Disable automatic Redis enablement when a BullMQ-backed plugin is detected |
 | `--no-cache` | `false` | Disable build cache |
 | `--no-migration-check` | `false` | Skip v1 artifact detection (for automation/CI) |
