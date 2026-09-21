@@ -3,6 +3,25 @@
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
 
+## [1.4.4] - 2026-09-20
+
+Fixes a set of environment-resolution and nginx generation issues found in
+the build and plugin command paths.
+
+- The active environment is taken from the project's `.env` file when `ENV`
+  is not set in the process, so a project with `ENV=prod` in `.env` no
+  longer builds a dev compose; `nself env explain` shows where the value
+  came from (#446)
+- `nself build` only removes nginx site files it generated itself, keeps
+  every other file with a warning, and backs the directory up first under
+  `.nself/backups` (#446)
+- The nginx ssl certificate path in generated site configs and the compose
+  volume mount now come from one constant (#446)
+- `nself build` no longer edits `/etc/hosts` unless the base domain is a
+  local development domain or the hosts flag is given; it never does so
+  when `ENV` is prod (#446)
+- Plugin commands resolve the environment the same way as build (#446)
+
 ## [1.4.3] - 2026-09-20
 
 Fixes a set of plugin compose and deploy issues found in the build context
