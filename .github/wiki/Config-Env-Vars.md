@@ -92,7 +92,7 @@ These vars control the top-level identity and behavior of a project.
 | `POSTGRES_EXPOSE_PORT` | enum | `auto` | No | Controls host-port binding. `auto` exposes in dev and hides in prod. Accepted values: `auto`, `true`, `false`. |
 | `POSTGRES_MEM_LIMIT` | string | `2g` | No | Docker memory limit for the Postgres container. |
 | `POSTGRES_CPU_LIMIT` | string | `2.0` | No | Docker CPU core limit for the Postgres container. |
-| `PGVECTOR_ENABLED` | bool | `false` | No | Installs the `pgvector` extension for embedding storage and similarity search (RAG). |
+| `PGVECTOR_ENABLED` | bool | `false` (`nself init` writes `true` unless `--no-pgvector`) | No | Installs the `pgvector` extension for embedding storage and similarity search (RAG). When `true`, `nself build` appends `pgvector` onto the resolved `POSTGRES_EXTENSIONS` list (unless already listed) — the field `POSTGRES_EXTENSIONS`'s pgvector-image selection above actually reads — so a fresh project (every `nself init` preset included) selects the `pgvector/pgvector:pg<major>` image without needing `POSTGRES_EXTENSIONS` set explicitly. |
 | `PGVECTOR_DIMENSIONS` | int | `1536` | No | Vector column width. Must match the embedding model's output size. |
 | `PGVECTOR_HNSW_M` | int | `16` | No | HNSW index `m` parameter (max connections per node). Higher values improve recall at the cost of index size. |
 | `PGVECTOR_HNSW_EF_CONSTRUCTION` | int | `64` | No | HNSW index `ef_construction` parameter. Higher values improve index quality at the cost of build time. |
