@@ -39,6 +39,20 @@ func parseEnvCore(cfg *Config) {
 		MemLimit:   os.Getenv("POSTGRES_MEM_LIMIT"),
 		CPULimit:   os.Getenv("POSTGRES_CPU_LIMIT"),
 	}
+	// PGVECTOR_ENABLED (written by `nself init`, default true — see
+	// internal/setup/setup.go's pgvectorEnabled) is a separate convenience
+	// toggle from POSTGRES_EXTENSIONS, and nothing previously connected the
+	// two: internal/compose/images.go's pgvector image selection keys off
+	// Extensions containing "pgvector", so a fresh project's .env (which only
+	// ever wrote PGVECTOR_ENABLED=true) silently built on plain
+	// postgres:16-alpine instead of pgvector/pgvector:pg16 (E2E golden path
+	// step 13, claw plugin: CREATE EXTENSION vector failed). Purely additive:
+	// an explicit POSTGRES_EXTENSIONS without "pgvector" is unaffected unless
+	// PGVECTOR_ENABLED=true is also set, matching the toggle's documented
+	// intent ("Skip pgvector extension ... sets PGVECTOR_ENABLED=false").
+	if getEnvBool("PGVECTOR_ENABLED", false) && !hasExtensionCI(cfg.Postgres.Extensions, "pgvector") {
+		cfg.Postgres.Extensions = append(cfg.Postgres.Extensions, "pgvector")
+	}
 
 	// ── Hasura ───────────────────────────────────────────────────────
 	cfg.Hasura = HasuraConfig{

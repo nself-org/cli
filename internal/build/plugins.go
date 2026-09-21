@@ -97,6 +97,12 @@ func DiscoverPluginComposeFiles(workdir, pluginDir string) ([]string, error) {
 			// full rationale (defect #10 / E2E golden path step 13).
 			normalized = normalizeComposeBuildContext(normalized, pluginDir, entry.Name())
 			normalized = normalizeComposeDropObsoleteVersion(normalized)
+			// Inject the fixed core env vars (project identity, Postgres,
+			// Hasura, PLUGIN_INTERNAL_SECRET/NOTIFY_INTERNAL_SECRET) every
+			// plugin container needs but installed fragments never declared
+			// — see plugins_core_env.go for the full rationale (E2E golden
+			// path step 13, testproject_ai/testproject_mux).
+			normalized = normalizeComposePluginCoreEnv(normalized, pluginDir, entry.Name())
 			if !bytes.Equal(normalized, content) {
 				// Write the corrected file back so the manifest references a valid compose.
 				_ = os.WriteFile(absPath, normalized, 0644)

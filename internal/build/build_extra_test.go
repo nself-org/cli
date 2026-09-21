@@ -1050,7 +1050,7 @@ func TestBuildEnvComputed_ExplicitNetwork(t *testing.T) {
 
 func TestComputePluginEnvVars_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	vars := ComputePluginEnvVars(dir, dir)
+	vars := ComputePluginEnvVars(dir, dir, nil)
 	if _, ok := vars["NSELF_PLUGIN_DIR"]; !ok {
 		t.Error("ComputePluginEnvVars: missing NSELF_PLUGIN_DIR")
 	}
@@ -1058,7 +1058,7 @@ func TestComputePluginEnvVars_EmptyDir(t *testing.T) {
 
 func TestComputePluginEnvVars_MissingDir(t *testing.T) {
 	// Non-existent plugin dir should return at least NSELF_PLUGIN_DIR.
-	vars := ComputePluginEnvVars("/workdir", "/tmp/missing-plugins-dir-99999")
+	vars := ComputePluginEnvVars("/workdir", "/tmp/missing-plugins-dir-99999", nil)
 	if _, ok := vars["NSELF_PLUGIN_DIR"]; !ok {
 		t.Error("ComputePluginEnvVars missing: missing NSELF_PLUGIN_DIR")
 	}
@@ -1083,7 +1083,7 @@ func TestComputePluginEnvVars_GoPluginWithDependency(t *testing.T) {
 	writeFile(t, filepath.Join(clawDir, "plugin.json"),
 		`{"name":"claw","port":3710,"language":"go","dependencies":["ai"],"optionalDependencies":[]}`)
 
-	vars := ComputePluginEnvVars(dir, dir)
+	vars := ComputePluginEnvVars(dir, dir, nil)
 
 	if _, ok := vars["PLUGIN_AI_INTERNAL_URL"]; !ok {
 		t.Errorf("ComputePluginEnvVars: missing PLUGIN_AI_INTERNAL_URL; vars=%v", vars)
