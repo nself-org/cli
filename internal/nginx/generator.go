@@ -237,14 +237,7 @@ func (g *Generator) RenderServiceRoute(data ServiceRouteData) (string, error) {
 			return "", err
 		}
 	}
-	data.HasSSL = g.hasSSL
-	data.HasTrustedChain = g.hasTrustedChain(data.SSLDir)
-	data.SSLBasePath = nginxtopo.NginxSSLContainerPath
-	data.UpstreamName = upstreamName(data.Route)
-	data.ProxyTarget = proxyTarget(data.Upstream)
-	if data.PathZones == nil {
-		data.PathZones = defaultSecurityPathZones()
-	}
+	g.finalizeServiceRoute(&data)
 	return g.render("service.conf.tmpl", data)
 }
 

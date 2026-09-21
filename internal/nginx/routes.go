@@ -2,6 +2,8 @@ package nginx
 
 import (
 	"fmt"
+
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // NginxRoute represents a single nginx server block route for conflict detection.
@@ -80,33 +82,15 @@ func (g *Generator) generateAllRoutes() (map[string]string, error) {
 	// Initialize seen map for this generation batch.
 	g.seenRoutes = make(map[string]bool)
 
-	// Propagate HasSSL to every route entry so templates can conditionally
-	// omit ssl_certificate directives when certs are not locally managed.
-	//
-	// HasTrustedChain must be computed here too: this loop (not
-	// RenderServiceRoute) is the code path `nself build` actually uses to
-	// render every nginx/sites/*.conf file. RenderServiceRoute sets it on its
-	// own ServiceRouteData and is exercised by generator_chain_test.go's
-	// TestServiceRoute_EmitsTrustedChainWhenPresent, but that test — and
-	// every other caller of RenderServiceRoute — never runs through
-	// generateAllRoutes(), so a real chain.pem placed on disk was silently
-	// never reflected in the routes this command actually writes: every
-	// entry kept HasTrustedChain at its Go zero value (false), so
-	// ssl_trusted_certificate/OCSP stapling never activated even with a
-	// genuine CA chain (Let's Encrypt, etc.) present. Found live 2026-09-03
-	// verifying P6-E11-W2-S1-T2 (chain.pem end-to-end fixture test).
+	// Complete every route entry's ServiceRouteData through finalizeServiceRoute
+	// below, the single completion point it shares with RenderServiceRoute.
+	// This loop is the code path `nself build` actually uses to render every
+	// nginx/sites/*.conf file, so any field the two call sites set
+	// independently is prone to drift — see finalizeServiceRoute's doc
+	// comment for the SSLBasePath incident this caused (prod, 2026-09-21) and
+	// the earlier HasTrustedChain incident it also once caused (2026-09-03).
 	for i := range allEntries {
-		allEntries[i].data.HasSSL = g.hasSSL
-		allEntries[i].data.HasTrustedChain = g.hasTrustedChain(allEntries[i].data.SSLDir)
-		allEntries[i].data.UpstreamName = upstreamName(allEntries[i].data.Route)
-		allEntries[i].data.ProxyTarget = proxyTarget(allEntries[i].data.Upstream)
-		// SEC-HARDENING-06: every generated service conf gets the
-		// path-scoped /auth/login + /api/ rate-limit locations unless the
-		// route entry already set its own (none currently do). See
-		// defaultSecurityPathZones in generator.go for rationale.
-		if allEntries[i].data.PathZones == nil {
-			allEntries[i].data.PathZones = defaultSecurityPathZones()
-		}
+		g.finalizeServiceRoute(&allEntries[i].data)
 	}
 
 	for _, entry := range allEntries {
@@ -129,6 +113,31 @@ func (g *Generator) generateAllRoutes() (map[string]string, error) {
 type routeEntry struct {
 	filename string
 	data     ServiceRouteData
+}
+
+// finalizeServiceRoute fills in every ServiceRouteData field the generator
+// (not the caller) is responsible for computing: HasSSL, HasTrustedChain,
+// SSLBasePath, UpstreamName, ProxyTarget, and a default PathZones.
+//
+// This is the single completion point for ServiceRouteData, called from both
+// RenderServiceRoute (generator.go) and the generateAllRoutes loop above. It
+// exists because the two used to duplicate this logic, and the loop's copy
+// silently omitted SSLBasePath: every nginx/sites/*.conf written by `nself
+// build` rendered "ssl_certificate /certificates/<dir>/fullchain.pem"
+// (missing the "/etc/nginx/ssl" mount-path prefix service.conf.tmpl
+// expects), so nginx refused to start with "cannot load certificate ...:
+// BIO_new_file() failed" on every fresh SSL-enabled build. Verified on
+// production 2026-09-21. Both call sites must go through this helper so the
+// two paths cannot drift apart again.
+func (g *Generator) finalizeServiceRoute(data *ServiceRouteData) {
+	data.HasSSL = g.hasSSL
+	data.HasTrustedChain = g.hasTrustedChain(data.SSLDir)
+	data.SSLBasePath = nginxtopo.NginxSSLContainerPath
+	data.UpstreamName = upstreamName(data.Route)
+	data.ProxyTarget = proxyTarget(data.Upstream)
+	if data.PathZones == nil {
+		data.PathZones = defaultSecurityPathZones()
+	}
 }
 
 // appPrefixedRoute returns route prefixed with the configured APP_NAME
