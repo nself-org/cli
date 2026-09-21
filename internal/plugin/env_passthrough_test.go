@@ -107,6 +107,35 @@ func TestPluginEnvDeclaresNothing(t *testing.T) {
 	}
 }
 
+// TestPluginEnvResolvesEnvFromProjectFileNotBareDefault pins the fix for the
+// production bug this test exists to catch: with no ENV set in the process,
+// resolveCascade must read the project's own .env ENV= key (via
+// config.ResolveEnv, the same resolver config.Load uses) rather than bare
+// os.Getenv("ENV") defaulting straight to "dev".
+//
+// Before the fix, a plugin-invoking command on a prod box whose only signal
+// was .env's ENV=prod would read the .env.dev layer while `nself build` on
+// the same box read .env.prod for the same project — two commands, two
+// different configs.
+func TestPluginEnvResolvesEnvFromProjectFileNotBareDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ENV", "") // nothing in the process environment
+
+	// The project's own .env carries ENV=prod, as a bare production checkout
+	// does. .env.dev and .env.prod disagree on TARGET so the test can tell
+	// which layer actually loaded.
+	writeEnv(t, dir, ".env", "ENV=prod\nTARGET=from-env\n")
+	writeEnv(t, dir, ".env.dev", "TARGET=from-env-dev\n")
+	writeEnv(t, dir, ".env.prod", "TARGET=from-env-prod\n")
+
+	m := &PluginManifest{EnvVars: EnvVarList{{Name: "TARGET"}}}
+
+	got := PluginEnv(dir, m)
+	if len(got) != 1 || got[0] != "TARGET=from-env-prod" {
+		t.Fatalf("PluginEnv = %v, want [TARGET=from-env-prod] — ENV=prod in the project's .env must select the prod cascade layer, not the dev default", got)
+	}
+}
+
 // TestPluginEnvDoesNotMutateThisProcess is the constraint that keeps this from
 // becoming the thing it replaced. config.Load exports every value it reads into
 // the CLI's own environment; this must not, or every plugin would inherit the
