@@ -33,14 +33,23 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	}
 
 	// ── Step 1.5: Persist auto-generated secrets to .env.secrets ────
-	if err := persistGeneratedSecrets(st.workdir, st.cfg); err != nil {
-		return nil, fmt.Errorf("persisting generated secrets: %w", err)
-	}
+	// Skipped entirely for --check. "--check" means "validate only" — it
+	// must be a pure read. Before this fix it ran unconditionally, so a
+	// `nself build --check` against production wrote freshly-generated
+	// PLUGIN_INTERNAL_SECRET/NOTIFY_INTERNAL_SECRET values into
+	// backend/.env.secrets even though nothing downstream of --check ever
+	// reads them — a validate-only invocation must never mutate the
+	// project it is inspecting.
+	if !st.opts.Check {
+		if err := persistGeneratedSecrets(st.workdir, st.cfg); err != nil {
+			return nil, fmt.Errorf("persisting generated secrets: %w", err)
+		}
 
-	// Fix permissions on .env files — ensure they are owner-only (0600).
-	for _, envFile := range []string{".env", ".env.local", ".env.secrets", ".env.computed"} {
-		if err := setup.EnsureEnvFilePermissions(filepath.Join(st.workdir, envFile)); err != nil {
-			return nil, fmt.Errorf("fixing env file permissions: %w", err)
+		// Fix permissions on .env files — ensure they are owner-only (0600).
+		for _, envFile := range []string{".env", ".env.local", ".env.secrets", ".env.computed"} {
+			if err := setup.EnsureEnvFilePermissions(filepath.Join(st.workdir, envFile)); err != nil {
+				return nil, fmt.Errorf("fixing env file permissions: %w", err)
+			}
 		}
 	}
 

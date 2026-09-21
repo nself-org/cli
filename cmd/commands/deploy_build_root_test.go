@@ -1,0 +1,143 @@
+package commands
+
+// deploy_build_root_test.go — regression coverage for deploy_build_root.go:
+// the "nself build" subprocess deploy spawns must build the SAME root deploy
+// already resolved (production incident 2026-09-20 — see that file's header).
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/nself-org/cli/internal/build"
+)
+
+func TestProjectHasOwnEnv(t *testing.T) {
+	cases := []struct {
+		name  string
+		files []string
+		want  bool
+	}{
+		{"no env files at all", nil, false},
+		{"has .env", []string{".env"}, true},
+		{"has .env.prod only", []string{".env.prod"}, true},
+		{"has .env.staging only", []string{".env.staging"}, true},
+		{"only a backend subdir env (not workdir's own)", []string{"backend/.env"}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, f := range c.files {
+				full := filepath.Join(dir, f)
+				if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(full, []byte("X=1\n"), 0600); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+			}
+			if got := projectHasOwnEnv(dir); got != c.want {
+				t.Errorf("projectHasOwnEnv(%v): got %v, want %v", c.files, got, c.want)
+			}
+		})
+	}
+}
+
+// TestDeployBuildArgs_NoMonorepoWhenWorkdirIsSelfSufficient is the direct
+// fix for the production incident: when deploy's resolved workdir already
+// has its own .env, the "nself build" subprocess must be told
+// --no-monorepo so it can't redirect into a nested backend/ and write a
+// second, different docker-compose.yml that the rolling restart never
+// reads.
+func TestDeployBuildArgs_NoMonorepoWhenWorkdirIsSelfSufficient(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=x\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	args := deployBuildArgs(dir)
+	if len(args) < 1 || args[0] != "build" {
+		t.Fatalf("expected first arg 'build', got %v", args)
+	}
+	if !contains(args, "--no-monorepo") {
+		t.Errorf("expected --no-monorepo when workdir has its own .env; got %v", args)
+	}
+}
+
+// TestDeployBuildArgs_NoFlagWhenWorkdirHasNoEnv verifies the flag is only
+// added when it's actually needed — an empty workdir (e.g. a genuine
+// monorepo root with nothing but a backend/ subdirectory) must still let
+// the subprocess's own monorepo detection run normally.
+func TestDeployBuildArgs_NoFlagWhenWorkdirHasNoEnv(t *testing.T) {
+	dir := t.TempDir()
+	args := deployBuildArgs(dir)
+	if contains(args, "--no-monorepo") {
+		t.Errorf("did not expect --no-monorepo for a workdir with no env files; got %v", args)
+	}
+}
+
+// TestVerifyDeployComposeFreshness_MissingFile verifies a clear refusal
+// (not a panic or a silent pass) when the build never produced
+// workdir/docker-compose.yml at all — e.g. it was written to backend/
+// instead.
+func TestVerifyDeployComposeFreshness_MissingFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := verifyDeployComposeFreshness(dir, time.Now()); err == nil {
+		t.Fatal("expected an error when docker-compose.yml does not exist")
+	}
+}
+
+// TestVerifyDeployComposeFreshness_StaleFile is the direct reproduction of
+// the incident: a docker-compose.yml exists at workdir (e.g. left over from
+// a much earlier build, or hand-copied), but it predates this deploy's
+// build call — meaning THIS build did not write it, so the rolling restart
+// that follows would restart services from stale/wrong config.
+func TestVerifyDeployComposeFreshness_StaleFile(t *testing.T) {
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(build.ComposeGeneratedHeader+"services: {}\n"), 0644); err != nil {
+		t.Fatalf("write compose: %v", err)
+	}
+	// Backdate the file well before "buildStart".
+	old := time.Now().Add(-1 * time.Hour)
+	if err := os.Chtimes(composePath, old, old); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	buildStart := time.Now()
+	if err := verifyDeployComposeFreshness(dir, buildStart); err == nil {
+		t.Fatal("expected an error for a compose file that predates this deploy's build")
+	}
+}
+
+// TestVerifyDeployComposeFreshness_MissingMarker verifies a compose file
+// that IS fresh but was never written by nself build (no generated-file
+// marker — e.g. hand-edited, or produced by some other mechanism) is
+// rejected too.
+func TestVerifyDeployComposeFreshness_MissingMarker(t *testing.T) {
+	dir := t.TempDir()
+	buildStart := time.Now()
+	composePath := filepath.Join(dir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte("services: {}\n"), 0644); err != nil {
+		t.Fatalf("write compose: %v", err)
+	}
+	if err := verifyDeployComposeFreshness(dir, buildStart); err == nil {
+		t.Fatal("expected an error for a compose file with no nself-build generated marker")
+	}
+}
+
+// TestVerifyDeployComposeFreshness_FreshAndMarked is the success path: a
+// compose file generated by this build call (marker present, mtime after
+// buildStart) passes.
+func TestVerifyDeployComposeFreshness_FreshAndMarked(t *testing.T) {
+	dir := t.TempDir()
+	buildStart := time.Now()
+	composePath := filepath.Join(dir, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte(build.ComposeGeneratedHeader+"services: {}\n"), 0644); err != nil {
+		t.Fatalf("write compose: %v", err)
+	}
+	if err := verifyDeployComposeFreshness(dir, buildStart); err != nil {
+		t.Fatalf("expected a fresh, marked compose file to pass: %v", err)
+	}
+}

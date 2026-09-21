@@ -14,9 +14,13 @@ nself deploy [target] <subcommand> [flags]
 
 <!-- BEGIN PROSE:description -->
 `nself deploy` builds your stack and deploys it to a target environment using a per-service
-sequenced rolling restart. It chains `nself build` then restarts services in dependency order
-(postgres → hasura → auth → storage → plugins), waiting for each service to pass a health check
-before restarting the next.
+sequenced rolling restart. It chains `nself build` then restarts services in dependency order,
+waiting for each service to pass a health check before restarting the next.
+
+The restart order is **resolved at deploy time from the project's own compose file**
+(`docker compose config --services`), never from a fixed guess list — a project's actual
+service names vary (e.g. object storage is always named `minio`, never `storage`; there is no
+literal `plugins` service). See [Rolling Restart, Service Order and Downtime](#rolling-restart-service-order-and-downtime).
 
 The target environment can be supplied as a positional argument or via `--env`. The flag takes
 priority when both are given. The three supported values are `local`, `staging`, and `prod`
@@ -122,21 +126,56 @@ The rolling strategy restarts services in dependency order. Each service restart
 (max 60s wait). If a service does not become healthy within 60s, the deploy halts and reports
 which service failed.
 
+**The order is derived from the project's own resolved compose file, not a fixed list.** Before
+each restart, `nself deploy` runs `docker compose config --services` (locally, or over SSH for a
+remote push target) to get the set of services that actually exist, then orders them:
+
+1. **Core services first**, in dependency order, but only the ones actually present:
+   `postgres` → `hasura` → `auth`.
+2. **Every other present service next**, in the order docker reported them (e.g. `minio`,
+   `nginx`, `redis`, `mailpit`, `ping-api`, `auth-server`, `nself-admin` — whatever this
+   project's compose actually defines).
+3. **Plugin-contributed services last** — any service name that comes from an installed
+   plugin's `docker-compose.plugin.yml` fragment restarts after everything else.
+
+A service name is never invented. Restarting a name that doesn't exist in this project's
+compose (the old fixed order included `storage` and `plugins`, neither of which is a real
+compose service name — object storage is always `minio`) used to abort the deploy with
+`no such service: storage` *after* earlier services had already been recreated, leaving the
+stack half-restarted. This is why the order can no longer be hardcoded.
+
+Example for a project whose compose defines `postgres hasura auth auth-server mailpit minio
+ping-api nginx redis nself-admin` (no `storage`, no `plugins`):
+
 | Service | Restart order | Expected downtime |
 |---|---|---|
 | postgres | 1st | 5–30s (WAL recovery time) |
 | hasura | 2nd | 0–10s (waits for postgres) |
 | auth | 3rd | 0–5s |
-| storage | 4th | 0–3s |
-| plugins | 5th | 0–5s per plugin |
+| auth-server, mailpit, minio, ping-api, nginx, redis, nself-admin | 4th onward, in compose order | 0–5s each |
+| *(any installed plugin's service)* | last | 0–5s per plugin |
 
-Total deploy time: approximately 75s minimum (5 services × ~15s each). Total user-visible
-downtime is lower than the deploy duration because each service continues serving until its
-replacement becomes healthy.
+Total deploy time scales with the number of services actually present (roughly ~15s each).
+Total user-visible downtime is lower than the deploy duration because each service continues
+serving until its replacement becomes healthy.
+
+`--dry-run` cannot query a live `docker compose config --services` (nothing has been built or
+pulled yet), so it prints the resolution rule instead of a concrete list — the real order is
+only known once the build for this deploy has run.
 
 Use `--skip-health-check` to bypass the 60s gate for known-slow services like MeiliSearch or
 Grafana. Set `HEALTHCHECK_TIMEOUT_<SERVICE>` (e.g. `HEALTHCHECK_TIMEOUT_GRAFANA=120s`) to
 extend the per-service timeout.
+
+### Custom service env vars in a dry-run
+
+`--dry-run` also prints, for each declared custom service (`CS_1`..`CS_10`), the full list of
+environment variable **names** it will receive: the fixed core set (project identity, Postgres,
+Hasura, Auth connection info) plus whatever `CS_N_ENV_PASSTHROUGH` and `CS_N_ENV` add. Values
+are never printed. This exists so a plain addition to `.env.prod` doesn't get mistaken for
+something a custom service will automatically see — it only reaches the service's container if
+that service's `CS_N_ENV_PASSTHROUGH` allowlist names it, or `CS_N_ENV` sets it explicitly. See
+[Config: Custom Services](Config-Custom-Services.md) for the full precedence rules.
 
 ## Remote Push
 
@@ -318,14 +357,18 @@ When `--json` is set, the command writes a structured result:
     {"name": "Restart postgres", "status": "done"},
     {"name": "Restart hasura", "status": "done"},
     {"name": "Restart auth", "status": "done"},
-    {"name": "Restart storage", "status": "done"},
-    {"name": "Restart plugins", "status": "done"},
+    {"name": "Restart minio", "status": "done"},
+    {"name": "Restart nginx", "status": "done"},
     {"name": "Health checks", "status": "done"}
   ],
   "durationMs": 78234,
   "success": true
 }
 ```
+
+The `"Restart <service>"` step names shown above are an example, not a fixed list — they mirror
+whatever this project's own compose file actually defines, per [Rolling Restart, Service Order
+and Downtime](#rolling-restart-service-order-and-downtime).
 
 Human output uses the same step vocabulary (`done`, `failed`, `skipped`, `running`, `pending`,
 `unhealthy`) inside `[...]` brackets so the Admin UI's deploy API route can parse it without

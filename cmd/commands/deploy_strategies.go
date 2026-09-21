@@ -12,6 +12,9 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/hasura"
 )
 
 // notYetImplementedStrategies lists strategies that fall back to rolling with
@@ -25,9 +28,13 @@ var notYetImplementedStrategies = map[string]bool{
 	"preview":    true,
 }
 
-// deployServiceOrder defines the sequenced restart order for the rolling
-// strategy. Services are restarted in dependency order so each layer is
-// healthy before the next layer comes up.
+// deployServiceOrder is the illustrative fallback order shown by --dry-run
+// when the project's actual compose services cannot be queried (dry-run
+// never runs docker). It is NOT used by the real rolling restart — that
+// derives its order from the project's own resolved compose file via
+// projectServiceOrder (deploy_service_order.go), because a fixed list
+// cannot know a given project's real service names (see that file's header
+// for the production incident this fixes).
 var deployServiceOrder = []string{
 	"postgres",
 	"hasura",
@@ -37,13 +44,23 @@ var deployServiceOrder = []string{
 }
 
 // runRollingRestart performs a per-service sequenced restart with health-
-// gating between each service. It iterates over deployServiceOrder, calling
-// "docker compose up -d <service>" per entry and waiting up to 60s for
-// service_healthy before continuing. The deploy halts on first unhealthy
-// service with a clear error and a pointer to nself logs.
+// gating between each service. The restart order is resolved from the
+// project's own compose file (projectServiceOrder), never a hardcoded list —
+// restarting a service name that doesn't exist in this project's compose
+// aborts the whole deploy after earlier services have already been
+// recreated (production incident 2026-09-20: a project whose compose named
+// object storage "minio" was restarted against the old fixed list's
+// "storage", which does not exist in any project's compose).
+// It calls "docker compose up -d --no-deps <service>" per entry and waits
+// up to 60s for service_healthy before continuing. The deploy halts on the
+// first unhealthy service with a clear error and a pointer to nself logs.
 func runRollingRestart(ctx context.Context, workdir string, jsonOut bool) ([]deployStep, error) {
+	order, err := projectServiceOrder(ctx, workdir)
+	if err != nil {
+		return nil, fmt.Errorf("rolling restart: resolving project service order: %w", err)
+	}
 	steps := []deployStep{}
-	for _, svc := range deployServiceOrder {
+	for _, svc := range order {
 		if !jsonOut {
 			fmt.Printf("  [running] Restart %s (sequenced rolling)\n", svc)
 		}
@@ -122,4 +139,21 @@ func runDeployHealthCheck(ctx context.Context, workdir string, jsonOut bool) (de
 		fmt.Println("  [done] Health checks passed")
 	}
 	return deployStep{Name: "Health checks", Status: "done"}, nil
+}
+
+// applyLocalHasuraMetadataAfterDeploy applies hasura/metadata/ (if present)
+// against the Hasura instance the rolling restart just brought up on THIS
+// host — used by the "local" target and the "no host configured" staging/prod
+// fallback (both cases run entirely on the current machine, so a plain
+// config.Load + local API call is correct; the remote-host case is handled
+// separately, over SSH, at the end of remoteDeployPush in deploy_remote.go).
+func applyLocalHasuraMetadataAfterDeploy(ctx context.Context, workdir string, jsonOut bool) error {
+	cfg, err := config.Load(workdir)
+	if err != nil {
+		return fmt.Errorf("hasura metadata apply: loading config: %w", err)
+	}
+	if !jsonOut {
+		fmt.Println("  [running] hasura metadata apply")
+	}
+	return hasura.ApplyIfPresent(ctx, cfg, workdir)
 }
