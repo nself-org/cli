@@ -79,7 +79,14 @@ declare -A STEP_BASELINE=(
   [10]=30   # plugin install claw
   [11]=10   # admin start
   [12]=5    # curl health
-  [13]=10   # claw readiness
+  # Step 13 is not a bare probe: it runs `nself build` + `nself start`, which
+  # builds every installed plugin image from source (claw pulls in ai, mux,
+  # notify, cron, voice, browser, google) and then waits up to 180s for the
+  # claw healthcheck. The old baseline of 10 predates that and gave a 30s fail
+  # limit the step could never meet on a cold runner (199s on 2026-09-23 with
+  # every container healthy). 150 -> warn 225s, fail 450s: room for the cold
+  # build plus the full probe window, still a hard stop on a hang.
+  [13]=150  # nself build + start with plugin images, then claw readiness
 )
 
 # ── State ─────────────────────────────────────────────────────────────────────
