@@ -178,9 +178,9 @@ func PgBouncerConnectionURL(cfg *config.Config) string {
 	}
 
 	if password != "" {
-		return fmt.Sprintf("postgres://%s:%s@%s:%d/%s", user, password, host, port, dbName)
+		return fmt.Sprintf("postgres://%s@%s:%d/%s", config.URLUserInfo(user, password), host, port, dbName)
 	}
-	return fmt.Sprintf("postgres://%s@%s:%d/%s", user, host, port, dbName)
+	return fmt.Sprintf("postgres://%s@%s:%d/%s", config.URLUserInfo(user, ""), host, port, dbName)
 }
 
 // GetPgBouncerStatus queries the PgBouncer admin database for runtime status.

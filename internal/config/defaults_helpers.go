@@ -12,7 +12,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 )
@@ -59,12 +58,10 @@ func BuildJWTSecret(cfg *Config) (string, error) {
 
 // DatabaseURL returns the computed PostgreSQL connection string using internal
 // container networking (always port 5432, host "postgres"). The password is
-// percent-encoded per RFC 3986 for safe URL inclusion.
+// percent-encoded per RFC 3986 for safe URL inclusion (see URLUserInfo).
 func (cfg *Config) DatabaseURL() string {
-	password := url.PathEscape(cfg.Postgres.Password)
-	return fmt.Sprintf("postgresql://%s:%s@%s:5432/%s",
-		cfg.Postgres.User,
-		password,
+	return fmt.Sprintf("postgresql://%s@%s:5432/%s",
+		URLUserInfo(cfg.Postgres.User, cfg.Postgres.Password),
 		cfg.Postgres.Host,
 		cfg.Postgres.DB,
 	)

@@ -90,9 +90,9 @@ func buildPgURL(cfg *config.Config) string {
 		db = "nself"
 	}
 	if password != "" {
-		return fmt.Sprintf("postgresql://%s:%s@%s:%d/%s?sslmode=disable", user, password, host, port, db)
+		return fmt.Sprintf("postgresql://%s@%s:%d/%s?sslmode=disable", config.URLUserInfo(user, password), host, port, db)
 	}
-	return fmt.Sprintf("postgresql://%s@%s:%d/%s?sslmode=disable", user, host, port, db)
+	return fmt.Sprintf("postgresql://%s@%s:%d/%s?sslmode=disable", config.URLUserInfo(user, ""), host, port, db)
 }
 
 // redactURL removes the password component of a postgres DSN for logging.

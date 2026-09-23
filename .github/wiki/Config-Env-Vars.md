@@ -103,7 +103,7 @@ These vars control the top-level identity and behavior of a project.
 DATABASE_URL=postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@postgres:5432/{POSTGRES_DB}
 ```
 
-This value is written to `.env.computed` and should not be set manually.
+This value is written to `.env.computed` and should not be set manually. The user and password are percent-encoded in the URL (a `/` becomes `%2F`, `@` becomes `%40`), so a password with URL-reserved characters still produces a valid connection string. `POSTGRES_PASSWORD` itself stays unencoded.
 
 ---
 
@@ -405,7 +405,8 @@ The following variables are derived automatically and written to `.env.computed`
 
 | Variable | Derived From | Description |
 |---|---|---|
-| `DATABASE_URL` | `POSTGRES_*` vars | Full PostgreSQL connection string. |
+| `DATABASE_URL` | `POSTGRES_*` vars | Full PostgreSQL connection string. Credentials are percent-encoded. |
+| `REDIS_URL` | `REDIS_PASSWORD`, `REDIS_PORT` | `redis://:{password}@redis:{port}`, injected into custom services when Redis is enabled. The password is percent-encoded. |
 | `DOCKER_NETWORK` | `PROJECT_NAME` | Docker network name: `nself_{PROJECT_NAME}`. |
 | `AUTH_SMTP_SENDER` | `BASE_DOMAIN` | Defaults to `noreply@{BASE_DOMAIN}` if not explicitly set. |
 

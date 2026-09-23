@@ -10,6 +10,8 @@ package compose
 import (
 	"fmt"
 	"log/slog"
+
+	"github.com/nself-org/cli/internal/config"
 )
 
 // buildAdminService returns the nSelf Admin GUI service configuration.
@@ -70,7 +72,7 @@ func (g *Generator) buildAdminService() ServiceConfig {
 			"NODE_ENV":                    "production",
 			"PROJECT_NAME":                g.cfg.ProjectName,
 			"BASE_DOMAIN":                 g.cfg.BaseDomain,
-			"DATABASE_URL":                fmt.Sprintf("postgres://%s:%s@postgres:5432/%s", g.cfg.Postgres.User, g.cfg.Postgres.Password, g.cfg.Postgres.DB),
+			"DATABASE_URL":                fmt.Sprintf("postgres://%s@postgres:5432/%s", config.URLUserInfo(g.cfg.Postgres.User, g.cfg.Postgres.Password), g.cfg.Postgres.DB),
 			"HASURA_GRAPHQL_ENDPOINT":     "http://hasura:8080/v1/graphql",
 			"HASURA_GRAPHQL_ADMIN_SECRET": g.cfg.Hasura.AdminSecret,
 			"DOCKER_HOST":                 "unix:///var/run/docker.sock",
@@ -120,7 +122,7 @@ func (g *Generator) buildFunctionsService() ServiceConfig {
 	}
 
 	baseEnv := map[string]string{
-		"DATABASE_URL":                fmt.Sprintf("postgres://%s:%s@postgres:5432/%s", g.cfg.Postgres.User, g.cfg.Postgres.Password, g.cfg.Postgres.DB),
+		"DATABASE_URL":                fmt.Sprintf("postgres://%s@postgres:5432/%s", config.URLUserInfo(g.cfg.Postgres.User, g.cfg.Postgres.Password), g.cfg.Postgres.DB),
 		"HASURA_GRAPHQL_ENDPOINT":     "http://hasura:8080/v1/graphql",
 		"HASURA_GRAPHQL_ADMIN_SECRET": g.cfg.Hasura.AdminSecret,
 		"PORT":                        fmt.Sprintf("%d", port),

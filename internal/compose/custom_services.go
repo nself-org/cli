@@ -74,7 +74,7 @@ func fixedCoreEnvVars(cfg *config.Config, svc config.CustomService) map[string]s
 // corresponding optional service is enabled on the project.
 func addOptionalStoreEnvVars(env map[string]string, cfg *config.Config) {
 	if cfg.Redis.Enabled {
-		env["REDIS_URL"] = fmt.Sprintf("redis://:%s@redis:%d", cfg.Redis.Password, cfg.Redis.Port)
+		env["REDIS_URL"] = fmt.Sprintf("redis://%s@redis:%d", config.URLUserInfo("", cfg.Redis.Password), cfg.Redis.Port)
 	}
 	if cfg.Minio.Enabled {
 		env["S3_ENDPOINT"] = fmt.Sprintf("http://minio:%d", cfg.Minio.Port)
