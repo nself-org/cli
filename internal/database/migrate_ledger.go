@@ -77,9 +77,34 @@ func migrationsDir(cfg *config.Config, plugin string) string {
 	return "hasura/migrations/default"
 }
 
+// isDownMigrationFile reports whether name (a flat-layout file basename that
+// already passed the ".sql" filter) is a down/rollback file rather than an
+// up migration. Matches every down-file convention seen across nself-managed
+// repos: "*.down.sql" (this CLI's own `db migrate generate`) and
+// "*_down.sql" (nself-org/web's convention, e.g. "017_nself_accounts_down.sql").
+// Generalized to "*.down.<ext>"/"*_down.<ext>" (checked against the stripped
+// extension, not a literal ".sql" suffix) so a future non-".sql" down variant
+// is caught the same way, not just the two literal suffixes seen so far.
+//
+// WHY this exists: before this fix, only "*.down.sql" was excluded. Web's
+// "*_down.sql" files were treated as ordinary up migrations and applied
+// interleaved with the real ones — on production this replayed 017/018's
+// down files, which DROPped tables (cli defect, verified against a prod
+// pg_dump restore).
+func isDownMigrationFile(name string) bool {
+	ext := filepath.Ext(name)
+	if ext == "" {
+		return false
+	}
+	stem := strings.TrimSuffix(name, ext)
+	lower := strings.ToLower(stem)
+	return strings.HasSuffix(lower, ".down") || strings.HasSuffix(lower, "_down")
+}
+
 // scanMigrations returns sorted SQL file paths from the given directory.
 // It handles two layouts:
-//   - Flat: SQL files directly in dir (excludes *.down.sql)
+//   - Flat: SQL files directly in dir (excludes down files — see
+//     isDownMigrationFile for every recognized down-file naming convention)
 //   - Nested (Hasura): subdirectories each containing an up.sql file
 //
 // Returns an error if the directory does not exist.
@@ -100,7 +125,7 @@ func scanMigrations(dir string) ([]string, error) {
 			if _, statErr := os.Stat(upPath); statErr == nil {
 				files = append(files, upPath)
 			}
-		} else if strings.HasSuffix(e.Name(), ".sql") && !strings.HasSuffix(e.Name(), ".down.sql") {
+		} else if strings.HasSuffix(e.Name(), ".sql") && !isDownMigrationFile(e.Name()) {
 			// Flat layout: SQL file directly in dir
 			files = append(files, filepath.Join(dir, e.Name()))
 		}
