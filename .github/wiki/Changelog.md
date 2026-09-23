@@ -2,6 +2,12 @@
 
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
+## [1.4.11] - 2026-09-23
+
+- fix(start): the port preflight counts every port of a published range as owned by the project; Docker reports MinIO as "9000-9001", which parsed as nothing, so nself start refused over the project's own container (#467)
+- fix(compose): meilisearch-init gets CHOWN, FOWNER and DAC_READ_SEARCH; under CapDrop ALL its chown failed on any data volume it did not create, which aborted nself start with nginx created but never started (#468)
+- fix(plugin): nself plugin remove deletes the plugin's schema version row with its schema, so a reinstall provisions the schema and role again (#468)
+
 ## [1.4.10] - 2026-09-23
 
 - fix(config): generated connection URLs (DATABASE_URL, REDIS_URL, the auth DSN, the pgbouncer and restore URLs) percent-encode the user and password; a password containing "/" produced a URL clients rejected, which left auth-server rate limiting, token revocation and lockout without Redis on a live host (#463)
