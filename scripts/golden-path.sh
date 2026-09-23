@@ -71,7 +71,10 @@ declare -A STEP_BASELINE=(
   [2]=1     # mkdir/cd
   [3]=10    # nself init
   [4]=30    # nself build
-  [5]=20    # nself start
+  # First `nself start` pulls postgres/hasura/auth/nginx images on a cold
+  # runner: 42-55s across four runs (2026-09-21..23), so baseline 20 warned
+  # every time. 40 -> warn 60s, fail 120s.
+  [5]=40    # nself start
   [6]=60    # wait healthy
   [7]=15    # doctor --quick
   [8]=5     # license set (must precede the licensed plugin installs below)
