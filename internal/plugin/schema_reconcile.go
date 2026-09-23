@@ -25,6 +25,7 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/nself-org/cli/internal/config"
 )
@@ -56,20 +57,28 @@ func ensurePluginSchemaVersionsTable(ctx context.Context, cfg *config.Config) er
 // them) and are skipped. A missing table or column means there is nothing to
 // carry over, not an error.
 func carryOverLegacyPluginRows(ctx context.Context, cfg *config.Config) error {
-	cols, err := queryPSQL(ctx, cfg, `SELECT COUNT(*) FROM information_schema.columns
+	cols, err := queryPSQL(ctx, cfg, `SELECT string_agg(column_name, ',' ORDER BY column_name)
+FROM information_schema.columns
 WHERE table_schema = 'np_common' AND table_name = 'schema_versions'
-  AND column_name IN ('plugin', 'version');`)
+  AND column_name IN ('applied_at', 'plugin', 'version');`)
 	if err != nil {
 		return fmt.Errorf("inspecting np_common.schema_versions: %w", err)
 	}
-	if cols != "2" {
+	if !strings.Contains(cols, "plugin") || !strings.Contains(cols, "version") {
 		return nil
 	}
-	copySQL := `INSERT INTO np_common.plugin_schema_versions (plugin, version, applied_at)
-SELECT plugin, version, MIN(applied_at) FROM np_common.schema_versions
+	appliedAt := "NOW()"
+	if strings.Contains(cols, "applied_at") {
+		appliedAt = "MIN(applied_at)"
+	}
+	// ORDER BY gives concurrent callers the same insert order, so two
+	// installs racing through this copy cannot deadlock on the primary key.
+	copySQL := fmt.Sprintf(`INSERT INTO np_common.plugin_schema_versions (plugin, version, applied_at)
+SELECT plugin, version, %s FROM np_common.schema_versions
 WHERE plugin IS NOT NULL AND version IS NOT NULL
 GROUP BY plugin, version
-ON CONFLICT (plugin, version) DO NOTHING;`
+ORDER BY plugin, version
+ON CONFLICT (plugin, version) DO NOTHING;`, appliedAt)
 	if err := execPSQL(ctx, cfg, copySQL); err != nil {
 		return fmt.Errorf("carrying plugin rows into np_common.plugin_schema_versions: %w", err)
 	}

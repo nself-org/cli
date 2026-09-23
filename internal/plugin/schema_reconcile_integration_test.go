@@ -165,3 +165,23 @@ INSERT INTO np_common.schema_versions (name, plugin, version) VALUES ('np_cron',
 		t.Fatalf("getSchemaVersion(cron) = %d, %v; want 1, nil", v, err)
 	}
 }
+
+// TestPluginSchemaVersions_NoAppliedAt_Integration: an old table with plugin
+// and version but no applied_at column still carries its rows over.
+func TestPluginSchemaVersions_NoAppliedAt_Integration(t *testing.T) {
+	skipUnlessIntegration(t)
+	cfg := integrationTestConfig(t)
+	resetSchemaVersionsTable(t, cfg)
+	ctx := context.Background()
+	seed := `CREATE SCHEMA np_common;
+CREATE TABLE np_common.schema_versions (plugin TEXT, version INT);
+INSERT INTO np_common.schema_versions VALUES ('np_notify', 1), ('np_notify', 1);`
+	if err := execPSQL(ctx, cfg, seed); err != nil {
+		t.Fatalf("seeding table without applied_at: %v", err)
+	}
+	if err := ensurePluginSchemaVersionsTable(ctx, cfg); err != nil {
+		t.Fatalf("ensurePluginSchemaVersionsTable: %v", err)
+	}
+	mustCount(t, cfg, `SELECT COUNT(*) FROM np_common.plugin_schema_versions WHERE plugin = 'np_notify';`,
+		"carried-over rows without applied_at", "1")
+}
