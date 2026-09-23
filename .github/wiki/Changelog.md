@@ -2,6 +2,10 @@
 
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
+## [1.4.7] - 2026-09-22
+
+- fix(build): the plugin core environment is now injected into list-form (- KEY=VALUE) environment blocks too; 40+ plugin fragments, including browser and google, previously received none of it and their inter-plugin auth failed silently (#454)
+
 ## [1.4.6] - 2026-09-21
 
 - fix(build): plugin services get the core environment (ENV, project/network names, DATABASE_URL and POSTGRES_*, Hasura endpoint and admin secret, PLUGIN_INTERNAL_SECRET, NOTIFY_INTERNAL_SECRET) injected into their compose fragments; the ai plugin no longer fails on "PLUGIN_INTERNAL_SECRET required" and mux no longer treats a dev project as production (#451)
