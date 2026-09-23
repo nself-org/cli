@@ -2,6 +2,11 @@
 
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
+## [1.4.12] - 2026-09-23
+
+- fix(plugin): nself plugin update removes the images compose built from the previous plugin source, so the next nself start rebuilds them; before, an updated plugin kept running its old code (#470)
+- fix(plugin): plugin remove forgets the schema version before removing the role, so a failed role removal can no longer leave a reinstall without its schema (#470)
+
 ## [1.4.11] - 2026-09-23
 
 - fix(start): the port preflight counts every port of a published range as owned by the project; Docker reports MinIO as "9000-9001", which parsed as nothing, so nself start refused over the project's own container (#467)

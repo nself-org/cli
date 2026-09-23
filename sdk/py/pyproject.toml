@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nself-plugin-sdk"
-version = "1.4.11"
+version = "1.4.12"
 description = "Python plugin authoring SDK for nSelf. Parity with the Go SDK at github.com/nself-org/cli/sdk/go."
 readme = "README.md"
 requires-python = ">=3.11"
