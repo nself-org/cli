@@ -234,11 +234,19 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	// Step 5c: Verify SBOM (S2.T12). Downloads sbom-{version}.cdx.json from the
 	// GitHub Release and validates CycloneDX schema. 404 = pre-SBOM release (warn,
 	// don't fail). Skip via --skip-sbom-check for air-gapped installs only.
+	// Licensed plugins come from ping.nself.org (Step 4), never a GitHub
+	// Release, so probing one for their SBOM always misses; it cost ~15-20s
+	// per licensed plugin in golden-path run 35813011314. Skip it for paid
+	// plugins; free plugins keep the full check.
 	sbomSkip := os.Getenv("NSELF_SKIP_SBOM_CHECK") == "1"
-	if err := verify.VerifySBOM(ctx, name, manifest.Version, verify.SBOMCheckOptions{
-		SkipCheck: sbomSkip,
+	sbomOpts := verify.SBOMCheckOptions{
+		SkipCheck: sbomSkip || paid,
 		Version:   manifest.Version,
-	}); err != nil {
+	}
+	if !sbomSkip && paid {
+		sbomOpts.SkipReason = "licensed plugin — SBOM (if any) is served via ping.nself.org, not GitHub Releases"
+	}
+	if err := verify.VerifySBOM(ctx, name, manifest.Version, sbomOpts); err != nil {
 		_ = os.Remove(archivePath)
 		return fmt.Errorf("sbom verification for plugin %q: %w", name, err)
 	}

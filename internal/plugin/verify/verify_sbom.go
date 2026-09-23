@@ -12,18 +12,44 @@ import (
 	"github.com/nself-org/cli/internal/httptimeout"
 )
 
+// sbomProbeTimeout bounds the best-effort GitHub Release lookup below.
+//
+// A real 404 from github.com/nself-org/bundles answers in well under a
+// second (measured directly, both for an existing and a nonexistent tag).
+// 30s only mattered for the case where the request never gets a response at
+// all; that case is exactly what we want to fail open on quickly instead of
+// sitting on, since this check is advisory (see the fail-open comment below).
+const sbomProbeTimeout = 5 * time.Second
+
+// sbomBaseURL is the GitHub Release base VerifySBOM probes. A package-level
+// var (not a const) purely so tests can point it at an httptest server
+// instead of the real github.com — production code never changes it.
+var sbomBaseURL = "https://github.com/nself-org/bundles"
+
 // SBOMCheckOptions controls SBOM verification behavior.
 type SBOMCheckOptions struct {
-	SkipCheck bool   // --skip-sbom-check flag (air-gapped installs only)
+	SkipCheck bool   // true when this plugin's SBOM cannot live at the lookup source
 	Version   string // plugin version to verify
+
+	// SkipReason overrides the logged reason for SkipCheck. Defaults to the
+	// air-gapped-install message when empty, so existing callers (only the
+	// --skip-sbom-check flag) are unaffected.
+	SkipReason string
 }
 
 // VerifySBOM downloads and validates the SBOM for a plugin release.
-// Returns nil if SBOM is valid or check is skipped.
-// Returns error if SBOM is missing (non-404), malformed, or fails schema validation.
+// Returns nil if SBOM is valid, absent, or check is skipped/unreachable.
+// Returns error only when a response WAS obtained and it fails schema
+// validation — i.e. something claiming to be an SBOM is actually malformed,
+// which is the one case that indicates real tampering or corruption rather
+// than mere absence.
 func VerifySBOM(ctx context.Context, pluginName, version string, opts SBOMCheckOptions) error {
 	if opts.SkipCheck {
-		slog.Warn("SBOM check skipped (air-gapped installs only)", "plugin", pluginName, "version", version, "flag", "--skip-sbom-check")
+		reason := opts.SkipReason
+		if reason == "" {
+			reason = "--skip-sbom-check"
+		}
+		slog.Warn("SBOM check skipped", "plugin", pluginName, "version", version, "reason", reason)
 		return nil
 	}
 
@@ -32,9 +58,9 @@ func VerifySBOM(ctx context.Context, pluginName, version string, opts SBOMCheckO
 
 	// Download from GitHub Release assets.
 	// URL: https://github.com/nself-org/bundles/releases/download/{version}/{artifactName}
-	url := fmt.Sprintf("https://github.com/nself-org/bundles/releases/download/%s/%s", version, artifactName)
+	url := fmt.Sprintf("%s/releases/download/%s/%s", sbomBaseURL, version, artifactName)
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, sbomProbeTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -43,20 +69,25 @@ func VerifySBOM(ctx context.Context, pluginName, version string, opts SBOMCheckO
 	}
 	req.Header.Set("User-Agent", "nself-cli")
 
-	resp, err := httptimeout.Default.Do(req)
+	client := httptimeout.WithTimeout(sbomProbeTimeout)
+	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("sbom: download from %s: %w", url, err)
+		// Transport-level failure (timeout, DNS, connection refused, ...).
+		// This probe is advisory — checksum (Step 5) and signature (Step 5b)
+		// already gated integrity before this ever runs — so a network that
+		// cannot answer is treated the same as a definitive 404 below rather
+		// than blocking or failing the install.
+		slog.Warn("SBOM check unreachable, proceeding without it", "plugin", pluginName, "version", version, "error", err)
+		return nil
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode == http.StatusNotFound {
-		// SBOM not present on release — warn but don't fail (older plugin releases pre-S2.T11).
-		slog.Warn("no SBOM found (pre-SBOM release)", "plugin", pluginName, "version", version)
-		return nil
-	}
-
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("sbom: download failed with HTTP %d", resp.StatusCode)
+		// 404 (no SBOM published, e.g. older or non-GitHub-hosted releases)
+		// and any other non-200 (403/5xx/etc.) are equally "could not obtain
+		// a valid SBOM from this source" — advisory, not a hard failure.
+		slog.Warn("no SBOM found (pre-SBOM release)", "plugin", pluginName, "version", version, "status", resp.StatusCode)
+		return nil
 	}
 
 	data, err := io.ReadAll(resp.Body)
