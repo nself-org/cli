@@ -2,6 +2,10 @@
 
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
+## [1.4.8] - 2026-09-23
+
+- fix(plugin): licensed plugin installs no longer probe GitHub for an SBOM that cannot exist there; each licensed install was stalling 15-20s (claw with its dependencies went from 96s to 7s in the golden path). Free plugins keep the SBOM check with a 5s timeout that fails open on transport errors; an SBOM that exists is still verified (#457)
+
 ## [1.4.7] - 2026-09-22
 
 - fix(build): the plugin core environment is now injected into list-form (- KEY=VALUE) environment blocks too; 40+ plugin fragments, including browser and google, previously received none of it and their inter-plugin auth failed silently (#454)
