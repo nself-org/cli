@@ -111,11 +111,21 @@ func getSchemaVersion(ctx context.Context, cfg *config.Config, pluginName string
 }
 
 // recordSchemaVersion inserts a version row into np_common.schema_versions
-// for the given plugin. Duplicate (plugin, version) pairs are silently ignored.
+// for the given plugin. Duplicate (plugin, version) pairs are silently
+// ignored via a WHERE NOT EXISTS guard rather than ON CONFLICT: a table
+// reconciled from the legacy migration-ledger shape (see
+// reconcileSchemaVersionsTable) may not have a unique index on
+// (plugin, version) — reconciliation only adds one when it can prove no
+// existing rows would violate it — and ON CONFLICT errors outright when no
+// matching unique index or constraint exists.
 func recordSchemaVersion(ctx context.Context, cfg *config.Config, pluginName string, version int) error {
-	sql := fmt.Sprintf(
-		"INSERT INTO np_common.schema_versions (plugin, version) VALUES ('%s', %d) ON CONFLICT DO NOTHING;",
-		sanitizeSchemaName(pluginName), version,
+	name := sanitizeSchemaName(pluginName)
+	sql := fmt.Sprintf(`INSERT INTO np_common.schema_versions (plugin, version)
+SELECT '%s', %d
+WHERE NOT EXISTS (
+  SELECT 1 FROM np_common.schema_versions WHERE plugin = '%s' AND version = %d
+);`,
+		name, version, name, version,
 	)
 	return execPSQL(ctx, cfg, sql)
 }
@@ -141,17 +151,12 @@ func createPluginSchema(ctx context.Context, cfg *config.Config, pluginName stri
 	qSchema := quoteIdent(schema)
 	qRole := quoteIdent(role)
 
-	// Ensure np_common schema and schema_versions tracking table exist first,
-	// so the version check below has a table to query.
-	commonSQL := `CREATE SCHEMA IF NOT EXISTS np_common;
-CREATE TABLE IF NOT EXISTS np_common.schema_versions (
-  plugin TEXT NOT NULL,
-  version INT NOT NULL,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (plugin, version)
-);`
-	if err := execPSQL(ctx, cfg, commonSQL); err != nil {
-		return fmt.Errorf("creating np_common.schema_versions: %w", err)
+	// Ensure np_common schema and schema_versions tracking table exist and
+	// carry the columns this package needs, so the version check below has a
+	// table to query — reconciling a pre-existing legacy shape in place
+	// rather than assuming CREATE TABLE IF NOT EXISTS always creates ours.
+	if err := reconcileSchemaVersionsTable(ctx, cfg); err != nil {
+		return err
 	}
 
 	// Check whether this plugin's schema has already been applied at the
@@ -164,6 +169,23 @@ CREATE TABLE IF NOT EXISTS np_common.schema_versions (
 		return nil
 	}
 
+	if err := provisionPluginSchemaObjects(ctx, cfg, schema, role, qSchema, qRole); err != nil {
+		return err
+	}
+
+	// Record successful schema creation so subsequent calls skip the work.
+	if err := recordSchemaVersion(ctx, cfg, pluginName, schemaVersion); err != nil {
+		return fmt.Errorf("recording schema version for %q: %w", pluginName, err)
+	}
+
+	return nil
+}
+
+// provisionPluginSchemaObjects creates the role, schema, grants, and default
+// search_path for a plugin's isolated namespace. Split out of
+// createPluginSchema to keep that function under the repo's per-function
+// line limit; behavior is unchanged from the inline version it replaced.
+func provisionPluginSchemaObjects(ctx context.Context, cfg *config.Config, schema, role, qSchema, qRole string) error {
 	// Create role if it does not exist (idempotent via DO block).
 	// rolname in pg_roles is an unquoted system column; the quoteIdent form is
 	// used in the CREATE ROLE statement only.
@@ -172,7 +194,6 @@ CREATE TABLE IF NOT EXISTS np_common.schema_versions (
     CREATE ROLE %s NOLOGIN;
   END IF;
 END $$;`, role, qRole)
-
 	if err := execPSQL(ctx, cfg, roleSQL); err != nil {
 		return fmt.Errorf("creating role %s: %w", role, err)
 	}
@@ -196,11 +217,6 @@ END $$;`, role, qRole)
 	pathSQL := fmt.Sprintf("ALTER ROLE %s SET search_path = %s, public;", qRole, qSchema)
 	if err := execPSQL(ctx, cfg, pathSQL); err != nil {
 		return fmt.Errorf("setting search_path for %s: %w", role, err)
-	}
-
-	// Record successful schema creation so subsequent calls skip the work.
-	if err := recordSchemaVersion(ctx, cfg, pluginName, schemaVersion); err != nil {
-		return fmt.Errorf("recording schema version for %q: %w", pluginName, err)
 	}
 
 	return nil

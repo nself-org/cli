@@ -254,7 +254,10 @@ func collectInstalledPluginRoutes(pluginDir, skipPlugin string) []nginx.NginxRou
 		if !entry.IsDir() {
 			continue
 		}
-		if strings.EqualFold(entry.Name(), skipPlugin) {
+		// isOwnPluginDir also skips "<skipPlugin>.prev", the backup Update()
+		// renames the old install to; without it an update reports a route
+		// conflict with its own previous version.
+		if isOwnPluginDir(entry.Name(), skipPlugin) {
 			continue
 		}
 		manifestPath := filepath.Join(pluginDir, entry.Name(), "plugin.json")

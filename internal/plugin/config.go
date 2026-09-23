@@ -66,12 +66,37 @@ func IsDisabled(name, pluginDir string) bool {
 	return err == nil
 }
 
+// isOwnPluginDir reports whether dirName is the plugin currently being
+// installed — either its own install directory (a reinstall via `nself
+// plugin install`) or the ".prev" backup directory Update leaves behind
+// while swapping in a new version.
+//
+// Update (installer_remove_update.go) renames {pluginDir}/{name} to
+// {pluginDir}/{name}.prev BEFORE calling Install, so the conflict checks
+// below run while the plugin's own previous install briefly exists under a
+// different directory name. Without this, a plain name match no longer skips
+// it, and the plugin appears to conflict with itself: "nself plugin update
+// notify" failed in production with "plugin notify conflicts with installed
+// plugin notify: table prefix ... already claimed" for exactly this reason —
+// the scan found notify.prev declaring the same tables as the new notify
+// install and treated it as a different, colliding plugin. A genuine
+// conflict with a DIFFERENT plugin's directory is unaffected: this only
+// skips the entry whose name matches newPluginName itself, with or without
+// the ".prev" suffix.
+func isOwnPluginDir(dirName, newPluginName string) bool {
+	if strings.EqualFold(dirName, newPluginName) {
+		return true
+	}
+	return strings.EqualFold(dirName, newPluginName+".prev")
+}
+
 // checkTablePrefixConflict scans all installed plugins in pluginDir and
 // returns an error if any of them share a table prefix with the tables listed
 // in newTables. Table prefixes are derived from table names by taking the
 // first two underscore-separated segments followed by a trailing underscore
 // (e.g. "np_chat_messages" → prefix "np_chat_"). The newPluginName parameter
-// is used to skip the plugin being installed (allowing reinstalls/updates).
+// is used to skip the plugin being installed (allowing reinstalls/updates),
+// including its own ".prev" update-backup directory — see isOwnPluginDir.
 func checkTablePrefixConflict(pluginDir, newPluginName string, newTables []string) error {
 	if len(newTables) == 0 {
 		return nil
@@ -99,7 +124,7 @@ func checkTablePrefixConflict(pluginDir, newPluginName string, newTables []strin
 		if !entry.IsDir() {
 			continue
 		}
-		if strings.EqualFold(entry.Name(), newPluginName) {
+		if isOwnPluginDir(entry.Name(), newPluginName) {
 			continue
 		}
 		manifestPath := filepath.Join(pluginDir, entry.Name(), "plugin.json")
@@ -121,7 +146,9 @@ func checkTablePrefixConflict(pluginDir, newPluginName string, newTables []strin
 // checkTableConflicts scans all installed plugins in pluginDir and returns an
 // error if any of them declare a table name that also appears in newPlugin's
 // Tables list. This catches exact name collisions (the prefix check above
-// catches broader namespace conflicts).
+// catches broader namespace conflicts). Like checkTablePrefixConflict, it
+// skips newPlugin's own directory and its ".prev" update-backup — see
+// isOwnPluginDir.
 func checkTableConflicts(pluginDir string, newPlugin *PluginManifest) error {
 	if len(newPlugin.Tables) == 0 {
 		return nil
@@ -133,7 +160,7 @@ func checkTableConflicts(pluginDir string, newPlugin *PluginManifest) error {
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() == newPlugin.Name {
+		if !entry.IsDir() || isOwnPluginDir(entry.Name(), newPlugin.Name) {
 			continue
 		}
 		existing, err := parseManifest(filepath.Join(pluginDir, entry.Name(), "plugin.json"))
