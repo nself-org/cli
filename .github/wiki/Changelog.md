@@ -2,6 +2,11 @@
 
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
+## [1.4.10] - 2026-09-23
+
+- fix(config): generated connection URLs (DATABASE_URL, REDIS_URL, the auth DSN, the pgbouncer and restore URLs) percent-encode the user and password; a password containing "/" produced a URL clients rejected, which left auth-server rate limiting, token revocation and lockout without Redis on a live host (#463)
+- fix(plugin): plugin schema versions are recorded in their own np_common.plugin_schema_versions table instead of the migration ledger's np_common.schema_versions, whose name column is a primary key; installing or updating notify or cron on a host that had run migrations first failed with "column name is in a primary key" (#464)
+
 ## [1.4.9] - 2026-09-23
 
 - fix(db): nself db migrate up --migration-dir now skips *_down.sql files as well as *.down.sql; down migrations were being applied between the up files, which dropped tables on a live database (#460)
