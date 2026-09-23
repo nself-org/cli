@@ -43,15 +43,31 @@ import (
 // alterTableRe matches ALTER TABLE targets, capturing whether the statement
 // already guards non-existence with IF EXISTS (group 2) — a guarded ALTER is
 // a no-op against a missing table, so it carries no prerequisite risk and is
-// excluded from the objects ExtractAlteredObjects returns.
-var alterTableRe = regexp.MustCompile(`(?i)\bALTER\s+TABLE\s+(?:ONLY\s+)?(IF\s+EXISTS\s+)?([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)`)
+// excluded from the objects ExtractAlteredObjects returns. The target
+// (group 3) uses qualifiedIdent (migrate_detect.go) so both a bare name and
+// a schema-qualified and/or double-quoted one are recognized — never a
+// stray token like "ENABLE" or "ADD" from unrelated text a line or two
+// later, since the whole ALTER TABLE ... <name> sequence must match
+// contiguously.
+var alterTableRe = regexp.MustCompile(`(?i)\bALTER\s+TABLE\s+(?:ONLY\s+)?(IF\s+EXISTS\s+)?(` + qualifiedIdent + `)`)
 
 // ExtractAlteredObjects returns every table sqlContent's ALTER TABLE
 // statements target, skipping any guarded with IF EXISTS (those cannot fail
-// on a missing table, so have no prerequisite to check).
+// on a missing table, so have no prerequisite to check). Scans a comment-
+// and dollar-quoted-body-stripped copy (cleanSQLForObjectScan, shared with
+// ExtractCreatedObjects) so two classes of false positive are impossible:
+//   - commentary text such as "-- ALTER TABLE\n--   ENABLE ROW LEVEL
+//     SECURITY" being read as a real, unconditional ALTER TABLE ENABLE
+//     (this produced the bogus "ENABLE"/"ADD"/"in" prerequisite names seen
+//     against a real prod-shaped database);
+//   - an ALTER TABLE inside a "DO $$ IF EXISTS (...) THEN ... END $$;"
+//     runtime existence guard being read as unconditional — its target is
+//     never a hard prerequisite, since the guard already handles a missing
+//     table at runtime.
 func ExtractAlteredObjects(sqlContent string) []ObjectRef {
+	cleaned := cleanSQLForObjectScan(sqlContent)
 	var out []ObjectRef
-	for _, m := range alterTableRe.FindAllStringSubmatch(sqlContent, -1) {
+	for _, m := range alterTableRe.FindAllStringSubmatch(cleaned, -1) {
 		if m[1] != "" { // IF EXISTS present — guarded, not a prerequisite risk
 			continue
 		}

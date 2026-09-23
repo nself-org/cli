@@ -32,6 +32,57 @@ func TestExtractAlteredObjects_HandlesOnlyAndSchemaQualified(t *testing.T) {
 	}
 }
 
+// TestExtractAlteredObjects_FalsePositiveShapes is the table test for
+// defect 2's three reported false-positive shapes, reproducing the exact
+// refusal text observed against a prod-shaped database ("ENABLE", "ADD",
+// "in" reported as missing tables needed by migration 024).
+func TestExtractAlteredObjects_FalsePositiveShapes(t *testing.T) {
+	cases := []struct {
+		name string
+		sql  string
+	}{
+		{
+			name: "ALTER TABLE mentioned in a line comment across a line break",
+			sql: "-- Later migrations will:\n" +
+				"--   ALTER TABLE\n" +
+				"--     ENABLE ROW LEVEL SECURITY\n" +
+				"--     ADD CONSTRAINT ... in production\n",
+		},
+		{
+			name: "ALTER TABLE mentioned in a block comment",
+			sql:  "/* ALTER TABLE\n     ENABLE ROW LEVEL SECURITY */\n",
+		},
+		{
+			name: "ALTER TABLE only inside a guarded DO block",
+			sql: "DO $$\nBEGIN\n" +
+				"  IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'np_users') THEN\n" +
+				"    ALTER TABLE public.np_users ADD COLUMN IF NOT EXISTS foo INT;\n" +
+				"  END IF;\nEND $$;\n",
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			objs := ExtractAlteredObjects(tt.sql)
+			if len(objs) != 0 {
+				t.Fatalf("ExtractAlteredObjects(%q) = %+v, want none (no real unconditional ALTER TABLE present)", tt.sql, objs)
+			}
+		})
+	}
+}
+
+// TestExtractAlteredObjects_RealAlterStillDetectedAlongsideComment guards
+// against stripping being too aggressive: a genuine ALTER TABLE elsewhere in
+// the same file must still be found even when the file also contains one of
+// the false-positive shapes above.
+func TestExtractAlteredObjects_RealAlterStillDetectedAlongsideComment(t *testing.T) {
+	sql := "-- ALTER TABLE\n--   ENABLE ROW LEVEL SECURITY\n" +
+		"ALTER TABLE np_waitlist ADD COLUMN IF NOT EXISTS foo INT;\n"
+	objs := ExtractAlteredObjects(sql)
+	if len(objs) != 1 || objs[0].Name != "np_waitlist" {
+		t.Fatalf("ExtractAlteredObjects = %+v, want exactly one real target %q", objs, "np_waitlist")
+	}
+}
+
 func TestClassifyAlterPrerequisites_SatisfiedByLiveSchema(t *testing.T) {
 	files := []parsedMigration{
 		{Name: "009_licensing_tiers.sql", Altered: []ObjectRef{{Kind: ObjectTable, Name: "licenses"}}},
@@ -99,6 +150,50 @@ func TestClassifyAlterPrerequisites_LaterCreateDoesNotSatisfyEarlierAlter(t *tes
 	missing := classifyAlterPrerequisites(files, map[string]bool{})
 	if len(missing) != 1 || missing[0].MigrationID != "001_alter_widgets.sql" {
 		t.Fatalf("classifyAlterPrerequisites = %+v, want one missing prerequisite against 001_alter_widgets.sql", missing)
+	}
+}
+
+// TestClassifyAlterPrerequisites_SchemaQualificationDoesNotFalsePositive is
+// defect 2c's regression at the classification layer: a table created
+// unqualified in an earlier file and altered "public."-qualified in a later
+// one (or vice versa) is the SAME object and must not be refused.
+func TestClassifyAlterPrerequisites_SchemaQualificationDoesNotFalsePositive(t *testing.T) {
+	files := []parsedMigration{
+		{Name: "001_create.sql", Created: []ObjectRef{{Kind: ObjectTable, Name: "np_waitlist"}}},
+		{Name: "002_alter.sql", Altered: []ObjectRef{{Kind: ObjectTable, Name: "public.np_waitlist"}}},
+	}
+	missing := classifyAlterPrerequisites(files, map[string]bool{})
+	if len(missing) != 0 {
+		t.Fatalf("classifyAlterPrerequisites = %+v, want none (public.np_waitlist and np_waitlist are the same table)", missing)
+	}
+
+	// And the live-schema side: existing keyed unqualified must satisfy an
+	// ALTER written schema-qualified.
+	files2 := []parsedMigration{
+		{Name: "024_alter.sql", Altered: []ObjectRef{{Kind: ObjectTable, Name: "public.np_users"}}},
+	}
+	existing := map[string]bool{ObjectRef{Kind: ObjectTable, Name: "np_users"}.Key(): true}
+	if missing := classifyAlterPrerequisites(files2, existing); len(missing) != 0 {
+		t.Fatalf("classifyAlterPrerequisites = %+v, want none (np_users exists live, public.np_users is the same table)", missing)
+	}
+}
+
+// TestClassifyAlterPrerequisites_GenuineRefusalSurvivesNormalization is the
+// "keep the checker's real protection" requirement: normalizing identifiers
+// and stripping comments/DO-block bodies must never mask a genuine missing
+// prerequisite — a table that truly does not exist live and is not created
+// by any earlier (or the same) file in the batch must still be refused, even
+// once schema-qualification is normalized away.
+func TestClassifyAlterPrerequisites_GenuineRefusalSurvivesNormalization(t *testing.T) {
+	files := []parsedMigration{
+		{Name: "024_add_column.sql", Altered: []ObjectRef{{Kind: ObjectTable, Name: "public.np_users"}}},
+	}
+	missing := classifyAlterPrerequisites(files, map[string]bool{}) // nothing live, nothing created earlier
+	if len(missing) != 1 {
+		t.Fatalf("classifyAlterPrerequisites = %+v, want exactly one missing prerequisite (np_users genuinely absent)", missing)
+	}
+	if missing[0].Object.Name != "public.np_users" || missing[0].MigrationID != "024_add_column.sql" {
+		t.Fatalf("missing prerequisite = %+v, want public.np_users needed by 024_add_column.sql", missing[0])
 	}
 }
 

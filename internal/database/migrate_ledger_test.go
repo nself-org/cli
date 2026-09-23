@@ -231,6 +231,62 @@ func TestLegacyNestedRenameSQL_IdempotentShape(t *testing.T) {
 	}
 }
 
+// TestIsDownMigrationFile_AllConventions is the table test for defect 1: web
+// uses "*_down.sql", this CLI's own generator uses "*.down.sql", and both
+// (plus their generalized non-".sql" forms) must be recognized as down
+// files. Anything else, including a name that merely ends in "down" without
+// the "." or "_" separator, must NOT be treated as a down file.
+func TestIsDownMigrationFile_AllConventions(t *testing.T) {
+	cases := map[string]bool{
+		"017_nself_accounts_down.sql": true, // web's convention
+		"017_nself_accounts.down.sql": true, // this CLI's `migrate generate` convention
+		"foo.down.sql":                true,
+		"foo_down.sql":                true,
+		"foo.down.pgsql":              true, // generalized non-".sql" down variant
+		"foo_down.pgsql":              true,
+		"017_nself_accounts.sql":      false, // ordinary up file
+		"teardown.sql":                false, // ends in "down" but not "_down"/".down"
+		"downgrade.sql":               false,
+		"down.sql":                    false, // bare "down" has neither the "." nor "_" separator
+	}
+	for name, want := range cases {
+		if got := isDownMigrationFile(name); got != want {
+			t.Errorf("isDownMigrationFile(%q) = %v, want %v", name, got, want)
+		}
+	}
+}
+
+// TestScanMigrations_ExcludesBothDownConventions is the integration-shaped
+// regression for the production incident: a flat directory containing both
+// down-file conventions must only return the up files, in order, and never
+// the down files that were previously slipping through as "*_down.sql".
+func TestScanMigrations_ExcludesBothDownConventions(t *testing.T) {
+	tmp := t.TempDir()
+	writeFile(t, tmp, "017_nself_accounts.sql", "-- up 017")
+	writeFile(t, tmp, "017_nself_accounts_down.sql", "-- down 017, web convention")
+	writeFile(t, tmp, "018_next.sql", "-- up 018")
+	writeFile(t, tmp, "018_next.down.sql", "-- down 018, cli convention")
+
+	files, err := scanMigrations(tmp)
+	if err != nil {
+		t.Fatalf("scanMigrations: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("scanMigrations = %v, want exactly the 2 up files (down files must be excluded)", files)
+	}
+	for _, f := range files {
+		if strings.Contains(migrationKey(f), "down") {
+			t.Errorf("scanMigrations returned a down file: %s", f)
+		}
+	}
+	want := []string{"017_nself_accounts.sql", "018_next.sql"}
+	for i, f := range files {
+		if migrationKey(f) != want[i] {
+			t.Errorf("files[%d] key = %q, want %q", i, migrationKey(f), want[i])
+		}
+	}
+}
+
 // TestScanMigrations_NestedOrderByKey: with the nested layout the sort must
 // order by the version-bearing directory name, not the constant "up.sql"
 // basename (which left the apply order undefined).
