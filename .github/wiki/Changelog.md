@@ -2,6 +2,12 @@
 
 All notable changes to the ɳSelf CLI are documented in this file. Format loosely
 follows Keep a Changelog, with Conventional Commit classification.
+## [1.4.9] - 2026-09-23
+
+- fix(db): nself db migrate up --migration-dir now skips *_down.sql files as well as *.down.sql; down migrations were being applied between the up files, which dropped tables on a live database (#460)
+- fix(db): the migration prerequisite check ignores SQL comments and statements inside guarded DO blocks, and treats public.<table> and <table> as the same table, so idempotent migrations are no longer refused (#460)
+- fix(plugin): nself plugin update no longer reports a table-prefix or route conflict with the plugin's own previous version, and reconciles an older np_common.schema_versions table instead of failing (#461)
+
 ## [1.4.8] - 2026-09-23
 
 - fix(plugin): licensed plugin installs no longer probe GitHub for an SBOM that cannot exist there; each licensed install was stalling 15-20s (claw with its dependencies went from 96s to 7s in the golden path). Free plugins keep the SBOM check with a 5s timeout that fails open on transport errors; an SBOM that exists is still verified (#457)
