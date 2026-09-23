@@ -52,6 +52,50 @@ func writeManifestFile(t *testing.T, pluginDir, name, version string, tables []s
 	}
 }
 
+// writeManifestFileAs is writeManifestFile but lets the on-disk directory
+// name and the manifest's internal "name" field differ — needed to simulate
+// Update()'s ".prev" backup directory, which keeps the ORIGINAL plugin.json
+// (declaring the real plugin name, e.g. "notify") under a renamed directory
+// (e.g. "notify.prev"); namePattern rejects dots, so the JSON "name" field
+// itself can never legitimately be "notify.prev".
+func writeManifestFileAs(t *testing.T, pluginDir, dirName, manifestName, version string, tables []string, requiresLicense bool) {
+	t.Helper()
+	dir := filepath.Join(pluginDir, dirName)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("writeManifestFileAs: mkdir: %v", err)
+	}
+
+	type manifestJSON struct {
+		Name            string   `json:"name"`
+		Version         string   `json:"version"`
+		Description     string   `json:"description"`
+		Category        string   `json:"category"`
+		License         string   `json:"license"`
+		Tables          []string `json:"tables,omitempty"`
+		RequiresLicense bool     `json:"requires_license,omitempty"`
+	}
+
+	m := manifestJSON{
+		Name:            manifestName,
+		Version:         version,
+		Description:     "Test plugin " + manifestName,
+		Category:        "utility",
+		License:         "MIT",
+		Tables:          tables,
+		RequiresLicense: requiresLicense,
+	}
+
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("writeManifestFileAs: marshal: %v", err)
+	}
+
+	path := filepath.Join(dir, "plugin.json")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("writeManifestFileAs: write: %v", err)
+	}
+}
+
 // --- ListInstalled tests ---
 
 // TestListInstalled_EmptyDir verifies that ListInstalled returns an empty (nil)
@@ -270,6 +314,50 @@ func TestTablePrefixConflict_SamePlugin_Skipped(t *testing.T) {
 	err := checkTablePrefixConflict(dir, "chat-plugin", []string{"np_chat_messages"})
 	if err != nil {
 		t.Fatalf("expected no conflict when reinstalling the same plugin, got: %v", err)
+	}
+}
+
+// TestTablePrefixConflict_PrevBackupDir_Skipped is the prod-evidence
+// regression test (2026-09-23, nself 1.4.8, "nself plugin update notify"):
+// Update() renames the current install to "{name}.prev" before reinstalling,
+// so the conflict scan must skip that backup directory too, not just the
+// plugin's own live directory name.
+func TestTablePrefixConflict_PrevBackupDir_Skipped(t *testing.T) {
+	dir := t.TempDir()
+	// The backup dir keeps the ORIGINAL plugin.json — Update() renames the
+	// directory only, it does not rewrite the manifest inside it.
+	writeManifestFileAs(t, dir, "notify.prev", "notify", "1.0.0", []string{"np_notify_events"}, false)
+
+	err := checkTablePrefixConflict(dir, "notify", []string{"np_notify_events"})
+	if err != nil {
+		t.Fatalf("expected no conflict against own .prev update-backup dir, got: %v", err)
+	}
+}
+
+// TestTablePrefixConflict_DifferentPlugin_PrevSuffix_StillConflicts verifies
+// that skipping "{name}.prev" is scoped to the plugin being installed: a
+// genuinely different plugin whose directory happens to end in ".prev" must
+// still be treated as a real conflict.
+func TestTablePrefixConflict_DifferentPlugin_PrevSuffix_StillConflicts(t *testing.T) {
+	dir := t.TempDir()
+	writeManifestFileAs(t, dir, "billing.prev", "billing", "1.0.0", []string{"np_notify_events"}, false)
+
+	err := checkTablePrefixConflict(dir, "notify", []string{"np_notify_events"})
+	if err == nil {
+		t.Fatal("expected conflict: billing.prev is a different plugin, not notify's own backup")
+	}
+}
+
+// TestTableConflicts_PrevBackupDir_Skipped mirrors
+// TestTablePrefixConflict_PrevBackupDir_Skipped for the exact-table-name
+// conflict check.
+func TestTableConflicts_PrevBackupDir_Skipped(t *testing.T) {
+	dir := t.TempDir()
+	writeManifestFileAs(t, dir, "cron.prev", "cron", "1.0.0", []string{"np_cron_jobs"}, false)
+
+	newPlugin := &PluginManifest{Name: "cron", Tables: []string{"np_cron_jobs"}}
+	if err := checkTableConflicts(dir, newPlugin); err != nil {
+		t.Fatalf("expected no conflict against own .prev update-backup dir, got: %v", err)
 	}
 }
 
