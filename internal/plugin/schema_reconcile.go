@@ -1,26 +1,25 @@
 package plugin
 
-// schema_reconcile.go — reconciles np_common.schema_versions with a
-// pre-existing, differently-shaped table, split out of schema.go for file
-// size (repoqa 300-line cap).
+// schema_reconcile.go — owns np_common.plugin_schema_versions, the table this
+// package records per-plugin schema versions in, split out of schema.go for
+// file size (repoqa 300-line cap).
 //
-// Purpose: np_common.schema_versions is used by TWO unrelated systems under
-//          the same name: this package's per-plugin version tracking
-//          (plugin TEXT, version INT, applied_at ...) and, independently,
-//          internal/database's migration ledger (name TEXT [PRIMARY KEY],
-//          applied_at ...). Whichever one creates the table first wins the
-//          shape; reconcileSchemaVersionsTable brings a table created by the
-//          other system up to the shape this package needs, in place,
-//          without touching the rows or columns the other system owns.
+// Purpose: this package used to record plugin versions in
+//          np_common.schema_versions, a name it shares with
+//          internal/database's migration ledger (name TEXT PRIMARY KEY,
+//          applied_at ...). Whichever system created the table first won the
+//          shape, and the other broke: on nself's own production host the
+//          ledger won, "nself plugin update cron" failed on a missing
+//          "plugin" column (1.4.8), and the 1.4.9 in-place reconcile then
+//          failed on "column name is in a primary key" (2026-09-23). Plugin
+//          versions now live in their own table; the ledger table is never
+//          created, altered or written by this package again.
 // Inputs:  a *config.Config identifying the target Postgres container.
-// Outputs: np_common.schema_versions carries usable "plugin" and "version"
-//          columns on return, with any legacy rows preserved and backfilled
-//          where the rule below applies; error on a failed DDL/DML step.
-// Constraints: additive/relaxing only (CREATE SCHEMA/TABLE IF NOT EXISTS,
-//              ADD COLUMN IF NOT EXISTS, DROP NOT NULL on a pre-existing
-//              "name" column) — never DROP, never touches existing rows
-//              beyond the single documented UPDATE backfill, never narrows
-//              or removes anything the migration ledger relies on.
+// Outputs: np_common.plugin_schema_versions exists on return, carrying any
+//          plugin rows an earlier CLI recorded in np_common.schema_versions.
+// Constraints: additive only (CREATE ... IF NOT EXISTS, INSERT ... ON
+//              CONFLICT DO NOTHING); reads np_common.schema_versions but
+//              never writes it.
 // SPORT: plugin-schema; callers: createPluginSchema (schema.go)
 
 import (
@@ -31,150 +30,57 @@ import (
 	"github.com/nself-org/cli/internal/config"
 )
 
-// schemaVersionsColumn describes one column of np_common.schema_versions as
-// reconcileSchemaVersionsTable found it.
-type schemaVersionsColumn struct {
-	Nullable bool
-}
-
-// schemaVersionsColumns returns the columns currently present on
-// np_common.schema_versions, keyed by column name. Used by
-// reconcileSchemaVersionsTable to decide which columns are missing, and
-// whether a pre-existing "name" column still carries a NOT NULL constraint
-// that would reject a plugin-only row.
-func schemaVersionsColumns(ctx context.Context, cfg *config.Config) (map[string]schemaVersionsColumn, error) {
-	out, err := queryPSQL(ctx, cfg,
-		`SELECT column_name || '|' || is_nullable FROM information_schema.columns WHERE table_schema = 'np_common' AND table_name = 'schema_versions';`,
-	)
-	if err != nil {
-		return nil, err
-	}
-	cols := make(map[string]schemaVersionsColumn)
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "|", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		cols[parts[0]] = schemaVersionsColumn{Nullable: parts[1] == "YES"}
-	}
-	return cols, nil
-}
-
-// reconcileSchemaVersionsTable ensures np_common.schema_versions carries
-// usable "plugin" and "version" columns for getSchemaVersion/
-// recordSchemaVersion, regardless of what created the table first.
-//
-// np_common.schema_versions is also the migration ledger table
-// (internal/database's ensureSchemaVersions, an unrelated, older system):
-// it creates the SAME table name with a DIFFERENT shape — "name TEXT
-// [PRIMARY KEY], applied_at ..." — and no "plugin"/"version" columns. On any
-// project where migrations ran before the first schema-owning plugin was
-// installed (true of nself's own production host), createPluginSchema's old
-// `CREATE TABLE IF NOT EXISTS` was a silent no-op against that pre-existing
-// table: getSchemaVersion's SELECT and recordSchemaVersion's INSERT both
-// referenced a "plugin" column that did not exist. getSchemaVersion masked
-// this (any query error there is treated as "no version recorded yet"), so
-// the failure only surfaced downstream at the INSERT: "nself plugin update
-// cron" on production (nself 1.4.8, 2026-09-23) failed with
-// `column "plugin" of relation "schema_versions" does not exist`.
-//
-// Adding the columns alone is not enough: the legacy table also declares
-// "name TEXT NOT NULL" with no default, and a plugin-only row never sets
-// "name". A live-Postgres run against that exact shape confirmed the
-// resulting failure — `null value in column "name" ... violates not-null
-// constraint`, `Failing row contains (null, <ts>, np_cron, 1)` — so this
-// also relaxes that one constraint (DROP NOT NULL) when a legacy "name"
-// column is found still requiring it. The migration ledger's own INSERT
-// always supplies "name" regardless, so its behavior is unchanged; only a
-// row it never writes (a plugin-only row) is newly allowed to leave "name"
-// unset.
-//
-// It is idempotent and safe to call before every schema operation.
-func reconcileSchemaVersionsTable(ctx context.Context, cfg *config.Config) error {
-	createSQL := `CREATE SCHEMA IF NOT EXISTS np_common;
-CREATE TABLE IF NOT EXISTS np_common.schema_versions (
-  plugin TEXT,
-  version INT,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+// pluginSchemaVersionsDDL creates the dedicated tracking table. The composite
+// primary key makes recordSchemaVersion's ON CONFLICT DO NOTHING exact.
+const pluginSchemaVersionsDDL = `CREATE SCHEMA IF NOT EXISTS np_common;
+CREATE TABLE IF NOT EXISTS np_common.plugin_schema_versions (
+  plugin TEXT NOT NULL,
+  version INT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (plugin, version)
 );`
-	if err := execPSQL(ctx, cfg, createSQL); err != nil {
-		return fmt.Errorf("creating np_common.schema_versions: %w", err)
-	}
 
-	cols, err := schemaVersionsColumns(ctx, cfg)
-	if err != nil {
-		return fmt.Errorf("reading np_common.schema_versions columns: %w", err)
+// ensurePluginSchemaVersionsTable creates np_common.plugin_schema_versions
+// and carries over plugin rows from np_common.schema_versions, so a plugin
+// already recorded by an older CLI is not re-provisioned. It is idempotent
+// and safe to call before every schema operation.
+func ensurePluginSchemaVersionsTable(ctx context.Context, cfg *config.Config) error {
+	if err := execPSQL(ctx, cfg, pluginSchemaVersionsDDL); err != nil {
+		return fmt.Errorf("creating np_common.plugin_schema_versions: %w", err)
 	}
-
-	if err := reconcileVersionColumns(ctx, cfg, cols); err != nil {
-		return err
-	}
-
-	addUniqueIndexIfSafe(ctx, cfg)
-	return nil
+	return carryOverLegacyPluginRows(ctx, cfg)
 }
 
-// reconcileVersionColumns adds any missing "plugin"/"version" columns,
-// backfills "plugin" from a legacy "name" column, and relaxes a legacy
-// "name NOT NULL" constraint so a plugin-only insert can leave it unset.
-// Split out of reconcileSchemaVersionsTable to keep that function under the
-// repo's per-function line limit.
-func reconcileVersionColumns(ctx context.Context, cfg *config.Config, cols map[string]schemaVersionsColumn) error {
-	if _, ok := cols["plugin"]; !ok {
-		if err := execPSQL(ctx, cfg, `ALTER TABLE np_common.schema_versions ADD COLUMN IF NOT EXISTS plugin TEXT;`); err != nil {
-			return fmt.Errorf("adding plugin column to np_common.schema_versions: %w", err)
-		}
+// carryOverLegacyPluginRows copies (plugin, version) rows from
+// np_common.schema_versions when that table has both columns. Rows without a
+// version are migration-ledger rows (or the 1.4.9 plugin = name backfill of
+// them) and are skipped. A missing table or column means there is nothing to
+// carry over, not an error.
+func carryOverLegacyPluginRows(ctx context.Context, cfg *config.Config) error {
+	cols, err := queryPSQL(ctx, cfg, `SELECT string_agg(column_name, ',' ORDER BY column_name)
+FROM information_schema.columns
+WHERE table_schema = 'np_common' AND table_name = 'schema_versions'
+  AND column_name IN ('applied_at', 'plugin', 'version');`)
+	if err != nil {
+		return fmt.Errorf("inspecting np_common.schema_versions: %w", err)
 	}
-	if _, ok := cols["version"]; !ok {
-		if err := execPSQL(ctx, cfg, `ALTER TABLE np_common.schema_versions ADD COLUMN IF NOT EXISTS version INT;`); err != nil {
-			return fmt.Errorf("adding version column to np_common.schema_versions: %w", err)
-		}
-	}
-
-	name, hasName := cols["name"]
-	if !hasName {
+	if !strings.Contains(cols, "plugin") || !strings.Contains(cols, "version") {
 		return nil
 	}
-
-	if !name.Nullable {
-		if err := execPSQL(ctx, cfg, `ALTER TABLE np_common.schema_versions ALTER COLUMN name DROP NOT NULL;`); err != nil {
-			return fmt.Errorf("relaxing legacy name NOT NULL on np_common.schema_versions: %w", err)
-		}
+	appliedAt := "NOW()"
+	if strings.Contains(cols, "applied_at") {
+		appliedAt = "MIN(applied_at)"
 	}
-
-	// Backfill rule: the legacy migration-ledger shape keys rows by "name",
-	// which is the same logical identity this package tracks as "plugin" —
-	// both answer "what does this row belong to". Only rows this package has
-	// never written (plugin IS NULL) are touched, so a rerun never clobbers
-	// a value this package already recorded.
-	backfillSQL := `UPDATE np_common.schema_versions SET plugin = name WHERE plugin IS NULL AND name IS NOT NULL;`
-	if err := execPSQL(ctx, cfg, backfillSQL); err != nil {
-		return fmt.Errorf("backfilling plugin column in np_common.schema_versions: %w", err)
+	// ORDER BY gives concurrent callers the same insert order, so two
+	// installs racing through this copy cannot deadlock on the primary key.
+	copySQL := fmt.Sprintf(`INSERT INTO np_common.plugin_schema_versions (plugin, version, applied_at)
+SELECT plugin, version, %s FROM np_common.schema_versions
+WHERE plugin IS NOT NULL AND version IS NOT NULL
+GROUP BY plugin, version
+ORDER BY plugin, version
+ON CONFLICT (plugin, version) DO NOTHING;`, appliedAt)
+	if err := execPSQL(ctx, cfg, copySQL); err != nil {
+		return fmt.Errorf("carrying plugin rows into np_common.plugin_schema_versions: %w", err)
 	}
 	return nil
-}
-
-// addUniqueIndexIfSafe adds a unique index on (plugin, version) so the table
-// stays well-formed going forward. It is skipped if any existing rows would
-// violate it; recordSchemaVersion does not depend on this index (it uses a
-// WHERE NOT EXISTS guard), so a skip here only means a missed optimization,
-// never a correctness gap. Legacy rows backfilled by reconcile have
-// version = NULL, and Postgres unique indexes never treat NULL as equal to
-// NULL, so they cannot trigger the duplicate check below. Errors checking
-// for duplicates or creating the index are non-fatal for the same reason.
-func addUniqueIndexIfSafe(ctx context.Context, cfg *config.Config) {
-	dupCount, err := queryPSQL(ctx, cfg, `SELECT COUNT(*) FROM (
-  SELECT plugin, version FROM np_common.schema_versions
-  WHERE plugin IS NOT NULL AND version IS NOT NULL
-  GROUP BY plugin, version HAVING COUNT(*) > 1
-) dup;`)
-	if err != nil || dupCount != "0" {
-		return
-	}
-	indexSQL := `CREATE UNIQUE INDEX IF NOT EXISTS schema_versions_plugin_version_idx ON np_common.schema_versions (plugin, version);`
-	_ = execPSQL(ctx, cfg, indexSQL)
 }
