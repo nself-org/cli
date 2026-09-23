@@ -88,11 +88,11 @@ func queryPSQL(ctx context.Context, cfg *config.Config, sql string) (string, err
 	return strings.TrimSpace(string(output)), nil
 }
 
-// getSchemaVersion queries np_common.schema_versions for the latest recorded
-// version of the named plugin. Returns (0, nil) if no version row exists.
+// getSchemaVersion queries np_common.plugin_schema_versions for the latest
+// recorded version of the named plugin. Returns (0, nil) if no version row exists.
 func getSchemaVersion(ctx context.Context, cfg *config.Config, pluginName string) (int, error) {
 	sql := fmt.Sprintf(
-		"SELECT COALESCE(MAX(version),0) FROM np_common.schema_versions WHERE plugin = '%s';",
+		"SELECT COALESCE(MAX(version),0) FROM np_common.plugin_schema_versions WHERE plugin = '%s';",
 		sanitizeSchemaName(pluginName),
 	)
 	out, err := queryPSQL(ctx, cfg, sql)
@@ -110,22 +110,13 @@ func getSchemaVersion(ctx context.Context, cfg *config.Config, pluginName string
 	return v, nil
 }
 
-// recordSchemaVersion inserts a version row into np_common.schema_versions
-// for the given plugin. Duplicate (plugin, version) pairs are silently
-// ignored via a WHERE NOT EXISTS guard rather than ON CONFLICT: a table
-// reconciled from the legacy migration-ledger shape (see
-// reconcileSchemaVersionsTable) may not have a unique index on
-// (plugin, version) — reconciliation only adds one when it can prove no
-// existing rows would violate it — and ON CONFLICT errors outright when no
-// matching unique index or constraint exists.
+// recordSchemaVersion inserts a version row into
+// np_common.plugin_schema_versions for the given plugin. A duplicate
+// (plugin, version) pair is ignored via the table's primary key.
 func recordSchemaVersion(ctx context.Context, cfg *config.Config, pluginName string, version int) error {
-	name := sanitizeSchemaName(pluginName)
-	sql := fmt.Sprintf(`INSERT INTO np_common.schema_versions (plugin, version)
-SELECT '%s', %d
-WHERE NOT EXISTS (
-  SELECT 1 FROM np_common.schema_versions WHERE plugin = '%s' AND version = %d
-);`,
-		name, version, name, version,
+	sql := fmt.Sprintf(`INSERT INTO np_common.plugin_schema_versions (plugin, version)
+VALUES ('%s', %d) ON CONFLICT (plugin, version) DO NOTHING;`,
+		sanitizeSchemaName(pluginName), version,
 	)
 	return execPSQL(ctx, cfg, sql)
 }
@@ -151,11 +142,10 @@ func createPluginSchema(ctx context.Context, cfg *config.Config, pluginName stri
 	qSchema := quoteIdent(schema)
 	qRole := quoteIdent(role)
 
-	// Ensure np_common schema and schema_versions tracking table exist and
-	// carry the columns this package needs, so the version check below has a
-	// table to query — reconciling a pre-existing legacy shape in place
-	// rather than assuming CREATE TABLE IF NOT EXISTS always creates ours.
-	if err := reconcileSchemaVersionsTable(ctx, cfg); err != nil {
+	// Ensure the plugin version tracking table exists (and has picked up any
+	// rows an older CLI kept in the migration ledger's table), so the version
+	// check below has a table to query.
+	if err := ensurePluginSchemaVersionsTable(ctx, cfg); err != nil {
 		return err
 	}
 

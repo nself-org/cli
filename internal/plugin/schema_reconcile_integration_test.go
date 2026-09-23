@@ -1,16 +1,16 @@
 //go:build integration
 
 // schema_reconcile_integration_test.go — live-Postgres verification for
-// reconcileSchemaVersionsTable, closing the live-verification gap
-// schema_container_test.go's doc comment flags for this package: nothing
-// previously exercised this reconciliation logic against a REAL Postgres
-// instance carrying the legacy migration-ledger table shape that broke
-// "nself plugin update cron" in production (nself 1.4.8, 2026-09-23).
+// ensurePluginSchemaVersionsTable against every np_common.schema_versions
+// shape seen in production: absent, the migration ledger's real DDL (name
+// TEXT PRIMARY KEY, copied from internal/database/migrate_sql.go, not
+// paraphrased; the 1.4.9 test seeded a NOT NULL column without the key and
+// missed the prod failure), and the table as the 1.4.9 reconcile left it.
 //
 // Run with:
 //
 //	INTEGRATION=1 go test -tags integration -timeout 120s \
-//	    ./internal/plugin/... -run TestReconcileSchemaVersionsTable_Integration
+//	    ./internal/plugin/... -run TestPluginSchemaVersions
 package plugin
 
 import (
@@ -53,6 +53,10 @@ func integrationTestConfig(t *testing.T) *config.Config {
 	}
 }
 
+// ledgerDDL is internal/database/migrate_sql.go's ensureSchemaVersions DDL,
+// verbatim.
+const ledgerDDL = `CREATE SCHEMA IF NOT EXISTS np_common; CREATE TABLE IF NOT EXISTS np_common.schema_versions (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`
+
 // resetSchemaVersionsTable drops np_common entirely so each subtest starts
 // from a clean slate regardless of what an earlier subtest left behind.
 func resetSchemaVersionsTable(t *testing.T, cfg *config.Config) {
@@ -76,88 +80,88 @@ func mustCount(t *testing.T, cfg *config.Config, sql, label, want string) {
 	}
 }
 
-// TestReconcileSchemaVersionsTable_FreshDB_Integration is scenario (a): no
-// np_common.schema_versions exists yet. reconcileSchemaVersionsTable must
-// create it with usable plugin/version columns, recordSchemaVersion must
-// write successfully, and a repeat call must be a no-op (no duplicate row,
-// no constraint error).
-func TestReconcileSchemaVersionsTable_FreshDB_Integration(t *testing.T) {
+// TestPluginSchemaVersions_FreshDB_Integration: nothing exists yet. The
+// plugin table is created, a record/repeat pair leaves one row, and the
+// migration ledger's table is NOT created by this package.
+func TestPluginSchemaVersions_FreshDB_Integration(t *testing.T) {
 	skipUnlessIntegration(t)
 	cfg := integrationTestConfig(t)
 	resetSchemaVersionsTable(t, cfg)
 	ctx := context.Background()
 
-	if err := reconcileSchemaVersionsTable(ctx, cfg); err != nil {
-		t.Fatalf("reconcileSchemaVersionsTable on fresh DB: %v", err)
+	if err := ensurePluginSchemaVersionsTable(ctx, cfg); err != nil {
+		t.Fatalf("ensurePluginSchemaVersionsTable on fresh DB: %v", err)
 	}
-	if err := recordSchemaVersion(ctx, cfg, "fresh-plugin", 1); err != nil {
-		t.Fatalf("recordSchemaVersion: %v", err)
+	for i := 0; i < 2; i++ {
+		if err := recordSchemaVersion(ctx, cfg, "fresh-plugin", 1); err != nil {
+			t.Fatalf("recordSchemaVersion #%d: %v", i+1, err)
+		}
 	}
-	if v, err := getSchemaVersion(ctx, cfg, "fresh-plugin"); err != nil {
-		t.Fatalf("getSchemaVersion: %v", err)
-	} else if v != 1 {
-		t.Fatalf("getSchemaVersion = %d, want 1", v)
-	}
-
-	// Second call must be a no-op, not a duplicate-row or constraint error.
-	if err := recordSchemaVersion(ctx, cfg, "fresh-plugin", 1); err != nil {
-		t.Fatalf("recordSchemaVersion (repeat): %v", err)
+	if v, err := getSchemaVersion(ctx, cfg, "fresh-plugin"); err != nil || v != 1 {
+		t.Fatalf("getSchemaVersion = %d, %v; want 1, nil", v, err)
 	}
 	mustCount(t, cfg,
-		`SELECT COUNT(*) FROM np_common.schema_versions WHERE plugin = 'np_fresh_plugin' AND version = 1;`,
+		`SELECT COUNT(*) FROM np_common.plugin_schema_versions WHERE plugin = 'np_fresh_plugin' AND version = 1;`,
 		"row count after repeat recordSchemaVersion", "1")
+	mustCount(t, cfg,
+		`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'np_common' AND table_name = 'schema_versions';`,
+		"ledger table created by the plugin package", "0")
 }
 
-// seedLegacySchemaVersions creates np_common.schema_versions in the
-// migration-ledger's pre-fix shape (name TEXT, applied_at TIMESTAMPTZ) with
-// two real rows — the exact shape prod evidence described: "columns name
-// text not null, applied_at timestamptz not null default now()".
-func seedLegacySchemaVersions(t *testing.T, cfg *config.Config) {
-	t.Helper()
-	legacyDDL := `CREATE SCHEMA np_common;
-CREATE TABLE np_common.schema_versions (
-  name TEXT NOT NULL,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-INSERT INTO np_common.schema_versions (name) VALUES ('20260101_init.sql'), ('20260115_add_index.sql');`
-	if err := execPSQL(context.Background(), cfg, legacyDDL); err != nil {
-		t.Fatalf("seeding legacy schema_versions: %v", err)
-	}
-}
-
-// TestReconcileSchemaVersionsTable_LegacyTable_Integration is scenario (b):
-// np_common.schema_versions already exists in the migration ledger's legacy
-// shape with real rows in it. reconcileSchemaVersionsTable must add the
-// plugin/version columns and backfill plugin = name without losing those
-// rows, and createPluginSchema's full flow must then succeed — including a
-// second, no-op call, which is the exact "nself plugin update cron" prod
-// failure this closes: update calls createPluginSchema again on an already
-// -schema'd plugin, and that second call must not re-fail.
-func TestReconcileSchemaVersionsTable_LegacyTable_Integration(t *testing.T) {
+// TestPluginSchemaVersions_LedgerTable_Integration: the migration ledger ran
+// first (nself-web prod). createPluginSchema must succeed twice and leave the
+// ledger table's shape and rows exactly as they were.
+func TestPluginSchemaVersions_LedgerTable_Integration(t *testing.T) {
 	skipUnlessIntegration(t)
 	cfg := integrationTestConfig(t)
 	resetSchemaVersionsTable(t, cfg)
 	ctx := context.Background()
-	seedLegacySchemaVersions(t, cfg)
-
-	if err := reconcileSchemaVersionsTable(ctx, cfg); err != nil {
-		t.Fatalf("reconcileSchemaVersionsTable on legacy table: %v", err)
+	seed := ledgerDDL + `; INSERT INTO np_common.schema_versions (name) VALUES ('20260101_init.sql'), ('20260115_add_index.sql');`
+	if err := execPSQL(ctx, cfg, seed); err != nil {
+		t.Fatalf("seeding ledger table: %v", err)
 	}
 
-	mustCount(t, cfg,
-		`SELECT COUNT(*) FROM np_common.schema_versions WHERE name IN ('20260101_init.sql', '20260115_add_index.sql');`,
-		"legacy rows surviving reconciliation", "2")
-	mustCount(t, cfg,
-		`SELECT COUNT(*) FROM np_common.schema_versions WHERE plugin = name;`,
-		"rows backfilled with plugin = name", "2")
-
-	if err := createPluginSchema(ctx, cfg, "cron"); err != nil {
-		t.Fatalf("createPluginSchema on reconciled legacy table: %v", err)
-	}
-	if err := createPluginSchema(ctx, cfg, "cron"); err != nil {
-		t.Fatalf("createPluginSchema (repeat, must no-op): %v", err)
+	for i := 0; i < 2; i++ {
+		if err := createPluginSchema(ctx, cfg, "cron"); err != nil {
+			t.Fatalf("createPluginSchema #%d on ledger-owned table: %v", i+1, err)
+		}
 	}
 	mustCount(t, cfg,
-		`SELECT COUNT(*) FROM np_common.schema_versions WHERE plugin = 'np_cron' AND version = 1;`,
+		`SELECT COUNT(*) FROM np_common.plugin_schema_versions WHERE plugin = 'np_cron' AND version = 1;`,
 		"recorded version rows for cron", "1")
+	mustCount(t, cfg,
+		`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'np_common' AND table_name = 'schema_versions';`,
+		"ledger table column count (unaltered)", "2")
+	mustCount(t, cfg,
+		`SELECT COUNT(*) FROM np_common.schema_versions;`,
+		"ledger rows (unaltered)", "2")
+}
+
+// TestPluginSchemaVersions_After149Reconcile_Integration: the table as the
+// 1.4.9 in-place reconcile left it (plugin/version columns added, ledger
+// rows backfilled plugin = name with no version) plus one real plugin row.
+// Only the real plugin row is carried over, so cron is not re-provisioned.
+func TestPluginSchemaVersions_After149Reconcile_Integration(t *testing.T) {
+	skipUnlessIntegration(t)
+	cfg := integrationTestConfig(t)
+	resetSchemaVersionsTable(t, cfg)
+	ctx := context.Background()
+	seed := ledgerDDL + `;
+ALTER TABLE np_common.schema_versions ADD COLUMN plugin TEXT, ADD COLUMN version INT;
+INSERT INTO np_common.schema_versions (name, plugin) VALUES ('20260101_init.sql', '20260101_init.sql');
+INSERT INTO np_common.schema_versions (name, plugin, version) VALUES ('np_cron', 'np_cron', 1);`
+	if err := execPSQL(ctx, cfg, seed); err != nil {
+		t.Fatalf("seeding 1.4.9-reconciled table: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := ensurePluginSchemaVersionsTable(ctx, cfg); err != nil {
+			t.Fatalf("ensurePluginSchemaVersionsTable #%d: %v", i+1, err)
+		}
+	}
+	mustCount(t, cfg, `SELECT COUNT(*) FROM np_common.plugin_schema_versions;`,
+		"carried-over rows (ledger rows excluded)", "1")
+	if v, err := getSchemaVersion(ctx, cfg, "cron"); err != nil || v != 1 {
+		t.Fatalf("getSchemaVersion(cron) = %d, %v; want 1, nil", v, err)
+	}
 }
