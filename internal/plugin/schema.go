@@ -225,14 +225,10 @@ func dropPluginSchema(ctx context.Context, cfg *config.Config, pluginName string
 		return fmt.Errorf("dropping schema %s: %w", schema, err)
 	}
 
-	dropRoleSQL := fmt.Sprintf("DROP ROLE IF EXISTS %s;", qRole)
-	if err := execPSQL(ctx, cfg, dropRoleSQL); err != nil {
-		return fmt.Errorf("dropping role %s: %w", role, err)
-	}
-
-	// Forget the recorded schema version too. createPluginSchema skips all
-	// provisioning when a version row exists, so leaving it made a later
-	// reinstall run with no schema and no role.
+	// Forget the recorded schema version as soon as the schema is gone and
+	// before the role drop, which can fail on grants held elsewhere: a
+	// surviving row makes createPluginSchema skip provisioning, so a later
+	// reinstall would run with no schema.
 	forgetSQL := fmt.Sprintf(`DO $$ BEGIN
   IF to_regclass('np_common.plugin_schema_versions') IS NOT NULL THEN
     DELETE FROM np_common.plugin_schema_versions WHERE plugin = '%s';
@@ -240,6 +236,11 @@ func dropPluginSchema(ctx context.Context, cfg *config.Config, pluginName string
 END $$;`, schema)
 	if err := execPSQL(ctx, cfg, forgetSQL); err != nil {
 		return fmt.Errorf("forgetting schema version for %s: %w", schema, err)
+	}
+
+	dropRoleSQL := fmt.Sprintf("DROP ROLE IF EXISTS %s;", qRole)
+	if err := execPSQL(ctx, cfg, dropRoleSQL); err != nil {
+		return fmt.Errorf("dropping role %s: %w", role, err)
 	}
 
 	return nil

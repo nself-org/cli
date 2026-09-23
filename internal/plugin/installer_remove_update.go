@@ -161,6 +161,16 @@ func Update(ctx context.Context, cfg *config.Config, name string, pluginDir stri
 
 	// Success: remove the backup.
 	_ = os.RemoveAll(backupDir)
+
+	// Drop the images built from the previous source; otherwise the next
+	// start reuses them and the update never runs (see image_invalidate.go).
+	removed, err := invalidatePluginImages(ctx, cfg, currentDir)
+	for _, ref := range removed {
+		fmt.Fprintf(os.Stderr, "ℹ Removed cached image %s; the next 'nself start' rebuilds it.\n", ref)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not clear cached images for %q (%v); the next start may keep running the previous build\n", name, err)
+	}
 	return nil
 }
 
