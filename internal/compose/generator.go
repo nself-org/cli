@@ -261,6 +261,8 @@ func (g *Generator) postProcess(dc *DockerCompose) {
 			applySecurityToService(&svc, NginxSecurity())
 		case "redis":
 			applySecurityToService(&svc, RedisSecurity())
+		case "meilisearch-init":
+			applySecurityToService(&svc, InitContainerSecurity())
 		default:
 			applySecurityToService(&svc, DefaultSecurity())
 		}

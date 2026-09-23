@@ -230,5 +230,17 @@ func dropPluginSchema(ctx context.Context, cfg *config.Config, pluginName string
 		return fmt.Errorf("dropping role %s: %w", role, err)
 	}
 
+	// Forget the recorded schema version too. createPluginSchema skips all
+	// provisioning when a version row exists, so leaving it made a later
+	// reinstall run with no schema and no role.
+	forgetSQL := fmt.Sprintf(`DO $$ BEGIN
+  IF to_regclass('np_common.plugin_schema_versions') IS NOT NULL THEN
+    DELETE FROM np_common.plugin_schema_versions WHERE plugin = '%s';
+  END IF;
+END $$;`, schema)
+	if err := execPSQL(ctx, cfg, forgetSQL); err != nil {
+		return fmt.Errorf("forgetting schema version for %s: %w", schema, err)
+	}
+
 	return nil
 }
