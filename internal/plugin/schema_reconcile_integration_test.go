@@ -185,3 +185,30 @@ INSERT INTO np_common.schema_versions VALUES ('np_notify', 1), ('np_notify', 1);
 	mustCount(t, cfg, `SELECT COUNT(*) FROM np_common.plugin_schema_versions WHERE plugin = 'np_notify';`,
 		"carried-over rows without applied_at", "1")
 }
+
+// TestPluginSchemaVersions_RemoveThenReinstall_Integration: remove drops the
+// schema and role; a reinstall must provision them again rather than trust a
+// version row left behind.
+func TestPluginSchemaVersions_RemoveThenReinstall_Integration(t *testing.T) {
+	skipUnlessIntegration(t)
+	cfg := integrationTestConfig(t)
+	resetSchemaVersionsTable(t, cfg)
+	ctx := context.Background()
+
+	if err := createPluginSchema(ctx, cfg, "reinstall-probe"); err != nil {
+		t.Fatalf("createPluginSchema: %v", err)
+	}
+	if err := dropPluginSchema(ctx, cfg, "reinstall-probe"); err != nil {
+		t.Fatalf("dropPluginSchema: %v", err)
+	}
+	mustCount(t, cfg, `SELECT COUNT(*) FROM np_common.plugin_schema_versions WHERE plugin = 'np_reinstall_probe';`,
+		"version rows after remove", "0")
+	if err := createPluginSchema(ctx, cfg, "reinstall-probe"); err != nil {
+		t.Fatalf("createPluginSchema after remove: %v", err)
+	}
+	mustCount(t, cfg, `SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = 'np_reinstall_probe';`,
+		"schema present after reinstall", "1")
+	if err := dropPluginSchema(ctx, cfg, "reinstall-probe"); err != nil {
+		t.Fatalf("cleanup dropPluginSchema: %v", err)
+	}
+}

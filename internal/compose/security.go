@@ -21,6 +21,24 @@ func DefaultSecurity() ServiceSecurity {
 	}
 }
 
+// InitContainerSecurity returns the security config for ownership-fixing
+// init containers (meilisearch-init). They run as root with CapDrop ALL, and
+// "chown -R 1000:1000 /data; chmod -R 755 /data" then fails with "Operation
+// not permitted" on any data dir it did not create, which aborted nself start
+// and left nginx created but never started (nself-web prod, 2026-09-23).
+// CHOWN changes owners, FOWNER lets chmod act on files owned by another uid,
+// DAC_READ_SEARCH lets root descend into a 0700 directory once it no longer
+// owns it. Verified minimal on a Linux volume: dropping any one fails.
+func InitContainerSecurity() ServiceSecurity {
+	return ServiceSecurity{
+		CapDrop:     []string{"ALL"},
+		CapAdd:      []string{"CHOWN", "FOWNER", "DAC_READ_SEARCH"},
+		SecurityOpt: []string{"no-new-privileges:true"},
+		ReadOnly:    true,
+		Tmpfs:       []string{"/tmp", "/run"},
+	}
+}
+
 // PostgresSecurity returns the security config for the PostgreSQL service.
 // PostgreSQL needs IPC_LOCK for shared memory and CHOWN/SETUID/SETGID for
 // initdb. Root FS is read-only; data dir is a writable volume.
