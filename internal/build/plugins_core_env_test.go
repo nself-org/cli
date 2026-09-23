@@ -173,6 +173,231 @@ func TestNormalizeComposePluginCoreEnv_UnknownPortOmitsServicePort(t *testing.T)
 	}
 }
 
+// TestNormalizeComposePluginCoreEnv_ListFormShape covers the list-form
+// "environment: [- KEY=VALUE, ...]" shape used by 40+ installed plugin
+// fragments (paid/browser, paid/google, paid/cms, paid/moderation,
+// paid/social, paid/support and free plugins like cron) — the defect this
+// change fixes silently returned such fragments unchanged. Missing keys are
+// appended at the existing entries' indentation; a key already present as
+// either "- KEY=val" or a bare passthrough "- KEY" must not be duplicated
+// or overwritten.
+func TestNormalizeComposePluginCoreEnv_ListFormShape(t *testing.T) {
+	pluginDir := t.TempDir()
+	writePluginManifestJSON(t, pluginDir, "browser", 3712)
+
+	in := `services:
+  browser:
+    build:
+      context: ${NSELF_PLUGIN_DIR}/browser
+      dockerfile: Dockerfile
+    container_name: ${COMPOSE_PROJECT_NAME}_browser
+    restart: unless-stopped
+    networks:
+      - ${DOCKER_NETWORK}
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - PLUGIN_INTERNAL_SECRET=hand-authored-value
+      - DEBUG
+    depends_on:
+      postgres:
+        condition: service_healthy
+`
+	out := string(normalizeComposePluginCoreEnv([]byte(in), pluginDir, "browser"))
+
+	for _, want := range []string{
+		"- DATABASE_URL=${DATABASE_URL}",
+		"- PLUGIN_INTERNAL_SECRET=hand-authored-value",
+		"- DEBUG",
+		"- ENV=${ENV}",
+		"- NSELF_ENV=${ENV}",
+		"- PROJECT_NAME=${PROJECT_NAME}",
+		"- COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}",
+		"- BASE_DOMAIN=${BASE_DOMAIN}",
+		"- POSTGRES_HOST=postgres",
+		"- POSTGRES_PORT=5432",
+		"- POSTGRES_DB=${POSTGRES_DB}",
+		"- POSTGRES_USER=${POSTGRES_USER}",
+		"- POSTGRES_PASSWORD=${POSTGRES_PASSWORD}",
+		"- HASURA_GRAPHQL_ENDPOINT=http://hasura:8080/v1/graphql",
+		"- HASURA_GRAPHQL_ADMIN_SECRET=${HASURA_GRAPHQL_ADMIN_SECRET}",
+		"- NOTIFY_INTERNAL_SECRET=${NOTIFY_INTERNAL_SECRET}",
+		"- SERVICE_NAME=browser",
+		"- SERVICE_PORT=3712",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing injected list-form line %q in:\n%s", want, out)
+		}
+	}
+	// No quoting must leak from the map-form-only literals (POSTGRES_PORT,
+	// SERVICE_PORT are `"..."`-wrapped in map form).
+	if strings.Contains(out, `POSTGRES_PORT="5432"`) || strings.Contains(out, `SERVICE_PORT="3712"`) {
+		t.Errorf("list-form values must not carry map-form literal quoting:\n%s", out)
+	}
+	// The explicit fragment value must win — not be duplicated with the
+	// injected ${PLUGIN_INTERNAL_SECRET} reference.
+	if strings.Contains(out, "PLUGIN_INTERNAL_SECRET=${PLUGIN_INTERNAL_SECRET}") {
+		t.Errorf("explicit list-form value must not be duplicated by the injected reference:\n%s", out)
+	}
+	if n := strings.Count(out, "PLUGIN_INTERNAL_SECRET"); n != 1 {
+		t.Errorf("PLUGIN_INTERNAL_SECRET must appear exactly once, got %d:\n%s", n, out)
+	}
+	if n := strings.Count(out, "- DEBUG"); n != 1 {
+		t.Errorf("bare passthrough DEBUG entry must not be duplicated, got %d:\n%s", n, out)
+	}
+	if err := assertValidComposeYAML(out); err != nil {
+		t.Fatalf("rewritten fragment is not valid YAML: %v\n%s", err, out)
+	}
+
+	// Idempotent, same guarantee as the map-form path.
+	again := string(normalizeComposePluginCoreEnv([]byte(out), pluginDir, "browser"))
+	if again != out {
+		t.Errorf("list-form injection is not idempotent:\nfirst:\n%s\nsecond:\n%s", out, again)
+	}
+}
+
+// TestNormalizeComposePluginCoreEnv_EmptyListBlock covers an inline
+// "environment: []" — it must become a populated list-form block rather
+// than being left as an empty literal.
+func TestNormalizeComposePluginCoreEnv_EmptyListBlock(t *testing.T) {
+	pluginDir := t.TempDir()
+	writePluginManifestJSON(t, pluginDir, "support", 3713)
+
+	in := `services:
+  support:
+    image: nself/nself-support:latest
+    environment: []
+    networks:
+      - ${DOCKER_NETWORK}
+`
+	out := string(normalizeComposePluginCoreEnv([]byte(in), pluginDir, "support"))
+	if strings.Contains(out, "environment: []") {
+		t.Errorf("environment: [] must be rewritten to a populated block:\n%s", out)
+	}
+	if !strings.Contains(out, "- SERVICE_NAME=support") {
+		t.Errorf("expected list-form SERVICE_NAME entry:\n%s", out)
+	}
+	if err := assertValidComposeYAML(out); err != nil {
+		t.Fatalf("rewritten fragment is not valid YAML: %v\n%s", err, out)
+	}
+}
+
+// captureStderr runs fn and returns whatever it wrote to os.Stderr —
+// ui.Warn's destination — so tests can assert on the unrecognised-shape
+// warning without depending on ui package internals.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	orig := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = orig }()
+
+	fn()
+
+	_ = w.Close()
+	var buf strings.Builder
+	buf.Grow(256)
+	tmp := make([]byte, 256)
+	for {
+		n, readErr := r.Read(tmp)
+		if n > 0 {
+			buf.Write(tmp[:n])
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	return buf.String()
+}
+
+// TestNormalizeComposePluginCoreEnv_MergeKeyWarnsAndLeavesUnchanged covers
+// an environment: block using a YAML merge key ("<<: *anchor") — its
+// expanded keys aren't visible to a text-level rewrite, so the fragment
+// must be left byte-for-byte unchanged and a warning naming the plugin and
+// file emitted, rather than silently doing nothing (the defect this change
+// fixes for list form) or guessing.
+func TestNormalizeComposePluginCoreEnv_MergeKeyWarnsAndLeavesUnchanged(t *testing.T) {
+	pluginDir := t.TempDir()
+
+	in := `services:
+  cms:
+    image: nself/nself-cms:latest
+    environment:
+      <<: *common-env
+      DATABASE_URL: ${DATABASE_URL}
+    networks:
+      - ${DOCKER_NETWORK}
+`
+	var out string
+	stderr := captureStderr(t, func() {
+		out = string(normalizeComposePluginCoreEnv([]byte(in), pluginDir, "cms"))
+	})
+	if out != in {
+		t.Errorf("merge-key fragment must be left byte-for-byte unchanged:\ngot:\n%s\nwant:\n%s", out, in)
+	}
+	if !strings.Contains(stderr, "cms") {
+		t.Errorf("expected a warning naming the plugin, got stderr: %q", stderr)
+	}
+}
+
+// TestNormalizeComposePluginCoreEnv_UnanchoredUnrecognisedWarns covers a
+// fragment with neither an environment: block nor a short-form networks:
+// list to anchor a new one on (the env_file-only shape) — must warn and
+// leave the fragment unchanged rather than silently no-op.
+func TestNormalizeComposePluginCoreEnv_UnanchoredUnrecognisedWarns(t *testing.T) {
+	pluginDir := t.TempDir()
+
+	in := `services:
+  legacy:
+    image: nself/nself-legacy:latest
+    env_file:
+      - legacy.env
+`
+	var out string
+	stderr := captureStderr(t, func() {
+		out = string(normalizeComposePluginCoreEnv([]byte(in), pluginDir, "legacy"))
+	})
+	if out != in {
+		t.Errorf("unanchored fragment must be left unchanged:\ngot:\n%s\nwant:\n%s", out, in)
+	}
+	if !strings.Contains(stderr, "legacy") {
+		t.Errorf("expected a warning naming the plugin, got stderr: %q", stderr)
+	}
+}
+
+// TestNormalizeComposePluginCoreEnv_RealCronFragmentGolden is the golden
+// test against a real shipped fragment: plugins/free/cron's
+// docker-compose.plugin.yml (mirrored at
+// testdata/plugin-compose-fixtures/cron.yml, reused from
+// plugins_build_context_test.go's readFixture) uses list-form environment:
+// with a comment interleaved among entries — exactly the shape that
+// silently fell through untouched before this change. The rewritten
+// fragment must still parse as valid YAML and must carry
+// PLUGIN_INTERNAL_SECRET in the cron service's environment.
+func TestNormalizeComposePluginCoreEnv_RealCronFragmentGolden(t *testing.T) {
+	pluginDir := t.TempDir() // no plugin.json — port is unknown, fine for this test
+	in := readFixture(t, "cron.yml")
+
+	out := string(normalizeComposePluginCoreEnv([]byte(in), pluginDir, "cron"))
+
+	if err := assertValidComposeYAML(out); err != nil {
+		t.Fatalf("rewritten real cron fragment is not valid YAML: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "- PLUGIN_INTERNAL_SECRET=${PLUGIN_INTERNAL_SECRET}") {
+		t.Errorf("expected PLUGIN_INTERNAL_SECRET to be injected into the cron service environment:\n%s", out)
+	}
+	// Every pre-existing entry (including the interleaved comment) must
+	// survive untouched.
+	if !strings.Contains(out, "- DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}") {
+		t.Errorf("existing DATABASE_URL entry must be preserved verbatim:\n%s", out)
+	}
+	if !strings.Contains(out, "# Env-driven schedule bootstrap: declare jobs as infrastructure-as-code.") {
+		t.Errorf("interleaved comment must be preserved:\n%s", out)
+	}
+}
+
 // TestAddPluginCoreEnvVars_NilCfgIsNoop preserves ComputePluginEnvVars'
 // pre-existing zero-cfg callers/tests.
 func TestAddPluginCoreEnvVars_NilCfgIsNoop(t *testing.T) {

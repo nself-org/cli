@@ -20,14 +20,17 @@ package build
 // exactly like the pre-existing ${DOCKER_NETWORK}/${DATABASE_URL} refs — not
 // literals; docker compose resolves them per-project from
 // .nself/compose.env at container start. A key already authored in the
-// fragment always wins.
+// fragment always wins — regardless of whether the fragment's environment:
+// block uses map form ("KEY: value") or list form ("- KEY=value"); both are
+// supported (see normalizeComposePluginCoreEnv and plugins_core_env_inject.go).
 
 import (
-	"bytes"
 	"fmt"
+	"path/filepath"
 	"regexp"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/ui"
 )
 
 // pluginCoreEnvKeys is the fixed, deterministically ordered set of env keys
@@ -92,29 +95,61 @@ func pluginCoreEnvValue(key, pluginName string, port int) (string, bool) {
 	}
 }
 
-// pluginEnvBlockRE matches a map-form "environment:" key line at some indent
-// (the shape every installed plugin fragment uses — mirrors
-// shortNetworkListRE's single-service, single-block assumption in
-// plugins_network_alias.go).
+// pluginCoreEnvListLine renders "KEY=value" for a list-form environment:
+// entry ("- KEY=value"). pluginCoreEnvValue's map-form values are sometimes
+// wrapped in literal double quotes so YAML doesn't parse them as a number
+// (POSTGRES_PORT: "5432", SERVICE_PORT: "3709") — list form's "- KEY=VALUE"
+// is already a single YAML string, so a wrapping quote would become part of
+// the value itself and must be stripped before use.
+func pluginCoreEnvListLine(key, pluginName string, port int) (string, bool) {
+	val, ok := pluginCoreEnvValue(key, pluginName, port)
+	if !ok {
+		return "", false
+	}
+	if len(val) >= 2 && val[0] == '"' && val[len(val)-1] == '"' {
+		val = val[1 : len(val)-1]
+	}
+	return key + "=" + val, true
+}
+
+// pluginEnvBlockRE matches an "environment:" key line at some indent,
+// followed by nothing but a newline — the anchor for both map-form
+// ("KEY: value") and list-form ("- KEY=value") child blocks, distinguished
+// by scanEnvBlock. Mirrors shortNetworkListRE's single-service, single-block
+// assumption in plugins_network_alias.go.
 var pluginEnvBlockRE = regexp.MustCompile(`(?m)^([ \t]+)environment:[ \t]*\r?\n`)
 
-// pluginEnvEntryKeyRE extracts the key name from an environment: child line
-// such as "      DATABASE_URL: ${DATABASE_URL}".
+// pluginEnvEmptyListRE matches an inline-empty "environment: []" — a shape
+// distinct from pluginEnvBlockRE because there is no child block to scan.
+var pluginEnvEmptyListRE = regexp.MustCompile(`(?m)^([ \t]+)environment:[ \t]*\[\][ \t]*\r?\n`)
+
+// pluginEnvEntryKeyRE extracts the key name from a map-form environment:
+// child line such as "      DATABASE_URL: ${DATABASE_URL}".
 var pluginEnvEntryKeyRE = regexp.MustCompile(`^[ \t]+([A-Za-z_][A-Za-z0-9_]*):`)
+
+// pluginEnvListEntryKeyRE extracts the key name from a trimmed list-form
+// environment: child entry such as "- DATABASE_URL=${DATABASE_URL}" or a
+// bare passthrough "- DATABASE_URL" (no value — inherited from the shell
+// environment docker compose runs in).
+var pluginEnvListEntryKeyRE = regexp.MustCompile(`^-[ \t]+([A-Za-z_][A-Za-z0-9_]*)(?:=.*)?$`)
 
 // normalizeComposePluginCoreEnv ensures a plugin's compose service carries
 // the full pluginCoreEnvKeys set. A key already present in the fragment's
-// environment: block (any value) is left untouched. Idempotent — re-running
-// against an already-normalized fragment is a no-op, since
-// DiscoverPluginComposeFiles calls this on every `nself build`.
+// environment: block (any value, map or list form) is left untouched.
+// Idempotent — re-running against an already-normalized fragment is a
+// no-op, since DiscoverPluginComposeFiles calls this on every `nself build`.
 //
-// When the fragment has no map-form environment: block yet, one is inserted
-// immediately before the service's short-form "networks:" list — the same
-// anchor normalizeComposeNetworkAliases uses for its "hostname:" injection.
-// A fragment with neither block to anchor on, or whose environment: block
-// uses list form ("- KEY=VALUE") rather than map form, is left unchanged:
-// no plugin fragment observed in the wild takes either shape, and silently
-// mixing map entries into a list block would produce invalid YAML.
+// Both map form ("KEY: value") and list form ("- KEY=value") are supported
+// — list form is not an edge case: 40+ installed fragments use it (every
+// plugins-pro/paid/* bundle scaffolded from the shared template, plus free
+// plugins such as cron). When the fragment has no environment: block yet,
+// one is inserted immediately before the service's short-form "networks:"
+// list — the same anchor normalizeComposeNetworkAliases uses for its
+// "hostname:" injection. A shape this rewrite can't safely extend (an
+// env_file-only fragment with no networks: anchor either, or a block using
+// a YAML merge key "<<: *anchor" whose expanded keys we can't see) is left
+// unchanged with a ui.Warn naming the plugin and file, rather than silently
+// dropping the injection.
 func normalizeComposePluginCoreEnv(content []byte, pluginDir, pluginName string) []byte {
 	if pluginName == "" {
 		return content
@@ -124,87 +159,41 @@ func normalizeComposePluginCoreEnv(content []byte, pluginDir, pluginName string)
 		port = m.Port
 	}
 
+	if loc := pluginEnvEmptyListRE.FindSubmatchIndex(content); loc != nil {
+		return injectIntoEmptyListEnvBlock(content, loc, pluginName, port)
+	}
 	if loc := pluginEnvBlockRE.FindSubmatchIndex(content); loc != nil {
-		return injectIntoExistingEnvBlock(content, loc, pluginName, port)
-	}
-	return injectNewEnvBlock(content, pluginName, port)
-}
-
-// injectIntoExistingEnvBlock appends missing core env keys at the end of an
-// already-present environment: map block. loc is the pluginEnvBlockRE match;
-// loc[2]:loc[3] is the captured "environment:" indent, loc[1] the offset
-// right after its trailing newline.
-func injectIntoExistingEnvBlock(content []byte, loc []int, pluginName string, port int) []byte {
-	envIndent := string(content[loc[2]:loc[3]])
-	entryIndent := envIndent + "  "
-	entryIndentB := []byte(entryIndent)
-
-	existing := map[string]bool{}
-	pos := loc[1]
-	blockEnd := pos
-	for _, line := range bytes.SplitAfter(content[pos:], []byte("\n")) {
-		if len(line) == 0 || !bytes.HasPrefix(line, entryIndentB) {
-			break
-		}
-		if after := bytes.TrimPrefix(line, entryIndentB); len(after) > 0 && after[0] == '-' {
-			// List-form environment — a different shape than any observed
-			// real fragment. Leave untouched rather than risk mixing map and
-			// list syntax under the same key.
+		shape, blockEnd, entryIndent, existing := scanEnvBlock(content, loc)
+		switch shape {
+		case envBlockList:
+			return appendListEntries(content, blockEnd, entryIndent, existing, pluginName, port)
+		case envBlockUnrecognised:
+			warnUnrecognisedEnvBlock(pluginDir, pluginName)
 			return content
-		}
-		if m := pluginEnvEntryKeyRE.FindSubmatch(line); m != nil {
-			existing[string(m[1])] = true
-		}
-		blockEnd += len(line)
-	}
-
-	var toAdd bytes.Buffer
-	for _, key := range pluginCoreEnvKeys {
-		if existing[key] {
-			continue
-		}
-		if val, ok := pluginCoreEnvValue(key, pluginName, port); ok {
-			fmt.Fprintf(&toAdd, "%s%s: %s\n", entryIndent, key, val)
+		default: // envBlockMap
+			return appendMapEntries(content, blockEnd, entryIndent, existing, pluginName, port)
 		}
 	}
-	if toAdd.Len() == 0 {
-		return content
+	if out, ok := injectNewEnvBlock(content, pluginName, port); ok {
+		return out
 	}
-
-	var out bytes.Buffer
-	out.Grow(len(content) + toAdd.Len())
-	out.Write(content[:blockEnd])
-	out.Write(toAdd.Bytes())
-	out.Write(content[blockEnd:])
-	return out.Bytes()
+	warnUnrecognisedEnvBlock(pluginDir, pluginName)
+	return content
 }
 
-// injectNewEnvBlock inserts a brand-new environment: block, anchored
-// immediately before the service's short-form "networks:" list (see
-// shortNetworkListRE in plugins_network_alias.go), for a fragment that has
-// no environment: block of its own yet.
-func injectNewEnvBlock(content []byte, pluginName string, port int) []byte {
-	match := shortNetworkListRE.FindSubmatchIndex(content)
-	if match == nil {
-		return content // no anchor to insert at — leave untouched
-	}
-	svcIndent := string(content[match[2]:match[3]])
-	entryIndent := svcIndent + "  "
-
-	var block bytes.Buffer
-	fmt.Fprintf(&block, "%senvironment:\n", svcIndent)
-	for _, key := range pluginCoreEnvKeys {
-		if val, ok := pluginCoreEnvValue(key, pluginName, port); ok {
-			fmt.Fprintf(&block, "%s%s: %s\n", entryIndent, key, val)
-		}
-	}
-
-	var out bytes.Buffer
-	out.Grow(len(content) + block.Len())
-	out.Write(content[:match[0]])
-	out.Write(block.Bytes())
-	out.Write(content[match[0]:])
-	return out.Bytes()
+// warnUnrecognisedEnvBlock reports a plugin compose fragment whose
+// environment configuration normalizeComposePluginCoreEnv cannot safely
+// rewrite: an env_file-only fragment with no environment: block and no
+// networks: short-list anchor to insert a new one at, or an environment:
+// block using a YAML merge key ("<<: *anchor") whose expanded keys aren't
+// visible to a text-level rewrite. The plugin ships without
+// PLUGIN_INTERNAL_SECRET/NOTIFY_INTERNAL_SECRET and the rest of
+// pluginCoreEnvKeys until its fragment is updated by hand.
+func warnUnrecognisedEnvBlock(pluginDir, pluginName string) {
+	path := filepath.Join(pluginDir, pluginName, pluginComposeFilename)
+	ui.Warn(fmt.Sprintf(
+		"plugin %q: %s has an environment configuration nself can't safely extend (env_file-only with no networks: anchor, or a YAML merge key) — add PLUGIN_INTERNAL_SECRET, NOTIFY_INTERNAL_SECRET and the other core env vars manually",
+		pluginName, path))
 }
 
 // addPluginCoreEnvVars adds the project-specific values that the ${VAR}
