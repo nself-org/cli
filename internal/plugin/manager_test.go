@@ -117,3 +117,42 @@ func TestCollectRoutesBaseService_ConflictDetected(t *testing.T) {
 
 	t.Logf("conflict correctly detected: %v", err)
 }
+
+// TestCollectRoutesSkipsOwnPrevBackup: Update() renames the old install to
+// "<name>.prev" before reinstalling. Its routes must not be collected as a
+// competing plugin's routes, or every update of a routed plugin conflicts
+// with itself. A different plugin's routes are still collected.
+func TestCollectRoutesSkipsOwnPrevBackup(t *testing.T) {
+	pluginDir := t.TempDir()
+	write := func(dir, name string) {
+		t.Helper()
+		p := filepath.Join(pluginDir, dir)
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		m := `{"name":"` + name + `","version":"1.0.0","description":"test","category":"test","license":"MIT",` +
+			`"apiEndpoints":["https://` + name + `.local.nself.org/"]}`
+		if err := os.WriteFile(filepath.Join(p, "plugin.json"), []byte(m), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("claw.prev", "claw")
+	write("mux", "mux")
+
+	routes := collectInstalledPluginRoutes(pluginDir, "claw")
+	var sawClaw, sawMux bool
+	for _, r := range routes {
+		if strings.HasPrefix(r.ServerName, "claw") {
+			sawClaw = true
+		}
+		if strings.HasPrefix(r.ServerName, "mux") {
+			sawMux = true
+		}
+	}
+	if sawClaw {
+		t.Error("routes from claw.prev (the plugin's own backup) must be skipped during its update")
+	}
+	if !sawMux {
+		t.Error("routes from a different plugin must still be collected")
+	}
+}
