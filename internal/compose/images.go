@@ -31,7 +31,7 @@ const AdminImagePath = "nself/nself-admin"
 // `mc` (the healthcheck's `mc ready local` passes). Verified 2026-09-28 with a
 // bucket create/write/read round trip on RELEASE.2026-08-04T00-00-00Z.
 // It does not carry upstream's 2024 RELEASE tags, so an explicit MINIO_VERSION
-// must name a pgsty tag. This is the stopgap chosen in hq ADR 0027; the
+// must name a pgsty tag. This is the stopgap chosen in hq ADR 0028; the
 // default storage server for new projects moves to SeaweedFS there.
 //
 // Both the DefaultImageVersions pin below and buildMinioService's
