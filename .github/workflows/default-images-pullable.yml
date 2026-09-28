@@ -76,7 +76,7 @@ jobs:
           if [ "${failed}" -ne 0 ]; then
             echo "One or more images in internal/compose/images.go no longer resolve."
             echo "Fix the pin (a registry move needs the new registry-qualified path,"
-            echo "e.g. quay.io/minio/minio), do NOT delete the entry to make this pass."
+            echo "e.g. minio/minio → quay.io/minio/minio → pgsty/minio), do NOT delete the entry to make this pass."
             exit 1
           fi
           echo "All default images resolve."
