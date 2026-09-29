@@ -18,24 +18,26 @@ const AdminImagePath = "nself/nself-admin"
 
 // MinioImagePath is the registry path for the MinIO object-storage image.
 //
-// It is REGISTRY-QUALIFIED and must stay that way. MinIO removed the
-// `minio/minio` repository from Docker Hub: as of 2026-09-14 the Hub API
-// returns `{"message":"object not found"}` for it and every tag — including
-// long-published pins such as RELEASE.2024-01-16T16-07-38Z — answers 401 to
-// both anonymous and authenticated manifest requests. A `docker pull` of it
-// fails with "pull access denied for minio/minio, repository does not exist
-// or may require 'docker login'", so every generated stack with
-// MINIO_ENABLED=true could no longer start. Authenticating does NOT help;
-// the repository is gone, not gated.
+// It is REGISTRY-QUALIFIED and must stay that way. Upstream MinIO no longer
+// publishes a pullable image: the Docker Hub `minio/minio` repository was
+// deleted (2026-09-14), and by 2026-09-28 `quay.io/minio/minio` also refused
+// every manifest request (401 for :latest and every RELEASE tag, anonymous and
+// token-authenticated alike), so every generated stack with
+// MINIO_ENABLED=true could no longer start on a machine without a cached image.
 //
-// quay.io/minio/minio is MinIO's own registry and serves the same tags
-// anonymously (verified 2026-09-14: :latest, RELEASE.2024-01-16T16-07-38Z
-// and RELEASE.2024-10-02T17-50-41Z all return 200).
+// docker.io/pgsty/minio is a maintained MinIO fork (AGPL-3.0, same licence as
+// upstream) that publishes multi-arch images anonymously. It is a drop-in:
+// same `minio server /data` command, MINIO_ROOT_* environment and bundled
+// `mc` (the healthcheck's `mc ready local` passes). Verified 2026-09-28 with a
+// bucket create/write/read round trip on RELEASE.2026-08-04T00-00-00Z.
+// It does not carry upstream's 2024 RELEASE tags, so an explicit MINIO_VERSION
+// must name a pgsty tag. This is the stopgap chosen in hq ADR 0028; the
+// default storage server for new projects moves to SeaweedFS there.
 //
 // Both the DefaultImageVersions pin below and buildMinioService's
 // MINIO_VERSION path must build from this constant so the two cannot drift
-// back to an unqualified Docker Hub name.
-const MinioImagePath = "quay.io/minio/minio"
+// back to an unqualified or dead registry name.
+const MinioImagePath = "docker.io/pgsty/minio"
 
 // DefaultImageVersions maps service name to pinned image:tag.
 // Update with each nSelf release.
@@ -45,7 +47,7 @@ var DefaultImageVersions = map[string]string{
 	"auth":     "nhost/hasura-auth:0.36.0",
 	"nginx":    "nginx:1.25-alpine",
 	"redis":    "redis:7.2-alpine",
-	"minio":    MinioImagePath + ":RELEASE.2024-01-16T16-07-38Z",
+	"minio":    MinioImagePath + ":RELEASE.2026-08-04T00-00-00Z",
 	// nhost/functions:0.3.7 never existed. nhost's 0.x line stops at 0.1.9 and
 	// the repository now tags as <node-major>-<version> (22-2.2.0, 26-2.2.0);
 	// `docker manifest inspect nhost/functions:0.3.7` answers "no such

@@ -28,7 +28,7 @@ Added to the stack only when their enabling variable is `true`.
 | `functions` | Serverless function runtime | `FUNCTIONS_ENABLED=true` | `FUNCTIONS_VERSION` | `nhost/functions:latest` |
 | `mailpit` | Development SMTP catcher — captures outbound mail instead of sending it | `MAILPIT_ENABLED=true` | `MAILPIT_VERSION` | `axllent/mailpit:v1.15` |
 | `meilisearch` | Full-text search index (SEARCH_ENGINE=meilisearch, the default) | `SEARCH_ENABLED=true` | `MEILISEARCH_VERSION` | `getmeili/meilisearch:v1.6` |
-| `minio` | S3-compatible object storage | `MINIO_ENABLED=true` | `MINIO_VERSION` | `quay.io/minio/minio:RELEASE.2024-01-16T16-07-38Z` |
+| `minio` | S3-compatible object storage | `MINIO_ENABLED=true` | `MINIO_VERSION` | `docker.io/pgsty/minio:RELEASE.2026-08-04T00-00-00Z` |
 | `typesense` | Full-text search index (SEARCH_ENGINE=typesense alternative) | `SEARCH_ENABLED=true` | `TYPESENSE_VERSION` | `typesense/typesense:0.25.2` |
 | `redis` | Cache and queue backend | `REDIS_ENABLED=true` | `REDIS_VERSION` | `redis:7.2-alpine` |
 

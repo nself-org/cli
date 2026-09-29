@@ -148,15 +148,15 @@ func TestDefaultImageVersions_NoGoModulePaths(t *testing.T) {
 // returns "object not found" and every tag answers 401, to anonymous and
 // authenticated requests alike, so this is not something a docker login fixes.
 //
-// Both places that name the image must stay pointed at MinIO's own registry:
+// Both places that name the image must stay pointed at the maintained registry path:
 // the DefaultImageVersions pin (used when no MINIO_VERSION is set) and
 // buildMinioService's MINIO_VERSION path. A bare "minio/minio:..." in either
 // is the regression this test exists to catch.
 func TestMinioImageIsRegistryQualified(t *testing.T) {
-	const wantPrefix = "quay.io/minio/minio:"
+	const wantPrefix = "docker.io/pgsty/minio:"
 
 	if !strings.HasPrefix(MinioImagePath+":", wantPrefix) {
-		t.Fatalf("MinioImagePath = %q, want %q without the tag", MinioImagePath, "quay.io/minio/minio")
+		t.Fatalf("MinioImagePath = %q, want %q without the tag", MinioImagePath, "docker.io/pgsty/minio")
 	}
 
 	pinned, ok := DefaultImageVersions["minio"]
@@ -173,14 +173,14 @@ func TestMinioImageIsRegistryQualified(t *testing.T) {
 // independently. Both an explicit version and the empty-version default are
 // checked, because the empty case builds "…:latest" rather than falling
 // through to DefaultImageVersions.
-func TestBuildMinioService_UsesQuayRegistry(t *testing.T) {
+func TestBuildMinioService_UsesPinnedRegistry(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		version string
 		want    string
 	}{
-		{"explicit version", "RELEASE.2024-10-02T17-50-41Z", "quay.io/minio/minio:RELEASE.2024-10-02T17-50-41Z"},
-		{"empty version defaults to latest", "", "quay.io/minio/minio:latest"},
+		{"explicit version", "RELEASE.2026-06-18T00-00-00Z", "docker.io/pgsty/minio:RELEASE.2026-06-18T00-00-00Z"},
+		{"empty version defaults to latest", "", "docker.io/pgsty/minio:latest"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			g := &Generator{cfg: &config.Config{
