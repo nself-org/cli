@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"text/template"
+
+	"github.com/nself-org/cli/internal/compose"
 )
 
 // TempoConfig captures the fields needed to render tempo.yml and the Tempo
@@ -208,7 +210,7 @@ func TempoComposeService(cfg *TempoConfig) map[string]interface{} {
 		cfg = DefaultTempoConfig()
 	}
 	return map[string]interface{}{
-		"image":   "grafana/tempo:latest",
+		"image":   compose.ImageRef("tempo", ""),
 		"restart": "unless-stopped",
 		"command": []string{"-config.file=/etc/tempo/tempo.yml"},
 		"volumes": []string{
@@ -254,7 +256,7 @@ func OTELCollectorComposeService(cfg *OTELCollectorConfig) map[string]interface{
 		cfg = DefaultOTELCollectorConfig()
 	}
 	return map[string]interface{}{
-		"image":   "otel/opentelemetry-collector-contrib:latest",
+		"image":   compose.ImageRef("otel-collector", ""),
 		"restart": "unless-stopped",
 		"command": []string{"--config=/etc/otelcol/otel-collector.yml"},
 		"volumes": []string{

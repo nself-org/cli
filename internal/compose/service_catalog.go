@@ -16,7 +16,7 @@ import "sort"
 // Outputs: CoreServices(), OptionalServices(), ServiceCatalog().
 // Constraints: adding a service to generator.go without adding it here fails
 // TestCatalogCoversGeneratorServices in this package. Image defaults are read
-// from DefaultImageVersions so there is exactly one place to bump a version.
+// from the image lock (images.yaml) so there is exactly one place to bump a version.
 
 // AdminServiceName is the compose SERVICE name for the nSelf Admin UI.
 //
@@ -57,9 +57,9 @@ type CatalogEntry struct {
 	// VersionEnv is the environment variable that overrides the image tag.
 	VersionEnv string
 	// DefaultImage is the pinned image used when VersionEnv is unset. Resolved
-	// from DefaultImageVersions so version bumps have a single home.
+	// from the image lock (images.yaml) so version bumps have a single home.
 	DefaultImage string
-	// ImageKey overrides the DefaultImageVersions lookup key when the compose
+	// ImageKey overrides the the image lock (images.yaml) lookup key when the compose
 	// service name differs from it (nself-admin is pinned under "admin").
 	ImageKey string
 }
@@ -145,7 +145,7 @@ var serviceCatalog = []CatalogEntry{
 }
 
 // ServiceCatalog returns every catalogued service with its default image
-// resolved from DefaultImageVersions.
+// resolved from the image lock (images.yaml).
 func ServiceCatalog() []CatalogEntry {
 	out := make([]CatalogEntry, len(serviceCatalog))
 	copy(out, serviceCatalog)
@@ -154,7 +154,7 @@ func ServiceCatalog() []CatalogEntry {
 		if key == "" {
 			key = out[i].Name
 		}
-		out[i].DefaultImage = DefaultImageVersions[key]
+		out[i].DefaultImage = DefaultImage(key)
 	}
 	return out
 }

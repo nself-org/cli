@@ -16,7 +16,7 @@ an nSelf backend cannot serve a request.
 | `postgres` | PostgreSQL database — the system of record for every nSelf stack | `POSTGRES_VERSION` | `pgvector/pgvector:pg16` |
 | `hasura` | Hasura GraphQL engine — the only supported data access path for apps | `HASURA_VERSION` | `hasura/graphql-engine:v2.44.0` |
 | `auth` | hasura-auth — issues the JWTs Hasura authorises against | `AUTH_VERSION` | `nhost/hasura-auth:0.36.0` |
-| `nginx` | Reverse proxy and TLS termination for every published route | `NGINX_VERSION` | `nginx:1.25-alpine` |
+| `nginx` | Reverse proxy and TLS termination for every published route | `NGINX_VERSION` | `nginx:alpine` |
 
 ## Optional services
 
@@ -26,11 +26,11 @@ Added to the stack only when their enabling variable is `true`.
 |---|---|---|---|---|
 | `nself-admin` | nSelf Admin web UI (localhost only; never deployed) | `NSELF_ADMIN_ENABLED=true` | `NSELF_ADMIN_VERSION` | `nself/nself-admin:latest` |
 | `functions` | Serverless function runtime | `FUNCTIONS_ENABLED=true` | `FUNCTIONS_VERSION` | `nhost/functions:latest` |
-| `mailpit` | Development SMTP catcher — captures outbound mail instead of sending it | `MAILPIT_ENABLED=true` | `MAILPIT_VERSION` | `axllent/mailpit:v1.15` |
+| `mailpit` | Development SMTP catcher — captures outbound mail instead of sending it | `MAILPIT_ENABLED=true` | `MAILPIT_VERSION` | `axllent/mailpit:latest` |
 | `meilisearch` | Full-text search index (SEARCH_ENGINE=meilisearch, the default) | `SEARCH_ENABLED=true` | `MEILISEARCH_VERSION` | `getmeili/meilisearch:v1.6` |
-| `minio` | S3-compatible object storage | `MINIO_ENABLED=true` | `MINIO_VERSION` | `docker.io/pgsty/minio:RELEASE.2026-08-04T00-00-00Z` |
-| `typesense` | Full-text search index (SEARCH_ENGINE=typesense alternative) | `SEARCH_ENABLED=true` | `TYPESENSE_VERSION` | `typesense/typesense:0.25.2` |
-| `redis` | Cache and queue backend | `REDIS_ENABLED=true` | `REDIS_VERSION` | `redis:7.2-alpine` |
+| `minio` | S3-compatible object storage | `MINIO_ENABLED=true` | `MINIO_VERSION` | `docker.io/pgsty/minio:latest` |
+| `typesense` | Full-text search index (SEARCH_ENGINE=typesense alternative) | `SEARCH_ENABLED=true` | `TYPESENSE_VERSION` | `typesense/typesense:27.1` |
+| `redis` | Cache and queue backend | `REDIS_ENABLED=true` | `REDIS_VERSION` | `redis:7-alpine` |
 
 ## Checking your own stack
 

@@ -24,6 +24,8 @@ var knownEnvVarsCore = []string{
 	"ACME_EMAIL",
 	// App-level demo/seed toggle (read by app seed scripts, not the CLI loader).
 	"DEMO_SEED",
+	// IMAGE_PINNING: lock|legacy image reference mode (P7-LIVE-17, ADR 0030).
+	"IMAGE_PINNING",
 
 	// PostgreSQL
 	"POSTGRES_VERSION",

@@ -169,7 +169,7 @@ func (g *Generator) buildHasuraService() (ServiceConfig, error) {
 	}
 
 	return ServiceConfig{
-		Image:         ResolveImage("hasura", fmt.Sprintf("hasura/graphql-engine:%s", cfg.Hasura.Version)),
+		Image:         ResolveImage("hasura", ImageRef("hasura", cfg.Hasura.Version)),
 		ContainerName: fmt.Sprintf("%s_hasura", cfg.ProjectName),
 		Restart:       "unless-stopped",
 		User:          "1001:1001",

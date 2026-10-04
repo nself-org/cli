@@ -51,7 +51,7 @@ func TestOptionalServicesDeclareTheirGate(t *testing.T) {
 func TestEveryCatalogEntryHasAPinnedImage(t *testing.T) {
 	for _, e := range ServiceCatalog() {
 		if e.DefaultImage == "" {
-			t.Errorf("service %q has no entry in DefaultImageVersions", e.Name)
+			t.Errorf("service %q has no image lock entry", e.Name)
 		}
 		if e.VersionEnv == "" {
 			t.Errorf("service %q declares no VersionEnv — its image tag is unoverridable", e.Name)

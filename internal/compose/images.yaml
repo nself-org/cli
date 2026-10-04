@@ -1,0 +1,49 @@
+# AUTHORED (not generated). Source of truth for every image reference the CLI
+# generates (ADR 0030, contract:cli.image-lock v1). Edit this file, then run
+#   go run ./tools/imagelock -resolve
+# to refresh the generated internal/compose/images.lock.json (network), and
+#   go run ./tools/imagelock -check
+# to verify offline. Nothing else in the tree may hold an image literal; the
+# scan test internal/compose/images_literal_scan_test.go enforces it.
+#
+# Fields: name (lock key), role (core|optional|monitoring|tool|plugin),
+# repository (fully qualified), version (tag), legacy_ref (the exact string the
+# CLI emitted before the lock existed; emitted while IMAGE_PINNING=legacy),
+# license, source (upstream URL), platforms (platforms the entry must publish).
+#
+# Versions record what each effective reference resolved to on 2026-10-04 (the
+# day the lock was first generated). Moving a pin is a separate, reviewed change.
+schema_version: 1
+images:
+  - {name: admin, role: optional, repository: docker.io/nself/nself-admin, version: latest, legacy_ref: "nself/nself-admin:latest", license: MIT, source: "https://github.com/nself-org/admin", platforms: [linux/amd64, linux/arm64]}
+  - {name: alertmanager, role: monitoring, repository: docker.io/prom/alertmanager, version: v0.27.0, legacy_ref: "prom/alertmanager:v0.27.0", license: Apache-2.0, source: "https://github.com/prometheus/alertmanager", platforms: [linux/amd64, linux/arm64]}
+  - {name: auth, role: core, repository: docker.io/nhost/hasura-auth, version: 0.36.0, legacy_ref: "nhost/hasura-auth:0.36.0", license: MIT, source: "https://github.com/nhost/hasura-auth", platforms: [linux/amd64, linux/arm64]}
+  - {name: cadvisor, role: monitoring, repository: gcr.io/cadvisor/cadvisor, version: v0.49.1, legacy_ref: "gcr.io/cadvisor/cadvisor:v0.49.1", license: Apache-2.0, source: "https://github.com/google/cadvisor", platforms: [linux/amd64, linux/arm64]}
+  - {name: deno, role: optional, repository: docker.io/denoland/deno, version: alpine, legacy_ref: "denoland/deno:alpine", license: MIT, source: "https://github.com/denoland/deno_docker", platforms: [linux/amd64, linux/arm64]}
+  - {name: elasticsearch, role: optional, repository: docker.elastic.co/elasticsearch/elasticsearch, version: 8.11.3, legacy_ref: "docker.elastic.co/elasticsearch/elasticsearch:8.11.3", license: "Elastic-2.0 OR SSPL-1.0 OR AGPL-3.0", source: "https://github.com/elastic/elasticsearch", platforms: [linux/amd64, linux/arm64]}
+  - {name: functions, role: optional, repository: docker.io/nhost/functions, version: latest, legacy_ref: "nhost/functions:latest", license: MIT, source: "https://github.com/nhost/functions", platforms: [linux/amd64, linux/arm64]}
+  - {name: grafana, role: monitoring, repository: docker.io/grafana/grafana, version: 11.1.0, legacy_ref: "grafana/grafana:11.1.0", license: AGPL-3.0, source: "https://github.com/grafana/grafana", platforms: [linux/amd64, linux/arm64]}
+  - {name: hasura, role: core, repository: docker.io/hasura/graphql-engine, version: v2.44.0, legacy_ref: "hasura/graphql-engine:v2.44.0", license: Apache-2.0, source: "https://github.com/hasura/graphql-engine", platforms: [linux/amd64, linux/arm64]}
+  - {name: lego, role: tool, repository: docker.io/goacme/lego, version: v4.35.2, legacy_ref: "goacme/lego:v4.35.2", license: MIT, source: "https://github.com/go-acme/lego", platforms: [linux/amd64, linux/arm64]}
+  - {name: loki, role: monitoring, repository: docker.io/grafana/loki, version: 3.1.0, legacy_ref: "grafana/loki:3.1.0", license: AGPL-3.0, source: "https://github.com/grafana/loki", platforms: [linux/amd64, linux/arm64]}
+  - {name: mailpit, role: optional, repository: docker.io/axllent/mailpit, version: latest, legacy_ref: "axllent/mailpit:latest", license: MIT, source: "https://github.com/axllent/mailpit", platforms: [linux/amd64, linux/arm64]}
+  - {name: meilisearch, role: optional, repository: docker.io/getmeili/meilisearch, version: v1.6, legacy_ref: "getmeili/meilisearch:v1.6", license: MIT, source: "https://github.com/meilisearch/meilisearch", platforms: [linux/amd64, linux/arm64]}
+  - {name: meilisearch-init, role: tool, repository: docker.io/library/busybox, version: "1.36", legacy_ref: "busybox:1.36", license: GPL-2.0-only, source: "https://github.com/docker-library/busybox", platforms: [linux/amd64, linux/arm64]}
+  - {name: minio, role: optional, repository: docker.io/pgsty/minio, version: latest, legacy_ref: "docker.io/pgsty/minio:latest", license: AGPL-3.0, source: "https://github.com/pgsty/minio", platforms: [linux/amd64, linux/arm64]}
+  - {name: mlflow, role: optional, repository: ghcr.io/mlflow/mlflow, version: v2.10.0, legacy_ref: "ghcr.io/mlflow/mlflow:v2.10.0", license: Apache-2.0, source: "https://github.com/mlflow/mlflow", platforms: [linux/amd64, linux/arm64]}
+  - {name: nginx, role: core, repository: docker.io/library/nginx, version: alpine, legacy_ref: "nginx:alpine", license: BSD-2-Clause, source: "https://github.com/nginx/nginx", platforms: [linux/amd64, linux/arm64]}
+  - {name: node-exporter, role: monitoring, repository: docker.io/prom/node-exporter, version: v1.8.1, legacy_ref: "prom/node-exporter:v1.8.1", license: Apache-2.0, source: "https://github.com/prometheus/node_exporter", platforms: [linux/amd64, linux/arm64]}
+  - {name: otel-collector, role: monitoring, repository: docker.io/otel/opentelemetry-collector-contrib, version: latest, legacy_ref: "otel/opentelemetry-collector-contrib:latest", license: Apache-2.0, source: "https://github.com/open-telemetry/opentelemetry-collector-contrib", platforms: [linux/amd64, linux/arm64]}
+  - {name: otel-collector-contrib, role: monitoring, repository: docker.io/otel/opentelemetry-collector-contrib, version: 0.102.0, legacy_ref: "otel/opentelemetry-collector-contrib:0.102.0", license: Apache-2.0, source: "https://github.com/open-telemetry/opentelemetry-collector-contrib", platforms: [linux/amd64, linux/arm64]}
+  - {name: pgvector, role: core, repository: docker.io/pgvector/pgvector, version: pg16, legacy_ref: "pgvector/pgvector:pg16", license: PostgreSQL, source: "https://github.com/pgvector/pgvector", platforms: [linux/amd64, linux/arm64]}
+  - {name: postgres, role: core, repository: docker.io/library/postgres, version: 16-alpine, legacy_ref: "postgres:16-alpine", license: PostgreSQL, source: "https://github.com/docker-library/postgres", platforms: [linux/amd64, linux/arm64]}
+  - {name: postgres-exporter, role: monitoring, repository: docker.io/prometheuscommunity/postgres-exporter, version: v0.15.0, legacy_ref: "prometheuscommunity/postgres-exporter:v0.15.0", license: Apache-2.0, source: "https://github.com/prometheus-community/postgres_exporter", platforms: [linux/amd64, linux/arm64]}
+  - {name: prometheus, role: monitoring, repository: docker.io/prom/prometheus, version: v2.53.0, legacy_ref: "prom/prometheus:v2.53.0", license: Apache-2.0, source: "https://github.com/prometheus/prometheus", platforms: [linux/amd64, linux/arm64]}
+  - {name: promtail, role: monitoring, repository: docker.io/grafana/promtail, version: 3.1.0, legacy_ref: "grafana/promtail:3.1.0", license: AGPL-3.0, source: "https://github.com/grafana/loki", platforms: [linux/amd64, linux/arm64]}
+  - {name: python, role: optional, repository: docker.io/library/python, version: 3.12-slim, legacy_ref: "python:3.12-slim", license: PSF-2.0, source: "https://github.com/docker-library/python", platforms: [linux/amd64, linux/arm64]}
+  - {name: redis, role: optional, repository: docker.io/library/redis, version: 7-alpine, legacy_ref: "redis:7-alpine", license: "RSALv2 OR SSPLv1 (7.4 and later)", source: "https://github.com/redis/redis", platforms: [linux/amd64, linux/arm64]}
+  - {name: redis-exporter, role: monitoring, repository: docker.io/oliver006/redis_exporter, version: v1.61.0, legacy_ref: "oliver006/redis_exporter:v1.61.0", license: MIT, source: "https://github.com/oliver006/redis_exporter", platforms: [linux/amd64, linux/arm64]}
+  - {name: seaweedfs, role: optional, repository: docker.io/chrislusf/seaweedfs, version: "4.48", legacy_ref: "chrislusf/seaweedfs:4.48", license: Apache-2.0, source: "https://github.com/seaweedfs/seaweedfs", platforms: [linux/amd64, linux/arm64]}
+  - {name: storage, role: optional, repository: docker.io/nhost/hasura-storage, version: 0.6.1, legacy_ref: "nhost/hasura-storage:0.6.1", license: MIT, source: "https://github.com/nhost/hasura-storage", platforms: [linux/amd64, linux/arm64]}
+  - {name: tempo, role: monitoring, repository: docker.io/grafana/tempo, version: latest, legacy_ref: "grafana/tempo:latest", license: AGPL-3.0, source: "https://github.com/grafana/tempo", platforms: [linux/amd64, linux/arm64]}
+  - {name: typesense, role: optional, repository: docker.io/typesense/typesense, version: "27.1", legacy_ref: "typesense/typesense:27.1", license: GPL-3.0, source: "https://github.com/typesense/typesense", platforms: [linux/amd64, linux/arm64]}
