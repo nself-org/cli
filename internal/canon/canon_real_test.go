@@ -48,6 +48,18 @@ func heuristic(key string) string {
 	return canon.SideEffectWrite
 }
 
+// destructiveNamed reports whether any name token (split on spaces and
+// hyphens) is a destructive verb, so `restore-drill` counts as restore.
+func destructiveNamed(key string) bool {
+	for _, tok := range strings.FieldsFunc(key, func(r rune) bool { return r == ' ' || r == '-' }) {
+		switch tok {
+		case "delete", "destroy", "drop", "prune", "purge", "reset", "clean", "wipe", "restore", "rollback", "revoke", "clear", "uninstall", "remove", "rm":
+			return true
+		}
+	}
+	return false
+}
+
 func load(t *testing.T) *canon.File {
 	t.Helper()
 	f, err := canon.Load()
@@ -175,7 +187,7 @@ func TestDestructiveNamedIsClassified(t *testing.T) {
 	f := load(t)
 	_, head := comments(t)
 	for key, e := range f.Commands {
-		if heuristic(key) != canon.SideEffectDestructive || key == "help" {
+		if !destructiveNamed(key) || key == "help" {
 			continue
 		}
 		if canon.Rank(e.SideEffect) >= canon.Rank(canon.SideEffectRemote) {
@@ -252,5 +264,43 @@ func TestStreamCommands(t *testing.T) {
 				t.Errorf("%q is a serve/watch/tail leaf and must be output stream", key)
 			}
 		}
+	}
+}
+
+// TestNoPersistentStateCommentImpliesRead: a comment that claims a command
+// changes no persistent state must sit on a read entry (review S2).
+func TestNoPersistentStateCommentImpliesRead(t *testing.T) {
+	f := load(t)
+	_, head := comments(t)
+	for key, c := range head {
+		if strings.Contains(c, "no persistent state") && f.Commands[key].SideEffect != canon.SideEffectRead {
+			t.Errorf("%q: comment says no persistent state but the class is %s", key, f.Commands[key].SideEffect)
+		}
+	}
+}
+
+// TestCIServeIsRemote: ci serve runs untrusted webhook content and posts GitHub
+// commit statuses, so it is at least the class of `ci`, and running the gate
+// on the host (--allow-unsandboxed) escalates to destructive.
+func TestCIServeIsRemote(t *testing.T) {
+	f := load(t)
+	serve, ci := f.Commands["ci serve"], f.Commands["ci"]
+	if canon.Rank(serve.SideEffect) < canon.Rank(ci.SideEffect) || serve.SideEffect != canon.SideEffectRemote {
+		t.Errorf("ci serve = %s, want remote (ci is %s)", serve.SideEffect, ci.SideEffect)
+	}
+	if serve.Flags["allow-unsandboxed"].SideEffect != canon.SideEffectDestructive {
+		t.Errorf("ci serve --allow-unsandboxed = %+v, want side_effect destructive", serve.Flags["allow-unsandboxed"])
+	}
+	if serve.Output != canon.OutputStream {
+		t.Errorf("ci serve output = %q, want stream", serve.Output)
+	}
+}
+
+// TestSecuritySetupApplyIsDestructive: --apply edits sshd_config without a
+// backup and enables the firewall; re-running does not undo a lock-out.
+func TestSecuritySetupApplyIsDestructive(t *testing.T) {
+	e := load(t).Commands["security setup"]
+	if e.SideEffect != canon.SideEffectRead || e.Flags["apply"].SideEffect != canon.SideEffectDestructive {
+		t.Errorf("security setup = %+v, want read with --apply destructive", e)
 	}
 }

@@ -39,7 +39,7 @@ commands:
   admin projects: {side_effect: read}
   admin projects add: {side_effect: write}
   admin projects list: {side_effect: read, json: legacy}
-  # cmd/commands/admin_projects.go:97 RunE path changes no persistent state (prints/reads only)
+  # cmd/commands/admin_projects.go:97 removes one entry from the local admin project config; `admin projects add` restores it (write, not destructive)
   admin projects remove: {side_effect: write}
   admin start: {side_effect: write}
   admin stop: {side_effect: write}
@@ -86,7 +86,8 @@ commands:
   ci eval gate: {side_effect: read, exit_codes: {"0": "tier is cleared (all required suites pass thresholds)", "1": "tier is blocked (one or more suites are below threshold or have no runs)", "2": "invalid tier name provided", "3": "precondition not met (BGE-M3 or AI gateway unavailable; NOT a regression)"}}
   # cmd/commands/ci_forgejo.go:56 RunE path changes no persistent state (prints/reads only)
   ci forgejo: {side_effect: read}
-  ci serve: {side_effect: write, output: stream}
+  # cmd/commands/ci_serve.go:23 receives webhooks, runs attacker-influenced repo content in Docker and posts GitHub commit statuses (ci_serve.go:25-39), like `ci`; --allow-unsandboxed runs the gate on the host (ci_serve.go:115, "DANGEROUS")
+  ci serve: {side_effect: remote, output: stream, flags: {allow-unsandboxed: {side_effect: destructive}}}
   clean: {canon: core, side_effect: destructive}
   # cmd/commands/completion.go:30 RunE path changes no persistent state (prints/reads only)
   completion: {canon: pending, side_effect: read}
@@ -142,7 +143,7 @@ commands:
   # cmd/commands/db_hasura_git.go:73 RunE path changes no persistent state (prints/reads only)
   db hasura metadata-drift: {side_effect: read}
   db hasura snapshot: {side_effect: write}
-  # cmd/commands/db_hasura_git.go:115 RunE path changes no persistent state (prints/reads only)
+  # cmd/commands/db_hasura_git.go:115 exports Hasura metadata to local files and runs a local git commit; nothing is pushed (write, not remote)
   db hasura sync: {side_effect: write}
   db hasura validate: {side_effect: read}
   # cmd/commands/db_lint.go:18 RunE path changes no persistent state (prints/reads only)
@@ -182,6 +183,7 @@ commands:
   # cmd/commands/db_hasura.go:111 rewrites stored migration checksum state; self-labelled dangerous
   db reset-checksum: {side_effect: destructive}
   db restore: {side_effect: destructive}
+  # cmd/commands/db_pitr_ops.go:202 restores into a temporary database that is dropped afterwards (db_pitr.go:65-70): write, not destructive despite the name
   db restore-drill: {side_effect: write}
   # cmd/commands/db_pitr_ops.go:235 RunE path changes no persistent state (prints/reads only)
   db restore-drill-list: {side_effect: read}
@@ -213,9 +215,11 @@ commands:
   db shell: {side_effect: destructive, output: interactive}
   # cmd/commands/db_schema.go:21 RunE path changes no persistent state (prints/reads only)
   db soft-delete: {side_effect: read}
+  # cmd/commands/db_schema.go:121 adds a deleted_at column, index and active view to a table; deletes nothing (write)
   db soft-delete apply: {side_effect: write}
   # cmd/commands/db_schema.go:86 RunE path changes no persistent state (prints/reads only)
   db soft-delete audit: {side_effect: read}
+  # cmd/commands/db_schema.go:137 generates a soft-delete migration file; deletes nothing (write)
   db soft-delete generate: {side_effect: write}
   db verify: {side_effect: read}
   # cmd/commands/db_hasura.go:91 RunE path changes no persistent state (prints/reads only)
@@ -250,7 +254,7 @@ commands:
   env target migrate: {side_effect: write}
   # cmd/commands/env_target_probe.go:38 RunE path changes no persistent state (prints/reads only)
   env target probe: {side_effect: read, json: legacy}
-  # cmd/commands/env_target_crud.go:204 RunE path changes no persistent state (prints/reads only)
+  # cmd/commands/env_target_crud.go:204 removes one server entry from control-plane.yaml; `env target add` restores it (write, not destructive)
   env target remove: {side_effect: write}
   env use: {side_effect: write}
   # cmd/commands/exec.go:40 runs an arbitrary user command in a service container (worst case)
@@ -258,7 +262,7 @@ commands:
   # cmd/commands/functions.go:28 RunE path changes no persistent state (prints/reads only)
   functions: {canon: pending, side_effect: read}
   functions delete: {side_effect: destructive}
-  # cmd/commands/functions_deploy.go:55 RunE path changes no persistent state (prints/reads only)
+  # cmd/commands/functions_deploy.go:55 copies files into functions/<name> and reloads the functions container; a re-deploy restores it (write)
   functions deploy: {side_effect: write}
   functions invoke: {side_effect: write}
   functions list: {side_effect: read, json: legacy}
@@ -414,8 +418,8 @@ commands:
   security: {canon: pending, side_effect: read}
   # cmd/commands/security_commands.go:26 RunE path changes no persistent state (prints/reads only)
   security audit: {side_effect: read}
-  # cmd/commands/security_commands.go:96 prints the plan by default; --apply runs the hardening steps
-  security setup: {side_effect: read, flags: {apply: {side_effect: write}}}
+  # cmd/commands/security_commands.go:96 prints the plan by default; --apply runs sed -i on /etc/ssh/sshd_config (no backup, password and root login off), ufw --force enable and apt installs (security_commands.go:75-130); a lock-out is not restored by re-running
+  security setup: {side_effect: read, flags: {apply: {side_effect: destructive}}}
   security status: {side_effect: read}
   # cmd/commands/self_heal.go:36 prints help unless --jwt is given
   self-heal: {canon: pending, side_effect: read, flags: {jwt: {side_effect: write}}}
