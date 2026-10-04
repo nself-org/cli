@@ -20,6 +20,10 @@ nself-windows-*
 /flagaudit
 /flagaudit.exe
 
+# bin/ holds locally built binaries (CI builds its own into bin/ at run time).
+# Constitution section 2.6: no compiled binaries in Git; TestTrackedBinaries enforces it.
+/bin/
+
 # Go build
 *.test
 *.out
