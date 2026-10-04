@@ -22,6 +22,10 @@ import (
 // the Docker daemon" on stderr and exits 1, so the command fails at the compose
 // step the same way on every OS, quickly, with no child process left behind.
 //
+// It also sets AI_AUTO_INSTALL=false: with NSELF_MASTER_SECRET present (CI sets
+// it) runStart would otherwise run the real Ollama installer, which spends the
+// tests' 3-second context before compose is reached and needs the network.
+//
 // It uses t.Setenv, so the test must not run in parallel; PATH is restored when
 // the test ends. On Windows the stub is docker.bat, elsewhere an executable sh
 // script.
@@ -39,6 +43,7 @@ func stubDockerOnPath(t *testing.T) (logPath string) {
 		t.Fatalf("writing stub docker: %v", err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("AI_AUTO_INSTALL", "false")
 	return logPath
 }
 
