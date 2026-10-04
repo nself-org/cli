@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -81,6 +82,16 @@ func (f *fakeReloader) Reload(context.Context) error {
 
 const tgt = "certificates/api-example-org"
 
+// posixOnly skips tests of the symlink switch and file modes: the ACME path
+// targets Linux (Windows runs the CLI under WSL2), and renaming over a
+// directory symlink is not atomic there.
+func posixOnly(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink generation switch and POSIX modes")
+	}
+}
+
 // fixture: a real directory holding pair A, as on a box certbot copied into.
 func fixture(t *testing.T) (ssl string, certA []byte) {
 	t.Helper()
@@ -91,6 +102,7 @@ func fixture(t *testing.T) (ssl string, certA []byte) {
 }
 
 func TestACMEReloaderOnce(t *testing.T) {
+	posixOnly(t)
 	ssl, certA := fixture(t)
 	certB, keyB := testPair(t, []string{"api.example.org"}, time.Now().Add(90*24*time.Hour))
 	rel := &fakeReloader{}
@@ -115,6 +127,7 @@ func TestACMEReloaderOnce(t *testing.T) {
 }
 
 func TestACMEInstallCrash(t *testing.T) {
+	posixOnly(t)
 	ssl, certA := fixture(t)
 	certB, keyB := testPair(t, []string{"api.example.org"}, time.Now().Add(90*24*time.Hour))
 	type killed struct{}
@@ -170,6 +183,7 @@ func mustLoad(t *testing.T, dir string) (c, k []byte) {
 }
 
 func TestACMEInstallRollback(t *testing.T) {
+	posixOnly(t)
 	ssl, certA := fixture(t)
 	certB, keyB := testPair(t, []string{"api.example.org"}, time.Now().Add(90*24*time.Hour))
 	for name, req := range map[string]InstallReq{
@@ -275,7 +289,7 @@ func TestACMELineagesAndPlan(t *testing.T) {
 	if gi, _ := os.ReadFile(filepath.Join(ssl, ".acme", ".gitignore")); string(gi) != "*\n" {
 		t.Errorf(".gitignore = %q", gi)
 	}
-	if fi, _ := os.Stat(filepath.Join(ssl, ".acme", "lineages.json")); fi.Mode().Perm() != 0o600 {
+	if fi, _ := os.Stat(filepath.Join(ssl, ".acme", "lineages.json")); runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
 		t.Errorf("lineages.json mode %v", fi.Mode().Perm())
 	}
 	got, err := Load(ssl)
