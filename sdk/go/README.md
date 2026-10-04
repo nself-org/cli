@@ -19,7 +19,7 @@ import (
     sdkconfig  "github.com/nself-org/cli/sdk/go/config"
     sdkserver  "github.com/nself-org/cli/sdk/go/server"
     sdkmetrics "github.com/nself-org/cli/sdk/go/metrics"
-    sdklicense "github.com/nself-org/cli/sdk/go/license"
+    sdklicense "github.com/nself-org/cli/sdk/go/licensing"
     sdkhttpx   "github.com/nself-org/cli/sdk/go/httpx"
     sdkdb      "github.com/nself-org/cli/sdk/go/db"
     sdktracing "github.com/nself-org/cli/sdk/go/tracing"
@@ -36,7 +36,7 @@ import (
 | `config` | Env-driven config loader with validation |
 | `server` | chi router with `/healthz`, `/readyz`, `/metrics`, `/version` mounted |
 | `metrics` | Shared Prometheus registry + universal counters (see [METRICS.md](METRICS.md)) |
-| `license` | Offline license cache, grace period, skip-verify dev flag |
+| `licensing` | Offline license cache, grace period, skip-verify dev flag |
 | `httpx` | HTTP client with retries, timeouts, propagated request-ID |
 | `db` | `pgxpool` helpers (connect, health check, migrations hook) |
 | `tracing` | OpenTelemetry tracer + request-ID middleware |

@@ -7,6 +7,17 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** package `license` moved to `licensing`
+  (`github.com/nself-org/cli/sdk/go/v2/licensing`). The module zip includes the
+  repository-root `LICENSE`, which collides case-insensitively with a `license/`
+  package directory, so no version of the module could be fetched. No repository
+  imported the old path. `modzip_test.go` now builds the module zip file set and
+  fails on any such collision.
+
 ## [2.0.0] - 2026-05-13
 
 ### Changed

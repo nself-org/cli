@@ -1,11 +1,11 @@
-// Package license provides shared license helpers for pro plugins: grace
+// Package licensing provides shared license helpers for pro plugins: grace
 // period tracking, offline validation cache, skip-verify for development.
 //
 // The authoritative validator runs server-side at ping.nself.org. This package
 // only handles the consumer side: caching a last-good validation on disk,
 // deciding when a stale cache is still acceptable, and short-circuiting in
 // dev.
-package license
+package licensing
 
 import (
 	"crypto/sha256"
