@@ -96,7 +96,7 @@ func newACMEFix(t *testing.T) *acmeFix {
 	acmeWriteFile(t, key, []byte("AGE-SECRET-KEY-FAKE\n"))
 	t.Setenv("SECRETS_AGE_KEY_PATH", key)
 	t.Setenv("ENV", "dev") // a prod ENV would demand the full prod secret set; the layout is what matters
-	for _, k := range []string{"NSELF_ACME_DIRECTORY", "NSELF_ACME_CA_BUNDLE", "NSELF_ACME_NETWORK", "NSELF_ACME_DNS_RESOLVERS", "NSELF_ACME_FAULT", "ACME_EMAIL"} {
+	for _, k := range []string{"NSELF_ACME_DIRECTORY", "NSELF_ACME_CA_BUNDLE", "NSELF_ACME_NETWORK", "NSELF_ACME_DNS_RESOLVERS", "NSELF_ACME_FAULT", "ACME_EMAIL", "NGINX_FRONTED_BY"} {
 		t.Setenv(k, "")
 	}
 	t.Chdir(f.project)
