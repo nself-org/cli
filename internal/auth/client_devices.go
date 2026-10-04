@@ -5,7 +5,7 @@ package auth
 // Purpose: list and revoke authorized devices, transfer a license between devices, and parse auth server error responses, used by device-related commands, split out of client.go for file size.
 // Inputs: an account/session token and, for transfer/revoke, the target device id.
 // Outputs: DeviceEntry values, or an error from the auth server.
-// Constraints: pure move from client.go (CLI-R12 Batch E); no behaviour change.
+// Constraints: GetDevices maps a 404 to E225 (auth_server serves no /account/devices route); the rest is a pure move from client.go.
 
 import (
 	"bytes"
@@ -15,6 +15,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // DeviceEntry represents one registered device for an account.
@@ -40,6 +42,9 @@ func GetDevices(ctx context.Context, accessToken string) ([]DeviceEntry, error) 
 		return nil, fmt.Errorf("getting devices: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, errServerLacksPath("/account/devices")
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, parseAPIError(resp)
 	}
@@ -98,6 +103,13 @@ func TransferLicense(ctx context.Context, accessToken, licenseID, toEmail string
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// errServerLacksPath is the E225 error: the auth server answered 404 for a path
+// the CLI calls but the server does not provide (never a raw 404, never an
+// empty list). The path is the route only, never a token or query.
+func errServerLacksPath(path string) error {
+	return errs.Newf("E225", "this server does not provide %s", path)
+}
 
 func parseAPIError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)

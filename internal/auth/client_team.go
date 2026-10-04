@@ -5,7 +5,7 @@ package auth
 // Purpose: list, invite, remove and change the role of team members, and activate a license for the account, used by team-related commands, split out of client.go for file size.
 // Inputs: an account/session token and the target team member's details.
 // Outputs: TeamMember values, or an error from the auth server.
-// Constraints: pure move from client.go (CLI-R12 Batch E); no behaviour change.
+// Constraints: GetTeamMembers maps a 404 to E225 (auth_server serves no /account/team route); the rest is a pure move from client.go.
 
 import (
 	"bytes"
@@ -38,6 +38,9 @@ func GetTeamMembers(ctx context.Context, accessToken string) ([]TeamMember, erro
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, errServerLacksPath("/account/team")
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, parseAPIError(resp)
 	}

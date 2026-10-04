@@ -20,6 +20,19 @@ Self-hosted users with no cloud account can skip this step, the CLI operates wit
 - Accessing `cloud.nself.org` to provision or manage hosted stacks
 - Syncing license keys from your account
 - Pushing plugin submissions via `nself plugin submit`
+
+### Auth host
+
+The CLI talks to the nSelf auth server at `https://auth-server.nself.org`. Set `NSELF_AUTH_SERVER_URL` to use another host (a local stack or a self-hosted auth server); a trailing slash is ignored.
+
+### Device flow
+
+1. The CLI calls `POST /auth/device-code` and prints the login code and the verification URL (`verification_uri`).
+2. You open the URL, sign in and approve the code in the browser.
+3. The CLI polls `POST /auth/device-code/token` every 5 seconds. `authorization_pending` keeps waiting; `slow_down` adds 5 seconds to the interval; `expired_token` and `access_denied` stop the login with a message (run `nself login` again).
+4. On approval the server returns a device token (90 days). The CLI reads your account (`GET /auth/session`) for the email and tier, then stores both in `~/.nself/auth.json`. If that lookup fails, the login fails and nothing is stored.
+
+The account commands `nself account devices` and `nself account team` call `/account/devices` and `/account/team`, which the auth server does not provide. They fail with `E225` (exit 2) instead of a raw 404.
 <!-- END PROSE:description -->
 
 ## Flags

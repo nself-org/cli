@@ -1,0 +1,4 @@
+{
+  "error": "slow_down",
+  "message": "Polling too frequently — wait 5s"
+}

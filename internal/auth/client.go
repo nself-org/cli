@@ -7,16 +7,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
-// AuthServerURL is the base URL of the auth server.
-// Overridable via NSELF_AUTH_SERVER_URL for testing.
+// DefaultAuthServerURL is the production auth_server host (D-0083). The old
+// default, api.nself.org, is the Hasura host and never served the login routes.
+const DefaultAuthServerURL = "https://auth-server.nself.org"
+
+// AuthServerURL is the base URL of the auth server, without a trailing slash.
+// Overridable via NSELF_AUTH_SERVER_URL for testing and self-hosted setups.
 func AuthServerURL() string {
 	if url := getEnv("NSELF_AUTH_SERVER_URL"); url != "" {
-		return url
+		return strings.TrimRight(url, "/")
 	}
-	return "https://api.nself.org"
+	return DefaultAuthServerURL
 }
 
 // CLIAuthBaseURL is the web UI for the CLI device auth page.
@@ -30,8 +35,8 @@ func CLIAuthBaseURL() string {
 // DeviceCodeResponse is returned by the device authorization endpoint.
 type DeviceCodeResponse struct {
 	DeviceCode      string `json:"device_code"`
-	UserCode        string `json:"user_code"`        // XXXX-YYYY format shown to user
-	VerificationURL string `json:"verification_url"` // nself.org/auth/cli?code=...
+	UserCode        string `json:"user_code"`        // 8-character code shown to the user
+	VerificationURL string `json:"verification_uri"` // page the user opens; auth_server sends it as verification_uri
 	ExpiresInSec    int    `json:"expires_in"`
 	IntervalSec     int    `json:"interval"`
 }
@@ -90,12 +95,13 @@ var httpClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
-// DeviceAuthorize initiates the device code flow.
-// Returns a DeviceCodeResponse with the code to display to the user.
+// DeviceAuthorize initiates the device code flow with POST /auth/device-code.
+// Returns a DeviceCodeResponse with the code to display to the user. A reply
+// without a device_code or user_code is an error, never a half-filled value.
 func DeviceAuthorize(ctx context.Context) (*DeviceCodeResponse, error) {
-	url := fmt.Sprintf("%s/auth/device/authorize", AuthServerURL())
+	url := fmt.Sprintf("%s/auth/device-code", AuthServerURL())
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBufferString(`{}`))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBufferString(`{"client_name":"nself-cli"}`))
 	if err != nil {
 		return nil, err
 	}
@@ -114,42 +120,11 @@ func DeviceAuthorize(ctx context.Context) (*DeviceCodeResponse, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("parsing device authorization response: %w", err)
 	}
+	if result.DeviceCode == "" || result.UserCode == "" {
+		return nil, fmt.Errorf("auth server device authorization reply is missing device_code or user_code")
+	}
 
 	return &result, nil
-}
-
-// PollToken polls the auth server for the device code exchange result.
-// Returns (nil, nil) if the user hasn't authorized yet (authorization_pending).
-// Returns an error on timeout or other failure.
-func PollToken(ctx context.Context, deviceCode string) (*TokenResponse, error) {
-	url := fmt.Sprintf("%s/auth/device/token", AuthServerURL())
-
-	body, _ := json.Marshal(map[string]string{"device_code": deviceCode})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("polling token: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	// authorization_pending → user hasn't clicked "Authorize" yet
-	if resp.StatusCode == http.StatusAccepted {
-		return nil, nil
-	}
-
-	if resp.StatusCode == http.StatusOK {
-		var result TokenResponse
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return nil, fmt.Errorf("parsing token response: %w", err)
-		}
-		return &result, nil
-	}
-
-	return nil, parseAPIError(resp)
 }
 
 // RefreshToken exchanges an existing session for a new access token.

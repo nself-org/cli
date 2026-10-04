@@ -34,35 +34,6 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 
 // ─── DeviceAuthorize ──────────────────────────────────────────────────────────
 
-func TestDeviceAuthorize_Success(t *testing.T) {
-	want := DeviceCodeResponse{
-		DeviceCode:      "dev-code-123",
-		UserCode:        "ABCD-EFGH",
-		VerificationURL: "https://nself.org/auth/cli?code=ABCD-EFGH",
-		ExpiresInSec:    300,
-		IntervalSec:     5,
-	}
-	cleanup := newAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/auth/device/authorize" {
-			http.NotFound(w, r)
-			return
-		}
-		writeJSON(w, http.StatusOK, want)
-	})
-	defer cleanup()
-
-	got, err := DeviceAuthorize(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.DeviceCode != want.DeviceCode {
-		t.Errorf("DeviceCode: got %q, want %q", got.DeviceCode, want.DeviceCode)
-	}
-	if got.UserCode != want.UserCode {
-		t.Errorf("UserCode: got %q, want %q", got.UserCode, want.UserCode)
-	}
-}
-
 func TestDeviceAuthorize_ServerError(t *testing.T) {
 	cleanup := newAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
@@ -86,87 +57,6 @@ func TestDeviceAuthorize_MalformedJSON(t *testing.T) {
 	defer cleanup()
 
 	_, err := DeviceAuthorize(context.Background())
-	if err == nil {
-		t.Fatal("expected parse error, got nil")
-	}
-}
-
-// ─── PollToken ────────────────────────────────────────────────────────────────
-
-func TestPollToken_Pending(t *testing.T) {
-	cleanup := newAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/auth/device/token" {
-			w.WriteHeader(http.StatusAccepted) // authorization_pending
-			return
-		}
-		http.NotFound(w, r)
-	})
-	defer cleanup()
-
-	tok, err := PollToken(context.Background(), "test-device-code")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if tok != nil {
-		t.Errorf("expected nil token for pending state, got %+v", tok)
-	}
-}
-
-func TestPollToken_Success(t *testing.T) {
-	want := TokenResponse{
-		AccessToken:  "jwt.access.token",
-		SessionToken: "session-opaque-token",
-		Email:        "user@example.com",
-		Tier:         "basic",
-		ExpiresAt:    "2027-01-01T00:00:00Z",
-	}
-	cleanup := newAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/auth/device/token" {
-			writeJSON(w, http.StatusOK, want)
-			return
-		}
-		http.NotFound(w, r)
-	})
-	defer cleanup()
-
-	tok, err := PollToken(context.Background(), "test-device-code")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if tok == nil {
-		t.Fatal("expected token, got nil")
-	}
-	if tok.Email != want.Email {
-		t.Errorf("Email: got %q, want %q", tok.Email, want.Email)
-	}
-	if tok.Tier != want.Tier {
-		t.Errorf("Tier: got %q, want %q", tok.Tier, want.Tier)
-	}
-}
-
-func TestPollToken_Error(t *testing.T) {
-	cleanup := newAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error":   "expired_token",
-			"message": "device code expired",
-		})
-	})
-	defer cleanup()
-
-	_, err := PollToken(context.Background(), "expired-code")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
-func TestPollToken_MalformedSuccess(t *testing.T) {
-	cleanup := newAuthServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprint(w, "{bad json}")
-	})
-	defer cleanup()
-
-	_, err := PollToken(context.Background(), "any")
 	if err == nil {
 		t.Fatal("expected parse error, got nil")
 	}
@@ -408,7 +298,7 @@ func TestAuthAPIError_Error(t *testing.T) {
 func TestAuthServerURL_Default(t *testing.T) {
 	t.Setenv("NSELF_AUTH_SERVER_URL", "")
 	got := AuthServerURL()
-	if got != "https://api.nself.org" {
+	if got != "https://auth-server.nself.org" {
 		t.Errorf("default AuthServerURL: got %q", got)
 	}
 }

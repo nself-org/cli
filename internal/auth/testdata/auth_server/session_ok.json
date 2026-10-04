@@ -1,0 +1,12 @@
+{
+  "authenticated": true,
+  "account": {
+    "id": "0b5f3c52-7d1e-4a52-9c63-2f6d1a7e9b10",
+    "email": "owner@example.com",
+    "display_name": "Test Owner",
+    "avatar_url": null,
+    "tier": "plus",
+    "email_verified": true,
+    "mfa_enabled": false
+  }
+}
