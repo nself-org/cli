@@ -46,8 +46,8 @@ const (
 //  2. An error exposing ExitCode() (ExitError, plugin ExitCodeError): that code.
 //  3. A *CLIError whose registry entry has Exit != 0: that Exit (E400 has 0
 //     and falls through).
-//  4. The first sentinel in the sentinel table matched by errors.Is: the Exit
-//     of that sentinel's registry code.
+//  4. The sentinel-table match with the highest class (auth > destructive >
+//     infra > user when sentinels are joined): the Exit of its registry code.
 //  5. Everything else: ExitUserError (1).
 //
 // Returning ExitOK is reserved for nil errors and never inferred from

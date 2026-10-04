@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -76,7 +77,8 @@ var (
 //
 // Outputs: valid entries are stored (first registration wins). Every problem
 // (bad code format, code outside every block, code in the reserved external
-// block, category that differs from the block's, duplicate code, invalid Exit)
+// block, code outside every owner range or from another owner's fragment,
+// category that differs from the block's, duplicate code, invalid Exit)
 // is appended to the problem list instead, naming the code and the fragment
 // file(s). RegistryErrors returns that list and TestRegistryIntegrity fails
 // on it.
@@ -87,10 +89,16 @@ func Register(entries ...CodeEntry) {
 	if _, file, _, ok := runtime.Caller(1); ok {
 		frag = filepath.Base(file)
 	}
+	register(frag, entries...)
+}
+
+// register is Register with the fragment name supplied, so tests can act as
+// any fragment file.
+func register(frag string, entries ...CodeEntry) {
 	regMu.Lock()
 	defer regMu.Unlock()
 	for _, e := range entries {
-		if err := checkEntry(&e); err != nil {
+		if err := checkEntry(&e, frag); err != nil {
 			regProblems = append(regProblems, fmt.Errorf("%s: %s: %w", frag, e.Code, err))
 			continue
 		}
@@ -105,7 +113,7 @@ func Register(entries ...CodeEntry) {
 }
 
 // checkEntry validates one entry and fills an empty Category from its block.
-func checkEntry(e *CodeEntry) error {
+func checkEntry(e *CodeEntry, frag string) error {
 	if !codeRe.MatchString(e.Code) {
 		return fmt.Errorf("code must match ^E[0-9]{3}$")
 	}
@@ -122,10 +130,28 @@ func checkEntry(e *CodeEntry) error {
 	} else if e.Category != blk.Category {
 		return fmt.Errorf("category %q differs from the block category %q", e.Category, blk.Category)
 	}
+	if err := checkOwner(n, frag); err != nil {
+		return err
+	}
 	if e.Exit < ExitUserError || e.Exit > ExitDestructiveBlocked {
 		if e.Exit != 0 || e.Code != "E400" {
 			return fmt.Errorf("exit %d is not a valid class (1-4; 0 only for E400)", e.Exit)
 		}
+	}
+	return nil
+}
+
+// checkOwner enforces data-driven ownership: the code must lie in an Owners
+// range and be registered from that owner's fragment. Fragments in _test.go
+// files (test-local registrations) are exempt from the fragment match, never
+// from the range check.
+func checkOwner(n int, frag string) error {
+	o, ok := ownerFor(n)
+	if !ok {
+		return fmt.Errorf("code is not in any owner range (spare or free number: add it to the Epic allocation table and Owners first)")
+	}
+	if frag != o.Fragment && !strings.HasSuffix(frag, "_test.go") {
+		return fmt.Errorf("code belongs to %s (fragment %s), not %s", o.Who, o.Fragment, frag)
 	}
 	return nil
 }

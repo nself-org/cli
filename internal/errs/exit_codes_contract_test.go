@@ -77,8 +77,8 @@ func tableSentinelNames(t *testing.T) []string {
 // anything else.
 func TestSentinelTable_CoversEveryErrVar(t *testing.T) {
 	decl, tab := exportedSentinelNames(t), tableSentinelNames(t)
-	if len(decl) != 46 {
-		t.Errorf("found %d exported Err* vars, want 45 in errs.go plus ErrDestructiveBlocked", len(decl))
+	if len(decl) != len(tab) {
+		t.Errorf("found %d exported Err* vars but %d sentinel-table rows", len(decl), len(tab))
 	}
 	count := map[string]int{}
 	for _, n := range tab {

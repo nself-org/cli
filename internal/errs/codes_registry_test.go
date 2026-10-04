@@ -2,6 +2,7 @@ package errs
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"regexp"
 	"sort"
@@ -42,6 +43,28 @@ func TestRegistryIntegrity(t *testing.T) {
 	if len(Registry) == 0 {
 		t.Fatal("Registry is empty: no fragment registered")
 	}
+	for _, p := range ownershipProblems() {
+		t.Error(p)
+	}
+}
+
+// ownershipProblems is a belt-and-braces walk over Register's own check:
+// every committed code lies in an owner range and came from that owner's
+// fragment.
+func ownershipProblems() []string {
+	regMu.Lock()
+	defer regMu.Unlock()
+	var out []string
+	for code, frag := range regOrigin {
+		n, _ := strconv.Atoi(code[1:])
+		o, ok := ownerFor(n)
+		if !ok {
+			out = append(out, fmt.Sprintf("%s (from %s) is in no owner range: spare or free numbers need an Epic table line first", code, frag))
+		} else if o.Fragment != frag {
+			out = append(out, fmt.Sprintf("%s registered from %s, but %s (%s) owns it", code, frag, o.Fragment, o.Who))
+		}
+	}
+	return out
 }
 
 var docsAnchorRe = regexp.MustCompile(`^reference/error-codes#e[0-9]{3}$`)
@@ -222,7 +245,7 @@ func TestBlockTables(t *testing.T) {
 	owns := append([]Owner(nil), Owners...)
 	sort.Slice(owns, func(i, j int) bool { return owns[i].Lo < owns[j].Lo })
 	for i, o := range owns {
-		if o.Lo > o.Hi || o.Who == "" {
+		if o.Lo > o.Hi || o.Who == "" || !strings.HasPrefix(o.Fragment, "codes_") || !strings.HasSuffix(o.Fragment, ".go") {
 			t.Errorf("bad owner range %+v", o)
 		}
 		if i > 0 && o.Lo <= owns[i-1].Hi {

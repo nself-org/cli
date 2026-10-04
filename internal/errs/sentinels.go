@@ -11,8 +11,8 @@ type sentinelCode struct {
 
 // sentinelTable is the one sentinel-to-code mapping (contract:cli.error-codes
 // v1). Every exported Err* variable in this package has exactly one row; an
-// AST test fails when one is added without a code. Order matters only for
-// CodeForSentinel, which returns the first errors.Is match.
+// AST test fails when one is added without a code. Order only breaks
+// ties between sentinels of the same exit class (see CodeForSentinel).
 var sentinelTable = []sentinelCode{
 	// Docker
 	{ErrDockerNotInstalled, "E001"},
@@ -70,23 +70,48 @@ var sentinelTable = []sentinelCode{
 	{ErrDestructiveBlocked, "E403"},
 }
 
-// CodeForSentinel returns the registry code of the first sentinel in the
-// table that err matches through errors.Is, and whether there was a match.
+// classRank orders exit classes for joined errors: auth beats
+// destructive_blocked beats infra beats user. This is origin/main's order
+// (auth, then destructive, then infra, then the default 1) and it means a
+// joined error never hides a licence or safety failure behind an infra one.
+func classRank(exit int) int {
+	switch exit {
+	case ExitAuthError:
+		return 4
+	case ExitDestructiveBlocked:
+		return 3
+	case ExitInfraError:
+		return 2
+	case ExitUserError:
+		return 1
+	}
+	return 0
+}
+
+// CodeForSentinel returns the registry code of the sentinel that err matches
+// through errors.Is, and whether there was a match.
 //
 // Purpose: the single place that turns a wrapped sentinel into an error code,
-// used by ExitCodeFor and Describe.
+// used by ExitCodeFor and Describe so both always agree.
 //
 // Inputs: any error, possibly wrapped with %w or joined.
 //
 // Outputs: (code, true) on a match; ("", false) for nil or an unmapped error.
+// When several sentinels match (errors.Join), the one with the highest exit
+// class wins (auth > destructive_blocked > infra > user, see classRank); ties
+// go to the first row in table order.
 func CodeForSentinel(err error) (string, bool) {
 	if err == nil {
 		return "", false
 	}
+	best, bestRank := "", -1
 	for _, s := range sentinelTable {
-		if errors.Is(err, s.Err) {
-			return s.Code, true
+		if !errors.Is(err, s.Err) {
+			continue
+		}
+		if r := classRank(Registry[s.Code].Exit); r > bestRank {
+			best, bestRank = s.Code, r
 		}
 	}
-	return "", false
+	return best, bestRank >= 0
 }
