@@ -1,8 +1,16 @@
 name: Endpoint Auth Gate
 
 # Gates the endpoint-auth-checker tool itself: unit tests plus a self-check on
-# the tool's own fixtures. cli contains no routes to scan; route-auth rules for
-# other repos belong to the plugin conformance work, not to this workflow.
+# the tool's own fixtures (compliant 0, noncompliant 1, missing directory 2).
+#
+# Scope, stated plainly: a green run means the checker works. It does NOT mean
+# cli's own HTTP routes (for example internal/cmd/ci/serve.go and
+# sdk/go/server/server.go) are auth-gated; they are not scanned here. The
+# checker's allowlist encodes plugin middleware names (RequireLicenseKey and
+# friends), and run over real trees it reports thousands of false positives
+# (header lookups read as routes), so a red scan gate would be noise. Route-auth
+# enforcement for the plugin repos and cli's own servers belongs to the plugin
+# conformance work (P7-PLUG), tracked as debt, not to this workflow.
 
 on:
   pull_request:
