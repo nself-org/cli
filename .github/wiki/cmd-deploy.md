@@ -187,7 +187,7 @@ value to enable remote deployments. The CLI:
 3. Runs the rolling restart on the remote via SSH
 
 ```bash
-export NSELF_DEPLOY_HOST_STAGING=ubuntu@167.235.233.65:/opt/nself-staging
+export NSELF_DEPLOY_HOST_STAGING=ubuntu@203.0.113.10:/opt/nself-staging
 nself deploy staging
 ```
 
