@@ -25,7 +25,7 @@
 //	httpx     HTTP client with retries, timeouts, OpenTelemetry hooks.
 //	metrics   Prometheus /metrics endpoint with per-plugin counters.
 //	server    chi router setup with middleware defaults (recover, request id, log).
-//	license   License grace period + offline validation helpers.
+//	licensing License grace period + offline validation helpers.
 //	identity  Caller identity extraction from JWT/Hasura headers.
 //	tracing   OTel context wiring (extract, inject, span helpers).
 //	costmeter Per-request cost accounting hooks.
