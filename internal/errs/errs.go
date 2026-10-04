@@ -2,7 +2,7 @@
 // the process exit-code contract for the nSelf CLI.
 //
 // Purpose: give every command a single place to (a) classify a failure by a
-// stable code (E001-E399, see codes.go's Registry), (b) attach a What/Why/Fix
+// stable code (E001-E449, see codes.go and the codes_<topic>.go fragments), (b) attach a What/Why/Fix
 // explanation via CLIError (structured.go), and (c) map that failure onto one
 // of the four canonical process exit codes (exit_codes.go, exit_error.go) so
 // wrappers (CI runners, schedulers, ops scripts) can branch on outcome class

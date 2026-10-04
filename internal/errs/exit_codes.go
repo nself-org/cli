@@ -39,17 +39,19 @@ const (
 )
 
 // ExitCodeFor classifies a top-level error into one of the canonical exit
-// codes. Used by main() to map RunE returns into process exit status.
+// codes (contract:cli.exit-codes v1). It is the only mapping main uses.
 //
 // Classification order:
-//  1. Auth-class sentinels in this package (license errors).
-//  2. Destructive-blocked sentinels (force_local guard, confirmation cancel).
-//     Callers in internal/confirm import errs implicitly via errors.Is.
-//  3. Infra-class sentinels (docker, db, ports).
-//  4. Everything else defaults to user-error (1).
+//  1. nil -> ExitOK.
+//  2. An error exposing ExitCode() (ExitError, plugin ExitCodeError): that code.
+//  3. A *CLIError whose registry entry has Exit != 0: that Exit (E400 has 0
+//     and falls through).
+//  4. The sentinel-table match with the highest class (auth > destructive >
+//     infra > user when sentinels are joined): the Exit of its registry code.
+//  5. Everything else: ExitUserError (1).
 //
 // Returning ExitOK is reserved for nil errors and never inferred from
-// classification — the caller must check err == nil first.
+// classification.
 func ExitCodeFor(err error) int {
 	if err == nil {
 		return ExitOK
@@ -62,70 +64,20 @@ func ExitCodeFor(err error) int {
 		return coder.ExitCode()
 	}
 
-	// Classify by sentinel error matching. Order matters: most specific
-	// first.
-	switch {
-	case isAuthError(err):
-		return ExitAuthError
-	case isDestructiveBlocked(err):
-		return ExitDestructiveBlocked
-	case isInfraError(err):
-		return ExitInfraError
+	var ce *CLIError
+	if errors.As(err, &ce) {
+		if entry, ok := Registry[ce.Code]; ok && entry.Exit != 0 {
+			return entry.Exit
+		}
+	}
+
+	if code, ok := CodeForSentinel(err); ok {
+		if entry, ok := Registry[code]; ok && entry.Exit != 0 {
+			return entry.Exit
+		}
 	}
 
 	return ExitUserError
-}
-
-// isAuthError reports whether err matches an auth-class sentinel.
-func isAuthError(err error) bool {
-	for _, target := range []error{
-		ErrInvalidLicenseKey,
-		ErrLicenseTierTooLow,
-		ErrLicenseExpired,
-		ErrLicenseNetworkUnavailable,
-	} {
-		if errors.Is(err, target) {
-			return true
-		}
-	}
-	return false
-}
-
-// isInfraError reports whether err matches an infra-class sentinel.
-func isInfraError(err error) bool {
-	for _, target := range []error{
-		ErrDockerNotRunning,
-		ErrDockerNotInstalled,
-		ErrComposeNotFound,
-		ErrPortConflict,
-		ErrDatabaseNotRunning,
-		ErrServiceUnhealthy,
-		ErrHealthTimeout,
-		ErrServiceNotFound,
-		ErrSSLGenerationFailed,
-		ErrBackupFailed,
-		ErrBackupNotFound,
-		ErrBackupVerifyFailed,
-		ErrBackupRestoreFailed,
-		ErrWALArchiveFailed,
-	} {
-		if errors.Is(err, target) {
-			return true
-		}
-	}
-	return false
-}
-
-// isDestructiveBlocked reports whether err signals that a destructive action
-// was refused by a safety gate.
-//
-// We do not import internal/confirm here to avoid an import cycle (confirm
-// imports errs implicitly through codes.go). Instead, callers in command
-// glue map confirm.ErrForceLocalRequired and confirm.ErrDestructionCanceled
-// onto a sentinel in this package via wrapping with %w against
-// ErrDestructiveBlocked.
-func isDestructiveBlocked(err error) bool {
-	return errors.Is(err, ErrDestructiveBlocked)
 }
 
 // ErrDestructiveBlocked is the package-level sentinel that command glue can
