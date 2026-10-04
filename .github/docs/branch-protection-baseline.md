@@ -1,109 +1,64 @@
 # Branch Protection Baseline
 
-Documents the required status checks and protection settings for `main` on all
-active nSelf repos. Last updated by Sprint S98-02 (T16) on 2026-05-03.
+The baseline is data, not prose: [`scripts/.policy/branch-protection.yaml`](../../scripts/.policy/branch-protection.yaml)
+is the single source of truth for `main` protection on every nself-org repo
+(defaults plus per-repo overrides under `repos:`). This page holds no setting
+values, so there is nothing here to go stale. Read the YAML.
 
----
+Never change protection in the GitHub web UI or with ad-hoc `gh api` calls. A
+change goes through the YAML and `scripts/branch-protection-toggle.sh`, and every
+change to GitHub is owner-named (P7-HYG-35).
 
-## nself-org/cli — main
+## Check for drift (read-only)
 
-| Setting | Value |
-|---------|-------|
-| Require status checks to pass | Yes |
-| Require branches to be up to date | No (strict: false) |
-| Require PR reviews | Yes — 1 approving review |
-| Dismiss stale reviews | No |
-| Require code owner reviews | No |
-| Enforce admins | Yes |
-| Require linear history | Yes |
-| Allow force pushes | No |
-| Allow deletions | No |
-
-### Required status checks
-
-| Check name | Workflow file | Job id | Purpose |
-|------------|--------------|--------|---------|
-| `Gitleaks` | (app-level — gitleaks GitHub App) | — | Secret leak scanner |
-| `Verify all 12 version files are in lockstep` | `.github/workflows/version-lockstep.yml` | `lockstep` | Ensures cli/.github/VERSION matches every downstream version constant; blocks PRs that bump version in only one place |
-| `Forbid disallowed files (root + tracked junk)` | `.github/workflows/clean-root.yml` | `check` | Enforces Clean Repo Root Hard Rule; blocks .DS_Store, stray .md at root, tracked .env secrets, missing .gitignore baseline patterns; also verifies cli/sdk/ 4-language layout |
-
-### To update required checks via CLI
+`--dry-run` makes GET calls only and never writes to GitHub:
 
 ```bash
-gh api repos/nself-org/cli/branches/main/protection/required_status_checks \
-  -X PATCH \
-  --field 'strict=false' \
-  -f 'contexts[]=Gitleaks' \
-  -f 'contexts[]=Verify all 12 version files are in lockstep' \
-  -f 'contexts[]=Forbid disallowed files (root + tracked junk)'
+for r in cli admin plugins packages homebrew-nself ntask nchat nclaw nsentry nfamily clawde; do
+  bash scripts/branch-protection-toggle.sh --on --dry-run --repo nself-org/$r
+  sleep 5
+done
 ```
 
----
+Each public repo prints `already matches baseline — no-op` when live protection
+equals the YAML on the compared fields (strict, contexts, enforce_admins, the four
+review settings, restrictions, force pushes, deletions). Anything else prints
+`DRY-RUN: would PUT`, which means the YAML or GitHub drifted. Empty public repos
+(no default branch) print `n/a: no default branch` and are not drift.
 
-## nself-org/admin — main
+The YAML was last reconciled with live protection on 2026-10-04 (P7-HYG-14).
+Snapshots of the live API answers from that day are kept in the hq evidence tree.
 
-| Setting | Value |
-|---------|-------|
-| Require status checks to pass | Yes |
-| Require branches to be up to date | No (strict: false) |
-| Require PR reviews | Yes — 1 approving review |
-| Dismiss stale reviews | No |
-| Require code owner reviews | No |
-| Enforce admins | Yes |
-| Require linear history | Yes |
-| Allow force pushes | No |
-| Allow deletions | No |
+## Changing the baseline
 
-### Required status checks
+1. Edit `scripts/.policy/branch-protection.yaml` (a default, or a per-repo
+   override with a comment saying why).
+2. Run the drift loop above to see which repos differ.
+3. The owner applies it with `scripts/branch-protection-toggle.sh --on --repo <r>`.
+   Review counts are never lowered. `--rollback` restores the previous state.
 
-| Check name | Workflow file | Job id | Purpose |
-|------------|--------------|--------|---------|
-| `Gitleaks` | (app-level — gitleaks GitHub App) | — | Secret leak scanner |
-| `Verify admin version == CLI version` | `.github/workflows/version-lockstep.yml` | `lockstep` | Asserts admin `package.json` version == CLI version constant in `lib/cli-version.ts`; enforces cli=admin lockstep from P93 |
-| `Forbid disallowed files (root + tracked junk)` | `.github/workflows/clean-root.yml` | `check` | Same Clean Repo Root gate as cli |
+A required check is the job `name:` GitHub registers for a workflow that runs on
+`pull_request` targeting `main`. Add the exact string to the repo's `contexts` in
+the YAML, in the order GitHub reports (lists are compared in order).
 
-### To update required checks via CLI
+## How owner PRs merge
 
-```bash
-gh api repos/nself-org/admin/branches/main/protection/required_status_checks \
-  -X PATCH \
-  --field 'strict=false' \
-  -f 'contexts[]=Gitleaks' \
-  -f 'contexts[]=Verify admin version == CLI version' \
-  -f 'contexts[]=Forbid disallowed files (root + tracked junk)'
-```
+Where the YAML sets `enforce_admins`, even the owner cannot bypass a red or
+unapproved PR, so the owner merges through `scripts/admin-merge.sh --repo <r>
+--pr <n>` (snapshot, short relax with a watchdog, merge, restore). Elsewhere the
+owner merges green PRs by admin bypass. No ticket relaxes protection itself.
 
----
+## Private repositories
 
-## Adding a new required check
+`nself-org/web` and `nself-org/bundles` are private. On the free GitHub plan the
+branch-protection API answers 403 ("Upgrade to GitHub Pro or make this repository
+public to enable this feature"), so `main` cannot be protected there and the
+toggle is never run on them (D-0012, accepted). The YAML records both as
+unprotected, with the reason, in comments.
 
-1. Add the workflow to `.github/workflows/` and verify it runs on `pull_request` targeting `main`.
-2. Note the job `name:` field — that is the check context string GitHub registers.
-3. Run the PATCH command above with the new context appended to the `-f 'contexts[]='` list.
-4. Update this doc with the new row in the relevant table.
+Compensating control, until it is built: the repos' own self-hosted CI plus the
+convention that nothing merges red. The planned control is `nself ci` as a local
+gate that posts the `nself-ci` status, plus the pre-push hook (P7-CI-07).
 
-Do NOT use the GitHub web UI to manage required checks — it resets on org policy changes.
-CLI management via `gh api` is the source of truth.
-
----
-
-## Minimum baseline for any new nSelf repo
-
-Every new repo added to `nself-org` must reach this baseline within the first PR:
-
-1. `Gitleaks` — install the gitleaks GitHub App on the repo in org settings.
-2. `clean-root` (job: `Forbid disallowed files (root + tracked junk)`) — copy `.github/workflows/clean-root.yml` from `cli/`.
-3. 1 required PR review.
-4. Enforce admins: on.
-5. Require linear history: on.
-6. Allow force pushes: off.
-
-Register checks via:
-
-```bash
-gh api repos/nself-org/<REPO>/branches/main/protection/required_status_checks \
-  -X PATCH \
-  --field 'strict=false' \
-  -f 'contexts[]=Gitleaks' \
-  -f 'contexts[]=Forbid disallowed files (root + tracked junk)'
-```
+Re-entry trigger: a repo is made public (it then gets an override in the YAML and
+is applied by the toggle). An agent never chooses a paid plan to close this gap.

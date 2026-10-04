@@ -1,42 +1,129 @@
 # branch-protection.yaml
 #
-# Canonical branch-protection baseline for every nself-org repo.
-# Single source of truth — never hand-edit GitHub branch protection.
+# Canonical branch-protection baseline for every nself-org repo (EPIC HYG H15).
+# The single source of truth: no second or third baseline file exists, and
+# `cap:ops.branch-protection-baseline` points here. Never hand-edit GitHub
+# branch protection; change this file, then run the toggle.
 #
-# Applied by cli/scripts/branch-protection-toggle.sh --on
-# Authority: P101 S8.T01-B (V8-02)
+# Applied by scripts/branch-protection-toggle.sh --on (owner-named only, P7-HYG-35).
+# Drift check (read-only, GETs only):
+#   scripts/branch-protection-toggle.sh --on --dry-run --repo nself-org/<repo>
+# prints "already matches baseline — no-op" when live protection equals this file
+# on the compared fields: strict, contexts, enforce_admins, reviews (the four
+# settings below), restrictions, allow_force_pushes, allow_deletions.
 #
-# Required status checks: every PR must pass these before merge.
-# strict=true means the branch must be up-to-date with main.
+# Last reconciled with live protection: 2026-10-04 (P7-HYG-14). Snapshots of the
+# live API answers are kept in the hq evidence tree (plan/p7/evidence/HYG-14/).
+# Review counts are never lowered here; a change to a live setting is an
+# owner-named change (P7-HYG-35), not an edit-and-apply.
+#
+# Defaults are the most common live values. Contexts have no common value (every
+# repo runs its own CI), so the default list is empty and each repo lists its own
+# under `repos:`. Context lists are compared in order, so keep GitHub's order.
 
 required_status_checks:
-  strict: true
-  contexts:
-    - "Clean Working Tree"
-    - "nself-first-check"
-    - "doc-sync"
+  strict: false
+  contexts: []
 
-enforce_admins: true
+enforce_admins: false
 
+# Exactly the four settings GitHub returns for the reviews block; the toggle
+# compares the block as a whole, so a missing key reads as drift.
 required_pull_request_reviews:
-  required_approving_review_count: 1
-  dismiss_stale_reviews: true
+  dismiss_stale_reviews: false
   require_code_owner_reviews: false
+  require_last_push_approval: false
+  required_approving_review_count: 1
 
 # null = no restrictions on who can push (any collaborator with write access)
 restrictions: null
 
 allow_force_pushes: false
 allow_deletions: false
-required_linear_history: false
-required_conversation_resolution: true
+# Not compared by the drift check; written by --on, so kept equal to live.
+required_linear_history: true
+required_conversation_resolution: false
 
-# Per-repo overrides — repos that ship without one of the standard checks.
-# Use sparingly; document reason in inline comment.
+# Per-repo overrides: only the differences from the defaults above.
+# Public repos with a main branch (live protection read 2026-10-04):
 repos:
-  # plugins-pro: private repo, doc-sync workflow not yet wired
-  # nself-org/plugins-pro:
-  #   required_status_checks:
-  #     contexts:
-  #       - "Clean Working Tree"
-  #       - "nself-first-check"
+  nself-org/cli:
+    # enforce_admins on: owner merges through scripts/admin-merge.sh
+    required_status_checks:
+      contexts:
+        - "golangci-lint"
+        - "Vet, Build & Test (ubuntu-latest)"
+    enforce_admins: true
+    required_linear_history: false
+  nself-org/admin:
+    # enforce_admins on: owner merges through scripts/admin-merge.sh
+    required_status_checks:
+      contexts:
+        - "Test Summary"
+    enforce_admins: true
+    required_linear_history: false
+  nself-org/plugins:
+    required_status_checks:
+      contexts:
+        - "Build & test all Go plugins"
+  nself-org/packages:
+    required_status_checks:
+      contexts:
+        - "ci"
+    required_linear_history: false
+  nself-org/homebrew-nself:
+    # enforce_admins on: owner merges through scripts/admin-merge.sh
+    required_status_checks:
+      contexts:
+        - "audit"
+        - "Test nself Homebrew Formula"
+    enforce_admins: true
+    required_linear_history: false
+  nself-org/ntask:
+    required_status_checks:
+      contexts:
+        - "nself CLI Check"
+        - "Version Lockstep"
+        - "Mobile Tests (coverage gate ≥60%)"
+        - "I18n Completeness Gate (N-S3-T3)"
+        - "gitleaks"
+        - "clean-root"
+  nself-org/nchat:
+    required_status_checks:
+      contexts:
+        - "Gitleaks"
+        - "CodeQL Analysis"
+  nself-org/nclaw:
+    required_status_checks:
+      contexts:
+        - "Gitleaks"
+        - "Desktop Build Check"
+  nself-org/nsentry:
+    required_status_checks:
+      contexts:
+        - "Lint + Typecheck + Test (client + mobile)"
+        - "gitleaks"
+  nself-org/nfamily:
+    required_status_checks:
+      contexts:
+        - "Lint and test (RN/Expo)"
+        - "gitleaks"
+  nself-org/clawde:
+    required_status_checks:
+      contexts:
+        - "Gitleaks"
+        - "Rust · clippy + test"
+
+  # Not protected, recorded here so nobody runs the toggle on them:
+  #
+  # nself-org/web and nself-org/bundles (private): the branch-protection API
+  #   answers 403 "Upgrade to GitHub Pro or make this repository public to enable
+  #   this feature." on the free plan, so main is unprotected and the toggle is
+  #   never run on them (it would fail on the GET). An agent never pays to fix it.
+  #   Compensating control and re-entry trigger: .github/docs/branch-protection-baseline.md
+  #   (Private repositories) and hq architecture/ci-fabric.md.
+  #
+  # N/A, 2026-10-04: nself-org/plugin-template and nself-org/plugin-sdk-go are
+  #   empty public repos with no default branch ("Branch not found"); the toggle
+  #   prints "n/a: no default branch" for them. They are not unprotected repos
+  #   and need no entry until their first commit lands on main.
