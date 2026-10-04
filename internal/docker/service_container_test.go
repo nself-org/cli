@@ -20,10 +20,15 @@ const fakeDockerScript = `#!/bin/sh
 echo "$@" >> "$FAKE_DOCKER_DIR/calls.log"
 case "$1" in
   ps)
+    # Successive ps calls read ps-<n>.txt when present (to model a container
+    # vanishing between calls), else ps.txt.
+    n=$(cat "$FAKE_DOCKER_DIR/ps.count" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$FAKE_DOCKER_DIR/ps.count"
+    [ -f "$FAKE_DOCKER_DIR/ps-$n.txt" ] && { cat "$FAKE_DOCKER_DIR/ps-$n.txt"; exit 0; }
     [ -f "$FAKE_DOCKER_DIR/ps.fail" ] && { echo "Cannot connect to the Docker daemon" >&2; exit 1; }
     cat "$FAKE_DOCKER_DIR/ps.txt" ;;
   inspect)
     for a; do id=$a; done
+    [ -f "$FAKE_DOCKER_DIR/inspect-$id.err" ] && { cat "$FAKE_DOCKER_DIR/inspect-$id.err" >&2; exit 1; }
     f="$FAKE_DOCKER_DIR/inspect-$id.json"
     if [ -f "$f" ]; then cat "$f"; else echo "Error: No such object: $id" >&2; exit 1; fi ;;
   *) exit 2 ;;
@@ -174,6 +179,41 @@ func TestFindServiceContainer(t *testing.T) {
 		_, err := FindServiceContainer(t.Context(), ServiceMatch{Service: "nginx", Project: "web"})
 		if err == nil || errors.Is(err, ErrServiceContainerNotFound) || errors.Is(err, ErrServiceContainerAmbiguous) {
 			t.Fatalf("err = %v, want a plain docker error", err)
+		}
+	})
+
+	t.Run("container removed between ps and inspect is skipped", func(t *testing.T) {
+		dir := installFakeDocker(t,
+			fakeCtr{id: "a1", name: "gone-nginx", state: "running", labels: nginxLabels("web", "/opt/nself-web")},
+			fakeCtr{id: "b2", name: "web-nginx", state: "running", labels: nginxLabels("web", "/opt/nself-web")},
+		)
+		// a1 disappears: its inspect fails and the second listing omits it.
+		if err := os.Remove(filepath.Join(dir, "inspect-a1.json")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "ps-2.txt"), []byte("b2\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := FindServiceContainer(t.Context(), ServiceMatch{Service: "nginx", Project: "web"})
+		if err != nil || got != "web-nginx" {
+			t.Fatalf("got %q, %v; the vanished container must be skipped", got, err)
+		}
+	})
+
+	t.Run("generic daemon not-found error stays a plain error", func(t *testing.T) {
+		dir := installFakeDocker(t,
+			fakeCtr{id: "a1", name: "web-nginx", state: "running", labels: nginxLabels("web", "/opt/nself-web")},
+		)
+		// InspectContainer maps any stderr containing "not found" to
+		// `container "a1" not found`; the container is still listed, so it
+		// has not vanished and the failure must surface.
+		if err := os.WriteFile(filepath.Join(dir, "inspect-a1.err"),
+			[]byte("Error response from daemon: page not found\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := FindServiceContainer(t.Context(), ServiceMatch{Service: "nginx", Project: "web"})
+		if err == nil || errors.Is(err, ErrServiceContainerNotFound) || errors.Is(err, ErrServiceContainerAmbiguous) {
+			t.Fatalf("err = %v, want a plain error", err)
 		}
 	})
 

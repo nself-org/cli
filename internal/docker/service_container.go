@@ -73,9 +73,8 @@ func FindServiceContainer(ctx context.Context, m ServiceMatch) (string, error) {
 	for _, id := range ids {
 		info, ierr := InspectContainer(ctx, id)
 		if ierr != nil {
-			// Removed between the listing and the inspect: not a candidate.
-			if strings.Contains(ierr.Error(), "not found") {
-				continue
+			if vanished(ctx, id, composeServiceLabel+"="+m.Service, ierr) {
+				continue // removed between the listing and the inspect
 			}
 			return "", fmt.Errorf("find service container %q: %w", m.Service, ierr)
 		}
@@ -101,6 +100,28 @@ func FindServiceContainer(ctx context.Context, m ServiceMatch) (string, error) {
 		return "", fmt.Errorf("%w: %q matches %s", ErrServiceContainerAmbiguous,
 			m.Service, strings.Join(names, ", "))
 	}
+}
+
+// vanished reports whether inspecting id failed because the container was
+// removed after it was listed. InspectContainer reports any daemon stderr
+// containing "not found" as `container "<id>" not found`, so that text alone
+// is not proof (a daemon error such as "page not found" produces it too).
+// The error must have exactly that shape for this id AND a fresh listing for
+// label must no longer contain id; otherwise the error is real.
+func vanished(ctx context.Context, id, label string, err error) bool {
+	if err.Error() != fmt.Sprintf("container %q not found", id) {
+		return false
+	}
+	ids, lerr := findContainersByLabel(ctx, label)
+	if lerr != nil {
+		return false
+	}
+	for _, cur := range ids {
+		if cur == id {
+			return false
+		}
+	}
+	return true
 }
 
 // ContainerMounts returns the mounts of the named container via docker

@@ -38,9 +38,38 @@ func TestClassifyCert(t *testing.T) {
 
 // testCA is a throwaway CA that signs leaf certificates for the probe tests.
 type testCA struct {
-	cert *x509.Certificate
-	key  *ecdsa.PrivateKey
-	pool *x509.CertPool
+	cert  *x509.Certificate
+	key   *ecdsa.PrivateKey
+	pool  *x509.CertPool
+	chain [][]byte // DER of this CA and its issuers below the root, appended to served leaves
+}
+
+// intermediate issues a subordinate CA signed by ca. Leaves it signs are
+// served with the intermediate appended, as a real server does.
+func (ca *testCA) intermediate(t *testing.T) *testCA {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(2),
+		Subject:               pkix.Name{CommonName: "Probe Test Intermediate"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, ca.cert, &key.PublicKey, ca.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &testCA{cert: cert, key: key, pool: ca.pool, chain: append([][]byte{der}, ca.chain...)}
 }
 
 func newTestCA(t *testing.T) *testCA {
@@ -91,7 +120,7 @@ func (ca *testCA) leaf(t *testing.T, name string, notAfter time.Time) tls.Certif
 	if err != nil {
 		t.Fatal(err)
 	}
-	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+	return tls.Certificate{Certificate: append([][]byte{der}, ca.chain...), PrivateKey: key}
 }
 
 // serveBySNI starts a TLS server that picks its certificate by SNI.
@@ -145,6 +174,24 @@ func TestProbeServed(t *testing.T) {
 		o, err := probeServed(ctx, addr, "other.test", 5*time.Second, ca.pool)
 		if err != nil || o.SHA256 == got.SHA256 || !o.NotAfter.Equal(notAfter.Add(24*time.Hour)) {
 			t.Errorf("other.test must serve a different leaf: %+v err=%v", o, err)
+		}
+	})
+
+	t.Run("leaf signed by an intermediate verifies via the served chain", func(t *testing.T) {
+		// root (the only trusted root) -> intermediate -> leaf. The server
+		// sends [leaf, intermediate]; verification succeeds only if the
+		// served intermediates are passed to the verifier.
+		inter := ca.intermediate(t)
+		iaddr := serveBySNI(t, map[string]tls.Certificate{"inter.test": inter.leaf(t, "inter.test", notAfter)})
+		got, err := probeServed(ctx, iaddr, "inter.test", 5*time.Second, ca.pool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.ChainErr != "" {
+			t.Errorf("ChainErr = %q, want empty: the intermediate was served", got.ChainErr)
+		}
+		if got.IssuerCN != "Probe Test Intermediate" {
+			t.Errorf("IssuerCN = %q, want the intermediate", got.IssuerCN)
 		}
 	})
 

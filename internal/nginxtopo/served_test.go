@@ -54,6 +54,14 @@ func TestServedDirs(t *testing.T) {
 			wantSSL:   filepath.Join(web, "ssl"),
 		},
 		{
+			name:      "trailing slash and dot segments are cleaned",
+			project:   backend + string(filepath.Separator) + ".",
+			frontedBy: "nself-web",
+			wantRoot:  web,
+			wantNginx: filepath.Join(web, "nginx"),
+			wantSSL:   filepath.Join(web, "ssl"),
+		},
+		{
 			name:       "unconfirmed layout is refused naming project and stack",
 			project:    stray,
 			frontedBy:  "nself-web",

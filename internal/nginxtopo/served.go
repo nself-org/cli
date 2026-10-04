@@ -35,6 +35,11 @@ var ErrFrontingUnresolved = errors.New("cannot resolve the served nginx stack")
 // fronting stack's directory as confirmed by ResolveFrontingDir. An
 // unconfirmed layout returns "" and an error wrapping ErrFrontingUnresolved.
 func ServedRoot(projectDir, frontedBy string) (string, error) {
+	// Clean first: ResolveFrontingDir compares path elements, so a trailing
+	// slash or "." segment must not make a confirmed layout look unconfirmed.
+	if projectDir != "" {
+		projectDir = filepath.Clean(projectDir)
+	}
 	if frontedBy == "" {
 		return projectDir, nil
 	}
