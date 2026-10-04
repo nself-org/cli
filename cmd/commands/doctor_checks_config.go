@@ -6,21 +6,82 @@ package commands
 // Constraints: split out of doctor.go (CLI-R12) as a pure move, no behavior change.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/doctor"
 	"github.com/nself-org/cli/internal/ports"
 )
 
-// checkPorts probes all reserved ports and reports conflicts.
+// Test seams for the doctor port check. Production values are the real
+// probes; doctor_checks_config_test.go swaps them for a fake port owner.
+var (
+	// doctorPortsFiltered is the ownership-aware probe `nself start` uses.
+	doctorPortsFiltered = docker.CheckAllPortsFiltered
+	// doctorPortsAll is the plain probe, the fallback when ownership is unknown.
+	doctorPortsAll = docker.CheckAllPorts
+	// doctorPortHolder names the process holding a port for the message.
+	doctorPortHolder = ports.WhoHoldsPort
+	// doctorPortProject resolves the project directory the stack lives in.
+	doctorPortProject = doctorPortProjectDir
+)
+
+// doctorPortOwnerTimeout bounds the `docker compose ps` ownership query.
+const doctorPortOwnerTimeout = 30 * time.Second
+
+// doctorPortProjectDir returns the project directory for the ownership query:
+// the working directory, or its monorepo backend directory, the same
+// resolution `doctor` applies to its own projectDir (doctor.go).
+func doctorPortProjectDir() (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("resolving project directory: %w", err)
+	}
+	if backendRoot := config.DetectMonorepoRoot(cwd); backendRoot != "" {
+		return backendRoot, nil
+	}
+	return cwd, nil
+}
+
+// probeDoctorPorts probes docker.ReservedPorts and returns the conflicts.
+//
+// It asks the ownership-aware check `start` uses, so a port held by this
+// project's own running stack is not a conflict while an unrelated holder
+// still is. When ownership cannot be established (ownerErr != nil) it falls
+// back to the unfiltered probe, which is the result doctor printed before
+// D-0063, and reports ownerErr so the caller can say so. err is set only when
+// the probe itself fails.
+func probeDoctorPorts() (conflicts []docker.PortConflict, ownerErr, err error) {
+	projectDir, ownerErr := doctorPortProject()
+	if ownerErr == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), doctorPortOwnerTimeout)
+		defer cancel()
+		// Same resolution as start_ports.go: compose env files, then the
+		// compose manifest (a manifest read failure leaves the file list
+		// empty, as in start, and compose falls back to its own discovery).
+		envFiles := build.ComposeEnvFiles(projectDir)
+		composeFiles, _ := build.ReadComposeManifest(projectDir)
+		conflicts, ownerErr = doctorPortsFiltered(ctx, docker.ReservedPorts, projectDir, envFiles, composeFiles...)
+		if ownerErr == nil {
+			return conflicts, nil, nil
+		}
+	}
+	conflicts, err = doctorPortsAll(docker.ReservedPorts)
+	return conflicts, ownerErr, err
+}
+
+// checkPorts probes all reserved ports and reports conflicts. Ports owned by
+// the project's own running stack are not conflicts (D-0063).
 func checkPorts(verbose bool) []doctorCheckResult {
 	var results []doctorCheckResult
-	conflicts, err := docker.CheckAllPorts(docker.ReservedPorts)
+	conflicts, ownerErr, err := probeDoctorPorts()
 	if err != nil {
 		name := "Port check"
 		msg := fmt.Sprintf("error checking ports: %v", err)
@@ -35,10 +96,19 @@ func checkPorts(verbose bool) []doctorCheckResult {
 		return []doctorCheckResult{{Name: name, Status: "pass", Message: msg}}
 	}
 
+	// The conflicts below are unfiltered when ownership could not be read, so
+	// they may include the project's own containers: say so once.
+	if ownerErr != nil {
+		name := "Port ownership"
+		msg := fmt.Sprintf("could not read this project's own ports (%v); conflicts may include its containers", ownerErr)
+		printCheck("warn", name, msg, verbose)
+		results = append(results, doctorCheckResult{Name: name, Status: "warn", Message: msg})
+	}
+
 	// Report each conflicting port individually, with holder info when available.
 	for _, c := range conflicts {
 		name := fmt.Sprintf("Port %d", c.Port)
-		holder, _ := ports.WhoHoldsPort(c.Port)
+		holder, _ := doctorPortHolder(c.Port)
 		msg := ports.FormatConflictMessage(c.Port, holder)
 		printCheck("warn", name, msg, verbose)
 		results = append(results, doctorCheckResult{Name: name, Status: "warn", Message: msg})
