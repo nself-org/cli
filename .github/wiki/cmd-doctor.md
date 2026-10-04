@@ -54,6 +54,38 @@ CRITICAL findings include: world-readable secret files, sensitive ports bound on
 | Containers | Health status of running containers, error logs for unhealthy services |
 | Plugin schemas | Warns if `np_*` tables are in the `public` schema instead of plugin schemas |
 | License | License cache age and tier |
+| TLS | Certificate each served host actually presents: expiry, served vs on disk, renewed but not installed (see below) |
+
+### TLS section
+
+The `TLS` section asks the nginx that is actually serving your stack, not the files on disk, which certificate it presents. For every `server_name` in a 443 block of the served `nginx/sites/*.conf` and `nginx/conf.d/*.conf` it opens a TLS connection with that name as SNI and prints one line:
+
+```
+TLS api.example.com: R11 expires 2026-12-30 (88 days)
+```
+
+Wildcards, IP addresses, `localhost`, `_` and the `.local`, `.localhost` and `.test` names are not checked. Names that appear only in a certificate's alternative names reach the default server and are not listed.
+
+| Condition | Result |
+|-----------|--------|
+| 21 or more days left | pass |
+| Fewer than 21 days left | warn |
+| Fewer than 7 days left, or already expired | fail |
+| nginx is running but does not answer a TLS handshake on its configured address (a wrong port included) | fail |
+| More than one running nginx container matches the stack | fail, naming the containers |
+
+Two further warnings can follow a host line:
+
+- **Served differs from disk.** The certificate nginx presents is not the file named by that host's own `ssl_certificate` line (mapped from `/etc/nginx/ssl` onto the stack's `ssl/` directory). nginx has not been reloaded since the file changed. Fix: reload nginx. Generated route hosts such as `api.<base domain>` use the base domain's certificate directory, and are compared against that file.
+- **Renewed but not installed.** A newer certificate covering the host exists in `<ssl dir>/.acme/certificates/` or in a readable `/etc/letsencrypt/live/*/cert.pem`, while nginx still serves an older one. The warning names both expiry dates. Fix: install the renewed certificate into the stack's `ssl/` directory and reload nginx.
+
+A chain that does not verify against the system roots (a private CA, for example) is recorded in the check's detail and does not change the verdict; the expiry thresholds are what decide it.
+
+**Fronted projects.** When `NGINX_FRONTED_BY` is set (the production layout, a project in `nself-web/backend` served by the nginx of `nself-web`), the check uses the fronting stack's `nginx/` confs, `ssl/` directory, `.env` files and nginx container. The dial address comes from that stack's `.env`, then `.env.<ENV>`: `NGINX_HTTPS_PORT`, else `NGINX_SSL_PORT`, else 443 on `NGINX_BIND_IP` (`127.0.0.1` when unset or `0.0.0.0`). Only that address is contacted; no public DNS or internet probe is made.
+
+**Skips.** The section prints a single `TLS: skipped (<reason>)` line, and the line never affects the exit code, when `SSL_MODE` is `local` or `none`, when no nginx container is running for the stack, when Docker cannot be queried, when the fronting layout cannot be resolved, or when no TLS host is configured. A skip is never counted as a pass.
+
+Because a warning or failure here is a normal doctor result, `nself doctor` exits `2` (warnings) or `1` (failures) when a certificate is close to expiry.
 
 ### Deep mode subsections (`--deep` or `--only <section>`)
 
@@ -63,7 +95,7 @@ CRITICAL findings include: world-readable secret files, sensitive ports bound on
 | `docker` | Storage driver, dangling images, container health |
 | `postgres` | `pg_isready`, longest running query, dead tuples, last vacuum |
 | `hasura` | `/healthz` endpoint, metadata consistency |
-| `nginx` | Config syntax test, SSL cert expiry per domain |
+| `nginx` | Config syntax test, served certificate expiry per domain (a TLS handshake against the served nginx, not a file probe inside the container) |
 | `ssl` | Certbot timer active, last renewal age |
 | `ping` | `ping.nself.org` reachable |
 | `plugins` | Plugin container health endpoints |
