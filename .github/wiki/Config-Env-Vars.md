@@ -76,6 +76,7 @@ These vars control the top-level identity and behavior of a project.
 | `ADMIN_EMAIL` | string | `""` | No | Admin contact email for notifications and certificates. |
 | `DB_ENV_SEEDS` | bool | `true` | No | When `true`, database seed files run automatically on first boot. |
 | `NSELF_V15` | bool (`1` or `true`, any case) | unset (off in 1.4.x, on by default from 1.5.0) | No | Opts in to the v1.5 behaviour of every P7 change that breaks an existing user-visible contract (ADR 0021). Anything else (unset, empty, `0`, `yes`) keeps v1.4 behaviour. Read on every call, never cached. See [[Compat-V15]]. |
+| `IMAGE_PINNING` | `lock` or `legacy` | unset (`legacy` in 1.4.x, `lock` from 1.5.0) | No | How generated compose names images. `legacy` emits the exact pre-lock strings (`redis:7-alpine`); `lock` emits `repository:version@sha256:<index digest>` from the image lock. A `*_VERSION` other than the lock version is used as given, unpinned. See [[Image-Lock]]. |
 
 ---
 
