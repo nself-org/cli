@@ -25,7 +25,7 @@ const legacyWarning = "warning: NSELF_JSON_LEGACY is deprecated and will be remo
 // warning once per process on w.Err. In v1.4 mode NSELF_JSON_LEGACY has no
 // effect. EmitData and EmitError never consult it.
 func EmitLegacyCompatible(w Writer, command string, data any) error {
-	// compat.V15(P7-REG-02): bare pre-contract JSON -> v1 envelope
+	// compat.V15(P7-REG-02): bare pre-contract JSON -> v1 envelope (NSELF_JSON_LEGACY=1 or true keeps bare JSON for one minor)
 	if !compat.V15() {
 		return writeBare(w, data)
 	}

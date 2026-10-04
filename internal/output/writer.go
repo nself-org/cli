@@ -38,13 +38,15 @@ func EmitData(w Writer, command string, data any) error {
 }
 
 // EmitError writes the v1 error envelope for err to w.Out, using errs.Describe
-// for the error object. The envelope has no data key. A nil err is a caller
+// for the error object, with message, cause and remediation redacted (see
+// redactText). The envelope has no data key. A nil err is a caller
 // bug and is returned as an error without writing a document.
 func EmitError(w Writer, command string, err error) error {
 	d := errs.Describe(err)
 	if d == nil {
 		return errors.New("output: EmitError called with a nil error")
 	}
+	d = redactDetail(d)
 	return writeDoc(w, ErrorEnvelope{
 		SchemaVersion: SchemaVersion,
 		Command:       command,

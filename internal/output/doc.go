@@ -13,10 +13,14 @@
 // escaping off.
 //
 // Files: envelope.go (types), writer.go (Writer, EmitData, EmitError),
-// legacy.go (EmitLegacyCompatible, ADR 0021), state.go (invocation and meta
+// legacy.go (EmitLegacyCompatible, ADR 0021), redact.go (error text redaction), state.go (invocation and meta
 // process state), args.go (JSONRequestedFromArgs), render.go (RenderError).
 //
-// Layer: L0. Imports the standard library, internal/errs, internal/ui and
-// internal/compat only. It never imports cmd/, cobra or a domain package and
+// Error text is redacted before it is written (redact.go), in the envelope and
+// in the human block.
+//
+// Layer: L0. Imports the standard library, golang.org/x/term, internal/errs,
+// internal/ui, internal/compat and internal/observability (Redact; it imports
+// no other cli package). It never imports cmd/, cobra or a domain package and
 // never calls os.Exit.
 package output

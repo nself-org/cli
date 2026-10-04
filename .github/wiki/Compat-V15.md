@@ -52,5 +52,5 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 <!-- BEGIN GENERATED:gated -->
 | Ticket | v1.4 behaviour (old) | v1.5 behaviour (new) | File |
 |---|---|---|---|
-| P7-REG-02 | bare pre-contract JSON | v1 envelope | `internal/output/legacy.go` |
+| P7-REG-02 | bare pre-contract JSON | v1 envelope (NSELF_JSON_LEGACY=1 or true keeps bare JSON for one minor) | `internal/output/legacy.go` |
 <!-- END GENERATED:gated -->
