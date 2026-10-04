@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 	"time"
 )
 
@@ -55,18 +53,6 @@ func IsZeroPubKey() bool {
 		}
 	}
 	return true
-}
-
-// CacheEntry represents a cached license validation response with Ed25519
-// signature from the server.
-type CacheEntry struct {
-	KeyHash        string   `json:"key_hash"`
-	Tier           string   `json:"tier"`
-	PluginsAllowed []string `json:"plugins_allowed"`
-	FetchedAt      int64    `json:"fetched_at"`
-	ExpiresAt      int64    `json:"expires_at"`
-	Signature      string   `json:"signature"`
-	SignatureKeyID int      `json:"signature_key_id"`
 }
 
 // defaultCacheDir returns ~/.cache/nself.
@@ -186,59 +172,6 @@ func HashKey(key string) string {
 // CacheAge returns how long ago the cache was fetched.
 func (c *CacheEntry) CacheAge() time.Duration {
 	return time.Since(time.Unix(c.FetchedAt, 0))
-}
-
-// VerifySignature verifies the cache entry's Ed25519 signature against the
-// bundled public keys. It accepts the current key (keyID N) and the previous
-// key (keyID N-1) to support rotation windows.
-func (c *CacheEntry) VerifySignature() bool {
-	keys := GetPublicKeys()
-	for _, pk := range keys {
-		if c.SignatureKeyID != 0 && pk.ID != c.SignatureKeyID {
-			continue
-		}
-		sigBytes, err := hex.DecodeString(c.Signature)
-		if err != nil {
-			continue
-		}
-		// The signed payload is the JSON of the entry without the signature fields.
-		payload := c.signablePayload()
-		if ed25519.Verify(pk.Key, payload, sigBytes) {
-			return true
-		}
-	}
-	// If keyID was specified and didn't match, try all keys (rotation window).
-	if c.SignatureKeyID != 0 {
-		sigBytes, err := hex.DecodeString(c.Signature)
-		if err != nil {
-			return false
-		}
-		payload := c.signablePayload()
-		for _, pk := range keys {
-			if ed25519.Verify(pk.Key, payload, sigBytes) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// signablePayload produces the deterministic byte sequence that was signed by
-// the server. This must match the server's signing format exactly.
-//
-// Canonical format: key_hash|tier|fetched_at|expires_at|plugins_allowed_sorted_joined
-//
-// PluginsAllowed is sorted alphabetically and joined with commas before being
-// included in the payload. This prevents an attacker with home-directory write
-// access from injecting arbitrary plugin names into the cached JSON while the
-// Ed25519 signature still passes (SIEGE V03-F01).
-func (c *CacheEntry) signablePayload() []byte {
-	sorted := make([]string, len(c.PluginsAllowed))
-	copy(sorted, c.PluginsAllowed)
-	sort.Strings(sorted)
-	pluginsField := strings.Join(sorted, ",")
-	return []byte(fmt.Sprintf("%s|%s|%d|%d|%s",
-		c.KeyHash, c.Tier, c.FetchedAt, c.ExpiresAt, pluginsField))
 }
 
 // PublicKeyEntry holds a versioned Ed25519 public key.

@@ -74,7 +74,7 @@ func Validate(ctx context.Context, key string, opts *ValidatorOptions) (*Validat
 				CanProceed: true,
 				FromCache:  false,
 				Tier:       remote.Tier,
-				Plugins:    remote.Plugins,
+				Plugins:    pluginsFor(remote),
 			}, nil
 		case remoteAuthFail:
 			// 401/403 — explicit auth rejection. NEVER fail-open here.

@@ -8,12 +8,27 @@
 package license
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
 )
+
+// PingKey is a ping_api Ed25519 public key; ID is the kid in the licence JWT
+// header. The same key signs X-NSelf-License-Sig.
+type PingKey struct {
+	ID     string
+	Public ed25519.PublicKey
+}
+
+// PingKeys is the committed set of ping public keys (public data: the pair
+// behind NSELF_LICENSE_PUBKEY_HEX). A rotation adds the new kid before ping
+// signs with it. A key that fails to decode is nil and never verifies.
+var PingKeys = []PingKey{
+	{ID: "1", Public: pubKeyFromHex("0ac4c2d7ec30d23bf2be55775e7170bd24a7544bad036d0d19f2a4deb516e00c")},
+}
 
 // ProductPrefix maps key prefixes to product display names.
 type ProductPrefix struct {

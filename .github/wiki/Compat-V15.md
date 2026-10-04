@@ -52,5 +52,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 <!-- BEGIN GENERATED:gated -->
 | Ticket | v1.4 behaviour (old) | v1.5 behaviour (new) | File |
 |---|---|---|---|
+| P7-PLUG-63 | plugins field ping never sends (always empty) | plugins_allowed | `internal/license/cache_entry.go` |
+| P7-PLUG-63 | signature over a locally built payload | server signature over the raw body | `internal/license/cache_entry.go` |
 | P7-REG-02 | bare pre-contract JSON | v1 envelope (NSELF_JSON_LEGACY=1 or true keeps bare JSON for one minor) | `internal/output/legacy.go` |
 <!-- END GENERATED:gated -->
