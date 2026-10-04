@@ -40,7 +40,8 @@ func ClassFor(exitCode int) string {
 // into code, message, cause, remediation, docs link, exit status and class.
 //
 // Inputs: any error. Precedence for the code: a *CLIError's Code, else the
-// sentinel table's code for the first matching sentinel, else E400.
+// sentinel table's code for the matching sentinel of the highest class
+// (auth, then destructive, then infra, then user), else E400.
 //
 // Outputs: Message is the CLIError's What, else err.Error(). Cause and
 // Remediation are the CLIError's Why and Fix; for a sentinel-derived code
