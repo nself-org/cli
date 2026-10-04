@@ -1,0 +1,98 @@
+// Registry fragment: config codes (E050-E099). Registered from init() through
+// Register; see codes.go for the rules and codes_blocks.go for the allocation.
+package errs
+
+func init() {
+	Register(
+		CodeEntry{
+			Code:       "E050",
+			Category:   "config",
+			Summary:    "No .env file found",
+			DefaultWhy: "No .env or .env.dev file exists in the project directory.",
+			DefaultFix: "Run 'nself init' to generate a configuration file.",
+			DocsPath:   "reference/error-codes#e050",
+			Exit:       1,
+		},
+		CodeEntry{
+			Code:       "E051",
+			Category:   "config",
+			Summary:    "Invalid config key",
+			DefaultWhy: "The configuration key contains invalid characters.",
+			DefaultFix: "Config keys must contain only A-Z, 0-9, and underscores.",
+			DocsPath:   "reference/error-codes#e051",
+			Exit:       1,
+		},
+		CodeEntry{
+			Code:       "E052",
+			Category:   "config",
+			Summary:    "Config validation failed",
+			DefaultWhy: "One or more configuration values are invalid.",
+			DefaultFix: "Run 'nself config validate' to see all issues, then fix the reported values.",
+			DocsPath:   "reference/error-codes#e052",
+			Exit:       1,
+		},
+		CodeEntry{
+			Code:       "E053",
+			Category:   "config",
+			Summary:    "Weak password detected",
+			DefaultWhy: "A password field does not meet minimum length or contains insecure patterns.",
+			DefaultFix: "Use a strong, randomly generated password of at least 16 characters.",
+			DocsPath:   "reference/error-codes#e053",
+			Exit:       1,
+		},
+		CodeEntry{
+			Code:       "E054",
+			Category:   "config",
+			Summary:    "Invalid project name",
+			DefaultWhy: "Project name contains characters not allowed in Docker and DNS contexts.",
+			DefaultFix: "Use only lowercase letters, numbers, and hyphens. Must start with a letter.",
+			DocsPath:   "reference/error-codes#e054",
+			Exit:       1,
+		},
+		CodeEntry{
+			Code:       "E055",
+			Category:   "config",
+			Summary:    "Duplicate route detected",
+			DefaultWhy: "Two or more services are configured with the same nginx route.",
+			DefaultFix: "Check ROUTE values in .env and ensure each service has a unique route.",
+			DocsPath:   "reference/error-codes#e055",
+			Exit:       1,
+		},
+		CodeEntry{
+			Code:       "E056",
+			Category:   "config",
+			Summary:    "Unknown config key",
+			DefaultWhy: "The key is not recognized by nself.",
+			DefaultFix: "Check for typos. Run 'nself config list' to see all valid keys.",
+			DocsPath:   "reference/error-codes#e056",
+			Exit:       1,
+		},
+		CodeEntry{
+			Code:       "E057",
+			Category:   "config",
+			Summary:    "Insecure password pattern",
+			DefaultWhy: "A password matches a known insecure pattern such as a dictionary word, a repeated character or a default value.",
+			DefaultFix: "Replace it with a randomly generated password of at least 16 characters.",
+			DocsPath:   "reference/error-codes#e057",
+			Exit:       1,
+		},
+		CodeEntry{
+			Code:       "E058",
+			Category:   "config",
+			Summary:    "CORS wildcard not allowed in production",
+			DefaultWhy: "The CORS origin list contains a wildcard while the environment is production.",
+			DefaultFix: "List the exact origins in HASURA_GRAPHQL_CORS_DOMAIN, or use a development environment for wildcards.",
+			DocsPath:   "reference/error-codes#e058",
+			Exit:       1,
+		},
+		CodeEntry{
+			Code:       "E059",
+			Category:   "config",
+			Summary:    "Secret is empty or a placeholder",
+			DefaultWhy: "A required secret is empty or still holds a placeholder value from the template.",
+			DefaultFix: "Generate a real value and set it in .env, then run the command again.",
+			DocsPath:   "reference/error-codes#e059",
+			Exit:       1,
+		},
+	)
+}
