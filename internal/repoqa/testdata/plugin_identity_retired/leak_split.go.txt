@@ -1,0 +1,6 @@
+// Fixture for TestPluginIdentityScannerFixture. Not compiled (.txt). The name
+// is split across two literals: the scanner folds string concatenation before
+// matching. Expects 1 finding tagged secret. No real value appears here.
+package leak
+
+const envName = "PLUGIN_INTERNAL_" + "SECRET"

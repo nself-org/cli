@@ -1,0 +1,7 @@
+// Fixture for TestPluginIdentityScannerFixture. Not compiled (.txt). The names
+// are in lowercase: the scanner matches case-insensitively. Expects 2 findings
+// tagged secret. No real value appears here.
+package leak
+
+const header = "x-internal-token"
+const envName = "plugin_internal_secret"
