@@ -22,13 +22,88 @@ package commands
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/nself-org/cli/internal/httptimeout"
 )
+
+// Test seams. Production values: the system resolver, no dial hook, stderr.
+var (
+	aiLookupIP    = net.DefaultResolver.LookupIPAddr
+	aiDialContext func(ctx context.Context, network, addr string) (net.Conn, error)
+	aiWarnOut     io.Writer = os.Stderr
+	aiWarnOnce    sync.Once
+)
+
+// aiIPLocal reports whether ip is loopback or private (10/8, 172.16/12,
+// 192.168/16, fc00::/7). Docker IPv6 networks use ULA, so it is accepted on
+// purpose. Link-local, unspecified and multicast addresses are not local.
+func aiIPLocal(ip net.IP) bool {
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
+}
+
+// aiTokenHostLocal reports whether PLUGIN_INTERNAL_SECRET may be attached to a
+// request for rawURL: the scheme is http or https and the URL's hostname is
+// `localhost`, a loopback or private IP literal, or `plugin-ai` with every
+// resolved address loopback or private. Everything else, including a lookup
+// error or an empty result, is not local. url.Hostname is used, so
+// http://127.0.0.1@evil.example is judged as evil.example.
+func aiTokenHostLocal(ctx context.Context, rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return aiIPLocal(ip)
+	}
+	if host != "plugin-ai" {
+		return false
+	}
+	addrs, err := aiLookupIP(ctx, host)
+	if err != nil || len(addrs) == 0 {
+		return false
+	}
+	for _, a := range addrs {
+		if !aiIPLocal(a.IP) {
+			return false
+		}
+	}
+	return true
+}
+
+// aiTokenClient is the only client allowed to carry the token: no proxy, no
+// redirects (httptimeout.NoProxy). aiDialContext, when set, redirects dials so
+// tests can point host plugin-ai at an httptest server.
+func aiTokenClient() *http.Client {
+	c := httptimeout.NoProxy(httptimeout.Default.Timeout)
+	if aiDialContext != nil {
+		c.Transport.(*http.Transport).DialContext = aiDialContext
+	}
+	return c
+}
+
+// aiWarnTokenWithheld writes one warn line per process to aiWarnOut (stderr by
+// default). It never names the secret value, and it is not an error.
+func aiWarnTokenWithheld(rawURL string) {
+	host := ""
+	if u, err := url.Parse(rawURL); err == nil {
+		host = u.Hostname()
+	}
+	aiWarnOnce.Do(func() {
+		_, _ = fmt.Fprintf(aiWarnOut, "warn: PLUGIN_INTERNAL_SECRET not sent: PLUGIN_AI_INTERNAL_URL host %s is not a loopback or private address\n", host)
+	})
+}
 
 // ollamaBaseURL resolves where a local Ollama is listening.
 // OLLAMA_HOST is accepted without a scheme because that is how Ollama's own
@@ -66,17 +141,27 @@ func aiPluginRequest(ctx context.Context, method, path string, body []byte) ([]b
 	if body != nil {
 		rdr = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, aiPluginURL()+path, rdr)
+	base := aiPluginURL()
+	req, err := http.NewRequestWithContext(ctx, method, base+path, rdr)
 	if err != nil {
 		return nil, 0, err
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	// The secret goes only to a local daemon, through a client that never uses a
+	// proxy and never follows a redirect (D15). Any other host gets the request
+	// without the token and one stderr warning; doctor's result is unchanged.
+	client := httptimeout.Default
 	if tok := os.Getenv("PLUGIN_INTERNAL_SECRET"); tok != "" {
-		req.Header.Set("X-Internal-Token", tok)
+		if aiTokenHostLocal(ctx, base) {
+			req.Header.Set("X-Internal-Token", tok)
+			client = aiTokenClient()
+		} else {
+			aiWarnTokenWithheld(base)
+		}
 	}
-	resp, err := httptimeout.Default.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, err
 	}
