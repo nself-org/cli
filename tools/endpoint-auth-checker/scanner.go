@@ -3,9 +3,11 @@
 package main
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,16 +22,42 @@ type RouteRegistration struct {
 	Middlewares []string // function names in the middleware chain (extracted from args)
 }
 
+// skipDirs are directory names ScanDirs does not descend into below a scan
+// root: third-party and fixture code is not this repo's route surface. A root
+// that itself points into one of them (e.g. testdata/compliant_plugin) is
+// still scanned.
+var skipDirs = map[string]bool{
+	"vendor":       true,
+	"node_modules": true,
+	"testdata":     true,
+}
+
 // ScanDirs walks each directory recursively, parses all .go files,
-// and returns every route registration found.
+// and returns every route registration found. It fails closed: a directory
+// that does not exist, is not a directory, or cannot be read is an error
+// (a scan that inspects nothing must not look green). Unparseable .go files
+// are skipped.
 func ScanDirs(dirs []string) ([]RouteRegistration, error) {
 	var results []RouteRegistration
 	for _, dir := range dirs {
-		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		info, err := os.Stat(dir)
+		if err != nil {
+			return nil, fmt.Errorf("directory %q: %w", dir, err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("directory %q: not a directory", dir)
+		}
+		err = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
-				return nil // skip unreadable paths
+				return fmt.Errorf("walking %q: %w", path, err)
 			}
-			if info.IsDir() || !strings.HasSuffix(path, ".go") {
+			if d.IsDir() {
+				if path != dir && skipDirs[d.Name()] {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(path, ".go") {
 				return nil
 			}
 			routes, err := scanFile(path)

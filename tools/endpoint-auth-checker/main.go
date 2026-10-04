@@ -8,6 +8,7 @@
 //
 //	0 — no violations (or --fail-on-unknown not set)
 //	1 — one or more routes lack a recognized auth middleware
+//	2 — scan error (missing or unreadable directory)
 package main
 
 import (

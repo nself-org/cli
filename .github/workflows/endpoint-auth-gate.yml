@@ -1,33 +1,31 @@
 name: Endpoint Auth Gate
 
+# Gates the endpoint-auth-checker tool itself: unit tests plus a self-check on
+# the tool's own fixtures. cli contains no routes to scan; route-auth rules for
+# other repos belong to the plugin conformance work, not to this workflow.
+
 on:
   pull_request:
     paths:
-      - 'plugins/**'
-      - 'plugins-pro/**'
-      - 'web/backend/**'
       - 'tools/endpoint-auth-checker/**'
       - '.github/workflows/endpoint-auth-gate.yml'
   push:
     branches:
       - main
     paths:
-      - 'plugins/**'
-      - 'plugins-pro/**'
-      - 'web/backend/**'
       - 'tools/endpoint-auth-checker/**'
       - '.github/workflows/endpoint-auth-gate.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
 jobs:
   auth-gate:
     name: Endpoint Auth Gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write   # allows inline PR annotations
 
     steps:
       - uses: actions/checkout@v7
@@ -42,20 +40,26 @@ jobs:
         run: go test ./... -count=1
 
       - name: Build checker
-        run: go build -o bin/endpoint-auth-checker ./tools/endpoint-auth-checker/
+        run: go build -o "$RUNNER_TEMP/endpoint-auth-checker" ./tools/endpoint-auth-checker/
 
-      - name: Run auth gate (report-only — baseline scan)
-        # First pass: always runs in text mode so we see all violations in the log.
+      - name: Self-check compliant fixture (expect exit 0)
         run: |
-          ./bin/endpoint-auth-checker \
-            --dirs plugins/,plugins-pro/paid/,web/backend/ \
-            --annotation-format text \
-          || true
-
-      - name: Run auth gate (fail-on-unknown with GHA annotations)
-        # Second pass: emits inline PR annotations and fails CI on violations.
-        run: |
-          ./bin/endpoint-auth-checker \
-            --dirs plugins/,plugins-pro/paid/,web/backend/ \
-            --annotation-format github \
+          "$RUNNER_TEMP/endpoint-auth-checker" \
+            --dirs tools/endpoint-auth-checker/testdata/compliant_plugin/ \
             --fail-on-unknown
+
+      - name: Self-check noncompliant fixture (expect exit 1)
+        run: |
+          set +e
+          "$RUNNER_TEMP/endpoint-auth-checker" \
+            --dirs tools/endpoint-auth-checker/testdata/noncompliant_plugin/ \
+            --fail-on-unknown
+          test $? -eq 1
+
+      - name: Self-check missing directory (expect exit 2)
+        run: |
+          set +e
+          "$RUNNER_TEMP/endpoint-auth-checker" \
+            --dirs tools/endpoint-auth-checker/testdata/does-not-exist/ \
+            --fail-on-unknown
+          test $? -eq 2
