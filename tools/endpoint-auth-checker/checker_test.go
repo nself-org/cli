@@ -3,6 +3,9 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -176,6 +179,134 @@ func TestScanDirs_ExemptHealth(t *testing.T) {
 	failures := ClassifyAll(routes)
 	if len(failures) != 0 {
 		t.Errorf("expected 0 violations in exempt_health (health route should be exempt), got %d: %+v", len(failures), failures)
+	}
+}
+
+func TestScanDirs_MissingDirFailsClosed(t *testing.T) {
+	routes, err := ScanDirs([]string{"doesnotexist/"})
+	if err == nil {
+		t.Fatalf("expected an error for a missing directory, got routes %+v", routes)
+	}
+	if !strings.Contains(err.Error(), "doesnotexist") {
+		t.Errorf("error should name the path, got %q", err)
+	}
+}
+
+func TestScanDirs_MissingAmongValidDirFailsClosed(t *testing.T) {
+	if _, err := ScanDirs([]string{"testdata/compliant_plugin", "doesnotexist"}); err == nil {
+		t.Error("expected an error when any --dirs entry is missing")
+	}
+}
+
+func TestScanDirs_FileEntryFailsClosed(t *testing.T) {
+	if _, err := ScanDirs([]string{"testdata/compliant_plugin/plugin.go"}); err == nil {
+		t.Error("expected an error when a --dirs entry is a file")
+	}
+}
+
+const unauthedRoute = `package x
+
+import "net/http"
+
+func Register(mux *http.ServeMux) { mux.HandleFunc("/leak", nil) }
+`
+
+func writeGo(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(unauthedRoute), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestScanDirs_SkipsVendoredAndFixtureTrees(t *testing.T) {
+	root := t.TempDir()
+	writeGo(t, filepath.Join(root, "own", "routes.go"))
+	writeGo(t, filepath.Join(root, "vendor", "dep", "routes.go"))
+	writeGo(t, filepath.Join(root, "own", "testdata", "routes.go"))
+
+	routes, err := ScanDirs([]string{root})
+	if err != nil {
+		t.Fatalf("ScanDirs error: %v", err)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("expected only own/routes.go to be scanned, got %d routes: %+v", len(routes), routes)
+	}
+	if !strings.Contains(routes[0].File, filepath.Join("own", "routes.go")) {
+		t.Errorf("unexpected file scanned: %s", routes[0].File)
+	}
+}
+
+func TestScanDirs_RootInsideSkippedNameStillScanned(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "vendor", "dep")
+	writeGo(t, filepath.Join(root, "routes.go"))
+	routes, err := ScanDirs([]string{root})
+	if err != nil {
+		t.Fatalf("ScanDirs error: %v", err)
+	}
+	if len(routes) != 1 {
+		t.Errorf("an entry that points into vendor/ must be scanned, got %d routes", len(routes))
+	}
+}
+
+func TestScanDirs_NodeModulesIsNotSkipped(t *testing.T) {
+	// Go compiles a package at x/node_modules/y, so its routes must be seen.
+	root := t.TempDir()
+	writeGo(t, filepath.Join(root, "x", "node_modules", "y", "routes.go"))
+	routes, err := ScanDirs([]string{root})
+	if err != nil {
+		t.Fatalf("ScanDirs error: %v", err)
+	}
+	if len(routes) != 1 {
+		t.Errorf("expected the node_modules route to be scanned, got %d routes", len(routes))
+	}
+}
+
+func TestScanDirs_SymlinkRootWithoutTrailingSlashIsScanned(t *testing.T) {
+	base := t.TempDir()
+	real := filepath.Join(base, "real")
+	writeGo(t, filepath.Join(real, "routes.go"))
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	for _, entry := range []string{link, link + string(filepath.Separator)} {
+		routes, err := ScanDirs([]string{entry})
+		if err != nil {
+			t.Fatalf("ScanDirs(%q) error: %v", entry, err)
+		}
+		if len(routes) != 1 {
+			t.Errorf("ScanDirs(%q): expected 1 route through the symlink, got %d", entry, len(routes))
+		}
+	}
+}
+
+func TestScanDirs_EmptyDirFailsClosed(t *testing.T) {
+	if _, err := ScanDirs([]string{t.TempDir()}); err == nil {
+		t.Error("expected an error when no .go file is scanned in an empty directory")
+	}
+}
+
+func TestScanDirs_OnlyUnparseableOrNonGoFailsClosed(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "broken.go"), []byte("package ("), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ScanDirs([]string{root}); err == nil {
+		t.Error("expected an error when no .go file parsed")
+	}
+}
+
+func TestScanDirs_OnlyVendoredGoFailsClosed(t *testing.T) {
+	root := t.TempDir()
+	writeGo(t, filepath.Join(root, "vendor", "dep", "routes.go"))
+	if _, err := ScanDirs([]string{root}); err == nil {
+		t.Error("expected an error when every .go file is under a skipped directory")
 	}
 }
 

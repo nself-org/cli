@@ -3,9 +3,11 @@
 package main
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,27 +22,67 @@ type RouteRegistration struct {
 	Middlewares []string // function names in the middleware chain (extracted from args)
 }
 
+// skipDirs are directory names ScanDirs does not descend into below a scan
+// root: vendored and fixture code is not this repo's route surface. A root
+// that itself points into one of them (e.g. testdata/compliant_plugin) is
+// still scanned. node_modules is deliberately not listed: this is a Go-only
+// checker and the Go toolchain compiles a package at x/node_modules/y, so
+// skipping it would let real routes through.
+var skipDirs = map[string]bool{
+	"vendor":   true,
+	"testdata": true,
+}
+
 // ScanDirs walks each directory recursively, parses all .go files,
-// and returns every route registration found.
+// and returns every route registration found. It fails closed: a directory
+// that does not exist, is not a directory, or cannot be read is an error, a
+// symlinked root is resolved before walking, and a root in which no .go file
+// was parsed is an error (a scan that inspects nothing must not look green).
+// Individual .go files that fail to parse are skipped but do not count as
+// scanned.
 func ScanDirs(dirs []string) ([]RouteRegistration, error) {
 	var results []RouteRegistration
 	for _, dir := range dirs {
-		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		info, err := os.Stat(dir)
+		if err != nil {
+			return nil, fmt.Errorf("directory %q: %w", dir, err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("directory %q: not a directory", dir)
+		}
+		// WalkDir does not follow a symlink root; resolve it so a link given
+		// without a trailing slash is scanned instead of silently skipped.
+		root, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			return nil, fmt.Errorf("directory %q: %w", dir, err)
+		}
+		scanned := 0
+		err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
-				return nil // skip unreadable paths
+				return fmt.Errorf("walking %q: %w", path, err)
 			}
-			if info.IsDir() || !strings.HasSuffix(path, ".go") {
+			if d.IsDir() {
+				if path != root && skipDirs[d.Name()] {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(path, ".go") {
 				return nil
 			}
 			routes, err := scanFile(path)
 			if err != nil {
 				return nil // skip unparseable files
 			}
+			scanned++
 			results = append(results, routes...)
 			return nil
 		})
 		if err != nil {
 			return nil, err
+		}
+		if scanned == 0 {
+			return nil, fmt.Errorf("directory %q: no .go files were scanned", dir)
 		}
 	}
 	return results, nil

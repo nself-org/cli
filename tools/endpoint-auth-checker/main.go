@@ -8,6 +8,11 @@
 //
 //	0 — no violations (or --fail-on-unknown not set)
 //	1 — one or more routes lack a recognized auth middleware
+//	2 — scan error (missing or unreadable directory, or no .go file scanned)
+//
+// Scope: the tool scans only the directories it is given and skips vendor/ and
+// testdata/ below each root. Its CI workflow runs it on its own fixtures only;
+// cli's own HTTP routes are not scanned there (see the workflow header).
 package main
 
 import (
