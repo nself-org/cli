@@ -1,0 +1,54 @@
+{
+  "rows": [
+    {
+      "value": null,
+      "cli": false,
+      "sdk": false
+    },
+    {
+      "value": "",
+      "cli": false,
+      "sdk": false
+    },
+    {
+      "value": "0",
+      "cli": false,
+      "sdk": false
+    },
+    {
+      "value": "1",
+      "cli": true,
+      "sdk": true
+    },
+    {
+      "value": "true",
+      "cli": true,
+      "sdk": true
+    },
+    {
+      "value": "TRUE",
+      "cli": true,
+      "sdk": true
+    },
+    {
+      "value": "True",
+      "cli": true,
+      "sdk": true
+    },
+    {
+      "value": "yes",
+      "cli": false,
+      "sdk": false
+    },
+    {
+      "value": "on",
+      "cli": false,
+      "sdk": false
+    },
+    {
+      "value": " 1",
+      "cli": false,
+      "sdk": false
+    }
+  ]
+}
