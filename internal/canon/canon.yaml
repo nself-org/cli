@@ -1,0 +1,6 @@
+# Authored (not generated). Declared command canon (ADR 0016), the side table of
+# contract:cli.command-registry v1. Keys of `commands` are command paths without
+# the leading "nself ". Population is P7-REG-04.
+schema_version: 1
+verbs: [init, start, stop, restart, status, logs, doctor, build, reset, clean, add, remove, config, db, backup, deploy, update, license, mcp, exec]
+commands: {}

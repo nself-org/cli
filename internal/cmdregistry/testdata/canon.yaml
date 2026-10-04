@@ -1,0 +1,28 @@
+# Fixture canon for internal/cmdregistry tests (not the shipped canon).
+schema_version: 1
+verbs: [status, doctor, logs, add, hub, ghost]
+commands:
+  status:
+    canon: core
+    side_effect: read
+    exit_codes: {"2": "one or more services unhealthy"}
+    exit_codes_v15: {"10": "one or more services unhealthy"}
+  doctor:
+    canon: core
+    side_effect: read
+    flags:
+      fix: {side_effect: write}
+      ai: {side_effect: write, json: legacy}
+      install-check: {json: legacy}
+  logs: {canon: core, side_effect: read, output: stream, json: legacy}
+  add: {canon: core, side_effect: write}
+  hub: {canon: core}
+  hub get: {side_effect: read}
+  hub list: {side_effect: read}
+  oldstatus: {canon: deprecated-shim, target: status, side_effect: read}
+  deploy:
+    canon: pending
+    side_effect: remote
+    flags:
+      stream: {output: stream}
+  help: {canon: builtin, side_effect: read}
