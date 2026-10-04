@@ -1,0 +1,4 @@
+Error: [E002] start: docker daemon is not running
+  Why: The Docker daemon is not responding to commands.
+  Fix: Start Docker Desktop or run: sudo systemctl start docker
+  Docs: https://nself.org/docs/reference/error-codes#e002

@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "command": "status",
+  "data": {
+    "name": "demo",
+    "note": "<key> & value",
+    "items": [
+      "a",
+      "b"
+    ]
+  },
+  "meta": {
+    "deprecations": [
+      {
+        "old": "env list",
+        "new": "config env list",
+        "removal_at": "v1.6.0"
+      }
+    ]
+  }
+}
