@@ -175,7 +175,7 @@ The trust boundary between plugins is the deployment. Plugins in one project aut
 | `NOTIFY_INTERNAL_SECRET` | Notify plugin internal API |
 | `CLAW_WEB_SECRET` | Claw-web dashboard authentication |
 
-`PLUGIN_INTERNAL_SECRET` is generated per project by the CLI at `nself init` and in the config defaults, and stored in the project's env files. `nself build` injects it into every plugin container server-side. The secret is never sent to any nSelf service and never placed in a browser bundle. It travels only with the project's own env files to that project's deploy target.
+`PLUGIN_INTERNAL_SECRET` is generated per project by the CLI at `nself init` and in the config defaults, and stored in the project's env files. `nself build` injects it into every plugin container server-side. The secret is never sent to any nSelf service and never placed in a browser bundle. It travels with the project's own env files to that project's deploy target. One CLI client also reads it: `nself doctor` sends it as `X-Internal-Token` to the AI plugin daemon at `PLUGIN_AI_INTERNAL_URL` (default: the local daemon). That client is being restricted to local daemons in P7-PLUG-73.
 
 ping.nself.org holds no plugin identity. It registers no plugin keys and issues no plugin-to-plugin tokens. The per-plugin identity client that earlier 1.4.x CLIs shipped (it posted the secret to ping on the first install of each plugin) is removed, and a repository test keeps it from returning.
 
