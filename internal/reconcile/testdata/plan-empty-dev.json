@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "plan_id": "0ff1b24be192cd054301c155e064f6bd29a47b5a2af98f3c6eb5b85319237f60",
+  "command": "build",
+  "trigger": {
+    "kind": "build",
+    "subject": ""
+  },
+  "env": "",
+  "env_class": "dev",
+  "artifacts": [],
+  "effects": [],
+  "containers": {
+    "known": true,
+    "items": []
+  },
+  "destructive": false,
+  "destructive_reasons": [],
+  "requires_confirmation": false,
+  "empty": true
+}

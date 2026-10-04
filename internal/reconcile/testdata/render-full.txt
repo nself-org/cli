@@ -1,0 +1,17 @@
+Plan dab5c171896f (build, env prod/prod)
+Artifacts:
+  add    env .env.computed (9 lines, redacted)
+  change compose docker-compose.yml (2 lines, generated)
+  change nginx nginx/sites/api.conf (4 lines, generated, hand-edited)
+  change lock nself.lock.yaml (diff too large)
+Effects:
+  hosts /etc/hosts (add api.example.test)
+  orphan-remove nginx/sites/old.conf (no longer generated)
+Containers:
+  recreate nginx (next-start)
+  recreate redis (this-command, stateful)
+Destructive:
+  hand-edited file overwritten: nginx/sites/api.conf
+  orphan removed: nginx/sites/old.conf
+  stateful container recreated: redis
+Confirmation required: yes

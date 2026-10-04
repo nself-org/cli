@@ -1,0 +1,86 @@
+{
+  "schema_version": "1",
+  "plan_id": "dab5c171896f24ca8d91813dcc61e6f210f5e47f6456c3acefaede8d1281c9db",
+  "command": "build",
+  "trigger": {
+    "kind": "config",
+    "subject": "BASE_DOMAIN"
+  },
+  "env": "prod",
+  "env_class": "prod",
+  "artifacts": [
+    {
+      "kind": "env",
+      "path": ".env.computed",
+      "action": "add",
+      "generated": false,
+      "hand_edited": false,
+      "diff_lines": 9,
+      "redacted": true
+    },
+    {
+      "kind": "compose",
+      "path": "docker-compose.yml",
+      "action": "change",
+      "generated": true,
+      "hand_edited": false,
+      "diff_lines": 2,
+      "redacted": false
+    },
+    {
+      "kind": "nginx",
+      "path": "nginx/sites/api.conf",
+      "action": "change",
+      "generated": true,
+      "hand_edited": true,
+      "diff_lines": 4,
+      "redacted": false
+    },
+    {
+      "kind": "lock",
+      "path": "nself.lock.yaml",
+      "action": "change",
+      "generated": false,
+      "hand_edited": false,
+      "diff_lines": -1,
+      "redacted": false
+    }
+  ],
+  "effects": [
+    {
+      "kind": "hosts",
+      "target": "/etc/hosts",
+      "detail": "add api.example.test"
+    },
+    {
+      "kind": "orphan-remove",
+      "target": "nginx/sites/old.conf",
+      "detail": "no longer generated"
+    }
+  ],
+  "containers": {
+    "known": true,
+    "items": [
+      {
+        "service": "nginx",
+        "action": "recreate",
+        "stateful": false,
+        "applied_by": "next-start"
+      },
+      {
+        "service": "redis",
+        "action": "recreate",
+        "stateful": true,
+        "applied_by": "this-command"
+      }
+    ]
+  },
+  "destructive": true,
+  "destructive_reasons": [
+    "hand-edited file overwritten: nginx/sites/api.conf",
+    "orphan removed: nginx/sites/old.conf",
+    "stateful container recreated: redis"
+  ],
+  "requires_confirmation": true,
+  "empty": false
+}
