@@ -33,18 +33,18 @@ func RenderError(w io.Writer, err error) {
 		return
 	}
 	if d.Code == codeUnclassified {
-		fmt.Fprintf(w, "Error: %s\n", err.Error())
+		_, _ = fmt.Fprintf(w, "Error: %s\n", err.Error())
 		return
 	}
-	fmt.Fprintf(w, "%s %s %s\n", ui.C(ui.BrightRed, "Error:"), ui.C(ui.Bold, "["+d.Code+"]"), d.Message)
+	_, _ = fmt.Fprintf(w, "%s %s %s\n", ui.C(ui.BrightRed, "Error:"), ui.C(ui.Bold, "["+d.Code+"]"), d.Message)
 	line := func(label, text string) {
 		if text != "" {
-			fmt.Fprintf(w, "  %s %s\n", ui.C(ui.Dim, label), text)
+			_, _ = fmt.Fprintf(w, "  %s %s\n", ui.C(ui.Dim, label), text)
 		}
 	}
 	line("Why:", d.Cause)
 	line("Fix:", d.Remediation)
 	if d.DocsURL != "" {
-		fmt.Fprintf(w, "  %s %s\n", ui.C(ui.Dim, "Docs:"), ui.C(ui.Underline, d.DocsURL))
+		_, _ = fmt.Fprintf(w, "  %s %s\n", ui.C(ui.Dim, "Docs:"), ui.C(ui.Underline, d.DocsURL))
 	}
 }

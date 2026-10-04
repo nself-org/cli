@@ -36,7 +36,7 @@ func EmitLegacyCompatible(w Writer, command string, data any) error {
 		return err
 	}
 	if w.Err != nil && claimLegacyWarning() {
-		fmt.Fprintln(w.Err, legacyWarning)
+		_, _ = fmt.Fprintln(w.Err, legacyWarning) // diagnostics stream: a write failure has nowhere to go
 	}
 	return nil
 }
