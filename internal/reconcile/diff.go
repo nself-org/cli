@@ -17,7 +17,11 @@ const MaxDiffLines = 20000
 // either side carries the nself marker; hand_edited is only set on change and
 // remove (an add has nothing to overwrite); redacted is true for env-kind
 // paths. DiffLines is inserted plus deleted lines (a change of one line is 2),
-// the whole line count for add and remove, and -1 over MaxDiffLines.
+// the whole line count for add and remove, and -1 (for any action) over
+// MaxDiffLines on a side. A change whose edit distance passes maxEditDistance
+// is also -1: the count is not computed past that bound. The action of an add
+// or remove over the cap stays add/remove: it describes what happens to the
+// file, and -1 only says the size is not reported.
 func Diff(before, after ArtifactSet, handEdited func(path string) bool) []Artifact {
 	paths := make([]string, 0, len(before)+len(after))
 	for p := range before {
@@ -37,10 +41,10 @@ func Diff(before, after ArtifactSet, handEdited func(path string) bool) []Artifa
 		switch {
 		case !inBefore:
 			item.Action = ActionAdd
-			item.DiffLines = countLines(af.Data)
+			item.DiffLines = sideLines(af.Data)
 		case !inAfter:
 			item.Action = ActionRemove
-			item.DiffLines = countLines(bf.Data)
+			item.DiffLines = sideLines(bf.Data)
 		case string(bf.Data) == string(af.Data):
 			continue
 		default:
@@ -54,8 +58,18 @@ func Diff(before, after ArtifactSet, handEdited func(path string) bool) []Artifa
 	return out
 }
 
+// sideLines returns the line count of a wholly added or removed file, or -1
+// over MaxDiffLines.
+func sideLines(data []byte) int {
+	if n := countLines(data); n <= MaxDiffLines {
+		return n
+	}
+	return -1
+}
+
 // changedLines returns the inserted plus deleted line count between a and b,
-// or -1 when either side exceeds MaxDiffLines.
+// or -1 when either side exceeds MaxDiffLines or the edit distance passes
+// maxEditDistance.
 func changedLines(a, b []byte) int {
 	if countLines(a) > MaxDiffLines || countLines(b) > MaxDiffLines {
 		return -1

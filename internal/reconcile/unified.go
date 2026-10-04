@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/nself-org/cli/internal/observability"
@@ -19,10 +20,11 @@ const redactedValue = "[REDACTED]"
 // side). Outputs: "--- a/<path>", "+++ b/<path>" and hunks with three lines of
 // context, or "" when the sides are equal or either exceeds MaxDiffLines.
 // Env-kind paths (IsEnvPath) show KEY names only: every KEY=value line prints
-// as KEY=[REDACTED] and any other line passes through observability.Redact,
-// before the line is written, so no value reaches the text. When the change
-// is too large for an edit script (over maxTraceDistance changed lines) the
-// text is the two header lines and a one-line notice.
+// as KEY=[REDACTED], and the continuation lines of a multi-line or quoted value
+// print as [REDACTED] (see redactEnvLines), before the line is written, so no
+// value reaches the text. When the change is too large for an edit script (over
+// maxTraceDistance changed lines, or maxEditDistance) the text is the two
+// header lines and a one-line notice.
 func Unified(path string, a, b []byte) string {
 	if string(a) == string(b) || countLines(a) > MaxDiffLines || countLines(b) > MaxDiffLines {
 		return ""
@@ -33,39 +35,103 @@ func Unified(path string, a, b []byte) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "--- a/%s\n+++ b/%s\n", path, path)
 	if ops == nil {
-		fmt.Fprintf(&sb, "@@ diff too large to display (%d lines changed) @@\n", d)
+		if d < 0 {
+			sb.WriteString("@@ diff too large to display @@\n")
+		} else {
+			fmt.Fprintf(&sb, "@@ diff too large to display (%d lines changed) @@\n", d)
+		}
 		return sb.String()
 	}
-	show := func(l string) string { return l }
 	if IsEnvPath(path) {
-		show = redactEnvLine
+		al, bl = redactEnvLines(al), redactEnvLines(bl)
 	}
-	writeHunks(&sb, ops, al, bl, show)
+	writeHunks(&sb, ops, al, bl)
 	return sb.String()
 }
 
-// redactEnvLine renders one env-file line (with its newline, if any) so that
-// no value survives: KEY=value becomes KEY=[REDACTED]; anything else goes
-// through observability.Redact.
-func redactEnvLine(line string) string {
-	nl := ""
-	if strings.HasSuffix(line, "\n") {
-		nl, line = "\n", strings.TrimSuffix(line, "\n")
+// envKeyLine matches the start of a dotenv assignment: optional `export`, a
+// key, then "=".
+var envKeyLine = regexp.MustCompile(`^\s*(export\s+)?([A-Za-z_][A-Za-z0-9_.]*)\s*=(.*)$`)
+
+// redactEnvLines renders env-file lines (each with its newline, if any) so no
+// value survives, in order, tracking quotes across lines.
+//
+// A KEY=value line becomes KEY=[REDACTED] (export dropped). A value that opens
+// a quote it does not close on the same line (a PEM key in "..." or '...'), or
+// that ends in a backslash, continues on the next lines: every continuation
+// line is printed as [REDACTED] until the quote closes. A line that is neither
+// blank, a comment, nor an assignment and is not inside a value prints as
+// [REDACTED], because it cannot be told apart from a value fragment. Comments
+// go through observability.Redact (a comment holding "=" prints its text as
+// "<text before =>=[REDACTED]").
+func redactEnvLines(lines []string) []string {
+	out := make([]string, len(lines))
+	quote := byte(0) // open quote character, 0 when not inside a value
+	cont := false    // previous value line ended in a backslash
+	for i, line := range lines {
+		nl := ""
+		if strings.HasSuffix(line, "\n") {
+			nl, line = "\n", strings.TrimSuffix(line, "\n")
+		}
+		t := strings.TrimSpace(line)
+		switch {
+		case quote != 0:
+			if closesQuote(line, quote) {
+				quote = 0
+			}
+			out[i] = redactedValue + nl
+		case cont:
+			cont = strings.HasSuffix(t, "\\")
+			out[i] = redactedValue + nl
+		case t == "":
+			out[i] = line + nl
+		case strings.HasPrefix(t, "#"):
+			out[i] = redactComment(t) + nl
+		default:
+			m := envKeyLine.FindStringSubmatch(line)
+			if m == nil {
+				out[i] = redactedValue + nl
+				continue
+			}
+			out[i] = observability.Redact(m[2]+"="+redactedValue) + nl
+			val := strings.TrimSpace(m[3])
+			if val != "" && (val[0] == '"' || val[0] == '\'') && !closesQuote(val[1:], val[0]) {
+				quote = val[0]
+			} else if strings.HasSuffix(val, "\\") {
+				cont = true
+			}
+		}
 	}
-	t := strings.TrimSpace(line)
-	if t == "" {
-		return line + nl
+	return out
+}
+
+// closesQuote reports whether s contains the closing quote q (a double quote
+// preceded by a backslash does not close).
+func closesQuote(s string, q byte) bool {
+	for i := 0; i < len(s); i++ {
+		if q == '"' && s[i] == '\\' {
+			i++
+			continue
+		}
+		if s[i] == q {
+			return true
+		}
 	}
+	return false
+}
+
+// redactComment prints a comment line without any value: text before "=" is
+// kept with the value replaced, other text goes through observability.Redact.
+func redactComment(t string) string {
 	if i := strings.Index(t, "="); i >= 0 {
-		name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(t[:i]), "export "))
-		return observability.Redact(name+"="+redactedValue) + nl
+		return observability.Redact(strings.TrimSpace(t[:i]) + "=" + redactedValue)
 	}
-	return observability.Redact(t) + nl
+	return observability.Redact(t)
 }
 
 // writeHunks groups ops into hunks with unifiedContext lines of context and
 // writes them. Lines missing a final newline get the standard marker.
-func writeHunks(sb *strings.Builder, ops []editOp, al, bl []string, show func(string) string) {
+func writeHunks(sb *strings.Builder, ops []editOp, al, bl []string) {
 	i := 0
 	for i < len(ops) {
 		if ops[i].Tag == '=' {
@@ -90,13 +156,13 @@ func writeHunks(sb *strings.Builder, ops []editOp, al, bl []string, show func(st
 			j = k
 		}
 		stop := min(end+unifiedContext, len(ops))
-		writeHunk(sb, ops[start:stop], al, bl, show)
+		writeHunk(sb, ops[start:stop], al, bl)
 		i = stop
 	}
 }
 
 // writeHunk writes one "@@ -a,n +b,m @@" block.
-func writeHunk(sb *strings.Builder, ops []editOp, al, bl []string, show func(string) string) {
+func writeHunk(sb *strings.Builder, ops []editOp, al, bl []string) {
 	var an, bn int
 	for _, op := range ops {
 		if op.Tag != '+' {
@@ -126,7 +192,7 @@ func writeHunk(sb *strings.Builder, ops []editOp, al, bl []string, show func(str
 			tag = ' '
 		}
 		sb.WriteByte(tag)
-		sb.WriteString(show(line))
+		sb.WriteString(line)
 		if !strings.HasSuffix(line, "\n") {
 			sb.WriteString("\n\\ No newline at end of file\n")
 		}

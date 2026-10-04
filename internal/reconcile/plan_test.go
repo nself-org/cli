@@ -225,3 +225,27 @@ func TestCanonicalJSONIgnoresInputPlanIDAndNil(t *testing.T) {
 		t.Errorf("nil slices must encode as []: %s", c)
 	}
 }
+
+func TestCanonicalJSONDoesNotEscapeHTML(t *testing.T) {
+	p := Plan{Command: CmdBuild, Env: "dev", Effects: []Effect{{Kind: EffectHosts, Target: "/etc/hosts", Detail: "a<b>&c"}}}
+	if err := p.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+	canon, _ := CanonicalJSON(p)
+	pretty, _ := MarshalPlan(p)
+	for name, b := range map[string][]byte{"canonical": canon, "marshal": pretty} {
+		if !strings.Contains(string(b), `"detail":"a<b>&c"`) && !strings.Contains(string(b), `"detail": "a<b>&c"`) {
+			t.Errorf("%s JSON must carry <, > and & literally: %s", name, b)
+		}
+		if strings.Contains(string(b), `\u00`) {
+			t.Errorf("%s JSON has a \\u escape: %s", name, b)
+		}
+	}
+	if bytes.HasSuffix(canon, []byte("\n")) || !bytes.HasSuffix(pretty, []byte("\n")) {
+		t.Error("canonical form has no trailing newline; the golden form has one")
+	}
+	sum := sha256.Sum256(canon)
+	if p.PlanID != hex.EncodeToString(sum[:]) {
+		t.Error("plan_id must hash the unescaped canonical bytes")
+	}
+}

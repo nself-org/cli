@@ -13,8 +13,8 @@
 package reconcile
 
 import (
+	"fmt"
 	"sort"
-	"strings"
 )
 
 // SchemaVersion is the change-plan contract version carried in every Plan.
@@ -234,7 +234,10 @@ func (p *Plan) sortArrays() {
 		if a.Kind != b.Kind {
 			return a.Kind < b.Kind
 		}
-		return a.Action < b.Action
+		if a.Action != b.Action {
+			return a.Action < b.Action
+		}
+		return fmt.Sprint(a) < fmt.Sprint(b)
 	})
 	sort.SliceStable(p.Effects, func(i, j int) bool {
 		a, b := p.Effects[i], p.Effects[j]
@@ -251,6 +254,9 @@ func (p *Plan) sortArrays() {
 		if a.Service != b.Service {
 			return a.Service < b.Service
 		}
-		return strings.Compare(string(a.Action), string(b.Action)) < 0
+		if a.Action != b.Action {
+			return a.Action < b.Action
+		}
+		return fmt.Sprint(a) < fmt.Sprint(b)
 	})
 }
