@@ -108,10 +108,14 @@ func TestServedDirs(t *testing.T) {
 	}
 }
 
-// TestServedDirs_ExactMessage pins the readiness R13g error text.
+// TestServedDirs_ExactMessage pins the readiness R13g error text. The path is
+// built with FromSlash and the expectation from its cleaned form, so the test
+// holds on Windows where ServedRoot's Clean rewrites separators.
 func TestServedDirs_ExactMessage(t *testing.T) {
-	_, err := ServedRoot("/x/backend", "nself-web")
-	want := `cannot resolve the served nginx stack: NGINX_FRONTED_BY="nself-web" but /x/backend is not directly under a directory named "nself-web"; ` +
+	project := filepath.FromSlash("/x/backend")
+	_, err := ServedRoot(project, "nself-web")
+	want := `cannot resolve the served nginx stack: NGINX_FRONTED_BY="nself-web" but ` + filepath.Clean(project) +
+		` is not directly under a directory named "nself-web"; ` +
 		`lay the project out as "backend" under nself-web's own directory, or unset NGINX_FRONTED_BY`
 	if err == nil || err.Error() != want {
 		t.Errorf("message mismatch:\n got %v\nwant %s", err, want)
