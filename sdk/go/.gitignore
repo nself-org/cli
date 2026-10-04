@@ -31,3 +31,6 @@ go.work.sum
 .windsurf/
 .gemini/
 .codeium/
+
+# Built by `go build ./devkit/cmd/new-plugin` run from this directory.
+/new-plugin

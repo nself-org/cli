@@ -1,5 +1,12 @@
 // Package httpx provides a standardized HTTP client with sensible defaults for
 // nSelf plugins that call upstream APIs (OpenAI, Anthropic, etc.).
+//
+// SECURITY: this client has no SSRF guard. Use it only for fixed, trusted
+// upstream URLs (OpenAI, Anthropic, ...). For user-supplied or dynamically
+// built URLs, validate each URL with
+// github.com/nself-org/plugin-sdk/httpx.ValidateOutboundURL before dialing (it
+// rejects private, loopback and metadata addresses); this package does not call
+// it.
 package httpx
 
 import (
