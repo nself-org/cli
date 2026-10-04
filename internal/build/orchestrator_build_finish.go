@@ -21,6 +21,30 @@ import (
 	"github.com/nself-org/cli/internal/version"
 )
 
+// WriteAPIDocsSiteConf writes the api-docs server block (docs.<base>) to
+// api-docs.conf in the SERVED nginx sites directory and returns its path.
+//
+// Inputs: the project workdir, NGINX_FRONTED_BY (empty for a project that runs
+// its own nginx) and the rendered conf. Outputs: the written path. On a fronted
+// project the fronting stack's nginx/sites is used (D-0045, P7-LIVE-02) — the
+// tree its nginx reads; an unconfirmed layout is the same refusal build gives
+// for every other site conf. Non-fronted output is <workdir>/nginx/sites as
+// before.
+func WriteAPIDocsSiteConf(workdir, frontedBy string, conf []byte) (string, error) {
+	sitesDir, err := resolveNginxSitesDir(workdir, frontedBy)
+	if err != nil {
+		return "", fmt.Errorf("resolving nginx sites dir for api-docs: %w", err)
+	}
+	if err := os.MkdirAll(sitesDir, 0755); err != nil {
+		return "", fmt.Errorf("creating %s: %w", sitesDir, err)
+	}
+	path := filepath.Join(sitesDir, "api-docs.conf")
+	if err := os.WriteFile(path, conf, 0644); err != nil {
+		return "", fmt.Errorf("writing api-docs nginx conf: %w", err)
+	}
+	return path, nil
+}
+
 // writeFinalArtifacts runs Steps 10-12 of Build().
 func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 	// ── Step 10: Write .env.computed ────────────────────────────────
@@ -86,9 +110,8 @@ func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 
 		// Write the nginx site config (full server block, served on docs.<base>).
 		apiDocsNginxConf := apidocs.NginxConf(apiDocsCfg.Path, st.cfg.BaseDomain)
-		apiDocsConfPath := filepath.Join(st.workdir, "nginx", "sites", "api-docs.conf")
-		if err := os.WriteFile(apiDocsConfPath, []byte(apiDocsNginxConf), 0644); err != nil {
-			return nil, fmt.Errorf("writing api-docs nginx conf: %w", err)
+		if _, err := WriteAPIDocsSiteConf(st.workdir, st.cfg.Nginx.FrontedBy, []byte(apiDocsNginxConf)); err != nil {
+			return nil, err
 		}
 		// Best-effort cleanup of the legacy bare-location file, if present from a
 		// prior build with the broken layout.

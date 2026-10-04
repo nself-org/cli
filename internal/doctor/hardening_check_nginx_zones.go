@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/health"
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // nginxAuthRouteNames are the first-label server_name hostnames that
@@ -197,10 +198,13 @@ func checkHardeningNginxRateZones(ctx context.Context, projectDir string) CheckR
 	// Search <auditDir>/nginx/conf.d/, /sites/ and /nginx.conf for
 	// limit_req_zone + limit_req directives covering the auth and API
 	// surfaces.
+	// auditDir is already the served root (planNginxAudit); the one resolver
+	// (D-0045) names its nginx dir. No error is possible for an empty frontedBy.
+	auditedNginxDir, _ := nginxtopo.ServedNginxDir(auditDir, "")
 	nginxDirs := []string{
-		filepath.Join(auditDir, "nginx", "conf.d"),
-		filepath.Join(auditDir, "nginx", "sites"),
-		filepath.Join(auditDir, "nginx", "nginx.conf"),
+		filepath.Join(auditedNginxDir, "conf.d"),
+		filepath.Join(auditedNginxDir, "sites"),
+		filepath.Join(auditedNginxDir, "nginx.conf"),
 	}
 
 	hasAuthZone := false
@@ -262,10 +266,7 @@ func checkHardeningNginxRateZones(ctx context.Context, projectDir string) CheckR
 		}
 	}
 
-	// auditedNginxDir names the directory this run actually read, so the
-	// result is falsifiable — a pass/fail/warn that cannot say what it
-	// looked at is how this check stayed hollow on a fronted deployment.
-	auditedNginxDir := filepath.Join(auditDir, "nginx")
+	// auditedNginxDir (above) names what this run read, so the result is falsifiable.
 
 	switch {
 	case hasAuthZone && hasAPIZone:

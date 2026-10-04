@@ -123,7 +123,12 @@ func InjectPluginNginxRoutes(workdir, pluginDir string, cfg *config.Config) (int
 	}
 
 	count := 0
-	sitesDir := filepath.Join(workdir, "nginx", "sites")
+	// Served sites dir (D-0045): a fronted project's plugin confs must land in
+	// the fronting stack's nginx/sites, the tree its nginx actually reads.
+	sitesDir, err := resolveNginxSitesDir(workdir, cfg.Nginx.FrontedBy)
+	if err != nil {
+		return 0, err
+	}
 	if err := os.MkdirAll(sitesDir, 0755); err != nil {
 		return 0, fmt.Errorf("creating %s: %w", sitesDir, err)
 	}

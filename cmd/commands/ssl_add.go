@@ -11,8 +11,10 @@ package commands
 // with `ssl setup` (provider, email).
 // Outputs: an issued certificate installed via installIssuedCert and a
 // generated nginx server block via writeCustomDomainConf.
-// Constraints: pure move — no behavior changes. domainToFilesafe is also
-// used by ssl_install.go and ssl_renewal.go.
+// Constraints: certificate and conf go to the served nginx/ssl trees
+// (P7-LIVE-02, D-0045); the nginx test/reload run in the served stack's
+// compose project. domainToFilesafe is also used by ssl_install.go and
+// ssl_renewal.go.
 
 import (
 	"fmt"
@@ -22,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginxtopo"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -64,8 +67,21 @@ func runSSLAdd(cmd *cobra.Command, args []string) error {
 	// dashes. Writing to ssl/<dotted-domain> instead produced a cert on disk
 	// that the generated server block could never reference, so `ssl add`
 	// reported success while nginx kept serving the self-signed wildcard.
+	//
+	// Both targets are the SERVED tree (internal/nginxtopo, D-0045): a project
+	// with NGINX_FRONTED_BY set has no nginx of its own, so its certificate and
+	// custom-domain conf belong in the fronting stack's ssl/ and nginx/ dirs.
+	// Resolved before certbot runs so an unconfirmed layout fails early.
+	frontedBy := cfg.Nginx.FrontedBy
 	domainSafe := domainToFilesafe(domain)
-	certDir := filepath.Join(workdir, "ssl", "certificates", domainSafe)
+	certDir, err := servedCertDir(workdir, frontedBy, domain)
+	if err != nil {
+		return fmt.Errorf("locating the served ssl directory: %w", err)
+	}
+	servedRoot, err := nginxtopo.ServedRoot(workdir, frontedBy)
+	if err != nil {
+		return fmt.Errorf("locating the served nginx stack: %w", err)
+	}
 	if err := os.MkdirAll(certDir, 0750); err != nil {
 		return fmt.Errorf("creating cert directory: %w", err)
 	}
@@ -104,27 +120,31 @@ func runSSLAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Write the nginx server block for this custom domain.
-	if err := writeCustomDomainConf(workdir, domain, upstream); err != nil {
+	if err := writeCustomDomainConfServed(workdir, frontedBy, domain, upstream); err != nil {
 		return fmt.Errorf("writing nginx conf: %w", err)
 	}
 
 	// Validate nginx config before reloading.
 	testCmd := exec.Command("docker", "compose", "exec", "nginx", "nginx", "-t")
-	testCmd.Dir = workdir
+	testCmd.Dir = servedRoot
 	if out, testErr := testCmd.CombinedOutput(); testErr != nil {
 		return fmt.Errorf("nginx config test failed: %s", string(out))
 	}
 
 	reloadCmd := exec.Command("docker", "compose", "exec", "nginx", "nginx", "-s", "reload")
-	reloadCmd.Dir = workdir
+	reloadCmd.Dir = servedRoot
 	reloadCmd.Stdout = os.Stdout
 	reloadCmd.Stderr = os.Stderr
 	if err := reloadCmd.Run(); err != nil {
 		ui.Warn(fmt.Sprintf("Nginx reload failed: %v", err))
 	}
 
+	confDir, err := servedConfDir(workdir, frontedBy)
+	if err != nil {
+		return fmt.Errorf("locating the served nginx directory: %w", err)
+	}
 	ui.Info(fmt.Sprintf("Custom domain conf written to %s",
-		filepath.Join(workdir, "nginx", "conf.d", fmt.Sprintf("custom-%s.conf", domainSafe))))
+		filepath.Join(confDir, fmt.Sprintf("custom-%s.conf", domainSafe))))
 	ui.Success(fmt.Sprintf("Certificate provisioned for %s.", domain))
 	return nil
 }

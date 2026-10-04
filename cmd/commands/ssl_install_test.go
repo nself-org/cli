@@ -21,11 +21,16 @@ package commands
 // Constraints: No certbot, docker, or network. Pure filesystem + string checks.
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/apidocs"
+	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginxtopo"
 	"github.com/nself-org/cli/internal/ssl"
 )
 
@@ -269,3 +274,277 @@ func TestSSLAdd_CertDirMatchesNginxMountLayout(t *testing.T) {
 		})
 	}
 }
+
+// ── P7-LIVE-02: served nginx/ssl directories (D-0045) ───────────────────────
+
+// frontedFixture lays out the production shape (D-0121): a fronting stack
+// "nself-web" that owns nginx/ and ssl/, with this project in its backend/
+// subdirectory. It returns the stack root and the project directory.
+func frontedFixture(t *testing.T) (stack, project string) {
+	t.Helper()
+	stack = filepath.Join(t.TempDir(), "nself-web")
+	project = filepath.Join(stack, "backend")
+	if err := os.MkdirAll(project, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	return stack, project
+}
+
+// mustNotExist fails when path exists.
+func mustNotExist(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); err == nil {
+		t.Errorf("%s exists: a fronted project wrote into its own tree, where no nginx reads", path)
+	}
+}
+
+// TestSSLInstallFronted proves that on a fronted project every ssl/nginx write
+// `ssl add` and `build` make lands under the fronting stack, that a project
+// that runs its own nginx is unchanged, and that an unconfirmed layout is
+// refused rather than guessed.
+func TestSSLInstallFronted(t *testing.T) {
+	const domain = "my.custom.com"
+	const safe = "my-custom-com"
+
+	t.Run("certificate copy lands in the fronting stack ssl dir", func(t *testing.T) {
+		stack, project := frontedFixture(t)
+		live := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(live, domain), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"fullchain.pem", "privkey.pem"} {
+			if err := os.WriteFile(filepath.Join(live, domain, name), []byte("PEM-"+name), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		orig := letsEncryptLiveDir
+		letsEncryptLiveDir = live
+		t.Cleanup(func() { letsEncryptLiveDir = orig })
+
+		certDir, err := servedCertDir(project, "nself-web", domain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join(stack, "ssl", "certificates", safe); certDir != want {
+			t.Fatalf("servedCertDir = %s, want %s", certDir, want)
+		}
+		if err := os.MkdirAll(certDir, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := installIssuedCert(domain, certDir); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := os.ReadFile(filepath.Join(stack, "ssl", "certificates", safe, "privkey.pem")); err != nil || string(got) != "PEM-privkey.pem" {
+			t.Errorf("certificate not under the fronting stack: %v %q", err, got)
+		}
+		mustNotExist(t, filepath.Join(project, "ssl"))
+	})
+
+	t.Run("custom-domain conf lands in the fronting stack conf.d", func(t *testing.T) {
+		stack, project := frontedFixture(t)
+		if err := writeCustomDomainConfServed(project, "nself-web", domain, ""); err != nil {
+			t.Fatal(err)
+		}
+		conf := filepath.Join(stack, "nginx", "conf.d", "custom-"+safe+".conf")
+		raw, err := os.ReadFile(conf)
+		if err != nil {
+			t.Fatalf("conf not under the fronting stack: %v", err)
+		}
+		if string(raw) != goldenCustomNoUpstream {
+			t.Errorf("fronted conf differs from the non-fronted golden:\n%s", raw)
+		}
+		mustNotExist(t, filepath.Join(project, "nginx"))
+	})
+
+	t.Run("api-docs site conf lands in the fronting stack sites dir", func(t *testing.T) {
+		stack, project := frontedFixture(t)
+		got, err := build.WriteAPIDocsSiteConf(project, "nself-web", []byte(apidocs.NginxConf("/docs", "example.com")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join(stack, "nginx", "sites", "api-docs.conf"); got != want {
+			t.Fatalf("api-docs conf at %s, want %s", got, want)
+		}
+		mustNotExist(t, filepath.Join(project, "nginx"))
+	})
+
+	t.Run("plugin nginx routes land in the fronting stack sites dir", func(t *testing.T) {
+		stack, project := frontedFixture(t)
+		pluginDir := filepath.Join(t.TempDir(), "plugins")
+		if err := os.MkdirAll(filepath.Join(pluginDir, "ai", "nginx"), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(pluginDir, "ai", "nginx", "ai.conf"), []byte("# route\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg := &config.Config{}
+		cfg.Nginx.FrontedBy = "nself-web"
+		n, err := build.InjectPluginNginxRoutes(project, pluginDir, cfg)
+		if err != nil || n != 1 {
+			t.Fatalf("InjectPluginNginxRoutes = %d, %v", n, err)
+		}
+		if _, err := os.Stat(filepath.Join(stack, "nginx", "sites", "ai-ai.conf")); err != nil {
+			t.Errorf("plugin conf not under the fronting stack: %v", err)
+		}
+		mustNotExist(t, filepath.Join(project, "nginx"))
+	})
+
+	t.Run("an unconfirmed layout is refused and nothing is written", func(t *testing.T) {
+		stray := filepath.Join(t.TempDir(), "elsewhere", "backend")
+		if err := os.MkdirAll(stray, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := servedCertDir(stray, "nself-web", domain); !errors.Is(err, nginxtopo.ErrFrontingUnresolved) {
+			t.Errorf("servedCertDir err = %v, want ErrFrontingUnresolved", err)
+		}
+		if err := writeCustomDomainConfServed(stray, "nself-web", domain, ""); !errors.Is(err, nginxtopo.ErrFrontingUnresolved) {
+			t.Errorf("writeCustomDomainConfServed err = %v, want ErrFrontingUnresolved", err)
+		}
+		mustNotExist(t, filepath.Join(stray, "nginx"))
+		mustNotExist(t, filepath.Join(filepath.Dir(stray), "nginx"))
+	})
+
+	t.Run("a project that runs its own nginx writes where it always did", func(t *testing.T) {
+		project := t.TempDir()
+		certDir, err := servedCertDir(project, "", domain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join(project, "ssl", "certificates", safe); certDir != want {
+			t.Errorf("servedCertDir = %s, want %s", certDir, want)
+		}
+		for _, c := range []struct{ domain, upstream, golden string }{
+			{domain, "", goldenCustomNoUpstream},
+			{"gw.example.com", "gw-upstream:8080", goldenCustomUpstream},
+		} {
+			if err := writeCustomDomainConfServed(project, "", c.domain, c.upstream); err != nil {
+				t.Fatal(err)
+			}
+			raw, err := os.ReadFile(filepath.Join(project, "nginx", "conf.d", "custom-"+domainToFilesafe(c.domain)+".conf"))
+			if err != nil || string(raw) != c.golden {
+				t.Errorf("%s: own-nginx conf changed (err %v):\n%s", c.domain, err, raw)
+			}
+		}
+		if got := apidocs.NginxConf("/docs", "example.com"); got != goldenAPIDocsConf {
+			t.Errorf("api-docs conf changed:\n%s", got)
+		}
+		path, err := build.WriteAPIDocsSiteConf(project, "", []byte("x"))
+		if err != nil || path != filepath.Join(project, "nginx", "sites", "api-docs.conf") {
+			t.Errorf("own api-docs conf at %s, %v", path, err)
+		}
+	})
+}
+
+// goldenCustomNoUpstream, goldenCustomUpstream and goldenAPIDocsConf are the
+// bytes origin/main (5f7b73c8) rendered for the same inputs, before the two
+// hand-typed "/etc/nginx/ssl" literals moved to nginxtopo.NginxSSLContainerPath
+// (P7-LIVE-02). They pin that the move changed nothing a non-fronted project
+// sees.
+const goldenCustomNoUpstream = `# Generated by nself ssl add
+server {
+    listen 80;
+    server_name my.custom.com;
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name my.custom.com;
+
+    ssl_certificate     /etc/nginx/ssl/certificates/my-custom-com/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/certificates/my-custom-com/privkey.pem;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+
+    location / {
+        return 200 'nself custom domain — configure --upstream to proxy to a backend service';
+        add_header Content-Type text/plain;
+    }
+}
+`
+
+const goldenCustomUpstream = `# Generated by nself ssl add
+server {
+    listen 80;
+    server_name gw.example.com;
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name gw.example.com;
+
+    ssl_certificate     /etc/nginx/ssl/certificates/gw-example-com/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/certificates/gw-example-com/privkey.pem;
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+
+    location = /auth/login {
+        limit_req zone=auth_strict burst=5 nodelay;
+        proxy_pass http://gw-upstream:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /api/ {
+        limit_req zone=api burst=20 nodelay;
+        proxy_pass http://gw-upstream:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://gw-upstream:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+`
+
+const goldenAPIDocsConf = `# Generated by nself build - DO NOT EDIT MANUALLY
+# Service: docs.example.com
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name docs.example.com;
+
+    ssl_certificate /etc/nginx/ssl/certificates/example-com/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/certificates/example-com/privkey.pem;
+
+    server_tokens off;
+
+    location /api-docs {
+        alias /opt/nself/.dist/openapi.json;
+        add_header Content-Type "application/json";
+        add_header Access-Control-Allow-Origin *;
+        add_header Cache-Control "no-store";
+    }
+    location /docs {
+        alias /opt/nself/.dist/scalar.html;
+        add_header Content-Type "text/html";
+        add_header Cache-Control "no-store";
+    }
+}
+`

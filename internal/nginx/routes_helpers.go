@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // hasDomainConflict checks whether a server_name conflicts with an existing
@@ -36,9 +37,16 @@ func (g *Generator) hasDomainConflict(route, baseDomain string) bool {
 	g.seenRoutes[serverName] = true
 
 	// Check if this server_name already exists in hand-managed nginx/conf.d/ files.
+	// The served nginx dir (D-0045): a fronted project's hand-managed confs live
+	// in the fronting stack's tree. An unconfirmed fronted layout falls back to
+	// the project's own tree, as before (build refuses that layout elsewhere).
+	nginxDir, err := nginxtopo.ServedNginxDir(g.workdir, g.cfg.Nginx.FrontedBy)
+	if err != nil {
+		nginxDir, _ = nginxtopo.ServedNginxDir(g.workdir, "")
+	}
 	confDirs := []string{
-		filepath.Join(g.workdir, "nginx", "conf.d"),
-		filepath.Join(g.workdir, "nginx", fmt.Sprintf("conf.d-%s", g.cfg.Env)),
+		filepath.Join(nginxDir, "conf.d"),
+		filepath.Join(nginxDir, fmt.Sprintf("conf.d-%s", g.cfg.Env)),
 	}
 
 	for _, dir := range confDirs {
