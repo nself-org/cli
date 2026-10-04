@@ -252,6 +252,9 @@ func TestStartCmd_WithProjectDirNoDocker(t *testing.T) {
 	}
 
 	t.Chdir(dir)
+	// A stub docker first on PATH keeps the real docker (and its child
+	// processes) out of this test; see stubDockerOnPath.
+	stubDockerOnPath(t)
 
 	// Use 3-second timeout: this test intentionally hits checkDockerAvailable,
 	// which hangs on runners without Docker. Same guard as other start tests.
@@ -300,6 +303,9 @@ func TestStartCmd_WithValidProjectSetup(t *testing.T) {
 	}
 
 	t.Chdir(dir)
+	// A stub docker first on PATH keeps the real docker (and its child
+	// processes) out of this test; see stubDockerOnPath.
+	dockerLog := stubDockerOnPath(t)
 
 	// 3-second timeout: enough for checkDockerAvailable + config load, but
 	// causes docker compose up to fail quickly instead of timing out for 60s.
@@ -313,6 +319,11 @@ func TestStartCmd_WithValidProjectSetup(t *testing.T) {
 	// --no-monorepo:     avoid monorepo detection
 	root.SetArgs([]string{"start", "--no-monorepo", "--skip-build", "--skip-port-check"})
 	err := root.Execute()
+
+	// The stub must have been the docker that ran: its log is non-empty.
+	if logged, readErr := os.ReadFile(dockerLog); readErr != nil || len(logged) == 0 {
+		t.Errorf("stub docker was never invoked (log read err=%v, bytes=%d)", readErr, len(logged))
+	}
 
 	// The command must fail (no real Docker or compose network), but it must
 	// NOT fail on early-exit conditions (no project, no compose file, bad config).
@@ -348,6 +359,9 @@ func TestStartCmd_VerboseFlag(t *testing.T) {
 		t.Fatalf("writing docker-compose.yml: %v", err)
 	}
 	t.Chdir(dir)
+	// A stub docker first on PATH keeps the real docker (and its child
+	// processes) out of this test; see stubDockerOnPath.
+	stubDockerOnPath(t)
 
 	root := startCmdWithTimeout(t, 3*time.Second)
 	var buf bytes.Buffer
@@ -379,6 +393,9 @@ func TestStartCmd_FreshFlag(t *testing.T) {
 		t.Fatalf("writing docker-compose.yml: %v", err)
 	}
 	t.Chdir(dir)
+	// A stub docker first on PATH keeps the real docker (and its child
+	// processes) out of this test; see stubDockerOnPath.
+	stubDockerOnPath(t)
 
 	root := startCmdWithTimeout(t, 3*time.Second)
 	var buf bytes.Buffer
@@ -410,6 +427,9 @@ func TestStartCmd_CleanStartFlag(t *testing.T) {
 		t.Fatalf("writing docker-compose.yml: %v", err)
 	}
 	t.Chdir(dir)
+	// A stub docker first on PATH keeps the real docker (and its child
+	// processes) out of this test; see stubDockerOnPath.
+	stubDockerOnPath(t)
 
 	root := startCmdWithTimeout(t, 3*time.Second)
 	var buf bytes.Buffer
@@ -440,6 +460,9 @@ func TestStartCmd_ComposeFileNotFound(t *testing.T) {
 	}
 
 	t.Chdir(dir)
+	// A stub docker first on PATH keeps the real docker (and its child
+	// processes) out of this test; see stubDockerOnPath.
+	stubDockerOnPath(t)
 
 	// Use 3-second timeout to avoid hanging on Docker check (same as other start tests).
 	root := startCmdWithTimeout(t, 3*time.Second)
@@ -537,6 +560,9 @@ func TestStartCmd_SkipDBInitSkipsMigrationsAndReachesServiceStart(t *testing.T) 
 	}
 
 	t.Chdir(dir)
+	// A stub docker first on PATH keeps the real docker (and its child
+	// processes) out of this test; see stubDockerOnPath.
+	stubDockerOnPath(t)
 
 	root := startCmdWithTimeout(t, 3*time.Second)
 	var buf bytes.Buffer
