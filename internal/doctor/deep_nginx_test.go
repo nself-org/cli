@@ -2,6 +2,9 @@ package doctor
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,5 +58,26 @@ func TestNginxChecksSourceHasNoContainerLetsEncryptProbe(t *testing.T) {
 	}
 	if strings.Contains(string(src), "/etc/letsencrypt/"+"live") {
 		t.Fatal("deep_nginx.go still probes /etc/letsencrypt/live")
+	}
+}
+
+// TestServedCertChecksLeavesEnvAlone pins that the deep check does not leave
+// the project's .env cascade in this process's environment.
+func TestServedCertChecksLeavesEnvAlone(t *testing.T) {
+	dir := t.TempDir()
+	writeTLSProject(t, dir, "ENV=dev\nPROJECT_NAME=envleak\nSSL_MODE=local\n")
+	servedCertChecks(context.Background(), dir)
+	if got := os.Getenv("PROJECT_NAME"); got != "" {
+		t.Fatalf("PROJECT_NAME leaked into the process env: %q", got)
+	}
+}
+
+// TestDeadAddr pins which probe errors short-circuit the remaining hosts.
+func TestDeadAddr(t *testing.T) {
+	if !DeadAddr(fmt.Errorf("probe: %w", &net.OpError{Op: "dial", Err: errors.New("refused")})) {
+		t.Error("a failed dial is a dead address")
+	}
+	if DeadAddr(errors.New("tls: handshake failure")) || DeadAddr(nil) {
+		t.Error("a handshake failure or no error is not a dead address")
 	}
 }

@@ -99,7 +99,7 @@ func tlsIsolateEnv(t *testing.T) {
 // host naming certDir's fullchain.pem, and returns the ssl dir.
 func tlsStack(t *testing.T, root, port string, confs map[string]string) string {
 	t.Helper()
-	tlsWrite(t, filepath.Join(root, ".env"), "ENV=dev\nPROJECT_NAME=stack\nSSL_MODE=letsencrypt\nNGINX_BIND_IP=127.0.0.1\nNGINX_HTTPS_PORT="+port+"\n")
+	tlsWrite(t, filepath.Join(root, ".env"), "ENV=dev\nPROJECT_NAME=stack\nSSL_MODE=custom\nNGINX_BIND_IP=127.0.0.1\nNGINX_HTTPS_PORT="+port+"\n")
 	for host, certDir := range confs {
 		tlsWrite(t, filepath.Join(root, "nginx", "sites", host+".conf"), fmt.Sprintf(
 			"server {\n  listen 443 ssl;\n  server_name %s;\n  ssl_certificate /etc/nginx/ssl/certificates/%s/fullchain.pem;\n  ssl_certificate_key /etc/nginx/ssl/certificates/%s/privkey.pem;\n}\n",
@@ -141,7 +141,7 @@ func TestDoctorTLSFronted(t *testing.T) {
 	sslDir := tlsStack(t, root, port, map[string]string{"api.example.com": "example-com"})
 	tlsWrite(t, filepath.Join(sslDir, "certificates", "example-com", "fullchain.pem"), certPEM)
 	tlsWrite(t, filepath.Join(sslDir, "certificates", "example-com", "privkey.pem"), keyPEM)
-	tlsWrite(t, filepath.Join(proj, ".env"), "ENV=dev\nPROJECT_NAME=ntask\nSSL_MODE=letsencrypt\nNGINX_FRONTED_BY=nself-web\n")
+	tlsWrite(t, filepath.Join(proj, ".env"), "ENV=dev\nPROJECT_NAME=ntask\nSSL_MODE=custom\nNGINX_FRONTED_BY=nself-web\n")
 
 	d := tlsTestDeps(t)
 	var match docker.ServiceMatch
@@ -293,7 +293,7 @@ func TestDoctorTLSServedEnv(t *testing.T) {
 	_, certPEM, _ := tlsMakeCert(t, tlsDays(60), "api.example.com")
 	sslDir := tlsStack(t, root, "8443", map[string]string{"api.example.com": "example-com"})
 	tlsWrite(t, filepath.Join(sslDir, "certificates", "example-com", "fullchain.pem"), certPEM)
-	tlsWrite(t, filepath.Join(proj, ".env"), "ENV=dev\nPROJECT_NAME=ntask\nSSL_MODE=letsencrypt\nNGINX_FRONTED_BY=nself-web\nNGINX_HTTPS_PORT=1111\n")
+	tlsWrite(t, filepath.Join(proj, ".env"), "ENV=dev\nPROJECT_NAME=ntask\nSSL_MODE=custom\nNGINX_FRONTED_BY=nself-web\nNGINX_HTTPS_PORT=1111\n")
 	disk, err := ssl.ReadDiskCert(filepath.Join(sslDir, "certificates", "example-com", "fullchain.pem"))
 	if err != nil {
 		t.Fatal(err)
@@ -303,7 +303,7 @@ func TestDoctorTLSServedEnv(t *testing.T) {
 	d := tlsTestDeps(t)
 	d.probe = func(_ context.Context, addr, sni string, _ time.Duration) (ssl.ServedCert, error) {
 		dialled = addr
-		return ssl.ServedCert{Host: sni, IssuerCN: "x", NotAfter: disk.NotAfter, SHA256: disk.SHA256}, nil
+		return ssl.ServedCert{Host: sni, IssuerCN: "x", NotAfter: disk.NotAfter, SHA256: disk.SHA256, DNSNames: []string{sni}}, nil
 	}
 	before := os.Environ()
 	sort.Strings(before)
@@ -400,11 +400,17 @@ func TestDoctorTLSSkipFailures(t *testing.T) {
 // from a real nginx container and runs the check end to end. It skips only
 // when no Docker daemon is reachable.
 func TestDoctorTLSIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("docker integration test skipped in -short mode")
+	}
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker is not installed")
 	}
-	if out, err := exec.Command("docker", "info").CombinedOutput(); err != nil {
-		t.Skipf("docker daemon unavailable: %v: %s", err, strings.TrimSpace(string(out)))
+	// nginx:alpine is a Linux image: a Windows-container engine cannot run it.
+	if out, err := exec.Command("docker", "info", "--format", "{{.OSType}}").Output(); err != nil {
+		t.Skipf("docker daemon unavailable: %v", err)
+	} else if strings.TrimSpace(string(out)) != "linux" {
+		t.Skipf("docker engine is %q, not linux", strings.TrimSpace(string(out)))
 	}
 	tlsIsolateEnv(t)
 	root := t.TempDir()
@@ -470,5 +476,115 @@ func TestDoctorTLSIntegration(t *testing.T) {
 	}
 	if rep := buildDoctorReport(res); rep.Summary.Failed == 0 {
 		t.Errorf("the TLS section must fail: %+v", rep.Summary)
+	}
+}
+
+// tlsOneHost serves cert for host and returns a single-host own stack whose
+// conf names example-com's certificate; sslMode is written to the project .env.
+func tlsOneHost(t *testing.T, host, sslMode string, cert tls.Certificate, certPEM string) (string, string) {
+	t.Helper()
+	tlsIsolateEnv(t)
+	root := t.TempDir()
+	port, _ := tlsServe(t, map[string]tls.Certificate{host: cert})
+	sslDir := tlsStack(t, root, port, map[string]string{host: "example-com"})
+	tlsWrite(t, filepath.Join(sslDir, "certificates", "example-com", "fullchain.pem"), certPEM)
+	tlsWrite(t, filepath.Join(root, ".env"), "ENV=dev\nPROJECT_NAME=stack\nSSL_MODE="+sslMode+"\nNGINX_BIND_IP=127.0.0.1\nNGINX_HTTPS_PORT="+port+"\n")
+	return root, port
+}
+
+// TestDoctorTLSNameMismatch pins that a served certificate that does not
+// cover the host fails with a human-visible line (wildcards span one label).
+func TestDoctorTLSNameMismatch(t *testing.T) {
+	for _, tc := range []struct {
+		name, host string
+		sans       []string
+		wantFail   bool
+	}{
+		{"other name", "m.example.com", []string{"notthishost.example.org"}, true},
+		{"wildcard covers one label", "api.example.com", []string{"*.example.com"}, false},
+		{"wildcard does not span labels", "a.b.example.com", []string{"*.example.com"}, true},
+		{"exact san", "api.example.com", []string{"example.com", "api.example.com"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cert, certPEM, _ := tlsMakeCert(t, tlsDays(60), tc.sans...)
+			root, _ := tlsOneHost(t, tc.host, "custom", cert, certPEM)
+			res, by := tlsRun(t, root, tlsTestDeps(t))
+			r, found := by["TLS "+tc.host+" name"]
+			if tc.wantFail && (!found || r.Status != "fail" || !strings.Contains(r.Message, tc.host)) {
+				t.Fatalf("want a failing name line, got %+v", res)
+			}
+			if !tc.wantFail && found {
+				t.Fatalf("unexpected name line %+v", r)
+			}
+		})
+	}
+}
+
+// TestDoctorTLSChain pins that a chain that does not verify warns under
+// SSL_MODE=letsencrypt and stays detail-only for custom certificates.
+func TestDoctorTLSChain(t *testing.T) {
+	cert, certPEM, _ := tlsMakeCert(t, tlsDays(60), "api.example.com")
+	root, _ := tlsOneHost(t, "api.example.com", "letsencrypt", cert, certPEM)
+	if _, by := tlsRun(t, root, tlsTestDeps(t)); by["TLS api.example.com chain"].Status != "warn" {
+		t.Fatalf("letsencrypt + unverifiable chain must warn: %+v", by)
+	}
+	root, _ = tlsOneHost(t, "api.example.com", "custom", cert, certPEM)
+	res, by := tlsRun(t, root, tlsTestDeps(t))
+	if len(res) != 1 || by["TLS api.example.com"].Detail == "" {
+		t.Fatalf("custom: one line with the chain error in detail, got %+v", res)
+	}
+}
+
+// TestDoctorTLSOwnStackCascade pins that the own stack's address comes from
+// the full env cascade (.env.local beats .env), as compose publishes it.
+func TestDoctorTLSOwnStackCascade(t *testing.T) {
+	cert, certPEM, _ := tlsMakeCert(t, tlsDays(60), "api.example.com")
+	root, port := tlsOneHost(t, "api.example.com", "custom", cert, certPEM)
+	tlsWrite(t, filepath.Join(root, ".env"), "ENV=dev\nPROJECT_NAME=stack\nSSL_MODE=custom\nNGINX_BIND_IP=127.0.0.1\nNGINX_HTTPS_PORT=1\n")
+	tlsWrite(t, filepath.Join(root, ".env.local"), "NGINX_HTTPS_PORT="+port+"\n")
+	if _, by := tlsRun(t, root, tlsTestDeps(t)); by["TLS api.example.com"].Status != "pass" {
+		t.Fatalf(".env.local's port must win: %+v", by)
+	}
+}
+
+// TestDoctorTLSDeadAddress pins that a dead address is dialled once, not once
+// per host.
+func TestDoctorTLSDeadAddress(t *testing.T) {
+	tlsIsolateEnv(t)
+	root := t.TempDir()
+	tlsStack(t, root, "9", map[string]string{"a.example.com": "x", "b.example.com": "x", "c.example.com": "x"})
+	var dials int32
+	d := tlsTestDeps(t)
+	d.probe = func(ctx context.Context, addr, sni string, to time.Duration) (ssl.ServedCert, error) {
+		atomic.AddInt32(&dials, 1)
+		return ssl.ServedCert{}, &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("refused")}
+	}
+	res, _ := tlsRun(t, root, d)
+	if dials != 1 || len(res) != 3 {
+		t.Fatalf("dials = %d (want 1), results = %d (want 3 failures)", dials, len(res))
+	}
+	for _, r := range res {
+		if r.Status != "fail" || !strings.Contains(r.Message, "127.0.0.1:9") {
+			t.Errorf("got %+v", r)
+		}
+	}
+}
+
+// TestDoctorTLSBadConf pins that one unreadable conf warns and the other hosts
+// are still checked, and that an http-level ssl_certificate is inherited.
+func TestDoctorTLSBadConf(t *testing.T) {
+	cert, certPEM, _ := tlsMakeCert(t, tlsDays(60), "api.example.com")
+	root, _ := tlsOneHost(t, "api.example.com", "custom", cert, certPEM)
+	if err := os.MkdirAll(filepath.Join(root, "nginx", "sites", "broken.conf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res, by := tlsRun(t, root, tlsTestDeps(t))
+	if by["TLS conf"].Status != "warn" || by["TLS api.example.com"].Status != "pass" || len(res) != 2 {
+		t.Fatalf("want a conf warning plus the healthy host, got %+v", res)
+	}
+	tlsWrite(t, filepath.Join(root, "nginx", "conf.d", "inherit.conf"),
+		"ssl_certificate /etc/nginx/ssl/certificates/example-com/fullchain.pem;\nserver { listen 443 ssl; server_name inh.example.com; }\n")
+	if _, by = tlsRun(t, root, tlsTestDeps(t)); by["TLS inh.example.com"].Name == "" {
+		t.Fatalf("an inherited ssl_certificate must not drop the host: %+v", by)
 	}
 }

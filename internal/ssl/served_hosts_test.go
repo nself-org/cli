@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -92,10 +93,11 @@ http {
 		t.Fatal(err)
 	}
 	want := map[string]string{
-		"api.example.com":  "/etc/nginx/ssl/certificates/example-com/fullchain.pem",
-		"auth.example.com": "/etc/nginx/ssl/certificates/example-com/fullchain.pem",
-		"dup.example.com":  "/etc/nginx/ssl/other.pem",
-		"hand.example.com": "/etc/nginx/ssl/hand/fullchain.pem",
+		"api.example.com":    "/etc/nginx/ssl/certificates/example-com/fullchain.pem",
+		"auth.example.com":   "/etc/nginx/ssl/certificates/example-com/fullchain.pem",
+		"dup.example.com":    "/etc/nginx/ssl/other.pem",
+		"hand.example.com":   "/etc/nginx/ssl/hand/fullchain.pem",
+		"nocert.example.com": "", // listens on 443 but names no certificate (include?)
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ServedHosts = %v\nwant %v", got, want)
@@ -203,5 +205,65 @@ func TestServedEnvAndAddr(t *testing.T) {
 	}
 	if got := ServedAddr(map[string]string{"NGINX_BIND_IP": "::", "NGINX_HTTPS_PORT": " 8443 "}); got != "127.0.0.1:8443" {
 		t.Fatalf("got %s", got)
+	}
+}
+
+// TestServedHostsInheritedAndPartial pins an inherited ssl_certificate, a host
+// whose block names none, and that one unreadable file hides nothing else.
+func TestServedHostsInheritedAndPartial(t *testing.T) {
+	nginx := t.TempDir()
+	writeFile(t, filepath.Join(nginx, "conf.d", "a.conf"), `
+ssl_certificate /etc/nginx/ssl/shared.pem;
+server { listen 443 ssl; server_name inherits.example.com; }
+server { listen 443 ssl; server_name own.example.com; ssl_certificate /etc/nginx/ssl/own.pem; }
+`)
+	writeFile(t, filepath.Join(nginx, "conf.d", "b.conf"), `
+http { ssl_certificate /etc/nginx/ssl/http.pem; server { listen 443 ssl; server_name http.example.com; } }
+server { listen 443 ssl; include /etc/nginx/extra.conf; server_name none.example.com; }
+`)
+	if err := os.MkdirAll(filepath.Join(nginx, "sites", "broken.conf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ServedHosts(nginx)
+	if err == nil {
+		t.Error("the unreadable conf must be reported")
+	}
+	want := map[string]string{
+		"inherits.example.com": "/etc/nginx/ssl/shared.pem",
+		"own.example.com":      "/etc/nginx/ssl/own.pem",
+		"http.example.com":     "/etc/nginx/ssl/http.pem",
+		"none.example.com":     "", // names none, and b.conf sets none at file level
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v\nwant %v", got, want)
+	}
+}
+
+// TestServedHostsDeepNesting pins that absurd nesting neither crashes nor
+// hides a server that follows it.
+func TestServedHostsDeepNesting(t *testing.T) {
+	nginx := t.TempDir()
+	writeFile(t, filepath.Join(nginx, "sites", "deep.conf"),
+		strings.Repeat("{ ", 200000)+strings.Repeat("} ", 200000)+
+			"server { listen 443; server_name ok.example.com; ssl_certificate /etc/nginx/ssl/ok.pem; }")
+	got, err := ServedHosts(nginx)
+	if err != nil || got["ok.example.com"] != "/etc/nginx/ssl/ok.pem" {
+		t.Fatalf("got %v, %v", got, err)
+	}
+}
+
+// TestServedEnvAliases pins that ENV=production reads .env.prod, as config does.
+func TestServedEnvAliases(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".env"), "ENV=production\n")
+	writeFile(t, filepath.Join(root, ".env.prod"), "NGINX_HTTPS_PORT=18446\n")
+	env, err := ServedEnv(root, "")
+	if err != nil || ServedAddr(env) != "127.0.0.1:18446" {
+		t.Fatalf("addr %s, err %v", ServedAddr(env), err)
+	}
+	bare := t.TempDir()
+	writeFile(t, filepath.Join(bare, ".env.staging"), "NGINX_HTTPS_PORT=18447\n")
+	if env, err = ServedEnv(bare, "Stage"); err != nil || ServedAddr(env) != "127.0.0.1:18447" {
+		t.Fatalf("fallback alias: %s, %v", ServedAddr(env), err)
 	}
 }

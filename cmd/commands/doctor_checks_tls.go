@@ -17,6 +17,7 @@ package commands
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"math"
@@ -27,8 +28,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/doctor"
 	"github.com/nself-org/cli/internal/nginxtopo"
 	"github.com/nself-org/cli/internal/ssl"
 	"github.com/nself-org/cli/internal/ui"
@@ -72,7 +73,7 @@ func printTLS(status, name, msg string, verbose bool) {
 
 // checkServedCertificatesWith is checkServedCertificates with injectable seams.
 func checkServedCertificatesWith(ctx context.Context, projectDir string, verbose bool, d tlsDeps) []doctorCheckResult {
-	cfg, err := loadConfigIsolated(projectDir)
+	cfg, err := doctor.LoadConfigIsolated(projectDir)
 	if err != nil {
 		return tlsSkip(verbose, "cannot load config: %v", err)
 	}
@@ -94,39 +95,37 @@ func checkServedCertificatesWith(ctx context.Context, projectDir string, verbose
 	case err != nil:
 		return tlsSkip(verbose, "cannot look for the nginx container: %v", err)
 	}
-	sslDir := filepath.Join(root, "ssl")
-	hosts, err := ssl.ServedHosts(filepath.Join(root, "nginx"))
-	if err != nil {
-		return tlsSkip(verbose, "cannot read nginx confs: %v", err)
+	hosts, herr := ssl.ServedHosts(filepath.Join(root, "nginx"))
+	var out []doctorCheckResult
+	if herr != nil {
+		out = tlsResult(verbose, "TLS conf", "warn", "some nginx confs were not read, their hosts are not checked: "+herr.Error())
 	}
 	if len(hosts) == 0 {
+		if herr != nil {
+			return out
+		}
 		return tlsSkip(verbose, "no TLS server_name found in %s", filepath.Join(root, "nginx"))
 	}
-	env, err := ssl.ServedEnv(root, cfg.Env)
-	if err != nil {
-		return tlsSkip(verbose, "cannot read the served stack's env: %v", err)
-	}
+	var env map[string]string
 	if filepath.Clean(root) == filepath.Clean(projectDir) {
-		// Own stack: fill what the two env files do not set from the full cascade.
-		_, https := env["NGINX_HTTPS_PORT"]
-		_, legacy := env["NGINX_SSL_PORT"]
-		if !https && !legacy && cfg.Nginx.SSLPort > 0 {
+		// Own stack: compose publishes the full cascade's port and bind IP.
+		env = map[string]string{"NGINX_BIND_IP": cfg.Nginx.BindIP}
+		if cfg.Nginx.SSLPort > 0 {
 			env["NGINX_HTTPS_PORT"] = strconv.Itoa(cfg.Nginx.SSLPort)
 		}
-		if _, ok := env["NGINX_BIND_IP"]; !ok {
-			env["NGINX_BIND_IP"] = cfg.Nginx.BindIP
-		}
+	} else if env, err = ssl.ServedEnv(root, cfg.Env); err != nil {
+		return tlsSkip(verbose, "cannot read the served stack's env: %v", err)
 	}
-	addr := ssl.ServedAddr(env)
+	pr := &tlsProber{d: d, verbose: verbose, container: container, addr: ssl.ServedAddr(env),
+		sslDir: filepath.Join(root, "ssl"), letsencrypt: cfg.SSLMode == "letsencrypt"}
 
 	names := make([]string, 0, len(hosts))
 	for h := range hosts {
 		names = append(names, h)
 	}
 	sort.Strings(names)
-	var out []doctorCheckResult
 	for _, h := range names {
-		out = append(out, checkHostCert(ctx, d, verbose, container, addr, h, hosts[h], sslDir)...)
+		out = append(out, pr.check(ctx, h, hosts[h])...)
 	}
 	return out
 }
@@ -137,14 +136,32 @@ func tlsResult(verbose bool, name, status, msg string) []doctorCheckResult {
 	return []doctorCheckResult{{Name: name, Status: status, Message: msg}}
 }
 
-// checkHostCert probes one host and compares the served certificate with the
-// file its conf names and with any newer certificate known on the host.
-func checkHostCert(ctx context.Context, d tlsDeps, verbose bool, container, addr, host, confCert, sslDir string) []doctorCheckResult {
-	name := "TLS " + host
-	served, err := d.probe(ctx, addr, host, tlsProbeTimeout)
+// tlsProber probes the hosts of one served stack on one address.
+type tlsProber struct {
+	d           tlsDeps
+	verbose     bool
+	container   string
+	addr        string
+	sslDir      string
+	letsencrypt bool  // SSL_MODE=letsencrypt: a chain that does not verify is a warning
+	dead        error // first dial failure; later hosts fail without dialling again
+}
+
+// check probes one host and compares the served certificate with the host
+// name, the file its conf names and any newer certificate known on the host.
+func (p *tlsProber) check(ctx context.Context, host, confCert string) []doctorCheckResult {
+	name, v := "TLS "+host, p.verbose
+	var served ssl.ServedCert
+	err := p.dead
+	if err == nil {
+		served, err = p.d.probe(ctx, p.addr, host, tlsProbeTimeout)
+		if doctor.DeadAddr(err) {
+			p.dead = err
+		}
+	}
 	if err != nil {
-		return tlsResult(verbose, name, "fail",
-			fmt.Sprintf("nginx container %s is running but %s did not answer a TLS handshake: %v", container, addr, err))
+		return tlsResult(v, name, "fail",
+			fmt.Sprintf("nginx container %s is running but %s did not answer a TLS handshake: %v", p.container, p.addr, err))
 	}
 	days := int(math.Floor(time.Until(served.NotAfter).Hours() / 24))
 	status := string(ssl.Classify(days))
@@ -155,60 +172,50 @@ func checkHostCert(ctx context.Context, d tlsDeps, verbose bool, container, addr
 	if issuer == "" {
 		issuer = "unknown issuer"
 	}
-	msg := fmt.Sprintf("%s expires %s (%d days)", issuer, served.NotAfter.UTC().Format("2006-01-02"), days)
+	servedDay := served.NotAfter.UTC().Format("2006-01-02")
+	msg := fmt.Sprintf("%s expires %s (%d days)", issuer, servedDay, days)
 	if days < 0 {
 		msg += " EXPIRED"
 	}
-	res := tlsResult(verbose, name, status, msg)
-	if served.ChainErr != "" {
-		// Reported, not judged: a private CA or a missing system root store is not a stale certificate.
-		res[0].Detail = "chain not verified: " + served.ChainErr
-		if verbose {
-			fmt.Fprintf(os.Stderr, "      %s\n", res[0].Detail)
+	res := tlsResult(v, name, status, msg)
+
+	// The leaf must cover the host (RFC 6125: a wildcard spans one label). The
+	// verdict does not match on ssl.ServedCert.ChainErr text, which differs per platform.
+	if (&x509.Certificate{DNSNames: served.DNSNames}).VerifyHostname(host) != nil {
+		res = append(res, tlsResult(v, name+" name", "fail", fmt.Sprintf(
+			"served certificate covers [%s], not %s: clients will reject it", strings.Join(served.DNSNames, " "), host))...)
+	} else if served.ChainErr != "" {
+		// Not judged for custom certificates: a private CA is not a broken chain.
+		detail := "chain not verified: " + served.ChainErr
+		if p.letsencrypt {
+			res = append(res, tlsResult(v, name+" chain", "warn", detail+" (serve fullchain.pem, not cert.pem)")...)
+		} else {
+			res[0].Detail = detail
+			fmt.Fprintf(os.Stderr, "      %s\n", detail)
 		}
 	}
 
-	if disk, ok := ssl.DiskCertFor(sslDir, confCert); ok {
+	switch disk, mapped := ssl.DiskCertFor(p.sslDir, confCert); {
+	case confCert == "":
+		res = append(res, tlsResult(v, name+" disk", "warn",
+			"no ssl_certificate found for this host in the nginx confs (include?): served vs disk not checked")...)
+	case !mapped:
+	default:
 		dc, derr := ssl.ReadDiskCert(disk)
 		switch {
 		case derr != nil:
-			res = append(res, tlsResult(verbose, name+" disk", "warn",
-				fmt.Sprintf("cannot read %s (ssl_certificate %s in %s): %v", disk, confCert, sslDir, derr))...)
+			res = append(res, tlsResult(v, name+" disk", "warn", fmt.Sprintf(
+				"cannot read %s (ssl_certificate %s in %s): %v; nginx -t fails on the next reload", disk, confCert, p.sslDir, derr))...)
 		case dc.SHA256 != served.SHA256:
-			res = append(res, tlsResult(verbose, name+" disk", "warn",
-				fmt.Sprintf("served certificate differs from %s in %s (served expires %s, file expires %s); reload nginx",
-					disk, sslDir, served.NotAfter.UTC().Format("2006-01-02"), dc.NotAfter.UTC().Format("2006-01-02")))...)
+			res = append(res, tlsResult(v, name+" disk", "warn", fmt.Sprintf(
+				"served certificate differs from %s in %s (served expires %s, file expires %s); reload nginx",
+				disk, p.sslDir, servedDay, dc.NotAfter.UTC().Format("2006-01-02")))...)
 		}
 	}
-	if nk, ok := ssl.NewestKnownCert(sslDir, host, d.letsencryptDir); ok && nk.NotAfter.After(served.NotAfter) && nk.SHA256 != served.SHA256 {
-		res = append(res, tlsResult(verbose, name+" renewal", "warn",
-			fmt.Sprintf("renewed but not installed: %s expires %s, served certificate expires %s; install/reload it into %s and reload nginx",
-				nk.Path, nk.NotAfter.UTC().Format("2006-01-02"), served.NotAfter.UTC().Format("2006-01-02"), sslDir))...)
+	if nk, ok := ssl.NewestKnownCert(p.sslDir, host, p.d.letsencryptDir); ok && nk.NotAfter.After(served.NotAfter) && nk.SHA256 != served.SHA256 {
+		res = append(res, tlsResult(v, name+" renewal", "warn", fmt.Sprintf(
+			"renewed but not installed: %s expires %s, served certificate expires %s; install/reload it into %s and reload nginx",
+			nk.Path, nk.NotAfter.UTC().Format("2006-01-02"), servedDay, p.sslDir))...)
 	}
 	return res
-}
-
-// loadConfigIsolated is config.Load for the project with the process
-// environment put back afterwards: Load overlays the .env cascade onto it, and
-// a check must not change what later code sees.
-func loadConfigIsolated(dir string) (*config.Config, error) {
-	saved := map[string]string{}
-	for _, kv := range os.Environ() {
-		if k, v, ok := strings.Cut(kv, "="); ok && k != "" {
-			saved[k] = v
-		}
-	}
-	defer func() {
-		for _, kv := range os.Environ() {
-			if k, _, ok := strings.Cut(kv, "="); ok && k != "" {
-				if _, keep := saved[k]; !keep {
-					_ = os.Unsetenv(k)
-				}
-			}
-		}
-		for k, v := range saved {
-			_ = os.Setenv(k, v)
-		}
-	}()
-	return config.Load(dir)
 }

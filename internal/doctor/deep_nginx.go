@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -61,7 +63,7 @@ func servedCertChecks(ctx context.Context, projectDir string) []CheckResult {
 		return []CheckResult{{Section: "nginx", Name: "Served TLS", Status: "skip",
 			Message: fmt.Sprintf("skipped (%s)", fmt.Sprintf(format, a...))}}
 	}
-	cfg, err := config.Load(projectDir)
+	cfg, err := LoadConfigIsolated(projectDir)
 	if err != nil {
 		return skip("cannot load config: %v", err)
 	}
@@ -84,8 +86,8 @@ func servedCertChecks(ctx context.Context, projectDir string) []CheckResult {
 	if err != nil {
 		return skip("cannot look for the nginx container: %v", err)
 	}
-	hosts, err := ssl.ServedHosts(filepath.Join(root, "nginx"))
-	if err != nil || len(hosts) == 0 {
+	hosts, herr := ssl.ServedHosts(filepath.Join(root, "nginx"))
+	if len(hosts) == 0 {
 		return skip("no TLS server_name readable in %s", filepath.Join(root, "nginx"))
 	}
 	env, err := ssl.ServedEnv(root, cfg.Env)
@@ -99,13 +101,28 @@ func servedCertChecks(ctx context.Context, projectDir string) []CheckResult {
 	}
 	sort.Strings(names)
 	var results []CheckResult
+	if herr != nil {
+		results = append(results, CheckResult{Section: "nginx", Name: "Served TLS", Status: "warn",
+			Message: fmt.Sprintf("some nginx confs were not read, their hosts are not checked: %v", herr)})
+	}
+	var dead error // first dial failure: the address is down, do not wait again per host
 	for _, h := range names {
 		name := "SSL expiry: " + h
-		cert, perr := ssl.ProbeServed(ctx, addr, h, 5*time.Second)
+		var cert ssl.ServedCert
+		perr := dead
+		if perr == nil {
+			cert, perr = ssl.ProbeServed(ctx, addr, h, 5*time.Second)
+			if DeadAddr(perr) {
+				dead = perr
+			}
+		}
 		if perr != nil {
 			results = append(results, CheckResult{Section: "nginx", Name: name, Status: "fail",
 				Message: fmt.Sprintf("nginx is running but %s did not answer a TLS handshake: %v", addr, perr)})
 			continue
+		}
+		if cert.IssuerCN == "" {
+			cert.IssuerCN = "unknown issuer"
 		}
 		days := int(math.Floor(time.Until(cert.NotAfter).Hours() / 24))
 		status := string(ssl.Classify(days))
@@ -116,6 +133,39 @@ func servedCertChecks(ctx context.Context, projectDir string) []CheckResult {
 			Message: fmt.Sprintf("%s expires %s (%d days)", cert.IssuerCN, cert.NotAfter.UTC().Format("2006-01-02"), days)})
 	}
 	return results
+}
+
+// DeadAddr reports whether a probe error means the address itself is down (a
+// failed dial or a timeout), so every other host on it would fail the same way.
+func DeadAddr(err error) bool {
+	var ne net.Error
+	var oe *net.OpError
+	return err != nil && ((errors.As(err, &ne) && ne.Timeout()) || (errors.As(err, &oe) && oe.Op == "dial"))
+}
+
+// LoadConfigIsolated is config.Load for the project with the process
+// environment put back afterwards: Load overlays the .env cascade onto it, and
+// a check must not change what later code sees.
+func LoadConfigIsolated(dir string) (*config.Config, error) {
+	saved := map[string]string{}
+	for _, kv := range os.Environ() {
+		if k, v, ok := strings.Cut(kv, "="); ok && k != "" {
+			saved[k] = v
+		}
+	}
+	defer func() {
+		for _, kv := range os.Environ() {
+			if k, _, ok := strings.Cut(kv, "="); ok && k != "" {
+				if _, keep := saved[k]; !keep {
+					_ = os.Unsetenv(k)
+				}
+			}
+		}
+		for k, v := range saved {
+			_ = os.Setenv(k, v)
+		}
+	}()
+	return config.Load(dir)
 }
 
 // SSLChecks verifies LE renewal cron, last renewal, OCSP stapling.
