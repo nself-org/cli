@@ -1,0 +1,10 @@
+// Fixture for TestPluginIdentityScannerFixture. Not compiled (.txt): it holds
+// one occurrence of each retired literal so the scanner cannot pass vacuously.
+// No real value appears here.
+package leak
+
+const registerPath = "https://ping.invalid/plugin/identity/register"
+const tokenPath = "https://ping.invalid/plugin/token"
+const secretHeader = "X-Plugin-Internal-Secret"
+const issuerEnv = "PLUGIN_TOKEN_ISSUER"
+const keyFile = "identity.key"

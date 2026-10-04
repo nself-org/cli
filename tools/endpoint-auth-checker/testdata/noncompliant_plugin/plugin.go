@@ -7,7 +7,7 @@ import (
 
 func registerRoutes(r interface{ Handle(string, ...interface{}) }) {
 	// This route is properly protected.
-	r.Handle("/api/safe", RequirePluginJWT, handleSafe)
+	r.Handle("/api/safe", RequireUserJWT, handleSafe)
 	// This route has NO auth middleware — should trigger a violation.
 	r.Handle("/api/leak", handleLeak)
 }
@@ -15,5 +15,5 @@ func registerRoutes(r interface{ Handle(string, ...interface{}) }) {
 func handleSafe(w http.ResponseWriter, r *http.Request) {}
 func handleLeak(w http.ResponseWriter, r *http.Request) {}
 
-// RequirePluginJWT is a stub middleware that satisfies the plugin JWT auth contract.
-func RequirePluginJWT(next http.Handler) http.Handler { return next }
+// RequireUserJWT is a stub middleware that satisfies the user JWT auth contract.
+func RequireUserJWT(next http.Handler) http.Handler { return next }
