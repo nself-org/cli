@@ -4,7 +4,9 @@
 
 ---
 
-Every container image the CLI generates or runs comes from one file: `internal/compose/images.yaml` (authored), compiled into `internal/compose/images.lock.json` (generated, embedded in the binary). No other Go file may spell an image reference; a scan test (`internal/compose/images_literal_scan_test.go`) fails the build if one appears.
+Every container image the generated compose files and the CLI's own tools (ACME client, admin pull, monitoring fragments) use comes from one file: `internal/compose/images.yaml` (authored), compiled into `internal/compose/images.lock.json` (generated, embedded in the binary). A scan test (`internal/compose/images_literal_scan_test.go`) fails the build when a non-test Go file under `internal/` or `cmd/` spells an image reference as a single string literal.
+
+What the scan does not see: literals assembled from parts (for example `"postgres:" + version`, tracked as debt D-0213), Dockerfile templates inside raw strings (scaffold output), `tools/`, untagged repository strings, and the dead `docker-compose.monitoring.yml`. Three allowlisted tool images remain (plugin author tool, CI job image, controlplane test harness).
 
 ## The lock
 
@@ -30,6 +32,8 @@ A `*_VERSION` key in the env cascade is an explicit override and is used as give
 | unset, or equal to the lock version (`REDIS_VERSION=7-alpine`) | `docker.io/library/redis:7-alpine@sha256:...` | `redis:7-alpine` |
 | any other value (`REDIS_VERSION=6.2-alpine`) | `redis:6.2-alpine` (no digest) | `redis:6.2-alpine` |
 | `POSTGRES_IMAGE` / `CS_N_IMAGE` | used as given | used as given |
+
+An `IMAGE_PINNING` value other than `lock` or `legacy` (case ignored) is an error: `nself build` and every command that loads the config refuse to run rather than fall back silently.
 
 A project digest file written by `nself update images` (`.nself-image-digests.json`) still applies to unpinned references; a lock reference already carries its digest and is left alone.
 

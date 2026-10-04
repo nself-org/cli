@@ -9,7 +9,9 @@ package compose
 // Constraints: no network; the lock is the committed file.
 
 import (
+	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -267,5 +269,47 @@ func TestDefaultImagePostgresIsPgvector(t *testing.T) {
 	setMode(t, PinningLegacy)
 	if got := DefaultImage("postgres"); got != "pgvector/pgvector:pg16" {
 		t.Errorf("DefaultImage(postgres) = %q, want the pre-lock pgvector pin", got)
+	}
+}
+
+// TestEveryImageNameLiteralIsLocked: ImageRef returns "" for an unknown name,
+// so every name literal handed to ImageRef or LockedRef in non-test Go must
+// exist in the lock, including paths no fixture exercises (tempo, otel).
+func TestEveryImageNameLiteralIsLocked(t *testing.T) {
+	re := regexp.MustCompile(`(?:ImageRef|LockedRef|DefaultImage|ResolveImage)\("([a-z0-9-]+)"`)
+	seen := 0
+	for _, root := range []string{"../../internal", "../../cmd"} {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return err
+			}
+			b, rerr := os.ReadFile(path)
+			if rerr != nil {
+				return rerr
+			}
+			var code []string
+			for _, line := range strings.Split(string(b), "\n") {
+				if !strings.HasPrefix(strings.TrimSpace(line), "//") {
+					code = append(code, line)
+				}
+			}
+			for _, m := range re.FindAllStringSubmatch(strings.Join(code, "\n"), -1) {
+				seen++
+				name := m[1]
+				if name == "postgres" && strings.Contains(m[0], "DefaultImage") {
+					continue // aliased to the pgvector entry
+				}
+				if _, ok := LockedRef(name); !ok {
+					t.Errorf("%s passes %q, which is not a lock entry", path, name)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if seen < 15 {
+		t.Errorf("found only %d name literals; the pattern drifted from the call sites", seen)
 	}
 }

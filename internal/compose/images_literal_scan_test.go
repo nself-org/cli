@@ -2,10 +2,14 @@ package compose
 
 // images_literal_scan_test.go — no image literal outside the lock.
 //
-// Purpose: ADR 0030 / D-0122. Every image reference the CLI generates or runs
-// comes from the image lock (images.yaml -> images.lock.json); this test fails
-// on any Go string literal under internal/ and cmd/ that spells an image
-// reference, so the three-source drift that caused D-0122 cannot return.
+// Purpose: ADR 0030 / D-0122. The image references of generated compose and
+// of the CLI's own tools come from the image lock (images.yaml ->
+// images.lock.json); this test fails on any single Go string literal under
+// internal/ and cmd/ that spells an image reference, so the three-source drift
+// behind D-0122 cannot return.
+// Not seen (by design of a literal scan): literals built from parts such as
+// "postgres:" + version (D-0213), Dockerfile templates in raw strings, tools/,
+// untagged repository strings.
 // Inputs: non-test Go files under ../../internal and ../../cmd;
 // testdata/image-literal-allowlist.txt, lines `<path> <image> # <reason>`.
 // Outputs: a failure per literal that is neither in the lock accessor path nor

@@ -127,6 +127,9 @@ func LoadWithOptions(projectDir string, opts LoadOptions) (*Config, error) {
 
 	// 4. Parse os.Environ into Config struct.
 	cfg := parseEnvToConfig()
+	if err := validateImagePinning(); err != nil {
+		return nil, err
+	}
 
 	// 5. Parse dynamic collections.
 	customServices, err := parseCustomServices()

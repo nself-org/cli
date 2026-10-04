@@ -8,11 +8,13 @@ package compose
 // it by tools/imagelock (network) and embedded here. Every generator reads its
 // image through ImageRef or LockedRef; the literal scan test fails on any image
 // literal outside this lock.
-// Inputs: the embedded lock; the IMAGE_PINNING environment value.
+// Inputs: the embedded lock; the IMAGE_PINNING environment value (config.Load
+// rejects an invalid value, so PinningMode normally sees lock, legacy or unset).
 // Outputs: Ref values, LockedImages() for probes, image strings per mode.
 // Constraints: stdlib + internal/compat only. No network and no panics: a bad
 // embedded lock surfaces as an error from ParseLock and an empty accessor; the
-// unit tests fail first. Pinning is a mode (ADR 0021): legacy emits the exact
+// unit tests fail first. Generator and tool images go through ImageRef or
+// LockedRef (the scan test says what it does not cover). Pinning is a mode (ADR 0021): legacy emits the exact
 // pre-lock strings, lock emits repository:version@index_digest.
 
 import (
@@ -189,8 +191,9 @@ func LockedImages() []Ref {
 }
 
 // PinningMode returns the active mode. IMAGE_PINNING=lock|legacy wins (the env
-// cascade is loaded into the process environment before generation); unset or
-// invalid falls back to the ADR 0021 default: legacy in v1.4, lock in v1.5.
+// cascade is loaded into the process environment before generation); unset, or
+// an invalid value that reached here without config.Load (which rejects it),
+// falls back to the ADR 0021 default: legacy in v1.4, lock in v1.5.
 func PinningMode() string {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(EnvImagePinning))) {
 	case PinningLock:

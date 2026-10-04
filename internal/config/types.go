@@ -102,12 +102,6 @@ type Config struct {
 	DockerStopGrace    string `env:"DOCKER_STOP_GRACE_PERIOD"`   // 30s
 	DockerBuildTimeout int    `env:"NSELF_DOCKER_BUILD_TIMEOUT"` // 300
 
-	// ImagePinning selects how generated compose names images (P7-LIVE-17,
-	// ADR 0030): "legacy" keeps the pre-lock strings, "lock" emits
-	// repository:version@digest. Empty means the mode default (legacy in v1.4,
-	// lock in v1.5); internal/compose.PinningMode resolves it.
-	ImagePinning string `env:"IMAGE_PINNING"` // lock|legacy
-
 	// Start/Stop behavior
 	StartMode           string `env:"NSELF_START_MODE"`           // smart, fresh, force
 	HealthCheckTimeout  int    `env:"NSELF_HEALTH_CHECK_TIMEOUT"` // seconds

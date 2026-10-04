@@ -3,8 +3,9 @@
 #   go run ./tools/imagelock -resolve
 # to refresh the generated internal/compose/images.lock.json (network), and
 #   go run ./tools/imagelock -check
-# to verify offline. Nothing else in the tree may hold an image literal; the
-# scan test internal/compose/images_literal_scan_test.go enforces it.
+# to verify offline. The scan test internal/compose/images_literal_scan_test.go
+# fails on any other single-string image literal in non-test Go under internal/
+# and cmd/ (it does not see literals built from parts or Dockerfile templates).
 #
 # Fields: name (lock key), role (core|optional|monitoring|tool|plugin),
 # repository (fully qualified), version (tag), legacy_ref (the exact string the
