@@ -84,6 +84,7 @@ jobs:
         with:
           name: benchmark-results-${{ github.run_id }}
           path: .github/benchmarks/results/
+          retention-days: 14
 
       - name: Check for regression (>10% degradation vs last quarter)
         run: |
