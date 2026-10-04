@@ -1,0 +1,16 @@
+# Hand-built nginx directory paths outside internal/nginxtopo (P7-LIVE-02, D-0045).
+# Format: <path> <count of filepath.Join/path.Join calls with a literal "nginx"> # own-dir|served-root: <reason>
+# Shrink-only: see internal/repoqa/nginx_dir_sites_test.go. Everything that WRITES where the
+# running nginx reads goes through nginxtopo.ServedNginxDir / ServedSSLDir instead.
+cmd/commands/clean.go 2 # own-dir: removes generated confs from the project's own nginx/sites; must never touch a fronting stack
+cmd/commands/reset.go 2 # own-dir: removes the project's own nginx/sites confs on reset
+cmd/commands/uninstall.go 1 # own-dir: removes the project's own nginx/sites confs on uninstall
+internal/build/orchestrator_build_config.go 1 # own-dir: build's own nginx.conf path; writing it into a fronting stack would overwrite that stack's nginx.conf
+internal/build/orchestrator_build_finish.go 3 # own-dir: build's own nginx.conf, legacy conf.d/api-docs.conf cleanup, and post-validation of the project's own sites dir
+internal/build/orchestrator_build_ssl.go 1 # own-dir: compares the resolved sites dir with the project's own to choose the prune policy
+internal/build/plugin_nginx.go 1 # own-dir: the plugin package's own nginx/ source directory, not a served tree
+internal/migration/detector.go 1 # own-dir: detects a nginx tree in a project being migrated
+internal/migration/migrator_backup.go 1 # own-dir: backs up the project's own nginx tree before migration
+cmd/commands/doctor_checks_tls.go 2 # served-root: root already resolved by nginxtopo.ServedRoot (P7-LIVE-16); reads only
+internal/doctor/deep_nginx.go 2 # served-root: root already resolved by nginxtopo.ServedRoot (P7-LIVE-16); reads only
+internal/ssl/acme/preflight.go 1 # served-root: root already resolved by nginxtopo.ServedRoot (P7-LIVE-15)

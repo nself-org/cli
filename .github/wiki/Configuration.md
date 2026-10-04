@@ -9,6 +9,7 @@
 - [Validating Configuration](#validating-configuration)
 - [Setting Up a New Project](#setting-up-a-new-project)
 - [Security Notes](#security-notes)
+- [Fronted Projects](#fronted-projects)
 - [Sub-pages](#sub-pages)
 
 ɳSelf uses a layered `.env` file system for all configuration. Every service in your stack, Postgres, Hasura, Auth, Nginx, and any optional services, is driven entirely by environment variables. There is no YAML-based config format to learn; you set variables in `.env` files and the CLI generates the correct `docker-compose` output automatically.
@@ -245,6 +246,24 @@ Allowed range: `1s` to `120s`. Values outside this range are clamped. Invalid va
 ### Auto-Generated Internal URLs
 
 When pro plugins are installed, `nself build` auto-generates `PLUGIN_{NAME}_INTERNAL_URL` variables for inter-plugin communication. See [[API-Reference]] for the full mapping.
+
+---
+
+## Fronted Projects
+
+A project can share another stack's nginx: set `NGINX_FRONTED_BY=<stack>` and the project generates no nginx container of its own. The fronting stack's nginx reads its own `nginx/` and `ssl/` directories, so nself writes there, not under the project. The layout must be the one production uses: the project sits directly under a directory named after the fronting stack, conventionally `backend` (`/opt/nself-web/backend` is served by the stack in `/opt/nself-web`).
+
+| What nself writes | Where it goes when `NGINX_FRONTED_BY` is set |
+|---|---|
+| Certificates from `nself trust ssl add` (certbot path) | `<stack>/ssl/certificates/<domain>/` |
+| Custom-domain confs from `nself trust ssl add` | `<stack>/nginx/conf.d/custom-<domain>.conf` |
+| Blue/green upstream weights | `<stack>/nginx/conf.d/bluegreen-upstream.conf` |
+| Generated site confs, plugin routes and the API docs site (`nself build`) | `<stack>/nginx/sites/` |
+| nginx reload and config test | run in the fronting stack's compose project |
+
+What stays in the project in every layout: `nginx.conf`, `includes/` and the other files `nself build` generates for the project itself, plus `nself clean`, `reset` and `uninstall`, which only touch the project's own tree. nself never writes the fronting stack's `nginx.conf`.
+
+If the layout cannot be confirmed (the project is not directly under a directory named after `NGINX_FRONTED_BY`), the commands above stop with an error that names `NGINX_FRONTED_BY` and write nothing. Lay the project out under the stack's directory, or unset `NGINX_FRONTED_BY` if the project runs its own nginx. Projects that run their own nginx are unaffected.
 
 ---
 

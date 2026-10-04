@@ -11,6 +11,8 @@ import (
 	_ "embed"
 	"fmt"
 	"strings"
+
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // renderScalarHTML substitutes template variables into the embedded HTML.
@@ -64,8 +66,8 @@ server {
     http2 on;
     server_name docs.%s;
 
-    ssl_certificate /etc/nginx/ssl/certificates/%s/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/certificates/%s/privkey.pem;
+    ssl_certificate %s/certificates/%s/fullchain.pem;
+    ssl_certificate_key %s/certificates/%s/privkey.pem;
 
     server_tokens off;
 
@@ -81,5 +83,5 @@ server {
         add_header Cache-Control "no-store";
     }
 }
-`, baseDomain, baseDomain, certDir, certDir, docsServePath)
+`, baseDomain, baseDomain, nginxtopo.NginxSSLContainerPath, certDir, nginxtopo.NginxSSLContainerPath, certDir, docsServePath)
 }

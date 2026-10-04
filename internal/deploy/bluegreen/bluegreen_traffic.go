@@ -5,7 +5,9 @@ package bluegreen
 // Purpose: set Nginx upstream weights, reload Nginx, soak the new weighting and measure the resulting error rate, used by Deploy and Promote in bluegreen.go, split out for file size.
 // Inputs: the desired blue/green weight split and a soak duration.
 // Outputs: an applied Nginx config plus the measured error rate for the soak window.
-// Constraints: pure move from bluegreen.go (CLI-R12 Batch E); no behaviour change.
+// Constraints: the upstream conf is written to the served nginx's conf.d
+// (P7-LIVE-02, D-0045); for a project that runs its own nginx that is the
+// directory it always was.
 
 import (
 	"context"
@@ -16,31 +18,82 @@ import (
 	"strings"
 	"time"
 
+	"github.com/joho/godotenv"
+
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/health"
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // setNginxWeights writes the Nginx upstream block with the given canary percent
 // and reloads Nginx atomically (nginx -s reload).
 func setNginxWeights(cfg DeployConfig, canaryPercent int) error {
-	upstream := GenerateNginxUpstream(cfg, canaryPercent)
-
-	// Write to the generated upstream conf file.
-	upstreamPath := filepath.Join(cfg.ProjectRoot, "nginx", "conf.d", "bluegreen-upstream.conf")
-	if err := os.MkdirAll(filepath.Dir(upstreamPath), 0755); err != nil {
-		return fmt.Errorf("creating nginx conf.d dir: %w", err)
+	servedRoot, err := writeUpstreamConf(cfg, canaryPercent)
+	if err != nil {
+		return err
 	}
 
-	if err := os.WriteFile(upstreamPath, []byte(upstream), 0644); err != nil {
-		return fmt.Errorf("writing bluegreen upstream config: %w", err)
-	}
-
-	// Reload nginx (atomic — no dropped connections).
+	// Reload nginx (atomic — no dropped connections). The nginx container
+	// belongs to the served stack, which is the fronting stack's compose
+	// project for a fronted project.
 	// Try docker exec into the nginx container first; fall back to system nginx.
-	if err := reloadNginx(cfg.ProjectRoot); err != nil {
+	if err := reloadNginx(servedRoot); err != nil {
 		return fmt.Errorf("nginx reload failed: %w", err)
 	}
 
 	return nil
+}
+
+// writeUpstreamConf writes the blue/green upstream conf into the SERVED nginx
+// conf.d directory and returns the served stack root (D-0045).
+//
+// A project with NGINX_FRONTED_BY set has no nginx of its own, so a conf
+// written under its own nginx/conf.d is never read: the weights would shift
+// on disk and nowhere else. internal/nginxtopo decides where the running nginx
+// reads from; everything else stays where it was.
+func writeUpstreamConf(cfg DeployConfig, canaryPercent int) (servedRoot string, err error) {
+	frontedBy := frontedByFor(cfg.ProjectRoot)
+	servedRoot, err = nginxtopo.ServedRoot(cfg.ProjectRoot, frontedBy)
+	if err != nil {
+		return "", fmt.Errorf("locating the served nginx stack: %w", err)
+	}
+	nginxDir, err := nginxtopo.ServedNginxDir(cfg.ProjectRoot, frontedBy)
+	if err != nil {
+		return "", fmt.Errorf("locating the served nginx stack: %w", err)
+	}
+
+	upstream := GenerateNginxUpstream(cfg, canaryPercent)
+
+	// Write to the generated upstream conf file.
+	upstreamPath := filepath.Join(nginxDir, "conf.d", "bluegreen-upstream.conf")
+	if err := os.MkdirAll(filepath.Dir(upstreamPath), 0755); err != nil {
+		return "", fmt.Errorf("creating nginx conf.d dir: %w", err)
+	}
+
+	if err := os.WriteFile(upstreamPath, []byte(upstream), 0644); err != nil {
+		return "", fmt.Errorf("writing bluegreen upstream config: %w", err)
+	}
+	return servedRoot, nil
+}
+
+// frontedByFor returns the project's NGINX_FRONTED_BY ("" when it runs its own
+// nginx). DeployConfig carries no such field, so it is read the way the config
+// loader would resolve it, without loading the whole config or touching the
+// process environment: the env cascade files in precedence order, a file value
+// winning over the process environment exactly as config.Load's Overload does.
+func frontedByFor(projectRoot string) string {
+	value := os.Getenv("NGINX_FRONTED_BY")
+	env, _ := config.ResolveEnv(projectRoot)
+	for _, name := range config.EnvCascadeOrder(env, config.LegacyOrderActive()) {
+		m, err := godotenv.Read(filepath.Join(projectRoot, name))
+		if err != nil {
+			continue
+		}
+		if v, ok := m["NGINX_FRONTED_BY"]; ok {
+			value = v
+		}
+	}
+	return strings.TrimSpace(value)
 }
 
 // reloadNginx sends a reload signal to the nginx container or the system nginx.

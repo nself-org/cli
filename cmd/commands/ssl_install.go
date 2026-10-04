@@ -9,14 +9,19 @@ package commands
 // Inputs: a domain name, a cert directory, and (for the nginx writer) the
 // project workdir and upstream service name.
 // Outputs: copied cert/key files at 0600 and a written nginx conf file.
-// Constraints: pure move — no behavior changes. letsEncryptLiveDir is a
-// var (not const) specifically so tests can point it at a temp dir —
-// keep it that way.
+// Constraints: letsEncryptLiveDir is a var (not const) specifically so tests
+// can point it at a temp dir — keep it that way. Where the certificate and
+// the conf are written is decided by internal/nginxtopo's served resolver
+// (P7-LIVE-02, D-0045): a project with NGINX_FRONTED_BY set writes into the
+// fronting stack's ssl/ and nginx/ trees, the ones its nginx actually reads;
+// every other project writes where it always did.
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // letsEncryptLiveDir is where certbot stores issued certificates. Declared as a
@@ -51,8 +56,39 @@ func installIssuedCert(domain, certDir string) error {
 	return nil
 }
 
-// writeCustomDomainConf generates an nginx server block for domain and writes
-// it to nginx/conf.d/custom-{domain-safe}.conf inside workdir.
+// servedCertDir returns the directory a custom domain's certificate belongs
+// in: <served ssl dir>/certificates/<domain-safe>. frontedBy is
+// NGINX_FRONTED_BY ("" for a project that runs its own nginx). An unconfirmed
+// fronted layout returns an error wrapping nginxtopo.ErrFrontingUnresolved.
+func servedCertDir(workdir, frontedBy, domain string) (string, error) {
+	sslDir, err := nginxtopo.ServedSSLDir(workdir, frontedBy)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(sslDir, "certificates", domainToFilesafe(domain)), nil
+}
+
+// servedConfDir returns the served nginx conf.d directory custom-domain confs
+// are written to. Same resolution and error as servedCertDir.
+func servedConfDir(workdir, frontedBy string) (string, error) {
+	nginxDir, err := nginxtopo.ServedNginxDir(workdir, frontedBy)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(nginxDir, "conf.d"), nil
+}
+
+// writeCustomDomainConf writes the custom-domain conf for a project that runs
+// its own nginx (NGINX_FRONTED_BY unset). `ssl add` calls
+// writeCustomDomainConfServed with the project's real setting.
+func writeCustomDomainConf(workdir, domain, upstream string) error {
+	return writeCustomDomainConfServed(workdir, "", domain, upstream)
+}
+
+// writeCustomDomainConfServed generates an nginx server block for domain and
+// writes it to custom-{domain-safe}.conf in the served nginx conf.d directory
+// (servedConfDir): <workdir>/nginx/conf.d, or the fronting stack's when
+// frontedBy names one.
 // When upstream is non-empty the server block proxy_passes to it; otherwise it
 // returns a 200 informational response until --upstream is configured.
 //
@@ -60,10 +96,13 @@ func installIssuedCert(domain, certDir string) error {
 // ssl/certificates/{domain-safe} — the layout internal/ssl writes and that
 // compose mounts at /etc/nginx/ssl. Using the dotted domain here produced a
 // path nginx could not resolve even once the conf was in place.
-func writeCustomDomainConf(workdir, domain, upstream string) error {
-	confDir := filepath.Join(workdir, "nginx", "conf.d")
+func writeCustomDomainConfServed(workdir, frontedBy, domain, upstream string) error {
+	confDir, err := servedConfDir(workdir, frontedBy)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(confDir, 0750); err != nil {
-		return fmt.Errorf("creating nginx/conf.d: %w", err)
+		return fmt.Errorf("creating %s: %w", confDir, err)
 	}
 
 	domainSafe := domainToFilesafe(domain)
@@ -128,8 +167,8 @@ server {
     http2 on;
     server_name %s;
 
-    ssl_certificate     /etc/nginx/ssl/certificates/%s/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/certificates/%s/privkey.pem;
+    ssl_certificate     %s/certificates/%s/fullchain.pem;
+    ssl_certificate_key %s/certificates/%s/privkey.pem;
 
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
@@ -138,7 +177,7 @@ server {
 
 %s
 }
-`, domain, domain, domainSafe, domainSafe, locationBlock)
+`, domain, domain, nginxtopo.NginxSSLContainerPath, domainSafe, nginxtopo.NginxSSLContainerPath, domainSafe, locationBlock)
 
 	if err := os.WriteFile(confPath, []byte(conf), 0644); err != nil {
 		return fmt.Errorf("writing %s: %w", confPath, err)
