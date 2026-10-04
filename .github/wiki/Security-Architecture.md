@@ -177,7 +177,7 @@ The trust boundary between plugins is the deployment. Plugins in one project aut
 
 `PLUGIN_INTERNAL_SECRET` is generated per project by the CLI at `nself init` and in the config defaults, and stored in the project's env files. `nself build` injects it into every plugin container server-side. The secret is never sent to any nSelf service and never placed in a browser bundle. It travels only with the project's own env files to that project's deploy target.
 
-`ping.nself.org` holds no plugin identity. It registers no plugin keys and issues no plugin-to-plugin tokens. The per-plugin identity client that earlier 1.4.x CLIs shipped (it posted the secret to ping on the first install of each plugin) is removed, and a repository test keeps it from returning.
+ping.nself.org holds no plugin identity. It registers no plugin keys and issues no plugin-to-plugin tokens. The per-plugin identity client that earlier 1.4.x CLIs shipped (it posted the secret to ping on the first install of each plugin) is removed, and a repository test keeps it from returning.
 
 Limits: one secret per deployment authenticates any component of that deployment, so it does not separate one plugin or app from another. App isolation stays in the data layer (`source_account_id`). Per-plugin caller identity is deferred and will be local to the deployment, with no network call.
 
