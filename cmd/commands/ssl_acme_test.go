@@ -578,3 +578,20 @@ func TestACMEVerifyMismatchRollsBack(t *testing.T) {
 		t.Error("previous generation not restored after a fingerprint mismatch")
 	}
 }
+
+func TestACMERenewUnknownLineage(t *testing.T) {
+	f := newACMEFix(t)
+	_ = acme.Save(f.ssl, acme.File{Contact: "ops@example.org", Lineages: []acme.Lineage{{Name: "x", Domains: []string{"x.example.org"}, Targets: []string{"certificates/x"}}}})
+	acmeResetFlags(sslRenewCmd)
+	var out bytes.Buffer
+	sslRenewCmd.SetOut(&out)
+	sslRenewCmd.SetContext(context.Background())
+	_ = sslRenewCmd.Flags().Set("acme", "true")
+	if err := runSSLRenew(sslRenewCmd, []string{"nope"}); err == nil || !strings.Contains(err.Error(), `no lineage named "nope"`) {
+		t.Fatalf("want an unknown-lineage error, got %v", err)
+	}
+	_ = acme.Save(f.ssl, acme.File{Contact: "ops@example.org", Lineages: []acme.Lineage{{Name: "x"}}})
+	if err := runSSLRenew(sslRenewCmd, nil); err == nil || !strings.Contains(err.Error(), "no domains or targets") {
+		t.Fatalf("want a malformed-lineage error, got %v", err)
+	}
+}

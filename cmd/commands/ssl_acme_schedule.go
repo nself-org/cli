@@ -29,9 +29,13 @@ func runSSLRenewACME(cmd *cobra.Command, args []string) error {
 	}
 	force, _ := cmd.Flags().GetBool("force")
 	var due []int
+	matched := len(args) == 0
 	for i, l := range r.file.Lineages {
 		if len(args) > 0 && args[0] != l.Name {
 			continue
+		}
+		if matched = true; len(l.Targets) == 0 || len(l.Domains) == 0 {
+			return e151(acmeRefuse("repair or remove the lineage in lineages.json", "lineage %s has no domains or targets", l.Name))
 		}
 		c, cerr := ssl.ReadDiskCert(filepath.Join(r.res.SSLDir, filepath.FromSlash(l.Targets[0]), "fullchain.pem"))
 		isDue := cerr != nil || acme.Due(c.NotAfter, time.Now(), force || r.staging)
@@ -43,6 +47,9 @@ func runSSLRenewACME(cmd *cobra.Command, args []string) error {
 		if isDue {
 			due = append(due, i)
 		}
+	}
+	if !matched {
+		return e151(acmeRefuse("list them with `nself trust ssl renew --acme --dry-run`", "no lineage named %q", args[0]))
 	}
 	if len(due) == 0 || r.dry {
 		return nil
