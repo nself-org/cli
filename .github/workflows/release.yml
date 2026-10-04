@@ -291,13 +291,28 @@ jobs:
           echo "Lockstep verified: formula v${FORMULA_VERSION} == tag ${TAG}"
 
   # ────────────────────────────────────────────────────────────────────────
+  # Pre-Release Gate (release denylist). A failing deny rule must publish
+  # nothing, so sign-and-publish needs this job. Called as a reusable workflow
+  # with the pushed tag; job-level permissions are the ceiling the called
+  # workflow's own `permissions` block may request (P7-HYG-05).
+  # ────────────────────────────────────────────────────────────────────────
+  denylist:
+    name: Pre-Release Gate
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/pre-release-gate.yml
+    with:
+      tag: ${{ github.ref_name }}
+
+  # ────────────────────────────────────────────────────────────────────────
   # Sign every artifact with cosign keyless (S34-T01) and publish the release
   # body auto-generated from the changelog + git log (S34-T09).
   # ────────────────────────────────────────────────────────────────────────
   sign-and-publish:
     name: Sign and publish release
     runs-on: ubuntu-latest
-    needs: [build, sbom, provenance, verify-homebrew-lockstep]
+    needs: [build, sbom, provenance, verify-homebrew-lockstep, denylist]
     permissions:
       contents: write
       id-token: write

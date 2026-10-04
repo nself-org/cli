@@ -75,3 +75,4 @@ jobs:
         with:
           name: "deep-qa-block-${{ inputs.block }}"
           path: "deep-qa-block-${{ inputs.block }}.md"
+          retention-days: 14

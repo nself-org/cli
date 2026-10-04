@@ -79,3 +79,4 @@ jobs:
         with:
           name: bench-results-${{ matrix.os }}
           path: bench-results-${{ matrix.os }}.txt
+          retention-days: 14
