@@ -7,19 +7,52 @@
 # Runs at E2 Stage 0. S58-T05.
 #
 # Usage: bash cli/scripts/sport/generate-f17.sh
-# Output: .claude/docs/sport/F17-CLI-PLUGIN-COMPAT.md (override with F17_OUT_FILE)
+# Output: $F17_OUT_FILE, default ${TMPDIR:-/tmp}/F17-CLI-PLUGIN-COMPAT.md. The output
+#         directory must already exist; the retired .claude/docs/sport/ path is refused.
+# Env:    F17_NSELF_ROOT overrides the directory holding plugins/ and plugins-pro/
+#         (default: the nearest ancestor of cli/ that contains plugins/registry.json).
+# Exit:   0 generated; 1 usage/data error (no CLI version, no plugin rows, bad output path).
 #
 # Bash 3.2 compatible (macOS system shell).
 
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+CLI_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# Find the nSelf root (parent of plugins/): override, else walk up from cli/.
+find_nself_root() {
+  local d
+  if [ -n "${F17_NSELF_ROOT:-}" ]; then
+    printf "%s\n" "${F17_NSELF_ROOT}"
+    return
+  fi
+  d="$(cd "${CLI_ROOT}/.." && pwd)"
+  while [ "${d}" != "/" ]; do
+    if [ -f "${d}/plugins/registry.json" ]; then
+      printf "%s\n" "${d}"
+      return
+    fi
+    d="$(dirname "${d}")"
+  done
+  cd "${CLI_ROOT}/.." && pwd
+}
+REPO_ROOT="$(find_nself_root)"
 
 FREE_REGISTRY="${REPO_ROOT}/plugins/registry.json"
 PRO_REGISTRY="${REPO_ROOT}/plugins-pro/registry.json"
-CLI_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-OUT_FILE="${F17_OUT_FILE:-${REPO_ROOT}/.claude/docs/sport/F17-CLI-PLUGIN-COMPAT.md}"
+OUT_FILE="${F17_OUT_FILE:-${TMPDIR:-/tmp}/F17-CLI-PLUGIN-COMPAT.md}"
+
+case "${OUT_FILE}" in
+  */.claude/docs/sport/*)
+    printf "error: refusing to write to the retired .claude/docs/sport/ path: %s\n" "${OUT_FILE}" >&2
+    exit 1
+    ;;
+esac
+if [ ! -d "$(dirname "${OUT_FILE}")" ]; then
+  printf "error: output directory does not exist: %s\n" "$(dirname "${OUT_FILE}")" >&2
+  exit 1
+fi
 
 if ! command -v jq >/dev/null 2>&1; then
   printf "error: jq is required to generate F17\n" >&2
@@ -88,8 +121,14 @@ ALL_PLUGINS_TSV="$(
 
 CLI_VERSIONS="$(extract_cli_versions)" || exit 1
 
+# Fail closed: an empty plugin set would write a table with no rows.
+if [ -z "$(printf "%s" "${ALL_PLUGINS_TSV}" | tr -d '[:space:]')" ]; then
+  printf "error: no plugin rows read from %s or %s (registries missing, unreadable or empty)\n" \
+    "${FREE_REGISTRY}" "${PRO_REGISTRY}" >&2
+  exit 1
+fi
+
 # Write header.
-mkdir -p "$(dirname "${OUT_FILE}")"
 cat > "${OUT_FILE}" << 'HEADER'
 # F17 — CLI-PLUGIN-COMPAT
 
@@ -110,6 +149,7 @@ printf "%s\n" "${CLI_VERSIONS}" | while read -r cli_ver; do
   } >> "${OUT_FILE}"
 
   printf "%s\n" "${ALL_PLUGINS_TSV}" | while IFS="	" read -r name status min_cli max_cli; do
+    [ -n "${name}" ] || continue
     # Check if cli_ver falls within [min_cli, max_cli].
     if semver_lte "${min_cli}" "${cli_ver}" && semver_lte "${cli_ver}" "${max_cli}"; then
       label=""
