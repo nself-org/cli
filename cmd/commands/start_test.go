@@ -3,11 +3,13 @@ package commands
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/spf13/cobra"
 )
 
@@ -254,7 +256,7 @@ func TestStartCmd_WithProjectDirNoDocker(t *testing.T) {
 	t.Chdir(dir)
 	// A stub docker first on PATH keeps the real docker (and its child
 	// processes) out of this test; see stubDockerOnPath.
-	stubDockerOnPath(t)
+	dockerLog := stubDockerOnPath(t)
 
 	// Use 3-second timeout: this test intentionally hits checkDockerAvailable,
 	// which hangs on runners without Docker. Same guard as other start tests.
@@ -266,14 +268,17 @@ func TestStartCmd_WithProjectDirNoDocker(t *testing.T) {
 	root.SetArgs([]string{"start", "--no-monorepo", "--skip-build"})
 	err := root.Execute()
 
+	// The Docker preflight passes (stub), so start must fail at the compose-file
+	// check, which this fixture lacks, and must not have run any compose call.
+	if err == nil || !errors.Is(err, errs.ErrComposeNotFound) {
+		t.Fatalf("want ErrComposeNotFound after the preflight, got: %v", err)
+	}
+	if stubDockerSawCompose(t, dockerLog) {
+		t.Fatal("stub saw a compose call although the compose file is missing")
+	}
+
 	// Must fail (Docker likely not running in test env), but should NOT fail
 	// with "no nself project" — it should get past FindNSelfRoot.
-	if err == nil {
-		// Docker is running and the project exists — this is valid in CI with Docker.
-		// The command will proceed further but will fail on missing docker-compose.yml.
-		t.Log("start proceeded (Docker is available or already-running check passed)")
-		return
-	}
 
 	// Should not be a "no nself project" error.
 	if strings.Contains(err.Error(), "no nself project") {
@@ -320,17 +325,11 @@ func TestStartCmd_WithValidProjectSetup(t *testing.T) {
 	root.SetArgs([]string{"start", "--no-monorepo", "--skip-build", "--skip-port-check"})
 	err := root.Execute()
 
-	// The stub must have been the docker that ran: its log is non-empty.
-	if logged, readErr := os.ReadFile(dockerLog); readErr != nil || len(logged) == 0 {
-		t.Errorf("stub docker was never invoked (log read err=%v, bytes=%d)", readErr, len(logged))
-	}
+	// Reached the compose step: preflight, compose-file check and config load all ran.
+	requireReachedCompose(t, err, dockerLog)
 
 	// The command must fail (no real Docker or compose network), but it must
 	// NOT fail on early-exit conditions (no project, no compose file, bad config).
-	if err == nil {
-		t.Log("start succeeded (Docker is running with a working compose stack) — accepted")
-		return
-	}
 
 	// Acceptable failure reasons: Docker not running, compose up failed, context deadline, etc.
 	// Unacceptable: "no nself project", "loading config".
@@ -361,7 +360,7 @@ func TestStartCmd_VerboseFlag(t *testing.T) {
 	t.Chdir(dir)
 	// A stub docker first on PATH keeps the real docker (and its child
 	// processes) out of this test; see stubDockerOnPath.
-	stubDockerOnPath(t)
+	dockerLog := stubDockerOnPath(t)
 
 	root := startCmdWithTimeout(t, 3*time.Second)
 	var buf bytes.Buffer
@@ -371,10 +370,9 @@ func TestStartCmd_VerboseFlag(t *testing.T) {
 	root.SetArgs([]string{"start", "--no-monorepo", "--skip-build", "--skip-port-check", "--verbose"})
 	err := root.Execute()
 
-	if err == nil {
-		t.Log("start succeeded — accepted in Docker-enabled environments")
-		return
-	}
+	// Reached the compose step: preflight, compose-file check and config load all ran.
+	requireReachedCompose(t, err, dockerLog)
+
 	if strings.Contains(err.Error(), "loading config:") {
 		t.Errorf("unexpected config load failure: %v", err)
 	}
@@ -395,7 +393,7 @@ func TestStartCmd_FreshFlag(t *testing.T) {
 	t.Chdir(dir)
 	// A stub docker first on PATH keeps the real docker (and its child
 	// processes) out of this test; see stubDockerOnPath.
-	stubDockerOnPath(t)
+	dockerLog := stubDockerOnPath(t)
 
 	root := startCmdWithTimeout(t, 3*time.Second)
 	var buf bytes.Buffer
@@ -405,10 +403,9 @@ func TestStartCmd_FreshFlag(t *testing.T) {
 	root.SetArgs([]string{"start", "--no-monorepo", "--skip-build", "--skip-port-check", "--fresh"})
 	err := root.Execute()
 
-	if err == nil {
-		t.Log("start succeeded — accepted in Docker-enabled environments")
-		return
-	}
+	// Reached the compose step: preflight, compose-file check and config load all ran.
+	requireReachedCompose(t, err, dockerLog)
+
 	if strings.Contains(err.Error(), "no nself project") || strings.Contains(err.Error(), "loading config:") {
 		t.Errorf("unexpected early failure: %v", err)
 	}
@@ -429,7 +426,7 @@ func TestStartCmd_CleanStartFlag(t *testing.T) {
 	t.Chdir(dir)
 	// A stub docker first on PATH keeps the real docker (and its child
 	// processes) out of this test; see stubDockerOnPath.
-	stubDockerOnPath(t)
+	dockerLog := stubDockerOnPath(t)
 
 	root := startCmdWithTimeout(t, 3*time.Second)
 	var buf bytes.Buffer
@@ -439,10 +436,9 @@ func TestStartCmd_CleanStartFlag(t *testing.T) {
 	root.SetArgs([]string{"start", "--no-monorepo", "--skip-build", "--skip-port-check", "--clean-start"})
 	err := root.Execute()
 
-	if err == nil {
-		t.Log("start succeeded — accepted in Docker-enabled environments")
-		return
-	}
+	// Reached the compose step: preflight, compose-file check and config load all ran.
+	requireReachedCompose(t, err, dockerLog)
+
 	if strings.Contains(err.Error(), "no nself project") || strings.Contains(err.Error(), "loading config:") {
 		t.Errorf("unexpected early failure: %v", err)
 	}
@@ -462,7 +458,7 @@ func TestStartCmd_ComposeFileNotFound(t *testing.T) {
 	t.Chdir(dir)
 	// A stub docker first on PATH keeps the real docker (and its child
 	// processes) out of this test; see stubDockerOnPath.
-	stubDockerOnPath(t)
+	dockerLog := stubDockerOnPath(t)
 
 	// Use 3-second timeout to avoid hanging on Docker check (same as other start tests).
 	root := startCmdWithTimeout(t, 3*time.Second)
@@ -473,9 +469,12 @@ func TestStartCmd_ComposeFileNotFound(t *testing.T) {
 	root.SetArgs([]string{"start", "--no-monorepo", "--skip-build"})
 	err := root.Execute()
 
-	if err == nil {
-		t.Log("no error returned (Docker may be running and compose file may have been found) — accepted")
-		return
+	// The preflight passes (stub); the missing compose file is the failure.
+	if err == nil || !errors.Is(err, errs.ErrComposeNotFound) {
+		t.Fatalf("want ErrComposeNotFound after the preflight, got: %v", err)
+	}
+	if stubDockerSawCompose(t, dockerLog) {
+		t.Fatal("stub saw a compose call although the compose file is missing")
 	}
 
 	// If Docker is not available the error is Docker-related (expected).
@@ -562,7 +561,7 @@ func TestStartCmd_SkipDBInitSkipsMigrationsAndReachesServiceStart(t *testing.T) 
 	t.Chdir(dir)
 	// A stub docker first on PATH keeps the real docker (and its child
 	// processes) out of this test; see stubDockerOnPath.
-	stubDockerOnPath(t)
+	dockerLog := stubDockerOnPath(t)
 
 	root := startCmdWithTimeout(t, 3*time.Second)
 	var buf bytes.Buffer
@@ -572,10 +571,8 @@ func TestStartCmd_SkipDBInitSkipsMigrationsAndReachesServiceStart(t *testing.T) 
 	root.SetArgs([]string{"start", "--no-monorepo", "--skip-build", "--skip-port-check", "--skip-db-init"})
 	err := root.Execute()
 
-	if err == nil {
-		t.Log("start succeeded — accepted in Docker-enabled environments with a real stack")
-		return
-	}
+	// Reached the compose step: preflight, compose-file check and config load all ran.
+	requireReachedCompose(t, err, dockerLog)
 
 	// The command must NOT fail with a "database init:" error, which would
 	// indicate the migration path was executed despite --skip-db-init.
