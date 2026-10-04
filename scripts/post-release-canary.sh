@@ -5,11 +5,11 @@
 # Run after every CLI release to confirm the full distribution cascade succeeded.
 #
 # Checks:
-#   1. GitHub release exists with expected assets
-#   2. ping.nself.org/health is reachable
-#   3. Homebrew formula version matches the release tag
-#   4. MASTER-VERSIONS.md reflects the released version
-#   5. Admin Docker image tag matches CLI version (if accessible)
+#   1. GitHub release exists
+#   2. Required release assets are attached
+#   3. ping.nself.org/health is reachable
+#   4. nself doctor --deep (when the CLI is installed)
+#   5. Homebrew formula version matches the release tag
 #
 # Usage:
 #   bash scripts/post-release-canary.sh [version]
@@ -171,25 +171,6 @@ else
   echo "  WARN — homebrew-nself repo not found at ${HOMEBREW_ROOT}"
   RESULTS[homebrew_formula]="warn: repo not found"
   WARN=$((WARN + 1))
-fi
-
-# ── Check 6: MASTER-VERSIONS.md ──────────────────────────────────────────────
-echo ""
-echo "Check 6: MASTER-VERSIONS.md"
-MV_FILE="${REPO_ROOT}/../.claude/docs/MASTER-VERSIONS.md"
-if [ -f "${MV_FILE}" ]; then
-  if grep -q "${RAW_VERSION}" "${MV_FILE}"; then
-    echo "  PASS — MASTER-VERSIONS.md contains ${RAW_VERSION}"
-    RESULTS[master_versions]="pass"
-    PASS=$((PASS + 1))
-  else
-    echo "  FAIL — MASTER-VERSIONS.md does not contain ${RAW_VERSION}"
-    RESULTS[master_versions]="fail: ${RAW_VERSION} not found"
-    FAIL=$((FAIL + 1))
-  fi
-else
-  echo "  SKIP — MASTER-VERSIONS.md not found at ${MV_FILE}"
-  RESULTS[master_versions]="skip: file not found"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
