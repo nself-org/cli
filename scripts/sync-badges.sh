@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # sync-badges.sh — Sync README version badges across all nSelf repos to the
-# target version from MASTER-VERSIONS.md.
+# target version from cli/.github/facts.json (when present) or cli/.github/VERSION.
 #
 # Usage:
-#   ./scripts/sync-badges.sh                  # auto-detect version from MASTER-VERSIONS.md
+#   ./scripts/sync-badges.sh                  # auto-detect version from .github/facts.json or .github/VERSION
 #   ./scripts/sync-badges.sh --version 1.0.10 # explicit version
 #
 # Bash 3.2 compatible (no echo -e, no ${var,,}, no declare -A, no {1..n} brace expansion).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CLI_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 NSELF_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # ---------------------------------------------------------------------------
@@ -39,28 +40,26 @@ while [ "$#" -gt 0 ]; do
 done
 
 # ---------------------------------------------------------------------------
-# Detect version from MASTER-VERSIONS.md if not supplied
+# Detect version from .github/facts.json (when present) or .github/VERSION
+# if not supplied
 # ---------------------------------------------------------------------------
-MASTER_VERSIONS="$NSELF_ROOT/.claude/docs/MASTER-VERSIONS.md"
-
 if [ -z "$TARGET_VERSION" ]; then
-  if [ ! -f "$MASTER_VERSIONS" ]; then
-    printf "ERROR: MASTER-VERSIONS.md not found at %s\n" "$MASTER_VERSIONS" >&2
-    exit 1
+  if [ -f "$CLI_ROOT/.github/facts.json" ] && command -v jq >/dev/null 2>&1; then
+    TARGET_VERSION="$(jq -r '.version // empty' "$CLI_ROOT/.github/facts.json" 2>/dev/null || true)"
   fi
-  # Extract the CLI version line: | CLI | **v1.0.10** | ...
-  TARGET_VERSION="$(grep -E '^\| CLI \|' "$MASTER_VERSIONS" | head -1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  if [ -z "$TARGET_VERSION" ] && [ -f "$CLI_ROOT/.github/VERSION" ]; then
+    TARGET_VERSION="$(tr -d '[:space:]' < "$CLI_ROOT/.github/VERSION")"
+  fi
   if [ -z "$TARGET_VERSION" ]; then
-    printf "ERROR: Could not parse CLI version from MASTER-VERSIONS.md\n" >&2
+    printf "ERROR: Could not read the CLI version from .github/facts.json or .github/VERSION\n" >&2
     exit 1
   fi
-  # Strip leading 'v' for badge text (badge uses bare version, URL uses tag)
-  VERSION_BARE="${TARGET_VERSION#v}"
+  # Normalise to a leading 'v'
+  TARGET_VERSION="v${TARGET_VERSION#v}"
 else
   # Accept with or without leading 'v'
   TARGET_VERSION="${TARGET_VERSION#v}"
   TARGET_VERSION="v${TARGET_VERSION}"
-  VERSION_BARE="${TARGET_VERSION#v}"
 fi
 
 printf "Syncing README badges to %s across all nSelf repos...\n" "$TARGET_VERSION"
