@@ -7,7 +7,7 @@ import (
 
 func registerRoutes(r interface{ Handle(string, ...interface{}) }) {
 	// All routes wrapped with an allowlisted middleware.
-	r.Handle("/api/data", RequirePluginJWT, handleData)
+	r.Handle("/api/data", RequireUserJWT, handleData)
 	r.Handle("/api/admin", RequireHasuraAdminKey, handleAdmin)
 	r.Handle("/api/license", RequireLicenseKey, handleLicense)
 }
@@ -16,8 +16,8 @@ func handleData(w http.ResponseWriter, r *http.Request)    {}
 func handleAdmin(w http.ResponseWriter, r *http.Request)   {}
 func handleLicense(w http.ResponseWriter, r *http.Request) {}
 
-// RequirePluginJWT is a stub middleware that satisfies the plugin JWT auth contract.
-func RequirePluginJWT(next http.Handler) http.Handler { return next }
+// RequireUserJWT is a stub middleware that satisfies the user JWT auth contract.
+func RequireUserJWT(next http.Handler) http.Handler { return next }
 
 // RequireHasuraAdminKey is a stub middleware that satisfies the Hasura admin-key auth contract.
 func RequireHasuraAdminKey(next http.Handler) http.Handler { return next }

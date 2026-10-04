@@ -288,10 +288,6 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 		}
 	}
 
-	// Step 7b (Q01): best-effort per-plugin identity keypair + ping_api
-	// registration (split out — see installer_identity.go).
-	registerPluginIdentityIfEnabled(ctx, pluginDir, name)
-
 	// Step 8: post-install reporting (split out — see installer_finish.go).
 	finishInstall(name, manifest)
 

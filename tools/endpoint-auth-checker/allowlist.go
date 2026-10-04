@@ -6,7 +6,6 @@ package main
 // AllowedAuthMiddleware maps middleware function name to its source package.
 // Any route whose middleware chain contains at least one of these passes the gate.
 var AllowedAuthMiddleware = map[string]string{
-	"RequirePluginJWT":      "plugins/shared/go/auth", // Q01 per-plugin JWT
 	"RequireLicenseKey":     "plugins/shared/go/auth", // existing license middleware
 	"RequireHasuraAdminKey": "plugins/shared/go/auth",
 	"RequireUserJWT":        "plugins/shared/go/auth",
@@ -33,10 +32,6 @@ var ExemptRoutes = []ExemptRoute{
 	{
 		Pattern: "/metrics",
 		Reason:  "prometheus scrape — network-restricted by nginx",
-	},
-	{
-		Pattern: "/plugin/identity/{name}/public-key",
-		Reason:  "public key endpoint — safe to expose (Q01)",
 	},
 }
 

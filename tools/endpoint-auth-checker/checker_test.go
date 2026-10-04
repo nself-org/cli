@@ -27,19 +27,26 @@ func TestIsExempt_NotExempt(t *testing.T) {
 }
 
 func TestIsExempt_ChiParameterPattern(t *testing.T) {
-	// /plugin/identity/{name}/public-key is in ExemptRoutes.
-	if !isExempt("/plugin/identity/myplugin/public-key") {
+	// A {param} segment matches exactly one path segment (neutral route).
+	if !matchChiPattern("/items/{id}/status", "/items/42/status") {
 		t.Error("expected chi parameter pattern to match")
 	}
 	// Different suffix should not match.
-	if isExempt("/plugin/identity/myplugin/private-key") {
-		t.Error("/plugin/identity/myplugin/private-key should NOT be exempt")
+	if matchChiPattern("/items/{id}/status", "/items/42/secret") {
+		t.Error("/items/42/secret should NOT match /items/{id}/status")
+	}
+	// Extra segments should not match.
+	if matchChiPattern("/items/{id}/status", "/items/42/status/extra") {
+		t.Error("extra segment should NOT match")
+	}
+	// The retired Q01 route is no longer exempt (D15).
+	if isExempt("/plugin/identity/myplugin/public-key") {
+		t.Error("retired identity route must not be exempt")
 	}
 }
 
 func TestAllowedAuthMiddleware_Known(t *testing.T) {
 	knownMWs := []string{
-		"RequirePluginJWT",
 		"RequireLicenseKey",
 		"RequireHasuraAdminKey",
 		// RequireInternalSecret removed (P6-E11-W2-S3-T16 row 23): it was marked
@@ -57,7 +64,7 @@ func TestAllowedAuthMiddleware_Known(t *testing.T) {
 }
 
 func TestAllowedAuthMiddleware_Unknown(t *testing.T) {
-	unknownMWs := []string{"myCustomMiddleware", "doSomething", ""}
+	unknownMWs := []string{"myCustomMiddleware", "doSomething", "", "RequirePluginJWT"}
 	for _, mw := range unknownMWs {
 		if _, ok := AllowedAuthMiddleware[mw]; ok {
 			t.Errorf("did not expect %q to be in allowlist", mw)
@@ -78,13 +85,13 @@ func makeRoute(path string, middlewares ...string) RouteRegistration {
 }
 
 func TestClassifyRoute_Passes_WithAllowedMW(t *testing.T) {
-	r := makeRoute("/api/data", "RequirePluginJWT")
+	r := makeRoute("/api/data", "RequireLicenseKey")
 	cr := ClassifyRoute(r, true)
 	if !cr.Passed {
-		t.Errorf("expected route with RequirePluginJWT to pass")
+		t.Errorf("expected route with RequireLicenseKey to pass")
 	}
-	if cr.MatchedMW != "RequirePluginJWT" {
-		t.Errorf("expected MatchedMW=RequirePluginJWT, got %q", cr.MatchedMW)
+	if cr.MatchedMW != "RequireLicenseKey" {
+		t.Errorf("expected MatchedMW=RequireLicenseKey, got %q", cr.MatchedMW)
 	}
 }
 
