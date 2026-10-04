@@ -1,0 +1,4 @@
+Error: [E057] password is insecure
+  Why: it is on the common list
+  Fix: set a longer password
+  Docs: https://nself.org/docs/reference/error-codes#e057

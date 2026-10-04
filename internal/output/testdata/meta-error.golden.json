@@ -1,0 +1,29 @@
+{
+  "schema_version": "1",
+  "command": "x",
+  "error": {
+    "code": "E400",
+    "message": "boom",
+    "docs_url": "https://nself.org/docs/reference/error-codes#e400",
+    "exit_code": 1,
+    "class": "user"
+  },
+  "meta": {
+    "deprecations": [
+      {
+        "old": "a",
+        "new": "b",
+        "removal_at": "v1.6.0"
+      },
+      {
+        "old": "c",
+        "new": "d",
+        "removal_at": "v1.7.0"
+      }
+    ],
+    "warnings": [
+      "first",
+      "second"
+    ]
+  }
+}

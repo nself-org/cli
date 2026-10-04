@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "command": "start",
+  "error": {
+    "code": "E002",
+    "message": "start: docker daemon is not running",
+    "cause": "The Docker daemon is not responding to commands.",
+    "remediation": "Start Docker Desktop or run: sudo systemctl start docker",
+    "docs_url": "https://nself.org/docs/reference/error-codes#e002",
+    "exit_code": 2,
+    "class": "infra"
+  }
+}

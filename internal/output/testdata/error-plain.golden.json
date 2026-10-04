@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "command": "",
+  "error": {
+    "code": "E400",
+    "message": "boom",
+    "docs_url": "https://nself.org/docs/reference/error-codes#e400",
+    "exit_code": 1,
+    "class": "user"
+  }
+}
