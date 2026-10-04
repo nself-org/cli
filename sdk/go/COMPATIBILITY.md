@@ -1,15 +1,63 @@
 # plugin-sdk-go Compatibility Matrix
 
-The shared Go SDK for nSelf plugins. Every pro plugin (ai, mux, claw, voice,
-browser, notify, cron, chat, livekit, etc.) depends on this module.
+The shared Go SDK for nSelf plugins. Every licensed plugin (ai, mux, claw,
+voice, browser, notify, cron, chat, livekit, etc.) and every free plugin
+depends on this module.
+
+## Import path
+
+```go
+import "github.com/nself-org/cli/sdk/go/v2/plugin"
+```
+
+The module path is `github.com/nself-org/cli/sdk/go/v2` (see [`go.mod`](go.mod)).
+The module lives in the `sdk/go/` directory of the `nself-org/cli` repository.
+
+## Version mapping
+
+The module path ends in `/v2`, so Go resolves only tags named
+`sdk/go/v2.M.P`: directory prefix `sdk/go/`, semantic version `v2.M.P`.
+CLI release `v1.M.P` publishes SDK `v2.M.P`.
+
+| nSelf CLI release | Git tag | `go get` version |
+| --- | --- | --- |
+| `v1.5.0` | `sdk/go/v2.5.0` | `github.com/nself-org/cli/sdk/go/v2@v2.5.0` |
+| `v1.4.13` | `sdk/go/v2.4.13` | `github.com/nself-org/cli/sdk/go/v2@v2.4.13` |
+
+[`scripts/sdk-tag.sh`](scripts/sdk-tag.sh) owns this mapping. It prints the tag
+for a CLI version and exits 1 for any major other than 1. The publish workflow
+(`sdk-publish-go.yml`) and the nightly coherence check (`sdk-coherence-check.yml`)
+both call it. The [`doc.go`](doc.go) `Version` constant stays the CLI version.
+
+[`scripts/resolve-test.sh`](scripts/resolve-test.sh) proves the mapping without
+network: it resolves `sdk/go/v2.99.0` from a local clone and checks that the
+old tag form does not resolve.
+
+### The `license` package was renamed
+
+The module zip includes the repository-root `LICENSE` file, and a package
+directory named `license/` collides with it case-insensitively, so the go command
+could not build any version of the module. The package is now `licensing`
+(`github.com/nself-org/cli/sdk/go/v2/licensing`); `modzip_test.go` guards against
+a repeat.
+
+### Why the old tags do not resolve
+
+Every tag published before this mapping is unusable, and none is ever deleted
+or moved. The proxy ignores them once a valid `sdk/go/v2.M.P` tag exists.
+
+| Old form | Why Go rejects it |
+| --- | --- |
+| `sdk/go/v1.1.3` to `sdk/go/v1.3.5`, `sdk/go/main` | `go.mod` at that revision declares the `/v2` module path, but a `v1.x.y` tag cannot carry a `/v2` module (post-v1 module path at a v1 version) |
+| `sdk/go/v2/v1.3.6` to `sdk/go/v2/v1.4.12` | The directory prefix `sdk/go/v2/` points at a `v2/` subdirectory that does not exist, and the version is still `v1.x.y` |
 
 ## Current versions
 
 | Component | Version | Notes |
 | --- | --- | --- |
-| `plugin-sdk-go` | **0.1.0** | See [`doc.go`](doc.go) `Version` constant |
+| `plugin-sdk-go` | CLI version | See [`doc.go`](doc.go) `Version` constant; module version is `v2.M.P` for CLI `v1.M.P` |
 | nSelf CLI (min) | **1.0.9** | Plugins declaring `minNselfVersion` below this are rejected |
-| Go toolchain | **1.23.0+** | `go.mod` declares `go 1.23.0` |
+| Go toolchain | **1.25.0+** | `go.mod` declares `go 1.25.0` |
 
 ## Compatibility guarantees
 
@@ -49,10 +97,9 @@ the same check at runtime.
 
 | Go | plugin-sdk-go support |
 | --- | --- |
-| 1.22 | not supported (missing `log/slog` stability + `slices` generics) |
-| 1.23 | **required minimum** |
-| 1.24 | supported |
-| 1.25+ | supported (best-effort) |
+| 1.24 and older | not supported (`go.mod` requires 1.25.0) |
+| 1.25 | **required minimum** |
+| 1.26+ | supported (best-effort) |
 
 ## Supported CLI versions
 
