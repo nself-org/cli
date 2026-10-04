@@ -135,6 +135,7 @@ openssl x509 -in "$(cert a task-pebble-test)" -noout -ext subjectAltName | grep 
 [ "$(stat -c %a "$A/ssl/.acme")" = 700 ] && [ "$(stat -c %a "$A/ssl/.acme/lineages.json")" = 600 ] || fail "state permissions"
 grep -q '"challenge": "dns-01"' "$A/ssl/.acme/lineages.json" || fail "lineages.json lacks the lineage"
 [ "$(docker inspect -f '{{.Id}}' "nginx-a-$$")" = "$CID_A" ] || fail "nginx container was recreated"
+for f in cert.pem chain.pem; do [ -s "$A/ssl/certificates/.task-pebble-test.gen-1/$f" ] || fail "generation lacks $f"; done
 ok "A2 issued over DNS-01, installed as a generation, nginx reloaded, served fingerprint matches"
 
 # === B. renew: not due, kill before the switch, recovery =======================
@@ -151,6 +152,18 @@ must a renew --acme --force
 pairmatch "$A/ssl/certificates/task-pebble-test" && docker exec "nginx-a-$$" nginx -t >/dev/null 2>&1 || fail "pair or nginx -t after recovery"
 [ "$(served_fp task.pebble.test 18443)" = "$(leaf_fp "$(cert a task-pebble-test)")" ] || fail "served fingerprint after recovery"
 ok "B2 kill between generation write and link rename leaves a matching pair; the next run recovers"
+
+# B3: two runs at once never leave a broken pair (the second waits for the lock, then proceeds or says who holds it).
+G=$(link a task-pebble-test)
+( cd "$A/backend" && "$NSELF_BIN" trust ssl renew --acme --force > "$WORK/p1.txt" 2>&1 ) & P1=$!
+( cd "$A/backend" && "$NSELF_BIN" trust ssl renew --acme --force > "$WORK/p2.txt" 2>&1 ) & P2=$!
+set +e; wait "$P1"; R1=$?; wait "$P2"; R2=$?; set -e
+cat "$WORK/p1.txt" "$WORK/p2.txt" >> "$WORK/all.log"
+[ "$R1" -eq 0 ] || [ "$R2" -eq 0 ] || fail "neither concurrent run succeeded"
+for n in 1 2; do eval rc=\$R$n; [ "$rc" -eq 0 ] || grep -q 'another `trust ssl ... --acme` run holds' "$WORK/p$n.txt" || { cat "$WORK/p$n.txt" >&2; fail "concurrent run $n failed for a reason other than the lock"; }; done
+pairmatch "$A/ssl/certificates/task-pebble-test" && docker exec "nginx-a-$$" nginx -t >/dev/null 2>&1 || fail "pair or nginx -t after concurrent runs"
+[ "$(link a task-pebble-test)" != "$G" ] && [ "$(served_fp task.pebble.test 18443)" = "$(leaf_fp "$(cert a task-pebble-test)")" ] || fail "concurrent runs left the wrong certificate served"
+ok "B3 two concurrent renew runs: serialised by the run lock, pair intact, nginx -t passes"
 
 # === C. due (10 d), not due (60 d), --force, --staging ==========================
 mkstack c 18444 due.pebble.test
@@ -217,7 +230,7 @@ startnginx e 18446
 must e setup --acme --install-cron --dry-run
 UNIT=$WORK/out.txt.unit; cp "$WORK/out.txt" "$UNIT"
 EXECSTART=$(sed -n 's/^ExecStart=//p' "$UNIT"); WD=$(sed -n 's/^WorkingDirectory=//p' "$UNIT")
-ENVS=$(sed -n 's/^Environment=//p' "$UNIT" | tr '\n' ' ')
+ENVS=$(sed -n 's/^Environment=//p' "$UNIT" | tr -d '"' | tr '\n' ' ')
 case "$ENVS" in *SECRETS_AGE_KEY_PATH=*HOME=*|*HOME=*SECRETS_AGE_KEY_PATH=*) ;; *) fail "unit lacks SECRETS_AGE_KEY_PATH/HOME: $ENVS";; esac
 [ "$WD" = "$E/backend" ] || fail "unit WorkingDirectory is $WD"
 set +e

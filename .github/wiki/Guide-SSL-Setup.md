@@ -65,17 +65,20 @@ nself ssl setup --acme --adopt-certbot --dns-credential-file ./cloudflare.ini
 - A `standalone`, `webroot` or `nginx` lineage is converted to dns-01 only when you pass a credential file; without one it is refused with that remediation.
 - The credential file is a certbot DNS-plugin INI with exactly one provider: `dns_cloudflare_api_token`, `dns_digitalocean_token`, or `aws_access_key_id` + `aws_secret_access_key`. A Cloudflare global key is refused: create a scoped token.
 - Served certificates are left byte for byte as they are unless a target is missing or older than certbot's live certificate.
+- Adoption is saved lineage by lineage; if it fails part way, fix the cause and run it again to finish. Names that certbot also manages are flagged by `nself ssl status`.
 - After adopting, remove the certbot timer yourself once `nself ssl renew --acme --dry-run` shows the lineages; the CLI never touches it.
 
 ### How a certificate is installed
 
-Each target `ssl/certificates/<dir>` becomes a relative symlink to `.<dir>.gen-<n>/`, which holds `fullchain.pem` and `privkey.pem` (0600). A new generation is written and its key and certificate are checked against each other; then one rename of a temporary symlink over `<dir>` switches both files at once. nginx is then tested (`nginx -t`) and reloaded through `docker exec`, and the served certificate's fingerprint is checked. If any step fails the previous generation is restored and the command exits with `E151`. The previous generation stays until the next successful install. Every `--acme` run first repairs a missing link or a mismatched pair from the newest valid generation, so a crash between steps cannot leave a half-installed pair.
+Each target `ssl/certificates/<dir>` (always `certificates/<one plain name>`; anything else is refused) becomes a relative symlink to `.<dir>.gen-<n>/`, which holds `fullchain.pem`, `privkey.pem`, `cert.pem` and `chain.pem` (0600; the same files as certbot's `live/` directory, so confs that name `chain.pem` keep loading). A new generation is written and its key and certificate are checked against each other; then one rename of a temporary symlink over `<dir>` switches both files at once. nginx is then tested (`nginx -t`) and reloaded through `docker exec`, and the served certificate's fingerprint is checked. If any step fails the previous generation is restored and the command exits with `E151`. The previous generation stays until the next successful install. Every `--acme` run first repairs a missing link or a mismatched pair from the newest valid generation, so a crash between steps cannot leave a half-installed pair.
+
+Only one mutating `--acme` run proceeds at a time: it holds `ssl/.acme/.lock`, and a second run waits up to 10 seconds, then exits with `E151` naming the holder's pid.
 
 State lives in `ssl/.acme/` (0700, with a `.gitignore` of `*`): the ACME account, `certificates/`, `staging/` and `lineages.json` (names, challenge, provider, credential secret names, targets; never a value).
 
 ### Renewal timer
 
-`--install-cron` writes `nself-acme-renew.service` and `.timer` (daily 03:30, up to 1 hour random delay, `Persistent=true`). The service sets `SECRETS_AGE_KEY_PATH` and `HOME` explicitly, because systemd's bare environment has neither, and runs `nself trust ssl renew --acme --quiet` from the project directory. Lineages with 30 days or fewer left are renewed.
+`--install-cron` writes `nself-acme-renew.service` and `.timer` (daily 03:30, up to 1 hour random delay, `Persistent=true`). The service sets `SECRETS_AGE_KEY_PATH` and `HOME` explicitly, because systemd's bare environment has neither, and runs `nself trust ssl renew --acme --quiet` from the project directory. The unit runs as root: run `setup --acme --install-cron` as the user who owns the age key (the install message prints the key path the unit will use), or `HOME` and the key path will point at the wrong user. Lineages with 30 days or fewer left are renewed.
 
 ### What the CLI never touches
 
@@ -129,7 +132,7 @@ If you have a certificate from a commercial CA (DigiCert, Sectigo, etc.):
 
 | Command | Description |
 |---------|-------------|
-| `nself ssl status` | Show certificate path, issuer, and expiry date |
+| `nself ssl status` | Show certificate path, issuer, and expiry date; with `--acme` lineages, also a Lineages table and a certbot-overlap warning |
 | `nself ssl renew` | Trigger manual certificate renewal prompt |
 | `nself ssl setup` | Provision a wildcard/multi-domain cert via DNS-01 |
 | `nself ssl add <domain>` | Provision a cert for a single custom domain via HTTP-01 |

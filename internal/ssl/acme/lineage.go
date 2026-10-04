@@ -10,7 +10,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -41,6 +43,12 @@ type File struct {
 	Lineages      []Lineage `json:"lineages"`
 }
 
+var targetRE = regexp.MustCompile(`^certificates/[A-Za-z0-9_-][A-Za-z0-9._-]*$`)
+
+// ValidTarget reports whether t is a safe lineage target: certificates/<one
+// plain name>, never `.`, empty, absolute, hidden or containing `..`.
+func ValidTarget(t string) bool { return targetRE.MatchString(t) && !strings.Contains(t, "..") }
+
 // StateDir returns <sslDir>/.acme.
 func StateDir(sslDir string) string { return filepath.Join(sslDir, ".acme") }
 
@@ -65,6 +73,13 @@ func Load(sslDir string) (f File, err error) {
 	if err == nil {
 		err = json.Unmarshal(data, &f)
 	}
+	for _, l := range f.Lineages {
+		for _, t := range l.Targets {
+			if err == nil && !ValidTarget(t) {
+				err = Refuse("fix or remove the lineage in lineages.json", "lineage %s has an invalid target %q (want certificates/<name>)", l.Name, t)
+			}
+		}
+	}
 	return f, err
 }
 
@@ -88,17 +103,6 @@ func Save(sslDir string, f File) error {
 		return err
 	}
 	return os.Rename(dst+".tmp", dst)
-}
-
-// Upsert replaces the lineage with l's name or appends l.
-func (f *File) Upsert(l Lineage) {
-	for i := range f.Lineages {
-		if f.Lineages[i].Name == l.Name {
-			f.Lineages[i] = l
-			return
-		}
-	}
-	f.Lineages = append(f.Lineages, l)
 }
 
 // Due reports whether a certificate expiring at notAfter is due: force, or

@@ -390,13 +390,18 @@ func acmeServed(t *testing.T, f *acmeFix) []byte {
 
 func TestACMEFlagsRequireACME(t *testing.T) {
 	f := newACMEFix(t)
-	for _, fl := range []string{"--dry-run", "--agree-tos", "--nginx-container=x", "--adopt-certbot"} {
+	for _, fl := range []string{"--dry-run", "--agree-tos", "--nginx-container=x", "--adopt-certbot", "--lineage=x", "--dns-credential-file=x"} {
 		if _, err := f.run(sslSetupCmd, fl); err == nil || !strings.Contains(err.Error(), "only works with --acme") {
 			t.Errorf("%s without --acme: %v", fl, err)
 		}
 	}
-	if _, err := f.run(sslRenewCmd, "--force"); err == nil || !strings.Contains(err.Error(), "only works with --acme") {
-		t.Errorf("--force without --acme: %v", err)
+	for _, fl := range []string{"--force", "--staging", "--email=a@example.org", "--quiet"} {
+		if _, err := f.run(sslRenewCmd, fl); err == nil || !strings.Contains(err.Error(), "only works with --acme") {
+			t.Errorf("renew %s without --acme: %v", fl, err)
+		}
+	}
+	if _, err := f.run(sslSetupCmd, "--challenge=dns-01"); err == nil || !strings.Contains(err.Error(), "only works with --acme") {
+		t.Errorf("setup --challenge without --acme: %v", err)
 	}
 }
 
@@ -441,7 +446,7 @@ func TestACMECredentialINI(t *testing.T) {
 
 func TestACMEUnitsEnvironment(t *testing.T) {
 	svc, timer := acmeUnits("/usr/local/bin/nself", "/opt/nself-web/backend", "/home/deploy/.config/nself/age-key.txt", "/home/deploy")
-	for _, want := range []string{"Environment=SECRETS_AGE_KEY_PATH=/home/deploy/.config/nself/age-key.txt", "Environment=HOME=/home/deploy",
+	for _, want := range []string{`Environment="SECRETS_AGE_KEY_PATH=/home/deploy/.config/nself/age-key.txt"`, `Environment="HOME=/home/deploy"`,
 		"ExecStart=/usr/local/bin/nself trust ssl renew --acme --quiet", "WorkingDirectory=/opt/nself-web/backend"} {
 		if !strings.Contains(svc, want) {
 			t.Errorf("service unit missing %q", want)
@@ -553,7 +558,7 @@ func TestACMEDryRunPrintsUnits(t *testing.T) {
 	if err != nil || f.timers != 0 {
 		t.Fatalf("dry run: %v timers=%d", err, f.timers)
 	}
-	for _, want := range []string{"Environment=SECRETS_AGE_KEY_PATH=" + os.Getenv("SECRETS_AGE_KEY_PATH"), "Environment=HOME=", "ExecStart=", "trust ssl renew --acme --quiet"} {
+	for _, want := range []string{`Environment="SECRETS_AGE_KEY_PATH=` + os.Getenv("SECRETS_AGE_KEY_PATH"), `Environment="HOME=`, "ExecStart=", "trust ssl renew --acme --quiet"} {
 		if runtime.GOOS == "linux" && !strings.Contains(out, want) {
 			t.Errorf("dry-run output missing %q\n%s", want, out)
 		}
@@ -593,5 +598,123 @@ func TestACMERenewUnknownLineage(t *testing.T) {
 	_ = acme.Save(f.ssl, acme.File{Contact: "ops@example.org", Lineages: []acme.Lineage{{Name: "x"}}})
 	if err := runSSLRenew(sslRenewCmd, nil); err == nil || !strings.Contains(err.Error(), "no domains or targets") {
 		t.Fatalf("want a malformed-lineage error, got %v", err)
+	}
+}
+
+func TestACMERunLock(t *testing.T) {
+	f := newACMEFix(t)
+	if err := acme.Save(f.ssl, acme.File{Contact: "ops@example.org", Lineages: []acme.Lineage{{Name: "x", Domains: []string{"x.example.org"}, Targets: []string{"certificates/x"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	release, err := acme.Lock(f.ssl, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	acmeLockWait = 100 * time.Millisecond
+	t.Cleanup(func() { acmeLockWait = 10 * time.Second })
+	for _, run := range []func() error{
+		func() error { _, err := f.run(sslRenewCmd, "--acme", "--force"); return err },
+		func() error {
+			_, err := f.run(sslSetupCmd, "--acme", "--adopt-certbot="+f.root, "--dns-credential-file=/nonexistent")
+			return err
+		},
+	} {
+		if err := run(); err == nil {
+			t.Fatal("a run proceeded while another held the lock")
+		}
+	}
+	if _, err := f.run(sslRenewCmd, "--acme", "--force"); err == nil || !strings.Contains(err.Error(), "another `trust ssl ... --acme` run holds") {
+		t.Fatalf("want the lock-held refusal, got %v", err)
+	}
+	if len(f.runs) != 0 {
+		t.Error("lego ran under a held lock")
+	}
+	if out, err := f.run(sslRenewCmd, "--acme", "--dry-run"); err != nil || !strings.Contains(out, "due:") {
+		t.Errorf("a dry run needs no lock: %v", err)
+	}
+	release()
+}
+
+func TestACMEProbeHostsPerTarget(t *testing.T) {
+	f := newACMEFix(t)
+	for host, dir := range map[string]string{"b.task.nself.org": "b-dir", "a.task.nself.org": "a-dir", "z.task.nself.org": "a-dir"} {
+		acmeWriteFile(t, filepath.Join(f.served, "nginx", "conf.d", host+".conf"), []byte(fmt.Sprintf(
+			"server {\n  listen 443 ssl;\n  server_name %s;\n  ssl_certificate /etc/nginx/ssl/certificates/%s/fullchain.pem;\n}\n", host, dir)))
+	}
+	r := &acmeRun{res: &acme.Resolution{NginxDir: filepath.Join(f.served, "nginx")}}
+	got := r.probeHosts(acme.Lineage{Domains: []string{"*.task.nself.org"}, Targets: []string{"certificates/a-dir", "certificates/b-dir", "certificates/none"}})
+	if strings.Join(got, " ") != "a.task.nself.org b.task.nself.org check.task.nself.org" {
+		t.Errorf("probe hosts = %v", got)
+	}
+}
+
+func TestSSLStatusLineages(t *testing.T) {
+	f := newACMEFix(t)
+	var buf bytes.Buffer
+	printLineageStatus(&buf, f.project, "nself-web")
+	if buf.Len() != 0 {
+		t.Fatalf("status without lineages must print nothing, got %q", buf.String())
+	}
+	for dir, days := range map[string]int{"due-example": 10, "ok-example": 60} {
+		c, k := acmeTestCert(t, []string{dir + ".example.org"}, time.Now().Add(time.Duration(days)*24*time.Hour+time.Hour))
+		acmeWriteFile(t, filepath.Join(f.ssl, "certificates", dir, "fullchain.pem"), c)
+		acmeWriteFile(t, filepath.Join(f.ssl, "certificates", dir, "privkey.pem"), k)
+	}
+	lin := func(n string) acme.Lineage {
+		return acme.Lineage{Name: n, Domains: []string{n + ".example.org"}, Challenge: "dns-01", DNSProvider: "cloudflare", Targets: []string{"certificates/" + n}}
+	}
+	_ = acme.Save(f.ssl, acme.File{Contact: "a@example.org", Lineages: []acme.Lineage{lin("ok-example"), lin("due-example"), lin("missing-example")}})
+	printLineageStatus(&buf, f.project, "nself-web")
+	out := buf.String()
+	for _, want := range []string{"Lineages managed by nself", "LINEAGE", "STATUS", "TARGETS"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in\n%s", want, out)
+		}
+	}
+	row := func(name string) string {
+		for _, l := range strings.Split(out, "\n") {
+			if strings.HasPrefix(l, name+" ") {
+				return l
+			}
+		}
+		return ""
+	}
+	if r := row("due-example"); !strings.Contains(r, "WARN") || !strings.Contains(r, "dns-01") || !strings.Contains(r, "cloudflare") || !strings.Contains(r, "certificates/due-example") {
+		t.Errorf("due row = %q", r)
+	}
+	if r := row("ok-example"); !strings.Contains(r, " OK ") || !strings.Contains(r, "60") {
+		t.Errorf("ok row = %q", r)
+	}
+	if r := row("missing-example"); !strings.Contains(r, "UNREADABLE") {
+		t.Errorf("missing row = %q", r)
+	}
+	if strings.Index(out, "missing-example") < strings.Index(out, "due-example") {
+		t.Error("lineages are not sorted by name")
+	}
+}
+
+func TestSSLStatusCertbotOverlap(t *testing.T) {
+	f := newACMEFix(t)
+	le := filepath.Join(f.root, "etc-letsencrypt")
+	old := letsEncryptLiveDir
+	letsEncryptLiveDir = filepath.Join(le, "live")
+	t.Cleanup(func() { letsEncryptLiveDir = old })
+	for _, name := range []string{"api.task.nself.org", "other.example.net"} {
+		c, _ := acmeTestCert(t, []string{name}, time.Now().Add(20*24*time.Hour))
+		acmeWriteFile(t, filepath.Join(le, "live", name, "cert.pem"), c)
+		acmeWriteFile(t, filepath.Join(le, "renewal", name+".conf"), []byte("[renewalparams]\nauthenticator = standalone\n"))
+	}
+	c, k := acmeTestCert(t, []string{"api.task.nself.org"}, time.Now().Add(60*24*time.Hour))
+	acmeWriteFile(t, filepath.Join(f.ssl, "certificates", "api", "fullchain.pem"), c)
+	acmeWriteFile(t, filepath.Join(f.ssl, "certificates", "api", "privkey.pem"), k)
+	_ = acme.Save(f.ssl, acme.File{Lineages: []acme.Lineage{{Name: "api", Domains: []string{"api.task.nself.org"}, Challenge: "dns-01", DNSProvider: "cloudflare", Targets: []string{"certificates/api"}}}})
+	var buf bytes.Buffer
+	printLineageStatus(&buf, f.project, "nself-web")
+	out := buf.String()
+	if !strings.Contains(out, "WARNING: api is also managed by certbot") || !strings.Contains(out, filepath.Join(le, "renewal", "api.task.nself.org.conf")) {
+		t.Errorf("no overlap warning:\n%s", out)
+	}
+	if strings.Contains(out, "other.example.net") {
+		t.Error("warned about an unrelated certbot lineage")
 	}
 }

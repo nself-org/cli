@@ -7,7 +7,6 @@ package commands
 // acmeD holds the seams tests replace (docker, secrets, prober, exit).
 
 import (
-	"bufio"
 	"cmp"
 	"context"
 	"crypto/sha256"
@@ -15,23 +14,19 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/nginxtopo"
+	"github.com/nself-org/cli/internal/secrets"
+	"github.com/nself-org/cli/internal/ssl"
+	"github.com/nself-org/cli/internal/ssl/acme"
+	"github.com/spf13/cobra"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/spf13/cobra"
-	"golang.org/x/term"
-
-	"github.com/nself-org/cli/internal/config"
-	"github.com/nself-org/cli/internal/docker"
-	"github.com/nself-org/cli/internal/errs"
-	"github.com/nself-org/cli/internal/nginxtopo"
-	"github.com/nself-org/cli/internal/secrets"
-	"github.com/nself-org/cli/internal/ssl"
-	"github.com/nself-org/cli/internal/ssl/acme"
 )
 
 // acmeInput carries optional preflight seams (nil = real docker and PATH).
@@ -50,7 +45,7 @@ var acmeD = struct {
 }{docker.RunOneShot, docker.ExecCapture, ssl.ProbeServed, secrets.Get, secrets.Set, installACMETimer, askTTY, os.Exit}
 
 // acmeOnlyFlags mean nothing without --acme and are refused without it.
-var acmeOnlyFlags = []string{"dry-run", "nginx-container", "agree-tos", "force", "quiet", "adopt-certbot", "dns-credential-file", "lineage"}
+var acmeOnlyFlags = []string{"dry-run", "nginx-container", "agree-tos", "force", "quiet", "adopt-certbot", "dns-credential-file", "challenge", "lineage"}
 
 func init() {
 	for _, c := range []*cobra.Command{sslSetupCmd, sslRenewCmd} {
@@ -82,25 +77,18 @@ type acmeRun struct {
 	hooks               acme.Hooks
 	file                acme.File
 	dry, staging, agree bool
-}
-
-// e151 turns an error into the CLI's E151 carrying its remediation.
-func e151(err error) error {
-	what, fix := "ACME: "+err.Error(), "re-run with --dry-run to see the plan"
-	var ae *acme.Error
-	if errors.As(err, &ae) {
-		what, fix = ae.What, ae.Fix
-	}
-	e := errs.New("E151", what)
-	e.Why, e.Fix, e.Wrapped = "", fix, err
-	return e
+	unlock              func() // releases the run lock (a no-op under --dry-run)
 }
 
 func (r *acmeRun) say(format string, a ...any) { _, _ = fmt.Fprintf(r.out, format+"\n", a...) }
 
 // rejectACMEFlags refuses ACME-only flags given without --acme.
 func rejectACMEFlags(cmd *cobra.Command) error {
-	for _, n := range acmeOnlyFlags {
+	names := acmeOnlyFlags
+	if cmd.Name() == "renew" { // new on renew only: setup's own --staging and --email predate --acme
+		names = append(append([]string{}, names...), "staging", "email")
+	}
+	for _, n := range names {
 		if f := cmd.Flags().Lookup(n); f != nil && f.Changed {
 			return e151(acmeRefuse("add --acme", "--%s only works with --acme", n))
 		}
@@ -112,7 +100,7 @@ func rejectACMEFlags(cmd *cobra.Command) error {
 func prepareACME(cmd *cobra.Command, renew bool) (r *acmeRun, err error) {
 	fl := cmd.Flags()
 	str := func(n string) string { v, _ := fl.GetString(n); return v }
-	r = &acmeRun{cmd: cmd, out: cmd.OutOrStdout(), secEnv: "dev"}
+	r = &acmeRun{cmd: cmd, out: cmd.OutOrStdout(), secEnv: "dev", unlock: func() {}}
 	r.dry, _ = fl.GetBool("dry-run")
 	r.staging, _ = fl.GetBool("staging")
 	r.agree, _ = fl.GetBool("agree-tos")
@@ -151,6 +139,18 @@ func prepareACME(cmd *cobra.Command, renew bool) (r *acmeRun, err error) {
 	return r, nil
 }
 
+// lock takes the run lock right before the first write (refusals and dry runs
+// stay write-free) and re-reads lineages.json under it. Callers defer r.unlock().
+func (r *acmeRun) lock() (err error) {
+	if !r.dry {
+		if r.unlock, err = acme.Lock(r.res.SSLDir, acmeLockWait); err != nil {
+			return e151(err)
+		}
+		r.file, _ = acme.Load(r.res.SSLDir)
+	}
+	return nil
+}
+
 // acceptTOS reports whether lego needs --accept-tos (first account
 // registration) and refuses when the terms were neither agreed nor confirmed.
 func (r *acmeRun) acceptTOS() (bool, error) {
@@ -170,7 +170,7 @@ func (r *acmeRun) printLineage(l acme.Lineage) {
 		state, p := "absent", filepath.Join(r.res.SSLDir, filepath.FromSlash(t))
 		if dest, err := os.Readlink(p); err == nil {
 			state = "generation link -> " + dest
-		} else if st, err := os.Stat(p); err == nil && st.IsDir() {
+		} else if _, err := os.Stat(p); err == nil {
 			state = "directory, becomes a generation link on install"
 		}
 		r.say("  target:  %s [%s]", t, state)
@@ -179,9 +179,6 @@ func (r *acmeRun) printLineage(l acme.Lineage) {
 
 // issueInstall issues l with lego and, unless staging, installs and verifies it.
 func (r *acmeRun) issueInstall(ctx context.Context, l *acme.Lineage, tos bool) error {
-	if err := acme.EnsureState(r.res.SSLDir); err != nil {
-		return e151(err)
-	}
 	cert, key, err := acme.Issue(ctx, acme.IssueReq{SSLDir: r.res.SSLDir, Name: l.Name, Provider: l.DNSProvider,
 		Contact: r.res.Contact, Domains: l.Domains, Staging: r.staging, AcceptTOS: tos, Hooks: r.hooks, Run: acmeD.run,
 		Secret: func(n string) (string, error) { return acmeD.secGet(r.workdir, r.secEnv, n) }})
@@ -220,45 +217,43 @@ func (r *acmeRun) install(ctx context.Context, l acme.Lineage, cert, key []byte)
 	return nil
 }
 
-// verifier returns the post-reload check that nginx serves cert for the
-// lineage's first name (a wildcard is probed as check.<zone>).
+// verifier returns the post-reload check that nginx serves cert on every target.
 func (r *acmeRun) verifier(l acme.Lineage, cert []byte) func(context.Context) error {
 	b, _ := pem.Decode(cert)
 	if b == nil {
 		return func(context.Context) error { return errors.New("issued certificate is not PEM") }
 	}
-	sum, sni := sha256.Sum256(b.Bytes), strings.Replace(l.Domains[0], "*.", "check.", 1)
+	sum := sha256.Sum256(b.Bytes)
 	env, _ := ssl.ServedEnv(r.res.Root, r.cfg.Env)
-	addr := ssl.ServedAddr(env)
-	return func(ctx context.Context) (err error) {
-		// `nginx -s reload` returns before the old workers stop answering, so poll briefly.
-		for i := 0; i < 20; i++ {
-			got, perr := acmeD.probe(ctx, addr, sni, 10*time.Second)
-			if err = perr; err == nil {
-				if got.SHA256 == hex.EncodeToString(sum[:]) {
-					return nil
-				}
-				err = fmt.Errorf("nginx at %s serves another certificate for %s than the one just installed", addr, sni)
-			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(acmeVerifyWait):
+	addr, snis := ssl.ServedAddr(env), r.probeHosts(l)
+	return func(ctx context.Context) error {
+		for _, sni := range snis {
+			if err := pollServed(ctx, addr, sni, hex.EncodeToString(sum[:])); err != nil {
+				return err
 			}
 		}
-		return err
+		return nil
 	}
 }
+
+// probeHosts picks one served host per target (the first by name whose conf uses
+// that target), else the lineage's first name; a wildcard is probed as check.<zone>.
+func (r *acmeRun) probeHosts(l acme.Lineage) (out []string) {
+	hosts, _ := ssl.ServedHosts(r.res.NginxDir)
+	for _, t := range l.Targets {
+		pick := ""
+		for h, c := range hosts {
+			if strings.Contains(c, "/"+t+"/") && (pick == "" || h < pick) {
+				pick = h
+			}
+		}
+		out = append(out, cmp.Or(pick, strings.Replace(l.Domains[0], "*.", "check.", 1)))
+	}
+	return out
+}
+
+// acmeLockWait is how long a run waits for another --acme run (tests shorten it).
+var acmeLockWait = 10 * time.Second
 
 // acmeVerifyWait is the pause between served-fingerprint probes (tests shorten it).
 var acmeVerifyWait = 500 * time.Millisecond
-
-// askTTY prompts on a terminal and reports a yes; false when stdin is not a terminal.
-func askTTY(prompt string) bool {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return false
-	}
-	fmt.Fprintf(os.Stderr, "%s [y/N] ", prompt)
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "y")
-}

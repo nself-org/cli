@@ -10,12 +10,11 @@ package acme
 import (
 	"context"
 	"fmt"
+	"github.com/nself-org/cli/internal/docker"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/nself-org/cli/internal/docker"
 )
 
 // Directory URLs.
@@ -47,7 +46,7 @@ type Hooks struct{ Directory, CABundle, Network, Resolvers, Fault string }
 // NSELF_ACME_DIRECTORY (i.e. against production) is refused.
 func HooksFromEnv(get func(string) string) (Hooks, error) {
 	h := Hooks{get("NSELF_ACME_DIRECTORY"), get("NSELF_ACME_CA_BUNDLE"), get("NSELF_ACME_NETWORK"), get("NSELF_ACME_DNS_RESOLVERS"), get("NSELF_ACME_FAULT")}
-	if h != (Hooks{}) && (h.Directory == "" || strings.Contains(h.Directory, "api.letsencrypt.org")) {
+	if h != (Hooks{}) && (h.Directory == "" || strings.Contains(strings.ToLower(h.Directory), "letsencrypt.org")) {
 		return h, Refuse("unset the NSELF_ACME_* variables", "NSELF_ACME_* test hooks are refused against Let's Encrypt production")
 	}
 	return h, nil
@@ -79,6 +78,11 @@ func NeedsTOS(sslDir string, staging bool, contact string) bool {
 
 // Issue runs `lego run` and returns the certificate and key paths on the host.
 func Issue(ctx context.Context, r IssueReq) (cert, key string, err error) {
+	for _, d := range r.Domains {
+		if strings.IndexFunc(d, func(c rune) bool { return c > 127 }) >= 0 {
+			return "", "", Refuse("use the punycode (xn--) form of the name", "name %q is not ASCII; lego files it under another name", d)
+		}
+	}
 	server, root := ProdDirectory, "/ssl/.acme"
 	if r.Staging {
 		server, root = StagingDirectory, root+"/staging"

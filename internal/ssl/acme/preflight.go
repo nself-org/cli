@@ -10,15 +10,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/nginxtopo"
 	"io"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
-
-	"github.com/nself-org/cli/internal/docker"
-	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // Error is a refusal with its remediation.
@@ -91,30 +90,35 @@ func Resolve(ctx context.Context, in Input) (*Resolution, error) {
 	return r, nil
 }
 
-// mountProblem returns "" when sslDir is mounted whole at the nginx ssl path,
-// else a description naming the mounts in the way.
+// mountProblem returns "" when sslDir is mounted whole at the nginx ssl path
+// and nothing is mounted beneath it (a nested mount shadows the whole-dir one
+// and pins the old inode), else a description naming the mounts in the way.
 func mountProblem(mounts []docker.Mount, sslDir string) string {
 	const dst = nginxtopo.NginxSSLContainerPath
 	var seen []string
+	whole := false
 	for _, m := range mounts {
-		if d := path.Clean(m.Destination); d == dst || strings.HasPrefix(d, dst+"/") {
-			ra, ea := filepath.EvalSymlinks(m.Source)
-			rb, eb := filepath.EvalSymlinks(sslDir)
-			if d == dst && (filepath.Clean(m.Source) == filepath.Clean(sslDir) || ea == nil && eb == nil && ra == rb) {
-				return ""
-			}
+		d := path.Clean(m.Destination)
+		ra, ea := filepath.EvalSymlinks(m.Source)
+		rb, eb := filepath.EvalSymlinks(sslDir)
+		if d == dst && (filepath.Clean(m.Source) == filepath.Clean(sslDir) || ea == nil && eb == nil && ra == rb) {
+			whole = true
+		} else if d == dst || strings.HasPrefix(d, dst+"/") {
 			seen = append(seen, m.Source+" -> "+d)
 		}
 	}
-	if len(seen) == 0 {
+	switch {
+	case whole && len(seen) == 0:
+		return ""
+	case len(seen) == 0:
 		return "has no mount at " + dst
 	}
-	return fmt.Sprintf("mounts %s, not the whole %s at %s", strings.Join(seen, ", "), sslDir, dst)
+	return fmt.Sprintf("mounts %s in the way of the whole %s at %s", strings.Join(seen, ", "), sslDir, dst)
 }
 
 // Print writes the resolution, one fact per line.
 func (r *Resolution) Print(w io.Writer) {
 	_, _ = fmt.Fprintf(w, "served root:       %s\nserved ssl dir:    %s\nserved nginx dir:  %s\n", r.Root, r.SSLDir, r.NginxDir)
-	_, _ = fmt.Fprintf(w, "nginx container:   %s\nnginx ssl mount:   %s -> %s (whole dir)\n", r.Container, r.SSLDir, nginxtopo.NginxSSLContainerPath)
-	_, _ = fmt.Fprintf(w, "acme contact:      %s\nage:               %s (key %s)\n", r.Contact, r.AgeBin, r.AgeKey)
+	_, _ = fmt.Fprintf(w, "nginx container:   %s\nnginx ssl mount:   %s -> %s (whole dir)\nacme contact:      %s\nage:               %s (key %s)\n",
+		r.Container, r.SSLDir, nginxtopo.NginxSSLContainerPath, r.Contact, r.AgeBin, r.AgeKey)
 }

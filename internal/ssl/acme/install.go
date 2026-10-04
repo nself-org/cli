@@ -11,16 +11,16 @@ package acme
 import (
 	"context"
 	"crypto/tls"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/nself-org/cli/internal/docker"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/nself-org/cli/internal/docker"
 )
 
 // Reloader makes the serving process pick up installed files.
@@ -136,6 +136,11 @@ func Repair(sslDir string, targets []string) error {
 // Install writes a new generation per target, switches them, reloads, verifies
 // and prunes. A failure after the switch restores every previous generation.
 func Install(ctx context.Context, r InstallReq) (map[string]int, error) {
+	for _, t := range r.Targets {
+		if !ValidTarget(t) {
+			return nil, fmt.Errorf("refusing target %q: want certificates/<name> inside the ssl dir", t)
+		}
+	}
 	if err := Repair(r.SSLDir, r.Targets); err != nil {
 		return nil, err
 	}
@@ -209,7 +214,15 @@ func prepare(r InstallReq, target string) (swap, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return swap{}, err
 	}
-	for name, data := range map[string][]byte{"fullchain.pem": r.Cert, "privkey.pem": r.Key} {
+	// Same file set as certbot's live/ dir, so confs naming cert.pem or chain.pem keep loading.
+	files := map[string][]byte{"fullchain.pem": r.Cert, "privkey.pem": r.Key}
+	if b, chain := pem.Decode(r.Cert); b != nil {
+		files["cert.pem"] = pem.EncodeToMemory(b)
+		if len(chain) > 0 {
+			files["chain.pem"] = chain
+		}
+	}
+	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
 			return swap{}, err
 		}

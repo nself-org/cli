@@ -18,7 +18,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -219,6 +221,8 @@ func TestACMEMountRefusal(t *testing.T) {
 		"dir mount":  {{Source: filepath.Join(ssl, "certificates", "api-example-org"), Destination: "/etc/nginx/ssl/certificates/api-example-org"}},
 		"file mount": {{Source: filepath.Join(ssl, "certificates", "api-example-org", "fullchain.pem"), Destination: "/etc/nginx/ssl/certificates/api-example-org/fullchain.pem"}},
 		"none":       {},
+		"whole dir plus a nested mount that shadows it": {{Source: ssl, Destination: "/etc/nginx/ssl"},
+			{Source: filepath.Join(ssl, "certificates", "api-example-org"), Destination: "/etc/nginx/ssl/certificates/api-example-org"}},
 	} {
 		in.Mounts = func(context.Context, string) ([]docker.Mount, error) { return mounts, nil }
 		_, err := Resolve(context.Background(), in)
@@ -242,6 +246,7 @@ func TestACMEHooksAndArgs(t *testing.T) {
 	get := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 	for name, m := range map[string]map[string]string{
 		"fault with production": {"NSELF_ACME_FAULT": "after-generation-write"},
+		"upper case host":       {"NSELF_ACME_DIRECTORY": "https://ACME-V02.API.LETSENCRYPT.ORG/directory", "NSELF_ACME_FAULT": "after-generation-write"},
 		"letsencrypt directory": {"NSELF_ACME_DIRECTORY": "https://acme-v02.api.letsencrypt.org/directory"},
 		"staging letsencrypt":   {"NSELF_ACME_DIRECTORY": "https://acme-staging-v02.api.letsencrypt.org/directory", "NSELF_ACME_DNS_RESOLVERS": "x:1"},
 	} {
@@ -280,9 +285,7 @@ func TestACMEHooksAndArgs(t *testing.T) {
 func TestACMELineagesAndPlan(t *testing.T) {
 	ssl := t.TempDir()
 	f := File{Contact: "a@example.org"}
-	f.Upsert(Lineage{Name: "b"})
-	f.Upsert(Lineage{Name: "a", Domains: []string{"x"}})
-	f.Upsert(Lineage{Name: "b", Targets: []string{"certificates/b"}})
+	f.Lineages = []Lineage{{Name: "b", Targets: []string{"certificates/b"}}, {Name: "a", Domains: []string{"x"}}}
 	if err := Save(ssl, f); err != nil {
 		t.Fatal(err)
 	}
@@ -299,6 +302,10 @@ func TestACMELineagesAndPlan(t *testing.T) {
 	now := time.Now()
 	if !Due(now.Add(10*24*time.Hour), now, false) || Due(now.Add(60*24*time.Hour), now, false) || !Due(now.Add(60*24*time.Hour), now, true) {
 		t.Error("Due thresholds wrong")
+	}
+	if ad, refused := Plan([]Certbot{{Name: "x", Authenticator: "dns-cloudflare", Domains: []string{"x.example.org"}}},
+		map[string]string{"x.example.org": "/etc/nginx/ssl/fullchain.pem"}, "", ""); len(ad) != 0 || len(refused) != 1 || !strings.Contains(refused[0], `"."`) {
+		t.Errorf("a conf pointing at the ssl dir itself must refuse the lineage: %+v %v", ad, refused)
 	}
 	hosts := map[string]string{
 		"api.example.org":  "/etc/nginx/ssl/certificates/api-example-org/fullchain.pem",
@@ -323,5 +330,118 @@ func TestACMELineagesAndPlan(t *testing.T) {
 	}
 	if ad, _ = Plan(cbs[:2], hosts, "cloudflare", "auth"); len(ad) != 1 || ad[0].Name != "auth" {
 		t.Errorf("--lineage filter: %+v", ad)
+	}
+}
+
+func TestACMELockSerializesInstall(t *testing.T) {
+	posixOnly(t)
+	ssl, _ := fixture(t)
+	for round := 0; round < 200; round++ {
+		var wg sync.WaitGroup
+		errs := make([]error, 2)
+		for i := range errs {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				c, k := testPair(t, []string{"api.example.org"}, time.Now().Add(90*24*time.Hour))
+				release, err := Lock(ssl, time.Minute)
+				if err != nil {
+					errs[i] = err
+					return
+				}
+				defer release()
+				_, errs[i] = Install(context.Background(), InstallReq{SSLDir: ssl, Targets: []string{tgt}, Cert: c, Key: k, Reloader: &fakeReloader{}})
+			}(i)
+		}
+		wg.Wait()
+		if errs[0] != nil || errs[1] != nil || !pairOK(filepath.Join(ssl, tgt)) {
+			t.Fatalf("round %d: errs=%v pair ok=%v", round, errs, pairOK(filepath.Join(ssl, tgt)))
+		}
+	}
+}
+
+func TestACMELockContention(t *testing.T) {
+	posixOnly(t)
+	ssl := t.TempDir()
+	release, err := Lock(ssl, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Lock(ssl, 150*time.Millisecond)
+	var ae *Error
+	if !errors.As(err, &ae) || !strings.Contains(ae.What, "another") || !strings.Contains(ae.What, strconv.Itoa(os.Getpid())) {
+		t.Fatalf("want a refusal naming the holder pid, got %v", err)
+	}
+	release()
+	if r2, err := Lock(ssl, time.Second); err != nil {
+		t.Fatalf("lock not released: %v", err)
+	} else {
+		r2()
+	}
+}
+
+func TestACMEValidTarget(t *testing.T) {
+	for _, ok := range []string{"certificates/api-example-org", "certificates/a.b_c-1"} {
+		if !ValidTarget(ok) {
+			t.Errorf("%q should be valid", ok)
+		}
+	}
+	for _, bad := range []string{".", "", "certificates", "../x", "/abs/path", "/etc/nginx/ssl/certificates/x", "certificates/.x.gen-1", "certificates/a/b", "certificates/..", "certificates/a..b", "other/x", "certificates/"} {
+		if ValidTarget(bad) {
+			t.Errorf("%q should be refused", bad)
+		}
+	}
+	ssl := t.TempDir()
+	outside := filepath.Join(filepath.Dir(ssl), "outside-"+filepath.Base(ssl))
+	c, k := testPair(t, []string{"a.example.org"}, time.Now().Add(time.Hour))
+	for _, bad := range []string{".", "../" + filepath.Base(outside), "certificates"} {
+		if _, err := Install(context.Background(), InstallReq{SSLDir: ssl, Targets: []string{bad}, Cert: c, Key: k, Reloader: &fakeReloader{}}); err == nil || !strings.Contains(err.Error(), "refusing target") {
+			t.Errorf("Install accepted target %q: %v", bad, err)
+		}
+	}
+	if _, err := os.Stat(outside); err == nil {
+		t.Error("Install touched a directory outside the ssl dir")
+	}
+	if err := os.MkdirAll(filepath.Join(ssl, ".acme"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(ssl, ".acme", "lineages.json"), []byte(`{"lineages":[{"name":"x","targets":["../x"]}]}`), 0o600)
+	if _, err := Load(ssl); err == nil || !strings.Contains(err.Error(), "invalid target") {
+		t.Errorf("Load accepted an invalid target: %v", err)
+	}
+}
+
+func TestACMEInstallWritesChain(t *testing.T) {
+	posixOnly(t)
+	ssl := t.TempDir()
+	leaf, key := testPair(t, []string{"api.example.org"}, time.Now().Add(90*24*time.Hour))
+	issuer, _ := testPair(t, []string{"Issuer CA"}, time.Now().Add(365*24*time.Hour))
+	full := append(append([]byte{}, leaf...), issuer...)
+	gens, err := Install(context.Background(), InstallReq{SSLDir: ssl, Targets: []string{tgt}, Cert: full, Key: key, Reloader: &fakeReloader{}})
+	if err != nil || gens[tgt] != 0 {
+		t.Fatalf("install: %v %v", err, gens)
+	}
+	dir := filepath.Join(ssl, tgt)
+	for name, want := range map[string][]byte{"fullchain.pem": full, "cert.pem": leaf, "chain.pem": issuer, "privkey.pem": key} {
+		got, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil || string(got) != string(want) {
+			t.Errorf("%s: err=%v, content differs from the expected PEM", name, err)
+		}
+		if fi, _ := os.Stat(filepath.Join(dir, name)); fi.Mode().Perm() != 0o600 {
+			t.Errorf("%s mode %v", name, fi.Mode().Perm())
+		}
+	}
+}
+
+func TestACMENonASCIIName(t *testing.T) {
+	_, _, err := Issue(context.Background(), IssueReq{SSLDir: t.TempDir(), Provider: "cloudflare", Contact: "a@example.org", Domains: []string{"bücher.example"},
+		Secret: func(string) (string, error) { return "tok-123456789012", nil },
+		Run: func(context.Context, docker.RunSpec) (string, string, error) {
+			t.Error("lego must not run")
+			return "", "", nil
+		}})
+	var ae *Error
+	if !errors.As(err, &ae) || !strings.Contains(ae.Fix, "punycode") {
+		t.Fatalf("want a punycode remediation, got %v", err)
 	}
 }

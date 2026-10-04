@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -114,4 +115,58 @@ func installSystemdTimer(name, service, timer string) error {
 	}
 
 	return nil
+}
+
+// The ACME renewal timer: unit text, the Linux-only installer and the acmeRun step
+// (`setup --acme --install-cron`). Environment lines are explicit because
+// systemd gives a service neither HOME nor the age key path.
+
+// acmeUnits renders the renewal service and timer units.
+func acmeUnits(exe, workdir, keyPath, home string) (service, timer string) {
+	return fmt.Sprintf(`[Unit]
+Description=nself ACME certificate renewal
+After=network.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%s
+Environment="SECRETS_AGE_KEY_PATH=%s"
+Environment="HOME=%s"
+ExecStart=%s trust ssl renew --acme --quiet
+`, workdir, keyPath, home, exe), sslRenewalTimerContent
+}
+
+// acmeUnitsFor renders the units for this binary, project and age key.
+func acmeUnitsFor(workdir, keyPath string) (service, timer string, err error) {
+	exe, err := os.Executable()
+	if runtime.GOOS != "linux" && err == nil {
+		err = fmt.Errorf("systemd timers need Linux")
+	}
+	home, _ := os.UserHomeDir()
+	abs, _ := filepath.Abs(keyPath)
+	service, timer = acmeUnits(exe, workdir, abs, home)
+	return service, timer, err
+}
+
+// timer installs the renewal units; under --dry-run it prints them instead.
+func (r *acmeRun) timer() error {
+	if r.dry {
+		service, timer, _ := acmeUnitsFor(r.workdir, r.res.AgeKey)
+		r.say("dry run: would write nself-acme-renew.service:\n%s\nand nself-acme-renew.timer:\n%s", service, timer)
+		return nil
+	}
+	if err := acmeD.timer(r.workdir, r.res.AgeKey); err != nil {
+		return e151(acmeRefuse("add to cron: 30 3 * * * nself trust ssl renew --acme --quiet", "installing the renewal timer: %v", err))
+	}
+	r.say("renewal timer installed (nself-acme-renew.timer, runs as root with age key %s)", r.res.AgeKey)
+	return nil
+}
+
+// installACMETimer writes and enables nself-acme-renew.{service,timer} (Linux, systemd).
+func installACMETimer(workdir, keyPath string) error {
+	service, timer, err := acmeUnitsFor(workdir, keyPath)
+	if err != nil {
+		return err
+	}
+	return installSystemdTimer("nself-acme-renew", service, timer)
 }

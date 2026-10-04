@@ -5,16 +5,11 @@ package commands
 // environment has neither, and the age key is how the DNS credential opens.
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
-	"time"
-
-	"github.com/spf13/cobra"
-
 	"github.com/nself-org/cli/internal/ssl"
 	"github.com/nself-org/cli/internal/ssl/acme"
+	"github.com/spf13/cobra"
+	"path/filepath"
+	"time"
 )
 
 // runSSLRenewACME renews the lineages that are due (30 days or fewer left), all
@@ -27,6 +22,10 @@ func runSSLRenewACME(cmd *cobra.Command, args []string) error {
 	if len(r.file.Lineages) == 0 {
 		return e151(acmeRefuse("run `nself trust ssl setup --acme` or `--adopt-certbot` first", "no lineages are managed in %s", acme.StateDir(r.res.SSLDir)))
 	}
+	if err := r.lock(); err != nil {
+		return err
+	}
+	defer r.unlock()
 	force, _ := cmd.Flags().GetBool("force")
 	var due []int
 	matched := len(args) == 0
@@ -69,54 +68,4 @@ func runSSLRenewACME(cmd *cobra.Command, args []string) error {
 		}
 	}
 	return nil
-}
-
-// acmeUnits renders the renewal service and timer units.
-func acmeUnits(exe, workdir, keyPath, home string) (service, timer string) {
-	return fmt.Sprintf(`[Unit]
-Description=nself ACME certificate renewal
-After=network.target docker.service
-
-[Service]
-Type=oneshot
-WorkingDirectory=%s
-Environment=SECRETS_AGE_KEY_PATH=%s
-Environment=HOME=%s
-ExecStart=%s trust ssl renew --acme --quiet
-`, workdir, keyPath, home, exe), sslRenewalTimerContent
-}
-
-// acmeUnitsFor renders the units for this binary, project and age key.
-func acmeUnitsFor(workdir, keyPath string) (service, timer string, err error) {
-	exe, err := os.Executable()
-	if runtime.GOOS != "linux" && err == nil {
-		err = fmt.Errorf("systemd timers need Linux")
-	}
-	home, _ := os.UserHomeDir()
-	abs, _ := filepath.Abs(keyPath)
-	service, timer = acmeUnits(exe, workdir, abs, home)
-	return service, timer, err
-}
-
-// timer installs the renewal units; under --dry-run it prints them instead.
-func (r *acmeRun) timer() error {
-	if r.dry {
-		service, timer, _ := acmeUnitsFor(r.workdir, r.res.AgeKey)
-		r.say("dry run: would write nself-acme-renew.service:\n%s\nand nself-acme-renew.timer:\n%s", service, timer)
-		return nil
-	}
-	if err := acmeD.timer(r.workdir, r.res.AgeKey); err != nil {
-		return e151(acmeRefuse("add to cron: 30 3 * * * nself trust ssl renew --acme --quiet", "installing the renewal timer: %v", err))
-	}
-	r.say("renewal timer installed (nself-acme-renew.timer)")
-	return nil
-}
-
-// installACMETimer writes and enables nself-acme-renew.{service,timer} (Linux, systemd).
-func installACMETimer(workdir, keyPath string) error {
-	service, timer, err := acmeUnitsFor(workdir, keyPath)
-	if err != nil {
-		return err
-	}
-	return installSystemdTimer("nself-acme-renew", service, timer)
 }

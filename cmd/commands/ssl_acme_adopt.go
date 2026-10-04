@@ -9,11 +9,11 @@ package commands
 import (
 	"bytes"
 	"context"
-	"os"
-	"path/filepath"
-
 	"github.com/nself-org/cli/internal/ssl"
 	"github.com/nself-org/cli/internal/ssl/acme"
+	"os"
+	"path/filepath"
+	"slices"
 )
 
 // adopt implements the --adopt-certbot branch after preflight.
@@ -53,20 +53,23 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 		r.say("dry run: nothing written")
 		return nil
 	}
+	if err := r.lock(); err != nil {
+		return err
+	}
+	defer r.unlock()
 	for name, v := range secs {
 		if err := acmeD.secSet(r.workdir, r.secEnv, name, v); err != nil {
 			return e151(acmeRefuse("check the age key and that the value is a real credential", "storing %s in the secret store failed: %v", name, err))
 		}
 	}
-	for _, l := range adopt {
+	for _, l := range adopt { // saved per lineage: a later failure keeps what is already converted; re-run to finish
 		if err := r.importLive(ctx, filepath.Join(dir, "live", l.Name), l); err != nil {
 			return err
 		}
-		r.file.Upsert(l)
-	}
-	r.file.Contact = r.res.Contact
-	if err := acme.Save(r.res.SSLDir, r.file); err != nil {
-		return e151(err)
+		r.file.Lineages = append(slices.DeleteFunc(r.file.Lineages, func(x acme.Lineage) bool { return x.Name == l.Name }), l)
+		if r.file.Contact = r.res.Contact; acme.Save(r.res.SSLDir, r.file) != nil {
+			return e151(acmeRefuse("check permissions on the ssl/.acme directory", "saving lineages.json failed"))
+		}
 	}
 	r.say("adopted %d lineage(s) as dns-01; certbot state was not touched", len(adopt))
 	return nil

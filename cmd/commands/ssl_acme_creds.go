@@ -6,9 +6,8 @@ package commands
 // Errors name keys, never values.
 
 import (
-	"os"
-
 	"github.com/nself-org/cli/internal/ssl/acme"
+	"os"
 )
 
 // parseDNSCredentialFile returns the provider and secret-store name -> value

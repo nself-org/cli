@@ -102,3 +102,21 @@ func TestACMEAdoptStandalone(t *testing.T) {
 		t.Errorf("missing target not imported: link=%q execs=%v", link, f.execs)
 	}
 }
+
+func TestACMEAdoptRefusesUnsafeTarget(t *testing.T) {
+	f := newACMEFix(t)
+	le := adoptFix(t, f)
+	// A conf that serves its certificate straight from the ssl dir would turn the whole dir into a generation.
+	acmeWriteFile(t, filepath.Join(f.served, "nginx", "conf.d", "api-task-nself-org.conf"), []byte(
+		"server {\n  listen 443 ssl;\n  server_name api.task.nself.org;\n  ssl_certificate /etc/nginx/ssl/fullchain.pem;\n}\n"))
+	cred := filepath.Join(f.root, "cloudflare.ini")
+	acmeWriteFile(t, cred, []byte("dns_cloudflare_api_token = cf-token-0123456789abcdef\n"))
+	before := acmeTree(t, f.root)
+	out, err := f.run(sslSetupCmd, "--acme", "--adopt-certbot="+le, "--dns-credential-file="+cred, "--lineage=api.task.nself.org")
+	if err == nil || !strings.Contains(out, "refused api.task.nself.org") || !strings.Contains(out, `"."`) || !strings.Contains(out, "not certificates/<name>") {
+		t.Fatalf("want a named refusal of target \".\", got err=%v\n%s", err, out)
+	}
+	if acmeTree(t, f.root) != before || len(f.set) != 0 || len(f.execs) != 0 {
+		t.Error("an unsafe target changed the tree, stored a secret or reloaded nginx")
+	}
+}

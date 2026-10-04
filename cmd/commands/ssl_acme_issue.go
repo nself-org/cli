@@ -1,16 +1,13 @@
 package commands
 
-// ssl_acme_issue.go: the `trust ssl setup --acme` entry point: adopt
-// (--adopt-certbot), install the timer for existing lineages (--install-cron),
-// or issue the certbot name set for BASE_DOMAIN into one lineage.
+// ssl_acme_issue.go: `trust ssl setup --acme`: adopt (--adopt-certbot), install the
+// timer for existing lineages (--install-cron), or issue BASE_DOMAIN's certbot names.
 
 import (
 	"context"
-
-	"github.com/spf13/cobra"
-
 	"github.com/nself-org/cli/internal/ssl"
 	"github.com/nself-org/cli/internal/ssl/acme"
+	"github.com/spf13/cobra"
 )
 
 // runSSLSetupACME implements `trust ssl setup --acme`: adopt (--adopt-certbot),
@@ -59,6 +56,10 @@ func (r *acmeRun) issueNew(ctx context.Context, l acme.Lineage, cron bool) error
 		}
 		return nil
 	}
+	if err := r.lock(); err != nil {
+		return err
+	}
+	defer r.unlock()
 	tos, err := r.acceptTOS()
 	if err != nil {
 		return err
@@ -67,7 +68,7 @@ func (r *acmeRun) issueNew(ctx context.Context, l acme.Lineage, cron bool) error
 		return err
 	}
 	r.file.Contact = r.res.Contact
-	r.file.Upsert(l)
+	r.file.Lineages = append(r.file.Lineages, l)
 	if err := acme.Save(r.res.SSLDir, r.file); err != nil {
 		return e151(err)
 	}

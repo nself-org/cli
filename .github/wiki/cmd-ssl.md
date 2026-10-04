@@ -125,7 +125,9 @@ lineage api-task-nself-org: dns-01 via cloudflare
 dry run: nothing written
 ```
 
-Every refusal is error `E151` with a remediation: an nginx container that mounts single certificates instead of the whole ssl dir, a missing `age` or age key, no contact email, a missing DNS credential, a credential file with no provider, two providers or a Cloudflare global API key, or an unsupported DNS plugin.
+`nself ssl status` prints a Lineages table (lineage, challenge, provider, expiry, days, status, targets) when `ssl/.acme/lineages.json` exists, and a warning when `/etc/letsencrypt/renewal` also manages one of a lineage's names. A second `--acme` run that starts while another holds `ssl/.acme/.lock` waits up to 10 seconds, then exits with `E151` naming the holder.
+
+Every refusal is error `E151` with a remediation: an nginx container that mounts single certificates instead of the whole ssl dir, a mount of `/etc/nginx/ssl/...` that shadows the whole-dir mount, a target that is not `certificates/<name>`, a non-ASCII name, a missing `age` or age key, no contact email, a missing DNS credential, a credential file with no provider, two providers or a Cloudflare global API key, or an unsupported DNS plugin.
 <!-- END PROSE:description -->
 
 ## Flags

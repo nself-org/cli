@@ -11,13 +11,12 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"github.com/nself-org/cli/internal/nginxtopo"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // Certbot is one certbot lineage as found on disk; Err is set when its live
@@ -53,21 +52,28 @@ func ReadCertbot(dir string) (out []Certbot, err error) {
 	for _, c := range confs {
 		cb := Certbot{Name: strings.TrimSuffix(filepath.Base(c), ".conf"), Conf: c}
 		conf, e1 := os.ReadFile(c)
-		pemData, e2 := os.ReadFile(filepath.Join(dir, "live", cb.Name, "cert.pem"))
-		if cb.Authenticator, cb.Err = ParseINI(conf)["authenticator"], e1; cb.Err == nil {
-			cb.Err = e2
-		}
-		if b, _ := pem.Decode(pemData); b != nil && cb.Err == nil {
-			var leaf *x509.Certificate
-			if leaf, cb.Err = x509.ParseCertificate(b.Bytes); cb.Err == nil {
-				cb.Domains = leaf.DNSNames
-			}
-		} else if cb.Err == nil {
-			cb.Err = fmt.Errorf("no certificate in live/%s/cert.pem", cb.Name)
+		cb.Authenticator = ParseINI(conf)["authenticator"]
+		if cb.Domains, cb.Err = liveNames(filepath.Join(dir, "live", cb.Name, "cert.pem")); e1 != nil {
+			cb.Err = e1
 		}
 		out = append(out, cb)
 	}
 	return out, nil
+}
+
+// liveNames returns the DNS SANs of the leaf in a PEM file.
+func liveNames(file string) ([]string, error) {
+	data, err := os.ReadFile(file)
+	if b, _ := pem.Decode(data); err == nil && b != nil {
+		c, perr := x509.ParseCertificate(b.Bytes)
+		if perr != nil {
+			return nil, perr
+		}
+		return c.DNSNames, nil
+	} else if err == nil {
+		err = fmt.Errorf("no certificate in %s", file)
+	}
+	return nil, err
 }
 
 // covers reports whether certificate name san serves host (a wildcard spans one label).
@@ -104,6 +110,8 @@ func Plan(cbs []Certbot, hosts map[string]string, provider, only string) (adopt 
 		for _, t := range targets {
 			if o, ok := owner[t]; ok && why == "" {
 				why = fmt.Sprintf("target %s is already served by lineage %s", t, o)
+			} else if !ValidTarget(t) && why == "" {
+				why = fmt.Sprintf("a served conf points at %q, not certificates/<name>; give the lineage its own certificate directory first", t)
 			}
 		}
 		if why == "" && len(targets) == 0 {
