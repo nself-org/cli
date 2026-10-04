@@ -30,7 +30,7 @@
 #   -h, --help                 This help.
 #
 # Exit codes:
-#   0  success or no-op
+#   0  success, no-op, or n/a (repo has no default branch)
 #   1  usage error
 #   2  gh API error or missing dependency
 #   3  flap-guard tripped (rapid toggle without --force)
@@ -222,11 +222,25 @@ toggle_one() {
   local current_exists target body
   info "[${repo}/${BRANCH}] checking current protection state..."
 
-  # Probe current protection (404 if none configured)
-  if gh api "${api_path}" >/dev/null 2>&1; then
+  # Probe current protection. 404 "Branch not protected" = none configured,
+  # 404 "Branch not found" = repo has no such branch (empty repo: n/a),
+  # any other API error is fatal for this repo.
+  local probe probe_err probe_rc=0 errf
+  errf="$(mktemp)"
+  probe="$(gh api "${api_path}" 2>"${errf}")" || probe_rc=$?
+  probe_err="$(cat "${errf}")"; rm -f "${errf}"
+  if [ "${probe_rc}" -eq 0 ]; then
     current_exists=1
-  else
+  elif printf '%s %s' "${probe}" "${probe_err}" | grep -q 'Branch not found'; then
+    info "[${repo}/${BRANCH}] n/a: no default branch"
+    audit "${repo}" "${BRANCH}" "${ACTION}" "n/a" "${REASON}"
+    return 0
+  elif printf '%s %s' "${probe}" "${probe_err}" | grep -q 'Branch not protected'; then
     current_exists=0
+  else
+    err "[${repo}/${BRANCH}] gh API error reading protection: ${probe_err:-${probe}}"
+    audit "${repo}" "${BRANCH}" "${ACTION}" "error" "${REASON}"
+    return 2
   fi
 
   case "${ACTION}" in
@@ -252,25 +266,26 @@ toggle_one() {
 
     if [ "${current_exists}" -eq 1 ]; then
       # Check if existing state matches policy — true no-op
-      local current_body
-      current_body="$(gh api "${api_path}" 2>/dev/null \
-        | jq '{
-            required_status_checks: ((.required_status_checks // {}) | {strict: .strict, contexts: .contexts}),
-            enforce_admins: (.enforce_admins.enabled // false),
-            required_pull_request_reviews: (.required_pull_request_reviews // null),
-            restrictions: (.restrictions // null),
-            allow_force_pushes: (.allow_force_pushes.enabled // false),
-            allow_deletions: (.allow_deletions.enabled // false)
-          }')"
-      local want_body
-      want_body="$(printf '%s' "${body}" | jq '{
+      # Compare writable fields only: url / *_url keys are dropped at every
+      # depth (read-only links GitHub adds) and keys are sorted.
+      local nourl current_body want_body
+      nourl='def nourl: walk(if type == "object" then with_entries(select((.key == "url" or (.key | endswith("_url"))) | not)) else . end);'
+      current_body="$(printf '%s' "${probe}" | jq -S -c "${nourl}"'{
+        required_status_checks: ((.required_status_checks // {}) | {strict: .strict, contexts: .contexts}),
+        enforce_admins: (.enforce_admins.enabled // false),
+        required_pull_request_reviews: (.required_pull_request_reviews // null),
+        restrictions: (.restrictions // null),
+        allow_force_pushes: (.allow_force_pushes.enabled // false),
+        allow_deletions: (.allow_deletions.enabled // false)
+      } | nourl')"
+      want_body="$(printf '%s' "${body}" | jq -S -c "${nourl}"'{
         required_status_checks: ((.required_status_checks // {}) | {strict: .strict, contexts: .contexts}),
         enforce_admins: .enforce_admins,
         required_pull_request_reviews: (.required_pull_request_reviews // null),
         restrictions: (.restrictions // null),
         allow_force_pushes: .allow_force_pushes,
         allow_deletions: .allow_deletions
-      }')"
+      } | nourl')"
       if [ "${current_body}" = "${want_body}" ]; then
         info "[${repo}/${BRANCH}] already matches baseline — no-op"
         audit "${repo}" "${BRANCH}" "${ACTION}" "noop" "${REASON}"
