@@ -22,6 +22,7 @@ package commands
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -49,46 +50,86 @@ func aiIPLocal(ip net.IP) bool {
 	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
 }
 
-// aiTokenHostLocal reports whether PLUGIN_INTERNAL_SECRET may be attached to a
-// request for rawURL: the scheme is http or https and the URL's hostname is
-// `localhost`, a loopback or private IP literal, or `plugin-ai` with every
-// resolved address loopback or private. Everything else, including a lookup
-// error or an empty result, is not local. url.Hostname is used, so
-// http://127.0.0.1@evil.example is judged as evil.example.
-func aiTokenHostLocal(ctx context.Context, rawURL string) bool {
+// aiVetHost decides whether PLUGIN_INTERNAL_SECRET may be attached to a request
+// for rawURL, and returns the addresses that were vetted: the scheme is http or
+// https and the URL's hostname is `localhost` (vetted as 127.0.0.1 and ::1), a
+// loopback or private IP literal, or `plugin-ai` with every resolved address
+// loopback or private. Everything else, including a lookup error or an empty
+// result, is not local. url.Hostname is used, so http://127.0.0.1@evil.example
+// is judged as evil.example.
+func aiVetHost(ctx context.Context, rawURL string) ([]net.IP, bool) {
 	u, err := url.Parse(rawURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-		return false
+		return nil, false
 	}
 	host := u.Hostname()
 	if host == "localhost" {
-		return true
+		return []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback}, true
 	}
 	if ip := net.ParseIP(host); ip != nil {
-		return aiIPLocal(ip)
+		return []net.IP{ip}, aiIPLocal(ip)
 	}
 	if host != "plugin-ai" {
-		return false
+		return nil, false
 	}
 	addrs, err := aiLookupIP(ctx, host)
 	if err != nil || len(addrs) == 0 {
-		return false
+		return nil, false
 	}
+	ips := make([]net.IP, 0, len(addrs))
 	for _, a := range addrs {
 		if !aiIPLocal(a.IP) {
-			return false
+			return nil, false
 		}
+		ips = append(ips, a.IP)
 	}
-	return true
+	return ips, true
+}
+
+// aiTokenHostLocal reports whether the token may be attached for rawURL (see
+// aiVetHost).
+func aiTokenHostLocal(ctx context.Context, rawURL string) bool {
+	_, ok := aiVetHost(ctx, rawURL)
+	return ok
+}
+
+// aiPinnedDial returns a dial function that ignores the hostname it is given
+// and connects to the vetted addresses on the requested port, in order, so a
+// second name resolution can never redirect a token-bearing request. The URL is
+// untouched, so the Host header and TLS ServerName keep the original name.
+func aiPinnedDial(ips []net.IP, base func(context.Context, string, string) (net.Conn, error)) func(context.Context, string, string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		_, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		lastErr := errors.New("no vetted address to dial")
+		for _, ip := range ips {
+			conn, derr := base(ctx, network, net.JoinHostPort(ip.String(), port))
+			if derr == nil {
+				return conn, nil
+			}
+			lastErr = derr
+		}
+		return nil, lastErr
+	}
 }
 
 // aiTokenClient is the only client allowed to carry the token: no proxy, no
-// redirects (httptimeout.NoProxy). aiDialContext, when set, redirects dials so
-// tests can point host plugin-ai at an httptest server.
-func aiTokenClient() *http.Client {
+// redirects (httptimeout.NoProxy). With vetted addresses it dials only those
+// (aiPinnedDial). aiDialContext, when set, replaces the underlying dialer so
+// tests can serve the vetted address from an httptest server.
+func aiTokenClient(vetted ...net.IP) *http.Client {
 	c := httptimeout.NoProxy(httptimeout.Default.Timeout)
-	if aiDialContext != nil {
-		c.Transport.(*http.Transport).DialContext = aiDialContext
+	tr := c.Transport.(*http.Transport)
+	base := aiDialContext
+	if base == nil {
+		base = (&net.Dialer{}).DialContext
+	}
+	if len(vetted) > 0 {
+		tr.DialContext = aiPinnedDial(vetted, base)
+	} else if aiDialContext != nil {
+		tr.DialContext = aiDialContext
 	}
 	return c
 }
@@ -154,9 +195,9 @@ func aiPluginRequest(ctx context.Context, method, path string, body []byte) ([]b
 	// without the token and one stderr warning; doctor's result is unchanged.
 	client := httptimeout.Default
 	if tok := os.Getenv("PLUGIN_INTERNAL_SECRET"); tok != "" {
-		if aiTokenHostLocal(ctx, base) {
+		if vetted, ok := aiVetHost(ctx, base); ok {
 			req.Header.Set("X-Internal-Token", tok)
-			client = aiTokenClient()
+			client = aiTokenClient(vetted...)
 		} else {
 			aiWarnTokenWithheld(base)
 		}

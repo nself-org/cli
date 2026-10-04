@@ -350,3 +350,62 @@ func TestAIPluginTokenWarnNonLocal(t *testing.T) {
 		t.Errorf("warn output with no secret = %q, want empty", buf.String())
 	}
 }
+
+// TestAIPluginTokenDialPinned: the address vetted by the local check is the only
+// one dialled. The first lookup of plugin-ai answers a private address; every
+// later lookup would answer a public one. The token request must land on the
+// private address's server, the dial hook must see only that address, and the
+// name is not resolved a second time. Host stays the original name.
+func TestAIPluginTokenDialPinned(t *testing.T) {
+	rec := &tokenRecorder{}
+	var host atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host.Store(r.Host)
+		rec.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+
+	var mu sync.Mutex
+	var lookups int
+	var dialed []string
+	lookup := func(context.Context, string) ([]net.IPAddr, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		lookups++
+		if lookups == 1 {
+			return []net.IPAddr{{IP: net.ParseIP("10.0.0.5")}}, nil
+		}
+		return []net.IPAddr{{IP: net.ParseIP("8.8.8.8")}}, nil
+	}
+	stubAISeams(t, lookup, func(ctx context.Context, network, addr string) (net.Conn, error) {
+		mu.Lock()
+		dialed = append(dialed, addr)
+		mu.Unlock()
+		return dialTo(srv.Listener.Addr().String())(ctx, network, addr)
+	})
+	t.Setenv("PLUGIN_INTERNAL_SECRET", fakeAISecret)
+	t.Setenv("PLUGIN_AI_INTERNAL_URL", "http://plugin-ai:3709")
+
+	if _, st, err := aiPluginRequest(context.Background(), "GET", "/health", nil); err != nil || st != 200 {
+		t.Fatalf("request: status=%d err=%v", st, err)
+	}
+	if got := rec.seen(); len(got) != 1 || got[0] != fakeAISecret {
+		t.Fatalf("server saw tokens %q, want the fake secret once", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(dialed) != 1 || dialed[0] != "10.0.0.5:3709" {
+		t.Errorf("dialled %q, want exactly [10.0.0.5:3709]", dialed)
+	}
+	for _, d := range dialed {
+		if strings.Contains(d, "8.8.8.8") || strings.Contains(d, "plugin-ai") {
+			t.Errorf("dialled %q: not the vetted address", d)
+		}
+	}
+	if lookups != 1 {
+		t.Errorf("plugin-ai resolved %d times, want once (check only)", lookups)
+	}
+	if h, _ := host.Load().(string); h != "plugin-ai:3709" {
+		t.Errorf("Host header = %q, want plugin-ai:3709", h)
+	}
+}
