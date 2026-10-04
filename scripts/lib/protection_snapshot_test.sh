@@ -7,8 +7,12 @@
 # state like GitHub does, and records every call. The live GitHub API is never
 # called and no real repository is touched.
 #
+# The PATH `bash` is /bin/bash when it exists (3.2 on macOS), so admin-merge.sh
+# and its watchdog run under the oldest supported bash.
+#
 # Usage: protection_snapshot_test.sh [--case round-trip|mismatch|review-fields|
-#                                             dry-run|watchdog-timeout|merge-flow]
+#                                             dry-run|watchdog-timeout|merge-flow|
+#                                             slow-ci|relax-ambiguous|force-restore]
 # With no --case every case runs. Exit 0 when all pass, 1 otherwise.
 
 # shellcheck disable=SC2016,SC2015,SC2119,SC2120,SC1091  # bash -c bodies are single-quoted on purpose
@@ -30,73 +34,20 @@ API="repos/${REPO}/branches/main/protection"
 FAILS=0
 
 # -- stubs --------------------------------------------------------------------
-cat > "${TMP}/bin/gh" << 'STUB_EOF'
-#!/usr/bin/env bash
-# Stub gh. State: $STUB_DIR/state.json (GET shape). Env: STUB_DROP="field ..."
-# (server forgets those fields on PUT), STUB_PUT_FAIL=1, STUB_KILL_PARENT=1.
-D="${STUB_DIR:?}"
-case "$1" in
-  auth) echo "Token scopes: 'repo'"; exit 0 ;;
-  run) echo "completed/success"; exit 0 ;;
-  pr)
-    echo "pr $2" >> "${D}/calls"
-    if [ "$2" = merge ] && [ "${STUB_KILL_PARENT:-0}" = 1 ]; then kill -9 "${PPID}"; fi
-    exit 0 ;;
-  api) ;;
-  *) exit 0 ;;
-esac
-shift
-path="$1"; shift; method=GET
-while [ $# -gt 0 ]; do
-  case "$1" in -X) method="$2"; shift 2 ;; -H|--input) shift 2 ;; *) shift ;; esac
-done
-if [ "${method}" = PUT ]; then
-  echo "PUT ${path}" >> "${D}/calls"
-  body="$(cat)"
-  if [ "${STUB_PUT_FAIL:-0}" = 1 ]; then echo "HTTP 422 stub" >&2; exit 1; fi
-  printf '%s' "${body}" | jq '
-    def pr: {users: [(.users // [])[] | {login: .}], teams: [(.teams // [])[] | {slug: .}], apps: [(.apps // [])[] | {slug: .}]};
-    def en: {enabled: (. // false)};
-    {url: "stub",
-     required_status_checks: (if .required_status_checks then .required_status_checks as $r | {
-        strict: $r.strict,
-        contexts: (($r.contexts // []) + [($r.checks // [])[].context]),
-        checks: ((($r.contexts // []) | map({context: ., app_id: null}))
-          + (($r.checks // []) | map({context, app_id: (if .app_id == -1 then null else .app_id end)})))} else null end),
-     enforce_admins: (.enforce_admins | en),
-     required_pull_request_reviews: (if .required_pull_request_reviews then .required_pull_request_reviews as $r
-        | ($r | {dismiss_stale_reviews, require_code_owner_reviews, required_approving_review_count, require_last_push_approval})
-        + (if $r.dismissal_restrictions then {dismissal_restrictions: ($r.dismissal_restrictions | pr)} else {} end)
-        + (if $r.bypass_pull_request_allowances then {bypass_pull_request_allowances: ($r.bypass_pull_request_allowances | pr)} else {} end)
-        else null end),
-     restrictions: (if .restrictions then (.restrictions | pr) else null end),
-     required_linear_history: (.required_linear_history | en), allow_force_pushes: (.allow_force_pushes | en),
-     allow_deletions: (.allow_deletions | en), block_creations: (.block_creations | en),
-     required_conversation_resolution: (.required_conversation_resolution | en),
-     lock_branch: (.lock_branch | en), allow_fork_syncing: (.allow_fork_syncing | en)}
-    | with_entries(select(.value != null))' > "${D}/state.json"
-  for f in ${STUB_DROP:-}; do jq "del(.${f})" "${D}/state.json" > "${D}/s.tmp" && mv "${D}/s.tmp" "${D}/state.json"; done
-  exit 0
-fi
-echo "GET ${path}" >> "${D}/calls"
-cat "${D}/state.json"
-STUB_EOF
-# nohup stub: run the command in the foreground of its own background job and
-# record the exit code, so the test can assert the detached watchdog's status.
-cat > "${TMP}/bin/nohup" << 'STUB_EOF'
-#!/usr/bin/env bash
-"$@"
-echo $? > "${STUB_DIR}/watchdog.rc"
-STUB_EOF
+# Stubs live in testdata/protection/ (stub-gh.sh: fake protection state, schema-
+# checking PUT, call log; stub-nohup.sh: records the watchdog's exit code).
+cp "${FX}/stub-gh.sh" "${TMP}/bin/gh"
+cp "${FX}/stub-nohup.sh" "${TMP}/bin/nohup"
 chmod +x "${TMP}/bin/gh" "${TMP}/bin/nohup"
+if [ -x /bin/bash ]; then ln -s /bin/bash "${TMP}/bin/bash"; fi
 
 # shellcheck source=protection_snapshot.sh
 . "${LIB}"
 
 # -- helpers ------------------------------------------------------------------
 setup() { # <fixture-name>: fresh server state and logs
-  unset STUB_DROP STUB_PUT_FAIL STUB_KILL_PARENT
-  rm -rf "${STUB_DIR}/calls" "${STUB_DIR}/watchdog.rc" "${HOME}/.nself" "${TMP}"/work/*
+  unset STUB_DROP STUB_PUT_FAIL STUB_KILL_PARENT STUB_SLOW_CI STUB_FAIL_AFTER_LAND_ONCE STUB_GET_STDERR
+  rm -rf "${STUB_DIR}/calls" "${STUB_DIR}/watchdog.rc" "${STUB_DIR}/runcount" "${STUB_DIR}/landed" "${HOME}/.nself" "${TMP}"/work/*
   cp "${FX}/$1.json" "${STUB_DIR}/state.json"
   cp "${FX}/$1.json" "${STUB_DIR}/snapshot.json"
 }
@@ -138,6 +89,10 @@ case_round_trip() {
   body="$(snapshot_to_put_body "$(cat "${FX}/cli-like.json")")"
   check "cli-like: enforce_admins, conversation resolution, linear history all true" \
     bash -c 'jq -e ".enforce_admins and .required_conversation_resolution and .required_linear_history" <<< "$1"' _ "${body}"
+  check "cli-like: unpinned checks sent as checks with app_id -1 and contexts []" \
+    bash -c 'jq -e "(.required_status_checks.contexts==[]) and ([.required_status_checks.checks[].app_id]|unique==[-1])" <<< "$1"' _ "${body}"
+  check "stub rejects a body without contexts (schema guard works)" \
+    bash -c '! printf "%s" "{\"required_status_checks\":{\"strict\":true,\"checks\":[]},\"enforce_admins\":true,\"required_pull_request_reviews\":null,\"restrictions\":null}" | gh api "$1" -X PUT --input -' _ "${API}"
   setup plugins-like
   body="$(snapshot_to_put_body "$(cat "${FX}/plugins-like.json")")"
   check "plugins-like: enforce_admins stays false, no forced stale-review dismissal" \
@@ -165,6 +120,9 @@ case_mismatch() {
   check "required_signatures: named in the message" grep -q 'required_signatures' <<< "${out}"
   jq '.some_new_field = {"enabled": true}' "${FX}/cli-like.json" > "${TMP}/new.json"
   check "unknown field: snapshot_to_put_body fails" bash -c '! { . "$1"; snapshot_to_put_body "$(cat "$2")"; } 2>/dev/null' _ "${LIB}" "${TMP}/new.json"
+  setup cli-like; relax
+  export STUB_GET_STDERR=1
+  check "stderr noise on the verify GET does not break the restore" restore_protection "${REPO}" "${STUB_DIR}/snapshot.json" 0 test
   setup cli-like
   check "compare: equal snapshots pass" compare "$(cat "${FX}/cli-like.json")" "$(cat "${FX}/cli-like.json")"
   check "compare: differing snapshots fail" bash -c '. "$1"; ! compare "$(cat "$2")" "$(cat "$3")"' _ "${LIB}" "${FX}/cli-like.json" "${FX}/plugins-like.json"
@@ -242,10 +200,56 @@ case_merge_flow() {
   unset WATCHDOG_DEADLINE
 }
 
+case_slow_ci() {
+  # CI outlasts the watchdog deadline: the watchdog restores first, the parent
+  # must still find the snapshot, verify, and exit 0 (no false exit 3).
+  local rc=0
+  export WATCHDOG_DEADLINE=2 CI_POLL_SECONDS=4
+  setup cli-like
+  export STUB_SLOW_CI=1
+  printf 'y\n' | bash "${AM}" --repo "${REPO}" --branch feat --pr 7 --wait-minutes 1 > "${TMP}/am.out" 2>&1 || rc=$?
+  check "slow CI: parent exits 0" test "${rc}" -eq 0
+  check "slow CI: watchdog restored first" audit_has 'RESTORE .*watchdog_timeout'
+  check "slow CI: parent restore verified afterwards" audit_has 'RESTORE .*post_merge'
+  check "slow CI: no RESTORE_FAILED / restore_mismatch" bash -c '! grep -qE "RESTORE_FAILED|restore_mismatch" "$1"' _ "${AUDIT_LOG}"
+  check "slow CI: protection equals the snapshot" compare "$(cat "${FX}/cli-like.json")" "$(server)"
+  check "slow CI: snapshot file removed by the parent" bash -c '! ls "$1"/nself-admin-merge-*.snapshot.json' _ "${TMPDIR}"
+  wait_watchdog || true
+  unset WATCHDOG_DEADLINE CI_POLL_SECONDS
+}
+
+case_relax_ambiguous() {
+  # The relax PUT lands but gh reports failure: protection must be restored.
+  local rc=0
+  export WATCHDOG_DEADLINE=2
+  setup cli-like
+  export STUB_FAIL_AFTER_LAND_ONCE=1
+  run_am > "${TMP}/am.out" 2>&1 || rc=$?
+  check "ambiguous relax: exits non-zero (1)" test "${rc}" -eq 1
+  check "ambiguous relax: restored from the snapshot" audit_has 'RESTORE .*relax_failed'
+  check "ambiguous relax: protection equals the snapshot" compare "$(cat "${FX}/cli-like.json")" "$(server)"
+  check "ambiguous relax: no merge attempted" bash -c '! grep -q "pr merge" "$1"' _ "${STUB_DIR}/calls"
+  wait_watchdog || true
+  unset WATCHDOG_DEADLINE
+}
+
+case_force_restore() {
+  # Recovery must work from a checkout on main (the printed hint has no --branch).
+  local rc=0
+  setup cli-like; relax
+  git init -q "${TMP}/mainrepo"
+  git -C "${TMP}/mainrepo" checkout -q -b main
+  git -C "${TMP}/mainrepo" -c user.name=t -c user.email=t@t.invalid commit -q --allow-empty -m init
+  (cd "${TMP}/mainrepo" && bash "${AM}" --repo "${REPO}" --force-restore --snapshot "${STUB_DIR}/snapshot.json") > "${TMP}/am.out" 2>&1 || rc=$?
+  check "force-restore from main: exits 0" test "${rc}" -eq 0
+  check "force-restore from main: protection equals the snapshot" compare "$(cat "${FX}/cli-like.json")" "$(server)"
+  check "force-restore refuses a merge from main" bash -c '! (cd "$1" && printf "y\n" | bash "$2" --repo "$3" --pr 7 --dry-run) > /dev/null 2>&1' _ "${TMP}/mainrepo" "${AM}" "${REPO}"
+}
+
 # -- main ---------------------------------------------------------------------
 want=""
 if [ "${1:-}" = "--case" ]; then want="${2:-}"; fi
-for c in round-trip mismatch review-fields dry-run watchdog-timeout merge-flow; do
+for c in round-trip mismatch review-fields dry-run watchdog-timeout merge-flow slow-ci relax-ambiguous force-restore; do
   if [ -z "${want}" ] || [ "${want}" = "${c}" ]; then
     printf '== %s\n' "${c}"
     "case_$(printf '%s' "${c}" | tr '-' '_')"

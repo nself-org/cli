@@ -26,8 +26,7 @@
 #                                    body and calls nothing.
 #
 # Audit lines go to ${AUDIT_LOG} (default ~/.nself/admin-merge-audit.log).
-# Status checks: checks that all accept any app are sent as `contexts` (the
-# long-standing form); any check pinned to an app id is sent as `checks` with
+# Status checks are always sent as `checks` (explicit app_id, -1 = any app) with
 # `contexts: []`. Bash 3.2 compatible; needs jq and gh.
 #
 # Authority: P7-HYG-40; Constitution 14.3 (restore from the snapshot, verify)
@@ -73,11 +72,10 @@ def en(k): (.[k].enabled // false);
     allow_fork_syncing: en("allow_fork_syncing")
   }'
 
-# Canonical shape -> PUT body (contexts form unless a check is pinned to an app).
-PS_JQ_PUT='
-.required_status_checks |= (if . == null then null
-  elif all(.checks[]; .app_id == -1) then {strict: .strict, contexts: (.checks | map(.context))}
-  else {strict: .strict, contexts: [], checks: .checks} end)'
+# Canonical shape -> PUT body. GitHub's schema requires `contexts` (deprecated)
+# next to `checks`, so it is sent empty; every check carries an explicit app_id
+# (-1 = any app), which also stops GitHub auto-pinning unpinned contexts.
+PS_JQ_PUT='.required_status_checks |= (if . == null then null else {strict: .strict, contexts: [], checks: .checks} end)'
 
 ps_audit() {
   local log="${AUDIT_LOG:-${HOME}/.nself/admin-merge-audit.log}"
@@ -132,7 +130,7 @@ compare() {
 
 restore_protection() {
   local repo="$1" snapfile="$2" dry_run="${3:-0}" reason="${4:-scheduled_restore}"
-  local snap body out after diff
+  local snap body out after diff errf
   local api="repos/${repo}/branches/main/protection"
 
   printf '[RESTORE] Restoring branch protection on %s/main (%s)...\n' "${repo}" "${reason}" >&2
@@ -156,11 +154,14 @@ restore_protection() {
     ps_audit "RESTORE_FAILED  repo=${repo}  reason=${reason}  detail=put_rejected  snapshot=${snapfile}"
     return 3
   fi
-  if ! after=$(gh api "${api}" 2>&1); then
-    printf '[RESTORE] FAILED: verify GET failed: %s\n' "${after}" >&2
+  errf=$(mktemp "${TMPDIR:-/tmp}/ps-err.XXXXXX")
+  if ! after=$(gh api "${api}" 2>"${errf}") || ! printf '%s' "${after}" | jq -e 'type == "object"' > /dev/null 2>&1; then
+    printf '[RESTORE] FAILED: verify GET failed: %s\n' "$(cat "${errf}")" >&2
+    rm -f "${errf}"
     ps_audit "restore_mismatch  repo=${repo}  reason=${reason}  detail=verify_get_failed  snapshot=${snapfile}"
     return 3
   fi
+  rm -f "${errf}"
   if ! diff=$(compare "${snap}" "${after}"); then
     printf '[RESTORE] FAILED: protection differs from the pre-merge snapshot:\n%s\n' "${diff}" >&2
     printf '[RESTORE] Manual recovery: scripts/admin-merge.sh --repo %s --force-restore --snapshot %s\n' "${repo}" "${snapfile}" >&2

@@ -74,6 +74,7 @@ case "${WATCHDOG_DEADLINE:-}" in
   *) [ "${WATCHDOG_DEADLINE}" -le "${WATCHDOG_MAX}" ] || WATCHDOG_DEADLINE="${WATCHDOG_MAX}" ;;
 esac
 DEFAULT_WAIT_MINUTES=20
+CI_POLL_SECONDS="${CI_POLL_SECONDS:-30}"
 AUDIT_LOG="${HOME}/.nself/admin-merge-audit.log"
 export AUDIT_LOG
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -159,8 +160,9 @@ if [ -z "${TARGET_REPO}" ]; then
     | sed 's|.*github\.com[:/]\(.*\)|\1|')
 fi
 
-# Auto-detect branch
-if [ -z "${TARGET_BRANCH}" ]; then
+# Auto-detect branch and guard against merging from main. --force-restore only
+# restores protection, so it needs neither (recovery must work from any checkout).
+if [ "${FORCE_RESTORE}" -eq 0 ] && [ -z "${TARGET_BRANCH}" ]; then
   TARGET_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
   if [ -z "${TARGET_BRANCH}" ] || [ "${TARGET_BRANCH}" = "HEAD" ]; then
     die "Cannot detect current branch. Pass --branch <branch>."
@@ -168,7 +170,7 @@ if [ -z "${TARGET_BRANCH}" ]; then
 fi
 
 # Guard: never merge directly on main
-if [ "${TARGET_BRANCH}" = "main" ] || [ "${TARGET_BRANCH}" = "master" ]; then
+if [ "${FORCE_RESTORE}" -eq 0 ] && { [ "${TARGET_BRANCH}" = "main" ] || [ "${TARGET_BRANCH}" = "master" ]; }; then
   die "TARGET_BRANCH is '${TARGET_BRANCH}' — this script merges TO main, not FROM main. Pass a feature/fix branch via --branch."
 fi
 
@@ -271,11 +273,15 @@ if [ "${DRY_RUN}" -eq 0 ]; then
 #!/usr/bin/env bash
 # Watchdog for admin-merge.sh. Restores branch protection from the snapshot
 # file if the parent dies before it writes the done marker.
-# Args: lib repo snapshot done relaxed relax_ts deadline audit_log dry_run self
+# Args: lib repo snapshot done relaxed relax_ts deadline audit_log dry_run self parent_pid
 set -u
 LIB="$1"; REPO="$2"; SNAP="$3"; DONE_MARKER="$4"; RELAX_MARKER="$5"
-RELAX_TS_MARKER="$6"; DEADLINE="$7"; AUDIT_LOG="$8"; DRY_RUN="$9"; SELF="${10}"
+RELAX_TS_MARKER="$6"; DEADLINE="$7"; AUDIT_LOG="$8"; DRY_RUN="$9"; SELF="${10}"; PARENT="${11}"
 export AUDIT_LOG
+# The parent verifies its own restore from the same snapshot file, so it is
+# removed only once the parent is gone (a slow CI must not lose it).
+drop_snapshot() { kill -0 "${PARENT}" 2>/dev/null || rm -f "${SNAP}"; }
+drop_markers() { rm -f "${SELF}" "${RELAX_MARKER}" "${RELAX_TS_MARKER}"; }
 # shellcheck source=/dev/null
 . "${LIB}" || { printf '[WATCHDOG] cannot source %s\n' "${LIB}"; exit 2; }
 
@@ -285,7 +291,7 @@ deadline=$(( $(date '+%s') + DEADLINE ))
 while [ ! -f "${RELAX_MARKER}" ]; do
   if [ "$(date '+%s')" -ge "${deadline}" ]; then
     printf '[WATCHDOG] Deadline reached waiting for relax marker. Exiting (nothing to restore).\n'
-    rm -f "${SELF}" "${SNAP}"
+    drop_snapshot; drop_markers
     exit 0
   fi
   sleep 2
@@ -304,7 +310,8 @@ while [ ! -f "${DONE_MARKER}" ]; do
     printf '[WATCHDOG] Deadline exceeded without done marker. Forcing restore.\n'
     rc=0
     restore_protection "${REPO}" "${SNAP}" "${DRY_RUN}" watchdog_timeout || rc=$?
-    if [ "${rc}" -eq 0 ]; then rm -f "${SELF}" "${SNAP}"; fi
+    if [ "${rc}" -eq 0 ]; then drop_snapshot; fi
+    if ! kill -0 "${PARENT}" 2>/dev/null; then drop_markers; fi
     printf '[WATCHDOG] exit %s\n' "${rc}"
     exit "${rc}"
   fi
@@ -312,13 +319,13 @@ while [ ! -f "${DONE_MARKER}" ]; do
 done
 
 printf '[WATCHDOG] Done marker found. Parent completed cleanly — no restore needed.\n'
-rm -f "${SELF}"
+drop_markers
 exit 0
 WATCHDOG_EOF
   chmod +x "${WATCHDOG_SCRIPT}"
   nohup bash "${WATCHDOG_SCRIPT}" "${PS_LIB}" "${TARGET_REPO}" "${SNAPSHOT_FILE}" \
     "${DONE_MARKER}" "${RELAX_MARKER}" "${RELAX_TS_MARKER}" "${WATCHDOG_DEADLINE}" \
-    "${AUDIT_LOG}" "${DRY_RUN}" "${WATCHDOG_SCRIPT}" > "${WORK_DIR}/nself-watchdog-${MERGE_TS}.log" 2>&1 &
+    "${AUDIT_LOG}" "${DRY_RUN}" "${WATCHDOG_SCRIPT}" "$$" > "${WORK_DIR}/nself-watchdog-${MERGE_TS}.log" 2>&1 &
   WATCHDOG_PID=$!
   info "Watchdog spawned: PID ${WATCHDOG_PID}, deadline ${WATCHDOG_DEADLINE}s"
   audit "WATCHDOG_SPAWN  pid=${WATCHDOG_PID}  deadline=${WATCHDOG_DEADLINE}  snapshot=${SNAPSHOT_FILE}"
@@ -356,26 +363,26 @@ info "Relaxing branch protection on ${TARGET_REPO}/main..."
 RELAX_PAYLOAD=$(build_relax_body "${PROTECTION_JSON}")
 
 if [ "${DRY_RUN}" -eq 0 ]; then
+  # Arm the restore BEFORE the PUT: if the PUT lands but gh reports failure
+  # (timeout, interrupt), the trap and watchdog still restore. Restore is
+  # idempotent, so arming a PUT that never landed is harmless.
+  touch "${RELAX_MARKER}"
+  date '+%s' > "${RELAX_TS_MARKER}"  # watchdog deadline runs from here (FIX3)
   # gh api does not support -w or --timeout flags; use exit code to determine success
   if gh api "repos/${TARGET_REPO}/branches/main/protection" \
     -X PUT \
     --input - \
     -H "Accept: application/vnd.github.v3+json" \
     <<< "${RELAX_PAYLOAD}" > /dev/null 2>&1; then
-    HTTP="200"
+    ok "Branch protection relaxed."
+    audit "RELAX  repo=${TARGET_REPO}"
   else
-    HTTP="000"
+    warn "Relax PUT did not confirm; restoring from the snapshot in case it landed."
+    restore_protection "${TARGET_REPO}" "${SNAPSHOT_FILE}" 0 "relax_failed" || exit 3
+    touch "${DONE_MARKER}"
+    rm -f "${SNAPSHOT_FILE}"
+    die "Failed to relax branch protection. Protection verified identical to the snapshot."
   fi
-
-  if [ "${HTTP}" != "200" ] && [ "${HTTP}" != "201" ]; then
-    die "Failed to relax branch protection (HTTP ${HTTP}). Aborting — protection unchanged."
-  fi
-
-  ok "Branch protection relaxed (HTTP ${HTTP})."
-  touch "${RELAX_MARKER}"
-  # Write post-relax epoch for watchdog deadline reset (FIX3)
-  date '+%s' > "${RELAX_TS_MARKER}"
-  audit "RELAX  repo=${TARGET_REPO}  http=${HTTP}"
 else
   info "[DRY-RUN] Would relax branch protection via PUT."
   info "[DRY-RUN] Payload: ${RELAX_PAYLOAD}"
@@ -434,7 +441,7 @@ if [ "${NO_WAIT_CI}" -eq 0 ] && [ "${MERGE_SUCCESS}" -eq 1 ] && [ "${DRY_RUN}" -
     fi
 
     printf '  CI status: %s/%s — waiting...\n' "${STATUS_PART}" "${CONCLUSION_PART}"
-    sleep 30
+    sleep "${CI_POLL_SECONDS}"
   done
 
   if [ "${CI_PASSED}" -eq 0 ]; then
