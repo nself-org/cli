@@ -1,0 +1,486 @@
+{
+  "schema_version": "1",
+  "verbs": [
+    "status",
+    "doctor",
+    "logs",
+    "add",
+    "hub",
+    "ghost"
+  ],
+  "root": {
+    "summary": "fixture root",
+    "flags": [
+      {
+        "name": "config",
+        "shorthand": null,
+        "type": "string",
+        "default": "",
+        "usage": "config file",
+        "hidden": false,
+        "deprecated": null,
+        "required": false,
+        "persistent": false,
+        "env": null,
+        "side_effect": null,
+        "json": null,
+        "output": null
+      },
+      {
+        "name": "verbose",
+        "shorthand": "v",
+        "type": "bool",
+        "default": "false",
+        "usage": "verbose output",
+        "hidden": false,
+        "deprecated": null,
+        "required": false,
+        "persistent": true,
+        "env": null,
+        "side_effect": null,
+        "json": null,
+        "output": null
+      }
+    ]
+  },
+  "commands": [
+    {
+      "path": "nself add",
+      "name": "add",
+      "parent": "nself",
+      "summary": "add things",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [
+        {
+          "name": "key",
+          "required": true,
+          "variadic": false
+        },
+        {
+          "name": "key",
+          "required": false,
+          "variadic": true
+        }
+      ],
+      "flags": [
+        {
+          "name": "name",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "name",
+          "hidden": false,
+          "deprecated": null,
+          "required": true,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        }
+      ],
+      "canon": "core",
+      "target": null,
+      "side_effect": "write",
+      "output": "document",
+      "json": "none",
+      "data_schema": null,
+      "exit_codes": {}
+    },
+    {
+      "path": "nself deploy",
+      "name": "deploy",
+      "parent": "nself",
+      "summary": "deploy",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [],
+      "flags": [
+        {
+          "name": "stream",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "stream progress",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": "stream"
+        }
+      ],
+      "canon": "pending",
+      "target": null,
+      "side_effect": "remote",
+      "output": "document",
+      "json": "none",
+      "data_schema": null,
+      "exit_codes": {}
+    },
+    {
+      "path": "nself doctor",
+      "name": "doctor",
+      "parent": "nself",
+      "summary": "diagnose",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [],
+      "flags": [
+        {
+          "name": "ai",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "ai mode",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": "write",
+          "json": "legacy",
+          "output": null
+        },
+        {
+          "name": "fix",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "apply fixes",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": "write",
+          "json": null,
+          "output": null
+        },
+        {
+          "name": "install-check",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "install check",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": "legacy",
+          "output": null
+        }
+      ],
+      "canon": "core",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "none",
+      "data_schema": null,
+      "exit_codes": {}
+    },
+    {
+      "path": "nself help",
+      "name": "help",
+      "parent": "nself",
+      "summary": "Help about any command",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [
+        {
+          "name": "command",
+          "required": false,
+          "variadic": false
+        }
+      ],
+      "flags": [],
+      "canon": "builtin",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "none",
+      "data_schema": null,
+      "exit_codes": {}
+    },
+    {
+      "path": "nself hub",
+      "name": "hub",
+      "parent": "nself",
+      "summary": "a hub",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": "core",
+      "runnable": false,
+      "args": [],
+      "flags": [],
+      "canon": "core",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "none",
+      "data_schema": null,
+      "exit_codes": {}
+    },
+    {
+      "path": "nself hub get",
+      "name": "get",
+      "parent": "nself hub",
+      "summary": "get a key",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [
+        {
+          "name": "key",
+          "required": true,
+          "variadic": false
+        }
+      ],
+      "flags": [
+        {
+          "name": "format",
+          "shorthand": null,
+          "type": "string",
+          "default": "text",
+          "usage": "output format",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        }
+      ],
+      "canon": "subcommand",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "envelope",
+      "data_schema": "schemas/commands/hub-get.v1.schema.json",
+      "exit_codes": {}
+    },
+    {
+      "path": "nself hub list",
+      "name": "list",
+      "parent": "nself hub",
+      "summary": "list keys",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [],
+      "flags": [],
+      "canon": "subcommand",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "none",
+      "data_schema": null,
+      "exit_codes": {}
+    },
+    {
+      "path": "nself logs",
+      "name": "logs",
+      "parent": "nself",
+      "summary": "tail logs",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [
+        {
+          "name": "SERVICE",
+          "required": false,
+          "variadic": false
+        }
+      ],
+      "flags": [
+        {
+          "name": "follow",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "follow",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        }
+      ],
+      "canon": "core",
+      "target": null,
+      "side_effect": "read",
+      "output": "stream",
+      "json": "legacy",
+      "data_schema": null,
+      "exit_codes": {}
+    },
+    {
+      "path": "nself oldstatus",
+      "name": "oldstatus",
+      "parent": "nself",
+      "summary": "old status",
+      "hidden": true,
+      "deprecated": "use status",
+      "aliases": [
+        "os",
+        "ost"
+      ],
+      "group": null,
+      "runnable": true,
+      "args": [],
+      "flags": [],
+      "canon": "deprecated-shim",
+      "target": "nself status",
+      "side_effect": "read",
+      "output": "document",
+      "json": "none",
+      "data_schema": null,
+      "exit_codes": {}
+    },
+    {
+      "path": "nself status",
+      "name": "status",
+      "parent": "nself",
+      "summary": "show status",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [
+        {
+          "name": "SERVICE",
+          "required": false,
+          "variadic": false
+        }
+      ],
+      "flags": [
+        {
+          "name": "debugx",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "debug",
+          "hidden": true,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        },
+        {
+          "name": "json",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "print JSON",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        },
+        {
+          "name": "old",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "old flag",
+          "hidden": true,
+          "deprecated": "use --watch",
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        },
+        {
+          "name": "scope",
+          "shorthand": null,
+          "type": "string",
+          "default": "all",
+          "usage": "scope",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": true,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        },
+        {
+          "name": "watch",
+          "shorthand": "w",
+          "type": "bool",
+          "default": "false",
+          "usage": "watch",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        }
+      ],
+      "canon": "core",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "envelope",
+      "data_schema": "schemas/commands/status.v1.schema.json",
+      "exit_codes": {
+        "10": "one or more services unhealthy"
+      }
+    }
+  ],
+  "counts": {
+    "commands": 10,
+    "top_level": 6,
+    "core": 5,
+    "pending": 1,
+    "deprecated_shims": 1,
+    "core_missing": [
+      "ghost"
+    ],
+    "json_envelope": 2,
+    "json_legacy": 1
+  }
+}
