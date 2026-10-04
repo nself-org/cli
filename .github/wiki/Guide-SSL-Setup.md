@@ -31,6 +31,56 @@ Supported providers: `cloudflare`, `route53`, `digitalocean`. For other CAs, pla
 
 Certificates land in `ssl/{domain}/` inside the project directory. nginx reads them at `/etc/nginx/ssl/{domain}/` via the `./ssl:/etc/nginx/ssl:ro` mount.
 
+## CLI-Owned ACME (DNS-01, no host certbot)
+
+`nself ssl setup --acme` and `nself ssl renew --acme` issue and renew Let's Encrypt certificates from inside the stack (ADR 0026). A pinned `lego` container runs once per issuance; nothing is installed on the host and the Docker socket is never mounted. Certbot keeps working for projects that do not pass `--acme`.
+
+### Prerequisites
+
+- The served nginx container mounts the **whole** `ssl/` directory at `/etc/nginx/ssl`. Mounts of single certificates or `certificates/<dir>` are refused, because the install below uses symlinks that must resolve inside the container.
+- `age` on `PATH` and an age key (`SECRETS_AGE_KEY_PATH`, default `~/.config/nself/age-key.txt`). DNS credentials live in the project secret store (`.secrets/<env>.age`), never in a file or on a command line.
+- An ACME contact: `--email`, else `ACME_EMAIL`, else `ADMIN_EMAIL`.
+- A DNS credential in the store under its name: `SSL_DNS_CLOUDFLARE_API_TOKEN` (Cloudflare, Zone:DNS:Edit token), `SSL_DNS_DIGITALOCEAN_TOKEN`, or `SSL_DNS_AWS_ACCESS_KEY_ID` + `SSL_DNS_AWS_SECRET_ACCESS_KEY` (Route53).
+
+Always start with a dry run. It resolves and prints the served root, ssl dir, nginx dir, nginx container and its mount, and writes nothing:
+
+```bash
+nself ssl setup --acme --dry-run
+nself ssl setup --acme --agree-tos                 # issue BASE_DOMAIN, api., auth. (or --wildcard)
+nself ssl setup --acme --install-cron              # daily renewal timer (Linux)
+nself ssl renew --acme --dry-run                   # which lineages are due
+nself ssl renew --acme --staging --agree-tos       # rehearse against the staging CA; installs nothing
+```
+
+### Adopting certbot lineages
+
+Production boxes already hold certbot lineages. Adoption reads `/etc/letsencrypt/renewal/*.conf` and `live/<name>/cert.pem`, maps each lineage to the served directory its names are served from, and records it as `dns-01`. It never issues, and it never edits or removes certbot state (renewal files, hooks, timers, credential files).
+
+```bash
+nself ssl setup --acme --adopt-certbot --dns-credential-file ./cloudflare.ini --dry-run
+nself ssl setup --acme --adopt-certbot --dns-credential-file ./cloudflare.ini
+```
+
+- A `dns-cloudflare` / `dns-route53` / `dns-digitalocean` lineage keeps its provider.
+- A `standalone`, `webroot` or `nginx` lineage is converted to dns-01 only when you pass a credential file; without one it is refused with that remediation.
+- The credential file is a certbot DNS-plugin INI with exactly one provider: `dns_cloudflare_api_token`, `dns_digitalocean_token`, or `aws_access_key_id` + `aws_secret_access_key`. A Cloudflare global key is refused: create a scoped token.
+- Served certificates are left byte for byte as they are unless a target is missing or older than certbot's live certificate.
+- After adopting, remove the certbot timer yourself once `nself ssl renew --acme --dry-run` shows the lineages; the CLI never touches it.
+
+### How a certificate is installed
+
+Each target `ssl/certificates/<dir>` becomes a relative symlink to `.<dir>.gen-<n>/`, which holds `fullchain.pem` and `privkey.pem` (0600). A new generation is written and its key and certificate are checked against each other; then one rename of a temporary symlink over `<dir>` switches both files at once. nginx is then tested (`nginx -t`) and reloaded through `docker exec`, and the served certificate's fingerprint is checked. If any step fails the previous generation is restored and the command exits with `E151`. The previous generation stays until the next successful install. Every `--acme` run first repairs a missing link or a mismatched pair from the newest valid generation, so a crash between steps cannot leave a half-installed pair.
+
+State lives in `ssl/.acme/` (0700, with a `.gitignore` of `*`): the ACME account, `certificates/`, `staging/` and `lineages.json` (names, challenge, provider, credential secret names, targets; never a value).
+
+### Renewal timer
+
+`--install-cron` writes `nself-acme-renew.service` and `.timer` (daily 03:30, up to 1 hour random delay, `Persistent=true`). The service sets `SECRETS_AGE_KEY_PATH` and `HOME` explicitly, because systemd's bare environment has neither, and runs `nself trust ssl renew --acme --quiet` from the project directory. Lineages with 30 days or fewer left are renewed.
+
+### What the CLI never touches
+
+Host certbot state (`/etc/letsencrypt`, certbot timers, hooks, credential files), nginx configuration, compose files and container definitions. It does not recreate or restart containers; only `nginx -s reload`.
+
 ## Custom Domain Certificates (HTTP-01)
 
 Use `nself ssl add` to provision a certificate for an external custom domain (e.g., a white-labelled subdomain or a partner's domain). This uses HTTP-01 challenge, no DNS provider configuration needed.
@@ -83,6 +133,8 @@ If you have a certificate from a commercial CA (DigiCert, Sectigo, etc.):
 | `nself ssl renew` | Trigger manual certificate renewal prompt |
 | `nself ssl setup` | Provision a wildcard/multi-domain cert via DNS-01 |
 | `nself ssl add <domain>` | Provision a cert for a single custom domain via HTTP-01 |
+| `nself ssl setup --acme` | Issue or adopt certbot lineages with the CLI's own ACME client (DNS-01) |
+| `nself ssl renew --acme` | Renew the lineages the CLI manages (30 days or fewer left, or `--force`) |
 
 ## See Also
 

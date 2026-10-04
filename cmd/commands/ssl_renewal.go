@@ -78,17 +78,24 @@ func installSSLRenewalCron(workdir string) error {
 	return installSSLRenewalSystemd(workdir)
 }
 
+// systemdUnitDir is where unit files are written; a variable so tests can redirect it.
+var systemdUnitDir = "/etc/systemd/system"
+
 // installSSLRenewalSystemd writes and enables the nself-ssl-renew systemd timer.
 func installSSLRenewalSystemd(workdir string) error {
-	const unitDir = "/etc/systemd/system"
+	return installSystemdTimer("nself-ssl-renew", sslRenewalServiceUnit(workdir), sslRenewalTimerContent)
+}
 
-	servicePath := filepath.Join(unitDir, "nself-ssl-renew.service")
-	if err := os.WriteFile(servicePath, []byte(sslRenewalServiceUnit(workdir)), 0644); err != nil {
+// installSystemdTimer writes <name>.service and <name>.timer into the unit
+// directory, reloads systemd and enables the timer.
+func installSystemdTimer(name, service, timer string) error {
+	servicePath := filepath.Join(systemdUnitDir, name+".service")
+	if err := os.WriteFile(servicePath, []byte(service), 0644); err != nil {
 		return fmt.Errorf("writing service unit: %w", err)
 	}
 
-	timerPath := filepath.Join(unitDir, "nself-ssl-renew.timer")
-	if err := os.WriteFile(timerPath, []byte(sslRenewalTimerContent), 0644); err != nil {
+	timerPath := filepath.Join(systemdUnitDir, name+".timer")
+	if err := os.WriteFile(timerPath, []byte(timer), 0644); err != nil {
 		return fmt.Errorf("writing timer unit: %w", err)
 	}
 
@@ -102,8 +109,8 @@ func installSSLRenewalSystemd(workdir string) error {
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel2()
 
-	if err := exec.CommandContext(ctx2, "systemctl", "enable", "--now", "nself-ssl-renew.timer").Run(); err != nil {
-		return fmt.Errorf("enable nself-ssl-renew.timer: %w", err)
+	if err := exec.CommandContext(ctx2, "systemctl", "enable", "--now", name+".timer").Run(); err != nil {
+		return fmt.Errorf("enable %s.timer: %w", name, err)
 	}
 
 	return nil
