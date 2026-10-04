@@ -428,16 +428,23 @@ func TestDoctorTLSIntegration(t *testing.T) {
 	tlsStack(t, root, port, confs)
 
 	name := fmt.Sprintf("lv16-it-%d", time.Now().UnixNano())
-	out, err := exec.Command("docker", "run", "-d", "--name", name,
+	// Files are copied in with `docker cp`, not bind-mounted: a VM-backed
+	// engine (Colima, Docker Desktop) shares only some host paths, and an
+	// unshared t.TempDir() mounts as an empty directory.
+	docker := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("docker", args...).CombinedOutput(); err != nil {
+			t.Fatalf("docker %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	docker("create", "--name", name,
 		"--label", "com.docker.compose.service=nginx", "--label", "com.docker.compose.project=lv16it",
 		"--label", "com.docker.compose.project.working_dir="+root,
-		"-p", "127.0.0.1:"+port+":443",
-		"-v", filepath.Join(root, "nginx", "sites")+":/etc/nginx/conf.d:ro",
-		"-v", sslDir+":/etc/nginx/ssl:ro", "nginx:alpine").CombinedOutput()
-	if err != nil {
-		t.Fatalf("docker run: %v: %s", err, out)
-	}
+		"-p", "127.0.0.1:"+port+":443", "nginx:alpine")
 	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", name).Run() })
+	docker("cp", filepath.Join(root, "nginx", "sites")+string(filepath.Separator)+".", name+":/etc/nginx/conf.d")
+	docker("cp", sslDir+string(filepath.Separator)+".", name+":/etc/nginx/ssl")
+	docker("start", name)
 
 	ctx := context.Background()
 	deadline := time.Now().Add(30 * time.Second)
