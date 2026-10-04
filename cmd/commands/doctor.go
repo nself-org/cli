@@ -256,6 +256,12 @@ Exit codes:
 		}
 		checks = append(checks, checkContainerHealth(ctx, cwd, verbose)...)
 
+		// 10. Served TLS certificates (expiry, served vs disk, renewed-not-installed)
+		if !jsonOut {
+			ui.Section("TLS")
+		}
+		checks = append(checks, checkServedCertificates(ctx, cwd, verbose)...)
+
 		// Build summary
 		report := buildDoctorReport(checks)
 
