@@ -88,6 +88,18 @@ chmod +x nself-linux-amd64
 sudo mv nself-linux-amd64 /usr/local/bin/nself
 ```
 
+## Docker image
+
+nSelf also ships as a multi-arch (linux/amd64, linux/arm64) image on Docker Hub:
+
+```bash
+docker pull nself/nself:<version>   # a specific release, e.g. the version shown by `nself version`
+docker pull nself/nself:latest      # GitHub's latest non-prerelease release
+```
+
+`.github/workflows/docker-publish.yml` builds the image after each successful Release run, so
+an image exists only for a tag whose release succeeded. `:latest` never points at a prerelease.
+
 ## Verify Your Install
 
 ```bash

@@ -1,26 +1,36 @@
 name: Docker Multi-Arch Publish
 
-# USER ACTION REQUIRED:
-#   Set the following secrets in GitHub org secrets (github.com/organizations/nself-org/settings/secrets/actions):
-#     DOCKER_HUB_TOKEN    — Docker Hub access token (https://hub.docker.com/settings/security)
-#     DOCKER_HUB_USERNAME — Docker Hub username (typically "nself")
-#   Without these secrets, this workflow will skip the publish steps gracefully (no-op success).
+# Publishes nself/nself after every successful Release run (P7-HYG-06, EPIC H6).
 #
-# Triggers on:
-#   - GitHub Release published (includes pre-releases)
-#   - workflow_dispatch — manual publish with optional version override
+# Secrets (nself-org organisation secrets, visible to this repo):
+#   DOCKERHUB_USERNAME, DOCKERHUB_TOKEN, NSELF_LICENSE_PUBKEY_HEX
+# With either Docker Hub secret absent the job FAILS on every event; there is no
+# skip path (a green run that pushed nothing hid an unpublished image for months).
+#
+# Triggers:
+#   - workflow_run: workflow `Release` completed. The job runs only when that run
+#     concluded success, so a tag whose release failed never gets an image. A
+#     `release: published` trigger never fires for releases created with
+#     GITHUB_TOKEN, which is why it was replaced.
+#   - workflow_dispatch: manual publish of a given release version (blank = GitHub's
+#     latest release). This is also the backfill path.
+#
+# Version, :latest and the go/no-go all come from scripts/ci/docker-publish-version.sh
+# (tested by scripts/ci/docker-publish-version_test.sh). A tag must have a GitHub
+# release; :latest only for a non-prerelease that is GitHub's latest release.
 #
 # Tags published:
-#   nself/nself:<version>   (e.g. nself/nself:1.1.1)
-#   nself/nself:latest      (on non-pre-release)
+#   nself/nself:<version>   (e.g. nself/nself:1.4.13)
+#   nself/nself:latest      (non-prerelease, GitHub's latest only)
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag to publish (e.g. 1.1.1). Blank = use release tag.'
+        description: 'Release version to publish (e.g. 1.4.13). Blank = GitHub''s latest release.'
         required: false
         type: string
 
@@ -38,6 +48,8 @@ jobs:
     name: Build and push multi-arch Docker image
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # workflow_run fires for failed Release runs too; only a success publishes.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: read
       id-token: write
@@ -45,70 +57,48 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Preflight: skip gracefully when Docker Hub secrets are absent.
-      # secrets context is only valid inside a step env: block — never in job-level if:.
-      - name: Preflight (Docker Hub secrets present)
-        id: preflight
-        env:
-          DOCKER_HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          DOCKER_HUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-        run: |
-          if [ -z "${DOCKER_HUB_TOKEN}" ] || [ -z "${DOCKER_HUB_USERNAME}" ]; then
-            # A manual dispatch is an explicit intent to publish, so a silent
-            # skip there is a lie: the job would report success having pushed
-            # nothing. That is exactly how nself/nself went unpublished from
-            # v1.2.0 (2026-07-01) to v1.4.0 without a single red check.
-            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-              echo "::error::DOCKERHUB_TOKEN or DOCKERHUB_USERNAME not available to this workflow."
-              echo "::error::They exist as nself-org organisation secrets visible to all repos."
-              exit 1
-            fi
-            echo "::notice::DOCKERHUB_TOKEN or DOCKERHUB_USERNAME not set — skipping Docker publish."
-            echo "::notice::Set both secrets in GitHub org settings to enable Docker Hub publishing."
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "proceed=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Resolve version
+      # Single source of proceed/version/latest. Fails closed: secrets absent, a
+      # non-tag head_branch, a tag with no GitHub release, or a failed Release
+      # run all exit 1. The secrets context is only valid in a step env, so the
+      # presence check is an expression; no secret value reaches the shell.
+      - name: Resolve version and preflight
         id: version
-        if: steps.preflight.outputs.proceed == 'true'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HAVE_SECRETS: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' && '1' || '0' }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/docker-publish-version.sh
+
+      # workflow_run checks out the default branch, not the tag. Build the tag's
+      # own source so the image matches the release.
+      - name: Check out the release tag
+        id: source
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          # workflow_dispatch input takes precedence; fall back to release tag
-          VERSION="${{ github.event.inputs.version }}"
-          if [ -z "${VERSION}" ]; then
-            VERSION="${{ github.event.release.tag_name }}"
-          fi
-          # Strip leading 'v'
-          VERSION="${VERSION#v}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          git fetch --depth=1 origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          git checkout --detach "refs/tags/${TAG}"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
-          # Tag as latest only for non-pre-release
-          IS_PRERELEASE="${{ github.event.release.prerelease }}"
-          if [ "${IS_PRERELEASE}" = "true" ]; then
-            echo "latest=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "latest=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Set up QEMU (multi-arch emulation)
-        if: steps.preflight.outputs.proceed == 'true'
         uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        if: steps.preflight.outputs.proceed == 'true'
         uses: docker/setup-buildx-action@v4
 
       - name: Log in to Docker Hub
-        if: steps.preflight.outputs.proceed == 'true'
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push (amd64 + arm64, versioned tag)
-        if: steps.preflight.outputs.proceed == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -117,14 +107,14 @@ jobs:
           tags: nself/nself:${{ steps.version.outputs.version }}
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
-            COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ steps.version.outputs.date }}
+            COMMIT=${{ steps.source.outputs.commit }}
+            BUILD_DATE=${{ steps.source.outputs.date }}
             NSELF_LICENSE_PUBKEY_HEX=${{ secrets.NSELF_LICENSE_PUBKEY_HEX }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Tag as latest
-        if: steps.preflight.outputs.proceed == 'true' && steps.version.outputs.latest == 'true'
+        if: steps.version.outputs.latest == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -133,13 +123,12 @@ jobs:
           tags: nself/nself:latest
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
-            COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ steps.version.outputs.date }}
+            COMMIT=${{ steps.source.outputs.commit }}
+            BUILD_DATE=${{ steps.source.outputs.date }}
             NSELF_LICENSE_PUBKEY_HEX=${{ secrets.NSELF_LICENSE_PUBKEY_HEX }}
           cache-from: type=gha
 
       - name: Summary
-        if: steps.preflight.outputs.proceed == 'true'
         run: |
           echo "### Docker publish complete" >> "$GITHUB_STEP_SUMMARY"
           echo "- Image: \`nself/nself:${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
