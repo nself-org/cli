@@ -82,6 +82,52 @@ The generated conf file (`nginx/conf.d/custom-custom-example-com.conf`) includes
 - TLS on port 443 with HTTP/2
 - Security headers: `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Strict-Transport-Security`
 - `proxy_pass` block (when `--upstream` is set) or placeholder `return 200`
+
+## nself ssl setup --acme and nself ssl renew --acme
+
+The CLI's own ACME client (DNS-01) issues, adopts and renews the certificates nginx serves, without host certbot. It runs a pinned `lego` container once per issuance through the docker funnel (no Docker socket). The certbot flows above are unchanged; `--acme` is additive.
+
+```
+nself ssl setup --acme [--provider cloudflare|route53|digitalocean] [--wildcard] [--email <addr>] [--agree-tos] [--dry-run] [--install-cron]
+nself ssl setup --acme --adopt-certbot[=<dir>] --dns-credential-file <file> [--challenge dns-01] [--lineage <name>] [--dry-run]
+nself ssl renew --acme [<lineage>] [--force] [--staging] [--quiet] [--dry-run]
+```
+
+| Flag | Applies to | Description |
+|------|-----------|-------------|
+| `--acme` | setup, renew | Use the CLI's ACME client instead of certbot. Every flag below needs it. |
+| `--dry-run` | setup, renew | Print the resolved served root, ssl dir, nginx dir, nginx container, ssl mount, lineages and targets, then stop. Nothing is written. |
+| `--nginx-container <name>` | setup, renew | The nginx container to reload. Default: the running `nginx` service of the served stack. |
+| `--agree-tos` | setup, renew | Accept the ACME CA's terms of service when the account is first registered. Without it a terminal asks; a non-terminal run refuses. |
+| `--adopt-certbot[=<dir>]` | setup | Adopt the lineages of a certbot tree (default `/etc/letsencrypt`). Read only; never issues. |
+| `--dns-credential-file <file>` | setup | A certbot DNS-plugin INI. Its token is stored in the project secret store by name. |
+| `--challenge dns-01` | setup | The challenge converted lineages use (the only value today). |
+| `--lineage <name>` | setup | Adopt only this certbot lineage. |
+| `--force` | renew | Renew every lineage, not only those with 30 days or fewer left. |
+| `--staging` | renew | Issue from the CA's staging directory into `.acme/staging/`. Installs nothing. |
+| `--email <addr>` | renew | ACME contact. Default: the stored contact, then `ACME_EMAIL`, then `ADMIN_EMAIL`. |
+| `--quiet` | renew | Suppress non-error output (the renewal timer uses it). |
+| `--install-cron` | setup | Install `nself-acme-renew.service` and `.timer` (daily 03:30, Linux and systemd). With existing lineages it only installs the units; with `--dry-run` it prints them. |
+
+`--dry-run` on `--acme` commands, run on a prod-shaped project (`nself-web/backend`, served by nself-web's nginx):
+
+```
+served root:       /opt/nself-web
+served ssl dir:    /opt/nself-web/ssl
+served nginx dir:  /opt/nself-web/nginx
+nginx container:   nself-web-nginx-1
+nginx ssl mount:   /opt/nself-web/ssl -> /etc/nginx/ssl (whole dir)
+acme contact:      ops@example.org
+age:               /usr/bin/age (key /home/deploy/.config/nself/age-key.txt)
+lineage api-task-nself-org: dns-01 via cloudflare
+  domains: api.task.nself.org
+  target:  certificates/api-task-nself-org [directory, becomes a generation link on install]
+dry run: nothing written
+```
+
+`nself ssl status` prints a Lineages table (lineage, challenge, provider, expiry, days, status, targets) when `ssl/.acme/lineages.json` exists, and a warning when `/etc/letsencrypt/renewal` also manages one of a lineage's names. A second `--acme` run that starts while another holds `ssl/.acme/.lock` waits up to 10 seconds, then exits with `E151` naming the holder.
+
+Every refusal is error `E151` with a remediation: an nginx container that mounts single certificates instead of the whole ssl dir, a mount of `/etc/nginx/ssl/...` that shadows the whole-dir mount, a target that is not `certificates/<name>`, a non-ASCII name, a missing `age` or age key, no contact email, a missing DNS credential, a credential file with no provider, two providers or a Cloudflare global API key, or an unsupported DNS plugin.
 <!-- END PROSE:description -->
 
 ## Flags

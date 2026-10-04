@@ -1,18 +1,30 @@
 package commands
 
 import (
+	"bufio"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
+	"io"
+	"math"
 	"net"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/nginxtopo"
+	"github.com/nself-org/cli/internal/ssl"
+	"github.com/nself-org/cli/internal/ssl/acme"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var sslCmd = &cobra.Command{
@@ -172,10 +184,109 @@ func runSSLStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
+	printLineageStatus(os.Stdout, workdir, cfg.Nginx.FrontedBy)
 
 	if anyExpired {
 		return fmt.Errorf("one or more certificates are expired")
 	}
 
 	return nil
+}
+
+// printLineageStatus prints the lineages the CLI manages (<served ssl>/.acme/
+// lineages.json, contract:cli.tls-lineages) with the expiry of the certificate in
+// their first target, then warns when host certbot also manages one of their
+// names. It prints nothing when no lineages are recorded, so `status` output
+// without --acme use is unchanged.
+func printLineageStatus(w io.Writer, projectDir, frontedBy string) {
+	sslDir, err := nginxtopo.ServedSSLDir(projectDir, frontedBy)
+	if err != nil {
+		return
+	}
+	f, err := acme.Load(sslDir)
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "Lineages: cannot read %s: %v\n\n", acme.StateDir(sslDir), err)
+		return
+	}
+	if len(f.Lineages) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "Lineages managed by nself (%s):\n%-26s %-9s %-13s %-12s %-6s %-8s %s\n", filepath.Join(acme.StateDir(sslDir), "lineages.json"),
+		"LINEAGE", "CHALLENGE", "PROVIDER", "EXPIRY", "DAYS", "STATUS", "TARGETS")
+	for _, l := range f.Lineages {
+		expiry, days, status := "-", "-", "UNREADABLE"
+		if len(l.Targets) > 0 {
+			if c, cerr := ssl.ReadDiskCert(filepath.Join(sslDir, filepath.FromSlash(l.Targets[0]), "fullchain.pem")); cerr == nil {
+				d := int(math.Floor(time.Until(c.NotAfter).Hours() / 24))
+				expiry, days, status = c.NotAfter.UTC().Format("2006-01-02"), fmt.Sprint(d), strings.ToUpper(string(ssl.Classify(d)))
+			}
+		}
+		_, _ = fmt.Fprintf(w, "%-26s %-9s %-13s %-12s %-6s %-8s %s\n", l.Name, l.Challenge, l.DNSProvider, expiry, days, status, strings.Join(l.Targets, ","))
+		for _, name := range certbotOverlap(filepath.Dir(letsEncryptLiveDir), l) {
+			_, _ = fmt.Fprintf(w, "WARNING: %s is also managed by certbot (%s); two renewers can overwrite each other. Stop the certbot renewal for it once adopted (nself never edits certbot state).\n", l.Name, name)
+		}
+	}
+	_, _ = fmt.Fprintln(w)
+}
+
+// certbotOverlap returns the certbot renewal confs under dir whose lineage name
+// or certificate names include one of l's domains.
+func certbotOverlap(dir string, l acme.Lineage) (confs []string) {
+	cbs, err := acme.ReadCertbot(dir)
+	if err != nil {
+		return nil
+	}
+	for _, cb := range cbs {
+		for _, d := range l.Domains {
+			if cb.Name == d || slices.Contains(cb.Domains, d) {
+				confs = append(confs, cb.Conf)
+				break
+			}
+		}
+	}
+	return confs
+}
+
+// pollServed waits for nginx to serve the certificate with fingerprint want for
+// sni: `nginx -s reload` returns before the old workers stop answering.
+func pollServed(ctx context.Context, addr, sni, want string) (err error) {
+	for i := 0; i < 20; i++ {
+		got, perr := acmeD.probe(ctx, addr, sni, 10*time.Second)
+		if err = perr; err == nil {
+			if got.SHA256 == want {
+				return nil
+			}
+			err = fmt.Errorf("nginx at %s serves another certificate for %s than the one just installed", addr, sni)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(acmeVerifyWait):
+		}
+	}
+	return err
+}
+
+// Helpers shared by the --acme commands: the E151 error and the terms-of-service prompt.
+
+// e151 turns an error into the CLI's E151 carrying its remediation.
+func e151(err error) error {
+	what, fix := "ACME: "+err.Error(), "re-run with --dry-run to see the plan"
+	var ae *acme.Error
+	if errors.As(err, &ae) {
+		what, fix = ae.What, ae.Fix
+	}
+	e := errs.New("E151", what)
+	e.Why, e.Fix, e.Wrapped = "", fix, err
+	return e
+}
+
+// askTTY prompts on a terminal and reports a yes; false when stdin is not a terminal.
+func askTTY(prompt string) bool {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return false
+	}
+	fmt.Fprintf(os.Stderr, "%s [y/N] ", prompt)
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "y")
 }

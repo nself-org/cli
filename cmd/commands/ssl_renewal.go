@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -78,17 +79,24 @@ func installSSLRenewalCron(workdir string) error {
 	return installSSLRenewalSystemd(workdir)
 }
 
+// systemdUnitDir is where unit files are written; a variable so tests can redirect it.
+var systemdUnitDir = "/etc/systemd/system"
+
 // installSSLRenewalSystemd writes and enables the nself-ssl-renew systemd timer.
 func installSSLRenewalSystemd(workdir string) error {
-	const unitDir = "/etc/systemd/system"
+	return installSystemdTimer("nself-ssl-renew", sslRenewalServiceUnit(workdir), sslRenewalTimerContent)
+}
 
-	servicePath := filepath.Join(unitDir, "nself-ssl-renew.service")
-	if err := os.WriteFile(servicePath, []byte(sslRenewalServiceUnit(workdir)), 0644); err != nil {
+// installSystemdTimer writes <name>.service and <name>.timer into the unit
+// directory, reloads systemd and enables the timer.
+func installSystemdTimer(name, service, timer string) error {
+	servicePath := filepath.Join(systemdUnitDir, name+".service")
+	if err := os.WriteFile(servicePath, []byte(service), 0644); err != nil {
 		return fmt.Errorf("writing service unit: %w", err)
 	}
 
-	timerPath := filepath.Join(unitDir, "nself-ssl-renew.timer")
-	if err := os.WriteFile(timerPath, []byte(sslRenewalTimerContent), 0644); err != nil {
+	timerPath := filepath.Join(systemdUnitDir, name+".timer")
+	if err := os.WriteFile(timerPath, []byte(timer), 0644); err != nil {
 		return fmt.Errorf("writing timer unit: %w", err)
 	}
 
@@ -102,9 +110,63 @@ func installSSLRenewalSystemd(workdir string) error {
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel2()
 
-	if err := exec.CommandContext(ctx2, "systemctl", "enable", "--now", "nself-ssl-renew.timer").Run(); err != nil {
-		return fmt.Errorf("enable nself-ssl-renew.timer: %w", err)
+	if err := exec.CommandContext(ctx2, "systemctl", "enable", "--now", name+".timer").Run(); err != nil {
+		return fmt.Errorf("enable %s.timer: %w", name, err)
 	}
 
 	return nil
+}
+
+// The ACME renewal timer: unit text, the Linux-only installer and the acmeRun step
+// (`setup --acme --install-cron`). Environment lines are explicit because
+// systemd gives a service neither HOME nor the age key path.
+
+// acmeUnits renders the renewal service and timer units.
+func acmeUnits(exe, workdir, keyPath, home string) (service, timer string) {
+	return fmt.Sprintf(`[Unit]
+Description=nself ACME certificate renewal
+After=network.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%s
+Environment="SECRETS_AGE_KEY_PATH=%s"
+Environment="HOME=%s"
+ExecStart=%s trust ssl renew --acme --quiet
+`, workdir, keyPath, home, exe), sslRenewalTimerContent
+}
+
+// acmeUnitsFor renders the units for this binary, project and age key.
+func acmeUnitsFor(workdir, keyPath string) (service, timer string, err error) {
+	exe, err := os.Executable()
+	if runtime.GOOS != "linux" && err == nil {
+		err = fmt.Errorf("systemd timers need Linux")
+	}
+	home, _ := os.UserHomeDir()
+	abs, _ := filepath.Abs(keyPath)
+	service, timer = acmeUnits(exe, workdir, abs, home)
+	return service, timer, err
+}
+
+// timer installs the renewal units; under --dry-run it prints them instead.
+func (r *acmeRun) timer() error {
+	if r.dry {
+		service, timer, _ := acmeUnitsFor(r.workdir, r.res.AgeKey)
+		r.say("dry run: would write nself-acme-renew.service:\n%s\nand nself-acme-renew.timer:\n%s", service, timer)
+		return nil
+	}
+	if err := acmeD.timer(r.workdir, r.res.AgeKey); err != nil {
+		return e151(acmeRefuse("add to cron: 30 3 * * * nself trust ssl renew --acme --quiet", "installing the renewal timer: %v", err))
+	}
+	r.say("renewal timer installed (nself-acme-renew.timer, runs as root with age key %s)", r.res.AgeKey)
+	return nil
+}
+
+// installACMETimer writes and enables nself-acme-renew.{service,timer} (Linux, systemd).
+func installACMETimer(workdir, keyPath string) error {
+	service, timer, err := acmeUnitsFor(workdir, keyPath)
+	if err != nil {
+		return err
+	}
+	return installSystemdTimer("nself-acme-renew", service, timer)
 }

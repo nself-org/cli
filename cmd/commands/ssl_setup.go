@@ -66,6 +66,11 @@ var certbotProviderFlag = map[string]string{
 }
 
 func runSSLSetup(cmd *cobra.Command, args []string) error {
+	if useACME, _ := cmd.Flags().GetBool("acme"); useACME {
+		return runSSLSetupACME(cmd, args)
+	} else if err := rejectACMEFlags(cmd); err != nil {
+		return err
+	}
 	provider, _ := cmd.Flags().GetString("provider")
 	wildcard, _ := cmd.Flags().GetBool("wildcard")
 	email, _ := cmd.Flags().GetString("email")

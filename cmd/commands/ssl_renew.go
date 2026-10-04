@@ -26,6 +26,11 @@ import (
 
 // runSSLRenew implements `nself ssl renew [domain]`.
 func runSSLRenew(cmd *cobra.Command, args []string) error {
+	if useACME, _ := cmd.Flags().GetBool("acme"); useACME {
+		return runSSLRenewACME(cmd, args)
+	} else if err := rejectACMEFlags(cmd); err != nil {
+		return err
+	}
 	ui.CommandHeader("nself ssl renew", "Reload nginx and optionally renew certificates")
 
 	cwd, err := os.Getwd()
