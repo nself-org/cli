@@ -15,8 +15,10 @@
 #          has no well-formed marker, or --check finds a stale table.
 # Constraints: bash 3.2 compatible. Scans untracked files too, so a new
 #          uncommitted file is checked. Tests (*_test.go) are neither checked nor
-#          counted: they select modes with compattest. A line that is only a
-#          comment is not a call and is skipped.
+#          counted: they select modes with compattest. Only real calls count:
+#          compat.V15() inside a string literal, a // or /* */ comment is not a
+#          call and is ignored (an awk pass strips them, tracking multi-line block
+#          comments and raw strings). An aliased import (c.V15()) is not scanned.
 set -euo pipefail
 
 MODE="list"
@@ -33,7 +35,6 @@ BEGIN='<!-- BEGIN GENERATED:gated -->'
 END='<!-- END GENERATED:gated -->'
 MARK_RE='//[[:space:]]*compat\.V15\(([A-Za-z0-9._-]+)\):[[:space:]]*(.*)$'
 PREV_RE='^[[:space:]]*'"$MARK_RE"
-COMMENT_RE='^[[:space:]]*//'
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/compat-markers.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
@@ -41,34 +42,72 @@ RECORDS="$TMP/records"   # file<TAB>line<TAB>ticket<TAB>old<TAB>new
 : > "$RECORDS"
 BAD=0
 
+# real_calls prints "<line>:<text>" for each line of file $1 holding a real
+# compat.V15() call: string literals and comments are blanked first, with /* */
+# and raw-string state carried across lines. Octal \047 is the single quote.
+real_calls() {
+  awk '
+  BEGIN { inblock = 0; israw = 0 }
+  {
+    line = $0; code = ""; n = length(line); i = 1
+    while (i <= n) {
+      c = substr(line, i, 1); d = substr(line, i, 2)
+      if (inblock) { if (d == "*/") { inblock = 0; i += 2 } else { i++ } continue }
+      if (israw) { if (c == "`") { israw = 0 } i++; continue }
+      if (d == "//") break
+      if (d == "/*") { inblock = 1; i += 2; code = code " "; continue }
+      if (c == "`") { israw = 1; i++; code = code "\"\""; continue }
+      if (c == "\"" || c == "\047") {
+        q = c; i++
+        while (i <= n) {
+          e = substr(line, i, 1)
+          if (e == "\\") { i += 2; continue }
+          if (e == q) break
+          i++
+        }
+        i++; code = code "\"\""; continue
+      }
+      code = code c; i++
+    }
+    if (index(code, "compat.V15()") > 0) print NR ":" $0
+  }' "$1"
+}
+
+# trim strips surrounding whitespace and turns tabs into spaces.
+trim() { printf '%s' "$1" | tr '\t' ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+
 # scan fills RECORDS and sets BAD=1 (reasons on stderr) for any bad call.
 scan() {
-  local hit file rest line text prev spec old new ticket
-  while IFS= read -r hit; do
-    [ -n "$hit" ] || continue
-    file="${hit%%:*}"; rest="${hit#*:}"; line="${rest%%:*}"; text="${rest#*:}"
-    if [[ "$text" =~ $COMMENT_RE ]]; then continue; fi
-    spec=""
-    if [[ "$text" =~ $MARK_RE ]]; then
-      ticket="${BASH_REMATCH[1]}"; spec="${BASH_REMATCH[2]}"
-    elif [ "$line" -gt 1 ]; then
-      prev="$(sed -n "$((line - 1))p" "$file")"
-      if [[ "$prev" =~ $PREV_RE ]]; then
+  local file rest hit line text prev spec old new ticket
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    while IFS= read -r hit; do
+      [ -n "$hit" ] || continue
+      line="${hit%%:*}"; text="${hit#*:}"
+      spec=""
+      if [[ "$text" =~ $MARK_RE ]]; then
         ticket="${BASH_REMATCH[1]}"; spec="${BASH_REMATCH[2]}"
+      elif [ "$line" -gt 1 ]; then
+        prev="$(sed -n "$((line - 1))p" "$file")"
+        if [[ "$prev" =~ $PREV_RE ]]; then
+          ticket="${BASH_REMATCH[1]}"; spec="${BASH_REMATCH[2]}"
+        fi
       fi
-    fi
-    if [ -z "$spec" ]; then
-      echo "compat-markers: $file:$line compat.V15() call has no marker (// compat.V15(<ticket-id>): <old> -> <new>)" >&2
-      BAD=1; continue
-    fi
-    case "$spec" in
-      *" -> "*) old="${spec%% -> *}"; new="${spec#* -> }" ;;
-      *)
-        echo "compat-markers: $file:$line marker lacks '<old> -> <new>'" >&2
-        BAD=1; continue ;;
-    esac
-    printf '%s\t%s\t%s\t%s\t%s\n' "$file" "$line" "$ticket" "$old" "$new" >> "$RECORDS"
-  done < <(git grep --untracked -n -E 'compat\.V15\(\)' -- '*.go' ':!*_test.go' ':!internal/compat/' ':!vendor/*' || true)
+      if [ -z "$spec" ]; then
+        echo "compat-markers: $file:$line compat.V15() call has no marker (// compat.V15(<ticket-id>): <old> -> <new>)" >&2
+        BAD=1; continue
+      fi
+      old=""; new=""
+      case "$spec" in
+        *" -> "*) old="$(trim "${spec%% -> *}")"; new="$(trim "${spec#* -> }")" ;;
+      esac
+      if [ -z "$old" ] || [ -z "$new" ]; then
+        echo "compat-markers: $file:$line marker needs a non-empty '<old> -> <new>'" >&2
+        BAD=1; continue
+      fi
+      printf '%s\t%s\t%s\t%s\t%s\n' "$file" "$line" "$ticket" "$old" "$new" >> "$RECORDS"
+    done < <(real_calls "$file")
+  done < <(git grep --untracked -l -F 'compat.V15()' -- '*.go' ':!*_test.go' ':!internal/compat/' ':!vendor/*' | LC_ALL=C sort || true)
 }
 
 # render prints the Gated behaviours table for the current RECORDS.
@@ -94,6 +133,12 @@ current_block() {
 }
 
 scan
+
+# A table built while a call is unmarked would silently omit that branch.
+if [ "$BAD" -ne 0 ] && [ "$MODE" != "list" ]; then
+  echo "compat-markers: fix the calls above first; $WIKI not read or written" >&2
+  exit 1
+fi
 
 case "$MODE" in
   list)
