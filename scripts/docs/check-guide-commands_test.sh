@@ -76,10 +76,17 @@ run "${EMPTY}" "${DATA}/skip-empty.md"
 expect_rc "skip without reason fails" 1
 expect_out "skip without reason message" "${DATA}/skip-empty.md:4: doc-check: skip needs a reason"
 
-# 7. Non-fenced, non-bash fences, non-nself lines and comments are ignored.
+# 7. Non-fenced, non-bash fences, non-nself lines and comments are ignored:
+#    ignored.md has exactly one real command (nself start, line 15).
 run "${EMPTY}" "${DATA}/ignored.md"
-expect_rc "ignored lines pass" 0
-expect_out "ignored lines print nothing" ""
+expect_rc "ignored.md reports its one command" 1
+expect_out "ignored lines add nothing" "${DATA}/ignored.md:15: nself start"
+if [ "$(printf '%s\n' "${OUT}" | grep -c ': nself')" -eq 1 ]; then ok "exactly one unmatched line"; else bad "extra lines: ${OUT}"; fi
+ST="${T}/with-start"
+mkdir -p "${ST}/scripts"
+printf 'nself start\n' > "${ST}/scripts/leg.sh"
+run "${ST}" "${DATA}/ignored.md"
+expect_rc "ignored.md passes once matched" 0
 
 # 8. Signature rule.
 run "${EMPTY}" "${DATA}/signatures.md"
@@ -105,6 +112,56 @@ run "${SC}" "${DATA}/unmatched.md" "${DATA}/skip-reason.md"
 expect_rc "several files, all match" 0
 run "${EMPTY}"
 expect_rc "no arguments" 2
+
+# 10. Zero extracted commands fail (empty file, prose only, wrong fence).
+run "${EMPTY}" "${DATA}/empty.md"
+expect_rc "empty guide fails" 1
+expect_out "empty guide message" "error: no documented nself command lines found in the given files"
+run "${EMPTY}" "${DATA}/none.md"
+expect_rc "guide without nself commands fails" 1
+run "${SC}" "${DATA}/none.md" "${DATA}/unmatched.md"
+expect_rc "one guide without commands is fine when the set has commands" 0
+run "${EMPTY}" "${DATA}/skip-only.md"
+expect_rc "skipped-only guide counts as documenting commands" 0
+expect_out "summary on stderr" "checked 1 command lines (1 skipped) in 1 files"
+
+# 11. console fences: only \$ prompt lines are commands.
+run "${EMPTY}" "${DATA}/console.md"
+expect_rc "console fence is scanned" 1
+expect_out "console prompt line reported" "${DATA}/console.md:4: nself db import supabase"
+expect_no_out "console output lines ignored" "nself 1.4.12"
+expect_no_out "console output lines ignored (2)" "nself started"
+
+# 12. A terminator glued to a token cuts the signature there.
+GL="${T}/glued"
+mkdir -p "${GL}/scripts"
+printf 'nself start\nnself build\nnself status\nnself sync\nnself restart\n' > "${GL}/scripts/leg.sh"
+run "${GL}" "${DATA}/glued.md"
+expect_rc "glued terminators do not false-fail" 0
+run "${EMPTY}" "${DATA}/glued.md"
+expect_out "start; cut at ;"   "${DATA}/glued.md:4: nself start"
+expect_out "build>out cut at >" "${DATA}/glued.md:5: nself build"
+expect_out "status|jq cut at |" "${DATA}/glued.md:6: nself status"
+expect_out "sync\\ cut at backslash" "${DATA}/glued.md:7: nself sync"
+expect_out "restart&& cut at &" "${DATA}/glued.md:8: nself restart"
+
+# 13. Missing root or a root without scripts/ is a configuration error, not a mismatch.
+run "${T}/no-such-root" "${DATA}/unmatched.md"
+expect_rc "missing root" 2
+expect_out "missing root message" "error: missing root: no scripts/ directory under ${T}/no-such-root"
+mkdir -p "${T}/noscripts"
+run "${T}/noscripts" "${DATA}/unmatched.md"
+expect_rc "root without scripts/" 2
+expect_no_out "no mismatch line for a bad root" "unmatched.md:4"
+
+# 14. node_modules, .git and .claude are not searched for *_test.go.
+for d in node_modules .git .claude; do
+  X="${T}/skip-${d}"
+  mkdir -p "${X}/scripts" "${X}/${d}/pkg"
+  printf '// nself db import supabase\n' > "${X}/${d}/pkg/y_test.go"
+  run "${X}" "${DATA}/unmatched.md"
+  expect_rc "${d} is not searched" 1
+done
 
 printf '\n%s passed, %s failed\n' "${PASS}" "${FAIL}"
 [ "${FAIL}" -eq 0 ]

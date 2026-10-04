@@ -12,6 +12,7 @@ echo hello
 notnself thing
 nself-other thing
 # nself commented out
+nself start
 ```
 
 ```text
