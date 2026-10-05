@@ -486,6 +486,14 @@ jobs:
           case "$AB_EXIT" in
             0) echo "regressed=false" >> "$GITHUB_OUTPUT"; echo "PASS: no cold start regression" ;;
             1)
+              # Exit 1 counts as a regression only when perf-ab.json parses and
+              # names at least one failed probe. A missing, empty or
+              # unparseable file is a measurement error: it fails the job and
+              # perf-regression-approved cannot override it.
+              if ! jq -e '(.failed | type == "array") and (.failed | length > 0)' "$OUT/perf-ab.json" >/dev/null 2>&1; then
+                echo "FAIL: perfbench ab exited 1 but perf-ab.json is missing, unparseable or has no failed probes (measurement error; no override applies)" >&2
+                exit 1
+              fi
               if [ -n "$(jq -r '.error // empty' "$OUT/perf-ab.json")" ]; then
                 echo "FAIL: a probe died, hung or exited unexpectedly; no override applies: $(jq -r .error "$OUT/perf-ab.json")" >&2
                 exit 1

@@ -116,7 +116,7 @@ Why a relative gate: base and head run alternately in the same job on the same V
 
 ### Why these thresholds
 
-The ratio, the minimum delta, 40 rounds and 3 warm-up rounds are decision G8 of the P7-GUARD epic. They are validated, not tuned: the self-tests below must show 20 of 20 A/A comparisons passing and an injected 2x slowdown failing on ubuntu-latest before the gate merges, and the measured A/A spread is recorded in `hq` (`sport/reference/performance-slos.md`). If a self-test ever fails, re-measure the variance and escalate; do not loosen a threshold quietly. The 150 ms ceiling is the declared cold-start SLO, far above the measured p95 on the same runner, so it only fires on a large drift.
+The ratio, the minimum delta, 40 rounds and 3 warm-up rounds are decision G8 of the P7-GUARD epic. They are validated, not tuned: the self-tests below must show 20 of 20 A/A comparisons passing and an injected 2x slowdown failing on ubuntu-latest before the gate merges, and the measured A/A spread is recorded in `hq` (`sport/reference/performance-slos.md`). If a self-test ever fails, re-measure the variance and escalate; do not loosen a threshold quietly. The 150 ms ceiling is the declared cold-start SLO, far above the measured p95 on the same runner (15-20 ms p95 on ubuntu-latest, run 37269982940), so it only fires on a large drift.
 
 ### Self-test dispatches
 

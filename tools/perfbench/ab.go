@@ -4,12 +4,23 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
+	"math"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/nself-org/cli/tools/perfbench/scenarios"
+)
+
+// G8 defaults (EPIC P7-GUARD decision G8). The ab flags default to these and
+// the workflow relies on the defaults, so a test pins them.
+const (
+	DefaultRatio      = 1.25 // regression needs head p50 > ratio x base p50
+	DefaultMinDeltaMS = 3.0  // and head p50 - base p50 > this many ms
+	DefaultRuns       = 40   // interleaved rounds per probe
+	DefaultWarmup     = 3    // discarded warm-up pairs per probe
 )
 
 // ABResult is the `ab -json` document: the run fields (metrics = head), the
@@ -103,10 +114,10 @@ func abCmd(args []string, stdout, stderr io.Writer) int {
 	scenario := fs.String("scenario", "cold-start", "scenario name; must be made of fixed probes")
 	baseBin := fs.String("base", "", "base nself binary")
 	headBin := fs.String("head", "", "head nself binary")
-	runs := fs.Int("runs", 40, "measured runs per probe and binary")
-	warmup := fs.Int("warmup", 3, "discarded warm-up pairs per probe")
-	ratio := fs.Float64("ratio", 1.25, "regression needs head p50 > ratio x base p50")
-	minDelta := fs.Float64("min-delta-ms", 3, "and head p50 - base p50 > this many ms")
+	runs := fs.Int("runs", DefaultRuns, "measured runs per probe and binary")
+	warmup := fs.Int("warmup", DefaultWarmup, "discarded warm-up pairs per probe")
+	ratio := fs.Float64("ratio", DefaultRatio, "regression needs head p50 > ratio x base p50")
+	minDelta := fs.Float64("min-delta-ms", DefaultMinDeltaMS, "and head p50 - base p50 > this many ms")
 	slow := fs.Float64("inject-slowdown", 1.0, "SELF-TEST ONLY: make each head sample take F x its time")
 	asJSON := fs.Bool("json", false, "print the ab JSON document")
 	headSHA := fs.String("head-sha", "", "revision of the head binary, recorded in the result (default: empty)")
@@ -138,8 +149,10 @@ func abCmd(args []string, stdout, stderr io.Writer) int {
 		if *asJSON {
 			res := newResult(*scenario, *headSHA, *runs, []Metric{})
 			res.Injected = *slow > 1
-			emitAB(stdout, stderr, ABResult{Result: res, Base: abSide{[]Metric{}}, Head: abSide{[]Metric{}},
-				Verdict: "fail", Failed: []string{pf.Metric}, Error: err.Error()})
+			if !emitAB(stdout, stderr, ABResult{Result: res, Base: abSide{[]Metric{}}, Head: abSide{[]Metric{}},
+				Verdict: "fail", Failed: []string{pf.Metric}, Error: err.Error()}) {
+				return 2
+			}
 		}
 		return 1
 	}
@@ -147,8 +160,8 @@ func abCmd(args []string, stdout, stderr io.Writer) int {
 		sayln(stderr, "ab:", err)
 		return 2
 	}
-	if len(base) == 0 || len(head) == 0 {
-		sayln(stderr, "ab: the scenario produced no metrics; refusing to pass")
+	if err := validateMetrics(base, head); err != nil {
+		sayln(stderr, "ab:", err, "; refusing to pass")
 		return 2
 	}
 	failed := compare(base, head, *ratio, *minDelta)
@@ -159,7 +172,9 @@ func abCmd(args []string, stdout, stderr io.Writer) int {
 	if *asJSON {
 		res := newResult(*scenario, *headSHA, *runs, head)
 		res.Injected = *slow > 1
-		emitAB(stdout, stderr, ABResult{Result: res, Base: abSide{base}, Head: abSide{head}, Verdict: verdict, Failed: failed})
+		if !emitAB(stdout, stderr, ABResult{Result: res, Base: abSide{base}, Head: abSide{head}, Verdict: verdict, Failed: failed}) {
+			return 2
+		}
 	} else {
 		say(stdout, "base:\n%shead:\n%sverdict: %s %s\n", formatMetrics(base), formatMetrics(head), verdict, strings.Join(failed, " "))
 	}
@@ -169,12 +184,37 @@ func abCmd(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// emitAB prints the ab JSON document.
-func emitAB(stdout, stderr io.Writer, r ABResult) {
+// validateMetrics refuses an empty metric set and any NaN or infinite value:
+// NaN compares as "not regressed" and cannot be marshalled, so it must never
+// reach the verdict.
+func validateMetrics(base, head []Metric) error {
+	if len(base) == 0 || len(head) == 0 {
+		return errors.New("the scenario produced no metrics")
+	}
+	for _, side := range []struct {
+		name string
+		ms   []Metric
+	}{{"base", base}, {"head", head}} {
+		for _, m := range side.ms {
+			for _, v := range []float64{m.P50, m.P95, m.Max} {
+				if math.IsNaN(v) || math.IsInf(v, 0) {
+					return fmt.Errorf("%s metric %s has a non-finite value", side.name, m.Name)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// emitAB prints the ab JSON document. It reports false (the caller exits 2)
+// when the document cannot be marshalled, so an empty perf-ab.json never
+// stands in for a verdict.
+func emitAB(stdout, stderr io.Writer, r ABResult) bool {
 	out, err := marshal(r)
 	if err != nil {
-		sayln(stderr, "ab:", err)
-		return
+		sayln(stderr, "ab: cannot write the JSON result:", err)
+		return false
 	}
 	put(stdout, out)
+	return true
 }
