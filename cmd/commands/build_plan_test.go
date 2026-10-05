@@ -600,3 +600,32 @@ func TestBuildFreshProjectPlanIDRefused(t *testing.T) {
 		t.Fatalf("build --yes exited %d\n%s", r.code, r.stderr)
 	}
 }
+
+// TestBuildPluginRemovalDoesNotLeakEnv (review R2): the lifecycle step's
+// config.Load must not export the project's env into the write. With ENV=prod in
+// .env.local and an expired plugin that is removed, the apply renders what the
+// plan showed, so the plan afterwards is empty.
+func TestBuildPluginRemovalDoesNotLeakEnv(t *testing.T) {
+	p := newL03Project(t, "dev-minimal")
+	l03Write(t, filepath.Join(p.project, ".env.local"), "ENV=prod\n", 0o600)
+	l03Write(t, filepath.Join(p.project, ".env.prod"), "BASE_DOMAIN=prodonly.example.org\nSSL_MODE=none\n", 0o600)
+	l03Write(t, filepath.Join(p.plugins, "oldplug", "plugin.json"), `{"name":"oldplug","port":3920,"language":"go"}`, 0o644)
+	p.l03LifecycleStoreFor(t, "oldplug")
+	r := p.run(t, true, "build", "--yes")
+	if r.code != 0 {
+		t.Fatalf("build --yes exited %d\n%s", r.code, r.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(p.plugins, "oldplug")); err == nil {
+		t.Fatal("the expired plugin was not removed")
+	}
+	if data := p.planData(t, true); data["empty"] != true {
+		t.Fatalf("the apply rendered something other than the plan (env leaked from the lifecycle step): %v", data["artifacts"])
+	}
+}
+
+// l03LifecycleStoreFor writes a lifecycle store with one expired plugin.
+func (p *l03Project) l03LifecycleStoreFor(t *testing.T, name string) {
+	t.Helper()
+	l03Write(t, filepath.Join(p.home, ".config", "nself", "plugin-lifecycle.json"), `{"version":1,"records":{"`+name+`":{"name":"`+name+`","state":"dormant",
+"license_expiry":"2020-01-01T00:00:00Z","dormant_since":"2020-02-01T00:00:00Z","grace_period":1000000000}}}`, 0o600)
+}

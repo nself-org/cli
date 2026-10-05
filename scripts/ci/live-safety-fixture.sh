@@ -235,6 +235,22 @@ run_nself mode 1 build
 [ "$(python3 -c 'import os,sys;print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$WORK/mode/project/.env")" = 0o600 ] || fail ".env was not chmodded to 0600"
 ok "permission-only change is planned and applied"
 
+# An expired plugin is removed inside the held apply and its env does not leak.
+mkproj lc dev-minimal
+printf 'ENV=prod\n' > "$WORK/lc/project/.env.local"
+printf 'BASE_DOMAIN=prodonly.example.org\nSSL_MODE=none\n' > "$WORK/lc/project/.env.prod"
+mkdir -p "$WORK/lc/plugins/oldplug" "$WORK/lc/home/.config/nself"
+printf '{"name":"oldplug","port":3920,"language":"go"}' > "$WORK/lc/plugins/oldplug/plugin.json"
+printf '{"version":1,"records":{"oldplug":{"name":"oldplug","state":"dormant","license_expiry":"2020-01-01T00:00:00Z","dormant_since":"2020-02-01T00:00:00Z","grace_period":1000000000}}}' > "$WORK/lc/home/.config/nself/plugin-lifecycle.json"
+run_nself lc 1 build --plan --json
+[ "$(jget '"plugin-remove" in [e["kind"] for e in d["effects"]]')" = True ] || fail "the plan does not list the expired-plugin removal"
+[ -d "$WORK/lc/plugins/oldplug" ] || fail "--plan removed the plugin"
+run_nself lc 1 build --yes
+[ "$RC" = 0 ] && [ ! -d "$WORK/lc/plugins/oldplug" ] || fail "the expired plugin was not removed (rc=$RC)"
+run_nself lc 1 build --plan --json
+[ "$(jget 'd["empty"]')" = True ] || fail "plan after a removal apply is not empty (the lifecycle step leaked its env into the write)"
+ok "expired plugin removed inside the held apply; plan equals apply"
+
 # Docker unreachable: the plan is never empty.
 EXTRA_ENV="DOCKER_HOST=unix:///nonexistent.sock"
 run_nself envx 1 build --plan --json

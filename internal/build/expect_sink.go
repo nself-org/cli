@@ -21,6 +21,7 @@ import (
 	"io/fs"
 	"os"
 	"sort"
+	"strings"
 )
 
 // deviationError is a write, removal or chmod that is not part of the
@@ -66,6 +67,9 @@ func (e *expectSink) WriteAtomic(p string, data []byte, perm fs.FileMode) error 
 // check requires the planned bytes for p.
 func (e *expectSink) check(p string, data []byte) error {
 	k := e.keyr.key(p)
+	if e.backupPath(k) {
+		return nil
+	}
 	f, ok := e.exp.Files[k]
 	if !ok {
 		return errDeviated(k, "was not in the plan")
@@ -78,6 +82,9 @@ func (e *expectSink) check(p string, data []byte) error {
 
 func (e *expectSink) Remove(p string) error {
 	k := e.keyr.key(p)
+	if e.backupPath(k) {
+		return e.diskSink.Remove(p)
+	}
 	if _, rewritten := e.exp.Files[k]; !rewritten && !inSorted(e.exp.Removed, k) {
 		return errDeviated(k, "would be removed but the plan does not remove it")
 	}
@@ -93,6 +100,22 @@ func (e *expectSink) Chmod(p string, perm fs.FileMode) error {
 		return e.diskSink.Chmod(p, perm)
 	}
 	return errDeviated(k, fmt.Sprintf("would get mode %04o which the plan does not set", perm))
+}
+
+// backupPath reports whether k is under the nginx/sites snapshot area
+// (.nself/backups) and the confirmed render carries the nginx-sites-backup
+// effect: the snapshot's file names carry a wall-clock stamp, so they cannot be
+// planned byte for byte, but they are allowed nowhere else and only then.
+func (e *expectSink) backupPath(k string) bool {
+	if !strings.HasPrefix(k, ".nself/backups/") {
+		return false
+	}
+	for _, fx := range e.exp.Effects {
+		if fx.Kind == EffectNginxSitesBackup {
+			return true
+		}
+	}
+	return false
 }
 
 func inSorted(list []string, s string) bool {

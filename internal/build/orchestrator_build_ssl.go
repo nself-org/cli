@@ -214,7 +214,7 @@ func (st *buildState) backupSites(sitesDir string) error {
 	}
 	return st.fx.Do(EffectNginxSitesBackup, filepath.Join(st.workdir, ".nself", "backups"),
 		"snapshot "+sitesDir+" before regeneration", func() error {
-			return backupNginxSites(st.workdir, sitesDir)
+			return backupNginxSitesVia(st.sink, st.workdir, sitesDir)
 		})
 }
 

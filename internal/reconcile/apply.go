@@ -83,41 +83,84 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 	if err := Confirm(*p, opt, v15, req.Stderr); err != nil {
 		return nil, nil, err
 	}
-	removing := false
-	for _, e := range p.Effects {
-		removing = removing || e.Kind == EffectPluginRemove
+	wopts := req.Build
+	wopts.Mode = nbuild.ModeWrite
+	wopts.Rand = newSeededRand(req.Seed)
+	// Effects that change what the render reads (declared-plugin installs and
+	// expired-plugin removals) are confirmed above and run here, inside the held
+	// apply. The project is first checked unchanged, then the effects run, then
+	// the plan of record is rendered again so the artifacts the plugins bring
+	// are planned, shown and held like every other.
+	pre := hasEffect(p, EffectPluginInstall) || hasEffect(p, EffectPluginRemove)
+	if pre {
+		if err := recheck(ctx, req, p.PlanID); err != nil {
+			return nil, nil, err
+		}
 	}
 	if opt.BeforeWrite != nil {
 		if err := opt.BeforeWrite(); err != nil {
 			return nil, nil, err
 		}
 	}
-	wopts := req.Build
-	wopts.Mode = nbuild.ModeWrite
-	wopts.Rand = newSeededRand(req.Seed)
-	if !removing {
-		// Plugin removal changes the plugin dir the render read, so a plan with
-		// it is known to differ from the write (documented); every other plan
-		// must be unchanged, and the write is held to it.
-		again, err := compute(ctx, req)
+	if hasEffect(p, EffectPluginInstall) {
+		if err := nbuild.InstallDeclaredPlugins(ctx, req.ProjectDir); err != nil {
+			return nil, nil, err
+		}
+	}
+	if pre {
+		c, err = compute(ctx, req)
 		if err != nil {
 			return nil, nil, err
 		}
-		if again.plan.PlanID != p.PlanID {
-			return nil, nil, errs.New("E450", "the project changed after the plan was shown").
-				WithWhy("an input changed while the confirmation was pending; nothing was written").
-				WithFix("re-run nself build --plan and confirm the new plan")
+		p = c.plan
+		if req.Stderr != nil && !p.Empty {
+			_, _ = fmt.Fprintln(req.Stderr, "nself: after the plugin changes the build will write:")
+			if err := RenderHuman(req.Stderr, *p); err != nil {
+				return nil, nil, err
+			}
 		}
-		if afterRecheck != nil {
-			afterRecheck()
+		if opt.Interactive != nil && p.RequiresConfirmation {
+			if err := Confirm(*p, opt, v15, req.Stderr); err != nil {
+				return nil, nil, err
+			}
 		}
-		wopts.Expect = c.planned
 	}
+	if err := recheck(ctx, req, p.PlanID); err != nil {
+		return nil, nil, err
+	}
+	if afterRecheck != nil {
+		afterRecheck()
+	}
+	wopts.Expect = c.planned
 	res, err := nbuild.Build(req.ProjectDir, wopts)
 	if err != nil {
 		return nil, nil, err
 	}
 	return p, res, nil
+}
+
+// recheck renders again and refuses (E450) when the plan id moved.
+func recheck(ctx context.Context, req Request, want string) error {
+	again, err := compute(ctx, req)
+	if err != nil {
+		return err
+	}
+	if again.plan.PlanID != want {
+		return errs.New("E450", "the project changed after the plan was shown").
+			WithWhy("an input changed while the confirmation was pending; nothing was written").
+			WithFix("re-run nself build --plan and confirm the new plan")
+	}
+	return nil
+}
+
+// hasEffect reports whether the plan carries an effect of kind k.
+func hasEffect(p *Plan, k EffectKind) bool {
+	for _, e := range p.Effects {
+		if e.Kind == k {
+			return true
+		}
+	}
+	return false
 }
 
 // afterRecheck is a test seam run between the re-check and the write.

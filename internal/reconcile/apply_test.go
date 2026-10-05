@@ -13,6 +13,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 
 	nbuild "github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/oplock"
 )
@@ -525,5 +527,97 @@ func TestUnknownContainersNeverEmpty(t *testing.T) {
 		if want := name == "prod-ssl"; p.RequiresConfirmation != want {
 			t.Fatalf("%s: requires_confirmation=%v", name, p.RequiresConfirmation)
 		}
+	}
+}
+
+// fakePlugin stands in for the registry download and the schema step: it lays a
+// plugin down in pluginDir the way an install would (manifest, compose
+// fragment, nginx route).
+func fakePlugin(t *testing.T, pluginDir, name string) {
+	t.Helper()
+	dir := filepath.Join(pluginDir, name)
+	writeFile(t, filepath.Join(dir, "plugin.json"), fmt.Sprintf(`{"name":%q,"port":3911,"language":"go"}`, name), 0o644)
+	writeFile(t, filepath.Join(dir, "docker-compose.plugin.yml"), fmt.Sprintf("services:\n  %s:\n    image: nself/%s:latest\n    ports:\n      - \"3911:3911\"\n", name, name), 0o644)
+	writeFile(t, filepath.Join(dir, "Dockerfile"), "FROM scratch\n", 0o644)
+	writeFile(t, filepath.Join(dir, "nginx", "route.conf"), "server {\n  listen 80;\n  server_name ${PLUGIN_NAME}.example.test;\n}\n", 0o644)
+}
+
+// TestApplyInstallsDeclaredPluginInOnePass (review R1): a project whose
+// nself.yaml declares a plugin that is not installed builds in one pass: the
+// install runs as a confirmed effect inside the held apply, the plugin's nginx
+// and compose artifacts are rendered, checked and held, and the plan afterwards
+// is empty.
+func TestApplyInstallsDeclaredPluginInOnePass(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	writeFile(t, f.project+"/nself.yaml", "plugins:\n  - fakeplug\n", 0o644)
+	installs := 0
+	old := nbuild.PluginInstall
+	nbuild.PluginInstall = func(_ context.Context, _ *config.Config, name, pluginDir string) error {
+		installs++
+		fakePlugin(t, pluginDir, name)
+		return nil
+	}
+	t.Cleanup(func() { nbuild.PluginInstall = old })
+
+	p := planOf(t, f, nil)
+	if !hasEffect(p, EffectPluginInstall) || installs != 0 {
+		t.Fatalf("the plan must list the install and not run it (installs=%d, effects %+v)", installs, p.Effects)
+	}
+	if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("s")}, ApplyOptions{Yes: true}); err != nil {
+		t.Fatalf("one-pass build with a declared plugin: %v", err)
+	}
+	if installs != 1 {
+		t.Fatalf("plugin installed %d times, want 1", installs)
+	}
+	manifest := readFile(t, f.project+"/.nself/compose-files.txt")
+	if !strings.Contains(manifest, "fakeplug") {
+		t.Fatalf("the plugin fragment is not wired into the stack:\n%s", manifest)
+	}
+	if left := planOf(t, f, nil); !left.Empty {
+		var sb strings.Builder
+		_ = RenderHuman(&sb, *left)
+		t.Fatalf("plan after the apply is not empty:\n%s", sb.String())
+	}
+}
+
+// TestApplyEditDuringPromptWithPluginRemoval (review R2): with an expired
+// plugin due for removal, an edit made while the prompt waits is refused (E450)
+// before the removal runs: no exemption from the hold.
+func TestApplyEditDuringPromptWithPluginRemoval(t *testing.T) {
+	compattest.Set(t, true)
+	f := loadFixture(t, "prod-ssl")
+	before := treeHash(t, f.root)
+	removed := false
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project,
+		Extra: []Effect{{Kind: EffectPluginRemove, Target: "oldplug", Detail: "license grace period exhausted"}}},
+		ApplyOptions{
+			Interactive: func(string) bool {
+				setEnvValue(t, f, "POSTGRES_PASSWORD", "Zq7Wx3Tn9Rk5Hb2Vc8Lm4Pd6Sa1FgJu0Ye8")
+				return true
+			},
+			BeforeWrite: func() error { removed = true; return nil },
+		})
+	if d := errs.Describe(err); d == nil || d.Code != "E450" {
+		t.Fatalf("want E450, got %v", err)
+	}
+	if removed {
+		t.Fatal("the removal ran although the project changed under the prompt")
+	}
+	if _, err := os.Stat(f.project + "/docker-compose.yml"); err == nil {
+		t.Fatal("a refused apply wrote")
+	}
+	_ = before
+}
+
+// TestApplyHoldAfterPluginRemoval: after a removal the write is still held to the
+// final render: an edit made after the removal is caught.
+func TestApplyHoldAfterPluginRemoval(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	afterRecheck = func() { setEnvValue(t, f, "POSTGRES_PASSWORD", "Zq7Wx3Tn9Rk5Hb2Vc8Lm4Pd6Sa1FgJu0Ye8") }
+	t.Cleanup(func() { afterRecheck = nil })
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project,
+		Extra: []Effect{{Kind: EffectPluginRemove, Target: "oldplug"}}}, ApplyOptions{BeforeWrite: func() error { return nil }})
+	if err == nil || !strings.Contains(err.Error(), "changed after the plan") {
+		t.Fatalf("a plan with a removal must still be held, got %v", err)
 	}
 }

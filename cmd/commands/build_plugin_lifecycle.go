@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
@@ -66,7 +67,9 @@ func runPluginLifecycleCheck(quiet bool) error {
 		if !quiet {
 			ui.Warn(fmt.Sprintf("Removing expired plugin %q (grace period exhausted)", name))
 		}
+		restoreEnv := build.SnapshotEnv() // config.Load exports the cascade; the write must not see it
 		cfg, cfgErr := config.Load(".")
+		restoreEnv()
 		if cfgErr != nil {
 			// Fall back to default plugin dir.
 			cfg = &config.Config{}
@@ -87,7 +90,7 @@ func runPluginLifecycleCheck(quiet bool) error {
 		}
 	}
 	if len(failed) > 0 {
-		return fmt.Errorf("expired plugin removal failed, nothing was built: %s", strings.Join(failed, "; "))
+		return fmt.Errorf("expired plugin removal failed, nothing was built (plugins removed before the failure stay removed): %s", strings.Join(failed, "; "))
 	}
 	return nil
 }

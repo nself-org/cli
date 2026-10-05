@@ -53,7 +53,7 @@ It is a cooperative lock between nself processes of the same user:
 - The token is in the holder file, so any reader of the project folder can export it and pass for a child. It stops accidents, not an adversary.
 - A child that outlives its parent runs unlocked: the parent's lock ended with the parent.
 - A `clean` that deletes `.nself/` while the lock is held orphans that lock. The next command locks the new file.
-- `nself build` takes this same lock (it no longer keeps a separate `.nself/build.lock` file), so a killed build leaves nothing stale. A build that finds the lock held fails at once, in every mode, with an error naming the holder and writes nothing; it never waits (in v1.4 the command guard has already waited up to 30 seconds) and never builds unlocked. `nself apply`-style callers (`reconcile.Apply`) hold the lock from the first render to the last write.
+- `nself build` takes this same lock (it no longer keeps its own `.nself/build.lock` except as described next), so a killed build leaves nothing stale. A build that finds the lock held by another build fails at once, naming the holder, and writes nothing. Held by another command: v1.5 fails at once naming that command; v1.4 keeps the old behaviour (the command guard waits up to 30 seconds, then the build goes ahead) but under the old O_EXCL `.nself/build.lock`, so two builds never overlap. Where flock is unsupported (native Windows) the O_EXCL `.nself/build.lock` is the lock, as before. A build never runs unlocked. `reconcile.Apply` holds the lock from the first render to the last write.
 
 ### Codes
 
@@ -101,10 +101,11 @@ A prod-class env is `ENV` `prod` or `staging` (a running stack does not make an 
 
 ### What a plan does not cover
 
-- An expired plugin removed by the plugin lifecycle step is listed as a `plugin-remove` effect, but the plan renders the project with that plugin still installed, because the removal runs after the confirmation. The apply then renders without it, and for that plan only the re-check and the write hold are skipped. A failed removal is fatal: the build stops before any write.
+- Declared-plugin installs and expired-plugin removals change what the render reads, so they run as confirmed effects inside the held apply: the plan lists them (`plugin-install`, `plugin-remove`) and is confirmed; the project is re-checked unchanged; the effects run; the plan of record is then rendered again, so the nginx and compose artifacts the plugins bring are planned, shown on stderr (`after the plugin changes the build will write`) and held like every other. An interactive prod-class apply is asked again about that render. What an install downloads is not bound by `plan_id` (it is network content); everything the build then writes is. A failed removal is fatal before any write.
 - Container impact needs Docker. When it cannot be asked, `containers.known` is false, the plan is never `empty`, the human output says `state unknown`, and a prod-class env asks for confirmation.
 - Effects (hosts, trust store, certificates) are not byte-checked at write time; their files are.
-- Every apply writes a snapshot under `.nself/backups/nginx-sites-<timestamp>/` when `nginx/sites` has files, listed in the plan only when a site conf changes; the directory grows by one snapshot per build (the last five are kept).
+- Every apply writes a snapshot under `.nself/backups/nginx-sites-<timestamp>/` when `nginx/sites` has files (the last five are kept). The snapshot goes through the write hold: its writes and prunes are allowed only under `.nself/backups` and only when the plan carries the `nginx-sites-backup` effect; the plan lists that effect only when a site conf changes.
+- Certificate bytes and the keychain trust state are effects the hold does not byte-check, and a mid-write mismatch can leave a partially written project (debt D-0261).
 - A declared plugin that `build` would auto-install is a `plugin-install` effect; the plan renders without it.
 - The plan is computed under the operation lock held for the whole command, so the inputs cannot change between the plan and the write by another nself command. A process that ignores the lock can still change them.
 
