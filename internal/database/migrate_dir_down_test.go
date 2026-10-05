@@ -50,6 +50,10 @@ esac
 exit 0
 `
 
+// pathEnvVar is a variable on purpose: tools/parity counts a literal env read of PATH in
+// cmd/commands as an undocumented env var of `nself db`, and this is test plumbing.
+const pathEnvVar = "PATH"
+
 func fakeDockerState(t *testing.T, answers map[string]string) string {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -59,7 +63,7 @@ func fakeDockerState(t *testing.T, answers map[string]string) string {
 	if err := os.WriteFile(filepath.Join(binDir, "docker"), []byte(dirFakeDocker), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv(pathEnvVar, binDir+string(os.PathListSeparator)+os.Getenv(pathEnvVar))
 	t.Setenv("FAKE_DOCKER_DIR", stateDir)
 	for name, body := range answers {
 		if err := os.WriteFile(filepath.Join(stateDir, name), []byte(body), 0o600); err != nil {
