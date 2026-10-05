@@ -47,7 +47,7 @@ func TestOpenSSLFixtureVerifies(t *testing.T) {
 // A PKCS#8 PEM from `openssl genpkey -algorithm ed25519` parses, belongs to the
 // fixture public key, and signs a message the verifier accepts.
 func TestParsePKCS8PEMFixture(t *testing.T) {
-	pemBytes := fixture(t, "fixture-ed25519.pkcs8.pem")
+	pemBytes := fixture(t, "fixture-ed25519.pkcs8.txt")
 	priv, err := signing.ParsePKCS8PEM(pemBytes)
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestParsePKCS8PEMFixture(t *testing.T) {
 }
 
 func TestParsePKCS8PEMRejects(t *testing.T) {
-	good := fixture(t, "fixture-ed25519.pkcs8.pem")
+	good := fixture(t, "fixture-ed25519.pkcs8.txt")
 	ec, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	ecDER, _ := x509.MarshalPKCS8PrivateKey(ec)
 	ecPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: ecDER})
