@@ -305,7 +305,7 @@ func TestMigrateDownDir_QuotesLedgerName(t *testing.T) {
 
 // Transaction control anywhere in the statement stream is refused; harmless
 // look-alikes (inside comments, strings, dollar quotes, plpgsql blocks) are not.
-func TestRejectTxControl_Table(t *testing.T) {
+func TestDirSQL_Table(t *testing.T) {
 	bad := map[string]string{
 		"own line":            "DROP TABLE a;\nCOMMIT;",
 		"same line":           "DROP TABLE dir_b; COMMIT; DROP TABLE nope;",
@@ -323,9 +323,13 @@ func TestRejectTxControl_Table(t *testing.T) {
 		"psql meta-command":   "DROP TABLE a;\n\\set AUTOCOMMIT on\nDROP TABLE b;",
 		"no trailing newline": "DROP TABLE a;commit",
 		"mixed case":          "DROP TABLE a; CoMmIt ;",
+		"wrapped, commit mid": "BEGIN; DROP TABLE a; COMMIT; DROP TABLE b;",
+		"begin with options":  "BEGIN ISOLATION LEVEL SERIALIZABLE; DROP TABLE a; COMMIT;",
+		"two begins":          "BEGIN; BEGIN; DROP TABLE a; COMMIT;",
+		"begin, no commit":    "BEGIN; DROP TABLE a;",
 	}
 	for name, sql := range bad {
-		if err := rejectTxControl("f.sql", sql); err == nil {
+		if _, err := dirSQL("f.sql", sql); err == nil {
 			t.Errorf("%s: not refused: %q", name, sql)
 		}
 	}
@@ -341,9 +345,11 @@ func TestRejectTxControl_Table(t *testing.T) {
 		"E string ok":   "SELECT E'it\\'s; COMMIT;';",
 		"commentary":    "ALTER TABLE t ADD COLUMN commit_at timestamptz;",
 		"concurrently":  "BEGIN;\nCREATE INDEX CONCURRENTLY i ON t (c);\nCOMMIT;",
+		"outer wrapper": "-- header\nBEGIN;\nCREATE TABLE a (id int);\nCOMMIT;\n",
+		"wrapper words": "BEGIN TRANSACTION; CREATE TABLE a (id int); END TRANSACTION;",
 	}
 	for name, sql := range good {
-		if err := rejectTxControl("f.sql", sql); err != nil {
+		if _, err := dirSQL("f.sql", sql); err != nil {
 			t.Errorf("%s: wrongly refused: %v", name, err)
 		}
 	}
@@ -403,6 +409,41 @@ func TestMigrateDirUp_RefusesTxControlBeforeApplyingAnything(t *testing.T) {
 	}
 	if _, err := PendingDirMigrations(context.Background(), fakeCfg, dir); err == nil {
 		t.Error("the dry-run preview must refuse what the real run refuses")
+	}
+}
+
+// An outer BEGIN/COMMIT is dropped, so the CLI's own transaction is the only one.
+func TestDirSQL_StripsOuterWrapper(t *testing.T) {
+	out, err := dirSQL("f.sql", "-- h\nBEGIN;\nCREATE TABLE a (id int);\nCOMMIT;\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u := strings.ToUpper(out); strings.Contains(u, "BEGIN") || strings.Contains(u, "COMMIT") || !strings.Contains(out, "CREATE TABLE a (id int);") {
+		t.Errorf("wrapper not stripped cleanly: %q", out)
+	}
+}
+
+func TestMigrateUpDir_WrappedFileRunsInOneTransaction(t *testing.T) {
+	dir := mkMigDir(t, map[string]string{"001_a.sql": "BEGIN;\nCREATE TABLE a (id int);\nCOMMIT;\n"})
+	sd := fakeDockerState(t, map[string]string{"q_legacy_exists": "yes", "q_ops_exists": "yes"})
+	if n, err := MigrateUpDir(context.Background(), fakeCfg, dir); err != nil || n != 1 {
+		t.Fatalf("up = %d, %v", n, err)
+	}
+	b, _ := os.ReadFile(filepath.Join(sd, "pipe-0.sql"))
+	if strings.Count(string(b), "BEGIN") != 1 || strings.Count(string(b), "COMMIT") != 1 || !strings.Contains(string(b), "CREATE TABLE a") {
+		t.Errorf("want exactly one BEGIN and one COMMIT around the migration and its ledger rows:\n%s", b)
+	}
+}
+
+func TestMigrateDownDir_WrappedDownFileRunsInOneTransaction(t *testing.T) {
+	dir := mkMigDir(t, map[string]string{"001_a.sql": "x", "001_a.down.sql": "BEGIN;\nDROP TABLE dir_a;\nCOMMIT;\n"})
+	sd := fakeDockerState(t, downAnswers(t, dir, "001_a.sql"))
+	if _, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(sd, "pipe-0.sql"))
+	if strings.Count(string(b), "BEGIN") != 1 || strings.Count(string(b), "COMMIT") != 1 || !strings.Contains(string(b), "DROP TABLE dir_a;") {
+		t.Errorf("down SQL not a single transaction:\n%s", b)
 	}
 }
 

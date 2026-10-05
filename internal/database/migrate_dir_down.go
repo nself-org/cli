@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,18 +14,13 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
-// Purpose: PendingDirMigrations (read-only preview for `up --migration-dir
-// --dry-run`), MigrateDownDir (`down --migration-dir [--steps N]`) and the
-// transaction-control guard both directions share.
-// Inputs: a *config.Config, a migrations directory, and (down) a step count.
-// Outputs: the ledger names that are pending / were reverted, or an error.
-// Constraints (P7-PROD-77): the preview issues SELECTs only. Down reverts one
-// migration per step in one transaction with both ledger deletes, after every
-// step is resolved. A file with its own transaction control is refused: it
-// would end the wrapping transaction and leave the ledger out of step.
+// Purpose: PendingDirMigrations (read-only `up --migration-dir --dry-run`),
+// MigrateDownDir (`down --migration-dir [--steps N]`) and dirSQL, the
+// transaction-control guard both directions share. Constraints (P7-PROD-77):
+// the preview issues SELECTs only; down reverts one migration per step in one
+// transaction with both ledger deletes, after every step is resolved.
 
-// opsChecksums reads name -> stored checksum from nself_ops.migrations
-// (read-only); an absent table yields an empty map.
+// opsChecksums reads name -> checksum from nself_ops.migrations (read-only).
 func opsChecksums(ctx context.Context, cfg *config.Config) (map[string]string, error) {
 	sums := make(map[string]string)
 	exists, err := ledgerTableExists(ctx, cfg, "nself_ops.migrations")
@@ -36,20 +32,16 @@ func opsChecksums(ctx context.Context, cfg *config.Config) (map[string]string, e
 		return nil, fmt.Errorf("read migration checksums: %w", err)
 	}
 	for _, line := range strings.Split(out, "\n") {
-		if p := strings.SplitN(strings.TrimSpace(line), "|", 2); len(p) == 2 {
-			sums[p[0]] = p[1]
+		if n, c, ok := strings.Cut(strings.TrimSpace(line), "|"); ok {
+			sums[n] = c
 		}
 	}
 	return sums, nil
 }
 
-// PendingDirMigrations lists the files in dir that MigrateUpDir would apply,
-// without writing anything. It applies the same decisions as MigrateUpDir and
-// ApplyFile: ledger name = file base name, skip when recorded in
-// np_common.schema_versions, fail on a checksum mismatch against
-// nself_ops.migrations, and refuse what the real run refuses (SQL lint,
-// transaction control, ALTER prerequisites). Missing ledger tables mean
-// "nothing applied yet" (the real run would create them); none is created here.
+// PendingDirMigrations lists the files MigrateUpDir would apply, writing nothing,
+// with the real run's refusals (checksum, lint, transaction control, ALTER
+// prerequisites). Missing ledger tables mean "nothing applied"; none is created.
 func PendingDirMigrations(ctx context.Context, cfg *config.Config, dir string) ([]string, error) {
 	files, err := scanMigrations(dir)
 	if err != nil {
@@ -70,12 +62,9 @@ func PendingDirMigrations(ctx context.Context, cfg *config.Config, dir string) (
 	var pendingFiles, names []string
 	for _, f := range files {
 		name := filepath.Base(f)
-		if err := validateMigrationName(name); err != nil {
-			return nil, err
-		}
 		data, readErr := os.ReadFile(f)
-		if readErr != nil {
-			return nil, fmt.Errorf("read migration file %s: %w", name, readErr)
+		if nameErr := validateMigrationName(name); nameErr != nil || readErr != nil {
+			return nil, errors.Join(nameErr, readErr)
 		}
 		sum, _ := checksumBytes(data)
 		if _, ok := applied[name]; ok {
@@ -87,7 +76,7 @@ func PendingDirMigrations(ctx context.Context, cfg *config.Config, dir string) (
 		if lintErr := ValidateMigrationSQL(name, string(data)); lintErr != nil {
 			return nil, lintErr
 		}
-		if err := rejectTxControl(name, string(data)); err != nil {
+		if _, err := dirSQL(name, string(data)); err != nil {
 			return nil, err
 		}
 		pendingFiles = append(pendingFiles, f)
@@ -101,12 +90,17 @@ func PendingDirMigrations(ctx context.Context, cfg *config.Config, dir string) (
 	return names, nil
 }
 
-// sqlSkeleton returns sql with comments, quoted strings (E” escapes
-// included), quoted identifiers and dollar-quoted bodies each replaced by one
-// space, so what remains is only statement structure. One pass, so a comment
-// marker inside a string (or a quote inside a comment) cannot hide anything.
+// sqlSkeleton blanks comments, quoted strings (E-string escapes included),
+// quoted identifiers and dollar-quoted bodies to spaces, in one pass and
+// keeping offsets, so a marker inside a string or comment hides nothing.
 func sqlSkeleton(s string) string {
-	var b strings.Builder
+	out := []byte(s)
+	blank := func(lo, hi int) int { // blank [lo,hi), return hi
+		for k := lo; k < hi && k < len(s); k++ {
+			out[k] = ' '
+		}
+		return hi
+	}
 	past := func(from int, end string) int { // index just past the next end, or len(s)
 		if j := strings.Index(s[from:], end); j >= 0 {
 			return from + j + len(end)
@@ -117,11 +111,9 @@ func sqlSkeleton(s string) string {
 		c := s[i]
 		switch {
 		case strings.HasPrefix(s[i:], "--"):
-			i = past(i, "\n")
-			b.WriteByte(' ')
+			i = blank(i, past(i, "\n")-1)
 		case strings.HasPrefix(s[i:], "/*"):
-			i = past(i+2, "*/")
-			b.WriteByte(' ')
+			i = blank(i, past(i+2, "*/"))
 		case c == '\'' || c == '"':
 			esc := c == '\'' && i > 0 && (s[i-1] == 'E' || s[i-1] == 'e')
 			j := i + 1
@@ -131,86 +123,92 @@ func sqlSkeleton(s string) string {
 				}
 				j++
 			}
-			i = j + 1
-			b.WriteByte(' ')
+			i = blank(i, j+1)
 		case c == '$' && dollarTagRe.MatchString(s[i:]):
 			tag := dollarTagRe.FindString(s[i:])
-			i = past(i+len(tag), tag)
-			b.WriteByte(' ')
+			i = blank(i, past(i+len(tag), tag))
 		default:
-			b.WriteByte(c)
 			i++
 		}
 	}
-	return b.String()
+	return string(out)
 }
 
 var dollarTagRe = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_]*)?\$`)
 
-// rejectTxControl refuses SQL that would break the transaction a directory
-// migration is wrapped in: BEGIN/START TRANSACTION, COMMIT, END, ROLLBACK
-// (not ROLLBACK TO), ABORT or PREPARE TRANSACTION as a statement anywhere in
-// the stream, and any backslash outside literals (a psql meta-command such as
-// \set AUTOCOMMIT). Files that run outside a transaction (CREATE INDEX
-// CONCURRENTLY) are exempt: they are not wrapped.
-func rejectTxControl(name, sql string) error {
+// txKind classifies one skeleton statement: "begin"/"end" for a plain BEGIN /
+// COMMIT|END [TRANSACTION|WORK], "bad" for other transaction control (START
+// TRANSACTION, ROLLBACK, ABORT, PREPARE TRANSACTION, options), else "".
+func txKind(stmt string, atomic bool) string {
+	w := append(strings.Fields(strings.ToLower(strings.TrimRight(stmt, ";"))), "", "") // pad: w[1], w[2] always exist
+	plain := w[1] == "" || ((w[1] == "transaction" || w[1] == "work") && w[2] == "")
+	switch {
+	case w[0] == "begin" && w[1] != "atomic":
+		return map[bool]string{true: "begin", false: "bad"}[plain]
+	case w[0] == "commit", w[0] == "end" && !atomic:
+		return map[bool]string{true: "end", false: "bad"}[plain]
+	case w[0] == "abort", w[0] == "rollback" && w[1] != "to",
+		(w[0] == "start" || w[0] == "prepare") && w[1] == "transaction":
+		return "bad"
+	}
+	return ""
+}
+
+// dirSQL prepares a directory migration's SQL for the CLI's wrapping
+// transaction: one outer BEGIN first and COMMIT last are dropped; any other
+// transaction control anywhere (same line included), an unpaired BEGIN/COMMIT
+// or a psql backslash command is refused, since it would end the transaction
+// early and leave the ledger out of step. Non-transactional files pass as is.
+func dirSQL(name, sql string) (string, error) {
 	if isNonTransactional(sql) {
-		return nil
+		return sql, nil
 	}
 	skel := sqlSkeleton(sql)
-	bad := ""
+	refuse := func(what string) (string, error) {
+		return "", fmt.Errorf("migration %s contains its own transaction control (%s); only one outer BEGIN and COMMIT are accepted, the CLI wraps each migration and its ledger update in one transaction", name, what)
+	}
 	if strings.Contains(skel, `\`) {
-		bad = `a backslash (psql meta-command)`
+		return refuse("psql backslash command")
 	}
+	var spans [][2]int
+	var kinds []string
 	atomic := strings.Contains(strings.ToLower(skel), "begin atomic")
-	for _, stmt := range strings.Split(skel, ";") {
-		w := strings.Fields(strings.ToLower(stmt))
-		if len(w) == 0 {
-			continue
+	for lo := 0; lo < len(skel); {
+		hi := strings.IndexByte(skel[lo:], ';') + lo + 1
+		if hi <= lo {
+			hi = len(skel)
 		}
+		if strings.TrimSpace(skel[lo:hi]) != "" {
+			spans = append(spans, [2]int{lo, hi})
+			kinds = append(kinds, txKind(skel[lo:hi], atomic))
+		}
+		lo = hi
+	}
+	out := []byte(sql)
+	for k, kind := range kinds {
+		lo, hi := spans[k][0], spans[k][1]
 		switch {
-		case w[0] == "commit", w[0] == "abort", w[0] == "start" && len(w) > 1 && w[1] == "transaction",
-			w[0] == "prepare" && len(w) > 1 && w[1] == "transaction",
-			w[0] == "rollback" && !(len(w) > 1 && w[1] == "to"),
-			w[0] == "end" && !atomic,
-			w[0] == "begin" && !(len(w) > 1 && w[1] == "atomic"):
-			bad = strings.ToUpper(w[0])
+		case kind == "bad", kind == "begin" && k != 0, kind == "end" && k != len(kinds)-1:
+			return refuse(strings.ToUpper(strings.Fields(skel[lo:hi])[0]))
+		case kind != "":
+			copy(out[lo:hi], strings.Repeat(" ", hi-lo))
 		}
 	}
-	if bad != "" {
-		return fmt.Errorf("migration %s contains its own transaction control (%s); remove it, the CLI wraps each migration and its ledger update in one transaction", name, bad)
+	if n := len(kinds); n > 0 && (kinds[0] == "begin") != (kinds[n-1] == "end") {
+		return refuse("BEGIN without COMMIT or COMMIT without BEGIN")
 	}
-	return nil
+	return string(out), nil
 }
 
 // downStep is one resolved rollback: the ledger name and its down SQL.
-type downStep struct {
-	name string
-	sql  string
-}
-
-// resolveDownFile finds <name>_down.sql or <name>.down.sql in dir for the
-// flat migration "<name>.sql". A missing file is an error naming both paths.
-func resolveDownFile(dir, ledgerName string) (string, error) {
-	stem := strings.TrimSuffix(ledgerName, ".sql")
-	candidates := []string{filepath.Join(dir, stem+"_down.sql"), filepath.Join(dir, stem+".down.sql")}
-	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
-			return c, nil
-		}
-	}
-	return "", fmt.Errorf("down migration not found for %s: expected %s or %s", ledgerName, candidates[0], candidates[1])
-}
+type downStep struct{ name, sql string }
 
 // MigrateDownDir reverts the `steps` most recently applied migrations, which
-// must all be files of dir. The ledger keys on the base name only, so a file
-// of the same name in another directory must not be mistaken for this one:
-// the file in dir must hash to the checksum recorded in nself_ops.migrations
-// for that name, or nothing is reverted. If the newest applied entry is not a
-// matching file of dir, or its down file is missing, nothing is reverted and
-// the error names it. Each step runs its down SQL and both ledger deletes in
-// one transaction, so a failing step leaves its own ledger rows in place.
-// Returns the names reverted.
+// must all be files of dir. The ledger keys on the base name only, so the file
+// in dir must hash to the checksum recorded in nself_ops.migrations for that
+// name (another directory's same-named file is refused). Every step is
+// resolved before the first runs; each runs its down SQL and both ledger
+// deletes in one transaction. Returns the names reverted.
 func MigrateDownDir(ctx context.Context, cfg *config.Config, dir string, steps int) ([]string, error) {
 	if steps < 1 {
 		return nil, fmt.Errorf("--steps must be at least 1, got %d", steps)
@@ -219,7 +217,7 @@ func MigrateDownDir(ctx context.Context, cfg *config.Config, dir string, steps i
 		return nil, fmt.Errorf("migrations directory not found: %s", dir)
 	}
 	if err := ensureSchemaVersions(ctx, cfg); err != nil {
-		return nil, fmt.Errorf("ensure schema_versions: %w", err)
+		return nil, err
 	}
 	out, err := ledgerSelect(ctx, cfg, fmt.Sprintf(
 		"SELECT name FROM np_common.schema_versions ORDER BY applied_at DESC, name DESC LIMIT %d", steps))
@@ -242,10 +240,7 @@ func MigrateDownDir(ctx context.Context, cfg *config.Config, dir string, steps i
 		}
 		plan = append(plan, step)
 	}
-	if len(plan) == 0 {
-		return nil, fmt.Errorf("no migrations to revert")
-	}
-	if len(plan) < steps {
+	if len(plan) < steps { // also covers an empty ledger
 		return nil, fmt.Errorf("only %d applied migration(s) in the ledger, --steps %d requested; nothing reverted", len(plan), steps)
 	}
 	var reverted []string
@@ -258,8 +253,8 @@ func MigrateDownDir(ctx context.Context, cfg *config.Config, dir string, steps i
 	return reverted, nil
 }
 
-// planDownStep validates one ledger name against dir (including that the file
-// there is the one that was applied, by checksum) and reads its down SQL.
+// planDownStep checks a ledger name against dir (file present, checksum equal
+// to the recorded one) and reads its down SQL.
 func planDownStep(dir, name, storedSum string) (downStep, error) {
 	if err := validateMigrationName(name); err != nil {
 		return downStep{}, fmt.Errorf("migration name from schema_versions: %w", err)
@@ -274,23 +269,28 @@ func planDownStep(dir, name, storedSum string) (downStep, error) {
 	if sum, _ := checksumBytes(upData); storedSum == "" || strings.TrimSpace(storedSum) != sum {
 		return downStep{}, fmt.Errorf("%s in %s is not the migration that was applied (recorded checksum %q, file %s): another directory or an edited file; refusing to revert it", name, dir, storedSum, sum)
 	}
-	downPath, err := resolveDownFile(dir, name)
-	if err != nil {
-		return downStep{}, err
+	stem := strings.TrimSuffix(name, ".sql")
+	cands := []string{filepath.Join(dir, stem+"_down.sql"), filepath.Join(dir, stem+".down.sql")}
+	downPath := ""
+	for _, c := range cands {
+		if _, statErr := os.Stat(c); statErr == nil {
+			downPath = c
+			break
+		}
+	}
+	if downPath == "" {
+		return downStep{}, fmt.Errorf("down migration not found for %s: expected %s or %s", name, cands[0], cands[1])
 	}
 	data, err := os.ReadFile(downPath)
 	if err != nil {
 		return downStep{}, fmt.Errorf("read down migration %s: %w", downPath, err)
 	}
-	if err := rejectTxControl(downPath, string(data)); err != nil {
-		return downStep{}, err
-	}
-	return downStep{name: name, sql: string(data)}, nil
+	body, err := dirSQL(downPath, string(data)) // callers check err first
+	return downStep{name: name, sql: body}, err
 }
 
-// downTxSQL wraps the down SQL and both ledger deletes in one transaction
-// (same shape as MigrateDown, plus the lock/statement timeouts MigrateUpDir
-// uses so a stuck rollback aborts instead of blocking production).
+// downTxSQL: down SQL plus both ledger deletes in one transaction, with the
+// timeouts MigrateUpDir uses.
 func downTxSQL(s downStep) string {
 	q := strings.ReplaceAll(s.name, "'", "''")
 	return "BEGIN;\nSET LOCAL lock_timeout = '5s';\nSET LOCAL statement_timeout = '60s';\n" + s.sql + "\n" +

@@ -125,7 +125,12 @@ func ApplyFile(ctx context.Context, cfg *config.Config, filePath string) (skippe
 
 	legacyRecord, opsRecord := migrationRecordSQL(migrationID, name, checksum)
 
-	sqlContent := string(data)
+	// A file's own outer BEGIN/COMMIT is dropped (the CLI supplies the
+	// transaction); any other transaction control is refused (P7-PROD-77).
+	sqlContent, txErr := dirSQL(name, string(data))
+	if txErr != nil {
+		return false, txErr
+	}
 
 	if isNonTransactional(sqlContent) {
 		if err := pipeSQLToContainer(ctx, cfg, sqlContent); err != nil {
@@ -183,7 +188,7 @@ func MigrateUpDir(ctx context.Context, cfg *config.Config, dir string) (int, err
 
 	for _, f := range pending {
 		if data, readErr := os.ReadFile(f); readErr == nil {
-			if txErr := rejectTxControl(filepath.Base(f), string(data)); txErr != nil {
+			if _, txErr := dirSQL(filepath.Base(f), string(data)); txErr != nil {
 				return 0, txErr
 			}
 		}
