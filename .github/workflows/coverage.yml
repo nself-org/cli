@@ -103,7 +103,9 @@ jobs:
       - name: Enforce per-package coverage floors (.github/coverage-floors.txt)
         # Reads the profile above; prints PASS/FAIL/UNFLOORED/STALE per package.
         # Floors are data in .github/coverage-floors.txt (see its header).
-        run: go run -mod=vendor ./tools/covfloor -profile coverage.out -floors .github/coverage-floors.txt
+        # -strict: a package with no line fails the gate (new packages add their
+        # line with -write; see .github/wiki/Contributing.md).
+        run: go run -mod=vendor ./tools/covfloor -profile coverage.out -floors .github/coverage-floors.txt -strict
 
       - name: Enforce security-critical command-family coverage floor (P6-E11-W2-S3-T18)
         # Per-family line-coverage floor within cmd/commands, per
