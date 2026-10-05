@@ -17,8 +17,8 @@
 //   - Operands after options. The destination, source and remote path come
 //     after a "--" separator, the destination and the remote path are
 //     validated before any exec, and the process environment is
-//     EnvAllowlist(). Caller-supplied rsync options must start with "-" and
-//     can never be "--". cli deploy keeps its historical argv in
+//     EnvAllowlist(). Rsync puts its own -e transport first;
+//     caller rsync options and Target.Options are allowlists. cli deploy keeps its historical argv in
 //     internal/deploy on top of Command, not through this API (P7-DEPL D13
 //     owns its host-key policy).
 //   - Remote paths are an allowlist: ValidateRemotePath accepts only

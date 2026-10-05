@@ -154,15 +154,15 @@ func TestRsync_ArgvShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := readCalls(t, log)[0]
-	if c.args[0] != "-az" || c.args[1] != "-e" || !strings.HasPrefix(c.args[2], "ssh -o BatchMode=yes ") {
+	if c.args[0] != "-e" || c.args[2] != "-az" || !strings.HasPrefix(c.args[1], "ssh -o BatchMode=yes ") {
 		t.Fatalf("argv head = %q", c.args[:3])
 	}
 	n := len(c.args)
 	if !reflect.DeepEqual(c.args[n-3:], []string{"--", "./src/", "h1:/opt/x/"}) {
 		t.Fatalf("tail = %q", c.args[n-3:])
 	}
-	if strings.Contains(c.args[2], " -T") || strings.Contains(c.args[2], " -a ") {
-		t.Errorf("rsync -e holds ssh-only flags: %s", c.args[2])
+	if strings.Contains(c.args[1], " -T") || strings.Contains(c.args[1], " -a ") {
+		t.Errorf("rsync -e holds ssh-only flags: %s", c.args[1])
 	}
 }
 
@@ -233,11 +233,12 @@ func TestAdvRsyncDoubleDashDropsD4(t *testing.T) {
 func TestRsync_AcceptsSingleElementOptions(t *testing.T) {
 	log := stubTools(t, map[string]string{"rsync": "exit 0"})
 	args := []string{"-az", "--exclude=.git", "--delete"}
-	if err := Rsync(context.Background(), ciTarget("h1"), args, "./s", "/opt/x"); err != nil {
+	tg := Target{Dest: "h1", Options: CIOptions("n1", "/pin/known_hosts", Version{9, 6})}
+	if err := Rsync(context.Background(), tg, args, "./s", "/opt/x"); err != nil {
 		t.Fatal(err)
 	}
 	got := readCalls(t, log)[0].args
-	if !reflect.DeepEqual(got[:3], args) || got[3] != "-e" {
+	if got[0] != "-e" || !strings.HasPrefix(got[1], "ssh -o BatchMode=yes ") || !reflect.DeepEqual(got[2:5], args) || got[5] != "--" {
 		t.Fatalf("argv = %q", got)
 	}
 }

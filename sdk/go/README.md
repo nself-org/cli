@@ -83,7 +83,7 @@ out, err := remote.RunArgv(ctx, remote.Target{Dest: "ci@node1", Options: opts}, 
 - `ResolveSSHHost` reads `ssh -G` for hostname, port, user, proxyjump and
   hostkeyalias.
 - `nself deploy` keeps its historical argv inside `internal/deploy`; this package has no relaxed mode.
-- `Rsync` options must be single elements starting with `-` (`--exclude=x`); `RunArgv` needs a POSIX remote shell.
+- `Rsync` caller options are an allowlist of self-contained flags (`-az`, `--delete`, `--exclude=x`; never `-e`, `--rsh`, `--files-from`, a bare `--`, or a flag whose value is a separate element). `Target.Options` accepts the D4 block plus `-o` keys ConnectTimeout, ServerAlive*, Port, User, IdentityFile, IdentitiesOnly, BatchMode, Compression, LogLevel, ConnectionAttempts, AddressFamily, PreferredAuthentications, and `-i`, `-p`, `-4`, `-6`, `-q`, `-v`. `RunArgv` needs a POSIX remote shell.
 
 ## Hot-reload during development
 

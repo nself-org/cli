@@ -56,57 +56,61 @@ func SSHVersion(ctx context.Context) (Version, error) {
 // filename checking.
 func CISSHFlags() []string { return []string{"-T", "-a", "-x"} }
 
+// d4Option is one entry of the D4 -o set: a key with its fixed value, or, for
+// the two entries that name a per-node value, a validator.
+type d4Option struct {
+	key, fixed string
+}
+
+// d4Options is the D4 set in its documented order. CIOptions emits it and
+// checkOptions recognizes it from this one table.
+var d4Options = []d4Option{
+	{"BatchMode", "yes"}, {"ForwardAgent", "no"}, {"ForwardX11", "no"},
+	{"ClearAllForwardings", "yes"}, {"PermitLocalCommand", "no"}, {"ControlMaster", "no"},
+	{"ControlPath", "none"}, {"RemoteCommand", "none"}, {"RequestTTY", "no"},
+	{"UpdateHostKeys", "no"}, {"CheckHostIP", "no"}, {"VerifyHostKeyDNS", "no"},
+	{"StrictHostKeyChecking", "yes"}, {"UserKnownHostsFile", ""},
+	{"GlobalKnownHostsFile", "/dev/null"}, {"HostKeyAlias", ""},
+	{"ConnectTimeout", "10"}, {"ServerAliveInterval", "10"}, {"ServerAliveCountMax", "3"},
+}
+
+// matches reports whether kv ("Key=Value") is this D4 entry. The pinned file
+// must be a plain path that is not /dev/null; the alias must be
+// nself-ci-<valid node id>.
+func (e d4Option) matches(kv string) bool {
+	v, ok := strings.CutPrefix(kv, e.key+"=")
+	if !ok {
+		return false
+	}
+	switch e.key {
+	case "UserKnownHostsFile":
+		return safeOptValue(v) && v != "/dev/null" && v != "none"
+	case "HostKeyAlias":
+		id, ok := strings.CutPrefix(v, "nself-ci-")
+		return ok && ValidateNodeID(id) == nil
+	}
+	return v == e.fixed
+}
+
 // CIOptions returns the D4 `-o` option set as flat "-o", "Key=Value" pairs, in
 // the documented order. KnownHostsCommand=none is appended only for OpenSSH
 // 8.5 or newer (older clients do not have the option and cannot be bypassed
 // by it). nodeID must satisfy ValidateNodeID and pinnedFile must be the
 // pinned known_hosts file; the caller supplies both.
 func CIOptions(nodeID, pinnedFile string, v Version) []string {
-	kv := []string{
-		"BatchMode=yes",
-		"ForwardAgent=no",
-		"ForwardX11=no",
-		"ClearAllForwardings=yes",
-		"PermitLocalCommand=no",
-		"ControlMaster=no",
-		"ControlPath=none",
-		"RemoteCommand=none",
-		"RequestTTY=no",
-		"UpdateHostKeys=no",
-		"CheckHostIP=no",
-		"VerifyHostKeyDNS=no",
-		"StrictHostKeyChecking=yes",
-		"UserKnownHostsFile=" + pinnedFile,
-		"GlobalKnownHostsFile=/dev/null",
-		"HostKeyAlias=nself-ci-" + nodeID,
-		"ConnectTimeout=10",
-		"ServerAliveInterval=10",
-		"ServerAliveCountMax=3",
+	out := make([]string, 0, 2*len(d4Options)+2)
+	for _, e := range d4Options {
+		val := e.fixed
+		switch e.key {
+		case "UserKnownHostsFile":
+			val = pinnedFile
+		case "HostKeyAlias":
+			val = "nself-ci-" + nodeID
+		}
+		out = append(out, "-o", e.key+"="+val)
 	}
 	if v.AtLeast(8, 5) {
-		kv = append(kv, "KnownHostsCommand=none")
-	}
-	out := make([]string, 0, 2*len(kv))
-	for _, o := range kv {
-		out = append(out, "-o", o)
+		out = append(out, "-o", "KnownHostsCommand=none")
 	}
 	return out
-}
-
-// checkOptions refuses option elements that ssh would re-parse: a newline or
-// NUL anywhere, and whitespace in the values of options that take file lists
-// or aliases (ssh splits UserKnownHostsFile on whitespace, so a pinned file
-// path with a space would silently name two files).
-func checkOptions(opts []string) error {
-	for _, o := range opts {
-		if strings.ContainsAny(o, "\n\r\x00") {
-			return fmt.Errorf("ssh option %q holds a newline or NUL", o)
-		}
-		for _, p := range []string{"UserKnownHostsFile=", "GlobalKnownHostsFile=", "HostKeyAlias=", "ProxyJump=", "ProxyCommand="} {
-			if strings.HasPrefix(o, p) && strings.ContainsAny(o, " \t") {
-				return fmt.Errorf("ssh option %q must not contain whitespace", o)
-			}
-		}
-	}
-	return nil
 }
