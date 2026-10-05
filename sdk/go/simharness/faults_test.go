@@ -1,6 +1,7 @@
 package simharness
 
 import (
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -130,5 +131,25 @@ func TestBannerFailsWithoutSSH(t *testing.T) {
 	n.Port = 1 // nothing listens
 	if _, err := n.Banner(300 * time.Millisecond); err == nil {
 		t.Fatal("Banner succeeded against a closed port")
+	}
+}
+
+// A listener that is not sshd is not a ready node.
+func TestBannerRejectsOtherProtocols(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	go func() {
+		c, err := ln.Accept()
+		if err == nil {
+			_, _ = c.Write([]byte("HTTP/1.1 400 Bad Request\r\n"))
+			_ = c.Close()
+		}
+	}()
+	n := &Node{Host: "127.0.0.1", Port: ln.Addr().(*net.TCPAddr).Port}
+	if b, err := n.Banner(time.Second); err == nil {
+		t.Fatalf("Banner accepted %q", b)
 	}
 }
