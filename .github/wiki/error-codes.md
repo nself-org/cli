@@ -192,9 +192,11 @@ These errors come from adopting an existing stack: custom services that name dep
 | <a id="e500"></a>E500 | 1 | Custom service dependency is not valid | CS_N_DEPENDS_ON names a service that does not exist in this project, uses a condition other than started, healthy or completed, or forms a dependency cycle. | Use name[:started\|healthy\|completed], comma-separated, name a core service, another custom service or a service from an installed plugin, and remove circular dependencies. |
 | <a id="e501"></a>E501 | 1 | Custom service network is not allowed | CS_N_NETWORKS names a network that does not start with <PROJECT_NAME>_. A custom service never joins another project's network. | Rename the network to <PROJECT_NAME>_<name> (lowercase letters, digits, - and _), or remove it from CS_N_NETWORKS. |
 | <a id="e502"></a>E502 | 1 | Custom service host bind is not allowed | CS_N_VOLUMES binds a writable absolute host path outside the project, or the Docker socket, or the host root. These give the container control of the host. | Use a named volume or a project-relative path, mount an outside path read-only (:ro), and never mount /var/run/docker.sock or /. |
+| <a id="e515"></a>E515 | 1 | Unknown portable bundle format or major version | The bundle manifest is missing, is not JSON, is not an nself portable export, or its schema_version is not major 1. | Re-export the bundle with a matching nself release, or upgrade nself if the bundle comes from a newer one. |
+| <a id="e516"></a>E516 | 1 | Portable bundle failed its integrity check | A bundle file is missing, changed, truncated, longer than listed, unlisted, duplicated, a link, or has an unsafe name, or a size limit was exceeded. The message names the file. | Export the bundle again from the source and keep it unmodified, then re-run the command. See [[Import-Export-Format]]. |
 | <a id="e528"></a>E528 | 1 | Custom service build context is not allowed | CS_N_PATH reaches above the repository root, or an ancestor build context has no ignore file that excludes **/.env* and **/.secrets (a bare .env* matches only the context root). The whole directory is sent to the image builder. | Point CS_N_PATH at the project or at an ancestor no higher than the directory that holds .git, and add **/.env* and **/.secrets to that directory's .dockerignore. |
 
-See [[Config-Custom-Services]] for the keys.
+See [[Config-Custom-Services]] for the keys and [[Import-Export-Format]] for the bundle codes.
 
 ---
 
