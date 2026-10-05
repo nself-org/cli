@@ -212,7 +212,7 @@ func TestExitClassTable(t *testing.T) {
 }
 
 func TestErrorDerivesExitAndClass(t *testing.T) {
-	b, err := Error("x", ErrorDetail{Code: "E410", Message: "m", Class: ClassInfra}, nil)
+	b, err := Error("x", ErrorDetail{Code: "E901", Message: "m", Class: ClassInfra}, nil)
 	if err != nil || !strings.Contains(string(b), `"exit_code": 2`) {
 		t.Fatalf("exit not derived from class: %v %s", err, b)
 	}

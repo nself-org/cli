@@ -3,12 +3,12 @@
     "kind": "stream_error",
     "command": "deploy",
     "error": {
-      "code": "E410",
+      "code": "E901",
       "message": "lost the host",
       "class": "infra"
     }
   },
   "expected": [
-    "{\"schema_version\":\"1\",\"command\":\"deploy\",\"error\":{\"code\":\"E410\",\"message\":\"lost the host\",\"exit_code\":2,\"class\":\"infra\"}}"
+    "{\"schema_version\":\"1\",\"command\":\"deploy\",\"error\":{\"code\":\"E901\",\"message\":\"lost the host\",\"exit_code\":2,\"class\":\"infra\"}}"
   ]
 }

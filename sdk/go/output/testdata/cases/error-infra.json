@@ -3,9 +3,9 @@
     "kind": "error",
     "command": "db reset",
     "error": {
-      "code": "E410",
+      "code": "E901",
       "message": "boom <x>",
-      "docs_url": "https://nself.org/docs/reference/error-codes#e410",
+      "docs_url": "https://nself.org/docs/reference/error-codes#e901",
       "class": "infra"
     }
   },
@@ -14,9 +14,9 @@
     "  \"schema_version\": \"1\",",
     "  \"command\": \"db reset\",",
     "  \"error\": {",
-    "    \"code\": \"E410\",",
+    "    \"code\": \"E901\",",
     "    \"message\": \"boom <x>\",",
-    "    \"docs_url\": \"https://nself.org/docs/reference/error-codes#e410\",",
+    "    \"docs_url\": \"https://nself.org/docs/reference/error-codes#e901\",",
     "    \"exit_code\": 2,",
     "    \"class\": \"infra\"",
     "  }",
