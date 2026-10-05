@@ -122,23 +122,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Resolve domain: --domain flag takes precedence; otherwise prompt
-	// interactively when running in a TTY. Non-TTY / --non-interactive /
-	// --fast paths skip the prompt and let setup.go apply its defaults.
-	selectedDomain := domainFlag
-	selectedDomainComment := ""
-	if selectedDomain != "" {
-		// --domain flag provided: validate (non-empty, no spaces).
-		if err := validateDomain(selectedDomain); err != nil {
-			return err
-		}
-	} else if !nonInteractive && !fast && term.IsTerminal(int(os.Stdin.Fd())) {
-		d, comment, err := promptDomainPattern()
-		if err != nil {
-			return err
-		}
-		selectedDomain = d
-		selectedDomainComment = comment
+	// Resolve domain: --domain takes precedence (validated); otherwise a TTY
+	// run records the first preset, the former menu default, with no prompt.
+	// Non-TTY / --non-interactive / --fast leave setup.go to apply its defaults.
+	useDefault := !nonInteractive && !fast && term.IsTerminal(int(os.Stdin.Fd()))
+	selectedDomain, selectedDomainComment, err := resolveInitDomain(domainFlag, useDefault)
+	if err != nil {
+		return err
 	}
 
 	opts := setup.Options{
