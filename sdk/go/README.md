@@ -43,6 +43,7 @@ import (
 | `middleware` | Request-ID, validation helpers |
 | `costmeter` | Shared cost accounting for AI plugins |
 | `identity` | Ed25519 per-plugin keypair + request signing / verification |
+| `signing` | Ed25519 verification with key ids, purposes, scopes and revocations; trust-file parsing; DSSE envelopes; `signingtest` (standard library only) |
 | `remote` | The one SSH/scp/rsync exec funnel: remote path validation, pinned known_hosts, CI option set, `ssh -G` resolver (standard library only) |
 | `simharness` | Integration-test fleets of Docker sshd containers: digest-pinned images, unique names, Exec, CopyTo, Pause, Netem, Partition (standard library only; `INTEGRATION=1`) |
 | `testing` | Test harness (stub upstreams, metrics assertions, fixtures) |
