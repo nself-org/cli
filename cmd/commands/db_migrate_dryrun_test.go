@@ -9,8 +9,12 @@ package commands
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/nself-org/cli/internal/version"
 )
 
 // Local default-directory dry-run: lists the pending file, and every recorded
@@ -64,41 +68,61 @@ func TestDryRun_DefaultDir_WithoutDryRunStillApplies(t *testing.T) {
 	}
 }
 
-// Exact remote argv: dry-run forwards --dry-run (after the probe); a plain
-// run forwards no --dry-run.
+// Exact remote argv: dry-run forwards --dry-run (after the capability probe);
+// a plain run forwards no --dry-run and sends no capability probe.
 func TestRemoteUp_DefaultDir_DryRunArgvIsExact(t *testing.T) {
-	sent, err := remoteUpWith(t, "1.5.0", "1.5.0", map[string]string{"dry-run": "true"})
+	sent, err := remoteUpWith(t, "1.4.12", capableRemote(), map[string]string{"dry-run": "true"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantRemote(t, sent, "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--dry-run'")
+	wantRemote(t, sent, probeCaps, "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--dry-run'")
 }
 
 func TestRemoteUp_DefaultDir_NonDryRunArgvIsExact(t *testing.T) {
-	sent, err := remoteUpWith(t, "1.5.0", "1.5.0", nil)
+	sent, err := remoteUpWith(t, "1.4.12", capableRemote(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantRemote(t, sent, "cd '/opt/nself' && nself 'db' 'migrate' 'up'")
+	wantRemote(t, sent, probeVersion, "cd '/opt/nself' && nself 'db' 'migrate' 'up'")
 }
 
 // Refusals happen before any command that could apply is sent: the log holds
-// at most the version probe, never the `cd ... && nself ...` command.
+// only the capability probe, never the `cd ... && nself ...` command. The
+// released v1.4.12 applies on a dry-run and reports the same version number
+// as a source build, so a matching version must NOT be accepted.
 func TestRemoteUp_DryRunRefusals(t *testing.T) {
 	cases := []struct {
-		name          string
-		local, remote string
-		flags         map[string]string
-		wantErr       string
-		wantProbe     bool
+		name    string
+		local   string
+		remote  fakeRemote
+		flags   map[string]string
+		wantErr string
 	}{
-		{"older remote", "1.5.0", "1.4.9", map[string]string{"dry-run": "true"}, "remote nself is v1.4.9", true},
-		{"older remote under --allow-version-drift", "1.5.0", "1.4.9", map[string]string{"dry-run": "true", "allow-version-drift": "true"}, "--allow-version-drift does not apply to --dry-run", true},
-		{"older remote, dir dry-run, drift flag", "1.5.0", "1.4.9", map[string]string{"migration-dir": "m", "dry-run": "true", "allow-version-drift": "true"}, "remote nself is v1.4.9", true},
-		{"newer remote", "1.5.0", "1.6.0", map[string]string{"dry-run": "true"}, "remote nself is v1.6.0", true},
-		{"dev build cannot prove", "dev", "1.5.0", map[string]string{"dry-run": "true"}, "no release version", false},
-		{"dev build under drift flag", "dev", "1.5.0", map[string]string{"dry-run": "true", "allow-version-drift": "true"}, "no release version", false},
-		{"unparseable remote version", "1.5.0", "garbage", map[string]string{"dry-run": "true", "allow-version-drift": "true"}, "no parseable version", true},
+		{"released 1.4.12 without the capability, same version as local", "1.4.12",
+			fakeRemote{Version: "1.4.12", VersionJSON: `{"version":"1.4.12","commit":"abc"}`},
+			map[string]string{"dry-run": "true"}, "does not advertise"},
+		{"1.4.12 without the capability under --allow-version-drift", "1.4.12",
+			fakeRemote{Version: "1.4.12", VersionJSON: `{"version":"1.4.12","capabilities":[]}`},
+			map[string]string{"dry-run": "true", "allow-version-drift": "true"}, "--allow-version-drift does not apply to --dry-run"},
+		{"1.4.12 without the capability, dir dry-run", "1.4.12",
+			fakeRemote{Version: "1.4.12", VersionJSON: `{"version":"1.4.12"}`},
+			map[string]string{"migration-dir": "m", "dry-run": "true"}, "does not advertise"},
+		{"other capabilities only", "1.4.12",
+			fakeRemote{VersionJSON: capsJSON("9.9.9", "something-else")},
+			map[string]string{"dry-run": "true"}, "does not advertise"},
+		{"lookalike capability name", "1.4.12",
+			fakeRemote{VersionJSON: capsJSON("9.9.9", "db-dry-run-safe-ish", "DB-DRY-RUN-SAFE")},
+			map[string]string{"dry-run": "true"}, "does not advertise"},
+		{"garbage output", "1.4.12", fakeRemote{VersionJSON: "bash: nself: command not found"},
+			map[string]string{"dry-run": "true", "allow-version-drift": "true"}, "not JSON"},
+		{"truncated JSON", "1.4.12", fakeRemote{VersionJSON: `{"capabilities":["db-dry-run-safe"`},
+			map[string]string{"dry-run": "true"}, "not JSON"},
+		{"wrong JSON types", "1.4.12", fakeRemote{VersionJSON: `{"capabilities":"db-dry-run-safe"}`},
+			map[string]string{"dry-run": "true"}, "not valid version JSON"},
+		{"empty output", "1.4.12", fakeRemote{VersionJSON: ""},
+			map[string]string{"dry-run": "true"}, "not JSON"},
+		{"probe error", "1.4.12", fakeRemote{VersionJSON: "Connection refused", ProbeErr: fmt.Errorf("exit status 255")},
+			map[string]string{"dry-run": "true", "allow-version-drift": "true"}, "could not read the remote capabilities"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -106,58 +130,79 @@ func TestRemoteUp_DryRunRefusals(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), c.wantErr) {
 				t.Fatalf("want refusal containing %q, got %v", c.wantErr, err)
 			}
-			for _, s := range sent {
-				if s != "nself --version" {
-					t.Fatalf("a command was sent despite the refusal: %q", sent)
-				}
-			}
-			if c.wantProbe != (len(sent) == 1) {
-				t.Fatalf("probe sent = %v, want %v (log %q)", len(sent) == 1, c.wantProbe, sent)
+			if len(sent) != 1 || sent[0] != probeCaps {
+				t.Fatalf("ssh log = %q, want only the capability probe", sent)
 			}
 		})
 	}
 }
 
-// --allow-version-drift with a remote that proves support (same version) runs
-// the dry-run; it only ever relaxes non-dry-run commands.
-func TestRemoteUp_DryRunUnderDriftFlagProceedsWhenRemoteProves(t *testing.T) {
-	sent, err := remoteUpWith(t, "1.5.0", "1.5.0", map[string]string{"dry-run": "true", "allow-version-drift": "true"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantRemote(t, sent, "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--dry-run'")
-}
-
-// Non-dry-run: --allow-version-drift still skips the probe (unchanged).
-func TestRemoteUp_NonDryRunDriftFlagStillSkipsProbe(t *testing.T) {
-	sent, err := remoteUpWith(t, "1.5.0", "1.4.9", map[string]string{"allow-version-drift": "true"})
-	want := "cd '/opt/nself' && nself 'db' 'migrate' 'up'"
-	if err != nil || len(sent) != 1 || sent[0] != want {
-		t.Fatalf("sent %q, err %v; want exactly [%q]", sent, err, want)
-	}
-}
-
-// A failing probe is a refusal, never a pass, and no apply-capable command goes out.
-func TestRemoteUp_DryRunProbeFailureRefuses(t *testing.T) {
-	withLocalVersion(t, "1.5.0")
+// A timed-out probe is a refusal and nothing else is sent.
+func TestRemoteUp_DryRunProbeTimeoutRefuses(t *testing.T) {
+	orig := remoteProbeTimeout
+	remoteProbeTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { remoteProbeTimeout = orig })
+	withLocalVersion(t, "1.4.12")
 	writeRemoteInventory(t)
 	var sent []string
 	withStubbedSSH(t, func(ctx context.Context, sshArgs []string) (string, error) {
 		sent = append(sent, sshArgs[len(sshArgs)-1])
-		return "ssh: connection refused", fmt.Errorf("exit status 255")
+		<-ctx.Done() // a hung remote: only the probe deadline ends the call
+		return "", ctx.Err()
 	})
 	cmd := newDBRemoteTestCmd()
 	cmd.Flags().String("migration-dir", "", "")
 	cmd.Flags().Bool("dry-run", false, "")
 	_ = cmd.Flags().Set("env", "staging")
 	_ = cmd.Flags().Set("dry-run", "true")
-	_ = cmd.Flags().Set("allow-version-drift", "true")
 	err := runDBMigrateUp(cmd, nil)
-	if err == nil || !strings.Contains(err.Error(), "could not read the remote nself version") {
-		t.Fatalf("want probe-failure refusal, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "deadline exceeded") {
+		t.Fatalf("want timeout refusal, got %v", err)
 	}
-	if len(sent) != 1 || sent[0] != "nself --version" {
+	if len(sent) != 1 || sent[0] != probeCaps {
 		t.Fatalf("ssh log = %q, want only the probe", sent)
+	}
+}
+
+// A remote that advertises the capability is accepted whatever its version
+// says, including under --allow-version-drift and for a dev local build; the
+// capability is the proof, the version is not consulted.
+func TestRemoteUp_DryRunAcceptedWhenRemoteAdvertises(t *testing.T) {
+	for _, tc := range []struct {
+		local string
+		flags map[string]string
+	}{
+		{"1.4.12", map[string]string{"dry-run": "true"}},
+		{"1.4.12", map[string]string{"dry-run": "true", "allow-version-drift": "true"}},
+		{"dev", map[string]string{"dry-run": "true"}},
+	} {
+		sent, err := remoteUpWith(t, tc.local, fakeRemote{VersionJSON: "warn: noise\n" + capsJSON("1.9.0", version.CapDBDryRunSafe, "x")}, tc.flags)
+		if err != nil {
+			t.Fatalf("%v: %v", tc, err)
+		}
+		wantRemote(t, sent, probeCaps, "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--dry-run'")
+	}
+}
+
+// Non-dry-run: --allow-version-drift still skips the probe (unchanged).
+func TestRemoteUp_NonDryRunDriftFlagStillSkipsProbe(t *testing.T) {
+	sent, err := remoteUpWith(t, "1.4.12", fakeRemote{Version: "1.4.9"}, map[string]string{"allow-version-drift": "true"})
+	want := "cd '/opt/nself' && nself 'db' 'migrate' 'up'"
+	if err != nil || len(sent) != 1 || sent[0] != want {
+		t.Fatalf("sent %q, err %v; want exactly [%q]", sent, err, want)
+	}
+}
+
+// This build advertises the capability, and `version --json` carries it, so
+// the probe a same-build remote receives passes the check.
+func TestVersionJSON_AdvertisesDryRunCapability(t *testing.T) {
+	caps := version.Capabilities()
+	if !slices.Contains(caps, version.CapDBDryRunSafe) {
+		t.Fatalf("Capabilities() = %v, missing %s", caps, version.CapDBDryRunSafe)
+	}
+	got, err := parseRemoteCapabilities(capsJSON(version.GetVersion(), caps...))
+	if err != nil || !slices.Contains(got, version.CapDBDryRunSafe) {
+		t.Fatalf("round trip = %v, %v", got, err)
 	}
 }
 

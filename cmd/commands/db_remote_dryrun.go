@@ -2,50 +2,70 @@ package commands
 
 // Purpose: strict remote support check for a forwarded --dry-run (P7-PROD-84).
 // Inputs: the resolved dbRemoteTarget, the ssh flag argv and the remote argv.
-// Outputs: nil when the remote provably runs this build's version, else an
-// error before any command that could apply is sent.
-// Constraints: a remote CLI older than this fix can ignore --dry-run and apply
-// for real, so a dry-run is only forwarded to a remote whose `nself --version`
-// equals the local release. --allow-version-drift never relaxes this, and an
-// unparseable local (dev build) or remote version is a refusal, not a pass.
-// Equality is the proof because this binary is the one that has the fix.
-// SPORT: cli/cmd/commands — see P7-PROD-84, db_remote.go, db_remote_version.go.
+// Outputs: nil only when the remote's own `nself version --json` advertises
+// the db-dry-run-safe capability; otherwise an error before any command that
+// could apply is sent.
+// Constraints: a remote older than the dry-run fixes applies on --dry-run (the
+// released v1.4.12 does), and a version number cannot prove otherwise: source
+// builds report the same 1.4.12. So the proof is a capability the remote
+// states itself. A failed or timed-out probe, output that is not JSON, or a
+// missing capability is a refusal, never a pass. --allow-version-drift never
+// relaxes this. The probe runs `nself version --json`, which a pre-capability
+// remote answers without the field (refused) or not at all (refused).
+// SPORT: cli/cmd/commands — see P7-PROD-84, db_remote.go, internal/version.
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/version"
 )
 
+// remoteProbeTimeout bounds the capability probe; a var so tests can shrink it.
+var remoteProbeTimeout = 20 * time.Second
+
 // hasDryRunArg reports whether the remote argv carries --dry-run.
 func hasDryRunArg(args []string) bool {
-	for _, a := range args {
-		if a == "--dry-run" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(args, "--dry-run")
 }
 
-// checkRemoteDryRunSupport probes `nself --version` on the remote and refuses
-// unless it equals the local release version.
+// parseRemoteCapabilities extracts the capabilities array from the probe's
+// combined stdout+stderr. Noise around the JSON object (ssh banners, the
+// dev-build warning) is tolerated; anything else is an error.
+func parseRemoteCapabilities(out string) ([]string, error) {
+	i, j := strings.Index(out, "{"), strings.LastIndex(out, "}")
+	if i < 0 || j < i {
+		return nil, fmt.Errorf("probe output is not JSON")
+	}
+	var v struct {
+		Capabilities []string `json:"capabilities"`
+	}
+	if err := json.Unmarshal([]byte(out[i:j+1]), &v); err != nil {
+		return nil, fmt.Errorf("probe output is not valid version JSON: %w", err)
+	}
+	return v.Capabilities, nil
+}
+
+// checkRemoteDryRunSupport refuses unless the remote advertises
+// version.CapDBDryRunSafe.
 func checkRemoteDryRunSupport(ctx context.Context, rt dbRemoteTarget, sshFlagArgs []string) error {
-	local := semverPattern.FindString(version.GetVersion())
-	if local == "" {
-		return fmt.Errorf("refusing remote --dry-run on %s (env=%s): this build has no release version, so it cannot prove the remote supports --dry-run; run it from a release build", rt.SSHTarget, rt.EnvName)
-	}
-	probeArgs := append(append([]string{}, sshFlagArgs...), rt.SSHTarget, "nself --version")
-	out, err := runSSHCaptured(ctx, probeArgs)
+	pctx, cancel := context.WithTimeout(ctx, remoteProbeTimeout)
+	defer cancel()
+	probeArgs := append(append([]string{}, sshFlagArgs...), rt.SSHTarget, "nself version --json")
+	out, err := runSSHCaptured(pctx, probeArgs)
 	if err != nil {
-		return fmt.Errorf("refusing remote --dry-run on %s (env=%s): could not read the remote nself version: %w\nprobe output: %s", rt.SSHTarget, rt.EnvName, err, out)
+		return fmt.Errorf("refusing remote --dry-run on %s (env=%s): could not read the remote capabilities: %w\nprobe output: %s", rt.SSHTarget, rt.EnvName, err, out)
 	}
-	remote := semverPattern.FindString(out)
-	if remote == "" {
-		return fmt.Errorf("refusing remote --dry-run on %s (env=%s): remote version probe had no parseable version\nprobe output: %s", rt.SSHTarget, rt.EnvName, out)
+	caps, err := parseRemoteCapabilities(out)
+	if err != nil {
+		return fmt.Errorf("refusing remote --dry-run on %s (env=%s): %w\nprobe output: %s", rt.SSHTarget, rt.EnvName, err, out)
 	}
-	if remote != local {
-		return fmt.Errorf("refusing remote --dry-run on %s (env=%s): remote nself is v%s, local is v%s, and an older remote may ignore --dry-run and apply; upgrade the remote to v%s (--allow-version-drift does not apply to --dry-run)", rt.SSHTarget, rt.EnvName, remote, local, local)
+	if !slices.Contains(caps, version.CapDBDryRunSafe) {
+		return fmt.Errorf("refusing remote --dry-run on %s (env=%s): the remote nself does not advertise %q, so it may ignore --dry-run and apply; upgrade the remote to a release that includes it (--allow-version-drift does not apply to --dry-run)", rt.SSHTarget, rt.EnvName, version.CapDBDryRunSafe)
 	}
 	return nil
 }

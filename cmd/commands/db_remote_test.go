@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -597,10 +598,30 @@ func writeRemoteInventory(t *testing.T) {
 	}
 }
 
+// fakeRemote is what the stubbed remote answers: `nself --version` (the drift
+// probe for ordinary commands) with Version, and `nself version --json` (the
+// dry-run capability probe) with VersionJSON or ProbeErr.
+type fakeRemote struct {
+	Version     string
+	VersionJSON string
+	ProbeErr    error
+}
+
+const (
+	probeVersion = "nself --version"
+	probeCaps    = "nself version --json"
+)
+
+// capsJSON is a remote's `nself version --json` output advertising caps.
+func capsJSON(version string, caps ...string) string {
+	b, _ := json.Marshal(map[string]any{"version": version, "capabilities": caps})
+	return string(b)
+}
+
 // remoteUpWith runs runDBMigrateUp as `db migrate up --env staging <flags>`
-// with local version localVer and a remote that reports remoteVer from
-// `nself --version`. It returns every SSH command line, probe included.
-func remoteUpWith(t *testing.T, localVer, remoteVer string, flags map[string]string) ([]string, error) {
+// with local version localVer against the fake remote r. It returns every SSH
+// command line, probes included.
+func remoteUpWith(t *testing.T, localVer string, r fakeRemote, flags map[string]string) ([]string, error) {
 	t.Helper()
 	withLocalVersion(t, localVer)
 	writeRemoteInventory(t)
@@ -608,8 +629,11 @@ func remoteUpWith(t *testing.T, localVer, remoteVer string, flags map[string]str
 	withStubbedSSH(t, func(ctx context.Context, sshArgs []string) (string, error) {
 		line := sshArgs[len(sshArgs)-1]
 		sent = append(sent, line)
-		if line == "nself --version" {
-			return "nself " + remoteVer, nil
+		switch line {
+		case probeVersion:
+			return "nself " + r.Version, nil
+		case probeCaps:
+			return r.VersionJSON, r.ProbeErr
 		}
 		return "ok", nil
 	})
@@ -628,20 +652,23 @@ func remoteUpWith(t *testing.T, localVer, remoteVer string, flags map[string]str
 	return sent, runDBMigrateUp(cmd, nil)
 }
 
-// remoteUp is remoteUpWith for a dev local build (no version probe), so only
-// the real command is sent. A dev build cannot send --dry-run (see
-// db_migrate_dryrun_test.go).
+// remoteUp is remoteUpWith for a dev local build against a remote reporting
+// no capabilities: ordinary (non-dry-run) commands send only the real command.
 func remoteUp(t *testing.T, flags map[string]string) ([]string, error) {
 	t.Helper()
-	return remoteUpWith(t, "dev", "", flags)
+	return remoteUpWith(t, "dev", fakeRemote{}, flags)
+}
+
+// capableRemote advertises db-dry-run-safe, whatever its version number says.
+func capableRemote() fakeRemote {
+	return fakeRemote{Version: "1.4.12", VersionJSON: capsJSON("1.4.12", version.CapDBDryRunSafe)}
 }
 
 // wantRemote asserts the SSH log is exactly [probe, command].
-func wantRemote(t *testing.T, sent []string, command string) {
+func wantRemote(t *testing.T, sent []string, probe, command string) {
 	t.Helper()
-	want := []string{"nself --version", command}
-	if len(sent) != 2 || sent[0] != want[0] || sent[1] != want[1] {
-		t.Fatalf("ssh commands = %q, want exactly %q", sent, want)
+	if len(sent) != 2 || sent[0] != probe || sent[1] != command {
+		t.Fatalf("ssh commands = %q, want exactly %q", sent, []string{probe, command})
 	}
 }
 
@@ -649,11 +676,11 @@ func wantRemote(t *testing.T, sent []string, command string) {
 // --dry-run or --migration-dir here made a remote "preview" apply the remote's
 // default directory for real.
 func TestRemoteUp_MigrationDirDryRun_ArgvIsExact(t *testing.T) {
-	sent, err := remoteUpWith(t, "1.5.0", "1.5.0", map[string]string{"migration-dir": "migrations", "dry-run": "true"})
+	sent, err := remoteUpWith(t, "1.4.12", capableRemote(), map[string]string{"migration-dir": "migrations", "dry-run": "true"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantRemote(t, sent, "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--migration-dir' 'migrations' '--dry-run'")
+	wantRemote(t, sent, probeCaps, "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--migration-dir' 'migrations' '--dry-run'")
 }
 
 func TestRemoteUp_MigrationDirWithoutDryRun_ArgvHasNoDryRun(t *testing.T) {
@@ -669,11 +696,11 @@ func TestRemoteUp_MigrationDirWithoutDryRun_ArgvHasNoDryRun(t *testing.T) {
 
 // A hostile directory name stays one shell word.
 func TestRemoteUp_MigrationDirIsShellQuoted(t *testing.T) {
-	sent, err := remoteUpWith(t, "1.5.0", "1.5.0", map[string]string{"migration-dir": "m; rm -rf /", "dry-run": "true"})
+	sent, err := remoteUpWith(t, "1.4.12", capableRemote(), map[string]string{"migration-dir": "m; rm -rf /", "dry-run": "true"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantRemote(t, sent, "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--migration-dir' 'm; rm -rf /' '--dry-run'")
+	wantRemote(t, sent, probeCaps, "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--migration-dir' 'm; rm -rf /' '--dry-run'")
 }
 
 // `db migrate down` has no --env/--server: it can never be pointed at a remote

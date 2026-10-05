@@ -40,12 +40,15 @@ var versionCmd = &cobra.Command{
 		}
 
 		if jsonOut {
-			return ui.PrintJSON(map[string]string{
-				"version":   ver,
-				"commit":    commit,
-				"buildDate": buildDate,
-				"goVersion": goVer,
-				"platform":  platform,
+			// capabilities is how a remote caller proves a behaviour (for
+			// example db-dry-run-safe, P7-PROD-84); older builds omit it.
+			return ui.PrintJSON(map[string]any{
+				"version":      ver,
+				"commit":       commit,
+				"buildDate":    buildDate,
+				"goVersion":    goVer,
+				"platform":     platform,
+				"capabilities": version.Capabilities(),
 			})
 		}
 
