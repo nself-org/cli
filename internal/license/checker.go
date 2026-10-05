@@ -30,6 +30,11 @@ type bundleValidateResponse struct {
 	Reason  string   `json:"reason,omitempty"`
 	Bundle  string   `json:"bundle,omitempty"`
 	Plugins []string `json:"plugins,omitempty"`
+
+	// v1.5 binding (signed bytes must name the licence, bundle and window).
+	KeyHash   string `json:"key_hash,omitempty"`
+	IssuedAt  int64  `json:"issued_at,omitempty"`
+	ExpiresAt int64  `json:"expires_at,omitempty"`
 }
 
 // BundleEntitled reports whether the operator's license key grants access to
@@ -117,6 +122,10 @@ func BundleEntitled(ctx context.Context, key, bundleName string) (bool, error) {
 	var vr bundleValidateResponse
 	if err := json.Unmarshal(body, &vr); err != nil {
 		return false, fmt.Errorf("decoding bundle validation response: %w", err)
+	}
+
+	if err := checkBundleBinding(&vr, key, bundleName, time.Now()); err != nil {
+		return false, fmt.Errorf("bundle %q: license server response not trusted: %w", bundleName, err)
 	}
 
 	if !vr.Valid {

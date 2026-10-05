@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -137,7 +138,9 @@ func TestSignedCacheIsBoundToItsLicence(t *testing.T) {
 // under PingKeys. A present-but-invalid signature is refused in both modes; a
 // missing one from v1.5.
 func TestBundleEntitledOnlineNeedsAVerifiedSignature(t *testing.T) {
-	body := []byte(`{"valid":true,"tier":"owner","bundle":"chat"}`)
+	now := time.Now().Unix()
+	body := []byte(fmt.Sprintf(`{"valid":true,"tier":"owner","bundle":"chat","key_hash":%q,"issued_at":%d,"expires_at":%d}`,
+		HashKey(testLicenseKey), now, now+3600))
 	_, stranger, _ := ed25519.GenerateKey(nil)
 	serve := func(t *testing.T, sig func(priv ed25519.PrivateKey) (string, bool)) {
 		priv := useTestPingKey(t)

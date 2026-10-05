@@ -115,6 +115,14 @@ func defaultWarnOnce(msg string) {
 	})
 }
 
+// clockNow is opts.Clock's time, or the wall clock when none is set.
+func clockNow(opts *ValidatorOptions) time.Time {
+	if opts != nil && opts.Clock != nil {
+		return opts.Clock.Now()
+	}
+	return time.Now()
+}
+
 // remoteOutcome is an internal enum classifying the outcome of tryRemote.
 type remoteOutcome int
 
@@ -185,6 +193,9 @@ func tryRemote(ctx context.Context, key string, opts *ValidatorOptions) (*Valida
 			return nil, remoteTransientFail, fmt.Errorf("decoding response: %w", err)
 		}
 		vr.RawBody, vr.BodySig = string(rawBody), sigHex
+		if err := checkReplyBinding(&vr, key, clockNow(opts)); err != nil {
+			return nil, remoteTransientFail, err
+		}
 		return &vr, remoteOK, nil
 	}
 	if status == http.StatusUnauthorized || status == http.StatusForbidden {

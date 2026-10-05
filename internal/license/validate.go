@@ -267,6 +267,9 @@ func validateRemote(ctx context.Context, key string, pingURL string) (*ValidateR
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 	vr.RawBody, vr.BodySig = string(rawBody), sigHex
+	if err := checkReplyBinding(&vr, key, time.Now()); err != nil {
+		return nil, err
+	}
 	return &vr, nil
 }
 

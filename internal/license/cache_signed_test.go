@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
 )
@@ -29,15 +30,27 @@ type pingStub struct {
 // stub URL and a temp cache file. Nothing leaves the machine.
 func newPingStub(t *testing.T, mutate func(map[string]any)) *pingStub {
 	t.Helper()
+	return newPingStubWith(t, mutate, nil)
+}
+
+// newPingStubWith is newPingStub with a hook on the JWT claims. The default
+// claims are a live 24 h window (ping's jwt TTL) starting now, for testLicenseKey.
+func newPingStubWith(t *testing.T, mutate func(map[string]any), claimsHook func(map[string]any)) *pingStub {
+	t.Helper()
 	priv := useTestPingKey(t)
 	claims := goodClaims()
 	claims["sub"] = HashKey(testLicenseKey)
+	claims["iat"] = time.Now().Unix()
+	claims["exp"] = time.Now().Add(24 * time.Hour).Unix()
+	if claimsHook != nil {
+		claimsHook(claims)
+	}
 	m := map[string]any{
 		"valid": true, "tier": "plus", "product": "plus", "products_covered": []string{"claw"},
 		"plugins_allowed": []string{"ai", "bundle:chat"}, "features": []string{},
 		"can_install_plugin": true, "upgrade_required": false,
 		"expires_at": "2027-01-01T00:00:00.000Z", "key_type": "product",
-		"jwt": signEdDSA(t, priv, goodHeader(), claims), "jwt_kid": "t1", "jwt_expires_at": 1700086400,
+		"jwt": signEdDSA(t, priv, goodHeader(), claims), "jwt_kid": "t1", "jwt_expires_at": claims["exp"],
 	}
 	if mutate != nil {
 		mutate(m)

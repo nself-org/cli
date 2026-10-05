@@ -52,6 +52,16 @@ drop the old kid after the grace window (see the key rotation runbook in the web
 - `Validate` and `ValidateFull` both store the raw body and header signature, so the cache they
   write verifies in v1.5 mode.
 
+## What a reply must name (v1.5)
+
+From v1.5 a reply from ping counts only if bytes ping signed name the requesting licence and a window:
+
+- `POST /license/validate` (main reply): the signed body carries `jwt`; its `sub` must be sha256 of the key asked about and `iat`/`exp` must contain now. A reply for another key, or without a jwt, is refused.
+- `POST /license/validate?bundle=<name>`: the signed body must carry `bundle` (equal to the bundle asked about), `key_hash` (sha256 of the key), and `issued_at`/`expires_at` (unix seconds, at most 24 h apart, containing now), with an `X-NSelf-License-Sig` header over the exact body. Until ping signs this, v1.5 refuses every bundle reply.
+- Cache age is the older of the local `fetched_at` and the signed jwt `iat`, so re-stamping `fetched_at` cannot extend the offline grace window.
+
+v1.4 behaviour is unchanged except that a present-but-invalid signature is refused in every mode.
+
 ## Checking the code
 
 `bash scripts/mutation.sh internal/license` runs go-gremlins (pinned release, fetched from the

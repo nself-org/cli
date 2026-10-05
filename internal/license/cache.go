@@ -133,7 +133,7 @@ func HashKey(key string) string {
 
 // CacheAge returns how long ago the cache was fetched.
 func (c *CacheEntry) CacheAge() time.Duration {
-	return time.Since(time.Unix(c.FetchedAt, 0))
+	return c.AgeAt(time.Now())
 }
 
 // PublicKeyEntry holds a versioned Ed25519 public key. ID is the numeric kid

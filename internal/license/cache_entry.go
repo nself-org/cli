@@ -194,3 +194,96 @@ func verifyResponseSig(rawBody []byte, sigHex string) error {
 	}
 	return fmt.Errorf("response signature invalid — possible MITM or tampered response; falling back to cache")
 }
+
+// replySkewSec is the clock skew allowed on a reply's issued-at. A reply may
+// claim a validity window of at most 24 h (ping's licence JWT TTL).
+const replySkewSec = 300
+
+// replyBoundToKey is the v1.5 check on a verified /license/validate reply: its
+// signed bytes must name the requesting licence and be inside their validity
+// window. The licence JWT inside the signed body is the only such field ping
+// signs today: sub = sha256(key), iat, exp. Without it nothing says which
+// licence the reply is for, so a genuine reply for another key (replayed via
+// LICENSE_PING_URL or a proxy) would grant here. Fail closed.
+func replyBoundToKey(resp *ValidateResponse, key string, now time.Time) error {
+	if resp.JWT == "" {
+		return fmt.Errorf("signed reply carries no licence jwt, so it is not bound to this licence")
+	}
+	claims, err := ParseLicenseJWT(resp.JWT)
+	if err != nil {
+		return fmt.Errorf("signed reply's licence jwt is invalid: %w", err)
+	}
+	if claims.Sub != HashKey(key) {
+		return fmt.Errorf("signed reply is for a different licence key")
+	}
+	if claims.Iat > now.Unix()+replySkewSec || claims.Exp <= now.Unix() {
+		return fmt.Errorf("signed reply is outside its validity window (replayed or clock skew)")
+	}
+	return nil
+}
+
+// checkReplyBinding applies replyBoundToKey to a valid reply from v1.5 on.
+func checkReplyBinding(resp *ValidateResponse, key string, now time.Time) error {
+	// compat.V15(P7-PLUG-63): signed reply trusted for any licence -> only a reply whose signed jwt names this key and is in window
+	if compat.V15() && resp.Valid {
+		return replyBoundToKey(resp, key, now)
+	}
+	return nil
+}
+
+// checkBundleBinding applies bundleReplyBound to a valid bundle reply from v1.5 on.
+func checkBundleBinding(r *bundleValidateResponse, key, bundle string, now time.Time) error {
+	// compat.V15(P7-PLUG-63): bundle reply trusted for any key and bundle -> only a signed reply naming this key, this bundle and a live window
+	if compat.V15() && r.Valid {
+		return bundleReplyBound(r, key, bundle, now)
+	}
+	return nil
+}
+
+// bundleReplyBound is the v1.5 check on a verified /license/validate?bundle=
+// reply: the signed bytes must name this licence (key_hash = sha256 of the key),
+// this bundle, and a validity window that contains now.
+func bundleReplyBound(r *bundleValidateResponse, key, bundle string, now time.Time) error {
+	if r.Bundle != bundle {
+		return fmt.Errorf("signed reply is for bundle %q, not %q", r.Bundle, bundle)
+	}
+	if r.KeyHash != HashKey(key) {
+		return fmt.Errorf("signed reply does not name this licence key (key_hash)")
+	}
+	if r.IssuedAt <= 0 || r.ExpiresAt <= r.IssuedAt || r.ExpiresAt-r.IssuedAt > int64(24*time.Hour/time.Second) {
+		return fmt.Errorf("signed reply carries no usable issued_at/expires_at window")
+	}
+	if r.IssuedAt > now.Unix()+replySkewSec || r.ExpiresAt <= now.Unix() {
+		return fmt.Errorf("signed reply is outside its validity window (replayed or clock skew)")
+	}
+	return nil
+}
+
+// signedIssuedAt returns the iat of the licence JWT inside the signed body.
+func (c *CacheEntry) signedIssuedAt() (int64, bool) {
+	var body ValidateResponse
+	if json.Unmarshal([]byte(c.RawBody), &body) != nil || body.JWT == "" {
+		return 0, false
+	}
+	claims, err := ParseLicenseJWT(body.JWT)
+	if err != nil {
+		return 0, false
+	}
+	return claims.Iat, true
+}
+
+// AgeAt is how old the cached licence is at now. v1.4: since the locally
+// stamped fetched_at. v1.5: the older of that and the signed JWT iat, so
+// restamping fetched_at cannot keep a once-genuine entry fresh forever.
+func (c *CacheEntry) AgeAt(now time.Time) time.Duration {
+	age := now.Sub(time.Unix(c.FetchedAt, 0))
+	// compat.V15(P7-PLUG-63): cache age from the unsigned fetched_at -> the older of fetched_at and the signed jwt iat
+	if compat.V15() {
+		if iat, ok := c.signedIssuedAt(); ok {
+			if signed := now.Sub(time.Unix(iat, 0)); signed > age {
+				age = signed
+			}
+		}
+	}
+	return age
+}

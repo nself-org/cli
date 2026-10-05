@@ -134,7 +134,7 @@ func Validate(ctx context.Context, key string, opts *ValidatorOptions) (*Validat
 		}
 	}
 
-	age := clk.Now().Sub(time.Unix(entry.FetchedAt, 0))
+	age := entry.AgeAt(clk.Now())
 
 	// BUILD-LEDGER Finding #14: the local revocation cache is the
 	// compensating control that makes FAIL-OPEN safe. Consult it

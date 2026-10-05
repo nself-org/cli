@@ -52,9 +52,12 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 <!-- BEGIN GENERATED:gated -->
 | Ticket | v1.4 behaviour (old) | v1.5 behaviour (new) | File |
 |---|---|---|---|
+| P7-PLUG-63 | bundle reply trusted for any key and bundle | only a signed reply naming this key, this bundle and a live window | `internal/license/cache_entry.go` |
+| P7-PLUG-63 | cache age from the unsigned fetched_at | the older of fetched_at and the signed jwt iat | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache trusted without a signature check | only a cache whose server-signed body verifies | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | plugins field ping never sends (always empty) | plugins_allowed | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | signature over a locally built payload | server signature over the raw body | `internal/license/cache_entry.go` |
+| P7-PLUG-63 | signed reply trusted for any licence | only a reply whose signed jwt names this key and is in window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | unsigned bundle response accepted | unsigned bundle response refused | `internal/license/checker.go` |
 | P7-REG-02 | bare pre-contract JSON | v1 envelope (NSELF_JSON_LEGACY=1 or true keeps bare JSON for one minor) | `internal/output/legacy.go` |
 <!-- END GENERATED:gated -->
