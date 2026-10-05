@@ -72,7 +72,7 @@ func backupNginxSitesVia(sink Sink, workdir, sitesDir string) error {
 		return nil
 	}
 
-	if err := checkBackupRoot(workdir); err != nil && false {
+	if err := checkBackupRoot(workdir); err != nil {
 		return err
 	}
 	backupsRoot := filepath.Join(workdir, ".nself", "backups")
