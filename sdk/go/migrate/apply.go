@@ -20,9 +20,16 @@
 //     (42P01, 42703, 42704) until a fixed point, runs Options.Between (the
 //     plugin's Go-native migrations), then applies the rest strictly.
 //
-// Migration files must not contain transaction control (BEGIN, COMMIT) or
-// statements that cannot run in a transaction block (CREATE INDEX
-// CONCURRENTLY): the per-file transaction is what makes the ledger honest.
+// Migration files must not contain transaction control (BEGIN, COMMIT,
+// ROLLBACK, END, START TRANSACTION, SAVEPOINT, RELEASE): Apply refuses them
+// before running anything. They also cannot hold statements that cannot run in
+// a transaction block (CREATE INDEX CONCURRENTLY). The per-file transaction is
+// what makes the ledger honest.
+//
+// Apply refuses to guess about an existing install: a schema that has objects
+// but no ledger (ErrUnledgered), a ledger with no checksum column
+// (ErrLegacyLedger), and a pending file that sorts before an applied one in
+// strict mode (OutOfOrderError). Baseline is the explicit adoption step.
 //
 // The package never builds SQL from file names: names and checksums travel as
 // bind parameters. Only the schema name is interpolated, and only after it
@@ -78,10 +85,28 @@ type Options struct {
 	Between func(ctx context.Context) error
 }
 
-// Result reports what one Apply call did.
+// Result reports what one Apply or Baseline call did.
 type Result struct {
-	// Applied lists the files this call applied, in order.
+	// Applied lists the files Apply ran, in order.
 	Applied []string
+	// Baselined lists the files Baseline recorded without running them.
+	Baselined []string
+}
+
+var (
+	// ErrUnledgered: the schema has objects but no ledger. Call Baseline.
+	ErrUnledgered = errors.New("migrate: schema has objects but no ledger")
+	// ErrLegacyLedger: the ledger predates the checksum column. Call Baseline.
+	ErrLegacyLedger = errors.New("migrate: legacy ledger")
+)
+
+// OutOfOrderError reports a pending file that sorts before a file that is
+// already applied. Applying it would run migrations out of lexical order.
+type OutOfOrderError struct{ File, After string }
+
+func (e *OutOfOrderError) Error() string {
+	return fmt.Sprintf("migrate: file %s sorts before %s, which is already applied: "+
+		"give the new migration a name that sorts after every applied file", e.File, e.After)
 }
 
 // FileError names the migration file that failed.
@@ -190,6 +215,9 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, opts Options) (Result, error
 		}
 	}
 
+	if err := p.checkPending(pending, recorded); err != nil {
+		return res, err
+	}
 	pending, err = p.runRounds(ctx, conn, pending, p.opts.Tolerant, &res)
 	if err != nil {
 		return res, err
@@ -204,4 +232,29 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, opts Options) (Result, error
 	}
 	_, err = p.runRounds(ctx, conn, pending, false, &res)
 	return res, err
+}
+
+// checkPending refuses a pending set that must not run: a file that sorts
+// before the last applied one (strict mode only: tolerant mode defers files
+// on purpose, so a retry after a failed boot legitimately finds an applied
+// file ahead of a pending one), and any file with transaction control. It
+// runs before the first statement, so a refusal changes nothing.
+func (p *plan) checkPending(pending []file, recorded map[string]string) error {
+	last := ""
+	for n := range recorded {
+		if n > last {
+			last = n
+		}
+	}
+	for _, f := range pending {
+		if !p.opts.Tolerant && f.name < last {
+			return &OutOfOrderError{File: f.name, After: last}
+		}
+	}
+	for _, f := range pending {
+		if w, line := findTxControl(f.sql); w != "" {
+			return &FileError{File: f.name, Err: fmt.Errorf("%w: %s at line %d", ErrTxControl, w, line)}
+		}
+	}
+	return nil
 }

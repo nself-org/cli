@@ -150,13 +150,13 @@ func TestStatusHealthField(t *testing.T) {
 	schema := schemaFor(t, pool)
 	opts := Options{Schema: schema, FS: sqlFS(map[string]string{"001.sql": `SELECT 1;`, "002.sql": `SELECT 2;`})}
 	st, err := Status(ctxT(), pool, opts) // before any boot: no ledger yet
-	if err != nil || st != (Progress{0, 2}) {
+	if err != nil || !reflect.DeepEqual(st, Progress{Applied: 0, Expected: 2}) {
 		t.Fatalf("before apply: %+v %v", st, err)
 	}
 	if _, err := Apply(ctxT(), pool, opts); err != nil {
 		t.Fatal(err)
 	}
-	if st, err = Status(ctxT(), pool, opts); err != nil || st != (Progress{2, 2}) || !st.Ready() {
+	if st, err = Status(ctxT(), pool, opts); err != nil || !reflect.DeepEqual(st, Progress{Applied: 2, Expected: 2}) || !st.Ready() {
 		t.Fatalf("after apply: %+v %v", st, err)
 	}
 	field := HealthField(st)

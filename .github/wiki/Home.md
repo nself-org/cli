@@ -123,6 +123,7 @@ Optional services (enable per project): **Redis** | **MinIO** (S3 storage) | **S
 | [[Plugin-Licensing]] | License keys, tiers, pricing, validation |
 | [[Plugin-Architecture]] | Technical internals: compose overlays, nginx injection, schemas |
 | [[Plugin-Dev-Guide]] | Build and publish your own plugin |
+| [[Plugin-Migrations-Contract]] | How a plugin applies its own SQL migrations at boot (sdk/go/migrate) |
 
 <details>
 <summary><strong>Free Plugins (25)</strong>, MIT licensed, no key required</summary>
