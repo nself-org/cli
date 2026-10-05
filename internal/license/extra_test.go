@@ -24,9 +24,7 @@ import (
 // TestVerifySignature_ZeroPubKey verifies that a CacheEntry with an empty
 // signature fails verification when the dev (zero) pubkey is in use.
 func TestVerifySignature_ZeroPubKey(t *testing.T) {
-	orig := licensePubKeyHex
-	licensePubKeyHex = "" // zero pubkey → IsZeroPubKey() returns true
-	defer func() { licensePubKeyHex = orig }()
+	setPingKeys(t) // no usable key: nothing verifies
 
 	entry := &CacheEntry{
 		KeyHash:   HashKey("nself_pro_test1234567890abcdef12345"),
@@ -90,39 +88,18 @@ func TestVerifySignature_KeyIDMismatch(t *testing.T) {
 	}
 }
 
-// TestGetPublicKeys_Override verifies the LICENSE_PUBLIC_KEY_OVERRIDE env var.
+// TestGetPublicKeys_Override: a default build ignores LICENSE_PUBLIC_KEY_OVERRIDE,
+// valid or not, and keeps returning the committed keys.
 func TestGetPublicKeys_Override(t *testing.T) {
-	// Valid 32-byte (64 hex chars) public key.
-	validHex := strings.Repeat("ab", 32) // 64 hex chars = 32 bytes
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", validHex)
-
-	keys := GetPublicKeys()
-	if len(keys) != 1 {
-		t.Fatalf("expected 1 key from override, got %d", len(keys))
+	if devKeysBuild {
+		t.Skip("default builds only; TestDevBuildHonoursOverride covers the nself_devkeys build")
 	}
-	if keys[0].ID != 1 {
-		t.Errorf("override key should have ID=1, got %d", keys[0].ID)
-	}
-}
-
-// TestGetPublicKeys_InvalidOverride verifies that an invalid override hex falls
-// back to the bundled keys.
-func TestGetPublicKeys_InvalidOverride(t *testing.T) {
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", "not-valid-hex")
-	keys := GetPublicKeys()
-	// Should fall back to bundled keys (at least 1).
-	if len(keys) == 0 {
-		t.Error("GetPublicKeys should return bundled keys when override is invalid")
-	}
-}
-
-// TestGetPublicKeys_WrongLength verifies that a valid hex but wrong-length
-// override falls back to bundled keys.
-func TestGetPublicKeys_WrongLength(t *testing.T) {
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", "abcd") // only 2 bytes, not 32
-	keys := GetPublicKeys()
-	if len(keys) == 0 {
-		t.Error("GetPublicKeys should return bundled keys when override is wrong length")
+	for _, v := range []string{strings.Repeat("ab", 32), "not-valid-hex", "abcd"} {
+		t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", v)
+		keys := GetPublicKeys()
+		if len(keys) != len(PingKeys) || keys[0].ID != 1 {
+			t.Errorf("override %q changed the key set: %+v", v, keys)
+		}
 	}
 }
 
@@ -502,7 +479,7 @@ func TestRefreshCache_InvalidResponse(t *testing.T) {
 // with Valid=false when the server reports invalid.
 func TestRefreshCache_InvalidLicense(t *testing.T) {
 	setupCacheDir(t)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := signingServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(ValidateResponse{
@@ -649,7 +626,7 @@ func TestResponseToCache_NoExpiresAt(t *testing.T) {
 func TestValidateFull_RemoteSuccess(t *testing.T) {
 	setupCacheDir(t)
 	future := time.Now().Add(30 * 24 * time.Hour)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := signingServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(ValidateResponse{
 			Valid:     true,

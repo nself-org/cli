@@ -13,61 +13,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
+	"strconv"
 	"time"
+
+	"github.com/nself-org/cli/internal/compat"
 )
-
-// licensePubKeyHex is injected via -X ldflag at goreleaser build time.
-// In dev builds without ldflags, it remains empty — license verification is
-// disabled and nself version prints a warning banner.
-//
-//nolint:gochecknoglobals
-var licensePubKeyHex = "" //nolint:unused // set via -X github.com/nself-org/cli/internal/license.licensePubKeyHex=<hex>
-
-// IsZeroPubKey reports whether the build was made without an ldflags-injected
-// signing key. Returns true when licensePubKeyHex is empty OR consists entirely
-// of '0' characters (e.g., a placeholder 64-char zero string).
-// goreleaser injects a real non-zero Ed25519 pubkey hex; dev builds leave it empty.
-//
-// Exception: when LICENSE_PUBLIC_KEY_OVERRIDE is set to a valid non-zero Ed25519
-// public key hex, IsZeroPubKey returns false so that tests can exercise the
-// production signature-verification code path without goreleaser ldflags.
-func IsZeroPubKey() bool {
-	// Check override first — allows tests to exercise the sig-verify path.
-	if override := os.Getenv("LICENSE_PUBLIC_KEY_OVERRIDE"); override != "" {
-		keyBytes, err := hex.DecodeString(override)
-		if err == nil && len(keyBytes) == ed25519.PublicKeySize {
-			// Non-zero override key supplied: treat as "real key embedded".
-			for _, b := range keyBytes {
-				if b != 0 {
-					return false
-				}
-			}
-		}
-	}
-	if licensePubKeyHex == "" {
-		return true
-	}
-	for _, ch := range licensePubKeyHex {
-		if ch != '0' {
-			return false
-		}
-	}
-	return true
-}
-
-// CacheEntry represents a cached license validation response with Ed25519
-// signature from the server.
-type CacheEntry struct {
-	KeyHash        string   `json:"key_hash"`
-	Tier           string   `json:"tier"`
-	PluginsAllowed []string `json:"plugins_allowed"`
-	FetchedAt      int64    `json:"fetched_at"`
-	ExpiresAt      int64    `json:"expires_at"`
-	Signature      string   `json:"signature"`
-	SignatureKeyID int      `json:"signature_key_id"`
-}
 
 // defaultCacheDir returns ~/.cache/nself.
 func defaultCacheDir() (string, error) {
@@ -162,6 +112,7 @@ func WriteCache(entry *CacheEntry) error {
 		cleanup()
 		return fmt.Errorf("renaming temp cache file: %w", err)
 	}
+	noteCacheWritten(entry)
 	return nil
 }
 
@@ -185,114 +136,157 @@ func HashKey(key string) string {
 
 // CacheAge returns how long ago the cache was fetched.
 func (c *CacheEntry) CacheAge() time.Duration {
-	return time.Since(time.Unix(c.FetchedAt, 0))
+	return c.AgeAt(time.Now())
 }
 
-// VerifySignature verifies the cache entry's Ed25519 signature against the
-// bundled public keys. It accepts the current key (keyID N) and the previous
-// key (keyID N-1) to support rotation windows.
-func (c *CacheEntry) VerifySignature() bool {
-	keys := GetPublicKeys()
-	for _, pk := range keys {
-		if c.SignatureKeyID != 0 && pk.ID != c.SignatureKeyID {
-			continue
-		}
-		sigBytes, err := hex.DecodeString(c.Signature)
-		if err != nil {
-			continue
-		}
-		// The signed payload is the JSON of the entry without the signature fields.
-		payload := c.signablePayload()
-		if ed25519.Verify(pk.Key, payload, sigBytes) {
-			return true
-		}
+// PublicKeyEntry holds a versioned Ed25519 public key. ID is the numeric kid
+// (0 when the kid is not a number), KID the kid as ping writes it.
+type PublicKeyEntry struct {
+	ID  int
+	KID string
+	Key ed25519.PublicKey
+}
+
+// usableKey reports whether k is a 32-byte Ed25519 key that is not all zero.
+func usableKey(k ed25519.PublicKey) bool {
+	if len(k) != ed25519.PublicKeySize {
+		return false
 	}
-	// If keyID was specified and didn't match, try all keys (rotation window).
-	if c.SignatureKeyID != 0 {
-		sigBytes, err := hex.DecodeString(c.Signature)
-		if err != nil {
-			return false
-		}
-		payload := c.signablePayload()
-		for _, pk := range keys {
-			if ed25519.Verify(pk.Key, payload, sigBytes) {
-				return true
-			}
+	for _, b := range k {
+		if b != 0 {
+			return true
 		}
 	}
 	return false
 }
 
-// signablePayload produces the deterministic byte sequence that was signed by
-// the server. This must match the server's signing format exactly.
-//
-// Canonical format: key_hash|tier|fetched_at|expires_at|plugins_allowed_sorted_joined
-//
-// PluginsAllowed is sorted alphabetically and joined with commas before being
-// included in the payload. This prevents an attacker with home-directory write
-// access from injecting arbitrary plugin names into the cached JSON while the
-// Ed25519 signature still passes (SIEGE V03-F01).
-func (c *CacheEntry) signablePayload() []byte {
-	sorted := make([]string, len(c.PluginsAllowed))
-	copy(sorted, c.PluginsAllowed)
-	sort.Strings(sorted)
-	pluginsField := strings.Join(sorted, ",")
-	return []byte(fmt.Sprintf("%s|%s|%d|%d|%s",
-		c.KeyHash, c.Tier, c.FetchedAt, c.ExpiresAt, pluginsField))
-}
-
-// PublicKeyEntry holds a versioned Ed25519 public key.
-type PublicKeyEntry struct {
-	ID  int
-	Key ed25519.PublicKey
-}
-
-// bundledPublicKeys contains the Ed25519 public keys used to verify license
-// cache signatures. Key ID 1 is the current key. During rotation, both N and
-// N-1 are accepted.
-//
-// The public key override env var LICENSE_PUBLIC_KEY_OVERRIDE can replace key 1
-// for testing.
-var bundledPublicKeys []PublicKeyEntry
-
-func init() {
-	// D3-T01: load the Ed25519 public key injected at goreleaser build time via
-	// -X github.com/nself-org/cli/internal/license.licensePubKeyHex=<hex>.
-	// Dev builds leave licensePubKeyHex empty → zero key → IsZeroPubKey() returns true
-	// → license signature verification is skipped (CLI falls back to bare validation).
-	if licensePubKeyHex != "" && !IsZeroPubKey() {
-		if keyBytes, err := hex.DecodeString(licensePubKeyHex); err == nil &&
-			len(keyBytes) == ed25519.PublicKeySize {
-			bundledPublicKeys = []PublicKeyEntry{
-				{ID: 1, Key: ed25519.PublicKey(keyBytes)},
-			}
-			return
-		}
-	}
-	// Fallback: zero key (dev builds without ldflags). Signature verification
-	// will always return false for this key, which IsZeroPubKey() signals to callers.
-	devKey := make(ed25519.PublicKey, ed25519.PublicKeySize)
-	bundledPublicKeys = []PublicKeyEntry{
-		{ID: 1, Key: devKey},
-	}
-}
-
-// GetPublicKeys returns the active public keys, respecting the
-// LICENSE_PUBLIC_KEY_OVERRIDE environment variable for testing.
+// GetPublicKeys returns the keys that may verify ping's signatures: the
+// committed PingKeys plus extraKeys(), which is empty in every build except
+// one tagged nself_devkeys (keys_release.go, keys_devkeys.go). A nil or
+// all-zero key is dropped, never trusted.
 func GetPublicKeys() []PublicKeyEntry {
-	if override := os.Getenv("LICENSE_PUBLIC_KEY_OVERRIDE"); override != "" {
-		keyBytes, err := hex.DecodeString(override)
-		if err == nil && len(keyBytes) == ed25519.PublicKeySize {
-			return []PublicKeyEntry{{ID: 1, Key: ed25519.PublicKey(keyBytes)}}
+	var out []PublicKeyEntry
+	for _, k := range PingKeys {
+		if usableKey(k.Public) {
+			id, _ := strconv.Atoi(k.ID)
+			out = append(out, PublicKeyEntry{ID: id, KID: k.ID, Key: k.Public})
 		}
 	}
-	return bundledPublicKeys
+	return append(out, extraKeys()...)
 }
 
-// GetEmbeddedPubKeyHex returns the hex-encoded Ed25519 public key that was
-// injected at build time via goreleaser ldflags (NSELF_LICENSE_PUBKEY_HEX).
-// Returns an empty string in dev builds without ldflags.
-// D3-T01: used by `nself license pubkey` and pubkey-refresh flow (D3-T10).
+// IsZeroPubKey reports that no usable verification key exists. Callers fail
+// closed on it (nothing verifies); it never means "skip verification".
+func IsZeroPubKey() bool { return len(GetPublicKeys()) == 0 }
+
+// GetEmbeddedPubKeyHex returns the hex of the first committed ping key, or an
+// empty string when there is none.
 func GetEmbeddedPubKeyHex() string {
-	return licensePubKeyHex
+	if ks := GetPublicKeys(); len(ks) > 0 {
+		return hex.EncodeToString(ks[0].Key)
+	}
+	return ""
+}
+
+// clockMarkPath is the file holding the highest trusted time seen, next to the cache.
+func clockMarkPath() (string, bool) {
+	p, err := CachePath()
+	if err != nil {
+		return "", false
+	}
+	return filepath.Join(filepath.Dir(p), "license.clock"), true
+}
+
+// readTrustedTime returns the persisted highest trusted time (zero when none).
+func readTrustedTime() time.Time {
+	p, ok := clockMarkPath()
+	if !ok {
+		return time.Time{}
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return time.Time{}
+	}
+	n, err := strconv.ParseInt(string(b), 10, 64)
+	if err != nil || n <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(n, 0)
+}
+
+// writeTrustedTime persists t as the trusted-time mark. Best effort: it only
+// writes where the cache directory already exists, and a failure changes nothing.
+func writeTrustedTime(t time.Time) {
+	p, ok := clockMarkPath()
+	if !ok {
+		return
+	}
+	if st, err := os.Stat(filepath.Dir(p)); err != nil || !st.IsDir() {
+		return
+	}
+	_ = os.WriteFile(p, []byte(strconv.FormatInt(t.Unix(), 10)), 0o600)
+}
+
+// noteCacheWritten resets the trusted-time mark to the signed iat of a cache
+// entry that was just written from a verified reply. A reply is only accepted
+// inside its own 24 h window, so this is the recovery path after a clock that
+// ran fast: going online puts the mark back to real time.
+func noteCacheWritten(entry *CacheEntry) {
+	// compat.V15(P7-PLUG-63): no trusted-time mark -> mark reset to the signed iat of each verified reply
+	if !compat.V15() {
+		return
+	}
+	if iat, ok := entry.signedIssuedAt(); ok {
+		writeTrustedTime(time.Unix(iat, 0))
+	}
+}
+
+// clockTrusted reports whether now can be believed for deciding on this entry:
+// not behind the entry's signed iat by more than the skew, and not behind the
+// highest time earlier checks trusted by more than clockTolerance. From v1.5 an
+// entry read while the clock is behind that evidence is treated as untrusted
+// (a clock rolled back to revive an old licence).
+func (c *CacheEntry) clockTrusted(now time.Time) bool {
+	// compat.V15(P7-PLUG-63): cache trusted whatever the clock says -> refused when the clock is behind the signed iat or the highest time seen
+	if !compat.V15() {
+		return true
+	}
+	if iat, ok := c.signedIssuedAt(); ok && iat > now.Unix()+replySkewSec {
+		return false
+	}
+	hw := readTrustedTime()
+	// Tolerance 10 min: NTP steps, DST bugs and sleep drift are not a rollback.
+	return hw.IsZero() || !now.Before(hw.Add(-10*time.Minute))
+}
+
+// noteTrustedTime raises the mark to now (never lowers it) after a trusted decision.
+func noteTrustedTime(now time.Time) {
+	// compat.V15(P7-PLUG-63): no trusted-time mark -> mark raised to now after each trusted decision
+	if compat.V15() && now.After(readTrustedTime()) {
+		writeTrustedTime(now)
+	}
+}
+
+// cacheWithinTerm reports whether the cached licence's signed expiry plus the
+// post-expiry grace still covers now. The air-gap fail-open path is unbounded
+// by cache age but never by the licence term.
+func cacheWithinTerm(entry *CacheEntry, now time.Time) bool {
+	// compat.V15(P7-PLUG-63): fail-open past the licence expiry -> refused once the signed expiry plus the post-expiry grace has passed
+	if compat.V15() && entry.ExpiresAt > 0 && now.After(time.Unix(entry.ExpiresAt, 0).Add(PostExpiryGraceWindow)) {
+		return false
+	}
+	return true
+}
+
+// graceStateFor is DetermineGraceState with the offline ceiling also applied
+// after expiry: before expiry a cache older than GraceHardThreshold is
+// read-only, and from v1.5 so is one inside the post-expiry grace.
+func graceStateFor(entry *CacheEntry) GraceCheckResult {
+	g := DetermineGraceState(entry)
+	// compat.V15(P7-PLUG-63): post-expiry grace ignores cache age -> post-expiry write access also needs a cache younger than the 7-day offline ceiling
+	if compat.V15() && g.State == GracePostExpiry && g.CacheAge >= GraceHardThreshold {
+		g.WriteAllowed = false
+		g.Message += " The cached validation is older than the 7-day offline ceiling: read-only until you connect."
+	}
+	return g
 }

@@ -321,7 +321,7 @@ func makeTestEd25519Keypair(t *testing.T) (privKey ed25519.PrivateKey, pubHex st
 		t.Fatalf("generate ed25519 keypair: %v", err)
 	}
 	pubHex = hex.EncodeToString(pub)
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", pubHex)
+	useTestKey(t, pubHex)
 	return priv, pubHex
 }
 
@@ -453,35 +453,22 @@ func TestValidateRemote_TamperedBodyRejectsInProdBuild(t *testing.T) {
 	}
 }
 
-// TestValidateRemote_DevBuildSkipsSignatureCheck asserts that when IsZeroPubKey()
-// is true (no LICENSE_PUBLIC_KEY_OVERRIDE and empty licensePubKeyHex from ldflags),
-// the signature header is not checked — the dev build can talk to any server. (S10.T03)
-func TestValidateRemote_DevBuildSkipsSignatureCheck(t *testing.T) {
+// TestValidateRemote_UnsignedResponseFailsClosed asserts that a reply with no
+// X-NSelf-License-Sig header is rejected in every build: there is no zero-key
+// skip any more (P7-PLUG-63).
+func TestValidateRemote_UnsignedResponseFailsClosed(t *testing.T) {
 	redirectCacheDir(t)
-	// Do NOT set LICENSE_PUBLIC_KEY_OVERRIDE — IsZeroPubKey() will return true.
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", "")
-
 	body := makeValidateResponse(t)
-
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// No sig header — would normally fail in prod builds.
-		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(body)
 	}))
 	defer srv.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
 	result, err := validateRemote(ctx, "nself_pro_testedkey1234567890abcdef12", srv.URL)
-	if err != nil {
-		t.Fatalf("dev build should skip sig check but got error: %v", err)
-	}
-	if result == nil {
-		t.Fatal("validateRemote returned nil result in dev build")
-	}
-	if !result.Valid {
-		t.Errorf("expected Valid=true in dev build without sig check, got false")
+	if err == nil || result != nil || !strings.Contains(err.Error(), "signature missing") {
+		t.Fatalf("an unsigned response must be rejected, got (%v, %v)", result, err)
 	}
 }

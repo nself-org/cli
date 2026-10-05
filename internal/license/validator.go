@@ -20,8 +20,6 @@ package license
 
 import (
 	"context"
-	"crypto/ed25519"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -117,6 +115,14 @@ func defaultWarnOnce(msg string) {
 	})
 }
 
+// clockNow is opts.Clock's time, or the wall clock when none is set.
+func clockNow(opts *ValidatorOptions) time.Time {
+	if opts != nil && opts.Clock != nil {
+		return opts.Clock.Now()
+	}
+	return time.Now()
+}
+
 // remoteOutcome is an internal enum classifying the outcome of tryRemote.
 type remoteOutcome int
 
@@ -167,32 +173,17 @@ func tryRemote(ctx context.Context, key string, opts *ValidatorOptions) (*Valida
 	// Drain body for connection reuse and to capture potential error details.
 	rawBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 
-	switch {
-	case resp.StatusCode == http.StatusOK:
-		// S10.T03: Verify Ed25519 response-body signature before trusting
-		// tier/plugins data. Skip in dev builds (IsZeroPubKey) and when
-		// SkipSignatureVerify is set in tests.
-		if !opts.SkipSignatureVerify && !IsZeroPubKey() {
-			sigHex := resp.Header.Get("X-NSelf-License-Sig")
-			if sigHex == "" {
-				// Missing header — reject, fall through to cache (fail-open eligible).
-				return nil, remoteTransientFail, fmt.Errorf("response signature missing (X-NSelf-License-Sig header absent)")
-			}
-			sigBytes, decErr := hex.DecodeString(sigHex)
-			if decErr != nil {
-				return nil, remoteTransientFail, fmt.Errorf("response signature malformed: %w", decErr)
-			}
-			keys := GetPublicKeys()
-			var verified bool
-			for _, pk := range keys {
-				if ed25519.Verify(ed25519.PublicKey(pk.Key), rawBody, sigBytes) {
-					verified = true
-					break
-				}
-			}
-			if !verified {
-				// Tampered or MITM response — reject, fall through to cache.
-				return nil, remoteTransientFail, fmt.Errorf("response signature invalid — possible MITM or tampered response")
+	// If-chain, not a switch: Go's coverage profile has no block for a case
+	// condition, so mutation testing cannot see a switch's conditions as covered.
+	status := resp.StatusCode
+	if status == http.StatusOK {
+		// S10.T03: verify the Ed25519 response-body signature before trusting
+		// tier/plugins data. Only SkipSignatureVerify (tests) skips it; a
+		// missing or invalid signature falls through to the cache.
+		sigHex := resp.Header.Get("X-NSelf-License-Sig")
+		if !opts.SkipSignatureVerify {
+			if err := verifyResponseSig(rawBody, sigHex); err != nil {
+				return nil, remoteTransientFail, err
 			}
 		}
 
@@ -201,15 +192,20 @@ func tryRemote(ctx context.Context, key string, opts *ValidatorOptions) (*Valida
 			// 200 but unparseable → transient (don't punish user for server bug).
 			return nil, remoteTransientFail, fmt.Errorf("decoding response: %w", err)
 		}
+		vr.RawBody, vr.BodySig = string(rawBody), sigHex
+		if err := checkReplyBinding(&vr, key, clockNow(opts)); err != nil {
+			return nil, remoteTransientFail, err
+		}
 		return &vr, remoteOK, nil
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return nil, remoteAuthFail, fmt.Errorf("server returned %d", resp.StatusCode)
-	case resp.StatusCode >= 500:
-		return nil, remoteTransientFail, fmt.Errorf("server returned %d", resp.StatusCode)
-	default:
-		// 4xx other than 401/403 — treat as auth-class to avoid silent fail-open
-		// on misuse (e.g. 400 bad-request); the caller's cache may not save them.
-		// Conservative posture: NOT fail-open.
-		return nil, remoteAuthFail, fmt.Errorf("server returned %d", resp.StatusCode)
 	}
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return nil, remoteAuthFail, fmt.Errorf("server returned %d", status)
+	}
+	if status >= 500 {
+		return nil, remoteTransientFail, fmt.Errorf("server returned %d", status)
+	}
+	// 4xx other than 401/403 — treat as auth-class to avoid silent fail-open
+	// on misuse (e.g. 400 bad-request); the caller's cache may not save them.
+	// Conservative posture: NOT fail-open.
+	return nil, remoteAuthFail, fmt.Errorf("server returned %d", status)
 }

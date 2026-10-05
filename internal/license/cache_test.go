@@ -11,48 +11,33 @@ import (
 	"testing"
 )
 
-// TestIsZeroPubKey verifies IsZeroPubKey detection for dev-build vs
-// goreleaser-built binaries.
+// TestIsZeroPubKey_* verify IsZeroPubKey reports "no usable key" from the
+// committed key set.
 func TestIsZeroPubKey_EmptyString(t *testing.T) {
-	orig := licensePubKeyHex
-	defer func() { licensePubKeyHex = orig }()
-
-	licensePubKeyHex = ""
+	setPingKeys(t)
 	if !IsZeroPubKey() {
-		t.Error("empty string should be detected as zero pubkey (dev build)")
+		t.Error("an empty key set should read as zero")
 	}
 }
 
 func TestIsZeroPubKey_AllZeroHex(t *testing.T) {
-	orig := licensePubKeyHex
-	defer func() { licensePubKeyHex = orig }()
-
-	// 64 zero chars — common placeholder shape
-	licensePubKeyHex = "0000000000000000000000000000000000000000000000000000000000000000"
+	setPingKeys(t, PingKey{ID: "1", Public: pubKeyFromHex(strings.Repeat("00", 32))})
 	if !IsZeroPubKey() {
-		t.Error("all-zero hex string should be detected as zero pubkey")
+		t.Error("an all-zero key should read as zero")
 	}
 }
 
 func TestIsZeroPubKey_ValidNonZeroHex(t *testing.T) {
-	orig := licensePubKeyHex
-	defer func() { licensePubKeyHex = orig }()
-
-	// A realistic non-zero Ed25519 pubkey hex (64 hex chars = 32 bytes)
-	licensePubKeyHex = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+	useTestKey(t, "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
 	if IsZeroPubKey() {
-		t.Error("non-zero hex string should NOT be detected as zero pubkey (goreleaser build)")
+		t.Error("a non-zero key should not read as zero")
 	}
 }
 
 func TestIsZeroPubKey_SingleNonZeroChar(t *testing.T) {
-	orig := licensePubKeyHex
-	defer func() { licensePubKeyHex = orig }()
-
-	// Mostly zeros but one non-zero digit — must return false
-	licensePubKeyHex = "0000000000000000000000000000000000000000000000000000000000000001"
+	useTestKey(t, strings.Repeat("00", 31)+"01")
 	if IsZeroPubKey() {
-		t.Error("string with one non-zero char should NOT be detected as zero pubkey")
+		t.Error("a key with one non-zero byte should not read as zero")
 	}
 }
 
@@ -156,7 +141,7 @@ func signEntry(t *testing.T, entry *CacheEntry, priv ed25519.PrivateKey) {
 // names without invalidating the Ed25519 signature.
 func TestSignablePayload_MutatedPluginsAllowed_FailsVerification(t *testing.T) {
 	pub, priv := newTestKeyPair(t)
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", hex.EncodeToString(pub))
+	useTestKey(t, hex.EncodeToString(pub))
 
 	entry := &CacheEntry{
 		KeyHash:        HashKey("nself_pro_testkey_v03f01"),
@@ -186,7 +171,7 @@ func TestSignablePayload_MutatedPluginsAllowed_FailsVerification(t *testing.T) {
 // included in the signed payload (no regression on the happy path).
 func TestSignablePayload_ValidCacheVerifies(t *testing.T) {
 	pub, priv := newTestKeyPair(t)
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", hex.EncodeToString(pub))
+	useTestKey(t, hex.EncodeToString(pub))
 
 	entry := &CacheEntry{
 		KeyHash:        HashKey("nself_pro_happypath_key"),

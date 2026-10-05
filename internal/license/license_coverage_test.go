@@ -231,7 +231,7 @@ func TestVerifySignature_RotationWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", hex.EncodeToString(pub))
+	useTestKey(t, hex.EncodeToString(pub))
 
 	entry := &CacheEntry{
 		KeyHash:        HashKey("nself_pro_rotation_window_test"),
@@ -259,7 +259,7 @@ func TestVerifySignature_RotationWindow_InvalidSig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", hex.EncodeToString(pub))
+	useTestKey(t, hex.EncodeToString(pub))
 
 	entry := &CacheEntry{
 		KeyHash:        HashKey("nself_pro_rotation_badsig"),
@@ -283,7 +283,7 @@ func TestVerifySignature_RotationWindow_BadHex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", hex.EncodeToString(pub))
+	useTestKey(t, hex.EncodeToString(pub))
 
 	entry := &CacheEntry{
 		KeyHash:        HashKey("nself_pro_rotation_badhex"),

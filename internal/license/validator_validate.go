@@ -74,7 +74,7 @@ func Validate(ctx context.Context, key string, opts *ValidatorOptions) (*Validat
 				CanProceed: true,
 				FromCache:  false,
 				Tier:       remote.Tier,
-				Plugins:    remote.Plugins,
+				Plugins:    pluginsFor(remote),
 			}, nil
 		case remoteAuthFail:
 			// 401/403 — explicit auth rejection. NEVER fail-open here.
@@ -101,7 +101,7 @@ func Validate(ctx context.Context, key string, opts *ValidatorOptions) (*Validat
 	}
 
 	// Verify signature unless explicitly skipped (tests).
-	if !opts.SkipSignatureVerify && !IsZeroPubKey() && !entry.VerifySignature() {
+	if !opts.SkipSignatureVerify && (!entry.VerifySignature() || !entry.clockTrusted(clk.Now())) {
 		return &ValidatorResult{
 			Status:     StatusFailClosed,
 			CanProceed: false,
@@ -134,7 +134,7 @@ func Validate(ctx context.Context, key string, opts *ValidatorOptions) (*Validat
 		}
 	}
 
-	age := clk.Now().Sub(time.Unix(entry.FetchedAt, 0))
+	age := entry.AgeAt(clk.Now())
 
 	// BUILD-LEDGER Finding #14: the local revocation cache is the
 	// compensating control that makes FAIL-OPEN safe. Consult it
@@ -153,8 +153,9 @@ func Validate(ctx context.Context, key string, opts *ValidatorOptions) (*Validat
 		}, nil
 	}
 
-	switch {
-	case age <= FailOpenSoftTTL:
+	// If-chain, not a switch: Go's coverage profile has no block for a case
+	// condition, so mutation testing cannot see a switch's conditions as covered.
+	if age <= FailOpenSoftTTL {
 		return &ValidatorResult{
 			Status:     StatusFailOpen,
 			CanProceed: true,
@@ -164,7 +165,8 @@ func Validate(ctx context.Context, key string, opts *ValidatorOptions) (*Validat
 			CacheAge:   age,
 			Reason:     "remote unreachable; using cached license within soft TTL",
 		}, nil
-	case age <= FailOpenHardTTL:
+	}
+	if age <= FailOpenHardTTL {
 		warn := fmt.Sprintf(
 			"WARNING: nSelf license validation has been offline for %s. "+
 				"Connect to the internet within %s or paid plugins will go dormant.",
@@ -182,17 +184,16 @@ func Validate(ctx context.Context, key string, opts *ValidatorOptions) (*Validat
 			Reason:      "remote unreachable; using cached license within hard TTL (warning issued)",
 			WarnMessage: warn,
 		}, nil
-	default:
-		return &ValidatorResult{
-			Status:     StatusFailClosed,
-			CanProceed: false,
-			FromCache:  true,
-			Tier:       entry.Tier,
-			CacheAge:   age,
-			Reason: fmt.Sprintf(
-				"license cache is %s old, exceeding %s fail-open ceiling — refusing to proceed",
-				formatDuration(age), formatDuration(FailOpenHardTTL),
-			),
-		}, nil
 	}
+	return &ValidatorResult{
+		Status:     StatusFailClosed,
+		CanProceed: false,
+		FromCache:  true,
+		Tier:       entry.Tier,
+		CacheAge:   age,
+		Reason: fmt.Sprintf(
+			"license cache is %s old, exceeding %s fail-open ceiling — refusing to proceed",
+			formatDuration(age), formatDuration(FailOpenHardTTL),
+		),
+	}, nil
 }

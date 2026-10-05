@@ -7,8 +7,6 @@ package license
 
 import (
 	"context"
-	"crypto/ed25519"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -45,6 +43,18 @@ type ValidateResponse struct {
 	ExpiresAt string   `json:"expires_at,omitempty"`
 	Signature string   `json:"signature,omitempty"`
 	KeyID     int      `json:"key_id,omitempty"`
+
+	// What ping_api actually sends (routes/license-validate.ts); Plugins,
+	// Signature and KeyID above are never sent. Use AllowedPlugins.
+	PluginsAllowed []string `json:"plugins_allowed,omitempty"`
+	JWT            string   `json:"jwt,omitempty"`
+	JWTKid         string   `json:"jwt_kid,omitempty"`
+	JWTExpiresAt   int64    `json:"jwt_expires_at,omitempty"`
+
+	// RawBody and BodySig are the exact response bytes and the
+	// X-NSelf-License-Sig header, set by validateRemote (never from JSON).
+	RawBody string `json:"-"`
+	BodySig string `json:"-"`
 }
 
 // PingURL returns the configured ping API URL.
@@ -88,7 +98,7 @@ func ValidateFull(ctx context.Context, key string) (*ValidationResult, error) {
 		return &ValidationResult{
 			Valid:        true,
 			Tier:         resp.Tier,
-			Plugins:      resp.Plugins,
+			Plugins:      pluginsFor(resp),
 			ExpiresAt:    expiresAt,
 			GraceState:   GraceValid,
 			WriteAllowed: true,
@@ -113,8 +123,15 @@ func ValidateFull(ctx context.Context, key string) (*ValidationResult, error) {
 		}, nil
 	}
 
+	if !cacheSignatureOK(entry) {
+		return &ValidationResult{
+			Valid:   false,
+			Message: "License cache is not signed by ping (unsigned, altered or for another key). Connect to the internet to validate.",
+		}, nil
+	}
+
 	// Evaluate grace state.
-	grace := DetermineGraceState(entry)
+	grace := graceStateFor(entry)
 	return &ValidationResult{
 		Valid:        grace.CanProceed,
 		Tier:         entry.Tier,
@@ -152,7 +169,7 @@ func RefreshCache(ctx context.Context, key string) (*ValidationResult, error) {
 	return &ValidationResult{
 		Valid:        true,
 		Tier:         resp.Tier,
-		Plugins:      resp.Plugins,
+		Plugins:      pluginsFor(resp),
 		ExpiresAt:    expiresAt,
 		GraceState:   GraceValid,
 		WriteAllowed: true,
@@ -200,8 +217,7 @@ func ImportCache(data []byte) error {
 // validateRemote performs the HTTP POST to /license/validate.
 // S10.T03: After reading the body it verifies the X-NSelf-License-Sig Ed25519
 // header. A missing or invalid signature causes the call to return an error so
-// the caller falls through to the cached license.  Dev builds (IsZeroPubKey)
-// skip the check gracefully.
+// the caller falls through to the cached license.
 func validateRemote(ctx context.Context, key string, pingURL string) (*ValidateResponse, error) {
 	type request struct {
 		LicenseKey string `json:"license_key"`
@@ -239,33 +255,20 @@ func validateRemote(ctx context.Context, key string, pingURL string) (*ValidateR
 		return nil, fmt.Errorf("reading response body: %w", err)
 	}
 
-	// S10.T03: verify Ed25519 response signature before trusting tier/plugins.
-	// Skip in dev builds where the public key is not embedded (IsZeroPubKey).
-	if !IsZeroPubKey() {
-		sigHex := resp.Header.Get("X-NSelf-License-Sig")
-		if sigHex == "" {
-			return nil, fmt.Errorf("response signature missing (X-NSelf-License-Sig header absent) — falling back to cache")
-		}
-		sigBytes, decErr := hex.DecodeString(sigHex)
-		if decErr != nil {
-			return nil, fmt.Errorf("response signature malformed: %w — falling back to cache", decErr)
-		}
-		keys := GetPublicKeys()
-		var verified bool
-		for _, pk := range keys {
-			if ed25519.Verify(ed25519.PublicKey(pk.Key), rawBody, sigBytes) {
-				verified = true
-				break
-			}
-		}
-		if !verified {
-			return nil, fmt.Errorf("response signature invalid — possible MITM or tampered response; falling back to cache")
-		}
+	// S10.T03: verify the Ed25519 response signature before trusting tier/plugins.
+	// Never skipped: with no usable key nothing verifies and the call fails.
+	sigHex := resp.Header.Get("X-NSelf-License-Sig")
+	if err := verifyResponseSig(rawBody, sigHex); err != nil {
+		return nil, err
 	}
 
 	var vr ValidateResponse
 	if err := json.Unmarshal(rawBody, &vr); err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+	vr.RawBody, vr.BodySig = string(rawBody), sigHex
+	if err := checkReplyBinding(&vr, key, time.Now()); err != nil {
+		return nil, err
 	}
 	return &vr, nil
 }
@@ -282,9 +285,13 @@ func responseToCache(key string, resp *ValidateResponse) *CacheEntry {
 	return &CacheEntry{
 		KeyHash:        HashKey(key),
 		Tier:           resp.Tier,
-		PluginsAllowed: resp.Plugins,
+		PluginsAllowed: pluginsFor(resp),
 		FetchedAt:      now,
 		ExpiresAt:      expiresAt,
+		RawBody:        resp.RawBody,
+		BodySig:        resp.BodySig,
+		JWT:            resp.JWT,
+		JWTKid:         resp.JWTKid,
 		Signature:      resp.Signature,
 		SignatureKeyID: resp.KeyID,
 	}

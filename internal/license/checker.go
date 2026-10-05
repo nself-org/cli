@@ -19,6 +19,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/compat"
 )
 
 // bundleValidateResponse is the JSON body from /license/validate?bundle=<name>.
@@ -28,6 +30,11 @@ type bundleValidateResponse struct {
 	Reason  string   `json:"reason,omitempty"`
 	Bundle  string   `json:"bundle,omitempty"`
 	Plugins []string `json:"plugins,omitempty"`
+
+	// v1.5 binding (signed bytes must name the licence, bundle and window).
+	KeyHash   string `json:"key_hash,omitempty"`
+	IssuedAt  int64  `json:"issued_at,omitempty"`
+	ExpiresAt int64  `json:"expires_at,omitempty"`
 }
 
 // BundleEntitled reports whether the operator's license key grants access to
@@ -102,9 +109,23 @@ func BundleEntitled(ctx context.Context, key, bundleName string) (bool, error) {
 		return false, fmt.Errorf("reading bundle validation response: %w", err)
 	}
 
+	// A present-but-invalid signature fails closed in every mode; a missing one
+	// too from v1.5. Only a body that verifies under PingKeys decides anything.
+	sigHex := resp.Header.Get("X-NSelf-License-Sig")
+	// compat.V15(P7-PLUG-63): unsigned bundle response accepted -> unsigned bundle response refused
+	if sigHex != "" || compat.V15() {
+		if err := verifyResponseSig(body, sigHex); err != nil {
+			return false, fmt.Errorf("bundle %q: license server response not trusted: %w", bundleName, err)
+		}
+	}
+
 	var vr bundleValidateResponse
 	if err := json.Unmarshal(body, &vr); err != nil {
 		return false, fmt.Errorf("decoding bundle validation response: %w", err)
+	}
+
+	if err := checkBundleBinding(&vr, key, bundleName, time.Now()); err != nil {
+		return false, fmt.Errorf("bundle %q: license server response not trusted: %w", bundleName, err)
 	}
 
 	if !vr.Valid {
@@ -128,6 +149,14 @@ func bundleEntitledFromCache(key, bundleName string) (bool, error) {
 	}
 	if entry.KeyHash != HashKey(key) {
 		return false, fmt.Errorf("cached license does not match current key (bundle=%q)", bundleName)
+	}
+	if !cacheSignatureOK(entry) {
+		return false, fmt.Errorf("cached license is not signed by ping (unsigned, altered or for another key); connect to validate (bundle=%q)", bundleName)
+	}
+
+	if !cacheWithinTerm(entry, time.Now()) {
+		return false, fmt.Errorf("cached license expired on %s and its post-expiry grace has ended (bundle=%q); connect to validate",
+			time.Unix(entry.ExpiresAt, 0).Format("2006-01-02"), bundleName)
 	}
 
 	// Revocation still applies when we cannot reach the server. Without this
@@ -173,13 +202,16 @@ func bundleEntitledFromGrace(key, bundleName string) (bool, error) {
 	if entry.KeyHash != HashKey(key) {
 		return false, fmt.Errorf("license server unreachable and cached license does not match current key (bundle=%q)", bundleName)
 	}
+	if !cacheSignatureOK(entry) {
+		return false, fmt.Errorf("license server unreachable and the cached license is not signed by ping (unsigned, altered or for another key) (bundle=%q)", bundleName)
+	}
 
 	// Revocation is never overridden by grace, regardless of cache freshness.
 	if IsRecordRevoked(LicenseRecord{KeyHash: entry.KeyHash}) {
 		return false, fmt.Errorf("license has been revoked (bundle=%q); contact support if this is unexpected", bundleName)
 	}
 
-	grace := DetermineGraceState(entry)
+	grace := graceStateFor(entry)
 	if !grace.CanProceed || !grace.WriteAllowed {
 		return false, fmt.Errorf(
 			"license server unreachable (bundle=%q) and the offline grace period has expired: %s",
