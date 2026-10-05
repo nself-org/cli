@@ -48,15 +48,12 @@ func remoteHasuraStrict(workdir, target string) bool {
 	return target == "staging" || prodClassFn(inv, target)
 }
 
-// inventoryEnvName finds env in inv: an exact key first, then a unique
-// case-insensitive key. It reports false for a nil inventory, no match, or an
-// ambiguous match, so the caller refuses rather than guesses.
+// inventoryEnvName finds env in inv by case-insensitive name. It reports false
+// for a nil inventory, no match, or when two inventory keys differ only by
+// case (even if one matches exactly): the caller refuses rather than guesses.
 func inventoryEnvName(inv *controlplane.Inventory, env string) (string, bool) {
 	if inv == nil {
 		return "", false
-	}
-	if _, ok := inv.Environments[env]; ok {
-		return env, true
 	}
 	found := ""
 	for k := range inv.Environments {
@@ -108,6 +105,21 @@ func scopeInventoryToEnv(inv *controlplane.Inventory, target string) (*controlpl
 		return nil, errs.New("E483", fmt.Sprintf("invalid target %q: not in the deploy inventory (known: %s)", target, strings.Join(knownDeployEnvs(inv), ", ")))
 	}
 	return scoped, nil
+}
+
+// failedServersError returns a non-nil error naming every server whose deploy
+// failed, so a partly or wholly failed pipeline never exits 0.
+func failedServersError(r *controlplane.DeployResult) error {
+	var failed []string
+	for _, sr := range r.Servers {
+		if sr.Status == "failed" {
+			failed = append(failed, fmt.Sprintf("%s/%s: %v", sr.Env, sr.Server, sr.Err))
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return fmt.Errorf("deploy: %d server(s) failed: %s", len(failed), strings.Join(failed, "; "))
 }
 
 // runDeployControlPlanePipeline handles the T05 pipeline deploy path. See
@@ -210,6 +222,7 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 		return true, fmt.Errorf("deploy: primary server skipped (read-only capability); re-run once SSH access is restored")
 	}
 
+	failedErr := failedServersError(result)
 	if jsonOut {
 		b, _ := json.MarshalIndent(result.Servers, "", "  ")
 		fmt.Println(string(b))
@@ -224,7 +237,9 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 				ui.Error(fmt.Sprintf("  [failed] %s/%s: %v", sr.Env, sr.Server, sr.Err))
 			}
 		}
-		ui.Success(fmt.Sprintf("Deploy %s (pipeline) complete", target))
+		if failedErr == nil {
+			ui.Success(fmt.Sprintf("Deploy %s (pipeline) complete", target))
+		}
 	}
-	return true, nil
+	return true, failedErr
 }

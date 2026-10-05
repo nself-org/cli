@@ -32,7 +32,7 @@ inventory, and `production` is an alias of `prod` unless the inventory has an en
 
 When `NSELF_DEPLOY_HOST_STAGING` or `NSELF_DEPLOY_HOST_PROD` is set, the CLI rsyncs the compose
 file and env to the remote host, pulls updated images, then runs the rolling restart via SSH.
-When no host is configured, the deploy runs on the current host (single-region model).
+With no host configured for a remote environment the deploy is refused (`E483`); use `nself deploy local` to deploy on this machine.
 
 When `.nself/control-plane.yaml` is present (or `--server` is passed), `nself deploy` routes
 through the topology-aware pipeline (`controlplane.Run`). The pipeline reads each server's
@@ -47,12 +47,19 @@ Targets accept both short and long forms:
 | local | `local` | Build and rolling-restart on this machine |
 | staging | `staging` | Staging environment (uses `NSELF_DEPLOY_HOST_STAGING` if set) |
 | prod | `prod`, `production` | Production (uses `NSELF_DEPLOY_HOST_PROD` if set; requires `--force` or `--dry-run`) |
-| any other name | the environment's name, e.g. `qa` | An environment from the inventory (uses `NSELF_DEPLOY_HOST_<ENV>` on the single-host path); loads `.env.dev`, `.env.<name>`, `.env.secrets`, never `.env.prod` |
+| any other name | the environment's name, e.g. `qa` | An environment from the inventory (uses `NSELF_DEPLOY_HOST_<ENV>` on the single-host path); loads `.env`, `.env.dev`, `.env.<name>`, `.env.secrets`, `.env.local` (the same list `nself build` uses), never `.env.prod` |
 
 An environment named `prod` or `production` is production-class and requires `--force` (or
 `--yes`) unless you pass `--dry-run`. The check runs before every deploy path, including the
 blue/green canary path. Releases before this change deployed every environment in the
 inventory whenever a `.nself/control-plane.yaml` existed, whatever target you named.
+
+A deploy to a remote environment with no host (no inventory entry and no `NSELF_DEPLOY_HOST_<ENV>`)
+is refused with `E483` before anything is built; it never deploys on the current machine. The
+blue/green canary flags apply to `local` only; with a remote environment they are refused. In the
+control-plane pipeline, a server whose deploy fails makes the command exit non-zero and lists it.
+A prod-class environment always uses the `prod` env cascade. Two inventory environments whose names
+differ only by case are ambiguous and refused.
 
 ## Deploy Strategies
 
@@ -407,8 +414,7 @@ a separate protocol.
 | `NSELF_GREEN_PORT_OFFSET` | `100` | Port offset for green containers |
 | `NSELF_DEPLOY_ENV` | `production` | Deploy target environment set by `nself deploy` after resolving `--env` / positional argument. Values: `local`, `staging`, `production`. Exposed for subprocesses and plugins. |
 
-When no host is configured, the CLI deploys to the current host. This is the
-single-region model. Multi-region orchestration is available via the dedicated `nself region` command (`list`, `add`, `status`, `promote`).
+A remote environment needs a host; with none the deploy is refused (`E483`). Multi-region orchestration is available via the dedicated `nself region` command (`list`, `add`, `status`, `promote`).
 
 ## Maintenance Banner
 

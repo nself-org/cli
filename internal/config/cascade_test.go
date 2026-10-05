@@ -22,9 +22,18 @@ func TestEnvCascadeOrder_Canonical(t *testing.T) {
 		{"staging", []string{".env", ".env.staging", ".env.secrets", ".env.local"}},
 		{"prod", []string{".env", ".env.prod", ".env.secrets", ".env.local"}},
 		{"production", []string{".env", ".env.prod", ".env.secrets", ".env.local"}},
-		// Unknown env names get no env-specific layer at all — the canon
-		// only names dev/staging/prod.
-		{"test", []string{".env", ".env.secrets", ".env.local"}},
+		{"development", []string{".env", ".env.dev", ".env.secrets", ".env.local"}},
+		{"stage", []string{".env", ".env.staging", ".env.secrets", ".env.local"}},
+		{"PROD", []string{".env", ".env.prod", ".env.secrets", ".env.local"}},
+		// "local" is the dev stack on this machine.
+		{"local", []string{".env", ".env.dev", ".env.secrets", ".env.local"}},
+		// A custom env layers its own file over the dev base (P7-DEPL-12).
+		{"test", []string{".env", ".env.dev", ".env.test", ".env.secrets", ".env.local"}},
+		{"QA", []string{".env", ".env.dev", ".env.qa", ".env.secrets", ".env.local"}},
+		{"qa-eu_2", []string{".env", ".env.dev", ".env.qa-eu_2", ".env.secrets", ".env.local"}},
+		// A name that is not a plain file-name fragment gets no layer of its own.
+		{"../prod", []string{".env", ".env.dev", ".env.secrets", ".env.local"}},
+		{"a/b", []string{".env", ".env.dev", ".env.secrets", ".env.local"}},
 	}
 
 	for _, c := range cases {

@@ -109,6 +109,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// deploy_run_pipeline.go (T-P6-E2-W1-S1-T3) for 300-line compliance. Each
 	// returns handled=false to fall through to the next path unchanged when it
 	// doesn't apply, preserving the original branch order exactly.
+	// Blue/green drives the local docker stack and ignores the named env, so a
+	// remote env must be refused before it can touch anything.
+	if target != "local" && (canaryPct > 0 || skipCanary) && os.Getenv("NSELF_FEATURE_BLUE_GREEN_DEPLOY") == "true" {
+		return fmt.Errorf("blue/green deploy (--canary/--skip-canary) applies to the local target only; refusing env %q, nothing was changed", target)
+	}
 	if handled, bgErr := runDeployBlueGreenCanary(cmd, target, workdir, canaryPct, skipCanary, forceMigration, dryRun, force, jsonOut); handled {
 		return bgErr
 	}
@@ -121,10 +126,10 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return pipeErr
 	}
 
-	// A remote environment outside the legacy staging/prod pair is only
-	// deployable through the single-host path when it names a host. Refuse
-	// before building: this switch never builds and exits 0 for it.
-	if target != "local" && target != "staging" && target != "prod" && legacyDeployHost(target) == "" {
+	// A remote environment is only deployable through the single-host path when
+	// it names a host. Refuse before building, staging and prod included: a
+	// missing host must never fall back to deploying on this machine.
+	if target != "local" && legacyDeployHost(target) == "" {
 		return errs.New("E483", fmt.Sprintf("invalid target %q: no host for this environment (set %s or add it to .nself/control-plane.yaml)", target, deployHostEnvVar(target)))
 	}
 
@@ -180,23 +185,15 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		host := legacyDeployHost(target)
 
 		if dryRun {
-			if host != "" {
-				if !jsonOut {
-					fmt.Printf("  [dry-run] Would: ssh+rsync to %s then docker compose pull + rolling restart\n", host)
-					fmt.Printf("  [dry-run] SSH key: %s\n", sshKeyPath())
-					fmt.Printf("  [dry-run] Rolling restart order: resolved at run time from the project's compose file (core services %s first, then the rest, then any plugin services last)\n", strings.Join(composeCoreOrder, " → "))
-					fmt.Printf("  [dry-run] Frontends: include=%v exclude=%v\n", includeFrontends, excludeFrontends)
-				}
-				steps = append(steps, deployStep{Name: fmt.Sprintf("Push artefacts to %s", host), Status: "pending"})
-				steps = append(steps, deployStep{Name: "Rolling restart (sequenced)", Status: "pending"})
-			} else {
-				if !jsonOut {
-					fmt.Printf("  [dry-run] No %s set; would run locally\n", deployHostEnvVar(target))
-					fmt.Printf("  [dry-run] Set %s=user@host:/path to enable remote push\n", deployHostEnvVar(target))
-				}
-				steps = append(steps, deployStep{Name: "Start stack (local host)", Status: "pending"})
+			if !jsonOut {
+				fmt.Printf("  [dry-run] Would: ssh+rsync to %s then docker compose pull + rolling restart\n", host)
+				fmt.Printf("  [dry-run] SSH key: %s\n", sshKeyPath())
+				fmt.Printf("  [dry-run] Rolling restart order: resolved at run time from the project's compose file (core services %s first, then the rest, then any plugin services last)\n", strings.Join(composeCoreOrder, " → "))
+				fmt.Printf("  [dry-run] Frontends: include=%v exclude=%v\n", includeFrontends, excludeFrontends)
 			}
-		} else if host != "" {
+			steps = append(steps, deployStep{Name: fmt.Sprintf("Push artefacts to %s", host), Status: "pending"})
+			steps = append(steps, deployStep{Name: "Rolling restart (sequenced)", Status: "pending"})
+		} else {
 			// Remote push: rsync compose file + env + migrations, then pull images
 			// and run the rolling restart on the remote host via ssh.
 			if !jsonOut {
@@ -208,20 +205,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 				return finalize(jsonOut, target, strategy, start, steps, pushErr)
 			}
 			steps = append(steps, deployStep{Name: fmt.Sprintf("Push artefacts to %s", host), Status: "done"})
-		} else {
-			// No host configured: run locally (matches v0.9.x behaviour when
-			// deploy is triggered from a session on the target machine itself).
-			if !jsonOut {
-				fmt.Println("  [running] Start stack (rolling sequenced restart, local host)")
-			}
-			restartSteps, restartErr := runRollingRestart(cmd.Context(), workdir, jsonOut)
-			steps = append(steps, restartSteps...)
-			if restartErr != nil {
-				return finalize(jsonOut, target, strategy, start, steps, restartErr)
-			}
-			if metaErr := applyLocalHasuraMetadataAfterDeploy(cmd.Context(), workdir, jsonOut); metaErr != nil {
-				return finalize(jsonOut, target, strategy, start, steps, metaErr)
-			}
 		}
 
 		// Health gate (post-restart).

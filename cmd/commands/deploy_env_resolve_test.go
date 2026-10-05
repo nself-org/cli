@@ -9,14 +9,15 @@ import (
 
 // TestDeployEnvCascadeFiles_MatchesConfigLoadOrder verifies the file list per
 // target mirrors config.Load's own cascade (internal/config/loader.go):
-// .env.dev -> .env.<target> -> .env.secrets, in that order. This is the
-// contract writeResolvedDeployEnv depends on for gap #13.
+// config.EnvCascadeOrder, the single owner of the order (.env, the env's own
+// layer, .env.secrets, .env.local; a custom env also loads .env.dev). This is
+// the contract writeResolvedDeployEnv depends on for gap #13.
 func TestDeployEnvCascadeFiles_MatchesConfigLoadOrder(t *testing.T) {
 	workdir := "/proj"
 	cases := map[string][]string{
-		"local":   {".env.dev", ".env.local"},
-		"staging": {".env.dev", ".env.staging", ".env.secrets"},
-		"prod":    {".env.dev", ".env.prod", ".env.secrets"},
+		"local":   {".env", ".env.dev", ".env.secrets", ".env.local"},
+		"staging": {".env", ".env.staging", ".env.secrets", ".env.local"},
+		"prod":    {".env", ".env.prod", ".env.secrets", ".env.local"},
 	}
 	for target, wantSuffixes := range cases {
 		got := deployEnvCascadeFiles(workdir, target)
@@ -87,8 +88,8 @@ func TestReadEnvFileOverrides_ParsesAndStripsQuotes(t *testing.T) {
 // docker-compose.yml.
 func TestWriteResolvedDeployEnv_LaterFilesOverrideEarlier(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".env.dev"), []byte("POSTGRES_DB=dev_db\nSHARED_KEY=from_dev\n"), 0o600); err != nil {
-		t.Fatalf("write .env.dev: %v", err)
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("POSTGRES_DB=dev_db\nSHARED_KEY=from_dev\n"), 0o600); err != nil {
+		t.Fatalf("write .env: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, ".env.staging"), []byte("POSTGRES_DB=staging_db\n"), 0o600); err != nil {
 		t.Fatalf("write .env.staging: %v", err)
@@ -113,10 +114,10 @@ func TestWriteResolvedDeployEnv_LaterFilesOverrideEarlier(t *testing.T) {
 		t.Errorf("expected POSTGRES_DB to be overridden by .env.staging (staging_db); got:\n%s", content)
 	}
 	if strings.Contains(content, "POSTGRES_DB=dev_db") {
-		t.Errorf("did not expect the stale .env.dev POSTGRES_DB value to survive the merge; got:\n%s", content)
+		t.Errorf("did not expect the stale .env POSTGRES_DB value to survive the merge; got:\n%s", content)
 	}
 	if !strings.Contains(content, "SHARED_KEY=from_dev") {
-		t.Errorf("expected SHARED_KEY (only in .env.dev) to be preserved; got:\n%s", content)
+		t.Errorf("expected SHARED_KEY (only in .env) to be preserved; got:\n%s", content)
 	}
 	if !strings.Contains(content, "HASURA_GRAPHQL_ADMIN_SECRET=topsecret") {
 		t.Errorf("expected .env.secrets values to be included; got:\n%s", content)

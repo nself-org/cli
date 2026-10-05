@@ -14,74 +14,48 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
+	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/controlplane"
 )
 
-// loadDeployEnvCascade loads the env file cascade for the given deploy target
-// into the current process environment. Later files override earlier ones.
-//
-// Cascade per target:
-//
-//	local      → .env.dev + .env.local
-//	staging    → .env.dev + .env.staging + .env.secrets
-//	prod       → .env.dev + .env.prod   + .env.secrets
-//	<other>    → .env.dev + .env.<env>  + .env.secrets   (never .env.prod)
-//
-// Missing files are silently skipped. The NSELF_DEPLOY_ENV env var is set
-// to the canonical target name so downstream helpers can introspect it.
-//
-// Gap #13 fix: this also sets ENV to the same canonical target name. ENV is
-// the variable config.Load (internal/config/loader.go) actually keys its own
-// file cascade on — before this fix, ENV was never set here, so the
-// subsequent 'nself build' subprocess (spawned by runDeploy via runCLISelf)
-// resolved config.Load's cascade against the default "dev" tier regardless
-// of which target this process just loaded, silently baking dev-tier values
-// (wrong POSTGRES_DB, wrong ports, etc.) into docker-compose.yml even for a
-// staging/prod deploy.
+// loadDeployEnvCascade loads target's env file cascade into the current process
+// environment, later files overriding earlier ones. The file list is the one
+// config.Load uses (internal/config.EnvCascadeOrder), so the build subprocess
+// this process spawns and the env file pushed to the host see the same values.
+// Missing files are skipped. NSELF_DEPLOY_ENV records the target for
+// subprocesses; ENV (the variable config.Load keys on, gap #13) is set to the
+// cascade environment so the child build resolves the same tier.
 func loadDeployEnvCascade(workdir, target string) {
-	files := deployEnvCascadeFiles(workdir, target)
-	for _, f := range files {
+	for _, f := range deployEnvCascadeFiles(workdir, target) {
 		if _, err := os.Stat(f); err == nil {
-			// Overload merges into os.Environ — missing files already skipped above.
 			_ = godotenv.Overload(f)
 		}
 	}
-	// Expose the resolved target so subprocesses and plugins can read it.
 	_ = os.Setenv("NSELF_DEPLOY_ENV", target)
-	// Gap #13: make config.Load's own cascade selection agree with the
-	// cascade we just loaded into this process's environment.
-	_ = os.Setenv("ENV", target)
+	_ = os.Setenv("ENV", deployCascadeEnv(workdir, target))
 }
 
-// deployEnvCascadeFiles returns the ordered list of .env files that make up
-// target's cascade, matching config.Load's own cascade order (internal/config/loader.go)
-// so the set of files loaded here and the set config.Load merges in the
-// 'nself build' subprocess are identical.
-func deployEnvCascadeFiles(workdir, target string) []string {
-	switch target {
-	case "local":
-		return []string{
-			filepath.Join(workdir, ".env.dev"),
-			filepath.Join(workdir, ".env.local"),
-		}
-	case "staging":
-		return []string{
-			filepath.Join(workdir, ".env.dev"),
-			filepath.Join(workdir, ".env.staging"),
-			filepath.Join(workdir, ".env.secrets"),
-		}
-	case "prod":
-		return []string{
-			filepath.Join(workdir, ".env.dev"),
-			filepath.Join(workdir, ".env.prod"),
-			filepath.Join(workdir, ".env.secrets"),
-		}
-	default: // a custom environment gets its own layer, never prod's
-		return []string{
-			filepath.Join(workdir, ".env.dev"),
-			filepath.Join(workdir, ".env."+target),
-			filepath.Join(workdir, ".env.secrets"),
-		}
+// deployCascadeEnv names the environment whose cascade a deploy of target
+// uses: a prod-class environment always uses "prod" (whatever its spelling:
+// production, PROD, a tier-prod name), anything else its own lowercased name.
+func deployCascadeEnv(workdir, target string) string {
+	inv, _ := controlplane.Load(workdir)
+	if prodClassFn(inv, target) {
+		return "prod"
 	}
+	return strings.ToLower(strings.TrimSpace(target))
+}
+
+// deployEnvCascadeFiles returns target's cascade as paths under workdir, from
+// config.EnvCascadeOrder (the single owner of the order, honouring
+// NSELF_LEGACY_ENV_ORDER exactly as config.Load does).
+func deployEnvCascadeFiles(workdir, target string) []string {
+	names := config.EnvCascadeOrder(deployCascadeEnv(workdir, target), config.LegacyOrderActive())
+	files := make([]string, 0, len(names))
+	for _, n := range names {
+		files = append(files, filepath.Join(workdir, n))
+	}
+	return files
 }
 
 // sshKeyPath returns the SSH key path from NSELF_DEPLOY_SSH_KEY env or the
@@ -186,7 +160,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	}
 	// Rename the pushed snapshot to the expected .env.<target> name on the
 	// remote (rsync above pushes it under its resolvedEnvPath basename).
-	renameCmd := fmt.Sprintf("cd %s && mv %s .env.%s", remotePath, filepath.Base(resolvedEnvPath), target)
+	renameCmd := fmt.Sprintf("cd %s && mv %s .env.%s", remotePath, filepath.Base(resolvedEnvPath), deployCascadeEnv(workdir, target))
 	rn := exec.CommandContext(ctx, "ssh",
 		"-i", sshKey,
 		"-o", "StrictHostKeyChecking=accept-new",

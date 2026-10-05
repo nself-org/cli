@@ -23,7 +23,7 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself completion` | account | yes | no | n/a | n/a (see below) |
 | `nself config` | config | yes | yes | n/a | n/a (see below) |
 | `nself db` | data | yes | yes | n/a | n/a (see below) |
-| `nself deploy` | deploy | yes | yes | undocumented: M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, VERCEL_TOKEN | n/a (see below) |
+| `nself deploy` | deploy | yes | yes | undocumented: API_URL, M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, VERCEL_TOKEN | n/a (see below) |
 | `nself dev` | core | yes | no | n/a | n/a (see below) |
 | `nself doctor` | core | yes | yes | undocumented: NSELF_PING_API_URL, OLLAMA_BASE_URL, OLLAMA_HOST, PLUGIN_AI_INTERNAL_URL, PLUGIN_INTERNAL_SECRET | n/a (see below) |
 | `nself env` | config | yes | yes | n/a | n/a (see below) |

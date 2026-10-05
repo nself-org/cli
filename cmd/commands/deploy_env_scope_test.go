@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
 
@@ -249,17 +250,20 @@ func TestDeployLegacyNoSilentExit(t *testing.T) {
 	}
 }
 
-// TestEnvCascadePerEnv: qa loads .env.dev, .env.qa, .env.secrets and never
-// .env.prod; prod and staging keep theirs; local is unchanged.
+// TestEnvCascadePerEnv: the deploy cascade is config.EnvCascadeOrder; qa never
+// loads .env.prod; a prod-class env always gets the prod cascade.
 func TestEnvCascadePerEnv(t *testing.T) {
 	dir := t.TempDir()
 	base := func(n string) string { return filepath.Join(dir, n) }
 	want := map[string][]string{
-		"local":   {".env.dev", ".env.local"},
-		"staging": {".env.dev", ".env.staging", ".env.secrets"},
-		"prod":    {".env.dev", ".env.prod", ".env.secrets"},
-		"qa":      {".env.dev", ".env.qa", ".env.secrets"},
-		"qa-eu":   {".env.dev", ".env.qa-eu", ".env.secrets"},
+		"local":      {".env", ".env.dev", ".env.secrets", ".env.local"},
+		"staging":    {".env", ".env.staging", ".env.secrets", ".env.local"},
+		"prod":       {".env", ".env.prod", ".env.secrets", ".env.local"},
+		"production": {".env", ".env.prod", ".env.secrets", ".env.local"},
+		"PROD":       {".env", ".env.prod", ".env.secrets", ".env.local"},
+		"qa":         {".env", ".env.dev", ".env.qa", ".env.secrets", ".env.local"},
+		"QA":         {".env", ".env.dev", ".env.qa", ".env.secrets", ".env.local"},
+		"qa-eu":      {".env", ".env.dev", ".env.qa-eu", ".env.secrets", ".env.local"},
 	}
 	for target, names := range want {
 		got := deployEnvCascadeFiles(dir, target)
@@ -384,5 +388,296 @@ func TestDbRemoteResolve(t *testing.T) {
 	assertE483(t, err)
 	if tg.Local {
 		t.Error("an unknown env must never resolve to local")
+	}
+}
+
+// ── Opus adversarial review tests (P7-DEPL-12 CRITICAL review) ──
+
+func opusWriteInv(t *testing.T, dir string, keys ...string) {
+	t.Helper()
+	envs := map[string]controlplane.Environment{}
+	for _, k := range keys {
+		envs[k] = controlplane.Environment{Name: k, Kind: "remote", Servers: []controlplane.Server{
+			{Name: "s" + strings.Map(func(r rune) rune {
+				if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+					return r
+				}
+				return 'x'
+			}, k), Role: controlplane.RoleApp, Host: "u@" + strings.ToLower(strings.Map(func(r rune) rune {
+				if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+					return r
+				}
+				return 'x'
+			}, k)) + ".example.test", SSHKeyRef: "NSELF_SSH_KEY_X", RemotePath: "/opt/nself", Primary: true},
+		}}
+	}
+	if err := controlplane.Write(dir, &controlplane.Inventory{SchemaVersion: 1, Project: "t", Environments: envs}); err != nil {
+		t.Fatalf("write inventory: %v", err)
+	}
+}
+
+func opusStubBuildPush(t *testing.T) (builds, pushes *int) {
+	t.Helper()
+	b, p := 0, 0
+	ob, op := deployBuildStepFn, remoteDeployPushFn
+	deployBuildStepFn = func(_ context.Context, _ string, s []deployStep) ([]deployStep, error) { b++; return s, nil }
+	remoteDeployPushFn = func(context.Context, string, string, string, bool) error { p++; return errors.New("stub push") }
+	t.Cleanup(func() { deployBuildStepFn, remoteDeployPushFn = ob, op })
+	return &b, &p
+}
+
+// A1: an inventory env keyed "PROD" is gated; but its cascade is .env.PROD, not .env.prod.
+func TestOpusUpperProdKey(t *testing.T) {
+	dir, p := scopeFixture(t, true)
+	opusWriteInv(t, dir, "PROD", "qa")
+	got, err := resolveTarget("prod")
+	if err != nil || got != "PROD" {
+		t.Fatalf("resolveTarget(prod) = %q, %v", got, err)
+	}
+	err = runDeployArgs(t, nil, "prod")
+	if err == nil || !strings.Contains(err.Error(), "requires --force") || len(p.hosts) != 0 {
+		t.Errorf("PROD key: gate err=%v probed=%v", err, p.hosts)
+	}
+	t.Run("cascade", func(t *testing.T) {
+		files := deployEnvCascadeFiles(dir, got)
+		joined := strings.Join(files, ",")
+		if !strings.Contains(joined, string(filepath.Separator)+".env.prod,") {
+			t.Errorf("prod-class env %q cascade = %v: never loads .env.prod (exact-case filesystems)", got, files)
+		}
+	})
+}
+
+// A2: an inventory env literally named production is prod-class but its cascade drops .env.prod.
+func TestOpusProductionKeyCascade(t *testing.T) {
+	dir, _ := scopeFixture(t, true)
+	opusWriteInv(t, dir, "production", "qa")
+	got, err := resolveTarget("production")
+	if err != nil || got != "production" {
+		t.Fatalf("resolveTarget(production) = %q, %v", got, err)
+	}
+	if !controlplane.IsProdClass(nil, got) {
+		t.Fatal("production must be prod-class")
+	}
+	files := deployEnvCascadeFiles(dir, got)
+	if !strings.Contains(strings.Join(files, ","), ".env.prod,") {
+		t.Errorf("prod-class env production cascade = %v: .env.prod never loaded", files)
+	}
+}
+
+// A3: synthesized env whose host var spelling differs is refused before any build.
+func TestOpusHostVarMismatchRefusedBeforeBuild(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	isolateDeployEnv(t)
+	builds, pushes := opusStubBuildPush(t)
+	t.Setenv("NSELF_DEPLOY_HOST_qa", "u@qa.example.test:/opt/nself")
+	if got, err := resolveTarget("qa"); err != nil || got != "qa" {
+		t.Fatalf("resolveTarget(qa) = %q, %v (synthesized env expected)", got, err)
+	}
+	for _, flags := range []map[string]string{nil, {"dry-run": "true"}} {
+		assertE483(t, runDeployArgs(t, flags, "qa"))
+	}
+	if *builds != 0 || *pushes != 0 {
+		t.Errorf("builds=%d pushes=%d, want none", *builds, *pushes)
+	}
+}
+
+// A4: hostile names never resolve, and hostile inventory keys are unreachable.
+func TestOpusHostileNames(t *testing.T) {
+	dir, p := scopeFixture(t, false)
+	opusWriteInv(t, dir, "qa", "staging", "prod", "../prod", "qa;id", "prod ", "x=y")
+	for _, bad := range []string{"../prod", "qa;id", "qa$(id)", "prod ", " prod/", "x=y", ".env", "-prod", "prod\x00", "qa`id`", "QA/../prod", "qa,prod", "*"} {
+		got, err := resolveTarget(bad)
+		if strings.TrimSpace(bad) == "prod" {
+			if got != "prod" {
+				t.Errorf("%q -> %q, want prod (trim)", bad, got)
+			}
+			continue
+		}
+		if err == nil {
+			t.Errorf("resolveTarget(%q) = %q, want E483", bad, got)
+		}
+	}
+	p.hosts = nil
+	_ = runDeployArgs(t, map[string]string{"dry-run": "true"}, "qa;id")
+	if len(p.hosts) != 0 {
+		t.Errorf("hostile name probed %v", p.hosts)
+	}
+}
+
+// A5: legacy custom env dry-run neither builds nor pushes.
+func TestOpusLegacyDryRunCustomEnv(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	isolateDeployEnv(t)
+	builds, pushes := opusStubBuildPush(t)
+	t.Setenv("NSELF_DEPLOY_HOST_QA", "u@qa.example.test:/opt/nself")
+	if err := runDeployArgs(t, map[string]string{"dry-run": "true"}, "qa"); err != nil {
+		t.Fatalf("dry-run: %v", err)
+	}
+	if *builds != 0 || *pushes != 0 {
+		t.Errorf("dry-run builds=%d pushes=%d", *builds, *pushes)
+	}
+}
+
+// A6: the DEPL-12 gate runs before blue/green, whose own gate only knows "prod".
+func TestOpusGateBeforeBlueGreen(t *testing.T) {
+	dir, _ := scopeFixture(t, true)
+	opusWriteInv(t, dir, "production", "qa")
+	t.Setenv("NSELF_FEATURE_BLUE_GREEN_DEPLOY", "true")
+	err := runDeployArgs(t, map[string]string{"canary": "10"}, "production")
+	if err == nil || !strings.HasPrefix(err.Error(), "production deploy requires --force") {
+		t.Errorf("blue/green production without --force: %v, want the DEPL-12 gate first", err)
+	}
+}
+
+// A7 (out of scope, loader): what the build subprocess sees for a custom env.
+func TestOpusLoaderCustomEnvLayer(t *testing.T) {
+	dir := t.TempDir()
+	isolateDeployEnv(t)
+	t.Setenv("BASE_DOMAIN", "")
+	t.Setenv("NSELF_LEGACY_ENV_ORDER", "")
+	for n, b := range map[string]string{".env": "BASE_DOMAIN=base.example.test\n", ".env.qa": "BASE_DOMAIN=qa.example.test\n", ".env.prod": "BASE_DOMAIN=prod.example.test\n"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loadDeployEnvCascade(dir, "qa") // parent: sets ENV=qa and BASE_DOMAIN=qa
+	if os.Getenv("BASE_DOMAIN") != "qa.example.test" {
+		t.Fatalf("parent cascade BASE_DOMAIN=%q", os.Getenv("BASE_DOMAIN"))
+	}
+	cfg, err := config.Load(dir) // what `nself build` (runCLISelf child, inherited env) does
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BaseDomain == "prod.example.test" {
+		t.Fatalf("qa build saw prod values")
+	}
+	if cfg.BaseDomain != "qa.example.test" {
+		t.Errorf("qa build BASE_DOMAIN=%q, want qa.example.test (.env overrides .env.qa in the build)", cfg.BaseDomain)
+	}
+}
+
+// TestDeployCascadeMatchesBuild: Codex scenario. .env sets API_URL=prod-base and
+// .env.qa sets API_URL=qa. The parent's cascade, the child build's config.Load
+// and the snapshot shipped to the host must all say qa.
+func TestDeployCascadeMatchesBuild(t *testing.T) {
+	dir := t.TempDir()
+	isolateDeployEnv(t)
+	t.Setenv("API_URL", "")
+	t.Setenv("NSELF_LEGACY_ENV_ORDER", "")
+	for n, b := range map[string]string{".env": "API_URL=prod-base\nBASE_ONLY=1\n", ".env.qa": "API_URL=qa\n", ".env.prod": "API_URL=prod\n"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loadDeployEnvCascade(dir, "qa")
+	if _, err := config.Load(dir); err != nil { // what the child `nself build` runs
+		t.Fatal(err)
+	}
+	if got := os.Getenv("API_URL"); got != "qa" {
+		t.Errorf("build saw API_URL=%q, want qa", got)
+	}
+	snap, cleanup, err := writeResolvedDeployEnv(dir, "qa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	b, _ := os.ReadFile(snap)
+	if !strings.Contains(string(b), "API_URL=qa\n") || strings.Contains(string(b), "prod") || !strings.Contains(string(b), "BASE_ONLY=1") {
+		t.Errorf("shipped snapshot disagrees with the build:\n%s", b)
+	}
+}
+
+// TestDeployNoHostRefusedBeforeBuild: staging and prod with no host (no
+// inventory, no variable) are refused with E483 before any build, dry-run
+// included; they never fall back to deploying on this machine.
+func TestDeployNoHostRefusedBeforeBuild(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	isolateDeployEnv(t)
+	builds, pushes := opusStubBuildPush(t)
+	for _, env := range []string{"staging", "prod", "production"} {
+		for _, flags := range []map[string]string{{"force": "true"}, {"dry-run": "true"}} {
+			assertE483(t, runDeployArgs(t, flags, env))
+		}
+	}
+	if *builds != 0 || *pushes != 0 {
+		t.Errorf("builds=%d pushes=%d, want none", *builds, *pushes)
+	}
+}
+
+// TestBlueGreenRemoteRefused: blue/green drives the local stack, so a remote
+// env is refused before any side effect, whatever its name.
+func TestBlueGreenRemoteRefused(t *testing.T) {
+	scopeFixture(t, true)
+	builds, pushes := opusStubBuildPush(t)
+	t.Setenv("NSELF_FEATURE_BLUE_GREEN_DEPLOY", "true")
+	for _, env := range []string{"qa", "staging"} {
+		for _, flags := range []map[string]string{{"canary": "10"}, {"skip-canary": "true"}, {"canary": "10", "dry-run": "true"}} {
+			err := runDeployArgs(t, flags, env)
+			if err == nil || !strings.Contains(err.Error(), "local target only") {
+				t.Errorf("deploy %s %v: err = %v, want the blue/green local-only refusal", env, flags, err)
+			}
+		}
+	}
+	if *builds != 0 || *pushes != 0 {
+		t.Errorf("builds=%d pushes=%d, want none", *builds, *pushes)
+	}
+}
+
+// TestPipelineFailedServerExitsNonZero: a server whose deploy fails makes the
+// pipeline deploy fail, naming it. The ssh and rsync on PATH are fakes that
+// exit 1 (and PATH holds nothing else), so no host is contacted.
+func TestPipelineFailedServerExitsNonZero(t *testing.T) {
+	dir, _ := scopeFixture(t, false)
+	bin := t.TempDir()
+	for _, n := range []string{"ssh", "rsync"} {
+		if err := os.WriteFile(filepath.Join(bin, n), []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	key := filepath.Join(bin, "key")
+	if err := os.WriteFile(key, []byte("k"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("NSELF_SSH_KEY_X", key)
+	if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := runDeployArgs(t, nil, "qa")
+	if err == nil || !strings.Contains(err.Error(), "qa/qa-app") || !strings.Contains(err.Error(), "failed") {
+		t.Errorf("failed server must fail the deploy and be listed, got %v", err)
+	}
+}
+
+// TestInventoryCaseCollisionRefused: two inventory keys that differ only by
+// case make the name ambiguous; it is refused, never guessed.
+func TestInventoryCaseCollisionRefused(t *testing.T) {
+	dir, p := scopeFixture(t, false)
+	opusWriteInv(t, dir, "qa", "QA", "staging")
+	for _, in := range []string{"qa", "QA"} {
+		if got, err := resolveTarget(in); err == nil {
+			t.Errorf("resolveTarget(%q) = %q with colliding keys, want E483", in, got)
+		}
+	}
+	assertE483(t, runDeployArgs(t, map[string]string{"dry-run": "true"}, "qa"))
+	if len(p.hosts) != 0 {
+		t.Errorf("ambiguous env probed %v", p.hosts)
+	}
+}
+
+// TestProdClassCascadeIsProd: whatever makes an env prod-class (here the
+// prodClassFn seam standing in for the tier lookup of P7-DEPL-13), it gets the
+// prod cascade, never a layer named after itself.
+func TestProdClassCascadeIsProd(t *testing.T) {
+	dir := t.TempDir()
+	orig := prodClassFn
+	prodClassFn = func(_ *controlplane.Inventory, env string) bool { return env == "live" || orig(nil, env) }
+	t.Cleanup(func() { prodClassFn = orig })
+	got := strings.Join(deployEnvCascadeFiles(dir, "live"), ",")
+	if !strings.Contains(got, ".env.prod,") || strings.Contains(got, ".env.live") {
+		t.Errorf("prod-class live cascade = %s, want the prod cascade", got)
 	}
 }
