@@ -1,0 +1,5 @@
+mode: atomic
+github.com/nself-org/cli/internal/auth/auth.go:10.1,12.2 9 9
+github.com/nself-org/cli/internal/auth/auth.go:14.1,15.2 1 0
+github.com/nself-org/cli/internal/license/license.go:20.1,22.2 5 1
+github.com/nself-org/cli/internal/license/license.go:24.1,26.2 5 0
