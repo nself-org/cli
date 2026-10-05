@@ -4,6 +4,7 @@ package tablehash
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -46,7 +47,13 @@ func startPostgres(t *testing.T, image string) string {
 // parameters (session defaults that the hash must be immune to).
 func connect(t *testing.T, ip string, params map[string]string) *pgx.Conn {
 	t.Helper()
-	cfg, err := pgx.ParseConfig(fmt.Sprintf("postgresql://postgres:it-pass@%s:5432/postgres?sslmode=disable", ip))
+	return connectDB(t, ip, "postgres", params)
+}
+
+// connectDB is connect to a named database.
+func connectDB(t *testing.T, ip, dbname string, params map[string]string) *pgx.Conn {
+	t.Helper()
+	cfg, err := pgx.ParseConfig(fmt.Sprintf("postgresql://postgres:it-pass@%s:5432/%s?sslmode=disable", ip, dbname))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,6 +219,63 @@ func TestTablehashIntegration(t *testing.T) {
 		}
 		if r := hashOf(t, conn, "public", "parted"); r.Rows != 50 {
 			t.Errorf("a partitioned parent covers its partitions: %+v", r)
+		}
+	})
+
+	t.Run("row level security fails loudly, never hashes a filtered table", func(t *testing.T) {
+		mustExec(t, conn, `CREATE TABLE rls_a (id int, v text)`)
+		mustExec(t, conn, `CREATE TABLE rls_b (id int, v text)`)
+		mustExec(t, conn, `INSERT INTO rls_a VALUES (1, 'secret'), (2, 'x')`)
+		mustExec(t, conn, `INSERT INTO rls_b VALUES (99, 'different')`)
+		mustExec(t, conn, `ALTER TABLE rls_a ENABLE ROW LEVEL SECURITY`)
+		mustExec(t, conn, `ALTER TABLE rls_b ENABLE ROW LEVEL SECURITY`)
+		mustExec(t, conn, `CREATE ROLE rls_r NOLOGIN`)
+		mustExec(t, conn, `GRANT SELECT ON rls_a, rls_b TO rls_r`)
+		a, b := hashOf(t, conn, "public", "rls_a"), hashOf(t, conn, "public", "rls_b")
+		if a.Rows != 2 || b.Rows != 1 || a.Hash == b.Hash {
+			t.Fatalf("superuser must see every row: a=%+v b=%+v", a, b)
+		}
+		mustExec(t, conn, `SET ROLE rls_r`)
+		defer mustExec(t, conn, `RESET ROLE`)
+		for _, name := range []string{"rls_a", "rls_b"} {
+			res, _, err := Snapshot(context.Background(), conn, []Table{{"public", name}})
+			if err == nil || !strings.Contains(err.Error(), "row-level security") || len(res) != 0 {
+				t.Errorf("%s as a role without BYPASSRLS: res=%v err=%v, want the row-level security error", name, res, err)
+			}
+		}
+		var rs string
+		if err := conn.QueryRow(context.Background(), "SHOW row_security").Scan(&rs); err != nil || rs != "on" {
+			t.Errorf("row_security after a failed Snapshot = %q (%v), want it restored to on", rs, err)
+		}
+	})
+
+	t.Run("reg columns print the same under any search_path", func(t *testing.T) {
+		mustExec(t, conn, `CREATE SCHEMA app`)
+		mustExec(t, conn, `CREATE TABLE app.ref (id int, rc regclass)`)
+		mustExec(t, conn, `INSERT INTO app.ref VALUES (1, 'app.ref')`)
+		mustExec(t, conn, `SET search_path = public`)
+		r1 := hashOf(t, conn, "app", "ref")
+		mustExec(t, conn, `SET search_path = app, public`)
+		r2 := hashOf(t, conn, "app", "ref")
+		mustExec(t, conn, `RESET search_path`)
+		if r1 != r2 {
+			t.Errorf("hash depends on search_path: %+v vs %+v", r1, r2)
+		}
+		var sp string
+		_ = conn.QueryRow(context.Background(), "SHOW search_path").Scan(&sp)
+		if strings.Contains(sp, "pg_catalog") && !strings.Contains(sp, "public") {
+			t.Errorf("search_path left as %q", sp)
+		}
+	})
+
+	t.Run("a non-UTF8 database is refused", func(t *testing.T) {
+		mustExec(t, conn, `CREATE DATABASE lat1 ENCODING 'LATIN1' TEMPLATE template0 LC_COLLATE 'C' LC_CTYPE 'C'`)
+		lc := connectDB(t, ip, "lat1", nil)
+		mustExec(t, lc, `CREATE TABLE w (v text)`)
+		mustExec(t, lc, `INSERT INTO w VALUES (E'caf\u00e9')`)
+		_, _, err := Snapshot(context.Background(), lc, []Table{{"public", "w"}})
+		if !errors.Is(err, ErrNotUTF8) {
+			t.Fatalf("LATIN1 database: err = %v, want ErrNotUTF8", err)
 		}
 	})
 

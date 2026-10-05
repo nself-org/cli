@@ -16,6 +16,7 @@ type fakeDB struct {
 	queries   []string
 	settings  map[string]string
 	failQuery bool
+	encoding  string // server_encoding served; "" means UTF8
 }
 
 type fakeRow struct {
@@ -46,6 +47,12 @@ func (f *fakeDB) Exec(_ context.Context, sql string, args ...any) (pgconn.Comman
 
 func (f *fakeDB) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 	if strings.HasPrefix(sql, "SELECT current_setting") {
+		if args[0] == "server_encoding" {
+			if f.encoding != "" {
+				return fakeRow{vals: []any{f.encoding}}
+			}
+			return fakeRow{vals: []any{"UTF8"}}
+		}
 		return fakeRow{vals: []any{"orig-" + args[0].(string)}}
 	}
 	f.queries = append(f.queries, sql)
@@ -110,7 +117,8 @@ func TestSnapshotQuotesValidatesAndRestores(t *testing.T) {
 		fixed[s[0]] = s[1]
 	}
 	for k, v := range map[string]string{"TimeZone": "UTC", "DateStyle": "ISO", "IntervalStyle": "postgres",
-		"extra_float_digits": "3", "bytea_output": "hex", "lc_monetary": "C", "statement_timeout": "0"} {
+		"extra_float_digits": "3", "bytea_output": "hex", "lc_monetary": "C", "statement_timeout": "0",
+		"row_security": "off", "search_path": "pg_catalog"} {
 		if fixed[k] != v {
 			t.Errorf("Settings[%s] = %q, want %q", k, fixed[k], v)
 		}
@@ -136,5 +144,16 @@ func TestSnapshotQueryErrorRestoresSettings(t *testing.T) {
 	}
 	if db.settings["TimeZone"] != "orig-TimeZone" {
 		t.Error("settings must be restored after an error")
+	}
+}
+
+func TestSnapshotRefusesNonUTF8(t *testing.T) {
+	db := &fakeDB{settings: map[string]string{}, encoding: "LATIN1"}
+	_, _, err := Snapshot(context.Background(), db, []Table{{"public", "t"}})
+	if !errors.Is(err, ErrNotUTF8) || !strings.Contains(err.Error(), "LATIN1") {
+		t.Fatalf("want ErrNotUTF8 naming LATIN1, got %v", err)
+	}
+	if len(db.execs)+len(db.queries) != 0 {
+		t.Error("a non-UTF8 database must be refused before any setting or query runs")
 	}
 }

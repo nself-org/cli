@@ -9,14 +9,25 @@
 // form, so the session settings below are fixed first. They make the text form
 // identical across servers, session defaults and Postgres 14-17.
 //
+// Three more rules keep two equal hashes meaning equal data:
+//   - row_security is off, as pg_dump runs: a role that cannot read every row
+//     gets the "affected by row-level security policy" error, never a hash of
+//     a filtered table;
+//   - search_path is pg_catalog, so regclass, regtype and the other reg*
+//     columns print schema-qualified whatever the session default is;
+//   - the database must be UTF8: the hash is over the server-encoding bytes,
+//     so a LATIN1 source would report a false mismatch on non-ASCII text.
+//
 // Layering: L1; imports only pgx and the standard library.
 package tablehash
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -32,7 +43,12 @@ var Settings = [][2]string{
 	{"bytea_output", "hex"},
 	{"lc_monetary", "C"},
 	{"statement_timeout", "0"},
+	{"row_security", "off"},
+	{"search_path", "pg_catalog"},
 }
+
+// ErrNotUTF8 is returned when the database encoding is not UTF8.
+var ErrNotUTF8 = errors.New("tablehash: the database encoding is not UTF8; its row hashes cannot be compared with another database's")
 
 // IdentifierPattern is the accepted shape of a schema or table name part.
 const IdentifierPattern = `^[A-Za-z_][A-Za-z0-9_]{0,62}$`
@@ -95,6 +111,9 @@ func Snapshot(ctx context.Context, db DB, tables []Table) ([]Result, []Unverifia
 	if len(ok) == 0 {
 		return nil, bad, nil
 	}
+	if err := requireUTF8(ctx, db); err != nil {
+		return nil, nil, err
+	}
 	restore, err := applySettings(ctx, db)
 	if err != nil {
 		return nil, nil, err
@@ -116,6 +135,18 @@ func Snapshot(ctx context.Context, db DB, tables []Table) ([]Result, []Unverifia
 
 func less(a, b Table) bool {
 	return a.Schema < b.Schema || (a.Schema == b.Schema && a.Name < b.Name)
+}
+
+// requireUTF8 refuses a database whose server encoding is not UTF8.
+func requireUTF8(ctx context.Context, db DB) error {
+	var enc string
+	if err := db.QueryRow(ctx, "SELECT current_setting($1)", "server_encoding").Scan(&enc); err != nil {
+		return fmt.Errorf("tablehash: read server_encoding: %w", err)
+	}
+	if !strings.EqualFold(enc, "UTF8") {
+		return fmt.Errorf("%w (it is %s)", ErrNotUTF8, enc)
+	}
+	return nil
 }
 
 // applySettings sets every setting for the session and returns a function that
