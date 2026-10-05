@@ -12,7 +12,7 @@ import (
 // v1, internal/errs/exit_codes.go). execute turns a panic into an error first.
 // Rendering and exit-status rules live in report.go and report_legacy.go.
 func main() {
-	if err := execute(commands.Execute); err != nil {
+	if err := execute(commands.Execute, os.Stderr); err != nil {
 		os.Exit(report(err, os.Stdout, os.Stderr, os.Args[1:]))
 	}
 }

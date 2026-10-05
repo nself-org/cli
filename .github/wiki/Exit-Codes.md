@@ -31,7 +31,7 @@ In this order, the first rule that matches wins:
 4. The error wraps a known failure (for example Docker not running): the class of its code. When several are joined, the highest class wins: auth, then destructive, then infra, then user.
 5. Anything else: 1.
 
-A panic that escapes a command is recovered, reported as `internal error: <value>` and exits 1. In v1.4 mode it crashes as before.
+A panic that escapes a command is recovered and reported as `internal error: <value>` with exit 2 (infra, the status a Go crash already gives). The stack trace goes to stderr only, never into the JSON envelope. In v1.4 mode it crashes with the raw Go trace as before.
 
 ## Exceptions
 
