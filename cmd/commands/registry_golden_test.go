@@ -40,12 +40,21 @@ var generatedLine = regexp.MustCompile(`(?m)\A\{\n  "_generated": "[^\n]*",\n`)
 // exactly what init() registered, independent of test order.
 const goldenChild = "NSELF_REGISTRY_GOLDEN_CHILD"
 
+// goldenSentinel is printed by the child only after the byte comparison
+// succeeded. The wrapper requires it, so a child that ran no test (renamed
+// test, wrong -run pattern) cannot pass silently: `go test` exits 0 then.
+const goldenSentinel = "REGISTRY-GOLDEN-CHECKED"
+
 func TestRegistryGolden(t *testing.T) {
 	if os.Getenv(goldenChild) == "" {
-		cmd := exec.Command(os.Args[0], "-test.run=^TestRegistryGolden$", "-test.count=1")
+		cmd := exec.Command(os.Args[0], "-test.run=^TestRegistryGolden$", "-test.count=1", "-test.v")
 		cmd.Env = append(os.Environ(), goldenChild+"=1")
-		if out, err := cmd.CombinedOutput(); err != nil {
+		out, err := cmd.CombinedOutput()
+		if err != nil {
 			t.Fatalf("golden check in a fresh process failed: %v\n%s", err, out)
+		}
+		if !bytes.Contains(out, []byte(goldenSentinel)) || !bytes.Contains(out, []byte("--- PASS: TestRegistryGolden")) {
+			t.Fatalf("the fresh process did not run the golden check (no %s and PASS line); output:\n%s", goldenSentinel, out)
 		}
 		return
 	}
@@ -73,6 +82,7 @@ func TestRegistryGolden(t *testing.T) {
 			"line in internal/canon/canon.yaml (see wiki Command-Registry). First difference:\n%s",
 			committedRegistry, firstDiff(got, want))
 	}
+	t.Log(goldenSentinel)
 }
 
 // firstDiff names the first differing line, for a readable failure.
