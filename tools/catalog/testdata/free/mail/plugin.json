@@ -1,0 +1,55 @@
+{
+  "name": "mail",
+  "version": "1.2.6",
+  "description": "Send transactional and broadcast email through the nSelf stack: mux + Postmark pipeline via ping_api, template management, and DKIM verification.",
+  "author": "nself",
+  "license": "MIT",
+  "isCommercial": false,
+  "licenseType": "free",
+  "requiredEntitlements": [],
+  "requires_license": false,
+  "homepage": "https://nself.org/plugins",
+  "repository": "https://github.com/nself-org/plugins-pro",
+  "minNselfVersion": "1.2.8",
+  "language": "go",
+  "pluginType": "cli",
+  "entryPoint": "cmd/",
+  "binaryName": "nself-mail",
+  "category": "communication",
+  "tags": [
+    "mail",
+    "email",
+    "postmark",
+    "transactional",
+    "broadcast"
+  ],
+  "tables": [],
+  "webhooks": {},
+  "actions": {
+    "send": "Send a single transactional email",
+    "broadcast": "Send a broadcast to a list using a saved template",
+    "status": "Query delivery status for a sent message",
+    "templates": "Manage Postmark templates (list)",
+    "dkim": "Manage DKIM (verify)"
+  },
+  "envVars": {
+    "required": [],
+    "optional": [
+      "NSELF_PING_API_URL",
+      "NSELF_PLUGIN_LICENSE_KEY",
+      "NSELF_LICENSE_KEY_1"
+    ]
+  },
+  "hooks": {
+    "postInstall": null,
+    "preUninstall": null,
+    "postSync": null
+  },
+  "status": "stable",
+  "tier": "free",
+  "dependencies": {
+    "required": [],
+    "optional": []
+  },
+  "notes": "This is a CLI-proxy plugin, not a service plugin: it has no port, no HTTP server, and no database tables of its own \u2014 it calls ping_api (default https://ping.nself.org), which proxies to the mux + transactional-email (Postmark) pro plugins. `nself plugin install mail` must place the built nself-mail binary at ~/.nself/plugins/bin/nself-mail, where internal/plugin/router.go's ProxyCommand execs it for `nself mail <args>` with stdio inherited. Extracted from cli/cmd/commands/mail.go, mail_transactional.go, and mail_admin.go under CLI-R11. Requires an nSelf+ or nClaw bundle license (matching the underlying transactional-email plugin's requires_license: true); exits 2 with a clear message when no license key is configured, exactly as the in-core command did."
+}

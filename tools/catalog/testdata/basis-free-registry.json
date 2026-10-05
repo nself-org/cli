@@ -1,0 +1,629 @@
+{
+  "_note": "trimmed copy of the committed nself-org/plugins registry.json entries (ffef5f4) for the free fixtures; v1.4.12 binary-name logic is run over these and over the generated entries",
+  "plugins": {
+    "ai-cli": {
+      "author": "nself",
+      "category": "automation",
+      "checksum": "e2964b8879a049798f21a6786005e2c97742cdb2db1aadfe3a1ccc0387865b3e",
+      "checksums": {
+        "platforms": {
+          "darwin-amd64": "e03c871819cc098e91d862a55ecc993a4a6e7b6f30c7f75bd7b213e94de05f2e",
+          "darwin-arm64": "1192b90d396c7d4320c61ad85ba596fa541e2ec092f2ad6221c761067744375f",
+          "linux-amd64": "9fb51a82db3e77d4ab6188391cd49eabbf088035c2b3594d89dcd3ce43eda9b1",
+          "linux-arm64": "893321058a0cd6937d240ef57668fc32219d3f5df32ae5953365a3794172182a",
+          "windows-amd64": "b35900c56281585f28500b77e5037d6c8340f42945d004f76292cdc78db01c9d"
+        },
+        "sha256": "e2964b8879a049798f21a6786005e2c97742cdb2db1aadfe3a1ccc0387865b3e"
+      },
+      "dependencies": [],
+      "description": "AI operations for nSelf: chat, local Ollama model management, and Gemini API key pool provisioning and rotation.",
+      "download_url": "https://plugins.nself.org/plugins/ai-cli/tarball",
+      "implementation": {
+        "binaryName": "nself-ai",
+        "entryPoint": "cmd/",
+        "language": "go",
+        "pluginType": "cli",
+        "runtime": "go"
+      },
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "1.2.8",
+      "min_nself_version": "1.2.8",
+      "name": "ai-cli",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [],
+      "tags": [
+        "ai",
+        "ollama",
+        "gemini",
+        "llm",
+        "models",
+        "pool"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/ai-cli-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/ai-cli-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    },
+    "content-acquisition": {
+      "author": "nself",
+      "category": "media",
+      "checksum": "e46fd6c617e6fc5347458cc901b6f2ac79da7fa71f7067e72e9f0b115ef64061",
+      "checksums": {
+        "sha256": "e46fd6c617e6fc5347458cc901b6f2ac79da7fa71f7067e72e9f0b115ef64061"
+      },
+      "dependencies": [
+        "@nself/plugin-utils",
+        "fastify",
+        "@fastify/cors",
+        "@fastify/rate-limit",
+        "commander",
+        "feedparser",
+        "axios",
+        "node-cron",
+        "bullmq",
+        "ioredis",
+        "json-logic-js",
+        "pg",
+        "dotenv",
+        "uuid",
+        "winston",
+        "chalk",
+        "ora"
+      ],
+      "description": "Content acquisition with download rules engine. Planned: RSS feed monitoring, release calendar integration, automated download orchestration",
+      "download_url": "https://plugins.nself.org/plugins/content-acquisition/tarball",
+      "implementation": {
+        "entryPoint": "cmd/main.go",
+        "language": "go",
+        "runtime": "go"
+      },
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "1.0.0",
+      "min_nself_version": "1.0.0",
+      "name": "content-acquisition",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [
+        "np_contentacquisition_profiles",
+        "np_contentacquisition_acquisition_subscriptions",
+        "np_contentacquisition_rss_feeds",
+        "np_contentacquisition_rss_feed_items",
+        "np_contentacquisition_release_calendar",
+        "np_contentacquisition_acquisition_queue",
+        "np_contentacquisition_acquisition_history",
+        "np_contentacquisition_acquisition_rules"
+      ],
+      "tags": [
+        "content",
+        "download",
+        "rss",
+        "media",
+        "automation"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/content-acquisition-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/content-acquisition-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    },
+    "cron": {
+      "author": "nself",
+      "category": "automation",
+      "checksum": "4c762dd8f05cd330b9547b1d8b688f5fc36ee94bbec2681fd1f33c81e1701566",
+      "checksums": {
+        "sha256": "4c762dd8f05cd330b9547b1d8b688f5fc36ee94bbec2681fd1f33c81e1701566"
+      },
+      "dependencies": [],
+      "description": "Cron job scheduler. Register jobs with standard cron syntax, execute via HTTP callbacks, track run history.",
+      "download_url": "https://plugins.nself.org/plugins/cron/tarball",
+      "implementation": {
+        "entryPoint": "cmd/main.go",
+        "language": "go",
+        "runtime": "go"
+      },
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "0.9.9",
+      "min_nself_version": "0.9.9",
+      "name": "cron",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [
+        "np_cron_jobs",
+        "np_cron_runs"
+      ],
+      "tags": [
+        "cron",
+        "scheduler",
+        "jobs",
+        "automation",
+        "webhooks"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/cron-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/cron-1.2.6.tar.gz",
+      "tier": "free",
+      "tier_pair": true,
+      "version": "1.2.6"
+    },
+    "encryption": {
+      "author": "nself",
+      "category": "compliance",
+      "checksum": "0d82c1941016675e01b72a4f95c0cc5196960a34022bcb211a662053eaa1c4ae",
+      "checksums": {
+        "platforms": {
+          "darwin-amd64": "2407f0cccd8aca3b64248844e5395b0e20ec77e56c03ece3ca2795bcb0386519",
+          "darwin-arm64": "a896750b261d78f03a1ca9f98f8be14c818834fe1e1480f5b8ba61ed159037ea",
+          "linux-amd64": "9879379bc7934a9cf5de170deccf9740be12c2722b5e7d0b5468f09f4c71e7f3",
+          "linux-arm64": "89840f2a6cc2767bbe651e35b0516158fd55ea5654517c24136e187838b2b358",
+          "windows-amd64": "b657e303c3808e62268de642b56037ffd94417307f42d530cf9ae5ab9a127bfc"
+        },
+        "sha256": "0d82c1941016675e01b72a4f95c0cc5196960a34022bcb211a662053eaa1c4ae"
+      },
+      "dependencies": [],
+      "description": "Bring Your Own Key (BYOK) per-tenant envelope encryption for nSelf Cloud: AWS KMS, GCP Cloud KMS, and HashiCorp Vault Transit, with key rotation and an audit trail.",
+      "download_url": "https://plugins.nself.org/plugins/encryption/tarball",
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "1.2.8",
+      "min_nself_version": "1.2.8",
+      "name": "encryption",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [],
+      "tags": [
+        "encryption",
+        "byok",
+        "kms",
+        "enterprise",
+        "security"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/encryption-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/encryption-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    },
+    "mail": {
+      "author": "nself",
+      "category": "communication",
+      "checksum": "62a41d8c670e3625d20a75b5d33ed71b258f0e9af69ad2fd878322facb308902",
+      "checksums": {
+        "platforms": {
+          "darwin-amd64": "fa165817f4c8e0fb9e945cbb0139d5c88c4701e3f0454f059e756943095bc28e",
+          "darwin-arm64": "5fcabb2cdfb57eaf6977abaaf1c1863004f135e052ccaf00c26d2f419f36a369",
+          "linux-amd64": "8bf57ec2207d6f657d81eb40c831f1e85cd472e1038709d7de6b3a069dbf7fe2",
+          "linux-arm64": "d5b527d1d7e9386835679cf155b2e1fbf2cf02ea5b5f7a8eb2c40d9f402710c9",
+          "windows-amd64": "0143fb043a1f10b91ffdc2a38a66a4238c5076510fd8db3268c36da381cc2c20"
+        },
+        "sha256": "62a41d8c670e3625d20a75b5d33ed71b258f0e9af69ad2fd878322facb308902"
+      },
+      "dependencies": [],
+      "description": "Send transactional and broadcast email through the nSelf stack: mux + Postmark pipeline via ping_api, template management, and DKIM verification.",
+      "download_url": "https://plugins.nself.org/plugins/mail/tarball",
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "1.2.8",
+      "min_nself_version": "1.2.8",
+      "name": "mail",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [],
+      "tags": [
+        "mail",
+        "email",
+        "postmark",
+        "transactional",
+        "broadcast"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/mail-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/mail-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    },
+    "pentest-kit": {
+      "author": "nself",
+      "category": "compliance",
+      "checksum": "643a7b8aa09033fa6c9407d5d51d610994c7abf37c5f51d2d7f451e66ed4feaf",
+      "checksums": {
+        "platforms": {
+          "darwin-amd64": "f91ef7b7c2fcb20d40716e61677d6843a3c0d306bf8318d9d4a406621bfccfc4",
+          "darwin-arm64": "c1359da946325bac5ef06edc732c76a4b10c0a1615ea1276375e15b28f30ab67",
+          "linux-amd64": "f7bfb8279fd4a3378c42faeacc9f58d815c522e66b31645505d89c7e9035d598",
+          "linux-arm64": "ad1f44b7d4ea206dbbade42fe623d0b7640ed14db07dae159c7efb5e9419a540",
+          "windows-amd64": "db32e3edda39e5af228644705018fa9fa960a579eac8cba28fdf589f441570b3"
+        },
+        "sha256": "643a7b8aa09033fa6c9407d5d51d610994c7abf37c5f51d2d7f451e66ed4feaf"
+      },
+      "dependencies": [],
+      "description": "CLI front end for the pentest plugin: generate scope documents, provision test credentials, import findings, and check remediation status from `nself pentest-kit`. Business+ tier.",
+      "download_url": "https://plugins.nself.org/plugins/pentest-kit/tarball",
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "1.2.8",
+      "min_nself_version": "1.2.8",
+      "name": "pentest-kit",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [],
+      "tags": [
+        "pentest",
+        "security",
+        "compliance",
+        "cli"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/pentest-kit-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/pentest-kit-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    },
+    "retro-gaming": {
+      "author": "nself",
+      "category": "media",
+      "checksum": "7bc363ad1b2cc0920d15bad65d5a19ec5279e98333042c1286b951daae7cd365",
+      "checksums": {
+        "sha256": "7bc363ad1b2cc0920d15bad65d5a19ec5279e98333042c1286b951daae7cd365"
+      },
+      "dependencies": [],
+      "description": "Retro gaming ROM library management, emulator core serving, save state synchronization, play sessions, and controller configuration for nself-tv",
+      "download_url": "https://plugins.nself.org/plugins/retro-gaming/tarball",
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "1.0.0",
+      "min_nself_version": "1.0.0",
+      "name": "retro-gaming",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [],
+      "tags": [
+        "retro-gaming",
+        "roms",
+        "emulator",
+        "save-states",
+        "controller",
+        "nself-tv",
+        "igdb",
+        "libretro"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/retro-gaming-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/retro-gaming-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    },
+    "search": {
+      "author": "nself",
+      "bundles": [
+        "task"
+      ],
+      "category": "infrastructure",
+      "checksum": "dcaccbc59393a4970deaec123a43999f6ad2b089c6b02146803490a10c4b402b",
+      "checksums": {
+        "sha256": "dcaccbc59393a4970deaec123a43999f6ad2b089c6b02146803490a10c4b402b"
+      },
+      "dependencies": [],
+      "description": "Full-text search engine with PostgreSQL FTS and MeiliSearch support",
+      "download_url": "https://plugins.nself.org/plugins/search/tarball",
+      "implementation": {
+        "entryPoint": "cmd/main.go",
+        "language": "go",
+        "runtime": "go"
+      },
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "0.9.9",
+      "min_nself_version": "0.9.9",
+      "name": "search",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [
+        "np_search_indexes",
+        "np_search_documents",
+        "np_search_synonyms",
+        "np_search_queries",
+        "np_search_webhook_events"
+      ],
+      "tags": [
+        "search",
+        "fts",
+        "full-text",
+        "postgres",
+        "meilisearch",
+        "autocomplete"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/search-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/search-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    },
+    "sentry-cli": {
+      "author": "nself",
+      "category": "infrastructure",
+      "checksum": "08785504ad0688031364f7bba4e838dcfda2c4b378832adba6fe022f80729f34",
+      "checksums": {
+        "platforms": {
+          "darwin-amd64": "a1c5c14d9c968c5f6806c6b0836c2c3fb6f01297274e9e7e51e82dcfcaffcda8",
+          "darwin-arm64": "ba697955d13c3af176f02a502c6261db70a04f9f5d5199cced92570ca0110494",
+          "linux-amd64": "3ae230ec5eed72f6ee89f854cf5d0b5d94a907c6dbf89b885ba3cdeb2fcbc526",
+          "linux-arm64": "237b56e1e2ce1c7f295f79c3b9ba06763d9d63bff730112d0990ad5d6bc0d74c",
+          "windows-amd64": "5b15a6d52f7fc3cb119fc7a8869a61711f53ca4a86bdffcd3f6b20f3a9b01063"
+        },
+        "sha256": "08785504ad0688031364f7bba4e838dcfda2c4b378832adba6fe022f80729f34"
+      },
+      "cliCommands": [
+        {
+          "description": "Manage \u0273Sentry monitors, incidents, status pages and alerts",
+          "name": "sentry"
+        },
+        {
+          "description": "Provision and manage a self-hosted \u0273Sentry server",
+          "name": "sentry-server"
+        }
+      ],
+      "dependencies": [],
+      "description": "\u0273Sentry operations: monitors, incidents, status pages, alerts, cloud login, and provisioning a self-hosted sentry server.",
+      "download_url": "https://plugins.nself.org/plugins/sentry-cli/tarball",
+      "implementation": {
+        "binaryName": "nself-sentry",
+        "entryPoint": "cmd/",
+        "language": "go",
+        "pluginType": "cli",
+        "runtime": "go"
+      },
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "1.2.8",
+      "min_nself_version": "1.2.8",
+      "name": "sentry-cli",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [],
+      "tags": [
+        "sentry",
+        "observability",
+        "monitoring",
+        "incidents",
+        "status-page",
+        "alerts"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/sentry-cli-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/sentry-cli-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    },
+    "shared-utils": {
+      "author": "nself",
+      "category": "infrastructure",
+      "checksum": "0679a8b245d22d6629ded67f688e67ed34e7f6e6c801ab3b0946941762f5756a",
+      "checksums": {
+        "sha256": "0679a8b245d22d6629ded67f688e67ed34e7f6e6c801ab3b0946941762f5756a"
+      },
+      "dependencies": [],
+      "description": "Shared Go utilities (request-ID tracing middleware, HTTP client propagation, server lifecycle helpers) used internally by multiple free nself plugins. Not installable directly.",
+      "installable": false,
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "1.0.0",
+      "min_nself_version": "1.0.0",
+      "name": "shared-utils",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [],
+      "tags": [
+        "shared",
+        "internal",
+        "library"
+      ],
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/shared-utils-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    },
+    "subtitle-manager": {
+      "author": "nself",
+      "category": "media",
+      "checksum": "efa6938fb80285a5de1790d6d192e198077eb207cb22f55e47559504ce1ef461",
+      "checksums": {
+        "sha256": "efa6938fb80285a5de1790d6d192e198077eb207cb22f55e47559504ce1ef461"
+      },
+      "dependencies": [
+        "@nself/plugin-utils",
+        "fastify",
+        "@fastify/cors",
+        "@fastify/rate-limit",
+        "commander",
+        "axios",
+        "pg",
+        "dotenv",
+        "uuid",
+        "winston",
+        "chalk",
+        "ora"
+      ],
+      "description": "Subtitle search, download, and sync verification via OpenSubtitles",
+      "download_url": "https://plugins.nself.org/plugins/subtitle-manager/tarball",
+      "implementation": {
+        "entryPoint": "cmd/main.go",
+        "language": "go",
+        "runtime": "go"
+      },
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "1.0.0",
+      "min_nself_version": "1.0.0",
+      "name": "subtitle-manager",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [
+        "np_subtmgr_subtitles",
+        "np_subtmgr_downloads",
+        "np_subtmgr_qc_results"
+      ],
+      "tags": [
+        "subtitles",
+        "media",
+        "download",
+        "srt",
+        "sync"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/subtitle-manager-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/subtitle-manager-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    },
+    "torrent-manager": {
+      "author": "nself",
+      "category": "media",
+      "checksum": "d8c63e56e1cba30396a0d4e75eac8e152e6abad12f21670b413857e6cb03ba47",
+      "checksums": {
+        "sha256": "d8c63e56e1cba30396a0d4e75eac8e152e6abad12f21670b413857e6cb03ba47"
+      },
+      "dependencies": [
+        "@nself/plugin-utils",
+        "@ctrl/transmission",
+        "fastify",
+        "@fastify/cors",
+        "@fastify/rate-limit",
+        "commander",
+        "axios",
+        "cheerio",
+        "puppeteer",
+        "parse-torrent",
+        "webtorrent-health",
+        "node-cron",
+        "pg",
+        "dotenv",
+        "uuid",
+        "winston",
+        "transmission-daemon",
+        "qbittorrent-nox"
+      ],
+      "description": "Torrent downloading with Transmission/qBittorrent integration, multi-source search, seeding policies, and VPN enforcement",
+      "download_url": "https://plugins.nself.org/plugins/torrent-manager/tarball",
+      "implementation": {
+        "entryPoint": "cmd/main.go",
+        "language": "go",
+        "runtime": "go"
+      },
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "1.0.0",
+      "min_nself_version": "1.0.0",
+      "name": "torrent-manager",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [
+        "np_torrentmanager_clients",
+        "np_torrentmanager_sources",
+        "np_torrentmanager_downloads",
+        "np_torrentmanager_files",
+        "np_torrentmanager_trackers",
+        "np_torrentmanager_search_cache",
+        "np_torrentmanager_stats",
+        "np_torrentmanager_seeding_policy",
+        "np_torrent_seeding_policies"
+      ],
+      "tags": [
+        "torrent",
+        "download",
+        "media",
+        "p2p",
+        "bittorrent"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/torrent-manager-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/torrent-manager-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    },
+    "vpn": {
+      "author": "nself",
+      "category": "authentication",
+      "checksum": "8548d12ad46fd542cc975035ceb91aa99f10f06c85fe6515d9ae8e63d36bebb7",
+      "checksums": {
+        "sha256": "8548d12ad46fd542cc975035ceb91aa99f10f06c85fe6515d9ae8e63d36bebb7"
+      },
+      "dependencies": [],
+      "description": "Multi-provider VPN management (NordVPN, PIA, Mullvad) with P2P optimization, server carousel, kill switch, and leak protection. Torrent download forwarding requires the torrent-manager plugin.",
+      "download_url": "https://plugins.nself.org/plugins/vpn/tarball",
+      "implementation": {
+        "entryPoint": "cmd/main.go",
+        "language": "go",
+        "runtime": "go"
+      },
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "0.9.9",
+      "min_nself_version": "0.9.9",
+      "name": "vpn",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [
+        "np_vpn_providers",
+        "np_vpn_credentials",
+        "np_vpn_servers",
+        "np_vpn_connections",
+        "np_vpn_downloads",
+        "np_vpn_connection_logs",
+        "np_vpn_server_performance",
+        "np_vpn_leak_tests"
+      ],
+      "tags": [
+        "vpn",
+        "security",
+        "privacy",
+        "networking",
+        "tunnel"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/vpn-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/vpn-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    },
+    "webhooks": {
+      "author": "nself",
+      "bundles": [
+        "task"
+      ],
+      "category": "communication",
+      "checksum": "3a0a3440f8d978cd6dcf96711e2197f43d48a89cbe33f7d535f2ef80a778d2e2",
+      "checksums": {
+        "platforms": {
+          "darwin-amd64": "bb543d6314f4d4ef4cfcd06c1b23549140df1e7af905b8d5995d6c3713f7f66a",
+          "darwin-arm64": "cb9980e2ba37dc9ae129b15dc03473a433f12e48b2b4458fc0ea7f268114b05d",
+          "linux-amd64": "f34b2eed7653e19690bde4bb210400d78b4f993513949cb91b310ab1377a8c46",
+          "linux-arm64": "56f3d883f28e0cecf44539fa12489989b020271833eea109e944ec989c05724c",
+          "windows-amd64": "b6af14cb09e584555406b8b6f802700ae866f6759954002bbfc86f3b45f275e1"
+        },
+        "sha256": "3a0a3440f8d978cd6dcf96711e2197f43d48a89cbe33f7d535f2ef80a778d2e2"
+      },
+      "dependencies": [],
+      "description": "Outbound webhook delivery service with retry logic, HMAC signing, and dead-letter queue",
+      "download_url": "https://plugins.nself.org/plugins/webhooks/tarball",
+      "implementation": {
+        "entryPoint": "cmd/main.go",
+        "language": "go",
+        "runtime": "go"
+      },
+      "language": "go",
+      "license": "MIT",
+      "minNselfVersion": "0.9.9",
+      "min_nself_version": "0.9.9",
+      "name": "webhooks",
+      "releaseTag": "v1.2.6",
+      "requires_license": false,
+      "tables": [
+        "np_webhooks_endpoints",
+        "np_webhooks_deliveries"
+      ],
+      "tags": [
+        "webhooks",
+        "events",
+        "notifications",
+        "delivery",
+        "integration"
+      ],
+      "tarball": "https://github.com/nself-org/plugins/releases/download/v1.2.6/webhooks-1.2.6.tar.gz",
+      "tarballUrl": "https://github.com/nself-org/plugins/releases/download/v1.2.6/webhooks-1.2.6.tar.gz",
+      "tier": "free",
+      "version": "1.2.6"
+    }
+  }
+}

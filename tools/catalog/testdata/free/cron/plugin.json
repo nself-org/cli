@@ -1,0 +1,78 @@
+{
+  "name": "cron",
+  "version": "1.2.6",
+  "description": "Cron job scheduler. Register jobs with standard cron syntax, execute via HTTP callbacks, track run history.",
+  "author": "nself",
+  "license": "MIT",
+  "isCommercial": false,
+  "licenseType": "free",
+  "tier_pair": true,
+  "requiredEntitlements": [],
+  "requires_license": false,
+  "homepage": "https://nself.org/plugins",
+  "repository": "https://github.com/nself-org/plugins",
+  "minNselfVersion": "0.9.9",
+  "category": "automation",
+  "language": "go",
+  "tags": [
+    "cron",
+    "scheduler",
+    "jobs",
+    "automation",
+    "webhooks"
+  ],
+  "tables": [
+    "np_cron_jobs",
+    "np_cron_runs"
+  ],
+  "dependencies": {
+    "required": [],
+    "optional": []
+  },
+  "optionalDependencies": [],
+  "envVars": {
+    "required": [
+      "DATABASE_URL"
+    ],
+    "optional": [
+      "PORT",
+      "CRON_TIMEOUT_SECS",
+      "CRON_RETENTION_DAYS"
+    ]
+  },
+  "config": {
+    "defaultPort": 3051,
+    "maxRetries": 3,
+    "timeoutSecs": 30,
+    "retentionDays": 90
+  },
+  "hooks": {
+    "postInstall": null,
+    "preUninstall": null,
+    "postSync": null
+  },
+  "permissions": {
+    "database": [
+      "create",
+      "read",
+      "update",
+      "delete"
+    ],
+    "network": [
+      "outbound"
+    ],
+    "filesystem": []
+  },
+  "port": 3051,
+  "status": "stable",
+  "binary_name": "nself-cron",
+  "health_endpoint": "/health",
+  "arch_support": [
+    "linux-x86_64",
+    "linux-arm64",
+    "darwin-arm64"
+  ],
+  "min_memory_mb": 32,
+  "systemd_after": "network.target",
+  "tier": "free"
+}

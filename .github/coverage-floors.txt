@@ -120,6 +120,7 @@ internal/ui 75
 internal/upgrade 88  # measured 90.6 2026-10-05
 internal/version 98  # measured 100.0 2026-10-05
 internal/webhook 75  # measured 77.1 2026-10-05
+tools/catalog 89  # measured 91.4 2026-10-05
 tools/cmdinventory 0  # measured 0.0 2026-10-05
 tools/covfloor 90  # measured 92.4 2026-10-05
 tools/endpoint-auth-checker 69  # measured 71.9 2026-10-05

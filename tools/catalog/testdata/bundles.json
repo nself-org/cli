@@ -1,0 +1,21 @@
+{
+  "schema_version": "2.0.0",
+  "bundles": {
+    "task": {
+      "display": "Task Bundle",
+      "tier": "free",
+      "plugins": [
+        "search",
+        "webhooks"
+      ]
+    },
+    "claw": {
+      "display": "Claw Bundle",
+      "tier": "paid",
+      "plugins": [
+        "claw",
+        "cron"
+      ]
+    }
+  }
+}

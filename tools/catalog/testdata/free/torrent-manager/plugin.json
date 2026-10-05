@@ -1,0 +1,261 @@
+{
+  "name": "torrent-manager",
+  "version": "1.2.6",
+  "description": "Torrent downloading with Transmission/qBittorrent integration, multi-source search, seeding policies, and VPN enforcement",
+  "author": "nself",
+  "license": "MIT",
+  "homepage": "https://github.com/nself-org/plugins/tree/main/plugins/torrent-manager",
+  "repository": "https://github.com/nself-org/plugins",
+  "category": "media",
+  "subcategory": "download",
+  "path": "plugins/torrent-manager",
+  "language": "go",
+  "runtime": "go",
+  "minNselfVersion": "1.0.0",
+  "port": 3201,
+  "dependencies": {
+    "npm": [
+      "@nself/plugin-utils",
+      "@ctrl/transmission",
+      "fastify",
+      "@fastify/cors",
+      "@fastify/rate-limit",
+      "commander",
+      "axios",
+      "cheerio",
+      "puppeteer",
+      "parse-torrent",
+      "webtorrent-health",
+      "node-cron",
+      "pg",
+      "dotenv",
+      "uuid",
+      "winston"
+    ],
+    "system": [
+      "transmission-daemon",
+      "qbittorrent-nox"
+    ]
+  },
+  "tables": [
+    "np_torrentmanager_clients",
+    "np_torrentmanager_sources",
+    "np_torrentmanager_downloads",
+    "np_torrentmanager_files",
+    "np_torrentmanager_trackers",
+    "np_torrentmanager_search_cache",
+    "np_torrentmanager_stats",
+    "np_torrentmanager_seeding_policy",
+    "np_torrent_seeding_policies"
+  ],
+  "views": [
+    "np_torrentmanager_active_downloads",
+    "np_torrentmanager_completed_downloads",
+    "np_torrentmanager_seeding_torrents"
+  ],
+  "webhooks": [
+    "torrent.added",
+    "torrent.started",
+    "torrent.progress",
+    "torrent.completed",
+    "torrent.failed",
+    "torrent.removed",
+    "vpn.disconnected"
+  ],
+  "apiEndpoints": [
+    "GET /health",
+    "GET /ready",
+    "GET /v1/clients",
+    "POST /v1/search",
+    "POST /v1/search/best-match",
+    "POST /v1/magnet",
+    "GET /v1/search/cache",
+    "POST /v1/downloads",
+    "GET /v1/downloads",
+    "GET /v1/downloads/:id",
+    "DELETE /v1/downloads/:id",
+    "POST /v1/downloads/:id/pause",
+    "POST /v1/downloads/:id/resume",
+    "GET /v1/stats",
+    "GET /v1/seeding",
+    "PUT /v1/seeding/:id/policy",
+    "GET /v1/seeding/:id/policy",
+    "GET /v1/sources"
+  ],
+  "cliCommands": [
+    {
+      "name": "init",
+      "description": "Initialize torrent manager and register clients"
+    },
+    {
+      "name": "search",
+      "description": "Search for torrents across multiple sources"
+    },
+    {
+      "name": "best-match",
+      "description": "Find and optionally download best matching torrent with smart scoring"
+    },
+    {
+      "name": "add",
+      "description": "Add torrent download by magnet link or URL"
+    },
+    {
+      "name": "list",
+      "description": "List all downloads (active, completed, seeding)"
+    },
+    {
+      "name": "stats",
+      "description": "Show download statistics"
+    },
+    {
+      "name": "server",
+      "description": "Start HTTP API server"
+    }
+  ],
+  "envVars": [
+    {
+      "name": "DATABASE_URL",
+      "required": true,
+      "description": "PostgreSQL connection string"
+    },
+    {
+      "name": "TORRENT_MANAGER_PORT",
+      "required": false,
+      "default": "3201",
+      "description": "HTTP server port"
+    },
+    {
+      "name": "VPN_MANAGER_URL",
+      "required": true,
+      "description": "VPN Manager API URL (e.g., http://localhost:3200)"
+    },
+    {
+      "name": "VPN_REQUIRED",
+      "required": false,
+      "default": "true",
+      "description": "Require active VPN before starting downloads"
+    },
+    {
+      "name": "DEFAULT_TORRENT_CLIENT",
+      "required": false,
+      "default": "transmission",
+      "description": "Default torrent client (transmission, qbittorrent)"
+    },
+    {
+      "name": "TRANSMISSION_HOST",
+      "required": false,
+      "default": "localhost",
+      "description": "Transmission RPC host"
+    },
+    {
+      "name": "TRANSMISSION_PORT",
+      "required": false,
+      "default": "9091",
+      "description": "Transmission RPC port"
+    },
+    {
+      "name": "TRANSMISSION_USERNAME",
+      "required": false,
+      "description": "Transmission RPC username"
+    },
+    {
+      "name": "TRANSMISSION_PASSWORD",
+      "required": false,
+      "description": "Transmission RPC password"
+    },
+    {
+      "name": "QBITTORRENT_HOST",
+      "required": false,
+      "default": "localhost",
+      "description": "qBittorrent Web UI host"
+    },
+    {
+      "name": "QBITTORRENT_PORT",
+      "required": false,
+      "default": "8080",
+      "description": "qBittorrent Web UI port"
+    },
+    {
+      "name": "QBITTORRENT_USERNAME",
+      "required": false,
+      "description": "qBittorrent Web UI username"
+    },
+    {
+      "name": "QBITTORRENT_PASSWORD",
+      "required": false,
+      "description": "qBittorrent Web UI password"
+    },
+    {
+      "name": "DOWNLOAD_PATH",
+      "required": false,
+      "default": "/downloads",
+      "description": "Default download directory"
+    },
+    {
+      "name": "ENABLED_SOURCES",
+      "required": false,
+      "default": "1337x,yts,torrentgalaxy,tpb",
+      "description": "Comma-separated list of enabled search sources (1337x, yts, torrentgalaxy, tpb)"
+    },
+    {
+      "name": "SEARCH_ENABLED_SOURCES",
+      "required": false,
+      "default": "1337x,yts,torrentgalaxy,tpb",
+      "description": "Comma-separated list of enabled search sources (deprecated, use ENABLED_SOURCES)"
+    },
+    {
+      "name": "SEARCH_TIMEOUT_MS",
+      "required": false,
+      "default": "10000",
+      "description": "Search timeout per source"
+    },
+    {
+      "name": "SEARCH_CACHE_TTL_SECONDS",
+      "required": false,
+      "default": "3600",
+      "description": "Search cache TTL"
+    },
+    {
+      "name": "SEEDING_RATIO_LIMIT",
+      "required": false,
+      "default": "2.0",
+      "description": "Stop seeding after reaching this ratio"
+    },
+    {
+      "name": "SEEDING_TIME_LIMIT_HOURS",
+      "required": false,
+      "default": "168",
+      "description": "Stop seeding after this many hours (168 = 1 week)"
+    },
+    {
+      "name": "MAX_ACTIVE_DOWNLOADS",
+      "required": false,
+      "default": "5",
+      "description": "Maximum concurrent active downloads"
+    }
+  ],
+  "multiApp": {
+    "supported": true,
+    "isolationColumn": "source_account_id",
+    "pkStrategy": "uuid",
+    "defaultValue": "primary"
+  },
+  "features": [
+    "Multi-client support (Transmission, qBittorrent)",
+    "VPN enforcement (blocks downloads without active VPN)",
+    "Multi-source torrent search (1337x, TPB, RARBG, YTS)",
+    "Smart torrent matching with quality detection",
+    "Seeding policy management (ratio, time limits)",
+    "Category organization (movies, tv, music, other)",
+    "Download progress tracking",
+    "Search result caching",
+    "Torrent health verification",
+    "API and CLI interfaces",
+    "Webhook events for state changes"
+  ],
+  "isCommercial": false,
+  "licenseType": "free",
+  "requiredEntitlements": [],
+  "requires_license": false,
+  "tier": "free"
+}
