@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -45,7 +46,7 @@ func Restore(ctx context.Context, cfg *config.Config, opts RestoreOptions) error
 	// Decrypt if needed.
 	workFile := backupFile
 	if strings.HasSuffix(backupFile, ".age") {
-		decrypted, err := decryptFile(ctx, backupFile, opts.DecryptKey)
+		decrypted, err := decryptFile(ctx, backupFile, opts.DecryptKey, cfg.ProjectName)
 		if err != nil {
 			return fmt.Errorf("decrypt backup: %w", err)
 		}
@@ -118,9 +119,17 @@ func resolveBackupFile(backupDir, backupID string) (string, error) {
 	return "", fmt.Errorf("%w: %s", errs.ErrBackupNotFound, backupID)
 }
 
-func decryptFile(ctx context.Context, path, keyPath string) (string, error) {
+func decryptFile(ctx context.Context, path, keyPath, project string) (string, error) {
 	if keyPath == "" {
-		keyPath = filepath.Join(os.Getenv("HOME"), ".config", "nself", "age-key.txt")
+		// compat.V15(P7-PROD-08): age-key.txt only -> shared identity search, E223 when none
+		if compat.V15() {
+			var err error
+			if keyPath, err = DefaultIdentity(project); err != nil {
+				return "", err
+			}
+		} else {
+			keyPath = filepath.Join(os.Getenv("HOME"), ".config", "nself", "age-key.txt")
+		}
 	}
 
 	decrypted := strings.TrimSuffix(path, ".age") + ".dec"
@@ -144,7 +153,7 @@ func restorePostgres(ctx context.Context, cfg *config.Config, backupFile string,
 	}
 
 	// If it's a pg_dump custom format, use pg_restore.
-	if strings.HasSuffix(backupFile, ".dump") {
+	if strings.HasSuffix(strings.TrimSuffix(backupFile, ".dec"), ".dump") {
 		return restorePgDump(ctx, container, user, db, backupFile)
 	}
 
