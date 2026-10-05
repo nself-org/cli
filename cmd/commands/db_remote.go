@@ -198,7 +198,12 @@ func runRemoteNselfCommand(ctx context.Context, rt dbRemoteTarget, args ...strin
 		"-o", "StrictHostKeyChecking=accept-new",
 	}
 
-	if !rt.AllowVersionDrift {
+	if hasDryRunArg(args) {
+		// Never relaxed by AllowVersionDrift (P7-PROD-84).
+		if err := checkRemoteDryRunSupport(ctx, rt, sshArgs); err != nil {
+			return err
+		}
+	} else if !rt.AllowVersionDrift {
 		if driftErr := checkRemoteVersionDrift(ctx, rt, sshArgs, joinRemoteArgs(args)); driftErr != nil {
 			return driftErr
 		}
@@ -266,12 +271,10 @@ func dispatchRemoteIfNeeded(cmd *cobra.Command, remoteArgs ...string) (handled b
 		return false, nil
 	}
 
+	// --allow-version-drift skips the probe for ordinary commands only. A
+	// --dry-run argv is always probed strictly (runRemoteNselfCommand): an
+	// older remote may ignore --dry-run and apply for real.
 	if allowDrift, _ := cmd.Flags().GetBool("allow-version-drift"); allowDrift {
-		// A remote CLI older than this one can ignore --dry-run and apply for
-		// real; the drift probe is what catches it, so the two never combine.
-		if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
-			return true, fmt.Errorf("--allow-version-drift cannot be combined with --dry-run on a remote target: an older remote nself may ignore --dry-run and apply. Drop --allow-version-drift (the remote must run the same nself version)")
-		}
 		target.AllowVersionDrift = true
 	}
 

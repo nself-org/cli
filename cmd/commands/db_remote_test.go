@@ -597,15 +597,20 @@ func writeRemoteInventory(t *testing.T) {
 	}
 }
 
-// remoteUp runs runDBMigrateUp as `db migrate up --env staging <flags>` with
-// SSH stubbed and returns every remote command line sent plus the error.
-func remoteUp(t *testing.T, flags map[string]string) ([]string, error) {
+// remoteUpWith runs runDBMigrateUp as `db migrate up --env staging <flags>`
+// with local version localVer and a remote that reports remoteVer from
+// `nself --version`. It returns every SSH command line, probe included.
+func remoteUpWith(t *testing.T, localVer, remoteVer string, flags map[string]string) ([]string, error) {
 	t.Helper()
-	withLocalVersion(t, "dev") // unparseable local version: no probe, only the real command
+	withLocalVersion(t, localVer)
 	writeRemoteInventory(t)
 	var sent []string
 	withStubbedSSH(t, func(ctx context.Context, sshArgs []string) (string, error) {
-		sent = append(sent, sshArgs[len(sshArgs)-1])
+		line := sshArgs[len(sshArgs)-1]
+		sent = append(sent, line)
+		if line == "nself --version" {
+			return "nself " + remoteVer, nil
+		}
 		return "ok", nil
 	})
 	cmd := newDBRemoteTestCmd()
@@ -620,22 +625,35 @@ func remoteUp(t *testing.T, flags map[string]string) ([]string, error) {
 			t.Fatalf("set --%s: %v", k, err)
 		}
 	}
-	err := runDBMigrateUp(cmd, nil)
-	return sent, err
+	return sent, runDBMigrateUp(cmd, nil)
+}
+
+// remoteUp is remoteUpWith for a dev local build (no version probe), so only
+// the real command is sent. A dev build cannot send --dry-run (see
+// db_migrate_dryrun_test.go).
+func remoteUp(t *testing.T, flags map[string]string) ([]string, error) {
+	t.Helper()
+	return remoteUpWith(t, "dev", "", flags)
+}
+
+// wantRemote asserts the SSH log is exactly [probe, command].
+func wantRemote(t *testing.T, sent []string, command string) {
+	t.Helper()
+	want := []string{"nself --version", command}
+	if len(sent) != 2 || sent[0] != want[0] || sent[1] != want[1] {
+		t.Fatalf("ssh commands = %q, want exactly %q", sent, want)
+	}
 }
 
 // P7-PROD-77: the exact remote command for a directory dry-run. Dropping
 // --dry-run or --migration-dir here made a remote "preview" apply the remote's
 // default directory for real.
 func TestRemoteUp_MigrationDirDryRun_ArgvIsExact(t *testing.T) {
-	sent, err := remoteUp(t, map[string]string{"migration-dir": "migrations", "dry-run": "true"})
+	sent, err := remoteUpWith(t, "1.5.0", "1.5.0", map[string]string{"migration-dir": "migrations", "dry-run": "true"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--migration-dir' 'migrations' '--dry-run'"
-	if len(sent) != 1 || sent[0] != want {
-		t.Fatalf("remote command = %q, want exactly [%q]", sent, want)
-	}
+	wantRemote(t, sent, "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--migration-dir' 'migrations' '--dry-run'")
 }
 
 func TestRemoteUp_MigrationDirWithoutDryRun_ArgvHasNoDryRun(t *testing.T) {
@@ -651,42 +669,11 @@ func TestRemoteUp_MigrationDirWithoutDryRun_ArgvHasNoDryRun(t *testing.T) {
 
 // A hostile directory name stays one shell word.
 func TestRemoteUp_MigrationDirIsShellQuoted(t *testing.T) {
-	sent, err := remoteUp(t, map[string]string{"migration-dir": "m; rm -rf /", "dry-run": "true"})
+	sent, err := remoteUpWith(t, "1.5.0", "1.5.0", map[string]string{"migration-dir": "m; rm -rf /", "dry-run": "true"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--migration-dir' 'm; rm -rf /' '--dry-run'"
-	if len(sent) != 1 || sent[0] != want {
-		t.Fatalf("remote command = %q, want exactly [%q]", sent, want)
-	}
-}
-
-// Without --migration-dir the remote form is unchanged from before P7-PROD-77.
-func TestRemoteUp_WithoutMigrationDir_ArgvUnchanged(t *testing.T) {
-	sent, err := remoteUp(t, map[string]string{"dry-run": "true"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "cd '/opt/nself' && nself 'db' 'migrate' 'up'"
-	if len(sent) != 1 || sent[0] != want {
-		t.Fatalf("remote command = %q, want exactly [%q]", sent, want)
-	}
-}
-
-// --allow-version-drift with --dry-run is refused before any SSH call; without
-// --dry-run it still works.
-func TestRemoteUp_AllowVersionDriftWithDryRunIsRefused(t *testing.T) {
-	sent, err := remoteUp(t, map[string]string{"migration-dir": "migrations", "dry-run": "true", "allow-version-drift": "true"})
-	if err == nil || !strings.Contains(err.Error(), "--allow-version-drift cannot be combined with --dry-run") {
-		t.Fatalf("want refusal, got %v", err)
-	}
-	if len(sent) != 0 {
-		t.Fatalf("SSH was called despite the refusal: %q", sent)
-	}
-	sent, err = remoteUp(t, map[string]string{"migration-dir": "migrations", "allow-version-drift": "true"})
-	if err != nil || len(sent) != 1 {
-		t.Fatalf("allow-version-drift without --dry-run must still run: %v, %q", err, sent)
-	}
+	wantRemote(t, sent, "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--migration-dir' 'm; rm -rf /' '--dry-run'")
 }
 
 // `db migrate down` has no --env/--server: it can never be pointed at a remote
