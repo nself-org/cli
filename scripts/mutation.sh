@@ -59,7 +59,7 @@ out="${MUTATION_OUT:-$(mktemp "${TMPDIR:-/tmp}/mutation.XXXXXX")}"
 export CGO_ENABLED=0
 # -count=1: a cached test run makes gremlins' coverage baseline near-instant, its
 # per-mutant timeout then shrinks with it, and every mutant "times out" (a false kill).
-export GOFLAGS="${GOFLAGS:--mod=vendor -count=1}"
+export GOFLAGS="${GOFLAGS:--mod=vendor} -count=1"
 
 # gremlins itself is not vendored: build the pinned release into a temp dir
 # (no global install), outside the vendored module graph.
@@ -75,9 +75,9 @@ gremlins() { "$bindir/gremlins" "$@"; }
 # can tell the mutant from the original. Line numbers are those of the current
 # source; a moved line needs its entry moved. Keep this list short and honest.
 MUTATION_EQUIVALENT='
-ARITHMETIC_BASE at validate.go:23:32 | const initialiser: Go emits no coverage block for a const, so gremlins can only report NOT COVERED; TestDefaultCheckIntervalIsSixHours pins the value
-CONDITIONALS_BOUNDARY at checker.go:224:15 | `remaining < 0` vs `<= 0` in emitGraceWarning: at remaining == 0 both branches leave 0, so the output is identical
-CONDITIONALS_NEGATION at cache_entry.go:124:37 | key-id filter in verifyLegacy is only a fast path: the rotation-window loop after it retries every key, so skipping the matching key changes no verdict
+ARITHMETIC_BASE at validate.go:23:32 | unmeasurable, not equivalent: const initialiser: Go emits no coverage block for a const, so gremlins can only report NOT COVERED; TestDefaultCheckIntervalIsSixHours pins the value
+CONDITIONALS_BOUNDARY at checker.go:242:15 | `remaining < 0` vs `<= 0` in emitGraceWarning: at remaining == 0 both branches leave 0, so the output is identical
+CONDITIONALS_NEGATION at cache_entry.go:139:37 | key-id filter in verifyLegacy is only a fast path: the rotation-window loop after it retries every key, so skipping the matching key changes no verdict
 '
 
 # --only mode. Passes: a file whose first line is `//go:build nself_devkeys` only

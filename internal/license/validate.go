@@ -123,6 +123,13 @@ func ValidateFull(ctx context.Context, key string) (*ValidationResult, error) {
 		}, nil
 	}
 
+	if !cacheSignatureOK(entry) {
+		return &ValidationResult{
+			Valid:   false,
+			Message: "License cache is not signed by ping (unsigned, altered or for another key). Connect to the internet to validate.",
+		}, nil
+	}
+
 	// Evaluate grace state.
 	grace := DetermineGraceState(entry)
 	return &ValidationResult{

@@ -61,7 +61,8 @@ func pluginsFor(resp *ValidateResponse) []string {
 //
 // v1.5: the entry holds the raw body ping signed, BodySig verifies over those
 // exact bytes with a committed PingKeys key, and the entry's copies (tier,
-// plugins, expiry, key hash when a JWT is present) match that signed body.
+// plugins, expiry, jwt) match that signed body and the signed JWT's sub is the
+// entry's key hash.
 // v1.4: the legacy check over the locally built payload (never true for an
 // entry this CLI wrote, since no server fills Signature).
 func (c *CacheEntry) VerifySignature() bool {
@@ -108,11 +109,25 @@ func (c *CacheEntry) matchesSignedBody() bool {
 	if c.Tier != body.Tier || c.ExpiresAt != exp || !slices.Equal(c.PluginsAllowed, body.AllowedPlugins()) {
 		return false
 	}
-	if c.JWT != "" {
-		claims, err := ParseLicenseJWT(c.JWT)
-		if err != nil || claims.Sub != c.KeyHash {
-			return false
-		}
+	// The licence identity comes from the JWT inside the signed body, never from
+	// the cache's own unsigned copy: a blanked or swapped copy must not unbind
+	// the entry from its licence (one leaked signed cache would unlock any key).
+	if body.JWT == "" || c.JWT != body.JWT {
+		return false
+	}
+	claims, err := ParseLicenseJWT(body.JWT)
+	return err == nil && claims.Sub == c.KeyHash
+}
+
+// cacheSignatureOK reports whether a cache entry may back a licence decision.
+// Every path that reads tier or plugins from the cache calls it, so no decision
+// rests on bytes that did not verify. The caller has already matched
+// entry.KeyHash to the requested key, and v1.5 verification binds KeyHash to
+// the licence JWT inside the signed body.
+func cacheSignatureOK(entry *CacheEntry) bool {
+	// compat.V15(P7-PLUG-63): cache trusted without a signature check -> only a cache whose server-signed body verifies
+	if compat.V15() {
+		return entry.VerifySignature()
 	}
 	return true
 }

@@ -19,6 +19,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/compat"
 )
 
 // bundleValidateResponse is the JSON body from /license/validate?bundle=<name>.
@@ -102,6 +104,16 @@ func BundleEntitled(ctx context.Context, key, bundleName string) (bool, error) {
 		return false, fmt.Errorf("reading bundle validation response: %w", err)
 	}
 
+	// A present-but-invalid signature fails closed in every mode; a missing one
+	// too from v1.5. Only a body that verifies under PingKeys decides anything.
+	sigHex := resp.Header.Get("X-NSelf-License-Sig")
+	// compat.V15(P7-PLUG-63): unsigned bundle response accepted -> unsigned bundle response refused
+	if sigHex != "" || compat.V15() {
+		if err := verifyResponseSig(body, sigHex); err != nil {
+			return false, fmt.Errorf("bundle %q: license server response not trusted: %w", bundleName, err)
+		}
+	}
+
 	var vr bundleValidateResponse
 	if err := json.Unmarshal(body, &vr); err != nil {
 		return false, fmt.Errorf("decoding bundle validation response: %w", err)
@@ -128,6 +140,9 @@ func bundleEntitledFromCache(key, bundleName string) (bool, error) {
 	}
 	if entry.KeyHash != HashKey(key) {
 		return false, fmt.Errorf("cached license does not match current key (bundle=%q)", bundleName)
+	}
+	if !cacheSignatureOK(entry) {
+		return false, fmt.Errorf("cached license is not signed by ping (unsigned, altered or for another key); connect to validate (bundle=%q)", bundleName)
 	}
 
 	// Revocation still applies when we cannot reach the server. Without this
@@ -172,6 +187,9 @@ func bundleEntitledFromGrace(key, bundleName string) (bool, error) {
 	}
 	if entry.KeyHash != HashKey(key) {
 		return false, fmt.Errorf("license server unreachable and cached license does not match current key (bundle=%q)", bundleName)
+	}
+	if !cacheSignatureOK(entry) {
+		return false, fmt.Errorf("license server unreachable and the cached license is not signed by ping (unsigned, altered or for another key) (bundle=%q)", bundleName)
 	}
 
 	// Revocation is never overridden by grace, regardless of cache freshness.
