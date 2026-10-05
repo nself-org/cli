@@ -101,7 +101,7 @@ func Validate(ctx context.Context, key string, opts *ValidatorOptions) (*Validat
 	}
 
 	// Verify signature unless explicitly skipped (tests).
-	if !opts.SkipSignatureVerify && !IsZeroPubKey() && !entry.VerifySignature() {
+	if !opts.SkipSignatureVerify && !entry.VerifySignature() {
 		return &ValidatorResult{
 			Status:     StatusFailClosed,
 			CanProceed: false,

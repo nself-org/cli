@@ -483,22 +483,23 @@ func TestGetAllStoredKeys(t *testing.T) {
 
 // --- cache.go: GetEmbeddedPubKeyHex ---
 
-// TestGetEmbeddedPubKeyHex returns the package-level variable (empty in dev builds).
+// TestGetEmbeddedPubKeyHex returns the hex of the first committed ping key.
 func TestGetEmbeddedPubKeyHex(t *testing.T) {
-	got := GetEmbeddedPubKeyHex()
-	// In test runs, licensePubKeyHex is "" by default — no panic.
-	// Could be set by other tests, so just exercise the path.
-	_ = got
+	if got := GetEmbeddedPubKeyHex(); len(got) != 64 {
+		t.Errorf("GetEmbeddedPubKeyHex = %q, want 64 hex chars", got)
+	}
+	setPingKeys(t)
+	if got := GetEmbeddedPubKeyHex(); got != "" {
+		t.Errorf("with no key GetEmbeddedPubKeyHex = %q, want empty", got)
+	}
 }
 
-// TestGetEmbeddedPubKeyHex_WithValue temporarily overrides licensePubKeyHex.
+// TestGetEmbeddedPubKeyHex_WithValue checks a swapped-in key is reported.
 func TestGetEmbeddedPubKeyHex_WithValue(t *testing.T) {
-	orig := licensePubKeyHex
-	defer func() { licensePubKeyHex = orig }()
-
-	licensePubKeyHex = "deadbeef"
-	if got := GetEmbeddedPubKeyHex(); got != "deadbeef" {
-		t.Errorf("GetEmbeddedPubKeyHex = %q, want deadbeef", got)
+	want := strings.Repeat("ab", 32)
+	useTestKey(t, want)
+	if got := GetEmbeddedPubKeyHex(); got != want {
+		t.Errorf("GetEmbeddedPubKeyHex = %q, want %q", got, want)
 	}
 }
 
@@ -731,7 +732,7 @@ func TestRefreshCache_Success(t *testing.T) {
 	t.Setenv("LICENSE_CACHE_PATH", cachePath)
 
 	future := time.Now().Add(30 * 24 * time.Hour)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := signingServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"valid":true,"tier":"pro","plugins":["ai"],"expires_at":"` + future.Format(time.RFC3339) + `"}`))

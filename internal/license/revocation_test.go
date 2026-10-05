@@ -46,7 +46,7 @@ func genTestKeypair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 // signature verification, then returns a cleanup function.
 func installTestPubKey(t *testing.T, pub ed25519.PublicKey) func() {
 	t.Helper()
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", hex.EncodeToString(pub))
+	useTestKey(t, hex.EncodeToString(pub))
 	return func() {
 		// t.Setenv handles cleanup automatically; nothing to do here.
 	}

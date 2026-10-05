@@ -114,7 +114,7 @@ func nonZeroPubKeyHex() string {
 // remoteTransientFail.
 func TestTryRemote_200_MissingSignatureHeader(t *testing.T) {
 	// Set override env so IsZeroPubKey() returns false → verify path runs.
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", nonZeroPubKeyHex())
+	useTestKey(t, nonZeroPubKeyHex())
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -140,7 +140,7 @@ func TestTryRemote_200_MissingSignatureHeader(t *testing.T) {
 // TestTryRemote_200_MalformedSignatureHeader confirms a malformed hex signature
 // header triggers remoteTransientFail.
 func TestTryRemote_200_MalformedSignatureHeader(t *testing.T) {
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", nonZeroPubKeyHex())
+	useTestKey(t, nonZeroPubKeyHex())
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("X-NSelf-License-Sig", "ZZZnotvalidhex!!!")
@@ -163,7 +163,7 @@ func TestTryRemote_200_MalformedSignatureHeader(t *testing.T) {
 // TestTryRemote_200_InvalidSignatureBytes confirms a correctly-hex-encoded but
 // cryptographically wrong signature triggers remoteTransientFail.
 func TestTryRemote_200_InvalidSignatureBytes(t *testing.T) {
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", nonZeroPubKeyHex())
+	useTestKey(t, nonZeroPubKeyHex())
 
 	badSig := make([]byte, 64) // 64 zero bytes — valid hex, wrong signature
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

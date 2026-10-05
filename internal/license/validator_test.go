@@ -236,16 +236,9 @@ func TestValidator_TamperedCache_FailClosedRegardlessOfTTL(t *testing.T) {
 	redirectCache(t)
 
 	// Inject a fake non-zero pubkey so VerifySignature actually runs.
-	origHex := licensePubKeyHex
-	origKeys := bundledPublicKeys
-	defer func() {
-		licensePubKeyHex = origHex
-		bundledPublicKeys = origKeys
-	}()
 	fake := make([]byte, 32)
 	fake[0] = 0xa1
-	licensePubKeyHex = hex.EncodeToString(fake)
-	bundledPublicKeys = []PublicKeyEntry{{ID: 1, Key: fake}}
+	useTestKey(t, hex.EncodeToString(fake))
 
 	now := time.Date(2026, 4, 26, 12, 0, 0, 0, time.UTC)
 	key := "nself_pro_testkey1234567890abcdef12345"

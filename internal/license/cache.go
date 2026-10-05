@@ -13,47 +13,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
-
-// licensePubKeyHex is injected via -X ldflag at goreleaser build time.
-// In dev builds without ldflags, it remains empty — license verification is
-// disabled and nself version prints a warning banner.
-//
-//nolint:gochecknoglobals
-var licensePubKeyHex = "" //nolint:unused // set via -X github.com/nself-org/cli/internal/license.licensePubKeyHex=<hex>
-
-// IsZeroPubKey reports whether the build was made without an ldflags-injected
-// signing key. Returns true when licensePubKeyHex is empty OR consists entirely
-// of '0' characters (e.g., a placeholder 64-char zero string).
-// goreleaser injects a real non-zero Ed25519 pubkey hex; dev builds leave it empty.
-//
-// Exception: when LICENSE_PUBLIC_KEY_OVERRIDE is set to a valid non-zero Ed25519
-// public key hex, IsZeroPubKey returns false so that tests can exercise the
-// production signature-verification code path without goreleaser ldflags.
-func IsZeroPubKey() bool {
-	// Check override first — allows tests to exercise the sig-verify path.
-	if override := os.Getenv("LICENSE_PUBLIC_KEY_OVERRIDE"); override != "" {
-		keyBytes, err := hex.DecodeString(override)
-		if err == nil && len(keyBytes) == ed25519.PublicKeySize {
-			// Non-zero override key supplied: treat as "real key embedded".
-			for _, b := range keyBytes {
-				if b != 0 {
-					return false
-				}
-			}
-		}
-	}
-	if licensePubKeyHex == "" {
-		return true
-	}
-	for _, ch := range licensePubKeyHex {
-		if ch != '0' {
-			return false
-		}
-	}
-	return true
-}
 
 // defaultCacheDir returns ~/.cache/nself.
 func defaultCacheDir() (string, error) {
@@ -174,58 +136,51 @@ func (c *CacheEntry) CacheAge() time.Duration {
 	return time.Since(time.Unix(c.FetchedAt, 0))
 }
 
-// PublicKeyEntry holds a versioned Ed25519 public key.
+// PublicKeyEntry holds a versioned Ed25519 public key. ID is the numeric kid
+// (0 when the kid is not a number), KID the kid as ping writes it.
 type PublicKeyEntry struct {
 	ID  int
+	KID string
 	Key ed25519.PublicKey
 }
 
-// bundledPublicKeys contains the Ed25519 public keys used to verify license
-// cache signatures. Key ID 1 is the current key. During rotation, both N and
-// N-1 are accepted.
-//
-// The public key override env var LICENSE_PUBLIC_KEY_OVERRIDE can replace key 1
-// for testing.
-var bundledPublicKeys []PublicKeyEntry
-
-func init() {
-	// D3-T01: load the Ed25519 public key injected at goreleaser build time via
-	// -X github.com/nself-org/cli/internal/license.licensePubKeyHex=<hex>.
-	// Dev builds leave licensePubKeyHex empty → zero key → IsZeroPubKey() returns true
-	// → license signature verification is skipped (CLI falls back to bare validation).
-	if licensePubKeyHex != "" && !IsZeroPubKey() {
-		if keyBytes, err := hex.DecodeString(licensePubKeyHex); err == nil &&
-			len(keyBytes) == ed25519.PublicKeySize {
-			bundledPublicKeys = []PublicKeyEntry{
-				{ID: 1, Key: ed25519.PublicKey(keyBytes)},
-			}
-			return
+// usableKey reports whether k is a 32-byte Ed25519 key that is not all zero.
+func usableKey(k ed25519.PublicKey) bool {
+	if len(k) != ed25519.PublicKeySize {
+		return false
+	}
+	for _, b := range k {
+		if b != 0 {
+			return true
 		}
 	}
-	// Fallback: zero key (dev builds without ldflags). Signature verification
-	// will always return false for this key, which IsZeroPubKey() signals to callers.
-	devKey := make(ed25519.PublicKey, ed25519.PublicKeySize)
-	bundledPublicKeys = []PublicKeyEntry{
-		{ID: 1, Key: devKey},
-	}
+	return false
 }
 
-// GetPublicKeys returns the active public keys, respecting the
-// LICENSE_PUBLIC_KEY_OVERRIDE environment variable for testing.
+// GetPublicKeys returns the keys that may verify ping's signatures: the
+// committed PingKeys plus extraKeys(), which is empty in every build except
+// one tagged nself_devkeys (keys_release.go, keys_devkeys.go). A nil or
+// all-zero key is dropped, never trusted.
 func GetPublicKeys() []PublicKeyEntry {
-	if override := os.Getenv("LICENSE_PUBLIC_KEY_OVERRIDE"); override != "" {
-		keyBytes, err := hex.DecodeString(override)
-		if err == nil && len(keyBytes) == ed25519.PublicKeySize {
-			return []PublicKeyEntry{{ID: 1, Key: ed25519.PublicKey(keyBytes)}}
+	var out []PublicKeyEntry
+	for _, k := range PingKeys {
+		if usableKey(k.Public) {
+			id, _ := strconv.Atoi(k.ID)
+			out = append(out, PublicKeyEntry{ID: id, KID: k.ID, Key: k.Public})
 		}
 	}
-	return bundledPublicKeys
+	return append(out, extraKeys()...)
 }
 
-// GetEmbeddedPubKeyHex returns the hex-encoded Ed25519 public key that was
-// injected at build time via goreleaser ldflags (NSELF_LICENSE_PUBKEY_HEX).
-// Returns an empty string in dev builds without ldflags.
-// D3-T01: used by `nself license pubkey` and pubkey-refresh flow (D3-T10).
+// IsZeroPubKey reports that no usable verification key exists. Callers fail
+// closed on it (nothing verifies); it never means "skip verification".
+func IsZeroPubKey() bool { return len(GetPublicKeys()) == 0 }
+
+// GetEmbeddedPubKeyHex returns the hex of the first committed ping key, or an
+// empty string when there is none.
 func GetEmbeddedPubKeyHex() string {
-	return licensePubKeyHex
+	if ks := GetPublicKeys(); len(ks) > 0 {
+		return hex.EncodeToString(ks[0].Key)
+	}
+	return ""
 }

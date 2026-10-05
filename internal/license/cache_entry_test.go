@@ -47,22 +47,6 @@ func TestCheckerRealPluginsAllowed(t *testing.T) {
 	})
 }
 
-// TestBundleInfoPluginsAllowed: `bundle info` (cmd/commands/bundle_info.go)
-// reads cache.PluginsAllowed. This asserts the cache it reads, from a real
-// response, in both modes: base-binary output in v1.4, real list in v1.5.
-func TestBundleInfoPluginsAllowed(t *testing.T) {
-	compattest.Both(t, func(t *testing.T) {
-		entry := responseToCache(testLicenseKey, realShape(t))
-		want := 0
-		if compatMode15() {
-			want = 2
-		}
-		if len(entry.PluginsAllowed) != want {
-			t.Errorf("cache PluginsAllowed = %v, want %d entries", entry.PluginsAllowed, want)
-		}
-	})
-}
-
 func TestCacheEntryRoundTripKeepsSignedFields(t *testing.T) {
 	t.Setenv("LICENSE_CACHE_PATH", t.TempDir()+"/license.json")
 	in := &CacheEntry{KeyHash: "k", Tier: "plus", FetchedAt: 5, RawBody: `{"valid":true}`, BodySig: "ab", JWT: "a.b.c", JWTKid: "1"}
@@ -83,7 +67,7 @@ func TestCacheEntryRoundTripKeepsSignedFields(t *testing.T) {
 
 func TestVerifyResponseSig(t *testing.T) {
 	pub, priv := testKeypairHex(t)
-	t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", pub)
+	useTestKey(t, pub)
 	body := []byte(`{"valid":true}`)
 	good := signHex(priv, body)
 	if err := verifyResponseSig(body, good); err != nil {

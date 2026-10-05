@@ -7,12 +7,8 @@ project_name: nself
 snapshot:
   version_template: "{{ .Version }}-dev+{{ .ShortCommit }}"
 
-# Required env vars: goreleaser check validates these are present.
-# Set via GitHub Actions secret NSELF_LICENSE_PUBKEY_HEX.
-# For local snapshot builds, export a dummy value:
-#   export NSELF_LICENSE_PUBKEY_HEX=00 && goreleaser build --snapshot --clean
-required_envs:
-  - NSELF_LICENSE_PUBKEY_HEX
+# The ping licence public keys are committed in internal/license/keys.go; no
+# key is injected at build time and no build tag is set here.
 
 builds:
   - id: nself
@@ -29,7 +25,6 @@ builds:
       - -X github.com/nself-org/cli/internal/version.Version={{ .Version }}
       - -X github.com/nself-org/cli/internal/version.Commit={{ .ShortCommit }}
       - -X github.com/nself-org/cli/internal/version.BuildDate={{ .Date }}
-      - -X github.com/nself-org/cli/internal/license.licensePubKeyHex={{ .Env.NSELF_LICENSE_PUBKEY_HEX }}
     # Windows binaries (amd64 + arm64) ship from v1.0.12 (P97 G3-T01).
     # Native Windows is best-effort: the trust subsystem (DNS / pfctl / mkcert)
     # falls through to "unsupported OS" at runtime — Windows users should run

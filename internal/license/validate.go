@@ -210,8 +210,7 @@ func ImportCache(data []byte) error {
 // validateRemote performs the HTTP POST to /license/validate.
 // S10.T03: After reading the body it verifies the X-NSelf-License-Sig Ed25519
 // header. A missing or invalid signature causes the call to return an error so
-// the caller falls through to the cached license.  Dev builds (IsZeroPubKey)
-// skip the check gracefully.
+// the caller falls through to the cached license.
 func validateRemote(ctx context.Context, key string, pingURL string) (*ValidateResponse, error) {
 	type request struct {
 		LicenseKey string `json:"license_key"`
@@ -250,12 +249,10 @@ func validateRemote(ctx context.Context, key string, pingURL string) (*ValidateR
 	}
 
 	// S10.T03: verify the Ed25519 response signature before trusting tier/plugins.
-	// Skip in dev builds where the public key is not embedded (IsZeroPubKey).
+	// Never skipped: with no usable key nothing verifies and the call fails.
 	sigHex := resp.Header.Get("X-NSelf-License-Sig")
-	if !IsZeroPubKey() {
-		if err := verifyResponseSig(rawBody, sigHex); err != nil {
-			return nil, err
-		}
+	if err := verifyResponseSig(rawBody, sigHex); err != nil {
+		return nil, err
 	}
 
 	var vr ValidateResponse

@@ -38,7 +38,21 @@ check. Capturing the new fields is on in both modes.
 Add the new kid and public key to `PingKeys` and ship a release before ping signs with it;
 drop the old kid after the grace window (see the key rotation runbook in the web repo).
 
-## Not in this version
+## Keys, dev keys and failing closed
 
-The dev-key confinement (override and ldflags key only in `-tags nself_devkeys` builds) and the
-removal of the zero-key skip are tracked on P7-PLUG-63 and are not part of this change.
+- Release and default builds (goreleaser, `go install`, `go test`) trust only the committed
+  `PingKeys`. `LICENSE_PUBLIC_KEY_OVERRIDE` and any linker-injected key are ignored.
+- A build tagged `nself_devkeys` (never used by goreleaser, homebrew or a release script) also
+  trusts `LICENSE_PUBLIC_KEY_OVERRIDE` and `-X ...license.licensePubKeyHex`, and prints one
+  warning per process the first time it does.
+- There is no zero-key skip. An absent, nil, short or all-zero key is dropped; with no usable key
+  nothing verifies, so a licence response without a valid `X-NSelf-License-Sig` is rejected and
+  the CLI falls back to the cache, which also fails to verify. A failed check is never read as
+  "licensed" and never as "free tier".
+- `Validate` and `ValidateFull` both store the raw body and header signature, so the cache they
+  write verifies in v1.5 mode.
+
+## Checking the code
+
+`bash scripts/mutation.sh internal/license` runs go-gremlins (pinned release, fetched from the
+module proxy into a temp dir) and exits 1 if any mutant survives.

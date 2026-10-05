@@ -20,8 +20,6 @@ package license
 
 import (
 	"context"
-	"crypto/ed25519"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -169,30 +167,13 @@ func tryRemote(ctx context.Context, key string, opts *ValidatorOptions) (*Valida
 
 	switch {
 	case resp.StatusCode == http.StatusOK:
-		// S10.T03: Verify Ed25519 response-body signature before trusting
-		// tier/plugins data. Skip in dev builds (IsZeroPubKey) and when
-		// SkipSignatureVerify is set in tests.
-		if !opts.SkipSignatureVerify && !IsZeroPubKey() {
-			sigHex := resp.Header.Get("X-NSelf-License-Sig")
-			if sigHex == "" {
-				// Missing header — reject, fall through to cache (fail-open eligible).
-				return nil, remoteTransientFail, fmt.Errorf("response signature missing (X-NSelf-License-Sig header absent)")
-			}
-			sigBytes, decErr := hex.DecodeString(sigHex)
-			if decErr != nil {
-				return nil, remoteTransientFail, fmt.Errorf("response signature malformed: %w", decErr)
-			}
-			keys := GetPublicKeys()
-			var verified bool
-			for _, pk := range keys {
-				if ed25519.Verify(ed25519.PublicKey(pk.Key), rawBody, sigBytes) {
-					verified = true
-					break
-				}
-			}
-			if !verified {
-				// Tampered or MITM response — reject, fall through to cache.
-				return nil, remoteTransientFail, fmt.Errorf("response signature invalid — possible MITM or tampered response")
+		// S10.T03: verify the Ed25519 response-body signature before trusting
+		// tier/plugins data. Only SkipSignatureVerify (tests) skips it; a
+		// missing or invalid signature falls through to the cache.
+		sigHex := resp.Header.Get("X-NSelf-License-Sig")
+		if !opts.SkipSignatureVerify {
+			if err := verifyResponseSig(rawBody, sigHex); err != nil {
+				return nil, remoteTransientFail, err
 			}
 		}
 
@@ -201,6 +182,7 @@ func tryRemote(ctx context.Context, key string, opts *ValidatorOptions) (*Valida
 			// 200 but unparseable → transient (don't punish user for server bug).
 			return nil, remoteTransientFail, fmt.Errorf("decoding response: %w", err)
 		}
+		vr.RawBody, vr.BodySig = string(rawBody), sigHex
 		return &vr, remoteOK, nil
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		return nil, remoteAuthFail, fmt.Errorf("server returned %d", resp.StatusCode)
