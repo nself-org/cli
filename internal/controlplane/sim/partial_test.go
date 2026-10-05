@@ -14,7 +14,6 @@ package sim_test
 
 import (
 	"context"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
