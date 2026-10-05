@@ -82,6 +82,21 @@ bash "${TOGGLE}" --on --repo nself-org/cli --policy "${POLICY}" > "${TMP}/out" 2
 if [ "${rc}" -ne 0 ] && grep -q 'more than one app' "${TMP}/out" && ! grep -q '^PUT ' "${STUB_DIR}/calls"; then
   pass "duplicate live pins are refused and nothing is PUT"; else fail "duplicate live pins were not refused (rc=${rc})"; fi
 
+# A 200 that is not a protection document (here `{}`, an incomplete body, or
+# another repo's answer) is refused, never turned into a PUT that unpins checks.
+for bad in '{}' '{"url":"https://api.github.com/repos/nself-org/cli/branches/main/protection"}' "$(cat "${HERE}/plugins-live.json")"; do
+  rm -rf "${STUB_DIR:?}"/* "${HOME}/.nself"
+  printf '%s' "${bad}" > "${STUB_DIR}/state.json"
+  for extra in "" "--dry-run"; do
+    rc=0
+    # shellcheck disable=SC2086  # $extra is empty or one flag
+    bash "${TOGGLE}" --on --repo nself-org/cli --policy "${POLICY}" ${extra} > "${TMP}/out" 2>&1 || rc=$?
+    if [ "${rc}" -ne 0 ] && grep -q 'not with a branch-protection document' "${TMP}/out" \
+       && ! grep -q 'would PUT' "${TMP}/out" && ! grep -q '^PUT ' "${STUB_DIR}/calls"; then
+      pass "odd 200 body refused (${extra:-apply}): ${bad:0:30}"; else fail "odd 200 body not refused (${extra:-apply}, rc=${rc}): ${bad:0:30}"; fi
+  done
+done
+
 # Mutation check: a contexts-only body must trip pins_kept.
 MUT="${TMP}/toggle-mutant.sh"
 # shellcheck disable=SC2016  # sed patterns hold a literal $names

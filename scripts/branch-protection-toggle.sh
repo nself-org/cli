@@ -256,6 +256,14 @@ toggle_one() {
   probe="$(gh api "${api_path}" 2>"${errf}")" || probe_rc=$?
   probe_err="$(cat "${errf}")"; rm -f "${errf}"
   if [ "${probe_rc}" -eq 0 ]; then
+    # A 200 must still be a protection document for this repo/branch: a `{}` or
+    # partial body would build a PUT that unpins every check (fail closed).
+    if ! printf '%s' "${probe}" | jq -e --arg p "repos/${repo}/branches/${BRANCH}/protection" \
+      'type == "object" and ((.url // "") | endswith($p)) and (.enforce_admins | type == "object")' >/dev/null 2>&1; then
+      err "[${repo}/${BRANCH}] ${api_path} answered 200 but not with a branch-protection document; refusing, nothing sent"
+      audit "${repo}" "${BRANCH}" "${ACTION}" "error" "${REASON}"
+      return 2
+    fi
     current_exists=1
   elif printf '%s %s' "${probe}" "${probe_err}" | grep -q 'Branch not found'; then
     info "[${repo}/${BRANCH}] n/a: no default branch"
