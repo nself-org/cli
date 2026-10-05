@@ -108,7 +108,7 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 		}
 	}
 	if hasEffect(p, EffectPluginInstall) {
-		if err := nbuild.InstallDeclaredPlugins(ctx, req.ProjectDir); err != nil {
+		if err := nbuild.InstallDeclaredPlugins(ctx, req.ProjectDir, req.Build.RemoteDeploy); err != nil {
 			return nil, nil, err
 		}
 	}

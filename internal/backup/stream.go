@@ -107,6 +107,10 @@ func Stream(ctx context.Context, cfg *config.Config, opts StreamOptions) (*Strea
 	if err != nil {
 		return nil, fmt.Errorf("resolve recipients: %w", err)
 	}
+	// Zero-config key (v1.5): see autokey.go. v1.4 falls through to the refusal below.
+	if recipients, err = resolveAutoRecipients(cfg.ProjectName, recipients, opts.AllowUnencrypted, opts.DryRun); err != nil {
+		return nil, err
+	}
 
 	// Fail closed. Encryption was previously skipped whenever no recipient
 	// resolved, with no error and no warning, so `nself backup stream --to

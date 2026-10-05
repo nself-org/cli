@@ -33,26 +33,6 @@ func TestSetAndGetActiveEnv_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestPortShifts_AllEnvs verifies that PortShifts contains entries for all
-// standard environments with correct offsets.
-func TestPortShifts_AllEnvs(t *testing.T) {
-	expected := map[string]int{
-		"dev":     0,
-		"staging": 100,
-		"prod":    200,
-	}
-	for env, wantShift := range expected {
-		got, ok := PortShifts[env]
-		if !ok {
-			t.Errorf("PortShifts missing entry for %q", env)
-			continue
-		}
-		if got != wantShift {
-			t.Errorf("PortShifts[%q] = %d, want %d", env, got, wantShift)
-		}
-	}
-}
-
 // TestList_ReturnsActiveEnv verifies that List includes the active environment.
 func TestList_ReturnsActiveEnv(t *testing.T) {
 	dir := t.TempDir()

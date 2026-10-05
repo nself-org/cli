@@ -1,10 +1,14 @@
 package controlplane
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // TestLoadAbsentFileUsesEnvVarSynthesis verifies that when control-plane.yaml
@@ -364,5 +368,36 @@ func TestLoadSynthesizeRejectsInvalidRemotePathEnvVar(t *testing.T) {
 
 	if _, err := Load(dir); err == nil {
 		t.Error("Load: expected error for malicious NSELF_REMOTE_PATH_STAGING, got nil")
+	}
+}
+
+// TestInventoryRefusesEnvCaseCollision: two env keys that differ only by case
+// are refused by Load (from yaml) with E483 naming both keys; distinct names
+// load.
+func TestInventoryRefusesEnvCaseCollision(t *testing.T) {
+	dir := t.TempDir()
+	mk := func(keys ...string) *Inventory {
+		inv := &Inventory{SchemaVersion: 1, Project: "t", Environments: map[string]Environment{}}
+		for _, k := range keys {
+			inv.Environments[k] = Environment{Name: k, Kind: "remote", Servers: []Server{{Name: "s-" + strings.ToLower(k), Role: RoleApp, Host: "u@h.example.test", RemotePath: "/opt/nself"}}}
+		}
+		return inv
+	}
+	if err := Write(dir, mk("qa", "QA", "prod")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(dir)
+	var ce *errs.CLIError
+	if !errors.As(err, &ce) || ce.Code != "E483" {
+		t.Fatalf("Load = %v, want E483", err)
+	}
+	if !strings.Contains(err.Error(), `"QA"`) || !strings.Contains(err.Error(), `"qa"`) {
+		t.Errorf("error must name both keys: %v", err)
+	}
+	if err := Write(dir, mk("qa", "prod")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); err != nil {
+		t.Errorf("distinct env names must load: %v", err)
 	}
 }

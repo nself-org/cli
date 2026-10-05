@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nself-org/cli/internal/deploy"
 )
 
 // pipelineStubProber is a test Prober that always succeeds (full manage capability).
@@ -107,7 +109,7 @@ func TestRunReturnsAllServers(t *testing.T) {
 	inv := fourServerInventory()
 	prober := &pipelineStubProber{}
 
-	result, err := Run(context.Background(), inv, prober, composePath)
+	result, err := Run(context.Background(), inv, "staging", prober, composePath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -126,7 +128,7 @@ func TestRunDeployOrderObsBeforeApp(t *testing.T) {
 	inv := fourServerInventory()
 	prober := &pipelineStubProber{}
 
-	result, err := Run(context.Background(), inv, prober, composePath)
+	result, err := Run(context.Background(), inv, "staging", prober, composePath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -159,7 +161,7 @@ func TestRunLBAfterApp(t *testing.T) {
 	inv := fourServerInventory()
 	prober := &pipelineStubProber{}
 
-	result, err := Run(context.Background(), inv, prober, composePath)
+	result, err := Run(context.Background(), inv, "staging", prober, composePath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -208,7 +210,7 @@ func TestRunReadOnlyServerSkipped(t *testing.T) {
 		keyFn: func(s Server) (bool, string) { return true, "/tmp/key" },
 	}
 
-	result, err := Run(context.Background(), inv, prober, composePath)
+	result, err := Run(context.Background(), inv, "staging", prober, composePath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -247,7 +249,7 @@ func TestRunPrimaryAppSkippedSetsPrimarySkipped(t *testing.T) {
 		keyFn: func(s Server) (bool, string) { return true, "/tmp/key" },
 	}
 
-	result, err := Run(context.Background(), inv, prober, composePath)
+	result, err := Run(context.Background(), inv, "staging", prober, composePath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -276,7 +278,7 @@ func TestRunPrimarySkippedFalseWhenAllOK(t *testing.T) {
 
 	prober := &pipelineStubProber{}
 
-	result, err := Run(context.Background(), inv, prober, composePath)
+	result, err := Run(context.Background(), inv, "staging", prober, composePath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -308,7 +310,7 @@ func TestRunHiddenServerOmitted(t *testing.T) {
 
 	prober := &pipelineStubProber{}
 
-	result, err := Run(context.Background(), inv, prober, composePath)
+	result, err := Run(context.Background(), inv, "staging", prober, composePath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -346,7 +348,7 @@ func TestRunLocalEnvironmentReturnsUnsupportedError(t *testing.T) {
 
 	prober := &pipelineStubProber{}
 
-	_, err := Run(context.Background(), inv, prober, composePath)
+	_, err := Run(context.Background(), inv, "local", prober, composePath)
 	if err == nil {
 		t.Fatal("Run: expected error for local-kind environment, got nil (local deploy is not supported by the pipeline)")
 	}
@@ -376,7 +378,7 @@ func TestRunAllStatusOKWhenHealthy(t *testing.T) {
 
 	prober := &pipelineStubProber{}
 
-	result, err := Run(context.Background(), inv, prober, composePath)
+	result, err := Run(context.Background(), inv, "staging", prober, composePath)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -424,7 +426,7 @@ func TestRunSkippedLineWrittenToStderr(t *testing.T) {
 		keyFn: func(s Server) (bool, string) { return true, "/tmp/key" },
 	}
 
-	if _, runErr := Run(context.Background(), inv, prober, composePath); runErr != nil {
+	if _, runErr := Run(context.Background(), inv, "staging", prober, composePath); runErr != nil {
 		_ = w.Close()
 		t.Fatalf("Run: %v", runErr)
 	}
@@ -499,5 +501,89 @@ func TestServersByRoleExcludesHidden(t *testing.T) {
 	}
 	if len(pairs) > 0 && pairs[0].srv.Name != "app-visible" {
 		t.Errorf("serversByRole: got %q, want %q", pairs[0].srv.Name, "app-visible")
+	}
+}
+
+// recordingProber records every host the pipeline probes, so a test can prove
+// that a cross-environment host was never contacted.
+type recordingProber struct {
+	pipelineStubProber
+	hosts []string
+}
+
+func (p *recordingProber) SSHReachable(s Server) (bool, int, error) {
+	p.hosts = append(p.hosts, s.Host)
+	return p.pipelineStubProber.SSHReachable(s)
+}
+
+// threeEnvInventory has qa, staging and prod, each with one app server on a
+// distinct host.
+func threeEnvInventory() *Inventory {
+	mk := func(env, host string) Environment {
+		return Environment{Name: env, Kind: "remote", Servers: []Server{
+			{Name: env + "-app", Role: RoleApp, Host: host, SSHKeyRef: "NSELF_SSH_KEY_STAGING", RemotePath: "/opt/nself", Primary: true},
+		}}
+	}
+	return &Inventory{SchemaVersion: 1, Project: "test", Environments: map[string]Environment{
+		"qa":      mk("qa", "u@qa.example.test"),
+		"staging": mk("staging", "u@staging.example.test"),
+		"prod":    mk("prod", "u@prod.example.test"),
+	}}
+}
+
+// stubDeployServer swaps the per-server SSH deploy for a recorder; the
+// returned slice pointer holds the hosts it was called with.
+func stubDeployServer(t *testing.T) *[]string {
+	t.Helper()
+	var got []string
+	orig := deployServerFn
+	deployServerFn = func(_ context.Context, cfg deploy.SSHConfig, _ string) error {
+		got = append(got, cfg.Host)
+		return nil
+	}
+	t.Cleanup(func() { deployServerFn = orig })
+	return &got
+}
+
+// TestEnvScopeRun: Run deploys and probes only the named env; an unknown,
+// empty or differently-cased env is refused and nothing is contacted.
+func TestEnvScopeRun(t *testing.T) {
+	deployed := stubDeployServer(t)
+	t.Setenv("NSELF_SSH_KEY_STAGING", filepath.Join(t.TempDir(), "k"))
+
+	prober := &recordingProber{}
+	res, err := Run(context.Background(), threeEnvInventory(), "qa", prober, "/tmp/compose.yml")
+	if err != nil {
+		t.Fatalf("Run qa: %v", err)
+	}
+	if len(res.Servers) != 1 || res.Servers[0].Env != "qa" {
+		t.Fatalf("result servers = %+v, want exactly the qa server", res.Servers)
+	}
+	if len(*deployed) != 1 || !strings.HasPrefix((*deployed)[0], "u@qa.example.test") {
+		t.Fatalf("deployed hosts = %v, want only the qa host", *deployed)
+	}
+	for _, h := range prober.hosts {
+		if h != "u@qa.example.test" {
+			t.Errorf("prober contacted %q, a host outside env qa", h)
+		}
+	}
+	if len(prober.hosts) == 0 {
+		t.Error("prober was never called for qa: the cross-env assertion above is vacuous")
+	}
+
+	for _, bad := range []string{"missing", "", "QA", "production"} {
+		*deployed = nil
+		prober := &recordingProber{}
+		res, err := Run(context.Background(), threeEnvInventory(), bad, prober, "/tmp/compose.yml")
+		if err == nil || res != nil {
+			t.Errorf("Run(%q) = (%v, %v), want an error and no result", bad, res, err)
+		}
+		if len(*deployed) != 0 || len(prober.hosts) != 0 {
+			t.Errorf("Run(%q) contacted hosts: deployed=%v probed=%v", bad, *deployed, prober.hosts)
+		}
+	}
+
+	if _, err := Run(context.Background(), nil, "qa", &recordingProber{}, "/tmp/compose.yml"); err == nil {
+		t.Error("Run with a nil inventory must error")
 	}
 }

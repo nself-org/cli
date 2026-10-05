@@ -129,10 +129,62 @@ nself backup stream --to r2:mybucket/backups --recipient age1abc123 --heartbeat-
 |---|---|
 | `NSELF_BACKUP_DESTINATION` | Default destination URL |
 | `NSELF_BACKUP_RECIPIENT` | Default age/SSH public key (space-separated for multiple) |
+| `NSELF_BACKUP_NO_AUTO_KEY` | `1` keeps the refusal when no recipient is configured instead of creating an identity (v1.5) |
 | `NSELF_BACKUP_HEARTBEAT_REMOTE` | Default heartbeat remote (the `--heartbeat-to` flag wins). Environment only: `nself.yaml` has no config keys. |
 | `NSELF_BACKUP_CHUNK_MB` | Multipart chunk size in MB (default: 64, handled by rclone) |
 | `AWS_ACCESS_KEY_ID` | S3/R2/B2 access key |
 | `AWS_SECRET_ACCESS_KEY` | S3/R2/B2 secret key |
+
+### Zero-config encryption key (v1.5)
+
+With `NSELF_V15=1`, `backup stream` and `backup create` (encryption on) work on a project with no backup configuration. When no recipient is configured, nSelf creates an age identity once and encrypts to its recipient:
+
+- Identity file: `~/.config/nself/<project>-age.key`, mode `0600`, directory `0700`. The same path `nself backup init-key` uses.
+- It is created the first time only. An existing identity is never overwritten, and two runs starting together end with one key. A looser mode on an existing file or directory is tightened, and a symlink or a file that is not an age identity is refused (`E222`).
+- The first run prints where the identity lives, its public recipient, and how to back it up. The secret is never printed or logged.
+- A recipient from `--recipient`, `BACKUP_AGE_RECIPIENTS` or `NSELF_BACKUP_RECIPIENT` always wins and creates no file. `--no-encrypt` keeps its exact meaning.
+- `NSELF_BACKUP_NO_AUTO_KEY=1` turns automatic creation off. With no recipient the command then refuses (`E224` in v1.5, the usual refusal in v1.4).
+- Without `NSELF_V15=1` (v1.4 behaviour) the command refuses a missing recipient exactly as before. `--dry-run` never creates the file.
+
+```bash
+NSELF_V15=1 nself backup stream --to r2:mybucket/backups
+# restore finds the identity by itself
+nself backup restore-remote --from r2:mybucket/backups/<object>.age
+```
+
+### If the key is lost
+
+**A lost identity makes every backup encrypted to it unrecoverable.** The recipient (public key) cannot decrypt, the storage provider cannot, and nSelf cannot. There is no recovery path.
+
+1. Right after the first backup, copy `~/.config/nself/<project>-age.key` somewhere that is not this machine: a password manager attachment or an offline drive.
+2. Optionally run `touch ~/.config/nself/<project>-age.key.backed-up` to record that you did. The marker is an empty file you create yourself and nothing checks that the copy is real. A later release (P7-SURF-11) wires a doctor reminder that reads it; no reminder runs today.
+3. Prove the copy once with `nself backup drill --from <remote> --identity <copy>`. It restores into a throwaway container. Do not use `restore-remote` or `restore` for this: they overwrite the project database.
+
+In v1.5, `backup restore`, `restore-remote` and `backup drill` look for the identity in this order when `--decrypt-key`, `--key` or `--identity` is not given (an explicit path is used as given). A default-lookup identity must be a regular file (not a symlink) that parses as an age identity, otherwise `E222` names the path: `~/.config/nself/<project>-age.key`, `<project>-backup-age.key`, then `age-key.txt`. If none exists they stop with `E223`.
+
+### Threat model
+
+| Threat | With the auto identity | Hardened setup |
+|---|---|---|
+| Lost or deleted key | Backups unrecoverable | Keep an off-host copy and test a restore |
+| Storage provider reads your bucket | Sees only age ciphertext | Same |
+| Host compromise | The attacker holds the identity next to the recipient, so they can decrypt every backup the host can reach | Move the identity off the host and keep only the recipient (`BACKUP_AGE_RECIPIENTS=age1...`); production works this way |
+| Backup uploaded without the key | Not possible: no recipient means a refusal, never plaintext | Same |
+
+The auto identity trades host-compromise resistance for a first backup that works with zero setup. For production, generate the identity on your own machine (`age-keygen`), put only its recipient on the server, and keep the identity in your vault.
+
+### Replacing a hand-rolled backup script
+
+A cron script that runs `pg_dump ... | aws s3 cp - s3://bucket/x` or `rclone copy` has no encryption, no heartbeat and no restore proof. Replace it:
+
+| Hand-rolled | nSelf |
+|---|---|
+| `pg_dump` piped to `aws s3 cp` or `rclone copy` | `nself backup stream --to <remote>` (age-encrypted, no temp file) |
+| a crontab line | `nself backup schedule` |
+| "did it run?" | `--heartbeat-to <remote>` and `nself backup status` |
+| a manual restore test | `nself backup drill --from <remote> --identity <key>` |
+
+Destinations are the three kinds above; for stream and schedule use an rclone remote (S3, R2, B2, GCS, Azure) today. An advisory `nself doctor` hint for a project that still holds such a script is written but not yet wired (P7-SURF-11).
 
 ---
 
@@ -157,7 +209,7 @@ nself backup restore-remote --from <url> [--key <identity-file>] [--yes]
 | Flag | Default | Description |
 |---|---|---|
 | `--from` | — | Source URL: rclone remote path, `path://<dir>/<object>` or `host://<server>/<dir>/<object>` |
-| `--key` | `~/.config/nself/age-key.txt` | Path to age identity file |
+| `--key` | v1.5: `~/.config/nself/<project>-age.key`, then `<project>-backup-age.key`, then `age-key.txt` (E223 when none). v1.4: `~/.config/nself/age-key.txt` | Path to age identity file, used as given |
 | `--yes` | false | Skip confirmation on production |
 
 ### Examples
@@ -254,6 +306,8 @@ Restore from a local backup file.
 ```bash
 nself backup restore <backup-id|latest> [--only pg,minio,metadata] [--decrypt-key <file>] [--yes]
 ```
+
+Without `--decrypt-key`, v1.5 searches `~/.config/nself/<project>-age.key`, `<project>-backup-age.key`, then `age-key.txt` (E223 when none); v1.4 uses `~/.config/nself/age-key.txt`. The decrypted dump is a unique 0600 temp file beside the backup, removed afterwards; an existing `<backup>.dec` is never touched.
 
 ---
 
@@ -356,7 +410,7 @@ Restores the newest `<project>_stream_*` backup of a remote (rclone, `path://` o
 | Flag | Default | Meaning |
 |---|---|---|
 | `--from` | none | Remote that holds the backups. Selects the off-box drill. |
-| `--identity` | `~/.config/nself/<project>-backup-age.key`, then `age-key.txt` | age identity file that decrypts the object. Only its path is passed to `age`. |
+| `--identity` | `~/.config/nself/<project>-age.key`, then `<project>-backup-age.key`, then `age-key.txt` (E223 when none; the drill is new in v1.5, so it has no v1.4 default) | age identity file that decrypts the object. Only its path is passed to `age`. |
 | `--key` | newest by name | Object to drill instead of the newest. |
 | `--heartbeat-to` | `NSELF_BACKUP_HEARTBEAT_REMOTE` | Remote that receives `<project>/drill.json`. Without one nothing is written. |
 | `--project` | the current project | Project name for the object prefix and heartbeat keys. With `--from` no project directory is needed. |

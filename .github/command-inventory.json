@@ -377,6 +377,7 @@
       "--allow-legacy",
       "--check",
       "--debug",
+      "--deploy-remote",
       "--diff",
       "--force",
       "--hosts",
@@ -784,7 +785,12 @@
         "name": "seed",
         "path": "nself db seed",
         "short": "Database seeding: run, list, verify, graph",
-        "hidden": false
+        "hidden": false,
+        "flags": [
+          "--all-plugins",
+          "--force",
+          "--plugin"
+        ]
       },
       {
         "name": "shell",

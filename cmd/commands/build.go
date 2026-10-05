@@ -50,10 +50,16 @@ func init() {
                   monitoring stack; excludes minio, mailpit, admin, functions, search.
 Overrides NSELF_PROFILE env var. Valid values: app, ops.`)
 
+	// Internal: nself deploy passes this to the build it spawns for a remote
+	// target, so the build drops .env.local like the env file pushed to the host.
+	buildCmd.Flags().Bool("deploy-remote", false, "")
+	_ = buildCmd.Flags().MarkHidden("deploy-remote")
+
 	RootCmd.AddCommand(buildCmd)
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
+	remoteDeploy, _ := cmd.Flags().GetBool("deploy-remote")
 	force, _ := cmd.Flags().GetBool("force")
 	noCache, _ := cmd.Flags().GetBool("no-cache")
 	verbose, _ := cmd.Flags().GetBool("verbose")
@@ -190,6 +196,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		NoAutoRedis:    noAutoRedis,
 		Profile:        profile,
 		Hosts:          hosts,
+		RemoteDeploy:   remoteDeploy,
 	}
 
 	if pf.plan {

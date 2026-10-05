@@ -25,7 +25,7 @@ import (
 // (EPIC ruling D): the error is returned and the build writes nothing. The
 // records of plugins that were removed are still saved first. An unreadable
 // store stays advisory (nothing was announced from it).
-func runPluginLifecycleCheck(quiet bool) error {
+func runPluginLifecycleCheck(quiet, remoteDeploy bool) error {
 	store, err := plugin.LoadLifecycleStore()
 	if err != nil {
 		// Non-fatal: lifecycle store is advisory only.
@@ -68,7 +68,7 @@ func runPluginLifecycleCheck(quiet bool) error {
 			ui.Warn(fmt.Sprintf("Removing expired plugin %q (grace period exhausted)", name))
 		}
 		restoreEnv := build.SnapshotEnv() // config.Load exports the cascade; the write must not see it
-		cfg, cfgErr := config.Load(".")
+		cfg, cfgErr := config.LoadWithOptions(".", config.LoadOptions{RemoteDeploy: remoteDeploy})
 		restoreEnv()
 		if cfgErr != nil {
 			// Fall back to default plugin dir.

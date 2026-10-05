@@ -88,6 +88,7 @@ These errors occur when installing plugins or validating license keys.
 | <a id="e118"></a>E118 | 2 | Plugin migrations not applied in time | The bounded wait ended before the plugin's /health reported every migration applied: it reported fewer applied than expected, or it never answered HTTP 200 (hang, error status, redirect). The plugin applies its own SQL at boot; the CLI never applies it. | Read the plugin logs (docker logs nself_<plugin>) for the failing migration. A slow first boot needs a longer wait: set NSELF_PLUGIN_READY_TIMEOUT (seconds). |
 | <a id="e119"></a>E119 | 2 | Plugin health lacks migrations status | The plugin declares migrations but its /health response has no valid "migrations" {applied, expected} field (absent, wrong type, negative, applied above expected, or a body over 1 MiB), so readiness cannot be proven. | Update the plugin to a release built on sdk/go/migrate, which serves the migrations field in /health. |
 | <a id="e120"></a>E120 | 1 | Plugin ships migrations without boot apply | The plugin has a migrations/ directory but its manifest does not declare migrations.apply: boot, so nothing applies the SQL when the plugin starts. | Add "migrations": {"dir": "migrations", "apply": "boot"} to plugin.json and apply the files at boot with sdk/go/migrate. |
+| <a id="e127"></a>E127 | 1 | Plugin declares no seed command | The plugin's manifest has no seed.command, so `nself db seed --plugin` has nothing to run inside its container. | Ask the plugin author to declare an idempotent seed argv under "seed": {"command": [...]} in plugin.json, or seed the data another way. |
 
 ---
 
@@ -129,6 +130,9 @@ These errors occur when the CLI interacts with the PostgreSQL container, backups
 | <a id="e218"></a>E218 | 2 | Restore drill is stale or failed | The newest restore drill is older than --max-drill-age, never ran, or its restore did not match the backup. | Run nself backup drill --from <remote> --identity <age key> --heartbeat-to <remote> from the owner machine and read the mismatches it lists. |
 | <a id="e219"></a>E219 | 2 | Backup heartbeat unreadable | The heartbeat object could not be fetched or parsed, so freshness is unknown. Unknown is treated as not OK. | Check the heartbeat remote and its credentials (--heartbeat-to or NSELF_BACKUP_HEARTBEAT_REMOTE), then read the object with rclone cat. |
 | <a id="e220"></a>E220 | 2 | Restore drill cannot start | The drill needs a running Docker daemon, the age binary for encrypted backups, and free disk of twice the download size. | Start Docker, install age, or free disk space in the temp directory (TMPDIR), then run the drill again. |
+| <a id="e222"></a>E222 | 2 | Backup identity could not be created or read | nSelf could not create, secure or read the age identity under ~/.config/nself (missing age-keygen, unwritable directory, a symlink or a file that is not an age identity). An existing identity is never overwritten. | Install age, fix the directory permissions (0700), or pass --recipient <age1...> and manage the key yourself. |
+| <a id="e223"></a>E223 | 2 | Backup identity missing for decrypt | Backups encrypted to an auto-created identity can only be decrypted with that identity file. Without it they are unrecoverable. | Restore the identity file from your off-host copy to ~/.config/nself/<project>-age.key, or pass the command's key flag (restore --decrypt-key, restore-remote --key, drill --identity). |
+| <a id="e224"></a>E224 | 2 | No backup recipient and automatic key creation is disabled | NSELF_BACKUP_NO_AUTO_KEY=1 is set, so nSelf will not create an identity, and no recipient is configured. Backups are never written in the clear by default. | Pass --recipient <age1...\|ssh-...\|github:user>, set BACKUP_AGE_RECIPIENTS, run nself backup init-key, or pass --no-encrypt to write in the clear. |
 
 ---
 
@@ -194,6 +198,16 @@ Change-plan (E450) and operation-lock (E460) codes. The other codes in this bloc
 | <a id="e452"></a>E452 | 1 | Planned files were not written | After the build, a file the confirmed plan listed is missing, has other content, or has another mode. | Re-run nself build --plan to see what differs, then run nself build again; check that the project is writable. |
 | <a id="e453"></a>E453 | 1 | Plan id cannot bind plugin changes | The plan installs or removes plugins, and what those change is only known after they run, so a plan id cannot describe the final render. | Run nself build --yes without --plan-id (the render after the plugin changes is printed and held), or install or remove the plugins first. |
 | <a id="e460"></a>E460 | 1 | Project operation lock held | Another nself command is changing this project and holds its operation lock. | Wait for the running nself command to finish, or stop it, then run this command again. |
+
+---
+
+## Deploy (E480-E499)
+
+These errors come from `nself deploy` and related commands. Only the codes registered so far are listed.
+
+| Code | Exit | Summary | Why | Fix |
+|------|------|---------|-----|-----|
+| <a id="e483"></a>E483 | 1 | Unknown deploy environment | The environment you named is not in the deploy inventory (.nself/control-plane.yaml or NSELF_DEPLOY_HOST_<ENV>), so nothing was deployed. A deploy never falls back to another environment. | Run nself deploy environments to list the known environments, then re-run with one of them, or add the environment with nself env target add. |
 
 ---
 

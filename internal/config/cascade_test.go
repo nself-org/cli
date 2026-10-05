@@ -22,9 +22,20 @@ func TestEnvCascadeOrder_Canonical(t *testing.T) {
 		{"staging", []string{".env", ".env.staging", ".env.secrets", ".env.local"}},
 		{"prod", []string{".env", ".env.prod", ".env.secrets", ".env.local"}},
 		{"production", []string{".env", ".env.prod", ".env.secrets", ".env.local"}},
-		// Unknown env names get no env-specific layer at all — the canon
-		// only names dev/staging/prod.
-		{"test", []string{".env", ".env.secrets", ".env.local"}},
+		{"development", []string{".env", ".env.dev", ".env.secrets", ".env.local"}},
+		{"stage", []string{".env", ".env.staging", ".env.secrets", ".env.local"}},
+		{"PROD", []string{".env", ".env.prod", ".env.secrets", ".env.local"}},
+		// "local" is the dev stack on this machine.
+		{"local", []string{".env", ".env.dev", ".env.secrets", ".env.local"}},
+		// A custom env layers its own file over the dev base (P7-DEPL-12).
+		{"test", []string{".env", ".env.test", ".env.secrets", ".env.local"}},
+		{"QA", []string{".env", ".env.qa", ".env.secrets", ".env.local"}},
+		{"live", []string{".env", ".env.live", ".env.secrets", ".env.local"}},
+		{"qa-eu_2", []string{".env", ".env.qa-eu_2", ".env.secrets", ".env.local"}},
+		// A name that is not a plain file-name fragment gets no layer of its own.
+		{"../prod", []string{".env", ".env.secrets", ".env.local"}},
+		{"a/b", []string{".env", ".env.secrets", ".env.local"}},
+		{" prod", []string{".env", ".env.secrets", ".env.local"}},
 	}
 
 	for _, c := range cases {
@@ -329,4 +340,111 @@ func attrMapCascade(r slog.Record) map[string]string {
 		return true
 	})
 	return m
+}
+
+// TestLoadCustomEnvNeverReadsDevLayer: a server whose ENV is a custom name
+// (live) builds from .env, .env.live, .env.secrets and .env.local only; the
+// dev values in a committed .env.dev never reach it. A dev name still loads it.
+func TestLoadCustomEnvNeverReadsDevLayer(t *testing.T) {
+	for _, tc := range []struct {
+		env     string
+		wantDev bool
+	}{{"live", false}, {"prd", false}, {" prod", false}, {"dev", true}, {"local", true}} {
+		dir := t.TempDir()
+		for _, k := range []string{"HASURA_GRAPHQL_DEV_MODE", "BASE_DOMAIN", "NSELF_LEGACY_ENV_ORDER"} {
+			t.Setenv(k, "")
+		}
+		t.Setenv("ENV", tc.env)
+		for n, b := range map[string]string{
+			".env":      "BASE_DOMAIN=example.com\n",
+			".env.dev":  "HASURA_GRAPHQL_DEV_MODE=true\nBASE_DOMAIN=local.nself.org\n",
+			".env.live": "X_LIVE=1\n",
+		} {
+			if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cfg, err := Load(dir)
+		if err != nil {
+			t.Fatalf("ENV=%q: %v", tc.env, err)
+		}
+		gotDev := os.Getenv("HASURA_GRAPHQL_DEV_MODE") == "true" || cfg.BaseDomain == "local.nself.org"
+		if gotDev != tc.wantDev {
+			t.Errorf("ENV=%q: dev values loaded=%v, want %v (DEV_MODE=%q BASE_DOMAIN=%q)", tc.env, gotDev, tc.wantDev, os.Getenv("HASURA_GRAPHQL_DEV_MODE"), cfg.BaseDomain)
+		}
+	}
+}
+
+// TestLoadRemoteDeployDropsEnvLocal: with LoadOptions.RemoteDeploy (the hidden
+// build flag nself deploy passes for a remote target) Load skips .env.local;
+// otherwise the personal override still wins.
+func TestLoadRemoteDeployDropsEnvLocal(t *testing.T) {
+	for _, remote := range []bool{false, true} {
+		dir := t.TempDir()
+		t.Setenv("ENV", "qa")
+		t.Setenv("BASE_DOMAIN", "")
+		t.Setenv("NSELF_LEGACY_ENV_ORDER", "")
+		for n, b := range map[string]string{".env.qa": "BASE_DOMAIN=qa.example.test\n", ".env.local": "BASE_DOMAIN=laptop.example.test\n"} {
+			if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cfg, err := LoadWithOptions(dir, LoadOptions{RemoteDeploy: remote})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "laptop.example.test"
+		if remote {
+			want = "qa.example.test"
+		}
+		if cfg.BaseDomain != want {
+			t.Errorf("remote=%v: BASE_DOMAIN=%q, want %q", remote, cfg.BaseDomain, want)
+		}
+	}
+	if got := WithoutLocalOverride([]string{".env", ".env.local", ".env.prod"}); len(got) != 2 || got[0] != ".env" || got[1] != ".env.prod" {
+		t.Errorf("WithoutLocalOverride = %v", got)
+	}
+}
+
+// TestExportedRemoteVarHasNoEffect: a user-exported NSELF_DEPLOY_REMOTE=true
+// changes nothing; only the caller's LoadOptions does.
+func TestExportedRemoteVarHasNoEffect(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ENV", "qa")
+	t.Setenv("BASE_DOMAIN", "")
+	t.Setenv("NSELF_DEPLOY_REMOTE", "true")
+	for n, b := range map[string]string{".env.qa": "BASE_DOMAIN=qa.example.test\n", ".env.local": "BASE_DOMAIN=laptop.example.test\n"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BaseDomain != "laptop.example.test" {
+		t.Errorf("exported NSELF_DEPLOY_REMOTE changed the cascade: BASE_DOMAIN=%q", cfg.BaseDomain)
+	}
+}
+
+// TestRemoteLoadLeavesNoState: in one process a remote-flagged load followed by
+// a plain Load still reads .env.local; nothing is left to restore.
+func TestRemoteLoadLeavesNoState(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ENV", "qa")
+	t.Setenv("NSELF_LEGACY_ENV_ORDER", "")
+	for n, b := range map[string]string{".env.qa": "BASE_DOMAIN=qa.example.test\n", ".env.local": "BASE_DOMAIN=laptop.example.test\n"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("BASE_DOMAIN", "")
+	if cfg, err := LoadWithOptions(dir, LoadOptions{RemoteDeploy: true}); err != nil || cfg.BaseDomain != "qa.example.test" {
+		t.Fatalf("remote load: %v %v", cfg, err)
+	}
+	t.Setenv("BASE_DOMAIN", "")
+	cfg, err := Load(dir)
+	if err != nil || cfg.BaseDomain != "laptop.example.test" {
+		t.Errorf("plain load after a remote one: BASE_DOMAIN=%q err=%v, want .env.local to win", cfg.BaseDomain, err)
+	}
 }

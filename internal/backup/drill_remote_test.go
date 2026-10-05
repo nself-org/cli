@@ -218,7 +218,7 @@ func TestDrillRemotePreflightErrors(t *testing.T) {
 		e := newDrillEnv(t)
 		o := e.opts()
 		o.Identity = ""
-		if _, err := DrillRemote(context.Background(), o); !errors.Is(err, errs.ErrBackupDecryptFailed) {
+		if _, err := DrillRemote(context.Background(), o); codesOf(t, err) != "E223" {
 			t.Fatalf("err = %v", err)
 		}
 		e.assertClean(t, false)

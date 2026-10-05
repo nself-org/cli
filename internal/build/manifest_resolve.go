@@ -26,10 +26,10 @@ var PluginInstall = plugin.Install
 // plugins' nginx and compose artifacts. Install failures are warnings, as in a
 // build; the render then reports the plugin as missing. The environment is left
 // as found.
-func InstallDeclaredPlugins(ctx context.Context, workdir string) error {
+func InstallDeclaredPlugins(ctx context.Context, workdir string, remoteDeploy bool) error {
 	defer SnapshotEnv()()
 	repin := pinCompatEnv()
-	cfg, err := config.Load(workdir)
+	cfg, err := config.LoadWithOptions(workdir, config.LoadOptions{RemoteDeploy: remoteDeploy})
 	repin()
 	if err != nil {
 		return fmt.Errorf("loading config to install declared plugins: %w", err)

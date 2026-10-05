@@ -98,7 +98,7 @@ func runBuildApply(cmd *cobra.Command, workdir string, opts build.BuildOptions, 
 		BeforeWrite: func() error {
 			// The expired-plugin removal is part of the plan (plugin-remove
 			// effect) and runs only once it is confirmed.
-			return runPluginLifecycleCheck(quiet)
+			return runPluginLifecycleCheck(quiet, opts.RemoteDeploy)
 		},
 	}
 	if !pf.json {

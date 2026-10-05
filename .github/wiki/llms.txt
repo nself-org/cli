@@ -291,7 +291,7 @@ Flags:
 
 - `--canary` (default 0) — Start a canary deploy at N%% traffic to green (0 = full flip)
 - `--dry-run` (default false) — Preview the deploy without executing
-- `--env` (default "") — Target environment: local|staging|prod (overrides positional arg; required env vars: NSELF_DEPLOY_HOST, NSELF_DEPLOY_USER, NSELF_DEPLOY_KEY_PATH)
+- `--env` (default "") — Target environment: local, or any inventory environment such as staging, prod or qa (overrides positional arg; required env vars: NSELF_DEPLOY_HOST, NSELF_DEPLOY_USER, NSELF_DEPLOY_KEY_PATH)
 - `--exclude-frontends` (default false) — Exclude frontend apps from the deploy
 - `--follow` (default false) — Stream container logs after deploy until Ctrl-C (staging/prod only)
 - `--force` (default false) — Skip confirmation prompts (prod requires --confirm or --force)
@@ -477,7 +477,7 @@ Flags:
 
 - `--cs-template` (default "") — Scaffold a custom service at init time: specify language (go, node, python, rust, other)
 - `--demo` (default false) — Auto-configure with all services enabled
-- `--domain` (default "") — Base domain (skips interactive domain selection, e.g. myapp.dev)
+- `--domain` (default "") — Base domain (default: local.nself.org; init never prompts for it, e.g. myapp.dev)
 - `--dry-run` (default false) — Print files that would be written without writing them (clone templates only)
 - `--fast` (default false) — Skip advanced options, use smart defaults
 - `--force` (default false) — Overwrite existing configuration
