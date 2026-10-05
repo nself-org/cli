@@ -95,3 +95,22 @@ func TestRestoreFromRemotePathWithoutRclone(t *testing.T) {
 		t.Fatal("missing object restored")
 	}
 }
+
+// The half-set S3 key check guards the rclone/S3 kind only.
+func TestHalfSetS3KeysOnlyBlockRcloneRemotes(t *testing.T) {
+	half := &config.Config{}
+	half.Backup.S3AccessKeyID = "AKIDONLY"
+	for _, remote := range []string{"s3://b/p", "r2:b/p", "myremote:p", "minio://b/p"} {
+		if err := requireCompleteS3CredentialsFor(remote, half); err == nil {
+			t.Errorf("%s: half-set keys accepted", remote)
+		}
+	}
+	for _, remote := range []string{"path:///mnt/b", "host://bk1/srv/b"} {
+		if err := requireCompleteS3CredentialsFor(remote, half); err != nil {
+			t.Errorf("%s: blocked by S3 keys: %v", remote, err)
+		}
+	}
+	if err := requireCompleteS3CredentialsFor("s3://b/p", &config.Config{}); err != nil {
+		t.Errorf("both-empty must pass: %v", err)
+	}
+}

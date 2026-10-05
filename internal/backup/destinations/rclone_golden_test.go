@@ -87,3 +87,33 @@ func TestParseObject(t *testing.T) {
 		t.Fatalf("rclone: %q %v", key, err)
 	}
 }
+
+func TestParseObjectRefusesDotDot(t *testing.T) {
+	inv := hostFixture(t)
+	for _, u := range []string{
+		"path:///tmp/a/../../etc/passwd", "path:///tmp/a/../b/f", "path:///tmp/..",
+		"host://bk1/a/../b/f", "host://bk1/bk1/../../bk1/etc/f", "host://bk1/srv/..",
+	} {
+		if d, _, err := ParseObject(u, inv); err == nil || d != nil {
+			t.Errorf("ParseObject(%q) = %v, %v; want nil, error", u, d, err)
+		}
+	}
+	if _, key, err := ParseObject("path:///tmp/a/b..c/f..", nil); err != nil || key != "f.." {
+		t.Errorf("dots inside a name are fine: %q %v", key, err)
+	}
+}
+
+// Parse must return an untyped nil with an error, never a nil pointer wrapped
+// in a non-nil interface.
+func TestParseErrorReturnsUntypedNil(t *testing.T) {
+	inv := hostFixture(t)
+	for _, u := range []string{"", "path://", "path://rel", "path:///a/../b", "host://", "host://nosuch/x", "host://bk1/a;b", "host://lo/x"} {
+		d, err := Parse(u, inv)
+		if err == nil {
+			t.Errorf("Parse(%q): want error", u)
+		}
+		if d != nil {
+			t.Errorf("Parse(%q) returned non-nil Destination %T with an error", u, d)
+		}
+	}
+}

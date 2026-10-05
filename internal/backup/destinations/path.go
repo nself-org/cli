@@ -4,8 +4,8 @@
 // Inputs: path://<absolute dir>, local files and keys.
 // Outputs: objects under the directory, files 0600, directories 0700.
 // Constraints: every access goes through os.Root, so a ".." or a symlink
-// cannot leave the directory; no path component below the directory may be a
-// symlink; writes go to <key>.tmp, are fsynced, renamed and re-read to compare
+// cannot leave the directory; the directory itself and every component below
+// it must not be a symlink; writes go to <key>.tmp, are fsynced, renamed and re-read to compare
 // sha256. A symlink at the final component is refused, never followed.
 package destinations
 
@@ -46,6 +46,12 @@ func (d *pathDest) root(create bool) (*os.Root, error) {
 		if err := os.MkdirAll(d.dir, 0o700); err != nil {
 			return nil, fmt.Errorf("create %s: %w", d.dir, err)
 		}
+	}
+	// The destination root itself is never followed when it is a symlink: a
+	// link can be retargeted, so its target is not the directory the operator
+	// named. Ancestors of the root are resolved normally.
+	if fi, err := os.Lstat(d.dir); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+		return nil, fmt.Errorf("%s is a symlink; use the real directory path", d.dir)
 	}
 	r, err := os.OpenRoot(d.dir)
 	if err != nil {

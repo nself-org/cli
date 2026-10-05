@@ -60,6 +60,16 @@ func requireCompleteS3Credentials(cfg *config.Config) error {
 	return fmt.Errorf("S3 backup credentials are half-configured: %s is set but its counterpart is not", missing)
 }
 
+// requireCompleteS3CredentialsFor applies requireCompleteS3Credentials to the
+// rclone/S3 kind only: path:// and host:// uploads never use S3 keys, so a
+// half-set key pair must not block them.
+func requireCompleteS3CredentialsFor(remote string, cfg *config.Config) error {
+	if destinations.KindOf(remote) != destinations.KindRclone {
+		return nil
+	}
+	return requireCompleteS3Credentials(cfg)
+}
+
 // destinationFor parses a --remote / --from destination. host:// loads the
 // controlplane inventory from the current directory (the project root);
 // rcloneEnv reaches every rclone process the destination starts.

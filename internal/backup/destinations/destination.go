@@ -101,9 +101,19 @@ func Parse(uri string, inv *Inventory, rcloneEnv ...string) (Destination, error)
 	case "":
 		return nil, fmt.Errorf("destination is empty")
 	case KindPath:
-		return newPathDest(strings.TrimPrefix(uri, pathScheme))
+		d, err := newPathDest(strings.TrimPrefix(uri, pathScheme))
+		if err != nil {
+			// Explicit nil: returning d would wrap a nil *pathDest in a
+			// non-nil interface.
+			return nil, err
+		}
+		return d, nil
 	case KindHost:
-		return newHostDest(strings.TrimPrefix(uri, hostScheme), inv)
+		d, err := newHostDest(strings.TrimPrefix(uri, hostScheme), inv)
+		if err != nil {
+			return nil, err
+		}
+		return d, nil
 	}
 	return &rcloneDest{remote: uri, env: rcloneEnv}, nil
 }
@@ -121,6 +131,12 @@ func ParseObject(uri string, inv *Inventory) (Destination, string, error) {
 		scheme = hostScheme
 	}
 	rest := strings.TrimPrefix(uri, scheme)
+	// Refuse ".." before path.Dir cleans it away.
+	for _, seg := range strings.Split(rest, "/") {
+		if seg == ".." {
+			return nil, "", fmt.Errorf("destination %q must not contain '..'", uri)
+		}
+	}
 	dir, key := path.Dir(rest), path.Base(rest)
 	if key == "." || key == "/" || key == ".." || strings.HasSuffix(rest, "/") {
 		return nil, "", fmt.Errorf("destination %q does not name an object", uri)

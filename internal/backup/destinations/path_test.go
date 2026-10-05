@@ -149,3 +149,42 @@ func TestPathDestinationOverwritesAtomically(t *testing.T) {
 		t.Fatal("missing source accepted")
 	}
 }
+
+func TestPathDestinationRefusesSymlinkRoot(t *testing.T) {
+	skipWindows(t)
+	real := t.TempDir()
+	writeFile(t, real, "seed.dump", "seed")
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	d, err := Parse("path://"+link, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := writeFile(t, t.TempDir(), "f", "x")
+	if err := d.Put(t.Context(), src, "new.dump"); err == nil {
+		t.Error("Put followed a symlinked root")
+	}
+	if _, err := os.Stat(filepath.Join(real, "new.dump")); err == nil {
+		t.Error("file written through the symlinked root")
+	}
+	if err := d.Get(t.Context(), "seed.dump", filepath.Join(t.TempDir(), "o")); err == nil {
+		t.Error("Get followed a symlinked root")
+	}
+	if _, err := d.(Opener).Open(t.Context(), "seed.dump"); err == nil {
+		t.Error("Open followed a symlinked root")
+	}
+	if _, err := d.List(t.Context(), ""); err == nil {
+		t.Error("List followed a symlinked root")
+	}
+	// A real directory under a symlinked ancestor (macOS /var, /tmp) still works.
+	anc := filepath.Join(t.TempDir(), "anc")
+	if err := os.Symlink(real, anc); err != nil {
+		t.Fatal(err)
+	}
+	ok, _ := Parse("path://"+filepath.Join(anc, "sub"), nil)
+	if err := ok.Put(t.Context(), src, "k"); err != nil {
+		t.Errorf("symlinked ancestor should resolve normally: %v", err)
+	}
+}

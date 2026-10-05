@@ -28,7 +28,7 @@ Backup, restore, verify, and schedule ɳSelf project data.
 
 rclone behaviour is unchanged.
 
-**path://** refuses `..` and any symlink below the directory, so a link cannot send a write outside it. A file is written to `<key>.tmp`, fsynced, renamed into place and re-read to compare its sha256. Directories are created `0700`, files `0600`.
+**path://** refuses `..`, a destination directory that is itself a symlink (use the real path), and any symlink below the directory, so a link cannot send a write outside it. A file is written to `<key>.tmp`, fsynced, renamed into place and re-read to compare its sha256. Directories are created `0700`, files `0600`.
 
 **host://** goes through the shared SSH funnel (`sdk/go/remote`): one `ssh` or `scp` argv builder, remote paths limited to `[a-zA-Z0-9/_.-]` with no `..`, and every unsafe name rejected before any connection. The server name must be in the inventory with a `host` (`user@host`); `ssh_key_ref` names an environment variable holding the key path. Host keys are pinned: ssh runs with `StrictHostKeyChecking=yes` against `~/.config/nself/backup_known_hosts` (override with `NSELF_BACKUP_KNOWN_HOSTS`), and the file must hold a key for the alias `nself-ci-<server>`. A server with no pinned key is refused. A file is copied to `<key>.tmp`, its sha256 compared, then moved into place.
 
