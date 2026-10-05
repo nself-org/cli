@@ -64,4 +64,51 @@ A tracked file must not be a compiled binary: `TestTrackedBinaries` rejects an E
 
 ## Funnels
 
-Funnel ratchets for direct `http.Client` construction and direct `docker` process execution are documented here once they land.
+Two ratchets freeze the call sites that bypass a shared funnel. Each is a shrink-only allowlist of `<path> <count>` lines, checked by `go test ./internal/repoqa/`.
+
+| Rule | Funnel (exempt dir) | Test | Allowlist | Basis constant |
+|---|---|---|---|---|
+| D5 | `internal/httptimeout` | `TestHTTPFunnel` | `internal/repoqa/testdata/http-client-allowlist.txt` | `httpBasisTotal` |
+| D4 | `internal/docker` | `TestDockerFunnel` | `internal/repoqa/testdata/docker-exec-allowlist.txt` | `dockerBasisTotal` |
+
+**What counts.** The scan parses files with `go/parser` and never builds them.
+- D5: a composite literal of type `http.Client` (with or without `&`) and `new(http.Client)`. The file's import name for `net/http` is resolved, so an aliased import counts.
+- D4: `exec.Command` or `exec.CommandContext` whose command is the string literal `"docker"`, or an identifier that the same file declares as a `const` or `var` equal to `"docker"`. The `os/exec` import name is resolved.
+- Not counted: comments, strings, pointer and parameter types such as a `*http.Client` parameter, other binaries. A zero-value `var c http.Client` is a construction but is not counted (see blind spots).
+
+**Scope.** Every non-test `.go` file of the root module, whatever its build tags or GOOS suffix (a `_windows.go` file is parsed). Skipped: `vendor/`, `testdata/`, dot-directories and any directory with its own `go.mod` (for example `sdk/go`). Paths are normalised to `/` before listing and exempt checks.
+
+**Known blind spots (see debt D-0256 for the same class of gap in the layering guard).**
+- `_test.go` files are not scanned: a site in a test file is not counted. The ratchets protect production code only.
+- A docker binary path from `exec.LookPath("docker")` is not seen, nor a helper outside `internal/docker` that takes the binary name as a parameter.
+- http.Client built through a type alias (`type C = http.Client`), a zero-value `var c http.Client`, a conversion `http.Client(*a)`, or a dot import of `net/http` is not counted. An `http.Transport`-only client is outside this ratchet; `http.DefaultClient` and `http.Get` are left to forbidigo.
+- docker named through a local variable (`bin := "docker"`), a const declared in another file or package, a computed string (`"docker"+""`), a `[]string{"docker", ...}` argument slice, an absolute path (`/usr/local/bin/docker`), a shell (`sh -c "docker ..."`), `os.StartProcess`, `syscall.Exec`, or a dot import of `os/exec` is not counted.
+- The basis constants stop a silent loosening, not a deliberate one: a PR can raise a line and its constant together. The gate for that is review of any diff to the two allowlists or the `*_funnel_test.go` basis constants.
+- A command held in a variable assigned at run time (not a `const`/`var` literal) is not seen.
+- `forbidigo` in `.golangci.yml` separately bans `http.DefaultClient`, `http.Get`, `Post`, `PostForm` and `Head`; these ratchets cover only constructed clients.
+
+**Shrink only.** The list may not grow and may not be loosened without an edit of the basis constant in the test, which a reviewer sees. A site that is not listed fails with the file name. A line above the measured count fails with "new sites are rejected". A line below it, or for a file with no sites, fails with "lower the line" or "delete the line". If the list total no longer equals the constant, the test says "lower ...BasisTotal to N". `go test ./internal/repoqa/ -run 'HTTPFunnel|DockerFunnel' -update` lowers lines and drops stale ones; it never adds a line or raises a count, and it prints the new constant to paste.
+
+**Touch a listed file: move its sites onto the funnel and lower the line in the same PR.** Migration is opportunistic (debt D-0034); no Ticket migrates sites just to empty the list.
+
+Before and after for D5:
+
+```go
+// before: listed in http-client-allowlist.txt as "internal/foo/client.go 1"
+c := &http.Client{Timeout: 30 * time.Second}
+
+// after: the line for this file is deleted
+c := httptimeout.WithTimeout(30 * time.Second)
+```
+
+Before and after for D4:
+
+```go
+// before: listed in docker-exec-allowlist.txt as "internal/foo/ps.go 1"
+out, err := exec.CommandContext(ctx, "docker", "logs", "--tail", "50", name).CombinedOutput()
+
+// after: the line for this file is deleted
+out, err := docker.GetContainerLogs(ctx, name, 50)
+```
+
+Pick the helper that fits the call (`httptimeout.NoProxy`, `docker.ExecCapture`, `docker.RunOneShot`, `docker.InspectContainer`); add one to the funnel package when none fits.
