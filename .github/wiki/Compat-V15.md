@@ -53,4 +53,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | Ticket | v1.4 behaviour (old) | v1.5 behaviour (new) | File |
 |---|---|---|---|
 | P7-REG-02 | bare pre-contract JSON | v1 envelope (NSELF_JSON_LEGACY=1 or true keeps bare JSON for one minor) | `internal/output/legacy.go` |
+| P7-REG-05 | --json accepted and ignored on a command whose own json flag predates P7-REG | refused with E402 | `cmd/commands/invocation.go` |
+| P7-REG-05 | flag and argument errors keep cobra's text | wrapped as E401 | `cmd/commands/invocation.go` |
+| P7-REG-05 | registry reports v1.4 exit codes and hides v1.5-only envelopes | v1.5 exit codes and envelopes | `cmd/commands/registry.go` |
 <!-- END GENERATED:gated -->

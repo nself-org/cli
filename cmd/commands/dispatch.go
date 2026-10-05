@@ -123,6 +123,9 @@ func Execute() error {
 	// Route cobra error/usage output to stderr so structured output stays clean.
 	RootCmd.SetErr(os.Stderr)
 
+	// Wrap every command with the --json guard and coded usage errors.
+	installInvocationDecorator(RootCmd)
+
 	// Intercept unknown commands for the plugin router
 	if len(os.Args) > 1 {
 		cmdName := os.Args[1]
@@ -221,6 +224,10 @@ func stripRootPersistentFlags(args []string) []string {
 	type flagInfo struct{ takesValue bool }
 	known := map[string]flagInfo{}
 	RootCmd.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+		// --json is forwarded: the plugin owns its output (invocation.go).
+		if keepsForPlugin(f.Name) {
+			return
+		}
 		// A bool flag never consumes the following argument; anything else does
 		// when written as "--flag value" rather than "--flag=value".
 		known["--"+f.Name] = flagInfo{takesValue: f.Value.Type() != "bool"}
