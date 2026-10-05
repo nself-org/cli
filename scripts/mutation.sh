@@ -12,8 +12,12 @@
 #          $MUTATION_OUT (default: a temp file) and its path is printed.
 # Exit:    0 no mutant lived; 1 at least one lived (or gremlins failed to run).
 #          --only f.go,g.go  judge only those files (see below); --allow FILE.
+#          An --only file that does not exist, or a run that judges zero mutants
+#          in the listed files, exits 1 (a skipped check must never read as green).
 # Env:     GREMLINS_WORKERS (default 4), MUTATION_TIMEOUT_COEFFICIENT (default 5),
-#          MUTATION_MAX_TIMEOUTS (default 8; --only fails above it).
+#          MUTATION_MAX_TIMEOUTS (default 8; --only fails above it),
+#          GREMLINS_BIN (a gremlins-compatible binary to use instead of building
+#          the pinned release; scripts/mutation_test.sh uses a fake).
 set -uo pipefail
 
 GREMLINS_VERSION="v0.6.0"
@@ -48,10 +52,11 @@ done
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root" || exit 1
 srcdir="$pkg"
+moddir="$root" # the directory srcdir is relative to (the module root)
 
 # Module-aware: sdk/go is its own module.
 case "$pkg" in
-  sdk/go/*) cd sdk/go && pkg="./${pkg#sdk/go/}"; srcdir="${srcdir#sdk/go/}" ;;
+  sdk/go/*) cd sdk/go && moddir="$root/sdk/go" && pkg="./${pkg#sdk/go/}" && srcdir="${srcdir#sdk/go/}" ;;
   *) pkg="./${pkg#./}"; srcdir="${srcdir#./}" ;;
 esac
 
@@ -63,13 +68,17 @@ export GOFLAGS="${GOFLAGS:--mod=vendor} -count=1"
 
 # gremlins itself is not vendored: build the pinned release into a temp dir
 # (no global install), outside the vendored module graph.
-bindir="$(mktemp -d "${TMPDIR:-/tmp}/gremlins-bin.XXXXXX")"
-trap 'rm -rf "$bindir"' EXIT
-if ! (cd "$bindir" && GOFLAGS= GOBIN="$bindir" go install "github.com/go-gremlins/gremlins/cmd/gremlins@${GREMLINS_VERSION}"); then
-  echo "mutation: could not fetch gremlins ${GREMLINS_VERSION} from the module proxy" >&2
-  exit 1
+if [ -n "${GREMLINS_BIN:-}" ]; then
+  gremlins() { "$GREMLINS_BIN" "$@"; }
+else
+  bindir="$(mktemp -d "${TMPDIR:-/tmp}/gremlins-bin.XXXXXX")"
+  trap 'rm -rf "$bindir"' EXIT
+  if ! (cd "$bindir" && GOFLAGS= GOBIN="$bindir" go install "github.com/go-gremlins/gremlins/cmd/gremlins@${GREMLINS_VERSION}"); then
+    echo "mutation: could not fetch gremlins ${GREMLINS_VERSION} from the module proxy" >&2
+    exit 1
+  fi
+  gremlins() { "$bindir/gremlins" "$@"; }
 fi
-gremlins() { "$bindir/gremlins" "$@"; }
 
 # Equivalent mutants for --only runs, by gremlins id, each with the reason no test
 # can tell the mutant from the original. Line numbers are those of the current
@@ -121,9 +130,10 @@ mutation_only_main() {
   : > "$keepdef"; : > "$keepdev"
   list="$(printf '%s' "$only" | tr ',' '\n')"
   for base in $list; do
-    f="$root/$srcdir/$base"
+    f="$moddir/$srcdir/$base"
     if [ ! -f "$f" ]; then
-      echo "mutation: --only file not found (skipped): $srcdir/$base" >&2
+      echo "mutation: --only file not found: $srcdir/$base (looked in $moddir)" >&2
+      missing=1
       continue
     fi
     case "$base" in *_test.go) echo "mutation: --only names a test file: $base" >&2; missing=1; continue ;; esac
@@ -172,6 +182,16 @@ mutation_only_main() {
       grep -qxF "$id" "$tmp/allow" && continue
       echo "$id"
     done > "$tmp/bad"
+  # Judged = every mutant gremlins reported in a listed file, whatever its verdict.
+  # Zero means nothing was tested (wrong path, excluded file, build tag): a failure.
+  local verdicts="KILLED|LIVED|NOT COVERED|TIMED OUT|NOT VIABLE" nj nk
+  nj="$(sed -nE "s/^[[:space:]]*($verdicts)[[:space:]]+[A-Z_]+ at ([^:]+):.*/\2/p" "$out" | grep -cxF -f "$tmp/listed" || true)"
+  nk="$(sed -nE "s/^[[:space:]]*(KILLED)[[:space:]]+[A-Z_]+ at ([^:]+):.*/\2/p" "$out" | grep -cxF -f "$tmp/listed" || true)"
+  if [ "${nj:-0}" -eq 0 ]; then
+    echo "mutation: zero mutants were judged in: $only (nothing was tested; see $out)" >&2
+    rm -rf "$tmp"; return 1
+  fi
+  echo "mutation: judged $nj mutants in $only (killed $nk)"
   local nbad nallow nto maxto="${MUTATION_MAX_TIMEOUTS:-8}"
   nto="$(sed -nE 's/^[[:space:]]*TIMED OUT[[:space:]]+[A-Z_]+ at ([^:]+):.*/\1/p' "$out" | grep -cxF -f "$tmp/listed" || true)"
   if [ "${nto:-0}" -gt "$maxto" ]; then
