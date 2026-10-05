@@ -134,6 +134,8 @@ func TestCompareDecisions(t *testing.T) {
 }
 
 // The measuring order alternates each round: base first on even rounds, head first on odd.
+// -min-delta-ms 1e9 keeps the timing verdict out of this test: two identical shell stubs can differ
+// by more than the default threshold on a loaded runner (D-0250).
 func TestABAlternatesOrder(t *testing.T) {
 	dir := t.TempDir()
 	log := filepath.Join(dir, "order.log")
@@ -141,7 +143,7 @@ func TestABAlternatesOrder(t *testing.T) {
 	base := script(t, "base", body)
 	head := script(t, "head", body)
 	var out, errb bytes.Buffer
-	if code := dispatch([]string{"ab", "-base", base, "-head", head, "-runs", "3", "-warmup", "1", "-scenario", "cold-start"}, &out, &errb); code != 0 {
+	if code := dispatch([]string{"ab", "-base", base, "-head", head, "-runs", "3", "-warmup", "1", "-scenario", "cold-start", "-min-delta-ms", "1e9"}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d %s", code, errb.String())
 	}
 	raw, err := os.ReadFile(log)
