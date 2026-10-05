@@ -208,3 +208,17 @@ func TestCloseSkipsRmWithoutContainers(t *testing.T) {
 		t.Fatal("network rm not attempted")
 	}
 }
+
+// A docker client that exits 0 with no server version (daemon down) is unreachable too.
+func TestStartFailsWhenDockerAnswersEmpty(t *testing.T) {
+	d := installFakeDocker(t)
+	d.info = ""
+	tb := newFakeTB(t)
+	tb.run(func() { Start(tb, Config{Nodes: []NodeSpec{{Name: "a"}}}) })
+	if tb.skipped || !strings.Contains(tb.fatal, "Docker is unreachable") {
+		t.Fatalf("skipped=%v fatal=%q", tb.skipped, tb.fatal)
+	}
+	if len(d.find("network", "create")) != 0 {
+		t.Fatal("created a network although Docker looked down")
+	}
+}

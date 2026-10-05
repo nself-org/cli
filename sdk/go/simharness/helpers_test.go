@@ -58,6 +58,7 @@ type fakeDocker struct {
 	mu      sync.Mutex
 	calls   [][]string
 	port    int
+	info    string // server version `docker info` reports
 	nextID  int
 	byFleet map[string][]string // fleet id -> container ids
 	failOn  string              // "<arg0> <arg1>" prefix that exits non-zero
@@ -76,6 +77,8 @@ func (d *fakeDocker) reply(ctx context.Context, args []string) *exec.Cmd {
 	}
 	out := ""
 	switch {
+	case args[0] == "info":
+		out = d.info
 	case args[0] == "run":
 		d.nextID++
 		out = "cid" + strconv.Itoa(d.nextID)
@@ -132,7 +135,7 @@ func installFakeDocker(t *testing.T) *fakeDocker {
 			_ = c.Close()
 		}
 	}()
-	d := &fakeDocker{port: ln.Addr().(*net.TCPAddr).Port, byFleet: map[string][]string{}, missing: map[string]bool{}}
+	d := &fakeDocker{info: "29.0.0", port: ln.Addr().(*net.TCPAddr).Port, byFleet: map[string][]string{}, missing: map[string]bool{}}
 	old := commandContext
 	commandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		if name != "docker" {

@@ -140,7 +140,9 @@ func Start(t TB, cfg Config) *Fleet {
 		return nil
 	}
 	ctx := context.Background()
-	if _, err := docker(ctx, "info", "--format", "{{.ServerVersion}}"); err != nil {
+	// Some docker clients exit 0 with empty output when the daemon is down, so
+	// an empty server version counts as unreachable too.
+	if v, err := docker(ctx, "info", "--format", "{{.ServerVersion}}"); err != nil || strings.TrimSpace(v) == "" {
 		t.Fatalf("simharness: INTEGRATION=1 but Docker is unreachable: %v", err)
 	}
 	if err := validate(cfg); err != nil {
