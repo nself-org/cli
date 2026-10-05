@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -60,6 +61,7 @@ func TestRegistryGolden(t *testing.T) {
 	}
 	compattest.Set(t, true)
 	reattachRealTree()
+	defer PrepareTreeForGeneration()() // the committed file documents the prepared v1.5 tree
 	reg, err := BuildRegistry(true)
 	if err != nil {
 		t.Fatalf("build registry: %v", err)
@@ -97,9 +99,11 @@ func firstDiff(got, want []byte) string {
 }
 
 // Epic cross-check: the declared canon and internal/deprecation/registry.yaml
-// must agree about which commands are shims.
+// must agree about which commands are shims, and every canon row must show up as
+// a deprecated-shim in the v1.5 registry (P7-CANON-21).
 func TestCanonShimsMatchDeprecationRegistry(t *testing.T) {
 	reattachRealTree()
+	defer PrepareTreeForGeneration()()
 	reg, err := BuildRegistry(true)
 	if err != nil {
 		t.Fatal(err)
@@ -116,22 +120,30 @@ func TestCanonShimsMatchDeprecationRegistry(t *testing.T) {
 			aliases[c.Parent+" "+a] = true
 		}
 	}
-	// A deprecation item for a real command (not an alias) marks that command
-	// a deprecated shim; anything else is a contradiction to resolve.
-	for _, name := range dep.Names() {
-		item, _ := dep.Lookup(name)
-		if item.Type != deprecation.TypeCommand || aliases[name] {
-			continue
-		}
-		c, ok := byPath[name]
-		if !ok {
-			continue // removed commands keep their warning entry
-		}
-		if c.Canon != canon.CanonShim {
-			t.Errorf("%q has a deprecation-registry item but canon is %q (want %s)", name, c.Canon, canon.CanonShim)
+	raw, err := canon.LoadRaw()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := map[string]string{} // old path -> new path
+	for _, list := range [][]canon.Row{raw.Moves, raw.Shims, raw.RetiredHubs} {
+		for _, r := range list {
+			rows["nself "+r.From] = "nself " + r.To
 		}
 	}
-	// Every shim is announced: by a registry item or by cobra's Deprecated.
+	// every moves/shims/retired_hubs row is a deprecated-shim in the v1.5 registry, targeting its `to`
+	for from, to := range rows {
+		c, ok := byPath[from]
+		switch {
+		case !ok:
+			t.Errorf("canon row %q has no entry in the v1.5 registry", from)
+		case c.Canon != canon.CanonShim:
+			t.Errorf("canon row %q has canon %q in the v1.5 registry, want %s", from, c.Canon, canon.CanonShim)
+		case c.Target == nil || *c.Target != to:
+			t.Errorf("canon row %q: target %v, want %q", from, c.Target, to)
+		}
+	}
+	checkDeprecationItems(t, dep, byPath, aliases)
+	// every shim is announced: by a registry item or by cobra's Deprecated.
 	for _, c := range reg.Commands {
 		if c.Canon != canon.CanonShim {
 			continue
@@ -142,6 +154,70 @@ func TestCanonShimsMatchDeprecationRegistry(t *testing.T) {
 		}
 		if c.Target == nil {
 			t.Errorf("shim %q has no target", c.Path)
+		}
+	}
+	// a shim is allowed only with its green equivalence test (D5): the named Go test must exist here
+	var equiv []string
+	for _, r := range raw.Shims {
+		equiv = append(equiv, r.Equivalence)
+	}
+	if miss := missingTests(t, equiv); len(miss) > 0 {
+		t.Errorf("shim equivalence tests missing from cmd/commands: %v", miss)
+	}
+	if miss := missingTests(t, []string{"TestCanonShimsMatchDeprecationRegistry", "TestNoSuchEquivalenceXYZ"}); len(miss) != 1 || miss[0] != "TestNoSuchEquivalenceXYZ" {
+		t.Errorf("the equivalence-test finder is broken: %v", miss)
+	}
+	t.Logf("%d canon rows checked against the v1.5 registry of the real tree", len(rows))
+
+	// the same invariants on the fixture canon, where every row kind exists: the
+	// prepared fixture tree must build a registry from the fixture's v1.5 view
+	// (stubs and entries agree one to one) and carry one shim per row.
+	fx, tb, root := fixtureCanon(t), fixtureTable(t), newFixtureTree()
+	defer applyCanonWith(&tb, root, true)()
+	view, err := fx.View(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixReg, err := cmdregistry.Build(root, view, map[string]any{}, cmdregistry.BuildOptions{V15: true})
+	if err != nil {
+		t.Fatalf("fixture registry: %v", err)
+	}
+	shims := 0
+	for _, list := range [][]canon.Row{fx.Moves, fx.Shims, fx.RetiredHubs} {
+		for _, r := range list {
+			c, ok := fixReg.Lookup("nself " + r.From)
+			if !ok || c.Canon != canon.CanonShim || c.Target == nil || *c.Target != "nself "+r.To {
+				t.Errorf("fixture row %q: registry entry %+v", r.From, c)
+			}
+			if c != nil && (c.Deprecated == nil || *c.Deprecated == "") {
+				t.Errorf("fixture shim %q has no cobra Deprecated text", r.From)
+			}
+			shims++
+		}
+	}
+	if shims != len(fx.Moves)+len(fx.Shims)+len(fx.RetiredHubs) || shims == 0 {
+		t.Errorf("checked %d fixture rows", shims)
+	}
+	// negative: a row whose stub is missing must be caught by the same registry build
+	bare := newFixtureTree()
+	if _, err := cmdregistry.Build(bare, view, map[string]any{}, cmdregistry.BuildOptions{V15: true}); err == nil {
+		t.Error("an unprepared tree must not satisfy the v1.5 view")
+	}
+}
+
+// checkDeprecationItems: a registry.yaml command item for a real command (not an
+// alias) marks that command a canon deprecated-shim. An item naming no command is
+// a removed or relocated one and keeps its warning entry; the replacement
+// strings keep naming the v1.4 spelling, so they are not compared with rows.
+func checkDeprecationItems(t *testing.T, dep *deprecation.Registry, byPath map[string]cmdregistry.Command, aliases map[string]bool) {
+	t.Helper()
+	for _, name := range dep.Names() {
+		item, _ := dep.Lookup(name)
+		if item.Type != deprecation.TypeCommand || aliases[name] {
+			continue
+		}
+		if c, real := byPath[name]; real && c.Canon != canon.CanonShim {
+			t.Errorf("%q has a deprecation-registry item but canon is %q (want %s)", name, c.Canon, canon.CanonShim)
 		}
 	}
 }
@@ -158,4 +234,29 @@ func TestRegistryCountsMatchSurfaceBudget(t *testing.T) {
 	if reg.Counts.Commands != len(reg.Commands) {
 		t.Errorf("counts.commands = %d, len(commands) = %d", reg.Counts.Commands, len(reg.Commands))
 	}
+}
+
+// missingTests returns the names that are not a `func TestX(` in a *_test.go
+// file of this package.
+func missingTests(t *testing.T, names []string) []string {
+	t.Helper()
+	files, err := filepath.Glob("*_test.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no test files found: %v", err)
+	}
+	var all strings.Builder
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		all.Write(b)
+	}
+	var miss []string
+	for _, n := range names {
+		if !strings.Contains(all.String(), "\nfunc "+n+"(") {
+			miss = append(miss, n)
+		}
+	}
+	return miss
 }

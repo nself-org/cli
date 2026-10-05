@@ -92,10 +92,8 @@ func warnLegacySpelling(name string) {
 	}
 	// Scripted callers opt out with the same flag cobra exposes. The flag is
 	// not parsed yet at this point, so argv is checked directly.
-	for _, a := range os.Args {
-		if a == "--no-deprecation-warnings" || a == "--quiet" {
-			return
-		}
+	if warningsSilenced(os.Args) {
+		return
 	}
 
 	item, ok := deprecationRegistry.Lookup("nself " + name)
@@ -108,5 +106,29 @@ func warnLegacySpelling(name string) {
 		if _, err := os.Stderr.WriteString(strings.TrimRight(note, "\n") + "\n"); err != nil {
 			return
 		}
+	}
+}
+
+// warnLegacyChain emits the warning for a legacy spelling (empty when the user
+// typed none) and the canon rewrites that followed it.
+//
+// v1.4 has no notes, so a legacy spelling warns exactly as before. In v1.5 a
+// legacy spelling whose target moved produces ONE warning naming the final
+// canonical path (`dns-setup` -> `config trust dns`), not the v1.4 spelling the
+// registry item names; registry.yaml replacement strings are untouched.
+func warnLegacyChain(legacy string, notes []canonNote) {
+	switch {
+	case len(notes) == 0 && legacy != "":
+		warnLegacySpelling(legacy)
+	case len(notes) > 0 && legacy == "":
+		emitCanonWarning(os.Stderr, os.Args[1:], notes, "", "")
+	case len(notes) > 0:
+		// compat.V15(P7-CANON-21): the legacy warning names the v1.4 spelling the registry item carries -> one warning names the final canonical path
+		n, canonical := notes[0], legacySpellings[legacy].canonical
+		final := n.New
+		if len(canonical) >= len(n.From) {
+			final = strings.Join(append(append([]string{}, n.To...), canonical[len(n.From):]...), " ")
+		}
+		emitCanonWarning(os.Stderr, os.Args[1:], notes, legacy, final)
 	}
 }

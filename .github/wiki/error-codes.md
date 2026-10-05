@@ -179,6 +179,7 @@ These errors come from the command line itself: usage, JSON support, destructive
 | <a id="e404"></a>E404 | 1 | Command moved to a plugin | This command now lives in a plugin that is not installed. | Run the nself add command printed in the message, then run the command again. |
 | <a id="e435"></a>E435 | 1 | nself.yaml has a type or syntax error | nself.yaml cannot be read as YAML, or a key holds a value of the wrong type (for example plugins as a number, or a plugin entry that is a map instead of a name). | Fix the value at the reported line so it matches schemas/nself-yaml.v1.schema.json (see [[nself-yaml]]). |
 | <a id="e436"></a>E436 | 1 | Unknown key in nself.yaml | nself.yaml has a key that nself does not read. Silent keys hide typos and drift. | Rename the key to x-<key> if it is app metadata, or remove it. nself reads app, bundle, bundles and plugins only. |
+| <a id="e410"></a>E410 | 1 | Command removed in v1.5 | This command was removed in nSelf v1.5 and has no replacement. | Read the message for what to use instead, or run nself --help to see the current commands. |
 
 ---
 

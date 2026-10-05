@@ -122,11 +122,16 @@ var commandGroupAssignments = map[string]string{
 // Exported so the doc generators in tools/ produce the same grouping the binary
 // shows; they walk RootCmd directly and never call Execute.
 // Idempotent — safe to call more than once.
-func ApplyCommandGroups() {
-	if len(RootCmd.Groups()) == 0 {
-		RootCmd.AddGroup(commandGroups...)
+func ApplyCommandGroups() { applyGroups(RootCmd) }
+
+// applyGroups is ApplyCommandGroups for any root: prepareTree calls it after the
+// canon relocation (a relocated command carries no GroupID, so one that lands at
+// the top level is grouped by name here).
+func applyGroups(root *cobra.Command) {
+	if len(root.Groups()) == 0 {
+		root.AddGroup(commandGroups...)
 	}
-	for _, c := range RootCmd.Commands() {
+	for _, c := range root.Commands() {
 		if c.GroupID != "" {
 			continue
 		}

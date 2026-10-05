@@ -1,0 +1,67 @@
+# Fixture fragment: one row of every kind the engine handles (EPIC D3, D10).
+schema_version: 1
+commands:
+  config: {canon: core, side_effect: read}
+  config show: {side_effect: read}
+  config env: {side_effect: read}
+  config env use: {side_effect: write}
+  config env target: {side_effect: read}
+  config env target add: {side_effect: write}
+  config vault: {side_effect: read}
+  config vault get: {side_effect: read}
+  config trust: {side_effect: write}
+  config trust ssl: {side_effect: write}
+  config dns: {side_effect: write}
+  db: {canon: core, side_effect: read}
+  db dump: {side_effect: read}
+  db up: {side_effect: write}
+  db import from-v099: {side_effect: write}
+  deploy: {canon: core, side_effect: read}
+  deploy promote: {side_effect: read}
+  deploy ops: {side_effect: read}
+  deploy ops status: {side_effect: read}
+  doctor: {canon: core, side_effect: read}
+  doctor heal: {side_effect: write}
+  restart: {canon: core, side_effect: write}
+  status: {canon: core, side_effect: read}
+  stop: {canon: core, side_effect: write}
+  update: {canon: core, side_effect: write}
+  update check: {side_effect: read}
+  update project run: {side_effect: write}
+  plugin: {canon: pending, side_effect: read}
+  plugin install: {side_effect: write}
+  plugin marketplace: {mode: v1.4, side_effect: read}
+  plugin marketplace search: {mode: v1.4, side_effect: read}
+  service: {canon: pending, side_effect: read}
+  service stop: {mode: v1.4, side_effect: write}
+  ops restart: {mode: v1.4, side_effect: write}
+  store buy: {side_effect: write}
+  runner: {mode: v1.4, canon: pending, side_effect: read}
+  runner ls: {mode: v1.4, side_effect: read}
+  migrate: {mode: v1.4, canon: pending, side_effect: read}
+  completion: {canon: builtin, side_effect: read}
+hubs:
+  - {path: db import, summary: "Import data from another platform"}
+  - {path: store, summary: "Buy things"}
+  - {path: update project, summary: "Project updates"}
+moves:
+  - {from: env, to: config env, since: v1.5.0, removal_at: v1.6.0}
+  - {from: secrets, to: config vault, since: v1.5.0, removal_at: v1.6.0}
+  - {from: ops, to: deploy ops, since: v1.5.0, removal_at: v1.6.0}
+  - {from: migrate up, to: db up, since: v1.5.0, removal_at: v1.6.0}
+  - {from: migrate from-v099, to: db import from-v099, since: v1.5.0, removal_at: v1.6.0}
+  - {from: trust, to: config trust, since: v1.5.0, removal_at: v1.6.0}
+  - {from: trust dns, to: config dns, since: v1.5.0, removal_at: v1.6.0}
+  - {from: buy, to: store buy, since: v1.5.0, removal_at: v1.6.0}
+  - {from: heal, to: doctor heal, since: v1.5.0, removal_at: v1.6.0}
+  - {from: project-run, to: update project run, since: v1.5.0, removal_at: v1.6.0}
+shims:
+  - {from: service stop, to: stop, since: v1.5.0, removal_at: v1.6.0, equivalence: TestEquivalenceFixtureServiceStop}
+  - {from: ops restart, to: restart, since: v1.5.0, removal_at: v1.6.0, equivalence: TestEquivalenceFixtureOpsRestart}
+retired_hubs:
+  - {from: migrate, to: db, since: v1.5.0, removal_at: v1.6.0}
+builtins: [completion]
+breakouts:
+  - {from: runner, plugin: ci, to: ci nodes, since: v1.5.0}
+removed:
+  - {from: plugin marketplace, since: v1.5.0, message: "nself has no plugin marketplace; see https://nself.org/plugins"}
