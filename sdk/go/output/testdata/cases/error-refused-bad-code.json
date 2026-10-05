@@ -1,0 +1,12 @@
+{
+  "input": {
+    "kind": "error",
+    "command": "probe",
+    "error": {
+      "code": "bad",
+      "message": "m",
+      "class": "user"
+    }
+  },
+  "expect_error": true
+}

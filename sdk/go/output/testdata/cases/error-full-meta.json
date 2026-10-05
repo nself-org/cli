@@ -1,0 +1,55 @@
+{
+  "input": {
+    "kind": "error",
+    "command": "start",
+    "error": {
+      "code": "E410",
+      "message": "cannot bind",
+      "cause": "port 5432 is taken",
+      "remediation": "stop the other process",
+      "docs_url": "https://nself.org/docs/reference/error-codes#e410",
+      "class": "infra"
+    },
+    "meta": {
+      "deprecations": [
+        {
+          "old": "env list",
+          "new": "config env list",
+          "removal_at": "v1.6.0"
+        }
+      ],
+      "warnings": [
+        "first",
+        "second"
+      ]
+    }
+  },
+  "expected": [
+    "{",
+    "  \"schema_version\": \"1\",",
+    "  \"command\": \"start\",",
+    "  \"error\": {",
+    "    \"code\": \"E410\",",
+    "    \"message\": \"cannot bind\",",
+    "    \"cause\": \"port 5432 is taken\",",
+    "    \"remediation\": \"stop the other process\",",
+    "    \"docs_url\": \"https://nself.org/docs/reference/error-codes#e410\",",
+    "    \"exit_code\": 2,",
+    "    \"class\": \"infra\"",
+    "  },",
+    "  \"meta\": {",
+    "    \"deprecations\": [",
+    "      {",
+    "        \"old\": \"env list\",",
+    "        \"new\": \"config env list\",",
+    "        \"removal_at\": \"v1.6.0\"",
+    "      }",
+    "    ],",
+    "    \"warnings\": [",
+    "      \"first\",",
+    "      \"second\"",
+    "    ]",
+    "  }",
+    "}"
+  ]
+}

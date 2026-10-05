@@ -1,0 +1,25 @@
+{
+  "input": {
+    "kind": "error",
+    "command": "db reset",
+    "error": {
+      "code": "E420",
+      "message": "boom <x>",
+      "docs_url": "https://nself.org/docs/reference/error-codes#e420",
+      "class": "auth"
+    }
+  },
+  "expected": [
+    "{",
+    "  \"schema_version\": \"1\",",
+    "  \"command\": \"db reset\",",
+    "  \"error\": {",
+    "    \"code\": \"E420\",",
+    "    \"message\": \"boom <x>\",",
+    "    \"docs_url\": \"https://nself.org/docs/reference/error-codes#e420\",",
+    "    \"exit_code\": 3,",
+    "    \"class\": \"auth\"",
+    "  }",
+    "}"
+  ]
+}

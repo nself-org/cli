@@ -1,0 +1,25 @@
+{
+  "input": {
+    "kind": "error",
+    "command": "db reset",
+    "error": {
+      "code": "E430",
+      "message": "boom <x>",
+      "docs_url": "https://nself.org/docs/reference/error-codes#e430",
+      "class": "destructive_blocked"
+    }
+  },
+  "expected": [
+    "{",
+    "  \"schema_version\": \"1\",",
+    "  \"command\": \"db reset\",",
+    "  \"error\": {",
+    "    \"code\": \"E430\",",
+    "    \"message\": \"boom <x>\",",
+    "    \"docs_url\": \"https://nself.org/docs/reference/error-codes#e430\",",
+    "    \"exit_code\": 4,",
+    "    \"class\": \"destructive_blocked\"",
+    "  }",
+    "}"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "input": {
+    "kind": "error",
+    "command": "db reset",
+    "error": {
+      "code": "E410",
+      "message": "boom <x>",
+      "docs_url": "https://nself.org/docs/reference/error-codes#e410",
+      "class": "infra"
+    }
+  },
+  "expected": [
+    "{",
+    "  \"schema_version\": \"1\",",
+    "  \"command\": \"db reset\",",
+    "  \"error\": {",
+    "    \"code\": \"E410\",",
+    "    \"message\": \"boom <x>\",",
+    "    \"docs_url\": \"https://nself.org/docs/reference/error-codes#e410\",",
+    "    \"exit_code\": 2,",
+    "    \"class\": \"infra\"",
+    "  }",
+    "}"
+  ]
+}

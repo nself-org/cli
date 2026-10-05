@@ -1,0 +1,24 @@
+{
+  "input": {
+    "kind": "stream_record",
+    "command": "logs",
+    "type": "log",
+    "fields": [
+      {
+        "key": "service",
+        "value": "web"
+      },
+      {
+        "key": "line",
+        "value": "GET /<a> & b"
+      },
+      {
+        "key": "n",
+        "value": 1
+      }
+    ]
+  },
+  "expected": [
+    "{\"schema_version\":\"1\",\"command\":\"logs\",\"data\":{\"type\":\"log\",\"service\":\"web\",\"line\":\"GET /<a> & b\",\"n\":1}}"
+  ]
+}

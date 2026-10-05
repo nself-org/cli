@@ -1,0 +1,60 @@
+{
+  "input": {
+    "kind": "data",
+    "command": "status",
+    "data": {
+      "ok": true
+    },
+    "meta": {
+      "deprecations": [
+        {
+          "old": "a",
+          "new": "b",
+          "removal_at": "v1.6.0"
+        },
+        {
+          "old": "c",
+          "new": "d",
+          "removal_at": "v1.7.0"
+        },
+        {
+          "old": "a",
+          "new": "b",
+          "removal_at": "v1.6.0"
+        }
+      ],
+      "warnings": [
+        "w1",
+        "w2",
+        "w1"
+      ]
+    }
+  },
+  "expected": [
+    "{",
+    "  \"schema_version\": \"1\",",
+    "  \"command\": \"status\",",
+    "  \"data\": {",
+    "    \"ok\": true",
+    "  },",
+    "  \"meta\": {",
+    "    \"deprecations\": [",
+    "      {",
+    "        \"old\": \"a\",",
+    "        \"new\": \"b\",",
+    "        \"removal_at\": \"v1.6.0\"",
+    "      },",
+    "      {",
+    "        \"old\": \"c\",",
+    "        \"new\": \"d\",",
+    "        \"removal_at\": \"v1.7.0\"",
+    "      }",
+    "    ],",
+    "    \"warnings\": [",
+    "      \"w1\",",
+    "      \"w2\"",
+    "    ]",
+    "  }",
+    "}"
+  ]
+}

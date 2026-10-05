@@ -1,0 +1,28 @@
+{
+  "input": {
+    "kind": "data",
+    "command": "typed",
+    "go_type": "typedSample",
+    "data": {}
+  },
+  "expected": [
+    "{",
+    "  \"schema_version\": \"1\",",
+    "  \"command\": \"typed\",",
+    "  \"data\": {",
+    "    \"zed\": \"\",",
+    "    \"alpha\": 0,",
+    "    \"note\": \"\",",
+    "    \"nil_slice\": null,",
+    "    \"empty_slice\": null,",
+    "    \"nil_map\": null,",
+    "    \"empty_map\": null,",
+    "    \"ptr\": null,",
+    "    \"inner\": {",
+    "      \"b\": 0,",
+    "      \"a\": 0",
+    "    }",
+    "  }",
+    "}"
+  ]
+}
