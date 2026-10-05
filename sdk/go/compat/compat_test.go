@@ -14,6 +14,33 @@ type ruleRow struct {
 	SDK   bool    `json:"sdk"`
 }
 
+// requiredRuleValues are the inputs every copy of the rule must be pinned on:
+// unset (nil), the empty string, the false spellings, and every accepted
+// spelling of true. A table that silently loses a row fails the test.
+var requiredRuleValues = []string{"<unset>", "", "0", "1", "true", "TRUE", "True", "yes", "on", " 1"}
+
+// requireRuleCoverage fails unless the table has a row for every required value
+// (and no duplicates), so thinning rule.json cannot go unnoticed.
+func requireRuleCoverage(t *testing.T, rows []ruleRow) {
+	t.Helper()
+	seen := map[string]int{}
+	for _, r := range rows {
+		key := "<unset>"
+		if r.Value != nil {
+			key = *r.Value
+		}
+		seen[key]++
+	}
+	for _, want := range requiredRuleValues {
+		if seen[want] != 1 {
+			t.Errorf("rule.json must have exactly one row for %q, has %d", want, seen[want])
+		}
+	}
+	if len(rows) != len(requiredRuleValues) {
+		t.Errorf("rule.json has %d rows, want %d (update requiredRuleValues with the rule)", len(rows), len(requiredRuleValues))
+	}
+}
+
 // TestRuleTableSDK asserts V15() against the sdk column of the golden table the
 // CLI's internal/compat test also reads (its cli column).
 func TestRuleTableSDK(t *testing.T) {
@@ -27,9 +54,7 @@ func TestRuleTableSDK(t *testing.T) {
 	if err := json.Unmarshal(raw, &table); err != nil {
 		t.Fatalf("parse rule table: %v", err)
 	}
-	if len(table.Rows) == 0 {
-		t.Fatal("rule table has no rows")
-	}
+	requireRuleCoverage(t, table.Rows)
 	for _, r := range table.Rows {
 		name := "unset"
 		if r.Value != nil {
