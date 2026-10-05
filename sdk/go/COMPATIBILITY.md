@@ -33,6 +33,11 @@ both call it. The [`doc.go`](doc.go) `Version` constant stays the CLI version.
 network: it resolves `sdk/go/v2.99.0` from a local clone and checks that the
 old tag form does not resolve.
 
+Pre-release CLI tags (`v1.5.0-rc.1`) publish no SDK tag: SDK tags are immutable,
+so `sdk-tag.sh` refuses a pre-release and the publish workflow skips it. The
+workflow only tags from a release tag ref (`v1.M.P` or `cli-sdk-go/v1.M.P`), never
+from a branch.
+
 ### The `license` package was renamed
 
 The module zip includes the repository-root `LICENSE` file, and a package

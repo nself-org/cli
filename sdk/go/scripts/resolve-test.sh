@@ -71,6 +71,9 @@ fi
 echo "== case 2: old tag form sdk/go/v2/v1.99.0 must NOT resolve"
 make_clone old sdk/go/v2/v1.99.0
 scratch s2 old
+# Note: a v1.x.y version on a /v2 module path is always rejected by go, whatever
+# the tags are, so this first probe cannot fail for a tag reason. The real
+# old-form check is the second probe (v2.99.0 must not resolve without its tag).
 if run_go s2 get "$MOD@v1.99.0" >/dev/null 2>&1; then
   echo "FAIL: old-form tag resolved as $MOD@v1.99.0" >&2
   fail=1

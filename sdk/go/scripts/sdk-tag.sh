@@ -9,9 +9,10 @@
 #   sdk-tag.sh <cli-version>             prints the git tag, e.g. sdk/go/v2.5.0
 #   sdk-tag.sh --version <cli-version>   prints the module version, e.g. v2.5.0
 #
-# <cli-version> is `v1.M.P` (leading v optional), with an optional pre-release
-# suffix (`v1.5.0-rc.1`). Any other major, or any malformed input, exits 1 with
-# a message on stderr and nothing on stdout. Used by sdk-publish-go.yml and
+# <cli-version> is `v1.M.P` (leading v optional). Any other major, a pre-release
+# suffix (`v1.5.0-rc.1`: SDK tags are immutable, so none is published for a
+# pre-release) or any malformed input exits 1 with a message on stderr and
+# nothing on stdout. Used by sdk-publish-go.yml and
 # sdk-coherence-check.yml so both agree on the mapping.
 set -euo pipefail
 
@@ -29,7 +30,7 @@ fi
 raw="$1"
 ver="${raw#v}"
 num='(0|[1-9][0-9]*)'
-re="^1\\.${num}\\.${num}(-[0-9A-Za-z.-]+)?\$"
+re="^1\\.${num}\\.${num}\$"
 major="${ver%%.*}"
 
 if ! [[ "$ver" =~ $re ]]; then

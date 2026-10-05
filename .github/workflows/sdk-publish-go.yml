@@ -6,7 +6,10 @@ name: SDK Go Publish
 # Triggers on:
 #   - cli release tag (v1.M.P)           — publishes SDK in lockstep with CLI
 #   - sdk-scoped tag (cli-sdk-go/v1.M.P) — publishes SDK only (out-of-band patches)
-#   - workflow_dispatch                  — manual publish with explicit CLI version input
+#   - workflow_dispatch                  — re-run on a release tag ref; refused on a branch
+#
+# The SDK tag is immutable, so every run must be on a tag ref (never a branch tip);
+# pre-release tags (v1.5.0-rc.1) publish nothing.
 #
 # CLI v1.M.P publishes the SDK as git tag sdk/go/v2.M.P (module version v2.M.P);
 # sdk/go/scripts/sdk-tag.sh owns the mapping. Any other major is refused.
@@ -19,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'CLI version to publish the SDK for (e.g. 1.5.0, maps to sdk/go/v2.5.0). Leave blank to use the pushed tag.'
+        description: 'CLI version to publish the SDK for (e.g. 1.5.0, maps to sdk/go/v2.5.0). Must match the tag the run is on; leave blank to use it.'
         required: false
         type: string
 
@@ -58,20 +61,40 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_VERSION: ${{ inputs.version }}
           REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
           set -euo pipefail
-          if [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${INPUT_VERSION}" ]; then
-            VERSION="v${INPUT_VERSION#v}"
-          elif [[ "${REF_NAME}" == cli-sdk-go/* ]]; then
+          # The SDK tag is immutable (the proxy caches it forever and tags are never
+          # moved), so it is only ever created on a commit that is a CLI release tag.
+          # Every trigger must therefore run on a tag ref (v1.M.P or cli-sdk-go/v1.M.P);
+          # a workflow_dispatch on a branch is refused.
+          if [ "${REF_TYPE}" != "tag" ]; then
+            echo "::error::refusing to tag the SDK from ${REF_TYPE} '${REF_NAME}': run on the release tag v1.M.P"
+            exit 1
+          fi
+          if [[ "${REF_NAME}" == cli-sdk-go/* ]]; then
             VERSION="${REF_NAME#cli-sdk-go/}"
           else
             VERSION="${REF_NAME}"
+          fi
+          # A dispatch input, when given, must name the tag the run is on.
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${INPUT_VERSION}" ] \
+             && [ "v${INPUT_VERSION#v}" != "${VERSION}" ]; then
+            echo "::error::input version v${INPUT_VERSION#v} does not match the run's tag ${REF_NAME}"
+            exit 1
+          fi
+          # Pre-release tags (v1.5.0-rc.1) never publish an immutable SDK version.
+          if [[ "${VERSION}" == *-* ]]; then
+            echo "::notice::${VERSION} is a pre-release; no SDK tag is published for it"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           # One mapping script for publish and coherence: CLI v1.M.P -> sdk/go/v2.M.P.
           # It exits 1 (failing this step) for any other major or a malformed version.
           SDK_TAG="$(bash sdk/go/scripts/sdk-tag.sh "${VERSION}")"
           SDK_VERSION="$(bash sdk/go/scripts/sdk-tag.sh --version "${VERSION}")"
           {
+            echo "publish=true"
             echo "version=${VERSION}"
             echo "sdk_tag=${SDK_TAG}"
             echo "sdk_version=${SDK_VERSION}"
@@ -79,10 +102,18 @@ jobs:
           echo "CLI ${VERSION} -> ${SDK_TAG} (module version ${SDK_VERSION})"
 
       - name: Tag SDK module
+        if: steps.version.outputs.publish == 'true'
         env:
           SDK_TAG: ${{ steps.version.outputs.sdk_tag }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          # Belt and braces: the checked-out commit must be the commit of the tag
+          # this run is on, so the SDK tag lands on the release commit.
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse "refs/tags/${REF_NAME}^{commit}")" ]; then
+            echo "::error::HEAD is not the commit of tag ${REF_NAME}; refusing to tag the SDK"
+            exit 1
+          fi
           # The module path is github.com/nself-org/cli/sdk/go/v2, so Go resolves
           # only tags "sdk/go/v2.M.P" (directory prefix "sdk/go/", version v2.M.P).
           # The older forms "sdk/go/v1.x.y" and "sdk/go/v2/v1.x.y" never resolve;
@@ -100,6 +131,7 @@ jobs:
           fi
 
       - name: Refresh module proxy
+        if: steps.version.outputs.publish == 'true'
         env:
           SDK_VERSION: ${{ steps.version.outputs.sdk_version }}
         run: |

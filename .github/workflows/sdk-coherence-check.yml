@@ -43,6 +43,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # tags are needed to tell whether the release shipped the SDK tag form
 
       - name: Read master version
         id: master
@@ -121,13 +123,35 @@ jobs:
           set +e
           # CLI v1.M.P publishes SDK v2.M.P (git tag sdk/go/v2.M.P on this repo).
           # sdk/go/scripts/sdk-tag.sh owns the mapping, shared with sdk-publish-go.yml.
-          # A missing or mismatched version is a failure, never a warning.
+          # After a release that ships the tag form, a missing or mismatched version is a failure.
           if ! EXPECTED=$(bash sdk/go/scripts/sdk-tag.sh --version "v${MASTER_VER}" 2>&1); then
             {
               echo "status=fail"
               echo "detail=cannot map CLI ${MASTER_VER} to an SDK version: ${EXPECTED}"
             } >> "$GITHUB_OUTPUT"
             echo "FAIL: ${EXPECTED}"
+            exit 0
+          fi
+          # The check applies after a release that can publish the SDK: the release tag
+          # v1.M.P must exist and its tree must hold sdk/go/scripts/sdk-tag.sh. A
+          # release made before the tag form was fixed has no valid SDK version and
+          # never will (tags are immutable), so it is reported, not failed. Once the
+          # release ships the script, a missing SDK version is a hard failure.
+          REL_TAG="v${MASTER_VER}"
+          if ! git rev-parse -q --verify "refs/tags/${REL_TAG}" >/dev/null; then
+            {
+              echo "status=warn"
+              echo "detail=CLI ${REL_TAG} is not released yet; SDK ${EXPECTED} is checked after the release"
+            } >> "$GITHUB_OUTPUT"
+            echo "WARN: ${REL_TAG} has no release tag yet"
+            exit 0
+          fi
+          if ! git cat-file -e "refs/tags/${REL_TAG}:sdk/go/scripts/sdk-tag.sh" 2>/dev/null; then
+            {
+              echo "status=warn"
+              echo "detail=CLI ${REL_TAG} predates the sdk/go/v2.M.P tag form; no SDK version exists for it"
+            } >> "$GITHUB_OUTPUT"
+            echo "WARN: ${REL_TAG} predates the SDK tag form"
             exit 0
           fi
           MODULE="github.com/nself-org/cli/sdk/go/v2"
@@ -192,4 +216,4 @@ jobs:
             echo "Run 'nself sdk release' to synchronise, or check the individual SDK repos."
             exit 1
           fi
-          echo "All SDK versions match (or are not yet published)."
+          echo "All SDK versions match (TypeScript and Python may be not yet published; the Go SDK must be)."
