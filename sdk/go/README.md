@@ -43,6 +43,7 @@ import (
 | `middleware` | Request-ID, validation helpers |
 | `costmeter` | Shared cost accounting for AI plugins |
 | `identity` | Ed25519 per-plugin keypair + request signing / verification |
+| `remote` | The one SSH/scp/rsync exec funnel: remote path validation, pinned known_hosts, CI option set, `ssh -G` resolver (standard library only) |
 | `testing` | Test harness (stub upstreams, metrics assertions, fixtures) |
 | `devkit/cmd/new-plugin` | Scaffolding generator for new plugins |
 
@@ -59,6 +60,30 @@ cd paid/mywidget && go mod tidy && go test ./...
 The generator writes `plugin.json`, `go.mod`, `cmd/main.go`, `internal/config`,
 `internal/server`, a smoke test, `Dockerfile`, `docker-compose.plugin.yml`,
 `.air.toml` for hot-reload, and a README.
+
+## Remote execution (`remote`)
+
+`remote` is the single place nSelf runs `ssh`, `scp`, `rsync` and `ssh-keyscan`.
+Commands are argv slices (never a shell string built locally), operands follow
+`--`, every remote path goes through `ValidateRemotePath`, and processes run with
+`EnvAllowlist()`.
+
+```go
+opts := append(remote.CISSHFlags(), remote.CIOptions(nodeID, pinFile, ver)...)
+out, err := remote.RunArgv(ctx, remote.Target{Dest: "ci@node1", Options: opts}, "nself-ci-agent", "--version")
+```
+
+- `CIOptions` is the `-o` set for ssh, scp and `rsync -e` (strict host key
+  checking against a pinned file, no forwarding, no multiplexing, no local or
+  remote command). `CISSHFlags` (`-T -a -x`) is ssh only, never scp.
+- `PinnedHostKeys{Path}` pins keys by alias in a file you choose; it never
+  touches `~/.ssh/known_hosts`. `ScanHostKeysSSH` captures a key through ssh
+  itself so ProxyJump works; show the fingerprint and get confirmation before
+  `Add`.
+- `ResolveSSHHost` reads `ssh -G` for hostname, port, user, proxyjump and
+  hostkeyalias.
+- `nself deploy` keeps its historical argv inside `internal/deploy`; this package has no relaxed mode.
+- `Rsync` caller options are an allowlist of self-contained flags (`-az`, `--delete`, `--exclude=x`; never `-e`, `--rsh`, `--files-from`, a bare `--`, or a flag whose value is a separate element). `Target.Options` accepts the D4 block plus `-o` keys ConnectTimeout, ServerAlive*, Port, User, IdentityFile, IdentitiesOnly, BatchMode, Compression, LogLevel, ConnectionAttempts, AddressFamily, PreferredAuthentications, and `-i`, `-p`, `-4`, `-6`, `-q`, `-v`. `RunArgv` needs a POSIX remote shell.
 
 ## Hot-reload during development
 

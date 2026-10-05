@@ -12,9 +12,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 // PushSecretsOptions configures the secrets push operation.
@@ -82,6 +83,12 @@ func PushSecrets(ctx context.Context, cfg SSHConfig, opts PushSecretsOptions) er
 		return fmt.Errorf("parsing deploy host: %w", err)
 	}
 
+	// The destination becomes an scp operand: refuse anything scp would read
+	// as an option or split (leading '-', whitespace, control bytes).
+	if err := remote.ValidateLegacyDest(sshTarget); err != nil {
+		return fmt.Errorf("parsing deploy host: %w", err)
+	}
+
 	remoteDestination := fmt.Sprintf("%s:%s", sshTarget, remotePath)
 
 	if opts.DryRun {
@@ -92,15 +99,12 @@ func PushSecrets(ctx context.Context, cfg SSHConfig, opts PushSecretsOptions) er
 
 	// Build scp command. Stdout is not connected — prevents secret values from
 	// appearing in terminal output. Stderr is forwarded so scp errors are visible.
-	scpArgs := []string{
-		"-i", cfg.KeyPath,
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ForwardAgent=no",
-		envFile,
-		remoteDestination,
-	}
+	scpArgs := append(remote.BaseOptions(cfg.KeyPath), envFile, remoteDestination)
 
-	cmd := exec.CommandContext(ctx, "scp", scpArgs...)
+	cmd, err := remote.Command(ctx, "scp", scpArgs...)
+	if err != nil {
+		return fmt.Errorf("scp secrets to %s: %w", remoteDestination, err)
+	}
 	cmd.Env = os.Environ()
 	cmd.Stdout = nil // intentionally suppressed — file contents must not reach stdout
 	cmd.Stderr = os.Stderr

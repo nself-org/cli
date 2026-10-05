@@ -10,7 +10,7 @@ package deploy
 //          argv to run.
 // Outputs: Combined stdout+stderr and an error wrapping any SSH/exec failure.
 // Constraints: Reuses the exact SSH flag set + key resolution already used by
-//              `nself deploy` (sshBaseArgs/sshKeyPathEnv/splitHost) so remote
+//              `nself deploy` (remote.BaseOptions/remote.DefaultKeyPath/splitHost) so remote
 //              auth behavior is identical across every remote-targeting
 //              command in the CLI — no second SSH convention.
 // SPORT: cli/internal/deploy — see gap #9.
@@ -18,8 +18,10 @@ package deploy
 import (
 	"context"
 	"fmt"
-	"os/exec"
+	"os"
 	"strings"
+
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 // RemoteTarget describes a resolved remote host for a non-deploy command.
@@ -61,8 +63,19 @@ func RunRemoteCommand(ctx context.Context, rt RemoteTarget, command string) (str
 	if rt.SSHTarget == "" {
 		return "", fmt.Errorf("remote target has no SSH host configured")
 	}
-	args := append(sshBaseArgs(rt.KeyPath), rt.SSHTarget, command)
-	sc := exec.CommandContext(ctx, "ssh", args...)
+	if err := remote.ValidateLegacyDest(rt.SSHTarget); err != nil {
+		return "", err
+	}
+	// Historical argv and inherited environment, byte-identical to the
+	// pre-sdk implementation: options, destination, one command element, no
+	// "--". sdk/go/remote owns the exec funnel; the legacy shape lives here
+	// so the sdk's public API has no relaxed mode.
+	args := append(remote.BaseOptions(rt.KeyPath), rt.SSHTarget, command)
+	sc, err := remote.Command(ctx, "ssh", args...)
+	if err != nil {
+		return "", err
+	}
+	sc.Env = os.Environ()
 	out, err := sc.CombinedOutput()
 	trimmed := strings.TrimSpace(string(out))
 	if err != nil {
@@ -87,5 +100,5 @@ func RemoteDockerExecCommand(container string, args ...string) string {
 // shellQuote wraps s in single quotes for safe inclusion in a remote shell
 // command string, escaping any embedded single quotes POSIX-style.
 func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+	return remote.ShellQuote(s)
 }

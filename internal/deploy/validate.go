@@ -19,28 +19,22 @@
 // harder to bypass via an overlooked special character.
 package deploy
 
-import (
-	"fmt"
-	"regexp"
-)
+import "github.com/nself-org/cli/sdk/go/v2/remote"
 
-// RemotePathRe allows safe remote path characters: alphanumeric, slash,
-// hyphen, underscore, dot. Anything else (';', '$', '`', '|', '&', spaces,
-// etc.) is rejected, since the value is later embedded directly into a
-// shell command string executed on a remote host.
-var RemotePathRe = regexp.MustCompile(`^[a-zA-Z0-9/_.-]+$`)
+// RemotePathRe is the shared remote-path allowlist. It lives in
+// sdk/go/remote (the one implementation); this alias keeps every existing
+// caller and cmd/commands' own alias pointing at the same compiled pattern.
+var RemotePathRe = remote.RemotePathRe
 
 // ValidateRemotePath returns an error when path is non-empty and contains
 // characters outside RemotePathRe's allowed charset. An empty path is
 // treated as valid here — callers that require a non-empty path (e.g. a
 // remote deploy target) must check that separately; ssh.go's DeployViaSsh
 // already falls back to /tmp when the recovered remote path is empty.
+//
+// One refusal is added to the charset check: a leading "-", which a remote
+// rsync --server or scp would read as an option. ".." segments stay accepted,
+// as they always were. The check itself lives in sdk/go/remote.
 func ValidateRemotePath(path string) error {
-	if path == "" {
-		return nil
-	}
-	if !RemotePathRe.MatchString(path) {
-		return fmt.Errorf("remote path contains unsafe characters (got %q): only [a-zA-Z0-9/_.-] allowed", path)
-	}
-	return nil
+	return remote.ValidateRemotePath(path)
 }

@@ -66,3 +66,7 @@ require (
 	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
+
+require github.com/nself-org/cli/sdk/go/v2 v2.0.0-00010101000000-000000000000
+
+replace github.com/nself-org/cli/sdk/go/v2 => ./sdk/go
