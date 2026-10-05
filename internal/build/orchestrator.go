@@ -14,6 +14,9 @@ import (
 
 // BuildOptions controls build behavior via CLI flags.
 type BuildOptions struct {
+	// RemoteDeploy builds for a remote host: the config cascade drops .env.local
+	// (set by `nself deploy` through the hidden --deploy-remote flag).
+	RemoteDeploy bool
 	// Force rebuilds everything regardless of cache freshness.
 	Force bool
 	// Verbose enables detailed build progress output.

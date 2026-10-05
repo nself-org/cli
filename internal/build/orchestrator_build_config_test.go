@@ -119,3 +119,28 @@ func diffTrees(before, after map[string]string) string {
 	}
 	return out.String()
 }
+
+// TestLoadValidateConfig_RemoteDeployDropsEnvLocal: BuildOptions.RemoteDeploy
+// (the hidden build --deploy-remote flag) makes the build skip .env.local; the
+// same process then builds normally without it.
+func TestLoadValidateConfig_RemoteDeployDropsEnvLocal(t *testing.T) {
+	for _, remote := range []bool{true, false} {
+		t.Setenv("HASURA_GRAPHQL_JWT_SECRET", "")
+		t.Setenv("ENV", "dev")
+		t.Setenv("PROJECT_NAME", "")
+		dir := t.TempDir()
+		testWriteFile(t, filepath.Join(dir, ".env"), "PROJECT_NAME=from-env\n", 0600)
+		testWriteFile(t, filepath.Join(dir, ".env.local"), "PROJECT_NAME=from-laptop\n", 0600)
+		st := &buildState{workdir: dir, opts: BuildOptions{Check: true, RemoteDeploy: remote}}
+		if _, err := st.loadValidateConfig(); err != nil {
+			t.Fatal(err)
+		}
+		want := "from-laptop"
+		if remote {
+			want = "from-env"
+		}
+		if st.cfg.ProjectName != want {
+			t.Errorf("RemoteDeploy=%v: ProjectName=%q, want %q", remote, st.cfg.ProjectName, want)
+		}
+	}
+}

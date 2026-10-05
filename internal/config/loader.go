@@ -48,6 +48,20 @@ import (
 //
 // Each file is optional. Missing files are silently skipped.
 func Load(projectDir string) (*Config, error) {
+	return LoadWithOptions(projectDir, LoadOptions{})
+}
+
+// LoadOptions are the caller's choices for one Load. They are explicit
+// arguments, never read from the environment or kept in process state.
+type LoadOptions struct {
+	// RemoteDeploy drops .env.local from the cascade: the build is for a
+	// remote host, and a developer's personal override must not reach it (the
+	// env file pushed to the host omits it too).
+	RemoteDeploy bool
+}
+
+// LoadWithOptions is Load with explicit options.
+func LoadWithOptions(projectDir string, opts LoadOptions) (*Config, error) {
 	// 1. Detect ENV first (needed to pick the correct .env.{ENV} file).
 	// Resolution order: process environment wins outright (an operator or
 	// CI already exported ENV=...); otherwise the ENV= key inside the
@@ -67,7 +81,7 @@ func Load(projectDir string) (*Config, error) {
 		warnLegacyEnvOrder()
 	}
 	names := EnvCascadeOrder(env, legacy)
-	if RemoteCascadeActive() {
+	if opts.RemoteDeploy {
 		names = WithoutLocalOverride(names)
 	}
 	files := make([]string, 0, len(names))

@@ -27,7 +27,7 @@ var remotePathRe = deploy.RemotePathRe
 // sshKeyRe allows safe filesystem path characters for the SSH key path.
 // The key path is interpolated into the rsync "-e ssh -i %s ..." string, which
 // rsync shell-interprets — so it must never contain shell metacharacters.
-var sshKeyRe = regexp.MustCompile(`^[a-zA-Z0-9/_.~-]+$`)
+var sshKeyRe = deploy.SSHKeyRe
 
 // Deploy strategies.
 var deployStrategies = map[string]bool{

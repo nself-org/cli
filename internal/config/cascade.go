@@ -25,7 +25,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sync/atomic"
 )
 
 // LegacyEnvOrderVar is the escape-hatch environment variable that restores
@@ -40,20 +39,6 @@ const LegacyEnvOrderVar = "NSELF_LEGACY_ENV_ORDER"
 func LegacyOrderActive() bool {
 	return getEnvBool(LegacyEnvOrderVar, false)
 }
-
-// remoteCascade is set once, by the build command, when `nself deploy` spawns
-// it for a remote target (the hidden --deploy-remote flag). It is a caller
-// choice, never read from the environment: an exported variable cannot change
-// which files a build reads.
-var remoteCascade atomic.Bool
-
-// SetRemoteCascade makes Load drop .env.local from the cascade for the rest
-// of this process: a developer's personal override never reaches a server
-// build, exactly as it never reaches the env file pushed to the host.
-func SetRemoteCascade(on bool) { remoteCascade.Store(on) }
-
-// RemoteCascadeActive reports whether SetRemoteCascade(true) was called.
-func RemoteCascadeActive() bool { return remoteCascade.Load() }
 
 // WithoutLocalOverride returns order minus .env.local. The remote deploy
 // cascade is EnvCascadeOrder with this applied, in the build and in the env

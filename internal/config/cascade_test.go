@@ -375,7 +375,7 @@ func TestLoadCustomEnvNeverReadsDevLayer(t *testing.T) {
 	}
 }
 
-// TestLoadRemoteDeployDropsEnvLocal: after SetRemoteCascade(true) (the hidden
+// TestLoadRemoteDeployDropsEnvLocal: with LoadOptions.RemoteDeploy (the hidden
 // build flag nself deploy passes for a remote target) Load skips .env.local;
 // otherwise the personal override still wins.
 func TestLoadRemoteDeployDropsEnvLocal(t *testing.T) {
@@ -384,14 +384,12 @@ func TestLoadRemoteDeployDropsEnvLocal(t *testing.T) {
 		t.Setenv("ENV", "qa")
 		t.Setenv("BASE_DOMAIN", "")
 		t.Setenv("NSELF_LEGACY_ENV_ORDER", "")
-		SetRemoteCascade(remote)
-		t.Cleanup(func() { SetRemoteCascade(false) })
 		for n, b := range map[string]string{".env.qa": "BASE_DOMAIN=qa.example.test\n", ".env.local": "BASE_DOMAIN=laptop.example.test\n"} {
 			if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}
-		cfg, err := Load(dir)
+		cfg, err := LoadWithOptions(dir, LoadOptions{RemoteDeploy: remote})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -409,9 +407,8 @@ func TestLoadRemoteDeployDropsEnvLocal(t *testing.T) {
 }
 
 // TestExportedRemoteVarHasNoEffect: a user-exported NSELF_DEPLOY_REMOTE=true
-// changes nothing; only the caller's SetRemoteCascade does.
+// changes nothing; only the caller's LoadOptions does.
 func TestExportedRemoteVarHasNoEffect(t *testing.T) {
-	SetRemoteCascade(false)
 	dir := t.TempDir()
 	t.Setenv("ENV", "qa")
 	t.Setenv("BASE_DOMAIN", "")
@@ -427,5 +424,27 @@ func TestExportedRemoteVarHasNoEffect(t *testing.T) {
 	}
 	if cfg.BaseDomain != "laptop.example.test" {
 		t.Errorf("exported NSELF_DEPLOY_REMOTE changed the cascade: BASE_DOMAIN=%q", cfg.BaseDomain)
+	}
+}
+
+// TestRemoteLoadLeavesNoState: in one process a remote-flagged load followed by
+// a plain Load still reads .env.local; nothing is left to restore.
+func TestRemoteLoadLeavesNoState(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ENV", "qa")
+	t.Setenv("NSELF_LEGACY_ENV_ORDER", "")
+	for n, b := range map[string]string{".env.qa": "BASE_DOMAIN=qa.example.test\n", ".env.local": "BASE_DOMAIN=laptop.example.test\n"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("BASE_DOMAIN", "")
+	if cfg, err := LoadWithOptions(dir, LoadOptions{RemoteDeploy: true}); err != nil || cfg.BaseDomain != "qa.example.test" {
+		t.Fatalf("remote load: %v %v", cfg, err)
+	}
+	t.Setenv("BASE_DOMAIN", "")
+	cfg, err := Load(dir)
+	if err != nil || cfg.BaseDomain != "laptop.example.test" {
+		t.Errorf("plain load after a remote one: BASE_DOMAIN=%q err=%v, want .env.local to win", cfg.BaseDomain, err)
 	}
 }

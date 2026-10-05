@@ -59,9 +59,7 @@ Overrides NSELF_PROFILE env var. Valid values: app, ops.`)
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
-	if remote, _ := cmd.Flags().GetBool("deploy-remote"); remote {
-		config.SetRemoteCascade(true)
-	}
+	remoteDeploy, _ := cmd.Flags().GetBool("deploy-remote")
 	force, _ := cmd.Flags().GetBool("force")
 	noCache, _ := cmd.Flags().GetBool("no-cache")
 	verbose, _ := cmd.Flags().GetBool("verbose")
@@ -104,7 +102,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	// ── Plugin lifecycle: dormant banner + auto-remove expired plugins ───────
 	// Run before the main build so users see warnings early. Auto-removal only
 	// happens during build (not start) to keep start fast and non-destructive.
-	runPluginLifecycleCheck(quiet)
+	runPluginLifecycleCheck(quiet, remoteDeploy)
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -188,6 +186,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		NoAutoRedis:    noAutoRedis,
 		Profile:        profile,
 		Hosts:          hosts,
+		RemoteDeploy:   remoteDeploy,
 	}
 
 	result, err := build.Build(workdir, opts)

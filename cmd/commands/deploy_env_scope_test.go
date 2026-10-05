@@ -17,6 +17,7 @@ import (
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
 
 	"github.com/joho/godotenv"
@@ -854,9 +855,8 @@ func TestRemoteDeployNeverReadsEnvLocal(t *testing.T) {
 		}
 		loadDeployEnvCascade(dir, tc.target)
 		if tc.target == "qa" || tc.target == "local" { // the child build (staging/prod Load demands real secrets)
-			config.SetRemoteCascade(tc.target != "local") // what `build --deploy-remote` does
-			t.Cleanup(func() { config.SetRemoteCascade(false) })
-			if _, err := config.Load(dir); err != nil {
+			// what `build --deploy-remote` does for a remote target
+			if _, err := config.LoadWithOptions(dir, config.LoadOptions{RemoteDeploy: tc.target != "local"}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -916,16 +916,25 @@ func TestSnapshotLiteralDollarStaysLiteral(t *testing.T) {
 	}
 }
 
-// fakeShipBin puts fake ssh and rsync (exit 0, rsync logs its argv) alone on
-// PATH and returns the log path; nothing real can run.
-func fakeShipBin(t *testing.T) string {
+// fakeShipBin puts fake ssh and rsync alone on PATH and returns the log path
+// and the directory holding copies. rsync logs every argument and, for each
+// argument that is an existing file, saves a copy of its bytes as copy-<base>
+// (so a test sees exactly what was handed to rsync). If a file named
+// failrsync-on exists in that directory its content is a substring: an rsync
+// call whose arguments contain it exits 1. ssh logs its arguments to ssh.log.
+func fakeShipBin(t *testing.T) (log, dir string) {
 	t.Helper()
 	bin := t.TempDir()
-	log := filepath.Join(bin, "rsync.log")
-	if err := os.WriteFile(filepath.Join(bin, "rsync"), []byte("#!/bin/sh\nfor a in \"$@\"; do echo \"$a\"; done >> "+log+"\necho -- >> "+log+"\nexit 0\n"), 0o700); err != nil {
+	log = filepath.Join(bin, "rsync.log")
+	script := "#!/bin/sh\n" +
+		"for a in \"$@\"; do echo \"$a\" >> " + log + "; [ -f \"$a\" ] && /bin/cp \"$a\" \"" + bin + "/copy-${a##*/}\"; done\n" +
+		"echo -- >> " + log + "\n" +
+		"if [ -f " + bin + "/failrsync-on ]; then pat=$(/bin/cat " + bin + "/failrsync-on); case \"$*\" in *\"$pat\"*) exit 1;; esac; fi\n" +
+		"exit 0\n"
+	if err := os.WriteFile(filepath.Join(bin, "rsync"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte("#!/bin/sh\necho \"$@\" >> "+bin+"/ssh.log\nexit 0\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	key := filepath.Join(bin, "key")
@@ -934,7 +943,7 @@ func fakeShipBin(t *testing.T) string {
 	}
 	t.Setenv("PATH", bin)
 	t.Setenv("NSELF_SSH_KEY_X", key)
-	return log
+	return log, bin
 }
 
 // TestPipelineBuildsRemoteAndShipsSnapshot: a remote pipeline deploy runs the
@@ -950,7 +959,7 @@ func TestPipelineBuildsRemoteAndShipsSnapshot(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	log := fakeShipBin(t)
+	log, bin := fakeShipBin(t)
 	if err := runDeployArgs(t, nil, "qa"); err != nil {
 		t.Fatalf("deploy qa: %v", err)
 	}
@@ -962,15 +971,28 @@ func TestPipelineBuildsRemoteAndShipsSnapshot(t *testing.T) {
 	if !strings.Contains(out, "docker-compose.yml") || !strings.Contains(out, "/opt/nself/.env.qa") {
 		t.Errorf("rsync did not ship both compose and .env.qa:\n%s", out)
 	}
-	// the snapshot file is gone after the deploy; check what it held via a rebuild
-	snap, cleanup, err := writeResolvedDeployEnv(dir, "qa")
-	if err != nil {
-		t.Fatal(err)
+	// Inspect the exact snapshot file rsync was handed (the fake saved its bytes).
+	var snapCopy string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(filepath.Base(line), ".nself-deploy-env-qa-") {
+			snapCopy = filepath.Join(bin, "copy-"+filepath.Base(line))
+		}
 	}
-	defer cleanup()
-	sb, _ := os.ReadFile(snap)
+	if snapCopy == "" {
+		t.Fatalf("rsync was never handed a deploy env snapshot:\n%s", out)
+	}
+	sb, err := os.ReadFile(snapCopy)
+	if err != nil {
+		t.Fatalf("snapshot bytes not captured: %v", err)
+	}
 	if strings.Contains(string(sb), "LAPTOP_ONLY") || strings.Contains(string(sb), "DEV_ONLY") || !strings.Contains(string(sb), "API_URL=qa") {
-		t.Errorf("snapshot wrong:\n%s", sb)
+		t.Errorf("shipped snapshot wrong:\n%s", sb)
+	}
+	if envIdx, composeIdx := strings.Index(out, ".env.qa.nself-new"), strings.Index(out, "nself-compose.yml"); envIdx < 0 || composeIdx < 0 || envIdx > composeIdx {
+		t.Errorf("env must be copied (to a temp name) before the compose:\n%s", out)
+	}
+	if sl, _ := os.ReadFile(filepath.Join(bin, "ssh.log")); !strings.Contains(string(sl), "mv -f /opt/nself/.env.qa.nself-new /opt/nself/.env.qa") {
+		t.Errorf("env was not promoted into place:\n%s", sl)
 	}
 }
 
@@ -980,7 +1002,7 @@ func TestPipelineBuildsRemoteAndShipsSnapshot(t *testing.T) {
 func TestPipelineBuildOrSnapshotFailureStopsBeforeProbe(t *testing.T) {
 	for _, mode := range []string{"build", "snapshot"} {
 		dir, p := scopeFixture(t, false)
-		log := fakeShipBin(t)
+		log, _ := fakeShipBin(t)
 		if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte("services: {}\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -1021,5 +1043,48 @@ func TestDeployBuildPassesHiddenRemoteFlag(t *testing.T) {
 	f := buildCmd.Flags().Lookup("deploy-remote")
 	if f == nil || !f.Hidden {
 		t.Errorf("build --deploy-remote must exist and be hidden: %+v", f)
+	}
+}
+
+// TestDeployViaSshKeyPathAndOrder: DeployViaSsh refuses a key path with a space
+// or `;` before running anything (same rule as the legacy push), copies the env
+// file before the compose, and a failed env copy leaves the compose unsent and
+// nothing promoted.
+func TestDeployViaSshKeyPathAndOrder(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs fake rsync/ssh shell scripts on PATH, which Windows cannot execute")
+	}
+	dir := t.TempDir()
+	compose := filepath.Join(dir, "docker-compose.yml")
+	envf := filepath.Join(dir, ".nself-deploy-env-qa-1.tmp")
+	for _, f := range []string{compose, envf} {
+		if err := os.WriteFile(f, []byte("x\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log, bin := fakeShipBin(t)
+	cfg := deploy.SSHConfig{Host: "u@qa.example.test:/opt/nself", EnvFile: envf, EnvName: "qa"}
+	for _, bad := range []string{"/tmp/my key", "/tmp/k;touch x", "/tmp/k$(id)", "/tmp/k`id`"} {
+		cfg.KeyPath = bad
+		if err := deploy.DeployViaSsh(context.Background(), cfg, compose); err == nil {
+			t.Errorf("key path %q accepted", bad)
+		}
+	}
+	if b, _ := os.ReadFile(log); len(b) != 0 {
+		t.Errorf("an unsafe key path still ran rsync:\n%s", b)
+	}
+	cfg.KeyPath = filepath.Join(bin, "key")
+	if err := os.WriteFile(filepath.Join(bin, "failrsync-on"), []byte("/.env.qa.nself-new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := deploy.DeployViaSsh(context.Background(), cfg, compose); err == nil {
+		t.Fatal("a failed env copy must fail the deploy")
+	}
+	b, _ := os.ReadFile(log)
+	if strings.Contains(string(b), "nself-compose.yml") {
+		t.Errorf("compose was sent after the env copy failed:\n%s", b)
+	}
+	if sl, _ := os.ReadFile(filepath.Join(bin, "ssh.log")); len(sl) != 0 {
+		t.Errorf("ssh ran after the env copy failed:\n%s", sl)
 	}
 }

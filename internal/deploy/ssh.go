@@ -19,6 +19,23 @@ import (
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
+// SSHKeyRe is the safe alphabet for an SSH key path. The one definition: the
+// legacy push in cmd/commands aliases it.
+var SSHKeyRe = regexp.MustCompile(`^[a-zA-Z0-9/_.~-]+$`)
+
+// rsyncFile copies one local file to sshTarget:dest over ssh with sshArgs.
+func rsyncFile(ctx context.Context, sshArgs []string, src, sshTarget, dest string) error {
+	rc, err := remote.Command(ctx, "rsync", "-az", "-e", "ssh "+strings.Join(sshArgs, " "), src, fmt.Sprintf("%s:%s", sshTarget, dest))
+	if err != nil {
+		return fmt.Errorf("rsync to %s: %w", sshTarget, err)
+	}
+	rc.Env = os.Environ()
+	if out, rerr := rc.CombinedOutput(); rerr != nil {
+		return fmt.Errorf("rsync to %s: %w\n%s", sshTarget, rerr, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 // envNameRe is the shape of an env name allowed in a remote .env.<name> file name.
 var envNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 
@@ -96,6 +113,13 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 		return fmt.Errorf("SSHConfig.Host: %w", err)
 	}
 
+	// The key path ends up inside the rsync -e command string, which rsync
+	// shell-interprets: only the safe-path alphabet is allowed (same rule as
+	// the legacy single-host push).
+	if cfg.KeyPath != "" && !SSHKeyRe.MatchString(cfg.KeyPath) {
+		return fmt.Errorf("ssh key path contains unsafe characters (got %q): only [a-zA-Z0-9/_.~-] allowed", cfg.KeyPath)
+	}
+
 	remoteCompose := filepath.Join(remotePath, "nself-compose.yml")
 	if remotePath == "" || remotePath == "/" {
 		remoteCompose = "/tmp/nself-compose.yml"
@@ -103,53 +127,46 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 
 	sshArgs := remote.BaseOptions(cfg.KeyPath)
 
-	// 1. rsync compose file to remote.
-	rsyncArgs := []string{
-		// Agent forwarding is disabled via ForwardAgent=no in remote.BaseOptions (the -e
-		// command below) — it is an ssh option and must never appear in rsync argv.
-		"-az",
-		"-e", "ssh " + strings.Join(sshArgs, " "),
-		composePath,
-		fmt.Sprintf("%s:%s", sshTarget, remoteCompose),
-	}
-	rc, err := remote.Command(ctx, "rsync", rsyncArgs...)
-	if err != nil {
-		return fmt.Errorf("rsync to %s: %w", sshTarget, err)
-	}
-	rc.Env = os.Environ()
-	if out, rerr := rc.CombinedOutput(); rerr != nil {
-		return fmt.Errorf("rsync to %s: %w\n%s", sshTarget, rerr, strings.TrimSpace(string(out)))
-	}
-
-	// 1b. rsync the env file the compose was built from, when one is given.
+	// 1. Env file first, to a temporary name, so a failed env copy never leaves
+	// a new compose beside an old env. It is renamed into place only after the
+	// compose copy has succeeded.
+	var envTmp, envFinal string
 	if cfg.EnvFile != "" {
 		if !envNameRe.MatchString(cfg.EnvName) || remotePath == "" || remotePath == "/" {
 			return fmt.Errorf("env file %q needs a plain env name and a non-root remote path (got %q, %q)", cfg.EnvFile, cfg.EnvName, remotePath)
 		}
-		ec, eerr := remote.Command(ctx, "rsync", "-az", "-e", "ssh "+strings.Join(sshArgs, " "),
-			cfg.EnvFile, fmt.Sprintf("%s:%s", sshTarget, filepath.Join(remotePath, ".env."+cfg.EnvName)))
-		if eerr != nil {
-			return fmt.Errorf("rsync env file to %s: %w", sshTarget, eerr)
-		}
-		ec.Env = os.Environ()
-		if out, rerr := ec.CombinedOutput(); rerr != nil {
-			return fmt.Errorf("rsync env file to %s: %w\n%s", sshTarget, rerr, strings.TrimSpace(string(out)))
+		envFinal = filepath.Join(remotePath, ".env."+cfg.EnvName)
+		envTmp = envFinal + ".nself-new"
+		if err := rsyncFile(ctx, sshArgs, cfg.EnvFile, sshTarget, envTmp); err != nil {
+			return err
 		}
 	}
 
-	// 2. docker compose pull on remote.
+	// 2. rsync compose file to remote.
+	if err := rsyncFile(ctx, sshArgs, composePath, sshTarget, remoteCompose); err != nil {
+		return err
+	}
+
+	// 3. Promote the env file.
+	if envTmp != "" {
+		if err := runSSH(ctx, sshTarget, cfg.KeyPath, fmt.Sprintf("mv -f %s %s", envTmp, envFinal)); err != nil {
+			return fmt.Errorf("promoting env file: %w", err)
+		}
+	}
+
+	// 4. docker compose pull on remote.
 	if err := runSSH(ctx, sshTarget, cfg.KeyPath,
 		fmt.Sprintf("docker compose -f %s pull", remoteCompose)); err != nil {
 		return fmt.Errorf("remote pull: %w", err)
 	}
 
-	// 3. docker compose up -d on remote.
+	// 5. docker compose up -d on remote.
 	if err := runSSH(ctx, sshTarget, cfg.KeyPath,
 		fmt.Sprintf("docker compose -f %s up -d", remoteCompose)); err != nil {
 		return fmt.Errorf("remote up: %w", err)
 	}
 
-	// 4. Optional log stream.
+	// 6. Optional log stream.
 	if cfg.Follow {
 		sc, serr := remote.Command(ctx, "ssh",
 			append(remote.BaseOptions(cfg.KeyPath), sshTarget,
