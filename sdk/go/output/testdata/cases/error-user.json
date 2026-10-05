@@ -1,0 +1,25 @@
+{
+  "input": {
+    "kind": "error",
+    "command": "db reset",
+    "error": {
+      "code": "E400",
+      "message": "boom <x>",
+      "docs_url": "https://nself.org/docs/reference/error-codes#e400",
+      "class": "user"
+    }
+  },
+  "expected": [
+    "{",
+    "  \"schema_version\": \"1\",",
+    "  \"command\": \"db reset\",",
+    "  \"error\": {",
+    "    \"code\": \"E400\",",
+    "    \"message\": \"boom <x>\",",
+    "    \"docs_url\": \"https://nself.org/docs/reference/error-codes#e400\",",
+    "    \"exit_code\": 1,",
+    "    \"class\": \"user\"",
+    "  }",
+    "}"
+  ]
+}

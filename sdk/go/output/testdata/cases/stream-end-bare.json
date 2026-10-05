@@ -1,0 +1,9 @@
+{
+  "input": {
+    "kind": "stream_end",
+    "command": "logs"
+  },
+  "expected": [
+    "{\"schema_version\":\"1\",\"command\":\"logs\",\"data\":{\"type\":\"result\"}}"
+  ]
+}

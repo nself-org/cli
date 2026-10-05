@@ -1,0 +1,30 @@
+{
+  "input": {
+    "kind": "data",
+    "command": "status",
+    "data": {
+      "name": "demo",
+      "items": [
+        "a",
+        "b"
+      ],
+      "ok": true,
+      "n": 3
+    }
+  },
+  "expected": [
+    "{",
+    "  \"schema_version\": \"1\",",
+    "  \"command\": \"status\",",
+    "  \"data\": {",
+    "    \"items\": [",
+    "      \"a\",",
+    "      \"b\"",
+    "    ],",
+    "    \"n\": 3,",
+    "    \"name\": \"demo\",",
+    "    \"ok\": true",
+    "  }",
+    "}"
+  ]
+}

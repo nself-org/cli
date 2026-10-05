@@ -1,0 +1,24 @@
+{
+  "input": {
+    "kind": "data",
+    "command": "x y",
+    "data": {
+      "note": "<key> & value",
+      "list": [],
+      "obj": {},
+      "unicode": "café ✓"
+    }
+  },
+  "expected": [
+    "{",
+    "  \"schema_version\": \"1\",",
+    "  \"command\": \"x y\",",
+    "  \"data\": {",
+    "    \"list\": [],",
+    "    \"note\": \"<key> & value\",",
+    "    \"obj\": {},",
+    "    \"unicode\": \"café ✓\"",
+    "  }",
+    "}"
+  ]
+}

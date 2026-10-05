@@ -1,0 +1,32 @@
+{
+  "input": {
+    "kind": "stream_end",
+    "command": "deploy",
+    "fields": [
+      {
+        "key": "ok",
+        "value": true
+      },
+      {
+        "key": "rows",
+        "value": null
+      }
+    ],
+    "meta": {
+      "deprecations": [
+        {
+          "old": "env list",
+          "new": "config env list",
+          "removal_at": "v1.6.0"
+        }
+      ],
+      "warnings": [
+        "first",
+        "second"
+      ]
+    }
+  },
+  "expected": [
+    "{\"schema_version\":\"1\",\"command\":\"deploy\",\"data\":{\"type\":\"result\",\"ok\":true,\"rows\":null},\"meta\":{\"deprecations\":[{\"old\":\"env list\",\"new\":\"config env list\",\"removal_at\":\"v1.6.0\"}],\"warnings\":[\"first\",\"second\"]}}"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "input": {
+    "kind": "data",
+    "command": "status",
+    "data": null
+  },
+  "expected": [
+    "{",
+    "  \"schema_version\": \"1\",",
+    "  \"command\": \"status\",",
+    "  \"data\": null",
+    "}"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "input": {
+    "kind": "stream_record",
+    "command": "deploy",
+    "type": "progress",
+    "fields": [
+      {
+        "key": "step",
+        "value": "build"
+      },
+      {
+        "key": "percent",
+        "value": 50
+      },
+      {
+        "key": "done",
+        "value": false
+      }
+    ]
+  },
+  "expected": [
+    "{\"schema_version\":\"1\",\"command\":\"deploy\",\"data\":{\"type\":\"progress\",\"step\":\"build\",\"percent\":50,\"done\":false}}"
+  ]
+}
