@@ -341,14 +341,14 @@ func TestDBMigrateDownCmd_HasDirFlags(t *testing.T) {
 
 // Golden tests: without --migration-dir the commands issue exactly the
 // statement sequence they issued before P7-PROD-77 (captured from origin/main
-// f6c45e2f with the same fake docker).
+// f6c45e2f with the same fake docker), except `up --dry-run`, which P7-PROD-84
+// made read-only.
 
+// goldenUpDryRun is the default-directory `up --dry-run` sequence after
+// P7-PROD-84. Before it, the sequence held three EXEC/PIPE writes (ensure*,
+// ledger upgrade): the "dry run" created tables and rewrote ledger rows.
 const goldenUpDryRun = `CALL ISREADY
-CALL EXEC CREATE SCHEMA IF NOT EXISTS np_common; CREATE TABLE IF NOT EXISTS np_common.sche
-CALL EXEC CREATE SCHEMA IF NOT EXISTS nself_ops
-CALL EXEC CREATE TABLE IF NOT EXISTS nself_ops.migrations (
-CALL PIPE pipe-0.sql
-CALL QUERY SELECT count(*) FROM np_common.schema_versions WHERE name = 'up.sql'
+CALL QUERY SELECT CASE WHEN to_regclass('np_common.schema_versions') IS NULL THEN 'no' ELS
 CALL QUERY SELECT name || '|' || applied_at FROM np_common.schema_versions ORDER BY applie`
 
 const goldenDown = `CALL EXEC CREATE SCHEMA IF NOT EXISTS np_common; CREATE TABLE IF NOT EXISTS np_common.sche
@@ -364,6 +364,9 @@ func TestDBMigrateUpDir_GoldenUpDryRunWithoutDir(t *testing.T) {
 	_ = cmd.Flags().Set("dry-run", "true")
 	if err := cmd.RunE(cmd, nil); err != nil {
 		t.Fatalf("up --dry-run: %v", err)
+	}
+	if w := writes(dockerCalls(t, sd)); len(w) != 0 {
+		t.Fatalf("up --dry-run issued writes: %v", w)
 	}
 	if got := joinLines(shape(dockerCalls(t, sd))); got != goldenUpDryRun {
 		t.Errorf("statement sequence changed:\n got:\n%s\nwant:\n%s", got, goldenUpDryRun)

@@ -18,19 +18,20 @@ import (
 )
 
 func runDBMigrateUp(cmd *cobra.Command, _ []string) error {
-	// Read --migration-dir and --dry-run before the remote dispatch: with
-	// --env/--server the command re-runs on the remote host, and dropping
-	// either flag there would apply the remote's default directory for real
-	// (P7-PROD-77). Forward both only for --migration-dir, so the no-directory
-	// remote form is unchanged.
+	// Read --migration-dir and --dry-run before the remote dispatch:
+	// with --env/--server the command re-runs on the remote host, and dropping
+	// --dry-run there would apply for real (P7-PROD-77 for --migration-dir,
+	// P7-PROD-84 for the default directory). --dry-run is always forwarded;
+	// runRemoteNselfCommand then refuses unless the remote proves it supports
+	// it (db_remote_dryrun.go), also under --allow-version-drift.
 	migrationDir, _ := cmd.Flags().GetString("migration-dir")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	remoteArgs := []string{"db", "migrate", "up"}
 	if migrationDir != "" {
 		remoteArgs = append(remoteArgs, "--migration-dir", migrationDir)
-		if dryRun {
-			remoteArgs = append(remoteArgs, "--dry-run")
-		}
+	}
+	if dryRun {
+		remoteArgs = append(remoteArgs, "--dry-run")
 	}
 	if handled, err := dispatchRemoteIfNeeded(cmd, remoteArgs...); handled {
 		return err
@@ -85,6 +86,8 @@ func runDBMigrateUp(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
+	// Default directory dry-run: PendingMigrations issues SELECTs only and
+	// creates nothing (P7-PROD-84); it never reaches MigrateUp.
 	if dryRun {
 		pending, err := database.PendingMigrations(cmd.Context(), cfg, plugin)
 		if err != nil {

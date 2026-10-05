@@ -30,6 +30,20 @@ func GetBuildDate() string {
 	return BuildDate
 }
 
+// CapDBDryRunSafe is advertised by builds whose `db migrate up --dry-run`
+// (with or without --migration-dir) issues only read statements and applies
+// nothing (P7-PROD-77, P7-PROD-84). A caller that forwards --dry-run to a
+// remote nself must see it in that remote's `nself version --json` first: the
+// version number cannot prove it, because source builds and the released
+// v1.4.12 both report 1.4.12 and v1.4.12 applies on a dry-run.
+const CapDBDryRunSafe = "db-dry-run-safe"
+
+// Capabilities lists the capability names this build advertises in
+// `nself version --json`. Add a name only with the change that earns it.
+func Capabilities() []string {
+	return []string{CapDBDryRunSafe}
+}
+
 // NextMinor returns the next minor release version (patch reset to 0) for a
 // "X.Y.Z" version string, e.g. "1.2.7" -> "1.3.0". Used for escape-hatch
 // removal-version messaging such as NSELF_LEGACY_ENV_ORDER (CLI-R18), which

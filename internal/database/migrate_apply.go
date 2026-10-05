@@ -18,33 +18,6 @@ import (
 // directory. Outputs: counts, skip flags or []MigrationStatus.
 // Constraints: split out of migrate.go (CLI-R12); MigrateUp/MigrateDown stay there.
 
-// PendingMigrations returns the list of migration names that have not yet been applied.
-func PendingMigrations(ctx context.Context, cfg *config.Config, plugin string) ([]string, error) {
-	if err := ensureSchemaVersions(ctx, cfg); err != nil {
-		return nil, fmt.Errorf("ensure schema_versions: %w", err)
-	}
-	if err := ensureMigrationsTable(ctx, cfg); err != nil {
-		return nil, fmt.Errorf("ensure migrations table: %w", err)
-	}
-	dir := migrationsDir(cfg, plugin)
-	files, err := scanMigrations(dir)
-	if err != nil {
-		return nil, err
-	}
-	if err := upgradeLedger(ctx, cfg, files); err != nil {
-		return nil, fmt.Errorf("upgrade migration ledger: %w", err)
-	}
-	applied, err := appliedMigrations(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("check applied migrations: %w", err)
-	}
-	var pending []string
-	for _, f := range pendingMigrationFiles(files, applied) {
-		pending = append(pending, migrationKey(f))
-	}
-	return pending, nil
-}
-
 // ApplyFile applies a single external SQL migration file and records it in
 // schema_versions by filename + SHA-256 checksum (G-008).
 //
