@@ -154,6 +154,11 @@ func bundleEntitledFromCache(key, bundleName string) (bool, error) {
 		return false, fmt.Errorf("cached license is not signed by ping (unsigned, altered or for another key); connect to validate (bundle=%q)", bundleName)
 	}
 
+	if !cacheWithinTerm(entry, time.Now()) {
+		return false, fmt.Errorf("cached license expired on %s and its post-expiry grace has ended (bundle=%q); connect to validate",
+			time.Unix(entry.ExpiresAt, 0).Format("2006-01-02"), bundleName)
+	}
+
 	// Revocation still applies when we cannot reach the server. Without this
 	// the fail-open path was the one route by which a revoked licence kept
 	// working indefinitely: it validated the key hash and the tier and never
@@ -206,7 +211,7 @@ func bundleEntitledFromGrace(key, bundleName string) (bool, error) {
 		return false, fmt.Errorf("license has been revoked (bundle=%q); contact support if this is unexpected", bundleName)
 	}
 
-	grace := DetermineGraceState(entry)
+	grace := graceStateFor(entry)
 	if !grace.CanProceed || !grace.WriteAllowed {
 		return false, fmt.Errorf(
 			"license server unreachable (bundle=%q) and the offline grace period has expired: %s",

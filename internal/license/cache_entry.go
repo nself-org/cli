@@ -127,7 +127,11 @@ func (c *CacheEntry) matchesSignedBody() bool {
 func cacheSignatureOK(entry *CacheEntry) bool {
 	// compat.V15(P7-PLUG-63): cache trusted without a signature check -> only a cache whose server-signed body verifies
 	if compat.V15() {
-		return entry.VerifySignature()
+		now := time.Now()
+		if !entry.VerifySignature() || !entry.clockTrusted(now) {
+			return false
+		}
+		noteTrustedTime(now)
 	}
 	return true
 }

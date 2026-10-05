@@ -60,6 +60,12 @@ From v1.5 a reply from ping counts only if bytes ping signed name the requesting
 - `POST /license/validate?bundle=<name>`: the signed body must carry `bundle` (equal to the bundle asked about), `key_hash` (sha256 of the key), and `issued_at`/`expires_at` (unix seconds, at most 24 h apart, containing now), with an `X-NSelf-License-Sig` header over the exact body. Until ping signs this, v1.5 refuses every bundle reply.
 - Cache age is the older of the local `fetched_at` and the signed jwt `iat`, so re-stamping `fetched_at` cannot extend the offline grace window.
 
+Offline decisions from the cache (v1.5):
+
+- `NSELF_LICENSE_FAIL_OPEN=1` has no cache-age limit but still stops at the signed licence term: expiry plus the 30-day post-expiry grace.
+- The post-expiry grace is read-only once the cache is older than the 7-day offline ceiling.
+- A clock behind the cache's signed `iat`, or more than 10 minutes behind the highest time earlier checks trusted (`license.clock` next to the cache), makes the cache untrusted until a verified online reply resets it.
+
 v1.4 behaviour is unchanged except that a present-but-invalid signature is refused in every mode.
 
 ## Checking the code

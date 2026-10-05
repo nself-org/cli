@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/nself-org/cli/internal/compat"
 )
 
 // defaultCacheDir returns ~/.cache/nself.
@@ -110,6 +112,7 @@ func WriteCache(entry *CacheEntry) error {
 		cleanup()
 		return fmt.Errorf("renaming temp cache file: %w", err)
 	}
+	noteCacheWritten(entry)
 	return nil
 }
 
@@ -183,4 +186,107 @@ func GetEmbeddedPubKeyHex() string {
 		return hex.EncodeToString(ks[0].Key)
 	}
 	return ""
+}
+
+// clockMarkPath is the file holding the highest trusted time seen, next to the cache.
+func clockMarkPath() (string, bool) {
+	p, err := CachePath()
+	if err != nil {
+		return "", false
+	}
+	return filepath.Join(filepath.Dir(p), "license.clock"), true
+}
+
+// readTrustedTime returns the persisted highest trusted time (zero when none).
+func readTrustedTime() time.Time {
+	p, ok := clockMarkPath()
+	if !ok {
+		return time.Time{}
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return time.Time{}
+	}
+	n, err := strconv.ParseInt(string(b), 10, 64)
+	if err != nil || n <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(n, 0)
+}
+
+// writeTrustedTime persists t as the trusted-time mark. Best effort: it only
+// writes where the cache directory already exists, and a failure changes nothing.
+func writeTrustedTime(t time.Time) {
+	p, ok := clockMarkPath()
+	if !ok {
+		return
+	}
+	if st, err := os.Stat(filepath.Dir(p)); err != nil || !st.IsDir() {
+		return
+	}
+	_ = os.WriteFile(p, []byte(strconv.FormatInt(t.Unix(), 10)), 0o600)
+}
+
+// noteCacheWritten resets the trusted-time mark to the signed iat of a cache
+// entry that was just written from a verified reply. A reply is only accepted
+// inside its own 24 h window, so this is the recovery path after a clock that
+// ran fast: going online puts the mark back to real time.
+func noteCacheWritten(entry *CacheEntry) {
+	// compat.V15(P7-PLUG-63): no trusted-time mark -> mark reset to the signed iat of each verified reply
+	if !compat.V15() {
+		return
+	}
+	if iat, ok := entry.signedIssuedAt(); ok {
+		writeTrustedTime(time.Unix(iat, 0))
+	}
+}
+
+// clockTrusted reports whether now can be believed for deciding on this entry:
+// not behind the entry's signed iat by more than the skew, and not behind the
+// highest time earlier checks trusted by more than clockTolerance. From v1.5 an
+// entry read while the clock is behind that evidence is treated as untrusted
+// (a clock rolled back to revive an old licence).
+func (c *CacheEntry) clockTrusted(now time.Time) bool {
+	// compat.V15(P7-PLUG-63): cache trusted whatever the clock says -> refused when the clock is behind the signed iat or the highest time seen
+	if !compat.V15() {
+		return true
+	}
+	if iat, ok := c.signedIssuedAt(); ok && iat > now.Unix()+replySkewSec {
+		return false
+	}
+	hw := readTrustedTime()
+	// Tolerance 10 min: NTP steps, DST bugs and sleep drift are not a rollback.
+	return hw.IsZero() || !now.Before(hw.Add(-10*time.Minute))
+}
+
+// noteTrustedTime raises the mark to now (never lowers it) after a trusted decision.
+func noteTrustedTime(now time.Time) {
+	// compat.V15(P7-PLUG-63): no trusted-time mark -> mark raised to now after each trusted decision
+	if compat.V15() && now.After(readTrustedTime()) {
+		writeTrustedTime(now)
+	}
+}
+
+// cacheWithinTerm reports whether the cached licence's signed expiry plus the
+// post-expiry grace still covers now. The air-gap fail-open path is unbounded
+// by cache age but never by the licence term.
+func cacheWithinTerm(entry *CacheEntry, now time.Time) bool {
+	// compat.V15(P7-PLUG-63): fail-open past the licence expiry -> refused once the signed expiry plus the post-expiry grace has passed
+	if compat.V15() && entry.ExpiresAt > 0 && now.After(time.Unix(entry.ExpiresAt, 0).Add(PostExpiryGraceWindow)) {
+		return false
+	}
+	return true
+}
+
+// graceStateFor is DetermineGraceState with the offline ceiling also applied
+// after expiry: before expiry a cache older than GraceHardThreshold is
+// read-only, and from v1.5 so is one inside the post-expiry grace.
+func graceStateFor(entry *CacheEntry) GraceCheckResult {
+	g := DetermineGraceState(entry)
+	// compat.V15(P7-PLUG-63): post-expiry grace ignores cache age -> post-expiry write access also needs a cache younger than the 7-day offline ceiling
+	if compat.V15() && g.State == GracePostExpiry && g.CacheAge >= GraceHardThreshold {
+		g.WriteAllowed = false
+		g.Message += " The cached validation is older than the 7-day offline ceiling: read-only until you connect."
+	}
+	return g
 }

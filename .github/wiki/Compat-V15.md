@@ -54,8 +54,13 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 |---|---|---|---|
 | P7-PLUG-63 | bundle reply trusted for any key and bundle | only a signed reply naming this key, this bundle and a live window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache age from the unsigned fetched_at | the older of fetched_at and the signed jwt iat | `internal/license/cache_entry.go` |
+| P7-PLUG-63 | cache trusted whatever the clock says | refused when the clock is behind the signed iat or the highest time seen | `internal/license/cache.go` |
 | P7-PLUG-63 | cache trusted without a signature check | only a cache whose server-signed body verifies | `internal/license/cache_entry.go` |
+| P7-PLUG-63 | fail-open past the licence expiry | refused once the signed expiry plus the post-expiry grace has passed | `internal/license/cache.go` |
+| P7-PLUG-63 | no trusted-time mark | mark raised to now after each trusted decision | `internal/license/cache.go` |
+| P7-PLUG-63 | no trusted-time mark | mark reset to the signed iat of each verified reply | `internal/license/cache.go` |
 | P7-PLUG-63 | plugins field ping never sends (always empty) | plugins_allowed | `internal/license/cache_entry.go` |
+| P7-PLUG-63 | post-expiry grace ignores cache age | post-expiry write access also needs a cache younger than the 7-day offline ceiling | `internal/license/cache.go` |
 | P7-PLUG-63 | signature over a locally built payload | server signature over the raw body | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | signed reply trusted for any licence | only a reply whose signed jwt names this key and is in window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | unsigned bundle response accepted | unsigned bundle response refused | `internal/license/checker.go` |
