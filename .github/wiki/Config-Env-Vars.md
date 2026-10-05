@@ -70,6 +70,7 @@ These vars control the top-level identity and behavior of a project.
 | `PROJECT_NAME` | string | *(none)* | **Yes** | Docker container and network namespace. Must be lowercase, 2–30 characters. |
 | `BASE_DOMAIN` | string | `local.nself.org` | No | Root domain used to construct all service subdomains. |
 | `ENV` | enum | `dev` | No | Deployment environment. Accepted values: `dev`, `staging`, `prod`. Resolution order: process environment, then `.env`'s own `ENV=` key, then `dev` — see [Load Order (Cascade)](#load-order-cascade). |
+| `NSELF_JSON_LEGACY` | bool (`1` or `true`, any case) | unset | No | Only with `NSELF_V15` on, and only once the JSON pilots land (P7-REG-09); no command reads it in 1.4.x. Restores the pre-contract bare JSON of the commands that had one (`status`, `doctor`, `config show --format json`) instead of the v1 envelope, for one minor release. Prints a one-line deprecation warning once per process. Removed in v1.6.0. See [[JSON-Output]]. |
 | `PROJECT_DESCRIPTION` | string | `""` | No | Human-readable description of the project. |
 | `ADMIN_EMAIL` | string | `""` | No | Admin contact email for notifications and certificates. |
 | `DB_ENV_SEEDS` | bool | `true` | No | When `true`, database seed files run automatically on first boot. |
@@ -105,6 +106,8 @@ DATABASE_URL=postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@postgres:5432/{POS
 ```
 
 This value is written to `.env.computed` and should not be set manually. The user and password are percent-encoded in the URL (a `/` becomes `%2F`, `@` becomes `%40`), so a password with URL-reserved characters still produces a valid connection string. `POSTGRES_PASSWORD` itself stays unencoded.
+
+**Computed:** `nself build` also writes `POSTGRES_PASSWORD_URLENC` and `REDIS_PASSWORD_URLENC` into `.nself/compose.env` (the password percent-encoded for a URL, omitted when the password is empty). Plugin compose fragments use `${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}` wherever a password sits inside a URL. Do not set them by hand. See [[Plugin-Dev-Guide]].
 
 ---
 

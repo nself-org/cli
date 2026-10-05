@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -71,6 +72,10 @@ func init() {
 	RootCmd.PersistentFlags().Bool("no-monorepo", false, "Disable automatic monorepo backend detection")
 	// --no-deprecation-warnings suppresses deprecation output (for scripted use).
 	RootCmd.PersistentFlags().Bool("no-deprecation-warnings", false, "Suppress deprecation warnings (for scripted use)")
+	// --json is the one global machine-output switch (no shorthand: `status -j`
+	// and other local shorthands must not collide). The invocation decorator
+	// (invocation.go) refuses it on commands that cannot produce JSON.
+	RootCmd.PersistentFlags().Bool("json", false, "Machine-readable output: one JSON document on stdout (see JSON-Output)")
 	RootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		// ── OTel tracing ──────────────────────────────────────────────────────
 		// InitTracer is only called when OTEL_EXPORTER_OTLP_ENDPOINT is set.
@@ -147,7 +152,13 @@ func init() {
 		if !noMonorepo && !isSourceSafeCommand(cmd.Name()) && !isRepoScopedCommand(cmd.Name()) {
 			if cwd, err := os.Getwd(); err == nil {
 				if backendRoot := config.DetectMonorepoRoot(cwd); backendRoot != "" {
-					fmt.Printf("→ Detected monorepo layout. Using %s as project root.\n", filepath.Base(backendRoot))
+					// In JSON mode stdout carries exactly one document, so the
+					// notice goes to stderr there; text mode is unchanged.
+					notice := io.Writer(os.Stdout)
+					if jsonOn, _ := cmd.Flags().GetBool("json"); jsonOn {
+						notice = os.Stderr
+					}
+					_, _ = fmt.Fprintf(notice, "→ Detected monorepo layout. Using %s as project root.\n", filepath.Base(backendRoot))
 					_ = os.Chdir(backendRoot)
 				}
 			}

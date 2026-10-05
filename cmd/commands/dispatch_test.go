@@ -77,6 +77,27 @@ func TestStripRootPersistentFlags(t *testing.T) {
 	}
 }
 
+// TestStripRootPersistentFlagsKeepsJSON proves `nself sentry status --json`
+// reaches the plugin with --json in its argv (contract:cli.json-envelope:
+// plugin-proxied commands receive --json unchanged) while the CLI's own
+// flags are still dropped.
+func TestStripRootPersistentFlagsKeepsJSON(t *testing.T) {
+	tests := []struct {
+		args, want []string
+	}{
+		{[]string{"status", "--json"}, []string{"status", "--json"}},
+		{[]string{"status", "--json=true"}, []string{"status", "--json=true"}},
+		{[]string{"--json=false", "status"}, []string{"--json=false", "status"}},
+		{[]string{"status", "--no-monorepo", "--json"}, []string{"status", "--json"}},
+		{[]string{"x", "--", "--json"}, []string{"x", "--", "--json"}},
+	}
+	for _, tt := range tests {
+		if got := stripRootPersistentFlags(tt.args); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("stripRootPersistentFlags(%q) = %q, want %q", tt.args, got, tt.want)
+		}
+	}
+}
+
 // TestStripRootPersistentFlagsCoversEveryRootFlag guards the derivation itself.
 // The list is read from RootCmd rather than hardcoded precisely so that adding
 // a persistent flag to the CLI does not quietly start breaking plugins; this
@@ -88,6 +109,13 @@ func TestStripRootPersistentFlagsCoversEveryRootFlag(t *testing.T) {
 			args = append(args, "value")
 		}
 		got := stripRootPersistentFlags(args)
+		if keepsForPlugin(f.Name) {
+			// Forwarded flags (--json) must survive: the plugin owns its output.
+			if !reflect.DeepEqual(got, args) {
+				t.Errorf("forwarded flag --%s was stripped: %q", f.Name, got)
+			}
+			return
+		}
 		if len(got) != 1 || got[0] != "sub" {
 			t.Errorf("persistent flag --%s (%s) survived stripping: %q", f.Name, f.Value.Type(), got)
 		}

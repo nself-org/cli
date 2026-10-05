@@ -205,6 +205,28 @@ func checkPasswordStrength(projectDir string, verbose, fix bool) []doctorCheckRe
 		}
 	}
 
+	results = append(results, checkURLReservedPasswords(projectDir, cfg, verbose)...)
+	return results
+}
+
+// checkURLReservedPasswords is the url-reserved-password advisory (P7-PROD-31):
+// warn, naming the variable and never the value, when a password holds a
+// URL-reserved character and an installed plugin fragment still embeds the raw
+// variable in a URL. Silent otherwise; a warn, never a failure.
+func checkURLReservedPasswords(projectDir string, cfg *config.Config, verbose bool) []doctorCheckResult {
+	pws := map[string]string{"POSTGRES_PASSWORD": cfg.Postgres.Password}
+	if cfg.Redis.Enabled {
+		pws["REDIS_PASSWORD"] = cfg.Redis.Password
+	}
+	paths, err := build.ReadComposeManifest(projectDir)
+	if err != nil || len(paths) < 2 {
+		return nil // no installed fragments to inspect
+	}
+	var results []doctorCheckResult
+	for _, msg := range doctor.URLReservedMessages(paths[1:], pws) { // [0] is the generated base compose
+		printCheck("warn", "url-reserved-password", msg, verbose)
+		results = append(results, doctorCheckResult{Name: "url-reserved-password", Status: "warn", Message: msg})
+	}
 	return results
 }
 

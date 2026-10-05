@@ -102,6 +102,40 @@ jobs:
           GOLDEN_PATH_HEALTH_TIMEOUT: "240"
         run: bash scripts/golden-path.sh
 
+      # Informational only (EPIC P7-GUARD, G8): time to healthy = sum of the
+      # golden-path report's steps 3-6 durations, read from the report the smoke
+      # step already wrote, never re-timed. It never gates: the golden path's own
+      # per-step thresholds are its gate. `if: always()` so the number is printed
+      # even when a later step (today: step 10, claw install) fails the run; when
+      # steps 3-6 did not all pass the step says so and exits 0.
+      - name: Time to healthy (informational)
+        if: always()
+        run: |
+          if [ -f /tmp/golden-path-report.json ]; then
+            # No pipe: the default step shell has no pipefail, so a pipe into tee
+            # would hide healthy's exit status.
+            # Built, not `go run`: go run reports every non-zero child exit as 1, and
+            # this step tells exit 1 (not measurable) from exit 2 (bad report).
+            go build -mod=vendor -o /tmp/perfbench ./tools/perfbench
+            rc=0
+            /tmp/perfbench healthy -report /tmp/golden-path-report.json -json > /tmp/perf-healthy.json || rc=$?
+            if [ "$rc" -eq 0 ]; then
+              cat /tmp/perf-healthy.json
+              TTH=$(python3 -c 'import json; print([m for m in json.load(open("/tmp/perf-healthy.json"))["metrics"] if m["name"] == "time_to_healthy"][0]["p50"])')
+              echo "time_to_healthy: ${TTH}s (golden-path steps 3-6, informational)"
+              echo "time_to_healthy: ${TTH}s (golden-path steps 3-6, informational, never gates)" >> "$GITHUB_STEP_SUMMARY"
+            elif [ "$rc" -eq 1 ]; then
+              echo "time_to_healthy: not measurable (steps 3-6 did not all pass or lack a valid duration)"
+              echo "time_to_healthy: not measurable (steps 3-6 did not all pass or lack a valid duration)" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "time_to_healthy: report unreadable or bad usage (perfbench exit ${rc})"
+              echo "time_to_healthy: report unreadable or bad usage (perfbench exit ${rc})" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "time_to_healthy: no report"
+            echo "time_to_healthy: no report" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Clean up docker state
         if: always()
         run: |

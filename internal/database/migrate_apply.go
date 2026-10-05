@@ -12,16 +12,11 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
-// Purpose: the query/apply surface of the migration runner — listing pending
-// migrations, applying a single external file, applying a whole directory,
-// and reporting merged on-disk/ledger status.
-// Inputs: a *config.Config and, depending on the entry point, a plugin name,
-// a single file path, or a migrations directory.
-// Outputs: counts, skip flags, or []MigrationStatus, per function.
-// Constraints: split out of migrate.go (CLI-R12) as a pure move; no behavior
-// changed. MigrateUp/MigrateDown (the write path) stay in migrate.go; this
-// file covers the read/apply-by-path surface that grew up alongside it
-// (G-008: ApplyFile/MigrateUpDir/ApplyDir for external migration directories).
+// Purpose: the query/apply surface of the migration runner: pending list,
+// ApplyFile/MigrateUpDir/ApplyDir for external directories (G-008), merged
+// on-disk/ledger status. Inputs: a *config.Config plus a plugin name, file or
+// directory. Outputs: counts, skip flags or []MigrationStatus.
+// Constraints: split out of migrate.go (CLI-R12); MigrateUp/MigrateDown stay there.
 
 // PendingMigrations returns the list of migration names that have not yet been applied.
 func PendingMigrations(ctx context.Context, cfg *config.Config, plugin string) ([]string, error) {
@@ -60,6 +55,15 @@ func PendingMigrations(ctx context.Context, cfg *config.Config, plugin string) (
 // This enables plugin-claw external RLS migrations to be applied via CLI
 // without requiring 'nself db shell' as a workaround.
 func ApplyFile(ctx context.Context, cfg *config.Config, filePath string) (skipped bool, err error) {
+	return applyFile(ctx, cfg, filePath, false)
+}
+
+// applyFile is ApplyFile; guarded is set by MigrateUpDir (P7-PROD-77): the
+// transactional path then runs the file through dirSQL and dirTxSQL (outer
+// wrapper dropped, transaction control refused, same-transaction check, ledger
+// first) and verifies the ledger row. `db migrate apply --file` stays unguarded
+// and is the escape hatch for a file the guard refuses.
+func applyFile(ctx context.Context, cfg *config.Config, filePath string, guarded bool) (skipped bool, err error) {
 	if err := ensureSchemaVersions(ctx, cfg); err != nil {
 		return false, fmt.Errorf("ensure schema_versions: %w", err)
 	}
@@ -137,6 +141,17 @@ func ApplyFile(ctx context.Context, cfg *config.Config, filePath string) (skippe
 		if err := pipeSQLToContainer(ctx, cfg, recordSQL); err != nil {
 			return false, fmt.Errorf("record migration %s: %w", name, err)
 		}
+	} else if guarded {
+		body, txErr := dirSQL(name, sqlContent, "up")
+		if txErr != nil {
+			return false, txErr
+		}
+		if err := pipeSQLToContainer(ctx, cfg, dirTxSQL(body, legacyRecord+"\n"+opsRecord)); err != nil {
+			return false, txRunError(name, err)
+		}
+		if err := verifyLedger(ctx, cfg, name, true); err != nil {
+			return false, err
+		}
 	} else {
 		txSQL := "BEGIN;\n" +
 			"SET LOCAL lock_timeout = '5s';\n" +
@@ -165,11 +180,8 @@ func MigrateUpDir(ctx context.Context, cfg *config.Config, dir string) (int, err
 		return 0, err
 	}
 
-	// Same refusal MigrateUp applies (migrate_prereq.go), scoped to this
-	// directory's still-pending files: this is the entry point a numbered
-	// chain like backend/migrations/ actually runs through (via
-	// --migration-dir), so it needs the same guard against ALTERing a table
-	// only a separate migration system (e.g. Hasura's) creates.
+	// Same ALTER-prerequisite refusal MigrateUp applies (migrate_prereq.go),
+	// scoped to this directory's still-pending files.
 	applied, err := appliedMigrations(ctx, cfg)
 	if err != nil {
 		return 0, fmt.Errorf("check applied migrations: %w", err)
@@ -181,9 +193,19 @@ func MigrateUpDir(ctx context.Context, cfg *config.Config, dir string) (int, err
 		return 0, prerequisiteError(missing)
 	}
 
+	// Refuse the whole batch before applying any file (non-transactional
+	// files run as written, as before, and are not scanned).
+	for _, f := range pending {
+		if data, readErr := os.ReadFile(f); readErr == nil && !isNonTransactional(string(data)) {
+			if _, txErr := dirSQL(filepath.Base(f), string(data), "up"); txErr != nil {
+				return 0, txErr
+			}
+		}
+	}
+
 	count := 0
 	for _, f := range files {
-		skipped, applyErr := ApplyFile(ctx, cfg, f)
+		skipped, applyErr := applyFile(ctx, cfg, f, true)
 		if applyErr != nil {
 			return count, applyErr
 		}
@@ -194,9 +216,7 @@ func MigrateUpDir(ctx context.Context, cfg *config.Config, dir string) (int, err
 	return count, nil
 }
 
-// ApplyDir is an alias for MigrateUpDir with the name expected by the task spec
-// (G-008). Both functions apply all .sql files in the given directory in
-// lexicographic order, skipping files already recorded in schema_versions.
+// ApplyDir is an alias for MigrateUpDir with the name the task spec expects (G-008).
 func ApplyDir(ctx context.Context, cfg *config.Config, dirPath string) (int, error) {
 	return MigrateUpDir(ctx, cfg, dirPath)
 }
