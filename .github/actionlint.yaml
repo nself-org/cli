@@ -1,0 +1,7 @@
+# actionlint config (pinned rhysd/actionlint:1.7.7, the version P7-REG-10 gates on).
+# 1.7.7 predates the GitHub-hosted `macos-15-intel` runner label that ci.yml's
+# matrix uses, and reports it as unknown. Declaring it here keeps the label
+# check on for every other label.
+self-hosted-runner:
+  labels:
+    - macos-15-intel

@@ -12,7 +12,7 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/license.licensePubKeyHex=$(NSELF_LICENSE_PUBKEY_HEX)
 BUILDFLAGS := -trimpath
 
-.PHONY: build clean test vet install cross dist verify-prod sport-f21 sport-f02 cmd-inventory registry core-services wiki-commands wiki-check flag-drift-audit parity schemas schemas-check sbom man fmt fmt-check
+.PHONY: build clean test vet install cross dist verify-prod sport-f21 sport-f02 cmd-inventory registry core-services wiki-commands wiki-check flag-drift-audit parity schemas schemas-check contract-check sbom man fmt fmt-check
 
 verify-prod:
 	@bash scripts/prod-verify/p87-verification.sh
@@ -85,6 +85,62 @@ schemas:
 ## tools/schemagen generates. Non-JSON files under schemas/ are ignored.
 schemas-check:
 	@CGO_ENABLED=0 go run -mod=vendor ./tools/schemagen -check
+
+## contract-check — P7-REG-10. The one gate for every machine contract the CLI
+## publishes: the committed schemas/, the registry and inventory, the compat
+## marker table (cheap, so a drift fails in seconds), then the P7-REG Epic's go
+## test lines run twice, with NSELF_V15 unset and =1 (ADR 0021). Nothing is skipped: a missing input, a hand-edited
+## generated file or a Go type that drifted from its schema exits non-zero with
+## a message naming the check and the fix. The registry check regenerates with
+## `make cmd-inventory` into the tree, compares against what was committed (or
+## hand-edited) before, then restores those files, so a failing run leaves the
+## tree as it found it. The Linux smoke (scripts/ci/contract-smoke.sh) is
+## separate: it drives the built binary.
+CONTRACT_GOTEST := CGO_ENABLED=0 go test -mod=vendor -count=1
+CONTRACT_PKGS := ./internal/errs/... ./internal/output/... ./internal/canon/... ./internal/cmdregistry/... \
+	./internal/compat/... ./internal/portable/... ./internal/plugin/manifestv2/... ./tools/schemagen/...
+CONTRACT_REGEN := .github/command-registry.json .github/command-inventory.json .github/wiki/Commands.md
+contract-check:
+	@set -e; \
+	fail() { echo "contract-check: FAILED: $$1" >&2; echo "contract-check: fix: $$2" >&2; exit 1; }; \
+	for f in $(CONTRACT_REGEN) schemas/index.json scripts/ci/compat-markers.sh; do \
+	  [ -f "$$f" ] || fail "missing input $$f" "restore it; a gate input that is absent must fail, never pass"; \
+	done; \
+	echo "contract-check: schemas"; \
+	CGO_ENABLED=0 go run -mod=vendor ./tools/schemagen -check \
+	  || fail "schemas/ differs from tools/schemagen output" "run make schemas and commit; never hand-edit schemas/"; \
+	echo "contract-check: registry and inventory"; \
+	snap=$$(mktemp -d "$${TMPDIR:-/tmp}/contract-check.XXXXXX"); \
+	restore() { for f in $(CONTRACT_REGEN); do cp "$$snap/$$(basename $$f)" "$$f"; done; rm -rf "$$snap"; }; \
+	for f in $(CONTRACT_REGEN); do cp "$$f" "$$snap/$$(basename $$f)"; done; \
+	trap restore EXIT; \
+	$(MAKE) --no-print-directory cmd-inventory >/dev/null \
+	  || fail "make cmd-inventory failed (the registry did not build)" "read the error above; a command missing from internal/canon/canon.yaml is the usual cause"; \
+	for f in .github/command-registry.json .github/command-inventory.json; do \
+	  cmp -s "$$snap/$$(basename $$f)" "$$f" || { \
+	    diff -u "$$snap/$$(basename $$f)" "$$f" | head -40 >&2; \
+	    fail "$$f is not what the generator produces (hand edit or stale)" "run make cmd-inventory and commit; never hand-edit generated files"; }; \
+	done; \
+	restore; trap - EXIT; \
+	echo "contract-check: compat markers"; \
+	bash scripts/ci/compat-markers.sh --check \
+	  || fail "compat-markers.sh --check failed" "run bash scripts/ci/compat-markers.sh --write-wiki and commit"; \
+	for mode in unset 1; do \
+	  if [ "$$mode" = 1 ]; then NSELF_V15=1; export NSELF_V15; else unset NSELF_V15; fi; \
+	  echo "contract-check: go tests (NSELF_V15=$$mode)"; \
+	  $(CONTRACT_GOTEST) $(CONTRACT_PKGS) \
+	    || fail "contract packages failed (NSELF_V15=$$mode)" "fix the code or regenerate the contract it names"; \
+	  $(CONTRACT_GOTEST) ./internal/cmdregistry/... -run Golden \
+	    || fail "registry golden failed (NSELF_V15=$$mode)" "run make cmd-inventory and review the diff"; \
+	  $(CONTRACT_GOTEST) ./internal/repoqa/... \
+	    || fail "repoqa drift tests failed (NSELF_V15=$$mode)" "regenerate the file the test names"; \
+	  $(CONTRACT_GOTEST) ./cmd/nself/... \
+	    || fail "cmd/nself exit-code tests failed (NSELF_V15=$$mode)" "fix errs.ExitCodeFor wiring"; \
+	  $(CONTRACT_GOTEST) ./cmd/commands/ -run 'Registry|Canon|JSONContract|Invocation|Help|Pilot' \
+	    || fail "command contract tests failed (NSELF_V15=$$mode)" "fix the command or regenerate the contract it names"; \
+	done; \
+	unset NSELF_V15; \
+	echo "contract-check: OK"
 
 ## Q04 — SBOM generation (local dev target)
 ## Requires: syft (https://github.com/anchore/syft)

@@ -147,6 +147,17 @@ jobs:
         run: go test -mod=vendor -short -timeout=240s ./...
         shell: cmd
 
+      # P7-REG-10: the machine-contract gate. Linux legs only (Windows has no
+      # POSIX shell here and macOS legs add nothing the Linux proof lacks).
+      # jq and make ship on the GitHub-hosted ubuntu images.
+      - name: Contract gate (make contract-check)
+        if: runner.os == 'Linux'
+        run: make contract-check
+
+      - name: Contract smoke (Linux, both compat modes)
+        if: runner.os == 'Linux'
+        run: bash scripts/ci/contract-smoke.sh
+
   # S49-T06: Apple Silicon (darwin/arm64) smoke test.
   # The darwin/arm64 binary is cross-compiled on ubuntu-latest but never tested natively
   # before this job was added. This job runs on macos-14 (Apple Silicon runner) and
