@@ -8,7 +8,7 @@
 // Inputs: -in <plugin.json>. Modes: default (print canonical v2), -compat
 // (rewrite only the generated compatibility keys of a v2 file), -check (exit 1
 // unless the file is canonical v2 with current compatibility keys), -targets
-// (print "binary<TAB>command" for the commands block), -wiki <page> (regenerate
+// (print "binary<TAB>command" for every binary the installer publishes, one line each), -wiki <page> (regenerate
 // the field table of the Plugin-Manifest wiki page from the schema). -write
 // stores the result back into -in (temp file + rename) instead of printing it.
 //
@@ -198,8 +198,8 @@ func runTargets(data []byte, stdout, stderr io.Writer) int {
 		say(stderr, "manifestv2migrate: %v\n", err)
 		return 1
 	}
-	if m.Commands != nil {
-		say(stdout, "%s\t%s\n", m.Commands.Binary, m.Commands.Command)
+	for _, t := range manifestv2.CLITargetsOf(m) {
+		say(stdout, "%s\t%s\n", t.Binary, t.Command)
 	}
 	return 0
 }

@@ -77,7 +77,7 @@ func TestMigrateTool(t *testing.T) {
 	if code, _, _ := runTool(t, "-in", copyLossless(t, "v1/tenant.json"), "-check"); code != 1 {
 		t.Errorf("-check on v1 must exit 1, got %d", code)
 	}
-	if code, tgt, _ := runTool(t, "-in", in, "-targets"); code != 0 || tgt != "nself-tenant\ttenant\n" {
+	if code, tgt, _ := runTool(t, "-in", in, "-targets"); code != 0 || tgt != "nself-tenant\ttenant\nnself-billing\tbilling\n" {
 		t.Errorf("-targets: %d %q", code, tgt)
 	}
 	if code, tgt, _ := runTool(t, "-in", copyFixture(t, "v1/ci.json"), "-targets"); code != 0 || tgt != "" {
