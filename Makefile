@@ -12,7 +12,7 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/license.licensePubKeyHex=$(NSELF_LICENSE_PUBKEY_HEX)
 BUILDFLAGS := -trimpath
 
-.PHONY: build clean test vet install cross dist verify-prod sport-f21 sport-f02 cmd-inventory registry core-services wiki-commands wiki-check flag-drift-audit parity sbom man fmt fmt-check
+.PHONY: build clean test vet install cross dist verify-prod sport-f21 sport-f02 cmd-inventory registry core-services wiki-commands wiki-check flag-drift-audit parity schemas schemas-check sbom man fmt fmt-check
 
 verify-prod:
 	@bash scripts/prod-verify/p87-verification.sh
@@ -73,6 +73,18 @@ mcp-docs:
 ## removing a command, an MCP tool, or an env var.
 parity:
 	@CGO_ENABLED=0 go run -mod=vendor ./tools/parity
+
+## schemas — P7-REG-08. Regenerate schemas/ (JSON Schemas for the envelope, error
+## object, command registry and every envelope command's data) from the Go types
+## with tools/schemagen. Commit the result; internal/repoqa and `schemas-check`
+## fail when the committed files drift.
+schemas:
+	@CGO_ENABLED=0 go run -mod=vendor ./tools/schemagen
+
+## schemas-check — fail (exit 1) when any schemas/*.json differs from what
+## tools/schemagen generates. Non-JSON files under schemas/ are ignored.
+schemas-check:
+	@CGO_ENABLED=0 go run -mod=vendor ./tools/schemagen -check
 
 ## Q04 — SBOM generation (local dev target)
 ## Requires: syft (https://github.com/anchore/syft)
