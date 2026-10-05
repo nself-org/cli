@@ -1,0 +1,165 @@
+{
+  "name": "subtitle-manager",
+  "version": "1.2.6",
+  "description": "Subtitle search, download, and sync verification via OpenSubtitles",
+  "author": "nself",
+  "license": "MIT",
+  "homepage": "https://github.com/nself-org/plugins/tree/main/plugins/subtitle-manager",
+  "repository": "https://github.com/nself-org/plugins",
+  "category": "media",
+  "subcategory": "subtitles",
+  "path": "plugins/subtitle-manager",
+  "language": "go",
+  "runtime": "go",
+  "minNselfVersion": "1.0.0",
+  "port": 3737,
+  "dependencies": {
+    "npm": [
+      "@nself/plugin-utils",
+      "fastify",
+      "@fastify/cors",
+      "@fastify/rate-limit",
+      "commander",
+      "axios",
+      "pg",
+      "dotenv",
+      "uuid",
+      "winston",
+      "chalk",
+      "ora"
+    ]
+  },
+  "systemDependencies": {
+    "required": [
+      {
+        "name": "python3",
+        "minVersion": "3.8",
+        "apt": "python3 python3-pip",
+        "brew": "python3",
+        "verify": "python3 --version"
+      }
+    ],
+    "recommended": [
+      {
+        "name": "alass",
+        "custom_install": "cargo install alass-cli",
+        "verify": "alass --version",
+        "note": "Rust-based subtitle synchronizer for fast offset/split correction"
+      },
+      {
+        "name": "ffsubsync",
+        "custom_install": "pip3 install ffsubsync",
+        "verify": "ffsubsync --version",
+        "note": "Python audio-based subtitle sync. Install: pip3 install ffsubsync"
+      }
+    ]
+  },
+  "tables": [
+    "np_subtmgr_subtitles",
+    "np_subtmgr_downloads",
+    "np_subtmgr_qc_results"
+  ],
+  "views": [],
+  "webhooks": [],
+  "apiEndpoints": [
+    "GET /health",
+    "GET /v1/subtitles",
+    "GET /v1/downloads",
+    "GET /v1/stats",
+    "POST /v1/search",
+    "POST /v1/search/hash",
+    "POST /v1/download",
+    "POST /v1/sync",
+    "POST /v1/qc",
+    "POST /v1/normalize",
+    "DELETE /v1/downloads/:id"
+  ],
+  "cliCommands": [
+    {
+      "name": "init",
+      "description": "Initialize database schema"
+    },
+    {
+      "name": "search",
+      "description": "Search for subtitles by query"
+    },
+    {
+      "name": "server",
+      "description": "Start HTTP API server"
+    },
+    {
+      "name": "sync",
+      "description": "Synchronize subtitle timing with video using alass and/or ffsubsync"
+    },
+    {
+      "name": "qc",
+      "description": "Run QC validation checks on a subtitle file"
+    },
+    {
+      "name": "normalize",
+      "description": "Convert subtitle to WebVTT format"
+    }
+  ],
+  "envVars": [
+    {
+      "name": "DATABASE_URL",
+      "required": true,
+      "description": "PostgreSQL connection string"
+    },
+    {
+      "name": "OPENSUBTITLES_API_KEY",
+      "required": false,
+      "description": "OpenSubtitles REST API key"
+    },
+    {
+      "name": "SUBTITLE_STORAGE_PATH",
+      "required": false,
+      "description": "Directory for storing downloaded subtitle files",
+      "default": "/tmp/subtitles"
+    },
+    {
+      "name": "SUBTITLE_MANAGER_PORT",
+      "required": false,
+      "default": "3204"
+    },
+    {
+      "name": "LOG_LEVEL",
+      "required": false,
+      "default": "info"
+    },
+    {
+      "name": "ALASS_PATH",
+      "required": false,
+      "description": "Path to alass binary",
+      "default": "alass"
+    },
+    {
+      "name": "FFSUBSYNC_PATH",
+      "required": false,
+      "description": "Path to ffsubsync binary",
+      "default": "ffsubsync"
+    }
+  ],
+  "multiApp": {
+    "supported": true,
+    "isolationColumn": "source_account_id",
+    "pkStrategy": "uuid",
+    "defaultValue": "primary"
+  },
+  "features": [
+    "OpenSubtitles text-based search",
+    "OpenSubtitles hash-based search for accurate matching",
+    "Subtitle file download and local storage",
+    "Download tracking and caching",
+    "Multi-app isolation via source_account_id",
+    "Sync score tracking for subtitle quality",
+    "Subtitle synchronization via alass and ffsubsync (timing correction, framerate, splits)",
+    "Subtitle QC validation (timestamp bounds, CPS, overlap, line length, cue timing)",
+    "WebVTT normalization from SRT, ASS/SSA formats with encoding detection"
+  ],
+  "isCommercial": false,
+  "licenseType": "free",
+  "requiredEntitlements": [],
+  "requires_license": false,
+  "tier": "free"
+}

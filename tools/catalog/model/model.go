@@ -25,6 +25,9 @@ const (
 	WireFree     = "free"     // registry `tier` wire value, free
 	WirePro      = "pro"      // registry `tier` wire value, licensed (kept for released CLIs)
 	SigAlg       = "ed25519"
+
+	// BinaryPattern is the name of a plugin command binary.
+	BinaryPattern = `^nself-[a-z][a-z0-9-]*$`
 )
 
 // Tiers is the catalog `tier` enum.

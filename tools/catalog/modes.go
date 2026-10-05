@@ -50,21 +50,22 @@ func runTier(o *options, t tierInfo, stderr io.Writer) (outputs, []string, error
 			peer[s] = true
 		}
 	}
-	ms, probs := scanManifests(o.plugins)
+	ms, rep := scanManifests(o.plugins)
 	for _, s := range sortedKeys(rel.Releases) { // a release row needs a plugin directory
 		if _, err := os.Stat(filepath.Join(o.plugins, s)); err != nil {
-			probs = append(probs, s+": releases.json has a row but the tree has no such directory")
+			rep.problem("%s: releases.json has a row but the tree has no such directory", s)
 		}
 	}
-	reg, rp, unreleased := buildRegistry(t, ms, rel, b, peer, o.from)
-	for _, s := range unreleased {
-		say(stderr, "catalog: note: %s has no row in releases.json; left out of the registry\n", s)
+	reg, rr := buildRegistry(t, ms, rel, b, peer, o.from, o.requireReleased)
+	rep.problems, rep.notes = append(rep.problems, rr.problems...), append(rep.notes, rr.notes...)
+	for _, n := range rep.notes {
+		say(stderr, "catalog: note: %s\n", n)
 	}
 	out := outputs{}
 	if err := out.add("registry.json", reg); err != nil {
 		return nil, nil, err
 	}
-	return out, append(probs, rp...), nil
+	return out, rep.problems, nil
 }
 
 // runCatalog generates catalog.json and counts.json.

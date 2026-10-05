@@ -8,6 +8,8 @@ package main
 import (
 	"encoding/json"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -148,5 +150,103 @@ func TestReleasedCLIDecodesGeneratedRegistries(t *testing.T) {
 	}
 	if len(entries["sentry-cli"].CLICommands) < 2 || !entries["cron"].TierPair || len(entries["search"].Bundles) != 1 {
 		t.Errorf("multi-command, tier_pair or bundles lost: %+v", entries["sentry-cli"])
+	}
+}
+
+// v1412BinaryNames is internal/plugin/cli_binary.go:58 cliBinaryNames at tag
+// v1.4.12 applied to a decoded entry, with the flat-wins-over-implementation merge
+// of registry_json.go:105-127 (entryToManifest).
+func v1412BinaryNames(slug string, e pluginEntry) []string {
+	pluginType, binaryName := e.PluginType, e.BinaryName
+	if e.Implementation != nil {
+		pluginType = firstNonEmpty(pluginType, e.Implementation.PluginType)
+		binaryName = firstNonEmpty(binaryName, e.Implementation.BinaryName)
+	}
+	if pluginType != "" && pluginType != "cli" {
+		return nil
+	}
+	var out []string
+	for _, c := range e.CLICommands {
+		if c.Name != "" {
+			out = append(out, "nself-"+c.Name)
+		}
+	}
+	if len(out) > 0 {
+		return out
+	}
+	if binaryName != "" { // cliBinaryName
+		return []string{binaryName}
+	}
+	if pluginType == "cli" {
+		return []string{"nself-" + slug}
+	}
+	return nil
+}
+
+func decodeEntries(t *testing.T, b []byte) map[string]pluginEntry {
+	t.Helper()
+	var env registryEnvelope
+	if err := json.Unmarshal(b, &env); err != nil {
+		t.Fatal(err)
+	}
+	var entries map[string]pluginEntry
+	if err := json.Unmarshal(env.Plugins, &entries); err != nil {
+		t.Fatal(err)
+	}
+	return entries
+}
+
+// TestGeneratedRegistryRequiresNoNewBinary: v1.4.12 fails an install, and rolls
+// it back, when the archive lacks a binary the entry requires. For every fixture
+// entry the generated registry must require exactly the binaries the committed
+// registry requires (testdata/basis-*-registry.json, trimmed real entries).
+func TestGeneratedRegistryRequiresNoNewBinary(t *testing.T) {
+	free, lic := genBoth(t, t.TempDir())
+	for _, c := range []struct{ basis, gen string }{
+		{filepath.Join(td, "basis-free-registry.json"), filepath.Join(free, "registry.json")},
+		{filepath.Join(td, "basis-licensed-registry.json"), filepath.Join(lic, "registry.json")},
+	} {
+		old, gen := decodeEntries(t, readFile(t, c.basis)), decodeEntries(t, readFile(t, c.gen))
+		for slug, oe := range old {
+			ge, ok := gen[slug]
+			if !ok {
+				t.Errorf("%s: not generated", slug)
+				continue
+			}
+			want, got := v1412BinaryNames(slug, oe), v1412BinaryNames(slug, ge)
+			sort.Strings(want)
+			sort.Strings(got)
+			if strings.Join(want, ",") != strings.Join(got, ",") {
+				t.Errorf("%s: v1.4.12 requires %v from the generated entry, %v from the committed one", slug, got, want)
+			}
+		}
+	}
+}
+
+// TestNamedPluginsKeepTheirBinaries pins the plugins the review named: the five
+// binaryName:null plugins, the four whose manifests read like binary plugins but
+// whose archives are source-only, and the licensed one with subcommand cliCommands
+// must require nothing; ai-cli and sentry-cli keep their binaries.
+func TestNamedPluginsKeepTheirBinaries(t *testing.T) {
+	free, lic := genBoth(t, t.TempDir())
+	fe, le := decodeEntries(t, readFile(t, filepath.Join(free, "registry.json"))), decodeEntries(t, readFile(t, filepath.Join(lic, "registry.json")))
+	for _, s := range []string{"vpn", "retro-gaming", "content-acquisition", "subtitle-manager", "torrent-manager",
+		"encryption", "mail", "pentest-kit", "webhooks"} {
+		t.Run(s, func(t *testing.T) {
+			if got := v1412BinaryNames(s, fe[s]); len(got) != 0 {
+				t.Errorf("%s must require no binary, requires %v", s, got)
+			}
+		})
+	}
+	t.Run("realtime", func(t *testing.T) {
+		if got := v1412BinaryNames("realtime", le["realtime"]); len(got) != 0 {
+			t.Errorf("licensed realtime must require no binary, requires %v", got)
+		}
+	})
+	if got := v1412BinaryNames("ai-cli", fe["ai-cli"]); strings.Join(got, ",") != "nself-ai" {
+		t.Errorf("ai-cli requires %v", got)
+	}
+	if got := v1412BinaryNames("sentry-cli", fe["sentry-cli"]); strings.Join(got, ",") != "nself-sentry,nself-sentry-server" {
+		t.Errorf("sentry-cli requires %v", got)
 	}
 }

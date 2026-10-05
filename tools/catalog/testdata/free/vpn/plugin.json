@@ -1,0 +1,195 @@
+{
+  "name": "vpn",
+  "version": "1.2.6",
+  "description": "Multi-provider VPN management (NordVPN, PIA, Mullvad) with P2P optimization, server carousel, kill switch, and leak protection. Torrent download forwarding requires the torrent-manager plugin.",
+  "author": "nself",
+  "license": "MIT",
+  "homepage": "https://github.com/nself-org/plugins/tree/main/plugins/vpn",
+  "repository": "https://github.com/nself-org/plugins",
+  "category": "authentication",
+  "subcategory": "orchestration",
+  "path": "plugins/vpn",
+  "language": "go",
+  "minNselfVersion": "0.9.9",
+  "port": 3200,
+  "dependencies": {
+    "required": [],
+    "optional": []
+  },
+  "optionalDependencies": [],
+  "tables": [
+    "np_vpn_providers",
+    "np_vpn_credentials",
+    "np_vpn_servers",
+    "np_vpn_connections",
+    "np_vpn_downloads",
+    "np_vpn_connection_logs",
+    "np_vpn_server_performance",
+    "np_vpn_leak_tests"
+  ],
+  "views": [
+    "np_vpn_active_connections",
+    "np_vpn_server_stats",
+    "np_vpn_download_history",
+    "np_vpn_provider_uptime"
+  ],
+  "webhooks": [],
+  "apiEndpoints": [
+    "GET /api/health",
+    "GET /api/providers",
+    "GET /api/providers/:id",
+    "POST /api/providers/:id/credentials",
+    "GET /api/servers",
+    "GET /api/servers/p2p",
+    "POST /api/servers/sync",
+    "POST /api/connect",
+    "POST /api/disconnect",
+    "GET /api/status",
+    "POST /api/download",
+    "GET /api/downloads",
+    "GET /api/downloads/:id",
+    "DELETE /api/downloads/:id",
+    "POST /api/test-leak",
+    "GET /api/stats"
+  ],
+  "cliCommands": [
+    {
+      "name": "init",
+      "description": "Initialize VPN plugin and add provider credentials"
+    },
+    {
+      "name": "providers",
+      "description": "List all supported VPN providers"
+    },
+    {
+      "name": "connect",
+      "description": "Connect to VPN provider"
+    },
+    {
+      "name": "disconnect",
+      "description": "Disconnect from current VPN"
+    },
+    {
+      "name": "status",
+      "description": "Show connection status and details"
+    },
+    {
+      "name": "servers",
+      "description": "List available servers (optionally P2P-only)"
+    },
+    {
+      "name": "download",
+      "description": "Download file via torrent over VPN"
+    },
+    {
+      "name": "downloads",
+      "description": "List and manage downloads"
+    },
+    {
+      "name": "test",
+      "description": "Test for DNS/IP/WebRTC leaks"
+    },
+    {
+      "name": "monitor",
+      "description": "Start connection monitoring daemon"
+    }
+  ],
+  "envVars": [
+    {
+      "name": "DATABASE_URL",
+      "required": true,
+      "description": "PostgreSQL connection string"
+    },
+    {
+      "name": "VPN_PROVIDER",
+      "required": false,
+      "description": "Default VPN provider (nordvpn, pia, mullvad)",
+      "default": "nordvpn"
+    },
+    {
+      "name": "VPN_REGION",
+      "required": false,
+      "description": "Preferred region/country for VPN connection"
+    },
+    {
+      "name": "DOWNLOAD_PATH",
+      "required": false,
+      "description": "Default download destination for torrents",
+      "default": "/tmp/vpn-downloads"
+    },
+    {
+      "name": "ENABLE_KILL_SWITCH",
+      "required": false,
+      "description": "Enable kill switch by default",
+      "default": "true"
+    },
+    {
+      "name": "ENABLE_AUTO_RECONNECT",
+      "required": false,
+      "description": "Automatically reconnect on VPN dropout",
+      "default": "true"
+    },
+    {
+      "name": "SERVER_CAROUSEL_ENABLED",
+      "required": false,
+      "description": "Enable automatic server rotation",
+      "default": "false"
+    },
+    {
+      "name": "CAROUSEL_INTERVAL_MINUTES",
+      "required": false,
+      "description": "Minutes between server rotations",
+      "default": "60"
+    },
+    {
+      "name": "TORRENT_MANAGER_URL",
+      "required": false,
+      "description": "URL of the torrent-manager plugin API. Required for torrent download forwarding.",
+      "default": "http://localhost:3210"
+    },
+    {
+      "name": "INTERNAL_API_KEY",
+      "required": false,
+      "description": "Shared API key for authenticating requests to sibling plugins (e.g. torrent-manager)"
+    }
+  ],
+  "multiApp": {
+    "supported": true,
+    "isolationColumn": "source_account_id",
+    "pkStrategy": "uuid",
+    "defaultValue": "primary"
+  },
+  "features": [
+    "Multi-provider support (3 VPN providers: NordVPN, PIA, Mullvad)",
+    "P2P-optimized server selection",
+    "Automatic server carousel for redundancy",
+    "Kill switch and leak protection",
+    "Port forwarding (PIA)",
+    "Torrent download forwarding via torrent-manager plugin (requires torrent-manager to be installed)",
+    "Connection monitoring and auto-reconnect",
+    "DNS/IP/WebRTC leak testing",
+    "Server performance tracking",
+    "WireGuard and OpenVPN support",
+    "API and CLI interfaces",
+    "Connection history and analytics"
+  ],
+  "supportedProviders": [
+    "nordvpn",
+    "pia",
+    "mullvad"
+  ],
+  "binary_name": "vpn",
+  "health_endpoint": "/health",
+  "arch_support": [
+    "linux-x86_64",
+    "linux-arm64",
+    "darwin-arm64"
+  ],
+  "min_memory_mb": 64,
+  "status": "stable",
+  "tier": "free",
+  "isCommercial": false,
+  "licenseType": "free",
+  "requiredEntitlements": [],
+  "requires_license": false
+}

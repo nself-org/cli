@@ -20,7 +20,10 @@ import (
 	"github.com/nself-org/cli/tools/catalog/model"
 )
 
-var sha256Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
+var (
+	sha256Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	binaryRe = regexp.MustCompile(model.BinaryPattern)
+)
 
 // loadReleases reads and validates the file at path.
 func loadReleases(path string) (*model.Releases, error) {
@@ -62,6 +65,11 @@ func validateReleases(r *model.Releases) []string {
 		if sig := rel.ReleaseSignature; sig != nil {
 			if sig.KeyID == "" || sig.Sig == "" || sig.Alg != model.SigAlg {
 				probs = append(probs, s+": release_signature needs key_id, sig and alg "+model.SigAlg)
+			}
+		}
+		for _, b := range rel.Binaries {
+			if !binaryRe.MatchString(b) {
+				probs = append(probs, s+": binaries entry "+b+" must match "+model.BinaryPattern)
 			}
 		}
 		for p, sum := range rel.PlatformChecksums {

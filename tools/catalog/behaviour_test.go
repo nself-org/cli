@@ -106,8 +106,8 @@ func TestTierPairListedOncePerTierAndCountedOnce(t *testing.T) {
 		t.Errorf("cron rows = %d, want one per tier", rows)
 	}
 	tot := c["counts"].(map[string]any)["totals"].(map[string]any)
-	if tot["entries"] != float64(7) { // 6 free + 2 licensed - 1 shared
-		t.Errorf("totals.entries = %v, want 7 (cron counts once)", tot["entries"])
+	if want := float64(len(c["plugins"].([]any)) - 1); tot["entries"] != want { // one row per tier, minus the one shared slug
+		t.Errorf("totals.entries = %v, want rows-1 (cron counts once)", tot["entries"])
 	}
 }
 

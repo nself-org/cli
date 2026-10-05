@@ -32,7 +32,7 @@ func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 // options holds the parsed flags.
 type options struct {
 	mode, plugins, releases, bundles, peer, freeReg, licReg, out string
-	check, partial                                               bool
+	check, partial, requireReleased                              bool
 	from                                                         model.GeneratedFrom
 }
 
@@ -52,6 +52,7 @@ func parseFlags(args []string, stderr io.Writer) (*options, bool) {
 	fs.StringVar(&o.out, "out", "", "output directory")
 	fs.BoolVar(&o.check, "check", false, "write nothing; exit 1 when an output differs")
 	fs.BoolVar(&o.partial, "partial", false, "diagnostic: write what loads, list the rest, still exit 2")
+	fs.BoolVar(&o.requireReleased, "require-released", false, "fail when a manifest has no row in releases.json (default: leave it out with a note)")
 	fs.StringVar(&o.from.PluginsRef, "plugins-ref", "", "plugins repo ref recorded in generated_from")
 	fs.StringVar(&o.from.BundlesRef, "bundles-ref", "", "bundles repo ref recorded in generated_from")
 	fs.StringVar(&o.from.GeneratedAt, "generated-at", "", "RFC 3339 time recorded in generated_from (default SOURCE_DATE_EPOCH, else the Unix epoch)")

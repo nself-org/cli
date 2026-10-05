@@ -1,0 +1,17 @@
+{
+  "_note": "synthetic: the committed licensed entry shape for a plugin with subcommand cliCommands: no implementation, no cliCommands, no binaryName",
+  "plugins": {
+    "realtime": {
+      "name": "realtime",
+      "version": "1.1.2",
+      "tier": "pro",
+      "checksum": "0303030303030303030303030303030303030303030303030303030303030303",
+      "requires_license": true,
+      "dependencies": {
+        "required": [],
+        "optional": []
+      },
+      "tags": []
+    }
+  }
+}

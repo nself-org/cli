@@ -21,6 +21,12 @@ type Release struct {
 	ReleaseTag string `json:"release_tag,omitempty"`
 	// Tarball is the asset name or URL released CLIs read as `tarball`.
 	Tarball string `json:"tarball,omitempty"`
+	// Binaries lists the command binaries the published tarball contains
+	// (nself-<command>), written by the release pipeline from the archive. A
+	// released CLI turns every cliCommands name and binaryName into a required
+	// binary and fails the install when the archive lacks it, so the registry
+	// carries them only for a release that lists them.
+	Binaries []string `json:"binaries,omitempty"`
 	// PlatformChecksums holds one sha256 per per-platform binary tarball.
 	PlatformChecksums map[string]string `json:"platform_checksums,omitempty"`
 }

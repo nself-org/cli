@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +20,23 @@ func tree(t *testing.T, from string, slugs ...string) string {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "releases.json"), readFile(t, filepath.Join(td, from, "releases.json")), 0o644); err != nil {
+	// releases.json keeps only the rows of the copied plugins
+	rel := decodeMap(t, readFile(t, filepath.Join(td, from, "releases.json")))
+	rows := rel["releases"].(map[string]any)
+	for s := range rows {
+		keep := false
+		for _, k := range slugs {
+			keep = keep || k == s
+		}
+		if !keep {
+			delete(rows, s)
+		}
+	}
+	b, err := json.Marshal(rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "releases.json"), b, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return dir
@@ -56,7 +73,9 @@ func TestUnreleasedManifestIsNotedAndOrphanReleaseRefused(t *testing.T) {
 	if code != 0 || !strings.Contains(se, "note: ai-cli has no row in releases.json") {
 		t.Fatalf("unreleased manifest: exit %d\n%s", code, se)
 	}
-	expectProblem(t, "releases.json has a row but the tree has no such directory", tierArgs("free", tree(t, "free", "ai-cli"), t.TempDir(), "")...)
+	orphan := tree(t, "free", "ai-cli")
+	writeReleases(t, orphan, `{"schema_version":1,"releases":{"ghost":{"version":"1.0.0","sha256":"`+strings.Repeat("a", 64)+`","release_signature":null}}}`)
+	expectProblem(t, "ghost: releases.json has a row but the tree has no such directory", tierArgs("free", orphan, t.TempDir(), "")...)
 }
 
 func TestBadReleasesAreRefused(t *testing.T) {

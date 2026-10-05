@@ -8,8 +8,7 @@ package main
 // (v1.4.12 registry_parse.go pluginEntry); `release_signature` and `catalog`
 // are additive keys they ignore.
 // Inputs: manifests of one tier, releases, bundles, the other tier's slugs.
-// Outputs: model.Registry, data problems, and the slugs skipped because
-// releases.json has no row for them (never released, so no checksum).
+// Outputs: model.Registry and a report of problems and notes.
 // Constraints: no value is typed by hand: manifest fields come from
 // manifestv2, release fields from releases.json, membership from bundles.json,
 // tier_pair from the other tier's registry. Base URLs are the served routes.
@@ -18,6 +17,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/nself-org/cli/internal/plugin/manifestv2"
 	"github.com/nself-org/cli/tools/catalog/model"
@@ -41,37 +41,55 @@ var (
 	licensedTier = tierInfo{manifestv2.LicenseLicensed, model.WirePro, model.TierLicensed, licensedDownload}
 )
 
-// buildRegistry projects the manifests of one tier.
-func buildRegistry(t tierInfo, ms map[string]*manifestv2.Manifest, rel *model.Releases,
-	b *model.Bundles, peer map[string]bool, from model.GeneratedFrom) (reg *model.Registry, probs, unreleased []string) {
-	reg = &model.Registry{
+// report collects what a run found: problems fail it, notes are printed.
+type report struct{ problems, notes []string }
+
+func (r *report) problem(format string, a ...any) {
+	r.problems = append(r.problems, fmt.Sprintf(format, a...))
+}
+func (r *report) note(format string, a ...any) { r.notes = append(r.notes, fmt.Sprintf(format, a...)) }
+
+// buildRegistry projects the manifests of one tier. A manifest with no
+// releases.json row has no checksum and is left out with a note, or is a problem
+// under requireReleased.
+func buildRegistry(t tierInfo, ms map[string]*manifestv2.Manifest, rel *model.Releases, b *model.Bundles,
+	peer map[string]bool, from model.GeneratedFrom, requireReleased bool) (*model.Registry, *report) {
+	reg := &model.Registry{
 		Generated: model.Generated, GeneratedFrom: from, SchemaVersion: model.RegistryVersion,
 		Tier: t.wire, ChecksumAlgorithm: "sha256", Plugins: map[string]model.RegistryEntry{},
 	}
-	slugs := make([]string, 0, len(ms))
-	for s := range ms {
-		slugs = append(slugs, s)
-	}
-	sort.Strings(slugs)
-	for _, s := range slugs {
+	rep := &report{}
+	for _, s := range sortedKeys(ms) {
 		m := ms[s]
 		if m.License != t.license {
-			probs = append(probs, fmt.Sprintf("%s: license %q does not belong in the %s tree (a plugin never moves tier here)", s, m.License, t.catalog))
+			rep.problem("%s: license %q does not belong in the %s tree (a plugin never moves tier here)", s, m.License, t.catalog)
 			continue
 		}
 		r, ok := rel.Releases[s]
-		if !ok { // a manifest with no release has no checksum: not in the registry yet
-			unreleased = append(unreleased, s)
+		switch {
+		case !ok && requireReleased:
+			rep.problem("%s: no row in releases.json (-require-released)", s)
+			continue
+		case !ok:
+			rep.note("%s has no row in releases.json; left out of the registry", s)
 			continue
 		}
-		reg.Plugins[s] = entryOf(t, m, r, membership(b, s, t.catalog), peer[s])
+		if strings.TrimPrefix(m.Version, "v") != strings.TrimPrefix(r.Version, "v") {
+			rep.note("%s: manifest version %s differs from released version %s; the registry carries the release", s, m.Version, r.Version)
+		}
+		link, prob := linking(m, r)
+		if prob != "" {
+			rep.problems = append(rep.problems, prob)
+			continue
+		}
+		reg.Plugins[s] = entryOf(t, m, r, link, membership(b, s, t.catalog), peer[s])
 	}
 	reg.PluginsCount = len(reg.Plugins)
-	return reg, probs, unreleased
+	return reg, rep
 }
 
 // entryOf projects one manifest and its release row.
-func entryOf(t tierInfo, m *manifestv2.Manifest, r model.Release, bundles []string, pair bool) model.RegistryEntry {
+func entryOf(t tierInfo, m *manifestv2.Manifest, r model.Release, link linkKeys, bundles []string, pair bool) model.RegistryEntry {
 	e := model.RegistryEntry{
 		Name: m.Name, Version: r.Version, Description: m.Description, Category: m.Category,
 		Tier: t.wire, License: firstNonEmpty(m.LicenseSPDX, m.License),
@@ -82,6 +100,7 @@ func entryOf(t tierInfo, m *manifestv2.Manifest, r model.Release, bundles []stri
 		Checksum: r.SHA256, ReleaseSignature: r.ReleaseSignature,
 		TarballURL: r.TarballURL, ReleaseTag: r.ReleaseTag,
 		Tarball: firstNonEmpty(r.Tarball, r.TarballURL), Catalog: infoOf(m),
+		CLICommands: link.cliCommands,
 	}
 	e.Port = m.Port
 	if e.Port == 0 && m.Service != nil && m.Service.Port != nil {
@@ -91,16 +110,9 @@ func entryOf(t tierInfo, m *manifestv2.Manifest, r model.Release, bundles []stri
 		no := false
 		e.Installable = &no
 	}
-	if m.Runtime != "" || m.EntryPoint != "" || m.PluginType != "" || m.BinaryName != "" {
+	if m.Runtime != "" || m.EntryPoint != "" || link.pluginType != "" || link.binaryName != "" {
 		e.Implementation = &model.Implementation{Language: m.Language, Runtime: m.Runtime,
-			EntryPoint: m.EntryPoint, PluginType: m.PluginType, BinaryName: m.BinaryName}
-	}
-	// A single cliCommands entry repeats binaryName; released CLIs need the
-	// list only when a plugin ships more than one command.
-	if len(m.CLICommands) > 1 {
-		for _, c := range m.CLICommands {
-			e.CLICommands = append(e.CLICommands, model.CLICommand{Name: c.Name, Description: c.Description})
-		}
+			EntryPoint: m.EntryPoint, PluginType: link.pluginType, BinaryName: link.binaryName}
 	}
 	if r.TarballURL != "" || r.Tarball != "" {
 		e.DownloadURL = fmt.Sprintf(t.download, m.Name)

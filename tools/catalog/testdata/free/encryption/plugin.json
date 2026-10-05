@@ -1,0 +1,55 @@
+{
+  "name": "encryption",
+  "version": "1.2.6",
+  "description": "Bring Your Own Key (BYOK) per-tenant envelope encryption for nSelf Cloud: AWS KMS, GCP Cloud KMS, and HashiCorp Vault Transit, with key rotation and an audit trail.",
+  "author": "nself",
+  "license": "MIT",
+  "isCommercial": false,
+  "licenseType": "free",
+  "requiredEntitlements": [],
+  "requires_license": false,
+  "homepage": "https://nself.org/plugins",
+  "repository": "https://github.com/nself-org/plugins-pro",
+  "minNselfVersion": "1.2.8",
+  "language": "go",
+  "pluginType": "cli",
+  "entryPoint": "cmd/",
+  "binaryName": "nself-encryption",
+  "category": "compliance",
+  "tags": [
+    "encryption",
+    "byok",
+    "kms",
+    "enterprise",
+    "security"
+  ],
+  "tables": [],
+  "webhooks": {},
+  "actions": {
+    "configure": "Configure a KMS provider for the current tenant",
+    "verify": "Test KMS connectivity (wrap+unwrap round-trip)",
+    "rotate": "Rotate data encryption keys (re-wrap existing DEKs)",
+    "status": "Show current BYOK configuration and last verification",
+    "key-events": "List the key event audit trail"
+  },
+  "envVars": {
+    "required": [],
+    "optional": [
+      "BYOK_PLUGIN_URL",
+      "NSELF_API_URL",
+      "NSELF_TENANT_ID"
+    ]
+  },
+  "hooks": {
+    "postInstall": null,
+    "preUninstall": null,
+    "postSync": null
+  },
+  "status": "stable",
+  "tier": "free",
+  "dependencies": {
+    "required": [],
+    "optional": []
+  },
+  "notes": "This is a CLI-proxy plugin, not a service plugin: it has no port, no HTTP server, and no database tables of its own \u2014 it calls the BYOK plugin's own HTTP API (default http://localhost:3741). `nself plugin install encryption` must place the built nself-encryption binary at ~/.nself/plugins/bin/nself-encryption, where internal/plugin/router.go's ProxyCommand execs it for `nself encryption <args>` with stdio inherited. Extracted from cli/cmd/commands/encryption.go under CLI-R11 \u2014 a straight file move, since the command had zero github.com/nself-org/cli/internal/* dependencies before extraction."
+}

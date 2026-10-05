@@ -1,0 +1,160 @@
+{
+  "name": "content-acquisition",
+  "version": "1.2.6",
+  "description": "Content acquisition with download rules engine. Planned: RSS feed monitoring, release calendar integration, automated download orchestration",
+  "author": "nself",
+  "license": "MIT",
+  "homepage": "https://github.com/nself-org/plugins/tree/main/plugins/content-acquisition",
+  "repository": "https://github.com/nself-org/plugins",
+  "category": "media",
+  "subcategory": "orchestration",
+  "path": "plugins/content-acquisition",
+  "language": "go",
+  "runtime": "go",
+  "minNselfVersion": "1.0.0",
+  "port": 3202,
+  "dependencies": {
+    "npm": [
+      "@nself/plugin-utils",
+      "fastify",
+      "@fastify/cors",
+      "@fastify/rate-limit",
+      "commander",
+      "feedparser",
+      "axios",
+      "node-cron",
+      "bullmq",
+      "ioredis",
+      "json-logic-js",
+      "pg",
+      "dotenv",
+      "uuid",
+      "winston",
+      "chalk",
+      "ora"
+    ]
+  },
+  "tables": [
+    "np_contentacquisition_profiles",
+    "np_contentacquisition_acquisition_subscriptions",
+    "np_contentacquisition_rss_feeds",
+    "np_contentacquisition_rss_feed_items",
+    "np_contentacquisition_release_calendar",
+    "np_contentacquisition_acquisition_queue",
+    "np_contentacquisition_acquisition_history",
+    "np_contentacquisition_acquisition_rules"
+  ],
+  "views": [],
+  "webhooks": [
+    "acquisition.subscribed",
+    "acquisition.new_release_detected",
+    "acquisition.queued",
+    "acquisition.started",
+    "acquisition.completed",
+    "acquisition.failed"
+  ],
+  "apiEndpoints": [
+    "POST /v1/subscriptions",
+    "GET /v1/subscriptions",
+    "GET /v1/subscriptions/:id",
+    "PUT /v1/subscriptions/:id",
+    "DELETE /v1/subscriptions/:id",
+    "GET /v1/feeds",
+    "POST /v1/feeds",
+    "GET /v1/calendar",
+    "GET /v1/queue",
+    "POST /v1/queue",
+    "GET /v1/history",
+    "GET /v1/profiles",
+    "POST /v1/profiles",
+    "GET /v1/rules",
+    "POST /v1/rules"
+  ],
+  "cliCommands": [
+    {
+      "name": "init",
+      "description": "Initialize plugin"
+    },
+    {
+      "name": "subscribe",
+      "description": "Subscribe to content"
+    },
+    {
+      "name": "feeds",
+      "description": "Manage RSS feeds"
+    },
+    {
+      "name": "calendar",
+      "description": "View release calendar"
+    },
+    {
+      "name": "queue",
+      "description": "Manage download queue"
+    },
+    {
+      "name": "server",
+      "description": "Start HTTP server"
+    }
+  ],
+  "envVars": [
+    {
+      "name": "DATABASE_URL",
+      "required": true
+    },
+    {
+      "name": "CONTENT_ACQUISITION_PORT",
+      "default": "3202"
+    },
+    {
+      "name": "METADATA_ENRICHMENT_URL",
+      "required": true
+    },
+    {
+      "name": "TORRENT_MANAGER_URL",
+      "required": true
+    },
+    {
+      "name": "VPN_MANAGER_URL",
+      "required": true
+    },
+    {
+      "name": "SUBTITLE_MANAGER_URL",
+      "default": "http://localhost:3204"
+    },
+    {
+      "name": "MEDIA_PROCESSING_URL",
+      "default": "http://localhost:3019"
+    },
+    {
+      "name": "NTV_BACKEND_URL",
+      "default": "http://localhost:4000"
+    },
+    {
+      "name": "REDIS_HOST",
+      "default": "localhost"
+    },
+    {
+      "name": "REDIS_PORT",
+      "default": "6379"
+    }
+  ],
+  "multiApp": {
+    "supported": true,
+    "isolationColumn": "source_account_id",
+    "pkStrategy": "uuid",
+    "defaultValue": "primary"
+  },
+  "features": [
+    "TV show and music subscriptions",
+    "RSS feed monitoring",
+    "Release calendar tracking",
+    "Quality profiles",
+    "Download rules engine",
+    "Automated download orchestration"
+  ],
+  "isCommercial": false,
+  "licenseType": "free",
+  "requiredEntitlements": [],
+  "requires_license": false,
+  "tier": "free"
+}

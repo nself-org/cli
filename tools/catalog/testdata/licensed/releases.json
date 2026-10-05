@@ -12,6 +12,12 @@
       "sha256": "0202020202020202020202020202020202020202020202020202020202020202",
       "tarball": "cron-v1.1.2-noarch.tar.gz",
       "version": "1.1.2"
+    },
+    "realtime": {
+      "release_signature": null,
+      "sha256": "0303030303030303030303030303030303030303030303030303030303030303",
+      "tarball": "realtime-v1.1.2-noarch.tar.gz",
+      "version": "1.1.2"
     }
   },
   "schema_version": 1

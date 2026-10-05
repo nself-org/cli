@@ -12,6 +12,15 @@
       "additionalProperties": {
         "additionalProperties": false,
         "properties": {
+          "binaries": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "platform_checksums": {
             "additionalProperties": {
               "type": "string"
