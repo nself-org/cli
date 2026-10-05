@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/oplock"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -60,6 +61,13 @@ func resolveStartOpts(cmd *cobra.Command) (startOpts, error) {
 	skipBuild, _ := cmd.Flags().GetBool("skip-build")
 	skipPlugins, _ := cmd.Flags().GetBool("skip-plugins")
 	watch, _ := cmd.Flags().GetBool("watch")
+	// P7-LIVE-13: a watching start never holds the project operation lock for
+	// the life of its loop (EPIC D12). The registry already classes `start
+	// --watch` as stream, which takes no lock; this covers a lock taken
+	// through the context by any other route. No lock in ctx: a no-op.
+	if watch {
+		oplock.FromContext(cmd.Context()).Release()
+	}
 	quiet, _ := cmd.Flags().GetBool("quiet")
 	embeddedPG, _ := cmd.Flags().GetBool("embedded-pg")
 	// NSELF_EMBEDDED_PG env var is the fallback when the flag is not set.
