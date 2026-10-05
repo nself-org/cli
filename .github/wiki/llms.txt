@@ -473,7 +473,7 @@ Flags:
 
 - `--cs-template` (default "") — Scaffold a custom service at init time: specify language (go, node, python, rust, other)
 - `--demo` (default false) — Auto-configure with all services enabled
-- `--domain` (default "") — Base domain (skips interactive domain selection, e.g. myapp.dev)
+- `--domain` (default "") — Base domain (default: local.nself.org; init never prompts for it, e.g. myapp.dev)
 - `--dry-run` (default false) — Print files that would be written without writing them (clone templates only)
 - `--fast` (default false) — Skip advanced options, use smart defaults
 - `--force` (default false) — Overwrite existing configuration
