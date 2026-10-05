@@ -45,18 +45,18 @@ func rewriteCanonArgsWith(t *canonTableT, root *cobra.Command, args []string, v1
 	words := args[start:end]
 	if v15 {
 		// compat.V15(P7-CANON-21): old spellings run unchanged -> rewritten to the canonical path with one warning (removed rows fail with E410)
-		return rewriteOldToNew(t, args, start, words)
+		return rewriteOldToNew(t, root, args, start, words)
 	}
 	// compat.V15(P7-CANON-21): new spellings are unknown -> silently rewritten to the v1.4 path
 	return rewriteNewToOld(t, root, args, start, words), nil, nil
 }
 
-func rewriteOldToNew(t *canonTableT, args []string, start int, words []string) ([]string, []canonNote, error) {
+func rewriteOldToNew(t *canonTableT, root *cobra.Command, args []string, start int, words []string) ([]string, []canonNote, error) {
 	var best canonRowT
 	kind, found := "", false
 	pick := func(k string, rows []canonRowT) {
 		for _, r := range rows {
-			if hasPrefix(words, r.From) && (!found || len(r.From) > len(best.From)) {
+			if hasPrefix(words, r.From) && (!found || len(r.From) > len(best.From)) && oldSpellingResolves(root, k, r, args[start+len(r.From):]) {
 				best, kind, found = r, k, true
 			}
 		}
@@ -94,11 +94,13 @@ func rewriteNewToOld(t *canonTableT, root *cobra.Command, args []string, start i
 	return splice(args, start, len(best.To), best.From)
 }
 
-// existingMeaningWins is the v1.4 skip rule (EPIC D3): a new spelling that the
-// v1.4 tree already answers keeps its meaning. It does when the words resolve
-// to a command exactly, or to a command that does real work and accepts the
-// remaining words as arguments (`doctor heal` runs doctor today). A help-only
-// parent accepts anything and prints help, so it never blocks a rewrite.
+// existingMeaningWins is the v1.4 skip rule (EPIC D3, CANON-21 review ruling): a
+// new spelling that the v1.4 tree already answers keeps its meaning, so v1.4
+// stays byte-identical. It does when the words resolve to a command exactly, or
+// to a runnable command that accepts the remaining words as arguments
+// (`doctor heal` runs doctor today; `config secrets rotate` prints config help
+// today). A new spelling therefore works in v1.4 only below a command the v1.4
+// tree does not have yet (a created hub or a new top-level word).
 func existingMeaningWins(root *cobra.Command, words []string) bool {
 	cmd, rest, err := root.Find(words)
 	if err != nil || cmd == nil || cmd == root {
@@ -107,13 +109,96 @@ func existingMeaningWins(root *cobra.Command, words []string) bool {
 	if len(rest) == 0 {
 		return true
 	}
-	if !cmd.Runnable() || helpOnlySet(root)[cmd] {
+	if !cmd.Runnable() {
 		return false
 	}
 	if cmd.Args == nil {
 		return true
 	}
 	return cmd.Args(cmd, rest) == nil
+}
+
+// oldSpellingResolves reports whether the old spelling's full argv is valid for
+// the command a shim or retired-hub row names, so the rewrite cannot turn a
+// partial or unknown tail into another command (`migrate reset` into `db reset`,
+// bare `service stop` into bare `stop`). It is checked in the pre-relocation
+// tree. A retired hub is rewritten only when nothing but known root flags follows
+// it; a shim only when its own Args validator accepts the positional tail and the
+// first tail word is not one of its subcommands. Moves, break-outs and removed
+// rows carry the same command and need no check.
+func oldSpellingResolves(root *cobra.Command, kind string, r canonRowT, tail []string) bool {
+	if kind != "shim" && kind != "retired" {
+		return true
+	}
+	node := walkNames(root, r.From)
+	if node == nil || node == root {
+		return false
+	}
+	pos, ok := positionals(node, tail)
+	if !ok {
+		return false
+	}
+	if kind == "retired" {
+		return len(pos) == 0
+	}
+	if len(pos) > 0 && childNamed(node, pos[0]) != nil {
+		return false
+	}
+	return node.Args == nil || node.Args(node, pos) == nil
+}
+
+// positionals splits tail into its positional words using the flags node answers
+// to (its own and every ancestor's persistent flags). A flag that is not known,
+// a help flag, or a value flag with no value makes the tail unresolvable.
+func positionals(node *cobra.Command, tail []string) ([]string, bool) {
+	find := func(a string) *pflag.Flag {
+		for c := node; c != nil; c = c.Parent() {
+			sets := []*pflag.FlagSet{c.PersistentFlags()}
+			if c == node {
+				sets = append(sets, c.Flags())
+			}
+			for _, fs := range sets {
+				if strings.HasPrefix(a, "--") {
+					if f := fs.Lookup(a[2:]); f != nil {
+						return f
+					}
+				} else if len(a) == 2 {
+					if f := fs.ShorthandLookup(a[1:]); f != nil {
+						return f
+					}
+				}
+			}
+		}
+		return nil
+	}
+	var pos []string
+	for i := 0; i < len(tail); i++ {
+		a := tail[i]
+		switch {
+		case a == "--":
+			return append(pos, tail[i+1:]...), true
+		case !strings.HasPrefix(a, "-") || a == "-":
+			pos = append(pos, a)
+		case a == "--help" || a == "-h":
+			return nil, false
+		default:
+			name, hasValue := a, strings.Contains(a, "=")
+			if hasValue {
+				name = strings.SplitN(a, "=", 2)[0]
+			}
+			f := find(name)
+			if f == nil {
+				return nil, false
+			}
+			if f.Value.Type() != "bool" && !hasValue {
+				i++
+				if i >= len(tail) {
+					return nil, false
+				}
+			}
+		}
+	}
+	return pos, true
 }
 
 // splice replaces n words at args[at:] with repl, without touching args.

@@ -47,14 +47,23 @@ func fxCmd(use string, run func(*cobra.Command, []string) error, kids ...*cobra.
 	return c
 }
 
+// fxExactStop is `service stop <name>`: it takes exactly one service name.
+func fxExactStop() *cobra.Command {
+	c := fxCmd("stop <name>", fxRun)
+	c.Args = cobra.ExactArgs(1)
+	return c
+}
+
 // newFixtureTree builds the v1.4 tree the fixture table (testdata/canon) moves.
 func newFixtureTree() *cobra.Command {
 	root := &cobra.Command{Use: "nself", Short: "fixture root", SilenceUsage: true, SilenceErrors: true}
 	root.AddGroup(&cobra.Group{ID: groupConfig, Title: "Config:"})
 	pf := root.PersistentFlags()
 	pf.Bool("json", false, "")
-	pf.BoolP("quiet", "q", false, "")
 	pf.Bool("no-deprecation-warnings", false, "")
+	pf.Bool("no-monorepo", false, "")
+	// --home is a fixture-only value flag: the real root has none, but the argv
+	// tests need one flag that takes a separate value to prove the arity logic.
 	pf.String("home", "", "")
 	env := fxCmd("env", fxHelp, fxCmd("use", fxRun), fxCmd("target", fxHelp, fxCmd("add", fxRun)))
 	env.Long = "Run nself env use <name>, then nself env target add. Other: nself service stop, nself envx."
@@ -63,12 +72,12 @@ func newFixtureTree() *cobra.Command {
 	secrets := fxCmd("secrets", fxHelp, fxCmd("get <key>", fxRun))
 	secrets.Aliases = []string{"vault", "sec"}
 	root.AddCommand(
-		fxCmd("config", fxHelp, fxCmd("show", fxRun)), fxCmd("db", fxHelp, fxCmd("dump", fxRun)),
+		fxCmd("config", fxHelp, fxCmd("show", fxRun)), fxCmd("db", fxHelp, fxCmd("dump", fxRun), fxCmd("reset", fxRun), fxCmd("drop", fxRun)),
 		fxCmd("deploy", fxHelp, fxCmd("promote", fxRun)), fxCmd("doctor", fxRun), env,
 		fxCmd("migrate", fxHelp, fxCmd("up", fxRun), fxCmd("from-v099", fxRun)),
 		fxCmd("ops", fxHelp, fxCmd("restart", fxRun), fxCmd("status", fxRun)),
 		fxCmd("plugin", fxHelp, fxCmd("install", fxRun), fxCmd("marketplace", fxHelp, fxCmd("search", fxRun))),
-		secrets, fxCmd("service", fxHelp, fxCmd("stop", fxRun)), fxCmd("runner", fxHelp, fxCmd("ls", fxRun)),
+		secrets, fxCmd("service", fxHelp, fxExactStop()), fxCmd("runner", fxHelp, fxCmd("ls", fxRun)),
 		fxCmd("trust", fxRun, fxCmd("dns", fxRun), fxCmd("ssl", fxRun)), fxCmd("update", fxRun, fxCmd("check", fxRun)),
 		fxCmd("restart", fxRun), fxCmd("status", fxRun), fxCmd("stop", fxRun), fxCmd("buy", fxRun),
 		fxCmd("heal", fxRun), fxCmd("project-run", fxRun), fxCmd("completion", fxRun),
@@ -277,7 +286,7 @@ func TestCanonEngineWarningOnce(t *testing.T) {
 	if out.String() != want {
 		t.Errorf("two rewrites must print one warning:\n got %q\nwant %q", out.String(), want)
 	}
-	for _, flag := range []string{"--no-deprecation-warnings", "--quiet"} {
+	for _, flag := range []string{"--no-deprecation-warnings", "--quiet"} { // --quiet is checked by argv text, as warnRelocatedCommand does
 		resetCanonWarning()
 		out.Reset()
 		emitCanonWarning(&out, []string{"env", flag}, notes("env", flag), "", "")
@@ -711,7 +720,7 @@ func TestCanonEnginePrepare(t *testing.T) {
 		tweak        func(*cobra.Command)
 	}{
 		{name: "v1.5 old spelling", v15: true, argv: "env use x", want: "config env use x", stderr: warn},
-		{name: "v1.5 silenced", v15: true, argv: "--quiet env use x", want: "--quiet config env use x"},
+		{name: "v1.5 silenced", v15: true, argv: "--no-deprecation-warnings env use x", want: "--no-deprecation-warnings config env use x"},
 		{name: "v1.5 canonical", v15: true, argv: "config env use x", want: "config env use x"},
 		{name: "v1.5 breakout without the plugin mounted keeps argv", v15: true, argv: "runner ls", want: "runner ls"},
 		{name: "v1.5 breakout with the plugin mounted", v15: true, mount: true, argv: "runner ls", want: "ci nodes ls",
@@ -720,7 +729,8 @@ func TestCanonEnginePrepare(t *testing.T) {
 		{name: "v1.5 hub without a body", v15: true, argv: "store bogus", want: "store bogus", code: "E401"},
 		{name: "v1.5 a taken destination name keeps the old spelling", v15: true, argv: "env use x", want: "env use x",
 			tweak: func(r *cobra.Command) { at(r, "config").AddCommand(fxCmd("env", fxRun)) }},
-		{name: "v1.4 new spelling", argv: "config env use x", want: "env use x"},
+		{name: "v1.4 new spelling under an existing hub keeps its meaning", argv: "config env use x", want: "config env use x"},
+		{name: "v1.4 new spelling under a created hub", argv: "store buy x", want: "buy x"},
 		{name: "v1.4 old spelling", argv: "env use x", want: "env use x"},
 		{name: "v1.4 hub words are not checked", argv: "store bogus", want: "store bogus"},
 		{name: "v1.4 removed rows do nothing", argv: "plugin marketplace search x", want: "plugin marketplace search x"},
@@ -740,5 +750,70 @@ func TestCanonEnginePrepare(t *testing.T) {
 		if stderr != c.stderr {
 			t.Errorf("%s: stderr %q, want %q", c.name, stderr, c.stderr)
 		}
+	}
+}
+
+// takesArgsParents are the real parents with subcommands, a body and no Args
+// validator that read arguments or do real work: they are NOT help-only. Every
+// other such parent must be in helpOnlyParents (TestHelpOnlyParentsComplete).
+var takesArgsParents = []string{"account", "admin", "bundle", "ci", "ci eval", "db drift", "health", "migrate", "plugin", "trust", "update"}
+
+// unclassifiedParents returns every parent under root that has subcommands, a
+// body and no Args validator but is in neither list, plus every list entry that
+// names no such parent, so each new parent forces a decision and a stale entry
+// cannot linger.
+func unclassifiedParents(root *cobra.Command, helpOnly, takesArgs []string) []string {
+	listed := map[string]string{}
+	for _, p := range helpOnly {
+		listed[p] = "helpOnlyParents"
+	}
+	for _, p := range takesArgs {
+		if prev, dup := listed[p]; dup {
+			return []string{p + " is in both " + prev + " and takesArgsParents"}
+		}
+		listed[p] = "takesArgsParents"
+	}
+	var problems []string
+	seen := map[string]bool{}
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		path := strings.TrimPrefix(c.CommandPath(), root.CommandPath()+" ")
+		if c != root && c.HasSubCommands() && c.Args == nil && c.Runnable() {
+			seen[path] = true
+			if listed[path] == "" {
+				problems = append(problems, "parent "+path+" has a body and no Args but is classified in neither list")
+			}
+		}
+		for _, ch := range c.Commands() {
+			walk(ch)
+		}
+	}
+	walk(root)
+	for p, l := range listed {
+		if !seen[p] {
+			problems = append(problems, l+" entry "+p+" is not a parent with a body and no Args")
+		}
+	}
+	sort.Strings(problems)
+	return problems
+}
+
+func TestHelpOnlyParentsComplete(t *testing.T) {
+	reattachRealTree()
+	if p := unclassifiedParents(RootCmd, helpOnlyParents, takesArgsParents); len(p) > 0 {
+		t.Fatalf("classify every parent as help-only (helpOnlyParents) or arg-taking (takesArgsParents):\n  %s", strings.Join(p, "\n  "))
+	}
+	// planted: a new help-only parent, a stale entry and a double entry are all caught
+	root := newFixtureTree()
+	zz := fxCmd("zzhelponly", fxHelp, fxCmd("child", fxRun))
+	root.AddCommand(zz)
+	got := strings.Join(unclassifiedParents(root, []string{"config", "db", "env target", "ops", "plugin marketplace", "runner", "secrets", "service", "nosuch"}, []string{"trust", "update", "migrate", "plugin"}), "\n")
+	for _, want := range []string{"parent zzhelponly has a body", "helpOnlyParents entry nosuch"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("planted drift not caught (%q):\n%s", want, got)
+		}
+	}
+	if p := unclassifiedParents(root, []string{"config"}, []string{"config"}); len(p) != 1 || !strings.Contains(p[0], "both") {
+		t.Errorf("double entry: %v", p)
 	}
 }

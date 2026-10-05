@@ -136,3 +136,4 @@ tools/servicecatalog 0  # measured 0.0 2026-10-05
 tools/wikigen 0  # measured 0.0 2026-10-05
 internal/plugin/requires 70  # measured 72.0 2026-10-05
 internal/plugin/readiness 90  # measured 92.2 2026-10-05
+tools/canongen 63  # measured 65.2 2026-10-05

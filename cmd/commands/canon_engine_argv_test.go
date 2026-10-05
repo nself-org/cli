@@ -26,28 +26,28 @@ func TestCanonEngineArgv(t *testing.T) {
 		// renames, subtrees and flags in every position
 		{in: "env use prod", v15: "config env use prod", v14: "env use prod"},
 		{in: "--json env use", v15: "--json config env use", v14: "--json env use"},
-		{in: "-q env", v15: "-q config env", v14: "-q env"},
+		{in: "--no-monorepo env", v15: "--no-monorepo config env", v14: "--no-monorepo env"},
 		{in: "--home /tmp/x env use", v15: "--home /tmp/x config env use", v14: "--home /tmp/x env use"},
 		{in: "--home=/tmp/x env use", v15: "--home=/tmp/x config env use", v14: "--home=/tmp/x env use"},
 		{in: "env --profile p use", v15: "config env --profile p use", v14: "env --profile p use"},
 		{in: "env use -- x env", v15: "config env use -- x env", v14: "env use -- x env"},
 		{in: "secrets get k", v15: "config vault get k", v14: "secrets get k"},
-		{in: "config vault get k", v15: "config vault get k", v14: "secrets get k"},
-		{in: "config env use", v15: "config env use", v14: "env use"},
+		{in: "config vault get k", v15: "config vault get k", v14: "config vault get k"},
+		{in: "config env use", v15: "config env use", v14: "config env use"},
 		{in: "store buy x", v15: "store buy x", v14: "buy x"},
 		{in: "buy x", v15: "store buy x", v14: "buy x"},
-		{in: "db import from-v099 f", v15: "db import from-v099 f", v14: "migrate from-v099 f"},
-		{in: "db up", v15: "db up", v14: "migrate up"},
+		{in: "db import from-v099 f", v15: "db import from-v099 f", v14: "db import from-v099 f"},
+		{in: "db up", v15: "db up", v14: "db up"},
 		// the longest prefix wins: a shim inside a moved subtree, a child move of a moved parent
 		{in: "ops restart svc", v15: "restart svc", v14: "ops restart svc"},
 		{in: "ops status", v15: "deploy ops status", v14: "ops status"},
 		{in: "trust dns", v15: "config dns", v14: "trust dns"},
-		{in: "config dns", v15: "config dns", v14: "trust dns"},
+		{in: "config dns", v15: "config dns", v14: "config dns"},
 		{in: "trust ssl", v15: "config trust ssl", v14: "trust ssl"},
 		{in: "service stop svc", v15: "stop svc", v14: "service stop svc"},
 		// retired hubs forward whole; break-outs go to the plugin path (in v1.4 only moves are mapped)
 		{in: "migrate from-v099 x", v15: "db import from-v099 x", v14: "migrate from-v099 x"},
-		{in: "migrate bogus", v15: "db bogus", v14: "migrate bogus"},
+		{in: "migrate bogus", v15: "migrate bogus", v14: "migrate bogus"},
 		{in: "runner ls", v15: "ci nodes ls", v14: "runner ls"},
 		{in: "ci nodes ls", v15: "ci nodes ls", v14: "ci nodes ls"},
 		// canonical and unrelated spellings are never touched
@@ -59,7 +59,7 @@ func TestCanonEngineArgv(t *testing.T) {
 	// negatives: argv the engine must leave alone because it cannot be sure
 	for _, s := range []string{
 		"", "--", "-- env use", "--bogus env use", "--home", "-x env use", "envx use", "env2", "help env", "completion env",
-		"exec env ls", "logs env", "status env", "--json", "-q -- env", "--home x", "-qj env",
+		"exec env ls", "logs env", "status env", "--json", "--no-monorepo -- env", "--home x", "-qj env",
 		// a service named like a moved command is reached after `--` (D3: nself status -- <name>)
 		"status -- env", "status -- trust", "status -- buy now",
 	} {
@@ -144,11 +144,13 @@ func TestCanonEngineArgvV14Skip(t *testing.T) {
 	}
 	t.Logf("v1.4 skip list (new spellings that already resolve to a runnable command accepting the rest): %v", skipped)
 	// deploy takes a target argument today, so `deploy ops` already means "deploy to ops"
-	if want := []string{"deploy ops", "doctor heal", "update project run"}; !reflect.DeepEqual(sortedStrings(skipped), want) {
-		t.Errorf("skip list = %v, want %v", skipped, want)
+	// every destination below a command the v1.4 tree already has keeps its meaning (help-only hubs
+	// included: `config secrets rotate` prints config help today); only a created hub is new
+	if want := []string{"config dns", "config env", "config trust", "config vault", "db import from-v099", "db up", "deploy ops", "doctor heal", "update project run"}; !reflect.DeepEqual(sortedStrings(skipped), want) {
+		t.Errorf("skip list = %v, want %v", sortedStrings(skipped), want)
 	}
-	if len(rewritten) != len(tb.Moves)-3 {
-		t.Errorf("both branches must be exercised: rewritten %v", rewritten)
+	if want := []string{"store buy"}; !reflect.DeepEqual(rewritten, want) {
+		t.Errorf("both branches must be exercised: rewritten %v, want %v", rewritten, want)
 	}
 	// a skipped spelling keeps running today's command, in v1.4 only
 	if got, _, _ := rewriteCanonArgsWith(&tb, root, sp("doctor heal now"), false); strings.Join(got, " ") != "doctor heal now" {
@@ -208,5 +210,77 @@ func BenchmarkCanonArgv(b *testing.B) {
 				_, _, _ = rewriteCanonArgsWith(&tb, root, args, v15)
 			}
 		})
+	}
+}
+
+// A shim or retired-hub row rewrites only an argv that is valid for the OLD
+// spelling and resolves to the command the row names. A partial or unknown tail
+// is never turned into another command (review of P7-CANON-21: `migrate reset`
+// must not become `db reset`, bare `service stop` must not become bare `stop`).
+func TestCanonEngineArgvPartialTail(t *testing.T) {
+	tb, root := fixtureTable(t), newFixtureTree()
+	same := []string{
+		"migrate reset", "migrate drop", "migrate drop --home x", "migrate bogus", "migrate reset --no-monorepo",
+		"migrate --bogus", "migrate x y",
+		"service stop", "service stop --home x", "service stop a b", "service stop --", "service stop --bogus web",
+	}
+	for _, in := range same {
+		got, notes, err := rewriteCanonArgsWith(&tb, root, sp(in), true)
+		if err != nil || strings.Join(got, " ") != in || len(notes) != 0 {
+			t.Errorf("%q: partial/unknown tail was rewritten to %q (notes %v, err %v)", in, got, notes, err)
+		}
+	}
+	ok := map[string]string{
+		"migrate":                        "db",
+		"migrate --json":                 "db --json",
+		"service stop web":               "stop web",
+		"service stop --home x web":      "stop --home x web",
+		"service stop web --no-monorepo": "stop web --no-monorepo",
+		"ops restart svc":                "restart svc",
+	}
+	for in, want := range ok {
+		if got, _, _ := rewriteCanonArgsWith(&tb, root, sp(in), true); strings.Join(got, " ") != want {
+			t.Errorf("%q: got %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Generic, per row kind, over a planted table on the REAL tree: every retired hub
+// rejects every `<hub> <word>` that is not a mapped child, and a shim is rewritten
+// exactly when the old spelling's own Args accepts the tail.
+func TestCanonEngineArgvRowKinds(t *testing.T) {
+	reattachRealTree()
+	planted := canonTableT{
+		RetiredHubs: []canonRowT{{From: sp("migrate"), To: sp("db"), RemovalAt: "v1.6.0"}},
+		Shims:       []canonRowT{{From: sp("service stop"), To: sp("stop"), RemovalAt: "v1.6.0"}},
+		Moves:       []canonRowT{{From: sp("migrate up"), To: sp("db up")}},
+	}
+	mapped := map[string]bool{"up": true}
+	hub := walkNames(RootCmd, sp("migrate"))
+	words := []string{"bogus", "reset", "drop", "destroy", "--help"}
+	for _, c := range hub.Commands() {
+		words = append(words, c.Name())
+	}
+	for _, w := range words {
+		in := sp("migrate " + w)
+		got, _, _ := rewriteCanonArgsWith(&planted, RootCmd, in, true)
+		if mapped[w] {
+			continue
+		}
+		if strings.Join(got, " ") != strings.Join(in, " ") {
+			t.Errorf("retired hub: %q rewritten to %q", in, got)
+		}
+	}
+	if got, _, _ := rewriteCanonArgsWith(&planted, RootCmd, sp("migrate up"), true); strings.Join(got, " ") != "db up" {
+		t.Errorf("a mapped child of a retired hub still moves: %q", got)
+	}
+	src := walkNames(RootCmd, sp("service stop"))
+	for _, tail := range [][]string{nil, {"web"}, {"web", "db"}} {
+		in := append(sp("service stop"), tail...)
+		got, notes, _ := rewriteCanonArgsWith(&planted, RootCmd, in, true)
+		accepts := src.Args == nil || src.Args(src, tail) == nil
+		if rewritten := len(notes) == 1; rewritten != accepts {
+			t.Errorf("shim %q: rewritten=%v but the old spelling accepts=%v (got %q)", in, rewritten, accepts, got)
+		}
 	}
 }
