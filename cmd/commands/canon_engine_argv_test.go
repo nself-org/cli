@@ -9,6 +9,7 @@ package commands
 // Inputs: the fixture table and tree of canon_engine_test.go.
 
 import (
+	"bytes"
 	"reflect"
 	"strings"
 	"testing"
@@ -221,7 +222,7 @@ func TestCanonEngineArgvPartialTail(t *testing.T) {
 	tb, root := fixtureTable(t), newFixtureTree()
 	same := []string{
 		"migrate reset", "migrate drop", "migrate drop --home x", "migrate bogus", "migrate reset --no-monorepo",
-		"migrate --bogus", "migrate x y",
+		"migrate --bogus", "migrate x y", "migrate reset --help", "migrate drop -h", "migrate bogus --help",
 		"service stop", "service stop --home x", "service stop a b", "service stop --", "service stop --bogus web",
 	}
 	for _, in := range same {
@@ -257,7 +258,7 @@ func TestCanonEngineArgvRowKinds(t *testing.T) {
 	}
 	mapped := map[string]bool{"up": true}
 	hub := walkNames(RootCmd, sp("migrate"))
-	words := []string{"bogus", "reset", "drop", "destroy", "--help"}
+	words := []string{"bogus", "reset", "drop", "destroy"}
 	for _, c := range hub.Commands() {
 		words = append(words, c.Name())
 	}
@@ -282,5 +283,51 @@ func TestCanonEngineArgvRowKinds(t *testing.T) {
 		if rewritten := len(notes) == 1; rewritten != accepts {
 			t.Errorf("shim %q: rewritten=%v but the old spelling accepts=%v (got %q)", in, rewritten, accepts, got)
 		}
+	}
+}
+
+// Help is always safe to forward: for every shim and retired-hub row, `<old>
+// --help`, `<old> -h` and `<old> <valid tail> --help` are rewritten and run the
+// new command's help (exit 0, no "deprecated" line from a stub), while a retired
+// hub with a non-help tail stays refused.
+func TestCanonEngineArgvHelpForwards(t *testing.T) {
+	tb := fixtureTable(t)
+	rows := append(append([]canonRowT{}, tb.Shims...), tb.RetiredHubs...)
+	if len(rows) < 3 {
+		t.Fatalf("fixture has %d shim/retired rows", len(rows))
+	}
+	for _, r := range rows {
+		old := strings.Join(r.From, " ")
+		tails := []string{"--help", "-h"}
+		if old == "service stop" || old == "ops restart" {
+			tails = append(tails, "web --help", "--home x web -h")
+		}
+		for _, tail := range tails {
+			root := newFixtureTree()
+			in := sp(old + " " + tail)
+			got, notes, err := rewriteCanonArgsWith(&tb, root, in, true)
+			if err != nil || len(notes) != 1 || notes[0].Old != old && notes[0].Old != r.From[0] {
+				t.Errorf("%q: not rewritten (%v %v %v)", in, got, notes, err)
+				continue
+			}
+			want := append(append([]string{}, r.To...), in[len(r.From):]...)
+			if len(notes) == 1 && notes[0].Old == old && strings.Join(got, " ") != strings.Join(want, " ") {
+				t.Errorf("%q: got %q, want %q", in, got, want)
+			}
+			// run it on the relocated tree: help, exit 0, no deprecation line
+			undo := applyCanonWith(&tb, root, true)
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&out)
+			root.SetArgs(got)
+			if err := root.Execute(); err != nil || strings.Contains(out.String(), "deprecated") || !strings.Contains(out.String(), "Usage:") {
+				t.Errorf("%q -> %q: err %v output %q", in, got, err, out.String())
+			}
+			undo()
+		}
+	}
+	// a non-help tail on a retired hub is still refused
+	if got, _, _ := rewriteCanonArgsWith(&tb, newFixtureTree(), sp("migrate reset --help"), true); strings.Join(got, " ") != "migrate reset --help" {
+		t.Errorf("migrate reset --help: %q", got)
 	}
 }

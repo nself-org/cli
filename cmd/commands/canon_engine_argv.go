@@ -123,8 +123,9 @@ func existingMeaningWins(root *cobra.Command, words []string) bool {
 // partial or unknown tail into another command (`migrate reset` into `db reset`,
 // bare `service stop` into bare `stop`). It is checked in the pre-relocation
 // tree. A retired hub is rewritten only when nothing but known root flags follows
-// it; a shim only when its own Args validator accepts the positional tail and the
-// first tail word is not one of its subcommands. Moves, break-outs and removed
+// it; a shim only when its own Args validator accepts the positional tail (or the
+// tail asks for --help/-h, which only prints usage) and the first tail word is not
+// one of its subcommands. Moves, break-outs and removed
 // rows carry the same command and need no check.
 func oldSpellingResolves(root *cobra.Command, kind string, r canonRowT, tail []string) bool {
 	if kind != "shim" && kind != "retired" {
@@ -134,7 +135,7 @@ func oldSpellingResolves(root *cobra.Command, kind string, r canonRowT, tail []s
 	if node == nil || node == root {
 		return false
 	}
-	pos, ok := positionals(node, tail)
+	pos, help, ok := positionals(node, tail)
 	if !ok {
 		return false
 	}
@@ -144,13 +145,15 @@ func oldSpellingResolves(root *cobra.Command, kind string, r canonRowT, tail []s
 	if len(pos) > 0 && childNamed(node, pos[0]) != nil {
 		return false
 	}
-	return node.Args == nil || node.Args(node, pos) == nil
+	// help only prints the target's usage: it is always safe to forward
+	return help || node.Args == nil || node.Args(node, pos) == nil
 }
 
 // positionals splits tail into its positional words using the flags node answers
-// to (its own and every ancestor's persistent flags). A flag that is not known,
-// a help flag, or a value flag with no value makes the tail unresolvable.
-func positionals(node *cobra.Command, tail []string) ([]string, bool) {
+// to (its own and every ancestor's persistent flags) and reports whether a help
+// flag was present. A flag that is not known or a value flag with no value makes
+// the tail unresolvable.
+func positionals(node *cobra.Command, tail []string) (pos []string, help, ok bool) {
 	find := func(a string) *pflag.Flag {
 		for c := node; c != nil; c = c.Parent() {
 			sets := []*pflag.FlagSet{c.PersistentFlags()}
@@ -171,16 +174,15 @@ func positionals(node *cobra.Command, tail []string) ([]string, bool) {
 		}
 		return nil
 	}
-	var pos []string
 	for i := 0; i < len(tail); i++ {
 		a := tail[i]
 		switch {
 		case a == "--":
-			return append(pos, tail[i+1:]...), true
+			return append(pos, tail[i+1:]...), help, true
 		case !strings.HasPrefix(a, "-") || a == "-":
 			pos = append(pos, a)
 		case a == "--help" || a == "-h":
-			return nil, false
+			help = true
 		default:
 			name, hasValue := a, strings.Contains(a, "=")
 			if hasValue {
@@ -188,17 +190,17 @@ func positionals(node *cobra.Command, tail []string) ([]string, bool) {
 			}
 			f := find(name)
 			if f == nil {
-				return nil, false
+				return nil, false, false
 			}
 			if f.Value.Type() != "bool" && !hasValue {
 				i++
 				if i >= len(tail) {
-					return nil, false
+					return nil, false, false
 				}
 			}
 		}
 	}
-	return pos, true
+	return pos, help, true
 }
 
 // splice replaces n words at args[at:] with repl, without touching args.
