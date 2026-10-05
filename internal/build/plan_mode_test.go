@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -190,12 +191,33 @@ var backupStampRE = regexp.MustCompile(`nginx-sites-\d{8}-\d{6}`)
 // outside this Ticket's scope) has its lines sorted.
 func normalizeFixtureBytes(base, data, root string) string {
 	data = strings.ReplaceAll(data, root, "<ROOT>")
+	if runtime.GOOS == "windows" {
+		// Windows renders paths with backslashes; the goldens are recorded on Unix.
+		data = strings.ReplaceAll(strings.ReplaceAll(data, filepath.ToSlash(root), "<ROOT>"), `\`, "/")
+	}
 	if base == ".env.computed" {
 		lines := strings.Split(data, "\n")
 		sort.Strings(lines)
 		data = strings.Join(lines, "\n")
 	}
 	return data
+}
+
+// modeField renders a permission field; Windows has no Unix permission bits,
+// so the field is masked there (and in the golden, see maskModes).
+func modeField(info fs.FileInfo) string {
+	if runtime.GOOS == "windows" {
+		return "----"
+	}
+	return fmt.Sprintf("%04o", info.Mode().Perm())
+}
+
+// maskModes blanks the permission field of golden lines on Windows.
+func maskModes(golden string) string {
+	if runtime.GOOS != "windows" {
+		return golden
+	}
+	return regexp.MustCompile(`(?m)^([df]) [0-7]{4} `).ReplaceAllString(golden, "$1 ---- ")
 }
 
 // planSnapshot returns one sorted line per entry: kind, mode, path, sha256 of
@@ -214,7 +236,7 @@ func planSnapshot(t *testing.T, root string) []string {
 		rel, _ := filepath.Rel(root, p)
 		rel = backupStampRE.ReplaceAllString(rel, "nginx-sites-<TS>")
 		if d.IsDir() {
-			lines = append(lines, fmt.Sprintf("d %04o %s", info.Mode().Perm(), filepath.ToSlash(rel)))
+			lines = append(lines, fmt.Sprintf("d %s %s", modeField(info), filepath.ToSlash(rel)))
 			return nil
 		}
 		data, err := os.ReadFile(p)
@@ -222,7 +244,7 @@ func planSnapshot(t *testing.T, root string) []string {
 			return err
 		}
 		sum := sha256.Sum256([]byte(normalizeFixtureBytes(filepath.Base(p), string(data), root)))
-		lines = append(lines, fmt.Sprintf("f %04o %s %s", info.Mode().Perm(), filepath.ToSlash(rel), hex.EncodeToString(sum[:])))
+		lines = append(lines, fmt.Sprintf("f %s %s %s", modeField(info), filepath.ToSlash(rel), hex.EncodeToString(sum[:])))
 		return nil
 	})
 	if err != nil {
@@ -257,8 +279,8 @@ func TestWriteModeGolden(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read golden: %v", err)
 			}
-			if string(want) != got {
-				t.Errorf("write-mode tree for %s differs from the origin/main golden:\n%s", name, lineDiff(string(want), got))
+			if maskModes(string(want)) != got {
+				t.Errorf("write-mode tree for %s differs from the origin/main golden:\n%s", name, lineDiff(maskModes(string(want)), got))
 			}
 		})
 	}
@@ -481,7 +503,13 @@ func TestPlanModePrune(t *testing.T) {
 func TestPlanModeAutoInstall(t *testing.T) {
 	f := newPlanFixture(t, "dev-minimal")
 	var requests atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests.Add(1) }))
+	lis, err := net.Listen("tcp4", "127.0.0.1:0") // some CI hosts have no IPv6 loopback
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests.Add(1) }))
+	srv.Listener = lis
+	srv.Start()
 	defer srv.Close()
 	t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
 	writeFixtureFile(t, filepath.Join(f.workdir, "nself.yaml"), "app: golden\nplugins:\n  free:\n    - ghost-plugin\n", 0o644)
