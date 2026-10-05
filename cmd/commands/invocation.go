@@ -8,7 +8,9 @@ package commands
 //   - records the invoked command path and JSON mode for main (output.SetInvocation),
 //   - refuses --json on a registry `json: none` command with E402 before the
 //     command body runs, and
-//   - wraps flag and argument errors as E401 in v1.5 mode (EPIC D12).
+//   - wraps flag and argument errors as E401 in v1.5 mode (EPIC D12), and
+//   - takes the project operation lock around write/remote/destructive document
+//     commands inside a project (locked, P7-LIVE-13).
 //
 // Inputs: the cobra tree under a root, the lazily built command registry.
 //
@@ -38,6 +40,7 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/observability"
+	"github.com/nself-org/cli/internal/oplock/oplockcmd"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -109,14 +112,14 @@ func decorate(c *cobra.Command) {
 	}
 	switch {
 	case c.RunE != nil:
-		c.RunE = guarded(c.RunE)
+		c.RunE = guarded(locked(c.RunE))
 	default:
 		run := c.Run
 		c.Run = nil
-		c.RunE = guarded(func(cmd *cobra.Command, args []string) error {
+		c.RunE = guarded(locked(func(cmd *cobra.Command, args []string) error {
 			run(cmd, args)
 			return nil
-		})
+		}))
 	}
 }
 
@@ -129,6 +132,13 @@ func guarded(orig func(*cobra.Command, []string) error) func(*cobra.Command, []s
 		}
 		return orig(cmd, args)
 	}
+}
+
+// locked wraps a command body with the project operation lock, taken after the
+// --json guard and released by a defer on every return and panic. The registry
+// is read only inside a project (internal/oplock/oplockcmd).
+func locked(orig func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return oplockcmd.Wrap(func(c *cobra.Command) (*cmdregistry.Command, error) { return jsonEntryFor(c) }, orig)
 }
 
 // guardedPre wraps a persistent pre-run hook with the same entry check, so the

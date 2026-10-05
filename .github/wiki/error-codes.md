@@ -169,6 +169,16 @@ These errors come from the command line itself: usage, JSON support, destructive
 
 ---
 
+## Reconcile and locks (E450-E479)
+
+Operation-lock codes. The other codes in this block are documented here when their Tickets register them.
+
+| Code | Exit | Summary | Why | Fix |
+|------|------|---------|-----|-----|
+| <a id="e460"></a>E460 | 1 | Project operation lock held | Another nself command is changing this project and holds its operation lock. | Wait for the running nself command to finish, or stop it, then run this command again. |
+
+---
+
 ## JSON error object
 
 With `--json` (v1.5 mode), a failure writes exactly one error envelope to stdout and the human block above still goes to stderr:
