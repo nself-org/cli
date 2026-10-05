@@ -134,6 +134,7 @@ func (r Registry) MarshalJSON() ([]byte, error) {
 			APIEndpoints:    rawEPs,
 			Compat:          p.Compat,
 			UpdatedAt:       p.UpdatedAt,
+			Catalog:         catalogFor(p.PostgresExtensions),
 
 			// Implementation fields. Their absence here is what made every
 			// CLI plugin install into a dead command: the first request

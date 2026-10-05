@@ -134,3 +134,4 @@ tools/parity 16  # measured 18.2 2026-10-05
 tools/schemagen 85  # measured 87.1 2026-10-05
 tools/servicecatalog 0  # measured 0.0 2026-10-05
 tools/wikigen 0  # measured 0.0 2026-10-05
+internal/plugin/requires 70  # measured 72.0 2026-10-05

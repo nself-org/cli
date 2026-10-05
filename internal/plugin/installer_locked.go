@@ -17,6 +17,7 @@ import (
 
 	"github.com/nself-org/cli/internal/audit"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/plugin/requires"
 	"github.com/nself-org/cli/internal/plugin/verify"
 	"github.com/nself-org/cli/internal/version"
 )
@@ -101,6 +102,10 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	// Compat check: verify CLI version satisfies the plugin's declared range.
 	if err := CheckCLICompat(manifest.Compat, version.GetVersion()); err != nil {
 		return fmt.Errorf("compatibility check failed for %q: %w", name, err)
+	}
+	// P7-ADOPT-06: refuse before any download when Postgres lacks a required extension (E507).
+	if err := requires.Check(ctx, cfg, manifest.RequiresPostgresExtensions(), nil); err != nil {
+		return err
 	}
 
 	// T21: Check for table prefix conflicts with already-installed plugins.

@@ -80,6 +80,15 @@ func TestLoadManifestV2Adapter(t *testing.T) {
 		if spdx.LicenseSPDX != "" {
 			released.License = spdx.LicenseSPDX
 		}
+		// Second intended difference (P7-ADOPT-06): the adapter reads
+		// requires.postgres_extensions, a v1 decode has no such top-level key.
+		var req struct {
+			Requires struct {
+				PostgresExtensions []string `json:"postgres_extensions"`
+			} `json:"requires"`
+		}
+		_ = json.Unmarshal(data, &req)
+		released.PostgresExtensions = nonEmpty(req.Requires.PostgresExtensions)
 		if diff := differingFields(got, &released); len(diff) > 0 {
 			t.Errorf("%s: adapter differs from the v1 decode in %v", f, diff)
 		}
