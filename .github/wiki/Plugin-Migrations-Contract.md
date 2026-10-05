@@ -97,3 +97,6 @@ Tests run against a real `postgres:16` container: fresh apply, re-run, concurren
 mid-file (context cancel and backend termination), checksum drift, tolerant mode, timeouts and
 the health field. Run them with `cd sdk/go && go test ./migrate/...` (Docker required; an
 unreachable Docker is a failure, not a skip).
+
+---
+[[Home]]
