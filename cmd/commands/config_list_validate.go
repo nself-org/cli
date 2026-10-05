@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/output"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -38,31 +40,55 @@ func runConfigList(cmd *cobra.Command, args []string) error {
 		pairs = make(map[string]string)
 	}
 
-	known := config.KnownEnvVars()
+	// compat.V15(P7-REG-09): --json ignored -> envelope
+	if jsonOut, _ := cmd.Flags().GetBool("json"); jsonOut && compat.V15() {
+		return output.EmitData(pilotWriter(), "config list", configListJSON(envFile, pairs))
+	}
 
 	// Print header.
 	fmt.Printf("%-45s %-30s %s\n", "KEY", "VALUE", "SOURCE")
 	fmt.Println(strings.Repeat("-", 90))
 
-	for _, k := range known {
-		val, ok := pairs[k]
-		source := filepath.Base(envFile)
-		var displayVal string
-		if !ok || val == "" {
-			displayVal = config.DefaultFor(k)
-			if displayVal != "" {
-				displayVal = "(default: " + displayVal + ")"
-				source = "default"
-			} else {
-				displayVal = "(unset)"
-				source = "unset"
-			}
-		} else {
-			displayVal = maskValue(k, val, false)
+	for _, row := range configListRows(pairs) {
+		displayVal := row.Value
+		switch row.Source {
+		case "default":
+			displayVal = "(default: " + row.Value + ")"
+		case "unset":
+			displayVal = "(unset)"
 		}
-		fmt.Printf("%-45s %-30s %s\n", k, displayVal, source)
+		source := row.Source
+		if source == "file" {
+			source = filepath.Base(envFile)
+		}
+		fmt.Printf("%-45s %-30s %s\n", row.Key, displayVal, source)
 	}
 	return nil
+}
+
+// configListRows resolves every known key against the env file: its value
+// (masked like the table; never revealed), and its source (file, default or
+// unset). The table and `config list --json` both render these rows.
+func configListRows(pairs map[string]string) []configListKey {
+	known := config.KnownEnvVars()
+	rows := make([]configListKey, 0, len(known))
+	for _, k := range known {
+		val, ok := pairs[k]
+		switch {
+		case ok && val != "":
+			rows = append(rows, configListKey{Key: k, Value: maskValue(k, val, false), Source: "file"})
+		case config.DefaultFor(k) != "":
+			rows = append(rows, configListKey{Key: k, Value: config.DefaultFor(k), Source: "default"})
+		default:
+			rows = append(rows, configListKey{Key: k, Source: "unset"})
+		}
+	}
+	return rows
+}
+
+// configListJSON is the data of `config list --json`.
+func configListJSON(envFile string, pairs map[string]string) configListData {
+	return configListData{File: filepath.Base(envFile), Keys: configListRows(pairs)}
 }
 
 // --- S4-T05: config validate ---

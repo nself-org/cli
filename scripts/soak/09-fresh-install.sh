@@ -52,7 +52,7 @@ start="$(date +%s)"
 ssh -o StrictHostKeyChecking=no "root@$ip" bash -s <<'REMOTE' | tee /tmp/soak-remote.$$.log
 set -e
 apt-get update -qq
-apt-get install -y -qq curl ca-certificates
+apt-get install -y -qq curl ca-certificates jq
 curl -fsSL https://install.nself.org | bash
 export PATH="/root/.nself/bin:$PATH"
 mkdir -p /opt/demo && cd /opt/demo
@@ -60,7 +60,8 @@ nself init --demo
 # start already runs health checks by default (skip with --skip-health-checks,
 # tune the wait with --timeout) — there is no separate --wait-healthy flag.
 nself start
-nself status --json | grep -q '"healthy":true'
+# Bare JSON in 1.4.x, v1 envelope with NSELF_V15=1: `.data // .` reads both.
+nself status --json | jq -e '(.data // .).summary.unhealthy == 0'
 echo "REMOTE_OK"
 REMOTE
 rc=$?

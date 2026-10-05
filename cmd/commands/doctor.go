@@ -8,7 +8,6 @@ import (
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/doctor"
-	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -167,13 +166,7 @@ Exit codes:
 				ui.CommandHeader("nSelf Doctor (Deep)", "All 12 subsystem checks")
 			}
 			printDoctorSummary(report)
-			if report.Summary.Failed > 0 {
-				return &plugin.ExitCodeError{Code: 1}
-			}
-			if report.Summary.Warnings > 0 {
-				return &plugin.ExitCodeError{Code: 2}
-			}
-			return nil
+			return doctorExit(report)
 		}
 
 		if !jsonOut {
@@ -272,13 +265,7 @@ Exit codes:
 		// Print summary
 		printDoctorSummary(report)
 
-		// Exit code: 1=failures, 2=warnings only, 0=all pass
-		if report.Summary.Failed > 0 {
-			return &plugin.ExitCodeError{Code: 1}
-		}
-		if report.Summary.Warnings > 0 {
-			return &plugin.ExitCodeError{Code: 2}
-		}
-		return nil
+		// Exit code: 1=failures, 2=warnings only, 0=all pass (10/12 in v1.5 mode)
+		return doctorExit(report)
 	},
 }

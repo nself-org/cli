@@ -18,6 +18,22 @@ nself config <subcommand> [flags]
 Secret keys (any key containing `SECRET`, `PASSWORD`, `KEY`, or `TOKEN`) are masked as `***` in output by default. Pass `--reveal` to show plaintext values. Use `--env` to target a specific environment file (e.g., `--env staging` reads `.env.staging`).
 
 The `validate` subcommand runs all registered configuration validators and reports pass/fail per rule. It is automatically run during `nself build`, but you can run it independently to check config without rebuilding.
+
+### JSON output
+
+With `NSELF_V15=1` (the default from v1.5.0), `config show`, `config get` and `config list` write one v1 envelope to stdout when given `--json` (see [[JSON-Output]]). Before that, `--json` is accepted and ignored and the human output is unchanged. Secret keys (any name containing SECRET, PASSWORD, KEY or TOKEN) are masked as `***` exactly as in the human output; `--reveal` shows them in `show` and `get`, and `list` never reveals.
+
+```json
+{ "schema_version": "1", "command": "config get", "data": { "key": "POSTGRES_PASSWORD", "value": "***", "masked": true, "file": ".env" } }
+```
+
+| Command | `data` |
+|---------|--------|
+| `config get <key>` | `key`, `value`, `masked` (true when masking changed the value), `file` (env file name) |
+| `config list` | `file`, `keys[]` of `key`, `value`, `source` (`file`, `default` or `unset`; a default shows the default value, unset shows `""`) |
+| `config show` | object of key to value, sorted by key |
+
+`config show --format json` is the same envelope in v1.5 mode and the bare object before; `NSELF_V15=1 NSELF_JSON_LEGACY=1` restores the bare object for one more minor release (removed in v1.6.0). A missing key or env file is an error envelope with exit status 1. Schemas: `schemas/commands/config-show.v1.schema.json`, `config-get`, `config-list`.
 <!-- END PROSE:description -->
 
 ## Flags

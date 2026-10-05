@@ -33,6 +33,21 @@ In this order, the first rule that matches wins:
 
 A panic that escapes a command is recovered and reported as `internal error: <value>` with exit 2 (infra, the status a Go crash already gives). The stack trace goes to stderr only, never into the JSON envelope. In v1.4 mode it crashes with the raw Go trace as before.
 
+## State codes
+
+Two commands report the state they found on a success path, in v1.5 mode, with the reserved 10-12 range. The same fact is `data.state` in their JSON envelope (see [[JSON-Output]]).
+
+| Command | Exit | `data.state` | Meaning |
+|---------|------|--------------|---------|
+| `status` | 0 | `ok` | every service is healthy |
+| `status` | 10 | `unhealthy` | a service is unhealthy |
+| `status` | 11 | `transitional` | services are still starting |
+| `doctor` | 0 | `ok` | every check passed |
+| `doctor` | 10 | `unhealthy` | a check failed |
+| `doctor` | 12 | `warnings` | warnings only, no failures |
+
+In v1.4 mode the codes stay as before: human `status` exits 2 (unhealthy) or 1 (starting), human `doctor` exits 1 (failed) or 2 (warnings only), and `--json` exits 0 for both.
+
 ## Exceptions
 
 - **Plugin passthrough.** A command proxied to a plugin exits with the plugin's own status.
@@ -69,7 +84,16 @@ Failures that exited 1 now exit with their class. Only the failures below move; 
 
 Failures with exit 1 before and now (config, init, domain, plugin manifest and signature, migration validation, usage) are unchanged. Commands that already returned an explicit status keep it.
 
-The state codes of `status` and `doctor` also move to the reserved 10-12 range in v1.5 mode (see [[JSON-Output]]).
+State codes (see State codes above):
+
+| Command | Before | Now |
+|---------|--------|-----|
+| `status --json` | 0 | 10 (unhealthy), 11 (starting) |
+| `doctor --json` | 0 | 10 (failed), 12 (warnings only) |
+| `status` (human) | 2 unhealthy, 1 starting | 10 unhealthy, 11 starting |
+| `doctor` (human) | 1 failed, 2 warnings only | 10 failed, 12 warnings only |
+
+`status --json`, `doctor --json` and `config get|list|show --json` also print the v1 envelope instead of the bare report (status, doctor) or the human text (config) in v1.5 mode (see [[JSON-Output]]).
 
 ---
 

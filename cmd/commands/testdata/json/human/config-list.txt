@@ -1,0 +1,456 @@
+KEY                                           VALUE                          SOURCE
+------------------------------------------------------------------------------------------
+PROJECT_NAME                                  e01                            .env
+BASE_DOMAIN                                   (default: local.nself.org)     default
+PROJECT_DOMAIN                                (unset)                        unset
+ENV                                           dev                            .env
+PROJECT_DESCRIPTION                           (unset)                        unset
+ADMIN_EMAIL                                   (unset)                        unset
+DB_ENV_SEEDS                                  (default: true)                default
+APP_NAME                                      (unset)                        unset
+DOMAIN                                        (unset)                        unset
+ACME_EMAIL                                    (unset)                        unset
+DEMO_SEED                                     (unset)                        unset
+POSTGRES_VERSION                              (default: 16-alpine)           default
+POSTGRES_IMAGE                                (unset)                        unset
+POSTGRES_HOST                                 (default: postgres)            default
+POSTGRES_PORT                                 (default: 5432)                default
+POSTGRES_DB                                   (default: nself)               default
+POSTGRES_USER                                 (default: postgres)            default
+POSTGRES_PASSWORD                             ***                            .env
+POSTGRES_EXTENSIONS                           (default: uuid-ossp)           default
+POSTGRES_EXPOSE_PORT                          (default: auto)                default
+POSTGRES_MEM_LIMIT                            (default: 2g)                  default
+POSTGRES_CPU_LIMIT                            (default: 2.0)                 default
+PGVECTOR_ENABLED                              (unset)                        unset
+PGVECTOR_DIMENSIONS                           (unset)                        unset
+PGVECTOR_HNSW_M                               (unset)                        unset
+PGVECTOR_HNSW_EF_CONSTRUCTION                 (unset)                        unset
+HASURA_VERSION                                (default: v2.44.0)             default
+HASURA_GRAPHQL_ADMIN_SECRET                   (unset)                        unset
+HASURA_ADMIN_SECRET                           (unset)                        unset
+HASURA_JWT_KEY                                (unset)                        unset
+HASURA_JWT_TYPE                               (default: HS256)               default
+HASURA_GRAPHQL_ENABLE_CONSOLE                 (unset)                        unset
+HASURA_GRAPHQL_DEV_MODE                       (unset)                        unset
+HASURA_DEV_MODE                               (unset)                        unset
+HASURA_GRAPHQL_CORS_DOMAIN                    (unset)                        unset
+HASURA_GRAPHQL_JWT_SECRET                     (unset)                        unset
+HASURA_ROUTE                                  (default: api)                 default
+HASURA_PORT                                   (default: 8080)                default
+HASURA_MEM_LIMIT                              (default: 1g)                  default
+HASURA_CPU_LIMIT                              (default: 1.0)                 default
+HASURA_GRAPHQL_LOG_LEVEL                      (unset)                        unset
+HASURA_GRAPHQL_ENABLE_TELEMETRY               (unset)                        unset
+HASURA_GRAPHQL_ENABLE_ALLOWLIST               (unset)                        unset
+HASURA_GRAPHQL_UNAUTHORIZED_ROLE              (unset)                        unset
+HASURA_GRAPHQL_NODE_LIMIT                     (unset)                        unset
+HASURA_GRAPHQL_DEPTH_LIMIT                    (unset)                        unset
+HASURA_GRAPHQL_BATCH_SIZE                     (unset)                        unset
+HASURA_GRAPHQL_LIVE_QUERIES_MULTIPLEXED_BATCH_SIZE (unset)                        unset
+HASURA_GRAPHQL_LIVE_QUERIES_MULTIPLEXED_REFETCH_INTERVAL (unset)                        unset
+ACTION_HANDLER_URL                            (unset)                        unset
+AUTH_ENABLED                                  (unset)                        unset
+AUTH_VERSION                                  (default: 0.36.0)              default
+AUTH_PORT                                     (default: 4000)                default
+AUTH_CLIENT_URL                               (default: http://localhost:3000) default
+AUTH_ACCESS_TOKEN_EXPIRES_IN                  (default: 900)                 default
+AUTH_REFRESH_TOKEN_EXPIRES_IN                 (default: 2592000)             default
+AUTH_ROUTE                                    (default: auth)                default
+AUTH_SMTP_HOST                                (default: mailpit)             default
+AUTH_SMTP_PORT                                (default: 1025)                default
+AUTH_SMTP_USER                                (unset)                        unset
+AUTH_SMTP_PASS                                (unset)                        unset
+AUTH_SMTP_SECURE                              (unset)                        unset
+AUTH_SMTP_SENDER                              (unset)                        unset
+AUTH_MEM_LIMIT                                (default: 256m)                default
+AUTH_CPU_LIMIT                                (default: 0.25)                default
+AUTH_EXTRA_REDIRECT_URLS                      (unset)                        unset
+AUTH_RATE_LIMIT                               (default: 30r/m)               default
+AUTH_WEBAUTHN_ENABLED                         (unset)                        unset
+AUTH_LOG_LEVEL                                (unset)                        unset
+AUTH_MODE                                     (unset)                        unset
+SHARED_AUTH_JWT_SECRET                        (unset)                        unset
+SHARED_AUTH_SERVER_URL                        (unset)                        unset
+AUTH_ANONYMOUS_USERS_ENABLED                  (unset)                        unset
+AUTH_DISABLE_NEW_USERS                        (unset)                        unset
+AUTH_EMAIL_PASSWORDLESS_ENABLED               (unset)                        unset
+AUTH_REQUIRE_EMAIL_VERIFICATION               (unset)                        unset
+AUTH_EMAIL_TEMPLATE_FETCH_URL                 (unset)                        unset
+AUTH_GRAVATAR_ENABLED                         (unset)                        unset
+AUTH_LOCALE_DEFAULT                           (unset)                        unset
+HASURA_AUTH_URL                               (unset)                        unset
+HASURA_AUTH_SMTP_HOST                         (unset)                        unset
+HASURA_AUTH_SMTP_PORT                         (unset)                        unset
+HASURA_AUTH_SMTP_USER                         (unset)                        unset
+HASURA_AUTH_SMTP_PASS                         (unset)                        unset
+HASURA_AUTH_SMTP_SENDER                       (unset)                        unset
+HASURA_AUTH_SMTP_SECURE                       (unset)                        unset
+HASURA_AUTH_EMAIL_SIGNIN_EMAIL_VERIFIED_REQUIRED (unset)                        unset
+NGINX_VERSION                                 (default: alpine)              default
+NGINX_HTTP_PORT                               (default: 80)                  default
+NGINX_PORT                                    (unset)                        unset
+NGINX_HTTPS_PORT                              (default: 443)                 default
+NGINX_SSL_PORT                                (unset)                        unset
+NGINX_CLIENT_MAX_BODY_SIZE                    (default: 100M)                default
+NGINX_BIND_IP                                 (unset)                        unset
+NGINX_FRONTED_BY                              (unset)                        unset
+RATE_LIMIT_API_RPS                            (unset)                        unset
+RATE_LIMIT_AUTH_RPS                           (unset)                        unset
+RATE_LIMIT_AI_RPS                             (unset)                        unset
+RATE_LIMIT_AUTH_RPM                           (unset)                        unset
+RATE_LIMIT_GRAPHQL_RPM                        (unset)                        unset
+RATE_LIMIT_UPLOADS_RPM                        (unset)                        unset
+SSL_MODE                                      (default: local (dev) / letsencrypt (prod)) default
+EXTRA_SSL_DOMAINS                             (unset)                        unset
+REDIS_ENABLED                                 (default: false)               default
+REDIS_VERSION                                 (default: 7-alpine)            default
+REDIS_PORT                                    (default: 6379)                default
+REDIS_PASSWORD                                (unset)                        unset
+REDIS_MEMORY                                  (default: 512M)                default
+REDIS_CPU                                     (default: 0.5)                 default
+MINIO_ENABLED                                 (default: false)               default
+STORAGE_ENABLED                               (unset)                        unset
+MINIO_VERSION                                 (default: latest)              default
+MINIO_PORT                                    (default: 9000)                default
+MINIO_CONSOLE_PORT                            (default: 9001)                default
+MINIO_ROOT_USER                               (default: minioadmin)          default
+MINIO_ROOT_PASSWORD                           (default: minioadmin)          default
+MINIO_ACCESS_KEY                              (unset)                        unset
+MINIO_SECRET_KEY                              (unset)                        unset
+MINIO_DEFAULT_BUCKETS                         (default: uploads,public,private,temp) default
+MINIO_REGION                                  (default: us-east-1)           default
+S3_ACCESS_KEY                                 (unset)                        unset
+S3_SECRET_KEY                                 (unset)                        unset
+S3_BUCKET                                     (default: nself)               default
+MINIO_BUCKET                                  (unset)                        unset
+MINIO_ENDPOINT                                (unset)                        unset
+MINIO_ENDPOINT_PUBLIC                         (unset)                        unset
+STORAGE_VERSION                               (default: 0.6.1)               default
+STORAGE_ROUTE                                 (default: storage)             default
+STORAGE_CONSOLE_ROUTE                         (default: storage-console)     default
+STORAGE_PUBLIC_URL                            (unset)                        unset
+MINIO_MEMORY                                  (default: 1G)                  default
+MINIO_CPU                                     (default: 0.5)                 default
+MAILPIT_ENABLED                               (default: false)               default
+MAILPIT_VERSION                               (default: latest)              default
+MAILPIT_SMTP_PORT                             (default: 1025)                default
+MAILPIT_UI_PORT                               (default: 8025)                default
+MAILPIT_MAX_MESSAGES                          (default: 500)                 default
+MAILPIT_ROUTE                                 (default: mail)                default
+MAIL_ROUTE                                    (unset)                        unset
+MAILPIT_UI_USER                               (unset)                        unset
+MAILPIT_UI_PASSWORD                           (unset)                        unset
+MAILHOG_SMTP_PORT                             (unset)                        unset
+MAILHOG_UI_PORT                               (unset)                        unset
+FUNCTIONS_ENABLED                             (default: false)               default
+FUNCTIONS_VERSION                             (default: latest)              default
+FUNCTIONS_PORT                                (default: 3008)                default
+FUNCTIONS_ROUTE                               (default: functions)           default
+MLFLOW_ENABLED                                (default: false)               default
+MLFLOW_VERSION                                (default: 2.9.2)               default
+MLFLOW_PORT                                   (default: 5000)                default
+MLFLOW_ROUTE                                  (default: mlflow)              default
+MLFLOW_DB_NAME                                (default: mlflow)              default
+MLFLOW_ARTIFACTS_BUCKET                       (default: mlflow-artifacts)    default
+MLFLOW_AUTH_ENABLED                           (unset)                        unset
+MLFLOW_AUTH_USERNAME                          (default: admin)               default
+MLFLOW_AUTH_PASSWORD                          (unset)                        unset
+NSELF_ADMIN_ENABLED                           (default: false)               default
+NSELF_ADMIN_VERSION                           (default: latest)              default
+NSELF_ADMIN_PORT                              (default: 3021)                default
+ADMIN_ENABLED                                 (unset)                        unset
+NSELF_ADMIN_ROUTE                             (default: admin)               default
+NSELF_ADMIN_DEV                               (unset)                        unset
+NSELF_ADMIN_DEV_PORT                          (unset)                        unset
+ADMIN_SECRET_KEY                              (unset)                        unset
+ADMIN_PASSWORD_HASH                           (unset)                        unset
+SEARCH_ENABLED                                (default: false)               default
+SEARCH_ENGINE                                 (default: meilisearch)         default
+SEARCH_PROVIDER                               (unset)                        unset
+SEARCH_PORT                                   (default: 7700)                default
+SEARCH_API_KEY                                (unset)                        unset
+SEARCH_ROUTE                                  (default: search)              default
+SEARCH_INDEX_PREFIX                           (unset)                        unset
+SEARCH_AUTO_INDEX                             (default: true)                default
+SEARCH_LANGUAGE                               (default: en)                  default
+MEILISEARCH_VERSION                           (default: v1.6)                default
+MEILISEARCH_MASTER_KEY                        (unset)                        unset
+MEILISEARCH_ENV                               (default: development)         default
+MEILISEARCH_WARMUP_QUERIES                    (unset)                        unset
+MEILI_ENV                                     (unset)                        unset
+TYPESENSE_VERSION                             (default: 27.1)                default
+TYPESENSE_API_KEY                             (unset)                        unset
+TYPESENSE_ENABLE_CORS                         (default: true)                default
+TYPESENSE_LOG_LEVEL                           (default: info)                default
+TYPESENSE_NUM_MEMORY_SHARDS                   (default: 4)                   default
+TYPESENSE_SNAPSHOT_INTERVAL_SECONDS           (default: 3600)                default
+ELASTICSEARCH_VERSION                         (default: 8.11.3)              default
+ELASTICSEARCH_PORT                            (default: 9200)                default
+ELASTICSEARCH_PASSWORD                        (unset)                        unset
+ELASTICSEARCH_MEMORY                          (default: 1Gi)                 default
+MONITORING_ENABLED                            (default: false)               default
+PROMETHEUS_ENABLED                            (unset)                        unset
+PROMETHEUS_PORT                               (default: 9090)                default
+GRAFANA_ENABLED                               (unset)                        unset
+GRAFANA_PORT                                  (default: 3000)                default
+GRAFANA_ADMIN_USER                            (default: admin)               default
+GRAFANA_ADMIN_PASSWORD                        (unset)                        unset
+GRAFANA_ROUTE                                 (default: grafana)             default
+LOKI_ENABLED                                  (unset)                        unset
+LOKI_PORT                                     (default: 3100)                default
+PROMTAIL_ENABLED                              (unset)                        unset
+TEMPO_ENABLED                                 (unset)                        unset
+TEMPO_PORT                                    (default: 3200)                default
+ALERTMANAGER_ENABLED                          (unset)                        unset
+ALERTMANAGER_PORT                             (default: 9093)                default
+CADVISOR_ENABLED                              (unset)                        unset
+CADVISOR_PORT                                 (default: 8082)                default
+NODE_EXPORTER_ENABLED                         (unset)                        unset
+NODE_EXPORTER_PORT                            (default: 9100)                default
+POSTGRES_EXPORTER_ENABLED                     (unset)                        unset
+POSTGRES_EXPORTER_PORT                        (default: 9187)                default
+REDIS_EXPORTER_ENABLED                        (unset)                        unset
+REDIS_EXPORTER_PORT                           (default: 9121)                default
+EMAIL_PROVIDER                                (default: mailpit)             default
+EMAIL_FROM                                    (unset)                        unset
+ELASTIC_EMAIL_API_KEY                         (unset)                        unset
+ELASTIC_EMAIL_ACCOUNT_EMAIL                   (unset)                        unset
+SENDGRID_API_KEY                              (unset)                        unset
+POSTMARK_API_KEY                              (unset)                        unset
+MAILGUN_API_KEY                               (unset)                        unset
+MAILGUN_DOMAIN                                (unset)                        unset
+AWS_ACCESS_KEY_ID                             (unset)                        unset
+AWS_SECRET_ACCESS_KEY                         (unset)                        unset
+AWS_REGION                                    (default: us-east-1)           default
+SMTP_HOST                                     (unset)                        unset
+SMTP_PORT                                     (default: 587)                 default
+SMTP_USER                                     (unset)                        unset
+SMTP_PASS                                     (unset)                        unset
+SMTP_SECURE                                   (unset)                        unset
+SMTP_SENDER                                   (unset)                        unset
+BACKUP_ENABLED                                (default: false)               default
+BACKUP_DIR                                    (default: ./backups)           default
+BACKUP_SCHEDULE                               (default: 0 2 * * *)           default
+BACKUP_RETENTION_DAYS                         (default: 30)                  default
+BACKUP_CLOUD_PROVIDER                         (unset)                        unset
+BACKUP_REMOTE                                 (unset)                        unset
+BACKUP_ENCRYPTION                             (default: false)               default
+BACKUP_AGE_RECIPIENTS                         (unset)                        unset
+BACKUP_SCHEDULE_FULL                          (default: 0 3 * * *)           default
+BACKUP_WAL_INTERVAL_SECONDS                   (default: 60)                  default
+BACKUP_RETENTION_DAILY                        (default: 7)                   default
+BACKUP_RETENTION_WEEKLY                       (default: 4)                   default
+BACKUP_RETENTION_MONTHLY                      (default: 12)                  default
+BACKUP_RESTORE_TEST_SCHEDULE                  (default: 0 5 * * 0)           default
+BACKUP_ALERT_ON_FAILURE                       (default: true)                default
+BACKUP_S3_ACCESS_KEY_ID                       (unset)                        unset
+BACKUP_S3_SECRET_ACCESS_KEY                   (unset)                        unset
+BACKUP_S3_REGION                              (unset)                        unset
+BACKUP_S3_ENDPOINT                            (unset)                        unset
+BACKUP_CRITICAL_TABLES                        (unset)                        unset
+BACKUP_ACCESS_KEY                             (unset)                        unset
+BACKUP_SECRET_KEY                             (unset)                        unset
+BACKUP_S3_BUCKET                              (unset)                        unset
+BACKUP_S3_PREFIX                              (unset)                        unset
+DR_SECONDARY_REGION                           (unset)                        unset
+DR_STANDBY_HOST                               (unset)                        unset
+DR_DRILL_SCHEDULE                             (unset)                        unset
+DR_DATABASE_URL                               (unset)                        unset
+NOTIFY_INTERNAL_SECRET                        (unset)                        unset
+NOTIFY_PORT                                   (default: 3712)                default
+NOTIFY_VAPID_PUBLIC_KEY                       (unset)                        unset
+NOTIFY_VAPID_PRIVATE_KEY                      (unset)                        unset
+NOTIFY_ROUTE                                  (unset)                        unset
+CRON_INTERNAL_SECRET                          (unset)                        unset
+CRON_PORT                                     (default: 3713)                default
+CRON_RETENTION_DAYS                           (default: 90)                  default
+PLUGIN_AI_MEMORY_LIMIT                        (default: 1g)                  default
+PLUGIN_AI_CPU_LIMIT                           (default: 1.0)                 default
+PLUGIN_MUX_MEMORY_LIMIT                       (default: 512m)                default
+PLUGIN_MUX_CPU_LIMIT                          (default: 0.5)                 default
+PLUGIN_CLAW_MEMORY_LIMIT                      (default: 512m)                default
+PLUGIN_CLAW_CPU_LIMIT                         (default: 0.5)                 default
+PLUGIN_DEFAULT_MEMORY_LIMIT                   (default: 512m)                default
+PLUGIN_DEFAULT_CPU_LIMIT                      (default: 0.5)                 default
+PLUGIN_INTERNAL_SECRET                        (unset)                        unset
+NSELF_PLUGIN_DIR                              (default: ~/.nself/plugins)    default
+NSELF_PLUGIN_CACHE                            (default: ~/.nself/cache/plugins) default
+NSELF_PLUGIN_REGISTRY                         (default: https://plugins.nself.org) default
+NSELF_REGISTRY_CACHE_TTL                      (default: 300)                 default
+NSELF_PLUGIN_LICENSE_KEY                      (unset)                        unset
+NSELF_LICENSE_SKIP_VERIFY                     (unset)                        unset
+NSELF_PING_API_URL                            (default: https://ping.nself.org) default
+NSELF_PRICING_URL                             (default: https://nself.org/pricing) default
+DOCKER_NETWORK                                (unset)                        unset
+DOCKER_LOG_MAX_SIZE                           (default: 10m)                 default
+DOCKER_LOG_MAX_FILE                           (default: 3)                   default
+DOCKER_STOP_GRACE_PERIOD                      (default: 30s)                 default
+NSELF_DOCKER_BUILD_TIMEOUT                    (default: 300)                 default
+NSELF_START_MODE                              (default: smart)               default
+NSELF_HEALTH_CHECK_TIMEOUT                    (default: 120)                 default
+NSELF_HEALTH_CHECK_INTERVAL                   (default: 2)                   default
+NSELF_HEALTH_CHECK_REQUIRED                   (default: 80)                  default
+NSELF_CLEANUP_ON_START                        (default: auto)                default
+NSELF_ALLOW_EXPOSED_PORTS                     (default: false)               default
+NSELF_PARALLEL_LIMIT                          (default: 5)                   default
+NSELF_LOG_LEVEL                               (default: info)                default
+NSELF_SKIP_HEALTH_CHECKS                      (default: false)               default
+NSELF_STOP_TIMEOUT                            (default: 30)                  default
+AUTH_HOST                                     (unset)                        unset
+AUTH_SERVER_URL                               (unset)                        unset
+AUTH_JWT_SECRET                               (unset)                        unset
+AUTH_JWT_KEY                                  (unset)                        unset
+AUTH_REFRESH_TOKEN_SECRET                     (unset)                        unset
+AUTH_ACCESS_TOKEN_EXPIRY                      (unset)                        unset
+AUTH_REFRESH_TOKEN_EXPIRY                     (unset)                        unset
+AUTH_EMAIL_SIGNIN_EMAIL_VERIFIED_REQUIRED     (unset)                        unset
+HASURA_GRAPHQL_ENABLE_TELEMETRY               (unset)                        unset
+HASURA_GRAPHQL_UNAUTHORIZED_ROLE              (unset)                        unset
+HASURA_CONSOLE_PORT                           (unset)                        unset
+HASURA_GRAPHQL_JWT_SECRET                     (unset)                        unset
+HASURA_GRAPHQL_DATABASE_URL                   (unset)                        unset
+HASURA_METADATA_DATABASE_URL                  (unset)                        unset
+NGINX_GZIP_ENABLED                            (unset)                        unset
+NGINX_MODE                                    (unset)                        unset
+NGINX_MEM_LIMIT                               (unset)                        unset
+S3_ENDPOINT                                   (unset)                        unset
+STORAGE_PORT                                  (unset)                        unset
+FILES_ROUTE                                   (unset)                        unset
+NSELF_ADMIN_USER                              (unset)                        unset
+NSELF_ADMIN_PASSWORD                          (unset)                        unset
+TYPESENSE_PORT                                (unset)                        unset
+TYPESENSE_ROUTE                               (unset)                        unset
+NOTIFY_VAPID_SUBJECT                          (unset)                        unset
+COMPOSE_PROJECT_NAME                          (unset)                        unset
+DOCKER_BUILDKIT                               (unset)                        unset
+NSELF_AUTO_TRUST_CA                           (unset)                        unset
+NSELF_AUTO_HOSTS_ENTRIES                      (unset)                        unset
+NSELF_MKCERT_CAROOT                           (unset)                        unset
+NSELF_NO_MONOREPO                             (unset)                        unset
+DEBUG                                         (unset)                        unset
+NO_COLOR                                      (unset)                        unset
+POSTGRES_INTERNAL_PORT                        (unset)                        unset
+AI_PROFILE                                    (unset)                        unset
+AI_AUTO_INSTALL                               (unset)                        unset
+AI_DEFAULT_MODEL                              (unset)                        unset
+AI_EMBEDDING_MODEL                            (unset)                        unset
+AI_POOL_AUTO_PROVISION                        (unset)                        unset
+AI_BACKGROUND_LOCAL_ONLY                      (unset)                        unset
+AI_DAILY_BUDGET_USD                           (unset)                        unset
+AI_MONTHLY_BUDGET_USD                         (unset)                        unset
+AI_TIMEOUT_LOCAL_MS                           (unset)                        unset
+AI_TIMEOUT_OAUTH_MS                           (unset)                        unset
+AI_TIMEOUT_POOL_MS                            (unset)                        unset
+AI_TIMEOUT_PAID_MS                            (unset)                        unset
+AI_POOL_OAUTH_CLIENT_ID                       (unset)                        unset
+AI_POOL_OAUTH_CLIENT_SECRET                   (unset)                        unset
+NSELF_MASTER_SECRET                           (unset)                        unset
+MEILISEARCH_ENABLED                           (unset)                        unset
+MEILISEARCH_PORT                              (unset)                        unset
+MEILISEARCH_ROUTE                             (unset)                        unset
+MEILI_NO_ANALYTICS                            (unset)                        unset
+OPENSEARCH_VERSION                            (unset)                        unset
+OPENSEARCH_PORT                               (unset)                        unset
+OPENSEARCH_PASSWORD                           (unset)                        unset
+OPENSEARCH_MEMORY                             (unset)                        unset
+ZINC_VERSION                                  (unset)                        unset
+ZINC_PORT                                     (unset)                        unset
+ZINC_ADMIN_USER                               (unset)                        unset
+ZINC_ADMIN_PASSWORD                           (unset)                        unset
+SONIC_VERSION                                 (unset)                        unset
+SONIC_PORT                                    (unset)                        unset
+SONIC_PASSWORD                                (unset)                        unset
+DASHBOARD_ENABLED                             (unset)                        unset
+DASHBOARD_VERSION                             (unset)                        unset
+DASHBOARD_ROUTE                               (unset)                        unset
+DASHBOARD_PORT                                (unset)                        unset
+SERVICES_ENABLED                              (unset)                        unset
+NESTJS_ENABLED                                (unset)                        unset
+NESTJS_SERVICES                               (unset)                        unset
+NESTJS_USE_TYPESCRIPT                         (unset)                        unset
+NESTJS_PORT_START                             (unset)                        unset
+BULLMQ_ENABLED                                (unset)                        unset
+BULLMQ_WORKERS                                (unset)                        unset
+BULLMQ_DASHBOARD_ENABLED                      (unset)                        unset
+BULLMQ_DASHBOARD_PORT                         (unset)                        unset
+BULLMQ_DASHBOARD_ROUTE                        (unset)                        unset
+GOLANG_ENABLED                                (unset)                        unset
+GOLANG_SERVICES                               (unset)                        unset
+GOLANG_PORT_START                             (unset)                        unset
+PYTHON_ENABLED                                (unset)                        unset
+PYTHON_SERVICES                               (unset)                        unset
+PYTHON_FRAMEWORK                              (unset)                        unset
+PYTHON_PORT_START                             (unset)                        unset
+STRIPE_API_KEY                                (unset)                        unset
+STRIPE_WEBHOOK_SECRET                         (unset)                        unset
+STRIPE_SYNC_INTERVAL                          (unset)                        unset
+GITHUB_TOKEN                                  (unset)                        unset
+GITHUB_WEBHOOK_SECRET                         (unset)                        unset
+GITHUB_ORG                                    (unset)                        unset
+GITHUB_REPOS                                  (unset)                        unset
+SHOPIFY_STORE                                 (unset)                        unset
+SHOPIFY_ACCESS_TOKEN                          (unset)                        unset
+SHOPIFY_API_VERSION                           (unset)                        unset
+SHOPIFY_WEBHOOK_SECRET                        (unset)                        unset
+SHOPIFY_SYNC_INTERVAL                         (unset)                        unset
+OAUTH_REDIRECT_ALLOWLIST                      (unset)                        unset
+OAUTH_TOKEN_ENCRYPTION_KEY                    (unset)                        unset
+GOOGLE_OAUTH_CLIENT_ID                        (unset)                        unset
+GOOGLE_OAUTH_CLIENT_SECRET                    (unset)                        unset
+APPLE_OAUTH_CLIENT_ID                         (unset)                        unset
+APPLE_OAUTH_TEAM_ID                           (unset)                        unset
+APPLE_OAUTH_KEY_ID                            (unset)                        unset
+APPLE_OAUTH_PRIVATE_KEY                       (unset)                        unset
+GITHUB_OAUTH_CLIENT_ID                        (unset)                        unset
+GITHUB_OAUTH_CLIENT_SECRET                    (unset)                        unset
+FACEBOOK_OAUTH_CLIENT_ID                      (unset)                        unset
+FACEBOOK_OAUTH_CLIENT_SECRET                  (unset)                        unset
+TWITTER_OAUTH_CLIENT_ID                       (unset)                        unset
+TWITTER_OAUTH_CLIENT_SECRET                   (unset)                        unset
+LINKEDIN_OAUTH_CLIENT_ID                      (unset)                        unset
+LINKEDIN_OAUTH_CLIENT_SECRET                  (unset)                        unset
+DISCORD_OAUTH_CLIENT_ID                       (unset)                        unset
+DISCORD_OAUTH_CLIENT_SECRET                   (unset)                        unset
+SLACK_OAUTH_CLIENT_ID                         (unset)                        unset
+SLACK_OAUTH_CLIENT_SECRET                     (unset)                        unset
+TWITCH_OAUTH_CLIENT_ID                        (unset)                        unset
+TWITCH_OAUTH_CLIENT_SECRET                    (unset)                        unset
+SPOTIFY_OAUTH_CLIENT_ID                       (unset)                        unset
+SPOTIFY_OAUTH_CLIENT_SECRET                   (unset)                        unset
+TIKTOK_OAUTH_CLIENT_ID                        (unset)                        unset
+TIKTOK_OAUTH_CLIENT_SECRET                    (unset)                        unset
+REDDIT_OAUTH_CLIENT_ID                        (unset)                        unset
+REDDIT_OAUTH_CLIENT_SECRET                    (unset)                        unset
+MICROSOFT_OAUTH_CLIENT_ID                     (unset)                        unset
+MICROSOFT_OAUTH_CLIENT_SECRET                 (unset)                        unset
+PINTEREST_OAUTH_CLIENT_ID                     (unset)                        unset
+PINTEREST_OAUTH_CLIENT_SECRET                 (unset)                        unset
+DROPBOX_OAUTH_CLIENT_ID                       (unset)                        unset
+DROPBOX_OAUTH_CLIENT_SECRET                   (unset)                        unset
+ZOOM_OAUTH_CLIENT_ID                          (unset)                        unset
+ZOOM_OAUTH_CLIENT_SECRET                      (unset)                        unset
+ATLASSIAN_OAUTH_CLIENT_ID                     (unset)                        unset
+ATLASSIAN_OAUTH_CLIENT_SECRET                 (unset)                        unset
+GITLAB_OAUTH_CLIENT_ID                        (unset)                        unset
+GITLAB_OAUTH_CLIENT_SECRET                    (unset)                        unset
+BITBUCKET_OAUTH_CLIENT_ID                     (unset)                        unset
+BITBUCKET_OAUTH_CLIENT_SECRET                 (unset)                        unset
+FIGMA_OAUTH_CLIENT_ID                         (unset)                        unset
+FIGMA_OAUTH_CLIENT_SECRET                     (unset)                        unset
+NOTION_OAUTH_CLIENT_ID                        (unset)                        unset
+NOTION_OAUTH_CLIENT_SECRET                    (unset)                        unset
+APNS_KEY_ID                                   (unset)                        unset
+APNS_KEY_PATH                                 (unset)                        unset
+APNS_TEAM_ID                                  (unset)                        unset
+FCM_SERVER_KEY                                (unset)                        unset
+SENTRY_DSN_BACKEND                            (unset)                        unset
+NODE_ENV                                      (unset)                        unset
+JWT_SECRET                                    (unset)                        unset
+SSL_AUTO_TRUST                                (unset)                        unset
+COOKIE_SECRET                                 (unset)                        unset
+ENABLE_DEBUG                                  (unset)                        unset
+LOG_LEVEL                                     (unset)                        unset
+NSELF_PROJECT_NAME                            (unset)                        unset
+ENV_ALLOWLIST                                 (unset)                        unset
+NSELF_BACKUP_HEARTBEAT_REMOTE                 (unset)                        unset
