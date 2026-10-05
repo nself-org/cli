@@ -79,6 +79,7 @@ func checkHandRolledBackup(projectDir string) CheckResult {
 		if !d.Type().IsRegular() || !looksLikeScript(path) {
 			return nil
 		}
+		rel = filepath.ToSlash(rel)
 		dump, upload, mig := scanScript(path)
 		if dump && upload {
 			backups = append(backups, rel)
