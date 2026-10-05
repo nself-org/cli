@@ -29,12 +29,14 @@
         ],
         "type": "object"
       },
-      "type": [
-        "null",
-        "array"
-      ]
+      "type": "array"
     },
     "state": {
+      "enum": [
+        "ok",
+        "transitional",
+        "unhealthy"
+      ],
       "type": "string"
     },
     "summary": {

@@ -15,6 +15,11 @@
             "type": "string"
           },
           "source": {
+            "enum": [
+              "file",
+              "default",
+              "unset"
+            ],
             "type": "string"
           },
           "value": {
@@ -28,10 +33,7 @@
         ],
         "type": "object"
       },
-      "type": [
-        "null",
-        "array"
-      ]
+      "type": "array"
     }
   },
   "required": [

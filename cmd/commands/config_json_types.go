@@ -36,11 +36,37 @@ type configGetData struct {
 	File   string `json:"file"`   // env file basename
 }
 
+// Source values of configListKey.source. (doctorCheckResult.status and the
+// status service `status` are not closed: checks emit pass/warn/fail plus ok,
+// skip, skipped and unknown, health emits more, so neither is enumerated.)
+const (
+	configSourceFile    = "file"
+	configSourceDefault = "default"
+	configSourceUnset   = "unset"
+)
+
+// PilotEnums holds the closed string sets of the pilot data types. tools/schemagen
+// turns them into enum constraints, so the schemas and the code share one list.
+type PilotEnums struct {
+	StatusState      []string // statusData.state
+	DoctorState      []string // doctorData.state
+	ConfigListSource []string // configListKey.source
+}
+
+// PilotJSONEnums returns the closed string sets of the pilot data types.
+func PilotJSONEnums() PilotEnums {
+	return PilotEnums{
+		StatusState:      []string{stateOK, stateTransitional, stateUnhealthy},
+		DoctorState:      []string{stateOK, stateWarnings, stateUnhealthy},
+		ConfigListSource: []string{configSourceFile, configSourceDefault, configSourceUnset},
+	}
+}
+
 // configListKey is one row of `config list --json`.
 type configListKey struct {
 	Key    string `json:"key"`
 	Value  string `json:"value"`  // file: masked like the table; default: the default; unset: ""
-	Source string `json:"source"` // file | default | unset
+	Source string `json:"source"` // configSourceFile | configSourceDefault | configSourceUnset
 }
 
 // configListData is the data of `config list --json`.

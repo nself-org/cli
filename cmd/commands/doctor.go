@@ -46,7 +46,12 @@ network connectivity, configuration, running containers, and more.
 Exit codes:
   0  All checks passed
   1  One or more checks failed
-  2  Warnings only (no failures)`,
+  2  Warnings only (no failures)
+
+With NSELF_V15=1 (the default from v1.5.0) the state uses the reserved codes,
+in human and --json mode alike:
+  10  One or more checks failed
+  12  Warnings only (no failures)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// ── Legacy global scan (S60-T03) ─────────────────────────────
 		// --check-legacy scans for v0.9 stale paths on the host (NOT per-project).

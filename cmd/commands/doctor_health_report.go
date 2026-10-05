@@ -143,7 +143,12 @@ func doctorExit(report *doctorReport) error {
 // only when asked for).
 func printDoctorJSON(report *doctorReport) error {
 	state := doctorState(report)
-	if err := emitStateJSON("doctor", report, doctorData{doctorReport: *report, State: state}); err != nil {
+	enveloped := doctorData{doctorReport: *report, State: state}
+	if enveloped.Checks == nil {
+		// The v1 schema says `checks` is an array, never null (v1.4 bare output keeps the report as is).
+		enveloped.Checks = []doctorCheckResult{}
+	}
+	if err := emitStateJSON("doctor", report, enveloped); err != nil {
 		return err
 	}
 	// compat.V15(P7-REG-09): doctor --json exits 0 -> 10 (failed) or 12 (warnings only)

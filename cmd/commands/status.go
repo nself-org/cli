@@ -45,7 +45,12 @@ var statusCmd = &cobra.Command{
 Exit codes:
   0  All services healthy
   1  Error running checks
-  2  One or more services unhealthy`,
+  2  One or more services unhealthy
+
+With NSELF_V15=1 (the default from v1.5.0) the state uses the reserved codes,
+in human and --json mode alike:
+  10  One or more services unhealthy
+  11  Services still starting (transitional)`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		jsonOut, _ := cmd.Flags().GetBool("json")

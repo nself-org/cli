@@ -52,13 +52,13 @@ func runConfigList(cmd *cobra.Command, args []string) error {
 	for _, row := range configListRows(pairs) {
 		displayVal := row.Value
 		switch row.Source {
-		case "default":
+		case configSourceDefault:
 			displayVal = "(default: " + row.Value + ")"
-		case "unset":
+		case configSourceUnset:
 			displayVal = "(unset)"
 		}
 		source := row.Source
-		if source == "file" {
+		if source == configSourceFile {
 			source = filepath.Base(envFile)
 		}
 		fmt.Printf("%-45s %-30s %s\n", row.Key, displayVal, source)
@@ -76,11 +76,11 @@ func configListRows(pairs map[string]string) []configListKey {
 		val, ok := pairs[k]
 		switch {
 		case ok && val != "":
-			rows = append(rows, configListKey{Key: k, Value: maskValue(k, val, false), Source: "file"})
+			rows = append(rows, configListKey{Key: k, Value: maskValue(k, val, false), Source: configSourceFile})
 		case config.DefaultFor(k) != "":
-			rows = append(rows, configListKey{Key: k, Value: config.DefaultFor(k), Source: "default"})
+			rows = append(rows, configListKey{Key: k, Value: config.DefaultFor(k), Source: configSourceDefault})
 		default:
-			rows = append(rows, configListKey{Key: k, Source: "unset"})
+			rows = append(rows, configListKey{Key: k, Source: configSourceUnset})
 		}
 	}
 	return rows

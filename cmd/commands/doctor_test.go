@@ -3,14 +3,54 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/plugin"
 	"github.com/spf13/cobra"
 )
+
+// doctorJSONOutcome checks the exit status printDoctorJSON requested for a
+// report and returns the report from stdout. v1.4: nil error, bare report.
+// v1.5 (P7-REG-09): the report sits in the envelope `data` and a failed or
+// warning report requests the state exit code (10 failed, 12 warnings only).
+func doctorJSONOutcome(t *testing.T, report *doctorReport, wantV15Code int) doctorReport {
+	t.Helper()
+	out, err := captureDoctorStdout(t, func() error { return printDoctorJSON(report) })
+	var decoded doctorReport
+	if !compat.V15() {
+		if err != nil {
+			t.Fatalf("printDoctorJSON: %v", err)
+		}
+		if jerr := json.Unmarshal([]byte(out), &decoded); jerr != nil {
+			t.Fatalf("output is not valid JSON: %v\nraw: %s", jerr, out)
+		}
+		return decoded
+	}
+	got := 0
+	var ec *plugin.ExitCodeError
+	if errors.As(err, &ec) {
+		got = ec.Code
+	} else if err != nil {
+		t.Fatalf("printDoctorJSON: %v", err)
+	}
+	if got != wantV15Code {
+		t.Fatalf("v1.5 exit code = %d, want %d", got, wantV15Code)
+	}
+	var env struct {
+		Data doctorReport `json:"data"`
+	}
+	if jerr := json.Unmarshal([]byte(out), &env); jerr != nil {
+		t.Fatalf("output is not valid JSON: %v\nraw: %s", jerr, out)
+	}
+	return env.Data
+}
 
 // newDoctorCmd returns a fresh cobra.Command tree with just the doctor command
 // so tests can run in isolation without side effects from global RootCmd state.
@@ -268,44 +308,37 @@ func captureDoctorStdout(t *testing.T, f func() error) (string, error) {
 // TestPrintDoctorJSON_Valid verifies the JSON output matches the expected shape
 // and that Summary counts round-trip correctly.
 func TestPrintDoctorJSON_Valid(t *testing.T) {
-	checks := []doctorCheckResult{
-		{Name: "docker", Status: "pass", Message: "running"},
-		{Name: "ports", Status: "warn", Message: "3000 in use"},
-		{Name: "memory", Status: "fail", Message: "low"},
-	}
-	report := buildDoctorReport(checks)
-
-	out, err := captureDoctorStdout(t, func() error { return printDoctorJSON(report) })
-	if err != nil {
-		t.Fatalf("printDoctorJSON: %v", err)
-	}
-
-	var decoded doctorReport
-	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
-		t.Fatalf("output is not valid JSON: %v\nraw: %s", err, out)
-	}
-	if decoded.Summary.Total != 3 {
-		t.Errorf("decoded Total = %d, want 3", decoded.Summary.Total)
-	}
-	if decoded.Summary.Failed != 1 {
-		t.Errorf("decoded Failed = %d, want 1", decoded.Summary.Failed)
-	}
-	if len(decoded.Checks) != 3 {
-		t.Errorf("decoded %d checks, want 3", len(decoded.Checks))
-	}
+	compattest.Both(t, func(t *testing.T) {
+		checks := []doctorCheckResult{
+			{Name: "docker", Status: "pass", Message: "running"},
+			{Name: "ports", Status: "warn", Message: "3000 in use"},
+			{Name: "memory", Status: "fail", Message: "low"},
+		}
+		decoded := doctorJSONOutcome(t, buildDoctorReport(checks), 10)
+		if decoded.Summary.Total != 3 {
+			t.Errorf("decoded Total = %d, want 3", decoded.Summary.Total)
+		}
+		if decoded.Summary.Failed != 1 {
+			t.Errorf("decoded Failed = %d, want 1", decoded.Summary.Failed)
+		}
+		if len(decoded.Checks) != 3 {
+			t.Errorf("decoded %d checks, want 3", len(decoded.Checks))
+		}
+	})
 }
 
 // TestPrintDoctorJSON_EmptyChecks verifies the JSON output is valid even when
 // there are zero checks.
 func TestPrintDoctorJSON_EmptyChecks(t *testing.T) {
-	report := buildDoctorReport(nil)
-	out, err := captureDoctorStdout(t, func() error { return printDoctorJSON(report) })
-	if err != nil {
-		t.Fatalf("printDoctorJSON: %v", err)
-	}
-	if !strings.Contains(out, `"total": 0`) {
-		t.Errorf("expected total=0 in output, got: %s", out)
-	}
+	compattest.Both(t, func(t *testing.T) {
+		decoded := doctorJSONOutcome(t, buildDoctorReport(nil), 0)
+		if decoded.Summary.Total != 0 {
+			t.Errorf("expected total=0, got %d", decoded.Summary.Total)
+		}
+		if compat.V15() && decoded.Checks == nil {
+			t.Error("v1.5 data.checks must be an array, got null")
+		}
+	})
 }
 
 // TestCheckEnvExists_Missing verifies the check fails when no env file is present.
