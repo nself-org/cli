@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -651,6 +652,9 @@ func TestApplyAsksAgainAfterPluginInstall(t *testing.T) {
 // TestOverlayDisplayAbs: a file outside the project and the plugin dir is shown
 // as @abs/<path>.
 func TestOverlayDisplayAbs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("absolute keys are unix paths")
+	}
 	ov := overlay{dir: t.TempDir()}
 	if got := ov.display("/opt/somewhere/x.yml"); got != AbsPrefix+"opt/somewhere/x.yml" {
 		t.Fatalf("display = %q", got)
