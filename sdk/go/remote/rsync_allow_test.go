@@ -86,9 +86,9 @@ func TestRsyncTransportComesFirstAndHoldsD4(t *testing.T) {
 // TestSimulatorCatchesTheOldShape proves the fuzz parser model flags the
 // round-1 bug: the transport placed after a trailing value-taking flag.
 func TestSimulatorCatchesTheOldShape(t *testing.T) {
-	_, ops, eaten := simulateRsync([]string{"-az", "-T", "-e", "ssh x", "--", "s", "d"})
-	if !reflect.DeepEqual(eaten, []int{2, 3}) || len(ops) != 2 {
-		t.Fatalf("simulator: eaten %v operands %q", eaten, ops)
+	rsh, ops, eaten := simulateRsync([]string{"-az", "-T", "-e", "ssh x", "--", "s", "d"})
+	if rsh != "" || !reflect.DeepEqual(eaten, []int{2}) || len(ops) != 2 {
+		t.Fatalf("simulator: rsh %q eaten %v operands %q", rsh, eaten, ops)
 	}
 	if rsh, _, eaten := simulateRsync([]string{"-e", "ssh x", "-az", "--", "s", "d"}); rsh != "ssh x" || !reflect.DeepEqual(eaten, []int{1}) {
 		t.Fatalf("simulator: new shape rsh %q eaten %v", rsh, eaten)
