@@ -6,6 +6,7 @@ package build
 //          .nself/compose.env at container-start time.
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -243,5 +244,165 @@ func TestComposeEnvFiles_OrderAndFallback(t *testing.T) {
 	}
 	if filepath.Base(got[0]) != ".env" || filepath.Base(got[1]) != "compose.env" {
 		t.Errorf("env file order wrong: %v", got)
+	}
+}
+
+// urlEncPasswords are test-only values covering every URL-reserved character.
+// Assertions never print them: only the case index appears in failures.
+var urlEncPasswords = []string{
+	"a/b@c:d#e?f%g",
+	"p@ss",
+	"abc",
+	"a+b c",
+	"pa$$word$HOME",
+	"@:/?#%+ ",
+	"100%25",
+}
+
+// readComposeEnvMap parses .nself/compose.env the way docker compose reads a
+// dotenv file for the values this test cares about: KEY=VALUE per line, one
+// layer of single quotes removed.
+func readComposeEnvMap(t *testing.T, workdir string) map[string]string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(workdir, ".nself", "compose.env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			t.Fatalf("malformed compose.env line (key %q)", k)
+		}
+		out[k] = config.UnquoteEnvValue(v)
+	}
+	return out
+}
+
+// TestWriteComposeEnv_URLEncVars: compose.env carries both encoded twins; the
+// parsed twin decodes (url.Parse) back to the original; the raw variables and
+// DATABASE_URL are untouched and not double-encoded.
+func TestWriteComposeEnv_URLEncVars(t *testing.T) {
+	for i, pw := range urlEncPasswords {
+		workdir := t.TempDir()
+		cfg := secretTestConfig()
+		cfg.Postgres.Password = pw
+		cfg.Redis.Enabled = true
+		cfg.Redis.Password = pw + "r"
+		if err := WriteComposeEnv(workdir, cfg, SecretEnvMap(cfg), nil); err != nil {
+			t.Fatalf("case %d: %v", i, err)
+		}
+		env := readComposeEnvMap(t, workdir)
+
+		for _, c := range []struct{ key, raw string }{
+			{"POSTGRES_PASSWORD", pw},
+			{"REDIS_PASSWORD", pw + "r"},
+		} {
+			if env[c.key] != c.raw {
+				t.Errorf("case %d: %s changed", i, c.key)
+			}
+			enc, ok := env[c.key+"_URLENC"]
+			if !ok {
+				t.Fatalf("case %d: %s_URLENC missing", i, c.key)
+			}
+			if enc != config.URLPassword(c.raw) {
+				t.Errorf("case %d: %s_URLENC is not the single-encoded password", i, c.key)
+			}
+			u, err := url.Parse("redis://:" + enc + "@redis:6379")
+			if err != nil {
+				t.Fatalf("case %d: %s_URLENC does not parse in a URL: %v", i, c.key, err)
+			}
+			if got, _ := u.User.Password(); got != c.raw || u.Host != "redis:6379" {
+				t.Errorf("case %d: %s_URLENC does not round-trip", i, c.key)
+			}
+		}
+		// DATABASE_URL was already encoded once by cfg.DatabaseURL(); the twin
+		// must not alter or re-encode it.
+		du, err := url.Parse(env["DATABASE_URL"])
+		if err != nil {
+			t.Fatalf("case %d: DATABASE_URL: %v", i, err)
+		}
+		if got, _ := du.User.Password(); got != pw {
+			t.Errorf("case %d: DATABASE_URL password no longer round-trips", i)
+		}
+	}
+}
+
+func TestWriteComposeEnv_URLEncOmittedWhenPasswordEmpty(t *testing.T) {
+	workdir := t.TempDir()
+	cfg := secretTestConfig()
+	cfg.Redis.Password = ""
+	if err := WriteComposeEnv(workdir, cfg, SecretEnvMap(cfg), nil); err != nil {
+		t.Fatal(err)
+	}
+	env := readComposeEnvMap(t, workdir)
+	if _, ok := env["REDIS_PASSWORD_URLENC"]; ok {
+		t.Error("REDIS_PASSWORD_URLENC written for an empty password")
+	}
+	if _, ok := env["POSTGRES_PASSWORD_URLENC"]; !ok {
+		t.Error("POSTGRES_PASSWORD_URLENC missing")
+	}
+}
+
+// A twin that contains "$" must be single-quoted or compose expands "$name"
+// inside the dotenv value and silently truncates the password.
+func TestWriteComposeEnv_URLEncDollarIsQuoted(t *testing.T) {
+	workdir := t.TempDir()
+	cfg := secretTestConfig()
+	cfg.Postgres.Password = "pa$$word$HOME"
+	if err := WriteComposeEnv(workdir, cfg, SecretEnvMap(cfg), nil); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(workdir, ".nself", "compose.env"))
+	var line string
+	for _, l := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(l, "POSTGRES_PASSWORD_URLENC=") {
+			line = strings.TrimPrefix(l, "POSTGRES_PASSWORD_URLENC=")
+		}
+	}
+	if len(line) < 2 || line[0] != '\'' || line[len(line)-1] != '\'' {
+		t.Fatal("a twin containing $ must be single-quoted in compose.env")
+	}
+	if strings.Contains(line, "'") && strings.Count(line, "'") != 2 {
+		t.Fatal("encoded value must not contain a single quote")
+	}
+}
+
+// TestURLEncConsumersAreDecoders guards the consumers of the encoded URLs:
+// a tool that does not percent-decode the password (redis-cli -u is one: it
+// answers WRONGPASS to the encoded form) must never be fed a URL built from
+// the encoded variable. Shipped compose files and fixtures may run redis-cli
+// only with the raw variable via -a, never with a URL or a _URLENC reference.
+// Remaining consumers of encoded URLs are decoding libraries: postgres-exporter
+// (DATA_SOURCE_NAME, Go net/url) and the plugin services' DATABASE_URL and
+// REDIS_URL.
+func TestURLEncConsumersAreDecoders(t *testing.T) {
+	var files []string
+	for _, pat := range []string{
+		"../compose/*.yml",
+		"testdata/plugin-compose-fixtures/*.yml",
+	} {
+		m, err := filepath.Glob(pat)
+		if err != nil || len(m) == 0 {
+			t.Fatalf("no shipped compose files matched %s", pat)
+		}
+		files = append(files, m...)
+	}
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			if !strings.Contains(line, "redis-cli") {
+				continue
+			}
+			if strings.Contains(line, "_URLENC") || strings.Contains(line, "REDIS_URL") || strings.Contains(line, "redis://") || strings.Contains(line, " -u ") {
+				t.Errorf("%s:%d: redis-cli must use -a with the raw password variable, not a URL (it does not percent-decode)", filepath.Base(f), i+1)
+			}
+		}
 	}
 }

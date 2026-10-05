@@ -168,7 +168,7 @@ services:
     container_name: ${PROJECT_NAME}_postgres_exporter
     restart: unless-stopped
     environment:
-      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nself_db}?sslmode=disable
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@postgres:5432/${POSTGRES_DB:-nself_db}?sslmode=disable
     networks:
       - nself_network
     ports:

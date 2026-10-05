@@ -197,6 +197,18 @@ func WriteComposeEnv(workdir string, cfg *config.Config, secrets, pluginEnvVars 
 	}
 	merged["DATABASE_URL"] = cfg.DatabaseURL()
 	merged["DOCKER_NETWORK"] = network
+	// URL-encoded twins for compose fragments that write a password into a URL
+	// (P7-PROD-31): compose can substitute but not encode. Encoded exactly once
+	// here; fragments use ${X_URLENC:-${X}} so an older compose.env without the
+	// twin renders what it always rendered. Empty passwords get no twin.
+	for _, pw := range []struct{ key, val string }{
+		{"POSTGRES_PASSWORD", cfg.Postgres.Password},
+		{"REDIS_PASSWORD", cfg.Redis.Password},
+	} {
+		if enc := config.URLPassword(pw.val); enc != "" {
+			merged[pw.key+config.URLPasswordEnvSuffix] = enc
+		}
+	}
 	merged["HASURA_GRAPHQL_ENABLE_CONSOLE"] = fmt.Sprintf("%t", cfg.Hasura.Console)
 	merged["HASURA_GRAPHQL_DEV_MODE"] = fmt.Sprintf("%t", cfg.Hasura.DevMode)
 
@@ -213,7 +225,7 @@ func WriteComposeEnv(workdir string, cfg *config.Config, secrets, pluginEnvVars 
 	for _, k := range keys {
 		sb.WriteString(k)
 		sb.WriteString("=")
-		sb.WriteString(config.QuoteEnvValue(merged[k]))
+		sb.WriteString(composeEnvValue(k, merged[k]))
 		sb.WriteString("\n")
 	}
 
@@ -229,6 +241,18 @@ func WriteComposeEnv(workdir string, cfg *config.Config, secrets, pluginEnvVars 
 		return fmt.Errorf("chmod %s: %w", composeEnvFile, err)
 	}
 	return nil
+}
+
+// composeEnvValue renders one value for compose.env. An encoded password twin
+// keeps "$" literal in a URL, and docker compose expands "$name" in an unquoted
+// dotenv value, so a twin containing "$" is single-quoted (compose reads that
+// verbatim; the encoder never emits a single quote). Everything else follows
+// config.QuoteEnvValue.
+func composeEnvValue(key, val string) string {
+	if strings.HasSuffix(key, config.URLPasswordEnvSuffix) && strings.Contains(val, "$") {
+		return "'" + val + "'"
+	}
+	return config.QuoteEnvValue(val)
 }
 
 // ComposeEnvFiles returns the ordered --env-file list for docker compose

@@ -14,7 +14,7 @@ services:
     ports:
       - "127.0.0.1:3051:3051"
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@postgres:5432/${POSTGRES_DB}
       - PORT=3051
       - CRON_TIMEOUT_SECS=${CRON_TIMEOUT_SECS:-30}
       - CRON_RETENTION_DAYS=${CRON_RETENTION_DAYS:-90}

@@ -107,6 +107,8 @@ DATABASE_URL=postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@postgres:5432/{POS
 
 This value is written to `.env.computed` and should not be set manually. The user and password are percent-encoded in the URL (a `/` becomes `%2F`, `@` becomes `%40`), so a password with URL-reserved characters still produces a valid connection string. `POSTGRES_PASSWORD` itself stays unencoded.
 
+**Computed:** `nself build` also writes `POSTGRES_PASSWORD_URLENC` and `REDIS_PASSWORD_URLENC` into `.nself/compose.env` (the password percent-encoded for a URL, omitted when the password is empty). Plugin compose fragments use `${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}` wherever a password sits inside a URL. Do not set them by hand. See [[Plugin-Dev-Guide]].
+
 ---
 
 ## Backup and Restore
