@@ -15,7 +15,9 @@ import (
 // If port is omitted or zero, it auto-assigns 8000+N.
 // Per-service overrides are read from CS_N_PUBLIC, CS_N_MEMORY, CS_N_CPU,
 // CS_N_PORT, CS_N_ROUTE, CS_N_HEALTHCHECK, CS_N_ENV_PASSTHROUGH,
-// CS_N_IMAGE, CS_N_ENV_FILE, and CS_N_VOLUMES environment variables.
+// CS_N_IMAGE, CS_N_ENV_FILE, and CS_N_VOLUMES environment variables, plus the
+// v2 keys (CS_N_DEPENDS_ON, CS_N_NETWORKS, CS_N_DOCKERFILE, CS_N_BUILD_TARGET,
+// CS_N_COMMAND; see custom_services_v2.go).
 func parseCustomServices() ([]CustomService, error) {
 	var services []CustomService
 	for i := 1; i <= 10; i++ {
@@ -78,9 +80,11 @@ func parseCustomServices() ([]CustomService, error) {
 		cs.EnvPassthrough = os.Getenv(fmt.Sprintf("CS_%d_ENV_PASSTHROUGH", i))
 
 		// Optional build context path override. Rejects absolute paths and
-		// path traversal so a misconfigured env can't escape the project root.
+		// path traversal so a misconfigured env can't escape the project root;
+		// the one exception is an ancestor ('..' only, e.g. a monorepo root),
+		// bounded by ValidateBuildContext at compose time (E528).
 		if p := os.Getenv(fmt.Sprintf("CS_%d_PATH", i)); p != "" {
-			if err := validateRelativePath(p); err != nil {
+			if err := validateBuildContextPath(p); err != nil {
 				return nil, fmt.Errorf("CS_%d_PATH %w", i, err)
 			}
 			cs.BuildPath = p
@@ -96,11 +100,14 @@ func parseCustomServices() ([]CustomService, error) {
 
 		// CS_N_ENV_FILE: dotenv-format file of extra env vars, injected at
 		// build time (see coreEnvVars). Same relative-path rules as CS_N_PATH.
+		// A comma-separated list loads in order, later files winning (v2).
 		if p := os.Getenv(fmt.Sprintf("CS_%d_ENV_FILE", i)); p != "" {
-			if err := validateRelativePath(p); err != nil {
+			files, err := parseCustomServiceEnvFiles(p)
+			if err != nil {
 				return nil, fmt.Errorf("CS_%d_ENV_FILE %w", i, err)
 			}
-			cs.EnvFile = p
+			cs.EnvFile = files[0]
+			cs.EnvFiles = files
 		}
 
 		// CS_N_VOLUMES: comma-separated "host:container[:mode]" bind mounts,
@@ -119,6 +126,11 @@ func parseCustomServices() ([]CustomService, error) {
 		}
 		if r := os.Getenv(fmt.Sprintf("CS_%d_ROUTE", i)); r != "" {
 			cs.Route = r
+		}
+
+		// CS_N v2 keys: DEPENDS_ON, NETWORKS, DOCKERFILE, BUILD_TARGET, COMMAND.
+		if err := parseCustomServiceV2(&cs, i); err != nil {
+			return nil, err
 		}
 
 		services = append(services, cs)

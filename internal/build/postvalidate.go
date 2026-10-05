@@ -53,6 +53,11 @@ func PostValidate(composePath, nginxConfDir string) PostValidateResult {
 	// ── Service name uniqueness ──────────────────────────────────────
 	checkNameUniqueness(services, &result)
 
+	// ── Custom service dependencies (CS_N_DEPENDS_ON) ────────────────
+	// Resolved here, after the plugin step wrote .nself/compose-files.txt,
+	// so every plugin service is known (P7-ADOPT-01, review F24).
+	checkCustomServiceDeps(composePath, &result)
+
 	// ── Nginx server_name uniqueness ─────────────────────────────────
 	// Must run before the syntax check: `nginx -t` reports "syntax is ok"
 	// for a duplicate server_name and only logs that it ignored one of the

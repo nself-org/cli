@@ -33,6 +33,17 @@ func snapshotRegistry(t *testing.T) {
 	})
 }
 
+// forgetCode removes code from Registry and the origin table inside a
+// snapshotRegistry test, so a test may use a number a real fragment has since
+// registered (E500-E502 once P7-ADOPT-01 landed) without a duplicate. The
+// snapshot cleanup restores the real entry.
+func forgetCode(code string) {
+	regMu.Lock()
+	defer regMu.Unlock()
+	delete(Registry, code)
+	delete(regOrigin, code)
+}
+
 // TestRegistryIntegrity fails when any fragment registered a duplicate code, a
 // code outside its block, a mismatched category, a reserved-block code or an
 // invalid exit class. Later Tickets rely on it to catch collisions.
@@ -205,6 +216,7 @@ func TestRegister_RejectsBadCodes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			snapshotRegistry(t)
+			forgetCode(tc.e.Code)
 			Register(tc.e)
 			if n := len(RegistryErrors()); n != 1 {
 				t.Fatalf("RegistryErrors() has %d entries, want 1", n)
@@ -216,6 +228,7 @@ func TestRegister_RejectsBadCodes(t *testing.T) {
 	}
 	t.Run("empty category filled from block", func(t *testing.T) {
 		snapshotRegistry(t)
+		forgetCode("E500")
 		Register(ok("E500", ""))
 		if n := len(RegistryErrors()); n != 0 {
 			t.Fatalf("RegistryErrors() = %v, want none", RegistryErrors())

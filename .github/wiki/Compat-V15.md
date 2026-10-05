@@ -52,6 +52,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 <!-- BEGIN GENERATED:gated -->
 | Ticket | v1.4 behaviour (old) | v1.5 behaviour (new) | File |
 |---|---|---|---|
+| P7-ADOPT-01 | writable absolute bind allowed | E502 | `internal/compose/custom_service_v2.go` |
 | P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |
 | P7-PLUG-63 | bundle reply trusted for any key and bundle | only a signed reply naming this key, this bundle and a live window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache age from the unsigned fetched_at | the older of fetched_at and the signed jwt iat | `internal/license/cache_entry.go` |

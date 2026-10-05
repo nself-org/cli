@@ -190,6 +190,8 @@ type LoggingConfig struct {
 type BuildConfig struct {
 	Context    string `yaml:"context"`
 	Dockerfile string `yaml:"dockerfile,omitempty"`
+	// Target selects a multi-stage build target (CS_N_BUILD_TARGET).
+	Target string `yaml:"target,omitempty"`
 }
 
 // NetworkConfig represents a docker-compose network definition.
@@ -200,6 +202,9 @@ type NetworkConfig struct {
 	// which split recreated services onto a new network on existing deployments
 	// (P1 EOP prod incident 2026-06-10: nginx 502 on api.nself.org).
 	Name string `yaml:"name,omitempty"`
+	// External marks a network that already exists and is not created by this
+	// compose file (CS_N_NETWORKS: another <PROJECT_NAME>_* network).
+	External bool `yaml:"external,omitempty"`
 }
 
 // VolumeConfig represents a docker-compose volume definition.

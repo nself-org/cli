@@ -202,6 +202,38 @@ type CustomService struct {
 	// generated volume list. Closes the gap where a required bind mount
 	// (e.g. a template directory) had no CS_N representation.
 	Volumes string
+
+	// CS_N v2 keys (P7-ADOPT-01). All are additive: a service that sets none
+	// of them renders exactly as before.
+
+	// EnvFiles is CS_N_ENV_FILE split on commas, in load order (later wins).
+	// EnvFile stays the first entry for callers that read it.
+	EnvFiles []string
+
+	// DependsOn is CS_N_DEPENDS_ON: extra compose depends_on entries. Names
+	// are syntax-checked here and resolved against the whole project in build
+	// post-validation (after the plugin step).
+	DependsOn []CSDependency
+
+	// Networks is CS_N_NETWORKS: extra project networks, each
+	// <PROJECT_NAME>_*, emitted as external networks (checked at compose time).
+	Networks []string
+
+	// Dockerfile is CS_N_DOCKERFILE: path relative to the build context.
+	Dockerfile string
+
+	// BuildTarget is CS_N_BUILD_TARGET: the multi-stage build target.
+	BuildTarget string
+
+	// Command is CS_N_COMMAND: exec-form command (whitespace-split, no shell).
+	Command []string
+}
+
+// CSDependency is one CS_N_DEPENDS_ON entry. Condition is the compose value
+// (service_started, service_healthy or service_completed_successfully).
+type CSDependency struct {
+	Name      string
+	Condition string
 }
 
 // FrontendApp represents a frontend application (FRONTEND_APP_1..FRONTEND_APP_20).
