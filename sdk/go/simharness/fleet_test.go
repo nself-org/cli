@@ -35,7 +35,7 @@ func TestStartRejectsBadConfig(t *testing.T) {
 		"bad name": {Nodes: []NodeSpec{{Name: "a b"}}},
 		"dup name": {Nodes: []NodeSpec{{Name: "a"}, {Name: "a"}}},
 		"unpinned": {Nodes: []NodeSpec{{Name: "a", Image: "alpine:3.20"}}},
-		"latest":   {Nodes: []NodeSpec{{Name: "a", Image: "debian"}, {Name: "b", Image: "x/y:latest"}}},
+		"tagged":   {Nodes: []NodeSpec{{Name: "a", Image: "debian"}, {Name: "b", Image: "x/y:1.2.3"}}},
 	}
 	for name, cfg := range cases {
 		t.Run(name, func(t *testing.T) {
