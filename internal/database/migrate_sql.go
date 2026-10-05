@@ -159,7 +159,7 @@ func ensureSchemaVersions(ctx context.Context, cfg *config.Config) error {
 		db = "nself"
 	}
 
-	sql := `CREATE SCHEMA IF NOT EXISTS np_common; CREATE TABLE IF NOT EXISTS np_common.schema_versions (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`
+	sql := ensureSchemaVersionsSQL
 	return runSQLOnDB(ctx, cfg, db, sql)
 }
 
