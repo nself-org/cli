@@ -118,12 +118,32 @@ the error and exits non-zero, so the container shows unhealthy and `nself plugin
 with a coded error naming the plugin once its bounded wait (default 120 s) ends. `nself doctor`
 flags a plugin with `migrations/` whose manifest lacks `migrations.apply: boot`.
 
+## CLI readiness check
+
+The CLI never applies plugin SQL. It verifies that the plugin did, through `internal/plugin/readiness`:
+
+- `readiness.Wait(ctx, plugin, healthURL, timeout)` polls the plugin's `/health` every 2 s and returns nil once
+  `migrations.applied == migrations.expected`. The wait is bounded: default 120 s, override with
+  `NSELF_PLUGIN_READY_TIMEOUT` (seconds, or a duration such as `3m`; an invalid value is an error, not a default).
+  `readiness.TimeoutFromEnv()` reads it. Install and update flows call it (`plugin install` and `bundle install`
+  in P7-PLUG-19, `update stack` in P7-PLUG-31); `nself start` does not wait.
+- **E118** (exit 2): the timeout ended with applied < expected, or the plugin never answered. The message names the plugin
+  and both numbers. Read `docker logs nself_<plugin>`; a slow first boot needs a longer `NSELF_PLUGIN_READY_TIMEOUT`.
+- **E119** (exit 2): `/health` answered 200 without a valid `migrations` object. This fails at once, because a plugin that
+  declares migrations and does not report them cannot be treated as ready.
+- **E120** (exit 1, doctor only): the plugin has a `migrations/` directory but its manifest lacks `migrations.apply: boot`.
+
+`nself doctor --deep` runs one probe (no wait) per running plugin that declares migrations and reports E118 or E119, and
+reports E120 for every installed plugin that ships `migrations/` without boot apply. A compliant plugin that is not running
+produces no finding.
+
 ## Verification
 
 Tests run against a real `postgres:16` container: fresh apply, re-run, concurrent replicas, kill
 mid-file (context cancel and backend termination), checksum drift, transaction-control refusal,
 out-of-order refusal, baseline and legacy-ledger upgrade, tolerant mode, timeouts and the health field. Run them with `cd sdk/go && go test ./migrate/...` (Docker required; an
-unreachable Docker is a failure, not a skip).
+unreachable Docker is a failure, not a skip). The CLI side is covered by `go test ./internal/plugin/readiness/... ./internal/doctor/`
+and, on Linux with Docker, `go test -tags integration ./internal/plugin/readiness/...` (a fixture plugin on `sdk/go/migrate` against a real `postgres:16`).
 
 ---
 [[Home]]

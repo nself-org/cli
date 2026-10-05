@@ -21,6 +21,11 @@ func DeepChecks(ctx context.Context, projectDir string, verbose bool) []CheckRes
 	results = append(results, PingChecks(ctx, verbose)...)
 	results = append(results, PluginHealthChecks(ctx, projectDir, verbose)...)
 
+	// P7-PLUG-59: boot-migration readiness (E118/E119) and boot apply (E120).
+	if home, herr := os.UserHomeDir(); herr == nil {
+		results = append(results, PluginMigrationChecks(ctx, filepath.Join(home, ".nself", "plugins"))...)
+	}
+
 	// P2-E7-W2-S6-T21: PayPal multi-account CSV parity validation.
 	results = append(results, CheckPayPalCSVParity(ctx))
 
