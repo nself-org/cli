@@ -89,6 +89,7 @@ func TestParseObject(t *testing.T) {
 }
 
 func TestParseObjectRefusesDotDot(t *testing.T) {
+	skipWindows(t)
 	inv := hostFixture(t)
 	for _, u := range []string{
 		"path:///tmp/a/../../etc/passwd", "path:///tmp/a/../b/f", "path:///tmp/..",
