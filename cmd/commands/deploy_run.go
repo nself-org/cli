@@ -144,7 +144,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			fmt.Println("  [running] Build images")
 		}
 		var buildErr error
-		if steps, buildErr = deployBuildStepFn(cmd.Context(), workdir, steps); buildErr != nil {
+		if steps, buildErr = deployBuildStepFn(cmd.Context(), workdir, target != "local", steps); buildErr != nil {
 			return finalize(jsonOut, target, strategy, start, steps, buildErr)
 		}
 	}

@@ -13,10 +13,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
+
+// envNameRe is the shape of an env name allowed in a remote .env.<name> file name.
+var envNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 
 // SSHConfig holds parameters for an SSH-based remote deploy.
 type SSHConfig struct {
@@ -31,6 +35,12 @@ type SSHConfig struct {
 	// Follow streams container logs after a successful deploy until the
 	// context is cancelled (e.g. Ctrl-C from the user).
 	Follow bool
+
+	// EnvFile, when set, is a local env file rsynced to <remote path>/.env.<EnvName>
+	// right after the compose file, so the host gets the env the compose was
+	// built from. EnvName must be a plain name (a-z, 0-9, _ and -).
+	EnvFile string
+	EnvName string
 }
 
 // SSHConfigFromEnv builds an SSHConfig from environment variables.
@@ -109,6 +119,22 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 	rc.Env = os.Environ()
 	if out, rerr := rc.CombinedOutput(); rerr != nil {
 		return fmt.Errorf("rsync to %s: %w\n%s", sshTarget, rerr, strings.TrimSpace(string(out)))
+	}
+
+	// 1b. rsync the env file the compose was built from, when one is given.
+	if cfg.EnvFile != "" {
+		if !envNameRe.MatchString(cfg.EnvName) || remotePath == "" || remotePath == "/" {
+			return fmt.Errorf("env file %q needs a plain env name and a non-root remote path (got %q, %q)", cfg.EnvFile, cfg.EnvName, remotePath)
+		}
+		ec, eerr := remote.Command(ctx, "rsync", "-az", "-e", "ssh "+strings.Join(sshArgs, " "),
+			cfg.EnvFile, fmt.Sprintf("%s:%s", sshTarget, filepath.Join(remotePath, ".env."+cfg.EnvName)))
+		if eerr != nil {
+			return fmt.Errorf("rsync env file to %s: %w", sshTarget, eerr)
+		}
+		ec.Env = os.Environ()
+		if out, rerr := ec.CombinedOutput(); rerr != nil {
+			return fmt.Errorf("rsync env file to %s: %w\n%s", sshTarget, rerr, strings.TrimSpace(string(out)))
+		}
 	}
 
 	// 2. docker compose pull on remote.

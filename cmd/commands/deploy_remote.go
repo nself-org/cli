@@ -33,12 +33,6 @@ func loadDeployEnvCascade(workdir, target string) {
 	}
 	_ = os.Setenv("NSELF_DEPLOY_ENV", target)
 	_ = os.Setenv("ENV", deployCascadeEnv(workdir, target))
-	// The child build must use the same cascade as the file shipped to a host.
-	if target == "local" {
-		_ = os.Unsetenv(config.DeployRemoteVar)
-	} else {
-		_ = os.Setenv(config.DeployRemoteVar, "true")
-	}
 }
 
 // deployCascadeEnv names the environment whose cascade a deploy of target

@@ -65,6 +65,14 @@ type DeployResult struct {
 // The composePath argument is the local path to the generated docker-compose.yml
 // produced by `nself build`. Run reuses deploy.DeployViaSsh for every remote server.
 func Run(ctx context.Context, inv *Inventory, env string, prober Prober, composePath string) (*DeployResult, error) {
+	return RunWithEnv(ctx, inv, env, prober, composePath, "", "")
+}
+
+// RunWithEnv is Run that also ships envFile (a resolved env snapshot) next to
+// the compose file as .env.<envName> on every server it deploys. Both empty
+// means compose only.
+func RunWithEnv(ctx context.Context, inv *Inventory, env string, prober Prober, composePath, envFile, envName string) (*DeployResult, error) {
+	pl := payload{composePath, envFile, envName}
 	scoped, err := ScopeToEnv(inv, env)
 	if err != nil {
 		return nil, err
@@ -95,7 +103,7 @@ func Run(ctx context.Context, inv *Inventory, env string, prober Prober, compose
 
 		// Step 2: Observability servers.
 		for _, pair := range obs {
-			sr := deployOne(ctx, envName, pair.srv, pair.ts, composePath)
+			sr := deployOne(ctx, envName, pair.srv, pair.ts, pl)
 			result.Servers = append(result.Servers, sr)
 			checkPrimarySkipped(result, []ServerResult{sr})
 		}
@@ -103,7 +111,7 @@ func Run(ctx context.Context, inv *Inventory, env string, prober Prober, compose
 		// Step 3: App servers — rolling with LB drain/re-add if LB present.
 		lbPresent := len(lbs) > 0 && lbs[0].ts.Capability == CapManage
 		for _, pair := range apps {
-			sr := deployApp(ctx, envName, pair.srv, pair.ts, composePath, lbPresent, lbs)
+			sr := deployApp(ctx, envName, pair.srv, pair.ts, pl, lbPresent, lbs)
 			result.Servers = append(result.Servers, sr)
 			checkPrimarySkipped(result, []ServerResult{sr})
 		}
@@ -138,6 +146,9 @@ func ScopeToEnv(inv *Inventory, env string) (*Inventory, error) {
 		Environments:  map[string]Environment{env: e},
 	}, nil
 }
+
+// payload is what the pipeline ships to each server.
+type payload struct{ compose, envFile, envName string }
 
 // serverPair bundles a Server with its resolved TargetStatus.
 type serverPair struct {
@@ -199,7 +210,7 @@ func runLocal(_ context.Context, env Environment, _ []TargetStatus) ([]ServerRes
 }
 
 // deployOne deploys to a single non-app server (observability, db, worker).
-func deployOne(ctx context.Context, envName string, srv Server, ts TargetStatus, composePath string) ServerResult {
+func deployOne(ctx context.Context, envName string, srv Server, ts TargetStatus, pl payload) ServerResult {
 	if ts.Capability == CapReadOnly {
 		logSkipped(envName, srv.Name)
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "skipped", Primary: srv.Primary}
@@ -209,15 +220,17 @@ func deployOne(ctx context.Context, envName string, srv Server, ts TargetStatus,
 	cfg := deploy.SSHConfig{
 		Host:    srv.Host + ":" + srv.RemotePath,
 		KeyPath: keyPath,
+		EnvFile: pl.envFile,
+		EnvName: pl.envName,
 	}
-	if err := deployServerFn(ctx, cfg, composePath); err != nil {
+	if err := deployServerFn(ctx, cfg, pl.compose); err != nil {
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "failed", Err: err, Primary: srv.Primary}
 	}
 	return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "ok", Primary: srv.Primary}
 }
 
 // deployApp deploys to an app server, optionally wrapping with LB drain/re-add.
-func deployApp(ctx context.Context, envName string, srv Server, ts TargetStatus, composePath string, lbPresent bool, lbs []serverPair) ServerResult {
+func deployApp(ctx context.Context, envName string, srv Server, ts TargetStatus, pl payload, lbPresent bool, lbs []serverPair) ServerResult {
 	if ts.Capability == CapReadOnly {
 		logSkipped(envName, srv.Name)
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "skipped", Primary: srv.Primary}
@@ -238,8 +251,10 @@ func deployApp(ctx context.Context, envName string, srv Server, ts TargetStatus,
 	cfg := deploy.SSHConfig{
 		Host:    srv.Host + ":" + srv.RemotePath,
 		KeyPath: keyPath,
+		EnvFile: pl.envFile,
+		EnvName: pl.envName,
 	}
-	if err := deployServerFn(ctx, cfg, composePath); err != nil {
+	if err := deployServerFn(ctx, cfg, pl.compose); err != nil {
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "failed", Err: err, Primary: srv.Primary}
 	}
 

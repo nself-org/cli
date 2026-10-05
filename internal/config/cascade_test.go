@@ -375,19 +375,17 @@ func TestLoadCustomEnvNeverReadsDevLayer(t *testing.T) {
 	}
 }
 
-// TestLoadRemoteDeployDropsEnvLocal: with NSELF_DEPLOY_REMOTE=true (set by
-// nself deploy for a remote target) Load skips .env.local; without it the
-// personal override still wins.
+// TestLoadRemoteDeployDropsEnvLocal: after SetRemoteCascade(true) (the hidden
+// build flag nself deploy passes for a remote target) Load skips .env.local;
+// otherwise the personal override still wins.
 func TestLoadRemoteDeployDropsEnvLocal(t *testing.T) {
 	for _, remote := range []bool{false, true} {
 		dir := t.TempDir()
 		t.Setenv("ENV", "qa")
 		t.Setenv("BASE_DOMAIN", "")
 		t.Setenv("NSELF_LEGACY_ENV_ORDER", "")
-		t.Setenv(DeployRemoteVar, "")
-		if remote {
-			t.Setenv(DeployRemoteVar, "true")
-		}
+		SetRemoteCascade(remote)
+		t.Cleanup(func() { SetRemoteCascade(false) })
 		for n, b := range map[string]string{".env.qa": "BASE_DOMAIN=qa.example.test\n", ".env.local": "BASE_DOMAIN=laptop.example.test\n"} {
 			if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
 				t.Fatal(err)
@@ -407,5 +405,27 @@ func TestLoadRemoteDeployDropsEnvLocal(t *testing.T) {
 	}
 	if got := WithoutLocalOverride([]string{".env", ".env.local", ".env.prod"}); len(got) != 2 || got[0] != ".env" || got[1] != ".env.prod" {
 		t.Errorf("WithoutLocalOverride = %v", got)
+	}
+}
+
+// TestExportedRemoteVarHasNoEffect: a user-exported NSELF_DEPLOY_REMOTE=true
+// changes nothing; only the caller's SetRemoteCascade does.
+func TestExportedRemoteVarHasNoEffect(t *testing.T) {
+	SetRemoteCascade(false)
+	dir := t.TempDir()
+	t.Setenv("ENV", "qa")
+	t.Setenv("BASE_DOMAIN", "")
+	t.Setenv("NSELF_DEPLOY_REMOTE", "true")
+	for n, b := range map[string]string{".env.qa": "BASE_DOMAIN=qa.example.test\n", ".env.local": "BASE_DOMAIN=laptop.example.test\n"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BaseDomain != "laptop.example.test" {
+		t.Errorf("exported NSELF_DEPLOY_REMOTE changed the cascade: BASE_DOMAIN=%q", cfg.BaseDomain)
 	}
 }

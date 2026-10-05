@@ -198,6 +198,23 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 		return true, nil
 	}
 
+	// A remote pipeline deploy ships a fresh remote build and the validated env
+	// snapshot, never whatever compose a previous (possibly local) build left.
+	// Either failing stops here, before any probe or remote change.
+	envFile, envName := "", ""
+	if target != "local" {
+		if _, buildErr := deployBuildStepFn(cmd.Context(), workdir, true, nil); buildErr != nil {
+			return true, fmt.Errorf("deploy: remote build failed, nothing was sent: %w", buildErr)
+		}
+		envName = deployCascadeEnv(workdir, target)
+		snap, cleanup, snapErr := writeResolvedDeployEnv(workdir, envName)
+		if snapErr != nil {
+			return true, fmt.Errorf("deploy: env snapshot failed, nothing was sent: %w", snapErr)
+		}
+		defer cleanup()
+		envFile = snap
+	}
+
 	// Execute via topology-aware pipeline.
 	prober := newDeployProber(workdir)
 	composePath := filepath.Join(workdir, "docker-compose.yml")
@@ -206,7 +223,7 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 		ui.CommandHeader(fmt.Sprintf("nself deploy %s (pipeline)", target), fmt.Sprintf("strategy=%s server=%s", strategy, serverFilter))
 	}
 
-	result, pipeErr := controlplane.Run(cmd.Context(), inv, target, prober, composePath)
+	result, pipeErr := controlplane.RunWithEnv(cmd.Context(), inv, target, prober, composePath, envFile, envName)
 	if pipeErr != nil {
 		return true, fmt.Errorf("deploy pipeline: %w", pipeErr)
 	}

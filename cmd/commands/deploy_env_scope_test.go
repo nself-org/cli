@@ -50,6 +50,13 @@ func (p *scopeProber) KeyState(s controlplane.Server) (bool, string) {
 	return true, "/nonexistent/key"
 }
 
+// scopeBuilds records the remote flag of each build the fixture stub saw;
+// scopeBuildErr, when set, makes that build fail.
+var (
+	scopeBuilds   []bool
+	scopeBuildErr error
+)
+
 // scopeFixture creates a project dir with a three-env inventory (qa, staging,
 // prod, one host each), makes it the cwd, isolates deploy env vars, and
 // installs the recording prober. It returns the dir and the prober.
@@ -73,6 +80,14 @@ func scopeFixture(t *testing.T, unreachable bool) (string, *scopeProber) {
 	orig := newDeployProber
 	newDeployProber = func(string) controlplane.Prober { return p }
 	t.Cleanup(func() { newDeployProber = orig })
+	// No pipeline test may run the real build: stub it, recording the remote flag.
+	scopeBuilds, scopeBuildErr = nil, nil
+	origBuild := deployBuildStepFn
+	deployBuildStepFn = func(_ context.Context, _ string, remote bool, steps []deployStep) ([]deployStep, error) {
+		scopeBuilds = append(scopeBuilds, remote)
+		return steps, scopeBuildErr
+	}
+	t.Cleanup(func() { deployBuildStepFn = origBuild })
 	return dir, p
 }
 
@@ -86,7 +101,7 @@ func isolateDeployEnv(t *testing.T) {
 			t.Setenv(k, "")
 		}
 	}
-	for _, k := range []string{"NSELF_DEPLOY_ENV", "NSELF_DEPLOY_REMOTE", "ENV", "STAGING_DEPLOY_HOST", "PROD_DEPLOY_HOST", "QA_DEPLOY_HOST"} {
+	for _, k := range []string{"NSELF_DEPLOY_ENV", "ENV", "STAGING_DEPLOY_HOST", "PROD_DEPLOY_HOST", "QA_DEPLOY_HOST"} {
 		t.Setenv(k, "")
 	}
 }
@@ -218,7 +233,7 @@ func TestDeployLegacyNoSilentExit(t *testing.T) {
 
 	builds := 0
 	origBuild := deployBuildStepFn
-	deployBuildStepFn = func(_ context.Context, _ string, steps []deployStep) ([]deployStep, error) {
+	deployBuildStepFn = func(_ context.Context, _ string, _ bool, steps []deployStep) ([]deployStep, error) {
 		builds++
 		return steps, nil
 	}
@@ -425,7 +440,7 @@ func opusStubBuildPush(t *testing.T) (builds, pushes *int) {
 	t.Helper()
 	b, p := 0, 0
 	ob, op := deployBuildStepFn, remoteDeployPushFn
-	deployBuildStepFn = func(_ context.Context, _ string, s []deployStep) ([]deployStep, error) { b++; return s, nil }
+	deployBuildStepFn = func(_ context.Context, _ string, _ bool, s []deployStep) ([]deployStep, error) { b++; return s, nil }
 	remoteDeployPushFn = func(context.Context, string, string, string, bool) error { p++; return errors.New("stub push") }
 	t.Cleanup(func() { deployBuildStepFn, remoteDeployPushFn = ob, op })
 	return &b, &p
@@ -701,7 +716,7 @@ func TestR2ProductionSnapshotRemoteName(t *testing.T) {
 	t.Setenv("NSELF_DEPLOY_HOST_PRODUCTION", "u@p.example.test:/opt/nself")
 	var gotTarget string
 	ob, op := deployBuildStepFn, remoteDeployPushFn
-	deployBuildStepFn = func(_ context.Context, _ string, s []deployStep) ([]deployStep, error) { return s, nil }
+	deployBuildStepFn = func(_ context.Context, _ string, _ bool, s []deployStep) ([]deployStep, error) { return s, nil }
 	remoteDeployPushFn = func(_ context.Context, _ string, _ string, target string, _ bool) error {
 		gotTarget = target
 		return errors.New("stub")
@@ -838,6 +853,8 @@ func TestRemoteDeployNeverReadsEnvLocal(t *testing.T) {
 		}
 		loadDeployEnvCascade(dir, tc.target)
 		if tc.target == "qa" || tc.target == "local" { // the child build (staging/prod Load demands real secrets)
+			config.SetRemoteCascade(tc.target != "local") // what `build --deploy-remote` does
+			t.Cleanup(func() { config.SetRemoteCascade(false) })
 			if _, err := config.Load(dir); err != nil {
 				t.Fatal(err)
 			}
@@ -895,5 +912,110 @@ func TestSnapshotLiteralDollarStaysLiteral(t *testing.T) {
 	}
 	if enc, _ := encodeEnvValue("$A"); enc == "$A" {
 		t.Errorf("a value with $ must never be written bare, got %q", enc)
+	}
+}
+
+// fakeShipBin puts fake ssh and rsync (exit 0, rsync logs its argv) alone on
+// PATH and returns the log path; nothing real can run.
+func fakeShipBin(t *testing.T) string {
+	t.Helper()
+	bin := t.TempDir()
+	log := filepath.Join(bin, "rsync.log")
+	if err := os.WriteFile(filepath.Join(bin, "rsync"), []byte("#!/bin/sh\nfor a in \"$@\"; do echo \"$a\"; done >> "+log+"\necho -- >> "+log+"\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	key := filepath.Join(bin, "key")
+	if err := os.WriteFile(key, []byte("k"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("NSELF_SSH_KEY_X", key)
+	return log
+}
+
+// TestPipelineBuildsRemoteAndShipsSnapshot: a remote pipeline deploy runs the
+// remote build, then ships the compose AND the resolved env snapshot (no
+// .env.local values, no .env.dev) as .env.qa.
+func TestPipelineBuildsRemoteAndShipsSnapshot(t *testing.T) {
+	dir, _ := scopeFixture(t, false)
+	for n, b := range map[string]string{".env": "API_URL=base\n", ".env.qa": "API_URL=qa\n", ".env.local": "LAPTOP_ONLY=secret\n", ".env.dev": "DEV_ONLY=1\n", "docker-compose.yml": "services: {}\n"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log := fakeShipBin(t)
+	if err := runDeployArgs(t, nil, "qa"); err != nil {
+		t.Fatalf("deploy qa: %v", err)
+	}
+	if len(scopeBuilds) != 1 || !scopeBuilds[0] {
+		t.Fatalf("builds = %v, want one remote build", scopeBuilds)
+	}
+	b, _ := os.ReadFile(log)
+	out := string(b)
+	if !strings.Contains(out, "docker-compose.yml") || !strings.Contains(out, "/opt/nself/.env.qa") {
+		t.Errorf("rsync did not ship both compose and .env.qa:\n%s", out)
+	}
+	// the snapshot file is gone after the deploy; check what it held via a rebuild
+	snap, cleanup, err := writeResolvedDeployEnv(dir, "qa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	sb, _ := os.ReadFile(snap)
+	if strings.Contains(string(sb), "LAPTOP_ONLY") || strings.Contains(string(sb), "DEV_ONLY") || !strings.Contains(string(sb), "API_URL=qa") {
+		t.Errorf("snapshot wrong:\n%s", sb)
+	}
+}
+
+// TestPipelineBuildOrSnapshotFailureStopsBeforeProbe: if the remote build or the
+// snapshot fails, nothing is probed or shipped, so a stale local compose can
+// never reach a host.
+func TestPipelineBuildOrSnapshotFailureStopsBeforeProbe(t *testing.T) {
+	for _, mode := range []string{"build", "snapshot"} {
+		dir, p := scopeFixture(t, false)
+		log := fakeShipBin(t)
+		if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte("services: {}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if mode == "build" {
+			scopeBuildErr = errors.New("stub build failed")
+		} else if err := os.WriteFile(filepath.Join(dir, ".env.qa"), []byte("A=\"unterminated\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		err := runDeployArgs(t, nil, "qa")
+		if err == nil || !strings.Contains(err.Error(), "nothing was sent") {
+			t.Errorf("%s failure: err = %v, want a stop before sending", mode, err)
+		}
+		if len(p.hosts) != 0 {
+			t.Errorf("%s failure still probed %v", mode, p.hosts)
+		}
+		if b, _ := os.ReadFile(log); len(b) != 0 {
+			t.Errorf("%s failure still shipped:\n%s", mode, b)
+		}
+	}
+}
+
+// TestDeployBuildPassesHiddenRemoteFlag: a remote deploy's build gets
+// --deploy-remote, a local one does not, and the flag exists on `build` but is
+// hidden from help.
+func TestDeployBuildPassesHiddenRemoteFlag(t *testing.T) {
+	dir := t.TempDir()
+	has := func(a []string) bool {
+		for _, x := range a {
+			if x == "--deploy-remote" {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(deployBuildArgsFor(dir, true)) || has(deployBuildArgsFor(dir, false)) {
+		t.Errorf("args remote=%v local=%v", deployBuildArgsFor(dir, true), deployBuildArgsFor(dir, false))
+	}
+	f := buildCmd.Flags().Lookup("deploy-remote")
+	if f == nil || !f.Hidden {
+		t.Errorf("build --deploy-remote must exist and be hidden: %+v", f)
 	}
 }

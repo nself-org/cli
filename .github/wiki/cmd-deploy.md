@@ -58,7 +58,7 @@ A deploy to a remote environment with no host (no inventory entry and no `NSELF_
 is refused with `E483` before anything is built; it never deploys on the current machine. The
 blue/green canary flags apply to `local` only; with a remote environment they are refused. In the
 control-plane pipeline, a server whose deploy fails makes the command exit non-zero and lists it.
-A prod-class environment always uses the `prod` env cascade and is written to `.env.prod` on the host. The env file pushed to the host is read with the same dotenv reader as the build, so both see the same values. An inventory with two environment names that differ only by case is refused, here and in `nself deploy environments`. 
+With a `.nself/control-plane.yaml`, a remote deploy first runs the same remote build (no `.env.local`) and writes the validated env snapshot, then ships both the compose file and `.env.<env>` to every server; if the build or snapshot fails nothing is probed or sent. A prod-class environment always uses the `prod` env cascade and is written to `.env.prod` on the host. The env file pushed to the host is read with the same dotenv reader as the build, so both see the same values. An inventory with two environment names that differ only by case is refused, here and in `nself deploy environments`. 
 ## Deploy Strategies
 
 | Strategy | Status | Behavior |

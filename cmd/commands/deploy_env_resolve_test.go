@@ -152,7 +152,6 @@ func TestLoadDeployEnvCascade_SetsENVForConfigLoad(t *testing.T) {
 	t.Setenv("ENV", "")
 	t.Setenv("NSELF_DEPLOY_ENV", "")
 
-	t.Setenv("NSELF_DEPLOY_REMOTE", "")
 	loadDeployEnvCascade(dir, "staging")
 
 	if got := os.Getenv("ENV"); got != "staging" {

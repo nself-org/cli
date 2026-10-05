@@ -330,7 +330,6 @@ This registers a Node.js service named `ping_api` accessible at `ping.{BASE_DOMA
 |---|---|---|---|---|
 | `NSELF_DEPLOY_KEY_PATH` | string | *(empty)* | No | Path to the SSH private key used for remote deploys. Overrides `NSELF_DEPLOY_SSH_KEY` when set. Example: `~/.ssh/nself_deploy_ed25519`. |
 | `NSELF_DEPLOY_HOST_<ENV>` | string | *(empty)* | No | Single-host deploy target for the environment `<ENV>`, as `user@host:/remote/path`. One variable per environment: `NSELF_DEPLOY_HOST_STAGING`, `NSELF_DEPLOY_HOST_PROD`, or any other such as `NSELF_DEPLOY_HOST_QA`, which makes `qa` a deploy target. `nself deploy <env>` deploys only that environment and refuses an unknown one with E483. |
-| `NSELF_DEPLOY_REMOTE` | bool | *(unset)* | No | Set to `true` by `nself deploy` for the build it spawns when the target is a remote host, so the build drops `.env.local` exactly as the pushed env file does. Internal; do not set it by hand. |
 | `HETZNER_NSELF_TOKEN` | string | *(empty)* | No | Hetzner Cloud API token. When set, `nself access grant` calls the Hetzner Cloud API after a successful grant and warns about any SSH key registered at the Hetzner project level that is absent from the target server's `authorized_keys` — a key added to the project believing it grants access everywhere does nothing for an already-running server. Unset skips the check entirely; it is never required for `nself access` itself to work. |
 
 ---
