@@ -99,6 +99,10 @@ CS_1=ping_api:rust-axum:8001:/ping
 
 Custom services follow the same isolation rules as built-in services: they bind to `127.0.0.1` and are only reachable externally through Nginx at the route you specify.
 
+## Command Registry
+
+The CLI describes itself from one source. The cobra command tree supplies each command's path, summary, flags and arguments; one declared file, `internal/canon/canon.yaml`, supplies what cobra cannot know (canon status, side effect, output kind, JSON support). `internal/cmdregistry` combines them into a deterministic registry document. That document is published as `nself help --json` and as the generated `.github/command-registry.json`, and `.github/command-inventory.json` is a projection of it, so no second tree walker can drift. Fields, enums and the rule for adding a command are on [[Command-Registry]].
+
 ## Plugin Installer Security Model
 
 The plugin installer (`internal/plugin/installer.go`) enforces a layered security model:

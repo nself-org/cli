@@ -1,5 +1,3 @@
-package commands
-
 // JSON data-type registration for the command registry.
 //
 // Purpose: the one fact the declarative canon.yaml cannot hold is the Go type
@@ -16,11 +14,26 @@ package commands
 //     mode; in v1.4 mode it keeps its pre-contract behaviour (D8: `config get`,
 //     `config list`, `config show` accepted and ignored --json before P7-REG).
 //
-// Both maps are empty in P7-REG-05; P7-REG-07 and P7-REG-09 add entries.
+// P7-REG-07 registers `help` (the first envelope command); P7-REG-09 adds the
+// pilots. jsonV15OnlyEnvelope stays empty until then.
+
+package commands
+
+import "github.com/nself-org/cli/internal/cmdregistry"
 
 // jsonDataTypes maps a command path to the Go type of its envelope data.
-var jsonDataTypes = map[string]any{}
+var jsonDataTypes = map[string]any{
+	// `help --json` answers with the registry document itself.
+	"help": cmdregistry.Registry{},
+}
 
 // jsonV15OnlyEnvelope lists the paths in jsonDataTypes whose envelope is
 // visible only when compat.V15() is true.
 var jsonV15OnlyEnvelope = map[string]bool{}
+
+// BuildRegistry builds the registry of the live RootCmd tree for the given
+// compat mode, uncached. It is the entry point for tools/cmdinventory, which
+// documents the v1.5 contract (BuildRegistry(true)) in
+// .github/command-registry.json, so the generated file, `help --json` and the
+// decorator all come from the same preparation and the same data-type maps.
+func BuildRegistry(v15 bool) (*cmdregistry.Registry, error) { return buildRegistry(v15) }
