@@ -10,11 +10,17 @@
 //	generator makes the gap visible and, for the wiki column, blocks
 //	CI on it.
 //
-// Inputs:      .github/command-inventory.json (tools/cmdinventory's output —
+// Mode:        documents the v1.5 surface. main sets NSELF_V15=1 in its own
 //
-//	reused as the authoritative top-level command list rather than
-//	re-walking the cobra tree, so this tool needs no cmd/commands
-//	import), .github/wiki/cmd-<name>.md (wiki column), cmd/commands/
+//	process (compat.V15 reads the environment on every call) and calls
+//	commands.PrepareTreeForGeneration; the top-level command list is
+//	the prepared tree's registry (builtin families only, never an
+//	installed plugin, canon "plugin" entries dropped), the same list
+//	tools/cmdinventory projects.
+//
+// Inputs:      the prepared command registry (see Mode),
+//
+//	.github/wiki/cmd-<name>.md (wiki column), cmd/commands/
 //	mcp.go + mcp_sentry.go (MCP column, read as text — see mcptools.go
 //	for the matching rule), cmd/commands/<name>*.go + .github/wiki/
 //	Config-Env-Vars.md (env column, see envvars.go for the extraction
@@ -43,7 +49,6 @@ import (
 )
 
 const (
-	inventoryPath  = ".github/command-inventory.json"
 	mcpMainPath    = "cmd/commands/mcp.go"
 	mcpSentryPath  = "cmd/commands/mcp_sentry.go"
 	envVarsWiki    = ".github/wiki/Config-Env-Vars.md"
@@ -56,6 +61,8 @@ const (
 func main() {
 	check := flag.Bool("check", false, "verify committed output matches regenerated output; write nothing")
 	flag.Parse()
+
+	defer prepareV15()()
 
 	rows, err := buildMatrix()
 	if err != nil {
@@ -88,7 +95,7 @@ func main() {
 // buildMatrix loads the command inventory and scores every top-level command
 // against the four surfaces.
 func buildMatrix() ([]Row, error) {
-	entries, err := loadInventory(inventoryPath)
+	entries, err := liveInventory()
 	if err != nil {
 		return nil, fmt.Errorf("load inventory: %w", err)
 	}

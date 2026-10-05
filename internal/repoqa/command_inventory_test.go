@@ -46,6 +46,29 @@ func TestCommandInventoryIsCurrent(t *testing.T) {
 	}
 }
 
+// TestCommandCanonPageIsCurrent fails when .github/wiki/Command-Canon.md no
+// longer matches the canon rows (a fragment changed without `make
+// cmd-inventory`, or someone hand-edited the generated table). The page's
+// removal-plan PROSE block is the one hand-written part and is carried over.
+func TestCommandCanonPageIsCurrent(t *testing.T) {
+	root := repoRoot(t)
+	page := filepath.Join(root, ".github", "wiki", "Command-Canon.md")
+	committed, err := os.ReadFile(page)
+	if err != nil {
+		t.Fatalf("read Command-Canon.md: %v (run `make cmd-inventory`)", err)
+	}
+	gen := exec.Command("go", "run", "-mod=vendor", "./tools/cmdinventory", "-format", "canon", "-prose-from", page)
+	gen.Dir = root
+	gen.Env = append(os.Environ(), "CGO_ENABLED=0")
+	live, err := gen.Output()
+	if err != nil {
+		t.Fatalf("regenerate canon page: %v", err)
+	}
+	if normalizeEOL(string(committed)) != normalizeEOL(string(live)) {
+		t.Fatal("Command-Canon.md is stale or hand-edited — run `make cmd-inventory` and commit the result")
+	}
+}
+
 // TestPublishedCommandCountMatchesBinary checks the human-readable count in the
 // generated wiki index against the machine-readable inventory, so the two
 // generated artifacts can never disagree with each other.

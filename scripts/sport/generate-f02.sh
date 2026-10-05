@@ -10,6 +10,9 @@
 #                                           v1.5 document `nself help --json`
 #                                           serves; committed)
 #          .github/wiki/Commands.md        (public command index, committed)
+#          .github/wiki/Command-Canon.md   (every old spelling and where it went
+#                                           in v1.5; the removal-plan PROSE block
+#                                           is kept across runs; committed)
 #          $NSELF_SPORT_DIR/F02-COMMAND-INVENTORY.md when the dir exists.
 # Constraints: read-only against the source tree; must be idempotent so CI can
 #              assert "regenerating produces no diff".
@@ -20,12 +23,18 @@ cd "$(dirname "$0")/../.."
 JSON_OUT=".github/command-inventory.json"
 REG_OUT=".github/command-registry.json"
 WIKI_OUT=".github/wiki/Commands.md"
+CANON_OUT=".github/wiki/Command-Canon.md"
 
 echo "Generating $JSON_OUT ..."
 CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format json -depth 2 > "$JSON_OUT"
 
 echo "Generating $REG_OUT ..."
 CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format registry > "$REG_OUT"
+
+echo "Generating $CANON_OUT ..."
+CANON_TMP=$(mktemp)
+CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format canon -prose-from "$CANON_OUT" > "$CANON_TMP"
+mv "$CANON_TMP" "$CANON_OUT"
 
 COUNT=$(CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format names | wc -l | tr -d ' ')
 
