@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/nself-org/cli/internal/plugin/manifestv2"
 )
 
 // Linking a CLI-type plugin's binary into the directory the command proxy reads.
@@ -59,24 +61,15 @@ func cliBinaryNames(name string, m *PluginManifest) []string {
 	if m == nil {
 		return nil
 	}
-	if m.PluginType != "" && m.PluginType != "cli" {
-		return nil
+	cmds := make([]string, 0, len(m.CLICommands))
+	for _, c := range m.CLICommands {
+		cmds = append(cmds, c.Name)
 	}
-	if len(m.CLICommands) > 0 {
-		out := make([]string, 0, len(m.CLICommands))
-		for _, c := range m.CLICommands {
-			if c.Name != "" {
-				out = append(out, "nself-"+c.Name)
-			}
-		}
-		if len(out) > 0 {
-			return out
-		}
+	var out []string
+	for _, t := range manifestv2.CLITargets(name, m.PluginType, m.BinaryName, cmds) {
+		out = append(out, t.Binary)
 	}
-	if single := cliBinaryName(name, m); single != "" {
-		return []string{single}
-	}
-	return nil
+	return out
 }
 
 // cliBinaryName returns the binary name a single-command CLI plugin installs,
