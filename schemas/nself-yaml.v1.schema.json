@@ -75,5 +75,8 @@
       "description": "Plugins to wire in: a flat list of names, or a map with free and pro lists."
     }
   },
-  "type": "object"
+  "type": [
+    "object",
+    "null"
+  ]
 }

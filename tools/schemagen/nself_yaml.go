@@ -53,6 +53,7 @@ func init() {
 		set("", map[string]any{
 			"description":          "nself.yaml: the project manifest nself build reads. Unknown keys are findings; keys starting with x- are extensions and are ignored.",
 			"additionalProperties": false, "patternProperties": ext,
+			"type": []any{"object", "null"}, // an empty or ~ document is a zero manifest, as in build
 		}),
 	}
 	for n, t := range nsbuild.ManifestFields(reflect.TypeOf(nsbuild.ProjectManifest{})) {

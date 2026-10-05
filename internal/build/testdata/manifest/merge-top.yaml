@@ -1,0 +1,4 @@
+x-defaults: &defaults
+  app: demo
+  project: demo
+<<: *defaults

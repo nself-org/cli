@@ -69,6 +69,14 @@ func TestManifestValidate(t *testing.T) {
 		{"plugins scalar", "type-error.yaml", []string{"2 E435 plugins"}},
 		{"int app and string bundles", "int-app.yaml", []string{"1 E435 app", "2 E435 bundles"}},
 		{"root is a list", "root-list.yaml", []string{"1 E435 "}},
+		{"root null", "null-root.yaml", []string{}},
+		{"merge map", "merge-map.yaml", []string{}},
+		{"merge list of anchors", "merge-seq.yaml", []string{}},
+		{"merge: unknown and wrong-typed merged keys, explicit key wins", "merge-bad.yaml", []string{"3 E436 plugins.paid"}},
+		{"merge at the top level", "merge-top.yaml", []string{"3 E436 project"}},
+		{"duplicate top-level key", "dup-key.yaml", []string{"3 E435 app"}},
+		{"duplicate nested key", "dup-nested.yaml", []string{"3 E435 plugins.free"}},
+		{"coerced scalars", "scalar-coerced.yaml", []string{"1 E435 app", "2 E435 bundle", "3 E435 bundles[0]", "3 E435 bundles[1]"}},
 	}
 	compattest.Both(t, func(t *testing.T) {
 		for _, c := range cases {
@@ -84,6 +92,24 @@ func TestManifestValidate(t *testing.T) {
 			}
 		}
 	})
+}
+
+// A second YAML document is ignored by build: always a warning, in both modes.
+func TestManifestValidateMultiDocument(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		fs := validateFixture(t, "multidoc.yaml")
+		if len(fs) != 1 || fs[0].Severity != SeverityWarning || fs[0].Line != 3 || !strings.Contains(fs[0].Message, "ignored") {
+			t.Errorf("multi-document findings: %+v", fs)
+		}
+	})
+}
+
+// The wording of a coerced scalar must tell the user to quote it.
+func TestManifestValidateQuoteHint(t *testing.T) {
+	f := validateFixture(t, "scalar-coerced.yaml")[0]
+	if !strings.Contains(f.Fix, `quote it: "true"`) || !strings.Contains(f.Message, "bool") {
+		t.Errorf("finding = %+v", f)
+	}
 }
 
 func TestManifestValidateNeverSwallowsErrors(t *testing.T) {
@@ -171,6 +197,21 @@ func TestLoadProjectManifestUnchanged(t *testing.T) {
 	if _, err = load("nclaw.yaml"); err == nil {
 		t.Error("nclaw plugins.pro map entries must still fail in build")
 	}
+	if m, err = load("merge-seq.yaml"); err != nil || !reflect.DeepEqual(m.Plugins.Free, []string{"cron"}) || !reflect.DeepEqual(m.Plugins.Pro, []string{"ai"}) {
+		t.Errorf("build honours merge keys, got %+v %v", m, err)
+	}
+	if _, err = load("dup-key.yaml"); err == nil {
+		t.Error("build rejects duplicate keys")
+	}
+	if m, err = load("multidoc.yaml"); err != nil || m.App != "a" {
+		t.Errorf("build reads the first document only, got %+v %v", m, err)
+	}
+	if m, err = load("null-root.yaml"); err != nil || m == nil {
+		t.Errorf("build accepts a null document, got %+v %v", m, err)
+	}
+	if m, err = load("scalar-coerced.yaml"); err != nil || m.App != "true" || m.Bundle != "1.5" {
+		t.Errorf("build coerces scalars to strings, got %+v %v", m, err)
+	}
 	if m, err = load("nchat.yaml"); err != nil || m.App != "" {
 		t.Errorf("nchat load: %+v %v", m, err)
 	}
@@ -250,10 +291,25 @@ func TestManifestValidateAgreesWithSchema(t *testing.T) {
 		"inline-list-of-map":   "plugins: [{a: b}]\n",
 		"inline-bundles-null":  "bundles: [a, ~]\n",
 		"inline-alias":         "x-base: &b [cron]\nplugins: *b\n",
+		"inline-null-root":     "null\n",
 	}
 	cases := map[string][]byte{}
+	// The schema validates a JSON tree, which has no merge keys, duplicate
+	// keys or second documents; for those files the Go validator is
+	// authoritative (see manifest_validate.go), so they are not compared.
+	skip := func(name string) bool {
+		return strings.HasPrefix(name, "merge-") || strings.HasPrefix(name, "dup-") || strings.HasPrefix(name, "multidoc")
+	}
+	skipped := 0
 	for _, f := range files {
+		if skip(filepath.Base(f)) {
+			skipped++
+			continue
+		}
 		cases[filepath.Base(f)] = readManifestFixture(t, filepath.Base(f))
+	}
+	if skipped < 5 {
+		t.Errorf("expected the merge/dup/multidoc fixtures to be skipped, skipped %d", skipped)
 	}
 	for k, v := range extra {
 		cases[k] = []byte(v)

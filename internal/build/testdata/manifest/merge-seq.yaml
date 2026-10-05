@@ -1,0 +1,4 @@
+x-a: &a {free: [cron]}
+x-b: &b {pro: [ai]}
+plugins:
+  <<: [*a, *b]

@@ -37,12 +37,22 @@ A key that starts with `x-` is an extension. nself ignores it and the validator 
 | Code | Finding |
 |---|---|
 | E436 | An unknown key, at any depth the types describe (for example `plugins.required`). The fix names a close match when there is one (`project` suggests `app`) and the `x-` rename. |
-| E435 | A syntax error, an unreadable file, or a value of the wrong type (`plugins: 7`, a plugin entry that is a map, a non-string `app`). |
+| E435 | A syntax error, an unreadable file, a duplicate key (the finding names the key and the line of the first one; `nself build` rejects it too), or a value of the wrong type (`plugins: 7`, a plugin entry that is a map, a non-string `app`). |
 
 | Mode | Findings are | Exit status |
 |---|---|---|
 | v1.4 (default) | warnings | unchanged: `config validate` exits as it did without the check |
 | v1.5 (opt in; see [[Compat-V15]]) | errors | 1 when there is any finding |
+
+### Scalars that build coerces: quote them
+
+`nself build` turns a number, boolean or date written where a string belongs into text (`app: true` becomes `"true"`, `bundle: 1.5` becomes `"1.5"`, `app: 2024-01-01` becomes a date string). That is rarely what you meant, so the validator reports it as E435 and the fix is to quote the value: `app: "1.5"`. (YAML 1.2 readers keep `no` and `yes` as text, so those need no quotes.)
+
+### Merge keys, extra documents, empty files
+
+- Merge keys (`<<: *anchor`, or `<<: [*a, *b]`) are resolved, and the merged keys are validated like explicit ones; explicit keys win. The JSON Schema cannot see merges, so for a file that uses `<<` the validator is authoritative and the schema is not compared.
+- Only the first YAML document is read. A later document (after `---`) is ignored by `nself build`; the validator says so with a warning in both modes.
+- An empty file, or one holding only `~` or `null`, is an empty manifest: valid, and the schema accepts a null document.
 
 See [[Compat-V15]] and [[error-codes]]. `nself build` parsing is not changed by the validator: a file that builds today still builds.
 

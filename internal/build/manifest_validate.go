@@ -1,22 +1,20 @@
 package build
 
-// Purpose: validate a project's nself.yaml against the shape of
-//          ProjectManifest and report every deviation with its line, so a
-//          silently ignored key or a wrong-typed value becomes a visible finding.
-// Inputs:  a manifest path (ValidateManifestFile) or bytes (ValidateManifestBytes).
-// Outputs: []Finding, ordered by line. Code E436 = unknown key, E435 = syntax
-//          or type error. A clean file returns nil. A file that cannot be read
-//          or parsed is itself a finding, never "valid".
-// Constraints: the checks are derived by reflection from the yaml tags of
-//          ProjectManifest and ManifestPlugins, so they follow the type.
-//          Keys starting with "x-" are extension keys and are skipped at every
-//          depth. Parsing in LoadProjectManifest is not changed by this file.
-//          tools/schemagen builds schemas/nself-yaml.v1.schema.json from the
-//          same type; TestManifestValidateAgreesWithSchema keeps both honest.
-// SPORT: contract:config.nself-yaml.
+// Purpose: validate nself.yaml against ProjectManifest and report every
+//          deviation with its line (E436 unknown key, E435 syntax, type or
+//          duplicate-key error). Unreadable or unparsable files are findings,
+//          never "valid". Findings warn in v1.4 and fail in v1.5.
+// Constraints: checks are derived by reflection from the yaml tags, follow
+//          what LoadProjectManifest accepts (merge keys resolved, first YAML
+//          document only), and skip x- extension keys at every depth. The JSON
+//          Schema (tools/schemagen) cannot see merge keys: for such a file this
+//          validator is authoritative. SPORT: contract:config.nself-yaml.
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -28,19 +26,14 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 )
 
-// Finding codes (registered in internal/errs/codes_nself_yaml.go).
+// Finding codes (internal/errs/codes_nself_yaml.go), the extension-key prefix
+// nself ignores, and the severities (only SeverityError fails validation).
 const (
 	CodeManifestType    = "E435"
 	CodeManifestUnknown = "E436"
-)
-
-// ExtensionPrefix marks a key nself ignores: app metadata that nself does not read.
-const ExtensionPrefix = "x-"
-
-// Finding severities. Both are reported; only SeverityError fails validation.
-const (
-	SeverityWarning = "warning"
-	SeverityError   = "error"
+	ExtensionPrefix     = "x-"
+	SeverityWarning     = "warning"
+	SeverityError       = "error"
 )
 
 // Finding is one deviation in nself.yaml.
@@ -57,11 +50,11 @@ type Finding struct {
 
 // String renders "file:line:col: severity: path: [code] message (fix)".
 func (f Finding) String() string {
-	return fmt.Sprintf("%s:%d:%d: %s: %s: [%s] %s (%s)", f.File, f.Line, f.Column, f.Severity, f.Path, f.Code, f.Message, f.Fix)
+	return fmt.Sprintf("%s:%d:%d: %s: %s: [%s] %s (%s)",
+		f.File, f.Line, f.Column, f.Severity, f.Path, f.Code, f.Message, f.Fix)
 }
 
-// ManifestPath returns the manifest in workdir that LoadProjectManifest reads
-// (the first of nself.yaml, nself.yml that exists), or "" when there is none.
+// ManifestPath returns the manifest LoadProjectManifest reads in workdir, or "".
 func ManifestPath(workdir string) string {
 	for _, name := range manifestFilenames {
 		p := filepath.Join(workdir, name)
@@ -72,8 +65,7 @@ func ManifestPath(workdir string) string {
 	return ""
 }
 
-// ValidateManifestFile validates the manifest at path. An unreadable file is a
-// finding, never a pass.
+// ValidateManifestFile validates the file at path; unreadable is a finding.
 func ValidateManifestFile(path string) []Finding {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -88,14 +80,26 @@ func ValidateManifestFile(path string) []Finding {
 func ValidateManifestBytes(name string, data []byte) []Finding {
 	c := &collector{file: name}
 	var doc yaml.Node
-	if err := yaml.Unmarshal(data, &doc); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	if err := dec.Decode(&doc); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil // empty file: a zero manifest, as in build
+		}
 		c.add(1, 1, "(file)", CodeManifestType, "invalid YAML: "+err.Error(), "fix the YAML syntax; nself build cannot read this file")
 		return c.out
 	}
-	if doc.Kind == 0 || len(doc.Content) == 0 { // empty file: a zero manifest
-		return nil
+	var extra yaml.Node
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) { // always a warning: build ignores them
+		line := extra.Line
+		if len(extra.Content) > 0 {
+			line = extra.Content[0].Line
+		}
+		c.out = append(c.out, Finding{File: name, Line: line, Column: 1, Path: "(document 2)", Code: CodeManifestType, Severity: SeverityWarning,
+			Message: "later YAML documents are ignored: nself reads only the first", Fix: "move its keys into the first document or remove it"})
 	}
-	c.walk(doc.Content[0], reflect.TypeOf(ProjectManifest{}), "")
+	if len(doc.Content) > 0 {
+		c.walk(doc.Content[0], reflect.TypeOf(ProjectManifest{}), "")
+	}
 	sort.SliceStable(c.out, func(i, j int) bool { return c.out[i].Line < c.out[j].Line })
 	return c.out
 }
@@ -105,7 +109,6 @@ type collector struct {
 	out  []Finding
 }
 
-// severity is the mode switch for every finding.
 func severity() string {
 	// compat.V15(P7-SURF-07): nself.yaml type errors and unknown keys warn -> fail (E435/E436)
 	if compat.V15() {
@@ -119,7 +122,7 @@ func (c *collector) add(line, col int, path, code, msg, fix string) {
 }
 
 func (c *collector) typeErr(n *yaml.Node, path, want string) {
-	c.add(n.Line, n.Column, path, CodeManifestType, fmt.Sprintf("expected %s, found %s", want, describe(n)), "change the value to "+want)
+	c.add(n.Line, n.Column, path, CodeManifestType, "expected "+want+", found "+describe(n), "change the value to "+want)
 }
 
 // describe names the kind of a YAML node for messages.
@@ -129,16 +132,13 @@ func describe(n *yaml.Node) string {
 		return "a map"
 	case yaml.SequenceNode:
 		return "a list"
-	case yaml.ScalarNode:
-		return "a " + strings.TrimPrefix(n.ShortTag(), "!!") + " (" + n.Value + ")"
 	}
-	return "a value of unknown kind"
+	return "a " + strings.TrimPrefix(n.ShortTag(), "!!") + " (" + n.Value + ")"
 }
 
 var pluginsType = reflect.TypeOf(ManifestPlugins{})
 
-// fields maps YAML key name to Go type for a struct. ManifestPlugins is the
-// map form of plugins: its Flat field is the list form, so it is not a key.
+// fields maps YAML key to Go type; ManifestPlugins.Flat is the list form, not a key.
 func fields(t reflect.Type) map[string]reflect.Type {
 	out := map[string]reflect.Type{}
 	for i := 0; i < t.NumField(); i++ {
@@ -160,8 +160,7 @@ func fields(t reflect.Type) map[string]reflect.Type {
 
 func isNull(n *yaml.Node) bool { return n.Kind == yaml.ScalarNode && n.ShortTag() == "!!null" }
 
-// walk checks node n against Go type t at path. A null value is the zero
-// value, except as a list item, where it is a type error.
+// walk checks n against Go type t; null is the zero value except as a list item.
 func (c *collector) walk(n *yaml.Node, t reflect.Type, path string) {
 	for n.Kind == yaml.AliasNode && n.Alias != nil {
 		n = n.Alias
@@ -199,24 +198,78 @@ func (c *collector) walk(n *yaml.Node, t reflect.Type, path string) {
 			c.walk(item, t.Elem(), ip)
 		}
 	case t.Kind() == reflect.String:
-		if n.Kind != yaml.ScalarNode || n.ShortTag() != "!!str" {
+		if n.Kind == yaml.ScalarNode && n.ShortTag() != "!!str" {
+			// build coerces these to a string (no -> "false"), which is rarely meant.
+			c.add(n.Line, n.Column, path, CodeManifestType,
+				fmt.Sprintf("expected a string, found %s: YAML reads it as a %s, not text", describe(n), strings.TrimPrefix(n.ShortTag(), "!!")),
+				fmt.Sprintf("quote it: %q", n.Value))
+		} else if n.Kind != yaml.ScalarNode {
 			c.typeErr(n, path, "a string")
 		}
 	}
 }
 
+// pairs returns mapping n's key/value pairs as build sees them: explicit keys,
+// then keys merged through "<<" (alias or list of aliases) that no explicit key
+// overrides. "<<" is never a key. Duplicate explicit keys are reported.
+func (c *collector) pairs(n *yaml.Node, path string) [][2]*yaml.Node {
+	var out [][2]*yaml.Node
+	var merges []*yaml.Node
+	seen := map[string]*yaml.Node{}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		k, v := n.Content[i], n.Content[i+1]
+		if k.ShortTag() == "!!merge" {
+			merges = append(merges, v)
+			continue
+		}
+		if first, dup := seen[k.Value]; dup {
+			c.add(k.Line, k.Column, joinPath(path, k.Value), CodeManifestType,
+				fmt.Sprintf("duplicate key %q (first at line %d)", k.Value, first.Line), "remove one of the two; nself build rejects duplicate keys")
+			continue
+		}
+		seen[k.Value] = k
+		out = append(out, [2]*yaml.Node{k, v})
+	}
+	for _, m := range merges {
+		srcs := []*yaml.Node{m}
+		if m.Kind == yaml.SequenceNode {
+			srcs = m.Content
+		}
+		for _, src := range srcs {
+			for src.Kind == yaml.AliasNode && src.Alias != nil {
+				src = src.Alias
+			}
+			if src.Kind != yaml.MappingNode {
+				c.typeErr(src, path, "a map (or a list of maps) after <<")
+				continue
+			}
+			for _, kv := range c.pairs(src, path) {
+				if _, over := seen[kv[0].Value]; !over {
+					seen[kv[0].Value] = kv[0]
+					out = append(out, kv)
+				}
+			}
+		}
+	}
+	return out
+}
+
+func joinPath(path, key string) string {
+	if path == "" {
+		return key
+	}
+	return path + "." + key
+}
+
 // object checks the keys of mapping n against the struct type t.
 func (c *collector) object(n *yaml.Node, t reflect.Type, path string) {
 	known := fields(t)
-	for i := 0; i+1 < len(n.Content); i += 2 {
-		k, v := n.Content[i], n.Content[i+1]
+	for _, kv := range c.pairs(n, path) {
+		k, v := kv[0], kv[1]
 		if strings.HasPrefix(k.Value, ExtensionPrefix) {
 			continue
 		}
-		kp := k.Value
-		if path != "" {
-			kp = path + "." + k.Value
-		}
+		kp := joinPath(path, k.Value)
 		ft, ok := known[k.Value]
 		if !ok {
 			c.add(k.Line, k.Column, kp, CodeManifestUnknown, fmt.Sprintf("unknown key %q: nself does not read it", k.Value), unknownFix(k.Value, known))
@@ -226,51 +279,22 @@ func (c *collector) object(n *yaml.Node, t reflect.Type, path string) {
 	}
 }
 
-// unknownFix is the fix text: a near-miss suggestion when one exists.
+// unknownFix suggests a known key (plural slip, or project for app) and the x- rename.
 func unknownFix(key string, known map[string]reflect.Type) string {
 	base := "rename to " + ExtensionPrefix + key + " if it is app metadata, or remove it; nself does not read it"
-	best, bestD := "", 3
+	lk := strings.ToLower(key)
 	names := make([]string, 0, len(known))
 	for k := range known {
 		names = append(names, k)
 	}
 	sort.Strings(names)
 	for _, k := range names {
-		d := editDistance(strings.ToLower(key), k)
-		if key == "project" && k == "app" {
-			d = 0 // the reference apps write project: where nself reads app:
+		if lk == k+"s" || lk+"s" == k || (key == "project" && k == "app") {
+			return fmt.Sprintf("did you mean %q? Otherwise %s", k, base)
 		}
-		if d < bestD {
-			best, bestD = k, d
-		}
-	}
-	if best != "" {
-		return fmt.Sprintf("did you mean %q? Otherwise %s", best, base)
 	}
 	return base
 }
 
-// editDistance is the Levenshtein distance between a and b.
-func editDistance(a, b string) int {
-	prev := make([]int, len(b)+1)
-	for j := range prev {
-		prev[j] = j
-	}
-	for i := 1; i <= len(a); i++ {
-		cur := make([]int, len(b)+1)
-		cur[0] = i
-		for j := 1; j <= len(b); j++ {
-			cost := 1
-			if a[i-1] == b[j-1] {
-				cost = 0
-			}
-			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
-		}
-		prev = cur
-	}
-	return prev[len(b)]
-}
-
-// ManifestFields returns the YAML keys the CLI reads for struct type t (use
-// ProjectManifest or ManifestPlugins) with their Go types, for generators.
+// ManifestFields returns the YAML keys read for t (ProjectManifest or ManifestPlugins).
 func ManifestFields(t reflect.Type) map[string]reflect.Type { return fields(t) }

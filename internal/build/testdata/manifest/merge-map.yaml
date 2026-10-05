@@ -1,0 +1,5 @@
+x-base: &base
+  free: [cron]
+plugins:
+  <<: *base
+  pro: [ai]
