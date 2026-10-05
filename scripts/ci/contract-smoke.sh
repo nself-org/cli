@@ -131,8 +131,9 @@ for sub in "show" "get PROJECT_NAME" "list"; do
   check "v14 $name --json: exit 0, no envelope" rc_out 0 ""
   check "v14 $name --json: output is not a v1 envelope" is_envelope_free
 done
-# The v1.5 escape hatch reproduces the v1.4 status JSON and the doctor report.
-STABLE='del(.timestamp) | if has("checks") then .checks |= map(if (.name | startswith("Disk space")) then del(.message) else . end) else . end'
+# The v1.5 escape hatch reproduces the v1.4 status JSON and the doctor report
+# (the free-disk figure of the "Disk space" check differs between two runs).
+STABLE='del(.timestamp) | if has("checks") then .checks |= map(if (.name | startswith("Disk space")) then del(.message, .detail) else . end) else . end'
 run v14 -- status --json
 OLD="$(jq -S "$STABLE" "$OUT" 2>/dev/null || true)"
 run v15 NSELF_JSON_LEGACY=1 -- status --json
