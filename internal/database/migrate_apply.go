@@ -12,16 +12,11 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
-// Purpose: the query/apply surface of the migration runner — listing pending
-// migrations, applying a single external file, applying a whole directory,
-// and reporting merged on-disk/ledger status.
-// Inputs: a *config.Config and, depending on the entry point, a plugin name,
-// a single file path, or a migrations directory.
-// Outputs: counts, skip flags, or []MigrationStatus, per function.
-// Constraints: split out of migrate.go (CLI-R12) as a pure move; no behavior
-// changed. MigrateUp/MigrateDown (the write path) stay in migrate.go; this
-// file covers the read/apply-by-path surface that grew up alongside it
-// (G-008: ApplyFile/MigrateUpDir/ApplyDir for external migration directories).
+// Purpose: the query/apply surface of the migration runner: pending list,
+// ApplyFile/MigrateUpDir/ApplyDir for external directories (G-008), merged
+// on-disk/ledger status. Inputs: a *config.Config plus a plugin name, file or
+// directory. Outputs: counts, skip flags or []MigrationStatus.
+// Constraints: split out of migrate.go (CLI-R12); MigrateUp/MigrateDown stay there.
 
 // PendingMigrations returns the list of migration names that have not yet been applied.
 func PendingMigrations(ctx context.Context, cfg *config.Config, plugin string) ([]string, error) {
@@ -125,14 +120,13 @@ func ApplyFile(ctx context.Context, cfg *config.Config, filePath string) (skippe
 
 	legacyRecord, opsRecord := migrationRecordSQL(migrationID, name, checksum)
 
-	// A file's own outer BEGIN/COMMIT is dropped (the CLI supplies the
-	// transaction); any other transaction control is refused (P7-PROD-77).
+	// Own outer BEGIN/COMMIT dropped, other transaction control refused (P7-PROD-77).
 	sqlContent, txErr := dirSQL(name, string(data))
 	if txErr != nil {
 		return false, txErr
 	}
 
-	if isNonTransactional(sqlContent) {
+	if isNonTransactional(sqlSkeleton(sqlContent)) { // real statements only, never comments or strings
 		if err := pipeSQLToContainer(ctx, cfg, sqlContent); err != nil {
 			return false, fmt.Errorf("migration %s: %w: %v", name, errs.ErrMigrationFailed, err)
 		}
@@ -170,11 +164,8 @@ func MigrateUpDir(ctx context.Context, cfg *config.Config, dir string) (int, err
 		return 0, err
 	}
 
-	// Same refusal MigrateUp applies (migrate_prereq.go), scoped to this
-	// directory's still-pending files: this is the entry point a numbered
-	// chain like backend/migrations/ actually runs through (via
-	// --migration-dir), so it needs the same guard against ALTERing a table
-	// only a separate migration system (e.g. Hasura's) creates.
+	// Same ALTER-prerequisite refusal MigrateUp applies (migrate_prereq.go),
+	// scoped to this directory's still-pending files.
 	applied, err := appliedMigrations(ctx, cfg)
 	if err != nil {
 		return 0, fmt.Errorf("check applied migrations: %w", err)
@@ -207,9 +198,7 @@ func MigrateUpDir(ctx context.Context, cfg *config.Config, dir string) (int, err
 	return count, nil
 }
 
-// ApplyDir is an alias for MigrateUpDir with the name expected by the task spec
-// (G-008). Both functions apply all .sql files in the given directory in
-// lexicographic order, skipping files already recorded in schema_versions.
+// ApplyDir is an alias for MigrateUpDir with the name the task spec expects (G-008).
 func ApplyDir(ctx context.Context, cfg *config.Config, dirPath string) (int, error) {
 	return MigrateUpDir(ctx, cfg, dirPath)
 }
@@ -278,15 +267,6 @@ func MigrateStatus(ctx context.Context, cfg *config.Config, dir string) ([]Migra
 	return statuses, nil
 }
 
-// ledgerSelect runs one read-only query against the configured database.
-func ledgerSelect(ctx context.Context, cfg *config.Config, q string) (string, error) {
-	db := cfg.Postgres.DB
-	if db == "" {
-		db = "nself"
-	}
-	return querySQL(ctx, cfg, db, q)
-}
-
 // ledgerTableExists reports, read-only via to_regclass (NULL, never an error,
 // for a missing schema or table), whether a schema-qualified table exists.
 func ledgerTableExists(ctx context.Context, cfg *config.Config, qualified string) (bool, error) {
@@ -296,4 +276,23 @@ func ledgerTableExists(ctx context.Context, cfg *config.Config, qualified string
 		return false, fmt.Errorf("check %s: %w", qualified, err)
 	}
 	return strings.TrimSpace(out) == "yes", nil
+}
+
+// opsChecksums reads name -> checksum from nself_ops.migrations (read-only).
+func opsChecksums(ctx context.Context, cfg *config.Config) (map[string]string, error) {
+	sums := make(map[string]string)
+	exists, err := ledgerTableExists(ctx, cfg, "nself_ops.migrations")
+	if err != nil || !exists {
+		return sums, err
+	}
+	out, err := ledgerSelect(ctx, cfg, "SELECT name || '|' || checksum FROM nself_ops.migrations")
+	if err != nil {
+		return nil, fmt.Errorf("read migration checksums: %w", err)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if n, c, ok := strings.Cut(strings.TrimSpace(line), "|"); ok {
+			sums[n] = c
+		}
+	}
+	return sums, nil
 }

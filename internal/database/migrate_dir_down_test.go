@@ -327,6 +327,15 @@ func TestDirSQL_Table(t *testing.T) {
 		"begin with options":  "BEGIN ISOLATION LEVEL SERIALIZABLE; DROP TABLE a; COMMIT;",
 		"two begins":          "BEGIN; BEGIN; DROP TABLE a; COMMIT;",
 		"begin, no commit":    "BEGIN; DROP TABLE a;",
+		// review rechecks (P7-PROD-77): none of these may disable the scan.
+		"comment names CONCURRENTLY":                "-- was DROP INDEX CONCURRENTLY once\nDROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
+		"string names ADD VALUE":                    "SELECT 'ALTER TYPE x ADD VALUE'; DROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
+		"atomic body then END":                      "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END;\nDROP TABLE dir_b; END; DROP TABLE does_not_exist;",
+		"atomic body then COMMIT":                   "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END;\nDROP TABLE dir_b; COMMIT; DROP TABLE nope;",
+		"quote after ELSE":                          "SELECT CASE WHEN true THEN 1 ELSE'b\\' END; COMMIT; DROP TABLE nope;",
+		"dollar inside identifier":                  "SELECT 1 AS t$q$; COMMIT; DROP TABLE nope; SELECT 2 AS u$q$;",
+		"unterminated atomic body":                  "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; DROP TABLE a;",
+		"comment CONCURRENTLY, wrapped, commit mid": "-- CREATE INDEX CONCURRENTLY\nBEGIN; DROP TABLE a; COMMIT; DROP TABLE b;",
 	}
 	for name, sql := range bad {
 		if _, err := dirSQL("f.sql", sql); err == nil {
@@ -334,24 +343,65 @@ func TestDirSQL_Table(t *testing.T) {
 		}
 	}
 	good := map[string]string{
-		"comment":       "-- COMMIT; BEGIN;\nDROP TABLE a; /* ROLLBACK; */",
-		"string":        "INSERT INTO t VALUES ('x; COMMIT; y');",
-		"identifier":    `ALTER TABLE "commit; x" ADD c int;`,
-		"dollar block":  "DO $$ BEGIN PERFORM 1; END $$;",
-		"tagged dollar": "DO $body$ BEGIN PERFORM 1; END; $body$;",
-		"function":      "CREATE FUNCTION f() RETURNS int AS 'BEGIN RETURN 1; END;' LANGUAGE plpgsql;",
-		"begin atomic":  "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END;",
-		"rollback to":   "SAVEPOINT s; DROP TABLE a; ROLLBACK TO SAVEPOINT s;",
-		"E string ok":   "SELECT E'it\\'s; COMMIT;';",
-		"commentary":    "ALTER TABLE t ADD COLUMN commit_at timestamptz;",
-		"concurrently":  "BEGIN;\nCREATE INDEX CONCURRENTLY i ON t (c);\nCOMMIT;",
-		"outer wrapper": "-- header\nBEGIN;\nCREATE TABLE a (id int);\nCOMMIT;\n",
-		"wrapper words": "BEGIN TRANSACTION; CREATE TABLE a (id int); END TRANSACTION;",
+		"comment":                        "-- COMMIT; BEGIN;\nDROP TABLE a; /* ROLLBACK; */",
+		"string":                         "INSERT INTO t VALUES ('x; COMMIT; y');",
+		"identifier":                     `ALTER TABLE "commit; x" ADD c int;`,
+		"dollar block":                   "DO $$ BEGIN PERFORM 1; END $$;",
+		"tagged dollar":                  "DO $body$ BEGIN PERFORM 1; END; $body$;",
+		"function":                       "CREATE FUNCTION f() RETURNS int AS 'BEGIN RETURN 1; END;' LANGUAGE plpgsql;",
+		"begin atomic":                   "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END;",
+		"rollback to":                    "SAVEPOINT s; DROP TABLE a; ROLLBACK TO SAVEPOINT s;",
+		"E string ok":                    "SELECT E'it\\'s; COMMIT;';",
+		"commentary":                     "ALTER TABLE t ADD COLUMN commit_at timestamptz;",
+		"concurrently":                   "BEGIN;\nCREATE INDEX CONCURRENTLY i ON t (c);\nCOMMIT;",
+		"real concurrently":              "CREATE INDEX CONCURRENTLY i ON t (c);",
+		"atomic then wrapper":            "BEGIN;\nCREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END;\nDROP TABLE a;\nCOMMIT;",
+		"two atomic bodies":              "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END; CREATE FUNCTION g() RETURNS int BEGIN ATOMIC SELECT 2; END;",
+		"e-string escape":                "SELECT E'a\\'b; COMMIT;';",
+		"dollar tag in word":             "SELECT 1 AS t$q$; SELECT 2 AS u$q$;",
+		"quote after else, plain string": "SELECT CASE WHEN true THEN 1 ELSE 'b' END; DROP TABLE a;",
+		"outer wrapper":                  "-- header\nBEGIN;\nCREATE TABLE a (id int);\nCOMMIT;\n",
+		"wrapper words":                  "BEGIN TRANSACTION; CREATE TABLE a (id int); END TRANSACTION;",
 	}
 	for name, sql := range good {
 		if _, err := dirSQL("f.sql", sql); err != nil {
 			t.Errorf("%s: wrongly refused: %v", name, err)
 		}
+	}
+}
+
+// A real non-transactional statement cannot run inside down's transaction; a
+// comment that merely mentions CONCURRENTLY is ordinary SQL and runs wrapped.
+func TestMigrateDownDir_NonTransactionalDecidedFromRealStatements(t *testing.T) {
+	dir := mkMigDir(t, map[string]string{"001_a.sql": "x", "001_a.down.sql": "DROP INDEX CONCURRENTLY i;"})
+	sd := fakeDockerState(t, downAnswers(t, dir, "001_a.sql"))
+	if _, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1); err == nil {
+		t.Fatal("want refusal for a real DROP INDEX CONCURRENTLY")
+	}
+	if countPrefix(recordedCalls(t, sd), "CALL PIPE") != 0 {
+		t.Error("ran a non-transactional down file inside a transaction")
+	}
+	dir = mkMigDir(t, map[string]string{"001_a.sql": "x", "001_a.down.sql": "-- was DROP INDEX CONCURRENTLY once\nDROP TABLE dir_a;\n"})
+	sd = fakeDockerState(t, downAnswers(t, dir, "001_a.sql"))
+	if _, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1); err != nil {
+		t.Fatalf("comment-only mention must not matter: %v", err)
+	}
+	if countPrefix(recordedCalls(t, sd), "CALL PIPE") != 1 {
+		t.Error("want one wrapped transaction")
+	}
+}
+
+// Up: a comment naming CONCURRENTLY must not make ApplyFile run the file
+// outside a transaction (it would then not be atomic with its ledger rows).
+func TestMigrateUpDir_CommentNamingConcurrentlyStillRunsWrapped(t *testing.T) {
+	dir := mkMigDir(t, map[string]string{"001_a.sql": "-- CREATE INDEX CONCURRENTLY is not used here\nCREATE TABLE a (id int);\n"})
+	sd := fakeDockerState(t, map[string]string{"q_legacy_exists": "yes", "q_ops_exists": "yes"})
+	if n, err := MigrateUpDir(context.Background(), fakeCfg, dir); err != nil || n != 1 {
+		t.Fatalf("up = %d, %v", n, err)
+	}
+	b, _ := os.ReadFile(filepath.Join(sd, "pipe-0.sql"))
+	if !strings.HasPrefix(string(b), "BEGIN;") || !strings.Contains(string(b), "INSERT INTO nself_ops.migrations") {
+		t.Errorf("file was not wrapped with its ledger rows:\n%s", b)
 	}
 }
 
@@ -565,6 +615,25 @@ func TestMigrateDirIntegration_DryRunUpDownFlow(t *testing.T) {
 	if pgScalar(t, cfg, "SELECT to_regclass('dir_b') IS NOT NULL") != "t" ||
 		pgScalar(t, cfg, "SELECT count(*) FROM np_common.schema_versions WHERE name = '002_b.sql'") != "1" {
 		t.Fatal("schema and ledger fell out of step")
+	}
+
+	// 7b. review rechecks: a comment naming CONCURRENTLY, or a BEGIN ATOMIC body
+	// earlier in the file, must not let a mid-file COMMIT/END through.
+	for _, bad := range []string{
+		"-- was DROP INDEX CONCURRENTLY once\nDROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
+		"CREATE FUNCTION p77f() RETURNS int BEGIN ATOMIC SELECT 1; END;\nDROP TABLE dir_b; END; DROP TABLE does_not_exist;",
+		"SELECT CASE WHEN true THEN 1 ELSE'b\\' END; DROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, "002_b_down.sql"), []byte(bad), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got, err = MigrateDownDir(ctx, cfg, dir, 1); err == nil || len(got) != 0 {
+			t.Fatalf("bypass down reported %v, %v: %q", got, err, bad)
+		}
+		if pgScalar(t, cfg, "SELECT to_regclass('dir_b') IS NOT NULL") != "t" ||
+			pgScalar(t, cfg, "SELECT count(*) FROM np_common.schema_versions WHERE name = '002_b.sql'") != "1" {
+			t.Fatalf("schema and ledger fell out of step for %q", bad)
+		}
 	}
 
 	// 8. another directory's 002_b.sql (different content) must not be reverted,

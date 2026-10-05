@@ -77,7 +77,7 @@ nself db migrate apply --file <path>
 
 **Checksum tracking:** the SHA-256 checksum of the file is stored in `nself_ops.migrations` for audit purposes.
 
-**Non-transactional detection:** SQL files containing `CREATE INDEX CONCURRENTLY`, `DROP INDEX CONCURRENTLY`, `REINDEX CONCURRENTLY`, or `ALTER TYPE` are run outside a transaction automatically.
+**Non-transactional detection:** SQL files containing a real `CREATE INDEX CONCURRENTLY`, `DROP INDEX CONCURRENTLY`, `REINDEX CONCURRENTLY` or `ALTER TYPE ... ADD VALUE` statement are run outside a transaction automatically. Comments, string literals, quoted identifiers and `$$ ... $$` bodies do not count, in `--migration-dir` mode (`up`, `apply --file`) as for the transaction-control scan. `down --migration-dir` refuses such a file (it cannot run inside the down transaction). Statements inside a `CREATE FUNCTION ... BEGIN ATOMIC ... END` body are not scanned for transaction control (Postgres rejects it there).
 
 **Examples:**
 
