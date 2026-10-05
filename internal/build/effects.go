@@ -13,7 +13,6 @@ package build
 // Constraints: secrets-persist details carry key names only, never values.
 
 import (
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -83,8 +82,7 @@ func (p *planEffects) Recorded() []PlannedEffect { return append([]PlannedEffect
 // the domains whose certificate pair the build would create, so nginx can
 // keep its TLS blocks (nginx.Generator.WithAssumedCerts).
 func planSSL(fx Effects, cfg *config.Config, sslDir string, explicitHosts bool) (*ssl.GenerateResult, []string) {
-	switch cfg.SSLMode {
-	case "letsencrypt", "custom", "none":
+	if !ssl.NeedsCerts(cfg.SSLMode) {
 		return &ssl.GenerateResult{Count: 0}, nil
 	}
 	gen := ssl.NewGenerator(cfg).WithExplicitHosts(explicitHosts)
@@ -94,9 +92,9 @@ func planSSL(fx Effects, cfg *config.Config, sslDir string, explicitHosts bool) 
 		dirName = "localhost"
 	}
 	certDir := filepath.Join(sslDir, "certificates", dirName)
-	if !validCertPair(certDir) {
+	if !ssl.CertPairValid(certDir) {
 		detail := "generate a certificate for " + strings.Join(domains, ", ")
-		if validCertPair(sslDir) {
+		if ssl.CertPairValid(sslDir) {
 			detail = "copy the certificate from `nself trust` for " + strings.Join(domains, ", ")
 		}
 		_ = fx.Do(EffectCertificates, certDir, detail, nil)
@@ -108,17 +106,4 @@ func planSSL(fx Effects, cfg *config.Config, sslDir string, explicitHosts bool) 
 		_ = fx.Do(EffectHosts, "/etc/hosts", "ensure entries: "+strings.Join(entries, ", "), nil)
 	}
 	return &ssl.GenerateResult{Count: 1}, domains
-}
-
-// validCertPair reports whether dir holds a certificate pair with 30 or more
-// days left, the same test the generator uses to skip regeneration.
-func validCertPair(dir string) bool {
-	full := filepath.Join(dir, "fullchain.pem")
-	for _, f := range []string{full, filepath.Join(dir, "privkey.pem")} {
-		if _, err := os.Stat(f); err != nil {
-			return false
-		}
-	}
-	days, err := ssl.CheckCertExpiry(full)
-	return err == nil && days >= 30
 }

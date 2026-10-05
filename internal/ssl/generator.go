@@ -63,6 +63,35 @@ func (g *Generator) Generate(outputDir string) (int, error) {
 	return result.Count, nil
 }
 
+// NeedsCerts reports whether sslMode makes nself generate local certificates.
+// letsencrypt (certbot after first start), custom (user-supplied files) and
+// none (HTTP only) skip generation. ssl.Generator and the build plan mode
+// (internal/build planSSL) both call it so the skip rule lives once.
+func NeedsCerts(sslMode string) bool {
+	switch sslMode {
+	case "letsencrypt", "custom", "none":
+		return false
+	}
+	return true
+}
+
+// minCertDays is the remaining validity at or above which an existing
+// certificate pair is reused instead of regenerated.
+const minCertDays = 30
+
+// CertPairValid reports whether dir holds fullchain.pem and privkey.pem as
+// regular files and the chain has at least minCertDays days left. Generation is
+// skipped for such a pair; the build plan mode uses the same test to decide
+// whether it would generate one.
+func CertPairValid(dir string) bool {
+	full := filepath.Join(dir, "fullchain.pem")
+	if !fileExists(full) || !fileExists(filepath.Join(dir, "privkey.pem")) {
+		return false
+	}
+	days, err := CheckCertExpiry(full)
+	return err == nil && days >= minCertDays
+}
+
 // GenerateWithResult creates SSL certificates and returns detailed results
 // including the CA trust and /etc/hosts steps.
 //
@@ -76,8 +105,7 @@ func (g *Generator) GenerateWithResult(outputDir string) (*GenerateResult, error
 	// letsencrypt: certbot provisions certs after first start via ACME.
 	// custom:      user provides their own certificate files.
 	// none:        SSL is disabled; nginx runs HTTP-only.
-	switch g.cfg.SSLMode {
-	case "letsencrypt", "custom", "none":
+	if !NeedsCerts(g.cfg.SSLMode) {
 		return &GenerateResult{Count: 0}, nil
 	}
 
@@ -102,9 +130,6 @@ func (g *Generator) GenerateWithResult(outputDir string) (*GenerateResult, error
 		return nil, fmt.Errorf("creating certificate directory %s: %w", certDir, err)
 	}
 
-	fullchainPath := filepath.Join(certDir, "fullchain.pem")
-	privkeyPath := filepath.Join(certDir, "privkey.pem")
-
 	result := &GenerateResult{}
 
 	// Check for pre-existing mkcert certs from `nself trust`.
@@ -112,28 +137,23 @@ func (g *Generator) GenerateWithResult(outputDir string) (*GenerateResult, error
 	// (put there by `nself trust`), use them instead of generating new certs.
 	topFullchain := filepath.Join(outputDir, "fullchain.pem")
 	topPrivkey := filepath.Join(outputDir, "privkey.pem")
-	if fileExists(topFullchain) && fileExists(topPrivkey) {
-		if days, err := CheckCertExpiry(topFullchain); err == nil && days >= 30 {
-			if copyErr := copyMkcertCerts(topFullchain, topPrivkey, certDir); copyErr == nil {
-				result.Count = 1
-				result.CAInstalled = true // mkcert certs are inherently trusted
-				g.applyTrustAndHosts(domains, result)
-				return result, nil
-			}
-			// Copy failed — fall through to normal generation.
-		}
-	}
-
-	// Skip generation if certs already exist, are valid, and have >30 days remaining.
-	if fileExists(fullchainPath) && fileExists(privkeyPath) {
-		days, err := CheckCertExpiry(fullchainPath)
-		if err == nil && days >= 30 {
+	if CertPairValid(outputDir) {
+		if copyErr := copyMkcertCerts(topFullchain, topPrivkey, certDir); copyErr == nil {
 			result.Count = 1
-			// Still attempt CA trust and hosts even when certs are fresh.
+			result.CAInstalled = true // mkcert certs are inherently trusted
 			g.applyTrustAndHosts(domains, result)
 			return result, nil
 		}
-		// Expired, near-expiry, or unreadable — regenerate.
+		// Copy failed — fall through to normal generation.
+	}
+
+	// Skip generation if certs already exist, are valid, and have >30 days remaining.
+	// Expired, near-expiry, or unreadable pairs are regenerated.
+	if CertPairValid(certDir) {
+		result.Count = 1
+		// Still attempt CA trust and hosts even when certs are fresh.
+		g.applyTrustAndHosts(domains, result)
+		return result, nil
 	}
 
 	// Try mkcert first for trusted local development certificates.

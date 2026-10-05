@@ -8,12 +8,13 @@ package build
 //          OS environment (Ollama vars).
 // Outputs: .env.computed content string, the prefixed compose YAML, and
 //          the merged compose YAML with the ollama service appended.
-// Constraints: pure move, same values/output, no behavior change.
+// Constraints: same values/output; .env.computed extras are emitted in sorted key order (P7-LIVE-21).
 
 import (
 	"bytes"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
@@ -34,8 +35,15 @@ func buildEnvComputed(cfg *config.Config, extra map[string]string) string {
 		cfg.DatabaseURL(),
 		network,
 	)
-	for k, v := range extra {
-		content += fmt.Sprintf("%s=%s\n", k, v)
+	// Sorted keys: map order would change the file on every build, and plan
+	// mode could never equal apply byte for byte.
+	keys := make([]string, 0, len(extra))
+	for k := range extra {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		content += fmt.Sprintf("%s=%s\n", k, extra[k])
 	}
 	return content
 }

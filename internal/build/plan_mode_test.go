@@ -186,19 +186,13 @@ func writePlanPlugin(t *testing.T, pluginsDir, name string, port int, withNginx 
 var backupStampRE = regexp.MustCompile(`nginx-sites-\d{8}-\d{6}`)
 
 // normalizeFixtureBytes makes a file's content comparable across runs: the
-// temp root becomes <ROOT>, and .env.computed (whose extra variables are
-// emitted in Go map order by buildEnvComputed, a pre-existing nondeterminism
-// outside this Ticket's scope) has its lines sorted.
-func normalizeFixtureBytes(base, data, root string) string {
+// temp root becomes <ROOT> (and Windows separators become slashes). Nothing
+// else is normalised; plan and apply bytes are compared raw.
+func normalizeFixtureBytes(_, data, root string) string {
 	data = strings.ReplaceAll(data, root, "<ROOT>")
 	if runtime.GOOS == "windows" {
 		// Windows renders paths with backslashes; the goldens are recorded on Unix.
 		data = strings.ReplaceAll(strings.ReplaceAll(data, filepath.ToSlash(root), "<ROOT>"), `\`, "/")
-	}
-	if base == ".env.computed" {
-		lines := strings.Split(data, "\n")
-		sort.Strings(lines)
-		data = strings.Join(lines, "\n")
 	}
 	return data
 }
