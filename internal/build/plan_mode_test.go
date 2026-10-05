@@ -90,6 +90,11 @@ func isolateEnv(t *testing.T) {
 
 // isBuildEnvKey reports whether k is a project setting a build reads or sets.
 func isBuildEnvKey(k string) bool {
+	if runtime.GOOS == "windows" && isWindowsSystemEnv(k) {
+		// SystemRoot and friends must survive: without them Winsock cannot load
+		// its providers and every listen fails.
+		return false
+	}
 	switch k {
 	case "PATH", "HOME", "TMPDIR", "USER", "SHELL", "TERM", "LANG", "PWD", "TZ", "UPDATE_GOLDEN":
 		return false
@@ -98,6 +103,25 @@ func isBuildEnvKey(k string) bool {
 		!strings.HasPrefix(k, "LC_") && !strings.HasPrefix(k, "XPC_") &&
 		!strings.HasPrefix(k, "__") && !strings.HasPrefix(k, "COLIMA") &&
 		!strings.HasPrefix(k, "DOCKER") && !strings.HasPrefix(k, "RTK")
+}
+
+// isWindowsSystemEnv reports Windows system and CI runner variables a test
+// must never unset (case-insensitive, as Windows treats names).
+func isWindowsSystemEnv(k string) bool {
+	u := strings.ToUpper(k)
+	switch u {
+	case "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "APPDATA",
+		"LOCALAPPDATA", "PROGRAMDATA", "PUBLIC", "OS", "USERNAME", "USERPROFILE", "USERDOMAIN",
+		"USERDOMAIN_ROAMINGPROFILE", "HOMEDRIVE", "HOMEPATH", "ALLUSERSPROFILE", "COMPUTERNAME",
+		"NUMBER_OF_PROCESSORS", "PSMODULEPATH", "DRIVERDATA", "IMAGEOS", "IMAGEVERSION", "CI":
+		return true
+	}
+	for _, p := range []string{"PROCESSOR_", "PROGRAMFILES", "PROGRAMW6432", "COMMONPROGRAM", "GITHUB_", "RUNNER_", "ACTIONS_", "MSYS"} {
+		if strings.HasPrefix(u, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func writeFixtureFile(t *testing.T, path, body string, perm fs.FileMode) {
@@ -191,11 +215,21 @@ var backupStampRE = regexp.MustCompile(`nginx-sites-\d{8}-\d{6}`)
 func normalizeFixtureBytes(_, data, root string) string {
 	data = strings.ReplaceAll(data, root, "<ROOT>")
 	if runtime.GOOS == "windows" {
-		// Windows renders paths with backslashes; the goldens are recorded on Unix.
-		data = strings.ReplaceAll(strings.ReplaceAll(data, filepath.ToSlash(root), "<ROOT>"), `\`, "/")
+		// Windows renders paths with backslashes (doubled inside quoted JSON or
+		// YAML); the goldens are recorded on Unix. Rewrite only the path tails
+		// that follow the root: a blanket replace would also turn the nginx
+		// regex escapes (`\.env`) into slashes.
+		data = strings.ReplaceAll(data, strings.ReplaceAll(root, `\`, `\\`), "<ROOT>")
+		data = strings.ReplaceAll(data, filepath.ToSlash(root), "<ROOT>")
+		data = rootTailRE.ReplaceAllStringFunc(data, func(m string) string {
+			return strings.ReplaceAll(strings.ReplaceAll(m, `\\`, "/"), `\`, "/")
+		})
 	}
 	return data
 }
+
+// rootTailRE matches <ROOT> and the path that follows it.
+var rootTailRE = regexp.MustCompile(`<ROOT>[^\s"'<>]*`)
 
 // modeField renders a permission field; Windows has no Unix permission bits,
 // so the field is masked there (and in the golden, see maskModes).
@@ -313,6 +347,11 @@ func stubHostTools(t *testing.T, root string) string {
 	bin := filepath.Join(root, "stub-bin")
 	marker := filepath.Join(root, "stub-invoked.log")
 	for _, tool := range []string{"mkcert", "openssl", "docker", "nself", "nginx"} {
+		if runtime.GOOS == "windows" {
+			// LookPath finds a .bat through PATHEXT; a sh script would not run.
+			writeFixtureFile(t, filepath.Join(bin, tool+".bat"), "@echo off\r\necho "+tool+" %* >> \""+marker+"\"\r\nexit /b 1\r\n", 0o755)
+			continue
+		}
 		writeFixtureFile(t, filepath.Join(bin, tool), "#!/bin/sh\necho \""+tool+" $*\" >> '"+marker+"'\nexit 1\n", 0o755)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))

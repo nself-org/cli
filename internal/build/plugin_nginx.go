@@ -49,13 +49,10 @@ func claimsOf(content string) map[string]bool {
 // This is the early, precise check on the plugin-injection path.
 // checkServerNameUniqueness in postvalidate_nginx.go is the backstop that
 // sweeps the whole directory after every writer has run.
-func checkServerNameConflict(sitesDir, destName, content string) error {
-	return checkServerNameConflictVia(newDiskSink(""), sitesDir, destName, content)
-}
-
-// checkServerNameConflictVia is checkServerNameConflict reading sitesDir
-// through sink, so plan mode sees the site confs this build already planned.
-func checkServerNameConflictVia(sink Sink, sitesDir, destName, content string) error {
+//
+// sitesDir is read through sink, so plan mode sees the site confs this build
+// already planned.
+func checkServerNameConflict(sink Sink, sitesDir, destName, content string) error {
 	newClaims := claimsOf(content)
 	if len(newClaims) == 0 {
 		return nil
@@ -182,7 +179,7 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 			// — nginx silently serves only one of them ("conflicting server
 			// name ... ignored"). Fail the build so the conflict is fixed
 			// before it ever reaches nginx, naming both sources.
-			if err := checkServerNameConflictVia(sink, sitesDir, destName, rendered); err != nil {
+			if err := checkServerNameConflict(sink, sitesDir, destName, rendered); err != nil {
 				return count, err
 			}
 
