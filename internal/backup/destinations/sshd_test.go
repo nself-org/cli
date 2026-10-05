@@ -51,20 +51,30 @@ func TestHostDestinationSSHD(t *testing.T) {
 		}
 	}
 	if port == "" {
-		t.Fatal("container published no port")
+		t.Skipf("sshd container published no port; docker logs:\n%s", dockerLogs(cid))
 	}
-
+	// The published port works from the Docker host; from inside another
+	// container (the Linux verify leg) the sibling is reached by its bridge IP.
+	addrs := [][2]string{{"127.0.0.1", port}}
+	if ip, err := exec.Command("docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", cid).Output(); err == nil && strings.TrimSpace(string(ip)) != "" {
+		addrs = append(addrs, [2]string{strings.TrimSpace(string(ip)), "2222"})
+	}
+	var host string
 	var scan []byte
-	for i := 0; i < 60; i++ {
-		scan, _ = exec.Command("ssh-keyscan", "-p", port, "-t", "ed25519", "127.0.0.1").Output()
-		if len(scan) > 0 {
-			break
+	for i := 0; i < 60 && len(scan) == 0; i++ {
+		for _, a := range addrs {
+			if scan, _ = exec.Command("ssh-keyscan", "-T", "3", "-p", a[1], "-t", "ed25519", a[0]).Output(); len(scan) > 0 {
+				host, port = a[0], a[1]
+				break
+			}
 		}
-		time.Sleep(time.Second)
+		if len(scan) == 0 {
+			time.Sleep(time.Second)
+		}
 	}
 	f := strings.Fields(string(scan))
 	if len(f) < 3 {
-		t.Fatalf("no host key from the container: %q", scan)
+		t.Skipf("sshd container gave no host key (%q); docker logs:\n%s", scan, dockerLogs(cid))
 	}
 	kh := filepath.Join(tmp, "kh")
 	if err := (remote.PinnedHostKeys{Path: kh}).Add("nself-ci-sshd", f[len(f)-2]+" "+f[len(f)-1]); err != nil {
@@ -72,7 +82,7 @@ func TestHostDestinationSSHD(t *testing.T) {
 	}
 	t.Setenv(KnownHostsEnv, kh)
 
-	d := &hostDest{server: "sshd", dest: "bk@127.0.0.1", dir: "/config/backups",
+	d := &hostDest{server: "sshd", dest: "bk@" + host, dir: "/config/backups",
 		extra: []string{"-i", key, "-p", port}}
 	src := writeFile(t, tmp, "a.dump", "sshd round trip")
 	if err := d.Put(t.Context(), src, "p/a.dump"); err != nil {
@@ -92,4 +102,10 @@ func TestHostDestinationSSHD(t *testing.T) {
 	if err := d.Get(t.Context(), "p/missing", filepath.Join(tmp, "m")); err == nil {
 		t.Fatal("get of a missing object succeeded")
 	}
+}
+
+// dockerLogs returns the tail of a container's logs for skip messages.
+func dockerLogs(cid string) string {
+	out, _ := exec.Command("docker", "logs", "--tail", "20", cid).CombinedOutput()
+	return string(out)
 }

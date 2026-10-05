@@ -14,7 +14,7 @@ func fakeRclone(t *testing.T) string {
 	skipWindows(t)
 	dir := t.TempDir()
 	body := "#!/bin/sh\nd=$(dirname \"$0\")\necho \"$*\" >> \"$d/argv\"\necho \"AWS=$AWS_ACCESS_KEY_ID\" >> \"$d/argv\"\n" +
-		"if [ \"$1\" = copyto ]; then : > \"$3\" 2>/dev/null || true; fi\n"
+		"if [ \"$1\" = copyto ]; then case \"$3\" in /*) : > \"$3\";; esac; fi\n"
 	if err := os.WriteFile(filepath.Join(dir, "rclone"), []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
