@@ -1,3 +1,5 @@
+//go:build !windows
+
 package commands
 
 // Tests for the project operation lock taken by the invocation decorator
