@@ -48,11 +48,22 @@ func repoRoot(t *testing.T) string {
 
 func extractTag(t *testing.T, root string) string {
 	t.Helper()
-	cmd := exec.Command("git", "-C", root, "archive", "--format=tar", readerTag, "internal", "cmd")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("git archive %s failed (run `git fetch --tags origin`): %v", readerTag, err)
+	archive := func() (*bytes.Buffer, error) {
+		cmd := exec.Command("git", "-C", root, "archive", "--format=tar", readerTag, "internal", "cmd")
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		return &out, cmd.Run()
+	}
+	out, err := archive()
+	if err != nil {
+		// A shallow CI checkout carries no tags: fetch just this one, never skip.
+		fetch := exec.Command("git", "-C", root, "fetch", "-q", "--depth=1", "--no-tags", "origin", "refs/tags/"+readerTag+":refs/tags/"+readerTag)
+		if ferr := fetch.Run(); ferr != nil {
+			t.Fatalf("tag %s is not available and fetching it failed (run `git fetch --tags origin`): %v", readerTag, ferr)
+		}
+		if out, err = archive(); err != nil {
+			t.Fatalf("git archive %s failed: %v", readerTag, err)
+		}
 	}
 	dst := t.TempDir()
 	tr := tar.NewReader(&out)
