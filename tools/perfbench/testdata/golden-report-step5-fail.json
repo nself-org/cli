@@ -1,0 +1,21 @@
+{
+  "overall": "fail",
+  "pass": 9,
+  "fail": 1,
+  "warn": 0,
+  "steps": {
+    "1": {"status": "pass", "duration": 12, "note": "install"},
+    "2": {"status": "pass", "duration": 1, "note": "version"},
+    "3": {"status": "pass", "duration": 0, "note": "init"},
+    "4": {"status": "pass", "duration": 0, "note": "build"},
+    "5": {"status": "fail", "duration": 41, "note": "start"},
+    "6": {"status": "pass", "duration": 0, "note": "health"},
+    "7": {"status": "pass", "duration": 3, "note": "doctor"},
+    "8": {"status": "pass", "duration": 2, "note": "plugin list"},
+    "9": {"status": "pass", "duration": 4, "note": "plugin search"},
+    "10": {"status": "fail", "duration": 9, "note": "claw install"},
+    "11": {"status": "skipped", "duration": 0, "note": ""},
+    "12": {"status": "skipped", "duration": 0, "note": ""},
+    "13": {"status": "skipped", "duration": 0, "note": ""}
+  }
+}
