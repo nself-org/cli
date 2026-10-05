@@ -20,7 +20,6 @@ internal/model
 internal/objstore pending:P7-ADOPT-10
 internal/plugin/lifecycle
 internal/postgres/tablehash pending:P7-ADOPT-10
-internal/reconcile pending:P7-LIVE-03
 internal/runbook
 internal/runtime
 internal/upgrade

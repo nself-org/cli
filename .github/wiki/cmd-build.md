@@ -117,6 +117,18 @@ When `SSL_MODE=local` (the default), `nself build` generates local certificates 
 - Any other domain is left untouched unless you pass `--hosts` to opt in explicitly (still subject to the `ENV=prod` veto above).
 
 When it does write, the build logs exactly which entries it's about to add before writing them, and first checks that `/etc/hosts` is actually writable — skipping with a warning (and the manual `sudo nself dns-setup` instructions) rather than attempting a write it already knows will fail. Use [[cmd-trust]] (`nself trust dns`) to manage `/etc/hosts` explicitly at any time, independent of `nself build`.
+## Plan, confirm, apply
+
+`nself build --plan` shows what a build would change and writes nothing. It runs the real build in memory, compares the result with the files on disk and with the running containers, and prints one plan: the files that would be added, changed or removed, the host effects (certificates, `/etc/hosts`, trust store, plugin fragments, nginx snapshot, orphan containers) and the containers the next `nself start` would recreate. `nself build` with no flags computes the same plan first and then applies it, so what `--plan` showed is what is written. See [[Safe-On-Live]] for the guarantees and the confirmation rules.
+
+| Flag | What it does |
+|---|---|
+| `--plan` | Print the plan and exit. With `--json` the output is one v1 envelope whose `data` is the change plan (`plan_id`, `artifacts`, `effects`, `containers`, `destructive`, `requires_confirmation`, `empty`). |
+| `--yes` | Confirm a change on a prod-class env (`ENV` = `prod` or `staging`) without a prompt. |
+| `--plan-id <id>` | Apply only if the plan still has this id. A stale id fails with E450 and writes nothing. |
+| `--diff` | Print unified diffs of the planned changes to stderr. Env files show key names only, never values. |
+
+A change on a prod-class env needs `--yes` or an interactive yes. In v1.5 mode (`NSELF_V15=1`) a non-interactive build without `--yes` is refused with E403 (exit 4). In the default v1.4 mode it prints the plan summary and a one-line notice on stderr, then proceeds as before. A dev env never asks. `nself build --json` without `--plan` applies and prints the applied plan as the envelope data.
 <!-- END PROSE:description -->
 
 ## Flags
@@ -128,17 +140,21 @@ When it does write, the build logs exactly which entries it's about to add befor
 | `--allow-legacy` | `false` | Bypass v0.9 artifact check and proceed with WARNING (not recommended) |
 | `--check` | `false` | Validate only, don't build |
 | `--debug` | `false` | Enable debug mode |
+| `--diff` | `false` | Print unified diffs of the planned changes to stderr (env files show key names only) |
 | `--force`, `-f` | `false` | Force rebuild all components |
 | `--hosts` | `false` | Opt in to /etc/hosts management for a BASE_DOMAIN that isn't a recognized local-dev domain (localhost/*.local.nself.org/*.localhost/*.local). Never overrides ENV=prod, which always skips /etc/hosts. |
 | `--no-auto-redis` | `false` | Disable automatic Redis enablement when a BullMQ-backed plugin is detected |
 | `--no-cache` | `false` | Disable build cache |
 | `--no-migration-check` | `false` | Skip v1 artifact detection (for automation/CI) |
 | `--no-monorepo` | `false` | Disable automatic monorepo backend detection |
+| `--plan-id` | `""` | Apply only if the change still matches this plan_id (from nself build --plan --json) |
+| `--plan` | `false` | Show what build would change (files, host effects, containers) and write nothing |
 | `--profile` | `""` | Service profile: curated subset of services to include in docker-compose.yml.   app (default) — full service set, identical to pre-profile behaviour.   ops           — observability + CI server: postgres, hasura, auth, nginx,                   monitoring stack; excludes minio, mailpit, admin, functions, search. Overrides NSELF_PROFILE env var. Valid values: app, ops. |
 | `--quiet`, `-q` | `false` | Suppress non-error output (for CI use) |
 | `--remove-orphans` | `false` | Remove containers with no matching service in the freshly generated compose (G-014). Detection always runs; removal is opt-in. |
 | `--security-report` | `false` | Generate security analysis |
 | `--verbose`, `-v` | `false` | Show environment cascade |
+| `--yes` | `false` | Confirm a change on a prod-class env (prod, staging) without a prompt |
 | `--help`, `-h` | — | Show help |
 <!-- END GENERATED:flags -->
 
@@ -160,6 +176,13 @@ nself build -q
 
 # Show the environment cascade as it loads
 nself build --verbose
+
+# See what a build would change, write nothing
+nself build --plan
+
+# Machine-readable plan, then apply exactly that plan on a prod-class env
+nself build --plan --json
+nself build --yes --plan-id <plan_id from the plan>
 
 # Generate a security analysis report
 nself build --security-report

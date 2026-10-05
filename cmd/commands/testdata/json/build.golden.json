@@ -1,0 +1,63 @@
+{
+  "schema_version": "1",
+  "command": "build",
+  "data": {
+    "schema_version": "1",
+    "plan_id": "f149e42fb0de63826e7988a5d32ca44388d8614291d9f56ba57b4ad8c69015a3",
+    "command": "build",
+    "trigger": {
+      "kind": "build",
+      "subject": ""
+    },
+    "env": "prod",
+    "env_class": "prod",
+    "artifacts": [
+      {
+        "kind": "env",
+        "path": ".nself/compose.env",
+        "action": "change",
+        "generated": true,
+        "hand_edited": false,
+        "diff_lines": 2,
+        "redacted": true
+      },
+      {
+        "kind": "compose",
+        "path": "docker-compose.yml",
+        "action": "change",
+        "generated": true,
+        "hand_edited": false,
+        "diff_lines": 4,
+        "redacted": false
+      }
+    ],
+    "effects": [
+      {
+        "kind": "plugin-fragment",
+        "target": "/plugins/example/docker-compose.plugin.yml",
+        "detail": "normalise plugin compose fragment in place"
+      }
+    ],
+    "containers": {
+      "known": true,
+      "items": [
+        {
+          "service": "hasura",
+          "action": "recreate",
+          "stateful": false,
+          "applied_by": "next-start"
+        },
+        {
+          "service": "postgres",
+          "action": "recreate",
+          "stateful": true,
+          "applied_by": "next-start"
+        }
+      ]
+    },
+    "destructive": false,
+    "destructive_reasons": [],
+    "requires_confirmation": true,
+    "empty": false
+  }
+}

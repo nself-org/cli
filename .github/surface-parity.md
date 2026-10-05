@@ -16,7 +16,7 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself account` | account | yes | no | undocumented: NSELF_NO_BROWSER | n/a (see below) |
 | `nself admin` | account | yes | no | undocumented: ADMIN_PORT | n/a (see below) |
 | `nself backup` | data | yes | yes | undocumented: PATH | n/a (see below) |
-| `nself build` | core | yes | yes | undocumented: NSELF_PROFILE | n/a (see below) |
+| `nself build` | core | yes | yes | undocumented: NSELF_L03_REF_BIN, NSELF_PROFILE, PATH, UPDATE_GOLDEN | n/a (see below) |
 | `nself bundle` | extend | yes | no | n/a | n/a (see below) |
 | `nself ci` | deploy | yes | no | undocumented: NSELF_CI_ALLOWED_REPOS, NSELF_CI_ALLOW_UNSANDBOXED, NSELF_FORGEJO_ADMIN_PASSWORD, NSELF_FORGEJO_ADMIN_USER | n/a (see below) |
 | `nself clean` | core | yes | no | n/a | n/a (see below) |

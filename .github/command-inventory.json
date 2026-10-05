@@ -377,17 +377,21 @@
       "--allow-legacy",
       "--check",
       "--debug",
+      "--diff",
       "--force",
       "--hosts",
       "--no-auto-redis",
       "--no-cache",
       "--no-migration-check",
       "--no-monorepo",
+      "--plan",
+      "--plan-id",
       "--profile",
       "--quiet",
       "--remove-orphans",
       "--security-report",
-      "--verbose"
+      "--verbose",
+      "--yes"
     ]
   },
   {

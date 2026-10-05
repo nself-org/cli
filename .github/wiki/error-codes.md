@@ -185,10 +185,11 @@ These errors come from the command line itself: usage, JSON support, destructive
 
 ## Reconcile and locks (E450-E479)
 
-Operation-lock codes. The other codes in this block are documented here when their Tickets register them.
+Change-plan (E450) and operation-lock (E460) codes. The other codes in this block are documented here when their Tickets register them.
 
 | Code | Exit | Summary | Why | Fix |
 |------|------|---------|-----|-----|
+| <a id="e450"></a>E450 | 1 | Plan id does not match | The plan you confirmed no longer matches what this command would change, because an input changed or the plan id is not one this project produces. | Re-run nself build --plan and pass the new plan_id. |
 | <a id="e460"></a>E460 | 1 | Project operation lock held | Another nself command is changing this project and holds its operation lock. | Wait for the running nself command to finish, or stop it, then run this command again. |
 
 ---

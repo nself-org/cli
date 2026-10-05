@@ -112,12 +112,15 @@ Flags:
 - `--allow-legacy` (default false) — Bypass v0.9 artifact check and proceed with WARNING (not recommended)
 - `--check` (default false) — Validate only, don't build
 - `--debug` (default false) — Enable debug mode
+- `--diff` (default false) — Print unified diffs of the planned changes to stderr (env files show key names only)
 - `--force` (default false) — Force rebuild all components
 - `--hosts` (default false) — Opt in to /etc/hosts management for a BASE_DOMAIN that isn't a recognized local-dev domain (localhost/*.local.nself.org/*.localhost/*.local). Never overrides ENV=prod, which always skips /etc/hosts.
 - `--no-auto-redis` (default false) — Disable automatic Redis enablement when a BullMQ-backed plugin is detected
 - `--no-cache` (default false) — Disable build cache
 - `--no-migration-check` (default false) — Skip v1 artifact detection (for automation/CI)
 - `--no-monorepo` (default false) — Disable automatic monorepo backend detection
+- `--plan` (default false) — Show what build would change (files, host effects, containers) and write nothing
+- `--plan-id` (default "") — Apply only if the change still matches this plan_id (from nself build --plan --json)
 - `--profile` (default "") — Service profile: curated subset of services to include in docker-compose.yml.
   app (default) — full service set, identical to pre-profile behaviour.
   ops           — observability + CI server: postgres, hasura, auth, nginx,
@@ -127,6 +130,7 @@ Overrides NSELF_PROFILE env var. Valid values: app, ops.
 - `--remove-orphans` (default false) — Remove containers with no matching service in the freshly generated compose (G-014). Detection always runs; removal is opt-in.
 - `--security-report` (default false) — Generate security analysis
 - `--verbose` (default false) — Show environment cascade
+- `--yes` (default false) — Confirm a change on a prod-class env (prod, staging) without a prompt
 
 Full page: [[cmd-build]]
 

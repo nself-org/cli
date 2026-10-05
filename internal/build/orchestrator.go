@@ -1,6 +1,8 @@
 package build
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +11,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/oplock"
 	"github.com/nself-org/cli/internal/ssl"
 )
 
@@ -91,6 +94,11 @@ type BuildResult struct {
 	HostsAdded int
 	// HostsManualNote is non-empty when /etc/hosts could not be updated automatically.
 	HostsManualNote string
+	// Env is the project's ENV as loaded (not normalised).
+	Env string
+	// FrontingDir is the fronting stack's served nginx/sites directory when
+	// the plan has "@fronting/" keys; empty otherwise. Set in ModePlan only.
+	FrontingDir string
 	// Planned holds the rendered artifacts and recorded effects. Set only in
 	// ModePlan; nil after a write-mode build.
 	Planned *PlannedBuild
@@ -111,29 +119,30 @@ var requiredDirs = []string{
 	".nself",
 }
 
-// buildLockFile is the name of the file used to prevent concurrent builds.
-const buildLockFile = ".nself/build.lock"
+// buildLockCommand is the command name recorded in the lock holder file.
+const buildLockCommand = "nself build"
 
-// acquireBuildLock creates an exclusive build lock file using O_EXCL so that
-// two concurrent builds never write conflicting compose artifacts. The caller
-// must defer releaseBuildLock.
-func acquireBuildLock(workdir string) (*os.File, error) {
-	lockPath := filepath.Join(workdir, buildLockFile)
-	_ = os.MkdirAll(filepath.Dir(lockPath), 0755)
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		if os.IsExist(err) {
-			return nil, fmt.Errorf("another build is already running (lock file exists: %s). If no other build is running, remove the lock file and retry", lockPath)
-		}
-		return nil, fmt.Errorf("acquiring build lock: %w", err)
+// AcquireBuildLock takes the project operation lock (internal/oplock): an
+// exclusive, non-blocking flock on .nself/op.lock. The kernel drops it when the
+// holder dies, so a SIGKILLed build never leaves a stale lock (the previous
+// O_EXCL .nself/build.lock did). A process that descends from the lock holder
+// (NSELF_OPLOCK_TOKEN) re-enters it, so `nself build` run under the command
+// guard does not deadlock on itself. Contention returns an error that names
+// the holder (errors.Is oplock.ErrHeld). The caller must call release.
+func AcquireBuildLock(ctx context.Context, workdir string) (release func(), err error) {
+	l, err := oplock.Acquire(ctx, workdir, oplock.Opts{Command: buildLockCommand})
+	if errors.Is(err, oplock.ErrUnsupported) {
+		return func() {}, nil // no flock on this platform: run unlocked, as the guard does
 	}
-	return f, nil
-}
-
-// releaseBuildLock closes and removes the lock file returned by acquireBuildLock.
-func releaseBuildLock(f *os.File, workdir string) {
-	_ = f.Close()
-	_ = os.Remove(filepath.Join(workdir, buildLockFile))
+	if err != nil {
+		return nil, fmt.Errorf("another nself operation is changing this project: %w", err)
+	}
+	return func() {
+		if !l.Reentrant() {
+			_ = os.Remove(oplock.LockPath(workdir))
+		}
+		l.Release()
+	}, nil
 }
 
 // Build orchestrates the full nself build pipeline.
@@ -158,16 +167,16 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 
 	// Acquire exclusive build lock to prevent concurrent builds from
 	// producing inconsistent compose artifacts. Plan mode records the lock as
-	// an effect instead of creating .nself/build.lock.
-	var buildLock *os.File
-	if err := st.fx.Do(EffectBuildLock, filepath.Join(workdir, buildLockFile), "exclusive build lock", func() (err error) {
-		buildLock, err = acquireBuildLock(workdir)
+	// an effect instead of creating .nself/op.lock.
+	var releaseLock func()
+	if err := st.fx.Do(EffectBuildLock, filepath.Join(workdir, ".nself", "op.lock"), "exclusive project operation lock", func() (err error) {
+		releaseLock, err = AcquireBuildLock(context.Background(), workdir)
 		return err
 	}); err != nil {
 		return nil, err
 	}
-	if buildLock != nil {
-		defer releaseBuildLock(buildLock, workdir)
+	if releaseLock != nil {
+		defer releaseLock()
 	}
 
 	// Steps 1-4 (load config, persist secrets, permissions, validate,
@@ -203,9 +212,13 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	if st.cfg != nil {
+		res.Env = st.cfg.Env
+	}
 	if m, ok := st.sink.(*memSink); ok {
 		res.Planned = m.snapshot()
 		res.Planned.Effects = st.fx.Recorded()
+		res.FrontingDir = m.fronting
 	}
 	return res, nil
 }

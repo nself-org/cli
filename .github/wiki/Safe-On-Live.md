@@ -4,7 +4,7 @@
 
 ---
 
-How nself keeps a serving project safe from its own commands. This page covers the operation lock. Related pages: [[Compat-V15]], [[Exit-Codes]], [[error-codes]].
+How nself keeps a serving project safe from its own commands. This page covers the operation lock and the build change plan. Related pages: [[Compat-V15]], [[Exit-Codes]], [[error-codes]].
 
 ## Operation lock
 
@@ -53,7 +53,7 @@ It is a cooperative lock between nself processes of the same user:
 - The token is in the holder file, so any reader of the project folder can export it and pass for a child. It stops accidents, not an adversary.
 - A child that outlives its parent runs unlocked: the parent's lock ended with the parent.
 - A `clean` that deletes `.nself/` while the lock is held orphans that lock. The next command locks the new file.
-- The build step keeps its own `.nself/build.lock` for now; P7-LIVE-03 moves it onto flock.
+- `nself build` takes this same lock (it no longer keeps a separate `.nself/build.lock` file), so a killed build leaves nothing stale. A build started while another process holds the lock fails and names the holder.
 
 ### Codes
 
@@ -61,3 +61,45 @@ It is a cooperative lock between nself processes of the same user:
 |---|---|---|
 | E460 | 1 | Another nself command holds the project operation lock. |
 | E461-E464 | | Reserved. |
+
+## Build change plan
+
+`nself build --plan` answers "what would this change?" before anything changes. `nself build` with no flags then applies that same plan. Both run the one build pipeline: the plan is the pipeline run in memory, so nothing the apply does is missing from it, with the exceptions listed under "What a plan does not cover".
+
+### What `--plan` guarantees
+
+- It writes nothing under the project, `~/.nself`, the plugin directory, the fronting stack's nginx directory or `/etc/hosts`, and it starts, stops and creates no container. The command guard still creates the operation lock file `.nself/op.lock` (build is a `write` command), and the usual one-line invocation log in `~/.nself/logs/nself.log` is written unless `NSELF_CMD_LOG_ENABLED=false`.
+- Container impact comes from `docker compose config --hash` over the planned files (the same files and env files `nself start` passes) compared with the `com.docker.compose.config-hash` label of the running containers. A service whose hash differs is `recreate`; one running without the label is `unknown` and treated as a recreate. A service that mounts a named volume is `stateful`. Every container item is `applied_by: next-start`: no build command recreates a container. If Docker cannot be asked, the plan says `containers.known: false` and prints a notice on stderr; it never fails for that reason.
+- Secrets are never printed: env-kind artifacts are redacted, `--diff` shows key names only, and an effect that persists a secret names the key, not the value.
+
+### The plan
+
+The plan is the `contract:cli.change-plan` v1 document (schema `schemas/commands/build.v1.schema.json`): `plan_id`, `env` and `env_class`, `artifacts` (changed files only, with `diff_lines` and `generated`/`hand_edited`), `effects`, `containers`, `destructive` with its reasons, `requires_confirmation` and `empty`. `empty` is true when the build would change nothing, which is what `--plan` prints after an apply.
+
+### plan_id
+
+`plan_id` is the sha256 of the plan's canonical JSON. `nself build --yes --plan-id <id>` recomputes the plan and applies only if the id is unchanged; otherwise it fails with E450 and writes nothing. The id covers the plan as shown: which files change, by how many lines, and the effects and containers. It does not cover file contents, so a change that keeps every shown number the same (one secret value replaced by another of the same shape) does not change the id. Treat the id as "the plan I reviewed still describes the work", not as a content hash.
+
+### Prod-class confirmation
+
+A prod-class env is `ENV` `prod` or `staging` (a running stack does not make an env prod-class). A non-empty plan there needs `--yes` or an interactive yes. A plan that overwrites or removes a hand-edited generated file needs `--force` (or an interactive yes) in any env. Both refusals are v1.5 behaviour:
+
+| Mode | Prod-class change, no `--yes`, not interactive |
+|---|---|
+| v1.5 (`NSELF_V15=1`) | Refused with E403 (exit 4). With `--json` the error envelope is on stdout. Nothing is written, and the expired-plugin removal that `nself build` otherwise performs does not run. |
+| v1.4 (default) | The plan summary and a one-line notice go to stderr, then the build proceeds as before. |
+
+`--yes` does not authorise a hand-edited overwrite; that needs `--force`. A destructive plan (a hand-edited file overwritten, an orphan or expired plugin removed, a stateful container recreated by the command itself) is worded strongly in the prompt and listed under `destructive_reasons`.
+
+### What a plan does not cover
+
+- An expired plugin removed by the plugin lifecycle step is listed as a `plugin-remove` effect, but the plan renders the project with that plugin still installed, because the removal runs after the confirmation. The apply then renders without it.
+- A declared plugin that `build` would auto-install is a `plugin-install` effect; the plan renders without it.
+- The plan is computed under the operation lock held for the whole command, so the inputs cannot change between the plan and the write by another nself command. A process that ignores the lock can still change them.
+
+### Codes
+
+| Code | Exit | Meaning |
+|---|---|---|
+| E450 | 1 | `--plan-id` does not match the plan this project produces now. Re-run `nself build --plan` and pass the new id. |
+| E403 | 4 | A prod-class or hand-edited change was not confirmed (v1.5). |
