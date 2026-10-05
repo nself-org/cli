@@ -74,7 +74,11 @@ func runDBMigrateUp(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 	if migrationDir != "" {
-		count, err := database.MigrateUpDir(cmd.Context(), cfg, migrationDir)
+		// Progress goes to stderr only; stdout stays the two summary lines.
+		errw := cmd.ErrOrStderr()
+		count, err := database.MigrateUpDirProgress(cmd.Context(), cfg, migrationDir, func(n, total int, file string) {
+			_, _ = fmt.Fprintf(errw, "[%d/%d] %s\n", n, total, file)
+		})
 		if err != nil {
 			return fmt.Errorf("migrate up dir: %w", err)
 		}
