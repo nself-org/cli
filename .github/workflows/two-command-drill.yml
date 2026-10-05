@@ -1,0 +1,85 @@
+name: Two-Command Drill
+
+# EPIC P7-CANON D14: `nself init && nself start` with zero prompts on a clean
+# Linux host, in both compat modes. Hosted runners only (this repo is public, so
+# they are free); no secrets, no owned servers. Time to healthy is recorded as a
+# perfbench/v1 result and never gates (P7-GUARD G8). A runner-availability failure
+# is re-run, not counted.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/drill/**'
+      - '.github/workflows/two-command-drill.yml'
+
+concurrency:
+  group: two-command-drill-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  drill:
+    name: drill (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: v14
+            v15: ''
+          - name: v15
+            v15: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build nself from this ref
+        run: go build -mod=vendor -o "${RUNNER_TEMP}/nself" ./cmd/nself
+
+      - name: Run the drill
+        env:
+          NSELF_BIN: ${{ runner.temp }}/nself
+          # Empty means unset: the script unsets it, so the v14 leg runs with the variable absent.
+          NSELF_V15: ${{ matrix.v15 }}
+          DRILL_OUT: ${{ runner.temp }}/drill-out
+        run: bash scripts/drill/two-command.sh --host
+
+      - name: Summary
+        if: always()
+        env:
+          DRILL_OUT: ${{ runner.temp }}/drill-out
+        run: |
+          if [ -f "${DRILL_OUT}/drill.json" ]; then
+            {
+              echo "### Two-command drill (${{ matrix.name }})"
+              echo '```json'
+              cat "${DRILL_OUT}/drill.json"
+              echo '```'
+              echo "time_to_healthy is informational and never gates."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No drill.json was written." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload drill results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: two-command-drill-${{ matrix.name }}
+          path: ${{ runner.temp }}/drill-out/
+          if-no-files-found: warn
+          retention-days: 30
