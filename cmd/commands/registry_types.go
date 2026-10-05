@@ -37,3 +37,15 @@ var jsonV15OnlyEnvelope = map[string]bool{}
 // .github/command-registry.json, so the generated file, `help --json` and the
 // decorator all come from the same preparation and the same data-type maps.
 func BuildRegistry(v15 bool) (*cmdregistry.Registry, error) { return buildRegistry(v15) }
+
+// JSONDataTypes returns a copy of the registered envelope data types, keyed by
+// command path without the leading "nself ". tools/schemagen reads it to emit
+// one schema per envelope command (P7-REG-08); the copy keeps callers from
+// mutating the registration.
+func JSONDataTypes() map[string]any {
+	out := make(map[string]any, len(jsonDataTypes))
+	for k, v := range jsonDataTypes {
+		out[k] = v
+	}
+	return out
+}
