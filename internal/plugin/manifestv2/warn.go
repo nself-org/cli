@@ -21,6 +21,6 @@ func noteV1(name string) {
 		return
 	}
 	warnOnce.Do(func() {
-		fmt.Fprintf(warnWriter, "nself: plugin manifest v1 is deprecated (first seen: %s); v1 is read until v1.6.0. Convert: go run github.com/nself-org/cli/tools/manifestv2migrate -in plugin.json -write\n", name)
+		_, _ = fmt.Fprintf(warnWriter, "nself: plugin manifest v1 is deprecated (first seen: %s); v1 is read until v1.6.0. Convert: go run github.com/nself-org/cli/tools/manifestv2migrate -in plugin.json -write\n", name)
 	})
 }

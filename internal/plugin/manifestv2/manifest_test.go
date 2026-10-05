@@ -2,6 +2,8 @@ package manifestv2_test
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -141,8 +143,16 @@ func TestCoreVerbsAndRoundTrip(t *testing.T) {
 
 func FuzzLoad(f *testing.F) {
 	for _, dir := range []string{"v1", "v2"} {
-		for _, file := range fixtures(&testing.T{}, dir) {
-			f.Add(readFixture(&testing.T{}, strings.TrimPrefix(file, "testdata/")))
+		files, err := filepath.Glob(filepath.Join("testdata", dir, "*.json"))
+		if err != nil || len(files) == 0 {
+			f.Fatalf("no fixtures in testdata/%s", dir)
+		}
+		for _, file := range files {
+			b, err := os.ReadFile(file)
+			if err != nil {
+				f.Fatal(err)
+			}
+			f.Add(b)
 		}
 	}
 	f.Add([]byte(`{"manifest_version":2}`))

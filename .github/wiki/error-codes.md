@@ -81,6 +81,10 @@ These errors occur when installing plugins or validating license keys.
 | <a id="e108"></a>E108 | 1 | Plugin checksum missing | A stable plugin release has no checksum, so the install was refused. | Use a release that carries a checksum, or report the missing checksum to the plugin publisher. |
 | <a id="e109"></a>E109 | 1 | Duplicate plugin slug | The same plugin slug is served by more than one unrelated registry entry. | Report this to the registry maintainers. Install the plugin by its full registry name if one is shown. |
 | <a id="e110"></a>E110 | 3 | License does not entitle this plugin tier | The installed license does not include the pro tier of this plugin. | Check your plan with: nself license status. Upgrade at https://nself.org/pricing if the tier is missing. |
+| <a id="e111"></a>E111 | 1 | Forbidden key in a v2 plugin manifest | A manifest_version 2 plugin.json carries a key that belongs to the registry or to a legacy format (bundles, tier_pair, author_public_key, signature, checksum). | Remove the key from plugin.json. Bundle membership lives in bundles.json and signatures are added by the release pipeline. |
+| <a id="e112"></a>E112 | 1 | Plugin manifest compatibility keys drifted | The generated compatibility keys (pluginType, binaryName, cliCommands, minNselfVersion, status, isCommercial, licenseType, requires_license, tier) no longer match the v2 fields they are derived from. | Regenerate them: go run github.com/nself-org/cli/tools/manifestv2migrate -in plugin.json -compat -write |
+| <a id="e113"></a>E113 | 1 | Plugin command collides with a core command | commands.command is one of the core command verbs, so the plugin cannot be mounted under it. | Rename commands.command in plugin.json to a name that is not a core verb. |
+| <a id="e114"></a>E114 | 1 | Unsupported plugin manifest version | plugin.json declares a manifest_version this nself release does not read (supported: 1 or absent, and 2). | Set manifest_version to 2, or upgrade nself if the manifest was written for a newer release. |
 
 ---
 
