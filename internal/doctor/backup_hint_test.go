@@ -81,6 +81,7 @@ func TestBackupHintNeverFails(t *testing.T) {
 func TestBackupHintIdentityUntilMarked(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	dir := t.TempDir()
 	writeTree(t, dir, map[string]string{".env": "PROJECT_NAME=proj\n"})
 	if r := hint(t, dir, backupKeyID); strings.Contains(r.Message, HintPrefix) {
