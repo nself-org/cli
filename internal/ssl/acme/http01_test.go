@@ -129,3 +129,66 @@ func TestACMEAdoptHTTP01Probe(t *testing.T) {
 		t.Errorf("a wildcard cannot be http-01: %v", refused)
 	}
 }
+
+// anyPath200 answers 200 with a fixed body for every path, like a catch-all.
+func TestACMEProbeRejectsCatchAllAndEcho(t *testing.T) {
+	ssl := t.TempDir()
+	catchAll := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("OK")) }))
+	defer catchAll.Close()
+	echo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(filepath.Base(r.URL.Path))) }))
+	defer echo.Close()
+	for name, srv := range map[string]*httptest.Server{"catch-all 200": catchAll, "path echo": echo} {
+		if err := ProbeWebroot(context.Background(), ssl, strings.TrimPrefix(srv.URL, "http://"), "app.example.org", nil); err == nil {
+			t.Errorf("%s must fail the probe", name)
+		}
+	}
+	if _, err := os.Stat(WebrootDir(ssl)); !os.IsNotExist(err) {
+		t.Errorf("a probe that created the webroot must remove it again (dry runs leave no trace): %v", err)
+	}
+}
+
+func TestACMEAccountKeyIs0600(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes")
+	}
+	ssl := t.TempDir()
+	run := func(_ context.Context, _ docker.RunSpec) (string, string, error) {
+		k := filepath.Join(StateDir(ssl), "accounts", "ca.example", "ops@example.org", "keys", "ops@example.org.key")
+		if err := os.MkdirAll(filepath.Dir(k), 0o700); err != nil {
+			return "", "", err
+		}
+		return "", "", os.WriteFile(k, []byte("key"), 0o644) //nolint:gosec // models lego's own mode
+	}
+	if _, _, err := IssueHTTP01(context.Background(), IssueReq{SSLDir: ssl, Contact: "ops@example.org", Domains: []string{"a.example.org"}, Run: run}); err != nil {
+		t.Fatal(err)
+	}
+	k := filepath.Join(StateDir(ssl), "accounts", "ca.example", "ops@example.org", "keys", "ops@example.org.key")
+	if fi, err := os.Stat(k); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("account key: %v %v", fi, err)
+	}
+}
+
+func TestACMEResolveNoSecrets(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "ssl"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	in := Input{ProjectDir: root, Contact: "ops@example.org", AgeKeyPath: filepath.Join(root, "no-such-key"), NginxContainer: "nginx-1",
+		Mounts: func(context.Context, string) ([]docker.Mount, error) {
+			return []docker.Mount{{Source: filepath.Join(root, "ssl"), Destination: "/etc/nginx/ssl"}}, nil
+		},
+		LookPath: func(string) (string, error) { return "", errors.New("age not found") }}
+	if _, err := Resolve(context.Background(), in); err == nil {
+		t.Fatal("DNS runs still need age and its key")
+	}
+	in.NoSecrets = true
+	r, err := Resolve(context.Background(), in)
+	if err != nil || r.AgeBin != "" {
+		t.Fatalf("an HTTP-01 run needs no age: %+v %v", r, err)
+	}
+	var out strings.Builder
+	r.Print(&out)
+	if strings.Contains(out.String(), "age:") {
+		t.Errorf("no age line without secrets:\n%s", out.String())
+	}
+}

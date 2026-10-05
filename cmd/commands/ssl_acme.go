@@ -63,7 +63,7 @@ func init() {
 	s.String("adopt-certbot", "", "With --acme: adopt certbot lineages from [dir] (default /etc/letsencrypt); never issues")
 	s.Lookup("adopt-certbot").NoOptDefVal = "/etc/letsencrypt"
 	s.String("dns-credential-file", "", "With --adopt-certbot: certbot DNS-plugin INI; its credential is stored by name")
-	s.String("challenge", "dns-01", "With --adopt-certbot: challenge for converted lineages (dns-01)")
+	s.String("challenge", "dns-01", "With --adopt-certbot: challenge for converted lineages: dns-01 (a webroot lineage with no credential becomes http-01 when the served nginx answers the challenge location)")
 	s.String("lineage", "", "With --adopt-certbot: adopt only this certbot lineage")
 }
 
@@ -128,6 +128,7 @@ func prepareACME(cmd *cobra.Command, renew bool) (r *acmeRun, err error) {
 		stored = r.file.Contact
 	}
 	in := acmeInput
+	in.NoSecrets = cmd.Name() == "add" || renew && httpOnly(r.file) // HTTP-01 handles no credential: no age, no key
 	in.ProjectDir, in.FrontedBy, in.ProjectName, in.NginxContainer = r.workdir, r.cfg.Nginx.FrontedBy, r.cfg.ProjectName, str("nginx-container")
 	in.Contact = cmp.Or(str("email"), stored, env["ACME_EMAIL"], os.Getenv("ACME_EMAIL"), r.cfg.AdminEmail)
 	home, _ := os.UserHomeDir()
@@ -165,7 +166,11 @@ func (r *acmeRun) acceptTOS() (bool, error) {
 
 // printLineage shows a lineage and the state of each target.
 func (r *acmeRun) printLineage(l acme.Lineage) {
-	r.say("lineage %s: %s via %s\n  domains: %s", l.Name, l.Challenge, l.DNSProvider, strings.Join(l.Domains, " "))
+	via := l.Challenge
+	if l.DNSProvider != "" {
+		via += " via " + l.DNSProvider
+	}
+	r.say("lineage %s: %s\n  domains: %s", l.Name, via, strings.Join(l.Domains, " "))
 	for _, t := range l.Targets {
 		state, p := "absent", filepath.Join(r.res.SSLDir, filepath.FromSlash(t))
 		if dest, err := os.Readlink(p); err == nil {
@@ -177,9 +182,29 @@ func (r *acmeRun) printLineage(l acme.Lineage) {
 	}
 }
 
-// issueInstall issues l with lego and, unless staging, installs and verifies it.
+// probeHTTP checks that the served nginx answers the HTTP-01 challenge location
+// for host, so a missing location fails here with a remediation, not at the CA.
+func (r *acmeRun) probeHTTP(ctx context.Context, host string) error {
+	env, _ := ssl.ServedEnv(r.res.Root, r.cfg.Env)
+	if err := acmeProbeHTTP(ctx, r.res.SSLDir, httpProbeAddr(env), host, nil); err != nil {
+		return e151(acmeRefuse("run `nself build` and restart nginx so the challenge location is served",
+			"the served nginx does not answer the HTTP-01 challenge location for %s: %v", host, err))
+	}
+	return nil
+}
+
+// issueInstall issues l with lego (DNS-01, or HTTP-01 for an http-01 lineage) and, unless staging, installs and verifies it.
 func (r *acmeRun) issueInstall(ctx context.Context, l *acme.Lineage, tos bool) error {
-	cert, key, err := acme.Issue(ctx, acme.IssueReq{SSLDir: r.res.SSLDir, Name: l.Name, Provider: l.DNSProvider,
+	issue := acme.Issue
+	if l.Challenge == acme.ChallengeHTTP { // no provider, no secret: the CA fetches a token from the served nginx
+		issue = acme.IssueHTTP01
+		for _, d := range l.Domains {
+			if err := r.probeHTTP(ctx, d); err != nil {
+				return err
+			}
+		}
+	}
+	cert, key, err := issue(ctx, acme.IssueReq{SSLDir: r.res.SSLDir, Name: l.Name, Provider: l.DNSProvider,
 		Contact: r.res.Contact, Domains: l.Domains, Staging: r.staging, AcceptTOS: tos, Hooks: r.hooks, Run: acmeD.run,
 		Secret: func(n string) (string, error) { return acmeD.secGet(r.workdir, r.secEnv, n) }})
 	if err != nil {
@@ -257,3 +282,13 @@ var acmeLockWait = 10 * time.Second
 
 // acmeVerifyWait is the pause between served-fingerprint probes (tests shorten it).
 var acmeVerifyWait = 500 * time.Millisecond
+
+// httpOnly reports whether f has lineages and every one is http-01.
+func httpOnly(f acme.File) bool {
+	for _, l := range f.Lineages {
+		if l.Challenge != acme.ChallengeHTTP {
+			return false
+		}
+	}
+	return len(f.Lineages) > 0
+}

@@ -232,10 +232,8 @@ func runSSLAddACME(cmd *cobra.Command, args []string) error {
 			return e151(acmeRefuse("renew it with `nself trust ssl renew --acme --force`", "lineage %s is already managed", name))
 		}
 	}
-	env, _ := ssl.ServedEnv(r.res.Root, r.cfg.Env)
-	if err := acmeProbeHTTP(ctx, r.res.SSLDir, httpProbeAddr(env), domain, nil); err != nil {
-		return e151(acmeRefuse("run `nself build` and restart nginx so the challenge location is served",
-			"the served nginx does not answer the HTTP-01 challenge location for %s: %v", domain, err))
+	if err := r.probeHTTP(ctx, domain); err != nil {
+		return err
 	}
 	tos, err := r.acceptTOS()
 	if err != nil {

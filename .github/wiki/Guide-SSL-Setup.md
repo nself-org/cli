@@ -77,22 +77,25 @@ nself ssl add app.example.org --acme --dry-run      # prints the lineage, target
 nself ssl add app.example.org --acme --agree-tos [--upstream app:3000]
 ```
 
-The same prerequisites apply (whole-dir `ssl/` mount, `age`, a contact). The pinned `lego` container writes the challenge token into `ssl/.acme-webroot/`, which nginx serves read only at `/etc/nginx/ssl/.acme-webroot`. Before it asks the CA, the CLI writes a probe token there and fetches it from `127.0.0.1:NGINX_HTTP_PORT` with your host name; if nginx does not answer, nothing is issued and the error says to run `nself build` and restart nginx.
+The same prerequisites apply (whole-dir `ssl/` mount, a contact), except `age` and the age key, which only DNS credentials need. The pinned `lego` container writes the challenge token into `ssl/.acme-webroot/`, which nginx serves read only at `/etc/nginx/ssl/.acme-webroot`. Before it asks the CA, the CLI writes a probe token there and fetches it from `127.0.0.1:NGINX_HTTP_PORT` with your host name; if nginx does not answer, nothing is issued and the error says to run `nself build` and restart nginx.
 
 nginx answers the challenge from one location that `nself build` renders into the default server and into every route block that listens on port 80 (a route without a certificate yet), and that `ssl add` writes into the port-80 block of `custom-<domain>.conf`, always ahead of the catch-all redirect or proxy:
 
 ```nginx
 location ^~ /.well-known/acme-challenge/ {
     root /etc/nginx/ssl/.acme-webroot;
+    disable_symlinks on from=$document_root;
     limit_except GET { deny all; }
     if ($uri !~ "^/[.]well-known/acme-challenge/[A-Za-z0-9_-]+$") { return 404; }
     try_files $uri =404;
 }
 ```
 
-Only a bare token (`[A-Za-z0-9_-]+`) is served: a directory, a sub-path, a dotted name, an encoded slash and any non-GET request are refused, and `^~` on the ACME prefix leaves every application path alone. SSL route blocks do not carry it. The change reaches a running box only with the next `nself build`; it adds the location to the existing `nginx/conf.d/default.conf` and the non-SSL `nginx/sites/*.conf` files.
+Only a bare token (`[A-Za-z0-9_-]+`) is served: a directory, a sub-path, a dotted name, an encoded slash, a symlink below the webroot (`disable_symlinks on`) and any non-GET request are refused, and `^~` on the ACME prefix leaves every application path alone. SSL route blocks do not carry it. The change reaches a running box only with the next `nself build`; it adds the location to the existing `nginx/conf.d/default.conf` and the non-SSL `nginx/sites/*.conf` files.
 
-Adopting a certbot **webroot** lineage as `http-01` (library level, `acme.PlanWith`) needs the same probe to succeed for every name; if the served nginx lacks the location the lineage is refused with that remediation.
+`nself ssl renew --acme` renews an `http-01` lineage the same way (probe first, then a new generation, then a served-fingerprint check); the renewal timer does too. An HTTP-01-only box needs no `age`, no age key and no DNS credential for `ssl add --acme` or `ssl renew --acme`.
+
+Adopting a certbot **webroot** lineage: `nself ssl setup --acme --adopt-certbot` records it as `http-01` when the served nginx answers a probe token file for every name of the lineage (no credential file needed). If the location is missing the lineage is refused with the remediation (run `nself build`, restart nginx, retry, or pass `--dns-credential-file` to convert it to dns-01). The probe leaves nothing behind.
 
 ### How a certificate is installed
 

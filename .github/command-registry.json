@@ -16988,7 +16988,7 @@
           "shorthand": null,
           "type": "string",
           "default": "dns-01",
-          "usage": "With --adopt-certbot: challenge for converted lineages (dns-01)",
+          "usage": "With --adopt-certbot: challenge for converted lineages: dns-01 (a webroot lineage with no credential becomes http-01 when the served nginx answers the challenge location)",
           "hidden": false,
           "deprecated": null,
           "required": false,

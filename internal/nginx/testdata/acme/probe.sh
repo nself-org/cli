@@ -27,6 +27,9 @@ got=$(curl -s --path-as-is --max-time 5 "$U/../../../../etc/passwd" || true)
 case "$got" in *root:*) echo "PROBE-FAIL traversal served /etc/passwd"; fail=1;; *) echo "ok traversal not served";; esac
 got=$(curl -s --path-as-is --max-time 5 "$U/..%2f..%2f..%2fetc/passwd" || true)
 case "$got" in *root:*) echo "PROBE-FAIL encoded traversal served /etc/passwd"; fail=1;; *) echo "ok encoded traversal not served";; esac
+# a symlink below the webroot is never followed (disable_symlinks)
+code=$(curl -s -o /tmp/lnk -w '%{http_code}' --max-time 5 "$U/lnk")
+if [ "$code" = 200 ] || grep -q 'root:' /tmp/lnk; then echo "PROBE-FAIL symlink followed: HTTP $code"; fail=1; else echo "ok symlink refused: $code"; fi
 # the default server answers the rest as before
 want 200 "default /health" http://127.0.0.1/health
 [ "$fail" = 0 ] && echo PROBE-PASS

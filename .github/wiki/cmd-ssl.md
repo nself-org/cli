@@ -65,6 +65,10 @@ nself ssl add <domain> [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--upstream` | (none) | Backend service to proxy to (`host:port`). When omitted, a 200 placeholder response is returned until an upstream is configured. |
+| `--acme` | off | Use the CLI's own ACME client over HTTP-01 (pinned `lego` container, challenge files in `ssl/.acme-webroot/`) instead of certbot. The flags below need it. No DNS credential, `age` or age key is needed. |
+| `--dry-run` | off | With `--acme`: print the resolved stack, lineage, target and webroot; write nothing. |
+| `--nginx-container <name>` | (auto) | With `--acme`: the nginx container to reload. Default: the running `nginx` service of the served stack. |
+| `--agree-tos` | off | With `--acme`: accept the ACME CA's terms of service when the account is first registered. Without it a terminal asks; a non-terminal run refuses. |
 
 ### Examples
 
@@ -75,6 +79,12 @@ nself ssl add custom.example.com --upstream app:3000
 # Add certificate without upstream (returns 200 placeholder)
 nself ssl add custom.example.com
 ```
+
+# Same, with the CLI's own ACME client (HTTP-01)
+nself ssl add custom.example.com --acme --agree-tos --upstream app:3000
+```
+
+With `--acme` the certificate is recorded as an `http-01` lineage in `ssl/.acme/lineages.json` and renewed by `nself ssl renew --acme` (also through the renewal timer). Before it asks the CA, the CLI writes a probe token into the webroot and fetches it from the served nginx over local HTTP; if nginx does not answer, nothing is issued and the error says to run `nself build` and restart nginx. The challenge location (bare tokens only, GET, no sub-paths, no symlinks) is in the default server, every non-SSL route block and the port-80 block of the custom conf; see [[Guide-SSL-Setup]].
 
 The generated conf file (`nginx/conf.d/custom-custom-example-com.conf`) includes:
 
@@ -101,7 +111,7 @@ nself ssl renew --acme [<lineage>] [--force] [--staging] [--quiet] [--dry-run]
 | `--agree-tos` | setup, renew | Accept the ACME CA's terms of service when the account is first registered. Without it a terminal asks; a non-terminal run refuses. |
 | `--adopt-certbot[=<dir>]` | setup | Adopt the lineages of a certbot tree (default `/etc/letsencrypt`). Read only; never issues. |
 | `--dns-credential-file <file>` | setup | A certbot DNS-plugin INI. Its token is stored in the project secret store by name. |
-| `--challenge dns-01` | setup | The challenge converted lineages use (the only value today). |
+| `--challenge dns-01\|http-01` | setup | Challenge for converted lineages. A `webroot` lineage with no credential file is adopted as `http-01` when the served nginx answers the challenge location for every name, and refused with a remediation otherwise; the other lineages convert to `dns-01`. |
 | `--lineage <name>` | setup | Adopt only this certbot lineage. |
 | `--force` | renew | Renew every lineage, not only those with 30 days or fewer left. |
 | `--staging` | renew | Issue from the CA's staging directory into `.acme/staging/`. Installs nothing. |

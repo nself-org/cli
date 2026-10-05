@@ -53,6 +53,7 @@ server {
     # same text for the custom-domain confs, guarded by a test.
     location ^~ /.well-known/acme-challenge/ {
         root /etc/nginx/ssl/.acme-webroot;
+        disable_symlinks on from=$document_root;
         limit_except GET { deny all; }
         if ($uri !~ "^/[.]well-known/acme-challenge/[A-Za-z0-9_-]+$") { return 404; }
         try_files $uri =404;

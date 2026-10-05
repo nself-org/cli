@@ -153,6 +153,9 @@ func TestAcmeChallengeNginx(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := os.Symlink("/etc/passwd", filepath.Join(tokens, "lnk")); err != nil { // a symlink in the webroot must not be followed
+		t.Fatal(err)
+	}
 	script, err := os.ReadFile(filepath.Join("testdata", "acme", "probe.sh"))
 	if err != nil {
 		t.Fatal(err)

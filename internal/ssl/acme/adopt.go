@@ -180,7 +180,7 @@ func probeNames(names []string, probe ProbeFunc) string {
 		}
 		if err := probe(n); err != nil {
 			return fmt.Sprintf("http-01 needs the served nginx to answer /.well-known/acme-challenge/ for %s (%v); "+
-				"run `nself build` to render the challenge location and restart nginx, then retry", n, err)
+				"run `nself build` to render the challenge location and restart nginx, then retry, or pass --dns-credential-file to convert it to dns-01", n, err)
 		}
 	}
 	return ""

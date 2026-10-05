@@ -133,7 +133,7 @@ out_has "served certificate verified"
 [ "$(link a task-pebble-test)" = ".task-pebble-test.gen-1" ] || fail "target is not generation 1: $(link a task-pebble-test)"
 [ "$(served_fp task.pebble.test 18443)" = "$(leaf_fp "$(cert a task-pebble-test)")" ] || fail "served fingerprint is not the installed certificate"
 [ "$(served_fp task.pebble.test 18443)" != "$OLD_FP" ] || fail "nginx still serves the old certificate"
-openssl x509 -in "$(cert a task-pebble-test)" -noout -ext subjectAltName | grep -q '\*\.task\.pebble\.test' || fail "wildcard SAN missing"
+SAN=$(openssl x509 -in "$(cert a task-pebble-test)" -noout -ext subjectAltName); grep -q '\*\.task\.pebble\.test' <<< "$SAN" || fail "wildcard SAN missing"
 [ -f "$A/ssl/.acme/.gitignore" ] && [ "$(cat "$A/ssl/.acme/.gitignore")" = '*' ] || fail ".acme/.gitignore missing"
 [ "$(stat -c %a "$A/ssl/.acme")" = 700 ] && [ "$(stat -c %a "$A/ssl/.acme/lineages.json")" = 600 ] || fail "state permissions"
 grep -q '"challenge": "dns-01"' "$A/ssl/.acme/lineages.json" || fail "lineages.json lacks the lineage"
@@ -214,7 +214,7 @@ nself d setup --acme --adopt-certbot="$LE"
 ok "D1 without a credential the standalone lineage is refused with a remediation"
 must d setup --acme --adopt-certbot="$LE" --dns-credential-file="$WORK/cf.ini"
 [ "$(grep -c '"challenge": "dns-01"' "$D/ssl/.acme/lineages.json")" -eq 2 ] || fail "both lineages should be dns-01"
-age -d -i "$WORK/age-key.txt" "$D/backend/.secrets/dev.age" | grep -q SSL_DNS_CLOUDFLARE_API_TOKEN || fail "credential not in the age store under its name"
+AGE_OUT=$(age -d -i "$WORK/age-key.txt" "$D/backend/.secrets/dev.age"); grep -q SSL_DNS_CLOUDFLARE_API_TOKEN <<< "$AGE_OUT" || fail "credential not in the age store under its name"
 snap "$D/ssl/certificates" | cmp -s - "$WORK/d.served" || fail "served files changed by adoption"
 snap "$D/nginx" | cmp -s - "$WORK/d.nginx" || fail "nginx confs changed by adoption"
 snap "$LE" | cmp -s - "$WORK/d.le" || fail "certbot state changed by adoption"
@@ -266,13 +266,26 @@ snap "$WORK/g" | cmp -s - "$WORK/g.before" || fail "http-01 dry run changed the 
 must g add "$GHOST" --acme --agree-tos
 out_has "served certificate verified"
 [ "$(served_fp "$GHOST" 18447)" = "$(leaf_fp "$(cert g app-example-test)")" ] || fail "served fingerprint is not the http-01 certificate"
-docker logs "nginx-g-$$" 2>&1 | grep -v nself-probe | grep -Eq 'GET /\.well-known/acme-challenge/[A-Za-z0-9_-]{20,} HTTP/1\.[01]" 200' || fail "no CA challenge request was answered 200 by the challenge location"
+# no `| grep -q` on a pipeline: under pipefail an early-exiting grep SIGPIPEs the writer and fails the check
+docker logs "nginx-g-$$" > "$WORK/g-nginx.log" 2>&1
+grep -v nself-probe "$WORK/g-nginx.log" > "$WORK/g-nginx-ca.log" || true
+grep -Eq 'GET /\.well-known/acme-challenge/[A-Za-z0-9_-]{20,} HTTP/1\.[01]" 200' "$WORK/g-nginx-ca.log" || fail "no CA challenge request was answered 200 by the challenge location"
 [ "$(grep -c 'location ^~ /.well-known/acme-challenge/ {' "$G/nginx/conf.d/custom-app-example-test.conf")" -eq 1 ] || fail "custom conf lacks the challenge location once"
 grep -q '"challenge": "http-01"' "$G/ssl/.acme/lineages.json" || fail "lineages.json lacks the http-01 lineage"
 [ -z "$(ls -A "$G/ssl/.acme-webroot/.well-known/acme-challenge")" ] || fail "challenge tokens left behind"
 [ "$(stat -c %a "$G/ssl/.acme-webroot")" = 755 ] && [ "$(stat -c %a "$G/ssl/.acme")" = 700 ] || fail "webroot or state permissions"
 nself g add "$GHOST" --acme; [ "$RC" -ne 0 ] && out_has "already managed" || fail "a second add was not refused"
-ok "G trust ssl add --acme over HTTP-01: challenge answered by the route block's location, installed, served, recorded"
+for k in "$G"/ssl/.acme/accounts/*/*/keys/*.key; do [ "$(stat -c %a "$k")" = 600 ] || fail "ACME account key is not 0600: $k"; done
+# renewal: --force renews the http-01 lineage through the same location, with no age key at all
+# (a missing key proves an http-01-only run asks for no credential), and nginx serves a new serial.
+SER1=$(echo | openssl s_client -connect "127.0.0.1:18447" -servername "$GHOST" 2>/dev/null | openssl x509 -noout -serial); GEN1=$(link g app-example-test)
+SECRETS_AGE_KEY_PATH=$WORK/no-such-age-key must g renew --acme --force
+out_has "lineage app-example-test: http-01"; out_has "served certificate verified"
+SER2=$(echo | openssl s_client -connect "127.0.0.1:18447" -servername "$GHOST" 2>/dev/null | openssl x509 -noout -serial)
+[ -n "$SER1" ] && [ "$SER1" != "$SER2" ] || fail "renewal did not change the served serial ($SER1 -> $SER2)"
+[ "$(link g app-example-test)" != "$GEN1" ] && [ "$(served_fp "$GHOST" 18447)" = "$(leaf_fp "$(cert g app-example-test)")" ] || fail "renewed generation is not the one served"
+[ -z "$(ls -A "$G/ssl/.acme-webroot/.well-known/acme-challenge")" ] || fail "challenge tokens left behind after renewal"
+ok "G trust ssl add --acme over HTTP-01, then renew --acme --force: challenge answered by the route block's location, installed, served, recorded, renewed to a new served serial with no age key"
 
 # === F. no credential in argv, files or logs ======================================
 sleep 1; kill "$PSPID" 2>/dev/null || true; PSPID=""
