@@ -133,3 +133,55 @@ func TestReadinessTimeoutFromEnv(t *testing.T) {
 		}
 	}
 }
+
+func TestReadinessRedirectNotFollowed(t *testing.T) {
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"migrations":{"applied":3,"expected":3}}`)
+	}))
+	defer other.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL, http.StatusFound)
+	}))
+	defer srv.Close()
+
+	err := Wait(context.Background(), "mux", srv.URL, 150*time.Millisecond, WithInterval(10*time.Millisecond))
+	if err == nil || codeOf(t, err) != "E118" {
+		t.Fatalf("Wait followed a redirect: %v", err)
+	}
+	if _, err := Probe(context.Background(), nil, "mux", srv.URL); err == nil || !IsUnreachable(err) {
+		t.Fatalf("Probe(nil client) followed a redirect: %v", err)
+	}
+}
+
+func TestReadinessAppliedAboveExpectedFailsFast(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"migrations":{"applied":5,"expected":3}}`)
+	}))
+	defer srv.Close()
+	start := time.Now()
+	err := Wait(context.Background(), "ai", srv.URL, 30*time.Second, WithInterval(10*time.Millisecond))
+	if err == nil || codeOf(t, err) != "E119" || !strings.Contains(err.Error(), "applied 5 exceeds expected 3") {
+		t.Fatalf("got %v", err)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatalf("not fast: %s", time.Since(start))
+	}
+}
+
+func TestReadinessDecodeMessages(t *testing.T) {
+	cases := []struct{ body, want string }{
+		{`not json`, "not valid JSON"},
+		{`{"migrations":{"applied":"3","expected":3}}`, "wrong JSON type"},
+		{`[1]`, "wrong JSON type"},
+		{`{"pad":"` + strings.Repeat("x", maxBody) + `"}`, "exceeds the"},
+	}
+	for _, c := range cases {
+		body := c.body
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, body) }))
+		_, err := Probe(context.Background(), nil, "ai", srv.URL)
+		srv.Close()
+		if err == nil || codeOf(t, err) != "E119" || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("body %.30q: want E119 containing %q, got %v", c.body, c.want, err)
+		}
+	}
+}

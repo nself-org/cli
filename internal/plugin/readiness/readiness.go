@@ -108,8 +108,17 @@ func newConfig(opts []Option) config {
 		c.interval = pollInterval
 	}
 	if c.client == nil {
-		c.client = httptimeout.WithTimeout(probeTimeout)
+		c.client = defaultClient()
 	}
+	return c
+}
+
+// defaultClient is the bounded probe client. It never follows a redirect: a
+// plugin's /health must answer itself, so a 3xx is a non-200 (not ready) and
+// cannot hand readiness to another host.
+func defaultClient() *http.Client {
+	c := httptimeout.WithTimeout(probeTimeout)
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return c
 }
 
@@ -119,7 +128,7 @@ func newConfig(opts []Option) config {
 // which IsUnreachable is true.
 func Probe(ctx context.Context, client *http.Client, plugin, healthURL string) (Progress, error) {
 	if client == nil {
-		client = httptimeout.WithTimeout(probeTimeout)
+		client = defaultClient()
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
@@ -130,12 +139,15 @@ func Probe(ctx context.Context, client *http.Client, plugin, healthURL string) (
 		return Progress{}, &unreachableError{fmt.Errorf("plugin %s: GET %s: %w", plugin, healthURL, err)}
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
 		return Progress{}, &unreachableError{fmt.Errorf("plugin %s: reading %s: %w", plugin, healthURL, err)}
 	}
 	if resp.StatusCode != http.StatusOK {
 		return Progress{}, &unreachableError{fmt.Errorf("plugin %s: %s returned HTTP %d", plugin, healthURL, resp.StatusCode)}
+	}
+	if len(body) > maxBody {
+		return Progress{}, errs.Newf("E119", "plugin %s: /health body exceeds the %d byte cap", plugin, maxBody)
 	}
 	return decode(plugin, body)
 }
@@ -151,7 +163,11 @@ func decode(plugin string, body []byte) (Progress, error) {
 		} `json:"migrations"`
 	}
 	if err := json.Unmarshal(body, &doc); err != nil {
-		return Progress{}, bad("body is not a JSON object")
+		var te *json.UnmarshalTypeError
+		if errors.As(err, &te) {
+			return Progress{}, bad("wrong JSON type for " + te.Value + " where " + te.Type.String() + " is expected")
+		}
+		return Progress{}, bad("body is not valid JSON")
 	}
 	m := doc.Migrations
 	switch {
@@ -161,6 +177,9 @@ func decode(plugin string, body []byte) (Progress, error) {
 		return Progress{}, bad("applied and expected are both required")
 	case *m.Applied < 0 || *m.Expected < 0:
 		return Progress{}, bad("negative count")
+	case *m.Applied > *m.Expected:
+		// More applied than expected can never converge: fail now, not at the timeout.
+		return Progress{}, bad(fmt.Sprintf("applied %d exceeds expected %d", *m.Applied, *m.Expected))
 	}
 	return Progress{Applied: *m.Applied, Expected: *m.Expected}, nil
 }
