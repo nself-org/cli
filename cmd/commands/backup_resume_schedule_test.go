@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -54,6 +55,9 @@ func TestBackupScheduleFlags(t *testing.T) {
 		t.Errorf("--env-file default = %q: there must be no default env file", f.DefValue)
 	}
 
+	if runtime.GOOS == "windows" {
+		t.Skip("the unit text is Linux-only; the flag surface above is checked on every OS")
+	}
 	resetBackupFlagSet(t, fs)
 	proj := t.TempDir()
 	if err := os.WriteFile(filepath.Join(proj, ".env"), []byte("PROJECT_NAME=sched\nENV=dev\nPOSTGRES_PASSWORD=supersecretvalue123\n"), 0o600); err != nil {

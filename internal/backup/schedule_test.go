@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -129,6 +130,15 @@ func abs(x int) int {
 
 // ── ScheduleStream (P7-PROD-71) ───────────────────────────────────────
 
+// skipUnitTestOnWindows skips tests that compare POSIX paths inside a systemd
+// unit. Units only exist on Linux; a Windows path would be quoted and escaped.
+func skipUnitTestOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("systemd units are Linux-only; paths are compared in POSIX form")
+	}
+}
+
 // scheduleDryRun renders the units of a dry run into a string.
 func scheduleDryRun(t *testing.T, opts ScheduleOptions) string {
 	t.Helper()
@@ -146,6 +156,7 @@ func scheduleDryRun(t *testing.T, opts ScheduleOptions) string {
 // recipient and the heartbeat remote, has no EnvironmentFile line without
 // --env-file, and the timer is daily and persistent.
 func TestScheduleStreamGolden(t *testing.T) {
+	skipUnitTestOnWindows(t)
 	proj := t.TempDir()
 	bin := filepath.Join(t.TempDir(), "nself")
 	if err := os.WriteFile(bin, []byte("x"), 0o755); err != nil {
@@ -177,6 +188,7 @@ func TestScheduleStreamGolden(t *testing.T) {
 // the running binary and the current directory are the defaults; a symlinked
 // binary is resolved.
 func TestScheduleStreamEnvFileAndDefaults(t *testing.T) {
+	skipUnitTestOnWindows(t)
 	dir := t.TempDir()
 	t.Chdir(dir)
 	env := filepath.Join(dir, "backup.env")
