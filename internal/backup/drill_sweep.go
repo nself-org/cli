@@ -14,7 +14,8 @@ package backup
 // --restore-test` container is never touched. Both kinds must be older than
 // drillStaleAfter, so a drill running right now in another process survives.
 // Temp directories must be real directories (no symlink) named nself-drill-<n>,
-// mode 0700 and owned by the current user.
+// mode 0700 (not checked on Windows, which has no mode bits) and owned by the
+// current user.
 
 import (
 	"context"
@@ -23,6 +24,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -73,7 +75,7 @@ func sweepDrillTempDirs(dir string, olderThan time.Duration) {
 		}
 		p := filepath.Join(dir, e.Name())
 		fi, err := os.Lstat(p)
-		if err != nil || !fi.IsDir() || fi.Mode().Perm() != 0o700 || !ownedByCurrentUser(fi) || time.Since(fi.ModTime()) < olderThan {
+		if err != nil || !fi.IsDir() || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o700) || !ownedByCurrentUser(fi) || time.Since(fi.ModTime()) < olderThan {
 			continue
 		}
 		slog.Warn("removing a stale drill temp directory", "dir", p)

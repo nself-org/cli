@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -544,7 +545,11 @@ func TestSweepRemovesOnlyStaleOwnedDrillTempDirs(t *testing.T) {
 	if _, err := os.Stat(stale); err == nil {
 		t.Error("the stale drill directory was not removed")
 	}
-	for _, p := range []string{young, loose, other, target, filepath.Join(target, "backup.plain")} {
+	keep := []string{young, other, target, filepath.Join(target, "backup.plain")}
+	if runtime.GOOS != "windows" { // Windows has no mode bits to tell a loose directory by
+		keep = append(keep, loose)
+	}
+	for _, p := range keep {
 		if _, err := os.Stat(p); err != nil {
 			t.Errorf("%s was removed: %v", p, err)
 		}
@@ -586,8 +591,13 @@ func TestDrillSignalCleanupAndSweepReal(t *testing.T) {
 		}
 		return strings.TrimSpace(string(out))
 	}
+	if runtime.GOOS == "windows" {
+		t.Skip("needs Linux containers")
+	}
 	if exec.Command("docker", "image", "inspect", DrillImage).Run() != nil {
-		docker("pull", DrillImage)
+		if out, err := exec.Command("docker", "pull", DrillImage).CombinedOutput(); err != nil {
+			t.Skipf("cannot pull %s: %v\n%s", DrillImage, err, out)
+		}
 	}
 	id, _ := randHex(4)
 	stale := throwawayPrefix + "0000" + id + "0000" // a throwaway name no live run uses
