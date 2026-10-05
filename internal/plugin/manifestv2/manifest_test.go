@@ -29,7 +29,7 @@ func TestForbiddenKeysE111(t *testing.T) {
 }
 
 func TestManifestVersion3E114(t *testing.T) {
-	for _, v := range []any{3, 0, "2", 2.5, nil} {
+	for _, v := range []any{3, "2", 2.5, "v2", true, "0"} {
 		data := mutate(t, "v2/full.json", func(d map[string]any) { d["manifest_version"] = v })
 		_, err := manifestv2.Parse(data)
 		wantCode(t, err, "E114")
@@ -166,8 +166,14 @@ func FuzzLoad(f *testing.F) {
 		if err != nil {
 			t.Fatalf("a manifest that parsed must marshal: %v", err)
 		}
+		// A v1 file the released CLI accepts may lack keys v2 requires (the
+		// normalizer is no stricter than v1.4.12); only a valid v2 manifest
+		// must reparse.
+		if manifestv2.Validate(m) != nil {
+			return
+		}
 		if _, err := manifestv2.ParseQuiet(out); err != nil {
-			t.Fatalf("canonical output of a parsed manifest must parse: %v\n%s", err, out)
+			t.Fatalf("canonical output of a valid manifest must parse: %v\n%s", err, out)
 		}
 	})
 }

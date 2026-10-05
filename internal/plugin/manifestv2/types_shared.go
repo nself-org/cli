@@ -57,6 +57,8 @@ type Shared struct {
 //
 // EntryPoint, Runtime, CLI and the cliCommands entries other than the
 // canonical command are carried verbatim from v1: no v2 field defines them.
+// Tier and LicenseType are carried for a licensed plugin (max, cloud, internal)
+// and generated as free for a free one.
 type Compat struct {
 	PluginType      string       `json:"pluginType,omitempty"`
 	BinaryName      string       `json:"binaryName,omitempty"`

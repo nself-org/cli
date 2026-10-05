@@ -57,8 +57,11 @@ type v1Manifest struct {
 // object-form webhooks and envVars, object-form apiEndpoints), the status and
 // licence tables of Epic D1, the commands mapping (binaryName becomes
 // commands.binary, the cliCommands entry named like it becomes commands.command,
-// `binaryName: null` becomes `commands: null`) and the service block. Keys no
-// v1.4.12 reader decodes are dropped.
+// `binaryName: null` becomes `commands: null`) and the service block. It checks
+// what v1.4.12's validateManifest checks and no more (validateV1), so a file
+// the released CLI accepts always normalizes; Validate is for v2-native input.
+// Keys no v1.4.12 reader decodes are not mapped: UnmappedV1Keys lists them and
+// the migrate tool refuses to write a file that has any.
 func Normalize(data []byte) (*Manifest, error) {
 	var v v1Manifest
 	if err := json.Unmarshal(data, &v); err != nil {
@@ -70,7 +73,7 @@ func Normalize(data []byte) (*Manifest, error) {
 	}
 	m := &Manifest{ManifestVersion: ManifestVersion, Name: v.Name, Version: v.Version, Description: v.Description,
 		Category: v.Category, Maturity: maturity, Installable: v.Installable}
-	m.License = LicenseFree
+	m.License, m.LicenseSPDX = LicenseFree, v.License
 	if v.IsCommercial || v.RequiresLicense || (v.LicenseType != "" && v.LicenseType != "free") || (v.Tier != "" && v.Tier != "free") {
 		m.License = LicenseLicensed
 	}
@@ -93,9 +96,10 @@ func Normalize(data []byte) (*Manifest, error) {
 	m.Commands = v1Commands(&v)
 	m.Service = v1Service(&v, m.Commands != nil)
 	m.EntryPoint, m.Runtime, m.CLI, m.CLICommands = v.EntryPoint, v.Runtime, v.CLI, v.CLICommands
+	m.Tier, m.LicenseType = v.Tier, v.LicenseType
 	ApplyProjection(m)
 	Canonicalize(m)
-	if err := Validate(m); err != nil {
+	if err := validateV1(m); err != nil {
 		return nil, err
 	}
 	return m, nil

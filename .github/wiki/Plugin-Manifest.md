@@ -66,6 +66,7 @@ Bundle membership is not a manifest field: `bundles.json` is the membership sour
 | `language` | string | no |  |
 | `license` | string | yes | free or licensed. Bundle membership is not a manifest field (ADR 0008).; one of free, licensed |
 | `licenseType` | string | no |  |
+| `license_spdx` | string | no | Licence text carried from a v1 file (an SPDX identifier or Source-Available); shown by plugin info. |
 | `manifest_version` | integer | yes | Always 2.; always 2 |
 | `maturity` | string | yes | Lifecycle. deferred requires deprecation.state.; one of implemented, experimental, scaffolded, planned, deferred |
 | `maxNselfVersion` | string | no |  |
@@ -127,16 +128,18 @@ Bundle membership is not a manifest field: `bundles.json` is the membership sour
 
 ## Compatibility keys
 
-These keys exist only so released 1.4.x CLIs keep decoding a v2 file. `manifestv2migrate -compat` writes them; loading a file whose derived keys differ from the v2 fields fails with E112.
+These keys exist only so released 1.4.x CLIs keep decoding a v2 file. `manifestv2migrate -compat` writes them; loading a file whose derived keys differ from the v2 fields fails with E112. E112 checks the derived keys only: the carried keys (`entryPoint`, `runtime`, `cli`, `cliCommands` entries other than the canonical command, and a licensed plugin's `tier` and `licenseType`) are trusted as written, so a hand edit there passes the gate.
 
 | Key | Derived from |
 |---|---|
 | `pluginType`, `binaryName` | `commands` (`cli` and `commands.binary`; empty when `commands` is null) |
 | `minNselfVersion` | lower bound of `requires.nself` |
 | `status` | `maturity` and `deprecation.state` (table above) |
-| `isCommercial`, `licenseType`, `requires_license`, `tier` | `license`: `free` gives `false, free, false, free`; `licensed` gives `true, pro, true, pro` |
+| `isCommercial`, `licenseType`, `requires_license`, `tier` | `license`: `free` gives `false, free, false, free`; `licensed` gives `true, <licenseType>, true, <tier>`, where the licensed plugin's own `licenseType` and `tier` (`max`, `cloud`, `internal`) are carried and `pro` is used when it states none |
 | `cliCommands` | the entry named like `commands.command` takes `commands.summary` as its description; other entries are carried |
 | `entryPoint`, `runtime`, `cli` | carried verbatim from v1: no v2 field defines them |
+
+The v1 `license` text (an SPDX identifier or `Source-Available`) is kept in `license_spdx`; `nself plugin info` shows it as before. Released CLIs read the v2 `license` value (`free` or `licensed`) as the text.
 
 v1 reading and all compatibility keys are removed at v1.6.0.
 
@@ -160,4 +163,6 @@ go run github.com/nself-org/cli/tools/manifestv2migrate -in plugin.json -check  
 go run github.com/nself-org/cli/tools/manifestv2migrate -in plugin.json -targets # binary and command pairs
 ```
 
-Output has sorted keys, 2-space indent and a trailing newline; running it on its own output changes nothing. The converter maps v1 `binaryName` to `commands.binary`, the `cliCommands` entry named like it to `commands.command` (other binaries such as `sentry-server` or `billing` stay compatibility-only), and `binaryName: null` to `commands: null`. It derives `service` (a port means `compose`, a binary without a port means `cli`, otherwise `library`) and drops keys no released reader decodes, so review the result before committing it.
+Output has sorted keys, 2-space indent and a trailing newline; running it on its own output changes nothing. The converter maps v1 `binaryName` to `commands.binary`, the `cliCommands` entry named like it to `commands.command` (other binaries such as `sentry-server` or `billing` stay compatibility-only), and `binaryName: null` to `commands: null`. It derives `service` (a port means `compose`, a binary without a port means `cli`, otherwise `library`).
+
+The converter never drops data silently. Every non-empty v1 key with no v2 home (for example `config`, `hooks`, `actions`, `routes`, `migrations`, `env`, `notes`, `api_version`, `entry`) is listed on stderr with its value path, and the run exits 1 with nothing written and nothing on stdout. This holds for the default run, `-write` and `-check`, and the lists are identical. There is no flag to drop a key: move its data into a v2 field or remove it from the v1 file first. Empty values (`null`, `""`, `[]`, `{}`) carry nothing and are ignored. Registry-owned keys (`bundles`, `checksum`, `tier_pair`, `author_public_key`, `signature`) are removed on purpose (ADR 0008) and reported as a note. A v1 file that v1.4.12 accepts without a `category` loads, but the converter will not write an invalid v2 file: add the `category` first.

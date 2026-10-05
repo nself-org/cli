@@ -8,7 +8,8 @@
   "isCommercial": true,
   "language": "go",
   "license": "licensed",
-  "licenseType": "pro",
+  "licenseType": "max",
+  "license_spdx": "Proprietary",
   "manifest_version": 2,
   "maturity": "implemented",
   "minNselfVersion": "1.0.0",
@@ -47,6 +48,6 @@
   "tags": [
     "fixture"
   ],
-  "tier": "pro",
+  "tier": "max",
   "version": "1.2.0"
 }

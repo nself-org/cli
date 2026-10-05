@@ -64,22 +64,30 @@ func parse(data []byte, notice bool) (*Manifest, error) {
 	return m, nil
 }
 
-// versionOf returns 1 for an absent or 1 manifest_version, 2 for 2, else E114.
+// IsV1Version reports whether a raw manifest_version value marks a v1 file.
+// Released CLIs ignore the key, so every spelling of "one or nothing" loads as
+// v1: null, 0, "1", 1 and 1.0 (an absent key is v1 too).
+func IsV1Version(v json.RawMessage) bool {
+	t := strings.TrimSpace(string(v))
+	switch t {
+	case "", "null", `"1"`:
+		return true
+	}
+	if strings.HasPrefix(t, `"`) {
+		return false
+	}
+	f, err := strconv.ParseFloat(t, 64)
+	return err == nil && (f == 0 || f == 1)
+}
+
+// versionOf returns 1 for a v1 manifest_version (IsV1Version), 2 for 2, else E114.
 func versionOf(raw map[string]json.RawMessage) (int, error) {
 	v, ok := raw["manifest_version"]
-	if !ok {
+	if !ok || IsV1Version(v) {
 		return 1, nil
 	}
-	var n json.Number
-	dec := json.NewDecoder(bytes.NewReader(v))
-	dec.UseNumber()
-	if err := dec.Decode(&n); err == nil && !bytes.HasPrefix(bytes.TrimSpace(v), []byte(`"`)) {
-		switch n.String() {
-		case "1":
-			return 1, nil
-		case "2":
-			return 2, nil
-		}
+	if strings.TrimSpace(string(v)) == "2" {
+		return 2, nil
 	}
 	return 0, errs.Newf("E114", "manifest_version %s is not supported (supported: 1 or absent, and 2)", strings.TrimSpace(string(v)))
 }

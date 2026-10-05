@@ -66,7 +66,9 @@ func TestFullStructOracle(t *testing.T) {
 	// registry-only fields (Checksum, TierPair, Bundles, AuthorPublicKey,
 	// Signature) are forbidden in a v2 file (E111), so the converter drops them
 	// from a v1 file that carried them (licensed.json does).
-	exempt := map[string]bool{"PublishStatus": true, "License": true, "IsCommercial": true, "LicenseType": true, "RequiresLicense": true, "Tier": true,
+	// tier and licenseType are carried (max stays max), so they are not exempt;
+	// License is the v2 free|licensed key a released CLI reads as the licence text.
+	exempt := map[string]bool{"PublishStatus": true, "License": true, "IsCommercial": true, "RequiresLicense": true,
 		"Checksum": true, "TierPair": true, "Bundles": true, "AuthorPublicKey": true, "Signature": true}
 	for _, f := range files {
 		v1 := decodeV1(t, f)
@@ -79,7 +81,7 @@ func TestFullStructOracle(t *testing.T) {
 		licensed := v1.IsCommercial || v1.RequiresLicense || (v1.LicenseType != "" && v1.LicenseType != "free") || (v1.Tier != "" && v1.Tier != "free")
 		want := []any{"free", false, "free", false, "free"}
 		if licensed {
-			want = []any{"licensed", true, "pro", true, "pro"}
+			want = []any{"licensed", true, v1.LicenseType, true, v1.Tier}
 		}
 		got := []any{v2.License, v2.IsCommercial, v2.LicenseType, v2.RequiresLicense, v2.Tier}
 		if !reflect.DeepEqual(got, want) {

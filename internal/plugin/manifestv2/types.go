@@ -93,8 +93,11 @@ type Manifest struct {
 	Category        string `json:"category"`
 	// License is free or licensed (a v1 plugin.json carried an SPDX-style string
 	// here; released CLIs only require it to be non-empty).
-	License  string `json:"license"`
-	Maturity string `json:"maturity"`
+	License string `json:"license"`
+	// LicenseSPDX is the licence text a v1 file carried in `license` (an SPDX
+	// identifier or "Source-Available"). Optional; `plugin info` shows it.
+	LicenseSPDX string `json:"license_spdx,omitempty"`
+	Maturity    string `json:"maturity"`
 	// Installable defaults to true when absent (ADR 0009).
 	Installable *bool     `json:"installable,omitempty"`
 	Requires    *Requires `json:"requires,omitempty"`

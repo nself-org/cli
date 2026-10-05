@@ -552,6 +552,10 @@
     "licenseType": {
       "type": "string"
     },
+    "license_spdx": {
+      "description": "Licence text carried from a v1 file (an SPDX identifier or Source-Available); shown by plugin info.",
+      "type": "string"
+    },
     "manifest_version": {
       "const": 2,
       "description": "Always 2.",

@@ -31,6 +31,7 @@
   "language": "go",
   "license": "free",
   "licenseType": "free",
+  "license_spdx": "MIT",
   "manifest_version": 2,
   "maturity": "implemented",
   "minNselfVersion": "1.0.0",

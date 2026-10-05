@@ -19,7 +19,8 @@ var minRange = regexp.MustCompile(`^\s*(?:>=\s*)?([^\s,<>=!~^|]+)`)
 // deprecation.state, isCommercial, licenseType, requires_license and tier from
 // license, and the description of the canonical command's cliCommands entry
 // from commands.summary. EntryPoint, Runtime, CLI and the other cliCommands
-// entries are carried from m unchanged.
+// entries are carried from m unchanged, and so are a licensed plugin's tier and
+// licenseType (pro when it has none).
 func Projection(m *Manifest) Compat {
 	p := Compat{
 		EntryPoint:  m.EntryPoint,
@@ -43,11 +44,22 @@ func Projection(m *Manifest) Compat {
 	}
 	p.Status = statusOf(m.Maturity, m.Deprecation)
 	if m.License == LicenseLicensed {
-		p.IsCommercial, p.LicenseType, p.RequiresLicense, p.Tier = true, "pro", true, "pro"
+		p.IsCommercial, p.RequiresLicense = true, true
+		p.LicenseType, p.Tier = licensedValue(m.LicenseType), licensedValue(m.Tier)
 	} else {
 		p.LicenseType, p.Tier = "free", "free"
 	}
 	return p
+}
+
+// licensedValue keeps a licensed plugin's own tier or licenseType (max, cloud,
+// internal and so on) so released CLIs read the values they read today; a
+// licensed manifest that states none, or states free, gets pro.
+func licensedValue(carried string) string {
+	if carried == "" || carried == "free" {
+		return "pro"
+	}
+	return carried
 }
 
 // statusOf is the maturity to v1 status table (Epic D1, v2 -> compat status).

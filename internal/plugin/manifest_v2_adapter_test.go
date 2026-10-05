@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/errs"
@@ -70,6 +71,15 @@ func TestLoadManifestV2Adapter(t *testing.T) {
 		if err := json.Unmarshal(data, &released); err != nil {
 			t.Fatalf("%s: %v", f, err)
 		}
+		// The one intended difference: the adapter shows license_spdx where a
+		// released CLI reads the v2 free|licensed value as the licence text.
+		var spdx struct {
+			LicenseSPDX string `json:"license_spdx"`
+		}
+		_ = json.Unmarshal(data, &spdx)
+		if spdx.LicenseSPDX != "" {
+			released.License = spdx.LicenseSPDX
+		}
 		if diff := differingFields(got, &released); len(diff) > 0 {
 			t.Errorf("%s: adapter differs from the v1 decode in %v", f, diff)
 		}
@@ -119,5 +129,46 @@ func TestLoadManifestV2TamperedCompat(t *testing.T) {
 	var ce *errs.CLIError
 	if !errors.As(err, &ce) || ce.Code != "E114" {
 		t.Errorf("manifest_version 3: want E114, got %v", err)
+	}
+}
+
+// A converted file shows the same licence text, tier and licenseType as its v1
+// original: plugin info prints License, and released tooling reads Tier (S2, S3).
+func TestLoadManifestV2KeepsLicenceValues(t *testing.T) {
+	for _, name := range []string{"ci", "licensed", "tenant"} {
+		v1, err := LoadManifest(filepath.Join("manifestv2/testdata/v1", name+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		v2, err := LoadManifest(filepath.Join(v2FixtureDir, name+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v1.License != v2.License || v1.Tier != v2.Tier || v1.LicenseType != v2.LicenseType {
+			t.Errorf("%s: v1 shows %q/%q/%q, v2 shows %q/%q/%q", name, v1.License, v1.Tier, v1.LicenseType, v2.License, v2.Tier, v2.LicenseType)
+		}
+	}
+	m, err := LoadManifest(filepath.Join(v2FixtureDir, "licensed.json"))
+	if err != nil || m.License != "Proprietary" || m.Tier != "max" || m.LicenseType != "max" || !m.IsCommercial || !m.RequiresLicense {
+		t.Fatalf("licensed fixture: %v %+v", err, m)
+	}
+	// Without license_spdx the adapter shows free or licensed.
+	if m, err := LoadManifest(filepath.Join(v2FixtureDir, "full.json")); err != nil || m.License != "licensed" {
+		t.Fatalf("full fixture: %v %+v", err, m)
+	}
+}
+
+// A v1 manifest_version of null, 0, "1", 1 or 1.0 loads as v1, never E114 (S4).
+func TestLoadManifestV1VersionSpellings(t *testing.T) {
+	base, err := os.ReadFile(filepath.Join("manifestv2/testdata/v1", "tenant.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, lit := range []string{`null`, `0`, `"1"`, `1`, `1.0`} {
+		data := strings.Replace(string(base), "{", `{"manifest_version": `+lit+",", 1)
+		m, err := LoadManifest(writeV2Manifest(t, []byte(data)))
+		if err != nil || m.Name != "tenant" || m.License != "MIT" {
+			t.Errorf("manifest_version %s: %v %+v", lit, err, m)
+		}
 	}
 }

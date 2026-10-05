@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"bytes"
 	"encoding/json"
 
 	"github.com/nself-org/cli/internal/plugin/manifestv2"
@@ -18,7 +17,7 @@ import (
 // (permission allowlist included).
 //
 // Inputs: plugin.json bytes. Outputs: *PluginManifest. Constraints: v1 files
-// (no manifest_version, or 1) are not handled here and parse exactly as before.
+// (manifest_version absent, null, 0, "1", 1 or 1.0) are not handled here and parse exactly as before.
 
 // LoadManifest reads and validates the plugin.json at path, v1 or v2.
 func LoadManifest(path string) (*PluginManifest, error) { return parseManifest(path) }
@@ -32,7 +31,7 @@ func parseManifestV2(data []byte) (m *PluginManifest, ok bool, err error) {
 	if json.Unmarshal(data, &probe) != nil {
 		return nil, false, nil
 	}
-	if v := string(bytes.TrimSpace(probe.Version)); v == "" || v == "1" {
+	if manifestv2.IsV1Version(probe.Version) {
 		return nil, false, nil
 	}
 	v2, err := manifestv2.Parse(data)
@@ -51,7 +50,7 @@ func parseManifestV2(data []byte) (m *PluginManifest, ok bool, err error) {
 // carry them.
 func fromManifestV2(v *manifestv2.Manifest) *PluginManifest {
 	m := &PluginManifest{
-		Name: v.Name, Version: v.Version, Description: v.Description, Category: v.Category, License: v.License,
+		Name: v.Name, Version: v.Version, Description: v.Description, Category: v.Category, License: licenseText(v),
 		Author: v.Author, Homepage: v.Homepage, Repository: v.Repository, Tags: v.Tags,
 		IsCommercial: v.IsCommercial, LicenseType: v.LicenseType, RequiredEntitlements: v.RequiredEntitlements,
 		RequiresLicense: v.RequiresLicense, MinNselfVersion: v.MinNselfVersion, MinNodeVersion: v.MinNodeVersion,
@@ -123,4 +122,13 @@ func permissionsFromV2(p any) PermissionSet {
 		return out
 	}
 	return PermissionSet{}
+}
+
+// licenseText is what plugin info shows as the licence: the v1 licence text
+// carried in license_spdx when the file has one, else free or licensed.
+func licenseText(v *manifestv2.Manifest) string {
+	if v.LicenseSPDX != "" {
+		return v.LicenseSPDX
+	}
+	return v.License
 }

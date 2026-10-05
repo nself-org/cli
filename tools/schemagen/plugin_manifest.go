@@ -26,6 +26,7 @@ func init() {
 		set("/properties/name", map[string]any{"pattern": manifestv2.NamePattern, "description": "Plugin slug, unique per tier."}),
 		set("/properties/version", map[string]any{"pattern": manifestv2.VersionPattern, "description": "Plugin version (semver)."}),
 		set("/properties/license", map[string]any{"enum": anyList(manifestv2.Licenses), "description": "free or licensed. Bundle membership is not a manifest field (ADR 0008)."}),
+		set("/properties/license_spdx", map[string]any{"description": "Licence text carried from a v1 file (an SPDX identifier or Source-Available); shown by plugin info."}),
 		set("/properties/maturity", map[string]any{"enum": anyList(manifestv2.Maturities), "description": "Lifecycle. deferred requires deprecation.state."}),
 		set("/properties/installable", map[string]any{"description": "Defaults to true when absent."}),
 		set("/properties/service", map[string]any{"type": "object", "description": "How the plugin runs. kind compose requires compose and healthcheck."}),

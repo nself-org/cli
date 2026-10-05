@@ -12,17 +12,27 @@
 // the field table of the Plugin-Manifest wiki page from the schema). -write
 // stores the result back into -in (temp file + rename) instead of printing it.
 //
+// A v1 file is never converted lossily. Every non-empty v1 key with no v2 home
+// (config, hooks, actions, routes, notes, api_version, entry, ...) is listed on
+// stderr by value path and the run exits 1 with nothing written and nothing on
+// stdout, in default, -write and -check modes alike. Registry-owned keys
+// (bundles, checksum, tier_pair, ...) are removed on purpose and reported as a
+// note. There is no flag to drop data: move it into a v2 field, or remove it
+// from the v1 file by hand first.
+//
 // Outputs: stdout, or the file with -write. Exit: 0 ok, 1 invalid or not
 // canonical, 2 usage or I/O failure. Running it on its own output is a no-op.
 package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/nself-org/cli/internal/plugin/manifestv2"
 )
@@ -58,10 +68,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	switch {
-	case *check:
-		return runCheck(*in, data, stderr)
 	case *targets:
 		return runTargets(data, stdout, stderr)
+	case !*compatOnly && refuseLossy(*in, data, stderr):
+		return 1
+	case *check:
+		return runCheck(*in, data, stderr)
 	}
 	var out []byte
 	if *compatOnly {
@@ -85,12 +97,42 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 // convert returns the canonical v2 bytes of a v1 or v2 plugin.json.
+// A v1 file the released CLI accepts may lack keys v2 requires (category); the
+// normalizer allows that, the tool does not write an invalid v2 file.
 func convert(data []byte) ([]byte, error) {
 	m, err := manifestv2.ParseQuiet(data)
 	if err != nil {
 		return nil, err
 	}
+	if err := manifestv2.Validate(m); err != nil {
+		return nil, err
+	}
 	return manifestv2.Marshal(m)
+}
+
+// refuseLossy reports v1 data that has no v2 home and returns true when the
+// run must stop. Only v1 input is checked: a v2 file decodes strictly, so an
+// unknown key there already fails with E106.
+func refuseLossy(path string, data []byte, stderr io.Writer) bool {
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(data, &raw) != nil {
+		return false
+	}
+	if v, ok := raw["manifest_version"]; ok && !manifestv2.IsV1Version(v) {
+		return false
+	}
+	if keys := manifestv2.RegistryKeys(data); len(keys) > 0 {
+		say(stderr, "manifestv2migrate: %s: note: registry-owned key(s) removed on purpose (ADR 0008, release pipeline): %s\n", path, strings.Join(keys, ", "))
+	}
+	un, err := manifestv2.UnmappedV1Keys(data)
+	if err != nil || len(un) == 0 {
+		return false
+	}
+	say(stderr, "manifestv2migrate: %s: refusing: %d v1 key%s with no v2 home would be dropped (nothing written):\n", path, len(un), map[bool]string{true: "", false: "s"}[len(un) == 1])
+	for _, u := range un {
+		say(stderr, "  %s\n", u)
+	}
+	return true
 }
 
 func runCheck(path string, data []byte, stderr io.Writer) int {

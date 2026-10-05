@@ -27,8 +27,27 @@ func copyFixture(t *testing.T, rel string) string {
 	return p
 }
 
+// copyLossless copies a v1 fixture without the keys the normalizer has no v2
+// home for, so the tool converts it.
+func copyLossless(t *testing.T, rel string) string {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(mustRead(t, filepath.Join(fixtureRoot, rel)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"actions", "config", "hooks", "notes"} {
+		delete(doc, k)
+	}
+	b, _ := json.Marshal(doc)
+	p := filepath.Join(t.TempDir(), "plugin.json")
+	if err := os.WriteFile(p, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
 func TestMigrateTool(t *testing.T) {
-	in := copyFixture(t, "v1/tenant.json")
+	in := copyLossless(t, "v1/tenant.json")
 	code, out, stderr := runTool(t, "-in", in)
 	if code != 0 {
 		t.Fatalf("convert: %d %s", code, stderr)
@@ -55,7 +74,7 @@ func TestMigrateTool(t *testing.T) {
 	if code, _, e := runTool(t, "-in", in, "-check"); code != 0 {
 		t.Errorf("-check on canonical v2: %s", e)
 	}
-	if code, _, _ := runTool(t, "-in", copyFixture(t, "v1/tenant.json"), "-check"); code != 1 {
+	if code, _, _ := runTool(t, "-in", copyLossless(t, "v1/tenant.json"), "-check"); code != 1 {
 		t.Errorf("-check on v1 must exit 1, got %d", code)
 	}
 	if code, tgt, _ := runTool(t, "-in", in, "-targets"); code != 0 || tgt != "nself-tenant\ttenant\n" {

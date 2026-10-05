@@ -5,6 +5,7 @@
   "language": "go",
   "license": "free",
   "licenseType": "free",
+  "license_spdx": "MIT",
   "manifest_version": 2,
   "maturity": "planned",
   "minNselfVersion": "1.0.0",
