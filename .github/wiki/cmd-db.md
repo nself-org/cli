@@ -41,6 +41,13 @@ nself db migrate up [--dry-run] [--migration-dir <path>] [--plugin <name>]
 | `--dry-run` | List pending migrations without applying them |
 | `--migration-dir <path>` | Apply all `.sql` files in `<path>` in lexicographic order, skipping already-applied files |
 
+With `--migration-dir` and `--dry-run`, the command lists the pending files of that directory and applies nothing. It reads the ledger (`np_common.schema_versions`, plus the `nself_ops.migrations` checksums) with SELECT statements only: no table is created, no row is written, and nothing is run inside a rolled-back transaction. It fails, as the real run would, when an applied file was edited after apply or when a pending file is rejected by the SQL lint or the ALTER prerequisite check. With `--env`/`--server`, both flags are forwarded to the remote host. `--allow-version-drift` cannot be combined with `--dry-run` on a remote target (an older remote nself may ignore `--dry-run` and apply); the command stops before any SSH call.
+
+In directory mode (`up --migration-dir`, `down --migration-dir`) the CLI runs each migration in one transaction with its ledger change, in two layers that never parse SQL:
+
+1. **Scan (over-refuses).** Line endings are normalised, then only an exact outer wrapper is dropped: a first statement `BEGIN;`, `BEGIN TRANSACTION;` or `START TRANSACTION;` and a last statement `COMMIT;` or `END;` (case and whitespace tolerant, trailing comments allowed). If the rest of the file contains `COMMIT`, `ROLLBACK`, `ABORT`, `SAVEPOINT`, `RELEASE` or `PREPARE` as a word anywhere, in a string or a trailing comment too (whole lines that start with `--` are skipped), `up` and `down` refuse the file. The error names the word and the line. For an `up` file, run it with `nself db migrate apply --file <path>`, which applies the file exactly as written. A down file is run by hand in `nself db shell`, then its two ledger rows are deleted. `up` refuses the whole batch before applying any file. `BEGIN`, `END`, `DO`, `CALL`, `ATOMIC` and `CONCURRENTLY` are not refused: Postgres itself rejects transaction control inside functions, procedures and `DO` blocks run in a transaction, and `CREATE INDEX CONCURRENTLY` errors inside one.
+2. **Server check.** The transaction records its id, writes the ledger change first, runs the file, then asserts it is still the same open transaction before `COMMIT`. A top-level `END` (it acts as `COMMIT`) fails this check with a RECONCILE message: part of the file may be committed, and because the ledger was written first, ledger and schema agree on what was committed; compare them by hand before re-running. After the run the ledger row is read back (`up`: present, `down`: absent).
+
 **Examples:**
 
 ```bash
@@ -52,6 +59,9 @@ nself db migrate up --dry-run
 
 # Apply external directory of SQL files (G-008)
 nself db migrate up --migration-dir /path/to/plugin/migrations
+
+# Preview what that directory would apply (writes nothing)
+nself db migrate up --migration-dir /path/to/plugin/migrations --dry-run
 ```
 
 ### db migrate apply
@@ -70,7 +80,7 @@ nself db migrate apply --file <path>
 
 **Checksum tracking:** the SHA-256 checksum of the file is stored in `nself_ops.migrations` for audit purposes.
 
-**Non-transactional detection:** SQL files containing `CREATE INDEX CONCURRENTLY`, `DROP INDEX CONCURRENTLY`, `REINDEX CONCURRENTLY`, or `ALTER TYPE` are run outside a transaction automatically.
+**Non-transactional detection:** SQL files containing `CREATE INDEX CONCURRENTLY`, `DROP INDEX CONCURRENTLY`, `REINDEX CONCURRENTLY` or `ALTER TYPE ... ADD VALUE` (found anywhere in the text) are run outside a transaction automatically, as written, in `up --migration-dir` and `apply --file`; the scan above does not apply to them. `down --migration-dir` always uses the down transaction, so a down file with such a statement fails in Postgres and nothing is reverted.
 
 **Examples:**
 
@@ -89,10 +99,17 @@ nself db migrate apply --file ~/.nself/plugins/claw/migrations/20240115_rls.sql
 Revert the most recently applied migration.
 
 ```bash
-nself db migrate down
+nself db migrate down [--migration-dir <path> [--steps N]]
 ```
 
-Looks for a corresponding `.down.sql` file next to the original migration.
+Without `--migration-dir`, looks for a corresponding `.down.sql` file next to the original migration.
+
+| Flag | Description |
+|---|---|
+| `--migration-dir <path>` | Revert directory migrations: each reverted file `<name>.sql` needs `<name>_down.sql` or `<name>.down.sql` in `<path>` |
+| `--steps N` | With `--migration-dir`: number of most recent migrations to revert (default 1) |
+
+With `--migration-dir`, every step runs the down file and removes the migration's rows from both ledgers in one transaction. The newest applied migration must be a file of `<path>`; otherwise nothing is reverted and the error names it. A missing down file is an error naming both expected paths, and every step is checked before the first one runs. The ledger keys on the file name only, so `down` also requires the file in `<path>` to match the checksum recorded for that name in `nself_ops.migrations`; a same-named file from another directory (or an edited one) is refused. `--steps` without `--migration-dir` is an error.
 
 ### db migrate status
 

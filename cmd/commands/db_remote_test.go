@@ -575,3 +575,141 @@ func TestDispatchRemoteIfNeeded_AllowVersionDriftFlagPropagates(t *testing.T) {
 		t.Errorf("expected exactly 1 SSH call (no probe) with --allow-version-drift, got %d", calls)
 	}
 }
+
+// writeRemoteInventory chdirs into a temp project with one remote "staging"
+// environment (deploy@staging.example.com, /opt/nself).
+func writeRemoteInventory(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Chdir(dir)
+	inv := &controlplane.Inventory{
+		SchemaVersion: 1,
+		Project:       "test",
+		Environments: map[string]controlplane.Environment{
+			"staging": {
+				Name: "staging", Kind: "remote",
+				Servers: []controlplane.Server{{Name: "staging-app", Host: "deploy@staging.example.com", RemotePath: "/opt/nself", Primary: true}},
+			},
+		},
+	}
+	if err := controlplane.Write(dir, inv); err != nil {
+		t.Fatalf("write inventory: %v", err)
+	}
+}
+
+// remoteUp runs runDBMigrateUp as `db migrate up --env staging <flags>` with
+// SSH stubbed and returns every remote command line sent plus the error.
+func remoteUp(t *testing.T, flags map[string]string) ([]string, error) {
+	t.Helper()
+	withLocalVersion(t, "dev") // unparseable local version: no probe, only the real command
+	writeRemoteInventory(t)
+	var sent []string
+	withStubbedSSH(t, func(ctx context.Context, sshArgs []string) (string, error) {
+		sent = append(sent, sshArgs[len(sshArgs)-1])
+		return "ok", nil
+	})
+	cmd := newDBRemoteTestCmd()
+	cmd.Flags().String("migration-dir", "", "")
+	cmd.Flags().Bool("dry-run", false, "")
+	cmd.Flags().String("plugin", "", "")
+	if err := cmd.Flags().Set("env", "staging"); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range flags {
+		if err := cmd.Flags().Set(k, v); err != nil {
+			t.Fatalf("set --%s: %v", k, err)
+		}
+	}
+	err := runDBMigrateUp(cmd, nil)
+	return sent, err
+}
+
+// P7-PROD-77: the exact remote command for a directory dry-run. Dropping
+// --dry-run or --migration-dir here made a remote "preview" apply the remote's
+// default directory for real.
+func TestRemoteUp_MigrationDirDryRun_ArgvIsExact(t *testing.T) {
+	sent, err := remoteUp(t, map[string]string{"migration-dir": "migrations", "dry-run": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--migration-dir' 'migrations' '--dry-run'"
+	if len(sent) != 1 || sent[0] != want {
+		t.Fatalf("remote command = %q, want exactly [%q]", sent, want)
+	}
+}
+
+func TestRemoteUp_MigrationDirWithoutDryRun_ArgvHasNoDryRun(t *testing.T) {
+	sent, err := remoteUp(t, map[string]string{"migration-dir": "migrations"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--migration-dir' 'migrations'"
+	if len(sent) != 1 || sent[0] != want {
+		t.Fatalf("remote command = %q, want exactly [%q]", sent, want)
+	}
+}
+
+// A hostile directory name stays one shell word.
+func TestRemoteUp_MigrationDirIsShellQuoted(t *testing.T) {
+	sent, err := remoteUp(t, map[string]string{"migration-dir": "m; rm -rf /", "dry-run": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "cd '/opt/nself' && nself 'db' 'migrate' 'up' '--migration-dir' 'm; rm -rf /' '--dry-run'"
+	if len(sent) != 1 || sent[0] != want {
+		t.Fatalf("remote command = %q, want exactly [%q]", sent, want)
+	}
+}
+
+// Without --migration-dir the remote form is unchanged from before P7-PROD-77.
+func TestRemoteUp_WithoutMigrationDir_ArgvUnchanged(t *testing.T) {
+	sent, err := remoteUp(t, map[string]string{"dry-run": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "cd '/opt/nself' && nself 'db' 'migrate' 'up'"
+	if len(sent) != 1 || sent[0] != want {
+		t.Fatalf("remote command = %q, want exactly [%q]", sent, want)
+	}
+}
+
+// --allow-version-drift with --dry-run is refused before any SSH call; without
+// --dry-run it still works.
+func TestRemoteUp_AllowVersionDriftWithDryRunIsRefused(t *testing.T) {
+	sent, err := remoteUp(t, map[string]string{"migration-dir": "migrations", "dry-run": "true", "allow-version-drift": "true"})
+	if err == nil || !strings.Contains(err.Error(), "--allow-version-drift cannot be combined with --dry-run") {
+		t.Fatalf("want refusal, got %v", err)
+	}
+	if len(sent) != 0 {
+		t.Fatalf("SSH was called despite the refusal: %q", sent)
+	}
+	sent, err = remoteUp(t, map[string]string{"migration-dir": "migrations", "allow-version-drift": "true"})
+	if err != nil || len(sent) != 1 {
+		t.Fatalf("allow-version-drift without --dry-run must still run: %v, %q", err, sent)
+	}
+}
+
+// `db migrate down` has no --env/--server: it can never be pointed at a remote
+// host, so it never sends an SSH command.
+func TestDBMigrateDown_NeverDispatchesRemote(t *testing.T) {
+	for _, f := range []string{"env", "server", "allow-version-drift"} {
+		if dbMigrateDownCmd.Flags().Lookup(f) != nil {
+			t.Errorf("db migrate down must not register --%s", f)
+		}
+	}
+	dir := dirProject(t)
+	useFakeDocker(t, appliedAnswers(t, dir, "002_b.sql"))
+	calls := 0
+	withStubbedSSH(t, func(ctx context.Context, sshArgs []string) (string, error) {
+		calls++
+		return "", nil
+	})
+	cmd, _ := newDirTestCmd("down")
+	_ = cmd.Flags().Set("migration-dir", dir)
+	if err := cmd.RunE(cmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Errorf("down sent %d SSH command(s), want 0", calls)
+	}
+}

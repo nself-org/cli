@@ -18,7 +18,21 @@ import (
 )
 
 func runDBMigrateUp(cmd *cobra.Command, _ []string) error {
-	if handled, err := dispatchRemoteIfNeeded(cmd, "db", "migrate", "up"); handled {
+	// Read --migration-dir and --dry-run before the remote dispatch: with
+	// --env/--server the command re-runs on the remote host, and dropping
+	// either flag there would apply the remote's default directory for real
+	// (P7-PROD-77). Forward both only for --migration-dir, so the no-directory
+	// remote form is unchanged.
+	migrationDir, _ := cmd.Flags().GetString("migration-dir")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	remoteArgs := []string{"db", "migrate", "up"}
+	if migrationDir != "" {
+		remoteArgs = append(remoteArgs, "--migration-dir", migrationDir)
+		if dryRun {
+			remoteArgs = append(remoteArgs, "--dry-run")
+		}
+	}
+	if handled, err := dispatchRemoteIfNeeded(cmd, remoteArgs...); handled {
 		return err
 	}
 
@@ -40,10 +54,24 @@ func runDBMigrateUp(cmd *cobra.Command, _ []string) error {
 	}
 
 	plugin, _ := cmd.Flags().GetString("plugin")
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	migrationDir, _ := cmd.Flags().GetString("migration-dir")
 
 	// --migration-dir: apply all .sql files in the given directory (G-008).
+	// With --dry-run only list the pending files: that path issues SELECT
+	// statements only and never reaches MigrateUpDir (P7-PROD-77).
+	if migrationDir != "" && dryRun {
+		pending, err := database.PendingDirMigrations(cmd.Context(), cfg, migrationDir)
+		if err != nil {
+			return fmt.Errorf("pending migrations in dir: %w", err)
+		}
+		if len(pending) == 0 {
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No pending migrations in directory.")
+			return nil
+		}
+		for _, name := range pending {
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), name)
+		}
+		return nil
+	}
 	if migrationDir != "" {
 		count, err := database.MigrateUpDir(cmd.Context(), cfg, migrationDir)
 		if err != nil {
@@ -85,9 +113,25 @@ func runDBMigrateUp(cmd *cobra.Command, _ []string) error {
 }
 
 func runDBMigrateDown(cmd *cobra.Command, _ []string) error {
+	migrationDir, _ := cmd.Flags().GetString("migration-dir")
+	if migrationDir == "" && cmd.Flags().Changed("steps") {
+		// Never silently revert one migration when the user asked for N.
+		return fmt.Errorf("--steps requires --migration-dir")
+	}
 	cfg, err := loadProjectConfig()
 	if err != nil {
 		return err
+	}
+	if migrationDir != "" {
+		steps, _ := cmd.Flags().GetInt("steps")
+		reverted, err := database.MigrateDownDir(cmd.Context(), cfg, migrationDir, steps)
+		for _, name := range reverted {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Reverted %s\n", name)
+		}
+		if err != nil {
+			return fmt.Errorf("migrate down dir: %w", err)
+		}
+		return nil
 	}
 	if err := database.MigrateDown(cmd.Context(), cfg); err != nil {
 		return fmt.Errorf("migrate down: %w", err)
