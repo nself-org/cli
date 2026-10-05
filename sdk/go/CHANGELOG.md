@@ -28,10 +28,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `HostSpec{User, Host, Port, LegacyPath}`, the typed error `*HostSpecError`
   (cli maps it to E484) and the methods `String` (canonical, IPv6 in brackets),
   `Dest`, `SSHArgs` (`[-p N] -- dest`), `SSHOptions` (the port only),
-  `Target` and `Validate`. user `[a-z_][a-z0-9_.-]{0,31}`, host a dotted name
+  `Target` (refuses options that carry a different port) and `Validate`. user `[a-z_][a-z0-9_.-]{0,31}`, host a dotted name
   (labels `[A-Za-z0-9_-]`, at most 253 bytes, no empty label, never a leading
   `-`) or a bracketed IPv6 literal, port 1-65535 without sign or leading zero.
-  A second `@` or `:`, a bare IPv6 literal, whitespace, control or non-ASCII
+  A second `@` or `:`, a bare IPv6 literal (the error says to use brackets), whitespace, control or non-ASCII
   bytes and shell metacharacters are refused. Hand-written scanner, no regular
   expression.
 

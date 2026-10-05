@@ -80,7 +80,7 @@ func ParseHostSpec(s string) (HostSpec, error) {
 		if !ok {
 			return HostSpec{}, specErr(s, "unterminated '['")
 		}
-		if ip := net.ParseIP(inner); ip == nil || !strings.Contains(inner, ":") {
+		if !isIPv6(inner) {
 			return HostSpec{}, specErr(s, "brackets hold an IPv6 address only")
 		}
 		h.Host = inner
@@ -91,6 +91,9 @@ func ParseHostSpec(s string) (HostSpec, error) {
 			tail, hasTail = after[1:], true
 		}
 	} else {
+		if isIPv6(rest) {
+			return HostSpec{}, specErr(s, "an IPv6 address needs brackets: [%s]", rest)
+		}
 		h.Host, tail, hasTail = strings.Cut(rest, ":")
 		if err := checkName(h.Host); err != nil {
 			return HostSpec{}, specErr(s, "%v", err)
@@ -112,6 +115,12 @@ func ParseHostSpec(s string) (HostSpec, error) {
 	}
 	h.Port = port
 	return h, nil
+}
+
+// isIPv6 reports whether s is an IPv6 literal (a ':' and a valid address; a
+// dotted IPv4 address is a host name here, not an IPv6 literal).
+func isIPv6(s string) bool {
+	return strings.Contains(s, ":") && net.ParseIP(s) != nil
 }
 
 // validUser reports whether u matches [a-z_][a-z0-9_.-]{0,31}.
@@ -216,9 +225,59 @@ func (h HostSpec) SSHArgs() []string {
 
 // Target returns the Target for h. opts are the ssh options placed before the
 // port (the CI set, `-i KEY`, ...); nil means none, never BaseOptions, so the
-// result's Options is always non-nil and checkOptions judges all of it.
-func (h HostSpec) Target(opts []string) Target {
-	return Target{Dest: h.Dest(), Options: append(append([]string{}, opts...), h.SSHOptions()...)}
+// result's Options is always non-nil and checkOptions judges all of it. When
+// h has a port and opts also set a different one (`-p N`, `-pN` or an `-o Port`
+// option), Target refuses: ssh keeps the first port it sees, so the spec's
+// port would be lost without a word.
+func (h HostSpec) Target(opts []string) (Target, error) {
+	if h.Port > 0 {
+		if conflict := conflictingPort(opts, strconv.Itoa(h.Port)); conflict != "" {
+			return Target{}, specErr(h.String(), "options set port %q but the host spec says %d", conflict, h.Port)
+		}
+	}
+	return Target{Dest: h.Dest(), Options: append(append([]string{}, opts...), h.SSHOptions()...)}, nil
+}
+
+// conflictingPort returns the first port in opts that differs from want, or "".
+func conflictingPort(opts []string, want string) string {
+	for i := 0; i < len(opts); i++ {
+		a, next, got := opts[i], "", ""
+		if i+1 < len(opts) {
+			next = opts[i+1]
+		}
+		if a == "-i" || a == "-p" || a == "-o" {
+			i++ // the next element is this option's value
+		}
+		if a == "-p" {
+			got = next
+		}
+		if a == "-o" {
+			got = optionPort(next)
+		}
+		if strings.HasPrefix(a, "-p") && a != "-p" {
+			got = a[2:]
+		}
+		if strings.HasPrefix(a, "-o") && a != "-o" {
+			got = optionPort(a[2:])
+		}
+		if got != "" && got != want {
+			return got
+		}
+	}
+	return ""
+}
+
+// optionPort returns the value of an ssh -o setting ("Port=2222", "Port 2222",
+// "port = 2222") when its key is Port, else "".
+func optionPort(setting string) string {
+	key, val, ok := strings.Cut(setting, "=")
+	if !ok {
+		key, val, _ = strings.Cut(setting, " ")
+	}
+	if !strings.EqualFold(strings.TrimSpace(key), "Port") {
+		return ""
+	}
+	return strings.TrimSpace(val)
 }
 
 // Validate reports whether h is what ParseHostSpec would produce, for a

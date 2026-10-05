@@ -264,7 +264,7 @@ func TestParseHostSpec_Reasons(t *testing.T) {
 		"u@h@evil":   "host holds a byte",
 		"[1.2.3.4]":  "brackets hold",
 		"u@h:22:/x":  "port must be",
-		"u@2001::1":  "port must be",
+		"u@2001::1":  "needs brackets",
 		"a..b":       "empty",
 		"-x":         "start with '-'",
 		"u@h:/a b":   "legacy path",
@@ -346,7 +346,7 @@ func TestHostSpec_Target(t *testing.T) {
 	h, _ := ParseHostSpec("deploy@[2001:db8::1]:2222")
 	base := append(CISSHFlags(), CIOptions("n1", "/pin/known_hosts", Version{9, 6})...)
 	before := append([]string{}, base...)
-	tg := h.Target(base)
+	tg := mustTarget(t, h, base)
 	if tg.Dest != "deploy@2001:db8::1" {
 		t.Errorf("Dest = %q", tg.Dest)
 	}
@@ -361,7 +361,7 @@ func TestHostSpec_Target(t *testing.T) {
 		t.Errorf("the D4 block plus the port fails the funnel's own check: %v", err)
 	}
 	h2, _ := ParseHostSpec("h")
-	if o := h2.Target(nil).Options; o == nil || len(o) != 0 {
+	if o := mustTarget(t, h2, nil).Options; o == nil || len(o) != 0 {
 		t.Errorf("Target(nil).Options = %#v, want non-nil empty (nil would mean BaseOptions)", o)
 	}
 }
@@ -375,7 +375,7 @@ func TestHostSpecThroughTheFunnel(t *testing.T) {
 	d4 := append(CISSHFlags(), CIOptions("n1", "/pin/known_hosts", Version{9, 6})...)
 
 	h, _ := ParseHostSpec("deploy@[2001:db8::1]:2222")
-	tg := h.Target(d4)
+	tg := mustTarget(t, h, d4)
 	if _, err := Run(ctx, tg, "uptime"); err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +424,7 @@ func TestHostSpecThroughTheFunnel(t *testing.T) {
 
 	// No port: no -p/-P anywhere; a plain name destination.
 	h, _ = ParseHostSpec("web1")
-	tg = h.Target(d4)
+	tg = mustTarget(t, h, d4)
 	if err := CopyTo(ctx, tg, "./f", "/x"); err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +445,7 @@ func TestHostSpecHostileNeverExecs(t *testing.T) {
 		}
 	}
 	for _, h := range []HostSpec{{Host: "-oProxyCommand=x"}, {User: "-oX", Host: "h"}, {Host: "h:mod"}, {Host: "a b"}, {Host: "h;id"}} {
-		tg := h.Target([]string{})
+		tg := mustTarget(t, h, []string{})
 		if _, err := Run(ctx, tg, "id"); err == nil {
 			t.Errorf("Run accepted %+v", h)
 		}
@@ -539,6 +539,97 @@ func TestParseSSHG_PortBounds(t *testing.T) {
 		_, err := parseSSHG("hostname h\nport " + port + "\n")
 		if (err == nil) != ok {
 			t.Errorf("port %s: err = %v, want ok=%v", port, err, ok)
+		}
+	}
+}
+
+func mustTarget(t testing.TB, h HostSpec, opts []string) Target {
+	t.Helper()
+	tg, err := h.Target(opts)
+	if err != nil {
+		t.Fatalf("Target(%q) of %+v: %v", opts, h, err)
+	}
+	return tg
+}
+
+// A port in the options that differs from the spec's is refused; the same
+// port, or any port when the spec has none, is not.
+func TestHostSpec_TargetRefusesConflictingPort(t *testing.T) {
+	d4 := append(CISSHFlags(), CIOptions("n1", "/pin/known_hosts", Version{9, 6})...)
+	spec := HostSpec{User: "u", Host: "h", Port: 2222}
+	conflicts := [][]string{
+		{"-p", "22"}, {"-p22"}, {"-p", "2223"}, {"-oPort=22"}, {"-o", "Port=22"}, {"-o", "Port 22"}, {"-o", "port = 22"},
+		{"-oPORT=1"}, {"-i", "/k", "-p", "22"}, {"-q", "-o", "Port=22", "-v"}, {"-p", "x"}, {"-pabc"},
+		append(append([]string{}, d4...), "-p", "22"),
+	}
+	for _, o := range conflicts {
+		tg, err := spec.Target(o)
+		var he *HostSpecError
+		if !errors.As(err, &he) || !strings.Contains(err.Error(), "port") {
+			t.Errorf("Target(%q) = %+v, %v; want a port conflict error", o, tg, err)
+		}
+		if tg.Dest != "" || tg.Options != nil {
+			t.Errorf("Target(%q) returned a non-zero Target with an error: %+v", o, tg)
+		}
+	}
+	if _, err := spec.Target([]string{"-p", "22"}); err == nil || !strings.Contains(err.Error(), `"22"`) || !strings.Contains(err.Error(), "2222") {
+		t.Errorf("conflict error does not name both ports: %v", err)
+	}
+	fine := [][]string{
+		nil, {}, d4, {"-p", "2222"}, {"-p2222"}, {"-oPort=2222"}, {"-i", "/k"}, {"-i"}, {"-o", "ConnectTimeout=5"},
+		{"-oConnectTimeout=5"}, {"-o", "Compression=yes"}, {"-o"}, {"-p"}, {"-o", "Port"}, {"-4", "-q"},
+	}
+	for _, o := range fine {
+		if _, err := spec.Target(o); err != nil {
+			t.Errorf("Target(%q) = %v", o, err)
+		}
+	}
+	// Without a spec port, the caller's port is the only one and stands.
+	noPort := HostSpec{Host: "h"}
+	tg, err := noPort.Target([]string{"-p", "22"})
+	if err != nil || !reflect.DeepEqual(tg.Options, []string{"-p", "22"}) {
+		t.Errorf("no spec port: %+v, %v", tg, err)
+	}
+	// optionPort reads all three -o spellings and ignores other keys.
+	for in, want := range map[string]string{
+		"Port=1": "1", "Port 1": "1", "port = 1": "1", " PORT=1": "1", "Port": "", "Portal=1": "", "ConnectTimeout=5": "", "": "", "Port=": "",
+	} {
+		if got := optionPort(in); got != want {
+			t.Errorf("optionPort(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A bare IPv6 address is refused with a reason that says to use brackets.
+func TestParseHostSpec_BareIPv6Reason(t *testing.T) {
+	for in, fix := range map[string]string{
+		"::1":             "[::1]",
+		"u@::1":           "[::1]",
+		"2001:db8::1":     "[2001:db8::1]",
+		"u@2001:db8::1":   "[2001:db8::1]",
+		"2001:db8::1:22":  "[2001:db8::1:22]", // an address, not host:port
+		"fe80::1":         "[fe80::1]",
+		"::ffff:10.0.0.1": "[::ffff:10.0.0.1]",
+		"1:2:3:4:5:6:7:8": "[1:2:3:4:5:6:7:8]",
+		"u@2001:DB8::A":   "[2001:DB8::A]",
+	} {
+		_, err := ParseHostSpec(in)
+		want := "an IPv6 address needs brackets: " + fix
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("ParseHostSpec(%q) error = %v, want it to say %q", in, err, want)
+		}
+	}
+	// Not IPv6: the generic reasons stay, and IPv4 stays a valid host.
+	for in, want := range map[string]string{
+		"fe80::1%eth0": "port must be", "h:22:22": "port must be", "u@h::mod": "port must be", "a:b": "port must be", ":": "empty",
+	} {
+		if _, err := ParseHostSpec(in); err == nil || strings.Contains(err.Error(), "brackets: ") || !strings.Contains(err.Error(), want) {
+			t.Errorf("ParseHostSpec(%q) error = %v, want %q and no bracket hint", in, err, want)
+		}
+	}
+	for _, in := range []string{"10.0.0.1", "u@10.0.0.1:22", "1.2.3.4"} {
+		if _, err := ParseHostSpec(in); err != nil {
+			t.Errorf("ParseHostSpec(%q) = %v", in, err)
 		}
 	}
 }
