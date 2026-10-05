@@ -33,41 +33,44 @@ func main() {
 	os.Exit(run(defaultSet, *dir, *check, os.Stdout, os.Stderr))
 }
 
+// say writes one formatted line; a failed diagnostic write has no recovery.
+func say(w io.Writer, format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+
 // run executes one generation or check against dir and returns the exit code.
 func run(ss *specSet, dir string, check bool, stdout, stderr io.Writer) int {
 	if probs := ss.problemList(); len(probs) > 0 {
 		for _, p := range probs {
-			fmt.Fprintln(stderr, "schemagen: problem:", p)
+			say(stderr, "schemagen: problem: %s\n", p)
 		}
 		return 1
 	}
 	want, err := generate(ss)
 	if err != nil {
-		fmt.Fprintln(stderr, "schemagen:", err)
+		say(stderr, "schemagen: %v\n", err)
 		return 2
 	}
 	have, err := readJSONFiles(dir)
 	if err != nil {
-		fmt.Fprintln(stderr, "schemagen:", err)
+		say(stderr, "schemagen: %v\n", err)
 		return 2
 	}
 	if check {
 		diffs := compare(want, have)
 		for _, d := range diffs {
-			fmt.Fprintln(stderr, "schemagen:", d)
+			say(stderr, "schemagen: %s\n", d)
 		}
 		if len(diffs) > 0 {
-			fmt.Fprintln(stderr, "schemagen: schemas are stale; run `make schemas` and commit the result")
+			say(stderr, "schemagen: schemas are stale; run `make schemas` and commit the result\n")
 			return 1
 		}
-		fmt.Fprintf(stdout, "schemagen: %d files current\n", len(want))
+		say(stdout, "schemagen: %d files current\n", len(want))
 		return 0
 	}
 	if err := write(dir, want, have); err != nil {
-		fmt.Fprintln(stderr, "schemagen:", err)
+		say(stderr, "schemagen: %v\n", err)
 		return 2
 	}
-	fmt.Fprintf(stdout, "schemagen: wrote %d files to %s\n", len(want), dir)
+	say(stdout, "schemagen: wrote %d files to %s\n", len(want), dir)
 	return 0
 }
 
