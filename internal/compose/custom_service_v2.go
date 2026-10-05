@@ -72,7 +72,7 @@ func (g *Generator) applyCustomServiceV2(svc *ServiceConfig, cs config.CustomSer
 // start, as a path that begins and ends with start ("a -> b -> a"), or nil.
 // Only edges between custom services are known here; cycles through core or
 // plugin services are found in build post-validation, which sees the whole
-// compose set.
+// compose set. The walk is config.FindDependsCycle.
 func customServiceDependsCycle(all []config.CustomService, start string) []string {
 	edges := map[string][]string{}
 	for _, c := range all {
@@ -80,27 +80,7 @@ func customServiceDependsCycle(all []config.CustomService, start string) []strin
 			edges[c.Name] = append(edges[c.Name], d.Name)
 		}
 	}
-	var path []string
-	onPath := map[string]bool{}
-	var visit func(n string) []string
-	visit = func(n string) []string {
-		path = append(path, n)
-		onPath[n] = true
-		defer func() { path = path[:len(path)-1]; onPath[n] = false }()
-		for _, next := range edges[n] {
-			if next == start {
-				return append(append([]string(nil), path...), start)
-			}
-			if onPath[next] {
-				continue
-			}
-			if c := visit(next); c != nil {
-				return c
-			}
-		}
-		return nil
-	}
-	return visit(start)
+	return config.FindDependsCycle(edges, []string{start})
 }
 
 // customServiceNetworks returns the extra networks of cs, each

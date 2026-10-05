@@ -171,6 +171,15 @@ func TestCustomServiceV2BuildContext(t *testing.T) {
 		{"dockerignore without .secrets", "**/.env*\n", "../..", "does not exclude .secrets"},
 		{"comment does not count", "# **/.env*\n# **/.secrets\n", "../..", "does not exclude"},
 		{"negated **/.env* cancels", good + "!**/.env*\n", "../..", "does not exclude"},
+		{"negation re-includes a named .env file", good + "!**/.env.production\n", "../..", "!**/.env.production"},
+		{"negation re-includes a file in .secrets", good + "!**/.secrets/pub\n", "../..", "!**/.secrets/pub"},
+		{"negation of .env.*", good + "!**/.env.*\n", "../..", "does not exclude"},
+		{"negation of the root .env*", good + "!.env*\n", "../..", "does not exclude"},
+		{"negation of a project-prefixed .secrets path", good + "!apps/svc/.secrets/token\n", "../..", "does not exclude"},
+		{"negation with ** can reach .secrets", good + "!**/keep.txt\n", "../..", "!**/keep.txt"},
+		{"negation of a safe example suffix", good + "!**/.env.sample\n!**/.env.template\n!**/.env.dist\n!**/.secrets/pub.example\n", "../..", ""},
+		{"negation before the exclusion is refused too (order is not analysed)", "!**/.env.production\n" + good, "../..", "!**/.env.production"},
+		{"UTF-8 BOM on line 1 is ignored like Docker", "\ufeff" + good, "../..", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -391,5 +400,46 @@ func TestCustomServiceV2ContextListing(t *testing.T) {
 	}
 	if err := ValidateBuildContext("CS_1_PATH", proj, "../..", ""); err == nil {
 		t.Errorf("the guard accepted bare patterns that send %d secret files", leaks(bare))
+	}
+}
+
+// TestCustomServiceV2ReincludedDirectory: a literal "!" pattern naming a
+// directory re-includes everything under it, secrets included.
+func TestCustomServiceV2ReincludedDirectory(t *testing.T) {
+	root, proj := buildContextTree(t, "**/.env*\n**/.secrets\n!apps/other\n")
+	if err := os.MkdirAll(filepath.Join(root, "apps", "other"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateBuildContext("CS_1_PATH", proj, "../..", ""); err == nil || !strings.Contains(err.Error(), "!apps/other") {
+		t.Fatalf("err = %v, want E528 naming !apps/other", err)
+	}
+	// A literal pattern that is not a directory of the context is left alone.
+	if err := os.WriteFile(filepath.Join(root, ".dockerignore"), []byte("**/.env*\n**/.secrets\n!go.mod\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateBuildContext("CS_1_PATH", proj, "../..", ""); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// TestFindDependsCycle covers the shared helper: chain and diamond pass, a
+// cycle is reported with its path even when the root is not on it, and a
+// self-loop is a cycle.
+func TestFindDependsCycle(t *testing.T) {
+	edges := map[string][]string{
+		"a": {"b", "c"}, "b": {"d"}, "c": {"d"}, "d": nil,
+		"x": {"y"}, "y": {"z"}, "z": {"y"},
+		"s": {"s"},
+	}
+	for _, tc := range []struct {
+		root string
+		want string
+	}{
+		{"a", ""}, {"d", ""}, {"x", "y -> z -> y"}, {"y", "y -> z -> y"}, {"s", "s -> s"},
+	} {
+		got := strings.Join(FindDependsCycle(edges, []string{tc.root}), " -> ")
+		if got != tc.want {
+			t.Errorf("root %s: cycle = %q, want %q", tc.root, got, tc.want)
+		}
 	}
 }

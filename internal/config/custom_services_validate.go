@@ -144,26 +144,17 @@ func ValidateBuildContext(key, projectDir, p, dockerfile string) error {
 	if miss := uncoveredSecretPath(pats, filepath.ToSlash(rel)); miss != "" {
 		return errs.Newf("E528", "%s=%s resolves to %s, whose %s does not exclude %s (a bare .env* matches only the context root; use **/.env* and **/.secrets)", key, p, ctx, filepath.Base(file), miss)
 	}
+	if bad := reincludedSecret(pats, ctx); bad != "" {
+		return errs.Newf("E528", "%s=%s resolves to %s, whose %s does not exclude secrets: the pattern !%s can re-include .env* or .secrets paths (only a name ending .example, .sample, .template or .dist may be re-included)", key, p, ctx, filepath.Base(file), bad)
+	}
 	return nil
-}
-
-// dockerignoreFile returns the ignore file BuildKit uses for this build: a
-// "<dockerfile>.dockerignore" beside the Dockerfile replaces .dockerignore.
-func dockerignoreFile(ctx, dockerfile string) string {
-	if dockerfile == "" {
-		dockerfile = "Dockerfile"
-	}
-	specific := filepath.Join(ctx, filepath.FromSlash(dockerfile)) + ".dockerignore"
-	if _, err := os.Stat(specific); err == nil {
-		return specific
-	}
-	return filepath.Join(ctx, ".dockerignore")
 }
 
 // ignorePattern is one compiled .dockerignore line.
 type ignorePattern struct {
-	re  *regexp.Regexp
-	neg bool
+	re   *regexp.Regexp
+	text string // cleaned pattern, without "!" and the leading "/"
+	neg  bool
 }
 
 // readDockerignore parses an ignore file the way Docker does (comments and
@@ -176,9 +167,14 @@ func readDockerignore(path string) ([]ignorePattern, bool) {
 	}
 	defer func() { _ = f.Close() }()
 	var out []ignorePattern
+	first := true // Docker drops a UTF-8 byte order mark on line 1
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
+		if first {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "\ufeff"))
+			first = false
+		}
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -192,7 +188,7 @@ func readDockerignore(path string) ([]ignorePattern, bool) {
 			line = line[1:]
 		}
 		if re, err := compileIgnore(line); err == nil {
-			out = append(out, ignorePattern{re: re, neg: neg})
+			out = append(out, ignorePattern{re: re, text: line, neg: neg})
 		}
 	}
 	return out, true
@@ -279,18 +275,4 @@ func uncoveredSecretPath(pats []ignorePattern, relProj string) string {
 		}
 	}
 	return ""
-}
-
-// repositoryRootLimit returns the nearest directory at or above proj that
-// holds .git (a directory, or a file for a linked worktree); proj itself when
-// none does.
-func repositoryRootLimit(proj string) string {
-	for d := proj; ; d = filepath.Dir(d) {
-		if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {
-			return d
-		}
-		if filepath.Dir(d) == d {
-			return proj
-		}
-	}
 }

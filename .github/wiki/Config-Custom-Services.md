@@ -111,6 +111,7 @@ The whole context directory is sent to the image builder, so it is bounded:
 
 - It may reach at most the nearest ancestor of the project directory that holds `.git`. When no ancestor holds `.git`, the project directory is the limit.
 - The ignore file BuildKit will use (a `<Dockerfile>.dockerignore` beside the Dockerfile if one exists, otherwise `.dockerignore` in the context) must exclude `.env*` and `.secrets` at every depth: use the lines `**/.env*` and `**/.secrets`. A bare `.env*` is not enough, because Docker matches it at the context root only and `apps/api/.env` would still be sent. `nself build` checks this by matching probe paths (root, each directory down to the project, and below it) with Docker's pattern rules.
+- A `!` line that can re-include a `.env*` or `.secrets` path (for example `!**/.env.production` or `!**/.secrets/pub`) is refused too. Only a name ending `.example`, `.sample`, `.template` or `.dist` may be re-included. A leading UTF-8 byte order mark is ignored, as Docker does.
 - Anything else fails `nself build` with **E528**, naming the directory.
 - A path that climbs and then descends (`../sibling`) is not an ancestor and is rejected at config load, naming `CS_N_PATH`.
 

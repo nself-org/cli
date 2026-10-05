@@ -150,3 +150,45 @@ func parseCustomServiceEnvFiles(raw string) ([]string, error) {
 	}
 	return out, nil
 }
+
+// FindDependsCycle returns the first dependency cycle reachable from roots in
+// edges (name -> dependencies) as "a -> b -> a", or nil. Each node is visited
+// once (depth-first, memoised), so a diamond is not a cycle and a cycle among
+// services reached through a root is reported even when the root is not on it.
+// Shared by compose generation (custom services only) and build
+// post-validation (the whole compose set).
+func FindDependsCycle(edges map[string][]string, roots []string) []string {
+	const grey, black = 1, 2
+	state := map[string]int{}
+	var path []string
+	var visit func(n string) []string
+	visit = func(n string) []string {
+		state[n] = grey
+		path = append(path, n)
+		for _, next := range edges[n] {
+			switch state[next] {
+			case grey:
+				i := 0
+				for path[i] != next {
+					i++
+				}
+				return append(append([]string(nil), path[i:]...), next)
+			case 0:
+				if c := visit(next); c != nil {
+					return c
+				}
+			}
+		}
+		path = path[:len(path)-1]
+		state[n] = black
+		return nil
+	}
+	for _, r := range roots {
+		if state[r] == 0 {
+			if c := visit(r); c != nil {
+				return c
+			}
+		}
+	}
+	return nil
+}

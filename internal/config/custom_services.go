@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -136,4 +137,90 @@ func parseCustomServices() ([]CustomService, error) {
 		services = append(services, cs)
 	}
 	return services, nil
+}
+
+// dockerignoreFile returns the ignore file BuildKit uses for this build: a
+// "<dockerfile>.dockerignore" beside the Dockerfile replaces .dockerignore.
+func dockerignoreFile(ctx, dockerfile string) string {
+	if dockerfile == "" {
+		dockerfile = "Dockerfile"
+	}
+	specific := filepath.Join(ctx, filepath.FromSlash(dockerfile)) + ".dockerignore"
+	if _, err := os.Stat(specific); err == nil {
+		return specific
+	}
+	return filepath.Join(ctx, ".dockerignore")
+}
+
+// repositoryRootLimit returns the nearest directory at or above proj that
+// holds .git (a directory, or a file for a linked worktree); proj itself when
+// none does.
+func repositoryRootLimit(proj string) string {
+	for d := proj; ; d = filepath.Dir(d) {
+		if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {
+			return d
+		}
+		if filepath.Dir(d) == d {
+			return proj
+		}
+	}
+}
+
+// Build-context secret guard, part 2 (E528): the dockerignore helpers that
+// custom_services_validate.go uses, kept here to stay under the file-size
+// ratchet.
+
+// safeReincludeSuffixes are the names a "!" pattern may re-include: example
+// files that carry no secret.
+var safeReincludeSuffixes = []string{".example", ".sample", ".template", ".dist"}
+
+// reincludedSecret returns the first "!" pattern of pats whose match set can
+// cover a .env* or .secrets path, or "". Structural, not a probe list: a
+// pattern is refused when any of its segments can spell ".env*" or ".secrets"
+// (or is "**"), unless its last segment ends in a safe example suffix. A
+// literal pattern naming a directory of ctx re-includes everything under it,
+// so it is refused when a secret below it is no longer excluded. Docker
+// applies the last matching pattern, so a "!" pattern after an exclusion wins.
+func reincludedSecret(pats []ignorePattern, ctx string) string {
+	for _, p := range pats {
+		if !p.neg {
+			continue
+		}
+		segs := strings.Split(p.text, "/")
+		last := segs[len(segs)-1]
+		safe := false
+		for _, suf := range safeReincludeSuffixes {
+			safe = safe || (last != "**" && strings.HasSuffix(last, suf))
+		}
+		if safe {
+			continue
+		}
+		wild := false
+		for _, s := range segs {
+			wild = wild || s == "**" || segmentMaySpellSecret(s)
+		}
+		if wild {
+			return p.text
+		}
+		if fi, err := os.Stat(filepath.Join(ctx, filepath.FromSlash(p.text))); err == nil && fi.IsDir() {
+			for _, name := range []string{".env", ".secrets/token"} {
+				if !dockerignored(pats, p.text+"/"+name) {
+					return p.text
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// segmentMaySpellSecret reports whether one path segment of a pattern can
+// match the name ".secrets" or a name starting ".env". A segment with a
+// wildcard is judged by its literal prefix; one with none by the name.
+func segmentMaySpellSecret(seg string) bool {
+	i := strings.IndexAny(seg, "*?[\\")
+	if i < 0 {
+		return seg == ".secrets" || strings.HasPrefix(seg, ".env")
+	}
+	lit := seg[:i]
+	return strings.HasPrefix(".secrets", lit) || strings.HasPrefix(".env", lit) || strings.HasPrefix(lit, ".env")
 }

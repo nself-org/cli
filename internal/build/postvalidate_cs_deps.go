@@ -20,8 +20,8 @@ import (
 // Inputs: the generated compose path (its directory is the project work dir)
 // and the CS_<N>_* environment the build already loaded.
 // Outputs: one E500 finding per unknown dependency name, and one per
-// dependency cycle that passes through a custom service (the full path, e.g.
-// "api -> claw-api -> api"), appended to result.Errors, which fails the build.
+// dependency cycle reachable from a custom service (the cycle path, e.g.
+// "api -> claw-api -> api", found with config.FindDependsCycle), appended to result.Errors, which fails the build.
 // Constraints: a service counts as known when it is in the generated compose,
 // in any file the manifest lists (plugin fragments, user override), i.e. a
 // core service, another custom service or a plugin service. A config parse
@@ -81,15 +81,19 @@ func checkCustomServiceDeps(composePath string, result *PostValidateResult) {
 		result.Warnings = append(result.Warnings, "CS_N_DEPENDS_ON cycle check skipped: "+err.Error())
 		return
 	}
+	reported := map[string]bool{}
 	for _, s := range cs {
 		if len(s.DependsOn) == 0 {
 			continue
 		}
-		if cycle := findDependsCycle(edges, s.Name); cycle != nil {
-			result.Errors = append(result.Errors, errs.Newf("E500",
-				"CS_%d_DEPENDS_ON forms a dependency cycle: %s (docker compose would refuse to start it)",
-				s.Index, strings.Join(cycle, " -> ")).Error())
+		cycle := config.FindDependsCycle(edges, []string{s.Name})
+		if cycle == nil || reported[strings.Join(cycle, " -> ")] {
+			continue
 		}
+		reported[strings.Join(cycle, " -> ")] = true
+		result.Errors = append(result.Errors, errs.Newf("E500",
+			"CS_%d_DEPENDS_ON reaches a dependency cycle: %s (docker compose would refuse to start it)",
+			s.Index, strings.Join(cycle, " -> ")).Error())
 	}
 }
 
@@ -132,30 +136,4 @@ func composeDependsEdges(files []string) (map[string][]string, error) {
 		}
 	}
 	return edges, nil
-}
-
-// findDependsCycle returns the cycle through start as "start -> ... -> start",
-// or nil.
-func findDependsCycle(edges map[string][]string, start string) []string {
-	var path []string
-	onPath := map[string]bool{}
-	var visit func(n string) []string
-	visit = func(n string) []string {
-		path = append(path, n)
-		onPath[n] = true
-		defer func() { path = path[:len(path)-1]; onPath[n] = false }()
-		for _, next := range edges[n] {
-			if next == start {
-				return append(append([]string(nil), path...), start)
-			}
-			if onPath[next] {
-				continue
-			}
-			if c := visit(next); c != nil {
-				return c
-			}
-		}
-		return nil
-	}
-	return visit(start)
 }

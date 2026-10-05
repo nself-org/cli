@@ -105,6 +105,12 @@ func TestPostValidateCSDeps_Cycle(t *testing.T) {
 			map[string]string{"CS_1": "fn:node:9500", "CS_1_DEPENDS_ON": "claw-api"}, "fn -> claw-api -> fn"},
 		{"plugin depends on core only", "  claw-api:\n    image: claw:1\n    depends_on:\n      - postgres\n",
 			map[string]string{"CS_1": "fn:node:9500", "CS_1_DEPENDS_ON": "claw-api"}, ""},
+		{"diamond through a plugin fragment is not a cycle",
+			"  claw-api:\n    image: claw:1\n    depends_on:\n      - claw-db\n      - claw-cache\n  claw-db:\n    image: db:1\n    depends_on:\n      - claw-base\n  claw-cache:\n    image: cache:1\n    depends_on:\n      - claw-base\n  claw-base:\n    image: base:1\n",
+			map[string]string{"CS_1": "fn:node:9500", "CS_1_DEPENDS_ON": "claw-api"}, ""},
+		{"cycle among plugin services reachable from a custom service",
+			"  claw-api:\n    image: claw:1\n    depends_on:\n      - claw-db\n  claw-db:\n    image: db:1\n    depends_on:\n      - claw-api\n",
+			map[string]string{"CS_1": "fn:node:9500", "CS_1_DEPENDS_ON": "claw-api"}, "claw-api -> claw-db -> claw-api"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
