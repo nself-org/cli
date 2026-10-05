@@ -31,7 +31,6 @@ cmd/commands/ssl_setup.go 1
 cmd/commands/start_health.go 1
 cmd/commands/uninstall.go 1
 cmd/commands/update.go 2
-cmd/commands/update_images.go 1
 internal/backup/create_targets.go 3
 internal/backup/pitr/restore.go 2
 internal/backup/restore.go 1

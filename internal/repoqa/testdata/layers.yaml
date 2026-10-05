@@ -91,6 +91,7 @@ edges:
   - {from: internal/runner, to: internal/deploy}
   - {from: internal/nginx, to: internal/ssl}
   - {from: internal/trust, to: internal/ssl}
+  - {from: internal/ssl, to: internal/compose}           # P7-LIVE-17: lego image read from the image lock; needs the overview 4.2 line
   - {from: internal/reconcile, to: internal/build}
   - {from: internal/builtin, to: internal/httpapi, pending: P7-SURF-02}
   - {from: internal/httpapi, to: internal/invoke, pending: P7-SURF-02}
