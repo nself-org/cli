@@ -1,0 +1,125 @@
+# Command Registry
+
+← [[Architecture]] · [[JSON-Output]] · [[Commands]] · [[Compat-V15]]
+
+---
+
+The command registry is one machine-readable description of every nSelf command: its path, summary, flags, arguments, side effects, output kind, JSON support and canon status. Agents, the MCP server, docs and CI read it instead of scraping `--help`.
+
+There is no `commands` verb. The registry is published two ways.
+
+```bash
+nself help --json                 # the whole registry
+nself help --json config          # only `nself config` and its subcommands
+nself help --json config get      # only `nself config get`
+```
+
+`nself help --json` works from any directory and needs no project. It prints one v1 JSON envelope ([[JSON-Output]]) with `"command": "help"`; the registry is the envelope's `data`. A path that names no command fails with `E401`, exit 1, nothing on stdout. Without `--json`, `nself help [command]` is cobra's usual help, unchanged.
+
+The committed copy is [`.github/command-registry.json`](https://github.com/nself-org/cli/blob/main/.github/command-registry.json). It is the same document plus a first key `_generated`, and it documents the v1.5 contract. `nself help --json` reports the mode it runs in: the exit codes and the JSON support of the v1.5-only pilots follow `NSELF_V15` ([[Compat-V15]]). With `NSELF_V15=1`, `nself help --json | jq -S .data` equals the committed file without `_generated`.
+
+## Counts
+
+Counts are computed, never typed. Ask the binary:
+
+```bash
+nself help --json | jq .data.counts
+```
+
+| Field | Meaning |
+|---|---|
+| `commands` | every command except the root, hidden ones and `help` included |
+| `top_level` | visible depth-1 commands, `help` excluded (the number the surface budget and the inventory use) |
+| `core` | commands that are one of the ADR 0016 verbs |
+| `pending` | top-level commands outside the canon whose disposition is still open |
+| `deprecated_shims` | hidden aliases kept for the deprecation window |
+| `core_missing` | verbs with no command yet |
+| `json_envelope`, `json_legacy` | commands by JSON support |
+
+## Document
+
+Fields are in this order. Consumers must ignore fields they do not know: new fields and enum values are additive and keep `schema_version` at `"1"`; a rename, removal or change of meaning is v2.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `schema_version` | string | `"1"` |
+| `verbs` | string[] | the canonical verbs (at most 20, ADR 0016), in ADR order, from `internal/canon/canon.yaml` |
+| `root.summary` | string | the root command's short text |
+| `root.flags` | Flag[] | root flags, sorted by name |
+| `commands` | Command[] | every command except the root, sorted by `path` |
+| `counts` | object | see above |
+
+### Command
+
+| Field | Type | Meaning |
+|---|---|---|
+| `path` | string | full path, for example `nself config get` |
+| `name` | string | last word of the path |
+| `parent` | string | parent path (`nself` for top level) |
+| `summary` | string | short description |
+| `hidden` | bool | hidden from `--help` |
+| `deprecated` | string or null | cobra deprecation message |
+| `aliases` | string[] | alternative names, sorted |
+| `group` | string or null | the `--help` group |
+| `runnable` | bool | has a body; a hub that only prints help is not runnable |
+| `args` | Arg[] | positional arguments parsed from the usage line: `{name, required, variadic}` |
+| `flags` | Flag[] | flags declared on this command, sorted by name. Inherited flags appear on the command that declares them. cobra's own `--help` is never listed |
+| `canon` | enum | canon status, below |
+| `target` | string or null | for `deprecated-shim`: the canonical path to use instead |
+| `side_effect` | enum | highest effect of a default run, below |
+| `output` | enum | `document`, `stream` or `interactive` |
+| `json` | enum | `envelope`, `legacy` or `none` |
+| `data_schema` | string or null | schema file for the envelope data when `json` is `envelope` |
+| `exit_codes` | object | state exit codes this command documents beyond the exit classes, `{}` when none |
+
+### Flag
+
+`name`, `shorthand`, `type` (`bool`, `string`, `int`, `stringSlice`, `duration`, ...), `default` (the flag's default text, parse it by `type`), `usage`, `hidden`, `deprecated`, `required`, `persistent`, `env` (always null in v1), and three optional escalations that apply when the flag is set: `side_effect`, `json` and `output`.
+
+### Canon status
+
+| Value | Meaning |
+|---|---|
+| `core` | one of the canonical verbs |
+| `subcommand` | a command at depth 2 or deeper |
+| `deprecated-shim` | a hidden alias kept for the deprecation window; `target` names the replacement |
+| `plugin` | mounted from a plugin (no built-in command carries it) |
+| `pending` | a top-level command outside the canon; its disposition is still to be decided |
+| `builtin` | provided by the framework and not counted against the canon (`help`) |
+
+### Side effects
+
+One class per command, the highest effect of running it with default flags. The order is `read` < `write` < `remote` < `destructive`.
+
+| Class | Meaning |
+|---|---|
+| `read` | changes no persistent state anywhere. A remote read is still `read`. A hub with no body is `read` |
+| `write` | changes local state (files, containers, the local database) in a way a re-run or the inverse command restores |
+| `remote` | changes state on another system: deploy targets, servers, cloud APIs, registries, GitHub, licence writes |
+| `destructive` | deletes or overwrites data that no command can restore: volumes, rows, files, backups, servers, keys |
+
+A flag can raise the class (`doctor --fix` is `write`); no flag lowers it.
+
+### Output kinds and JSON support
+
+- `document` is one bounded result; `stream` runs until stopped (follow, tail, serve); `interactive` needs a terminal or prompts. A flag of a `document` command may escalate the output to `stream`; there is no other flag-level output value.
+- `envelope` commands print the v1 envelope. `legacy` commands print their own bare JSON. `none` commands refuse `--json` with `E402`. A flag may override this to `legacy` or `none` when it is set.
+
+## Rules the build enforces
+
+The registry is built from the live cobra tree and one declared file, `internal/canon/canon.yaml`, keyed by command path. The build fails, naming the path, when a command has no entry, an entry names no command, an enum value is invalid, a top-level `canon` is not allowed at its depth, `core` and the verb list disagree, a shim has no valid `target`, a runnable command has no `side_effect`, a flag override does not exist or does not escalate, or YAML claims `json: envelope`. Envelope support is derived from the Go data-type map in `cmd/commands/registry_types.go`, never declared in YAML.
+
+`go test ./...` also fails when `.github/command-registry.json` is stale (`TestRegistryGolden`), when canon and `internal/deprecation/registry.yaml` disagree about shims, or when the counts disagree with `.github/command-inventory.json`.
+
+## Adding a command
+
+1. Add the command as usual.
+2. Add one line for its path to `internal/canon/canon.yaml`: `canon` (top level only), `side_effect`, and `output` or `json` when they are not the defaults.
+3. Run `make cmd-inventory` (alias: `make registry`). It rewrites `.github/command-registry.json`, `.github/command-inventory.json` and the generated block of [[Commands]]. Commit all three.
+
+The inventory is a projection of the registry, so the two cannot disagree. Its shape is unchanged.
+
+## See also
+
+- [[JSON-Output]] for the envelope, `E401` and `E402`.
+- [[Architecture]] for where the registry sits.

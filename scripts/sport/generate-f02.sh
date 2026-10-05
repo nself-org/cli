@@ -6,6 +6,9 @@
 #          (it lives in the PPI, outside this repo, so it is only written when
 #          that path is present on the machine running this).
 # Outputs: .github/command-inventory.json  (machine-readable, committed)
+#          .github/command-registry.json   (contract:cli.command-registry v1, the
+#                                           v1.5 document `nself help --json`
+#                                           serves; committed)
 #          .github/wiki/Commands.md        (public command index, committed)
 #          $NSELF_SPORT_DIR/F02-COMMAND-INVENTORY.md when the dir exists.
 # Constraints: read-only against the source tree; must be idempotent so CI can
@@ -15,10 +18,14 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 JSON_OUT=".github/command-inventory.json"
+REG_OUT=".github/command-registry.json"
 WIKI_OUT=".github/wiki/Commands.md"
 
 echo "Generating $JSON_OUT ..."
 CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format json -depth 2 > "$JSON_OUT"
+
+echo "Generating $REG_OUT ..."
+CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format registry > "$REG_OUT"
 
 COUNT=$(CGO_ENABLED=0 go run -mod=vendor ./tools/cmdinventory -format names | wc -l | tr -d ' ')
 
