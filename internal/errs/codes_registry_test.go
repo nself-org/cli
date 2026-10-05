@@ -123,6 +123,9 @@ func TestRegistryExitTable(t *testing.T) {
 			if (n >= 101 && n <= 104) || n == 110 {
 				return 3
 			}
+			if n == 118 || n == 119 { // P7-PLUG-59: readiness failures are infra (plugin did not become ready)
+				return 2
+			}
 			return 1
 		case n == 400:
 			return 0
