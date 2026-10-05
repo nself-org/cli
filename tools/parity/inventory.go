@@ -1,45 +1,68 @@
-// Purpose:     load the committed command inventory (tools/cmdinventory's
+// Purpose:     list the top-level commands of the v1.5 surface as the parity
 //
-//	output) as the parity matrix's list of top-level commands.
+//	matrix's rows.
 //
-// Inputs:      path to .github/command-inventory.json.
-// Outputs:     one inventoryEntry per top-level command, sorted as committed.
-// Constraints: the JSON shape must mirror tools/cmdinventory.Command; only the
+// Inputs:      the registry of the prepared tree (commands.BuildRegistry).
+// Outputs:     one inventoryEntry per visible top-level command, sorted by name.
+// Constraints: same selection as tools/cmdinventory's projection at depth 1:
 //
-//	top-level fields are read here, subcommands are intentionally
-//	ignored — CLI-R17 scores top-level commands only.
+//	`help`, hidden commands and canon "plugin" entries are dropped.
+//	Subcommands are intentionally ignored: CLI-R17 scores top-level
+//	commands only. The tree must already be prepared (prepareV15).
 package main
 
 import (
-	"encoding/json"
+	"fmt"
 	"os"
+	"sort"
+
+	"github.com/nself-org/cli/cmd/commands"
+	"github.com/nself-org/cli/internal/canon"
+	"github.com/nself-org/cli/internal/cmdregistry"
 )
 
-// inventoryEntry mirrors the top-level shape tools/cmdinventory emits.
+// inventoryEntry is one top-level command.
 type inventoryEntry struct {
-	Name    string `json:"name"`
-	Path    string `json:"path"`
-	Short   string `json:"short"`
-	Hidden  bool   `json:"hidden"`
-	GroupID string `json:"group_id,omitempty"`
+	Name    string
+	Path    string
+	GroupID string
 }
 
-// loadInventory reads and decodes the committed command inventory.
-func loadInventory(path string) ([]inventoryEntry, error) {
-	data, err := os.ReadFile(path)
+// prepareV15 sets NSELF_V15=1 and prepares RootCmd as the v1.5 surface; the
+// returned func undoes the relocation.
+func prepareV15() func() {
+	_ = os.Setenv("NSELF_V15", "1")
+	return commands.PrepareTreeForGeneration()
+}
+
+// liveInventory builds the registry of the prepared tree and projects it.
+func liveInventory() ([]inventoryEntry, error) {
+	reg, err := commands.BuildRegistry(true)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build registry: %w", err)
 	}
-	var entries []inventoryEntry
-	if err := json.Unmarshal(data, &entries); err != nil {
-		return nil, err
+	return topLevel(reg), nil
+}
+
+// topLevel selects the visible depth-1 commands of reg, sorted by name. A
+// command is top level when its parent is not itself a registered command (the
+// registry holds no root entry).
+func topLevel(reg *cmdregistry.Registry) []inventoryEntry {
+	paths := make(map[string]bool, len(reg.Commands))
+	for _, c := range reg.Commands {
+		paths[c.Path] = true
 	}
-	out := entries[:0]
-	for _, e := range entries {
-		if e.Hidden {
+	var out []inventoryEntry
+	for _, c := range reg.Commands {
+		if paths[c.Parent] || c.Name == "help" || c.Hidden || c.Canon == canon.CanonPlugin {
 			continue
+		}
+		e := inventoryEntry{Name: c.Name, Path: c.Path}
+		if c.Group != nil {
+			e.GroupID = *c.Group
 		}
 		out = append(out, e)
 	}
-	return out, nil
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }

@@ -11,6 +11,12 @@
 // namespace, so .github/wiki/cmd-db.md and .github/wiki/commands/cmd-db.md would
 // be the same published page.
 //
+// Mode: documents the v1.5 surface. main sets NSELF_V15=1 in its own process
+// (compat.V15 reads the environment on every call) and calls
+// commands.PrepareTreeForGeneration, so the tree is the relocated v1.5 tree with
+// builtin families only, never an installed plugin. Depth-1 commands the canon
+// moved keep their old page as a stub (stub.go).
+//
 // Inputs: -dir (wiki commands directory), -check (verify, write nothing),
 // -report (list pages still carrying placeholder prose).
 //
@@ -30,6 +36,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/cmd/commands"
+	"github.com/nself-org/cli/internal/canon"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +48,8 @@ func main() {
 	report := flag.Bool("report", false, "list pages still carrying placeholder prose")
 	flag.Parse()
 
-	commands.ApplyCommandGroups()
+	_ = os.Setenv("NSELF_V15", "1")
+	defer commands.PrepareTreeForGeneration()()
 	cmds := topLevelCommands()
 	if len(cmds) == 0 {
 		fmt.Fprintln(os.Stderr, "no commands found")
@@ -80,6 +88,19 @@ func main() {
 		}
 		pagesWritten++
 	}
+
+	raw, err := canon.LoadRaw()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "load canon: %v\n", err)
+		os.Exit(1)
+	}
+	stubStale, stubsWritten, err := writeStubs(*dir, stubRows(raw.Rows), *check)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+	stale = append(stale, stubStale...)
+	pagesWritten += stubsWritten
 
 	sidebarChanged, err := writeSidebar(*sidebar, cmds, *check)
 	if err != nil {

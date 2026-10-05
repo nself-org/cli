@@ -15,13 +15,15 @@ package main
 // by name, `help` is skipped at every level (it is not part of the inventory
 // or the surface budget), hidden commands drop their whole subtree unless
 // includeHidden, flags are the command's own flags as "--name" sorted, and
-// aliases keep the registry's sorted order (the real tree has no command
+// aliases keep the registry's sorted order, and canon "plugin" entries (a mounted
+// plugin command) are dropped with their subtree: core does not document them (the real tree has no command
 // whose declared alias order differs; TestProjectionMatchesCommittedInventory
 // pins the bytes).
 
 import (
 	"sort"
 
+	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/cmdregistry"
 )
 
@@ -71,7 +73,7 @@ func projectLevel(children map[string][]*cmdregistry.Command, parent string, dep
 	}
 	var out []Command
 	for _, c := range children[parent] {
-		if c.Name == "help" || (c.Hidden && !includeHidden) {
+		if c.Name == "help" || c.Canon == canon.CanonPlugin || (c.Hidden && !includeHidden) {
 			continue
 		}
 		out = append(out, node(c, projectLevel(children, c.Path, depth-1, includeHidden)))
