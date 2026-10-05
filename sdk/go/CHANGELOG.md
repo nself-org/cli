@@ -11,6 +11,15 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `signing` package (P7-CACHE-06): Ed25519 verification pinned to one purpose
+  (plugins, agent, ci-release, ci-node, ci-audit) and optionally one scope, with
+  key ids (`KeyID`), revocations, key validity windows and sentinel errors;
+  `NewVerifier` over a fixed key set and `NewLookupVerifier` over a caller
+  `KeyLookup`; `Signer`, `NewEd25519Signer`, `ParsePKCS8PEM`; strict
+  `EncodeSig`/`DecodeSig`; `ParseKeysFile`/`ParseRevokedFile` for
+  `.nself/trust/<purpose>.keys` and `.revoked`; DSSE v1 (`PAE`, `Envelope`,
+  `SignEnvelope`, `VerifyEnvelope`); `signingtest.NewKey`. Standard library
+  only. Signatures match `openssl pkeyutl -sign -rawin` output in base64.
 - `remote` package (P7-NODE-04): one exec funnel for ssh, scp, rsync and
   ssh-keyscan (`Command`, `Run`, `RunArgv`, `Start`, `CopyTo`, `Rsync`,
   `EnvAllowlist`); `RemotePathRe`, `ValidateRemotePath` (charset and no leading
