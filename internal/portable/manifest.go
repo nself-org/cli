@@ -58,8 +58,9 @@ type DB struct {
 	Tables  []Table  `json:"tables"`
 }
 
-// Table is one dumped table. Hash is the decimal string from
-// internal/postgres/tablehash; PK keeps the key's column order.
+// Table is one dumped table; (Schema, Name) is unique. Hash is the canonical
+// decimal string from internal/postgres/tablehash; PK keeps the key's column
+// order.
 type Table struct {
 	Schema string   `json:"schema"`
 	Name   string   `json:"name"`
@@ -88,10 +89,13 @@ type Bucket struct {
 	Bytes   int64  `json:"bytes"`
 }
 
-// Object is one stored object; its bytes live at StorageMember(Bucket, Key).
+// Object is one stored object. Member is StorageMember(Bucket, Key), the
+// bundle file that holds its bytes; SHA256 and Bytes equal that file's entry in
+// files[]. (Bucket, Key) is unique and compared byte for byte.
 type Object struct {
 	Bucket string `json:"bucket"`
 	Key    string `json:"key"`
+	Member string `json:"member"`
 	SHA256 string `json:"sha256"`
 	Bytes  int64  `json:"bytes"`
 }

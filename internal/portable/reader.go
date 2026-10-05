@@ -1,9 +1,6 @@
 package portable
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -55,6 +52,8 @@ type Reader struct {
 	root   string
 	m      Manifest
 	byPath map[string]File
+	snaps  map[string]snapshot // identity, size and mtime seen during verification
+	lim    Limits
 }
 
 // Open reads and verifies the bundle in dir with DefaultLimits.
@@ -88,12 +87,15 @@ func OpenWithLimits(dir string, lim Limits) (*Reader, error) {
 	if err := checkNoStrays(root, byPath, lim.MaxFiles); err != nil {
 		return nil, err
 	}
+	snaps := make(map[string]snapshot, len(m.Files))
 	for _, f := range m.Files {
-		if err := verifyMember(root, f); err != nil {
+		snap, err := verifyMember(root, f, nil)
+		if err != nil {
 			return nil, err
 		}
+		snaps[f.Path] = snap
 	}
-	return &Reader{root: root, m: m, byPath: byPath}, nil
+	return &Reader{root: root, m: m, byPath: byPath, snaps: snaps, lim: lim}, nil
 }
 
 // resolveRoot returns the bundle directory with symlinks in the caller's own
@@ -111,68 +113,6 @@ func resolveRoot(dir string) (string, error) {
 		return "", formatErr(ErrManifest, "%q is not a bundle directory", dir)
 	}
 	return root, nil
-}
-
-// readManifest loads, version-checks, decodes and validates manifest.json.
-func readManifest(root string, lim Limits) (Manifest, error) {
-	p := filepath.Join(root, ManifestName)
-	fi, err := os.Lstat(p)
-	if err != nil {
-		return Manifest{}, formatErr(ErrManifest, "%s not found: not a portable bundle", ManifestName)
-	}
-	if !fi.Mode().IsRegular() || linkCount(fi) > 1 {
-		return Manifest{}, integrityErr(ErrLink, "%s is not a plain regular file", ManifestName)
-	}
-	if fi.Size() > lim.MaxManifestBytes {
-		return Manifest{}, integrityErr(ErrSize, "%s is %d bytes, limit is %d", ManifestName, fi.Size(), lim.MaxManifestBytes)
-	}
-	fh, err := os.Open(p)
-	if err != nil {
-		return Manifest{}, formatErr(ErrManifest, "%s cannot be opened", ManifestName)
-	}
-	defer func() { _ = fh.Close() }()
-	if st, err := fh.Stat(); err != nil || !os.SameFile(fi, st) {
-		return Manifest{}, integrityErr(ErrLink, "%s changed while it was opened", ManifestName)
-	}
-	raw, err := io.ReadAll(io.LimitReader(fh, lim.MaxManifestBytes+1))
-	if err != nil || int64(len(raw)) > lim.MaxManifestBytes {
-		return Manifest{}, integrityErr(ErrSize, "%s cannot be read within %d bytes", ManifestName, lim.MaxManifestBytes)
-	}
-	var head struct {
-		Format        string `json:"_format"`
-		SchemaVersion string `json:"schema_version"`
-	}
-	if err := json.Unmarshal(raw, &head); err != nil {
-		return Manifest{}, formatErr(ErrManifest, "%s is not a portable export manifest", ManifestName)
-	}
-	if head.Format != Format {
-		return Manifest{}, formatErr(ErrUnknownMajor, "%s is not an nself portable export (_format %q)", ManifestName, truncate(head.Format))
-	}
-	if !versionRe.MatchString(head.SchemaVersion) {
-		return Manifest{}, formatErr(ErrUnknownMajor,
-			"bundle schema_version %q is not supported; this nself reads major %d", truncate(head.SchemaVersion), MajorVersion)
-	}
-	var m Manifest
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	if err := dec.Decode(&m); err != nil {
-		return Manifest{}, integrityErr(ErrManifest, "%s does not match the v1 layout: %v", ManifestName, err)
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return Manifest{}, integrityErr(ErrManifest, "%s has data after the manifest object", ManifestName)
-	}
-	if err := m.Validate(); err != nil {
-		return Manifest{}, integrityErr(err, "bundle manifest is invalid: %v", err)
-	}
-	return m, nil
-}
-
-// truncate shortens an attacker-controlled string for an error message.
-func truncate(s string) string {
-	const max = 40
-	if len(s) > max {
-		return s[:max] + "..."
-	}
-	return s
 }
 
 // checkLimits applies the count and size limits and indexes the members.
@@ -201,38 +141,53 @@ func (r *Reader) Manifest() Manifest { return r.m }
 // Dir returns the bundle directory (symlinks in the caller's path resolved).
 func (r *Reader) Dir() string { return r.root }
 
-// Path returns the file system path of a listed member, for tools that need a
-// file name (pg_restore). The bytes were verified at Open; call Verify again
-// immediately before use if the directory could have changed since.
-func (r *Reader) Path(rel string) (string, error) {
-	if _, ok := r.byPath[rel]; !ok {
-		return "", fmt.Errorf("portable: %q is not a member of this bundle", rel)
+// OpenFile opens a listed member and returns the descriptor, for tools that
+// need a file rather than a stream (pg_restore reads standard input, or a
+// /dev/fd path of this descriptor).
+//
+// Purpose: a path handed to another process can be swapped between the check
+// and the use. This returns an open file instead, after re-checking that the
+// member is still the file that was verified at Open: no symlink on the way
+// (O_NOFOLLOW on the last component where the platform has it), one hard link,
+// and the same device and inode (Windows: volume and file index), size and
+// modification time as the snapshot taken during verification. Any difference
+// is refused with E516 (ErrChanged, or ErrLink for a link).
+// Constraints: the bytes are not hashed again; Open streams them with the
+// length and SHA-256 check. Callers must close the file.
+func (r *Reader) OpenFile(rel string) (*os.File, error) {
+	f, ok := r.byPath[rel]
+	if !ok {
+		return nil, fmt.Errorf("portable: %q is not a member of this bundle", rel)
 	}
-	return filepath.Join(r.root, filepath.FromSlash(rel)), nil
+	snap := r.snaps[rel]
+	fh, _, err := openMember(r.root, f, &snap)
+	return fh, err
 }
 
-// Open returns a reader for a listed member that re-checks length and SHA-256
-// as it streams: reading to EOF yields E516 instead of io.EOF if the bytes
-// changed since Open.
+// Open returns a reader for a listed member. It opens through OpenFile's
+// checks and re-checks length and SHA-256 as it streams: reading to EOF yields
+// E516 instead of io.EOF if the bytes changed since Open.
 func (r *Reader) Open(rel string) (io.ReadCloser, error) {
 	f, ok := r.byPath[rel]
 	if !ok {
 		return nil, fmt.Errorf("portable: %q is not a member of this bundle", rel)
 	}
-	fh, err := openMember(r.root, f)
+	fh, err := r.OpenFile(rel)
 	if err != nil {
 		return nil, err
 	}
 	return newVerifyingReader(fh, f), nil
 }
 
-// Verify re-runs the member checks (links, length, SHA-256, unlisted entries).
+// Verify re-runs the member checks (links, identity, length, SHA-256,
+// unlisted entries) against the snapshot taken at Open.
 func (r *Reader) Verify() error {
-	if err := checkNoStrays(r.root, r.byPath, len(r.m.Files)); err != nil {
+	if err := checkNoStrays(r.root, r.byPath, r.lim.MaxFiles); err != nil {
 		return err
 	}
 	for _, f := range r.m.Files {
-		if err := verifyMember(r.root, f); err != nil {
+		snap := r.snaps[f.Path]
+		if _, err := verifyMember(r.root, f, &snap); err != nil {
 			return err
 		}
 	}

@@ -1,10 +1,14 @@
 package portable
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -118,9 +122,13 @@ func TestCheckMemberAndStorageMember(t *testing.T) {
 			t.Errorf("CheckMember(%q) must fail", p)
 		}
 	}
+	nfc := "caf\u00e9.jpg"
+	nfd := "cafe\u0301.jpg"
 	keys := []string{"a.png", "dir/file name.txt", "ключ/файл+1%.txt", "../../etc/passwd", "/leading", "trail/", "a//b",
-		`back\slash`, "c:/win", "NUL", "con.txt", "x.", "dot/./dot", "..", ".", "star*?\"<>|", "tab\tkey", "emoji-\U0001F600"}
+		`back\slash`, "c:/win", "NUL", "con.txt", "x.", "dot/./dot", "..", ".", "star*?\"<>|", "tab\tkey", "emoji-\U0001F600",
+		"Readme.md", "README.md", "readme.md", nfc, nfd}
 	seen := map[string]string{}
+	folded := map[string]string{}
 	for _, k := range keys {
 		m, err := StorageMember("bkt", k)
 		if err != nil {
@@ -130,20 +138,86 @@ func TestCheckMemberAndStorageMember(t *testing.T) {
 		if err := CheckMember(m); err != nil {
 			t.Errorf("StorageMember(%q) = %q is unsafe: %v", k, m, err)
 		}
-		if !strings.HasPrefix(m, "storage/bkt/") {
-			t.Errorf("StorageMember(%q) = %q escapes the bucket", k, m)
+		if !regexp.MustCompile(StorageMemberPattern).MatchString(m) {
+			t.Errorf("StorageMember(%q) = %q does not match %s", k, m, StorageMemberPattern)
 		}
 		if prev, dup := seen[m]; dup {
 			t.Errorf("StorageMember collides: %q and %q -> %q", prev, k, m)
 		}
 		seen[m] = k
+		if prev, dup := folded[foldName(m)]; dup {
+			t.Errorf("StorageMember members of %q and %q clash under case and NFC folding", prev, k)
+		}
+		folded[foldName(m)] = k
 	}
-	if m, _ := StorageMember("bkt", "ключ/файл+1%.txt"); m != "storage/bkt/ключ/файл+1%25.txt" {
-		t.Errorf("unicode and + stay readable, %% is escaped; got %q", m)
+	sum := sha256.Sum256([]byte("bkt\x00Readme.md"))
+	if m, _ := StorageMember("bkt", "Readme.md"); m != "storage/objects/"+hex.EncodeToString(sum[:]) {
+		t.Errorf("member is not storage/objects/<sha256(bucket NUL key)>: %q", m)
 	}
-	for _, b := range []string{"", "a/b", `a\b`, "..", "a:b"} {
+	x, _ := StorageMember("a", "bc")
+	y, _ := StorageMember("ab", "c")
+	if x == y {
+		t.Error("the bucket/key boundary must be unambiguous")
+	}
+	for _, b := range []string{"", "a\x00b", "\xff"} {
 		if _, err := StorageMember(b, "k"); err == nil {
 			t.Errorf("bucket %q must be refused", b)
 		}
+	}
+	for _, k := range []string{"", "\xff\xfe"} {
+		if _, err := StorageMember("b", k); err == nil {
+			t.Errorf("key %q must be refused", k)
+		}
+	}
+}
+
+// TestWriterStorageKeysThatFoldTogether: keys that differ only in case or in
+// Unicode normalisation form each get their own member and export, whatever
+// the file system does with names.
+func TestWriterStorageKeysThatFoldTogether(t *testing.T) {
+	keys := []string{"Readme.md", "README.md", "caf\u00e9.jpg", "cafe\u0301.jpg"}
+	dir := filepath.Join(t.TempDir(), "b")
+	w, err := NewWriter(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Now = fixedNow
+	m := baseManifest()
+	for i, k := range keys {
+		mem, err := StorageMember("bkt", k)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, err := w.WriteFile(mem, strings.NewReader(fmt.Sprintf("body %d", i)))
+		if err != nil {
+			t.Fatalf("WriteFile for key %q: %v", k, err)
+		}
+		o, err := NewObject("bkt", k, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.Storage.Objects = append(m.Storage.Objects, o)
+	}
+	if _, err := w.Finish(m); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+	r, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	for i, k := range keys {
+		mem, _ := StorageMember("bkt", k)
+		rc, err := r.Open(mem)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil || string(b) != fmt.Sprintf("body %d", i) {
+			t.Errorf("key %q reads %q (%v), want its own body", k, b, err)
+		}
+	}
+	if _, err := NewObject("bkt", "Readme.md", File{Path: "storage/objects/" + strings.Repeat("0", 64)}); err == nil {
+		t.Error("NewObject must refuse a file that is not the key's member")
 	}
 }

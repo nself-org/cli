@@ -58,7 +58,7 @@
             "additionalProperties": false,
             "properties": {
               "hash": {
-                "pattern": "^-?[0-9]+$",
+                "pattern": "^(0|-?[1-9][0-9]*)$",
                 "type": "string"
               },
               "name": {
@@ -309,6 +309,10 @@
               "key": {
                 "type": "string"
               },
+              "member": {
+                "pattern": "^storage/objects/[0-9a-f]{64}$",
+                "type": "string"
+              },
               "sha256": {
                 "pattern": "^[0-9a-f]{64}$",
                 "type": "string"
@@ -317,6 +321,7 @@
             "required": [
               "bucket",
               "key",
+              "member",
               "sha256",
               "bytes"
             ],

@@ -25,6 +25,9 @@ var (
 	ErrUnlisted = errors.New("bundle entry not listed in the manifest")
 	// ErrLink: a member is a symlink, a hard link or not a regular file (E516).
 	ErrLink = errors.New("bundle member is a link or not a regular file")
+	// ErrChanged: a member is not the file that was verified at Open (another
+	// file, or the same file with a different size or modification time) (E516).
+	ErrChanged = errors.New("bundle file changed since it was verified")
 	// ErrManifest: manifest.json is unreadable or fails validation (E516 for a
 	// v1 manifest, E515 when it is not a v1 manifest at all).
 	ErrManifest = errors.New("invalid bundle manifest")

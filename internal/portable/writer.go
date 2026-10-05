@@ -25,8 +25,8 @@ import (
 type Writer struct {
 	dir   string
 	files map[string]File   // keyed by path
-	fold  map[string]string // lowercase member path -> member path
-	dirs  map[string]bool   // lowercase directory prefixes of members
+	fold  map[string]string // folded member path -> member path
+	dirs  map[string]bool   // folded directory prefixes of members
 	done  bool
 
 	// Now supplies created_at when the manifest leaves it empty; tests pin it.
@@ -68,7 +68,7 @@ func (w *Writer) Dir() string { return w.dir }
 
 // WriteFile streams r into the member rel and records its SHA-256 and length.
 // rel must pass CheckMember, must not be manifest.json, and must not repeat an
-// earlier member (compared case-insensitively) or collide with a member that
+// earlier member (compared under NFC and case folding) or collide with a member that
 // is a file where this one needs a directory, or the reverse.
 // On a copy error the partial file is removed.
 func (w *Writer) WriteFile(rel string, r io.Reader) (File, error) {
@@ -108,7 +108,7 @@ func (w *Writer) WriteFile(rel string, r io.Reader) (File, error) {
 
 // reserve records rel as taken, refusing duplicates and file/directory clashes.
 func (w *Writer) reserve(rel string) error {
-	key := strings.ToLower(rel)
+	key := foldName(rel)
 	if prev, dup := w.fold[key]; dup {
 		return fmt.Errorf("portable: %w: %q repeats %q", ErrDuplicate, rel, prev)
 	}
@@ -118,7 +118,7 @@ func (w *Writer) reserve(rel string) error {
 			break
 		}
 		p = p[:i]
-		if prev, clash := w.fold[strings.ToLower(p)]; clash {
+		if prev, clash := w.fold[foldName(p)]; clash {
 			return fmt.Errorf("portable: %q sits under member %q, which is a file", rel, prev)
 		}
 	}

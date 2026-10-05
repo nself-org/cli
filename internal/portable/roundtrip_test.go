@@ -49,7 +49,7 @@ func randManifest(rng *rand.Rand) (Manifest, map[string][]byte) {
 		rng.Read(b)
 		files[mem] = b
 		sum := sha256.Sum256(b)
-		m.Storage.Objects = append(m.Storage.Objects, Object{Bucket: "bkt", Key: key, SHA256: hex.EncodeToString(sum[:]), Bytes: int64(len(b))})
+		m.Storage.Objects = append(m.Storage.Objects, Object{Bucket: "bkt", Key: key, Member: mem, SHA256: hex.EncodeToString(sum[:]), Bytes: int64(len(b))})
 	}
 	m.Exemptions = []Exemption{{Kind: "table", ID: "z" + word(), Reason: "a"}, {Kind: "user", ID: "a" + word(), Reason: "b"}}
 	m.Compat = []string{"b" + word(), "a" + word()}

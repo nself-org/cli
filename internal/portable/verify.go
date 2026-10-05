@@ -11,55 +11,72 @@ import (
 	"strings"
 )
 
-// openMember opens the listed member f under root without following links.
+// openMember opens the listed member f under root without following links and
+// returns the descriptor with the snapshot taken from it.
 //
 // Every directory component and the file itself are Lstat-ed: a symlink
 // anywhere, a non-regular file or a file with more than one hard link is
-// refused; the length must equal the manifest's; and the opened descriptor
-// must be the same file that was Lstat-ed (a swap between the check and the
-// open is refused).
-func openMember(root string, f File) (*os.File, error) {
+// refused; the length must equal the manifest's. The file is opened with
+// O_NOFOLLOW where the platform has it, and the opened descriptor must be the
+// file that was Lstat-ed (a swap between the check and the open is refused).
+// When want is not nil the descriptor must also be the snapshot taken when the
+// bundle was verified: same device and inode (Windows: volume and file index),
+// size and modification time, or the open is refused with ErrChanged.
+func openMember(root string, f File, want *snapshot) (*os.File, snapshot, error) {
 	cur := root
 	segs := strings.Split(f.Path, "/")
 	for i, seg := range segs {
 		cur = filepath.Join(cur, seg)
 		fi, err := os.Lstat(cur)
 		if os.IsNotExist(err) {
-			return nil, integrityErr(ErrMissing, "bundle file %q is missing", f.Path)
+			return nil, snapshot{}, integrityErr(ErrMissing, "bundle file %q is missing", f.Path)
 		}
 		if err != nil {
-			return nil, integrityErr(ErrMissing, "bundle file %q cannot be read: %v", f.Path, err)
+			return nil, snapshot{}, integrityErr(ErrMissing, "bundle file %q cannot be read: %v", f.Path, err)
 		}
 		if fi.Mode()&os.ModeSymlink != 0 {
-			return nil, integrityErr(ErrLink, "bundle member %q goes through a symlink", f.Path)
+			return nil, snapshot{}, integrityErr(ErrLink, "bundle member %q goes through a symlink", f.Path)
 		}
 		if i < len(segs)-1 {
 			if !fi.IsDir() {
-				return nil, integrityErr(ErrLink, "bundle member %q has a non-directory parent", f.Path)
+				return nil, snapshot{}, integrityErr(ErrLink, "bundle member %q has a non-directory parent", f.Path)
 			}
 			continue
 		}
 		if !fi.Mode().IsRegular() {
-			return nil, integrityErr(ErrLink, "bundle member %q is not a regular file", f.Path)
+			return nil, snapshot{}, integrityErr(ErrLink, "bundle member %q is not a regular file", f.Path)
 		}
-		if linkCount(fi) > 1 {
-			return nil, integrityErr(ErrLink, "bundle member %q is a hard link", f.Path)
-		}
-		if fi.Size() != f.Bytes {
-			return nil, integrityErr(ErrSize, "bundle file %q is %d bytes, manifest says %d", f.Path, fi.Size(), f.Bytes)
-		}
-		fh, err := os.Open(cur)
-		if err != nil {
-			return nil, integrityErr(ErrMissing, "bundle file %q cannot be opened: %v", f.Path, err)
-		}
-		st, err := fh.Stat()
-		if err != nil || !os.SameFile(fi, st) {
-			_ = fh.Close()
-			return nil, integrityErr(ErrLink, "bundle file %q changed while it was opened", f.Path)
-		}
-		return fh, nil
+		return openChecked(cur, fi, f, want)
 	}
-	return nil, integrityErr(ErrMissing, "bundle file %q is missing", f.Path)
+	return nil, snapshot{}, integrityErr(ErrMissing, "bundle file %q is missing", f.Path)
+}
+
+// openChecked opens path (already Lstat-ed as fi) and applies the descriptor
+// checks of openMember.
+func openChecked(path string, fi os.FileInfo, f File, want *snapshot) (*os.File, snapshot, error) {
+	fh, err := os.OpenFile(path, openFlags, 0)
+	if err != nil {
+		return nil, snapshot{}, integrityErr(ErrLink, "bundle file %q cannot be opened without following links: %v", f.Path, err)
+	}
+	snap, nlink, st, err := snapshotOf(fh)
+	switch {
+	case err != nil:
+		_ = fh.Close()
+		return nil, snapshot{}, integrityErr(ErrMissing, "bundle file %q cannot be inspected: %v", f.Path, err)
+	case !st.Mode().IsRegular() || !os.SameFile(fi, st):
+		_ = fh.Close()
+		return nil, snapshot{}, integrityErr(ErrLink, "bundle file %q changed while it was opened", f.Path)
+	case nlink > 1:
+		_ = fh.Close()
+		return nil, snapshot{}, integrityErr(ErrLink, "bundle member %q is a hard link", f.Path)
+	case snap.size != f.Bytes:
+		_ = fh.Close()
+		return nil, snapshot{}, integrityErr(ErrSize, "bundle file %q is %d bytes, manifest says %d", f.Path, snap.size, f.Bytes)
+	case want != nil && !want.equal(snap):
+		_ = fh.Close()
+		return nil, snapshot{}, integrityErr(ErrChanged, "bundle file %q is not the file that was verified (identity, size or modification time differs)", f.Path)
+	}
+	return fh, snap, nil
 }
 
 // verifyingReader streams one member and checks its length and SHA-256.
@@ -110,35 +127,46 @@ func (v *verifyingReader) Read(p []byte) (int, error) {
 
 func (v *verifyingReader) Close() error { return v.f.Close() }
 
-// verifyMember reads one member to the end and checks it.
-func verifyMember(root string, f File) error {
-	fh, err := openMember(root, f)
+// verifyMember reads one member to the end, checks its length and SHA-256,
+// and returns its snapshot. When want is not nil the member must also be that
+// snapshot. The descriptor is inspected again after the read: a member that
+// was written to while it was hashed is refused.
+func verifyMember(root string, f File, want *snapshot) (snapshot, error) {
+	fh, snap, err := openMember(root, f, want)
 	if err != nil {
-		return err
+		return snapshot{}, err
 	}
 	vr := newVerifyingReader(fh, f)
 	defer func() { _ = vr.Close() }()
 	if _, err := io.Copy(io.Discard, vr); err != nil {
-		return err
+		return snapshot{}, err
 	}
-	return nil
+	after, _, _, err := snapshotOf(fh)
+	if err != nil || !after.equal(snap) {
+		return snapshot{}, integrityErr(ErrChanged, "bundle file %q changed while it was being verified", f.Path)
+	}
+	return snap, nil
 }
 
 // checkNoStrays refuses any entry of the bundle directory that the manifest
 // does not list: an unlisted file or symlink is never read by a consumer, but
 // a bundle that carries one is not the bundle that was exported. Directories
-// are allowed (they hold listed files). limit bounds the entries visited.
+// are allowed (they hold listed files) but count, with files, toward limit
+// (MaxFiles), so a tree of empty directories cannot make the walk unbounded.
 func checkNoStrays(root string, listed map[string]File, limit int) error {
 	seen := 0
 	return filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return integrityErr(ErrMissing, "bundle directory cannot be read: %v", err)
 		}
-		if p == root || (d.IsDir() && d.Type()&os.ModeSymlink == 0) {
+		if p == root {
 			return nil
 		}
 		if seen++; seen > limit+1 {
 			return integrityErr(ErrSize, "bundle directory holds more than %d entries", limit)
+		}
+		if d.IsDir() && d.Type()&os.ModeSymlink == 0 {
+			return nil
 		}
 		rel, rerr := filepath.Rel(root, p)
 		if rerr != nil {

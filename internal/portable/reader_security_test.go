@@ -1,10 +1,10 @@
 package portable
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -214,9 +214,6 @@ func TestReaderRefusesLinks(t *testing.T) {
 		wantCode(t, err, "E516", ErrLink)
 	})
 	t.Run("hard link member", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("hard-link counts are not read on Windows")
-		}
 		dir := makeBundle(t, map[string]string{"db/x": "per-host-secret"})
 		p := filepath.Join(dir, "db", "x")
 		_ = os.Remove(p)
@@ -294,18 +291,22 @@ func TestReaderDetectsChangeAfterOpen(t *testing.T) {
 	b, _ := os.ReadFile(p)
 	b[0] ^= 1 // same length, different bytes
 	_ = os.WriteFile(p, b, 0o600)
+	// Same length, so only the mtime (when the file system ticks it) or the
+	// hash can tell: either Open refuses (ErrChanged) or the stream ends in E516.
 	rc, err := r.Open("db/schema.sql")
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		_, err = io.ReadAll(rc)
+		_ = rc.Close()
 	}
-	_, err = io.ReadAll(rc)
-	_ = rc.Close()
-	wantCode(t, err, "E516", ErrChecksum)
-	wantCode(t, r.Verify(), "E516", ErrChecksum)
+	wantCode(t, err, "E516", nil)
+	if !errors.Is(err, ErrChecksum) && !errors.Is(err, ErrChanged) {
+		t.Fatalf("want ErrChecksum or ErrChanged, got %v", err)
+	}
+	wantCode(t, r.Verify(), "E516", nil)
 	if _, err := r.Open("db/not-listed"); err == nil {
 		t.Error("an unlisted member must not open")
 	}
-	if _, err := r.Path("../x"); err == nil {
-		t.Error("Path must refuse an unlisted name")
+	if _, err := r.OpenFile("../x"); err == nil {
+		t.Error("OpenFile must refuse an unlisted name")
 	}
 }

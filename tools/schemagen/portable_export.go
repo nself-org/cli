@@ -21,6 +21,7 @@ func init() {
 		{Pointer: "/properties/exemptions/items/properties/kind", Set: map[string]any{"enum": strs(portable.ExemptionKinds...)}},
 		{Pointer: "/properties/source_counts/items/properties/kind", Set: map[string]any{"enum": strs(portable.SourceCountKinds...)}},
 		{Pointer: "/properties/db/properties/tables/items/properties/hash", Set: map[string]any{"pattern": portable.HashPattern}},
+		{Pointer: "/properties/storage/properties/objects/items/properties/member", Set: map[string]any{"pattern": portable.StorageMemberPattern}},
 		{Pointer: "/properties/storage/properties/objects/items/properties/sha256", Set: map[string]any{"pattern": portable.SHA256Pattern}},
 		{Pointer: "/properties/files/items/properties/sha256", Set: map[string]any{"pattern": portable.SHA256Pattern}},
 		{Pointer: "/properties/auth/properties/hash_algorithms", Set: map[string]any{"type": "object"}},
