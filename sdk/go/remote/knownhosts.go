@@ -87,9 +87,9 @@ func (p PinnedHostKeys) write(lines []string) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name()) // no-op after a successful rename
+	defer func() { _ = os.Remove(tmp.Name()) }() // no-op after a successful rename
 	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	data := ""
@@ -97,11 +97,11 @@ func (p PinnedHostKeys) write(lines []string) error {
 		data = strings.Join(lines, "\n") + "\n"
 	}
 	if _, err := tmp.WriteString(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {

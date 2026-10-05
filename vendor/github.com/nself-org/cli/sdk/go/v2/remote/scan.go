@@ -110,7 +110,7 @@ func ScanHostKeysSSH(ctx context.Context, t Target, nodeID string) ([]HostKey, e
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	tmp := filepath.Join(dir, "known_hosts")
 
 	args := CISSHFlags()
