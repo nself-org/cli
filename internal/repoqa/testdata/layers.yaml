@@ -1,0 +1,102 @@
+# Layer map for the repoqa import-direction guard (rules D1-D3; TestLayering).
+# Mirrored in hq architecture/overview.md section 4.2 (the rules table).
+#
+# Format (version 1):
+#   rules      first match wins; "x/**" matches x and everything below it
+#              (subpackages inherit), otherwise the match is exact. Packages are
+#              module-relative. A package under internal/ that no rule matches
+#              gets `default`; any other unmatched package is "unclassified".
+#   layers     L0 < L1 < L2 < L3. test-only may be imported by nothing.
+#   edges      accepted same-layer edges between different domains. A domain is
+#              the first two path segments (internal/deploy/bluegreen is
+#              internal/deploy; internal/cmd/<x> uses three), so one entry
+#              covers every package pair in those two domains. Edges inside one
+#              domain are always allowed. An entry with `pending: <ticket-id>`
+#              is declared ahead of the first import; it fails once the edge
+#              exists ("remove the pending tag"). An entry without it fails
+#              when no package pair has the edge (stale).
+#   ratchet    wrong-way (upward) edges. Shrink-only: the list must equal
+#              ratchetBasis in layering_test.go, so a new entry needs a visible
+#              test-code edit and an escalation, never a quiet diff.
+#   forbidden  edges that must never exist, whatever else says.
+#
+# This file is hand-edited and never rewritten by -update. Adding an edge needs
+# the matching line in the overview section 4.2 in the same change. Never list
+# bundle -> reconcile: it closes the cycle build -> bundle -> reconcile -> build.
+# oplock and lock are not listed: they take the default layer (L1).
+version: 1
+default: L1
+rules:
+  - {match: "cmd/**", layer: L3}
+  - {match: "tools/**", layer: L3}
+  - {match: "test/**", layer: L3}
+  - {match: "internal/repoqa/**", layer: test-only}
+  - {match: "schemas/**", layer: L0}
+  # L0: shared kernel plus the P7-REG packages
+  - {match: "internal/config/**", layer: L0}
+  - {match: "internal/errs/**", layer: L0}
+  - {match: "internal/httptimeout/**", layer: L0}
+  - {match: "internal/ui/**", layer: L0}
+  - {match: "internal/ux/**", layer: L0}
+  - {match: "internal/version/**", layer: L0}
+  - {match: "internal/ports/**", layer: L0}
+  - {match: "internal/recover/**", layer: L0}
+  - {match: "internal/confirm/**", layer: L0}
+  - {match: "internal/cmdlog/**", layer: L0}
+  - {match: "internal/observability/**", layer: L0}
+  - {match: "internal/telemetry/**", layer: L0}
+  - {match: "internal/featureflags/**", layer: L0}
+  - {match: "internal/security/**", layer: L0}
+  - {match: "internal/nginxtopo/**", layer: L0}
+  - {match: "internal/metrics/**", layer: L0}
+  - {match: "internal/docker/**", layer: L0}
+  - {match: "internal/compat/**", layer: L0}
+  - {match: "internal/output/**", layer: L0}
+  - {match: "internal/canon/**", layer: L0}
+  - {match: "internal/cmdregistry/**", layer: L0}
+  # L2: domain orchestrators plus the planned ones
+  - {match: "internal/build/**", layer: L2}
+  - {match: "internal/plugin/**", layer: L2}
+  - {match: "internal/bundle/**", layer: L2}
+  - {match: "internal/doctor/**", layer: L2}
+  - {match: "internal/health/**", layer: L2}
+  - {match: "internal/deploy/**", layer: L2}
+  - {match: "internal/controlplane/**", layer: L2}
+  - {match: "internal/runner/**", layer: L2}
+  - {match: "internal/backup/**", layer: L2}
+  - {match: "internal/database/**", layer: L2}
+  - {match: "internal/hasura/**", layer: L2}
+  - {match: "internal/migration/**", layer: L2}
+  - {match: "internal/tenant/**", layer: L2}
+  - {match: "internal/invoke/**", layer: L2}
+  - {match: "internal/httpapi/**", layer: L2}
+  - {match: "internal/mcpgen/**", layer: L2}
+  - {match: "internal/reconcile/**", layer: L2}
+  - {match: "internal/builtin/**", layer: L2}
+  - {match: "internal/importer/**", layer: L2}
+  - {match: "internal/exporter/**", layer: L2}
+  - {match: "internal/cmd/ci/**", layer: L2}
+edges:
+  - {from: internal/backup, to: internal/controlplane}   # added after the forge basis (P7-PROD-06/07); needs the overview 4.2 line
+  - {from: internal/build, to: internal/bundle}
+  - {from: internal/build, to: internal/plugin}
+  - {from: internal/bundle, to: internal/plugin}
+  - {from: internal/controlplane, to: internal/deploy}
+  - {from: internal/database, to: internal/backup}
+  - {from: internal/deploy, to: internal/health}
+  - {from: internal/doctor, to: internal/database}
+  - {from: internal/doctor, to: internal/health}
+  - {from: internal/doctor, to: internal/plugin}           # added after the forge basis (P7-PLUG-59); needs the overview 4.2 line
+  - {from: internal/hasura, to: internal/database}
+  - {from: internal/runner, to: internal/deploy}
+  - {from: internal/nginx, to: internal/ssl}
+  - {from: internal/trust, to: internal/ssl}
+  - {from: internal/reconcile, to: internal/build, pending: P7-LIVE-03}
+  - {from: internal/builtin, to: internal/httpapi, pending: P7-SURF-02}
+  - {from: internal/httpapi, to: internal/invoke, pending: P7-SURF-02}
+  - {from: internal/mcpgen, to: internal/invoke, pending: P7-SURF-03}
+ratchet:
+  - {from: internal/health, to: internal/build}
+  - {from: internal/migration, to: internal/build}
+forbidden:
+  - {from: internal/build, to: internal/reconcile}

@@ -1,0 +1,27 @@
+# Packages under internal/ with no importer (rule D9; TestOrphans).
+# One import path per line, optionally followed by " pending:<ticket-id>".
+# Sorted bytewise: LC_ALL=C sort. Comments and blank lines are ignored.
+#
+# Plain lines are the frozen orphans: they must equal orphanBasis in
+# orphans_test.go, the list may only shrink, and a line whose package gains an
+# importer (or is deleted) fails as stale. `go test ./internal/repoqa/ -run
+# Orphan -update` drops stale plain lines and prints the basis to paste.
+#
+# A "pending:" line is for a package created ahead of its first consumer. It is
+# outside the basis, may name a package that does not exist yet, and goes stale
+# (fails) as soon as the package has an importer: delete the line then.
+internal/aiprofile
+internal/controlplane/sim
+internal/cost
+internal/domain
+internal/infra
+internal/installmeta
+internal/model
+internal/objstore pending:P7-ADOPT-10
+internal/plugin/lifecycle
+internal/postgres/tablehash pending:P7-ADOPT-10
+internal/reconcile pending:P7-LIVE-03
+internal/runbook
+internal/runtime
+internal/upgrade
+internal/webhook
