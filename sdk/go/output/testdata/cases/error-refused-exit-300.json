@@ -1,0 +1,12 @@
+{
+  "input": {
+    "kind": "error",
+    "command": "probe",
+    "error": {
+      "code": "E410",
+      "message": "m",
+      "exit_code": 300
+    }
+  },
+  "expect_error": true
+}

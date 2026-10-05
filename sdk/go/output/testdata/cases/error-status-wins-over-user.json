@@ -1,0 +1,24 @@
+{
+  "input": {
+    "kind": "error",
+    "command": "probe",
+    "error": {
+      "code": "E410",
+      "message": "m",
+      "exit_code": 70,
+      "class": "user"
+    }
+  },
+  "expected": [
+    "{",
+    "  \"schema_version\": \"1\",",
+    "  \"command\": \"probe\",",
+    "  \"error\": {",
+    "    \"code\": \"E410\",",
+    "    \"message\": \"m\",",
+    "    \"exit_code\": 70,",
+    "    \"class\": \"other\"",
+    "  }",
+    "}"
+  ]
+}

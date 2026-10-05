@@ -80,14 +80,25 @@ func Data(command string, data any, meta *Meta) ([]byte, error) {
 	return encode(Envelope{SchemaVersion: SchemaVersion, Command: command, Data: data, Meta: trimMeta(meta)}, true)
 }
 
-// Error renders the v1 error envelope for command. It has no data key. When
-// ExitCode is 0 it is derived from Class (ExitCodeFor); when Class is empty it
-// is derived from ExitCode (ClassFor). Code and Message are required.
+// Error renders the v1 error envelope for command. It has no data key.
+//
+// Plugins pass text in, and this package does not redact it (the CLI redacts in
+// its own writer): keep passwords, tokens, DSNs with credentials and personal
+// data out of Message, Cause and Remediation. DocsURL is written as given; the
+// SDK cannot read the CLI's error registry, so the caller sets it.
+//
+// The exit status decides the class, as in internal/output. ExitCode 0 means
+// unset: it is derived from Class (ExitCodeFor), and with no usable class
+// either it is 1 (user). Class is always rewritten to ClassFor(ExitCode), so an
+// unknown class or a class that disagrees with the status is normalised. An
+// error is returned, and nothing is rendered, for an empty Code or Message, a
+// Code that is not E and three digits, or an ExitCode outside 0 to 255:
+// everything Error renders passes CheckEnvelope.
 func Error(command string, d ErrorDetail, meta *Meta) ([]byte, error) {
-	if d.Code == "" || d.Message == "" {
-		return nil, errors.New("output: error detail needs a code and a message")
+	d, err := completeDetail(d)
+	if err != nil {
+		return nil, err
 	}
-	d = completeDetail(d)
 	return encode(ErrorEnvelope{SchemaVersion: SchemaVersion, Command: command, Error: &d, Meta: trimMeta(meta)}, true)
 }
 
@@ -111,23 +122,50 @@ func WriteError(w io.Writer, command string, d ErrorDetail, meta *Meta) error {
 	return err
 }
 
-// completeDetail fills the exit code and class from each other.
-func completeDetail(d ErrorDetail) ErrorDetail {
-	if d.ExitCode == 0 && d.Class != "" {
+// completeDetail validates d and settles its exit status and class.
+func completeDetail(d ErrorDetail) (ErrorDetail, error) {
+	if d.Code == "" || d.Message == "" {
+		return d, errors.New("output: error detail needs a code and a message")
+	}
+	if !codeRe.MatchString(d.Code) {
+		return d, fmt.Errorf("output: error code %q is not E and three digits", d.Code)
+	}
+	if d.ExitCode < 0 || d.ExitCode > 255 {
+		return d, fmt.Errorf("output: exit code %d is outside 0 to 255", d.ExitCode)
+	}
+	if d.ExitCode == 0 {
 		d.ExitCode = ExitCodeFor(d.Class)
 	}
-	if d.Class == "" && d.ExitCode != 0 {
-		d.Class = ClassFor(d.ExitCode)
-	}
-	return d
+	d.Class = ClassFor(d.ExitCode)
+	return d, nil
 }
 
-// trimMeta returns nil for a nil or empty meta so no meta key is written.
+// trimMeta returns nil for a nil or empty meta so no meta key is written. It
+// returns a copy with repeated deprecations and warnings dropped (first
+// occurrence kept, in order), as internal/output records them.
 func trimMeta(m *Meta) *Meta {
-	if m == nil || (len(m.Deprecations) == 0 && len(m.Warnings) == 0) {
+	if m == nil {
 		return nil
 	}
-	return m
+	out := &Meta{}
+	seenD := map[Deprecation]bool{}
+	for _, d := range m.Deprecations {
+		if !seenD[d] {
+			seenD[d] = true
+			out.Deprecations = append(out.Deprecations, d)
+		}
+	}
+	seenW := map[string]bool{}
+	for _, w := range m.Warnings {
+		if !seenW[w] {
+			seenW[w] = true
+			out.Warnings = append(out.Warnings, w)
+		}
+	}
+	if len(out.Deprecations) == 0 && len(out.Warnings) == 0 {
+		return nil
+	}
+	return out
 }
 
 // encode writes v as one JSON document with a trailing newline and without

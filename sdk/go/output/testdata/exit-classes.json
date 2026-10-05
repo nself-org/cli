@@ -1,0 +1,24 @@
+{
+  "classes": [
+    {
+      "class": "user",
+      "exit": 1
+    },
+    {
+      "class": "infra",
+      "exit": 2
+    },
+    {
+      "class": "auth",
+      "exit": 3
+    },
+    {
+      "class": "destructive_blocked",
+      "exit": 4
+    }
+  ],
+  "other": {
+    "class": "other",
+    "exit_example": 70
+  }
+}

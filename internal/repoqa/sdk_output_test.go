@@ -36,6 +36,7 @@ const sdkOutputDir = "sdk/go/output"
 type sdkCase struct {
 	Input struct {
 		Kind    string          `json:"kind"`
+		GoType  string          `json:"go_type"`
 		Command string          `json:"command"`
 		Type    string          `json:"type"`
 		Data    json.RawMessage `json:"data"`
@@ -54,7 +55,27 @@ type sdkCase struct {
 			Class       string `json:"class"`
 		} `json:"error"`
 	} `json:"input"`
-	Expected []string `json:"expected"`
+	Expected    []string `json:"expected"`
+	ExpectError bool     `json:"expect_error"`
+}
+
+// sdkTypedSample mirrors typedSample in sdk/go/output/output_test.go: typed Go
+// data (struct field order, nil versus empty slices and maps) goes through both
+// renderers, not only map[string]any.
+type sdkTypedSample struct {
+	Zed        string         `json:"zed"`
+	Alpha      int            `json:"alpha"`
+	Note       string         `json:"note"`
+	NilSlice   []string       `json:"nil_slice"`
+	EmptySlice []string       `json:"empty_slice"`
+	NilMap     map[string]int `json:"nil_map"`
+	EmptyMap   map[string]int `json:"empty_map"`
+	Skip       string         `json:"skip,omitempty"`
+	Ptr        *int           `json:"ptr"`
+	Inner      struct {
+		B int `json:"b"`
+		A int `json:"a"`
+	} `json:"inner"`
 }
 
 func sdkJSONValue(t *testing.T, raw []byte) any {
@@ -100,10 +121,18 @@ func sdkRenderInternal(t *testing.T, c sdkCase) string {
 	compact := false
 	switch in.Kind {
 	case "data":
-		must(t, output.EmitData(w, in.Command, sdkJSONValue(t, in.Data)))
+		var data any = sdkJSONValue(t, in.Data)
+		if in.GoType == "typedSample" {
+			var ts sdkTypedSample
+			must(t, json.Unmarshal(in.Data, &ts))
+			data = ts
+		} else if in.GoType != "" {
+			t.Fatalf("unknown go_type %q", in.GoType)
+		}
+		must(t, output.EmitData(w, in.Command, data))
 	case "error", "stream_error":
 		e := in.Error
-		code := e.ExitCode
+		code := e.ExitCode // internal/output has no class input: the status decides
 		if code == 0 {
 			code = sdkExitFor(e.Class)
 		}
@@ -209,8 +238,16 @@ func TestSDKOutputCases(t *testing.T) {
 		var c sdkCase
 		must(t, json.Unmarshal(b, &c))
 		kinds[c.Input.Kind] = true
-		want := strings.Join(c.Expected, "\n") + "\n"
 		got := sdkRenderInternal(t, c)
+		if c.ExpectError {
+			// internal/output writes this input anyway; the SDK refuses it
+			// because the document it would write is not a valid envelope.
+			if sdkSchemaVerdict(rs, []byte(got)) == nil {
+				t.Errorf("%s: SDK refuses an input the schema accepts:\n%s", filepath.Base(f), got)
+			}
+			continue
+		}
+		want := strings.Join(c.Expected, "\n") + "\n"
 		if got != want {
 			t.Errorf("%s: internal/output drifted from the shared case\n--- internal ---\n%s\n--- expected ---\n%s", filepath.Base(f), got, want)
 		}
@@ -287,6 +324,35 @@ func TestSDKOutputExitContract(t *testing.T) {
 	env := sdkConsts(t, filepath.Join(repoRoot(t), sdkOutputDir, "envelope.go"))
 	if env["SchemaVersion"] != output.SchemaVersion {
 		t.Errorf("sdk SchemaVersion = %q, internal = %q", env["SchemaVersion"], output.SchemaVersion)
+	}
+}
+
+// TestSDKOutputExitTable: testdata/exit-classes.json, the table the SDK test
+// asserts ExitCodeFor and ClassFor against, equals internal/errs.
+func TestSDKOutputExitTable(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(repoRoot(t), sdkOutputDir, "testdata", "exit-classes.json"))
+	must(t, err)
+	var tab struct {
+		Classes []struct {
+			Class string `json:"class"`
+			Exit  int    `json:"exit"`
+		} `json:"classes"`
+		Other struct {
+			Class       string `json:"class"`
+			ExitExample int    `json:"exit_example"`
+		} `json:"other"`
+	}
+	must(t, json.Unmarshal(b, &tab))
+	if len(tab.Classes) != 4 {
+		t.Fatalf("table has %d classes, want 4", len(tab.Classes))
+	}
+	for _, r := range tab.Classes {
+		if r.Exit != sdkExitFor(r.Class) || errs.ClassFor(r.Exit) != r.Class {
+			t.Errorf("table row %s=%d disagrees with internal/errs (%d, %q)", r.Class, r.Exit, sdkExitFor(r.Class), errs.ClassFor(r.Exit))
+		}
+	}
+	if errs.ClassFor(tab.Other.ExitExample) != tab.Other.Class {
+		t.Errorf("errs.ClassFor(%d) = %q, table %q", tab.Other.ExitExample, errs.ClassFor(tab.Other.ExitExample), tab.Other.Class)
 	}
 }
 

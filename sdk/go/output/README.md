@@ -26,7 +26,8 @@ os.Exit(output.ExitCodeFor(output.ClassInfra))
 ```
 
 `Data` and `Error` return the bytes instead of writing. `meta` is optional;
-a `Meta` with no deprecations and no warnings writes no `meta` key.
+repeated deprecations and warnings are dropped (first kept), and a `Meta` with
+none writes no `meta` key, as `internal/output` does.
 
 | Class | Exit status |
 |---|---|
@@ -36,8 +37,22 @@ a `Meta` with no deprecations and no warnings writes no `meta` key.
 | `destructive_blocked` | 4 |
 | `other` | any other status; set `ErrorDetail.ExitCode` yourself |
 
-Redaction is the CLI's job in its own writer. A plugin keeps secrets and
-personal data out of the text it passes in.
+### Rules for `Error`, `WriteError` and `StreamError`
+
+- **No redaction.** The CLI redacts error text in its own writer; this package
+  does not. Keep passwords, tokens, DSNs with credentials and personal data out
+  of `Message`, `Cause` and `Remediation`, and be careful passing `err.Error()`.
+- **`DocsURL` is written as given.** The SDK cannot read the CLI's error
+  registry, so the CLI's default link for a known code is not filled in; set
+  `DocsURL` when you want one.
+- **The status decides the class**, as in `internal/output`. `ExitCode` 0 means
+  unset: it comes from `Class`, and with neither set it is 1 (user). `Class` is
+  always rewritten to match the status, so an unknown class or a class that
+  disagrees with the status is normalised (class `auth` with status 2 is written
+  as `infra`).
+- **A document `CheckEnvelope` would reject is never written.** An empty code
+  or message, a code that is not `E` and three digits, or a status outside 0 to
+  255 returns an error and writes nothing.
 
 ## Streams (contract:cli.json-stream v1)
 
@@ -78,9 +93,19 @@ old output stays the default and the envelope runs only when V15 reports true.
 ## Keeping it identical to the CLI
 
 `testdata/cases/*.json` are `{input, expected}` pairs (`expected` is the
-document as a list of lines). This package's tests render each input and
-compare bytes. The CLI's `internal/repoqa/sdk_output_test.go` renders the same
-inputs with `internal/output`, checks the expected bytes against the JSON
-Schema, and checks the `valid` and `invalid` fixtures against the schema, so
-neither implementation can drift without a failing test. Add a case when
-either side gains behaviour.
+document as a list of lines; `expect_error` marks an input the SDK refuses).
+This package's tests render each input and compare bytes, and require that
+every rendered case passes `CheckEnvelope`. The CLI's
+`internal/repoqa/sdk_output_test.go` renders the same inputs with
+`internal/output`, checks the expected bytes against the JSON Schema, checks
+the `valid` and `invalid` fixtures against the schema, checks that each refused
+input would give a schema-invalid document, and checks the exit-class table
+`testdata/exit-classes.json` and the SDK constants against `internal/errs`.
+Neither implementation can drift without a failing test.
+
+Limits of that guarantee: the SDK is a separate module, so the two sides are
+compared through the shared expected bytes, not in one process. Cases with
+`go_type` render a typed Go struct (field order, nil versus empty slices and
+maps) on both sides; the other data cases pass `map[string]any`. `internal/output`
+has no stream encoder, so stream lines are compared with the compacted form of
+its envelope. Add a case when either side gains behaviour.

@@ -1,0 +1,41 @@
+{
+  "input": {
+    "kind": "data",
+    "command": "typed",
+    "go_type": "typedSample",
+    "data": {
+      "zed": "z",
+      "alpha": 1,
+      "note": "<b> &   x",
+      "nil_slice": null,
+      "empty_slice": [],
+      "nil_map": null,
+      "empty_map": {},
+      "ptr": 7,
+      "inner": {
+        "b": 2,
+        "a": 1
+      }
+    }
+  },
+  "expected": [
+    "{",
+    "  \"schema_version\": \"1\",",
+    "  \"command\": \"typed\",",
+    "  \"data\": {",
+    "    \"zed\": \"z\",",
+    "    \"alpha\": 1,",
+    "    \"note\": \"<b> & \\u2028 x\",",
+    "    \"nil_slice\": null,",
+    "    \"empty_slice\": [],",
+    "    \"nil_map\": null,",
+    "    \"empty_map\": {},",
+    "    \"ptr\": 7,",
+    "    \"inner\": {",
+    "      \"b\": 2,",
+    "      \"a\": 1",
+    "    }",
+    "  }",
+    "}"
+  ]
+}

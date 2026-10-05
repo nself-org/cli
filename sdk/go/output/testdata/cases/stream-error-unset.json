@@ -1,0 +1,13 @@
+{
+  "input": {
+    "kind": "stream_error",
+    "command": "logs",
+    "error": {
+      "code": "E410",
+      "message": "m"
+    }
+  },
+  "expected": [
+    "{\"schema_version\":\"1\",\"command\":\"logs\",\"error\":{\"code\":\"E410\",\"message\":\"m\",\"exit_code\":1,\"class\":\"user\"}}"
+  ]
+}

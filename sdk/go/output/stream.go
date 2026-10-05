@@ -3,7 +3,6 @@ package output
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 )
 
@@ -38,10 +37,10 @@ func StreamEnd(command string, meta *Meta, fields ...Field) ([]byte, error) {
 // StreamError renders the last line of a failed stream: the compact v1 error
 // envelope (see Error for the rules on d).
 func StreamError(command string, d ErrorDetail, meta *Meta) ([]byte, error) {
-	if d.Code == "" || d.Message == "" {
-		return nil, errors.New("output: error detail needs a code and a message")
+	d, err := completeDetail(d)
+	if err != nil {
+		return nil, err
 	}
-	d = completeDetail(d)
 	return encode(ErrorEnvelope{SchemaVersion: SchemaVersion, Command: command, Error: &d, Meta: trimMeta(meta)}, false)
 }
 

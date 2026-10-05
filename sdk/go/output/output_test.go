@@ -13,6 +13,7 @@ import (
 type caseFile struct {
 	Input struct {
 		Kind    string          `json:"kind"`
+		GoType  string          `json:"go_type"`
 		Command string          `json:"command"`
 		Type    string          `json:"type"`
 		Data    json.RawMessage `json:"data"`
@@ -23,7 +24,26 @@ type caseFile struct {
 		Meta  *Meta        `json:"meta"`
 		Error *ErrorDetail `json:"error"`
 	} `json:"input"`
-	Expected []string `json:"expected"`
+	Expected    []string `json:"expected"`
+	ExpectError bool     `json:"expect_error"`
+}
+
+// typedSample is rendered as typed Go data (struct field order, nil versus
+// empty slices and maps); the CLI's repoqa test defines the same type.
+type typedSample struct {
+	Zed        string         `json:"zed"`
+	Alpha      int            `json:"alpha"`
+	Note       string         `json:"note"`
+	NilSlice   []string       `json:"nil_slice"`
+	EmptySlice []string       `json:"empty_slice"`
+	NilMap     map[string]int `json:"nil_map"`
+	EmptyMap   map[string]int `json:"empty_map"`
+	Skip       string         `json:"skip,omitempty"`
+	Ptr        *int           `json:"ptr"`
+	Inner      struct {
+		B int `json:"b"`
+		A int `json:"a"`
+	} `json:"inner"`
 }
 
 func loadCases(t *testing.T) map[string]caseFile {
@@ -58,7 +78,7 @@ func anyOf(t *testing.T, raw json.RawMessage) any {
 	return v
 }
 
-func render(t *testing.T, c caseFile) []byte {
+func render(t *testing.T, c caseFile) ([]byte, error) {
 	t.Helper()
 	in := c.Input
 	var fields []Field
@@ -69,7 +89,19 @@ func render(t *testing.T, c caseFile) []byte {
 	var err error
 	switch in.Kind {
 	case "data":
-		b, err = Data(in.Command, anyOf(t, in.Data), in.Meta)
+		var data any = anyOf(t, in.Data)
+		switch in.GoType {
+		case "":
+		case "typedSample":
+			var ts typedSample
+			if err := json.Unmarshal(in.Data, &ts); err != nil {
+				t.Fatal(err)
+			}
+			data = ts
+		default:
+			t.Fatalf("unknown go_type %q", in.GoType)
+		}
+		b, err = Data(in.Command, data, in.Meta)
 	case "error":
 		b, err = Error(in.Command, *in.Error, in.Meta)
 	case "stream_record":
@@ -81,16 +113,23 @@ func render(t *testing.T, c caseFile) []byte {
 	default:
 		t.Fatalf("unknown case kind %q", in.Kind)
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
+	return b, err
 }
 
 func TestCases(t *testing.T) {
 	for name, c := range loadCases(t) {
+		got, err := render(t, c)
+		if c.ExpectError {
+			if err == nil || got != nil {
+				t.Errorf("%s: want a refusal and no bytes, got %q err=%v", name, got, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
 		want := strings.Join(c.Expected, "\n") + "\n"
-		got := render(t, c)
 		if string(got) != want {
 			t.Errorf("%s mismatch\n--- got ---\n%s\n--- want ---\n%s", name, got, want)
 		}
@@ -139,6 +178,39 @@ func TestExitClasses(t *testing.T) {
 	}
 }
 
+// TestExitClassTable pins ExitCodeFor and ClassFor to testdata/exit-classes.json,
+// the table the CLI's repoqa test checks against internal/errs.
+func TestExitClassTable(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "exit-classes.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tab struct {
+		Classes []struct {
+			Class string `json:"class"`
+			Exit  int    `json:"exit"`
+		} `json:"classes"`
+		Other struct {
+			Class       string `json:"class"`
+			ExitExample int    `json:"exit_example"`
+		} `json:"other"`
+	}
+	if err := json.Unmarshal(b, &tab); err != nil || len(tab.Classes) != 4 {
+		t.Fatalf("bad table: %v", err)
+	}
+	for _, r := range tab.Classes {
+		if got := ExitCodeFor(r.Class); got != r.Exit {
+			t.Errorf("ExitCodeFor(%q) = %d, table %d", r.Class, got, r.Exit)
+		}
+		if got := ClassFor(r.Exit); got != r.Class {
+			t.Errorf("ClassFor(%d) = %q, table %q", r.Exit, got, r.Class)
+		}
+	}
+	if got := ClassFor(tab.Other.ExitExample); got != tab.Other.Class {
+		t.Errorf("ClassFor(%d) = %q, table %q", tab.Other.ExitExample, got, tab.Other.Class)
+	}
+}
+
 func TestErrorDerivesExitAndClass(t *testing.T) {
 	b, err := Error("x", ErrorDetail{Code: "E410", Message: "m", Class: ClassInfra}, nil)
 	if err != nil || !strings.Contains(string(b), `"exit_code": 2`) {
@@ -150,6 +222,9 @@ func TestErrorDerivesExitAndClass(t *testing.T) {
 	}
 	if _, err = Error("x", ErrorDetail{Message: "m"}, nil); err == nil {
 		t.Fatal("accepted a detail without a code")
+	}
+	if _, err = StreamError("x", ErrorDetail{Code: "E400", Message: "m", ExitCode: 300}, nil); err == nil {
+		t.Fatal("StreamError accepted exit code 300")
 	}
 }
 
