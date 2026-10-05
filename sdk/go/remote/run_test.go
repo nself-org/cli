@@ -33,25 +33,9 @@ func TestRun_StrictArgvShape(t *testing.T) {
 	}
 }
 
-func TestRun_CompatArgvIsLegacy(t *testing.T) {
-	log := stubTools(t, map[string]string{"ssh": "exit 0"})
-	tg := Target{Dest: "u@h", KeyPath: "/k", Compat: true, Env: []string{"PATH=" + pathEnv(), "X=1"}}
-	if _, err := Run(context.Background(), tg, "ls"); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"-i", "/k", "-o", "StrictHostKeyChecking=accept-new", "-o", "ForwardAgent=no", "u@h", "ls"}
-	c := readCalls(t, log)[0]
-	if !reflect.DeepEqual(c.args, want) {
-		t.Fatalf("argv = %q, want %q", c.args, want)
-	}
-	if !hasArg(c.env, "X=1") {
-		t.Error("Target.Env was not used")
-	}
-}
-
 func TestRun_ErrorFormat(t *testing.T) {
 	stubTools(t, map[string]string{"ssh": "echo boom; exit 3"})
-	_, err := Run(context.Background(), Target{Dest: "u@h", KeyPath: "/k", Compat: true}, "ls")
+	_, err := Run(context.Background(), Target{Dest: "u@h", KeyPath: "/k"}, "ls")
 	if err == nil || !strings.HasPrefix(err.Error(), "remote command on u@h failed: exit status 3\nboom") {
 		t.Fatalf("error = %v", err)
 	}
@@ -72,32 +56,24 @@ func TestRunArgv_QuotesEveryElement(t *testing.T) {
 
 func TestDestinationInjectionRefusedBeforeExec(t *testing.T) {
 	ctx := context.Background()
-	strictOnly := map[string]bool{"a;b": true, "$(id)": true, "`id`": true, "a|b": true}
 	dests := []string{"-oProxyCommand=touch /tmp/pwned", "-oProxyCommand=x", "a b", "a;b", "a\nb", "$(id)", "`id`", "a|b", "-p", "", "a\x00b"}
-	for _, compat := range []bool{false, true} {
-		for _, d := range dests {
-			if compat && strictOnly[d] {
-				continue // Compat keeps cli deploy's historical leniency for these
-			}
-			n := countExecs(t)
-			tg := Target{Dest: d, Options: []string{}, Compat: compat}
-			if _, err := Run(ctx, tg, "true"); err == nil {
-				t.Errorf("Run dest %q compat=%v: no error", d, compat)
-			}
-			if _, err := Start(ctx, tg, "true"); err == nil {
-				t.Errorf("Start dest %q compat=%v: no error", d, compat)
-			}
-			if !compat {
-				if err := CopyTo(ctx, tg, "/tmp/a", "/opt/a"); err == nil {
-					t.Errorf("CopyTo dest %q: no error", d)
-				}
-				if err := Rsync(ctx, tg, nil, "/tmp/a", "/opt/a"); err == nil {
-					t.Errorf("Rsync dest %q: no error", d)
-				}
-			}
-			if *n != 0 {
-				t.Errorf("dest %q compat=%v: %d execs before refusal", d, compat, *n)
-			}
+	for _, d := range dests {
+		n := countExecs(t)
+		tg := Target{Dest: d, Options: []string{}}
+		if _, err := Run(ctx, tg, "true"); err == nil {
+			t.Errorf("Run dest %q: no error", d)
+		}
+		if _, err := Start(ctx, tg, "true"); err == nil {
+			t.Errorf("Start dest %q: no error", d)
+		}
+		if err := CopyTo(ctx, tg, "/tmp/a", "/opt/a"); err == nil {
+			t.Errorf("CopyTo dest %q: no error", d)
+		}
+		if err := Rsync(ctx, tg, nil, "/tmp/a", "/opt/a"); err == nil {
+			t.Errorf("Rsync dest %q: no error", d)
+		}
+		if *n != 0 {
+			t.Errorf("dest %q: %d execs before refusal", d, *n)
 		}
 	}
 }
@@ -126,12 +102,12 @@ func TestLocalOperandAndOptionAbuseRefused(t *testing.T) {
 	ctx := context.Background()
 	n := countExecs(t)
 	tg := ciTarget("h1")
-	for _, l := range []string{"evil:file", "", "a\nb"} {
+	for _, l := range []string{"evil:file", "", "a\nb", "-rf", "-e"} {
 		if CopyTo(ctx, tg, l, "/opt/a") == nil || Rsync(ctx, tg, nil, l, "/opt/a") == nil {
 			t.Errorf("local operand %q not refused", l)
 		}
 	}
-	for _, a := range []string{"-e", "-eX", "-avze", "-M", "--rsh=sh -c id", "--rsync-path=sh", "--remote-option=x"} {
+	for _, a := range []string{"-e", "-eX", "-avze", "-M", "--rsh=sh -c id", "--rsync-path=sh", "--remote-option=x", "--rs=sh", "--rsync-pat=sh", "--remote-o=x", "--rsh"} {
 		if Rsync(ctx, tg, []string{a}, "/tmp/a", "/opt/a") == nil {
 			t.Errorf("rsync flag %q not refused", a)
 		}
@@ -190,18 +166,6 @@ func TestRsync_ArgvShape(t *testing.T) {
 	}
 }
 
-func TestRsync_CompatMatchesLegacyShape(t *testing.T) {
-	log := stubTools(t, map[string]string{"rsync": "exit 0"})
-	tg := Target{Dest: "u@h", KeyPath: "/k", Compat: true}
-	if err := Rsync(context.Background(), tg, []string{"-az"}, "/w/c.yml", "/opt/app/nself-compose.yml"); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"-az", "-e", "ssh -i /k -o StrictHostKeyChecking=accept-new -o ForwardAgent=no", "/w/c.yml", "u@h:/opt/app/nself-compose.yml"}
-	if got := readCalls(t, log)[0].args; !reflect.DeepEqual(got, want) {
-		t.Fatalf("argv = %q, want %q", got, want)
-	}
-}
-
 func TestStart_SessionPipes(t *testing.T) {
 	stubTools(t, map[string]string{"ssh": "cat"})
 	s, err := Start(context.Background(), ciTarget("h1"), "agent")
@@ -246,5 +210,76 @@ func TestBaseOptionsAndKeyPath(t *testing.T) {
 	t.Setenv("HOME", "/home/x")
 	if DefaultKeyPath() != "/home/x/.ssh/id_ed25519" {
 		t.Errorf("default = %q", DefaultKeyPath())
+	}
+}
+
+// TestAdvRsyncDoubleDashDropsD4 is the reviewer's repro: a caller "--" ahead of
+// the Target's -e made rsync read -e and its D4 options as operands, so the
+// transfer ran over plain ssh. The "--" and every non-option element are now
+// refused before exec.
+func TestAdvRsyncDoubleDashDropsD4(t *testing.T) {
+	n := countExecs(t)
+	tg := ciTarget("node.invalid")
+	for _, args := range [][]string{{"-az", "--"}, {"--"}, {"-az", "other.invalid:/etc/shadow"}, {"--exclude", "x"}, {"x"}, {""}} {
+		if err := Rsync(context.Background(), tg, args, "/tmp/a", "/dst"); err == nil {
+			t.Errorf("Rsync args %q accepted", args)
+		}
+	}
+	if *n != 0 {
+		t.Fatalf("%d execs before refusal", *n)
+	}
+}
+
+func TestRsync_AcceptsSingleElementOptions(t *testing.T) {
+	log := stubTools(t, map[string]string{"rsync": "exit 0"})
+	args := []string{"-az", "--exclude=.git", "--delete"}
+	if err := Rsync(context.Background(), ciTarget("h1"), args, "./s", "/opt/x"); err != nil {
+		t.Fatal(err)
+	}
+	got := readCalls(t, log)[0].args
+	if !reflect.DeepEqual(got[:3], args) || got[3] != "-e" {
+		t.Fatalf("argv = %q", got)
+	}
+}
+
+func TestRunRefusesLeadingDashCommandAndArgvBackslash(t *testing.T) {
+	n := countExecs(t)
+	ctx := context.Background()
+	if _, err := Run(ctx, ciTarget("h1"), "-oProxyCommand=x"); err == nil {
+		t.Error("command starting with '-' accepted")
+	}
+	// S4: under fish a backslash inside single quotes still escapes, so
+	// ShellQuote(`\';id #`) is not a safe single word there.
+	for _, a := range []string{`\';id #`, `a\b`, `\`} {
+		if _, err := RunArgv(ctx, ciTarget("h1"), "echo", a); err == nil {
+			t.Errorf("RunArgv accepted element %q", a)
+		}
+	}
+	if *n != 0 {
+		t.Fatalf("%d execs before refusal", *n)
+	}
+}
+
+func TestIPv6DestinationIsBracketedForScpAndRsync(t *testing.T) {
+	log := stubTools(t, map[string]string{"scp": "exit 0", "rsync": "exit 0", "ssh": "exit 0"})
+	ctx := context.Background()
+	tg := ciTarget("deploy@2001:db8::7")
+	if err := CopyTo(ctx, tg, "./a", "/opt/a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Rsync(ctx, tg, []string{"-az"}, "./a", "/opt/a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(ctx, tg, "true"); err != nil {
+		t.Fatal(err)
+	}
+	cs := readCalls(t, log)
+	for _, c := range cs[:2] {
+		if last := c.args[len(c.args)-1]; last != "deploy@[2001:db8::7]:/opt/a" {
+			t.Errorf("%s operand = %q", c.tool, last)
+		}
+	}
+	if a := cs[2].args; a[len(a)-2] != "deploy@2001:db8::7" { // ssh takes the bare literal
+		t.Errorf("ssh dest = %q", a[len(a)-2])
 	}
 }

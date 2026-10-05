@@ -100,3 +100,22 @@ func TestScanHostKeysSSH_RefusesBeforeExec(t *testing.T) {
 		t.Fatalf("%d execs", *n)
 	}
 }
+
+// An ssh whose -V output cannot be parsed still gets KnownHostsCommand=none:
+// fail closed, never silently omit the option.
+func TestScanHostKeysSSH_UnknownVersionKeepsKnownHostsCommandNone(t *testing.T) {
+	body := strings.Replace(sshScanStub, `echo "OpenSSH_9.6p1, stub" >&2`, `echo "mystery ssh" >&2`, 1)
+	log := stubTools(t, map[string]string{"ssh": body})
+	if _, err := ScanHostKeysSSH(context.Background(), Target{Dest: "h1"}, "n1"); err != nil {
+		t.Fatal(err)
+	}
+	var scan call
+	for _, c := range readCalls(t, log) {
+		if len(c.args) > 0 && c.args[0] != "-V" {
+			scan = c
+		}
+	}
+	if !hasArg(scan.args, "KnownHostsCommand=none") {
+		t.Fatalf("argv lacks KnownHostsCommand=none: %q", scan.args)
+	}
+}

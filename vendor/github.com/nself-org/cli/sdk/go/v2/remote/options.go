@@ -24,9 +24,10 @@ func (v Version) AtLeast(major, minor int) bool {
 	return v.Major > major || v.Major == major && v.Minor >= minor
 }
 
-var sshVersionRe = regexp.MustCompile(`OpenSSH_(\d+)\.(\d+)`)
+var sshVersionRe = regexp.MustCompile(`OpenSSH_(?:for_Windows_)?(\d+)\.(\d+)`)
 
-// ParseSSHVersion parses the output of `ssh -V` ("OpenSSH_9.6p1, ...").
+// ParseSSHVersion parses the output of `ssh -V` ("OpenSSH_9.6p1, ..." or the
+// Windows build's "OpenSSH_for_Windows_9.5p1, ...").
 func ParseSSHVersion(out string) (Version, error) {
 	m := sshVersionRe.FindStringSubmatch(out)
 	if m == nil {

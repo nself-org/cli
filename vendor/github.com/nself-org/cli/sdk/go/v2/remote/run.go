@@ -3,9 +3,10 @@
 // Inputs:  a Target (destination, key, option set, environment) and the
 //          command, files or paths to act on.
 // Outputs: command output and errors; a Session for streaming.
-// Constraints: argv only. With Compat false, operands follow "--" and are
-//              validated before exec. With Compat true the argv is exactly
-//              what cli deploy has always produced (no "--", inherited env).
+// Constraints: argv only. Every operand follows the sdk's "--" and is
+//              validated before exec; the caller's own options and operands
+//              can never precede or replace the Target's options. Remote
+//              commands assume a POSIX remote shell (see RunArgv).
 
 package remote
 
@@ -32,9 +33,6 @@ type Target struct {
 	Options []string
 	// Env is the process environment. Nil means EnvAllowlist().
 	Env []string
-	// Compat reproduces cli deploy's historical argv and relaxes the
-	// destination check to "no leading '-', no whitespace". Internal use.
-	Compat bool
 }
 
 // DefaultKeyPath returns the SSH key path from NSELF_DEPLOY_KEY_PATH or
@@ -74,9 +72,6 @@ func (t Target) opts() []string {
 }
 
 func (t Target) check() error {
-	if t.Compat {
-		return ValidateLegacyDest(t.Dest)
-	}
 	if err := ValidateDest(t.Dest); err != nil {
 		return err
 	}
@@ -94,17 +89,17 @@ func (t Target) command(ctx context.Context, tool string, args []string) (*exec.
 	return cmd, nil
 }
 
-// sshArgs builds options, "--" (unless Compat), destination, command.
+// sshArgs builds options, "--", destination, command. A command starting with
+// '-' is refused so no element after "--" looks like an option.
 func (t Target) sshArgs(command string) ([]string, error) {
 	if err := t.check(); err != nil {
 		return nil, err
 	}
-	args := t.opts()
-	if !t.Compat {
-		args = append(args, "--")
+	if strings.HasPrefix(command, "-") {
+		return nil, fmt.Errorf("remote command must not start with '-' (got %q)", command)
 	}
-	args = append(args, t.Dest)
-	if command != "" || t.Compat { // Compat always sends the element, as cli deploy did
+	args := append(t.opts(), "--", t.Dest)
+	if command != "" {
 		args = append(args, command)
 	}
 	return args, nil
@@ -133,12 +128,20 @@ func Run(ctx context.Context, t Target, command string) (string, error) {
 
 // RunArgv runs argv on the remote host, quoting every element with
 // ShellQuote so none can be parsed as shell syntax by the remote shell.
+//
+// ShellQuote's single quotes are POSIX-shell quoting: the remote login shell
+// must be a POSIX shell (sh, bash, dash, zsh). Under fish a backslash inside
+// single quotes still escapes, so RunArgv refuses any element holding a
+// backslash instead of guessing the remote shell; pass such data in a file.
 func RunArgv(ctx context.Context, t Target, argv ...string) (string, error) {
 	if len(argv) == 0 {
 		return "", fmt.Errorf("remote: empty command")
 	}
 	quoted := make([]string, len(argv))
 	for i, a := range argv {
+		if strings.ContainsRune(a, '\\') {
+			return "", fmt.Errorf("remote: argument %d holds a backslash, which is not quoted safely for every remote shell", i)
+		}
 		quoted[i] = ShellQuote(a)
 	}
 	return Run(ctx, t, strings.Join(quoted, " "))
@@ -189,107 +192,4 @@ func (s *Session) Kill() error {
 		return nil
 	}
 	return s.cmd.Process.Kill()
-}
-
-// CopyTo copies the local file to remote on t.Dest with scp. Unless t.Compat,
-// remote must pass ValidateRemotePath (and be non-empty) and local must not
-// look like a "host:path" operand. Options must be `-o` pairs (CIOptions),
-// never CISSHFlags: scp has no -T/-a/-x meaning.
-func CopyTo(ctx context.Context, t Target, local, remote string) error {
-	if err := t.check(); err != nil {
-		return err
-	}
-	args := t.opts()
-	if !t.Compat {
-		if remote == "" {
-			return fmt.Errorf("remote path is empty")
-		}
-		if err := ValidateRemotePath(remote); err != nil {
-			return err
-		}
-		if err := checkLocalOperand(local); err != nil {
-			return err
-		}
-		args = append(args, "--")
-	}
-	args = append(args, local, t.Dest+":"+remote)
-	cmd, err := t.command(ctx, "scp", args)
-	if err != nil {
-		return err
-	}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("scp to %s:%s: %w\n%s", t.Dest, remote, err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-// checkLocalOperand refuses a local path scp or rsync would read as a remote
-// "host:path" (a colon before the first slash), or that holds a newline/NUL.
-func checkLocalOperand(local string) error {
-	if local == "" || strings.ContainsAny(local, "\n\x00") {
-		return fmt.Errorf("local path is empty or holds a newline or NUL")
-	}
-	if i := strings.IndexByte(local, ':'); i >= 0 && !strings.Contains(local[:i], "/") {
-		return fmt.Errorf("local path %q would be read as a remote operand; prefix it with ./", local)
-	}
-	return nil
-}
-
-// Rsync runs `rsync <args> -e "ssh <options>" -- <src> <Dest>:<dst>`. dst is
-// the remote path and must pass ValidateRemotePath unless t.Compat. args are
-// the caller's rsync flags; flags that run commands or replace the shell
-// (-e, --rsh, --rsync-path, -M, --remote-option) are refused. Because rsync
-// re-splits -e on spaces, options holding whitespace or quotes are refused.
-func Rsync(ctx context.Context, t Target, args []string, src, dst string) error {
-	if err := t.check(); err != nil {
-		return err
-	}
-	opts := t.opts()
-	argv := append([]string(nil), args...)
-	if !t.Compat {
-		for _, a := range args {
-			if rsyncFlagRefused(a) {
-				return fmt.Errorf("rsync flag %q is not allowed", a)
-			}
-		}
-		for _, o := range opts {
-			if strings.ContainsAny(o, " \t\n\r'\"\\") {
-				return fmt.Errorf("ssh option %q cannot be passed through rsync -e", o)
-			}
-		}
-		if dst == "" {
-			return fmt.Errorf("remote path is empty")
-		}
-		if err := ValidateRemotePath(dst); err != nil {
-			return err
-		}
-		if err := checkLocalOperand(src); err != nil {
-			return err
-		}
-	}
-	argv = append(argv, "-e", "ssh "+strings.Join(opts, " "))
-	if !t.Compat {
-		argv = append(argv, "--")
-	}
-	argv = append(argv, src, t.Dest+":"+dst)
-	cmd, err := t.command(ctx, "rsync", argv)
-	if err != nil {
-		return err
-	}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("rsync to %s: %w\n%s", t.Dest, err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-// rsyncFlagRefused reports whether a is a flag that replaces the remote shell
-// or runs a remote command: -e, -M (alone or inside a short-flag cluster),
-// --rsh, --rsync-path, --remote-option. Operands (no leading '-') pass here
-// and are validated separately.
-func rsyncFlagRefused(a string) bool {
-	if strings.HasPrefix(a, "--") {
-		return strings.HasPrefix(a, "--rsh") || strings.HasPrefix(a, "--rsync-path") ||
-			strings.HasPrefix(a, "--remote-option")
-	}
-	return len(a) > 1 && a[0] == '-' && strings.ContainsAny(a[1:], "eM")
 }

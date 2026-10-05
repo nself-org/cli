@@ -23,8 +23,8 @@ var commandContext = exec.CommandContext
 var allowedTools = map[string]bool{"ssh": true, "scp": true, "rsync": true, "ssh-keyscan": true}
 
 // Command builds (does not start) the process for tool with args. The
-// environment is EnvAllowlist(); a caller that must inherit more (cli deploy's
-// Compat targets) replaces cmd.Env explicitly before starting it.
+// environment is EnvAllowlist(); a caller that must inherit more (cli deploy)
+// replaces cmd.Env explicitly before starting it.
 func Command(ctx context.Context, tool string, args ...string) (*exec.Cmd, error) {
 	if !allowedTools[tool] {
 		return nil, fmt.Errorf("remote: %q is not an allowed tool", tool)
@@ -41,7 +41,11 @@ func Command(ctx context.Context, tool string, args ...string) (*exec.Cmd, error
 
 // EnvAllowlist returns the only environment ssh, scp and rsync run with:
 // PATH HOME USER LOGNAME SSH_AUTH_SOCK (when set) and LANG=C. A config
-// SendEnv or SetEnv therefore has nothing to send.
+// SendEnv therefore has only those variables to send. SetEnv is different: it
+// sets literal values from the ssh configuration itself, not from the process
+// environment, so the allowlist does not neutralize it (OpenSSH also rejects
+// an empty "-o SetEnv=" override, so there is no option to cancel it). What
+// reaches the remote process is still limited by the server's AcceptEnv.
 func EnvAllowlist() []string {
 	env := make([]string, 0, 6)
 	for _, k := range []string{"PATH", "HOME", "USER", "LOGNAME", "SSH_AUTH_SOCK"} {

@@ -26,9 +26,15 @@ import "github.com/nself-org/cli/sdk/go/v2/remote"
 // caller and cmd/commands' own alias pointing at the same compiled pattern.
 var RemotePathRe = remote.RemotePathRe
 
-// ValidateRemotePath delegates to remote.ValidateRemotePath: the allowlist
-// charset, plus no leading "-" and no ".." segment. An empty path is valid;
-// callers that require a non-empty path must check that separately.
+// ValidateRemotePath returns an error when path is non-empty and contains
+// characters outside RemotePathRe's allowed charset. An empty path is
+// treated as valid here — callers that require a non-empty path (e.g. a
+// remote deploy target) must check that separately; ssh.go's DeployViaSsh
+// already falls back to /tmp when the recovered remote path is empty.
+//
+// One refusal is added to the charset check: a leading "-", which a remote
+// rsync --server or scp would read as an option. ".." segments stay accepted,
+// as they always were. The check itself lives in sdk/go/remote.
 func ValidateRemotePath(path string) error {
 	return remote.ValidateRemotePath(path)
 }

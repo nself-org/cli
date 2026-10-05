@@ -48,6 +48,7 @@ func TestParseSSHVersion(t *testing.T) {
 		"OpenSSH_9.6p1 Ubuntu-3ubuntu13, OpenSSL 3.0.13": {9, 6},
 		"OpenSSH_8.0p1, OpenSSL 1.1.1k":                  {8, 0},
 		"OpenSSH_10.3p1, LibreSSL 3.3.6":                 {10, 3},
+		"OpenSSH_for_Windows_9.5p1, LibreSSL 3.8.2":      {9, 5},
 	}
 	for in, want := range cases {
 		got, err := ParseSSHVersion(in)

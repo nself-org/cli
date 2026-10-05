@@ -14,14 +14,17 @@
 //     and no command string is built locally by concatenation. Run passes the
 //     caller's remote command as one argv element (ssh itself hands it to the
 //     remote shell); RunArgv quotes each element with ShellQuote first.
-//   - Operands after options. With the default Target (Compat false) the
-//     destination, source and remote path come after a "--" separator, the
-//     destination and the remote path are validated before any exec, and the
-//     process environment is EnvAllowlist(). Compat reproduces cli deploy's
-//     historical argv and inherited environment byte for byte and exists only
-//     for internal/deploy until its host-key policy changes (P7-DEPL D13).
+//   - Operands after options. The destination, source and remote path come
+//     after a "--" separator, the destination and the remote path are
+//     validated before any exec, and the process environment is
+//     EnvAllowlist(). Caller-supplied rsync options must start with "-" and
+//     can never be "--". cli deploy keeps its historical argv in
+//     internal/deploy on top of Command, not through this API (P7-DEPL D13
+//     owns its host-key policy).
 //   - Remote paths are an allowlist: ValidateRemotePath accepts only
-//     [a-zA-Z0-9/_.-], never a leading "-", never a ".." segment.
+//     [a-zA-Z0-9/_.-] and never a leading "-"; ValidateCopyPath (CopyTo and
+//     Rsync) also refuses a ".." segment.
+//   - RunArgv quotes for a POSIX remote shell and refuses backslashes.
 //   - The CI option set (CISSHFlags, CIOptions) turns off agent, X11 and port
 //     forwarding, multiplexing, local and remote commands, DNS and
 //     command-based host keys, and sets StrictHostKeyChecking=yes against a

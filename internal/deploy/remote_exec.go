@@ -63,14 +63,25 @@ func RunRemoteCommand(ctx context.Context, rt RemoteTarget, command string) (str
 	if rt.SSHTarget == "" {
 		return "", fmt.Errorf("remote target has no SSH host configured")
 	}
-	// Compat + inherited env: byte-identical argv and environment to the
-	// pre-sdk implementation (sdk/go/remote owns the exec).
-	return remote.Run(ctx, remote.Target{
-		Dest:    rt.SSHTarget,
-		KeyPath: rt.KeyPath,
-		Compat:  true,
-		Env:     os.Environ(),
-	}, command)
+	if err := remote.ValidateLegacyDest(rt.SSHTarget); err != nil {
+		return "", err
+	}
+	// Historical argv and inherited environment, byte-identical to the
+	// pre-sdk implementation: options, destination, one command element, no
+	// "--". sdk/go/remote owns the exec funnel; the legacy shape lives here
+	// so the sdk's public API has no relaxed mode.
+	args := append(remote.BaseOptions(rt.KeyPath), rt.SSHTarget, command)
+	sc, err := remote.Command(ctx, "ssh", args...)
+	if err != nil {
+		return "", err
+	}
+	sc.Env = os.Environ()
+	out, err := sc.CombinedOutput()
+	trimmed := strings.TrimSpace(string(out))
+	if err != nil {
+		return trimmed, fmt.Errorf("remote command on %s failed: %w\n%s", rt.SSHTarget, err, trimmed)
+	}
+	return trimmed, nil
 }
 
 // RemoteDockerExecCommand builds the shell command string for

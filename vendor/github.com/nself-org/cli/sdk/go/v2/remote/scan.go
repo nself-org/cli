@@ -105,7 +105,13 @@ func ScanHostKeysSSH(ctx context.Context, t Target, nodeID string) ([]HostKey, e
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	ver, _ := SSHVersion(ctx) // unknown version: omit KnownHostsCommand=none
+	ver, verr := SSHVersion(ctx)
+	if verr != nil {
+		// Fail closed: an unknown client gets KnownHostsCommand=none. A client
+		// too old to know the option then refuses it and the scan fails, where
+		// omitting it would let a hostile ssh_config run a host key command.
+		ver = Version{Major: 99}
+	}
 	dir, err := os.MkdirTemp("", "nself-hostkey-*")
 	if err != nil {
 		return nil, err

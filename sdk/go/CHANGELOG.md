@@ -13,8 +13,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `remote` package (P7-NODE-04): one exec funnel for ssh, scp, rsync and
   ssh-keyscan (`Command`, `Run`, `RunArgv`, `Start`, `CopyTo`, `Rsync`,
-  `EnvAllowlist`); `RemotePathRe` and `ValidateRemotePath` (also refuse a leading
-  `-` and `..` segments); `ValidateAlias`, `ValidateDest`, `ValidateNodeID`;
+  `EnvAllowlist`); `RemotePathRe`, `ValidateRemotePath` (charset and no leading
+  `-`) and `ValidateCopyPath` (also no `..` segment; used by `CopyTo` and
+  `Rsync`); `ValidateAlias`, `ValidateDest` (a `:` only inside an IPv6 literal),
+  `ValidateNodeID`; `Rsync` accepts only single-element options starting with
+  `-`; `RunArgv` refuses backslashes and needs a POSIX remote shell;
   `PinnedHostKeys` (atomic, 0600, keyed by alias); `ScanHostKeys`,
   `ScanHostKeysSSH`, `Fingerprint`; `CISSHFlags`, `CIOptions`, `SSHVersion`;
   `ResolveSSHHost` over `ssh -G`. Standard library only. The CLI's
