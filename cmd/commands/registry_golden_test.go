@@ -14,6 +14,7 @@ package commands
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -31,7 +32,23 @@ const committedRegistry = "../../.github/command-registry.json"
 // compares the document without it.
 var generatedLine = regexp.MustCompile(`(?m)\A\{\n  "_generated": "[^\n]*",\n`)
 
+// goldenChild marks the child process that runs the golden check. Other tests
+// in this package ResetFlags and redeclare flags on the real commands (for
+// example env_target_test.go on `env target add`), so after them the live
+// tree no longer matches what the shipped binary registers. The golden
+// therefore runs the check in a fresh copy of this test binary, whose tree is
+// exactly what init() registered, independent of test order.
+const goldenChild = "NSELF_REGISTRY_GOLDEN_CHILD"
+
 func TestRegistryGolden(t *testing.T) {
+	if os.Getenv(goldenChild) == "" {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestRegistryGolden$", "-test.count=1")
+		cmd.Env = append(os.Environ(), goldenChild+"=1")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("golden check in a fresh process failed: %v\n%s", err, out)
+		}
+		return
+	}
 	compattest.Set(t, true)
 	reattachRealTree()
 	reg, err := BuildRegistry(true)

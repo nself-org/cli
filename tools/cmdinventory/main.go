@@ -82,7 +82,7 @@ func run(w io.Writer, format string, depth int, includeHidden bool) error {
 		}
 	case "names":
 		for _, c := range tree {
-			fmt.Fprintln(w, c.Name)
+			_, _ = fmt.Fprintln(w, c.Name)
 		}
 	case "markdown":
 		printMarkdown(w, tree)
@@ -111,9 +111,10 @@ func writeRegistry(w io.Writer, reg *cmdregistry.Registry) error {
 	return err
 }
 
-func printMarkdown(w io.Writer, tree []Command) {
-	fmt.Fprintln(w, "| Command | Short Description | Group | Subcommands |")
-	fmt.Fprintln(w, "|---|---|---|---|")
+func printMarkdown(out io.Writer, tree []Command) {
+	var w strings.Builder // builder writes cannot fail; one write at the end
+	fmt.Fprintln(&w, "| Command | Short Description | Group | Subcommands |")
+	fmt.Fprintln(&w, "|---|---|---|---|")
 	for _, c := range tree {
 		subs := make([]string, 0, len(c.Subcommands))
 		for _, s := range c.Subcommands {
@@ -127,9 +128,10 @@ func printMarkdown(w io.Writer, tree []Command) {
 		if sub == "" {
 			sub = "—"
 		}
-		fmt.Fprintf(w, "| `%s` | %s | %s | %s |\n", c.Path, escapePipes(c.Short), group, sub)
+		fmt.Fprintf(&w, "| `%s` | %s | %s | %s |\n", c.Path, escapePipes(c.Short), group, sub)
 	}
-	fmt.Fprintf(w, "\nTotal top-level commands: %d\n", len(tree))
+	fmt.Fprintf(&w, "\nTotal top-level commands: %d\n", len(tree))
+	_, _ = io.WriteString(out, w.String())
 }
 
 func escapePipes(s string) string { return strings.ReplaceAll(s, "|", "\\|") }
