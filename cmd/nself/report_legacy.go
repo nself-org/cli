@@ -24,7 +24,7 @@ func reportLegacy(err error, _, stderr io.Writer) int {
 		return code
 	}
 
-	fmt.Fprintf(stderr, "Error: %v\n", err)
+	_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 	return code
 }
 
