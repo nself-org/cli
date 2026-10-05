@@ -1,0 +1,17 @@
+{
+  "approx_rows": {
+    "public.orders": 7,
+    "public.users": 42
+  },
+  "at": "2026-10-05T02:30:41Z",
+  "backup_key": "nself-web_stream_20261005_023000.sql.age",
+  "bytes": 1048576,
+  "cli_version": "1.4.12",
+  "encrypted": true,
+  "kind": "backup",
+  "mismatches": [],
+  "project": "nself-web",
+  "restored_rows": null,
+  "result": "ok",
+  "schema_version": "1"
+}

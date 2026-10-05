@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // StreamConfig holds parameters for a streaming encrypted backup.
@@ -49,6 +50,16 @@ type StreamOptions struct {
 	// resolves. Off by default: without it, a missing recipient is an error
 	// rather than a silent plaintext upload. See the check in Stream.
 	AllowUnencrypted bool
+
+	// HeartbeatTo is the rclone remote that receives <project>/backup.json
+	// after a successful upload (--heartbeat-to). Empty falls back to
+	// NSELF_BACKUP_HEARTBEAT_REMOTE; with neither, no heartbeat is written.
+	HeartbeatTo string
+
+	// HeartbeatRequired makes Stream return an error when the heartbeat cannot
+	// be written (--heartbeat-required). Off by default: a heartbeat outage
+	// must never lose or fail the backup itself.
+	HeartbeatRequired bool
 }
 
 // StreamResult is returned by Stream on success.
@@ -58,6 +69,8 @@ type StreamResult struct {
 	StartedAt   time.Time `json:"started_at"`
 	Duration    string    `json:"duration"`
 	Encrypted   bool      `json:"encrypted"`
+	// Bytes is the size of the uploaded (encrypted) object.
+	Bytes int64 `json:"bytes,omitempty"`
 }
 
 // Stream runs a three-stage concurrent pipeline:
@@ -68,6 +81,12 @@ type StreamResult struct {
 //
 // All three stages run in parallel goroutines. The first error from any stage
 // cancels the others via context cancellation.
+//
+// When a heartbeat remote is set (opts.HeartbeatTo or
+// NSELF_BACKUP_HEARTBEAT_REMOTE) the row estimates are read before the dump
+// starts and, only after the upload succeeded, <project>/backup.json is
+// written there. A heartbeat failure is logged; it is returned (together with
+// the successful result) only when opts.HeartbeatRequired is set.
 func Stream(ctx context.Context, cfg *config.Config, opts StreamOptions) (*StreamResult, error) {
 	if opts.To == "" {
 		if cfg.Backup.Remote != "" {
@@ -137,12 +156,45 @@ func Stream(ctx context.Context, cfg *config.Config, opts StreamOptions) (*Strea
 		return nil, err
 	}
 
+	// Row estimates are read BEFORE the dump so they describe the database the
+	// backup contains; an unreadable estimate is recorded as null, never as {}.
+	hbRemote := opts.HeartbeatTo
+	if hbRemote == "" {
+		hbRemote = cfg.Backup.HeartbeatRemote()
+	}
+	var approx map[string]int64
+	if hbRemote != "" {
+		var rowsErr error
+		if approx, rowsErr = ReadApproxRows(ctx, pgURL); rowsErr != nil {
+			slog.Warn("could not read row estimates; heartbeat approx_rows will be null", "err", rowsErr)
+			approx = nil
+		}
+	}
+
 	result, err := runStreamPipeline(ctx, cfg, pgURL, opts.To, key, recipients)
 	if err != nil {
-		return nil, err
+		// A failed backup never writes a heartbeat, and a truncated object
+		// that reached the remote is removed so nothing restores from it.
+		return nil, discardFailedObject(ctx, err, opts.To, key)
 	}
 	result.StartedAt = start
 	result.Duration = time.Since(start).String()
+
+	// An empty object is not a backup (an encrypted one always has the age
+	// header, so this only happens with --no-encrypt and an empty dump). Fail
+	// the job instead of reporting green; no heartbeat is written either.
+	if result.Bytes == 0 {
+		return nil, discardFailedObject(ctx, fmt.Errorf("%w: the upload was empty (0 bytes)", errs.ErrBackupFailed), opts.To, key)
+	}
+
+	if hbRemote != "" {
+		if hbErr := publishHeartbeat(ctx, cfg.ProjectName, hbRemote, result, approx); hbErr != nil {
+			slog.Warn("backup heartbeat not written", "err", hbErr)
+			if opts.HeartbeatRequired {
+				return result, fmt.Errorf("heartbeat: %w", hbErr)
+			}
+		}
+	}
 	return result, nil
 }
 
@@ -165,6 +217,10 @@ func runStreamPipeline(ctx context.Context, cfg *config.Config, pgURL, destinati
 	} else {
 		uploadReader = pgR
 	}
+
+	// The upload leg reads through a counter so the heartbeat can report the
+	// size of the object that reached the remote.
+	counter := &countingReader{r: uploadReader}
 
 	var wg sync.WaitGroup
 	errc := make(chan error, 3)
@@ -199,7 +255,7 @@ func runStreamPipeline(ctx context.Context, cfg *config.Config, pgURL, destinati
 	go func() {
 		defer wg.Done()
 		defer func() { _ = uploadReader.Close() }()
-		if err := rcloneRcat(ctx, uploadReader, destination, key); err != nil {
+		if err := rcloneRcat(ctx, counter, destination, key); err != nil {
 			cancel()
 			errc <- fmt.Errorf("rclone upload: %w", err)
 		}
@@ -227,5 +283,6 @@ func runStreamPipeline(ctx context.Context, cfg *config.Config, pgURL, destinati
 		BackupID:    key,
 		Destination: full,
 		Encrypted:   encrypt,
+		Bytes:       counter.n.Load(),
 	}, nil
 }

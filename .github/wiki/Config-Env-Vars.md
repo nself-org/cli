@@ -129,6 +129,7 @@ name pairs, and rclone would otherwise fail silently or send an empty secret.
 | `BACKUP_S3_PREFIX` | string | *(unset)* | No | Key prefix applied to uploaded objects, for sharing one bucket across projects. App-level, like `BACKUP_S3_BUCKET`. |
 | `BACKUP_ACCESS_KEY` | string | *(unset)* | No | **Accepted alias** for `BACKUP_S3_ACCESS_KEY_ID`. The canonical name wins when both are set. |
 | `BACKUP_SECRET_KEY` | string | *(unset)* | No | **Accepted alias** for `BACKUP_S3_SECRET_ACCESS_KEY`. The canonical name wins when both are set. |
+| `NSELF_BACKUP_HEARTBEAT_REMOTE` | string | *(unset)* | No | rclone remote that receives `<project>/backup.json` after each successful `nself backup stream` upload (contract:cli.backup-heartbeat v1). The `--heartbeat-to` flag wins. See [[cmd-backup]]. |
 
 **Why the aliases exist.** `BACKUP_ACCESS_KEY` / `BACKUP_SECRET_KEY` were already
 in use in the wild (they are the names in `ntask/backend/.env.example`) but were

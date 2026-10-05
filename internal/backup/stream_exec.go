@@ -9,10 +9,12 @@ package backup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
@@ -111,4 +113,37 @@ func rcloneRcat(ctx context.Context, r io.Reader, destination, key string) error
 	}
 
 	return nil
+}
+
+// rcloneDeleteFile removes destination/key with rclone deletefile. An object
+// that is not there (rclone exit 3 or 4) counts as removed.
+func rcloneDeleteFile(ctx context.Context, destination, key string) error {
+	remote := destination
+	if !strings.HasSuffix(remote, "/") {
+		remote += "/"
+	}
+	out, err := exec.CommandContext(ctx, "rclone", "deletefile", remote+key).CombinedOutput()
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && (ee.ExitCode() == 3 || ee.ExitCode() == 4) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("%w: %v: %s", errs.ErrBackupRemoteFailed, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// discardFailedObject runs after a stream backup failed once an upload may
+// have started (a truncated dump reaches rclone as a clean EOF) or produced an
+// empty object. It deletes the remote object so that nothing picking the newest
+// object can select it, and returns cause. When the delete fails the returned
+// error says the object is still on the remote; the caller still exits non-zero.
+// The delete ignores a cancelled ctx: an interrupted backup must still clean up.
+func discardFailedObject(ctx context.Context, cause error, destination, key string) error {
+	dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 60*time.Second)
+	defer cancel()
+	if err := rcloneDeleteFile(dctx, destination, key); err != nil {
+		return fmt.Errorf("%w; the remote object %s could NOT be removed (%v): delete it by hand, it is not a usable backup", cause, key, err)
+	}
+	return fmt.Errorf("%w (the partial remote object %s was removed)", cause, key)
 }
