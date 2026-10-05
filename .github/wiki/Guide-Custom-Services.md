@@ -75,7 +75,7 @@ CS_1_COMMAND=node dist/server.js
 
 What `nself build` generates for it: build context `../..` with that Dockerfile and target, `depends_on` for `postgres` and `hasura` (both `service_healthy`), the command as a list, and the environment from both files with `.env.secrets` winning on a repeated key.
 
-Because the build context is the repository root, the builder receives everything under it. Put a `.dockerignore` at that root that excludes `.env*` and `.secrets/`. `nself build` refuses an ancestor context without one (E528), and refuses a context above the directory that holds `.git`.
+Because the build context is the repository root, the builder receives everything under it. Put a `.dockerignore` at that root with the lines `**/.env*` and `**/.secrets` (a bare `.env*` only matches the root, so nested `.env` files would still be sent). `nself build` refuses an ancestor context without one (E528), and refuses a context above the directory that holds `.git`.
 
 ```bash
 nself build

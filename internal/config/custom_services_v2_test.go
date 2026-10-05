@@ -152,27 +152,30 @@ func buildContextTree(t *testing.T, dockerignore string) (root, proj string) {
 // TestCustomServiceV2BuildContext covers the ancestor bound and the
 // .dockerignore requirement of CS_N_PATH (E528).
 func TestCustomServiceV2BuildContext(t *testing.T) {
-	good := "node_modules\n.env*\n.secrets/\n"
+	good := "node_modules\n**/.env*\n**/.secrets\n"
 	cases := []struct {
 		name, ignore, path, wantErr string
 	}{
 		{"ancestor at the repo root with a good dockerignore", good, "../..", ""},
-		{"alternate spellings", "**/.env*\n/.secrets\n", "../..", ""},
-		{"re-including one example file is fine", good + "!.env.example\n", "../..", ""},
+		{"alternate spellings", "**/.env*\n/**/.secrets/\n", "../..", ""},
+		{"wildcard secrets", "**/.env*\n**/.secrets*\n", "../..", ""},
+		{"re-including one example file is fine", good + "!**/.env.example\n", "../..", ""},
 		{"path inside the project needs no dockerignore", "", "./services/x", ""},
 		{"empty path", "", "", ""},
-		{"one level up is not the root but is inside it", "", "..", "whose .dockerignore must exclude"},
+		{"one level up is not the root but is inside it", "", "..", "has no .dockerignore"},
 		{"above the repository root", good, "../../..", "above the repository root"},
-		{"missing dockerignore", "", "../..", "whose .dockerignore must exclude"},
-		{"dockerignore without .env*", "node_modules\n.secrets/\n", "../..", "found .env*: false, .secrets: true"},
-		{"dockerignore without .secrets", ".env*\n", "../..", "found .env*: true, .secrets: false"},
-		{"comment does not count", "# .env*\n# .secrets\n", "../..", "whose .dockerignore must exclude"},
-		{"negated .env* cancels", good + "!.env*\n", "../..", "found .env*: false"},
+		{"missing dockerignore", "", "../..", "has no .dockerignore"},
+		{"bare .env* and .secrets only match the context root", ".env*\n.secrets/\n", "../..", "does not exclude apps/.env"},
+		{"project-prefixed patterns miss the other directories", ".env*\n.secrets\napps/svc/.env*\napps/svc/.secrets\n", "../..", "does not exclude apps/.env"},
+		{"dockerignore without .env", "node_modules\n**/.secrets\n", "../..", "does not exclude .env"},
+		{"dockerignore without .secrets", "**/.env*\n", "../..", "does not exclude .secrets"},
+		{"comment does not count", "# **/.env*\n# **/.secrets\n", "../..", "does not exclude"},
+		{"negated **/.env* cancels", good + "!**/.env*\n", "../..", "does not exclude"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			root, proj := buildContextTree(t, tc.ignore)
-			err := ValidateBuildContext("CS_1_PATH", proj, tc.path)
+			err := ValidateBuildContext("CS_1_PATH", proj, tc.path, "")
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
@@ -195,7 +198,7 @@ func TestCustomServiceV2BuildContext(t *testing.T) {
 
 	t.Run("names the directory", func(t *testing.T) {
 		root, proj := buildContextTree(t, "")
-		err := ValidateBuildContext("CS_1_PATH", proj, "../..")
+		err := ValidateBuildContext("CS_1_PATH", proj, "../..", "")
 		if err == nil || !strings.Contains(err.Error(), root) {
 			t.Fatalf("error should name %s: %v", root, err)
 		}
@@ -207,10 +210,10 @@ func TestCustomServiceV2BuildContext(t *testing.T) {
 		if err := os.MkdirAll(proj, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, ".dockerignore"), []byte(".env*\n.secrets\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, ".dockerignore"), []byte("**/.env*\n**/.secrets\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := ValidateBuildContext("CS_1_PATH", proj, ".."); err == nil || !strings.Contains(err.Error(), "above the repository root") {
+		if err := ValidateBuildContext("CS_1_PATH", proj, "..", ""); err == nil || !strings.Contains(err.Error(), "above the repository root") {
 			t.Errorf("err = %v", err)
 		}
 	})
@@ -223,7 +226,7 @@ func TestCustomServiceV2BuildContext(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: /elsewhere\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := ValidateBuildContext("CS_1_PATH", proj, "../.."); err != nil {
+		if err := ValidateBuildContext("CS_1_PATH", proj, "../..", ""); err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
@@ -233,7 +236,7 @@ func TestCustomServiceV2BuildContext(t *testing.T) {
 		if err := os.Mkdir(filepath.Join(proj, ".git"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := ValidateBuildContext("CS_1_PATH", proj, "../.."); err == nil {
+		if err := ValidateBuildContext("CS_1_PATH", proj, "../..", ""); err == nil {
 			t.Error("expected E528: the project dir holds .git so it is the limit")
 		}
 	})
@@ -253,4 +256,140 @@ func asCLIError(err error, target **errs.CLIError) bool {
 		err = u.Unwrap()
 	}
 	return false
+}
+
+// TestCustomServiceV2DockerignoreSpecific: BuildKit uses
+// "<dockerfile>.dockerignore" instead of .dockerignore when it exists, so that
+// is the file E528 must read.
+func TestCustomServiceV2DockerignoreSpecific(t *testing.T) {
+	good := "**/.env*\n**/.secrets\n"
+	t.Run("a weak Dockerfile.dockerignore replaces a good .dockerignore", func(t *testing.T) {
+		root, proj := buildContextTree(t, good)
+		if err := os.WriteFile(filepath.Join(root, "Dockerfile.dockerignore"), []byte("node_modules\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := ValidateBuildContext("CS_1_PATH", proj, "../..", "")
+		if err == nil || !strings.Contains(err.Error(), "Dockerfile.dockerignore does not exclude") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("a good one beside a custom Dockerfile is used", func(t *testing.T) {
+		root, proj := buildContextTree(t, ".env*\n")
+		df := filepath.Join(root, "apps", "svc", "Dockerfile")
+		if err := os.WriteFile(df+".dockerignore", []byte(good), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := ValidateBuildContext("CS_1_PATH", proj, "../..", "apps/svc/Dockerfile"); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if err := ValidateBuildContext("CS_1_PATH", proj, "../..", ""); err == nil {
+			t.Error("without that Dockerfile the weak root .dockerignore applies and must fail")
+		}
+	})
+}
+
+// TestCustomServiceV2DockerignoreMatcher pins the matcher to Docker's rules
+// for the patterns that matter: a bare name matches the context root only,
+// **/ matches at any depth including none, a matching parent excludes its
+// children, and a later "!" re-includes.
+func TestCustomServiceV2DockerignoreMatcher(t *testing.T) {
+	cases := []struct {
+		patterns string
+		path     string
+		want     bool
+	}{
+		{".env*", ".env", true},
+		{".env*", "proj/.env", false},
+		{".env*", "proj/.env.secrets", false},
+		{"**/.env*", ".env", true},
+		{"**/.env*", "proj/.env.secrets", true},
+		{"**/.env*", "a/b/c/.env.local", true},
+		{"**/.env*", "proj/env.txt", false},
+		{".secrets", ".secrets/token", true},
+		{".secrets", "proj/.secrets/token", false},
+		{"**/.secrets", "proj/.secrets/token", true},
+		{"/**/.secrets/", "x/.secrets/token", true},
+		{"**/.env*\n!**/.env.example", "proj/.env.example", false},
+		{"**/.env*\n!**/.env.example", "proj/.env", true},
+		{"*.log", "a.log", true},
+		{"*.log", "d/a.log", false},
+		{"a?c", "abc", true},
+		{"a?c", "a/c", false},
+	}
+	dir := t.TempDir()
+	for _, tc := range cases {
+		file := filepath.Join(dir, ".dockerignore")
+		if err := os.WriteFile(file, []byte(tc.patterns), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		pats, ok := readDockerignore(file)
+		if !ok {
+			t.Fatal("cannot read")
+		}
+		if got := dockerignored(pats, tc.path); got != tc.want {
+			t.Errorf("patterns %q, path %q: excluded = %t, want %t", tc.patterns, tc.path, got, tc.want)
+		}
+	}
+}
+
+// TestCustomServiceV2ContextListing builds the list of files a builder would
+// receive for an ancestor context (every file under the context minus what the
+// .dockerignore excludes) and proves no secret file is in it with the accepted
+// patterns, while the bare patterns the guard refuses would have sent them.
+func TestCustomServiceV2ContextListing(t *testing.T) {
+	root, proj := buildContextTree(t, "")
+	files := []string{".env", ".env.local", ".secrets/token", "apps/svc/.env", "apps/svc/.env.secrets",
+		"apps/svc/.secrets/key", "apps/other/.env", "apps/svc/src/app.js", "package.json"}
+	for _, f := range files {
+		path := filepath.Join(root, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	listing := func(ignore string) []string {
+		ig := filepath.Join(root, ".dockerignore")
+		if err := os.WriteFile(ig, []byte(ignore), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		pats, _ := readDockerignore(ig)
+		var sent []string
+		_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+			rel, _ := filepath.Rel(root, p)
+			rel = filepath.ToSlash(rel)
+			if d.IsDir() && (rel == ".git" || dockerignored(pats, rel)) {
+				return filepath.SkipDir
+			}
+			if !d.IsDir() && rel != ".dockerignore" && !dockerignored(pats, rel) {
+				sent = append(sent, rel)
+			}
+			return nil
+		})
+		return sent
+	}
+	leaks := func(sent []string) (n int) {
+		for _, f := range sent {
+			if strings.Contains(f, ".env") || strings.Contains(f, ".secrets") {
+				n++
+			}
+		}
+		return n
+	}
+
+	ok := listing("**/.env*\n**/.secrets\n")
+	if leaks(ok) != 0 || len(ok) != 2 {
+		t.Errorf("accepted patterns still send %v", ok)
+	}
+	if err := ValidateBuildContext("CS_1_PATH", proj, "../..", ""); err != nil {
+		t.Errorf("the guard must accept the patterns that leak nothing: %v", err)
+	}
+	bare := listing(".env*\n.secrets\n")
+	if leaks(bare) == 0 {
+		t.Error("test premise broken: bare patterns should send nested secrets")
+	}
+	if err := ValidateBuildContext("CS_1_PATH", proj, "../..", ""); err == nil {
+		t.Errorf("the guard accepted bare patterns that send %d secret files", leaks(bare))
+	}
 }

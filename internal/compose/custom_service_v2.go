@@ -35,7 +35,7 @@ var dockerSocketWarned sync.Map
 func (g *Generator) applyCustomServiceV2(svc *ServiceConfig, cs config.CustomService) error {
 	if cs.BuildPath != "" && cs.Image == "" {
 		key := fmt.Sprintf("CS_%d_PATH", cs.Index)
-		if err := config.ValidateBuildContext(key, g.workDir, cs.BuildPath); err != nil {
+		if err := config.ValidateBuildContext(key, g.workDir, cs.BuildPath, cs.Dockerfile); err != nil {
 			return err
 		}
 	}
@@ -57,12 +57,50 @@ func (g *Generator) applyCustomServiceV2(svc *ServiceConfig, cs config.CustomSer
 		}
 		svc.DependsOn[dep.Name] = DepOn{Condition: dep.Condition}
 	}
+	if cycle := customServiceDependsCycle(g.cfg.CustomServices, cs.Name); cycle != nil {
+		return errs.Newf("E500", "CS_%d_DEPENDS_ON forms a dependency cycle: %s (docker compose would refuse to start it)", cs.Index, strings.Join(cycle, " -> "))
+	}
 	nets, err := customServiceNetworks(g.cfg, cs)
 	if err != nil {
 		return err
 	}
 	svc.Networks = append(svc.Networks, nets...)
 	return g.checkCustomServiceVolumes(cs)
+}
+
+// customServiceDependsCycle returns the dependency cycle that passes through
+// start, as a path that begins and ends with start ("a -> b -> a"), or nil.
+// Only edges between custom services are known here; cycles through core or
+// plugin services are found in build post-validation, which sees the whole
+// compose set.
+func customServiceDependsCycle(all []config.CustomService, start string) []string {
+	edges := map[string][]string{}
+	for _, c := range all {
+		for _, d := range c.DependsOn {
+			edges[c.Name] = append(edges[c.Name], d.Name)
+		}
+	}
+	var path []string
+	onPath := map[string]bool{}
+	var visit func(n string) []string
+	visit = func(n string) []string {
+		path = append(path, n)
+		onPath[n] = true
+		defer func() { path = path[:len(path)-1]; onPath[n] = false }()
+		for _, next := range edges[n] {
+			if next == start {
+				return append(append([]string(nil), path...), start)
+			}
+			if onPath[next] {
+				continue
+			}
+			if c := visit(next); c != nil {
+				return c
+			}
+		}
+		return nil
+	}
+	return visit(start)
 }
 
 // customServiceNetworks returns the extra networks of cs, each

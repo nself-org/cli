@@ -110,13 +110,19 @@ CS_1_BUILD_TARGET=runtime
 The whole context directory is sent to the image builder, so it is bounded:
 
 - It may reach at most the nearest ancestor of the project directory that holds `.git`. When no ancestor holds `.git`, the project directory is the limit.
-- That directory must hold a `.dockerignore` with a line that excludes `.env*` (or `**/.env*`) and a line that excludes `.secrets` (or `.secrets/`).
+- The ignore file BuildKit will use (a `<Dockerfile>.dockerignore` beside the Dockerfile if one exists, otherwise `.dockerignore` in the context) must exclude `.env*` and `.secrets` at every depth: use the lines `**/.env*` and `**/.secrets`. A bare `.env*` is not enough, because Docker matches it at the context root only and `apps/api/.env` would still be sent. `nself build` checks this by matching probe paths (root, each directory down to the project, and below it) with Docker's pattern rules.
 - Anything else fails `nself build` with **E528**, naming the directory.
 - A path that climbs and then descends (`../sibling`) is not an ancestor and is rejected at config load, naming `CS_N_PATH`.
 
+### Where the checks run
+
+The ancestor-context bound, the ignore-file check and the Dockerfile symlink check run in `nself build` (compose generation). Config load checks syntax only, so a tool that loads the config without building does not enforce them. A `CS_N_PATH` inside the project that is itself a symlink leaving the project is not checked.
+
 ### Dependencies and networks
 
-`CS_N_DEPENDS_ON` is syntax-checked when the compose file is generated and resolved during build post-validation, after the plugin step has written `.nself/compose-files.txt`. A first `nself build` therefore already sees every plugin service. An unknown name fails with E500 naming `CS_N_DEPENDS_ON` and the name. An unknown condition fails with E500 naming the condition.
+`CS_N_DEPENDS_ON` is syntax-checked when the compose file is generated and resolved during build post-validation, after the plugin step has written `.nself/compose-files.txt`. A first `nself build` therefore already sees every plugin service. An unknown name fails with E500 naming `CS_N_DEPENDS_ON` and the name. An unknown condition fails with E500 naming the condition. A dependency cycle fails with E500 naming the path (`api -> db2 -> api`): custom-service cycles when the compose file is generated, cycles through core or plugin services in build post-validation.
+
+The network prefix is a naming rule, not ownership. Another project whose name extends yours (`app` and `app_staging`) also owns names that start with `app_`, so choose network names no other project uses.
 
 ### Host binds and the v1.5 rule
 

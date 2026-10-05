@@ -88,3 +88,42 @@ func TestPostValidateCSDeps_ThroughPostValidate(t *testing.T) {
 		t.Fatalf("PostValidate errors %q lack the E500 finding", res.Errors)
 	}
 }
+
+// TestPostValidateCSDeps_Cycle: a cycle that runs through a plugin service (or
+// through two custom services whose compose entries list each other) fails the
+// build with E500 naming the full path; acyclic stacks pass.
+func TestPostValidateCSDeps_Cycle(t *testing.T) {
+	cases := []struct {
+		name     string
+		fragment string // extra plugin service definition
+		env      map[string]string
+		want     string
+	}{
+		{"through a plugin service", "  claw-api:\n    image: claw:1\n    depends_on:\n      - fn\n",
+			map[string]string{"CS_1": "fn:node:9500", "CS_1_DEPENDS_ON": "claw-api:started"}, "fn -> claw-api -> fn"},
+		{"plugin map form", "  claw-api:\n    image: claw:1\n    depends_on:\n      fn:\n        condition: service_started\n",
+			map[string]string{"CS_1": "fn:node:9500", "CS_1_DEPENDS_ON": "claw-api"}, "fn -> claw-api -> fn"},
+		{"plugin depends on core only", "  claw-api:\n    image: claw:1\n    depends_on:\n      - postgres\n",
+			map[string]string{"CS_1": "fn:node:9500", "CS_1_DEPENDS_ON": "claw-api"}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			composePath := csDepsProject(t, tc.env)
+			dir := filepath.Dir(composePath)
+			// The generated compose lists the custom service and its depends_on, as the generator renders it.
+			writeFile(t, composePath, "services:\n  postgres:\n    image: postgres:16\n  fn:\n    image: node:20\n    depends_on:\n      postgres:\n        condition: service_healthy\n      "+tc.env["CS_1_DEPENDS_ON"][:strings.IndexAny(tc.env["CS_1_DEPENDS_ON"]+":", ":")]+":\n        condition: service_started\n")
+			writeFile(t, filepath.Join(dir, "plugins", "claw", "docker-compose.plugin.yml"), "services:\n"+tc.fragment)
+			var res PostValidateResult
+			checkCustomServiceDeps(composePath, &res)
+			if tc.want == "" {
+				if len(res.Errors) != 0 {
+					t.Fatalf("unexpected errors: %v", res.Errors)
+				}
+				return
+			}
+			if len(res.Errors) != 1 || !strings.Contains(res.Errors[0], "[E500]") || !strings.Contains(res.Errors[0], tc.want) {
+				t.Fatalf("errors = %q, want one E500 containing %q", res.Errors, tc.want)
+			}
+		})
+	}
+}

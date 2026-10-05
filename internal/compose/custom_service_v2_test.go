@@ -125,7 +125,7 @@ func v2Project(t *testing.T) (root, proj string) {
 		}
 	}
 	files := map[string]string{
-		filepath.Join(root, ".dockerignore"): ".env*\n.secrets/\n",
+		filepath.Join(root, ".dockerignore"): "**/.env*\n**/.secrets\n",
 		filepath.Join(proj, ".env.dev"):      "API_KEY=from-dev\nSHARED=dev\n",
 		filepath.Join(proj, ".env.secrets"):  "SHARED=from-secrets\n",
 	}
@@ -242,6 +242,18 @@ func TestCustomServiceV2Render(t *testing.T) {
 		}
 	})
 
+	t.Run("bare .env* in the dockerignore is E528 (nested secrets would be sent)", func(t *testing.T) {
+		root, proj := v2Project(t)
+		if err := os.WriteFile(filepath.Join(root, ".dockerignore"), []byte(".env*\n.secrets/\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg := v2Config(t, map[string]string{"CS_1": "fn:node", "CS_1_PATH": "../.."})
+		_, err := NewGenerator(cfg).WithWorkDir(proj).Generate()
+		if errCode(err) != "E528" || !strings.Contains(err.Error(), "does not exclude") {
+			t.Errorf("err = %v", err)
+		}
+	})
+
 	t.Run("ancestor above the repository root is E528", func(t *testing.T) {
 		_, proj := v2Project(t)
 		cfg := v2Config(t, map[string]string{"CS_1": "fn:node", "CS_1_PATH": "../../.."})
@@ -315,6 +327,35 @@ func TestCustomServiceV2VolumeRule(t *testing.T) {
 			if len(svc.Volumes) != 1 || svc.Volumes[0] != vol {
 				t.Errorf("%q: volumes = %q", vol, svc.Volumes)
 			}
+		}
+	})
+}
+
+// TestCustomServiceV2DependsCycle: a dependency cycle between custom services
+// is refused when the compose file is generated (E500 naming the path), as is
+// a longer cycle; a chain without a cycle and a diamond pass.
+func TestCustomServiceV2DependsCycle(t *testing.T) {
+	_, proj := v2Project(t)
+	gen := func(env map[string]string) error {
+		_, err := NewGenerator(v2Config(t, env)).WithWorkDir(proj).Generate()
+		return err
+	}
+	for name, env := range map[string]map[string]string{
+		"two services": {"CS_1": "api:node:9501", "CS_2": "db2:node:9502", "CS_1_DEPENDS_ON": "db2:started", "CS_2_DEPENDS_ON": "api:started"},
+		"three services": {"CS_1": "sa:node:9501", "CS_2": "sb:node:9502", "CS_3": "sc:node:9503",
+			"CS_1_DEPENDS_ON": "sb", "CS_2_DEPENDS_ON": "sc", "CS_3_DEPENDS_ON": "sa"},
+	} {
+		t.Run("cycle "+name, func(t *testing.T) {
+			err := gen(env)
+			if errCode(err) != "E500" || !strings.Contains(err.Error(), "dependency cycle") || !strings.Contains(err.Error(), " -> ") {
+				t.Fatalf("err = %v, want E500 naming the cycle path", err)
+			}
+		})
+	}
+	t.Run("chain and diamond pass", func(t *testing.T) {
+		if err := gen(map[string]string{"CS_1": "sa:node:9501", "CS_2": "sb:node:9502", "CS_3": "sc:node:9503", "CS_4": "sd:node:9504",
+			"CS_1_DEPENDS_ON": "sb,sc", "CS_2_DEPENDS_ON": "sd", "CS_3_DEPENDS_ON": "sd"}); err != nil {
+			t.Errorf("unexpected error: %v", err)
 		}
 	})
 }

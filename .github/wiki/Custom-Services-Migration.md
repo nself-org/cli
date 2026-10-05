@@ -8,7 +8,7 @@ The key reference is in [[Config-Custom-Services]]. This page is the map from co
 
 | Compose pattern | `CS_N` keys |
 |-----------------|-------------|
-| `build.context` at the monorepo root, `dockerfile` deep inside | `CS_N_PATH=../..` and `CS_N_DOCKERFILE=<path from the root>`. The root needs a `.dockerignore` excluding `.env*` and `.secrets/`. |
+| `build.context` at the monorepo root, `dockerfile` deep inside | `CS_N_PATH=../..` and `CS_N_DOCKERFILE=<path from the root>`. The root needs a `.dockerignore` with `**/.env*` and `**/.secrets`. |
 | Multi-stage `build.target` | `CS_N_BUILD_TARGET=<stage>` |
 | `env_file` with two or more files | `CS_N_ENV_FILE=.env.dev,.env.secrets` (later wins) |
 | `depends_on` a core service with a health condition | `CS_N_DEPENDS_ON=hasura:healthy` (`started`, `healthy`, `completed`) |
@@ -27,7 +27,7 @@ The key reference is in [[Config-Custom-Services]]. This page is the map from co
 
 - A custom service never joins a network that does not start with `<PROJECT_NAME>_` (E501). A fragment that creates its own isolated networks does not map; see gap 6.
 - An unknown dependency name fails the build (E500), naming the key and the name.
-- An ancestor build context above the repository root, or without a `.dockerignore` that excludes `.env*` and `.secrets`, fails (E528).
+- An ancestor build context above the repository root, or without an ignore file that excludes `**/.env*` and `**/.secrets`, fails (E528). A dependency cycle between services fails (E500).
 - v1.5 mode (`NSELF_V15=1`): a writable absolute host bind outside the project, and any bind of `/var/run/docker.sock` or `/`, fail with E502. v1.4 mode warns once for the socket and host root. See [[Compat-V15]].
 
 ## Gaps

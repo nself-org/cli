@@ -8,8 +8,8 @@ func init() {
 		CodeEntry{
 			Code:       "E500",
 			Summary:    "Custom service dependency is not valid",
-			DefaultWhy: "CS_N_DEPENDS_ON names a service that does not exist in this project, or uses a condition other than started, healthy or completed.",
-			DefaultFix: "Use name[:started|healthy|completed], comma-separated, and name a core service, another custom service or a service from an installed plugin.",
+			DefaultWhy: "CS_N_DEPENDS_ON names a service that does not exist in this project, uses a condition other than started, healthy or completed, or forms a dependency cycle.",
+			DefaultFix: "Use name[:started|healthy|completed], comma-separated, name a core service, another custom service or a service from an installed plugin, and remove circular dependencies.",
 			DocsPath:   "reference/error-codes#e500",
 			Exit:       ExitUserError,
 		},
@@ -32,8 +32,8 @@ func init() {
 		CodeEntry{
 			Code:       "E528",
 			Summary:    "Custom service build context is not allowed",
-			DefaultWhy: "CS_N_PATH reaches above the repository root, or an ancestor build context has no .dockerignore that excludes .env* and .secrets. The whole directory is sent to the image builder.",
-			DefaultFix: "Point CS_N_PATH at the project or at an ancestor no higher than the directory that holds .git, and add .env* and .secrets/ to that directory's .dockerignore.",
+			DefaultWhy: "CS_N_PATH reaches above the repository root, or an ancestor build context has no ignore file that excludes **/.env* and **/.secrets (a bare .env* matches only the context root). The whole directory is sent to the image builder.",
+			DefaultFix: "Point CS_N_PATH at the project or at an ancestor no higher than the directory that holds .git, and add **/.env* and **/.secrets to that directory's .dockerignore.",
 			DocsPath:   "reference/error-codes#e528",
 			Exit:       ExitUserError,
 		},

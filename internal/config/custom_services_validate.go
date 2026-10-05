@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
@@ -105,12 +107,16 @@ func validateBuildContextPath(p string) error {
 
 // ValidateBuildContext enforces E528 on an ancestor CS_N_PATH (key names the
 // variable in the message). projectDir is the project root ("" means the
-// current directory). A path with no ".." segment is inside the project and
-// passes. An ancestor context may reach at most the nearest ancestor of the
-// project that holds .git (the project itself when none does), and that
-// directory must hold a .dockerignore that excludes .env* and .secrets, so
-// the monorepo's secrets are never sent to the image builder.
-func ValidateBuildContext(key, projectDir, p string) error {
+// current directory); dockerfile is CS_N_DOCKERFILE ("" means Dockerfile). A
+// path with no ".." segment is inside the project and passes. An ancestor
+// context may reach at most the nearest ancestor of the project that holds
+// .git (the project itself when none does), and the ignore file BuildKit will
+// use must exclude the .env* and .secrets files at the context root, in every
+// directory down to the project, and below it, so the monorepo's secrets are
+// never sent to the image builder. A bare ".env*" is not enough: Docker
+// matches it at the context root only, so proj/.env would still be sent;
+// "**/.env*" and "**/.secrets" are the patterns that cover nested paths.
+func ValidateBuildContext(key, projectDir, p, dockerfile string) error {
 	if !strings.Contains("/"+p+"/", "/../") {
 		return nil
 	}
@@ -126,11 +132,153 @@ func ValidateBuildContext(key, projectDir, p string) error {
 	if ctx != limit && !strings.HasPrefix(ctx, limit+string(filepath.Separator)) {
 		return errs.Newf("E528", "%s=%s resolves to %s, above the repository root %s", key, p, ctx, limit)
 	}
-	env, secrets := dockerignoreCoverage(filepath.Join(ctx, ".dockerignore"))
-	if !env || !secrets {
-		return errs.Newf("E528", "%s=%s resolves to %s, whose .dockerignore must exclude .env* and .secrets (found .env*: %t, .secrets: %t)", key, p, ctx, env, secrets)
+	rel, err := filepath.Rel(ctx, proj)
+	if err != nil {
+		return errs.Newf("E528", "%s: cannot relate %s to %s: %v", key, proj, ctx, err)
+	}
+	file := dockerignoreFile(ctx, dockerfile)
+	pats, ok := readDockerignore(file)
+	if !ok {
+		return errs.Newf("E528", "%s=%s resolves to %s, which has no %s: an ancestor context needs one that excludes **/.env* and **/.secrets", key, p, ctx, filepath.Base(file))
+	}
+	if miss := uncoveredSecretPath(pats, filepath.ToSlash(rel)); miss != "" {
+		return errs.Newf("E528", "%s=%s resolves to %s, whose %s does not exclude %s (a bare .env* matches only the context root; use **/.env* and **/.secrets)", key, p, ctx, filepath.Base(file), miss)
 	}
 	return nil
+}
+
+// dockerignoreFile returns the ignore file BuildKit uses for this build: a
+// "<dockerfile>.dockerignore" beside the Dockerfile replaces .dockerignore.
+func dockerignoreFile(ctx, dockerfile string) string {
+	if dockerfile == "" {
+		dockerfile = "Dockerfile"
+	}
+	specific := filepath.Join(ctx, filepath.FromSlash(dockerfile)) + ".dockerignore"
+	if _, err := os.Stat(specific); err == nil {
+		return specific
+	}
+	return filepath.Join(ctx, ".dockerignore")
+}
+
+// ignorePattern is one compiled .dockerignore line.
+type ignorePattern struct {
+	re  *regexp.Regexp
+	neg bool
+}
+
+// readDockerignore parses an ignore file the way Docker does (comments and
+// blanks skipped, "!" negates, patterns cleaned, leading "/" dropped). The bool
+// is false when the file cannot be read.
+func readDockerignore(path string) ([]ignorePattern, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, false
+	}
+	defer func() { _ = f.Close() }()
+	var out []ignorePattern
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		neg := strings.HasPrefix(line, "!")
+		line = strings.TrimSpace(strings.TrimPrefix(line, "!"))
+		if line == "" {
+			continue
+		}
+		line = pathpkg.Clean(line)
+		if len(line) > 1 && line[0] == '/' {
+			line = line[1:]
+		}
+		if re, err := compileIgnore(line); err == nil {
+			out = append(out, ignorePattern{re: re, neg: neg})
+		}
+	}
+	return out, true
+}
+
+// compileIgnore turns one pattern into an anchored regexp with Docker's
+// rules: "*" is any run of non-"/" characters, "?" one such character, "**/"
+// any number of directories (including none), a trailing "**" anything.
+func compileIgnore(pat string) (*regexp.Regexp, error) {
+	var b strings.Builder
+	b.WriteString("^")
+	for i := 0; i < len(pat); i++ {
+		switch c := pat[i]; c {
+		case '*':
+			if i+1 < len(pat) && pat[i+1] == '*' {
+				for i+1 < len(pat) && pat[i+1] == '*' {
+					i++
+				}
+				if i+1 < len(pat) && pat[i+1] == '/' {
+					i++
+					b.WriteString("(.*/)?")
+				} else {
+					b.WriteString(".*")
+				}
+			} else {
+				b.WriteString("[^/]*")
+			}
+		case '?':
+			b.WriteString("[^/]")
+		case '[', ']':
+			b.WriteByte(c)
+		case '\\':
+			if i+1 < len(pat) {
+				i++
+				b.WriteString(regexp.QuoteMeta(string(pat[i])))
+			}
+		default:
+			b.WriteString(regexp.QuoteMeta(string(c)))
+		}
+	}
+	b.WriteString("$")
+	return regexp.Compile(b.String())
+}
+
+// dockerignored reports whether the context-relative slash path rel is
+// excluded: the last pattern that matches rel or one of its parent
+// directories decides, a "!" pattern re-including.
+func dockerignored(pats []ignorePattern, rel string) bool {
+	excluded := false
+	for _, p := range pats {
+		m := p.re.MatchString(rel)
+		for parent := pathpkg.Dir(rel); !m && parent != "." && parent != "/"; parent = pathpkg.Dir(parent) {
+			m = p.re.MatchString(parent)
+		}
+		if m {
+			excluded = !p.neg
+		}
+	}
+	return excluded
+}
+
+// uncoveredSecretPath returns the first secret-looking path (relative to the
+// context) that the patterns would not exclude, or "". It probes .env files
+// and .secrets in the context root, in every directory down to the project
+// (relProj, slash form), and in a directory below the project.
+func uncoveredSecretPath(pats []ignorePattern, relProj string) string {
+	dirs := []string{""}
+	if relProj != "" && relProj != "." {
+		acc := ""
+		for _, seg := range strings.Split(relProj, "/") {
+			acc = pathpkg.Join(acc, seg)
+			dirs = append(dirs, acc)
+		}
+		dirs = append(dirs, pathpkg.Join(relProj, "nested", "deep"))
+	} else {
+		dirs = append(dirs, "nested/deep")
+	}
+	for _, d := range dirs {
+		for _, name := range []string{".env", ".env.local", ".env.secrets", ".secrets", ".secrets/token"} {
+			path := pathpkg.Join(d, name)
+			if !dockerignored(pats, path) {
+				return path
+			}
+		}
+	}
+	return ""
 }
 
 // repositoryRootLimit returns the nearest directory at or above proj that
@@ -145,33 +293,4 @@ func repositoryRootLimit(proj string) string {
 			return proj
 		}
 	}
-}
-
-// dockerignoreCoverage reports whether the .dockerignore at path excludes
-// .env* and .secrets. A later negation of the same pattern ("!.env*") cancels
-// the exclusion; re-including one named file ("!.env.example") does not. A missing file covers neither.
-func dockerignoreCoverage(path string) (env, secrets bool) {
-	f, err := os.Open(path)
-	if err != nil {
-		return false, false
-	}
-	defer func() { _ = f.Close() }()
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		neg := strings.HasPrefix(line, "!")
-		line = strings.TrimPrefix(strings.TrimPrefix(line, "!"), "/")
-		line = strings.TrimPrefix(line, "**/")
-		line = strings.TrimSuffix(strings.TrimSuffix(line, "/**"), "/")
-		switch line {
-		case ".env*":
-			env = !neg
-		case ".secrets", ".secrets*":
-			secrets = !neg
-		}
-	}
-	return env, secrets
 }
