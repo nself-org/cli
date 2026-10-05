@@ -127,7 +127,10 @@ var approxQuery = func(ctx context.Context, pgURL string) (string, error) {
 	defer cancel()
 	// The password travels in PGPASSWORD, not in argv, so it is not visible in
 	// `ps` on a shared host.
-	connURL, password := splitPgPassword(pgURL)
+	connURL, password, err := splitPgPassword(pgURL)
+	if err != nil {
+		return "", err
+	}
 	cmd := exec.CommandContext(ctx, "psql", "-X", "-A", "-t", "-F", "\t",
 		"--no-password", "-v", "ON_ERROR_STOP=1", "-c", approxRowsSQL, connURL)
 	if password != "" {
@@ -148,18 +151,33 @@ var approxQuery = func(ctx context.Context, pgURL string) (string, error) {
 }
 
 // splitPgPassword returns the DSN without its password and the password
-// itself. A DSN that cannot be parsed is returned unchanged with no password.
-func splitPgPassword(dsn string) (string, string) {
+// itself. It never hands back a DSN that still carries a password: one that
+// cannot be parsed, or that holds the password in a query parameter or in the
+// keyword form ("host=... password=..."), is an error, so the secret cannot
+// land in argv. A URL DSN with no password is returned unchanged.
+func splitPgPassword(dsn string) (string, string, error) {
 	u, err := url.Parse(dsn)
-	if err != nil || u.User == nil {
-		return dsn, ""
+	if err != nil {
+		return "", "", fmt.Errorf("the database DSN cannot be parsed, so it is not passed to psql (its password would be visible in argv)")
+	}
+	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
+		if strings.Contains(strings.ToLower(dsn), "password") {
+			return "", "", fmt.Errorf("the database DSN is not a postgres:// URL and names a password, so it is not passed to psql (its password would be visible in argv)")
+		}
+		return dsn, "", nil
+	}
+	if _, ok := u.Query()["password"]; ok {
+		return "", "", fmt.Errorf("the database DSN carries the password as a query parameter, so it is not passed to psql (its password would be visible in argv)")
+	}
+	if u.User == nil {
+		return dsn, "", nil
 	}
 	pw, ok := u.User.Password()
 	if !ok {
-		return dsn, ""
+		return dsn, "", nil
 	}
 	u.User = url.User(u.User.Username())
-	return u.String(), pw
+	return u.String(), pw, nil
 }
 
 // ReadApproxRows returns {"<schema>.<table>": n_live_tup} from

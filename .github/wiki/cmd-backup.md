@@ -42,6 +42,8 @@ nself backup stream --to <url> [--recipient <key>] [--heartbeat-to <remote>] [--
 | `--heartbeat-required` | false | Exit non-zero when the heartbeat cannot be written. The backup itself is kept either way |
 | `--dry-run` | false | Preview without running |
 
+A stream backup that fails or uploads zero bytes exits non-zero and deletes the partial object from the remote, so nothing that picks the newest object can select it. If that delete fails, the error says the object is still there and the command still exits non-zero.
+
 ### Heartbeat (contract:cli.backup-heartbeat v1)
 
 With a heartbeat remote set, a successful upload is followed by one small object, `<project>/backup.json`, on that remote. It lets freshness be checked off the box. It is written only after the backup upload succeeded; a failed backup writes nothing. A heartbeat failure is a warning unless `--heartbeat-required` is set. Use a separate remote or bucket for heartbeats.

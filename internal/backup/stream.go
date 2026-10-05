@@ -173,7 +173,9 @@ func Stream(ctx context.Context, cfg *config.Config, opts StreamOptions) (*Strea
 
 	result, err := runStreamPipeline(ctx, cfg, pgURL, opts.To, key, recipients)
 	if err != nil {
-		return nil, err // a failed backup never writes a heartbeat
+		// A failed backup never writes a heartbeat, and a truncated object
+		// that reached the remote is removed so nothing restores from it.
+		return nil, discardFailedObject(ctx, err, opts.To, key)
 	}
 	result.StartedAt = start
 	result.Duration = time.Since(start).String()
@@ -182,7 +184,7 @@ func Stream(ctx context.Context, cfg *config.Config, opts StreamOptions) (*Strea
 	// header, so this only happens with --no-encrypt and an empty dump). Fail
 	// the job instead of reporting green; no heartbeat is written either.
 	if result.Bytes == 0 {
-		return nil, fmt.Errorf("%w: the upload was empty (0 bytes); the object %s on the remote holds no data and must not be trusted", errs.ErrBackupFailed, key)
+		return nil, discardFailedObject(ctx, fmt.Errorf("%w: the upload was empty (0 bytes)", errs.ErrBackupFailed), opts.To, key)
 	}
 
 	if hbRemote != "" {

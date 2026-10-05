@@ -48,7 +48,14 @@ echo "args: $*" > "$FAKE_STORE/../psql.args"
 echo "pgpassword: $PGPASSWORD" >> "$FAKE_STORE/../psql.args"
 if [ -n "$FAKE_PSQL_FAIL" ]; then echo "psql: failed for $*" >&2; exit 1; fi
 printf 'public.users\t42\npublic.orders\t7\n'`,
-		"rclone": `[ "$1" = rcat ] || exit 2
+		"rclone": `if [ "$1" = deletefile ]; then
+  echo "delete $2" >> "$FAKE_STORE/../deletes.log"
+  if [ -n "$FAKE_RCLONE_DELETE_FAIL" ]; then echo "rclone: fake delete failure" >&2; exit 1; fi
+  name=$(printf %s "$2" | tr '/:' '__')
+  [ -e "$FAKE_STORE/$name" ] || exit 4
+  rm -f "$FAKE_STORE/$name"; exit 0
+fi
+[ "$1" = rcat ] || exit 2
 if [ -n "$FAKE_RCLONE_FAIL" ]; then
   case "$2" in *"$FAKE_RCLONE_FAIL"*) cat >/dev/null; echo "rclone: fake upload failure" >&2; exit 1;; esac
 fi
@@ -68,7 +75,7 @@ echo "upload $2" >> "$FAKE_LOG"`,
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("FAKE_STORE", store)
 	t.Setenv("FAKE_LOG", log)
-	for _, k := range []string{"FAKE_PGDUMP_FAIL", "FAKE_PGDUMP_EMPTY", "FAKE_PSQL_FAIL", "FAKE_RCLONE_FAIL", "NSELF_BACKUP_HEARTBEAT_REMOTE"} {
+	for _, k := range []string{"FAKE_PGDUMP_FAIL", "FAKE_PGDUMP_EMPTY", "FAKE_PSQL_FAIL", "FAKE_RCLONE_FAIL", "FAKE_RCLONE_DELETE_FAIL", "NSELF_BACKUP_HEARTBEAT_REMOTE"} {
 		t.Setenv(k, "")
 	}
 	return store, log
@@ -414,11 +421,115 @@ func TestHeartbeatPasswordNotInArgv(t *testing.T) {
 
 // TestSplitPgPassword covers the DSN split.
 func TestSplitPgPassword(t *testing.T) {
-	u, pw := splitPgPassword("postgresql://admin:p%40ss@localhost:5432/db?sslmode=disable")
-	if pw != "p@ss" || strings.Contains(u, "p%40ss") || !strings.Contains(u, "admin@localhost:5432/db") {
-		t.Errorf("got %q, %q", u, pw)
+	u, pw, err := splitPgPassword("postgresql://admin:p%40ss@localhost:5432/db?sslmode=disable")
+	if err != nil || pw != "p@ss" || strings.Contains(u, "p%40ss") || !strings.Contains(u, "admin@localhost:5432/db") {
+		t.Errorf("got %q, %q, %v", u, pw, err)
 	}
-	if u, pw := splitPgPassword("postgresql://admin@localhost/db"); pw != "" || u != "postgresql://admin@localhost/db" {
-		t.Errorf("no-password DSN changed: %q, %q", u, pw)
+	if u, pw, err := splitPgPassword("postgresql://admin@localhost/db"); err != nil || pw != "" || u != "postgresql://admin@localhost/db" {
+		t.Errorf("no-password DSN changed: %q, %q, %v", u, pw, err)
+	}
+}
+
+// TestSplitPgPasswordRefusesArgvLeaks: a DSN that would leave a password in
+// argv is an error, never a silent fallback to the original string.
+func TestSplitPgPasswordRefusesArgvLeaks(t *testing.T) {
+	for _, dsn := range []string{
+		"postgresql://admin:pa%zzss@localhost/db",              // unparseable escape in the userinfo
+		"postgresql://admin@localhost/db?password=hunter2",     // password as a query parameter
+		"host=localhost user=admin password=hunter2 dbname=db", // keyword form
+		"://admin:hunter2@localhost/db",                        // no scheme
+	} {
+		u, pw, err := splitPgPassword(dsn)
+		if err == nil {
+			t.Errorf("%q: want an error, got %q, %q", dsn, u, pw)
+			continue
+		}
+		if u != "" || strings.Contains(err.Error(), "hunter2") {
+			t.Errorf("%q: error or DSN leaks the password: %q, %v", dsn, u, err)
+		}
+	}
+	// The row-estimate call reports the error and runs no psql.
+	store, log := fakeTools(t)
+	_ = store
+	if _, err := ReadApproxRows(context.Background(), "host=localhost password=hunter2"); err == nil {
+		t.Error("ReadApproxRows accepted a keyword DSN carrying a password")
+	}
+	if strings.Contains(strings.Join(readLog(t, log), " "), "psql") {
+		t.Error("psql ran with a DSN that carries a password")
+	}
+}
+
+// latestStreamObject mimics "pick the newest stream backup": the greatest
+// <project>_stream_<timestamp> name in the remote listing.
+func latestStreamObject(t *testing.T, store string) string {
+	t.Helper()
+	entries, err := os.ReadDir(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest := ""
+	for _, e := range entries {
+		if i := strings.Index(e.Name(), "_stream_"); i >= 0 && !strings.Contains(e.Name(), "hbremote") && e.Name() > latest {
+			latest = e.Name()
+		}
+	}
+	return latest
+}
+
+// TestStreamZeroBytesRemovesRemoteObject: after an empty upload the remote
+// object is deleted, so "latest" still selects the previous good backup.
+func TestStreamZeroBytesRemovesRemoteObject(t *testing.T) {
+	store, _ := fakeTools(t)
+	good := "r2_bkt_nself-web_testproject_stream_20200101_000000.sql"
+	if err := os.WriteFile(filepath.Join(store, good), []byte("good"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FAKE_PGDUMP_EMPTY", "1")
+	opts := streamOpts()
+	opts.Recipients = nil
+	opts.AllowUnencrypted = true
+	if res, err := Stream(context.Background(), minimalConfig(), opts); err == nil || res != nil {
+		t.Fatalf("Stream = %v, %v; want an error and no result", res, err)
+	}
+	if got := latestStreamObject(t, store); got != good {
+		t.Errorf("latest = %q after the failed backup, want the previous good object %q", got, good)
+	}
+	deletes, _ := os.ReadFile(filepath.Join(filepath.Dir(store), "deletes.log"))
+	if !strings.Contains(string(deletes), "delete r2:bkt/nself-web/") {
+		t.Errorf("no remote delete was issued: %q", deletes)
+	}
+}
+
+// TestStreamZeroBytesDeleteFails: when the cleanup delete fails the error says
+// the object is still there and Stream still fails with no result.
+func TestStreamZeroBytesDeleteFails(t *testing.T) {
+	store, _ := fakeTools(t)
+	t.Setenv("FAKE_PGDUMP_EMPTY", "1")
+	t.Setenv("FAKE_RCLONE_DELETE_FAIL", "1")
+	opts := streamOpts()
+	opts.Recipients = nil
+	opts.AllowUnencrypted = true
+	res, err := Stream(context.Background(), minimalConfig(), opts)
+	if err == nil || res != nil {
+		t.Fatalf("Stream = %v, %v; want an error and no result", res, err)
+	}
+	if !errors.Is(err, errs.ErrBackupFailed) || !strings.Contains(err.Error(), "could NOT be removed") {
+		t.Errorf("err = %v, want ErrBackupFailed saying the object could not be removed", err)
+	}
+	if latestStreamObject(t, store) == "" {
+		t.Error("expected the empty object to remain when the delete fails")
+	}
+}
+
+// TestStreamFailedPipelineRemovesObject: a pg_dump failure after the upload
+// started cleans up the remote object too.
+func TestStreamFailedPipelineRemovesObject(t *testing.T) {
+	store, _ := fakeTools(t)
+	t.Setenv("FAKE_PGDUMP_FAIL", "1")
+	if res, err := Stream(context.Background(), minimalConfig(), streamOpts()); err == nil || res != nil {
+		t.Fatalf("Stream = %v, %v; want an error and no result", res, err)
+	}
+	if got := latestStreamObject(t, store); got != "" {
+		t.Errorf("a failed backup left %q on the remote", got)
 	}
 }
