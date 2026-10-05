@@ -92,6 +92,8 @@ Optional services (enable per project): **Redis** | **MinIO** (S3 storage) | **S
 
 :arrow_right: [[Commands]] for the full command table with descriptions
 
+**Machine interface:** [[JSON-Output]] (the `--json` envelope) · [[Command-Registry]] (`nself help --json`) · [[Exit-Codes]] · [[error-codes]] · [[Compat-V15]] (the `NSELF_V15` gate for behaviour that changes in v1.5)
+
 ---
 
 ## Configuration

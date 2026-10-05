@@ -225,7 +225,15 @@
 
 **Reference**
 - [[API-Reference]]
+
+---
+
+**Machine interface**
+- [[JSON-Output]], `--json` envelope
+- [[Command-Registry]], `nself help --json`
+- [[Exit-Codes]]
 - [[error-codes]], Error Codes
+- [[Compat-V15]], `NSELF_V15` gate
 
 ---
 
