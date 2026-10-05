@@ -15,10 +15,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "null",
-              "array"
-            ]
+            "type": "array"
           },
           "args": {
             "items": {
@@ -41,10 +38,7 @@
               ],
               "type": "object"
             },
-            "type": [
-              "null",
-              "array"
-            ]
+            "type": "array"
           },
           "canon": {
             "enum": [
@@ -174,10 +168,7 @@
               ],
               "type": "object"
             },
-            "type": [
-              "null",
-              "array"
-            ]
+            "type": "array"
           },
           "group": {
             "type": [
@@ -257,10 +248,7 @@
         ],
         "type": "object"
       },
-      "type": [
-        "null",
-        "array"
-      ]
+      "type": "array"
     },
     "counts": {
       "additionalProperties": false,
@@ -275,10 +263,7 @@
           "items": {
             "type": "string"
           },
-          "type": [
-            "null",
-            "array"
-          ]
+          "type": "array"
         },
         "deprecated_shims": {
           "type": "integer"
@@ -406,10 +391,7 @@
             ],
             "type": "object"
           },
-          "type": [
-            "null",
-            "array"
-          ]
+          "type": "array"
         },
         "summary": {
           "type": "string"
@@ -430,10 +412,7 @@
         "type": "string"
       },
       "maxItems": 20,
-      "type": [
-        "null",
-        "array"
-      ]
+      "type": "array"
     }
   },
   "required": [

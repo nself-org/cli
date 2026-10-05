@@ -12,10 +12,7 @@
             "items": {
               "type": "string"
             },
-            "type": [
-              "null",
-              "array"
-            ]
+            "type": "array"
           },
           "args": {
             "items": {
@@ -38,15 +35,21 @@
               ],
               "type": "object"
             },
-            "type": [
-              "null",
-              "array"
-            ]
+            "type": "array"
           },
           "canon": {
+            "enum": [
+              "core",
+              "subcommand",
+              "plugin",
+              "deprecated-shim",
+              "pending",
+              "builtin"
+            ],
             "type": "string"
           },
           "data_schema": {
+            "pattern": "^schemas/commands/[a-z0-9-]+\\.v[0-9]+\\.schema\\.json$",
             "type": [
               "null",
               "string"
@@ -61,6 +64,9 @@
           "exit_codes": {
             "additionalProperties": {
               "type": "string"
+            },
+            "propertyNames": {
+              "pattern": "^[0-9]{1,3}$"
             },
             "type": "object"
           },
@@ -87,6 +93,11 @@
                   "type": "boolean"
                 },
                 "json": {
+                  "enum": [
+                    "legacy",
+                    "none",
+                    null
+                  ],
                   "type": [
                     "null",
                     "string"
@@ -96,6 +107,10 @@
                   "type": "string"
                 },
                 "output": {
+                  "enum": [
+                    "stream",
+                    null
+                  ],
                   "type": [
                     "null",
                     "string"
@@ -114,6 +129,13 @@
                   ]
                 },
                 "side_effect": {
+                  "enum": [
+                    "read",
+                    "write",
+                    "remote",
+                    "destructive",
+                    null
+                  ],
                   "type": [
                     "null",
                     "string"
@@ -143,10 +165,7 @@
               ],
               "type": "object"
             },
-            "type": [
-              "null",
-              "array"
-            ]
+            "type": "array"
           },
           "group": {
             "type": [
@@ -158,12 +177,22 @@
             "type": "boolean"
           },
           "json": {
+            "enum": [
+              "envelope",
+              "legacy",
+              "none"
+            ],
             "type": "string"
           },
           "name": {
             "type": "string"
           },
           "output": {
+            "enum": [
+              "document",
+              "stream",
+              "interactive"
+            ],
             "type": "string"
           },
           "parent": {
@@ -176,6 +205,12 @@
             "type": "boolean"
           },
           "side_effect": {
+            "enum": [
+              "read",
+              "write",
+              "remote",
+              "destructive"
+            ],
             "type": "string"
           },
           "summary": {
@@ -210,10 +245,7 @@
         ],
         "type": "object"
       },
-      "type": [
-        "null",
-        "array"
-      ]
+      "type": "array"
     },
     "counts": {
       "additionalProperties": false,
@@ -228,10 +260,7 @@
           "items": {
             "type": "string"
           },
-          "type": [
-            "null",
-            "array"
-          ]
+          "type": "array"
         },
         "deprecated_shims": {
           "type": "integer"
@@ -287,6 +316,11 @@
                 "type": "boolean"
               },
               "json": {
+                "enum": [
+                  "legacy",
+                  "none",
+                  null
+                ],
                 "type": [
                   "null",
                   "string"
@@ -296,6 +330,10 @@
                 "type": "string"
               },
               "output": {
+                "enum": [
+                  "stream",
+                  null
+                ],
                 "type": [
                   "null",
                   "string"
@@ -314,6 +352,13 @@
                 ]
               },
               "side_effect": {
+                "enum": [
+                  "read",
+                  "write",
+                  "remote",
+                  "destructive",
+                  null
+                ],
                 "type": [
                   "null",
                   "string"
@@ -343,10 +388,7 @@
             ],
             "type": "object"
           },
-          "type": [
-            "null",
-            "array"
-          ]
+          "type": "array"
         },
         "summary": {
           "type": "string"
@@ -359,16 +401,15 @@
       "type": "object"
     },
     "schema_version": {
+      "const": "1",
       "type": "string"
     },
     "verbs": {
       "items": {
         "type": "string"
       },
-      "type": [
-        "null",
-        "array"
-      ]
+      "maxItems": 20,
+      "type": "array"
     }
   },
   "required": [

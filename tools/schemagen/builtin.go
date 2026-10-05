@@ -102,9 +102,28 @@ func init() {
 			Override{Pointer: p + "/properties/output", Set: map[string]any{"enum": nullable(canon.OutputStream)}},
 		)
 	}
+	// Registry arrays are never null in real output (cmdregistry builds them
+	// with empty slices), so the schema says `array`, not `["null","array"]`.
+	// Pointers cover every []T field of Registry, Root, Command and Counts.
+	arr := map[string]any{"type": "array"}
+	for _, p := range []string{
+		"/properties/verbs",
+		"/properties/commands",
+		"/properties/root/properties/flags",
+		"/properties/counts/properties/core_missing",
+		cmdItem + "aliases",
+		cmdItem + "args",
+		cmdItem + "flags",
+	} {
+		ovs = append(ovs, Override{Pointer: p, Set: arr})
+	}
+	// Every schema generated from cmdregistry.Registry (command-registry and
+	// the `help` data schema) carries the same enums, const, patterns and
+	// array types.
+	RegisterTypeOverrides(cmdregistry.Registry{}, ovs...)
 	// The committed .github/command-registry.json carries a first _generated
 	// key that `help --json` data does not; only this schema admits it.
-	ovs = append(ovs, Override{Pointer: "/properties", Set: map[string]any{
-		"_generated": map[string]any{"type": "string"}}})
-	Register(Spec{Out: "command-registry.v1.schema.json", Type: cmdregistry.Registry{}, Overrides: ovs})
+	Register(Spec{Out: "command-registry.v1.schema.json", Type: cmdregistry.Registry{}, Overrides: []Override{
+		{Pointer: "/properties", Set: map[string]any{"_generated": map[string]any{"type": "string"}}},
+	}})
 }

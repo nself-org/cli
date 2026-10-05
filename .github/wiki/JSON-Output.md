@@ -57,7 +57,7 @@ Every JSON contract is published as a JSON Schema (draft 2020-12) under `schemas
 Each schema has the `$id` `urn:nself:cli:schema:<name>:v1`. The envelope refers to the error schema by that `$id`, so a validator needs `error.v1` loaded alongside `envelope.v1` (the repository tests resolve it from `schemas/index.json`). Any 2020-12 validator works. To check a command's `data` with `check-jsonschema`:
 
 ```bash
-nself help config --json | jq .data > data.json
+nself help --json | jq .data > data.json
 check-jsonschema --schemafile schemas/commands/help.v1.schema.json data.json
 ```
 

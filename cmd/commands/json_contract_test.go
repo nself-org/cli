@@ -193,3 +193,58 @@ func TestJSONContractHelpFixtureMatchesRegistry(t *testing.T) {
 		}
 	}
 }
+
+// TestJSONContractHelpDataRejectsBadValues: the `help` data schema carries the
+// same enums, const and array types as the registry schema, so a corrupted
+// copy of the golden fixture's data is rejected by the command's own schema.
+func TestJSONContractHelpDataRejectsBadValues(t *testing.T) {
+	fixture, err := os.ReadFile(fixtureFileFor("help"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var env struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(fixture, &env); err != nil {
+		t.Fatal(err)
+	}
+	rs := contractResolve(t, schemaFileFor("help"))
+	validate := func(data map[string]any) error {
+		b, err := json.Marshal(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return contractValidate(rs, b)
+	}
+	if err := validate(env.Data); err != nil {
+		t.Fatalf("test setup: unmodified fixture data rejected: %v", err)
+	}
+	firstCommand := func(data map[string]any) map[string]any {
+		return data["commands"].([]any)[0].(map[string]any)
+	}
+	cases := []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{"canon zz", func(d map[string]any) { firstCommand(d)["canon"] = "zz" }},
+		{"schema_version 2", func(d map[string]any) { d["schema_version"] = "2" }},
+		{"verbs null", func(d map[string]any) { d["verbs"] = nil }},
+		{"commands null", func(d map[string]any) { d["commands"] = nil }},
+		{"aliases null", func(d map[string]any) { firstCommand(d)["aliases"] = nil }},
+		{"core_missing null", func(d map[string]any) { d["counts"].(map[string]any)["core_missing"] = nil }},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			var cp map[string]any
+			b, _ := json.Marshal(env.Data)
+			if err := json.Unmarshal(b, &cp); err != nil {
+				t.Fatal(err)
+			}
+			c.mutate(cp)
+			if err := validate(cp); err == nil {
+				t.Fatalf("help data with %s was accepted by %s", c.name, schemaFileFor("help"))
+			}
+		})
+	}
+}
