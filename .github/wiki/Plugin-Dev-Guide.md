@@ -86,6 +86,7 @@ environment:
 - Substitute the encoded variable exactly once. Never wrap it in another encoding step: `%40` becomes `%2540`.
 - The fallback keeps a `compose.env` written by an older CLI working: without the encoded variable, compose renders the raw password, exactly as before.
 - Use the raw variables (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`) for anything that is not a URL, such as `POSTGRES_PASSWORD` for the Postgres container itself or a `--requirepass` argument.
+- Only hand an encoded URL to something that percent-decodes the password (database drivers and client libraries do). `redis-cli -u` does not: it answers `WRONGPASS` to the encoded form. For `redis-cli` in a healthcheck or script, use `-a` with the raw `REDIS_PASSWORD` instead.
 - Paid fragments that read `${DATABASE_URL}` need no change: `DATABASE_URL` is already encoded.
 - `nself doctor` warns (`url-reserved-password`) when a password holds a reserved character and an installed fragment still embeds the raw variable in a URL. The warning names the variable, never the value.
 

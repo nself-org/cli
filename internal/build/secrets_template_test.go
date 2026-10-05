@@ -370,3 +370,39 @@ func TestWriteComposeEnv_URLEncDollarIsQuoted(t *testing.T) {
 		t.Fatal("encoded value must not contain a single quote")
 	}
 }
+
+// TestURLEncConsumersAreDecoders guards the consumers of the encoded URLs:
+// a tool that does not percent-decode the password (redis-cli -u is one: it
+// answers WRONGPASS to the encoded form) must never be fed a URL built from
+// the encoded variable. Shipped compose files and fixtures may run redis-cli
+// only with the raw variable via -a, never with a URL or a _URLENC reference.
+// Remaining consumers of encoded URLs are decoding libraries: postgres-exporter
+// (DATA_SOURCE_NAME, Go net/url) and the plugin services' DATABASE_URL and
+// REDIS_URL.
+func TestURLEncConsumersAreDecoders(t *testing.T) {
+	var files []string
+	for _, pat := range []string{
+		"../compose/*.yml",
+		"testdata/plugin-compose-fixtures/*.yml",
+	} {
+		m, err := filepath.Glob(pat)
+		if err != nil || len(m) == 0 {
+			t.Fatalf("no shipped compose files matched %s", pat)
+		}
+		files = append(files, m...)
+	}
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			if !strings.Contains(line, "redis-cli") {
+				continue
+			}
+			if strings.Contains(line, "_URLENC") || strings.Contains(line, "REDIS_URL") || strings.Contains(line, "redis://") || strings.Contains(line, " -u ") {
+				t.Errorf("%s:%d: redis-cli must use -a with the raw password variable, not a URL (it does not percent-decode)", filepath.Base(f), i+1)
+			}
+		}
+	}
+}

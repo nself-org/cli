@@ -390,7 +390,7 @@ func TestNormalizeComposePluginCoreEnv_RealCronFragmentGolden(t *testing.T) {
 	}
 	// Every pre-existing entry (including the interleaved comment) must
 	// survive untouched.
-	if !strings.Contains(out, "- DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}") {
+	if !strings.Contains(out, "- DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@postgres:5432/${POSTGRES_DB}") {
 		t.Errorf("existing DATABASE_URL entry must be preserved verbatim:\n%s", out)
 	}
 	if !strings.Contains(out, "# Env-driven schedule bootstrap: declare jobs as infrastructure-as-code.") {
