@@ -1,5 +1,11 @@
-// Package destinations implements remote backup destination drivers for
-// nSelf's PITR (Point-in-Time Recovery) system.
+// rclone.go — the rclone destination kind and the pre-interface helpers.
+//
+// Purpose: drive rclone for s3, r2, minio, b2, gcs and az remotes. IsRemoteKey,
+// FetchRemote and toRclonePath predate the Destination interface and keep
+// their exact behaviour and argv for existing callers (pitr restore).
+// Inputs: remote URIs such as s3://bucket/path/to/object.
+// Outputs: files downloaded or uploaded through rclone.
+// Constraints: rclone argv is frozen (see rclone_golden_test.go).
 //
 // Remote keys follow rclone's URI scheme:
 //
@@ -21,12 +27,16 @@ package destinations
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // IsRemoteKey reports whether key is a supported remote destination URI
@@ -138,4 +148,137 @@ func toRclonePath(uri string) (string, error) {
 	}
 
 	return "", fmt.Errorf("unsupported remote key scheme in %q: supported schemes are s3://, r2://, minio://, b2://, gcs://, az://", uri)
+}
+
+// rcloneDest is the rclone kind. remote is the destination exactly as the
+// caller gave it ("s3:bucket/prefix", "r2://bucket/prefix", ...).
+type rcloneDest struct {
+	remote string
+	env    []string
+}
+
+func (d *rcloneDest) Kind() string { return KindRclone }
+
+// run starts rclone with the inherited environment plus d.env and returns the
+// combined output.
+func (d *rcloneDest) run(ctx context.Context, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "rclone", args...)
+	cmd.Env = append(os.Environ(), d.env...)
+	return cmd.CombinedOutput()
+}
+
+// Put runs `rclone copyto <localPath> <remote>/<key>`, the argv backup create
+// has always used.
+func (d *rcloneDest) Put(ctx context.Context, localPath, key string) error {
+	out, err := d.run(ctx, "copyto", localPath, d.remote+"/"+key)
+	if err != nil {
+		if len(out) > 0 {
+			return errors.New(string(out))
+		}
+		return err
+	}
+	return nil
+}
+
+// objectPath is the rclone path of key. A scheme URI is rewritten as
+// FetchRemote does; anything else is used verbatim.
+func (d *rcloneDest) objectPath(key string) (string, error) {
+	base := d.remote
+	if IsRemoteKey(base) {
+		var err error
+		if base, err = toRclonePath(base); err != nil {
+			return "", err
+		}
+	}
+	if key == "" {
+		return base, nil
+	}
+	return strings.TrimSuffix(base, "/") + "/" + key, nil
+}
+
+// Get runs `rclone copyto <remote>/<key> <localPath>`.
+func (d *rcloneDest) Get(ctx context.Context, key, localPath string) error {
+	src, err := d.objectPath(key)
+	if err != nil {
+		return err
+	}
+	if out, err := d.run(ctx, "copyto", src, localPath); err != nil {
+		return fmt.Errorf("rclone copyto %s: %s: %w", src, strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+// Open streams `rclone cat <remote>/<key>`.
+func (d *rcloneDest) Open(ctx context.Context, key string) (io.ReadCloser, error) {
+	src, err := d.objectPath(key)
+	if err != nil {
+		return nil, err
+	}
+	return startCat(exec.CommandContext(ctx, "rclone", "cat", src), d.env)
+}
+
+type lsjsonEntry struct {
+	Path    string    `json:"Path"`
+	Size    int64     `json:"Size"`
+	ModTime time.Time `json:"ModTime"`
+	IsDir   bool      `json:"IsDir"`
+}
+
+// List runs `rclone lsjson -R <remote>` and returns the files whose key starts
+// with prefix.
+func (d *rcloneDest) List(ctx context.Context, prefix string) ([]Object, error) {
+	src, err := d.objectPath("")
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, "rclone", "lsjson", "-R", "--files-only", src)
+	cmd.Env = append(os.Environ(), d.env...)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("rclone lsjson %s: %w", src, err)
+	}
+	var entries []lsjsonEntry
+	if err := json.Unmarshal(out, &entries); err != nil {
+		return nil, fmt.Errorf("parse rclone lsjson output: %w", err)
+	}
+	objs := make([]Object, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir && strings.HasPrefix(e.Path, prefix) {
+			objs = append(objs, Object{Key: e.Path, Size: e.Size, ModTime: e.ModTime})
+		}
+	}
+	return objs, nil
+}
+
+// startCat starts cmd with its stdout exposed as a reader. Close waits for the
+// process and reports a non-zero exit with its stderr text.
+func startCat(cmd *exec.Cmd, env []string) (io.ReadCloser, error) {
+	cmd.Env = append(os.Environ(), env...)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start %s: %w", cmd.Args[0], err)
+	}
+	return &catReader{ReadCloser: out, cmd: cmd, stderr: &stderr}, nil
+}
+
+type catReader struct {
+	io.ReadCloser
+	cmd    *exec.Cmd
+	stderr *strings.Builder
+}
+
+func (c *catReader) Close() error {
+	_ = c.ReadCloser.Close()
+	if err := c.cmd.Wait(); err != nil {
+		if msg := strings.TrimSpace(c.stderr.String()); msg != "" {
+			return fmt.Errorf("%s: %s: %w", c.cmd.Args[0], msg, err)
+		}
+		return fmt.Errorf("%s: %w", c.cmd.Args[0], err)
+	}
+	return nil
 }

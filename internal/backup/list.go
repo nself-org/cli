@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // BackupEntry holds parsed metadata for a single backup file.
@@ -30,8 +32,15 @@ type ListOptions struct {
 	Format string        // table or json
 }
 
-// List returns backup entries from the local backup directory.
+// listRemoteTimeout bounds one remote listing.
+const listRemoteTimeout = 2 * time.Minute
+
+// List returns backup entries from the local backup directory, or from the
+// destination named by opts.Remote (rclone remote, path:// or host://).
 func List(cfg *config.Config, opts ListOptions) ([]BackupEntry, error) {
+	if opts.Remote != "" {
+		return listRemote(cfg, opts)
+	}
 	backupDir := cfg.Backup.Dir
 	if backupDir == "" {
 		backupDir = "./backups"
@@ -65,27 +74,58 @@ func List(cfg *config.Config, opts ListOptions) ([]BackupEntry, error) {
 			continue
 		}
 
-		be := BackupEntry{
-			ID:        strings.TrimSuffix(strings.TrimSuffix(name, ".age"), filepath.Ext(strings.TrimSuffix(name, ".age"))),
-			Date:      info.ModTime(),
-			Size:      info.Size(),
-			Type:      inferBackupType(name),
-			Encrypted: strings.HasSuffix(name, ".age"),
-		}
-
-		// Extract tag if present (format: project_type_timestamp_tag.ext).
-		parts := strings.Split(be.ID, "_")
-		if len(parts) > 3 {
-			be.Tag = strings.Join(parts[3:], "_")
-		}
-
-		backups = append(backups, be)
+		backups = append(backups, newBackupEntry(name, info.Size(), info.ModTime()))
 	}
 
 	sort.Slice(backups, func(i, j int) bool {
 		return backups[i].Date.After(backups[j].Date)
 	})
 
+	return backups, nil
+}
+
+// newBackupEntry builds the entry for one backup file name.
+func newBackupEntry(name string, size int64, mod time.Time) BackupEntry {
+	be := BackupEntry{
+		ID:        strings.TrimSuffix(strings.TrimSuffix(name, ".age"), filepath.Ext(strings.TrimSuffix(name, ".age"))),
+		Date:      mod,
+		Size:      size,
+		Type:      inferBackupType(name),
+		Encrypted: strings.HasSuffix(name, ".age"),
+	}
+	// Extract tag if present (format: project_type_timestamp_tag.ext).
+	parts := strings.Split(be.ID, "_")
+	if len(parts) > 3 {
+		be.Tag = strings.Join(parts[3:], "_")
+	}
+	return be
+}
+
+// listRemote lists backups at opts.Remote, newest first.
+func listRemote(cfg *config.Config, opts ListOptions) ([]BackupEntry, error) {
+	env := rcloneEnvFor(cfg)
+	dest, err := destinationFor(opts.Remote, env...)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errs.ErrBackupRemoteFailed, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), listRemoteTimeout)
+	defer cancel()
+	objs, err := dest.List(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errs.ErrBackupRemoteFailed, err)
+	}
+	cutoff := time.Time{}
+	if opts.Since > 0 {
+		cutoff = time.Now().Add(-opts.Since)
+	}
+	backups := make([]BackupEntry, 0, len(objs))
+	for _, o := range objs {
+		if !cutoff.IsZero() && o.ModTime.Before(cutoff) {
+			continue
+		}
+		backups = append(backups, newBackupEntry(filepath.Base(o.Key), o.Size, o.ModTime))
+	}
+	sort.Slice(backups, func(i, j int) bool { return backups[i].Date.After(backups[j].Date) })
 	return backups, nil
 }
 

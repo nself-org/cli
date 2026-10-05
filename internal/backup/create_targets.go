@@ -121,7 +121,7 @@ func createFullBackup(ctx context.Context, cfg *config.Config, backupDir, ts, ta
 		remote = opts.Remote
 	}
 	if remote != "" {
-		if err := requireCompleteS3Credentials(cfg); err != nil {
+		if err := requireCompleteS3CredentialsFor(remote, cfg); err != nil {
 			// Half-configured S3 creds (one of access/secret set, not both)
 			// is worse than none: it looks configured, uploads nothing or
 			// fails opaquely inside rclone, and nobody notices until a

@@ -16,6 +16,36 @@ nself backup <subcommand> [flags]
 Backup, restore, verify, and schedule ɳSelf project data.
 
 ---
+## Destination kinds
+
+`backup create --remote`, `backup list --remote`, `backup restore-remote --from` and `backup config` accept three kinds of destination. The kind follows from the URI.
+
+| Kind | URI | Needs |
+|---|---|---|
+| rclone | `s3://`, `r2://`, `minio://`, `b2://`, `gcs://`, `az://`, or a configured rclone remote such as `s3:bucket/prefix` | `rclone` on PATH |
+| path | `path:///mnt/backups` (absolute directory, local or mounted disk) | nothing |
+| host | `host://<server>/srv/backups` (a server from `.nself/control-plane.yaml`, absolute directory) | `ssh`, `scp`, a pinned host key |
+
+rclone behaviour is unchanged.
+
+**path://** refuses `..`, a destination directory that is itself a symlink (use the real path), and any symlink below the directory, so a link cannot send a write outside it. A file is written to `<key>.tmp`, fsynced, renamed into place and re-read to compare its sha256. Directories are created `0700`, files `0600`.
+
+**host://** goes through the shared SSH funnel (`sdk/go/remote`): one `ssh` or `scp` argv builder, remote paths limited to `[a-zA-Z0-9/_.-]` with no `..`, and every unsafe name rejected before any connection. The server name must be in the inventory with a `host` (`user@host`); `ssh_key_ref` names an environment variable holding the key path. Host keys are pinned: ssh runs with `StrictHostKeyChecking=yes` against `~/.config/nself/backup_known_hosts` (override with `NSELF_BACKUP_KNOWN_HOSTS`), and the file must hold a key for the alias `nself-ci-<server>`. A server with no pinned key is refused. A file is copied to `<key>.tmp`, its sha256 compared, then moved into place.
+
+```bash
+# Back up to a mounted disk, no rclone installed
+nself backup create --remote path:///mnt/backups
+nself backup list --remote path:///mnt/backups
+nself backup restore-remote --from path:///mnt/backups/myproject_full_20261005.dump --yes
+
+# Back up to an inventory server
+nself backup create --remote host://backup1/srv/nself-backups
+```
+
+`nself backup config` lists the three kinds and marks the one the configured remote selects. `backup stream`, `backup schedule` and the heartbeat remote still take rclone remotes only.
+
+---
+
 ## backup stream
 
 Stream a live backup to S3, R2, Backblaze B2, GCS, or Azure Blob. No temp files written.
@@ -126,7 +156,7 @@ nself backup restore-remote --from <url> [--key <identity-file>] [--yes]
 
 | Flag | Default | Description |
 |---|---|---|
-| `--from` | — | Source URL (rclone remote path) |
+| `--from` | — | Source URL: rclone remote path, `path://<dir>/<object>` or `host://<server>/<dir>/<object>` |
 | `--key` | `~/.config/nself/age-key.txt` | Path to age identity file |
 | `--yes` | false | Skip confirmation on production |
 

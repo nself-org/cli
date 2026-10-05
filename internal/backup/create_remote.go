@@ -12,7 +12,9 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/nself-org/cli/internal/backup/destinations"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -58,25 +60,58 @@ func requireCompleteS3Credentials(cfg *config.Config) error {
 	return fmt.Errorf("S3 backup credentials are half-configured: %s is set but its counterpart is not", missing)
 }
 
-// uploadToRemote uploads a local file to the configured rclone remote. When
-// cfg carries an S3 access/secret key pair (BACKUP_S3_ACCESS_KEY_ID /
+// requireCompleteS3CredentialsFor applies requireCompleteS3Credentials to the
+// rclone/S3 kind only: path:// and host:// uploads never use S3 keys, so a
+// half-set key pair must not block them.
+func requireCompleteS3CredentialsFor(remote string, cfg *config.Config) error {
+	if destinations.KindOf(remote) != destinations.KindRclone {
+		return nil
+	}
+	return requireCompleteS3Credentials(cfg)
+}
+
+// destinationFor parses a --remote / --from destination. host:// loads the
+// controlplane inventory from the current directory (the project root);
+// rcloneEnv reaches every rclone process the destination starts.
+func destinationFor(uri string, rcloneEnv ...string) (destinations.Destination, error) {
+	var inv *destinations.Inventory
+	if destinations.KindOf(uri) == destinations.KindHost {
+		var err error
+		if inv, err = controlplane.Load("."); err != nil {
+			return nil, err
+		}
+	}
+	return destinations.Parse(uri, inv, rcloneEnv...)
+}
+
+// rcloneEnvFor returns the AWS_* variables for an rclone process when cfg
+// holds an S3 key pair, else nil.
+func rcloneEnvFor(cfg *config.Config) []string {
+	if cfg.Backup.S3AccessKeyID != "" && cfg.Backup.S3SecretAccessKey != "" {
+		return []string{
+			"AWS_ACCESS_KEY_ID=" + cfg.Backup.S3AccessKeyID,
+			"AWS_SECRET_ACCESS_KEY=" + cfg.Backup.S3SecretAccessKey,
+		}
+	}
+	return nil
+}
+
+// uploadToRemote uploads a local file to the configured destination: an
+// rclone remote, path://<dir> or host://<server>/<dir>. For rclone, when cfg
+// carries an S3 access/secret key pair (BACKUP_S3_ACCESS_KEY_ID /
 // BACKUP_S3_SECRET_ACCESS_KEY, or the BACKUP_ACCESS_KEY / BACKUP_SECRET_KEY
 // aliases), it is exported as AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY for
-// this rclone invocation — the env-var form rclone's :s3 / :r2 remotes read
+// this rclone invocation: the env-var form rclone's :s3 / :r2 remotes read
 // when no matching entry exists in rclone.conf. Callers must have already
 // checked requireCompleteS3Credentials; this function does not re-check.
 func uploadToRemote(ctx context.Context, localPath, remote string, cfg *config.Config) error {
-	args := []string{"copyto", localPath, remote + "/" + filepath.Base(localPath)}
-	cmd := exec.CommandContext(ctx, "rclone", args...)
-	cmd.Env = os.Environ()
-	if cfg.Backup.S3AccessKeyID != "" && cfg.Backup.S3SecretAccessKey != "" {
-		cmd.Env = append(cmd.Env,
-			"AWS_ACCESS_KEY_ID="+cfg.Backup.S3AccessKeyID,
-			"AWS_SECRET_ACCESS_KEY="+cfg.Backup.S3SecretAccessKey,
-		)
+	env := rcloneEnvFor(cfg)
+	dest, err := destinationFor(remote, env...)
+	if err != nil {
+		return fmt.Errorf("%w: %v", errs.ErrBackupRemoteFailed, err)
 	}
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("%w: %s", errs.ErrBackupRemoteFailed, string(output))
+	if err := dest.Put(ctx, localPath, filepath.Base(localPath)); err != nil {
+		return fmt.Errorf("%w: %s", errs.ErrBackupRemoteFailed, err)
 	}
 	return nil
 }
