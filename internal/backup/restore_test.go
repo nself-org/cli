@@ -334,7 +334,7 @@ func TestAutoKeyExistingDecFileSurvives(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = os.Remove(dec) }()
-	if dec == mine || !strings.HasSuffix(strings.TrimSuffix(dec, ".dec"), ".dump") {
+	if dec == mine || !restoreTempRe.MatchString(filepath.Base(dec)) {
 		t.Fatalf("temp name %s", dec)
 	}
 	if b, _ := os.ReadFile(mine); string(b) != "precious" {
@@ -410,14 +410,16 @@ func TestAutoKeyStaleRestoreTempSweep(t *testing.T) {
 		}
 		return p
 	}
-	stale := mk(".nself-restore-123-x.dump.dec", 0o600, true)
-	fresh := mk(".nself-restore-456-x.dump.dec", 0o600, false)
-	loose := mk(".nself-restore-789-x.dump.dec", 0o644, true)
+	stale := mk(".nself-restore-0123456789abcdef.dec", 0o600, true)
+	fresh := mk(".nself-restore-1123456789abcdef.dec", 0o600, false)
+	loose := mk(".nself-restore-2123456789abcdef.dec", 0o644, true)
 	mine := mk("x.dump.dec", 0o600, true)
 	other := mk(".nself-restore-abc.txt", 0o600, true)
+	keep := mk(".nself-restore-keep.dump.dec", 0o600, true)
+	upper := mk(".nself-restore-3123456789ABCDEF.dec", 0o600, true)
 	// Restore sweeps at its start, even when the backup itself is not found.
 	_ = Restore(context.Background(), localBackupCfg(dir), RestoreOptions{BackupID: "nosuch"})
-	for p, wantGone := range map[string]bool{stale: true, fresh: false, loose: false, mine: false, other: false} {
+	for p, wantGone := range map[string]bool{stale: true, fresh: false, loose: false, mine: false, other: false, keep: false, upper: false} {
 		_, err := os.Lstat(p)
 		if (err != nil) != wantGone {
 			t.Errorf("%s: removed=%v want %v", filepath.Base(p), err != nil, wantGone)
@@ -467,5 +469,45 @@ func TestAutoKeyRestoreCancelRemovesDecryptedDump(t *testing.T) {
 	}
 	if left, _ := filepath.Glob(filepath.Join(dir, ".nself-restore-*")); len(left) != 0 {
 		t.Errorf("the decrypted dump was left behind: %v", left)
+	}
+}
+
+// pg_restore exits 1 with a data-loss error line (and no FATAL). v1.4 keeps
+// succeeding but warns with the count and first lines; v1.5 fails.
+func TestAutoKeyRestoreErrorLinesAreFatalInV15(t *testing.T) {
+	home, _, logs := autoKeyEnv(t)
+	key := filepath.Join(home, "k")
+	newAgeKey(t, key)
+	dir := t.TempDir()
+	ageEncrypt(t, key, "PGDMP-x", filepath.Join(dir, "p_full_1.dump.age"))
+	bin := t.TempDir()
+	_ = os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\ncat >/dev/null\necho 'pg_restore: error: COPY failed for table x' >&2\necho 'pg_restore: error: second' >&2\nexit 1\n"), 0o755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	cfg := localBackupCfg(dir)
+	run := func() error {
+		return Restore(context.Background(), cfg, RestoreOptions{BackupID: "p_full_1.dump.age", DecryptKey: key, Only: []string{"pg"}})
+	}
+	compattest.Both(t, func(t *testing.T) {
+		logs.Reset()
+		err := run()
+		if os.Getenv("NSELF_V15") == "1" {
+			if err == nil || !strings.Contains(err.Error(), "COPY failed for table x") {
+				t.Fatalf("v1.5 must fail on a pg_restore error line, got %v", err)
+			}
+			return
+		}
+		if err != nil {
+			t.Fatalf("v1.4 keeps succeeding: %v", err)
+		}
+		if l := logs.String(); !strings.Contains(l, "errors=2") || !strings.Contains(l, "COPY failed for table x") {
+			t.Errorf("v1.4 must warn with the count and first lines, got: %s", l)
+		}
+	})
+	// an allowlisted line is not fatal in v1.5 (the drill's one list)
+	compattest.Set(t, true)
+	allowedRestoreErrors = []string{"COPY failed for table x", "second"}
+	defer func() { allowedRestoreErrors = nil }()
+	if err := run(); err != nil {
+		t.Fatalf("allowlisted errors must not fail: %v", err)
 	}
 }

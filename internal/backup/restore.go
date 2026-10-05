@@ -3,6 +3,8 @@ package backup
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -70,7 +73,7 @@ func Restore(ctx context.Context, cfg *config.Config, opts RestoreOptions) error
 	}
 
 	if restoreComponents["pg"] {
-		if err := restorePostgres(ctx, cfg, workFile, opts); err != nil {
+		if err := restorePostgres(ctx, cfg, workFile, backupFile, opts); err != nil {
 			return fmt.Errorf("restore postgres: %w", err)
 		}
 	}
@@ -125,6 +128,9 @@ func resolveBackupFile(backupDir, backupID string) (string, error) {
 	return "", fmt.Errorf("%w: %s", errs.ErrBackupNotFound, backupID)
 }
 
+// restoreTempRe is exactly the name decryptFile gives its plaintext temp.
+var restoreTempRe = regexp.MustCompile(`^\.nself-restore-[0-9a-f]{16}\.dec$`)
+
 // restoreTempStaleAfter is how old a leftover plaintext temp must be before the
 // sweep at restore start removes it (a killed restore cannot clean up itself).
 var restoreTempStaleAfter = time.Hour
@@ -139,7 +145,7 @@ func sweepStaleRestoreTemps(dir string, olderThan time.Duration) {
 	}
 	for _, e := range ents {
 		n := e.Name()
-		if !strings.HasPrefix(n, ".nself-restore-") || !strings.HasSuffix(n, ".dec") {
+		if !restoreTempRe.MatchString(n) {
 			continue
 		}
 		p := filepath.Join(dir, n)
@@ -167,9 +173,18 @@ func decryptFile(ctx context.Context, path, keyPath, project string) (string, er
 
 	// The plaintext dump is created 0600 by us (never by age's default mode)
 	// and removed on every path that does not hand it to the caller.
-	// A fresh unique 0600 file next to the backup; an existing <backup>.dec is
-	// never touched. The name still ends in .dump.dec for restorePostgres.
-	out, err := os.CreateTemp(filepath.Dir(path), ".nself-restore-*-"+strings.TrimSuffix(filepath.Base(path), ".age")+".dec")
+	// A fresh unique 0600 file next to the backup, named .nself-restore-<16 hex>.dec;
+	// an existing <backup>.dec is never touched.
+	var out *os.File
+	var err error
+	for i := 0; i < 8; i++ {
+		var b [8]byte
+		_, _ = rand.Read(b[:])
+		out, err = os.OpenFile(filepath.Join(filepath.Dir(path), ".nself-restore-"+hex.EncodeToString(b[:])+".dec"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil || !errors.Is(err, os.ErrExist) {
+			break
+		}
+	}
 	if err != nil {
 		return "", fmt.Errorf("%w: create temp file: %v", errs.ErrBackupDecryptFailed, err)
 	}
@@ -186,7 +201,7 @@ func decryptFile(ctx context.Context, path, keyPath, project string) (string, er
 	return decrypted, nil
 }
 
-func restorePostgres(ctx context.Context, cfg *config.Config, backupFile string, opts RestoreOptions) error {
+func restorePostgres(ctx context.Context, cfg *config.Config, backupFile, origName string, opts RestoreOptions) error {
 	container := cfg.ProjectName + "_postgres"
 	user := cfg.Postgres.User
 	if user == "" {
@@ -198,7 +213,7 @@ func restorePostgres(ctx context.Context, cfg *config.Config, backupFile string,
 	}
 
 	// If it's a pg_dump custom format, use pg_restore.
-	if strings.HasSuffix(strings.TrimSuffix(backupFile, ".dec"), ".dump") {
+	if strings.HasSuffix(strings.TrimSuffix(origName, ".age"), ".dump") {
 		return restorePgDump(ctx, container, user, db, backupFile)
 	}
 
@@ -241,6 +256,13 @@ func restorePgDump(ctx context.Context, container, user, db, backupFile string) 
 		}
 		// pg_restore returns non-zero on warnings too; only fail on real errors.
 		errStr := string(errOutput)
+		t := fatalRestoreText("pg_restore", errStr) // the drill's rule and allowlist, one copy
+		// compat.V15(P7-PROD-08): only FATAL or "could not" fails -> any unlisted pg_restore error: line fails
+		if compat.V15() && t != "" {
+			return fmt.Errorf("%w: %s", errs.ErrBackupRestoreFailed, t)
+		} else if t != "" && strings.Contains(strings.ToLower(t), "error:") {
+			slog.Warn("pg_restore reported errors; this restore may be incomplete (v1.5 fails on them)", "errors", strings.Count(t, "; ")+1, "first", fmt.Sprintf("%.300s", t))
+		}
 		if strings.Contains(errStr, "FATAL") || strings.Contains(errStr, "could not") {
 			return fmt.Errorf("%w: %s", errs.ErrBackupRestoreFailed, errStr)
 		}
