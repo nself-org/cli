@@ -621,3 +621,41 @@ func TestApplyHoldAfterPluginRemoval(t *testing.T) {
 		t.Fatalf("a plan with a removal must still be held, got %v", err)
 	}
 }
+
+// TestApplyAsksAgainAfterPluginInstall: on a prod-class env the render that
+// exists after a plugin install is shown and asked about again, and both answers
+// are needed.
+func TestApplyAsksAgainAfterPluginInstall(t *testing.T) {
+	compattest.Set(t, true)
+	f := loadFixture(t, "prod-ssl")
+	writeFile(t, f.project+"/nself.yaml", "plugins:\n  - fakeplug\n", 0o644)
+	old := nbuild.PluginInstall
+	nbuild.PluginInstall = func(_ context.Context, _ *config.Config, name, pluginDir string) error {
+		fakePlugin(t, pluginDir, name)
+		return nil
+	}
+	t.Cleanup(func() { nbuild.PluginInstall = old })
+	var asked []string
+	var notes strings.Builder
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Stderr: &notes}, ApplyOptions{
+		Interactive: func(q string) bool { asked = append(asked, q); return len(asked) == 1 }})
+	wantE403(t, err)
+	if len(asked) != 2 || !strings.Contains(notes.String(), "after the plugin changes the build will write") {
+		t.Fatalf("asked %d times, notes %q", len(asked), notes.String())
+	}
+	if _, err := os.Stat(f.project + "/docker-compose.yml"); err == nil {
+		t.Fatal("a declined second confirmation still wrote")
+	}
+}
+
+// TestOverlayDisplayAbs: a file outside the project and the plugin dir is shown
+// as @abs/<path>.
+func TestOverlayDisplayAbs(t *testing.T) {
+	ov := overlay{dir: t.TempDir()}
+	if got := ov.display("/opt/somewhere/x.yml"); got != AbsPrefix+"opt/somewhere/x.yml" {
+		t.Fatalf("display = %q", got)
+	}
+	if got := ov.display("nginx/a.conf"); got != "nginx/a.conf" {
+		t.Fatalf("display = %q", got)
+	}
+}
