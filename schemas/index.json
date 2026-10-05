@@ -36,6 +36,10 @@
     {
       "path": "error.v1.schema.json",
       "id": "urn:nself:cli:schema:error:v1"
+    },
+    {
+      "path": "plugin-manifest.v2.schema.json",
+      "id": "urn:nself:cli:schema:plugin-manifest:v2"
     }
   ]
 }

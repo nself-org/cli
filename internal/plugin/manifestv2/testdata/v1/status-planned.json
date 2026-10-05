@@ -1,0 +1,22 @@
+{
+  "name": "fixture-status-planned",
+  "version": "1.2.0",
+  "description": "Fixture plugin fixture-status-planned",
+  "category": "infrastructure",
+  "license": "MIT",
+  "author": "nself",
+  "language": "go",
+  "minNselfVersion": "1.0.0",
+  "tier": "free",
+  "isCommercial": false,
+  "licenseType": "free",
+  "requires_license": false,
+  "tags": [
+    "fixture"
+  ],
+  "tables": [
+    "np_fixture_status_planned_items"
+  ],
+  "port": 3300,
+  "status": "planned"
+}

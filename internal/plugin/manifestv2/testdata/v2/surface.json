@@ -1,0 +1,87 @@
+{
+  "binaryName": "nself-surfacer",
+  "category": "infrastructure",
+  "commands": {
+    "binary": "nself-surfacer",
+    "command": "surfacer",
+    "confirm": {
+      "flags": []
+    },
+    "json": "legacy",
+    "output": "document",
+    "side_effect": "write",
+    "subcommands": [
+      {
+        "args": [
+          {
+            "name": "token",
+            "required": true,
+            "secret": true
+          }
+        ],
+        "confirm": {
+          "flags": [
+            "yes"
+          ],
+          "plan": {
+            "flag": "plan",
+            "id_flag": "plan-id"
+          }
+        },
+        "flags": [
+          {
+            "name": "yes",
+            "type": "bool"
+          },
+          {
+            "name": "plan",
+            "type": "bool"
+          },
+          {
+            "cli_only": true,
+            "name": "plan-id",
+            "secret": true,
+            "type": "string"
+          }
+        ],
+        "name": "apply",
+        "side_effect": "destructive",
+        "summary": "Apply a change"
+      },
+      {
+        "confirm": {
+          "flags": []
+        },
+        "name": "server list",
+        "side_effect": "read",
+        "summary": "List servers",
+        "surface": "all"
+      }
+    ],
+    "summary": "Surface fixture",
+    "surface": "cli-only"
+  },
+  "description": "Surface fields fixture",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.5.0",
+  "name": "fixture-surface",
+  "pluginType": "cli",
+  "requires": {
+    "nself": ">=1.5.0",
+    "plugins": [
+      "ai"
+    ],
+    "postgres_extensions": [
+      "pgvector"
+    ]
+  },
+  "service": {
+    "kind": "cli"
+  },
+  "status": "stable",
+  "tier": "free",
+  "version": "1.0.0"
+}

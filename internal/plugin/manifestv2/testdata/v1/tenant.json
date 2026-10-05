@@ -1,0 +1,79 @@
+{
+  "name": "tenant",
+  "version": "1.2.6",
+  "description": "Multi-tenant operations: create, suspend, upgrade and destroy tenants, plus per-tenant usage metering and billing reports.",
+  "author": "nself",
+  "license": "MIT",
+  "isCommercial": false,
+  "licenseType": "free",
+  "requiredEntitlements": [],
+  "requires_license": false,
+  "homepage": "https://nself.org/plugins",
+  "repository": "https://github.com/nself-org/plugins",
+  "minNselfVersion": "1.2.8",
+  "language": "go",
+  "pluginType": "cli",
+  "entryPoint": "cmd/",
+  "binaryName": "nself-tenant",
+  "category": "infrastructure",
+  "tags": [
+    "tenant",
+    "multi-tenancy",
+    "billing",
+    "metering",
+    "saas"
+  ],
+  "tables": [],
+  "webhooks": {},
+  "actions": {
+    "create": "Create a tenant",
+    "list": "List tenants",
+    "suspend": "Suspend a tenant",
+    "upgrade": "Upgrade a tenant plan",
+    "destroy": "Destroy a tenant",
+    "usage": "Show per-tenant usage",
+    "invoice-preview": "Preview an invoice",
+    "report": "Generate a billing report",
+    "retry-event": "Retry a failed billing event"
+  },
+  "envVars": {
+    "required": [],
+    "optional": [
+      "PROJECT_NAME",
+      "POSTGRES_HOST",
+      "POSTGRES_PORT",
+      "POSTGRES_DB",
+      "POSTGRES_USER",
+      "POSTGRES_PASSWORD",
+      "MINIO_ENABLED",
+      "STORAGE_ENABLED",
+      "MINIO_PORT",
+      "MINIO_ROOT_USER",
+      "MINIO_ROOT_PASSWORD",
+      "PROMETHEUS_ENABLED",
+      "PROMETHEUS_PORT"
+    ]
+  },
+  "hooks": {
+    "postInstall": null,
+    "preUninstall": null,
+    "postSync": null
+  },
+  "status": "stable",
+  "tier": "free",
+  "dependencies": {
+    "required": [],
+    "optional": []
+  },
+  "notes": "This is a CLI-proxy plugin, not a service plugin. It provides TWO commands, `nself tenant` and `nself billing`, declared in cliCommands; the installer publishes nself-tenant and nself-billing into ~/.nself/plugins/bin/. Extracted from the CLI core under CLI-R11. internal/tenant stays in the CLI as well, because `nself db` uses it. Project settings come from the environment: nself resolves the .env cascade and passes in every variable listed in envVars, so this plugin never re-implements the cascade.",
+  "cliCommands": [
+    {
+      "name": "tenant",
+      "description": "Create, list, suspend, upgrade and destroy tenants"
+    },
+    {
+      "name": "billing",
+      "description": "Per-tenant usage metering, invoices and billing reports"
+    }
+  ]
+}

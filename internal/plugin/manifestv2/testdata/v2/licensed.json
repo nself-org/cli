@@ -1,0 +1,53 @@
+{
+  "author": "nself",
+  "category": "infrastructure",
+  "dependencies": [
+    "ai"
+  ],
+  "description": "Fixture plugin fixture-licensed",
+  "isCommercial": true,
+  "language": "go",
+  "license": "licensed",
+  "licenseType": "max",
+  "license_spdx": "Proprietary",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.0.0",
+  "multiApp": {
+    "isolationColumn": "source_account_id",
+    "supported": true
+  },
+  "name": "fixture-licensed",
+  "permissions": {
+    "database": [
+      "read"
+    ],
+    "network": [
+      "*"
+    ]
+  },
+  "port": 3710,
+  "requiredEntitlements": [
+    "fixture"
+  ],
+  "requires": {
+    "nself": ">=1.0.0"
+  },
+  "requires_license": true,
+  "schema": "np_fixture_licensed",
+  "service": {
+    "compose": "docker-compose.plugin.yml",
+    "healthcheck": "/health",
+    "kind": "compose",
+    "port": 3710
+  },
+  "status": "stable",
+  "tables": [
+    "np_fixture_licensed_items"
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "tier": "max",
+  "version": "1.2.0"
+}

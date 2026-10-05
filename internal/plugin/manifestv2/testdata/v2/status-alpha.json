@@ -1,0 +1,33 @@
+{
+  "author": "nself",
+  "category": "infrastructure",
+  "description": "Fixture plugin fixture-status-alpha",
+  "language": "go",
+  "license": "free",
+  "licenseType": "free",
+  "license_spdx": "MIT",
+  "manifest_version": 2,
+  "maturity": "experimental",
+  "minNselfVersion": "1.0.0",
+  "name": "fixture-status-alpha",
+  "port": 3300,
+  "requires": {
+    "nself": ">=1.0.0"
+  },
+  "schema": "np_fixture_status_alpha",
+  "service": {
+    "compose": "docker-compose.plugin.yml",
+    "healthcheck": "/health",
+    "kind": "compose",
+    "port": 3300
+  },
+  "status": "experimental",
+  "tables": [
+    "np_fixture_status_alpha_items"
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "tier": "free",
+  "version": "1.2.0"
+}

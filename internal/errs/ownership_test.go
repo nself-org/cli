@@ -19,12 +19,12 @@ func TestOwnership_Mutations(t *testing.T) {
 		name, frag, code string
 		wantProblem      bool
 	}{
-		{"owner registers its own code", "codes_plugin_manifest.go", "E111", false},
-		{"owner registers last code of its range", "codes_plugin_manifest.go", "E114", false},
-		{"another Epic claims E111", "codes_plugin_other.go", "E111", true},
-		{"owner strays into a neighbour range", "codes_plugin_manifest.go", "E115", true},
+		{"owner registers its own code", "codes_catalog.go", "E115", false},
+		{"owner registers last code of its range", "codes_catalog.go", "E117", false},
+		{"another Epic claims E116", "codes_plugin_other.go", "E116", true},
+		{"owner strays into a neighbour range", "codes_catalog.go", "E118", true},
 		{"spare number E062 (TRUTH spare)", "codes_compat.go", "E062", true},
-		{"free number E140", "codes_plugin_manifest.go", "E140", true},
+		{"free number E140", "codes_catalog.go", "E140", true},
 		{"free number E006 in docker block", "codes_docker.go", "E006", true},
 		{"existing fragment grows past its range", "codes_cli.go", "E405", true},
 		{"cli codes from the wrong fragment", "codes_docker.go", "E406", true},
@@ -59,9 +59,9 @@ func TestOwnership_IntegrityWalkCatchesLeak(t *testing.T) {
 	}
 	regMu.Lock()
 	regOrigin["E062"] = "codes_compat.go"
-	regOrigin["E111"] = "codes_other.go"
+	regOrigin["E116"] = "codes_other.go"
 	regMu.Unlock()
 	if p := ownershipProblems(); len(p) != 2 {
-		t.Fatalf("ownershipProblems() = %v, want 2 (spare E062, wrong fragment E111)", p)
+		t.Fatalf("ownershipProblems() = %v, want 2 (spare E062, wrong fragment E116)", p)
 	}
 }

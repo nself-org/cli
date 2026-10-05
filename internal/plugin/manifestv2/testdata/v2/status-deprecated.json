@@ -1,0 +1,40 @@
+{
+  "author": "nself",
+  "category": "infrastructure",
+  "deprecation": {
+    "announcedDate": "2026-01-01",
+    "eolDate": "2027-01-01",
+    "migrationGuide": "https://nself.org/docs/migrate/fixture",
+    "replacedBy": "fixture-deps",
+    "state": "deprecated"
+  },
+  "description": "Fixture plugin fixture-status-deprecated",
+  "language": "go",
+  "license": "free",
+  "licenseType": "free",
+  "license_spdx": "MIT",
+  "manifest_version": 2,
+  "maturity": "deferred",
+  "minNselfVersion": "1.0.0",
+  "name": "fixture-status-deprecated",
+  "port": 3300,
+  "requires": {
+    "nself": ">=1.0.0"
+  },
+  "schema": "np_fixture_status_deprecated",
+  "service": {
+    "compose": "docker-compose.plugin.yml",
+    "healthcheck": "/health",
+    "kind": "compose",
+    "port": 3300
+  },
+  "status": "deprecated",
+  "tables": [
+    "np_fixture_status_deprecated_items"
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "tier": "free",
+  "version": "1.2.0"
+}

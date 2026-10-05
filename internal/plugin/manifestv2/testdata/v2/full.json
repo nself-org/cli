@@ -1,0 +1,59 @@
+{
+  "category": "infrastructure",
+  "description": "Every canonical v2 key",
+  "docs_url": "https://docs.nself.org/plugins/fixture-full",
+  "env": {
+    "optional": [
+      "FIXTURE_MODE"
+    ],
+    "required": [
+      "DATABASE_URL"
+    ]
+  },
+  "installable": true,
+  "isCommercial": true,
+  "language": "go",
+  "license": "licensed",
+  "licenseType": "pro",
+  "manifest_version": 2,
+  "maturity": "experimental",
+  "migrations": {
+    "apply": "boot",
+    "dir": "migrations"
+  },
+  "minNselfVersion": "1.5.0",
+  "name": "fixture-full",
+  "permissions": [
+    "db:read"
+  ],
+  "port": 3999,
+  "requires": {
+    "nself": ">=1.5.0 <2.0.0"
+  },
+  "requires_license": true,
+  "routes": [
+    {
+      "path": "/fixture",
+      "upstream_port": 3999
+    }
+  ],
+  "schema": "np_fixture_full",
+  "seed": {
+    "command": [
+      "fixture-full",
+      "seed"
+    ]
+  },
+  "service": {
+    "compose": "docker-compose.plugin.yml",
+    "healthcheck": "/health",
+    "kind": "compose",
+    "port": 3999
+  },
+  "status": "experimental",
+  "tables": [
+    "np_fixture_full_items"
+  ],
+  "tier": "pro",
+  "version": "2.0.1"
+}

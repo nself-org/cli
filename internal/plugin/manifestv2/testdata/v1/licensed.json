@@ -1,0 +1,44 @@
+{
+  "name": "fixture-licensed",
+  "version": "1.2.0",
+  "description": "Fixture plugin fixture-licensed",
+  "category": "infrastructure",
+  "license": "Proprietary",
+  "author": "nself",
+  "language": "go",
+  "minNselfVersion": "1.0.0",
+  "tier": "max",
+  "isCommercial": true,
+  "licenseType": "max",
+  "requires_license": true,
+  "tags": [
+    "fixture"
+  ],
+  "tables": [
+    "np_fixture_licensed_items"
+  ],
+  "port": 3710,
+  "dependencies": [
+    "ai"
+  ],
+  "requiredEntitlements": [
+    "fixture"
+  ],
+  "permissions": {
+    "database": [
+      "read"
+    ],
+    "network": [
+      "*"
+    ]
+  },
+  "multiApp": {
+    "supported": true,
+    "isolationColumn": "source_account_id"
+  },
+  "bundles": [
+    "fixture-bundle"
+  ],
+  "tier_pair": false,
+  "checksum": "abc"
+}

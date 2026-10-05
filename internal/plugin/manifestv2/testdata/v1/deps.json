@@ -1,0 +1,69 @@
+{
+  "name": "fixture-deps",
+  "version": "1.2.0",
+  "description": "Fixture plugin fixture-deps",
+  "category": "infrastructure",
+  "license": "MIT",
+  "author": "nself",
+  "language": "go",
+  "minNselfVersion": "1.0.0",
+  "tier": "free",
+  "isCommercial": false,
+  "licenseType": "free",
+  "requires_license": false,
+  "tags": [
+    "fixture"
+  ],
+  "tables": [
+    "np_fixture_deps_items"
+  ],
+  "port": 3725,
+  "health_endpoint": "/health",
+  "dependencies": {
+    "required": [
+      "ai",
+      "notify"
+    ],
+    "optional": [
+      "cron"
+    ]
+  },
+  "optionalDependencies": [
+    "voice",
+    "notify"
+  ],
+  "webhooks": {
+    "item.created": "Created",
+    "item.deleted": "Deleted"
+  },
+  "envVars": {
+    "required": [
+      "DATABASE_URL"
+    ],
+    "optional": {
+      "FIXTURE_MODE": "fast"
+    }
+  },
+  "apiEndpoints": [
+    {
+      "method": "GET",
+      "path": "/items"
+    },
+    {
+      "path": "/health"
+    }
+  ],
+  "permissions": [
+    "db:read",
+    "db:write"
+  ],
+  "systemDependencies": [],
+  "entryPoint": "cmd/main.go",
+  "runtime": "go",
+  "consumes": [
+    "ai"
+  ],
+  "provides": [
+    "fixture"
+  ]
+}
