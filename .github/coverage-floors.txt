@@ -121,6 +121,8 @@ tools/endpoint-auth-checker 69  # measured 71.9 2026-10-05
 tools/flagaudit 40  # measured 42.7 2026-10-05
 tools/imagelist 0  # measured 0.0 2026-10-05
 tools/mcpdoc 0  # measured 0.0 2026-10-05
+tools/perfbench 79  # measured 80.3 2026-10-05 (go test -mod=vendor -coverprofile ./tools/perfbench/...)
+tools/perfbench/scenarios 0  # measured 0.0 2026-10-05 (no own tests; exercised via tools/perfbench)
 tools/parity 16  # measured 18.2 2026-10-05
 tools/servicecatalog 0  # measured 0.0 2026-10-05
 tools/wikigen 0  # measured 0.0 2026-10-05
