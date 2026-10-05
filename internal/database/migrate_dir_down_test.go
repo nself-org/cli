@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +52,9 @@ exit 0
 
 func fakeDockerState(t *testing.T, answers map[string]string) string {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake docker is a /bin/sh script")
+	}
 	binDir, stateDir := t.TempDir(), t.TempDir()
 	if err := os.WriteFile(filepath.Join(binDir, "docker"), []byte(dirFakeDocker), 0o755); err != nil {
 		t.Fatal(err)

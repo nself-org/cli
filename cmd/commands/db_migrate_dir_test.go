@@ -14,6 +14,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -55,6 +56,9 @@ exit 0
 // useFakeDocker installs the fake docker on PATH and returns its state dir.
 func useFakeDocker(t *testing.T, answers map[string]string) string {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake docker is a /bin/sh script")
+	}
 	binDir, stateDir := t.TempDir(), t.TempDir()
 	if err := os.WriteFile(filepath.Join(binDir, "docker"), []byte(fakeDockerScript), 0o755); err != nil {
 		t.Fatalf("write fake docker: %v", err)
@@ -128,7 +132,6 @@ func dirProject(t *testing.T) string {
 	})
 	return filepath.Join(root, "migrations")
 }
-
 
 // writes returns the recorded calls that can change the database: every
 // EXEC (a -c statement) and every PIPE (SQL on stdin). Queries are reads.
