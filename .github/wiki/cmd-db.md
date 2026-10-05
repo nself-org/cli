@@ -43,6 +43,8 @@ nself db migrate up [--dry-run] [--migration-dir <path>] [--plugin <name>]
 
 With `--migration-dir` and `--dry-run`, the command lists the pending files of that directory and applies nothing. It reads the ledger (`np_common.schema_versions`, plus the `nself_ops.migrations` checksums) with SELECT statements only: no table is created, no row is written, and nothing is run inside a rolled-back transaction. It fails, as the real run would, when an applied file was edited after apply or when a pending file is rejected by the SQL lint or the ALTER prerequisite check. With `--env`/`--server`, both flags are forwarded to the remote host.
 
+In directory mode, `up` and `down` refuse a file that holds its own transaction control (`BEGIN`, `START TRANSACTION`, `COMMIT`, `END`, `ROLLBACK`, `ABORT`, `PREPARE TRANSACTION`, anywhere in the file, or a psql backslash command): the CLI wraps each migration and its ledger update in one transaction, and such a file would end it early. Text inside comments, strings and `DO $$ ... $$` bodies is not counted. `up` refuses the whole batch before applying any file. Remove the `BEGIN`/`COMMIT` lines from such files.
+
 **Examples:**
 
 ```bash
@@ -104,7 +106,7 @@ Without `--migration-dir`, looks for a corresponding `.down.sql` file next to th
 | `--migration-dir <path>` | Revert directory migrations: each reverted file `<name>.sql` needs `<name>_down.sql` or `<name>.down.sql` in `<path>` |
 | `--steps N` | With `--migration-dir`: number of most recent migrations to revert (default 1) |
 
-With `--migration-dir`, every step runs the down file and removes the migration's rows from both ledgers in one transaction. The newest applied migration must be a file of `<path>`; otherwise nothing is reverted and the error names it. A missing down file is an error naming both expected paths, and every step is checked before the first one runs. `--steps` without `--migration-dir` is an error.
+With `--migration-dir`, every step runs the down file and removes the migration's rows from both ledgers in one transaction. The newest applied migration must be a file of `<path>`; otherwise nothing is reverted and the error names it. A missing down file is an error naming both expected paths, and every step is checked before the first one runs. The ledger keys on the file name only, so `down` also requires the file in `<path>` to match the checksum recorded for that name in `nself_ops.migrations`; a same-named file from another directory (or an edited one) is refused. `--steps` without `--migration-dir` is an error.
 
 ### db migrate status
 

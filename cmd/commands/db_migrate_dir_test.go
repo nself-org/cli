@@ -12,6 +12,8 @@ package commands
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -101,6 +103,18 @@ func writeFiles(t *testing.T, dir string, files map[string]string) {
 			t.Fatal(err)
 		}
 	}
+}
+
+// appliedAnswers is the fake ledger for a down run: name is the newest applied
+// migration, with the checksum nself_ops.migrations holds for dir/name.
+func appliedAnswers(t *testing.T, dir, name string) map[string]string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return map[string]string{"q_latest": name + "\n", "q_ops_exists": "yes",
+		"q_checksums": fmt.Sprintf("%s|%x\n", name, sha256.Sum256(data))}
 }
 
 // newDirTestCmd builds a fresh up or down command wired like the real ones.
@@ -259,7 +273,7 @@ func TestDBMigrateUpDir_WithoutDryRunStillApplies(t *testing.T) {
 // only the newest applied file, via its _down.sql, in one transaction.
 func TestDBMigrateDown_Dir_RevertsOneByDefault(t *testing.T) {
 	dir := dirProject(t)
-	sd := useFakeDocker(t, map[string]string{"q_latest": "002_b.sql\n"})
+	sd := useFakeDocker(t, appliedAnswers(t, dir, "002_b.sql"))
 	cmd, out := newDirTestCmd("down")
 	_ = cmd.Flags().Set("migration-dir", dir)
 	if err := cmd.RunE(cmd, nil); err != nil {
@@ -286,7 +300,9 @@ func TestDBMigrateDown_Dir_RevertsOneByDefault(t *testing.T) {
 // success message.
 func TestDBMigrateDown_Dir_FailureIsError(t *testing.T) {
 	dir := dirProject(t)
-	useFakeDocker(t, map[string]string{"q_latest": "002_b.sql\n", "fail_pipe": ""})
+	answers := appliedAnswers(t, dir, "002_b.sql")
+	answers["fail_pipe"] = ""
+	useFakeDocker(t, answers)
 	cmd, out := newDirTestCmd("down")
 	_ = cmd.Flags().Set("migration-dir", dir)
 	if err := cmd.RunE(cmd, nil); err == nil {

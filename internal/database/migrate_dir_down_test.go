@@ -111,6 +111,32 @@ var dirTestFiles = map[string]string{
 	"002_b.sql": "CREATE TABLE dir_b (id int);", "002_b_down.sql": "DROP TABLE dir_b;",
 }
 
+// dirSums returns the fake nself_ops.migrations checksum answer for names in dir.
+func dirSums(t *testing.T, dir string, names ...string) string {
+	t.Helper()
+	var lines []string
+	for _, n := range names {
+		data, err := os.ReadFile(filepath.Join(dir, n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum, _ := checksumBytes(data)
+		lines = append(lines, n+"|"+sum)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// downAnswers is the canned ledger: latest names newest first, with checksums.
+func downAnswers(t *testing.T, dir, latest string, extra ...string) map[string]string {
+	t.Helper()
+	m := map[string]string{"q_latest": strings.ReplaceAll(latest, " ", "\n") + "\n", "q_ops_exists": "yes",
+		"q_checksums": dirSums(t, dir, strings.Fields(latest)...)}
+	for i := 0; i+1 < len(extra); i += 2 {
+		m[extra[i]] = extra[i+1]
+	}
+	return m
+}
+
 var fakeCfg = &config.Config{ProjectName: "fakeproj", Postgres: config.PostgresConfig{User: "postgres", DB: "nself"}}
 
 func TestMigrateDirPending_IssuesSelectsOnly(t *testing.T) {
@@ -154,7 +180,7 @@ func TestMigrateDirPending_LintFailureIsError(t *testing.T) {
 
 func TestMigrateDownDir_RevertsOnlyNamedMigration(t *testing.T) {
 	dir := mkMigDir(t, dirTestFiles)
-	sd := fakeDockerState(t, map[string]string{"q_latest": "002_b.sql\n"})
+	sd := fakeDockerState(t, downAnswers(t, dir, "002_b.sql"))
 	got, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1)
 	if err != nil || len(got) != 1 || got[0] != "002_b.sql" {
 		t.Fatalf("got %v, %v", got, err)
@@ -174,7 +200,7 @@ func TestMigrateDownDir_RevertsOnlyNamedMigration(t *testing.T) {
 
 func TestMigrateDownDir_BothDownNamingStyles(t *testing.T) {
 	dir := mkMigDir(t, dirTestFiles)
-	sd := fakeDockerState(t, map[string]string{"q_latest": "002_b.sql\n001_a.sql\n"})
+	sd := fakeDockerState(t, downAnswers(t, dir, "002_b.sql 001_a.sql"))
 	got, err := MigrateDownDir(context.Background(), fakeCfg, dir, 2)
 	if err != nil || len(got) != 2 {
 		t.Fatalf("got %v, %v", got, err)
@@ -187,7 +213,7 @@ func TestMigrateDownDir_BothDownNamingStyles(t *testing.T) {
 
 func TestMigrateDownDir_MissingDownFileNamesBothPaths(t *testing.T) {
 	dir := mkMigDir(t, map[string]string{"003_c.sql": "SELECT 1;"})
-	sd := fakeDockerState(t, map[string]string{"q_latest": "003_c.sql\n"})
+	sd := fakeDockerState(t, downAnswers(t, dir, "003_c.sql"))
 	_, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1)
 	if err == nil || !strings.Contains(err.Error(), "003_c_down.sql") || !strings.Contains(err.Error(), "003_c.down.sql") {
 		t.Fatalf("error must name both expected paths, got %v", err)
@@ -213,7 +239,7 @@ func TestMigrateDownDir_RefusesMigrationOutsideDir(t *testing.T) {
 func TestMigrateDownDir_ResolvesAllStepsBeforeRunning(t *testing.T) {
 	files := map[string]string{"001_a.sql": "x", "002_b.sql": "x", "002_b_down.sql": "DROP TABLE dir_b;"}
 	dir := mkMigDir(t, files)
-	sd := fakeDockerState(t, map[string]string{"q_latest": "002_b.sql\n001_a.sql\n"})
+	sd := fakeDockerState(t, downAnswers(t, dir, "002_b.sql 001_a.sql"))
 	if _, err := MigrateDownDir(context.Background(), fakeCfg, dir, 2); err == nil {
 		t.Fatal("want error: 001_a has no down file")
 	}
@@ -224,7 +250,7 @@ func TestMigrateDownDir_ResolvesAllStepsBeforeRunning(t *testing.T) {
 
 func TestMigrateDownDir_FewerAppliedThanStepsRevertsNothing(t *testing.T) {
 	dir := mkMigDir(t, dirTestFiles)
-	sd := fakeDockerState(t, map[string]string{"q_latest": "002_b.sql\n"})
+	sd := fakeDockerState(t, downAnswers(t, dir, "002_b.sql"))
 	if _, err := MigrateDownDir(context.Background(), fakeCfg, dir, 3); err == nil {
 		t.Fatal("want error when --steps exceeds applied migrations")
 	}
@@ -250,7 +276,7 @@ func TestMigrateDownDir_EmptyLedgerAndBadInputs(t *testing.T) {
 
 func TestMigrateDownDir_RefusesDownFileWithOwnTransactionControl(t *testing.T) {
 	dir := mkMigDir(t, map[string]string{"001_a.sql": "x", "001_a.down.sql": "DROP TABLE dir_a;\nCOMMIT;\n"})
-	sd := fakeDockerState(t, map[string]string{"q_latest": "001_a.sql\n"})
+	sd := fakeDockerState(t, downAnswers(t, dir, "001_a.sql"))
 	if _, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1); err == nil {
 		t.Fatal("want refusal")
 	}
@@ -261,7 +287,7 @@ func TestMigrateDownDir_RefusesDownFileWithOwnTransactionControl(t *testing.T) {
 
 func TestMigrateDownDir_PsqlFailureIsNotSuccess(t *testing.T) {
 	dir := mkMigDir(t, dirTestFiles)
-	fakeDockerState(t, map[string]string{"q_latest": "002_b.sql\n", "fail_pipe": ""})
+	fakeDockerState(t, downAnswers(t, dir, "002_b.sql", "fail_pipe", ""))
 	got, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1)
 	if err == nil || len(got) != 0 {
 		t.Fatalf("failed revert reported success: %v, %v", got, err)
@@ -274,6 +300,109 @@ func TestMigrateDownDir_QuotesLedgerName(t *testing.T) {
 	s := downTxSQL(downStep{name: "a'b.sql", sql: "SELECT 1;"})
 	if !strings.Contains(s, "name = 'a''b.sql'") {
 		t.Errorf("name not quoted:\n%s", s)
+	}
+}
+
+// Transaction control anywhere in the statement stream is refused; harmless
+// look-alikes (inside comments, strings, dollar quotes, plpgsql blocks) are not.
+func TestRejectTxControl_Table(t *testing.T) {
+	bad := map[string]string{
+		"own line":            "DROP TABLE a;\nCOMMIT;",
+		"same line":           "DROP TABLE dir_b; COMMIT; DROP TABLE nope;",
+		"begin first":         "BEGIN;\nDROP TABLE a;",
+		"begin transaction":   "DROP TABLE a; BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;",
+		"start transaction":   "select 1; start transaction;",
+		"end":                 "DROP TABLE a; END;",
+		"rollback":            "DROP TABLE a; ROLLBACK;",
+		"abort":               "DROP TABLE a; abort;",
+		"prepare transaction": "DROP TABLE a; PREPARE TRANSACTION 'x';",
+		"after dash string":   "SELECT '--'; COMMIT;",
+		"after block comment": "SELECT 1; /* c */ COMMIT;",
+		"after dollar body":   "SELECT $$x$$; COMMIT;",
+		"after E string":      "SELECT E'it\\'s'; COMMIT;",
+		"psql meta-command":   "DROP TABLE a;\n\\set AUTOCOMMIT on\nDROP TABLE b;",
+		"no trailing newline": "DROP TABLE a;commit",
+		"mixed case":          "DROP TABLE a; CoMmIt ;",
+	}
+	for name, sql := range bad {
+		if err := rejectTxControl("f.sql", sql); err == nil {
+			t.Errorf("%s: not refused: %q", name, sql)
+		}
+	}
+	good := map[string]string{
+		"comment":       "-- COMMIT; BEGIN;\nDROP TABLE a; /* ROLLBACK; */",
+		"string":        "INSERT INTO t VALUES ('x; COMMIT; y');",
+		"identifier":    `ALTER TABLE "commit; x" ADD c int;`,
+		"dollar block":  "DO $$ BEGIN PERFORM 1; END $$;",
+		"tagged dollar": "DO $body$ BEGIN PERFORM 1; END; $body$;",
+		"function":      "CREATE FUNCTION f() RETURNS int AS 'BEGIN RETURN 1; END;' LANGUAGE plpgsql;",
+		"begin atomic":  "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END;",
+		"rollback to":   "SAVEPOINT s; DROP TABLE a; ROLLBACK TO SAVEPOINT s;",
+		"E string ok":   "SELECT E'it\\'s; COMMIT;';",
+		"commentary":    "ALTER TABLE t ADD COLUMN commit_at timestamptz;",
+		"concurrently":  "BEGIN;\nCREATE INDEX CONCURRENTLY i ON t (c);\nCOMMIT;",
+	}
+	for name, sql := range good {
+		if err := rejectTxControl("f.sql", sql); err != nil {
+			t.Errorf("%s: wrongly refused: %v", name, err)
+		}
+	}
+}
+
+func TestMigrateDownDir_RefusesSameLineCommit(t *testing.T) {
+	dir := mkMigDir(t, map[string]string{"001_a.sql": "x", "001_a.down.sql": "DROP TABLE dir_a; COMMIT; DROP TABLE nope;"})
+	sd := fakeDockerState(t, downAnswers(t, dir, "001_a.sql"))
+	if _, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1); err == nil || !strings.Contains(err.Error(), "transaction control") {
+		t.Fatalf("want transaction-control refusal, got %v", err)
+	}
+	if countPrefix(recordedCalls(t, sd), "CALL PIPE") != 0 {
+		t.Error("executed a down file that commits mid-way")
+	}
+}
+
+// The ledger keys on the base name only: a file of the same name in another
+// directory (different content, so different checksum) must not be reverted.
+func TestMigrateDownDir_RefusesSameNameFromAnotherDir(t *testing.T) {
+	dirX := mkMigDir(t, dirTestFiles)
+	other := map[string]string{"002_b.sql": "CREATE TABLE other_b (id int);", "002_b_down.sql": "DROP TABLE IF EXISTS dir_b;"}
+	dirY := mkMigDir(t, other)
+	sd := fakeDockerState(t, downAnswers(t, dirX, "002_b.sql"))
+	_, err := MigrateDownDir(context.Background(), fakeCfg, dirY, 1)
+	if err == nil || !strings.Contains(err.Error(), "not the migration that was applied") {
+		t.Fatalf("want refusal, got %v", err)
+	}
+	if countPrefix(recordedCalls(t, sd), "CALL PIPE") != 0 {
+		t.Error("reverted another directory's migration")
+	}
+	// The same directory still works.
+	fakeDockerState(t, downAnswers(t, dirX, "002_b.sql"))
+	if got, err := MigrateDownDir(context.Background(), fakeCfg, dirX, 1); err != nil || len(got) != 1 {
+		t.Fatalf("original dir: %v, %v", got, err)
+	}
+}
+
+func TestMigrateDownDir_RefusesWhenNoChecksumRecorded(t *testing.T) {
+	dir := mkMigDir(t, dirTestFiles)
+	sd := fakeDockerState(t, downAnswers(t, dir, "002_b.sql", "q_checksums", ""))
+	if _, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1); err == nil {
+		t.Fatal("want refusal: identity cannot be proven without a recorded checksum")
+	}
+	if countPrefix(recordedCalls(t, sd), "CALL PIPE") != 0 {
+		t.Error("reverted without proving identity")
+	}
+}
+
+func TestMigrateDirUp_RefusesTxControlBeforeApplyingAnything(t *testing.T) {
+	dir := mkMigDir(t, map[string]string{"001_a.sql": "CREATE TABLE a (id int);", "002_b.sql": "CREATE TABLE b (id int); COMMIT; CREATE TABLE c (id int);"})
+	sd := fakeDockerState(t, map[string]string{"q_legacy_exists": "yes", "q_ops_exists": "yes"})
+	if _, err := MigrateUpDir(context.Background(), fakeCfg, dir); err == nil || !strings.Contains(err.Error(), "transaction control") {
+		t.Fatalf("want refusal, got %v", err)
+	}
+	if countPrefix(recordedCalls(t, sd), "CALL PIPE") != 0 {
+		t.Error("applied a file before refusing the batch")
+	}
+	if _, err := PendingDirMigrations(context.Background(), fakeCfg, dir); err == nil {
+		t.Error("the dry-run preview must refuse what the real run refuses")
 	}
 }
 
@@ -382,5 +511,29 @@ func TestMigrateDirIntegration_DryRunUpDownFlow(t *testing.T) {
 		pgScalar(t, cfg, "SELECT count(*) FROM np_common.schema_versions WHERE name = '002_b.sql'") != "1" ||
 		pgScalar(t, cfg, "SELECT count(*) FROM nself_ops.migrations WHERE name = '002_b.sql'") != "1" {
 		t.Fatal("failed down was not rolled back as one transaction")
+	}
+
+	// 7. a down file that commits mid-way on one line is refused: nothing runs,
+	// so table and ledger stay in step.
+	if err := os.WriteFile(filepath.Join(dir, "002_b_down.sql"), []byte("DROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = MigrateDownDir(ctx, cfg, dir, 1); err == nil || len(got) != 0 {
+		t.Fatalf("same-line COMMIT down reported %v, %v", got, err)
+	}
+	if pgScalar(t, cfg, "SELECT to_regclass('dir_b') IS NOT NULL") != "t" ||
+		pgScalar(t, cfg, "SELECT count(*) FROM np_common.schema_versions WHERE name = '002_b.sql'") != "1" {
+		t.Fatal("schema and ledger fell out of step")
+	}
+
+	// 8. another directory's 002_b.sql (different content) must not be reverted,
+	// even with a down file that would succeed.
+	other := mkMigDir(t, map[string]string{"002_b.sql": "CREATE TABLE other_b (id int);", "002_b_down.sql": "DROP TABLE IF EXISTS dir_b;"})
+	if got, err = MigrateDownDir(ctx, cfg, other, 1); err == nil || len(got) != 0 {
+		t.Fatalf("cross-directory down reported %v, %v", got, err)
+	}
+	if pgScalar(t, cfg, "SELECT to_regclass('dir_b') IS NOT NULL") != "t" ||
+		pgScalar(t, cfg, "SELECT count(*) FROM nself_ops.migrations WHERE name = '002_b.sql'") != "1" {
+		t.Fatal("another directory's down touched this migration")
 	}
 }

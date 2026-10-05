@@ -181,6 +181,14 @@ func MigrateUpDir(ctx context.Context, cfg *config.Config, dir string) (int, err
 		return 0, prerequisiteError(missing)
 	}
 
+	for _, f := range pending {
+		if data, readErr := os.ReadFile(f); readErr == nil {
+			if txErr := rejectTxControl(filepath.Base(f), string(data)); txErr != nil {
+				return 0, txErr
+			}
+		}
+	}
+
 	count := 0
 	for _, f := range files {
 		skipped, applyErr := ApplyFile(ctx, cfg, f)
@@ -263,4 +271,24 @@ func MigrateStatus(ctx context.Context, cfg *config.Config, dir string) ([]Migra
 		return statuses[i].Name < statuses[j].Name
 	})
 	return statuses, nil
+}
+
+// ledgerSelect runs one read-only query against the configured database.
+func ledgerSelect(ctx context.Context, cfg *config.Config, q string) (string, error) {
+	db := cfg.Postgres.DB
+	if db == "" {
+		db = "nself"
+	}
+	return querySQL(ctx, cfg, db, q)
+}
+
+// ledgerTableExists reports, read-only via to_regclass (NULL, never an error,
+// for a missing schema or table), whether a schema-qualified table exists.
+func ledgerTableExists(ctx context.Context, cfg *config.Config, qualified string) (bool, error) {
+	out, err := ledgerSelect(ctx, cfg, fmt.Sprintf(
+		"SELECT CASE WHEN to_regclass('%s') IS NULL THEN 'no' ELSE 'yes' END", qualified))
+	if err != nil {
+		return false, fmt.Errorf("check %s: %w", qualified, err)
+	}
+	return strings.TrimSpace(out) == "yes", nil
 }
