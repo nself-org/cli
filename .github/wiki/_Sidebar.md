@@ -68,6 +68,7 @@
 - [[Plugin-Licensing]]
 - [[Plugin-Architecture]]
 - [[Plugin-Dev-Guide]]
+- [[Plugin-Migrations-Contract]]
 
 <details><summary>Free (25)</summary>
 
