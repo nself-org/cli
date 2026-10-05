@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -213,6 +214,9 @@ func TestReaderRefusesLinks(t *testing.T) {
 		wantCode(t, err, "E516", ErrLink)
 	})
 	t.Run("hard link member", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("hard-link counts are not read on Windows")
+		}
 		dir := makeBundle(t, map[string]string{"db/x": "per-host-secret"})
 		p := filepath.Join(dir, "db", "x")
 		_ = os.Remove(p)
