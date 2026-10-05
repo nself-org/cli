@@ -1,0 +1,3 @@
+# fixture floors for below.out: internal/license is at 50% against floor 60
+internal/auth 80
+internal/license 60

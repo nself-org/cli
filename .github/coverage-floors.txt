@@ -1,0 +1,23 @@
+# Per-package statement-coverage floors, checked by tools/covfloor over the
+# coverage.out of .github/workflows/coverage.yml (Linux, ubuntu-latest).
+#
+#   <module-relative package>  <integer floor>   # optional comment
+#
+# Floors are anti-regression floors, not targets. A package is its directory; its
+# coverage is covered statements / total statements of the files in it, counted
+# by its own tests. Never lower a line to make a run pass: write the test, or
+# justify the change in the PR.
+#
+# New package: run the coverage command from .github/wiki/Contributing.md, then
+#   go run -mod=vendor ./tools/covfloor -profile coverage.out -floors .github/coverage-floors.txt -write
+# which appends the missing packages at max(0, floor(measured) - 2) and never
+# changes an existing line. A line for a package that no longer has statements is
+# stale and fails the gate; delete it with the package.
+#
+# internal/trust: Linux floor. dns_macos.go and ports_macos.go carry //go:build darwin
+# and the darwin-only idempotency suite does not run on Linux, so the Linux
+# measurement is far below the macOS one (P103 R1). This gate runs on Linux only.
+internal/auth 80
+internal/license 60
+internal/trust 35
+internal/ui 75

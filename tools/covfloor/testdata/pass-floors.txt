@@ -1,0 +1,4 @@
+# fixture floors for pass.out
+.                 100  # measured 100.0
+internal/a        78   # measured 80.0
+internal/b        50

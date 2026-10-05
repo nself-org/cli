@@ -3,32 +3,40 @@ name: Coverage
 on:
   push:
     branches: [main]
-    paths: &coverage-paths
+    paths:
       - "**/*.go"
       - "go.mod"
       - "go.sum"
       - "vendor/**"
       - ".github/workflows/coverage.yml"
+      - ".github/coverage-floors.txt"
   pull_request:
     branches: [main]
-    paths: *coverage-paths
+    # Spelled out, not an alias: actionlint rejects `paths: *anchor`.
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - "vendor/**"
+      - ".github/workflows/coverage.yml"
+      - ".github/coverage-floors.txt"
 
-# S88b.T05: CLI coverage gate — fails if coverage drops below floor.
+# CLI coverage gate. Two floors are enforced, both fail-closed:
 #
-# Floor policy (P94 — 2026-04-21, updated at PR #77 / S58 landing):
-#   - Current observed total: 26.8% (whole-tree, includes CLI scaffolding and
-#     many pure-orchestration packages that inflate the denominator without
-#     adding meaningful logic to cover).
-#   - Floor is set to 25% as a hard anti-regression gate. Dropping below 25%
-#     fails CI; staying at or above 25% passes.
-#   - Per-package targets remain the real quality bar — see the per-package
-#     step below. Security-critical packages (license, auth) MUST be at 100%.
-#   - Total-coverage uplift (target 75%) is tracked as a structural follow-up
-#     in cli/.claude/tasks/active.md — requires test additions in low-coverage
-#     packages: aiprofile, alerts, dogfood, env, metrics, installer, ports,
-#     postgres, security, seed, setup, tenant, trust, truststate, ui.
+#   1. Whole tree: total statement coverage must be >= COVERAGE_FLOOR (25%).
+#      A hard anti-regression gate set at S88b.T05, observed ~27% then.
+#   2. Per package: every package's coverage must be >= its line in
+#      .github/coverage-floors.txt, checked by tools/covfloor over the single
+#      coverage.out the "Run tests with coverage" step produces. The file is
+#      data: one line per package, measured on this Linux runner. A package
+#      below its floor, a line whose package no longer has statements (stale),
+#      an unreadable profile or floors file, and a package with no line all
+#      fail the job. The security-critical floors are the license, auth, trust
+#      and ui lines of that file.
 #
-# Security-critical packages (license, auth) must be at 100%.
+# Never lower a floor to make a run pass; write the test (or justify the change
+# in the PR). Raising total coverage toward the 75% goal is tracked as D-0057.
+# The command-family and pentest steps below are separate, unchanged gates.
 env:
   COVERAGE_FLOOR: 25
   CGO_ENABLED: 0
@@ -66,7 +74,17 @@ jobs:
       - name: Run tests with coverage
         run: go test -mod=vendor -coverprofile=coverage.out -covermode=atomic ./...
 
-      - name: Enforce overall coverage floor (≥70%)
+      # The one profile every floor is measured from; kept so the floors file can
+      # be regenerated from a CI run (tools/covfloor -write) and audited later.
+      - name: Upload coverage profile
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-coverage-profile
+          path: coverage.out
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce overall coverage floor (>= ${{ env.COVERAGE_FLOOR }}%)
         run: |
           total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
           echo "Total coverage: ${total}%"
@@ -82,67 +100,10 @@ jobs:
           fi
           echo "PASS: Coverage ${total}% >= floor ${COVERAGE_FLOOR}%"
 
-      - name: Enforce security-critical packages coverage floor
-        # Per-package floors for internal/license, internal/auth, internal/trust,
-        # internal/ui, and internal/watchdog.
-        # Policy (P94 S58, 2026-04-21): the prior per-function 100% bar did not
-        # match the currently shipped reality (license 67%, auth 83%). Switch
-        # to package-level floors that anti-regress current measurements:
-        #   - internal/license: floor 60% total (observed 67%)
-        #   - internal/auth:    floor 80% total (observed 83%)
-        # Policy (P97 G0-T11, 2026-04-26): three additional packages were
-        # under-covered when CI run 24950859633 failed. Per PCI
-        # msg-2026-04-26-ci-cli-coverage-test-fail-20260426 the floors below
-        # were added to anti-regress the new tests:
-        #   - internal/trust:    floor 75% total (observed 76%, security-critical)
-        #   - internal/ui:       floor 75% total (observed 97%)
-        #   - internal/watchdog: floor 75% total (observed 94%)
-        # Per-function 100% is the long-term target tracked as a structural
-        # follow-up; raising it requires test authorship in cache.go,
-        # grace.go, validate.go, tail.go, storage.go (see coverage report).
-        run: |
-          failed=0
-          declare_floor() {
-            case "$1" in
-              license) echo 60;;
-              auth) echo 80;;
-              trust)
-                # dns_macos.go + ports_macos.go carry //go:build darwin so they are
-                # excluded from Linux builds. Linux-only files (dns_linux.go,
-                # ports_linux.go) are covered by linux-specific tests. Floor raised
-                # from 20% to 50% at S26.T08 when darwin files were gated.
-                # P103 R1: Linux floor reduced from 50% to 35% because the darwin-only
-                # idempotency test suite (idempotency_test.go, ~17K lines) is excluded
-                # on Linux, driving measured Linux coverage down to ~36.5% against the
-                # linux-only trust functions. The darwin floor of 75% remains
-                # unchanged. Tracking issue: add Linux-specific trust tests to close
-                # the gap (P103 or subsequent patch).
-                if [ "$(uname)" = "Darwin" ]; then echo 75; else echo 35; fi;;
-              ui) echo 75;;
-              watchdog) echo 75;;
-              *) echo 0;;
-            esac
-          }
-          for pkg in license auth trust ui watchdog; do
-            floor=$(declare_floor "$pkg")
-            if ! go test -mod=vendor -coverprofile="/tmp/${pkg}.out" "./internal/${pkg}/..." 2>/dev/null; then
-              echo "WARN: could not test internal/${pkg} — package may not exist at this path" >&2
-              continue
-            fi
-            total=$(go tool cover -func="/tmp/${pkg}.out" 2>/dev/null | awk '/^total:/{print $3}' | tr -d '%')
-            if [ -z "$total" ]; then
-              echo "WARN: could not parse total coverage for internal/${pkg}" >&2
-              continue
-            fi
-            result=$(awk -v total="$total" -v floor="$floor" 'BEGIN { print (total+0 >= floor+0) ? "pass" : "fail" }')
-            if [ "$result" = "fail" ]; then
-              echo "FAIL: internal/${pkg} coverage ${total}% below floor ${floor}%" >&2
-              failed=1
-            else
-              echo "PASS: internal/${pkg} coverage ${total}% >= floor ${floor}%"
-            fi
-          done
-          exit $failed
+      - name: Enforce per-package coverage floors (.github/coverage-floors.txt)
+        # Reads the profile above; prints PASS/FAIL/UNFLOORED/STALE per package.
+        # Floors are data in .github/coverage-floors.txt (see its header).
+        run: go run -mod=vendor ./tools/covfloor -profile coverage.out -floors .github/coverage-floors.txt
 
       - name: Enforce security-critical command-family coverage floor (P6-E11-W2-S3-T18)
         # Per-family line-coverage floor within cmd/commands, per
@@ -246,13 +207,15 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}')
-          echo "### Coverage Report" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Total coverage | ${total} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Floor | ${COVERAGE_FLOOR}% |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Security-critical (license, auth) | 100% required |" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Coverage Report"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| Total coverage | ${total} |"
+            echo "| Floor | ${COVERAGE_FLOOR}% |"
+            echo "| Per-package floors | .github/coverage-floors.txt (tools/covfloor) |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7

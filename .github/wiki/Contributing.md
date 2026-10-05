@@ -108,30 +108,27 @@ git push origin feat/my-feature
 
 ## Test Coverage
 
-The CLI has package-level coverage floors enforced by the
-`Coverage` workflow. New code in these packages must keep the package above
-its floor or CI will fail.
+The `Coverage` workflow enforces two kinds of floor, and both fail closed.
 
-| Package | Floor | Notes |
-|---|---|---|
-| Whole tree | 25% | Anti-regression gate; total coverage uplift to 75% is a structural follow-up |
-| `internal/license` | 60% | Security-critical |
-| `internal/auth` | 80% | Security-critical |
-| `internal/trust` | 75% | Security-critical (added P97 G0-T11) |
-| `internal/ui` | 75% | Added P97 G0-T11 |
-| `internal/watchdog` | 75% | Added P97 G0-T11 |
+- **Whole tree:** total statement coverage must stay at or above `COVERAGE_FLOOR` in `.github/workflows/coverage.yml`.
+- **Per package:** every package must stay at or above its line in `.github/coverage-floors.txt`. `tools/covfloor` checks the single `coverage.out` the workflow produces. A package below its floor, a line for a package that has no statements any more, a package with no line, and an unreadable profile or floors file all fail the job.
 
-Run coverage locally before pushing:
+The floors file is data and holds every package's floor, measured on the Linux runner. This page does not copy the numbers; read the file.
+
+Check locally before pushing:
 
 ```bash
 go test -mod=vendor -coverprofile=coverage.out ./...
-go tool cover -func=coverage.out | tail -1
-go tool cover -func=coverage.out | grep "internal/trust"   # per-package
+go run -mod=vendor ./tools/covfloor -profile coverage.out -floors .github/coverage-floors.txt -strict
 ```
 
-Floor changes need a PR with a justification line in the workflow comment.
-Path A (write tests) is preferred over Path B (lower the floor) per the
-CI/CD 100% Green Hard Rule.
+Local macOS numbers can differ from Linux (for example `internal/trust`), so the Linux workflow is the one that counts.
+
+Rules:
+
+- A new package adds its line with `go run -mod=vendor ./tools/covfloor -profile coverage.out -floors .github/coverage-floors.txt -write`. It appends the missing packages at the measured value minus 2 points and never changes an existing line.
+- Lowering a floor needs a PR justification. Writing the test is preferred over lowering the floor.
+- Delete a package's line in the same change that deletes the package.
 
 ## Commit Conventions
 
