@@ -92,3 +92,23 @@ func TestNextMinor_UnparseableReturnsUnchanged(t *testing.T) {
 		}
 	}
 }
+
+// TestCapabilities_AdvertisesDBDryRunSafe pins the capability a remote caller
+// requires before forwarding --dry-run (P7-PROD-84), and that the returned
+// slice is a copy: mutating it must not change what the build advertises.
+func TestCapabilities_AdvertisesDBDryRunSafe(t *testing.T) {
+	caps := Capabilities()
+	found := false
+	for _, c := range caps {
+		if c == CapDBDryRunSafe {
+			found = true
+		}
+	}
+	if !found || CapDBDryRunSafe != "db-dry-run-safe" {
+		t.Fatalf("Capabilities() = %v, want to include %q", caps, "db-dry-run-safe")
+	}
+	caps[0] = "tampered"
+	if Capabilities()[0] != CapDBDryRunSafe {
+		t.Error("Capabilities() shares state between calls")
+	}
+}
