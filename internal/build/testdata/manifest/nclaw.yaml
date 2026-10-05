@@ -1,0 +1,51 @@
+# ɳClaw backend — nSelf project configuration
+# Managed by: nself CLI
+# DO NOT run docker-compose directly. Use: nself build && nself start
+
+project:
+  name: nclaw
+  display_name: nClaw
+  description: ɳClaw AI assistant backend powered by nSelf CLI + nClaw plugin bundle
+
+# Optional services enabled for ɳClaw
+services:
+  redis:
+    enabled: true
+    # Session caching, conversation state, rate limiting
+  minio:
+    enabled: true
+    # Object storage for voice recordings, browser screenshots, file attachments
+  mail:
+    enabled: true
+    # Email integration via nself-mux plugin
+  search:
+    enabled: true
+    provider: meilisearch
+    # Full-text search across conversation history and memory
+
+# Pro plugins (nClaw bundle — $0.99/mo)
+# Required: nself plugin install ai claw mux
+# Optional bundle members: nself plugin install claw-web voice browser google notify cron
+plugins:
+  pro:
+    - name: ai
+      # AI provider routing, model management, streaming (required)
+    - name: claw
+      # Conversation management, memory, tool dispatch, personas (required)
+    - name: mux
+      # Messaging pipeline, email integration, webhook routing (required)
+    - name: claw-web
+      # Web client surface (optional bundle member)
+    - name: voice
+      # Speech-to-text and text-to-speech (optional bundle member)
+    - name: browser
+      # Browser automation via Chrome DevTools Protocol (optional bundle member)
+    - name: google
+      # Gmail, Calendar, Drive integration (optional bundle member)
+    - name: notify
+      # Push notifications via FCM / APNs (optional bundle member)
+    - name: cron
+      # Scheduled jobs and proactive triggers (optional bundle member)
+
+# Environment: overridden by .env / .env.prod
+# Run `nself build` after changing this file.
