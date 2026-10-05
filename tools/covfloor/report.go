@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"math"
 	"sort"
@@ -71,7 +70,7 @@ func Evaluate(cov map[string]*Cover, floors map[string]int) Report {
 // OK reports whether the gate passes. Unfloored packages fail it only in
 // strict mode.
 func (r Report) OK(strict bool) bool {
-	return len(r.Failed) == 0 && len(r.Stale) == 0 && !(strict && len(r.Unfloored) > 0)
+	return len(r.Failed) == 0 && len(r.Stale) == 0 && (!strict || len(r.Unfloored) == 0)
 }
 
 // PrintText writes one line per package (`PASS|FAIL|UNFLOORED <pkg> <pct>%
@@ -79,17 +78,17 @@ func (r Report) OK(strict bool) bool {
 func (r Report) PrintText(w io.Writer, floors map[string]int, strict bool) {
 	for _, p := range r.Packages {
 		if p.Floor == nil {
-			fmt.Fprintf(w, "%s %s %.1f%% floor none\n", p.Status, p.Package, p.Coverage)
+			say(w, "%s %s %.1f%% floor none\n", p.Status, p.Package, p.Coverage)
 			continue
 		}
-		fmt.Fprintf(w, "%s %s %.1f%% floor %d%%\n", p.Status, p.Package, p.Coverage, *p.Floor)
+		say(w, "%s %s %.1f%% floor %d%%\n", p.Status, p.Package, p.Coverage, *p.Floor)
 	}
 	for _, p := range r.Stale {
-		fmt.Fprintf(w, "STALE %s floor %d%% (no statements in the profile; remove the line or fix the path)\n", p, floors[p])
+		say(w, "STALE %s floor %d%% (no statements in the profile; remove the line or fix the path)\n", p, floors[p])
 	}
-	fmt.Fprintf(w, "covfloor: %d packages, %d below floor, %d stale, %d unfloored", len(r.Packages), len(r.Failed), len(r.Stale), len(r.Unfloored))
+	say(w, "covfloor: %d packages, %d below floor, %d stale, %d unfloored", len(r.Packages), len(r.Failed), len(r.Stale), len(r.Unfloored))
 	if len(r.Unfloored) > 0 && strict {
-		fmt.Fprint(w, " (strict: an unfloored package fails the gate; run covfloor -write)")
+		say(w, "%s", " (strict: an unfloored package fails the gate; run covfloor -write)")
 	}
-	fmt.Fprintln(w)
+	sayln(w)
 }

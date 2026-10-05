@@ -32,7 +32,7 @@ func ReadFloors(file string) (*Floors, error) {
 	if err != nil {
 		return nil, fmt.Errorf("floors: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	fl := &Floors{}
 	seen := map[string]int{}
@@ -140,7 +140,7 @@ func (f *Floors) Write(file string) error {
 		return fmt.Errorf("floors: %w", err)
 	}
 	if err := os.Rename(tmp, file); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("floors: %w", err)
 	}
 	return nil

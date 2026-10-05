@@ -47,25 +47,25 @@ func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 		return 2
 	}
 	if *profile == "" || *floorsFile == "" || fs.NArg() != 0 {
-		fmt.Fprintln(stderr, "covfloor: -profile and -floors are required")
+		sayln(stderr, "covfloor: -profile and -floors are required")
 		return 2
 	}
 	mod := *module
 	if mod == "" {
 		var err error
 		if mod, err = moduleOf(*gomod); err != nil {
-			fmt.Fprintln(stderr, "covfloor:", err)
+			sayln(stderr, "covfloor:", err)
 			return 1
 		}
 	}
 	cov, err := ReadProfile(*profile, mod)
 	if err != nil {
-		fmt.Fprintln(stderr, "covfloor:", err)
+		sayln(stderr, "covfloor:", err)
 		return 1
 	}
 	fl, err := ReadFloors(*floorsFile)
 	if err != nil {
-		fmt.Fprintln(stderr, "covfloor:", err)
+		sayln(stderr, "covfloor:", err)
 		return 1
 	}
 	if *write {
@@ -79,21 +79,21 @@ func run(args []string, stdout, stderr io.Writer, now time.Time) int {
 		if len(missing) > 0 {
 			fl.Append(missing, *date)
 			if err := fl.Write(*floorsFile); err != nil {
-				fmt.Fprintln(stderr, "covfloor:", err)
+				sayln(stderr, "covfloor:", err)
 				return 1
 			}
 		}
-		fmt.Fprintf(stderr, "covfloor: wrote %d new floor line(s)\n", len(missing))
+		say(stderr, "covfloor: wrote %d new floor line(s)\n", len(missing))
 	}
 	floors := fl.Map()
 	rep := Evaluate(cov, floors)
 	if *asJSON {
 		out, err := json.MarshalIndent(rep, "", "  ")
 		if err != nil {
-			fmt.Fprintln(stderr, "covfloor:", err)
+			sayln(stderr, "covfloor:", err)
 			return 1
 		}
-		fmt.Fprintln(stdout, string(out))
+		sayln(stdout, string(out))
 	} else {
 		rep.PrintText(stdout, floors, *strict)
 	}
@@ -116,3 +116,8 @@ func moduleOf(gomod string) (string, error) {
 	}
 	return "", fmt.Errorf("module path: no module line in %s", gomod)
 }
+
+// say and sayln write to stdout or stderr. A failed write to a standard stream
+// has nowhere left to be reported, so its error is dropped on purpose.
+func say(w io.Writer, format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+func sayln(w io.Writer, a ...any)              { _, _ = fmt.Fprintln(w, a...) }

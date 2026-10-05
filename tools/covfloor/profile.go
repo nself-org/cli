@@ -40,7 +40,7 @@ func ReadProfile(file, module string) (map[string]*Cover, error) {
 	if err != nil {
 		return nil, fmt.Errorf("profile: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return parseProfile(f, module)
 }
 
