@@ -245,7 +245,12 @@ func maskModes(golden string) string {
 	if runtime.GOOS != "windows" {
 		return golden
 	}
-	return regexp.MustCompile(`(?m)^([df]) [0-7]{4} `).ReplaceAllString(golden, "$1 ---- ")
+	masked := regexp.MustCompile(`(?m)^([df]) [0-7]{4} `).ReplaceAllString(golden, "$1 ---- ")
+	// The golden is sorted with the mode field in the key; the masked snapshot
+	// sorts on kind then path, so re-sort the golden the same way.
+	lines := strings.Split(strings.TrimSuffix(masked, "\n"), "\n")
+	sort.Strings(lines)
+	return strings.Join(lines, "\n") + "\n"
 }
 
 // planSnapshot returns one sorted line per entry: kind, mode, path, sha256 of
