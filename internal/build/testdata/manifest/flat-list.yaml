@@ -1,0 +1,4 @@
+app: demo
+plugins:
+  - cron
+  - notify

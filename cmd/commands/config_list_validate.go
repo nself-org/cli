@@ -7,10 +7,12 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/output"
@@ -124,6 +126,8 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	errorCount += reportNselfYAML(cmd.ErrOrStderr(), projectDir)
+
 	if errorCount == 0 {
 		fmt.Println("config OK")
 		return nil
@@ -131,6 +135,26 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "\n%d error(s) found\n", errorCount)
 	return fmt.Errorf("one or more validators failed")
+}
+
+// reportNselfYAML validates nself.yaml / nself.yml when the project has one and
+// prints each finding to w (stderr) as "file:line:col: severity: path: [code] ...".
+// It returns the number of findings that are errors: none in v1.4 mode (the
+// findings are warnings), all of them in v1.5 mode. A project without a
+// manifest reports nothing.
+func reportNselfYAML(w io.Writer, projectDir string) int {
+	path := build.ManifestPath(projectDir)
+	if path == "" {
+		return 0
+	}
+	errorCount := 0
+	for _, f := range build.ValidateManifestFile(path) {
+		_, _ = fmt.Fprintln(w, f.String())
+		if f.Severity == build.SeverityError {
+			errorCount++
+		}
+	}
+	return errorCount
 }
 
 // --- S4-T06: config export ---

@@ -1,0 +1,10 @@
+app: demo
+bundle: task
+bundles: [chat]
+plugins:
+  free: [cron, notify]
+  pro: [ai]
+  x-note: ignored
+x-display-name: Demo
+x-owner:
+  team: platform

@@ -1,0 +1,50 @@
+# nself.yaml — ɳSentry local-first dev backend manifest
+# Format: provisional (same PCI as ntask: nself-yaml-bundle-format)
+# Read by `nself build` to determine plugin wiring + service configuration.
+#
+# ɳSentry consumes the SENTRY BUNDLE (13 pro plugins, ports 3831–3843 per
+# SPORT F06-BUNDLE-INVENTORY / F10-PORT-REGISTRY). Pro plugins require a
+# Sentry Bundle or ɳSelf+ license key: set NSELF_PLUGIN_LICENSE_KEY in
+# .env.dev (get one at nself.org/pricing — or the owner key from the vault
+# for internal dev). nself-audit is Security-Always-Free (no key needed).
+
+app: nsentry
+display_name: "ɳSentry"
+version: "0.1.0"
+bundle: sentry         # pro bundle — license key required for pro plugins
+tier: pro
+
+# auth_mode: bundled — this stack runs its own hasura-auth (local-first dev).
+# The hosted SaaS runs auth_mode: external against the platform auth
+# (same pattern as ntask; see ntask/backend/nself.yaml for full docs).
+auth_mode: bundled
+
+plugins:
+  free:
+    - auth               # Hasura Auth: email/password user management (bundled mode)
+    - tokens             # API token management — backs nsk_* API keys for the REST API
+    - nself-audit        # Append-only audit log (Security-Always-Free)
+  pro:                   # Sentry Bundle — ports 3831–3843 (F10 port registry)
+    - nself-uptime-monitor    # 3831 — endpoint polling, latency tracking
+    - nself-status-page       # 3832 — public status pages
+    - nself-incident-mgmt     # 3833 — incident lifecycle (open/ack/resolve)
+    - nself-alert-router      # 3834 — alert routing, escalation, push dispatch
+    - nself-slo-tracker       # 3835 — SLO/error-budget tracking
+    - nself-synthetic-monitor # 3836 — scripted API/browser checks
+    - nself-rum               # 3837 — real user monitoring
+    - nself-errors            # 3838 — error tracking (Sentry SDK envelope ingest)
+    - nself-cron-monitor      # 3839 — heartbeat/cron monitoring
+    - nself-oncall            # 3840 — on-call schedules
+    - nself-crash             # 3841 — mobile/native crash reporting
+    - nself-anomaly           # 3842 — statistical anomaly detection
+
+services:
+  postgres:
+    version: "16"
+    db: nsentry
+  hasura:
+    version: "v2.42.0"
+  auth:
+    version: "0.32.1"
+  mailhog:
+    dev_only: true
