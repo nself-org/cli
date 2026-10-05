@@ -1,7 +1,7 @@
 # nself init
 
 <!-- BEGIN PROSE:summary -->
-> Initialize a new ɳSelf project with an interactive configuration wizard.
+> Initialize a new ɳSelf project. It asks no questions: `nself init && nself start` works with zero prompts.
 <!-- END PROSE:summary -->
 
 ## Synopsis
@@ -13,7 +13,7 @@ nself init [flags]
 ## Description
 
 <!-- BEGIN PROSE:description -->
-`nself init` launches an interactive setup wizard that creates a pristine `.env` configuration for a new ɳSelf project. It prompts for your project name, base domain, and email, then auto-generates cryptographically secure secrets (Postgres password, Hasura admin secret, JWT key).
+`nself init` launches an interactive setup wizard that creates a pristine `.env` configuration for a new ɳSelf project. It uses the project directory name and the default base domain `local.nself.org` (override with `--name` and `--domain`), then auto-generates cryptographically secure secrets (Postgres password, Hasura admin secret, JWT key).
 
 You can choose which optional services to enable during init (Redis, MinIO, MeiliSearch, Mailpit, Monitoring). Each selection updates the generated `.env` accordingly. All values are validated before being written, domain format, password strength, and required fields are all checked.
 
@@ -131,7 +131,7 @@ nself init --fast
 |------|---------|-------------|
 | `--cs-template` | `""` | Scaffold a custom service at init time: specify language (go, node, python, rust, other) |
 | `--demo` | `false` | Auto-configure with all services enabled |
-| `--domain` | `""` | Base domain (skips interactive domain selection, e.g. myapp.dev) |
+| `--domain` | `""` | Base domain (default `local.nself.org`; `init` never shows a domain menu. Use e.g. `myapp.dev`, `localhost` or `127.0.0.1.nip.io`) |
 | `--dry-run` | `false` | Print files that would be written without writing them (clone templates only) |
 | `--fast` | `false` | Skip advanced options, use smart defaults |
 | `--force` | `false` | Overwrite existing configuration |

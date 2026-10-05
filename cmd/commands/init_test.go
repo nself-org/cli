@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -512,5 +513,63 @@ func TestInitCmd_DemoFlag(t *testing.T) {
 
 	if _, statErr := os.Stat(".env"); os.IsNotExist(statErr) {
 		t.Fatal("expected .env to be created by init --demo, but it does not exist")
+	}
+}
+
+// ── resolveInitDomain: init never prompts (P7-CANON-16) ───────────────────────
+
+// TestResolveInitDomain_DefaultWithoutReadingStdin verifies that a TTY run
+// takes the first preset and returns without reading stdin, even when stdin is
+// a pipe that never delivers a byte.
+func TestResolveInitDomain_DefaultWithoutReadingStdin(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	old := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = old }()
+
+	type res struct {
+		d, c string
+		err  error
+	}
+	done := make(chan res, 1)
+	go func() {
+		d, c, err := resolveInitDomain("", true)
+		done <- res{d, c, err}
+	}()
+	select {
+	case got := <-done:
+		if got.err != nil || got.d != domainOptions[0].value || got.c != domainOptions[0].comment {
+			t.Fatalf("got (%q, %q, %v), want the first preset", got.d, got.c, got.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("resolveInitDomain blocked: it must not read stdin")
+	}
+}
+
+// TestResolveInitDomain_FlagSelectsPattern verifies that --domain overrides the default.
+func TestResolveInitDomain_FlagSelectsPattern(t *testing.T) {
+	d, _, err := resolveInitDomain("127.0.0.1.nip.io", true)
+	if err != nil || d != "127.0.0.1.nip.io" {
+		t.Fatalf("got (%q, %v), want 127.0.0.1.nip.io", d, err)
+	}
+}
+
+// TestResolveInitDomain_InvalidFlagIsError verifies that an invalid --domain is rejected.
+func TestResolveInitDomain_InvalidFlagIsError(t *testing.T) {
+	if _, _, err := resolveInitDomain("my app.dev", true); err == nil {
+		t.Fatal("expected an error for a domain with whitespace")
+	}
+}
+
+// TestResolveInitDomain_NoTTYLeavesSetupDefault verifies the non-TTY path is unchanged.
+func TestResolveInitDomain_NoTTYLeavesSetupDefault(t *testing.T) {
+	d, c, err := resolveInitDomain("", false)
+	if err != nil || d != "" || c != "" {
+		t.Fatalf("got (%q, %q, %v), want empty", d, c, err)
 	}
 }

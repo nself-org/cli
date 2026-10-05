@@ -1,13 +1,10 @@
 package commands
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"strings"
 
 	clonetemplate "github.com/nself-org/cli/internal/templates/clone"
-	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
 )
@@ -47,7 +44,7 @@ func init() {
 	f.Bool("force", false, "Overwrite existing configuration")
 	f.Bool("quiet", false, "Suppress output messages")
 	f.String("name", "", "Project name (sets PROJECT_NAME in generated .env)")
-	f.String("domain", "", "Base domain (skips interactive domain selection, e.g. myapp.dev)")
+	f.String("domain", "", "Base domain (default: local.nself.org; init never prompts for it, e.g. myapp.dev)")
 	f.String("profile", "", "Resource profile: 'tiny' for small VPS (Postgres+nginx only)")
 	f.Bool("no-pgvector", false, "Skip pgvector extension and RAG scaffold tables (sets PGVECTOR_ENABLED=false)")
 	f.String("preset", "", "Use a project-type preset: b2b-saas, mobile-backend, ai-assistant, community-forum, media-hosting, dev, sentry, nclaw-app")
@@ -118,62 +115,22 @@ var domainOptions = []domainOption{
 	},
 }
 
-// promptDomainPattern presents a numbered menu to the user and returns the
-// selected BASE_DOMAIN value and its associated .env comment.
-// It reads from os.Stdin and writes the prompt to os.Stdout.
-func promptDomainPattern() (domain, comment string, err error) {
-	fmt.Println()
-	fmt.Printf("%sChoose a domain pattern:%s\n\n", ui.Bold, ui.Reset)
-	for i, opt := range domainOptions {
-		fmt.Printf("  %s%d%s) %s\n", ui.Cyan, i+1, ui.Reset, opt.label)
+// resolveInitDomain picks BASE_DOMAIN and its .env comment without ever
+// reading stdin: init asks no questions (owner canon "init && start, zero
+// prompts", P7-CANON-16). An explicit --domain wins and is validated; otherwise
+// the first preset (the former menu default) applies when useDefault is true,
+// and "" lets setup apply its own defaults.
+func resolveInitDomain(domainFlag string, useDefault bool) (domain, comment string, err error) {
+	if domainFlag != "" {
+		if err := validateDomain(domainFlag); err != nil {
+			return "", "", err
+		}
+		return domainFlag, "", nil
 	}
-	fmt.Println()
-
-	scanner := bufio.NewScanner(os.Stdin)
-	for {
-		fmt.Printf("Enter choice [1-%d] (default 1): ", len(domainOptions))
-		if !scanner.Scan() {
-			// EOF or error — fall back to default.
-			return domainOptions[0].value, domainOptions[0].comment, nil
-		}
-		input := strings.TrimSpace(scanner.Text())
-		if input == "" {
-			// User pressed Enter — use default.
-			return domainOptions[0].value, domainOptions[0].comment, nil
-		}
-
-		// Parse the selection.
-		choice := 0
-		for _, ch := range input {
-			if ch < '0' || ch > '9' {
-				choice = -1
-				break
-			}
-			choice = choice*10 + int(ch-'0')
-		}
-
-		if choice < 1 || choice > len(domainOptions) {
-			fmt.Fprintf(os.Stderr, "  Invalid choice. Please enter a number between 1 and %d.\n", len(domainOptions))
-			continue
-		}
-
-		selected := domainOptions[choice-1]
-		if !selected.custom {
-			return selected.value, selected.comment, nil
-		}
-
-		// Custom domain: prompt for the value.
-		fmt.Printf("  Enter your domain (e.g. myapp.dev): ")
-		if !scanner.Scan() {
-			return "", "", fmt.Errorf("reading custom domain: unexpected EOF")
-		}
-		custom := strings.TrimSpace(scanner.Text())
-		if err := validateDomain(custom); err != nil {
-			fmt.Fprintf(os.Stderr, "  %s\n", err)
-			continue
-		}
-		return custom, "", nil
+	if useDefault {
+		return domainOptions[0].value, domainOptions[0].comment, nil
 	}
+	return "", "", nil
 }
 
 func validateDomain(domain string) error {

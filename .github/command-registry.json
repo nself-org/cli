@@ -9388,7 +9388,7 @@
           "shorthand": null,
           "type": "string",
           "default": "",
-          "usage": "Base domain (skips interactive domain selection, e.g. myapp.dev)",
+          "usage": "Base domain (default: local.nself.org; init never prompts for it, e.g. myapp.dev)",
           "hidden": false,
           "deprecated": null,
           "required": false,
