@@ -20,6 +20,14 @@ for r in cli admin plugins packages homebrew-nself ntask nchat nclaw nsentry nfa
 done
 ```
 
+The toggle sends and compares status checks as `checks` (context plus `app_id`),
+never as bare `contexts`: a contexts-only PUT drops the app pins GitHub holds
+(most `main` branches pin their checks to the GitHub Actions app, id 15368). The
+YAML lists context names; each context keeps the `app_id` it has on the live
+branch, and a context with no live pin is sent as `-1` (any app). A changed pin
+therefore reads as drift, and `--on` never loses one. `scripts/ci/testdata/nself-ci-protect/toggle_pins_test.sh`
+proves it against recorded app-pinned fixtures.
+
 Each public repo prints `already matches baseline — no-op` when live protection
 equals the YAML on the compared fields (strict, contexts, enforce_admins, the four
 review settings, restrictions, force pushes, deletions). Anything else prints
@@ -37,9 +45,41 @@ Snapshots of the live API answers from that day are kept in the hq evidence tree
 3. The owner applies it with `scripts/branch-protection-toggle.sh --on --repo <r>`.
    Review counts are never lowered. `--rollback` restores the previous state.
 
+## Pending `nself-ci` checks (not required yet)
+
+The `pending_nself_ci:` block of the YAML lists the app-pinned `nself-ci` checks
+that become required once `nself ci` posts them (cli and packages: `nself-ci`;
+plugins: `nself-ci` and `nself-ci/source`; each `{context, app_id: 15368}`). The
+toggle ignores the block, so the baseline keeps matching live protection and a
+drift check never reports the pending checks. Only `scripts/ci/nself-ci-protect.sh`
+reads it:
+
+```bash
+# Read-only: GET the live protection, list the added checks, print the PUT body.
+bash scripts/ci/nself-ci-protect.sh --repo nself-org/cli --dry-run
+
+# Owner-named only (P7-CI-55): PUT the target, GET again, compare with the target.
+bash scripts/ci/nself-ci-protect.sh --repo nself-org/cli --apply
+
+# Put the saved pre-state back and verify it.
+bash scripts/ci/nself-ci-protect.sh --repo nself-org/cli --restore <pre-state file>
+
+# Fixture tests (stub gh, no network).
+bash scripts/ci/nself-ci-protect.sh --self-test
+```
+
+The PUT body is `snapshot_to_put_body` of the live state plus the pending checks,
+so every existing check keeps its `app_id` and every other setting is replayed as
+it was. Every run writes the live state it read to a new file under
+`${NSELF_CI_PROTECT_DIR:-$HOME/.nself/protection}` (never overwritten) and prints
+its path: that file is the argument of `--restore`. A pending context already
+required with the same `app_id` is skipped; one already required with another
+`app_id` is a conflict and stops the run before any PUT.
+
 A required check is the job `name:` GitHub registers for a workflow that runs on
 `pull_request` targeting `main`. Add the exact string to the repo's `contexts` in
-the YAML, in the order GitHub reports (lists are compared in order).
+the YAML, in the order GitHub reports (lists are compared in order, with their
+`app_id`).
 
 ## How owner PRs merge
 

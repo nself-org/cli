@@ -44,6 +44,22 @@ allow_deletions: false
 required_linear_history: true
 required_conversation_resolution: false
 
+# Checks that are NOT required today and must not be applied by the toggle: the
+# app-pinned `nself-ci` status that becomes a merge gate once `nself ci` posts it
+# (P7-CI-55, owner-named). branch-protection-toggle.sh ignores this block, so the
+# baseline keeps matching live protection. Only scripts/ci/nself-ci-protect.sh
+# reads it: --dry-run shows the added checks, --apply (owner-named) PUTs them next
+# to every existing check, --restore puts the saved pre-state back. app_id 15368
+# is the GitHub Actions app that posts these statuses.
+pending_nself_ci:
+  nself-org/cli:
+    - {context: "nself-ci", app_id: 15368}
+  nself-org/packages:
+    - {context: "nself-ci", app_id: 15368}
+  nself-org/plugins:
+    - {context: "nself-ci", app_id: 15368}
+    - {context: "nself-ci/source", app_id: 15368}
+
 # Per-repo overrides: only the differences from the defaults above.
 # Public repos with a main branch (live protection read 2026-10-04):
 repos:

@@ -141,16 +141,17 @@ load_policy_for_repo() {
     # yq v4+ outputs JSON with `-o=json`
     yq -o=json '.' "${POLICY_FILE}" 2>/dev/null \
       | jq --arg r "${repo}" '
-          def base: del(.repos);
+          def base: del(.repos, .pending_nself_ci);
           (.repos[$r] // {}) as $ovr
           | base * $ovr
-          | del(.repos)
+          | del(.repos, .pending_nself_ci)
         '
   elif command -v python3 >/dev/null 2>&1; then
     python3 -c '
 import json, sys, yaml
 with open(sys.argv[1]) as f: d = yaml.safe_load(f)
 repos = d.pop("repos", {}) or {}
+d.pop("pending_nself_ci", None)  # data for nself-ci-protect.sh, never applied here
 ovr = repos.get(sys.argv[2], {}) or {}
 def merge(a, b):
     if isinstance(a, dict) and isinstance(b, dict):
@@ -166,11 +167,23 @@ print(json.dumps(merge(d, ovr)))
 }
 
 # Translate policy JSON into a GitHub branch-protection PUT body.
-# GitHub schema requires exact field shape; we map our YAML 1:1.
+# GitHub schema requires exact field shape; we map our YAML 1:1, except that
+# status checks are sent as `checks` (context + app_id), never as bare
+# `contexts`: a contexts-only PUT drops the live app pins (P7-CI-60). The policy
+# lists context names only, so each context keeps the app_id it has on the live
+# branch ($2, GET JSON or {}); a context with no live pin is sent as -1 (any app).
 build_protection_body() {
-  local policy_json="$1"
-  printf '%s' "${policy_json}" | jq '{
-    required_status_checks: .required_status_checks,
+  local policy_json="$1" live_json="${2:-}"
+  [ -n "${live_json}" ] || live_json='{}'
+  printf '%s' "${policy_json}" | jq --argjson live "${live_json}" '
+  (($live.required_status_checks.checks // [])
+    | map({key: .context, value: (.app_id // -1)}) | from_entries) as $pins
+  | {
+    required_status_checks: (if .required_status_checks == null then null else {
+      strict: .required_status_checks.strict,
+      contexts: [],
+      checks: [(.required_status_checks.contexts // [])[] | {context: ., app_id: ($pins[.] // -1)}]
+    } end),
     enforce_admins: .enforce_admins,
     required_pull_request_reviews: .required_pull_request_reviews,
     restrictions: .restrictions,
@@ -262,7 +275,9 @@ toggle_one() {
   if [ "${ACTION}" = "on" ]; then
     local policy_json
     policy_json="$(load_policy_for_repo "${repo}")"
-    body="$(build_protection_body "${policy_json}")"
+    local live_json='{}'
+    if [ "${current_exists}" -eq 1 ]; then live_json="${probe}"; fi
+    body="$(build_protection_body "${policy_json}" "${live_json}")"
 
     if [ "${current_exists}" -eq 1 ]; then
       # Check if existing state matches policy — true no-op
@@ -271,7 +286,7 @@ toggle_one() {
       local nourl current_body want_body
       nourl='def nourl: walk(if type == "object" then with_entries(select((.key == "url" or (.key | endswith("_url"))) | not)) else . end);'
       current_body="$(printf '%s' "${probe}" | jq -S -c "${nourl}"'{
-        required_status_checks: ((.required_status_checks // {}) | {strict: .strict, contexts: .contexts}),
+        required_status_checks: ((.required_status_checks // {}) | {strict: .strict, checks: ((.checks // ((.contexts // []) | map({context: .}))) | map({context, app_id: (.app_id // -1)}))}),
         enforce_admins: (.enforce_admins.enabled // false),
         required_pull_request_reviews: (.required_pull_request_reviews // null),
         restrictions: (.restrictions // null),
@@ -279,7 +294,7 @@ toggle_one() {
         allow_deletions: (.allow_deletions.enabled // false)
       } | nourl')"
       want_body="$(printf '%s' "${body}" | jq -S -c "${nourl}"'{
-        required_status_checks: ((.required_status_checks // {}) | {strict: .strict, contexts: .contexts}),
+        required_status_checks: ((.required_status_checks // {}) | {strict: .strict, checks: ((.checks // []) | map({context, app_id: (.app_id // -1)}))}),
         enforce_admins: .enforce_admins,
         required_pull_request_reviews: (.required_pull_request_reviews // null),
         restrictions: (.restrictions // null),
