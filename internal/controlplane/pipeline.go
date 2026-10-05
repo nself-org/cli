@@ -8,6 +8,10 @@ import (
 	"github.com/nself-org/cli/internal/deploy"
 )
 
+// deployServerFn is the per-server SSH deploy. A package-level variable so
+// tests can record calls instead of contacting a host.
+var deployServerFn = deploy.DeployViaSsh
+
 // ServerResult records the outcome of deploying to one server.
 type ServerResult struct {
 	// Env is the environment name.
@@ -53,21 +57,30 @@ type DeployResult struct {
 // Servers with CapHidden are silently omitted.
 // If a primary app server is skipped, DeployResult.PrimarySkipped is set.
 //
+// Run operates on exactly one environment, env. An empty env, a nil inventory,
+// or an env that is not an exact key of inv.Environments is refused with an
+// error before any probe or deploy: the pipeline never falls back to "all
+// environments" or a default one. Only env's servers are probed.
+//
 // The composePath argument is the local path to the generated docker-compose.yml
 // produced by `nself build`. Run reuses deploy.DeployViaSsh for every remote server.
-func Run(ctx context.Context, inv *Inventory, prober Prober, composePath string) (*DeployResult, error) {
-	statuses := Resolve(inv, prober)
+func Run(ctx context.Context, inv *Inventory, env string, prober Prober, composePath string) (*DeployResult, error) {
+	scoped, err := ScopeToEnv(inv, env)
+	if err != nil {
+		return nil, err
+	}
+	statuses := Resolve(scoped, prober)
 	emitAudit(statuses)
 
 	result := &DeployResult{}
 
-	for envName, env := range inv.Environments {
+	for envName, envDef := range scoped.Environments {
 		envStatuses := filterEnv(statuses, envName)
 
 		// Step 1: Local environment — build once.
-		if env.Kind == "local" {
-			sr, err := runLocal(ctx, env, envStatuses) //nolint:staticcheck // SA4023: runLocal always errors by design (local deploy not yet supported via the pipeline); see its doc comment
-			if err != nil {                            //nolint:staticcheck // SA4023: same reason as above
+		if envDef.Kind == "local" {
+			sr, err := runLocal(ctx, envDef, envStatuses) //nolint:staticcheck // SA4023: runLocal always errors by design (local deploy not yet supported via the pipeline); see its doc comment
+			if err != nil {                               //nolint:staticcheck // SA4023: same reason as above
 				return result, fmt.Errorf("controlplane: local build: %w", err)
 			}
 			result.Servers = append(result.Servers, sr...)
@@ -76,9 +89,9 @@ func Run(ctx context.Context, inv *Inventory, prober Prober, composePath string)
 		}
 
 		// Separate servers by role for ordered execution.
-		obs := serversByRole(env, envStatuses, RoleObservability)
-		apps := serversByRole(env, envStatuses, RoleApp)
-		lbs := serversByRole(env, envStatuses, RoleLB)
+		obs := serversByRole(envDef, envStatuses, RoleObservability)
+		apps := serversByRole(envDef, envStatuses, RoleApp)
+		lbs := serversByRole(envDef, envStatuses, RoleLB)
 
 		// Step 2: Observability servers.
 		for _, pair := range obs {
@@ -103,6 +116,27 @@ func Run(ctx context.Context, inv *Inventory, prober Prober, composePath string)
 	}
 
 	return result, nil
+}
+
+// ScopeToEnv returns a copy of inv holding only the environment named env.
+// It fails closed: nil inventory, empty name, or a name that is not an exact
+// key of inv.Environments returns an error and no inventory.
+func ScopeToEnv(inv *Inventory, env string) (*Inventory, error) {
+	if inv == nil {
+		return nil, fmt.Errorf("controlplane: no inventory; refusing to deploy")
+	}
+	if env == "" {
+		return nil, fmt.Errorf("controlplane: no environment named; refusing to deploy every environment")
+	}
+	e, ok := inv.Environments[env]
+	if !ok {
+		return nil, fmt.Errorf("controlplane: environment %q is not in the inventory; nothing deployed", env)
+	}
+	return &Inventory{
+		SchemaVersion: inv.SchemaVersion,
+		Project:       inv.Project,
+		Environments:  map[string]Environment{env: e},
+	}, nil
 }
 
 // serverPair bundles a Server with its resolved TargetStatus.
@@ -176,7 +210,7 @@ func deployOne(ctx context.Context, envName string, srv Server, ts TargetStatus,
 		Host:    srv.Host + ":" + srv.RemotePath,
 		KeyPath: keyPath,
 	}
-	if err := deploy.DeployViaSsh(ctx, cfg, composePath); err != nil {
+	if err := deployServerFn(ctx, cfg, composePath); err != nil {
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "failed", Err: err, Primary: srv.Primary}
 	}
 	return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "ok", Primary: srv.Primary}
@@ -205,7 +239,7 @@ func deployApp(ctx context.Context, envName string, srv Server, ts TargetStatus,
 		Host:    srv.Host + ":" + srv.RemotePath,
 		KeyPath: keyPath,
 	}
-	if err := deploy.DeployViaSsh(ctx, cfg, composePath); err != nil {
+	if err := deployServerFn(ctx, cfg, composePath); err != nil {
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "failed", Err: err, Primary: srv.Primary}
 	}
 

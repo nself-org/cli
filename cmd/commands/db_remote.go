@@ -87,9 +87,13 @@ func resolveDBRemoteTarget(cmd *cobra.Command) (dbRemoteTarget, error) {
 	if envName == "" {
 		envName = "local"
 	}
-	if canonical, ok := deployTargets[strings.ToLower(strings.TrimSpace(envName))]; ok {
-		envName = canonical
+	// Same name resolution as `nself deploy`: inventory envs, the production
+	// alias, local. An unknown name is refused (E483), never defaulted.
+	canonical, err := resolveTarget(envName)
+	if err != nil {
+		return dbRemoteTarget{}, err
 	}
+	envName = canonical
 
 	if envName == "local" && serverFlag == "" {
 		return dbRemoteTarget{Local: true, EnvName: "local"}, nil

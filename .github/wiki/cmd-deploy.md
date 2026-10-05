@@ -23,8 +23,12 @@ service names vary (e.g. object storage is always named `minio`, never `storage`
 literal `plugins` service). See [Rolling Restart, Service Order and Downtime](#rolling-restart-service-order-and-downtime).
 
 The target environment can be supplied as a positional argument or via `--env`. The flag takes
-priority when both are given. The three supported values are `local`, `staging`, and `prod`
-(also accepted as `production`).
+priority when both are given. A target is `local` or any environment in the deploy inventory:
+every environment in `.nself/control-plane.yaml`, or every `NSELF_DEPLOY_HOST_<ENV>` variable
+(so `NSELF_DEPLOY_HOST_QA` makes `qa` a target). `staging` and `prod` keep working with no
+inventory, and `production` is an alias of `prod` unless the inventory has an environment named
+`production`. Only the named environment is deployed or probed; an unknown name is refused with
+`E483` and the list of known environments, and the deploy never falls back to another one.
 
 When `NSELF_DEPLOY_HOST_STAGING` or `NSELF_DEPLOY_HOST_PROD` is set, the CLI rsyncs the compose
 file and env to the remote host, pulls updated images, then runs the rolling restart via SSH.
@@ -43,6 +47,12 @@ Targets accept both short and long forms:
 | local | `local` | Build and rolling-restart on this machine |
 | staging | `staging` | Staging environment (uses `NSELF_DEPLOY_HOST_STAGING` if set) |
 | prod | `prod`, `production` | Production (uses `NSELF_DEPLOY_HOST_PROD` if set; requires `--force` or `--dry-run`) |
+| any other name | the environment's name, e.g. `qa` | An environment from the inventory (uses `NSELF_DEPLOY_HOST_<ENV>` on the single-host path); loads `.env.dev`, `.env.<name>`, `.env.secrets`, never `.env.prod` |
+
+An environment named `prod` or `production` is production-class and requires `--force` (or
+`--yes`) unless you pass `--dry-run`. The check runs before every deploy path, including the
+blue/green canary path. Releases before this change deployed every environment in the
+inventory whenever a `.nself/control-plane.yaml` existed, whatever target you named.
 
 ## Deploy Strategies
 
@@ -436,7 +446,7 @@ configure an nginx static page via `nginx/conf.d/`.
 |------|---------|-------------|
 | `--canary` | `0` | Start a canary deploy at N%% traffic to green (0 = full flip) |
 | `--dry-run` | `false` | Preview the deploy without executing |
-| `--env` | `""` | Target environment: local\|staging\|prod (overrides positional arg; required env vars: NSELF_DEPLOY_HOST, NSELF_DEPLOY_USER, NSELF_DEPLOY_KEY_PATH) |
+| `--env` | `""` | Target environment: local, or any inventory environment such as staging, prod or qa (overrides positional arg; required env vars: NSELF_DEPLOY_HOST, NSELF_DEPLOY_USER, NSELF_DEPLOY_KEY_PATH) |
 | `--exclude-frontends` | `false` | Exclude frontend apps from the deploy |
 | `--follow` | `false` | Stream container logs after deploy until Ctrl-C (staging/prod only) |
 | `--force-migration` | `false` | Force deploy even with backward-incompatible migrations (disables canary) |

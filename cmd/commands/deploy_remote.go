@@ -24,6 +24,7 @@ import (
 //	local      → .env.dev + .env.local
 //	staging    → .env.dev + .env.staging + .env.secrets
 //	prod       → .env.dev + .env.prod   + .env.secrets
+//	<other>    → .env.dev + .env.<env>  + .env.secrets   (never .env.prod)
 //
 // Missing files are silently skipped. The NSELF_DEPLOY_ENV env var is set
 // to the canonical target name so downstream helpers can introspect it.
@@ -68,10 +69,16 @@ func deployEnvCascadeFiles(workdir, target string) []string {
 			filepath.Join(workdir, ".env.staging"),
 			filepath.Join(workdir, ".env.secrets"),
 		}
-	default: // "prod"
+	case "prod":
 		return []string{
 			filepath.Join(workdir, ".env.dev"),
 			filepath.Join(workdir, ".env.prod"),
+			filepath.Join(workdir, ".env.secrets"),
+		}
+	default: // a custom environment gets its own layer, never prod's
+		return []string{
+			filepath.Join(workdir, ".env.dev"),
+			filepath.Join(workdir, ".env."+target),
 			filepath.Join(workdir, ".env.secrets"),
 		}
 	}
@@ -86,6 +93,10 @@ func sshKeyPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".ssh", "id_ed25519")
 }
+
+// remoteDeployPushFn is the remote push. A variable so tests can record the
+// host and environment a deploy reaches without running ssh or rsync.
+var remoteDeployPushFn = remoteDeployPush
 
 // remoteDeployPush rsyncs the compose file and env to the remote host, then
 // pulls new images and runs a rolling restart via SSH.
@@ -269,7 +280,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 		// Mirrors hasura.IsStrict's default (strict in staging/prod, warn in
 		// dev/local) — this path has no *config.Config to read cfg.Env from,
 		// so it keys off the deploy target string directly instead.
-		strict := target == "staging" || target == "prod"
+		strict := remoteHasuraStrict(workdir, target)
 		if raw := os.Getenv("NSELF_HASURA_METADATA_STRICT"); raw != "" {
 			strict = raw == "true"
 		}

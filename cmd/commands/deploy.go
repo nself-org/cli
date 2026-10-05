@@ -9,7 +9,9 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/errs"
 
 	"github.com/spf13/cobra"
 )
@@ -27,14 +29,6 @@ var remotePathRe = deploy.RemotePathRe
 // rsync shell-interprets — so it must never contain shell metacharacters.
 var sshKeyRe = regexp.MustCompile(`^[a-zA-Z0-9/_.~-]+$`)
 
-// Deploy targets accepted by the CLI. Admin UI sends "production" instead of "prod".
-var deployTargets = map[string]string{
-	"local":      "local",
-	"staging":    "staging",
-	"prod":       "prod",
-	"production": "prod",
-}
-
 // Deploy strategies.
 var deployStrategies = map[string]bool{
 	"rolling":    true,
@@ -46,14 +40,17 @@ var deployStrategies = map[string]bool{
 var deployCmd = &cobra.Command{
 	Use:   "deploy [target]",
 	Short: "Deploy the stack to a target environment",
-	Long: `Deploy the nSelf stack to local, staging, or production.
+	Long: `Deploy the nSelf stack to one environment.
 
 Executes: build (if needed) then start, with strategy-aware orchestration.
 
-Targets:
+Targets are the environments in .nself/control-plane.yaml (or every
+NSELF_DEPLOY_HOST_<ENV> variable), plus local. Only the named environment is
+deployed; an unknown name is refused (E483) and never falls back to another.
   local       Equivalent to 'nself build && nself start' on this machine
   staging     Deploy to the staging environment (NSELF_DEPLOY_HOST_STAGING)
-  production  Deploy to production (NSELF_DEPLOY_HOST_PROD, requires confirmation)
+  production  Deploy to production (alias of prod; requires confirmation)
+  <name>      Any other environment in the inventory, e.g. qa
 
 The target can be specified as a positional argument or via --env:
   nself deploy staging
@@ -183,7 +180,7 @@ func init() {
 	f.Bool("skip-health", false, "Skip post-deploy health checks")
 	f.Bool("include-frontends", false, "Include frontend apps in the deploy")
 	f.Bool("exclude-frontends", false, "Exclude frontend apps from the deploy")
-	f.String("env", "", "Target environment: local|staging|prod (overrides positional arg; required env vars: NSELF_DEPLOY_HOST, NSELF_DEPLOY_USER, NSELF_DEPLOY_KEY_PATH)")
+	f.String("env", "", "Target environment: local, or any inventory environment such as staging, prod or qa (overrides positional arg; required env vars: NSELF_DEPLOY_HOST, NSELF_DEPLOY_USER, NSELF_DEPLOY_KEY_PATH)")
 	f.Bool("follow", false, "Stream container logs after deploy until Ctrl-C (staging/prod only)")
 	f.Bool("yes", false, "Skip prod confirmation prompt (alias for --force)")
 	f.Bool("json", false, "Emit JSON output")
@@ -222,14 +219,45 @@ func init() {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// resolveTarget normalises "production" → "prod" and validates the value.
+// deployEnvNameRe is the shape an environment name must have before it is used
+// in a file name (.env.<env>) or an environment-variable name.
+var deployEnvNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
+
+// resolveTarget maps the operator's word to an environment name that exists.
+//
+// Accepted: "local"; any environment in the inventory (.nself/control-plane.yaml
+// or NSELF_DEPLOY_HOST_<ENV>); "production" as an alias of "prod" when the
+// inventory has no environment literally named production; and the legacy
+// "staging"/"prod" names, which have always resolved even with no inventory
+// (the legacy single-host path). Everything else, including an empty name, is
+// refused with E483 listing the known environments. It never falls back to a
+// default or to "all".
 func resolveTarget(raw string) (string, error) {
 	t := strings.ToLower(strings.TrimSpace(raw))
-	canonical, ok := deployTargets[t]
-	if !ok {
-		return "", fmt.Errorf("invalid target %q (allowed: local, staging, prod|production)", raw)
+	if t == "local" {
+		return "local", nil
 	}
-	return canonical, nil
+	var inv *controlplane.Inventory
+	var loadErr error
+	if deployEnvNameRe.MatchString(t) {
+		if root, err := projectRoot(); err == nil {
+			inv, loadErr = controlplane.Load(root)
+		}
+		if name, ok := inventoryEnvName(inv, t); ok {
+			return name, nil
+		}
+		switch t {
+		case "production":
+			return "prod", nil
+		case "staging", "prod":
+			return t, nil
+		}
+	}
+	what := fmt.Sprintf("invalid target %q (known: %s)", raw, strings.Join(knownDeployEnvs(inv), ", "))
+	if loadErr != nil {
+		what += fmt.Sprintf("; inventory unreadable: %v", loadErr)
+	}
+	return "", errs.New("E483", what)
 }
 
 // projectRoot returns the nSelf project root, falling back to cwd if not found.

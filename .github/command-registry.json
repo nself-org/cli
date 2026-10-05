@@ -7093,7 +7093,7 @@
           "shorthand": null,
           "type": "string",
           "default": "",
-          "usage": "Target environment: local|staging|prod (overrides positional arg; required env vars: NSELF_DEPLOY_HOST, NSELF_DEPLOY_USER, NSELF_DEPLOY_KEY_PATH)",
+          "usage": "Target environment: local, or any inventory environment such as staging, prod or qa (overrides positional arg; required env vars: NSELF_DEPLOY_HOST, NSELF_DEPLOY_USER, NSELF_DEPLOY_KEY_PATH)",
           "hidden": false,
           "deprecated": null,
           "required": false,

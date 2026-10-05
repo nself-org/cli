@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/controlplane"
@@ -182,7 +183,7 @@ func runDeployCheckAccess(cmd *cobra.Command, args []string) error {
 
 	// Legacy fallback: shallow env-var check (back-compat for no-yaml installs).
 	ok := true
-	for _, name := range []string{"NSELF_DEPLOY_HOST_STAGING", "NSELF_DEPLOY_HOST_PROD"} {
+	for _, name := range legacyHostVarNames() {
 		v := os.Getenv(name)
 		if v == "" {
 			ui.Warn(fmt.Sprintf("%s is not set (deploy to this target will run locally)", name))
@@ -199,3 +200,20 @@ func runDeployCheckAccess(cmd *cobra.Command, args []string) error {
 }
 
 // ── output helpers ───────────────────────────────────────────────────────────
+
+// legacyHostVarNames lists the NSELF_DEPLOY_HOST_<ENV> variables to check:
+// staging then prod (always reported, set or not), then every other
+// environment the process has a host variable for, sorted.
+func legacyHostVarNames() []string {
+	const prefix = "NSELF_DEPLOY_HOST_"
+	names := []string{prefix + "STAGING", prefix + "PROD"}
+	var extra []string
+	for _, kv := range os.Environ() {
+		k, v, found := strings.Cut(kv, "=")
+		if found && strings.HasPrefix(k, prefix) && len(k) > len(prefix) && v != "" && k != names[0] && k != names[1] {
+			extra = append(extra, k)
+		}
+	}
+	sort.Strings(extra)
+	return append(names, extra...)
+}
