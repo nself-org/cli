@@ -68,4 +68,6 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-REG-05 | --json accepted and ignored on a command whose own json flag predates P7-REG | refused with E402 | `cmd/commands/invocation.go` |
 | P7-REG-05 | flag and argument errors keep cobra's text | wrapped as E401 | `cmd/commands/invocation.go` |
 | P7-REG-05 | registry reports v1.4 exit codes and hides v1.5-only envelopes | v1.5 exit codes and envelopes | `cmd/commands/registry.go` |
+| P7-REG-06 | a panic crashes the process with the raw Go runtime trace and exit 2 | the panic is reported as an "internal error" (error envelope in JSON mode, stack trace on stderr only), still exit 2 | `cmd/nself/safe.go` |
+| P7-REG-06 | exit status 1 and a plain "Error: msg" line for every failure | exit classes 2/3/4, "Error: [Exxx]" block on stderr and a JSON error envelope on stdout | `cmd/nself/report.go` |
 <!-- END GENERATED:gated -->

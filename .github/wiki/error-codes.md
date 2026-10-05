@@ -6,16 +6,20 @@ Every user-facing error in the ɳSelf CLI includes a stable code, a plain-langua
 
 ## How errors appear in the CLI
 
-When the CLI encounters a problem, it prints a structured message in this format:
+An error that carries a code (a structured error, or a known failure such as Docker not running) prints a block on stderr:
 
 ```
-[E001] Docker not installed
+Error: [E001] Docker not installed
   Why: The docker binary was not found in PATH.
   Fix: Install Docker: https://docs.docker.com/get-docker/
   Docs: https://nself.org/docs/reference/error-codes#e001
 ```
 
-The code in brackets (e.g., `[E001]`) is stable across CLI versions. You can search this page by code to find the cause and fix.
+The `Why`, `Fix` and `Docs` lines appear only when they have content. Every other error still prints one line, `Error: <message>`, and exits 1.
+
+The code in brackets (e.g., `[E001]`) is stable across CLI versions. You can search this page by code to find the cause and fix. The exit status is the **Exit** column of the code's row; see [[Exit-Codes]] for the classes.
+
+> The coded block and the exit classes (2, 3, 4) are v1.5 behaviour. They are on from v1.5.0 and opt-in before that with `NSELF_V15=1`; see [[Compat-V15]]. Without it, errors print as `Error: <message>` and exit 1.
 
 ---
 
@@ -31,13 +35,13 @@ The code in brackets (e.g., `[E001]`) is stable across CLI versions. You can sea
 
 These errors occur when the CLI cannot find or communicate with Docker.
 
-| Code | Summary | Why | Fix |
-|------|---------|-----|-----|
-| E001 | Docker not installed | The `docker` binary was not found in `PATH`. | Install Docker: [https://docs.docker.com/get-docker/](https://docs.docker.com/get-docker/) |
-| E002 | Docker daemon not running | The Docker daemon is not responding to commands. | Start Docker Desktop or run: `sudo systemctl start docker` |
-| E003 | Docker Compose not available | `docker compose` v2 plugin is not installed. | Update Docker Desktop or install the compose plugin manually. |
-| E004 | docker-compose.yml not found | No `docker-compose.yml` exists in the project directory. | Run `nself build` to generate the compose file. |
-| E005 | Port conflict | A required port is already in use by another process. | Run `nself doctor` to identify the conflict, then stop the conflicting process or change the port in `.env`. |
+| Code | Exit | Summary | Why | Fix |
+|------|------|---------|-----|-----|
+| <a id="e001"></a>E001 | 2 | Docker not installed | The `docker` binary was not found in `PATH`. | Install Docker: [https://docs.docker.com/get-docker/](https://docs.docker.com/get-docker/) |
+| <a id="e002"></a>E002 | 2 | Docker daemon not running | The Docker daemon is not responding to commands. | Start Docker Desktop or run: `sudo systemctl start docker` |
+| <a id="e003"></a>E003 | 2 | Docker Compose not available | `docker compose` v2 plugin is not installed. | Update Docker Desktop or install the compose plugin manually. |
+| <a id="e004"></a>E004 | 2 | docker-compose.yml not found | No `docker-compose.yml` exists in the project directory. | Run `nself build` to generate the compose file. |
+| <a id="e005"></a>E005 | 2 | Port conflict | A required port is already in use by another process. | Run `nself doctor` to identify the conflict, then stop the conflicting process or change the port in `.env`. |
 
 ---
 
@@ -45,15 +49,18 @@ These errors occur when the CLI cannot find or communicate with Docker.
 
 These errors occur during configuration validation or when reading `.env` files.
 
-| Code | Summary | Why | Fix |
-|------|---------|-----|-----|
-| E050 | No .env file found | No `.env` or `.env.dev` file exists in the project directory. | Run `nself init` to generate a configuration file. |
-| E051 | Invalid config key | The configuration key contains invalid characters. | Config keys must contain only A-Z, 0-9, and underscores. |
-| E052 | Config validation failed | One or more configuration values are invalid. | Run `nself config validate` to see all issues, then fix the reported values. |
-| E053 | Weak password detected | A password field does not meet minimum length or contains insecure patterns. | Use a strong, randomly generated password of at least 16 characters. |
-| E054 | Invalid project name | Project name contains characters not allowed in Docker and DNS contexts. | Use only lowercase letters, numbers, and hyphens. Must start with a letter. |
-| E055 | Duplicate route detected | Two or more services are configured with the same nginx route. | Check `ROUTE` values in `.env` and ensure each service has a unique route. |
-| E056 | Unknown config key | The key is not recognized by nself. | Check for typos. Run `nself config list` to see all valid keys. |
+| Code | Exit | Summary | Why | Fix |
+|------|------|---------|-----|-----|
+| <a id="e050"></a>E050 | 1 | No .env file found | No `.env` or `.env.dev` file exists in the project directory. | Run `nself init` to generate a configuration file. |
+| <a id="e051"></a>E051 | 1 | Invalid config key | The configuration key contains invalid characters. | Config keys must contain only A-Z, 0-9, and underscores. |
+| <a id="e052"></a>E052 | 1 | Config validation failed | One or more configuration values are invalid. | Run `nself config validate` to see all issues, then fix the reported values. |
+| <a id="e053"></a>E053 | 1 | Weak password detected | A password field does not meet minimum length or contains insecure patterns. | Use a strong, randomly generated password of at least 16 characters. |
+| <a id="e054"></a>E054 | 1 | Invalid project name | Project name contains characters not allowed in Docker and DNS contexts. | Use only lowercase letters, numbers, and hyphens. Must start with a letter. |
+| <a id="e055"></a>E055 | 1 | Duplicate route detected | Two or more services are configured with the same nginx route. | Check `ROUTE` values in `.env` and ensure each service has a unique route. |
+| <a id="e056"></a>E056 | 1 | Unknown config key | The key is not recognized by nself. | Check for typos. Run `nself config list` to see all valid keys. |
+| <a id="e057"></a>E057 | 1 | Insecure password pattern | A password matches a known insecure pattern such as a dictionary word, a repeated character or a default value. | Replace it with a randomly generated password of at least 16 characters. |
+| <a id="e058"></a>E058 | 1 | CORS wildcard not allowed in production | The CORS origin list contains a wildcard while the environment is production. | List the exact origins in HASURA_GRAPHQL_CORS_DOMAIN, or use a development environment for wildcards. |
+| <a id="e059"></a>E059 | 1 | Secret is empty or a placeholder | A required secret is empty or still holds a placeholder value from the template. | Generate a real value and set it in .env, then run the command again. |
 
 ---
 
@@ -61,14 +68,19 @@ These errors occur during configuration validation or when reading `.env` files.
 
 These errors occur when installing plugins or validating license keys.
 
-| Code | Summary | Why | Fix |
-|------|---------|-----|-----|
-| E100 | Plugin not found | The requested plugin does not exist in the registry. | Run `nself plugin list` to see available plugins. |
-| E101 | Invalid license key | The license key format is invalid. | License keys start with `nself_pro_` followed by 32+ characters. Check your key. |
-| E102 | License tier insufficient | Your license tier does not include this plugin. | Upgrade your plan at [https://nself.org/pricing](https://nself.org/pricing) |
-| E103 | License expired | The license key has expired. | Renew your license at [https://nself.org/account](https://nself.org/account) |
-| E104 | License validation failed (network) | Cannot reach the license server and no valid local cache exists. | Check your internet connection. Previously validated licenses work offline for 7 days. |
-| E105 | Circular plugin dependency | Plugin dependency graph contains a cycle. | Report this as a bug at [https://github.com/nself-org/cli/issues](https://github.com/nself-org/cli/issues) |
+| Code | Exit | Summary | Why | Fix |
+|------|------|---------|-----|-----|
+| <a id="e100"></a>E100 | 1 | Plugin not found | The requested plugin does not exist in the registry. | Run `nself plugin list` to see available plugins. |
+| <a id="e101"></a>E101 | 3 | Invalid license key | The license key format is invalid. | License keys start with `nself_pro_` followed by 32+ characters. Check your key. |
+| <a id="e102"></a>E102 | 3 | License tier insufficient | Your license tier does not include this plugin. | Upgrade your plan at [https://nself.org/pricing](https://nself.org/pricing) |
+| <a id="e103"></a>E103 | 3 | License expired | The license key has expired. | Renew your license at [https://nself.org/account](https://nself.org/account) |
+| <a id="e104"></a>E104 | 3 | License validation failed (network) | Cannot reach the license server and no valid local cache exists. | Check your internet connection. Previously validated licenses work offline for 7 days. |
+| <a id="e105"></a>E105 | 1 | Circular plugin dependency | Plugin dependency graph contains a cycle. | Report this as a bug at [https://github.com/nself-org/cli/issues](https://github.com/nself-org/cli/issues) |
+| <a id="e106"></a>E106 | 1 | Invalid plugin manifest | The plugin manifest is missing a required field or contains an invalid value. | Fix the manifest fields named in the message, or reinstall the plugin: nself add <plugin> |
+| <a id="e107"></a>E107 | 1 | Plugin is not signed | A stable plugin release has no signature, so the install was refused. | Use a release that carries a signature, or report the missing signature to the plugin publisher. |
+| <a id="e108"></a>E108 | 1 | Plugin checksum missing | A stable plugin release has no checksum, so the install was refused. | Use a release that carries a checksum, or report the missing checksum to the plugin publisher. |
+| <a id="e109"></a>E109 | 1 | Duplicate plugin slug | The same plugin slug is served by more than one unrelated registry entry. | Report this to the registry maintainers. Install the plugin by its full registry name if one is shown. |
+| <a id="e110"></a>E110 | 3 | License does not entitle this plugin tier | The installed license does not include the pro tier of this plugin. | Check your plan with: nself license status. Upgrade at https://nself.org/pricing if the tier is missing. |
 
 ---
 
@@ -76,33 +88,48 @@ These errors occur when installing plugins or validating license keys.
 
 These errors occur during SSL certificate generation or network operations.
 
-| Code | Summary | Why | Fix |
-|------|---------|-----|-----|
-| E150 | mkcert not installed | `mkcert` is not installed; falling back to OpenSSL self-signed certs. | Install mkcert: `brew install mkcert` (macOS) or see [https://github.com/FiloSottile/mkcert](https://github.com/FiloSottile/mkcert) |
-| E151 | SSL certificate generation failed | Could not generate SSL certificates for the configured domain. | Check domain configuration and ensure `openssl` is available. |
+| Code | Exit | Summary | Why | Fix |
+|------|------|---------|-----|-----|
+| <a id="e150"></a>E150 | 2 | mkcert not installed | `mkcert` is not installed; falling back to OpenSSL self-signed certs. | Install mkcert: `brew install mkcert` (macOS) or see [https://github.com/FiloSottile/mkcert](https://github.com/FiloSottile/mkcert) |
+| <a id="e151"></a>E151 | 2 | SSL certificate generation failed | Could not generate SSL certificates for the configured domain. | Check domain configuration and ensure `openssl` is available. |
 
 ---
 
-## Database (E200-E249)
+## Database, Backup and Recovery (E200-E249)
 
-These errors occur when the CLI interacts with the PostgreSQL container.
+These errors occur when the CLI interacts with the PostgreSQL container, backups, restores and disaster recovery.
 
-| Code | Summary | Why | Fix |
-|------|---------|-----|-----|
-| E200 | Database not running | PostgreSQL container is not running or not accepting connections. | Run `nself start` to start all services, or `nself doctor` to diagnose. |
-| E201 | Migration failed | A database migration could not be applied. | Check the migration SQL for errors. Run `nself db migrate status` to see pending migrations. |
-| E202 | Backup failed | Database backup operation failed. | Ensure sufficient disk space and that the database is running. |
+| Code | Exit | Summary | Why | Fix |
+|------|------|---------|-----|-----|
+| <a id="e200"></a>E200 | 2 | Database not running | PostgreSQL container is not running or not accepting connections. | Run `nself start` to start all services, or `nself doctor` to diagnose. |
+| <a id="e201"></a>E201 | 2 | Migration failed | A database migration could not be applied. | Check the migration SQL for errors. Run `nself db migrate status` to see pending migrations. |
+| <a id="e202"></a>E202 | 2 | Backup failed | Database backup operation failed. | Ensure sufficient disk space and that the database is running. |
+| <a id="e203"></a>E203 | 1 | Migration validation failed | The migration dry run found an error in the migration SQL before anything was applied. | Fix the SQL named in the message and run the migration again. No changes were applied. |
+| <a id="e204"></a>E204 | 2 | Migration prerequisite missing | An object the migration depends on does not exist in the live schema. | Apply the earlier migrations first: nself db migrate. Run nself doctor if the schema looks wrong. |
+| <a id="e205"></a>E205 | 2 | Backup not found | The requested backup file or backup ID does not exist. | List available backups with: nself backup list |
+| <a id="e206"></a>E206 | 2 | Backup verification failed | The backup failed its integrity check, so it may be corrupt or incomplete. | Create a fresh backup: nself backup create. Do not restore from the failed file. |
+| <a id="e207"></a>E207 | 2 | Backup restore failed | The backup could not be restored into the database. | Check that the database is running and has enough disk space, then retry. Run nself doctor for details. |
+| <a id="e208"></a>E208 | 2 | Backup encryption failed | The backup could not be encrypted. | Check the backup encryption key setting and that the key file is readable, then retry. |
+| <a id="e209"></a>E209 | 2 | Backup decryption failed | The backup could not be decrypted with the configured key. | Check that the key matches the one used to create the backup, then retry. |
+| <a id="e210"></a>E210 | 2 | Remote backup operation failed | Copying a backup to or from the remote destination failed. | Check the remote destination settings and network access, then retry. |
+| <a id="e211"></a>E211 | 2 | Backup prune failed | Old backups could not be removed according to the retention policy. | Check file permissions on the backup directory and the remote destination, then retry. |
+| <a id="e212"></a>E212 | 2 | WAL archive failed | PostgreSQL could not archive a write-ahead log segment. | Check free disk space and the archive destination. Run nself doctor for details. |
+| <a id="e213"></a>E213 | 2 | Disaster recovery drill failed | The disaster recovery drill did not complete successfully. | Read the drill report for the failing step, fix it and run the drill again. |
+| <a id="e214"></a>E214 | 2 | Standby promotion failed | The standby database could not be promoted to primary. | Check the standby status and replication lag, then retry the promotion. |
+| <a id="e215"></a>E215 | 2 | Disaster recovery rollback failed | Rolling back a disaster recovery step failed. | Check the current database role on each node before taking any further action. |
+| <a id="e216"></a>E216 | 2 | Split-brain fence failed | The old primary could not be fenced, so two nodes might accept writes. | Stop the old primary by hand before continuing, then retry the fence step. |
 
 ---
 
 ## Health (E250-E299)
 
-These errors occur during health checks run by `nself doctor`, `nself health`, and startup probes.
+These errors occur during health checks run by `nself doctor`, `nself health`, `nself status` and startup probes.
 
-| Code | Summary | Why | Fix |
-|------|---------|-----|-----|
-| E250 | Service unhealthy | A service health check returned an unhealthy status. | Run `nself doctor --verbose` for detailed diagnostics. |
-| E251 | Health check timeout | The health check did not complete within the timeout period. | The service may be starting slowly. Wait and retry, or check logs with `nself logs`. |
+| Code | Exit | Summary | Why | Fix |
+|------|------|---------|-----|-----|
+| <a id="e250"></a>E250 | 2 | Service unhealthy | A service health check returned an unhealthy status. | Run `nself doctor --verbose` for detailed diagnostics. |
+| <a id="e251"></a>E251 | 2 | Health check timeout | The health check did not complete within the timeout period. | The service may be starting slowly. Wait and retry, or check logs with `nself logs`. |
+| <a id="e252"></a>E252 | 2 | Service not found | The named service is not part of this project stack. | Run nself status to list the services in this project, and check the spelling. |
 
 ---
 
@@ -110,10 +137,10 @@ These errors occur during health checks run by `nself doctor`, `nself health`, a
 
 These errors occur during `nself init` or when the CLI validates the working directory.
 
-| Code | Summary | Why | Fix |
-|------|---------|-----|-----|
-| E300 | Project already initialized | A `.env` file already exists in this directory. | Use `nself config set` to modify existing config, or delete `.env` to reinitialize. |
-| E301 | Source directory detected | You are running nself inside the CLI source repository. | Change to your project directory first: `cd /path/to/your/project` |
+| Code | Exit | Summary | Why | Fix |
+|------|------|---------|-----|-----|
+| <a id="e300"></a>E300 | 1 | Project already initialized | A `.env` file already exists in this directory. | Use `nself config set` to modify existing config, or delete `.env` to reinitialize. |
+| <a id="e301"></a>E301 | 1 | Source directory detected | You are running nself inside the CLI source repository. | Change to your project directory first: `cd /path/to/your/project` |
 
 ---
 
@@ -121,31 +148,89 @@ These errors occur during `nself init` or when the CLI validates the working dir
 
 These errors occur when the CLI validates domain names or port numbers from config.
 
-| Code | Summary | Why | Fix |
-|------|---------|-----|-----|
-| E350 | Invalid domain name | The configured domain name is not valid. | Use a valid domain like `example.com` or `localhost`. |
-| E351 | Invalid port number | Port number is outside the valid range (1-65535). | Use a port number between 1024 and 65535 for non-privileged ports. |
+| Code | Exit | Summary | Why | Fix |
+|------|------|---------|-----|-----|
+| <a id="e350"></a>E350 | 1 | Invalid domain name | The configured domain name is not valid. | Use a valid domain like `example.com` or `localhost`. |
+| <a id="e351"></a>E351 | 1 | Invalid port number | Port number is outside the valid range (1-65535). | Use a port number between 1024 and 65535 for non-privileged ports. |
 
 ---
 
-## CLI output format
+## CLI (E400-E449)
 
-The full structured format for a CLI error:
+These errors come from the command line itself: usage, JSON support, destructive-action gates and moved commands.
 
+| Code | Exit | Summary | Why | Fix |
+|------|------|---------|-----|-----|
+| <a id="e400"></a>E400 | classified | Unclassified error | The command failed with an error that has no specific code. | Read the message. If it looks like a bug, report it at https://github.com/nself-org/cli/issues |
+| <a id="e401"></a>E401 | 1 | Invalid usage | A flag or argument was missing, unknown or had an invalid value. | Run the command with --help to see the accepted flags and arguments. |
+| <a id="e402"></a>E402 | 1 | JSON output not supported | This command or flag combination cannot produce JSON output. | Run the command without --json, or use nself help --json to see which commands support it. |
+| <a id="e403"></a>E403 | 4 | Destructive action blocked | A safety gate refused a destructive action. | Read the message for the missing confirmation or flag, check the target environment, then confirm explicitly. |
+| <a id="e404"></a>E404 | 1 | Command moved to a plugin | This command now lives in a plugin that is not installed. | Run the nself add command printed in the message, then run the command again. |
+
+---
+
+## JSON error object
+
+With `--json` (v1.5 mode), a failure writes exactly one error envelope to stdout and the human block above still goes to stderr:
+
+```json
+{
+  "schema_version": "1",
+  "command": "start",
+  "error": {
+    "code": "E002",
+    "message": "docker info failed: docker daemon is not running",
+    "cause": "The Docker daemon is not responding to commands.",
+    "remediation": "Start Docker Desktop or run: sudo systemctl start docker",
+    "docs_url": "https://nself.org/docs/reference/error-codes#e002",
+    "exit_code": 2,
+    "class": "infra"
+  }
+}
 ```
-[EXXXX] What happened (brief)
-  Why: Root cause explanation.
-  Fix: Steps to resolve the issue.
-  Docs: https://nself.org/docs/reference/error-codes#eXXXX
-```
 
-The `Why` and `Fix` lines provide context to act on. The `Docs` line links directly to the anchor for that code on this page (via `nself.org/docs`, which mirrors this wiki).
+| Field | Rule |
+|-------|------|
+| `code` | `^E[0-9]{3}$`. The error's own code; else the code of the matching known failure (when several match, the highest class wins: auth, then destructive, then infra, then user); else `E400`. |
+| `message` | What happened. |
+| `cause` | Omitted when empty. The `Why` line. |
+| `remediation` | Omitted when empty. The `Fix` line. |
+| `docs_url` | Omitted when empty. The `Docs` line. |
+| `exit_code` | The process exit status. |
+| `class` | `user` (1), `infra` (2), `auth` (3), `destructive_blocked` (4), `other` (any other status). |
+
+`command` is the command path without `nself ` (`""` when the failure came before a command was resolved). Message, cause and remediation are redacted: URL credentials, tokens, e-mail addresses and IPs are masked, and raw arguments are never included. The schema is `schemas/error.v1.schema.json`.
+
+---
+
+## Code allocation
+
+Codes are grouped in blocks. A block has exactly one category, so the category of a code follows from its number. A new block or range needs an entry in the plan first; the registry (`internal/errs`) rejects a code outside its owner's range, a mismatched category, and any code in the reserved range.
+
+| Block | Category | Use |
+|-------|----------|-----|
+| E001-E049 | docker | Docker and Compose |
+| E050-E099 | config | Configuration and secrets |
+| E100-E149 | plugin | Plugins, licenses, entitlements |
+| E150-E199 | ssl | Certificates |
+| E200-E249 | database | Database, migrations, backups, recovery |
+| E250-E299 | health | Service health |
+| E300-E349 | init | Project setup |
+| E350-E399 | domain | Domains and ports |
+| E400-E449 | cli | Usage, JSON output, command moves |
+| E450-E479 | reconcile | Reconcile, locks, ACME |
+| E480-E499 | deploy | Deploy and release verification |
+| E500-E529 | adopt | Adopting existing stacks |
+| E540-E549 | secret | Secret resolution |
+| E600-E719 | reserved | The ci plugin's own registry; never allocated in the CLI |
+
+Codes are never reused or renumbered. Several blocks have no registered codes yet; a block appears in the tables above once it has one.
 
 ---
 
 ## Error codes in scripts
 
-If you are scripting around the CLI, you can check the exit code (non-zero on error) and parse the bracketed code from stderr:
+If you are scripting around the CLI, branch on the exit status (see [[Exit-Codes]]) and parse the bracketed code from stderr, or use `--json` and read `error.code` from stdout:
 
 ```bash
 output=$(nself start 2>&1)
@@ -159,6 +244,7 @@ fi
 
 ## Related pages
 
+- [[Exit-Codes]], exit status classes and what changes in v1.5.0
 - [[cmd-doctor]], run diagnostics to identify and resolve common errors
 - [[cmd-config]], view and edit configuration values
 - [[Plugin-Licensing]], license key format and tier details
