@@ -66,7 +66,7 @@ func extractTag(t *testing.T, root string) string {
 		}
 	}
 	dst := t.TempDir()
-	tr := tar.NewReader(&out)
+	tr := tar.NewReader(out)
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
