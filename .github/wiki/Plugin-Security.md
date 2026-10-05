@@ -56,3 +56,9 @@ drop the old kid after the grace window (see the key rotation runbook in the web
 
 `bash scripts/mutation.sh internal/license` runs go-gremlins (pinned release, fetched from the
 module proxy into a temp dir) and exits 1 if any mutant survives.
+
+Add `--only a.go,b.go` to judge just those files of the package: every other file is excluded from
+the run, and any surviving or uncovered mutant in a listed file exits 1. The licence verdict files
+are checked this way (`validate.go,validator.go,validator_validate.go,checker.go,cache.go,cache_entry.go,keys.go,keys_release.go,keys_devkeys.go,jwt.go`).
+Files tagged `nself_devkeys` run in a second pass with that tag. The few equivalent mutants (no test
+can tell them from the original) are listed with a reason in `MUTATION_EQUIVALENT` in the script.

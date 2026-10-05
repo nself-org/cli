@@ -165,8 +165,10 @@ func tryRemote(ctx context.Context, key string, opts *ValidatorOptions) (*Valida
 	// Drain body for connection reuse and to capture potential error details.
 	rawBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 
-	switch {
-	case resp.StatusCode == http.StatusOK:
+	// If-chain, not a switch: Go's coverage profile has no block for a case
+	// condition, so mutation testing cannot see a switch's conditions as covered.
+	status := resp.StatusCode
+	if status == http.StatusOK {
 		// S10.T03: verify the Ed25519 response-body signature before trusting
 		// tier/plugins data. Only SkipSignatureVerify (tests) skips it; a
 		// missing or invalid signature falls through to the cache.
@@ -184,14 +186,15 @@ func tryRemote(ctx context.Context, key string, opts *ValidatorOptions) (*Valida
 		}
 		vr.RawBody, vr.BodySig = string(rawBody), sigHex
 		return &vr, remoteOK, nil
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return nil, remoteAuthFail, fmt.Errorf("server returned %d", resp.StatusCode)
-	case resp.StatusCode >= 500:
-		return nil, remoteTransientFail, fmt.Errorf("server returned %d", resp.StatusCode)
-	default:
-		// 4xx other than 401/403 — treat as auth-class to avoid silent fail-open
-		// on misuse (e.g. 400 bad-request); the caller's cache may not save them.
-		// Conservative posture: NOT fail-open.
-		return nil, remoteAuthFail, fmt.Errorf("server returned %d", resp.StatusCode)
 	}
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return nil, remoteAuthFail, fmt.Errorf("server returned %d", status)
+	}
+	if status >= 500 {
+		return nil, remoteTransientFail, fmt.Errorf("server returned %d", status)
+	}
+	// 4xx other than 401/403 — treat as auth-class to avoid silent fail-open
+	// on misuse (e.g. 400 bad-request); the caller's cache may not save them.
+	// Conservative posture: NOT fail-open.
+	return nil, remoteAuthFail, fmt.Errorf("server returned %d", status)
 }

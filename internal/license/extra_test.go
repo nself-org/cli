@@ -91,6 +91,9 @@ func TestVerifySignature_KeyIDMismatch(t *testing.T) {
 // TestGetPublicKeys_Override: a default build ignores LICENSE_PUBLIC_KEY_OVERRIDE,
 // valid or not, and keeps returning the committed keys.
 func TestGetPublicKeys_Override(t *testing.T) {
+	if devKeysBuild {
+		t.Skip("default builds only; TestDevBuildHonoursOverride covers the nself_devkeys build")
+	}
 	for _, v := range []string{strings.Repeat("ab", 32), "not-valid-hex", "abcd"} {
 		t.Setenv("LICENSE_PUBLIC_KEY_OVERRIDE", v)
 		keys := GetPublicKeys()
