@@ -422,3 +422,53 @@ func TestAutoKeyDefaultIdentityOrderAndE223(t *testing.T) {
 		t.Fatalf("flag: %q %v", got, err)
 	}
 }
+
+// A winner stalled between link and unlink leaves a 2-link key; a second run
+// must accept it (the other link is the winner's own temp), not give up.
+func TestAutoKeyStalledWinnerIsAccepted(t *testing.T) {
+	autoKeyEnv(t)
+	linked, release := make(chan struct{}), make(chan struct{})
+	old := afterLinkHook
+	afterLinkHook = func() { close(linked); <-release }
+	t.Cleanup(func() { afterLinkHook = old })
+	type res struct {
+		id  Identity
+		err error
+	}
+	winner := make(chan res, 1)
+	go func() { id, err := EnsureIdentity("race"); winner <- res{id, err} }()
+	<-linked
+	path, _ := IdentityPath("race")
+	if fi, _ := os.Lstat(path); linkCount(fi) != 2 {
+		t.Fatalf("expected the stalled state (2 links), got %d", linkCount(fi))
+	}
+	afterLinkHook = func() {} // later runs do not stall
+	id2, err := EnsureIdentity("race")
+	if err != nil || id2.Created {
+		t.Fatalf("second run during the stall: %+v %v", id2, err)
+	}
+	close(release)
+	w := <-winner
+	if w.err != nil || !w.id.Created || w.id.Recipient != id2.Recipient {
+		t.Fatalf("winner %+v %v vs %s", w.id, w.err, id2.Recipient)
+	}
+	ents, _ := os.ReadDir(filepath.Dir(path))
+	if len(ents) != 1 {
+		t.Fatalf("temp not unlinked after the stall: %v", ents)
+	}
+}
+
+// --dry-run reports a bad existing auto identity instead of a placeholder.
+func TestAutoKeyDryRunSurfacesBadIdentity(t *testing.T) {
+	home, _, _ := autoKeyEnv(t)
+	compattest.Set(t, true)
+	dir := filepath.Join(home, ".config", "nself")
+	_ = os.MkdirAll(dir, 0o700)
+	_ = os.WriteFile(filepath.Join(dir, "proj-age.key"), []byte("garbage\n"), 0o600)
+	cfg := streamTestConfig()
+	cfg.ProjectName = "proj"
+	_, err := Stream(context.Background(), cfg, StreamOptions{To: "s3:b/p", DryRun: true})
+	if errCode(err) != "E222" || !strings.Contains(err.Error(), "proj-age.key") {
+		t.Fatalf("dry-run with a garbage identity: want E222, got %v", err)
+	}
+}

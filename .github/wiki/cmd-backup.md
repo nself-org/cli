@@ -209,7 +209,7 @@ nself backup restore-remote --from <url> [--key <identity-file>] [--yes]
 | Flag | Default | Description |
 |---|---|---|
 | `--from` | — | Source URL: rclone remote path, `path://<dir>/<object>` or `host://<server>/<dir>/<object>` |
-| `--key` | `~/.config/nself/age-key.txt` | Path to age identity file |
+| `--key` | v1.5: `~/.config/nself/<project>-age.key`, then `<project>-backup-age.key`, then `age-key.txt` (E223 when none). v1.4: `~/.config/nself/age-key.txt` | Path to age identity file, used as given |
 | `--yes` | false | Skip confirmation on production |
 
 ### Examples
@@ -306,6 +306,8 @@ Restore from a local backup file.
 ```bash
 nself backup restore <backup-id|latest> [--only pg,minio,metadata] [--decrypt-key <file>] [--yes]
 ```
+
+Without `--decrypt-key`, v1.5 searches `~/.config/nself/<project>-age.key`, `<project>-backup-age.key`, then `age-key.txt` (E223 when none); v1.4 uses `~/.config/nself/age-key.txt`. The decrypted dump is a unique 0600 temp file beside the backup, removed afterwards; an existing `<backup>.dec` is never touched.
 
 ---
 
@@ -408,7 +410,7 @@ Restores the newest `<project>_stream_*` backup of a remote (rclone, `path://` o
 | Flag | Default | Meaning |
 |---|---|---|
 | `--from` | none | Remote that holds the backups. Selects the off-box drill. |
-| `--identity` | `~/.config/nself/<project>-backup-age.key`, then `age-key.txt` | age identity file that decrypts the object. Only its path is passed to `age`. |
+| `--identity` | `~/.config/nself/<project>-age.key`, then `<project>-backup-age.key`, then `age-key.txt` (E223 when none; the drill is new in v1.5, so it has no v1.4 default) | age identity file that decrypts the object. Only its path is passed to `age`. |
 | `--key` | newest by name | Object to drill instead of the newest. |
 | `--heartbeat-to` | `NSELF_BACKUP_HEARTBEAT_REMOTE` | Remote that receives `<project>/drill.json`. Without one nothing is written. |
 | `--project` | the current project | Project name for the object prefix and heartbeat keys. With `--from` no project directory is needed. |

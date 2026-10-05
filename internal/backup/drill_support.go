@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -237,4 +238,31 @@ func DefaultIdentity(project, flag string) (string, error) {
 // flag is the key flag of the command that failed.
 func NewIdentityMissing(path, flag string) error {
 	return errs.Newf("E223", "the backup identity is missing: %s (pass %s <file>, or restore the file from your off-host copy)", path, flag)
+}
+
+// linkOnlyOurTemp reports whether fi has exactly two links and the other is a
+// sibling named like publishKey's temp file (same inode, same 0700 directory).
+func linkOnlyOurTemp(path string, fi os.FileInfo) bool {
+	if linkCount(fi) != 2 {
+		return false
+	}
+	dir, pre := filepath.Dir(path), "."+filepath.Base(path)+".tmp-"
+	ents, _ := os.ReadDir(dir)
+	for _, e := range ents {
+		if si, err := os.Lstat(filepath.Join(dir, e.Name())); err == nil && strings.HasPrefix(e.Name(), pre) && os.SameFile(fi, si) {
+			return true
+		}
+	}
+	return false
+}
+
+// linkCount is the file's hard-link count; 1 where the platform does not say.
+func linkCount(fi os.FileInfo) uint64 {
+	v := reflect.ValueOf(fi.Sys())
+	if v.Kind() == reflect.Pointer && !v.IsNil() {
+		if n := v.Elem().FieldByName("Nlink"); n.IsValid() && n.CanUint() {
+			return n.Uint()
+		}
+	}
+	return 1
 }

@@ -136,12 +136,13 @@ func decryptFile(ctx context.Context, path, keyPath, project string) (string, er
 
 	// The plaintext dump is created 0600 by us (never by age's default mode)
 	// and removed on every path that does not hand it to the caller.
-	decrypted := strings.TrimSuffix(path, ".age") + ".dec"
-	_ = os.Remove(decrypted)
-	out, err := os.OpenFile(decrypted, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	// A fresh unique 0600 file next to the backup; an existing <backup>.dec is
+	// never touched. The name still ends in .dump.dec for restorePostgres.
+	out, err := os.CreateTemp(filepath.Dir(path), ".nself-restore-*-"+strings.TrimSuffix(filepath.Base(path), ".age")+".dec")
 	if err != nil {
-		return "", fmt.Errorf("%w: create %s: %v", errs.ErrBackupDecryptFailed, decrypted, err)
+		return "", fmt.Errorf("%w: create temp file: %v", errs.ErrBackupDecryptFailed, err)
 	}
+	decrypted := out.Name()
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "age", "-d", "-i", keyPath, path)
 	cmd.Stdout, cmd.Stderr = out, &stderr

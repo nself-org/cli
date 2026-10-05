@@ -21,10 +21,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
@@ -37,6 +35,9 @@ const NoAutoKeyEnv = "NSELF_BACKUP_NO_AUTO_KEY"
 // identity once it is copied somewhere other than this host. The doctor hint
 // stays quiet only when it exists.
 const BackedUpMarkerSuffix = ".backed-up"
+
+// afterLinkHook runs between the link and the temp unlink; tests stall there.
+var afterLinkHook = func() {}
 
 // autoKeyNotice receives the creation notice; tests replace it.
 var autoKeyNotice io.Writer = os.Stderr
@@ -79,10 +80,16 @@ func resolveAutoRecipients(project string, recipients []string, optOut, dryRun b
 		return nil, errs.New("E224", "no backup recipient is configured and automatic key creation is disabled ("+NoAutoKeyEnv+"=1)")
 	}
 	if dryRun {
-		if p, err := IdentityPath(project); err == nil {
-			if id, ok, _ := readIdentity(p); ok {
-				return []string{id.Recipient}, nil
-			}
+		p, err := IdentityPath(project)
+		if err != nil {
+			return nil, err
+		}
+		id, ok, err := readIdentity(p) // a bad existing identity surfaces now, not on the real run
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return []string{id.Recipient}, nil
 		}
 		return []string{"<identity created on the first real run>"}, nil
 	}
@@ -166,14 +173,14 @@ func readIdentity(path string) (Identity, bool, error) {
 		return Identity{}, false, errs.Newf("E222", "the backup identity path is not a regular file (symlinks are refused): %s", path)
 	}
 	// A hard link shares its inode with another file: chmod would change that
-	// file too. A link from a concurrent first run's temp file is short-lived.
-	for i := 0; linkCount(fi) > 1; i++ {
-		if i == 50 {
-			return Identity{}, false, errs.Newf("E222", "the backup identity %s has more than one hard link (refused, left untouched; remove the extra link such as a stray .tmp file beside it)", path)
-		}
-		time.Sleep(5 * time.Millisecond)
-		if fi, err = os.Lstat(path); err != nil {
-			return Identity{}, false, errs.Wrap("E222", "cannot inspect the backup identity "+path, err)
+	// file too. The one accepted second link is a concurrent first run's own
+	// creation temp, which its winner unlinks right after linking.
+	if linkCount(fi) > 1 && !linkOnlyOurTemp(path, fi) {
+		// the winner may have unlinked its temp between the two looks: look again
+		if fi2, err2 := os.Lstat(path); err2 == nil && linkCount(fi2) <= 1 {
+			fi = fi2
+		} else {
+			return Identity{}, false, errs.Newf("E222", "the backup identity %s has more than one hard link (refused, left untouched; remove the extra link)", path)
 		}
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
@@ -187,17 +194,6 @@ func readIdentity(path string) (Identity, bool, error) {
 		return Identity{}, false, err
 	}
 	return Identity{Path: path, Recipient: pub}, true, nil
-}
-
-// linkCount is the file's hard-link count; 1 where the platform does not say.
-func linkCount(fi os.FileInfo) uint64 {
-	v := reflect.ValueOf(fi.Sys())
-	if v.Kind() == reflect.Pointer && !v.IsNil() {
-		if n := v.Elem().FieldByName("Nlink"); n.IsValid() && n.CanUint() {
-			return n.Uint()
-		}
-	}
-	return 1
 }
 
 // generateAgeKey runs age-keygen with its secret captured in memory only.
@@ -263,6 +259,8 @@ func publishKey(path string, secret []byte) (created bool, err error) {
 		}
 		return false, errs.Wrap("E222", "cannot place the backup identity at "+path, err)
 	}
+	afterLinkHook()
+	_ = os.Remove(tmpPath) // not deferred: the second link must not outlive the publish
 	if d, err := os.Open(dir); err == nil {
 		_ = d.Sync()
 		_ = d.Close()

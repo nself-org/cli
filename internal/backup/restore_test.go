@@ -308,3 +308,35 @@ func TestAutoKeyDecryptedDumpIs0600AndRemovedOnFailure(t *testing.T) {
 		t.Errorf("failed restore left %v", left)
 	}
 }
+
+// An existing <backup>.dec is somebody's file: a failed decrypt must not touch it.
+func TestAutoKeyExistingDecFileSurvives(t *testing.T) {
+	home, _, _ := autoKeyEnv(t)
+	key, wrong := filepath.Join(home, "k"), filepath.Join(home, "w")
+	newAgeKey(t, key)
+	newAgeKey(t, wrong)
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "p_full_1.dump.age")
+	ageEncrypt(t, key, "PGDMP-x", obj)
+	mine := filepath.Join(dir, "p_full_1.dump.dec")
+	if err := os.WriteFile(mine, []byte("precious"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decryptFile(context.Background(), obj, wrong, "proj"); err == nil {
+		t.Fatal("wrong key decrypted")
+	}
+	if b, _ := os.ReadFile(mine); string(b) != "precious" || mode(t, mine) != 0o640 {
+		t.Fatal("the pre-existing .dec file was modified or removed after a failed decrypt")
+	}
+	dec, err := decryptFile(context.Background(), obj, key, "proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Remove(dec) }()
+	if dec == mine || !strings.HasSuffix(strings.TrimSuffix(dec, ".dec"), ".dump") {
+		t.Fatalf("temp name %s", dec)
+	}
+	if b, _ := os.ReadFile(mine); string(b) != "precious" {
+		t.Fatal("a successful decrypt overwrote the pre-existing .dec file")
+	}
+}
