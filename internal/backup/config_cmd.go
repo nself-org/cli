@@ -119,3 +119,47 @@ func FormatStatus(info *StatusInfo, format string) (string, error) {
 		info.RetentionDaily, info.RetentionWeekly, info.RetentionMonthly)
 	return sb.String(), nil
 }
+
+// statusWithOffbox is StatusInfo plus the offbox object. The embedded fields
+// keep their order and names, so the existing JSON is unchanged and `offbox`
+// is appended (contract:cli.backup-status v1).
+type statusWithOffbox struct {
+	*StatusInfo
+	Offbox *OffboxStatus `json:"offbox"`
+}
+
+// FormatStatusOffbox renders the status with the off-box heartbeat state. info
+// is nil outside a project directory (--project with --heartbeat-to): then only
+// the offbox object (JSON) or the two off-box lines (text) are printed. The
+// text form gains the two lines only when a heartbeat remote is configured.
+func FormatStatusOffbox(info *StatusInfo, off *OffboxStatus, format string) (string, error) {
+	if format == "json" {
+		var v interface{} = struct {
+			Offbox *OffboxStatus `json:"offbox"`
+		}{off}
+		if info != nil {
+			v = statusWithOffbox{info, off}
+		}
+		data, err := json.MarshalIndent(v, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	}
+	var sb strings.Builder
+	if info != nil {
+		out, err := FormatStatus(info, format)
+		if err != nil {
+			return "", err
+		}
+		sb.WriteString(out)
+	} else {
+		sb.WriteString("Backup Status:\n")
+	}
+	if off != nil && off.Source == "heartbeat" {
+		for _, l := range off.Lines() {
+			sb.WriteString(l + "\n")
+		}
+	}
+	return sb.String(), nil
+}

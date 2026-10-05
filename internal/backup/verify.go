@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -134,99 +134,18 @@ func emitVerifyMetric(cfg *config.Config, start time.Time, success bool) {
 	}
 }
 
-// runRestoreTest spins up a temporary postgres container, restores the backup,
-// and runs the full smoke-query catalog plus a sentinel CRUD round-trip to
-// verify data integrity. A schema-only restore (empty DB) fails this check.
-//
-// Flag: --restore-test (confirmed per S41-T11 drift fix).
-func runRestoreTest(ctx context.Context, cfg *config.Config, backupFile string, opts VerifyOptions) error {
-	testContainer := cfg.ProjectName + "_pg_restore_test"
-	testVolume := cfg.ProjectName + "_restore_test_data"
-	pgVersion := cfg.Postgres.Version
-	if pgVersion == "" {
-		pgVersion = "16-alpine"
-	}
-
-	slog.Info("starting restore test container", "container", testContainer)
-
-	// Create ephemeral volume and container.
-	runArgs := []string{
-		"run", "-d",
-		"--name", testContainer,
-		"-v", testVolume + ":/var/lib/postgresql/data",
-		"-e", "POSTGRES_USER=" + cfg.Postgres.User,
-		"-e", "POSTGRES_PASSWORD=" + cfg.Postgres.Password,
-		"-e", "POSTGRES_DB=" + cfg.Postgres.DB,
-		"postgres:" + pgVersion,
-	}
-
-	cmd := exec.CommandContext(ctx, "docker", runArgs...)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("start test container: %s: %w", string(output), err)
-	}
-
-	// Cleanup deferred unconditionally so sentinel schema is always removed.
-	cleanup := func() {
-		if opts.Keep {
-			slog.Info("keeping test container for inspection", "container", testContainer)
-			return
-		}
-		slog.Info("cleaning up test container", "container", testContainer)
-		_ = exec.CommandContext(ctx, "docker", "rm", "-f", testContainer).Run()
-		_ = exec.CommandContext(ctx, "docker", "volume", "rm", "-f", testVolume).Run()
-	}
-	defer cleanup()
-
-	// Wait for postgres to be ready (up to 30s).
-	user := cfg.Postgres.User
-	if user == "" {
-		user = "postgres"
-	}
-	db := cfg.Postgres.DB
-	if db == "" {
-		db = "nself"
-	}
-	ready := false
-	for i := 0; i < 30; i++ {
-		check := exec.CommandContext(ctx, "docker", "exec", testContainer, "pg_isready", "-U", user)
-		if check.Run() == nil {
-			ready = true
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-	if !ready {
-		return fmt.Errorf("%w: postgres container not ready after 30s", errs.ErrBackupVerifyFailed)
-	}
-
-	// Restore the backup into the test container. Only the pg_dump (.dump)
-	// format produced by `nself backup create` has an automated restore path.
-	// A legacy base-backup tar cannot be restored here, so fail with a clear
-	// message instead of running smoke queries against an empty database (which
-	// would mis-report a "schema-only restore").
-	if strings.HasSuffix(backupFile, ".dump") {
-		if err := restorePgDump(ctx, testContainer, user, db, backupFile); err != nil {
-			return fmt.Errorf("restore test failed: %w", err)
-		}
-	} else {
-		return fmt.Errorf("%w: %s is not a restorable pg_dump (.dump) backup; recreate it with the default format before running --restore-test",
-			errs.ErrBackupVerifyFailed, backupFile)
-	}
+// smokeAndSentinel runs the smoke-query catalog and a sentinel CRUD round-trip
+// against the restored container.
+func smokeAndSentinel(ctx context.Context, c *Container) error {
+	user, db := c.User, c.DB
+	testContainer := c.Name
 
 	// --- Run smoke-query catalog (5+ system tables) ---
 	// The first query (user table count) is the gate. Count == 0 means this is
 	// a schema-only restore and we must fail immediately with a clear message.
 	failedQueries := 0
 	for _, sq := range smokeQueryCatalog {
-		smokeArgs := []string{
-			"exec", testContainer,
-			"psql", "-U", user, "-d", db, "-t", "-c", sq.SQL,
-		}
-		smokeCmd := exec.CommandContext(ctx, "docker", smokeArgs...)
+		smokeCmd := c.cmd(ctx, nil, "psql", "-U", user, "-d", db, "-t", "-c", sq.SQL)
 		output, err := smokeCmd.CombinedOutput()
 		if err != nil {
 			// The gate query (user table count) is the one condition this
@@ -266,29 +185,70 @@ func runRestoreTest(ctx context.Context, cfg *config.Config, backupFile string, 
 		"DROP SCHEMA _nself_verify_sentinel CASCADE;",
 	}, " ")
 
-	sentinelArgs := []string{
-		"exec", testContainer,
-		"psql", "-U", user, "-d", db, "-t", "-c", sentinelSQL,
-	}
 	sentinelCtx, sentinelCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer sentinelCancel()
 
-	sentinelCmd := exec.CommandContext(sentinelCtx, "docker", sentinelArgs...)
-	sentinelOut, sentinelErr := sentinelCmd.CombinedOutput()
+	sentinelOut, sentinelErr := c.cmd(sentinelCtx, nil, "psql", "-U", user, "-d", db, "-t", "-c", sentinelSQL).CombinedOutput()
 	sentinelDur := time.Since(sentinelStart)
 
 	if sentinelErr != nil {
 		// Always attempt cleanup of sentinel schema on error.
 		cleanSQL := "DROP SCHEMA IF EXISTS _nself_verify_sentinel CASCADE;"
-		_ = exec.CommandContext(ctx, "docker", "exec", testContainer, "psql", "-U", user, "-d", db, "-c", cleanSQL).Run()
+		_ = c.cmd(ctx, nil, "psql", "-U", user, "-d", db, "-c", cleanSQL).Run()
 		return fmt.Errorf("%w: sentinel CRUD failed (%s): %s", errs.ErrBackupVerifyFailed, sentinelDur, string(sentinelOut))
 	}
 
-	slog.Info("sentinel CRUD round-trip passed", "duration_ms", sentinelDur.Milliseconds())
+	slog.Info("sentinel CRUD round-trip passed", "container", testContainer, "duration_ms", sentinelDur.Milliseconds())
 
 	if !strings.Contains(string(sentinelOut), "s46-verify") {
 		return fmt.Errorf("%w: sentinel value not found in read-back", errs.ErrBackupVerifyFailed)
 	}
 
 	return nil
+}
+
+func quoteIdent(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` }
+
+const listTablesSQL = `SELECT n.nspname, c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE c.relkind IN ('r','p','m') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname !~ '^pg_toast'
+ORDER BY 1,2`
+
+// CountRows returns the exact count(*) of every user table, key "schema.table".
+func CountRows(ctx context.Context, c *Container) (map[string]int64, error) {
+	out, err := c.Query(ctx, listTablesSQL)
+	if err != nil {
+		return nil, err
+	}
+	var names, parts []string
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Split(strings.TrimRight(line, "\r"), "\t")
+		if len(f) != 2 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("SELECT %d, count(*) FROM %s.%s", len(names), quoteIdent(f[0]), quoteIdent(f[1])))
+		names = append(names, f[0]+"."+f[1])
+	}
+	rows := map[string]int64{}
+	if len(names) == 0 {
+		return rows, nil
+	}
+	if out, err = c.Query(ctx, strings.Join(parts, " UNION ALL ")+";"); err != nil {
+		return nil, err
+	}
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Split(strings.TrimSpace(line), "\t")
+		if len(f) != 2 {
+			continue
+		}
+		i, e1 := strconv.Atoi(f[0])
+		n, e2 := strconv.ParseInt(f[1], 10, 64)
+		if e1 != nil || e2 != nil || i < 0 || i >= len(names) {
+			return nil, fmt.Errorf("unexpected count output %q", line)
+		}
+		rows[names[i]] = n
+	}
+	if len(rows) != len(names) {
+		return nil, fmt.Errorf("counted %d of %d tables", len(rows), len(names))
+	}
+	return rows, nil
 }

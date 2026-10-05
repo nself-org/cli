@@ -125,6 +125,10 @@ These errors occur when the CLI interacts with the PostgreSQL container, backups
 | <a id="e214"></a>E214 | 2 | Standby promotion failed | The standby database could not be promoted to primary. | Check the standby status and replication lag, then retry the promotion. |
 | <a id="e215"></a>E215 | 2 | Disaster recovery rollback failed | Rolling back a disaster recovery step failed. | Check the current database role on each node before taking any further action. |
 | <a id="e216"></a>E216 | 2 | Split-brain fence failed | The old primary could not be fenced, so two nodes might accept writes. | Stop the old primary by hand before continuing, then retry the fence step. |
+| <a id="e217"></a>E217 | 2 | Off-box backup is stale | The newest off-box backup heartbeat is older than --max-age, is missing, or reports a failed backup. | Check the backup schedule on the production host (nself backup schedule, then its systemd journal) and run nself backup stream once by hand. |
+| <a id="e218"></a>E218 | 2 | Restore drill is stale or failed | The newest restore drill is older than --max-drill-age, never ran, or its restore did not match the backup. | Run nself backup drill --from <remote> --identity <age key> --heartbeat-to <remote> from the owner machine and read the mismatches it lists. |
+| <a id="e219"></a>E219 | 2 | Backup heartbeat unreadable | The heartbeat object could not be fetched or parsed, so freshness is unknown. Unknown is treated as not OK. | Check the heartbeat remote and its credentials (--heartbeat-to or NSELF_BACKUP_HEARTBEAT_REMOTE), then read the object with rclone cat. |
+| <a id="e220"></a>E220 | 2 | Restore drill cannot start | The drill needs a running Docker daemon, the age binary for encrypted backups, and free disk of twice the download size. | Start Docker, install age, or free disk space in the temp directory (TMPDIR), then run the drill again. |
 
 ---
 

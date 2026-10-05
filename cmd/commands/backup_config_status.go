@@ -6,9 +6,14 @@ package commands
 // Constraints: split out of backup_ops.go (CLI-R12) as a pure move, no behavior change.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/nself-org/cli/internal/backup"
 	"github.com/nself-org/cli/internal/backup/destinations"
@@ -116,23 +121,69 @@ var backupStatusCmd = &cobra.Command{
 }
 
 func runBackupStatus(cmd *cobra.Command, _ []string) error {
-	cfg, err := loadProjectConfig()
-	if err != nil {
-		return err
-	}
-
 	format, _ := cmd.Flags().GetString("format")
-	info, err := backup.Status(cfg)
-	if err != nil {
-		return fmt.Errorf("backup status: %w", err)
+	project, _ := cmd.Flags().GetString("project")
+	hbTo, _ := cmd.Flags().GetString("heartbeat-to")
+	var opts backup.OffboxOptions
+	for _, f := range []struct {
+		flag string
+		dst  *time.Duration
+	}{{"max-age", &opts.MaxAge}, {"max-drill-age", &opts.MaxDrillAge}} {
+		flag, dst := f.flag, f.dst
+		v, _ := cmd.Flags().GetString(flag)
+		if v == "" {
+			continue
+		}
+		d, err := backup.ParseAge(v)
+		if err != nil {
+			return fmt.Errorf("--%s: %w", flag, err)
+		}
+		*dst = d
 	}
 
-	output, err := backup.FormatStatus(info, format)
+	// With --project and --heartbeat-to the command needs no project directory
+	// (owner-machine jobs run from $HOME): only the offbox object is printed.
+	var info *backup.StatusInfo
+	if project == "" || hbTo == "" {
+		cfg, err := loadProjectConfig()
+		if err != nil {
+			return err
+		}
+		if info, err = backup.Status(cfg); err != nil {
+			return fmt.Errorf("backup status: %w", err)
+		}
+		if project == "" {
+			project = cfg.ProjectName
+		}
+		if hbTo == "" {
+			hbTo = cfg.Backup.HeartbeatRemote()
+		}
+	}
+
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	// SIGINT and SIGTERM cancel the remote reads so their defers run.
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() { <-ctx.Done(); stop() }()
+	off, offErr := backup.ReadOffbox(ctx, hbTo, project, opts, time.Now())
+	output, err := backup.FormatStatusOffbox(info, off, format)
 	if err != nil {
 		return err
 	}
 	fmt.Print(output)
-	return nil
+	// The state is printed first so a JSON consumer sees it; the coded error
+	// (E217, E218, E219) sets the exit status.
+	return offErr
+}
+
+func init() {
+	backupStatusCmd.Flags().String("heartbeat-to", "", "Heartbeat remote to read backup.json and drill.json from (default: NSELF_BACKUP_HEARTBEAT_REMOTE)")
+	backupStatusCmd.Flags().String("max-age", "", "Fail with E217 when the newest off-box backup is older (e.g. 26h)")
+	backupStatusCmd.Flags().String("max-drill-age", "", "Fail with E218 when the newest restore drill is older or failed (e.g. 35d)")
+	backupStatusCmd.Flags().String("project", "", "Project name for the heartbeat objects; with --heartbeat-to no project directory is needed")
 }
 
 // ── backup init-key ────────────────────────────────────────────────

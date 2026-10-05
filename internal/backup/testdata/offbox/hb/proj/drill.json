@@ -1,0 +1,17 @@
+{
+  "approx_rows": null,
+  "at": "2026-09-20T03:00:00Z",
+  "backup_key": "proj_stream_20260920_023000.sql.age",
+  "bytes": 2000,
+  "cli_version": "1.4.12",
+  "encrypted": true,
+  "kind": "drill",
+  "mismatches": [],
+  "project": "proj",
+  "restored_rows": {
+    "public.orders": 25,
+    "public.users": 1000
+  },
+  "result": "ok",
+  "schema_version": "1"
+}

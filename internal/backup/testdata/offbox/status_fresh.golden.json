@@ -1,0 +1,44 @@
+{
+  "offbox": {
+    "source": "heartbeat",
+    "last_backup": {
+      "approx_rows": {
+        "public.orders": 25,
+        "public.users": 1000
+      },
+      "at": "2026-10-05T02:31:00Z",
+      "backup_key": "proj_stream_20261005_023000.sql.age",
+      "bytes": 2048,
+      "cli_version": "1.4.12",
+      "encrypted": true,
+      "kind": "backup",
+      "mismatches": [],
+      "project": "proj",
+      "restored_rows": null,
+      "result": "ok",
+      "schema_version": "1"
+    },
+    "last_drill": {
+      "approx_rows": null,
+      "at": "2026-09-20T03:00:00Z",
+      "backup_key": "proj_stream_20260920_023000.sql.age",
+      "bytes": 2000,
+      "cli_version": "1.4.12",
+      "encrypted": true,
+      "kind": "drill",
+      "mismatches": [],
+      "project": "proj",
+      "restored_rows": {
+        "public.orders": 25,
+        "public.users": 1000
+      },
+      "result": "ok",
+      "schema_version": "1"
+    },
+    "backup_age_seconds": 7200,
+    "drill_age_seconds": 1301460,
+    "max_age_exceeded": false,
+    "max_drill_age_exceeded": false,
+    "problems": []
+  }
+}
