@@ -128,6 +128,9 @@ func resolveBackupFile(backupDir, backupID string) (string, error) {
 	return "", fmt.Errorf("%w: %s", errs.ErrBackupNotFound, backupID)
 }
 
+// randRead is the temp name source; tests replace it.
+var randRead = rand.Read
+
 // restoreTempRe is exactly the name decryptFile gives its plaintext temp.
 var restoreTempRe = regexp.MustCompile(`^\.nself-restore-[0-9a-f]{16}\.dec$`)
 
@@ -179,7 +182,9 @@ func decryptFile(ctx context.Context, path, keyPath, project string) (string, er
 	var err error
 	for i := 0; i < 8; i++ {
 		var b [8]byte
-		_, _ = rand.Read(b[:])
+		if _, err = randRead(b[:]); err != nil { // fail closed: never fall back to a guessable name
+			break
+		}
 		out, err = os.OpenFile(filepath.Join(filepath.Dir(path), ".nself-restore-"+hex.EncodeToString(b[:])+".dec"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err == nil || !errors.Is(err, os.ErrExist) {
 			break
@@ -254,19 +259,7 @@ func restorePgDump(ctx context.Context, container, user, db, backupFile string) 
 		if ctx.Err() != nil { // cancelled (SIGINT/SIGTERM): a killed restore is not a warning
 			return fmt.Errorf("%w: %v", errs.ErrBackupRestoreFailed, ctx.Err())
 		}
-		// pg_restore returns non-zero on warnings too; only fail on real errors.
-		errStr := string(errOutput)
-		t := fatalRestoreText("pg_restore", errStr) // the drill's rule and allowlist, one copy
-		// compat.V15(P7-PROD-08): only FATAL or "could not" fails -> any unlisted pg_restore error: line fails
-		if compat.V15() && t != "" {
-			return fmt.Errorf("%w: %s", errs.ErrBackupRestoreFailed, t)
-		} else if t != "" && strings.Contains(strings.ToLower(t), "error:") {
-			slog.Warn("pg_restore reported errors; this restore may be incomplete (v1.5 fails on them)", "errors", strings.Count(t, "; ")+1, "first", fmt.Sprintf("%.300s", t))
-		}
-		if strings.Contains(errStr, "FATAL") || strings.Contains(errStr, "could not") {
-			return fmt.Errorf("%w: %s", errs.ErrBackupRestoreFailed, errStr)
-		}
-		slog.Warn("pg_restore completed with warnings", "output", errStr)
+		return restoreVerdict(string(errOutput))
 	}
 
 	return nil

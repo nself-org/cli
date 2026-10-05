@@ -511,3 +511,57 @@ func TestAutoKeyRestoreErrorLinesAreFatalInV15(t *testing.T) {
 		t.Fatalf("allowlisted errors must not fail: %v", err)
 	}
 }
+
+// restore-remote follows the same pg_restore rule as restore, in both modes.
+func TestAutoKeyRestoreRemoteErrorLinesAreFatalInV15(t *testing.T) {
+	_, _, logs := autoKeyEnv(t)
+	bin := t.TempDir()
+	_ = os.WriteFile(filepath.Join(bin, "pg_restore"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	_ = os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\ncat >/dev/null\necho 'pg_restore: error: COPY failed for table x' >&2\nexit 1\n"), 0o755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "p_full_1.dump"), []byte("PGDMP"), 0o600)
+	cfg := localBackupCfg(dir)
+	run := func() error { return RestoreFromRemote(context.Background(), cfg, "path://"+dir+"/p_full_1.dump", "") }
+	compattest.Both(t, func(t *testing.T) {
+		logs.Reset()
+		err := run()
+		if os.Getenv("NSELF_V15") == "1" {
+			if err == nil || !strings.Contains(err.Error(), "COPY failed for table x") {
+				t.Fatalf("v1.5 restore-remote must fail on a pg_restore error line, got %v", err)
+			}
+			return
+		}
+		if err != nil {
+			t.Fatalf("v1.4 keeps succeeding: %v", err)
+		}
+		if l := logs.String(); !strings.Contains(l, "errors=1") || !strings.Contains(l, "COPY failed for table x") {
+			t.Errorf("v1.4 must warn with the count and first lines, got: %s", l)
+		}
+	})
+	compattest.Set(t, true)
+	allowedRestoreErrors = []string{"COPY failed for table x"}
+	defer func() { allowedRestoreErrors = nil }()
+	if err := run(); err != nil {
+		t.Fatalf("allowlisted error must not fail: %v", err)
+	}
+}
+
+// A failing random source fails the decrypt before any file exists.
+func TestAutoKeyRandFailureFailsClosed(t *testing.T) {
+	home, _, _ := autoKeyEnv(t)
+	key := filepath.Join(home, "k")
+	newAgeKey(t, key)
+	dir := t.TempDir()
+	obj := filepath.Join(dir, "p_full_1.dump.age")
+	ageEncrypt(t, key, "PGDMP-x", obj)
+	old := randRead
+	randRead = func([]byte) (int, error) { return 0, errors.New("no entropy") }
+	defer func() { randRead = old }()
+	if _, err := decryptFile(context.Background(), obj, key, "proj"); err == nil || !strings.Contains(err.Error(), "no entropy") {
+		t.Fatalf("want the entropy failure, got %v", err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, ".nself-restore-*")); len(left) != 0 {
+		t.Errorf("a file was created without randomness: %v", left)
+	}
+}

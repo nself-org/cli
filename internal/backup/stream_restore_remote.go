@@ -204,12 +204,9 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 		}
 		errOut, _ := io.ReadAll(stderr)
 		if err := cmd.Wait(); err != nil {
-			errStr := string(errOut)
-			if strings.Contains(errStr, "FATAL") || strings.Contains(errStr, "could not") {
+			if verr := restoreVerdict(string(errOut)); verr != nil {
 				cancel()
-				errc <- fmt.Errorf("%w: %s", errs.ErrBackupRestoreFailed, strings.TrimSpace(errStr))
-			} else if errStr != "" {
-				slog.Warn("pg_restore warnings", "output", strings.TrimSpace(errStr))
+				errc <- verr
 			}
 		}
 	}()
