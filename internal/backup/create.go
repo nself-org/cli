@@ -87,6 +87,14 @@ func Create(ctx context.Context, cfg *config.Config, opts CreateOptions) error {
 		return err
 	}
 
+	// Zero-config key (v1.5): a full backup with encryption on and no recipient.
+	if opts.Type == BackupTypeFull || opts.Type == BackupTypeAll {
+		var err error
+		if cfg, err = withAutoRecipient(cfg, opts); err != nil {
+			return err
+		}
+	}
+
 	types := []BackupType{opts.Type}
 	if opts.Type == BackupTypeAll {
 		types = []BackupType{BackupTypeFull, BackupTypeMetadata}
@@ -177,4 +185,21 @@ func createSingle(ctx context.Context, cfg *config.Config, bt BackupType, backup
 	default:
 		return fmt.Errorf("unknown backup type: %s", bt)
 	}
+}
+
+// withAutoRecipient returns cfg with an auto identity's recipient filled in
+// when encryption is on and none is configured (v1.5 only, see autokey.go).
+// The caller's cfg is never modified.
+func withAutoRecipient(cfg *config.Config, opts CreateOptions) (*config.Config, error) {
+	encrypt := (cfg.Backup.Encryption || opts.Encrypt) && !opts.NoEncrypt
+	if !encrypt || cfg.Backup.AgeRecipients != "" {
+		return cfg, nil
+	}
+	rec, err := resolveAutoRecipients(cfg.ProjectName, nil, false, false)
+	if err != nil || len(rec) == 0 {
+		return cfg, err
+	}
+	c := *cfg
+	c.Backup.AgeRecipients = rec[0]
+	return &c, nil
 }

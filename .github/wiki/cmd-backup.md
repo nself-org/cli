@@ -68,7 +68,8 @@ nself backup stream --to <url> [--recipient <key>] [--heartbeat-to <remote>] [--
 |---|---|---|
 | `--to` | `NSELF_BACKUP_DESTINATION` | Destination URL (rclone remote path) |
 | `--recipient` | `NSELF_BACKUP_RECIPIENT` | Encryption recipient: age key, SSH key, or `github:<user>` (repeatable) |
-| `--heartbeat-to` | `NSELF_BACKUP_HEARTBEAT_REMOTE` | rclone remote that receives `<project>/backup.json` after a successful upload |
+| `--heartbeat-to` | `NSELF_BACKUP_NO_AUTO_KEY` | `1` keeps the refusal when no recipient is configured instead of creating an identity (v1.5) |
+| `NSELF_BACKUP_HEARTBEAT_REMOTE` | rclone remote that receives `<project>/backup.json` after a successful upload |
 | `--heartbeat-required` | false | Exit non-zero when the heartbeat cannot be written. The backup itself is kept either way |
 | `--dry-run` | false | Preview without running |
 
@@ -133,6 +134,55 @@ nself backup stream --to r2:mybucket/backups --recipient age1abc123 --heartbeat-
 | `NSELF_BACKUP_CHUNK_MB` | Multipart chunk size in MB (default: 64, handled by rclone) |
 | `AWS_ACCESS_KEY_ID` | S3/R2/B2 access key |
 | `AWS_SECRET_ACCESS_KEY` | S3/R2/B2 secret key |
+
+### Zero-config encryption key (v1.5)
+
+With `NSELF_V15=1`, `backup stream` and `backup create` (encryption on) work on a project with no backup configuration. When no recipient is configured, nSelf creates an age identity once and encrypts to its recipient:
+
+- Identity file: `~/.config/nself/<project>-age.key`, mode `0600`, directory `0700`. The same path `nself backup init-key` uses.
+- It is created the first time only. An existing identity is never overwritten, and two runs starting together end with one key. A looser mode on an existing file or directory is tightened, and a symlink or a file that is not an age identity is refused (`E222`).
+- The first run prints where the identity lives, its public recipient, and how to back it up. The secret is never printed or logged.
+- A recipient from `--recipient`, `BACKUP_AGE_RECIPIENTS` or `NSELF_BACKUP_RECIPIENT` always wins and creates no file. `--no-encrypt` keeps its exact meaning.
+- `NSELF_BACKUP_NO_AUTO_KEY=1` turns automatic creation off. With no recipient the command then refuses (`E224` in v1.5, the usual refusal in v1.4).
+- Without `NSELF_V15=1` (v1.4 behaviour) the command refuses a missing recipient exactly as before. `--dry-run` never creates the file.
+
+```bash
+NSELF_V15=1 nself backup stream --to r2:mybucket/backups
+# restore with the identity it printed
+nself backup restore-remote --from r2:mybucket/backups/<object>.age --key ~/.config/nself/<project>-age.key
+```
+
+### If the key is lost
+
+**A lost identity makes every backup encrypted to it unrecoverable.** The recipient (public key) cannot decrypt, the storage provider cannot, and nSelf cannot. There is no recovery path.
+
+1. Right after the first backup, copy `~/.config/nself/<project>-age.key` somewhere that is not this machine: a password manager attachment or an offline drive.
+2. Then run `touch ~/.config/nself/<project>-age.key.backed-up`. The marker is an empty file you create yourself; the advisory `nself doctor` backup hint stays quiet only when it exists. Nothing checks that the copy is real.
+3. Prove it once: restore a backup using the copy (`nself backup restore-remote --key <copy>`).
+
+### Threat model
+
+| Threat | With the auto identity | Hardened setup |
+|---|---|---|
+| Lost or deleted key | Backups unrecoverable | Keep an off-host copy and test a restore |
+| Storage provider reads your bucket | Sees only age ciphertext | Same |
+| Host compromise | The attacker holds the identity next to the recipient, so they can decrypt every backup the host can reach | Move the identity off the host and keep only the recipient (`BACKUP_AGE_RECIPIENTS=age1...`); production works this way |
+| Backup uploaded without the key | Not possible: no recipient means a refusal, never plaintext | Same |
+
+The auto identity trades host-compromise resistance for a first backup that works with zero setup. For production, generate the identity on your own machine (`age-keygen`), put only its recipient on the server, and keep the identity in your vault.
+
+### Replacing a hand-rolled backup script
+
+A cron script that runs `pg_dump ... | aws s3 cp - s3://bucket/x` or `rclone copy` has no encryption, no heartbeat and no restore proof. Replace it:
+
+| Hand-rolled | nSelf |
+|---|---|
+| `pg_dump` piped to `aws s3 cp` or `rclone copy` | `nself backup stream --to <remote>` (age-encrypted, no temp file) |
+| a crontab line | `nself backup schedule` |
+| "did it run?" | `--heartbeat-to <remote>` and `nself backup status` |
+| a manual restore test | `nself backup drill --from <remote> --identity <key>` |
+
+Destinations are the three kinds above; for stream and schedule use an rclone remote (S3, R2, B2, GCS, Azure) today. `nself doctor` carries an advisory hint (it never fails and never changes the exit code) when a project still holds such a script.
 
 ---
 

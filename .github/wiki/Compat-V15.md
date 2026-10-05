@@ -69,6 +69,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-63 | signature over a locally built payload | server signature over the raw body | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | signed reply trusted for any licence | only a reply whose signed jwt names this key and is in window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | unsigned bundle response accepted | unsigned bundle response refused | `internal/license/checker.go` |
+| P7-PROD-08 | refuse | auto identity | `internal/backup/autokey.go` |
 | P7-REG-02 | bare pre-contract JSON | v1 envelope (NSELF_JSON_LEGACY=1 or true keeps bare JSON for one minor) | `internal/output/legacy.go` |
 | P7-REG-05 | --json accepted and ignored on a command whose own json flag predates P7-REG | refused with E402 | `cmd/commands/invocation.go` |
 | P7-REG-05 | flag and argument errors keep cobra's text | wrapped as E401 | `cmd/commands/invocation.go` |
