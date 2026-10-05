@@ -47,7 +47,7 @@ Targets accept both short and long forms:
 | local | `local` | Build and rolling-restart on this machine |
 | staging | `staging` | Staging environment (uses `NSELF_DEPLOY_HOST_STAGING` if set) |
 | prod | `prod`, `production` | Production (uses `NSELF_DEPLOY_HOST_PROD` if set; requires `--force` or `--dry-run`) |
-| any other name | the environment's name, e.g. `qa` | An environment from the inventory (uses `NSELF_DEPLOY_HOST_<ENV>` on the single-host path); loads `.env`, `.env.dev`, `.env.<name>`, `.env.secrets`, `.env.local` (the same list `nself build` uses), never `.env.prod` |
+| any other name | the environment's name, e.g. `qa` | An environment from the inventory (uses `NSELF_DEPLOY_HOST_<ENV>` on the single-host path); loads `.env`, `.env.<name>`, `.env.secrets`, `.env.local` (the same list `nself build` uses), never `.env.dev` or `.env.prod` |
 
 An environment named `prod` or `production` is production-class and requires `--force` (or
 `--yes`) unless you pass `--dry-run`. The check runs before every deploy path, including the
@@ -58,9 +58,7 @@ A deploy to a remote environment with no host (no inventory entry and no `NSELF_
 is refused with `E483` before anything is built; it never deploys on the current machine. The
 blue/green canary flags apply to `local` only; with a remote environment they are refused. In the
 control-plane pipeline, a server whose deploy fails makes the command exit non-zero and lists it.
-A prod-class environment always uses the `prod` env cascade. Two inventory environments whose names
-differ only by case are ambiguous and refused.
-
+A prod-class environment always uses the `prod` env cascade and is written to `.env.prod` on the host. The env file pushed to the host is read with the same dotenv reader as the build, so both see the same values. An inventory with two environment names that differ only by case is refused, here and in `nself deploy environments`. 
 ## Deploy Strategies
 
 | Strategy | Status | Behavior |

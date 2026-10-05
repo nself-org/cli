@@ -199,7 +199,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			if !jsonOut {
 				fmt.Printf("  [running] Remote push to %s\n", host)
 			}
-			pushErr := remoteDeployPushFn(cmd.Context(), workdir, host, target, jsonOut)
+			// The push names the cascade env, so a prod-class env writes .env.prod
+			// on the host (the file the remote nself reads), never .env.production.
+			pushErr := remoteDeployPushFn(cmd.Context(), workdir, host, deployCascadeEnv(workdir, target), jsonOut)
 			if pushErr != nil {
 				steps = append(steps, deployStep{Name: fmt.Sprintf("Push artefacts to %s", host), Status: "failed"})
 				return finalize(jsonOut, target, strategy, start, steps, pushErr)

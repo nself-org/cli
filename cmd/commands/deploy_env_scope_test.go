@@ -18,6 +18,7 @@ import (
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -261,9 +262,9 @@ func TestEnvCascadePerEnv(t *testing.T) {
 		"prod":       {".env", ".env.prod", ".env.secrets", ".env.local"},
 		"production": {".env", ".env.prod", ".env.secrets", ".env.local"},
 		"PROD":       {".env", ".env.prod", ".env.secrets", ".env.local"},
-		"qa":         {".env", ".env.dev", ".env.qa", ".env.secrets", ".env.local"},
-		"QA":         {".env", ".env.dev", ".env.qa", ".env.secrets", ".env.local"},
-		"qa-eu":      {".env", ".env.dev", ".env.qa-eu", ".env.secrets", ".env.local"},
+		"qa":         {".env", ".env.qa", ".env.secrets", ".env.local"},
+		"QA":         {".env", ".env.qa", ".env.secrets", ".env.local"},
+		"qa-eu":      {".env", ".env.qa-eu", ".env.secrets", ".env.local"},
 	}
 	for target, names := range want {
 		got := deployEnvCascadeFiles(dir, target)
@@ -288,8 +289,11 @@ func TestEnvCascadePerEnv(t *testing.T) {
 		}
 	}
 	loadDeployEnvCascade(dir, "qa")
-	if os.Getenv("M_DEV") != "dev" || os.Getenv("M_QA") != "qa" || os.Getenv("M_SEC") != "sec" {
-		t.Errorf("qa cascade did not load dev/qa/secrets: %q %q %q", os.Getenv("M_DEV"), os.Getenv("M_QA"), os.Getenv("M_SEC"))
+	if os.Getenv("M_QA") != "qa" || os.Getenv("M_SEC") != "sec" {
+		t.Errorf("qa cascade did not load qa/secrets: %q %q", os.Getenv("M_QA"), os.Getenv("M_SEC"))
+	}
+	if v := os.Getenv("M_DEV"); v != "" {
+		t.Errorf("qa cascade inherited .env.dev (M_DEV=%q)", v)
 	}
 	if v := os.Getenv("M_PROD"); v != "" {
 		t.Errorf("qa cascade read .env.prod (M_PROD=%q)", v)
@@ -470,12 +474,16 @@ func TestOpusHostVarMismatchRefusedBeforeBuild(t *testing.T) {
 	t.Chdir(dir)
 	isolateDeployEnv(t)
 	builds, pushes := opusStubBuildPush(t)
-	t.Setenv("NSELF_DEPLOY_HOST_qa", "u@qa.example.test:/opt/nself")
-	if got, err := resolveTarget("qa"); err != nil || got != "qa" {
-		t.Fatalf("resolveTarget(qa) = %q, %v (synthesized env expected)", got, err)
+	// A hyphen cannot be folded away by any OS: the variable NSELF_DEPLOY_HOST_QA-EU
+	// synthesizes env "qa-eu", while the host lookup reads NSELF_DEPLOY_HOST_QA_EU.
+	// (Setting the lowercase spelling of the same name would be the same variable
+	// on Windows, whose env names are case-insensitive.)
+	t.Setenv("NSELF_DEPLOY_HOST_QA-EU", "u@qa.example.test:/opt/nself")
+	if got, err := resolveTarget("qa-eu"); err != nil || got != "qa-eu" {
+		t.Fatalf("resolveTarget(qa-eu) = %q, %v (synthesized env expected)", got, err)
 	}
 	for _, flags := range []map[string]string{nil, {"dry-run": "true"}} {
-		assertE483(t, runDeployArgs(t, flags, "qa"))
+		assertE483(t, runDeployArgs(t, flags, "qa-eu"))
 	}
 	if *builds != 0 || *pushes != 0 {
 		t.Errorf("builds=%d pushes=%d, want none", *builds, *pushes)
@@ -679,5 +687,125 @@ func TestProdClassCascadeIsProd(t *testing.T) {
 	got := strings.Join(deployEnvCascadeFiles(dir, "live"), ",")
 	if !strings.Contains(got, ".env.prod,") || strings.Contains(got, ".env.live") {
 		t.Errorf("prod-class live cascade = %s, want the prod cascade", got)
+	}
+}
+
+// TestR2ProductionSnapshotRemoteName: a legacy `production` deploy pushes under
+// the cascade env, so the host gets .env.prod (the file its nself reads), not
+// .env.production.
+func TestR2ProductionSnapshotRemoteName(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	isolateDeployEnv(t)
+	t.Setenv("NSELF_DEPLOY_HOST_PRODUCTION", "u@p.example.test:/opt/nself")
+	var gotTarget string
+	ob, op := deployBuildStepFn, remoteDeployPushFn
+	deployBuildStepFn = func(_ context.Context, _ string, s []deployStep) ([]deployStep, error) { return s, nil }
+	remoteDeployPushFn = func(_ context.Context, _ string, _ string, target string, _ bool) error {
+		gotTarget = target
+		return errors.New("stub")
+	}
+	t.Cleanup(func() { deployBuildStepFn, remoteDeployPushFn = ob, op })
+	_ = runDeployArgs(t, map[string]string{"force": "true"}, "production")
+	if gotTarget != "prod" {
+		t.Errorf("push target = %q, want prod (remote file .env.prod)", gotTarget)
+	}
+}
+
+// TestSnapshotMatchesConfigLoad: the snapshot is read with the reader config.Load
+// uses, and written so that reader returns the same values. Covers export
+// prefixes, inline comments, single and double quotes, escapes, $ and spaces.
+func TestSnapshotMatchesConfigLoad(t *testing.T) {
+	dir := t.TempDir()
+	isolateDeployEnv(t)
+	t.Setenv("NSELF_LEGACY_ENV_ORDER", "")
+	keys := []string{"K_EXPORT", "K_INLINE", "K_DQ", "K_SQ", "K_ESC", "K_DOLLAR", "K_SPACE", "K_HASH", "K_OVERRIDE", "K_EMPTY", "K_NL"}
+	for _, k := range keys {
+		t.Setenv(k, "")
+	}
+	files := map[string]string{
+		".env": "export K_EXPORT=exported\nK_INLINE=value # a comment\nK_OVERRIDE=base\n",
+		".env.qa": "K_DQ=\"say \\\"hi\\\" now\"\nK_SQ='it is $HOME'\nK_ESC=\"tab\\there\"\nK_DOLLAR='a$b'\n" +
+			"K_SPACE='two words'\nK_HASH='not # a comment'\nK_OVERRIDE=qa\nK_EMPTY=\nK_NL=\"line1\\nline2\"\n",
+	}
+	for n, b := range files {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loadDeployEnvCascade(dir, "qa")
+	if _, err := config.Load(dir); err != nil {
+		t.Fatal(err)
+	}
+	built := map[string]string{}
+	for _, k := range keys {
+		built[k] = os.Getenv(k)
+	}
+	snap, cleanup, err := writeResolvedDeployEnv(dir, "qa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	shipped, err := godotenv.Read(snap) // what the remote nself's loader does
+	if err != nil {
+		t.Fatalf("snapshot unreadable: %v", err)
+	}
+	for _, k := range keys {
+		if shipped[k] != built[k] {
+			t.Errorf("%s: shipped %q, built %q", k, shipped[k], built[k])
+		}
+	}
+	if built["K_EXPORT"] != "exported" || built["K_INLINE"] != "value" || built["K_OVERRIDE"] != "qa" || built["K_DQ"] != `say "hi" now` {
+		t.Errorf("fixture did not exercise the syntax: %v", built)
+	}
+}
+
+// TestDeployEnvironmentsRefusesCaseCollision: `deploy environments` loads the
+// inventory, so an inventory with qa and QA is refused there too.
+func TestDeployEnvironmentsRefusesCaseCollision(t *testing.T) {
+	dir, p := scopeFixture(t, false)
+	opusWriteInv(t, dir, "qa", "QA")
+	c := &cobra.Command{Use: "environments"}
+	c.SetContext(context.Background())
+	assertE483(t, runDeployEnvironments(c, nil))
+	if len(p.hosts) != 0 {
+		t.Errorf("refused inventory still probed %v", p.hosts)
+	}
+}
+
+// TestEncodeEnvValueRoundTrip: every ordinary value is written so godotenv reads
+// it back unchanged.
+func TestEncodeEnvValueRoundTrip(t *testing.T) {
+	for _, v := range []string{"", "plain", "a b", "it's", "a$b", "${X}", "x\"y", "l1\nl2", "cr\rx", "a\\b", "é ü", "  lead", "tab\there", "a # b", "k=v"} {
+		enc, ok := encodeEnvValue(v)
+		if !ok {
+			t.Errorf("%q: no faithful encoding", v)
+			continue
+		}
+		if m, err := godotenv.Unmarshal("K=" + enc + "\n"); err != nil || m["K"] != v {
+			t.Errorf("%q -> %q -> %q, %v", v, enc, m["K"], err)
+		}
+	}
+}
+
+// TestInventoryEnvNameAmbiguous: the lookup itself refuses colliding keys (a
+// second guard behind controlplane.Load), and matches case-insensitively
+// otherwise.
+func TestInventoryEnvNameAmbiguous(t *testing.T) {
+	mk := func(keys ...string) *controlplane.Inventory {
+		inv := &controlplane.Inventory{Environments: map[string]controlplane.Environment{}}
+		for _, k := range keys {
+			inv.Environments[k] = controlplane.Environment{Name: k}
+		}
+		return inv
+	}
+	if got, ok := inventoryEnvName(mk("qa", "QA"), "qa"); ok {
+		t.Errorf("colliding keys resolved to %q", got)
+	}
+	if got, ok := inventoryEnvName(mk("QA", "prod"), "qa"); !ok || got != "QA" {
+		t.Errorf("inventoryEnvName(QA) = %q, %v", got, ok)
+	}
+	if _, ok := inventoryEnvName(nil, "qa"); ok {
+		t.Error("nil inventory must not resolve")
 	}
 }

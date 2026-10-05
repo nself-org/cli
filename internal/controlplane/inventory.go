@@ -5,9 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/errs"
 	"gopkg.in/yaml.v3"
 )
 
@@ -103,6 +105,9 @@ func Load(projectRoot string) (*Inventory, error) {
 // command (T31 — RemotePath is interpolated into a remote shell string in
 // internal/deploy/ssh.go's DeployViaSsh).
 func validateInventoryNames(inv *Inventory) error {
+	if err := rejectEnvCaseCollisions(inv); err != nil {
+		return err
+	}
 	for envName, env := range inv.Environments {
 		for _, srv := range env.Servers {
 			if err := ValidateServerName(srv.Name); err != nil {
@@ -112,6 +117,26 @@ func validateInventoryNames(inv *Inventory) error {
 				return fmt.Errorf("controlplane: env %q: server %q: %w", envName, srv.Name, err)
 			}
 		}
+	}
+	return nil
+}
+
+// rejectEnvCaseCollisions refuses an inventory with two environment keys that
+// differ only by case (qa and QA): a deploy target named in either case would
+// be ambiguous. The error is E483 and names both keys, in sorted order.
+func rejectEnvCaseCollisions(inv *Inventory) error {
+	seen := make(map[string]string, len(inv.Environments))
+	keys := make([]string, 0, len(inv.Environments))
+	for k := range inv.Environments {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		folded := strings.ToLower(k)
+		if first, dup := seen[folded]; dup {
+			return errs.New("E483", fmt.Sprintf("inventory environments %q and %q differ only by case; rename one so every environment name is unambiguous", first, k))
+		}
+		seen[folded] = k
 	}
 	return nil
 }

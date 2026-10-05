@@ -59,7 +59,7 @@ type CascadeFile struct {
 //
 // .env is the shared, committed base. Exactly one of .env.dev/.env.staging/
 // .env.prod loads, matching envName ("local" loads .env.dev). A custom envName
-// (qa, ...) loads .env.dev then .env.<envName>, in that order (P7-DEPL-12). .env.secrets never ships in git.
+// (qa, live, ...) loads .env.<envName> and never .env.dev (P7-DEPL-12). .env.secrets never ships in git.
 // .env.local is the personal override and always wins. .env.ai no longer
 // exists as a cascade layer — its content is folded into .env.secrets at
 // init/upgrade (see internal/setup/envai.go and internal/migrate/env_order.go).
@@ -95,10 +95,10 @@ func EnvCascadeOrder(envName string, legacy bool) []string {
 	case "prod":
 		order = append(order, ".env.prod")
 	default:
-		// A custom environment (qa, preview, ...) layers its own file over the
-		// dev base. A name that is not a plain file-name fragment gets no
-		// layer of its own, so ENV can never point the cascade at another path.
-		order = append(order, ".env.dev")
+		// A custom environment (qa, live, ...) layers its own file over .env and
+		// never inherits .env.dev: dev values must not reach a server build. A
+		// name that is not a plain file-name fragment gets no layer of its own,
+		// so ENV can never point the cascade at another path.
 		if customEnvNameRe.MatchString(name) {
 			order = append(order, ".env."+name)
 		}

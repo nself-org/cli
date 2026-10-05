@@ -74,7 +74,9 @@ var remoteDeployPushFn = remoteDeployPush
 
 // remoteDeployPush rsyncs the compose file and env to the remote host, then
 // pulls new images and runs a rolling restart via SSH.
-// host format: "user@host:/remote/path"
+// host format: "user@host:/remote/path". target is the cascade env (see
+// deployCascadeEnv): it picks the env files merged and the .env.<target> name
+// written on the host.
 func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut bool) error {
 	sshKey := sshKeyPath()
 
@@ -160,7 +162,7 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	}
 	// Rename the pushed snapshot to the expected .env.<target> name on the
 	// remote (rsync above pushes it under its resolvedEnvPath basename).
-	renameCmd := fmt.Sprintf("cd %s && mv %s .env.%s", remotePath, filepath.Base(resolvedEnvPath), deployCascadeEnv(workdir, target))
+	renameCmd := fmt.Sprintf("cd %s && mv %s .env.%s", remotePath, filepath.Base(resolvedEnvPath), target)
 	rn := exec.CommandContext(ctx, "ssh",
 		"-i", sshKey,
 		"-o", "StrictHostKeyChecking=accept-new",
