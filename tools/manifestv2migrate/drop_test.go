@@ -113,7 +113,9 @@ func TestDeadKeysFile(t *testing.T) {
 	}
 	keep := map[string]bool{}
 	for _, k := range []string{"actions", "config", "binary_name", "download_url", "tarball", "security_always_free", "min_nself_version",
-		"defaultPort", "env", "env_vars", "env_required", "env_optional", "capabilities", "routes"} {
+		"defaultPort", "env", "env_vars", "env_required", "env_optional", "capabilities", "routes",
+		"deprecated", "deprecatedSince", "deprecated_in", "removal_target", "replacedBy", "replacement", "docker", "docker_image",
+		"internalPort", "health_check_path", "depends_on", "serviceType", "migrations", "commands", "schema_version"} {
 		keep[k] = true
 	}
 	seen := map[string]bool{}

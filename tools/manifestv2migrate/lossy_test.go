@@ -154,3 +154,33 @@ func TestMigrateMapsRoutesAndCapabilities(t *testing.T) {
 		t.Errorf("-check: %s", e)
 	}
 }
+
+// Keys with a v2 home map when they repeat or fill a derived value (claw-web,
+// nself-audit); the notifications version strings stay refused, even with -drop.
+func TestMigrateMapsDerivedKeys(t *testing.T) {
+	in, _ := stableDoc(t, map[string]any{"port": 3004, "health_endpoint": "/health", "internalPort": 3004, "depends_on": []any{"claw"},
+		"docker_image": "nself-claw-web", "health_check_path": "/health"})
+	if code, _, e := runTool(t, "-in", in, "-write"); code != 0 {
+		t.Fatalf("exit %d: %s", code, e)
+	}
+	var doc map[string]any
+	_ = json.Unmarshal(mustRead(t, in), &doc)
+	svc, _ := doc["service"].(map[string]any)
+	req, _ := doc["requires"].(map[string]any)
+	if svc["image"] != "nself-claw-web" || svc["port"] != float64(3004) || svc["healthcheck"] != "/health" {
+		t.Errorf("service = %v", svc)
+	}
+	if pl, _ := req["plugins"].([]any); len(pl) != 1 || pl[0] != "claw" {
+		t.Errorf("requires = %v", req)
+	}
+	for _, k := range []string{"internalPort", "depends_on", "docker_image", "health_check_path"} {
+		if _, bad := doc[k]; bad {
+			t.Errorf("v1 key %s leaked into the v2 file", k)
+		}
+	}
+	bad, orig := stableDoc(t, map[string]any{"deprecatedSince": "1.1.0", "deprecated_in": "v1.1.0", "removal_target": "v2.0.0"})
+	code, _, stderr := runTool(t, "-drop", "dead-keys.txt", "-in", bad, "-write")
+	if code != 1 || !strings.Contains(stderr, "$.removal_target") || string(mustRead(t, bad)) != string(orig) {
+		t.Errorf("version strings must stay refused with -drop: %d %s", code, stderr)
+	}
+}

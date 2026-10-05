@@ -25,7 +25,7 @@ func isExtraKey(k string) bool { return in(extraKeys, k) }
 // IsMappedV1Key reports whether the normalizer carries or converts the v1 key k
 // in at least one shape (the migrate tool refuses a drop list that names one).
 func IsMappedV1Key(k string) bool {
-	return v1MappedKeys[strings.ToLower(k)] || isExtraKey(k) || in(ForbiddenKeys, k)
+	return v1MappedKeys[strings.ToLower(k)] || isExtraKey(k) || isDerivedKey(k) || in(ForbiddenKeys, k)
 }
 
 // mapExtras converts the conditional keys of raw (a decoded top-level v1 object).

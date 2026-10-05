@@ -92,11 +92,20 @@ func UnmappedV1Keys(data []byte) ([]Unmapped, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, invalid("plugin.json", "not a JSON object: "+err.Error())
 	}
-	blocked := mapExtras(raw).blocked
+	_, blocked, nerr := normalize(data)
+	if nerr != nil {
+		// The manifest does not normalize, so the derived keys cannot be
+		// judged against it: report every one that is present. The routes,
+		// capabilities and env decisions do not depend on the rest.
+		blocked = mapExtras(raw).blocked
+		for _, k := range derivedKeys {
+			blocked[k] = true
+		}
+	}
 	var out []Unmapped
 	for k, v := range raw {
 		lk := strings.ToLower(k)
-		if isExtraKey(k) {
+		if isExtraKey(k) || isDerivedKey(k) {
 			if !blocked[k] {
 				continue
 			}

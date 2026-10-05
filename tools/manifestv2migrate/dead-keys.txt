@@ -4,6 +4,9 @@
 # (not even a dev tool or build script). Dev-tool and build-time keys stay out until their readers move to v2
 # (P7-PLUG-03, P7-PLUG-04): actions, config, binary_name, download_url, tarball, security_always_free,
 # min_nself_version, defaultPort, env_required, env_optional, and env/env_vars shapes that do not convert.
+# Keys with a v2 home stay out too, even when a value cannot be mapped (the codemod tickets decide):
+# deprecated, deprecatedSince, deprecated_in, removal_target, replacedBy, replacement, docker, docker_image,
+# internalPort, health_check_path, depends_on, serviceType, migrations, commands, schema_version.
 # Format: key  # evidence. Mapped keys are rejected by the loader.
 
 hooks  # no reader in cli, sdk, plugins, plugins-pro, packages, web or admin (130 manifests)
@@ -31,7 +34,6 @@ targetVersion  # no reader found in cli, sdk, plugins, plugins-pro, packages, we
 health  # health_endpoint is the mapped key; deploy.sh polls HTTP, never reads this (3 manifests)
 endpoints  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (2 manifests)
 featureFlags  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (2 manifests)
-migrations  # no reader; boot SQL is applied from the migrations/ directory (ADR 0010), not from this list (2 manifests)
 system_packages  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (2 manifests)
 featureFlag  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (2 manifests)
 versionTarget  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (2 manifests)
@@ -46,12 +48,6 @@ profile  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or a
 metrics_endpoint  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
 nginx_locations  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
 lang  # cli postvalidate_dockerfiles.go hit is unrelated; language is the mapped key (1 manifest)
-deprecated  # cli reads the status string "deprecated", not this key (1 manifest)
-deprecatedSince  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
-deprecated_in  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
-removal_target  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
-replacedBy  # cli reads replacedBy inside the deprecation block, not at top level (1 manifest)
-replacement  # free/api reads a DB column of that name; sport script reads its own table (1 manifest)
 hasuraActions  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
 multiTenant  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
 rateLimits  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
@@ -69,16 +65,8 @@ feature_flag  # no reader found in cli, sdk, plugins, plugins-pro, packages, web
 feature_flag_env_override  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
 supportedProviders  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
 hasura_metadata  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
-docker  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
 internalUrl  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
 tools  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
-depends_on  # only web architecture page prose; dependencies is the mapped key (1 manifest)
-internalPort  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
-serviceType  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
 bins  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
-commands  # v2 commands is derived from binaryName; nothing reads this v1 value (1 manifest)
-docker_image  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
-health_check_path  # no reader found in cli, sdk, plugins, plugins-pro, packages, web or admin (1 manifest)
 roles  # compliance soc2.go hit is prose in a policy template (1 manifest)
 hasura  # cli plugin/compat.go mentions it only in a comment about compat.requires (1 manifest)
-schema_version  # registry.ts and plugin-counts.sh read the registry file version, not plugin.json (1 manifest)

@@ -63,13 +63,20 @@ type v1Manifest struct {
 // Keys no v1.4.12 reader decodes are not mapped: UnmappedV1Keys lists them and
 // the migrate tool refuses to write a file that has any.
 func Normalize(data []byte) (*Manifest, error) {
+	m, _, err := normalize(data)
+	return m, err
+}
+
+// normalize is Normalize plus the set of conditional v1 keys (routes,
+// capabilities, env, env_vars and the derived keys) that could not be mapped.
+func normalize(data []byte) (*Manifest, map[string]bool, error) {
 	var v v1Manifest
 	if err := json.Unmarshal(data, &v); err != nil {
-		return nil, invalid("plugin.json", err.Error())
+		return nil, nil, invalid("plugin.json", err.Error())
 	}
 	maturity, state, err := fromV1Status(v.Status)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	m := &Manifest{ManifestVersion: ManifestVersion, Name: v.Name, Version: v.Version, Description: v.Description,
 		Category: v.Category, Maturity: maturity, Installable: v.Installable}
@@ -78,7 +85,7 @@ func Normalize(data []byte) (*Manifest, error) {
 		m.License = LicenseLicensed
 	}
 	if err := fillShared(m, &v); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var raw map[string]json.RawMessage
 	_ = json.Unmarshal(data, &raw)
@@ -102,14 +109,18 @@ func Normalize(data []byte) (*Manifest, error) {
 	}
 	m.Commands = v1Commands(&v)
 	m.Service = v1Service(&v, m.Commands != nil)
+	blocked := applyDerived(m, raw)
+	for k := range x.blocked {
+		blocked[k] = true
+	}
 	m.EntryPoint, m.Runtime, m.CLI, m.CLICommands = v.EntryPoint, v.Runtime, v.CLI, v.CLICommands
 	m.Tier, m.LicenseType = v.Tier, v.LicenseType
 	ApplyProjection(m)
 	Canonicalize(m)
 	if err := validateV1(m); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return m, nil
+	return m, blocked, nil
 }
 
 // fromV1Status is the v1 status to maturity table (Epic D1). alpha is not in
