@@ -62,10 +62,31 @@ for pair in "nself-org/cli cli-live" "nself-org/plugins plugins-live" "nself-org
     pass "${repo}: pinned live fixture reads as no-op"; else fail "${repo}: pinned live fixture reads as drift"; fi
 done
 
+# Once `nself-ci-protect.sh --apply` has put nself-ci live, `toggle --on` must
+# not strip it (it is still only a pending check, never applied by the toggle).
+for pair in "nself-org/cli cli-gated" "nself-org/plugins plugins-gated"; do
+  repo="${pair%% *}"; fx="${pair##* }"
+  run_toggle "${TOGGLE}" "${repo}" "${fx}"
+  if grep -q 'already matches baseline' "${TMP}/out"; then pass "${repo}: live nself-ci survives --on (no-op)"; else fail "${repo}: --on would strip the live nself-ci"; fi
+done
+run_toggle "${TOGGLE}" nself-org/cli cli-gated-drift
+if sed -n '/^{/,$p' "${TMP}/out" | jq -e '.required_status_checks.checks | any(.context == "nself-ci" and .app_id == 15368)' > /dev/null 2>&1; then
+  pass "nself-org/cli: a drifted --on PUT body keeps the live nself-ci pin"; else fail "nself-org/cli: PUT body drops nself-ci"; fi
+if pins_kept cli-gated-drift; then pass "nself-org/cli: all pins of the gated fixture kept"; else fail "nself-org/cli: gated fixture pin lost"; fi
+
+# A context pinned to two apps live cannot be carried: refuse, send nothing.
+rm -rf "${STUB_DIR:?}"/* "${HOME}/.nself"
+cp "${HERE}/cli-dup-pins.json" "${STUB_DIR}/state.json"
+rc=0
+bash "${TOGGLE}" --on --repo nself-org/cli --policy "${POLICY}" > "${TMP}/out" 2>&1 || rc=$?
+if [ "${rc}" -ne 0 ] && grep -q 'more than one app' "${TMP}/out" && ! grep -q '^PUT ' "${STUB_DIR}/calls"; then
+  pass "duplicate live pins are refused and nothing is PUT"; else fail "duplicate live pins were not refused (rc=${rc})"; fi
+
 # Mutation check: a contexts-only body must trip pins_kept.
 MUT="${TMP}/toggle-mutant.sh"
+# shellcheck disable=SC2016  # sed patterns hold a literal $names
 sed -e 's/^      contexts: \[\],$/      contexts: (.required_status_checks.contexts \/\/ []),/' \
-    -e 's/^      checks: \[(\.required_status_checks\.contexts.*$/      checks: []/' "${TOGGLE}" > "${MUT}"
+    -e 's/^      checks: (\[\$names.*$/      checks: []/' "${TOGGLE}" > "${MUT}"
 if cmp -s "${TOGGLE}" "${MUT}"; then
   fail "mutation did not apply (toggle layout changed: update the sed in this test)"
 else

@@ -19,7 +19,7 @@
 #
 # Defaults are the most common live values. Contexts have no common value (every
 # repo runs its own CI), so the default list is empty and each repo lists its own
-# under `repos:`. Context lists are compared in order, so keep GitHub's order.
+# under `repos:`. Context lists are compared by context name (order does not matter).
 
 required_status_checks:
   strict: false

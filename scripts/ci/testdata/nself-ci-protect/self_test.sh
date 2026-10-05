@@ -38,7 +38,7 @@ run() { # <args...>: output in ${TMP}/out, status in ${TMP}/rc
   echo "${rc}" > "${TMP}/rc"
 }
 rc_is() { [ "$(cat "${TMP}/rc")" = "$1" ]; }
-puts() { grep -c '^PUT ' "${STUB_DIR}/calls" 2>/dev/null || true; }
+puts() { local n; n="$(grep -c '^PUT ' "${STUB_DIR}/calls" 2>/dev/null || true)"; echo "${n:-0}"; }
 adds() { grep -c '^ADD ' "${TMP}/out" || true; }
 state_checks() { jq -c '[.required_status_checks.checks[] | {context, app_id: (.app_id // -1)}] | sort_by(.context)' "${STUB_DIR}/state.json"; }
 body_checks() { # <file>
@@ -119,8 +119,47 @@ run --repo nself-org/cli --apply
 check "rejected PUT exits 3" rc_is 3
 unset STUB_PUT_FAIL
 setup cli-live
+jq '.url |= sub("/cli/"; "/admin/")' "${HERE}/cli-live.json" > "${STUB_DIR}/state.json"
 run --repo nself-org/admin --dry-run
 check "a repo with no pending entry has nothing to add" grep -q 'nothing to add' "${TMP}/out"
+
+# 7. fail-closed inputs: nothing is PUT.
+setup cli-live
+echo '{}' > "${STUB_DIR}/state.json"
+run --repo nself-org/cli --apply
+check "a partial {} answer is refused (exit 2)" rc_is 2
+check "a partial {} answer sent no PUT" test "$(puts)" = 0
+setup plugins-live
+run --repo nself-org/cli --apply
+check "another repo's answer is refused (exit 2)" rc_is 2
+check "another repo's answer sent no PUT" test "$(puts)" = 0
+setup cli-live
+printf 'pending_nself_ci:\n  nself-org/cli:\n    - {context: nself-ci, app_id: 15368}\n    - {context: nself-ci, app_id: 15368}\n' > "${TMP}/dup.yaml"
+run --repo nself-org/cli --dry-run --policy "${TMP}/dup.yaml"
+check "duplicate pending entries are refused" rc_is 2
+printf 'pending_nself_ci:\n  nself-org/cli:\n    - {context: nself-ci, app_id: 1.5}\n' > "${TMP}/frac.yaml"
+run --repo nself-org/cli --dry-run --policy "${TMP}/frac.yaml"
+check "a fractional app_id is refused" rc_is 2
+printf 'pending_nself_ci:\n  nself-org/cli: {context: nself-ci, app_id: 15368}\n' > "${TMP}/map.yaml"
+run --repo nself-org/cli --dry-run --policy "${TMP}/map.yaml"
+check "a map instead of a list is refused" rc_is 2
+
+# 8. restore refuses another repo's snapshot and can be previewed.
+setup cli-live
+run --repo nself-org/cli --dry-run
+cp "$(pre_file)" "${TMP}/cli-pre.json"
+CLI_PRE="${TMP}/cli-pre.json"
+setup plugins-live
+run --repo nself-org/plugins --restore "${CLI_PRE}"
+check "restore of cli's snapshot onto plugins is refused (exit 2)" rc_is 2
+check "refused restore sent no PUT" test "$(puts)" = 0
+setup cli-live
+run --repo nself-org/cli --restore "${CLI_PRE}" --dry-run
+check "restore --dry-run exits 0" rc_is 0
+check "restore --dry-run prints the body" grep -q 'Would PUT' "${TMP}/out"
+check "restore --dry-run sent no PUT" test "$(puts)" = 0
+run --repo nself-org/cli --dry-run --restore "${CLI_PRE}"
+check "--dry-run before --restore also previews" test "$(puts)" = 0
 run --repo nself-org/cli --dry-run --apply
 check "two modes are a usage error" rc_is 1
 run --repo nself-org/cli

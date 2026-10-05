@@ -12,7 +12,7 @@
 # Usage:
 #   scripts/ci/nself-ci-protect.sh --repo nself-org/cli --dry-run
 #   scripts/ci/nself-ci-protect.sh --repo nself-org/cli --apply     # owner-named only
-#   scripts/ci/nself-ci-protect.sh --repo nself-org/cli --restore <pre.json>
+#   scripts/ci/nself-ci-protect.sh --repo nself-org/cli --restore <pre.json> [--dry-run]
 #   scripts/ci/nself-ci-protect.sh --self-test
 #
 # Modes (exactly one):
@@ -24,7 +24,9 @@
 #                      GitHub answers anything else. Changes live protection:
 #                      run it only when the owner names the action (P7-CI-55).
 #   --restore <file>   PUT the saved pre-state body, GET again and compare it with
-#                      that pre-state (restore_protection from the library).
+#                      that pre-state (restore_protection from the library). The
+#                      file must belong to --repo. With --dry-run it only prints
+#                      the body it would PUT.
 #   --self-test        Run scripts/ci/testdata/nself-ci-protect/self_test.sh
 #                      (recorded GET fixtures and a stub gh; no network).
 # Options:
@@ -56,7 +58,12 @@ info() { printf '[info]  %s\n' "$*"; }
 err() { printf '[error] %s\n' "$*" >&2; }
 die() { err "$*"; exit "${2:-2}"; }
 
+RESTORE_DRY=0
 set_mode() {
+  # --restore <file> --dry-run (either order) previews the restore: no PUT.
+  if { [ "${MODE}" = restore ] && [ "$1" = dry-run ]; } || { [ "${MODE}" = dry-run ] && [ "$1" = restore ]; }; then
+    MODE=restore; RESTORE_DRY=1; return 0
+  fi
   [ -z "${MODE}" ] || { err "choose exactly one of --dry-run, --apply, --restore, --self-test"; usage 1; }
   MODE="$1"
 }
@@ -111,12 +118,15 @@ print(json.dumps((d.get("pending_nself_ci") or {}).get(sys.argv[2]) or []))
   fi
 }
 
-# validate_pending: every entry needs a non-empty string context and an integer
-# app_id; an unpinned (-1) check is refused because the whole point is the pin.
+# validate_pending: a list of unique entries, each with a non-empty string context
+# and an integer app_id > 0; an unpinned (-1) check is refused because the whole
+# point is the pin.
 validate_pending() {
-  printf '%s' "$1" | jq -e 'all(.[]; (.context | type == "string" and length > 0)
-    and (.app_id | type == "number" and . > 0))' >/dev/null \
-    || die "pending_nself_ci for ${REPO} must be a list of {context, app_id > 0}"
+  printf '%s' "$1" | jq -e 'type == "array"
+    and all(.[]; type == "object" and (.context | type == "string" and length > 0)
+      and (.app_id | type == "number" and . > 0 and . == floor))
+    and ((map([.context, .app_id]) | unique | length) == length)' >/dev/null \
+    || die "pending_nself_ci for ${REPO} must be a list of unique {context, app_id (integer > 0)}"
 }
 
 # Target snapshot = pre-state + pending checks (GET shape, so the library's
@@ -136,12 +146,20 @@ JQ_TARGET='
       | .checks = ($have + $add)
       | .contexts = ((.contexts // []) + ($add | map(.context)))) end'
 
+# is_protection <json> <repo>: the document is a branch-protection answer FOR that
+# repo's main (url ends in repos/<repo>/branches/main/protection, enforce_admins is
+# an object). A partial `{}` or another repo's snapshot must never become a PUT.
+is_protection() {
+  printf '%s' "$1" | jq -e --arg r "repos/$2/branches/main/protection" '
+    type == "object" and ((.url // "") | endswith($r)) and (.enforce_admins | type == "object")' >/dev/null 2>&1
+}
+
 # Snapshot GET. Not protected / unreadable is an error: there is nothing to extend.
 fetch_pre() {
   local out errf
   errf="$(mktemp "${TMPDIR:-/tmp}/ncp-err.XXXXXX")"
-  if ! out="$(gh api "${API}" 2>"${errf}")" || ! printf '%s' "${out}" | jq -e 'type == "object"' >/dev/null 2>&1; then
-    err "cannot read ${API}: $(cat "${errf}")"
+  if ! out="$(gh api "${API}" 2>"${errf}")" || ! is_protection "${out}" "${REPO}"; then
+    err "cannot read protection from ${API}: $(cat "${errf}") (an answer that is not a branch-protection document is refused)"
     rm -f "${errf}"
     exit 2
   fi
@@ -230,7 +248,9 @@ cmd_apply() {
 
 cmd_restore() {
   [ -r "${RESTORE_FILE}" ] || die "pre-state file not readable: ${RESTORE_FILE}"
-  restore_protection "${REPO}" "${RESTORE_FILE}" 0 "nself_ci_protect_restore" || exit 3
+  is_protection "$(cat "${RESTORE_FILE}")" "${REPO}" \
+    || die "refusing: ${RESTORE_FILE} is not a protection snapshot of ${REPO}/main (its url must name repos/${REPO}/branches/main/protection)"
+  restore_protection "${REPO}" "${RESTORE_FILE}" "${RESTORE_DRY}" "nself_ci_protect_restore" || exit 3
 }
 
 case "${MODE}" in

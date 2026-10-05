@@ -28,10 +28,10 @@ if [ "${method}" = PUT ]; then
     and (.required_status_checks == null or ((.required_status_checks.strict | type == "boolean") and (.required_status_checks.contexts | type == "array")
          and ((.required_status_checks.checks // []) | all(.app_id | type == "number"))))' > /dev/null \
     || { echo "HTTP 422 stub: body violates the documented schema" >&2; exit 1; }
-  printf '%s' "${body}" | jq '
+  printf '%s' "${body}" | jq --arg url "https://api.github.com/${path}" '
     def pr: {users: [(.users // [])[] | {login: .}], teams: [(.teams // [])[] | {slug: .}], apps: [(.apps // [])[] | {slug: .}]};
     def en: {enabled: (. // false)};
-    {url: "stub",
+    {url: $url,
      required_status_checks: (if .required_status_checks then .required_status_checks as $r | {
         strict: $r.strict,
         contexts: (($r.contexts // []) + [($r.checks // [])[].context]),
