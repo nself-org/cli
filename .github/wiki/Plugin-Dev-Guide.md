@@ -64,6 +64,31 @@ All services must:
 - Use `restart: unless-stopped`
 - Connect to the `default` network
 
+## Connection URL Variables
+
+Docker Compose substitutes a variable into a URL verbatim and cannot percent-encode it. A password containing `/`, `@`, `:`, `?`, `#` or `%` turns `postgresql://user:${POSTGRES_PASSWORD}@postgres:5432/db` into a URL that parses with the wrong host, and the client fails with "Invalid URL" or an authentication error.
+
+`nself build` therefore writes two extra variables into `.nself/compose.env`, with the password encoded for the userinfo part of a URL (RFC 3986, the same encoding as `config.URLUserInfo`):
+
+| Variable | Raw twin | Written when |
+|---|---|---|
+| `POSTGRES_PASSWORD_URLENC` | `POSTGRES_PASSWORD` | the Postgres password is set |
+| `REDIS_PASSWORD_URLENC` | `REDIS_PASSWORD` | the Redis password is set |
+
+Use the nested-default form wherever a password sits inside a URL:
+
+```yaml
+environment:
+  - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@postgres:5432/${POSTGRES_DB}
+  - REDIS_URL=redis://:${REDIS_PASSWORD_URLENC:-${REDIS_PASSWORD}}@redis:6379
+```
+
+- Substitute the encoded variable exactly once. Never wrap it in another encoding step: `%40` becomes `%2540`.
+- The fallback keeps a `compose.env` written by an older CLI working: without the encoded variable, compose renders the raw password, exactly as before.
+- Use the raw variables (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`) for anything that is not a URL, such as `POSTGRES_PASSWORD` for the Postgres container itself or a `--requirepass` argument.
+- Paid fragments that read `${DATABASE_URL}` need no change: `DATABASE_URL` is already encoded.
+- `nself doctor` warns (`url-reserved-password`) when a password holds a reserved character and an installed fragment still embeds the raw variable in a URL. The warning names the variable, never the value.
+
 ## Nginx Injection
 
 Add Nginx location blocks to route external traffic to your plugin:

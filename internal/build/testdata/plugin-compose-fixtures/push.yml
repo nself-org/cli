@@ -14,8 +14,8 @@ services:
     ports:
       - "127.0.0.1:3053:3053"
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD_URLENC:-${REDIS_PASSWORD}}@redis:6379
       - PORT=3053
       # APNs credentials (iOS push notifications)
       - PUSH_APNS_TEAM_ID=${PUSH_APNS_TEAM_ID:-}
