@@ -9,6 +9,9 @@ package commands
 // Inputs: a domain name, a cert directory, and (for the nginx writer) the
 // project workdir and upstream service name.
 // Outputs: copied cert/key files at 0600 and a written nginx conf file.
+// The conf's port-80 server carries acme.NginxChallengeLocation (the snippet
+// the nginx templates share) ahead of its redirect, so HTTP-01 issuance and
+// renewal for the domain are not eaten by the 301 (P7-LIVE-24).
 // Constraints: letsEncryptLiveDir is a var (not const) specifically so tests
 // can point it at a temp dir — keep it that way. Where the certificate and
 // the conf are written is decided by internal/nginxtopo's served resolver
@@ -22,6 +25,7 @@ import (
 	"path/filepath"
 
 	"github.com/nself-org/cli/internal/nginxtopo"
+	"github.com/nself-org/cli/internal/ssl/acme"
 )
 
 // letsEncryptLiveDir is where certbot stores issued certificates. Declared as a
@@ -157,6 +161,7 @@ server {
     listen 80;
     server_name %s;
 
+%s
     location / {
         return 301 https://$host$request_uri;
     }
@@ -177,7 +182,7 @@ server {
 
 %s
 }
-`, domain, domain, nginxtopo.NginxSSLContainerPath, domainSafe, nginxtopo.NginxSSLContainerPath, domainSafe, locationBlock)
+`, domain, acme.NginxChallengeLocation, domain, nginxtopo.NginxSSLContainerPath, domainSafe, nginxtopo.NginxSSLContainerPath, domainSafe, locationBlock)
 
 	if err := os.WriteFile(confPath, []byte(conf), 0644); err != nil {
 		return fmt.Errorf("writing %s: %w", confPath, err)

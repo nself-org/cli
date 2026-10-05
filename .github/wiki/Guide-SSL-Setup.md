@@ -68,6 +68,32 @@ nself ssl setup --acme --adopt-certbot --dns-credential-file ./cloudflare.ini
 - Adoption is saved lineage by lineage; if it fails part way, fix the cause and run it again to finish. Names that certbot also manages are flagged by `nself ssl status`.
 - After adopting, remove the certbot timer yourself once `nself ssl renew --acme --dry-run` shows the lineages; the CLI never touches it.
 
+### HTTP-01 for one host (`nself ssl add <domain> --acme`)
+
+Use HTTP-01 when you have one public hostname, no DNS API credential and port 80 reaches nginx. It cannot issue a wildcard; use `ssl setup --acme --wildcard` for that.
+
+```bash
+nself ssl add app.example.org --acme --dry-run      # prints the lineage, target and webroot; writes nothing
+nself ssl add app.example.org --acme --agree-tos [--upstream app:3000]
+```
+
+The same prerequisites apply (whole-dir `ssl/` mount, `age`, a contact). The pinned `lego` container writes the challenge token into `ssl/.acme-webroot/`, which nginx serves read only at `/etc/nginx/ssl/.acme-webroot`. Before it asks the CA, the CLI writes a probe token there and fetches it from `127.0.0.1:NGINX_HTTP_PORT` with your host name; if nginx does not answer, nothing is issued and the error says to run `nself build` and restart nginx.
+
+nginx answers the challenge from one location that `nself build` renders into the default server and into every route block that listens on port 80 (a route without a certificate yet), and that `ssl add` writes into the port-80 block of `custom-<domain>.conf`, always ahead of the catch-all redirect or proxy:
+
+```nginx
+location ^~ /.well-known/acme-challenge/ {
+    root /etc/nginx/ssl/.acme-webroot;
+    limit_except GET { deny all; }
+    if ($uri !~ "^/[.]well-known/acme-challenge/[A-Za-z0-9_-]+$") { return 404; }
+    try_files $uri =404;
+}
+```
+
+Only a bare token (`[A-Za-z0-9_-]+`) is served: a directory, a sub-path, a dotted name, an encoded slash and any non-GET request are refused, and `^~` on the ACME prefix leaves every application path alone. SSL route blocks do not carry it. The change reaches a running box only with the next `nself build`; it adds the location to the existing `nginx/conf.d/default.conf` and the non-SSL `nginx/sites/*.conf` files.
+
+Adopting a certbot **webroot** lineage as `http-01` (library level, `acme.PlanWith`) needs the same probe to succeed for every name; if the served nginx lacks the location the lineage is refused with that remediation.
+
 ### How a certificate is installed
 
 Each target `ssl/certificates/<dir>` (always `certificates/<one plain name>`; anything else is refused) becomes a relative symlink to `.<dir>.gen-<n>/`, which holds `fullchain.pem`, `privkey.pem`, `cert.pem` and `chain.pem` (0600; the same files as certbot's `live/` directory, so confs that name `chain.pem` keep loading). A new generation is written and its key and certificate are checked against each other; then one rename of a temporary symlink over `<dir>` switches both files at once. nginx is then tested (`nginx -t`) and reloaded through `docker exec`, and the served certificate's fingerprint is checked. If any step fails the previous generation is restored and the command exits with `E151`. The previous generation stays until the next successful install. Every `--acme` run first repairs a missing link or a mismatched pair from the newest valid generation, so a crash between steps cannot leave a half-installed pair.
@@ -135,7 +161,8 @@ If you have a certificate from a commercial CA (DigiCert, Sectigo, etc.):
 | `nself ssl status` | Show certificate path, issuer, and expiry date; with `--acme` lineages, also a Lineages table and a certbot-overlap warning |
 | `nself ssl renew` | Trigger manual certificate renewal prompt |
 | `nself ssl setup` | Provision a wildcard/multi-domain cert via DNS-01 |
-| `nself ssl add <domain>` | Provision a cert for a single custom domain via HTTP-01 |
+| `nself ssl add <domain>` | Provision a cert for a single custom domain via HTTP-01 (certbot) |
+| `nself ssl add <domain> --acme` | Same, with the CLI's own ACME client: HTTP-01 through `ssl/.acme-webroot` |
 | `nself ssl setup --acme` | Issue or adopt certbot lineages with the CLI's own ACME client (DNS-01) |
 | `nself ssl renew --acme` | Renew the lineages the CLI manages (30 days or fewer left, or `--force`) |
 

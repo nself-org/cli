@@ -32,6 +32,7 @@ import (
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/nginxtopo"
 	"github.com/nself-org/cli/internal/ssl"
+	"github.com/nself-org/cli/internal/ssl/acme"
 )
 
 // TestInstallIssuedCert_CopiesFromLetsEncryptLiveDir verifies installIssuedCert
@@ -445,6 +446,7 @@ server {
     listen 80;
     server_name my.custom.com;
 
+` + acme.NginxChallengeLocation + `
     location / {
         return 301 https://$host$request_uri;
     }
@@ -475,6 +477,7 @@ server {
     listen 80;
     server_name gw.example.com;
 
+` + acme.NginxChallengeLocation + `
     location / {
         return 301 https://$host$request_uri;
     }

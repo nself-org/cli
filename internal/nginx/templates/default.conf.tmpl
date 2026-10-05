@@ -6,11 +6,7 @@ server {
     listen [::]:80 default_server;
     server_name _;
     server_tokens off;
-
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-        try_files $uri =404;
-    }
+{{template "acme-challenge"}}
 
     location /health {
         access_log off;
@@ -49,3 +45,16 @@ server {
     }
 }
 {{end}}
+{{- define "acme-challenge"}}
+    # ACME HTTP-01 (nself trust ssl add --acme): one bare token under the
+    # challenge prefix is served from the nself-owned webroot; every other
+    # path under it, a subdirectory, a traversal and any non-GET is refused.
+    # The shared snippet: internal/ssl/acme.NginxChallengeLocation is the
+    # same text for the custom-domain confs, guarded by a test.
+    location ^~ /.well-known/acme-challenge/ {
+        root /etc/nginx/ssl/.acme-webroot;
+        limit_except GET { deny all; }
+        if ($uri !~ "^/[.]well-known/acme-challenge/[A-Za-z0-9_-]+$") { return 404; }
+        try_files $uri =404;
+    }
+{{- end}}
