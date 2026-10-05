@@ -15,8 +15,10 @@ import (
 
 // CopyTo copies the local file to remote on t.Dest with scp. remote must pass
 // ValidateCopyPath (and be non-empty) and local must not look like a
-// "host:path" operand or start with '-'. Options must be `-o` pairs (CIOptions),
-// never CISSHFlags: scp has no -T/-a/-x meaning.
+// "host:path" operand or start with '-'. The Target's options are translated
+// for scp (see scpOptions): ssh-only flags are dropped and `-p N` becomes
+// `-P N`, so no caller option can end scp's option parsing early or make it
+// read the sdk's "--" or an operand as an option value.
 func CopyTo(ctx context.Context, t Target, local, remote string) error {
 	if err := t.check(); err != nil {
 		return err
@@ -30,7 +32,11 @@ func CopyTo(ctx context.Context, t Target, local, remote string) error {
 	if err := checkLocalOperand(local); err != nil {
 		return err
 	}
-	args := append(t.opts(), "--", local, scpOperand(t.Dest, remote))
+	sopts, err := scpOptions(t.opts())
+	if err != nil {
+		return err
+	}
+	args := append(sopts, "--", local, scpOperand(t.Dest, remote))
 	cmd, err := t.command(ctx, "scp", args)
 	if err != nil {
 		return err
@@ -39,6 +45,40 @@ func CopyTo(ctx context.Context, t Target, local, remote string) error {
 		return fmt.Errorf("scp to %s:%s: %w\n%s", t.Dest, remote, err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// scpOptions translates ssh-style Target options into the set scp accepts.
+// ssh's -T, -a and -x are dropped (scp has no such flags; -T would disable its
+// filename checks). ssh's `-p N` (port) becomes scp's `-P N`, because scp's
+// own -p means "preserve times" and would leave N as a local operand that ends
+// option parsing. -4, -6, -q, -v, -i X, -o V and -oV mean the same in scp. Any
+// other element is refused, so scp only ever sees an option scp defines, with
+// its value attached or directly after it.
+func scpOptions(opts []string) ([]string, error) {
+	out := make([]string, 0, len(opts))
+	for i := 0; i < len(opts); i++ {
+		a := opts[i]
+		switch {
+		case a == "-T" || a == "-a" || a == "-x":
+			// ssh-only: drop.
+		case a == "-4" || a == "-6" || a == "-q" || a == "-v":
+			out = append(out, a)
+		case a == "-o" || a == "-i" || a == "-p":
+			if i+1 >= len(opts) {
+				return nil, fmt.Errorf("scp option %s has no value", a)
+			}
+			i++
+			if a == "-p" {
+				a = "-P"
+			}
+			out = append(out, a, opts[i])
+		case strings.HasPrefix(a, "-o") && len(a) > 2:
+			out = append(out, a)
+		default:
+			return nil, fmt.Errorf("option %q cannot be passed to scp", a)
+		}
+	}
+	return out, nil
 }
 
 // checkLocalOperand refuses a local path scp or rsync would read as a remote

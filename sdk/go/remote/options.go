@@ -52,8 +52,8 @@ func SSHVersion(ctx context.Context) (Version, error) {
 }
 
 // CISSHFlags returns the ssh-only flags: no TTY (-T), no agent forwarding
-// (-a), no X11 forwarding (-x). Never pass them to scp, where -T disables
-// filename checking.
+// (-a), no X11 forwarding (-x). scp has no such flags (its -T disables
+// filename checking), so CopyTo drops them.
 func CISSHFlags() []string { return []string{"-T", "-a", "-x"} }
 
 // d4Option is one entry of the D4 -o set: a key with its fixed value, or, for
@@ -74,6 +74,13 @@ var d4Options = []d4Option{
 	{"ConnectTimeout", "10"}, {"ServerAliveInterval", "10"}, {"ServerAliveCountMax", "3"},
 }
 
+// literalPath accepts a pinned known_hosts path that ssh reads as written: a
+// safeOptValue with no '%' token, no '$' (environment expansion) and no
+// leading '~' (home expansion).
+func literalPath(v string) bool {
+	return safeOptValue(v) && !strings.ContainsAny(v, "%$") && v[0] != '~'
+}
+
 // matches reports whether kv ("Key=Value") is this D4 entry. The pinned file
 // must be a plain path that is not /dev/null; the alias must be
 // nself-ci-<valid node id>.
@@ -84,7 +91,7 @@ func (e d4Option) matches(kv string) bool {
 	}
 	switch e.key {
 	case "UserKnownHostsFile":
-		return safeOptValue(v) && v != "/dev/null" && v != "none"
+		return literalPath(v) && v != "/dev/null" && v != "none"
 	case "HostKeyAlias":
 		id, ok := strings.CutPrefix(v, "nself-ci-")
 		return ok && ValidateNodeID(id) == nil

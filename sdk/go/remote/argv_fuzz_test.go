@@ -5,6 +5,10 @@ package remote
 //   - ssh/scp: the Target's options come first and in order, then (for a
 //     caller option tail) only allowlisted elements, then the sdk's "--";
 //     nothing after "--" starts with '-'.
+//   - scp: a simulation of scp's own option parser (also given CISSHFlags and
+//     the ssh `-p N` port form) reaches the sdk's "--" at the expected index,
+//     finds no caller element consumed as an option value, and finds operands
+//     exactly [src dst].
 //   - rsync: argv[0] is -e and argv[1] is the sdk transport, which holds every
 //     D4 option; the caller's elements are allowlisted, and a simulation of
 //     rsync's own option parser finds that no caller element consumed the
@@ -153,6 +157,7 @@ func FuzzArgvBuilders(f *testing.F) {
 		{"h1", "x", "./a", "/opt/a", "-T", "-F x"},
 		{"h1", "x", "./a", "/opt/a", "--exclude", "Port 22"},
 		{"h1", "x", "./a", "/opt/a", "-azT", "connecttimeout = 5"},
+		{"h1", "x", "./a", "/opt/a", "-a", "22"},
 	}
 	for _, s := range seeds {
 		f.Add(s[0], s[1], s[2], s[3], s[4], s[5])
@@ -171,12 +176,31 @@ func FuzzArgvBuilders(f *testing.F) {
 		_ = CopyTo(ctx, tg, local, remote)
 		_ = Rsync(ctx, tg, []string{rsyncArg}, local, remote)
 		sshN := len(*got)
+		// scp gets ssh-style tails too, including the port form and CISSHFlags.
+		scpTargets := []Target{
+			{Dest: dest, Options: append(CISSHFlags(), opts...)},
+			{Dest: dest, Options: append(append([]string{}, opts...), "-p", sshOpt)},
+			{Dest: dest, Options: append(append([]string{}, opts...), "-i", sshOpt, "-p", "22")},
+		}
+		for _, tail := range tails {
+			scpTargets = append(scpTargets, Target{Dest: dest, Options: append(append([]string{}, opts...), tail...)})
+		}
+		for _, st := range scpTargets {
+			_ = CopyTo(ctx, st, local, remote)
+		}
+		scpN := len(*got)
 		for _, tail := range tails {
 			tt := Target{Dest: dest, Options: append(append([]string{}, opts...), tail...)}
 			_, _ = Run(ctx, tt, command)
 			_ = Rsync(ctx, tt, []string{rsyncArg}, local, remote)
 		}
 
+		for _, c := range (*got)[sshN:scpN] {
+			if c.tool != "scp" {
+				t.Fatalf("unexpected tool %q among scp calls", c.tool)
+			}
+			checkScpArgv(t, c, opts, local, scpOperand(dest, remote))
+		}
 		for i, c := range *got {
 			switch c.tool {
 			case "ssh", "scp":
@@ -199,7 +223,7 @@ func FuzzArgvBuilders(f *testing.F) {
 			}
 		}
 		// ssh runs with a tail: D4 first, then an allowlisted tail, then "--".
-		for _, c := range (*got)[sshN:] {
+		for _, c := range (*got)[scpN:] {
 			if c.tool != "ssh" {
 				continue
 			}
