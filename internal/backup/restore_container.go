@@ -128,6 +128,11 @@ func StartContainer(ctx context.Context, spec ContainerSpec) (*Container, error)
 	cmd := dockerCmd(ctx, args...)
 	cmd.Env = append(os.Environ(), "POSTGRES_PASSWORD="+spec.Password)
 	if out, err := cmd.CombinedOutput(); err != nil {
+		if throwaway {
+			// A cancel can land after the daemon created the container but
+			// before docker returned: remove it by name (a name nothing else uses).
+			(&Container{Name: spec.Name}).Remove()
+		}
 		return nil, fmt.Errorf("start test container: %s: %w", strings.TrimSpace(strings.ReplaceAll(string(out), spec.Password, "***")), err)
 	}
 	c := &Container{Name: spec.Name, User: spec.User, DB: spec.DB, Volume: spec.Volume, keep: spec.Keep}
@@ -231,16 +236,17 @@ func RestoreIntoContainer(ctx context.Context, c *Container, file string) error 
 	var stderr bytes.Buffer
 	cmd := c.cmd(ctx, f, args...)
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := stderr.String()
-		// pg_restore and psql exit non-zero on warnings too (a missing
-		// extension, a role). Only a failure to connect or read the file is
-		// fatal here; missing data is caught by the row-count comparison.
-		for _, fatal := range []string{"FATAL", "unrecognized archive", "input file", "No such file", "connection to server"} {
-			if strings.Contains(msg, fatal) {
-				return fmt.Errorf("%w: %s: %s", errs.ErrBackupRestoreFailed, tool, strings.TrimSpace(msg))
-			}
-		}
+	runErr := cmd.Run()
+	msg := stderr.String()
+	// pg_restore and psql exit non-zero on warnings too (a missing extension,
+	// a role). A failure to connect or read the file is always fatal, and so is
+	// every pg_restore "error:" line that is not on the allowlist
+	// (drill_verify.go); anything else is logged. Missing data is also caught by
+	// the row-count comparison.
+	if text := fatalRestoreText(tool, msg); text != "" {
+		return fmt.Errorf("%w: %s: %s", errs.ErrBackupRestoreFailed, tool, text)
+	}
+	if runErr != nil {
 		slog.Warn(tool+" completed with warnings", "output", strings.TrimSpace(msg))
 	}
 	return nil

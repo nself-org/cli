@@ -10,7 +10,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/nself-org/cli/internal/backup"
 	"github.com/nself-org/cli/internal/config"
@@ -136,6 +139,12 @@ func runBackupDrillRemote(cmd *cobra.Command, from string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// SIGINT and SIGTERM cancel ctx so DrillRemote unwinds through its defers
+	// and removes the throwaway container and the decrypted files. A second
+	// signal after the first gets the default behaviour back.
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() { <-ctx.Done(); stop() }()
 	res, err := backup.DrillRemote(ctx, backup.DrillRemoteOptions{
 		Project: project, From: from, Key: key, Identity: identity, HeartbeatTo: hbTo,
 	})
@@ -159,8 +168,8 @@ func printRemoteDrill(res *backup.DrillRemoteResult, hasHeartbeat bool) {
 	for _, t := range res.Tables {
 		ui.Dimmed(fmt.Sprintf("  %-40s %d rows", t, hb.RestoredRows[t]))
 	}
-	if !res.Estimated {
-		ui.Dimmed("  No row estimates in the backup heartbeat: checked that the restore is not empty.")
+	for _, w := range res.Warnings {
+		ui.Dimmed("  Warning:        " + w)
 	}
 	if len(hb.Mismatches) > 0 {
 		ui.Dimmed(fmt.Sprintf("  Mismatches:     %s", strings.Join(hb.Mismatches, ", ")))

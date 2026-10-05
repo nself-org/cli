@@ -38,6 +38,7 @@
     "backup_age_seconds": 7200,
     "drill_age_seconds": 1301460,
     "max_age_exceeded": false,
-    "max_drill_age_exceeded": false
+    "max_drill_age_exceeded": false,
+    "problems": []
   }
 }

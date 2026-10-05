@@ -5,7 +5,7 @@
 // from, so callers stop switching on URI schemes.
 // Inputs: a destination URI and, for host://, the controlplane inventory.
 // Outputs: a Destination of one of three kinds: rclone (s3 r2 minio b2 gcs az
-// and bare rclone remotes), path (path://<abs dir>) and host
+// and bare rclone remotes written name:path), path (path://<abs dir>) and host
 // (host://<inventory server>/<abs dir>).
 // Constraints: Parse never touches the network or starts a process.
 package destinations
@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -115,7 +116,36 @@ func Parse(uri string, inv *Inventory, rcloneEnv ...string) (Destination, error)
 		}
 		return d, nil
 	}
+	if err := validateRcloneRemote(uri); err != nil {
+		return nil, err
+	}
 	return &rcloneDest{remote: uri, env: rcloneEnv}, nil
+}
+
+// rcloneNameRe matches the "name:" start of a bare rclone remote.
+var rcloneNameRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*:`)
+
+// validateRcloneRemote refuses anything rclone could read as an option or a
+// connection string. The scheme forms (s3:// r2:// minio:// b2:// gcs:// az://)
+// must name a bucket; the bare form must be exactly `name:path`, so a value
+// that starts with "-", a `:backend,opts:path` connection string, and
+// file://, http(s):// and other unknown schemes never reach rclone's argv.
+// The error text never echoes the value.
+func validateRcloneRemote(uri string) error {
+	if strings.ContainsAny(uri, "\x00\r\n") {
+		return fmt.Errorf("rclone remote contains a control character")
+	}
+	if IsRemoteKey(uri) {
+		if _, err := toRclonePath(uri); err != nil {
+			return fmt.Errorf("rclone remote has no bucket or path after the scheme")
+		}
+		return nil
+	}
+	loc := rcloneNameRe.FindStringIndex(uri)
+	if loc == nil || strings.HasPrefix(uri[loc[1]:], "//") {
+		return fmt.Errorf("rclone remote must be a configured remote written name:path or one of s3:// r2:// minio:// b2:// gcs:// az:// (options, connection strings and other URL schemes are refused)")
+	}
+	return nil
 }
 
 // ParseObject parses a URI that names one object (restore-remote --from).

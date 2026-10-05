@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -240,5 +241,142 @@ func TestFormatStatusOffboxKeepsExistingFields(t *testing.T) {
 	if !strings.HasPrefix(text, oldText) || strings.Count(strings.TrimPrefix(text, oldText), "\n") != 2 ||
 		!strings.Contains(text, "Off-box backup:") || !strings.Contains(text, "1h0m0s ago") {
 		t.Errorf("want the old text plus two off-box lines:\n%s", text)
+	}
+}
+
+// rcloneStub puts an rclone double first on PATH. It appends its argv to the
+// returned log and exits with $RCLONE_EXIT after printing $RCLONE_OUT to
+// stderr; RCLONE_SLEEP makes it hang.
+func rcloneStub(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("PATH doubles are POSIX shell scripts")
+	}
+	dir := t.TempDir()
+	body := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"" + filepath.Join(dir, "calls.log") + "\"\n" +
+		"[ -n \"$RCLONE_SLEEP\" ] && exec sleep 30\n[ -n \"$RCLONE_OUT\" ] && printf '%s\\n' \"$RCLONE_OUT\" >&2\nexit ${RCLONE_EXIT:-0}\n"
+	if err := os.WriteFile(filepath.Join(dir, "rclone"), []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return filepath.Join(dir, "calls.log")
+}
+
+// Hostile --from / --heartbeat-to values are refused before any exec: the stub
+// rclone must never run, for the status and the drill paths alike.
+func TestHostileRemotesRefusedBeforeExec(t *testing.T) {
+	calls := rcloneStub(t)
+	for _, u := range []string{
+		"--config=/etc/passwd", "-v", "--sftp-ssh=evil", ":sftp,host=127.0.0.1,user=x:/",
+		"file:///etc", "http://127.0.0.1:1/x",
+	} {
+		st, err := ReadOffbox(context.Background(), u, "proj", OffboxOptions{MaxAge: time.Hour}, time.Now())
+		if strings.Join(codeOf(t, err), ",") != "E219" || !strings.Contains(err.Error(), "cannot be opened") {
+			t.Errorf("status %q: %v", u, err)
+		}
+		if len(st.Problems) != 1 {
+			t.Errorf("status %q problems: %v", u, st.Problems)
+		}
+		e := newDrillEnv(t)
+		for _, o := range []DrillRemoteOptions{
+			{Project: "proj", From: u, Identity: e.identity},
+			{Project: "proj", From: "path://" + e.src, Identity: e.identity, HeartbeatTo: u},
+		} {
+			if _, err := DrillRemote(context.Background(), o); !errors.Is(err, errs.ErrBackupRemoteFailed) {
+				t.Errorf("drill %+v: %v", o, err)
+			}
+		}
+	}
+	if b, err := os.ReadFile(calls); err == nil {
+		t.Fatalf("rclone was executed: %s", b)
+	}
+}
+
+// A missing heartbeat is told apart from an unreachable remote by rclone's exit
+// code, never by words in its output (the review's "Config file not found"
+// NOTICE must not turn a dead remote into "no backup").
+func TestRcloneFailuresClassifiedByExitCode(t *testing.T) {
+	rcloneStub(t)
+	notice := "NOTICE: Config file \"/home/u/.config/rclone/rclone.conf\" not found - using defaults\nCouldn't find section in config file: no such remote"
+	cases := []struct {
+		name, exit string
+		want       []string
+		text       string
+	}{
+		{"directory not found (3) is a missing object", "3", []string{"E217", "E218"}, "no backup heartbeat found"},
+		{"file not found (4) is a missing object", "4", []string{"E217", "E218"}, "no backup heartbeat found"},
+		{"exit 1 with not-found words is an unreadable remote", "1", []string{"E219"}, "rclone exited with status 1"},
+		{"temporary error (5) is an unreadable remote", "5", []string{"E219"}, "status 5"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("RCLONE_EXIT", c.exit)
+			t.Setenv("RCLONE_OUT", notice)
+			st, err := ReadOffbox(context.Background(), "s3:nonexistent-bucket/hb", "proj", OffboxOptions{MaxAge: time.Hour, MaxDrillAge: time.Hour}, time.Now())
+			codes := codeOf(t, err)
+			if c.want[0] == "E219" {
+				// Both heartbeats unreadable: two E219 problems.
+				codes = codes[:1]
+			}
+			if strings.Join(codes, ",") != strings.Join(c.want, ",") || !strings.Contains(err.Error(), c.text) {
+				t.Fatalf("codes %v, err %v", codes, err)
+			}
+			if len(st.Problems) == 0 {
+				t.Error("problems is empty")
+			}
+		})
+	}
+}
+
+// A remote that never answers is cut off by the bounded context.
+func TestRemoteFetchIsBounded(t *testing.T) {
+	rcloneStub(t)
+	t.Setenv("RCLONE_SLEEP", "1")
+	old := remoteFetchTimeout
+	remoteFetchTimeout = 300 * time.Millisecond
+	defer func() { remoteFetchTimeout = old }()
+	start := time.Now()
+	_, err := ReadOffbox(context.Background(), "s3:bucket/hb", "proj", OffboxOptions{MaxAge: time.Hour}, time.Now())
+	if time.Since(start) > 10*time.Second {
+		t.Fatalf("status took %s", time.Since(start))
+	}
+	if !strings.Contains(codesOf(t, err), "E219") || !strings.Contains(err.Error(), "did not answer within the time limit") {
+		t.Fatalf("err = %v", err)
+	}
+	// The drill's List is bounded the same way.
+	e := newDrillEnv(t)
+	t.Setenv("PATH", filepath.Dir(mustLookPath(t, "rclone"))+string(os.PathListSeparator)+os.Getenv("PATH"))
+	start = time.Now()
+	_, err = DrillRemote(context.Background(), DrillRemoteOptions{Project: "proj", From: "s3:bucket/src", Identity: e.identity, HeartbeatTo: "path://" + e.hb})
+	if time.Since(start) > 10*time.Second || !errors.Is(err, errs.ErrBackupRemoteFailed) || !strings.Contains(err.Error(), "time limit") {
+		t.Fatalf("drill list: %v after %s", err, time.Since(start))
+	}
+}
+
+// --format json carries a reason for every missing or unreadable heartbeat.
+func TestOffboxProblemsArray(t *testing.T) {
+	dir := t.TempDir()
+	writeObject(t, dir, "backup", hbJSON(t, "backup", time.Now().Add(-48*time.Hour), nil))
+	writeObject(t, dir, "drill", "{not json")
+	st, err := ReadOffbox(context.Background(), "path://"+dir, "proj", OffboxOptions{MaxAge: 26 * time.Hour}, time.Now())
+	if err == nil || len(st.Problems) != 2 {
+		t.Fatalf("problems = %v, err %v", st.Problems, err)
+	}
+	if !strings.HasPrefix(st.Problems[0], "[E219] drill heartbeat is unreadable") || !strings.HasPrefix(st.Problems[1], "[E217]") {
+		t.Errorf("problems = %q", st.Problems)
+	}
+	out, _ := FormatStatusOffbox(nil, st, "json")
+	var v struct {
+		Offbox struct {
+			Problems []string `json:"problems"`
+		} `json:"offbox"`
+	}
+	if json.Unmarshal([]byte(out), &v) != nil || len(v.Offbox.Problems) != 2 {
+		t.Errorf("json: %s", out)
+	}
+	// A clean status has an empty array, never null.
+	st, _ = ReadOffbox(context.Background(), "", "proj", OffboxOptions{}, time.Now())
+	if out, _ = FormatStatusOffbox(nil, st, "json"); !strings.Contains(out, `"problems": []`) {
+		t.Errorf("no-remote status: %s", out)
 	}
 }

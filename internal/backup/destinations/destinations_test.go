@@ -1,6 +1,8 @@
 package destinations
 
 import (
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -77,5 +79,42 @@ func TestFetchRemote_EmptyDestDir(t *testing.T) {
 	_, err := FetchRemote(t.Context(), "s3://bucket/file.tar.gz", "")
 	if err == nil {
 		t.Fatal("expected error for empty destDir, got nil")
+	}
+}
+
+// A hostile remote is refused by Parse before any rclone process starts: the
+// stub rclone on PATH records every call and must record none.
+func TestParseRefusesHostileRcloneRemotes(t *testing.T) {
+	logf := fakeRclone(t)
+	hostile := []string{
+		"--config=/etc/passwd", "-v", "--", "-", "--sftp-ssh=evil",
+		":sftp,host=127.0.0.1,user=x:/", ":local:/etc", "remote,opt=1:path",
+		"file:///etc", "http://127.0.0.1:1/x", "https://example.org/x", "ftp://h/x", "sftp://h/x",
+		"/etc", "./rel", "plainname", "name:ok\nsecond", "s3://", "az://", "-s3:bucket", ".hidden:path", "a b:path",
+	}
+	for _, u := range hostile {
+		d, err := Parse(u, nil)
+		if err == nil || d != nil {
+			t.Errorf("Parse(%q) = %v, %v; want nil, error", u, d, err)
+		}
+		if err != nil && strings.Contains(err.Error(), "127.0.0.1") {
+			t.Errorf("Parse(%q) error echoes the value: %v", u, err)
+		}
+	}
+	if b, err := os.ReadFile(logf); err == nil {
+		t.Fatalf("rclone was executed: %s", b)
+	}
+}
+
+// Every currently supported remote form still parses.
+func TestParseAcceptsSupportedRcloneRemotes(t *testing.T) {
+	for _, u := range []string{
+		"s3://b/p", "r2://b/p", "minio://b/p", "b2://b/p", "gcs://b/p", "az://c/p",
+		"s3:bucket/prefix", "my-remote:bucket", "r_2.x:", "A1:a/b",
+	} {
+		d, err := Parse(u, nil)
+		if err != nil || d == nil || d.Kind() != KindRclone {
+			t.Errorf("Parse(%q) = %v, %v", u, d, err)
+		}
 	}
 }

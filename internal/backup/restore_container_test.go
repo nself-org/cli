@@ -29,7 +29,9 @@ case "$1" in
     case "$1" in
       pg_isready) exit 0;;
       pg_restore)
+        [ -n "$FAKE_RESTORE_HANG" ] && exec sleep 30
         cat > "$d/restored.bin"; echo pg_restore > "$d/tool"
+        if [ -n "$FAKE_RESTORE_ERR" ]; then printf '%s\n' "$FAKE_RESTORE_ERR" >&2; exit 1; fi
         if [ -n "$FAKE_RESTORE_FAIL" ]; then echo "pg_restore: error: connection to server failed: FATAL" >&2; exit 1; fi
         exit 0;;
       psql)
@@ -198,5 +200,43 @@ func TestContainerLabelMismatchRefused(t *testing.T) {
 	}
 	if strings.Contains(readFake(t, dir, "calls.log"), "pg_isready") {
 		t.Error("something ran in a container whose label did not match")
+	}
+}
+
+// Every pg_restore "error:" line is fatal unless allowlisted; the closing
+// "errors ignored" warning is not an error line.
+func TestRestoreErrorLinesAreFatal(t *testing.T) {
+	custom := filepath.Join(t.TempDir(), "s.sql")
+	if err := os.WriteFile(custom, []byte("PGDMP\x01-archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := &Container{Name: "nself-drill-0123456789abcdef", User: "postgres", DB: "drill"}
+	cases := map[string]bool{
+		"pg_restore: error: could not execute query: ERROR:  relation \"x\" already exists": true,
+		"pg_restore: error: COPY failed for table \"orders\"":                               true,
+		"pg_restore: warning: errors ignored on restore: 2":                                 false,
+	}
+	for stderr, fatal := range cases {
+		fakeDocker(t)
+		t.Setenv("FAKE_RESTORE_ERR", stderr)
+		err := RestoreIntoContainer(context.Background(), c, custom)
+		if fatal && (err == nil || !strings.Contains(err.Error(), "pg_restore")) {
+			t.Errorf("%q must fail the restore, got %v", stderr, err)
+		}
+		if !fatal && err != nil {
+			t.Errorf("%q must not fail the restore: %v", stderr, err)
+		}
+	}
+	// An allowlisted line is tolerated; the list ships empty.
+	if len(allowedRestoreErrors) != 0 {
+		t.Fatalf("the allowlist must start empty, got %v", allowedRestoreErrors)
+	}
+	allowedRestoreErrors = []string{"harmless-test-entry"}
+	defer func() { allowedRestoreErrors = nil }()
+	if got := fatalRestoreText("pg_restore", "pg_restore: error: harmless-test-entry\npg_restore: error: real"); got != "pg_restore: error: real" {
+		t.Errorf("allowlist: %q", got)
+	}
+	if got := fatalRestoreText("psql", "ERROR:  x"); got != "" {
+		t.Errorf("psql plain restore keeps its previous rule: %q", got)
 	}
 }

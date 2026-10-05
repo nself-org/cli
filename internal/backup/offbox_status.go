@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -48,6 +47,9 @@ type OffboxStatus struct {
 	DrillAgeSeconds     *int64     `json:"drill_age_seconds"`
 	MaxAgeExceeded      bool       `json:"max_age_exceeded"`
 	MaxDrillAgeExceeded bool       `json:"max_drill_age_exceeded"`
+	// Problems lists the reason of every missing, stale, failed or unreadable
+	// heartbeat ("[E219] ..."); an empty array when none. Additive in v1.
+	Problems []string `json:"problems"`
 }
 
 // OffboxOptions are the thresholds; zero means "not checked".
@@ -117,12 +119,14 @@ func fetchHeartbeat(ctx context.Context, dest destinations.Destination, project,
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 	local := filepath.Join(dir, kind+".json")
-	if err := dest.Get(ctx, project+"/"+kind+".json", local); err != nil {
-		msg := strings.ToLower(err.Error())
-		if errors.Is(err, fs.ErrNotExist) || strings.Contains(msg, "not found") || strings.Contains(msg, "no such") {
+	fctx, cancel := fetchContext(ctx, 0)
+	defer cancel()
+	if err := dest.Get(fctx, project+"/"+kind+".json", local); err != nil {
+		missing, cause := classifyFetch(fctx, err)
+		if missing {
 			return nil, hbMissing, nil
 		}
-		return nil, hbUnreadable, fmt.Errorf("%s heartbeat could not be fetched", kind)
+		return nil, hbUnreadable, fmt.Errorf("%s heartbeat could not be fetched: %s", kind, cause)
 	}
 	f, err := os.Open(local)
 	if err != nil {
@@ -182,21 +186,29 @@ func ageSeconds(hb *Heartbeat, now time.Time) *int64 {
 // ReadOffbox reads both heartbeats and applies the thresholds. The returned
 // status is always usable; err is nil, one coded error, or several joined.
 func ReadOffbox(ctx context.Context, remote, project string, opts OffboxOptions, now time.Time) (*OffboxStatus, error) {
-	st := &OffboxStatus{Source: "none"}
+	st := &OffboxStatus{Source: "none", Problems: []string{}}
+	fail := func(err error) (*OffboxStatus, error) {
+		st.Problems = append(st.Problems, problemText(err))
+		return st, err
+	}
 	if strings.TrimSpace(remote) == "" {
 		if opts.MaxAge > 0 || opts.MaxDrillAge > 0 {
-			return st, errs.New("E219", "no heartbeat remote is configured, so freshness cannot be checked").
-				WithFix("Pass --heartbeat-to <remote> or set NSELF_BACKUP_HEARTBEAT_REMOTE.")
+			return fail(errs.New("E219", "no heartbeat remote is configured, so freshness cannot be checked").
+				WithFix("Pass --heartbeat-to <remote> or set NSELF_BACKUP_HEARTBEAT_REMOTE."))
 		}
 		return st, nil
 	}
 	if !heartbeatProjectRe.MatchString(project) {
-		return st, fmt.Errorf("project name %q cannot be used as a heartbeat key", project)
+		return fail(fmt.Errorf("project name %q cannot be used as a heartbeat key", project))
 	}
 	st.Source = "heartbeat"
 	dest, err := OpenDestination(remote)
 	if err != nil {
-		return st, errs.Wrap("E219", "the heartbeat remote cannot be opened", err)
+		what := "the heartbeat remote cannot be opened"
+		if destinations.KindOf(remote) == destinations.KindRclone {
+			what += ": " + err.Error() // rclone validation errors never echo the value
+		}
+		return fail(errs.Wrap("E219", what, err))
 	}
 	var problems []error
 	bk, bState, bErr := fetchHeartbeat(ctx, dest, project, "backup", now)
@@ -225,6 +237,9 @@ func ReadOffbox(ctx context.Context, remote, project string, opts OffboxOptions,
 			st.MaxDrillAgeExceeded = true
 			problems = append(problems, e)
 		}
+	}
+	for _, p := range problems {
+		st.Problems = append(st.Problems, problemText(p))
 	}
 	switch len(problems) {
 	case 0:

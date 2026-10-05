@@ -56,6 +56,14 @@ func newDrillEnv(t *testing.T) *drillEnv {
 	return e
 }
 
+// writeBackupHB replaces the backup heartbeat with one describing key.
+func (e *drillEnv) writeBackupHB(t *testing.T, key string, approx map[string]int64) {
+	t.Helper()
+	hb := newBackupHeartbeat("proj", key, 27, strings.HasSuffix(key, ".age"), approx, time.Now().Add(-time.Hour), "1.4.12")
+	data, _ := hb.Marshal()
+	writeObject(t, e.hb, "backup", string(data))
+}
+
 func (e *drillEnv) opts() DrillRemoteOptions {
 	return DrillRemoteOptions{Project: "proj", From: "path://" + e.src, Identity: e.identity, HeartbeatTo: "path://" + e.hb}
 }
@@ -142,7 +150,7 @@ func TestDrillRemoteMismatchFails(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	hb := e.drillHeartbeat(t)
-	if hb.Result != "failed" || len(hb.Mismatches) != 1 || hb.Mismatches[0] != "public.orders" || res.Heartbeat.Result != "failed" {
+	if hb.Result != "failed" || len(hb.Mismatches) != 1 || !strings.HasPrefix(hb.Mismatches[0], "public.orders:") || res.Heartbeat.Result != "failed" {
 		t.Fatalf("%+v", hb)
 	}
 	e.assertClean(t, true)
@@ -236,6 +244,7 @@ func TestDrillRemoteNamedKeyAndPlain(t *testing.T) {
 	e := newDrillEnv(t)
 	o := e.opts()
 	o.Key = olderKey
+	e.writeBackupHB(t, olderKey, map[string]int64{"public.users": 1000, "public.orders": 25})
 	if _, err := DrillRemote(context.Background(), o); err != nil {
 		t.Fatal(err)
 	}
@@ -249,6 +258,7 @@ func TestDrillRemoteNamedKeyAndPlain(t *testing.T) {
 	}
 	o = e.opts()
 	o.Identity = ""
+	e.writeBackupHB(t, "proj_stream_20261006_020000.sql", map[string]int64{"public.users": 1000, "public.orders": 25})
 	if _, err := DrillRemote(context.Background(), o); err != nil {
 		t.Fatal(err)
 	}
@@ -257,18 +267,38 @@ func TestDrillRemoteNamedKeyAndPlain(t *testing.T) {
 	}
 }
 
-func TestDrillRemoteWithoutEstimatesNeedsRows(t *testing.T) {
-	e := newDrillEnv(t)
-	o := e.opts()
-	o.HeartbeatTo = "" // no heartbeat remote: nothing to compare, nothing written
-	res, err := DrillRemote(context.Background(), o)
-	if err != nil || res.Estimated || res.HeartbeatWritten {
-		t.Fatalf("%+v %v", res, err)
+// Without source counts the drill cannot verify: it fails with E218 and says so,
+// even though the restore itself produced rows. It never passes weakly.
+func TestDrillRemoteWithoutSourceCountsFails(t *testing.T) {
+	cases := map[string]func(e *drillEnv, o *DrillRemoteOptions, t *testing.T){
+		"no heartbeat remote": func(_ *drillEnv, o *DrillRemoteOptions, _ *testing.T) { o.HeartbeatTo = "" },
+		"heartbeat of another object": func(e *drillEnv, _ *DrillRemoteOptions, t *testing.T) {
+			e.writeBackupHB(t, olderKey, map[string]int64{"public.users": 1000})
+		},
+		"null approx_rows": func(e *drillEnv, _ *DrillRemoteOptions, t *testing.T) { e.writeBackupHB(t, newestKey, nil) },
+		"no heartbeat object": func(e *drillEnv, _ *DrillRemoteOptions, t *testing.T) {
+			_ = os.Remove(filepath.Join(e.hb, "proj", "backup.json"))
+		},
 	}
-	t.Setenv("FAKE_USERS", "0")
-	t.Setenv("FAKE_ORDERS", "0")
-	if _, err := DrillRemote(context.Background(), o); codesOf(t, err) != "E218" {
-		t.Fatalf("an empty restore passed: %v", err)
+	for name, mut := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := newDrillEnv(t)
+			o := e.opts()
+			mut(e, &o, t)
+			res, err := DrillRemote(context.Background(), o)
+			if codesOf(t, err) != "E218" || !strings.Contains(err.Error(), "cannot verify") {
+				t.Fatalf("err = %v", err)
+			}
+			if res.Heartbeat.Result != "failed" || len(res.Heartbeat.Mismatches) != 1 || res.Estimated || len(res.Warnings) == 0 {
+				t.Fatalf("%+v", res)
+			}
+			if o.HeartbeatTo != "" {
+				if hb := e.drillHeartbeat(t); hb.Result != "failed" {
+					t.Fatalf("%+v", hb)
+				}
+			}
+			e.assertClean(t, true)
+		})
 	}
 }
 
@@ -290,18 +320,28 @@ func TestSelectBackupAndCompare(t *testing.T) {
 	if _, err = selectBackup(nil, "proj", ""); !errors.Is(err, errs.ErrBackupNotFound) {
 		t.Fatal(err)
 	}
-	est := map[string]int64{"a.x": 5, "a.y": 0, "a.z": 9}
-	if m := compareRows(est, map[string]int64{"a.x": 1, "a.y": 0, "a.z": 0}); len(m) != 1 || m[0] != "a.z" {
-		t.Errorf("empty table not flagged: %v", m)
+	est := map[string]int64{"a.x": 50, "a.y": 0, "a.z": 9}
+	for name, c := range map[string]struct {
+		restored map[string]int64
+		want     int
+	}{
+		"clean":                {map[string]int64{"a.x": 50, "a.z": 9}, 0},
+		"within 10% shortfall": {map[string]int64{"a.x": 45, "a.z": 9}, 0},
+		"more than estimated":  {map[string]int64{"a.x": 60, "a.z": 9}, 0},
+		"partial table":        {map[string]int64{"a.x": 10, "a.z": 9}, 1},
+		"empty table":          {map[string]int64{"a.x": 50, "a.y": 0, "a.z": 0}, 1},
+		"missing table":        {map[string]int64{"a.x": 50}, 1},
+		"nothing restored":     {map[string]int64{}, 2},
+	} {
+		m := compareRows(est, c.restored)
+		if m == nil || len(m) != c.want {
+			t.Errorf("%s: %#v, want %d mismatches", name, m, c.want)
+		}
 	}
-	if m := compareRows(est, map[string]int64{"a.x": 1}); len(m) != 1 || m[0] != "a.z" {
-		t.Errorf("missing table not flagged: %v", m)
-	}
-	if m := compareRows(est, map[string]int64{"a.x": 1, "a.z": 2}); len(m) != 0 || m == nil {
-		t.Errorf("clean restore: %#v", m)
-	}
-	if m := compareRows(nil, map[string]int64{}); len(m) != 1 {
-		t.Errorf("an empty restore without estimates passed: %v", m)
+	for _, none := range []map[string]int64{nil, {}} {
+		if m := compareRows(none, map[string]int64{"a.x": 5}); len(m) != 1 || m[0] != cannotVerify {
+			t.Errorf("no source counts must not pass: %v", m)
+		}
 	}
 }
 
@@ -395,5 +435,228 @@ func TestDrillRemotePostgres(t *testing.T) {
 	dj, _ := os.ReadFile(filepath.Join(hbDir, "proj", "drill.json"))
 	if !strings.Contains(string(dj), `"result": "failed"`) || !strings.Contains(string(dj), "public.gone") {
 		t.Errorf("drill.json: %s", dj)
+	}
+}
+
+// A cancelled context (SIGINT or SIGTERM through signal.NotifyContext) while
+// pg_restore runs unwinds the drill: the container is removed, no decrypted
+// file or temp directory is left, and no drill heartbeat claims a result.
+func TestDrillRemoteCancelMidRestoreCleansUp(t *testing.T) {
+	e := newDrillEnv(t)
+	t.Setenv("FAKE_RESTORE_HANG", "1")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := DrillRemote(ctx, e.opts()); done <- err }()
+	for i := 0; !strings.Contains(readFake(t, e.logs, "calls.log"), "pg_restore"); i++ {
+		if i > 200 {
+			t.Fatal("the restore never started")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a cancelled drill reported success")
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("the drill did not return after the cancel")
+	}
+	e.assertClean(t, true) // removed, nothing in TMPDIR, only throwaway names touched
+	if _, err := os.Stat(filepath.Join(e.hb, "proj", "drill.json")); err == nil {
+		t.Error("a cancelled drill wrote drill.json")
+	}
+}
+
+// The docker stub lists three labelled containers: a stale throwaway, a young
+// throwaway and a labelled container that is not a throwaway.
+const sweepDockerScript = `#!/bin/sh
+printf '%s\n' "$*" >> "$FAKE_DOCKER_DIR/calls.log"
+case "$1" in
+  ps) printf 'nself-drill-aaaaaaaaaaaaaaaa\nnself-drill-bbbbbbbbbbbbbbbb\nmyproj_postgres\nmyproj_pg_restore_test\nnself-drill-notvalid\n';;
+  inspect) case "$4" in
+      nself-drill-aaaa*) echo 2020-01-01T00:00:00.123456789Z;;
+      *) date -u +%Y-%m-%dT%H:%M:%S.000000000Z;;
+    esac;;
+esac
+exit 0
+`
+
+func TestSweepRemovesOnlyStaleThrowawayContainers(t *testing.T) {
+	logs := fakeDocker(t)
+	bin := filepath.Dir(mustLookPath(t, "docker"))
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(sweepDockerScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sweepDrillContainers(context.Background(), time.Hour)
+	calls := readFake(t, logs, "calls.log")
+	if !strings.Contains(calls, "ps -a --filter label=org.nself.drill") {
+		t.Errorf("the sweep must filter by the drill label only:\n%s", calls)
+	}
+	var removed []string
+	for _, l := range strings.Split(calls, "\n") {
+		if strings.HasPrefix(l, "rm ") {
+			removed = append(removed, l)
+		}
+	}
+	if len(removed) != 1 || removed[0] != "rm -f -v nself-drill-aaaaaaaaaaaaaaaa" {
+		t.Errorf("removed %v, want only the stale throwaway", removed)
+	}
+}
+
+func mustLookPath(t *testing.T, name string) string {
+	t.Helper()
+	p, err := exec.LookPath(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestSweepRemovesOnlyStaleOwnedDrillTempDirs(t *testing.T) {
+	root := t.TempDir()
+	old := time.Now().Add(-48 * time.Hour)
+	mk := func(name string, mode os.FileMode, age time.Time) string {
+		p := filepath.Join(root, name)
+		if err := os.Mkdir(p, mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(p, "backup.plain"), []byte("secret"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(p, mode); err != nil {
+			t.Fatal(err)
+		}
+		_ = os.Chtimes(p, age, age)
+		return p
+	}
+	stale := mk("nself-drill-111", 0o700, old)
+	young := mk("nself-drill-222", 0o700, time.Now())
+	loose := mk("nself-drill-333", 0o755, old) // not the mode MkdirTemp gives
+	other := mk("nself-other-444", 0o700, old) // not a drill directory
+	target := mk("target-dir", 0o700, old)     // a symlink must never be followed
+	link := filepath.Join(root, "nself-drill-555")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skip("symlinks unavailable")
+	}
+	sweepDrillTempDirs(root, time.Hour)
+	if _, err := os.Stat(stale); err == nil {
+		t.Error("the stale drill directory was not removed")
+	}
+	for _, p := range []string{young, loose, other, target, filepath.Join(target, "backup.plain")} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s was removed: %v", p, err)
+		}
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Errorf("the symlink was removed: %v", err)
+	}
+}
+
+// An E220 (Docker down) exits with its registered class 2: the exec.ExitError
+// of `docker version` must not be wrapped as the cause.
+func TestDrillRemoteDockerDownExitClass(t *testing.T) {
+	e := newDrillEnv(t)
+	t.Setenv("FAKE_NO_DOCKER", "1")
+	_, err := DrillRemote(context.Background(), e.opts())
+	if codesOf(t, err) != "E220" || errs.ExitCodeFor(err) != 2 {
+		t.Fatalf("err = %v, exit class %d", err, errs.ExitCodeFor(err))
+	}
+	if !strings.Contains(err.Error(), "Docker is not available for the drill container") {
+		t.Errorf("message changed: %v", err)
+	}
+}
+
+// TestDrillSignalCleanupAndSweepReal runs against a real Docker daemon: the
+// sweep removes a stale throwaway but leaves a running unrelated container and
+// a labelled container that is not a throwaway; a cancel in the middle of a
+// restore then leaves no drill container and no temp directory behind.
+func TestDrillSignalCleanupAndSweepReal(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker not on PATH")
+	}
+	if err := exec.Command("docker", "version", "--format", "{{.Server.Version}}").Run(); err != nil {
+		t.Skip("docker daemon not reachable")
+	}
+	docker := func(args ...string) string {
+		out, err := exec.Command("docker", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("docker %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if exec.Command("docker", "image", "inspect", DrillImage).Run() != nil {
+		docker("pull", DrillImage)
+	}
+	id, _ := randHex(4)
+	stale := throwawayPrefix + "0000" + id + "0000" // a throwaway name no live run uses
+	fixtures := []string{"p07fix-plain-" + id, "p07fix-labelled-" + id}
+	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", "-v", stale, fixtures[0], fixtures[1]).Run() })
+	docker("run", "-d", "--name", stale, "--label", containerLabel+"=stale", "--entrypoint", "sleep", DrillImage, "300")
+	docker("run", "-d", "--name", fixtures[0], "--entrypoint", "sleep", DrillImage, "300")
+	docker("run", "-d", "--name", fixtures[1], "--label", containerLabel+"=fixture", "--entrypoint", "sleep", DrillImage, "300")
+
+	old := drillStaleAfter
+	drillStaleAfter = 0
+	t.Cleanup(func() { drillStaleAfter = old })
+
+	e := &drillEnv{}
+	e.dir = t.TempDir()
+	e.src, e.tmp = filepath.Join(e.dir, "src"), filepath.Join(e.dir, "tmp")
+	for _, d := range []string{e.src, e.tmp} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("TMPDIR", e.tmp)
+	if err := os.WriteFile(filepath.Join(e.src, "proj_stream_20261005_023000.sql"), []byte("SELECT pg_sleep(120);\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := DrillRemote(ctx, DrillRemoteOptions{Project: "proj", From: "path://" + e.src})
+		done <- err
+	}()
+	var drill string
+	for i := 0; drill == ""; i++ {
+		if i > 300 {
+			t.Fatal("no drill container appeared")
+		}
+		for _, n := range strings.Fields(docker("ps", "-a", "--filter", "label="+containerLabel, "--format", "{{.Names}}")) {
+			if throwawayNameRe.MatchString(n) && n != stale {
+				drill = n
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	for i := 0; exec.Command("docker", "exec", drill, "pg_isready", "-h", "127.0.0.1").Run() != nil && i < 120; i++ {
+		time.Sleep(500 * time.Millisecond)
+	}
+	time.Sleep(2 * time.Second) // psql is inside pg_sleep
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a cancelled drill reported success")
+		}
+	case <-time.After(60 * time.Second):
+		t.Fatal("the drill did not return after the cancel")
+	}
+	if got := docker("ps", "-a", "--filter", "name="+drill, "--format", "{{.Names}}"); got != "" {
+		t.Errorf("drill container %s left behind", drill)
+	}
+	if got := docker("ps", "-a", "--filter", "name="+stale, "--format", "{{.Names}}"); got != "" {
+		t.Errorf("stale throwaway %s was not swept", stale)
+	}
+	for _, f := range fixtures {
+		if got := docker("ps", "--filter", "name="+f, "--filter", "status=running", "--format", "{{.Names}}"); got != f {
+			t.Errorf("unrelated container %s was touched (running list: %q)", f, got)
+		}
+	}
+	if left, _ := os.ReadDir(e.tmp); len(left) != 0 {
+		t.Errorf("temp files left behind: %v", left)
 	}
 }

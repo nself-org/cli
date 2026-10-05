@@ -9,7 +9,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/nself-org/cli/internal/backup"
@@ -161,6 +164,10 @@ func runBackupStatus(cmd *cobra.Command, _ []string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// SIGINT and SIGTERM cancel the remote reads so their defers run.
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() { <-ctx.Done(); stop() }()
 	off, offErr := backup.ReadOffbox(ctx, hbTo, project, opts, time.Now())
 	output, err := backup.FormatStatusOffbox(info, off, format)
 	if err != nil {

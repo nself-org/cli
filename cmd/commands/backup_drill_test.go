@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -28,7 +29,7 @@ case "$1" in
   exec)
     shift 3
     case "$1" in
-      pg_restore) cat > /dev/null; exit 0;;
+      pg_restore) [ -n "$FAKE_RESTORE_HANG" ] && exec sleep 30; cat > /dev/null; exit 0;;
       psql)
         stdin=$(cat)
         case "$stdin" in
@@ -95,6 +96,15 @@ func TestBackupDrillRemoteFlags(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(src, key), []byte("PGDMP-fake"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// The backup heartbeat carries the source row counts the drill compares with.
+	if err := os.MkdirAll(filepath.Join(hbDir, "nself-web"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hbSrc := `{"schema_version":"1","kind":"backup","project":"nself-web","at":"` + time.Now().UTC().Format(time.RFC3339) +
+		`","result":"ok","backup_key":"` + key + `","bytes":10,"encrypted":true,"cli_version":"1.4.12","approx_rows":{"public.users":7},"restored_rows":null,"mismatches":[]}`
+	if err := os.WriteFile(filepath.Join(hbDir, "nself-web", "backup.json"), []byte(hbSrc), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	t.Chdir(t.TempDir()) // not a project
 
 	out, err := run(map[string]string{"project": "nself-web", "from": "path://" + src, "identity": identity, "heartbeat-to": "path://" + hbDir, "json": "true"})
@@ -124,5 +134,81 @@ func TestBackupDrillRemoteFlags(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(hbDir, "nself-web", "drill.json")); err != nil {
 		t.Errorf("drill.json not written from NSELF_BACKUP_HEARTBEAT_REMOTE: %v", err)
+	}
+}
+
+// SIGINT and SIGTERM during a drill cancel its context (signal.NotifyContext),
+// so the defers remove the throwaway container and the decrypted files.
+func TestBackupDrillSignalCleanup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the docker and age doubles are POSIX shell scripts")
+	}
+	for _, sig := range []os.Signal{os.Interrupt, syscall.SIGTERM} {
+		t.Run(sig.String(), func(t *testing.T) {
+			root := t.TempDir()
+			bin, src, tmp := filepath.Join(root, "bin"), filepath.Join(root, "src"), filepath.Join(root, "tmp")
+			for _, d := range []string{bin, src, tmp} {
+				if err := os.MkdirAll(d, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for name, body := range map[string]string{"docker": drillFakeDocker, "age": "#!/bin/sh\ncat\n"} {
+				if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			t.Setenv("FAKE_DOCKER_DIR", root)
+			t.Setenv("FAKE_RESTORE_HANG", "1")
+			t.Setenv("TMPDIR", tmp)
+			t.Setenv("NSELF_BACKUP_HEARTBEAT_REMOTE", "")
+			identity := filepath.Join(root, "id.key")
+			_ = os.WriteFile(identity, []byte("AGE-SECRET-KEY-FAKE\n"), 0o600)
+			_ = os.WriteFile(filepath.Join(src, "nself-web_stream_20261005_023000.sql.age"), []byte("PGDMP-fake"), 0o600)
+			t.Chdir(t.TempDir())
+
+			fs := backupDrillCmd.Flags()
+			resetBackupFlagSet(t, fs)
+			fs.VisitAll(func(f *pflag.Flag) { _ = f.Value.Set(f.DefValue); f.Changed = false })
+			for k, v := range map[string]string{"project": "nself-web", "from": "path://" + src, "identity": identity} {
+				if err := fs.Set(k, v); err != nil {
+					t.Fatal(err)
+				}
+			}
+			done := make(chan error, 1)
+			go func() {
+				_, err := captureStdout(t, func() error { return runBackupDrill(backupDrillCmd, nil) })
+				done <- err
+			}()
+			self, _ := os.FindProcess(os.Getpid())
+			for i := 0; ; i++ {
+				b, _ := os.ReadFile(filepath.Join(root, "calls.log"))
+				if strings.Contains(string(b), "pg_restore") {
+					break
+				}
+				if i > 200 {
+					t.Fatal("the restore never started")
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			if err := self.Signal(sig); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatal("an interrupted drill reported success")
+				}
+			case <-time.After(20 * time.Second):
+				t.Fatal("the drill did not stop on the signal")
+			}
+			calls, _ := os.ReadFile(filepath.Join(root, "calls.log"))
+			if !strings.Contains(string(calls), "rm -f -v nself-drill-") {
+				t.Errorf("the throwaway container was not removed:\n%s", calls)
+			}
+			if left, _ := os.ReadDir(tmp); len(left) != 0 {
+				t.Errorf("temp files left: %v", left)
+			}
+		})
 	}
 }
