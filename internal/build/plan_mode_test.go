@@ -16,9 +16,12 @@ package build
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"io/fs"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -640,4 +643,166 @@ func effectKinds(effects []PlannedEffect) []string {
 		out = append(out, e.Kind+":"+filepath.Base(e.Target))
 	}
 	return out
+}
+
+// seedStream is a deterministic, endless io.Reader: block n is
+// sha256(seed || n). It stands in for BuildOptions.Rand in tests.
+type seedStream struct {
+	seed string
+	n    uint64
+	buf  []byte
+}
+
+func newSeedStream(seed string) *seedStream { return &seedStream{seed: seed} }
+
+func (s *seedStream) Read(p []byte) (int, error) {
+	for len(s.buf) < len(p) {
+		sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%d", s.seed, s.n)))
+		s.n++
+		s.buf = append(s.buf, sum[:]...)
+	}
+	n := copy(p, s.buf)
+	s.buf = s.buf[n:]
+	return n, nil
+}
+
+// freshProject strips every pre-seeded secret from the fixture's .env, so the
+// build must generate them all (the first-ever build of a project).
+func freshProject(t *testing.T, name string) *planFixture {
+	t.Helper()
+	f := newPlanFixture(t, name)
+	envPath := filepath.Join(f.workdir, ".env")
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := strings.SplitN(string(data), "POSTGRES_PASSWORD=", 2)[0]
+	writeFixtureFile(t, envPath, head, 0o600)
+	return f
+}
+
+// plannedFile returns the planned bytes of the single file whose key ends in suffix.
+func plannedFile(t *testing.T, res *BuildResult, suffix string) string {
+	t.Helper()
+	var got string
+	n := 0
+	for key, pf := range res.Planned.Files {
+		if strings.HasSuffix(filepath.ToSlash(key), suffix) {
+			got = string(pf.Data)
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("want exactly one planned file ending %q, found %d", suffix, n)
+	}
+	return got
+}
+
+// planSeeded runs a plan-mode build of f with the given random source.
+func planSeeded(t *testing.T, f *planFixture, r io.Reader) *BuildResult {
+	t.Helper()
+	res, err := Build(f.workdir, BuildOptions{Mode: ModePlan, Rand: r})
+	if err != nil {
+		t.Fatalf("plan Build: %v", err)
+	}
+	return res
+}
+
+// TestRandSeededPlanEqualsApply (review F21 S1): on a fresh project with no
+// pre-seeded secret, the same seeded reader gives byte-identical plan and apply
+// trees, and two seeded plans agree, including the secret-bearing files.
+func TestRandSeededPlanEqualsApply(t *testing.T) {
+	for _, name := range []string{"dev-minimal", "local-tls"} {
+		t.Run(name, func(t *testing.T) {
+			f := freshProject(t, name)
+			p1 := planSeeded(t, f, newSeedStream("seed-one"))
+			p2 := planSeeded(t, f, newSeedStream("seed-one"))
+			for key, pf := range p1.Planned.Files {
+				if got := p2.Planned.Files[key]; string(got.Data) != string(pf.Data) || got.Perm != pf.Perm {
+					t.Errorf("two seeded plans differ at %s", key)
+				}
+			}
+			if len(p1.Planned.Files) != len(p2.Planned.Files) {
+				t.Errorf("seeded plans list %d and %d files", len(p1.Planned.Files), len(p2.Planned.Files))
+			}
+			other := planSeeded(t, f, newSeedStream("seed-two"))
+			if plannedFile(t, other, ".env.computed") == plannedFile(t, p1, ".env.computed") &&
+				plannedFile(t, other, ".nself/compose.env") == plannedFile(t, p1, ".nself/compose.env") {
+				t.Error("a different seed produced identical secret-bearing files: the seed is not used")
+			}
+
+			realPath := os.Getenv("PATH")
+			if _, err := Build(f.workdir, BuildOptions{Rand: newSeedStream("seed-one")}); err != nil {
+				t.Fatalf("write Build: %v", err)
+			}
+			t.Setenv("PATH", realPath)
+			for key, pf := range p1.Planned.Files {
+				disk := plannedDiskPath(f, key)
+				got, err := os.ReadFile(disk)
+				if err != nil {
+					t.Errorf("planned %s was not written by apply: %v", key, err)
+					continue
+				}
+				if normalizeFixtureBytes("", string(got), f.root) != normalizeFixtureBytes("", string(pf.Data), f.root) {
+					t.Errorf("planned %s differs from the apply tree", key)
+				}
+			}
+		})
+	}
+}
+
+// TestRandDefaultIsCryptoRand: without Options.Rand two builds of one fresh
+// project draw different secrets, and a seeded build leaves crypto/rand
+// restored for the next default build.
+func TestRandDefaultIsCryptoRand(t *testing.T) {
+	f := freshProject(t, "dev-minimal")
+	a := planSeeded(t, f, nil)
+	_ = planSeeded(t, f, newSeedStream("seed-one"))
+	b := planSeeded(t, f, nil)
+	for _, suffix := range []string{".env.computed", ".nself/compose.env"} {
+		if plannedFile(t, a, suffix) == plannedFile(t, b, suffix) {
+			t.Errorf("two default builds produced identical %s: secrets are not random", suffix)
+		}
+	}
+}
+
+// TestRandSourceNeverLogged: neither the seed, nor the bytes the reader
+// yields, nor the options value shows up in anything the build prints or logs.
+func TestRandSourceNeverLogged(t *testing.T) {
+	f := freshProject(t, "dev-minimal")
+	const seed = "SEED-MARKER-never-log-me"
+	first := make([]byte, 16)
+	if _, err := newSeedStream(seed).Read(first); err != nil {
+		t.Fatal(err)
+	}
+	secretPrefix := base64.RawURLEncoding.EncodeToString(first)
+
+	var logs strings.Builder
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	defer slog.SetDefault(old)
+
+	rOut, wOut, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = wOut, wOut
+	done := make(chan string)
+	go func() { b, _ := io.ReadAll(rOut); done <- string(b) }()
+
+	opts := BuildOptions{Mode: ModePlan, Verbose: true, Rand: newSeedStream(seed)}
+	_, berr := Build(f.workdir, opts)
+	os.Stdout, os.Stderr = oldOut, oldErr
+	_ = wOut.Close()
+	printed := <-done
+	if berr != nil {
+		t.Fatalf("Build: %v", berr)
+	}
+	all := logs.String() + printed + fmt.Sprintf("%v %+v %#v", opts, opts, opts)
+	for _, bad := range []string{seed, secretPrefix} {
+		if strings.Contains(all, bad) {
+			t.Errorf("build output or logs contain %q", bad)
+		}
+	}
 }

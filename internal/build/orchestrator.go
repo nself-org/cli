@@ -2,6 +2,7 @@ package build
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -42,6 +43,11 @@ type BuildOptions struct {
 	// created, and no host effect runs. BuildResult.Planned carries the
 	// rendered artifacts and the recorded effects.
 	Mode BuildMode
+	// Rand, when non-nil, is the byte source for every secret the build
+	// generates (JWT key, admin and plugin secrets, via config.UseRandSource).
+	// Nil keeps crypto/rand. A seeded reader lets a plan and an apply of the
+	// same fresh project agree byte for byte. The reader is never logged.
+	Rand io.Reader
 }
 
 // BuildMode selects what Build does with the files it renders.
@@ -146,6 +152,8 @@ func releaseBuildLock(f *os.File, workdir string) {
 //  11. Save build version to .nself/build-version
 //  12. Return BuildResult with summary
 func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
+	// Scope the secret source for this build only; restored on return.
+	defer config.UseRandSource(opts.Rand)()
 	st := newBuildState(workdir, opts)
 
 	// Acquire exclusive build lock to prevent concurrent builds from
