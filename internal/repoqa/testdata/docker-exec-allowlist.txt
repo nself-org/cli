@@ -39,7 +39,6 @@ internal/backup/restore_container.go 1
 internal/backup/stream_restore_remote.go 1
 internal/build/postgres_image_warning.go 1
 internal/cmd/ci/serve_job.go 2
-internal/controlplane/sim/harness_helpers.go 3
 internal/database/backup.go 1
 internal/database/init.go 2
 internal/database/metadata_live.go 1

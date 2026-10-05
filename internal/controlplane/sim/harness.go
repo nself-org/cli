@@ -2,23 +2,27 @@
 // integration-testing the control-plane pipeline without touching live hosts.
 //
 // The harness spins up N Docker containers (each running sshd) on an isolated
-// bridge network, injects an in-memory ED25519 key-pair, and exposes a Fleet
+// bridge network, injects an ephemeral ED25519 key-pair, and exposes a Fleet
 // value whose servers can be passed directly to controlplane.Resolve /
 // controlplane.Run.
 //
-// All containers are torn down on Close, even if the test panics, so the host
-// environment is never dirtied.
+// The container work is done by cli:sdk/go/simharness (digest-pinned images,
+// unique container and network names per Start, cleanup also on t.Fatal and
+// SIGINT). This package keeps the control-plane view of it: roles, the
+// SimServer shape and the key environment variable. SimServer.Name stays the
+// logical name; the Docker container name is unique per Start.
+//
+// Close tears all containers and the network down, even after a t.Fatal.
 //
 // Build tag: integration — tests in this package are skipped unless
-// INTEGRATION=1 is set in the environment.
+// INTEGRATION=1 is set in the environment; with INTEGRATION=1 and no Docker
+// daemon Start fails the test.
 package sim
 
 import (
-	"fmt"
-	"os"
-	"os/exec"
 	"testing"
-	"time"
+
+	"github.com/nself-org/cli/sdk/go/v2/simharness"
 )
 
 // Role constants mirror controlplane.ServerRole but kept local to avoid
@@ -60,14 +64,14 @@ type Fleet struct {
 	EnvVarName string
 	// NetworkName is the Docker bridge network created for this fleet.
 	NetworkName string
-	// cleanup holds teardown operations in reverse-creation order.
-	cleanup []func()
+
+	harness *simharness.Fleet
 }
 
 // Close tears down all containers and the bridge network.
 func (f *Fleet) Close() {
-	for i := len(f.cleanup) - 1; i >= 0; i-- {
-		f.cleanup[i]()
+	if f.harness != nil {
+		f.harness.Close()
 	}
 }
 
@@ -96,7 +100,8 @@ func DefaultFleetConfig() FleetConfig {
 }
 
 // Start launches the simulation fleet. It is called from integration tests
-// gated by INTEGRATION=1. The caller must call fleet.Close() or defer it.
+// gated by INTEGRATION=1. The caller must call fleet.Close() or defer it;
+// Start also registers Close with t.Cleanup.
 //
 // Start generates an ephemeral ED25519 key-pair, writes the private key to a
 // temp file (mode 0600), and configures each sshd container to accept that key
@@ -108,39 +113,31 @@ func Start(t *testing.T, cfg FleetConfig) *Fleet {
 		cfg.EnvVarName = "NSELF_SSH_KEY_SIM"
 	}
 
-	// Require Docker to be available.
-	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("docker not in PATH — skipping integration test")
-	}
-
-	f := &Fleet{EnvVarName: cfg.EnvVarName}
-
-	// 1. Generate ephemeral ED25519 key-pair.
-	pubKeyPEM, keyPath := generateKeyPair(t)
-	f.PrivateKeyPath = keyPath
-	f.cleanup = append(f.cleanup, func() { _ = os.Remove(keyPath) })
-
-	// 2. Create isolated bridge network.
-	networkName := fmt.Sprintf("nself-sim-%d", time.Now().UnixNano())
-	f.NetworkName = networkName
-	runDockerCmd(t, "network", "create", "--driver", "bridge", networkName)
-	f.cleanup = append(f.cleanup, func() {
-		runDockerCmdBest("network", "rm", networkName)
-	})
-
-	// 3. Spin up containers per spec.
 	specs := buildSpecs(cfg)
+	nodes := make([]simharness.NodeSpec, 0, len(specs))
 	for _, spec := range specs {
-		srv := startContainer(t, spec, networkName, pubKeyPEM)
-		f.Servers = append(f.Servers, srv)
-		cid := srv.ContainerID
-		f.cleanup = append(f.cleanup, func() {
-			runDockerCmdBest("rm", "-f", cid)
+		nodes = append(nodes, simharness.NodeSpec{Name: spec.Name})
+	}
+	h := simharness.Start(t, simharness.Config{Nodes: nodes})
+
+	f := &Fleet{
+		EnvVarName:     cfg.EnvVarName,
+		PrivateKeyPath: h.KeyPath(),
+		NetworkName:    h.Network,
+		harness:        h,
+	}
+	for _, spec := range specs {
+		n := h.Node(t, spec.Name)
+		f.Servers = append(f.Servers, SimServer{
+			ContainerSpec: spec,
+			Host:          n.Host,
+			Port:          n.Port,
+			ContainerID:   n.ID,
 		})
 	}
 
-	// 4. Set the key env var so probe-based tests can pick it up.
-	t.Setenv(cfg.EnvVarName, keyPath)
+	// Set the key env var so probe-based tests can pick it up.
+	t.Setenv(cfg.EnvVarName, f.PrivateKeyPath)
 
 	return f
 }

@@ -83,6 +83,7 @@ github.com/munnerz/goautoneg
 ## explicit; go 1.25.0
 github.com/nself-org/cli/sdk/go/v2/migrate
 github.com/nself-org/cli/sdk/go/v2/remote
+github.com/nself-org/cli/sdk/go/v2/simharness
 # github.com/prometheus/client_golang v1.24.1
 ## explicit; go 1.25.0
 github.com/prometheus/client_golang/internal/github.com/golang/gddo/httputil
