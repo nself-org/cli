@@ -44,6 +44,7 @@ import (
 | `costmeter` | Shared cost accounting for AI plugins |
 | `identity` | Ed25519 per-plugin keypair + request signing / verification |
 | `remote` | The one SSH/scp/rsync exec funnel: remote path validation, pinned known_hosts, CI option set, `ssh -G` resolver (standard library only) |
+| `simharness` | Integration-test fleets of Docker sshd containers: digest-pinned images, unique names, Exec, CopyTo, Pause, Netem, Partition (standard library only; `INTEGRATION=1`) |
 | `testing` | Test harness (stub upstreams, metrics assertions, fixtures) |
 | `devkit/cmd/new-plugin` | Scaffolding generator for new plugins |
 
@@ -84,6 +85,47 @@ out, err := remote.RunArgv(ctx, remote.Target{Dest: "ci@node1", Options: opts}, 
   hostkeyalias.
 - `nself deploy` keeps its historical argv inside `internal/deploy`; this package has no relaxed mode.
 - `Rsync` caller options are an allowlist of self-contained flags (`-az`, `--delete`, `--exclude=x`; never `-e`, `--rsh`, `--files-from`, a bare `--`, or a flag whose value is a separate element). `Target.Options` accepts the D4 block plus `-o` keys ConnectTimeout, ServerAlive*, Port, User, IdentityFile, IdentitiesOnly, BatchMode, Compression, LogLevel, ConnectionAttempts, AddressFamily, PreferredAuthentications, and `-i`, `-p`, `-4`, `-6`, `-q`, `-v`. `RunArgv` needs a POSIX remote shell.
+
+## Docker sshd fleets for integration tests (`simharness`)
+
+`simharness` starts a few sshd containers on a private network and injects
+faults. The cli control-plane simulation (`internal/controlplane/sim`) and the
+ci plugin's node scenarios use it.
+
+```go
+f := simharness.Start(t, simharness.Config{Nodes: []simharness.NodeSpec{
+    {Name: "app", Image: simharness.ImageDebian, CapAdd: []string{"NET_ADMIN"}},
+    {Name: "lb", Image: simharness.ImageAlpine},
+}})
+f.Exec(t, "app", "uname", "-s")
+f.Netem(t, "app", 80*time.Millisecond, 0)
+f.Partition(t, "lb"); f.Heal(t, "lb")
+// ssh -i f.KeyPath() -p <f.Node(t, "app").Port> nself@127.0.0.1
+```
+
+- **Opt-in.** `Start` skips unless `INTEGRATION=1`. With `INTEGRATION=1` and no
+  reachable Docker daemon it fails the test; it never skips.
+- **Linux Docker Engine** is the evidence platform. Docker Desktop and Colima run
+  the same containers but are not release evidence. Needs the `docker` CLI and,
+  for the test host, `ssh`.
+- **Images:** `openssh` (default, linuxserver/openssh-server pinned by digest),
+  and `debian`, `fedora`, `alpine` sshd images built on first use from the
+  Dockerfiles in `simharness/testdata` (bases pinned by digest, tagged by content
+  hash). The build installs openssh-server from the distro's package repository.
+  A custom image must be a digest-pinned reference. Every node has a non-root
+  user `nself`, key auth only, no root login.
+- **Parallel safe.** Fleet id, network (`nself-sim-<id>`) and containers
+  (`nself-sim-<id>-<name>`) are unique per `Start`, and every object carries the
+  labels `org.nself.simharness=1` and `org.nself.simharness.fleet=<id>`.
+- **Always removed.** `Close` runs from `t.Cleanup` (also after `t.Fatal`) and from
+  a SIGINT/SIGTERM handler; it removes only its own fleet's objects.
+- **Faults:** `Pause`/`Unpause` freeze the node's processes; `Netem` adds delay and
+  loss on the node's egress (needs `NET_ADMIN` in `NodeSpec.CapAdd` and `tc` in
+  the image; the debian, fedora and alpine images have it); `Partition`/`Heal`
+  detach and re-attach the node's network. Nothing runs `--privileged`. Ports are
+  published on 127.0.0.1 only.
+- `Node.Banner` reads the SSH identification line, a readiness and reachability
+  probe that a port forwarder cannot fake.
 
 ## Hot-reload during development
 

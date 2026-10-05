@@ -63,6 +63,7 @@ or moved. The proxy ignores them once a valid `sdk/go/v2.M.P` tag exists.
 | `plugin-sdk-go` | CLI version | See [`doc.go`](doc.go) `Version` constant; module version is `v2.M.P` for CLI `v1.M.P` |
 | nSelf CLI (min) | **1.0.9** | Plugins declaring `minNselfVersion` below this are rejected |
 | Go toolchain | **1.25.0+** | `go.mod` declares `go 1.25.0` |
+| `simharness` package | CLI version | Added with P7-NODE-21; standard library only; additive API; integration-only (`INTEGRATION=1`, Linux Docker Engine, docker CLI); images pinned by digest |
 | `remote` package | CLI version | Added with P7-NODE-04; standard library only; additive API; local OpenSSH 8.0+ (`KnownHostsCommand=none` is sent only to 8.5+) |
 
 ## Compatibility guarantees

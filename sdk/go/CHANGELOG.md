@@ -35,6 +35,21 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   bytes and shell metacharacters are refused. Hand-written scanner, no regular
   expression.
 
+- `simharness` package (P7-NODE-21): Docker sshd fleets for integration tests.
+  `Start(t, Config{Nodes []NodeSpec})` returns a `*Fleet` with a unique id,
+  network (`nself-sim-<id>`) and containers per call, labelled
+  `org.nself.simharness=1` and `org.nself.simharness.fleet=<id>`; one ED25519
+  key per fleet (OpenSSH format, `KeyPath`); `Exec`, `CopyTo`, `Restart`,
+  `Pause`, `Unpause`, `Netem` (delay and loss, needs `NET_ADMIN`), `Partition`,
+  `Heal`, `Close` (from `t.Cleanup` and a SIGINT/SIGTERM handler; removes only
+  its own fleet) and `Node.Banner`. Images `openssh` (linuxserver/openssh-server
+  by digest), `debian`, `fedora`, `alpine` (embedded Dockerfiles on
+  digest-pinned bases, tagged by content hash); an image reference without a
+  sha256 digest is refused. Skips without `INTEGRATION=1`; fails when
+  `INTEGRATION=1` and Docker is unreachable. `TB` is the testing subset it needs.
+  Standard library only. The CLI's `internal/controlplane/sim` delegates to it
+  with an unchanged exported API.
+
 ### Changed
 
 - `ResolveSSHHost` checks its argument with `ParseHostSpec` instead of
