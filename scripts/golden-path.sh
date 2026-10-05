@@ -59,7 +59,10 @@ DRY_RUN="${GOLDEN_PATH_DRY_RUN:-0}"
 # golden-path validates the stack lifecycle, not a multi-GB AI model download.
 export AI_AUTO_INSTALL="${AI_AUTO_INSTALL:-false}"
 SKIP_CLEANUP="${GOLDEN_PATH_SKIP_CLEANUP:-0}"
-REPORT_FILE="/tmp/golden-path-report.json"
+REPORT_FILE="${GOLDEN_PATH_REPORT_FILE:-/tmp/golden-path-report.json}"
+# A report left by an earlier run must never be read as this run's (the
+# benchmark harness reads it): remove it before anything can exit early.
+rm -f "${REPORT_FILE}"
 
 # Per-step baseline durations (seconds).
 # WARN fires at WARN_MULT * BASELINE; FAIL fires at FAIL_MULT * BASELINE.
@@ -380,7 +383,10 @@ with open(os.environ["STEPS_DATA"]) as fh:
         try:
             duration = int(duration)
         except ValueError:
-            duration = 0
+            # Never turn an unparseable duration into 0: that reads as an
+            # instant step. Fail so write_report writes the empty-steps
+            # fallback, which the benchmark harness rejects.
+            raise SystemExit("step %s: unparseable duration %r" % (idx, duration))
         steps[idx] = {"status": status, "duration": duration, "note": note}
 
 report = {

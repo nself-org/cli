@@ -12,12 +12,16 @@ measured.
 `<out.json>`. Its one metric is `time_to_healthy` (unit `s`): the sum of the
 report's step 3 (init) through step 6 (health wait) durations. It fails, and
 writes nothing, when the report is missing or any of those four steps did not
-pass.
+pass. The document's `sha` is the measured commit (`GITHUB_SHA` in CI, else this
+checkout's HEAD). A step duration the golden path cannot parse makes it write an
+empty report, so the run fails; it is never recorded as 0 seconds.
 
 ## Running it
 
 ```bash
-# 1. run the golden path on this machine (needs Docker and an owner licence key)
+# 1. run the golden path on this machine (needs Docker and an owner licence key).
+#    It deletes any old /tmp/golden-path-report.json first, so a run that exits
+#    early leaves no report and step 2 fails instead of reading a stale one.
 GOLDEN_PATH_SOURCE=local bash scripts/golden-path.sh   # writes /tmp/golden-path-report.json
 
 # 2. read the time to healthy out of its report

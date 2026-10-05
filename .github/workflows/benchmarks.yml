@@ -74,6 +74,9 @@ jobs:
           done
           docker info
 
+      - name: Harness tests
+        run: bash .github/benchmarks/test-harness.sh
+
       # Builds this ref (GOLDEN_PATH_SOURCE=local) and runs the real 13-step
       # path; the harness reads the report it writes and times nothing itself.
       - name: Run golden path
