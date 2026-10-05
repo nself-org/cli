@@ -41,6 +41,8 @@ nself db migrate up [--dry-run] [--migration-dir <path>] [--plugin <name>]
 | `--dry-run` | List pending migrations without applying them |
 | `--migration-dir <path>` | Apply all `.sql` files in `<path>` in lexicographic order, skipping already-applied files |
 
+With `--migration-dir` and `--dry-run`, the command lists the pending files of that directory and applies nothing. It reads the ledger (`np_common.schema_versions`, plus the `nself_ops.migrations` checksums) with SELECT statements only: no table is created, no row is written, and nothing is run inside a rolled-back transaction. It fails, as the real run would, when an applied file was edited after apply or when a pending file is rejected by the SQL lint or the ALTER prerequisite check. With `--env`/`--server`, both flags are forwarded to the remote host.
+
 **Examples:**
 
 ```bash
@@ -52,6 +54,9 @@ nself db migrate up --dry-run
 
 # Apply external directory of SQL files (G-008)
 nself db migrate up --migration-dir /path/to/plugin/migrations
+
+# Preview what that directory would apply (writes nothing)
+nself db migrate up --migration-dir /path/to/plugin/migrations --dry-run
 ```
 
 ### db migrate apply
@@ -89,10 +94,17 @@ nself db migrate apply --file ~/.nself/plugins/claw/migrations/20240115_rls.sql
 Revert the most recently applied migration.
 
 ```bash
-nself db migrate down
+nself db migrate down [--migration-dir <path> [--steps N]]
 ```
 
-Looks for a corresponding `.down.sql` file next to the original migration.
+Without `--migration-dir`, looks for a corresponding `.down.sql` file next to the original migration.
+
+| Flag | Description |
+|---|---|
+| `--migration-dir <path>` | Revert directory migrations: each reverted file `<name>.sql` needs `<name>_down.sql` or `<name>.down.sql` in `<path>` |
+| `--steps N` | With `--migration-dir`: number of most recent migrations to revert (default 1) |
+
+With `--migration-dir`, every step runs the down file and removes the migration's rows from both ledgers in one transaction. The newest applied migration must be a file of `<path>`; otherwise nothing is reverted and the error names it. A missing down file is an error naming both expected paths, and every step is checked before the first one runs. `--steps` without `--migration-dir` is an error.
 
 ### db migrate status
 

@@ -166,9 +166,11 @@ func init() {
 	dbMigrateCmd.PersistentFlags().String("plugin", "", "Migrate specific plugin schema")
 
 	// --dry-run flag on migrate up
-	dbMigrateUpCmd.Flags().Bool("dry-run", false, "List pending migrations without applying them")
+	dbMigrateUpCmd.Flags().Bool("dry-run", false, "List pending migrations without applying them (with --migration-dir: lists that directory's pending files, writes nothing)")
 	// --migration-dir flag on migrate up (G-008)
 	dbMigrateUpCmd.Flags().String("migration-dir", "", "Apply all .sql files in this directory in lexicographic order (skips already-applied)")
+	// --migration-dir/--steps on migrate down (P7-PROD-77)
+	addDBMigrateDownFlags(dbMigrateDownCmd)
 	// --migration-dir flag on migrate status (G-008): repos with non-standard
 	// layouts (e.g. ntask postgres/migrations) otherwise report "No migrations found"
 	dbMigrateStatusCmd.Flags().String("migration-dir", "", "Report status for migrations in this directory instead of the auto-detected one")
@@ -243,3 +245,10 @@ func init() {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────
+
+// addDBMigrateDownFlags registers `db migrate down`'s directory flags
+// (P7-PROD-77). Split out so tests build the command exactly as init does.
+func addDBMigrateDownFlags(cmd *cobra.Command) {
+	cmd.Flags().String("migration-dir", "", "Revert migrations of this directory using <name>_down.sql or <name>.down.sql (default: the auto-detected directory, last migration only)")
+	cmd.Flags().Int("steps", 1, "With --migration-dir: number of most recent migrations to revert, each in its own transaction")
+}
