@@ -27,6 +27,13 @@ import (
 // surface missing plugins to the user (build warning + BuildResult) — a
 // declared plugin is never silently dropped.
 func ResolveDeclaredPlugins(ctx context.Context, cfg *config.Config, workdir, pluginDir string, composeServices []string) (missing []string) {
+	return resolveDeclaredPluginsFx(ctx, writeEffects{}, cfg, workdir, pluginDir, composeServices)
+}
+
+// resolveDeclaredPluginsFx is ResolveDeclaredPlugins with the auto-install
+// routed through fx. Plan mode records a plugin-install effect, makes no
+// network call, and treats the plugin as wired (apply installs it).
+func resolveDeclaredPluginsFx(ctx context.Context, fx Effects, cfg *config.Config, workdir, pluginDir string, composeServices []string) (missing []string) {
 	manifest, err := LoadProjectManifest(workdir)
 	if err != nil {
 		slog.Warn("could not parse project manifest — declared plugins not resolved", "err", err)
@@ -50,9 +57,16 @@ func ResolveDeclaredPlugins(ctx context.Context, cfg *config.Config, workdir, pl
 			continue
 		}
 		if autoInstallEnabled() {
-			installCtx, cancel := context.WithTimeout(ctx, autoInstallTimeout)
-			err := plugin.Install(installCtx, cfg, name, pluginDir)
-			cancel()
+			var err error
+			_ = fx.Do(EffectPluginInstall, name, "auto-install declared plugin from the registry (nself.yaml)", func() error {
+				installCtx, cancel := context.WithTimeout(ctx, autoInstallTimeout)
+				defer cancel()
+				err = plugin.Install(installCtx, cfg, name, pluginDir)
+				return nil
+			})
+			if fx.Planning() {
+				continue
+			}
 			if err == nil && pluginInstalled(pluginDir, name) {
 				slog.Info("auto-installed declared plugin", "plugin", name, "source", "nself.yaml")
 				continue

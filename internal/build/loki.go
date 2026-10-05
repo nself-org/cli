@@ -145,20 +145,25 @@ storage_config:
 // (always 2 on success). The temp-file + rename pattern guarantees readers
 // (Docker bind mounts) never see a partially-written file.
 func WriteLokiConfigs(workdir string, opts LokiBuildOptions) (int, error) {
+	return writeLokiConfigsVia(newDiskSink(workdir), workdir, opts)
+}
+
+// writeLokiConfigsVia is WriteLokiConfigs writing through sink.
+func writeLokiConfigsVia(sink Sink, workdir string, opts LokiBuildOptions) (int, error) {
 	loki, prom, err := RenderLokiBundle(opts)
 	if err != nil {
 		return 0, err
 	}
 
 	monDir := filepath.Join(workdir, "monitoring")
-	if err := os.MkdirAll(monDir, 0o755); err != nil {
+	if err := sink.MkdirAll(monDir, 0o755); err != nil {
 		return 0, fmt.Errorf("loki build: mkdir %s: %w", monDir, err)
 	}
 
-	if err := atomicWrite(filepath.Join(monDir, "loki.yml"), loki, 0o644); err != nil {
+	if err := sink.WriteAtomic(filepath.Join(monDir, "loki.yml"), loki, 0o644); err != nil {
 		return 0, err
 	}
-	if err := atomicWrite(filepath.Join(monDir, "promtail.yml"), prom, 0o644); err != nil {
+	if err := sink.WriteAtomic(filepath.Join(monDir, "promtail.yml"), prom, 0o644); err != nil {
 		return 1, err
 	}
 	return 2, nil

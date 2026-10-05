@@ -19,6 +19,13 @@ import (
 )
 
 func persistGeneratedSecrets(workdir string, cfg *config.Config) error {
+	return persistGeneratedSecretsFx(workdir, cfg, writeEffects{})
+}
+
+// persistGeneratedSecretsFx is persistGeneratedSecrets with the .env.secrets
+// append routed through fx: write mode appends as before, plan mode records a
+// secrets-persist effect naming the keys (never the values).
+func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects) error {
 	type secretEntry struct {
 		envKey string
 		value  string
@@ -77,30 +84,35 @@ func persistGeneratedSecrets(workdir string, cfg *config.Config) error {
 		return nil
 	}
 
-	// Append to .env.secrets. OpenFile with 0600 sets the mode only if the
-	// file is newly created; an explicit Chmod after ensures owner-only
-	// permissions even when the file already exists with a looser mode.
-	secretsPath := filepath.Join(workdir, ".env.secrets")
-	f, err := os.OpenFile(secretsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		return fmt.Errorf("opening %s: %w", secretsPath, err)
-	}
-	defer func() { _ = f.Close() }()
-
+	keys := make([]string, 0, len(toWrite))
 	for _, s := range toWrite {
-		if _, err := fmt.Fprintf(f, "%s=%s\n", s.envKey, config.QuoteEnvValue(s.value)); err != nil {
-			return fmt.Errorf("writing %s: %w", s.envKey, err)
+		keys = append(keys, s.envKey)
+	}
+	secretsPath := filepath.Join(workdir, ".env.secrets")
+	return fx.Do(EffectSecretsPersist, secretsPath, "append keys: "+strings.Join(keys, ", "), func() error {
+		// Append to .env.secrets. OpenFile with 0600 sets the mode only if the
+		// file is newly created; an explicit Chmod after ensures owner-only
+		// permissions even when the file already exists with a looser mode.
+		f, err := os.OpenFile(secretsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+		if err != nil {
+			return fmt.Errorf("opening %s: %w", secretsPath, err)
 		}
-		slog.Info("Persisted auto-generated secret to .env.secrets", "key", s.envKey)
-	}
+		defer func() { _ = f.Close() }()
 
-	// Enforce 0600 unconditionally — covers the case where the file existed
-	// with 0644 before we appended to it.
-	if err := os.Chmod(secretsPath, 0600); err != nil {
-		return fmt.Errorf("chmod %s: %w", secretsPath, err)
-	}
+		for _, s := range toWrite {
+			if _, err := fmt.Fprintf(f, "%s=%s\n", s.envKey, config.QuoteEnvValue(s.value)); err != nil {
+				return fmt.Errorf("writing %s: %w", s.envKey, err)
+			}
+			slog.Info("Persisted auto-generated secret to .env.secrets", "key", s.envKey)
+		}
 
-	return nil
+		// Enforce 0600 unconditionally — covers the case where the file existed
+		// with 0644 before we appended to it.
+		if err := os.Chmod(secretsPath, 0600); err != nil {
+			return fmt.Errorf("chmod %s: %w", secretsPath, err)
+		}
+		return nil
+	})
 }
 
 // buildNginxRoutes collects all nginx routes that will be generated for the

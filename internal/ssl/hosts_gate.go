@@ -60,3 +60,18 @@ func isLocalDevDomain(domain string) bool {
 		strings.HasSuffix(d, ".localhost") ||
 		strings.HasSuffix(d, ".local")
 }
+
+// PlanHostsEntries returns the hostnames a build would ensure in /etc/hosts
+// for the given domains, or nil when the gate vetoes hosts management.
+//
+// Inputs: the resolved env, base domain, the --hosts opt-in and the collected
+// certificate domains. Outputs: the filtered hostnames (what the generator
+// would add or confirm). Constraints: pure, no filesystem or process access;
+// plan mode (internal/build) uses it to record a hosts effect without
+// touching the file.
+func PlanHostsEntries(env, baseDomain string, explicitHosts bool, domains []string) []string {
+	if !shouldManageHosts(env, baseDomain, explicitHosts) {
+		return nil
+	}
+	return filterHostsEntries(domains)
+}

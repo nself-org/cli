@@ -183,6 +183,11 @@ func LiteralSecretLeaks(composeYAML []byte, secrets map[string]string) []string 
 // DOCKER_NETWORK), and plugin env vars. All CLI docker compose invocations
 // pass it via --env-file (see ComposeEnvFiles).
 func WriteComposeEnv(workdir string, cfg *config.Config, secrets, pluginEnvVars map[string]string) error {
+	return writeComposeEnvVia(newDiskSink(workdir), workdir, cfg, secrets, pluginEnvVars)
+}
+
+// writeComposeEnvVia is WriteComposeEnv writing through sink.
+func writeComposeEnvVia(sink Sink, workdir string, cfg *config.Config, secrets, pluginEnvVars map[string]string) error {
 	merged := make(map[string]string, len(secrets)+len(pluginEnvVars)+4)
 	for k, v := range pluginEnvVars {
 		merged[k] = v
@@ -230,14 +235,14 @@ func WriteComposeEnv(workdir string, cfg *config.Config, secrets, pluginEnvVars 
 	}
 
 	path := filepath.Join(workdir, composeEnvFile)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := sink.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("creating %s dir: %w", filepath.Dir(composeEnvFile), err)
 	}
-	if err := os.WriteFile(path, []byte(sb.String()), 0o600); err != nil {
+	if err := sink.WriteFile(path, []byte(sb.String()), 0o600); err != nil {
 		return fmt.Errorf("writing %s: %w", composeEnvFile, err)
 	}
 	// Enforce 0600 even when the file pre-existed with a looser mode.
-	if err := os.Chmod(path, 0o600); err != nil {
+	if err := sink.Chmod(path, 0o600); err != nil {
 		return fmt.Errorf("chmod %s: %w", composeEnvFile, err)
 	}
 	return nil

@@ -1,0 +1,35 @@
+d 0755 home
+d 0755 plugins
+d 0755 project
+d 0755 project/.nself
+d 0755 project/.nself/dist
+d 0755 project/monitoring
+d 0755 project/nginx
+d 0755 project/nginx/conf.d
+d 0755 project/nginx/includes
+d 0755 project/nginx/sites
+d 0755 project/postgres
+d 0755 project/postgres/init
+d 0755 project/services
+d 0755 project/ssl
+d 0755 project/ssl/certificates
+f 0600 project/.env 526260e4b8c62ad0895feee8de76b392c9d806e1605fe6df74149d012df99d05
+f 0600 project/.env.computed a2cee2ed99149b79dd9acc172cd51999b459f13971e2c305b05fdf4f25334a11
+f 0600 project/.nself/compose.env 8ac6f515d04636e91434b945702345e5fd05443dd0495209763ad390617ba4c0
+f 0600 project/docker-compose.yml 8cfaaa007382b88bc37f19365881c559e06d8d644fa1f52d4925cc36060aa5f9
+f 0644 project/.nself/build-profile a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333
+f 0644 project/.nself/build-version 9a66809cf210f6d1149c329fac8661098d04fc0b2c6fb00bf5bb7aa98f7ae1fd
+f 0644 project/.nself/compose-files.txt b557037f882d549c5afb2fc293a31e7f19f70d8c3fdd01a2b54123185ce44073
+f 0644 project/.nself/dist/openapi.json 930f5017f004813b05d87fa8bf3d7e9a689fed9ef384fbf873095a8a89985a4d
+f 0644 project/.nself/dist/scalar.html 650a899517b6771cb32ebacf366efb67e25583b475fa9de342b04dadff732c44
+f 0644 project/nginx/conf.d/default.conf cc3f3ba097121a7d9d3d5454d608c1d2535704bd2f26cdccd1c739928a1afc2b
+f 0644 project/nginx/includes/rate-limits.conf 77e62d250a8c27ae3e563d4a9cdb7bd1ab999c5514fa972b498d30817d128f2a
+f 0644 project/nginx/nginx.conf 574687becdcc2fb334d71ff9b6cfae184caf50281744db0c7f275ef155de1dcd
+f 0644 project/nginx/sites/api-docs.conf e9c123c507404b40c062e15369038e9af46eb17841fa7135035675e702b6a4fb
+f 0644 project/nginx/sites/auth.conf 662d6923e9b49f5054ea7aa809d82f1f1d7591b144038e3c3b23e1c79334aacb
+f 0644 project/nginx/sites/hasura.conf 5a02431206c3b4be345a281f2f609d51c784eb19dc12b5cac7cc2a4a88dd7a13
+f 0644 project/nginx/sites/storage-console.conf 1c2058d52a253381d59331468a5bac37c08eeaab55a607ceeda47df071fe8b21
+f 0644 project/nginx/sites/storage.conf e7725ee7cda41f07409a7a818fd1d7af2d3d5f62e906d1243420c2edf7566e84
+f 0644 project/postgres/init/01-init.sql 0238a6519fd10168af604249e45bf5234d3e6cec6ff9b927410a74ad90127637
+f 0644 project/postgres/init/04-np-plugins.sql 6d2f7e0d1a984fe96b69df552bfd7ec37ae7ceef46b757aa078f8c44809b53ab
+f 0644 project/postgres/init/05-np-plugins-seed.sql 30949e128d86d27eb1db142ea98273de6d7251fae143b6ecdc9ef28ae0eb318a

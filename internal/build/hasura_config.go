@@ -17,7 +17,6 @@ package build
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/nself-org/cli/internal/config"
@@ -62,8 +61,13 @@ func RenderHasuraCLIConfig(cfg *config.Config) []byte {
 // into the build's filesGenerated tally, matching the WriteLokiConfigs
 // convention (internal/build/loki.go).
 func WriteHasuraCLIConfig(workdir string, cfg *config.Config) (int, error) {
+	return writeHasuraCLIConfigVia(newDiskSink(workdir), workdir, cfg)
+}
+
+// writeHasuraCLIConfigVia is WriteHasuraCLIConfig writing through sink.
+func writeHasuraCLIConfigVia(sink Sink, workdir string, cfg *config.Config) (int, error) {
 	hasuraDir := filepath.Join(workdir, "hasura")
-	if err := os.MkdirAll(hasuraDir, 0o755); err != nil {
+	if err := sink.MkdirAll(hasuraDir, 0o755); err != nil {
 		return 0, fmt.Errorf("creating hasura dir: %w", err)
 	}
 
@@ -71,7 +75,7 @@ func WriteHasuraCLIConfig(workdir string, cfg *config.Config) (int, error) {
 	path := filepath.Join(hasuraDir, "config.yaml")
 
 	// Contains admin_secret — 0600, matching docker-compose.yml / .env* perms.
-	if err := atomicWrite(path, content, 0o600); err != nil {
+	if err := sink.WriteAtomic(path, content, 0o600); err != nil {
 		return 0, fmt.Errorf("writing hasura/config.yaml: %w", err)
 	}
 	return 1, nil

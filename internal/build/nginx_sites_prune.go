@@ -125,7 +125,14 @@ func pruneOldNginxSitesBackups(backupsRoot string) error {
 // sharing the directory) is left untouched; its name is returned in
 // foreign, sorted, so the caller can warn about it.
 func pruneGeneratedNginxSites(sitesDir string) (removed int, foreign []string, err error) {
-	entries, readErr := os.ReadDir(sitesDir)
+	return pruneGeneratedNginxSitesVia(newDiskSink(""), sitesDir)
+}
+
+// pruneGeneratedNginxSitesVia is pruneGeneratedNginxSites with the listing,
+// marker reads and deletes routed through sink: write mode deletes from disk,
+// plan mode reports each removal as a sink.Remove (never re-derived later).
+func pruneGeneratedNginxSitesVia(sink Sink, sitesDir string) (removed int, foreign []string, err error) {
+	entries, readErr := sink.ReadDir(sitesDir)
 	if readErr != nil {
 		if os.IsNotExist(readErr) {
 			return 0, nil, nil
@@ -139,8 +146,8 @@ func pruneGeneratedNginxSites(sitesDir string) (removed int, foreign []string, e
 			continue
 		}
 		path := filepath.Join(sitesDir, e.Name())
-		if isGeneratedNginxSiteFile(path, headBytes) {
-			if rmErr := os.Remove(path); rmErr != nil {
+		if isGeneratedNginxSiteFile(sink, path, headBytes) {
+			if rmErr := sink.Remove(path); rmErr != nil {
 				return removed, foreign, fmt.Errorf("removing generated file %s: %w", path, rmErr)
 			}
 			removed++
@@ -156,14 +163,13 @@ func pruneGeneratedNginxSites(sitesDir string) (removed int, foreign []string, e
 // contain nginxGeneratedMarker. An open/read error is treated as "not
 // identifiable as generated" (false) — the file is left in place rather
 // than risking deletion of something this build did not write.
-func isGeneratedNginxSiteFile(path string, headBytes int) bool {
-	f, err := os.Open(path)
+func isGeneratedNginxSiteFile(sink Sink, path string, headBytes int) bool {
+	data, err := sink.ReadFile(path)
 	if err != nil {
 		return false
 	}
-	defer func() { _ = f.Close() }()
-
-	head := make([]byte, headBytes)
-	n, _ := f.Read(head)
-	return bytes.Contains(head[:n], []byte(nginxGeneratedMarker))
+	if len(data) > headBytes {
+		data = data[:headBytes]
+	}
+	return bytes.Contains(data, []byte(nginxGeneratedMarker))
 }

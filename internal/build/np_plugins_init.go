@@ -44,8 +44,13 @@ const npPluginsSeedFilename = "05-np-plugins-seed.sql"
 //
 // Returns the absolute path of the file that was written.
 func GenerateNpPluginsSeed(workdir, pluginDir string) (string, error) {
+	return generateNpPluginsSeedVia(newDiskSink(workdir), workdir, pluginDir)
+}
+
+// generateNpPluginsSeedVia is GenerateNpPluginsSeed writing through sink.
+func generateNpPluginsSeedVia(sink Sink, workdir, pluginDir string) (string, error) {
 	initDir := filepath.Join(workdir, "postgres", "init")
-	if err := os.MkdirAll(initDir, 0o755); err != nil {
+	if err := sink.MkdirAll(initDir, 0o755); err != nil {
 		return "", fmt.Errorf("creating postgres init dir: %w", err)
 	}
 
@@ -53,7 +58,7 @@ func GenerateNpPluginsSeed(workdir, pluginDir string) (string, error) {
 	sql := buildNpPluginsSeedSQL(rows)
 
 	out := filepath.Join(initDir, npPluginsSeedFilename)
-	if err := os.WriteFile(out, []byte(sql), 0o644); err != nil {
+	if err := sink.WriteFile(out, []byte(sql), 0o644); err != nil {
 		return "", fmt.Errorf("writing %s: %w", npPluginsSeedFilename, err)
 	}
 	return out, nil

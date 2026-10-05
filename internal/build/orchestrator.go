@@ -37,7 +37,22 @@ type BuildOptions struct {
 	// dev experience: a recognized local-dev domain is still managed
 	// automatically with no flag.
 	Hosts bool
+	// Mode selects write (default) or plan. In ModePlan the whole pipeline
+	// renders in memory: nothing is written under the project, nothing is
+	// created, and no host effect runs. BuildResult.Planned carries the
+	// rendered artifacts and the recorded effects.
+	Mode BuildMode
 }
+
+// BuildMode selects what Build does with the files it renders.
+type BuildMode int
+
+const (
+	// ModeWrite writes every artifact and runs every host effect (default).
+	ModeWrite BuildMode = iota
+	// ModePlan renders in memory and records effects without acting.
+	ModePlan
+)
 
 // BuildResult summarizes what the build produced.
 type BuildResult struct {
@@ -70,6 +85,9 @@ type BuildResult struct {
 	HostsAdded int
 	// HostsManualNote is non-empty when /etc/hosts could not be updated automatically.
 	HostsManualNote string
+	// Planned holds the rendered artifacts and recorded effects. Set only in
+	// ModePlan; nil after a write-mode build.
+	Planned *PlannedBuild
 }
 
 // requiredDirs lists the directories that must exist before generation.
@@ -128,15 +146,21 @@ func releaseBuildLock(f *os.File, workdir string) {
 //  11. Save build version to .nself/build-version
 //  12. Return BuildResult with summary
 func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
-	st := &buildState{workdir: workdir, opts: opts, start: time.Now()}
+	st := newBuildState(workdir, opts)
 
 	// Acquire exclusive build lock to prevent concurrent builds from
-	// producing inconsistent compose artifacts.
-	buildLock, err := acquireBuildLock(workdir)
-	if err != nil {
+	// producing inconsistent compose artifacts. Plan mode records the lock as
+	// an effect instead of creating .nself/build.lock.
+	var buildLock *os.File
+	if err := st.fx.Do(EffectBuildLock, filepath.Join(workdir, buildLockFile), "exclusive build lock", func() (err error) {
+		buildLock, err = acquireBuildLock(workdir)
+		return err
+	}); err != nil {
 		return nil, err
 	}
-	defer releaseBuildLock(buildLock, workdir)
+	if buildLock != nil {
+		defer releaseBuildLock(buildLock, workdir)
+	}
 
 	// Steps 1-4 (load config, persist secrets, permissions, validate,
 	// nginx conflict check, --check/cache early exits) — extracted to
@@ -167,8 +191,41 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 	// Steps 10-12 (.env.computed, compose.env, build-version, OpenAPI spec,
 	// post-build validation, final BuildResult assembly) — extracted to
 	// orchestrator_build_finish.go (T-P6-E2-W1-S1-T3).
-	return st.writeFinalArtifacts()
+	res, err := st.writeFinalArtifacts()
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := st.sink.(*memSink); ok {
+		res.Planned = m.snapshot()
+		res.Planned.Effects = st.fx.Recorded()
+	}
+	return res, nil
 }
+
+// newBuildState wires the Sink and Effects for the requested mode.
+func newBuildState(workdir string, opts BuildOptions) *buildState {
+	st := &buildState{workdir: workdir, opts: opts, start: time.Now()}
+	st.ensureSeam()
+	return st
+}
+
+// ensureSeam picks the Sink and Effects from opts.Mode when unset: plan mode
+// gets the in-memory sink and the recording effects, write mode the disk sink
+// and the acting effects (today's behaviour). Every phase calls it first, so a
+// buildState built field by field (tests) works too.
+func (st *buildState) ensureSeam() {
+	if st.sink != nil && st.fx != nil {
+		return
+	}
+	if st.opts.Mode == ModePlan {
+		st.sink, st.fx = newMemSink(st.workdir, ""), &planEffects{}
+	} else {
+		st.sink, st.fx = newDiskSink(st.workdir), writeEffects{}
+	}
+}
+
+// planning reports whether this build renders in memory.
+func (st *buildState) planning() bool { return st.opts.Mode == ModePlan }
 
 // buildState carries the values threaded through Build()'s phases —
 // resolved config, accumulated file count, and the intermediate artifacts
@@ -182,6 +239,11 @@ type buildState struct {
 	opts    BuildOptions
 	start   time.Time
 	cfg     *config.Config
+
+	// sink receives every file the pipeline writes; fx performs or records
+	// every host effect. Both are chosen by newBuildState from opts.Mode.
+	sink Sink
+	fx   Effects
 
 	filesGenerated int
 

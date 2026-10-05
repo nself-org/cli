@@ -25,6 +25,11 @@ import (
 // (absolute path). Subsequent lines are absolute paths to plugin compose
 // files. The .nself/ directory is created if it does not exist.
 func WriteComposeManifest(workdir string, baseCompose string, pluginFiles []string) error {
+	return writeComposeManifestVia(newDiskSink(workdir), workdir, baseCompose, pluginFiles)
+}
+
+// writeComposeManifestVia is WriteComposeManifest writing through sink.
+func writeComposeManifestVia(sink Sink, workdir string, baseCompose string, pluginFiles []string) error {
 	absBase, err := filepath.Abs(baseCompose)
 	if err != nil {
 		return fmt.Errorf("resolving base compose path: %w", err)
@@ -32,7 +37,7 @@ func WriteComposeManifest(workdir string, baseCompose string, pluginFiles []stri
 
 	manifestPath := filepath.Join(workdir, composeManifestFile)
 	manifestDir := filepath.Dir(manifestPath)
-	if err := os.MkdirAll(manifestDir, 0755); err != nil {
+	if err := sink.MkdirAll(manifestDir, 0755); err != nil {
 		return fmt.Errorf("creating directory %s: %w", manifestDir, err)
 	}
 
@@ -41,7 +46,7 @@ func WriteComposeManifest(workdir string, baseCompose string, pluginFiles []stri
 	lines = append(lines, pluginFiles...)
 
 	content := strings.Join(lines, "\n") + "\n"
-	if err := os.WriteFile(manifestPath, []byte(content), 0644); err != nil {
+	if err := sink.WriteFile(manifestPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("writing compose manifest: %w", err)
 	}
 
