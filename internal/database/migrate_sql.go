@@ -1,12 +1,10 @@
 package database
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 
@@ -14,6 +12,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // Purpose: low-level SQL execution primitives (embedded pglite + container
@@ -84,18 +83,12 @@ func querySQL(ctx context.Context, cfg *config.Config, database string, sqlText 
 		user = "postgres"
 	}
 
-	cmd := exec.CommandContext(ctx, "docker", "exec", container,
-		"psql", "-U", user, "-d", database, "-tAc", sqlText,
-	)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("psql: %s: %w", strings.TrimSpace(stderr.String()), err)
+	stdout, stderr, err := docker.ExecStdin(ctx, container,
+		[]string{"psql", "-U", user, "-d", database, "-tAc", sqlText}, nil)
+	if err != nil {
+		return "", fmt.Errorf("psql: %s: %w", strings.TrimSpace(stderr), err)
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	return strings.TrimSpace(stdout), nil
 }
 
 // pipeSQLToContainer pipes raw SQL text into psql inside the postgres container.
@@ -116,22 +109,33 @@ func pipeSQLToContainer(ctx context.Context, cfg *config.Config, sqlText string)
 		db = "nself"
 	}
 
-	args := []string{
-		"exec", "-i", container,
-		"psql",
-		"-U", user,
-		"-d", db,
-		"-v", "ON_ERROR_STOP=1",
+	_, stderr, err := docker.ExecStdin(ctx, container, []string{
+		"psql", "-U", user, "-d", db, "-v", "ON_ERROR_STOP=1",
+	}, strings.NewReader(sqlText))
+	if err != nil {
+		return fmt.Errorf("psql: %s: %w", strings.TrimSpace(stderr), err)
 	}
+	return nil
+}
 
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmd.Stdin = strings.NewReader(sqlText)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("psql: %s: %w", strings.TrimSpace(stderr.String()), err)
+// execSQLArg runs sqlText through `psql -c` (no stdin, so it is not a piped
+// migration run) against cfg's database; embedded PG goes through the UDS.
+func execSQLArg(ctx context.Context, cfg *config.Config, sqlText string) error {
+	if cfg.EmbeddedPG {
+		return pipeSQLEmbedded(ctx, cfg.EmbeddedPGDatabaseURL(embeddedPGRuntimeDir(cfg)), sqlText)
+	}
+	user := cfg.Postgres.User
+	if user == "" {
+		user = "postgres"
+	}
+	db := cfg.Postgres.DB
+	if db == "" {
+		db = "nself"
+	}
+	_, stderr, err := docker.ExecStdin(ctx, containerName(cfg),
+		[]string{"psql", "-U", user, "-d", db, "-v", "ON_ERROR_STOP=1", "-c", sqlText}, nil)
+	if err != nil {
+		return fmt.Errorf("psql exec failed: %s: %w", strings.TrimSpace(stderr), err)
 	}
 	return nil
 }
@@ -155,7 +159,7 @@ func ensureSchemaVersions(ctx context.Context, cfg *config.Config) error {
 		db = "nself"
 	}
 
-	sql := `CREATE SCHEMA IF NOT EXISTS np_common; CREATE TABLE IF NOT EXISTS np_common.schema_versions (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`
+	sql := ensureSchemaVersionsSQL
 	return runSQLOnDB(ctx, cfg, db, sql)
 }
 

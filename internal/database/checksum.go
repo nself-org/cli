@@ -35,7 +35,7 @@ func ensureOpsSchema(ctx context.Context, cfg *config.Config) error {
 	if db == "" {
 		db = "nself"
 	}
-	return runSQLOnDB(ctx, cfg, db, "CREATE SCHEMA IF NOT EXISTS nself_ops")
+	return runSQLOnDB(ctx, cfg, db, ensureOpsSchemaSQL)
 }
 
 // ensureMigrationsTable creates the nself_ops.migrations table if it does not exist.
@@ -50,15 +50,7 @@ func ensureMigrationsTable(ctx context.Context, cfg *config.Config) error {
 		db = "nself"
 	}
 
-	sql := `CREATE TABLE IF NOT EXISTS nself_ops.migrations (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  checksum TEXT NOT NULL,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  applied_by TEXT,
-  duration_ms INT,
-  rolled_back_at TIMESTAMPTZ
-)`
+	sql := ensureMigrationsSQL
 	return runSQLOnDB(ctx, cfg, db, sql)
 }
 

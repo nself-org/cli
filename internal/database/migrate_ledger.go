@@ -231,3 +231,59 @@ func appliedMigrations(ctx context.Context, cfg *config.Config) (map[string]time
 	}
 	return result, nil
 }
+
+// Ledger DDL: the single definition, used by ensureSchemaVersions
+// (migrate_sql.go), ensureOpsSchema/ensureMigrationsTable (checksum.go) and
+// the one-exec ensureLedgerSQL below (P7-LIVE-11).
+const (
+	ensureSchemaVersionsSQL = `CREATE SCHEMA IF NOT EXISTS np_common; CREATE TABLE IF NOT EXISTS np_common.schema_versions (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`
+	ensureOpsSchemaSQL      = `CREATE SCHEMA IF NOT EXISTS nself_ops`
+	ensureMigrationsSQL     = `CREATE TABLE IF NOT EXISTS nself_ops.migrations (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  checksum TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  applied_by TEXT,
+  duration_ms INT,
+  rolled_back_at TIMESTAMPTZ
+)`
+	// ensureLedgerSQL creates both ledger tables in ONE psql exec.
+	ensureLedgerSQL = ensureSchemaVersionsSQL + ";\n" + ensureOpsSchemaSQL + ";\n" + ensureMigrationsSQL + ";\n"
+)
+
+// ensureLedgerTables runs ensureLedgerSQL once, with the same transient-error
+// retry the per-table ensure helpers have.
+func ensureLedgerTables(ctx context.Context, cfg *config.Config) error {
+	return retryTransientPG(ctx, func() error { return execSQLArg(ctx, cfg, ensureLedgerSQL) })
+}
+
+// ledgerSnapshot is the ledger read once per MigrateUpDir run: the applied
+// names (np_common.schema_versions) and the stored checksums per name
+// (nself_ops.migrations; several rows for one name are joined by newlines,
+// exactly what the old per-file `SELECT checksum ... WHERE name` returned).
+type ledgerSnapshot struct {
+	applied map[string]time.Time
+	sums    map[string]string
+}
+
+// readLedger reads both ledger tables once (two queries, whatever the file count).
+func readLedger(ctx context.Context, cfg *config.Config) (*ledgerSnapshot, error) {
+	applied, err := appliedMigrations(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("check applied migrations: %w", err)
+	}
+	out, err := ledgerSelect(ctx, cfg, "SELECT name || '|' || checksum FROM nself_ops.migrations")
+	if err != nil {
+		return nil, fmt.Errorf("read migration checksums: %w", err)
+	}
+	sums := make(map[string]string)
+	for _, line := range strings.Split(out, "\n") {
+		if n, c, ok := strings.Cut(strings.TrimSpace(line), "|"); ok {
+			if prev, dup := sums[n]; dup {
+				c = prev + "\n" + c
+			}
+			sums[n] = c
+		}
+	}
+	return &ledgerSnapshot{applied: applied, sums: sums}, nil
+}

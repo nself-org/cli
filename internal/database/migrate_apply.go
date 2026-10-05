@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
@@ -28,7 +29,7 @@ import (
 // This enables plugin-claw external RLS migrations to be applied via CLI
 // without requiring 'nself db shell' as a workaround.
 func ApplyFile(ctx context.Context, cfg *config.Config, filePath string) (skipped bool, err error) {
-	return applyFile(ctx, cfg, filePath, false)
+	return applyFile(ctx, cfg, filePath, false, nil)
 }
 
 // applyFile is ApplyFile; guarded is set by MigrateUpDir (P7-PROD-77): the
@@ -36,12 +37,18 @@ func ApplyFile(ctx context.Context, cfg *config.Config, filePath string) (skippe
 // wrapper dropped, transaction control refused, same-transaction check, ledger
 // first) and verifies the ledger row. `db migrate apply --file` stays unguarded
 // and is the escape hatch for a file the guard refuses.
-func applyFile(ctx context.Context, cfg *config.Config, filePath string, guarded bool) (skipped bool, err error) {
-	if err := ensureSchemaVersions(ctx, cfg); err != nil {
-		return false, fmt.Errorf("ensure schema_versions: %w", err)
-	}
-	if err := ensureMigrationsTable(ctx, cfg); err != nil {
-		return false, fmt.Errorf("ensure migrations table: %w", err)
+//
+// led is the ledger MigrateUpDir read once for the whole run (P7-LIVE-11): with
+// it the file is neither preceded by the table ensure nor by a ledger read, and
+// a file that applies is added to led. With nil (ApplyFile) both happen here.
+func applyFile(ctx context.Context, cfg *config.Config, filePath string, guarded bool, led *ledgerSnapshot) (skipped bool, err error) {
+	if led == nil {
+		if err := ensureSchemaVersions(ctx, cfg); err != nil {
+			return false, fmt.Errorf("ensure schema_versions: %w", err)
+		}
+		if err := ensureMigrationsTable(ctx, cfg); err != nil {
+			return false, fmt.Errorf("ensure migrations table: %w", err)
+		}
 	}
 
 	name := filepath.Base(filePath)
@@ -70,22 +77,33 @@ func applyFile(ctx context.Context, cfg *config.Config, filePath string, guarded
 	}
 
 	// Check if this filename is already in schema_versions.
-	applied, err := appliedMigrations(ctx, cfg)
-	if err != nil {
-		return false, fmt.Errorf("check applied migrations: %w", err)
-	}
-	if _, ok := applied[name]; ok {
-		// Already applied — verify checksum matches to detect file modifications.
-		db := cfg.Postgres.DB
-		if db == "" {
-			db = "nself"
+	if led == nil {
+		applied, err := appliedMigrations(ctx, cfg)
+		if err != nil {
+			return false, fmt.Errorf("check applied migrations: %w", err)
 		}
-		storedChecksum, queryErr := querySQL(ctx, cfg, db, "SELECT checksum FROM nself_ops.migrations WHERE name = '"+strings.ReplaceAll(name, "'", "''")+"'")
-		if queryErr == nil && storedChecksum != "" {
-			storedChecksum = strings.TrimSpace(storedChecksum)
-			if storedChecksum != checksum {
-				return false, fmt.Errorf("migration %s: checksum mismatch (stored %s, file %s) — file was modified after apply; manual intervention required", name, storedChecksum, checksum)
+		led = &ledgerSnapshot{applied: applied}
+		if _, ok := applied[name]; ok {
+			db := cfg.Postgres.DB
+			if db == "" {
+				db = "nself"
 			}
+			if stored, queryErr := querySQL(ctx, cfg, db, "SELECT checksum FROM nself_ops.migrations WHERE name = '"+strings.ReplaceAll(name, "'", "''")+"'"); queryErr == nil {
+				led.sums = map[string]string{name: stored}
+			}
+		}
+	} else {
+		defer func() {
+			if err == nil && !skipped {
+				led.applied[name] = time.Now()
+				led.sums[name] = checksum
+			}
+		}()
+	}
+	if _, ok := led.applied[name]; ok {
+		// Already applied: verify the checksum to detect file modifications.
+		if stored := strings.TrimSpace(led.sums[name]); stored != "" && stored != checksum {
+			return false, fmt.Errorf("migration %s: checksum mismatch (stored %s, file %s) — file was modified after apply; manual intervention required", name, stored, checksum)
 		}
 		// Already applied with matching checksum — skip without error.
 		return true, nil
@@ -141,11 +159,17 @@ func applyFile(ctx context.Context, cfg *config.Config, filePath string, guarded
 // order, skipping any already recorded in schema_versions (idempotent).
 // This is the --migration-dir companion to ApplyFile (G-008).
 func MigrateUpDir(ctx context.Context, cfg *config.Config, dir string) (int, error) {
-	if err := ensureSchemaVersions(ctx, cfg); err != nil {
-		return 0, fmt.Errorf("ensure schema_versions: %w", err)
-	}
-	if err := ensureMigrationsTable(ctx, cfg); err != nil {
-		return 0, fmt.Errorf("ensure migrations table: %w", err)
+	return MigrateUpDirProgress(ctx, cfg, dir, nil)
+}
+
+// MigrateUpDirProgress is MigrateUpDir with a progress callback, called as
+// progress(n, total, key) just before the n-th of total pending files runs
+// (nil: silent). The ledger tables are ensured once and the ledger is read once
+// per run (P7-LIVE-11, EPIC D19); each pending file still runs in its own
+// transaction, so a no-op rerun costs the same few execs for 1 or 58 files.
+func MigrateUpDirProgress(ctx context.Context, cfg *config.Config, dir string, progress func(n, total int, file string)) (int, error) {
+	if err := ensureLedgerTables(ctx, cfg); err != nil {
+		return 0, fmt.Errorf("ensure ledger tables: %w", err)
 	}
 
 	files, err := scanMigrations(dir)
@@ -155,11 +179,11 @@ func MigrateUpDir(ctx context.Context, cfg *config.Config, dir string) (int, err
 
 	// Same ALTER-prerequisite refusal MigrateUp applies (migrate_prereq.go),
 	// scoped to this directory's still-pending files.
-	applied, err := appliedMigrations(ctx, cfg)
+	led, err := readLedger(ctx, cfg)
 	if err != nil {
-		return 0, fmt.Errorf("check applied migrations: %w", err)
+		return 0, err
 	}
-	pending := pendingMigrationFiles(files, applied)
+	pending := pendingMigrationFiles(files, led.applied)
 	if missing, prereqErr := checkAlterPrerequisites(ctx, cfg, pending); prereqErr != nil {
 		return 0, fmt.Errorf("check migration prerequisites: %w", prereqErr)
 	} else if len(missing) > 0 {
@@ -176,9 +200,17 @@ func MigrateUpDir(ctx context.Context, cfg *config.Config, dir string) (int, err
 		}
 	}
 
-	count := 0
+	pendingSet := make(map[string]bool, len(pending))
+	for _, f := range pending {
+		pendingSet[f] = true
+	}
+	count, n := 0, 0
 	for _, f := range files {
-		skipped, applyErr := applyFile(ctx, cfg, f, true)
+		if progress != nil && pendingSet[f] {
+			n++
+			progress(n, len(pending), migrationKey(f))
+		}
+		skipped, applyErr := applyFile(ctx, cfg, f, true, led)
 		if applyErr != nil {
 			return count, applyErr
 		}

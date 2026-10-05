@@ -42,7 +42,6 @@ internal/cmd/ci/serve_job.go 2
 internal/database/backup.go 1
 internal/database/init.go 2
 internal/database/metadata_live.go 1
-internal/database/migrate_sql.go 2
 internal/database/pgbouncer.go 1
 internal/database/pitr.go 2
 internal/database/readiness.go 1
