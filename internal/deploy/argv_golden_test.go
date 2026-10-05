@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -30,6 +31,11 @@ type recordedCall struct {
 // returns a function that reads back every recorded call in order.
 func installFakeSSHTools(t *testing.T) func() []recordedCall {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		// The stubs are POSIX shell scripts; Windows would resolve the real
+		// ssh.exe instead. Never run these tests against a real client.
+		t.Skip("argv golden test uses POSIX shell stubs for ssh, scp and rsync")
+	}
 	dir := t.TempDir()
 	logFile := filepath.Join(dir, "calls.log")
 	script := "#!/bin/sh\n" +

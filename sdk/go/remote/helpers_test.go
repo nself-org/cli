@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -17,6 +18,11 @@ import (
 // the sorted environment ("ENV k=v") to the returned log file, then runs body.
 func stubTools(t *testing.T, bodies map[string]string) (logFile string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		// The stubs are POSIX shell scripts; Windows would resolve the real
+		// ssh.exe instead. Never run these tests against a real client.
+		t.Skip("stub ssh/scp/rsync are POSIX shell scripts")
+	}
 	dir := t.TempDir()
 	logFile = filepath.Join(dir, "calls.log")
 	for tool, body := range bodies {
