@@ -94,6 +94,14 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 			needsRebuild = true
 		}
 		if !needsRebuild {
+			// A held write (confirmed render) must never end here with planned
+			// files outstanding: reconcile.Apply forces a rebuild for a
+			// non-empty plan; this is the backstop.
+			if es, ok := st.sink.(*expectSink); ok {
+				if err := es.verify(); err != nil {
+					return nil, err
+				}
+			}
 			return &BuildResult{
 				ProjectName: st.cfg.ProjectName,
 				ComposeFile: filepath.Join(st.workdir, "docker-compose.yml"),

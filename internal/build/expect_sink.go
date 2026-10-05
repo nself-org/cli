@@ -20,8 +20,12 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // deviationError is a write, removal or chmod that is not part of the
@@ -110,6 +114,9 @@ func (e *expectSink) backupPath(k string) bool {
 	if !strings.HasPrefix(k, ".nself/backups/") {
 		return false
 	}
+	if checkBackupRoot(e.root) != nil {
+		return false
+	}
 	for _, fx := range e.exp.Effects {
 		if fx.Kind == EffectNginxSitesBackup {
 			return true
@@ -118,27 +125,68 @@ func (e *expectSink) backupPath(k string) bool {
 	return false
 }
 
+// checkBackupRoot requires .nself and .nself/backups, where they exist, to be
+// real directories inside the project: no symlinked component (each is
+// Lstat'ed), so a snapshot write or prune cannot be redirected out of the tree.
+func checkBackupRoot(root string) error {
+	for _, rel := range []string{".nself", filepath.Join(".nself", "backups")} {
+		p := filepath.Join(root, rel)
+		info, err := os.Lstat(p)
+		if os.IsNotExist(err) {
+			return nil // created later as a real directory
+		}
+		if err != nil {
+			return fmt.Errorf("checking %s: %w", p, err)
+		}
+		if info.Mode()&fs.ModeSymlink != 0 || !info.IsDir() {
+			return fmt.Errorf("refusing to use %s for backups: it is a symlink or not a directory", p)
+		}
+	}
+	return nil
+}
+
 func inSorted(list []string, s string) bool {
 	i := sort.SearchStrings(list, s)
 	return i < len(list) && list[i] == s
 }
 
-// verify checks the disk against the confirmed render after the build.
+// verify checks the disk against the confirmed render after the build: every
+// planned file exists with its planned bytes and mode, every planned chmod
+// holds, every planned removal is gone. Any failure is E452: a build never
+// reports as applied a file it did not write.
 func (e *expectSink) verify() error {
+	bad := func(k, why string) error {
+		return errs.New("E452", fmt.Sprintf("planned file %s %s after the build", k, why)).
+			WithWhy("the build finished but the disk does not hold what the confirmed plan listed").
+			WithFix("re-run nself build --plan to see what differs, then run nself build again; check that the project is writable")
+	}
+	modes := runtime.GOOS != "windows"
 	keys := make([]string, 0, len(e.exp.Files))
 	for k := range e.exp.Files {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
+		want := e.exp.Files[k]
 		got, err := os.ReadFile(e.abs(k))
-		if err != nil || !bytes.Equal(got, e.exp.Files[k].Data) {
-			return errDeviated(k, "does not hold the planned content after the build")
+		if err != nil {
+			return bad(k, "is missing")
+		}
+		if !bytes.Equal(got, want.Data) {
+			return bad(k, "does not hold the planned content")
+		}
+		if info, serr := os.Stat(e.abs(k)); modes && serr == nil && info.Mode().Perm() != want.Perm {
+			return bad(k, fmt.Sprintf("has mode %04o, not the planned %04o", info.Mode().Perm(), want.Perm))
+		}
+	}
+	for k, m := range e.exp.Modes {
+		if info, err := os.Stat(e.abs(k)); modes && err == nil && info.Mode().Perm() != m {
+			return bad(k, fmt.Sprintf("has mode %04o, not the planned %04o", info.Mode().Perm(), m))
 		}
 	}
 	for _, k := range e.exp.Removed {
 		if _, err := os.Stat(e.abs(k)); err == nil {
-			return errDeviated(k, "was planned for removal but still exists")
+			return bad(k, "was planned for removal but still exists")
 		}
 	}
 	return nil

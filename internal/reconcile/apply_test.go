@@ -21,6 +21,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	nbuild "github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/compat/compattest"
@@ -661,5 +662,102 @@ func TestOverlayDisplayAbs(t *testing.T) {
 	}
 	if got := ov.display("nginx/a.conf"); got != "nginx/a.conf" {
 		t.Fatalf("display = %q", got)
+	}
+}
+
+// builtFixture builds the fixture and ages .env so the build's freshness cache
+// (a comparison of .env's mtime with docker-compose.yml) says "fresh".
+func builtFixture(t *testing.T, name string) *fixture {
+	t.Helper()
+	f := loadFixture(t, name)
+	applyFixture(t, f)
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(f.project+"/.env", old, old); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+// TestApplyWritesWhenOnlySecretsFileChanged (review F1): a change outside .env
+// is planned, so it must be written even though the freshness cache looks fresh.
+func TestApplyWritesWhenOnlySecretsFileChanged(t *testing.T) {
+	f := builtFixture(t, "dev-minimal")
+	const pw = "Zq7Wx3Tn9Rk5Hb2Vc8Lm4Pd6Sa1FgJu0Ye8"
+	writeFile(t, f.project+"/.env.secrets", "POSTGRES_PASSWORD="+pw+"\n", 0o600)
+	p := planOf(t, f, nil)
+	if p.Empty {
+		t.Fatal("the secrets change is not planned")
+	}
+	if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("fixture-seed")}, ApplyOptions{PlanID: p.PlanID}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if !strings.Contains(readFile(t, f.project+"/.nself/compose.env"), pw) {
+		t.Fatal("the planned password change was reported applied but not written (cache skipped the build)")
+	}
+	if !planOf(t, f, nil).Empty {
+		t.Fatal("plan after the apply is not empty")
+	}
+}
+
+// TestApplyAddsPluginToBuiltProject (review F1): adding a plugin to nself.yaml of
+// a built project installs it and wires it in the same apply.
+func TestApplyAddsPluginToBuiltProject(t *testing.T) {
+	f := builtFixture(t, "dev-minimal")
+	writeFile(t, f.project+"/nself.yaml", "plugins:\n  - fakeplug\n", 0o644)
+	old := nbuild.PluginInstall
+	nbuild.PluginInstall = func(_ context.Context, _ *config.Config, name, pluginDir string) error {
+		fakePlugin(t, pluginDir, name)
+		return nil
+	}
+	t.Cleanup(func() { nbuild.PluginInstall = old })
+	if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("s")}, ApplyOptions{Yes: true}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if !strings.Contains(readFile(t, f.project+"/.nself/compose-files.txt"), "fakeplug") {
+		t.Fatal("the plugin was installed but not wired (cache skipped the build)")
+	}
+}
+
+// TestPlanIDRefusedWithPluginEffects (review F2): the id cannot bind what a
+// plugin install brings, so --plan-id is refused (E453) before anything runs.
+func TestPlanIDRefusedWithPluginEffects(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	writeFile(t, f.project+"/nself.yaml", "plugins:\n  - fakeplug\n", 0o644)
+	installs := 0
+	old := nbuild.PluginInstall
+	nbuild.PluginInstall = func(context.Context, *config.Config, string, string) error { installs++; return nil }
+	t.Cleanup(func() { nbuild.PluginInstall = old })
+	p := planOf(t, f, nil)
+	before := treeHash(t, f.root)
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("fixture-seed")}, ApplyOptions{PlanID: p.PlanID, Yes: true})
+	if d := errs.Describe(err); d == nil || d.Code != "E453" {
+		t.Fatalf("want E453, got %v", err)
+	}
+	if installs != 0 || treeHash(t, f.root) != before {
+		t.Fatal("E453 ran effects or wrote")
+	}
+}
+
+// TestSecondRenderNeedsForceForHandEdits (review F2): a hand-edited file that
+// only the render after the plugin install overwrites needs --force even with
+// --yes and no terminal.
+func TestSecondRenderNeedsForceForHandEdits(t *testing.T) {
+	compattest.Set(t, true)
+	f := builtFixture(t, "dev-minimal")
+	writeFile(t, f.project+"/nself.yaml", "plugins:\n  - fakeplug\n", 0o644)
+	old := nbuild.PluginInstall
+	nbuild.PluginInstall = func(_ context.Context, _ *config.Config, name, pluginDir string) error {
+		fakePlugin(t, pluginDir, name)
+		return nil
+	}
+	t.Cleanup(func() { nbuild.PluginInstall = old })
+	hand := func(path string) bool { return path == ".nself/compose-files.txt" }
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, HandEdited: hand}, ApplyOptions{Yes: true})
+	wantE403(t, err)
+	if strings.Contains(readFile(t, f.project+"/.nself/compose-files.txt"), "fakeplug") {
+		t.Fatal("a hand-edited file was overwritten without --force")
+	}
+	if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, HandEdited: hand}, ApplyOptions{Yes: true, Force: true}); err != nil {
+		t.Fatalf("with --force: %v", err)
 	}
 }

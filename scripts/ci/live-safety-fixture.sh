@@ -251,6 +251,34 @@ run_nself lc 1 build --plan --json
 [ "$(jget 'd["empty"]')" = True ] || fail "plan after a removal apply is not empty (the lifecycle step leaked its env into the write)"
 ok "expired plugin removed inside the held apply; plan equals apply"
 
+# A change outside .env (the freshness cache cannot see it) is still written.
+mkproj sec prod-ssl
+run_nself sec 1 build --yes
+[ "$RC" = 0 ] || fail "setup build exited $RC"
+touch -t 202001010000 "$WORK/sec/project/.env"
+printf 'POSTGRES_PASSWORD=Zq7Wx3Tn9Rk5Hb2Vc8Lm4Pd6Sa1FgJu0Ye8\n' > "$WORK/sec/project/.env.secrets"
+run_nself sec 1 build --plan --json
+[ "$(jget 'd["empty"]')" = False ] || fail "the .env.secrets rotation is not planned"
+SID="$(jget 'd["plan_id"]')"
+run_nself sec 1 build --yes --plan-id "$SID"
+[ "$RC" = 0 ] || fail "applying the .env.secrets rotation exited $RC"
+grep -q 'Zq7Wx3Tn9Rk5Hb2Vc8Lm4Pd6Sa1FgJu0Ye8' "$WORK/sec/project/.nself/compose.env" || fail "the rotated password was reported applied but not written (freshness cache skipped the build)"
+run_nself sec 1 build --plan --json
+[ "$(jget 'd["empty"]')" = True ] || fail "plan after the rotation apply is not empty"
+ok ".env.secrets-only change is written despite a fresh cache"
+
+# A plan that installs or removes plugins refuses --plan-id (E453).
+mkproj lc2 dev-minimal
+mkdir -p "$WORK/lc2/plugins/oldplug" "$WORK/lc2/home/.config/nself"
+printf '{"name":"oldplug","port":3920,"language":"go"}' > "$WORK/lc2/plugins/oldplug/plugin.json"
+printf '{"version":1,"records":{"oldplug":{"name":"oldplug","state":"dormant","license_expiry":"2020-01-01T00:00:00Z","dormant_since":"2020-02-01T00:00:00Z","grace_period":1000000000}}}' > "$WORK/lc2/home/.config/nself/plugin-lifecycle.json"
+run_nself lc2 1 build --plan --json
+L2="$(jget 'd["plan_id"]')"
+run_nself lc2 1 build --yes --plan-id "$L2" --json
+[ "$RC" = 1 ] && [ "$(errcode)" = E453 ] || fail "plugin removal with --plan-id: rc=$RC code=$(errcode)"
+[ -d "$WORK/lc2/plugins/oldplug" ] || fail "E453 ran the removal"
+ok "plan with plugin changes: --plan-id refused (E453), nothing ran"
+
 # Docker unreachable: the plan is never empty.
 EXTRA_ENV="DOCKER_HOST=unix:///nonexistent.sock"
 run_nself envx 1 build --plan --json

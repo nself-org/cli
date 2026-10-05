@@ -69,6 +69,11 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 				WithWhy("random values cannot be reproduced from a plan id, so a plan id would not describe what is written").
 				WithFix("set the secrets in .env.secrets first, or run nself build and confirm at the prompt (or with --yes, without --plan-id)")
 		}
+		if hasEffect(p, EffectPluginInstall) || hasEffect(p, EffectPluginRemove) {
+			return nil, nil, errs.New("E453", "this plan installs or removes plugins, so --plan-id cannot bind it").
+				WithWhy("what a plugin brings is only known after it runs, so the id cannot describe the render that is written").
+				WithFix("run nself build --yes without --plan-id (the render after the plugin changes is printed and held), or install or remove the plugins first")
+		}
 		if opt.PlanID != p.PlanID {
 			return nil, nil, errs.New("E450", "the plan id does not match what this command would change now").
 				WithWhy(fmt.Sprintf("plan %s was passed, the project now plans %s: an input changed since the plan was shown", short(opt.PlanID), short(p.PlanID))).
@@ -119,10 +124,11 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 				return nil, nil, err
 			}
 		}
-		if opt.Interactive != nil && p.RequiresConfirmation {
-			if err := Confirm(*p, opt, v15, req.Stderr); err != nil {
-				return nil, nil, err
-			}
+		// The render after the plugin changes is confirmed again: --yes accepts it
+		// (it was printed above), a prompt asks again, and a hand-edited
+		// overwrite still needs --force or a yes, interactive or not.
+		if err := Confirm(*p, opt, v15, req.Stderr); err != nil {
+			return nil, nil, err
 		}
 	}
 	if err := recheck(ctx, req, p.PlanID); err != nil {
@@ -132,6 +138,10 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 		afterRecheck()
 	}
 	wopts.Expect = c.planned
+	// A non-empty plan must be written: the freshness cache only compares .env
+	// with docker-compose.yml and would skip changes in .env.secrets, nself.yaml,
+	// plugin dirs and the like (EPIC round 3, F1).
+	wopts.Force = wopts.Force || !p.Empty
 	res, err := nbuild.Build(req.ProjectDir, wopts)
 	if err != nil {
 		return nil, nil, err
