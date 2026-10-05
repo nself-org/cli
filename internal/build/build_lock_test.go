@@ -21,6 +21,9 @@ func TestAcquireBuildLockHeld(t *testing.T) {
 	t.Setenv(oplock.EnvToken, "")
 	_ = os.Unsetenv(oplock.EnvToken)
 	holder, err := oplock.Acquire(context.Background(), dir, oplock.Opts{Command: "nself config set"})
+	if errors.Is(err, oplock.ErrUnsupported) {
+		t.Skip("no flock on this platform")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

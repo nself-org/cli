@@ -13,8 +13,10 @@ package build
 // Constraints: secrets-persist details carry key names only, never values.
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
@@ -76,16 +78,29 @@ func (p *planEffects) Planning() bool            { return true }
 func (p *planEffects) Recorded() []PlannedEffect { return append([]PlannedEffect(nil), p.list...) }
 
 // caTrusted reports whether the mkcert CA is already in the OS trust store. It
-// is a seam so tests need no real trust store. The default only reads
-// (`mkcert -CAROOT`, then the platform's find/list query) and treats any
-// failure as "not trusted", so an unreadable state is still planned, never
-// hidden.
+// is a seam so tests need no real trust store. Plan mode runs no mkcert, so the
+// CA root is found the way mkcert finds it (CAROOT, else the platform data
+// dir), then only read: a failure counts as "not trusted", so an unreadable
+// state is still planned, never hidden.
 var caTrusted = func() bool {
-	path, err := ssl.MkcertCACertPath()
-	if err != nil {
-		return false
+	root := os.Getenv("CAROOT")
+	if root == "" {
+		switch runtime.GOOS {
+		case "darwin":
+			home, _ := os.UserHomeDir()
+			root = filepath.Join(home, "Library", "Application Support", "mkcert")
+		case "windows":
+			root = filepath.Join(os.Getenv("LOCALAPPDATA"), "mkcert")
+		default:
+			if x := os.Getenv("XDG_DATA_HOME"); x != "" {
+				root = filepath.Join(x, "mkcert")
+			} else {
+				home, _ := os.UserHomeDir()
+				root = filepath.Join(home, ".local", "share", "mkcert")
+			}
+		}
 	}
-	ok, err := ssl.IsCAInstalled(path)
+	ok, err := ssl.IsCAInstalled(filepath.Join(root, "rootCA.pem"))
 	return err == nil && ok
 }
 

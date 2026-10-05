@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -137,6 +138,9 @@ func TestPlanSSLCertEffectFollowsCertPairValid(t *testing.T) {
 // only when mkcert is installed and its CA is not yet trusted, so a project
 // whose trust state would not change plans no host effect for it.
 func TestPlanSSLTrustStoreOnlyWhenUntrusted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the mkcert stand-in is a shell script")
+	}
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "mkcert"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
