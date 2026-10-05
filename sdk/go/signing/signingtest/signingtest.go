@@ -18,5 +18,5 @@ func NewKey(t testing.TB, p signing.Purpose) (signing.Key, signing.Signer) {
 		t.Fatalf("signingtest: generate key: %v", err)
 	}
 	id := signing.KeyID(p, pub)
-	return signing.Key{ID: id, Purpose: p, Public: pub}, signing.NewEd25519Signer(id, priv)
+	return signing.Key{ID: id, Purpose: p, Public: pub}, signing.NewEd25519Signer(p, priv)
 }

@@ -27,7 +27,11 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and fails when any signature naming a known key fails (unknown key ids are
   ignored; the most specific error wins). Revocation entries (file and
   `NewVerifier`) must have the shape `<purpose>-<16 lowercase hex>`; others are
-  `ErrMalformed`.
+  `ErrMalformed`. `NewEd25519Signer(purpose, priv)` derives the key id (no
+  caller-chosen id) and `SignEnvelope` refuses a non-derived id; `VerifyEnvelope`
+  classifies by key id before decoding the signature (unknown ids are ignored even
+  with a malformed signature; revoked outranks malformed), and `Verify` reports
+  key-level errors before signature-length errors.
 - `remote` package (P7-NODE-04): one exec funnel for ssh, scp, rsync and
   ssh-keyscan (`Command`, `Run`, `RunArgv`, `Start`, `CopyTo`, `Rsync`,
   `EnvAllowlist`); `RemotePathRe`, `ValidateRemotePath` (charset and no leading

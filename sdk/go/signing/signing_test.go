@@ -58,7 +58,7 @@ func TestParsePKCS8PEMFixture(t *testing.T) {
 		t.Fatal("parsed key is not the fixture key")
 	}
 	id := signing.KeyID(signing.PurposeAgent, pub)
-	s := signing.NewEd25519Signer(id, priv)
+	s := signing.NewEd25519Signer(signing.PurposeAgent, priv)
 	if s.KeyID() != id {
 		t.Fatal("KeyID")
 	}
@@ -72,7 +72,7 @@ func TestParsePKCS8PEMFixture(t *testing.T) {
 	}
 	// Ed25519 signatures are deterministic: same bytes as the fixture's openssl run.
 	fm := fixture(t, "fixture.msg")
-	got, err := signing.NewEd25519Signer("k", priv).Sign(fm)
+	got, err := signing.NewEd25519Signer(signing.PurposePlugins, priv).Sign(fm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,14 +119,16 @@ func TestParsePKCS8PEMRejects(t *testing.T) {
 func TestSignerNeverPanics(t *testing.T) {
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
 	for name, s := range map[string]signing.Signer{
-		"nil key":   signing.NewEd25519Signer("ok-id", nil),
-		"short key": signing.NewEd25519Signer("ok-id", priv[:10]),
-		"long key":  signing.NewEd25519Signer("ok-id", append(append([]byte{}, priv...), 1)),
-		"empty id":  signing.NewEd25519Signer("", priv),
-		"bad id":    signing.NewEd25519Signer("a b", priv),
-		"long id":   signing.NewEd25519Signer(strings.Repeat("a", 129), priv),
+		"nil key":       signing.NewEd25519Signer(signing.PurposeAgent, nil),
+		"short key":     signing.NewEd25519Signer(signing.PurposeAgent, priv[:10]),
+		"long key":      signing.NewEd25519Signer(signing.PurposeAgent, append(append([]byte{}, priv...), 1)),
+		"empty purpose": signing.NewEd25519Signer("", priv),
+		"bad purpose":   signing.NewEd25519Signer("a b", priv),
 	} {
 		t.Run(name, func(t *testing.T) {
+			if s.KeyID() != "" {
+				t.Fatalf("unusable signer has id %q", s.KeyID())
+			}
 			sig, err := s.Sign([]byte("m"))
 			only(t, err, signing.ErrMalformed)
 			if sig != nil {
@@ -134,9 +136,29 @@ func TestSignerNeverPanics(t *testing.T) {
 			}
 		})
 	}
-	if sig, err := signing.NewEd25519Signer(strings.Repeat("a", 128), priv).Sign(nil); err != nil || len(sig) != 64 {
-		t.Fatalf("128-char id and empty message must sign: %v", err)
+	if sig, err := signing.NewEd25519Signer(signing.PurposeAgent, priv).Sign(nil); err != nil || len(sig) != 64 {
+		t.Fatalf("empty message must sign: %v", err)
 	}
+}
+
+// The signer's id is always KeyID(purpose, public key); there is no way to
+// choose one, and a private key with a wrong public half still derives from
+// the seed.
+func TestSignerDerivesItsID(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	for _, p := range allPurposes {
+		s := signing.NewEd25519Signer(p, priv)
+		if s.KeyID() != signing.KeyID(p, pub) {
+			t.Fatalf("%s: id %q", p, s.KeyID())
+		}
+	}
+	forged := append(append(ed25519.PrivateKey{}, priv[:32]...), make([]byte, 32)...) // seed + zero "public" half
+	s := signing.NewEd25519Signer(signing.PurposeAgent, forged)
+	if s.KeyID() != signing.KeyID(signing.PurposeAgent, pub) {
+		t.Fatal("id not derived from the seed")
+	}
+	k := signing.Key{ID: s.KeyID(), Purpose: signing.PurposeAgent, Public: pub}
+	only(t, newVerifier(t, signing.PurposeAgent, []signing.Key{k}, nil).Verify(msg, sign(t, s, msg)), nil)
 }
 
 func TestEncodeDecodeSig(t *testing.T) {

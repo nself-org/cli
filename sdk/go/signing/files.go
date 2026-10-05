@@ -124,7 +124,7 @@ func ParseRevokedFile(r io.Reader) ([]string, error) {
 	var ids []string
 	seen := map[string]bool{}
 	err := readLines(r, func(n int, f []string) error {
-		if len(f) != 1 || !validRevokedID(f[0]) {
+		if len(f) != 1 || !derivedIDShape(f[0]) {
 			return fmt.Errorf("%w: line %d: want one derived key id (<purpose>-<16 lowercase hex>)", ErrMalformed, n)
 		}
 		if len(ids) >= maxEntries {

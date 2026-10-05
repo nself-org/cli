@@ -78,6 +78,17 @@
 //     key id; its error is returned wrapped (never treated as success) and a
 //     returned key whose ID differs from the one asked for is ErrUnknownKey. A
 //     returned key must pass the same shape checks as a fixed key.
+//   - Signing derives ids. NewEd25519Signer takes a purpose and the private key
+//     and sets the id to KeyID(purpose, public key), the public key being
+//     recomputed from the key's seed; a caller cannot choose an id. SignEnvelope
+//     refuses a Signer whose id is not of the derived shape
+//     "<purpose>-<16 lowercase hex>".
+//   - Verify order: malformed key id, revoked, unknown key (or lookup error),
+//     key shape, purpose, scope, validity, signature length, signature. The
+//     key-level error therefore wins over a malformed or short signature, and
+//     VerifyEnvelope verifies an undecodable signature as empty bytes so its
+//     class (unknown ignored; revoked, wrong purpose and so on ranked; malformed
+//     only for a usable key) never depends on the signature's text.
 //   - Nil safety: every Verifier method on a nil or zero Verifier fails closed
 //     (Verify returns ErrMalformed; Purpose returns "").
 //

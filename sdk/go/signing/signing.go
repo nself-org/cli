@@ -40,7 +40,8 @@ func decodeStrict(s string) ([]byte, error) {
 	return base64.StdEncoding.Strict().DecodeString(s)
 }
 
-// Signer produces raw Ed25519 signatures under one key id.
+// Signer produces raw Ed25519 signatures under one key id. The id is always
+// KeyID(purpose, public key); a Signer never takes a caller-chosen id.
 type Signer interface {
 	KeyID() string
 	Sign(msg []byte) ([]byte, error)
@@ -49,22 +50,30 @@ type Signer interface {
 type ed25519Signer struct {
 	id   string
 	priv ed25519.PrivateKey
+	err  error
 }
 
-// NewEd25519Signer returns a Signer over priv. A bad id or key length is
-// reported by Sign, never by a panic.
-func NewEd25519Signer(id string, priv ed25519.PrivateKey) Signer {
-	return &ed25519Signer{id: id, priv: priv}
+// NewEd25519Signer returns a Signer over priv for purpose p. The key id is
+// derived: KeyID(p, public key), where the public key is recomputed from the
+// private key's seed. A bad purpose or key length is reported by Sign (KeyID
+// is then empty), never by a panic.
+func NewEd25519Signer(p Purpose, priv ed25519.PrivateKey) Signer {
+	if !p.Valid() {
+		return &ed25519Signer{err: fmt.Errorf("%w: signer purpose %q", ErrMalformed, clip(string(p)))}
+	}
+	if len(priv) != ed25519.PrivateKeySize {
+		return &ed25519Signer{err: fmt.Errorf("%w: signer private key length %d", ErrMalformed, len(priv))}
+	}
+	full := ed25519.NewKeyFromSeed(priv.Seed())
+	pub, _ := full.Public().(ed25519.PublicKey)
+	return &ed25519Signer{id: KeyID(p, pub), priv: full}
 }
 
 func (s *ed25519Signer) KeyID() string { return s.id }
 
 func (s *ed25519Signer) Sign(msg []byte) ([]byte, error) {
-	if !validKeyID(s.id) {
-		return nil, fmt.Errorf("%w: signer key id %q", ErrMalformed, clip(s.id))
-	}
-	if len(s.priv) != ed25519.PrivateKeySize {
-		return nil, fmt.Errorf("%w: signer %q private key length %d", ErrMalformed, s.id, len(s.priv))
+	if s.err != nil {
+		return nil, s.err
 	}
 	return ed25519.Sign(s.priv, msg), nil
 }

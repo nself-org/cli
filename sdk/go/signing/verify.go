@@ -76,7 +76,7 @@ func newVerifier(p Purpose, revoked []string, opts []Option) (*Verifier, error) 
 		return nil, fmt.Errorf("%w: option: %s", ErrMalformed, v.cfg.badOptions[0])
 	}
 	for _, id := range revoked {
-		if !validRevokedID(id) {
+		if !derivedIDShape(id) {
 			return nil, fmt.Errorf("%w: revoked id %q is not a derived key id", ErrMalformed, clip(id))
 		}
 		v.revoked[id] = struct{}{}
@@ -135,7 +135,9 @@ func (v *Verifier) Purpose() Purpose {
 
 // Verify checks sig over msg. It returns nil only when the key is known, not
 // revoked, of the verifier's purpose and scope, currently valid, and the
-// signature verifies; otherwise an error matching a sentinel.
+// signature verifies; otherwise an error matching a sentinel. Checks run in
+// this order, so the key-level error (malformed id, revoked, unknown, purpose,
+// scope, validity) is reported before a malformed or bad signature.
 func (v *Verifier) Verify(msg []byte, sig Signature) error {
 	return v.VerifyContext(context.Background(), msg, sig)
 }
@@ -147,9 +149,6 @@ func (v *Verifier) VerifyContext(ctx context.Context, msg []byte, sig Signature)
 	}
 	if !validKeyID(sig.KeyID) {
 		return fmt.Errorf("%w: key id %q", ErrMalformed, clip(sig.KeyID))
-	}
-	if len(sig.Sig) != ed25519.SignatureSize {
-		return fmt.Errorf("%w: signature length %d (key %q)", ErrMalformed, len(sig.Sig), sig.KeyID)
 	}
 	if _, r := v.revoked[sig.KeyID]; r || (v.cfg.revokedFn != nil && v.cfg.revokedFn(sig.KeyID)) {
 		return fmt.Errorf("%w: %q", ErrRevoked, sig.KeyID)
@@ -170,6 +169,9 @@ func (v *Verifier) VerifyContext(ctx context.Context, msg []byte, sig Signature)
 	}
 	if !key.NotAfter.IsZero() && !now.Before(key.NotAfter) {
 		return fmt.Errorf("%w: %q", ErrExpired, key.ID)
+	}
+	if len(sig.Sig) != ed25519.SignatureSize {
+		return fmt.Errorf("%w: signature length %d (key %q)", ErrMalformed, len(sig.Sig), key.ID)
 	}
 	if !ed25519.Verify(key.Public, msg, sig.Sig) {
 		return fmt.Errorf("%w: key %q", ErrBadSignature, key.ID)

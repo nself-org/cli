@@ -127,7 +127,7 @@ func FuzzParsePKCS8PEM(f *testing.F) {
 func FuzzVerifyEnvelope(f *testing.F) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	k := signing.Key{ID: signing.KeyID(signing.PurposeCIRelease, pub), Purpose: signing.PurposeCIRelease, Public: pub}
-	s := signing.NewEd25519Signer(k.ID, priv)
+	s := signing.NewEd25519Signer(signing.PurposeCIRelease, priv)
 	v, err := signing.NewVerifier(signing.PurposeCIRelease, []signing.Key{k}, nil)
 	if err != nil {
 		f.Fatal(err)

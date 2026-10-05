@@ -118,10 +118,10 @@ func hasSmallOrder(pub []byte) bool {
 	return false
 }
 
-// validRevokedID reports whether id has the shape of a derived key id,
+// derivedIDShape reports whether id has the shape of a derived key id,
 // "<purpose>-<16 lowercase hex>". Anything else can never match a key, so a
 // revocation entry of another shape is refused rather than silently ignored.
-func validRevokedID(id string) bool {
+func derivedIDShape(id string) bool {
 	for _, p := range [...]Purpose{PurposePlugins, PurposeAgent, PurposeCIRelease, PurposeCINode, PurposeCIAudit} {
 		rest, ok := strings.CutPrefix(id, string(p)+"-")
 		if !ok || len(rest) != 16 {

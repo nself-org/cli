@@ -44,12 +44,15 @@ func SignEnvelope(s Signer, payloadType string, payload []byte) (Envelope, error
 	if payloadType == "" {
 		return Envelope{}, fmt.Errorf("%w: empty payloadType", ErrMalformed)
 	}
+	if !derivedIDShape(s.KeyID()) {
+		return Envelope{}, fmt.Errorf("%w: signer key id %q is not a derived id", ErrMalformed, clip(s.KeyID()))
+	}
 	sig, err := s.Sign(PAE(payloadType, payload))
 	if err != nil {
 		return Envelope{}, err
 	}
-	if len(sig) != 64 || !validKeyID(s.KeyID()) {
-		return Envelope{}, fmt.Errorf("%w: signer %q produced an invalid signature", ErrMalformed, clip(s.KeyID()))
+	if len(sig) != 64 {
+		return Envelope{}, fmt.Errorf("%w: signer %q produced a %d-byte signature", ErrMalformed, s.KeyID(), len(sig))
 	}
 	return Envelope{
 		PayloadType: payloadType,
@@ -107,10 +110,14 @@ func VerifyEnvelope(v *Verifier, env Envelope) (string, []byte, []string, error)
 	var ok []string
 	var worst error
 	for _, s := range env.Signatures {
+		// A signature that does not decode is verified as empty bytes: the
+		// verifier then reports key-level errors first (unknown key ignored,
+		// revoked and the rest ranked) and ErrMalformed only for a usable key.
 		raw, derr := DecodeSig(s.Sig)
-		if derr == nil {
-			derr = v.Verify(pae, Signature{KeyID: s.KeyID, Sig: raw})
+		if derr != nil {
+			raw = nil
 		}
+		derr = v.Verify(pae, Signature{KeyID: s.KeyID, Sig: raw})
 		if derr == nil {
 			ok = append(ok, s.KeyID)
 			continue

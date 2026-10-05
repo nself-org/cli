@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/sdk/go/v2/signing"
 	"github.com/nself-org/cli/sdk/go/v2/signing/signingtest"
@@ -191,20 +192,151 @@ func TestEnvelopeSignatureSets(t *testing.T) {
 
 func TestSignEnvelopeErrors(t *testing.T) {
 	_, s := signingtest.NewKey(t, signing.PurposeAgent)
+	good := signing.KeyID(signing.PurposeAgent, make([]byte, 32))
 	for name, f := range map[string]func() error{
 		"nil signer": func() error { _, e := signing.SignEnvelope(nil, pt, nil); return e },
 		"empty type": func() error { _, e := signing.SignEnvelope(s, "", nil); return e },
-		"bad signer": func() error { _, e := signing.SignEnvelope(signing.NewEd25519Signer("a b", nil), pt, nil); return e },
-		"short sig": func() error {
-			_, e := signing.SignEnvelope(fakeSigner{id: "ok", sig: make([]byte, 10)}, pt, nil)
+		"bad signer": func() error {
+			_, e := signing.SignEnvelope(signing.NewEd25519Signer(signing.PurposeAgent, nil), pt, nil)
 			return e
 		},
-		"signer id bad": func() error {
+		"short sig": func() error {
+			_, e := signing.SignEnvelope(fakeSigner{id: good, sig: make([]byte, 10)}, pt, nil)
+			return e
+		},
+		"long sig": func() error {
+			_, e := signing.SignEnvelope(fakeSigner{id: good, sig: make([]byte, 65)}, pt, nil)
+			return e
+		},
+		"syntactically bad id": func() error {
 			_, e := signing.SignEnvelope(fakeSigner{id: "a b", sig: make([]byte, 64)}, pt, nil)
+			return e
+		},
+		"chosen (non-derived) id": func() error {
+			_, e := signing.SignEnvelope(fakeSigner{id: "release-2026", sig: make([]byte, 64)}, pt, nil)
+			return e
+		},
+		"upper-case derived id": func() error {
+			_, e := signing.SignEnvelope(fakeSigner{id: strings.ToUpper(good), sig: make([]byte, 64)}, pt, nil)
 			return e
 		},
 	} {
 		t.Run(name, func(t *testing.T) { only(t, f(), signing.ErrMalformed) })
+	}
+	// A derived id with a 64-byte signature is accepted.
+	if _, err := signing.SignEnvelope(fakeSigner{id: good, sig: make([]byte, 64)}, pt, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Codex round 3: unknown key ids are ignored even with an undecodable
+// signature; known key ids are classified before decoding, so the ranked error
+// does not depend on whether the signature decodes.
+func TestEnvelopeKeyClassificationBeforeDecoding(t *testing.T) {
+	k, s := signingtest.NewKey(t, signing.PurposeCIRelease)
+	k2, _ := signingtest.NewKey(t, signing.PurposeCIRelease)
+	other, _ := signingtest.NewKey(t, signing.PurposeAgent)
+	env, _ := signing.SignEnvelope(s, pt, []byte("p"))
+	good := env.Signatures[0]
+	with := func(sigs ...signing.EnvelopeSig) signing.Envelope { a := env; a.Signatures = sigs; return a }
+	junk := []string{"AAAA", "!!!", "", good.Sig + "\n", strings.TrimRight(good.Sig, "="), signing.EncodeSig(make([]byte, 63))}
+	v := newVerifier(t, signing.PurposeCIRelease, []signing.Key{k, k2, other}, []string{k2.ID})
+	ghostID := signing.KeyID(signing.PurposeCIRelease, make([]byte, 32))
+
+	for _, j := range junk {
+		// 1. Unknown id with a malformed signature is ignored beside a good one.
+		_, _, ids, err := signing.VerifyEnvelope(v, with(good, signing.EnvelopeSig{KeyID: ghostID, Sig: j}))
+		if err != nil || len(ids) != 1 || ids[0] != k.ID {
+			t.Fatalf("junk %q: ids %v err %v", j, ids, err)
+		}
+		// ... and alone it is only "unknown".
+		fail(t, v, with(signing.EnvelopeSig{KeyID: ghostID, Sig: j}), signing.ErrUnknownKey)
+		// 2. A revoked known id outranks malformed whatever its signature looks like.
+		fail(t, v, with(good, signing.EnvelopeSig{KeyID: k2.ID, Sig: j}), signing.ErrRevoked)
+		fail(t, v, with(signing.EnvelopeSig{KeyID: k2.ID, Sig: j}, good), signing.ErrRevoked)
+		// A wrong-purpose known id outranks malformed likewise.
+		fail(t, v, with(good, signing.EnvelopeSig{KeyID: other.ID, Sig: j}), signing.ErrWrongPurpose)
+		// A usable known key with an undecodable signature is malformed.
+		fail(t, v, with(signing.EnvelopeSig{KeyID: k.ID, Sig: j}), signing.ErrMalformed)
+	}
+	// Direct Verify: key-level errors precede a short signature.
+	sh := func(id string) error { return v.Verify(msg, signing.Signature{KeyID: id, Sig: []byte{1}}) }
+	only(t, sh(k2.ID), signing.ErrRevoked)
+	only(t, sh(other.ID), signing.ErrWrongPurpose)
+	only(t, sh(ghostID), signing.ErrUnknownKey)
+	only(t, sh(k.ID), signing.ErrMalformed)
+}
+
+// The documented ranking holds for every pair of failure classes, in either
+// envelope order.
+func TestEnvelopeErrorRankingEveryPair(t *testing.T) {
+	now := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	mk := func(p signing.Purpose, mut func(*signing.Key)) (signing.Key, signing.EnvelopeSig) {
+		k, s := signingtest.NewKey(t, p)
+		mut(&k)
+		e, _ := signing.SignEnvelope(s, pt, []byte("p"))
+		return k, e.Signatures[0]
+	}
+	type class struct {
+		name string
+		want error
+		key  signing.Key
+		sig  signing.EnvelopeSig
+		rev  bool
+	}
+	var cs []class
+	add := func(name string, want error, p signing.Purpose, mut func(*signing.Key), rev bool, sigmod func(*signing.EnvelopeSig)) {
+		k, sg := mk(p, mut)
+		if sigmod != nil {
+			sigmod(&sg)
+		}
+		cs = append(cs, class{name, want, k, sg, rev})
+	}
+	add("revoked", signing.ErrRevoked, signing.PurposeCIRelease, func(*signing.Key) {}, true, func(e *signing.EnvelopeSig) { e.Sig = "AAAA" })
+	add("expired", signing.ErrExpired, signing.PurposeCIRelease, func(k *signing.Key) { k.NotAfter = now.Add(-time.Hour) }, false, func(e *signing.EnvelopeSig) { e.Sig = "AAAA" })
+	add("notyet", signing.ErrNotYetValid, signing.PurposeCIRelease, func(k *signing.Key) { k.NotBefore = now.Add(time.Hour) }, false, nil)
+	add("purpose", signing.ErrWrongPurpose, signing.PurposeAgent, func(*signing.Key) {}, false, nil)
+	add("scope", signing.ErrWrongScope, signing.PurposeCIRelease, func(k *signing.Key) { k.Scope = "other" }, false, nil)
+	add("badsig", signing.ErrBadSignature, signing.PurposeCIRelease, func(*signing.Key) {}, false, func(e *signing.EnvelopeSig) { e.Sig = signing.EncodeSig(make([]byte, 64)) })
+	add("malformed", signing.ErrMalformed, signing.PurposeCIRelease, func(*signing.Key) {}, false, func(e *signing.EnvelopeSig) { e.Sig = "AAAA" })
+
+	var keys []signing.Key
+	var revoked []string
+	for _, c := range cs {
+		keys = append(keys, c.key)
+		if c.rev {
+			revoked = append(revoked, c.key.ID)
+		}
+	}
+	keys2 := make([]signing.Key, len(keys))
+	for i, c := range cs {
+		keys2[i] = c.key
+		if c.name != "scope" {
+			keys2[i].Scope = "main"
+		}
+	}
+	v := newVerifier(t, signing.PurposeCIRelease, keys2, revoked, signing.WithScope("main"),
+		signing.WithClock(func() time.Time { return now }))
+	// Each class alone yields its own error (guards the table itself).
+	env := signing.Envelope{PayloadType: pt, Payload: base64.StdEncoding.EncodeToString([]byte("p"))}
+	for _, c := range cs {
+		e := env
+		e.Signatures = []signing.EnvelopeSig{c.sig}
+		fail(t, v, e, c.want)
+	}
+	for i := range cs {
+		for j := range cs {
+			if i == j {
+				continue
+			}
+			want := cs[i].want // lower index = more specific
+			if j < i {
+				want = cs[j].want
+			}
+			e := env
+			e.Signatures = []signing.EnvelopeSig{cs[i].sig, cs[j].sig}
+			fail(t, v, e, want)
+		}
 	}
 }
 

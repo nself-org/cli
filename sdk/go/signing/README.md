@@ -21,7 +21,7 @@ verifies as a plugin or agent signature (`ErrWrongPurpose`).
 | `WithScope`, `WithRevoked`, `WithClock` | verifier options |
 | `Verify(msg, Signature)`, `VerifyContext` | returns nil or a sentinel error |
 | `ErrUnknownKey`, `ErrRevoked`, `ErrWrongPurpose`, `ErrWrongScope`, `ErrBadSignature`, `ErrMalformed`, `ErrExpired`, `ErrNotYetValid` | match with `errors.Is` |
-| `Signer`, `NewEd25519Signer`, `ParsePKCS8PEM` | signing side |
+| `Signer`, `NewEd25519Signer(purpose, priv)`, `ParsePKCS8PEM` | signing side; the id is derived, never chosen |
 | `EncodeSig`, `DecodeSig` | strict base64 standard signature text |
 | `ParseKeysFile`, `ParseRevokedFile` | `.nself/trust/<purpose>.keys` and `.revoked`; ids must be `KeyID(purpose, key)` |
 | `PAE`, `Envelope`, `SignEnvelope`, `VerifyEnvelope` | DSSE v1; `VerifyEnvelope` returns the verified key ids |
