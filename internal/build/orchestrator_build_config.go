@@ -14,17 +14,18 @@ package build
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/nginx"
-	"github.com/nself-org/cli/internal/setup"
 )
 
 // loadValidateConfig runs Steps 1-4 of Build(). See file header for the
 // (*BuildResult, error) contract.
 func (st *buildState) loadValidateConfig() (*BuildResult, error) {
+	st.ensureSeam()
 	// ── Step 1: Load config via env cascade ─────────────────────────
 	var err error
 	st.cfg, err = config.Load(st.workdir)
@@ -41,13 +42,13 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	// reads them — a validate-only invocation must never mutate the
 	// project it is inspecting.
 	if !st.opts.Check {
-		if err := persistGeneratedSecrets(st.workdir, st.cfg); err != nil {
+		if err := persistGeneratedSecretsFx(st.workdir, st.cfg, st.fx); err != nil {
 			return nil, fmt.Errorf("persisting generated secrets: %w", err)
 		}
 
 		// Fix permissions on .env files — ensure they are owner-only (0600).
 		for _, envFile := range []string{".env", ".env.local", ".env.secrets", ".env.computed"} {
-			if err := setup.EnsureEnvFilePermissions(filepath.Join(st.workdir, envFile)); err != nil {
+			if err := ensureEnvFilePermissions(st.sink, filepath.Join(st.workdir, envFile)); err != nil {
 				return nil, fmt.Errorf("fixing env file permissions: %w", err)
 			}
 		}
@@ -77,7 +78,9 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	}
 
 	// ── Step 4: Check cache (skip if not --force and cache fresh) ───
-	if !st.opts.Force {
+	// Plan mode always renders: the cache answers "is the disk fresh", and a
+	// plan must show what apply would write.
+	if !st.opts.Force && !st.planning() {
 		needsRebuild, err := NeedsRebuild(st.workdir)
 		if err != nil {
 			return nil, fmt.Errorf("checking build cache: %w", err)
@@ -99,4 +102,23 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	}
 
 	return nil, nil
+}
+
+// ensureEnvFilePermissions fixes an existing env file to 0600 when it is more
+// permissive, through the sink (setup.EnsureEnvFilePermissions semantics: a
+// missing file is a no-op). Plan mode records the mode change, not applies it.
+func ensureEnvFilePermissions(sink Sink, path string) error {
+	info, err := sink.Stat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("stat env file %s: %w", path, err)
+	}
+	if info.Mode().Perm() != 0600 {
+		if err := sink.Chmod(path, 0600); err != nil {
+			return fmt.Errorf("chmod env file %s: %w", path, err)
+		}
+	}
+	return nil
 }

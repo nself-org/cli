@@ -116,6 +116,38 @@ type GenerateResult struct {
 	ScalarHTMLPath string
 }
 
+// Render builds the OpenAPI 3.1 spec and the rendered Scalar page and returns
+// their bytes without writing anything. A disabled config returns nils.
+//
+// projectName is used as the default API title; baseDomain is the primary
+// domain (for the Servers list); pluginRoutes are REST routes contributed by
+// plugins (from plugin_routes.go). Generate and the build's plan mode
+// (internal/build, P7-LIVE-21) share this one renderer.
+func Render(projectName, baseDomain string, cfg ApiDocsConfig, pluginRoutes []PluginRoute) (openapi, scalar []byte, err error) {
+	if !cfg.Enabled {
+		return nil, nil, nil
+	}
+
+	title := cfg.Title
+	if title == "" {
+		title = projectName + " API"
+	}
+	graphqlEndpoint := cfg.GraphQLEndpoint
+	if graphqlEndpoint == "" {
+		graphqlEndpoint = "/v1/graphql"
+	}
+
+	spec := buildSpec(title, baseDomain, cfg, pluginRoutes, graphqlEndpoint)
+
+	openapi, err = json.MarshalIndent(spec, "", "  ")
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshaling openapi spec: %w", err)
+	}
+
+	// Render scalar.html with project-specific values substituted.
+	return openapi, []byte(renderScalarHTML(string(scalarHTML), cfg, title)), nil
+}
+
 // Generate builds the OpenAPI 3.1 spec and writes both dist files:
 //   - .nself/dist/openapi.json
 //   - .nself/dist/scalar.html
@@ -135,20 +167,9 @@ func Generate(workdir, projectName, baseDomain string, cfg ApiDocsConfig, plugin
 		return nil, fmt.Errorf("creating dist dir: %w", err)
 	}
 
-	title := cfg.Title
-	if title == "" {
-		title = projectName + " API"
-	}
-	graphqlEndpoint := cfg.GraphQLEndpoint
-	if graphqlEndpoint == "" {
-		graphqlEndpoint = "/v1/graphql"
-	}
-
-	spec := buildSpec(title, baseDomain, cfg, pluginRoutes, graphqlEndpoint)
-
-	raw, err := json.MarshalIndent(spec, "", "  ")
+	raw, scalar, err := Render(projectName, baseDomain, cfg, pluginRoutes)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling openapi spec: %w", err)
+		return nil, err
 	}
 
 	openapiPath := filepath.Join(distDir, "openapi.json")
@@ -156,10 +177,8 @@ func Generate(workdir, projectName, baseDomain string, cfg ApiDocsConfig, plugin
 		return nil, fmt.Errorf("writing openapi.json: %w", err)
 	}
 
-	// Render scalar.html with project-specific values substituted.
-	scalarRendered := renderScalarHTML(string(scalarHTML), cfg, title)
 	scalarPath := filepath.Join(distDir, "scalar.html")
-	if err := os.WriteFile(scalarPath, []byte(scalarRendered), 0644); err != nil {
+	if err := os.WriteFile(scalarPath, scalar, 0644); err != nil {
 		return nil, fmt.Errorf("writing scalar.html: %w", err)
 	}
 

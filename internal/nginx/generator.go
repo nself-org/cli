@@ -2,6 +2,7 @@ package nginx
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,7 +72,13 @@ func NewGenerator(cfg *config.Config, workdir string) *Generator {
 	if mode == "" {
 		mode = "local"
 	}
-	return &Generator{cfg: cfg, workdir: workdir, hasSSL: sslShouldEmit(cfg, workdir, mode)}
+	return &Generator{cfg: cfg, workdir: workdir, hasSSL: sslShouldEmit(cfg, workdir, mode, nil)}
+}
+
+// WithAssumedCerts marks domains whose certificate pair a plan-mode build will create.
+func (g *Generator) WithAssumedCerts(domains []string) *Generator {
+	g.hasSSL = sslShouldEmit(g.cfg, g.workdir, cmp.Or(g.cfg.SSLMode, "local"), domains)
+	return g
 }
 
 // Generate produces all nginx config files.

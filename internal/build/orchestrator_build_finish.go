@@ -11,9 +11,9 @@ package build
 //              change.
 
 import (
+	"cmp"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -31,15 +31,20 @@ import (
 // for every other site conf. Non-fronted output is <workdir>/nginx/sites as
 // before.
 func WriteAPIDocsSiteConf(workdir, frontedBy string, conf []byte) (string, error) {
+	return writeAPIDocsSiteConfVia(newDiskSink(workdir), workdir, frontedBy, conf)
+}
+
+// writeAPIDocsSiteConfVia is WriteAPIDocsSiteConf writing through sink.
+func writeAPIDocsSiteConfVia(sink Sink, workdir, frontedBy string, conf []byte) (string, error) {
 	sitesDir, err := resolveNginxSitesDir(workdir, frontedBy)
 	if err != nil {
 		return "", fmt.Errorf("resolving nginx sites dir for api-docs: %w", err)
 	}
-	if err := os.MkdirAll(sitesDir, 0755); err != nil {
+	if err := sink.MkdirAll(sitesDir, 0755); err != nil {
 		return "", fmt.Errorf("creating %s: %w", sitesDir, err)
 	}
 	path := filepath.Join(sitesDir, "api-docs.conf")
-	if err := os.WriteFile(path, conf, 0644); err != nil {
+	if err := sink.WriteFile(path, conf, 0644); err != nil {
 		return "", fmt.Errorf("writing api-docs nginx conf: %w", err)
 	}
 	return path, nil
@@ -47,11 +52,12 @@ func WriteAPIDocsSiteConf(workdir, frontedBy string, conf []byte) (string, error
 
 // writeFinalArtifacts runs Steps 10-12 of Build().
 func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
+	st.ensureSeam()
 	// ── Step 10: Write .env.computed ────────────────────────────────
 	pluginEnvVars := ComputePluginEnvVars(st.workdir, st.pluginDir, st.cfg)
 	computedPath := filepath.Join(st.workdir, ".env.computed")
 	computedContent := buildEnvComputed(st.cfg, pluginEnvVars)
-	if err := os.WriteFile(computedPath, []byte(computedContent), 0600); err != nil {
+	if err := st.sink.WriteFile(computedPath, []byte(computedContent), 0600); err != nil {
 		return nil, fmt.Errorf("writing .env.computed: %w", err)
 	}
 	st.filesGenerated++
@@ -60,20 +66,22 @@ func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 	// Resolves every ${VAR} reference the secret-templating pass (Step 8.7)
 	// emitted, plus plugin fragment vars (DOCKER_NETWORK, NSELF_PLUGIN_DIR,
 	// PLUGIN_*_INTERNAL_URL). Passed to docker compose via --env-file.
-	if err := WriteComposeEnv(st.workdir, st.cfg, st.secretMap, pluginEnvVars); err != nil {
+	if err := writeComposeEnvVia(st.sink, st.workdir, st.cfg, st.secretMap, pluginEnvVars); err != nil {
 		return nil, fmt.Errorf("writing %s: %w", composeEnvFile, err)
 	}
 	st.filesGenerated++
 
 	// ── Step 11: Save build version to .nself/build-version ─────────
 	versionPath := filepath.Join(st.workdir, buildVersionFile)
-	if err := os.WriteFile(versionPath, []byte(version.GetVersion()), 0644); err != nil {
+	if err := st.sink.WriteFile(versionPath, []byte(version.GetVersion()), 0644); err != nil {
 		return nil, fmt.Errorf("writing build version: %w", err)
 	}
 	st.filesGenerated++
 
 	// Record the profile too, so the next build notices a switch.
-	if err := RecordProfile(st.workdir, string(st.opts.Profile)); err != nil {
+	// Same bytes and mode as RecordProfile (cache.go), written through the sink.
+	profile := cmp.Or(string(st.opts.Profile), "app")
+	if err := st.sink.WriteFile(filepath.Join(st.workdir, buildProfileFile), []byte(profile), 0644); err != nil {
 		return nil, fmt.Errorf("writing build profile: %w", err)
 	}
 	st.filesGenerated++
@@ -103,25 +111,31 @@ func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 		if err != nil {
 			slog.Warn("collecting plugin API routes", "err", err)
 		}
-		if _, err := apidocs.Generate(st.workdir, st.cfg.ProjectName, st.cfg.BaseDomain, apiDocsCfg, pluginRoutes); err != nil {
-			return nil, fmt.Errorf("generating api docs: %w", err)
+		if err := st.writeAPIDocs(apiDocsCfg, pluginRoutes); err != nil {
+			return nil, err
 		}
 		st.filesGenerated += 2 // openapi.json + scalar.html
 
 		// Write the nginx site config (full server block, served on docs.<base>).
 		apiDocsNginxConf := apidocs.NginxConf(apiDocsCfg.Path, st.cfg.BaseDomain)
-		if _, err := WriteAPIDocsSiteConf(st.workdir, st.cfg.Nginx.FrontedBy, []byte(apiDocsNginxConf)); err != nil {
+		if _, err := writeAPIDocsSiteConfVia(st.sink, st.workdir, st.cfg.Nginx.FrontedBy, []byte(apiDocsNginxConf)); err != nil {
 			return nil, err
 		}
 		// Best-effort cleanup of the legacy bare-location file, if present from a
 		// prior build with the broken layout.
-		_ = os.Remove(filepath.Join(st.workdir, "nginx", "conf.d", "api-docs.conf"))
+		_ = st.sink.Remove(filepath.Join(st.workdir, "nginx", "conf.d", "api-docs.conf"))
 		st.filesGenerated++
 	}
 
 	// ── Step 11.5: Post-build validation ────────────────────────────
 	nginxSitesDir := filepath.Join(st.workdir, "nginx", "sites")
-	pvResult := PostValidate(st.composePath, nginxSitesDir)
+	var pvResult PostValidateResult
+	if !st.planning() {
+		// PostValidate reads the written tree from disk (and may run `nginx -t`),
+		// so plan mode skips it; the plan's artifacts are validated by whoever
+		// applies them (P7-LIVE-03).
+		pvResult = PostValidate(st.composePath, nginxSitesDir)
+	}
 
 	// Print warnings — they do not fail the build.
 	for _, w := range pvResult.Warnings {
@@ -152,4 +166,25 @@ func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 		HostsAdded:         st.sslResult.HostsAdded,
 		HostsManualNote:    st.sslResult.HostsManualNote,
 	}, nil
+}
+
+// writeAPIDocs renders the OpenAPI spec and Scalar page and writes the two
+// files under .nself/dist through the sink (apidocs.Generate's output, same
+// bytes and modes).
+func (st *buildState) writeAPIDocs(cfg apidocs.ApiDocsConfig, routes []apidocs.PluginRoute) error {
+	spec, page, err := apidocs.Render(st.cfg.ProjectName, st.cfg.BaseDomain, cfg, routes)
+	if err != nil {
+		return fmt.Errorf("generating api docs: %w", err)
+	}
+	dist := filepath.Join(st.workdir, ".nself", "dist")
+	if err := st.sink.MkdirAll(dist, 0755); err != nil {
+		return fmt.Errorf("generating api docs: creating dist dir: %w", err)
+	}
+	if err := st.sink.WriteFile(filepath.Join(dist, "openapi.json"), spec, 0644); err != nil {
+		return fmt.Errorf("generating api docs: writing openapi.json: %w", err)
+	}
+	if err := st.sink.WriteFile(filepath.Join(dist, "scalar.html"), page, 0644); err != nil {
+		return fmt.Errorf("generating api docs: writing scalar.html: %w", err)
+	}
+	return nil
 }

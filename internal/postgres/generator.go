@@ -6,17 +6,8 @@ import (
 	"path/filepath"
 )
 
-// GenerateInitScript creates the basic Postgres initialization SQL script
-// containing the structural schemas required by Nhost containers, and also
-// writes the np_plugins bootstrap script so that the table is created
-// idempotently on every stack start.
-func GenerateInitScript(workdir string) error {
-	dir := filepath.Join(workdir, "postgres", "init")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("creating postgres init dir: %w", err)
-	}
-
-	content := `CREATE SCHEMA IF NOT EXISTS auth;
+// initScriptSQL is the structural-schema init script (01-init.sql).
+const initScriptSQL = `CREATE SCHEMA IF NOT EXISTS auth;
 CREATE SCHEMA IF NOT EXISTS storage;
 
 -- Hasura internal schemas (required before Hasura starts)
@@ -38,8 +29,30 @@ CREATE EXTENSION IF NOT EXISTS citext;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 `
 
+// RenderInitScript returns the Postgres init files GenerateInitScript writes,
+// keyed by path relative to the project root, without touching the disk.
+// Plan mode (internal/build, P7-LIVE-21) writes them through its Sink; both
+// modes therefore render the same bytes. workdir only anchors future callers
+// root, accepted for symmetry with GenerateInitScript and not read.
+func RenderInitScript(_ string) (map[string][]byte, error) {
+	return map[string][]byte{
+		"postgres/init/01-init.sql":       []byte(initScriptSQL),
+		"postgres/init/04-np-plugins.sql": []byte(npPluginsInitSQL),
+	}, nil
+}
+
+// GenerateInitScript creates the basic Postgres initialization SQL script
+// containing the structural schemas required by Nhost containers, and also
+// writes the np_plugins bootstrap script so that the table is created
+// idempotently on every stack start.
+func GenerateInitScript(workdir string) error {
+	dir := filepath.Join(workdir, "postgres", "init")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("creating postgres init dir: %w", err)
+	}
+
 	path := filepath.Join(dir, "01-init.sql")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(initScriptSQL), 0644); err != nil {
 		return fmt.Errorf("writing postgres init script: %w", err)
 	}
 

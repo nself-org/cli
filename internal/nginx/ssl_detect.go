@@ -42,15 +42,28 @@ import (
 //   - any other mode ("letsencrypt", "custom", ...) checks the filesystem:
 //     these modes never generate certs themselves, so presence on disk is
 //     the only trustworthy signal that nginx can safely reference them.
-func sslShouldEmit(cfg *config.Config, workdir, mode string) bool {
+//   - assumed lists domains whose certificate pair a plan-mode build would
+//     create but has not (WithAssumedCerts): a pair for cfg.BaseDomain among
+//     them counts as present, so a plan keeps the TLS blocks apply produces.
+func sslShouldEmit(cfg *config.Config, workdir, mode string, assumed []string) bool {
 	switch mode {
 	case "none":
 		return false
 	case "local":
 		return true
 	default:
-		return sslCertsPresent(cfg, workdir)
+		return sslAssumed(cfg, assumed) || sslCertsPresent(cfg, workdir)
 	}
+}
+
+// sslAssumed reports whether assumed covers cfg.BaseDomain's certificate.
+func sslAssumed(cfg *config.Config, assumed []string) bool {
+	for _, d := range assumed {
+		if d == cfg.BaseDomain {
+			return true
+		}
+	}
+	return false
 }
 
 // sslCertsPresent reports whether a usable certificate pair (fullchain.pem +

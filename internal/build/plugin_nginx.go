@@ -49,13 +49,16 @@ func claimsOf(content string) map[string]bool {
 // This is the early, precise check on the plugin-injection path.
 // checkServerNameUniqueness in postvalidate_nginx.go is the backstop that
 // sweeps the whole directory after every writer has run.
-func checkServerNameConflict(sitesDir, destName, content string) error {
+//
+// sitesDir is read through sink, so plan mode sees the site confs this build
+// already planned.
+func checkServerNameConflict(sink Sink, sitesDir, destName, content string) error {
 	newClaims := claimsOf(content)
 	if len(newClaims) == 0 {
 		return nil
 	}
 
-	entries, err := os.ReadDir(sitesDir)
+	entries, err := sink.ReadDir(sitesDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -74,7 +77,7 @@ func checkServerNameConflict(sitesDir, destName, content string) error {
 	sort.Strings(names)
 
 	for _, name := range names {
-		existing, readErr := os.ReadFile(filepath.Join(sitesDir, name))
+		existing, readErr := sink.ReadFile(filepath.Join(sitesDir, name))
 		if readErr != nil {
 			continue
 		}
@@ -97,6 +100,11 @@ func checkServerNameConflict(sitesDir, destName, content string) error {
 // Returns the number of config files injected.
 // Plugins without a nginx/ directory are silently skipped.
 func InjectPluginNginxRoutes(workdir, pluginDir string, cfg *config.Config) (int, error) {
+	return injectPluginNginxRoutesVia(newDiskSink(workdir), workdir, pluginDir, cfg)
+}
+
+// injectPluginNginxRoutesVia is InjectPluginNginxRoutes writing through sink.
+func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *config.Config) (int, error) {
 	if pluginDir == "" {
 		pluginDir = cfg.PluginSystem.Dir
 	}
@@ -129,7 +137,7 @@ func InjectPluginNginxRoutes(workdir, pluginDir string, cfg *config.Config) (int
 	if err != nil {
 		return 0, err
 	}
-	if err := os.MkdirAll(sitesDir, 0755); err != nil {
+	if err := sink.MkdirAll(sitesDir, 0755); err != nil {
 		return 0, fmt.Errorf("creating %s: %w", sitesDir, err)
 	}
 
@@ -171,11 +179,11 @@ func InjectPluginNginxRoutes(workdir, pluginDir string, cfg *config.Config) (int
 			// — nginx silently serves only one of them ("conflicting server
 			// name ... ignored"). Fail the build so the conflict is fixed
 			// before it ever reaches nginx, naming both sources.
-			if err := checkServerNameConflict(sitesDir, destName, rendered); err != nil {
+			if err := checkServerNameConflict(sink, sitesDir, destName, rendered); err != nil {
 				return count, err
 			}
 
-			if err := os.WriteFile(destPath, []byte(rendered), 0644); err != nil {
+			if err := sink.WriteFile(destPath, []byte(rendered), 0644); err != nil {
 				return count, fmt.Errorf("writing %s: %w", destPath, err)
 			}
 			count++

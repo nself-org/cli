@@ -26,6 +26,7 @@ import (
 
 // generateCompose runs Steps 8-9.8 of Build().
 func (st *buildState) generateCompose() error {
+	st.ensureSeam()
 	// ── Step 8: Generate docker-compose.yml ─────────────────────────
 	// Profile selection: empty or "app" → full service set (no regression).
 	// "ops" → observability + CI + functions + registry, no app services.
@@ -44,8 +45,11 @@ func (st *buildState) generateCompose() error {
 	// PostgresImageChangeWarning for the data-loss scenario this guards.)
 	postgresContainer := fmt.Sprintf("%s_postgres", st.cfg.ProjectName)
 	generatedPostgresImage := compose.ResolveImage("postgres", compose.ResolvePostgresImage(st.cfg.Postgres))
-	if warning := PostgresImageChangeWarning(postgresContainer, generatedPostgresImage); warning != "" {
-		slog.Warn(warning)
+	// Plan mode skips it: the check runs `docker inspect`, a host effect.
+	if !st.planning() {
+		if warning := PostgresImageChangeWarning(postgresContainer, generatedPostgresImage); warning != "" {
+			slog.Warn(warning)
+		}
 	}
 
 	// ── Step 8.5: Merge Ollama sidecar when AI_OLLAMA_ENABLED=true ──
@@ -78,13 +82,13 @@ func (st *buildState) generateCompose() error {
 	// can unambiguously detect a hand-edited compose file (S32-T12).
 	composeYAML = prependGeneratedHeader(composeYAML)
 	st.composePath = filepath.Join(st.workdir, "docker-compose.yml")
-	if err := os.WriteFile(st.composePath, composeYAML, 0600); err != nil {
+	if err := st.sink.WriteFile(st.composePath, composeYAML, 0600); err != nil {
 		return fmt.Errorf("writing docker-compose.yml: %w", err)
 	}
 	st.filesGenerated++
 
 	// ── Step 9.5: Discover plugin compose files ────────────────────
-	pluginComposeFiles, err := DiscoverPluginComposeFiles(st.workdir, st.pluginDir)
+	pluginComposeFiles, err := discoverPluginComposeFilesFx(st.fx, st.workdir, st.pluginDir)
 	if err != nil {
 		return fmt.Errorf("discovering plugin compose files: %w", err)
 	}
@@ -92,7 +96,7 @@ func (st *buildState) generateCompose() error {
 
 	// Write the compose manifest so start/stop/restart know which files
 	// to pass as -f flags to docker compose.
-	if err := WriteComposeManifest(st.workdir, st.composePath, st.pluginComposeFiles); err != nil {
+	if err := writeComposeManifestVia(st.sink, st.workdir, st.composePath, st.pluginComposeFiles); err != nil {
 		return fmt.Errorf("writing compose manifest: %w", err)
 	}
 	st.filesGenerated++
@@ -124,11 +128,11 @@ func (st *buildState) generateCompose() error {
 			return fmt.Errorf("rendering monitoring/prometheus.yml: %w", err)
 		}
 		monDir := filepath.Join(st.workdir, "monitoring")
-		if err := os.MkdirAll(monDir, 0o755); err != nil {
+		if err := st.sink.MkdirAll(monDir, 0o755); err != nil {
 			return fmt.Errorf("creating monitoring dir: %w", err)
 		}
 		promPath := filepath.Join(monDir, "prometheus.yml")
-		if err := atomicWrite(promPath, promYAML, 0o644); err != nil {
+		if err := st.sink.WriteAtomic(promPath, promYAML, 0o644); err != nil {
 			return fmt.Errorf("writing monitoring/prometheus.yml: %w", err)
 		}
 		st.filesGenerated++
@@ -148,7 +152,7 @@ func (st *buildState) generateCompose() error {
 		if r := strings.TrimSpace(os.Getenv("LOKI_RETENTION_PERIOD")); r != "" {
 			lokiOpts.RetentionPeriod = r
 		}
-		nLoki, err := WriteLokiConfigs(st.workdir, lokiOpts)
+		nLoki, err := writeLokiConfigsVia(st.sink, st.workdir, lokiOpts)
 		if err != nil {
 			return fmt.Errorf("writing Loki configs: %w", err)
 		}
@@ -162,8 +166,8 @@ func (st *buildState) generateCompose() error {
 	// Only touches projects that already use the Hasura CLI project layout
 	// (a hasura/ directory present) so repos that don't run hasura-cli by
 	// hand are unaffected (T-gap-10, backward compatible).
-	if info, statErr := os.Stat(filepath.Join(st.workdir, "hasura")); statErr == nil && info.IsDir() {
-		n, err := WriteHasuraCLIConfig(st.workdir, st.cfg)
+	if info, statErr := st.sink.Stat(filepath.Join(st.workdir, "hasura")); statErr == nil && info.IsDir() {
+		n, err := writeHasuraCLIConfigVia(st.sink, st.workdir, st.cfg)
 		if err != nil {
 			return fmt.Errorf("writing hasura/config.yaml: %w", err)
 		}

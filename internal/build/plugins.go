@@ -50,6 +50,13 @@ func DefaultPluginDir() string {
 // deterministic ordering. Plugins without a compose file are silently
 // skipped (they are background-process plugins, not compose plugins).
 func DiscoverPluginComposeFiles(workdir, pluginDir string) ([]string, error) {
+	return discoverPluginComposeFilesFx(writeEffects{}, workdir, pluginDir)
+}
+
+// discoverPluginComposeFilesFx is DiscoverPluginComposeFiles with the in-place
+// fragment normalisation routed through fx: plan mode records one
+// plugin-fragment effect per rewritten fragment and leaves the file alone.
+func discoverPluginComposeFilesFx(fx Effects, workdir, pluginDir string) ([]string, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -105,7 +112,10 @@ func DiscoverPluginComposeFiles(workdir, pluginDir string) ([]string, error) {
 			normalized = normalizeComposePluginCoreEnv(normalized, pluginDir, entry.Name())
 			if !bytes.Equal(normalized, content) {
 				// Write the corrected file back so the manifest references a valid compose.
-				_ = os.WriteFile(absPath, normalized, 0644)
+				_ = fx.Do(EffectPluginFragment, absPath, "normalise plugin compose fragment in place", func() error {
+					_ = os.WriteFile(absPath, normalized, 0644)
+					return nil
+				})
 			}
 		}
 
