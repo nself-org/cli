@@ -32,7 +32,7 @@ case "$*" in
     n=$(ls "$D" | grep -c '^pipe-')
     cat > "$D/pipe-$n.sql"
     echo "CALL PIPE pipe-$n.sql" >> "$D/calls.log"
-    if [ -f "$D/fail_pipe" ]; then echo "boom" >&2; exit 1; fi
+    if [ -f "$D/fail_pipe" ]; then echo "boom" >&2; cat "$D/fail_pipe" >&2; exit 1; fi
     exit 0;;
 esac
 for last; do :; done
@@ -46,6 +46,7 @@ case "$last" in
   *"ORDER BY applied_at DESC"*) cat "$D/q_latest" 2>/dev/null;;
   *"name || '|' || applied_at"*) cat "$D/q_applied" 2>/dev/null;;
   *"name || '|' || checksum"*) cat "$D/q_checksums" 2>/dev/null;;
+  *"count(*) FROM np_common.schema_versions WHERE name"*) cat "$D/q_count" 2>/dev/null;;
 esac
 exit 0
 `
@@ -129,7 +130,7 @@ func dirSums(t *testing.T, dir string, names ...string) string {
 // downAnswers is the canned ledger: latest names newest first, with checksums.
 func downAnswers(t *testing.T, dir, latest string, extra ...string) map[string]string {
 	t.Helper()
-	m := map[string]string{"q_latest": strings.ReplaceAll(latest, " ", "\n") + "\n", "q_ops_exists": "yes",
+	m := map[string]string{"q_latest": strings.ReplaceAll(latest, " ", "\n") + "\n", "q_ops_exists": "yes", "q_count": "0",
 		"q_checksums": dirSums(t, dir, strings.Fields(latest)...)}
 	for i := 0; i+1 < len(extra); i += 2 {
 		m[extra[i]] = extra[i+1]
@@ -303,105 +304,170 @@ func TestMigrateDownDir_QuotesLedgerName(t *testing.T) {
 	}
 }
 
-// Transaction control anywhere in the statement stream is refused; harmless
-// look-alikes (inside comments, strings, dollar quotes, plpgsql blocks) are not.
+// Layer 1: only the exact outer wrapper is dropped; COMMIT, ROLLBACK, ABORT,
+// SAVEPOINT, RELEASE and PREPARE anywhere else refuse the file, comments and
+// strings included. BEGIN, END, DO and CALL are not refused (Postgres itself
+// rejects transaction control inside functions, procedures and DO blocks run in
+// our transaction); a top-level END is caught by layer 2.
 func TestDirSQL_Table(t *testing.T) {
 	bad := map[string]string{
-		"own line":            "DROP TABLE a;\nCOMMIT;",
-		"same line":           "DROP TABLE dir_b; COMMIT; DROP TABLE nope;",
-		"begin first":         "BEGIN;\nDROP TABLE a;",
-		"begin transaction":   "DROP TABLE a; BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;",
-		"start transaction":   "select 1; start transaction;",
-		"end":                 "DROP TABLE a; END;",
-		"rollback":            "DROP TABLE a; ROLLBACK;",
-		"abort":               "DROP TABLE a; abort;",
-		"prepare transaction": "DROP TABLE a; PREPARE TRANSACTION 'x';",
-		"after dash string":   "SELECT '--'; COMMIT;",
-		"after block comment": "SELECT 1; /* c */ COMMIT;",
-		"after dollar body":   "SELECT $$x$$; COMMIT;",
-		"after E string":      "SELECT E'it\\'s'; COMMIT;",
-		"psql meta-command":   "DROP TABLE a;\n\\set AUTOCOMMIT on\nDROP TABLE b;",
-		"no trailing newline": "DROP TABLE a;commit",
-		"mixed case":          "DROP TABLE a; CoMmIt ;",
-		"wrapped, commit mid": "BEGIN; DROP TABLE a; COMMIT; DROP TABLE b;",
-		"begin with options":  "BEGIN ISOLATION LEVEL SERIALIZABLE; DROP TABLE a; COMMIT;",
-		"two begins":          "BEGIN; BEGIN; DROP TABLE a; COMMIT;",
-		"begin, no commit":    "BEGIN; DROP TABLE a;",
-		// review rechecks (P7-PROD-77): none of these may disable the scan.
-		"comment names CONCURRENTLY":                "-- was DROP INDEX CONCURRENTLY once\nDROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
-		"string names ADD VALUE":                    "SELECT 'ALTER TYPE x ADD VALUE'; DROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
-		"atomic body then END":                      "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END;\nDROP TABLE dir_b; END; DROP TABLE does_not_exist;",
-		"atomic body then COMMIT":                   "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END;\nDROP TABLE dir_b; COMMIT; DROP TABLE nope;",
-		"quote after ELSE":                          "SELECT CASE WHEN true THEN 1 ELSE'b\\' END; COMMIT; DROP TABLE nope;",
-		"dollar inside identifier":                  "SELECT 1 AS t$q$; COMMIT; DROP TABLE nope; SELECT 2 AS u$q$;",
-		"unterminated atomic body":                  "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; DROP TABLE a;",
-		"comment CONCURRENTLY, wrapped, commit mid": "-- CREATE INDEX CONCURRENTLY\nBEGIN; DROP TABLE a; COMMIT; DROP TABLE b;",
+		"own line":                 "DROP TABLE a;\nCOMMIT;",
+		"same line":                "DROP TABLE dir_b; COMMIT; DROP TABLE nope;",
+		"rollback":                 "DROP TABLE a; ROLLBACK;",
+		"abort":                    "DROP TABLE a; abort;",
+		"savepoint":                "SAVEPOINT s; DROP TABLE a;",
+		"release":                  "SAVEPOINT s; RELEASE s;",
+		"rollback to":              "SAVEPOINT s; DROP TABLE a; ROLLBACK TO SAVEPOINT s;",
+		"prepare transaction":      "DROP TABLE a; PREPARE TRANSACTION 'x';",
+		"commit prepared":          "COMMIT PREPARED 'x';",
+		"commit and chain":         "DROP TABLE a; COMMIT AND CHAIN; DROP TABLE b;",
+		"mixed case":               "DROP TABLE a; CoMmIt ;",
+		"no trailing newline":      "DROP TABLE a;commit",
+		"wrapped, commit mid":      "BEGIN; DROP TABLE a; COMMIT; DROP TABLE b; COMMIT;",
+		"head only":                "BEGIN; DROP TABLE a; COMMIT; DROP TABLE b;",
+		"tail only":                "DROP TABLE a; COMMIT;",
+		"tail then code":           "BEGIN; DROP TABLE a; COMMIT; /* a /* b */ DROP TABLE dir_b; COMMIT; */",
+		"tail with nested comment": "BEGIN; DROP TABLE a; COMMIT; /* a /* b */ */",
+		"trailing comment":         "DROP TABLE a; -- COMMIT",
+		"block comment":            "/* COMMIT */ DROP TABLE a;",
+		"in a string":              "INSERT INTO t VALUES ('x; COMMIT; y');",
+		"in a dollar body":         "DO $$ BEGIN PERFORM 1; COMMIT; END $$;",
+		"in a procedure":           "CREATE PROCEDURE p() LANGUAGE plpgsql AS $$ BEGIN COMMIT; END $$;",
+		// Recheck 2 (P7-PROD-77): each hid COMMIT from a lexer-based scan.
+		"B1 CR ends --":           "-- note\rDROP TABLE dir_b; COMMIT; DROP TABLE nope;",
+		"B1 CRLF":                 "DROP TABLE dir_b;\r\n-- n\r\nCOMMIT;\r\nSELECT 1;",
+		"B1 U+2028":               "-- n COMMIT; SELECT 1;",
+		"B2 nested comment":       "/* a /* b */ ' */ DROP TABLE dir_b; COMMIT; DROP TABLE nope; -- '",
+		"B2b nested --":           "/* a /* b */ -- */ DROP TABLE dir_b; COMMIT; SELECT 1;",
+		"B3 non-ASCII tag":        "SELECT $é$ ' $é$; DROP TABLE dir_b; COMMIT; SELECT 1;",
+		"B4 scs off":              "SET standard_conforming_strings = off; SELECT 'a\\' $q$ '; COMMIT; SELECT $q$ ';",
+		"B5 empty atomic":         "CREATE FUNCTION f() RETURNS void BEGIN ATOMIC END; DROP TABLE dir_b; COMMIT; SELECT 1;",
+		"B6 atomic as name":       "CREATE DOMAIN atomic AS int; CREATE TABLE t (begin atomic int); COMMIT; SELECT 1;",
+		"R1 comment CONCURRENTLY": "-- was DROP INDEX CONCURRENTLY once\nDROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
+		"R2 atomic then COMMIT":   "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END;\nDROP TABLE dir_b; COMMIT; DROP TABLE nope;",
+		"R3 ELSE quote":           "SELECT CASE WHEN true THEN 1 ELSE'b\\' END; COMMIT; DROP TABLE nope;",
+		"R4 dollar in identifier": "SELECT 1 AS t$q$; COMMIT; DROP TABLE nope; SELECT 2 AS u$q$;",
 	}
 	for name, sql := range bad {
-		if _, err := dirSQL("f.sql", sql); err == nil {
+		if _, err := dirSQL("f.sql", sql, "up"); err == nil {
 			t.Errorf("%s: not refused: %q", name, sql)
 		}
 	}
 	good := map[string]string{
-		"comment":                        "-- COMMIT; BEGIN;\nDROP TABLE a; /* ROLLBACK; */",
-		"string":                         "INSERT INTO t VALUES ('x; COMMIT; y');",
-		"identifier":                     `ALTER TABLE "commit; x" ADD c int;`,
-		"dollar block":                   "DO $$ BEGIN PERFORM 1; END $$;",
-		"tagged dollar":                  "DO $body$ BEGIN PERFORM 1; END; $body$;",
-		"function":                       "CREATE FUNCTION f() RETURNS int AS 'BEGIN RETURN 1; END;' LANGUAGE plpgsql;",
-		"begin atomic":                   "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END;",
-		"rollback to":                    "SAVEPOINT s; DROP TABLE a; ROLLBACK TO SAVEPOINT s;",
-		"E string ok":                    "SELECT E'it\\'s; COMMIT;';",
-		"commentary":                     "ALTER TABLE t ADD COLUMN commit_at timestamptz;",
-		"concurrently":                   "BEGIN;\nCREATE INDEX CONCURRENTLY i ON t (c);\nCOMMIT;",
-		"real concurrently":              "CREATE INDEX CONCURRENTLY i ON t (c);",
-		"atomic then wrapper":            "BEGIN;\nCREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END;\nDROP TABLE a;\nCOMMIT;",
-		"two atomic bodies":              "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END; CREATE FUNCTION g() RETURNS int BEGIN ATOMIC SELECT 2; END;",
-		"e-string escape":                "SELECT E'a\\'b; COMMIT;';",
-		"dollar tag in word":             "SELECT 1 AS t$q$; SELECT 2 AS u$q$;",
-		"quote after else, plain string": "SELECT CASE WHEN true THEN 1 ELSE 'b' END; DROP TABLE a;",
-		"outer wrapper":                  "-- header\nBEGIN;\nCREATE TABLE a (id int);\nCOMMIT;\n",
-		"wrapper words":                  "BEGIN TRANSACTION; CREATE TABLE a (id int); END TRANSACTION;",
+		"plain":                       "CREATE TABLE a (id int);",
+		"outer wrapper":               "BEGIN;\nCREATE TABLE a (id int);\nCOMMIT;\n",
+		"wrapper words":               "BEGIN TRANSACTION; CREATE TABLE a (id int); END;",
+		"start transaction":           "START TRANSACTION;\nCREATE TABLE a (id int);\nCOMMIT;",
+		"lower case wrapper":          "begin;\ncreate table a (id int);\ncommit;",
+		"wrapper, CRLF":               "BEGIN;\r\nCREATE TABLE a (id int);\r\nCOMMIT;\r\n",
+		"wrapper, tabs/spaces":        "\t BEGIN ;\n\nCREATE TABLE a (id int);\n \t COMMIT \t;  \n\n",
+		"header comment, wrapper":     "-- header\n-- more\nBEGIN;\nCREATE TABLE a (id int);\nCOMMIT;",
+		"comment lines with words":    "-- COMMIT later; rollback notes, abort, release, prepare\nDROP TABLE a;\n  -- savepoint\n",
+		"comment line before COMMIT":  "BEGIN;\nCREATE TABLE a (id int);\n-- done\nCOMMIT;",
+		"block comment before COMMIT": "BEGIN;\nCREATE TABLE a (id int);\n/*\nDOWN notes\n*/\nCOMMIT;",
+		"commented DOWN after COMMIT": "BEGIN;\nCREATE TABLE a (id int);\nCOMMIT;\n\n-- DOWN:\n/*\nBEGIN;\nDROP TABLE a;\nCOMMIT;\n*/\n",
+		"identifiers":                 "ALTER TABLE t ADD COLUMN commit_at timestamptz, ADD COLUMN released boolean;",
+		"plpgsql function":            "CREATE FUNCTION f() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 1; END; $$;",
+		"plpgsql in wrapper":          "BEGIN;\nCREATE FUNCTION f() RETURNS int LANGUAGE plpgsql AS $$\nBEGIN\n  IF true THEN RETURN 1; END IF;\n  RETURN 2;\nEND;\n$$;\nCOMMIT;",
+		"DO block":                    "DO $$ BEGIN PERFORM 1; END $$;",
+		"CALL":                        "CALL refresh_stuff();",
+		"begin atomic":                "CREATE FUNCTION f() RETURNS int BEGIN ATOMIC SELECT 1; END;",
+		"CASE END":                    "SELECT CASE WHEN true THEN 1 END;",
+		"concurrently":                "CREATE INDEX CONCURRENTLY i ON t (c);",
+		"top-level END (layer 2)":     "CREATE TABLE a (id int); END; SELECT 1;",
 	}
 	for name, sql := range good {
-		if _, err := dirSQL("f.sql", sql); err != nil {
+		if _, err := dirSQL("f.sql", sql, "up"); err != nil {
 			t.Errorf("%s: wrongly refused: %v", name, err)
 		}
 	}
 }
 
-// A real non-transactional statement cannot run inside down's transaction; a
-// comment that merely mentions CONCURRENTLY is ordinary SQL and runs wrapped.
-func TestMigrateDownDir_NonTransactionalDecidedFromRealStatements(t *testing.T) {
-	dir := mkMigDir(t, map[string]string{"001_a.sql": "x", "001_a.down.sql": "DROP INDEX CONCURRENTLY i;"})
-	sd := fakeDockerState(t, downAnswers(t, dir, "001_a.sql"))
-	if _, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1); err == nil {
-		t.Fatal("want refusal for a real DROP INDEX CONCURRENTLY")
+func TestDirSQL_RefusalNamesWordAndLine(t *testing.T) {
+	_, err := dirSQL("003_x.sql", "CREATE TABLE a (id int);\n\n-- later\nSELECT 1; commit;\n", "up")
+	if err == nil || !strings.Contains(err.Error(), `"commit" at line 4`) || !strings.Contains(err.Error(), "db migrate apply --file") {
+		t.Fatalf("want word, line and the apply hint, got %v", err)
 	}
-	if countPrefix(recordedCalls(t, sd), "CALL PIPE") != 0 {
-		t.Error("ran a non-transactional down file inside a transaction")
-	}
-	dir = mkMigDir(t, map[string]string{"001_a.sql": "x", "001_a.down.sql": "-- was DROP INDEX CONCURRENTLY once\nDROP TABLE dir_a;\n"})
-	sd = fakeDockerState(t, downAnswers(t, dir, "001_a.sql"))
-	if _, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1); err != nil {
-		t.Fatalf("comment-only mention must not matter: %v", err)
-	}
-	if countPrefix(recordedCalls(t, sd), "CALL PIPE") != 1 {
-		t.Error("want one wrapped transaction")
+	_, err = dirSQL("003_x.down.sql", "SELECT 1; rollback;", "down")
+	if err == nil || !strings.Contains(err.Error(), "by hand") {
+		t.Fatalf("want the by-hand advice for a down file, got %v", err)
 	}
 }
 
-// Up: a comment naming CONCURRENTLY must not make ApplyFile run the file
-// outside a transaction (it would then not be atomic with its ledger rows).
-func TestMigrateUpDir_CommentNamingConcurrentlyStillRunsWrapped(t *testing.T) {
-	dir := mkMigDir(t, map[string]string{"001_a.sql": "-- CREATE INDEX CONCURRENTLY is not used here\nCREATE TABLE a (id int);\n"})
+// The wrapper is blanked and line endings are normalised: scan == run.
+func TestDirSQL_StripsOuterWrapper(t *testing.T) {
+	out, err := dirSQL("f.sql", "-- h\r\nBEGIN;\r\nCREATE TABLE a (id int);\r\nCOMMIT;\r\n", "up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u := strings.ToUpper(out); strings.Contains(u, "BEGIN") || strings.Contains(u, "COMMIT") || strings.Contains(out, "\r") || !strings.Contains(out, "CREATE TABLE a (id int);") {
+		t.Errorf("wrapper not stripped cleanly: %q", out)
+	}
+}
+
+// Layer 2 shape: mark, ledger FIRST, file, check, COMMIT, in that order.
+func TestMigrateUpDir_TransactionShape(t *testing.T) {
+	dir := mkMigDir(t, map[string]string{"001_a.sql": "CREATE TABLE a (id int);"})
+	sd := fakeDockerState(t, map[string]string{"q_legacy_exists": "yes", "q_ops_exists": "yes", "q_count": "1"})
+	if _, err := MigrateUpDir(context.Background(), fakeCfg, dir); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(sd, "pipe-0.sql"))
+	sql := string(b)
+	order := []string{"BEGIN;", "nself.migration_xact", "INSERT INTO np_common.schema_versions", "CREATE TABLE a", "NSELF_XACT_MISMATCH", "COMMIT;"}
+	last := -1
+	for _, w := range order {
+		i := strings.Index(sql, w)
+		if i <= last {
+			t.Fatalf("%q out of order in:\n%s", w, sql)
+		}
+		last = i
+	}
+}
+
+// A failed same-transaction check is a loud reconcile error, never success.
+func TestMigrateDirs_XactMismatchIsLoud(t *testing.T) {
+	const pgErr = "ERROR: invalid input syntax for type integer: \"NSELF_XACT_MISMATCH\"\n"
+	dir := mkMigDir(t, dirTestFiles)
+	fakeDockerState(t, downAnswers(t, dir, "002_b.sql", "fail_pipe", pgErr))
+	got, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1)
+	if err == nil || len(got) != 0 || !strings.Contains(err.Error(), "RECONCILE") {
+		t.Fatalf("down: want a reconcile error, got %v, %v", got, err)
+	}
+	dir = mkMigDir(t, map[string]string{"001_a.sql": "SELECT 1;"})
+	fakeDockerState(t, map[string]string{"q_legacy_exists": "yes", "q_ops_exists": "yes", "q_count": "1", "fail_pipe": pgErr})
+	n, err := MigrateUpDir(context.Background(), fakeCfg, dir)
+	if err == nil || n != 0 || !strings.Contains(err.Error(), "RECONCILE") {
+		t.Fatalf("up: want a reconcile error, got %d, %v", n, err)
+	}
+}
+
+// A run that leaves the ledger row in the wrong state (a file that swallowed
+// our COMMIT with an unterminated comment) is an error, not success.
+func TestMigrateDirs_LedgerVerificationFailsClosed(t *testing.T) {
+	dir := mkMigDir(t, dirTestFiles)
+	fakeDockerState(t, downAnswers(t, dir, "002_b.sql", "q_count", "1"))
+	if _, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1); err == nil {
+		t.Error("down: row still present after the run must be an error")
+	}
+	dir = mkMigDir(t, map[string]string{"001_a.sql": "CREATE TABLE a (id int); /* never closed"})
+	fakeDockerState(t, map[string]string{"q_legacy_exists": "yes", "q_ops_exists": "yes", "q_count": "0"})
+	if n, err := MigrateUpDir(context.Background(), fakeCfg, dir); err == nil || n != 0 {
+		t.Errorf("up: missing row after the run must be an error, got %d, %v", n, err)
+	}
+}
+
+// A non-transactional file runs as written, exactly as before this change.
+func TestMigrateUpDir_NonTransactionalFileRunsAsWritten(t *testing.T) {
+	dir := mkMigDir(t, map[string]string{"001_a.sql": "CREATE INDEX CONCURRENTLY i ON t (c);\n"})
 	sd := fakeDockerState(t, map[string]string{"q_legacy_exists": "yes", "q_ops_exists": "yes"})
 	if n, err := MigrateUpDir(context.Background(), fakeCfg, dir); err != nil || n != 1 {
 		t.Fatalf("up = %d, %v", n, err)
 	}
-	b, _ := os.ReadFile(filepath.Join(sd, "pipe-0.sql"))
-	if !strings.HasPrefix(string(b), "BEGIN;") || !strings.Contains(string(b), "INSERT INTO nself_ops.migrations") {
-		t.Errorf("file was not wrapped with its ledger rows:\n%s", b)
+	a, _ := os.ReadFile(filepath.Join(sd, "pipe-0.sql"))
+	b, _ := os.ReadFile(filepath.Join(sd, "pipe-1.sql"))
+	if string(a) != "CREATE INDEX CONCURRENTLY i ON t (c);\n" || !strings.Contains(string(b), "INSERT INTO nself_ops.migrations") {
+		t.Errorf("unexpected non-transactional run:\n%s\n---\n%s", a, b)
 	}
 }
 
@@ -450,7 +516,7 @@ func TestMigrateDownDir_RefusesWhenNoChecksumRecorded(t *testing.T) {
 
 func TestMigrateDirUp_RefusesTxControlBeforeApplyingAnything(t *testing.T) {
 	dir := mkMigDir(t, map[string]string{"001_a.sql": "CREATE TABLE a (id int);", "002_b.sql": "CREATE TABLE b (id int); COMMIT; CREATE TABLE c (id int);"})
-	sd := fakeDockerState(t, map[string]string{"q_legacy_exists": "yes", "q_ops_exists": "yes"})
+	sd := fakeDockerState(t, map[string]string{"q_legacy_exists": "yes", "q_ops_exists": "yes", "q_count": "1"})
 	if _, err := MigrateUpDir(context.Background(), fakeCfg, dir); err == nil || !strings.Contains(err.Error(), "transaction control") {
 		t.Fatalf("want refusal, got %v", err)
 	}
@@ -462,25 +528,14 @@ func TestMigrateDirUp_RefusesTxControlBeforeApplyingAnything(t *testing.T) {
 	}
 }
 
-// An outer BEGIN/COMMIT is dropped, so the CLI's own transaction is the only one.
-func TestDirSQL_StripsOuterWrapper(t *testing.T) {
-	out, err := dirSQL("f.sql", "-- h\nBEGIN;\nCREATE TABLE a (id int);\nCOMMIT;\n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if u := strings.ToUpper(out); strings.Contains(u, "BEGIN") || strings.Contains(u, "COMMIT") || !strings.Contains(out, "CREATE TABLE a (id int);") {
-		t.Errorf("wrapper not stripped cleanly: %q", out)
-	}
-}
-
 func TestMigrateUpDir_WrappedFileRunsInOneTransaction(t *testing.T) {
 	dir := mkMigDir(t, map[string]string{"001_a.sql": "BEGIN;\nCREATE TABLE a (id int);\nCOMMIT;\n"})
-	sd := fakeDockerState(t, map[string]string{"q_legacy_exists": "yes", "q_ops_exists": "yes"})
+	sd := fakeDockerState(t, map[string]string{"q_legacy_exists": "yes", "q_ops_exists": "yes", "q_count": "1"})
 	if n, err := MigrateUpDir(context.Background(), fakeCfg, dir); err != nil || n != 1 {
 		t.Fatalf("up = %d, %v", n, err)
 	}
 	b, _ := os.ReadFile(filepath.Join(sd, "pipe-0.sql"))
-	if strings.Count(string(b), "BEGIN") != 1 || strings.Count(string(b), "COMMIT") != 1 || !strings.Contains(string(b), "CREATE TABLE a") {
+	if strings.Count(string(b), "BEGIN;") != 1 || strings.Count(string(b), "COMMIT;") != 1 || !strings.Contains(string(b), "CREATE TABLE a") {
 		t.Errorf("want exactly one BEGIN and one COMMIT around the migration and its ledger rows:\n%s", b)
 	}
 }
@@ -492,7 +547,7 @@ func TestMigrateDownDir_WrappedDownFileRunsInOneTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(filepath.Join(sd, "pipe-0.sql"))
-	if strings.Count(string(b), "BEGIN") != 1 || strings.Count(string(b), "COMMIT") != 1 || !strings.Contains(string(b), "DROP TABLE dir_a;") {
+	if strings.Count(string(b), "BEGIN;") != 1 || strings.Count(string(b), "COMMIT;") != 1 || !strings.Contains(string(b), "DROP TABLE dir_a;") {
 		t.Errorf("down SQL not a single transaction:\n%s", b)
 	}
 }
@@ -617,12 +672,19 @@ func TestMigrateDirIntegration_DryRunUpDownFlow(t *testing.T) {
 		t.Fatal("schema and ledger fell out of step")
 	}
 
-	// 7b. review rechecks: a comment naming CONCURRENTLY, or a BEGIN ATOMIC body
-	// earlier in the file, must not let a mid-file COMMIT/END through.
+	// 7b. review rechecks and lexer tricks: none may let a mid-file COMMIT through
+	// (a top-level END is not refused by the scan; the same-transaction check in
+	// TestMigrateDirIntegration_GuardAndSameTransactionCheck covers it).
 	for _, bad := range []string{
 		"-- was DROP INDEX CONCURRENTLY once\nDROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
-		"CREATE FUNCTION p77f() RETURNS int BEGIN ATOMIC SELECT 1; END;\nDROP TABLE dir_b; END; DROP TABLE does_not_exist;",
 		"SELECT CASE WHEN true THEN 1 ELSE'b\\' END; DROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
+		"-- note\rDROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
+		"/* a /* b */ ' */ DROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist; -- '",
+		"/* a /* b */ -- */ DROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
+		"SELECT $é$ ' $é$; DROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
+		"SET standard_conforming_strings = off; SELECT 'a\\' $q$ '; DROP TABLE dir_b; COMMIT; SELECT $q$ ';",
+		"CREATE FUNCTION p77g() RETURNS void BEGIN ATOMIC END; DROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
+		"CREATE DOMAIN atomic AS int; CREATE TABLE t (begin atomic int); DROP TABLE dir_b; COMMIT; DROP TABLE does_not_exist;",
 	} {
 		if err := os.WriteFile(filepath.Join(dir, "002_b_down.sql"), []byte(bad), 0o600); err != nil {
 			t.Fatal(err)
@@ -645,5 +707,98 @@ func TestMigrateDirIntegration_DryRunUpDownFlow(t *testing.T) {
 	if pgScalar(t, cfg, "SELECT to_regclass('dir_b') IS NOT NULL") != "t" ||
 		pgScalar(t, cfg, "SELECT count(*) FROM nself_ops.migrations WHERE name = '002_b.sql'") != "1" {
 		t.Fatal("another directory's down touched this migration")
+	}
+}
+
+// Guard and layer-2 behaviour against real Postgres (INTEGRATION=1): each case
+// leaves schema and ledger consistent, or fails loudly.
+func TestMigrateDirIntegration_GuardAndSameTransactionCheck(t *testing.T) {
+	cfg := startDirPG(t)
+	ctx := context.Background()
+	exists := func(rel string) bool { return pgScalar(t, cfg, "SELECT to_regclass('"+rel+"') IS NOT NULL") == "t" }
+	ledgerRows := func(name string) string {
+		return pgScalar(t, cfg, "SELECT (SELECT count(*) FROM np_common.schema_versions WHERE name = '"+name+"') || '/' || (SELECT count(*) FROM nself_ops.migrations WHERE name = '"+name+"')")
+	}
+
+	// 1. A migration with a plpgsql function (BEGIN/END inside $$) passes, plain and wrapped.
+	dir := mkMigDir(t, map[string]string{
+		"001_fn.sql":      "CREATE FUNCTION p77_fn() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 1; END; $$;\n",
+		"002_wrapped.sql": "BEGIN;\nCREATE FUNCTION p77_fn2() RETURNS int LANGUAGE plpgsql AS $$\nBEGIN\n  IF true THEN RETURN 2; END IF;\n  RETURN 3;\nEND;\n$$;\nCREATE TABLE p77_w (id int);\nCOMMIT;\n",
+	})
+	if n, err := MigrateUpDir(ctx, cfg, dir); err != nil || n != 2 {
+		t.Fatalf("function migrations: %d, %v", n, err)
+	}
+	if pgScalar(t, cfg, "SELECT p77_fn() + p77_fn2()") != "3" || !exists("p77_w") || ledgerRows("002_wrapped.sql") != "1/1" {
+		t.Fatal("function migrations did not land with their ledger rows")
+	}
+
+	// 2. CALL of a procedure that COMMITs: Postgres refuses inside our transaction;
+	// nothing is created and no ledger row is written.
+	if err := runSQLOnDB(ctx, cfg, "nself", "CREATE PROCEDURE p77_commit_proc() LANGUAGE plpgsql AS $$ BEGIN COMMIT; END $$"); err != nil {
+		t.Fatal(err)
+	}
+	dir = mkMigDir(t, map[string]string{"003_call.sql": "CREATE TABLE p77_call (id int);\nCALL p77_commit_proc();\n"})
+	if n, err := MigrateUpDir(ctx, cfg, dir); err == nil || n != 0 {
+		t.Fatalf("CALL of a committing procedure: %d, %v", n, err)
+	}
+	if exists("p77_call") || ledgerRows("003_call.sql") != "0/0" {
+		t.Fatal("CALL case left state behind")
+	}
+
+	// 3. DO with COMMIT: refused by the scan; the same SQL forced through the
+	// transaction is refused by Postgres. Either way nothing is left behind.
+	doSQL := "CREATE TABLE p77_do (id int);\nDO $$ BEGIN COMMIT; END $$;\n"
+	dir = mkMigDir(t, map[string]string{"004_do.sql": doSQL})
+	if n, err := MigrateUpDir(ctx, cfg, dir); err == nil || n != 0 {
+		t.Fatalf("DO with COMMIT: %d, %v", n, err)
+	}
+	if err := pipeSQLToContainer(ctx, cfg, dirTxSQL(doSQL, "SELECT 1;")); err == nil {
+		t.Fatal("Postgres accepted COMMIT inside a DO block in our transaction")
+	}
+	if exists("p77_do") {
+		t.Fatal("DO case left a table behind")
+	}
+
+	// 4. A top-level END acts as COMMIT: the same-transaction check catches it,
+	// the error says RECONCILE, and ledger and schema agree (ledger written first).
+	dir = mkMigDir(t, map[string]string{
+		"005_end.sql":      "CREATE TABLE p77_end (id int);\nEND;\nSELECT 1;\n",
+		"005_end.down.sql": "DROP TABLE p77_end;\nEND;\nSELECT 1;\n",
+	})
+	if n, err := MigrateUpDir(ctx, cfg, dir); err == nil || n != 0 || !strings.Contains(err.Error(), "RECONCILE") {
+		t.Fatalf("top-level END (up): %d, %v", n, err)
+	}
+	if !exists("p77_end") || ledgerRows("005_end.sql") != "1/1" {
+		t.Fatal("up: ledger and schema disagree after an early END")
+	}
+	if got, err := MigrateDownDir(ctx, cfg, dir, 1); err == nil || len(got) != 0 || !strings.Contains(err.Error(), "RECONCILE") {
+		t.Fatalf("top-level END (down): %v, %v", got, err)
+	}
+	if exists("p77_end") || ledgerRows("005_end.sql") != "0/0" {
+		t.Fatal("down: ledger and schema disagree after an early END")
+	}
+
+	// 5. Layer 2 on its own, with layer 1 bypassed: a COMMIT mid-file is detected.
+	err := pipeSQLToContainer(ctx, cfg, dirTxSQL("CREATE TABLE p77_l2 (id int);\nCOMMIT;\nSELECT 1;\n", "SELECT 1;"))
+	if err == nil || !strings.Contains(err.Error(), xactMismatchMarker) {
+		t.Fatalf("same-transaction check did not fire: %v", err)
+	}
+
+	// 6. Recheck 2 lexer bypasses as up files: each is refused before anything runs.
+	for name, body := range map[string]string{
+		"b1": "CREATE TABLE p77_b1 (id int); -- x\rCOMMIT; SELECT 1/0;",
+		"b2": "CREATE TABLE p77_b2 (id int); /* a /* b */ ' */ COMMIT; SELECT 1/0; -- '",
+		"b3": "CREATE TABLE p77_b3 (id int); SELECT $é$ ' $é$; COMMIT; SELECT 1/0;",
+		"b4": "SET standard_conforming_strings = off; CREATE TABLE p77_b4 (id int); SELECT 'a\\' $q$ '; COMMIT; SELECT $q$ ';",
+		"b5": "CREATE FUNCTION p77_b5() RETURNS void BEGIN ATOMIC END; CREATE TABLE p77_b5t (id int); COMMIT; SELECT 1/0;",
+		"b6": "CREATE DOMAIN atomic AS int; CREATE TABLE p77_b6 (begin atomic int); COMMIT; SELECT 1/0;",
+	} {
+		d := mkMigDir(t, map[string]string{"100_" + name + ".sql": body})
+		if n, err := MigrateUpDir(ctx, cfg, d); err == nil || n != 0 {
+			t.Fatalf("%s: not refused (%d, %v)", name, n, err)
+		}
+		if ledgerRows("100_"+name+".sql") != "0/0" || exists("p77_"+name) || exists("p77_"+name+"t") {
+			t.Fatalf("%s: left state behind", name)
+		}
 	}
 }

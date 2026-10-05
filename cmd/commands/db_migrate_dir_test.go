@@ -51,6 +51,7 @@ case "$last" in
   *"name || '|' || applied_at"*) cat "$D/q_applied" 2>/dev/null;;
   *"name || '|' || checksum"*) cat "$D/q_checksums" 2>/dev/null;;
   *"name = 'up.sql'"*) echo 0;;
+  *"count(*) FROM np_common.schema_versions WHERE name"*) cat "$D/q_count" 2>/dev/null;;
 esac
 exit 0
 `
@@ -113,7 +114,7 @@ func appliedAnswers(t *testing.T, dir, name string) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return map[string]string{"q_latest": name + "\n", "q_ops_exists": "yes",
+	return map[string]string{"q_latest": name + "\n", "q_ops_exists": "yes", "q_count": "0",
 		"q_checksums": fmt.Sprintf("%s|%x\n", name, sha256.Sum256(data))}
 }
 
@@ -252,7 +253,7 @@ func TestDBMigrateUpDir_DryRun_ChecksumMismatchFails(t *testing.T) {
 // `up --migration-dir` keeps applying (one transaction per file).
 func TestDBMigrateUpDir_WithoutDryRunStillApplies(t *testing.T) {
 	dir := dirProject(t)
-	sd := useFakeDocker(t, map[string]string{"q_legacy_exists": "yes\n", "q_ops_exists": "yes\n"})
+	sd := useFakeDocker(t, map[string]string{"q_legacy_exists": "yes\n", "q_ops_exists": "yes\n", "q_count": "1"})
 	cmd, _ := newDirTestCmd("up")
 	_ = cmd.Flags().Set("migration-dir", dir)
 	if err := cmd.RunE(cmd, nil); err != nil {

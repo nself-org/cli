@@ -55,6 +55,15 @@ func PendingMigrations(ctx context.Context, cfg *config.Config, plugin string) (
 // This enables plugin-claw external RLS migrations to be applied via CLI
 // without requiring 'nself db shell' as a workaround.
 func ApplyFile(ctx context.Context, cfg *config.Config, filePath string) (skipped bool, err error) {
+	return applyFile(ctx, cfg, filePath, false)
+}
+
+// applyFile is ApplyFile; guarded is set by MigrateUpDir (P7-PROD-77): the
+// transactional path then runs the file through dirSQL and dirTxSQL (outer
+// wrapper dropped, transaction control refused, same-transaction check, ledger
+// first) and verifies the ledger row. `db migrate apply --file` stays unguarded
+// and is the escape hatch for a file the guard refuses.
+func applyFile(ctx context.Context, cfg *config.Config, filePath string, guarded bool) (skipped bool, err error) {
 	if err := ensureSchemaVersions(ctx, cfg); err != nil {
 		return false, fmt.Errorf("ensure schema_versions: %w", err)
 	}
@@ -120,13 +129,9 @@ func ApplyFile(ctx context.Context, cfg *config.Config, filePath string) (skippe
 
 	legacyRecord, opsRecord := migrationRecordSQL(migrationID, name, checksum)
 
-	// Own outer BEGIN/COMMIT dropped, other transaction control refused (P7-PROD-77).
-	sqlContent, txErr := dirSQL(name, string(data))
-	if txErr != nil {
-		return false, txErr
-	}
+	sqlContent := string(data)
 
-	if isNonTransactional(sqlSkeleton(sqlContent)) { // real statements only, never comments or strings
+	if isNonTransactional(sqlContent) {
 		if err := pipeSQLToContainer(ctx, cfg, sqlContent); err != nil {
 			return false, fmt.Errorf("migration %s: %w: %v", name, errs.ErrMigrationFailed, err)
 		}
@@ -135,6 +140,17 @@ func ApplyFile(ctx context.Context, cfg *config.Config, filePath string) (skippe
 		recordSQL := "BEGIN;\n" + legacyRecord + "\n" + opsRecord + "\nCOMMIT;\n"
 		if err := pipeSQLToContainer(ctx, cfg, recordSQL); err != nil {
 			return false, fmt.Errorf("record migration %s: %w", name, err)
+		}
+	} else if guarded {
+		body, txErr := dirSQL(name, sqlContent, "up")
+		if txErr != nil {
+			return false, txErr
+		}
+		if err := pipeSQLToContainer(ctx, cfg, dirTxSQL(body, legacyRecord+"\n"+opsRecord)); err != nil {
+			return false, txRunError(name, err)
+		}
+		if err := verifyLedger(ctx, cfg, name, true); err != nil {
+			return false, err
 		}
 	} else {
 		txSQL := "BEGIN;\n" +
@@ -177,9 +193,11 @@ func MigrateUpDir(ctx context.Context, cfg *config.Config, dir string) (int, err
 		return 0, prerequisiteError(missing)
 	}
 
+	// Refuse the whole batch before applying any file (non-transactional
+	// files run as written, as before, and are not scanned).
 	for _, f := range pending {
-		if data, readErr := os.ReadFile(f); readErr == nil {
-			if _, txErr := dirSQL(filepath.Base(f), string(data)); txErr != nil {
+		if data, readErr := os.ReadFile(f); readErr == nil && !isNonTransactional(string(data)) {
+			if _, txErr := dirSQL(filepath.Base(f), string(data), "up"); txErr != nil {
 				return 0, txErr
 			}
 		}
@@ -187,7 +205,7 @@ func MigrateUpDir(ctx context.Context, cfg *config.Config, dir string) (int, err
 
 	count := 0
 	for _, f := range files {
-		skipped, applyErr := ApplyFile(ctx, cfg, f)
+		skipped, applyErr := applyFile(ctx, cfg, f, true)
 		if applyErr != nil {
 			return count, applyErr
 		}
@@ -265,34 +283,4 @@ func MigrateStatus(ctx context.Context, cfg *config.Config, dir string) ([]Migra
 		return statuses[i].Name < statuses[j].Name
 	})
 	return statuses, nil
-}
-
-// ledgerTableExists reports, read-only via to_regclass (NULL, never an error,
-// for a missing schema or table), whether a schema-qualified table exists.
-func ledgerTableExists(ctx context.Context, cfg *config.Config, qualified string) (bool, error) {
-	out, err := ledgerSelect(ctx, cfg, fmt.Sprintf(
-		"SELECT CASE WHEN to_regclass('%s') IS NULL THEN 'no' ELSE 'yes' END", qualified))
-	if err != nil {
-		return false, fmt.Errorf("check %s: %w", qualified, err)
-	}
-	return strings.TrimSpace(out) == "yes", nil
-}
-
-// opsChecksums reads name -> checksum from nself_ops.migrations (read-only).
-func opsChecksums(ctx context.Context, cfg *config.Config) (map[string]string, error) {
-	sums := make(map[string]string)
-	exists, err := ledgerTableExists(ctx, cfg, "nself_ops.migrations")
-	if err != nil || !exists {
-		return sums, err
-	}
-	out, err := ledgerSelect(ctx, cfg, "SELECT name || '|' || checksum FROM nself_ops.migrations")
-	if err != nil {
-		return nil, fmt.Errorf("read migration checksums: %w", err)
-	}
-	for _, line := range strings.Split(out, "\n") {
-		if n, c, ok := strings.Cut(strings.TrimSpace(line), "|"); ok {
-			sums[n] = c
-		}
-	}
-	return sums, nil
 }
