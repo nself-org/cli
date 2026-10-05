@@ -267,6 +267,11 @@ func dispatchRemoteIfNeeded(cmd *cobra.Command, remoteArgs ...string) (handled b
 	}
 
 	if allowDrift, _ := cmd.Flags().GetBool("allow-version-drift"); allowDrift {
+		// A remote CLI older than this one can ignore --dry-run and apply for
+		// real; the drift probe is what catches it, so the two never combine.
+		if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
+			return true, fmt.Errorf("--allow-version-drift cannot be combined with --dry-run on a remote target: an older remote nself may ignore --dry-run and apply. Drop --allow-version-drift (the remote must run the same nself version)")
+		}
 		target.AllowVersionDrift = true
 	}
 
