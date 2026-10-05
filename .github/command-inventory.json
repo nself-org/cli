@@ -314,6 +314,8 @@
         "flags": [
           "--cron",
           "--dry-run",
+          "--env-file",
+          "--heartbeat-to",
           "--recipient",
           "--to",
           "--unit-dir"
@@ -335,6 +337,8 @@
         "hidden": false,
         "flags": [
           "--dry-run",
+          "--heartbeat-required",
+          "--heartbeat-to",
           "--no-encrypt",
           "--recipient",
           "--to"

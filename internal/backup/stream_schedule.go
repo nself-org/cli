@@ -9,6 +9,7 @@ package backup
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -17,52 +18,104 @@ import (
 	"github.com/nself-org/cli/internal/config"
 )
 
-// ScheduleStream adds a systemd timer for nself backup stream.
-// It delegates to the existing systemd infrastructure via a dedicated unit.
-func ScheduleStream(cfg *config.Config, cron, to, recipient, unitDir string, dryRun bool) error {
-	if cron == "" {
+// ScheduleOptions holds the inputs of ScheduleStream (flags of
+// `nself backup schedule`). BinaryPath and ProjectDir are test seams: left
+// empty they resolve to the running binary and the current project directory.
+type ScheduleOptions struct {
+	Cron        string
+	To          string   // rclone destination; falls back to cfg.Backup.Remote
+	Recipients  []string // repeatable --recipient, written as repeated flags
+	HeartbeatTo string   // --heartbeat-to, written into the unit when given
+	EnvFile     string   // --env-file; no EnvironmentFile line when empty
+	UnitDir     string   // default /etc/systemd/system
+	DryRun      bool
+	Out         io.Writer // dry-run output; default os.Stdout
+
+	BinaryPath string
+	ProjectDir string
+}
+
+// ScheduleStream installs a systemd timer for `nself backup stream`, run in
+// the real project with the running binary.
+//
+// WorkingDirectory is the resolved project directory (the one loadProjectConfig
+// uses: the current directory), ExecStart is the absolute path of the running
+// binary with symlinks resolved, and the unit has no EnvironmentFile line
+// unless opts.EnvFile is set. Nothing is guessed: the unit that was previously
+// written pointed at /opt/nself and /usr/local/bin/nself, which exist on no
+// real project.
+func ScheduleStream(cfg *config.Config, opts ScheduleOptions) error {
+	if opts.Cron == "" {
 		return fmt.Errorf("--cron expression required (e.g. '0 2 * * *')")
 	}
+	to := opts.To
 	if to == "" {
 		to = cfg.Backup.Remote
 	}
 	if to == "" {
 		return fmt.Errorf("--to destination required for schedule")
 	}
-
-	binaryPath := "/usr/local/bin/nself"
-	envFile := "/etc/nself/backup.env"
-	projectDir := "/opt/nself"
+	unitDir := opts.UnitDir
 	if unitDir == "" {
 		unitDir = "/etc/systemd/system"
 	}
 
-	recipientFlag := ""
-	if recipient != "" {
-		recipientFlag = " --recipient " + recipient
+	binaryPath, err := scheduleBinaryPath(opts.BinaryPath)
+	if err != nil {
+		return err
+	}
+	projectDir, err := scheduleProjectDir(opts.ProjectDir)
+	if err != nil {
+		return err
+	}
+	envFile := ""
+	if opts.EnvFile != "" {
+		if envFile, err = filepath.Abs(opts.EnvFile); err != nil {
+			return fmt.Errorf("resolve --env-file: %w", err)
+		}
+	}
+	for _, v := range append([]string{to, opts.HeartbeatTo, envFile}, opts.Recipients...) {
+		if strings.ContainsAny(v, "\n\r") {
+			return fmt.Errorf("a schedule value contains a line break")
+		}
 	}
 
-	execStart := fmt.Sprintf("%s backup stream --to %s%s", binaryPath, to, recipientFlag)
+	args := []string{binaryPath, "backup", "stream", "--to", to}
+	for _, r := range opts.Recipients {
+		args = append(args, "--recipient", r)
+	}
+	if opts.HeartbeatTo != "" {
+		args = append(args, "--heartbeat-to", opts.HeartbeatTo)
+	}
+	execStart := systemdExecLine(args)
 
 	// Convert simple cron "M H * * *" to systemd OnCalendar syntax.
-	onCalendar := cronToSystemd(cron)
+	onCalendar := cronToSystemd(opts.Cron)
 
 	service := renderService(serviceSpec{
 		Description: "nSelf streaming encrypted backup",
 		EnvFile:     envFile,
-		WorkingDir:  projectDir,
+		WorkingDir:  strings.ReplaceAll(projectDir, "%", "%%"),
 		ExecStart:   execStart,
 	})
+	if envFile == "" {
+		// renderService always emits an EnvironmentFile line; with no env file
+		// requested the bare "EnvironmentFile=-" must not appear at all.
+		service = strings.Replace(service, "EnvironmentFile=-\n", "", 1)
+	}
 	timer := renderTimer(timerSpec{
-		Description: "nSelf streaming backup: " + cron,
+		Description: "nSelf streaming backup: " + opts.Cron,
 		OnCalendar:  onCalendar,
 		Unit:        "nself-backup-stream.service",
 		Persistent:  true,
 	})
 
-	if dryRun {
-		slog.Info("dry run: systemd unit", "unit", "nself-backup-stream.service", "content", service)
-		slog.Info("dry run: systemd unit", "unit", "nself-backup-stream.timer", "content", timer)
+	if opts.DryRun {
+		out := opts.Out
+		if out == nil {
+			out = os.Stdout
+		}
+		_, _ = fmt.Fprintf(out, "# nself-backup-stream.service\n%s\n# nself-backup-stream.timer\n%s", service, timer)
 		return nil
 	}
 
@@ -87,8 +140,64 @@ func ScheduleStream(cfg *config.Config, cron, to, recipient, unitDir string, dry
 		return fmt.Errorf("enable timer: %w", err)
 	}
 
-	slog.Info("stream backup scheduled", "cron", cron, "destination", to)
+	slog.Info("stream backup scheduled", "cron", opts.Cron, "destination", to)
 	return nil
+}
+
+// scheduleBinaryPath returns the absolute path of the running binary with
+// symlinks resolved, or the explicit override. The unit calls exactly this
+// file, so a PATH lookup can never pick a different nself.
+func scheduleBinaryPath(override string) (string, error) {
+	p := override
+	if p == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			return "", fmt.Errorf("resolve the running binary: %w", err)
+		}
+		p = exe
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", fmt.Errorf("resolve binary path %s: %w", p, err)
+	}
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = real
+	}
+	return abs, nil
+}
+
+// scheduleProjectDir returns the absolute project directory: the override, or
+// the current directory (what loadProjectConfig and every other command use).
+func scheduleProjectDir(override string) (string, error) {
+	d := override
+	if d == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("resolve the project directory: %w", err)
+		}
+		d = wd
+	}
+	abs, err := filepath.Abs(d)
+	if err != nil {
+		return "", fmt.Errorf("resolve project directory %s: %w", d, err)
+	}
+	return abs, nil
+}
+
+// systemdExecLine joins argv into one ExecStart value. An argument with
+// whitespace, a quote or a backslash is double-quoted; "%" and "$" are doubled
+// because systemd expands specifiers and variables in ExecStart.
+func systemdExecLine(args []string) string {
+	parts := make([]string, len(args))
+	for i, a := range args {
+		a = strings.ReplaceAll(a, "%", "%%")
+		a = strings.ReplaceAll(a, "$", "$$")
+		if a == "" || strings.ContainsAny(a, " \t\"'\\") {
+			a = "\"" + strings.NewReplacer("\\", "\\\\", "\"", "\\\"").Replace(a) + "\""
+		}
+		parts[i] = a
+	}
+	return strings.Join(parts, " ")
 }
 
 // cronToSystemd converts a 5-field cron expression to a systemd OnCalendar value.

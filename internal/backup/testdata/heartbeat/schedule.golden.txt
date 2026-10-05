@@ -1,0 +1,31 @@
+# nself-backup-stream.service
+[Unit]
+Description=nSelf streaming encrypted backup
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=<PROJECT>
+ExecStart=<BINARY> backup stream --to r2:bkt/nself-web --recipient age1qqqq --recipient age1zzzz --heartbeat-to r2hb:hb
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=4h
+
+[Install]
+WantedBy=multi-user.target
+
+# nself-backup-stream.timer
+[Unit]
+Description=nSelf streaming backup: 30 2 * * *
+
+[Timer]
+Unit=nself-backup-stream.service
+OnCalendar=*-*-* 02:30:00 UTC
+Persistent=true
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

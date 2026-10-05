@@ -55,8 +55,19 @@ var backupScheduleCmd = &cobra.Command{
 Examples:
 
   nself backup schedule --cron "0 2 * * *" --to s3:bucket/path
-  nself backup schedule --cron "0 2 * * *" --to r2:bucket --recipient age1xxx --dry-run`,
+  nself backup schedule --cron "0 2 * * *" --to r2:bucket --recipient age1xxx --dry-run
+  nself backup schedule --cron "30 2 * * *" --to r2:bucket/p --recipient age1xxx --recipient age1yyy --heartbeat-to r2hb:hb
+
+Run it from the project directory. The unit's WorkingDirectory is that
+directory and its ExecStart is the absolute path of the nself binary that is
+running now. There is no EnvironmentFile line unless --env-file is given.`,
 	RunE: runBackupSchedule,
+}
+
+func init() {
+	// Flags added with P7-PROD-71. --recipient (in backup_ops.go) is repeatable.
+	backupScheduleCmd.Flags().String("env-file", "", "Absolute path of an environment file for the unit (none by default)")
+	backupScheduleCmd.Flags().String("heartbeat-to", "", "rclone remote that receives <project>/backup.json after each backup")
 }
 
 // validateCronExpression checks that a cron expression has exactly 5 whitespace-separated
@@ -84,15 +95,26 @@ func runBackupSchedule(cmd *cobra.Command, _ []string) error {
 
 	cron, _ := cmd.Flags().GetString("cron")
 	to, _ := cmd.Flags().GetString("to")
-	recipient, _ := cmd.Flags().GetString("recipient")
+	recipients, _ := cmd.Flags().GetStringArray("recipient")
 	unitDir, _ := cmd.Flags().GetString("unit-dir")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	envFile, _ := cmd.Flags().GetString("env-file")
+	heartbeatTo, _ := cmd.Flags().GetString("heartbeat-to")
 
 	if err := validateCronExpression(cron); err != nil {
 		return err
 	}
 
-	if err := backup.ScheduleStream(cfg, cron, to, recipient, unitDir, dryRun); err != nil {
+	if err := backup.ScheduleStream(cfg, backup.ScheduleOptions{
+		Cron:        cron,
+		To:          to,
+		Recipients:  recipients,
+		HeartbeatTo: heartbeatTo,
+		EnvFile:     envFile,
+		UnitDir:     unitDir,
+		DryRun:      dryRun,
+		Out:         cmd.OutOrStdout(),
+	}); err != nil {
 		return fmt.Errorf("backup schedule: %w", err)
 	}
 

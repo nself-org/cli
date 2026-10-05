@@ -54,8 +54,20 @@ Examples:
 
   nself backup stream --to s3:bucket/path --recipient age1xxxxx
   nself backup stream --to r2:bucket/path --recipient github:username
-  nself backup stream --to b2:bucket/path   # uses NSELF_BACKUP_RECIPIENT env`,
+  nself backup stream --to b2:bucket/path   # uses NSELF_BACKUP_RECIPIENT env
+  nself backup stream --to r2:bucket/path --recipient age1xxxxx --heartbeat-to r2hb:hb
+
+With --heartbeat-to (or NSELF_BACKUP_HEARTBEAT_REMOTE), a successful upload is
+followed by a small <project>/backup.json object on that remote. A failed
+backup never writes one. A heartbeat failure is a warning unless
+--heartbeat-required is set.`,
 	RunE: runBackupStream,
+}
+
+func init() {
+	// Flags added with P7-PROD-71.
+	backupStreamCmd.Flags().String("heartbeat-to", "", "rclone remote that receives <project>/backup.json after a successful upload (default: NSELF_BACKUP_HEARTBEAT_REMOTE)")
+	backupStreamCmd.Flags().Bool("heartbeat-required", false, "Exit non-zero when the heartbeat cannot be written (the backup itself is kept)")
 }
 
 func runBackupStream(cmd *cobra.Command, _ []string) error {
@@ -68,14 +80,20 @@ func runBackupStream(cmd *cobra.Command, _ []string) error {
 	recipients, _ := cmd.Flags().GetStringArray("recipient")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	noEncrypt, _ := cmd.Flags().GetBool("no-encrypt")
+	heartbeatTo, _ := cmd.Flags().GetString("heartbeat-to")
+	heartbeatRequired, _ := cmd.Flags().GetBool("heartbeat-required")
 
 	result, err := backup.Stream(cmd.Context(), cfg, backup.StreamOptions{
-		To:               to,
-		Recipients:       recipients,
-		DryRun:           dryRun,
-		AllowUnencrypted: noEncrypt,
+		To:                to,
+		Recipients:        recipients,
+		DryRun:            dryRun,
+		AllowUnencrypted:  noEncrypt,
+		HeartbeatTo:       heartbeatTo,
+		HeartbeatRequired: heartbeatRequired,
 	})
-	if err != nil {
+	// A heartbeat failure under --heartbeat-required comes back with a
+	// successful result: report the backup first, then fail.
+	if err != nil && result == nil {
 		return fmt.Errorf("backup stream: %w", err)
 	}
 
@@ -90,6 +108,9 @@ func runBackupStream(cmd *cobra.Command, _ []string) error {
 	fmt.Printf("  Backup ID:   %s\n", result.BackupID)
 	fmt.Printf("  Encrypted:   %v\n", result.Encrypted)
 	fmt.Printf("  Duration:    %s\n", result.Duration)
+	if err != nil {
+		return fmt.Errorf("backup stream: the backup was uploaded but %w", err)
+	}
 	return nil
 }
 

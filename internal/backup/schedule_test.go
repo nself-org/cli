@@ -1,7 +1,11 @@
 package backup
 
 import (
+	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -121,4 +125,110 @@ func abs(x int) int {
 		return -x
 	}
 	return x
+}
+
+// ── ScheduleStream (P7-PROD-71) ───────────────────────────────────────
+
+// scheduleDryRun renders the units of a dry run into a string.
+func scheduleDryRun(t *testing.T, opts ScheduleOptions) string {
+	t.Helper()
+	var out bytes.Buffer
+	opts.DryRun = true
+	opts.Out = &out
+	if err := ScheduleStream(minimalConfig(), opts); err != nil {
+		t.Fatalf("ScheduleStream: %v", err)
+	}
+	return out.String()
+}
+
+// TestScheduleStreamGolden pins the rendered service and timer: the unit runs
+// in the project directory with the absolute binary path, carries every
+// recipient and the heartbeat remote, has no EnvironmentFile line without
+// --env-file, and the timer is daily and persistent.
+func TestScheduleStreamGolden(t *testing.T) {
+	proj := t.TempDir()
+	bin := filepath.Join(t.TempDir(), "nself")
+	if err := os.WriteFile(bin, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	realBin, _ := filepath.EvalSymlinks(bin)
+	realProj, _ := filepath.Abs(proj)
+	got := scheduleDryRun(t, ScheduleOptions{
+		Cron: "30 2 * * *", To: "r2:bkt/nself-web", HeartbeatTo: "r2hb:hb",
+		Recipients: []string{"age1qqqq", "age1zzzz"}, BinaryPath: bin, ProjectDir: proj,
+	})
+	got = strings.ReplaceAll(strings.ReplaceAll(got, realProj, "<PROJECT>"), realBin, "<BINARY>")
+	want, err := os.ReadFile(filepath.Join("testdata", "heartbeat", "schedule.golden.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != string(want) {
+		t.Errorf("schedule units drifted.\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+	if strings.Contains(got, "EnvironmentFile") {
+		t.Error("no EnvironmentFile line may appear without --env-file")
+	}
+	if strings.Contains(got, "/opt/nself") || strings.Contains(got, "/usr/local/bin/nself") || strings.Contains(got, "/etc/nself") {
+		t.Error("a hardcoded legacy path is back in the unit")
+	}
+}
+
+// TestScheduleStreamEnvFileAndDefaults: --env-file adds the line (absolute);
+// the running binary and the current directory are the defaults; a symlinked
+// binary is resolved.
+func TestScheduleStreamEnvFileAndDefaults(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	env := filepath.Join(dir, "backup.env")
+	got := scheduleDryRun(t, ScheduleOptions{Cron: "0 3 * * *", To: "s3:b/p", EnvFile: "backup.env"})
+	realEnv, _ := filepath.EvalSymlinks(env)
+	if !strings.Contains(got, "EnvironmentFile=-"+env) && !strings.Contains(got, "EnvironmentFile=-"+realEnv) {
+		t.Errorf("env file line missing:\n%s", got)
+	}
+	exe, _ := os.Executable()
+	realExe, _ := filepath.EvalSymlinks(exe)
+	if !strings.Contains(got, "ExecStart="+realExe+" backup stream --to s3:b/p") {
+		t.Errorf("ExecStart should be the running binary %s:\n%s", realExe, got)
+	}
+	wd, _ := os.Getwd()
+	if !strings.Contains(got, "WorkingDirectory="+wd) {
+		t.Errorf("WorkingDirectory should be %s:\n%s", wd, got)
+	}
+
+	link := filepath.Join(t.TempDir(), "nself-link")
+	if err := os.Symlink(exe, link); err != nil {
+		t.Skip("symlinks unavailable")
+	}
+	got = scheduleDryRun(t, ScheduleOptions{Cron: "0 3 * * *", To: "s3:b/p", BinaryPath: link})
+	if strings.Contains(got, link) || !strings.Contains(got, realExe) {
+		t.Errorf("symlinked binary must resolve to %s:\n%s", realExe, got)
+	}
+}
+
+// TestScheduleStreamQuoting: spaces, quotes, % and $ cannot split or expand
+// the ExecStart line; line breaks are refused.
+func TestScheduleStreamQuoting(t *testing.T) {
+	got := systemdExecLine([]string{"/opt/my bin/nself", "backup", "--to", "r2:b/p%h", "--recipient", `a"b$HOME`})
+	want := `"/opt/my bin/nself" backup --to r2:b/p%%h --recipient "a\"b$$HOME"`
+	if got != want {
+		t.Errorf("systemdExecLine = %s, want %s", got, want)
+	}
+	err := ScheduleStream(minimalConfig(), ScheduleOptions{Cron: "0 3 * * *", To: "r2:b\nExecStartPre=/bin/sh", DryRun: true, Out: &bytes.Buffer{}})
+	if err == nil {
+		t.Error("a destination with a line break must be refused")
+	}
+}
+
+// TestScheduleStreamErrors: missing cron or destination fail before any write.
+func TestScheduleStreamErrors(t *testing.T) {
+	dir := t.TempDir()
+	if err := ScheduleStream(minimalConfig(), ScheduleOptions{To: "r2:b", UnitDir: dir}); err == nil {
+		t.Error("missing cron should fail")
+	}
+	if err := ScheduleStream(minimalConfig(), ScheduleOptions{Cron: "0 3 * * *", UnitDir: dir}); err == nil {
+		t.Error("missing destination should fail")
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Error("nothing may be written on a validation error")
+	}
 }
