@@ -1,0 +1,10 @@
+{
+  "_note": "Absolute p95 ceilings in ms per cold-start probe, checked by `perfbench check` on every Cold Start Gate run (no override label). Update rule: .github/wiki/Benchmarks.md#cold-start-gate",
+  "schema": "perfbench-budget/v1",
+  "platform": "ubuntu-latest linux/amd64",
+  "p95_ms": {
+    "cold_start.version": 150,
+    "cold_start.help": 150,
+    "cold_start.status": 150
+  }
+}

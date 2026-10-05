@@ -6,6 +6,7 @@
 //	go run -mod=vendor ./tools/perfbench run [-scenario cold-start] [-bin p] [-runs 30] [-json]
 //	go run -mod=vendor ./tools/perfbench healthy -report <golden-path-report.json> [-json]
 //	go run -mod=vendor ./tools/perfbench ab -base <bin> -head <bin> [-runs 40] [-json]
+//	go run -mod=vendor ./tools/perfbench check -budget .github/perf-budget.json -in <result.json>
 //
 // With no subcommand (the first argument is a flag, or there are no
 // arguments) `run` is implied.
@@ -34,8 +35,10 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return healthyCmd(args[1:], stdout, stderr)
 	case "ab":
 		return abCmd(args[1:], stdout, stderr)
+	case "check":
+		return checkCmd(args[1:], stdout, stderr)
 	}
-	say(stderr, "perfbench: unknown subcommand %q (have: run, healthy, ab)\n", args[0])
+	say(stderr, "perfbench: unknown subcommand %q (have: run, healthy, ab, check)\n", args[0])
 	return 2
 }
 
