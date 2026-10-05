@@ -29,6 +29,16 @@
     "binaryName": {
       "type": "string"
     },
+    "capabilities": {
+      "description": "What the plugin offers, as a list of names. Same key and type as v1; read from the installed plugin.json by the MCP plugin.",
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "null",
+        "array"
+      ]
+    },
     "category": {
       "type": "string"
     },
@@ -733,6 +743,14 @@
       "items": {
         "additionalProperties": false,
         "properties": {
+          "auth": {
+            "description": "Auth scheme of the route (bearer, none, hmac, ...). Carried from a v1 routes entry.",
+            "type": "string"
+          },
+          "hmac": {
+            "description": "Name of the env var holding the webhook secret. Carried from a v1 routes entry.",
+            "type": "string"
+          },
           "method": {
             "type": "string"
           },

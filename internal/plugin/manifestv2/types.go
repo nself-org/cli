@@ -109,7 +109,11 @@ type Manifest struct {
 	Seed       *Seed       `json:"seed,omitempty"`
 	Env        *Env        `json:"env,omitempty"`
 	Routes     []Route     `json:"routes,omitempty"`
-	DocsURL    string      `json:"docs_url,omitempty"`
+	// Capabilities lists what the plugin offers (a v1 key some plugins carry,
+	// read from the installed plugin.json by the MCP plugin). Optional, same
+	// name and type as v1.
+	Capabilities []string `json:"capabilities,omitempty"`
+	DocsURL      string   `json:"docs_url,omitempty"`
 
 	Shared
 	Compat

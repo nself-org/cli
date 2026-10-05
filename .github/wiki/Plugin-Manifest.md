@@ -44,6 +44,7 @@ Bundle membership is not a manifest field: `bundles.json` is the membership sour
 | `arch_support` | array or null | no |  |
 | `author` | string | no |  |
 | `binaryName` | string | no |  |
+| `capabilities` | array or null | no | What the plugin offers, as a list of names. Same key and type as v1; read from the installed plugin.json by the MCP plugin. |
 | `category` | string | yes |  |
 | `cli` | string | no |  |
 | `cliCommands` | array or null | no |  |
@@ -165,4 +166,12 @@ go run github.com/nself-org/cli/tools/manifestv2migrate -in plugin.json -targets
 
 Output has sorted keys, 2-space indent and a trailing newline; running it on its own output changes nothing. The converter maps v1 `binaryName` to `commands.binary`, the `cliCommands` entry named like it to `commands.command` (other binaries such as `sentry-server` or `billing` stay compatibility-only), and `binaryName: null` to `commands: null`. It derives `service` (a port means `compose`, a binary without a port means `cli`, otherwise `library`).
 
-The converter never drops data silently. Every non-empty v1 key with no v2 home (for example `config`, `hooks`, `actions`, `routes`, `migrations`, `env`, `notes`, `api_version`, `entry`) is listed on stderr with its value path, and the run exits 1 with nothing written and nothing on stdout. This holds for the default run, `-write` and `-check`, and the lists are identical. There is no flag to drop a key: move its data into a v2 field or remove it from the v1 file first. Empty values (`null`, `""`, `[]`, `{}`) carry nothing and are ignored. Registry-owned keys (`bundles`, `checksum`, `tier_pair`, `author_public_key`, `signature`) are removed on purpose (ADR 0008) and reported as a note. A v1 file that v1.4.12 accepts without a `category` loads, but the converter will not write an invalid v2 file: add the `category` first.
+The converter never drops data silently. Every non-empty v1 key with no v2 home (for example `actions`, `config`, `binary_name`, `download_url`, `tarball`) is listed on stderr with its value path, and the run exits 1 with nothing written and nothing on stdout. This holds for the default run, `-write` and `-check`, and the lists are identical. Empty values (`null`, `""`, `[]`, `{}`) carry nothing and are ignored. Registry-owned keys (`bundles`, `checksum`, `tier_pair`, `author_public_key`, `signature`) are removed on purpose (ADR 0008) and reported as a note. A v1 file that v1.4.12 accepts without a `category` loads, but the converter will not write an invalid v2 file: add the `category` first.
+
+Some v1 keys convert when their value converts without loss:
+
+- `routes` (the plugin's own API: `method`, `path`, `auth`, optional `description` and `hmac`) becomes `rest_routes` (`description` becomes `summary`; `auth` and `hmac` are optional additions). It never becomes the v2 `routes` key, which is nginx exposure (`path`, `upstream_port`). An entry with any other key, or a file that already has `rest_routes`, stays refused.
+- `capabilities` (a list of names) is an optional v2 key with the same name and type.
+- `env` or `env_vars` becomes `env {required, optional}` only as `{required: [name], optional: [name]}`. Defaults, descriptions, per-variable flags and bare name lists have no place in `env`, so they stay refused.
+
+`-drop <file>` is the one way to discard data. The file lists dead v1 keys, one per line with a `# evidence` comment; `tools/manifestv2migrate/dead-keys.txt` is the reviewed list (keys no code reads, not even a dev tool or build script). Only listed keys are dropped: a default or `-check` run reports what would be dropped, `-write` reports what was, and any key that is neither mapped nor listed still refuses. A mapped key cannot be listed.

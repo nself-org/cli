@@ -17,8 +17,13 @@
 // stderr by value path and the run exits 1 with nothing written and nothing on
 // stdout, in default, -write and -check modes alike. Registry-owned keys
 // (bundles, checksum, tier_pair, ...) are removed on purpose and reported as a
-// note. There is no flag to drop data: move it into a v2 field, or remove it
-// from the v1 file by hand first.
+// note. The one way to drop data is -drop <file>: a reviewed list of dead keys
+// (tools/manifestv2migrate/dead-keys.txt, keys no code reads), one per line with
+// a comment naming the evidence. Only listed keys are dropped; default and
+// -check runs say what would be dropped, -write says what was. Anything neither
+// mapped nor listed still refuses. A routes, capabilities, env or env_vars value
+// converts only when it does so losslessly (routes to rest_routes, capabilities
+// to the v2 list, env to env {required, optional}); otherwise it stays refused.
 //
 // Outputs: stdout, or the file with -write. Exit: 0 ok, 1 invalid or not
 // canonical, 2 usage or I/O failure. Running it on its own output is a no-op.
@@ -50,6 +55,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	compatOnly := fs.Bool("compat", false, "rewrite only the compatibility keys of a v2 file")
 	check := fs.Bool("check", false, "exit 1 unless -in is canonical v2")
 	targets := fs.Bool("targets", false, "print binary<TAB>command for the commands block")
+	drop := fs.String("drop", "", "file of dead v1 keys (one per line, # comments) that may be dropped")
 	wiki := fs.String("wiki", "", "regenerate the field table of this wiki page from -schema")
 	schema := fs.String("schema", "schemas/plugin-manifest.v2.schema.json", "schema read by -wiki")
 	if err := fs.Parse(args); err != nil {
@@ -70,7 +76,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch {
 	case *targets:
 		return runTargets(data, stdout, stderr)
-	case !*compatOnly && refuseLossy(*in, data, stderr):
+	case !*compatOnly && refuseLossy(*in, data, *drop, *write, stderr):
 		return 1
 	case *check:
 		return runCheck(*in, data, stderr)
@@ -111,9 +117,10 @@ func convert(data []byte) ([]byte, error) {
 }
 
 // refuseLossy reports v1 data that has no v2 home and returns true when the
-// run must stop. Only v1 input is checked: a v2 file decodes strictly, so an
-// unknown key there already fails with E106.
-func refuseLossy(path string, data []byte, stderr io.Writer) bool {
+// run must stop. Keys listed in the -drop file are reported as dropped (or as
+// would-drop unless writing) and do not stop it. Only v1 input is checked: a v2
+// file decodes strictly, so an unknown key there already fails with E106.
+func refuseLossy(path string, data []byte, dropFile string, writing bool, stderr io.Writer) bool {
 	var raw map[string]json.RawMessage
 	if json.Unmarshal(data, &raw) != nil {
 		return false
@@ -121,18 +128,51 @@ func refuseLossy(path string, data []byte, stderr io.Writer) bool {
 	if v, ok := raw["manifest_version"]; ok && !manifestv2.IsV1Version(v) {
 		return false
 	}
+	dead, err := loadDropList(dropFile)
+	if err != nil {
+		say(stderr, "manifestv2migrate: %v\n", err)
+		return true
+	}
 	if keys := manifestv2.RegistryKeys(data); len(keys) > 0 {
 		say(stderr, "manifestv2migrate: %s: note: registry-owned key(s) removed on purpose (ADR 0008, release pipeline): %s\n", path, strings.Join(keys, ", "))
 	}
 	un, err := manifestv2.UnmappedV1Keys(data)
-	if err != nil || len(un) == 0 {
+	if err != nil {
 		return false
 	}
-	say(stderr, "manifestv2migrate: %s: refusing: %d v1 key%s with no v2 home would be dropped (nothing written):\n", path, len(un), map[bool]string{true: "", false: "s"}[len(un) == 1])
+	var drops, refused []manifestv2.Unmapped
 	for _, u := range un {
+		if dead[u.Key] {
+			drops = append(drops, u)
+		} else {
+			refused = append(refused, u)
+		}
+	}
+	if len(drops) > 0 {
+		verb := "would drop"
+		if writing && len(refused) == 0 {
+			verb = "dropping"
+		}
+		say(stderr, "manifestv2migrate: %s: %s %d dead v1 key%s listed in %s (no code reads them):\n", path, verb, len(drops), plural(len(drops)), dropFile)
+		for _, u := range drops {
+			say(stderr, "  %s\n", u)
+		}
+	}
+	if len(refused) == 0 {
+		return false
+	}
+	say(stderr, "manifestv2migrate: %s: refusing: %d v1 key%s with no v2 home would be dropped (nothing written):\n", path, len(refused), plural(len(refused)))
+	for _, u := range refused {
 		say(stderr, "  %s\n", u)
 	}
 	return true
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func runCheck(path string, data []byte, stderr io.Writer) int {

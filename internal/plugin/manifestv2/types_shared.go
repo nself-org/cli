@@ -144,9 +144,13 @@ type GraphQLBlock struct {
 	Entities     []GraphQLEntityKey `json:"entities,omitempty"`
 }
 
-// RestRoute is one entry of the v1 rest_routes key (read by apidocs).
+// RestRoute is one entry of the v1 rest_routes key (read by apidocs). Auth and
+// HMAC are optional additions that carry the v1 routes entries' auth scheme and
+// the name of the env var holding the webhook secret; released readers ignore them.
 type RestRoute struct {
 	Method  string `json:"method"`
 	Path    string `json:"path"`
 	Summary string `json:"summary,omitempty"`
+	Auth    string `json:"auth,omitempty"`
+	HMAC    string `json:"hmac,omitempty"`
 }

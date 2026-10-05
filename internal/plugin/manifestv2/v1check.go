@@ -81,8 +81,9 @@ var v1MappedKeys = func() map[string]bool {
 }()
 
 // UnmappedV1Keys lists the non-empty top-level keys of a v1 plugin.json that
-// the normalizer does not carry into v2 (config, hooks, actions, a v1 routes
-// list, notes, api_version, entry, env and so on), sorted by key. Registry-owned
+// the normalizer does not carry into v2 (config, hooks, actions, notes,
+// api_version, entry and so on, plus a routes, capabilities, env or env_vars
+// value whose shape does not convert losslessly), sorted by key. Registry-owned
 // keys (ForbiddenKeys) are not listed: ADR 0008 and the release pipeline own
 // them, see RegistryKeys. A null, empty string, empty list or empty object has
 // nothing to lose and is skipped.
@@ -91,10 +92,15 @@ func UnmappedV1Keys(data []byte) ([]Unmapped, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, invalid("plugin.json", "not a JSON object: "+err.Error())
 	}
+	blocked := mapExtras(raw).blocked
 	var out []Unmapped
 	for k, v := range raw {
 		lk := strings.ToLower(k)
-		if v1MappedKeys[lk] || in(ForbiddenKeys, k) {
+		if isExtraKey(k) {
+			if !blocked[k] {
+				continue
+			}
+		} else if v1MappedKeys[lk] || in(ForbiddenKeys, k) {
 			continue
 		}
 		if u, ok := describeValue(k, v); ok {

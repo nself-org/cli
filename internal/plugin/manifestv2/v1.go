@@ -80,6 +80,13 @@ func Normalize(data []byte) (*Manifest, error) {
 	if err := fillShared(m, &v); err != nil {
 		return nil, err
 	}
+	var raw map[string]json.RawMessage
+	_ = json.Unmarshal(data, &raw)
+	x := mapExtras(raw)
+	m.Capabilities, m.Env = x.Capabilities, x.Env
+	if len(m.RestRoutes) == 0 {
+		m.RestRoutes = x.RestRoutes
+	}
 	if state != "" {
 		if m.Deprecation == nil {
 			m.Deprecation = &Deprecation{}

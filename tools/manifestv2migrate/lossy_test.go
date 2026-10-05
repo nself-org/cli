@@ -119,3 +119,38 @@ func TestMigrateNeedsCategoryForV2(t *testing.T) {
 		t.Errorf("exit %d, stderr %q", code, stderr)
 	}
 }
+
+// v1 routes become rest_routes (method, path, auth, description as summary,
+// hmac); capabilities is carried. Neither refuses, and no data is lost.
+func TestMigrateMapsRoutesAndCapabilities(t *testing.T) {
+	in, _ := stableDoc(t, map[string]any{
+		"routes": []any{
+			map[string]any{"method": "POST", "path": "/check", "auth": "bearer"},
+			map[string]any{"method": "POST", "path": "/hook", "auth": "hmac", "hmac": "WEBHOOK_SECRET", "description": "Inbound webhook"},
+		},
+		"capabilities": []any{"crdt", "sync"},
+	})
+	code, _, stderr := runTool(t, "-in", in, "-write")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	var doc map[string]any
+	_ = json.Unmarshal(mustRead(t, in), &doc)
+	if _, bad := doc["routes"]; bad {
+		t.Error("v1 routes must not become the nginx routes key")
+	}
+	rr, _ := doc["rest_routes"].([]any)
+	if len(rr) != 2 {
+		t.Fatalf("rest_routes = %v", doc["rest_routes"])
+	}
+	second, _ := rr[1].(map[string]any)
+	if second["auth"] != "hmac" || second["hmac"] != "WEBHOOK_SECRET" || second["summary"] != "Inbound webhook" || second["path"] != "/hook" {
+		t.Errorf("second route = %v", second)
+	}
+	if caps, _ := doc["capabilities"].([]any); len(caps) != 2 {
+		t.Errorf("capabilities = %v", doc["capabilities"])
+	}
+	if code, _, e := runTool(t, "-in", in, "-check"); code != 0 {
+		t.Errorf("-check: %s", e)
+	}
+}
