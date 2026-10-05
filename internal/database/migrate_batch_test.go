@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -144,6 +145,9 @@ func TestMigrateUpDir_ChecksumMismatchStillFails(t *testing.T) {
 // failingDocker makes every query whose text contains match fail with exit 1.
 func failingDocker(t *testing.T, match string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake docker is a /bin/sh script; Windows cannot execute it")
+	}
 	bin := t.TempDir()
 	script := "#!/bin/sh\nfor last; do :; done\ncase \"$last\" in *'" + match + "'*) echo kaboom >&2; exit 1;; esac\nexit 0\n"
 	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755); err != nil {
