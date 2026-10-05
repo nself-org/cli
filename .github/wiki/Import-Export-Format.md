@@ -86,3 +86,6 @@ Object keys are arbitrary; member paths are not. `portable.StorageMember(bucket,
 ## Evolution
 
 Additive changes (a new optional field, a new `producer.source`) stay v1; readers ignore fields they do not know. A rename or removal is v2: readers refuse an unknown major with E515 and nothing is read.
+
+---
+[[Home]]
