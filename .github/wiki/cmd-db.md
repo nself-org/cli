@@ -135,6 +135,21 @@ Name must be lowercase alphanumeric with underscores or hyphens only.
 
 ---
 
+### Replacing raw psql migration scripts
+
+A loop such as `for f in migrations/*.sql; do psql -f "$f"; done` applies files with no ledger, no checksum and no rollback, and re-running it applies everything again. Use the CLI:
+
+```bash
+nself db migrate status                       # what is applied, what is pending
+nself db migrate up --dry-run                 # preview (writes nothing)
+nself db migrate up                           # apply, recorded and checksummed
+nself db migrate up --migration-dir ./sql     # an existing directory of SQL files
+```
+
+Files that were already applied by hand are listed as pending once; read `status` and the dry run before the first `up`. Take a backup first (`nself backup stream`, see [[cmd-backup]]). Never edit an applied migration: its checksum no longer matches. An advisory `nself doctor` hint for scripts that feed `migrations/` to raw `psql` is written but not yet wired (P7-SURF-11).
+
+---
+
 ## db seed
 
 Run seed data for the current environment.
@@ -155,6 +170,8 @@ nself db seed graph
 nself db backup [file]
 nself db backup list [--format table|json]
 ```
+
+`db backup` writes a local dump. For an encrypted off-box backup use `nself backup stream` (a project with no backup configuration gets its first encrypted backup with `NSELF_V15=1`; see [[cmd-backup]] for where the key lives and what losing it means).
 
 ---
 

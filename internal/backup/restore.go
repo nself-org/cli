@@ -1,15 +1,23 @@
 package backup
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
+	"time"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -35,6 +43,8 @@ func Restore(ctx context.Context, cfg *config.Config, opts RestoreOptions) error
 		backupDir = "./backups"
 	}
 
+	sweepStaleRestoreTemps(backupDir, restoreTempStaleAfter)
+
 	backupFile, err := resolveBackupFile(backupDir, opts.BackupID)
 	if err != nil {
 		return err
@@ -45,7 +55,7 @@ func Restore(ctx context.Context, cfg *config.Config, opts RestoreOptions) error
 	// Decrypt if needed.
 	workFile := backupFile
 	if strings.HasSuffix(backupFile, ".age") {
-		decrypted, err := decryptFile(ctx, backupFile, opts.DecryptKey)
+		decrypted, err := decryptFile(ctx, backupFile, opts.DecryptKey, cfg.ProjectName)
 		if err != nil {
 			return fmt.Errorf("decrypt backup: %w", err)
 		}
@@ -63,7 +73,7 @@ func Restore(ctx context.Context, cfg *config.Config, opts RestoreOptions) error
 	}
 
 	if restoreComponents["pg"] {
-		if err := restorePostgres(ctx, cfg, workFile, opts); err != nil {
+		if err := restorePostgres(ctx, cfg, workFile, backupFile, opts); err != nil {
 			return fmt.Errorf("restore postgres: %w", err)
 		}
 	}
@@ -118,21 +128,85 @@ func resolveBackupFile(backupDir, backupID string) (string, error) {
 	return "", fmt.Errorf("%w: %s", errs.ErrBackupNotFound, backupID)
 }
 
-func decryptFile(ctx context.Context, path, keyPath string) (string, error) {
+// randRead is the temp name source; tests replace it.
+var randRead = rand.Read
+
+// restoreTempRe is exactly the name decryptFile gives its plaintext temp.
+var restoreTempRe = regexp.MustCompile(`^\.nself-restore-[0-9a-f]{16}\.dec$`)
+
+// restoreTempStaleAfter is how old a leftover plaintext temp must be before the
+// sweep at restore start removes it (a killed restore cannot clean up itself).
+var restoreTempStaleAfter = time.Hour
+
+// sweepStaleRestoreTemps removes plaintext temps of ours that an earlier,
+// killed restore left in dir: named .nself-restore-*.dec, regular, 0600, owned
+// by this user, older than olderThan. Anything else is never touched.
+func sweepStaleRestoreTemps(dir string, olderThan time.Duration) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		n := e.Name()
+		if !restoreTempRe.MatchString(n) {
+			continue
+		}
+		p := filepath.Join(dir, n)
+		fi, err := os.Lstat(p)
+		if err != nil || !fi.Mode().IsRegular() || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) || !ownedByCurrentUser(fi) || time.Since(fi.ModTime()) < olderThan {
+			continue
+		}
+		slog.Warn("removing a stale decrypted restore temp", "file", p)
+		_ = os.Remove(p)
+	}
+}
+
+func decryptFile(ctx context.Context, path, keyPath, project string) (string, error) {
 	if keyPath == "" {
-		keyPath = filepath.Join(os.Getenv("HOME"), ".config", "nself", "age-key.txt")
+		// compat.V15(P7-PROD-08): age-key.txt only -> shared identity search, E223 when none
+		if compat.V15() {
+			var err error
+			if keyPath, err = DefaultIdentity(project, "--decrypt-key"); err != nil {
+				return "", err
+			}
+		} else {
+			keyPath = filepath.Join(os.Getenv("HOME"), ".config", "nself", "age-key.txt")
+		}
 	}
 
-	decrypted := strings.TrimSuffix(path, ".age") + ".dec"
-	args := []string{"-d", "-i", keyPath, "-o", decrypted, path}
-	cmd := exec.CommandContext(ctx, "age", args...)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("%w: %s", errs.ErrBackupDecryptFailed, string(output))
+	// The plaintext dump is created 0600 by us (never by age's default mode)
+	// and removed on every path that does not hand it to the caller.
+	// A fresh unique 0600 file next to the backup, named .nself-restore-<16 hex>.dec;
+	// an existing <backup>.dec is never touched.
+	var out *os.File
+	var err error
+	for i := 0; i < 8; i++ {
+		var b [8]byte
+		if _, err = randRead(b[:]); err != nil { // fail closed: never fall back to a guessable name
+			break
+		}
+		out, err = os.OpenFile(filepath.Join(filepath.Dir(path), ".nself-restore-"+hex.EncodeToString(b[:])+".dec"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil || !errors.Is(err, os.ErrExist) {
+			break
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("%w: create temp file: %v", errs.ErrBackupDecryptFailed, err)
+	}
+	decrypted := out.Name()
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "age", "-d", "-i", keyPath, path)
+	cmd.Stdout, cmd.Stderr = out, &stderr
+	runErr := cmd.Run()
+	closeErr := out.Close()
+	if runErr != nil || closeErr != nil {
+		_ = os.Remove(decrypted)
+		return "", fmt.Errorf("%w: %s %v", errs.ErrBackupDecryptFailed, strings.TrimSpace(stderr.String()), errors.Join(runErr, closeErr))
 	}
 	return decrypted, nil
 }
 
-func restorePostgres(ctx context.Context, cfg *config.Config, backupFile string, opts RestoreOptions) error {
+func restorePostgres(ctx context.Context, cfg *config.Config, backupFile, origName string, opts RestoreOptions) error {
 	container := cfg.ProjectName + "_postgres"
 	user := cfg.Postgres.User
 	if user == "" {
@@ -144,7 +218,7 @@ func restorePostgres(ctx context.Context, cfg *config.Config, backupFile string,
 	}
 
 	// If it's a pg_dump custom format, use pg_restore.
-	if strings.HasSuffix(backupFile, ".dump") {
+	if strings.HasSuffix(strings.TrimSuffix(origName, ".age"), ".dump") {
 		return restorePgDump(ctx, container, user, db, backupFile)
 	}
 
@@ -182,12 +256,10 @@ func restorePgDump(ctx context.Context, container, user, db, backupFile string) 
 
 	errOutput, _ := io.ReadAll(stderr)
 	if err := cmd.Wait(); err != nil {
-		// pg_restore returns non-zero on warnings too; only fail on real errors.
-		errStr := string(errOutput)
-		if strings.Contains(errStr, "FATAL") || strings.Contains(errStr, "could not") {
-			return fmt.Errorf("%w: %s", errs.ErrBackupRestoreFailed, errStr)
+		if ctx.Err() != nil { // cancelled (SIGINT/SIGTERM): a killed restore is not a warning
+			return fmt.Errorf("%w: %v", errs.ErrBackupRestoreFailed, ctx.Err())
 		}
-		slog.Warn("pg_restore completed with warnings", "output", errStr)
+		return restoreVerdict(string(errOutput))
 	}
 
 	return nil

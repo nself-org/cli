@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/nself-org/cli/internal/backup/destinations"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
@@ -33,11 +34,18 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 		return fmt.Errorf("--from destination required")
 	}
 
-	if keyPath == "" {
-		keyPath = filepath.Join(os.Getenv("HOME"), ".config", "nself", "age-key.txt")
-	}
-
 	encrypted := strings.HasSuffix(from, ".age")
+	if encrypted && keyPath == "" {
+		// compat.V15(P7-PROD-08): age-key.txt only -> shared identity search, E223 when none
+		if compat.V15() {
+			var err error
+			if keyPath, err = DefaultIdentity(cfg.ProjectName, "--key"); err != nil {
+				return err
+			}
+		} else {
+			keyPath = filepath.Join(os.Getenv("HOME"), ".config", "nself", "age-key.txt")
+		}
+	}
 
 	// Native destinations (path://, host://) stream through the Destination
 	// interface; only rclone remotes need the rclone binary.
@@ -196,12 +204,9 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 		}
 		errOut, _ := io.ReadAll(stderr)
 		if err := cmd.Wait(); err != nil {
-			errStr := string(errOut)
-			if strings.Contains(errStr, "FATAL") || strings.Contains(errStr, "could not") {
+			if verr := restoreVerdict(string(errOut)); verr != nil {
 				cancel()
-				errc <- fmt.Errorf("%w: %s", errs.ErrBackupRestoreFailed, strings.TrimSpace(errStr))
-			} else if errStr != "" {
-				slog.Warn("pg_restore warnings", "output", strings.TrimSpace(errStr))
+				errc <- verr
 			}
 		}
 	}()

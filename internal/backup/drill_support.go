@@ -17,14 +17,18 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/backup/destinations"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -52,14 +56,7 @@ func resolveIdentity(project, flag string) (string, error) {
 		}
 		return flag, nil
 	}
-	home, _ := os.UserHomeDir()
-	for _, n := range []string{project + "-backup-age.key", "age-key.txt"} {
-		p := filepath.Join(home, ".config", "nself", n)
-		if _, err := os.Stat(p); err == nil {
-			return p, nil
-		}
-	}
-	return "", fmt.Errorf("%w: no age identity found; pass --identity <file>", errs.ErrBackupDecryptFailed)
+	return DefaultIdentity(project, "--identity")
 }
 
 func decryptAge(ctx context.Context, identity, in, out string) error {
@@ -186,4 +183,116 @@ func problemText(err error) string {
 		return fmt.Sprintf("[%s] %s", ce.Code, ce.What)
 	}
 	return err.Error()
+}
+
+// identityRecipient runs age-keygen -y on an identity file and returns its
+// public key. The secret never reaches this process. A missing age-keygen is
+// reported as that, never as a bad key: the file was not checked.
+func identityRecipient(path string) (string, error) {
+	bin, err := exec.LookPath("age-keygen")
+	if err != nil {
+		return "", errs.Wrap("E222", "age-keygen is not installed, so the identity "+path+" could not be checked; it was left untouched and may be fine (install age and retry)", err)
+	}
+	out, err := exec.Command(bin, "-y", path).Output()
+	pub := strings.TrimSpace(string(out))
+	if err != nil || !strings.HasPrefix(pub, "age1") {
+		return "", errs.Newf("E222", "the backup identity %s is not a usable age identity; it was left untouched", path)
+	}
+	return pub, nil
+}
+
+// DefaultIdentity finds the identity to decrypt with when no key flag was
+// given: <project>-age.key (init-key and the auto identity), then
+// <project>-backup-age.key, then age-key.txt, under ~/.config/nself. Each
+// candidate that exists must be a regular, non-symlink file that parses as an
+// age identity, otherwise E222 names it. None found is E223 naming flag, the
+// command's own key flag. An explicit key path never comes through here.
+func DefaultIdentity(project, flag string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", errs.Wrap("E223", "cannot find the home directory to look for the backup identity", err)
+	}
+	dir := filepath.Join(home, ".config", "nself")
+	names := []string{"age-key.txt"}
+	if project != "" && project == filepath.Base(project) && !strings.HasPrefix(project, ".") {
+		names = []string{project + "-age.key", project + "-backup-age.key", "age-key.txt"}
+	}
+	for _, n := range names {
+		p := filepath.Join(dir, n)
+		fi, err := os.Lstat(p)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", errs.Wrap("E222", "cannot inspect the backup identity "+p, err)
+		}
+		if !fi.Mode().IsRegular() {
+			return "", errs.Newf("E222", "the default backup identity %s is not a regular file (symlinks are refused); pass %s <file> to use another", p, flag)
+		}
+		if _, err := identityRecipient(p); err != nil {
+			return "", err
+		}
+		return p, nil
+	}
+	return "", NewIdentityMissing(filepath.Join(dir, names[0]), flag)
+}
+
+// NewIdentityMissing is the E223 error for a decrypt that has no identity;
+// flag is the key flag of the command that failed.
+func NewIdentityMissing(path, flag string) error {
+	return errs.Newf("E223", "the backup identity is missing: %s (pass %s <file>, or restore the file from your off-host copy)", path, flag)
+}
+
+// linkOnlyOurTemp reports whether fi has exactly two links and the other is a
+// sibling named like publishKey's temp file (same inode, same 0700 directory).
+func linkOnlyOurTemp(path string, fi os.FileInfo) bool {
+	if linkCount(fi) != 2 {
+		return false
+	}
+	dir, pre := filepath.Dir(path), "."+filepath.Base(path)+".tmp-"
+	// The temp-name test only means something in a directory nobody else can
+	// write: a real directory, 0700, ours. Check it here, whoever the caller is.
+	di, err := os.Lstat(dir)
+	if err != nil || !di.IsDir() || !ownedByCurrentUser(di) || (runtime.GOOS != "windows" && di.Mode().Perm()&0o077 != 0) {
+		return false
+	}
+	ents, _ := os.ReadDir(dir)
+	for _, e := range ents {
+		if si, err := os.Lstat(filepath.Join(dir, e.Name())); err == nil && strings.HasPrefix(e.Name(), pre) && os.SameFile(fi, si) {
+			return true
+		}
+	}
+	return false
+}
+
+// linkCount is the file's hard-link count; 1 where the platform does not say.
+func linkCount(fi os.FileInfo) uint64 {
+	v := reflect.ValueOf(fi.Sys())
+	if v.Kind() == reflect.Pointer && !v.IsNil() {
+		if n := v.Elem().FieldByName("Nlink"); n.IsValid() && n.CanUint() {
+			return n.Uint()
+		}
+	}
+	return 1
+}
+
+// restoreVerdict is the one rule for a non-zero pg_restore exit, shared by
+// restore and restore-remote (the drill applies the same fatalRestoreText).
+// v1.5: any "error:" line not on allowedRestoreErrors fails. v1.4: only FATAL
+// or "could not" fails, and unlisted error lines are logged with their count
+// and first lines.
+func restoreVerdict(stderr string) error {
+	stderr = strings.TrimSpace(stderr)
+	t := fatalRestoreText("pg_restore", stderr)
+	// compat.V15(P7-PROD-08): only FATAL or "could not" fails -> any unlisted pg_restore error: line fails
+	if compat.V15() && t != "" {
+		return fmt.Errorf("%w: %s", errs.ErrBackupRestoreFailed, t)
+	} else if t != "" && strings.Contains(strings.ToLower(t), "error:") {
+		slog.Warn("pg_restore reported errors; this restore may be incomplete (v1.5 fails on them)", "errors", strings.Count(t, "; ")+1, "first", fmt.Sprintf("%.300s", t))
+	}
+	if strings.Contains(stderr, "FATAL") || strings.Contains(stderr, "could not") {
+		return fmt.Errorf("%w: %s", errs.ErrBackupRestoreFailed, stderr)
+	}
+	slog.Warn("pg_restore completed with warnings", "output", stderr)
+	return nil
 }
