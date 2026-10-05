@@ -143,7 +143,7 @@ func (f *File) mergeFragment(fsys fs.FS, name string, verbs map[string]bool) []s
 		f.origin["commands:"+k] = name
 		f.Commands[k] = e
 	}
-	p = append(p, fr.Rows.validate(name+": ")...)
+	p = append(p, fr.validate(name+": ")...)
 	p = append(p, f.mergeRows(name, fr.Rows)...)
 	return p
 }
