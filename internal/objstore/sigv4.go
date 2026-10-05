@@ -31,6 +31,15 @@ type Signer struct {
 	Service   string
 }
 
+// String and GoString hide the secret, so a Signer in a log line or a %+v
+// never prints it.
+func (s Signer) String() string {
+	return "objstore.Signer{AccessKey: " + s.AccessKey + ", SecretKey: [redacted], Region: " + s.Region + "}"
+}
+
+// GoString is String for %#v.
+func (s Signer) GoString() string { return s.String() }
+
 // Sign sets X-Amz-Date, (for s3) X-Amz-Content-Sha256 and Authorization on
 // req. payloadSHA256 is the lowercase hex SHA-256 of the body, or
 // "UNSIGNED-PAYLOAD". Every header already on req, plus Host, is signed.
@@ -110,31 +119,40 @@ func canonicalHeaders(req *http.Request) ([]string, string) {
 	return names, b.String()
 }
 
-// canonicalURI encodes the decoded path once (s3) or twice (other services).
+// canonicalURI builds the canonical path from the request's escaped path
+// (URL.EscapedPath, so an encoded slash %2F stays inside its segment): each
+// segment is percent-decoded and encoded again once (s3) or twice (other
+// services). Decoding never turns "+" into a space.
 func (s Signer) canonicalURI(u *url.URL) string {
-	p := u.Path
+	p := u.EscapedPath()
 	if p == "" {
 		p = "/"
 	}
-	enc := uriEncode(p, false)
-	if s.Service != "s3" {
-		enc = uriEncode(enc, false)
+	segs := strings.Split(p, "/")
+	for i, seg := range segs {
+		segs[i] = uriEncode(pctDecode(seg), true)
+		if s.Service != "s3" {
+			segs[i] = uriEncode(segs[i], true)
+		}
 	}
-	return enc
+	return strings.Join(segs, "/")
 }
 
 // canonicalQuery sorts the query by encoded name then value and re-encodes it.
+// The raw query is split on "&" and "=" and percent-decoded without form
+// decoding: a literal "+" is a plus sign (encoded %2B), not a space.
 func canonicalQuery(raw string) string {
 	if raw == "" {
 		return ""
 	}
-	q, _ := url.ParseQuery(raw)
 	type kv struct{ k, v string }
 	var pairs []kv
-	for k, vs := range q {
-		for _, v := range vs {
-			pairs = append(pairs, kv{uriEncode(k, true), uriEncode(v, true)})
+	for _, part := range strings.Split(raw, "&") {
+		if part == "" {
+			continue
 		}
+		k, v, _ := strings.Cut(part, "=")
+		pairs = append(pairs, kv{uriEncode(pctDecode(k), true), uriEncode(pctDecode(v), true)})
 	}
 	sort.Slice(pairs, func(i, j int) bool {
 		if pairs[i].k != pairs[j].k {
@@ -147,6 +165,38 @@ func canonicalQuery(raw string) string {
 		parts[i] = p.k + "=" + p.v
 	}
 	return strings.Join(parts, "&")
+}
+
+// pctDecode decodes every valid %XX escape in s and leaves everything else,
+// including "+" and a "%" that is not followed by two hex digits, as it is.
+func pctDecode(s string) string {
+	if !strings.Contains(s, "%") {
+		return s
+	}
+	b := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '%' && i+2 < len(s) && isHex(s[i+1]) && isHex(s[i+2]) {
+			b = append(b, unhex(s[i+1])<<4|unhex(s[i+2]))
+			i += 2
+			continue
+		}
+		b = append(b, s[i])
+	}
+	return string(b)
+}
+
+func isHex(c byte) bool {
+	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
+}
+
+func unhex(c byte) byte {
+	switch {
+	case c >= '0' && c <= '9':
+		return c - '0'
+	case c >= 'a' && c <= 'f':
+		return c - 'a' + 10
+	}
+	return c - 'A' + 10
 }
 
 // uriEncode percent-encodes every byte except A-Z a-z 0-9 - _ . ~ (and '/'

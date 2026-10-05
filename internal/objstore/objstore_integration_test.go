@@ -216,6 +216,24 @@ func exercise(ctx context.Context, t *testing.T, endpoint, mode string) {
 		}
 	}
 
+	// A key with U+0001 cannot sit in an XML body; listing asks for url
+	// encoding, so the bucket still lists and the key decodes exactly.
+	const ctlKey = "ctl\x01/key \x7f+x"
+	if err := c.Put(ctx, bucket, ctlKey, strings.NewReader("c"), 1); err != nil {
+		t.Fatalf("Put(control character key): %v", err)
+	}
+	if got, err := c.List(ctx, bucket, ""); err != nil || len(got) != len(keys)+1 {
+		t.Fatalf("List with a U+0001 key: %d objects (err %v), want %d", len(got), err, len(keys)+1)
+	} else {
+		found := false
+		for _, o := range got {
+			found = found || o.Key == ctlKey
+		}
+		if !found {
+			t.Errorf("the control-character key is missing or mangled in the listing")
+		}
+	}
+
 	err = parallel(8, keys, func(i int, k string) error {
 		rc, err := c.Get(ctx, bucket, k)
 		if err != nil {

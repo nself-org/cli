@@ -61,7 +61,7 @@ func (f *fakeS3) verify(r *http.Request, payload string) bool {
 		}
 	}
 	u := &url.URL{Scheme: "http", Host: r.Host, RawQuery: r.URL.RawQuery}
-	u.Path = r.URL.Path
+	u.Path, u.RawPath = r.URL.Path, r.URL.RawPath
 	chk, _ := http.NewRequest(r.Method, u.String(), nil)
 	for _, h := range strings.Split(signedList, ";") {
 		if h != "host" && h != "x-amz-date" && h != "x-amz-content-sha256" {
@@ -163,14 +163,22 @@ func (f *fakeS3) list(w http.ResponseWriter, r *http.Request, objs map[string][]
 	} else {
 		end = len(keys)
 	}
+	encoded := q.Get("encoding-type") == "url"
 	var b strings.Builder
 	b.WriteString(`<?xml version="1.0"?><ListBucketResult><IsTruncated>` + strconv.FormatBool(next != "") + `</IsTruncated>`)
+	if encoded {
+		b.WriteString("<EncodingType>url</EncodingType>")
+	}
 	if next != "" {
 		b.WriteString("<NextContinuationToken>" + next + "</NextContinuationToken>")
 	}
 	for _, k := range keys[start:end] {
 		var esc strings.Builder
-		_ = xml.EscapeText(&esc, []byte(k))
+		if encoded {
+			esc.WriteString(url.QueryEscape(k)) // AWS style: space is "+", plus is %2B
+		} else {
+			_ = xml.EscapeText(&esc, []byte(k))
+		}
 		fmt.Fprintf(&b, "<Contents><Key>%s</Key><Size>%d</Size><ETag>\"e\"</ETag></Contents>", esc.String(), len(objs[k]))
 	}
 	b.WriteString("</ListBucketResult>")

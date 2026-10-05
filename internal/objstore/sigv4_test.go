@@ -94,9 +94,19 @@ func TestURIEncode(t *testing.T) {
 			t.Errorf("uriEncode(%q,%v) = %q, want %q", c.in, c.slash, got, c.want)
 		}
 	}
-	// Query values: sorted, re-encoded, '+' kept distinct from space.
-	if got, want := canonicalQuery("b=2&a=x+y&a=%2B&c="), "a=%2B&a=x%20y&b=2&c="; got != want {
-		t.Errorf("canonicalQuery = %q, want %q", got, want)
+	// Query values: sorted, re-encoded, no form decoding: a literal '+' is a
+	// plus (%2B), a space arrives as %20; a stray '%' is itself.
+	for in, want := range map[string]string{
+		"b=2&a=x+y&a=%2B&c=": "a=%2B&a=x%2By&b=2&c=",
+		"prefix=a+b":         "prefix=a%2Bb",
+		"prefix=a%20b":       "prefix=a%20b",
+		"k=100%&j=%zz&e":     "e=&j=%25zz&k=100%25",
+		"a=1&&b=2":           "a=1&b=2",
+		"x=%E2%82%AC&x=%e2":  "x=%E2&x=%E2%82%AC",
+	} {
+		if got := canonicalQuery(in); got != want {
+			t.Errorf("canonicalQuery(%q) = %q, want %q", in, got, want)
+		}
 	}
 	if _, err := url.ParseQuery("continuation-token=" + uriEncode("a+b/c=d%e", true)); err != nil {
 		t.Error(err)

@@ -63,8 +63,10 @@ func (c *Client) apiError(op string, resp *http.Response) error {
 		Message string `xml:"Message"`
 	}
 	if xml.Unmarshal(raw, &x) == nil {
-		e.Code = oneLine(x.Code, 80)
-		e.Message = c.redact(oneLine(x.Message, 300))
+		// Redact first: truncating first could cut a secret in two and leak
+		// its first half.
+		e.Code = oneLine(c.redact(x.Code), 80)
+		e.Message = oneLine(c.redact(x.Message), 300)
 	}
 	return e
 }

@@ -4,32 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"sort"
-	"strconv"
 )
-
-// maxListBody bounds one ListObjectsV2 response.
-const maxListBody = 64 << 20
-
-// Object is one listed object.
-type Object struct {
-	Key  string
-	Size int64
-	ETag string
-}
-
-// Page is one ListObjectsV2 page.
-type Page struct {
-	Objects []Object
-	// NextToken is the continuation token of the next page; empty when done.
-	NextToken string
-}
 
 // EnsureBucket creates the bucket when it does not exist (HEAD, then PUT).
 // Success when it already exists or another caller created it first.
@@ -205,85 +185,4 @@ func (c *Client) Get(ctx context.Context, bucket, key string) (io.ReadCloser, er
 		return nil, c.apiError("get", resp)
 	}
 	return resp.Body, nil
-}
-
-type listResult struct {
-	IsTruncated bool   `xml:"IsTruncated"`
-	NextToken   string `xml:"NextContinuationToken"`
-	Contents    []struct {
-		Key  string `xml:"Key"`
-		Size int64  `xml:"Size"`
-		ETag string `xml:"ETag"`
-	} `xml:"Contents"`
-}
-
-// ListPage returns one ListObjectsV2 page for prefix, starting at token ("" for
-// the first page). The continuation token is URL-encoded on the wire.
-func (c *Client) ListPage(ctx context.Context, bucket, prefix, token string) (Page, error) {
-	if err := checkBucket(bucket); err != nil {
-		return Page{}, err
-	}
-	q := [][2]string{{"list-type", "2"}}
-	if prefix != "" {
-		q = append(q, [2]string{"prefix", prefix})
-	}
-	if token != "" {
-		q = append(q, [2]string{"continuation-token", token})
-	}
-	if c.PageSize > 0 {
-		q = append(q, [2]string{"max-keys", strconv.Itoa(c.PageSize)})
-	}
-	req, err := c.build(ctx, http.MethodGet, bucket, "", q, emptySHA256)
-	if err != nil {
-		return Page{}, err
-	}
-	resp, err := c.send(ctx, "list", req)
-	if err != nil {
-		return Page{}, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return Page{}, c.apiError("list", resp)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	var lr listResult
-	if err := xml.NewDecoder(io.LimitReader(resp.Body, maxListBody)).Decode(&lr); err != nil {
-		return Page{}, fmt.Errorf("objstore: list: cannot parse response: %w", err)
-	}
-	p := Page{Objects: make([]Object, 0, len(lr.Contents))}
-	for _, o := range lr.Contents {
-		p.Objects = append(p.Objects, Object{Key: o.Key, Size: o.Size, ETag: o.ETag})
-	}
-	if lr.IsTruncated {
-		if lr.NextToken == "" {
-			return Page{}, errors.New("objstore: list: truncated response without a continuation token")
-		}
-		p.NextToken = lr.NextToken
-	}
-	return p, nil
-}
-
-// List returns every object under prefix, sorted by key, following
-// continuation tokens. A repeated token (a server that never advances) is an
-// error, not an endless loop.
-func (c *Client) List(ctx context.Context, bucket, prefix string) ([]Object, error) {
-	var all []Object
-	seen := map[string]bool{}
-	token := ""
-	for {
-		p, err := c.ListPage(ctx, bucket, prefix, token)
-		if err != nil {
-			return nil, err
-		}
-		all = append(all, p.Objects...)
-		if p.NextToken == "" {
-			break
-		}
-		if seen[p.NextToken] {
-			return nil, errors.New("objstore: list: server repeated a continuation token")
-		}
-		seen[p.NextToken] = true
-		token = p.NextToken
-	}
-	sort.Slice(all, func(i, j int) bool { return all[i].Key < all[j].Key })
-	return all, nil
 }

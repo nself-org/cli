@@ -244,13 +244,15 @@ func TestPutBodyLengthMismatch(t *testing.T) {
 		if err := c.Put(ctx, "bkt-one", "k2", strings.NewReader("12"), 5); err == nil {
 			t.Errorf("tls=%v: body shorter than size must fail", tls)
 		}
+		srv.Close() // waits for the handlers, so the reads below do not race
+		fake.mu.Lock()
 		if _, short := fake.buckets["bkt-one"]["k2"]; short {
 			t.Errorf("tls=%v: a short body must not be stored", tls)
 		}
 		if tls && len(fake.buckets["bkt-one"]) != 0 {
 			t.Error("a mismatched signed body must not be stored")
 		}
-		srv.Close()
+		fake.mu.Unlock()
 	}
 }
 

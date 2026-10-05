@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -20,9 +21,13 @@ import (
 //
 // Inputs: Endpoint is scheme://host[:port] with no userinfo, path or query;
 // Region defaults to "us-east-1" when empty; AccessKey and SecretKey are the
-// credentials (the secret never appears in an error). PageSize caps keys per
-// List page (0 = server default). HTTP defaults to httptimeout.NoProxy with the
-// backup timeout; Now defaults to time.Now (tests pin it).
+// credentials (the secret never appears in an error, in String or in %#v).
+// PageSize caps keys per List page (0 = server default); MaxListPages and
+// MaxListObjects bound List (0 = DefaultMaxListPages and DefaultMaxListObjects).
+// HTTP defaults to a shared no-proxy, no-redirect client with dial, TLS and
+// response-header timeouts and no whole-request timeout, so a large object can
+// take as long as it needs: bound a call with its context. Now defaults to
+// time.Now (tests pin it).
 // Constraints: a PUT streams with UNSIGNED-PAYLOAD only over plain http to a
 // loopback endpoint; every other PUT is signed over the payload hash.
 type Client struct {
@@ -31,6 +36,9 @@ type Client struct {
 	AccessKey string
 	SecretKey string
 	PageSize  int
+
+	MaxListPages   int
+	MaxListObjects int
 
 	HTTP *http.Client
 	Now  func() time.Time
@@ -41,11 +49,42 @@ var bucketRe = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
 // maxKeyBytes is the S3 key limit.
 const maxKeyBytes = 1024
 
+// String hides the secret key; Client is often printed whole.
+func (c Client) String() string {
+	return "objstore.Client{Endpoint: " + c.Endpoint + ", Region: " + c.Region + ", AccessKey: " + c.AccessKey + ", SecretKey: [redacted]}"
+}
+
+// GoString is String for %#v.
+func (c Client) GoString() string { return c.String() }
+
+var (
+	defaultHTTPOnce sync.Once
+	defaultHTTP     *http.Client
+)
+
+// headerTimeout is how long the server may take to start its response once the
+// request is fully sent (a PUT answers after the whole body arrived).
+func headerTimeout() time.Duration { return httptimeout.Backup.Timeout }
+
+// sharedHTTP returns the default client: no proxy, no redirects (so the
+// credentials reach only the checked host), and timeouts on dialing, the TLS
+// handshake and the response header instead of a deadline on the whole request.
+func sharedHTTP() *http.Client {
+	defaultHTTPOnce.Do(func() {
+		cl := httptimeout.NoProxy(0)
+		if tr, ok := cl.Transport.(*http.Transport); ok {
+			tr.ResponseHeaderTimeout = headerTimeout()
+		}
+		defaultHTTP = cl
+	})
+	return defaultHTTP
+}
+
 func (c *Client) httpClient() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
-	return httptimeout.NoProxy(httptimeout.Backup.Timeout)
+	return sharedHTTP()
 }
 
 func (c *Client) now() time.Time {
