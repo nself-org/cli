@@ -189,10 +189,14 @@ These errors come from the command line itself: usage, JSON support, destructive
 
 ## Reconcile and locks (E450-E479)
 
-Operation-lock codes. The other codes in this block are documented here when their Tickets register them.
+Change-plan (E450) and operation-lock (E460) codes. The other codes in this block are documented here when their Tickets register them.
 
 | Code | Exit | Summary | Why | Fix |
 |------|------|---------|-----|-----|
+| <a id="e450"></a>E450 | 1 | Plan id does not match | The plan you confirmed no longer matches what this command would change, because an input changed or the plan id is not one this project produces. | Re-run nself build --plan and pass the new plan_id. |
+| <a id="e451"></a>E451 | 1 | Plan id cannot bind generated secrets | This build generates secrets, and random values cannot be reproduced from a plan id. | Set the secrets in .env.secrets first, or run nself build and confirm at the prompt (or with --yes, without --plan-id). |
+| <a id="e452"></a>E452 | 1 | Planned files were not written | After the build, a file the confirmed plan listed is missing, has other content, or has another mode. | Re-run nself build --plan to see what differs, then run nself build again; check that the project is writable. |
+| <a id="e453"></a>E453 | 1 | Plan id cannot bind plugin changes | The plan installs or removes plugins, and what those change is only known after they run, so a plan id cannot describe the final render. | Run nself build --yes without --plan-id (the render after the plugin changes is printed and held), or install or remove the plugins first. |
 | <a id="e460"></a>E460 | 1 | Project operation lock held | Another nself command is changing this project and holds its operation lock. | Wait for the running nself command to finish, or stop it, then run this command again. |
 
 ---

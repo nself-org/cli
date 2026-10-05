@@ -74,6 +74,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	noAutoRedis, _ := cmd.Flags().GetBool("no-auto-redis")
 	removeOrphans, _ := cmd.Flags().GetBool("remove-orphans")
 	hosts, _ := cmd.Flags().GetBool("hosts")
+	pf := readBuildPlanFlags(cmd)
+	if pf.plan && check {
+		return fmt.Errorf("--plan and --check cannot be combined: --check validates and writes nothing, --plan shows the changes")
+	}
+	// A plan on stdout, or the JSON envelope, must be the only stdout content.
+	if pf.plan || pf.json {
+		quiet = true
+	}
 
 	// ── Profile resolution ────────────────────────────────────────────
 	// Priority: --profile flag > NSELF_PROFILE env var > default ("app").
@@ -102,7 +110,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	// ── Plugin lifecycle: dormant banner + auto-remove expired plugins ───────
 	// Run before the main build so users see warnings early. Auto-removal only
 	// happens during build (not start) to keep start fast and non-destructive.
-	runPluginLifecycleCheck(quiet, remoteDeploy)
+	// The step removes expired plugins, so neither --plan nor --check (which
+	// validate and write nothing) runs it; an apply runs it after the
+	// confirmation (runBuildApply).
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -189,7 +199,15 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		RemoteDeploy:   remoteDeploy,
 	}
 
-	result, err := build.Build(workdir, opts)
+	if pf.plan {
+		return runBuildPlan(cmd, workdir, opts, pf, removeOrphans)
+	}
+	var result *build.BuildResult
+	if check {
+		result, err = build.Build(workdir, opts)
+	} else {
+		result, err = runBuildApply(cmd, workdir, opts, pf, force, removeOrphans, quiet)
+	}
 	if err != nil {
 		ui.Error(fmt.Sprintf("Build failed: %v", err))
 		return err

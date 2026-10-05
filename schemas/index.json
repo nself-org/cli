@@ -10,6 +10,10 @@
       "id": "urn:nself:cli:schema:command-registry:v1"
     },
     {
+      "path": "commands/build.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:build:v1"
+    },
+    {
       "path": "commands/config-get.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:config-get:v1"
     },

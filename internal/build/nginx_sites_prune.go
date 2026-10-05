@@ -54,6 +54,20 @@ const maxNginxSitesBackups = 5
 // last maxNginxSitesBackups. A no-op (returns nil) when sitesDir does not
 // exist yet or is empty — there is nothing to protect on a first build.
 func backupNginxSites(workdir, sitesDir string) error {
+	return backupNginxSitesVia(newDiskSink(workdir), workdir, sitesDir)
+}
+
+// backupBeforeWrite is a test seam run after the backup root is checked and
+// opened and before the first write.
+var backupBeforeWrite func()
+
+// backupNginxSitesVia is backupNginxSites for a build that may be held to a
+// confirmed render: sink (an expectSink) is asked whether a backup is allowed at
+// all, and every write and removal then goes through os.Root on the project
+// directory, so no component of the path can be swapped for a symlink that
+// leaves the project between the check and the write (review round 4). checkBackupRoot
+// stays for a clear error.
+func backupNginxSitesVia(sink Sink, workdir, sitesDir string) error {
 	entries, err := os.ReadDir(sitesDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -64,10 +78,25 @@ func backupNginxSites(workdir, sitesDir string) error {
 	if len(entries) == 0 {
 		return nil
 	}
-
-	backupsRoot := filepath.Join(workdir, ".nself", "backups")
-	dest := filepath.Join(backupsRoot, "nginx-sites-"+time.Now().UTC().Format("20060102-150405"))
-	if err := os.MkdirAll(dest, 0755); err != nil {
+	if g, ok := sink.(interface{ allowBackup() error }); ok {
+		if err := g.allowBackup(); err != nil {
+			return err
+		}
+	}
+	if err := checkBackupRoot(workdir); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(workdir)
+	if err != nil {
+		return fmt.Errorf("opening the project for the nginx/sites backup: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+	if backupBeforeWrite != nil {
+		backupBeforeWrite()
+	}
+	backups := filepath.Join(".nself", "backups")
+	dest := filepath.Join(backups, "nginx-sites-"+time.Now().UTC().Format("20060102-150405"))
+	if err := root.MkdirAll(dest, 0755); err != nil {
 		return fmt.Errorf("creating nginx/sites backup dir %s: %w", dest, err)
 	}
 	for _, e := range entries {
@@ -79,27 +108,47 @@ func backupNginxSites(workdir, sitesDir string) error {
 		if readErr != nil {
 			return fmt.Errorf("backing up %s: %w", src, readErr)
 		}
-		if writeErr := os.WriteFile(filepath.Join(dest, e.Name()), content, 0644); writeErr != nil {
+		if writeErr := root.WriteFile(filepath.Join(dest, e.Name()), content, 0644); writeErr != nil {
 			return fmt.Errorf("writing backup %s: %w", filepath.Join(dest, e.Name()), writeErr)
 		}
 	}
-
-	return pruneOldNginxSitesBackups(backupsRoot)
+	return pruneBackupsIn(root, backups)
 }
 
 // pruneOldNginxSitesBackups keeps only the newest maxNginxSitesBackups
-// "nginx-sites-*" snapshots under backupsRoot, removing the rest. The
+// "nginx-sites-*" snapshots under workdir/.nself/backups, opened through os.Root on workdir, removing the rest. The
 // timestamp suffix (YYYYMMDD-HHMMSS) is lexicographically sortable, so a
 // plain name sort orders oldest-first.
-func pruneOldNginxSitesBackups(backupsRoot string) error {
-	entries, err := os.ReadDir(backupsRoot)
+func pruneOldNginxSitesBackups(workdir string) error {
+	if err := checkBackupRoot(workdir); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(workdir)
+	if err != nil {
+		return fmt.Errorf("opening the project to prune old backups: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+	if backupBeforeWrite != nil {
+		backupBeforeWrite()
+	}
+	return pruneBackupsIn(root, filepath.Join(".nself", "backups"))
+}
+
+// pruneBackupsIn prunes snapshots under backups (relative to root) through the
+// os.Root, so nothing it lists or removes can lie outside it.
+func pruneBackupsIn(root *os.Root, backups string) error {
+	dir, err := root.Open(backups)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("reading %s to prune old backups: %w", backupsRoot, err)
+		return fmt.Errorf("reading %s to prune old backups: %w", backups, err)
 	}
-
+	entries, err := dir.ReadDir(-1)
+	_ = dir.Close()
+	if err != nil {
+		return fmt.Errorf("reading %s to prune old backups: %w", backups, err)
+	}
 	var snapshots []string
 	for _, e := range entries {
 		if e.IsDir() && strings.HasPrefix(e.Name(), "nginx-sites-") {
@@ -111,7 +160,7 @@ func pruneOldNginxSitesBackups(backupsRoot string) error {
 		return nil
 	}
 	for _, name := range snapshots[:len(snapshots)-maxNginxSitesBackups] {
-		if err := os.RemoveAll(filepath.Join(backupsRoot, name)); err != nil {
+		if err := root.RemoveAll(filepath.Join(backups, name)); err != nil {
 			return fmt.Errorf("pruning old nginx/sites backup %s: %w", name, err)
 		}
 	}

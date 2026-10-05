@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -130,5 +131,34 @@ func TestPlanSSLCertEffectFollowsCertPairValid(t *testing.T) {
 				t.Errorf("%s pair must be regenerated", c.name)
 			}
 		})
+	}
+}
+
+// TestPlanSSLTrustStoreOnlyWhenUntrusted: the trust-store effect is recorded
+// only when mkcert is installed and its CA is not yet trusted, so a project
+// whose trust state would not change plans no host effect for it.
+func TestPlanSSLTrustStoreOnlyWhenUntrusted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the mkcert stand-in is a shell script")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "mkcert"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	old := caTrusted
+	t.Cleanup(func() { caTrusted = old })
+	cfg := &config.Config{SSLMode: "local", BaseDomain: "app.local.nself.org", Env: "dev"}
+	for _, trusted := range []bool{false, true} {
+		caTrusted = func() bool { return trusted }
+		fx := &planEffects{}
+		planSSL(fx, cfg, t.TempDir(), false)
+		var got bool
+		for _, e := range fx.Recorded() {
+			got = got || e.Kind == EffectTrustStore
+		}
+		if got == trusted {
+			t.Errorf("CA trusted=%v but trust-store effect recorded=%v", trusted, got)
+		}
 	}
 }

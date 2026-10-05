@@ -2833,6 +2833,21 @@
           "output": null
         },
         {
+          "name": "diff",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Print unified diffs of the planned changes to stderr (env files show key names only)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        },
+        {
           "name": "force",
           "shorthand": "f",
           "type": "bool",
@@ -2923,6 +2938,36 @@
           "output": null
         },
         {
+          "name": "plan",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Show what build would change (files, host effects, containers) and write nothing",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        },
+        {
+          "name": "plan-id",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "Apply only if the change still matches this plan_id (from nself build --plan --json)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        },
+        {
           "name": "profile",
           "shorthand": null,
           "type": "string",
@@ -2996,14 +3041,29 @@
           "side_effect": null,
           "json": null,
           "output": null
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm a change on a prod-class env (prod, staging) without a prompt",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
         }
       ],
       "canon": "core",
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/build.v1.schema.json",
       "exit_codes": {}
     },
     {
@@ -17929,7 +17989,7 @@
     "core_missing": [
       "add"
     ],
-    "json_envelope": 6,
+    "json_envelope": 7,
     "json_legacy": 48
   }
 }

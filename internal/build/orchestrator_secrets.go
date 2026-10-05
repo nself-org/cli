@@ -9,7 +9,10 @@ package build
 
 import (
 	"bufio"
+	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -19,13 +22,15 @@ import (
 )
 
 func persistGeneratedSecrets(workdir string, cfg *config.Config) error {
-	return persistGeneratedSecretsFx(workdir, cfg, writeEffects{})
+	return persistGeneratedSecretsFx(workdir, cfg, writeEffects{}, newDiskSink(workdir))
 }
 
 // persistGeneratedSecretsFx is persistGeneratedSecrets with the .env.secrets
-// append routed through fx: write mode appends as before, plan mode records a
-// secrets-persist effect naming the keys (never the values).
-func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects) error {
+// append routed through the Sink (P7-LIVE-03): the new file content is the
+// existing bytes plus the appended lines, written through sink in both modes so
+// a plan carries the exact planned bytes of .env.secrets (and its plan_id binds
+// them). The secrets-persist effect still records the key names, never values.
+func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, sink Sink) error {
 	type secretEntry struct {
 		envKey string
 		value  string
@@ -89,30 +94,29 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects) e
 		keys = append(keys, s.envKey)
 	}
 	secretsPath := filepath.Join(workdir, ".env.secrets")
-	return fx.Do(EffectSecretsPersist, secretsPath, "append keys: "+strings.Join(keys, ", "), func() error {
-		// Append to .env.secrets. OpenFile with 0600 sets the mode only if the
-		// file is newly created; an explicit Chmod after ensures owner-only
-		// permissions even when the file already exists with a looser mode.
-		f, err := os.OpenFile(secretsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-		if err != nil {
-			return fmt.Errorf("opening %s: %w", secretsPath, err)
-		}
-		defer func() { _ = f.Close() }()
-
-		for _, s := range toWrite {
-			if _, err := fmt.Fprintf(f, "%s=%s\n", s.envKey, config.QuoteEnvValue(s.value)); err != nil {
-				return fmt.Errorf("writing %s: %w", s.envKey, err)
-			}
+	if err := fx.Do(EffectSecretsPersist, secretsPath, "append keys: "+strings.Join(keys, ", "), nil); err != nil {
+		return err
+	}
+	existing, err := sink.ReadFile(secretsPath)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("opening %s: %w", secretsPath, err)
+	}
+	var buf bytes.Buffer
+	buf.Write(existing)
+	for _, s := range toWrite {
+		fmt.Fprintf(&buf, "%s=%s\n", s.envKey, config.QuoteEnvValue(s.value))
+		if !fx.Planning() {
 			slog.Info("Persisted auto-generated secret to .env.secrets", "key", s.envKey)
 		}
-
-		// Enforce 0600 unconditionally — covers the case where the file existed
-		// with 0644 before we appended to it.
-		if err := os.Chmod(secretsPath, 0600); err != nil {
-			return fmt.Errorf("chmod %s: %w", secretsPath, err)
-		}
-		return nil
-	})
+	}
+	if err := sink.WriteFile(secretsPath, buf.Bytes(), 0600); err != nil {
+		return fmt.Errorf("writing %s: %w", secretsPath, err)
+	}
+	// Enforce 0600 unconditionally: the file may have existed with 0644.
+	if err := sink.Chmod(secretsPath, 0600); err != nil {
+		return fmt.Errorf("chmod %s: %w", secretsPath, err)
+	}
+	return nil
 }
 
 // buildNginxRoutes collects all nginx routes that will be generated for the

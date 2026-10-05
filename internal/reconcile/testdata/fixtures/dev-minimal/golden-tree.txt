@@ -1,0 +1,32 @@
+d 0755 .nself
+d 0755 .nself/dist
+d 0755 monitoring
+d 0755 nginx
+d 0755 nginx/conf.d
+d 0755 nginx/includes
+d 0755 nginx/sites
+d 0755 postgres
+d 0755 postgres/init
+d 0755 services
+d 0755 ssl
+d 0755 ssl/certificates
+f 0600 .env b881e130255f43cdbb68bdb3042feb67ee89c3f605cc3ba854e0524f5eb3c129
+f 0600 .env.computed b6f45aa109d82fcb343e8483c1100906615feaab2a5c0309e6128a5eb8fcef4c
+f 0600 .nself/compose.env 442ccc6a3c99476408213f7a05c62773ddbfa425fb93978915bd6604e24c5c05
+f 0600 docker-compose.yml ad552a843c44459aa67892e18c7914a780569181163a09a3f9c3954e02fc3256
+f 0644 .nself/build-profile a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333
+f 0644 .nself/build-version 9a66809cf210f6d1149c329fac8661098d04fc0b2c6fb00bf5bb7aa98f7ae1fd
+f 0644 .nself/compose-files.txt b557037f882d549c5afb2fc293a31e7f19f70d8c3fdd01a2b54123185ce44073
+f 0644 .nself/dist/openapi.json cd5aad3f8cc691cd5e1d6b247f87a045b18a6efd67cd5dfde6e5648142cd5039
+f 0644 .nself/dist/scalar.html bbf35b17351894d12bd5c6c351b050a10bc761b3612b18c086b06505cdb37658
+f 0644 nginx/conf.d/default.conf ccc13780ced1a64b10360394d4b32693efc374590b9522b1988088dba5408f13
+f 0644 nginx/includes/rate-limits.conf 77e62d250a8c27ae3e563d4a9cdb7bd1ab999c5514fa972b498d30817d128f2a
+f 0644 nginx/nginx.conf 833b2ac4719e3099823f15fad01bc0ec9bdeff73f45267f73f83c44605c468b2
+f 0644 nginx/sites/api-docs.conf e9c123c507404b40c062e15369038e9af46eb17841fa7135035675e702b6a4fb
+f 0644 nginx/sites/auth.conf 5e44d49fd8d1b8a6c998aaae1028cc834e5c9d12deedd3a471b0086cd7e6d666
+f 0644 nginx/sites/hasura.conf 1f4dcdb4a34770e4ff0ccb4b463e81ed700e7736de90008502a20da70e55fe83
+f 0644 nginx/sites/storage-console.conf 7f2b16cf84f72cea25cf847e5a8783673f0982e7605575d77a520c052f81b032
+f 0644 nginx/sites/storage.conf 6c82ceddeccea893b6064d00d1484c8ecea968b05e183dad294146f675d853f3
+f 0644 postgres/init/01-init.sql 0238a6519fd10168af604249e45bf5234d3e6cec6ff9b927410a74ad90127637
+f 0644 postgres/init/04-np-plugins.sql 6d2f7e0d1a984fe96b69df552bfd7ec37ae7ceef46b757aa078f8c44809b53ab
+f 0644 postgres/init/05-np-plugins-seed.sql 30949e128d86d27eb1db142ea98273de6d7251fae143b6ecdc9ef28ae0eb318a

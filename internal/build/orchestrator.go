@@ -1,9 +1,8 @@
 package build
 
 import (
-	"fmt"
+	"context"
 	"io"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -51,6 +50,10 @@ type BuildOptions struct {
 	// Nil keeps crypto/rand. A seeded reader lets a plan and an apply of the
 	// same fresh project agree byte for byte. The reader is never logged.
 	Rand io.Reader
+	// Expect, in ModeWrite, holds the build to a confirmed render: every write,
+	// removal and chmod must be one Expect planned, and the disk must hold it
+	// afterwards (expectSink). Nil writes as before. Set by reconcile.Apply.
+	Expect *PlannedBuild
 }
 
 // BuildMode selects what Build does with the files it renders.
@@ -94,6 +97,11 @@ type BuildResult struct {
 	HostsAdded int
 	// HostsManualNote is non-empty when /etc/hosts could not be updated automatically.
 	HostsManualNote string
+	// Env is the project's ENV as loaded (not normalised).
+	Env string
+	// FrontingDir is the fronting stack's served nginx/sites directory when
+	// the plan has "@fronting/" keys; empty otherwise. Set in ModePlan only.
+	FrontingDir string
 	// Planned holds the rendered artifacts and recorded effects. Set only in
 	// ModePlan; nil after a write-mode build.
 	Planned *PlannedBuild
@@ -114,31 +122,6 @@ var requiredDirs = []string{
 	".nself",
 }
 
-// buildLockFile is the name of the file used to prevent concurrent builds.
-const buildLockFile = ".nself/build.lock"
-
-// acquireBuildLock creates an exclusive build lock file using O_EXCL so that
-// two concurrent builds never write conflicting compose artifacts. The caller
-// must defer releaseBuildLock.
-func acquireBuildLock(workdir string) (*os.File, error) {
-	lockPath := filepath.Join(workdir, buildLockFile)
-	_ = os.MkdirAll(filepath.Dir(lockPath), 0755)
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		if os.IsExist(err) {
-			return nil, fmt.Errorf("another build is already running (lock file exists: %s). If no other build is running, remove the lock file and retry", lockPath)
-		}
-		return nil, fmt.Errorf("acquiring build lock: %w", err)
-	}
-	return f, nil
-}
-
-// releaseBuildLock closes and removes the lock file returned by acquireBuildLock.
-func releaseBuildLock(f *os.File, workdir string) {
-	_ = f.Close()
-	_ = os.Remove(filepath.Join(workdir, buildLockFile))
-}
-
 // Build orchestrates the full nself build pipeline.
 //
 // The sequence follows BUILD_SPEC.md:
@@ -157,20 +140,23 @@ func releaseBuildLock(f *os.File, workdir string) {
 func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 	// Scope the secret source for this build only; restored on return.
 	defer config.UseRandSource(opts.Rand)()
+	if opts.Mode == ModePlan {
+		defer SnapshotEnv()() // planning never leaves the project's env in the process
+	}
 	st := newBuildState(workdir, opts)
 
 	// Acquire exclusive build lock to prevent concurrent builds from
 	// producing inconsistent compose artifacts. Plan mode records the lock as
-	// an effect instead of creating .nself/build.lock.
-	var buildLock *os.File
-	if err := st.fx.Do(EffectBuildLock, filepath.Join(workdir, buildLockFile), "exclusive build lock", func() (err error) {
-		buildLock, err = acquireBuildLock(workdir)
+	// an effect instead of creating .nself/op.lock.
+	var releaseLock func()
+	if err := st.fx.Do(EffectBuildLock, filepath.Join(workdir, ".nself", "op.lock"), "exclusive project operation lock", func() (err error) {
+		releaseLock, err = AcquireBuildLock(context.Background(), workdir)
 		return err
 	}); err != nil {
 		return nil, err
 	}
-	if buildLock != nil {
-		defer releaseBuildLock(buildLock, workdir)
+	if releaseLock != nil {
+		defer releaseLock()
 	}
 
 	// Steps 1-4 (load config, persist secrets, permissions, validate,
@@ -206,9 +192,18 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	if es, ok := st.sink.(*expectSink); ok {
+		if err := es.verify(); err != nil {
+			return nil, err
+		}
+	}
+	if st.cfg != nil {
+		res.Env = st.cfg.Env
+	}
 	if m, ok := st.sink.(*memSink); ok {
 		res.Planned = m.snapshot()
 		res.Planned.Effects = st.fx.Recorded()
+		res.FrontingDir = m.fronting
 	}
 	return res, nil
 }
@@ -230,6 +225,8 @@ func (st *buildState) ensureSeam() {
 	}
 	if st.opts.Mode == ModePlan {
 		st.sink, st.fx = newMemSink(st.workdir, ""), &planEffects{}
+	} else if st.opts.Expect != nil {
+		st.sink, st.fx = newExpectSink(st.workdir, st.opts.Expect), writeEffects{}
 	} else {
 		st.sink, st.fx = newDiskSink(st.workdir), writeEffects{}
 	}

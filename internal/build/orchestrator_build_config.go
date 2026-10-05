@@ -28,7 +28,9 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	st.ensureSeam()
 	// ── Step 1: Load config via env cascade ─────────────────────────
 	var err error
+	repin := pinCompatEnv() // a project file must not toggle NSELF_V15
 	st.cfg, err = config.LoadWithOptions(st.workdir, config.LoadOptions{RemoteDeploy: st.opts.RemoteDeploy})
+	repin()
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
@@ -42,7 +44,7 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	// reads them — a validate-only invocation must never mutate the
 	// project it is inspecting.
 	if !st.opts.Check {
-		if err := persistGeneratedSecretsFx(st.workdir, st.cfg, st.fx); err != nil {
+		if err := persistGeneratedSecretsFx(st.workdir, st.cfg, st.fx, st.sink); err != nil {
 			return nil, fmt.Errorf("persisting generated secrets: %w", err)
 		}
 
@@ -92,6 +94,14 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 			needsRebuild = true
 		}
 		if !needsRebuild {
+			// A held write (confirmed render) must never end here with planned
+			// files outstanding: reconcile.Apply forces a rebuild for a
+			// non-empty plan; this is the backstop.
+			if es, ok := st.sink.(*expectSink); ok {
+				if err := es.verify(); err != nil {
+					return nil, err
+				}
+			}
 			return &BuildResult{
 				ProjectName: st.cfg.ProjectName,
 				ComposeFile: filepath.Join(st.workdir, "docker-compose.yml"),

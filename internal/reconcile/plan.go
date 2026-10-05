@@ -190,7 +190,9 @@ func (p *Plan) Finalize() error {
 	p.EnvClass = EnvClass(p.Env)
 	p.normalizeArrays()
 	p.sortArrays()
-	p.Empty = len(p.Artifacts) == 0 && len(p.Effects) == 0 && len(p.Containers.Items) == 0
+	// Unknown container state is never "nothing to do" (EPIC ruling F): a plan
+	// that could not ask Docker is not empty and, on a prod-class env, asks.
+	p.Empty = len(p.Artifacts) == 0 && len(p.Effects) == 0 && len(p.Containers.Items) == 0 && p.Containers.Known
 	p.DestructiveReasons = destructiveReasons(p)
 	p.Destructive = len(p.DestructiveReasons) > 0
 	p.RequiresConfirmation = p.EnvClass == ClassProd && !p.Empty

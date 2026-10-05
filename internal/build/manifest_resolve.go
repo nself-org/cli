@@ -6,6 +6,7 @@ package build
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -13,6 +14,29 @@ import (
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/plugin"
 )
+
+// PluginInstall installs one plugin. A variable so tests can stand in for the
+// registry download and the database schema step.
+var PluginInstall = plugin.Install
+
+// InstallDeclaredPlugins installs the plugins nself.yaml declares that are not
+// yet installed, exactly as a write-mode build would at that step, without
+// rendering anything. reconcile.Apply runs it as a confirmed effect before its
+// final render, so the render that is checked and held already contains the
+// plugins' nginx and compose artifacts. Install failures are warnings, as in a
+// build; the render then reports the plugin as missing. The environment is left
+// as found.
+func InstallDeclaredPlugins(ctx context.Context, workdir string, remoteDeploy bool) error {
+	defer SnapshotEnv()()
+	repin := pinCompatEnv()
+	cfg, err := config.LoadWithOptions(workdir, config.LoadOptions{RemoteDeploy: remoteDeploy})
+	repin()
+	if err != nil {
+		return fmt.Errorf("loading config to install declared plugins: %w", err)
+	}
+	_ = resolveDeclaredPluginsFx(ctx, writeEffects{}, cfg, workdir, DefaultPluginDir(), expectedCoreServices(cfg))
+	return nil
+}
 
 // ResolveDeclaredPlugins guarantees every plugin declared in nself.yaml is
 // wired into the build, in three steps per declared plugin:
@@ -61,7 +85,7 @@ func resolveDeclaredPluginsFx(ctx context.Context, fx Effects, cfg *config.Confi
 			_ = fx.Do(EffectPluginInstall, name, "auto-install declared plugin from the registry (nself.yaml)", func() error {
 				installCtx, cancel := context.WithTimeout(ctx, autoInstallTimeout)
 				defer cancel()
-				err = plugin.Install(installCtx, cfg, name, pluginDir)
+				err = PluginInstall(installCtx, cfg, name, pluginDir)
 				return nil
 			})
 			if fx.Planning() {

@@ -1,0 +1,5 @@
+services:
+  nself-alpha:
+    image: nself/nself-alpha:latest
+    ports:
+      - "3901:3901"
