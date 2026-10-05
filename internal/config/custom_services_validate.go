@@ -166,10 +166,10 @@ func dockerignoreCoverage(path string) (env, secrets bool) {
 		line = strings.TrimPrefix(strings.TrimPrefix(line, "!"), "/")
 		line = strings.TrimPrefix(line, "**/")
 		line = strings.TrimSuffix(strings.TrimSuffix(line, "/**"), "/")
-		switch {
-		case line == ".env*":
+		switch line {
+		case ".env*":
 			env = !neg
-		case line == ".secrets" || line == ".secrets*":
+		case ".secrets", ".secrets*":
 			secrets = !neg
 		}
 	}

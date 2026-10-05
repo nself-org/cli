@@ -297,9 +297,14 @@ These boolean flags enable optional bundled services. Each defaults to `false`. 
 | `CS_N_HEALTHCHECK` | string | `/health` | No | Healthcheck override: a path, a full `CMD ...`/`CMD-SHELL ...` command, or `disabled`/`none`/`false` to omit it. See [[Config-Custom-Services]]. |
 | `CS_N_ENV_PASSTHROUGH` | string | *(empty)* | No | Comma-separated allowlist of project `.env` var names to forward into this service. `CS_N_ENV` wins on conflict. See [[Config-Custom-Services]]. |
 | `CS_N_IMAGE` | string | *(empty)* | No | Run a pre-built image (optionally digest-pinned, e.g. `repo/name@sha256:...`) instead of building from a Dockerfile. Mutually exclusive with `CS_N_PATH`. |
-| `CS_N_PATH` | string | *(derived)* | No | Path to the Docker build context directory. When unset, defaults to `./services/<name>` derived from the raw service name in `CS_N` (e.g. `CS_N=ping_api:node` uses `./services/ping_api`). If the raw-name directory does not exist but the sanitized version (underscores replaced with hyphens) does, the sanitized directory is used. Mutually exclusive with `CS_N_IMAGE`. |
-| `CS_N_ENV_FILE` | string | *(empty)* | No | Project-relative path to a dotenv-format file of extra env vars, injected at build time. Applied after `CS_N_ENV_PASSTHROUGH`; `CS_N_ENV` always wins on conflict. Subject to the same path-traversal check as `CS_N_PATH`. |
-| `CS_N_VOLUMES` | string | *(empty)* | No | Comma-separated `host:container[:mode]` bind mounts, subject to the same traversal check as `CS_N_PATH`. |
+| `CS_N_PATH` | string | *(derived)* | No | Docker build context: `./services/<name>` by default, a path inside the project, or an ancestor of the project written as `..` segments (monorepo root, bounded by `.git` and a `.dockerignore` excluding `.env*` and `.secrets`; E528). See [[Config-Custom-Services]]. |
+| `CS_N_ENV_FILE` | string | *(empty)* | No | Project-relative dotenv file, or a comma-separated list (`.env.dev,.env.secrets`), injected at build time. Files load in order; a later file wins. Applied after `CS_N_ENV_PASSTHROUGH`; `CS_N_ENV` always wins. |
+| `CS_N_VOLUMES` | string | *(empty)* | No | Comma-separated `host:container[:mode]` bind mounts, subject to the same traversal check as `CS_N_PATH`. v1.5 mode refuses a writable absolute host bind outside the project and any bind of the Docker socket or `/` (E502). |
+| `CS_N_DOCKERFILE` | string | `Dockerfile` | No | Dockerfile path relative to the build context. No `..`, not absolute. |
+| `CS_N_BUILD_TARGET` | string | *(empty)* | No | Multi-stage build target (`^[A-Za-z0-9_.-]{1,64}$`). |
+| `CS_N_COMMAND` | string | *(image default)* | No | Container command, exec form, split on whitespace (no shell). |
+| `CS_N_DEPENDS_ON` | string | *(empty)* | No | `name[:started\|healthy\|completed]`, comma-separated, added next to the built-in postgres dependency. Names are resolved after the plugin step of `nself build` (E500). |
+| `CS_N_NETWORKS` | string | *(empty)* | No | Extra external networks, each `<PROJECT_NAME>_*` (E501 otherwise). |
 
 **Example** (from `web/`, `nself.org` infrastructure):
 

@@ -3,6 +3,7 @@ package compose
 import (
 	"fmt"
 	"log/slog"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -131,16 +132,20 @@ func (g *Generator) checkCustomServiceVolumes(cs config.CustomService) error {
 		if !strings.HasPrefix(host, "/") {
 			continue
 		}
+		// Bind sources are POSIX paths in the compose file whatever the host OS,
+		// so the socket/root test uses path.Clean (not filepath.Clean, which
+		// turns "/" into "\" on Windows).
+		posix := path.Clean(host)
 		clean := filepath.Clean(host)
 		switch {
-		case clean == "/" || clean == "/var/run/docker.sock" || clean == "/run/docker.sock":
+		case posix == "/" || posix == "/var/run/docker.sock" || posix == "/run/docker.sock":
 			if strict {
 				return errs.Newf("E502", "CS_%d_VOLUMES binds %q: the Docker socket and the host root are never allowed", cs.Index, entry)
 			}
 			if _, dup := dockerSocketWarned.LoadOrStore(entry, true); !dup {
 				slog.Warn("CS_N_VOLUMES binds the Docker socket or host root; this is refused in v1.5", "service", cs.Name, "volume", entry)
 			}
-		case strict && !(len(parts) >= 3 && parts[2] == "ro") && !pathWithin(clean, proj):
+		case strict && (len(parts) < 3 || parts[2] != "ro") && !pathWithin(clean, proj):
 			return errs.Newf("E502", "CS_%d_VOLUMES binds %q: a writable absolute host path outside the project is not allowed (add :ro or use a named volume)", cs.Index, entry)
 		}
 	}
