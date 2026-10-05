@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -125,6 +126,7 @@ func TestAcmeChallengeLocation(t *testing.T) {
 }
 
 func TestAcmeChallengeNginx(t *testing.T) {
+	// Only a Linux CI runner is required to have docker; macOS and Windows runners have no Linux containers.
 	home, err := os.UserHomeDir() // Colima shares only $HOME
 	if err != nil {
 		t.Fatal(err)
@@ -164,7 +166,8 @@ func TestAcmeChallengeNginx(t *testing.T) {
 	defer cancel()
 	out, stderr, err := docker.RunOneShot(ctx, docker.RunSpec{Image: nginxTestImage, Mounts: mounts, Args: []string{"sh", "-c", string(script)}})
 	if err != nil {
-		if os.Getenv("CI") == "" && (strings.Contains(err.Error(), "executable file not found") || strings.Contains(err.Error(), "Cannot connect to the Docker daemon")) {
+		missing := strings.Contains(err.Error(), "executable file not found") || strings.Contains(err.Error(), "Cannot connect to the Docker daemon")
+		if ci := os.Getenv("CI") != ""; (!ci && missing) || (ci && runtime.GOOS != "linux") {
 			t.Skip("docker not available")
 		}
 		t.Fatalf("container run failed: %v\n%s\n%s", err, out, stderr)
