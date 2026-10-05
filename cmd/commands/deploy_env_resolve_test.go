@@ -16,8 +16,8 @@ func TestDeployEnvCascadeFiles_MatchesConfigLoadOrder(t *testing.T) {
 	workdir := "/proj"
 	cases := map[string][]string{
 		"local":   {".env", ".env.dev", ".env.secrets", ".env.local"},
-		"staging": {".env", ".env.staging", ".env.secrets", ".env.local"},
-		"prod":    {".env", ".env.prod", ".env.secrets", ".env.local"},
+		"staging": {".env", ".env.staging", ".env.secrets"}, // remote: no .env.local
+		"prod":    {".env", ".env.prod", ".env.secrets"},
 	}
 	for target, wantSuffixes := range cases {
 		got := deployEnvCascadeFiles(workdir, target)
@@ -152,6 +152,7 @@ func TestLoadDeployEnvCascade_SetsENVForConfigLoad(t *testing.T) {
 	t.Setenv("ENV", "")
 	t.Setenv("NSELF_DEPLOY_ENV", "")
 
+	t.Setenv("NSELF_DEPLOY_REMOTE", "")
 	loadDeployEnvCascade(dir, "staging")
 
 	if got := os.Getenv("ENV"); got != "staging" {

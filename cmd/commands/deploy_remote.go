@@ -33,6 +33,12 @@ func loadDeployEnvCascade(workdir, target string) {
 	}
 	_ = os.Setenv("NSELF_DEPLOY_ENV", target)
 	_ = os.Setenv("ENV", deployCascadeEnv(workdir, target))
+	// The child build must use the same cascade as the file shipped to a host.
+	if target == "local" {
+		_ = os.Unsetenv(config.DeployRemoteVar)
+	} else {
+		_ = os.Setenv(config.DeployRemoteVar, "true")
+	}
 }
 
 // deployCascadeEnv names the environment whose cascade a deploy of target
@@ -47,10 +53,14 @@ func deployCascadeEnv(workdir, target string) string {
 }
 
 // deployEnvCascadeFiles returns target's cascade as paths under workdir, from
-// config.EnvCascadeOrder (the single owner of the order, honouring
+// config.EnvCascadeOrder (the single owner of the order, minus .env.local for a
+// remote target, honouring
 // NSELF_LEGACY_ENV_ORDER exactly as config.Load does).
 func deployEnvCascadeFiles(workdir, target string) []string {
 	names := config.EnvCascadeOrder(deployCascadeEnv(workdir, target), config.LegacyOrderActive())
+	if target != "local" { // a remote deploy never ships .env.local
+		names = config.WithoutLocalOverride(names)
+	}
 	files := make([]string, 0, len(names))
 	for _, n := range names {
 		files = append(files, filepath.Join(workdir, n))

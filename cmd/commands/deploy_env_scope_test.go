@@ -86,7 +86,7 @@ func isolateDeployEnv(t *testing.T) {
 			t.Setenv(k, "")
 		}
 	}
-	for _, k := range []string{"NSELF_DEPLOY_ENV", "ENV", "STAGING_DEPLOY_HOST", "PROD_DEPLOY_HOST", "QA_DEPLOY_HOST"} {
+	for _, k := range []string{"NSELF_DEPLOY_ENV", "NSELF_DEPLOY_REMOTE", "ENV", "STAGING_DEPLOY_HOST", "PROD_DEPLOY_HOST", "QA_DEPLOY_HOST"} {
 		t.Setenv(k, "")
 	}
 }
@@ -251,6 +251,7 @@ func TestDeployLegacyNoSilentExit(t *testing.T) {
 	}
 }
 
+// (remote envs below carry no .env.local: a remote deploy never ships it)
 // TestEnvCascadePerEnv: the deploy cascade is config.EnvCascadeOrder; qa never
 // loads .env.prod; a prod-class env always gets the prod cascade.
 func TestEnvCascadePerEnv(t *testing.T) {
@@ -258,13 +259,13 @@ func TestEnvCascadePerEnv(t *testing.T) {
 	base := func(n string) string { return filepath.Join(dir, n) }
 	want := map[string][]string{
 		"local":      {".env", ".env.dev", ".env.secrets", ".env.local"},
-		"staging":    {".env", ".env.staging", ".env.secrets", ".env.local"},
-		"prod":       {".env", ".env.prod", ".env.secrets", ".env.local"},
-		"production": {".env", ".env.prod", ".env.secrets", ".env.local"},
-		"PROD":       {".env", ".env.prod", ".env.secrets", ".env.local"},
-		"qa":         {".env", ".env.qa", ".env.secrets", ".env.local"},
-		"QA":         {".env", ".env.qa", ".env.secrets", ".env.local"},
-		"qa-eu":      {".env", ".env.qa-eu", ".env.secrets", ".env.local"},
+		"staging":    {".env", ".env.staging", ".env.secrets"},
+		"prod":       {".env", ".env.prod", ".env.secrets"},
+		"production": {".env", ".env.prod", ".env.secrets"},
+		"PROD":       {".env", ".env.prod", ".env.secrets"},
+		"qa":         {".env", ".env.qa", ".env.secrets"},
+		"QA":         {".env", ".env.qa", ".env.secrets"},
+		"qa-eu":      {".env", ".env.qa-eu", ".env.secrets"},
 	}
 	for target, names := range want {
 		got := deployEnvCascadeFiles(dir, target)
@@ -807,5 +808,92 @@ func TestInventoryEnvNameAmbiguous(t *testing.T) {
 	}
 	if _, ok := inventoryEnvName(nil, "qa"); ok {
 		t.Error("nil inventory must not resolve")
+	}
+}
+
+// TestRemoteDeployNeverReadsEnvLocal: .env.local is a personal override. For a
+// remote env it is absent from the child build's config and from the pushed
+// snapshot; for local it is still read.
+func TestRemoteDeployNeverReadsEnvLocal(t *testing.T) {
+	for _, tc := range []struct {
+		target    string
+		wantLocal bool
+	}{{"qa", false}, {"staging", false}, {"prod", false}, {"production", false}, {"local", true}} {
+		dir := t.TempDir()
+		isolateDeployEnv(t)
+		t.Setenv("NSELF_LEGACY_ENV_ORDER", "")
+		t.Setenv("LAPTOP_ONLY", "")
+		t.Setenv("API_URL", "")
+		for n, b := range map[string]string{
+			".env":         "API_URL=base\n",
+			".env.local":   "LAPTOP_ONLY=secret\nAPI_URL=laptop\n",
+			".env.qa":      "API_URL=qa\n",
+			".env.staging": "API_URL=staging\n",
+			".env.prod":    "API_URL=prod\n",
+			".env.dev":     "API_URL=dev\n",
+		} {
+			if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		loadDeployEnvCascade(dir, tc.target)
+		if tc.target == "qa" || tc.target == "local" { // the child build (staging/prod Load demands real secrets)
+			if _, err := config.Load(dir); err != nil {
+				t.Fatal(err)
+			}
+		}
+		builtLocal := os.Getenv("LAPTOP_ONLY") == "secret"
+		if builtLocal != tc.wantLocal {
+			t.Errorf("%s: build read .env.local = %v, want %v", tc.target, builtLocal, tc.wantLocal)
+		}
+		if !tc.wantLocal {
+			cascadeEnv := deployCascadeEnv(dir, tc.target)
+			snap, cleanup, err := writeResolvedDeployEnv(dir, cascadeEnv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := os.ReadFile(snap)
+			cleanup()
+			if strings.Contains(string(b), "LAPTOP_ONLY") || strings.Contains(string(b), "laptop") {
+				t.Errorf("%s: snapshot carries .env.local values:\n%s", tc.target, b)
+			}
+		}
+	}
+}
+
+// TestSnapshotLiteralDollarStaysLiteral: Codex's case. A=prod_secret and
+// B='$A' (a literal dollar sign): the snapshot must read back with B == "$A",
+// never the value of A. Plus a table of awkward values read back as a whole.
+func TestSnapshotLiteralDollarStaysLiteral(t *testing.T) {
+	dir := t.TempDir()
+	isolateDeployEnv(t)
+	vals := map[string]string{
+		"A": "prod_secret", "B": "$A", "C": "${A}", "D": "pre$A", "E": "it's $A", "F": `a\b$A`,
+		"G": "line1\n$A", "H": "x \"$A\" y", "I": "$", "J": "$$A", "K": "end\\", "L": "# not a comment",
+		"M": "  padded  ", "N": "é$A", "O": "k=v$A",
+	}
+	var body strings.Builder
+	for k, v := range vals {
+		body.WriteString(k + "=" + func() string { e, _ := encodeEnvValue(v); return e }() + "\n")
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".env.qa"), []byte(body.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snap, cleanup, err := writeResolvedDeployEnv(dir, "qa")
+	if err != nil {
+		t.Fatalf("snapshot refused: %v", err)
+	}
+	defer cleanup()
+	back, err := godotenv.Read(snap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range vals {
+		if back[k] != v {
+			t.Errorf("%s: shipped %q, want %q", k, back[k], v)
+		}
+	}
+	if enc, _ := encodeEnvValue("$A"); enc == "$A" {
+		t.Errorf("a value with $ must never be written bare, got %q", enc)
 	}
 }

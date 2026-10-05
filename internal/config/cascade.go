@@ -40,6 +40,32 @@ func LegacyOrderActive() bool {
 	return getEnvBool(LegacyEnvOrderVar, false)
 }
 
+// DeployRemoteVar is set to "true" by `nself deploy` for the build it spawns
+// when the target is a remote host. The build then drops .env.local from the
+// cascade (RemoteCascadeActive), exactly as the env file pushed to the host
+// does: a developer's personal override never ships to a server. Internal:
+// there is no reason to set it by hand.
+const DeployRemoteVar = "NSELF_DEPLOY_REMOTE"
+
+// RemoteCascadeActive reports whether the current process is building for a
+// remote deploy (DeployRemoteVar is truthy).
+func RemoteCascadeActive() bool {
+	return getEnvBool(DeployRemoteVar, false)
+}
+
+// WithoutLocalOverride returns order minus .env.local. The remote deploy
+// cascade is EnvCascadeOrder with this applied, in the build and in the env
+// snapshot pushed to the host alike.
+func WithoutLocalOverride(order []string) []string {
+	out := make([]string, 0, len(order))
+	for _, n := range order {
+		if n != ".env.local" {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // CascadeFile describes one file consulted by the env cascade, in load order.
 type CascadeFile struct {
 	// Name is the filename relative to the project directory, e.g. ".env.secrets".

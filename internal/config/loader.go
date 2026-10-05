@@ -67,6 +67,9 @@ func Load(projectDir string) (*Config, error) {
 		warnLegacyEnvOrder()
 	}
 	names := EnvCascadeOrder(env, legacy)
+	if RemoteCascadeActive() {
+		names = WithoutLocalOverride(names)
+	}
 	files := make([]string, 0, len(names))
 	for _, n := range names {
 		files = append(files, filepath.Join(projectDir, n))

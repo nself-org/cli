@@ -67,6 +67,19 @@ func writeResolvedDeployEnv(workdir, target string) (path string, cleanup func()
 		b.WriteString("\n")
 	}
 
+	// Read the whole snapshot back the way the remote nself will and require
+	// exactly the resolved values: per-value checks cannot see cross-key
+	// expansion ($A in one value reading another key).
+	back, parseErr := godotenv.Unmarshal(b.String())
+	if parseErr != nil || len(back) != len(merged) {
+		return "", func() {}, fmt.Errorf("the resolved deploy env file does not read back as written (%v); nothing was sent", parseErr)
+	}
+	for k, v := range merged {
+		if back[k] != v {
+			return "", func() {}, fmt.Errorf("the value of %s would change when the deploy env file is read on the host; change the value (nothing was sent)", k)
+		}
+	}
+
 	if err := os.WriteFile(snapshotPath, []byte(b.String()), 0o600); err != nil {
 		return "", func() {}, fmt.Errorf("writing resolved env snapshot: %w", err)
 	}
@@ -83,7 +96,11 @@ func writeResolvedDeployEnv(workdir, target string) (path string, cleanup func()
 // the caller must then fail rather than ship a different value.
 func encodeEnvValue(v string) (enc string, ok bool) {
 	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`, "$", `\$`)
-	for _, c := range []string{v, "'" + v + "'", `"` + r.Replace(v) + `"`} {
+	cands := []string{"'" + v + "'", `"` + r.Replace(v) + `"`}
+	if !strings.Contains(v, "$") { // a bare $VAR would expand when the file is read
+		cands = append([]string{v}, cands...)
+	}
+	for _, c := range cands {
 		if m, err := godotenv.Unmarshal("K=" + c + "\nZ=1\n"); err == nil && m["K"] == v && m["Z"] == "1" {
 			return c, true
 		}

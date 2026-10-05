@@ -47,7 +47,7 @@ Targets accept both short and long forms:
 | local | `local` | Build and rolling-restart on this machine |
 | staging | `staging` | Staging environment (uses `NSELF_DEPLOY_HOST_STAGING` if set) |
 | prod | `prod`, `production` | Production (uses `NSELF_DEPLOY_HOST_PROD` if set; requires `--force` or `--dry-run`) |
-| any other name | the environment's name, e.g. `qa` | An environment from the inventory (uses `NSELF_DEPLOY_HOST_<ENV>` on the single-host path); loads `.env`, `.env.<name>`, `.env.secrets`, `.env.local` (the same list `nself build` uses), never `.env.dev` or `.env.prod` |
+| any other name | the environment's name, e.g. `qa` | An environment from the inventory (uses `NSELF_DEPLOY_HOST_<ENV>` on the single-host path); loads `.env`, `.env.<name>`, `.env.secrets` (the same list `nself build` uses), never `.env.dev` or `.env.prod`, and a deploy to any remote host never reads `.env.local` (your personal override stays on your machine; `nself deploy local` still loads it) |
 
 An environment named `prod` or `production` is production-class and requires `--force` (or
 `--yes`) unless you pass `--dry-run`. The check runs before every deploy path, including the

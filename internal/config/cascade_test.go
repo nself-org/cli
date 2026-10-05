@@ -374,3 +374,38 @@ func TestLoadCustomEnvNeverReadsDevLayer(t *testing.T) {
 		}
 	}
 }
+
+// TestLoadRemoteDeployDropsEnvLocal: with NSELF_DEPLOY_REMOTE=true (set by
+// nself deploy for a remote target) Load skips .env.local; without it the
+// personal override still wins.
+func TestLoadRemoteDeployDropsEnvLocal(t *testing.T) {
+	for _, remote := range []bool{false, true} {
+		dir := t.TempDir()
+		t.Setenv("ENV", "qa")
+		t.Setenv("BASE_DOMAIN", "")
+		t.Setenv("NSELF_LEGACY_ENV_ORDER", "")
+		t.Setenv(DeployRemoteVar, "")
+		if remote {
+			t.Setenv(DeployRemoteVar, "true")
+		}
+		for n, b := range map[string]string{".env.qa": "BASE_DOMAIN=qa.example.test\n", ".env.local": "BASE_DOMAIN=laptop.example.test\n"} {
+			if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cfg, err := Load(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "laptop.example.test"
+		if remote {
+			want = "qa.example.test"
+		}
+		if cfg.BaseDomain != want {
+			t.Errorf("remote=%v: BASE_DOMAIN=%q, want %q", remote, cfg.BaseDomain, want)
+		}
+	}
+	if got := WithoutLocalOverride([]string{".env", ".env.local", ".env.prod"}); len(got) != 2 || got[0] != ".env" || got[1] != ".env.prod" {
+		t.Errorf("WithoutLocalOverride = %v", got)
+	}
+}
