@@ -28,7 +28,7 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	st.ensureSeam()
 	// ── Step 1: Load config via env cascade ─────────────────────────
 	var err error
-	st.cfg, err = config.Load(st.workdir)
+	st.cfg, err = config.LoadWithOptions(st.workdir, config.LoadOptions{RemoteDeploy: st.opts.RemoteDeploy})
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}

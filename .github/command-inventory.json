@@ -377,6 +377,7 @@
       "--allow-legacy",
       "--check",
       "--debug",
+      "--deploy-remote",
       "--force",
       "--hosts",
       "--no-auto-redis",

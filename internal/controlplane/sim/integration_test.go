@@ -81,7 +81,7 @@ func TestIntegrationPipelineOrder(t *testing.T) {
 	// Set up fake deploy tools so DeployViaSsh exits 0.
 	composePath := setupFakeDeploy(t, fleet.EnvVarName, fleet.PrivateKeyPath)
 
-	result, err := controlplane.Run(context.Background(), inv, prober, composePath)
+	result, err := controlplane.Run(context.Background(), inv, "sim", prober, composePath)
 	if err != nil {
 		t.Fatalf("controlplane.Run: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestIntegrationLBDrainCalled(t *testing.T) {
 
 	composePath := setupFakeDeploy(t, fleet.EnvVarName, fleet.PrivateKeyPath)
 
-	_, err := controlplane.Run(context.Background(), inv, trackingProber, composePath)
+	_, err := controlplane.Run(context.Background(), inv, "sim", trackingProber, composePath)
 	if err != nil {
 		t.Fatalf("controlplane.Run: %v", err)
 	}

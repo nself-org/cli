@@ -15,12 +15,14 @@ package commands
 // SPORT: cli/cmd/commands — see gap #13.
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 // writeResolvedDeployEnv merges every file in target's env cascade (in the
@@ -57,8 +59,25 @@ func writeResolvedDeployEnv(workdir, target string) (path string, cleanup func()
 	for _, k := range order {
 		b.WriteString(k)
 		b.WriteString("=")
-		b.WriteString(merged[k])
+		enc, ok := encodeEnvValue(merged[k])
+		if !ok {
+			return "", func() {}, fmt.Errorf("the value of %s cannot be written to the deploy env file without changing it (godotenv cannot represent it); change the value", k)
+		}
+		b.WriteString(enc)
 		b.WriteString("\n")
+	}
+
+	// Read the whole snapshot back the way the remote nself will and require
+	// exactly the resolved values: per-value checks cannot see cross-key
+	// expansion ($A in one value reading another key).
+	back, parseErr := godotenv.Unmarshal(b.String())
+	if parseErr != nil || len(back) != len(merged) {
+		return "", func() {}, fmt.Errorf("the resolved deploy env file does not read back as written (%v); nothing was sent", parseErr)
+	}
+	for k, v := range merged {
+		if back[k] != v {
+			return "", func() {}, fmt.Errorf("the value of %s would change when the deploy env file is read on the host; change the value (nothing was sent)", k)
+		}
 	}
 
 	if err := os.WriteFile(snapshotPath, []byte(b.String()), 0o600); err != nil {
@@ -69,58 +88,53 @@ func writeResolvedDeployEnv(workdir, target string) (path string, cleanup func()
 	return snapshotPath, cleanup, nil
 }
 
-// envKV is a single KEY=VALUE pair read from an .env file, preserving
-// insertion order for deterministic snapshot output.
+// encodeEnvValue renders v so godotenv (what config.Load and the remote nself
+// both use) reads back exactly v. It tries bare, single-quoted, then
+// double-quoted (with \, ", $ and line breaks escaped) and keeps the first
+// form that round-trips through godotenv itself. ok is false when none does
+// (godotenv cannot represent a few values, e.g. one ending in a backslash);
+// the caller must then fail rather than ship a different value.
+func encodeEnvValue(v string) (enc string, ok bool) {
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`, "$", `\$`)
+	cands := []string{"'" + v + "'", `"` + r.Replace(v) + `"`}
+	if !strings.Contains(v, "$") { // a bare $VAR would expand when the file is read
+		cands = append([]string{v}, cands...)
+	}
+	for _, c := range cands {
+		if m, err := godotenv.Unmarshal("K=" + c + "\nZ=1\n"); err == nil && m["K"] == v && m["Z"] == "1" {
+			return c, true
+		}
+	}
+	return "", false
+}
+
+// envKV is a single KEY=VALUE pair read from an .env file.
 type envKV struct {
 	key   string
 	value string
 }
 
-// readEnvFileOverrides parses path as a simple .env file (KEY=VALUE per
-// line, '#' comments, blank lines ignored). Missing files return an empty
-// slice, matching the "each file is optional" semantics of config.Load.
-// This intentionally does not use godotenv.Overload (which mutates
-// os.Environ) — it only needs the raw key/value pairs for the snapshot.
+// readEnvFileOverrides parses path with godotenv, the same reader config.Load
+// uses (export prefixes, inline comments, quoting and escapes all behave as in
+// the build). Pairs come back in sorted key order for a deterministic snapshot.
+// A missing file returns an empty slice, matching config.Load's "each file is
+// optional" semantics.
 func readEnvFileOverrides(path string) ([]envKV, error) {
-	f, err := os.Open(path)
+	m, err := godotenv.Read(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	defer f.Close() //nolint:errcheck
-
-	var out []envKV
-	scanner := bufio.NewScanner(f)
-	// .env files (esp. .env.secrets carrying long keys/certs) can exceed the
-	// default 64KB scanner buffer; raise it to 1MB per line.
-	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		eq := strings.Index(line, "=")
-		if eq < 0 {
-			continue
-		}
-		key := strings.TrimSpace(line[:eq])
-		if key == "" {
-			continue
-		}
-		value := strings.TrimSpace(line[eq+1:])
-		// Strip a single layer of matching quotes, mirroring godotenv's
-		// handling of quoted values so the snapshot round-trips identically.
-		if len(value) >= 2 {
-			if (value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'') {
-				value = value[1 : len(value)-1]
-			}
-		}
-		out = append(out, envKV{key: key, value: value})
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
+	sort.Strings(keys)
+	out := make([]envKV, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, envKV{key: k, value: m[k]})
 	}
 	return out, nil
 }

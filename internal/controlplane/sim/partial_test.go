@@ -275,7 +275,7 @@ func TestPartialPrimarySkipNonZeroExit(t *testing.T) {
 		keyRef:       fleet.EnvVarName,
 	}
 
-	result, err := controlplane.Run(context.Background(), inv, prober, composePath)
+	result, err := controlplane.Run(context.Background(), inv, "sim", prober, composePath)
 	if err != nil {
 		t.Fatalf("controlplane.Run: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestPartialNonPrimarySkipNoEffect(t *testing.T) {
 		keyRef:       fleet.EnvVarName,
 	}
 
-	result, err := controlplane.Run(context.Background(), inv, prober, composePath)
+	result, err := controlplane.Run(context.Background(), inv, "sim", prober, composePath)
 	if err != nil {
 		t.Fatalf("controlplane.Run: %v", err)
 	}

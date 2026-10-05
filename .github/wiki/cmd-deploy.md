@@ -23,12 +23,16 @@ service names vary (e.g. object storage is always named `minio`, never `storage`
 literal `plugins` service). See [Rolling Restart, Service Order and Downtime](#rolling-restart-service-order-and-downtime).
 
 The target environment can be supplied as a positional argument or via `--env`. The flag takes
-priority when both are given. The three supported values are `local`, `staging`, and `prod`
-(also accepted as `production`).
+priority when both are given. A target is `local` or any environment in the deploy inventory:
+every environment in `.nself/control-plane.yaml`, or every `NSELF_DEPLOY_HOST_<ENV>` variable
+(so `NSELF_DEPLOY_HOST_QA` makes `qa` a target). `staging` and `prod` keep working with no
+inventory, and `production` is an alias of `prod` unless the inventory has an environment named
+`production`. Only the named environment is deployed or probed; an unknown name is refused with
+`E483` and the list of known environments, and the deploy never falls back to another one.
 
 When `NSELF_DEPLOY_HOST_STAGING` or `NSELF_DEPLOY_HOST_PROD` is set, the CLI rsyncs the compose
 file and env to the remote host, pulls updated images, then runs the rolling restart via SSH.
-When no host is configured, the deploy runs on the current host (single-region model).
+With no host configured for a remote environment the deploy is refused (`E483`); use `nself deploy local` to deploy on this machine.
 
 When `.nself/control-plane.yaml` is present (or `--server` is passed), `nself deploy` routes
 through the topology-aware pipeline (`controlplane.Run`). The pipeline reads each server's
@@ -43,7 +47,18 @@ Targets accept both short and long forms:
 | local | `local` | Build and rolling-restart on this machine |
 | staging | `staging` | Staging environment (uses `NSELF_DEPLOY_HOST_STAGING` if set) |
 | prod | `prod`, `production` | Production (uses `NSELF_DEPLOY_HOST_PROD` if set; requires `--force` or `--dry-run`) |
+| any other name | the environment's name, e.g. `qa` | An environment from the inventory (uses `NSELF_DEPLOY_HOST_<ENV>` on the single-host path); loads `.env`, `.env.<name>`, `.env.secrets` (the same list `nself build` uses), never `.env.dev` or `.env.prod`, and a deploy to any remote host never reads `.env.local` (your personal override stays on your machine; `nself deploy local` still loads it) |
 
+An environment named `prod` or `production` is production-class and requires `--force` (or
+`--yes`) unless you pass `--dry-run`. The check runs before every deploy path, including the
+blue/green canary path. Releases before this change deployed every environment in the
+inventory whenever a `.nself/control-plane.yaml` existed, whatever target you named.
+
+A deploy to a remote environment with no host (no inventory entry and no `NSELF_DEPLOY_HOST_<ENV>`)
+is refused with `E483` before anything is built; it never deploys on the current machine. The
+blue/green canary flags apply to `local` only; with a remote environment they are refused. In the
+control-plane pipeline, a server whose deploy fails makes the command exit non-zero and lists it.
+With a `.nself/control-plane.yaml`, a remote deploy first runs the same remote build (no `.env.local`) and writes the validated env snapshot, then ships both the compose file and `.env.<env>` to every server; if the build or snapshot fails nothing is probed or sent. A prod-class environment always uses the `prod` env cascade and is written to `.env.prod` on the host. The env file pushed to the host is read with the same dotenv reader as the build, so both see the same values. An inventory with two environment names that differ only by case is refused, here and in `nself deploy environments`. 
 ## Deploy Strategies
 
 | Strategy | Status | Behavior |
@@ -397,8 +412,7 @@ a separate protocol.
 | `NSELF_GREEN_PORT_OFFSET` | `100` | Port offset for green containers |
 | `NSELF_DEPLOY_ENV` | `production` | Deploy target environment set by `nself deploy` after resolving `--env` / positional argument. Values: `local`, `staging`, `production`. Exposed for subprocesses and plugins. |
 
-When no host is configured, the CLI deploys to the current host. This is the
-single-region model. Multi-region orchestration is available via the dedicated `nself region` command (`list`, `add`, `status`, `promote`).
+A remote environment needs a host; with none the deploy is refused (`E483`). Multi-region orchestration is available via the dedicated `nself region` command (`list`, `add`, `status`, `promote`).
 
 ## Maintenance Banner
 
@@ -436,7 +450,7 @@ configure an nginx static page via `nginx/conf.d/`.
 |------|---------|-------------|
 | `--canary` | `0` | Start a canary deploy at N%% traffic to green (0 = full flip) |
 | `--dry-run` | `false` | Preview the deploy without executing |
-| `--env` | `""` | Target environment: local\|staging\|prod (overrides positional arg; required env vars: NSELF_DEPLOY_HOST, NSELF_DEPLOY_USER, NSELF_DEPLOY_KEY_PATH) |
+| `--env` | `""` | Target environment: local, or any inventory environment such as staging, prod or qa (overrides positional arg; required env vars: NSELF_DEPLOY_HOST, NSELF_DEPLOY_USER, NSELF_DEPLOY_KEY_PATH) |
 | `--exclude-frontends` | `false` | Exclude frontend apps from the deploy |
 | `--follow` | `false` | Stream container logs after deploy until Ctrl-C (staging/prod only) |
 | `--force-migration` | `false` | Force deploy even with backward-incompatible migrations (disables canary) |

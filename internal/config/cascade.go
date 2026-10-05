@@ -24,6 +24,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 // LegacyEnvOrderVar is the escape-hatch environment variable that restores
@@ -37,6 +38,19 @@ const LegacyEnvOrderVar = "NSELF_LEGACY_ENV_ORDER"
 // is set to a truthy value in the current process environment.
 func LegacyOrderActive() bool {
 	return getEnvBool(LegacyEnvOrderVar, false)
+}
+
+// WithoutLocalOverride returns order minus .env.local. The remote deploy
+// cascade is EnvCascadeOrder with this applied, in the build and in the env
+// snapshot pushed to the host alike.
+func WithoutLocalOverride(order []string) []string {
+	out := make([]string, 0, len(order))
+	for _, n := range order {
+		if n != ".env.local" {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // CascadeFile describes one file consulted by the env cascade, in load order.
@@ -57,7 +71,8 @@ type CascadeFile struct {
 //	.env → .env.{dev|staging|prod} → .env.secrets → .env.local
 //
 // .env is the shared, committed base. Exactly one of .env.dev/.env.staging/
-// .env.prod loads, matching envName. .env.secrets never ships in git.
+// .env.prod loads, matching envName ("local" loads .env.dev). A custom envName
+// (qa, live, ...) loads .env.<envName> and never .env.dev (P7-DEPL-12). .env.secrets never ships in git.
 // .env.local is the personal override and always wins. .env.ai no longer
 // exists as a cascade layer — its content is folded into .env.secrets at
 // init/upgrade (see internal/setup/envai.go and internal/migrate/env_order.go).
@@ -86,15 +101,27 @@ func EnvCascadeOrder(envName string, legacy bool) []string {
 
 	order := []string{".env"}
 	switch name {
-	case "dev":
+	case "dev", "local":
 		order = append(order, ".env.dev")
 	case "staging":
 		order = append(order, ".env.staging")
 	case "prod":
 		order = append(order, ".env.prod")
+	default:
+		// A custom environment (qa, live, ...) layers its own file over .env and
+		// never inherits .env.dev: dev values must not reach a server build. A
+		// name that is not a plain file-name fragment gets no layer of its own,
+		// so ENV can never point the cascade at another path.
+		if customEnvNameRe.MatchString(name) {
+			order = append(order, ".env."+name)
+		}
 	}
 	return append(order, ".env.secrets", ".env.local")
 }
+
+// customEnvNameRe is the shape a custom environment name must have to name a
+// cascade file (.env.<name>).
+var customEnvNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 
 // EnvCascade resolves EnvCascadeOrder to on-disk paths under projectDir, with
 // existence checked. Used by `nself env explain` and the migration shim; both

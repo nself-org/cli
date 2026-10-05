@@ -23,14 +23,6 @@ const DefaultEnv = "dev"
 // knownEnvs are the standard environment names.
 var knownEnvs = []string{"dev", "staging", "prod"}
 
-// PortShifts maps environment names to port offset values.
-// dev=default, staging=+100, prod=+200.
-var PortShifts = map[string]int{
-	"dev":     0,
-	"staging": 100,
-	"prod":    200,
-}
-
 // ActiveEnv reads the currently active environment from .nself/active_env.
 // Returns DefaultEnv if the file does not exist.
 func ActiveEnv(projectDir string) string {
@@ -123,15 +115,6 @@ type EnvInfo struct {
 // project and environment: nself-{project}-{env}.
 func DockerProjectName(projectName, env string) string {
 	return fmt.Sprintf("nself-%s-%s", projectName, env)
-}
-
-// ShiftPort applies the environment port offset to a base port.
-func ShiftPort(basePort int, env string) int {
-	shift, ok := PortShifts[env]
-	if !ok {
-		return basePort
-	}
-	return basePort + shift
 }
 
 // Show returns key-value pairs for the given environment with secrets redacted.

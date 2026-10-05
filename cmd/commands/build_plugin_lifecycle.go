@@ -18,7 +18,7 @@ import (
 // runPluginLifecycleCheck loads the lifecycle store, transitions expired plugins,
 // prints dormant banners, and auto-removes fully-expired plugins.
 // Auto-removal is intentionally build-only (not start) — start is read-only on lifecycle.
-func runPluginLifecycleCheck(quiet bool) {
+func runPluginLifecycleCheck(quiet, remoteDeploy bool) {
 	store, err := plugin.LoadLifecycleStore()
 	if err != nil {
 		// Non-fatal: lifecycle store is advisory only.
@@ -59,7 +59,7 @@ func runPluginLifecycleCheck(quiet bool) {
 		if !quiet {
 			ui.Warn(fmt.Sprintf("Removing expired plugin %q (grace period exhausted)", name))
 		}
-		cfg, cfgErr := config.Load(".")
+		cfg, cfgErr := config.LoadWithOptions(".", config.LoadOptions{RemoteDeploy: remoteDeploy})
 		if cfgErr != nil {
 			// Fall back to default plugin dir.
 			cfg = &config.Config{}
