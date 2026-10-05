@@ -1,0 +1,6 @@
+# Authored (not generated). Canon fragment "mcp" (contract:cli.canon-fragments v1, P7-CANON-02).
+# Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
+schema_version: 1
+commands:
+  # cmd/commands/mcp.go:69 starting the server changes nothing persistent; tool calls are gated per tool (P7-SURF)
+  mcp: {canon: core, side_effect: read, output: stream}

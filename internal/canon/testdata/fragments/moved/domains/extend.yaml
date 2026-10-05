@@ -1,0 +1,7 @@
+schema_version: 1
+commands:
+  add: {canon: core, side_effect: remote}
+  plugin: {canon: pending, side_effect: destructive}
+  remove: {canon: core, side_effect: destructive}
+moves:
+  - {from: install, to: add, since: v1.5.0, removal_at: v1.6.0}

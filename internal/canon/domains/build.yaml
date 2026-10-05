@@ -1,0 +1,9 @@
+# Authored (not generated). Canon fragment "build" (contract:cli.canon-fragments v1, P7-CANON-02).
+# Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
+schema_version: 1
+commands:
+  build: {canon: core, side_effect: write}
+  clean: {canon: core, side_effect: destructive}
+  reset: {canon: core, side_effect: destructive}
+  # cmd/commands/uninstall.go:66 hidden shim: bare uninstall keeps volumes, so the target flags matter (deprecation registry)
+  uninstall: {canon: deprecated-shim, target: reset, side_effect: destructive}

@@ -1,0 +1,6 @@
+schema_version: 1
+commands:
+  completion: {canon: pending, side_effect: read}
+  doctor: {canon: core, side_effect: read}
+  status: {canon: core, side_effect: read}
+builtins: [completion]

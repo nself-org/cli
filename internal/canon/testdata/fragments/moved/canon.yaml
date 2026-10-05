@@ -1,0 +1,2 @@
+schema_version: 1
+verbs: [status, doctor, config, remove, add, db, stop]

@@ -1,0 +1,10 @@
+# Authored (not generated). Canon fragment "lifecycle" (contract:cli.canon-fragments v1, P7-CANON-02).
+# Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
+schema_version: 1
+commands:
+  dev: {canon: pending, side_effect: write, output: stream}
+  init: {canon: core, side_effect: write}
+  restart: {canon: core, side_effect: write}
+  start: {canon: core, side_effect: write, flags: {watch: {output: stream}}}
+  # cmd/commands/stop.go:42 stops containers; --volumes deletes data volumes
+  stop: {canon: core, side_effect: write, flags: {volumes: {side_effect: destructive}}}

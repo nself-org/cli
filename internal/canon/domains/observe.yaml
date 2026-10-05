@@ -1,0 +1,30 @@
+# Authored (not generated). Canon fragment "observe" (contract:cli.canon-fragments v1, P7-CANON-02).
+# Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
+schema_version: 1
+commands:
+  # cmd/commands/completion.go:30 RunE path changes no persistent state (prints/reads only)
+  completion: {canon: pending, side_effect: read}
+  # cmd/commands/doctor.go:51 diagnostics only; --fix and --ai write (doctor_ai*.go honours --json)
+  doctor: {canon: core, side_effect: read, exit_codes: {"1": "one or more checks failed", "2": "warnings only, no failures"}, exit_codes_v15: {"10": "one or more checks failed", "12": "warnings only, no failures"}, flags: {ai: {side_effect: write, json: legacy}, fix: {side_effect: write}, install-check: {json: legacy}}}
+  # cmd/commands/health_handlers.go:23 RunE path changes no persistent state (prints/reads only)
+  health: {canon: pending, side_effect: read, json: legacy}
+  health check: {side_effect: read, json: legacy}
+  # cmd/commands/health.go:175 RunE path changes no persistent state (prints/reads only)
+  health config: {side_effect: read, json: legacy}
+  # cmd/commands/health.go:73 RunE path changes no persistent state (prints/reads only)
+  health endpoint: {side_effect: read, json: legacy}
+  # cmd/commands/health.go:137 RunE path changes no persistent state (prints/reads only)
+  health history: {side_effect: read, json: legacy}
+  # cmd/commands/health.go:42 RunE path changes no persistent state (prints/reads only)
+  health service: {side_effect: read, json: legacy}
+  # cmd/commands/health.go:103 RunE path changes no persistent state (prints/reads only)
+  health watch: {side_effect: read, output: stream, json: legacy}
+  help: {canon: builtin, side_effect: read}
+  # cmd/commands/help_topics.go:152 RunE path changes no persistent state (prints/reads only)
+  help-topics: {canon: pending, side_effect: read}
+  man: {canon: pending, side_effect: write}
+  # cmd/commands/self_heal.go:36 prints help unless --jwt is given
+  self-heal: {canon: pending, side_effect: read, flags: {jwt: {side_effect: write}}}
+  status: {canon: core, side_effect: read, exit_codes: {"1": "one or more services are not yet healthy (starting)", "2": "one or more services are unhealthy"}, exit_codes_v15: {"10": "one or more services are unhealthy", "11": "one or more services are still starting"}}
+  urls: {canon: pending, side_effect: read, json: legacy}
+  version: {canon: pending, side_effect: read, json: legacy}

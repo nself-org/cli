@@ -1,0 +1,11 @@
+schema_version: 1
+commands:
+  db: {canon: core, side_effect: write}
+  db migrate up: {side_effect: write}
+  migrate: {canon: pending, side_effect: write, mode: v1.4}
+hubs:
+  - {path: db migrate, summary: "Run schema migrations"}
+moves:
+  - {from: migrate up, to: db migrate up, since: v1.5.0, removal_at: v1.6.0}
+retired_hubs:
+  - {from: migrate, to: db, since: v1.5.0, removal_at: v1.6.0}

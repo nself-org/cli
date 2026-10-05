@@ -1,0 +1,8 @@
+schema_version: 1
+commands:
+  plugin init: {side_effect: write, mode: v1.4}
+  plugin marketplace: {side_effect: read, mode: v1.4}
+breakouts:
+  - {from: plugin init, plugin: plugin-dev, to: plugin-dev init, since: v1.5.0}
+removed:
+  - {from: plugin marketplace, since: v1.5.0, message: "nself has no plugin marketplace"}

@@ -1,0 +1,39 @@
+# Authored (not generated). Canon fragment "extend" (contract:cli.canon-fragments v1, P7-CANON-02).
+# Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
+schema_version: 1
+commands:
+  # cmd/commands/bundle.go:39 RunE path changes no persistent state (prints/reads only)
+  bundle: {canon: pending, side_effect: read}
+  bundle info: {side_effect: read, json: legacy}
+  bundle install: {side_effect: write}
+  bundle list: {side_effect: read, json: legacy}
+  bundle remove: {side_effect: destructive}
+  # cmd/commands/install.go:93 plugin installs may register a free account and send install telemetry (plugin_install.go:139,172)
+  install: {canon: pending, side_effect: remote}
+  # cmd/commands/plugin.go:21 proxies arbitrary args to a plugin binary (plugin.ProxyCommand): effect unbounded, worst case
+  plugin: {canon: pending, side_effect: destructive}
+  # cmd/commands/plugin_audit.go:59 RunE path changes no persistent state (prints/reads only)
+  plugin audit-tables: {side_effect: read, json: legacy, exit_codes: {"0": "all tables compliant", "1": "one or more tables missing source_account_id column", "2": "one or more tables missing Hasura select_permissions filter"}}
+  # cmd/commands/plugin_compat_check.go:49 RunE path changes no persistent state (prints/reads only)
+  plugin compat-check: {side_effect: read, json: legacy, exit_codes: {"0": "all installed plugins are compatible", "1": "one or more plugins are incompatible (details printed to stderr)"}}
+  plugin count: {side_effect: read, json: legacy}
+  plugin disable: {side_effect: write}
+  plugin enable: {side_effect: write}
+  plugin info: {side_effect: read}
+  # cmd/commands/plugin_install.go:27 may register a free account and send install telemetry to the ping server (plugin_install.go:139,172)
+  plugin install: {side_effect: remote}
+  # cmd/commands/plugin_query.go:143 RunE path changes no persistent state (prints/reads only)
+  plugin inventory: {side_effect: read}
+  plugin list: {side_effect: read}
+  plugin logs: {side_effect: read, output: stream}
+  plugin outdated: {side_effect: read, json: legacy, exit_codes: {"1": "at least one installed plugin is outdated (exits 0 when every plugin is current)"}}
+  plugin refresh: {side_effect: write}
+  plugin remove: {side_effect: destructive}
+  plugin search: {side_effect: read, json: legacy}
+  plugin start: {side_effect: write}
+  plugin status: {side_effect: read}
+  plugin stop: {side_effect: write}
+  plugin update: {side_effect: write}
+  # cmd/commands/plugin_lifecycle.go:101 RunE path changes no persistent state (prints/reads only)
+  plugin updates: {side_effect: read}
+  remove: {canon: core, side_effect: destructive}

@@ -1,4 +1,4 @@
-// Tests for the populated canon.yaml (P7-REG-04).
+// Tests for the populated canon fragments (P7-REG-04, split by P7-CANON-02).
 //
 // Purpose:     guard the declared command canon against the mistakes that make
 //
@@ -15,6 +15,7 @@ package canon_test
 
 import (
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -69,29 +70,49 @@ func load(t *testing.T) *canon.File {
 	return f
 }
 
-// comments returns the head comment of every key under `commands`, in file order.
+// fragmentKeys returns, per fragment file (lexical order), the command keys in
+// file order, and the head comment of every key across all fragments.
+func fragmentKeys(t *testing.T) (files []string, keys map[string][]string, head map[string]string) {
+	t.Helper()
+	names, err := filepath.Glob("domains/*.yaml")
+	if err != nil || len(names) == 0 {
+		t.Fatalf("no fragments under domains/: %v", err)
+	}
+	sort.Strings(names)
+	keys = map[string][]string{}
+	head = map[string]string{}
+	for _, name := range names {
+		raw, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		var doc yaml.Node
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		top := doc.Content[0]
+		for i := 0; i+1 < len(top.Content); i += 2 {
+			if top.Content[i].Value != "commands" {
+				continue
+			}
+			cmds := top.Content[i+1]
+			for j := 0; j+1 < len(cmds.Content); j += 2 {
+				k := cmds.Content[j]
+				keys[name] = append(keys[name], k.Value)
+				head[k.Value] = strings.TrimSpace(k.HeadComment)
+			}
+		}
+		files = append(files, name)
+	}
+	return files, keys, head
+}
+
+// comments returns every key (fragment order) and the head comment of each.
 func comments(t *testing.T) (keys []string, head map[string]string) {
 	t.Helper()
-	raw, err := os.ReadFile("canon.yaml")
-	if err != nil {
-		t.Fatalf("read canon.yaml: %v", err)
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		t.Fatalf("parse canon.yaml: %v", err)
-	}
-	top := doc.Content[0]
-	head = map[string]string{}
-	for i := 0; i+1 < len(top.Content); i += 2 {
-		if top.Content[i].Value != "commands" {
-			continue
-		}
-		cmds := top.Content[i+1]
-		for j := 0; j+1 < len(cmds.Content); j += 2 {
-			k := cmds.Content[j]
-			keys = append(keys, k.Value)
-			head[k.Value] = strings.TrimSpace(k.HeadComment)
-		}
+	files, per, head := fragmentKeys(t)
+	for _, n := range files {
+		keys = append(keys, per[n]...)
 	}
 	return keys, head
 }
@@ -99,7 +120,7 @@ func comments(t *testing.T) (keys []string, head map[string]string) {
 func TestPopulatedAndValid(t *testing.T) {
 	f := load(t)
 	if len(f.Commands) < 300 {
-		t.Fatalf("canon.yaml has %d entries; the live tree has more than 300 commands", len(f.Commands))
+		t.Fatalf("the canon fragments hold %d entries; the live tree has more than 300 commands", len(f.Commands))
 	}
 	if err := f.Validate(); err != nil {
 		t.Fatal(err)
@@ -118,16 +139,18 @@ func TestPopulatedAndValid(t *testing.T) {
 }
 
 func TestKeysSortedAndUnique(t *testing.T) {
-	keys, _ := comments(t)
-	if !sort.StringsAreSorted(keys) {
-		t.Error("commands keys are not sorted; keep canon.yaml sorted by key")
-	}
-	seen := map[string]bool{}
-	for _, k := range keys {
-		if seen[k] {
-			t.Errorf("duplicate key %q", k)
+	files, per, _ := fragmentKeys(t)
+	seen := map[string]string{}
+	for _, f := range files {
+		if !sort.StringsAreSorted(per[f]) {
+			t.Errorf("%s: commands keys are not sorted; keep each fragment sorted by key", f)
 		}
-		seen[k] = true
+		for _, k := range per[f] {
+			if prev, dup := seen[k]; dup {
+				t.Errorf("duplicate key %q in %s and %s", k, prev, f)
+			}
+			seen[k] = f
+		}
 	}
 }
 
@@ -174,7 +197,7 @@ func TestDepthRules(t *testing.T) {
 func TestHelpIsBuiltin(t *testing.T) {
 	e, ok := load(t).Commands["help"]
 	if !ok {
-		t.Fatal("canon.yaml has no help entry")
+		t.Fatal("the canon has no help entry")
 	}
 	if e.Canon != canon.CanonBuiltin || e.SideEffect != canon.SideEffectRead {
 		t.Errorf("help = %+v, want {canon: builtin, side_effect: read}", e)
