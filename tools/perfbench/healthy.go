@@ -58,29 +58,29 @@ func healthyCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *report == "" {
-		fmt.Fprintln(stderr, "healthy: -report is required")
+		sayln(stderr, "healthy: -report is required")
 		return 2
 	}
 	data, err := os.ReadFile(*report)
 	if err != nil {
-		fmt.Fprintln(stderr, "healthy:", err)
+		sayln(stderr, "healthy:", err)
 		return 2
 	}
 	sum, err := timeToHealthy(data)
 	if err != nil {
-		fmt.Fprintln(stderr, "healthy:", err)
+		sayln(stderr, "healthy:", err)
 		return 1
 	}
 	m := Metric{Name: "time_to_healthy", Unit: "s", P50: round1(sum), P95: round1(sum), Max: round1(sum), N: 1}
 	if !*asJSON {
-		fmt.Fprint(stdout, formatMetrics([]Metric{m}))
+		say(stdout, "%s", formatMetrics([]Metric{m}))
 		return 0
 	}
 	out, err := marshal(newResult("time-to-healthy", 1, []Metric{m}))
 	if err != nil {
-		fmt.Fprintln(stderr, "healthy:", err)
+		sayln(stderr, "healthy:", err)
 		return 2
 	}
-	stdout.Write(out)
+	put(stdout, out)
 	return 0
 }

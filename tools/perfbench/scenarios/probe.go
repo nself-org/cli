@@ -36,12 +36,12 @@ func RunOnce(ctx context.Context, bin string, extraEnv, args []string, slowdown 
 	if err != nil {
 		return 0, 0, err
 	}
-	defer os.RemoveAll(home)
+	defer func() { _ = os.RemoveAll(home) }()
 	work, err := os.MkdirTemp("", "perfbench-cwd-*")
 	if err != nil {
 		return 0, 0, err
 	}
-	defer os.RemoveAll(work)
+	defer func() { _ = os.RemoveAll(work) }()
 
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = work

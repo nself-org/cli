@@ -35,6 +35,12 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 	case "ab":
 		return abCmd(args[1:], stdout, stderr)
 	}
-	fmt.Fprintf(stderr, "perfbench: unknown subcommand %q (have: run, healthy, ab)\n", args[0])
+	say(stderr, "perfbench: unknown subcommand %q (have: run, healthy, ab)\n", args[0])
 	return 2
 }
+
+// say, sayln and put write to stdout or stderr. A failed write to a standard
+// stream has nowhere left to be reported, so its error is dropped on purpose.
+func say(w io.Writer, format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+func sayln(w io.Writer, a ...any)              { _, _ = fmt.Fprintln(w, a...) }
+func put(w io.Writer, b []byte)                { _, _ = w.Write(b) }

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -105,24 +104,24 @@ func abCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *baseBin == "" || *headBin == "" || *runs < 1 || *warmup < 0 || *slow < 1 {
-		fmt.Fprintln(stderr, "ab: -base and -head are required, -runs >= 1, -warmup >= 0, -inject-slowdown >= 1")
+		sayln(stderr, "ab: -base and -head are required, -runs >= 1, -warmup >= 0, -inject-slowdown >= 1")
 		return 2
 	}
 	for _, b := range []string{*baseBin, *headBin} {
 		if _, err := os.Stat(b); err != nil {
-			fmt.Fprintln(stderr, "ab:", err)
+			sayln(stderr, "ab:", err)
 			return 2
 		}
 	}
 	sc, ok := scenarios.Get(*scenario)
 	prober, isProber := sc.(scenarios.Prober)
 	if !ok || !isProber {
-		fmt.Fprintf(stderr, "ab: scenario %q is unknown or has no fixed probes (have: %s)\n", *scenario, strings.Join(scenarios.Names(), ", "))
+		say(stderr, "ab: scenario %q is unknown or has no fixed probes (have: %s)\n", *scenario, strings.Join(scenarios.Names(), ", "))
 		return 2
 	}
 	base, head, err := abMeasure(context.Background(), prober, *baseBin, *headBin, *runs, *warmup, *slow)
 	if err != nil {
-		fmt.Fprintln(stderr, "ab:", err)
+		sayln(stderr, "ab:", err)
 		return 2
 	}
 	failed := compare(base, head, *ratio, *minDelta)
@@ -135,12 +134,12 @@ func abCmd(args []string, stdout, stderr io.Writer) int {
 		res.Injected = *slow > 1
 		out, err := marshal(ABResult{Result: res, Base: abSide{base}, Head: abSide{head}, Verdict: verdict, Failed: failed})
 		if err != nil {
-			fmt.Fprintln(stderr, "ab:", err)
+			sayln(stderr, "ab:", err)
 			return 2
 		}
-		stdout.Write(out)
+		put(stdout, out)
 	} else {
-		fmt.Fprintf(stdout, "base:\n%shead:\n%sverdict: %s %s\n", formatMetrics(base), formatMetrics(head), verdict, strings.Join(failed, " "))
+		say(stdout, "base:\n%shead:\n%sverdict: %s %s\n", formatMetrics(base), formatMetrics(head), verdict, strings.Join(failed, " "))
 	}
 	if len(failed) > 0 {
 		return 1

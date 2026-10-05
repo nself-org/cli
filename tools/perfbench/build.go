@@ -16,7 +16,7 @@ func buildNself(ctx context.Context, srcDir string) (string, func(), error) {
 	if err != nil {
 		return "", func() {}, err
 	}
-	cleanup := func() { os.RemoveAll(dir) }
+	cleanup := func() { _ = os.RemoveAll(dir) }
 	bin := filepath.Join(dir, "nself")
 	cmd := exec.CommandContext(ctx, "go", "build", "-mod=vendor", "-trimpath", "-ldflags=-s -w", "-o", bin, "./cmd/nself")
 	cmd.Dir = srcDir
