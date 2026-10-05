@@ -74,7 +74,7 @@ func Check(ctx context.Context, cfg *config.Config, exts []string, probe Probe) 
 	img := compose.ResolvePostgresImage(cfg.Postgres)
 	provides, known := imageProvides(img)
 	if !known {
-		fmt.Fprintf(Stderr, "warning [E508]: cannot tell whether image %q ships %s; install continues. Start the stack to have the cluster checked, or use an image that ships them.\n",
+		_, _ = fmt.Fprintf(Stderr, "warning [E508]: cannot tell whether image %q ships %s; install continues. Start the stack to have the cluster checked, or use an image that ships them.\n",
 			img, strings.Join(want, ", "))
 		return nil
 	}
