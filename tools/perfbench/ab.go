@@ -52,8 +52,9 @@ func compare(base, head []Metric, ratio, minDeltaMS float64) []string {
 	return failed
 }
 
-// abMeasure runs every probe of p interleaved (base, head, base, head, ...)
-// so machine drift hits both binaries alike. Warm-up pairs are discarded but
+// abMeasure runs every probe of p interleaved in rounds of one base and one
+// head run, the order alternating each round, so machine drift hits both
+// binaries alike. Warm-up pairs are discarded but
 // still checked. A probe on either side that exits with a code other than the
 // probe's expected one, dies by signal or times out returns a *ProbeFailure:
 // a head that crashes at startup must never look faster.
@@ -64,11 +65,20 @@ func abMeasure(ctx context.Context, p scenarios.Prober, baseBin, headBin string,
 			if err := ctx.Err(); err != nil {
 				return nil, nil, err
 			}
-			bms, err := scenarios.RunChecked(ctx, baseBin, "base", probe, scenarios.Opts{Timeout: timeout})
-			if err != nil {
-				return nil, nil, err
+			// Alternate which binary goes first so a fixed order effect (the
+			// second process finds a warmer cache, or a busier neighbour)
+			// cannot favour either side.
+			var bms, hms float64
+			var err error
+			if i%2 == 0 {
+				if bms, err = scenarios.RunChecked(ctx, baseBin, "base", probe, scenarios.Opts{Timeout: timeout}); err == nil {
+					hms, err = scenarios.RunChecked(ctx, headBin, "head", probe, scenarios.Opts{Timeout: timeout, Slowdown: slowdown})
+				}
+			} else {
+				if hms, err = scenarios.RunChecked(ctx, headBin, "head", probe, scenarios.Opts{Timeout: timeout, Slowdown: slowdown}); err == nil {
+					bms, err = scenarios.RunChecked(ctx, baseBin, "base", probe, scenarios.Opts{Timeout: timeout})
+				}
 			}
-			hms, err := scenarios.RunChecked(ctx, headBin, "head", probe, scenarios.Opts{Timeout: timeout, Slowdown: slowdown})
 			if err != nil {
 				return nil, nil, err
 			}
@@ -135,6 +145,10 @@ func abCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	if err != nil {
 		sayln(stderr, "ab:", err)
+		return 2
+	}
+	if len(base) == 0 || len(head) == 0 {
+		sayln(stderr, "ab: the scenario produced no metrics; refusing to pass")
 		return 2
 	}
 	failed := compare(base, head, *ratio, *minDelta)

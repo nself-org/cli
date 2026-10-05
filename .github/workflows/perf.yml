@@ -15,6 +15,16 @@ on:
   schedule:
     - cron: "0 6 * * 1"  # Monday 06:00 UTC baseline run
   workflow_dispatch:
+    inputs:
+      self_test:
+        description: >-
+          Prove a gate can fire. none = normal run; aa20 = 20 A/A cold-start
+          comparisons of the head against itself, all must pass; inject = a
+          2x injected slowdown must fail the A/B step; size = the head binary
+          is padded 15% and the size regression step must report a regression.
+        type: choice
+        options: [none, aa20, inject, size]
+        default: none
 
 # Hard limits:
 #   darwin/arm64 uncompressed: 35 MB (unchanged from S51-T07 spec)
@@ -52,7 +62,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0  # need full history to compare with base branch
+          fetch-depth: 0  # need full history to find the merge-base
+          # The PR head, not the synthetic merge commit: HEAD must be the
+          # branch head so "Base build: <merge-base> head: <head>" can be
+          # re-checked locally with git merge-base.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-go@v7
         with:
@@ -67,6 +81,16 @@ jobs:
               -o nself-darwin-arm64 \
               ./cmd/nself/
           ls -lh nself-darwin-arm64
+
+      - name: Pad head binary by 15% (self_test=size)
+        # Proves the regression comparison below can fire: the padded head
+        # must be reported as a regression against the real base build.
+        if: github.event_name == 'workflow_dispatch' && inputs.self_test == 'size'
+        run: |
+          SIZE_BYTES=$(stat -f%z nself-darwin-arm64)
+          PAD_BYTES=$((SIZE_BYTES * 15 / 100))
+          head -c "$PAD_BYTES" /dev/zero >> nself-darwin-arm64
+          echo "Padded head binary: ${SIZE_BYTES} + ${PAD_BYTES} bytes"
 
       - name: Check uncompressed binary size
         id: size_check
@@ -108,33 +132,35 @@ jobs:
 
       - name: Compare against base branch size (regression check)
         id: regression_check
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.self_test == 'size')
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_BYTES: ${{ steps.size_check.outputs.size_bytes }}
+          THRESHOLD: ${{ env.REGRESSION_THRESHOLD_PCT }}
         run: |
-          # Build the base branch binary to get a comparison size.
-          git fetch origin "${{ github.base_ref }}" --depth=1
-          git stash
+          # G9: the base is the merge-base with origin/main, built in its own
+          # worktree. A failed base build fails this step (set -e).
+          set -euo pipefail
+          HEAD_SHA=$(git rev-parse HEAD)
+          BASE_SHA=$(git merge-base "origin/${BASE_REF:-main}" "$HEAD_SHA")
+          echo "Base build: $BASE_SHA head: $HEAD_SHA"
+          if [ "$EVENT_NAME" = pull_request ] && [ "$BASE_SHA" = "$HEAD_SHA" ]; then
+            echo "FAIL: base and head are the same commit; the comparison would measure nothing" >&2
+            exit 1
+          fi
 
-          BASE_SHA=$(git rev-parse "origin/${{ github.base_ref }}")
-          git checkout "$BASE_SHA" -- go.mod go.sum cmd/ internal/ pkg/ vendor/ 2>/dev/null || true
-
-          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
-            go build -mod=vendor \
-              -ldflags='-s -w' \
-              -o nself-base-darwin-arm64 \
-              ./cmd/nself/ 2>/dev/null || {
-            echo "Could not build base branch — skipping regression check"
-            echo "regression_pct=0" >> "$GITHUB_OUTPUT"
-            echo "regression_exceeded=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          }
-
-          git stash pop 2>/dev/null || true
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+          (cd "$RUNNER_TEMP/base" && \
+            GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
+              go build -mod=vendor \
+                -ldflags='-s -w' \
+                -o "$GITHUB_WORKSPACE/nself-base-darwin-arm64" \
+                ./cmd/nself/)
 
           BASE_BYTES=$(stat -f%z nself-base-darwin-arm64)
-          HEAD_BYTES=${{ steps.size_check.outputs.size_bytes }}
-          THRESHOLD="${{ env.REGRESSION_THRESHOLD_PCT }}"
-
           DELTA_PCT=$(awk "BEGIN{printf \"%.1f\", ($HEAD_BYTES - $BASE_BYTES) / $BASE_BYTES * 100}")
+          echo "Base bytes: $BASE_BYTES head bytes: $HEAD_BYTES"
           echo "Size delta: ${DELTA_PCT}% (threshold: ${THRESHOLD}%)"
           echo "regression_pct=${DELTA_PCT}" >> "$GITHUB_OUTPUT"
 
@@ -235,6 +261,250 @@ jobs:
         run: |
           echo "FAIL: Binary grew by ${{ steps.regression_check.outputs.regression_pct }}% (threshold: ${{ env.REGRESSION_THRESHOLD_PCT }}%)." >&2
           echo "Add label 'size-grow-approved' to override — justification required in PR description." >&2
+          exit 1
+
+      - name: Assert the padded head was reported as a regression (self_test=size)
+        if: github.event_name == 'workflow_dispatch' && inputs.self_test == 'size'
+        env:
+          REGRESSION_EXCEEDED: ${{ steps.regression_check.outputs.regression_exceeded }}
+        run: |
+          if [ "$REGRESSION_EXCEEDED" != "true" ]; then
+            echo "FAIL: the 15% padded head was not reported as a regression; the comparison is inert" >&2
+            exit 1
+          fi
+          echo "PASS: the regression step reported the padded head as a regression"
+
+  # ── Job: cold-start gate (P7-GUARD-08, EPIC decision G8) ──────────
+  # Relative A/B against the PR merge-base on one runner, plus an absolute p95
+  # ceiling. Thresholds, sample counts and the update rule: wiki/Benchmarks.md
+  # (Cold start gate). No step here may be continue-on-error or skip on failure.
+  cold-start-gate:
+    name: Cold Start Gate
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AB_RUNS: "40"
+      AB_WARMUP: "3"
+      RUN_RUNS: "30"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          # The PR head, not the synthetic merge commit (see Binary Size Gate).
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Build base (merge-base), head and perfbench
+        id: build
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          # G9: base builds only through a detached worktree; a failed base
+          # build fails the job (set -e), there is no fallback.
+          set -euo pipefail
+          # Paths shared by the later steps (the runner context is not
+          # available at job level, so they are exported here).
+          {
+            echo "PB=$RUNNER_TEMP/bin/perfbench"
+            echo "BASE_BIN=$RUNNER_TEMP/bin/nself-base"
+            echo "HEAD_BIN=$RUNNER_TEMP/bin/nself-head"
+            echo "OUT=$RUNNER_TEMP/perf-out"
+          } >> "$GITHUB_ENV"
+          PB=$RUNNER_TEMP/bin/perfbench
+          BASE_BIN=$RUNNER_TEMP/bin/nself-base
+          HEAD_BIN=$RUNNER_TEMP/bin/nself-head
+          OUT=$RUNNER_TEMP/perf-out
+          HEAD_SHA=$(git rev-parse HEAD)
+          if [ "$EVENT_NAME" = pull_request ]; then
+            BASE_SHA=$(git merge-base "origin/$BASE_REF" "$HEAD_SHA")
+            if [ "$BASE_SHA" = "$HEAD_SHA" ]; then
+              echo "FAIL: base and head are the same commit; the comparison would measure nothing" >&2
+              exit 1
+            fi
+          else
+            BASE_SHA=$HEAD_SHA   # dispatch: the base is the head (an A/A run)
+          fi
+          echo "Base build: $BASE_SHA head: $HEAD_SHA"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+          mkdir -p "$RUNNER_TEMP/bin" "$OUT"
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+          (cd "$RUNNER_TEMP/base" && CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags='-s -w' -o "$BASE_BIN" ./cmd/nself)
+          CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags='-s -w' -o "$HEAD_BIN" ./cmd/nself
+          CGO_ENABLED=0 go build -mod=vendor -o "$PB" ./tools/perfbench
+          ls -l "$BASE_BIN" "$HEAD_BIN" "$PB"
+
+      - name: Cold start A/B (interleaved, base vs head)
+        id: ab
+        env:
+          HEAD_SHA: ${{ steps.build.outputs.head_sha }}
+        run: |
+          # The exit code is captured, not swallowed: the decision steps below
+          # read it, so the table and artifacts exist even for a failing run.
+          code=0
+          "$PB" ab -base "$BASE_BIN" -head "$HEAD_BIN" -runs "$AB_RUNS" -warmup "$AB_WARMUP" \
+            -head-sha "$HEAD_SHA" -json > "$OUT/perf-ab.json" || code=$?
+          echo "perfbench ab exit code: $code"
+          echo "ab_exit=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Cold start absolute p95 ceiling (no override)
+        env:
+          HEAD_SHA: ${{ steps.build.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          "$PB" run -bin "$HEAD_BIN" -runs "$RUN_RUNS" -warmup "$AB_WARMUP" -sha "$HEAD_SHA" -json > "$OUT/perf-run.json"
+          "$PB" check -budget .github/perf-budget.json -in "$OUT/perf-run.json" -min-n "$RUN_RUNS"
+
+      - name: Self-test aa20 (20 A/A comparisons of the head against itself)
+        if: github.event_name == 'workflow_dispatch' && inputs.self_test == 'aa20'
+        run: |
+          # Every comparison must pass. The per-run p50 ratio and delta are
+          # summarised so the thresholds stay justified by data, not a guess.
+          mkdir -p "$OUT/aa"
+          fails=0
+          for i in $(seq -w 1 20); do
+            code=0
+            "$PB" ab -base "$HEAD_BIN" -head "$HEAD_BIN" -runs "$AB_RUNS" -warmup "$AB_WARMUP" -json > "$OUT/aa/$i.json" || code=$?
+            if [ "$code" -ne 0 ]; then
+              fails=$((fails + 1))
+              echo "A/A run $i FAILED (exit $code): $(jq -c '{verdict, failed, error}' "$OUT/aa/$i.json" 2>/dev/null)"
+            fi
+          done
+          have=$(find "$OUT/aa" -name '*.json' | wc -l | tr -d ' ')
+          echo "A/A runs: $have, failures: $fails"
+          {
+            echo "### A/A self-test: $fails failures in $have runs"
+            echo
+            echo "| Probe | runs | base p50 min..max (ms) | max ratio | max delta (ms) | min delta (ms) |"
+            echo "|---|---|---|---|---|---|"
+            jq -s -r '[.[] | .base.metrics as $b | .head.metrics[] | . as $h | ($b[] | select(.name == $h.name)) as $bb
+                | {name: $h.name, b: $bb.p50, ratio: ($h.p50 / $bb.p50), delta: ($h.p50 - $bb.p50)}]
+              | group_by(.name)[]
+              | "| `\(.[0].name)` | \(length) | \(map(.b) | min)..\(map(.b) | max) | \((map(.ratio) | max * 1000 | round) / 1000) | \((map(.delta) | max * 10 | round) / 10) | \((map(.delta) | min * 10 | round) / 10) |"' "$OUT"/aa/*.json
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$have" -ne 20 ] || [ "$fails" -ne 0 ]; then
+            echo "FAIL: expected 20 passing A/A runs, got $have runs with $fails failures" >&2
+            exit 1
+          fi
+
+      - name: Self-test inject (a 2x injected slowdown must fail)
+        if: github.event_name == 'workflow_dispatch' && inputs.self_test == 'inject'
+        run: |
+          code=0
+          "$PB" ab -base "$BASE_BIN" -head "$HEAD_BIN" -runs "$AB_RUNS" -warmup "$AB_WARMUP" \
+            -inject-slowdown 2 -json > "$OUT/perf-ab-injected.json" || code=$?
+          if [ "$code" -ne 1 ]; then
+            echo "FAIL: the injected 2x run exited $code, want 1 (regression)" >&2
+            exit 1
+          fi
+          # A clean regression verdict on every probe, not a crashed probe.
+          jq -e '.verdict == "fail" and .injected == true and ((.error // "") == "") and (.failed | length) == 3' "$OUT/perf-ab-injected.json"
+          # The absolute check must refuse a result produced with the injection.
+          code=0
+          "$PB" check -budget .github/perf-budget.json -in "$OUT/perf-ab-injected.json" || code=$?
+          if [ "$code" -ne 2 ]; then
+            echo "FAIL: check accepted an injected result (exit $code, want 2)" >&2
+            exit 1
+          fi
+          jq -r '. as $d | $d.base.metrics[] as $b | ($d.head.metrics[] | select(.name == $b.name)) as $h | "\($b.name): base p50 \($b.p50) ms, injected head p50 \($h.p50) ms"' "$OUT/perf-ab-injected.json"
+          echo "PASS: the injected 2x slowdown failed the comparison as expected"
+
+      - name: Cold start summary
+        if: always()
+        env:
+          BASE_SHA: ${{ steps.build.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.build.outputs.head_sha }}
+        run: |
+          {
+            echo "### Cold start A/B: base \`${BASE_SHA:0:8}\` vs head \`${HEAD_SHA:0:8}\`"
+            echo
+            if [ -s "$OUT/perf-ab.json" ]; then
+              echo "Fail when head p50 > 1.25 x base p50 and head p50 - base p50 > 3 ms. Verdict: **$(jq -r .verdict "$OUT/perf-ab.json")**"
+              echo
+              echo "| Probe | base p50 | head p50 | ratio | delta (ms) | base p95 | head p95 | result |"
+              echo "|---|---|---|---|---|---|---|---|"
+              jq -r '. as $d | $d.base.metrics[] as $b | ($d.head.metrics[] | select(.name == $b.name)) as $h
+                | "| `\($b.name)` | \($b.p50) | \($h.p50) | \((($h.p50 / $b.p50) * 100 | round) / 100) | \((($h.p50 - $b.p50) * 10 | round) / 10) | \($b.p95) | \($h.p95) | \(if ($d.failed | index($b.name)) then "FAIL" else "ok" end) |"' "$OUT/perf-ab.json"
+              jq -r 'if (.error // "") != "" then "\nProbe error: \(.error)" else empty end' "$OUT/perf-ab.json"
+            else
+              echo "No A/B result was produced."
+            fi
+            if [ -s "$OUT/perf-run.json" ]; then
+              echo
+              echo "Absolute p95 ceiling (head, budget in .github/perf-budget.json):"
+              echo
+              echo "| Probe | p50 | p95 | max | n |"
+              echo "|---|---|---|---|---|"
+              jq -r '.metrics[] | "| `\(.name)` | \(.p50) | \(.p95) | \(.max) | \(.n) |"' "$OUT/perf-run.json"
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload cold start results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cold-start-gate-json
+          path: ${{ runner.temp }}/perf-out/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Check for perf-regression-approved override label
+        id: label_check
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v9
+        with:
+          result-encoding: string
+          script: |
+            const labels = context.payload.pull_request.labels.map(l => l.name);
+            const approved = labels.includes('perf-regression-approved');
+            console.log(`Labels: ${labels.join(', ')}`);
+            console.log(`perf-regression-approved: ${approved}`);
+            return approved ? 'true' : 'false';
+
+      - name: Decide the A/B verdict
+        id: verdict
+        if: ${{ !cancelled() && steps.ab.outcome == 'success' }}
+        env:
+          AB_EXIT: ${{ steps.ab.outputs.ab_exit }}
+        run: |
+          # 0 = no regression, 1 = regression or a dead probe, anything else
+          # (including an empty value) is a measurement error. A probe that
+          # died, hung or exited wrongly is never covered by the override label.
+          case "$AB_EXIT" in
+            0) echo "regressed=false" >> "$GITHUB_OUTPUT"; echo "PASS: no cold start regression" ;;
+            1)
+              if [ -n "$(jq -r '.error // empty' "$OUT/perf-ab.json")" ]; then
+                echo "FAIL: a probe died, hung or exited unexpectedly; no override applies: $(jq -r .error "$OUT/perf-ab.json")" >&2
+                exit 1
+              fi
+              echo "regressed=true" >> "$GITHUB_OUTPUT"
+              echo "REGRESSION in: $(jq -r '.failed | join(", ")' "$OUT/perf-ab.json")" >&2
+              ;;
+            *) echo "FAIL: perfbench ab exited '$AB_EXIT' (measurement error)" >&2; exit 1 ;;
+          esac
+
+      - name: Fail on cold start regression without override label
+        if: |
+          github.event_name == 'pull_request' &&
+          steps.verdict.outputs.regressed == 'true' &&
+          steps.label_check.outputs.result != 'true'
+        run: |
+          echo "FAIL: cold start regressed by the G8 rule; see the A/B table in the job summary." >&2
+          echo "Add label 'perf-regression-approved' to override. The PR description must state the measured delta and the reason." >&2
+          exit 1
+
+      - name: Fail on cold start regression (dispatch)
+        if: github.event_name == 'workflow_dispatch' && steps.verdict.outputs.regressed == 'true'
+        run: |
+          echo "FAIL: cold start regressed by the G8 rule." >&2
           exit 1
 
   # ── Job 2: CLI Go benchmarks ──────────────────────────────────────

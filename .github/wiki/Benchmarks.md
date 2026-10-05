@@ -91,15 +91,58 @@ go run -mod=vendor ./tools/perfbench ab -base /path/to/base/nself -head /path/to
 go run -mod=vendor ./tools/perfbench ab -scenario json-overhead -base ... -head ...
 ```
 
-It exits 1 when, for any probe, `head_p50 > 1.25 x base_p50` and `head_p50 - base_p50 > 3 ms` (both flags are adjustable), or when either binary dies, exits with the wrong code or times out. `go run` reports every non-zero exit of the program as 1; build `./tools/perfbench` first when you need to tell exit 1 (regression) from exit 2 (bad usage). `-inject-slowdown F` makes each head sample take F times its measured time; it exists only to prove the comparison can fire. P7-GUARD-08 wires `ab` into `perf.yml` and adds `check` and the budget file.
+It exits 1 when, for any probe, `head_p50 > 1.25 x base_p50` and `head_p50 - base_p50 > 3 ms` (both flags are adjustable), or when either binary dies, exits with the wrong code or times out. `go run` reports every non-zero exit of the program as 1; build `./tools/perfbench` first when you need to tell exit 1 (regression) from exit 2 (bad usage). `-inject-slowdown F` makes each head sample take F times its measured time; it exists only to prove the comparison can fire. The measured order alternates each round (base first, then head first), so a fixed order effect cannot favour a side. `perf.yml` runs `ab` on every PR (see Cold start gate below).
 
 New scenarios are registered with `scenarios.Register` from a file in `tools/perfbench/scenarios/`; see the package comment.
 
+### Checking a result against the budget
+
+```bash
+go run -mod=vendor ./tools/perfbench run -bin /path/to/nself -json > run.json
+go run -mod=vendor ./tools/perfbench check -budget .github/perf-budget.json -in run.json
+```
+
+`check` reads a `perfbench-budget/v1` file (`p95_ms`: metric name to ceiling in ms) and a `perfbench/v1` result (an `ab` document also works; its run fields describe the head). It exits 1 and prints `<metric> p95 <v> ms > budget <b> ms` for every metric over its ceiling. It fails closed: exit 2 for an unreadable, wrong-schema or unknown-field budget or result, an empty budget, a result produced with `-inject-slowdown` (`injected: true`), and exit 1 for a budgeted metric missing from the result, a metric with fewer than `-min-n` samples (default 20, because nearest-rank p95 of fewer samples is just the maximum), a unit other than ms, or a p95 that is zero or not a number.
+
+## Cold start gate
+
+`perf.yml` job **Cold Start Gate** (ubuntu-latest) runs on every pull request that touches Go code, `go.mod`, `go.sum`, `vendor/` or the workflow, and on `workflow_dispatch`. It never uses `continue-on-error` and has no skip path: a failed base build, a crashed or hung probe, an unparseable result or too few samples fails the job.
+
+1. **Build.** The base is `git merge-base origin/<base branch> <PR head>`, built in a detached `git worktree` beside the head checkout (the checkout is the PR head commit, not GitHub's synthetic merge commit, so the log line `Base build: <merge-base sha> head: <head sha>` can be re-checked locally with `git merge-base origin/main <head sha>`). The job fails if the two are the same commit. On a dispatch run the base is the head, so the run is an A/A comparison.
+2. **A/B regression gate.** `perfbench ab` runs 40 interleaved rounds per probe after 3 warm-up rounds, for `nself version`, `nself --help` and `nself status`. A probe fails when `head_p50 > 1.25 x base_p50` **and** `head_p50 - base_p50 > 3 ms`. The ratio alone would fire on timer noise at a few milliseconds, and a large fixed delta (the old 20 ms floor) would let a 2x regression of an 11 ms probe through, so both conditions are required. The job summary and the `cold-start-gate-json` artifact (`perf-ab.json`, `perf-run.json`) carry the full table, so a flake names the probe and both p50s.
+3. **Absolute ceiling.** `perfbench run` (30 runs per probe) then `perfbench check -budget .github/perf-budget.json`: p95 at or below the ceiling per probe. It catches slow drift that no single PR trips, and **has no override label**.
+
+Why a relative gate: base and head run alternately in the same job on the same VM, so runner speed and neighbour noise hit both sides and cancel. A fixed budget cannot do that.
+
+### Why these thresholds
+
+The ratio, the minimum delta, 40 rounds and 3 warm-up rounds are decision G8 of the P7-GUARD epic. They are validated, not tuned: the self-tests below must show 20 of 20 A/A comparisons passing and an injected 2x slowdown failing on ubuntu-latest before the gate merges, and the measured A/A spread is recorded in `hq` (`sport/reference/performance-slos.md`). If a self-test ever fails, re-measure the variance and escalate; do not loosen a threshold quietly. The 150 ms ceiling is the declared cold-start SLO, far above the measured p95 on the same runner, so it only fires on a large drift.
+
+### Self-test dispatches
+
+Run from the Actions tab or `gh workflow run perf.yml --ref <branch> -f self_test=<name>`:
+
+| `self_test` | Proves | Passes only when |
+|---|---|---|
+| `none` (default) | normal dispatch run, base = head | the A/B and ceiling steps pass |
+| `aa20` | the gate does not fire on noise | 20 A/A comparisons of the head against itself all pass; the summary lists the spread of p50 ratio and delta |
+| `inject` | the gate can fire | `perfbench ab -inject-slowdown 2` exits 1 with all three probes failed, and `check` refuses its result |
+| `size` | the size regression check can fire (Binary Size Gate) | the head binary padded by 15% is reported as a regression against the real base build |
+
+### Approved regressions
+
+A PR labelled `perf-regression-approved` still runs and prints the A/B table, but the fail step is skipped (the same pattern as `size-grow-approved`). A probe that died, hung or exited with the wrong code is not covered by the label. The PR description must state the measured delta and the reason, and the merging Ticket records the new numbers as a baseline row in `performance-slos.md`.
+
+### Updating a budget
+
+A PR that raises a ceiling in `.github/perf-budget.json` states the measured regression (probe, old and new p95, runner) and the reason in its description, the same way a `size-grow-approved` PR does, and the merging Ticket records the new baseline row in `performance-slos.md`. Lowering a ceiling needs no justification. Do not raise a ceiling to make a red run green without a measurement.
+
 ## CI Pipeline
 
-`cli/.github/workflows/perf.yml` runs on every PR and push to main:
-- Builds the `darwin/arm64` binary and checks against hard limits: ≤35 MB uncompressed, ≤6 MB compressed.
-- Runs the 5 benchmark suites and uploads results as artifacts.
-- A >10% binary size growth without the `size-grow-approved` PR label fails the gate.
+`.github/workflows/perf.yml` runs on pull requests that touch Go code, on pushes to main, weekly, and on demand. See the file for the current size caps and the benchmark list; they live there, not here.
+
+- **Binary Size Gate** (macOS): builds the `darwin/arm64` binary and checks it against the hard caps in the workflow `env`. It then builds the real base (the merge-base with `origin/main`, in a git worktree) and fails a PR whose binary grew by more than the regression threshold without the `size-grow-approved` label. A failed base build fails the job, and the log prints `Base build: <sha> head: <sha>`.
+- **Cold Start Gate** (ubuntu): described above.
+- **CLI Go Benchmarks** (ubuntu): runs the Go benchmark suites and uploads the results as an artifact.
 
 ← [[Contributing]] | [[Commands]] | [[Home]] →
