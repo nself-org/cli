@@ -12,9 +12,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 // SSHConfig holds parameters for an SSH-based remote deploy.
@@ -43,7 +44,7 @@ func SSHConfigFromEnv(target string) SSHConfig {
 	}
 	return SSHConfig{
 		Host:    host,
-		KeyPath: sshKeyPathEnv(),
+		KeyPath: remote.DefaultKeyPath(),
 	}
 }
 
@@ -79,23 +80,32 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 		return fmt.Errorf("SSHConfig.Host: %w", err)
 	}
 
+	// The destination becomes an ssh/rsync operand: refuse anything ssh would
+	// read as an option or split (leading '-', whitespace, control bytes).
+	if err := remote.ValidateLegacyDest(sshTarget); err != nil {
+		return fmt.Errorf("SSHConfig.Host: %w", err)
+	}
+
 	remoteCompose := filepath.Join(remotePath, "nself-compose.yml")
 	if remotePath == "" || remotePath == "/" {
 		remoteCompose = "/tmp/nself-compose.yml"
 	}
 
-	sshArgs := sshBaseArgs(cfg.KeyPath)
+	sshArgs := remote.BaseOptions(cfg.KeyPath)
 
 	// 1. rsync compose file to remote.
 	rsyncArgs := []string{
-		// Agent forwarding is disabled via ForwardAgent=no in sshBaseArgs (the -e
+		// Agent forwarding is disabled via ForwardAgent=no in remote.BaseOptions (the -e
 		// command below) — it is an ssh option and must never appear in rsync argv.
 		"-az",
 		"-e", "ssh " + strings.Join(sshArgs, " "),
 		composePath,
 		fmt.Sprintf("%s:%s", sshTarget, remoteCompose),
 	}
-	rc := exec.CommandContext(ctx, "rsync", rsyncArgs...)
+	rc, err := remote.Command(ctx, "rsync", rsyncArgs...)
+	if err != nil {
+		return fmt.Errorf("rsync to %s: %w", sshTarget, err)
+	}
 	rc.Env = os.Environ()
 	if out, rerr := rc.CombinedOutput(); rerr != nil {
 		return fmt.Errorf("rsync to %s: %w\n%s", sshTarget, rerr, strings.TrimSpace(string(out)))
@@ -115,14 +125,17 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 
 	// 4. Optional log stream.
 	if cfg.Follow {
-		sc := exec.CommandContext(ctx, "ssh",
-			append(sshBaseArgs(cfg.KeyPath), sshTarget,
+		sc, serr := remote.Command(ctx, "ssh",
+			append(remote.BaseOptions(cfg.KeyPath), sshTarget,
 				fmt.Sprintf("docker compose -f %s logs --follow", remoteCompose))...)
-		sc.Stdout = os.Stdout
-		sc.Stderr = os.Stderr
-		// Ctrl-C or context cancellation; non-zero exit is not an error from the
-		// user's perspective.
-		_ = sc.Run()
+		if serr == nil {
+			sc.Env = os.Environ()
+			sc.Stdout = os.Stdout
+			sc.Stderr = os.Stderr
+			// Ctrl-C or context cancellation; non-zero exit is not an error from the
+			// user's perspective.
+			_ = sc.Run()
+		}
 	}
 
 	return nil
@@ -130,22 +143,16 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 
 // runSSH executes a command on the remote host via SSH and returns any error.
 func runSSH(ctx context.Context, sshTarget, keyPath, command string) error {
-	args := append(sshBaseArgs(keyPath), sshTarget, command)
-	sc := exec.CommandContext(ctx, "ssh", args...)
+	args := append(remote.BaseOptions(keyPath), sshTarget, command)
+	sc, err := remote.Command(ctx, "ssh", args...)
+	if err != nil {
+		return fmt.Errorf("ssh %s %q: %w", sshTarget, command, err)
+	}
 	sc.Env = os.Environ()
 	if out, err := sc.CombinedOutput(); err != nil {
 		return fmt.Errorf("ssh %s %q: %w\n%s", sshTarget, command, err, strings.TrimSpace(string(out)))
 	}
 	return nil
-}
-
-// sshBaseArgs returns the common SSH flags used for all remote operations.
-func sshBaseArgs(keyPath string) []string {
-	return []string{
-		"-i", keyPath,
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ForwardAgent=no",
-	}
 }
 
 // splitHost splits "user@host:/remote/path" into ("user@host", "/remote/path").
@@ -157,17 +164,4 @@ func splitHost(host string) (sshTarget, remotePath string, err error) {
 		return host, "", nil
 	}
 	return host[:idx], host[idx+1:], nil
-}
-
-// sshKeyPathEnv returns the SSH key path from NSELF_DEPLOY_KEY_PATH or
-// NSELF_DEPLOY_SSH_KEY (legacy), falling back to ~/.ssh/id_ed25519.
-func sshKeyPathEnv() string {
-	if k := os.Getenv("NSELF_DEPLOY_KEY_PATH"); k != "" {
-		return k
-	}
-	if k := os.Getenv("NSELF_DEPLOY_SSH_KEY"); k != "" {
-		return k
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".ssh", "id_ed25519")
 }

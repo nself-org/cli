@@ -9,6 +9,17 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `remote` package (P7-NODE-04): one exec funnel for ssh, scp, rsync and
+  ssh-keyscan (`Command`, `Run`, `RunArgv`, `Start`, `CopyTo`, `Rsync`,
+  `EnvAllowlist`); `RemotePathRe` and `ValidateRemotePath` (also refuse a leading
+  `-` and `..` segments); `ValidateAlias`, `ValidateDest`, `ValidateNodeID`;
+  `PinnedHostKeys` (atomic, 0600, keyed by alias); `ScanHostKeys`,
+  `ScanHostKeysSSH`, `Fingerprint`; `CISSHFlags`, `CIOptions`, `SSHVersion`;
+  `ResolveSSHHost` over `ssh -G`. Standard library only. The CLI's
+  `internal/deploy` delegates to it with a byte-identical argv.
+
 ### Changed
 
 - **Breaking:** package `license` moved to `licensing`
