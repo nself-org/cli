@@ -1,0 +1,50 @@
+{
+  "name": "ai-cli",
+  "version": "1.2.6",
+  "description": "AI operations for nSelf: chat, local Ollama model management, and Gemini API key pool provisioning and rotation.",
+  "author": "nself",
+  "license": "MIT",
+  "isCommercial": false,
+  "licenseType": "free",
+  "requiredEntitlements": [],
+  "requires_license": false,
+  "homepage": "https://nself.org/plugins",
+  "repository": "https://github.com/nself-org/plugins",
+  "minNselfVersion": "1.2.8",
+  "language": "go",
+  "pluginType": "cli",
+  "entryPoint": "cmd/",
+  "binaryName": "nself-ai",
+  "category": "automation",
+  "tags": [
+    "ai",
+    "ollama",
+    "gemini",
+    "llm",
+    "models",
+    "pool"
+  ],
+  "tables": [],
+  "webhooks": {},
+  "actions": {
+    "chat": "Chat with a configured AI provider",
+    "local": "Manage a local Ollama install and its models",
+    "pool": "Provision, rotate and inspect the Gemini API key pool"
+  },
+  "envVars": {
+    "required": [],
+    "optional": []
+  },
+  "hooks": {
+    "postInstall": null,
+    "preUninstall": null,
+    "postSync": null
+  },
+  "status": "stable",
+  "tier": "free",
+  "dependencies": {
+    "required": [],
+    "optional": []
+  },
+  "notes": "This is a CLI-proxy plugin, not a service plugin: it has no port, no HTTP server, and no database tables. `nself plugin install ai-cli` must place the built nself-ai binary at ~/.nself/plugins/bin/nself-ai, where internal/plugin/router.go's ProxyCommand execs it for `nself ai <args>` with stdio inherited. Extracted from the CLI core under CLI-R11. The plugin is named ai-cli rather than ai because that name is already taken by another plugin; binaryName keeps the command working as `nself ai`."
+}

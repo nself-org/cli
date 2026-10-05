@@ -1,0 +1,100 @@
+{
+  "name": "webhooks",
+  "version": "1.2.6",
+  "description": "Outbound webhook delivery service with retry logic, HMAC signing, and dead-letter queue",
+  "author": "nself",
+  "license": "MIT",
+  "isCommercial": false,
+  "licenseType": "free",
+  "requiredEntitlements": [],
+  "requires_license": false,
+  "homepage": "https://nself.org/plugins",
+  "repository": "https://github.com/nself-org/plugins",
+  "minNselfVersion": "0.9.9",
+  "category": "communication",
+  "language": "go",
+  "tags": [
+    "webhooks",
+    "events",
+    "notifications",
+    "delivery",
+    "integration"
+  ],
+  "tables": [
+    "np_webhooks_endpoints",
+    "np_webhooks_deliveries"
+  ],
+  "dependencies": {
+    "required": [],
+    "optional": []
+  },
+  "optionalDependencies": [],
+  "envVars": {
+    "required": [
+      "DATABASE_URL"
+    ],
+    "optional": [
+      "PORT",
+      "PLUGIN_INTERNAL_SECRET",
+      "WEBHOOKS_MAX_ATTEMPTS",
+      "WEBHOOKS_REQUEST_TIMEOUT_MS",
+      "WEBHOOKS_CONCURRENT_DELIVERIES",
+      "WEBHOOKS_RETRY_DELAYS",
+      "WEBHOOKS_AUTO_DISABLE_THRESHOLD"
+    ]
+  },
+  "config": {
+    "defaultPort": 3060,
+    "maxAttempts": 5,
+    "requestTimeoutMs": 30000,
+    "concurrentDeliveries": 10,
+    "retryDelays": [
+      10000,
+      30000,
+      120000,
+      900000,
+      3600000
+    ],
+    "autoDisableThreshold": 10
+  },
+  "hooks": {
+    "postInstall": null,
+    "preUninstall": null,
+    "postSync": null
+  },
+  "multiApp": {
+    "supported": false
+  },
+  "permissions": {
+    "database": [
+      "create",
+      "read",
+      "update",
+      "delete"
+    ],
+    "network": [
+      "outbound"
+    ],
+    "filesystem": []
+  },
+  "port": 3060,
+  "status": "stable",
+  "binary_name": "webhooks",
+  "health_endpoint": "/health",
+  "arch_support": [
+    "linux-x86_64",
+    "linux-arm64",
+    "darwin-arm64"
+  ],
+  "min_memory_mb": 64,
+  "systemd_after": "network.target",
+  "tier": "free",
+  "binaryName": "nself-webhooks",
+  "cliCommands": [
+    {
+      "name": "webhooks",
+      "description": "Inspect the durable webhook outbox queue"
+    }
+  ],
+  "notes": "This plugin is a hybrid: a webhook delivery service AND the `nself webhooks` command, which moved out of the CLI core under CLI-R11. pluginType stays unset because the service half is the primary artifact; binaryName and cliCommands are what make the installer publish nself-webhooks into ~/.nself/plugins/bin/. The command inspects the same durable outbox directory the service writes to, which is why it belongs here rather than in a plugin of its own."
+}

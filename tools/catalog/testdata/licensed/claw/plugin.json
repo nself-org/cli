@@ -1,0 +1,112 @@
+{
+  "name": "claw",
+  "version": "1.1.2",
+  "description": "Assistant runtime (synthetic fixture, not a real manifest).",
+  "author": "nself",
+  "license": "Source-Available",
+  "homepage": "https://github.com/nself-org/plugins/tree/main/plugins/search",
+  "repository": "https://github.com/nself-org/plugins",
+  "isCommercial": true,
+  "licenseType": "pro",
+  "requiredEntitlements": [],
+  "requires_license": true,
+  "minNselfVersion": "0.9.9",
+  "category": "infrastructure",
+  "language": "go",
+  "tags": [
+    "search",
+    "fts",
+    "full-text",
+    "postgres",
+    "meilisearch",
+    "autocomplete"
+  ],
+  "tables": [
+    "np_search_indexes",
+    "np_search_documents",
+    "np_search_synonyms",
+    "np_search_queries",
+    "np_search_webhook_events"
+  ],
+  "webhooks": {
+    "index.created": "New search index created",
+    "index.updated": "Search index settings updated",
+    "index.deleted": "Search index removed",
+    "document.indexed": "Document added to index",
+    "document.updated": "Document updated in index",
+    "document.deleted": "Document removed from index"
+  },
+  "actions": {
+    "reindex": "Re-index all documents from source tables",
+    "search": "Search across indexes",
+    "indexes": "Manage search indexes",
+    "synonyms": "Manage search synonyms",
+    "analytics": "View search analytics"
+  },
+  "envVars": {
+    "required": [
+      "DATABASE_URL"
+    ],
+    "optional": [
+      "SEARCH_PLUGIN_PORT",
+      "SEARCH_ENGINE",
+      "SEARCH_MEILISEARCH_URL",
+      "SEARCH_MEILISEARCH_API_KEY",
+      "SEARCH_DEFAULT_LIMIT",
+      "SEARCH_MAX_RESULTS",
+      "SEARCH_REINDEX_BATCH_SIZE",
+      "SEARCH_ANALYTICS_ENABLED",
+      "SEARCH_ANALYTICS_RETENTION_DAYS",
+      "SEARCH_API_KEY",
+      "SEARCH_RATE_LIMIT_MAX",
+      "SEARCH_RATE_LIMIT_WINDOW_MS"
+    ]
+  },
+  "config": {
+    "defaultPort": 3302,
+    "defaultEngine": "postgres",
+    "defaultLimit": 20,
+    "maxResults": 1000,
+    "reindexBatchSize": 500,
+    "analyticsEnabled": true,
+    "analyticsRetentionDays": 90
+  },
+  "hooks": {
+    "postInstall": null,
+    "preUninstall": null,
+    "postSync": null
+  },
+  "multiApp": {
+    "supported": true,
+    "isolationColumn": "source_account_id",
+    "pkStrategy": "single",
+    "defaultValue": "primary"
+  },
+  "permissions": {
+    "database": [
+      "create",
+      "read",
+      "update",
+      "delete"
+    ],
+    "network": [
+      "meilisearch"
+    ],
+    "filesystem": [
+      "logs",
+      "cache"
+    ]
+  },
+  "port": 3302,
+  "status": "stable",
+  "binary_name": "search",
+  "health_endpoint": "/health",
+  "arch_support": [
+    "linux-x86_64",
+    "linux-arm64",
+    "darwin-arm64"
+  ],
+  "min_memory_mb": 64,
+  "systemd_after": "network.target",
+  "tier": "pro"
+}
