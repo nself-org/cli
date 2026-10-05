@@ -63,10 +63,10 @@ tree() {
   } | python3 -c 'import hashlib,sys;print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())')
 }
 
-# nself <name> <v15:0|1> <args...>: run in the project; stdout to $WORK/out,
+# run_nself <name> <v15:0|1> <args...>: run in the project; stdout to $WORK/out,
 # stderr to $WORK/err; exit status in $RC.
 RC=0
-nself() {
+run_nself() {
   local name="$1" v15="$2"
   shift 2
   local envs="NSELF_CMD_LOG_ENABLED=false"
@@ -101,7 +101,7 @@ CBEFORE=""
 if [ "$HAVE_DOCKER" = 1 ]; then CBEFORE="$(containers)"; fi
 T0="$(tree prod)"
 
-nself prod 1 build --plan --json
+run_nself prod 1 build --plan --json
 [ "$RC" = 0 ] || fail "plan exit $RC: $(cat "$WORK/err")"
 [ "$(tree prod)" = "$T0" ] || fail "build --plan changed the project tree, HOME or plugin dir"
 ok "plan writes nothing (tree hash unchanged)"
@@ -124,13 +124,13 @@ if [ -n "$SCRATCH" ]; then
 fi
 SHOWN="$(jget 'd["plan_id"]')"
 
-nself prod 1 build --json
+run_nself prod 1 build --json
 [ "$RC" = 4 ] || fail "non-interactive prod build without --yes exited $RC, want 4"
 [ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["error"]["code"])' "$WORK/out")" = E403 ] || fail "refusal is not E403"
 [ "$(tree prod)" = "$T0" ] || fail "the refused build wrote"
 ok "v1.5 prod build without --yes: E403, exit 4, nothing written"
 
-nself prod 0 build
+run_nself prod 0 build
 [ "$RC" = 0 ] || fail "v1.4 prod build exited $RC"
 grep -q "v1.5 will require --yes" "$WORK/err" || fail "v1.4 build printed no notice"
 ok "v1.4 prod build proceeds with a notice"
@@ -139,11 +139,11 @@ ok "v1.4 prod build proceeds with a notice"
 rm -rf "$WORK/prod"
 mkproj prod prod-plugins
 T0="$(tree prod)"
-nself prod 1 build --plan --json
+run_nself prod 1 build --plan --json
 SHOWN="$(jget 'd["plan_id"]')"
 echo "MONITORING_ENABLED=true" >> "$WORK/prod/project/.env"
 T1="$(tree prod)"
-nself prod 1 build --yes --plan-id "$SHOWN" --json
+run_nself prod 1 build --yes --plan-id "$SHOWN" --json
 [ "$RC" = 1 ] || fail "stale --plan-id exited $RC, want 1"
 [ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["error"]["code"])' "$WORK/out")" = E450 ] || fail "stale plan is not E450"
 [ "$(tree prod)" = "$T1" ] || fail "the E450 build wrote"
@@ -151,22 +151,22 @@ ok "stale --plan-id: E450, exit 1, nothing written"
 
 # The stale-labelled scratch container would (correctly) keep the plan non-empty.
 if [ -n "$SCRATCH" ]; then docker rm -f "$SCRATCH" >/dev/null 2>&1 || true; SCRATCH=""; fi
-nself prod 1 build --plan --json
+run_nself prod 1 build --plan --json
 FRESH="$(jget 'd["plan_id"]')"
-nself prod 1 build --yes --plan-id "$FRESH"
+run_nself prod 1 build --yes --plan-id "$FRESH"
 [ "$RC" = 0 ] || fail "build --yes --plan-id (fresh) exited $RC: $(cat "$WORK/err")"
 [ -f "$WORK/prod/project/docker-compose.yml" ] || fail "--yes did not build"
-nself prod 1 build --plan --json
+run_nself prod 1 build --plan --json
 [ "$(jget 'd["empty"]')" = True ] || fail "plan after apply is not empty"
 ok "--yes --plan-id applies; the plan afterwards is empty"
 
 # ---- dev fixture --------------------------------------------------------------
 mkproj dev dev-minimal
-nself dev 1 build --plan --json
+run_nself dev 1 build --plan --json
 [ "$(jget 'd["requires_confirmation"]')" = False ] || fail "a dev plan requires confirmation"
-nself dev 1 build
+run_nself dev 1 build
 [ "$RC" = 0 ] || fail "dev build in v1.5 mode exited $RC without --yes"
-nself dev 1 build --plan --json
+run_nself dev 1 build --plan --json
 [ "$(jget 'd["empty"]')" = True ] || fail "dev plan after build is not empty"
 ok "dev build needs no confirmation; the plan afterwards is empty"
 

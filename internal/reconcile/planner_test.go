@@ -737,7 +737,8 @@ func TestOverlay(t *testing.T) {
 			t.Errorf("read(%q) must be absent without error: %v %v", key, ok, err)
 		}
 	}
-	if _, _, err := ov.read("on-disk.txt/child"); err == nil {
+	// Reading through a file is ENOTDIR on unix (an error) but ENOENT on Windows.
+	if _, _, err := ov.read("on-disk.txt/child"); err == nil && runtime.GOOS != "windows" {
 		t.Error("a read through a file must be an error, not an absent file")
 	}
 	if got, ok, _ := ov.readAbs(filepath.Join(dir, "planned.txt")); !ok || string(got) != "planned" {
