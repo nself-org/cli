@@ -3,8 +3,9 @@ name: SDK Version Coherence
 # 03.T05 P98 W2 — nightly + manual check that all published SDK packages
 # match cli/.github/VERSION. Checks @nself/sdk (npm, sdk/ts-sdk — the
 # NselfClient consumer SDK) + nself-plugin-sdk (PyPI, sdk/py) + the Go SDK
-# (github.com/nself-org/cli/sdk/go/v2, published via sdk/go/vX.Y.Z git tags
-# on this repo — there is no separate nself-org/sdk repo).
+# (github.com/nself-org/cli/sdk/go/v2, published via sdk/go/v2.M.P git tags
+# on this repo for CLI v1.M.P — there is no separate nself-org/sdk repo; the
+# mapping lives in sdk/go/scripts/sdk-tag.sh).
 # @nself/plugin-sdk (sdk/ts) is intentionally NOT covered by this check —
 # see sdk-version-sync.yml for that lockstep gate instead.
 # Flutter SDK removed 2026-06-30 — migrating to RN/Tauri per ASI Policy 2.
@@ -42,6 +43,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # tags are needed to tell whether the release shipped the SDK tag form
 
       - name: Read master version
         id: master
@@ -112,32 +115,66 @@ jobs:
             echo "PASS: nself-plugin-sdk@${PY_VER}"
           fi
 
-      - name: Check Go SDK (github.com/nself-org/cli/sdk/go/v2 via git tag sdk/go/vX.Y.Z)
+      - name: Check Go SDK (github.com/nself-org/cli/sdk/go/v2 via git tag sdk/go/v2.M.P)
         id: go
         env:
           MASTER_VER: ${{ steps.master.outputs.version }}
         run: |
           set +e
-          # The Go SDK is not a separate repo/module — it is published via
-          # lightweight tags (sdk/go/vX.Y.Z) on this same repo, module path
-          # github.com/nself-org/cli/sdk/go/v2 (see sdk/go/doc.go). Query the
-          # module proxy for that exact tagged version rather than "@latest"
-          # against a nonexistent standalone nself-org/sdk repo.
-          GO_VER=$(go list -m -json "github.com/nself-org/cli/sdk/go/v2@v${MASTER_VER}" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('Version','').lstrip('v'))" 2>/dev/null)
-          if [ -z "${GO_VER}" ]; then
-            echo "status=warn" >> "$GITHUB_OUTPUT"
-            echo "detail=github.com/nself-org/cli/sdk/go/v2@v${MASTER_VER} not found on Go module proxy (not yet published)" >> "$GITHUB_OUTPUT"
-            echo "WARN: github.com/nself-org/cli/sdk/go/v2@v${MASTER_VER} not found on Go module proxy"
+          # CLI v1.M.P publishes SDK v2.M.P (git tag sdk/go/v2.M.P on this repo).
+          # sdk/go/scripts/sdk-tag.sh owns the mapping, shared with sdk-publish-go.yml.
+          # After a release that ships the tag form, a missing or mismatched version is a failure.
+          if ! EXPECTED=$(bash sdk/go/scripts/sdk-tag.sh --version "v${MASTER_VER}" 2>&1); then
+            {
+              echo "status=fail"
+              echo "detail=cannot map CLI ${MASTER_VER} to an SDK version: ${EXPECTED}"
+            } >> "$GITHUB_OUTPUT"
+            echo "FAIL: ${EXPECTED}"
             exit 0
           fi
-          echo "Go SDK version: ${GO_VER}"
-          if [ "${GO_VER}" != "${MASTER_VER}" ]; then
+          # The check applies after a release that can publish the SDK: the release tag
+          # v1.M.P must exist and its tree must hold sdk/go/scripts/sdk-tag.sh. A
+          # release made before the tag form was fixed has no valid SDK version and
+          # never will (tags are immutable), so it is reported, not failed. Once the
+          # release ships the script, a missing SDK version is a hard failure.
+          REL_TAG="v${MASTER_VER}"
+          if ! git rev-parse -q --verify "refs/tags/${REL_TAG}" >/dev/null; then
+            {
+              echo "status=warn"
+              echo "detail=CLI ${REL_TAG} is not released yet; SDK ${EXPECTED} is checked after the release"
+            } >> "$GITHUB_OUTPUT"
+            echo "WARN: ${REL_TAG} has no release tag yet"
+            exit 0
+          fi
+          if ! git cat-file -e "refs/tags/${REL_TAG}:sdk/go/scripts/sdk-tag.sh" 2>/dev/null; then
+            {
+              echo "status=warn"
+              echo "detail=CLI ${REL_TAG} predates the sdk/go/v2.M.P tag form; no SDK version exists for it"
+            } >> "$GITHUB_OUTPUT"
+            echo "WARN: ${REL_TAG} predates the SDK tag form"
+            exit 0
+          fi
+          MODULE="github.com/nself-org/cli/sdk/go/v2"
+          # Run outside the checkout so the root module's vendor dir is not used.
+          cd "${RUNNER_TEMP}"
+          OUT=$(GOPROXY=https://proxy.golang.org GOFLAGS=-mod=mod go list -m -f '{{.Version}}' "${MODULE}@${EXPECTED}" 2>&1)
+          RC=$?
+          if [ ${RC} -ne 0 ]; then
+            LINE=$(printf '%s' "${OUT}" | tr '\n' ' ' | cut -c1-200)
             echo "status=fail" >> "$GITHUB_OUTPUT"
-            echo "detail=go-sdk@${GO_VER} != master ${MASTER_VER}" >> "$GITHUB_OUTPUT"
-            echo "FAIL: go-sdk@${GO_VER} != ${MASTER_VER}"
+            echo "detail=${MODULE}@${EXPECTED} not served by the Go module proxy: ${LINE}" >> "$GITHUB_OUTPUT"
+            echo "FAIL: ${MODULE}@${EXPECTED} not served by the Go module proxy: ${LINE}"
+            exit 0
+          fi
+          GO_VER="${OUT}"
+          echo "Go SDK version: ${GO_VER}"
+          if [ "${GO_VER}" != "${EXPECTED}" ]; then
+            echo "status=fail" >> "$GITHUB_OUTPUT"
+            echo "detail=go-sdk@${GO_VER} != expected ${EXPECTED} for CLI ${MASTER_VER}" >> "$GITHUB_OUTPUT"
+            echo "FAIL: go-sdk@${GO_VER} != ${EXPECTED}"
           else
             echo "status=pass" >> "$GITHUB_OUTPUT"
-            echo "detail=go-sdk@${GO_VER} matches master" >> "$GITHUB_OUTPUT"
+            echo "detail=go-sdk@${GO_VER} matches CLI ${MASTER_VER}" >> "$GITHUB_OUTPUT"
             echo "PASS: go-sdk@${GO_VER}"
           fi
 
@@ -151,14 +188,16 @@ jobs:
           GO_STATUS: ${{ steps.go.outputs.status }}
           GO_DETAIL: ${{ steps.go.outputs.detail }}
         run: |
-          echo "## SDK Version Coherence Report" >> "$GITHUB_STEP_SUMMARY"
-          echo "Master CLI version: **${MASTER_VER}**" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| SDK | Status | Detail |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-----|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| TypeScript (@nself/sdk) | ${TS_STATUS} | ${TS_DETAIL} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Python (nself-sdk) | ${PY_STATUS} | ${PY_DETAIL} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Go (github.com/nself-org/sdk) | ${GO_STATUS} | ${GO_DETAIL} |" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## SDK Version Coherence Report"
+            echo "Master CLI version: **${MASTER_VER}**"
+            echo ""
+            echo "| SDK | Status | Detail |"
+            echo "|-----|--------|--------|"
+            echo "| TypeScript (@nself/sdk) | ${TS_STATUS} | ${TS_DETAIL} |"
+            echo "| Python (nself-sdk) | ${PY_STATUS} | ${PY_DETAIL} |"
+            echo "| Go (github.com/nself-org/cli/sdk/go/v2) | ${GO_STATUS} | ${GO_DETAIL} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail on any SDK version drift
         env:
@@ -177,4 +216,4 @@ jobs:
             echo "Run 'nself sdk release' to synchronise, or check the individual SDK repos."
             exit 1
           fi
-          echo "All SDK versions match (or are not yet published)."
+          echo "All SDK versions match (TypeScript and Python may be not yet published; the Go SDK must be)."
