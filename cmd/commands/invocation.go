@@ -12,15 +12,16 @@ package commands
 //
 // Inputs: the cobra tree under a root, the lazily built command registry.
 //
-// Outputs: wrapped Args/RunE/Run and a root FlagErrorFunc. PersistentPreRunE is
-// never touched (a command such as `bundle` has its own; cobra runs only one).
+// Outputs: wrapped Args/RunE/Run and a root FlagErrorFunc. A command's own
+// PersistentPreRunE is wrapped, never replaced: the guard runs first, so a
+// refused command (`bundle` fetches and caches in its hook) does no work.
 //
 // Constraints:
 //   - A run without --json pays no canon parse: the registry is consulted only
 //     when JSON mode is on, or `--format json` is given.
-//   - The guard runs in RunE, so root PersistentPreRunE bookkeeping (command
-//     log, license migration, monorepo chdir) has already run; none of it
-//     starts or stops a stack.
+//   - The guard runs in the persistent pre-run hook (root's, or the command's
+//     own) before any bookkeeping or fetch, and again in RunE as a backstop
+//     for a tree with no hook. Only Args validation precedes it (cobra order).
 //   - Human output of a run without --json is unchanged: the wrapper is a
 //     pass-through then (the only extra work is SetInvocation).
 //   - Gated branches carry compat.V15(P7-REG-05) markers (ADR 0021).
@@ -28,6 +29,7 @@ package commands
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -35,6 +37,7 @@ import (
 	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/observability"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -82,6 +85,19 @@ func decorate(c *cobra.Command) {
 	if _, done := decorated.LoadOrStore(c, struct{}{}); done {
 		return
 	}
+	switch {
+	case c.PersistentPreRunE != nil:
+		c.PersistentPreRunE = guardedPre(c.PersistentPreRunE)
+	case c.PersistentPreRun != nil:
+		pre := c.PersistentPreRun
+		c.PersistentPreRun = nil
+		c.PersistentPreRunE = guardedPre(func(cmd *cobra.Command, args []string) error {
+			pre(cmd, args)
+			return nil
+		})
+	case c.Parent() == nil:
+		c.PersistentPreRunE = guardedPre(func(*cobra.Command, []string) error { return nil })
+	}
 	if c.Run == nil && c.RunE == nil {
 		return // hub without a body: cobra prints help, nothing to guard
 	}
@@ -108,18 +124,31 @@ func decorate(c *cobra.Command) {
 // unsupported, then call the original untouched.
 func guarded(orig func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		on, err := jsonModeOf(cmd)
-		if err != nil {
+		if err := enterInvocation(cmd); err != nil {
 			return err
-		}
-		output.SetInvocation(invokedKey(cmd), on)
-		if on {
-			if err := refuseUnsupportedJSON(cmd); err != nil {
-				return err
-			}
 		}
 		return orig(cmd, args)
 	}
+}
+
+// guardedPre wraps a persistent pre-run hook with the same entry check, so the
+// refusal precedes the hook's work (fetches, caches, chdir, command log).
+func guardedPre(orig func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return guarded(orig)
+}
+
+// enterInvocation records the invocation and refuses unsupported --json. It is
+// idempotent: the pre-run hook and RunE both call it.
+func enterInvocation(cmd *cobra.Command) error {
+	on, err := jsonModeOf(cmd)
+	if err != nil {
+		return err
+	}
+	output.SetInvocation(invokedKey(cmd), on)
+	if on {
+		return refuseUnsupportedJSON(cmd)
+	}
+	return nil
 }
 
 // invokedKey is the canonical registry path without the root name ("" for the
@@ -231,5 +260,28 @@ func codedUsageError(err error) error {
 	if errors.As(err, &coded) || (errors.As(err, &silent) && silent.Silent()) {
 		return err
 	}
-	return errs.Wrap("E401", err.Error(), err)
+	// The cobra error is not wrapped as the cause: its text can echo argv.
+	return errs.New("E401", sanitizeUsageMessage(err.Error()))
+}
+
+var (
+	// shorthandEcho: `unknown shorthand flag: 'x' in -xsecret` echoes the rest of the argument.
+	shorthandEcho = regexp.MustCompile(`( in )-\S*`)
+	// badValueEcho: `invalid argument "v" for "--flag" flag: ...` echoes the value.
+	badValueEcho = regexp.MustCompile(`invalid argument "([^"]*)" for "(-[^"]*)"`)
+	secretFlag   = regexp.MustCompile(`(?i)pass|token|secret|key|auth|cred|licen`)
+)
+
+// sanitizeUsageMessage removes user-typed values from a cobra usage error
+// before it becomes an E401 message (which reaches stderr and, from v1.5, the
+// error envelope): the argument tail of an unknown shorthand, and the value of
+// an invalid flag argument. Everything else goes through observability.Redact.
+func sanitizeUsageMessage(msg string) string {
+	msg = shorthandEcho.ReplaceAllString(msg, "${1}-<redacted>")
+	// The value is echoed again by the parser tail (`strconv.ParseInt: parsing
+	// "v"`), so a secret-named flag's value is removed everywhere it appears.
+	if m := badValueEcho.FindStringSubmatch(msg); m != nil && m[1] != "" && secretFlag.MatchString(m[2]) {
+		msg = strings.ReplaceAll(msg, m[1], "<redacted>")
+	}
+	return observability.Redact(msg)
 }

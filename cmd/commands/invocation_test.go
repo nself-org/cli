@@ -11,6 +11,13 @@ package commands
 import (
 	"bytes"
 	"errors"
+	"io"
+	"io/fs"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/canon"
@@ -63,6 +70,8 @@ func newFixture(t *testing.T) *fixture {
 	bunSub := &cobra.Command{Use: "sub", RunE: body("bunsub")}
 	bun.AddCommand(bunSub)
 	arg := &cobra.Command{Use: "arg <x>", Args: cobra.ExactArgs(1), RunE: body("arg")}
+	arg.Flags().Int("api-key", 0, "x")
+	arg.Flags().Int("port", 0, "x")
 	root.AddCommand(restart, stop, status, cfg, doc, ran, bun, arg)
 
 	entries := map[string]*cmdregistry.Command{
@@ -91,6 +100,17 @@ func newFixture(t *testing.T) *fixture {
 	installInvocationDecorator(root)
 	f.root = root
 	return f
+}
+
+// newFixtureRun runs args on a fresh fixture and checks bun's hook still runs
+// when --json is absent (the decorator wraps the hook, never replaces it).
+func newFixtureRun(t *testing.T, args ...string) error {
+	f := newFixture(t)
+	err := f.run(args...)
+	if err == nil && f.pre == 0 {
+		t.Fatal("bun's own PersistentPreRunE must still run without --json")
+	}
+	return err
 }
 
 func (f *fixture) run(args ...string) error {
@@ -197,11 +217,14 @@ func TestInvocationRunOnlyAndBundleSubcommandAreGuarded(t *testing.T) {
 		}
 		wantE402(t, f.run("runonly", "--json"))
 		wantE402(t, f.run("bun", "sub", "--json"))
-		if f.pre == 0 {
-			t.Fatal("bun's own PersistentPreRunE must still run (decorator never replaces it)")
+		if f.pre != 0 {
+			t.Fatal("bun's own PersistentPreRunE ran before the E402 refusal: a refused command must do no work")
 		}
 		if f.ran["bunsub"] != 0 {
 			t.Fatal("bun sub body ran")
+		}
+		if err := newFixtureRun(t, "bun", "sub"); err != nil {
+			t.Fatal(err)
 		}
 	})
 }
@@ -364,4 +387,145 @@ func BenchmarkInstallDecorator(b *testing.B) {
 		b.StartTimer()
 		installInvocationDecorator(root)
 	}
+}
+
+// E401 must not echo what the user typed: an unknown shorthand cluster and the
+// value of an invalid secret-named flag are removed (REG-05 review S4).
+func TestInvocationE401DoesNotEchoArgv(t *testing.T) {
+	compattest.Set(t, true)
+	for _, c := range []struct {
+		name string
+		args []string
+		leak string
+	}{
+		{"shorthand tail", []string{"stop", "-xhunter2tail"}, "hunter2tail"},
+		{"secret-named flag value", []string{"arg", "x", "--api-key=hunter2value"}, "hunter2value"},
+	} {
+		err := newFixture(t).run(c.args...)
+		if err == nil || errs.Describe(err).Code != "E401" {
+			t.Fatalf("%s: want E401, got %v", c.name, err)
+		}
+		d := errs.Describe(err)
+		for _, text := range []string{err.Error(), d.Message, d.Cause, d.Remediation} {
+			if strings.Contains(text, c.leak) {
+				t.Errorf("%s: E401 echoed the typed value", c.name)
+			}
+		}
+		if errors.Unwrap(err) != nil {
+			t.Errorf("%s: E401 must not keep the raw cobra error as its cause", c.name)
+		}
+	}
+	// A non-secret flag keeps its (redacted) value so the message stays useful.
+	err := newFixture(t).run("arg", "x", "--port=zzz")
+	if err == nil || !strings.Contains(err.Error(), `"--port"`) {
+		t.Fatalf("non-secret invalid value must still name the flag: %v", err)
+	}
+	// v1.4 keeps cobra's text byte-for-byte.
+	compattest.Set(t, false)
+	if err := newFixture(t).run("arg", "x", "--api-key=hunter2value"); err == nil || !strings.Contains(err.Error(), "hunter2value") {
+		t.Fatalf("v1.4 must return cobra's error untouched: %v", err)
+	}
+}
+
+// A refused real `bundle` command must not reach the network or write the
+// cache: its own PersistentPreRunE fetches bundles.json (REG-05 review S1).
+func TestInvocationRefusedBundleDoesNoWork(t *testing.T) {
+	reattachRealTree()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		http.Error(w, "no", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	t.Setenv("NSELF_BUNDLES_URL", srv.URL)
+	resetRegistryCache()
+	t.Cleanup(resetRegistryCache)
+	decorate(bundleCmd) // what Execute does for the whole tree
+	compattest.Both(t, func(t *testing.T) {
+		hits = 0
+		cmd := parseReal(t, "bundle", "install")
+		wantE402(t, bundleCmd.PersistentPreRunE(cmd, nil))
+		if hits != 0 {
+			t.Fatalf("refused bundle command made %d network request(s)", hits)
+		}
+		if n := countFiles(t, home); n != 0 {
+			t.Fatalf("refused bundle command wrote %d file(s) under HOME", n)
+		}
+		// Control: without --json the same hook does reach the network.
+		_ = cmd.Flags().Set("json", "false")
+		_ = bundleCmd.PersistentPreRunE(cmd, nil)
+		if hits == 0 {
+			t.Fatal("control failed: the hook no longer fetches, so this test proves nothing")
+		}
+	})
+}
+
+func countFiles(t *testing.T, root string) int {
+	t.Helper()
+	n := 0
+	_ = filepath.WalkDir(root, func(_ string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			n++
+		}
+		return nil
+	})
+	return n
+}
+
+// In JSON mode the monorepo notice goes to stderr so stdout stays clean; in
+// text mode it stays on stdout (REG-05 review S3).
+func TestMonorepoNoticeStream(t *testing.T) {
+	for _, jsonOn := range []bool{true, false} {
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, ".backend"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, ".backend", ".env"), []byte("PROJECT_NAME=x\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
+		t.Chdir(root)
+		cmd := &cobra.Command{Use: "status"}
+		cmd.Flags().Bool("json", jsonOn, "")
+		var pre func(*cobra.Command, []string) error = RootCmd.PersistentPreRunE
+		stdout, stderr := captureStreams(t, func() {
+			if err := pre(cmd, nil); err != nil {
+				t.Errorf("pre-run: %v", err)
+			}
+		})
+		const notice = "Detected monorepo layout"
+		if jsonOn && (strings.Contains(stdout, notice) || !strings.Contains(stderr, notice)) {
+			t.Errorf("json mode: notice must be on stderr only (stdout %q)", stdout)
+		}
+		if !jsonOn && (!strings.Contains(stdout, notice) || strings.Contains(stderr, notice)) {
+			t.Errorf("text mode: notice must stay on stdout (stderr %q)", stderr)
+		}
+	}
+}
+
+// captureStreams runs fn with os.Stdout and os.Stderr redirected to pipes.
+func captureStreams(t *testing.T, fn func()) (string, string) {
+	t.Helper()
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	errR, errW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldOut, oldErr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = outW, errW
+	fn()
+	os.Stdout, os.Stderr = oldOut, oldErr
+	_ = outW.Close()
+	_ = errW.Close()
+	o, _ := io.ReadAll(outR)
+	e, _ := io.ReadAll(errR)
+	return string(o), string(e)
 }
