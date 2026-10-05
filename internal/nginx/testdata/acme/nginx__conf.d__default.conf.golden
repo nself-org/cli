@@ -6,46 +6,7 @@ server {
     listen [::]:80 default_server;
     server_name _;
     server_tokens off;
-{{template "acme-challenge"}}
 
-    location /health {
-        access_log off;
-        return 200 'OK';
-        add_header Content-Type text/plain;
-    }
-
-    location / {
-{{- if .HasSSL}}
-        return 301 https://$host$request_uri;
-{{- else}}
-        return 200 'OK';
-        add_header Content-Type text/plain;
-{{- end}}
-    }
-}
-{{if .HasSSL}}
-server {
-    listen 443 ssl default_server;
-    listen [::]:443 ssl default_server;
-    http2 on;
-    server_name _;
-    server_tokens off;
-
-    ssl_certificate {{.SSLBasePath}}/certificates/{{.SSLDir}}/fullchain.pem;
-    ssl_certificate_key {{.SSLBasePath}}/certificates/{{.SSLDir}}/privkey.pem;
-
-    location /health {
-        access_log off;
-        return 200 'OK';
-        add_header Content-Type text/plain;
-    }
-
-    location / {
-        return 444;
-    }
-}
-{{end}}
-{{- define "acme-challenge"}}
     # ACME HTTP-01 (nself trust ssl add --acme): one bare token under the
     # challenge prefix is served from the nself-owned webroot; every other
     # path under it, a subdirectory, a traversal and any non-GET is refused.
@@ -58,4 +19,16 @@ server {
         if ($uri !~ "^/[.]well-known/acme-challenge/[A-Za-z0-9_-]+$") { return 404; }
         try_files $uri =404;
     }
-{{- end}}
+
+    location /health {
+        access_log off;
+        return 200 'OK';
+        add_header Content-Type text/plain;
+    }
+
+    location / {
+        return 200 'OK';
+        add_header Content-Type text/plain;
+    }
+}
+

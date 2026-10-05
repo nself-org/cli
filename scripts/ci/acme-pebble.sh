@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Purpose: prove the CLI-owned ACME path (trust ssl setup|renew --acme, DNS-01)
+# Purpose: prove the CLI-owned ACME path (trust ssl setup|renew --acme, DNS-01;
+#          trust ssl add --acme, HTTP-01 through a route block's challenge location)
 #          end to end against a local Pebble CA on a real Linux docker host
 #          (Constitution 10.3, final gate G12): issue, adopt certbot lineages,
 #          renew/--force/--staging, crash safety, the unit's ExecStart under
@@ -49,7 +50,7 @@ start() { n=$1; shift; docker run -d --name "$n" "$@" >/dev/null; CTRS="$CTRS $n
 start "challtestsrv-$$" --network "$NET" --network-alias challtestsrv "$CHALL_IMG" -defaultIPv6 "" -defaultIPv4 10.0.0.9 -http01 "" -https01 "" -tlsalpn01 ""
 # Pebble's stock config also offers a 6-day "shortlived" profile that lego may pick; keep only the 90-day default.
 cat > "$WORK/pebble-config.json" <<'JSON'
-{"pebble":{"listenAddress":"0.0.0.0:14000","managementListenAddress":"0.0.0.0:15000","certificate":"test/certs/localhost/cert.pem","privateKey":"test/certs/localhost/key.pem","httpPort":5002,"tlsPort":5001,"ocspResponderURL":"","externalAccountBindingRequired":false,"domainBlocklist":["blocked-domain.example"],"retryAfter":{"authz":3,"order":5},"profiles":{"default":{"description":"90 days","validityPeriod":7776000}}}}
+{"pebble":{"listenAddress":"0.0.0.0:14000","managementListenAddress":"0.0.0.0:15000","certificate":"test/certs/localhost/cert.pem","privateKey":"test/certs/localhost/key.pem","httpPort":80,"tlsPort":5001,"ocspResponderURL":"","externalAccountBindingRequired":false,"domainBlocklist":["blocked-domain.example"],"retryAfter":{"authz":3,"order":5},"profiles":{"default":{"description":"90 days","validityPeriod":7776000}}}}
 JSON
 start "pebble-$$" --network "$NET" --network-alias pebble -e PEBBLE_VA_NOSLEEP=1 -e PEBBLE_WFE_NONCEREJECT=0 -v "$WORK/pebble-config.json:/pebble-config.json:ro" "$PEBBLE_IMG" -config /pebble-config.json -dnsserver challtestsrv:8053
 docker cp "pebble-$$:/test/certs/pebble.minica.pem" "$WORK/minica.pem"
@@ -92,10 +93,10 @@ mkstack() {
   printf 'NGINX_BIND_IP=127.0.0.1\nNGINX_HTTPS_PORT=%s\n' "$2" > "$s/.env"
   printf 'BASE_DOMAIN=%s\nENV=dev\nPROJECT_NAME=backend\nADMIN_EMAIL=ops@pebble.test\nNGINX_FRONTED_BY=nself-web\n' "$3" > "$s/backend/.env"
 }
-# startnginx <id> <port>: the stack's nginx, labelled the way compose labels it.
+# startnginx <id> <port> [http-port]: the stack's nginx, labelled the way compose labels it.
 startnginx() {
   s=$WORK/$1/nself-web
-  start "nginx-$1-$$" --network "$NET" -p "127.0.0.1:$2:443" --label com.docker.compose.service=nginx \
+  start "nginx-$1-$$" --network "$NET" -p "127.0.0.1:$2:443" ${3:+-p "127.0.0.1:$3:80"} --label com.docker.compose.service=nginx \
     --label "com.docker.compose.project.working_dir=$s" --label com.docker.compose.project=nself-web \
     -v "$s/ssl:/etc/nginx/ssl:ro" -v "$s/nginx/conf.d:/etc/nginx/conf.d:ro" "$NGINX_IMG"
   for i in $(seq 1 20); do docker exec "nginx-$1-$$" nginx -t >/dev/null 2>&1 && return 0; sleep 1; done
@@ -107,7 +108,9 @@ must() { nself "$@"; [ "$RC" -eq 0 ] || { cat "$WORK/out.txt" >&2; fail "nself t
 out_has() { grep -qF -- "$1" "$WORK/out.txt" || { cat "$WORK/out.txt" >&2; fail "output lacks: $1"; }; }
 leaf_fp() { openssl x509 -in "$1" -noout -fingerprint -sha256; }
 served_fp() { echo | openssl s_client -connect "127.0.0.1:$2" -servername "$1" 2>/dev/null | openssl x509 -noout -fingerprint -sha256; }
-snap() { (cd "$1" && find . | sort && find . -type f -exec sha256sum {} + | sort); }
+# snap <dir>: paths and content hashes, without the project operation lock (<project>/.nself/op.lock, which any
+# write command, a dry run included, takes and leaves behind; it is not served or certificate state).
+snap() { (cd "$1" && find . -not -path '*/.nself' -not -path '*/.nself/*' | sort && find . -type f -not -path '*/.nself/*' -exec sha256sum {} + | sort); }
 link() { readlink "$WORK/$1/nself-web/ssl/certificates/$2"; }
 cert() { echo "$WORK/$1/nself-web/ssl/certificates/$2/fullchain.pem"; }
 pairmatch() { [ "$(openssl x509 -in "$1/fullchain.pem" -noout -pubkey | openssl sha256)" = "$(openssl pkey -in "$1/privkey.pem" -pubout | openssl sha256)" ]; }
@@ -130,7 +133,7 @@ out_has "served certificate verified"
 [ "$(link a task-pebble-test)" = ".task-pebble-test.gen-1" ] || fail "target is not generation 1: $(link a task-pebble-test)"
 [ "$(served_fp task.pebble.test 18443)" = "$(leaf_fp "$(cert a task-pebble-test)")" ] || fail "served fingerprint is not the installed certificate"
 [ "$(served_fp task.pebble.test 18443)" != "$OLD_FP" ] || fail "nginx still serves the old certificate"
-openssl x509 -in "$(cert a task-pebble-test)" -noout -ext subjectAltName | grep -q '\*\.task\.pebble\.test' || fail "wildcard SAN missing"
+SAN=$(openssl x509 -in "$(cert a task-pebble-test)" -noout -ext subjectAltName); grep -q '\*\.task\.pebble\.test' <<< "$SAN" || fail "wildcard SAN missing"
 [ -f "$A/ssl/.acme/.gitignore" ] && [ "$(cat "$A/ssl/.acme/.gitignore")" = '*' ] || fail ".acme/.gitignore missing"
 [ "$(stat -c %a "$A/ssl/.acme")" = 700 ] && [ "$(stat -c %a "$A/ssl/.acme/lineages.json")" = 600 ] || fail "state permissions"
 grep -q '"challenge": "dns-01"' "$A/ssl/.acme/lineages.json" || fail "lineages.json lacks the lineage"
@@ -211,7 +214,7 @@ nself d setup --acme --adopt-certbot="$LE"
 ok "D1 without a credential the standalone lineage is refused with a remediation"
 must d setup --acme --adopt-certbot="$LE" --dns-credential-file="$WORK/cf.ini"
 [ "$(grep -c '"challenge": "dns-01"' "$D/ssl/.acme/lineages.json")" -eq 2 ] || fail "both lineages should be dns-01"
-age -d -i "$WORK/age-key.txt" "$D/backend/.secrets/dev.age" | grep -q SSL_DNS_CLOUDFLARE_API_TOKEN || fail "credential not in the age store under its name"
+AGE_OUT=$(age -d -i "$WORK/age-key.txt" "$D/backend/.secrets/dev.age"); grep -q SSL_DNS_CLOUDFLARE_API_TOKEN <<< "$AGE_OUT" || fail "credential not in the age store under its name"
 snap "$D/ssl/certificates" | cmp -s - "$WORK/d.served" || fail "served files changed by adoption"
 snap "$D/nginx" | cmp -s - "$WORK/d.nginx" || fail "nginx confs changed by adoption"
 snap "$LE" | cmp -s - "$WORK/d.le" || fail "certbot state changed by adoption"
@@ -240,6 +243,49 @@ set -e
 [ -z "$UOUT" ] || fail "--quiet printed output: $UOUT"
 [ -L "$E/ssl/certificates/unit-pebble-test" ] && [ "$(served_fp unit.pebble.test 18446)" = "$(leaf_fp "$(cert e unit-pebble-test)")" ] || fail "unit run did not renew the due lineage"
 ok "E the unit's ExecStart under env -i renews a due lineage quietly"
+
+# === G. HTTP-01: `trust ssl add --acme` for a route host with a port-80 block ====
+# The route block has no certificate yet. Its challenge location is the one `nself build` renders
+# (cut from the nginx golden, so this script holds no second copy); `location /` answers 418, so a
+# 200 for the challenge can only come from the challenge location, never from a proxy or catch-all.
+mkstack g 18447 example.test
+G=$WORK/g/nself-web; GHTTP=18480; GHOST=app.example.test
+printf 'NGINX_HTTP_PORT=%s\n' "$GHTTP" >> "$G/.env"
+LOC=$(awk '/location \^~ \/\.well-known\/acme-challenge\/ \{/{p=1} p{print} p&&/^    }/{exit}' internal/nginx/testdata/acme/nginx__sites__cs-myapi.conf.golden)
+[ -n "$LOC" ] || fail "cannot cut the challenge location from the nginx golden"
+printf 'server {\n    listen 80;\n    server_name %s;\n%s\n    location / { return 418; }\n}\n' "$GHOST" "$LOC" > "$G/nginx/conf.d/route.conf"
+startnginx g 18447 "$GHTTP"
+GIP=$(docker inspect -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}" "nginx-g-$$")
+docker exec "nginx-g-$$" curl -fsS -d "{\"host\":\"$GHOST\",\"addresses\":[\"$GIP\"]}" http://challtestsrv:8055/add-a >/dev/null || fail "cannot point $GHOST at nginx"
+[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $GHOST" "http://127.0.0.1:$GHTTP/.well-known/acme-challenge/nope")" = 404 ] || fail "unknown token is not 404"
+[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $GHOST" "http://127.0.0.1:$GHTTP/")" = 418 ] || fail "route block catch-all changed"
+snap "$WORK/g" > "$WORK/g.before"
+must g add "$GHOST" --acme --dry-run
+out_has "lineage app-example-test: http-01 for $GHOST"; out_has "dry run: nothing written"
+snap "$WORK/g" | cmp -s - "$WORK/g.before" || fail "http-01 dry run changed the tree"
+must g add "$GHOST" --acme --agree-tos
+out_has "served certificate verified"
+[ "$(served_fp "$GHOST" 18447)" = "$(leaf_fp "$(cert g app-example-test)")" ] || fail "served fingerprint is not the http-01 certificate"
+# no `| grep -q` on a pipeline: under pipefail an early-exiting grep SIGPIPEs the writer and fails the check
+docker logs "nginx-g-$$" > "$WORK/g-nginx.log" 2>&1
+grep -v nself-probe "$WORK/g-nginx.log" > "$WORK/g-nginx-ca.log" || true
+grep -Eq 'GET /\.well-known/acme-challenge/[A-Za-z0-9_-]{20,} HTTP/1\.[01]" 200' "$WORK/g-nginx-ca.log" || fail "no CA challenge request was answered 200 by the challenge location"
+[ "$(grep -c 'location ^~ /.well-known/acme-challenge/ {' "$G/nginx/conf.d/custom-app-example-test.conf")" -eq 1 ] || fail "custom conf lacks the challenge location once"
+grep -q '"challenge": "http-01"' "$G/ssl/.acme/lineages.json" || fail "lineages.json lacks the http-01 lineage"
+[ -z "$(ls -A "$G/ssl/.acme-webroot/.well-known/acme-challenge")" ] || fail "challenge tokens left behind"
+[ "$(stat -c %a "$G/ssl/.acme-webroot")" = 755 ] && [ "$(stat -c %a "$G/ssl/.acme")" = 700 ] || fail "webroot or state permissions"
+nself g add "$GHOST" --acme; [ "$RC" -ne 0 ] && out_has "already managed" || fail "a second add was not refused"
+for k in "$G"/ssl/.acme/accounts/*/*/keys/*.key; do [ "$(stat -c %a "$k")" = 600 ] || fail "ACME account key is not 0600: $k"; done
+# renewal: --force renews the http-01 lineage through the same location, with no age key at all
+# (a missing key proves an http-01-only run asks for no credential), and nginx serves a new serial.
+SER1=$(echo | openssl s_client -connect "127.0.0.1:18447" -servername "$GHOST" 2>/dev/null | openssl x509 -noout -serial); GEN1=$(link g app-example-test)
+SECRETS_AGE_KEY_PATH=$WORK/no-such-age-key must g renew --acme --force
+out_has "lineage app-example-test: http-01"; out_has "served certificate verified"
+SER2=$(echo | openssl s_client -connect "127.0.0.1:18447" -servername "$GHOST" 2>/dev/null | openssl x509 -noout -serial)
+[ -n "$SER1" ] && [ "$SER1" != "$SER2" ] || fail "renewal did not change the served serial ($SER1 -> $SER2)"
+[ "$(link g app-example-test)" != "$GEN1" ] && [ "$(served_fp "$GHOST" 18447)" = "$(leaf_fp "$(cert g app-example-test)")" ] || fail "renewed generation is not the one served"
+[ -z "$(ls -A "$G/ssl/.acme-webroot/.well-known/acme-challenge")" ] || fail "challenge tokens left behind after renewal"
+ok "G trust ssl add --acme over HTTP-01, then renew --acme --force: challenge answered by the route block's location, installed, served, recorded, renewed to a new served serial with no age key"
 
 # === F. no credential in argv, files or logs ======================================
 sleep 1; kill "$PSPID" 2>/dev/null || true; PSPID=""

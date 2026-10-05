@@ -33,9 +33,11 @@ func Refuse(fix, format string, a ...any) error {
 // Input is what Resolve needs; the func fields default to the docker funnel and exec.LookPath.
 type Input struct {
 	ProjectDir, FrontedBy, ProjectName, NginxContainer, Contact, AgeKeyPath string
-	FindNginx                                                               func(context.Context, docker.ServiceMatch) (string, error)
-	Mounts                                                                  func(context.Context, string) ([]docker.Mount, error)
-	LookPath                                                                func(string) (string, error)
+	// NoSecrets is set for runs that handle no DNS credential (HTTP-01): `age` and the age key are not required.
+	NoSecrets bool
+	FindNginx func(context.Context, docker.ServiceMatch) (string, error)
+	Mounts    func(context.Context, string) ([]docker.Mount, error)
+	LookPath  func(string) (string, error)
 }
 
 // Resolution is the printed answer to "where does this write, who reloads".
@@ -76,14 +78,18 @@ func Resolve(ctx context.Context, in Input) (*Resolution, error) {
 	if bad := mountProblem(mounts, r.SSLDir); bad != "" {
 		return nil, Refuse("mount the whole ssl directory at "+nginxtopo.NginxSSLContainerPath, "nginx container %s: %s", r.Container, bad)
 	}
-	if r.AgeBin, err = in.LookPath("age"); err != nil {
-		return nil, Refuse("install age (https://age-encryption.org); it protects the DNS credentials", "`age` is not on PATH")
+	if in.NoSecrets {
+		r.AgeKey = ""
+	} else {
+		if r.AgeBin, err = in.LookPath("age"); err != nil {
+			return nil, Refuse("install age (https://age-encryption.org); it protects the DNS credentials", "`age` is not on PATH")
+		}
+		f, oerr := os.Open(in.AgeKeyPath)
+		if oerr != nil {
+			return nil, Refuse("run `nself secrets init` or set SECRETS_AGE_KEY_PATH", "age key %s is not readable", in.AgeKeyPath)
+		}
+		_ = f.Close()
 	}
-	f, oerr := os.Open(in.AgeKeyPath)
-	if oerr != nil {
-		return nil, Refuse("run `nself secrets init` or set SECRETS_AGE_KEY_PATH", "age key %s is not readable", in.AgeKeyPath)
-	}
-	_ = f.Close()
 	if r.Contact == "" {
 		return nil, Refuse("pass --email or set ACME_EMAIL or ADMIN_EMAIL", "no ACME contact email")
 	}
@@ -119,6 +125,9 @@ func mountProblem(mounts []docker.Mount, sslDir string) string {
 // Print writes the resolution, one fact per line.
 func (r *Resolution) Print(w io.Writer) {
 	_, _ = fmt.Fprintf(w, "served root:       %s\nserved ssl dir:    %s\nserved nginx dir:  %s\n", r.Root, r.SSLDir, r.NginxDir)
-	_, _ = fmt.Fprintf(w, "nginx container:   %s\nnginx ssl mount:   %s -> %s (whole dir)\nacme contact:      %s\nage:               %s (key %s)\n",
-		r.Container, r.SSLDir, nginxtopo.NginxSSLContainerPath, r.Contact, r.AgeBin, r.AgeKey)
+	_, _ = fmt.Fprintf(w, "nginx container:   %s\nnginx ssl mount:   %s -> %s (whole dir)\nacme contact:      %s\n",
+		r.Container, r.SSLDir, nginxtopo.NginxSSLContainerPath, r.Contact)
+	if r.AgeBin != "" {
+		_, _ = fmt.Fprintf(w, "age:               %s (key %s)\n", r.AgeBin, r.AgeKey)
+	}
 }

@@ -3,17 +3,20 @@ package commands
 // ssl_acme_adopt.go: `trust ssl setup --acme --adopt-certbot [dir]`. Reads a
 // certbot tree (never writes to it), maps each lineage to the served targets
 // its names are served from, stores the DNS credential in the age store by
-// name, records the lineages as dns-01 and never issues. A served target is
+// name, records the lineages as dns-01 (a webroot lineage with no credential: http-01, when a probe
+// token is answered by the served nginx) and never issues. A served target is
 // replaced from certbot's live files only when it is missing or older.
 
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"github.com/nself-org/cli/internal/ssl"
 	"github.com/nself-org/cli/internal/ssl/acme"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // adopt implements the --adopt-certbot branch after preflight.
@@ -23,8 +26,8 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 	if len(args) > 0 {
 		dir = args[0]
 	}
-	if str("challenge") != acme.ChallengeDNS {
-		return e151(acmeRefuse("only dns-01 adoption is supported (HTTP-01 comes later)", "challenge %q is not supported", str("challenge")))
+	if c := str("challenge"); c != acme.ChallengeDNS && c != acme.ChallengeHTTP {
+		return e151(acmeRefuse("use dns-01 or http-01", "challenge %q is not supported", c))
 	}
 	var provider string
 	var secs map[string]string
@@ -39,7 +42,13 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 		return e151(acmeRefuse("pass the certbot directory: --adopt-certbot=<dir>", "%v", err))
 	}
 	hosts, _ := ssl.ServedHosts(r.res.NginxDir)
-	adopt, refused := acme.Plan(cbs, hosts, provider, str("lineage"))
+	// A webroot lineage with no credential is adopted as http-01 only when the served nginx answers
+	// the challenge location for every name (a probe token file over local HTTP).
+	probe := func(host string) error {
+		env, _ := ssl.ServedEnv(r.res.Root, r.cfg.Env)
+		return acmeProbeHTTP(ctx, r.res.SSLDir, httpProbeAddr(env), host, nil)
+	}
+	adopt, refused := acme.PlanWith(cbs, hosts, provider, str("lineage"), probe)
 	for _, l := range adopt {
 		r.printLineage(l)
 	}
@@ -71,8 +80,23 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 			return e151(acmeRefuse("check permissions on the ssl/.acme directory", "saving lineages.json failed"))
 		}
 	}
-	r.say("adopted %d lineage(s) as dns-01; certbot state was not touched", len(adopt))
+	r.say("adopted %d lineage(s) (%s); certbot state was not touched", len(adopt), adoptedKinds(adopt))
 	return nil
+}
+
+// adoptedKinds names the challenges of the adopted lineages, e.g. "1 dns-01, 1 http-01".
+func adoptedKinds(ls []acme.Lineage) string {
+	n := map[string]int{}
+	for _, l := range ls {
+		n[l.Challenge]++
+	}
+	var parts []string
+	for _, c := range []string{acme.ChallengeDNS, acme.ChallengeHTTP} {
+		if n[c] > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", n[c], c))
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // importLive installs certbot's live pair into the targets of l that are

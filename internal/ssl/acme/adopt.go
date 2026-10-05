@@ -5,7 +5,9 @@ package acme
 // lineage to the served ssl dirs its names are served from (host -> the
 // ssl_certificate path of the served nginx confs) and returns the dns-01
 // lineages to record plus the refusals with remediation. standalone, webroot
-// and nginx lineages convert to dns-01 only when a credential is supplied.
+// and nginx lineages convert to dns-01 only when a credential is supplied; a
+// webroot lineage with no credential is adopted as http-01 when the probe
+// shows the served nginx answers the challenge location (P7-LIVE-24).
 
 import (
 	"crypto/x509"
@@ -87,12 +89,23 @@ func covers(san, host string) bool {
 // of the supplied credential ("" when none); only, when set, limits adoption to
 // that lineage. Refusals are "<name>: <reason and remediation>".
 func Plan(cbs []Certbot, hosts map[string]string, provider, only string) (adopt []Lineage, refused []string) {
+	return PlanWith(cbs, hosts, provider, only, nil)
+}
+
+// ProbeFunc reports whether the served nginx answers the HTTP-01 challenge
+// location for host (see ProbeWebroot); nil means http-01 adoption is off.
+type ProbeFunc func(host string) error
+
+// PlanWith is Plan with an HTTP-01 probe. With a probe, a webroot lineage and
+// no DNS credential, every name is probed: all answering adopts the lineage as
+// http-01, any failure refuses it with the remediation.
+func PlanWith(cbs []Certbot, hosts map[string]string, provider, only string, probe ProbeFunc) (adopt []Lineage, refused []string) {
 	owner := map[string]string{} // target -> lineage name
 	for _, cb := range cbs {
 		if only != "" && cb.Name != only {
 			continue
 		}
-		prov, why := strings.TrimPrefix(cb.Authenticator, "dns-"), ""
+		prov, why, http01 := strings.TrimPrefix(cb.Authenticator, "dns-"), "", false
 		_, known := SecretNames(prov)
 		switch {
 		case cb.Err != nil:
@@ -101,6 +114,9 @@ func Plan(cbs []Certbot, hosts map[string]string, provider, only string) (adopt 
 			why = "DNS plugin " + cb.Authenticator + " is not supported (cloudflare, route53, digitalocean); issue a new certificate instead"
 		case strings.HasPrefix(cb.Authenticator, "dns-") && provider != "" && provider != prov:
 			why = fmt.Sprintf("the lineage uses %s but the credential file is for %s", prov, provider)
+		case cb.Authenticator == "webroot" && provider == "" && probe != nil:
+			why = probeNames(cb.Domains, probe)
+			http01 = why == ""
 		case !strings.HasPrefix(cb.Authenticator, "dns-") && provider == "":
 			why = "authenticator " + cb.Authenticator + " needs a stopped or shared port; pass --dns-credential-file to convert it to dns-01"
 		case !strings.HasPrefix(cb.Authenticator, "dns-"):
@@ -125,8 +141,11 @@ func Plan(cbs []Certbot, hosts map[string]string, provider, only string) (adopt 
 			owner[t] = cb.Name
 		}
 		names, _ := SecretNames(prov)
-		src := cb.Conf
-		adopt = append(adopt, Lineage{Name: cb.Name, Domains: cb.Domains, Challenge: ChallengeDNS, DNSProvider: prov,
+		src, challenge := cb.Conf, ChallengeDNS
+		if http01 {
+			prov, names, challenge = "", nil, ChallengeHTTP
+		}
+		adopt = append(adopt, Lineage{Name: cb.Name, Domains: cb.Domains, Challenge: challenge, DNSProvider: prov,
 			CredentialSecrets: names, Targets: targets, KeyType: "ec256", AdoptedFrom: &src})
 	}
 	return adopt, refused
@@ -150,4 +169,19 @@ func targetsFor(names []string, hosts map[string]string) (out []string) {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// probeNames probes every name and returns "" when all answer, else a refusal
+// reason with the remediation. A wildcard cannot be validated over HTTP-01.
+func probeNames(names []string, probe ProbeFunc) string {
+	for _, n := range names {
+		if strings.Contains(n, "*") {
+			return "the wildcard " + n + " cannot use http-01; pass --dns-credential-file to convert it to dns-01"
+		}
+		if err := probe(n); err != nil {
+			return fmt.Sprintf("http-01 needs the served nginx to answer /.well-known/acme-challenge/ for %s (%v); "+
+				"run `nself build` to render the challenge location and restart nginx, then retry, or pass --dns-credential-file to convert it to dns-01", n, err)
+		}
+	}
+	return ""
 }
