@@ -1,0 +1,19 @@
+# Authored (not generated). Canon fragment "services" (contract:cli.canon-fragments v1, P7-CANON-02).
+# Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
+schema_version: 1
+commands:
+  # cmd/commands/service.go:65 RunE path changes no persistent state (prints/reads only)
+  service: {canon: pending, side_effect: read}
+  service add: {side_effect: write}
+  service configure: {side_effect: write}
+  service disable: {side_effect: write}
+  service enable: {side_effect: write}
+  service list: {side_effect: read, json: legacy}
+  # cmd/commands/service_lifecycle.go:42 RunE path changes no persistent state (prints/reads only)
+  service ps: {side_effect: read}
+  service restart: {side_effect: write}
+  service scale: {side_effect: write}
+  service start: {side_effect: write}
+  service stop: {side_effect: write}
+  service update: {side_effect: write}
+  service upgrade: {side_effect: write}

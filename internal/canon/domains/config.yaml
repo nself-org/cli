@@ -1,0 +1,79 @@
+# Authored (not generated). Canon fragment "config" (contract:cli.canon-fragments v1, P7-CANON-02).
+# Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
+schema_version: 1
+commands:
+  # cmd/commands/config.go:22 RunE path changes no persistent state (prints/reads only)
+  config: {canon: core, side_effect: read}
+  # cmd/commands/config_export_import.go:22 writes to stdout by default; --output escalates to write
+  config export: {side_effect: read, flags: {output: {side_effect: write}}}
+  # cmd/commands/feature.go:48 RunE path changes no persistent state (prints/reads only)
+  config features: {side_effect: read}
+  config features disable: {side_effect: write}
+  config features enable: {side_effect: write}
+  config features list: {side_effect: read, json: legacy}
+  config features status: {side_effect: read, json: legacy}
+  config get: {side_effect: read}
+  config import: {side_effect: write}
+  config list: {side_effect: read}
+  config set: {side_effect: write}
+  config show: {side_effect: read}
+  config validate: {side_effect: read, exit_codes: {"1": "one or more validators fail (exits 0 when all pass)"}}
+  # cmd/commands/env.go:32 RunE path changes no persistent state (prints/reads only)
+  env: {canon: pending, side_effect: read}
+  env copy: {side_effect: write}
+  env diff: {side_effect: read}
+  env explain: {side_effect: read}
+  env list: {side_effect: read}
+  env show: {side_effect: read}
+  # cmd/commands/env_target.go:40 RunE path changes no persistent state (prints/reads only)
+  env target: {side_effect: read}
+  env target add: {side_effect: write}
+  env target list: {side_effect: read, json: legacy}
+  env target migrate: {side_effect: write}
+  # cmd/commands/env_target_probe.go:38 RunE path changes no persistent state (prints/reads only)
+  env target probe: {side_effect: read, json: legacy}
+  # cmd/commands/env_target_crud.go:204 removes one server entry from control-plane.yaml; `env target add` restores it (write, not destructive)
+  env target remove: {side_effect: write}
+  env use: {side_effect: write}
+  # cmd/commands/oauth_refresh.go:18 RunE path changes no persistent state (prints/reads only)
+  oauth: {canon: pending, side_effect: read}
+  # cmd/commands/oauth_refresh.go:59 triggers a token refresh on the remote OAuth service
+  oauth refresh: {side_effect: remote}
+  # cmd/commands/secrets.go:29 RunE path changes no persistent state (prints/reads only)
+  secrets: {canon: pending, side_effect: read}
+  # cmd/commands/secrets_audit.go:86 RunE path changes no persistent state (prints/reads only)
+  secrets audit: {side_effect: read}
+  # cmd/commands/secrets_audit.go:69 RunE path changes no persistent state (prints/reads only)
+  secrets decrypt-on-deploy: {side_effect: read}
+  secrets edit: {side_effect: write, output: interactive}
+  secrets get: {side_effect: read}
+  secrets init: {side_effect: write}
+  # cmd/commands/secrets_audit.go:112 RunE path changes no persistent state (prints/reads only)
+  secrets lint: {side_effect: read}
+  secrets list: {side_effect: read}
+  # cmd/commands/secrets_schedule.go:103 RunE path changes no persistent state (prints/reads only)
+  secrets list-schedules: {side_effect: read}
+  secrets rekey: {side_effect: write}
+  # cmd/commands/secrets_edit_rotate.go:124 deletes the _PREVIOUS variant of a dual-window rotated secret
+  secrets retire: {side_effect: destructive}
+  # cmd/commands/secrets_edit_rotate.go:94 replaces a secret with a new random value; the old value is not restorable without --dual-window
+  secrets rotate: {side_effect: destructive}
+  # cmd/commands/secrets_audit.go:29 RunE path changes no persistent state (prints/reads only)
+  secrets rotation-log: {side_effect: read}
+  secrets schedule: {side_effect: write}
+  secrets set: {side_effect: write}
+  secrets verify: {side_effect: read}
+  # cmd/commands/telemetry.go:42 RunE path changes no persistent state (prints/reads only)
+  telemetry: {canon: pending, side_effect: read}
+  telemetry off: {side_effect: write}
+  telemetry on: {side_effect: write}
+  telemetry status: {side_effect: read}
+  trust: {canon: pending, side_effect: write}
+  trust dns: {side_effect: write}
+  # cmd/commands/ssl.go:38 RunE path changes no persistent state (prints/reads only)
+  trust ssl: {side_effect: read}
+  trust ssl add: {side_effect: write}
+  trust ssl renew: {side_effect: write}
+  trust ssl setup: {side_effect: write}
+  trust ssl status: {side_effect: read}
+  trust status: {side_effect: read, exit_codes: {"0": "all trust components configured and no expiry warnings", "2": "one or more components missing or cert expiry <30 days"}}

@@ -18,6 +18,11 @@
 // pilots: status and doctor (pre-contract bare JSON in v1.4 mode, envelope in
 // v1.5), and config show/get/list (v1.5 only, their --json was accepted and
 // ignored before).
+//
+// P7-CANON-02 splits the registrations by domain: this file keeps the map and
+// `help`; registry_types_<domain>.go files register the rest from init() with
+// registerJSONType (observe: status, doctor; config: show, get, list). A later
+// Ticket adds its own registry_types_<domain>.go and never edits this map.
 
 package commands
 
@@ -27,22 +32,25 @@ import "github.com/nself-org/cli/internal/cmdregistry"
 var jsonDataTypes = map[string]any{
 	// `help --json` answers with the registry document itself.
 	"help": cmdregistry.Registry{},
-	// P7-REG-09 pilots: the unchanged pre-contract payload plus `state`.
-	"status": statusData{},
-	"doctor": doctorData{},
-	// config show: masked key/value map (secrets as "***" unless --reveal).
-	"config show": map[string]string{},
-	"config get":  configGetData{},
-	"config list": configListData{},
+}
+
+// registerJSONType adds one envelope data type. It is called from init() in the
+// registry_types_<domain>.go files; registering a path twice is a programming
+// error and panics at start-up of the test binary (TestRegistryTypesSplit).
+func registerJSONType(path string, zero any) {
+	if _, dup := jsonDataTypes[path]; dup {
+		panic("commands: JSON data type registered twice for " + path)
+	}
+	jsonDataTypes[path] = zero
 }
 
 // jsonV15OnlyEnvelope lists the paths in jsonDataTypes whose envelope is
-// visible only when compat.V15() is true.
-var jsonV15OnlyEnvelope = map[string]bool{
-	"config show": true,
-	"config get":  true,
-	"config list": true,
-}
+// visible only when compat.V15() is true. Each domain file adds its own paths
+// from init() with registerV15OnlyEnvelope.
+var jsonV15OnlyEnvelope = map[string]bool{}
+
+// registerV15OnlyEnvelope marks a registered path as envelope in v1.5 mode only.
+func registerV15OnlyEnvelope(path string) { jsonV15OnlyEnvelope[path] = true }
 
 // BuildRegistry builds the registry of the live RootCmd tree for the given
 // compat mode, uncached. It is the entry point for tools/cmdinventory, which

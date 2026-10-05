@@ -1,0 +1,49 @@
+# Authored (not generated). Canon fragment "breakouts" (contract:cli.canon-fragments v1, P7-CANON-02).
+# Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
+schema_version: 1
+commands:
+  # cmd/commands/ci.go:64 posts a GitHub commit status unless --no-status
+  ci: {canon: pending, side_effect: remote}
+  # cmd/commands/ci_build.go:62 builds locally; --upload pushes the artifact to the remote
+  ci build: {side_effect: write, flags: {upload: {side_effect: remote}}}
+  ci eval: {side_effect: write, exit_codes: {"0": "suite passed (pass_rate and suite_score >= configured threshold)", "1": "suite ran but is below threshold", "2": "validation error (bad YAML or invalid eval-set schema)", "3": "precondition not met (BGE-M3 or AI gateway unavailable)"}}
+  # cmd/commands/eval_gate.go:62 RunE path changes no persistent state (prints/reads only)
+  ci eval gate: {side_effect: read, exit_codes: {"0": "tier is cleared (all required suites pass thresholds)", "1": "tier is blocked (one or more suites are below threshold or have no runs)", "2": "invalid tier name provided", "3": "precondition not met (BGE-M3 or AI gateway unavailable; NOT a regression)"}}
+  # cmd/commands/ci_forgejo.go:56 RunE path changes no persistent state (prints/reads only)
+  ci forgejo: {side_effect: read}
+  # cmd/commands/ci_serve.go:23 receives webhooks, runs attacker-influenced repo content in Docker and posts GitHub commit statuses (ci_serve.go:25-39), like `ci`; --allow-unsandboxed runs the gate on the host (ci_serve.go:115, "DANGEROUS")
+  ci serve: {side_effect: remote, output: stream, flags: {allow-unsandboxed: {side_effect: destructive}}}
+  # cmd/commands/functions.go:28 RunE path changes no persistent state (prints/reads only)
+  functions: {canon: pending, side_effect: read}
+  functions delete: {side_effect: destructive}
+  # cmd/commands/functions_deploy.go:55 copies files into functions/<name> and reloads the functions container; a re-deploy restores it (write)
+  functions deploy: {side_effect: write}
+  functions invoke: {side_effect: write}
+  functions list: {side_effect: read, json: legacy}
+  functions logs: {side_effect: read, output: stream}
+  plugin debug: {side_effect: write}
+  plugin dev: {side_effect: write, output: stream}
+  plugin init: {side_effect: write}
+  plugin link: {side_effect: write}
+  # cmd/commands/plugin_marketplace_cmds.go:39 RunE path changes no persistent state (prints/reads only)
+  plugin marketplace: {side_effect: read}
+  plugin marketplace info: {side_effect: read, json: legacy}
+  plugin marketplace list: {side_effect: read, json: legacy}
+  plugin marketplace search: {side_effect: read, json: legacy}
+  # cmd/commands/plugin_new.go:91 cobra Deprecated: use plugin init
+  plugin new: {canon: deprecated-shim, target: plugin init, side_effect: write}
+  # cmd/commands/plugin_submit.go:42 RunE path changes no persistent state (prints/reads only)
+  plugin submit: {side_effect: read}
+  plugin test: {side_effect: write}
+  plugin unlink: {side_effect: write}
+  # cmd/commands/runner.go:42 RunE path changes no persistent state (prints/reads only)
+  runner: {canon: pending, side_effect: read}
+  runner provision: {side_effect: remote}
+  runner verify: {side_effect: read, json: legacy}
+  # cmd/commands/server.go:42 RunE path changes no persistent state (prints/reads only)
+  server: {canon: pending, side_effect: read}
+  server destroy: {side_effect: destructive, json: legacy}
+  server list: {side_effect: read, json: legacy}
+  server provision: {side_effect: remote, json: legacy}
+  # cmd/commands/server_resize.go:44 changes the server type on Hetzner; --upgrade-disk is permanent
+  server resize: {side_effect: remote, json: legacy, flags: {upgrade-disk: {side_effect: destructive}}}

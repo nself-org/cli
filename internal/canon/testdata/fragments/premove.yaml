@@ -1,0 +1,21 @@
+# Fixture: the v1.4 world before any move (what Effective(false) of moved/ must equal).
+schema_version: 1
+verbs: [status, doctor, config, remove, add, db, stop]
+commands:
+  completion: {canon: pending, side_effect: read}
+  config: {canon: core, side_effect: read}
+  db: {canon: core, side_effect: write}
+  doctor: {canon: core, side_effect: read}
+  env: {canon: pending, side_effect: read}
+  env use: {side_effect: write}
+  install: {canon: pending, side_effect: remote}
+  migrate: {canon: pending, side_effect: write}
+  migrate up: {side_effect: write}
+  plugin: {canon: pending, side_effect: destructive}
+  plugin init: {side_effect: write}
+  plugin marketplace: {side_effect: read}
+  remove: {canon: core, side_effect: destructive}
+  service: {canon: pending, side_effect: write}
+  service stop: {side_effect: write}
+  status: {canon: core, side_effect: read}
+  stop: {canon: core, side_effect: write}

@@ -1,0 +1,7 @@
+schema_version: 1
+commands:
+  config: {canon: core, side_effect: read}
+  config env: {side_effect: read}
+  config env use: {side_effect: write}
+moves:
+  - {from: env, to: config env, since: v1.5.0, removal_at: v1.6.0}

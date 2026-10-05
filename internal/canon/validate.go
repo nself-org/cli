@@ -46,6 +46,7 @@ func (f *File) Validate() error {
 	for key, e := range f.Commands {
 		p = append(p, validateEntry(key, e, verbs)...)
 	}
+	p = append(p, f.validate("")...)
 	return NewValidationError(p)
 }
 

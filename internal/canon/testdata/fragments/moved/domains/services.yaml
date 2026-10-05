@@ -1,0 +1,7 @@
+schema_version: 1
+commands:
+  service: {canon: pending, side_effect: write}
+  service stop: {side_effect: write, mode: v1.4}
+  stop: {canon: core, side_effect: write}
+shims:
+  - {from: service stop, to: stop, since: v1.5.0, removal_at: v1.6.0, equivalence: TestEquivalenceServiceStop}
