@@ -23,9 +23,24 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `ScanHostKeysSSH`, `Fingerprint`; `CISSHFlags`, `CIOptions`, `SSHVersion`;
   `ResolveSSHHost` over `ssh -G`. Standard library only. The CLI's
   `internal/deploy` delegates to it with a byte-identical argv.
+- `remote.ParseHostSpec` (P7-DEPL-23): the one deploy host grammar,
+  `[user@]host[:port]` plus the legacy `[user@]host:/abs/path`, with
+  `HostSpec{User, Host, Port, LegacyPath}`, the typed error `*HostSpecError`
+  (cli maps it to E484) and the methods `String` (canonical, IPv6 in brackets),
+  `Dest`, `SSHArgs` (`[-p N] -- dest`), `SSHOptions` (the port only),
+  `Target` and `Validate`. user `[a-z_][a-z0-9_.-]{0,31}`, host a dotted name
+  (labels `[A-Za-z0-9_-]`, at most 253 bytes, no empty label, never a leading
+  `-`) or a bracketed IPv6 literal, port 1-65535 without sign or leading zero.
+  A second `@` or `:`, a bare IPv6 literal, whitespace, control or non-ASCII
+  bytes and shell metacharacters are refused. Hand-written scanner, no regular
+  expression.
 
 ### Changed
 
+- `ResolveSSHHost` checks its argument with `ParseHostSpec` instead of
+  `ValidateAlias` and runs `ssh -G [-p N] -- [user@]host`: a bare IPv6 literal
+  now needs brackets, `host:port` is read as a port, and a legacy `:/path`
+  suffix never reaches ssh.
 - **Breaking:** package `license` moved to `licensing`
   (`github.com/nself-org/cli/sdk/go/v2/licensing`). The module zip includes the
   repository-root `LICENSE`, which collides case-insensitively with a `license/`

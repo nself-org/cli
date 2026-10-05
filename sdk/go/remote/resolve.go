@@ -3,8 +3,8 @@
 // Outputs: Resolved{Hostname, Port, User, ProxyJump, HostKeyAlias}.
 // Constraints: runs `ssh -G -- <alias>` (no connection is made) with a 5 s
 //              timeout; only five keys are read, the rest is ignored; an alias
-//              failing ValidateAlias is refused before any exec. Interim check
-//              until P7-DEPL-23 switches this to ParseHostSpec.
+//              failing ParseHostSpec (the one host grammar) is refused before
+//              any exec.
 
 package remote
 
@@ -25,15 +25,18 @@ type Resolved struct {
 	HostKeyAlias string
 }
 
-// ResolveSSHHost runs `ssh -G -- <alias>` and parses the effective hostname,
-// port, user, proxyjump and hostkeyalias.
+// ResolveSSHHost runs `ssh -G [-p N] -- <dest>` and parses the effective
+// hostname, port, user, proxyjump and hostkeyalias. alias is a host spec in
+// the one grammar (ParseHostSpec): a bare IPv6 literal needs brackets, and a
+// legacy ":/path" suffix is accepted but never reaches ssh.
 func ResolveSSHHost(ctx context.Context, alias string) (Resolved, error) {
-	if err := ValidateAlias(alias); err != nil {
+	spec, err := ParseHostSpec(alias)
+	if err != nil {
 		return Resolved{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	cmd, err := Command(ctx, "ssh", "-G", "--", alias)
+	cmd, err := Command(ctx, "ssh", append([]string{"-G"}, spec.SSHArgs()...)...)
 	if err != nil {
 		return Resolved{}, err
 	}
