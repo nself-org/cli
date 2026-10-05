@@ -179,6 +179,11 @@ type PluginManifest struct {
 	// Compatibility
 	Compat *CompatBlock `json:"compat,omitempty"`
 
+	// PostgresExtensions is manifest v2 requires.postgres_extensions: Postgres
+	// extension names (e.g. "vector") the install checks before download
+	// (P7-ADOPT-06). Read from a registry entry's catalog.requires.
+	PostgresExtensions []string `json:"postgres_extensions,omitempty"`
+
 	// Registry-specific fields (not in plugin.json, populated by registry)
 	Tier     string `json:"tier,omitempty"`
 	Checksum string `json:"checksum,omitempty"`

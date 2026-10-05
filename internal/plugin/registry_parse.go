@@ -162,6 +162,8 @@ type pluginEntry struct {
 	APIEndpoints json.RawMessage `json:"apiEndpoints,omitempty"`
 	// Compat holds CLI and service version constraints.
 	Compat *CompatBlock `json:"compat,omitempty"`
+	// Catalog is the additive block the generator writes (P7-PLUG-07); see registry_catalog.go.
+	Catalog *pluginCatalog `json:"catalog,omitempty"`
 	// UpdatedAt is a per-plugin freshness timestamp (CLI-R16). Not present on
 	// the live plugins.nself.org registry as of 2026-08-23 — kept as forward
 	// plumbing so `nself plugin list --detailed` picks it up the moment the

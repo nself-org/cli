@@ -1,0 +1,25 @@
+{
+  "plugins": [
+    {
+      "name": "vecplug",
+      "version": "1.0.0",
+      "description": "fixture plugin that requires the vector extension",
+      "category": "ai",
+      "tier": "free",
+      "license": "MIT",
+      "catalog": {
+        "maturity": "stable",
+        "service_kind": "compose",
+        "requires": { "postgres_extensions": ["vector"] }
+      }
+    },
+    {
+      "name": "plainplug",
+      "version": "1.0.0",
+      "description": "fixture plugin with no extension requirement",
+      "category": "util",
+      "tier": "free",
+      "license": "MIT"
+    }
+  ]
+}

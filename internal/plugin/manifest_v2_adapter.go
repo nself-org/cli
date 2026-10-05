@@ -61,7 +61,7 @@ func fromManifestV2(v *manifestv2.Manifest) *PluginManifest {
 		Dependencies: v.Dependencies, OptionalDependencies: v.OptionalDependencies,
 		Consumes: v.Consumes, Provides: v.Provides, Tier: v.Tier, PublishStatus: v.Status,
 		MaxNselfVersion: v.MaxNselfVersion, UpdatedAt: v.UpdatedAt, PlatformChecksums: v.PlatformChecksums,
-		Permissions: permissionsFromV2(v.Permissions),
+		Permissions: permissionsFromV2(v.Permissions), PostgresExtensions: nonEmpty(manifestv2.PostgresExtensions(v)),
 	}
 	for _, c := range v.CLICommands {
 		m.CLICommands = append(m.CLICommands, CLICommand(c))
@@ -131,4 +131,13 @@ func licenseText(v *manifestv2.Manifest) string {
 		return v.LicenseSPDX
 	}
 	return v.License
+}
+
+// nonEmpty returns nil for an empty slice so an absent requirement stays the
+// zero value, as in a v1 manifest.
+func nonEmpty(s []string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+	return s
 }
