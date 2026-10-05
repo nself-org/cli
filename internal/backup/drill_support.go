@@ -52,7 +52,7 @@ func resolveIdentity(project, flag string) (string, error) {
 		}
 		return flag, nil
 	}
-	return DefaultIdentity(project)
+	return DefaultIdentity(project, "--identity")
 }
 
 func decryptAge(ctx context.Context, identity, in, out string) error {
@@ -179,4 +179,62 @@ func problemText(err error) string {
 		return fmt.Sprintf("[%s] %s", ce.Code, ce.What)
 	}
 	return err.Error()
+}
+
+// identityRecipient runs age-keygen -y on an identity file and returns its
+// public key. The secret never reaches this process. A missing age-keygen is
+// reported as that, never as a bad key: the file was not checked.
+func identityRecipient(path string) (string, error) {
+	bin, err := exec.LookPath("age-keygen")
+	if err != nil {
+		return "", errs.Wrap("E222", "age-keygen is not installed, so the identity "+path+" could not be checked; it was left untouched and may be fine (install age and retry)", err)
+	}
+	out, err := exec.Command(bin, "-y", path).Output()
+	pub := strings.TrimSpace(string(out))
+	if err != nil || !strings.HasPrefix(pub, "age1") {
+		return "", errs.Newf("E222", "the backup identity %s is not a usable age identity; it was left untouched", path)
+	}
+	return pub, nil
+}
+
+// DefaultIdentity finds the identity to decrypt with when no key flag was
+// given: <project>-age.key (init-key and the auto identity), then
+// <project>-backup-age.key, then age-key.txt, under ~/.config/nself. Each
+// candidate that exists must be a regular, non-symlink file that parses as an
+// age identity, otherwise E222 names it. None found is E223 naming flag, the
+// command's own key flag. An explicit key path never comes through here.
+func DefaultIdentity(project, flag string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", errs.Wrap("E223", "cannot find the home directory to look for the backup identity", err)
+	}
+	dir := filepath.Join(home, ".config", "nself")
+	names := []string{"age-key.txt"}
+	if project != "" && project == filepath.Base(project) && !strings.HasPrefix(project, ".") {
+		names = []string{project + "-age.key", project + "-backup-age.key", "age-key.txt"}
+	}
+	for _, n := range names {
+		p := filepath.Join(dir, n)
+		fi, err := os.Lstat(p)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", errs.Wrap("E222", "cannot inspect the backup identity "+p, err)
+		}
+		if !fi.Mode().IsRegular() {
+			return "", errs.Newf("E222", "the default backup identity %s is not a regular file (symlinks are refused); pass %s <file> to use another", p, flag)
+		}
+		if _, err := identityRecipient(p); err != nil {
+			return "", err
+		}
+		return p, nil
+	}
+	return "", NewIdentityMissing(filepath.Join(dir, names[0]), flag)
+}
+
+// NewIdentityMissing is the E223 error for a decrypt that has no identity;
+// flag is the key flag of the command that failed.
+func NewIdentityMissing(path, flag string) error {
+	return errs.Newf("E223", "the backup identity is missing: %s (pass %s <file>, or restore the file from your off-host copy)", path, flag)
 }

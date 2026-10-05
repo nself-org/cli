@@ -21,8 +21,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
@@ -136,9 +138,10 @@ func ensureKeyDir(dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return errs.Wrap("E222", "cannot create the key directory "+dir, err)
 	}
-	fi, err := os.Stat(dir)
+	// Lstat, not Stat: a symlinked key directory would send the secret elsewhere.
+	fi, err := os.Lstat(dir)
 	if err != nil || !fi.IsDir() {
-		return errs.Wrap("E222", "the key directory is not a directory: "+dir, err)
+		return errs.Wrap("E222", "the key directory is a symlink or not a directory (refused, nothing was written): "+dir, err)
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		slog.Warn("tightening the key directory to 0700", "dir", dir, "was", fmt.Sprintf("%04o", fi.Mode().Perm()))
@@ -162,19 +165,39 @@ func readIdentity(path string) (Identity, bool, error) {
 	if !fi.Mode().IsRegular() {
 		return Identity{}, false, errs.Newf("E222", "the backup identity path is not a regular file (symlinks are refused): %s", path)
 	}
+	// A hard link shares its inode with another file: chmod would change that
+	// file too. A link from a concurrent first run's temp file is short-lived.
+	for i := 0; linkCount(fi) > 1; i++ {
+		if i == 50 {
+			return Identity{}, false, errs.Newf("E222", "the backup identity %s has more than one hard link (refused, left untouched; remove the extra link such as a stray .tmp file beside it)", path)
+		}
+		time.Sleep(5 * time.Millisecond)
+		if fi, err = os.Lstat(path); err != nil {
+			return Identity{}, false, errs.Wrap("E222", "cannot inspect the backup identity "+path, err)
+		}
+	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		slog.Warn("tightening the backup identity to 0600", "path", path, "was", fmt.Sprintf("%04o", fi.Mode().Perm()))
 		if err := os.Chmod(path, 0o600); err != nil {
 			return Identity{}, false, errs.Wrap("E222", "cannot tighten the backup identity to 0600: "+path, err)
 		}
 	}
-	// age-keygen -y prints only the public key; the secret never reaches us.
-	out, err := exec.Command("age-keygen", "-y", path).Output()
-	pub := strings.TrimSpace(string(out))
-	if err != nil || !strings.HasPrefix(pub, "age1") {
-		return Identity{}, false, errs.Newf("E222", "the existing backup identity %s is not a usable age identity; it was left untouched", path)
+	pub, err := identityRecipient(path)
+	if err != nil {
+		return Identity{}, false, err
 	}
 	return Identity{Path: path, Recipient: pub}, true, nil
+}
+
+// linkCount is the file's hard-link count; 1 where the platform does not say.
+func linkCount(fi os.FileInfo) uint64 {
+	v := reflect.ValueOf(fi.Sys())
+	if v.Kind() == reflect.Pointer && !v.IsNil() {
+		if n := v.Elem().FieldByName("Nlink"); n.IsValid() && n.CanUint() {
+			return n.Uint()
+		}
+	}
+	return 1
 }
 
 // generateAgeKey runs age-keygen with its secret captured in memory only.
@@ -256,36 +279,9 @@ func writeCreationNotice(w io.Writer, id Identity) {
 IMPORTANT: this file is the only way to decrypt these backups. If it is lost,
 every backup encrypted to it is unrecoverable and nSelf cannot recover it.
 Back it up now, off this machine (a password manager or an offline drive).
-After copying it, run: touch %[1]s%[3]s   (silences the nself doctor reminder)
+Optional: after copying it, run touch %[1]s%[3]s to record that you did.
 Restore with: nself backup restore-remote --from <backup>   (finds this file)
 Anyone who can read this file can read the backups. To harden: move the
 identity off this host and keep only the recipient here (BACKUP_AGE_RECIPIENTS).
 `, id.Path, id.Recipient, BackedUpMarkerSuffix)
-}
-
-// DefaultIdentity finds the identity to decrypt with when no --key or
-// --identity was given: <project>-age.key (init-key and the auto identity),
-// then <project>-backup-age.key, then age-key.txt, all under ~/.config/nself.
-// Only existence is checked; the file is never read. None found is E223.
-func DefaultIdentity(project string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", errs.Wrap("E223", "cannot find the home directory to look for the backup identity", err)
-	}
-	dir := filepath.Join(home, ".config", "nself")
-	names := []string{"age-key.txt"}
-	if project != "" && project == filepath.Base(project) && !strings.HasPrefix(project, ".") {
-		names = []string{project + "-age.key", project + "-backup-age.key", "age-key.txt"}
-	}
-	for _, n := range names {
-		if fi, err := os.Stat(filepath.Join(dir, n)); err == nil && fi.Mode().IsRegular() {
-			return filepath.Join(dir, n), nil
-		}
-	}
-	return "", NewIdentityMissing(filepath.Join(dir, names[0]))
-}
-
-// NewIdentityMissing is the E223 error for a decrypt that has no identity.
-func NewIdentityMissing(path string) error {
-	return errs.Newf("E223", "the backup identity is missing: %s (pass --key <file>, or restore the file from your off-host copy)", path)
 }

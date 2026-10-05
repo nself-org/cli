@@ -1,7 +1,9 @@
 package backup
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -124,7 +126,7 @@ func decryptFile(ctx context.Context, path, keyPath, project string) (string, er
 		// compat.V15(P7-PROD-08): age-key.txt only -> shared identity search, E223 when none
 		if compat.V15() {
 			var err error
-			if keyPath, err = DefaultIdentity(project); err != nil {
+			if keyPath, err = DefaultIdentity(project, "--decrypt-key"); err != nil {
 				return "", err
 			}
 		} else {
@@ -132,11 +134,22 @@ func decryptFile(ctx context.Context, path, keyPath, project string) (string, er
 		}
 	}
 
+	// The plaintext dump is created 0600 by us (never by age's default mode)
+	// and removed on every path that does not hand it to the caller.
 	decrypted := strings.TrimSuffix(path, ".age") + ".dec"
-	args := []string{"-d", "-i", keyPath, "-o", decrypted, path}
-	cmd := exec.CommandContext(ctx, "age", args...)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("%w: %s", errs.ErrBackupDecryptFailed, string(output))
+	_ = os.Remove(decrypted)
+	out, err := os.OpenFile(decrypted, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return "", fmt.Errorf("%w: create %s: %v", errs.ErrBackupDecryptFailed, decrypted, err)
+	}
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "age", "-d", "-i", keyPath, path)
+	cmd.Stdout, cmd.Stderr = out, &stderr
+	runErr := cmd.Run()
+	closeErr := out.Close()
+	if runErr != nil || closeErr != nil {
+		_ = os.Remove(decrypted)
+		return "", fmt.Errorf("%w: %s %v", errs.ErrBackupDecryptFailed, strings.TrimSpace(stderr.String()), errors.Join(runErr, closeErr))
 	}
 	return decrypted, nil
 }

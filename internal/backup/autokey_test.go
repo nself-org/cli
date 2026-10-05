@@ -383,7 +383,7 @@ func TestAutoKeyErrorCodesRegistered(t *testing.T) {
 			t.Errorf("%s not registered", c)
 		}
 	}
-	if e := NewIdentityMissing("/x/k"); !strings.Contains(e.Error(), "[E223]") {
+	if e := NewIdentityMissing("/x/k", "--key"); !strings.Contains(e.Error(), "[E223]") {
 		t.Errorf("E223: %v", e)
 	}
 }
@@ -392,12 +392,13 @@ func TestAutoKeyErrorCodesRegistered(t *testing.T) {
 // <project>-backup-age.key, then age-key.txt, and answer E223 when none exists.
 func TestAutoKeyDefaultIdentityOrderAndE223(t *testing.T) {
 	home, _, _ := autoKeyEnv(t)
+	compattest.Set(t, true)
 	dir := filepath.Join(home, ".config", "nself")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	var ce *errs.CLIError
-	if _, err := DefaultIdentity("proj"); !errors.As(err, &ce) || ce.Code != "E223" || !strings.Contains(err.Error(), "proj-age.key") {
+	if _, err := DefaultIdentity("proj", "--key"); !errors.As(err, &ce) || ce.Code != "E223" || !strings.Contains(err.Error(), "proj-age.key") {
 		t.Fatalf("none present: want E223 naming the default path, got %v", err)
 	}
 	if _, err := resolveIdentity("proj", ""); !errors.As(err, &ce) || ce.Code != "E223" {
@@ -408,17 +409,15 @@ func TestAutoKeyDefaultIdentityOrderAndE223(t *testing.T) {
 	}
 	order := []string{"age-key.txt", "proj-backup-age.key", "proj-age.key"}
 	for _, n := range order {
-		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		got, err := DefaultIdentity("proj")
+		newAgeKey(t, filepath.Join(dir, n))
+		got, err := DefaultIdentity("proj", "--key")
 		if err != nil || filepath.Base(got) != n {
 			t.Fatalf("after adding %s: got %q %v", n, got, err)
 		}
 	}
 	// an explicit --identity wins over every default
 	flag := filepath.Join(home, "mine.key")
-	_ = os.WriteFile(flag, []byte("x"), 0o600)
+	_ = os.WriteFile(flag, []byte("x"), 0o600) // explicit path: used as given, even if not an identity
 	if got, err := resolveIdentity("proj", flag); err != nil || got != flag {
 		t.Fatalf("flag: %q %v", got, err)
 	}

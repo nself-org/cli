@@ -14,11 +14,14 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/nself-org/cli/internal/backup/destinations"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
@@ -33,9 +36,14 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 
 	encrypted := strings.HasSuffix(from, ".age")
 	if encrypted && keyPath == "" {
-		var err error
-		if keyPath, err = DefaultIdentity(cfg.ProjectName); err != nil {
-			return err
+		// compat.V15(P7-PROD-08): age-key.txt only -> shared identity search, E223 when none
+		if compat.V15() {
+			var err error
+			if keyPath, err = DefaultIdentity(cfg.ProjectName, "--key"); err != nil {
+				return err
+			}
+		} else {
+			keyPath = filepath.Join(os.Getenv("HOME"), ".config", "nself", "age-key.txt")
 		}
 	}
 

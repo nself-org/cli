@@ -146,7 +146,7 @@ nself db migrate up                           # apply, recorded and checksummed
 nself db migrate up --migration-dir ./sql     # an existing directory of SQL files
 ```
 
-Files that were already applied by hand are listed as pending once; read `status` and the dry run before the first `up`. Take a backup first (`nself backup stream`, see [[cmd-backup]]). Never edit an applied migration: its checksum no longer matches. `nself doctor` carries an advisory hint, never a failure, when a project still has a script that feeds `migrations/` to raw `psql`.
+Files that were already applied by hand are listed as pending once; read `status` and the dry run before the first `up`. Take a backup first (`nself backup stream`, see [[cmd-backup]]). Never edit an applied migration: its checksum no longer matches. An advisory `nself doctor` hint for scripts that feed `migrations/` to raw `psql` is written but not yet wired (P7-SURF-11).
 
 ---
 

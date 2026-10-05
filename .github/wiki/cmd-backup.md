@@ -68,8 +68,7 @@ nself backup stream --to <url> [--recipient <key>] [--heartbeat-to <remote>] [--
 |---|---|---|
 | `--to` | `NSELF_BACKUP_DESTINATION` | Destination URL (rclone remote path) |
 | `--recipient` | `NSELF_BACKUP_RECIPIENT` | Encryption recipient: age key, SSH key, or `github:<user>` (repeatable) |
-| `--heartbeat-to` | `NSELF_BACKUP_NO_AUTO_KEY` | `1` keeps the refusal when no recipient is configured instead of creating an identity (v1.5) |
-| `NSELF_BACKUP_HEARTBEAT_REMOTE` | rclone remote that receives `<project>/backup.json` after a successful upload |
+| `--heartbeat-to` | `NSELF_BACKUP_HEARTBEAT_REMOTE` | rclone remote that receives `<project>/backup.json` after a successful upload |
 | `--heartbeat-required` | false | Exit non-zero when the heartbeat cannot be written. The backup itself is kept either way |
 | `--dry-run` | false | Preview without running |
 
@@ -130,6 +129,7 @@ nself backup stream --to r2:mybucket/backups --recipient age1abc123 --heartbeat-
 |---|---|
 | `NSELF_BACKUP_DESTINATION` | Default destination URL |
 | `NSELF_BACKUP_RECIPIENT` | Default age/SSH public key (space-separated for multiple) |
+| `NSELF_BACKUP_NO_AUTO_KEY` | `1` keeps the refusal when no recipient is configured instead of creating an identity (v1.5) |
 | `NSELF_BACKUP_HEARTBEAT_REMOTE` | Default heartbeat remote (the `--heartbeat-to` flag wins). Environment only: `nself.yaml` has no config keys. |
 | `NSELF_BACKUP_CHUNK_MB` | Multipart chunk size in MB (default: 64, handled by rclone) |
 | `AWS_ACCESS_KEY_ID` | S3/R2/B2 access key |
@@ -157,10 +157,10 @@ nself backup restore-remote --from r2:mybucket/backups/<object>.age
 **A lost identity makes every backup encrypted to it unrecoverable.** The recipient (public key) cannot decrypt, the storage provider cannot, and nSelf cannot. There is no recovery path.
 
 1. Right after the first backup, copy `~/.config/nself/<project>-age.key` somewhere that is not this machine: a password manager attachment or an offline drive.
-2. Then run `touch ~/.config/nself/<project>-age.key.backed-up`. The marker is an empty file you create yourself; the advisory `nself doctor` backup hint stays quiet only when it exists. Nothing checks that the copy is real.
-3. Prove it once: restore a backup using the copy (`nself backup restore-remote --key <copy>`).
+2. Optionally run `touch ~/.config/nself/<project>-age.key.backed-up` to record that you did. The marker is an empty file you create yourself and nothing checks that the copy is real. A later release (P7-SURF-11) wires a doctor reminder that reads it; no reminder runs today.
+3. Prove the copy once with `nself backup drill --from <remote> --identity <copy>`. It restores into a throwaway container. Do not use `restore-remote` or `restore` for this: they overwrite the project database.
 
-`restore-remote` and `backup drill` look for the identity in this order when `--key` / `--identity` is not given: `~/.config/nself/<project>-age.key`, `<project>-backup-age.key`, then `age-key.txt`. If none exists they stop with `E223`.
+In v1.5, `backup restore`, `restore-remote` and `backup drill` look for the identity in this order when `--decrypt-key`, `--key` or `--identity` is not given (an explicit path is used as given). A default-lookup identity must be a regular file (not a symlink) that parses as an age identity, otherwise `E222` names the path: `~/.config/nself/<project>-age.key`, `<project>-backup-age.key`, then `age-key.txt`. If none exists they stop with `E223`.
 
 ### Threat model
 
@@ -184,7 +184,7 @@ A cron script that runs `pg_dump ... | aws s3 cp - s3://bucket/x` or `rclone cop
 | "did it run?" | `--heartbeat-to <remote>` and `nself backup status` |
 | a manual restore test | `nself backup drill --from <remote> --identity <key>` |
 
-Destinations are the three kinds above; for stream and schedule use an rclone remote (S3, R2, B2, GCS, Azure) today. `nself doctor` carries an advisory hint (it never fails and never changes the exit code) when a project still holds such a script.
+Destinations are the three kinds above; for stream and schedule use an rclone remote (S3, R2, B2, GCS, Azure) today. An advisory `nself doctor` hint for a project that still holds such a script is written but not yet wired (P7-SURF-11).
 
 ---
 

@@ -19,7 +19,7 @@ func init() {
 			Category:   "database",
 			Summary:    "Backup identity missing for decrypt",
 			DefaultWhy: "Backups encrypted to an auto-created identity can only be decrypted with that identity file. Without it they are unrecoverable.",
-			DefaultFix: "Restore the identity file from your off-host copy to ~/.config/nself/<project>-age.key, or pass --key <file>.",
+			DefaultFix: "Restore the identity file from your off-host copy to ~/.config/nself/<project>-age.key, or pass the command's key flag (restore --decrypt-key, restore-remote --key, drill --identity).",
 			DocsPath:   "reference/error-codes#e223",
 			Exit:       2,
 		},
