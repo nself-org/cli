@@ -20,6 +20,12 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `.nself/trust/<purpose>.keys` and `.revoked`; DSSE v1 (`PAE`, `Envelope`,
   `SignEnvelope`, `VerifyEnvelope`); `signingtest.NewKey`. Standard library
   only. Signatures match `openssl pkeyutl -sign -rawin` output in base64.
+  Key rules from the CRITICAL review: key ids are always `KeyID(purpose, key)`
+  (no opt-out; `RequireDerivedID` does not exist), a public key may appear once
+  per key set, small-order public keys are refused as `ErrMalformed` at every
+  entry point, and `VerifyEnvelope` returns `(payloadType, payload, keyIDs, err)`
+  and fails when any signature naming a known key fails (unknown key ids are
+  ignored; the most specific error wins).
 - `remote` package (P7-NODE-04): one exec funnel for ssh, scp, rsync and
   ssh-keyscan (`Command`, `Run`, `RunArgv`, `Start`, `CopyTo`, `Rsync`,
   `EnvAllowlist`); `RemotePathRe`, `ValidateRemotePath` (charset and no leading

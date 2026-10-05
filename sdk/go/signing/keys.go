@@ -3,6 +3,7 @@ package signing
 import (
 	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -69,7 +70,56 @@ func isIDChar(c byte) bool {
 		c == '.' || c == '_' || c == '-'
 }
 
-// checkKey validates the static shape of a key.
+// smallOrder lists the encodings of the small-order points of edwards25519
+// and the non-canonical aliases of y=0 and y=1, with the sign bit cleared. It
+// is the blocklist libsodium uses (ge25519_has_small_order in
+// crypto_sign/ed25519/ref10), which compares with bit 255 ignored:
+// y=0 (order 4), y=1 (identity), y=p-1 (order 2), the two order-8 points, and
+// y=p, y=p+1 (non-canonical aliases of y=0 and y=1).
+var smallOrder = [...][32]byte{
+	{},
+	{0x01},
+	{0x26, 0xe8, 0x95, 0x8f, 0xc2, 0xb2, 0x27, 0xb0, 0x45, 0xc3, 0xf4, 0x89, 0xf2, 0xef, 0x98, 0xf0,
+		0xd5, 0xdf, 0xac, 0x05, 0xd3, 0xc6, 0x33, 0x39, 0xb1, 0x38, 0x02, 0x88, 0x6d, 0x53, 0xfc, 0x05},
+	{0xc7, 0x17, 0x6a, 0x70, 0x3d, 0x4d, 0xd8, 0x4f, 0xba, 0x3c, 0x0b, 0x76, 0x0d, 0x10, 0x67, 0x0f,
+		0x2a, 0x20, 0x53, 0xfa, 0x2c, 0x39, 0xcc, 0xc6, 0x4e, 0xc7, 0xfd, 0x77, 0x92, 0xac, 0x03, 0x7a},
+	nearP(0xec),
+	nearP(0xed),
+	nearP(0xee),
+}
+
+// nearP is first byte b, then 30 bytes 0xff, then 0x7f (y = p-1, p, p+1).
+func nearP(b byte) [32]byte {
+	var o [32]byte
+	for i := range o {
+		o[i] = 0xff
+	}
+	o[0] = b
+	o[31] = 0x7f
+	return o
+}
+
+// hasSmallOrder reports whether pub encodes a small-order point (any key whose
+// signatures verify over every message). The sign bit is ignored. A 32-byte
+// input is required; any other length reports true (refused).
+func hasSmallOrder(pub []byte) bool {
+	if len(pub) != ed25519.PublicKeySize {
+		return true
+	}
+	var c [32]byte
+	copy(c[:], pub)
+	c[31] &= 0x7f
+	for i := range smallOrder {
+		if c == smallOrder[i] {
+			return true
+		}
+	}
+	return false
+}
+
+// checkKey validates a key's shape: legal id and purpose, 32-byte public key
+// of large order, and an id that is exactly KeyID(purpose, pub), so a key
+// cannot be listed under a chosen id or another purpose's id.
 func checkKey(k Key) error {
 	if !validKeyID(k.ID) {
 		return fmt.Errorf("%w: key id %q", ErrMalformed, clip(k.ID))
@@ -79,6 +129,12 @@ func checkKey(k Key) error {
 	}
 	if len(k.Public) != ed25519.PublicKeySize {
 		return fmt.Errorf("%w: key %q public key length %d", ErrMalformed, k.ID, len(k.Public))
+	}
+	if hasSmallOrder(k.Public) {
+		return fmt.Errorf("%w: key %q is a small-order point", ErrMalformed, k.ID)
+	}
+	if subtle.ConstantTimeCompare([]byte(k.ID), []byte(KeyID(k.Purpose, k.Public))) != 1 {
+		return fmt.Errorf("%w: key id %q is not KeyID(%s, key)", ErrMalformed, k.ID, k.Purpose)
 	}
 	return nil
 }

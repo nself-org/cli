@@ -23,8 +23,8 @@ verifies as a plugin or agent signature (`ErrWrongPurpose`).
 | `ErrUnknownKey`, `ErrRevoked`, `ErrWrongPurpose`, `ErrWrongScope`, `ErrBadSignature`, `ErrMalformed`, `ErrExpired`, `ErrNotYetValid` | match with `errors.Is` |
 | `Signer`, `NewEd25519Signer`, `ParsePKCS8PEM` | signing side |
 | `EncodeSig`, `DecodeSig` | strict base64 standard signature text |
-| `ParseKeysFile`, `ParseRevokedFile` | `.nself/trust/<purpose>.keys` and `.revoked` |
-| `PAE`, `Envelope`, `SignEnvelope`, `VerifyEnvelope` | DSSE v1 |
+| `ParseKeysFile`, `ParseRevokedFile` | `.nself/trust/<purpose>.keys` and `.revoked`; ids must be `KeyID(purpose, key)` |
+| `PAE`, `Envelope`, `SignEnvelope`, `VerifyEnvelope` | DSSE v1; `VerifyEnvelope` returns the verified key ids |
 | `signingtest.NewKey(t, p)` | fresh in-memory key for tests |
 
 Signatures are raw Ed25519, base64 standard, identical to
@@ -38,6 +38,12 @@ ci-release-0123456789abcdef  AAAA...=
 ```
 
 `.revoked` is one key id per line. Whole-line `#` comments only.
+
+## Key rules
+
+Ids are always `KeyID(purpose, key)`; a public key appears once per key set;
+small-order public keys (the identity point and its kin) are refused, because Go's
+`ed25519.Verify` accepts them and one fixed signature then verifies any message.
 
 ## Fail closed
 

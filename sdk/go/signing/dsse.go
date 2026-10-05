@@ -2,6 +2,7 @@ package signing
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strconv"
 )
@@ -57,41 +58,76 @@ func SignEnvelope(s Signer, payloadType string, payload []byte) (Envelope, error
 	}, nil
 }
 
-// VerifyEnvelope accepts env when at least one signature verifies under v over
-// PAE(payloadType, payload). It returns the payload type and decoded payload
-// only on success; on any failure both are zero.
-func VerifyEnvelope(v *Verifier, env Envelope) (string, []byte, error) {
+// errRank orders failure classes, most specific first. Unknown key ids are not
+// failures (see VerifyEnvelope); anything not listed ranks last.
+var errRank = []error{ErrRevoked, ErrExpired, ErrNotYetValid, ErrWrongPurpose, ErrWrongScope, ErrBadSignature, ErrMalformed}
+
+func rank(err error) int {
+	for i, s := range errRank {
+		if errors.Is(err, s) {
+			return i
+		}
+	}
+	return len(errRank)
+}
+
+// VerifyEnvelope accepts env only when at least one signature verifies under a
+// trusted key of the verifier's purpose AND no signature that names a known key
+// id fails. Signatures by unknown key ids are ignored (key rotation: an old
+// envelope may carry a signature this verifier has no key for). A signature
+// that is malformed, or names a known key that is revoked, expired, of another
+// purpose or scope, or does not verify, fails the whole envelope.
+//
+// On success it returns the payload type, the decoded payload and the key ids
+// that verified, in envelope order. On any failure it returns nothing but the
+// error: the most specific among the failures (revoked, expired, not yet
+// valid, wrong purpose, wrong scope, bad signature, malformed, anything else;
+// ties go to the earlier signature), or ErrUnknownKey when every signature
+// named an unknown key.
+func VerifyEnvelope(v *Verifier, env Envelope) (string, []byte, []string, error) {
 	if env.PayloadType == "" {
-		return "", nil, fmt.Errorf("%w: empty payloadType", ErrMalformed)
+		return "", nil, nil, fmt.Errorf("%w: empty payloadType", ErrMalformed)
 	}
 	n := len(env.Signatures)
 	if n == 0 || n > maxEnvelopeSigs {
-		return "", nil, fmt.Errorf("%w: %d signatures", ErrMalformed, n)
+		return "", nil, nil, fmt.Errorf("%w: %d signatures", ErrMalformed, n)
 	}
 	payload, err := decodeStrict(env.Payload)
 	if err != nil {
-		return "", nil, fmt.Errorf("%w: payload base64", ErrMalformed)
+		return "", nil, nil, fmt.Errorf("%w: payload base64", ErrMalformed)
 	}
 	seen := make(map[string]bool, n)
 	for _, s := range env.Signatures {
 		if seen[s.KeyID] {
-			return "", nil, fmt.Errorf("%w: duplicate signature key id %q", ErrMalformed, clip(s.KeyID))
+			return "", nil, nil, fmt.Errorf("%w: duplicate signature key id %q", ErrMalformed, clip(s.KeyID))
 		}
 		seen[s.KeyID] = true
 	}
 	pae := PAE(env.PayloadType, payload)
-	var first error
+	var ok []string
+	var worst error
 	for _, s := range env.Signatures {
 		raw, derr := DecodeSig(s.Sig)
 		if derr == nil {
 			derr = v.Verify(pae, Signature{KeyID: s.KeyID, Sig: raw})
 		}
 		if derr == nil {
-			return env.PayloadType, payload, nil
+			ok = append(ok, s.KeyID)
+			continue
 		}
-		if first == nil {
-			first = derr
+		if errors.Is(derr, ErrUnknownKey) {
+			continue
+		}
+		if worst == nil || rank(derr) < rank(worst) {
+			worst = derr
 		}
 	}
-	return "", nil, first
+	if worst != nil {
+		return "", nil, nil, worst
+	}
+	if len(ok) == 0 {
+		// Every signature (there is at least one) named an unknown key.
+		return "", nil, nil, fmt.Errorf("%w: no signature by a known key", ErrUnknownKey)
+	}
+	return env.PayloadType, payload, ok, nil
 }

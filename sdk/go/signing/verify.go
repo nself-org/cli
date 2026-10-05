@@ -94,6 +94,7 @@ func NewVerifier(p Purpose, keys []Key, revoked []string, opts ...Option) (*Veri
 		return nil, err
 	}
 	v.keys = make(map[string]Key, len(keys))
+	pubs := make(map[string]string, len(keys))
 	for _, k := range keys {
 		if err := checkKey(k); err != nil {
 			return nil, err
@@ -101,6 +102,10 @@ func NewVerifier(p Purpose, keys []Key, revoked []string, opts ...Option) (*Veri
 		if _, dup := v.keys[k.ID]; dup {
 			return nil, fmt.Errorf("%w: duplicate key id %q", ErrMalformed, k.ID)
 		}
+		if prev, dup := pubs[string(k.Public)]; dup {
+			return nil, fmt.Errorf("%w: key %q repeats the public key of %q", ErrMalformed, k.ID, prev)
+		}
+		pubs[string(k.Public)] = k.ID
 		k.Public = append(ed25519.PublicKey(nil), k.Public...)
 		v.keys[k.ID] = k
 	}
@@ -121,7 +126,12 @@ func NewLookupVerifier(p Purpose, lookup KeyLookup, opts ...Option) (*Verifier, 
 }
 
 // Purpose returns the purpose the verifier is pinned to.
-func (v *Verifier) Purpose() Purpose { return v.purpose }
+func (v *Verifier) Purpose() Purpose {
+	if v == nil {
+		return ""
+	}
+	return v.purpose
+}
 
 // Verify checks sig over msg. It returns nil only when the key is known, not
 // revoked, of the verifier's purpose and scope, currently valid, and the
@@ -161,9 +171,6 @@ func (v *Verifier) VerifyContext(ctx context.Context, msg []byte, sig Signature)
 	if !key.NotAfter.IsZero() && !now.Before(key.NotAfter) {
 		return fmt.Errorf("%w: %q", ErrExpired, key.ID)
 	}
-	if len(key.Public) != ed25519.PublicKeySize {
-		return fmt.Errorf("%w: key %q public key length %d", ErrMalformed, key.ID, len(key.Public))
-	}
 	if !ed25519.Verify(key.Public, msg, sig.Sig) {
 		return fmt.Errorf("%w: key %q", ErrBadSignature, key.ID)
 	}
@@ -184,6 +191,9 @@ func (v *Verifier) resolve(ctx context.Context, id string) (Key, error) {
 	}
 	if !ok || k.ID != id {
 		return Key{}, fmt.Errorf("%w: %q", ErrUnknownKey, id)
+	}
+	if err := checkKey(k); err != nil {
+		return Key{}, err
 	}
 	return k, nil
 }

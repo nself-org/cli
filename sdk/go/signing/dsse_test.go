@@ -32,10 +32,10 @@ func TestPAEGoldenVectors(t *testing.T) {
 
 func fail(t *testing.T, v *signing.Verifier, env signing.Envelope, want error) {
 	t.Helper()
-	typ, payload, err := signing.VerifyEnvelope(v, env)
+	typ, payload, ids, err := signing.VerifyEnvelope(v, env)
 	only(t, err, want)
-	if typ != "" || payload != nil {
-		t.Fatalf("VerifyEnvelope returned data on failure: %q %q", typ, payload)
+	if typ != "" || payload != nil || ids != nil {
+		t.Fatalf("VerifyEnvelope returned data on failure: %q %q %v", typ, payload, ids)
 	}
 }
 
@@ -48,9 +48,9 @@ func TestEnvelopeRoundTripAndTamper(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		typ, got, err := signing.VerifyEnvelope(v, env)
-		if err != nil || typ != pt || string(got) != string(payload) {
-			t.Fatalf("%s: %q %q %v", p, typ, got, err)
+		typ, got, ids, err := signing.VerifyEnvelope(v, env)
+		if err != nil || typ != pt || string(got) != string(payload) || len(ids) != 1 || ids[0] != k.ID {
+			t.Fatalf("%s: %q %q %v %v", p, typ, got, ids, err)
 		}
 		// Purposes: any other verifier refuses.
 		for _, q := range allPurposes {
@@ -115,50 +115,78 @@ func TestEnvelopeRoundTripAndTamper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if typ, p, err := signing.VerifyEnvelope(v, e0); err != nil || typ != pt || len(p) != 0 || e0.Payload != "" {
+	if typ, p, _, err := signing.VerifyEnvelope(v, e0); err != nil || typ != pt || len(p) != 0 || e0.Payload != "" {
 		t.Fatalf("empty payload: %q %q %v", typ, p, err)
 	}
 }
 
 func TestEnvelopeSignatureSets(t *testing.T) {
 	k, s := signingtest.NewKey(t, signing.PurposeCIRelease)
+	k2, s2 := signingtest.NewKey(t, signing.PurposeCIRelease)
 	other, os := signingtest.NewKey(t, signing.PurposeAgent)
-	v := newVerifier(t, signing.PurposeCIRelease, []signing.Key{k, other}, nil)
+	v := newVerifier(t, signing.PurposeCIRelease, []signing.Key{k, k2, other}, nil)
 	env, _ := signing.SignEnvelope(s, pt, []byte("p"))
 	good := env.Signatures[0]
-	wrong, _ := signing.SignEnvelope(os, pt, []byte("p"))
+	e2, _ := signing.SignEnvelope(s2, pt, []byte("p"))
+	good2 := e2.Signatures[0]
+	wrongPurpose, _ := signing.SignEnvelope(os, pt, []byte("p"))
+	ghost := signing.EnvelopeSig{KeyID: "ghost", Sig: good.Sig}
+	badSig := signing.EnvelopeSig{KeyID: k2.ID, Sig: signing.EncodeSig(make([]byte, 64))}
+	with := func(sigs ...signing.EnvelopeSig) signing.Envelope { a := env; a.Signatures = sigs; return a }
 
-	// A failing extra signature is ignored when another verifies, in either order.
-	for _, sigs := range [][]signing.EnvelopeSig{
-		{wrong.Signatures[0], good}, {good, wrong.Signatures[0]},
-		{{KeyID: "ghost", Sig: good.Sig}, good},
-	} {
-		a := env
-		a.Signatures = sigs
-		if _, _, err := signing.VerifyEnvelope(v, a); err != nil {
-			t.Fatalf("%v", err)
+	// Two valid signatures: both key ids are returned, in envelope order.
+	_, _, ids, err := signing.VerifyEnvelope(v, with(good2, good))
+	if err != nil || len(ids) != 2 || ids[0] != k2.ID || ids[1] != k.ID {
+		t.Fatalf("ids = %v, err = %v", ids, err)
+	}
+	// An unknown key id is ignored when another signature verifies, in either order.
+	for _, sigs := range [][]signing.EnvelopeSig{{ghost, good}, {good, ghost}} {
+		_, _, ids, err := signing.VerifyEnvelope(v, with(sigs...))
+		if err != nil || len(ids) != 1 || ids[0] != k.ID {
+			t.Fatalf("ids = %v, err = %v", ids, err)
 		}
 	}
-	// None verifies: the first signature's error comes back.
-	a := env
-	a.Signatures = []signing.EnvelopeSig{wrong.Signatures[0], {KeyID: "ghost", Sig: good.Sig}}
-	fail(t, v, a, signing.ErrWrongPurpose)
-	a.Signatures = []signing.EnvelopeSig{{KeyID: "ghost", Sig: good.Sig}, wrong.Signatures[0]}
-	fail(t, v, a, signing.ErrUnknownKey)
+	// A signature naming a known key that fails fails the envelope, even beside a good one.
+	fail(t, v, with(good, wrongPurpose.Signatures[0]), signing.ErrWrongPurpose)
+	fail(t, v, with(wrongPurpose.Signatures[0], good), signing.ErrWrongPurpose)
+	fail(t, v, with(good, badSig), signing.ErrBadSignature)
+	fail(t, v, with(good, signing.EnvelopeSig{KeyID: k2.ID, Sig: "AAAA"}), signing.ErrMalformed)
+	fail(t, v, with(good, signing.EnvelopeSig{KeyID: "bad id", Sig: good.Sig}), signing.ErrMalformed)
+	fail(t, newVerifier(t, signing.PurposeCIRelease, []signing.Key{k, k2}, []string{k2.ID}), with(good, good2), signing.ErrRevoked)
+	// Only unknown key ids: nothing verified.
+	fail(t, v, with(ghost), signing.ErrUnknownKey)
+	fail(t, v, with(ghost, signing.EnvelopeSig{KeyID: "ghost2", Sig: good.Sig}), signing.ErrUnknownKey)
+	// Deterministic most-specific error, independent of order.
+	rv := newVerifier(t, signing.PurposeCIRelease, []signing.Key{k, k2, other}, []string{k2.ID})
+	for _, sigs := range [][]signing.EnvelopeSig{
+		{wrongPurpose.Signatures[0], good2}, {good2, wrongPurpose.Signatures[0]},
+		{good, good2, wrongPurpose.Signatures[0]},
+	} {
+		fail(t, rv, with(sigs...), signing.ErrRevoked)
+	}
+	fail(t, v, with(badSig, wrongPurpose.Signatures[0]), signing.ErrWrongPurpose)
+	fail(t, v, with(wrongPurpose.Signatures[0], badSig), signing.ErrWrongPurpose)
+	fail(t, v, with(signing.EnvelopeSig{KeyID: k.ID, Sig: "AAAA"}, badSig), signing.ErrBadSignature)
+	fail(t, v, with(badSig, signing.EnvelopeSig{KeyID: k2.ID + "x", Sig: "AAAA"}), signing.ErrBadSignature)
+	// Ties go to the earlier signature.
+	badSig1 := signing.EnvelopeSig{KeyID: k.ID, Sig: signing.EncodeSig(make([]byte, 64))}
+	for _, c := range []struct{ first, second signing.EnvelopeSig }{{badSig1, badSig}, {badSig, badSig1}} {
+		_, _, _, err := signing.VerifyEnvelope(v, with(c.first, c.second))
+		if err == nil || !strings.Contains(err.Error(), c.first.KeyID) {
+			t.Fatalf("tie not resolved to the first signature (%s): %v", c.first.KeyID, err)
+		}
+	}
 	// Duplicate key ids are ambiguous.
-	a.Signatures = []signing.EnvelopeSig{good, good}
-	fail(t, v, a, signing.ErrMalformed)
+	fail(t, v, with(good, good), signing.ErrMalformed)
 	// 16 signatures are allowed, 17 are not.
 	sigs := []signing.EnvelopeSig{good}
 	for i := 1; i < 16; i++ {
 		sigs = append(sigs, signing.EnvelopeSig{KeyID: "x" + strings.Repeat("a", i), Sig: good.Sig})
 	}
-	a.Signatures = sigs
-	if _, _, err := signing.VerifyEnvelope(v, a); err != nil {
+	if _, _, _, err := signing.VerifyEnvelope(v, with(sigs...)); err != nil {
 		t.Fatal(err)
 	}
-	a.Signatures = append(sigs, signing.EnvelopeSig{KeyID: "extra", Sig: good.Sig})
-	fail(t, v, a, signing.ErrMalformed)
+	fail(t, v, with(append(sigs, signing.EnvelopeSig{KeyID: "extra", Sig: good.Sig})...), signing.ErrMalformed)
 }
 
 func TestSignEnvelopeErrors(t *testing.T) {

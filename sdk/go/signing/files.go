@@ -3,7 +3,6 @@ package signing
 import (
 	"bufio"
 	"crypto/ed25519"
-	"crypto/subtle"
 	"fmt"
 	"io"
 	"strings"
@@ -16,15 +15,11 @@ const (
 )
 
 type fileConfig struct {
-	requireDerived bool
-	scope          string
+	scope string
 }
 
 // FileOption configures ParseKeysFile.
 type FileOption func(*fileConfig)
-
-// RequireDerivedID makes an id other than KeyID(purpose, pub) an error.
-func RequireDerivedID() FileOption { return func(c *fileConfig) { c.requireDerived = true } }
 
 // KeysScope sets Key.Scope on every parsed key.
 func KeysScope(s string) FileOption { return func(c *fileConfig) { c.scope = s } }
@@ -83,6 +78,7 @@ func ParseKeysFile(r io.Reader, p Purpose, opts ...FileOption) ([]Key, error) {
 	}
 	var keys []Key
 	seen := map[string]bool{}
+	seenPub := map[string]string{}
 	err := readLines(r, func(n int, f []string) error {
 		if len(f) != 2 {
 			return fmt.Errorf("%w: line %d: want \"<key-id> <base64 public key>\"", ErrMalformed, n)
@@ -101,14 +97,19 @@ func ParseKeysFile(r io.Reader, p Purpose, opts ...FileOption) ([]Key, error) {
 			return fmt.Errorf("%w: line %d: public key length %d (%q)", ErrMalformed, n, len(raw), f[0])
 		}
 		pub := ed25519.PublicKey(raw)
-		if cfg.requireDerived && subtle.ConstantTimeCompare([]byte(f[0]), []byte(KeyID(p, pub))) != 1 {
-			return fmt.Errorf("%w: line %d: id %q is not KeyID(%s, key)", ErrMalformed, n, f[0], p)
+		key := Key{ID: f[0], Purpose: p, Scope: cfg.scope, Public: pub}
+		if cerr := checkKey(key); cerr != nil {
+			return fmt.Errorf("line %d: %w", n, cerr)
+		}
+		if prev, dup := seenPub[string(raw)]; dup {
+			return fmt.Errorf("%w: line %d: key %q repeats the public key of %q", ErrMalformed, n, f[0], prev)
 		}
 		if len(keys) >= maxEntries {
 			return fmt.Errorf("%w: more than %d entries", ErrMalformed, maxEntries)
 		}
 		seen[f[0]] = true
-		keys = append(keys, Key{ID: f[0], Purpose: p, Scope: cfg.scope, Public: pub})
+		seenPub[string(raw)] = f[0]
+		keys = append(keys, key)
 		return nil
 	})
 	if err != nil {

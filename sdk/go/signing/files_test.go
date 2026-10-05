@@ -18,13 +18,21 @@ func pubB64(seed string) (ed25519.PublicKey, string) {
 	return h[:], base64.StdEncoding.EncodeToString(h[:])
 }
 
+// entry returns the derived key id and the "<id> <b64>" file text for a seed.
+func entry(p signing.Purpose, seed string) (id string, pub ed25519.PublicKey, text string) {
+	pub, b := pubB64(seed)
+	id = signing.KeyID(p, pub)
+	return id, pub, id + " " + b
+}
+
 func TestParseKeysFileOK(t *testing.T) {
-	p1, b1 := pubB64("one")
-	p2, b2 := pubB64("two")
+	id1, p1, l1 := entry(signing.PurposeCIRelease, "one")
+	id2, p2, l2 := entry(signing.PurposeCIRelease, "two")
+	b2 := strings.Fields(l2)[1]
 	in := "# trust file\n\n   \t\n" +
 		"  # indented comment\n" +
-		"alpha " + b1 + "\n" +
-		"\tbeta\t \t" + b2 + "\t\r\n" +
+		l1 + "\n" +
+		"\t" + id2 + "\t \t" + b2 + "\t\r\n" +
 		"\r\n"
 	keys, err := signing.ParseKeysFile(strings.NewReader(in), signing.PurposeCIRelease, signing.KeysScope("tier"))
 	if err != nil {
@@ -33,7 +41,7 @@ func TestParseKeysFileOK(t *testing.T) {
 	if len(keys) != 2 {
 		t.Fatalf("got %d keys", len(keys))
 	}
-	if keys[0].ID != "alpha" || keys[1].ID != "beta" || !bytes.Equal(keys[0].Public, p1) || !bytes.Equal(keys[1].Public, p2) {
+	if keys[0].ID != id1 || keys[1].ID != id2 || !bytes.Equal(keys[0].Public, p1) || !bytes.Equal(keys[1].Public, p2) {
 		t.Fatalf("wrong keys: %+v", keys)
 	}
 	for _, k := range keys {
@@ -41,8 +49,8 @@ func TestParseKeysFileOK(t *testing.T) {
 			t.Fatalf("purpose/scope not set: %+v", k)
 		}
 	}
-	// No trailing newline; empty file.
-	if k, err := signing.ParseKeysFile(strings.NewReader("a "+b1), signing.PurposeAgent); err != nil || len(k) != 1 || k[0].Scope != "" {
+	_, _, la := entry(signing.PurposeAgent, "a")
+	if k, err := signing.ParseKeysFile(strings.NewReader(la), signing.PurposeAgent); err != nil || len(k) != 1 || k[0].Scope != "" {
 		t.Fatalf("no trailing newline: %v %v", k, err)
 	}
 	if k, err := signing.ParseKeysFile(strings.NewReader(""), signing.PurposeAgent); err != nil || len(k) != 0 {
@@ -51,25 +59,31 @@ func TestParseKeysFileOK(t *testing.T) {
 }
 
 func TestParseKeysFileRejects(t *testing.T) {
-	p, b := pubB64("x")
-	_, b31 := func() (int, string) { return 0, base64.StdEncoding.EncodeToString(p[:31]) }()
-	b33 := base64.StdEncoding.EncodeToString(append(append([]byte{}, p...), 0))
+	id, p, l := entry(signing.PurposePlugins, "x")
+	b := strings.Fields(l)[1]
+	short := base64.StdEncoding.EncodeToString(p[:31])
+	long := base64.StdEncoding.EncodeToString(append(append([]byte{}, p...), 0))
 	cases := map[string]string{
-		"duplicate id":     "a " + b + "\na " + b + "\n",
-		"bad base64":       "a !!!\n",
-		"url-safe base64":  "a " + strings.NewReplacer("+", "-", "/", "_").Replace(base64.StdEncoding.EncodeToString([]byte(strings.Repeat("\xfb\xff", 16)))) + "\n",
-		"unpadded":         "a " + strings.TrimRight(b, "=") + "\n",
-		"short key":        "a " + b31 + "\n",
-		"long key":         "a " + b33 + "\n",
-		"one field":        "a\n",
-		"three fields":     "a " + b + " extra\n",
-		"trailing comment": "a " + b + " # note\n",
-		"bad id":           "a/b " + b + "\n",
-		"nul in id":        "a\x00 " + b + "\n",
-		"bom":              "\xef\xbb\xbfa " + b + "\n",
-		"bare cr inside":   "a\r" + b + "\n",
-		"long id":          strings.Repeat("a", 129) + " " + b + "\n",
-		"error after good": "a " + b + "\nbroken\n",
+		"duplicate id":            l + "\n" + l + "\n",
+		"duplicate key, other id": l + "\n" + signing.KeyID(signing.PurposeAgent, p) + " " + b + "\n",
+		"bad base64":              id + " !!!\n",
+		"url-safe base64":         id + " " + strings.NewReplacer("+", "-", "/", "_").Replace(base64.StdEncoding.EncodeToString([]byte(strings.Repeat("\xfb\xff", 16)))) + "\n",
+		"unpadded":                id + " " + strings.TrimRight(b, "=") + "\n",
+		"short key":               id + " " + short + "\n",
+		"long key":                id + " " + long + "\n",
+		"one field":               id + "\n",
+		"three fields":            l + " extra\n",
+		"trailing comment":        l + " # note\n",
+		"bad id":                  "a/b " + b + "\n",
+		"nul in id":               "a\x00 " + b + "\n",
+		"bom":                     "\xef\xbb\xbf" + l + "\n",
+		"bare cr inside":          id + "\r" + b + "\n",
+		"long id":                 strings.Repeat("a", 129) + " " + b + "\n",
+		"error after good":        l + "\nbroken\n",
+		"custom id":               "custom " + b + "\n",
+		"id off by one":           id + "0 " + b + "\n",
+		"upper-case id":           strings.ToUpper(id) + " " + b + "\n",
+		"other purpose id":        signing.KeyID(signing.PurposeAgent, p) + " " + b + "\n",
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -84,12 +98,8 @@ func TestParseKeysFileRejects(t *testing.T) {
 	only(t, err, signing.ErrMalformed)
 	_, err = signing.ParseKeysFile(nil, signing.PurposePlugins)
 	only(t, err, signing.ErrMalformed)
-	// 128 character id accepted.
-	if _, err := signing.ParseKeysFile(strings.NewReader(strings.Repeat("a", 128)+" "+b), signing.PurposePlugins); err != nil {
-		t.Fatal(err)
-	}
-	// Reader errors are returned, not swallowed and not a sentinel success.
-	bad := io.MultiReader(strings.NewReader("a "+b+"\n"), errReader{})
+	// Reader errors are returned, not swallowed.
+	bad := io.MultiReader(strings.NewReader(l+"\n"), errReader{})
 	if keys, err := signing.ParseKeysFile(bad, signing.PurposePlugins); err == nil || keys != nil {
 		t.Fatal("reader error ignored")
 	}
@@ -99,33 +109,7 @@ type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, fmt.Errorf("disk gone") }
 
-func TestRequireDerivedID(t *testing.T) {
-	pub, b := pubB64("derive")
-	id := signing.KeyID(signing.PurposeCIRelease, pub)
-	k, err := signing.ParseKeysFile(strings.NewReader(id+" "+b+"\n"), signing.PurposeCIRelease, signing.RequireDerivedID())
-	if err != nil || len(k) != 1 {
-		t.Fatal(err)
-	}
-	for _, line := range []string{
-		"custom " + b,
-		id + "0 " + b,
-		strings.ToUpper(id) + " " + b,
-		signing.KeyID(signing.PurposeAgent, pub) + " " + b, // another purpose's derivation
-	} {
-		keys, err := signing.ParseKeysFile(strings.NewReader(line+"\n"), signing.PurposeCIRelease, signing.RequireDerivedID())
-		only(t, err, signing.ErrMalformed)
-		if keys != nil {
-			t.Fatal("keys returned on error")
-		}
-	}
-	// Without the option a custom id is accepted.
-	if _, err := signing.ParseKeysFile(strings.NewReader("custom "+b+"\n"), signing.PurposeCIRelease, nil); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestParseKeysFileLimits(t *testing.T) {
-	_, b := pubB64("limit")
 	line := func(n int) string { return "#" + strings.Repeat("c", n-1) }
 	// Line length: 4096 is allowed (LF, CRLF, and at EOF), 4097 is not.
 	for _, ok := range []string{line(4096) + "\n", line(4096) + "\r\n", line(4096)} {
@@ -158,7 +142,8 @@ func TestParseKeysFileLimits(t *testing.T) {
 	// Entry count: 1024 allowed, 1025 not.
 	var sb strings.Builder
 	for i := 0; i < 1025; i++ {
-		fmt.Fprintf(&sb, "k%d %s\n", i, b)
+		_, _, e := entry(signing.PurposePlugins, fmt.Sprintf("e%d", i))
+		sb.WriteString(e + "\n")
 	}
 	all := strings.SplitAfter(sb.String(), "\n")
 	if k, err := signing.ParseKeysFile(strings.NewReader(strings.Join(all[:1024], "")), signing.PurposePlugins); err != nil || len(k) != 1024 {
@@ -216,7 +201,7 @@ func TestParseRevokedFile(t *testing.T) {
 // Parsed files feed the verifier end to end.
 func TestParsedFilesDriveVerifier(t *testing.T) {
 	k, s := newKeyPair(t, signing.PurposeCIRelease)
-	keys, err := signing.ParseKeysFile(strings.NewReader(k.ID+" "+base64.StdEncoding.EncodeToString(k.Public)+"\n"), signing.PurposeCIRelease, signing.RequireDerivedID())
+	keys, err := signing.ParseKeysFile(strings.NewReader(k.ID+" "+base64.StdEncoding.EncodeToString(k.Public)+"\n"), signing.PurposeCIRelease)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,8 +213,8 @@ func TestParsedFilesDriveVerifier(t *testing.T) {
 
 // Errors name the 1-based line that failed.
 func TestFileErrorsNameTheLine(t *testing.T) {
-	_, b := pubB64("line")
-	_, err := signing.ParseKeysFile(strings.NewReader("# c\n\na "+b+"\nbroken\n"), signing.PurposePlugins)
+	_, _, e := entry(signing.PurposePlugins, "line")
+	_, err := signing.ParseKeysFile(strings.NewReader("# c\n\n"+e+"\nbroken\n"), signing.PurposePlugins)
 	if err == nil || !strings.Contains(err.Error(), "line 4:") {
 		t.Fatalf("err = %v", err)
 	}

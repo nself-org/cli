@@ -66,8 +66,8 @@ func FuzzDecodeSig(f *testing.F) {
 }
 
 func FuzzParseKeysFile(f *testing.F) {
-	_, b := pubB64("seed")
-	f.Add("a " + b + "\n# c\n")
+	_, _, e := entry(signing.PurposePlugins, "seed")
+	f.Add(e + "\n# c\n")
 	f.Add("")
 	f.Add("a\r\n\x00")
 	f.Fuzz(func(t *testing.T, in string) {
@@ -142,12 +142,15 @@ func FuzzVerifyEnvelope(f *testing.F) {
 		if json.Unmarshal(in, &e) != nil {
 			return
 		}
-		typ, payload, err := signing.VerifyEnvelope(v, e)
+		typ, payload, ids, err := signing.VerifyEnvelope(v, e)
 		if err != nil {
-			if typ != "" || payload != nil || !isSentinel(err) {
+			if typ != "" || payload != nil || ids != nil || !isSentinel(err) {
 				t.Fatalf("bad failure: %q %q %v", typ, payload, err)
 			}
 			return
+		}
+		if len(ids) == 0 {
+			t.Fatal("success without a verified key id")
 		}
 		if typ != e.PayloadType {
 			t.Fatal("type mismatch")
