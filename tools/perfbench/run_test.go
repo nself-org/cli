@@ -173,7 +173,11 @@ func TestResultSHAIsExplicitNeverTheHarnessCheckout(t *testing.T) {
 		t.Errorf("-sha not recorded:\n%s", out.String())
 	}
 	out.Reset()
-	if code := dispatch([]string{"ab", "-base", bin, "-head", bin, "-head-sha", "abc", "-runs", "1", "-warmup", "0", "-json"}, &out, &errb); code != 0 {
+	if code := dispatch([]string{"ab", "-base", bin, "-head", bin, "-head-sha", "abc", "-runs", "1", "-warmup", "0",
+		// This test checks the recorded sha, not the verdict. One unwarmed sample per side is
+		// pure process-spawn noise (macos-15-intel flipped it to "fail"), so make the
+		// regression thresholds unreachable.
+		"-ratio", "1000000", "-min-delta-ms", "1000000", "-json"}, &out, &errb); code != 0 {
 		t.Fatalf("ab exit %d %s", code, errb.String())
 	}
 	if !strings.Contains(out.String(), `"sha": "abc"`) {
