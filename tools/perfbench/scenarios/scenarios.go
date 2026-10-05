@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 )
 
 // Config is what perfbench hands to a scenario run.
@@ -22,6 +23,9 @@ type Config struct {
 	Runs   int      // measured runs per probe
 	Warmup int      // discarded runs per probe, before the measured ones
 	Env    []string // extra KEY=VALUE entries appended to the probe environment
+
+	// Timeout kills one probe run that takes longer (0 means DefaultTimeout).
+	Timeout time.Duration
 }
 
 // Sample is one measurement. Every sample of one Metric must carry the same

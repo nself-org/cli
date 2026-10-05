@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/tools/perfbench/scenarios"
 )
@@ -18,6 +20,7 @@ type ABResult struct {
 	Head    abSide   `json:"head"`
 	Verdict string   `json:"verdict"`
 	Failed  []string `json:"failed"`
+	Error   string   `json:"error,omitempty"` // set when a probe died, exited unexpectedly or timed out
 }
 
 type abSide struct {
@@ -50,27 +53,23 @@ func compare(base, head []Metric, ratio, minDeltaMS float64) []string {
 }
 
 // abMeasure runs every probe of p interleaved (base, head, base, head, ...)
-// so machine drift hits both binaries alike. Warm-up pairs are discarded.
-func abMeasure(ctx context.Context, p scenarios.Prober, baseBin, headBin string, runs, warmup int, slowdown float64) (base, head []Metric, err error) {
-	exits := scenarios.ExitTracker{}
+// so machine drift hits both binaries alike. Warm-up pairs are discarded but
+// still checked. A probe on either side that exits with a code other than the
+// probe's expected one, dies by signal or times out returns a *ProbeFailure:
+// a head that crashes at startup must never look faster.
+func abMeasure(ctx context.Context, p scenarios.Prober, baseBin, headBin string, runs, warmup int, slowdown float64, timeout time.Duration) (base, head []Metric, err error) {
 	var bs, hs []scenarios.Sample
 	for _, probe := range p.Probes() {
 		for i := 0; i < warmup+runs; i++ {
 			if err := ctx.Err(); err != nil {
 				return nil, nil, err
 			}
-			bms, bexit, err := scenarios.RunOnce(ctx, baseBin, nil, probe.Args, 0)
+			bms, err := scenarios.RunChecked(ctx, baseBin, "base", probe, scenarios.Opts{Timeout: timeout})
 			if err != nil {
 				return nil, nil, err
 			}
-			hms, hexit, err := scenarios.RunOnce(ctx, headBin, nil, probe.Args, slowdown)
+			hms, err := scenarios.RunChecked(ctx, headBin, "head", probe, scenarios.Opts{Timeout: timeout, Slowdown: slowdown})
 			if err != nil {
-				return nil, nil, err
-			}
-			if err := exits.Check("base:"+probe.Metric, bexit); err != nil {
-				return nil, nil, err
-			}
-			if err := exits.Check("head:"+probe.Metric, hexit); err != nil {
 				return nil, nil, err
 			}
 			if i >= warmup {
@@ -100,6 +99,8 @@ func abCmd(args []string, stdout, stderr io.Writer) int {
 	minDelta := fs.Float64("min-delta-ms", 3, "and head p50 - base p50 > this many ms")
 	slow := fs.Float64("inject-slowdown", 1.0, "SELF-TEST ONLY: make each head sample take F x its time")
 	asJSON := fs.Bool("json", false, "print the ab JSON document")
+	headSHA := fs.String("head-sha", "", "revision of the head binary, recorded in the result (default: empty)")
+	timeout := fs.Duration("timeout", scenarios.DefaultTimeout, "kill and fail one probe run that takes longer")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -119,7 +120,19 @@ func abCmd(args []string, stdout, stderr io.Writer) int {
 		say(stderr, "ab: scenario %q is unknown or has no fixed probes (have: %s)\n", *scenario, strings.Join(scenarios.Names(), ", "))
 		return 2
 	}
-	base, head, err := abMeasure(context.Background(), prober, *baseBin, *headBin, *runs, *warmup, *slow)
+	base, head, err := abMeasure(context.Background(), prober, *baseBin, *headBin, *runs, *warmup, *slow, *timeout)
+	var pf *scenarios.ProbeFailure
+	if errors.As(err, &pf) {
+		// A dead, wrong-exit or hung binary fails the verdict (exit 1), like a regression.
+		sayln(stderr, "ab:", err)
+		if *asJSON {
+			res := newResult(*scenario, *headSHA, *runs, []Metric{})
+			res.Injected = *slow > 1
+			emitAB(stdout, stderr, ABResult{Result: res, Base: abSide{[]Metric{}}, Head: abSide{[]Metric{}},
+				Verdict: "fail", Failed: []string{pf.Metric}, Error: err.Error()})
+		}
+		return 1
+	}
 	if err != nil {
 		sayln(stderr, "ab:", err)
 		return 2
@@ -130,14 +143,9 @@ func abCmd(args []string, stdout, stderr io.Writer) int {
 		verdict = "fail"
 	}
 	if *asJSON {
-		res := newResult(*scenario, *runs, head)
+		res := newResult(*scenario, *headSHA, *runs, head)
 		res.Injected = *slow > 1
-		out, err := marshal(ABResult{Result: res, Base: abSide{base}, Head: abSide{head}, Verdict: verdict, Failed: failed})
-		if err != nil {
-			sayln(stderr, "ab:", err)
-			return 2
-		}
-		put(stdout, out)
+		emitAB(stdout, stderr, ABResult{Result: res, Base: abSide{base}, Head: abSide{head}, Verdict: verdict, Failed: failed})
 	} else {
 		say(stdout, "base:\n%shead:\n%sverdict: %s %s\n", formatMetrics(base), formatMetrics(head), verdict, strings.Join(failed, " "))
 	}
@@ -145,4 +153,14 @@ func abCmd(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// emitAB prints the ab JSON document.
+func emitAB(stdout, stderr io.Writer, r ABResult) {
+	out, err := marshal(r)
+	if err != nil {
+		sayln(stderr, "ab:", err)
+		return
+	}
+	put(stdout, out)
 }

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/tools/perfbench/scenarios"
 )
@@ -14,9 +15,11 @@ type runFlags struct {
 	scenario string
 	bin      string
 	src      string
+	sha      string
 	runs     int
 	warmup   int
 	asJSON   bool
+	timeout  time.Duration
 }
 
 // runCmd implements `perfbench run [-scenario n] [-bin p] [-runs 30] [-warmup 3] [-json]`.
@@ -27,9 +30,11 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 	fs.StringVar(&f.scenario, "scenario", "cold-start", "scenario name ("+strings.Join(scenarios.Names(), ", ")+")")
 	fs.StringVar(&f.bin, "bin", "", "nself binary to measure (default: build ./cmd/nself)")
 	fs.StringVar(&f.src, "src", ".", "module directory to build when -bin is empty")
+	fs.StringVar(&f.sha, "sha", "", "revision of the -bin binary, recorded in the result (default: empty)")
 	fs.IntVar(&f.runs, "runs", 30, "measured runs per probe")
 	fs.IntVar(&f.warmup, "warmup", 3, "discarded warm-up runs per probe")
 	fs.BoolVar(&f.asJSON, "json", false, "print a perfbench/v1 document")
+	fs.DurationVar(&f.timeout, "timeout", scenarios.DefaultTimeout, "kill and fail one probe run that takes longer")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -43,7 +48,7 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	ctx := context.Background()
-	bin := f.bin
+	bin, sha := f.bin, f.sha
 	if bin == "" {
 		built, cleanup, err := buildNself(ctx, f.src)
 		if err != nil {
@@ -51,9 +56,9 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 		defer cleanup()
-		bin = built
+		bin, sha = built, treeSHA(f.src)
 	}
-	samples, err := sc.Run(ctx, scenarios.Config{Bin: bin, Runs: f.runs, Warmup: f.warmup})
+	samples, err := sc.Run(ctx, scenarios.Config{Bin: bin, Runs: f.runs, Warmup: f.warmup, Timeout: f.timeout})
 	if err != nil {
 		sayln(stderr, "run:", err)
 		return 1
@@ -67,7 +72,7 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		say(stdout, "%s", formatMetrics(metrics))
 		return 0
 	}
-	out, err := marshal(newResult(f.scenario, f.runs, metrics))
+	out, err := marshal(newResult(f.scenario, sha, f.runs, metrics))
 	if err != nil {
 		sayln(stderr, "run:", err)
 		return 2

@@ -72,9 +72,11 @@ go run -mod=vendor ./tools/perfbench run -scenario json-overhead -json
 |--------|-------|------------------|
 | `cold_start.version` | `nself version` | Process start to exit of the version subcommand |
 | `cold_start.help` | `nself --help` | Process start to exit of the root help |
-| `cold_start.status` | `nself status` | Same, in an empty directory (exits 1 on purpose; the exit code is recorded and must not change between runs) |
+| `cold_start.status` | `nself status` | Same, in an empty directory (exits 1 on purpose) |
 | `json_overhead.version`, `json_overhead.status` | `nself version --json`, `nself status --json` | The machine-readable path, for before and after comparisons of anything that wraps it |
 | `time_to_healthy` | golden-path steps 3 to 6 | Sum of the per-step durations in the golden-path report (seconds); exits 1 unless all four steps are `pass` or `warn` |
+
+Each probe states the exit code it must produce (0, or 1 for `status`). Any other code, a signal death, or a run longer than `-timeout` (default 30 s) fails `run` and the `ab` verdict, so a binary that crashes at startup never reports a fast time. The result `sha` is the checkout's HEAD only for a binary `perfbench` built itself; with `-bin` it is empty unless you pass `-sha`.
 
 Every probe runs with a fresh empty `HOME`, an empty working directory, `NSELF_TELEMETRY_OPT_OUT=1`, stdin at `/dev/null` and output discarded. Percentiles are nearest-rank on the sorted samples, rounded to 0.1. The output is a `perfbench/v1` JSON document with a fixed key order.
 
@@ -89,7 +91,7 @@ go run -mod=vendor ./tools/perfbench ab -base /path/to/base/nself -head /path/to
 go run -mod=vendor ./tools/perfbench ab -scenario json-overhead -base ... -head ...
 ```
 
-It exits 1 when, for any probe, `head_p50 > 1.25 x base_p50` and `head_p50 - base_p50 > 3 ms` (both flags are adjustable). `-inject-slowdown F` makes each head sample take F times its measured time; it exists only to prove the comparison can fire. P7-GUARD-08 wires `ab` into `perf.yml` and adds `check` and the budget file.
+It exits 1 when, for any probe, `head_p50 > 1.25 x base_p50` and `head_p50 - base_p50 > 3 ms` (both flags are adjustable), or when either binary dies, exits with the wrong code or times out. `go run` reports every non-zero exit of the program as 1; build `./tools/perfbench` first when you need to tell exit 1 (regression) from exit 2 (bad usage). `-inject-slowdown F` makes each head sample take F times its measured time; it exists only to prove the comparison can fire. P7-GUARD-08 wires `ab` into `perf.yml` and adds `check` and the budget file.
 
 New scenarios are registered with `scenarios.Register` from a file in `tools/perfbench/scenarios/`; see the package comment.
 

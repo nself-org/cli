@@ -38,10 +38,13 @@ func TestTimeToHealthyCases(t *testing.T) {
 		wantErr   string
 	}{
 		{"warn counts", `{"steps":{"3":{"status":"pass","duration":1},"4":{"status":"warn","duration":2},"5":{"status":"pass","duration":3},"6":{"status":"pass","duration":4}}}`, 10, ""},
+		{"explicit zero is fine", `{"steps":{"3":{"status":"pass","duration":0},"4":{"status":"pass","duration":0},"5":{"status":"pass","duration":0},"6":{"status":"pass","duration":0}}}`, 0, ""},
 		{"missing step", `{"steps":{"3":{"status":"pass","duration":1}}}`, 0, "step 4 missing"},
-		{"skipped step", `{"steps":{"3":{"status":"pass"},"4":{"status":"pass"},"5":{"status":"skipped"},"6":{"status":"pass"}}}`, 0, `step 5 status "skipped"`},
+		{"skipped step", `{"steps":{"3":{"status":"pass","duration":0},"4":{"status":"pass","duration":0},"5":{"status":"skipped","duration":0},"6":{"status":"pass","duration":0}}}`, 0, `step 5 status "skipped"`},
 		{"not json", `nope`, 0, "parse report"},
 		{"no steps", `{}`, 0, "step 3 missing"},
+		{"missing duration", `{"steps":{"3":{"status":"pass"},"4":{"status":"pass","duration":1},"5":{"status":"pass","duration":1},"6":{"status":"pass","duration":1}}}`, 0, "step 3 has no duration"},
+		{"negative duration", `{"steps":{"3":{"status":"pass","duration":-50},"4":{"status":"pass","duration":1},"5":{"status":"pass","duration":1},"6":{"status":"pass","duration":1}}}`, 0, "step 3 has a negative duration"},
 	}
 	for _, c := range cases {
 		got, err := timeToHealthy([]byte(c.doc))

@@ -39,12 +39,13 @@ type Result struct {
 	Metrics  []Metric `json:"metrics"`
 }
 
-// newResult fills the environment fields of a result.
-func newResult(scenario string, runs int, metrics []Metric) Result {
+// newResult fills the environment fields of a result. sha identifies what was
+// measured (see binarySHA); it is empty when unknown.
+func newResult(scenario, sha string, runs int, metrics []Metric) Result {
 	return Result{
 		Schema:   schemaV1,
 		Scenario: scenario,
-		SHA:      gitSHA(),
+		SHA:      sha,
 		GOOS:     runtime.GOOS,
 		GOARCH:   runtime.GOARCH,
 		Runs:     runs,
@@ -63,16 +64,25 @@ func marshal(v any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// gitSHA is `git rev-parse HEAD` in the working directory, or "" when git or
-// a repository is not available.
-func gitSHA() string {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// treeSHA is the git HEAD of the checkout dir, with "-dirty" appended when
+// tracked files are modified, or "" when dir is not a git checkout. It is used
+// only for a binary perfbench built itself from that dir. A binary handed in
+// with -bin gets no sha unless the caller states one with -sha: neither the
+// harness checkout nor the Go toolchain's build stamp (which names the wrong
+// repository inside a linked worktree) says what was measured.
+func treeSHA(dir string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "git", "rev-parse", "HEAD").Output()
+	out, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output()
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	sha := strings.TrimSpace(string(out))
+	st, err := exec.CommandContext(ctx, "git", "-C", dir, "status", "--porcelain", "--untracked-files=no").Output()
+	if err == nil && len(strings.TrimSpace(string(st))) > 0 {
+		sha += "-dirty"
+	}
+	return sha
 }
 
 // groupSamples folds samples into one metric per name, in first-appearance

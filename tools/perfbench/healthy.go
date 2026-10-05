@@ -17,8 +17,8 @@ var healthySteps = []string{"3", "4", "5", "6"}
 // reads: steps keyed "1".."13", each {status, duration, note}.
 type goldenReport struct {
 	Steps map[string]struct {
-		Status   string  `json:"status"`
-		Duration float64 `json:"duration"`
+		Status   string   `json:"status"`
+		Duration *float64 `json:"duration"`
 	} `json:"steps"`
 }
 
@@ -38,8 +38,12 @@ func timeToHealthy(data []byte) (float64, error) {
 			bad = append(bad, fmt.Sprintf("step %s missing", id))
 		case st.Status != "pass" && st.Status != "warn":
 			bad = append(bad, fmt.Sprintf("step %s status %q", id, st.Status))
+		case st.Duration == nil:
+			bad = append(bad, fmt.Sprintf("step %s has no duration", id))
+		case *st.Duration < 0:
+			bad = append(bad, fmt.Sprintf("step %s has a negative duration (%v)", id, *st.Duration))
 		default:
-			sum += st.Duration
+			sum += *st.Duration
 		}
 	}
 	if len(bad) > 0 {
@@ -76,7 +80,7 @@ func healthyCmd(args []string, stdout, stderr io.Writer) int {
 		say(stdout, "%s", formatMetrics([]Metric{m}))
 		return 0
 	}
-	out, err := marshal(newResult("time-to-healthy", 1, []Metric{m}))
+	out, err := marshal(newResult("time-to-healthy", "", 1, []Metric{m}))
 	if err != nil {
 		sayln(stderr, "healthy:", err)
 		return 2
