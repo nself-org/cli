@@ -1,0 +1,32 @@
+{
+  "schema_version": "1",
+  "command": "doctor",
+  "data": {
+    "timestamp": "2026-10-05T12:00:00Z",
+    "checks": [
+      {
+        "name": "Docker installed",
+        "status": "pass",
+        "message": "docker found"
+      },
+      {
+        "name": "Disk space",
+        "status": "warn",
+        "message": "22.5 GB free",
+        "detail": "nself maintenance schedule --daily"
+      },
+      {
+        "name": "Docker daemon running",
+        "status": "pass",
+        "message": "running"
+      }
+    ],
+    "summary": {
+      "total": 3,
+      "passed": 2,
+      "warnings": 1,
+      "failed": 0
+    },
+    "state": "warnings"
+  }
+}

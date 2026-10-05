@@ -72,4 +72,12 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-REG-05 | registry reports v1.4 exit codes and hides v1.5-only envelopes | v1.5 exit codes and envelopes | `cmd/commands/registry.go` |
 | P7-REG-06 | a panic crashes the process with the raw Go runtime trace and exit 2 | the panic is reported as an "internal error" (error envelope in JSON mode, stack trace on stderr only), still exit 2 | `cmd/nself/safe.go` |
 | P7-REG-06 | exit status 1 and a plain "Error: msg" line for every failure | exit classes 2/3/4, "Error: [Exxx]" block on stderr and a JSON error envelope on stdout | `cmd/nself/report.go` |
+| P7-REG-09 | --json ignored | envelope | `cmd/commands/config_list_validate.go` |
+| P7-REG-09 | --json ignored | envelope | `cmd/commands/config_show_get.go` |
+| P7-REG-09 | bare pre-contract JSON | v1 envelope whose data adds `state` | `cmd/commands/config_json_types.go` |
+| P7-REG-09 | doctor --json exits 0 | 10 (failed) or 12 (warnings only) | `cmd/commands/doctor_health_report.go` |
+| P7-REG-09 | doctor --json prints the passed-check lines on stdout before the JSON | on stderr, so stdout is one document | `cmd/commands/doctor_health_report.go` |
+| P7-REG-09 | doctor exits 1 (failed) or 2 (warnings only) | 10 (failed) or 12 (warnings only) | `cmd/commands/doctor_health_report.go` |
+| P7-REG-09 | human status exits 2 | 10 (unhealthy) or 11 (starting) | `cmd/commands/status.go` |
+| P7-REG-09 | status exits 2 (unhealthy) or 1 (starting), 0 with --json | 10 (unhealthy) or 11 (starting) in both modes | `cmd/commands/status_print.go` |
 <!-- END GENERATED:gated -->

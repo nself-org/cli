@@ -239,7 +239,7 @@ commands:
   deploy web: {side_effect: remote}
   dev: {canon: pending, side_effect: write, output: stream}
   # cmd/commands/doctor.go:51 diagnostics only; --fix and --ai write (doctor_ai*.go honours --json)
-  doctor: {canon: core, side_effect: read, json: legacy, exit_codes: {"1": "one or more checks failed", "2": "warnings only, no failures"}, exit_codes_v15: {"10": "one or more checks failed", "12": "warnings only, no failures"}, flags: {ai: {side_effect: write, json: legacy}, fix: {side_effect: write}, install-check: {json: legacy}}}
+  doctor: {canon: core, side_effect: read, exit_codes: {"1": "one or more checks failed", "2": "warnings only, no failures"}, exit_codes_v15: {"10": "one or more checks failed", "12": "warnings only, no failures"}, flags: {ai: {side_effect: write, json: legacy}, fix: {side_effect: write}, install-check: {json: legacy}}}
   # cmd/commands/env.go:32 RunE path changes no persistent state (prints/reads only)
   env: {canon: pending, side_effect: read}
   env copy: {side_effect: write}
@@ -446,7 +446,7 @@ commands:
   service update: {side_effect: write}
   service upgrade: {side_effect: write}
   start: {canon: core, side_effect: write, flags: {watch: {output: stream}}}
-  status: {canon: core, side_effect: read, json: legacy, exit_codes: {"1": "one or more services are not yet healthy (starting)", "2": "one or more services are unhealthy"}, exit_codes_v15: {"10": "one or more services are unhealthy", "11": "one or more services are still starting"}}
+  status: {canon: core, side_effect: read, exit_codes: {"1": "one or more services are not yet healthy (starting)", "2": "one or more services are unhealthy"}, exit_codes_v15: {"10": "one or more services are unhealthy", "11": "one or more services are still starting"}}
   # cmd/commands/stop.go:42 stops containers; --volumes deletes data volumes
   stop: {canon: core, side_effect: write, flags: {volumes: {side_effect: destructive}}}
   # cmd/commands/telemetry.go:42 RunE path changes no persistent state (prints/reads only)

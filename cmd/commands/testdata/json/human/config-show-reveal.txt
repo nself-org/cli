@@ -1,0 +1,3 @@
+ENV=dev
+POSTGRES_PASSWORD=pilot-fixture-value-1
+PROJECT_NAME=e01

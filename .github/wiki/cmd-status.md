@@ -21,6 +21,36 @@ Exit codes are meaningful: `0` means all services are healthy, `1` means an erro
 
 
 A service that declares no Docker healthcheck reports as `running` rather than `healthy`, and is counted in the healthy total rather than as unhealthy.
+
+### JSON output
+
+`nself status --json` (or `-j`) writes one JSON document to stdout; everything human goes to stderr.
+
+In v1.4 mode (the default before v1.5.0) it is the bare report and the exit status is `0` whatever the state. With `NSELF_V15=1` (the default from v1.5.0) it is the v1 envelope (see [[JSON-Output]]), `data` is the same report plus `state`, and the exit status carries the state:
+
+```json
+{
+  "schema_version": "1",
+  "command": "status",
+  "data": {
+    "timestamp": "2026-10-05T12:00:00Z",
+    "services": [
+      { "name": "postgres", "status": "healthy", "duration": "12ms", "details": "accepting connections" },
+      { "name": "hasura", "status": "starting", "duration": "3ms", "details": "health check starting" }
+    ],
+    "summary": { "total": 2, "healthy": 1, "unhealthy": 1 },
+    "state": "transitional"
+  }
+}
+```
+
+| `data.state` | Meaning | Exit status (v1.5 mode) |
+|--------------|---------|-------------------------|
+| `ok` | every service is healthy | 0 |
+| `transitional` | the only services not healthy are still starting | 11 |
+| `unhealthy` | at least one service is unhealthy | 10 |
+
+In v1.4 mode the human exit codes stay `2` (unhealthy) and `1` (starting). `NSELF_V15=1 NSELF_JSON_LEGACY=1` prints the bare report (without `state`) for one more minor release; the variable is removed in v1.6.0. The schema is `schemas/commands/status.v1.schema.json`. See [[Exit-Codes]].
 <!-- END PROSE:description -->
 
 ## Flags

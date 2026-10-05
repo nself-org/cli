@@ -6,8 +6,28 @@
       "id": "urn:nself:cli:schema:command-registry:v1"
     },
     {
+      "path": "commands/config-get.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-get:v1"
+    },
+    {
+      "path": "commands/config-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-list:v1"
+    },
+    {
+      "path": "commands/config-show.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-show:v1"
+    },
+    {
+      "path": "commands/doctor.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:doctor:v1"
+    },
+    {
       "path": "commands/help.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:help:v1"
+    },
+    {
+      "path": "commands/status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:status:v1"
     },
     {
       "path": "envelope.v1.schema.json",

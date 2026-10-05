@@ -380,8 +380,8 @@
         "target": null,
         "side_effect": "read",
         "output": "document",
-        "json": "none",
-        "data_schema": null,
+        "json": "envelope",
+        "data_schema": "schemas/commands/config-get.v1.schema.json",
         "exit_codes": {}
       },
       {
@@ -457,8 +457,8 @@
         "target": null,
         "side_effect": "read",
         "output": "document",
-        "json": "none",
-        "data_schema": null,
+        "json": "envelope",
+        "data_schema": "schemas/commands/config-list.v1.schema.json",
         "exit_codes": {}
       },
       {
@@ -524,8 +524,8 @@
         "target": null,
         "side_effect": "read",
         "output": "document",
-        "json": "none",
-        "data_schema": null,
+        "json": "envelope",
+        "data_schema": "schemas/commands/config-show.v1.schema.json",
         "exit_codes": {}
       },
       {
@@ -560,7 +560,7 @@
       "core_missing": [
         "add"
       ],
-      "json_envelope": 0,
+      "json_envelope": 3,
       "json_legacy": 2
     }
   }

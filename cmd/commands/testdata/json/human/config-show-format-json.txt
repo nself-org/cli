@@ -1,0 +1,5 @@
+{
+  "ENV": "dev",
+  "POSTGRES_PASSWORD": "***",
+  "PROJECT_NAME": "e01"
+}

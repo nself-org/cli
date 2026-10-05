@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/health"
 	"github.com/nself-org/cli/internal/plugin"
@@ -44,7 +45,12 @@ var statusCmd = &cobra.Command{
 Exit codes:
   0  All services healthy
   1  Error running checks
-  2  One or more services unhealthy`,
+  2  One or more services unhealthy
+
+With NSELF_V15=1 (the default from v1.5.0) the state uses the reserved codes,
+in human and --json mode alike:
+  10  One or more services unhealthy
+  11  Services still starting (transitional)`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		jsonOut, _ := cmd.Flags().GetBool("json")
@@ -97,7 +103,14 @@ Exit codes:
 		}
 
 		if jsonOut {
-			return printStatusJSON(report)
+			code, err := printStatusJSON(report)
+			if err != nil {
+				return err
+			}
+			if code != 0 {
+				cmd.Root().SetContext(context.WithValue(cmd.Root().Context(), exitCodeKey, code))
+			}
+			return nil
 		}
 
 		printStatusTable(report, verbose, healthOnly, metrics)
@@ -126,9 +139,10 @@ Exit codes:
 		// State-aware suggestions.
 		printStatusSuggestions(report)
 
-		// Exit code: 2 if any unhealthy, 1 if some in intermediate state.
-		if report.Unhealthy > 0 {
-			cmd.Root().SetContext(context.WithValue(cmd.Root().Context(), exitCodeKey, 2))
+		// Exit code: 2 if any unhealthy, 1 if some in intermediate state
+		// (10 and 11 in v1.5 mode, see statusExit).
+		if code := statusExit(report.Results, report.Unhealthy > 0, false); code != 0 {
+			cmd.Root().SetContext(context.WithValue(cmd.Root().Context(), exitCodeKey, code))
 		} else if report.Healthy < report.Total {
 			// Some services in intermediate state (starting, etc.) — warning
 			cmd.Root().SetContext(context.WithValue(cmd.Root().Context(), exitCodeKey, 1))
@@ -156,7 +170,7 @@ func runSingleServiceStatus(ctx context.Context, service string, jsonOut, verbos
 		} else {
 			report.Unhealthy = 1
 		}
-		return 0, printStatusJSON(report)
+		return printStatusJSON(report)
 	}
 
 	// Simple single-service output.
@@ -176,6 +190,12 @@ func runSingleServiceStatus(ctx context.Context, service string, jsonOut, verbos
 	fmt.Println()
 
 	if result.Status != "healthy" {
+		if compat.V15() { // compat.V15(P7-REG-09): human status exits 2 -> 10 (unhealthy) or 11 (starting)
+			if result.Status == "starting" {
+				return stateExitCode(stateTransitional), nil
+			}
+			return stateExitCode(stateUnhealthy), nil
+		}
 		return 2, nil
 	}
 	return 0, nil

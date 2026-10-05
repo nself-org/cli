@@ -322,6 +322,22 @@ When `--json` is passed, the command writes a single JSON object to stdout and p
 ```
 
 Status values: `pass`, `warn`, `fail`, `critical`.
+
+### Envelope and exit codes (v1.5)
+
+With `NSELF_V15=1` (the default from v1.5.0), `doctor --json` and `doctor --format json` write the v1 envelope instead of the bare report (see [[JSON-Output]]). `data` is the report above plus `state`, and passed-check lines go to stderr so stdout stays one document:
+
+```json
+{ "schema_version": "1", "command": "doctor", "data": { "timestamp": "...", "checks": [], "summary": {}, "state": "warnings" } }
+```
+
+| `data.state` | Meaning | Exit status (v1.5 mode) |
+|--------------|---------|-------------------------|
+| `ok` | every check passed | 0 |
+| `warnings` | warnings only, no failures | 12 |
+| `unhealthy` | at least one check failed | 10 |
+
+In v1.4 mode `--json` prints the bare report and exits `0`, and human mode exits `1` (failures) or `2` (warnings only). `NSELF_V15=1 NSELF_JSON_LEGACY=1` prints the bare report without `state` for one more minor release (removed in v1.6.0). `--install-check` and `--ai` keep their own JSON shapes. The schema is `schemas/commands/doctor.v1.schema.json`. See [[Exit-Codes]].
 <!-- END PROSE:description -->
 
 ## Flags

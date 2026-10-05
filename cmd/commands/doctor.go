@@ -8,7 +8,6 @@ import (
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/doctor"
-	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -47,7 +46,12 @@ network connectivity, configuration, running containers, and more.
 Exit codes:
   0  All checks passed
   1  One or more checks failed
-  2  Warnings only (no failures)`,
+  2  Warnings only (no failures)
+
+With NSELF_V15=1 (the default from v1.5.0) the state uses the reserved codes,
+in human and --json mode alike:
+  10  One or more checks failed
+  12  Warnings only (no failures)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// ── Legacy global scan (S60-T03) ─────────────────────────────
 		// --check-legacy scans for v0.9 stale paths on the host (NOT per-project).
@@ -167,13 +171,7 @@ Exit codes:
 				ui.CommandHeader("nSelf Doctor (Deep)", "All 12 subsystem checks")
 			}
 			printDoctorSummary(report)
-			if report.Summary.Failed > 0 {
-				return &plugin.ExitCodeError{Code: 1}
-			}
-			if report.Summary.Warnings > 0 {
-				return &plugin.ExitCodeError{Code: 2}
-			}
-			return nil
+			return doctorExit(report)
 		}
 
 		if !jsonOut {
@@ -272,13 +270,7 @@ Exit codes:
 		// Print summary
 		printDoctorSummary(report)
 
-		// Exit code: 1=failures, 2=warnings only, 0=all pass
-		if report.Summary.Failed > 0 {
-			return &plugin.ExitCodeError{Code: 1}
-		}
-		if report.Summary.Warnings > 0 {
-			return &plugin.ExitCodeError{Code: 2}
-		}
-		return nil
+		// Exit code: 1=failures, 2=warnings only, 0=all pass (10/12 in v1.5 mode)
+		return doctorExit(report)
 	},
 }

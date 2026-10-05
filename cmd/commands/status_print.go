@@ -13,20 +13,62 @@ package commands
 // Constraints: pure move — no behavior changes.
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/health"
 	"github.com/nself-org/cli/internal/ui"
 )
 
-// printStatusJSON renders the health report as JSON.
-func printStatusJSON(report *health.HealthReport) error {
+// statusData is the v1.5 envelope data of `status --json`: the unchanged
+// pre-contract payload plus the overall state (EPIC D10).
+type statusData struct {
+	statusJSONOutput
+	State string `json:"state"` // ok | transitional | unhealthy
+}
+
+// statusState derives the overall state of a health report: unhealthy when any
+// service failed, transitional when the only non-OK services are still
+// starting, ok otherwise.
+func statusState(results []health.HealthResult) string {
+	state := stateOK
+	for _, r := range results {
+		switch {
+		case r.OK():
+		case r.Status == "starting":
+			state = stateTransitional
+		default:
+			return stateUnhealthy
+		}
+	}
+	return state
+}
+
+// statusExit is the process status `status` requests for a state it found
+// (nil context value when 0). v1.4 mode keeps the human codes (2 unhealthy, 1
+// starting); v1.5 mode uses the reserved state range (10, 11) in human and JSON
+// mode alike. v1.4 --json requests nothing: its callers pass jsonMode.
+func statusExit(results []health.HealthResult, unhealthy bool, jsonMode bool) int {
+	// compat.V15(P7-REG-09): status exits 2 (unhealthy) or 1 (starting), 0 with --json -> 10 (unhealthy) or 11 (starting) in both modes
+	if compat.V15() {
+		return stateExitCode(statusState(results))
+	}
+	if jsonMode {
+		return 0
+	}
+	if unhealthy {
+		return 2
+	}
+	return 0
+}
+
+// printStatusJSON renders the health report as JSON and returns the process
+// status the report requests (see statusExit).
+func printStatusJSON(report *health.HealthReport) (int, error) {
 	out := statusJSONOutput{
 		Timestamp: report.Timestamp.Format(time.RFC3339),
 		Services:  make([]statusJSONService, 0, len(report.Results)),
@@ -46,12 +88,11 @@ func printStatusJSON(report *health.HealthReport) error {
 		})
 	}
 
-	data, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return fmt.Errorf("json marshal: %w", err)
+	state := statusState(report.Results)
+	if err := emitStateJSON("status", out, statusData{statusJSONOutput: out, State: state}); err != nil {
+		return 0, err
 	}
-	_, err = fmt.Fprintln(os.Stdout, string(data))
-	return err
+	return statusExit(report.Results, report.Unhealthy > 0, true), nil
 }
 
 // printStatusTable renders the health report as a table.
