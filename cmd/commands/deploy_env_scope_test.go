@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -940,6 +941,9 @@ func fakeShipBin(t *testing.T) string {
 // remote build, then ships the compose AND the resolved env snapshot (no
 // .env.local values, no .env.dev) as .env.qa.
 func TestPipelineBuildsRemoteAndShipsSnapshot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs fake rsync/ssh shell scripts on PATH, which Windows cannot execute")
+	}
 	dir, _ := scopeFixture(t, false)
 	for n, b := range map[string]string{".env": "API_URL=base\n", ".env.qa": "API_URL=qa\n", ".env.local": "LAPTOP_ONLY=secret\n", ".env.dev": "DEV_ONLY=1\n", "docker-compose.yml": "services: {}\n"} {
 		if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
