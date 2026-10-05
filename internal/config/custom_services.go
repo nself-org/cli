@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -15,7 +16,9 @@ import (
 // If port is omitted or zero, it auto-assigns 8000+N.
 // Per-service overrides are read from CS_N_PUBLIC, CS_N_MEMORY, CS_N_CPU,
 // CS_N_PORT, CS_N_ROUTE, CS_N_HEALTHCHECK, CS_N_ENV_PASSTHROUGH,
-// CS_N_IMAGE, CS_N_ENV_FILE, and CS_N_VOLUMES environment variables.
+// CS_N_IMAGE, CS_N_ENV_FILE, and CS_N_VOLUMES environment variables, plus the
+// v2 keys (CS_N_DEPENDS_ON, CS_N_NETWORKS, CS_N_DOCKERFILE, CS_N_BUILD_TARGET,
+// CS_N_COMMAND; see custom_services_v2.go).
 func parseCustomServices() ([]CustomService, error) {
 	var services []CustomService
 	for i := 1; i <= 10; i++ {
@@ -78,9 +81,11 @@ func parseCustomServices() ([]CustomService, error) {
 		cs.EnvPassthrough = os.Getenv(fmt.Sprintf("CS_%d_ENV_PASSTHROUGH", i))
 
 		// Optional build context path override. Rejects absolute paths and
-		// path traversal so a misconfigured env can't escape the project root.
+		// path traversal so a misconfigured env can't escape the project root;
+		// the one exception is an ancestor ('..' only, e.g. a monorepo root),
+		// bounded by ValidateBuildContext at compose time (E528).
 		if p := os.Getenv(fmt.Sprintf("CS_%d_PATH", i)); p != "" {
-			if err := validateRelativePath(p); err != nil {
+			if err := validateBuildContextPath(p); err != nil {
 				return nil, fmt.Errorf("CS_%d_PATH %w", i, err)
 			}
 			cs.BuildPath = p
@@ -96,11 +101,14 @@ func parseCustomServices() ([]CustomService, error) {
 
 		// CS_N_ENV_FILE: dotenv-format file of extra env vars, injected at
 		// build time (see coreEnvVars). Same relative-path rules as CS_N_PATH.
+		// A comma-separated list loads in order, later files winning (v2).
 		if p := os.Getenv(fmt.Sprintf("CS_%d_ENV_FILE", i)); p != "" {
-			if err := validateRelativePath(p); err != nil {
+			files, err := parseCustomServiceEnvFiles(p)
+			if err != nil {
 				return nil, fmt.Errorf("CS_%d_ENV_FILE %w", i, err)
 			}
-			cs.EnvFile = p
+			cs.EnvFile = files[0]
+			cs.EnvFiles = files
 		}
 
 		// CS_N_VOLUMES: comma-separated "host:container[:mode]" bind mounts,
@@ -121,7 +129,98 @@ func parseCustomServices() ([]CustomService, error) {
 			cs.Route = r
 		}
 
+		// CS_N v2 keys: DEPENDS_ON, NETWORKS, DOCKERFILE, BUILD_TARGET, COMMAND.
+		if err := parseCustomServiceV2(&cs, i); err != nil {
+			return nil, err
+		}
+
 		services = append(services, cs)
 	}
 	return services, nil
+}
+
+// dockerignoreFile returns the ignore file BuildKit uses for this build: a
+// "<dockerfile>.dockerignore" beside the Dockerfile replaces .dockerignore.
+func dockerignoreFile(ctx, dockerfile string) string {
+	if dockerfile == "" {
+		dockerfile = "Dockerfile"
+	}
+	specific := filepath.Join(ctx, filepath.FromSlash(dockerfile)) + ".dockerignore"
+	if _, err := os.Stat(specific); err == nil {
+		return specific
+	}
+	return filepath.Join(ctx, ".dockerignore")
+}
+
+// repositoryRootLimit returns the nearest directory at or above proj that
+// holds .git (a directory, or a file for a linked worktree); proj itself when
+// none does.
+func repositoryRootLimit(proj string) string {
+	for d := proj; ; d = filepath.Dir(d) {
+		if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {
+			return d
+		}
+		if filepath.Dir(d) == d {
+			return proj
+		}
+	}
+}
+
+// Build-context secret guard, part 2 (E528): the dockerignore helpers that
+// custom_services_validate.go uses, kept here to stay under the file-size
+// ratchet.
+
+// safeReincludeSuffixes are the names a "!" pattern may re-include: example
+// files that carry no secret.
+var safeReincludeSuffixes = []string{".example", ".sample", ".template", ".dist"}
+
+// reincludedSecret returns the first "!" pattern of pats whose match set can
+// cover a .env* or .secrets path, or "". Structural, not a probe list: a
+// pattern is refused when any of its segments can spell ".env*" or ".secrets"
+// (or is "**"), unless its last segment ends in a safe example suffix. A
+// literal pattern naming a directory of ctx re-includes everything under it,
+// so it is refused when a secret below it is no longer excluded. Docker
+// applies the last matching pattern, so a "!" pattern after an exclusion wins.
+func reincludedSecret(pats []ignorePattern, ctx string) string {
+	for _, p := range pats {
+		if !p.neg {
+			continue
+		}
+		segs := strings.Split(p.text, "/")
+		last := segs[len(segs)-1]
+		safe := false
+		for _, suf := range safeReincludeSuffixes {
+			safe = safe || (last != "**" && strings.HasSuffix(last, suf))
+		}
+		if safe {
+			continue
+		}
+		wild := false
+		for _, s := range segs {
+			wild = wild || s == "**" || segmentMaySpellSecret(s)
+		}
+		if wild {
+			return p.text
+		}
+		if fi, err := os.Stat(filepath.Join(ctx, filepath.FromSlash(p.text))); err == nil && fi.IsDir() {
+			for _, name := range []string{".env", ".secrets/token"} {
+				if !dockerignored(pats, p.text+"/"+name) {
+					return p.text
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// segmentMaySpellSecret reports whether one path segment of a pattern can
+// match the name ".secrets" or a name starting ".env". A segment with a
+// wildcard is judged by its literal prefix; one with none by the name.
+func segmentMaySpellSecret(seg string) bool {
+	i := strings.IndexAny(seg, "*?[\\")
+	if i < 0 {
+		return seg == ".secrets" || strings.HasPrefix(seg, ".env")
+	}
+	lit := seg[:i]
+	return strings.HasPrefix(".secrets", lit) || strings.HasPrefix(".env", lit) || strings.HasPrefix(lit, ".env")
 }

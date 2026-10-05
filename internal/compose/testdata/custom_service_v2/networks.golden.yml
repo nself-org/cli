@@ -1,0 +1,75 @@
+networks:
+    test_kafka:
+        name: test_kafka
+        external: true
+    test_network:
+        driver: bridge
+        name: test_network
+services:
+    fn:
+        build:
+            context: ./services/fn
+            dockerfile: Dockerfile
+        container_name: test_fn
+        restart: unless-stopped
+        networks:
+            - test_network
+            - test_kafka
+        depends_on:
+            auth:
+                condition: service_started
+            migrate:
+                condition: service_completed_successfully
+            postgres:
+                condition: service_healthy
+        environment:
+            AUTH_CLIENT_URL: http://localhost:3000
+            AUTH_SERVER_URL: http://auth:4000
+            BASE_DOMAIN: localhost
+            DATABASE_URL: postgresql://postgres:pgpass@postgres:5432/nself
+            ENV: dev
+            HASURA_GRAPHQL_ADMIN_SECRET: secret
+            HASURA_GRAPHQL_ENDPOINT: http://hasura:8080/v1/graphql
+            POSTGRES_DB: nself
+            POSTGRES_HOST: postgres
+            POSTGRES_PASSWORD: pgpass
+            POSTGRES_PORT: "5432"
+            POSTGRES_USER: postgres
+            PROJECT_NAME: test
+            SERVICE_NAME: fn
+            SERVICE_PORT: "9500"
+            SERVICE_ROUTE: ""
+            TABLE_PREFIX: ""
+        ports:
+            - 127.0.0.1:9500:9500
+        healthcheck:
+            test:
+                - CMD
+                - wget
+                - -qO-
+                - http://127.0.0.1:9500/health
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 60s
+        deploy:
+            resources:
+                limits:
+                    memory: 256m
+                    cpus: "0.5"
+                    pids: 100
+                reservations:
+                    memory: 256m
+        logging:
+            driver: json-file
+            options:
+                max-file: ""
+                max-size: ""
+        security_opt:
+            - no-new-privileges:true
+        cap_drop:
+            - ALL
+        read_only: true
+        tmpfs:
+            - /tmp
+            - /run

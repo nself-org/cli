@@ -58,6 +58,44 @@ CS_2_COMMAND=python -m celery worker
 CS_2_ENV_CELERY_BROKER_URL=redis://redis:6379/0
 ```
 
+## Example: Service Built From a Monorepo Root
+
+A service in a monorepo often needs the whole workspace as its build context (shared packages, a lockfile at the root) while its Dockerfile lives deep inside. Four keys express that, with no hand-written compose file:
+
+```env
+# Project at <repo>/apps/api. The repository root is two levels up.
+CS_1=worker:node:9500
+CS_1_PATH=../..
+CS_1_DOCKERFILE=apps/api/services/worker/Dockerfile
+CS_1_BUILD_TARGET=runtime
+CS_1_ENV_FILE=.env.dev,.env.secrets
+CS_1_DEPENDS_ON=hasura:healthy
+CS_1_COMMAND=node dist/server.js
+```
+
+What `nself build` generates for it: build context `../..` with that Dockerfile and target, `depends_on` for `postgres` and `hasura` (both `service_healthy`), the command as a list, and the environment from both files with `.env.secrets` winning on a repeated key.
+
+Because the build context is the repository root, the builder receives everything under it. Put a `.dockerignore` at that root with the lines `**/.env*` and `**/.secrets` (a bare `.env*` only matches the root, so nested `.env` files would still be sent). `nself build` refuses an ancestor context without one (E528), and refuses a context above the directory that holds `.git`.
+
+```bash
+nself build
+```
+
+## Example: Depend on a Plugin Service
+
+`CS_N_DEPENDS_ON` accepts the name of any service an installed plugin adds, so a service can wait for it:
+
+```env
+CS_2=reports:node:9501
+CS_2_DEPENDS_ON=claw-api:started
+```
+
+The name is resolved after the plugin step of `nself build`. A name that does not exist fails the build with E500.
+
+## Example: A Third-Party Stack
+
+A third-party stack that has several containers (a message broker and a UI, say) maps to one `CS_N_IMAGE` service per container, or to a plugin when one exists. `CS_N_IMAGE` services can share a project network with `CS_N_NETWORKS=<PROJECT_NAME>_shared` once that network exists. See [[Custom-Services-Migration]] for what `CS_N` does not cover yet.
+
 ## Custom Service Variables Reference
 
 | Variable | Description |
@@ -66,13 +104,20 @@ CS_2_ENV_CELERY_BROKER_URL=redis://redis:6379/0
 | `CS_N_NAME` | Service name (lowercase, alphanumeric + hyphens) |
 | `CS_N_IMAGE` | Docker image reference |
 | `CS_N_PORT` | Internal port the service listens on |
-| `CS_N_COMMAND` | Override container command |
+| `CS_N_COMMAND` | Override container command (exec form, split on whitespace, no shell) |
+| `CS_N_PATH` | Build context: a path inside the project, or an ancestor such as `../..` (see [[Config-Custom-Services]]) |
+| `CS_N_DOCKERFILE` | Dockerfile path relative to the build context |
+| `CS_N_BUILD_TARGET` | Multi-stage build target |
+| `CS_N_ENV_FILE` | One or more dotenv files, comma-separated, later wins |
+| `CS_N_DEPENDS_ON` | `name[:started\|healthy\|completed]`, comma-separated |
+| `CS_N_NETWORKS` | Extra `<PROJECT_NAME>_*` networks (must already exist) |
 | `CS_N_WORKDIR` | Working directory inside container |
 | `CS_N_ENV_*` | Environment variables passed to the service |
 
 ## See Also
 
 - [[Config-Custom-Services]], full env var reference
+- [[Custom-Services-Migration]], moving hand-written compose fragments to `CS_N`
 - [[cmd-service]], service command reference
 - [[Architecture]], how custom services fit the stack
 

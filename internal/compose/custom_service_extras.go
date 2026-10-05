@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
+	"github.com/nself-org/cli/internal/config"
 )
 
 // Purpose: filesystem/parsing helpers for the CS_N_ENV_FILE and CS_N_VOLUMES
@@ -36,6 +37,36 @@ func loadCustomServiceEnvFile(workDir, relPath string) (map[string]string, error
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
 	return vars, nil
+}
+
+// customServiceEnvFiles returns the CS_N_ENV_FILE list in load order. A
+// hand-built CustomService that sets only EnvFile (tests, scaffolding) yields
+// that single entry.
+func customServiceEnvFiles(cs config.CustomService) []string {
+	if len(cs.EnvFiles) > 0 {
+		return cs.EnvFiles
+	}
+	if cs.EnvFile != "" {
+		return []string{cs.EnvFile}
+	}
+	return nil
+}
+
+// loadCustomServiceEnvFiles reads each file in order and merges the pairs;
+// a later file wins on a repeated key (CS_N_ENV_FILE=.env.dev,.env.secrets).
+// A file that cannot be read fails the whole load, as for a single file.
+func loadCustomServiceEnvFiles(workDir string, relPaths []string) (map[string]string, error) {
+	merged := map[string]string{}
+	for _, rel := range relPaths {
+		vars, err := loadCustomServiceEnvFile(workDir, rel)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range vars {
+			merged[k] = v
+		}
+	}
+	return merged, nil
 }
 
 // parseCustomServiceVolumes splits a CS_N_VOLUMES value ("host:container[:mode]"
