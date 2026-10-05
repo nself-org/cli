@@ -216,6 +216,7 @@
 
 **Architecture**
 - [[Architecture]]
+- [[Architecture-Guardrails]]
 - [[Service-Graph]]
 - [[Compose-Generation]]
 - [[Nginx-Generation]]

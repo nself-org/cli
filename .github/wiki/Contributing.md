@@ -105,6 +105,7 @@ git push origin feat/my-feature
 - **Context:** accept `context.Context` as first parameter in I/O functions.
 - **No panics** in production code paths. No `os.Exit()` outside `main.go`.
 - **User output:** use `internal/ui`, not `fmt.Println` directly.
+- **Layering:** imports point down and orphan packages are rejected by `internal/repoqa` tests. See [[Architecture-Guardrails]] before adding a package or a cross-package import.
 
 ## Test Coverage
 
