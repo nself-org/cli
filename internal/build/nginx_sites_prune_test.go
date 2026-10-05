@@ -131,7 +131,8 @@ func TestBackupNginxSites_EmptyOrMissingDirIsNoop(t *testing.T) {
 // more than maxNginxSitesBackups snapshots present, only the newest
 // maxNginxSitesBackups survive pruning.
 func TestPruneOldNginxSitesBackups_KeepsOnlyNewestN(t *testing.T) {
-	backupsRoot := t.TempDir()
+	workdir := t.TempDir()
+	backupsRoot := filepath.Join(workdir, ".nself", "backups")
 	names := []string{
 		"nginx-sites-20260101-000000",
 		"nginx-sites-20260102-000000",
@@ -147,7 +148,7 @@ func TestPruneOldNginxSitesBackups_KeepsOnlyNewestN(t *testing.T) {
 		}
 	}
 
-	if err := pruneOldNginxSitesBackups(backupsRoot); err != nil {
+	if err := pruneOldNginxSitesBackups(workdir); err != nil {
 		t.Fatalf("pruneOldNginxSitesBackups: %v", err)
 	}
 

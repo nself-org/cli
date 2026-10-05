@@ -116,19 +116,22 @@ func backupNginxSitesVia(sink Sink, workdir, sitesDir string) error {
 }
 
 // pruneOldNginxSitesBackups keeps only the newest maxNginxSitesBackups
-// "nginx-sites-*" snapshots under backupsRoot, removing the rest. The
+// "nginx-sites-*" snapshots under workdir/.nself/backups, opened through os.Root on workdir, removing the rest. The
 // timestamp suffix (YYYYMMDD-HHMMSS) is lexicographically sortable, so a
 // plain name sort orders oldest-first.
-func pruneOldNginxSitesBackups(backupsRoot string) error {
-	root, err := os.OpenRoot(filepath.Dir(backupsRoot))
+func pruneOldNginxSitesBackups(workdir string) error {
+	if err := checkBackupRoot(workdir); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(workdir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("opening %s to prune old backups: %w", backupsRoot, err)
+		return fmt.Errorf("opening the project to prune old backups: %w", err)
 	}
 	defer func() { _ = root.Close() }()
-	return pruneBackupsIn(root, filepath.Base(backupsRoot))
+	if backupBeforeWrite != nil {
+		backupBeforeWrite()
+	}
+	return pruneBackupsIn(root, filepath.Join(".nself", "backups"))
 }
 
 // pruneBackupsIn prunes snapshots under backups (relative to root) through the

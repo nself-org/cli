@@ -157,3 +157,35 @@ func TestBackupSurvivesSymlinkSwap(t *testing.T) {
 		t.Fatalf("files were written outside the project: %v", found)
 	}
 }
+
+// TestPruneSurvivesNselfSwap (review round 5): .nself itself is swapped for a
+// symlink to an outside directory holding old snapshots after the check and
+// before the prune; the os.Root-confined prune removes nothing outside.
+func TestPruneSurvivesNselfSwap(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	dir, outside := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".nself", "backups"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var snaps []string
+	for i := 1; i <= 8; i++ {
+		n := filepath.Join(outside, "backups", "nginx-sites-2026010"+string(rune('0'+i))+"-000000")
+		if err := os.MkdirAll(n, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		snaps = append(snaps, n)
+	}
+	backupBeforeWrite = func() {
+		_ = os.RemoveAll(filepath.Join(dir, ".nself"))
+		_ = os.Symlink(outside, filepath.Join(dir, ".nself"))
+	}
+	t.Cleanup(func() { backupBeforeWrite = nil })
+	_ = pruneOldNginxSitesBackups(dir)
+	for _, n := range snaps {
+		if _, err := os.Stat(n); err != nil {
+			t.Fatalf("a snapshot outside the project was pruned through a swapped .nself: %v", err)
+		}
+	}
+}
