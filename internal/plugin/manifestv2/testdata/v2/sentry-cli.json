@@ -1,0 +1,61 @@
+{
+  "author": "nself",
+  "binaryName": "nself-sentry",
+  "category": "infrastructure",
+  "cliCommands": [
+    {
+      "description": "Manage ɳSentry monitors, incidents, status pages and alerts",
+      "name": "sentry"
+    },
+    {
+      "description": "Provision and manage a self-hosted ɳSentry server",
+      "name": "sentry-server"
+    }
+  ],
+  "commands": {
+    "binary": "nself-sentry",
+    "command": "sentry",
+    "summary": "Manage ɳSentry monitors, incidents, status pages and alerts"
+  },
+  "description": "ɳSentry operations: monitors, incidents, status pages, alerts, cloud login, and provisioning a self-hosted sentry server.",
+  "entryPoint": "cmd/",
+  "envVars": [
+    {
+      "description": "",
+      "name": "HETZNER_NSELF_TOKEN",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "HCLOUD_TOKEN",
+      "required": false
+    }
+  ],
+  "homepage": "https://nself.org/plugins",
+  "language": "go",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.2.8",
+  "name": "sentry-cli",
+  "pluginType": "cli",
+  "repository": "https://github.com/nself-org/plugins",
+  "requires": {
+    "nself": ">=1.2.8"
+  },
+  "service": {
+    "kind": "cli"
+  },
+  "status": "stable",
+  "tags": [
+    "sentry",
+    "observability",
+    "monitoring",
+    "incidents",
+    "status-page",
+    "alerts"
+  ],
+  "tier": "free",
+  "version": "1.2.6"
+}

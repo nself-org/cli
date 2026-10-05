@@ -1,0 +1,76 @@
+{
+  "name": "ci",
+  "version": "1.2.6",
+  "description": "Local CI gate runner: detects repo stack (Go/Node/Flutter/Dart), runs lint+test+build, scans secrets with gitleaks, then posts a GitHub commit status (nself-ci) via gh OAuth. Replaces billing-blocked GitHub Actions as the merge gate.",
+  "author": "nself",
+  "license": "MIT",
+  "isCommercial": false,
+  "licenseType": "free",
+  "requiredEntitlements": [],
+  "requires_license": false,
+  "homepage": "https://nself.org/plugins",
+  "repository": "https://github.com/nself-org/plugins",
+  "minNselfVersion": "1.0.0",
+  "category": "development",
+  "language": "go",
+  "entryPoint": "cmd/main.go",
+  "tier": "free",
+  "tags": [
+    "ci",
+    "cd",
+    "gate",
+    "testing",
+    "github",
+    "commit-status",
+    "gitleaks",
+    "devops"
+  ],
+  "tables": [],
+  "webhooks": {},
+  "actions": {
+    "run": "Run the gate suite for a repo and post nself-ci commit status",
+    "check": "Run the gate suite locally without posting a commit status",
+    "status": "Show the last nself-ci result for a repo"
+  },
+  "envVars": {
+    "required": [],
+    "optional": [
+      "NSELF_CI_REPO",
+      "NSELF_CI_SHA",
+      "NSELF_CI_SKIP_STATUS",
+      "NSELF_CI_TIMEOUT"
+    ]
+  },
+  "config": {
+    "contextName": "nself-ci",
+    "defaultTimeout": 300
+  },
+  "hooks": {
+    "postInstall": null,
+    "preUninstall": null,
+    "postSync": null
+  },
+  "multiApp": {
+    "supported": false,
+    "isolationColumn": null,
+    "pkStrategy": null,
+    "defaultValue": null
+  },
+  "permissions": {
+    "database": [],
+    "network": [
+      "api.github.com"
+    ],
+    "filesystem": [
+      "read"
+    ]
+  },
+  "port": 0,
+  "status": "stable",
+  "arch_support": [
+    "linux-x86_64",
+    "linux-arm64",
+    "darwin-arm64",
+    "darwin-x86_64"
+  ]
+}

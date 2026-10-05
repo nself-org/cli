@@ -1,0 +1,115 @@
+{
+  "author": "nself",
+  "binaryName": "nself-tenant",
+  "category": "infrastructure",
+  "cliCommands": [
+    {
+      "description": "Create, list, suspend, upgrade and destroy tenants",
+      "name": "tenant"
+    },
+    {
+      "description": "Per-tenant usage metering, invoices and billing reports",
+      "name": "billing"
+    }
+  ],
+  "commands": {
+    "binary": "nself-tenant",
+    "command": "tenant",
+    "summary": "Create, list, suspend, upgrade and destroy tenants"
+  },
+  "description": "Multi-tenant operations: create, suspend, upgrade and destroy tenants, plus per-tenant usage metering and billing reports.",
+  "entryPoint": "cmd/",
+  "envVars": [
+    {
+      "description": "",
+      "name": "PROJECT_NAME",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "POSTGRES_HOST",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "POSTGRES_PORT",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "POSTGRES_DB",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "POSTGRES_USER",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "POSTGRES_PASSWORD",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "MINIO_ENABLED",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "STORAGE_ENABLED",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "MINIO_PORT",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "MINIO_ROOT_USER",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "MINIO_ROOT_PASSWORD",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "PROMETHEUS_ENABLED",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "PROMETHEUS_PORT",
+      "required": false
+    }
+  ],
+  "homepage": "https://nself.org/plugins",
+  "language": "go",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.2.8",
+  "name": "tenant",
+  "pluginType": "cli",
+  "repository": "https://github.com/nself-org/plugins",
+  "requires": {
+    "nself": ">=1.2.8"
+  },
+  "service": {
+    "kind": "cli"
+  },
+  "status": "stable",
+  "tags": [
+    "tenant",
+    "multi-tenancy",
+    "billing",
+    "metering",
+    "saas"
+  ],
+  "tier": "free",
+  "version": "1.2.6"
+}

@@ -127,6 +127,10 @@ func parseManifest(path string) (*PluginManifest, error) {
 		return nil, fmt.Errorf("reading plugin manifest: %w", err)
 	}
 
+	if v2, ok, err := parseManifestV2(data); ok { // manifest_version 2: read from the v2 fields (P7-PLUG-01)
+		return v2, err
+	}
+
 	var m PluginManifest
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("parsing plugin manifest: %w", err)

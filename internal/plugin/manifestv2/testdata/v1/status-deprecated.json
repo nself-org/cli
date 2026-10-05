@@ -1,0 +1,28 @@
+{
+  "name": "fixture-status-deprecated",
+  "version": "1.2.0",
+  "description": "Fixture plugin fixture-status-deprecated",
+  "category": "infrastructure",
+  "license": "MIT",
+  "author": "nself",
+  "language": "go",
+  "minNselfVersion": "1.0.0",
+  "tier": "free",
+  "isCommercial": false,
+  "licenseType": "free",
+  "requires_license": false,
+  "tags": [
+    "fixture"
+  ],
+  "tables": [
+    "np_fixture_status_deprecated_items"
+  ],
+  "port": 3300,
+  "status": "deprecated",
+  "deprecation": {
+    "announcedDate": "2026-01-01",
+    "eolDate": "2027-01-01",
+    "replacedBy": "fixture-deps",
+    "migrationGuide": "https://nself.org/docs/migrate/fixture"
+  }
+}

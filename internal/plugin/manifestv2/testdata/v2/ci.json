@@ -1,0 +1,74 @@
+{
+  "arch_support": [
+    "linux-x86_64",
+    "linux-arm64",
+    "darwin-arm64",
+    "darwin-x86_64"
+  ],
+  "author": "nself",
+  "category": "development",
+  "description": "Local CI gate runner: detects repo stack (Go/Node/Flutter/Dart), runs lint+test+build, scans secrets with gitleaks, then posts a GitHub commit status (nself-ci) via gh OAuth. Replaces billing-blocked GitHub Actions as the merge gate.",
+  "entryPoint": "cmd/main.go",
+  "envVars": [
+    {
+      "description": "",
+      "name": "NSELF_CI_REPO",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "NSELF_CI_SHA",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "NSELF_CI_SKIP_STATUS",
+      "required": false
+    },
+    {
+      "description": "",
+      "name": "NSELF_CI_TIMEOUT",
+      "required": false
+    }
+  ],
+  "homepage": "https://nself.org/plugins",
+  "language": "go",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.0.0",
+  "multiApp": {
+    "supported": false
+  },
+  "name": "ci",
+  "permissions": {
+    "database": [],
+    "filesystem": [
+      "read"
+    ],
+    "network": [
+      "api.github.com"
+    ]
+  },
+  "repository": "https://github.com/nself-org/plugins",
+  "requires": {
+    "nself": ">=1.0.0"
+  },
+  "service": {
+    "kind": "library"
+  },
+  "status": "stable",
+  "tags": [
+    "ci",
+    "cd",
+    "gate",
+    "testing",
+    "github",
+    "commit-status",
+    "gitleaks",
+    "devops"
+  ],
+  "tier": "free",
+  "version": "1.2.6"
+}

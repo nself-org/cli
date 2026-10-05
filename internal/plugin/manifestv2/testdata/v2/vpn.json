@@ -1,0 +1,175 @@
+{
+  "apiEndpoints": [
+    "GET /api/health",
+    "GET /api/providers",
+    "GET /api/providers/:id",
+    "POST /api/providers/:id/credentials",
+    "GET /api/servers",
+    "GET /api/servers/p2p",
+    "POST /api/servers/sync",
+    "POST /api/connect",
+    "POST /api/disconnect",
+    "GET /api/status",
+    "POST /api/download",
+    "GET /api/downloads",
+    "GET /api/downloads/:id",
+    "DELETE /api/downloads/:id",
+    "POST /api/test-leak",
+    "GET /api/stats"
+  ],
+  "arch_support": [
+    "linux-x86_64",
+    "linux-arm64",
+    "darwin-arm64"
+  ],
+  "author": "nself",
+  "category": "authentication",
+  "cliCommands": [
+    {
+      "description": "Initialize VPN plugin and add provider credentials",
+      "name": "init"
+    },
+    {
+      "description": "List all supported VPN providers",
+      "name": "providers"
+    },
+    {
+      "description": "Connect to VPN provider",
+      "name": "connect"
+    },
+    {
+      "description": "Disconnect from current VPN",
+      "name": "disconnect"
+    },
+    {
+      "description": "Show connection status and details",
+      "name": "status"
+    },
+    {
+      "description": "List available servers (optionally P2P-only)",
+      "name": "servers"
+    },
+    {
+      "description": "Download file via torrent over VPN",
+      "name": "download"
+    },
+    {
+      "description": "List and manage downloads",
+      "name": "downloads"
+    },
+    {
+      "description": "Test for DNS/IP/WebRTC leaks",
+      "name": "test"
+    },
+    {
+      "description": "Start connection monitoring daemon",
+      "name": "monitor"
+    }
+  ],
+  "description": "Multi-provider VPN management (NordVPN, PIA, Mullvad) with P2P optimization, server carousel, kill switch, and leak protection. Torrent download forwarding requires the torrent-manager plugin.",
+  "envVars": [
+    {
+      "description": "PostgreSQL connection string",
+      "name": "DATABASE_URL",
+      "required": true
+    },
+    {
+      "default": "nordvpn",
+      "description": "Default VPN provider (nordvpn, pia, mullvad)",
+      "name": "VPN_PROVIDER",
+      "required": false
+    },
+    {
+      "description": "Preferred region/country for VPN connection",
+      "name": "VPN_REGION",
+      "required": false
+    },
+    {
+      "default": "/tmp/vpn-downloads",
+      "description": "Default download destination for torrents",
+      "name": "DOWNLOAD_PATH",
+      "required": false
+    },
+    {
+      "default": "true",
+      "description": "Enable kill switch by default",
+      "name": "ENABLE_KILL_SWITCH",
+      "required": false
+    },
+    {
+      "default": "true",
+      "description": "Automatically reconnect on VPN dropout",
+      "name": "ENABLE_AUTO_RECONNECT",
+      "required": false
+    },
+    {
+      "default": "false",
+      "description": "Enable automatic server rotation",
+      "name": "SERVER_CAROUSEL_ENABLED",
+      "required": false
+    },
+    {
+      "default": "60",
+      "description": "Minutes between server rotations",
+      "name": "CAROUSEL_INTERVAL_MINUTES",
+      "required": false
+    },
+    {
+      "default": "http://localhost:3210",
+      "description": "URL of the torrent-manager plugin API. Required for torrent download forwarding.",
+      "name": "TORRENT_MANAGER_URL",
+      "required": false
+    },
+    {
+      "description": "Shared API key for authenticating requests to sibling plugins (e.g. torrent-manager)",
+      "name": "INTERNAL_API_KEY",
+      "required": false
+    }
+  ],
+  "health_endpoint": "/health",
+  "homepage": "https://github.com/nself-org/plugins/tree/main/plugins/vpn",
+  "language": "go",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "0.9.9",
+  "multiApp": {
+    "defaultValue": "primary",
+    "isolationColumn": "source_account_id",
+    "pkStrategy": "uuid",
+    "supported": true
+  },
+  "name": "vpn",
+  "port": 3200,
+  "repository": "https://github.com/nself-org/plugins",
+  "requires": {
+    "nself": ">=0.9.9"
+  },
+  "schema": "np_vpn",
+  "service": {
+    "compose": "docker-compose.plugin.yml",
+    "healthcheck": "/health",
+    "kind": "compose",
+    "port": 3200
+  },
+  "status": "stable",
+  "tables": [
+    "np_vpn_providers",
+    "np_vpn_credentials",
+    "np_vpn_servers",
+    "np_vpn_connections",
+    "np_vpn_downloads",
+    "np_vpn_connection_logs",
+    "np_vpn_server_performance",
+    "np_vpn_leak_tests"
+  ],
+  "tier": "free",
+  "version": "1.2.6",
+  "views": [
+    "np_vpn_active_connections",
+    "np_vpn_server_stats",
+    "np_vpn_download_history",
+    "np_vpn_provider_uptime"
+  ]
+}

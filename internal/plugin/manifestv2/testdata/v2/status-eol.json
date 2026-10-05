@@ -1,0 +1,38 @@
+{
+  "author": "nself",
+  "category": "infrastructure",
+  "deprecation": {
+    "announcedDate": "2025-01-01",
+    "eolDate": "2026-01-01",
+    "migrationGuide": "https://nself.org/docs/migrate/fixture",
+    "state": "eol"
+  },
+  "description": "Fixture plugin fixture-status-eol",
+  "language": "go",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "deferred",
+  "minNselfVersion": "1.0.0",
+  "name": "fixture-status-eol",
+  "port": 3300,
+  "requires": {
+    "nself": ">=1.0.0"
+  },
+  "schema": "np_fixture_status_eol",
+  "service": {
+    "compose": "docker-compose.plugin.yml",
+    "healthcheck": "/health",
+    "kind": "compose",
+    "port": 3300
+  },
+  "status": "eol",
+  "tables": [
+    "np_fixture_status_eol_items"
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "tier": "free",
+  "version": "1.2.0"
+}

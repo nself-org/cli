@@ -1,0 +1,21 @@
+{
+  "name": "fixture-status-none",
+  "version": "1.2.0",
+  "description": "Fixture plugin fixture-status-none",
+  "category": "infrastructure",
+  "license": "MIT",
+  "author": "nself",
+  "language": "go",
+  "minNselfVersion": "1.0.0",
+  "tier": "free",
+  "isCommercial": false,
+  "licenseType": "free",
+  "requires_license": false,
+  "tags": [
+    "fixture"
+  ],
+  "tables": [
+    "np_fixture_status_none_items"
+  ],
+  "port": 3300
+}

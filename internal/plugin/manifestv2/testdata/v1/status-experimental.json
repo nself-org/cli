@@ -1,0 +1,22 @@
+{
+  "name": "fixture-status-experimental",
+  "version": "1.2.0",
+  "description": "Fixture plugin fixture-status-experimental",
+  "category": "infrastructure",
+  "license": "MIT",
+  "author": "nself",
+  "language": "go",
+  "minNselfVersion": "1.0.0",
+  "tier": "free",
+  "isCommercial": false,
+  "licenseType": "free",
+  "requires_license": false,
+  "tags": [
+    "fixture"
+  ],
+  "tables": [
+    "np_fixture_status_experimental_items"
+  ],
+  "port": 3300,
+  "status": "experimental"
+}

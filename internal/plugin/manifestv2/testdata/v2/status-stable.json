@@ -1,0 +1,32 @@
+{
+  "author": "nself",
+  "category": "infrastructure",
+  "description": "Fixture plugin fixture-status-stable",
+  "language": "go",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.0.0",
+  "name": "fixture-status-stable",
+  "port": 3300,
+  "requires": {
+    "nself": ">=1.0.0"
+  },
+  "schema": "np_fixture_status_stable",
+  "service": {
+    "compose": "docker-compose.plugin.yml",
+    "healthcheck": "/health",
+    "kind": "compose",
+    "port": 3300
+  },
+  "status": "stable",
+  "tables": [
+    "np_fixture_status_stable_items"
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "tier": "free",
+  "version": "1.2.0"
+}

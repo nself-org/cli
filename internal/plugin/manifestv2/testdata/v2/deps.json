@@ -1,0 +1,75 @@
+{
+  "apiEndpoints": [
+    "GET /items",
+    "/health"
+  ],
+  "author": "nself",
+  "category": "infrastructure",
+  "consumes": [
+    "ai"
+  ],
+  "dependencies": [
+    "ai",
+    "notify"
+  ],
+  "description": "Fixture plugin fixture-deps",
+  "entryPoint": "cmd/main.go",
+  "envVars": [
+    {
+      "description": "",
+      "name": "DATABASE_URL",
+      "required": true
+    },
+    {
+      "default": "fast",
+      "description": "",
+      "name": "FIXTURE_MODE",
+      "required": false
+    }
+  ],
+  "health_endpoint": "/health",
+  "language": "go",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.0.0",
+  "name": "fixture-deps",
+  "optionalDependencies": [
+    "voice",
+    "notify",
+    "cron"
+  ],
+  "permissions": [
+    "db:read",
+    "db:write"
+  ],
+  "port": 3725,
+  "provides": [
+    "fixture"
+  ],
+  "requires": {
+    "nself": ">=1.0.0"
+  },
+  "runtime": "go",
+  "schema": "np_fixture_deps",
+  "service": {
+    "compose": "docker-compose.plugin.yml",
+    "healthcheck": "/health",
+    "kind": "compose",
+    "port": 3725
+  },
+  "status": "stable",
+  "tables": [
+    "np_fixture_deps_items"
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "tier": "free",
+  "version": "1.2.0",
+  "webhooks": [
+    "item.created",
+    "item.deleted"
+  ]
+}
