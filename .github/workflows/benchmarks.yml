@@ -5,15 +5,11 @@ on:
     # First Monday of March, June, September, December at 07:00 UTC
     - cron: "0 7 1-7 3,6,9,12 1"
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "Publish results to nself.org/benchmarks"
-        type: boolean
-        default: false
 
+# Read-only: results are workflow artifacts only. This workflow never writes
+# to the repository (P7-TRUTH-22, EPIC TRUTH D13).
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,7 +19,7 @@ jobs:
   # cron ORs day-of-month with day-of-week when both are restricted, so
   # "0 7 1-7 3,6,9,12 1" matches the 1st-7th AND every Monday of those months,
   # not the first Monday. That is roughly ten fires per quarter instead of one,
-  # each a 30-minute job holding contents:write and pull-requests:write.
+  # each a 30-minute job.
   # Same defect the DR drill reminder carried until #235.
   #
   # Gating as a separate job keeps the condition in one place rather than
@@ -50,11 +46,16 @@ jobs:
           fi
 
   benchmark:
-    name: Run Benchmarks
+    name: Time to healthy
     needs: gate
     if: needs.gate.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      AI_AUTO_INSTALL: "false"
+      GOLDEN_PATH_SOURCE: local
+      GOLDEN_PATH_HEALTH_TIMEOUT: "240"
+      RESULT_DIR: /tmp/benchmark-results
 
     steps:
       - uses: actions/checkout@v7
@@ -64,46 +65,38 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Install oha (HTTP benchmarking tool)
+      - name: Verify Docker daemon
         run: |
-          curl -fsSL https://github.com/hatoo/oha/releases/latest/download/oha-linux-amd64 \
-            -o /usr/local/bin/oha
-          chmod +x /usr/local/bin/oha
+          for i in $(seq 1 15); do
+            docker info >/dev/null 2>&1 && echo "Docker ready" && break
+            echo "Waiting for Docker... (${i}/15)"
+            sleep 2
+          done
+          docker info
 
-      - name: Build nSelf binary
-        run: |
-          CGO_ENABLED=0 go build -mod=vendor -ldflags='-s -w' -o nself ./cmd/nself/
-
-      - name: Run benchmark harness
-        run: .github/benchmarks/run.sh
+      # Builds this ref (GOLDEN_PATH_SOURCE=local) and runs the real 13-step
+      # path; the harness reads the report it writes and times nothing itself.
+      - name: Run golden path
         env:
-          CI: "true"
+          NSELF_PLUGIN_LICENSE_KEY_OWNER: ${{ secrets.NSELF_PLUGIN_LICENSE_KEY_OWNER }}
+        run: bash scripts/golden-path.sh
+
+      - name: Measure time to healthy
+        if: always()
+        run: |
+          mkdir -p "$RESULT_DIR"
+          if [ ! -f /tmp/golden-path-report.json ]; then
+            echo "::error::no golden-path report was produced; nothing to measure"
+            exit 1
+          fi
+          cp /tmp/golden-path-report.json "$RESULT_DIR/golden-path-report.json"
+          .github/benchmarks/run.sh /tmp/golden-path-report.json "$RESULT_DIR/time-to-healthy.json"
 
       - name: Archive results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: benchmark-results-${{ github.run_id }}
-          path: .github/benchmarks/results/
+          path: ${{ env.RESULT_DIR }}
+          if-no-files-found: error
           retention-days: 14
-
-      - name: Check for regression (>10% degradation vs last quarter)
-        run: |
-          RESULTS_DIR=".github/benchmarks/results"
-          LATEST=$(ls -t "$RESULTS_DIR"/*.json 2>/dev/null | head -1)
-          PREV=$(ls -t "$RESULTS_DIR"/*.json 2>/dev/null | sed -n '2p')
-          if [ -n "$LATEST" ] && [ -n "$PREV" ]; then
-            LATEST_RPS=$(jq -r '.rps_1cpu' "$LATEST")
-            PREV_RPS=$(jq -r '.rps_1cpu' "$PREV")
-            echo "Latest RPS: $LATEST_RPS  Previous: $PREV_RPS"
-            # Warn if RPS dropped >10% (informational only)
-          fi
-
-      - name: Commit results
-        if: success()
-        run: |
-          git config user.name "nSelf Benchmarks Bot"
-          git config user.email "benchmarks@nself.org"
-          DATE=$(date +%Y-%m-%d)
-          git add .github/benchmarks/results/
-          git diff --staged --quiet || git commit -s -m "chore: quarterly benchmark results $DATE"
-          git push origin HEAD || true
