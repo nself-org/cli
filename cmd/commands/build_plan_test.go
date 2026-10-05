@@ -457,3 +457,24 @@ func TestBuildPlanDevGolden(t *testing.T) {
 		t.Fatalf("dev plan after build: requires_confirmation=%v empty=%v", data["requires_confirmation"], data["empty"])
 	}
 }
+
+// TestBuildPlanIDBindsContent: swapping one env value for another of the same
+// shape changes the plan id, so the old --plan-id is refused (E450) and nothing
+// is written.
+func TestBuildPlanIDBindsContent(t *testing.T) {
+	p := newL03Project(t, "prod-ssl")
+	shown := p.planData(t, true)["plan_id"].(string)
+	if again := p.planData(t, true)["plan_id"].(string); again != shown {
+		t.Fatal("identical inputs gave different plan ids")
+	}
+	b, _ := os.ReadFile(filepath.Join(p.project, ".env"))
+	l03Write(t, filepath.Join(p.project, ".env"), strings.Replace(string(b), "MINIO_ROOT_USER=minio-user-Tq8Zk", "MINIO_ROOT_USER=minio-user-Tq8Zj", 1), 0o600)
+	before := p.whole(t)
+	r := p.run(t, true, "build", "--yes", "--plan-id", shown, "--json")
+	if code, exit := errorEnvelope(t, r.stdout); r.code != 1 || code != "E450" || exit != 1 {
+		t.Fatalf("exit %d error %s: want E450 exit 1\n%s", r.code, code, r.stderr)
+	}
+	if p.whole(t) != before {
+		t.Fatal("the E450 build wrote")
+	}
+}

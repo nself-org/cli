@@ -15,6 +15,8 @@ package reconcile
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -70,6 +72,11 @@ func Compute(ctx context.Context, req Request) (*Plan, error) {
 	if err := p.Finalize(); err != nil {
 		return nil, err
 	}
+	id, err := contentPlanID(*p, after)
+	if err != nil {
+		return nil, err
+	}
+	p.PlanID = id
 	if req.DiffOut != nil {
 		if err := writeDiffs(req.DiffOut, p.Artifacts, before, after); err != nil {
 			return nil, err
@@ -155,4 +162,38 @@ func hasSitesChange(arts []Artifact) bool {
 		}
 	}
 	return false
+}
+
+// contentPlanID is the plan_id of EPIC D9 as amended 2026-10-05: sha256 over
+// the canonical plan JSON, then, for every artifact in path order, its path and
+// the sha256 of the bytes it would leave (a removal hashes as "removed"). The
+// id so binds the content of the change, not only its shape; the bytes
+// themselves never reach the plan JSON.
+func contentPlanID(p Plan, after ArtifactSet) (string, error) {
+	canon, err := CanonicalJSON(p)
+	if err != nil {
+		return "", err
+	}
+	// A run that generates secrets (secrets-persist) renders them into env-kind
+	// artifacts with values that differ per run, so those artifacts cannot be
+	// bound by content; their hash is the constant "generated". Once the
+	// secrets are persisted the next plan binds them like any other file.
+	generating := false
+	for _, e := range p.Effects {
+		generating = generating || e.Kind == EffectSecretsPersist
+	}
+	h := sha256.New()
+	_, _ = h.Write(canon)
+	for _, a := range p.Artifacts { // Finalize sorted these by path
+		sum := "removed"
+		if f, ok := after[a.Path]; ok {
+			d := sha256.Sum256(f.Data)
+			sum = hex.EncodeToString(d[:])
+		}
+		if generating && a.Kind == KindEnv {
+			sum = "generated"
+		}
+		_, _ = fmt.Fprintf(h, "\n%s\x00%s", a.Path, sum)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

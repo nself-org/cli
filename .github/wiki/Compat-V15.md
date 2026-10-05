@@ -54,6 +54,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 |---|---|---|---|
 | P7-ADOPT-01 | writable absolute bind allowed | E502 | `internal/compose/custom_service_v2.go` |
 | P7-CANON-02 | registry view with moved entries at their v1.4 paths | view at canonical paths plus deprecated-shim entries | `internal/canon/canon.go` |
+| P7-LIVE-03 | a held lock is waited for up to 30 s, then a warning and the build runs unlocked | a held lock fails the build at once, naming the holder | `internal/build/orchestrator.go` |
 | P7-LIVE-03 | a prod-class or hand-edited change proceeds with a notice | refused with E403 without --yes or --force | `internal/reconcile/apply.go` |
 | P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |
 | P7-PLUG-01 | v1 plugin.json read silently | one deprecation line per process on stderr | `internal/plugin/manifestv2/warn.go` |

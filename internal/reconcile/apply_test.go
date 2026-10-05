@@ -237,6 +237,7 @@ func TestBuildLockHelper(t *testing.T) {
 // the project lock (naming the holder), and after that holder is SIGKILLed two
 // builds in a row succeed: a flock leaves no stale lock behind.
 func TestBuildLockAfterKill(t *testing.T) {
+	compattest.Set(t, true) // v1.5 fails at once; v1.4 would wait 30 s
 	f := loadFixture(t, "dev-minimal")
 	// The holder needs the project dir to exist with .nself; it is created by the lock.
 	cmd := exec.Command(os.Args[0], "-test.run=^TestBuildLockHelper$")
@@ -297,5 +298,58 @@ func TestApplyBeforeWriteError(t *testing.T) {
 	}
 	if after := treeHash(t, f.root); after != before {
 		t.Fatalf("a failed hook still wrote:\n%s", lineDiff(before, after))
+	}
+}
+
+// TestPlanIDBindsContent: a change that keeps every shown number the same (one
+// env value swapped for another of the same length) still changes the plan id,
+// the old id is refused with E450 and nothing is written, and unchanged inputs
+// give the same id on every run.
+func TestPlanIDBindsContent(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	a, again := planOf(t, f, nil), planOf(t, f, nil)
+	if a.PlanID != again.PlanID {
+		t.Fatal("identical inputs gave different plan ids")
+	}
+	setEnvValue(t, f, "BASE_DOMAIN", "swapped.test") // same line count and length class
+	b := planOf(t, f, nil)
+	if len(a.Artifacts) != len(b.Artifacts) {
+		t.Fatal("the test change must keep the plan shape")
+	}
+	for i := range a.Artifacts {
+		if a.Artifacts[i] != b.Artifacts[i] {
+			t.Fatalf("shape differs at %s; the swap must be shape-neutral", a.Artifacts[i].Path)
+		}
+	}
+	if a.PlanID == b.PlanID {
+		t.Fatal("a same-shape content change did not change the plan id")
+	}
+	before := treeHash(t, f.root)
+	_, err := Apply(context.Background(), Request{ProjectDir: f.project, Seed: []byte("fixture-seed")}, ApplyOptions{PlanID: a.PlanID})
+	if d := errs.Describe(err); d == nil || d.Code != "E450" {
+		t.Fatalf("want E450, got %v", err)
+	}
+	if treeHash(t, f.root) != before {
+		t.Fatal("E450 apply wrote")
+	}
+	if _, err := Apply(context.Background(), Request{ProjectDir: f.project, Seed: []byte("fixture-seed")}, ApplyOptions{PlanID: b.PlanID}); err != nil {
+		t.Fatalf("the current id must apply: %v", err)
+	}
+}
+
+// TestPlanIDStableAcrossRunsWithGeneratedSecrets: a fresh project whose secrets
+// are generated at apply gets the same plan id from --plan and from the apply
+// (different random seeds), so --plan-id works on a first build.
+func TestPlanIDStableAcrossRunsWithGeneratedSecrets(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	env := strings.SplitN(readFile(t, f.project+"/.env"), "POSTGRES_PASSWORD=", 2)[0]
+	writeFile(t, f.project+"/.env", env, 0o600)
+	a := planOf(t, f, func(r *Request) { r.Seed = []byte("one") })
+	b := planOf(t, f, func(r *Request) { r.Seed = []byte("two") })
+	if a.PlanID != b.PlanID {
+		t.Fatal("generated secrets must not change the plan id")
+	}
+	if _, err := Apply(context.Background(), Request{ProjectDir: f.project}, ApplyOptions{PlanID: a.PlanID}); err != nil {
+		t.Fatalf("apply with the shown id: %v", err)
 	}
 }

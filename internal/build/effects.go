@@ -75,6 +75,20 @@ func (p *planEffects) Do(kind, target, detail string, _ func() error) error {
 func (p *planEffects) Planning() bool            { return true }
 func (p *planEffects) Recorded() []PlannedEffect { return append([]PlannedEffect(nil), p.list...) }
 
+// caTrusted reports whether the mkcert CA is already in the OS trust store. It
+// is a seam so tests need no real trust store. The default only reads
+// (`mkcert -CAROOT`, then the platform's find/list query) and treats any
+// failure as "not trusted", so an unreadable state is still planned, never
+// hidden.
+var caTrusted = func() bool {
+	path, err := ssl.MkcertCACertPath()
+	if err != nil {
+		return false
+	}
+	ok, err := ssl.IsCAInstalled(path)
+	return err == nil && ok
+}
+
 // planSSL is the plan-mode stand-in for ssl.Generator.GenerateWithResult. It
 // reads the disk (certificate presence and expiry) and PATH (is mkcert
 // installed) but never runs mkcert or openssl, never touches the trust store
@@ -99,7 +113,7 @@ func planSSL(fx Effects, cfg *config.Config, sslDir string, explicitHosts bool) 
 		}
 		_ = fx.Do(EffectCertificates, certDir, detail, nil)
 	}
-	if _, err := exec.LookPath("mkcert"); err == nil {
+	if _, err := exec.LookPath("mkcert"); err == nil && !caTrusted() {
 		_ = fx.Do(EffectTrustStore, "mkcert CA", "install the mkcert CA when it is not yet trusted", nil)
 	}
 	if entries := ssl.PlanHostsEntries(cfg.Env, cfg.BaseDomain, explicitHosts, domains); len(entries) > 0 {

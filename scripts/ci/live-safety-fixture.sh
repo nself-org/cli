@@ -160,6 +160,17 @@ run_nself prod 1 build --plan --json
 [ "$(jget 'd["empty"]')" = True ] || fail "plan after apply is not empty"
 ok "--yes --plan-id applies; the plan afterwards is empty"
 
+# A same-shape content change (one env value swapped) must also refuse the old id.
+run_nself prod 1 build --plan --json
+SAME="$(jget 'd["plan_id"]')"
+sed -i.bak 's/^MINIO_ROOT_USER=minio-user-Tq8Zk/MINIO_ROOT_USER=minio-user-Tq8Zj/' "$WORK/prod/project/.env" && rm -f "$WORK/prod/project/.env.bak"
+T2="$(tree prod)"
+run_nself prod 1 build --yes --plan-id "$SAME" --json
+[ "$RC" = 1 ] || fail "same-shape change: stale --plan-id exited $RC, want 1"
+[ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["error"]["code"])' "$WORK/out")" = E450 ] || fail "same-shape change is not E450"
+[ "$(tree prod)" = "$T2" ] || fail "the same-shape E450 build wrote"
+ok "same-shape content change: old --plan-id refused (E450)"
+
 # ---- dev fixture --------------------------------------------------------------
 mkproj dev dev-minimal
 run_nself dev 1 build --plan --json

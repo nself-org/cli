@@ -53,7 +53,7 @@ It is a cooperative lock between nself processes of the same user:
 - The token is in the holder file, so any reader of the project folder can export it and pass for a child. It stops accidents, not an adversary.
 - A child that outlives its parent runs unlocked: the parent's lock ended with the parent.
 - A `clean` that deletes `.nself/` while the lock is held orphans that lock. The next command locks the new file.
-- `nself build` takes this same lock (it no longer keeps a separate `.nself/build.lock` file), so a killed build leaves nothing stale. A build started while another process holds the lock fails and names the holder.
+- `nself build` takes this same lock (it no longer keeps a separate `.nself/build.lock` file), so a killed build leaves nothing stale. In v1.5 a build started while another process holds the lock fails and names the holder (E460 text); in v1.4 it waits up to 30 seconds, warns on stderr and builds unlocked, as the command guard does.
 
 ### Codes
 
@@ -78,7 +78,7 @@ The plan is the `contract:cli.change-plan` v1 document (schema `schemas/commands
 
 ### plan_id
 
-`plan_id` is the sha256 of the plan's canonical JSON. `nself build --yes --plan-id <id>` recomputes the plan and applies only if the id is unchanged; otherwise it fails with E450 and writes nothing. The id covers the plan as shown: which files change, by how many lines, and the effects and containers. It does not cover file contents, so a change that keeps every shown number the same (one secret value replaced by another of the same shape) does not change the id. Treat the id as "the plan I reviewed still describes the work", not as a content hash.
+`plan_id` is the sha256 of the plan's canonical JSON followed by, for every artifact in path order, the sha256 of the bytes the build would leave there. The id binds the content of the change, not only its shape, while the JSON carries no file bytes. `nself build --yes --plan-id <id>` recomputes the plan and applies only if the id is unchanged; otherwise it fails with E450 and writes nothing. Swapping one env value for another of the same length changes the id. One exception: a run that generates secrets (a first build) renders values that differ per run into the env files, so those files are bound by name only for that run; once the secrets are persisted the next plan binds them fully.
 
 ### Prod-class confirmation
 

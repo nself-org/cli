@@ -576,6 +576,10 @@ func TestPlanModeAutoInstall(t *testing.T) {
 // TLS server blocks write mode produces.
 func TestPlanModeHostEffects(t *testing.T) {
 	f := newPlanFixture(t, "local-tls")
+	// The CA is not trusted yet (seam; the real trust store is never read).
+	old := caTrusted
+	caTrusted = func() bool { return false }
+	t.Cleanup(func() { caTrusted = old })
 	res, _, _ := planBuild(t, f)
 	byKind := map[string]PlannedEffect{}
 	for _, e := range res.Planned.Effects {
