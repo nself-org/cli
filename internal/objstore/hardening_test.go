@@ -223,3 +223,52 @@ func TestSigV4CanonicalFromEscapedForms(t *testing.T) {
 		t.Error("a literal plus and %2B must sign identically")
 	}
 }
+
+// TestRedactPercentEncodedForms: the secret is redacted whatever way a server
+// echoes it: any hex case, any mix of literal and encoded bytes, "+" for space.
+func TestRedactPercentEncodedForms(t *testing.T) {
+	const secret = "a/b+c=d%e f"
+	c := &Client{SecretKey: secret}
+	cases := map[string]string{
+		"raw":                "x a/b+c=d%e f y",
+		"upper hex":          "x a%2Fb%2Bc%3Dd%25e%20f y",
+		"lower hex":          "x a%2fb%2bc%3dd%25e%20f y",
+		"mixed hex case":     "x a%2Fb%2bc%3Dd%25e%20f y",
+		"half encoded":       "x a/b%2bc=d%25e f y",
+		"plus for space":     "x a%2fb%2bc%3dd%25e+f y",
+		"every byte encoded": "x %61%2f%62%2b%63%3d%64%25%65%20%66 y",
+	}
+	for name, in := range cases {
+		out := c.redact(in)
+		if !strings.Contains(out, "[redacted]") || !strings.HasPrefix(out, "x ") || !strings.HasSuffix(out, " y") || len(out) > len("x [redacted] y") {
+			t.Errorf("%s: redact(%q) = %q", name, in, out)
+		}
+	}
+	if got := c.redact("nothing to hide: a/b"); strings.Contains(got, "redacted") {
+		t.Errorf("redacted text that is not the secret: %q", got)
+	}
+}
+
+// TestErrorRedactsLowercaseEncodedSecretBeforeTruncating: a server echoes the
+// secret percent-encoded with lowercase hex across the 300-character cut.
+func TestErrorRedactsLowercaseEncodedSecretBeforeTruncating(t *testing.T) {
+	const secret = "Sup3r/Secret+Value=0123456789"
+	enc := strings.NewReplacer("/", "%2f", "+", "%2b", "=", "%3d").Replace(secret)
+	for _, pad := range []int{250, 280, 290, 295, 299} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = fmt.Fprintf(w, "<Error><Code>AccessDenied</Code><Message>%s%s tail</Message></Error>", strings.Repeat("x", pad), enc)
+		}))
+		c := &Client{Endpoint: srv.URL, AccessKey: "a", SecretKey: secret}
+		_, err := c.List(context.Background(), "bkt-one", "")
+		srv.Close()
+		if err == nil {
+			t.Fatal("want an error")
+		}
+		for _, frag := range []string{"Sup3r", "Secret", "%2f", "%2b", "Value", "0123"} {
+			if strings.Contains(err.Error(), frag) {
+				t.Errorf("pad %d: error leaks %q: %v", pad, frag, err)
+			}
+		}
+	}
+}

@@ -32,7 +32,8 @@ var (
 // unique tables, safe NFC member paths that are unique under NFC and case
 // folding (so two members never land on one file of a case-insensitive or
 // normalising file system), and storage objects that each name their own
-// listed file with the same SHA-256 and length, with (bucket, key) unique.
+// listed file with the same SHA-256 and length, with (bucket, key) unique and no
+// file under storage/objects/ left without an object.
 func (m *Manifest) Validate() error {
 	err := m.validate()
 	if err == nil || errors.Is(err, ErrUnsafePath) || errors.Is(err, ErrDuplicate) {
@@ -116,9 +117,11 @@ func checkParents(files []File, fold map[string]string) error {
 	return nil
 }
 
-// checkObjects binds every storage object to its own listed file.
+// checkObjects binds every storage object to its own listed file, and every
+// file under storage/objects/ to an object (no unreferenced object bytes).
 func (m *Manifest) checkObjects(byPath map[string]File) error {
 	seen := make(map[[2]string]bool, len(m.Storage.Objects))
+	used := make(map[string]bool, len(m.Storage.Objects))
 	for _, o := range m.Storage.Objects {
 		if o.Bytes < 0 || !sha256Re.MatchString(o.SHA256) {
 			return fmt.Errorf("object %q/%q has an invalid size or sha256", o.Bucket, o.Key)
@@ -141,6 +144,12 @@ func (m *Manifest) checkObjects(byPath map[string]File) error {
 			return fmt.Errorf("object %q/%q: member %s is not listed in files", o.Bucket, o.Key, o.Member)
 		case f.SHA256 != o.SHA256 || f.Bytes != o.Bytes:
 			return fmt.Errorf("object %q/%q: sha256 or bytes differ from file %s", o.Bucket, o.Key, o.Member)
+		}
+		used[o.Member] = true
+	}
+	for p := range byPath {
+		if strings.HasPrefix(p, StorageMemberPrefix) && !used[p] {
+			return fmt.Errorf("file %q is under %s but no storage.objects entry names it", p, StorageMemberPrefix)
 		}
 	}
 	return nil

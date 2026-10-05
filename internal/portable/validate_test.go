@@ -41,12 +41,18 @@ func TestValidateBindsObjectsToFiles(t *testing.T) {
 		"object listed twice":             func(m *Manifest) { m.Storage.Objects = append(m.Storage.Objects, m.Storage.Objects[0]) },
 		"object with a bad sha256":        func(m *Manifest) { m.Storage.Objects[0].SHA256 = "ABC" },
 		"object with an empty key":        func(m *Manifest) { m.Storage.Objects[0].Key = "" },
-		"table listed twice":              func(m *Manifest) { m.DB.Tables = append(m.DB.Tables, m.DB.Tables[0]) },
-		"table listed twice, other hash":  func(m *Manifest) { t2 := m.DB.Tables[0]; t2.Hash = "7"; m.DB.Tables = append(m.DB.Tables, t2) },
-		"table hash with leading zeros":   func(m *Manifest) { m.DB.Tables[0].Hash = "007" },
-		"table hash minus zero":           func(m *Manifest) { m.DB.Tables[0].Hash = "-0" },
-		"table hash with a plus sign":     func(m *Manifest) { m.DB.Tables[0].Hash = "+5" },
-		"table hash empty":                func(m *Manifest) { m.DB.Tables[0].Hash = "" },
+		"file under storage/objects with no object": func(m *Manifest) {
+			m.Files = append(m.Files, File{Path: StorageMemberPrefix + strings.Repeat("a", 64), SHA256: sumHex("z"), Bytes: 1})
+		},
+		"file under storage/objects with a free-form name": func(m *Manifest) {
+			m.Files = append(m.Files, File{Path: StorageMemberPrefix + "notes.txt", SHA256: sumHex("z"), Bytes: 1})
+		},
+		"table listed twice":             func(m *Manifest) { m.DB.Tables = append(m.DB.Tables, m.DB.Tables[0]) },
+		"table listed twice, other hash": func(m *Manifest) { t2 := m.DB.Tables[0]; t2.Hash = "7"; m.DB.Tables = append(m.DB.Tables, t2) },
+		"table hash with leading zeros":  func(m *Manifest) { m.DB.Tables[0].Hash = "007" },
+		"table hash minus zero":          func(m *Manifest) { m.DB.Tables[0].Hash = "-0" },
+		"table hash with a plus sign":    func(m *Manifest) { m.DB.Tables[0].Hash = "+5" },
+		"table hash empty":               func(m *Manifest) { m.DB.Tables[0].Hash = "" },
 		"member not in NFC": func(m *Manifest) {
 			m.Files = append(m.Files, File{Path: "db/café.sql", SHA256: sumHex("a"), Bytes: 1})
 		},
@@ -174,5 +180,41 @@ func TestManifestHashAlgorithmsKeepCaseDistinctNames(t *testing.T) {
 		return strings.Replace(s, `"hash_algorithms": {}`, `"hash_algorithms": {"bcrypt": 1, "bcrypt": 2}`, 1)
 	})
 	_, err := Open(dir)
+	wantCode(t, err, "E516", ErrManifest)
+}
+
+// TestUnreferencedStorageFileRefused: bytes under storage/objects/ that no
+// object names are refused by the Writer and by Open.
+func TestUnreferencedStorageFileRefused(t *testing.T) {
+	mem, _ := StorageMember("b", "k")
+	w, _ := NewWriter(filepath.Join(t.TempDir(), "w"))
+	w.Now = fixedNow
+	if _, err := w.WriteFile(mem, strings.NewReader("x")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Finish(baseManifest()); err == nil || !strings.Contains(err.Error(), "no storage.objects entry") {
+		t.Fatalf("Finish with an unreferenced object file: %v", err)
+	}
+
+	dir := filepath.Join(t.TempDir(), "b")
+	w, _ = NewWriter(dir)
+	w.Now = fixedNow
+	f, err := w.WriteFile(mem, strings.NewReader("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := baseManifest()
+	o, _ := NewObject("b", "k", f)
+	m.Storage.Objects = []Object{o}
+	if _, err := w.Finish(m); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(dir); err != nil {
+		t.Fatalf("referenced object file must open: %v", err)
+	}
+	editManifest(t, dir, func(m map[string]any) {
+		m["storage"].(map[string]any)["objects"] = []any{}
+	})
+	_, err = Open(dir)
 	wantCode(t, err, "E516", ErrManifest)
 }

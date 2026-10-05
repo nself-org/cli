@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 )
@@ -41,16 +40,42 @@ func (e *Error) IsNotFound() bool { return e.Status == http.StatusNotFound }
 
 var signatureRe = regexp.MustCompile(`(?i)(signature=|signature:\s*)[0-9a-f]{16,}`)
 
-// redact removes the secret key (raw and URL-escaped forms) and any SigV4
-// signature from s. It runs on every string that reaches an error.
+// redact removes the secret key and any SigV4 signature from s. It runs on
+// every string that reaches an error, and before any truncation.
+// The secret is matched byte for byte, and in every percent-encoded form: each
+// byte may appear literally or as %XX with either hex case, in any mix, and a
+// space also as "+". So a server that echoes the secret URL-encoded, with
+// lowercase hex or half encoded, is still redacted.
 func (c *Client) redact(s string) string {
 	if c.SecretKey != "" {
-		for _, v := range []string{c.SecretKey, url.QueryEscape(c.SecretKey), url.PathEscape(c.SecretKey),
-			uriEncode(c.SecretKey, true)} {
-			s = strings.ReplaceAll(s, v, "[redacted]")
+		s = strings.ReplaceAll(s, c.SecretKey, "[redacted]")
+		if re := secretPattern(c.SecretKey); re != nil {
+			s = re.ReplaceAllString(s, "[redacted]")
 		}
 	}
 	return signatureRe.ReplaceAllString(s, "${1}[redacted]")
+}
+
+// secretPattern builds a regexp matching secret with each byte either literal
+// or percent-encoded (hex case-insensitive).
+func secretPattern(secret string) *regexp.Regexp {
+	var b strings.Builder
+	for i := 0; i < len(secret); i++ {
+		c := secret[i]
+		alts := []string{fmt.Sprintf("(?i:%%%02X)", c)}
+		if c < 0x80 {
+			alts = append(alts, regexp.QuoteMeta(string(rune(c))))
+		}
+		if c == ' ' {
+			alts = append(alts, `\+`)
+		}
+		b.WriteString("(?:" + strings.Join(alts, "|") + ")")
+	}
+	re, err := regexp.Compile(b.String())
+	if err != nil {
+		return nil
+	}
+	return re
 }
 
 // apiError builds an *Error from a non-success response and closes its body.
