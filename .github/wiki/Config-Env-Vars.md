@@ -130,6 +130,7 @@ name pairs, and rclone would otherwise fail silently or send an empty secret.
 | `BACKUP_ACCESS_KEY` | string | *(unset)* | No | **Accepted alias** for `BACKUP_S3_ACCESS_KEY_ID`. The canonical name wins when both are set. |
 | `BACKUP_SECRET_KEY` | string | *(unset)* | No | **Accepted alias** for `BACKUP_S3_SECRET_ACCESS_KEY`. The canonical name wins when both are set. |
 | `NSELF_BACKUP_HEARTBEAT_REMOTE` | string | *(unset)* | No | rclone remote that receives `<project>/backup.json` after each successful `nself backup stream` upload (contract:cli.backup-heartbeat v1). The `--heartbeat-to` flag wins. See [[cmd-backup]]. |
+| `NSELF_BACKUP_NO_AUTO_KEY` | bool | *(unset)* | No | Set to `1` to stop `nself backup stream` and `backup create` from creating an age identity when no recipient is configured (v1.5, `NSELF_V15=1`). With no recipient the command then refuses with `E224`. Without v1.5 the refusal is unchanged and this has no effect. The identity, when created, is `~/.config/nself/<project>-age.key`; losing it makes the backups unrecoverable. See [[cmd-backup]]. |
 
 **Why the aliases exist.** `BACKUP_ACCESS_KEY` / `BACKUP_SECRET_KEY` were already
 in use in the wild (they are the names in `ntask/backend/.env.example`) but were

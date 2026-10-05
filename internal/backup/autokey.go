@@ -257,10 +257,32 @@ IMPORTANT: this file is the only way to decrypt these backups. If it is lost,
 every backup encrypted to it is unrecoverable and nSelf cannot recover it.
 Back it up now, off this machine (a password manager or an offline drive).
 After copying it, run: touch %[1]s%[3]s   (silences the nself doctor reminder)
-Restore with: nself backup restore-remote --from <backup> --key %[1]s
+Restore with: nself backup restore-remote --from <backup>   (finds this file)
 Anyone who can read this file can read the backups. To harden: move the
 identity off this host and keep only the recipient here (BACKUP_AGE_RECIPIENTS).
 `, id.Path, id.Recipient, BackedUpMarkerSuffix)
+}
+
+// DefaultIdentity finds the identity to decrypt with when no --key or
+// --identity was given: <project>-age.key (init-key and the auto identity),
+// then <project>-backup-age.key, then age-key.txt, all under ~/.config/nself.
+// Only existence is checked; the file is never read. None found is E223.
+func DefaultIdentity(project string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", errs.Wrap("E223", "cannot find the home directory to look for the backup identity", err)
+	}
+	dir := filepath.Join(home, ".config", "nself")
+	names := []string{"age-key.txt"}
+	if project != "" && project == filepath.Base(project) && !strings.HasPrefix(project, ".") {
+		names = []string{project + "-age.key", project + "-backup-age.key", "age-key.txt"}
+	}
+	for _, n := range names {
+		if fi, err := os.Stat(filepath.Join(dir, n)); err == nil && fi.Mode().IsRegular() {
+			return filepath.Join(dir, n), nil
+		}
+	}
+	return "", NewIdentityMissing(filepath.Join(dir, names[0]))
 }
 
 // NewIdentityMissing is the E223 error for a decrypt that has no identity.

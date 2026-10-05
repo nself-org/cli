@@ -14,9 +14,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -33,11 +31,13 @@ func RestoreFromRemote(ctx context.Context, cfg *config.Config, from, keyPath st
 		return fmt.Errorf("--from destination required")
 	}
 
-	if keyPath == "" {
-		keyPath = filepath.Join(os.Getenv("HOME"), ".config", "nself", "age-key.txt")
-	}
-
 	encrypted := strings.HasSuffix(from, ".age")
+	if encrypted && keyPath == "" {
+		var err error
+		if keyPath, err = DefaultIdentity(cfg.ProjectName); err != nil {
+			return err
+		}
+	}
 
 	// Native destinations (path://, host://) stream through the Destination
 	// interface; only rclone remotes need the rclone binary.

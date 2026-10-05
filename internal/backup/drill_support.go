@@ -52,14 +52,7 @@ func resolveIdentity(project, flag string) (string, error) {
 		}
 		return flag, nil
 	}
-	home, _ := os.UserHomeDir()
-	for _, n := range []string{project + "-backup-age.key", "age-key.txt"} {
-		p := filepath.Join(home, ".config", "nself", n)
-		if _, err := os.Stat(p); err == nil {
-			return p, nil
-		}
-	}
-	return "", fmt.Errorf("%w: no age identity found; pass --identity <file>", errs.ErrBackupDecryptFailed)
+	return DefaultIdentity(project)
 }
 
 func decryptAge(ctx context.Context, identity, in, out string) error {

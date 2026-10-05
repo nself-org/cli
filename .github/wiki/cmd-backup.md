@@ -148,8 +148,8 @@ With `NSELF_V15=1`, `backup stream` and `backup create` (encryption on) work on 
 
 ```bash
 NSELF_V15=1 nself backup stream --to r2:mybucket/backups
-# restore with the identity it printed
-nself backup restore-remote --from r2:mybucket/backups/<object>.age --key ~/.config/nself/<project>-age.key
+# restore finds the identity by itself
+nself backup restore-remote --from r2:mybucket/backups/<object>.age
 ```
 
 ### If the key is lost
@@ -159,6 +159,8 @@ nself backup restore-remote --from r2:mybucket/backups/<object>.age --key ~/.con
 1. Right after the first backup, copy `~/.config/nself/<project>-age.key` somewhere that is not this machine: a password manager attachment or an offline drive.
 2. Then run `touch ~/.config/nself/<project>-age.key.backed-up`. The marker is an empty file you create yourself; the advisory `nself doctor` backup hint stays quiet only when it exists. Nothing checks that the copy is real.
 3. Prove it once: restore a backup using the copy (`nself backup restore-remote --key <copy>`).
+
+`restore-remote` and `backup drill` look for the identity in this order when `--key` / `--identity` is not given: `~/.config/nself/<project>-age.key`, `<project>-backup-age.key`, then `age-key.txt`. If none exists they stop with `E223`.
 
 ### Threat model
 

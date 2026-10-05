@@ -310,8 +310,8 @@ func TestAutoKeyCreateFillsRecipientWithoutMutatingConfig(t *testing.T) {
 	}
 }
 
-// End to end with local fixtures: fake pg_dump, real age and rclone, a local
-// rclone destination. First run creates the identity; the object restores
+// End to end with local fixtures: fake pg_dump, real age and rclone, a named local
+// rclone remote from the environment. First run creates the identity; the object restores
 // with it.
 func TestAutoKeyStreamRoundTrip(t *testing.T) {
 	home, notice, logs := autoKeyEnv(t)
@@ -335,10 +335,12 @@ func TestAutoKeyStreamRoundTrip(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("RCLONE_CONFIG", filepath.Join(t.TempDir(), "none.conf"))
+	// A named remote configured through the environment (RCLONE_CONFIG_<NAME>_TYPE).
+	t.Setenv("RCLONE_CONFIG_NSELFTEST_TYPE", "local")
 	dest := t.TempDir()
 	cfg := streamTestConfig()
 	cfg.ProjectName = "proj"
-	res, err := Stream(context.Background(), cfg, StreamOptions{To: ":local:" + dest})
+	res, err := Stream(context.Background(), cfg, StreamOptions{To: "nselftest:" + dest})
 	if err != nil {
 		t.Fatalf("stream: %v", err)
 	}
@@ -357,7 +359,8 @@ func TestAutoKeyStreamRoundTrip(t *testing.T) {
 	if bytes.Contains(raw, []byte("PGDMP")) {
 		t.Fatal("the object is not encrypted")
 	}
-	if err := RestoreFromRemote(context.Background(), cfg, ":local:"+obj, keyPath); err != nil {
+	// No --key: restore finds the auto identity by itself.
+	if err := RestoreFromRemote(context.Background(), cfg, "nselftest:"+obj, ""); err != nil {
 		t.Fatalf("restore-remote with the auto identity: %v", err)
 	}
 	if b, _ := os.ReadFile(out); string(b) != "PGDMP-fixture-bytes" {
@@ -366,7 +369,7 @@ func TestAutoKeyStreamRoundTrip(t *testing.T) {
 	// A second run reuses the same identity and stays silent.
 	before, _ := os.ReadFile(keyPath)
 	notice.Reset()
-	if _, err := Stream(context.Background(), cfg, StreamOptions{To: ":local:" + dest}); err != nil {
+	if _, err := Stream(context.Background(), cfg, StreamOptions{To: "nselftest:" + dest}); err != nil {
 		t.Fatal(err)
 	}
 	if after, _ := os.ReadFile(keyPath); !bytes.Equal(before, after) || notice.Len() != 0 {
@@ -382,5 +385,41 @@ func TestAutoKeyErrorCodesRegistered(t *testing.T) {
 	}
 	if e := NewIdentityMissing("/x/k"); !strings.Contains(e.Error(), "[E223]") {
 		t.Errorf("E223: %v", e)
+	}
+}
+
+// restore-remote and the drill search <project>-age.key, then
+// <project>-backup-age.key, then age-key.txt, and answer E223 when none exists.
+func TestAutoKeyDefaultIdentityOrderAndE223(t *testing.T) {
+	home, _, _ := autoKeyEnv(t)
+	dir := filepath.Join(home, ".config", "nself")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var ce *errs.CLIError
+	if _, err := DefaultIdentity("proj"); !errors.As(err, &ce) || ce.Code != "E223" || !strings.Contains(err.Error(), "proj-age.key") {
+		t.Fatalf("none present: want E223 naming the default path, got %v", err)
+	}
+	if _, err := resolveIdentity("proj", ""); !errors.As(err, &ce) || ce.Code != "E223" {
+		t.Fatalf("drill with no identity: want E223, got %v", err)
+	}
+	if err := RestoreFromRemote(context.Background(), streamTestConfig(), "path://"+t.TempDir()+"/x.dump.age", ""); err == nil || !strings.Contains(err.Error(), "[E223]") {
+		t.Fatalf("restore-remote with no identity: want E223, got %v", err)
+	}
+	order := []string{"age-key.txt", "proj-backup-age.key", "proj-age.key"}
+	for _, n := range order {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, err := DefaultIdentity("proj")
+		if err != nil || filepath.Base(got) != n {
+			t.Fatalf("after adding %s: got %q %v", n, got, err)
+		}
+	}
+	// an explicit --identity wins over every default
+	flag := filepath.Join(home, "mine.key")
+	_ = os.WriteFile(flag, []byte("x"), 0o600)
+	if got, err := resolveIdentity("proj", flag); err != nil || got != flag {
+		t.Fatalf("flag: %q %v", got, err)
 	}
 }
