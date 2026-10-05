@@ -1,51 +1,61 @@
 #!/usr/bin/env bash
+# run.sh: time-to-healthy from a real golden-path run (P7-TRUTH-22, EPIC TRUTH D13).
+#
+# Usage: .github/benchmarks/run.sh <golden-path-report.json> <out.json>
+#
+# Reads the report scripts/golden-path.sh wrote and runs
+# `perfbench healthy -report <report> -json` (tools/perfbench, P7-GUARD-07)
+# into <out.json>: a perfbench/v1 document whose only metric is time_to_healthy
+# (seconds, the sum of golden-path steps 3-6). Nothing else is measured or
+# written here; no number is typed or estimated.
+#
+# The document's "sha" is the measured commit: GITHUB_SHA in CI, else the git HEAD
+# of this checkout (plus -dirty when tracked files are modified). perfbench's
+# healthy subcommand leaves it empty, so run.sh fills it in; with no commit to
+# name, run.sh fails rather than publish an unattributed number.
+#
+# Exit codes: 0 measured; 1 the report is missing or time_to_healthy is not
+# measurable (steps 3-6 did not all pass); 2 bad usage. On any failure <out.json>
+# is left untouched.
 set -euo pipefail
 
-RESULTS_DIR="$(dirname "$0")/results"
-mkdir -p "$RESULTS_DIR"
-DATE=$(date +%Y-%m-%d)
-OUTPUT="$RESULTS_DIR/${DATE}-local.json"
+if [ "$#" -ne 2 ]; then
+  echo "usage: run.sh <golden-path-report.json> <out.json>" >&2
+  exit 2
+fi
+report=$1
+out=$2
 
-echo "Running nSelf benchmark harness..."
-echo "Output: $OUTPUT"
-echo ""
-
-# ── Setup time ────────────────────────────────────────────────────────────────
-echo "[1/3] Measuring setup time..."
-START=$(date +%s%N)
-# Assumes nself is installed and running
-nself doctor --quiet 2>/dev/null && echo "nself already running — skipping boot timing"
-END=$(date +%s%N)
-SETUP_MS=$(( (END - START) / 1000000 ))
-
-# ── RPS at 1 CPU ────────────────────────────────────────────────────────────
-echo "[2/3] Running RPS benchmark (requires oha + running nself stack)..."
-RPS=0
-if command -v oha &>/dev/null; then
-  OHA_RESULT=$(oha --no-tui -n 5000 -c 20 \
-    -H "Content-Type: application/json" \
-    http://localhost:8080/healthz 2>/dev/null | grep "Requests/sec" | awk '{print $2}')
-  RPS=${OHA_RESULT:-0}
+if [ ! -f "$report" ]; then
+  echo "run.sh: golden-path report not found: $report" >&2
+  exit 1
 fi
 
-# ── Feature coverage ─────────────────────────────────────────────────────────
-echo "[3/3] Feature coverage check..."
-COVERAGE_SCORE=15  # from feature-matrix.json (manual)
+# perfbench runs from the repo root, so resolve both paths first.
+report="$(cd "$(dirname "$report")" && pwd)/$(basename "$report")"
+mkdir -p "$(dirname "$out")"
+out="$(cd "$(dirname "$out")" && pwd)/$(basename "$out")"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# ── Write results ─────────────────────────────────────────────────────────────
-cat > "$OUTPUT" << JSON
-{
-  "date": "${DATE}",
-  "runner": "local",
-  "product": "nself",
-  "setup_ms": ${SETUP_MS},
-  "rps_1cpu": ${RPS},
-  "feature_coverage_score": ${COVERAGE_SCORE},
-  "methodology": "See METHODOLOGY.md"
-}
-JSON
+tmp="$(mktemp "${out}.XXXXXX")"
+trap 'rm -f "$tmp" "$tmp.sha"' EXIT
 
-echo ""
-echo "Results written to $OUTPUT"
-echo ""
-cat "$OUTPUT"
+sha="${GITHUB_SHA:-}"
+if [ -z "$sha" ]; then
+  sha="$(git -C "$root" rev-parse HEAD)"
+  if [ -n "$(git -C "$root" status --porcelain --untracked-files=no)" ]; then
+    sha="${sha}-dirty"
+  fi
+fi
+
+(cd "$root" && go run -mod=vendor ./tools/perfbench healthy -report "$report" -json) > "$tmp"
+# Set "sha" in place; key order and 2-space indent are kept.
+BENCH_SHA="$sha" python3 -c '
+import json, os, sys
+doc = json.load(sys.stdin)
+doc["sha"] = os.environ["BENCH_SHA"]
+sys.stdout.write(json.dumps(doc, indent=2) + "\n")
+' < "$tmp" > "$tmp.sha"
+mv "$tmp.sha" "$out"
+rm -f "$tmp"
+cat "$out"

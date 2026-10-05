@@ -1,59 +1,41 @@
-# Benchmark Methodology
+# Benchmark methodology
 
-## Infrastructure
+## What is measured
 
-- **Server type:** Hetzner CX23 (2 vCPU AMD, 4 GB RAM, 40 GB SSD, NVMe)
-- **Region:** Falkenstein, Germany (fsn1)
-- **OS:** Ubuntu 24.04 LTS, fresh image, no custom tuning
-- **Network:** no VPN, direct Hetzner network
+`time_to_healthy`, in seconds: the sum of the durations of golden-path steps 3
+to 6, taken from the report `scripts/golden-path.sh` writes to
+`/tmp/golden-path-report.json`.
 
-## nSelf Setup
+| Step | Name in the report | What it does |
+|---|---|---|
+| 3 | init | `nself init` in a fresh project directory |
+| 4 | build | `nself build` |
+| 5 | start | `nself start` |
+| 6 | health | waits until the stack answers its health checks |
 
-```bash
-curl -fsSL https://install.nself.org/cli | bash
-nself init --name bench-test --no-monitoring
-nself start
-```
+Each step's duration is the whole-second wall-clock figure the golden path
+recorded when it ran the step. The harness adds the four numbers and re-times
+nothing. A step that did not pass (or warned past its budget and still passed)
+is judged by the golden path itself: `pass` and `warn` count, anything else makes
+the time not measurable and the harness exits non-zero.
 
-Timing starts from `curl` start and ends when `nself doctor` reports all-green.
+## Environment
 
-## Competitor Setup
+The scheduled run is a GitHub-hosted `ubuntu-latest` runner with its Docker
+daemon, building the checked-out ref (`GOLDEN_PATH_SOURCE=local`) with
+`AI_AUTO_INSTALL=false`, so no AI model download is timed. Numbers from a shared
+runner vary between runs; one quarterly run is one sample (`n` is 1 in the
+output), not a distribution.
 
-Each competitor follows its official quickstart exactly, using the latest version at
-benchmark date. No custom configuration is applied. Timing ends when the official
-healthcheck returns 200.
+## Output
 
-## Load Test
+A `perfbench/v1` JSON document (see `tools/perfbench`) holding the single metric
+`time_to_healthy` with unit `s`, uploaded as the `benchmark-results-<run id>`
+workflow artifact together with the golden-path report it was read from.
 
-```bash
-# Install oha (HTTP benchmark tool)
-brew install oha  # or cargo install oha
+## What is not measured
 
-# Seed 10,000 rows
-./seed.sh
-
-# Run load test
-oha --no-tui -n 10000 -c 50 \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  --data '{"query":"{ users(where: {id: {_eq: \"$RANDOM_ID\"}}) { id name } }"}' \
-  http://localhost:8080/v1/graphql
-```
-
-## Cost Per 10k Requests
-
-Calculated at benchmark date using public pricing:
-- nSelf: VPS cost per hour ÷ requests per hour × 10,000
-- Competitors: published API pricing per request × 10,000 (where applicable)
-
-Self-hosted competitors: same VPS cost formula as nSelf.
-
-## Feature Coverage Matrix
-
-Manually evaluated. Each row is checked against official documentation. Contested
-entries link to the documentation source. Community corrections accepted via PR.
-
-## Disclosure
-
-Results are honest: if a competitor wins on a metric, we publish it. We update quarterly
-and re-run whenever a competitor ships a major version. See `results/` for raw data.
+Requests per second, setup time of a competitor, cost per request and feature
+coverage are not measured by this harness and are not reported. A competitor
+comparison needs a measured, repeatable method for each competitor first; until
+one exists, none is published.
