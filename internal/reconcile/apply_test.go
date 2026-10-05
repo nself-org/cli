@@ -15,6 +15,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -28,7 +29,7 @@ import (
 // mkPlan finalises a plan for the confirm tests.
 func mkPlan(t *testing.T, env string, arts []Artifact, effs []Effect) Plan {
 	t.Helper()
-	p := Plan{Command: CmdBuild, Env: env, Artifacts: arts, Effects: effs}
+	p := Plan{Command: CmdBuild, Env: env, Artifacts: arts, Effects: effs, Containers: Containers{Known: true}}
 	if err := p.Finalize(); err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +113,7 @@ func TestApplyRefusesBeforeWriting(t *testing.T) {
 	f := loadFixture(t, "prod-ssl")
 	before := treeHash(t, f.root)
 	hooked := false
-	_, err := Apply(context.Background(), Request{ProjectDir: f.project}, ApplyOptions{BeforeWrite: func() error { hooked = true; return nil }})
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}, ApplyOptions{BeforeWrite: func() error { hooked = true; return nil }})
 	wantE403(t, err)
 	if hooked {
 		t.Fatal("BeforeWrite ran for a refused apply")
@@ -126,7 +127,7 @@ func TestApplyRefusesBeforeWriting(t *testing.T) {
 // writes nothing; the id of the current plan applies.
 func TestApplyPlanIDMismatch(t *testing.T) {
 	f := loadFixture(t, "dev-minimal")
-	req := Request{ProjectDir: f.project, Seed: []byte("seed")}
+	req := Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("seed")}
 	shown := planOf(t, f, nil)
 	// A new key adds a line to the generated env files, so the plan changes.
 	writeFile(t, f.project+"/.env", readFile(t, f.project+"/.env")+"MONITORING_ENABLED=true\n", 0o600)
@@ -152,7 +153,7 @@ func TestApplyWritesWhatWasPlanned(t *testing.T) {
 		root := f.root
 		env := strings.SplitN(readFile(t, f.project+"/.env"), "POSTGRES_PASSWORD=", 2)[0]
 		writeFile(t, f.project+"/.env", env, 0o600)
-		if _, err := Apply(context.Background(), Request{ProjectDir: f.project, Seed: []byte(seed)}, ApplyOptions{Yes: true}); err != nil {
+		if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte(seed)}, ApplyOptions{Yes: true}); err != nil {
 			t.Fatal(err)
 		}
 		out := map[string]string{}
@@ -256,7 +257,7 @@ func TestBuildLockAfterKill(t *testing.T) {
 	}
 	os.Unsetenv(oplock.EnvToken)
 	before := treeHash(t, f.root)
-	_, err = Apply(context.Background(), Request{ProjectDir: f.project}, ApplyOptions{Yes: true})
+	_, err = Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}, ApplyOptions{Yes: true})
 	if !errors.Is(err, oplock.ErrHeld) {
 		t.Fatalf("a build under a held lock must fail with ErrHeld, got %v", err)
 	}
@@ -272,7 +273,7 @@ func TestBuildLockAfterKill(t *testing.T) {
 	}
 	_ = cmd.Wait()
 	for i := 1; i <= 2; i++ {
-		if _, err := Apply(context.Background(), Request{ProjectDir: f.project}, ApplyOptions{Yes: true}); err != nil {
+		if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}, ApplyOptions{Yes: true}); err != nil {
 			t.Fatalf("build %d after the holder was killed: %v", i, err)
 		}
 	}
@@ -282,7 +283,7 @@ func TestBuildLockAfterKill(t *testing.T) {
 // only ids longer than the header prefix).
 func TestApplyShortPlanID(t *testing.T) {
 	f := loadFixture(t, "dev-minimal")
-	_, err := Apply(context.Background(), Request{ProjectDir: f.project}, ApplyOptions{PlanID: "abc"})
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}, ApplyOptions{PlanID: "abc"})
 	if d := errs.Describe(err); d == nil || d.Code != "E450" || !strings.Contains(err.Error()+d.Cause, "abc") {
 		t.Fatalf("want E450 naming the id, got %v", err)
 	}
@@ -293,7 +294,7 @@ func TestApplyBeforeWriteError(t *testing.T) {
 	f := loadFixture(t, "dev-minimal")
 	before := treeHash(t, f.root)
 	boom := errors.New("hook failed")
-	if _, err := Apply(context.Background(), Request{ProjectDir: f.project}, ApplyOptions{BeforeWrite: func() error { return boom }}); !errors.Is(err, boom) {
+	if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}, ApplyOptions{BeforeWrite: func() error { return boom }}); !errors.Is(err, boom) {
 		t.Fatalf("got %v", err)
 	}
 	if after := treeHash(t, f.root); after != before {
@@ -325,31 +326,204 @@ func TestPlanIDBindsContent(t *testing.T) {
 		t.Fatal("a same-shape content change did not change the plan id")
 	}
 	before := treeHash(t, f.root)
-	_, err := Apply(context.Background(), Request{ProjectDir: f.project, Seed: []byte("fixture-seed")}, ApplyOptions{PlanID: a.PlanID})
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("fixture-seed")}, ApplyOptions{PlanID: a.PlanID})
 	if d := errs.Describe(err); d == nil || d.Code != "E450" {
 		t.Fatalf("want E450, got %v", err)
 	}
 	if treeHash(t, f.root) != before {
 		t.Fatal("E450 apply wrote")
 	}
-	if _, err := Apply(context.Background(), Request{ProjectDir: f.project, Seed: []byte("fixture-seed")}, ApplyOptions{PlanID: b.PlanID}); err != nil {
+	if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("fixture-seed")}, ApplyOptions{PlanID: b.PlanID}); err != nil {
 		t.Fatalf("the current id must apply: %v", err)
 	}
 }
 
-// TestPlanIDStableAcrossRunsWithGeneratedSecrets: a fresh project whose secrets
-// are generated at apply gets the same plan id from --plan and from the apply
-// (different random seeds), so --plan-id works on a first build.
-func TestPlanIDStableAcrossRunsWithGeneratedSecrets(t *testing.T) {
-	f := loadFixture(t, "dev-minimal")
+// dropSecrets removes the pre-seeded secrets from a fixture so the build must
+// generate them (the first build of a project).
+func dropSecrets(t *testing.T, f *fixture) {
+	t.Helper()
 	env := strings.SplitN(readFile(t, f.project+"/.env"), "POSTGRES_PASSWORD=", 2)[0]
-	writeFile(t, f.project+"/.env", env, 0o600)
-	a := planOf(t, f, func(r *Request) { r.Seed = []byte("one") })
-	b := planOf(t, f, func(r *Request) { r.Seed = []byte("two") })
-	if a.PlanID != b.PlanID {
-		t.Fatal("generated secrets must not change the plan id")
+	writeFile(t, f.project+"/.env", env+"POSTGRES_PASSWORD="+fixtureValue(t, "POSTGRES_PASSWORD")+"\n"+
+		"HASURA_GRAPHQL_ADMIN_SECRET="+fixtureValue(t, "HASURA_GRAPHQL_ADMIN_SECRET")+"\n", 0o600)
+}
+
+// TestPlanCoversGeneratedSecrets (review M2a, Codex 2): a build that generates
+// secrets lists .env.secrets as an artifact with planned bytes, refuses
+// --plan-id with E451 (random values cannot be bound), and an apply without
+// --plan-id writes exactly the confirmed render.
+func TestPlanCoversGeneratedSecrets(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	dropSecrets(t, f)
+	p := planOf(t, f, nil)
+	var listed bool
+	for _, a := range p.Artifacts {
+		listed = listed || (a.Path == ".env.secrets" && a.Action == ActionAdd && a.DiffLines > 0)
 	}
-	if _, err := Apply(context.Background(), Request{ProjectDir: f.project}, ApplyOptions{PlanID: a.PlanID}); err != nil {
-		t.Fatalf("apply with the shown id: %v", err)
+	if !listed {
+		t.Fatalf(".env.secrets is not a planned artifact: %+v", p.Artifacts)
+	}
+	before := treeHash(t, f.root)
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}, ApplyOptions{PlanID: p.PlanID, Yes: true})
+	if d := errs.Describe(err); d == nil || d.Code != "E451" {
+		t.Fatalf("want E451, got %v", err)
+	}
+	if treeHash(t, f.root) != before {
+		t.Fatal("E451 apply wrote")
+	}
+	if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("s")}, ApplyOptions{Yes: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(f.project + "/.env.secrets"); err != nil {
+		t.Fatal("apply did not persist the generated secrets")
+	}
+}
+
+// TestPlanCoversPluginFragmentAndModes: a fragment rewritten in place is a plan
+// artifact bound by the id (a port edited after the plan is E450), and a
+// permission-only change (a 0644 .env) is shown as a change with diff_lines 0
+// and applied.
+func TestPlanCoversPluginFragmentAndModes(t *testing.T) {
+	f := loadFixture(t, "dev-plugin")
+	p := planOf(t, f, nil)
+	var frag bool
+	for _, a := range p.Artifacts {
+		frag = frag || (a.Path == PluginsPrefix+"nself-alpha/docker-compose.plugin.yml" && a.Action == ActionChange)
+	}
+	if !frag {
+		t.Fatalf("the rewritten plugin fragment is not a plan artifact: %+v", p.Artifacts)
+	}
+	path := filepath.Join(f.plugins, "nself-alpha", "docker-compose.plugin.yml")
+	raw := readFile(t, path)
+	writeFile(t, path, strings.Replace(raw, `"3901:3901"`, `"0.0.0.0:22:3901"`, 1), 0o644)
+	before := treeHash(t, f.root)
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("fixture-seed")}, ApplyOptions{PlanID: p.PlanID})
+	if d := errs.Describe(err); d == nil || d.Code != "E450" {
+		t.Fatalf("a fragment edited after the plan must be E450, got %v", err)
+	}
+	if treeHash(t, f.root) != before {
+		t.Fatal("E450 wrote")
+	}
+
+	g := loadFixture(t, "dev-minimal")
+	if err := os.Chmod(g.project+"/.env", 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mp := planOf(t, g, nil)
+	var mode bool
+	for _, a := range mp.Artifacts {
+		mode = mode || (a.Path == ".env" && a.Action == ActionChange && a.DiffLines == 0 && a.Redacted)
+	}
+	if !mode {
+		t.Fatalf("a 0644 .env must be a mode change in the plan: %+v", mp.Artifacts)
+	}
+	applyFixture(t, g)
+	if info, _ := os.Stat(g.project + "/.env"); info.Mode().Perm() != 0o600 {
+		t.Fatalf(".env is %v after apply", info.Mode().Perm())
+	}
+	if !planOf(t, g, nil).Empty {
+		t.Fatal("plan after apply is not empty")
+	}
+}
+
+// TestPlanNeverMutatesProcessEnv (review M1a): planning leaves os.Environ as it
+// found it, and an ENV set in a cascade file other than .env resolves the same
+// in the plan and the apply, so the re-plan is empty.
+func TestPlanNeverMutatesProcessEnv(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	writeFile(t, f.project+"/.env.local", "ENV=prod\n", 0o600)
+	writeFile(t, f.project+"/.env.prod", "BASE_DOMAIN=prodonly.example.org\nSSL_MODE=none\n", 0o600)
+	snap := strings.Join(os.Environ(), "\n")
+	p := planOf(t, f, nil)
+	if strings.Join(os.Environ(), "\n") != snap {
+		t.Fatal("Compute changed the process environment")
+	}
+	var diff strings.Builder
+	planOf(t, f, func(r *Request) { r.DiffOut = &diff })
+	applyFixture(t, f)
+	if !planOf(t, f, nil).Empty {
+		t.Fatalf("plan (env %s) differs from the apply: the plan run leaked its env into the write", p.Env)
+	}
+}
+
+// TestComposedGateNotToggledByProjectFiles (review M1b): with the operator in
+// v1.5, NSELF_V15=0 in project files must not turn the E403 gate off.
+func TestComposedGateNotToggledByProjectFiles(t *testing.T) {
+	compattest.Set(t, true)
+	f := loadFixture(t, "prod-ssl")
+	l03 := readFile(t, f.project+"/.env") + "NSELF_V15=0\n"
+	writeFile(t, f.project+"/.env", l03, 0o600)
+	writeFile(t, f.project+"/.env.local", "NSELF_V15=false\n", 0o600)
+	before := treeHash(t, f.root)
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}, ApplyOptions{})
+	wantE403(t, err)
+	if treeHash(t, f.root) != before {
+		t.Fatal("the refused apply wrote")
+	}
+	if os.Getenv("NSELF_V15") != "1" {
+		t.Fatalf("NSELF_V15 is %q after the command", os.Getenv("NSELF_V15"))
+	}
+}
+
+// TestApplyEditDuringPrompt (review M3): a value edited while the confirmation
+// prompt waits cannot reach the disk: the apply is refused (E450) with nothing
+// written.
+func TestApplyEditDuringPrompt(t *testing.T) {
+	compattest.Set(t, true)
+	f := loadFixture(t, "prod-ssl")
+	before := treeHash(t, f.root)
+	asked := false
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}, ApplyOptions{Interactive: func(string) bool {
+		asked = true
+		setEnvValue(t, f, "POSTGRES_PASSWORD", "Zq7Wx3Tn9Rk5Hb2Vc8Lm4Pd6Sa1FgJu0Ye8")
+		return true
+	}})
+	if !asked {
+		t.Fatal("the prompt was never shown")
+	}
+	if d := errs.Describe(err); d == nil || d.Code != "E450" {
+		t.Fatalf("want E450, got %v", err)
+	}
+	if after := treeHash(t, f.root); strings.Contains(after, "docker-compose.yml") || strings.Count(after, "\n") != strings.Count(before, "\n") {
+		// the only difference allowed is the edited .env itself
+		if strings.Contains(lineDiff(before, after), ".nself/compose.env") {
+			t.Fatal("the edited value reached the generated files")
+		}
+	}
+	if _, err := os.Stat(f.project + "/docker-compose.yml"); err == nil {
+		t.Fatal("a refused apply wrote docker-compose.yml")
+	}
+}
+
+// TestApplyHeldToConfirmedRender: an edit after the re-check (here injected
+// between the re-check and the write) makes the write fail instead of writing
+// different bytes.
+func TestApplyHeldToConfirmedRender(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	afterRecheck = func() { setEnvValue(t, f, "POSTGRES_PASSWORD", "Zq7Wx3Tn9Rk5Hb2Vc8Lm4Pd6Sa1FgJu0Ye8") }
+	t.Cleanup(func() { afterRecheck = nil })
+	_, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}, ApplyOptions{})
+	if err == nil || !strings.Contains(err.Error(), "changed after the plan") {
+		t.Fatalf("want the held-to-plan error, got %v", err)
+	}
+	if b, err := os.ReadFile(f.project + "/.nself/compose.env"); err == nil && strings.Contains(string(b), "Zq7Wx3Tn9Rk5Hb2Vc8Lm4Pd6Sa1FgJu0Ye8") {
+		t.Fatal("the value edited after the plan was written")
+	}
+}
+
+// TestUnknownContainersNeverEmpty (review M5): a plan that could not ask Docker
+// is not empty, says so in the human output, and on a prod-class env asks.
+func TestUnknownContainersNeverEmpty(t *testing.T) {
+	for _, name := range []string{"dev-minimal", "prod-ssl"} {
+		f := loadFixture(t, name)
+		applyFixture(t, f)
+		p := planOf(t, f, func(r *Request) { r.Containers, r.Runtime = true, &fakeRuntime{runErr: errors.New("daemon down")} })
+		var sb strings.Builder
+		_ = RenderHuman(&sb, *p)
+		if p.Empty || p.Containers.Known || strings.Contains(sb.String(), "(no changes)") || !strings.Contains(sb.String(), "state unknown") {
+			t.Fatalf("%s: empty=%v known=%v\n%s", name, p.Empty, p.Containers.Known, sb.String())
+		}
+		if want := name == "prod-ssl"; p.RequiresConfirmation != want {
+			t.Fatalf("%s: requires_confirmation=%v", name, p.RequiresConfirmation)
+		}
 	}
 }

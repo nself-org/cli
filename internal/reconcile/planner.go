@@ -14,12 +14,14 @@ package reconcile
 // returned, never replaced by an empty plan.
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -29,11 +31,31 @@ import (
 // Compute computes the change plan of req. (EPIC D6 names it reconcile.Plan; that
 // name is the Plan type of P7-LIVE-01, so the function is Compute.)
 func Compute(ctx context.Context, req Request) (*Plan, error) {
+	c, err := compute(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return c.plan, nil
+}
+
+// computed is one render and everything derived from it: the plan, the planned
+// build (the exact bytes, modes and removals Apply will hold the write to) and
+// the before/after artifact sets.
+type computed struct {
+	plan          *Plan
+	planned       *nbuild.PlannedBuild
+	before, after ArtifactSet
+	generates     bool // the render generates secrets (random values)
+}
+
+// compute renders once in plan mode and builds the plan from that render.
+func compute(ctx context.Context, req Request) (*computed, error) {
 	opts := req.Build
 	if opts.Check {
 		return nil, fmt.Errorf("a plan cannot be computed for --check: --check validates and writes nothing")
 	}
 	opts.Mode = nbuild.ModePlan
+	opts.Expect = nil
 	if len(req.Seed) > 0 {
 		opts.Rand = newSeededRand(req.Seed)
 	}
@@ -49,7 +71,7 @@ func Compute(ctx context.Context, req Request) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	arts := Diff(before, after, req.HandEdited)
+	arts := append(Diff(before, after, req.HandEdited), modeArtifacts(before, after)...)
 	p := &Plan{
 		Command:   req.Command,
 		Trigger:   req.Trigger,
@@ -64,7 +86,9 @@ func Compute(ctx context.Context, req Request) (*Plan, error) {
 		p.Trigger.Kind = TriggerBuild
 	}
 	p.Containers = Containers{Known: true, Items: []ContainerItem{}}
-	if req.Containers {
+	// Container impact asks Docker, so a dev build that needs no plan output
+	// skips it; a prod-class plan, --plan and --json (req.Containers) always ask.
+	if req.Containers || EnvClass(NormalizeEnv(res.Env)) == ClassProd {
 		c, extra := containerImpact(ctx, req, req.ProjectDir, res, ov)
 		p.Containers = c
 		p.Effects = append(p.Effects, extra...)
@@ -82,7 +106,30 @@ func Compute(ctx context.Context, req Request) (*Plan, error) {
 			return nil, err
 		}
 	}
-	return p, nil
+	gen := false
+	for _, e := range p.Effects {
+		gen = gen || e.Kind == EffectSecretsPersist
+	}
+	return &computed{plan: p, planned: res.Planned, before: before, after: after, generates: gen}, nil
+}
+
+// modeArtifacts lists files whose bytes do not change but whose permission bits
+// would (EPIC ruling C): a change with diff_lines 0. Not reported on Windows,
+// where permission bits are not meaningful.
+func modeArtifacts(before, after ArtifactSet) []Artifact {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	var out []Artifact
+	for path, a := range after {
+		b, ok := before[path]
+		if !ok || !bytes.Equal(a.Data, b.Data) || a.Perm == b.Perm {
+			continue
+		}
+		out = append(out, Artifact{Kind: Kind(path), Path: path, Action: ActionChange, Generated: IsGenerated(a.Data),
+			DiffLines: 0, Redacted: IsEnvPath(path)})
+	}
+	return out
 }
 
 // writeDiffs writes the unified diff of every changed artifact, in plan order.
@@ -95,45 +142,54 @@ func writeDiffs(w io.Writer, arts []Artifact, before, after ArtifactSet) error {
 	return nil
 }
 
-// artifactSets builds the before and after sets over the paths the planned
-// build writes or removes: before is what is on disk now, after what the build
-// would leave. Files the build does not touch appear in neither.
+// artifactSets builds the before and after sets over every path the planned
+// build writes, removes or chmods, keyed by display path: what is on disk now,
+// and what the build would leave. Files the build does not touch are in neither.
+// Plugin compose files rewritten in place and any other file outside the project
+// appear as "@plugins/<rel>" and "@abs/<path>", so the plan and its id cover them.
 func artifactSets(ov overlay, pb *nbuild.PlannedBuild) (before, after ArtifactSet, err error) {
 	before, after = ArtifactSet{}, ArtifactSet{}
-	keys := make([]string, 0, len(pb.Files)+len(pb.Removed))
-	for k := range pb.Files {
-		keys = append(keys, k)
+	seen := map[string]bool{}
+	var keys []string
+	add := func(k string) {
+		if !seen[k] {
+			seen[k] = true
+			keys = append(keys, k)
+		}
 	}
-	keys = append(keys, pb.Removed...)
+	for k := range pb.Files {
+		add(k)
+	}
+	for _, k := range pb.Removed {
+		add(k)
+	}
+	for k := range pb.Modes {
+		add(k)
+	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		if !ownedKey(k) {
-			continue
-		}
-		info, statErr := os.Stat(ov.diskPath(k))
+		name := ov.display(k)
+		disk := ov.diskPath(k)
+		info, statErr := os.Stat(disk)
 		switch {
 		case statErr == nil && info.Mode().IsRegular():
-			data, rerr := os.ReadFile(ov.diskPath(k))
+			data, rerr := os.ReadFile(disk)
 			if rerr != nil {
-				return nil, nil, fmt.Errorf("reading %s for the plan: %w", k, rerr)
+				return nil, nil, fmt.Errorf("reading %s for the plan: %w", name, rerr)
 			}
-			before[k] = File{Data: data, Perm: info.Mode().Perm()}
+			before[name] = File{Data: data, Perm: info.Mode().Perm()}
 		case statErr != nil && !os.IsNotExist(statErr):
-			return nil, nil, fmt.Errorf("reading %s for the plan: %w", k, statErr)
+			return nil, nil, fmt.Errorf("reading %s for the plan: %w", name, statErr)
 		}
 		if f, ok := pb.Files[k]; ok {
-			after[k] = File{Data: f.Data, Perm: f.Perm}
+			after[name] = File{Data: f.Data, Perm: f.Perm}
+		} else if m, ok := pb.Modes[k]; ok {
+			if b, had := before[name]; had {
+				after[name] = File{Data: b.Data, Perm: m}
+			}
 		}
 	}
 	return before, after, nil
-}
-
-// ownedKey reports whether a planned key is an artifact of the plan: inside the
-// project or the fronting stack. A key outside both (an absolute path, such as
-// a plugin fragment rewritten in place under the plugin directory) is reported
-// by the plugin-fragment effect instead of as a project artifact.
-func ownedKey(k string) bool {
-	return len(k) > 0 && k[0] != '/' && (len(k) < 2 || k[1] != ':')
 }
 
 // effectsOf converts recorded build effects. Two are bookkeeping, not changes,
@@ -165,35 +221,27 @@ func hasSitesChange(arts []Artifact) bool {
 }
 
 // contentPlanID is the plan_id of EPIC D9 as amended 2026-10-05: sha256 over
-// the canonical plan JSON, then, for every artifact in path order, its path and
-// the sha256 of the bytes it would leave (a removal hashes as "removed"). The
-// id so binds the content of the change, not only its shape; the bytes
-// themselves never reach the plan JSON.
+// the canonical plan JSON, then, for every artifact in path order, its path, the
+// sha256 of the bytes it would leave (a removal hashes as "removed") and its
+// permission bits. The id so binds the content of the change, not only its
+// shape; the bytes themselves never reach the plan JSON. A render that
+// generates secrets hashes those random values too, so its id is only
+// reproducible with the same seed: Apply refuses --plan-id for such a render
+// (E451) and binds it through its own single render instead.
 func contentPlanID(p Plan, after ArtifactSet) (string, error) {
 	canon, err := CanonicalJSON(p)
 	if err != nil {
 		return "", err
 	}
-	// A run that generates secrets (secrets-persist) renders them into env-kind
-	// artifacts with values that differ per run, so those artifacts cannot be
-	// bound by content; their hash is the constant "generated". Once the
-	// secrets are persisted the next plan binds them like any other file.
-	generating := false
-	for _, e := range p.Effects {
-		generating = generating || e.Kind == EffectSecretsPersist
-	}
 	h := sha256.New()
 	_, _ = h.Write(canon)
 	for _, a := range p.Artifacts { // Finalize sorted these by path
-		sum := "removed"
+		sum, perm := "removed", ""
 		if f, ok := after[a.Path]; ok {
 			d := sha256.Sum256(f.Data)
-			sum = hex.EncodeToString(d[:])
+			sum, perm = hex.EncodeToString(d[:]), fmt.Sprintf("%04o", f.Perm)
 		}
-		if generating && a.Kind == KindEnv {
-			sum = "generated"
-		}
-		_, _ = fmt.Fprintf(h, "\n%s\x00%s", a.Path, sum)
+		_, _ = fmt.Fprintf(h, "\n%s\x00%s\x00%s", a.Path, sum, perm)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }

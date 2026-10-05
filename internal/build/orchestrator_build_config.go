@@ -28,7 +28,9 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	st.ensureSeam()
 	// ── Step 1: Load config via env cascade ─────────────────────────
 	var err error
+	repin := pinCompatEnv() // a project file must not toggle NSELF_V15
 	st.cfg, err = config.Load(st.workdir)
+	repin()
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
@@ -42,7 +44,7 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	// reads them — a validate-only invocation must never mutate the
 	// project it is inspecting.
 	if !st.opts.Check {
-		if err := persistGeneratedSecretsFx(st.workdir, st.cfg, st.fx); err != nil {
+		if err := persistGeneratedSecretsFx(st.workdir, st.cfg, st.fx, st.sink); err != nil {
 			return nil, fmt.Errorf("persisting generated secrets: %w", err)
 		}
 

@@ -190,6 +190,7 @@ Change-plan (E450) and operation-lock (E460) codes. The other codes in this bloc
 | Code | Exit | Summary | Why | Fix |
 |------|------|---------|-----|-----|
 | <a id="e450"></a>E450 | 1 | Plan id does not match | The plan you confirmed no longer matches what this command would change, because an input changed or the plan id is not one this project produces. | Re-run nself build --plan and pass the new plan_id. |
+| <a id="e451"></a>E451 | 1 | Plan id cannot bind generated secrets | This build generates secrets, and random values cannot be reproduced from a plan id. | Set the secrets in .env.secrets first, or run nself build and confirm at the prompt (or with --yes, without --plan-id). |
 | <a id="e460"></a>E460 | 1 | Project operation lock held | Another nself command is changing this project and holds its operation lock. | Wait for the running nself command to finish, or stop it, then run this command again. |
 
 ---

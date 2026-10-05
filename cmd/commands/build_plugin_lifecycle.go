@@ -8,6 +8,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
@@ -18,14 +19,19 @@ import (
 // runPluginLifecycleCheck loads the lifecycle store, transitions expired plugins,
 // prints dormant banners, and auto-removes fully-expired plugins.
 // Auto-removal is intentionally build-only (not start) — start is read-only on lifecycle.
-func runPluginLifecycleCheck(quiet bool) {
+//
+// A removal the plan announced (plugin-remove effect) that fails is fatal
+// (EPIC ruling D): the error is returned and the build writes nothing. The
+// records of plugins that were removed are still saved first. An unreadable
+// store stays advisory (nothing was announced from it).
+func runPluginLifecycleCheck(quiet bool) error {
 	store, err := plugin.LoadLifecycleStore()
 	if err != nil {
 		// Non-fatal: lifecycle store is advisory only.
 		if !quiet {
 			ui.Warn("Could not load plugin lifecycle store: " + err.Error())
 		}
-		return
+		return nil
 	}
 
 	now := time.Now()
@@ -55,6 +61,7 @@ func runPluginLifecycleCheck(quiet bool) {
 	}
 
 	// Auto-remove expired plugins.
+	var failed []string
 	for _, name := range autoRemove {
 		if !quiet {
 			ui.Warn(fmt.Sprintf("Removing expired plugin %q (grace period exhausted)", name))
@@ -66,9 +73,7 @@ func runPluginLifecycleCheck(quiet bool) {
 		}
 		pluginDir := resolvePluginDir()
 		if removeErr := plugin.Remove(context.Background(), cfg, name, pluginDir, false, true); removeErr != nil {
-			if !quiet {
-				ui.Warn(fmt.Sprintf("Auto-remove of %q failed: %v", name, removeErr))
-			}
+			failed = append(failed, fmt.Sprintf("%s: %v", name, removeErr))
 		} else {
 			// Clear the record after successful removal.
 			delete(store.Records, name)
@@ -77,8 +82,12 @@ func runPluginLifecycleCheck(quiet bool) {
 
 	// Persist transitions (dormant → expired state changes).
 	if len(dormant) > 0 || len(autoRemove) > 0 {
-		if saveErr := store.Save(); saveErr != nil && !quiet {
-			ui.Warn("Could not save plugin lifecycle store: " + saveErr.Error())
+		if saveErr := store.Save(); saveErr != nil {
+			failed = append(failed, "saving the lifecycle store: "+saveErr.Error())
 		}
 	}
+	if len(failed) > 0 {
+		return fmt.Errorf("expired plugin removal failed, nothing was built: %s", strings.Join(failed, "; "))
+	}
+	return nil
 }

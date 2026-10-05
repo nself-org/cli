@@ -192,8 +192,14 @@ func (st *buildState) generateSSLAndNginx() error {
 // markFronting tells a plan-mode sink where the fronting stack's served
 // nginx/sites dir is, so its files get "@fronting/" keys. A no-op in write mode.
 func (st *buildState) markFronting(sitesDir string) {
-	if m, ok := st.sink.(*memSink); ok && !strings.HasPrefix(sitesDir, st.workdir+string(filepath.Separator)) {
+	if strings.HasPrefix(sitesDir, st.workdir+string(filepath.Separator)) {
+		return
+	}
+	switch m := st.sink.(type) {
+	case *memSink:
 		m.fronting = sitesDir
+	case *expectSink:
+		m.setFronting(sitesDir)
 	}
 }
 

@@ -53,7 +53,7 @@ It is a cooperative lock between nself processes of the same user:
 - The token is in the holder file, so any reader of the project folder can export it and pass for a child. It stops accidents, not an adversary.
 - A child that outlives its parent runs unlocked: the parent's lock ended with the parent.
 - A `clean` that deletes `.nself/` while the lock is held orphans that lock. The next command locks the new file.
-- `nself build` takes this same lock (it no longer keeps a separate `.nself/build.lock` file), so a killed build leaves nothing stale. In v1.5 a build started while another process holds the lock fails and names the holder (E460 text); in v1.4 it waits up to 30 seconds, warns on stderr and builds unlocked, as the command guard does.
+- `nself build` takes this same lock (it no longer keeps a separate `.nself/build.lock` file), so a killed build leaves nothing stale. A build that finds the lock held fails at once, in every mode, with an error naming the holder and writes nothing; it never waits (in v1.4 the command guard has already waited up to 30 seconds) and never builds unlocked. `nself apply`-style callers (`reconcile.Apply`) hold the lock from the first render to the last write.
 
 ### Codes
 
@@ -78,7 +78,15 @@ The plan is the `contract:cli.change-plan` v1 document (schema `schemas/commands
 
 ### plan_id
 
-`plan_id` is the sha256 of the plan's canonical JSON followed by, for every artifact in path order, the sha256 of the bytes the build would leave there. The id binds the content of the change, not only its shape, while the JSON carries no file bytes. `nself build --yes --plan-id <id>` recomputes the plan and applies only if the id is unchanged; otherwise it fails with E450 and writes nothing. Swapping one env value for another of the same length changes the id. One exception: a run that generates secrets (a first build) renders values that differ per run into the env files, so those files are bound by name only for that run; once the secrets are persisted the next plan binds them fully.
+`plan_id` is the sha256 of the plan's canonical JSON followed by, for every artifact in path order, the sha256 of the bytes the build would leave there and its permission bits. It binds the content of the change, not only its shape, while the JSON carries no file bytes. `nself build --yes --plan-id <id>` renders again and applies only if the id is unchanged; otherwise it fails with E450 and writes nothing. Swapping one env value for another of the same length changes the id.
+
+The plan and the id cover every file the build writes: project files, plugin compose fragments rewritten in place (shown as `@plugins/<name>/docker-compose.plugin.yml`), `.env.secrets` with the planned bytes, and permission-only changes (a `0644` `.env` is listed as a change with `diff_lines` 0).
+
+A build that generates secrets (a first build, or a missing `*_INTERNAL_SECRET`) renders random values, which no earlier `--plan` run can reproduce. `--plan-id` is refused for it with E451 (exit 1, nothing written). Confirm at the prompt, or run `--yes` without `--plan-id`: the apply renders once and writes exactly that render.
+
+### One render, held to the end
+
+`nself build` takes the project lock first, renders the project once in plan mode, builds the plan from that render, checks `--plan-id`, asks for confirmation, then re-renders and compares before writing: a value edited while the prompt waited is refused with E450 and nothing is written. The write itself is held to the confirmed render: any file, removal or mode that is not in it stops the build with an error before it is written, and afterwards the disk is checked against the render. Planning never changes the process environment, and the compat switch is read once at the start, so `NSELF_V15` in an env file cannot turn the v1.5 refusal off.
 
 ### Prod-class confirmation
 
@@ -93,7 +101,10 @@ A prod-class env is `ENV` `prod` or `staging` (a running stack does not make an 
 
 ### What a plan does not cover
 
-- An expired plugin removed by the plugin lifecycle step is listed as a `plugin-remove` effect, but the plan renders the project with that plugin still installed, because the removal runs after the confirmation. The apply then renders without it.
+- An expired plugin removed by the plugin lifecycle step is listed as a `plugin-remove` effect, but the plan renders the project with that plugin still installed, because the removal runs after the confirmation. The apply then renders without it, and for that plan only the re-check and the write hold are skipped. A failed removal is fatal: the build stops before any write.
+- Container impact needs Docker. When it cannot be asked, `containers.known` is false, the plan is never `empty`, the human output says `state unknown`, and a prod-class env asks for confirmation.
+- Effects (hosts, trust store, certificates) are not byte-checked at write time; their files are.
+- Every apply writes a snapshot under `.nself/backups/nginx-sites-<timestamp>/` when `nginx/sites` has files, listed in the plan only when a site conf changes; the directory grows by one snapshot per build (the last five are kept).
 - A declared plugin that `build` would auto-install is a `plugin-install` effect; the plan renders without it.
 - The plan is computed under the operation lock held for the whole command, so the inputs cannot change between the plan and the write by another nself command. A process that ignores the lock can still change them.
 
@@ -101,5 +112,6 @@ A prod-class env is `ENV` `prod` or `staging` (a running stack does not make an 
 
 | Code | Exit | Meaning |
 |---|---|---|
-| E450 | 1 | `--plan-id` does not match the plan this project produces now. Re-run `nself build --plan` and pass the new id. |
+| E450 | 1 | `--plan-id` does not match the plan this project produces now, or the project changed while the confirmation was pending. Re-run `nself build --plan` and pass the new id. |
+| E451 | 1 | The build generates secrets, so `--plan-id` cannot bind it. |
 | E403 | 4 | A prod-class or hand-edited change was not confirmed (v1.5). |

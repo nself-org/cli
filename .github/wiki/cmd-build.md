@@ -128,7 +128,7 @@ When it does write, the build logs exactly which entries it's about to add befor
 | `--plan-id <id>` | Apply only if the plan still has this id. A stale id fails with E450 and writes nothing. |
 | `--diff` | Print unified diffs of the planned changes to stderr. Env files show key names only, never values. |
 
-A change on a prod-class env needs `--yes` or an interactive yes. In v1.5 mode (`NSELF_V15=1`) a non-interactive build without `--yes` is refused with E403 (exit 4). In the default v1.4 mode it prints the plan summary and a one-line notice on stderr, then proceeds as before. A dev env never asks. `nself build --json` without `--plan` applies and prints the applied plan as the envelope data.
+A first build generates secrets, so `--plan-id` is refused for it (E451); confirm at the prompt or use `--yes` without it. A change on a prod-class env needs `--yes` or an interactive yes. In v1.5 mode (`NSELF_V15=1`) a non-interactive build without `--yes` is refused with E403 (exit 4). In the default v1.4 mode it prints the plan summary and a one-line notice on stderr, then proceeds as before. A dev env never asks. `nself build --json` without `--plan` applies and prints the applied plan as the envelope data.
 <!-- END PROSE:description -->
 
 ## Flags

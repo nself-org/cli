@@ -478,3 +478,125 @@ func TestBuildPlanIDBindsContent(t *testing.T) {
 		t.Fatal("the E450 build wrote")
 	}
 }
+
+// l03LifecycleStore writes a lifecycle store whose plugin "ghost" is past its
+// grace period (an auto-removal candidate) and not installed, so removing it
+// fails.
+func (p *l03Project) l03LifecycleStore(t *testing.T) {
+	t.Helper()
+	l03Write(t, filepath.Join(p.home, ".config", "nself", "plugin-lifecycle.json"), `{"version":1,"records":{"ghost":{"name":"ghost","state":"dormant",
+"license_expiry":"2020-01-01T00:00:00Z","dormant_since":"2020-02-01T00:00:00Z","grace_period":1000000000}}}`, 0o600)
+}
+
+// TestBuildPluginRemovalFailureIsFatal (Codex 4): a planned removal of an
+// expired plugin that fails stops the build before any write; --plan lists the
+// removal and writes nothing; --check never runs it.
+func TestBuildPluginRemovalFailureIsFatal(t *testing.T) {
+	p := newL03Project(t, "dev-minimal")
+	p.l03LifecycleStore(t)
+	store := filepath.Join(p.home, ".config", "nself", "plugin-lifecycle.json")
+	before, _ := os.ReadFile(store)
+	data := p.planData(t, false)
+	var listed bool
+	for _, e := range data["effects"].([]any) {
+		listed = listed || e.(map[string]any)["kind"] == "plugin-remove"
+	}
+	if !listed || data["destructive"] != true {
+		t.Fatalf("the plan must list the removal as destructive: %v", data["effects"])
+	}
+	if after, _ := os.ReadFile(store); string(after) != string(before) {
+		t.Fatal("--plan changed the lifecycle store")
+	}
+	if r := p.run(t, false, "build", "--check"); r.code != 0 {
+		t.Fatalf("--check exited %d\n%s", r.code, r.stderr)
+	}
+	if after, _ := os.ReadFile(store); string(after) != string(before) {
+		t.Fatal("--check removed plugins")
+	}
+	r := p.run(t, false, "build", "--yes")
+	if r.code == 0 || !strings.Contains(r.stderr, "expired plugin removal failed") {
+		t.Fatalf("a failed planned removal must be fatal: exit %d\n%s", r.code, r.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(p.project, "docker-compose.yml")); err == nil {
+		t.Fatal("the build wrote after a failed removal")
+	}
+}
+
+// TestBuildDevNeedsNoDocker (review S2): a dev apply without --plan, --json or
+// --plan-id never asks Docker, so a machine without Docker sees no new notice.
+func TestBuildDevNeedsNoDocker(t *testing.T) {
+	p := newL03Project(t, "dev-minimal")
+	l03Write(t, filepath.Join(p.stub, "docker"), "#!/bin/sh\necho 'Cannot connect to the Docker daemon' >&2\nexit 1\n", 0o755)
+	r := p.run(t, false, "build")
+	if r.code != 0 || strings.Contains(r.stderr, "container impact") {
+		t.Fatalf("exit %d, dev build mentioned Docker:\n%s", r.code, r.stderr)
+	}
+}
+
+// TestBuildUnknownDockerIsNotEmpty (review M5): with Docker unreachable the plan
+// is not empty and says so on stdout, human and JSON.
+func TestBuildUnknownDockerIsNotEmpty(t *testing.T) {
+	p := newL03Project(t, "prod-ssl")
+	l03Write(t, filepath.Join(p.stub, "docker"), "#!/bin/sh\nexit 1\n", 0o755)
+	if r := p.run(t, true, "build", "--yes"); r.code != 0 {
+		t.Fatalf("setup build exited %d\n%s", r.code, r.stderr)
+	}
+	r := p.run(t, true, "build", "--plan")
+	if strings.Contains(r.stdout, "(no changes)") || !strings.Contains(r.stdout, "state unknown") || !strings.Contains(r.stdout, "Confirmation required") {
+		t.Fatalf("unknown Docker state read as empty:\n%s", r.stdout)
+	}
+	data := p.planData(t, true)
+	if data["empty"] != false || data["requires_confirmation"] != true || data["containers"].(map[string]any)["known"] != false {
+		t.Fatalf("data: empty=%v requires=%v", data["empty"], data["requires_confirmation"])
+	}
+}
+
+// TestBuildProjectEnvCannotToggleGate (review M1b) end to end: NSELF_V15=0 in
+// the project's env files does not switch the v1.5 refusal off.
+func TestBuildProjectEnvCannotToggleGate(t *testing.T) {
+	p := newL03Project(t, "prod-ssl")
+	l03Append(t, filepath.Join(p.project, ".env"), "NSELF_V15=0\n")
+	l03Write(t, filepath.Join(p.project, ".env.local"), "NSELF_V15=false\n", 0o600)
+	before := p.whole(t)
+	r := p.run(t, true, "build", "--json")
+	if code, exit := errorEnvelope(t, r.stdout); r.code != 4 || code != "E403" || exit != 4 {
+		t.Fatalf("exit %d %s: want E403 exit 4\n%s", r.code, code, r.stderr)
+	}
+	if p.whole(t) != before {
+		t.Fatal("the refused build wrote")
+	}
+}
+
+// TestBuildFreshProjectPlanIDRefused: a first build generates secrets, so
+// --plan-id is refused with E451; confirming without it applies and persists
+// .env.secrets with the bytes that were planned.
+func TestBuildFreshProjectPlanIDRefused(t *testing.T) {
+	p := newL03Project(t, "prod-ssl")
+	env, _ := os.ReadFile(filepath.Join(p.project, ".env"))
+	var keep []string
+	for _, l := range strings.Split(string(env), "\n") {
+		if !strings.HasPrefix(l, "PLUGIN_INTERNAL_SECRET") && !strings.HasPrefix(l, "NOTIFY_INTERNAL_SECRET") &&
+			!strings.HasPrefix(l, "CRON_INTERNAL_SECRET") && !strings.HasPrefix(l, "HASURA_GRAPHQL_JWT_SECRET") {
+			keep = append(keep, l)
+		}
+	}
+	l03Write(t, filepath.Join(p.project, ".env"), strings.Join(keep, "\n"), 0o600)
+	data := p.planData(t, true)
+	var listed bool
+	for _, a := range data["artifacts"].([]any) {
+		listed = listed || a.(map[string]any)["path"] == ".env.secrets"
+	}
+	if !listed {
+		t.Fatal(".env.secrets is not in the plan")
+	}
+	r := p.run(t, true, "build", "--yes", "--plan-id", data["plan_id"].(string), "--json")
+	if code, exit := errorEnvelope(t, r.stdout); r.code != 1 || code != "E451" || exit != 1 {
+		t.Fatalf("exit %d %s: want E451\n%s", r.code, code, r.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(p.project, ".env.secrets")); err == nil {
+		t.Fatal("E451 wrote")
+	}
+	if r := p.run(t, true, "build", "--yes"); r.code != 0 {
+		t.Fatalf("build --yes exited %d\n%s", r.code, r.stderr)
+	}
+}

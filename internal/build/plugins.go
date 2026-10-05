@@ -13,6 +13,7 @@ package build
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -50,13 +51,13 @@ func DefaultPluginDir() string {
 // deterministic ordering. Plugins without a compose file are silently
 // skipped (they are background-process plugins, not compose plugins).
 func DiscoverPluginComposeFiles(workdir, pluginDir string) ([]string, error) {
-	return discoverPluginComposeFilesFx(writeEffects{}, workdir, pluginDir)
+	return discoverPluginComposeFilesFx(writeEffects{}, newDiskSink(workdir), workdir, pluginDir)
 }
 
 // discoverPluginComposeFilesFx is DiscoverPluginComposeFiles with the in-place
 // fragment normalisation routed through fx: plan mode records one
 // plugin-fragment effect per rewritten fragment and leaves the file alone.
-func discoverPluginComposeFilesFx(fx Effects, workdir, pluginDir string) ([]string, error) {
+func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir string) ([]string, error) {
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -112,10 +113,16 @@ func discoverPluginComposeFilesFx(fx Effects, workdir, pluginDir string) ([]stri
 			normalized = normalizeComposePluginCoreEnv(normalized, pluginDir, entry.Name())
 			if !bytes.Equal(normalized, content) {
 				// Write the corrected file back so the manifest references a valid compose.
-				_ = fx.Do(EffectPluginFragment, absPath, "normalise plugin compose fragment in place", func() error {
-					_ = os.WriteFile(absPath, normalized, 0644)
-					return nil
-				})
+				// The bytes go through the Sink in both modes (P7-LIVE-03) so a plan
+				// carries and binds them; a real write error stays tolerated as
+				// before, a deviation from a confirmed render does not.
+				_ = fx.Do(EffectPluginFragment, absPath, "normalise plugin compose fragment in place", nil)
+				if werr := sink.WriteFile(absPath, normalized, 0644); werr != nil {
+					var dev *deviationError
+					if errors.As(werr, &dev) {
+						return nil, werr
+					}
+				}
 			}
 		}
 

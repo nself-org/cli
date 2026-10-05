@@ -66,7 +66,7 @@ func buildRequest(cmd *cobra.Command, workdir string, opts build.BuildOptions, p
 		Command:       reconcile.CmdBuild,
 		Trigger:       reconcile.Trigger{Kind: reconcile.TriggerBuild},
 		Build:         opts,
-		Containers:    true,
+		Containers:    pf.plan || pf.json || pf.planID != "",
 		RemoveOrphans: removeOrphans,
 		Extra:         lifecycleEffects(),
 		Stderr:        cmd.ErrOrStderr(),
@@ -98,8 +98,7 @@ func runBuildApply(cmd *cobra.Command, workdir string, opts build.BuildOptions, 
 		BeforeWrite: func() error {
 			// The expired-plugin removal is part of the plan (plugin-remove
 			// effect) and runs only once it is confirmed.
-			runPluginLifecycleCheck(quiet)
-			return nil
+			return runPluginLifecycleCheck(quiet)
 		},
 	}
 	if !pf.json {

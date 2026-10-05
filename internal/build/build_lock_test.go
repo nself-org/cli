@@ -1,7 +1,6 @@
 package build
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -13,12 +12,12 @@ import (
 	"github.com/nself-org/cli/internal/oplock"
 )
 
-// TestAcquireBuildLockHeld: with the project lock held by another holder, v1.5
-// fails at once naming the holder, and v1.4 keeps the old behaviour (wait, then
-// warn and build unlocked).
+// TestAcquireBuildLockHeld: a held project lock fails the build at once, in
+// both compat modes, with an error naming the holder and nothing written: the
+// behaviour of origin/main's O_EXCL build.lock (exit 1). It never waits and
+// never builds unlocked.
 func TestAcquireBuildLockHeld(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv(oplock.EnvToken, "")
 	_ = os.Unsetenv(oplock.EnvToken)
 	holder, err := oplock.Acquire(context.Background(), dir, oplock.Opts{Command: "nself config set"})
 	if errors.Is(err, oplock.ErrUnsupported) {
@@ -30,34 +29,45 @@ func TestAcquireBuildLockHeld(t *testing.T) {
 	defer holder.Release()
 
 	compattest.Both(t, func(t *testing.T) {
-		var out bytes.Buffer
-		oldErr, oldWait, oldClock := buildLockStderr, buildLockV14Wait, buildLockClock
-		t.Cleanup(func() { buildLockStderr, buildLockV14Wait, buildLockClock = oldErr, oldWait, oldClock })
-		buildLockStderr = &out
-		now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
-		buildLockClock = oplock.Clock{
-			Now:   func() time.Time { return now },
-			Sleep: func(_ context.Context, d time.Duration) error { now = now.Add(d); return nil },
-		}
+		start := time.Now()
 		release, err := AcquireBuildLock(context.Background(), dir)
-		if os.Getenv("NSELF_V15") == "1" {
-			if !errors.Is(err, oplock.ErrHeld) || !strings.Contains(err.Error(), "nself config set") || release != nil {
-				t.Fatalf("v1.5 must fail naming the holder, got %v", err)
-			}
-			if out.Len() != 0 || now != time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC) {
-				t.Fatalf("v1.5 must not wait or print: %q", out.String())
-			}
-			return
+		if !errors.Is(err, oplock.ErrHeld) || release != nil || !strings.Contains(err.Error(), "another build is already running") || !strings.Contains(err.Error(), "nself config set") {
+			t.Fatalf("a held lock must fail naming the holder, got release=%v err=%v", release != nil, err)
 		}
-		if err != nil || release == nil {
-			t.Fatalf("v1.4 must proceed unlocked, got %v", err)
+		if time.Since(start) > 2*time.Second {
+			t.Fatal("the build waited for the lock")
 		}
-		release()
-		if now.Sub(time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)) < 30*time.Second {
-			t.Fatal("v1.4 gave up before 30 s")
+		if _, err := Build(dir, BuildOptions{}); !errors.Is(err, oplock.ErrHeld) {
+			t.Fatalf("Build under a held lock must fail with ErrHeld, got %v", err)
 		}
-		if s := out.String(); !strings.Contains(s, "waiting up to") || !strings.Contains(s, "building without the lock") {
-			t.Fatalf("v1.4 notices missing: %q", s)
+		if _, err := os.Stat(dir + "/docker-compose.yml"); err == nil {
+			t.Fatal("a build wrote under a held lock")
 		}
 	})
+}
+
+// TestAcquireBuildLockReentry: the holder's own nested Build re-enters through
+// the exported token and the lock file is removed when the owner releases.
+func TestAcquireBuildLockReentry(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.Unsetenv(oplock.EnvToken)
+	release, err := AcquireBuildLock(context.Background(), dir)
+	if errors.Is(err, oplock.ErrUnsupported) {
+		t.Skip("no flock on this platform")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner, err := AcquireBuildLock(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("a nested acquire must re-enter: %v", err)
+	}
+	inner()
+	release()
+	if _, err := os.Stat(oplock.LockPath(dir)); err == nil {
+		t.Fatal("the owner left the lock file behind")
+	}
+	if os.Getenv(oplock.EnvToken) != "" {
+		t.Fatal("the token leaked past the release")
+	}
 }

@@ -2,17 +2,12 @@ package build
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
-	"github.com/nself-org/cli/internal/oplock"
 	"github.com/nself-org/cli/internal/ssl"
 )
 
@@ -52,6 +47,10 @@ type BuildOptions struct {
 	// Nil keeps crypto/rand. A seeded reader lets a plan and an apply of the
 	// same fresh project agree byte for byte. The reader is never logged.
 	Rand io.Reader
+	// Expect, in ModeWrite, holds the build to a confirmed render: every write,
+	// removal and chmod must be one Expect planned, and the disk must hold it
+	// afterwards (expectSink). Nil writes as before. Set by reconcile.Apply.
+	Expect *PlannedBuild
 }
 
 // BuildMode selects what Build does with the files it renders.
@@ -120,52 +119,6 @@ var requiredDirs = []string{
 	".nself",
 }
 
-// Seams for the v1.4 wait.
-var (
-	buildLockClock             = oplock.RealClock()
-	buildLockV14Wait           = 30 * time.Second
-	buildLockStderr  io.Writer = os.Stderr
-)
-
-// buildLockCommand is the command name recorded in the lock holder file.
-const buildLockCommand = "nself build"
-
-// AcquireBuildLock takes the project operation lock (internal/oplock), a flock
-// on .nself/op.lock the kernel drops when the holder dies, so a SIGKILLed build
-// leaves nothing stale. A descendant of the holder (NSELF_OPLOCK_TOKEN)
-// re-enters it. A build that owns the lock removes the file while still holding
-// it, as the old build.lock was removed, so a direct Build leaves the same tree.
-// Held: v1.5 fails naming the holder (errors.Is oplock.ErrHeld); v1.4 waits up to
-// 30 s, warns, and builds unlocked. The caller must call release.
-func AcquireBuildLock(ctx context.Context, workdir string) (release func(), err error) {
-	opts := oplock.Opts{Command: buildLockCommand, Clock: buildLockClock}
-	// compat.V15(P7-LIVE-03): a held lock is waited for up to 30 s, then a warning and the build runs unlocked -> a held lock fails the build at once, naming the holder
-	v15 := compat.V15()
-	if !v15 {
-		opts.Wait = buildLockV14Wait
-		opts.OnWait = func(h oplock.Holder, known bool) {
-			_, _ = fmt.Fprintf(buildLockStderr, "nself: waiting up to %s for %s\n", buildLockV14Wait, (&oplock.HeldError{Holder: h, Known: known}).Error())
-		}
-	}
-	l, err := oplock.Acquire(ctx, workdir, opts)
-	var held *oplock.HeldError
-	switch {
-	case errors.Is(err, oplock.ErrUnsupported):
-		return func() {}, nil // no flock on this platform: run unlocked, as the guard does
-	case errors.As(err, &held) && !v15:
-		_, _ = fmt.Fprintf(buildLockStderr, "nself: warning: %s after %s; building without the lock\n", held.Error(), held.Waited.Round(time.Second))
-		return func() {}, nil
-	case err != nil:
-		return nil, fmt.Errorf("another nself operation is changing this project: %w", err)
-	}
-	return func() {
-		if !l.Reentrant() {
-			_ = os.Remove(oplock.LockPath(workdir))
-		}
-		l.Release()
-	}, nil
-}
-
 // Build orchestrates the full nself build pipeline.
 //
 // The sequence follows BUILD_SPEC.md:
@@ -184,6 +137,9 @@ func AcquireBuildLock(ctx context.Context, workdir string) (release func(), err 
 func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 	// Scope the secret source for this build only; restored on return.
 	defer config.UseRandSource(opts.Rand)()
+	if opts.Mode == ModePlan {
+		defer SnapshotEnv()() // planning never leaves the project's env in the process
+	}
 	st := newBuildState(workdir, opts)
 
 	// Acquire exclusive build lock to prevent concurrent builds from
@@ -233,6 +189,11 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	if es, ok := st.sink.(*expectSink); ok {
+		if err := es.verify(); err != nil {
+			return nil, err
+		}
+	}
 	if st.cfg != nil {
 		res.Env = st.cfg.Env
 	}
@@ -261,6 +222,8 @@ func (st *buildState) ensureSeam() {
 	}
 	if st.opts.Mode == ModePlan {
 		st.sink, st.fx = newMemSink(st.workdir, ""), &planEffects{}
+	} else if st.opts.Expect != nil {
+		st.sink, st.fx = newExpectSink(st.workdir, st.opts.Expect), writeEffects{}
 	} else {
 		st.sink, st.fx = newDiskSink(st.workdir), writeEffects{}
 	}

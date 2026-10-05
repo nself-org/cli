@@ -88,7 +88,7 @@ func (st *buildState) generateCompose() error {
 	st.filesGenerated++
 
 	// ── Step 9.5: Discover plugin compose files ────────────────────
-	pluginComposeFiles, err := discoverPluginComposeFilesFx(st.fx, st.workdir, st.pluginDir)
+	pluginComposeFiles, err := discoverPluginComposeFilesFx(st.fx, st.sink, st.workdir, st.pluginDir)
 	if err != nil {
 		return fmt.Errorf("discovering plugin compose files: %w", err)
 	}

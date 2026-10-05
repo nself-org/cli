@@ -169,7 +169,9 @@ func treeHash(t *testing.T, root string) string {
 		}
 		rel, _ := filepath.Rel(root, p)
 		rel = filepath.ToSlash(rel)
-		if rel == "project/.nself/op.lock" {
+		// The project lock (taken by every apply, even a refused one) creates
+		// .nself and op.lock; neither is project content.
+		if rel == "project/.nself/op.lock" || (d.IsDir() && rel == "project/.nself") {
 			return nil
 		}
 		info, err := d.Info()
@@ -223,7 +225,7 @@ func fileHashes(t *testing.T, root string) map[string]string {
 // planOf computes the plan of f without a container runtime.
 func planOf(t *testing.T, f *fixture, mut func(*Request)) *Plan {
 	t.Helper()
-	req := Request{ProjectDir: f.project, Seed: []byte("fixture-seed")}
+	req := Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("fixture-seed")}
 	if mut != nil {
 		mut(&req)
 	}
@@ -341,7 +343,7 @@ func runningFromDisk(t *testing.T, f *fixture) []RunningContainer {
 // applyFixture builds the fixture for real (write mode).
 func applyFixture(t *testing.T, f *fixture) {
 	t.Helper()
-	if _, err := Apply(context.Background(), Request{ProjectDir: f.project, Seed: []byte("fixture-seed")}, ApplyOptions{Yes: true}); err != nil {
+	if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("fixture-seed")}, ApplyOptions{Yes: true}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 }
@@ -438,9 +440,16 @@ func TestPlanApplyProperty(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			f := loadFixture(t, name)
 			p := planOf(t, f, nil)
-			before := fileHashes(t, f.project)
+			snap := func() map[string]string {
+				m := fileHashes(t, f.project)
+				for k, v := range fileHashes(t, f.plugins) {
+					m[PluginsPrefix+k] = v // plan paths of files under the plugin dir
+				}
+				return m
+			}
+			before := snap()
 			applyFixture(t, f)
-			after := fileHashes(t, f.project)
+			after := snap()
 			changed := map[string]bool{}
 			for k, v := range after {
 				if before[k] != v && !skip(k) {
@@ -620,11 +629,11 @@ func TestComputeDiffOut(t *testing.T) {
 // TestComputeErrors: failures are returned, never turned into an empty plan.
 func TestComputeErrors(t *testing.T) {
 	f := loadFixture(t, "dev-minimal")
-	if _, err := Compute(context.Background(), Request{ProjectDir: f.project, Build: nbuild.BuildOptions{Check: true}}); err == nil {
+	if _, err := Compute(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Build: nbuild.BuildOptions{Check: true}}); err == nil {
 		t.Fatal("--check has no plan; Compute must say so")
 	}
 	setEnvValue(t, f, "POSTGRES_PASSWORD", "password")
-	if p, err := Compute(context.Background(), Request{ProjectDir: f.project}); err == nil {
+	if p, err := Compute(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project}); err == nil {
 		t.Fatalf("a project that fails validation must fail, got a plan: %+v", p)
 	}
 }
@@ -647,7 +656,7 @@ func TestDefaultRuntimeUsesDocker(t *testing.T) {
 	f := loadFixture(t, "prod-plugins")
 	applyFixture(t, f)
 	dockerStub(t, "fx_hasura\trunning\thasura\told\nfx_nginx\trunning\tnginx\tsame\n", "hasura new\nnginx same\n")
-	p := planOf(t, f, func(r *Request) { r.Containers = true })
+	p := planOf(t, f, func(r *Request) { r.Containers, r.Runtime = true, nil })
 	if !p.Containers.Known || len(p.Containers.Items) != 1 || p.Containers.Items[0].Service != "hasura" {
 		t.Fatalf("containers: %+v", p.Containers)
 	}
@@ -700,13 +709,13 @@ func TestContainerImpactBrokenCompose(t *testing.T) {
 // TestComputeWriteFailures: a diff or summary that cannot be written is an error.
 func TestComputeWriteFailures(t *testing.T) {
 	f := loadFixture(t, "dev-minimal")
-	if _, err := Compute(context.Background(), Request{ProjectDir: f.project, DiffOut: failWriter{}}); err == nil {
+	if _, err := Compute(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, DiffOut: failWriter{}}); err == nil {
 		t.Fatal("a failing DiffOut must fail the plan")
 	}
 	g := loadFixture(t, "prod-ssl")
 	before := treeHash(t, g.root)
 	compattest.Set(t, true)
-	if _, err := Apply(context.Background(), Request{ProjectDir: g.project, Stderr: failWriter{}}, ApplyOptions{Yes: true}); err == nil {
+	if _, err := Apply(context.Background(), Request{Runtime: &fakeRuntime{}, ProjectDir: g.project, Stderr: failWriter{}}, ApplyOptions{Yes: true}); err == nil {
 		t.Fatal("a failing summary writer must fail the apply before it writes")
 	}
 	if after := treeHash(t, g.root); after != before {

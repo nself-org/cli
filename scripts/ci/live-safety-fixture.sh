@@ -66,10 +66,11 @@ tree() {
 # run_nself <name> <v15:0|1> <args...>: run in the project; stdout to $WORK/out,
 # stderr to $WORK/err; exit status in $RC.
 RC=0
+EXTRA_ENV=""
 run_nself() {
   local name="$1" v15="$2"
   shift 2
-  local envs="NSELF_CMD_LOG_ENABLED=false"
+  local envs="NSELF_CMD_LOG_ENABLED=false $EXTRA_ENV"
   if [ "$v15" = 1 ]; then envs="$envs NSELF_V15=1"; fi
   set +e
   (cd "$WORK/$name/project" && env -u NSELF_V15 $envs HOME="$WORK/$name/home" NSELF_PLUGIN_DIR="$WORK/$name/plugins" \
@@ -170,6 +171,76 @@ run_nself prod 1 build --yes --plan-id "$SAME" --json
 [ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["error"]["code"])' "$WORK/out")" = E450 ] || fail "same-shape change is not E450"
 [ "$(tree prod)" = "$T2" ] || fail "the same-shape E450 build wrote"
 ok "same-shape content change: old --plan-id refused (E450)"
+
+# ---- review round: one render, planned bytes, no env leakage ----------------------
+errcode() { python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["error"]["code"])' "$WORK/out"; }
+
+# ENV set in a cascade file other than .env resolves the same in plan and apply.
+mkproj envx dev-minimal
+printf 'ENV=prod\n' > "$WORK/envx/project/.env.local"
+printf 'BASE_DOMAIN=prodonly.example.org\nSSL_MODE=none\n' > "$WORK/envx/project/.env.prod"
+run_nself envx 1 build --yes
+[ "$RC" = 0 ] || fail "cascade-ENV build exited $RC"
+run_nself envx 1 build --plan --json
+[ "$(jget 'd["empty"]')" = True ] || fail "plan after a cascade-ENV apply is not empty (the plan run leaked its env into the write)"
+ok "ENV from a cascade file: plan equals apply"
+
+# NSELF_V15=0 in project env files must not switch the v1.5 refusal off.
+mkproj gate prod-ssl
+printf 'NSELF_V15=0\n' >> "$WORK/gate/project/.env"
+printf 'NSELF_V15=false\n' > "$WORK/gate/project/.env.local"
+G0="$(tree gate)"
+run_nself gate 1 build --json
+[ "$RC" = 4 ] && [ "$(errcode)" = E403 ] || fail "NSELF_V15=0 in env files bypassed the v1.5 gate (rc=$RC)"
+[ "$(tree gate)" = "$G0" ] || fail "the refused build wrote"
+ok "NSELF_V15=0 in env files cannot switch the gate off"
+
+# A first build generates secrets: --plan-id is refused (E451), --yes applies.
+mkproj fresh prod-ssl
+python3 - "$WORK/fresh/project/.env" <<'PY'
+import sys
+p = sys.argv[1]
+keep = [l for l in open(p).read().split("\n") if not l.startswith(("PLUGIN_INTERNAL_SECRET", "NOTIFY_INTERNAL_SECRET", "CRON_INTERNAL_SECRET", "HASURA_GRAPHQL_JWT_SECRET"))]
+open(p, "w").write("\n".join(keep))
+PY
+run_nself fresh 1 build --plan --json
+[ "$(jget '".env.secrets" in [a["path"] for a in d["artifacts"]]')" = True ] || fail ".env.secrets is not a planned artifact"
+FID="$(jget 'd["plan_id"]')"
+F0="$(tree fresh)"
+run_nself fresh 1 build --yes --plan-id "$FID" --json
+[ "$RC" = 1 ] && [ "$(errcode)" = E451 ] || fail "generated secrets with --plan-id: rc=$RC code=$(errcode)"
+[ "$(tree fresh)" = "$F0" ] || fail "the E451 build wrote"
+run_nself fresh 1 build --yes
+[ "$RC" = 0 ] && [ -f "$WORK/fresh/project/.env.secrets" ] || fail "the first build did not persist secrets"
+ok "first build: planned .env.secrets, --plan-id refused (E451), --yes applies"
+
+# A plugin compose fragment edited after the plan is E450.
+mkproj plug dev-plugin
+run_nself plug 1 build --plan --json
+[ "$(jget '"@plugins/nself-alpha/docker-compose.plugin.yml" in [a["path"] for a in d["artifacts"]]')" = True ] || fail "the rewritten plugin fragment is not a plan artifact"
+PID="$(jget 'd["plan_id"]')"
+sed -i.bak 's/"3901:3901"/"0.0.0.0:22:3901"/' "$WORK/plug/plugins/nself-alpha/docker-compose.plugin.yml" && rm -f "$WORK/plug/plugins/nself-alpha/docker-compose.plugin.yml.bak"
+P0="$(tree plug)"
+run_nself plug 1 build --plan-id "$PID" --json
+[ "$RC" = 1 ] && [ "$(errcode)" = E450 ] || fail "fragment edited after the plan: rc=$RC code=$(errcode)"
+[ "$(tree plug)" = "$P0" ] || fail "the E450 build wrote"
+ok "plugin fragment edited after the plan: E450, nothing written"
+
+# A 0644 .env is a mode change in the plan and is applied.
+mkproj mode dev-minimal
+chmod 644 "$WORK/mode/project/.env"
+run_nself mode 1 build --plan --json
+[ "$(jget '[a["diff_lines"] for a in d["artifacts"] if a["path"]==".env"]')" = "[0]" ] || fail "a 0644 .env is not a mode change in the plan"
+run_nself mode 1 build
+[ "$(python3 -c 'import os,sys;print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$WORK/mode/project/.env")" = 0o600 ] || fail ".env was not chmodded to 0600"
+ok "permission-only change is planned and applied"
+
+# Docker unreachable: the plan is never empty.
+EXTRA_ENV="DOCKER_HOST=unix:///nonexistent.sock"
+run_nself envx 1 build --plan --json
+EXTRA_ENV=""
+[ "$(jget 'd["empty"]')" = False ] && [ "$(jget 'd["containers"]["known"]')" = False ] || fail "unknown Docker state read as empty"
+ok "unknown container state is never empty"
 
 # ---- dev fixture --------------------------------------------------------------
 mkproj dev dev-minimal

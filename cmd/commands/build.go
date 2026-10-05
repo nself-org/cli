@@ -104,11 +104,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	// ── Plugin lifecycle: dormant banner + auto-remove expired plugins ───────
 	// Run before the main build so users see warnings early. Auto-removal only
 	// happens during build (not start) to keep start fast and non-destructive.
-	// The step removes expired plugins, so --plan never runs it and an apply
-	// runs it after the confirmation (runBuildApply).
-	if check {
-		runPluginLifecycleCheck(quiet)
-	}
+	// The step removes expired plugins, so neither --plan nor --check (which
+	// validate and write nothing) runs it; an apply runs it after the
+	// confirmation (runBuildApply).
 
 	cwd, err := os.Getwd()
 	if err != nil {
