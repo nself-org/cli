@@ -120,3 +120,40 @@ func TestBackupRefusesSymlinkedBackupDir(t *testing.T) {
 		t.Fatalf("a backup escaped to %s: %v", outside, entries)
 	}
 }
+
+// TestBackupSurvivesSymlinkSwap (review round 4): .nself/backups is swapped for a
+// symlink to an outside directory after the check and before the write; the
+// os.Root-confined write fails and nothing lands outside the project.
+func TestBackupSurvivesSymlinkSwap(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	dir, outside := t.TempDir(), t.TempDir()
+	sites := filepath.Join(dir, "nginx", "sites")
+	for _, d := range []string{sites, filepath.Join(dir, ".nself", "backups")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(sites, "a.conf"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	backupBeforeWrite = func() {
+		_ = os.RemoveAll(filepath.Join(dir, ".nself", "backups"))
+		_ = os.Symlink(outside, filepath.Join(dir, ".nself", "backups"))
+	}
+	t.Cleanup(func() { backupBeforeWrite = nil })
+	if err := backupNginxSitesVia(newDiskSink(dir), dir, sites); err == nil {
+		t.Fatal("a backup through a swapped-in symlink must fail")
+	}
+	var found []string
+	_ = filepath.WalkDir(outside, func(p string, d os.DirEntry, err error) error {
+		if err == nil && p != outside {
+			found = append(found, p)
+		}
+		return nil
+	})
+	if len(found) != 0 {
+		t.Fatalf("files were written outside the project: %v", found)
+	}
+}

@@ -87,7 +87,9 @@ func TestConfirmRules(t *testing.T) {
 		check("hand-edited in dev, force", mkPlan(t, "dev", hand, nil), ApplyOptions{Force: true}, false)
 		check("hand-edited in prod, yes but no force", mkPlan(t, "prod", hand, nil), ApplyOptions{Yes: true}, true)
 		check("hand-edited in prod, yes and force", mkPlan(t, "prod", hand, nil), ApplyOptions{Yes: true, Force: true}, false)
-		check("hand-edited in dev, prompt yes", mkPlan(t, "dev", hand, nil), ApplyOptions{Interactive: yes}, false)
+		check("hand-edited in dev, prompt yes is not --force", mkPlan(t, "dev", hand, nil), ApplyOptions{Interactive: yes}, true)
+		check("hand-edited in prod, prompt yes is not --force", mkPlan(t, "prod", hand, nil), ApplyOptions{Interactive: yes}, true)
+		check("hand-edited in prod, prompt yes and --force", mkPlan(t, "prod", hand, nil), ApplyOptions{Interactive: yes, Force: true}, false)
 	})
 }
 

@@ -125,6 +125,17 @@ func (e *expectSink) backupPath(k string) bool {
 	return false
 }
 
+// allowBackup reports whether the confirmed render permits a snapshot: it must
+// carry the nginx-sites-backup effect.
+func (e *expectSink) allowBackup() error {
+	for _, fx := range e.exp.Effects {
+		if fx.Kind == EffectNginxSitesBackup {
+			return nil
+		}
+	}
+	return errDeviated(".nself/backups", "would be written but the plan has no nginx-sites-backup effect")
+}
+
 // checkBackupRoot requires .nself and .nself/backups, where they exist, to be
 // real directories inside the project: no symlinked component (each is
 // Lstat'ed), so a snapshot write or prune cannot be redirected out of the tree.

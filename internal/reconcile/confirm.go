@@ -4,7 +4,7 @@ package reconcile
 //
 // Purpose: decide whether Apply may proceed. A prod-class env needs --yes or an
 // interactive yes for any non-empty plan; overwriting or removing a hand-edited
-// generated file needs --force or an interactive yes in any env.
+// generated file needs --force in any env (a prompt does not satisfy it).
 // Inputs: the plan, the operator's ApplyOptions, the compat mode (v1.5 or not)
 // and a writer for notices.
 // Outputs: nil to proceed, or an E403 error (exit 4) naming what is missing.
@@ -41,6 +41,11 @@ func Confirm(p Plan, opt ApplyOptions, v15 bool, stderr io.Writer) error {
 				p.Command, p.EnvClass, ConfirmFlagHint)
 		}
 		return nil
+	}
+	if needForce {
+		// A hand-edited overwrite needs --force in every mode: no prompt answer
+		// stands in for it (EPIC D4 as ruled in review round 4).
+		return refusal("a hand-edited overwrite is never confirmed by a prompt", needYes, needForce, hand)
 	}
 	if opt.Interactive != nil {
 		if opt.Interactive(prompt(p, needYes, needForce, hand)) {
