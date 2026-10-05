@@ -235,7 +235,12 @@
         "flags": [
           "--dry-run",
           "--file",
+          "--from",
+          "--heartbeat-to",
+          "--identity",
           "--json",
+          "--key",
+          "--project",
           "--rto-hours"
         ]
       },
@@ -327,7 +332,11 @@
         "short": "Show backup subsystem status",
         "hidden": false,
         "flags": [
-          "--format"
+          "--format",
+          "--heartbeat-to",
+          "--max-age",
+          "--max-drill-age",
+          "--project"
         ]
       },
       {

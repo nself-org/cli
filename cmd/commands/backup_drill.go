@@ -7,9 +7,13 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
+	"github.com/nself-org/cli/internal/backup"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -30,12 +34,28 @@ Default RTO target is 4 hours per STRAT-11; failures past that flip
 result.RTOTargetMet to false but do not abort the drill. Pass --rto-hours 0 to
 disable the gate entirely (the drill still records its duration).
 
+With --from <remote> the drill is off-box: it downloads the newest (or --key)
+<project>_stream_* backup through the destination interface, decrypts it with
+--identity, restores it into a throwaway postgres:16-alpine container (random
+name and password, no network, removed on every exit), counts rows per table
+and checks every table the backup heartbeat estimated non-empty. The result is
+written to <project>/drill.json on --heartbeat-to. The project database and
+containers are never touched, and with --project no project directory is needed.
+
 The doctor check OPS-DRILL-01 reads the drill log to enforce "drill within
 last 7 days"; pair this command with a weekly cron via scripts/dr-drill.sh.`,
 	RunE: runBackupDrill,
 }
 
 func runBackupDrill(cmd *cobra.Command, _ []string) error {
+	if from, _ := cmd.Flags().GetString("from"); from != "" {
+		return runBackupDrillRemote(cmd, from)
+	}
+	for _, f := range []string{"identity", "key", "heartbeat-to", "project"} {
+		if v, _ := cmd.Flags().GetString(f); v != "" {
+			return fmt.Errorf("--%s needs --from", f)
+		}
+	}
 	cfg, err := loadProjectConfig()
 	if err != nil {
 		return err
@@ -86,7 +106,79 @@ func runBackupDrill(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
+// runBackupDrillRemote restores the newest (or --key) backup of a remote into a
+// throwaway container and writes drill.json to the heartbeat remote. With
+// --project it needs no project directory.
+func runBackupDrillRemote(cmd *cobra.Command, from string) error {
+	project, _ := cmd.Flags().GetString("project")
+	key, _ := cmd.Flags().GetString("key")
+	identity, _ := cmd.Flags().GetString("identity")
+	hbTo, _ := cmd.Flags().GetString("heartbeat-to")
+	jsonOut, _ := cmd.Flags().GetBool("json")
+	for _, f := range []string{"file", "dry-run"} {
+		if cmd.Flags().Changed(f) {
+			return fmt.Errorf("--%s cannot be used with --from", f)
+		}
+	}
+	if project == "" {
+		cfg, err := loadProjectConfig()
+		if err != nil {
+			return err
+		}
+		project = cfg.ProjectName
+		if hbTo == "" {
+			hbTo = cfg.Backup.HeartbeatRemote()
+		}
+	} else if hbTo == "" {
+		hbTo = config.BackupConfig{}.HeartbeatRemote()
+	}
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	res, err := backup.DrillRemote(ctx, backup.DrillRemoteOptions{
+		Project: project, From: from, Key: key, Identity: identity, HeartbeatTo: hbTo,
+	})
+	if res != nil {
+		if jsonOut {
+			if data, mErr := res.Heartbeat.Marshal(); mErr == nil {
+				fmt.Print(string(data))
+			}
+		} else {
+			printRemoteDrill(res, hbTo != "")
+		}
+	}
+	return err
+}
+
+func printRemoteDrill(res *backup.DrillRemoteResult, hasHeartbeat bool) {
+	hb := res.Heartbeat
+	ui.Info(fmt.Sprintf("Backup drill (remote): %s", strings.ToUpper(hb.Result)))
+	ui.Dimmed(fmt.Sprintf("  Backup object:  %s (%d bytes, encrypted=%v)", hb.BackupKey, hb.Bytes, hb.Encrypted))
+	ui.Dimmed(fmt.Sprintf("  Duration:       %.1fs", res.Duration.Seconds()))
+	for _, t := range res.Tables {
+		ui.Dimmed(fmt.Sprintf("  %-40s %d rows", t, hb.RestoredRows[t]))
+	}
+	if !res.Estimated {
+		ui.Dimmed("  No row estimates in the backup heartbeat: checked that the restore is not empty.")
+	}
+	if len(hb.Mismatches) > 0 {
+		ui.Dimmed(fmt.Sprintf("  Mismatches:     %s", strings.Join(hb.Mismatches, ", ")))
+	}
+	switch {
+	case res.HeartbeatWritten:
+		ui.Dimmed("  drill.json written to the heartbeat remote.")
+	case !hasHeartbeat:
+		ui.Dimmed("  No heartbeat remote configured: drill.json not written.")
+	}
+}
+
 func init() {
+	backupDrillCmd.Flags().String("from", "", "Restore the newest backup of this remote (rclone remote, path://, host://) into a throwaway container")
+	backupDrillCmd.Flags().String("identity", "", "age identity file that decrypts the backup (with --from)")
+	backupDrillCmd.Flags().String("key", "", "Backup object name to drill instead of the newest (with --from)")
+	backupDrillCmd.Flags().String("heartbeat-to", "", "Heartbeat remote that receives drill.json (with --from; default NSELF_BACKUP_HEARTBEAT_REMOTE)")
+	backupDrillCmd.Flags().String("project", "", "Project name for the backup objects and heartbeat; with --from no project directory is needed")
 	backupDrillCmd.Flags().String("file", "", "Backup file to drill against (default: most recent)")
 	backupDrillCmd.Flags().Float64("rto-hours", 4.0, "RTO target in hours; 0 disables the gate")
 	backupDrillCmd.Flags().Bool("dry-run", false, "Validate inputs and exit without restoring")

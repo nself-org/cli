@@ -34,7 +34,7 @@
       "group_id": "data",
       "wiki_page": true,
       "mcp_tool": true,
-      "env_vars": "n/a",
+      "env_vars": "undocumented: PATH",
       "openapi": "n/a (see below)"
     },
     {
