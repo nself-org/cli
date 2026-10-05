@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // Purpose: tests for the backup heartbeat (P7-PROD-71, contract:cli.backup-heartbeat).
@@ -38,9 +40,12 @@ func fakeTools(t *testing.T) (store, log string) {
 	scripts := map[string]string{
 		"pg_dump": `echo pg_dump >> "$FAKE_LOG"
 if [ -n "$FAKE_PGDUMP_FAIL" ]; then echo "pg_dump: connection refused" >&2; exit 1; fi
+if [ -n "$FAKE_PGDUMP_EMPTY" ]; then exit 0; fi
 printf '` + fakeDumpBytes + `'`,
 		"age": `cat`,
 		"psql": `echo psql >> "$FAKE_LOG"
+echo "args: $*" > "$FAKE_STORE/../psql.args"
+echo "pgpassword: $PGPASSWORD" >> "$FAKE_STORE/../psql.args"
 if [ -n "$FAKE_PSQL_FAIL" ]; then echo "psql: failed for $*" >&2; exit 1; fi
 printf 'public.users\t42\npublic.orders\t7\n'`,
 		"rclone": `[ "$1" = rcat ] || exit 2
@@ -63,7 +68,7 @@ echo "upload $2" >> "$FAKE_LOG"`,
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("FAKE_STORE", store)
 	t.Setenv("FAKE_LOG", log)
-	for _, k := range []string{"FAKE_PGDUMP_FAIL", "FAKE_PSQL_FAIL", "FAKE_RCLONE_FAIL", "NSELF_BACKUP_HEARTBEAT_REMOTE"} {
+	for _, k := range []string{"FAKE_PGDUMP_FAIL", "FAKE_PGDUMP_EMPTY", "FAKE_PSQL_FAIL", "FAKE_RCLONE_FAIL", "NSELF_BACKUP_HEARTBEAT_REMOTE"} {
 		t.Setenv(k, "")
 	}
 	return store, log
@@ -362,5 +367,58 @@ echo BEGIN-ROWS; echo "$out"; echo END-ROWS`
 	}
 	if rows["public.users"] != 1000 || rows["public.orders"] != 25 || len(rows) != 2 {
 		t.Errorf("approx rows = %v, want users=1000 orders=25 only", rows)
+	}
+}
+
+// TestStreamZeroBytesFails: an empty upload (only possible with --no-encrypt)
+// is a failed backup: Stream returns an error wrapping ErrBackupFailed and
+// writes no heartbeat, so the job cannot report green.
+func TestStreamZeroBytesFails(t *testing.T) {
+	store, _ := fakeTools(t)
+	t.Setenv("FAKE_PGDUMP_EMPTY", "1")
+	opts := streamOpts()
+	opts.Recipients = nil
+	opts.AllowUnencrypted = true
+	res, err := Stream(context.Background(), minimalConfig(), opts)
+	if err == nil || res != nil {
+		t.Fatalf("Stream = %v, %v; want an error and no result", res, err)
+	}
+	if !errors.Is(err, errs.ErrBackupFailed) || !strings.Contains(err.Error(), "0 bytes") {
+		t.Errorf("err = %v, want ErrBackupFailed mentioning 0 bytes", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(store, "hbremote_hb_testproject_backup.json")); statErr == nil {
+		t.Error("an empty backup wrote a heartbeat")
+	}
+}
+
+// TestHeartbeatPasswordNotInArgv: the row-estimate psql call gets the DSN
+// without its password and the password in PGPASSWORD.
+func TestHeartbeatPasswordNotInArgv(t *testing.T) {
+	store, _ := fakeTools(t)
+	cfg := minimalConfig()
+	cfg.Postgres.Password = "s3cretpw"
+	if _, err := ReadApproxRows(context.Background(), buildPgURL(cfg)); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(store), "psql.args"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.SplitN(string(raw), "\n", 2)[0], "s3cretpw") {
+		t.Errorf("password is in psql argv: %s", raw)
+	}
+	if !strings.Contains(string(raw), "pgpassword: s3cretpw") {
+		t.Errorf("PGPASSWORD not set for psql: %s", raw)
+	}
+}
+
+// TestSplitPgPassword covers the DSN split.
+func TestSplitPgPassword(t *testing.T) {
+	u, pw := splitPgPassword("postgresql://admin:p%40ss@localhost:5432/db?sslmode=disable")
+	if pw != "p@ss" || strings.Contains(u, "p%40ss") || !strings.Contains(u, "admin@localhost:5432/db") {
+		t.Errorf("got %q, %q", u, pw)
+	}
+	if u, pw := splitPgPassword("postgresql://admin@localhost/db"); pw != "" || u != "postgresql://admin@localhost/db" {
+		t.Errorf("no-password DSN changed: %q, %q", u, pw)
 	}
 }

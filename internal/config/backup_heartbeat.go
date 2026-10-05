@@ -20,6 +20,12 @@ import (
 // EnvBackupHeartbeatRemote names the variable that selects the heartbeat remote.
 const EnvBackupHeartbeatRemote = "NSELF_BACKUP_HEARTBEAT_REMOTE"
 
+// The variable is declared known so a project .env that sets it does not print
+// an "unknown env var" warning on every run (cron logs stay quiet).
+func init() {
+	knownEnvVars = append(knownEnvVars, EnvBackupHeartbeatRemote)
+}
+
 // HeartbeatRemote returns the heartbeat remote from the environment, trimmed,
 // or "" when it is not set.
 func (BackupConfig) HeartbeatRemote() string {

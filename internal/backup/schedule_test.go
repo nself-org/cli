@@ -190,6 +190,9 @@ func TestScheduleStreamGolden(t *testing.T) {
 func TestScheduleStreamEnvFileAndDefaults(t *testing.T) {
 	skipUnitTestOnWindows(t)
 	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	t.Chdir(dir)
 	env := filepath.Join(dir, "backup.env")
 	got := scheduleDryRun(t, ScheduleOptions{Cron: "0 3 * * *", To: "s3:b/p", EnvFile: "backup.env"})
@@ -242,5 +245,39 @@ func TestScheduleStreamErrors(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 		t.Error("nothing may be written on a validation error")
+	}
+}
+
+// TestScheduleStreamRefusesNonProject: run from a directory with no project
+// marker, the schedule is refused instead of writing a unit that runs in /tmp.
+func TestScheduleStreamRefusesNonProject(t *testing.T) {
+	t.Chdir(t.TempDir())
+	var out bytes.Buffer
+	err := ScheduleStream(minimalConfig(), ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", DryRun: true, Out: &out})
+	if err == nil || !strings.Contains(err.Error(), "does not look like an nSelf project") {
+		t.Fatalf("err = %v", err)
+	}
+	if out.Len() != 0 {
+		t.Error("nothing may be printed for a refused schedule")
+	}
+	if err := os.WriteFile(".env", []byte("PROJECT_NAME=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ScheduleStream(minimalConfig(), ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", DryRun: true, Out: &out}); err != nil {
+		t.Errorf("a directory with .env must be accepted: %v", err)
+	}
+}
+
+// TestScheduleStreamEnvFileEscapes: % in the env file path is doubled like the
+// other unit values, and a line break is refused.
+func TestScheduleStreamEnvFileEscapes(t *testing.T) {
+	skipUnitTestOnWindows(t)
+	got := scheduleDryRun(t, ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", EnvFile: "/etc/n%h/backup.env", ProjectDir: t.TempDir(), BinaryPath: "/bin/sh"})
+	if !strings.Contains(got, "EnvironmentFile=-/etc/n%%h/backup.env") {
+		t.Errorf("env file path not %%-escaped:\n%s", got)
+	}
+	err := ScheduleStream(minimalConfig(), ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", EnvFile: "/etc/a\nExecStartPre=/x", ProjectDir: t.TempDir(), DryRun: true, Out: &bytes.Buffer{}})
+	if err == nil {
+		t.Error("a line break in --env-file must be refused")
 	}
 }

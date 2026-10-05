@@ -74,7 +74,10 @@ func ScheduleStream(cfg *config.Config, opts ScheduleOptions) error {
 			return fmt.Errorf("resolve --env-file: %w", err)
 		}
 	}
-	for _, v := range append([]string{to, opts.HeartbeatTo, envFile}, opts.Recipients...) {
+	// A line break would add a unit directive; checked before % is doubled.
+	rawEnvFile := envFile
+	envFile = strings.ReplaceAll(envFile, "%", "%%")
+	for _, v := range append([]string{to, opts.HeartbeatTo, rawEnvFile}, opts.Recipients...) {
 		if strings.ContainsAny(v, "\n\r") {
 			return fmt.Errorf("a schedule value contains a line break")
 		}
@@ -168,6 +171,10 @@ func scheduleBinaryPath(override string) (string, error) {
 
 // scheduleProjectDir returns the absolute project directory: the override, or
 // the current directory (what loadProjectConfig and every other command use).
+//
+// A resolved current directory must look like an nSelf project (.env or
+// nself.yaml): a unit that runs in /tmp would fail every night. An explicit
+// override (tests) is trusted.
 func scheduleProjectDir(override string) (string, error) {
 	d := override
 	if d == "" {
@@ -181,7 +188,20 @@ func scheduleProjectDir(override string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve project directory %s: %w", d, err)
 	}
+	if override == "" && !looksLikeProject(abs) {
+		return "", fmt.Errorf("%s does not look like an nSelf project (no .env or nself.yaml): run `backup schedule` from the project directory", abs)
+	}
 	return abs, nil
+}
+
+// looksLikeProject reports whether dir holds a project marker.
+func looksLikeProject(dir string) bool {
+	for _, m := range []string{".env", "nself.yaml", "nself.yml"} {
+		if _, err := os.Stat(filepath.Join(dir, m)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // systemdExecLine joins argv into one ExecStart value. An argument with

@@ -14,3 +14,13 @@ func TestBackupHeartbeatRemote(t *testing.T) {
 		t.Errorf("set: got %q, want r2hb:hb", got)
 	}
 }
+
+// TestBackupHeartbeatRemoteIsKnown keeps the variable out of the unknown-var warning.
+func TestBackupHeartbeatRemoteIsKnown(t *testing.T) {
+	for _, k := range knownEnvVars {
+		if k == EnvBackupHeartbeatRemote {
+			return
+		}
+	}
+	t.Errorf("%s is not in knownEnvVars", EnvBackupHeartbeatRemote)
+}

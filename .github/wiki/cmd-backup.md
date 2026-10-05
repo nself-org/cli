@@ -97,7 +97,7 @@ nself backup stream --to r2:mybucket/backups --recipient age1abc123 --heartbeat-
 |---|---|
 | `NSELF_BACKUP_DESTINATION` | Default destination URL |
 | `NSELF_BACKUP_RECIPIENT` | Default age/SSH public key (space-separated for multiple) |
-| `NSELF_BACKUP_HEARTBEAT_REMOTE` | Default heartbeat remote (the `--heartbeat-to` flag wins). Environment only: `nself.yaml` has no config keys. In a project `.env` it prints an unknown-variable warning unless it is listed in `ENV_ALLOWLIST` |
+| `NSELF_BACKUP_HEARTBEAT_REMOTE` | Default heartbeat remote (the `--heartbeat-to` flag wins). Environment only: `nself.yaml` has no config keys. |
 | `NSELF_BACKUP_CHUNK_MB` | Multipart chunk size in MB (default: 64, handled by rclone) |
 | `AWS_ACCESS_KEY_ID` | S3/R2/B2 access key |
 | `AWS_SECRET_ACCESS_KEY` | S3/R2/B2 secret key |
@@ -167,7 +167,7 @@ Install a systemd timer to run `nself backup stream` on a cron schedule.
 nself backup schedule --cron "0 2 * * *" --to <url> [--recipient <key>]... [--heartbeat-to <remote>] [--env-file <path>] [--dry-run]
 ```
 
-Run it from the project directory. The unit runs in that directory (`WorkingDirectory`) and calls the absolute path of the `nself` binary that is running now (symlinks resolved), so a different `nself` on PATH can never be picked up. The unit has no `EnvironmentFile` line unless `--env-file` is given; the project `.env` is read from the working directory as usual.
+Run it from the project directory (it must hold a `.env` or `nself.yaml`; anywhere else the command refuses). The unit runs in that directory (`WorkingDirectory`) and calls the absolute path of the `nself` binary that is running now (symlinks resolved), so a different `nself` on PATH can never be picked up. The unit has no `EnvironmentFile` line unless `--env-file` is given; the project `.env` is read from the working directory as usual.
 
 ### Flags
 

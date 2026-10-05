@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // StreamConfig holds parameters for a streaming encrypted backup.
@@ -176,6 +177,13 @@ func Stream(ctx context.Context, cfg *config.Config, opts StreamOptions) (*Strea
 	}
 	result.StartedAt = start
 	result.Duration = time.Since(start).String()
+
+	// An empty object is not a backup (an encrypted one always has the age
+	// header, so this only happens with --no-encrypt and an empty dump). Fail
+	// the job instead of reporting green; no heartbeat is written either.
+	if result.Bytes == 0 {
+		return nil, fmt.Errorf("%w: the upload was empty (0 bytes); the object %s on the remote holds no data and must not be trusted", errs.ErrBackupFailed, key)
+	}
 
 	if hbRemote != "" {
 		if hbErr := publishHeartbeat(ctx, cfg.ProjectName, hbRemote, result, approx); hbErr != nil {

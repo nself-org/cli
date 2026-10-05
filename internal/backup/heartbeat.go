@@ -22,6 +22,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -123,17 +125,41 @@ func publishHeartbeat(ctx context.Context, cfgProject, remote string, res *Strea
 var approxQuery = func(ctx context.Context, pgURL string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
+	// The password travels in PGPASSWORD, not in argv, so it is not visible in
+	// `ps` on a shared host.
+	connURL, password := splitPgPassword(pgURL)
 	cmd := exec.CommandContext(ctx, "psql", "-X", "-A", "-t", "-F", "\t",
-		"--no-password", "-v", "ON_ERROR_STOP=1", "-c", approxRowsSQL, pgURL)
+		"--no-password", "-v", "ON_ERROR_STOP=1", "-c", approxRowsSQL, connURL)
+	if password != "" {
+		cmd.Env = append(os.Environ(), "PGPASSWORD="+password)
+	}
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	if err := cmd.Run(); err != nil {
 		// The DSN carries the password: never let it reach an error message.
 		msg := strings.TrimSpace(errOut.String())
 		msg = strings.ReplaceAll(msg, pgURL, redactURL(pgURL))
+		if password != "" {
+			msg = strings.ReplaceAll(msg, password, "***")
+		}
 		return "", fmt.Errorf("psql: %v: %s", err, msg)
 	}
 	return out.String(), nil
+}
+
+// splitPgPassword returns the DSN without its password and the password
+// itself. A DSN that cannot be parsed is returned unchanged with no password.
+func splitPgPassword(dsn string) (string, string) {
+	u, err := url.Parse(dsn)
+	if err != nil || u.User == nil {
+		return dsn, ""
+	}
+	pw, ok := u.User.Password()
+	if !ok {
+		return dsn, ""
+	}
+	u.User = url.User(u.User.Username())
+	return u.String(), pw
 }
 
 // ReadApproxRows returns {"<schema>.<table>": n_live_tup} from
