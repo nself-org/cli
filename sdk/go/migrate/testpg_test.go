@@ -113,8 +113,8 @@ func startPostgres() (stop func(), err error) {
 	}
 	var info struct {
 		NetworkSettings struct {
-			IPAddress string
-			Ports     map[string][]struct{ HostPort string }
+			Ports    map[string][]struct{ HostPort string }
+			Networks map[string]struct{ IPAddress string }
 		}
 	}
 	if _, err = e.call("GET", "/containers/"+created.Id+"/json", nil, &info); err != nil {
@@ -128,8 +128,10 @@ func startPostgres() (stop func(), err error) {
 	if ports := info.NetworkSettings.Ports["5432/tcp"]; len(ports) > 0 {
 		candidates = append(candidates, "127.0.0.1:"+ports[0].HostPort)
 	}
-	if ip := info.NetworkSettings.IPAddress; ip != "" {
-		candidates = append(candidates, ip+":5432")
+	for _, n := range info.NetworkSettings.Networks {
+		if n.IPAddress != "" {
+			candidates = append(candidates, n.IPAddress+":5432")
+		}
 	}
 	deadline := time.Now().Add(90 * time.Second)
 	var perr error
