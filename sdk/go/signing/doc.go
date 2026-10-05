@@ -50,9 +50,12 @@
 //     MiB, more than 1024 entries, a duplicate id or public key, an id that is
 //     not derived, bad base64, a wrong key length or a small-order key is an
 //     error and no keys are returned.
-//   - Revoked file (ParseRevokedFile): one key id per line, same comment rules;
-//     duplicates are collapsed, first-seen order is kept. Ids match exactly
-//     (case sensitive), so write derived ids as KeyID prints them.
+//   - Revoked file (ParseRevokedFile) and the revoked list of NewVerifier: each
+//     entry must have the shape of a derived id, "<purpose>-<16 lowercase hex>"
+//     with one of the five purposes; anything else (upper-case hex, a custom
+//     id, a wrong length) could never match a key and is ErrMalformed rather
+//     than a silent no-op. The file has one id per line, same comment rules as
+//     the trust file; duplicates are collapsed, first-seen order is kept.
 //   - DSSE v1: PAE is "DSSEv1 <len(type)> <type> <len(payload)> <payload>"
 //     with decimal lengths without leading zeros. Envelope.Payload and each
 //     signature are base64 standard with padding (strict as above). An envelope

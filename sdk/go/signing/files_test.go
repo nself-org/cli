@@ -153,21 +153,50 @@ func TestParseKeysFileLimits(t *testing.T) {
 	only(t, err, signing.ErrMalformed)
 }
 
+// rid is a well-formed derived-shape id for tests.
+func rid(p signing.Purpose, n int) string { return fmt.Sprintf("%s-%016x", p, n) }
+
+// Revocation ids that can never match a derived key id are refused.
+var badRevokedIDs = map[string]string{
+	"upper-case hex":      "plugins-0123456789ABCDEF",
+	"custom id":           "release-2026",
+	"unknown purpose":     "other-0123456789abcdef",
+	"no purpose":          "0123456789abcdef",
+	"short hex":           "plugins-0123456789abcde",
+	"long hex":            "plugins-0123456789abcdef0",
+	"non-hex":             "plugins-0123456789abcdeg",
+	"non-hex high":        "plugins-0123456789abcde:",
+	"non-hex low":         "plugins-0123456789abcde/",
+	"prefix only":         "plugins-",
+	"purpose no dash":     "plugins0123456789abcdef",
+	"upper-case purpose":  "Plugins-0123456789abcdef",
+	"purpose is a prefix": "ci-0123456789abcdef",
+}
+
 func TestParseRevokedFile(t *testing.T) {
-	ids, err := signing.ParseRevokedFile(strings.NewReader("# revoked\n\nb-1\r\n  a-2\t\nb-1\n#c\n"))
-	if err != nil || strings.Join(ids, ",") != "b-1,a-2" {
+	a, b := rid(signing.PurposeCIRelease, 1), rid(signing.PurposePlugins, 0xabcdef)
+	ids, err := signing.ParseRevokedFile(strings.NewReader("# revoked\n\n" + a + "\r\n  " + b + "\t\n" + a + "\n#c\n"))
+	if err != nil || strings.Join(ids, ",") != a+","+b {
 		t.Fatalf("ids = %v, err = %v", ids, err)
 	}
 	if ids, err := signing.ParseRevokedFile(strings.NewReader("")); err != nil || len(ids) != 0 {
 		t.Fatalf("empty: %v %v", ids, err)
 	}
-	for name, in := range map[string]string{
-		"two fields":    "a b\n",
-		"bad id":        "a/b\n",
-		"comment after": "a # note\n",
-		"long id":       strings.Repeat("a", 129) + "\n",
-		"good then bad": "ok\n!\n",
-	} {
+	for _, p := range allPurposes {
+		if _, err := signing.ParseRevokedFile(strings.NewReader(rid(p, 7) + "\n")); err != nil {
+			t.Fatalf("%s: %v", p, err)
+		}
+	}
+	cases := map[string]string{
+		"two fields":    a + " " + b + "\n",
+		"comment after": a + " # note\n",
+		"good then bad": a + "\n!\n",
+	}
+	for name, id := range badRevokedIDs {
+		cases[name] = id + "\n"
+		cases[name+" after good"] = a + "\n" + id + "\n"
+	}
+	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
 			ids, err := signing.ParseRevokedFile(strings.NewReader(in))
 			only(t, err, signing.ErrMalformed)
@@ -180,7 +209,7 @@ func TestParseRevokedFile(t *testing.T) {
 	only(t, err, signing.ErrMalformed)
 	var sb strings.Builder
 	for i := 0; i < 1025; i++ {
-		fmt.Fprintf(&sb, "k%d\n", i)
+		sb.WriteString(rid(signing.PurposeAgent, i) + "\n")
 	}
 	all := strings.SplitAfter(sb.String(), "\n")
 	if ids, err := signing.ParseRevokedFile(strings.NewReader(strings.Join(all[:1024], ""))); err != nil || len(ids) != 1024 {
@@ -189,12 +218,27 @@ func TestParseRevokedFile(t *testing.T) {
 	_, err = signing.ParseRevokedFile(strings.NewReader(strings.Join(all[:1025], "")))
 	only(t, err, signing.ErrMalformed)
 	// A repeated id does not count twice toward the limit.
-	if ids, err := signing.ParseRevokedFile(strings.NewReader(strings.Repeat("same\n", 5000))); err != nil || len(ids) != 1 {
+	if ids, err := signing.ParseRevokedFile(strings.NewReader(strings.Repeat(a+"\n", 5000))); err != nil || len(ids) != 1 {
 		t.Fatalf("repeats: %v %v", ids, err)
 	}
-	_, err = signing.ParseRevokedFile(io.MultiReader(strings.NewReader("a\n"), errReader{}))
+	_, err = signing.ParseRevokedFile(io.MultiReader(strings.NewReader(a+"\n"), errReader{}))
 	if err == nil {
 		t.Fatal("reader error ignored")
+	}
+}
+
+// NewVerifier refuses the same unmatchable revocation entries.
+func TestNewVerifierRefusesUnmatchableRevocations(t *testing.T) {
+	for name, id := range badRevokedIDs {
+		t.Run(name, func(t *testing.T) {
+			_, err := signing.NewVerifier(signing.PurposePlugins, nil, []string{rid(signing.PurposePlugins, 1), id})
+			only(t, err, signing.ErrMalformed)
+		})
+	}
+	for _, p := range allPurposes {
+		if _, err := signing.NewVerifier(signing.PurposePlugins, nil, []string{rid(p, 255)}); err != nil {
+			t.Fatalf("%s: %v", p, err)
+		}
 	}
 }
 
@@ -218,7 +262,7 @@ func TestFileErrorsNameTheLine(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "line 4:") {
 		t.Fatalf("err = %v", err)
 	}
-	_, err = signing.ParseRevokedFile(strings.NewReader("a\n/\n"))
+	_, err = signing.ParseRevokedFile(strings.NewReader(rid(signing.PurposeAgent, 1) + "\n/\n"))
 	if err == nil || !strings.Contains(err.Error(), "line 2:") {
 		t.Fatalf("err = %v", err)
 	}

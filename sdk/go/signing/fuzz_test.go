@@ -25,13 +25,13 @@ func isSentinel(err error) bool {
 // only ever produce a sentinel error or a genuine verification.
 func FuzzVerify(f *testing.F) {
 	k := fuzzKey(f, signing.PurposeCIRelease)
-	v, err := signing.NewVerifier(signing.PurposeCIRelease, []signing.Key{k}, []string{"ci-release-revoked"})
+	v, err := signing.NewVerifier(signing.PurposeCIRelease, []signing.Key{k}, []string{"ci-release-0123456789abcdef"})
 	if err != nil {
 		f.Fatal(err)
 	}
 	f.Add(k.ID, make([]byte, 64), []byte("m"))
 	f.Add("", []byte{}, []byte{})
-	f.Add("ci-release-revoked", make([]byte, 64), []byte("m"))
+	f.Add("ci-release-0123456789abcdef", make([]byte, 64), []byte("m"))
 	f.Add(strings.Repeat("a", 500), make([]byte, 65), []byte("\x00"))
 	f.Fuzz(func(t *testing.T, id string, sig, m []byte) {
 		err := v.Verify(m, signing.Signature{KeyID: id, Sig: sig})
@@ -92,7 +92,7 @@ func FuzzParseKeysFile(f *testing.F) {
 }
 
 func FuzzParseRevokedFile(f *testing.F) {
-	f.Add("a\nb\n")
+	f.Add("ci-release-0123456789abcdef\nplugins-0123456789abcdef\n")
 	f.Add("a b")
 	f.Fuzz(func(t *testing.T, in string) {
 		ids, err := signing.ParseRevokedFile(strings.NewReader(in))

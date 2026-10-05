@@ -25,7 +25,9 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   per key set, small-order public keys are refused as `ErrMalformed` at every
   entry point, and `VerifyEnvelope` returns `(payloadType, payload, keyIDs, err)`
   and fails when any signature naming a known key fails (unknown key ids are
-  ignored; the most specific error wins).
+  ignored; the most specific error wins). Revocation entries (file and
+  `NewVerifier`) must have the shape `<purpose>-<16 lowercase hex>`; others are
+  `ErrMalformed`.
 - `remote` package (P7-NODE-04): one exec funnel for ssh, scp, rsync and
   ssh-keyscan (`Command`, `Run`, `RunArgv`, `Start`, `CopyTo`, `Rsync`,
   `EnvAllowlist`); `RemotePathRe`, `ValidateRemotePath` (charset and no leading

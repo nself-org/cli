@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -113,6 +114,25 @@ func hasSmallOrder(pub []byte) bool {
 		if c == smallOrder[i] {
 			return true
 		}
+	}
+	return false
+}
+
+// validRevokedID reports whether id has the shape of a derived key id,
+// "<purpose>-<16 lowercase hex>". Anything else can never match a key, so a
+// revocation entry of another shape is refused rather than silently ignored.
+func validRevokedID(id string) bool {
+	for _, p := range [...]Purpose{PurposePlugins, PurposeAgent, PurposeCIRelease, PurposeCINode, PurposeCIAudit} {
+		rest, ok := strings.CutPrefix(id, string(p)+"-")
+		if !ok || len(rest) != 16 {
+			continue
+		}
+		for i := 0; i < len(rest); i++ {
+			if c := rest[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+				return false
+			}
+		}
+		return true
 	}
 	return false
 }

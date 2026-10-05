@@ -76,8 +76,8 @@ func newVerifier(p Purpose, revoked []string, opts []Option) (*Verifier, error) 
 		return nil, fmt.Errorf("%w: option: %s", ErrMalformed, v.cfg.badOptions[0])
 	}
 	for _, id := range revoked {
-		if !validKeyID(id) {
-			return nil, fmt.Errorf("%w: revoked id %q", ErrMalformed, clip(id))
+		if !validRevokedID(id) {
+			return nil, fmt.Errorf("%w: revoked id %q is not a derived key id", ErrMalformed, clip(id))
 		}
 		v.revoked[id] = struct{}{}
 	}
