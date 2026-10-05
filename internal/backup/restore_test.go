@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/config"
@@ -338,5 +339,133 @@ func TestAutoKeyExistingDecFileSurvives(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(mine); string(b) != "precious" {
 		t.Fatal("a successful decrypt overwrote the pre-existing .dec file")
+	}
+}
+
+// --dry-run is read-only: a loose key is reported, not fixed.
+func TestAutoKeyDryRunNeverWrites(t *testing.T) {
+	autoKeyEnv(t)
+	compattest.Set(t, true)
+	id, err := EnsureIdentity("proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(id.Path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(id.Path)
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.Stat(id.Path)
+	cfg := streamTestConfig()
+	cfg.ProjectName = "proj"
+	if _, err := Stream(context.Background(), cfg, StreamOptions{To: "s3:b/p", DryRun: true}); err != nil {
+		t.Fatalf("dry-run: %v", err)
+	}
+	after, _ := os.Stat(id.Path)
+	if after.Mode().Perm() != 0o644 || !after.ModTime().Equal(before.ModTime()) || mode(t, dir) != 0o755 {
+		t.Fatalf("dry-run changed the key or its directory: %04o dir %04o", after.Mode().Perm(), mode(t, dir))
+	}
+}
+
+// The temp-sibling exception only holds in a directory nobody else can write.
+func TestAutoKeyTempLinkAcceptedOnlyInPrivateDir(t *testing.T) {
+	autoKeyEnv(t)
+	id, _ := EnsureIdentity("proj")
+	dir := filepath.Dir(id.Path)
+	if err := os.Link(id.Path, filepath.Join(dir, ".proj-age.key.tmp-foreign")); err != nil {
+		t.Skip("hard links unsupported")
+	}
+	fi, _ := os.Lstat(id.Path)
+	if !linkOnlyOurTemp(id.Path, fi) {
+		t.Fatal("a temp-named sibling in a 0700 dir should be accepted")
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if linkOnlyOurTemp(id.Path, fi) {
+		t.Fatal("a temp-named hard link in a 0755 dir must be refused")
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, ".proj-age.key.tmp-foreign")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAutoKeyStaleRestoreTempSweep(t *testing.T) {
+	autoKeyEnv(t)
+	dir := t.TempDir()
+	old := time.Now().Add(-48 * time.Hour)
+	mk := func(name string, perm os.FileMode, aged bool) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("plain"), perm); err != nil {
+			t.Fatal(err)
+		}
+		_ = os.Chmod(p, perm)
+		if aged {
+			_ = os.Chtimes(p, old, old)
+		}
+		return p
+	}
+	stale := mk(".nself-restore-123-x.dump.dec", 0o600, true)
+	fresh := mk(".nself-restore-456-x.dump.dec", 0o600, false)
+	loose := mk(".nself-restore-789-x.dump.dec", 0o644, true)
+	mine := mk("x.dump.dec", 0o600, true)
+	other := mk(".nself-restore-abc.txt", 0o600, true)
+	// Restore sweeps at its start, even when the backup itself is not found.
+	_ = Restore(context.Background(), localBackupCfg(dir), RestoreOptions{BackupID: "nosuch"})
+	for p, wantGone := range map[string]bool{stale: true, fresh: false, loose: false, mine: false, other: false} {
+		_, err := os.Lstat(p)
+		if (err != nil) != wantGone {
+			t.Errorf("%s: removed=%v want %v", filepath.Base(p), err != nil, wantGone)
+		}
+	}
+}
+
+// A cancelled context (what SIGINT/SIGTERM become through signal.NotifyContext
+// in the command) while pg_restore runs unwinds Restore and removes the dump.
+func TestAutoKeyRestoreCancelRemovesDecryptedDump(t *testing.T) {
+	home, _, _ := autoKeyEnv(t)
+	key := filepath.Join(home, "k")
+	newAgeKey(t, key)
+	dir := t.TempDir()
+	ageEncrypt(t, key, "PGDMP-x", filepath.Join(dir, "p_full_1.dump.age"))
+	bin := t.TempDir()
+	_ = os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\ntouch \"$STARTED\"\nexec sleep 30\n"), 0o755)
+	started := filepath.Join(t.TempDir(), "started")
+	t.Setenv("STARTED", started)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- Restore(ctx, localBackupCfg(dir), RestoreOptions{BackupID: "p_full_1.dump.age", DecryptKey: key, Only: []string{"pg"}})
+	}()
+	for i := 0; ; i++ {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if i > 200 {
+			t.Fatal("pg_restore never started")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, ".nself-restore-*")); len(left) != 1 {
+		t.Fatalf("expected the plaintext temp while restoring, got %v", left)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a cancelled restore reported success")
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("restore did not return after the cancel")
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, ".nself-restore-*")); len(left) != 0 {
+		t.Errorf("the decrypted dump was left behind: %v", left)
 	}
 }

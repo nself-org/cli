@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -247,6 +248,12 @@ func linkOnlyOurTemp(path string, fi os.FileInfo) bool {
 		return false
 	}
 	dir, pre := filepath.Dir(path), "."+filepath.Base(path)+".tmp-"
+	// The temp-name test only means something in a directory nobody else can
+	// write: a real directory, 0700, ours. Check it here, whoever the caller is.
+	di, err := os.Lstat(dir)
+	if err != nil || !di.IsDir() || !ownedByCurrentUser(di) || (runtime.GOOS != "windows" && di.Mode().Perm()&0o077 != 0) {
+		return false
+	}
 	ents, _ := os.ReadDir(dir)
 	for _, e := range ents {
 		if si, err := os.Lstat(filepath.Join(dir, e.Name())); err == nil && strings.HasPrefix(e.Name(), pre) && os.SameFile(fi, si) {

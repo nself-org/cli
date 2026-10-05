@@ -84,7 +84,10 @@ func resolveAutoRecipients(project string, recipients []string, optOut, dryRun b
 		if err != nil {
 			return nil, err
 		}
-		id, ok, err := readIdentity(p) // a bad existing identity surfaces now, not on the real run
+		if di, e := os.Lstat(filepath.Dir(p)); e == nil && !di.IsDir() {
+			return nil, errs.Newf("E222", "the key directory is a symlink or not a directory (refused): %s", filepath.Dir(p))
+		}
+		id, ok, err := readIdentity(p, true) // read-only: a bad existing identity surfaces now, not on the real run
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +116,7 @@ func EnsureIdentity(project string) (Identity, error) {
 	if err := ensureKeyDir(filepath.Dir(path)); err != nil {
 		return Identity{}, err
 	}
-	if id, ok, err := readIdentity(path); err != nil {
+	if id, ok, err := readIdentity(path, false); err != nil {
 		return Identity{}, err
 	} else if ok {
 		return id, nil
@@ -132,7 +135,7 @@ func EnsureIdentity(project string) (Identity, error) {
 		return Identity{}, err
 	}
 	if !created { // another process won the race: use its key, drop ours
-		id, ok, err := readIdentity(path)
+		id, ok, err := readIdentity(path, false)
 		if err != nil || !ok {
 			return Identity{}, errs.Wrap("E222", "the backup identity appeared but cannot be read: "+path, err)
 		}
@@ -160,8 +163,9 @@ func ensureKeyDir(dir string) error {
 }
 
 // readIdentity reads an existing identity. ok is false when none exists. A
-// symlink or non-regular file is refused; a wider mode is tightened to 0600.
-func readIdentity(path string) (Identity, bool, error) {
+// symlink or non-regular file is refused; a wider mode is tightened to 0600,
+// or only reported when dry (a dry run never writes).
+func readIdentity(path string, dry bool) (Identity, bool, error) {
 	fi, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return Identity{}, false, nil
@@ -183,7 +187,9 @@ func readIdentity(path string) (Identity, bool, error) {
 			return Identity{}, false, errs.Newf("E222", "the backup identity %s has more than one hard link (refused, left untouched; remove the extra link)", path)
 		}
 	}
-	if fi.Mode().Perm()&0o077 != 0 {
+	if fi.Mode().Perm()&0o077 != 0 && dry {
+		slog.Warn("the backup identity is wider than 0600; a real run tightens it", "path", path, "mode", fmt.Sprintf("%04o", fi.Mode().Perm()))
+	} else if fi.Mode().Perm()&0o077 != 0 {
 		slog.Warn("tightening the backup identity to 0600", "path", path, "was", fmt.Sprintf("%04o", fi.Mode().Perm()))
 		if err := os.Chmod(path, 0o600); err != nil {
 			return Identity{}, false, errs.Wrap("E222", "cannot tighten the backup identity to 0600: "+path, err)

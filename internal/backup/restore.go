@@ -10,7 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
@@ -37,6 +39,8 @@ func Restore(ctx context.Context, cfg *config.Config, opts RestoreOptions) error
 	if backupDir == "" {
 		backupDir = "./backups"
 	}
+
+	sweepStaleRestoreTemps(backupDir, restoreTempStaleAfter)
 
 	backupFile, err := resolveBackupFile(backupDir, opts.BackupID)
 	if err != nil {
@@ -119,6 +123,33 @@ func resolveBackupFile(backupDir, backupID string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%w: %s", errs.ErrBackupNotFound, backupID)
+}
+
+// restoreTempStaleAfter is how old a leftover plaintext temp must be before the
+// sweep at restore start removes it (a killed restore cannot clean up itself).
+var restoreTempStaleAfter = time.Hour
+
+// sweepStaleRestoreTemps removes plaintext temps of ours that an earlier,
+// killed restore left in dir: named .nself-restore-*.dec, regular, 0600, owned
+// by this user, older than olderThan. Anything else is never touched.
+func sweepStaleRestoreTemps(dir string, olderThan time.Duration) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		n := e.Name()
+		if !strings.HasPrefix(n, ".nself-restore-") || !strings.HasSuffix(n, ".dec") {
+			continue
+		}
+		p := filepath.Join(dir, n)
+		fi, err := os.Lstat(p)
+		if err != nil || !fi.Mode().IsRegular() || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600) || !ownedByCurrentUser(fi) || time.Since(fi.ModTime()) < olderThan {
+			continue
+		}
+		slog.Warn("removing a stale decrypted restore temp", "file", p)
+		_ = os.Remove(p)
+	}
 }
 
 func decryptFile(ctx context.Context, path, keyPath, project string) (string, error) {
@@ -205,6 +236,9 @@ func restorePgDump(ctx context.Context, container, user, db, backupFile string) 
 
 	errOutput, _ := io.ReadAll(stderr)
 	if err := cmd.Wait(); err != nil {
+		if ctx.Err() != nil { // cancelled (SIGINT/SIGTERM): a killed restore is not a warning
+			return fmt.Errorf("%w: %v", errs.ErrBackupRestoreFailed, ctx.Err())
+		}
 		// pg_restore returns non-zero on warnings too; only fail on real errors.
 		errStr := string(errOutput)
 		if strings.Contains(errStr, "FATAL") || strings.Contains(errStr, "could not") {

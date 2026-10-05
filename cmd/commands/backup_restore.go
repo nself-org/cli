@@ -7,7 +7,10 @@ package commands
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/nself-org/cli/internal/backup"
 	"github.com/spf13/cobra"
@@ -57,7 +60,12 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		Yes:        yes,
 	}
 
-	if err := backup.Restore(cmd.Context(), cfg, opts); err != nil {
+	// SIGINT and SIGTERM cancel ctx so Restore unwinds through its defers and
+	// removes the decrypted dump; a second signal gets the default behaviour.
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() { <-ctx.Done(); stop() }()
+	if err := backup.Restore(ctx, cfg, opts); err != nil {
 		return fmt.Errorf("backup restore: %w", err)
 	}
 	fmt.Println("Backup restored successfully.")
