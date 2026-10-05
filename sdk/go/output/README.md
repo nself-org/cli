@@ -17,7 +17,7 @@ err := output.WriteData(os.Stdout, "infra status", map[string]any{"ok": true}, n
 
 // An error envelope has an error object and no data key.
 err = output.WriteError(os.Stdout, "infra status", output.ErrorDetail{
-    Code:    "E410",
+    Code:    "E901",
     Message: "cannot reach the host",
     Class:   output.ClassInfra, // exit_code 2 is derived
 }, nil)

@@ -12,7 +12,7 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/license.licensePubKeyHex=$(NSELF_LICENSE_PUBKEY_HEX)
 BUILDFLAGS := -trimpath
 
-.PHONY: build clean test vet install cross dist verify-prod sport-f21 sport-f02 cmd-inventory registry core-services wiki-commands wiki-check flag-drift-audit parity schemas schemas-check contract-check sbom man fmt fmt-check
+.PHONY: build clean test vet install cross dist verify-prod sport-f21 sport-f02 cmd-inventory registry canon core-services wiki-commands wiki-check flag-drift-audit parity schemas schemas-check contract-check sbom man fmt fmt-check
 
 verify-prod:
 	@bash scripts/prod-verify/p87-verification.sh
@@ -35,6 +35,12 @@ sport-f02: cmd-inventory
 ## registry — P7-REG-07. Alias of cmd-inventory: regenerates the command registry
 ## .github/command-registry.json together with the inventory and wiki block.
 registry: cmd-inventory
+
+## canon — P7-CANON-21. Regenerate cmd/commands/canon_moves_gen.go (the canon engine's
+## move table) from internal/canon/canon.yaml and domains/*.yaml. Run after editing
+## a canon fragment's rows; TestCanonTableCurrent fails when the file is stale.
+canon:
+	@CGO_ENABLED=0 go run -mod=vendor ./tools/canongen
 
 ## core-services — CLI-R07. Regenerate .github/wiki/Core-Services.md from the
 ## compose service catalog. Set NSELF_SPORT_DIR to also refresh SPORT F08.

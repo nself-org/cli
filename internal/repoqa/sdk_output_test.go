@@ -230,6 +230,14 @@ func TestSDKOutputCases(t *testing.T) {
 	root := repoRoot(t)
 	rs := sdkLoadSchema(t, root, "envelope.v1.schema.json")
 
+	// The fixtures use E901 as a placeholder error code. internal/output adds a
+	// docs_url for a registered code, so a registered placeholder would make
+	// every fixture drift. E900+ is in no allocation block (errs/codes_blocks.go),
+	// so no fragment can register it; this fails first if that ever changes.
+	if _, registered := errs.Registry["E901"]; registered {
+		t.Fatal("E901 is registered in the cli error registry: the SDK fixtures use it as an unregistered placeholder code; pick another unallocated code and update sdk/go/output")
+	}
+
 	cases := sdkFixtures(t, root, "cases")
 	kinds := map[string]bool{}
 	for _, f := range cases {

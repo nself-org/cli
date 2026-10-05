@@ -3,7 +3,7 @@
     "kind": "error",
     "command": "probe",
     "error": {
-      "code": "E410",
+      "code": "E901",
       "message": "m",
       "class": "other"
     }
@@ -13,7 +13,7 @@
     "  \"schema_version\": \"1\",",
     "  \"command\": \"probe\",",
     "  \"error\": {",
-    "    \"code\": \"E410\",",
+    "    \"code\": \"E901\",",
     "    \"message\": \"m\",",
     "    \"exit_code\": 1,",
     "    \"class\": \"user\"",

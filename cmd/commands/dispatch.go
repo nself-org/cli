@@ -89,10 +89,8 @@ func warnRelocatedCommand(cmdName string) bool {
 	if deprecationRegistry == nil {
 		return false
 	}
-	for _, a := range os.Args {
-		if a == "--no-deprecation-warnings" || a == "--quiet" {
-			return false
-		}
+	if warningsSilenced(os.Args) {
+		return false
 	}
 	item, ok := deprecationRegistry.Lookup("nself " + cmdName)
 	if !ok {
@@ -105,19 +103,10 @@ func warnRelocatedCommand(cmdName string) bool {
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main().
 func Execute() error {
-	// Group the command tree for help output. Done here, not in init(): every
-	// command's own init() must have registered it on RootCmd first.
-	ApplyCommandGroups()
-
-	// Product-alias shim: 'nsentry <args>' (symlinked binary) ≡ 'nself sentry <args>'.
-	normalizeInvokedBinary()
-
-	// CLI-R09: rewrite retired top-level spellings onto their new home before
-	// anything else looks at os.Args. This has to precede the plugin proxy
-	// below: a retired name is no longer a registered command, so the proxy
-	// would otherwise try to resolve it as a plugin.
-	if legacy := rewriteLegacyInvocation(); legacy != "" {
-		warnLegacySpelling(legacy)
+	// Rewrite argv and prepare the tree (EPIC P7-CANON D2): legacy and canon
+	// spellings, command relocation, groups, plugin mounts. See tree_prepare.go.
+	if err := prepareInvocation(); err != nil {
+		return err
 	}
 
 	// Route cobra error/usage output to stderr so structured output stays clean.

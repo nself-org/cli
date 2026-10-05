@@ -1,0 +1,3 @@
+# Fixture canon for the canon engine tests (P7-CANON-21). Not the real canon.
+schema_version: 1
+verbs: [status, stop, restart, doctor, config, db, deploy, update]
