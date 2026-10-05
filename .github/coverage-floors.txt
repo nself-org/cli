@@ -16,7 +16,8 @@
 #
 # internal/trust: Linux floor. dns_macos.go and ports_macos.go carry //go:build darwin
 # and the darwin-only idempotency suite does not run on Linux, so the Linux
-# measurement is far below the macOS one (P103 R1). This gate runs on Linux only.
+# measurement is far below the macOS one (P103 R1). This gate runs on Linux only, so the
+# old Darwin floor of 75 is not carried.
 cmd/commands 31  # measured 33.6 2026-10-05
 cmd/nself 0  # measured 0.0 2026-10-05
 cmd/nself-backup-archive 0  # measured 0.0 2026-10-05
@@ -107,7 +108,7 @@ internal/ssl/acme 72  # measured 74.6 2026-10-05
 internal/telemetry 60  # measured 62.7 2026-10-05
 internal/templates/clone 84  # measured 86.8 2026-10-05
 internal/tenant 45  # measured 47.4 2026-10-05
-internal/trust 35
+internal/trust 35  # Linux only; measured 36.2% on 23 consecutive main runs (36.4 on the PR runs); floor 35 is structural headroom (darwin-only tests and files are excluded)
 internal/truststate 94  # measured 96.0 2026-10-05
 internal/ui 75
 internal/upgrade 88  # measured 90.6 2026-10-05
