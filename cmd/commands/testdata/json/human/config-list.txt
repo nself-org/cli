@@ -11,6 +11,7 @@ APP_NAME                                      (unset)                        uns
 DOMAIN                                        (unset)                        unset
 ACME_EMAIL                                    (unset)                        unset
 DEMO_SEED                                     (unset)                        unset
+IMAGE_PINNING                                 (unset)                        unset
 POSTGRES_VERSION                              (default: 16-alpine)           default
 POSTGRES_IMAGE                                (unset)                        unset
 POSTGRES_HOST                                 (default: postgres)            default
