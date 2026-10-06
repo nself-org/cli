@@ -35,6 +35,13 @@ on:
       - 'tools/imagelock/**'
       - '.github/workflows/default-images-pullable.yml'
   workflow_dispatch:
+    inputs:
+      inject_missing:
+        type: boolean
+        default: false
+      alert_test:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -45,14 +52,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: go.mod
           cache: false
 
       - name: Check every default image manifest resolves
+        env:
+          IMAGE_MIRROR_PROBE: ${{ vars.IMAGE_MIRROR_PROBE }}
         run: |
           set -uo pipefail
 
@@ -60,22 +69,61 @@ jobs:
           # itself, so a new pin is covered the moment it lands and there is no
           # second list. Each ref is repository:version@digest, so the gate also
           # proves the pinned digest still exists upstream.
-          go run ./tools/imagelist > /tmp/default-images.tsv
+          go run ./tools/imagelist -platforms > /tmp/default-images.tsv
           if [ ! -s /tmp/default-images.tsv ]; then
             echo "::error::imagelist produced no images — the generator or the map is broken"
             exit 1
           fi
 
+          if [ "${{ inputs.inject_missing }}" == 'true' ]; then
+            echo -e "fake-missing\tdocker.io/library/alpine:doesnotexist@sha256:1111111111111111111111111111111111111111111111111111111111111111\tlinux/amd64" >> /tmp/default-images.tsv
+            first_line=$(head -n 1 /tmp/default-images.tsv)
+            echo "$first_line" | awk -F'\t' '{print "fake-plat\t" $2 "\t" $3 ",linux/fakearch"}' >> /tmp/default-images.tsv
+          fi
+
           failed=0
-          while IFS="$(printf '\t')" read -r service image; do
+          while IFS="$(printf '\t')" read -r service image platforms; do
             [ -n "${image}" ] || continue
-            if err=$(docker manifest inspect "${image}" 2>&1 >/dev/null); then
-              echo "ok    ${service}  ${image}"
-            else
+            
+            echo "Probing ${service} -> ${image}"
+            
+            if ! manifest_json=$(docker manifest inspect "${image}" 2>&1); then
               failed=1
               echo "FAIL  ${service}  ${image}"
-              echo "::error title=${service} image is not pullable::${image} — ${err}"
+              echo "::error title=${service} image is not pullable::${image} — ${manifest_json}"
+              continue
             fi
+            
+            IFS=',' read -ra plats <<< "$platforms"
+            for p in "${plats[@]}"; do
+                os="$(echo "$p" | cut -d/ -f1)"
+                arch="$(echo "$p" | cut -d/ -f2)"
+                variant="$(echo "$p" | cut -d/ -f3)"
+                
+                if [ -n "$variant" ]; then
+                  jq_filter=".manifests[]?.platform | select(.os == \"$os\" and .architecture == \"$arch\" and .variant == \"$variant\")"
+                else
+                  jq_filter=".manifests[]?.platform | select(.os == \"$os\" and .architecture == \"$arch\")"
+                fi
+                
+                if ! echo "$manifest_json" | jq -e "$jq_filter" >/dev/null; then
+                    failed=1
+                    echo "FAIL  ${service}  ${image} is missing platform ${p}"
+                    echo "::error title=${service} missing platform::${image} lacks ${p}"
+                fi
+            done
+            
+            if [ "$IMAGE_MIRROR_PROBE" = "true" ] && [[ "$service" != plugin/* ]]; then
+                version_digest="${image#*:}"
+                mirror="docker.io/nself/${service}:${version_digest}"
+                echo "Probing mirror -> ${mirror}"
+                if ! docker manifest inspect "${mirror}" >/dev/null 2>&1; then
+                    failed=1
+                    echo "FAIL  ${service} mirror ${mirror}"
+                    echo "::error title=${service} mirror not pullable::${mirror}"
+                fi
+            fi
+
           done < /tmp/default-images.tsv
 
           echo
@@ -87,3 +135,48 @@ jobs:
             exit 1
           fi
           echo "All default images resolve."
+
+  alert:
+    name: Manage alert issue on failure
+    needs: check
+    if: failure() && (github.event_name == 'schedule' || inputs.alert_test)
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Create or comment on alert issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          existing=$(gh issue list -R "$REPO" --label image-probe --state open --json number -q '.[0].number')
+          
+          if [ -n "$existing" ] && [ "$existing" != "null" ]; then
+            gh issue comment "$existing" -R "$REPO" -b "Probe failed again: $RUN_URL"
+          else
+            gh label create image-probe --force -R "$REPO"
+            gh issue create -R "$REPO" --label image-probe -t "Daily image probe failed" -b "One or more images failed to resolve: $RUN_URL"
+          fi
+
+  close_alert:
+    name: Close alert issue on success
+    needs: check
+    if: success() && (github.event_name == 'schedule' || inputs.alert_test)
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Close alert issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          existing=$(gh issue list -R "$REPO" --label image-probe --state open --json number -q '.[0].number')
+          
+          if [ -n "$existing" ] && [ "$existing" != "null" ]; then
+            gh issue close "$existing" -R "$REPO" -c "Probe is green again: $RUN_URL"
+          fi
