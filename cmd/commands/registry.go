@@ -63,7 +63,15 @@ func commandRegistry() (*cmdregistry.Registry, error) {
 	return r.reg, r.err
 }
 
-// buildRegistry runs the idempotent tree preparation and Build.
+// buildRegistry runs the idempotent tree preparation and Build. The tree is
+// prepared for the mode being built (relocation, stubs, groups) for the
+// duration of the Build and undone after, so the registry always describes the
+// mode's surface whatever state the live tree is in: a caller that flips the
+// compat mode without preparing the tree (compattest.Both, in-process tools)
+// still gets the mode-true registry, and a tree already prepared for the mode
+// is left exactly as it was (every engine step is a no-op on an applied
+// surface). Installed plugins are never mounted here; a runtime build sees
+// whatever the invocation path already mounted.
 func buildRegistry(v15 bool) (*cmdregistry.Registry, error) {
 	ApplyCommandGroups()
 	// cobra adds `help` only inside Execute; canon.yaml has an entry for it, so
@@ -73,6 +81,8 @@ func buildRegistry(v15 bool) (*cmdregistry.Registry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("command canon: %w", err)
 	}
+	undo := prepareTree(RootCmd, v15, false)
+	defer undo()
 	reg, err := cmdregistry.Build(RootCmd, c, jsonDataTypes, cmdregistry.BuildOptions{
 		V15:             v15,
 		V15OnlyEnvelope: jsonV15OnlyEnvelope,

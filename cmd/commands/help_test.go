@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/errs"
@@ -113,8 +114,42 @@ func TestHelpJSONEmitsRegistryEnvelope(t *testing.T) {
 			t.Fatalf("bad envelope header: %+v", env)
 		}
 		d := env.Data
-		if d.Counts.TopLevel != inventoryLen(t) {
-			t.Errorf("counts.top_level = %d, inventory has %d", d.Counts.TopLevel, inventoryLen(t))
+		// The committed inventory documents the v1.5 surface (EPIC D3), so
+		// v1.5 must match it exactly. In v1.4 the commands a move relocates are
+		// still visible at their old top-level paths while v1.5 hides their
+		// stubs, so the v1.4 count is higher by the names visible at the top
+		// in v1.4 but not in v1.5 (a shim already hidden in both modes, like
+		// uninstall, counts in neither).
+		want := inventoryLen(t)
+		if !compat.V15() {
+			reg14, err := BuildRegistry(false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reg15, err := BuildRegistry(true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			visibleTop := func(r *cmdregistry.Registry) map[string]bool {
+				top := map[string]bool{}
+				for _, c := range r.Commands {
+					if c.Parent == "nself" && !c.Hidden && c.Name != "help" {
+						top[c.Name] = true
+					}
+				}
+				return top
+			}
+			v14, v15 := visibleTop(reg14), visibleTop(reg15)
+			extra := 0
+			for name := range v14 {
+				if !v15[name] {
+					extra++
+				}
+			}
+			want += extra
+		}
+		if d.Counts.TopLevel != want {
+			t.Errorf("counts.top_level = %d, want %d (v1.5 inventory %d)", d.Counts.TopLevel, want, inventoryLen(t))
 		}
 		if d.Counts.Core+len(d.Counts.CoreMissing) != len(d.Verbs) {
 			t.Errorf("core %d + missing %d != verbs %d", d.Counts.Core, len(d.Counts.CoreMissing), len(d.Verbs))

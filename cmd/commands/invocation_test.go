@@ -357,11 +357,19 @@ func TestInvocationRealRegistryBuildsAndGuardDecides(t *testing.T) {
 		t.Fatalf("live registry must build: %v", err)
 	}
 	compattest.Both(t, func(t *testing.T) {
+		// The mode's dispatch resolves spellings on the prepared tree after
+		// the canon rewrite, so the subtest does the same.
+		defer prepareTreeWith(&canonTable, RootCmd, compat.V15(), false)()
 		// restart: root --json flag, none: E402 in both modes.
 		wantE402(t, refuseUnsupportedJSON(parseReal(t, "restart")))
 		// D-0216: decrypt-on-deploy prints plaintext secrets, has no json
-		// support, so JSON mode must refuse it in both modes.
-		wantE402(t, refuseUnsupportedJSON(parseReal(t, "secrets", "decrypt-on-deploy")))
+		// support, so JSON mode must refuse it in both modes. It moves under
+		// config in v1.5, so the spelling is the mode's rewrite of the old one.
+		dec, _, decErr := rewriteCanonArgsWith(&canonTable, RootCmd, []string{"secrets", "decrypt-on-deploy"}, compat.V15())
+		if decErr != nil {
+			t.Fatalf("rewrite decrypt-on-deploy: %v", decErr)
+		}
+		wantE402(t, refuseUnsupportedJSON(parseReal(t, dec...)))
 		// status: own legacy json flag, passes.
 		if err := refuseUnsupportedJSON(parseReal(t, "status")); err != nil {
 			t.Fatalf("status --json refused: %v", err)
