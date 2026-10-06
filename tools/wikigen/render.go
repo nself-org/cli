@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -253,7 +254,15 @@ func subcommandTable(subs []*cobra.Command) string {
 	return b.String()
 }
 
+var bareURLRe = regexp.MustCompile(`https?://[^\s|<>\)\]]+`)
+
 func escapeCell(s string) string {
+	s = bareURLRe.ReplaceAllStringFunc(s, func(m string) string {
+		if m[len(m)-1] == '.' || m[len(m)-1] == ',' {
+			return "<" + m[:len(m)-1] + ">" + string(m[len(m)-1])
+		}
+		return "<" + m + ">"
+	})
 	s = strings.ReplaceAll(s, "|", `\|`)
 	return strings.ReplaceAll(s, "\n", " ")
 }
