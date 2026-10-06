@@ -285,11 +285,11 @@
       "role": "monitoring",
       "repository": "docker.io/otel/opentelemetry-collector-contrib",
       "version": "latest",
-      "index_digest": "sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1",
+      "index_digest": "sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6",
       "platforms": {
-        "linux/amd64": "sha256:b5cf983651c32c3ca13f936deb51742015a54d121f388cac248923ddeb8cc9fc",
-        "linux/arm/v7": "sha256:b3eb06494c8eb16510a4588cd086373d4c8ac16ccefa979eabdf58a33288c9c4",
-        "linux/arm64": "sha256:d497a11a3088097e4054ffbfd4b4f5244a8c036dc77c96cf2f14f86113ee9b86"
+        "linux/amd64": "sha256:340885ab6f46822374f00c58c067396b53b8d612559842e8821585567579d9e3",
+        "linux/arm/v7": "sha256:aedb2e660faac07e7e4dafa1f4073359cec1cee176e6ba366a221f3352ef3997",
+        "linux/arm64": "sha256:254638b0878b0ef56088f3d580bac163aa7131213c5f7eb6e0cc9d169805503f"
       },
       "legacy_ref": "otel/opentelemetry-collector-contrib:latest",
       "license": "Apache-2.0",

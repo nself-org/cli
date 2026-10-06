@@ -126,6 +126,7 @@ tools/covfloor 90  # measured 92.4 2026-10-05
 tools/endpoint-auth-checker 69  # measured 71.9 2026-10-05
 tools/flagaudit 40  # measured 42.7 2026-10-05
 tools/imagelist 0  # measured 0.0 2026-10-05
+tools/imagelock 57  # measured 59.7 2026-10-05
 tools/manifestv2migrate 70  # measured 72.3 2026-10-05
 tools/mcpdoc 0  # measured 0.0 2026-10-05
 tools/perfbench 79  # measured 80.3 2026-10-05 (go test -mod=vendor -coverprofile ./tools/perfbench/...)
