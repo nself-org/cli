@@ -37,6 +37,7 @@ import (
 
 	"github.com/nself-org/cli/cmd/commands"
 	"github.com/nself-org/cli/internal/canon"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/spf13/cobra"
 )
 
@@ -101,6 +102,45 @@ func main() {
 	}
 	stale = append(stale, stubStale...)
 	pagesWritten += stubsWritten
+
+	errCodesChanged, err := writeErrorCodesPage(filepath.Join(*dir, "error-codes.md"), errs.Registry, *check)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error-codes.md: %v\n", err)
+		os.Exit(1)
+	}
+	if errCodesChanged {
+		if *check {
+			stale = append(stale, "error-codes.md")
+		} else {
+			auxWritten++
+		}
+	}
+
+	exitCodesChanged, err := writeExitCodesPage(filepath.Join(*dir, "Exit-Codes.md"), *check)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Exit-Codes.md: %v\n", err)
+		os.Exit(1)
+	}
+	if exitCodesChanged {
+		if *check {
+			stale = append(stale, "Exit-Codes.md")
+		} else {
+			auxWritten++
+		}
+	}
+
+	taxonomyChanged, err := writeStatusTaxonomyPage(filepath.Join(*dir, "Status-Taxonomy.md"), *check)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Status-Taxonomy.md: %v\n", err)
+		os.Exit(1)
+	}
+	if taxonomyChanged {
+		if *check {
+			stale = append(stale, "Status-Taxonomy.md")
+		} else {
+			auxWritten++
+		}
+	}
 
 	sidebarChanged, err := writeSidebar(*sidebar, cmds, *check)
 	if err != nil {
