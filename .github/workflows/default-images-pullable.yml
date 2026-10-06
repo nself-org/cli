@@ -35,6 +35,13 @@ on:
       - 'tools/imagelock/**'
       - '.github/workflows/default-images-pullable.yml'
   workflow_dispatch:
+    inputs:
+      inject_missing:
+        type: boolean
+        default: false
+      alert_test:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -66,6 +73,12 @@ jobs:
           if [ ! -s /tmp/default-images.tsv ]; then
             echo "::error::imagelist produced no images — the generator or the map is broken"
             exit 1
+          fi
+
+          if [ "${{ inputs.inject_missing }}" == 'true' ]; then
+            echo -e "fake-missing\tdocker.io/library/alpine:doesnotexist@sha256:1111111111111111111111111111111111111111111111111111111111111111\tlinux/amd64" >> /tmp/default-images.tsv
+            first_line=$(head -n 1 /tmp/default-images.tsv)
+            echo "$first_line" | awk -F'\t' '{print "fake-plat\t" $2 "\t" $3 ",linux/fakearch"}' >> /tmp/default-images.tsv
           fi
 
           failed=0
@@ -126,7 +139,7 @@ jobs:
   alert:
     name: Manage alert issue on failure
     needs: check
-    if: failure() && (github.event_name == 'schedule' || github.ref == 'refs/heads/main')
+    if: failure() && (github.event_name == 'schedule' || inputs.alert_test == 'true')
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -143,14 +156,14 @@ jobs:
           if [ -n "$existing" ] && [ "$existing" != "null" ]; then
             gh issue comment "$existing" -R "$REPO" -b "Probe failed again: $RUN_URL"
           else
-            gh label create image-probe --force -R "$REPO" || true
+            gh label create image-probe --force -R "$REPO"
             gh issue create -R "$REPO" --label image-probe -t "Daily image probe failed" -b "One or more images failed to resolve: $RUN_URL"
           fi
 
   close_alert:
     name: Close alert issue on success
     needs: check
-    if: success() && (github.event_name == 'schedule' || github.ref == 'refs/heads/main')
+    if: success() && (github.event_name == 'schedule' || inputs.alert_test == 'true')
     runs-on: ubuntu-latest
     permissions:
       issues: write
