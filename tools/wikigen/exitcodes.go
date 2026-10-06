@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/nself-org/cli/cmd/commands"
 )
 
 type commandRegistry struct {
@@ -186,33 +187,20 @@ func betweenReplace(body, start, end, newContent string) string {
 	return body[:idxStart+len(start)] + newContent + body[idxEnd:]
 }
 
+// exitCodeToState maps each v1.5 state exit code to its data.state value, from
+// the command package's own enum and state-to-exit mapping (no hand copy).
 func exitCodeToState() (map[int]string, error) {
-	path := "../../cmd/commands/config_json_types.go"
-	b, err := os.ReadFile(path)
-	if err != nil {
-		b, err = os.ReadFile("cmd/commands/config_json_types.go")
-		if err != nil {
-			return nil, fmt.Errorf("read config_json_types.go: %v", err)
-		}
-	}
-	content := string(b)
-
-	constMap := make(map[string]string)
-	reConst := regexp.MustCompile(`(state[a-zA-Z0-9_]+)\s*=\s*"([^"]+)"`)
-	for _, m := range reConst.FindAllStringSubmatch(content, -1) {
-		constMap[m[1]] = m[2]
-	}
-
+	en := commands.PilotJSONEnums()
 	res := make(map[int]string)
-	res[0] = constMap["stateOK"]
-
-	reCase := regexp.MustCompile(`case\s+(state[a-zA-Z0-9_]+):\s*\n\s*return\s+(\d+)`)
-	for _, m := range reCase.FindAllStringSubmatch(content, -1) {
-		code, _ := strconv.Atoi(m[2])
-		res[code] = constMap[m[1]]
+	for _, st := range append(append([]string{}, en.StatusState...), en.DoctorState...) {
+		code := commands.StateExitCode(st)
+		if prev, ok := res[code]; ok && prev != st {
+			return nil, fmt.Errorf("exit code %d maps to two states (%s, %s)", code, prev, st)
+		}
+		res[code] = st
 	}
 	if len(res) < 2 {
-		return nil, fmt.Errorf("failed to parse state codes")
+		return nil, fmt.Errorf("state enum yielded %d exit codes; expected the 0 and 10-12 states", len(res))
 	}
 	return res, nil
 }

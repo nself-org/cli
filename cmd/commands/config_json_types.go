@@ -98,6 +98,10 @@ func stateExitCode(state string) int {
 	return 0
 }
 
+// StateExitCode exports stateExitCode for tools/wikigen, which renders the
+// Exit-Codes.md state table from it and PilotJSONEnums (P7-TRUTH-35).
+func StateExitCode(state string) int { return stateExitCode(state) }
+
 // emitStateJSON writes the result of a command that printed a pre-contract bare
 // JSON shape. bare is that shape; enveloped is the same payload plus `state`.
 // v1.4 mode and NSELF_JSON_LEGACY=1 in v1.5 mode print bare (through
