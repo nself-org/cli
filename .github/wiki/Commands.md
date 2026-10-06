@@ -94,7 +94,7 @@ tree in `cmd/commands/`. Run `make cmd-inventory` to refresh.
 ## Complete index
 
 Generated from the cobra registration tree in `cmd/commands/`.
-Run `make cmd-inventory` to refresh. **Total top-level commands: 52**
+Run `make cmd-inventory` to refresh. **Total top-level commands: 47**
 
 | Command | Short Description | Group | Subcommands |
 |---|---|---|---|
@@ -107,12 +107,11 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 52**
 | `nself ci` | Run the nself-ci gate suite and post a GitHub commit status | deploy | build, eval, forgejo, serve |
 | `nself clean` | Remove generated artifacts (docker-compose.yml, nginx configs, build cache) | core | — |
 | `nself completion` | Generate shell completion scripts | account | — |
-| `nself config` | Manage project configuration | config | export, features, get, import, list, set, show, validate |
+| `nself config` | Manage project configuration | config | env, export, features, get, import, list, oauth, secrets, set, show, telemetry, trust, validate |
 | `nself db` | Database operations: migrations, backups, restore, seed, shell | data | backup, backup-sync, backup-sync-status, drift, drop, fk-index, hasura, lint, list, migrate, pgbouncer, pitr, reconcile, reset, reset-checksum, restore, restore-drill, restore-drill-list, rls, seed, shell, soft-delete, verify, verify-checksums |
 | `nself deploy` | Deploy the stack to a target environment | deploy | check-access, environments, health, logs, promote, rollback, status, web |
 | `nself dev` | Start development environment | core | — |
 | `nself doctor` | Run comprehensive system diagnostics | core | — |
-| `nself env` | Multi-environment management: switch, list, diff, copy | config | copy, diff, explain, list, show, target, use |
 | `nself exec` | Execute a command inside a service container | core | — |
 | `nself functions` | Manage serverless functions | data | delete, deploy, invoke, list, logs |
 | `nself generate` | Generate type-safe client SDK types from the live Hasura schema | config | — |
@@ -127,7 +126,6 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 52**
 | `nself man` | Generate man pages for all nself commands | account | — |
 | `nself mcp` | Start the nSelf MCP server | extend | — |
 | `nself migrate` | Detect and migrate legacy artifacts to the current nSelf version | data | detect, firebase, from-bash, from-v099, generate, rollback, run, supabase, watch |
-| `nself oauth` | Manage OAuth provider tokens | account | refresh |
 | `nself ops` | Ops-profile deployment and management | deploy | deploy |
 | `nself plugin` | Manage nSelf plugins | extend | audit-tables, compat-check, count, debug, dev, disable, enable, info, init, install, inventory, link, list, logs, marketplace, new, outdated, refresh, remove, search, start, status, stop, submit, test, unlink, update, updates |
 | `nself promote` | Promote one environment to another (e.g. staging to prod) | deploy | rollback |
@@ -135,7 +133,6 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 52**
 | `nself reset` | Stop containers, remove all data volumes, and clean generated files | core | — |
 | `nself restart` | Smart restart with config change detection | core | — |
 | `nself runner` | Provision and audit self-hosted GitHub Actions CI runner hosts | advanced | provision, verify |
-| `nself secrets` | Manage encrypted project secrets (age encryption) | config | audit, decrypt-on-deploy, edit, get, init, lint, list, list-schedules, rekey, retire, rotate, rotation-log, schedule, set, verify |
 | `nself security` | Server security: audit, setup, and status | advanced | audit, setup, status |
 | `nself self-heal` | Run targeted self-healing routines for nSelf components | observe | — |
 | `nself server` | Provision, list, resize, and destroy Hetzner Cloud servers | advanced | destroy, list, provision, resize |
@@ -143,9 +140,7 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 52**
 | `nself start` | Boot your nSelf stack | core | — |
 | `nself status` | Show health status of all services | core | — |
 | `nself stop` | Gracefully shut down all services or specific services | core | — |
-| `nself telemetry` | Manage CLI telemetry preferences | account | off, on, status |
 | `nself template` | Browse and publish full-stack app templates | config | info, list, publish, update |
-| `nself trust` | Set up local dev trust (DNS, SSL, port forwarding) | config | dns, ssl, status |
 | `nself update` | Update the nSelf CLI and admin UI | account | images, upgrade |
 | `nself urls` | Display all service URLs with route conflict detection | core | — |
 | `nself verify-sbom` | Verify the SBOM signature for a CLI release | advanced | — |

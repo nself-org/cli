@@ -52,13 +52,18 @@ With `NSELF_V15=1` (the default from v1.5.0), `config show`, `config get` and `c
 <!-- BEGIN GENERATED:subcommands -->
 | Name | Description |
 |------|-------------|
+| `env` | Multi-environment management: switch, list, diff, copy |
 | `export` | Export current config to a file or stdout |
 | `features` | Manage CLI-built-in feature flags |
 | `get` | Get a single configuration value |
 | `import` | Import config from a file into .env |
 | `list` | List all known config keys with current values |
+| `oauth` | Manage OAuth provider tokens |
+| `secrets` | Manage encrypted project secrets (age encryption) |
 | `set` | Update a configuration value (writes to .env) |
 | `show` | Show all config key=value pairs (masked by default) |
+| `telemetry` | Manage CLI telemetry preferences |
+| `trust` | Set up local dev trust (DNS, SSL, port forwarding) |
 | `validate` | Validate configuration against all registered rules |
 <!-- END GENERATED:subcommands -->
 
