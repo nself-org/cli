@@ -38,6 +38,10 @@ func writeStatusTaxonomyPage(path string, check bool) (bool, error) {
 		return false, fmt.Errorf("parse schema: %v", err)
 	}
 
+	if len(schema.Properties.Maturity.Enum) == 0 {
+		return false, fmt.Errorf("maturity enum yielded zero entries")
+	}
+
 	var maturityTable strings.Builder
 	maturityTable.WriteString("| Maturity |\n")
 	maturityTable.WriteString("|----------|\n")
@@ -50,6 +54,9 @@ func writeStatusTaxonomyPage(path string, check bool) (bool, error) {
 	mappingTable.WriteString("|-----------|-------------|----------|\n")
 
 	v1Statuses := []string{"", "stable", "beta", "experimental", "alpha", "planned", "deprecated", "eol"}
+	if len(v1Statuses) == 0 {
+		return false, fmt.Errorf("v1 statuses yielded zero entries")
+	}
 	for _, status := range v1Statuses {
 		jsonStr := fmt.Sprintf(`{"name": "test", "version": "1.0.0", "status": "%s", "deprecation": {"announcedDate": "2026-01-01", "eolDate": "2026-02-01", "migrationGuide": "https://example.com"}}`, status)
 		m, err := manifestv2.Normalize([]byte(jsonStr))
@@ -76,8 +83,17 @@ func writeStatusTaxonomyPage(path string, check bool) (bool, error) {
 		}
 	}
 
-	page = replaceOrInsert(page, "maturity-enum", maturityTable.String())
-	page = replaceOrInsert(page, "v1-mapping", mappingTable.String())
+	if !strings.Contains(page, beginGenerated("maturity-enum")) {
+		page += "\n## Maturity Enum\n\n" + beginGenerated("maturity-enum") + "\n" + maturityTable.String() + "\n" + endGenerated("maturity-enum") + "\n"
+	} else {
+		page = replaceOrInsert(page, "maturity-enum", maturityTable.String())
+	}
+
+	if !strings.Contains(page, beginGenerated("v1-mapping")) {
+		page += "\n## v1 Mapping\n\n" + beginGenerated("v1-mapping") + "\n" + mappingTable.String() + "\n" + endGenerated("v1-mapping") + "\n"
+	} else {
+		page = replaceOrInsert(page, "v1-mapping", mappingTable.String())
+	}
 
 	if page == string(current) {
 		return false, nil

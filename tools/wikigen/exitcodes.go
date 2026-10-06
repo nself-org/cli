@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -53,9 +54,14 @@ func writeExitCodesPage(path string, check bool) (bool, error) {
 		return false, fmt.Errorf("parse command registry: %v", err)
 	}
 
+	stateMap, err := exitCodeToState()
+	if err != nil {
+		return false, err
+	}
+
 	var stateCodes strings.Builder
-	stateCodes.WriteString("| Command | Exit | Meaning |\n")
-	stateCodes.WriteString("|---------|------|---------|\n")
+	stateCodes.WriteString("| Command | Exit | `data.state` | Meaning |\n")
+	stateCodes.WriteString("|---------|------|--------------|---------|\n")
 
 	var targetCommands []exitCodeCommand
 
@@ -86,14 +92,19 @@ func writeExitCodesPage(path string, check bool) (bool, error) {
 		if _, hasZero := cmd.ExitCodes["0"]; !hasZero {
 			switch name {
 			case "status":
-				fmt.Fprintf(&stateCodes, "| `%s` | 0 | every service is healthy |\n", name)
+				fmt.Fprintf(&stateCodes, "| `%s` | 0 | `%s` | every service is healthy |\n", name, stateMap[0])
 			case "doctor":
-				fmt.Fprintf(&stateCodes, "| `%s` | 0 | every check passed |\n", name)
+				fmt.Fprintf(&stateCodes, "| `%s` | 0 | `%s` | every check passed |\n", name, stateMap[0])
 			}
 		}
 
 		for _, c := range codes {
-			fmt.Fprintf(&stateCodes, "| `%s` | %d | %s |\n", name, c, cmd.ExitCodes[strconv.Itoa(c)])
+			st := stateMap[c]
+			stStr := ""
+			if st != "" {
+				stStr = "`" + st + "`"
+			}
+			fmt.Fprintf(&stateCodes, "| `%s` | %d | %s | %s |\n", name, c, stStr, cmd.ExitCodes[strconv.Itoa(c)])
 		}
 	}
 
@@ -173,4 +184,35 @@ func betweenReplace(body, start, end, newContent string) string {
 	idxEnd += idxStart
 
 	return body[:idxStart+len(start)] + newContent + body[idxEnd:]
+}
+
+func exitCodeToState() (map[int]string, error) {
+	path := "../../cmd/commands/config_json_types.go"
+	b, err := os.ReadFile(path)
+	if err != nil {
+		b, err = os.ReadFile("cmd/commands/config_json_types.go")
+		if err != nil {
+			return nil, fmt.Errorf("read config_json_types.go: %v", err)
+		}
+	}
+	content := string(b)
+
+	constMap := make(map[string]string)
+	reConst := regexp.MustCompile(`(state[a-zA-Z0-9_]+)\s*=\s*"([^"]+)"`)
+	for _, m := range reConst.FindAllStringSubmatch(content, -1) {
+		constMap[m[1]] = m[2]
+	}
+
+	res := make(map[int]string)
+	res[0] = constMap["stateOK"]
+
+	reCase := regexp.MustCompile(`case\s+(state[a-zA-Z0-9_]+):\s*\n\s*return\s+(\d+)`)
+	for _, m := range reCase.FindAllStringSubmatch(content, -1) {
+		code, _ := strconv.Atoi(m[2])
+		res[code] = constMap[m[1]]
+	}
+	if len(res) < 2 {
+		return nil, fmt.Errorf("failed to parse state codes")
+	}
+	return res, nil
 }

@@ -41,7 +41,7 @@ These errors occur when the CLI cannot find or communicate with Docker.
 <!-- BEGIN GENERATED:codes-docker -->
 | Code | Exit | Summary | Why | Fix |
 |------|------|---------|-----|-----|
-| <a id="e001"></a>E001 | 2 | Docker not installed | The docker binary was not found in PATH. | Install Docker: https://docs.docker.com/get-docker/ |
+| <a id="e001"></a>E001 | 2 | Docker not installed | The docker binary was not found in PATH. | Install Docker: <https://docs.docker.com/get-docker/> |
 | <a id="e002"></a>E002 | 2 | Docker daemon not running | The Docker daemon is not responding to commands. | Start Docker Desktop or run: sudo systemctl start docker |
 | <a id="e003"></a>E003 | 2 | Docker Compose not available | docker compose v2 plugin is not installed. | Update Docker Desktop or install the compose plugin manually. |
 | <a id="e004"></a>E004 | 2 | docker-compose.yml not found | No docker-compose.yml exists in the project directory. | Run 'nself build' to generate the compose file. |
@@ -80,15 +80,15 @@ These errors occur when installing plugins or validating license keys.
 |------|------|---------|-----|-----|
 | <a id="e100"></a>E100 | 1 | Plugin not found | The requested plugin does not exist in the registry. | Run 'nself plugin list' to see available plugins. |
 | <a id="e101"></a>E101 | 3 | Invalid license key | The license key format is invalid. | License keys start with 'nself_pro_' followed by 32+ characters. Check your key. |
-| <a id="e102"></a>E102 | 3 | License tier insufficient | Your license tier does not include this plugin. | Upgrade your plan at https://nself.org/pricing |
-| <a id="e103"></a>E103 | 3 | License expired | The license key has expired. | Renew your license at https://nself.org/account |
+| <a id="e102"></a>E102 | 3 | License tier insufficient | Your license tier does not include this plugin. | Upgrade your plan at <https://nself.org/pricing> |
+| <a id="e103"></a>E103 | 3 | License expired | The license key has expired. | Renew your license at <https://nself.org/account> |
 | <a id="e104"></a>E104 | 3 | License validation failed (network) | Cannot reach the license server and no valid local cache exists. | Check your internet connection. Previously validated licenses work offline for 7 days. |
-| <a id="e105"></a>E105 | 1 | Circular plugin dependency | Plugin dependency graph contains a cycle. | Report this as a bug at https://github.com/nself-org/cli/issues |
+| <a id="e105"></a>E105 | 1 | Circular plugin dependency | Plugin dependency graph contains a cycle. | Report this as a bug at <https://github.com/nself-org/cli/issues> |
 | <a id="e106"></a>E106 | 1 | Invalid plugin manifest | The plugin manifest is missing a required field or contains an invalid value. | Fix the manifest fields named in the message, or reinstall the plugin: nself add <plugin> |
 | <a id="e107"></a>E107 | 1 | Plugin is not signed | A stable plugin release has no signature, so the install was refused. | Use a release that carries a signature, or report the missing signature to the plugin publisher. |
 | <a id="e108"></a>E108 | 1 | Plugin checksum missing | A stable plugin release has no checksum, so the install was refused. | Use a release that carries a checksum, or report the missing checksum to the plugin publisher. |
 | <a id="e109"></a>E109 | 1 | Duplicate plugin slug | The same plugin slug is served by more than one unrelated registry entry. | Report this to the registry maintainers. Install the plugin by its full registry name if one is shown. |
-| <a id="e110"></a>E110 | 3 | License does not entitle this plugin tier | The installed license does not include the pro tier of this plugin. | Check your plan with: nself license status. Upgrade at https://nself.org/pricing if the tier is missing. |
+| <a id="e110"></a>E110 | 3 | License does not entitle this plugin tier | The installed license does not include the pro tier of this plugin. | Check your plan with: nself license status. Upgrade at <https://nself.org/pricing> if the tier is missing. |
 | <a id="e111"></a>E111 | 1 | Forbidden key in a v2 plugin manifest | A manifest_version 2 plugin.json carries a key that belongs to the registry or to a legacy format (bundles, tier_pair, author_public_key, signature, checksum). | Remove the key from plugin.json. Bundle membership lives in bundles.json and signatures are added by the release pipeline. |
 | <a id="e112"></a>E112 | 1 | Plugin manifest compatibility keys drifted | The generated compatibility keys (pluginType, binaryName, cliCommands, minNselfVersion, status, isCommercial, licenseType, requires_license, tier) no longer match the v2 fields they are derived from. | Regenerate them: go run github.com/nself-org/cli/tools/manifestv2migrate -in plugin.json -compat -write |
 | <a id="e113"></a>E113 | 1 | Plugin command collides with a core command | commands.command is one of the core command verbs, so the plugin cannot be mounted under it. | Rename commands.command in plugin.json to a name that is not a core verb. |
@@ -108,7 +108,7 @@ These errors occur during SSL certificate generation or network operations.
 <!-- BEGIN GENERATED:codes-ssl -->
 | Code | Exit | Summary | Why | Fix |
 |------|------|---------|-----|-----|
-| <a id="e150"></a>E150 | 2 | mkcert not installed | mkcert is not installed; falling back to OpenSSL self-signed certs. | Install mkcert: brew install mkcert (macOS) or see https://github.com/FiloSottile/mkcert |
+| <a id="e150"></a>E150 | 2 | mkcert not installed | mkcert is not installed; falling back to OpenSSL self-signed certs. | Install mkcert: brew install mkcert (macOS) or see <https://github.com/FiloSottile/mkcert> |
 | <a id="e151"></a>E151 | 2 | SSL certificate generation failed | Could not generate SSL certificates for the configured domain. | Check domain configuration and ensure openssl is available. |
 <!-- END GENERATED:codes-ssl -->
 
@@ -196,7 +196,7 @@ These errors come from the command line itself: usage, JSON support, destructive
 <!-- BEGIN GENERATED:codes-cli -->
 | Code | Exit | Summary | Why | Fix |
 |------|------|---------|-----|-----|
-| <a id="e400"></a>E400 | classified | Unclassified error | The command failed with an error that has no specific code. | Read the message. If it looks like a bug, report it at https://github.com/nself-org/cli/issues |
+| <a id="e400"></a>E400 | classified | Unclassified error | The command failed with an error that has no specific code. | Read the message. If it looks like a bug, report it at <https://github.com/nself-org/cli/issues> |
 | <a id="e401"></a>E401 | 1 | Invalid usage | A flag or argument was missing, unknown or had an invalid value. | Run the command with --help to see the accepted flags and arguments. |
 | <a id="e402"></a>E402 | 1 | JSON output not supported | This command or flag combination cannot produce JSON output. | Run the command without --json, or use nself help --json to see which commands support it. |
 | <a id="e403"></a>E403 | 4 | Destructive action blocked | A safety gate refused a destructive action. | Read the message for the missing confirmation or flag, check the target environment, then confirm explicitly. |

@@ -40,14 +40,14 @@ A panic that escapes a command is recovered and reported as `internal error: <va
 Two commands report the state they found on a success path, in v1.5 mode, with the reserved 10-12 range. The same fact is `data.state` in their JSON envelope (see [[JSON-Output]]).
 
 <!-- BEGIN GENERATED:state-codes -->
-| Command | Exit | Meaning |
-|---------|------|---------|
-| `doctor` | 0 | every check passed |
-| `doctor` | 10 | one or more checks failed |
-| `doctor` | 12 | warnings only, no failures |
-| `status` | 0 | every service is healthy |
-| `status` | 10 | one or more services are unhealthy |
-| `status` | 11 | one or more services are still starting |
+| Command | Exit | `data.state` | Meaning |
+|---------|------|--------------|---------|
+| `doctor` | 0 | `ok` | every check passed |
+| `doctor` | 10 | `unhealthy` | one or more checks failed |
+| `doctor` | 12 | `warnings` | warnings only, no failures |
+| `status` | 0 | `ok` | every service is healthy |
+| `status` | 10 | `unhealthy` | one or more services are unhealthy |
+| `status` | 11 | `transitional` | one or more services are still starting |
 <!-- END GENERATED:state-codes -->
 
 In v1.4 mode the codes stay as before: human `status` exits 2 (unhealthy) or 1 (starting), human `doctor` exits 1 (failed) or 2 (warnings only), and `--json` exits 0 for both.
