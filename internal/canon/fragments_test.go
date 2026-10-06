@@ -85,6 +85,34 @@ func TestFragmentAssignment(t *testing.T) {
 		where[k] = frag
 		count[frag]++
 	}
+	// A moved, shimmed, broken-out or removed command satisfies the pre-split presence check
+	// for its old path in the fragment that claims it.
+	for _, m := range raw.Moves {
+		frag := strings.TrimSuffix(strings.TrimPrefix(raw.origin["from:"+m.From], "domains/"), ".yaml")
+		where[m.From] = frag
+		prefix := m.To + " "
+		oldPrefix := m.From + " "
+		for k := range raw.Commands {
+			if strings.HasPrefix(k, prefix) {
+				oldKey := oldPrefix + strings.TrimPrefix(k, prefix)
+				where[oldKey] = frag
+				delete(where, k)
+			}
+		}
+		delete(where, m.To)
+	}
+	for _, m := range raw.Shims {
+		where[m.From] = strings.TrimSuffix(strings.TrimPrefix(raw.origin["from:"+m.From], "domains/"), ".yaml")
+	}
+	for _, m := range raw.RetiredHubs {
+		where[m.From] = strings.TrimSuffix(strings.TrimPrefix(raw.origin["from:"+m.From], "domains/"), ".yaml")
+	}
+	for _, m := range raw.Breakouts {
+		where[m.From] = strings.TrimSuffix(strings.TrimPrefix(raw.origin["from:"+m.From], "domains/"), ".yaml")
+	}
+	for _, m := range raw.Removed {
+		where[m.From] = strings.TrimSuffix(strings.TrimPrefix(raw.origin["from:"+m.From], "domains/"), ".yaml")
+	}
 	for _, name := range RequiredFragments {
 		if count[name] == 0 {
 			t.Errorf("fragment %s has no entries", name)
@@ -105,7 +133,13 @@ func TestFragmentAssignment(t *testing.T) {
 		}
 	}
 	if len(where) != len(pre.Commands) {
-		t.Errorf("fragments hold %d keys, pre-split canon had %d", len(where), len(pre.Commands))
+		var extra []string
+		for k := range where {
+			if _, ok := pre.Commands[k]; !ok {
+				extra = append(extra, k)
+			}
+		}
+		t.Errorf("fragments hold %d keys, pre-split canon had %d. Extra keys: %v", len(where), len(pre.Commands), extra)
 	}
 }
 

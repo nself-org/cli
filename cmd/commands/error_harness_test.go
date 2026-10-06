@@ -393,6 +393,11 @@ func runErrorHarnessCmd(t *testing.T, args []string) error {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	// The clone must carry the global root's groups: children re-registered
+	// below keep the GroupID a prepareTree call on RootCmd assigned them, and
+	// cobra panics in checkCommandGroups when the executed root does not
+	// define a referenced group id.
+	root.AddGroup(RootCmd.Groups()...)
 	// Re-register all commands from the global root. AddCommand transfers the
 	// parent pointer, so the per-case ctx we set below will be inherited by
 	// every child command. On cleanup we restore a fresh Background context

@@ -277,7 +277,7 @@ func TestInvocationDecoratorDoesNotLoadCanonWithoutJSON(t *testing.T) {
 	f := newFixture(t)
 	n := 0
 	old := canonLoad
-	canonLoad = func() (*canon.File, error) { n++; return old() }
+	canonLoad = func(b bool) (*canon.File, error) { n++; return old(b) }
 	t.Cleanup(func() { canonLoad = old })
 	for _, a := range [][]string{{"stop"}, {"status"}, {"stop", "--json=false"}} {
 		if err := f.run(a...); err != nil {

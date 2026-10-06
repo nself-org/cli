@@ -28,7 +28,7 @@ import (
 
 // canonLoad is the canon loader. A variable so tests can count calls and prove
 // the decorator never parses canon.yaml when --json is absent.
-var canonLoad = canon.Load
+var canonLoad = canon.Effective
 
 // regCache memoises one build result per compat mode. The mode is part of the
 // key because BuildOptions.V15 changes the reported exit codes and which
@@ -69,7 +69,7 @@ func buildRegistry(v15 bool) (*cmdregistry.Registry, error) {
 	// cobra adds `help` only inside Execute; canon.yaml has an entry for it, so
 	// the tree must have the command before Build checks completeness.
 	RootCmd.InitDefaultHelpCmd()
-	c, err := canonLoad()
+	c, err := canonLoad(v15)
 	if err != nil {
 		return nil, fmt.Errorf("command canon: %w", err)
 	}

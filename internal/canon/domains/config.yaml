@@ -4,20 +4,6 @@ schema_version: 1
 commands:
   # cmd/commands/config.go:22 RunE path changes no persistent state (prints/reads only)
   config: {canon: core, side_effect: read}
-  # cmd/commands/config_export_import.go:22 writes to stdout by default; --output escalates to write
-  config export: {side_effect: read, flags: {output: {side_effect: write}}}
-  # cmd/commands/feature.go:48 RunE path changes no persistent state (prints/reads only)
-  config features: {side_effect: read}
-  config features disable: {side_effect: write}
-  config features enable: {side_effect: write}
-  config features list: {side_effect: read, json: legacy}
-  config features status: {side_effect: read, json: legacy}
-  config get: {side_effect: read}
-  config import: {side_effect: write}
-  config list: {side_effect: read}
-  config set: {side_effect: write}
-  config show: {side_effect: read}
-  config validate: {side_effect: read, exit_codes: {"1": "one or more validators fail (exits 0 when all pass)"}}
   # cmd/commands/env.go:32 RunE path changes no persistent state (prints/reads only)
   config env: {side_effect: read}
   config env copy: {side_effect: write}
@@ -35,6 +21,17 @@ commands:
   # cmd/commands/env_target_crud.go:204 removes one server entry from control-plane.yaml; `env target add` restores it (write, not destructive)
   config env target remove: {side_effect: write}
   config env use: {side_effect: write}
+  # cmd/commands/config_export_import.go:22 writes to stdout by default; --output escalates to write
+  config export: {side_effect: read, flags: {output: {side_effect: write}}}
+  # cmd/commands/feature.go:48 RunE path changes no persistent state (prints/reads only)
+  config features: {side_effect: read}
+  config features disable: {side_effect: write}
+  config features enable: {side_effect: write}
+  config features list: {side_effect: read, json: legacy}
+  config features status: {side_effect: read, json: legacy}
+  config get: {side_effect: read}
+  config import: {side_effect: write}
+  config list: {side_effect: read}
   # cmd/commands/oauth_refresh.go:18 RunE path changes no persistent state (prints/reads only)
   config oauth: {side_effect: read}
   # cmd/commands/oauth_refresh.go:59 triggers a token refresh on the remote OAuth service
@@ -63,6 +60,8 @@ commands:
   config secrets schedule: {side_effect: write}
   config secrets set: {side_effect: write}
   config secrets verify: {side_effect: read}
+  config set: {side_effect: write}
+  config show: {side_effect: read}
   # cmd/commands/telemetry.go:42 RunE path changes no persistent state (prints/reads only)
   config telemetry: {side_effect: read}
   config telemetry off: {side_effect: write}
@@ -77,6 +76,7 @@ commands:
   config trust ssl setup: {side_effect: write}
   config trust ssl status: {side_effect: read}
   config trust status: {side_effect: read, exit_codes: {"0": "all trust components configured and no expiry warnings", "2": "one or more components missing or cert expiry <30 days"}}
+  config validate: {side_effect: read, exit_codes: {"1": "one or more validators fail (exits 0 when all pass)"}}
 moves:
   - {from: env, to: config env, since: v1.5.0, removal_at: v1.6.0}
   - {from: oauth, to: config oauth, since: v1.5.0, removal_at: v1.6.0}

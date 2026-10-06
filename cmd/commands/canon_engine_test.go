@@ -419,7 +419,7 @@ func TestCanonEngineLegacyChain(t *testing.T) {
 func TestCanonEngineNoCanonLoad(t *testing.T) {
 	calls := 0
 	saved := canonLoad
-	canonLoad = func() (*canon.File, error) { calls++; return saved() }
+	canonLoad = func(b bool) (*canon.File, error) { calls++; return saved(b) }
 	t.Cleanup(func() { canonLoad = saved })
 	tb, root := fixtureTable(t), newFixtureTree()
 	for _, v15 := range []bool{false, true} {
