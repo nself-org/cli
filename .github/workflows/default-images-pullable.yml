@@ -139,7 +139,7 @@ jobs:
   alert:
     name: Manage alert issue on failure
     needs: check
-    if: failure() && (github.event_name == 'schedule' || inputs.alert_test == 'true')
+    if: failure() && (github.event_name == 'schedule' || inputs.alert_test)
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -163,7 +163,7 @@ jobs:
   close_alert:
     name: Close alert issue on success
     needs: check
-    if: success() && (github.event_name == 'schedule' || inputs.alert_test == 'true')
+    if: success() && (github.event_name == 'schedule' || inputs.alert_test)
     runs-on: ubuntu-latest
     permissions:
       issues: write
