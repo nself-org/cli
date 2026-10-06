@@ -116,3 +116,11 @@ A prod-class env is `ENV` `prod` or `staging` (a running stack does not make an 
 | E450 | 1 | `--plan-id` does not match the plan this project produces now, or the project changed while the confirmation was pending. Re-run `nself build --plan` and pass the new id. |
 | E451 | 1 | The build generates secrets, so `--plan-id` cannot bind it. |
 | E403 | 4 | A prod-class or hand-edited change was not confirmed (v1.5). |
+
+## Hand-edit policy
+
+A generated file whose content on disk no longer matches its sha256 hash in `.nself/state/generated.json` is considered hand-edited. 
+
+Overwrite-on-regenerate stays the default in v1.4 mode (with a warning). In v1.5 mode, nself detects hand-edited generated files and refuses to overwrite them by default (Exit code 4, E403). It will print a unified diff of the file and require you to pass `--force` to forcefully overwrite your changes.
+
+When `--force` is used, the file is overwritten with the newly generated content and the new hash is recorded in `generated.json`.

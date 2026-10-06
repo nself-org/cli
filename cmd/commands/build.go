@@ -30,7 +30,7 @@ The build pipeline:
 }
 
 func init() {
-	buildCmd.Flags().BoolP("force", "f", false, "Force rebuild all components")
+	buildCmd.Flags().BoolP("force", "f", false, "Force rebuild all components and overwrite hand-edited generated files")
 	buildCmd.Flags().Bool("no-cache", false, "Disable build cache")
 	buildCmd.Flags().BoolP("verbose", "v", false, "Show environment cascade")
 	buildCmd.Flags().Bool("debug", false, "Enable debug mode")

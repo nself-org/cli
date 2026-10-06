@@ -281,3 +281,9 @@ If the layout cannot be confirmed (the project is not directly under a directory
 ---
 
 ← [[Home]] | [[Getting-Started]] | [[Config-Env-Vars]] →
+
+## Generated files & hand-edits
+
+When you run `nself build` or `nself start`, nself generates several files (e.g. `docker-compose.yml`, `nginx/nginx.conf`). nself records the exact sha256 hashes of the files it writes in `.nself/state/generated.json`.
+
+If you hand-edit a generated file and then run `nself build`, nself will detect that the file has been hand-edited and will refuse to overwrite it by default. It will print the unified diff of your hand edits. To forcefully overwrite your hand edits, you must pass `--force`.
