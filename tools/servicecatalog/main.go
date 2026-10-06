@@ -25,6 +25,10 @@ func main() {
 	format := flag.String("format", "markdown", "output format: markdown, json")
 	flag.Parse()
 
+	// The page documents the v1.4 default images whatever NSELF_V15 or
+	// IMAGE_PINNING the caller has set, so it is the same in both compat modes;
+	// the digest-pinned v1.5 references are on Image-Lock.md (P7-LIVE-17).
+	_ = os.Setenv(compose.EnvImagePinning, compose.PinningLegacy)
 	entries := compose.ServiceCatalog()
 
 	switch *format {

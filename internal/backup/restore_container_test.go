@@ -142,7 +142,7 @@ func TestThrowawayContainerIsolation(t *testing.T) {
 			run = l
 		}
 	}
-	for _, want := range []string{"--network none", "--label org.nself.drill=", "-e POSTGRES_PASSWORD postgres:16-alpine", "--name " + c.Name} {
+	for _, want := range []string{"--network none", "--label org.nself.drill=", "-e POSTGRES_PASSWORD " + drillImage(), "--name " + c.Name} {
 		if !strings.Contains(run, want) {
 			t.Errorf("docker run lacks %q: %s", want, run)
 		}

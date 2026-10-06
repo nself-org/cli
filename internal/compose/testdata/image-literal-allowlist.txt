@@ -2,4 +2,3 @@
 # Format: <path> <image> # <reason>. This list may only shrink (maxAllowlist).
 cmd/commands/plugin_test_cmd.go golang:1.22-alpine # plugin author tool image (P7-CANON-18 moves it)
 internal/cmd/ci/serve_job.go ubuntu:24.04 # ci job image (P7-CANON-09 moves it)
-internal/controlplane/sim/harness_helpers.go lscr.io/linuxserver/openssh-server:latest # controlplane test harness
