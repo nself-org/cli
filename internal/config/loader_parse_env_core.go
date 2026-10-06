@@ -7,7 +7,25 @@ package config
 // Outputs: none — mutates cfg in place.
 // Constraints: pure os.Getenv reads only, same rules as loader_parse_env.go.
 
-import "os"
+import (
+	"fmt"
+	"os"
+	"strings"
+)
+
+// validateImagePinning rejects an IMAGE_PINNING value that is not lock or
+// legacy (case and surrounding space ignored; unset or empty is the mode
+// default). A silent fallback would leave a user who typed "lcok" believing
+// their images are pinned, so Load fails instead. The value itself is read by
+// internal/compose.PinningMode from the same process environment.
+func validateImagePinning() error {
+	switch v := strings.ToLower(strings.TrimSpace(os.Getenv("IMAGE_PINNING"))); v {
+	case "", "lock", "legacy":
+		return nil
+	default:
+		return fmt.Errorf("IMAGE_PINNING=%q is not valid: set it to \"lock\" or \"legacy\", or unset it for the default", os.Getenv("IMAGE_PINNING"))
+	}
+}
 
 // parseEnvCore fills the Core/Postgres/Hasura/Auth/Nginx/SSL/WAF/Redis fields.
 func parseEnvCore(cfg *Config) {

@@ -48,7 +48,7 @@ func (g *Generator) buildRedisService() ServiceConfig {
 	}
 
 	return ServiceConfig{
-		Image:         ResolveImage("redis", fmt.Sprintf("redis:%s", version)),
+		Image:         ResolveImage("redis", ImageRef("redis", version)),
 		ContainerName: fmt.Sprintf("%s_redis", g.cfg.ProjectName),
 		Restart:       "unless-stopped",
 		User:          "999:999",
@@ -91,9 +91,9 @@ func (g *Generator) buildMinioService() ServiceConfig {
 	}
 
 	return ServiceConfig{
-		// MinioImagePath, never a bare "minio/minio" — that Docker Hub
-		// repository no longer exists. See the constant's doc comment.
-		Image:         ResolveImage("minio", fmt.Sprintf("%s:%s", MinioImagePath, version)),
+		// The minio entry in images.yaml is registry-qualified (docker.io/pgsty/minio);
+		// the Docker Hub minio/minio repository no longer exists (ADR 0028).
+		Image:         ResolveImage("minio", ImageRef("minio", version)),
 		ContainerName: fmt.Sprintf("%s_minio", g.cfg.ProjectName),
 		Restart:       "unless-stopped",
 		Networks:      []string{g.cfg.DockerNetwork},
@@ -158,7 +158,7 @@ func (g *Generator) buildMailpitService() ServiceConfig {
 	}
 
 	return ServiceConfig{
-		Image:         ResolveImage("mailpit", fmt.Sprintf("axllent/mailpit:%s", version)),
+		Image:         ResolveImage("mailpit", ImageRef("mailpit", version)),
 		ContainerName: fmt.Sprintf("%s_mailpit", g.cfg.ProjectName),
 		Restart:       "unless-stopped",
 		User:          "1000:1000",

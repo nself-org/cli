@@ -11,65 +11,10 @@ import (
 	"github.com/nself-org/cli/internal/config"
 )
 
-// AdminImagePath is the Docker Hub image name for the nSelf Admin GUI service.
-// It uses the Docker Hub nself/ namespace (NOT GitHub Container Registry).
-// Intentionally referencing nself/nself-admin (Docker Hub) — never github.com/nself-org/ paths.
-const AdminImagePath = "nself/nself-admin"
-
-// MinioImagePath is the registry path for the MinIO object-storage image.
-//
-// It is REGISTRY-QUALIFIED and must stay that way. Upstream MinIO no longer
-// publishes a pullable image: the Docker Hub `minio/minio` repository was
-// deleted (2026-09-14), and by 2026-09-28 `quay.io/minio/minio` also refused
-// every manifest request (401 for :latest and every RELEASE tag, anonymous and
-// token-authenticated alike), so every generated stack with
-// MINIO_ENABLED=true could no longer start on a machine without a cached image.
-//
-// docker.io/pgsty/minio is a maintained MinIO fork (AGPL-3.0, same licence as
-// upstream) that publishes multi-arch images anonymously. It is a drop-in:
-// same `minio server /data` command, MINIO_ROOT_* environment and bundled
-// `mc` (the healthcheck's `mc ready local` passes). Verified 2026-09-28 with a
-// bucket create/write/read round trip on RELEASE.2026-08-04T00-00-00Z.
-// It does not carry upstream's 2024 RELEASE tags, so an explicit MINIO_VERSION
-// must name a pgsty tag. This is the stopgap chosen in hq ADR 0028; the
-// default storage server for new projects moves to SeaweedFS there.
-//
-// Both the DefaultImageVersions pin below and buildMinioService's
-// MINIO_VERSION path must build from this constant so the two cannot drift
-// back to an unqualified or dead registry name.
-const MinioImagePath = "docker.io/pgsty/minio"
-
-// DefaultImageVersions maps service name to pinned image:tag.
-// Update with each nSelf release.
-var DefaultImageVersions = map[string]string{
-	"postgres": "pgvector/pgvector:pg16",
-	"hasura":   "hasura/graphql-engine:v2.44.0",
-	"auth":     "nhost/hasura-auth:0.36.0",
-	"nginx":    "nginx:1.25-alpine",
-	"redis":    "redis:7.2-alpine",
-	"minio":    MinioImagePath + ":RELEASE.2026-08-04T00-00-00Z",
-	// nhost/functions:0.3.7 never existed. nhost's 0.x line stops at 0.1.9 and
-	// the repository now tags as <node-major>-<version> (22-2.2.0, 26-2.2.0);
-	// `docker manifest inspect nhost/functions:0.3.7` answers "no such
-	// manifest". Nothing broke because this entry is unreachable in practice:
-	// applyDefaultsFunctions sets FUNCTIONS_VERSION to "latest" when unset, so
-	// buildFunctionsService always passes a non-empty image and ResolveImage
-	// never falls back to this pin. "latest" is therefore what users actually
-	// run, and naming it here makes the pin honest without changing any
-	// emitted compose file. Choosing a real pinned tag is an upgrade decision
-	// (latest is not any of the current 2.2.0 tags), not a drive-by edit.
-	"functions":   "nhost/functions:latest",
-	"mailpit":     "axllent/mailpit:v1.15",
-	"meilisearch": "getmeili/meilisearch:v1.6",
-	"typesense":   "typesense/typesense:0.25.2",
-	"admin":       AdminImagePath + ":latest", // intentionally latest — our own image
-	"mlflow":      "ghcr.io/mlflow/mlflow:v2.10.0",
-}
-
 // pgvectorMajorVersionRE extracts the leading numeric major version from a
 // POSTGRES_VERSION string such as "16-alpine" or "16.4" so the pgvector image
 // tag tracks the configured Postgres major version rather than being
-// hardcoded to whatever DefaultImageVersions currently pins.
+// hardcoded to whatever the lock's pgvector entry currently pins.
 var pgvectorMajorVersionRE = regexp.MustCompile(`^(\d+)`)
 
 // ResolvePostgresImage decides which Postgres image `nself build` emits.
@@ -101,7 +46,7 @@ func ResolvePostgresImage(pg config.PostgresConfig) string {
 	if hasExtension(pg.Extensions, "pgvector") {
 		return pgvectorImageForVersion(pg.Version)
 	}
-	return fmt.Sprintf("postgres:%s", pg.Version)
+	return ImageRef("postgres", pg.Version)
 }
 
 // hasExtension reports whether extensions contains name, case-insensitively.
@@ -116,12 +61,12 @@ func hasExtension(extensions []string, name string) bool {
 
 // pgvectorImageForVersion maps a POSTGRES_VERSION like "16-alpine" or "16.4"
 // to the matching pgvector/pgvector image tag. Falls back to the
-// DefaultImageVersions pin when no leading major-version digit is found.
+// default pgvector entry (DefaultImage) when no leading major-version digit is found.
 func pgvectorImageForVersion(version string) string {
 	if major := pgvectorMajorVersionRE.FindString(version); major != "" {
-		return fmt.Sprintf("pgvector/pgvector:pg%s", major)
+		return ImageRef("pgvector", "pg"+major)
 	}
-	return DefaultImageVersions["postgres"]
+	return DefaultImage("postgres")
 }
 
 // ImageDigests maps service name to sha256 digest for image pinning.
@@ -132,22 +77,31 @@ var ImageDigests = map[string]string{}
 // DigestConfigFile is the filename where image digests are stored.
 const DigestConfigFile = ".nself-image-digests.json"
 
-// ResolveImage returns the image tag for a service, optionally with a sha256
-// digest suffix when available.
+// DefaultImage returns the default reference for a service when the caller
+// supplies none: the lock entry rendered in the active pinning mode. The
+// postgres service falls back to the pgvector entry (the pre-lock pin), which is
+// only reachable for an unparseable POSTGRES_VERSION.
+func DefaultImage(service string) string {
+	if service == "postgres" {
+		service = "pgvector"
+	}
+	return ImageRef(service, "")
+}
+
+// ResolveImage returns the image reference for a service, optionally with a
+// sha256 digest suffix when a project digest is recorded.
 //
 // Precedence: a non-empty caller-supplied image (built from env/config such as
-// POSTGRES_VERSION / HASURA_VERSION, or ResolvePostgresImage for postgres)
-// ALWAYS wins. The DefaultImageVersions pin applies only when the caller
-// supplies no image — for postgres specifically that image is always
-// resolved via ResolvePostgresImage before reaching here, so this pin is a
-// fallback for other services (or an unparseable POSTGRES_VERSION), not the
-// live postgres selection path.
+// POSTGRES_VERSION / HASURA_VERSION via ImageRef, or ResolvePostgresImage for
+// postgres) ALWAYS wins. DefaultImage applies only when the caller supplies no
+// image. A reference that already carries a digest (lock mode) is left alone.
 func ResolveImage(service, image string) string {
 	resolved := image
 	if resolved == "" {
-		if pinned, ok := DefaultImageVersions[service]; ok {
-			resolved = pinned
-		}
+		resolved = DefaultImage(service)
+	}
+	if strings.Contains(resolved, "@sha256:") {
+		return resolved
 	}
 	// Append digest if available for this service.
 	if digest, ok := ImageDigests[service]; ok && digest != "" {

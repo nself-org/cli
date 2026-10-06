@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/nself-org/cli/internal/version"
 
@@ -85,8 +86,11 @@ without installing it.`,
 		}
 
 		if updateAdmin {
-			ui.Info("Pulling latest admin image: nself/nself-admin:latest")
-			pullCmd := exec.Command("docker", "pull", "nself/nself-admin:latest")
+			// The admin reference comes from the image lock: legacy mode is the
+			// historical nself/nself-admin:latest, lock mode the pinned digest.
+			adminImage := compose.ImageRef("admin", "")
+			ui.Info("Pulling admin image: " + adminImage)
+			pullCmd := exec.Command("docker", "pull", adminImage)
 			pullCmd.Stdout = os.Stdout
 			pullCmd.Stderr = os.Stderr
 			if err := pullCmd.Run(); err != nil {

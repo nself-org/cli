@@ -20,6 +20,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/nself-org/cli/internal/compose"
 	"io"
 	"log/slog"
 	"os"
@@ -33,8 +34,6 @@ import (
 )
 
 const (
-	// DrillImage is the image of the drill container.
-	DrillImage      = "postgres:16-alpine"
 	throwawayPrefix = "nself-drill-"
 	// containerLabel marks every container started here; its value is the run id.
 	containerLabel = "org.nself.drill"
@@ -112,7 +111,7 @@ func StartContainer(ctx context.Context, spec ContainerSpec) (*Container, error)
 		spec.DB = "nself"
 	}
 	if spec.Image == "" {
-		spec.Image = DrillImage
+		spec.Image = drillImage()
 	}
 	if spec.Ready <= 0 {
 		spec.Ready = 60 * time.Second
@@ -266,17 +265,13 @@ func runRestoreTest(ctx context.Context, cfg *config.Config, backupFile string, 
 		return fmt.Errorf("%w: %s is not a restorable pg_dump (.dump) backup; recreate it with the default format before running --restore-test",
 			errs.ErrBackupVerifyFailed, backupFile)
 	}
-	pgVersion := cfg.Postgres.Version
-	if pgVersion == "" {
-		pgVersion = "16-alpine"
-	}
 	c, err := StartContainer(ctx, ContainerSpec{
 		Name:     cfg.ProjectName + verifySuffix,
 		Volume:   cfg.ProjectName + "_restore_test_data",
 		User:     cfg.Postgres.User,
 		DB:       cfg.Postgres.DB,
 		Password: cfg.Postgres.Password,
-		Image:    "postgres:" + pgVersion,
+		Image:    compose.ImageRef("postgres", cfg.Postgres.Version),
 		Keep:     opts.Keep,
 		Ready:    30 * time.Second,
 	})
@@ -290,4 +285,11 @@ func runRestoreTest(ctx context.Context, cfg *config.Config, backupFile string, 
 		return fmt.Errorf("restore test failed: %w", err)
 	}
 	return smokeAndSentinel(ctx, c)
+}
+
+// drillImage is the image of the drill container: the image lock's postgres
+// entry at its default version (P7-LIVE-17), read per call so an IMAGE_PINNING
+// loaded from the project's env cascade applies.
+func drillImage() string {
+	return compose.ImageRef("postgres", "")
 }

@@ -93,7 +93,7 @@ func (g *Generator) buildAuthService() (ServiceConfig, error) {
 	}
 
 	return ServiceConfig{
-		Image:         ResolveImage("auth", fmt.Sprintf("nhost/hasura-auth:%s", cfg.Auth.Version)),
+		Image:         ResolveImage("auth", ImageRef("auth", cfg.Auth.Version)),
 		ContainerName: fmt.Sprintf("%s_auth", cfg.ProjectName),
 		Restart:       "unless-stopped",
 		Networks:      []string{cfg.DockerNetwork},
@@ -141,7 +141,7 @@ func (g *Generator) buildNginxService(dc *DockerCompose) ServiceConfig {
 	}
 
 	return ServiceConfig{
-		Image:         ResolveImage("nginx", "nginx:alpine"),
+		Image:         ResolveImage("nginx", ImageRef("nginx", "")),
 		ContainerName: fmt.Sprintf("%s_nginx", cfg.ProjectName),
 		Restart:       "unless-stopped",
 		// No User override on purpose. The nginx.conf this same tool generates

@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -54,9 +54,13 @@ func runUpdateImages(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	for service, image := range compose.DefaultImageVersions {
+	// Every core and optional lock entry is a service `nself build` can emit.
+	// The digest is looked up for the reference the project runs by default
+	// (legacy_ref), keyed by the service name ResolveImage uses.
+	for _, locked := range compose.LockedImages() {
+		service, image := locked.Name, locked.LegacyRef
 		// Skip our own image — always uses :latest.
-		if strings.Contains(image, "nself-admin") {
+		if (locked.Role != compose.RoleCore && locked.Role != compose.RoleOptional) || service == "admin" {
 			continue
 		}
 
@@ -96,8 +100,7 @@ func runUpdateImages(cmd *cobra.Command, args []string) error {
 // fetchImageDigest uses `docker manifest inspect` to get the sha256 digest
 // for an image reference. Returns the hex digest without the "sha256:" prefix.
 func fetchImageDigest(ctx context.Context, image string) (string, error) {
-	cmd := exec.CommandContext(ctx, "docker", "manifest", "inspect", "--verbose", image)
-	out, err := cmd.Output()
+	out, err := docker.ManifestInspect(ctx, image, true)
 	if err != nil {
 		return "", fmt.Errorf("docker manifest inspect %s: %w", image, err)
 	}

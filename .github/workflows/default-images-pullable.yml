@@ -22,13 +22,17 @@ on:
   push:
     branches: [main]
     paths:
-      - 'internal/compose/images.go'
+      - 'internal/compose/images.yaml'
+      - 'internal/compose/images.lock.json'
       - 'tools/imagelist/**'
+      - 'tools/imagelock/**'
       - '.github/workflows/default-images-pullable.yml'
   pull_request:
     paths:
-      - 'internal/compose/images.go'
+      - 'internal/compose/images.yaml'
+      - 'internal/compose/images.lock.json'
       - 'tools/imagelist/**'
+      - 'tools/imagelock/**'
       - '.github/workflows/default-images-pullable.yml'
   workflow_dispatch:
 
@@ -52,8 +56,10 @@ jobs:
         run: |
           set -uo pipefail
 
-          # The list comes from compose.DefaultImageVersions itself, so a new
-          # pin is covered the moment it lands and there is no second list.
+          # The list comes from the image lock (internal/compose/images.lock.json)
+          # itself, so a new pin is covered the moment it lands and there is no
+          # second list. Each ref is repository:version@digest, so the gate also
+          # proves the pinned digest still exists upstream.
           go run ./tools/imagelist > /tmp/default-images.tsv
           if [ ! -s /tmp/default-images.tsv ]; then
             echo "::error::imagelist produced no images — the generator or the map is broken"
@@ -74,8 +80,9 @@ jobs:
 
           echo
           if [ "${failed}" -ne 0 ]; then
-            echo "One or more images in internal/compose/images.go no longer resolve."
-            echo "Fix the pin (a registry move needs the new registry-qualified path,"
+            echo "One or more images in internal/compose/images.lock.json no longer resolve."
+            echo "Fix the entry in internal/compose/images.yaml and re-run go run ./tools/imagelock -resolve"
+            echo "(a registry move needs the new registry-qualified path,"
             echo "e.g. minio/minio → quay.io/minio/minio → pgsty/minio), do NOT delete the entry to make this pass."
             exit 1
           fi

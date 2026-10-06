@@ -58,7 +58,7 @@ func (g *Generator) buildAdminService() ServiceConfig {
 	}
 
 	return ServiceConfig{
-		Image:         ResolveImage("admin", fmt.Sprintf("%s:%s", AdminImagePath, version)),
+		Image:         ResolveImage("admin", ImageRef("admin", version)),
 		ContainerName: fmt.Sprintf("%s_admin", g.cfg.ProjectName),
 		Restart:       "unless-stopped",
 		User:          adminUser,
@@ -133,15 +133,15 @@ func (g *Generator) buildFunctionsService() ServiceConfig {
 
 	switch runtime {
 	case "deno":
-		image = "denoland/deno:alpine"
+		image = ImageRef("deno", "")
 		command = "deno serve --allow-net --allow-read --allow-env /opt/project/server.ts"
 	case "python":
-		image = "python:3.12-slim"
+		image = ImageRef("python", "")
 		command = "sh -c 'pip install -r /opt/project/requirements.txt --quiet && python /opt/project/server.py'"
 	default:
 		// node is the default (nhost/functions)
 		runtime = "node"
-		image = ResolveImage("functions", fmt.Sprintf("nhost/functions:%s", version))
+		image = ResolveImage("functions", ImageRef("functions", version))
 		command = nil
 	}
 

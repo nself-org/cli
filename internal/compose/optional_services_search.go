@@ -15,7 +15,7 @@ import (
 // Uses the same init-container pattern as MinIO.
 func (g *Generator) buildMeiliInitService() ServiceConfig {
 	return ServiceConfig{
-		Image:         "busybox:1.36",
+		Image:         ImageRef("meilisearch-init", ""),
 		ContainerName: fmt.Sprintf("%s_meilisearch_init", g.cfg.ProjectName),
 		Restart:       "no",
 		User:          "root",
@@ -50,7 +50,7 @@ func (g *Generator) buildMeiliService() ServiceConfig {
 	}
 
 	return ServiceConfig{
-		Image:         ResolveImage("meilisearch", fmt.Sprintf("getmeili/meilisearch:%s", version)),
+		Image:         ResolveImage("meilisearch", ImageRef("meilisearch", version)),
 		ContainerName: fmt.Sprintf("%s_meilisearch", g.cfg.ProjectName),
 		Restart:       "unless-stopped",
 		User:          "1000:1000",
@@ -99,7 +99,7 @@ func (g *Generator) buildTypesenseService() ServiceConfig {
 	}
 
 	return ServiceConfig{
-		Image:         ResolveImage("typesense", fmt.Sprintf("typesense/typesense:%s", version)),
+		Image:         ResolveImage("typesense", ImageRef("typesense", version)),
 		ContainerName: fmt.Sprintf("%s_typesense", g.cfg.ProjectName),
 		Restart:       "unless-stopped",
 		Networks:      []string{g.cfg.DockerNetwork},

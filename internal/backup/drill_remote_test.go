@@ -594,18 +594,18 @@ func TestDrillSignalCleanupAndSweepReal(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("needs Linux containers")
 	}
-	if exec.Command("docker", "image", "inspect", DrillImage).Run() != nil {
-		if out, err := exec.Command("docker", "pull", DrillImage).CombinedOutput(); err != nil {
-			t.Skipf("cannot pull %s: %v\n%s", DrillImage, err, out)
+	if exec.Command("docker", "image", "inspect", drillImage()).Run() != nil {
+		if out, err := exec.Command("docker", "pull", drillImage()).CombinedOutput(); err != nil {
+			t.Skipf("cannot pull %s: %v\n%s", drillImage(), err, out)
 		}
 	}
 	id, _ := randHex(4)
 	stale := throwawayPrefix + "0000" + id + "0000" // a throwaway name no live run uses
 	fixtures := []string{"p07fix-plain-" + id, "p07fix-labelled-" + id}
 	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", "-v", stale, fixtures[0], fixtures[1]).Run() })
-	docker("run", "-d", "--name", stale, "--label", containerLabel+"=stale", "--entrypoint", "sleep", DrillImage, "300")
-	docker("run", "-d", "--name", fixtures[0], "--entrypoint", "sleep", DrillImage, "300")
-	docker("run", "-d", "--name", fixtures[1], "--label", containerLabel+"=fixture", "--entrypoint", "sleep", DrillImage, "300")
+	docker("run", "-d", "--name", stale, "--label", containerLabel+"=stale", "--entrypoint", "sleep", drillImage(), "300")
+	docker("run", "-d", "--name", fixtures[0], "--entrypoint", "sleep", drillImage(), "300")
+	docker("run", "-d", "--name", fixtures[1], "--label", containerLabel+"=fixture", "--entrypoint", "sleep", drillImage(), "300")
 
 	old := drillStaleAfter
 	drillStaleAfter = 0

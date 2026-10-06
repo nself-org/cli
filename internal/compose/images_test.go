@@ -34,30 +34,31 @@ func TestResolveImage_UnknownService(t *testing.T) {
 
 func TestResolveImage_AdminIsLatest(t *testing.T) {
 	// Explicit image wins; the :latest pin applies only for empty input.
-	got := ResolveImage("admin", AdminImagePath+":v1.0")
-	want := AdminImagePath + ":v1.0"
+	got := ResolveImage("admin", "nself/nself-admin:v1.0")
+	want := "nself/nself-admin:v1.0"
 	if got != want {
 		t.Errorf("ResolveImage(admin, explicit) = %q, want %q", got, want)
 	}
 	got = ResolveImage("admin", "")
-	want = AdminImagePath + ":latest"
+	want = "nself/nself-admin:latest"
 	if got != want {
 		t.Errorf("ResolveImage(admin, empty) = %q, want %q", got, want)
 	}
 }
 
-// TestAdminImagePath_DockerHubNotGHCR verifies the admin image constant uses
+// TestAdminImage_DockerHubNotGHCR verifies the admin image entry uses
 // the Docker Hub nself/ namespace and never github.com/nself-org/ paths.
 // This closes C1-01 from the Dim 2 undocumented dependency audit (S02.T-UNDEP-01).
-func TestAdminImagePath_DockerHubNotGHCR(t *testing.T) {
-	if strings.Contains(AdminImagePath, "github.com") {
-		t.Errorf("AdminImagePath must not contain github.com — got %q; use Docker Hub nself/ namespace", AdminImagePath)
+func TestAdminImage_DockerHubNotGHCR(t *testing.T) {
+	r, ok := LockedRef("admin")
+	if !ok {
+		t.Fatal("lock has no admin entry")
 	}
-	if strings.Contains(AdminImagePath, "ghcr.io") {
-		t.Errorf("AdminImagePath must not use ghcr.io — got %q; use Docker Hub nself/ namespace", AdminImagePath)
+	if strings.Contains(r.Repository, "github.com") || strings.Contains(r.Repository, "ghcr.io") {
+		t.Errorf("admin repository %q must be Docker Hub, never GitHub paths", r.Repository)
 	}
-	if !strings.HasPrefix(AdminImagePath, "nself/") {
-		t.Errorf("AdminImagePath must start with 'nself/' (Docker Hub namespace) — got %q", AdminImagePath)
+	if !strings.HasPrefix(r.Repository, "docker.io/nself/") || !strings.HasPrefix(r.LegacyRef, "nself/") {
+		t.Errorf("admin = %q / legacy %q, want the Docker Hub nself/ namespace", r.Repository, r.LegacyRef)
 	}
 }
 
@@ -90,7 +91,7 @@ func TestResolvePostgresImage_PgvectorExtensionImpliesImage(t *testing.T) {
 	}{
 		{"alpine suffix", "16-alpine", "pgvector/pgvector:pg16"},
 		{"dotted version", "15.4", "pgvector/pgvector:pg15"},
-		{"unparseable falls back to pin", "latest", DefaultImageVersions["postgres"]},
+		{"unparseable falls back to pin", "latest", "pgvector/pgvector:pg16"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -130,13 +131,13 @@ func TestResolvePostgresImage_DefaultVersionOnly(t *testing.T) {
 	}
 }
 
-// TestDefaultImageVersions_NoGoModulePaths asserts that no image in
-// DefaultImageVersions contains a Go module–style path (github.com/nself-org/).
-// Docker image references use registry/org/image format, never Go module paths.
-func TestDefaultImageVersions_NoGoModulePaths(t *testing.T) {
-	for service, image := range DefaultImageVersions {
-		if strings.Contains(image, "github.com/nself-org/") {
-			t.Errorf("service %q: image %q contains Go module path github.com/nself-org/; use Docker registry format", service, image)
+// TestLockedImages_NoGoModulePaths asserts that no locked image contains a Go
+// module-style path (github.com/nself-org/). Docker references use
+// registry/org/image format, never Go module paths.
+func TestLockedImages_NoGoModulePaths(t *testing.T) {
+	for _, r := range LockedImages() {
+		if strings.Contains(r.Repository, "github.com/nself-org/") || strings.Contains(r.LegacyRef, "github.com/nself-org/") {
+			t.Errorf("image %q: %q contains Go module path github.com/nself-org/; use Docker registry format", r.Name, r.Repository)
 		}
 	}
 }
@@ -144,36 +145,23 @@ func TestDefaultImageVersions_NoGoModulePaths(t *testing.T) {
 // TestMinioImageIsRegistryQualified guards the fix for the 2026-09-14 storage
 // outage: MinIO deleted the `minio/minio` repository from Docker Hub, so an
 // unqualified reference resolves to a repository that no longer exists and
-// every generated stack with MINIO_ENABLED=true failed to pull. The Hub API
-// returns "object not found" and every tag answers 401, to anonymous and
-// authenticated requests alike, so this is not something a docker login fixes.
-//
-// Both places that name the image must stay pointed at the maintained registry path:
-// the DefaultImageVersions pin (used when no MINIO_VERSION is set) and
-// buildMinioService's MINIO_VERSION path. A bare "minio/minio:..." in either
-// is the regression this test exists to catch.
+// every generated stack with MINIO_ENABLED=true failed to pull. The lock entry
+// and buildMinioService's MINIO_VERSION path must stay on the maintained
+// registry path; a bare "minio/minio:..." is the regression this catches.
 func TestMinioImageIsRegistryQualified(t *testing.T) {
-	const wantPrefix = "docker.io/pgsty/minio:"
-
-	if !strings.HasPrefix(MinioImagePath+":", wantPrefix) {
-		t.Fatalf("MinioImagePath = %q, want %q without the tag", MinioImagePath, "docker.io/pgsty/minio")
-	}
-
-	pinned, ok := DefaultImageVersions["minio"]
+	r, ok := LockedRef("minio")
 	if !ok {
-		t.Fatal(`DefaultImageVersions has no "minio" entry`)
+		t.Fatal(`lock has no "minio" entry`)
 	}
-	if !strings.HasPrefix(pinned, wantPrefix) {
-		t.Errorf("DefaultImageVersions[\"minio\"] = %q, want prefix %q", pinned, wantPrefix)
+	if r.Repository != "docker.io/pgsty/minio" || !strings.HasPrefix(r.LegacyRef, "docker.io/pgsty/minio:") {
+		t.Errorf("minio = %q / legacy %q, want docker.io/pgsty/minio", r.Repository, r.LegacyRef)
 	}
 }
 
-// TestBuildMinioService_UsesQuayRegistry covers the MINIO_VERSION path, which
-// formats its own image string and so can drift away from the pin above
-// independently. Both an explicit version and the empty-version default are
-// checked, because the empty case builds "…:latest" rather than falling
-// through to DefaultImageVersions.
+// TestBuildMinioService_UsesPinnedRegistry covers the MINIO_VERSION path (legacy
+// mode): an explicit version and the empty-version default are both checked.
 func TestBuildMinioService_UsesPinnedRegistry(t *testing.T) {
+	t.Setenv(EnvImagePinning, PinningLegacy)
 	for _, tc := range []struct {
 		name    string
 		version string
