@@ -70,11 +70,6 @@ func TestCanonConfigInheritedFlags(t *testing.T) {
 			t.Fatalf("find %s: %v", p, err)
 		}
 
-		// Also check the parent directly to debug
-		if cmd.Parent() == nil {
-			t.Fatalf("%s parent is nil", p)
-		}
-
 		want := wantInherited
 		if p == "config secrets" {
 			want = []string{"json", "reveal"} // --env is shadowed
