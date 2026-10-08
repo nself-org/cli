@@ -154,6 +154,20 @@ func TestDiscoverNoCanonLoad(t *testing.T) {
 	}
 }
 
+func TestDiscoverManifestSizeLimit(t *testing.T) {
+	d := t.TempDir()
+	fixture(t, d, "demo", "demo")
+	binary(t, d, "demo")
+	path := filepath.Join(d, "demo", "plugin.json")
+	if err := os.WriteFile(path, bytes.Repeat([]byte("x"), (1<<20)+1), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s, p := Discover(d, nil)
+	if len(s) != 0 || len(p) != 1 || p[0].Code != "E406" {
+		t.Fatalf("specs=%+v problems=%+v", s, p)
+	}
+}
+
 func BenchmarkDiscover(b *testing.B) {
 	d := b.TempDir()
 	for i := 0; i < 50; i++ {

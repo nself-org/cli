@@ -34,9 +34,10 @@ func checkPluginMount(root *cobra.Command, verbose bool) []doctorCheckResult {
 	problems = append(problems, treeProblems...)
 	var results []doctorCheckResult
 	for _, p := range problems {
-		name := fmt.Sprintf("Plugin mount: %s", p.Slug)
-		printCheck("warn", name, p.Message, verbose)
-		results = append(results, doctorCheckResult{Name: name, Status: "warn", Message: p.Message})
+		name := fmt.Sprintf("Plugin mount: %s", safeMountText(p.Slug))
+		message := safeMountText(p.Message)
+		printCheck("warn", name, message, verbose)
+		results = append(results, doctorCheckResult{Name: name, Status: "warn", Message: message})
 	}
 	return results
 }

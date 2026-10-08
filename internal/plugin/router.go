@@ -89,7 +89,7 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 			cmdName, cmdName, installHint)
 	}
 
-	return execPluginBinary(candidate, cmdName, args)
+	return ProxyBinaryAt(candidate, filepath.Dir(binDir), cmdName, args)
 }
 
 // ProxyBinary execs the named plugin binary with args verbatim. It is the
@@ -107,59 +107,34 @@ func ProxyBinary(binName, slug string, args []string) error {
 	if !safeBinaryName(binName) {
 		return errs.Newf("E406", "plugin %q binary %q has an invalid name", slug, binName)
 	}
-	root, err := os.OpenRoot(filepath.Dir(binDir))
-	if err != nil {
-		return errs.Newf("E406", "plugin %q binary directory is unavailable", slug)
-	}
-	defer func() { _ = root.Close() }()
 	fileName := binName
 	if runtime.GOOS == "windows" {
 		fileName += ".exe"
 	}
-	f, err := root.Open(filepath.Join("bin", fileName))
-	if err != nil {
-		return errs.Newf("E406", "plugin %q binary %q is not present in %s; reinstall it with nself add %s", slug, binName, binDir, slug)
-	}
-	defer func() { _ = f.Close() }()
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0111 == 0) {
-		return errs.Newf("E406", "plugin %q binary %q is not executable", slug, binName)
-	}
-	if runtime.GOOS == "windows" {
-		return execPluginBinary(filepath.Join(binDir, fileName), slug, args)
-	}
-	if runtime.GOOS == "darwin" {
-		return execPinnedBinary(f, filepath.Join(binDir, fileName), slug, args)
-	}
-	return execPluginBinaryFile(f, filepath.Join(binDir, fileName), slug, args)
+	return ProxyBinaryAt(filepath.Join(binDir, fileName), filepath.Dir(binDir), slug, args)
 }
 
-// execPinnedBinary creates a private hard link to the opened executable on
-// macOS, where /dev/fd cannot be passed to execve. Comparing inode identity
-// after linking catches a replacement between the rooted open and the link.
-func execPinnedBinary(f *os.File, candidate, slug string, args []string) error {
-	dir, err := os.MkdirTemp(filepath.Dir(filepath.Dir(candidate)), ".mount-")
+// ProxyBinaryAt executes the discovered path after a fresh containment check.
+// The plugins directory owner can replace the file between check and exec;
+// this accepted window does not cross a different trust boundary.
+func ProxyBinaryAt(candidate, rootDir, slug string, args []string) error {
+	resolvedRoot, err := filepath.EvalSymlinks(rootDir)
 	if err != nil {
-		return errs.Newf("E406", "plugin %q binary could not be pinned: %v", slug, err)
+		return errs.Newf("E406", "plugin %q binary directory is unavailable", slug)
 	}
-	defer func() { _ = os.RemoveAll(dir) }()
 	resolved, err := filepath.EvalSymlinks(candidate)
 	if err != nil {
-		return errs.Newf("E406", "plugin %q binary changed before execution", slug)
+		return errs.Newf("E406", "plugin %q binary is unavailable", slug)
 	}
-	pinned := filepath.Join(dir, filepath.Base(candidate))
-	if err := os.Link(resolved, pinned); err != nil {
-		return errs.Newf("E406", "plugin %q binary could not be pinned: %v", slug, err)
+	rel, err := filepath.Rel(resolvedRoot, resolved)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return errs.Newf("E406", "plugin %q binary resolves outside the plugins directory", slug)
 	}
-	opened, err := f.Stat()
-	if err != nil {
-		return errs.Newf("E406", "plugin %q binary changed before execution", slug)
+	info, err := os.Stat(resolved)
+	if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0111 == 0) {
+		return errs.Newf("E406", "plugin %q binary is not executable", slug)
 	}
-	linked, err := os.Stat(pinned)
-	if err != nil || !os.SameFile(opened, linked) {
-		return errs.Newf("E406", "plugin %q binary changed before execution", slug)
-	}
-	return execPluginBinary(pinned, slug, args)
+	return execPluginBinary(candidate, slug, args)
 }
 
 func safeBinaryName(name string) bool {
@@ -189,16 +164,6 @@ func execPluginBinary(path, slug string, args []string) error {
 	// not in a container compose has populated — and would have to re-implement
 	// the cascade that CLI-R18 made canonical.
 	cmd := exec.Command(path, args...)
-	return runPluginCommand(cmd, slug)
-}
-
-// execPluginBinaryFile executes the already validated open file descriptor.
-// The child inherits fd 3, so replacing the bin symlink after validation
-// cannot change which executable runs.
-func execPluginBinaryFile(f *os.File, displayPath, slug string, args []string) error {
-	cmd := exec.Command("/dev/fd/3", args...)
-	cmd.Args[0] = displayPath
-	cmd.ExtraFiles = []*os.File{f}
 	return runPluginCommand(cmd, slug)
 }
 

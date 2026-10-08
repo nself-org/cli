@@ -29,6 +29,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
@@ -100,7 +101,12 @@ func planMount(root *cobra.Command, specs []mount.Spec) ([]mount.Spec, []mount.P
 	var mountable []mount.Spec
 	var problems []mount.Problem
 	for _, s := range specs {
-		// compat.V15(P7-CANON-01): breakout commands keep their core owner -> plugin commands mount after the breakout moves
+		if owner := breakoutOwner(s.Command); owner != "" && owner != s.Slug {
+			problems = append(problems, mount.Problem{Code: "E405", Slug: s.Slug,
+				Message: fmt.Sprintf("[E405] command %q of plugin %q belongs to breakout plugin %q; not mounted", s.Command, s.Slug, owner)})
+			continue
+		}
+		// compat.V15(P7-CANON-01): same-owner breakout stays core in v1.4 -> mounts from its plugin in v1.5
 		if !compat.V15() && silentBreakout(s) {
 			continue
 		}
@@ -118,12 +124,16 @@ func planMount(root *cobra.Command, specs []mount.Spec) ([]mount.Spec, []mount.P
 // with this name out to the same plugin slug (D10): in v1.4 mode core stays
 // and the plugin is quietly not mounted.
 func silentBreakout(s mount.Spec) bool {
+	return breakoutOwner(s.Command) == s.Slug
+}
+
+func breakoutOwner(name string) string {
 	for _, row := range canonTable.Breakouts {
-		if row.Plugin == s.Slug && len(row.From) > 0 && row.From[0] == s.Command {
-			return true
+		if len(row.From) > 0 && row.From[0] == name {
+			return row.Plugin
 		}
 	}
-	return false
+	return ""
 }
 
 // nativeClash returns the cobra-native command (name or alias) that already
@@ -135,7 +145,7 @@ func nativeClash(root *cobra.Command, name string) string {
 		}
 	}
 	for _, c := range root.Commands() {
-		if c.Annotations[mount.AnnPlugin] != "" {
+		if c.Annotations[mount.AnnSource] == sourceInstalled {
 			continue
 		}
 		if c.Name() == name {
@@ -207,7 +217,7 @@ func proxyRunE(node *cobra.Command, s mount.Spec, segs []string) {
 	own := append([]string{}, segs...)
 	node.RunE = func(cmd *cobra.Command, args []string) error {
 		argv := append(append([]string{}, own...), stripRootPersistentFlags(args)...)
-		return plugin.ProxyBinary(s.Binary, s.Slug, argv)
+		return plugin.ProxyBinaryAt(s.BinaryPath, resolvePluginDir(), s.Slug, argv)
 	}
 }
 
@@ -253,7 +263,12 @@ func warnMountProblems(problems []mount.Problem) {
 	}
 	for _, p := range problems {
 		message := strings.TrimPrefix(p.Message, "["+p.Code+"] ")
-		fmt.Fprintf(os.Stderr, "warning: [%s] %s\n", p.Code, message)
+		fmt.Fprintf(os.Stderr, "warning: [%s] %s\n", p.Code, safeMountText(message))
 	}
 	mountWarned = true
+}
+
+func safeMountText(s string) string {
+	quoted := strconv.QuoteToASCII(s)
+	return quoted[1 : len(quoted)-1]
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -68,9 +69,18 @@ func discoverOne(dir, slug string, verbs []string) (*Spec, *Problem) {
 		// A directory without plugin.json is not a CLI plugin.
 		return nil, nil
 	}
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, &Problem{Code: codeOf(err), Slug: slug, Message: fmt.Errorf("reading plugin manifest: %w", err).Error()}
+	}
+	defer func() { _ = f.Close() }()
+	const maxManifestBytes = 1 << 20
+	data, err := io.ReadAll(io.LimitReader(f, maxManifestBytes+1))
+	if err != nil {
+		return nil, &Problem{Code: "E406", Slug: slug, Message: fmt.Sprintf("[E406] plugin %q manifest cannot be read: %v", slug, err)}
+	}
+	if len(data) > maxManifestBytes {
+		return nil, &Problem{Code: "E406", Slug: slug, Message: fmt.Sprintf("[E406] plugin %q manifest exceeds 1 MiB", slug)}
 	}
 	m, err := manifestv2.ParseQuiet(data)
 	if err != nil {

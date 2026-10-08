@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/canon"
+	"github.com/nself-org/cli/internal/oplock"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/plugin/mount"
 	"github.com/spf13/cobra"
@@ -94,6 +96,114 @@ func TestMountPreRunIsolation(t *testing.T) {
 	}
 	if err := n.PersistentPostRunE(n, nil); err != nil {
 		t.Fatal(err)
+	}
+	// The real decorator must not wrap installed RunE in the project lock.
+	called := false
+	n.RunE = func(*cobra.Command, []string) error {
+		called = true
+		if os.Getenv(oplock.EnvToken) != "" {
+			t.Fatal("lock token reached plugin")
+		}
+		return nil
+	}
+	originalRun := reflect.ValueOf(n.RunE).Pointer()
+	installInvocationDecorator(r)
+	if reflect.ValueOf(n.RunE).Pointer() != originalRun {
+		t.Fatal("installed RunE was wrapped by invocation decorator")
+	}
+	if err := n.RunE(n, nil); err != nil || !called {
+		t.Fatalf("wrapped run: called=%t err=%v", called, err)
+	}
+}
+
+func TestMountBuiltinInstalledCollision(t *testing.T) {
+	r := &cobra.Command{Use: "nself"}
+	mountBuiltin(r, []builtinFamily{{slug: "admin", build: func() *cobra.Command { return &cobra.Command{Use: "admin"} }}})
+	specs, problems := planMount(r, []mount.Spec{{Slug: "evil", Command: "admin"}})
+	if len(specs) != 0 || len(problems) != 1 || problems[0].Code != "E405" {
+		t.Fatalf("specs=%+v problems=%+v", specs, problems)
+	}
+}
+
+func TestDoctorBuiltinInstalledCollision(t *testing.T) {
+	d := mountFixture(t)
+	t.Setenv("NSELF_PLUGIN_DIR", d)
+	r := &cobra.Command{Use: "nself"}
+	mountBuiltin(r, []builtinFamily{{slug: "admin", build: func() *cobra.Command { return &cobra.Command{Use: "demo"} }}})
+	rows := checkPluginMount(r, false)
+	if len(rows) != 1 || rows[0].Status != "warn" || !strings.Contains(rows[0].Message, "E405") {
+		t.Fatalf("doctor rows: %+v", rows)
+	}
+}
+
+func TestMountBreakoutOwner(t *testing.T) {
+	saved := canonTable.Breakouts
+	canonTable.Breakouts = []canonRowT{{From: []string{"ci"}, Plugin: "ci"}}
+	t.Cleanup(func() { canonTable.Breakouts = saved })
+	specs, problems := planMount(&cobra.Command{Use: "nself"}, []mount.Spec{{Slug: "evil", Command: "ci"}})
+	if len(specs) != 0 || len(problems) != 1 || !strings.Contains(problems[0].Message, "ci") {
+		t.Fatalf("specs=%+v problems=%+v", specs, problems)
+	}
+}
+
+func TestMountProblemEscapesControls(t *testing.T) {
+	for _, s := range []string{"a\x1b[2Jb", "a\nb"} {
+		if got := safeMountText(s); strings.ContainsAny(got, "\x1b\n") {
+			t.Fatalf("raw controls in %q", got)
+		}
+	}
+}
+
+func TestDoctorProblemEscapesControls(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows rejects control characters in file names")
+	}
+	d := t.TempDir()
+	t.Setenv("NSELF_PLUGIN_DIR", d)
+	slug := "bad\x1b[2J"
+	if err := os.MkdirAll(filepath.Join(d, slug), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(d, slug, "plugin.json"), []byte("{"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	rows := checkPluginMount(&cobra.Command{Use: "nself"}, false)
+	if len(rows) != 1 || strings.ContainsAny(rows[0].Name+rows[0].Message, "\x1b\n") {
+		t.Fatalf("unsafe doctor row: %+v", rows)
+	}
+}
+
+func TestMountUsesDiscoveredPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture")
+	}
+	root := t.TempDir()
+	t.Setenv("NSELF_PLUGIN_DIR", root)
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(bin, "nself-demo")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 7\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	n := installedNode(mount.Spec{Slug: "demo", Command: "demo", Binary: "nself-demo", BinaryPath: path})
+	var exit *plugin.ExitCodeError
+	if err := n.RunE(n, nil); !errors.As(err, &exit) || exit.Code != 7 {
+		t.Fatalf("discovered path: %v", err)
+	}
+}
+
+func TestMountNoCanonLoad(t *testing.T) {
+	d := mountFixture(t)
+	calls := 0
+	saved := canonLoad
+	canonLoad = func(v15 bool) (*canon.File, error) { calls++; return saved(v15) }
+	t.Cleanup(func() { canonLoad = saved })
+	specs, problems := mount.Discover(d, canonTable.Verbs)
+	mountInstalled(&cobra.Command{Use: "nself"}, specs, problems)
+	if calls != 0 {
+		t.Fatalf("mount called canon loader %d times", calls)
 	}
 }
 

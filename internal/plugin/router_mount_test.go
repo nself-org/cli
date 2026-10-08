@@ -49,23 +49,9 @@ func TestProxyBinary(t *testing.T) {
 	if err := ProxyBinary("nself-demo", "demo", nil); !errors.As(err, &ce) || ce.Code != "E406" {
 		t.Fatalf("escape: %v", err)
 	}
-	// The candidate is changed after discovery would have accepted it. The
-	// runtime lookup must still refuse the target outside the plugin root.
-	if err := os.Remove(path); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(path); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(out, path); err != nil {
-		t.Fatal(err)
-	}
-	if err := ProxyBinary("nself-demo", "demo", nil); !errors.As(err, &ce) || ce.Code != "E406" {
-		t.Fatalf("post-discovery swap: %v", err)
-	}
+	// A file can change after discovery. The accepted check-to-exec window
+	// belongs to the plugins directory owner; an outside symlink is refused
+	// when this call checks it immediately before exec.
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
@@ -85,5 +71,68 @@ func TestProxyBinary(t *testing.T) {
 	}
 	if _, err := os.Stat(pwned); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("argv was interpreted as a shell command: %v", err)
+	}
+}
+
+func TestProxyFallbackEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink fixture")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	bin := filepath.Join(home, ".nself", "plugins", "bin")
+	if err := os.MkdirAll(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(out, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(out, filepath.Join(bin, "nself-demo")); err != nil {
+		t.Fatal(err)
+	}
+	var ce *errs.CLIError
+	if err := ProxyCommandWithHint("demo", nil, ""); !errors.As(err, &ce) || ce.Code != "E406" {
+		t.Fatalf("fallback escape: %v", err)
+	}
+}
+
+func TestProxyBinaryIdentity(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture")
+	}
+	pluginDir := t.TempDir()
+	bin := filepath.Join(pluginDir, "bin")
+	if err := os.MkdirAll(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(bin, "nself-demo")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf '%s' \"$0\"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = old })
+	if err := ProxyBinaryAt(path, pluginDir, "demo", nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = w.Close()
+	buf := make([]byte, 1024)
+	n, _ := r.Read(buf)
+	if string(buf[:n]) != path {
+		t.Fatalf("argv0=%q want %q", buf[:n], path)
+	}
+	entries, err := os.ReadDir(pluginDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".mount-") {
+			t.Fatalf("stale hard link: %s", e.Name())
+		}
 	}
 }

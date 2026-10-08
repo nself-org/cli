@@ -449,6 +449,8 @@ func TestCanonEngineLegacyChain(t *testing.T) {
 // --- no YAML on the startup path -------------------------------------------
 
 func TestCanonEngineNoCanonLoad(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NSELF_PLUGIN_DIR", t.TempDir())
 	calls := 0
 	saved := canonLoad
 	canonLoad = func(b bool) (*canon.File, error) { calls++; return saved(b) }
