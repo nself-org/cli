@@ -1,8 +1,10 @@
 package cmdregistry
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/canon"
 	"github.com/spf13/cobra"
 )
 
@@ -32,5 +34,56 @@ func TestRegistryCountsPlugin(t *testing.T) {
 	r := mustBuild(t, pluginFixture(), true)
 	if r.Counts.Plugin != 2 || r.Counts.TopLevel != base.Counts.TopLevel {
 		t.Fatalf("counts %+v base %+v", r.Counts, base.Counts)
+	}
+}
+
+func TestRegistryBuiltinMountValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name, source, want string
+		entry              bool
+	}{
+		{"missing entry", sourceBuiltin, "needs a canon entry", false},
+		{"wrong canon", sourceBuiltin, "must say canon plugin", true},
+		{"installed owns core path", sourceInstalled, "plugin-mounted command's canon entry", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := fixtureRoot(false)
+			root.AddCommand(&cobra.Command{Use: "fixture", RunE: noop, Annotations: map[string]string{annPluginKey: "fixture", annSourceKey: tc.source}})
+			f := fixtureCanon(t)
+			if tc.entry {
+				f.Commands["fixture"] = canon.Entry{Canon: canon.CanonCore, SideEffect: canon.SideEffectRead}
+			}
+			_, err := Build(root, f, fixtureTypes(), fixtureOpts(true))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want %q, got %v", tc.want, err)
+			}
+		})
+	}
+	root := fixtureRoot(false)
+	root.AddCommand(&cobra.Command{Use: "fixture", RunE: noop, Annotations: map[string]string{annPluginKey: "fixture", annSourceKey: sourceBuiltin}})
+	f := fixtureCanon(t)
+	f.Commands["fixture"] = canon.Entry{Canon: canon.CanonPlugin, SideEffect: canon.SideEffectRead}
+	r, err := Build(root, f, fixtureTypes(), fixtureOpts(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, ok := r.Lookup("nself fixture")
+	if !ok || c.Canon != canon.CanonPlugin || c.Plugin == nil || *c.Plugin != "fixture" {
+		t.Fatalf("builtin registry entry: %+v, found=%t", c, ok)
+	}
+}
+
+func TestRegistryMalformedPluginAnnotations(t *testing.T) {
+	root := pluginFixture()
+	cmd, _, err := root.Find([]string{"demo", "sub"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Annotations[annArgsKey] = `broken`
+	cmd.Annotations[annFlagsKey] = `broken`
+	r := mustBuild(t, root, true)
+	c, ok := r.Lookup("nself demo sub")
+	if !ok || len(c.Args) != 0 || len(c.Flags) != 0 {
+		t.Fatalf("invalid annotation must not create registry fields: %+v", c)
 	}
 }

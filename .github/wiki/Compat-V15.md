@@ -53,6 +53,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | Ticket | v1.4 behaviour (old) | v1.5 behaviour (new) | File |
 |---|---|---|---|
 | P7-ADOPT-01 | writable absolute bind allowed | E502 | `internal/compose/custom_service_v2.go` |
+| P7-CANON-01 | breakout commands keep their core owner | plugin commands mount after the breakout moves | `cmd/commands/plugin_mount.go` |
 | P7-CANON-02 | registry view with moved entries at their v1.4 paths | view at canonical paths plus deprecated-shim entries | `internal/canon/canon.go` |
 | P7-CANON-21 | the argv names commands at their v1.4 paths | argv rewritten between old and canonical spellings, tree relocated | `cmd/commands/tree_prepare.go` |
 | P7-LIVE-03 | a lock held by another command does not stop a build (it takes the O_EXCL build.lock) | a lock held by another command refuses the build | `internal/build/build_lock.go` |

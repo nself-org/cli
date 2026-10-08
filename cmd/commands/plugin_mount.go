@@ -100,6 +100,7 @@ func planMount(root *cobra.Command, specs []mount.Spec) ([]mount.Spec, []mount.P
 	var mountable []mount.Spec
 	var problems []mount.Problem
 	for _, s := range specs {
+		// compat.V15(P7-CANON-01): breakout commands keep their core owner -> plugin commands mount after the breakout moves
 		if !compat.V15() && silentBreakout(s) {
 			continue
 		}

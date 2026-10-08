@@ -38,7 +38,11 @@ func mountFixture(t *testing.T) string {
 		if err := os.MkdirAll(filepath.Join(dir, "bin"), 0755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "bin", "nself-"+slug), b, 0755); err != nil {
+		name := "nself-" + slug
+		if runtime.GOOS == "windows" {
+			name += ".exe"
+		}
+		if err := os.WriteFile(filepath.Join(dir, "bin", name), b, 0755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -170,7 +174,11 @@ func TestDoctorPluginMount(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(p, "plugin.json"), b, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(d, "bin", "nself-collide-completion"), []byte("#!/bin/sh\n"), 0755); err != nil {
+	name := "nself-collide-completion"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if err := os.WriteFile(filepath.Join(d, "bin", name), []byte("#!/bin/sh\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	results := checkPluginMount(&cobra.Command{Use: "nself"}, false)
