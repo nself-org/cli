@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/plugin/scaffold"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -36,10 +37,10 @@ identical to the standalone new-plugin binary shipped with plugin-sdk-go.
 Templates: go (default), rust, node, static
 
   nself plugin init my-plugin                          # Go plugin (free tier)
-  nself plugin init my-plugin --tier pro               # Pro Go plugin
+  nself plugin init my-plugin --tier licensed          # Licensed Go plugin
   nself plugin init my-plugin --template rust          # Rust plugin
   nself plugin init my-plugin --template node          # Node.js plugin
-  nself plugin init my-plugin --bundle nClaw --tier pro
+  nself plugin init my-plugin --bundle nClaw --tier licensed
 
 Multi-tenancy (--tenancy):
   app-isolation  Emit source_account_id column (per-app isolation within one deploy)
@@ -74,8 +75,8 @@ func init() {
 
 func addScaffoldFlags(cmd *cobra.Command) {
 	cmd.Flags().String("template", "go", "Plugin template: go, rust, node, static")
-	cmd.Flags().String("tier", "free", "Plugin tier: free or pro")
-	cmd.Flags().String("bundle", "", "Bundle display name (e.g. nClaw) — pro plugins only")
+	cmd.Flags().String("tier", "free", "Plugin licence: free or licensed")
+	cmd.Flags().String("bundle", "", "Bundle display name (e.g. nClaw) — Licensed plugins only")
 	cmd.Flags().String("description", "", "Short description of the plugin")
 	cmd.Flags().String("author", "", "Plugin author name")
 	cmd.Flags().String("category", "custom", "Plugin category (see F04-PLUGIN-INVENTORY-PRO)")
@@ -92,6 +93,9 @@ func runPluginInit(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	tmplType, _ := cmd.Flags().GetString("template")
 	tier, _ := cmd.Flags().GetString("tier")
+	if tier == plugin.LicenseLicensed {
+		tier = plugin.WireTierPro
+	}
 	bundle, _ := cmd.Flags().GetString("bundle")
 	description, _ := cmd.Flags().GetString("description")
 	author, _ := cmd.Flags().GetString("author")
@@ -117,7 +121,7 @@ func runPluginInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	uiInfof("Scaffolding %s plugin %q (tier: %s, tenancy: %s)...", tmplType, name, tier, tenancy)
+	uiInfof("Scaffolding %s plugin %q (license: %s, tenancy: %s)...", tmplType, name, plugin.Label(tier), tenancy)
 
 	result, err := scaffold.Run(scaffold.Options{
 		Name:        name,

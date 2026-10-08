@@ -98,7 +98,7 @@ func init() {
 			Code:       "E110",
 			Category:   "plugin",
 			Summary:    "License does not entitle this plugin tier",
-			DefaultWhy: "The installed license does not include the pro tier of this plugin.",
+			DefaultWhy: "The installed license does not include this Licensed plugin.",
 			DefaultFix: "Check your plan with: nself license status. Upgrade at https://nself.org/pricing if the tier is missing.",
 			DocsPath:   "reference/error-codes#e110",
 			Exit:       3,

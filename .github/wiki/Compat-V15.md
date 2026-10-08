@@ -64,6 +64,9 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |
 | P7-LIVE-17 | IMAGE_PINNING defaults to legacy | lock | `internal/compose/images_lock.go` |
 | P7-PLUG-01 | v1 plugin.json read silently | one deprecation line per process on stderr | `internal/plugin/manifestv2/warn.go` |
+| P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_marketplace_cmds.go` |
+| P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_query.go` |
+| P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_search.go` |
 | P7-PLUG-63 | bundle reply trusted for any key and bundle | only a signed reply naming this key, this bundle and a live window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache age from the unsigned fetched_at | the older of fetched_at and the signed jwt iat | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache trusted whatever the clock says | refused when the clock is behind the signed iat or the highest time seen | `internal/license/cache.go` |

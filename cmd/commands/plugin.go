@@ -39,12 +39,12 @@ var pluginListCmd = &cobra.Command{
 
 var pluginInstallCmd = &cobra.Command{
 	Use:   "install <plugin> [plugin...]",
-	Short: "Install one or more plugins (license check for pro); a plugin arg may be a name or an https:// URL",
+	Short: "Install one or more plugins (license check for Licensed plugins); a plugin arg may be a name or an https:// URL",
 	Long: `Install one or more plugins.
 
 Official by name, third-party by URL:
   nself plugin install ai            official registry plugin — license
-                                      checked for pro tiers, Ed25519 signature
+                                      checked for Licensed plugins, Ed25519 signature
                                       verified against a registry-pinned key.
   nself plugin install https://...   third-party source — never touches the
                                       registry, no signature verification.
@@ -133,10 +133,11 @@ func init() {
 	pluginListCmd.Flags().String("category", "", "Filter by category")
 	pluginListCmd.Flags().Bool("show-eol", false, "Include EOL plugins in listing (hidden by default)") // S58-T03
 	pluginListCmd.Flags().Bool("available", false, "List every registry tier of a slug served twice (free+pro pairs), marking the resolved default")
+	pluginListCmd.Flags().Bool("json", false, "Output as JSON")
 
 	// Flags on install.
-	pluginInstallCmd.Flags().String("key", "", "License key for pro plugins")
-	pluginInstallCmd.Flags().String("tier", "", `Force "free" or "pro" for a slug served as both (e.g. cron, notify); default resolves by license entitlement`)
+	pluginInstallCmd.Flags().String("key", "", "License key for Licensed plugins")
+	pluginInstallCmd.Flags().String("tier", "", `Force "free" or "licensed" for a slug served as both (e.g. cron, notify); default resolves by license entitlement`)
 	pluginInstallCmd.Flags().String("version", "", "Install a specific version")
 	pluginInstallCmd.Flags().Bool("force", false, "Required when using NSELF_LICENSE_SKIP_VERIFY; explicit acknowledgment of skipped validation")
 	pluginInstallCmd.Flags().Bool("allow-eol", false, "Allow installing an EOL plugin (not recommended)") // S58-T03

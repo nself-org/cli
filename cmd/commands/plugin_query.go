@@ -13,9 +13,11 @@ package commands
 // declarations and RunE wiring remain in plugin.go.
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -119,24 +121,43 @@ func runPluginListAvailable(cmd *cobra.Command, category string) error {
 		fmt.Println("No plugins found in registry.")
 		return nil
 	}
-
-	tbl := ui.NewTable("Name", "Tier", "Version", "Default")
-	for _, r := range rows {
-		if category != "" && !strings.EqualFold(r.Category, category) {
-			continue
+	if category != "" {
+		filtered := rows[:0]
+		for _, r := range rows {
+			if strings.EqualFold(r.Category, category) {
+				filtered = append(filtered, r)
+			}
 		}
+		rows = filtered
+	}
+	jsonOut, _ := cmd.Flags().GetBool("json")
+	if jsonOut {
+		enc := json.NewEncoder(cmd.OutOrStdout())
+		// compat.V15(P7-PLUG-11): tier pro -> license licensed
+		if compat.V15() {
+			result := make([]map[string]interface{}, 0, len(rows))
+			for _, r := range rows {
+				result = append(result, map[string]interface{}{"name": r.Name, "license": plugin.LicenseValue(r.Tier), "version": r.Version, "category": r.Category, "tier_pair": r.TierPair, "is_default": r.IsDefault})
+			}
+			return enc.Encode(result)
+		}
+		return enc.Encode(rows)
+	}
+
+	tbl := ui.NewTable("Name", "License", "Version", "Default")
+	for _, r := range rows {
 		def := ""
 		if r.IsDefault {
 			def = "✓"
 		}
-		tier := r.Tier
+		tier := plugin.Label(r.Tier)
 		if tier == "" {
 			tier = "-"
 		}
 		tbl.AddRow(r.Name, tier, r.Version, def)
 	}
 	tbl.Render()
-	fmt.Println("\nDefault = what a plain 'nself plugin install <name>' resolves to today (license entitlement for a tier pair, otherwise its only entry). Override with --tier free|pro.")
+	fmt.Println("\nDefault = what a plain 'nself plugin install <name>' resolves to today (license entitlement for a tier pair, otherwise its only entry). Override with --tier free|licensed.")
 	return nil
 }
 
@@ -153,9 +174,9 @@ func runPluginInventory(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	tbl := ui.NewTable("Name", "Version", "Tier", "Status", "Description")
+	tbl := ui.NewTable("Name", "Version", "License", "Status", "Description")
 	for _, p := range plugins {
-		tbl.AddRow(p.Name, p.Version, p.Tier, p.Status, p.Description)
+		tbl.AddRow(p.Name, p.Version, plugin.Label(p.Tier), p.Status, p.Description)
 	}
 	tbl.Render()
 

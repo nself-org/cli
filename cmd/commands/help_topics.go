@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nself-org/cli/internal/plugin/count"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -35,11 +36,11 @@ var helpTopics = map[string]helpTopic{
 	"plugins": {
 		Title:   "Plugin System",
 		Summary: "Install, manage, and build plugins",
-		Body: `  Free plugins (25) — install with no license key:
+		Body: `  Free plugins (%d) — install with no license key:
     nself plugin list
     nself plugin install notify
 
-  Pro plugins (87) — require a license bundle:
+  Licensed plugins (%d) — included in Bundles:
     nself license add nself_pro_<your-key>
     nself plugin install ai mux claw
 
@@ -183,6 +184,13 @@ func printHelpTopic(name string) error {
 	if !ok {
 		_ = printHelpTopicIndex()
 		return fmt.Errorf("unknown topic %q — see list above", name)
+	}
+	if name == "plugins" {
+		counts, err := count.Load()
+		if err != nil {
+			return err
+		}
+		t.Body = fmt.Sprintf(t.Body, counts.Free.Installable, counts.Pro.Installable)
 	}
 	fmt.Println()
 	fmt.Printf("%s — %s\n", ui.C(ui.Bold, t.Title), t.Summary)

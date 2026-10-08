@@ -102,6 +102,6 @@ func checkLicenseVaultPath() CheckResult {
 			Message: "NSELF_PLUGIN_LICENSE_KEY_OWNER set"}
 	}
 	return CheckResult{Section: "dogfood", Name: checkName, Status: "warn",
-		Message: "no license env var set; some pro plugin checks may skip",
+		Message: "no license env var set; some Licensed plugin checks may skip",
 		FixCmd:  "source ~/.claude/vault.env  # or set NSELF_PLUGIN_LICENSE_KEY"}
 }
