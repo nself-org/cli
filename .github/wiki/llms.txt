@@ -14,23 +14,7 @@ nself build   # generate docker-compose + nginx
 nself start   # boot the stack
 ```
 
-## Commands (41)
-
-### nself access
-
-Manage SSH key access on an already-deployed server
-
-```
-nself access <subcommand> [flags]
-```
-
-Subcommands:
-
-- `grant` — Grant a person SSH key access to a host
-- `list` — List who has SSH key access to a host
-- `revoke` — Revoke a person's SSH key access to a host
-
-Full page: [[cmd-access]]
+## Commands (34)
 
 ### nself admin
 
@@ -202,6 +186,7 @@ Subcommands:
 - `list` — List all known config keys with current values
 - `oauth` — Manage OAuth provider tokens
 - `secrets` — Manage encrypted project secrets (age encryption)
+- `services` — Manage optional services
 - `set` — Update a configuration value (writes to .env)
 - `show` — Show all config key=value pairs (masked by default)
 - `telemetry` — Manage CLI telemetry preferences
@@ -265,12 +250,16 @@ nself deploy [target] <subcommand> [flags]
 
 Subcommands:
 
+- `access` — Manage SSH key access on an already-deployed server
 - `check-access` — Verify access to configured deploy targets (deprecated: use 'nself env target probe')
 - `environments` — List configured deploy environments and server capabilities
 - `health` — Run health checks against a target deployment
 - `logs` — Show deployment logs for a target
+- `ops` — Deploy with the ops profile to the ops server
 - `promote` — Promote a canary deploy to 100% green traffic
+- `promote-env` — Promote one environment to another (e.g. staging to prod)
 - `rollback` — Roll back the last deployment for a target
+- `security` — Apply server security
 - `status` — Show deployment status for a target
 - `web` — Build web apps locally and deploy prebuilt output to Vercel
 
@@ -294,27 +283,17 @@ Flags:
 
 Full page: [[cmd-deploy]]
 
-### nself dev
-
-Start development environment
-
-```
-nself dev [flags]
-```
-
-Flags:
-
-- `--hot` (default false) — Enable plugin hot-reload on source changes
-
-Full page: [[cmd-dev]]
-
 ### nself doctor
 
 Run comprehensive system diagnostics
 
 ```
-nself doctor [flags]
+nself doctor <subcommand> [flags]
 ```
+
+Subcommands:
+
+- `security` — Diagnose server security
 
 Flags:
 
@@ -559,20 +538,6 @@ Flags:
 
 Full page: [[cmd-mcp]]
 
-### nself ops
-
-Ops-profile deployment and management
-
-```
-nself ops <subcommand> [flags]
-```
-
-Subcommands:
-
-- `deploy` — Deploy with the ops profile to the ops server
-
-Full page: [[cmd-ops]]
-
 ### nself plugin
 
 Manage nSelf plugins
@@ -613,27 +578,6 @@ Subcommands:
 - `updates` — Check for available plugin updates
 
 Full page: [[cmd-plugin]]
-
-### nself promote
-
-Promote one environment to another (e.g. staging to prod)
-
-```
-nself promote <source> <target> [flags]
-```
-
-Subcommands:
-
-- `rollback` — Rollback to pre-promotion backup
-
-Flags:
-
-- `--approve-id` (default "") — Approval ticket ID
-- `--confirm` (default "") — Confirmation target (required for prod)
-- `--dry-run` (default false) — Preview changes without applying
-- `--json` (default false) — JSON output
-
-Full page: [[cmd-promote]]
 
 ### nself remove
 
@@ -699,22 +643,6 @@ Subcommands:
 
 Full page: [[cmd-runner]]
 
-### nself security
-
-Server security: audit, setup, and status
-
-```
-nself security <subcommand> [flags]
-```
-
-Subcommands:
-
-- `audit` — Run a read-only security audit
-- `setup` — Apply baseline server hardening
-- `status` — Show current security posture
-
-Full page: [[cmd-security]]
-
 ### nself self-heal
 
 Run targeted self-healing routines for nSelf components
@@ -749,42 +677,17 @@ Subcommands:
 
 Full page: [[cmd-server]]
 
-### nself service
-
-Manage optional services
-
-```
-nself service <subcommand> [flags]
-```
-
-Subcommands:
-
-- `add` — Scaffold a custom service (CS_N slot) into the current project
-- `configure` — Configure service settings (e.g. email provider presets)
-- `disable` — Disable an optional service
-- `enable` — Enable an optional service
-- `list` — List all optional services with enabled/disabled status
-- `ps` — Show status of all nSelf stack services
-- `restart` — Restart a named nSelf service
-- `scale` — Set the replica count for a named service
-- `start` — Start a named nSelf service
-- `stop` — Stop a named nSelf service (container preserved)
-- `update` — Pull the latest image for a service and restart it
-- `upgrade` — Pin a service to a specific image version
-
-Flags:
-
-- `--env` (default "") — Target environment (reads .env.{env})
-
-Full page: [[cmd-service]]
-
 ### nself start
 
 Boot your nSelf stack
 
 ```
-nself start [flags]
+nself start <subcommand> [flags]
 ```
+
+Subcommands:
+
+- `dev` — Start development environment
 
 Flags:
 
@@ -862,6 +765,7 @@ Subcommands:
 - `images` — Refresh Docker image digests from registries
 - `project` — Upgrade a project's layout from an older nself
 - `upgrade` — Upgrade the nSelf CLI (detects install method)
+- `verify-sbom` — Verify the SBOM signature for a CLI release
 
 Flags:
 
@@ -891,21 +795,6 @@ Flags:
 - `--json` (default false) — JSON output
 
 Full page: [[cmd-urls]]
-
-### nself verify-sbom
-
-Verify the SBOM signature for a CLI release
-
-```
-nself verify-sbom [flags]
-```
-
-Flags:
-
-- `--repo` (default nself-org/cli) — GitHub repo (owner/name)
-- `--version` (default "") — Release version to verify (e.g. v1.0.9)
-
-Full page: [[cmd-verify-sbom]]
 
 ### nself version
 

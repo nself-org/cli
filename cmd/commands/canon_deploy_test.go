@@ -1,12 +1,14 @@
 package commands
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/spf13/cobra"
 )
 
 func TestCanonDeployResolution(t *testing.T) {
@@ -48,6 +50,52 @@ func TestCanonDeployResolution(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestCanonRetiredHubsBareHelp(t *testing.T) {
+	raw, err := canon.LoadRaw()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw.RetiredHubs) == 0 || len(raw.RetiredHubs) != len(canonTable.RetiredHubs) {
+		t.Fatalf("raw retired rows=%d, generated rows=%d", len(raw.RetiredHubs), len(canonTable.RetiredHubs))
+	}
+	for _, row := range raw.RetiredHubs {
+		t.Run(row.From, func(t *testing.T) {
+			root := &cobra.Command{Use: "nself", SilenceUsage: true, SilenceErrors: true}
+			old := &cobra.Command{Use: row.From, RunE: func(c *cobra.Command, _ []string) error { return c.Help() }}
+			oldChild := &cobra.Command{Use: "child", RunE: func(*cobra.Command, []string) error { return nil }}
+			old.AddCommand(oldChild)
+			root.AddCommand(old)
+			parent := root
+			called := false
+			for _, part := range strings.Fields(row.To) {
+				child := &cobra.Command{Use: part}
+				parent.AddCommand(child)
+				parent = child
+			}
+			parent.AddCommand(&cobra.Command{Use: "child"})
+			table := canonTableT{RetiredHubs: []canonRowT{{From: strings.Fields(row.From), To: strings.Fields(row.To)}}}
+			for _, move := range canonTable.Moves {
+				if strings.Join(move.To, " ") == row.To && strings.HasPrefix(strings.Join(move.From, " "), row.From+" ") {
+					oldChild.Use = strings.TrimPrefix(strings.Join(move.From, " "), row.From+" ")
+					table.Moves = append(table.Moves, move)
+					parent.RunE = func(*cobra.Command, []string) error { called = true; return nil }
+				}
+			}
+			args, notes, err := rewriteCanonArgsWith(&table, root, strings.Fields(row.From), true)
+			if err != nil || len(notes) != 1 || notes[0].Kind != "retired" {
+				t.Fatalf("rewrite %q: %v, notes %+v", row.From, err, notes)
+			}
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&out)
+			root.SetArgs(args)
+			if err := root.Execute(); err != nil || called || !strings.Contains(out.String(), "Usage:") {
+				t.Fatalf("bare %q: err=%v RunE=%v output=%q", row.From, err, called, out.String())
+			}
+		})
+	}
 }
 
 func TestCanonDeployRegistry(t *testing.T) {

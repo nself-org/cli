@@ -1,54 +1,5 @@
 [
   {
-    "name": "access",
-    "path": "nself access",
-    "short": "Manage SSH key access on an already-deployed server",
-    "hidden": false,
-    "group_id": "advanced",
-    "subcommands": [
-      {
-        "name": "grant",
-        "path": "nself access grant",
-        "short": "Grant a person SSH key access to a host",
-        "hidden": false,
-        "flags": [
-          "--docker",
-          "--dry-run",
-          "--expires",
-          "--host",
-          "--identity",
-          "--key",
-          "--sudo",
-          "--user"
-        ]
-      },
-      {
-        "name": "list",
-        "path": "nself access list",
-        "short": "List who has SSH key access to a host",
-        "hidden": false,
-        "flags": [
-          "--host",
-          "--identity",
-          "--json"
-        ]
-      },
-      {
-        "name": "revoke",
-        "path": "nself access revoke",
-        "short": "Revoke a person's SSH key access to a host",
-        "hidden": false,
-        "flags": [
-          "--dry-run",
-          "--force",
-          "--host",
-          "--identity",
-          "--user"
-        ]
-      }
-    ]
-  },
-  {
     "name": "admin",
     "path": "nself admin",
     "short": "Manage the nSelf Admin dashboard",
@@ -539,6 +490,15 @@
         ]
       },
       {
+        "name": "services",
+        "path": "nself config services",
+        "short": "Manage optional services",
+        "hidden": false,
+        "flags": [
+          "--env"
+        ]
+      },
+      {
         "name": "set",
         "path": "nself config set",
         "short": "Update a configuration value (writes to .env)",
@@ -831,6 +791,12 @@
     ],
     "subcommands": [
       {
+        "name": "access",
+        "path": "nself deploy access",
+        "short": "Manage SSH key access on an already-deployed server",
+        "hidden": false
+      },
+      {
         "name": "check-access",
         "path": "nself deploy check-access",
         "short": "Verify access to configured deploy targets (deprecated: use 'nself env target probe')",
@@ -865,15 +831,43 @@
         ]
       },
       {
+        "name": "ops",
+        "path": "nself deploy ops",
+        "short": "Deploy with the ops profile to the ops server",
+        "hidden": false,
+        "flags": [
+          "--dry-run",
+          "--follow"
+        ]
+      },
+      {
         "name": "promote",
         "path": "nself deploy promote",
         "short": "Promote a canary deploy to 100% green traffic",
         "hidden": false
       },
       {
+        "name": "promote-env",
+        "path": "nself deploy promote-env",
+        "short": "Promote one environment to another (e.g. staging to prod)",
+        "hidden": false,
+        "flags": [
+          "--approve-id",
+          "--confirm",
+          "--dry-run",
+          "--json"
+        ]
+      },
+      {
         "name": "rollback",
         "path": "nself deploy rollback",
         "short": "Roll back the last deployment for a target",
+        "hidden": false
+      },
+      {
+        "name": "security",
+        "path": "nself deploy security",
+        "short": "Apply server security",
         "hidden": false
       },
       {
@@ -903,16 +897,6 @@
     ]
   },
   {
-    "name": "dev",
-    "path": "nself dev",
-    "short": "Start development environment",
-    "hidden": false,
-    "group_id": "core",
-    "flags": [
-      "--hot"
-    ]
-  },
-  {
     "name": "doctor",
     "path": "nself doctor",
     "short": "Run comprehensive system diagnostics",
@@ -937,6 +921,14 @@
       "--skip-pool",
       "--verbose",
       "--yes"
+    ],
+    "subcommands": [
+      {
+        "name": "security",
+        "path": "nself doctor security",
+        "short": "Diagnose server security",
+        "hidden": false
+      }
     ]
   },
   {
@@ -1354,25 +1346,6 @@
     ]
   },
   {
-    "name": "ops",
-    "path": "nself ops",
-    "short": "Ops-profile deployment and management",
-    "hidden": false,
-    "group_id": "deploy",
-    "subcommands": [
-      {
-        "name": "deploy",
-        "path": "nself ops deploy",
-        "short": "Deploy with the ops profile to the ops server",
-        "hidden": false,
-        "flags": [
-          "--dry-run",
-          "--follow"
-        ]
-      }
-    ]
-  },
-  {
     "name": "plugin",
     "path": "nself plugin",
     "short": "Manage nSelf plugins",
@@ -1664,30 +1637,6 @@
     ]
   },
   {
-    "name": "promote",
-    "path": "nself promote",
-    "short": "Promote one environment to another (e.g. staging to prod)",
-    "hidden": false,
-    "group_id": "deploy",
-    "flags": [
-      "--approve-id",
-      "--confirm",
-      "--dry-run",
-      "--json"
-    ],
-    "subcommands": [
-      {
-        "name": "rollback",
-        "path": "nself promote rollback",
-        "short": "Rollback to pre-promotion backup",
-        "hidden": false,
-        "flags": [
-          "--tag"
-        ]
-      }
-    ]
-  },
-  {
     "name": "remove",
     "path": "nself remove",
     "short": "Remove an installed plugin or bundle",
@@ -1759,36 +1708,6 @@
           "--json",
           "--ssh-key"
         ]
-      }
-    ]
-  },
-  {
-    "name": "security",
-    "path": "nself security",
-    "short": "Server security: audit, setup, and status",
-    "hidden": false,
-    "group_id": "advanced",
-    "subcommands": [
-      {
-        "name": "audit",
-        "path": "nself security audit",
-        "short": "Run a read-only security audit",
-        "hidden": false
-      },
-      {
-        "name": "setup",
-        "path": "nself security setup",
-        "short": "Apply baseline server hardening",
-        "hidden": false,
-        "flags": [
-          "--apply"
-        ]
-      },
-      {
-        "name": "status",
-        "path": "nself security status",
-        "short": "Show current security posture",
-        "hidden": false
       }
     ]
   },
@@ -1874,103 +1793,6 @@
     ]
   },
   {
-    "name": "service",
-    "path": "nself service",
-    "short": "Manage optional services",
-    "hidden": false,
-    "group_id": "config",
-    "flags": [
-      "--env"
-    ],
-    "subcommands": [
-      {
-        "name": "add",
-        "path": "nself service add",
-        "short": "Scaffold a custom service (CS_N slot) into the current project",
-        "hidden": false,
-        "flags": [
-          "--dry-run",
-          "--force",
-          "--lang",
-          "--template"
-        ]
-      },
-      {
-        "name": "configure",
-        "path": "nself service configure",
-        "short": "Configure service settings (e.g. email provider presets)",
-        "hidden": false,
-        "flags": [
-          "--provider"
-        ]
-      },
-      {
-        "name": "disable",
-        "path": "nself service disable",
-        "short": "Disable an optional service",
-        "hidden": false
-      },
-      {
-        "name": "enable",
-        "path": "nself service enable",
-        "short": "Enable an optional service",
-        "hidden": false
-      },
-      {
-        "name": "list",
-        "path": "nself service list",
-        "short": "List all optional services with enabled/disabled status",
-        "hidden": false,
-        "flags": [
-          "--core",
-          "--json"
-        ]
-      },
-      {
-        "name": "ps",
-        "path": "nself service ps",
-        "short": "Show status of all nSelf stack services",
-        "hidden": false
-      },
-      {
-        "name": "restart",
-        "path": "nself service restart",
-        "short": "Restart a named nSelf service",
-        "hidden": false
-      },
-      {
-        "name": "scale",
-        "path": "nself service scale",
-        "short": "Set the replica count for a named service",
-        "hidden": false
-      },
-      {
-        "name": "start",
-        "path": "nself service start",
-        "short": "Start a named nSelf service",
-        "hidden": false
-      },
-      {
-        "name": "stop",
-        "path": "nself service stop",
-        "short": "Stop a named nSelf service (container preserved)",
-        "hidden": false
-      },
-      {
-        "name": "update",
-        "path": "nself service update",
-        "short": "Pull the latest image for a service and restart it",
-        "hidden": false
-      },
-      {
-        "name": "upgrade",
-        "path": "nself service upgrade",
-        "short": "Pin a service to a specific image version",
-        "hidden": false
-      }
-    ]
-  },
-  {
     "name": "start",
     "path": "nself start",
     "short": "Boot your nSelf stack",
@@ -1997,6 +1819,17 @@
       "--timeout",
       "--verbose",
       "--watch"
+    ],
+    "subcommands": [
+      {
+        "name": "dev",
+        "path": "nself start dev",
+        "short": "Start development environment",
+        "hidden": false,
+        "flags": [
+          "--hot"
+        ]
+      }
     ]
   },
   {
@@ -2075,6 +1908,16 @@
           "--rollback",
           "--version"
         ]
+      },
+      {
+        "name": "verify-sbom",
+        "path": "nself update verify-sbom",
+        "short": "Verify the SBOM signature for a CLI release",
+        "hidden": false,
+        "flags": [
+          "--repo",
+          "--version"
+        ]
       }
     ]
   },
@@ -2090,17 +1933,6 @@
       "--diff",
       "--env",
       "--json"
-    ]
-  },
-  {
-    "name": "verify-sbom",
-    "path": "nself verify-sbom",
-    "short": "Verify the SBOM signature for a CLI release",
-    "hidden": false,
-    "group_id": "advanced",
-    "flags": [
-      "--repo",
-      "--version"
     ]
   },
   {
