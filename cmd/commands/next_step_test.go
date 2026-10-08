@@ -67,6 +67,7 @@ func init() {
 		}
 	case "inspect":
 		if mode != "service" {
+			fmt.Fprintln(os.Stderr, "No such object")
 			os.Exit(1)
 		}
 		fmt.Println("healthy")
