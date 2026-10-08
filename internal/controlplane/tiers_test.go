@@ -22,6 +22,17 @@ func TestProdClassTier(t *testing.T) {
 	}
 }
 
+func TestTierRank(t *testing.T) {
+	for _, tc := range []struct {
+		tier Tier
+		rank int
+	}{{TierLocal, 0}, {TierLocalServers, 1}, {TierProd, 2}, {Tier("invalid"), 3}} {
+		if got := TierRank(tc.tier); got != tc.rank {
+			t.Errorf("rank(%q)=%d, want %d", tc.tier, got, tc.rank)
+		}
+	}
+}
+
 func TestInventoryMigrateV1(t *testing.T) {
 	inv := &Inventory{SchemaVersion: 1, Environments: map[string]Environment{
 		"local":      {Name: "local", Kind: "local"},

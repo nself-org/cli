@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -16,6 +17,9 @@ import (
 )
 
 func TestDeployTargetsJSON(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires POSIX command stubs")
+	}
 	dir := t.TempDir()
 	violation := filepath.Join(dir, "connected")
 	ssh := "#!/bin/sh\nif [ \"$1\" != -G ]; then touch '" + violation + "'; exit 1; fi\nprintf 'hostname localhost\\nport 2222\\nuser deploy\\n'\n"
@@ -70,6 +74,9 @@ func TestDeployTargetsJSON(t *testing.T) {
 }
 
 func TestDeployTargetsIntegration(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires POSIX command stubs")
+	}
 	root, cleanup := newTestRoot(t)
 	defer cleanup()
 	writeInventory(t, root, &controlplane.Inventory{SchemaVersion: 1, Project: "test", Environments: map[string]controlplane.Environment{
@@ -117,6 +124,9 @@ func mustData(t *testing.T, doc []byte) []byte {
 }
 
 func TestEnvTargetTrustHostKey(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires POSIX command stubs")
+	}
 	root, cleanup := newTestRoot(t)
 	defer cleanup()
 	t.Setenv("HOME", t.TempDir())
