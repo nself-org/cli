@@ -60,6 +60,7 @@ With `NSELF_V15=1` (the default from v1.5.0), `config show`, `config get` and `c
 | `list` | List all known config keys with current values |
 | `oauth` | Manage OAuth provider tokens |
 | `secrets` | Manage encrypted project secrets (age encryption) |
+| `services` | Manage optional services |
 | `set` | Update a configuration value (writes to .env) |
 | `show` | Show all config key=value pairs (masked by default) |
 | `telemetry` | Manage CLI telemetry preferences |

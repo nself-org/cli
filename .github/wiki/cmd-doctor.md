@@ -7,7 +7,7 @@
 ## Synopsis
 
 ```
-nself doctor [flags]
+nself doctor <subcommand> [flags]
 ```
 
 ## Description
@@ -365,6 +365,14 @@ In v1.4 mode `--json` prints the bare report and exits `0`, and human mode exits
 | `--yes` | `false` | Non-interactive mode: accept all defaults (for CI/scripts) |
 | `--help`, `-h` | — | Show help |
 <!-- END GENERATED:flags -->
+
+## Subcommands
+
+<!-- BEGIN GENERATED:subcommands -->
+| Name | Description |
+|------|-------------|
+| `security` | Diagnose server security |
+<!-- END GENERATED:subcommands -->
 
 ## Examples
 

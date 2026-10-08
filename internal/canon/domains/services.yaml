@@ -3,17 +3,19 @@
 schema_version: 1
 commands:
   # cmd/commands/service.go:65 RunE path changes no persistent state (prints/reads only)
-  service: {canon: pending, side_effect: read}
-  service add: {side_effect: write}
-  service configure: {side_effect: write}
-  service disable: {side_effect: write}
-  service enable: {side_effect: write}
-  service list: {side_effect: read, json: legacy}
-  # cmd/commands/service_lifecycle.go:42 RunE path changes no persistent state (prints/reads only)
-  service ps: {side_effect: read}
-  service restart: {side_effect: write}
-  service scale: {side_effect: write}
-  service start: {side_effect: write}
-  service stop: {side_effect: write}
-  service update: {side_effect: write}
-  service upgrade: {side_effect: write}
+  config services: {side_effect: read}
+  config services add: {side_effect: write}
+  config services configure: {side_effect: write}
+  config services disable: {side_effect: write}
+  config services enable: {side_effect: write}
+  config services list: {side_effect: read, json: legacy}
+  # cmd/commands/service_lifecycle.go:42 only reads running container status
+  config services ps: {side_effect: read}
+  config services restart: {side_effect: write}
+  config services scale: {side_effect: write}
+  config services start: {side_effect: write}
+  config services stop: {side_effect: write}
+  config services update: {side_effect: write}
+  config services upgrade: {side_effect: write}
+moves:
+  - {from: service, to: config services, since: v1.5.0, removal_at: v1.6.0}

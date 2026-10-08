@@ -322,7 +322,7 @@ func TestCIServeIsRemote(t *testing.T) {
 // TestSecuritySetupApplyIsDestructive: --apply edits sshd_config without a
 // backup and enables the firewall; re-running does not undo a lock-out.
 func TestSecuritySetupApplyIsDestructive(t *testing.T) {
-	e := load(t).Commands["security setup"]
+	e := load(t).Commands["deploy security setup"]
 	if e.SideEffect != canon.SideEffectRead || e.Flags["apply"].SideEffect != canon.SideEffectDestructive {
 		t.Errorf("security setup = %+v, want read with --apply destructive", e)
 	}
