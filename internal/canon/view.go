@@ -156,6 +156,14 @@ func (f *File) viewV14(out map[string]Entry) []string {
 			if e.Canon == CanonShim && e.Target != "" {
 				e.Target, _, _ = back(e.Target)
 			}
+			// The admin builtin becomes a plugin in v1.5 only. Its v1.4
+			// canon entries retain the presplit pending/subcommand values.
+			if e.Canon == CanonPlugin && (k == "admin" || strings.HasPrefix(k, "admin ")) {
+				e.Canon = ""
+				if k == "admin" {
+					e.Canon = CanonPending
+				}
+			}
 		}
 		e.Mode = ""
 		if _, dup := out[nk]; dup {

@@ -32,6 +32,7 @@ func TestValidationRules(t *testing.T) {
 		{"core not in verbs", verbsHeader("a") + "  zed: {canon: core}\n", `commands["zed"]`, "not in verbs"},
 		{"verb not core", verbsHeader("a") + "  a: {canon: pending}\n", `commands["a"]`, "must be core"},
 		{"plugin rejected", verbsHeader("a") + "  zed: {canon: plugin}\n", `commands["zed"]`, "rejected on cobra-native"},
+		{"plugin child rejected", verbsHeader("a") + "  zed child: {canon: plugin}\n", `commands["zed child"]`, "rejected on cobra-native"},
 		{"shim needs target", verbsHeader("a") + "  zed: {canon: deprecated-shim}\n", `commands["zed"]`, "requires target"},
 		{"target without shim", verbsHeader("a") + "  a: {canon: core, target: x}\n", `commands["a"]`, "only allowed on a deprecated-shim"},
 		{"target self", verbsHeader("a") + "  zed: {canon: deprecated-shim, target: zed}\n", `commands["zed"]`, "itself"},
@@ -59,5 +60,12 @@ func TestValidationRules(t *testing.T) {
 				t.Errorf("error does not name %q with %q:\n%s", c.wantPath, c.wantMsg, msg)
 			}
 		})
+	}
+}
+
+func TestBuiltinAdminPluginCanon(t *testing.T) {
+	_, err := Parse([]byte(verbsHeader("a") + "  admin: {canon: plugin}\n  admin start: {canon: plugin}\n"))
+	if err != nil {
+		t.Fatal(err)
 	}
 }

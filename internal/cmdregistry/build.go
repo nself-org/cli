@@ -71,9 +71,16 @@ func Build(root *cobra.Command, c *canon.File, dataTypes map[string]any, opts Bu
 			reg.Commands = append(reg.Commands, buildInstalledCommand(n.cmd))
 		case isBuiltinMount(n.cmd):
 			// A builtin family's attributes come from its canon entry, which
-			// must say canon plugin.
+			// says canon plugin only in v1.5. The v1.4 registry keeps the
+			// presplit canon classification and has no plugin identity.
 			if !ok {
 				problems = append(problems, fmt.Sprintf("commands[%q]: builtin plugin family %q needs a canon entry saying canon plugin; add one to internal/canon/canon.yaml", n.key, mountSlug(n.cmd)))
+				continue
+			}
+			if !opts.V15 {
+				cmd, p := buildCommand(n, entry, rootPath, byKey, c, dataTypes, opts)
+				problems = append(problems, p...)
+				reg.Commands = append(reg.Commands, cmd)
 				continue
 			}
 			if entry.Canon != canon.CanonPlugin {

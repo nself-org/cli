@@ -132,8 +132,8 @@ func TestPopulatedAndValid(t *testing.T) {
 		if e.JSON == canon.JSONEnvelope {
 			t.Errorf("%q: json envelope is derived, never declared", key)
 		}
-		if e.Canon == canon.CanonPlugin {
-			t.Errorf("%q: no cobra-native command may be canon plugin", key)
+		if e.Canon == canon.CanonPlugin && key != "admin" && !strings.HasPrefix(key, "admin ") {
+			t.Errorf("%q: only the admin builtin family may author canon plugin", key)
 		}
 	}
 }
@@ -173,12 +173,16 @@ func TestCoreEntriesAreVerbs(t *testing.T) {
 func TestDepthRules(t *testing.T) {
 	f := load(t)
 	for key, e := range f.Commands {
-		if canon.Depth(key) >= 2 && e.Canon != "" && e.Canon != canon.CanonShim {
+		if canon.Depth(key) >= 2 && e.Canon != "" && e.Canon != canon.CanonShim && !(e.Canon == canon.CanonPlugin && strings.HasPrefix(key, "admin ")) {
 			t.Errorf("%q: depth >= 2 omits canon (subcommand) unless it is a deprecated-shim", key)
 		}
 		if canon.Depth(key) == 1 {
 			switch e.Canon {
 			case canon.CanonCore, canon.CanonPending, canon.CanonShim, canon.CanonBuiltin:
+			case canon.CanonPlugin:
+				if key != "admin" {
+					t.Errorf("%q: only admin is an authored plugin root", key)
+				}
 			default:
 				t.Errorf("%q: top-level canon %q is not core, pending, deprecated-shim or builtin", key, e.Canon)
 			}

@@ -17,6 +17,8 @@ nself admin [subcommand] <subcommand> [flags]
 
 The Admin UI is a local-only web interface (Docker container) on your machine. It is not a hosted service.
 
+Admin is a builtin plugin family. Use `nself remove admin` to disable its command and `nself add admin` to enable it again.
+
 ### `stop`
 ### `logs`
 <!-- END PROSE:description -->

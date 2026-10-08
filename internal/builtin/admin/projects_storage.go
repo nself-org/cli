@@ -1,4 +1,4 @@
-package commands
+package admin
 
 // Purpose: on-disk persistence for admin connections/projects: the config
 // dir resolver and the load/save helpers. Inputs are an AdminConnection or

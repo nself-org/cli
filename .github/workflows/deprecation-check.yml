@@ -60,13 +60,15 @@ jobs:
           # A canon move (internal/canon/domains/*.yaml) relocates a top-level
           # command in the v1.5 inventory and keeps the old spelling as a
           # deprecated shim with its own since/removal_at cycle. Hidden
-          # framework builtins stay runnable even when omitted from help.
+          # framework builtins stay runnable even when omitted from help. A
+          # builtin plugin family (canon plugin) stays in the binary; the
+          # committed registry is hermetic, so it never lists installed plugins.
           CANON_KEPT=$(python3 -c "
           import json
           d = json.load(open('.github/command-registry.json'))
           print(' '.join(sorted(c['path'][len('nself '):] for c in d['commands']
                                 if ((c.get('canon') == 'deprecated-shim' and c.get('target'))
-                                    or c.get('canon') == 'builtin')
+                                    or c.get('canon') in ('builtin', 'plugin'))
                                 and c['path'].count(' ') == 1)))
           ")
 

@@ -1,4 +1,4 @@
-package commands
+package admin
 
 // Purpose: the SSH tunnel helpers used by "nself admin connect":
 // connectSingle for one project and connectAllProjects for the whole saved

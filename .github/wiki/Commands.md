@@ -94,12 +94,11 @@ tree in `cmd/commands/`. Run `make cmd-inventory` to refresh.
 ## Complete index
 
 Generated from the cobra registration tree in `cmd/commands/`.
-Run `make cmd-inventory` to refresh. **Total top-level commands: 25**
+Run `make cmd-inventory` to refresh. **Total top-level commands: 24**
 
 | Command | Short Description | Group | Subcommands |
 |---|---|---|---|
 | `nself add` | Install a plugin or bundle | — | — |
-| `nself admin` | Manage the nSelf Admin dashboard | account | connect, health, logs, projects, start, stop |
 | `nself backup` | Backup operations: create, list, restore, verify, prune, config, status, init-key | data | config, create, drill, init-key, list, pitr, prune, restore, restore-remote, resume, schedule, status, stream, verify |
 | `nself build` | Compose your infrastructure from .env | core | — |
 | `nself ci` | Run the nself-ci gate suite and post a GitHub commit status | deploy | build, eval, forgejo, serve |

@@ -22,69 +22,6 @@
     ]
   },
   {
-    "name": "admin",
-    "path": "nself admin",
-    "short": "Manage the nSelf Admin dashboard",
-    "hidden": false,
-    "group_id": "account",
-    "subcommands": [
-      {
-        "name": "connect",
-        "path": "nself admin connect",
-        "short": "Connect to a remote nSelf Admin via SSH tunnel",
-        "hidden": false,
-        "flags": [
-          "--all",
-          "--as",
-          "--local-port",
-          "--port",
-          "--remote-port",
-          "--user"
-        ]
-      },
-      {
-        "name": "health",
-        "path": "nself admin health",
-        "short": "Check Admin service liveness",
-        "hidden": false
-      },
-      {
-        "name": "logs",
-        "path": "nself admin logs",
-        "short": "Tail Admin container logs",
-        "hidden": false,
-        "flags": [
-          "--follow",
-          "--tail"
-        ]
-      },
-      {
-        "name": "projects",
-        "path": "nself admin projects",
-        "short": "Manage multi-project admin configuration",
-        "hidden": false
-      },
-      {
-        "name": "start",
-        "path": "nself admin start",
-        "short": "Start the Admin service",
-        "hidden": false,
-        "flags": [
-          "--expose-network"
-        ]
-      },
-      {
-        "name": "stop",
-        "path": "nself admin stop",
-        "short": "Stop the Admin container",
-        "hidden": false,
-        "flags": [
-          "--force"
-        ]
-      }
-    ]
-  },
-  {
     "name": "backup",
     "path": "nself backup",
     "short": "Backup operations: create, list, restore, verify, prune, config, status, init-key",

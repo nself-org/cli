@@ -10,15 +10,6 @@
       "openapi": "n/a (see below)"
     },
     {
-      "name": "admin",
-      "path": "nself admin",
-      "group_id": "account",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "undocumented: ADMIN_PORT",
-      "openapi": "n/a (see below)"
-    },
-    {
       "name": "backup",
       "path": "nself backup",
       "group_id": "data",

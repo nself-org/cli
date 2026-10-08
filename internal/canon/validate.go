@@ -89,11 +89,12 @@ func validateEntry(key string, e Entry, verbs map[string]bool) []string {
 		p = append(p, at+": canon is required for a top-level command (core, pending, deprecated-shim or builtin)")
 	case !ValidCanon(cn):
 		p = append(p, fmt.Sprintf("%s: canon %q is not one of core, subcommand, plugin, deprecated-shim, pending, builtin", at, cn))
-	case cn == CanonPlugin:
+	// admin is the registered builtin family (cmd/commands/builtin_families.go).
+	case cn == CanonPlugin && !strings.HasPrefix(key, "admin ") && key != "admin":
 		p = append(p, at+": canon plugin is reserved for plugin-mounted commands and is rejected on cobra-native commands")
 	case depth == 1 && cn == CanonSubcommand:
 		p = append(p, at+": canon subcommand needs depth >= 2")
-	case depth >= 2 && cn != CanonSubcommand && cn != CanonShim:
+	case depth >= 2 && cn != CanonSubcommand && cn != CanonShim && cn != CanonPlugin:
 		p = append(p, fmt.Sprintf("%s: canon %q is not allowed at depth >= 2 (subcommand or deprecated-shim)", at, cn))
 	}
 	if depth == 1 && ValidCanon(cn) {

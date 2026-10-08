@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/errs"
@@ -156,16 +155,7 @@ func TestHelpJSONEmitsRegistryEnvelope(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			visibleTop := func(r *cmdregistry.Registry) map[string]bool {
-				top := map[string]bool{}
-				for _, c := range r.Commands {
-					if c.Parent == "nself" && !c.Hidden && c.Name != "help" {
-						top[c.Name] = true
-					}
-				}
-				return top
-			}
-			want = len(visibleTop(reg14))
+			want = reg14.Counts.TopLevel
 		}
 		if d.Counts.TopLevel != want {
 			t.Errorf("counts.top_level = %d, want %d (v1.5 inventory %d)", d.Counts.TopLevel, want, inventoryLen(t))

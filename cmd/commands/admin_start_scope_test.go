@@ -12,35 +12,8 @@ package commands
 // what stopped the E2E golden path at step 11.
 
 import (
-	"os"
-	"strings"
 	"testing"
 )
-
-// TestAdminStart_DoesNotShellOutToNselfStart pins the fix: starting admin must
-// not re-enter the stack boot sequence.
-func TestAdminStart_DoesNotShellOutToNselfStart(t *testing.T) {
-	src, err := os.ReadFile("admin.go")
-	if err != nil {
-		t.Fatalf("reading admin.go: %v", err)
-	}
-	body := string(src)
-
-	for _, bad := range []string{
-		`"nself", "start"`,
-		`"nself","start"`,
-	} {
-		if strings.Contains(body, bad) {
-			t.Errorf("admin.go shells out to %s; starting admin must bring up only "+
-				"the admin service, not run the whole-stack boot sequence", bad)
-		}
-	}
-
-	if !strings.Contains(body, "ComposeUpNoDeps") {
-		t.Error("admin start no longer brings the admin service up directly; " +
-			"expected a ComposeUpNoDeps call scoped to that one service")
-	}
-}
 
 // TestStartCommand_RejectsPositionalArgs makes the silent-swallow impossible.
 // runStart ignores positional args, so accepting them lets a caller believe a

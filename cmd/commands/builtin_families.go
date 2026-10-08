@@ -11,7 +11,7 @@ package commands
 //
 // Inputs:      none — this is registration data.
 //
-// Outputs:     builtinFamilies (empty until P7-CANON-19 adds admin) and the
+// Outputs:     builtinFamilies (admin) and the
 //
 //	mountBuiltin test seam.
 //
@@ -21,6 +21,8 @@ package commands
 //	E407 (P7-CANON-19 wires the exit path).
 
 import (
+	admin "github.com/nself-org/cli/internal/builtin/admin"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/plugin/mount"
 	"github.com/spf13/cobra"
@@ -34,10 +36,19 @@ type builtinFamily struct {
 	build func() *cobra.Command
 }
 
-// builtinFamilies lists the builtin families. Empty here: P7-CANON-19 adds
-// admin. Generators mount builtin families unconditionally (minus disable
+// builtinFamilies lists the builtin families. Generators mount them (minus disable
 // markers) so the committed registry contains admin and no installed plugin.
-var builtinFamilies []builtinFamily
+var builtinFamilies = []builtinFamily{{slug: admin.Slug, build: func() *cobra.Command { return admin.Command(adminDeps()) }}}
+
+func adminDeps() admin.Deps {
+	return admin.Deps{
+		LoadHealthConfig:  loadHealthConfig,
+		OpenBrowserCmd:    openBrowserCmd,
+		ResolveEnvFile:    resolveEnvFile,
+		SetEnvKeyInFile:   setEnvKeyInFile,
+		ShouldOpenBrowser: shouldOpenBrowser,
+	}
+}
 
 // builtinEnabled reports whether a builtin family is mounted: the plugin
 // disable marker (<pluginDir>/<slug>/.disabled) is the shared off switch
@@ -54,17 +65,71 @@ func mountBuiltinFamiliesFromList(root *cobra.Command) {
 		if !builtinEnabled(f.slug) {
 			continue
 		}
+		alreadyMounted := false
+		for _, existing := range root.Commands() {
+			if existing.Annotations[mount.AnnSource] == sourceBuiltin && existing.Annotations[mount.AnnPlugin] == f.slug {
+				alreadyMounted = true
+				break
+			}
+		}
+		if alreadyMounted {
+			continue
+		}
 		node := f.build()
 		if node == nil {
 			continue
 		}
 		annotateBuiltin(node, f.slug)
 		if node.GroupID == "" {
-			node.GroupID = groupPlugins
+			// compat.V15(P7-CANON-19): account group -> plugin commands group
+			if compat.V15() {
+				node.GroupID = groupPlugins
+			} else {
+				node.GroupID = groupAccount
+			}
 		}
-		ensurePluginsGroup(root)
+		ensureBuiltinGroups(root, node)
 		root.AddCommand(node)
 	}
+}
+
+// ensureBuiltinGroups registers every group referenced by a mounted node on
+// its parent before Cobra validates groups during Execute.
+func ensureBuiltinGroups(root, node *cobra.Command) {
+	for _, g := range commandGroups {
+		found := false
+		for _, current := range root.Groups() {
+			if current.ID == g.ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			root.AddGroup(g)
+		}
+	}
+	if node.GroupID == groupPlugins {
+		ensurePluginsGroup(root)
+	}
+	var visit func(*cobra.Command)
+	visit = func(parent *cobra.Command) {
+		for _, child := range parent.Commands() {
+			if child.GroupID != "" {
+				found := false
+				for _, g := range parent.Groups() {
+					if g.ID == child.GroupID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					parent.AddGroup(&cobra.Group{ID: child.GroupID, Title: child.GroupID + ":"})
+				}
+			}
+			visit(child)
+		}
+	}
+	visit(node)
 }
 
 func annotateBuiltin(node *cobra.Command, slug string) {
