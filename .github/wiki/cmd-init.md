@@ -7,7 +7,7 @@
 ## Synopsis
 
 ```
-nself init [flags]
+nself init <subcommand> [flags]
 ```
 
 ## Description
@@ -150,6 +150,14 @@ nself init --fast
 | `--wizard` | `false` | Run the full 10-step interactive wizard |
 | `--help`, `-h` | — | Show help |
 <!-- END GENERATED:flags -->
+
+## Subcommands
+
+<!-- BEGIN GENERATED:subcommands -->
+| Name | Description |
+|------|-------------|
+| `template` | Browse and publish full-stack app templates |
+<!-- END GENERATED:subcommands -->
 
 ## Examples
 

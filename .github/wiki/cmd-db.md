@@ -260,7 +260,9 @@ nself db hasura validate
 | `drift` | Schema drift detection: scan np_* tables for Theme 25 column compliance |
 | `drop` | Drop the project database (DESTRUCTIVE) |
 | `fk-index` | Audit and create indexes for foreign key columns |
+| `generate` | Generate type-safe client SDK types from the live Hasura schema |
 | `hasura` | Hasura metadata operations |
+| `import` | Import data from another platform |
 | `lint` | Check RLS policies on tenant-scoped tables |
 | `list` | List databases in the project Postgres instance |
 | `migrate` | Manage database migrations |

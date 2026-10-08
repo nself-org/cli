@@ -137,15 +137,6 @@
       "openapi": "n/a (see below)"
     },
     {
-      "name": "generate",
-      "path": "nself generate",
-      "group_id": "config",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "undocumented: NSELF_HASURA_PROD_ADMIN_SECRET, NSELF_HASURA_PROD_URL, NSELF_HASURA_STAGING_ADMIN_SECRET, NSELF_HASURA_STAGING_URL",
-      "openapi": "n/a (see below)"
-    },
-    {
       "name": "health",
       "path": "nself health",
       "group_id": "observe",
@@ -215,15 +206,6 @@
       "wiki_page": true,
       "mcp_tool": false,
       "env_vars": "undocumented: HASURA_GRAPHQL_URL, INTEGRATION, NSELF_HASURA_ADMIN_SECRET, NSELF_HASURA_GRAPHQL_URL, NSENTRY_STATUS_URL, POSTGRES_URL",
-      "openapi": "n/a (see below)"
-    },
-    {
-      "name": "migrate",
-      "path": "nself migrate",
-      "group_id": "data",
-      "wiki_page": true,
-      "mcp_tool": true,
-      "env_vars": "undocumented: NSELF_AI_ENDPOINT, NSELF_MIGRATION_AUTO_APPLY, NSELF_PROFILE, NSELF_SUPABASE_SKIP",
       "openapi": "n/a (see below)"
     },
     {
@@ -350,15 +332,6 @@
       "wiki_page": true,
       "mcp_tool": true,
       "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
-      "name": "template",
-      "path": "nself template",
-      "group_id": "config",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "undocumented: NSELF_TEMPLATE_REGISTRY_URL",
       "openapi": "n/a (see below)"
     },
     {

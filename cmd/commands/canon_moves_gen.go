@@ -6,13 +6,31 @@ package commands
 var canonTable = canonTableT{
 	Verbs: []string{"init", "start", "stop", "restart", "status", "logs", "doctor", "build", "reset", "clean", "add", "remove", "config", "db", "backup", "deploy", "update", "license", "mcp", "exec"},
 	Moves: []canonRowT{
+		{From: []string{"migrate", "detect"}, To: []string{"update", "project", "detect"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"migrate", "firebase"}, To: []string{"db", "import", "firebase"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"migrate", "from-bash"}, To: []string{"update", "project", "from-bash"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"migrate", "from-v099"}, To: []string{"update", "project", "from-v099"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"migrate", "generate"}, To: []string{"db", "migrate", "generate"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"migrate", "rollback"}, To: []string{"update", "project", "rollback"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"migrate", "run"}, To: []string{"update", "project", "run"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"migrate", "supabase"}, To: []string{"db", "import", "supabase"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"migrate", "watch"}, To: []string{"db", "migrate", "watch"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"account"}, To: []string{"license", "account"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"env"}, To: []string{"config", "env"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"generate"}, To: []string{"db", "generate"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"login"}, To: []string{"license", "login"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"logout"}, To: []string{"license", "logout"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"oauth"}, To: []string{"config", "oauth"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"secrets"}, To: []string{"config", "secrets"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"telemetry"}, To: []string{"config", "telemetry"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"template"}, To: []string{"init", "template"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"trust"}, To: []string{"config", "trust"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+	},
+	RetiredHubs: []canonRowT{
+		{From: []string{"migrate"}, To: []string{"db"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+	},
+	Hubs: []canonRowT{
+		{From: []string{"db", "import"}, Summary: "Import data from another platform"},
+		{From: []string{"update", "project"}, Summary: "Upgrade a project's layout from an older nself"},
 	},
 }
