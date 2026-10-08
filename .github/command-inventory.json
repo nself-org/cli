@@ -1,5 +1,27 @@
 [
   {
+    "name": "add",
+    "path": "nself add",
+    "short": "Install a plugin or bundle",
+    "hidden": false,
+    "flags": [
+      "--allow-eol",
+      "--channel",
+      "--checksum",
+      "--dry-run",
+      "--force",
+      "--key",
+      "--preview",
+      "--show-graph",
+      "--skip-sbom-check",
+      "--strict",
+      "--tier",
+      "--version",
+      "--with-optional",
+      "--yes"
+    ]
+  },
+  {
     "name": "admin",
     "path": "nself admin",
     "short": "Manage the nSelf Admin dashboard",
@@ -270,56 +292,6 @@
     ]
   },
   {
-    "name": "bundle",
-    "path": "nself bundle",
-    "short": "Manage and inspect nSelf plugin bundles",
-    "hidden": false,
-    "group_id": "extend",
-    "subcommands": [
-      {
-        "name": "info",
-        "path": "nself bundle info",
-        "short": "Show bundle details, plugins, and license status",
-        "hidden": false,
-        "flags": [
-          "--json"
-        ]
-      },
-      {
-        "name": "install",
-        "path": "nself bundle install",
-        "short": "Install every plugin in a bundle (license-gated, atomic rollback on failure)",
-        "hidden": false,
-        "flags": [
-          "--channel",
-          "--dry-run",
-          "--force",
-          "--strict"
-        ]
-      },
-      {
-        "name": "list",
-        "path": "nself bundle list",
-        "short": "List all available nSelf plugin bundles",
-        "hidden": false,
-        "flags": [
-          "--installed",
-          "--json"
-        ]
-      },
-      {
-        "name": "remove",
-        "path": "nself bundle remove",
-        "short": "Remove every plugin in a bundle",
-        "hidden": false,
-        "flags": [
-          "--dry-run",
-          "--keep-data"
-        ]
-      }
-    ]
-  },
-  {
     "name": "ci",
     "path": "nself ci",
     "short": "Run the nself-ci gate suite and post a GitHub commit status",
@@ -431,6 +403,12 @@
     ],
     "subcommands": [
       {
+        "name": "bundles",
+        "path": "nself config bundles",
+        "short": "Manage and inspect nSelf plugin bundles",
+        "hidden": false
+      },
+      {
         "name": "env",
         "path": "nself config env",
         "short": "Multi-environment management: switch, list, diff, copy",
@@ -478,6 +456,12 @@
         "name": "oauth",
         "path": "nself config oauth",
         "short": "Manage OAuth provider tokens",
+        "hidden": false
+      },
+      {
+        "name": "plugins",
+        "path": "nself config plugins",
+        "short": "Manage nSelf plugins",
         "hidden": false
       },
       {
@@ -1102,20 +1086,6 @@
     ]
   },
   {
-    "name": "install",
-    "path": "nself install",
-    "short": "Install a plugin or bundle",
-    "hidden": false,
-    "group_id": "extend",
-    "aliases": [
-      "add"
-    ],
-    "flags": [
-      "--force",
-      "--yes"
-    ]
-  },
-  {
     "name": "license",
     "path": "nself license",
     "short": "Manage license keys for nSelf product bundles",
@@ -1346,297 +1316,6 @@
     ]
   },
   {
-    "name": "plugin",
-    "path": "nself plugin",
-    "short": "Manage nSelf plugins",
-    "hidden": false,
-    "group_id": "extend",
-    "subcommands": [
-      {
-        "name": "audit-tables",
-        "path": "nself plugin audit-tables",
-        "short": "Audit np_* table row counts and multi-tenant isolation compliance",
-        "hidden": false,
-        "flags": [
-          "--json",
-          "--table"
-        ]
-      },
-      {
-        "name": "compat-check",
-        "path": "nself plugin compat-check",
-        "short": "Check installed plugins against the current CLI version",
-        "hidden": false,
-        "flags": [
-          "--json"
-        ]
-      },
-      {
-        "name": "count",
-        "path": "nself plugin count",
-        "short": "Show the authoritative plugin counts (free, pro, advertised)",
-        "hidden": false,
-        "flags": [
-          "--json"
-        ]
-      },
-      {
-        "name": "debug",
-        "path": "nself plugin debug",
-        "short": "Attach a dlv debugger to a running plugin process",
-        "hidden": false,
-        "flags": [
-          "--port",
-          "--port-only"
-        ]
-      },
-      {
-        "name": "dev",
-        "path": "nself plugin dev",
-        "short": "Start a plugin in development mode with hot-reload",
-        "hidden": false,
-        "flags": [
-          "--debug",
-          "--entrypoint",
-          "--no-link"
-        ]
-      },
-      {
-        "name": "disable",
-        "path": "nself plugin disable",
-        "short": "Disable a plugin (excluded from compose on next build)",
-        "hidden": false
-      },
-      {
-        "name": "enable",
-        "path": "nself plugin enable",
-        "short": "Re-enable a previously disabled plugin",
-        "hidden": false
-      },
-      {
-        "name": "info",
-        "path": "nself plugin info",
-        "short": "Show detailed plugin information",
-        "hidden": false,
-        "flags": [
-          "--json",
-          "--open"
-        ]
-      },
-      {
-        "name": "init",
-        "path": "nself plugin init",
-        "short": "Scaffold a new plugin project",
-        "hidden": false,
-        "aliases": [
-          "scaffold"
-        ],
-        "flags": [
-          "--author",
-          "--bundle",
-          "--category",
-          "--description",
-          "--force",
-          "--min-cli",
-          "--min-sdk",
-          "--no-interactive",
-          "--out",
-          "--port",
-          "--template",
-          "--tenancy",
-          "--tier"
-        ]
-      },
-      {
-        "name": "install",
-        "path": "nself plugin install",
-        "short": "Install one or more plugins (license check for pro); a plugin arg may be a name or an https:// URL",
-        "hidden": false,
-        "flags": [
-          "--allow-eol",
-          "--checksum",
-          "--dry-run",
-          "--force",
-          "--key",
-          "--preview",
-          "--show-graph",
-          "--skip-sbom-check",
-          "--tier",
-          "--version",
-          "--with-optional",
-          "--yes"
-        ]
-      },
-      {
-        "name": "inventory",
-        "path": "nself plugin inventory",
-        "short": "List installed plugins with version, tier, and status",
-        "hidden": false
-      },
-      {
-        "name": "link",
-        "path": "nself plugin link",
-        "short": "Register a local plugin directory as a shadow override",
-        "hidden": false,
-        "flags": [
-          "--host",
-          "--list"
-        ]
-      },
-      {
-        "name": "list",
-        "path": "nself plugin list",
-        "short": "List available and installed plugins",
-        "hidden": false,
-        "flags": [
-          "--available",
-          "--category",
-          "--detailed",
-          "--installed",
-          "--show-eol"
-        ]
-      },
-      {
-        "name": "logs",
-        "path": "nself plugin logs",
-        "short": "Tail logs from a plugin container",
-        "hidden": false,
-        "flags": [
-          "--follow",
-          "--grep",
-          "--since",
-          "--tail"
-        ]
-      },
-      {
-        "name": "marketplace",
-        "path": "nself plugin marketplace",
-        "short": "Browse the nSelf plugin marketplace",
-        "hidden": false
-      },
-      {
-        "name": "new",
-        "path": "nself plugin new",
-        "short": "Scaffold a new plugin project (deprecated: use 'init')",
-        "hidden": false,
-        "deprecated": "use 'nself plugin init' instead",
-        "flags": [
-          "--author",
-          "--bundle",
-          "--category",
-          "--description",
-          "--force",
-          "--min-cli",
-          "--min-sdk",
-          "--no-interactive",
-          "--out",
-          "--port",
-          "--template",
-          "--tenancy",
-          "--tier"
-        ]
-      },
-      {
-        "name": "outdated",
-        "path": "nself plugin outdated",
-        "short": "List installed plugins with a newer version available",
-        "hidden": false,
-        "flags": [
-          "--json"
-        ]
-      },
-      {
-        "name": "refresh",
-        "path": "nself plugin refresh",
-        "short": "Force refresh the registry cache",
-        "hidden": false
-      },
-      {
-        "name": "remove",
-        "path": "nself plugin remove",
-        "short": "Remove a plugin",
-        "hidden": false,
-        "flags": [
-          "--force",
-          "--keep-data"
-        ]
-      },
-      {
-        "name": "search",
-        "path": "nself plugin search",
-        "short": "Search plugins by name, description, or tag",
-        "hidden": false,
-        "flags": [
-          "--free",
-          "--json",
-          "--pro"
-        ]
-      },
-      {
-        "name": "start",
-        "path": "nself plugin start",
-        "short": "Start a plugin service",
-        "hidden": false
-      },
-      {
-        "name": "status",
-        "path": "nself plugin status",
-        "short": "Show plugin status",
-        "hidden": false,
-        "flags": [
-          "--detailed"
-        ]
-      },
-      {
-        "name": "stop",
-        "path": "nself plugin stop",
-        "short": "Stop a plugin service",
-        "hidden": false
-      },
-      {
-        "name": "submit",
-        "path": "nself plugin submit",
-        "short": "Validate a plugin for submission to the registry",
-        "hidden": false,
-        "flags": [
-          "--strict"
-        ]
-      },
-      {
-        "name": "test",
-        "path": "nself plugin test",
-        "short": "Run a plugin's test suite (unit + smoke install/uninstall)",
-        "hidden": false,
-        "flags": [
-          "--host",
-          "--no-cleanup",
-          "--phase"
-        ]
-      },
-      {
-        "name": "unlink",
-        "path": "nself plugin unlink",
-        "short": "Remove a local plugin shadow, restoring the registry version",
-        "hidden": false
-      },
-      {
-        "name": "update",
-        "path": "nself plugin update",
-        "short": "Update a specific plugin or all plugins",
-        "hidden": false,
-        "flags": [
-          "--allow-eol"
-        ]
-      },
-      {
-        "name": "updates",
-        "path": "nself plugin updates",
-        "short": "Check for available plugin updates",
-        "hidden": false
-      }
-    ]
-  },
-  {
     "name": "remove",
     "path": "nself remove",
     "short": "Remove an installed plugin or bundle",
@@ -1646,6 +1325,9 @@
       "rm"
     ],
     "flags": [
+      "--dry-run",
+      "--force",
+      "--keep-data",
       "--yes"
     ]
   },

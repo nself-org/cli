@@ -2,6 +2,14 @@
   "generated_by": "tools/parity",
   "rows": [
     {
+      "name": "add",
+      "path": "nself add",
+      "wiki_page": true,
+      "mcp_tool": true,
+      "env_vars": "n/a",
+      "openapi": "n/a (see below)"
+    },
+    {
       "name": "admin",
       "path": "nself admin",
       "group_id": "account",
@@ -26,15 +34,6 @@
       "wiki_page": true,
       "mcp_tool": true,
       "env_vars": "undocumented: NSELF_L03_REF_BIN, NSELF_PROFILE, PATH, UPDATE_GOLDEN",
-      "openapi": "n/a (see below)"
-    },
-    {
-      "name": "bundle",
-      "path": "nself bundle",
-      "group_id": "extend",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "n/a",
       "openapi": "n/a (see below)"
     },
     {
@@ -146,15 +145,6 @@
       "openapi": "n/a (see below)"
     },
     {
-      "name": "install",
-      "path": "nself install",
-      "group_id": "extend",
-      "wiki_page": true,
-      "mcp_tool": true,
-      "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
       "name": "license",
       "path": "nself license",
       "group_id": "extend",
@@ -188,15 +178,6 @@
       "wiki_page": true,
       "mcp_tool": false,
       "env_vars": "undocumented: HASURA_GRAPHQL_URL, INTEGRATION, NSELF_HASURA_ADMIN_SECRET, NSELF_HASURA_GRAPHQL_URL, NSENTRY_STATUS_URL, POSTGRES_URL",
-      "openapi": "n/a (see below)"
-    },
-    {
-      "name": "plugin",
-      "path": "nself plugin",
-      "group_id": "extend",
-      "wiki_page": true,
-      "mcp_tool": true,
-      "env_vars": "undocumented: GOPATH, NSELF_LICENSE_SKIP_VERIFY, NSELF_LOCAL_URL, NSELF_MARKETPLACE_URL, NSELF_PING_URL, NSELF_PLUGIN_CACHE, NSELF_PLUGIN_DIR, NSELF_PLUGIN_LICENSE_KEY, NSELF_PLUGIN_REGISTRY",
       "openapi": "n/a (see below)"
     },
     {

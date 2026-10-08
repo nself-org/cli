@@ -21,21 +21,21 @@ commands:
   functions invoke: {side_effect: write}
   functions list: {side_effect: read, json: legacy}
   functions logs: {side_effect: read, output: stream}
-  plugin debug: {side_effect: write}
-  plugin dev: {side_effect: write, output: stream}
-  plugin init: {side_effect: write}
-  plugin link: {side_effect: write}
+  config plugins debug: {side_effect: write}
+  config plugins dev: {side_effect: write, output: stream}
+  config plugins init: {side_effect: write}
+  config plugins link: {side_effect: write}
   # cmd/commands/plugin_marketplace_cmds.go:39 RunE path changes no persistent state (prints/reads only)
-  plugin marketplace: {side_effect: read}
-  plugin marketplace info: {side_effect: read, json: legacy}
-  plugin marketplace list: {side_effect: read, json: legacy}
-  plugin marketplace search: {side_effect: read, json: legacy}
+  config plugins marketplace: {side_effect: read}
+  config plugins marketplace info: {side_effect: read, json: legacy}
+  config plugins marketplace list: {side_effect: read, json: legacy}
+  config plugins marketplace search: {side_effect: read, json: legacy}
   # cmd/commands/plugin_new.go:91 cobra Deprecated: use plugin init
-  plugin new: {canon: deprecated-shim, target: plugin init, side_effect: write}
+  config plugins new: {canon: deprecated-shim, target: config plugins init, side_effect: write}
   # cmd/commands/plugin_submit.go:42 RunE path changes no persistent state (prints/reads only)
-  plugin submit: {side_effect: read}
-  plugin test: {side_effect: write}
-  plugin unlink: {side_effect: write}
+  config plugins submit: {side_effect: read}
+  config plugins test: {side_effect: write}
+  config plugins unlink: {side_effect: write}
   # cmd/commands/runner.go:42 RunE path changes no persistent state (prints/reads only)
   runner: {canon: pending, side_effect: read}
   runner provision: {side_effect: remote}

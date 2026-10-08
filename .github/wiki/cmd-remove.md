@@ -26,6 +26,9 @@ name removes the whole bundle.
 <!-- BEGIN GENERATED:flags -->
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--dry-run` | `false` | Print the planned actions without removing |
+| `--force` | `false` | Remove even if other plugins depend on this one |
+| `--keep-data` | `false` | Preserve database data on remove |
 | `--yes` | `false` | Skip confirmation prompts |
 | `--help`, `-h` | — | Show help |
 <!-- END GENERATED:flags -->

@@ -115,18 +115,12 @@ func TestHelpJSONEmitsRegistryEnvelope(t *testing.T) {
 		}
 		d := env.Data
 		// The committed inventory documents the v1.5 surface (EPIC D3), so
-		// v1.5 must match it exactly. In v1.4 the commands a move relocates are
-		// still visible at their old top-level paths while v1.5 hides their
-		// stubs, so the v1.4 count is higher by the names visible at the top
-		// in v1.4 but not in v1.5 (a shim already hidden in both modes, like
-		// uninstall, counts in neither).
+		// v1.5 must match it exactly. V1.4 has its own visible top-level set:
+		// a newly canonical verb such as add exists only in v1.5, while moved
+		// roots remain visible at their old paths in v1.4.
 		want := inventoryLen(t)
 		if !compat.V15() {
 			reg14, err := BuildRegistry(false)
-			if err != nil {
-				t.Fatal(err)
-			}
-			reg15, err := BuildRegistry(true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -139,14 +133,7 @@ func TestHelpJSONEmitsRegistryEnvelope(t *testing.T) {
 				}
 				return top
 			}
-			v14, v15 := visibleTop(reg14), visibleTop(reg15)
-			extra := 0
-			for name := range v14 {
-				if !v15[name] {
-					extra++
-				}
-			}
-			want += extra
+			want = len(visibleTop(reg14))
 		}
 		if d.Counts.TopLevel != want {
 			t.Errorf("counts.top_level = %d, want %d (v1.5 inventory %d)", d.Counts.TopLevel, want, inventoryLen(t))

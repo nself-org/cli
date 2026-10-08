@@ -454,7 +454,11 @@ func TestInvocationRefusedBundleDoesNoWork(t *testing.T) {
 	decorate(bundleCmd) // what Execute does for the whole tree
 	compattest.Both(t, func(t *testing.T) {
 		hits = 0
-		cmd := parseReal(t, "bundle", "install")
+		path := []string{"bundle", "install"}
+		if compat.V15() {
+			path = []string{"config", "bundles", "install"}
+		}
+		cmd := parseReal(t, path...)
 		wantE402(t, bundleCmd.PersistentPreRunE(cmd, nil))
 		if hits != 0 {
 			t.Fatalf("refused bundle command made %d network request(s)", hits)

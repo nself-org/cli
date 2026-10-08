@@ -94,18 +94,18 @@ tree in `cmd/commands/`. Run `make cmd-inventory` to refresh.
 ## Complete index
 
 Generated from the cobra registration tree in `cmd/commands/`.
-Run `make cmd-inventory` to refresh. **Total top-level commands: 34**
+Run `make cmd-inventory` to refresh. **Total top-level commands: 32**
 
 | Command | Short Description | Group | Subcommands |
 |---|---|---|---|
+| `nself add` | Install a plugin or bundle | — | — |
 | `nself admin` | Manage the nSelf Admin dashboard | account | connect, health, logs, projects, start, stop |
 | `nself backup` | Backup operations: create, list, restore, verify, prune, config, status, init-key | data | config, create, drill, init-key, list, pitr, prune, restore, restore-remote, resume, schedule, status, stream, verify |
 | `nself build` | Compose your infrastructure from .env | core | — |
-| `nself bundle` | Manage and inspect nSelf plugin bundles | extend | info, install, list, remove |
 | `nself ci` | Run the nself-ci gate suite and post a GitHub commit status | deploy | build, eval, forgejo, serve |
 | `nself clean` | Remove generated artifacts (docker-compose.yml, nginx configs, build cache) | core | — |
 | `nself completion` | Generate shell completion scripts | account | — |
-| `nself config` | Manage project configuration | config | env, export, features, get, import, list, oauth, secrets, services, set, show, telemetry, trust, validate |
+| `nself config` | Manage project configuration | config | bundles, env, export, features, get, import, list, oauth, plugins, secrets, services, set, show, telemetry, trust, validate |
 | `nself db` | Database operations: migrations, backups, restore, seed, shell | data | backup, backup-sync, backup-sync-status, drift, drop, fk-index, generate, hasura, import, lint, list, migrate, pgbouncer, pitr, reconcile, reset, reset-checksum, restore, restore-drill, restore-drill-list, rls, seed, shell, soft-delete, verify, verify-checksums |
 | `nself deploy` | Deploy the stack to a target environment | deploy | access, check-access, environments, health, logs, ops, promote, promote-env, rollback, security, status, web |
 | `nself doctor` | Run comprehensive system diagnostics | core | security |
@@ -114,12 +114,10 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 34**
 | `nself health` | Health check management with continuous monitoring | observe | check, config, endpoint, history, service, watch |
 | `nself help-topics` | Browse help topics (quickstart, plugins, license, envs, doctor, errors) | account | — |
 | `nself init` | Initialize a new nSelf project | core | template |
-| `nself install` | Install a plugin or bundle | extend | — |
 | `nself license` | Manage license keys for nSelf product bundles | extend | account, add, clear, export, health, import, list, login, logout, migrate, refresh, remove, restore, revalidate, revoke, set, show, simulate-offline, status, tail, upgrade, validate |
 | `nself logs` | View and filter service logs | core | — |
 | `nself man` | Generate man pages for all nself commands | account | — |
 | `nself mcp` | Start the nSelf MCP server | extend | — |
-| `nself plugin` | Manage nSelf plugins | extend | audit-tables, compat-check, count, debug, dev, disable, enable, info, init, install, inventory, link, list, logs, marketplace, new, outdated, refresh, remove, search, start, status, stop, submit, test, unlink, update, updates |
 | `nself remove` | Remove an installed plugin or bundle | extend | — |
 | `nself reset` | Stop containers, remove all data volumes, and clean generated files | core | — |
 | `nself restart` | Smart restart with config change detection | core | — |
