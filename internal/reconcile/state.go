@@ -72,32 +72,40 @@ func GeneratedStatePath(projectDir string) string {
 // hand-edited" over an unknown file, so the operator is told to remove it (the
 // next successful apply re-records).
 func LoadGeneratedState(projectDir string) (*GeneratedState, error) {
+	s, _, err := loadGeneratedStateRaw(projectDir)
+	return s, err
+}
+
+// loadGeneratedStateRaw is LoadGeneratedState that also returns the record's
+// bytes as read, so the planner shows exactly those bytes as the record's
+// "before" side without a second read that could race the first.
+func loadGeneratedStateRaw(projectDir string) (*GeneratedState, []byte, error) {
 	raw, err := os.ReadFile(GeneratedStatePath(projectDir))
 	if err != nil {
 		if os.IsNotExist(err) {
 			// A dangling symlink in the record's place is not "no record":
 			// treating it as a first run would drop every hand-edit guard.
 			if _, lerr := os.Lstat(GeneratedStatePath(projectDir)); lerr == nil {
-				return nil, fmt.Errorf("the generated-state record %s is a dangling link"+
+				return nil, nil, fmt.Errorf("the generated-state record %s is a dangling link"+
 					"; delete it and run nself build, which re-records the files it writes",
 					GeneratedStatePath(projectDir))
 			}
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, fmt.Errorf("reading the generated-state record: %w", err)
+		return nil, nil, fmt.Errorf("reading the generated-state record: %w", err)
 	}
 	var s GeneratedState
 	if err := json.Unmarshal(raw, &s); err != nil {
-		return nil, fmt.Errorf("the generated-state record %s cannot be parsed: %v"+
+		return nil, nil, fmt.Errorf("the generated-state record %s cannot be parsed: %v"+
 			"; delete the file and run nself build, which re-records the files it writes",
 			GeneratedStatePath(projectDir), err)
 	}
 	if s.SchemaVersion != generatedStateSchema { // a missing schema is a record nself did not write: refuse
-		return nil, fmt.Errorf("the generated-state record %s has schema %q, this CLI understands %q"+
+		return nil, nil, fmt.Errorf("the generated-state record %s has schema %q, this CLI understands %q"+
 			"; delete the file and run nself build, which re-records the files it writes",
 			GeneratedStatePath(projectDir), s.SchemaVersion, generatedStateSchema)
 	}
-	return &s, nil
+	return &s, raw, nil
 }
 
 // Save writes the record deterministically and atomically: file keys are

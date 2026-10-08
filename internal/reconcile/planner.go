@@ -81,7 +81,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	// record is never hand_edited: it holds no entry for itself, so there is no
 	// recorded hash a human edit could diverge from (an edit shows as an
 	// ordinary change with its diff).
-	state, err := LoadGeneratedState(req.ProjectDir)
+	state, raw, err := loadGeneratedStateRaw(req.ProjectDir)
 	if err != nil {
 		return nil, err
 	}
@@ -91,10 +91,6 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	}
 	after[GeneratedStateDisplayPath] = File{Data: recBody, Perm: 0o644}
 	if state != nil {
-		raw, rerr := os.ReadFile(GeneratedStatePath(req.ProjectDir))
-		if rerr != nil {
-			return nil, fmt.Errorf("reading %s for the plan: %w", GeneratedStateDisplayPath, rerr)
-		}
 		perm := fs.FileMode(0o644)
 		if info, serr := os.Stat(GeneratedStatePath(req.ProjectDir)); serr == nil {
 			perm = info.Mode().Perm()
