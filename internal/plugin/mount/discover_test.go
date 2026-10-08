@@ -38,7 +38,11 @@ func binary(t testing.TB, dir, slug string) {
 	if err := os.MkdirAll(p, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(p, "nself-"+slug), []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+	name := "nself-" + slug
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if err := os.WriteFile(filepath.Join(p, name), []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 }
