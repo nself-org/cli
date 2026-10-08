@@ -640,9 +640,30 @@
         "hidden": false
       },
       {
+        "name": "generate",
+        "path": "nself db generate",
+        "short": "Generate type-safe client SDK types from the live Hasura schema",
+        "hidden": false,
+        "flags": [
+          "--env",
+          "--lang",
+          "--no-hooks",
+          "--operations",
+          "--out",
+          "--pydantic",
+          "--watch"
+        ]
+      },
+      {
         "name": "hasura",
         "path": "nself db hasura",
         "short": "Hasura metadata operations",
+        "hidden": false
+      },
+      {
+        "name": "import",
+        "path": "nself db import",
+        "short": "Import data from another platform",
         "hidden": false
       },
       {
@@ -993,22 +1014,6 @@
     ]
   },
   {
-    "name": "generate",
-    "path": "nself generate",
-    "short": "Generate type-safe client SDK types from the live Hasura schema",
-    "hidden": false,
-    "group_id": "config",
-    "flags": [
-      "--env",
-      "--lang",
-      "--no-hooks",
-      "--operations",
-      "--out",
-      "--pydantic",
-      "--watch"
-    ]
-  },
-  {
     "name": "health",
     "path": "nself health",
     "short": "Health check management with continuous monitoring",
@@ -1094,6 +1099,14 @@
       "--skip-validation",
       "--template",
       "--wizard"
+    ],
+    "subcommands": [
+      {
+        "name": "template",
+        "path": "nself init template",
+        "short": "Browse and publish full-stack app templates",
+        "hidden": false
+      }
     ]
   },
   {
@@ -1338,110 +1351,6 @@
     "flags": [
       "--port",
       "--transport"
-    ]
-  },
-  {
-    "name": "migrate",
-    "path": "nself migrate",
-    "short": "Detect and migrate legacy artifacts to the current nSelf version",
-    "hidden": false,
-    "group_id": "data",
-    "flags": [
-      "--from-bash"
-    ],
-    "subcommands": [
-      {
-        "name": "detect",
-        "path": "nself migrate detect",
-        "short": "Detect v1 artifacts in the current project",
-        "hidden": false
-      },
-      {
-        "name": "firebase",
-        "path": "nself migrate firebase",
-        "short": "Generate nSelf migration artifacts from a Firebase export",
-        "hidden": false,
-        "flags": [
-          "--auth-export",
-          "--dry-run",
-          "--export-dir",
-          "--output-dir",
-          "--project-name"
-        ]
-      },
-      {
-        "name": "from-bash",
-        "path": "nself migrate from-bash",
-        "short": "Migrate a v0.9.9 Bash-era project to the current nSelf CLI",
-        "hidden": false,
-        "flags": [
-          "--auto",
-          "--yes"
-        ]
-      },
-      {
-        "name": "from-v099",
-        "path": "nself migrate from-v099",
-        "short": "Migrate v0.9.9 home-level state (license key, channel, ssh keys) to v1.x layout",
-        "hidden": false,
-        "flags": [
-          "--check",
-          "--yes"
-        ]
-      },
-      {
-        "name": "generate",
-        "path": "nself migrate generate",
-        "short": "Generate a SQL migration from a natural-language description",
-        "hidden": false,
-        "flags": [
-          "--ai-endpoint",
-          "--confidence",
-          "--dry-run",
-          "--migrations-dir",
-          "--yes"
-        ]
-      },
-      {
-        "name": "rollback",
-        "path": "nself migrate rollback",
-        "short": "Restore a v1 backup created by migrate run",
-        "hidden": false,
-        "flags": [
-          "--backup",
-          "--list"
-        ]
-      },
-      {
-        "name": "run",
-        "path": "nself migrate run",
-        "short": "Migrate v1 project to v2",
-        "hidden": false
-      },
-      {
-        "name": "supabase",
-        "path": "nself migrate supabase",
-        "short": "Migrate a Supabase project to nSelf",
-        "hidden": false,
-        "flags": [
-          "--out",
-          "--project-ref",
-          "--supabase-key"
-        ]
-      },
-      {
-        "name": "watch",
-        "path": "nself migrate watch",
-        "short": "Watch model files and propose SQL migrations on change",
-        "hidden": false,
-        "flags": [
-          "--ai-endpoint",
-          "--debounce",
-          "--extensions",
-          "--migrations-dir",
-          "--paths"
-        ]
-      }
     ]
   },
   {
@@ -2124,56 +2033,6 @@
     ]
   },
   {
-    "name": "template",
-    "path": "nself template",
-    "short": "Browse and publish full-stack app templates",
-    "hidden": false,
-    "group_id": "config",
-    "subcommands": [
-      {
-        "name": "info",
-        "path": "nself template info",
-        "short": "Show detail for a single template",
-        "hidden": false,
-        "flags": [
-          "--json"
-        ]
-      },
-      {
-        "name": "list",
-        "path": "nself template list",
-        "short": "List available app templates",
-        "hidden": false,
-        "flags": [
-          "--category",
-          "--free",
-          "--json",
-          "--sort"
-        ]
-      },
-      {
-        "name": "publish",
-        "path": "nself template publish",
-        "short": "Submit a template to the nSelf registry",
-        "hidden": false,
-        "flags": [
-          "--manifest",
-          "--tarball"
-        ]
-      },
-      {
-        "name": "update",
-        "path": "nself template update",
-        "short": "Apply incremental migrations for the installed template",
-        "hidden": false,
-        "flags": [
-          "--dry-run",
-          "--force"
-        ]
-      }
-    ]
-  },
-  {
     "name": "update",
     "path": "nself update",
     "short": "Update the nSelf CLI and admin UI",
@@ -2196,6 +2055,12 @@
         "flags": [
           "--dry-run"
         ]
+      },
+      {
+        "name": "project",
+        "path": "nself update project",
+        "short": "Upgrade a project's layout from an older nself",
+        "hidden": false
       },
       {
         "name": "upgrade",

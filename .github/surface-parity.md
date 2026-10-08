@@ -27,7 +27,6 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself doctor` | core | yes | yes | undocumented: NSELF_PING_API_URL, OLLAMA_BASE_URL, OLLAMA_HOST, PLUGIN_AI_INTERNAL_URL, PLUGIN_INTERNAL_SECRET | n/a (see below) |
 | `nself exec` | core | yes | no | n/a | n/a (see below) |
 | `nself functions` | data | yes | no | n/a | n/a (see below) |
-| `nself generate` | config | yes | no | undocumented: NSELF_HASURA_PROD_ADMIN_SECRET, NSELF_HASURA_PROD_URL, NSELF_HASURA_STAGING_ADMIN_SECRET, NSELF_HASURA_STAGING_URL | n/a (see below) |
 | `nself health` | observe | yes | no | n/a | n/a (see below) |
 | `nself help-topics` | account | yes | no | n/a | n/a (see below) |
 | `nself init` | core | yes | no | documented | n/a (see below) |
@@ -36,7 +35,6 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself logs` | core | yes | yes | n/a | n/a (see below) |
 | `nself man` | account | yes | no | n/a | n/a (see below) |
 | `nself mcp` | extend | yes | no | undocumented: HASURA_GRAPHQL_URL, INTEGRATION, NSELF_HASURA_ADMIN_SECRET, NSELF_HASURA_GRAPHQL_URL, NSENTRY_STATUS_URL, POSTGRES_URL | n/a (see below) |
-| `nself migrate` | data | yes | yes | undocumented: NSELF_AI_ENDPOINT, NSELF_MIGRATION_AUTO_APPLY, NSELF_PROFILE, NSELF_SUPABASE_SKIP | n/a (see below) |
 | `nself ops` | deploy | yes | no | n/a | n/a (see below) |
 | `nself plugin` | extend | yes | yes | undocumented: GOPATH, NSELF_LICENSE_SKIP_VERIFY, NSELF_LOCAL_URL, NSELF_MARKETPLACE_URL, NSELF_PING_URL, NSELF_PLUGIN_CACHE, NSELF_PLUGIN_DIR, NSELF_PLUGIN_LICENSE_KEY, NSELF_PLUGIN_REGISTRY | n/a (see below) |
 | `nself promote` | deploy | yes | no | n/a | n/a (see below) |
@@ -51,10 +49,9 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself start` | core | yes | yes | undocumented: NSELF_PROFILE, NSELF_SKIP_DB_INIT | n/a (see below) |
 | `nself status` | core | yes | yes | n/a | n/a (see below) |
 | `nself stop` | core | yes | yes | n/a | n/a (see below) |
-| `nself template` | config | yes | no | undocumented: NSELF_TEMPLATE_REGISTRY_URL | n/a (see below) |
 | `nself update` | account | yes | no | n/a | n/a (see below) |
 | `nself urls` | core | yes | yes | n/a | n/a (see below) |
 | `nself verify-sbom` | advanced | yes | no | n/a | n/a (see below) |
 | `nself version` | account | yes | no | undocumented: BENCH_RESULTS_FILE | n/a (see below) |
 
-Total: 44 commands. Missing wiki page: 0. No MCP tool: 28. Env vars found but undocumented: 15.
+Total: 41 commands. Missing wiki page: 0. No MCP tool: 26. Env vars found but undocumented: 12.

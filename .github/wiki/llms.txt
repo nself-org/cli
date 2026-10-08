@@ -14,7 +14,7 @@ nself build   # generate docker-compose + nginx
 nself start   # boot the stack
 ```
 
-## Commands (44)
+## Commands (41)
 
 ### nself access
 
@@ -232,7 +232,9 @@ Subcommands:
 - `drift` — Schema drift detection: scan np_* tables for Theme 25 column compliance
 - `drop` — Drop the project database (DESTRUCTIVE)
 - `fk-index` — Audit and create indexes for foreign key columns
+- `generate` — Generate type-safe client SDK types from the live Hasura schema
 - `hasura` — Hasura metadata operations
+- `import` — Import data from another platform
 - `lint` — Check RLS policies on tenant-scoped tables
 - `list` — List databases in the project Postgres instance
 - `migrate` — Manage database migrations
@@ -372,26 +374,6 @@ Subcommands:
 
 Full page: [[cmd-functions]]
 
-### nself generate
-
-Generate type-safe client SDK types from the live Hasura schema
-
-```
-nself generate [flags]
-```
-
-Flags:
-
-- `--env` (default local) — Target environment: local|staging|prod
-- `--lang` (default all) — Comma-separated target languages: typescript,dart,swift,kotlin,python,all
-- `--no-hooks` (default false) — Skip React hooks generation (TypeScript only)
-- `--operations` (default src/**/*.graphql) — Path to .graphql operation files
-- `--out` (default ./generated) — Output directory
-- `--pydantic` (default true) — Emit Pydantic v2 models (Python only)
-- `--watch` (default false) — Re-run on schema change (polls every 30s)
-
-Full page: [[cmd-generate]]
-
 ### nself health
 
 Health check management with continuous monitoring
@@ -435,8 +417,12 @@ Full page: [[cmd-help-topics]]
 Initialize a new nSelf project
 
 ```
-nself init [flags]
+nself init <subcommand> [flags]
 ```
+
+Subcommands:
+
+- `template` — Browse and publish full-stack app templates
 
 Flags:
 
@@ -572,32 +558,6 @@ Flags:
 - `--transport` (default stdio) — Transport: stdio, sse, or http
 
 Full page: [[cmd-mcp]]
-
-### nself migrate
-
-Detect and migrate legacy artifacts to the current nSelf version
-
-```
-nself migrate <subcommand> [flags]
-```
-
-Subcommands:
-
-- `detect` — Detect v1 artifacts in the current project
-- `firebase` — Generate nSelf migration artifacts from a Firebase export
-- `from-bash` — Migrate a v0.9.9 Bash-era project to the current nSelf CLI
-- `from-v099` — Migrate v0.9.9 home-level state (license key, channel, ssh keys) to v1.x layout
-- `generate` — Generate a SQL migration from a natural-language description
-- `rollback` — Restore a v1 backup created by migrate run
-- `run` — Migrate v1 project to v2
-- `supabase` — Migrate a Supabase project to nSelf
-- `watch` — Watch model files and propose SQL migrations on change
-
-Flags:
-
-- `--from-bash` (default false) — Migrate from a v0.9.9 Bash-era project (alias for: nself migrate from-bash)
-
-Full page: [[cmd-migrate]]
 
 ### nself ops
 
@@ -889,23 +849,6 @@ Flags:
 
 Full page: [[cmd-stop]]
 
-### nself template
-
-Browse and publish full-stack app templates
-
-```
-nself template <subcommand> [flags]
-```
-
-Subcommands:
-
-- `info` — Show detail for a single template
-- `list` — List available app templates
-- `publish` — Submit a template to the nSelf registry
-- `update` — Apply incremental migrations for the installed template
-
-Full page: [[cmd-template]]
-
 ### nself update
 
 Update the nSelf CLI and admin UI
@@ -917,6 +860,7 @@ nself update <subcommand> [flags]
 Subcommands:
 
 - `images` — Refresh Docker image digests from registries
+- `project` — Upgrade a project's layout from an older nself
 - `upgrade` — Upgrade the nSelf CLI (detects install method)
 
 Flags:

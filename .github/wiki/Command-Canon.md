@@ -10,14 +10,26 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 |---|---|---|---|---|
 | `nself account` | `nself license account` | move | v1.5.0 | v1.6.0 |
 | `nself env` | `nself config env` | move | v1.5.0 | v1.6.0 |
+| `nself generate` | `nself db generate` | move | v1.5.0 | v1.6.0 |
 | `nself login` | `nself license login` | move | v1.5.0 | v1.6.0 |
 | `nself logout` | `nself license logout` | move | v1.5.0 | v1.6.0 |
+| `nself migrate` | `nself db` | retired-hub | v1.5.0 | v1.6.0 |
+| `nself migrate detect` | `nself update project detect` | move | v1.5.0 | v1.6.0 |
+| `nself migrate firebase` | `nself db import firebase` | move | v1.5.0 | v1.6.0 |
+| `nself migrate from-bash` | `nself update project from-bash` | move | v1.5.0 | v1.6.0 |
+| `nself migrate from-v099` | `nself update project from-v099` | move | v1.5.0 | v1.6.0 |
+| `nself migrate generate` | `nself db migrate generate` | move | v1.5.0 | v1.6.0 |
+| `nself migrate rollback` | `nself update project rollback` | move | v1.5.0 | v1.6.0 |
+| `nself migrate run` | `nself update project run` | move | v1.5.0 | v1.6.0 |
+| `nself migrate supabase` | `nself db import supabase` | move | v1.5.0 | v1.6.0 |
+| `nself migrate watch` | `nself db migrate watch` | move | v1.5.0 | v1.6.0 |
 | `nself oauth` | `nself config oauth` | move | v1.5.0 | v1.6.0 |
 | `nself secrets` | `nself config secrets` | move | v1.5.0 | v1.6.0 |
 | `nself telemetry` | `nself config telemetry` | move | v1.5.0 | v1.6.0 |
+| `nself template` | `nself init template` | move | v1.5.0 | v1.6.0 |
 | `nself trust` | `nself config trust` | move | v1.5.0 | v1.6.0 |
 
-Total rows: 8
+Total rows: 20
 
 <!-- END GENERATED:canon-table -->
 

@@ -289,7 +289,7 @@
 
 <!-- BEGIN GENERATED:command-list -->
 
-**All commands (44)**
+**All commands (41)**
 
 - _A:_ [[cmd-access]] · [[cmd-admin]]
 - _B:_ [[cmd-backup]] · [[cmd-build]] · [[cmd-bundle]]
@@ -297,16 +297,14 @@
 - _D:_ [[cmd-db]] · [[cmd-deploy]] · [[cmd-dev]] · [[cmd-doctor]]
 - _E:_ [[cmd-exec]]
 - _F:_ [[cmd-functions]]
-- _G:_ [[cmd-generate]]
 - _H:_ [[cmd-health]] · [[cmd-help-topics]]
 - _I:_ [[cmd-init]] · [[cmd-install]]
 - _L:_ [[cmd-license]] · [[cmd-logs]]
-- _M:_ [[cmd-man]] · [[cmd-mcp]] · [[cmd-migrate]]
+- _M:_ [[cmd-man]] · [[cmd-mcp]]
 - _O:_ [[cmd-ops]]
 - _P:_ [[cmd-plugin]] · [[cmd-promote]]
 - _R:_ [[cmd-remove]] · [[cmd-reset]] · [[cmd-restart]] · [[cmd-runner]]
 - _S:_ [[cmd-security]] · [[cmd-self-heal]] · [[cmd-server]] · [[cmd-service]] · [[cmd-start]] · [[cmd-status]] · [[cmd-stop]]
-- _T:_ [[cmd-template]]
 - _U:_ [[cmd-update]] · [[cmd-urls]]
 - _V:_ [[cmd-verify-sbom]] · [[cmd-version]]
 
