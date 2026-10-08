@@ -109,27 +109,6 @@ A_AMD="$(crane digest "$SRC_REF/a-amd64:seed")"
 A_ARM="$(crane digest "$SRC_REF/a-arm64:seed")"
 B_IDX="$(crane digest "$SRC_REF/test-b:2.0")"
 
-jq -n --arg aidx "$A_IDX" --arg aamd "$A_AMD" --arg aarm "$A_ARM" --arg bidx "$B_IDX" '{
-  _generated: "fixture for scripts/images/tests/mirror-images.test.sh",
-  schema_version: "1",
-  images: [
-    {name: "test-a", role: "fixture", repository: $ARGS.named.srcroot + "/test-a",
-     version: "1.0", index_digest: $aidx,
-     platforms: {"linux/amd64": $aamd, "linux/arm64": $aarm},
-     mirror: $ARGS.named.dstroot + "/nself/test-a"},
-    {name: "test-b", role: "fixture", repository: $ARGS.named.srcroot + "/test-b",
-     version: "2.0", index_digest: $bidx,
-     platforms: {"linux/amd64": $bidx},
-     mirror: $ARGS.named.dstroot + "/nself/test-b"},
-    {name: "no-mirror", role: "fixture", repository: $ARGS.named.srcroot + "/test-a",
-     version: "1.0", index_digest: $aidx,
-     platforms: {"linux/amd64": $aamd}, mirror: null}
-  ],
-  "$ARGS": {named: {srcroot: "", dstroot: ""}}
-} | del(.["$ARGS"]) | .images |= map(.repository = (if .name == "no-mirror" then .repository
-  elif .name == "test-b" then .repository else .repository end))
-' --arg srcroot "$SRC_REF" --arg dstroot "$DST_REF" > /dev/null # (replaced below)
-# jq -n cannot order $ARGS conveniently; build the lock by direct assignment.
 jq -n --arg srcroot "$SRC_REF" --arg dstroot "$DST_REF" --arg aidx "$A_IDX" \
     --arg aamd "$A_AMD" --arg aarm "$A_ARM" --arg bidx "$B_IDX" '{
   _generated: "fixture for scripts/images/tests/mirror-images.test.sh",
@@ -169,6 +148,7 @@ tool_run --plan
 want_rc 0
 want_out "MISSING test-a $A_IDX -" "MISSING test-b $B_IDX -"
 want_err "plan: test-a .*copy needed"
+want_err "source: test-a https://example.com/test-a-source (AGPL"
 want_no_err "no-mirror"
 ok "--plan keeps status on stdout, plan detail and AGPL hint on stderr"
 
@@ -233,5 +213,23 @@ ok "--list-tags prints one tag per line"
 tool_run --list-tags "$SRC_REF/absent-repository"
 [ "$RC" != 0 ] || fail "--list-tags must fail on an unknown repository"
 ok "--list-tags exits non-zero on an unknown repository"
+
+# ---- fail-closed inputs -------------------------------------------------------
+cp "$WORK/images.lock.json" "$WORK/lock.good"
+jq '.images[0].index_digest = null' "$WORK/lock.good" > "$WORK/images.lock.json"
+tool_run --plan
+[ "$RC" != 0 ] || fail "a mirror entry without index_digest must fail"
+want_err "mirror but no index_digest: test-a"
+[ -z "$OUT" ] || fail "no status lines may print for a refused lock: [$OUT]"
+ok "a lock entry with a mirror but no index_digest is refused, not skipped"
+cp "$WORK/lock.good" "$WORK/images.lock.json"
+cp "$WORK/mirror-sources.yaml" "$WORK/sources.good"
+printf 'test-a:\n license: AGPL-3.0\n' > "$WORK/mirror-sources.yaml"
+tool_run --plan
+[ "$RC" != 0 ] || fail "a malformed sources file must fail, not drop the AGPL hint"
+want_err "bad sources line"
+want_err "malformed sources file"
+ok "a malformed sources file fails closed"
+cp "$WORK/sources.good" "$WORK/mirror-sources.yaml"
 
 echo "PASS: $PASSED assertions"

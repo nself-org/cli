@@ -117,7 +117,7 @@ mirror_digest() {
 
 # ---- mirror-sources.yaml (AGPL entries; fixed two-space block shape) --------
 # sources_field NAME FIELD — print one field (license|upstream|source) of a
-# sources entry, or fail when NAME or FIELD is absent.
+# sources entry; exit 1 when NAME or FIELD is absent, 2 when the file is malformed.
 sources_field() {
   awk -v want="$1" -v field="$2" '
     /^#/ { next }
@@ -125,14 +125,19 @@ sources_field() {
     /^  [a-z]+: / { if (ok && $1 == field ":") { sub(/^  [a-z]+: /, ""); print; found = 1 } next }
     /^[[:space:]]*$/ { next }
     { print "mirror-images: bad sources line: " $0 > "/dev/stderr"; bad = 1 }
-    END { exit (found && !bad) ? 0 : 1 }' "$OPT_SOURCES"
+    END { exit bad ? 2 : (found ? 0 : 1) }' "$OPT_SOURCES"
 }
 
 # source_hint NAME MIRROR_REPO — stderr reminder of the upstream source URL for
 # an AGPL entry (the mirror repository description carries it; ADR 0030 §2).
 source_hint() {
-  local url
-  url="$(sources_field "$1" source 2>/dev/null)" || return 0
+  local url rc=0
+  url="$(sources_field "$1" source)" || rc=$?
+  case "$rc" in
+    0) ;;
+    1) return 0 ;;   # not an AGPL entry
+    *) die "malformed sources file $OPT_SOURCES" ;;
+  esac
   note "source: $1 $url (AGPL — set as the $2 repository description)"
 }
 
@@ -192,8 +197,10 @@ fi
 
 
 # ---- build the plan from the lock -------------------------------------------
+NODIGEST="$(jq -r '[.images[] | select(.mirror != null and ((.index_digest // "") == "")) | .name] | join(" ")' "$OPT_LOCK")"
+[ -z "$NODIGEST" ] || die "lock entries with a mirror but no index_digest: $NODIGEST"
 mapfile -t ENTRIES < <(jq -c --arg only "$OPT_ONLY" '
-  .images | map(select(.mirror != null and .index_digest != null))
+  .images | map(select(.mirror != null))
     | if $only != "" then map(select(.name == $only)) else . end
     | sort_by(.name) | .[]' "$OPT_LOCK")
 [ "${#ENTRIES[@]}" -gt 0 ] || die "no mirrorable lock entries matched${OPT_ONLY:+ (only: $OPT_ONLY)}"
