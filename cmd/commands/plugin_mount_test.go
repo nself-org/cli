@@ -260,6 +260,19 @@ func TestMountBuiltinFamily(t *testing.T) {
 	}
 }
 
+func TestMountBuiltinExecutesGroupedCommand(t *testing.T) {
+	t.Setenv("NSELF_PLUGIN_DIR", t.TempDir())
+	r := &cobra.Command{Use: "nself"}
+	r.AddCommand(&cobra.Command{Use: "access", GroupID: groupAdvanced, RunE: func(*cobra.Command, []string) error { return nil }})
+	mountBuiltin(r, []builtinFamily{{slug: "fixture", build: func() *cobra.Command {
+		return &cobra.Command{Use: "fixture", RunE: func(*cobra.Command, []string) error { return nil }}
+	}}})
+	r.SetArgs([]string{"access"})
+	if err := r.Execute(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMountAnnotations(t *testing.T) {
 	d := mountFixture(t)
 	r, _ := mountRoot(t, d)

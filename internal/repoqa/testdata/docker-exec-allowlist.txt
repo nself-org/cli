@@ -1,8 +1,6 @@
 # Direct docker process execution outside internal/docker (rule D4, TestDockerFunnel).
 # Format: <path> <count>, sorted LC_ALL=C. May only shrink: the total must equal
 # dockerBasisTotal in docker_funnel_test.go. See Architecture-Guardrails.md#funnels.
-cmd/commands/admin.go 1
-cmd/commands/admin_lifecycle.go 2
 cmd/commands/ci_forgejo.go 2
 cmd/commands/clean.go 2
 cmd/commands/db_admin.go 3
@@ -37,6 +35,9 @@ internal/backup/restore.go 1
 internal/backup/restore_container.go 1
 internal/backup/stream_restore_remote.go 1
 internal/build/postgres_image_warning.go 1
+internal/builtin/admin/cmd_logs.go 1
+internal/builtin/admin/cmd_start.go 1
+internal/builtin/admin/cmd_stop.go 1
 internal/cmd/ci/serve_job.go 2
 internal/database/backup.go 1
 internal/database/init.go 2

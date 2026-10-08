@@ -3,17 +3,17 @@
 schema_version: 1
 commands:
   # cmd/commands/admin.go:126 RunE path changes no persistent state (prints/reads only)
-  admin: {canon: pending, side_effect: read}
+  admin: {canon: plugin, side_effect: read}
   # cmd/commands/admin_connect.go:49 opens an SSH tunnel and bootstraps the admin session on the remote host
-  admin connect: {side_effect: remote, output: stream}
+  admin connect: {canon: plugin, side_effect: remote, output: stream}
   # cmd/commands/admin.go:245 RunE path changes no persistent state (prints/reads only)
-  admin health: {side_effect: read}
-  admin logs: {side_effect: read, output: stream}
+  admin health: {canon: plugin, side_effect: read}
+  admin logs: {canon: plugin, side_effect: read, output: stream}
   # cmd/commands/admin_projects.go:20 RunE path changes no persistent state (prints/reads only)
-  admin projects: {side_effect: read}
-  admin projects add: {side_effect: write}
-  admin projects list: {side_effect: read, json: legacy}
+  admin projects: {canon: plugin, side_effect: read}
+  admin projects add: {canon: plugin, side_effect: write}
+  admin projects list: {canon: plugin, side_effect: read, json: legacy}
   # cmd/commands/admin_projects.go:97 removes one entry from the local admin project config; `admin projects add` restores it (write, not destructive)
-  admin projects remove: {side_effect: write}
-  admin start: {side_effect: write}
-  admin stop: {side_effect: write}
+  admin projects remove: {canon: plugin, side_effect: write}
+  admin start: {canon: plugin, side_effect: write}
+  admin stop: {canon: plugin, side_effect: write}

@@ -492,6 +492,7 @@ func TestCanonEngineNoCanonLoad(t *testing.T) {
 
 func TestHubUnknownSubcommand(t *testing.T) {
 	reattachRealTree()
+	mountBuiltinFamiliesFromList(RootCmd)
 	retired := map[string]string{}
 	for _, row := range canonTable.RetiredHubs {
 		retired[strings.Join(row.From, " ")] = strings.Join(row.To, " ")
