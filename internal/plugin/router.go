@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // ExitCodeError is returned when a plugin process exits with a non-zero code.
@@ -64,8 +66,7 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 		candidate += ".exe"
 	}
 
-	path := candidate
-	if _, err := os.Stat(path); err != nil {
+	if _, err := os.Stat(candidate); err != nil {
 		// CLI-R19: an unknown command is the moment a user most needs to be told
 		// how to get it, so the actionable message — `nself install X` — goes in
 		// the returned error.
@@ -87,6 +88,35 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 			cmdName, cmdName, installHint)
 	}
 
+	return execPluginBinary(candidate, cmdName, args)
+}
+
+// ProxyBinary execs the named plugin binary with args verbatim. It is the
+// exec path of the plugin-command mount (contract:cli.plugin-command-mount
+// v1): the binary is resolved ONLY inside the plugin bin directory (S-002),
+// argv is passed straight through with no shell, stdio is inherited and a
+// non-zero plugin exit status comes back as ExitCodeError. slug names the
+// plugin whose manifest (if present) declares project settings for the child
+// environment, exactly like the unknown-command proxy.
+//
+// The mount validates the binary at discovery time (mount.Discover, E406);
+// a binary that vanishes between discovery and exec fails with E406 here.
+func ProxyBinary(binName, slug string, args []string) error {
+	binDir := pluginBinDir()
+	candidate := filepath.Join(binDir, binName)
+	if runtime.GOOS == "windows" {
+		candidate += ".exe"
+	}
+	if _, err := os.Stat(candidate); err != nil {
+		return errs.Newf("E406", "plugin %q binary %q is not present in %s; reinstall it with nself add %s", slug, binName, binDir, slug)
+	}
+	return execPluginBinary(candidate, slug, args)
+}
+
+// execPluginBinary is the shared run of a plugin binary: inherited stdio, the
+// project settings the plugin's manifest declares, and the plugin's exit
+// status surfaced as ExitCodeError (silent: the child already reported).
+func execPluginBinary(path, slug string, args []string) error {
 	// Prepare the command.
 	//
 	// The plugin inherits this process's environment, plus whichever project
@@ -95,7 +125,7 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 	// not in a container compose has populated — and would have to re-implement
 	// the cascade that CLI-R18 made canonical.
 	cmd := exec.Command(path, args...)
-	if extra := pluginEnvForCommand(cmdName); len(extra) > 0 {
+	if extra := pluginEnvForCommand(slug); len(extra) > 0 {
 		cmd.Env = append(os.Environ(), extra...)
 	}
 	cmd.Stdin = os.Stdin

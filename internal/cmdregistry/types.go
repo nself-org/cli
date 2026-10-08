@@ -53,6 +53,7 @@ type Command struct {
 	Args       []Arg             `json:"args"`
 	Flags      []Flag            `json:"flags"`
 	Canon      string            `json:"canon"`
+	Plugin     *string           `json:"plugin,omitempty"`
 	Target     *string           `json:"target"`
 	SideEffect string            `json:"side_effect"`
 	Output     string            `json:"output"`
@@ -92,6 +93,7 @@ type Counts struct {
 	Core            int      `json:"core"`
 	Pending         int      `json:"pending"`
 	DeprecatedShims int      `json:"deprecated_shims"`
+	Plugin          int      `json:"plugin,omitempty"`
 	CoreMissing     []string `json:"core_missing"`
 	JSONEnvelope    int      `json:"json_envelope"`
 	JSONLegacy      int      `json:"json_legacy"`
