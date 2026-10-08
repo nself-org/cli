@@ -1,0 +1,43 @@
+# AGPL-covered images the nSelf mirror distributes (ADR 0030 §2, stack review
+# 2026-09-28 §2/§3). Mirroring an AGPL image makes us a distributor with
+# source-offer duties, so every entry carries its upstream source URL;
+# mirror-images.sh prints these and the mirror repository description on
+# Docker Hub carries the link (P7-PROD-69 publish, P7-PROD-73 tool).
+#
+# Shape (parsed by mirror-images.sh sources_field): key = image lock entry
+# name (or, for push-only archives, the target repository basename), then
+# exactly the three fields below at two-space indent. Keep it that shape.
+#
+# Lock entries with an AGPL licence (from internal/compose/images.lock.json):
+elasticsearch:
+  license: Elastic-2.0 OR SSPL-1.0 OR AGPL-3.0
+  upstream: docker.elastic.co/elasticsearch/elasticsearch
+  source: https://github.com/elastic/elasticsearch
+grafana:
+  license: AGPL-3.0
+  upstream: docker.io/grafana/grafana
+  source: https://github.com/grafana/grafana
+loki:
+  license: AGPL-3.0
+  upstream: docker.io/grafana/loki
+  source: https://github.com/grafana/loki
+minio:
+  license: AGPL-3.0
+  upstream: docker.io/pgsty/minio
+  source: https://github.com/pgsty/minio
+promtail:
+  license: AGPL-3.0
+  upstream: docker.io/grafana/promtail
+  source: https://github.com/grafana/loki
+tempo:
+  license: AGPL-3.0
+  upstream: docker.io/grafana/tempo
+  source: https://github.com/grafana/tempo
+
+# Push-only archive (mirror-images.sh --archive, stack review §2): the last
+# docker-save tarball of the retired upstream MinIO image, kept for rollback
+# of a prod volume that still holds MinIO-format data (D18).
+minio-archive:
+  license: AGPL-3.0
+  upstream: docker.io/minio/minio (repository archived 2026-02)
+  source: https://github.com/minio/minio
