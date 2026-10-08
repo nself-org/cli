@@ -3,6 +3,7 @@ package commands
 import (
 	"testing"
 
+	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/spf13/cobra"
 )
@@ -24,6 +25,31 @@ func TestAdminBuiltinRegistration(t *testing.T) {
 	d := adminDeps()
 	if d.LoadHealthConfig == nil || d.OpenBrowserCmd == nil || d.ResolveEnvFile == nil || d.SetEnvKeyInFile == nil || d.ShouldOpenBrowser == nil {
 		t.Fatal("admin helper injection is incomplete")
+	}
+}
+
+func TestAdminRegistryCanonByMode(t *testing.T) {
+	for _, v15 := range []bool{false, true} {
+		view, err := canon.Effective(v15)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range []string{"admin", "admin health", "admin projects list"} {
+			got, ok := view.Commands[path]
+			if !ok {
+				t.Fatalf("v15=%v: missing %s", v15, path)
+			}
+			want := canon.CanonPlugin
+			if !v15 {
+				want = ""
+				if path == "admin" {
+					want = canon.CanonPending
+				}
+			}
+			if got.Canon != want {
+				t.Errorf("v15=%v: %s canon=%q, want %q", v15, path, got.Canon, want)
+			}
+		}
 	}
 }
 
