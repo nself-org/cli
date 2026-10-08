@@ -56,7 +56,7 @@ func TestRunArgv_QuotesEveryElement(t *testing.T) {
 
 func TestDestinationInjectionRefusedBeforeExec(t *testing.T) {
 	ctx := context.Background()
-	dests := []string{"-oProxyCommand=touch /tmp/pwned", "-oProxyCommand=x", "a b", "a;b", "a\nb", "$(id)", "`id`", "a|b", "-p", "", "a\x00b"}
+	dests := []string{"-oProxyCommand=touch /tmp/pwned", "-oProxyCommand=x", "a b", "a;b", "a\nb", "$(id)", "`id`", "a|b", "-p", "", "a\x00b", "Admin@host", "u@h@e", "2001:db8::1"}
 	for _, d := range dests {
 		n := countExecs(t)
 		tg := Target{Dest: d, Options: []string{}}
@@ -264,7 +264,17 @@ func TestRunRefusesLeadingDashCommandAndArgvBackslash(t *testing.T) {
 func TestIPv6DestinationIsBracketedForScpAndRsync(t *testing.T) {
 	log := stubTools(t, map[string]string{"scp": "exit 0", "rsync": "exit 0", "ssh": "exit 0"})
 	ctx := context.Background()
-	tg := ciTarget("deploy@2001:db8::7")
+	if _, err := Run(ctx, ciTarget("deploy@2001:db8::7"), "true"); err == nil {
+		t.Fatal("hand-built bare IPv6 destination accepted")
+	}
+	spec, err := ParseHostSpec("deploy@[2001:db8::7]:2222")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tg, err := spec.Target(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := CopyTo(ctx, tg, "./a", "/opt/a"); err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,27 @@
+name: Deploy simulation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - internal/controlplane/**
+      - internal/deploy/**
+      - internal/docker/**
+      - cmd/commands/deploy*.go
+      - .github/workflows/deploy-sim.yml
+
+jobs:
+  simulate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+      - name: Control plane Docker sshd simulation
+        run: INTEGRATION=1 go test -mod=vendor -tags integration -count=1 ./internal/controlplane/sim/...
+      - name: Deploy command integration
+        run: INTEGRATION=1 go test -mod=vendor -tags integration -count=1 -run 'Deploy.*Integration' ./cmd/commands/

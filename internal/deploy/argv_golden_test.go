@@ -99,7 +99,7 @@ func TestGoldenArgv_RunRemoteCommand(t *testing.T) {
 	}
 	want := []recordedCall{{
 		tool:  "ssh",
-		args:  append(goldenBase("/k/id"), "deploy@203.0.113.7", "docker exec 'c' ls"),
+		args:  append(goldenBase("/k/id"), "--", "deploy@203.0.113.7", "docker exec 'c' ls"),
 		probe: "inherited",
 	}}
 	assertCalls(t, read(), want)
@@ -115,14 +115,14 @@ func TestGoldenArgv_DeployViaSsh(t *testing.T) {
 	want := []recordedCall{
 		{tool: "rsync", probe: "inherited", args: []string{
 			"-az", "-e", "ssh " + strings.Join(base, " "),
-			"/work/compose.yml", "deploy@203.0.113.7:/opt/app/nself-compose.yml",
+			"--", "/work/compose.yml", "deploy@203.0.113.7:/opt/app/nself-compose.yml",
 		}},
 		{tool: "ssh", probe: "inherited", args: append(append([]string{}, base...),
-			"deploy@203.0.113.7", "docker compose -f /opt/app/nself-compose.yml pull")},
+			"--", "deploy@203.0.113.7", "docker compose -f '/opt/app/nself-compose.yml' pull")},
 		{tool: "ssh", probe: "inherited", args: append(append([]string{}, base...),
-			"deploy@203.0.113.7", "docker compose -f /opt/app/nself-compose.yml up -d")},
+			"--", "deploy@203.0.113.7", "docker compose -f '/opt/app/nself-compose.yml' up -d")},
 		{tool: "ssh", probe: "inherited", args: append(append([]string{}, base...),
-			"deploy@203.0.113.7", "docker compose -f /opt/app/nself-compose.yml logs --follow")},
+			"--", "deploy@203.0.113.7", "docker compose -f '/opt/app/nself-compose.yml' logs --follow")},
 	}
 	assertCalls(t, read(), want)
 }
@@ -158,7 +158,7 @@ func TestGoldenArgv_PushSecrets(t *testing.T) {
 	}
 	want := []recordedCall{{
 		tool:  "scp",
-		args:  append(goldenBase("/k/id"), envFile, "deploy@203.0.113.7:/opt/app/.env"),
+		args:  append(goldenBase("/k/id"), "--", envFile, "deploy@203.0.113.7:/opt/app/.env"),
 		probe: "inherited",
 	}}
 	assertCalls(t, read(), want)

@@ -26,6 +26,10 @@
       "id": "urn:nself:cli:schema:commands:config-show:v1"
     },
     {
+      "path": "commands/deploy-targets.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-targets:v1"
+    },
+    {
       "path": "commands/doctor.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:doctor:v1"
     },
@@ -36,6 +40,14 @@
     {
       "path": "commands/status.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:status:v1"
+    },
+    {
+      "path": "control-plane.v2.schema.json",
+      "id": "urn:nself:cli:schema:control-plane:v2"
+    },
+    {
+      "path": "deploy-targets.v1.schema.json",
+      "id": "urn:nself:cli:schema:deploy-targets:v1"
     },
     {
       "path": "envelope.v1.schema.json",

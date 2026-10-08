@@ -482,6 +482,7 @@ configure an nginx static page via `nginx/conf.d/`.
 | `rollback` | Roll back the last deployment for a target |
 | `security` | Apply server security |
 | `status` | Show deployment status for a target |
+| `targets` | List deploy targets without connecting to them |
 | `web` | Build web apps locally and deploy prebuilt output to Vercel |
 <!-- END GENERATED:subcommands -->
 

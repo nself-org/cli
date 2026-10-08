@@ -32,6 +32,9 @@ func newTestRoot(t *testing.T) (string, func()) {
 // writeInventory writes a control-plane.yaml into root for test setup.
 func writeInventory(t *testing.T, root string, inv *controlplane.Inventory) {
 	t.Helper()
+	if _, ok := inv.Environments["local"]; !ok {
+		inv.Environments["local"] = controlplane.Environment{Name: "local", Kind: "local", Servers: []controlplane.Server{{Name: "local-app", Role: controlplane.RoleApp, Primary: true}}}
+	}
 	if err := controlplane.Write(root, inv); err != nil {
 		t.Fatalf("writeInventory: %v", err)
 	}
@@ -116,7 +119,7 @@ func TestEnvTargetList_JSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := runEnvTargetList(cmd, nil)
+	err := runEnvTargetList(cmd, []string{"staging"})
 	_ = w.Close()
 	os.Stdout = old
 

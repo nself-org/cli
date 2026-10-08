@@ -112,7 +112,7 @@ func TestSplitDeployHost(t *testing.T) {
 	}{
 		{"deploy@host.example.com:/opt/nself", "deploy@host.example.com", "/opt/nself"},
 		{"deploy@host.example.com", "deploy@host.example.com", ""},
-		{"deploy@host.example.com:/a/b:/c", "deploy@host.example.com:/a/b", "/c"},
+		{"deploy@host.example.com:/a/b:/c", "", ""},
 	}
 	for _, c := range cases {
 		gotTarget, gotPath := splitDeployHost(c.in)
@@ -130,7 +130,8 @@ func TestRunDeployHealthOnServer_ServerNotFound(t *testing.T) {
 	inv := &controlplane.Inventory{
 		SchemaVersion: 1,
 		Environments: map[string]controlplane.Environment{
-			"staging": {Name: "staging", Servers: []controlplane.Server{{Name: "staging-app", Host: "deploy@example.com"}}},
+			"local":   {Name: "local", Kind: "local", Servers: []controlplane.Server{{Name: "local-app", Role: controlplane.RoleApp}}},
+			"staging": {Name: "staging", Kind: "remote", Servers: []controlplane.Server{{Name: "staging-app", Host: "deploy@example.com"}}},
 		},
 	}
 	if err := controlplane.Write(dir, inv); err != nil {

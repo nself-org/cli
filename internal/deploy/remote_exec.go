@@ -19,10 +19,49 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
+
+// ScanDeployKeys asks for one algorithm, avoiding multi-connection keyscan
+// throttling on small sshd simulation hosts while still scanning the live key.
+func ScanDeployKeys(ctx context.Context, spec remote.HostSpec) ([]remote.HostKey, error) {
+	cmd, err := remote.Command(ctx, "ssh-keyscan", "-T", "5", "-t", "ed25519", "-p", strconv.Itoa(deployHostPort(spec)), "--", spec.Host)
+	if err != nil {
+		return nil, err
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("ssh-keyscan %s: %w", spec.Host, err)
+	}
+	var keys []remote.HostKey
+	for _, line := range strings.Split(string(out), "\n") {
+		if fp, err := remote.Fingerprint(line); err == nil {
+			keys = append(keys, remote.HostKey{Line: line, Type: "ssh-ed25519", Fingerprint: fp})
+		}
+	}
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("ssh-keyscan %s returned no ED25519 key", spec.Host)
+	}
+	return keys, nil
+}
+
+func deployTrustedFingerprints(ctx context.Context, alias, path string) map[string]bool {
+	seen := map[string]bool{}
+	out, err := exec.CommandContext(ctx, "ssh-keygen", "-F", alias, "-f", path).Output()
+	if err != nil {
+		return seen
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if fp, err := remote.Fingerprint(line); err == nil {
+			seen[fp] = true
+		}
+	}
+	return seen
+}
 
 // RemoteTarget describes a resolved remote host for a non-deploy command.
 type RemoteTarget struct {
@@ -46,7 +85,12 @@ func ResolveRemoteTargetFromEnv(target string) (rt RemoteTarget, ok bool) {
 	if cfg.Host == "" {
 		return RemoteTarget{}, false
 	}
-	sshTarget, remotePath, _ := splitHost(cfg.Host)
+	spec, err := remote.ParseHostSpec(cfg.Host)
+	if err != nil {
+		// Preserve the remote route so RunRemoteCommand rejects the bad host.
+		return RemoteTarget{SSHTarget: cfg.Host, KeyPath: cfg.KeyPath}, true
+	}
+	sshTarget, remotePath := spec.String(), spec.LegacyPath
 	return RemoteTarget{
 		SSHTarget:  sshTarget,
 		RemotePath: remotePath,
@@ -63,14 +107,16 @@ func RunRemoteCommand(ctx context.Context, rt RemoteTarget, command string) (str
 	if rt.SSHTarget == "" {
 		return "", fmt.Errorf("remote target has no SSH host configured")
 	}
-	if err := remote.ValidateLegacyDest(rt.SSHTarget); err != nil {
+	spec, err := remote.ParseHostSpec(rt.SSHTarget)
+	if err != nil {
 		return "", err
 	}
 	// Historical argv and inherited environment, byte-identical to the
 	// pre-sdk implementation: options, destination, one command element, no
 	// "--". sdk/go/remote owns the exec funnel; the legacy shape lives here
 	// so the sdk's public API has no relaxed mode.
-	args := append(remote.BaseOptions(rt.KeyPath), rt.SSHTarget, command)
+	args := append(remote.BaseOptions(rt.KeyPath), spec.SSHArgs()...)
+	args = append(args, command)
 	sc, err := remote.Command(ctx, "ssh", args...)
 	if err != nil {
 		return "", err

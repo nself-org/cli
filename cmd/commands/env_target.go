@@ -137,6 +137,9 @@ func init() {
 	envTargetAddCmd.Flags().String("remote-path", "/opt/nself", "Absolute path on the remote host where nSelf is installed")
 	envTargetAddCmd.Flags().Bool("primary", false, "Mark this server as the primary app server")
 	envTargetAddCmd.Flags().StringSlice("upstreams", nil, "Upstream app server names (LB role only)")
+	envTargetAddCmd.Flags().String("tier", "", "Environment tier: local|local-servers|prod")
+	envTargetAddCmd.Flags().String("arch", "", "Server architecture: amd64|arm64")
+	envTargetAddCmd.Flags().String("trust-host-key", "", "Verify a live SHA256 host key fingerprint and pin it")
 
 	// probe flags
 	envTargetProbeCmd.Flags().Bool("json", false, "Emit JSON output")

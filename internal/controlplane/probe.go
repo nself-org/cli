@@ -1,8 +1,10 @@
 package controlplane
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -119,19 +121,30 @@ func (sp *SSHProber) SSHReachable(s Server) (bool, int, error) {
 		return false, 0, fmt.Errorf("env var %s is not set", s.SSHKeyRef)
 	}
 
+	spec, err := remote.ParseHostSpec(s.Host)
+	if err != nil {
+		return false, 0, err
+	}
+	tier, envName := probeTier(sp.projectRoot, s)
+	keyCtx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	policy, err := HostKeyOptions(keyCtx, envName, s.Name, tier, s.Host, false)
+	cancel()
+	if err != nil {
+		return false, 0, err
+	}
 	args := []string{
 		"-i", keyPath,
 		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", fmt.Sprintf("ConnectTimeout=%d", probeConnectTimeout),
 		"-o", "ForwardAgent=no",
-		s.Host,
-		"true",
 	}
+	args = append(args, policy...)
+	args = append(args, spec.SSHArgs()...)
+	args = append(args, "true")
 
 	start := time.Now()
 	cmd := exec.Command("ssh", args...) //nolint:gosec // args are fully controlled
-	err := cmd.Run()
+	err = cmd.Run()
 	latencyMS := int(time.Since(start).Milliseconds())
 
 	reachable := err == nil
@@ -156,18 +169,29 @@ func (sp *SSHProber) DockerOK(s Server) (bool, error) {
 		return false, fmt.Errorf("env var %s is not set", s.SSHKeyRef)
 	}
 
+	spec, err := remote.ParseHostSpec(s.Host)
+	if err != nil {
+		return false, err
+	}
+	tier, envName := probeTier(sp.projectRoot, s)
+	keyCtx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	policy, err := HostKeyOptions(keyCtx, envName, s.Name, tier, s.Host, false)
+	cancel()
+	if err != nil {
+		return false, err
+	}
 	args := []string{
 		"-i", keyPath,
 		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", fmt.Sprintf("ConnectTimeout=%d", probeConnectTimeout),
 		"-o", "ForwardAgent=no",
-		s.Host,
-		"docker info --format '{{.ID}}' 2>/dev/null",
 	}
+	args = append(args, policy...)
+	args = append(args, spec.SSHArgs()...)
+	args = append(args, "docker info --format '{{.ID}}' 2>/dev/null")
 
 	cmd := exec.Command("ssh", args...) //nolint:gosec
-	err := cmd.Run()
+	err = cmd.Run()
 	dockerOK := err == nil
 
 	// Update the cache entry with docker result.

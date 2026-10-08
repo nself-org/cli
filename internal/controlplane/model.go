@@ -36,30 +36,31 @@ const (
 // absolute path to the private key file.
 type Server struct {
 	// Name is a human-readable identifier unique within the environment.
-	Name string `yaml:"name"`
+	Name string `yaml:"name" json:"name"`
 
 	// Role classifies the server's function (app, lb, observability, db, worker).
-	Role ServerRole `yaml:"role"`
+	Role ServerRole `yaml:"role" json:"role"`
 
 	// Host is the SSH target in user@host form. Empty string means local-only
 	// (capability is always "manage" for local environments).
-	Host string `yaml:"host,omitempty"`
+	Host string `yaml:"host,omitempty" json:"host,omitempty"`
 
 	// SSHKeyRef is the name of an environment variable whose value holds the
 	// absolute path to the SSH private key. Never the key path itself.
-	SSHKeyRef string `yaml:"ssh_key_ref,omitempty"`
+	SSHKeyRef string `yaml:"ssh_key_ref,omitempty" json:"ssh_key_ref,omitempty"`
 
 	// RemotePath is the absolute path on the remote host where the nSelf
 	// stack is installed (e.g. /opt/nself). Used to locate nself-lb helper.
-	RemotePath string `yaml:"remote_path,omitempty"`
+	RemotePath string `yaml:"remote_path,omitempty" json:"remote_path,omitempty"`
 
 	// Primary marks the authoritative app server. The pipeline returns a
 	// non-zero exit code if this server is skipped due to read-only capability.
-	Primary bool `yaml:"primary,omitempty"`
+	Primary bool   `yaml:"primary,omitempty" json:"primary,omitempty"`
+	Arch    string `yaml:"arch,omitempty" json:"arch,omitempty"`
 
 	// Upstreams lists the names of app-server backends this LB routes to.
 	// Applicable only when Role == RoleLB.
-	Upstreams []string `yaml:"upstreams,omitempty"`
+	Upstreams []string `yaml:"upstreams,omitempty" json:"upstreams,omitempty"`
 }
 
 // Environment groups the servers that form a single deployment target.
@@ -67,14 +68,16 @@ type Server struct {
 type Environment struct {
 	// Name is a well-known identifier: "local", "staging", "prod", or a
 	// custom label defined by the operator.
-	Name string `yaml:"name"`
+	Name string `yaml:"name" json:"name"`
 
 	// Kind is "local" for loopback environments and "remote" for SSH-accessed
 	// environments. Capability resolution uses this to short-circuit probes.
-	Kind string `yaml:"kind"`
+	Kind                   string `yaml:"kind" json:"kind"`
+	Tier                   Tier   `yaml:"tier,omitempty" json:"tier,omitempty"`
+	RequireVerifiedRelease *bool  `yaml:"require_verified_release,omitempty" json:"require_verified_release,omitempty"`
 
 	// Servers is the ordered list of hosts in this environment.
-	Servers []Server `yaml:"servers"`
+	Servers []Server `yaml:"servers" json:"servers"`
 }
 
 // Inventory is the top-level declarative model persisted in
@@ -82,16 +85,16 @@ type Environment struct {
 // migrations. Secrets are never inlined here.
 type Inventory struct {
 	// SchemaVersion is incremented when the YAML structure changes in a
-	// backward-incompatible way. Current supported version: 1.
-	SchemaVersion int `yaml:"schema_version"`
+	// backward-incompatible way. Current supported version: 2.
+	SchemaVersion int `yaml:"schema_version" json:"schema_version"`
 
 	// Project is the canonical project name, matching the nSelf project
 	// identifier (e.g. "nself", "ummat", "unity").
-	Project string `yaml:"project"`
+	Project string `yaml:"project" json:"project"`
 
 	// Environments maps environment name to its definition. Keys must be unique
 	// and match the Environment.Name field of their value.
-	Environments map[string]Environment `yaml:"environments"`
+	Environments map[string]Environment `yaml:"environments" json:"environments"`
 }
 
 // Capability describes the level of control the current host can exercise

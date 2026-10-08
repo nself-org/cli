@@ -2,10 +2,7 @@ package commands
 
 // Purpose: Shared remote-targeting support for `nself db migrate {up,status}`
 //          and `nself db hasura metadata apply`. These commands previously
-//          only ever operated on the local docker daemon; there was no way
-//          to point them at a deployed staging/prod box short of manual
-//          `ssh` + `docker exec` (gap #9 in
-//          ~/Sites/nself/.claude/planning/nself-cli-gaps-from-ntask-dogfood.md).
+//          only used local docker; this adds remote SSH dispatch.
 // Inputs:  --env {dev,staging,prod} flag (mirrors `nself deploy`'s --env
 //          convention) and the same control-plane inventory / legacy
 //          NSELF_DEPLOY_HOST_<TARGET> env vars `nself deploy` already reads.
@@ -14,12 +11,7 @@ package commands
 //          same `nself` binary over SSH on the remote host.
 // Constraints: Local/default behavior is byte-identical when --env is
 //              omitted or resolves to "local"/"dev" — this is purely additive.
-//              Remote dispatch always delegates to the *remote* nself binary
-//              (via `nself db migrate ...` / `nself db hasura ...` over SSH)
-//              rather than trying to speak docker-exec/psql/Hasura HTTP to a
-//              remote daemon from the local process — this reuses the exact
-//              "SSH in and run the same subcommand" pattern already proven
-//              by `nself deploy health --server` (runDeployHealth).
+//              Remote dispatch delegates to the remote nself binary over SSH.
 // SPORT: cli/cmd/commands — see gap #9.
 
 import (
@@ -29,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 
 	"github.com/spf13/cobra"
 )
@@ -54,6 +47,7 @@ type dbRemoteTarget struct {
 	// EnvName is the resolved environment name ("local", "staging", "prod",
 	// or a custom control-plane environment name).
 	EnvName string
+	Tier    controlplane.Tier
 
 	// SSHTarget is "user@host" for a remote target. Empty when Local.
 	SSHTarget string
@@ -127,6 +121,9 @@ func resolveDBRemoteTarget(cmd *cobra.Command) (dbRemoteTarget, error) {
 		// controlplane.Server doc comment) — run locally.
 		return dbRemoteTarget{Local: true, EnvName: envName}, nil
 	}
+	if _, err := remote.ParseHostSpec(srv.Host); err != nil {
+		return dbRemoteTarget{}, err
+	}
 
 	if !validSSHDestination(srv.Host) { // every db remote call resolves its target here
 		return dbRemoteTarget{}, fmt.Errorf("server host %q for env %q is not a valid ssh destination", srv.Host, envName)
@@ -140,6 +137,7 @@ func resolveDBRemoteTarget(cmd *cobra.Command) (dbRemoteTarget, error) {
 	return dbRemoteTarget{
 		Local:      false,
 		EnvName:    envName,
+		Tier:       env.Tier,
 		SSHTarget:  srv.Host,
 		KeyPath:    os.Getenv(srv.SSHKeyRef),
 		RemotePath: remotePath,
@@ -194,7 +192,25 @@ func findDBTargetServer(env controlplane.Environment, serverFlag string) (contro
 // wrapRemoteVersionDriftError's after-the-fact "command not found" sniffing
 // cannot catch.
 func runRemoteNselfCommand(ctx context.Context, rt dbRemoteTarget, args ...string) error {
-	sshArgs := dbRemoteSSHOptions(rt)
+	spec, err := remote.ParseHostSpec(rt.SSHTarget)
+	if err != nil {
+		return err
+	}
+	keyPath := rt.KeyPath
+	if keyPath == "" {
+		keyPath = defaultSSHKeyPath()
+	}
+
+	keyOpts, err := controlplane.HostKeyOptions(ctx, rt.EnvName, "db", rt.Tier, rt.SSHTarget, false)
+	if err != nil {
+		return err
+	}
+	sshArgs := []string{
+		"-i", keyPath,
+		"-o", "BatchMode=yes",
+		"-o", "ForwardAgent=no",
+	}
+	sshArgs = append(sshArgs, keyOpts...)
 
 	if hasDryRunArg(args) {
 		// Never relaxed by AllowVersionDrift (P7-PROD-84).
@@ -208,7 +224,8 @@ func runRemoteNselfCommand(ctx context.Context, rt dbRemoteTarget, args ...strin
 	}
 
 	remoteCmd := fmt.Sprintf("cd %s && nself %s", shellQuoteArg(rt.RemotePath), strings.Join(shellQuoteArgs(args), " "))
-	sshArgs = append(sshArgs, rt.SSHTarget, remoteCmd)
+	sshArgs = append(sshArgs, spec.SSHArgs()...)
+	sshArgs = append(sshArgs, remoteCmd)
 
 	out, err := runSSHCaptured(ctx, sshArgs)
 	if out != "" {

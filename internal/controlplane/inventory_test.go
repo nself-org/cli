@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/nself-org/cli/internal/errs"
@@ -379,8 +380,9 @@ func TestInventoryRefusesEnvCaseCollision(t *testing.T) {
 	mk := func(keys ...string) *Inventory {
 		inv := &Inventory{SchemaVersion: 1, Project: "t", Environments: map[string]Environment{}}
 		for _, k := range keys {
-			inv.Environments[k] = Environment{Name: k, Kind: "remote", Servers: []Server{{Name: "s-" + strings.ToLower(k), Role: RoleApp, Host: "u@h.example.test", RemotePath: "/opt/nself"}}}
+			inv.Environments[k] = Environment{Name: k, Kind: "remote", Servers: []Server{{Name: "s-" + strings.ToLower(k), Role: RoleApp, Host: "u@h.example.test", RemotePath: "/opt/nself", Primary: true}}}
 		}
+		inv.Environments["local"] = Environment{Name: "local", Kind: "local", Servers: []Server{{Name: "local-app", Role: RoleApp, Primary: true}}}
 		return inv
 	}
 	if err := Write(dir, mk("qa", "QA", "prod")); err != nil {
@@ -399,5 +401,137 @@ func TestInventoryRefusesEnvCaseCollision(t *testing.T) {
 	}
 	if _, err := Load(dir); err != nil {
 		t.Errorf("distinct env names must load: %v", err)
+	}
+}
+
+func TestInventoryValidate(t *testing.T) {
+	base := func() *Inventory {
+		return &Inventory{SchemaVersion: 2, Project: "test", Environments: map[string]Environment{
+			"local": {Name: "local", Kind: "local", Tier: TierLocal, Servers: []Server{{Name: "local-app", Role: RoleApp, Primary: true}}},
+			"prod":  {Name: "prod", Kind: "remote", Tier: TierProd, Servers: []Server{{Name: "prod-app", Role: RoleApp, Host: "u@host.example", Primary: true}}},
+		}}
+	}
+	for _, tc := range []struct {
+		name, field string
+		mutate      func(*Inventory)
+	}{
+		{"duplicate server", "servers.name", func(i *Inventory) {
+			e := i.Environments["prod"]
+			e.Servers[0].Name = "local-app"
+			i.Environments["prod"] = e
+		}},
+		{"prod primary", "servers", func(i *Inventory) {
+			e := i.Environments["prod"]
+			e.Servers[0].Primary = false
+			i.Environments["prod"] = e
+		}},
+		{"two local", "local", func(i *Inventory) {
+			i.Environments["second"] = Environment{Name: "second", Kind: "local", Tier: TierLocal}
+		}},
+		{"invalid env", "name", func(i *Inventory) {
+			i.Environments["Bad Name"] = Environment{Name: "Bad Name", Kind: "remote", Tier: TierLocalServers}
+		}},
+		{"host injection", ".host", func(i *Inventory) {
+			e := i.Environments["prod"]
+			e.Servers[0].Host = "-oProxyCommand=touch /tmp/pwn"
+			i.Environments["prod"] = e
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			marker := filepath.Join(t.TempDir(), "exec-ran")
+			if tc.name == "host injection" {
+				bin := t.TempDir()
+				for _, tool := range []string{"ssh", "scp", "rsync"} {
+					if err := os.WriteFile(filepath.Join(bin, tool), []byte("#!/bin/sh\ntouch '"+marker+"'\n"), 0o700); err != nil {
+						t.Fatal(err)
+					}
+				}
+				t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+			}
+			i := base()
+			tc.mutate(i)
+			dir := t.TempDir()
+			if err := Write(dir, i); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Load(dir)
+			if err == nil || !strings.Contains(err.Error(), tc.field) {
+				t.Fatalf("Load = %v, want field %s", err, tc.field)
+			}
+			if _, err := os.Stat(marker); !os.IsNotExist(err) {
+				t.Fatal("invalid host started a process")
+			}
+		})
+	}
+}
+
+func TestLegacyHost(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("NSELF_V15", "0")
+	t.Setenv("NSELF_DEPLOY_HOST_QA", "u@host.example:/opt/nself")
+	legacy, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NSELF_DEPLOY_HOST_QA", "u@host.example")
+	t.Setenv("NSELF_REMOTE_PATH_QA", "/opt/nself")
+	canonical, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := legacy.Environments["qa"].Servers[0], canonical.Environments["qa"].Servers[0]
+	if a.Host != b.Host || a.RemotePath != b.RemotePath {
+		t.Fatalf("legacy %+v != canonical %+v", a, b)
+	}
+	legacyWarningOnce = sync.Once{}
+	t.Setenv("NSELF_V15", "1")
+	t.Setenv("NSELF_DEPLOY_HOST_QA", "u@host.example:/opt/nself")
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = old }()
+	for i := 0; i < 2; i++ {
+		if _, err := Load(dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = w.Close()
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	if got := strings.Count(string(buf[:n]), "v1.6.0"); got != 1 {
+		t.Fatalf("warning count = %d: %q", got, buf[:n])
+	}
+}
+
+func TestInventoryV2ByteRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	inv := &Inventory{SchemaVersion: 2, Project: "test", Environments: map[string]Environment{
+		"local": {Name: "local", Kind: "local", Tier: TierLocal, Servers: []Server{{Name: "local-app", Role: RoleApp}}},
+		"qa":    {Name: "qa", Kind: "remote", Tier: TierLocalServers, Servers: []Server{{Name: "qa-app", Role: RoleApp, Host: "u@host.example:2222", RemotePath: "/opt/nself", Arch: "amd64", Primary: true}}},
+	}}
+	if err := Write(dir, inv); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, ".nself", "control-plane.yaml")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Write(dir, loaded); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("v2 round trip changed bytes\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 }

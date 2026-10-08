@@ -4002,6 +4002,21 @@
       ],
       "flags": [
         {
+          "name": "arch",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "Server architecture: amd64|arm64",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        },
+        {
           "name": "host",
           "shorthand": null,
           "type": "string",
@@ -4067,6 +4082,36 @@
           "type": "string",
           "default": "app",
           "usage": "Server role: app|lb|observability|db|worker",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        },
+        {
+          "name": "tier",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "Environment tier: local|local-servers|prod",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        },
+        {
+          "name": "trust-host-key",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "Verify a live SHA256 host key fingerprint and pin it",
           "hidden": false,
           "deprecated": null,
           "required": false,
@@ -12542,6 +12587,42 @@
       "exit_codes": {}
     },
     {
+      "path": "nself deploy targets",
+      "name": "targets",
+      "parent": "nself deploy",
+      "summary": "List deploy targets without connecting to them",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [],
+      "flags": [
+        {
+          "name": "json",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Emit the deploy targets document",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null
+        }
+      ],
+      "canon": "subcommand",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "envelope",
+      "data_schema": "schemas/commands/deploy-targets.v1.schema.json",
+      "exit_codes": {}
+    },
+    {
       "path": "nself deploy web",
       "name": "web",
       "parent": "nself deploy",
@@ -18879,14 +18960,14 @@
     }
   ],
   "counts": {
-    "commands": 371,
+    "commands": 372,
     "top_level": 24,
     "core": 20,
     "pending": 4,
     "deprecated_shims": 43,
     "plugin": 10,
     "core_missing": [],
-    "json_envelope": 7,
+    "json_envelope": 8,
     "json_legacy": 48
   }
 }

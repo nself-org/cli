@@ -59,6 +59,10 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-CANON-08 | no hint | Next: nself <command> --help | `cmd/commands/install_builtin.go` |
 | P7-CANON-19 | account group | plugin commands group | `cmd/commands/builtin_families.go` |
 | P7-CANON-21 | the argv names commands at their v1.4 paths | argv rewritten between old and canonical spellings, tree relocated | `cmd/commands/tree_prepare.go` |
+| P7-DEPL-13 | accept-new | strict for secret shipping and prod targets. | `internal/deploy/ssh.go` |
+| P7-DEPL-13 | accept-new | strict host key checking for access writes. | `internal/access/transport_ssh.go` |
+| P7-DEPL-13 | quiet read-only first contact | print the observed fingerprint once. | `internal/controlplane/hostkeys.go` |
+| P7-DEPL-13 | silent legacy host path | warn once until removal at v1.6.0. | `internal/controlplane/tiers.go` |
 | P7-LIVE-03 | a lock held by another command does not stop a build (it takes the O_EXCL build.lock) | a lock held by another command refuses the build | `internal/build/build_lock.go` |
 | P7-LIVE-03 | a prod-class or hand-edited change proceeds with a notice | refused with E403 without --yes or --force | `internal/reconcile/apply.go` |
 | P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |

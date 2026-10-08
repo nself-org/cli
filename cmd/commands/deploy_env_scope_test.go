@@ -73,7 +73,8 @@ func scopeFixture(t *testing.T, unreachable bool) (string, *scopeProber) {
 		}}
 	}
 	inv := &controlplane.Inventory{SchemaVersion: 1, Project: "t", Environments: map[string]controlplane.Environment{
-		"qa": mk("qa"), "staging": mk("staging"), "prod": mk("prod"),
+		"local": {Name: "local", Kind: "local"},
+		"qa":    mk("qa"), "staging": mk("staging"), "prod": mk("prod"),
 	}}
 	if err := controlplane.Write(dir, inv); err != nil {
 		t.Fatalf("write inventory: %v", err)
@@ -369,7 +370,9 @@ func TestResolveTargetGolden(t *testing.T) {
 
 	// An env literally named production wins over the alias.
 	inv := &controlplane.Inventory{SchemaVersion: 1, Project: "t", Environments: map[string]controlplane.Environment{
-		"production": {Name: "production", Kind: "remote"}, "prod": {Name: "prod", Kind: "remote"}}}
+		"local":      {Name: "local", Kind: "local"},
+		"production": {Name: "production", Kind: "remote", Servers: []controlplane.Server{{Name: "production-app", Role: controlplane.RoleApp, Host: "u@production.example.test", Primary: true}}},
+		"prod":       {Name: "prod", Kind: "remote", Servers: []controlplane.Server{{Name: "prod-app", Role: controlplane.RoleApp, Host: "u@prod.example.test", Primary: true}}}}}
 	if err := controlplane.Write(dir, inv); err != nil {
 		t.Fatal(err)
 	}
@@ -385,6 +388,7 @@ func TestDbRemoteResolve(t *testing.T) {
 	t.Chdir(dir)
 	isolateDeployEnv(t)
 	inv := &controlplane.Inventory{SchemaVersion: 1, Project: "t", Environments: map[string]controlplane.Environment{
+		"local": {Name: "local", Kind: "local"},
 		"qa": {Name: "qa", Kind: "remote", Servers: []controlplane.Server{
 			{Name: "qa-app", Role: controlplane.RoleApp, Host: "u@qa.example.test", RemotePath: "/opt/qa", Primary: true}}},
 		"prod": {Name: "prod", Kind: "remote", Servers: []controlplane.Server{
@@ -433,6 +437,7 @@ func opusWriteInv(t *testing.T, dir string, keys ...string) {
 			}, k)) + ".example.test", SSHKeyRef: "NSELF_SSH_KEY_X", RemotePath: "/opt/nself", Primary: true},
 		}}
 	}
+	envs["local"] = controlplane.Environment{Name: "local", Kind: "local"}
 	if err := controlplane.Write(dir, &controlplane.Inventory{SchemaVersion: 1, Project: "t", Environments: envs}); err != nil {
 		t.Fatalf("write inventory: %v", err)
 	}
@@ -448,25 +453,13 @@ func opusStubBuildPush(t *testing.T) (builds, pushes *int) {
 	return &b, &p
 }
 
-// A1: an inventory env keyed "PROD" is gated; but its cascade is .env.PROD, not .env.prod.
+// Uppercase environment keys are invalid in inventory v2.
 func TestOpusUpperProdKey(t *testing.T) {
-	dir, p := scopeFixture(t, true)
+	dir, _ := scopeFixture(t, true)
 	opusWriteInv(t, dir, "PROD", "qa")
-	got, err := resolveTarget("prod")
-	if err != nil || got != "PROD" {
-		t.Fatalf("resolveTarget(prod) = %q, %v", got, err)
+	if _, err := controlplane.Load(dir); err == nil || !strings.Contains(err.Error(), "E485") {
+		t.Fatalf("uppercase env key must fail validation: %v", err)
 	}
-	err = runDeployArgs(t, nil, "prod")
-	if err == nil || !strings.Contains(err.Error(), "requires --force") || len(p.hosts) != 0 {
-		t.Errorf("PROD key: gate err=%v probed=%v", err, p.hosts)
-	}
-	t.Run("cascade", func(t *testing.T) {
-		files := deployEnvCascadeFiles(dir, got)
-		joined := strings.Join(files, ",")
-		if !strings.Contains(joined, string(filepath.Separator)+".env.prod,") {
-			t.Errorf("prod-class env %q cascade = %v: never loads .env.prod (exact-case filesystems)", got, files)
-		}
-	})
 }
 
 // A2: an inventory env literally named production is prod-class but its cascade drops .env.prod.
@@ -991,7 +984,7 @@ func TestPipelineBuildsRemoteAndShipsSnapshot(t *testing.T) {
 	if envIdx, composeIdx := strings.Index(out, ".env.qa.nself-new"), strings.Index(out, "nself-compose.yml"); envIdx < 0 || composeIdx < 0 || envIdx > composeIdx {
 		t.Errorf("env must be copied (to a temp name) before the compose:\n%s", out)
 	}
-	if sl, _ := os.ReadFile(filepath.Join(bin, "ssh.log")); !strings.Contains(string(sl), "mv -f /opt/nself/.env.qa.nself-new /opt/nself/.env.qa") {
+	if sl, _ := os.ReadFile(filepath.Join(bin, "ssh.log")); !strings.Contains(string(sl), "mv -f '/opt/nself/.env.qa.nself-new' '/opt/nself/.env.qa'") {
 		t.Errorf("env was not promoted into place:\n%s", sl)
 	}
 }

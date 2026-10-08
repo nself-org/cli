@@ -18,10 +18,14 @@ import "strings"
 
 // IsProdClass reports whether env names a production-class environment.
 func IsProdClass(inv *Inventory, env string) bool {
-	_ = inv // tier lookup arrives with P7-DEPL-13
 	switch strings.ToLower(strings.TrimSpace(env)) {
 	case "prod", "production":
 		return true
+	}
+	if inv != nil {
+		if e, ok := inv.Environments[env]; ok {
+			return normalizedTier(e) == TierProd
+		}
 	}
 	return false
 }

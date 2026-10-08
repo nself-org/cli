@@ -16,6 +16,7 @@ import (
 
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/ui"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 
 	"github.com/spf13/cobra"
 )
@@ -47,14 +48,23 @@ func runDeployLogs(cmd *cobra.Command, args []string) error {
 				if remotePath == "" {
 					remotePath = "/opt/nself"
 				}
-				logsCmd := fmt.Sprintf("cd %s && docker compose logs --tail=200 -f", remotePath)
-				sshTarget := srv.Host
-				sc := exec.CommandContext(cmd.Context(), "ssh",
+				spec, err := remote.ParseHostSpec(srv.Host)
+				if err != nil {
+					return err
+				}
+				logsCmd := fmt.Sprintf("cd %s && docker compose logs --tail=200 -f", remote.ShellQuote(remotePath))
+				keyOpts, err := controlplane.HostKeyOptions(cmd.Context(), env.Name, srv.Name, env.Tier, srv.Host, false)
+				if err != nil {
+					return err
+				}
+				sshArgs := []string{
 					"-i", keyPath,
 					"-o", "BatchMode=yes",
 					"-o", "ForwardAgent=no",
-					"-o", "StrictHostKeyChecking=accept-new",
-					sshTarget, logsCmd)
+				}
+				sshArgs = append(sshArgs, keyOpts...)
+				sshArgs = append(sshArgs, spec.SSHArgs()...)
+				sc := exec.CommandContext(cmd.Context(), "ssh", append(sshArgs, logsCmd)...)
 				sc.Stdout = os.Stdout
 				sc.Stderr = os.Stderr
 				return sc.Run()
@@ -110,7 +120,7 @@ func runDeployHealth(cmd *cobra.Command, args []string) error {
 			// entry) — tell the user explicitly rather than silently running
 			// local checks against the wrong environment's name.
 			if host, ok := ResolveLegacyDeployHost(target); ok {
-				return runDeployHealthOverSSH(cmd, host, jsonOut)
+				return runDeployHealthOverSSH(cmd, host, target, jsonOut)
 			}
 			return fmt.Errorf("deploy health: no server configured for target %q (set NSELF_DEPLOY_HOST_%s or add it to .nself/control-plane.yaml)", target, strings.ToUpper(target))
 		}

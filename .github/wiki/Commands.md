@@ -105,7 +105,7 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 24**
 | `nself clean` | Remove generated artifacts (docker-compose.yml, nginx configs, build cache) | core | — |
 | `nself config` | Manage project configuration | config | bundles, env, export, features, get, import, list, oauth, plugins, secrets, services, set, show, telemetry, trust, validate |
 | `nself db` | Database operations: migrations, backups, restore, seed, shell | data | backup, backup-sync, backup-sync-status, drift, drop, fk-index, generate, hasura, import, lint, list, migrate, pgbouncer, pitr, reconcile, reset, reset-checksum, restore, restore-drill, restore-drill-list, rls, seed, shell, soft-delete, verify, verify-checksums |
-| `nself deploy` | Deploy the stack to a target environment | deploy | access, check-access, environments, health, logs, ops, promote, promote-env, rollback, security, status, web |
+| `nself deploy` | Deploy the stack to a target environment | deploy | access, check-access, environments, health, logs, ops, promote, promote-env, rollback, security, status, targets, web |
 | `nself doctor` | Run comprehensive system diagnostics | core | heal, security |
 | `nself exec` | Execute a command inside a service container | core | — |
 | `nself functions` | Manage serverless functions | data | delete, deploy, invoke, list, logs |

@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -72,10 +73,43 @@ func (t Target) opts() []string {
 }
 
 func (t Target) check() error {
-	if err := ValidateDest(t.Dest); err != nil {
-		return err
+	spec, err := ParseHostSpec(t.Dest)
+	if err != nil {
+		// HostSpec.Target represents bracketed IPv6 as a bare ssh destination.
+		// Its nil-input options are a non-nil empty slice; with a port, -p is
+		// appended. A hand-built bare destination with default options is refused.
+		user, host, hasUser := strings.Cut(t.Dest, "@")
+		if !hasUser {
+			host, user = user, ""
+		}
+		if net.ParseIP(host) == nil || !strings.Contains(host, ":") || t.Options == nil {
+			return err
+		}
+		if !hasPortOption(t.Options) {
+			return err
+		}
+		bracketed := "[" + host + "]"
+		if user != "" {
+			bracketed = user + "@" + bracketed
+		}
+		spec, err = ParseHostSpec(bracketed)
+		if err != nil {
+			return err
+		}
+	}
+	if spec.Port != 0 || spec.LegacyPath != "" || spec.Dest() != t.Dest {
+		return fmt.Errorf("invalid remote destination %q: use canonical HostSpec destination and pass port through options", t.Dest)
 	}
 	return checkOptions(t.Options)
+}
+
+func hasPortOption(opts []string) bool {
+	for i, opt := range opts {
+		if opt == "-p" && i+1 < len(opts) {
+			return true
+		}
+	}
+	return false
 }
 
 func (t Target) command(ctx context.Context, tool string, args []string) (*exec.Cmd, error) {

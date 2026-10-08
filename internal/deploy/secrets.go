@@ -78,15 +78,16 @@ func PushSecrets(ctx context.Context, cfg SSHConfig, opts PushSecretsOptions) er
 	}
 
 	// Extract sshTarget (strip any path component from Host).
-	sshTarget, _, err := splitHost(cfg.Host)
+	spec, err := remote.ParseHostSpec(cfg.Host)
 	if err != nil {
 		return fmt.Errorf("parsing deploy host: %w", err)
 	}
-
-	// The destination becomes an scp operand: refuse anything scp would read
-	// as an option or split (leading '-', whitespace, control bytes).
-	if err := remote.ValidateLegacyDest(sshTarget); err != nil {
-		return fmt.Errorf("parsing deploy host: %w", err)
+	sshTarget := spec.Dest()
+	if strings.Contains(spec.Host, ":") {
+		sshTarget = "[" + spec.Host + "]"
+		if spec.User != "" {
+			sshTarget = spec.User + "@" + sshTarget
+		}
 	}
 
 	remoteDestination := fmt.Sprintf("%s:%s", sshTarget, remotePath)
@@ -96,10 +97,20 @@ func PushSecrets(ctx context.Context, cfg SSHConfig, opts PushSecretsOptions) er
 			remoteDestination, envFile)
 		return nil
 	}
+	policy, err := HostKeyOptions(ctx, spec.String(), opts.Target, spec.Host, true)
+	if err != nil {
+		return err
+	}
 
 	// Build scp command. Stdout is not connected — prevents secret values from
 	// appearing in terminal output. Stderr is forwarded so scp errors are visible.
-	scpArgs := append(remote.BaseOptions(cfg.KeyPath), envFile, remoteDestination)
+	scpArgs := append([]string{"-i", cfg.KeyPath}, policy...)
+	scpArgs = append(scpArgs, "-o", "ForwardAgent=no")
+	scpArgs = append(scpArgs, spec.SSHOptions()...)
+	if spec.Port != 0 {
+		scpArgs[len(scpArgs)-2] = "-P"
+	}
+	scpArgs = append(scpArgs, "--", envFile, remoteDestination)
 
 	cmd, err := remote.Command(ctx, "scp", scpArgs...)
 	if err != nil {

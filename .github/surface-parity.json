@@ -69,7 +69,7 @@
       "group_id": "deploy",
       "wiki_page": true,
       "mcp_tool": true,
-      "env_vars": "undocumented: API_URL, LAPTOP_ONLY, M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, VERCEL_TOKEN",
+      "env_vars": "undocumented: API_URL, LAPTOP_ONLY, M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, NSELF_REMOTE_PATH_, PATH, VERCEL_TOKEN",
       "openapi": "n/a (see below)"
     },
     {

@@ -18,6 +18,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"regexp"
 	"strings"
 
@@ -50,7 +51,12 @@ func checkRemoteVersionDrift(ctx context.Context, rt dbRemoteTarget, sshFlagArgs
 		return nil
 	}
 
-	probeArgs := append(append([]string{}, sshFlagArgs...), rt.SSHTarget, "nself --version")
+	spec, err := remote.ParseHostSpec(rt.SSHTarget)
+	if err != nil {
+		return err
+	}
+	probeArgs := append(append([]string{}, sshFlagArgs...), spec.SSHArgs()...)
+	probeArgs = append(probeArgs, "nself --version")
 	out, err := runSSHCaptured(ctx, probeArgs)
 	if err != nil {
 		return fmt.Errorf(

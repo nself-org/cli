@@ -26,6 +26,8 @@ commands:
   # cmd/commands/security.go:44 prints a dry-run plan unless --apply is passed
   deploy security setup: {side_effect: read, flags: {apply: {side_effect: destructive}}}
   deploy status: {side_effect: read, json: legacy}
+  # cmd/commands/deploy_targets.go:28 inspects inventory and local SSH configuration without connecting to a deploy host
+  deploy targets: {side_effect: read, output: document}
   # cmd/commands/deploy_web_run.go:20 builds locally and publishes the prebuilt output to Vercel
   deploy web: {side_effect: remote}
   # cmd/commands/security_commands.go:26 inspects host security without changes
