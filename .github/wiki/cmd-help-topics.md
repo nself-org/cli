@@ -3,7 +3,7 @@
 
 > Moved to `nself help topics` in v1.5.0, removed in v1.6.0. The old spelling keeps working until then.
 
-See [[cmd-help]] for the current command. [[Command-Canon]] lists every move.
+See [[Commands]] for the current command list. [[Command-Canon]] lists every move.
 
 ## Previous content
 

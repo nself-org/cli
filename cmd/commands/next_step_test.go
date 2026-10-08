@@ -42,13 +42,9 @@ func nextStepFixture(t *testing.T, stage string) {
 			if stage == "initialised" && name == "docker-compose.yml" {
 				break
 			}
-			source := name
-			if name == ".env" {
-				source = ".env.example"
-			}
-			data, err := os.ReadFile(filepath.Join("testdata", "nextstep", "project", source))
-			if err != nil {
-				t.Fatal(err)
+			data := []byte("PROJECT_NAME=nextstep\n")
+			if name == "docker-compose.yml" {
+				data = []byte("services:\n  postgres:\n    image: postgres:16\n")
 			}
 			if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
 				t.Fatal(err)

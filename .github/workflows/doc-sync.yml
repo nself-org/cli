@@ -160,7 +160,9 @@ jobs:
           # cmd/commands/.env.example is a tracked fixture, not a user-facing
           # template, and a test that rewrites it should be fixed rather than
           # papered over with a docs edit.
-          if matches '(^|/)\.env\.example$|^(cli/)?internal/(env|config)/'; then
+          # Test fixture templates are not public configuration inventory.
+          env_changes=$(printf '%s\n' "$CHANGED" | grep -E '(^|/)\.env\.example$|^(cli/)?internal/(env|config)/' | grep -vE '^(cli/)?cmd/commands/testdata/' || true)
+          if [ -n "$env_changes" ]; then
             if matches '^(cli/)?cmd/commands/\.env\.example$'; then
               echo "::warning::cmd/commands/.env.example changed — that is a test fixture. If a test rewrote it, fix the test; do not commit the churn."
             fi
