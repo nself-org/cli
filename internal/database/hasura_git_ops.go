@@ -67,14 +67,42 @@ func ArchiveMetadataRef(ctx context.Context, projectDir, ref string) ([]byte, er
 	if ref == "" || strings.HasPrefix(ref, "-") {
 		return nil, fmt.Errorf("invalid git ref %q", ref)
 	}
-	var out, stderr bytes.Buffer
+	// Streamed, never buffered whole: the entry count and the running byte
+	// total are checked before each entry is copied, so a ref holding a huge
+	// or very many files is refused (and git killed) at the first entry past
+	// the archive limits (64 MiB, 10000 entries), not after it is in memory.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, "git", "-C", projectDir, "archive", "--format=tar", "--prefix=metadata/", ref+":hasura/metadata")
-	cmd.Stdout, cmd.Stderr = &out, &stderr
-	if err := cmd.Run(); err != nil {
+	cmd.Stderr = &stderr
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("archive metadata ref %q: %w", ref, err)
+	}
+	normalized, nerr := normalizeRefArchive(pipe)
+	if nerr != nil {
+		cancel()
+		_ = cmd.Wait()
+		return nil, nerr
+	}
+	if err := cmd.Wait(); err != nil {
 		return nil, fmt.Errorf("archive metadata ref %q: %w: %s", ref, err, strings.TrimSpace(stderr.String()))
 	}
+	return normalized, nil
+}
+
+// normalizeRefArchive copies a git-archive tar stream into a canonical tar
+// (regular files only, mode 0644), enforcing maxMetadataEntries and
+// maxMetadataBytes per entry before any of its bytes are read.
+func normalizeRefArchive(src io.Reader) ([]byte, error) {
 	var normalized bytes.Buffer
-	r, w := tar.NewReader(&out), tar.NewWriter(&normalized)
+	r, w := tar.NewReader(src), tar.NewWriter(&normalized)
+	var total int64
+	count := 0
 	for {
 		h, err := r.Next()
 		if err == io.EOF {
@@ -89,6 +117,14 @@ func ArchiveMetadataRef(ctx context.Context, projectDir, ref string) ([]byte, er
 		if h.Typeflag != tar.TypeReg {
 			return nil, fmt.Errorf("metadata ref contains non-regular entry %q", h.Name)
 		}
+		count++
+		if count > maxMetadataEntries {
+			return nil, fmt.Errorf("metadata ref: more than %d entries", maxMetadataEntries)
+		}
+		if h.Size < 0 || h.Size > maxMetadataBytes-total {
+			return nil, fmt.Errorf("metadata ref: exceeds 64 MiB")
+		}
+		total += h.Size
 		if err := w.WriteHeader(&tar.Header{Name: h.Name, Mode: 0644, Typeflag: tar.TypeReg, Size: h.Size}); err != nil {
 			return nil, err
 		}

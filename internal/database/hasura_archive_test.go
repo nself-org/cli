@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -146,5 +147,42 @@ func TestHasuraArchiveRejects(t *testing.T) {
 				t.Fatalf("destination changed: %q %v", got, err)
 			}
 		})
+	}
+}
+
+// TestNormalizeRefArchiveLimits: the ref archive stream is refused at the
+// first entry past the limits, from its header alone (a 65 MiB entry whose
+// bytes never arrive, or entry 10001), so nothing large is buffered first.
+func TestNormalizeRefArchiveLimits(t *testing.T) {
+	var big bytes.Buffer
+	tw := tar.NewWriter(&big)
+	if err := tw.WriteHeader(&tar.Header{Name: "metadata/huge.yaml", Mode: 0o644, Typeflag: tar.TypeReg, Size: 65 << 20}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := normalizeRefArchive(bytes.NewReader(big.Bytes())); err == nil || !strings.Contains(err.Error(), "64 MiB") {
+		t.Fatalf("a 65 MiB entry must be refused from its header, got %v", err)
+	}
+
+	var many bytes.Buffer
+	tw = tar.NewWriter(&many)
+	for i := 0; i <= maxMetadataEntries; i++ {
+		if err := tw.WriteHeader(&tar.Header{Name: fmt.Sprintf("metadata/f%05d.yaml", i), Mode: 0o644, Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := normalizeRefArchive(bytes.NewReader(many.Bytes())); err == nil || !strings.Contains(err.Error(), "entries") {
+		t.Fatalf("entry %d must be refused, got %v", maxMetadataEntries+1, err)
+	}
+
+	var ok bytes.Buffer
+	tw = tar.NewWriter(&ok)
+	_ = tw.WriteHeader(&tar.Header{Name: "metadata/version.yaml", Mode: 0o600, Typeflag: tar.TypeReg, Size: 11})
+	_, _ = tw.Write([]byte("version: 3\n"))
+	_ = tw.Close()
+	if out, err := normalizeRefArchive(bytes.NewReader(ok.Bytes())); err != nil || len(out) == 0 {
+		t.Fatalf("a small archive must normalize, got %v", err)
 	}
 }

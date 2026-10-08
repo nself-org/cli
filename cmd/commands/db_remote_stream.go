@@ -41,11 +41,7 @@ func (b *boundedMetadataWriter) Write(p []byte) (int, error) {
 }
 
 func runRemoteNselfStream(ctx context.Context, rt dbRemoteTarget, stdin io.Reader, stdout io.Writer, args ...string) error {
-	key := rt.KeyPath
-	if key == "" {
-		key = defaultSSHKeyPath()
-	}
-	sshArgs := []string{"-i", key, "-o", "BatchMode=yes", "-o", "ForwardAgent=no", "-o", "StrictHostKeyChecking=accept-new"}
+	sshArgs := dbRemoteSSHOptions(rt)
 	if !rt.AllowVersionDrift {
 		if err := checkRemoteVersionDrift(ctx, rt, sshArgs, joinRemoteArgs(args)); err != nil {
 			return err

@@ -190,17 +190,7 @@ func findDBTargetServer(env controlplane.Environment, serverFlag string) (contro
 // wrapRemoteVersionDriftError's after-the-fact "command not found" sniffing
 // cannot catch.
 func runRemoteNselfCommand(ctx context.Context, rt dbRemoteTarget, args ...string) error {
-	keyPath := rt.KeyPath
-	if keyPath == "" {
-		keyPath = defaultSSHKeyPath()
-	}
-
-	sshArgs := []string{
-		"-i", keyPath,
-		"-o", "BatchMode=yes",
-		"-o", "ForwardAgent=no",
-		"-o", "StrictHostKeyChecking=accept-new",
-	}
+	sshArgs := dbRemoteSSHOptions(rt)
 
 	if hasDryRunArg(args) {
 		// Never relaxed by AllowVersionDrift (P7-PROD-84).
@@ -224,6 +214,23 @@ func runRemoteNselfCommand(ctx context.Context, rt dbRemoteTarget, args ...strin
 		return wrapRemoteVersionDriftError(rt, args, err, out)
 	}
 	return nil
+}
+
+// dbRemoteSSHOptions is the one ssh option list of the db remote transport
+// (key, batch mode, no agent forwarding, host-key policy). Every db remote
+// call (runRemoteNselfCommand, the metadata stream, the drift probes) starts
+// from it, so a change to how the transport authenticates lands in one place.
+func dbRemoteSSHOptions(rt dbRemoteTarget) []string {
+	keyPath := rt.KeyPath
+	if keyPath == "" {
+		keyPath = defaultSSHKeyPath()
+	}
+	return []string{
+		"-i", keyPath,
+		"-o", "BatchMode=yes",
+		"-o", "ForwardAgent=no",
+		"-o", "StrictHostKeyChecking=accept-new",
+	}
 }
 
 // shellQuoteArg single-quotes s for safe inclusion in a remote shell command,
