@@ -27,11 +27,18 @@ func captureVocabularyOutput(t *testing.T, fn func()) string {
 	old := os.Stdout
 	os.Stdout = w
 	defer func() { os.Stdout = old }()
+	data := make(chan []byte, 1)
+	errors := make(chan error, 1)
+	go func() {
+		b, readErr := io.ReadAll(r)
+		data <- b
+		errors <- readErr
+	}()
 	fn()
 	_ = w.Close()
-	b, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatal(err)
+	b := <-data
+	if readErr := <-errors; readErr != nil {
+		t.Fatal(readErr)
 	}
 	_ = r.Close()
 	return string(b)
@@ -82,6 +89,7 @@ func registryFixture(t *testing.T) {
 	t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
 	t.Setenv("NSELF_PLUGIN_CACHE", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
 }
 
 func TestPluginSearchLicensedEqualsPro(t *testing.T) {
