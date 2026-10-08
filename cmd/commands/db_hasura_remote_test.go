@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -138,6 +139,9 @@ func TestDBHasuraRemoteRejectsOversizedStream(t *testing.T) {
 }
 
 func TestDBHasuraRemoteIntegration(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux sshd bind-mount fixture")
+	}
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker unavailable")
 	}
@@ -145,6 +149,9 @@ func TestDBHasuraRemoteIntegration(t *testing.T) {
 		t.Skipf("docker unavailable: %s", out)
 	}
 	root := t.TempDir()
+	if err := os.Chmod(root, 0777); err != nil {
+		t.Fatal(err)
+	}
 	key := filepath.Join(root, "id_ed25519")
 	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", key).CombinedOutput(); err != nil {
 		t.Fatal(string(out), err)
