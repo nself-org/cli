@@ -14,7 +14,7 @@ nself build   # generate docker-compose + nginx
 nself start   # boot the stack
 ```
 
-## Commands (52)
+## Commands (47)
 
 ### nself access
 
@@ -214,13 +214,18 @@ nself config <subcommand> [flags]
 
 Subcommands:
 
+- `env` — Multi-environment management: switch, list, diff, copy
 - `export` — Export current config to a file or stdout
 - `features` — Manage CLI-built-in feature flags
 - `get` — Get a single configuration value
 - `import` — Import config from a file into .env
 - `list` — List all known config keys with current values
+- `oauth` — Manage OAuth provider tokens
+- `secrets` — Manage encrypted project secrets (age encryption)
 - `set` — Update a configuration value (writes to .env)
 - `show` — Show all config key=value pairs (masked by default)
+- `telemetry` — Manage CLI telemetry preferences
+- `trust` — Set up local dev trust (DNS, SSL, port forwarding)
 - `validate` — Validate configuration against all registered rules
 
 Flags:
@@ -351,26 +356,6 @@ Flags:
 - `--yes` (default false) — Non-interactive mode: accept all defaults (for CI/scripts)
 
 Full page: [[cmd-doctor]]
-
-### nself env
-
-Multi-environment management: switch, list, diff, copy
-
-```
-nself env <subcommand> [flags]
-```
-
-Subcommands:
-
-- `copy` — Scaffold a new environment from an existing one
-- `diff` — Compare two environment configs side-by-side
-- `explain` — Show the effective .env cascade and which file wins
-- `list` — List available environments
-- `show` — Show current environment config (secrets redacted)
-- `target` — Manage control-plane server targets
-- `use` — Switch active environment
-
-Full page: [[cmd-env]]
 
 ### nself exec
 
@@ -660,20 +645,6 @@ Flags:
 
 Full page: [[cmd-migrate]]
 
-### nself oauth
-
-Manage OAuth provider tokens
-
-```
-nself oauth <subcommand> [flags]
-```
-
-Subcommands:
-
-- `refresh` — Trigger immediate OAuth token refresh for a provider
-
-Full page: [[cmd-oauth]]
-
 ### nself ops
 
 Ops-profile deployment and management
@@ -813,38 +784,6 @@ Subcommands:
 - `verify` — Check host(s) against the dependency manifest and report drift
 
 Full page: [[cmd-runner]]
-
-### nself secrets
-
-Manage encrypted project secrets (age encryption)
-
-```
-nself secrets <subcommand> [flags]
-```
-
-Subcommands:
-
-- `audit` — Report secrets that haven't been rotated in >90 days
-- `decrypt-on-deploy` — Output decrypted secrets as KEY=VALUE for CI/CD
-- `edit` — Open decrypted secrets in $EDITOR, re-encrypt on save
-- `get` — Get a secret value
-- `init` — Generate age key and set up .secrets/ directory
-- `lint` — Check for plaintext secrets in git-tracked files
-- `list` — List all secrets for an environment
-- `list-schedules` — List all rotation schedule statuses (alias for: secrets schedule)
-- `rekey` — Re-encrypt all secrets, removing a team member's key
-- `retire` — Retire the _PREVIOUS variant of a dual-window rotated secret
-- `rotate` — Rotate a secret to a new value
-- `rotation-log` — Show rotation event log
-- `schedule` — Add a rotation schedule or show all schedule statuses
-- `set` — Set a secret value (prompts if value not provided)
-- `verify` — Verify that a named secret exists in the store
-
-Flags:
-
-- `--env` (default dev) — Environment (dev, staging, prod)
-
-Full page: [[cmd-secrets]]
 
 ### nself security
 
@@ -996,22 +935,6 @@ Flags:
 
 Full page: [[cmd-stop]]
 
-### nself telemetry
-
-Manage CLI telemetry preferences
-
-```
-nself telemetry <subcommand> [flags]
-```
-
-Subcommands:
-
-- `off` — Disable telemetry (writes to ~/.nself/config.toml)
-- `on` — Enable telemetry (writes to ~/.nself/config.toml)
-- `status` — Show current telemetry state and anonymous install-ID
-
-Full page: [[cmd-telemetry]]
-
 ### nself template
 
 Browse and publish full-stack app templates
@@ -1028,31 +951,6 @@ Subcommands:
 - `update` — Apply incremental migrations for the installed template
 
 Full page: [[cmd-template]]
-
-### nself trust
-
-Set up local dev trust (DNS, SSL, port forwarding)
-
-```
-nself trust <subcommand> [flags]
-```
-
-Subcommands:
-
-- `dns` — Add project domains to /etc/hosts (run with sudo)
-- `ssl` — Manage SSL certificates
-- `status` — Show trusted cert CAs, last rotation date, and expiry warnings
-
-Flags:
-
-- `--project` (default "") — Path to nself project directory (allows running from any cwd)
-- `--skip-dns` (default false) — Skip dnsmasq and /etc/resolver setup
-- `--skip-ports` (default false) — Skip port forwarding setup
-- `--skip-ssl` (default false) — Skip mkcert CA and certificate generation
-- `--status` (default false) — Show current trust status and exit
-- `--undo` (default false) — Print instructions to undo all trust changes
-
-Full page: [[cmd-trust]]
 
 ### nself update
 

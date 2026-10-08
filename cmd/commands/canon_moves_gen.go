@@ -5,4 +5,11 @@ package commands
 
 var canonTable = canonTableT{
 	Verbs: []string{"init", "start", "stop", "restart", "status", "logs", "doctor", "build", "reset", "clean", "add", "remove", "config", "db", "backup", "deploy", "update", "license", "mcp", "exec"},
+	Moves: []canonRowT{
+		{From: []string{"env"}, To: []string{"config", "env"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"oauth"}, To: []string{"config", "oauth"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"secrets"}, To: []string{"config", "secrets"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"telemetry"}, To: []string{"config", "telemetry"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"trust"}, To: []string{"config", "trust"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+	},
 }

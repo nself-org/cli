@@ -63,9 +63,9 @@ func destructiveNamed(key string) bool {
 
 func load(t *testing.T) *canon.File {
 	t.Helper()
-	f, err := canon.Load()
+	f, err := canon.LoadRaw()
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("LoadRaw: %v", err)
 	}
 	return f
 }

@@ -557,6 +557,12 @@
     ],
     "subcommands": [
       {
+        "name": "env",
+        "path": "nself config env",
+        "short": "Multi-environment management: switch, list, diff, copy",
+        "hidden": false
+      },
+      {
         "name": "export",
         "path": "nself config export",
         "short": "Export current config to a file or stdout",
@@ -595,6 +601,21 @@
         "hidden": false
       },
       {
+        "name": "oauth",
+        "path": "nself config oauth",
+        "short": "Manage OAuth provider tokens",
+        "hidden": false
+      },
+      {
+        "name": "secrets",
+        "path": "nself config secrets",
+        "short": "Manage encrypted project secrets (age encryption)",
+        "hidden": false,
+        "flags": [
+          "--env"
+        ]
+      },
+      {
         "name": "set",
         "path": "nself config set",
         "short": "Update a configuration value (writes to .env)",
@@ -607,6 +628,26 @@
         "hidden": false,
         "flags": [
           "--format"
+        ]
+      },
+      {
+        "name": "telemetry",
+        "path": "nself config telemetry",
+        "short": "Manage CLI telemetry preferences",
+        "hidden": false
+      },
+      {
+        "name": "trust",
+        "path": "nself config trust",
+        "short": "Set up local dev trust (DNS, SSL, port forwarding)",
+        "hidden": false,
+        "flags": [
+          "--project",
+          "--skip-dns",
+          "--skip-ports",
+          "--skip-ssl",
+          "--status",
+          "--undo"
         ]
       },
       {
@@ -952,60 +993,6 @@
       "--skip-pool",
       "--verbose",
       "--yes"
-    ]
-  },
-  {
-    "name": "env",
-    "path": "nself env",
-    "short": "Multi-environment management: switch, list, diff, copy",
-    "hidden": false,
-    "group_id": "config",
-    "subcommands": [
-      {
-        "name": "copy",
-        "path": "nself env copy",
-        "short": "Scaffold a new environment from an existing one",
-        "hidden": false
-      },
-      {
-        "name": "diff",
-        "path": "nself env diff",
-        "short": "Compare two environment configs side-by-side",
-        "hidden": false
-      },
-      {
-        "name": "explain",
-        "path": "nself env explain",
-        "short": "Show the effective .env cascade and which file wins",
-        "hidden": false,
-        "flags": [
-          "--reveal"
-        ]
-      },
-      {
-        "name": "list",
-        "path": "nself env list",
-        "short": "List available environments",
-        "hidden": false
-      },
-      {
-        "name": "show",
-        "path": "nself env show",
-        "short": "Show current environment config (secrets redacted)",
-        "hidden": false
-      },
-      {
-        "name": "target",
-        "path": "nself env target",
-        "short": "Manage control-plane server targets",
-        "hidden": false
-      },
-      {
-        "name": "use",
-        "path": "nself env use",
-        "short": "Switch active environment",
-        "hidden": false
-      }
     ]
   },
   {
@@ -1531,26 +1518,6 @@
     ]
   },
   {
-    "name": "oauth",
-    "path": "nself oauth",
-    "short": "Manage OAuth provider tokens",
-    "hidden": false,
-    "group_id": "account",
-    "subcommands": [
-      {
-        "name": "refresh",
-        "path": "nself oauth refresh",
-        "short": "Trigger immediate OAuth token refresh for a provider",
-        "hidden": false,
-        "flags": [
-          "--account-id",
-          "--all",
-          "--base-url"
-        ]
-      }
-    ]
-  },
-  {
     "name": "ops",
     "path": "nself ops",
     "short": "Ops-profile deployment and management",
@@ -1960,121 +1927,6 @@
     ]
   },
   {
-    "name": "secrets",
-    "path": "nself secrets",
-    "short": "Manage encrypted project secrets (age encryption)",
-    "hidden": false,
-    "group_id": "config",
-    "flags": [
-      "--env"
-    ],
-    "subcommands": [
-      {
-        "name": "audit",
-        "path": "nself secrets audit",
-        "short": "Report secrets that haven't been rotated in \u003e90 days",
-        "hidden": false
-      },
-      {
-        "name": "decrypt-on-deploy",
-        "path": "nself secrets decrypt-on-deploy",
-        "short": "Output decrypted secrets as KEY=VALUE for CI/CD",
-        "hidden": false
-      },
-      {
-        "name": "edit",
-        "path": "nself secrets edit",
-        "short": "Open decrypted secrets in $EDITOR, re-encrypt on save",
-        "hidden": false
-      },
-      {
-        "name": "get",
-        "path": "nself secrets get",
-        "short": "Get a secret value",
-        "hidden": false
-      },
-      {
-        "name": "init",
-        "path": "nself secrets init",
-        "short": "Generate age key and set up .secrets/ directory",
-        "hidden": false
-      },
-      {
-        "name": "lint",
-        "path": "nself secrets lint",
-        "short": "Check for plaintext secrets in git-tracked files",
-        "hidden": false
-      },
-      {
-        "name": "list",
-        "path": "nself secrets list",
-        "short": "List all secrets for an environment",
-        "hidden": false
-      },
-      {
-        "name": "list-schedules",
-        "path": "nself secrets list-schedules",
-        "short": "List all rotation schedule statuses (alias for: secrets schedule)",
-        "hidden": false
-      },
-      {
-        "name": "rekey",
-        "path": "nself secrets rekey",
-        "short": "Re-encrypt all secrets, removing a team member's key",
-        "hidden": false,
-        "flags": [
-          "--remove"
-        ]
-      },
-      {
-        "name": "retire",
-        "path": "nself secrets retire",
-        "short": "Retire the _PREVIOUS variant of a dual-window rotated secret",
-        "hidden": false
-      },
-      {
-        "name": "rotate",
-        "path": "nself secrets rotate",
-        "short": "Rotate a secret to a new value",
-        "hidden": false,
-        "flags": [
-          "--dual-window"
-        ]
-      },
-      {
-        "name": "rotation-log",
-        "path": "nself secrets rotation-log",
-        "short": "Show rotation event log",
-        "hidden": false,
-        "flags": [
-          "--secret"
-        ]
-      },
-      {
-        "name": "schedule",
-        "path": "nself secrets schedule",
-        "short": "Add a rotation schedule or show all schedule statuses",
-        "hidden": false,
-        "flags": [
-          "--every",
-          "--secret"
-        ]
-      },
-      {
-        "name": "set",
-        "path": "nself secrets set",
-        "short": "Set a secret value (prompts if value not provided)",
-        "hidden": false
-      },
-      {
-        "name": "verify",
-        "path": "nself secrets verify",
-        "short": "Verify that a named secret exists in the store",
-        "hidden": false
-      }
-    ]
-  },
-  {
     "name": "security",
     "path": "nself security",
     "short": "Server security: audit, setup, and status",
@@ -2345,33 +2197,6 @@
     ]
   },
   {
-    "name": "telemetry",
-    "path": "nself telemetry",
-    "short": "Manage CLI telemetry preferences",
-    "hidden": false,
-    "group_id": "account",
-    "subcommands": [
-      {
-        "name": "off",
-        "path": "nself telemetry off",
-        "short": "Disable telemetry (writes to ~/.nself/config.toml)",
-        "hidden": false
-      },
-      {
-        "name": "on",
-        "path": "nself telemetry on",
-        "short": "Enable telemetry (writes to ~/.nself/config.toml)",
-        "hidden": false
-      },
-      {
-        "name": "status",
-        "path": "nself telemetry status",
-        "short": "Show current telemetry state and anonymous install-ID",
-        "hidden": false
-      }
-    ]
-  },
-  {
     "name": "template",
     "path": "nself template",
     "short": "Browse and publish full-stack app templates",
@@ -2417,48 +2242,6 @@
         "flags": [
           "--dry-run",
           "--force"
-        ]
-      }
-    ]
-  },
-  {
-    "name": "trust",
-    "path": "nself trust",
-    "short": "Set up local dev trust (DNS, SSL, port forwarding)",
-    "hidden": false,
-    "group_id": "config",
-    "flags": [
-      "--project",
-      "--skip-dns",
-      "--skip-ports",
-      "--skip-ssl",
-      "--status",
-      "--undo"
-    ],
-    "subcommands": [
-      {
-        "name": "dns",
-        "path": "nself trust dns",
-        "short": "Add project domains to /etc/hosts (run with sudo)",
-        "hidden": false,
-        "flags": [
-          "--dry-run",
-          "--project"
-        ]
-      },
-      {
-        "name": "ssl",
-        "path": "nself trust ssl",
-        "short": "Manage SSL certificates",
-        "hidden": false
-      },
-      {
-        "name": "status",
-        "path": "nself trust status",
-        "short": "Show trusted cert CAs, last rotation date, and expiry warnings",
-        "hidden": false,
-        "flags": [
-          "--project"
         ]
       }
     ]

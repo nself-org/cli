@@ -289,24 +289,24 @@
 
 <!-- BEGIN GENERATED:command-list -->
 
-**All commands (52)**
+**All commands (47)**
 
 - _A:_ [[cmd-access]] · [[cmd-account]] · [[cmd-admin]]
 - _B:_ [[cmd-backup]] · [[cmd-build]] · [[cmd-bundle]]
 - _C:_ [[cmd-ci]] · [[cmd-clean]] · [[cmd-completion]] · [[cmd-config]]
 - _D:_ [[cmd-db]] · [[cmd-deploy]] · [[cmd-dev]] · [[cmd-doctor]]
-- _E:_ [[cmd-env]] · [[cmd-exec]]
+- _E:_ [[cmd-exec]]
 - _F:_ [[cmd-functions]]
 - _G:_ [[cmd-generate]]
 - _H:_ [[cmd-health]] · [[cmd-help-topics]]
 - _I:_ [[cmd-init]] · [[cmd-install]]
 - _L:_ [[cmd-license]] · [[cmd-login]] · [[cmd-logout]] · [[cmd-logs]]
 - _M:_ [[cmd-man]] · [[cmd-mcp]] · [[cmd-migrate]]
-- _O:_ [[cmd-oauth]] · [[cmd-ops]]
+- _O:_ [[cmd-ops]]
 - _P:_ [[cmd-plugin]] · [[cmd-promote]]
 - _R:_ [[cmd-remove]] · [[cmd-reset]] · [[cmd-restart]] · [[cmd-runner]]
-- _S:_ [[cmd-secrets]] · [[cmd-security]] · [[cmd-self-heal]] · [[cmd-server]] · [[cmd-service]] · [[cmd-start]] · [[cmd-status]] · [[cmd-stop]]
-- _T:_ [[cmd-telemetry]] · [[cmd-template]] · [[cmd-trust]]
+- _S:_ [[cmd-security]] · [[cmd-self-heal]] · [[cmd-server]] · [[cmd-service]] · [[cmd-start]] · [[cmd-status]] · [[cmd-stop]]
+- _T:_ [[cmd-template]]
 - _U:_ [[cmd-update]] · [[cmd-urls]]
 - _V:_ [[cmd-verify-sbom]] · [[cmd-version]]
 

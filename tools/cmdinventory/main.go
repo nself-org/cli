@@ -22,12 +22,13 @@
 //	canon writes .github/wiki/Command-Canon.md: every old spelling,
 //	its new path, kind, since and removal release (internal/canon rows).
 //
-// Mode:        the tool documents the v1.5 surface. main sets NSELF_V15=1 in its
+// Mode:        the tool documents the v1.5 surface. run sets NSELF_V15=1 for
 //
-//	own process (compat.V15 reads the environment on every call) and
-//	calls commands.PrepareTreeForGeneration before building anything,
-//	so the tree is the relocated v1.5 tree with builtin families only
-//	and never an installed plugin (generated output is hermetic).
+//	the duration of a render (compat.V15 reads the environment on every
+//	call) and calls commands.PrepareTreeForGeneration before building
+//	anything, so the tree is the relocated v1.5 tree with builtin
+//	families only and never an installed plugin (generated output is
+//	hermetic), whatever the ambient mode of the caller.
 //	Entries with canon "plugin" are dropped from the inventory
 //	projection: they are documented by their plugin, not by core.
 //
@@ -62,7 +63,6 @@ func main() {
 	proseFrom := flag.String("prose-from", "", "canon format: earlier Command-Canon.md whose PROSE block is kept")
 	flag.Parse()
 
-	defer prepareV15()()
 	canonProseFrom = *proseFrom
 	if err := run(os.Stdout, *format, *depth, *includeHidden); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -73,13 +73,16 @@ func main() {
 	}
 }
 
-// run builds the registry of the live tree and renders one format to w.
+// run builds the registry of the live tree and renders one format to w. It
+// prepares the v1.5 surface itself (see prepareV15) so every caller renders the
+// identical document regardless of the ambient compat mode.
 func run(w io.Writer, format string, depth int, includeHidden bool) error {
 	switch format {
 	case "json", "names", "markdown", "registry", "canon":
 	default:
 		return fmt.Errorf("unknown -format %q", format)
 	}
+	defer prepareV15()()
 	if format == "canon" {
 		return writeCanon(w, canonProseFrom)
 	}

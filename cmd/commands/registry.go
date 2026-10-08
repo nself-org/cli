@@ -28,7 +28,7 @@ import (
 
 // canonLoad is the canon loader. A variable so tests can count calls and prove
 // the decorator never parses canon.yaml when --json is absent.
-var canonLoad = canon.Load
+var canonLoad = canon.Effective
 
 // regCache memoises one build result per compat mode. The mode is part of the
 // key because BuildOptions.V15 changes the reported exit codes and which
@@ -63,16 +63,26 @@ func commandRegistry() (*cmdregistry.Registry, error) {
 	return r.reg, r.err
 }
 
-// buildRegistry runs the idempotent tree preparation and Build.
+// buildRegistry runs the idempotent tree preparation and Build. The tree is
+// prepared for the mode being built (relocation, stubs, groups) for the
+// duration of the Build and undone after, so the registry always describes the
+// mode's surface whatever state the live tree is in: a caller that flips the
+// compat mode without preparing the tree (compattest.Both, in-process tools)
+// still gets the mode-true registry, and a tree already prepared for the mode
+// is left exactly as it was (every engine step is a no-op on an applied
+// surface). Installed plugins are never mounted here; a runtime build sees
+// whatever the invocation path already mounted.
 func buildRegistry(v15 bool) (*cmdregistry.Registry, error) {
 	ApplyCommandGroups()
 	// cobra adds `help` only inside Execute; canon.yaml has an entry for it, so
 	// the tree must have the command before Build checks completeness.
 	RootCmd.InitDefaultHelpCmd()
-	c, err := canonLoad()
+	c, err := canonLoad(v15)
 	if err != nil {
 		return nil, fmt.Errorf("command canon: %w", err)
 	}
+	undo := prepareTree(RootCmd, v15, false)
+	defer undo()
 	reg, err := cmdregistry.Build(RootCmd, c, jsonDataTypes, cmdregistry.BuildOptions{
 		V15:             v15,
 		V15OnlyEnvelope: jsonV15OnlyEnvelope,

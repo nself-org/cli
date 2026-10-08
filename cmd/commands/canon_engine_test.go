@@ -419,7 +419,7 @@ func TestCanonEngineLegacyChain(t *testing.T) {
 func TestCanonEngineNoCanonLoad(t *testing.T) {
 	calls := 0
 	saved := canonLoad
-	canonLoad = func() (*canon.File, error) { calls++; return saved() }
+	canonLoad = func(b bool) (*canon.File, error) { calls++; return saved(b) }
 	t.Cleanup(func() { canonLoad = saved })
 	tb, root := fixtureTable(t), newFixtureTree()
 	for _, v15 := range []bool{false, true} {
@@ -472,12 +472,19 @@ func TestHubUnknownSubcommand(t *testing.T) {
 		c.SetOut(nil)
 	}
 	// 2. v1.5 gives each of them E401 on an unknown subcommand and leaves the other parents alone.
-	undo := applyCanon(RootCmd, true)
-	validated, other := 0, 0
 	listed := map[string]bool{}
 	for _, p := range helpOnlyParents {
 		listed[p] = true
+		// A move relocates the parent and the validator follows the command,
+		// so the walk must expect it at its canonical path; the engine's own
+		// old->new rewrite names it. Rewritten here, while the tree still
+		// holds the old spelling the rewrite resolves against.
+		if rw, _, err := rewriteCanonArgsWith(&canonTable, RootCmd, strings.Fields(p), true); err == nil {
+			listed[strings.Join(rw, " ")] = true
+		}
 	}
+	undo := applyCanon(RootCmd, true)
+	validated, other := 0, 0
 	var walk func(c *cobra.Command)
 	walk = func(c *cobra.Command) {
 		if c != RootCmd && c.HasSubCommands() {
