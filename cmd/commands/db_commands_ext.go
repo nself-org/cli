@@ -103,13 +103,13 @@ the remote host over SSH, so the remote box always uses its own local
 project/Hasura resolution. Note: this requires the remote host's nself CLI
 version to support this subcommand — an older remote CLI returns a clear
 version-drift error rather than a raw SSH failure.`,
-	RunE: runDBHasuraMetadataApply,
+	RunE: runDBHasuraMetadataApplyArchive,
 }
 
 var dbHasuraMetadataExportCmd = &cobra.Command{
 	Use:   "export",
 	Short: "Export Hasura metadata to git-friendly sorted YAML",
-	RunE:  runDBHasuraMetadataExport,
+	RunE:  runDBHasuraMetadataExportArchive,
 }
 
 var dbHasuraMetadataReloadCmd = &cobra.Command{
@@ -181,6 +181,8 @@ func init() {
 	addDBRemoteFlags(dbMigrateUpCmd)
 	addDBRemoteFlags(dbMigrateStatusCmd)
 	addDBRemoteFlags(dbHasuraMetadataApplyCmd)
+	dbHasuraMetadataApplyCmd.Flags().String("archive", "", "Apply a metadata tar archive from stdin (use -)")
+	dbHasuraMetadataExportCmd.Flags().String("archive", "", "Export a metadata tar archive to stdout (use -)")
 
 	// --file flag on migrate apply (G-008)
 	dbMigrateApplyCmd.Flags().String("file", "", "Path to the SQL migration file to apply")

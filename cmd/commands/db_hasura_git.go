@@ -67,6 +67,9 @@ func init() {
 	dbHasuraCmd.AddCommand(dbHasuraSnapshotCmd)
 
 	dbHasuraSyncCmd.Flags().String("message", "", "commit message")
+	addDBRemoteFlags(dbHasuraSyncCmd)
+	addDBRemoteFlags(dbHasuraApplyRefCmd)
+	dbHasuraApplyRefCmd.Flags().Bool("yes", false, "Confirm a prod-class metadata plan")
 	dbHasuraSnapshotCmd.Flags().String("compare", "", "path to a previous snapshot file to diff against")
 }
 
@@ -113,6 +116,13 @@ func runDBHasuraDrift(cmd *cobra.Command, _ []string) error {
 }
 
 func runDBHasuraSync(cmd *cobra.Command, _ []string) error {
+	rt, err := resolveDBRemoteTarget(cmd)
+	if err != nil {
+		return err
+	}
+	if !rt.Local {
+		return runDBHasuraRemoteSync(cmd, rt)
+	}
 	cfg, err := loadProjectConfig()
 	if err != nil {
 		return err
@@ -168,6 +178,13 @@ func runDBHasuraGitStatus(_ *cobra.Command, _ []string) error {
 }
 
 func runDBHasuraApplyRef(cmd *cobra.Command, args []string) error {
+	rt, err := resolveDBRemoteTarget(cmd)
+	if err != nil {
+		return err
+	}
+	if !rt.Local {
+		return runDBHasuraRemoteApplyRef(cmd, rt, args[0])
+	}
 	cfg, err := loadProjectConfig()
 	if err != nil {
 		return err

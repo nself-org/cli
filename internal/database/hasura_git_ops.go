@@ -1,8 +1,11 @@
 package database
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"time"
@@ -31,6 +34,11 @@ func ExportAndCommitMetadata(ctx context.Context, cfg *config.Config, projectDir
 		return "", fmt.Errorf("export metadata to YAML: %w", err)
 	}
 
+	return CommitMetadata(ctx, projectDir, commitMsg)
+}
+
+// CommitMetadata commits metadata already written by an export or remote sync.
+func CommitMetadata(ctx context.Context, projectDir, commitMsg string) (string, error) {
 	if commitMsg == "" {
 		commitMsg = fmt.Sprintf("chore(hasura): export metadata %s", time.Now().UTC().Format("2006-01-02T15:04:05Z"))
 	}
@@ -50,6 +58,48 @@ func ExportAndCommitMetadata(ctx context.Context, cfg *config.Config, projectDir
 		return "", fmt.Errorf("git rev-parse HEAD: %w", err)
 	}
 	return strings.TrimSpace(string(hashOut)), nil
+}
+
+// ArchiveMetadataRef obtains only the metadata tree without changing the checkout.
+func ArchiveMetadataRef(ctx context.Context, projectDir, ref string) ([]byte, error) {
+	// A leading dash is rejected even though -- terminates options: git archive
+	// interprets the tree-ish independently of its path arguments.
+	if ref == "" || strings.HasPrefix(ref, "-") {
+		return nil, fmt.Errorf("invalid git ref %q", ref)
+	}
+	var out, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "git", "-C", projectDir, "archive", "--format=tar", "--prefix=metadata/", ref+":hasura/metadata")
+	cmd.Stdout, cmd.Stderr = &out, &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("archive metadata ref %q: %w: %s", ref, err, strings.TrimSpace(stderr.String()))
+	}
+	var normalized bytes.Buffer
+	r, w := tar.NewReader(&out), tar.NewWriter(&normalized)
+	for {
+		h, err := r.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if h.Typeflag == tar.TypeDir {
+			continue
+		}
+		if h.Typeflag != tar.TypeReg {
+			return nil, fmt.Errorf("metadata ref contains non-regular entry %q", h.Name)
+		}
+		if err := w.WriteHeader(&tar.Header{Name: h.Name, Mode: 0644, Typeflag: tar.TypeReg, Size: h.Size}); err != nil {
+			return nil, err
+		}
+		if _, err := io.CopyN(w, r, h.Size); err != nil {
+			return nil, err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return normalized.Bytes(), nil
 }
 
 // GetGitStatus returns the git status of the hasura/metadata/ directory.
