@@ -85,7 +85,7 @@ func LoadGeneratedState(projectDir string) (*GeneratedState, error) {
 			"; delete the file and run nself build, which re-records the files it writes",
 			GeneratedStatePath(projectDir), err)
 	}
-	if s.SchemaVersion != "" && s.SchemaVersion != generatedStateSchema {
+	if s.SchemaVersion != generatedStateSchema { // a missing schema is a record nself did not write: refuse
 		return nil, fmt.Errorf("the generated-state record %s has schema %q, this CLI understands %q"+
 			"; delete the file and run nself build, which re-records the files it writes",
 			GeneratedStatePath(projectDir), s.SchemaVersion, generatedStateSchema)

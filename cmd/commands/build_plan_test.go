@@ -228,15 +228,15 @@ func (p *l03Project) tree(t *testing.T, under string) string {
 }
 
 // l03Digest masks a recorded sha256 value in the generated-state record (see
-// tree for why): the quoted 64-lowercase-hex values are exactly the record's
-// digests; path keys and the host entries never match.
-var l03Digest = regexp.MustCompile(`"([0-9a-f]{64})"`)
+// tree for why): only a quoted 64-lowercase-hex VALUE (after `": `) is
+// masked, so a path key that happens to be 64 hex characters stays visible.
+var l03Digest = regexp.MustCompile(`(": )"[0-9a-f]{64}"`)
 
 // l03MaskRecordDigests replaces every digest value in the record with a fixed
 // placeholder, deterministically, so the golden line for the record is stable
 // across checkout roots.
 func l03MaskRecordDigests(data []byte) []byte {
-	return l03Digest.ReplaceAll(data, []byte(`"<digest>"`))
+	return l03Digest.ReplaceAll(data, []byte(`$1"<digest>"`))
 }
 
 // whole is the tree of the root: project, HOME, plugin dir and stub.

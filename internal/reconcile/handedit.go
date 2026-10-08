@@ -21,7 +21,9 @@ package reconcile
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,7 +66,16 @@ func (s *GeneratedState) HandEditedFn(projectDir string) func(path string) bool 
 		}
 		current, err := os.ReadFile(disk)
 		if err != nil {
-			return false
+			// A deleted generated file holds no bytes to lose: the build
+			// recreates it (D5: hand-edited means current sha != recorded).
+			// Any other read failure (permission, a directory or socket in the
+			// file's place) cannot prove the file is untouched, so it counts
+			// as hand-edited and the v1.5 refusal applies: fail closed.
+			if errors.Is(err, fs.ErrNotExist) {
+				return false
+			}
+			_, recorded := s.Files[path]
+			return recorded
 		}
 		return s.HandEdited(path, current)
 	}
