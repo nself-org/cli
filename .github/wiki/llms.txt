@@ -14,7 +14,7 @@ nself build   # generate docker-compose + nginx
 nself start   # boot the stack
 ```
 
-## Commands (32)
+## Commands (25)
 
 ### nself add
 
@@ -168,16 +168,6 @@ Flags:
 
 Full page: [[cmd-clean]]
 
-### nself completion
-
-Generate shell completion scripts
-
-```
-nself completion [bash|zsh|fish|powershell] [flags]
-```
-
-Full page: [[cmd-completion]]
-
 ### nself config
 
 Manage project configuration
@@ -305,6 +295,7 @@ nself doctor <subcommand> [flags]
 
 Subcommands:
 
+- `heal` — Run targeted self-healing routines for nSelf components
 - `security` — Diagnose server security
 
 Flags:
@@ -364,44 +355,6 @@ Subcommands:
 - `logs` — Stream logs for a function
 
 Full page: [[cmd-functions]]
-
-### nself health
-
-Health check management with continuous monitoring
-
-```
-nself health [subcommand] <subcommand> [flags]
-```
-
-Subcommands:
-
-- `check` — Run all health checks
-- `config` — Show health check settings
-- `endpoint` — Check an HTTP endpoint
-- `history` — Show last 20 health checks
-- `service` — Check a single service
-- `watch` — Continuous health monitoring
-
-Flags:
-
-- `--env` (default "") — Environment to load config for
-- `--interval` (default 10) — Watch interval in seconds
-- `--json` (default false) — Output in JSON format
-- `--quiet` (default false) — Only output on failure
-- `--retries` (default 3) — Retry count on failure
-- `--timeout` (default 30) — Check timeout in seconds
-
-Full page: [[cmd-health]]
-
-### nself help-topics
-
-Browse help topics (quickstart, plugins, license, envs, doctor, errors)
-
-```
-nself help-topics [topic] [flags]
-```
-
-Full page: [[cmd-help-topics]]
 
 ### nself init
 
@@ -506,20 +459,6 @@ Flags:
 
 Full page: [[cmd-logs]]
 
-### nself man
-
-Generate man pages for all nself commands
-
-```
-nself man [flags]
-```
-
-Flags:
-
-- `--output` (default man) — Directory to write man pages into
-
-Full page: [[cmd-man]]
-
 ### nself mcp
 
 Start the nSelf MCP server
@@ -602,23 +541,6 @@ Subcommands:
 
 Full page: [[cmd-runner]]
 
-### nself self-heal
-
-Run targeted self-healing routines for nSelf components
-
-```
-nself self-heal [flags]
-```
-
-Flags:
-
-- `--dry-run` (default false) — Show what would be repaired without making any changes
-- `--jwt` (default false) — Rotate the HASURA_GRAPHQL_JWT_SECRET and update the rotation log
-- `--no-print` (default false) — Suppress printing the new JWT key to stdout
-- `--to-file` (default "") — Write the new JWT key to this file path (mode 0600) instead of stdout
-
-Full page: [[cmd-self-heal]]
-
 ### nself server
 
 Provision, list, resize, and destroy Hetzner Cloud servers
@@ -678,8 +600,13 @@ Full page: [[cmd-start]]
 Show health status of all services
 
 ```
-nself status [SERVICE] [flags]
+nself status [SERVICE] <subcommand> [flags]
 ```
+
+Subcommands:
+
+- `health` — Health check management with continuous monitoring
+- `urls` — Display all service URLs with route conflict detection
 
 Flags:
 
@@ -736,37 +663,4 @@ Flags:
 - `--version` (default "") — Download a specific version (e.g. v1.2.3)
 
 Full page: [[cmd-update]]
-
-### nself urls
-
-Display all service URLs with route conflict detection
-
-```
-nself urls [flags]
-```
-
-Flags:
-
-- `--all` (default false) — Show all routes including internal
-- `--check-conflicts` (default false) — Check for route conflicts
-- `--diff` (default "") — Compare URLs between environments
-- `--env` (default "") — Show URLs for specific environment
-- `--json` (default false) — JSON output
-
-Full page: [[cmd-urls]]
-
-### nself version
-
-Show version and system information
-
-```
-nself version [flags]
-```
-
-Flags:
-
-- `--json` (default false) — Print version info as JSON
-- `--short` (default false) — Print version number only
-
-Full page: [[cmd-version]]
 

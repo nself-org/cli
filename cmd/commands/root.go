@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/nself-org/cli/internal/cmdlog"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/deprecation"
 	"github.com/nself-org/cli/internal/errs"
@@ -47,6 +48,17 @@ The Golden Path:
   nself start   # Boot your stack`,
 	// Enforcing strict bounds: RunE is used for graceful error bubbling
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// compat.V15(P7-CANON-05): help -> next step + help
+		if compat.V15() {
+			ctx, cancel := context.WithTimeout(cmd.Context(), nextStepTimeout)
+			defer cancel()
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), nextStep(ctx)); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
+				return err
+			}
+		}
 		return cmd.Help()
 	},
 	// Suppress cobra's automatic usage print and error print on errors.

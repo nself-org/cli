@@ -289,21 +289,19 @@
 
 <!-- BEGIN GENERATED:command-list -->
 
-**All commands (32)**
+**All commands (25)**
 
 - _A:_ [[cmd-add]] · [[cmd-admin]]
 - _B:_ [[cmd-backup]] · [[cmd-build]]
-- _C:_ [[cmd-ci]] · [[cmd-clean]] · [[cmd-completion]] · [[cmd-config]]
+- _C:_ [[cmd-ci]] · [[cmd-clean]] · [[cmd-config]]
 - _D:_ [[cmd-db]] · [[cmd-deploy]] · [[cmd-doctor]]
 - _E:_ [[cmd-exec]]
 - _F:_ [[cmd-functions]]
-- _H:_ [[cmd-health]] · [[cmd-help-topics]]
 - _I:_ [[cmd-init]]
 - _L:_ [[cmd-license]] · [[cmd-logs]]
-- _M:_ [[cmd-man]] · [[cmd-mcp]]
+- _M:_ [[cmd-mcp]]
 - _R:_ [[cmd-remove]] · [[cmd-reset]] · [[cmd-restart]] · [[cmd-runner]]
-- _S:_ [[cmd-self-heal]] · [[cmd-server]] · [[cmd-start]] · [[cmd-status]] · [[cmd-stop]]
-- _U:_ [[cmd-update]] · [[cmd-urls]]
-- _V:_ [[cmd-version]]
+- _S:_ [[cmd-server]] · [[cmd-start]] · [[cmd-status]] · [[cmd-stop]]
+- _U:_ [[cmd-update]]
 
 <!-- END GENERATED:command-list -->

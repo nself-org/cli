@@ -102,3 +102,10 @@ func TestStubPage(t *testing.T) {
 		t.Fatal("hand edit not detected")
 	}
 }
+
+func TestHelpTopicStubLinksToExistingPage(t *testing.T) {
+	page := renderStub(stubRow{Old: "help-topics", New: "help topics"}, proseBlocks{})
+	if !strings.Contains(page, "See [[Commands]] for the current command list") || strings.Contains(page, "[[cmd-help]]") {
+		t.Fatalf("help topic stub has an unresolved help link: %s", page)
+	}
+}

@@ -1,6 +1,8 @@
 package canon
 
 import (
+	"bytes"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"os"
@@ -71,7 +73,7 @@ func TestRenderGoTable(t *testing.T) {
 		`{From: []string{"db", "import"}, Summary: "Import \"data\""}`,
 		`{From: []string{"runner"}, To: []string{"ci", "nodes"}, Since: "v1.5.0", Plugin: "ci"}`,
 		`{From: []string{"plugin", "marketplace"}, Since: "v1.5.0", Message: "no marketplace; see https://nself.org/plugins"}`,
-		`[]string{"completion"}`,
+		`{"completion"}`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("rendered table lacks %s\n%s", want, src)
@@ -86,6 +88,24 @@ func TestRenderGoTable(t *testing.T) {
 	empty := RenderGoTable(&File{Verbs: []string{"stop"}})
 	if _, err := parser.ParseFile(token.NewFileSet(), "e.go", empty, 0); err != nil || strings.Contains(string(empty), "Moves") {
 		t.Errorf("empty canon: %v\n%s", err, empty)
+	}
+}
+
+func TestRenderGoTableFormatted(t *testing.T) {
+	f, err := LoadRaw()
+	if err != nil {
+		t.Fatal(err)
+	}
+	generated := RenderGoTable(f)
+	formatted, err := format.Source(generated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(generated, formatted) {
+		t.Fatal("generated Go differs from gofmt output")
+	}
+	if bytes.Contains(generated, []byte("\t\t[]string{")) {
+		t.Fatal("generated builtin literals require formatter simplification")
 	}
 }
 

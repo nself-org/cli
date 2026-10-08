@@ -18,31 +18,24 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself build` | core | yes | yes | undocumented: NSELF_L03_REF_BIN, NSELF_PROFILE, PATH, UPDATE_GOLDEN | n/a (see below) |
 | `nself ci` | deploy | yes | no | undocumented: NSELF_CI_ALLOWED_REPOS, NSELF_CI_ALLOW_UNSANDBOXED, NSELF_FORGEJO_ADMIN_PASSWORD, NSELF_FORGEJO_ADMIN_USER | n/a (see below) |
 | `nself clean` | core | yes | no | n/a | n/a (see below) |
-| `nself completion` | account | yes | no | n/a | n/a (see below) |
 | `nself config` | config | yes | yes | n/a | n/a (see below) |
 | `nself db` | data | yes | yes | n/a | n/a (see below) |
 | `nself deploy` | deploy | yes | yes | undocumented: API_URL, LAPTOP_ONLY, M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, VERCEL_TOKEN | n/a (see below) |
 | `nself doctor` | core | yes | yes | undocumented: NSELF_PING_API_URL, OLLAMA_BASE_URL, OLLAMA_HOST, PLUGIN_AI_INTERNAL_URL, PLUGIN_INTERNAL_SECRET | n/a (see below) |
 | `nself exec` | core | yes | no | n/a | n/a (see below) |
 | `nself functions` | data | yes | no | n/a | n/a (see below) |
-| `nself health` | observe | yes | no | n/a | n/a (see below) |
-| `nself help-topics` | account | yes | no | n/a | n/a (see below) |
 | `nself init` | core | yes | no | documented | n/a (see below) |
 | `nself license` | extend | yes | no | undocumented: NSELF_LICENSE_SKIP_VERIFY, NSELF_PING_API_URL | n/a (see below) |
 | `nself logs` | core | yes | yes | n/a | n/a (see below) |
-| `nself man` | account | yes | no | n/a | n/a (see below) |
 | `nself mcp` | extend | yes | no | undocumented: HASURA_GRAPHQL_URL, INTEGRATION, NSELF_HASURA_ADMIN_SECRET, NSELF_HASURA_GRAPHQL_URL, NSENTRY_STATUS_URL, POSTGRES_URL | n/a (see below) |
 | `nself remove` | extend | yes | no | n/a | n/a (see below) |
 | `nself reset` | core | yes | no | n/a | n/a (see below) |
 | `nself restart` | core | yes | yes | n/a | n/a (see below) |
 | `nself runner` | advanced | yes | no | undocumented: GITHUB_RUNNER_TOKEN | n/a (see below) |
-| `nself self-heal` | observe | yes | no | n/a | n/a (see below) |
 | `nself server` | advanced | yes | no | n/a | n/a (see below) |
 | `nself start` | core | yes | yes | undocumented: NSELF_PROFILE, NSELF_SKIP_DB_INIT | n/a (see below) |
 | `nself status` | core | yes | yes | n/a | n/a (see below) |
 | `nself stop` | core | yes | yes | n/a | n/a (see below) |
 | `nself update` | account | yes | no | n/a | n/a (see below) |
-| `nself urls` | core | yes | yes | n/a | n/a (see below) |
-| `nself version` | account | yes | no | undocumented: BENCH_RESULTS_FILE | n/a (see below) |
 
-Total: 32 commands. Missing wiki page: 0. No MCP tool: 19. Env vars found but undocumented: 11.
+Total: 25 commands. Missing wiki page: 0. No MCP tool: 13. Env vars found but undocumented: 10.

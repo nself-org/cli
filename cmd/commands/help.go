@@ -34,7 +34,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() { RootCmd.SetHelpCommand(newHelpCommand()) }
+func init() {
+	help := newHelpCommand()
+	RootCmd.SetHelpCommand(help)
+	// The canon engine moves help-topics under help before cobra Execute calls
+	// InitDefaultHelpCmd. Register it early so the destination parent exists.
+	RootCmd.AddCommand(help)
+}
 
 // helpWriter is the output seam of `help --json`; tests substitute buffers.
 var helpWriter = output.Default
@@ -90,6 +96,11 @@ func runHelp(c *cobra.Command, args []string) error {
 func runHelpText(c *cobra.Command, args []string) error {
 	cmd, _, e := c.Root().Find(args)
 	if cmd == nil || e != nil {
+		if len(args) == 1 {
+			if _, ok := helpTopics[strings.ToLower(args[0])]; ok {
+				return printHelpTopic(args[0])
+			}
+		}
 		c.Printf("Unknown help topic %#q\n", args)
 		cobra.CheckErr(c.Root().Usage())
 		return nil
