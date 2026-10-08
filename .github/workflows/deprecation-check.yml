@@ -57,8 +57,24 @@ jobs:
 
           echo "Top-level commands removed in this PR: $REMOVED"
 
+          # A canon move (internal/canon/domains/*.yaml) relocates a top-level
+          # command in the v1.5 inventory and keeps the old spelling as a
+          # deprecated shim with its own since/removal_at cycle; the generated
+          # command registry lists it as canon "deprecated-shim" with a target.
+          SHIMS=$(python3 -c "
+          import json
+          d = json.load(open('.github/command-registry.json'))
+          print(' '.join(sorted(c['path'][len('nself '):] for c in d['commands']
+                                if c.get('canon') == 'deprecated-shim' and c.get('target')
+                                and c['path'].count(' ') == 1)))
+          ")
+
           FAIL=0
           for CMD in $REMOVED; do
+            if [[ " $SHIMS " == *" $CMD "* ]]; then
+              echo "OK: '$CMD' moved by the command canon (deprecated shim in .github/command-registry.json)"
+              continue
+            fi
             if ! grep -q "name:.*nself $CMD" "$REGISTRY" 2>/dev/null; then
               echo "ERROR: Command '$CMD' removed without deprecation registry entry."
               echo "       Add an entry to $REGISTRY before removing a command."
