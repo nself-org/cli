@@ -108,12 +108,15 @@ nself license tail --filter result=denied --filter plugin=ai
 <!-- BEGIN GENERATED:subcommands -->
 | Name | Description |
 |------|-------------|
+| `account` | Manage your ɳSelf account, sessions, licenses, team, and devices |
 | `add` | Add one or more license keys |
 | `clear` | Remove all saved license keys |
 | `export` | Export signed license cache for air-gap transfer |
 | `health` | Validate format, ping server, and report cache integrity |
 | `import` | Import a previously exported license cache file |
 | `list` | Show all configured licenses (alias for status) |
+| `login` | Log in to your ɳSelf account |
+| `logout` | Log out of your ɳSelf account |
 | `migrate` | Migrate legacy license key to a ɳSelf account |
 | `refresh` | Force-refresh license validation against ping.nself.org |
 | `remove` | Remove a license key by value or product name |

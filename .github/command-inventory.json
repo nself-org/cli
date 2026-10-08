@@ -49,83 +49,6 @@
     ]
   },
   {
-    "name": "account",
-    "path": "nself account",
-    "short": "Manage your nSelf account, sessions, licenses, team, and devices",
-    "hidden": false,
-    "group_id": "account",
-    "subcommands": [
-      {
-        "name": "devices",
-        "path": "nself account devices",
-        "short": "List and revoke registered devices",
-        "hidden": false,
-        "flags": [
-          "--force",
-          "--json",
-          "--revoke"
-        ]
-      },
-      {
-        "name": "licenses",
-        "path": "nself account licenses",
-        "short": "List and manage account licenses",
-        "hidden": false,
-        "flags": [
-          "--activate",
-          "--json"
-        ]
-      },
-      {
-        "name": "login",
-        "path": "nself account login",
-        "short": "Log in to your nSelf account",
-        "hidden": false,
-        "flags": [
-          "--no-browser",
-          "--reauth",
-          "--timeout"
-        ]
-      },
-      {
-        "name": "logout",
-        "path": "nself account logout",
-        "short": "Log out of your nSelf account",
-        "hidden": false,
-        "flags": [
-          "--all"
-        ]
-      },
-      {
-        "name": "status",
-        "path": "nself account status",
-        "short": "Show current account summary",
-        "hidden": false,
-        "flags": [
-          "--json"
-        ]
-      },
-      {
-        "name": "team",
-        "path": "nself account team",
-        "short": "Manage team members",
-        "hidden": false,
-        "flags": [
-          "--invite",
-          "--json",
-          "--remove",
-          "--role"
-        ]
-      },
-      {
-        "name": "transfer",
-        "path": "nself account transfer",
-        "short": "Transfer a license to another account",
-        "hidden": false
-      }
-    ]
-  },
-  {
     "name": "admin",
     "path": "nself admin",
     "short": "Manage the nSelf Admin dashboard",
@@ -1195,6 +1118,12 @@
     "group_id": "extend",
     "subcommands": [
       {
+        "name": "account",
+        "path": "nself license account",
+        "short": "Manage your nSelf account, sessions, licenses, team, and devices",
+        "hidden": false
+      },
+      {
         "name": "add",
         "path": "nself license add",
         "short": "Add one or more license keys",
@@ -1237,6 +1166,25 @@
         "hidden": false,
         "flags": [
           "--plugin"
+        ]
+      },
+      {
+        "name": "login",
+        "path": "nself license login",
+        "short": "Log in to your nSelf account",
+        "hidden": false,
+        "flags": [
+          "--force",
+          "--no-browser"
+        ]
+      },
+      {
+        "name": "logout",
+        "path": "nself license logout",
+        "short": "Log out of your nSelf account",
+        "hidden": false,
+        "flags": [
+          "--all"
         ]
       },
       {
@@ -1341,27 +1289,6 @@
         "short": "Validate key against ping.nself.org",
         "hidden": false
       }
-    ]
-  },
-  {
-    "name": "login",
-    "path": "nself login",
-    "short": "Log in to your nSelf account",
-    "hidden": false,
-    "group_id": "account",
-    "flags": [
-      "--force",
-      "--no-browser"
-    ]
-  },
-  {
-    "name": "logout",
-    "path": "nself logout",
-    "short": "Log out of your nSelf account",
-    "hidden": false,
-    "group_id": "account",
-    "flags": [
-      "--all"
     ]
   },
   {

@@ -13,7 +13,6 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | Command | Group | Wiki Page | MCP Tool | Env Vars | OpenAPI Route |
 |---|---|---|---|---|---|
 | `nself access` | advanced | yes | no | documented | n/a (see below) |
-| `nself account` | account | yes | no | undocumented: NSELF_NO_BROWSER | n/a (see below) |
 | `nself admin` | account | yes | no | undocumented: ADMIN_PORT | n/a (see below) |
 | `nself backup` | data | yes | yes | undocumented: PATH | n/a (see below) |
 | `nself build` | core | yes | yes | undocumented: NSELF_L03_REF_BIN, NSELF_PROFILE, PATH, UPDATE_GOLDEN | n/a (see below) |
@@ -34,8 +33,6 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself init` | core | yes | no | documented | n/a (see below) |
 | `nself install` | extend | yes | yes | n/a | n/a (see below) |
 | `nself license` | extend | yes | no | undocumented: NSELF_LICENSE_SKIP_VERIFY, NSELF_PING_API_URL | n/a (see below) |
-| `nself login` | account | yes | no | n/a | n/a (see below) |
-| `nself logout` | account | yes | no | n/a | n/a (see below) |
 | `nself logs` | core | yes | yes | n/a | n/a (see below) |
 | `nself man` | account | yes | no | n/a | n/a (see below) |
 | `nself mcp` | extend | yes | no | undocumented: HASURA_GRAPHQL_URL, INTEGRATION, NSELF_HASURA_ADMIN_SECRET, NSELF_HASURA_GRAPHQL_URL, NSENTRY_STATUS_URL, POSTGRES_URL | n/a (see below) |
@@ -60,4 +57,4 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself verify-sbom` | advanced | yes | no | n/a | n/a (see below) |
 | `nself version` | account | yes | no | undocumented: BENCH_RESULTS_FILE | n/a (see below) |
 
-Total: 47 commands. Missing wiki page: 0. No MCP tool: 31. Env vars found but undocumented: 16.
+Total: 44 commands. Missing wiki page: 0. No MCP tool: 28. Env vars found but undocumented: 15.

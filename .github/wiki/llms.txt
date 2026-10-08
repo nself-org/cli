@@ -14,7 +14,7 @@ nself build   # generate docker-compose + nginx
 nself start   # boot the stack
 ```
 
-## Commands (47)
+## Commands (44)
 
 ### nself access
 
@@ -31,26 +31,6 @@ Subcommands:
 - `revoke` — Revoke a person's SSH key access to a host
 
 Full page: [[cmd-access]]
-
-### nself account
-
-Manage your nSelf account, sessions, licenses, team, and devices
-
-```
-nself account <subcommand> [flags]
-```
-
-Subcommands:
-
-- `devices` — List and revoke registered devices
-- `licenses` — List and manage account licenses
-- `login` — Log in to your nSelf account
-- `logout` — Log out of your nSelf account
-- `status` — Show current account summary
-- `team` — Manage team members
-- `transfer` — Transfer a license to another account
-
-Full page: [[cmd-account]]
 
 ### nself admin
 
@@ -507,12 +487,15 @@ nself license <subcommand> [flags]
 
 Subcommands:
 
+- `account` — Manage your nSelf account, sessions, licenses, team, and devices
 - `add` — Add one or more license keys
 - `clear` — Remove all saved license keys
 - `export` — Export signed license cache for air-gap transfer
 - `health` — Validate format, ping server, and report cache integrity
 - `import` — Import a previously exported license cache file
 - `list` — Show all configured licenses (alias for status)
+- `login` — Log in to your nSelf account
+- `logout` — Log out of your nSelf account
 - `migrate` — Migrate legacy license key to a nSelf account
 - `refresh` — Force-refresh license validation against ping.nself.org
 - `remove` — Remove a license key by value or product name
@@ -528,35 +511,6 @@ Subcommands:
 - `validate` — Validate key against ping.nself.org
 
 Full page: [[cmd-license]]
-
-### nself login
-
-Log in to your nSelf account
-
-```
-nself login [flags]
-```
-
-Flags:
-
-- `--force` (default false) — Log in even if already logged in (replaces existing session)
-- `--no-browser` (default false) — Print the login URL instead of opening a browser
-
-Full page: [[cmd-login]]
-
-### nself logout
-
-Log out of your nSelf account
-
-```
-nself logout [flags]
-```
-
-Flags:
-
-- `--all` (default false) — Revoke all active sessions, not just the current one
-
-Full page: [[cmd-logout]]
 
 ### nself logs
 

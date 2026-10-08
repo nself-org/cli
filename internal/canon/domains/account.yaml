@@ -2,23 +2,23 @@
 # Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
 schema_version: 1
 commands:
-  # cmd/commands/account.go:25 RunE path changes no persistent state (prints/reads only)
-  account: {canon: pending, side_effect: read, json: legacy}
-  # cmd/commands/account_devices.go:36 lists devices; --revoke removes one on the account server
-  account devices: {side_effect: read, json: legacy, flags: {revoke: {side_effect: remote}}}
-  # cmd/commands/account_licenses.go:36 lists licences; --activate changes them on the account server
-  account licenses: {side_effect: read, json: legacy, flags: {activate: {side_effect: remote}}}
-  # cmd/commands/account_login.go:38 device-code login creates a session on the account server
-  account login: {side_effect: remote, output: interactive}
-  # cmd/commands/account_logout.go:32 revokes the session on the account server, then deletes local credentials
-  account logout: {side_effect: remote}
-  account status: {side_effect: read, json: legacy}
-  # cmd/commands/account_team.go:52 lists members; --invite/--remove/--role change them on the account server
-  account team: {side_effect: read, json: legacy, flags: {invite: {side_effect: remote}, remove: {side_effect: remote}, role: {side_effect: remote}}}
-  # cmd/commands/account_transfer.go:32 moves licence ownership to another account; the owner cannot undo it
-  account transfer: {side_effect: destructive, output: interactive}
   # cmd/commands/license.go:32 RunE path changes no persistent state (prints/reads only)
   license: {canon: core, side_effect: read}
+  # cmd/commands/account.go:25 RunE path changes no persistent state (prints/reads only)
+  license account: {side_effect: read, json: legacy}
+  # cmd/commands/account_devices.go:36 lists devices; --revoke removes one on the account server
+  license account devices: {side_effect: read, json: legacy, flags: {revoke: {side_effect: remote}}}
+  # cmd/commands/account_licenses.go:36 lists licences; --activate changes them on the account server
+  license account licenses: {side_effect: read, json: legacy, flags: {activate: {side_effect: remote}}}
+  # cmd/commands/account_login.go:38 device-code login creates a session on the account server
+  license account login: {side_effect: remote, output: interactive}
+  # cmd/commands/account_logout.go:32 revokes the session on the account server, then deletes local credentials
+  license account logout: {side_effect: remote}
+  license account status: {side_effect: read, json: legacy}
+  # cmd/commands/account_team.go:52 lists members; --invite/--remove/--role change them on the account server
+  license account team: {side_effect: read, json: legacy, flags: {invite: {side_effect: remote}, remove: {side_effect: remote}, role: {side_effect: remote}}}
+  # cmd/commands/account_transfer.go:32 moves licence ownership to another account; the owner cannot undo it
+  license account transfer: {side_effect: destructive, output: interactive}
   license add: {side_effect: write}
   license clear: {side_effect: destructive}
   license export: {side_effect: write}
@@ -26,6 +26,10 @@ commands:
   license health: {side_effect: read, json: legacy, exit_codes: {"1": "any check fails (exits 0 when all checks pass)"}}
   license import: {side_effect: write}
   license list: {side_effect: read}
+  # cmd/commands/login.go:33 device-code login creates a session on the account server
+  license login: {side_effect: remote, output: interactive}
+  # cmd/commands/logout.go:30 revokes the session on the account server, then deletes local credentials
+  license logout: {side_effect: remote}
   # cmd/commands/license_migrate.go:72 POSTs the legacy key to the licence server to attach it to an account
   license migrate: {side_effect: remote}
   license refresh: {side_effect: write}
@@ -43,7 +47,7 @@ commands:
   # cmd/commands/license_validate.go:71 only opens the pricing page in a browser
   license upgrade: {side_effect: read}
   license validate: {side_effect: read}
-  # cmd/commands/login.go:33 device-code login creates a session on the account server
-  login: {canon: pending, side_effect: remote, output: interactive}
-  # cmd/commands/logout.go:30 revokes the session on the account server, then deletes local credentials
-  logout: {canon: pending, side_effect: remote}
+moves:
+  - {from: account, to: license account, since: v1.5.0, removal_at: v1.6.0}
+  - {from: login, to: license login, since: v1.5.0, removal_at: v1.6.0}
+  - {from: logout, to: license logout, since: v1.5.0, removal_at: v1.6.0}

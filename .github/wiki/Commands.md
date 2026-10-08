@@ -94,12 +94,11 @@ tree in `cmd/commands/`. Run `make cmd-inventory` to refresh.
 ## Complete index
 
 Generated from the cobra registration tree in `cmd/commands/`.
-Run `make cmd-inventory` to refresh. **Total top-level commands: 47**
+Run `make cmd-inventory` to refresh. **Total top-level commands: 44**
 
 | Command | Short Description | Group | Subcommands |
 |---|---|---|---|
 | `nself access` | Manage SSH key access on an already-deployed server | advanced | grant, list, revoke |
-| `nself account` | Manage your nSelf account, sessions, licenses, team, and devices | account | devices, licenses, login, logout, status, team, transfer |
 | `nself admin` | Manage the nSelf Admin dashboard | account | connect, health, logs, projects, start, stop |
 | `nself backup` | Backup operations: create, list, restore, verify, prune, config, status, init-key | data | config, create, drill, init-key, list, pitr, prune, restore, restore-remote, resume, schedule, status, stream, verify |
 | `nself build` | Compose your infrastructure from .env | core | — |
@@ -119,9 +118,7 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 47**
 | `nself help-topics` | Browse help topics (quickstart, plugins, license, envs, doctor, errors) | account | — |
 | `nself init` | Initialize a new nSelf project | core | — |
 | `nself install` | Install a plugin or bundle | extend | — |
-| `nself license` | Manage license keys for nSelf product bundles | extend | add, clear, export, health, import, list, migrate, refresh, remove, restore, revalidate, revoke, set, show, simulate-offline, status, tail, upgrade, validate |
-| `nself login` | Log in to your nSelf account | account | — |
-| `nself logout` | Log out of your nSelf account | account | — |
+| `nself license` | Manage license keys for nSelf product bundles | extend | account, add, clear, export, health, import, list, login, logout, migrate, refresh, remove, restore, revalidate, revoke, set, show, simulate-offline, status, tail, upgrade, validate |
 | `nself logs` | View and filter service logs | core | — |
 | `nself man` | Generate man pages for all nself commands | account | — |
 | `nself mcp` | Start the nSelf MCP server | extend | — |
