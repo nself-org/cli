@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Purpose: prove the P7-REG machine contract on the real binary, on macOS and on
-#          Linux (golang:1.26.6, GitHub-hosted ubuntu). The go tests prove the
+#          Linux (golang:1.26.9, GitHub-hosted ubuntu). The go tests prove the
 #          pieces in-process; this proves the built `nself` end to end in both
 #          compat modes (ADR 0021: v1.4 = NSELF_V15 unset, v1.5 = NSELF_V15=1).
 #          Epic P7-REG acceptance 1, 3, 4 and 5.
