@@ -14,7 +14,6 @@ internal/aiprofile
 internal/controlplane/sim
 internal/cost
 internal/domain
-internal/infra
 internal/installmeta
 internal/model
 internal/objstore pending:P7-ADOPT-10
