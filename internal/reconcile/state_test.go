@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -251,7 +252,7 @@ func TestStateSaveRoundTrip(t *testing.T) {
 		t.Fatalf("round trip lost data: %+v", got)
 	}
 	info, err := os.Stat(GeneratedStatePath(dir))
-	if err != nil || info.Mode().Perm() != 0o644 {
+	if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o644) { // Windows has no unix modes
 		t.Fatalf("record mode %v (%v), want 0644", info.Mode().Perm(), err)
 	}
 	left, _ := filepath.Glob(filepath.Join(filepath.Dir(GeneratedStatePath(dir)), "generated.*.tmp"))
@@ -271,7 +272,9 @@ func TestStateSaveAndLoadErrors(t *testing.T) {
 	if err := (&GeneratedState{}).Save(dir); err == nil {
 		t.Fatal("Save must fail when .nself is a file")
 	}
-	if _, err := LoadGeneratedState(dir); err == nil {
+	// On unix a file in place of .nself is ENOTDIR, a read error; Windows
+	// reports "path not found", which is simply no record.
+	if _, err := LoadGeneratedState(dir); err == nil && runtime.GOOS != "windows" {
 		t.Fatal("Load must fail when the record path cannot be read")
 	}
 	for name, body := range map[string]string{"corrupt": "{not json", "future": `{"schema_version":"99","files":{}}`} {
@@ -390,8 +393,8 @@ func TestStateWriteRecordFailures(t *testing.T) {
 	if len(left) != 0 {
 		t.Fatalf("temp files left behind: %v", left)
 	}
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory permissions")
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
+		t.Skip("root and Windows ignore unix directory permissions")
 	}
 	ro := t.TempDir()
 	stateDir := filepath.Dir(GeneratedStatePath(ro))
@@ -467,7 +470,7 @@ func TestStatePlanRefusesCorruptRecord(t *testing.T) {
 // cannot be written (read-only state directory), the apply returns the error
 // and the old record stays in place, byte for byte.
 func TestStateApplyRecordWriteFails(t *testing.T) {
-	if os.Geteuid() == 0 {
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
 		t.Skip("root ignores directory permissions")
 	}
 	f := loadFixture(t, "dev-minimal")
