@@ -1,6 +1,7 @@
 package mount
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -83,12 +84,14 @@ func TestDiscoverV1QuietInV15(t *testing.T) {
 	}
 	cmd := exec.Command(exe, "-test.run=^TestDiscoverV1QuietInV15$")
 	cmd.Env = append(os.Environ(), "NSELF_V15=1", "NSELF_MOUNT_V1_CHILD="+d)
-	output, err := cmd.CombinedOutput()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("child: %v: %s", err, output)
+		t.Fatalf("child: %v: stdout=%q stderr=%q", err, output, stderr.String())
 	}
-	if string(output) != "PASS\n" {
-		t.Fatalf("child output=%q", output)
+	if !bytes.HasPrefix(output, []byte("PASS\n")) || stderr.Len() != 0 {
+		t.Fatalf("child stdout=%q stderr=%q", output, stderr.String())
 	}
 }
 
