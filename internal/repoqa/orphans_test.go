@@ -20,7 +20,6 @@ var orphanBasis = map[string]bool{
 	"internal/controlplane/sim": true,
 	"internal/cost":             true,
 	"internal/domain":           true,
-	"internal/infra":            true,
 	"internal/installmeta":      true,
 	"internal/model":            true,
 	"internal/plugin/lifecycle": true,
