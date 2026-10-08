@@ -52,6 +52,7 @@ With `NSELF_V15=1` (the default from v1.5.0), `config show`, `config get` and `c
 <!-- BEGIN GENERATED:subcommands -->
 | Name | Description |
 |------|-------------|
+| `bundles` | Manage and inspect ɳSelf plugin bundles |
 | `env` | Multi-environment management: switch, list, diff, copy |
 | `export` | Export current config to a file or stdout |
 | `features` | Manage CLI-built-in feature flags |
@@ -59,6 +60,7 @@ With `NSELF_V15=1` (the default from v1.5.0), `config show`, `config get` and `c
 | `import` | Import config from a file into .env |
 | `list` | List all known config keys with current values |
 | `oauth` | Manage OAuth provider tokens |
+| `plugins` | Manage ɳSelf plugins |
 | `secrets` | Manage encrypted project secrets (age encryption) |
 | `services` | Manage optional services |
 | `set` | Update a configuration value (writes to .env) |

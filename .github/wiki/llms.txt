@@ -14,7 +14,34 @@ nself build   # generate docker-compose + nginx
 nself start   # boot the stack
 ```
 
-## Commands (34)
+## Commands (32)
+
+### nself add
+
+Install a plugin or bundle
+
+```
+nself add <name> [name...] [flags]
+```
+
+Flags:
+
+- `--allow-eol` (default false) — Allow installing an EOL plugin (not recommended)
+- `--channel` (default stable) — Release channel: stable | beta | canary
+- `--checksum` (default "") — Expected SHA-256 checksum of the downloaded archive (third-party URL installs only)
+- `--dry-run` (default false) — Show what would be installed without making changes
+- `--force` (default false) — Reinstall even when the plugin is already present
+- `--key` (default "") — License key for pro plugins
+- `--preview` (default false) — Preview the dependency tree without installing
+- `--show-graph` (default false) — Show dependency graph with topological sort order
+- `--skip-sbom-check` (default false) — Skip SBOM verification (air-gapped installs only — sets NSELF_SKIP_SBOM_CHECK=1)
+- `--strict` (default false) — Fail if any plugin in the bundle is missing from the registry
+- `--tier` (default "") — Force "free" or "pro" for a slug served as both (e.g. cron, notify); default resolves by license entitlement
+- `--version` (default "") — Install a specific version
+- `--with-optional` (default false) — Include optional dependencies in --preview output
+- `--yes` (default false) — Skip confirmation prompts (required for third-party URL installs in CI)
+
+Full page: [[cmd-add]]
 
 ### nself admin
 
@@ -98,23 +125,6 @@ Overrides NSELF_PROFILE env var. Valid values: app, ops.
 
 Full page: [[cmd-build]]
 
-### nself bundle
-
-Manage and inspect nSelf plugin bundles
-
-```
-nself bundle <subcommand> [flags]
-```
-
-Subcommands:
-
-- `info` — Show bundle details, plugins, and license status
-- `install` — Install every plugin in a bundle (license-gated, atomic rollback on failure)
-- `list` — List all available nSelf plugin bundles
-- `remove` — Remove every plugin in a bundle
-
-Full page: [[cmd-bundle]]
-
 ### nself ci
 
 Run the nself-ci gate suite and post a GitHub commit status
@@ -178,6 +188,7 @@ nself config <subcommand> [flags]
 
 Subcommands:
 
+- `bundles` — Manage and inspect nSelf plugin bundles
 - `env` — Multi-environment management: switch, list, diff, copy
 - `export` — Export current config to a file or stdout
 - `features` — Manage CLI-built-in feature flags
@@ -185,6 +196,7 @@ Subcommands:
 - `import` — Import config from a file into .env
 - `list` — List all known config keys with current values
 - `oauth` — Manage OAuth provider tokens
+- `plugins` — Manage nSelf plugins
 - `secrets` — Manage encrypted project secrets (age encryption)
 - `services` — Manage optional services
 - `set` — Update a configuration value (writes to .env)
@@ -427,21 +439,6 @@ Flags:
 
 Full page: [[cmd-init]]
 
-### nself install
-
-Install a plugin or bundle
-
-```
-nself install <name> [name...] [flags]
-```
-
-Flags:
-
-- `--force` (default false) — Reinstall even when the plugin is already present
-- `--yes` (default false) — Skip confirmation prompts (required for third-party URL installs in CI)
-
-Full page: [[cmd-install]]
-
 ### nself license
 
 Manage license keys for nSelf product bundles
@@ -538,47 +535,6 @@ Flags:
 
 Full page: [[cmd-mcp]]
 
-### nself plugin
-
-Manage nSelf plugins
-
-```
-nself plugin <subcommand> [flags]
-```
-
-Subcommands:
-
-- `audit-tables` — Audit np_* table row counts and multi-tenant isolation compliance
-- `compat-check` — Check installed plugins against the current CLI version
-- `count` — Show the authoritative plugin counts (free, pro, advertised)
-- `debug` — Attach a dlv debugger to a running plugin process
-- `dev` — Start a plugin in development mode with hot-reload
-- `disable` — Disable a plugin (excluded from compose on next build)
-- `enable` — Re-enable a previously disabled plugin
-- `info` — Show detailed plugin information
-- `init` — Scaffold a new plugin project
-- `install` — Install one or more plugins (license check for pro); a plugin arg may be a name or an https:// URL
-- `inventory` — List installed plugins with version, tier, and status
-- `link` — Register a local plugin directory as a shadow override
-- `list` — List available and installed plugins
-- `logs` — Tail logs from a plugin container
-- `marketplace` — Browse the nSelf plugin marketplace
-- `new` — Scaffold a new plugin project (deprecated: use 'init')
-- `outdated` — List installed plugins with a newer version available
-- `refresh` — Force refresh the registry cache
-- `remove` — Remove a plugin
-- `search` — Search plugins by name, description, or tag
-- `start` — Start a plugin service
-- `status` — Show plugin status
-- `stop` — Stop a plugin service
-- `submit` — Validate a plugin for submission to the registry
-- `test` — Run a plugin's test suite (unit + smoke install/uninstall)
-- `unlink` — Remove a local plugin shadow, restoring the registry version
-- `update` — Update a specific plugin or all plugins
-- `updates` — Check for available plugin updates
-
-Full page: [[cmd-plugin]]
-
 ### nself remove
 
 Remove an installed plugin or bundle
@@ -589,6 +545,9 @@ nself remove <name> [flags]
 
 Flags:
 
+- `--dry-run` (default false) — Print the planned actions without removing
+- `--force` (default false) — Remove even if other plugins depend on this one
+- `--keep-data` (default false) — Preserve database data on remove
 - `--yes` (default false) — Skip confirmation prompts
 
 Full page: [[cmd-remove]]

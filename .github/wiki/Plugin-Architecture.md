@@ -188,6 +188,12 @@ After removing a plugin, run `nself build` and `nself restart` to apply the chan
 
 ## Plugin command mount (contract v1)
 
+### Extension verbs
+
+In v1.5, `nself add <plugin>` and `nself remove <plugin>` are the short extension commands. `nself install` moves to `nself add`; `nself plugin install` and `nself plugin remove` remain deprecated shims. Plugin management lives under `nself config plugins`, and bundle management lives under `nself config bundles`. `nself config bundles install` keeps the bundle installer and its atomic rollback. A fresh `nself add <bundle>` may resolve the name as a plugin before bundle data loads, so it is not a replacement for bundle install (D-0268).
+
+The same verbs enable and disable a builtin family: `nself remove <builtin>` creates its `.disabled` marker, and `nself add <builtin>` removes it. A disabled family returns E407 with the add command as the recovery hint. After a successful plugin add, v1.5 prints `Next: nself <command> --help` when the installed manifest declares a command. This hint is absent in v1.4.
+
 `contract:cli.plugin-command-mount v1` (EPIC P7-CANON D6/D12/D15/D19/D20/D21): an installed, enabled plugin whose manifest declares a `commands` block is mounted as a real `nself <command> …` subtree, so plugin commands show up in help, `help --json`, the command registry and every surface generated from it.
 
 - **Declaration** (manifest v2, owned by the plugin contract): `commands: {command, binary, subcommands: [{name, summary, side_effect, output, json, args, flags, confirm, surface}]}`. `command` matches `^[a-z][a-z0-9-]*$` and is not one of the ADR 0016 core verbs; `binary` matches `^nself-[a-z][a-z0-9-]*$`; a subcommand `name` is one or more space-separated segments, each matching the segment pattern (nested paths such as `server list`). Optional root fields `summary`, `side_effect`, `output`, `json` default to `side_effect: destructive` and `json: none` when absent. A v1 manifest (`pluginType: cli` with `binaryName`/`cliCommands`) normalises to the same block and mounts the same subtree.

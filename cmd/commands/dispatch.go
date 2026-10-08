@@ -131,6 +131,11 @@ func Execute() error {
 			}
 
 			if !isKnown {
+				for _, family := range builtinFamilies {
+					if family.slug == cmdName && !builtinEnabled(cmdName) {
+						return errs.New("E407", fmt.Sprintf("builtin family %q is disabled", cmdName)).WithFix("Run nself add " + cmdName + " to restore it.")
+					}
+				}
 				// A command that left core for a plugin (CLI-R11) still has a
 				// deprecation registry entry naming where it went. cobra never
 				// sees the invocation — it is not a registered command — so

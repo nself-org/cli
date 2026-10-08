@@ -10,9 +10,12 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 |---|---|---|---|---|
 | `nself access` | `nself deploy access` | move | v1.5.0 | v1.6.0 |
 | `nself account` | `nself license account` | move | v1.5.0 | v1.6.0 |
+| `nself bundle` | `nself config bundles` | move | v1.5.0 | v1.6.0 |
+| `nself bundle remove` | `nself remove` | shim | v1.5.0 | v1.6.0 |
 | `nself dev` | `nself start dev` | move | v1.5.0 | v1.6.0 |
 | `nself env` | `nself config env` | move | v1.5.0 | v1.6.0 |
 | `nself generate` | `nself db generate` | move | v1.5.0 | v1.6.0 |
+| `nself install` | `nself add` | move | v1.5.0 | v1.6.0 |
 | `nself login` | `nself license login` | move | v1.5.0 | v1.6.0 |
 | `nself logout` | `nself license logout` | move | v1.5.0 | v1.6.0 |
 | `nself migrate` | `nself db` | retired-hub | v1.5.0 | v1.6.0 |
@@ -28,6 +31,9 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 | `nself oauth` | `nself config oauth` | move | v1.5.0 | v1.6.0 |
 | `nself ops` | `nself deploy ops` | retired-hub | v1.5.0 | v1.6.0 |
 | `nself ops deploy` | `nself deploy ops` | move | v1.5.0 | v1.6.0 |
+| `nself plugin` | `nself config plugins` | move | v1.5.0 | v1.6.0 |
+| `nself plugin install` | `nself add` | shim | v1.5.0 | v1.6.0 |
+| `nself plugin remove` | `nself remove` | shim | v1.5.0 | v1.6.0 |
 | `nself promote` | `nself deploy promote-env` | move | v1.5.0 | v1.6.0 |
 | `nself secrets` | `nself config secrets` | move | v1.5.0 | v1.6.0 |
 | `nself security` | `nself doctor security` | retired-hub | v1.5.0 | v1.6.0 |
@@ -40,7 +46,7 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 | `nself trust` | `nself config trust` | move | v1.5.0 | v1.6.0 |
 | `nself verify-sbom` | `nself update verify-sbom` | move | v1.5.0 | v1.6.0 |
 
-Total rows: 31
+Total rows: 37
 
 <!-- END GENERATED:canon-table -->
 

@@ -74,8 +74,23 @@ func init() {
 	// surfaces cannot drift apart in what they accept.
 	installCmd.Flags().Bool("yes", false, "Skip confirmation prompts (required for third-party URL installs in CI)")
 	installCmd.Flags().Bool("force", false, "Reinstall even when the plugin is already present")
+	installCmd.Flags().String("key", "", "License key for pro plugins")
+	installCmd.Flags().String("tier", "", `Force "free" or "pro" for a slug served as both (e.g. cron, notify); default resolves by license entitlement`)
+	installCmd.Flags().String("version", "", "Install a specific version")
+	installCmd.Flags().Bool("allow-eol", false, "Allow installing an EOL plugin (not recommended)")
+	installCmd.Flags().Bool("preview", false, "Preview the dependency tree without installing")
+	installCmd.Flags().Bool("with-optional", false, "Include optional dependencies in --preview output")
+	installCmd.Flags().Bool("skip-sbom-check", false, "Skip SBOM verification (air-gapped installs only — sets NSELF_SKIP_SBOM_CHECK=1)")
+	installCmd.Flags().Bool("dry-run", false, "Show what would be installed without making changes")
+	installCmd.Flags().Bool("show-graph", false, "Show dependency graph with topological sort order")
+	installCmd.Flags().String("checksum", "", "Expected SHA-256 checksum of the downloaded archive (third-party URL installs only)")
+	installCmd.Flags().Bool("strict", false, "Fail if any plugin in the bundle is missing from the registry")
+	installCmd.Flags().String("channel", "stable", "Release channel: stable | beta | canary")
 
 	removeCmd.Flags().Bool("yes", false, "Skip confirmation prompts")
+	removeCmd.Flags().Bool("keep-data", false, "Preserve database data on remove")
+	removeCmd.Flags().Bool("force", false, "Remove even if other plugins depend on this one")
+	removeCmd.Flags().Bool("dry-run", false, "Print the planned actions without removing")
 
 	RootCmd.AddCommand(installCmd)
 	RootCmd.AddCommand(removeCmd)
@@ -91,6 +106,9 @@ func resolvesToBundle(name string) bool {
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
+	if handled, err := toggleBuiltin(args, true); handled {
+		return err
+	}
 	var bundles, plugins []string
 	for _, name := range args {
 		if resolvesToBundle(name) {
@@ -111,11 +129,20 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		if err := runPluginInstall(cmd, plugins); err != nil {
 			return err
 		}
+		preview, _ := cmd.Flags().GetBool("preview")
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+		showGraph, _ := cmd.Flags().GetBool("show-graph")
+		if !preview && !dryRun && !showGraph {
+			printAddedCommandHints(plugins)
+		}
 	}
 	return nil
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
+	if handled, err := toggleBuiltin(args, false); handled {
+		return err
+	}
 	name := args[0]
 
 	if resolvesToBundle(name) {
