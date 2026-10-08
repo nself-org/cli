@@ -63,17 +63,18 @@ func Discover(pluginDir string, verbs []string) ([]Spec, []Problem) {
 // discoverOne reads one plugin's manifest. A nil Spec and nil Problem means
 // the plugin declares no commands block, so there is nothing to mount.
 func discoverOne(dir, slug string, verbs []string) (*Spec, *Problem) {
-	data, err := os.ReadFile(filepath.Join(dir, slug, "plugin.json"))
-	if err != nil {
+	path := filepath.Join(dir, slug, "plugin.json")
+	if _, err := os.Stat(path); err != nil {
 		// A directory without plugin.json is not a CLI plugin.
 		return nil, nil
 	}
-	// The quiet parse: manifestv2.Load would print the once-per-process v1
-	// deprecation notice in v1.5 mode, and mounting runs on every
-	// invocation, so the notice would differ from the old proxy run.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, &Problem{Code: codeOf(err), Slug: slug, Message: fmt.Errorf("reading plugin manifest: %w", err).Error()}
+	}
 	m, err := manifestv2.ParseQuiet(data)
 	if err != nil {
-		return nil, &Problem{Code: codeOf(err), Slug: slug, Message: err.Error()}
+		return nil, &Problem{Code: codeOf(err), Slug: slug, Message: fmt.Errorf("%s: %w", path, err).Error()}
 	}
 	c := m.Commands
 	if c == nil {

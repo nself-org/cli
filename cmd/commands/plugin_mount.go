@@ -183,6 +183,8 @@ func installedNode(s mount.Spec) *cobra.Command {
 			node, ok := byPath[key]
 			if !ok {
 				node = &cobra.Command{Use: seg, DisableFlagParsing: true}
+				annotate(node, s.Slug, sourceInstalled, "", "", "", nil, nil, nil, "")
+				proxyRunE(node, s, strings.Fields(key))
 				parent.AddCommand(node)
 				byPath[key] = node
 			}
@@ -249,38 +251,8 @@ func warnMountProblems(problems []mount.Problem) {
 		return
 	}
 	for _, p := range problems {
-		fmt.Fprintf(os.Stderr, "warning: %s\n", strings.TrimPrefix(p.Message, "["))
+		message := strings.TrimPrefix(p.Message, "["+p.Code+"] ")
+		fmt.Fprintf(os.Stderr, "warning: [%s] %s\n", p.Code, message)
 	}
 	mountWarned = true
-}
-
-// mountBuiltinFamiliesFromList is the prepareTree hook for builtin families:
-// every family without a disable marker is mounted, in every prepareTree
-// call (generators included).
-func mountBuiltinFamiliesFromList(root *cobra.Command) {
-	for _, f := range builtinFamilies {
-		if !builtinEnabled(f.slug) {
-			continue
-		}
-		node := f.build()
-		if node == nil {
-			continue
-		}
-		a := node.Annotations
-		if a == nil {
-			a = map[string]string{}
-			node.Annotations = a
-		}
-		a[mount.AnnPlugin] = f.slug
-		a[mount.AnnSource] = sourceBuiltin
-		root.AddCommand(node)
-	}
-}
-
-// mountBuiltin mounts one family list (test seam over the hook).
-func mountBuiltin(root *cobra.Command, families []builtinFamily) {
-	saved := builtinFamilies
-	builtinFamilies = families
-	defer func() { builtinFamilies = saved }()
-	mountBuiltinFamiliesFromList(root)
 }

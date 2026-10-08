@@ -22,6 +22,7 @@ package cmdregistry
 //	annotated nodes, which the file validator cannot see).
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/nself-org/cli/internal/canon"
@@ -36,6 +37,8 @@ const (
 	annSideKey      = "nself.side_effect"
 	annOutputKey    = "nself.output"
 	annJSONKey      = "nself.json"
+	annArgsKey      = "nself.args"
+	annFlagsKey     = "nself.flags"
 	sourceInstalled = "installed"
 	sourceBuiltin   = "builtin"
 )
@@ -80,8 +83,8 @@ func buildInstalledCommand(cmd *cobra.Command) Command {
 		Aliases:    []string{},
 		Group:      strPtr(cmd.GroupID),
 		Runnable:   cmd.Run != nil || cmd.RunE != nil,
-		Args:       []Arg{},
-		Flags:      localFlags(cmd),
+		Args:       pluginArgs(a[annArgsKey]),
+		Flags:      pluginFlags(a[annFlagsKey]),
 		Canon:      canon.CanonPlugin,
 		Plugin:     &slug,
 		SideEffect: ann(annSideKey, canon.SideEffectDestructive),
@@ -89,6 +92,55 @@ func buildInstalledCommand(cmd *cobra.Command) Command {
 		JSON:       ann(annJSONKey, canon.JSONNone),
 		ExitCodes:  map[string]string{},
 	}
+}
+
+func pluginArgs(raw string) []Arg {
+	out := []Arg{}
+	if raw == "" {
+		return out
+	}
+	var declared []struct {
+		Name     string `json:"name"`
+		Required bool   `json:"required"`
+		Variadic bool   `json:"variadic"`
+	}
+	if json.Unmarshal([]byte(raw), &declared) != nil {
+		return out
+	}
+	for _, a := range declared {
+		out = append(out, Arg{Name: a.Name, Required: a.Required, Variadic: a.Variadic})
+	}
+	return out
+}
+
+func pluginFlags(raw string) []Flag {
+	out := []Flag{}
+	if raw == "" {
+		return out
+	}
+	var declared []struct {
+		Name       string `json:"name"`
+		Shorthand  string `json:"shorthand"`
+		Type       string `json:"type"`
+		Default    string `json:"default"`
+		Usage      string `json:"usage"`
+		Env        string `json:"env"`
+		SideEffect string `json:"side_effect"`
+		JSON       string `json:"json"`
+		Output     string `json:"output"`
+		Hidden     bool   `json:"hidden"`
+		Required   bool   `json:"required"`
+		Persistent bool   `json:"persistent"`
+	}
+	if json.Unmarshal([]byte(raw), &declared) != nil {
+		return out
+	}
+	for _, f := range declared {
+		out = append(out, Flag{Name: f.Name, Shorthand: strPtr(f.Shorthand), Type: f.Type, Default: f.Default,
+			Usage: f.Usage, Hidden: f.Hidden, Required: f.Required, Persistent: f.Persistent,
+			Env: strPtr(f.Env), SideEffect: strPtr(f.SideEffect), JSON: strPtr(f.JSON), Output: strPtr(f.Output)})
+	}
+	return out
 }
 
 // pluginReservation is the exact file-level problem canon.Validate reports

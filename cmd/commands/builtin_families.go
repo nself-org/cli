@@ -13,7 +13,7 @@ package commands
 //
 // Outputs:     builtinFamilies (empty until P7-CANON-19 adds admin) and the
 //
-//	test hook registerBuiltinFamily.
+//	mountBuiltin test seam.
 //
 // Constraints: builtin families keep root's PersistentPreRunE (D20); a
 //
@@ -22,6 +22,7 @@ package commands
 
 import (
 	"github.com/nself-org/cli/internal/plugin"
+	"github.com/nself-org/cli/internal/plugin/mount"
 	"github.com/spf13/cobra"
 )
 
@@ -38,23 +39,49 @@ type builtinFamily struct {
 // markers) so the committed registry contains admin and no installed plugin.
 var builtinFamilies []builtinFamily
 
-// registerBuiltinFamily is the test hook: it registers a fixture family for
-// the duration of one test and returns its undo.
-func registerBuiltinFamily(f builtinFamily) (undo func()) {
-	builtinFamilies = append(builtinFamilies, f)
-	return func() {
-		for i, e := range builtinFamilies {
-			if e.slug == f.slug {
-				builtinFamilies = append(builtinFamilies[:i], builtinFamilies[i+1:]...)
-				return
-			}
-		}
-	}
-}
-
 // builtinEnabled reports whether a builtin family is mounted: the plugin
 // disable marker (<pluginDir>/<slug>/.disabled) is the shared off switch
 // between installed plugins and builtin families (D19).
 func builtinEnabled(slug string) bool {
 	return !plugin.IsDisabled(slug, resolvePluginDir())
+}
+
+// mountBuiltinFamiliesFromList mounts builtin families in runtime and generator
+// trees. Every descendant receives the plugin identity; its canon attributes
+// remain declared in the fragment rather than copied from the mount.
+func mountBuiltinFamiliesFromList(root *cobra.Command) {
+	for _, f := range builtinFamilies {
+		if !builtinEnabled(f.slug) {
+			continue
+		}
+		node := f.build()
+		if node == nil {
+			continue
+		}
+		annotateBuiltin(node, f.slug)
+		if node.GroupID == "" {
+			node.GroupID = groupPlugins
+		}
+		ensurePluginsGroup(root)
+		root.AddCommand(node)
+	}
+}
+
+func annotateBuiltin(node *cobra.Command, slug string) {
+	if node.Annotations == nil {
+		node.Annotations = map[string]string{}
+	}
+	node.Annotations[mount.AnnPlugin] = slug
+	node.Annotations[mount.AnnSource] = sourceBuiltin
+	for _, child := range node.Commands() {
+		annotateBuiltin(child, slug)
+	}
+}
+
+// mountBuiltin mounts one family list (test seam over the hook).
+func mountBuiltin(root *cobra.Command, families []builtinFamily) {
+	saved := builtinFamilies
+	builtinFamilies = families
+	defer func() { builtinFamilies = saved }()
+	mountBuiltinFamiliesFromList(root)
 }

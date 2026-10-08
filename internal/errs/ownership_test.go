@@ -26,8 +26,8 @@ func TestOwnership_Mutations(t *testing.T) {
 		{"spare number E062 (TRUTH spare)", "codes_compat.go", "E062", true},
 		{"free number E140", "codes_catalog.go", "E140", true},
 		{"free number E006 in docker block", "codes_docker.go", "E006", true},
-		{"existing fragment grows past its range", "codes_cli.go", "E405", true},
-		{"cli codes from the wrong fragment", "codes_docker.go", "E406", true},
+		{"existing fragment grows past its range", "codes_cli.go", "E408", true},
+		{"cli codes from the wrong fragment", "codes_docker.go", "E409", true},
 		{"spare E440 in cli block", "codes_cli.go", "E440", true},
 		{"adopt owner registers shared-proxy code", "codes_shared_proxy.go", "E503", false},
 	} {

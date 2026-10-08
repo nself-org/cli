@@ -201,6 +201,12 @@
           "path": {
             "type": "string"
           },
+          "plugin": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "runnable": {
             "type": "boolean"
           },
@@ -272,6 +278,9 @@
           "type": "integer"
         },
         "pending": {
+          "type": "integer"
+        },
+        "plugin": {
           "type": "integer"
         },
         "top_level": {

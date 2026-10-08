@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -103,14 +104,77 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 // a binary that vanishes between discovery and exec fails with E406 here.
 func ProxyBinary(binName, slug string, args []string) error {
 	binDir := pluginBinDir()
-	candidate := filepath.Join(binDir, binName)
-	if runtime.GOOS == "windows" {
-		candidate += ".exe"
+	if !safeBinaryName(binName) {
+		return errs.Newf("E406", "plugin %q binary %q has an invalid name", slug, binName)
 	}
-	if _, err := os.Stat(candidate); err != nil {
+	root, err := os.OpenRoot(filepath.Dir(binDir))
+	if err != nil {
+		return errs.Newf("E406", "plugin %q binary directory is unavailable", slug)
+	}
+	defer func() { _ = root.Close() }()
+	fileName := binName
+	if runtime.GOOS == "windows" {
+		fileName += ".exe"
+	}
+	f, err := root.Open(filepath.Join("bin", fileName))
+	if err != nil {
 		return errs.Newf("E406", "plugin %q binary %q is not present in %s; reinstall it with nself add %s", slug, binName, binDir, slug)
 	}
-	return execPluginBinary(candidate, slug, args)
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0111 == 0) {
+		return errs.Newf("E406", "plugin %q binary %q is not executable", slug, binName)
+	}
+	if runtime.GOOS == "windows" {
+		return execPluginBinary(filepath.Join(binDir, fileName), slug, args)
+	}
+	if runtime.GOOS == "darwin" {
+		return execPinnedBinary(f, filepath.Join(binDir, fileName), slug, args)
+	}
+	return execPluginBinaryFile(f, filepath.Join(binDir, fileName), slug, args)
+}
+
+// execPinnedBinary creates a private hard link to the opened executable on
+// macOS, where /dev/fd cannot be passed to execve. Comparing inode identity
+// after linking catches a replacement between the rooted open and the link.
+func execPinnedBinary(f *os.File, candidate, slug string, args []string) error {
+	dir, err := os.MkdirTemp(filepath.Dir(filepath.Dir(candidate)), ".mount-")
+	if err != nil {
+		return errs.Newf("E406", "plugin %q binary could not be pinned: %v", slug, err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return errs.Newf("E406", "plugin %q binary changed before execution", slug)
+	}
+	pinned := filepath.Join(dir, filepath.Base(candidate))
+	if err := os.Link(resolved, pinned); err != nil {
+		return errs.Newf("E406", "plugin %q binary could not be pinned: %v", slug, err)
+	}
+	opened, err := f.Stat()
+	if err != nil {
+		return errs.Newf("E406", "plugin %q binary changed before execution", slug)
+	}
+	linked, err := os.Stat(pinned)
+	if err != nil || !os.SameFile(opened, linked) {
+		return errs.Newf("E406", "plugin %q binary changed before execution", slug)
+	}
+	return execPluginBinary(pinned, slug, args)
+}
+
+func safeBinaryName(name string) bool {
+	if !strings.HasPrefix(name, "nself-") || len(name) <= len("nself-") {
+		return false
+	}
+	if name[len("nself-")] < 'a' || name[len("nself-")] > 'z' {
+		return false
+	}
+	for _, r := range name[len("nself-"):] {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // execPluginBinary is the shared run of a plugin binary: inherited stdio, the
@@ -125,6 +189,20 @@ func execPluginBinary(path, slug string, args []string) error {
 	// not in a container compose has populated — and would have to re-implement
 	// the cascade that CLI-R18 made canonical.
 	cmd := exec.Command(path, args...)
+	return runPluginCommand(cmd, slug)
+}
+
+// execPluginBinaryFile executes the already validated open file descriptor.
+// The child inherits fd 3, so replacing the bin symlink after validation
+// cannot change which executable runs.
+func execPluginBinaryFile(f *os.File, displayPath, slug string, args []string) error {
+	cmd := exec.Command("/dev/fd/3", args...)
+	cmd.Args[0] = displayPath
+	cmd.ExtraFiles = []*os.File{f}
+	return runPluginCommand(cmd, slug)
+}
+
+func runPluginCommand(cmd *exec.Cmd, slug string) error {
 	if extra := pluginEnvForCommand(slug); len(extra) > 0 {
 		cmd.Env = append(os.Environ(), extra...)
 	}
