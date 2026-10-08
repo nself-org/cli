@@ -379,7 +379,7 @@
       "hidden": false,
       "deprecated": null,
       "aliases": [],
-      "group": "account",
+      "group": "plugins",
       "runnable": true,
       "args": [
         {
@@ -389,7 +389,8 @@
         }
       ],
       "flags": [],
-      "canon": "pending",
+      "canon": "plugin",
+      "plugin": "admin",
       "target": null,
       "side_effect": "read",
       "output": "document",
@@ -506,7 +507,8 @@
           "output": null
         }
       ],
-      "canon": "subcommand",
+      "canon": "plugin",
+      "plugin": "admin",
       "target": null,
       "side_effect": "remote",
       "output": "stream",
@@ -526,7 +528,8 @@
       "runnable": true,
       "args": [],
       "flags": [],
-      "canon": "subcommand",
+      "canon": "plugin",
+      "plugin": "admin",
       "target": null,
       "side_effect": "read",
       "output": "document",
@@ -577,7 +580,8 @@
           "output": null
         }
       ],
-      "canon": "subcommand",
+      "canon": "plugin",
+      "plugin": "admin",
       "target": null,
       "side_effect": "read",
       "output": "stream",
@@ -597,7 +601,8 @@
       "runnable": true,
       "args": [],
       "flags": [],
-      "canon": "subcommand",
+      "canon": "plugin",
+      "plugin": "admin",
       "target": null,
       "side_effect": "read",
       "output": "document",
@@ -678,7 +683,8 @@
           "output": null
         }
       ],
-      "canon": "subcommand",
+      "canon": "plugin",
+      "plugin": "admin",
       "target": null,
       "side_effect": "write",
       "output": "document",
@@ -714,7 +720,8 @@
           "output": null
         }
       ],
-      "canon": "subcommand",
+      "canon": "plugin",
+      "plugin": "admin",
       "target": null,
       "side_effect": "read",
       "output": "document",
@@ -740,7 +747,8 @@
         }
       ],
       "flags": [],
-      "canon": "subcommand",
+      "canon": "plugin",
+      "plugin": "admin",
       "target": null,
       "side_effect": "write",
       "output": "document",
@@ -776,7 +784,8 @@
           "output": null
         }
       ],
-      "canon": "subcommand",
+      "canon": "plugin",
+      "plugin": "admin",
       "target": null,
       "side_effect": "write",
       "output": "document",
@@ -812,7 +821,8 @@
           "output": null
         }
       ],
-      "canon": "subcommand",
+      "canon": "plugin",
+      "plugin": "admin",
       "target": null,
       "side_effect": "write",
       "output": "document",
@@ -18703,10 +18713,11 @@
   ],
   "counts": {
     "commands": 371,
-    "top_level": 25,
+    "top_level": 24,
     "core": 20,
-    "pending": 5,
+    "pending": 4,
     "deprecated_shims": 43,
+    "plugin": 10,
     "core_missing": [],
     "json_envelope": 7,
     "json_legacy": 48
