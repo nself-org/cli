@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,26 @@ case "$1" in
     case "$NEXTSTEP_DOCKER" in service) echo healthy;; *) echo 'No such object' >&2; exit 1;; esac;;
   *) exit 2;;
 esac
+`
+
+const nextStepDockerWindowsStub = `@echo off
+if "%~1"=="info" (
+  if "%NEXTSTEP_DOCKER%"=="down" exit /b 1
+  if "%NEXTSTEP_DOCKER%"=="slow" powershell -NoProfile -Command "Start-Sleep -Seconds 10"
+  echo 1.0
+  exit /b 0
+)
+if "%~1"=="compose" (
+  if "%NEXTSTEP_DOCKER%"=="built" echo []
+  if "%NEXTSTEP_DOCKER%"=="running" echo [{"Service":"postgres","Health":"healthy"},{"Service":"hasura","Health":"healthy"},{"Service":"auth","Health":"healthy"},{"Service":"nginx","Health":"healthy"}]
+  if "%NEXTSTEP_DOCKER%"=="unhealthy" echo [{"Service":"postgres","Health":"unhealthy"},{"Service":"hasura","Health":"healthy"},{"Service":"auth","Health":"healthy"},{"Service":"nginx","Health":"healthy"}]
+  exit /b 0
+)
+if "%~1"=="inspect" (
+  if "%NEXTSTEP_DOCKER%"=="service" echo healthy
+  exit /b 0
+)
+exit /b 2
 `
 
 func nextStepFixture(t *testing.T, stage string) {
@@ -55,7 +76,11 @@ func nextStepFixture(t *testing.T, stage string) {
 	if err := os.Mkdir(bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(nextStepDockerStub), 0o755); err != nil {
+	stubName, stubBody := "docker", nextStepDockerStub
+	if runtime.GOOS == "windows" {
+		stubName, stubBody = "docker.cmd", nextStepDockerWindowsStub
+	}
+	if err := os.WriteFile(filepath.Join(bin, stubName), []byte(stubBody), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
