@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	nbuild "github.com/nself-org/cli/internal/build"
@@ -41,8 +42,9 @@ func TestStateFaultInjection(t *testing.T) {
 		t.Fatal("expected generated-state record to be intact (nil/missing)")
 	}
 
-	// Next plan reports it as changed, not hand-edited
-	req.HandEdited = func(path string) bool { return false } // Default when state is nil
+	// Next plan reports it as changed, not hand-edited: the callback is the
+	// real one Apply builds from the (absent) record.
+	req.HandEdited = state.HandEditedFn(f.project)
 	p, err := Compute(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -123,5 +125,96 @@ func TestHandEditedFnReadFailures(t *testing.T) {
 	}
 	if !fn("docker-compose.yml") {
 		t.Fatal("an unreadable recorded path (a directory) must fail closed as hand-edited")
+	}
+}
+
+// TestStateFaultInjectionWithRecord: with a record already present, an apply
+// killed after its file writes but before the record leaves generated.json
+// byte-identical, and the next plan (real callback over that record) reports
+// no hand-edits: files nself wrote equal what the plan would write, so they
+// are not write targets. A file torn mid-write is a different case: its bytes
+// match neither side, and it is reported hand-edited (fail closed, --force).
+func TestStateFaultInjectionWithRecord(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	req := Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("seed")}
+	if _, err := Apply(context.Background(), req, ApplyOptions{Yes: true}); err != nil {
+		t.Fatal(err)
+	}
+	rec0, err := os.ReadFile(GeneratedStatePath(f.project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	envPath := filepath.Join(f.project, ".env")
+	env, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := strings.Replace(string(env), "BASE_DOMAIN=example.test", "BASE_DOMAIN=changed.test", 1)
+	if changed == string(env) {
+		t.Fatal("fixture .env has no BASE_DOMAIN=example.test line to change")
+	}
+	if err := os.WriteFile(envPath, []byte(changed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	oldBuild := buildBuild
+	t.Cleanup(func() { buildBuild = oldBuild })
+	buildBuild = func(projectDir string, opts nbuild.BuildOptions) (*nbuild.BuildResult, error) {
+		if _, err := oldBuild(projectDir, opts); err != nil {
+			return nil, err
+		}
+		return nil, errors.New("injected kill after the writes, before the record")
+	}
+	if _, err := Apply(context.Background(), req, ApplyOptions{Yes: true}); err == nil {
+		t.Fatal("expected the injected apply to fail")
+	}
+	buildBuild = oldBuild
+
+	rec1, err := os.ReadFile(GeneratedStatePath(f.project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(rec1) != string(rec0) {
+		t.Fatal("an interrupted apply must leave the record byte-identical")
+	}
+	state, err := LoadGeneratedState(f.project)
+	if err != nil || state == nil {
+		t.Fatalf("record must load after the interrupted apply: %v", err)
+	}
+	req.HandEdited = state.HandEditedFn(f.project)
+	p, err := Compute(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hand := HandEditedPaths(*p); len(hand) > 0 {
+		t.Fatalf("files nself itself wrote must not read as hand-edited, got %v", hand)
+	}
+}
+
+// TestStateDanglingLinks: a dangling symlink in place of the record is an
+// error, not a first run; in place of a recorded file it counts as
+// hand-edited.
+func TestStateDanglingLinks(t *testing.T) {
+	dir := t.TempDir()
+	p := GeneratedStatePath(dir)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "nowhere.json"), p); err != nil {
+		t.Fatal(err)
+	}
+	if s, err := LoadGeneratedState(dir); err == nil {
+		t.Fatalf("a dangling record link must be refused, got %+v", s)
+	}
+	s := &GeneratedState{Files: map[string]string{"docker-compose.yml": strings.Repeat("0", 64)}}
+	if err := os.Symlink(filepath.Join(dir, "gone.yml"), filepath.Join(dir, "docker-compose.yml")); err != nil {
+		t.Fatal(err)
+	}
+	if !s.HandEditedFn(dir)("docker-compose.yml") {
+		t.Fatal("a dangling link in place of a recorded file must count as hand-edited")
+	}
+	var none *GeneratedState
+	if none.HandEditedFn(dir)("docker-compose.yml") {
+		t.Fatal("no record means nothing is hand-edited")
 	}
 }

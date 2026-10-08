@@ -68,13 +68,20 @@ func (s *GeneratedState) HandEditedFn(projectDir string) func(path string) bool 
 		if err != nil {
 			// A deleted generated file holds no bytes to lose: the build
 			// recreates it (D5: hand-edited means current sha != recorded).
-			// Any other read failure (permission, a directory or socket in the
-			// file's place) cannot prove the file is untouched, so it counts
-			// as hand-edited and the v1.5 refusal applies: fail closed.
-			if errors.Is(err, fs.ErrNotExist) {
+			// Any other read failure (permission, a directory, a dangling
+			// symlink in the file's place) cannot prove the file is untouched,
+			// so a recorded path counts as hand-edited: fail closed.
+			// A dangling symlink also reads as ErrNotExist, but the link
+			// itself is the user's: Lstat tells the two apart.
+			if s == nil {
 				return false
 			}
 			_, recorded := s.Files[path]
+			if errors.Is(err, fs.ErrNotExist) {
+				if _, lerr := os.Lstat(disk); lerr != nil {
+					return false
+				}
+			}
 			return recorded
 		}
 		return s.HandEdited(path, current)

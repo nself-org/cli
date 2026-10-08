@@ -75,6 +75,13 @@ func LoadGeneratedState(projectDir string) (*GeneratedState, error) {
 	raw, err := os.ReadFile(GeneratedStatePath(projectDir))
 	if err != nil {
 		if os.IsNotExist(err) {
+			// A dangling symlink in the record's place is not "no record":
+			// treating it as a first run would drop every hand-edit guard.
+			if _, lerr := os.Lstat(GeneratedStatePath(projectDir)); lerr == nil {
+				return nil, fmt.Errorf("the generated-state record %s is a dangling link"+
+					"; delete it and run nself build, which re-records the files it writes",
+					GeneratedStatePath(projectDir))
+			}
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading the generated-state record: %w", err)
