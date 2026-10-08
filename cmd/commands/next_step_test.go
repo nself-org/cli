@@ -3,6 +3,8 @@ package commands
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -31,25 +33,48 @@ case "$1" in
 esac
 `
 
-const nextStepDockerWindowsStub = `@echo off
-if "%~1"=="info" (
-  if "%NEXTSTEP_DOCKER%"=="down" exit /b 1
-  if "%NEXTSTEP_DOCKER%"=="slow" powershell -NoProfile -Command "Start-Sleep -Seconds 10"
-  echo 1.0
-  exit /b 0
-)
-if "%~1"=="compose" (
-  if "%NEXTSTEP_DOCKER%"=="built" echo []
-  if "%NEXTSTEP_DOCKER%"=="running" echo [{"Service":"postgres","Health":"healthy"},{"Service":"hasura","Health":"healthy"},{"Service":"auth","Health":"healthy"},{"Service":"nginx","Health":"healthy"}]
-  if "%NEXTSTEP_DOCKER%"=="unhealthy" echo [{"Service":"postgres","Health":"unhealthy"},{"Service":"hasura","Health":"healthy"},{"Service":"auth","Health":"healthy"},{"Service":"nginx","Health":"healthy"}]
-  exit /b 0
-)
-if "%~1"=="inspect" (
-  if "%NEXTSTEP_DOCKER%"=="service" echo healthy
-  exit /b 0
-)
-exit /b 2
-`
+// On Windows, a copied test executable is the Docker stub. A batch wrapper
+// would leave its child running after context cancellation and lock TempDir.
+func init() {
+	if os.Getenv("NSELF_TEST_DOCKER_HELPER") != "1" {
+		return
+	}
+	mode := os.Getenv("NEXTSTEP_DOCKER")
+	if len(os.Args) < 2 {
+		os.Exit(2)
+	}
+	switch os.Args[1] {
+	case "info":
+		if mode == "down" {
+			os.Exit(1)
+		}
+		if mode == "slow" {
+			time.Sleep(10 * time.Second)
+		}
+		fmt.Println("1.0")
+	case "compose":
+		switch mode {
+		case "built":
+			fmt.Println("[]")
+		case "running", "unhealthy":
+			health := "healthy"
+			if mode == "unhealthy" {
+				health = "unhealthy"
+			}
+			fmt.Printf("[{\"Service\":\"postgres\",\"Health\":%q},{\"Service\":\"hasura\",\"Health\":\"healthy\"},{\"Service\":\"auth\",\"Health\":\"healthy\"},{\"Service\":\"nginx\",\"Health\":\"healthy\"}]\n", health)
+		default:
+			os.Exit(2)
+		}
+	case "inspect":
+		if mode != "service" {
+			os.Exit(1)
+		}
+		fmt.Println("healthy")
+	default:
+		os.Exit(2)
+	}
+	os.Exit(0)
+}
 
 func nextStepFixture(t *testing.T, stage string) {
 	t.Helper()
@@ -76,11 +101,10 @@ func nextStepFixture(t *testing.T, stage string) {
 	if err := os.Mkdir(bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	stubName, stubBody := "docker", nextStepDockerStub
 	if runtime.GOOS == "windows" {
-		stubName, stubBody = "docker.cmd", nextStepDockerWindowsStub
-	}
-	if err := os.WriteFile(filepath.Join(bin, stubName), []byte(stubBody), 0o755); err != nil {
+		copyDockerTestBinary(t, filepath.Join(bin, "docker.exe"))
+		t.Setenv("NSELF_TEST_DOCKER_HELPER", "1")
+	} else if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(nextStepDockerStub), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -92,6 +116,30 @@ func nextStepFixture(t *testing.T, stage string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(old) })
+}
+
+func copyDockerTestBinary(t *testing.T, path string) {
+	t.Helper()
+	source, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := os.Open(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		t.Fatal(err)
+	}
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestNextStep(t *testing.T) {
