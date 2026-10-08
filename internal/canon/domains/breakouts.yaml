@@ -13,14 +13,6 @@ commands:
   ci forgejo: {side_effect: read}
   # cmd/commands/ci_serve.go:23 receives webhooks, runs attacker-influenced repo content in Docker and posts GitHub commit statuses (ci_serve.go:25-39), like `ci`; --allow-unsandboxed runs the gate on the host (ci_serve.go:115, "DANGEROUS")
   ci serve: {side_effect: remote, output: stream, flags: {allow-unsandboxed: {side_effect: destructive}}}
-  # cmd/commands/functions.go:28 RunE path changes no persistent state (prints/reads only)
-  functions: {canon: pending, side_effect: read}
-  functions delete: {side_effect: destructive}
-  # cmd/commands/functions_deploy.go:55 copies files into functions/<name> and reloads the functions container; a re-deploy restores it (write)
-  functions deploy: {side_effect: write}
-  functions invoke: {side_effect: write}
-  functions list: {side_effect: read, json: legacy}
-  functions logs: {side_effect: read, output: stream}
   config plugins debug: {side_effect: write}
   config plugins dev: {side_effect: write, output: stream}
   config plugins init: {side_effect: write}
@@ -36,6 +28,14 @@ commands:
   config plugins submit: {side_effect: read}
   config plugins test: {side_effect: write}
   config plugins unlink: {side_effect: write}
+  # cmd/commands/functions.go:28 RunE path changes no persistent state (prints/reads only)
+  functions: {canon: pending, side_effect: read}
+  functions delete: {side_effect: destructive}
+  # cmd/commands/functions_deploy.go:55 copies files into functions/<name> and reloads the functions container; a re-deploy restores it (write)
+  functions deploy: {side_effect: write}
+  functions invoke: {side_effect: write}
+  functions list: {side_effect: read, json: legacy}
+  functions logs: {side_effect: read, output: stream}
   # cmd/commands/runner.go:42 RunE path changes no persistent state (prints/reads only)
   runner: {canon: pending, side_effect: read}
   runner provision: {side_effect: remote}

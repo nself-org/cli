@@ -95,7 +95,7 @@ func TestFragmentAssignment(t *testing.T) {
 		for k := range raw.Commands {
 			if strings.HasPrefix(k, prefix) {
 				oldKey := oldPrefix + strings.TrimPrefix(k, prefix)
-				where[oldKey] = frag
+				where[oldKey] = where[k]
 				delete(where, k)
 			}
 		}
