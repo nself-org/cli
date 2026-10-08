@@ -80,7 +80,7 @@ func validateArchiveIncludes(root string) error {
 				continue
 			}
 			name := strings.TrimSpace(line[idx+len("!include "):])
-			if name == "" || filepath.IsAbs(name) || strings.Contains(name, "\\") {
+			if name == "" || filepath.IsAbs(name) || strings.HasPrefix(name, "/") || strings.Contains(name, "\\") {
 				return fmt.Errorf("metadata archive: invalid include %q", name)
 			}
 			target := filepath.Clean(filepath.Join(filepath.Dir(p), name))

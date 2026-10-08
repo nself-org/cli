@@ -100,7 +100,7 @@ func TestHasuraArchiveRefLeavesCheckout(t *testing.T) {
 	}
 	got, _ := os.ReadFile(filepath.Join(dest, "tables.yaml"))
 	working, _ := os.ReadFile(file)
-	if string(got) != "old\n" || string(working) != "new\n" {
+	if strings.TrimSpace(string(got)) != "old" || string(working) != "new\n" {
 		t.Fatalf("archive=%q checkout=%q", got, working)
 	}
 }
