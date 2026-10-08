@@ -273,3 +273,23 @@ func TestDBHasuraRemoteIntegration(t *testing.T) {
 		t.Fatalf("apply-ref stream mismatch: %v", err)
 	}
 }
+
+// TestDBRemoteRejectsOptionLikeHost: a server host that ssh would read as an
+// option, or that whitespace/control bytes would split, is refused before
+// any argv is built.
+func TestDBRemoteRejectsOptionLikeHost(t *testing.T) {
+	for host, want := range map[string]bool{
+		"deploy@example.com":              false,
+		"10.0.0.5":                        false,
+		"":                                true,
+		"-oProxyCommand=touch /tmp/pwned": true,
+		"-p2222":                          true,
+		"host with space":                 true,
+		"host\nnext":                      true,
+		"host\x7f":                        true,
+	} {
+		if got := !validSSHDestination(host); got != want {
+			t.Errorf("validSSHDestination(%q) refused=%v, want %v", host, got, want)
+		}
+	}
+}

@@ -186,3 +186,13 @@ func TestNormalizeRefArchiveLimits(t *testing.T) {
 		t.Fatalf("a small archive must normalize, got %v", err)
 	}
 }
+
+// TestApplyMetadataFromGitRejectsOptionRef: a ref git would parse as an
+// option (-f, -m) is refused before git runs.
+func TestApplyMetadataFromGitRejectsOptionRef(t *testing.T) {
+	for _, ref := range []string{"", "-f", "-m", "--orphan=x"} {
+		if err := ApplyMetadataFromGit(context.Background(), nil, t.TempDir(), ref); err == nil || !strings.Contains(err.Error(), "invalid git ref") {
+			t.Errorf("ref %q: want an invalid git ref error, got %v", ref, err)
+		}
+	}
+}

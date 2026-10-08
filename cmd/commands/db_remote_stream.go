@@ -18,6 +18,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// dbRemoteSSHOptions is the one ssh option list of the db remote transport
+// (key, batch mode, no agent forwarding, host-key policy). Every db remote
+// call (runRemoteNselfCommand, the metadata stream, the drift probes) starts
+// from it, so a change to how the transport authenticates lands in one place.
+func dbRemoteSSHOptions(rt dbRemoteTarget) []string {
+	keyPath := rt.KeyPath
+	if keyPath == "" {
+		keyPath = defaultSSHKeyPath()
+	}
+	return []string{
+		"-i", keyPath,
+		"-o", "BatchMode=yes",
+		"-o", "ForwardAgent=no",
+		"-o", "StrictHostKeyChecking=accept-new",
+	}
+}
+
+// validSSHDestination reports whether host can go into ssh argv right before
+// the remote command: a value starting with "-" would be read as an ssh option
+// (-oProxyCommand=...), and whitespace or control bytes would split it.
+func validSSHDestination(host string) bool {
+	return host != "" && !strings.HasPrefix(host, "-") &&
+		strings.IndexFunc(host, func(r rune) bool { return r <= ' ' || r == 0x7f }) < 0
+}
+
 var runSSHStream = func(ctx context.Context, argv []string, stdin io.Reader, stdout io.Writer) (string, error) {
 	var stderr bytes.Buffer
 	c := exec.CommandContext(ctx, "ssh", argv...)

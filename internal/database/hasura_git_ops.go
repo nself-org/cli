@@ -184,6 +184,10 @@ func GetGitStatus(projectDir string) (HasuraGitStatus, error) {
 // then applies them via the standard metadata apply mechanism.
 // ref can be a branch name, tag, or commit hash.
 func ApplyMetadataFromGit(ctx context.Context, cfg *config.Config, projectDir string, ref string) error {
+	// git reads a leading-dash ref before "--" as an option (-f, -m): refuse it.
+	if ref == "" || strings.HasPrefix(ref, "-") {
+		return fmt.Errorf("invalid git ref %q", ref)
+	}
 	checkoutCmd := exec.CommandContext(ctx, "git", "-C", projectDir, "checkout", ref, "--", "hasura/metadata/")
 	if out, err := checkoutCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git checkout %s -- hasura/metadata/: %w\n%s", ref, err, strings.TrimSpace(string(out)))

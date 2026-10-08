@@ -128,6 +128,10 @@ func resolveDBRemoteTarget(cmd *cobra.Command) (dbRemoteTarget, error) {
 		return dbRemoteTarget{Local: true, EnvName: envName}, nil
 	}
 
+	if !validSSHDestination(srv.Host) { // every db remote call resolves its target here
+		return dbRemoteTarget{}, fmt.Errorf("server host %q for env %q is not a valid ssh destination", srv.Host, envName)
+	}
+
 	remotePath := srv.RemotePath
 	if remotePath == "" {
 		remotePath = "/opt/nself"
@@ -214,23 +218,6 @@ func runRemoteNselfCommand(ctx context.Context, rt dbRemoteTarget, args ...strin
 		return wrapRemoteVersionDriftError(rt, args, err, out)
 	}
 	return nil
-}
-
-// dbRemoteSSHOptions is the one ssh option list of the db remote transport
-// (key, batch mode, no agent forwarding, host-key policy). Every db remote
-// call (runRemoteNselfCommand, the metadata stream, the drift probes) starts
-// from it, so a change to how the transport authenticates lands in one place.
-func dbRemoteSSHOptions(rt dbRemoteTarget) []string {
-	keyPath := rt.KeyPath
-	if keyPath == "" {
-		keyPath = defaultSSHKeyPath()
-	}
-	return []string{
-		"-i", keyPath,
-		"-o", "BatchMode=yes",
-		"-o", "ForwardAgent=no",
-		"-o", "StrictHostKeyChecking=accept-new",
-	}
 }
 
 // shellQuoteArg single-quotes s for safe inclusion in a remote shell command,
