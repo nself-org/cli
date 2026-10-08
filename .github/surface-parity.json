@@ -55,15 +55,6 @@
       "openapi": "n/a (see below)"
     },
     {
-      "name": "completion",
-      "path": "nself completion",
-      "group_id": "account",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
       "name": "config",
       "path": "nself config",
       "group_id": "config",
@@ -118,24 +109,6 @@
       "openapi": "n/a (see below)"
     },
     {
-      "name": "health",
-      "path": "nself health",
-      "group_id": "observe",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
-      "name": "help-topics",
-      "path": "nself help-topics",
-      "group_id": "account",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
       "name": "init",
       "path": "nself init",
       "group_id": "core",
@@ -159,15 +132,6 @@
       "group_id": "core",
       "wiki_page": true,
       "mcp_tool": true,
-      "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
-      "name": "man",
-      "path": "nself man",
-      "group_id": "account",
-      "wiki_page": true,
-      "mcp_tool": false,
       "env_vars": "n/a",
       "openapi": "n/a (see below)"
     },
@@ -217,15 +181,6 @@
       "openapi": "n/a (see below)"
     },
     {
-      "name": "self-heal",
-      "path": "nself self-heal",
-      "group_id": "observe",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
       "name": "server",
       "path": "nself server",
       "group_id": "advanced",
@@ -268,24 +223,6 @@
       "wiki_page": true,
       "mcp_tool": false,
       "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
-      "name": "urls",
-      "path": "nself urls",
-      "group_id": "core",
-      "wiki_page": true,
-      "mcp_tool": true,
-      "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
-      "name": "version",
-      "path": "nself version",
-      "group_id": "account",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "undocumented: BENCH_RESULTS_FILE",
       "openapi": "n/a (see below)"
     }
   ]

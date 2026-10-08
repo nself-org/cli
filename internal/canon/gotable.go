@@ -123,7 +123,7 @@ func RenderGoTable(f *File) []byte {
 	if len(t.Builtins) > 0 {
 		b.WriteString("\tBuiltins: [][]string{\n")
 		for _, p := range t.Builtins {
-			b.WriteString("\t\t" + strs(p) + ",\n")
+			b.WriteString("\t\t" + strings.TrimPrefix(strs(p), "[]string") + ",\n")
 		}
 		b.WriteString("\t},\n")
 	}

@@ -49,9 +49,10 @@ curl -fsSL https://install.nself.org | bash
 # Create a project and start the stack
 mkdir my-backend && cd my-backend
 nself init
-nself build
 nself start
 ```
+
+With `NSELF_V15=1`, bare `nself` prints the next command for the current project, followed by the command list.
 
 Your backend is running:
 

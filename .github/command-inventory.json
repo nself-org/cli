@@ -384,13 +384,6 @@
     ]
   },
   {
-    "name": "completion",
-    "path": "nself completion",
-    "short": "Generate shell completion scripts",
-    "hidden": false,
-    "group_id": "account"
-  },
-  {
     "name": "config",
     "path": "nself config",
     "short": "Manage project configuration",
@@ -908,6 +901,18 @@
     ],
     "subcommands": [
       {
+        "name": "heal",
+        "path": "nself doctor heal",
+        "short": "Run targeted self-healing routines for nSelf components",
+        "hidden": false,
+        "flags": [
+          "--dry-run",
+          "--jwt",
+          "--no-print",
+          "--to-file"
+        ]
+      },
+      {
         "name": "security",
         "path": "nself doctor security",
         "short": "Diagnose server security",
@@ -988,66 +993,6 @@
         ]
       }
     ]
-  },
-  {
-    "name": "health",
-    "path": "nself health",
-    "short": "Health check management with continuous monitoring",
-    "hidden": false,
-    "group_id": "observe",
-    "flags": [
-      "--env",
-      "--interval",
-      "--json",
-      "--quiet",
-      "--retries",
-      "--timeout"
-    ],
-    "subcommands": [
-      {
-        "name": "check",
-        "path": "nself health check",
-        "short": "Run all health checks",
-        "hidden": false
-      },
-      {
-        "name": "config",
-        "path": "nself health config",
-        "short": "Show health check settings",
-        "hidden": false
-      },
-      {
-        "name": "endpoint",
-        "path": "nself health endpoint",
-        "short": "Check an HTTP endpoint",
-        "hidden": false
-      },
-      {
-        "name": "history",
-        "path": "nself health history",
-        "short": "Show last 20 health checks",
-        "hidden": false
-      },
-      {
-        "name": "service",
-        "path": "nself health service",
-        "short": "Check a single service",
-        "hidden": false
-      },
-      {
-        "name": "watch",
-        "path": "nself health watch",
-        "short": "Continuous health monitoring",
-        "hidden": false
-      }
-    ]
-  },
-  {
-    "name": "help-topics",
-    "path": "nself help-topics",
-    "short": "Browse help topics (quickstart, plugins, license, envs, doctor, errors)",
-    "hidden": false,
-    "group_id": "account"
   },
   {
     "name": "init",
@@ -1295,16 +1240,6 @@
     ]
   },
   {
-    "name": "man",
-    "path": "nself man",
-    "short": "Generate man pages for all nself commands",
-    "hidden": false,
-    "group_id": "account",
-    "flags": [
-      "--output"
-    ]
-  },
-  {
     "name": "mcp",
     "path": "nself mcp",
     "short": "Start the nSelf MCP server",
@@ -1391,19 +1326,6 @@
           "--ssh-key"
         ]
       }
-    ]
-  },
-  {
-    "name": "self-heal",
-    "path": "nself self-heal",
-    "short": "Run targeted self-healing routines for nSelf components",
-    "hidden": false,
-    "group_id": "observe",
-    "flags": [
-      "--dry-run",
-      "--jwt",
-      "--no-print",
-      "--to-file"
     ]
   },
   {
@@ -1526,6 +1448,35 @@
       "--json",
       "--metrics",
       "--verbose"
+    ],
+    "subcommands": [
+      {
+        "name": "health",
+        "path": "nself status health",
+        "short": "Health check management with continuous monitoring",
+        "hidden": false,
+        "flags": [
+          "--env",
+          "--interval",
+          "--json",
+          "--quiet",
+          "--retries",
+          "--timeout"
+        ]
+      },
+      {
+        "name": "urls",
+        "path": "nself status urls",
+        "short": "Display all service URLs with route conflict detection",
+        "hidden": false,
+        "flags": [
+          "--all",
+          "--check-conflicts",
+          "--diff",
+          "--env",
+          "--json"
+        ]
+      }
     ]
   },
   {
@@ -1601,31 +1552,6 @@
           "--version"
         ]
       }
-    ]
-  },
-  {
-    "name": "urls",
-    "path": "nself urls",
-    "short": "Display all service URLs with route conflict detection",
-    "hidden": false,
-    "group_id": "core",
-    "flags": [
-      "--all",
-      "--check-conflicts",
-      "--diff",
-      "--env",
-      "--json"
-    ]
-  },
-  {
-    "name": "version",
-    "path": "nself version",
-    "short": "Show version and system information",
-    "hidden": false,
-    "group_id": "account",
-    "flags": [
-      "--json",
-      "--short"
     ]
   }
 ]

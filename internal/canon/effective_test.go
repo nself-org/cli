@@ -131,7 +131,8 @@ func TestEffectiveRemapsShimTargets(t *testing.T) {
 
 // TestEffectivePresplitEquivalence: with the real fragments, both views equal
 // the pre-split canon.yaml entry set (no move rows yet), or, once rows exist,
-// the v1.4 view still contains every pre-split entry unchanged.
+// the v1.4 view still contains every pre-split entry unchanged, except builtin
+// classifications that preserve the command and its v1.4 behavior.
 func TestEffectivePresplitEquivalence(t *testing.T) {
 	pre := readPresplit(t)
 	raw, err := LoadRaw()
@@ -149,6 +150,9 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 		}
 		if rows == 0 || !v15 {
 			for k, want := range pre.Commands {
+				if k == "completion" || k == "man" || k == "version" {
+					want.Canon = CanonBuiltin
+				}
 				if got, ok := v.Commands[k]; !ok || !reflect.DeepEqual(got, want) {
 					t.Errorf("v15=%v: %q = %+v (present %v), want %+v", v15, k, got, ok, want)
 				}

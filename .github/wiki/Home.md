@@ -10,7 +10,9 @@ nself init myapp
 nself start
 ```
 
-**Three commands. Complete backend. Your infrastructure.**
+With `NSELF_V15=1`, bare `nself` shows the next command for the current project and the command list.
+
+**Two commands. Complete backend. Your infrastructure.**
 
 ---
 
