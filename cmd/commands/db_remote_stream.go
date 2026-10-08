@@ -86,11 +86,18 @@ func runRemoteNselfStream(ctx context.Context, rt dbRemoteTarget, stdin io.Reade
 }
 
 func runDBHasuraRemoteSync(cmd *cobra.Command, rt dbRemoteTarget) error {
-	archive, err := remoteMetadataExport(cmd, rt)
+	dir, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	dir, err := os.Getwd()
+	status, err := exec.Command("git", "-C", dir, "status", "--porcelain", "--", "hasura/metadata").Output()
+	if err != nil {
+		return fmt.Errorf("checking local metadata changes: %w", err)
+	}
+	if len(status) != 0 {
+		return fmt.Errorf("uncommitted hasura/metadata changes: %s; commit or stash them before remote sync", strings.TrimSpace(string(status)))
+	}
+	archive, err := remoteMetadataExport(cmd, rt)
 	if err != nil {
 		return err
 	}

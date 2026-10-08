@@ -21,6 +21,8 @@ import (
 const maxMetadataBytes int64 = 64 << 20
 const maxMetadataEntries = 10000
 
+var removeMetadataBackup = os.RemoveAll
+
 // ExportMetadataArchive encodes live metadata as a self-contained config.yaml.
 func ExportMetadataArchive(ctx context.Context, cfg *config.Config, w io.Writer) error {
 	data, err := HasuraExportMetadata(ctx, cfg)
@@ -212,7 +214,7 @@ func Unpack(r io.Reader, dir string) error {
 			return fmt.Errorf("metadata archive: too many entries")
 		}
 		name := h.Name
-		if strings.HasPrefix(name, "/") || strings.Contains(name, "\\") || path.Clean(name) != name || !strings.HasPrefix(name, "metadata/") || strings.Contains("/"+name+"/", "/../") || h.Typeflag != tar.TypeReg || h.Size < 0 || h.Size > maxMetadataBytes-total {
+		if strings.HasPrefix(name, "/") || strings.Contains(name, "\\") || path.Clean(name) != name || !strings.HasPrefix(name, "metadata/") || strings.Contains("/"+name+"/", "/../") || hasDotPathComponent(name) || h.Typeflag != tar.TypeReg || h.Size < 0 || h.Size > maxMetadataBytes-total {
 			return fmt.Errorf("metadata archive: invalid entry %q", name)
 		}
 		total += h.Size
@@ -240,6 +242,12 @@ func Unpack(r io.Reader, dir string) error {
 			return closeErr
 		}
 	}
+	if count == 0 {
+		return fmt.Errorf("metadata archive: no regular files")
+	}
+	if err := os.Chmod(stage, 0755); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(parent, 0755); err != nil {
 		return err
 	}
@@ -265,7 +273,18 @@ func Unpack(r io.Reader, dir string) error {
 		return err
 	}
 	if hadOld {
-		return os.RemoveAll(backup)
+		if err := removeMetadataBackup(backup); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "metadata archive: remove old backup %s: %v\n", backup, err)
+		}
 	}
 	return nil
+}
+
+func hasDotPathComponent(name string) bool {
+	for _, component := range strings.Split(name, "/") {
+		if strings.HasPrefix(component, ".") {
+			return true
+		}
+	}
+	return false
 }

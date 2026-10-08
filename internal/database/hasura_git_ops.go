@@ -111,6 +111,9 @@ func normalizeRefArchive(src io.Reader) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if hasDotPathComponent(h.Name) {
+			return nil, fmt.Errorf("metadata ref: invalid entry %q", h.Name)
+		}
 		if h.Typeflag == tar.TypeDir {
 			continue
 		}

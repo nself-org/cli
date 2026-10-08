@@ -34,6 +34,10 @@ func TestHasuraArchiveRoundTrip(t *testing.T) {
 	if err != nil || string(got) != "version: 3\n" {
 		t.Fatalf("round trip: %q, %v", got, err)
 	}
+	info, err := os.Stat(dest)
+	if err != nil || info.Mode().Perm() != 0755 {
+		t.Fatalf("metadata directory mode: %v, %v", info, err)
+	}
 }
 
 func TestHasuraArchiveJSONExportIsApplicable(t *testing.T) {
@@ -117,6 +121,9 @@ func TestHasuraArchiveRejects(t *testing.T) {
 		{"link", "metadata/link", tar.TypeSymlink, 0},
 		{"outside", "other/evil", tar.TypeReg, 1},
 		{"oversize", "metadata/big", tar.TypeReg, 65 << 20},
+		{"dot-git", "metadata/.git/config", tar.TypeReg, 1},
+		{"dot-git-case", "metadata/.GIT/HEAD", tar.TypeReg, 1},
+		{"dot-hidden", "metadata/.hidden", tar.TypeReg, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var b bytes.Buffer
@@ -145,6 +152,77 @@ func TestHasuraArchiveRejects(t *testing.T) {
 			got, err := os.ReadFile(filepath.Join(dest, "keep"))
 			if err != nil || string(got) != "safe" {
 				t.Fatalf("destination changed: %q %v", got, err)
+			}
+		})
+	}
+}
+
+func TestHasuraArchiveRejectsEmpty(t *testing.T) {
+	var b bytes.Buffer
+	if err := tar.NewWriter(&b).Close(); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(t.TempDir(), "metadata")
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "keep"), []byte("safe"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Unpack(&b, dest); err == nil {
+		t.Fatal("empty archive accepted")
+	}
+	if data, err := os.ReadFile(filepath.Join(dest, "keep")); err != nil || string(data) != "safe" {
+		t.Fatalf("destination changed: %q %v", data, err)
+	}
+}
+
+func TestHasuraArchiveBackupCleanupFailureStillSucceeds(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	dest := filepath.Join(root, "metadata")
+	for _, dir := range []string{source, dest} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(source, "new.yaml"), []byte("new"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "old.yaml"), []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var b bytes.Buffer
+	if err := Pack(source, &b); err != nil {
+		t.Fatal(err)
+	}
+	old := removeMetadataBackup
+	removeMetadataBackup = func(string) error { return fmt.Errorf("simulated backup cleanup failure") }
+	t.Cleanup(func() { removeMetadataBackup = old })
+	if err := Unpack(&b, dest); err != nil {
+		t.Fatalf("successful swap must remain committable: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(dest, "new.yaml")); err != nil || string(data) != "new" {
+		t.Fatalf("swap failed: %q %v", data, err)
+	}
+}
+
+func TestNormalizeRefArchiveRejectsDotComponents(t *testing.T) {
+	for _, name := range []string{"metadata/.git/config", "metadata/.GIT/HEAD", "metadata/nested/.hidden"} {
+		t.Run(name, func(t *testing.T) {
+			var b bytes.Buffer
+			w := tar.NewWriter(&b)
+			if err := w.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Size: 1}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := w.Write([]byte("x")); err != nil {
+				t.Fatal(err)
+			}
+			if err := w.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := normalizeRefArchive(&b); err == nil {
+				t.Fatal("dot component accepted")
 			}
 		})
 	}

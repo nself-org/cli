@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"errors"
@@ -66,6 +67,175 @@ func TestDBHasuraNoEnvGolden(t *testing.T) {
 				t.Fatalf("default changed: old=%v new=%v", oldErr, newErr)
 			}
 		})
+	}
+}
+
+func TestDBHasuraNoEnvSyncApplyRefLocalGolden(t *testing.T) {
+	oldStream := runSSHStream
+	oldCaptured := runSSHCaptured
+	t.Cleanup(func() { runSSHStream, runSSHCaptured = oldStream, oldCaptured })
+	runSSHStream = func(context.Context, []string, io.Reader, io.Writer) (string, error) {
+		t.Fatal("unexpected ssh stream")
+		return "", nil
+	}
+	runSSHCaptured = func(context.Context, []string) (string, error) { t.Fatal("unexpected ssh capture"); return "", nil }
+	project := t.TempDir()
+	old, _ := os.Getwd()
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+	for _, tc := range []struct {
+		name string
+		cmd  *cobra.Command
+		run  func(*cobra.Command, []string) error
+		base func(*cobra.Command, []string) error
+		args []string
+	}{
+		{"sync", dbHasuraSyncCmd, runDBHasuraSync, func(cmd *cobra.Command, _ []string) error {
+			cfg, err := loadProjectConfig()
+			if err != nil {
+				return err
+			}
+			dir, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("getting working directory: %w", err)
+			}
+			msg, err := cmd.Flags().GetString("message")
+			if err != nil {
+				return fmt.Errorf("reading --message flag: %w", err)
+			}
+			hash, err := database.ExportAndCommitMetadata(cmd.Context(), cfg, dir, msg)
+			if err != nil {
+				return fmt.Errorf("syncing metadata: %w", err)
+			}
+			fmt.Printf("Metadata exported and committed: %s\n", hash)
+			return nil
+		}, nil},
+		{"apply-ref", dbHasuraApplyRefCmd, runDBHasuraApplyRef, func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadProjectConfig()
+			if err != nil {
+				return err
+			}
+			dir, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("getting working directory: %w", err)
+			}
+			if err := database.ApplyMetadataFromGit(cmd.Context(), cfg, dir, args[0]); err != nil {
+				return fmt.Errorf("applying metadata from ref %s: %w", args[0], err)
+			}
+			fmt.Printf("Applied Hasura metadata from git ref: %s\n", args[0])
+			return nil
+		}, []string{"HEAD"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.cmd.SetContext(context.Background())
+			target, err := resolveDBRemoteTarget(tc.cmd)
+			if err != nil || !target.Local {
+				t.Fatalf("local target: %+v %v", target, err)
+			}
+			baseOutput, baseErr := captureStdout(t, func() error { return tc.base(tc.cmd, tc.args) })
+			output, err := captureStdout(t, func() error { return tc.run(tc.cmd, tc.args) })
+			if output != baseOutput || fmt.Sprint(err) != fmt.Sprint(baseErr) {
+				t.Fatalf("origin/main local-path golden: output=%q/%q error=%v/%v", output, baseOutput, err, baseErr)
+			}
+			if entries, err := os.ReadDir(project); err != nil || len(entries) != 0 {
+				t.Fatalf("local side effects: %v %v", entries, err)
+			}
+		})
+	}
+}
+
+func TestDBHasuraArchiveMonorepoNoticeStderr(t *testing.T) {
+	root := t.TempDir()
+	backend := filepath.Join(root, "backend")
+	if err := os.MkdirAll(backend, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backend, ".env"), []byte("PROJECT_NAME=test\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	oldCwd, _ := os.Getwd()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldCwd) })
+	oldOut, oldErr := os.Stdout, os.Stderr
+	out, err := os.CreateTemp(t.TempDir(), "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	stderr, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stderr.Close()
+	os.Stdout, os.Stderr = out, stderr
+	t.Cleanup(func() { os.Stdout, os.Stderr = oldOut, oldErr })
+	cmd := dbHasuraMetadataExportCmd
+	oldArchive, _ := cmd.Flags().GetString("archive")
+	if err := cmd.Flags().Set("archive", "-"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Flags().Set("archive", oldArchive) })
+	if err := RootCmd.PersistentPreRunE(cmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	if cwd, _ := os.Getwd(); cwd != backend {
+		t.Fatalf("chdir changed: %q", cwd)
+	}
+	if _, err := out.Write(archiveFixture(t, "tables: []\n")); err != nil {
+		t.Fatal(err)
+	}
+	stdoutBytes, _ := os.ReadFile(out.Name())
+	stderrBytes, _ := os.ReadFile(stderr.Name())
+	if _, err := tar.NewReader(bytes.NewReader(stdoutBytes)).Next(); err != nil {
+		t.Fatalf("stdout is not tar: %v, prefix %q", err, stdoutBytes[:min(len(stdoutBytes), 80)])
+	}
+	if !strings.Contains(string(stderrBytes), "Detected monorepo layout") {
+		t.Fatalf("notice missing on stderr: %q", stderrBytes)
+	}
+}
+
+func TestDBHasuraRemoteSyncRejectsDirtyMetadata(t *testing.T) {
+	project := t.TempDir()
+	dir := filepath.Join(project, "hasura", "metadata")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, "tables.yaml")
+	if err := os.WriteFile(file, []byte("committed\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, argv := range [][]string{{"init", project}, {"-C", project, "config", "user.email", "test@example.invalid"}, {"-C", project, "config", "user.name", "Test"}, {"-C", project, "add", "hasura/metadata"}, {"-C", project, "commit", "-m", "fixture"}} {
+		if out, err := exec.Command("git", argv...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s %v", argv, out, err)
+		}
+	}
+	if err := os.WriteFile(file, []byte("uncommitted\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := os.Getwd()
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+	oldStream := runSSHStream
+	t.Cleanup(func() { runSSHStream = oldStream })
+	runSSHStream = func(context.Context, []string, io.Reader, io.Writer) (string, error) {
+		t.Fatal("SSH opened before dirty check")
+		return "", nil
+	}
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+	cmd.Flags().String("message", "", "")
+	err := runDBHasuraRemoteSync(cmd, dbRemoteTarget{SSHTarget: "fixture.invalid", RemotePath: "/project", EnvName: "staging", AllowVersionDrift: true})
+	if err == nil || !strings.Contains(err.Error(), "tables.yaml") || !strings.Contains(err.Error(), "commit or stash") {
+		t.Fatalf("dirty metadata accepted: %v", err)
+	}
+	if data, err := os.ReadFile(file); err != nil || string(data) != "uncommitted\n" {
+		t.Fatalf("local edit changed: %q %v", data, err)
 	}
 }
 
