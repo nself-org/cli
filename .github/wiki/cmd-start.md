@@ -7,7 +7,7 @@
 ## Synopsis
 
 ```
-nself start [flags]
+nself start <subcommand> [flags]
 ```
 
 **Alias:** `nself up`
@@ -103,6 +103,14 @@ Pass `--quiet` to suppress all progress output. Useful in CI where the log is ca
 | `--watch` | `false` | Enable health auto-restart: poll services and restart unhealthy containers |
 | `--help`, `-h` | — | Show help |
 <!-- END GENERATED:flags -->
+
+## Subcommands
+
+<!-- BEGIN GENERATED:subcommands -->
+| Name | Description |
+|------|-------------|
+| `dev` | Start development environment |
+<!-- END GENERATED:subcommands -->
 
 ## Examples
 

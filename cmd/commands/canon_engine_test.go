@@ -359,6 +359,38 @@ func TestCanonEngineRemovedE410(t *testing.T) {
 	})
 }
 
+func TestCanonBareRetiredHubRewrite(t *testing.T) {
+	root, tb := newFixtureTree(), fixtureTable(t)
+	var moves []canonRowT
+	for _, move := range tb.Moves {
+		if strings.Join(move.From, " ") != "ops" {
+			moves = append(moves, move)
+		}
+	}
+	tb.Moves = moves
+	tb.Moves = append(tb.Moves, canonRowT{From: sp("ops status"), To: sp("deploy ops")})
+	tb.RetiredHubs = append(tb.RetiredHubs, canonRowT{From: sp("ops"), To: sp("deploy ops")})
+	for _, tc := range []struct{ name, in, want, kind string }{
+		{"retired help only", "migrate", "db", "retired"},
+		{"retired help only flags", "migrate --json", "db --json", "retired"},
+		{"retired help flag", "migrate --help", "db --help", "retired"},
+		{"retired runnable", "ops", "deploy ops --help", "retired"},
+		{"retired unknown child", "migrate bogus", "migrate bogus", ""},
+		{"move", "env use", "config env use", "move"},
+		{"shim", "service stop redis", "stop redis", "shim"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, notes, err := rewriteCanonArgsWith(&tb, root, strings.Fields(tc.in), true)
+			if err != nil || strings.Join(got, " ") != tc.want {
+				t.Fatalf("rewrite %q = %q, %v; want %q", tc.in, got, err, tc.want)
+			}
+			if tc.kind == "" && len(notes) != 0 || tc.kind != "" && (len(notes) != 1 || notes[0].Kind != tc.kind) {
+				t.Fatalf("rewrite %q notes = %+v; want %q", tc.in, notes, tc.kind)
+			}
+		})
+	}
+}
+
 // --- legacy chains ---------------------------------------------------------
 
 func runChain(t *testing.T, tb canonTableT, root *cobra.Command, v15 bool, argv ...string) ([]string, string) {
@@ -458,6 +490,10 @@ func TestCanonEngineNoCanonLoad(t *testing.T) {
 
 func TestHubUnknownSubcommand(t *testing.T) {
 	reattachRealTree()
+	retired := map[string]string{}
+	for _, row := range canonTable.RetiredHubs {
+		retired[strings.Join(row.From, " ")] = strings.Join(row.To, " ")
+	}
 	// 1. every helpOnlyParents entry exists and is help-only: its body only prints help.
 	for _, p := range helpOnlyParents {
 		c := at(RootCmd, p)
@@ -473,7 +509,24 @@ func TestHubUnknownSubcommand(t *testing.T) {
 	}
 	// 2. v1.5 gives each of them E401 on an unknown subcommand and leaves the other parents alone.
 	listed := map[string]bool{}
+	expected := len(helpOnlyParents)
 	for _, p := range helpOnlyParents {
+		if to, ok := retired[p]; ok {
+			// A retired hub can target a runnable moved leaf. Its bare argv
+			// gets help from the rewrite, while the leaf keeps its own Args.
+			runnableTarget := false
+			for _, move := range canonTable.Moves {
+				if strings.Join(move.To, " ") == to {
+					runnableTarget = true
+				}
+			}
+			if runnableTarget {
+				expected--
+			} else {
+				listed[to] = true
+			}
+			continue // the old path is now an error stub, not a help-only parent
+		}
 		listed[p] = true
 		// A move relocates the parent and the validator follows the command,
 		// so the walk must expect it at its canonical path; the engine's own
@@ -484,6 +537,12 @@ func TestHubUnknownSubcommand(t *testing.T) {
 		}
 	}
 	undo := applyCanon(RootCmd, true)
+	for from, to := range retired {
+		stub := at(RootCmd, from)
+		if stub == nil || stub.Annotations[annStub] != to || errCode(stub.RunE(stub, []string{"bogus"})) != "E401" {
+			t.Errorf("retired stub %q must name %q with E401", from, to)
+		}
+	}
 	validated, other := 0, 0
 	var walk func(c *cobra.Command)
 	walk = func(c *cobra.Command) {
@@ -505,8 +564,8 @@ func TestHubUnknownSubcommand(t *testing.T) {
 	}
 	walk(RootCmd)
 	undo()
-	if validated != len(helpOnlyParents) {
-		t.Errorf("validated %d of %d help-only parents", validated, len(helpOnlyParents))
+	if validated != expected {
+		t.Errorf("validated %d of %d help-only parents", validated, expected)
 	}
 	t.Logf("%d help-only parents validated; %d parents with their own arguments left alone", validated, other)
 

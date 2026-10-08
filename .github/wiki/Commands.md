@@ -94,11 +94,10 @@ tree in `cmd/commands/`. Run `make cmd-inventory` to refresh.
 ## Complete index
 
 Generated from the cobra registration tree in `cmd/commands/`.
-Run `make cmd-inventory` to refresh. **Total top-level commands: 41**
+Run `make cmd-inventory` to refresh. **Total top-level commands: 34**
 
 | Command | Short Description | Group | Subcommands |
 |---|---|---|---|
-| `nself access` | Manage SSH key access on an already-deployed server | advanced | grant, list, revoke |
 | `nself admin` | Manage the nSelf Admin dashboard | account | connect, health, logs, projects, start, stop |
 | `nself backup` | Backup operations: create, list, restore, verify, prune, config, status, init-key | data | config, create, drill, init-key, list, pitr, prune, restore, restore-remote, resume, schedule, status, stream, verify |
 | `nself build` | Compose your infrastructure from .env | core | — |
@@ -106,11 +105,10 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 41**
 | `nself ci` | Run the nself-ci gate suite and post a GitHub commit status | deploy | build, eval, forgejo, serve |
 | `nself clean` | Remove generated artifacts (docker-compose.yml, nginx configs, build cache) | core | — |
 | `nself completion` | Generate shell completion scripts | account | — |
-| `nself config` | Manage project configuration | config | env, export, features, get, import, list, oauth, secrets, set, show, telemetry, trust, validate |
+| `nself config` | Manage project configuration | config | env, export, features, get, import, list, oauth, secrets, services, set, show, telemetry, trust, validate |
 | `nself db` | Database operations: migrations, backups, restore, seed, shell | data | backup, backup-sync, backup-sync-status, drift, drop, fk-index, generate, hasura, import, lint, list, migrate, pgbouncer, pitr, reconcile, reset, reset-checksum, restore, restore-drill, restore-drill-list, rls, seed, shell, soft-delete, verify, verify-checksums |
-| `nself deploy` | Deploy the stack to a target environment | deploy | check-access, environments, health, logs, promote, rollback, status, web |
-| `nself dev` | Start development environment | core | — |
-| `nself doctor` | Run comprehensive system diagnostics | core | — |
+| `nself deploy` | Deploy the stack to a target environment | deploy | access, check-access, environments, health, logs, ops, promote, promote-env, rollback, security, status, web |
+| `nself doctor` | Run comprehensive system diagnostics | core | security |
 | `nself exec` | Execute a command inside a service container | core | — |
 | `nself functions` | Manage serverless functions | data | delete, deploy, invoke, list, logs |
 | `nself health` | Health check management with continuous monitoring | observe | check, config, endpoint, history, service, watch |
@@ -121,23 +119,18 @@ Run `make cmd-inventory` to refresh. **Total top-level commands: 41**
 | `nself logs` | View and filter service logs | core | — |
 | `nself man` | Generate man pages for all nself commands | account | — |
 | `nself mcp` | Start the nSelf MCP server | extend | — |
-| `nself ops` | Ops-profile deployment and management | deploy | deploy |
 | `nself plugin` | Manage nSelf plugins | extend | audit-tables, compat-check, count, debug, dev, disable, enable, info, init, install, inventory, link, list, logs, marketplace, new, outdated, refresh, remove, search, start, status, stop, submit, test, unlink, update, updates |
-| `nself promote` | Promote one environment to another (e.g. staging to prod) | deploy | rollback |
 | `nself remove` | Remove an installed plugin or bundle | extend | — |
 | `nself reset` | Stop containers, remove all data volumes, and clean generated files | core | — |
 | `nself restart` | Smart restart with config change detection | core | — |
 | `nself runner` | Provision and audit self-hosted GitHub Actions CI runner hosts | advanced | provision, verify |
-| `nself security` | Server security: audit, setup, and status | advanced | audit, setup, status |
 | `nself self-heal` | Run targeted self-healing routines for nSelf components | observe | — |
 | `nself server` | Provision, list, resize, and destroy Hetzner Cloud servers | advanced | destroy, list, provision, resize |
-| `nself service` | Manage optional services | config | add, configure, disable, enable, list, ps, restart, scale, start, stop, update, upgrade |
-| `nself start` | Boot your nSelf stack | core | — |
+| `nself start` | Boot your nSelf stack | core | dev |
 | `nself status` | Show health status of all services | core | — |
 | `nself stop` | Gracefully shut down all services or specific services | core | — |
-| `nself update` | Update the nSelf CLI and admin UI | account | images, project, upgrade |
+| `nself update` | Update the nSelf CLI and admin UI | account | images, project, upgrade, verify-sbom |
 | `nself urls` | Display all service URLs with route conflict detection | core | — |
-| `nself verify-sbom` | Verify the SBOM signature for a CLI release | advanced | — |
 | `nself version` | Show version and system information | account | — |
 
 <!-- END GENERATED:command-table -->

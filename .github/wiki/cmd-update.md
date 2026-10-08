@@ -53,6 +53,7 @@ The check is read-only and non-destructive. It does not install anything. See [[
 | `images` | Refresh Docker image digests from registries |
 | `project` | Upgrade a project's layout from an older nself |
 | `upgrade` | Upgrade the ɳSelf CLI (detects install method) |
+| `verify-sbom` | Verify the SBOM signature for a CLI release |
 <!-- END GENERATED:subcommands -->
 
 ## Examples

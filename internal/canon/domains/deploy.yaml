@@ -2,13 +2,13 @@
 # Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
 schema_version: 1
 commands:
-  # cmd/commands/access.go:35 RunE path changes no persistent state (prints/reads only)
-  access: {canon: pending, side_effect: read}
-  access grant: {side_effect: remote}
-  access list: {side_effect: read, json: legacy}
-  # cmd/commands/access_revoke.go:21 removes one authorized_keys entry on the remote host; `access grant` restores it
-  access revoke: {side_effect: remote}
   deploy: {canon: core, side_effect: remote, json: legacy, flags: {follow: {output: stream}}}
+  # cmd/commands/access.go:35 RunE path changes no persistent state (prints/reads only)
+  deploy access: {side_effect: read}
+  deploy access grant: {side_effect: remote}
+  deploy access list: {side_effect: read, json: legacy}
+  # cmd/commands/access_revoke.go:21 removes one authorized_keys entry on the remote host; `access grant` restores it
+  deploy access revoke: {side_effect: remote}
   # cmd/commands/deploy_diagnostics.go:121 RunE path changes no persistent state (prints/reads only)
   deploy check-access: {side_effect: read, json: legacy}
   # cmd/commands/deploy_environments.go:41 RunE path changes no persistent state (prints/reads only)
@@ -16,25 +16,41 @@ commands:
   # cmd/commands/deploy_diagnostics.go:73 RunE path changes no persistent state (prints/reads only)
   deploy health: {side_effect: read, json: legacy}
   deploy logs: {side_effect: read, output: stream}
+  # cmd/commands/ops.go:81 builds locally then deploys to the configured remote ops host
+  deploy ops: {side_effect: remote, flags: {follow: {output: stream}}}
   deploy promote: {side_effect: remote}
+  # cmd/commands/promote.go:23 promotes environment state to the selected target
+  deploy promote-env: {side_effect: remote, json: legacy}
+  deploy promote-env rollback: {side_effect: destructive}
   deploy rollback: {side_effect: destructive}
+  # cmd/commands/security.go:44 prints a dry-run plan unless --apply is passed
+  deploy security setup: {side_effect: read, flags: {apply: {side_effect: destructive}}}
   deploy status: {side_effect: read, json: legacy}
   # cmd/commands/deploy_web_run.go:20 builds locally and publishes the prebuilt output to Vercel
   deploy web: {side_effect: remote}
+  # cmd/commands/security_commands.go:26 inspects host security without changes
+  doctor security audit: {side_effect: read}
+  doctor security status: {side_effect: read}
   # cmd/commands/ops.go:46 RunE path changes no persistent state (prints/reads only)
-  ops: {canon: pending, side_effect: read}
-  ops deploy: {side_effect: remote, flags: {follow: {output: stream}}}
-  promote: {canon: pending, side_effect: remote, json: legacy}
-  promote rollback: {side_effect: destructive}
+  ops: {canon: pending, side_effect: read, mode: v1.4}
   # cmd/commands/security.go:27 RunE path changes no persistent state (prints/reads only)
-  security: {canon: pending, side_effect: read}
-  # cmd/commands/security_commands.go:26 RunE path changes no persistent state (prints/reads only)
-  security audit: {side_effect: read}
-  # cmd/commands/security_commands.go:96 prints the plan by default; --apply runs sed -i on /etc/ssh/sshd_config (no backup, password and root login off), ufw --force enable and apt installs (security_commands.go:75-130); a lock-out is not restored by re-running
-  security setup: {side_effect: read, flags: {apply: {side_effect: destructive}}}
-  security status: {side_effect: read}
+  security: {canon: pending, side_effect: read, mode: v1.4}
   update: {canon: core, side_effect: write}
   update images: {side_effect: write}
   update upgrade: {side_effect: write}
   # cmd/commands/verify_sbom.go:41 RunE path changes no persistent state (prints/reads only)
-  verify-sbom: {canon: pending, side_effect: read}
+  update verify-sbom: {side_effect: read}
+hubs:
+  - {path: deploy security, summary: "Apply server security"}
+  - {path: doctor security, summary: "Diagnose server security"}
+moves:
+  - {from: access, to: deploy access, since: v1.5.0, removal_at: v1.6.0}
+  - {from: ops deploy, to: deploy ops, since: v1.5.0, removal_at: v1.6.0}
+  - {from: promote, to: deploy promote-env, since: v1.5.0, removal_at: v1.6.0}
+  - {from: security audit, to: doctor security audit, since: v1.5.0, removal_at: v1.6.0}
+  - {from: security setup, to: deploy security setup, since: v1.5.0, removal_at: v1.6.0}
+  - {from: security status, to: doctor security status, since: v1.5.0, removal_at: v1.6.0}
+  - {from: verify-sbom, to: update verify-sbom, since: v1.5.0, removal_at: v1.6.0}
+retired_hubs:
+  - {from: ops, to: deploy ops, since: v1.5.0, removal_at: v1.6.0}
+  - {from: security, to: doctor security, since: v1.5.0, removal_at: v1.6.0}

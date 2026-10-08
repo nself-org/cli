@@ -471,12 +471,16 @@ configure an nginx static page via `nginx/conf.d/`.
 <!-- BEGIN GENERATED:subcommands -->
 | Name | Description |
 |------|-------------|
+| `access` | Manage SSH key access on an already-deployed server |
 | `check-access` | Verify access to configured deploy targets (deprecated: use 'nself env target probe') |
 | `environments` | List configured deploy environments and server capabilities |
 | `health` | Run health checks against a target deployment |
 | `logs` | Show deployment logs for a target |
+| `ops` | Deploy with the ops profile to the ops server |
 | `promote` | Promote a canary deploy to 100% green traffic |
+| `promote-env` | Promote one environment to another (e.g. staging to prod) |
 | `rollback` | Roll back the last deployment for a target |
+| `security` | Apply server security |
 | `status` | Show deployment status for a target |
 | `web` | Build web apps locally and deploy prebuilt output to Vercel |
 <!-- END GENERATED:subcommands -->

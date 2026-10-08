@@ -77,7 +77,33 @@ func rewriteOldToNew(t *canonTableT, root *cobra.Command, args []string, start i
 		removal = canonRemovalDefault
 	}
 	note := canonNote{Kind: kind, Old: strings.Join(best.From, " "), New: strings.Join(best.To, " "), RemovalAt: removal, Plugin: best.Plugin, From: best.From, To: best.To}
-	return splice(args, start, len(best.From), best.To), []canonNote{note}, nil
+	rewritten := splice(args, start, len(best.From), best.To)
+	// compat.V15(P7-CANON-07): preserve a bare hub's help when its target
+	// has its own action. Help-only targets keep their original rewrite.
+	if kind == "retired" && len(args) == start+len(best.From) && retiredTargetHasBehavior(t, root, best.To) {
+		rewritten = append(rewritten, "--help")
+	}
+	return rewritten, []canonNote{note}, nil
+}
+
+func retiredTargetHasBehavior(t *canonTableT, root *cobra.Command, target []string) bool {
+	path := target
+	for _, move := range t.Moves {
+		if strings.Join(move.To, " ") == strings.Join(target, " ") {
+			path = move.From
+			break
+		}
+	}
+	node := walkNames(root, path)
+	if node == nil || node.RunE == nil {
+		return false
+	}
+	for _, helpPath := range helpOnlyParents {
+		if strings.Join(path, " ") == helpPath {
+			return false
+		}
+	}
+	return true
 }
 
 func rewriteNewToOld(t *canonTableT, root *cobra.Command, args []string, start int, words []string) []string {

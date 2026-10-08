@@ -2,15 +2,6 @@
   "generated_by": "tools/parity",
   "rows": [
     {
-      "name": "access",
-      "path": "nself access",
-      "group_id": "advanced",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "documented",
-      "openapi": "n/a (see below)"
-    },
-    {
       "name": "admin",
       "path": "nself admin",
       "group_id": "account",
@@ -98,15 +89,6 @@
       "wiki_page": true,
       "mcp_tool": true,
       "env_vars": "undocumented: API_URL, LAPTOP_ONLY, M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, VERCEL_TOKEN",
-      "openapi": "n/a (see below)"
-    },
-    {
-      "name": "dev",
-      "path": "nself dev",
-      "group_id": "core",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "n/a",
       "openapi": "n/a (see below)"
     },
     {
@@ -209,30 +191,12 @@
       "openapi": "n/a (see below)"
     },
     {
-      "name": "ops",
-      "path": "nself ops",
-      "group_id": "deploy",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
       "name": "plugin",
       "path": "nself plugin",
       "group_id": "extend",
       "wiki_page": true,
       "mcp_tool": true,
       "env_vars": "undocumented: GOPATH, NSELF_LICENSE_SKIP_VERIFY, NSELF_LOCAL_URL, NSELF_MARKETPLACE_URL, NSELF_PING_URL, NSELF_PLUGIN_CACHE, NSELF_PLUGIN_DIR, NSELF_PLUGIN_LICENSE_KEY, NSELF_PLUGIN_REGISTRY",
-      "openapi": "n/a (see below)"
-    },
-    {
-      "name": "promote",
-      "path": "nself promote",
-      "group_id": "deploy",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "n/a",
       "openapi": "n/a (see below)"
     },
     {
@@ -272,15 +236,6 @@
       "openapi": "n/a (see below)"
     },
     {
-      "name": "security",
-      "path": "nself security",
-      "group_id": "advanced",
-      "wiki_page": true,
-      "mcp_tool": false,
-      "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
       "name": "self-heal",
       "path": "nself self-heal",
       "group_id": "observe",
@@ -295,15 +250,6 @@
       "group_id": "advanced",
       "wiki_page": true,
       "mcp_tool": false,
-      "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
-      "name": "service",
-      "path": "nself service",
-      "group_id": "config",
-      "wiki_page": true,
-      "mcp_tool": true,
       "env_vars": "n/a",
       "openapi": "n/a (see below)"
     },
@@ -349,15 +295,6 @@
       "group_id": "core",
       "wiki_page": true,
       "mcp_tool": true,
-      "env_vars": "n/a",
-      "openapi": "n/a (see below)"
-    },
-    {
-      "name": "verify-sbom",
-      "path": "nself verify-sbom",
-      "group_id": "advanced",
-      "wiki_page": true,
-      "mcp_tool": false,
       "env_vars": "n/a",
       "openapi": "n/a (see below)"
     },
