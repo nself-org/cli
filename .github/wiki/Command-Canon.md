@@ -8,13 +8,16 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 
 | Old path | New path | Kind | Since | Removal at |
 |---|---|---|---|---|
+| `nself account` | `nself license account` | move | v1.5.0 | v1.6.0 |
 | `nself env` | `nself config env` | move | v1.5.0 | v1.6.0 |
+| `nself login` | `nself license login` | move | v1.5.0 | v1.6.0 |
+| `nself logout` | `nself license logout` | move | v1.5.0 | v1.6.0 |
 | `nself oauth` | `nself config oauth` | move | v1.5.0 | v1.6.0 |
 | `nself secrets` | `nself config secrets` | move | v1.5.0 | v1.6.0 |
 | `nself telemetry` | `nself config telemetry` | move | v1.5.0 | v1.6.0 |
 | `nself trust` | `nself config trust` | move | v1.5.0 | v1.6.0 |
 
-Total rows: 5
+Total rows: 8
 
 <!-- END GENERATED:canon-table -->
 

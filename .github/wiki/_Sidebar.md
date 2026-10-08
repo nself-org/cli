@@ -289,9 +289,9 @@
 
 <!-- BEGIN GENERATED:command-list -->
 
-**All commands (47)**
+**All commands (44)**
 
-- _A:_ [[cmd-access]] · [[cmd-account]] · [[cmd-admin]]
+- _A:_ [[cmd-access]] · [[cmd-admin]]
 - _B:_ [[cmd-backup]] · [[cmd-build]] · [[cmd-bundle]]
 - _C:_ [[cmd-ci]] · [[cmd-clean]] · [[cmd-completion]] · [[cmd-config]]
 - _D:_ [[cmd-db]] · [[cmd-deploy]] · [[cmd-dev]] · [[cmd-doctor]]
@@ -300,7 +300,7 @@
 - _G:_ [[cmd-generate]]
 - _H:_ [[cmd-health]] · [[cmd-help-topics]]
 - _I:_ [[cmd-init]] · [[cmd-install]]
-- _L:_ [[cmd-license]] · [[cmd-login]] · [[cmd-logout]] · [[cmd-logs]]
+- _L:_ [[cmd-license]] · [[cmd-logs]]
 - _M:_ [[cmd-man]] · [[cmd-mcp]] · [[cmd-migrate]]
 - _O:_ [[cmd-ops]]
 - _P:_ [[cmd-plugin]] · [[cmd-promote]]
