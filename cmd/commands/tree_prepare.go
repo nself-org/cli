@@ -25,10 +25,11 @@ import (
 )
 
 // mountBuiltinFamilies and mountInstalledPlugins are the plugin-command mount
-// hooks P7-CANON-01 fills; they do nothing until then.
+// hooks (plugin_mount.go, builtin_families.go). Both take the cobra root after
+// normalization and before/after the canon relocation respectively.
 var (
-	mountBuiltinFamilies  = func(root *cobra.Command) {}
-	mountInstalledPlugins = func(root *cobra.Command) {}
+	mountBuiltinFamilies  = mountBuiltinFamiliesFromList
+	mountInstalledPlugins = mountInstalledPluginsFromDisk
 )
 
 // prepareTree applies the canon to root for the mode: builtin mount hook,

@@ -14,7 +14,15 @@ import (
 )
 
 // checkPluginCompatibility verifies installed plugins are compatible with the current CLI version.
+// The plugin-command mount check (doctor_checks_mount.go) is prepended so it
+// reports even when the compatibility scan exits early.
 func checkPluginCompatibility(projectDir string, verbose bool) []doctorCheckResult {
+	return append(checkPluginMount(RootCmd, verbose), checkPluginVersionCompat(projectDir, verbose)...)
+}
+
+// checkPluginVersionCompat is the version-compatibility scan of every
+// installed plugin.
+func checkPluginVersionCompat(projectDir string, verbose bool) []doctorCheckResult {
 	pluginDir := resolvePluginDir()
 	plugins, err := plugin.ListInstalled(pluginDir)
 	if err != nil {

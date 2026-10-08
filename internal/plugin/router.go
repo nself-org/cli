@@ -6,6 +6,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // ExitCodeError is returned when a plugin process exits with a non-zero code.
@@ -64,8 +67,7 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 		candidate += ".exe"
 	}
 
-	path := candidate
-	if _, err := os.Stat(path); err != nil {
+	if _, err := os.Stat(candidate); err != nil {
 		// CLI-R19: an unknown command is the moment a user most needs to be told
 		// how to get it, so the actionable message — `nself install X` — goes in
 		// the returned error.
@@ -87,6 +89,73 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 			cmdName, cmdName, installHint)
 	}
 
+	return ProxyBinaryAt(candidate, filepath.Dir(binDir), cmdName, args)
+}
+
+// ProxyBinary execs the named plugin binary with args verbatim. It is the
+// exec path of the plugin-command mount (contract:cli.plugin-command-mount
+// v1): the binary is resolved ONLY inside the plugin bin directory (S-002),
+// argv is passed straight through with no shell, stdio is inherited and a
+// non-zero plugin exit status comes back as ExitCodeError. slug names the
+// plugin whose manifest (if present) declares project settings for the child
+// environment, exactly like the unknown-command proxy.
+//
+// The mount validates the binary at discovery time (mount.Discover, E406);
+// a binary that vanishes between discovery and exec fails with E406 here.
+func ProxyBinary(binName, slug string, args []string) error {
+	binDir := pluginBinDir()
+	if !safeBinaryName(binName) {
+		return errs.Newf("E406", "plugin %q binary %q has an invalid name", slug, binName)
+	}
+	fileName := binName
+	if runtime.GOOS == "windows" {
+		fileName += ".exe"
+	}
+	return ProxyBinaryAt(filepath.Join(binDir, fileName), filepath.Dir(binDir), slug, args)
+}
+
+// ProxyBinaryAt executes the discovered path after a fresh containment check.
+// The plugins directory owner can replace the file between check and exec;
+// this accepted window does not cross a different trust boundary.
+func ProxyBinaryAt(candidate, rootDir, slug string, args []string) error {
+	resolvedRoot, err := filepath.EvalSymlinks(rootDir)
+	if err != nil {
+		return errs.Newf("E406", "plugin %q binary directory is unavailable", slug)
+	}
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return errs.Newf("E406", "plugin %q binary is unavailable", slug)
+	}
+	rel, err := filepath.Rel(resolvedRoot, resolved)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return errs.Newf("E406", "plugin %q binary resolves outside the plugins directory", slug)
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0111 == 0) {
+		return errs.Newf("E406", "plugin %q binary is not executable", slug)
+	}
+	return execPluginBinary(candidate, slug, args)
+}
+
+func safeBinaryName(name string) bool {
+	if !strings.HasPrefix(name, "nself-") || len(name) <= len("nself-") {
+		return false
+	}
+	if name[len("nself-")] < 'a' || name[len("nself-")] > 'z' {
+		return false
+	}
+	for _, r := range name[len("nself-"):] {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// execPluginBinary is the shared run of a plugin binary: inherited stdio, the
+// project settings the plugin's manifest declares, and the plugin's exit
+// status surfaced as ExitCodeError (silent: the child already reported).
+func execPluginBinary(path, slug string, args []string) error {
 	// Prepare the command.
 	//
 	// The plugin inherits this process's environment, plus whichever project
@@ -95,7 +164,11 @@ func ProxyCommandWithHint(cmdName string, args []string, installHint string) err
 	// not in a container compose has populated — and would have to re-implement
 	// the cascade that CLI-R18 made canonical.
 	cmd := exec.Command(path, args...)
-	if extra := pluginEnvForCommand(cmdName); len(extra) > 0 {
+	return runPluginCommand(cmd, slug)
+}
+
+func runPluginCommand(cmd *exec.Cmd, slug string) error {
+	if extra := pluginEnvForCommand(slug); len(extra) > 0 {
 		cmd.Env = append(os.Environ(), extra...)
 	}
 	cmd.Stdin = os.Stdin

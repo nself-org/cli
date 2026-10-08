@@ -37,9 +37,17 @@ func Build(root *cobra.Command, c *canon.File, dataTypes map[string]any, opts Bu
 	}
 	nodes := walk(root)
 	byKey := map[string]*node{}
+	annotated := map[string]bool{}
 	for i := range nodes {
 		byKey[nodes[i].key] = &nodes[i]
+		if mountSlug(nodes[i].cmd) != "" {
+			annotated[nodes[i].key] = true
+		}
 	}
+	// A canon plugin entry is file-level invalid (the validator cannot see
+	// mount annotations); for annotated nodes Build owns the rule and lifts
+	// that one problem (plugin.go).
+	problems = liftPluginReservation(problems, annotated)
 	problems = append(problems, checkResolves(c, dataTypes, opts, byKey)...)
 
 	rootPath := root.CommandPath()
@@ -52,13 +60,38 @@ func Build(root *cobra.Command, c *canon.File, dataTypes map[string]any, opts Bu
 	}
 	for _, n := range nodes {
 		entry, ok := c.Commands[n.key]
-		if !ok {
+		switch {
+		case isInstalledMount(n.cmd):
+			// Installed plugins need no canon entry; if one exists it must
+			// not claim the path for a core command.
+			if ok && entry.Canon != canon.CanonPlugin {
+				problems = append(problems, fmt.Sprintf("commands[%q]: plugin-mounted command's canon entry must say canon plugin, not %q", n.key, entry.Canon))
+				continue
+			}
+			reg.Commands = append(reg.Commands, buildInstalledCommand(n.cmd))
+		case isBuiltinMount(n.cmd):
+			// A builtin family's attributes come from its canon entry, which
+			// must say canon plugin.
+			if !ok {
+				problems = append(problems, fmt.Sprintf("commands[%q]: builtin plugin family %q needs a canon entry saying canon plugin; add one to internal/canon/canon.yaml", n.key, mountSlug(n.cmd)))
+				continue
+			}
+			if entry.Canon != canon.CanonPlugin {
+				problems = append(problems, fmt.Sprintf("commands[%q]: builtin plugin family's canon entry must say canon plugin, not %q", n.key, entry.Canon))
+				continue
+			}
+			cmd, p := buildCommand(n, entry, rootPath, byKey, c, dataTypes, opts)
+			problems = append(problems, p...)
+			slug := mountSlug(n.cmd)
+			cmd.Plugin = &slug
+			reg.Commands = append(reg.Commands, cmd)
+		case !ok:
 			problems = append(problems, fmt.Sprintf("commands[%q]: no canon entry for command %q; add one to internal/canon/canon.yaml", n.key, n.cmd.CommandPath()))
-			continue
+		default:
+			cmd, p := buildCommand(n, entry, rootPath, byKey, c, dataTypes, opts)
+			problems = append(problems, p...)
+			reg.Commands = append(reg.Commands, cmd)
 		}
-		cmd, p := buildCommand(n, entry, rootPath, byKey, c, dataTypes, opts)
-		problems = append(problems, p...)
-		reg.Commands = append(reg.Commands, cmd)
 	}
 	if err := canon.NewValidationError(problems); err != nil {
 		return nil, err

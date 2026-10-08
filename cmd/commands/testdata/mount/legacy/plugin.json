@@ -1,0 +1,17 @@
+{
+  "name": "legacy",
+  "version": "1.0.0",
+  "description": "Legacy test plugin",
+  "license": "MIT",
+  "licenseType": "free",
+  "pluginType": "cli",
+  "binaryName": "nself-legacy",
+  "category": "infrastructure",
+  "status": "stable",
+  "tier": "free",
+  "cliCommands": [
+    {
+      "name": "legacy"
+    }
+  ]
+}

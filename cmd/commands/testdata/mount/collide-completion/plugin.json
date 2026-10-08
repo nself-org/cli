@@ -1,0 +1,27 @@
+{
+  "binaryName": "nself-collide-completion",
+  "category": "infrastructure",
+  "commands": {
+    "command": "completion",
+    "binary": "nself-collide-completion",
+    "summary": "collide-completion commands",
+    "subcommands": []
+  },
+  "description": "collide-completion test plugin",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.5.0",
+  "name": "collide-completion",
+  "pluginType": "cli",
+  "requires": {
+    "nself": ">=1.5.0"
+  },
+  "service": {
+    "kind": "cli"
+  },
+  "status": "stable",
+  "tier": "free",
+  "version": "1.0.0"
+}

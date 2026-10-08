@@ -1,0 +1,27 @@
+{
+  "binaryName": "nself-collide-up",
+  "category": "infrastructure",
+  "commands": {
+    "command": "up",
+    "binary": "nself-collide-up",
+    "summary": "collide-up commands",
+    "subcommands": []
+  },
+  "description": "collide-up test plugin",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.5.0",
+  "name": "collide-up",
+  "pluginType": "cli",
+  "requires": {
+    "nself": ">=1.5.0"
+  },
+  "service": {
+    "kind": "cli"
+  },
+  "status": "stable",
+  "tier": "free",
+  "version": "1.0.0"
+}

@@ -1,0 +1,27 @@
+{
+  "binaryName": "nself-dup-b",
+  "category": "infrastructure",
+  "commands": {
+    "command": "duplicate",
+    "binary": "nself-dup-b",
+    "summary": "dup-b commands",
+    "subcommands": []
+  },
+  "description": "dup-b test plugin",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.5.0",
+  "name": "dup-b",
+  "pluginType": "cli",
+  "requires": {
+    "nself": ">=1.5.0"
+  },
+  "service": {
+    "kind": "cli"
+  },
+  "status": "stable",
+  "tier": "free",
+  "version": "1.0.0"
+}

@@ -104,6 +104,9 @@ func decorate(c *cobra.Command) {
 	if c.Run == nil && c.RunE == nil {
 		return // hub without a body: cobra prints help, nothing to guard
 	}
+	if c.Annotations["nself.mount.source"] == "installed" {
+		return
+	}
 	if c.Args != nil {
 		orig := c.Args
 		c.Args = func(cmd *cobra.Command, args []string) error {

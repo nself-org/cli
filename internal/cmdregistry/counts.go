@@ -10,9 +10,12 @@ func computeCounts(verbs []string, cmds []Command, rootPath string, missing []st
 	n := Counts{Commands: len(cmds)}
 	top := map[string]bool{}
 	for _, c := range cmds {
+		if c.Plugin != nil {
+			n.Plugin++
+		}
 		if c.Parent == rootPath {
 			top[c.Name] = true
-			if !c.Hidden && c.Name != "help" {
+			if !c.Hidden && c.Name != "help" && c.Canon != canon.CanonPlugin {
 				n.TopLevel++
 			}
 		}

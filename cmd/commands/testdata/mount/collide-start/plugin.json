@@ -1,0 +1,27 @@
+{
+  "binaryName": "nself-collide-start",
+  "category": "infrastructure",
+  "commands": {
+    "command": "start",
+    "binary": "nself-collide-start",
+    "summary": "collide-start commands",
+    "subcommands": []
+  },
+  "description": "collide-start test plugin",
+  "license": "free",
+  "licenseType": "free",
+  "manifest_version": 2,
+  "maturity": "implemented",
+  "minNselfVersion": "1.5.0",
+  "name": "collide-start",
+  "pluginType": "cli",
+  "requires": {
+    "nself": ">=1.5.0"
+  },
+  "service": {
+    "kind": "cli"
+  },
+  "status": "stable",
+  "tier": "free",
+  "version": "1.0.0"
+}
