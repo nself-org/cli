@@ -15,6 +15,8 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 | `nself dev` | `nself start dev` | move | v1.5.0 | v1.6.0 |
 | `nself env` | `nself config env` | move | v1.5.0 | v1.6.0 |
 | `nself generate` | `nself db generate` | move | v1.5.0 | v1.6.0 |
+| `nself health` | `nself status health` | move | v1.5.0 | v1.6.0 |
+| `nself help-topics` | `nself help topics` | move | v1.5.0 | v1.6.0 |
 | `nself install` | `nself add` | move | v1.5.0 | v1.6.0 |
 | `nself login` | `nself license login` | move | v1.5.0 | v1.6.0 |
 | `nself logout` | `nself license logout` | move | v1.5.0 | v1.6.0 |
@@ -40,13 +42,15 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 | `nself security audit` | `nself doctor security audit` | move | v1.5.0 | v1.6.0 |
 | `nself security setup` | `nself deploy security setup` | move | v1.5.0 | v1.6.0 |
 | `nself security status` | `nself doctor security status` | move | v1.5.0 | v1.6.0 |
+| `nself self-heal` | `nself doctor heal` | move | v1.5.0 | v1.6.0 |
 | `nself service` | `nself config services` | move | v1.5.0 | v1.6.0 |
 | `nself telemetry` | `nself config telemetry` | move | v1.5.0 | v1.6.0 |
 | `nself template` | `nself init template` | move | v1.5.0 | v1.6.0 |
 | `nself trust` | `nself config trust` | move | v1.5.0 | v1.6.0 |
+| `nself urls` | `nself status urls` | move | v1.5.0 | v1.6.0 |
 | `nself verify-sbom` | `nself update verify-sbom` | move | v1.5.0 | v1.6.0 |
 
-Total rows: 37
+Total rows: 41
 
 <!-- END GENERATED:canon-table -->
 

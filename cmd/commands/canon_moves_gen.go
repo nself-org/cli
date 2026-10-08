@@ -25,6 +25,8 @@ var canonTable = canonTableT{
 		{From: []string{"dev"}, To: []string{"start", "dev"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"env"}, To: []string{"config", "env"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"generate"}, To: []string{"db", "generate"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"health"}, To: []string{"status", "health"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"help-topics"}, To: []string{"help", "topics"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"install"}, To: []string{"add"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"login"}, To: []string{"license", "login"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"logout"}, To: []string{"license", "logout"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
@@ -32,10 +34,12 @@ var canonTable = canonTableT{
 		{From: []string{"plugin"}, To: []string{"config", "plugins"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"promote"}, To: []string{"deploy", "promote-env"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"secrets"}, To: []string{"config", "secrets"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"self-heal"}, To: []string{"doctor", "heal"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"service"}, To: []string{"config", "services"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"telemetry"}, To: []string{"config", "telemetry"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"template"}, To: []string{"init", "template"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"trust"}, To: []string{"config", "trust"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"urls"}, To: []string{"status", "urls"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"verify-sbom"}, To: []string{"update", "verify-sbom"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 	},
 	Shims: []canonRowT{
@@ -53,5 +57,10 @@ var canonTable = canonTableT{
 		{From: []string{"deploy", "security"}, Summary: "Apply server security"},
 		{From: []string{"doctor", "security"}, Summary: "Diagnose server security"},
 		{From: []string{"update", "project"}, Summary: "Upgrade a project's layout from an older nself"},
+	},
+	Builtins: [][]string{
+		{"completion"},
+		{"man"},
+		{"version"},
 	},
 }
