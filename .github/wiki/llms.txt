@@ -104,7 +104,7 @@ Flags:
 - `--check` (default false) — Validate only, don't build
 - `--debug` (default false) — Enable debug mode
 - `--diff` (default false) — Print unified diffs of the planned changes to stderr (env files show key names only)
-- `--force` (default false) — Force rebuild all components
+- `--force` (default false) — Force rebuild all components and overwrite hand-edited generated files
 - `--hosts` (default false) — Opt in to /etc/hosts management for a BASE_DOMAIN that isn't a recognized local-dev domain (localhost/*.local.nself.org/*.localhost/*.local). Never overrides ENV=prod, which always skips /etc/hosts.
 - `--no-auto-redis` (default false) — Disable automatic Redis enablement when a BullMQ-backed plugin is detected
 - `--no-cache` (default false) — Disable build cache

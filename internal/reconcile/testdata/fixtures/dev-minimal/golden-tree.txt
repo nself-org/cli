@@ -1,5 +1,6 @@
 d 0755 .nself
 d 0755 .nself/dist
+d 0755 .nself/state
 d 0755 monitoring
 d 0755 nginx
 d 0755 nginx/conf.d
@@ -19,6 +20,7 @@ f 0644 .nself/build-version 9a66809cf210f6d1149c329fac8661098d04fc0b2c6fb00bf5bb
 f 0644 .nself/compose-files.txt b557037f882d549c5afb2fc293a31e7f19f70d8c3fdd01a2b54123185ce44073
 f 0644 .nself/dist/openapi.json cd5aad3f8cc691cd5e1d6b247f87a045b18a6efd67cd5dfde6e5648142cd5039
 f 0644 .nself/dist/scalar.html bbf35b17351894d12bd5c6c351b050a10bc761b3612b18c086b06505cdb37658
+f 0644 .nself/state/generated.json ef77c98ed95be64237d256b73b4e227b1ecf40ccced33d7c048828f0ea111ce3
 f 0644 nginx/conf.d/default.conf ccc13780ced1a64b10360394d4b32693efc374590b9522b1988088dba5408f13
 f 0644 nginx/includes/rate-limits.conf 77e62d250a8c27ae3e563d4a9cdb7bd1ab999c5514fa972b498d30817d128f2a
 f 0644 nginx/nginx.conf 833b2ac4719e3099823f15fad01bc0ec9bdeff73f45267f73f83c44605c468b2

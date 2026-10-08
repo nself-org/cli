@@ -174,16 +174,13 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 		return nil, nil, err
 	}
 	// P7-LIVE-04 (EPIC D5): the record is written only now that the whole
-	// write succeeded, and atomically inside Save — an interrupted apply (a
-	// failed write between two files) leaves the previous record intact, so
+	// write succeeded, and atomically (temp + rename) — an interrupted apply
+	// (a failed write between two files) leaves the previous record intact, so
 	// the next plan reports the half-written project as ordinary changes, not
-	// hand-edits. The hashes are of the exact bytes the write was held to.
+	// hand-edits. The bytes are c.record, the exact bytes the plan showed as
+	// the record artifact, so plan == apply holds for the record too.
 	firstRecorded := state == nil
-	if state == nil {
-		state = &GeneratedState{}
-	}
-	state.RecordPlanned(c.planned)
-	if err := state.Save(req.ProjectDir); err != nil {
+	if err := writeRecord(req.ProjectDir, c.record); err != nil {
 		return nil, nil, err
 	}
 	if firstRecorded && req.Stderr != nil {

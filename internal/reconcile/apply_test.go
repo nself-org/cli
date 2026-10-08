@@ -164,7 +164,14 @@ func TestApplyWritesWhatWasPlanned(t *testing.T) {
 		}
 		out := map[string]string{}
 		for k := range fileHashes(t, f.project) {
-			if !strings.HasPrefix(k, ".nself/backups/") && k != ".nself/op.lock" {
+			// .nself/state/generated.json is excluded by name, and only it: it
+			// holds sha256 digests of files that embed the project's absolute
+			// path (.nself/compose-files.txt, .env.computed), so its bytes
+			// differ between two fixture roots even under this test's <ROOT>
+			// normalisation — a digest cannot be normalised. Its determinism
+			// within one root (plan == apply, a plan after apply is empty) is
+			// proven by TestPlanApplyProperty.
+			if !strings.HasPrefix(k, ".nself/backups/") && k != ".nself/op.lock" && k != GeneratedStateDisplayPath {
 				out[k] = strings.ReplaceAll(readFile(t, f.project+"/"+k), root, "<ROOT>")
 			}
 		}

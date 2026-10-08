@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -206,6 +207,15 @@ func (p *l03Project) tree(t *testing.T, under string) string {
 		if err != nil {
 			return err
 		}
+		// .nself/state/generated.json, and only it, is hashed with its sha256
+		// digests masked: the record digests files that embed the project's
+		// absolute path (.nself/compose-files.txt, .env.computed), so its raw
+		// bytes differ per checkout root and a plain hash could never be
+		// golden. Masking keeps the golden exact about everything that is
+		// stable — the record's shape, schema and the set of recorded paths.
+		if rel == ".nself/state/generated.json" {
+			data = l03MaskRecordDigests(data)
+		}
 		sum := sha256.Sum256([]byte(strings.ReplaceAll(string(data), p.root, "<ROOT>")))
 		lines = append(lines, fmt.Sprintf("f %04o %s %s", info.Mode().Perm(), rel, hex.EncodeToString(sum[:])))
 		return nil
@@ -215,6 +225,18 @@ func (p *l03Project) tree(t *testing.T, under string) string {
 	}
 	sort.Strings(lines)
 	return strings.Join(lines, "\n") + "\n"
+}
+
+// l03Digest masks a recorded sha256 value in the generated-state record (see
+// tree for why): the quoted 64-lowercase-hex values are exactly the record's
+// digests; path keys and the host entries never match.
+var l03Digest = regexp.MustCompile(`"([0-9a-f]{64})"`)
+
+// l03MaskRecordDigests replaces every digest value in the record with a fixed
+// placeholder, deterministically, so the golden line for the record is stable
+// across checkout roots.
+func l03MaskRecordDigests(data []byte) []byte {
+	return l03Digest.ReplaceAll(data, []byte(`"<digest>"`))
 }
 
 // whole is the tree of the root: project, HOME, plugin dir and stub.

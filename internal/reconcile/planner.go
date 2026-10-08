@@ -20,6 +20,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"runtime"
 	"sort"
@@ -45,7 +46,8 @@ type computed struct {
 	plan          *Plan
 	planned       *nbuild.PlannedBuild
 	before, after ArtifactSet
-	generates     bool // the render generates secrets (random values)
+	generates     bool   // the render generates secrets (random values)
+	record        []byte // the exact record bytes this plan's apply writes (P7-LIVE-04)
 }
 
 // compute renders once in plan mode and builds the plan from that render.
@@ -70,6 +72,34 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	before, after, err := artifactSets(ov, res.Planned)
 	if err != nil {
 		return nil, err
+	}
+	// P7-LIVE-04 (EPIC D5): the generated-state record is itself a planned
+	// artifact, so plan == apply stays exact — the record the apply writes is
+	// the one the plan reported, with the bytes shown here. Its planned bytes
+	// are the current record with this render folded in; folding is idempotent,
+	// so a plan after a successful apply does not list the record again. The
+	// record is never hand_edited: it holds no entry for itself, so there is no
+	// recorded hash a human edit could diverge from (an edit shows as an
+	// ordinary change with its diff).
+	state, err := LoadGeneratedState(req.ProjectDir)
+	if err != nil {
+		return nil, err
+	}
+	_, recBody, err := PlannedRecord(state, res.Planned)
+	if err != nil {
+		return nil, err
+	}
+	after[GeneratedStateDisplayPath] = File{Data: recBody, Perm: 0o644}
+	if state != nil {
+		raw, rerr := os.ReadFile(GeneratedStatePath(req.ProjectDir))
+		if rerr != nil {
+			return nil, fmt.Errorf("reading %s for the plan: %w", GeneratedStateDisplayPath, rerr)
+		}
+		perm := fs.FileMode(0o644)
+		if info, serr := os.Stat(GeneratedStatePath(req.ProjectDir)); serr == nil {
+			perm = info.Mode().Perm()
+		}
+		before[GeneratedStateDisplayPath] = File{Data: raw, Perm: perm}
 	}
 	arts := append(Diff(before, after, req.HandEdited), modeArtifacts(before, after)...)
 	p := &Plan{
@@ -110,7 +140,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	for _, e := range p.Effects {
 		gen = gen || e.Kind == EffectSecretsPersist
 	}
-	return &computed{plan: p, planned: res.Planned, before: before, after: after, generates: gen}, nil
+	return &computed{plan: p, planned: res.Planned, before: before, after: after, generates: gen, record: recBody}, nil
 }
 
 // modeArtifacts lists files whose bytes do not change but whose permission bits

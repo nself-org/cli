@@ -11,7 +11,9 @@ package reconcile
 // overwrite or remove it without --force (reconcile.Confirm).
 // Inputs: the project directory, and the planned build of a successful apply.
 // Outputs: LoadGeneratedState and GeneratedState.Save; RecordPlanned folds a
-// successful apply's render into a record.
+// successful apply's render into a record; PlannedRecord is that fold, pure,
+// so the plan can report the record itself as an artifact (kind state) with
+// the exact bytes the apply writes.
 // Constraints: the record is written only after the whole apply succeeded, and
 // atomically (temp file + rename), so an interrupted apply leaves the previous
 // record intact. Any byte change counts — the hash is of the exact bytes the
@@ -36,6 +38,11 @@ import (
 // generatedStateSchema is the record's schema_version.
 const generatedStateSchema = "1"
 
+// GeneratedStateDisplayPath is the record's location as a plan display path
+// (project-relative, "/" separators): the artifact path the plan reports for
+// the record itself.
+const GeneratedStateDisplayPath = ".nself/state/generated.json"
+
 // GeneratedState is what nself last wrote in a project: the sha256 of every
 // file it wrote, keyed by the plan's display path (project-relative for
 // project files, "@fronting/<rel>", "@plugins/<rel>" or "@abs/<path>" for
@@ -56,7 +63,7 @@ type GeneratedHostEntry struct {
 
 // GeneratedStatePath is the record's location in a project.
 func GeneratedStatePath(projectDir string) string {
-	return filepath.Join(projectDir, ".nself", "state", "generated.json")
+	return filepath.Join(projectDir, filepath.FromSlash(GeneratedStateDisplayPath))
 }
 
 // LoadGeneratedState reads the record. A missing record is not an error: it
@@ -91,16 +98,56 @@ func LoadGeneratedState(projectDir string) (*GeneratedState, error) {
 // goes to a temp file in the state directory and one rename puts it in place,
 // so a reader (or a crash) never sees a partial record.
 func (s *GeneratedState) Save(projectDir string) error {
+	body, err := s.body()
+	if err != nil {
+		return err
+	}
+	return writeRecord(projectDir, body)
+}
+
+// PlannedRecord returns what a successful apply of pb leaves in the record,
+// and the exact bytes of it: a copy of the current record with pb folded in
+// (RecordPlanned), serialised the way Save writes it. Pure, so the plan can
+// report the record as an artifact (kind state) whose bytes are exactly what
+// the apply then writes — plan == apply stays exact. The record never holds an
+// entry for itself: the folded set is the build's render, not the record, so
+// there is no self-reference to resolve.
+func PlannedRecord(state *GeneratedState, pb *nbuild.PlannedBuild) (*GeneratedState, []byte, error) {
+	next := &GeneratedState{}
+	if state != nil {
+		next.Files = make(map[string]string, len(state.Files))
+		for k, v := range state.Files {
+			next.Files[k] = v
+		}
+		next.Host = append([]GeneratedHostEntry(nil), state.Host...)
+	}
+	next.RecordPlanned(pb)
+	body, err := next.body()
+	if err != nil {
+		return nil, nil, err
+	}
+	return next, body, nil
+}
+
+// body is the record's canonical bytes: schema pinned, files map allocated,
+// host entries sorted and deduped, MarshalIndent with a trailing newline.
+func (s *GeneratedState) body() ([]byte, error) {
 	s.SchemaVersion = generatedStateSchema
 	if s.Files == nil {
 		s.Files = map[string]string{}
 	}
 	s.Host = sortedHostEntries(s.Host)
-	body, err := json.MarshalIndent(s, "", "  ")
+	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encoding the generated-state record: %w", err)
+		return nil, fmt.Errorf("encoding the generated-state record: %w", err)
 	}
-	body = append(body, '\n')
+	return append(b, '\n'), nil
+}
+
+// writeRecord puts body in place atomically: a temp file in the state
+// directory, 0644, then one rename, so a reader (or a crash) never sees a
+// partial record. Callers hold the bytes they were shown in the plan.
+func writeRecord(projectDir string, body []byte) error {
 	dir := filepath.Dir(GeneratedStatePath(projectDir))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", dir, err)

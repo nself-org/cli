@@ -2434,7 +2434,7 @@
           "shorthand": "f",
           "type": "bool",
           "default": "false",
-          "usage": "Force rebuild all components",
+          "usage": "Force rebuild all components and overwrite hand-edited generated files",
           "hidden": false,
           "deprecated": null,
           "required": false,
