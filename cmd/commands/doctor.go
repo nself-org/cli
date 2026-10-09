@@ -94,6 +94,10 @@ in human and --json mode alike:
 			deep = false
 		}
 		fix, _ := cmd.Flags().GetBool("fix")
+		planOnly, _ := cmd.Flags().GetBool("plan")
+		if planOnly && !fix {
+			return fmt.Errorf("--plan requires --fix")
+		}
 		jsonOut, _ := cmd.Flags().GetBool("json")
 		formatFlag, _ := cmd.Flags().GetString("format")
 		onlySection, _ := cmd.Flags().GetString("only")
@@ -137,6 +141,9 @@ in human and --json mode alike:
 		if backendRoot := config.DetectMonorepoRoot(cwd); backendRoot != "" {
 			cwd = backendRoot
 		}
+		if planOnly {
+			return printDoctorDriftPlan(ctx, cmd, cwd)
+		}
 
 		// Deep mode: run all 12 subsystem checks via doctor package
 		if deep {
@@ -149,7 +156,7 @@ in human and --json mode alike:
 
 			// Apply fix-it engine
 			if fix {
-				doctor.FixItEngine(ctx, deepResults)
+				deepResults = doctor.FixItEngine(ctx, cwd, deepResults)
 			}
 
 			// Convert to doctorCheckResult
@@ -169,6 +176,9 @@ in human and --json mode alike:
 			}
 			if !jsonOut {
 				ui.CommandHeader("nSelf Doctor (Deep)", "All 12 subsystem checks")
+			}
+			if fix {
+				printDeepDoctorChecks(checks)
 			}
 			printDoctorSummary(report)
 			return doctorExit(report)
@@ -259,6 +269,14 @@ in human and --json mode alike:
 			ui.Section("TLS")
 		}
 		checks = append(checks, checkServedCertificates(ctx, cwd, verbose)...)
+		if !jsonOut {
+			ui.Section("Generated files")
+		}
+		drift, err := runDoctorDriftCheck(ctx, cmd, cwd, fix, verbose)
+		if err != nil {
+			return err
+		}
+		checks = append(checks, drift)
 
 		// Build summary
 		report := buildDoctorReport(checks)
@@ -273,4 +291,10 @@ in human and --json mode alike:
 		// Exit code: 1=failures, 2=warnings only, 0=all pass (10/12 in v1.5 mode)
 		return doctorExit(report)
 	},
+}
+
+func printDeepDoctorChecks(checks []doctorCheckResult) {
+	for _, check := range checks {
+		printCheck(check.Status, check.Name, check.Message, true)
+	}
 }

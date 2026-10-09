@@ -307,12 +307,14 @@ Flags:
 - `--check-legacy` (default false) — Scan host for v0.9 stale paths (global scan, not per-project)
 - `--deep` (default false) — Alias for --full (run all checks)
 - `--fix` (default false) — Auto-fix safe issues
+- `--force` (default false) — With --fix, overwrite hand-edited generated files
 - `--format` (default "") — Output format: json, text (default text)
 - `--full` (default false) — Run all checks including network and memory (slower)
 - `--headless` (default false) — Print OAuth URL instead of opening browser (for SSH/headless servers)
 - `--install-check` (default false) — Run 6-stage onboarding funnel check (used by Homebrew post-install hook)
 - `--json` (default false) — JSON output
 - `--only` (default "") — Run only a specific subsystem check (host, docker, postgres, hasura, nginx, ssl, ping, plugins, license, monitoring, backups, security)
+- `--plan` (default false) — With --fix, show generated-file repair plan without writing
 - `--quick` (default false) — Fast check: infrastructure, disk, ports, config, plugins, license, container health only (the default check set; explicit opt-in overrides --full/--deep)
 - `--section` (default "") — Run only a specific section (system, core, backups, license, plugins, monitoring, security)
 - `--skip` (default []) — Skip specific check sections

@@ -8,6 +8,9 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // CheckResult holds the outcome of a single diagnostic check.
@@ -44,13 +47,11 @@ func SystemChecks(ctx context.Context, verbose bool) []CheckResult {
 }
 
 func checkDockerVersion(ctx context.Context) CheckResult {
-	cmd := exec.CommandContext(ctx, "docker", "version", "--format", "{{.Server.Version}}")
-	out, err := cmd.Output()
+	out, err := docker.ServerVersion(ctx)
 	if err != nil {
 		return CheckResult{Section: "system", Name: "Docker version", Status: "fail", Message: "cannot get Docker version"}
 	}
-	ver := strings.TrimSpace(string(out))
-	return CheckResult{Section: "system", Name: "Docker version", Status: "pass", Message: ver}
+	return CheckResult{Section: "system", Name: "Docker version", Status: "pass", Message: out}
 }
 
 func checkKernel(ctx context.Context) CheckResult {
@@ -106,9 +107,12 @@ func checkSwap(ctx context.Context) CheckResult {
 }
 
 // FixItEngine runs safe auto-fixes for check results that have FixCmd set.
-func FixItEngine(ctx context.Context, results []CheckResult) []CheckResult {
-	var fixed []CheckResult
-	for _, r := range results {
+func FixItEngine(ctx context.Context, projectDir string, results []CheckResult) []CheckResult {
+	project := ""
+	if cfg, err := config.Load(projectDir); err == nil {
+		project = cfg.ProjectName
+	}
+	for i, r := range results {
 		if r.FixCmd == "" || r.Status == "pass" {
 			continue
 		}
@@ -116,12 +120,35 @@ func FixItEngine(ctx context.Context, results []CheckResult) []CheckResult {
 		if len(parts) == 0 {
 			continue
 		}
-		cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
-		if err := cmd.Run(); err == nil {
+		allowed := len(parts) >= 2 && parts[0] == "nself" && !strings.ContainsAny(r.FixCmd, "\n\r")
+		for _, part := range parts {
+			if strings.ContainsAny(part, ";&|$`<>()\n\r") {
+				allowed = false
+				break
+			}
+		}
+		if len(parts) == 3 && parts[0] == "docker" && parts[1] == "restart" && project != "" && !strings.ContainsAny(r.FixCmd, "\n\r") && !strings.ContainsAny(parts[2], ";&|$`<>()/\\") {
+			info, err := docker.InspectContainer(ctx, parts[2])
+			allowed = err == nil && info != nil && info.Labels["com.docker.compose.project"] == project
+		}
+		if !allowed {
+			r.Message += " (manual step: " + r.FixCmd + ")"
+			results[i] = r
+			continue
+		}
+		var err error
+		if parts[0] == "docker" {
+			err = docker.RestartContainer(ctx, parts[2])
+		} else {
+			err = exec.CommandContext(ctx, parts[0], parts[1:]...).Run()
+		}
+		if err == nil {
 			r.Status = "pass"
 			r.Message += " (auto-fixed)"
+		} else {
+			r.Message += " (auto-fix failed: " + err.Error() + ")"
 		}
-		fixed = append(fixed, r)
+		results[i] = r
 	}
-	return fixed
+	return results
 }

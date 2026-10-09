@@ -19,6 +19,10 @@ Run `nself doctor` when something is not working as expected, before deploying t
 
 The `--deep` flag runs all 12 subsystem checks including open port analysis, weak cipher detection, exposed service bindings, container-level security, and a CIS container benchmark subset. The deep scan runs without a license key: all hardening checks are free by design.
 
+The `Generated files` section compares recorded file hashes in `.nself/state/generated.json` with the files on disk, without querying Docker or rendering a fresh build. It lists changed or deleted recorded paths and marks changed files as hand-edited. If there is no project root, the check is skipped. `nself doctor --fix` repairs through the build reconcile path; a second run has no generated-file changes. `nself doctor --fix --plan` prints the repair plan without writing. On prod or staging, a noninteractive repair needs `--yes`; overwriting a hand-edited generated file needs `--force` in v1.5 mode.
+
+Deep mode's automatic fixes run only validated `nself` commands and `docker restart` for containers whose Compose project label matches this project. Suggestions with shell syntax, system commands, and Docker prune are shown as manual steps. The human and JSON reports show which fixes ran or failed.
+
 ## Exit Codes
 
 ### Standard mode (`nself doctor`)
@@ -350,12 +354,14 @@ In v1.4 mode `--json` prints the bare report and exits `0`, and human mode exits
 | `--check-legacy` | `false` | Scan host for v0.9 stale paths (global scan, not per-project) |
 | `--deep` | `false` | Alias for --full (run all checks) |
 | `--fix` | `false` | Auto-fix safe issues |
+| `--force` | `false` | With --fix, overwrite hand-edited generated files |
 | `--format` | `""` | Output format: json, text (default text) |
 | `--full` | `false` | Run all checks including network and memory (slower) |
 | `--headless` | `false` | Print OAuth URL instead of opening browser (for SSH/headless servers) |
 | `--install-check` | `false` | Run 6-stage onboarding funnel check (used by Homebrew post-install hook) |
 | `--json` | `false` | JSON output |
 | `--only` | `""` | Run only a specific subsystem check (host, docker, postgres, hasura, nginx, ssl, ping, plugins, license, monitoring, backups, security) |
+| `--plan` | `false` | With --fix, show generated-file repair plan without writing |
 | `--quick` | `false` | Fast check: infrastructure, disk, ports, config, plugins, license, container health only (the default check set; explicit opt-in overrides --full/--deep) |
 | `--section` | `""` | Run only a specific section (system, core, backups, license, plugins, monitoring, security) |
 | `--skip-ollama` | `false` | Skip local Ollama installation step |
