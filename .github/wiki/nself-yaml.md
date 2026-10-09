@@ -11,6 +11,7 @@
 | Key | Type | Meaning |
 |---|---|---|
 | `app` | string | Project name. |
+| `cli_min_version` | string (optional semver, with or without `v`) | Minimum nself CLI version this project needs. Older releases get a doctor warning with E060 and `Fix: nself update`; development builds skip comparison. Build and start are unchanged. |
 | `bundle` | string | One bundle to install, expanded from the bundle catalog. |
 | `bundles` | list of strings | Several bundles. |
 | `plugins` | list of strings, or a map with `free` and `pro` lists | Plugins to wire in. |
@@ -19,6 +20,7 @@ Every other key is not read. The same list, as a machine contract, is `schemas/n
 
 ```yaml
 app: myapp
+cli_min_version: 1.4.0
 bundle: task
 plugins:
   free: [cron, notify]
@@ -38,6 +40,7 @@ A key that starts with `x-` is an extension. nself ignores it and the validator 
 |---|---|
 | E436 | An unknown key, at any depth the types describe (for example `plugins.required`). The fix names a close match when there is one (`project` suggests `app`) and the `x-` rename. |
 | E435 | A syntax error, an unreadable file, a duplicate key (the finding names the key and the line of the first one; `nself build` rejects it too), or a value of the wrong type (`plugins: 7`, a plugin entry that is a map, a non-string `app`). |
+| E061 | `cli_min_version` is not a complete semantic version such as `1.4.0` or `v1.4.0`. It warns in v1.4 mode and fails validation in v1.5 mode. |
 
 | Mode | Findings are | Exit status |
 |---|---|---|

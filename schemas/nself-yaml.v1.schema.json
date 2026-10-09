@@ -31,6 +31,12 @@
         "null"
       ]
     },
+    "cli_min_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "plugins": {
       "anyOf": [
         {

@@ -67,6 +67,8 @@ These errors occur during configuration validation or when reading `.env` files.
 | <a id="e057"></a>E057 | 1 | Insecure password pattern | A password matches a known insecure pattern such as a dictionary word, a repeated character or a default value. | Replace it with a randomly generated password of at least 16 characters. |
 | <a id="e058"></a>E058 | 1 | CORS wildcard not allowed in production | The CORS origin list contains a wildcard while the environment is production. | List the exact origins in HASURA_GRAPHQL_CORS_DOMAIN, or use a development environment for wildcards. |
 | <a id="e059"></a>E059 | 1 | Secret is empty or a placeholder | A required secret is empty or still holds a placeholder value from the template. | Generate a real value and set it in .env, then run the command again. |
+| <a id="e060"></a>E060 | 1 | CLI older than project minimum | The project's cli_min_version is newer than this nself CLI. | nself update |
+| <a id="e061"></a>E061 | 1 | Invalid CLI minimum version | cli_min_version in nself.yaml is not semantic version X.Y.Z. | Set cli_min_version to a complete semantic version, such as 1.4.0. |
 <!-- END GENERATED:codes-config -->
 
 ---
