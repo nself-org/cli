@@ -49,9 +49,30 @@ func TestRegistryPageFactsAndProse(t *testing.T) {
 	}
 	got := readExisting(dir, "build")
 	for _, section := range []string{"summary", "description", "examples", "see-also"} {
-		if between(page, beginProse(section), endProse(section)) != between(renderPage(c, entry, entries, got), beginProse(section), endProse(section)) {
+		if rawBetween(page, beginProse(section), endProse(section)) != rawBetween(renderPage(c, entry, entries, got), beginProse(section), endProse(section)) {
 			t.Errorf("%s prose changed on regeneration", section)
 		}
+	}
+}
+
+func TestRegistryProsePreservesWhitespace(t *testing.T) {
+	c := &cobra.Command{Use: "build"}
+	entry := cmdregistry.Command{Path: "nself build", Name: "build", Parent: "nself", Flags: []cmdregistry.Flag{}}
+	authored := "\n\n  Indented first line.\n\n\n    code-ish indent\n\n"
+	page := renderPage(c, entry, indexRegistry([]cmdregistry.Command{entry}), proseBlocks{})
+	start := strings.Index(page, beginProse("description")) + len(beginProse("description"))
+	end := strings.Index(page, endProse("description"))
+	page = page[:start] + authored + page[end:]
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, pageName("build")), []byte(page), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	again := renderPage(c, entry, indexRegistry([]cmdregistry.Command{entry}), readExisting(dir, "build"))
+	if got := rawBetween(again, beginProse("description"), endProse("description")); got != authored {
+		t.Fatalf("description prose changed on regeneration: got %q, want %q", got, authored)
+	}
+	if again != page {
+		t.Fatal("regenerating an authored page changed bytes outside generated regions")
 	}
 }
 

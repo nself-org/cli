@@ -93,13 +93,22 @@ func endProse(section string) string       { return "<!-- END PROSE:" + section 
 // writeProse emits a prose block, using the carried-over content when present
 // and the generated fallback otherwise.
 func writeProse(b *strings.Builder, section, carried, fallback string) {
-	body := strings.TrimSpace(carried)
-	if body == "" {
-		body = strings.TrimSpace(fallback)
-	}
-	b.WriteString(beginProse(section) + "\n")
-	b.WriteString(body + "\n")
+	b.WriteString(beginProse(section))
+	b.WriteString(proseBody(carried, fallback))
 	b.WriteString(endProse(section) + "\n\n")
+}
+
+// proseBody returns the bytes between a prose block's markers. A block read
+// from marked prose (it starts and ends with a newline) is kept byte for byte;
+// legacy text and the fallback are framed by one newline on each side.
+func proseBody(carried, fallback string) string {
+	if strings.TrimSpace(carried) == "" {
+		return "\n" + strings.TrimSpace(fallback) + "\n"
+	}
+	if strings.HasPrefix(carried, "\n") && strings.HasSuffix(carried, "\n") {
+		return carried
+	}
+	return "\n" + strings.TrimSpace(carried) + "\n"
 }
 
 func hasPlaceholder(page string) bool { return strings.Contains(page, placeholderMarker) }
