@@ -5,7 +5,11 @@ package setup
 // Purpose: ensure a freshly initialized project's .gitignore covers the standard nSelf-generated paths, used by Initialize in setup.go, split out for file size.
 // Inputs: the project directory to scaffold.
 // Outputs: a written or updated .gitignore file.
-// Constraints: pure move from setup.go (CLI-R12 Batch E); no behaviour change.
+// Constraints: split from setup.go (CLI-R12 Batch E). P7-CI-58 (ADR 0024 §6):
+// authored .nself/ files are committed, state is ignored, so new projects get
+// `.nself/*` + `!.nself/ci.yaml`. An existing `.nself/` line is left alone and
+// nothing .nself-related is appended: git cannot re-include a file under an
+// excluded directory, so appending would look fixed while staying ignored.
 
 import (
 	"os"
@@ -25,8 +29,13 @@ var gitignoreEntries = []string{
 	"*.log",
 	"node_modules/",
 	".DS_Store",
-	".nself/",
+	".nself/*",
+	"!.nself/ci.yaml", // after the wildcard: a negation only re-includes what an earlier line excluded
 }
+
+// nselfDirLines are the spellings of an existing whole-directory ignore that
+// a `!.nself/ci.yaml` negation cannot undo.
+var nselfDirLines = map[string]bool{".nself/": true, "/.nself/": true, ".nself": true, "/.nself": true}
 
 // ensureGitignore creates or appends to .gitignore with required entries.
 func ensureGitignore(workDir string) error {
@@ -36,8 +45,24 @@ func ensureGitignore(workDir string) error {
 		existing = string(data)
 	}
 
+	lines := map[string]bool{}
+	for _, l := range strings.Split(existing, "\n") {
+		lines[strings.TrimSpace(l)] = true
+	}
+	dirIgnored := false
+	for l := range nselfDirLines {
+		dirIgnored = dirIgnored || lines[l]
+	}
 	var toAdd []string
 	for _, entry := range gitignoreEntries {
+		if strings.HasPrefix(entry, ".nself/") || strings.HasPrefix(entry, "!.nself/") {
+			// Line-exact: ".nself/*" must not count as present because the
+			// text ".nself/" is; and an existing directory ignore wins.
+			if !dirIgnored && !lines[entry] {
+				toAdd = append(toAdd, entry)
+			}
+			continue
+		}
 		if !strings.Contains(existing, entry) {
 			toAdd = append(toAdd, entry)
 		}
