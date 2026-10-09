@@ -49,8 +49,12 @@ func main() {
 	report := flag.Bool("report", false, "list pages still carrying placeholder prose")
 	flag.Parse()
 
-	_ = os.Setenv("NSELF_V15", "1")
-	defer commands.PrepareTreeForGeneration()()
+	registry, undo, err := prepareWikiRegistry()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer undo()
 	cmds := topLevelCommands()
 	if len(cmds) == 0 {
 		fmt.Fprintln(os.Stderr, "no commands found")
@@ -67,16 +71,20 @@ func main() {
 	auxWritten := 0
 
 	for _, c := range cmds {
+		entry, ok := registry[c.CommandPath()]
+		if !ok {
+			fmt.Fprintf(os.Stderr, "wiki registry lacks %s\n", c.CommandPath())
+			os.Exit(1)
+		}
 		path := filepath.Join(*dir, pageName(c.Name()))
 		existing := readExisting(*dir, c.Name())
-		page := renderPage(c, existing)
+		page := renderPage(c, entry, registry, existing)
 
 		if hasPlaceholder(page) {
 			placeholders = append(placeholders, pageName(c.Name()))
 		}
 
-		current, err := os.ReadFile(path)
-		if err == nil && string(current) == page {
+		if !pageStale(path, page) {
 			continue
 		}
 		if *check {
@@ -204,6 +212,12 @@ func topLevelCommands() []*cobra.Command {
 
 // pageName is the canonical filename for a command page.
 func pageName(cmd string) string { return "cmd-" + cmd + ".md" }
+
+// pageStale is the same comparison used by -check and by the fixture tests.
+func pageStale(path, expected string) bool {
+	current, err := os.ReadFile(path)
+	return err != nil || string(current) != expected
+}
 
 // legacyPageNames lists the filenames a page may have had before the naming
 // convention settled on cmd-<name>.md, newest first.
