@@ -19,8 +19,17 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$tmp/project" "$tmp/home" "$tmp/stub"
-printf 'PROJECT_NAME=smoke\nENV=dev\nBASE_DOMAIN=example.test\nPOSTGRES_PASSWORD=smoke-fixture-value\n' > "$tmp/project/.env"
-printf '#!/bin/sh\necho "Cannot connect to the Docker daemon" >&2\nexit 1\n' > "$tmp/stub/docker"
+printf 'PROJECT_NAME=smoke\nENV=dev\nBASE_DOMAIN=example.test\nPOSTGRES_PASSWORD=smoke-fixture-value\nHASURA_GRAPHQL_JWT_SECRET=fixture\n' > "$tmp/project/.env"
+cat > "$tmp/stub/docker" <<'DOCKER'
+#!/bin/sh
+case " $* " in
+  ' info '*) exit 0 ;;
+  ' compose version '*) printf '2.30.0\n'; exit 0 ;;
+  ' inspect '*) printf 'healthy\n'; exit 0 ;;
+  *' ps --format json '*) printf '%s\n' '[{"Name":"smoke_postgres","Service":"postgres","State":"running","Health":"healthy","Ports":"127.0.0.1:5000->5000/tcp"},{"Name":"smoke_hasura","Service":"hasura","State":"running","Health":"healthy"},{"Name":"smoke_auth","Service":"auth","State":"running","Health":"healthy"},{"Name":"smoke_nginx","Service":"nginx","State":"running","Health":"healthy"}]'; exit 0 ;;
+esac
+exit 0
+DOCKER
 chmod +x "$tmp/stub/docker"
 
 head_bin="${JCC_HEAD_BIN:-$tmp/nself-head}"
@@ -72,9 +81,15 @@ while IFS= read -r raw || [ -n "$raw" ]; do
         sed -E 's/(Disk space: )[0-9.]+ GB free/\1<free> GB free/' "$human_right" > "$tmp/head-$mode-stable.out"
         human_left="$tmp/base-$mode-stable.out"; human_right="$tmp/head-$mode-stable.out"
       fi
-      if ! cmp -s "$human_left" "$human_right" || ! cmp -s "$tmp/base-$mode.rc" "$tmp/head-$mode.rc"; then
-        echo "FAIL $label: $mode human stdout or exit changed"; bad=1
+      # Go's default slog timestamps differ between the two sequential runs.
+      for side in base head; do
+        sed -E 's|^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} (INFO ENV resolved for \.env cascade)|<time> \1|' \
+          "$tmp/$side-$mode.err" > "$tmp/$side-$mode-stable.err"
+      done
+      if ! cmp -s "$human_left" "$human_right" || ! cmp -s "$tmp/base-$mode-stable.err" "$tmp/head-$mode-stable.err" || ! cmp -s "$tmp/base-$mode.rc" "$tmp/head-$mode.rc"; then
+        echo "FAIL $label: $mode human stdout or exit changed, or stderr changed"; bad=1
         diff -u "$human_left" "$human_right" >&2 || true
+        diff -u "$tmp/base-$mode-stable.err" "$tmp/head-$mode-stable.err" >&2 || true
         printf 'exit base=%s head=%s\n' "$(cat "$tmp/base-$mode.rc")" "$(cat "$tmp/head-$mode.rc")" >&2
       fi
     fi
@@ -83,8 +98,9 @@ while IFS= read -r raw || [ -n "$raw" ]; do
     run_one "$base_bin" "" "--json" "$tmp/base-legacy" "${argv[@]}"
     run_one "$head_bin" "" "--json" "$tmp/head-legacy" "${argv[@]}"
     if [[ "$tags" == *volatile-json=timestamp* || "$label" == health ]]; then
-      jq -S 'del(.timestamp)' "$tmp/base-legacy.out" > "$tmp/base-stable.json"
-      jq -S 'del(.timestamp)' "$tmp/head-legacy.out" > "$tmp/head-stable.json"
+      # Replace only the top-level timestamp value; preserve every other byte.
+      sed -E 's/^(  "timestamp": )"[^"]*"/\1"<timestamp>"/' "$tmp/base-legacy.out" > "$tmp/base-stable.json"
+      sed -E 's/^(  "timestamp": )"[^"]*"/\1"<timestamp>"/' "$tmp/head-legacy.out" > "$tmp/head-stable.json"
       left="$tmp/base-stable.json"; right="$tmp/head-stable.json"
     else
       left="$tmp/base-legacy.out"; right="$tmp/head-legacy.out"
@@ -96,8 +112,11 @@ while IFS= read -r raw || [ -n "$raw" ]; do
   fi
   if [[ "$tags" != *no-json=* ]]; then
     run_one "$head_bin" 1 "--json" "$tmp/head-json" "${argv[@]}"
-    if ! jq -e -s 'length == 1' "$tmp/head-json.out" >/dev/null 2>&1; then
-      echo "FAIL $label: stdout is not exactly one JSON value"; bad=1
+    if [ "$(cat "$tmp/head-json.rc")" -ne 0 ]; then
+      echo "FAIL $label: v1.5 --json exited non-zero"; bad=1
+    fi
+    if ! jq -e -s 'length == 1 and (.[0] | type == "object" and has("data") and (has("error") | not))' "$tmp/head-json.out" >/dev/null 2>&1; then
+      echo "FAIL $label: stdout is not one successful data envelope"; bad=1
     elif ! (cd "$repo_root" && "$tmp/jsonvalidate" -schema envelope.v1.schema.json -data-from-registry "$label" "$tmp/head-json.out") >"$tmp/validator.out" 2>&1; then
       echo "FAIL $label: envelope or data schema invalid"; bad=1
       cat "$tmp/validator.out" >&2
