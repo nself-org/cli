@@ -87,15 +87,21 @@ func TestEffectiveSideEffect(t *testing.T) {
 	if EffectiveSideEffect(c, map[string]bool{"volumes": true}) != d || EffectiveSideEffect(c, nil) != "read" {
 		t.Fatal("escalation failed")
 	}
+	if EffectiveSideEffect(nil, nil) != "" {
+		t.Fatal("nil command has an effective class")
+	}
 }
 func TestEffectiveOutput(t *testing.T) {
 	c, _ := surfaceRegistry(t).Lookup("logs")
 	if EffectiveOutput(c, map[string]bool{"follow": true}) != "stream" || EffectiveOutput(c, nil) != "document" {
 		t.Fatal("output override failed")
 	}
+	if EffectiveOutput(nil, nil) != "" {
+		t.Fatal("nil command has effective output")
+	}
 }
 func TestValidateToolNames(t *testing.T) {
-	for _, paths := range [][]string{{"a-b c", "a b-c"}, {strings.Repeat("x", 65)}} {
+	for _, paths := range [][]string{{"a-b c", "a b-c"}, {strings.Repeat("x", 65)}, {"BadName"}} {
 		r := &Registry{}
 		for _, p := range paths {
 			r.Commands = append(r.Commands, Command{Path: p})
@@ -103,6 +109,33 @@ func TestValidateToolNames(t *testing.T) {
 		if ValidateToolNames(r) == nil {
 			t.Fatalf("accepted %v", paths)
 		}
+	}
+	if ValidateToolNames(nil) == nil {
+		t.Fatal("nil registry accepted")
+	}
+}
+
+func TestPluginSurfaceInvalid(t *testing.T) {
+	r, f := surfaceFixture(t)
+	plugin := &cobra.Command{Use: "broken", RunE: noop, Annotations: map[string]string{annPluginKey: "broken", annSourceKey: sourceInstalled, annConfirmKey: `{"flags":[]}`, annSurfaceKey: "sometimes"}}
+	r.AddCommand(plugin)
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStderr := os.Stderr
+	os.Stderr = writer
+	reg, buildErr := Build(r, f, nil, BuildOptions{})
+	os.Stderr = oldStderr
+	_ = writer.Close()
+	warnings, readErr := io.ReadAll(reader)
+	_ = reader.Close()
+	if buildErr != nil || readErr != nil {
+		t.Fatalf("build: %v; stderr: %v", buildErr, readErr)
+	}
+	c, _ := reg.Lookup("broken")
+	if c.Confirm != nil || c.Surface != "all" || strings.Count(string(warnings), "E437") != 1 {
+		t.Fatalf("invalid plugin declaration not isolated: %+v %q", c, warnings)
 	}
 }
 
