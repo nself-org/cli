@@ -31,6 +31,36 @@ func TestPreflightRefusesBeforeDeploy(t *testing.T) {
 	}
 }
 
+// TestPreflightComposeOverrideKeepsImage proves an override fragment without
+// image or build keeps the base image, as compose merges, instead of a false E491.
+func TestPreflightComposeOverrideKeepsImage(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "docker-compose.yml")
+	override := filepath.Join(dir, "docker-compose.override.yml")
+	if err := os.WriteFile(base, []byte("services:\n  api:\n    image: example.test/multi:1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(override, []byte("services:\n  api:\n    environment:\n      A: b\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	inv := &Inventory{Environments: map[string]Environment{"qa": {Name: "qa", Kind: "remote", Servers: []Server{{Name: "arm-host", Host: "u@arm.example.test", Role: RoleApp}}}}}
+	lookup := func(_ context.Context, ref string) (map[string]string, error) {
+		if ref != "example.test/multi:1" {
+			t.Fatalf("lookup ref = %q, want the base image", ref)
+		}
+		return map[string]string{"linux/amd64": "sha256:a", "linux/arm64": "sha256:b"}, nil
+	}
+	if err := preflightWith(context.Background(), inv, "qa", []string{base, override}, fixedArch("arm64"), lookup); err != nil {
+		t.Fatalf("preflight with override = %v; want pass", err)
+	}
+	amdOnly := func(context.Context, string) (map[string]string, error) {
+		return map[string]string{"linux/amd64": "sha256:a"}, nil
+	}
+	if err := preflightWith(context.Background(), inv, "qa", []string{base, override}, fixedArch("arm64"), amdOnly); err == nil || !strings.Contains(err.Error(), "E491") {
+		t.Fatalf("preflight amd64-only with override = %v; want E491", err)
+	}
+}
+
 func TestProbeArchitectureCached(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses a shell fixture")

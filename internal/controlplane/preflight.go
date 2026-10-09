@@ -144,8 +144,18 @@ func composeImages(files []string) ([]archguard.ImageRef, error) {
 		if err := yaml.Unmarshal(data, &doc); err != nil {
 			return nil, fmt.Errorf("%s: %w", file, err)
 		}
+		// Compose merges later files over earlier ones per key: an override
+		// fragment without image or build keeps the service's earlier values.
 		for name, service := range doc.Services {
-			services[name] = archguard.ImageRef{Service: name, Ref: service.Image, Build: service.Build != nil}
+			ref := services[name]
+			ref.Service = name
+			if service.Image != "" {
+				ref.Ref = service.Image
+			}
+			if service.Build != nil {
+				ref.Build = true
+			}
+			services[name] = ref
 		}
 	}
 	images := make([]archguard.ImageRef, 0, len(services))
