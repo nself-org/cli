@@ -1,0 +1,8 @@
+# Observe conversion fixture. See README.md for tags.
+status
+doctor
+config get BASE_DOMAIN #| legacy-json
+urls #| legacy-json no-json=converted-in-P7-SURF-11
+version #| legacy-json no-json=converted-in-P7-SURF-11
+health #| legacy-json no-json=converted-in-P7-SURF-11
+plugin search x #| legacy-json no-json=converted-in-P7-SURF-13

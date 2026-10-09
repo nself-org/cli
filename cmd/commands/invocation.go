@@ -1,32 +1,9 @@
 package commands
 
-// Invocation decorator: the global --json guard and the coded usage errors.
-//
-// Purpose: --json is one persistent root flag, so every command accepts it. A
-// command that cannot produce JSON must refuse it instead of silently printing
-// text. The decorator wraps every command once, before Execute, and
-//   - records the invoked command path and JSON mode for main (output.SetInvocation),
-//   - refuses --json on a registry `json: none` command with E402 before the
-//     command body runs, and
-//   - wraps flag and argument errors as E401 in v1.5 mode (EPIC D12), and
-//   - takes the project operation lock around write/remote/destructive document
-//     commands inside a project (locked, P7-LIVE-13).
-//
-// Inputs: the cobra tree under a root, the lazily built command registry.
-//
-// Outputs: wrapped Args/RunE/Run and a root FlagErrorFunc. A command's own
-// PersistentPreRunE is wrapped, never replaced: the guard runs first, so a
-// refused command (`bundle` fetches and caches in its hook) does no work.
-//
-// Constraints:
-//   - A run without --json pays no canon parse: the registry is consulted only
-//     when JSON mode is on, or `--format json` is given.
-//   - The guard runs in the persistent pre-run hook (root's, or the command's
-//     own) before any bookkeeping or fetch, and again in RunE as a backstop
-//     for a tree with no hook. Only Args validation precedes it (cobra order).
-//   - Human output of a run without --json is unchanged: the wrapper is a
-//     pass-through then (the only extra work is SetInvocation).
-//   - Gated branches carry compat.V15(P7-REG-05) markers (ADR 0021).
+// Invocation decorator: guard --json, record the invocation, isolate envelope
+// stdout, code usage errors, and lock project mutations. The pre-run guard
+// precedes command hooks; the body guard backs it up. Plain human runs do not
+// resolve the registry unless --format json was selected.
 
 import (
 	"errors"
@@ -133,8 +110,27 @@ func guarded(orig func(*cobra.Command, []string) error) func(*cobra.Command, []s
 		if err := enterInvocation(cmd); err != nil {
 			return err
 		}
+		if shouldIsolateJSON(cmd) {
+			defer output.IsolateStdout()()
+		}
 		return orig(cmd, args)
 	}
+}
+
+func shouldIsolateJSON(cmd *cobra.Command) bool {
+	if cmd.Parent() == nil || cmd.Annotations["nself.mount.source"] == "installed" {
+		return false
+	}
+	on, err := jsonModeOf(cmd)
+	if err != nil || !on {
+		return false
+	}
+	e, err := jsonEntryFor(cmd)
+	if err != nil {
+		return false
+	}
+	kind, _ := effectiveJSON(cmd, e)
+	return kind == canon.JSONEnvelope
 }
 
 // locked wraps a command body with the project operation lock, taken after the
@@ -144,10 +140,14 @@ func locked(orig func(*cobra.Command, []string) error) func(*cobra.Command, []st
 	return oplockcmd.Wrap(func(c *cobra.Command) (*cmdregistry.Command, error) { return jsonEntryFor(c) }, orig)
 }
 
-// guardedPre wraps a persistent pre-run hook with the same entry check, so the
-// refusal precedes the hook's work (fetches, caches, chdir, command log).
+// guardedPre checks before hooks can fetch, cache, or change directories.
 func guardedPre(orig func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
-	return guarded(orig)
+	return func(cmd *cobra.Command, args []string) error {
+		if err := enterInvocation(cmd); err != nil {
+			return err
+		}
+		return orig(cmd, args)
+	}
 }
 
 // enterInvocation records the invocation and refuses unsupported --json. It is

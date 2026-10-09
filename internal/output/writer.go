@@ -18,8 +18,16 @@ type Writer struct {
 	Err io.Writer
 }
 
-// Default returns a Writer on os.Stdout and os.Stderr.
-func Default() Writer { return Writer{Out: os.Stdout, Err: os.Stderr} }
+// Default returns a Writer on the real stdout and current stderr. During an
+// isolated invocation os.Stdout points at stderr, while the document still
+// belongs on the stdout saved by IsolateStdout.
+func Default() Writer {
+	out := os.Stdout
+	if isolatedStdout != nil {
+		out = isolatedStdout
+	}
+	return Writer{Out: out, Err: os.Stderr}
+}
 
 // errNoOut is returned when a Writer has no Out stream to write the document to.
 var errNoOut = errors.New("output: writer has no Out stream")
