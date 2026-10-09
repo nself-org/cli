@@ -18,10 +18,6 @@ import (
 func assertFragmentEnvelopeCoverage(t *testing.T, fragment string) {
 	t.Helper()
 	path := filepath.Join("../../internal/canon/domains", fragment+".yaml")
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
 	reg, err := buildRegistry(true)
 	if err != nil {
 		t.Fatal(err)
@@ -30,9 +26,21 @@ func assertFragmentEnvelopeCoverage(t *testing.T, fragment string) {
 	for _, row := range reg.Commands {
 		byPath[row.Path] = row
 	}
-	for _, finding := range envelopeCoverageFindings(b, byPath) {
+	findings, err := fragmentEnvelopeCoverageFindings(path, byPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, finding := range findings {
 		t.Error(finding)
 	}
+}
+
+func fragmentEnvelopeCoverageFindings(path string, byPath map[string]cmdregistry.Command) ([]string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return envelopeCoverageFindings(b, byPath), nil
 }
 
 // envelopeCoverageFindings checks a fragment with a supplied registry so the
@@ -44,7 +52,8 @@ func envelopeCoverageFindings(b []byte, byPath map[string]cmdregistry.Command) [
 	}
 	var findings []string
 	for key, row := range fragment.Commands {
-		entry, ok := byPath[key]
+		path := "nself " + key
+		entry, ok := byPath[path]
 		if !ok {
 			findings = append(findings, fmt.Sprintf("%s: missing registry row", key))
 			continue
@@ -80,7 +89,7 @@ func rowHasReason(doc, key string) bool {
 }
 
 func TestEnvelopeCoverageHelper(t *testing.T) {
-	rows := map[string]cmdregistry.Command{"sample": {Path: "sample", Runnable: true, Canon: canon.CanonSubcommand, JSON: canon.JSONNone}}
+	rows := map[string]cmdregistry.Command{"nself sample": {Path: "nself sample", Runnable: true, Canon: canon.CanonSubcommand, JSON: canon.JSONNone}}
 	bad := []byte("schema_version: 1\ncommands:\n  sample: {side_effect: read}\n")
 	if len(envelopeCoverageFindings(bad, rows)) != 1 {
 		t.Fatal("document with json none was accepted")
@@ -92,5 +101,53 @@ func TestEnvelopeCoverageHelper(t *testing.T) {
 	noReason := []byte("schema_version: 1\ncommands:\n  sample: {side_effect: read, output: interactive}\n")
 	if len(envelopeCoverageFindings(noReason, rows)) != 1 {
 		t.Fatal("unreasoned reclassification was accepted")
+	}
+}
+
+func TestEnvelopeCoverageObserve(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("../../internal/canon/domains", "observe.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := buildRegistry(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := make(map[string]cmdregistry.Command, len(reg.Commands))
+	for _, row := range reg.Commands {
+		rows[row.Path] = row
+	}
+	for _, finding := range envelopeCoverageFindings(b, rows) {
+		if strings.Contains(finding, "missing registry row") {
+			t.Fatal(finding)
+		}
+	}
+}
+
+func TestEnvelopeCoverageFixture(t *testing.T) {
+	path := filepath.Join("testdata", "json", "argv", "coverage-fixture.yaml")
+	rows := map[string]cmdregistry.Command{"nself fixture": {Path: "nself fixture", Runnable: true, Canon: canon.CanonCore, JSON: canon.JSONNone}}
+	got, err := fragmentEnvelopeCoverageFindings(path, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("fixture document should fail coverage: %v", got)
+	}
+	bad, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := strings.Replace(string(bad), "side_effect: read}", "side_effect: read, output: interactive} # requires a TTY", 1)
+	goodPath := filepath.Join(t.TempDir(), "reclassified.yaml")
+	if err := os.WriteFile(goodPath, []byte(good), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err = fragmentEnvelopeCoverageFindings(goodPath, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("reclassified fixture should pass coverage: %v", got)
 	}
 }

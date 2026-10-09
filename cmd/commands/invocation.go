@@ -103,15 +103,15 @@ func decorate(c *cobra.Command) {
 	}
 }
 
-// guarded returns the wrapped body: record the invocation, refuse --json where
-// unsupported, then call the original untouched.
+// guarded records the invocation, refuses unsupported --json, then calls the body.
 func guarded(orig func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		if err := enterInvocation(cmd); err != nil {
 			return err
 		}
 		if shouldIsolateJSON(cmd) {
-			defer output.IsolateStdout()()
+			restore := output.IsolateStdout()
+			defer restore()
 		}
 		return orig(cmd, args)
 	}

@@ -3,6 +3,7 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"testing"
 
@@ -68,6 +69,51 @@ func TestInvocationIsolatesEnvelope(t *testing.T) {
 	}
 	if os.Stdout != w {
 		t.Fatal("stdout not restored after command")
+	}
+	humanR, humanW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer humanR.Close()
+	defer humanW.Close()
+	os.Stdout = humanW
+	humanRoot := isolationFixture(t, canon.JSONEnvelope, false, func() {
+		fmt.Fprint(os.Stdout, "human output\n")
+	})
+	humanRoot.SetArgs([]string{"fixture"})
+	if err := humanRoot.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if os.Stdout != humanW {
+		t.Fatal("human stdout was redirected")
+	}
+	if err := humanW.Close(); err != nil {
+		t.Fatal(err)
+	}
+	humanBytes, err := io.ReadAll(humanR)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(humanBytes) != "human output\n" {
+		t.Fatalf("human output missed real stdout: %q", humanBytes)
+	}
+}
+
+// TestInvocationDecoratorRaceWindow runs the decorator path under -race. The
+// fixture stays on one goroutine for the entire stdout swap window.
+func TestInvocationDecoratorRaceWindow(t *testing.T) {
+	before := os.Stdout
+	root := isolationFixture(t, canon.JSONEnvelope, false, func() {
+		if os.Stdout != os.Stderr {
+			t.Error("decorator did not isolate stdout")
+		}
+	})
+	root.SetArgs([]string{"fixture", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if os.Stdout != before {
+		t.Fatal("decorator did not restore stdout")
 	}
 }
 
