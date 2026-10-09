@@ -24,7 +24,7 @@ for name in minimal full ssl; do
     project="$tmp/$rev-$name"
     mkdir -p "$project" "$tmp/home-$rev-$name" "$tmp/plugins-$rev-$name"
     cp -R "$fixtures/$name/." "$project/"
-    cp "$project/.env.example" "$project/.env"
+    cp "$project/project.env.fixture" "$project/.env"
     if [[ $name == ssl ]]; then
       certs="$project/ssl/certificates/example-test"
       mkdir -p "$certs"
