@@ -4502,7 +4502,9 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null
+          "output": null,
+          "cli_only": false,
+          "secret": false
         },
         {
           "name": "host",
@@ -4602,7 +4604,9 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null
+          "output": null,
+          "cli_only": false,
+          "secret": false
         },
         {
           "name": "trust-host-key",
@@ -4617,7 +4621,9 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null
+          "output": null,
+          "cli_only": false,
+          "secret": false
         },
         {
           "name": "upstreams",
@@ -14116,7 +14122,9 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -14125,7 +14133,9 @@
       "output": "document",
       "json": "envelope",
       "data_schema": "schemas/commands/deploy-targets.v1.schema.json",
-      "exit_codes": {}
+      "exit_codes": {},
+      "confirm": null,
+      "surface": "all"
     },
     {
       "path": "nself deploy web",

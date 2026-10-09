@@ -59,6 +59,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-CANON-08 | no hint | Next: nself <command> --help | `cmd/commands/install_builtin.go` |
 | P7-CANON-19 | account group | plugin commands group | `cmd/commands/builtin_families.go` |
 | P7-CANON-21 | the argv names commands at their v1.4 paths | argv rewritten between old and canonical spellings, tree relocated | `cmd/commands/tree_prepare.go` |
+| P7-DEPL-01 | legacy duplicate errors | E055 with both route IDs | `internal/build/orchestrator_build_config.go` |
 | P7-DEPL-13 | accept-new | strict for secret shipping and prod targets. | `internal/deploy/ssh.go` |
 | P7-DEPL-13 | accept-new | strict host key checking for access writes. | `internal/access/transport_ssh.go` |
 | P7-DEPL-13 | quiet read-only first contact | print the observed fingerprint once. | `internal/controlplane/hostkeys.go` |
