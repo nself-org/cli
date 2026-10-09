@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 type fixedArch string
@@ -33,6 +35,8 @@ func TestProbeArchitectureCached(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses a shell fixture")
 	}
+	// v1.4 path: the probe runs without a pinned host key and is cached.
+	compattest.Set(t, false)
 	dir := t.TempDir()
 	log := filepath.Join(dir, "uname.log")
 	script := "#!/bin/sh\nprintf 'uname\\n' >> '" + log + "'\nprintf 'aarch64\\n'\n"
@@ -52,5 +56,33 @@ func TestProbeArchitectureCached(t *testing.T) {
 	lines, err := os.ReadFile(log)
 	if err != nil || strings.Count(string(lines), "uname") != 1 {
 		t.Fatalf("uname calls = %q, %v", lines, err)
+	}
+}
+
+// TestProbeArchitectureStrictHostKey proves v1.5 refuses to probe a host whose
+// key is not enrolled (ADR 0021) instead of guessing an architecture.
+func TestProbeArchitectureStrictHostKey(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a shell fixture")
+	}
+	compattest.Set(t, true)
+	dir := t.TempDir()
+	log := filepath.Join(dir, "uname.log")
+	for _, name := range []string{"ssh", "ssh-keyscan"} {
+		script := "#!/bin/sh\nprintf '" + name + "\\n' >> '" + log + "'\nexit 1\n"
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	t.Setenv("TEST_ARCH_KEY", filepath.Join(dir, "key"))
+	prober := NewSSHProber(dir, false)
+	server := Server{Name: "arm-host", Host: "u@arm.example.test", SSHKeyRef: "TEST_ARCH_KEY"}
+	arch, err := prober.Architecture(context.Background(), server)
+	if err == nil || arch != "" || !strings.Contains(err.Error(), "E487") {
+		t.Fatalf("architecture = %q, %v; want E487 refusal", arch, err)
+	}
+	if lines, _ := os.ReadFile(log); strings.Contains(string(lines), "ssh\n") && !strings.Contains(string(lines), "ssh-keyscan") {
+		t.Fatalf("probe ran ssh without a host-key check: %q", lines)
 	}
 }
