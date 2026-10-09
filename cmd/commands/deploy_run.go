@@ -1,13 +1,7 @@
 package commands
 
-// Purpose: runDeploy, the RunE for the top-level "nself deploy" command. Inputs
-// are the cobra command/args (target, strategy, flags); outputs are deploy step
-// results printed as text or JSON, or a non-nil error on failure.
-// Constraints: split out of deploy.go (CLI-R12) as a pure move, no behavior change.
-// The blue/green canary path and the T05 control-plane pipeline path (both
-// terminal, self-contained branches of runDeploy) were further extracted to
-// deploy_run_bluegreen.go and deploy_run_pipeline.go for 300-line compliance
-// (T-P6-E2-W1-S1-T3), superseding the prior CLI-R12 "cannot be split" note.
+// Purpose: runDeploy executes the selected environment and strategy.
+// Inputs: command flags and target; outputs: deploy result or error.
 
 import (
 	"fmt"
@@ -30,6 +24,13 @@ import (
 var deployBuildStepFn = runDeployBuildStep
 
 func runDeploy(cmd *cobra.Command, args []string) error {
+	profile, err := selectedDeployProfile(cmd)
+	if err != nil {
+		return err
+	}
+	oldContext := cmd.Context()
+	cmd.SetContext(withDeployProfile(oldContext, profile))
+	defer cmd.SetContext(oldContext)
 	// Resolve target: --env flag takes priority over the positional argument.
 	envFlag, _ := cmd.Flags().GetString("env")
 	var rawTarget string
@@ -38,13 +39,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		rawTarget = envFlag
 	case len(args) == 1:
 		rawTarget = args[0]
+	case profile == "ops":
+		rawTarget = "ops"
 	default:
 		return fmt.Errorf("target environment required: pass it as an argument (nself deploy staging) or via --env (nself deploy --env staging)")
 	}
-	target, err := resolveTarget(rawTarget)
+	target, err := resolveDeployProfileTarget(rawTarget, profile)
 	if err != nil {
 		return err
 	}
+	warnLegacyOpsDeployHost(profile)
+	defer synthesizeLegacyOpsHost(profile, target)()
 
 	// Load the env file cascade for the resolved target into the current process
 	// so that downstream helpers (build, health checks, SSH env) pick up the
@@ -92,6 +97,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	serverFilter = opsPipelineServerFilter(workdir, target, profile, serverFilter)
 
 	// Production safety gate: every prod-class environment (name prod or
 	// production today, tier prod once P7-DEPL-13 lands, or a custom name the
@@ -121,6 +127,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	if !jsonOut {
 		ui.CommandHeader(fmt.Sprintf("nself deploy %s", target), fmt.Sprintf("strategy=%s dry-run=%v include-frontends=%v exclude-frontends=%v", strategy, dryRun, includeFrontends, excludeFrontends))
+		if dryRun {
+			printDeployProfilePlan(workdir, target, profile)
+		}
 	}
 
 	if handled, pipeErr := runDeployControlPlanePipeline(cmd, workdir, target, strategy, serverFilter, dryRun, jsonOut); handled {

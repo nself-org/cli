@@ -78,6 +78,9 @@ func init() {
 	for _, c := range []*cobra.Command{accessGrantCmd, accessRevokeCmd, accessListCmd} {
 		c.Flags().String("host", "", "SSH connection target, [user@]host (required)")
 		c.Flags().String("identity", "", "local SSH private key used to connect (default: ~/.ssh/id_ed25519)")
+		c.Flags().String("env", "", "Select hosts in an inventory environment")
+		c.Flags().String("tier", "", "Select hosts in an inventory tier")
+		c.Flags().String("server", "", "Select an inventory server by name")
 	}
 
 	accessGrantCmd.Flags().String("user", "", "label identifying whose key this is (required)")
@@ -86,10 +89,12 @@ func init() {
 	accessGrantCmd.Flags().Bool("docker", false, "record docker-group access as the intended privilege level")
 	accessGrantCmd.Flags().String("expires", "", "optional expiry date, YYYY-MM-DD")
 	accessGrantCmd.Flags().Bool("dry-run", false, "print the resulting authorized_keys diff, change nothing")
+	accessGrantCmd.Flags().Bool("yes", false, "Confirm changes to production-class hosts")
 
 	accessRevokeCmd.Flags().String("user", "", "label identifying whose key to remove (required)")
 	accessRevokeCmd.Flags().Bool("force", false, "allow removing the last remaining key on the host")
 	accessRevokeCmd.Flags().Bool("dry-run", false, "print the resulting authorized_keys diff, change nothing")
+	accessRevokeCmd.Flags().Bool("yes", false, "Confirm changes to production-class hosts")
 
 	accessListCmd.Flags().Bool("json", false, "output as JSON")
 

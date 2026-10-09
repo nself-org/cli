@@ -26,12 +26,31 @@ func runAccessRevoke(cmd *cobra.Command, args []string) error {
 	force, _ := cmd.Flags().GetBool("force")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
-	t, err := newAccessTransport(cmd)
+	targets, selected, err := resolveAccessTargets(cmd)
 	if err != nil {
 		return err
 	}
+	if err := confirmAccessTargets(cmd, targets, dryRun); err != nil {
+		return err
+	}
+	var failures []error
+	for _, target := range targets {
+		if err := revokeAccessTarget(cmd, target, selected, user, force, dryRun); err != nil {
+			if !selected {
+				return err
+			}
+			printAccessFailure(cmd, target, err)
+			failures = append(failures, err)
+		}
+	}
+	return errors.Join(failures...)
+}
 
-	ui.CommandHeader("nself access revoke", t.Describe())
+func revokeAccessTarget(cmd *cobra.Command, target accessTarget, selected bool, user string, force, dryRun bool) error {
+	t := target.Transport
+	if !selected {
+		ui.CommandHeader("nself access revoke", t.Describe())
+	}
 
 	result, err := access.Revoke(cmd.Context(), t, access.RevokeRequest{
 		User: user, Force: force, DryRun: dryRun,
@@ -45,13 +64,25 @@ func runAccessRevoke(cmd *cobra.Command, args []string) error {
 	}
 
 	if dryRun {
+		if selected {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=dry-run diff=%q\n", target.Env, target.Server, target.Host, result.Diff)
+			return nil
+		}
 		ui.Info("Dry run: no changes made. Resulting authorized_keys diff:")
 		fmt.Print(result.Diff)
 		return nil
 	}
 
 	if result.BackupPath != "" {
+		if selected {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=revoked fingerprint=%s backup=%s\n", target.Env, target.Server, target.Host, result.Fingerprint, result.BackupPath)
+			return nil
+		}
 		ui.Info("Backed up authorized_keys to " + result.BackupPath)
+	}
+	if selected {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=revoked fingerprint=%s\n", target.Env, target.Server, target.Host, result.Fingerprint)
+		return nil
 	}
 	ui.Success(fmt.Sprintf("Revoked %s's access to %s", user, t.Describe()))
 	ui.Info("Fingerprint: " + result.Fingerprint)

@@ -42,6 +42,8 @@ type SSHTransport struct {
 	// "~/.ssh/authorized_keys" (relative to whichever account Host connects
 	// as) when empty.
 	RemotePath string
+	// HostKeyOptions is supplied by the command layer for inventory hosts.
+	HostKeyOptions func(context.Context) ([]string, error)
 }
 
 func (t *SSHTransport) remotePath() string {
@@ -54,6 +56,10 @@ func (t *SSHTransport) remotePath() string {
 func (t *SSHTransport) Describe() string { return t.Host }
 
 func (t *SSHTransport) sshArgs() ([]string, error) {
+	return t.sshArgsContext(context.Background())
+}
+
+func (t *SSHTransport) sshArgsContext(ctx context.Context) ([]string, error) {
 	spec, err := remote.ParseHostSpec(t.Host)
 	if err != nil {
 		return nil, err
@@ -63,8 +69,14 @@ func (t *SSHTransport) sshArgs() ([]string, error) {
 		"-o", "ForwardAgent=no",
 		"-o", "BatchMode=yes",
 	}
-	// compat.V15(P7-DEPL-13): accept-new -> strict host key checking for access writes.
-	if compat.V15() {
+	// compat.V15(P7-DEPL-14): direct SSH policy -> caller-supplied inventory host-key policy.
+	if compat.V15() && t.HostKeyOptions != nil {
+		policy, err := t.HostKeyOptions(ctx)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, policy...)
+	} else if compat.V15() { // compat.V15(P7-DEPL-13): accept-new -> strict host key checking for access writes.
 		home, _ := os.UserHomeDir()
 		args = append(args, "-o", "StrictHostKeyChecking=yes", "-o", "GlobalKnownHostsFile="+filepath.Join(home, ".config", "nself", "deploy_known_hosts"))
 		if spec.Port != 0 {
@@ -79,7 +91,7 @@ func (t *SSHTransport) sshArgs() ([]string, error) {
 
 // runRemote executes command on the remote host and returns its stdout.
 func (t *SSHTransport) runRemote(ctx context.Context, command string) ([]byte, error) {
-	args, err := t.sshArgs()
+	args, err := t.sshArgsContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +144,7 @@ func (t *SSHTransport) Write(ctx context.Context, content []byte) error {
 		"mkdir -p %s && chmod 700 %s && cat > %s && chmod 600 %s",
 		shellQuote(dir), shellQuote(dir), shellQuote(remote), shellQuote(remote))
 
-	args, err := t.sshArgs()
+	args, err := t.sshArgsContext(ctx)
 	if err != nil {
 		return err
 	}

@@ -277,6 +277,7 @@ Flags:
 - `--force-migration` (default false) — Force deploy even with backward-incompatible migrations (disables canary)
 - `--include-frontends` (default false) — Include frontend apps in the deploy
 - `--json` (default false) — Emit JSON output
+- `--profile` (default full) — Compose build profile: full or ops
 - `--rolling` (default false) — Alias for --strategy=rolling
 - `--server` (default "") — Deploy to a specific server only (name from control-plane inventory)
 - `--skip-canary` (default false) — Skip canary phase and flip directly to 100% green

@@ -7,6 +7,7 @@ package commands
 // foreign (non-nself-managed) keys sharing the file.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -31,11 +32,15 @@ type accessListRow struct {
 
 func runAccessList(cmd *cobra.Command, args []string) error {
 	jsonOut, _ := cmd.Flags().GetBool("json")
-
-	t, err := newAccessTransport(cmd)
+	targets, selected, err := resolveAccessTargets(cmd)
 	if err != nil {
 		return err
 	}
+	if selected {
+		return listSelectedAccess(cmd, targets, jsonOut)
+	}
+
+	t := targets[0].Transport
 
 	if !jsonOut {
 		ui.CommandHeader("nself access list", t.Describe())
@@ -100,4 +105,52 @@ func runAccessList(cmd *cobra.Command, args []string) error {
 			result.ForeignCount))
 	}
 	return nil
+}
+
+// accessHostRow keeps one selector result per resolved inventory host.
+type accessHostRow struct {
+	Env          string          `json:"env"`
+	Server       string          `json:"server"`
+	Host         string          `json:"host"`
+	Entries      []accessListRow `json:"entries"`
+	ForeignCount int             `json:"foreign_count"`
+	Status       string          `json:"status"`
+	Reason       string          `json:"reason,omitempty"`
+}
+
+func listSelectedAccess(cmd *cobra.Command, targets []accessTarget, jsonOut bool) error {
+	rows := make([]accessHostRow, 0, len(targets))
+	var failures []error
+	now := time.Now()
+	for _, target := range targets {
+		result, err := access.List(cmd.Context(), target.Transport)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("list access on %s/%s: %w", target.Env, target.Server, err))
+			rows = append(rows, accessHostRow{Env: target.Env, Server: target.Server, Host: target.Host, Entries: []accessListRow{}, Status: "failed", Reason: err.Error()})
+			continue
+		}
+		row := accessHostRow{Env: target.Env, Server: target.Server, Host: target.Host, Entries: []accessListRow{}, ForeignCount: result.ForeignCount, Status: "ok"}
+		for _, e := range result.Entries {
+			item := accessListRow{User: e.User, Fingerprint: e.Fingerprint(), Sudo: e.Sudo, Docker: e.Docker, Expired: e.Expired(now), Granted: e.Granted.UTC().Format(time.RFC3339)}
+			if e.Expires != nil {
+				item.Expires = e.Expires.Format("2006-01-02")
+			}
+			row.Entries = append(row.Entries, item)
+		}
+		rows = append(rows, row)
+	}
+	if jsonOut {
+		if err := ui.PrintJSON(rows); err != nil {
+			return err
+		}
+		return errors.Join(failures...)
+	}
+	for _, row := range rows {
+		if row.Status == "failed" {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=failed reason=%q\n", row.Env, row.Server, row.Host, row.Reason)
+			continue
+		}
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=ok: %d managed key(s), %d foreign key(s)\n", row.Env, row.Server, row.Host, len(row.Entries), row.ForeignCount)
+	}
+	return errors.Join(failures...)
 }

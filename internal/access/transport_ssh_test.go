@@ -27,6 +27,9 @@ func TestSSHTransportHostSpecPolicy(t *testing.T) {
 			if tc.v15 == "1" && !strings.Contains(joined, "GlobalKnownHostsFile=") {
 				t.Fatalf("strict policy omitted pin file: %s", joined)
 			}
+			if strings.Contains(tc.host, ":2222") && !strings.Contains(joined, "-p 2222 -- u@example.test") {
+				t.Fatalf("non-22 host lost port or end-of-options: %s", joined)
+			}
 		})
 	}
 	t.Setenv("NSELF_V15", "1")

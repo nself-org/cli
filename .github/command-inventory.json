@@ -696,6 +696,7 @@
       "--force-migration",
       "--include-frontends",
       "--json",
+      "--profile",
       "--rolling",
       "--server",
       "--skip-canary",

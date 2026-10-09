@@ -9,8 +9,10 @@ package commands
 // fingerprint; a non-nil error on any validation or transport failure.
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/nself-org/cli/internal/access"
 	"github.com/nself-org/cli/internal/ui"
@@ -42,12 +44,31 @@ func runAccessGrant(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid --key: %w", err)
 	}
 
-	t, err := newAccessTransport(cmd)
+	targets, selected, err := resolveAccessTargets(cmd)
 	if err != nil {
 		return err
 	}
+	if err := confirmAccessTargets(cmd, targets, dryRun); err != nil {
+		return err
+	}
+	var failures []error
+	for _, target := range targets {
+		if err := grantAccessTarget(cmd, target, selected, user, key, sudo, docker, expires, dryRun); err != nil {
+			if !selected {
+				return err
+			}
+			printAccessFailure(cmd, target, err)
+			failures = append(failures, err)
+		}
+	}
+	return errors.Join(failures...)
+}
 
-	ui.CommandHeader("nself access grant", t.Describe())
+func grantAccessTarget(cmd *cobra.Command, target accessTarget, selected bool, user string, key access.PublicKey, sudo, docker bool, expires *time.Time, dryRun bool) error {
+	t := target.Transport
+	if !selected {
+		ui.CommandHeader("nself access grant", t.Describe())
+	}
 
 	result, err := access.Grant(cmd.Context(), t, access.GrantRequest{
 		User: user, Key: key, Sudo: sudo, Docker: docker, Expires: expires, DryRun: dryRun,
@@ -57,12 +78,24 @@ func runAccessGrant(cmd *cobra.Command, args []string) error {
 	}
 
 	if dryRun {
+		if selected {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=dry-run diff=%q\n", target.Env, target.Server, target.Host, result.Diff)
+			return nil
+		}
 		ui.Info("Dry run: no changes made. Resulting authorized_keys diff:")
 		fmt.Print(result.Diff)
 		return nil
 	}
 
 	warnHetznerMismatch(cmd, t)
+	if selected {
+		status := "granted"
+		if result.AlreadyGranted {
+			status = "unchanged"
+		}
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=%s fingerprint=%s backup=%s\n", target.Env, target.Server, target.Host, status, result.Fingerprint, result.BackupPath)
+		return nil
+	}
 
 	if result.AlreadyGranted {
 		ui.Success(fmt.Sprintf("%s already has this exact key granted (%s)", user, result.Fingerprint))
