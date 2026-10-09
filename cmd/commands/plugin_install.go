@@ -15,6 +15,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -208,16 +209,25 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 		maybeShowFreeUpsell(installedCount)
 	}
 	// compat.V15(P7-LIVE-06): plugin install leaves generated state for a later build -> reconcile now
-	if compat.V15() && len(installed) > 0 {
-		if err := reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installed, ",")}); err != nil {
-			return err
+	return finishPluginInstall(compat.V15(), installed, failures, func() error {
+		return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installed, ",")})
+	})
+}
+
+// finishPluginInstall reconciles once after any successful install (v1.5) and
+// reports every failure together: a failed reconcile never hides the plugins
+// that failed to install, and vice versa (errors.Join, as bundle install does).
+func finishPluginInstall(v15 bool, installed, failures []string, reconcileFn func() error) error {
+	var all []error
+	if v15 && len(installed) > 0 {
+		if err := reconcileFn(); err != nil {
+			all = append(all, err)
 		}
 	}
-
 	if len(failures) > 0 {
-		return fmt.Errorf("failed to install: %s", strings.Join(failures, ", "))
+		all = append(all, fmt.Errorf("failed to install: %s", strings.Join(failures, ", ")))
 	}
-	return nil
+	return errors.Join(all...)
 }
 
 // runPluginInstallDryRun simulates bundle installation and shows what would change

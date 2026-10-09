@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -235,4 +236,30 @@ func TestPluginInstallProdClassRefusal(t *testing.T) {
 			t.Fatalf("regeneration ran despite refusal: %v", err)
 		}
 	})
+}
+
+// TestPluginInstallReconcileFailure: a reconcile failure after a partial
+// install is reported together with the plugins that failed, a clean install
+// reports nothing, and v1.4 never reconciles (the build runs later).
+func TestPluginInstallReconcileFailure(t *testing.T) {
+	boom := errors.New("reconcile failed")
+	calls := 0
+	rec := func() error { calls++; return boom }
+	err := finishPluginInstall(true, []string{"good"}, []string{"bad"}, rec)
+	if err == nil || !errors.Is(err, boom) || !strings.Contains(err.Error(), "failed to install: bad") {
+		t.Fatalf("both failures must be reported, got %v", err)
+	}
+	if err := finishPluginInstall(true, []string{"good"}, nil, rec); !errors.Is(err, boom) {
+		t.Fatalf("a reconcile failure alone must be reported, got %v", err)
+	}
+	if err := finishPluginInstall(true, []string{"good"}, nil, func() error { return nil }); err != nil {
+		t.Fatalf("a clean install must report nothing, got %v", err)
+	}
+	calls = 0
+	if err := finishPluginInstall(false, []string{"good"}, nil, rec); err != nil || calls != 0 {
+		t.Fatalf("v1.4 must not reconcile (calls=%d, err=%v)", calls, err)
+	}
+	if err := finishPluginInstall(true, nil, []string{"bad"}, rec); err == nil || errors.Is(err, boom) {
+		t.Fatalf("nothing installed: no reconcile, only the install failure, got %v", err)
+	}
 }
