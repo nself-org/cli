@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // Purpose: the compose-files manifest (read/write, used by start/stop/restart
@@ -114,15 +115,26 @@ const userComposeOverrideFile = "docker-compose.override.yml"
 // hand-written override must beat both the generated base and any plugin
 // fragment, which is the whole reason it exists.
 func withUserOverride(workdir string, paths []string) []string {
+	userListed := false
 	for _, p := range paths {
 		if filepath.Base(p) == userComposeOverrideFile {
-			return paths // already listed; do not add it twice
+			userListed = true
 		}
 	}
-	if _, err := os.Stat(filepath.Join(workdir, userComposeOverrideFile)); err != nil {
-		return paths
+	if !userListed {
+		if _, err := os.Stat(filepath.Join(workdir, userComposeOverrideFile)); err == nil {
+			paths = append(paths, userComposeOverrideFile)
+		}
 	}
-	return append(paths, userComposeOverrideFile)
+	for _, p := range paths {
+		if filepath.Clean(p) == filepath.Join(workdir, docker.ImageOverrideFile) || p == docker.ImageOverrideFile {
+			return paths
+		}
+	}
+	if _, err := os.Stat(filepath.Join(workdir, docker.ImageOverrideFile)); err == nil {
+		paths = append(paths, filepath.Join(workdir, docker.ImageOverrideFile))
+	}
+	return paths
 }
 
 // pluginManifestMinimal holds the fields we need from plugin.json during build.

@@ -825,7 +825,7 @@ func TestCanonEnginePrepare(t *testing.T) {
 // takesArgsParents are the real parents with subcommands, a body and no Args
 // validator that read arguments or do real work: they are NOT help-only. Every
 // other such parent must be in helpOnlyParents (TestHelpOnlyParentsComplete).
-var takesArgsParents = []string{"account", "admin", "bundle", "ci", "ci eval", "db drift", "health", "migrate", "plugin", "trust", "update"}
+var takesArgsParents = []string{"account", "admin", "bundle", "ci", "ci eval", "db drift", "doctor", "health", "migrate", "plugin", "trust", "update"}
 
 // unclassifiedParents returns every parent under root that has subcommands, a
 // body and no Args validator but is in neither list, plus every list entry that

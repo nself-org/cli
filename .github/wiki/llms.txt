@@ -297,6 +297,7 @@ nself doctor <subcommand> [flags]
 Subcommands:
 
 - `heal` — Run targeted self-healing routines for nSelf components
+- `images` — Check availability of every locked image
 - `security` — Diagnose server security
 
 Flags:

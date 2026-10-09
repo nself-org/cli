@@ -1,18 +1,9 @@
 package commands
 
-// start_containers.go — Steps 4-6 (start PostgreSQL, initialize database,
-// start remaining services) for `nself start`. Split out of start.go
-// (T-P6-E2-W1-S1-T3) for 300-line compliance.
-// Inputs:  ctx, opts, cfg, projectDir, composeFiles / compose.
-// Outputs: startPostgresPhase returns the created *docker.Compose plus an
-//          optional cleanup func (non-nil only on the embedded-PG path,
-//          where the original code deferred it from runStart — the caller
-//          must `defer cleanup()` itself to preserve that lifetime) and any
-//          error. The other two return only error, matching the originals.
-// Constraints: pure move, same checks/output/errors/order, no behavior
-//              change. The embedded-PG cleanup must remain deferred from
-//              runStart's scope, not this file's — see call sites in
-//              start.go.
+// Purpose: start PostgreSQL and the remaining services for nself start.
+// Inputs: start options, config, project path and Compose files.
+// Outputs: a Compose client, optional embedded-PG cleanup, or an error.
+// Constraints: check locked images before up; runStart owns embedded-PG cleanup.
 
 import (
 	"context"
@@ -23,12 +14,17 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/build"
+	composepkg "github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/embedded"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/ui"
 )
+
+var newStartCompose = docker.NewCompose
+var ensureStartImages = docker.EnsureComposeImages
 
 // startPostgresPhase starts PostgreSQL (Step 4): either the embedded
 // pglite/wasmtime runtime (--embedded-pg / NSELF_EMBEDDED_PG=true) or the
@@ -41,7 +37,7 @@ import (
 // lives in start_embedded_cgo.go (//go:build cgo) and a stub that returns
 // an error lives in start_embedded_nocgo.go (//go:build !cgo).
 func startPostgresPhase(ctx context.Context, opts startOpts, cfg *config.Config, projectDir string, composeFiles []string) (compose *docker.Compose, cleanup func(), err error) {
-	compose = docker.NewCompose(composeFiles...)
+	compose = newStartCompose(composeFiles...)
 	compose.EnvFiles = build.ComposeEnvFiles(projectDir)
 
 	// ── Embedded PG path (--embedded-pg / NSELF_EMBEDDED_PG=true) ───
@@ -101,21 +97,41 @@ func startPostgresPhase(ctx context.Context, opts startOpts, cfg *config.Config,
 		return compose, epgCleanup, nil
 	}
 
-	// ── Standard Docker postgres path ───────────────────────────
-
-	// ── First-run image pull ─────────────────────────────────────────
-	// Detect first run via the .nself/.first-run-complete marker.
-	// On first run, docker compose pull can take 1-3 minutes; show progress.
+	// Lock mode checks images before every up and refreshes Compose's files.
+	if composepkg.PinningMode() == composepkg.PinningLock {
+		refs := make([]docker.LockedImage, 0, len(composepkg.LockedImages()))
+		for _, ref := range composepkg.LockedImages() {
+			refs = append(refs, docker.LockedImage{Name: ref.Name, Repository: ref.Repository, Version: ref.Version, IndexDigest: ref.IndexDigest, Mirror: ref.Mirror})
+		}
+		if _, pullErr := ensureStartImages(ctx, projectDir, compose, refs); pullErr != nil {
+			return compose, nil, errs.Wrap("E465", "image unavailable: "+pullErr.Error(), pullErr)
+		}
+		if files, readErr := build.ReadComposeManifest(projectDir); readErr == nil {
+			if opts.skipPlugins && len(files) > 0 {
+				files = files[:1]
+				if _, statErr := os.Stat(filepath.Join(projectDir, docker.ImageOverrideFile)); statErr == nil {
+					files = append(files, filepath.Join(projectDir, docker.ImageOverrideFile))
+				}
+			}
+			compose.ComposeFiles = files
+		} else {
+			return compose, nil, readErr
+		}
+	}
+	// Legacy mode keeps the first-run pull, but now surfaces its error.
 	firstRunMarker := filepath.Join(projectDir, ".nself", ".first-run-complete")
-	if _, err := os.Stat(firstRunMarker); os.IsNotExist(err) {
+	if _, err := os.Stat(firstRunMarker); os.IsNotExist(err) && composepkg.PinningMode() != composepkg.PinningLock {
 		if !opts.quiet {
 			ui.Info("First run detected — pulling Docker images (this takes 1-3 minutes on slow connections)...")
 		}
 		donePull := ui.FirstRunProgress(opts.quiet)
 		pullCtx, pullCancel := context.WithTimeout(ctx, 10*time.Minute)
-		_ = compose.ComposePull(pullCtx, projectDir)
+		pullErr := compose.ComposePullDiagnosed(pullCtx, projectDir)
 		pullCancel()
 		donePull()
+		if pullErr != nil {
+			return compose, nil, errs.Wrap("E465", "first-run image pull failed: "+docker.Diagnose(pullErr.Error()), pullErr)
+		}
 		// Write the first-run marker so subsequent starts skip this step.
 		if mkErr := os.MkdirAll(filepath.Dir(firstRunMarker), 0o700); mkErr == nil {
 			f, fErr := os.OpenFile(firstRunMarker, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
@@ -160,19 +176,8 @@ func startPostgresPhase(ctx context.Context, opts startOpts, cfg *config.Config,
 	sp := ui.NewSpinner("Starting PostgreSQL...")
 	sp.Start()
 
-	// Idempotent-start guard: if a healthy postgres container for this
-	// project is already running, skip `docker compose up -d postgres`
-	// entirely instead of relying on Compose's own config-hash diff to be a
-	// no-op. On-disk docker-compose.yml can drift from what actually created
-	// the running container (regenerated on another host, edited .env since
-	// the last `nself build`, etc.); when that happens Compose treats it as
-	// a config change and attempts to recreate an already-healthy postgres,
-	// which can fail mid-recreate even though nothing was actually broken
-	// (found live 2026-09-03: `nself start` run a second time against an
-	// already-healthy postgres failed here; `docker compose up` — no
-	// service filter — succeeded immediately after as a workaround).
-	// --clean-start/--fresh already ran ComposeDown above, so postgres is
-	// never still healthy on those paths and this guard is a no-op for them.
+	// Skip ComposeUp for an already healthy postgres unless a clean/fresh
+	// start cleared it. Compose may otherwise recreate it after config drift.
 	if !opts.cleanStart && !opts.fresh {
 		containerName := fmt.Sprintf("%s_postgres", cfg.ProjectName)
 		health, healthErr := docker.GetHealthStatus(ctx, containerName)
