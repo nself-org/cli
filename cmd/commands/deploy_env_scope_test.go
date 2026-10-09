@@ -23,6 +23,8 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 // scopeProber records every host any probe method was called with. When
@@ -946,6 +948,10 @@ func TestPipelineBuildsRemoteAndShipsSnapshot(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("needs fake rsync/ssh shell scripts on PATH, which Windows cannot execute")
 	}
+	// The v1.4 shipping path: v1.5 deploys require a pinned host key
+	// (ADR 0021, P7-DEPL-13), covered by TestComposeOnlyDeployRequiresKnownHost
+	// and TestE487HintEnrollThenDeploy; the fake PATH here has no ssh-keyscan.
+	compattest.Set(t, false)
 	dir, _ := scopeFixture(t, false)
 	for n, b := range map[string]string{".env": "API_URL=base\n", ".env.qa": "API_URL=qa\n", ".env.local": "LAPTOP_ONLY=secret\n", ".env.dev": "DEV_ONLY=1\n", "docker-compose.yml": "services: {}\n"} {
 		if err := os.WriteFile(filepath.Join(dir, n), []byte(b), 0o600); err != nil {
