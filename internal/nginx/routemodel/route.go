@@ -89,9 +89,17 @@ func parseUpstream(raw string) Upstream {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return Upstream{Scheme: "http", Host: raw}
+		return Upstream{Scheme: "http", Host: raw, Port: 80}
 	}
-	port, _ := strconv.Atoi(u.Port())
+	// A portless target means the scheme's default port; the model never
+	// carries port 0 (routes.json and the model-rendered proxy_pass use it).
+	port, err := strconv.Atoi(u.Port())
+	if err != nil || port == 0 {
+		port = 80
+		if u.Scheme == "https" {
+			port = 443
+		}
+	}
 	return Upstream{Scheme: u.Scheme, Host: u.Hostname(), Port: port}
 }
 

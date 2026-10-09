@@ -69,3 +69,20 @@ func TestValidateAndMarshal(t *testing.T) {
 		t.Fatalf("marshal changed input or output order: %v", err)
 	}
 }
+
+// TestParseUpstreamDefaultPorts: a portless target takes its scheme's
+// default port, never 0 (review: routes.json and the model-rendered
+// proxy_pass would carry ":0").
+func TestParseUpstreamDefaultPorts(t *testing.T) {
+	for raw, want := range map[string]Upstream{
+		"http://example.com":  {Scheme: "http", Host: "example.com", Port: 80},
+		"https://example.com": {Scheme: "https", Host: "example.com", Port: 443},
+		"hasura:8080":         {Scheme: "http", Host: "hasura", Port: 8080},
+		"http://auth:4000/":   {Scheme: "http", Host: "auth", Port: 4000},
+		"example.com":         {Scheme: "http", Host: "example.com", Port: 80},
+	} {
+		if got := parseUpstream(raw); got != want {
+			t.Errorf("parseUpstream(%q) = %+v, want %+v", raw, got, want)
+		}
+	}
+}
