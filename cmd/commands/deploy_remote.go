@@ -19,13 +19,7 @@ import (
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
-// loadDeployEnvCascade loads target's env file cascade into the current process
-// environment, later files overriding earlier ones. The file list is the one
-// config.Load uses (internal/config.EnvCascadeOrder), so the build subprocess
-// this process spawns and the env file pushed to the host see the same values.
-// Missing files are skipped. NSELF_DEPLOY_ENV records the target for
-// subprocesses; ENV (the variable config.Load keys on, gap #13) is set to the
-// cascade environment so the child build resolves the same tier.
+// loadDeployEnvCascade loads target's env cascade for build and deploy.
 func loadDeployEnvCascade(workdir, target string) {
 	for _, f := range deployEnvCascadeFiles(workdir, target) {
 		if _, err := os.Stat(f); err == nil {
@@ -77,11 +71,8 @@ func sshKeyPath() string {
 // host and environment a deploy reaches without running ssh or rsync.
 var remoteDeployPushFn = remoteDeployPush
 
-// remoteDeployPush rsyncs the compose file and env to the remote host, then
-// pulls new images and runs a rolling restart via SSH.
-// host format: "user@host:/remote/path". target is the cascade env (see
-// deployCascadeEnv): it picks the env files merged and the .env.<target> name
-// written on the host.
+// remoteDeployPush checks image architecture before rsyncing the compose and
+// environment to the host, then pulls and restarts services over SSH.
 func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut bool) error {
 	sshKey := sshKeyPath()
 
@@ -95,6 +86,27 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	spec, err := remote.ParseHostSpec(host)
 	if err != nil {
 		return fmt.Errorf("NSELF_DEPLOY_HOST_%s: %w", strings.ToUpper(target), err)
+	}
+	inv, loadErr := controlplane.Load(workdir)
+	if loadErr != nil {
+		return loadErr
+	}
+	loadedInv := inv
+	server := controlplane.Server{Name: target + "-app", Role: controlplane.RoleApp, Host: spec.String(), Primary: true}
+	for _, environment := range inv.Environments {
+		for _, candidate := range environment.Servers {
+			if candidate.Host == spec.String() {
+				server = candidate
+			}
+		}
+	}
+	inv = &controlplane.Inventory{Environments: map[string]controlplane.Environment{target: {Name: target, Kind: "remote", Servers: []controlplane.Server{server}}}}
+	files, err := controlplane.ComposeFilesForDeploy(filepath.Join(workdir, "docker-compose.yml"))
+	if err != nil {
+		return err
+	}
+	if err := controlplane.Preflight(ctx, inv, target, files); err != nil {
+		return err
 	}
 	sshTarget := spec.Dest()
 	if strings.Contains(spec.Host, ":") {
@@ -113,10 +125,9 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	if !remotePathRe.MatchString(remotePath) {
 		return fmt.Errorf("NSELF_DEPLOY_HOST_%s remote path contains unsafe characters (got %q): only [a-zA-Z0-9/_.-] allowed", strings.ToUpper(target), remotePath)
 	}
-	inv, _ := controlplane.Load(workdir)
 	tier := controlplane.DeriveTier(target, "remote")
-	if inv != nil {
-		if e, ok := inv.Environments[target]; ok {
+	if loadedInv != nil {
+		if e, ok := loadedInv.Environments[target]; ok {
 			tier = e.Tier
 		}
 	}

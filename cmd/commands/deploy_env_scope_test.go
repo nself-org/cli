@@ -27,6 +27,39 @@ import (
 	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
+// TestLegacyPathArchRefusal keeps the old single-host push from shipping an
+// amd64-only image to an arm64 host.
+func TestLegacyPathArchRefusal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses local shell fixtures")
+	}
+	dir := t.TempDir()
+	bin := t.TempDir()
+	compose := "services:\n  api:\n    image: example.test/amd64-only:1\n"
+	if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	index := `{"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"digest":"sha256:abc","platform":{"os":"linux","architecture":"amd64"}}]}`
+	for name, body := range map[string]string{
+		"docker": "#!/bin/sh\nprintf '%s\\n' '" + index + "'\n",
+		"ssh":    "#!/bin/sh\nprintf 'aarch64\\n'\n",
+		"rsync":  "#!/bin/sh\nprintf 'shipped\\n' >> '" + filepath.Join(dir, "shipped.log") + "'\n",
+	} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	t.Setenv("NSELF_DEPLOY_HOST_QA", "u@arm.example.test")
+	err := remoteDeployPush(context.Background(), dir, "u@arm.example.test", "qa", false)
+	if err == nil || !strings.Contains(err.Error(), "E491") || !strings.Contains(err.Error(), "example.test/amd64-only:1") {
+		t.Fatalf("legacy refusal = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "shipped.log")); !os.IsNotExist(err) {
+		t.Fatalf("rsync ran before refusal: %v", err)
+	}
+}
+
 // scopeProber records every host any probe method was called with. When
 // unreachable is true every SSH probe fails, so the pipeline skips the server
 // and never reaches the SSH deploy.

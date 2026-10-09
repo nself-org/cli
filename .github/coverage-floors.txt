@@ -48,6 +48,7 @@ internal/controlplane/sim 0  # measured 0.0 2026-10-05
 internal/cost 38  # measured 40.8 2026-10-05
 internal/database 21  # measured 23.1 2026-10-05
 internal/deploy 53  # measured 55.2 2026-10-05
+internal/deploy/archguard 60  # measured 62.9 2026-10-09
 internal/deploy/bluegreen 44  # measured 46.3 2026-10-05
 internal/deprecation 75  # measured 77.3 2026-10-05
 internal/docker 52  # measured 54.7 2026-10-05
