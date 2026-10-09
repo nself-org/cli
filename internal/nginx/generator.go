@@ -54,7 +54,10 @@ type Generator struct {
 }
 
 // WithModel selects the route snapshot prepared by build preflight.
-func (g *Generator) WithModel(m *routemodel.Model) *Generator { g.model = m; return g }
+func (g *Generator) WithModel(m *routemodel.Model) *Generator {
+	g.model, g.hasSSL = m, m.DefaultServer.HTTP.RedirectHTTPS
+	return g
+}
 
 // HasSSL reports whether this generator will emit HTTPS server blocks.
 func (g *Generator) HasSSL() bool { return g.hasSSL }
@@ -85,6 +88,9 @@ func (g *Generator) WithAssumedCerts(domains []string) *Generator {
 func (g *Generator) Generate() (map[string]string, error) {
 	if err := g.parseTemplates(); err != nil {
 		return nil, fmt.Errorf("parsing nginx templates: %w", err)
+	}
+	if err := g.ensureModel(); err != nil {
+		return nil, err
 	}
 
 	files := make(map[string]string)
@@ -139,18 +145,18 @@ type mainConfData struct {
 	Env         string
 }
 
-// generateMainConf renders the main nginx.conf from config.
+// generateMainConf projects model defaults into the unchanged nginx template.
 func (g *Generator) generateMainConf() (string, error) {
+	if err := g.ensureModel(); err != nil {
+		return "", err
+	}
 	data := mainConfData{
-		ProjectName: g.cfg.ProjectName,
-		MaxBody:     g.cfg.Nginx.MaxBody,
-		Env:         g.cfg.Env,
+		ProjectName: g.model.Project,
+		MaxBody:     g.model.MaxBodyLiteral,
+		Env:         g.model.Env,
 	}
 	if data.MaxBody == "" {
-		data.MaxBody = "100M"
-	}
-	if data.Env == "" {
-		data.Env = "dev"
+		data.MaxBody = fmt.Sprintf("%d", g.model.Defaults.MaxBodyBytes)
 	}
 	return g.render("nginx.conf.tmpl", data)
 }
@@ -173,6 +179,9 @@ type defaultConfData struct {
 
 // generateDefaultServer renders the default server block with HTTP->HTTPS redirect.
 func (g *Generator) generateDefaultServer() (string, error) {
+	if err := g.ensureModel(); err != nil {
+		return "", err
+	}
 	httpPort := g.cfg.Nginx.HTTPPort
 	if httpPort == 0 {
 		httpPort = 80
@@ -185,9 +194,9 @@ func (g *Generator) generateDefaultServer() (string, error) {
 	data := defaultConfData{
 		HTTPPort:    httpPort,
 		SSLPort:     sslPort,
-		SSLDir:      sslDirName(g.cfg.BaseDomain),
+		SSLDir:      sslDirName(g.model.BaseDomain),
 		SSLBasePath: nginxtopo.NginxSSLContainerPath,
-		HasSSL:      g.hasSSL,
+		HasSSL:      g.model.DefaultServer.HTTP.RedirectHTTPS,
 	}
 	return g.render("default.conf.tmpl", data)
 }
@@ -259,34 +268,6 @@ func (g *Generator) hasTrustedChain(sslDir string) bool {
 		return false
 	}
 	return true
-}
-
-// proxyTarget normalizes an upstream address into a proxy_pass URL with
-// exactly one scheme. Compose-service upstreams are bare "host:port" and get
-// "http://" prepended; internal-route targets already carry their own scheme
-// (validateInternalRouteTarget rejects a target without one) and are passed
-// through unchanged, including "https://".
-func proxyTarget(upstream string) string {
-	if strings.HasPrefix(upstream, "http://") || strings.HasPrefix(upstream, "https://") {
-		return upstream
-	}
-	return "http://" + upstream
-}
-
-// upstreamName derives a unique, nginx-safe proxy_pass variable name suffix from a route.
-// nginx upstream names allow [A-Za-z0-9_], so non-conforming chars become '_'.
-func upstreamName(route string) string {
-	var b strings.Builder
-	b.WriteString("up_")
-	for _, r := range route {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('_')
-		}
-	}
-	return b.String()
 }
 
 // render executes a named template with the given data and returns the result as a string.

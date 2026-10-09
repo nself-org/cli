@@ -46,12 +46,8 @@ func HasDomainConflict(routes []NginxRoute) (bool, []string) {
 
 // generateAllRoutes projects the shared model into the existing template data.
 func (g *Generator) generateAllRoutes() (map[string]string, error) {
-	if g.model == nil {
-		m, err := routemodel.Build(g.cfg, g.workdir, g.hasSSL, g.hasTrustedChain)
-		if err != nil {
-			return nil, err
-		}
-		g.model = m
+	if err := g.ensureModel(); err != nil {
+		return nil, err
 	}
 	files := make(map[string]string)
 	g.seenRoutes = make(map[string]bool)
@@ -105,6 +101,18 @@ func (g *Generator) generateAllRoutes() (map[string]string, error) {
 	return files, nil
 }
 
+func (g *Generator) ensureModel() error {
+	if g.model != nil {
+		return nil
+	}
+	m, err := routemodel.Build(g.cfg, g.workdir, g.hasSSL, g.hasTrustedChain)
+	if err != nil {
+		return err
+	}
+	g.model = m
+	return nil
+}
+
 // finalizeServiceRoute fills in every ServiceRouteData field the generator
 // (not the caller) is responsible for computing: HasSSL, HasTrustedChain,
 // SSLBasePath, UpstreamName, ProxyTarget, and a default PathZones.
@@ -128,4 +136,32 @@ func (g *Generator) finalizeServiceRoute(data *ServiceRouteData) {
 	if data.PathZones == nil {
 		data.PathZones = defaultSecurityPathZones()
 	}
+}
+
+// proxyTarget normalizes an upstream address into a proxy_pass URL with
+// exactly one scheme. Compose-service upstreams are bare "host:port" and get
+// "http://" prepended; internal-route targets already carry their own scheme
+// (validateInternalRouteTarget rejects a target without one) and are passed
+// through unchanged, including "https://".
+func proxyTarget(upstream string) string {
+	if strings.HasPrefix(upstream, "http://") || strings.HasPrefix(upstream, "https://") {
+		return upstream
+	}
+	return "http://" + upstream
+}
+
+// upstreamName derives a unique, nginx-safe proxy_pass variable name suffix from a route.
+// nginx upstream names allow [A-Za-z0-9_], so non-conforming chars become '_'.
+func upstreamName(route string) string {
+	var b strings.Builder
+	b.WriteString("up_")
+	for _, r := range route {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
 }

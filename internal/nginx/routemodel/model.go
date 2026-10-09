@@ -19,6 +19,7 @@ type Model struct {
 	UnmodelledGlobal []string      `json:"unmodelled_global"`
 	Zones            []Zone        `json:"zones"`
 	Routes           []Route       `json:"routes"`
+	MaxBodyLiteral   string        `json:"-"`
 }
 
 type Defaults struct {

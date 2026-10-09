@@ -37,7 +37,7 @@ func Build(cfg *config.Config, workdir string, hasSSL bool, trusted func(string)
 		env = "dev"
 	}
 	webroot, health := "/etc/nginx/ssl/.acme-webroot", "/health"
-	m := &Model{Generated: Generated, SchemaVersion: "1", Project: cfg.ProjectName,
+	m := &Model{Generated: Generated, SchemaVersion: "1", Project: cfg.ProjectName, MaxBodyLiteral: maxBody,
 		Env: env, BaseDomain: cfg.BaseDomain, UnmodelledGlobal: []string{}, Routes: []Route{},
 		Defaults: Defaults{MaxBodyBytes: bytes, Gzip: Gzip{Enabled: true, Types: append([]string{}, gzipTypes...)},
 			TLS: TLSDefaults{Protocols: []string{"TLSv1.2", "TLSv1.3"}, Ciphers: ptr(ciphers)}},
