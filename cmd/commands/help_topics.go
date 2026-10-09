@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nself-org/cli/internal/plugin/count"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -35,19 +36,7 @@ var helpTopics = map[string]helpTopic{
 	"plugins": {
 		Title:   "Plugin System",
 		Summary: "Install, manage, and build plugins",
-		Body: `  Free plugins (25) — install with no license key:
-    nself plugin list
-    nself plugin install notify
-
-  Pro plugins (87) — require a license bundle:
-    nself license add nself_pro_<your-key>
-    nself plugin install ai mux claw
-
-  Search: nself plugin search <keyword>
-  Info:   nself plugin info <name>
-  Remove: nself plugin remove <name>
-
-  Docs: https://nself.org/docs/plugins`,
+		Body:    pluginHelpBody(),
 	},
 	"license": {
 		Title:   "License & Bundles",
@@ -159,6 +148,26 @@ Examples:
 
 func init() {
 	RootCmd.AddCommand(helpTopicsCmd)
+}
+
+func pluginHelpBody() string {
+	a, err := count.Load()
+	if err != nil {
+		return "Plugin counts unavailable. See https://nself.org/docs/plugins"
+	}
+	return fmt.Sprintf(`  Free plugins (%d) — install with no license key:
+    nself plugin list
+    nself plugin install notify
+
+  Licensed plugins (%d) — included in Bundles:
+    nself license add nself_pro_<your-key>
+    nself plugin install ai mux claw
+
+  Search: nself plugin search <keyword>
+  Info:   nself plugin info <name>
+  Remove: nself plugin remove <name>
+
+  Docs: https://nself.org/docs/plugins`, a.Free.Installable, a.Pro.Installable)
 }
 
 func printHelpTopicIndex() error {

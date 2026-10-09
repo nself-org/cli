@@ -104,7 +104,7 @@ func splitTierPair(entries []*PluginManifest) (free, pro *PluginManifest, ok boo
 func duplicateSlugError(name string, entries []*PluginManifest) error {
 	descs := make([]string, len(entries))
 	for i, e := range entries {
-		descs[i] = fmt.Sprintf("%s@%s (tier=%s)", e.Name, e.Version, e.Tier)
+		descs[i] = fmt.Sprintf("%s@%s (license=%s)", e.Name, e.Version, LicenseValue(e.Tier))
 	}
 	return fmt.Errorf("%w: %q resolves to %d registry entries that are not a declared tier_pair: %s",
 		errs.ErrDuplicatePluginSlug, name, len(entries), strings.Join(descs, ", "))
@@ -129,8 +129,11 @@ func ResolvePlugin(ctx context.Context, reg *Registry, name, tierOverride string
 		entitled = defaultEntitlement
 	}
 	tierOverride = strings.ToLower(strings.TrimSpace(tierOverride))
+	if tierOverride == LicenseLicensed {
+		tierOverride = WireTierPro
+	}
 	if tierOverride != "" && tierOverride != "free" && tierOverride != "pro" {
-		return nil, fmt.Errorf("invalid --tier %q: must be \"free\" or \"pro\"", tierOverride)
+		return nil, fmt.Errorf("invalid --tier %q: must be \"free\" or \"licensed\"", tierOverride)
 	}
 
 	entries := findPluginEntries(reg, name)
@@ -156,7 +159,7 @@ func ResolvePlugin(ctx context.Context, reg *Registry, name, tierOverride string
 	case "pro":
 		ok, err := entitled(ctx, pro.Bundles)
 		if err != nil {
-			return nil, fmt.Errorf("checking entitlement for %q pro tier: %w", name, err)
+			return nil, fmt.Errorf("checking entitlement for %q Licensed plugin: %w", name, err)
 		}
 		if !ok {
 			return nil, notEntitledError(name, pro)
@@ -177,8 +180,12 @@ func ResolvePlugin(ctx context.Context, reg *Registry, name, tierOverride string
 // shape bundle/installer.go's Phase 1 check already uses.
 func notEntitledError(name string, pro *PluginManifest) error {
 	if len(pro.Bundles) == 0 {
-		return fmt.Errorf("%w: plugin %q (pro tier requires a plugin-level license, run 'nself license set <key>')", errs.ErrTierNotEntitled, name)
+		return fmt.Errorf("%w: plugin %q (Licensed plugin requires a plugin-level license, run 'nself license set <key>')", errs.ErrTierNotEntitled, name)
 	}
-	return fmt.Errorf("%w: plugin %q pro tier requires the %s bundle (or ɳSelf+) — buy at https://nself.org/pricing or run 'nself license set <key>'",
-		errs.ErrTierNotEntitled, name, strings.Join(pro.Bundles, "/"))
+	requirement := fmt.Sprintf("a licence for the %s Bundle", pro.Bundles[0])
+	if len(pro.Bundles) > 1 {
+		requirement = fmt.Sprintf("a licence for one of these Bundles: %s", strings.Join(pro.Bundles, ", "))
+	}
+	return fmt.Errorf("%w: plugin %q requires %s (or ɳSelf+) — buy at https://nself.org/pricing or run 'nself license set <key>'",
+		errs.ErrTierNotEntitled, name, requirement)
 }

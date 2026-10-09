@@ -31,12 +31,12 @@ Flags:
 - `--checksum` (default "") — Expected SHA-256 checksum of the downloaded archive (third-party URL installs only)
 - `--dry-run` (default false) — Show what would be installed without making changes
 - `--force` (default false) — Reinstall even when the plugin is already present
-- `--key` (default "") — License key for pro plugins
+- `--key` (default "") — License key for Licensed plugins
 - `--preview` (default false) — Preview the dependency tree without installing
 - `--show-graph` (default false) — Show dependency graph with topological sort order
 - `--skip-sbom-check` (default false) — Skip SBOM verification (air-gapped installs only — sets NSELF_SKIP_SBOM_CHECK=1)
 - `--strict` (default false) — Fail if any plugin in the bundle is missing from the registry
-- `--tier` (default "") — Force "free" or "pro" for a slug served as both (e.g. cron, notify); default resolves by license entitlement
+- `--tier` (default "") — Force "free" or "licensed" for a slug served as both (e.g. cron, notify); default resolves by license entitlement
 - `--version` (default "") — Install a specific version
 - `--with-optional` (default false) — Include optional dependencies in --preview output
 - `--yes` (default false) — Skip confirmation prompts (required for third-party URL installs in CI)

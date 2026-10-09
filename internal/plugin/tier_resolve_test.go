@@ -98,6 +98,21 @@ func TestResolvePlugin_TierPair_ExplicitProOverrideStillChecksEntitlement(t *tes
 	}
 }
 
+func TestNotEntitledBundleWording(t *testing.T) {
+	one := notEntitledError("example", &PluginManifest{Bundles: []string{"Chat"}}).Error()
+	if !strings.Contains(one, "requires a licence for the Chat Bundle") || strings.Contains(one, "one of these") {
+		t.Fatal(one)
+	}
+	err := notEntitledError("example", &PluginManifest{Bundles: []string{"Chat", "AI"}})
+	if !errors.Is(err, errs.ErrTierNotEntitled) {
+		t.Fatal(err)
+	}
+	got := err.Error()
+	if !strings.Contains(got, "one of these Bundles: Chat, AI") || strings.Contains(got, "Chat/AI Bundle") || strings.Contains(got, "Licensed (in") {
+		t.Fatal(got)
+	}
+}
+
 func TestResolvePlugin_TierPair_ExplicitProOverrideSucceedsWhenEntitled(t *testing.T) {
 	reg := fixtureRegistry()
 	m, err := ResolvePlugin(context.Background(), reg, "cron", "pro", alwaysEntitled)

@@ -74,8 +74,8 @@ func init() {
 	// surfaces cannot drift apart in what they accept.
 	installCmd.Flags().Bool("yes", false, "Skip confirmation prompts (required for third-party URL installs in CI)")
 	installCmd.Flags().Bool("force", false, "Reinstall even when the plugin is already present")
-	installCmd.Flags().String("key", "", "License key for pro plugins")
-	installCmd.Flags().String("tier", "", `Force "free" or "pro" for a slug served as both (e.g. cron, notify); default resolves by license entitlement`)
+	installCmd.Flags().String("key", "", "License key for Licensed plugins")
+	installCmd.Flags().String("tier", "", `Force "free" or "licensed" for a slug served as both (e.g. cron, notify); default resolves by license entitlement`)
 	installCmd.Flags().String("version", "", "Install a specific version")
 	installCmd.Flags().Bool("allow-eol", false, "Allow installing an EOL plugin (not recommended)")
 	installCmd.Flags().Bool("preview", false, "Preview the dependency tree without installing")

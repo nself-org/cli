@@ -40,7 +40,7 @@ var slugRE = regexp.MustCompile(`^[a-z][a-z0-9-]{1,40}$`)
 func main() {
 	var (
 		name        = flag.String("name", "", "plugin slug (lowercase-dash)")
-		tier        = flag.String("tier", "pro", "tier: free or pro")
+		tier        = flag.String("tier", "licensed", "licence: free or licensed")
 		bundle      = flag.String("bundle", "", "bundle display name (optional for free)")
 		description = flag.String("description", "", "one-line description")
 		category    = flag.String("category", "integrations", "plugin category (see F04)")
@@ -55,8 +55,11 @@ func main() {
 	if !slugRE.MatchString(*name) {
 		fatalf("invalid --name %q (must be lowercase letters/digits/dashes, 2-41 chars)", *name)
 	}
+	if *tier == "licensed" {
+		*tier = "pro"
+	}
 	if *tier != "free" && *tier != "pro" {
-		fatalf("--tier must be 'free' or 'pro', got %q", *tier)
+		fatalf("--tier must be 'free' or 'licensed', got %q", *tier)
 	}
 	if *description == "" {
 		*description = fmt.Sprintf("nSelf %s plugin.", *name)
@@ -506,5 +509,5 @@ logging, server boilerplate, and license helpers. Run ` + "`go mod tidy`" + ` to
 
 ## License
 
-{{if eq .Tier "pro"}}Source-Available (pro tier). Requires an active nSelf license key.{{else}}MIT.{{end}}
+{{if eq .Tier "pro"}}Source-Available (Licensed plugin in a Bundle). Requires an active nSelf license key.{{else}}MIT.{{end}}
 `

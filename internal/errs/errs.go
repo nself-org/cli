@@ -59,7 +59,7 @@ var (
 	ErrPluginUnsigned            = errors.New("stable plugin is missing required signature — install refused")
 	ErrPluginMissingChecksum     = errors.New("stable plugin is missing required checksum — install refused")
 	ErrDuplicatePluginSlug       = errors.New("plugin slug is served by more than one unrelated registry entry")
-	ErrTierNotEntitled           = errors.New("license does not entitle the pro tier of this plugin")
+	ErrTierNotEntitled           = errors.New("license does not entitle this Licensed plugin")
 
 	// SSL
 	ErrMkcertNotFound      = errors.New("mkcert not installed — falling back to OpenSSL")

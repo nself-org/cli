@@ -246,7 +246,7 @@ nself plugin dev {{.Name}}
 
 ## License
 
-{{if eq .Tier "pro"}}Source-Available (pro tier). Requires an active nSelf license key.{{else}}MIT.{{end}}
+{{if eq .Tier "pro"}}Source-Available (Licensed plugin in a Bundle). Requires an active nSelf license key.{{else}}MIT.{{end}}
 `
 
 const tmplCI = `name: CI

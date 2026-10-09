@@ -39,12 +39,12 @@ Once installed, the plugin's commands are available directly:
 | `--checksum` | `""` | Expected SHA-256 checksum of the downloaded archive (third-party URL installs only) |
 | `--dry-run` | `false` | Show what would be installed without making changes |
 | `--force` | `false` | Reinstall even when the plugin is already present |
-| `--key` | `""` | License key for pro plugins |
+| `--key` | `""` | License key for Licensed plugins |
 | `--preview` | `false` | Preview the dependency tree without installing |
 | `--show-graph` | `false` | Show dependency graph with topological sort order |
 | `--skip-sbom-check` | `false` | Skip SBOM verification (air-gapped installs only — sets NSELF_SKIP_SBOM_CHECK=1) |
 | `--strict` | `false` | Fail if any plugin in the bundle is missing from the registry |
-| `--tier` | `""` | Force "free" or "pro" for a slug served as both (e.g. cron, notify); default resolves by license entitlement |
+| `--tier` | `""` | Force "free" or "licensed" for a slug served as both (e.g. cron, notify); default resolves by license entitlement |
 | `--version` | `""` | Install a specific version |
 | `--with-optional` | `false` | Include optional dependencies in --preview output |
 | `--yes` | `false` | Skip confirmation prompts (required for third-party URL installs in CI) |

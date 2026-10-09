@@ -14,12 +14,15 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -64,7 +67,7 @@ var pluginMarketplaceSearchCmd = &cobra.Command{
 	Long: `Search the nSelf marketplace by name, description, or tags.
 
   nself plugin marketplace search ai
-  nself plugin marketplace search "media streaming" --tier pro
+  nself plugin marketplace search "media streaming" --tier licensed
   nself plugin marketplace search claw --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runPluginMarketplaceSearch,
@@ -86,13 +89,13 @@ var pluginMarketplaceInfoCmd = &cobra.Command{
 
 func init() {
 	// Flags on list.
-	pluginMarketplaceListCmd.Flags().String("tier", "", "Filter by tier: free or pro")
+	pluginMarketplaceListCmd.Flags().String("tier", "", "Filter by licence: free or licensed")
 	pluginMarketplaceListCmd.Flags().String("bundle", "", "Filter by bundle slug")
 	pluginMarketplaceListCmd.Flags().String("category", "", "Filter by category name")
 	pluginMarketplaceListCmd.Flags().Bool("json", false, "Output raw JSON")
 
 	// Flags on search.
-	pluginMarketplaceSearchCmd.Flags().String("tier", "", "Filter by tier: free or pro")
+	pluginMarketplaceSearchCmd.Flags().String("tier", "", "Filter by licence: free or licensed")
 	pluginMarketplaceSearchCmd.Flags().String("bundle", "", "Filter by bundle slug")
 	pluginMarketplaceSearchCmd.Flags().String("category", "", "Filter by category name")
 	pluginMarketplaceSearchCmd.Flags().Bool("json", false, "Output raw JSON")
@@ -112,8 +115,50 @@ func init() {
 
 // --- run functions ---
 
+// labelMarketplacePlugins copies API rows for human presentation without changing wire data.
+func labelMarketplacePlugins(rows []marketplacePlugin) []marketplacePlugin {
+	shown := make([]marketplacePlugin, len(rows))
+	copy(shown, rows)
+	for i := range shown {
+		shown[i].Tier = plugin.Label(shown[i].Tier)
+	}
+	return shown
+}
+
+// printMarketplaceJSON keeps legacy API fields in v1.4 mode and projects a licence in v1.5.
+func printMarketplaceJSON(rows []marketplacePlugin, single bool) error {
+	// compat.V15(P7-PLUG-11): tier pro -> license licensed
+	if !compat.V15() {
+		if single {
+			return ui.PrintJSON(&rows[0])
+		}
+		return ui.PrintJSON(rows)
+	}
+	projected := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		data, err := json.Marshal(row)
+		if err != nil {
+			return err
+		}
+		var value map[string]any
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		delete(value, "tier")
+		value["license"] = plugin.LicenseValue(row.Tier)
+		projected = append(projected, value)
+	}
+	if single {
+		return ui.PrintJSON(projected[0])
+	}
+	return ui.PrintJSON(projected)
+}
+
 func runPluginMarketplaceList(cmd *cobra.Command, args []string) error {
 	tier, _ := cmd.Flags().GetString("tier")
+	if tier == plugin.LicenseLicensed {
+		tier = plugin.WireTierPro
+	}
 	bundle, _ := cmd.Flags().GetString("bundle")
 	category, _ := cmd.Flags().GetString("category")
 	asJSON, _ := cmd.Flags().GetBool("json")
@@ -137,10 +182,10 @@ func runPluginMarketplaceList(cmd *cobra.Command, args []string) error {
 	}
 
 	if asJSON {
-		return ui.PrintJSON(plugins)
+		return printMarketplaceJSON(plugins, false)
 	}
 
-	renderMarketplaceTable(plugins)
+	renderMarketplaceTable(labelMarketplacePlugins(plugins))
 	fmt.Fprintf(os.Stderr, "\n%d plugin(s) listed.\n", len(plugins))
 	return nil
 }
@@ -148,6 +193,9 @@ func runPluginMarketplaceList(cmd *cobra.Command, args []string) error {
 func runPluginMarketplaceSearch(cmd *cobra.Command, args []string) error {
 	query := args[0]
 	tier, _ := cmd.Flags().GetString("tier")
+	if tier == plugin.LicenseLicensed {
+		tier = plugin.WireTierPro
+	}
 	bundle, _ := cmd.Flags().GetString("bundle")
 	category, _ := cmd.Flags().GetString("category")
 	asJSON, _ := cmd.Flags().GetBool("json")
@@ -171,10 +219,10 @@ func runPluginMarketplaceSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	if asJSON {
-		return ui.PrintJSON(plugins)
+		return printMarketplaceJSON(plugins, false)
 	}
 
-	renderMarketplaceTable(plugins)
+	renderMarketplaceTable(labelMarketplacePlugins(plugins))
 	fmt.Fprintf(os.Stderr, "\n%d plugin(s) matched %q.\n", len(plugins), query)
 	return nil
 }
@@ -211,7 +259,7 @@ func runPluginMarketplaceInfo(cmd *cobra.Command, args []string) error {
 	}
 
 	if asJSON {
-		return ui.PrintJSON(found)
+		return printMarketplaceJSON([]marketplacePlugin{*found}, true)
 	}
 
 	tbl := ui.NewTable("Field", "Value")
@@ -220,7 +268,7 @@ func runPluginMarketplaceInfo(cmd *cobra.Command, args []string) error {
 	tbl.AddRow("Version", found.Version)
 	tbl.AddRow("Description", found.Description)
 	tbl.AddRow("Category", found.Category)
-	tbl.AddRow("Tier", found.Tier)
+	tbl.AddRow("License", plugin.Label(found.Tier))
 	tbl.AddRow("Bundle", found.Bundle)
 	if found.Author != "" {
 		tbl.AddRow("Author", found.Author)

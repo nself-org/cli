@@ -14,7 +14,7 @@ See [[cmd-config]] for the current command. [[Command-Canon]] lists every move.
 ### Description
 
 <!-- BEGIN PROSE:description -->
-`nself plugin` manages the ɳSelf plugin ecosystem. Plugins extend the CLI and your backend stack with new capabilities. Free plugins (MIT licensed) install without a key. Pro plugins require a valid membership license key, set one with `nself license set`.
+`nself plugin` manages the ɳSelf plugin ecosystem. Plugins extend the CLI and your backend stack with new capabilities. Free plugins (MIT licensed) install without a key. Licensed plugins require a valid Bundle license key, set one with `nself license set`.
 
 When you install a plugin, ɳSelf checks your license tier against the plugin's requirements, downloads the plugin binary and Docker image, registers the plugin with the stack, and prepares database migrations. Run `nself build` and `nself restart` after installing plugins to include them in the generated `docker-compose.yml`.
 
@@ -51,13 +51,13 @@ The event body contains one field: `instanceId`, which is an opaque SHA-256 hash
 
 To opt out, set `NSELF_DISABLE_TELEMETRY=1` in your environment or `.env.local`.
 
-## A slug served as both free and pro
+## A slug served as both Free and Licensed
 
-A small number of plugins (`cron`, `notify`) ship as a genuine free/pro pair: the same product, listed twice in the registry under one slug. `nself plugin install cron` resolves which entry to install like this:
+A small number of plugins (`cron`, `notify`) ship as a genuine Free/Licensed pair: the same product, listed twice in the registry under one slug. `nself plugin install cron` resolves which entry to install like this:
 
-- If your license entitles the bundle the pro entry belongs to (checked via the same bundle-entitlement path `nself bundle install` uses), you get **pro**.
-- Otherwise, or with no license key configured, you get **free**. Free never requires a key.
-- Pass `--tier free` or `--tier pro` to force a side. `--tier free` always succeeds. `--tier pro` still runs the entitlement check — it is a way to *ask* for pro, not a way to bypass licensing — and fails with a clear "buy the bundle" error if you're not entitled.
+- If your license entitles the Bundle the Licensed entry belongs to (checked via the same bundle-entitlement path `nself bundle install` uses), you get **Licensed**.
+- Otherwise, or with no license key configured, you get **Free**. Free never requires a key.
+- Pass `--tier free` or `--tier licensed` to force a side. `--tier free` always succeeds. `--tier licensed` still runs the entitlement check and fails with a clear "buy the Bundle" error if you're not entitled. The legacy `--tier pro` spelling remains accepted.
 
 Run `nself plugin list --available` to see every tier of every such slug side by side, with the tier a plain `nself plugin install <name>` would resolve to today marked in the `Default` column.
 
@@ -65,7 +65,7 @@ Any *other* slug collision — two unrelated registry entries that happen to sha
 
 ## Official by name, third-party by URL
 
-`nself plugin install <name>` resolves against the official plugins.nself.org registry: license-checked for pro tiers, and its tarball is Ed25519-signature-verified against a registry-pinned author key.
+`nself plugin install <name>` resolves against the official plugins.nself.org registry: license-checked for Licensed plugins, and its tarball is Ed25519-signature-verified against a registry-pinned author key.
 
 `nself plugin install <https-url>` installs directly from an arbitrary URL instead, for plugins that aren't in the registry. This path:
 
@@ -165,7 +165,7 @@ nself plugin list --available
 nself plugin install cron --tier free
 
 # Ask for the pro entry explicitly (still requires an entitled license)
-nself plugin install cron --tier pro
+nself plugin install cron --tier licensed
 
 # Remove a plugin
 nself plugin remove ai
