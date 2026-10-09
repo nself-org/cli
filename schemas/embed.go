@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-//go:embed *.json commands/*.json
+//go:embed all:*.json all:commands/*.json
 var files embed.FS
 
 // Lookup returns a copy of a committed schema by its relative path.

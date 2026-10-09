@@ -38,11 +38,9 @@ func validateConfirm(at string, src *canon.Confirm, runnable bool, cmd *cobra.Co
 				return f.Type
 			}
 		}
-		for c := cmd; c != nil; c = c.Parent() {
-			for _, f := range localFlags(c) {
-				if f.Name == name {
-					return f.Type
-				}
+		for ancestor := cmd.Parent(); ancestor != nil; ancestor = ancestor.Parent() {
+			if f := ancestor.PersistentFlags().Lookup(name); f != nil {
+				return f.Value.Type()
 			}
 		}
 		return ""

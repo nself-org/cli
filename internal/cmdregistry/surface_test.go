@@ -49,6 +49,24 @@ func TestRegistryConfirmField(t *testing.T) {
 	}
 }
 
+func TestRegistryConfirmRejectsAncestorLocalFlag(t *testing.T) {
+	root := &cobra.Command{Use: "nself"}
+	root.Flags().Bool("yes", false, "root-local flag is not inherited")
+	child := &cobra.Command{Use: "reset", RunE: noop}
+	root.AddCommand(child)
+
+	confirm, problems := validateConfirm("reset", &canon.Confirm{Flags: []string{"yes"}}, true, child, localFlags(child))
+	if confirm != nil || len(problems) != 1 || !strings.Contains(problems[0], `flag "yes" does not exist`) {
+		t.Fatalf("ancestor-local flag accepted: confirm=%+v problems=%v", confirm, problems)
+	}
+
+	root.PersistentFlags().Bool("force", false, "inherited flag")
+	confirm, problems = validateConfirm("reset", &canon.Confirm{Flags: []string{"force"}}, true, child, localFlags(child))
+	if confirm == nil || len(problems) != 0 {
+		t.Fatalf("persistent flag rejected: confirm=%+v problems=%v", confirm, problems)
+	}
+}
+
 func TestRegistrySurfaceAndSecret(t *testing.T) {
 	r := surfaceRegistry(t)
 	export, _ := r.Lookup("config export")
