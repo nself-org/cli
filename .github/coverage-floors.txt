@@ -75,6 +75,7 @@ internal/migration 14  # measured 16.8 2026-10-05
 internal/migrationai 69  # measured 71.3 2026-10-05
 internal/model 65  # measured 67.3 2026-10-05
 internal/nginx 75  # measured 77.4 2026-10-05
+internal/nginx/routemodel 66  # measured 68.2 2026-10-08
 internal/nginxtopo 98  # measured 100.0 2026-10-05
 internal/oauth 82  # measured 84.4 2026-10-05
 internal/objstore 87  # measured 89.4 2026-10-05
