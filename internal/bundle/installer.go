@@ -75,6 +75,7 @@ type InstallResult struct {
 	RolledBack    []string // plugins removed during rollback after a failure
 	LicenseBypass bool     // reserved — always false; --force never bypasses license
 	DryRun        bool
+	Changed       bool // membership changed; the command layer must reconcile
 }
 
 // Install runs the bundle install flow. The returned InstallResult is populated
@@ -217,6 +218,7 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 				if opts.Strict {
 					// --strict: fail if any plugin already at a higher version.
 					result.RolledBack = rollbackInstalled(ctx, cfg, removeFn, pluginDir, result.Installed, out)
+					result.Changed = len(result.RolledBack) != len(result.Installed)
 					return result, fmt.Errorf("--strict: plugin %q is at %s (higher than bundle pin %s); use without --strict to skip", name, existingVer, targetVer)
 				}
 				// Default: skip with warning, no silent downgrade.
@@ -232,27 +234,17 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 		if err := installFn(ctx, cfg, name, pluginDir); err != nil {
 			_, _ = fmt.Fprintf(out, "  ✗ %s install failed: %v\n", name, err)
 			result.RolledBack = rollbackInstalled(ctx, cfg, removeFn, pluginDir, result.Installed, out)
+			result.Changed = len(result.RolledBack) != len(result.Installed)
 			return result, fmt.Errorf("bundle %q install failed at plugin %q: %w", b.Slug, name, err)
 		}
 		result.Installed = append(result.Installed, name)
+		result.Changed = true
 		_, _ = fmt.Fprintf(out, "  ✓ %s@%s installed\n", name, targetVer)
 	}
 
 	_, _ = fmt.Fprintf(out, "\nBundle %q (%s) installed: %d plugins.\n", b.Name, b.Slug, len(result.Installed))
 	if len(result.Skipped) > 0 {
 		_, _ = fmt.Fprintf(out, "Skipped (missing from registry): %s\n", strings.Join(result.Skipped, ", "))
-	}
-
-	// Trigger a single nself build to regenerate docker-compose.yml and nginx
-	// configs with the newly installed plugins. This must happen ONCE at the
-	// very end — not per-plugin. Skip when no plugins were actually installed.
-	if len(result.Installed) > 0 {
-		if err := triggerBuild(ctx, out); err != nil {
-			// Build failure is non-fatal: plugins are on disk; user can run
-			// nself build manually. Surface as a warning, not a hard error.
-			_, _ = fmt.Fprintf(out, "\nWARNING: nself build failed after bundle install: %v\n", err)
-			_, _ = fmt.Fprintln(out, "Run 'nself build' manually to apply the new plugins.")
-		}
 	}
 
 	return result, nil

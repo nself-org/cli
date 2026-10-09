@@ -169,6 +169,15 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 			// Template the config content with project values.
 			// Reuses renderTemplate from plugin_configs.go.
 			rendered := renderTemplate(string(content), vars)
+			// Plugin confs are generated artifacts in both compatibility modes.
+			// The sites sweep only prunes marked files after a plugin is removed.
+			head := rendered
+			if len(head) > 128 {
+				head = head[:128]
+			}
+			if !strings.Contains(head, nginxGeneratedMarker) {
+				rendered = nginxGeneratedMarker + "\n" + rendered
+			}
 
 			// Write to nginx/sites/{pluginname}-{filename} to avoid conflicts.
 			filename := filepath.Base(match)

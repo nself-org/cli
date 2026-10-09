@@ -14,7 +14,6 @@ import (
 	"github.com/nself-org/cli/internal/license"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -216,26 +215,6 @@ func buildInstalledVersionMap(pluginDir string) map[string]string {
 		m[strings.ToLower(p.Name)] = p.Version
 	}
 	return m
-}
-
-// triggerBuild invokes `nself build` once at the end of a bundle install so
-// docker-compose.yml and nginx configs are regenerated with the new plugins.
-// This is a subprocess call matching the pattern in internal/promote/promote.go.
-func triggerBuild(ctx context.Context, out io.Writer) error {
-	_, _ = fmt.Fprintln(out, "\nRunning 'nself build' to apply installed plugins...")
-	nself, err := exec.LookPath("nself")
-	if err != nil {
-		// nself binary not found — likely running in tests or a non-standard PATH.
-		// Allow callers to detect this via the error message.
-		return fmt.Errorf("nself binary not found in PATH: %w", err)
-	}
-	cmd := exec.CommandContext(ctx, nself, "build", "--quiet")
-	cmd.Stdout = out
-	cmd.Stderr = out
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("nself build: %w", err)
-	}
-	return nil
 }
 
 // defaultPluginDir resolves the standard plugin install directory. Mirrors

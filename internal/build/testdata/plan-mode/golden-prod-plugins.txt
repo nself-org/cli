@@ -50,7 +50,7 @@ f 0644 project/nginx/sites/api-docs.conf 7d9f95da0b6ae7262df3ca4e530970483a1fad6
 f 0644 project/nginx/sites/auth.conf 55924316068cabda843a0780c74f1f42fc33ab9c6a206d67ef28f288c2ece8d3
 f 0644 project/nginx/sites/hand-written.conf db823e7687a059dc5161877380f7824a115321a9908bf9d1458a002b50db5b7c
 f 0644 project/nginx/sites/hasura.conf 03c124e23e897020b9102d2df387c47b0ccb289c2fefe884a7ce3658358d2cf8
-f 0644 project/nginx/sites/nself-alpha-route.conf 63e48ab0956b38193f6297d80a3ef36d91d69c41cb0f34f8ddef8abbcf3c3f22
+f 0644 project/nginx/sites/nself-alpha-route.conf 565befe613dff3f10b8536134f0896b9e9e181acda2ce076b986208c9b53b2c1
 f 0644 project/nginx/sites/storage-console.conf 2f7a42894d55015d9e4383aeadd5619c767d17df51ad3459226b4a3f3c4f4d6c
 f 0644 project/nginx/sites/storage.conf 2326e27267d70903ba6299c9626d258ae2f19512dd3c50dcdc5e29ae8aca8d1f
 f 0644 project/postgres/init/01-init.sql 0238a6519fd10168af604249e45bf5234d3e6cec6ff9b927410a74ad90127637

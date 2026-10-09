@@ -20,7 +20,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/plugin"
+	"github.com/nself-org/cli/internal/reconcile"
 
 	"github.com/spf13/cobra"
 )
@@ -44,6 +46,10 @@ func runPluginRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "Plugin %q removed successfully.\n", name)
+	// compat.V15(P7-LIVE-06): plugin removal leaves generated state for a later build -> reconcile now
+	if compat.V15() {
+		return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: name})
+	}
 	return nil
 }
 

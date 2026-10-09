@@ -66,6 +66,9 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-DEPL-13 | silent legacy host path | warn once until removal at v1.6.0. | `internal/controlplane/tiers.go` |
 | P7-LIVE-03 | a lock held by another command does not stop a build (it takes the O_EXCL build.lock) | a lock held by another command refuses the build | `internal/build/build_lock.go` |
 | P7-LIVE-03 | a prod-class or hand-edited change proceeds with a notice | refused with E403 without --yes or --force | `internal/reconcile/apply.go` |
+| P7-LIVE-06 | plugin install leaves generated state for a later build | reconcile now | `cmd/commands/plugin_install.go` |
+| P7-LIVE-06 | plugin removal leaves generated state for a later build | reconcile now | `cmd/commands/plugin_lifecycle.go` |
+| P7-LIVE-06 | post-install build hint | automatic reconcile | `cmd/commands/plugin_install.go` |
 | P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |
 | P7-LIVE-17 | IMAGE_PINNING defaults to legacy | lock | `internal/compose/images_lock.go` |
 | P7-PLUG-01 | v1 plugin.json read silently | one deprecation line per process on stderr | `internal/plugin/manifestv2/warn.go` |
