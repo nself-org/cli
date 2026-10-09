@@ -125,10 +125,25 @@ type Entry struct {
 	// ExitCodesV15 documents state exit codes in v1.5 mode (D10).
 	ExitCodesV15 map[string]string `yaml:"exit_codes_v15"`
 	// Flags maps a flag name to the escalation it causes when set.
-	Flags map[string]FlagOverride `yaml:"flags"`
+	Flags      map[string]FlagOverride `yaml:"flags"`
+	Confirm    *Confirm                `yaml:"confirm"`
+	Surface    string                  `yaml:"surface"`
+	SecretArgs []string                `yaml:"secret_args"`
 	// Mode is empty (the entry exists in both modes) or "v1.4" (it exists only
 	// in v1.4 mode: break-outs, removed commands, shim and retired-hub sources).
 	Mode string `yaml:"mode"`
+}
+
+// Confirm declares local or inherited flags accepted as confirmation.
+type Confirm struct {
+	Flags []string  `yaml:"flags"`
+	Plan  *PlanForm `yaml:"plan"`
+}
+
+// PlanForm identifies the flag pair used for plan/apply confirmation.
+type PlanForm struct {
+	Flag   string `yaml:"flag"`
+	IDFlag string `yaml:"id_flag"`
 }
 
 // FlagOverride is what setting a flag changes about its command.
@@ -139,7 +154,9 @@ type FlagOverride struct {
 	JSON string `yaml:"json"`
 	// Output is empty or "stream" (D6, invalidation 2026-09-30): the only
 	// flag-level output value, allowed on a command whose output is document.
-	Output string `yaml:"output"`
+	Output  string `yaml:"output"`
+	CLIOnly bool   `yaml:"cli_only"`
+	Secret  bool   `yaml:"secret"`
 }
 
 var (

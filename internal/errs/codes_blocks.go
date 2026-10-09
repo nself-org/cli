@@ -83,6 +83,7 @@ var Owners = []Owner{
 	{420, 423, "P7-SURF-24", "codes_invoke.go"}, {424, 426, "P7-SURF-25", "codes_gate.go"},
 	{428, 432, "P7-SURF-02", "codes_httpapi.go"}, {433, 433, "P7-SURF-03", "codes_mcpgen.go"},
 	{434, 434, "P7-SURF-06", "codes_config_explain.go"}, {435, 436, "P7-SURF-07", "codes_nself_yaml.go"},
+	{437, 437, "P7-SURF-30", "codes_registry_surface.go"},
 	{450, 454, "P7-LIVE-03", "codes_reconcile.go"}, {455, 459, "P7-LIVE-09", "codes_lock.go"},
 	{460, 464, "P7-LIVE-13", "codes_oplock.go"}, {465, 469, "P7-LIVE-18", "codes_images.go"},
 	{470, 474, "P7-LIVE-22", "codes_acme.go"},

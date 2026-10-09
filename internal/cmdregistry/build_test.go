@@ -244,14 +244,14 @@ func TestMarshalFormat(t *testing.T) {
 func TestParseArgs(t *testing.T) {
 	cases := map[string][]Arg{
 		"get":                        {},
-		"get <key>":                  {{"key", true, false}},
-		"status [SERVICE]":           {{"SERVICE", false, false}},
-		"add <key> [key...]":         {{"key", true, false}, {"key", false, true}},
-		"rm <a>... [flags]":          {{"a", true, true}},
-		"x [a…]":                     {{"a", false, true}},
-		"x [options] <first|second>": {{"options", false, false}, {"first|second", true, false}},
-		"x bare":                     {{"bare", true, false}},
-		"x [key value]":              {{"key value", false, false}},
+		"get <key>":                  {{Name: "key", Required: true}},
+		"status [SERVICE]":           {{Name: "SERVICE"}},
+		"add <key> [key...]":         {{Name: "key", Required: true}, {Name: "key", Variadic: true}},
+		"rm <a>... [flags]":          {{Name: "a", Required: true, Variadic: true}},
+		"x [a…]":                     {{Name: "a", Variadic: true}},
+		"x [options] <first|second>": {{Name: "options"}, {Name: "first|second", Required: true}},
+		"x bare":                     {{Name: "bare", Required: true}},
+		"x [key value]":              {{Name: "key value"}},
 	}
 	for use, want := range cases {
 		got := parseArgs(use)

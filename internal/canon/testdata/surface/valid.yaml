@@ -1,0 +1,8 @@
+schema_version: 1
+verbs: [reset, config, logs]
+commands:
+  reset: {canon: core, side_effect: destructive, confirm: {flags: [yes]}}
+  config: {canon: core, side_effect: read}
+  config export: {side_effect: read, surface: cli-only}
+  config set: {side_effect: write, secret_args: [value]}
+  logs: {canon: core, side_effect: read, flags: {follow: {output: stream}, reveal: {cli_only: true}}}

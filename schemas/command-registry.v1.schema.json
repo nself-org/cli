@@ -27,6 +27,9 @@
                 "required": {
                   "type": "boolean"
                 },
+                "secret": {
+                  "type": "boolean"
+                },
                 "variadic": {
                   "type": "boolean"
                 }
@@ -34,7 +37,8 @@
               "required": [
                 "name",
                 "required",
-                "variadic"
+                "variadic",
+                "secret"
               ],
               "type": "object"
             },
@@ -50,6 +54,44 @@
               "builtin"
             ],
             "type": "string"
+          },
+          "confirm": {
+            "additionalProperties": false,
+            "properties": {
+              "flags": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "plan": {
+                "additionalProperties": false,
+                "properties": {
+                  "flag": {
+                    "type": "string"
+                  },
+                  "id_flag": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "flag",
+                  "id_flag"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "flags",
+              "plan"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "data_schema": {
             "pattern": "^schemas/commands/[a-z0-9-]+\\.v[0-9]+\\.schema\\.json$",
@@ -77,6 +119,9 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "cli_only": {
+                  "type": "boolean"
+                },
                 "default": {
                   "type": "string"
                 },
@@ -125,6 +170,9 @@
                 "required": {
                   "type": "boolean"
                 },
+                "secret": {
+                  "type": "boolean"
+                },
                 "shorthand": {
                   "type": [
                     "null",
@@ -164,7 +212,9 @@
                 "env",
                 "side_effect",
                 "json",
-                "output"
+                "output",
+                "cli_only",
+                "secret"
               ],
               "type": "object"
             },
@@ -225,6 +275,13 @@
           "summary": {
             "type": "string"
           },
+          "surface": {
+            "enum": [
+              "all",
+              "cli-only"
+            ],
+            "type": "string"
+          },
           "target": {
             "type": [
               "null",
@@ -250,7 +307,9 @@
           "output",
           "json",
           "data_schema",
-          "exit_codes"
+          "exit_codes",
+          "confirm",
+          "surface"
         ],
         "type": "object"
       },
@@ -309,6 +368,9 @@
           "items": {
             "additionalProperties": false,
             "properties": {
+              "cli_only": {
+                "type": "boolean"
+              },
               "default": {
                 "type": "string"
               },
@@ -357,6 +419,9 @@
               "required": {
                 "type": "boolean"
               },
+              "secret": {
+                "type": "boolean"
+              },
               "shorthand": {
                 "type": [
                   "null",
@@ -396,7 +461,9 @@
               "env",
               "side_effect",
               "json",
-              "output"
+              "output",
+              "cli_only",
+              "secret"
             ],
             "type": "object"
           },

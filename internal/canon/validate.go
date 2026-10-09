@@ -116,6 +116,21 @@ func validateEntry(key string, e Entry, verbs map[string]bool) []string {
 		p = append(p, at+": target must not be the command itself")
 	}
 	p = append(p, validateEnums(at, e)...)
+	if e.Surface != "" && e.Surface != "all" && e.Surface != "cli-only" {
+		p = append(p, fmt.Sprintf("%s: surface %q is not all or cli-only", at, e.Surface))
+	}
+	if e.Confirm != nil {
+		seen := map[string]bool{}
+		for _, name := range e.Confirm.Flags {
+			if name == "" || seen[name] {
+				p = append(p, fmt.Sprintf("%s confirm.flags: %q is empty or duplicated", at, name))
+			}
+			seen[name] = true
+		}
+		if plan := e.Confirm.Plan; plan != nil && (plan.Flag == "" || plan.IDFlag == "") {
+			p = append(p, at+" confirm.plan: flag and id_flag are required")
+		}
+	}
 	p = append(p, validateExitCodes(at+" exit_codes", e.ExitCodes)...)
 	p = append(p, validateExitCodes(at+" exit_codes_v15", e.ExitCodesV15)...)
 	for name, ov := range e.Flags {
