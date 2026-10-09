@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -64,6 +65,9 @@ func TestPullFallbackDiagnoseHTTP(t *testing.T) {
 }
 
 func TestPullFallbackIntegration(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("registry:2 has no Windows container manifest")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	dockerCmd := func(args ...string) string {
@@ -76,7 +80,7 @@ func TestPullFallbackIntegration(t *testing.T) {
 		return strings.TrimSpace(string(out))
 	}
 	if _, err := exec.LookPath("docker"); err != nil {
-		t.Fatal(err)
+		t.Skip("Docker is unavailable on this runner")
 	}
 	if err := exec.CommandContext(ctx, "docker", "image", "inspect", "registry:2").Run(); err != nil {
 		dockerCmd("pull", "registry:2")
@@ -154,7 +158,13 @@ func TestPullFallbackIntegration(t *testing.T) {
 	if err != nil || len(services) != 1 || !strings.Contains(services[0].Image, mirror) {
 		t.Fatalf("stack image not served by mirror: services=%+v err=%v", services, err)
 	}
+	if err := c.ComposeDown(ctx, project, DownOptions{}); err != nil {
+		t.Fatalf("stop fixture stack before cache-removal proof: %v", err)
+	}
 	removeLocal(mirror)
+	if _, err := runCapture(ctx, "image", "inspect", mirror+"@"+digest[1]); err == nil {
+		t.Fatal("mirror image still cached; both-missing proof would be vacuous")
+	}
 	deleteManifest(mirrorURL)
 	if _, err := EnsureImage(ctx, ref); err == nil || !strings.Contains(err.Error(), "repository or tag missing") {
 		t.Fatalf("both registries deleted: %v", err)
@@ -163,6 +173,9 @@ func TestPullFallbackIntegration(t *testing.T) {
 }
 
 func TestEnsureImageOverride(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix shell fixture")
+	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "docker")
 	script := `#!/bin/sh

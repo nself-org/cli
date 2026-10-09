@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -13,6 +14,9 @@ import (
 )
 
 func TestStartPullErrorSurfaced(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix shell fixture")
+	}
 	t.Setenv("IMAGE_PINNING", "legacy")
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "docker")
@@ -58,6 +62,9 @@ func TestStartPullNonFirstRunError(t *testing.T) {
 }
 
 func TestStartPullSkipPluginsKeepsMirror(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix shell fixture")
+	}
 	t.Setenv("IMAGE_PINNING", "lock")
 	dir := t.TempDir()
 	state := filepath.Join(dir, ".nself", "state")
