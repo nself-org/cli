@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -210,6 +211,9 @@ func captureAccessStdout(t *testing.T, run func() error) string {
 }
 
 func TestAccessSecurityArgvSites(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX ssh argv recorder")
+	}
 	// No network call: all SSH executions are captured by a PATH stub.
 	t.Setenv("NSELF_V15", "0")
 	bin := t.TempDir()
@@ -228,6 +232,18 @@ func TestAccessSecurityArgvSites(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "-p\n2222\n--\nu@host.test\ntrue\n") {
 		t.Fatalf("admin argv: %q", b)
+	}
+	t.Setenv("NSELF_V15", "1")
+	t.Setenv("HOME", t.TempDir())
+	if err := admin.VerifySSHKey(context.Background(), "u", "host.test", 2222); err != nil {
+		t.Fatal(err)
+	}
+	b, err = os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "StrictHostKeyChecking=yes") || !strings.Contains(string(b), "HostKeyAlias=nself-host.test-2222") {
+		t.Fatalf("admin v1.5 host-key policy: %q", b)
 	}
 	_ = os.Remove(log)
 	if err := admin.VerifySSHKey(context.Background(), "u", "-oProxyCommand=touch", 2222); err == nil {

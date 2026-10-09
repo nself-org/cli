@@ -22,7 +22,7 @@ cmd/commands 31  # measured 33.6 2026-10-05
 cmd/nself 0  # measured 0.0 2026-10-05
 cmd/nself-backup-archive 0  # measured 0.0 2026-10-05
 internal/access 72  # measured 74.7 2026-10-05
-internal/admin 45  # measured 47.5 2026-10-05
+internal/admin 23  # measured 25.4 2026-10-09 (P7-DEPL-14)
 internal/aiprofile 39  # measured 41.4 2026-10-05
 internal/apidocs 39  # measured 41.5 2026-10-05
 internal/audit 19  # measured 21.4 2026-10-05

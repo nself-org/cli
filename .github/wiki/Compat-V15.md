@@ -65,7 +65,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-DEPL-13 | quiet read-only first contact | print the observed fingerprint once. | `internal/controlplane/hostkeys.go` |
 | P7-DEPL-13 | silent legacy host path | warn once until removal at v1.6.0. | `internal/controlplane/tiers.go` |
 | P7-DEPL-14 | direct SSH deploy | canonical deploy pipeline delegation. | `cmd/commands/ops.go` |
-| P7-DEPL-14 | direct SSH policy | inventory host-key policy. | `internal/access/transport_ssh.go` |
+| P7-DEPL-14 | direct SSH policy | caller-supplied inventory host-key policy. | `internal/access/transport_ssh.go` |
 | P7-DEPL-14 | silent legacy host fallback | deprecation warning. | `cmd/commands/deploy_profile.go` |
 | P7-DEPL-14 | unpinned admin SSH | pinned host-key policy. | `internal/admin/connect.go` |
 | P7-DEPL-14 | unrestricted inventory writes | prod-class confirmation. | `cmd/commands/access_targets.go` |

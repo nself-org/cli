@@ -6,6 +6,7 @@ package commands
 // Constraints: explicit --host retains its existing transport and output path.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -25,7 +26,9 @@ type accessTarget struct {
 }
 
 var newAccessTargetTransport = func(host, identity, env, server string, tier controlplane.Tier) access.Transport {
-	return &access.SSHTransport{Host: host, IdentityPath: identity, Env: env, Server: server, Tier: tier}
+	return &access.SSHTransport{Host: host, IdentityPath: identity, HostKeyOptions: func(ctx context.Context) ([]string, error) {
+		return controlplane.HostKeyOptions(ctx, env, server, tier, host, true)
+	}}
 }
 
 func resolveAccessTargets(cmd *cobra.Command) ([]accessTarget, bool, error) {

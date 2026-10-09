@@ -17,7 +17,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/nself-org/cli/internal/compat"
-	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"os"
 	"os/exec"
@@ -43,9 +42,8 @@ type SSHTransport struct {
 	// "~/.ssh/authorized_keys" (relative to whichever account Host connects
 	// as) when empty.
 	RemotePath string
-	// Inventory identity is used in the E487 host-key enrolment hint.
-	Env, Server string
-	Tier        controlplane.Tier
+	// HostKeyOptions is supplied by the command layer for inventory hosts.
+	HostKeyOptions func(context.Context) ([]string, error)
 }
 
 func (t *SSHTransport) remotePath() string {
@@ -71,9 +69,9 @@ func (t *SSHTransport) sshArgsContext(ctx context.Context) ([]string, error) {
 		"-o", "ForwardAgent=no",
 		"-o", "BatchMode=yes",
 	}
-	// compat.V15(P7-DEPL-14): direct SSH policy -> inventory host-key policy.
-	if compat.V15() && t.Env != "" {
-		policy, err := controlplane.HostKeyOptions(ctx, t.Env, t.Server, t.Tier, t.Host, true)
+	// compat.V15(P7-DEPL-14): direct SSH policy -> caller-supplied inventory host-key policy.
+	if compat.V15() && t.HostKeyOptions != nil {
+		policy, err := t.HostKeyOptions(ctx)
 		if err != nil {
 			return nil, err
 		}

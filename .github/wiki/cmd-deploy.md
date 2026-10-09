@@ -479,6 +479,7 @@ configure an nginx static page via `nginx/conf.d/`.
 | `--force` | `false` | Skip confirmation prompts (prod requires --confirm or --force) |
 | `--include-frontends` | `false` | Include frontend apps in the deploy |
 | `--json` | `false` | Emit JSON output |
+| `--profile` | `full` | Compose build profile: full or ops |
 | `--rolling` | `false` | Alias for --strategy=rolling |
 | `--server` | `""` | Deploy to a specific server only (name from control-plane inventory) |
 | `--skip-canary` | `false` | Skip canary phase and flip directly to 100% green |

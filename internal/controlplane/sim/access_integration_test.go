@@ -76,7 +76,10 @@ func TestAccessSimProdUnknownHostKey(t *testing.T) {
 	}
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("NSELF_V15", "1")
-	transport := &access.SSHTransport{Host: "nself@" + fleet.Servers[0].SSHHostPort(), IdentityPath: fleet.PrivateKeyPath, RemotePath: ".ssh/nself-access-test", Env: "prod", Server: "app", Tier: controlplane.TierProd}
+	host := "nself@" + fleet.Servers[0].SSHHostPort()
+	transport := &access.SSHTransport{Host: host, IdentityPath: fleet.PrivateKeyPath, RemotePath: ".ssh/nself-access-test", HostKeyOptions: func(ctx context.Context) ([]string, error) {
+		return controlplane.HostKeyOptions(ctx, "prod", "app", controlplane.TierProd, host, true)
+	}}
 	if _, err := transport.Read(context.Background()); err == nil || !strings.Contains(err.Error(), "E487") {
 		t.Fatalf("unknown prod host key was not refused: %v", err)
 	}
