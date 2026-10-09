@@ -119,7 +119,7 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 	return nil
 }
 
-// buildNginxRoutes collects all nginx routes that will be generated for the
+// The shared route model collects all nginx routes that will be generated for the
 // given config. The list is used for preflight conflict detection via
 // nginx.HasDomainConflict before any files are written.
 //

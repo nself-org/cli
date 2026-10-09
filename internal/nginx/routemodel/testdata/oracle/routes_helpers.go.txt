@@ -73,7 +73,7 @@ func (g *Generator) hasDomainConflict(route, baseDomain string) bool {
 // isLinuxServer returns true when running on a Linux VPS (not Docker Desktop).
 // Frontend app routes are skipped on Linux servers because host.docker.internal
 // is not available.
-var isLinuxServer = func() bool {
+func isLinuxServer() bool {
 	return runtime.GOOS == "linux"
 }
 

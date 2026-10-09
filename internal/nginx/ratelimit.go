@@ -1,5 +1,7 @@
 package nginx
 
+import "strings"
+
 // generateRateLimits renders the rate-limits.conf from the embedded template.
 //
 // This produces all 10 rate limiting zones defined in BUILD_SPEC Part 12:
@@ -20,23 +22,22 @@ package nginx
 //
 //	Status codes: limit_req_status 429, limit_conn_status 429
 func (g *Generator) generateRateLimits() (string, error) {
-	apiRPS := g.cfg.Nginx.RateLimitAPI
-	if apiRPS == "" {
-		apiRPS = "30"
+	if err := g.ensureModel(); err != nil {
+		return "", err
 	}
-	authRPS := g.cfg.Nginx.RateLimitAuth
-	if authRPS == "" {
-		authRPS = "5"
-	}
-	aiRPS := g.cfg.Nginx.RateLimitAI
-	if aiRPS == "" {
-		aiRPS = "10"
+	rate := func(name string) string {
+		for _, z := range g.model.Zones {
+			if z.Name == name && z.Rate != nil {
+				return *z.Rate
+			}
+		}
+		return ""
 	}
 	data := map[string]string{
-		"AuthRateLimit": g.cfg.Nginx.AuthRateLimit,
-		"RateLimitAPI":  apiRPS,
-		"RateLimitAuth": authRPS,
-		"RateLimitAI":   aiRPS,
+		"AuthRateLimit": rate("auth"),
+		"RateLimitAPI":  strings.TrimSuffix(rate("api"), "r/s"),
+		"RateLimitAuth": strings.TrimSuffix(rate("auth_strict"), "r/s"),
+		"RateLimitAI":   strings.TrimSuffix(rate("ai"), "r/s"),
 	}
 	return g.render("rate-limits.conf.tmpl", data)
 }

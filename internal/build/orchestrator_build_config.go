@@ -14,12 +14,17 @@ package build
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/nginx"
+	"github.com/nself-org/cli/internal/nginx/routemodel"
 )
 
 // loadValidateConfig runs Steps 1-4 of Build(). See file header for the
@@ -56,19 +61,37 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 		}
 	}
 
+	// compat.V15(P7-DEPL-01): legacy duplicate errors -> E055 with both route IDs
+	v15 := compat.V15()
 	// ── Step 2: Validate config ─────────────────────────────────────
 	if err := config.Validate(st.cfg); err != nil {
+		if v15 && strings.Contains(err.Error(), "[duplicate-routes]") && !strings.Contains(err.Error(), "\n") {
+			m, buildErr := st.modelRoutes(nginx.NewGenerator(st.cfg, st.workdir).HasSSL(), nil)
+			if buildErr != nil {
+				return nil, buildErr
+			}
+			_, duplicateErr := routemodel.Validate(m, true)
+			if duplicateErr != nil {
+				return nil, errs.New("E055", strings.TrimPrefix(duplicateErr.Error(), "E055 "))
+			}
+		}
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
 	// ── Step 2.5: Preflight — nginx domain conflict check ────────────
-	routes := buildNginxRoutes(st.cfg)
-	if conflict, pairs := nginx.HasDomainConflict(routes); conflict {
-		msg := "nginx domain conflict detected:\n"
-		for _, p := range pairs {
-			msg += "  " + p + "\n"
+	st.routes, err = st.modelRoutes(nginx.NewGenerator(st.cfg, st.workdir).HasSSL(), nil)
+	if err != nil {
+		return nil, err
+	}
+	warnings, err := routemodel.Validate(st.routes, v15)
+	if err != nil {
+		if v15 {
+			return nil, errs.New("E055", strings.TrimPrefix(err.Error(), "E055 "))
 		}
-		return nil, fmt.Errorf("%s", msg)
+		return nil, err
+	}
+	for _, warning := range warnings {
+		slog.Warn(warning)
 	}
 
 	// ── Step 3: If --check, return after validation ─────────────────
@@ -91,6 +114,9 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 		// neither .env's mtime nor the CLI version, so the mtime/version check
 		// above cannot see it.
 		if ProfileChanged(st.workdir, string(st.opts.Profile)) {
+			needsRebuild = true
+		}
+		if _, err := os.Stat(filepath.Join(st.workdir, ".nself", "generated", "routes.json")); os.IsNotExist(err) {
 			needsRebuild = true
 		}
 		if !needsRebuild {

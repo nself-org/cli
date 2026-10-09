@@ -70,6 +70,10 @@
       "id": "urn:nself:cli:schema:portable-export:v1"
     },
     {
+      "path": "proxy-routes.v1.schema.json",
+      "id": "urn:nself:cli:schema:proxy-routes:v1"
+    },
+    {
       "path": "releases.v1.schema.json",
       "id": "urn:nself:cli:schema:releases:v1"
     }

@@ -2,6 +2,7 @@ d 0755 fronted-stack
 d 0755 fronted-stack/backend
 d 0755 fronted-stack/backend/.nself
 d 0755 fronted-stack/backend/.nself/dist
+d 0755 fronted-stack/backend/.nself/generated
 d 0755 fronted-stack/backend/monitoring
 d 0755 fronted-stack/backend/nginx
 d 0755 fronted-stack/backend/nginx/conf.d
@@ -25,6 +26,7 @@ f 0644 fronted-stack/backend/.nself/build-version 9a66809cf210f6d1149c329fac8661
 f 0644 fronted-stack/backend/.nself/compose-files.txt 7d77a6f6014dd7dcb6edddc669ced57180e36e04300b0e6f0206631b935bfaab
 f 0644 fronted-stack/backend/.nself/dist/openapi.json 930f5017f004813b05d87fa8bf3d7e9a689fed9ef384fbf873095a8a89985a4d
 f 0644 fronted-stack/backend/.nself/dist/scalar.html 650a899517b6771cb32ebacf366efb67e25583b475fa9de342b04dadff732c44
+f 0644 fronted-stack/backend/.nself/generated/routes.json 087bea9ac7d8f77e77f38daf6cc57ab58deb291941320bb215a9470f3809e9a5
 f 0644 fronted-stack/backend/nginx/conf.d/default.conf ccc13780ced1a64b10360394d4b32693efc374590b9522b1988088dba5408f13
 f 0644 fronted-stack/backend/nginx/includes/rate-limits.conf 77e62d250a8c27ae3e563d4a9cdb7bd1ab999c5514fa972b498d30817d128f2a
 f 0644 fronted-stack/backend/nginx/nginx.conf 574687becdcc2fb334d71ff9b6cfae184caf50281744db0c7f275ef155de1dcd
