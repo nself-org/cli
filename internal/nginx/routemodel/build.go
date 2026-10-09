@@ -250,7 +250,7 @@ func shadowFile(cfg *config.Config, workdir, serverName string) *string {
 			path := filepath.Join(dir, sub, e.Name())
 			data, err := os.ReadFile(path)
 			if err == nil && strings.Contains(string(data), "server_name") && strings.Contains(string(data), serverName) {
-				return ptr(filepath.ToSlash(filepath.Join("nginx", sub, e.Name())))
+				return ptr("nginx/" + filepath.ToSlash(filepath.Join(sub, e.Name())))
 			}
 		}
 	}
