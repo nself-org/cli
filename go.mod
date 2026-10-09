@@ -1,19 +1,23 @@
 module github.com/nself-org/cli
 
-// go 1.26.6 (full patch version, not bare "1.26"): workflows resolve the Go
+// go 1.26.9 (full patch version, not bare "1.26"): workflows resolve the Go
 // version via `go-version-file: go.mod`, and a bare "1.26" made setup-go pick a
 // cached 1.26.5, after which the `toolchain` directive forced a runtime
 // toolchain download that failed with tar "File exists" collisions. Pinning the
-// patch here makes every workflow resolve 1.26.6 directly.
+// patch here makes every workflow resolve 1.26.9 directly.
 //
-// 1.26.6 patches GO-2026-6218 (net/url quadratic resolvePath), GO-2026-6091
+// 1.26.9 patches GO-2026-6599, GO-2026-6600, GO-2026-6603, GO-2026-6604,
+// GO-2026-6605, GO-2026-6607, GO-2026-6608, GO-2026-6610, GO-2026-6611,
+// GO-2026-6612, GO-2026-6613 and GO-2026-6617 (net/http, crypto/tls,
+// html/template, net/textproto, os; x/net v0.60.0 for the x/net halves).
+// 1.26.6 patched GO-2026-6218 (net/url quadratic resolvePath), GO-2026-6091
 // (html/template JS regexp context), GO-2026-6090 (crypto/tls post-handshake
 // message limit), GO-2026-6089 (net/http H2C ReadHeaderTimeout), GO-2026-6088
 // (encoding/xml recursion depth), GO-2026-5972 (encoding/asn1 recursion depth),
 // GO-2026-5856 (crypto/tls ECH privacy leak) and GO-2026-5026 (net/http idna
 // Punycode), plus the earlier GO-2026-5039 / GO-2026-5037 / GO-2026-4971 /
 // GO-2026-4918 stdlib fixes. Upgrade when rebuilding release artifacts.
-go 1.26.6
+go 1.26.9
 
 require (
 	github.com/bytecodealliance/wasmtime-go/v25 v25.0.0
@@ -58,7 +62,7 @@ require (
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.opentelemetry.io/otel/metric v1.47.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
