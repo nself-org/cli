@@ -68,9 +68,9 @@ func readExisting(dir, cmd string) proseBlocks {
 		if strings.Contains(body, beginProse("description")) {
 			blocks = proseBlocks{
 				summary:     between(body, beginProse("summary"), endProse("summary")),
-				description: between(body, beginProse("description"), endProse("description")),
-				examples:    between(body, beginProse("examples"), endProse("examples")),
-				seeAlso:     between(body, beginProse("see-also"), endProse("see-also")),
+				description: rawBetween(body, beginProse("description"), endProse("description")),
+				examples:    rawBetween(body, beginProse("examples"), endProse("examples")),
+				seeAlso:     rawBetween(body, beginProse("see-also"), endProse("see-also")),
 			}
 		} else {
 			desc := section(body, "## Description")
@@ -121,8 +121,14 @@ func (p proseBlocks) score() int {
 	return n
 }
 
-// between returns the text bounded by start and end, exclusive.
+// between returns the text bounded by start and end, exclusive and trimmed.
 func between(body, start, end string) string {
+	return strings.TrimSpace(rawBetween(body, start, end))
+}
+
+// rawBetween returns the text bounded by start and end, exclusive, with every
+// byte kept, so authored prose blocks survive regeneration unchanged.
+func rawBetween(body, start, end string) string {
 	i := strings.Index(body, start)
 	if i < 0 {
 		return ""
@@ -132,7 +138,7 @@ func between(body, start, end string) string {
 	if j < 0 {
 		return ""
 	}
-	return strings.TrimSpace(body[i : i+j])
+	return body[i : i+j]
 }
 
 // isFence reports whether a trimmed line opens or closes a code fence.
