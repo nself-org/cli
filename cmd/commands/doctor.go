@@ -244,7 +244,7 @@ in human and --json mode alike:
 		checks = append(checks, checkRouteConsistency(cwd, verbose)...)
 		checks = append(checks, checkPortRangeSanity(cwd, verbose)...)
 		checks = append(checks, checkConfigValidators(cwd, verbose))
-
+		checks = append(checks, checkDoctorCompat(cwd, verbose)...)
 		// 8. Plugin compatibility
 		if !jsonOut {
 			ui.Section("Plugins")

@@ -2,13 +2,10 @@ package build
 
 // Purpose: validate nself.yaml against ProjectManifest and report every
 //          deviation with its line (E436 unknown key, E435 syntax, type or
-//          duplicate-key error). Unreadable or unparsable files are findings,
-//          never "valid". Findings warn in v1.4 and fail in v1.5.
+//          duplicate-key error). Unreadable files are findings, never "valid".
 // Constraints: checks are derived by reflection from the yaml tags, follow
-//          what LoadProjectManifest accepts (merge keys resolved, first YAML
-//          document only), and skip x- extension keys at every depth. The JSON
-//          Schema (tools/schemagen) cannot see merge keys: for such a file this
-//          validator is authoritative. SPORT: contract:config.nself-yaml.
+//          what LoadProjectManifest accepts (merge keys, first document) and skip x-
+//          extension keys at every depth. SPORT: contract:config.nself-yaml.
 
 import (
 	"bytes"
@@ -205,6 +202,8 @@ func (c *collector) walk(n *yaml.Node, t reflect.Type, path string) {
 				fmt.Sprintf("quote it: %q", n.Value))
 		} else if n.Kind != yaml.ScalarNode {
 			c.typeErr(n, path, "a string")
+		} else if path == "cli_min_version" && !ValidateCLIMinVersion(n.Value) {
+			c.cliMinVersionErr(n)
 		}
 	}
 }

@@ -37,10 +37,11 @@ var manifestFilenames = []string{"nself.yaml", "nself.yml"}
 // consumes. Unknown keys are ignored so app repos can keep richer metadata
 // (display_name, tier, auth_mode, ...) in the same file.
 type ProjectManifest struct {
-	App     string          `yaml:"app"`
-	Bundle  string          `yaml:"bundle"`
-	Bundles []string        `yaml:"bundles"`
-	Plugins ManifestPlugins `yaml:"plugins"`
+	App           string          `yaml:"app"`
+	CLIMinVersion string          `yaml:"cli_min_version"`
+	Bundle        string          `yaml:"bundle"`
+	Bundles       []string        `yaml:"bundles"`
+	Plugins       ManifestPlugins `yaml:"plugins"`
 }
 
 // ManifestPlugins accepts both manifest shapes:
