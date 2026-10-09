@@ -64,6 +64,30 @@ func rollbackInstalled(
 	return rolled
 }
 
+// restoreBundleUpgrades puts pre-existing plugin directories back after a
+// failed bundle install. A failed restore retains its backup for manual repair.
+func restoreBundleUpgrades(pluginDir, backupRoot string, backups map[string]string, out io.Writer) error {
+	var restoreErr error
+	for name, backup := range backups {
+		current := filepath.Join(pluginDir, name)
+		if err := os.RemoveAll(current); err != nil {
+			restoreErr = errors.Join(restoreErr, fmt.Errorf("removing failed upgrade %q: %w", name, err))
+			continue
+		}
+		if err := os.Rename(backup, current); err != nil {
+			restoreErr = errors.Join(restoreErr, fmt.Errorf("restoring plugin %q from %s: %w", name, backup, err))
+			continue
+		}
+		_, _ = fmt.Fprintf(out, "  ↩ restored previous version of %s\n", name)
+	}
+	if restoreErr == nil && backupRoot != "" {
+		if err := os.RemoveAll(backupRoot); err != nil {
+			restoreErr = fmt.Errorf("removing bundle rollback backup %s: %w", backupRoot, err)
+		}
+	}
+	return restoreErr
+}
+
 // printPlan dumps a human-readable summary of what install will do.
 func printPlan(out io.Writer, b Bundle, ch Channel, planned []string, pins VersionPins, skipped []string, opts InstallOpts) {
 	header := "Install plan"

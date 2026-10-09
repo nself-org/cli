@@ -154,6 +154,59 @@ func TestInstall_AtomicRollbackOnFailure(t *testing.T) {
 	}
 }
 
+// TestReviewerUpgradeRollbackChangesMembership covers an upgrade followed by
+// failure of the next plugin. Rollback must preserve the installed old version.
+func TestReviewerUpgradeRollbackChangesMembership(t *testing.T) {
+	setupOfflineRegistry(t, mockNsentryRegistry())
+	pluginDir := t.TempDir()
+	name := "nself-uptime-monitor"
+	oldDir := filepath.Join(pluginDir, name)
+	if err := os.MkdirAll(oldDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	oldManifest := []byte(`{"name":"nself-uptime-monitor","version":"0.9.0","description":"Old version","category":"monitoring","license":"MIT"}`)
+	if err := os.WriteFile(filepath.Join(oldDir, "plugin.json"), oldManifest, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(oldDir, "old-data"), []byte("preserve me"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Install(context.Background(), "nsentry", InstallOpts{
+		PluginDir: pluginDir,
+		Out:       &bytes.Buffer{},
+		bundleEntitledChecker: func(context.Context, string, string) (bool, error) {
+			return true, nil
+		},
+		licenseChecker: func(context.Context, []string) error { return nil },
+		installer: func(_ context.Context, _ *config.Config, pluginName, pd string) error {
+			if pluginName == "nself-status-page" {
+				return errors.New("injected second install failure")
+			}
+			dir := filepath.Join(pd, pluginName)
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(`{"name":"`+pluginName+`","version":"1.0.0","description":"New version","category":"monitoring","license":"MIT"}`), 0600)
+		},
+		remover: func(_ context.Context, _ *config.Config, pluginName, pd string) error {
+			return os.RemoveAll(filepath.Join(pd, pluginName))
+		},
+	})
+	if err == nil || res == nil {
+		t.Fatalf("expected second plugin failure, got result=%+v err=%v", res, err)
+	}
+	got, readErr := os.ReadFile(filepath.Join(oldDir, "plugin.json"))
+	if readErr != nil || !bytes.Equal(got, oldManifest) {
+		t.Errorf("old version must be restored: manifest=%q err=%v", got, readErr)
+	}
+	if data, readErr := os.ReadFile(filepath.Join(oldDir, "old-data")); readErr != nil || string(data) != "preserve me" {
+		t.Errorf("old plugin files lost: data=%q err=%v", data, readErr)
+	}
+	if res.Changed {
+		t.Errorf("restored plugin set should not need reconcile: %+v", res)
+	}
+}
+
 // TestInstall_ForceStillValidatesLicense verifies that --force does NOT bypass
 // license validation. It skips same-version checks (repair path) but license
 // is always enforced.
