@@ -35,8 +35,13 @@ func TestComposeEnvManifest(t *testing.T) {
 	if err != nil || string(manifest) != strings.Join(want, "\n")+"\n" {
 		t.Fatalf("manifest = %q, %v", manifest, err)
 	}
-	if info, err := os.Stat(filepath.Join(f.workdir, composeEnvManifestFile)); err != nil || info.Mode().Perm() != 0o644 {
-		t.Fatalf("manifest mode = %v, %v", info, err)
+	info, err := os.Stat(filepath.Join(f.workdir, composeEnvManifestFile))
+	if err != nil {
+		t.Fatalf("stat manifest: %v", err)
+	}
+	// Windows has no Unix permission bits: a 0644 file reads back 0666.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o644 {
+		t.Fatalf("manifest mode = %v", info.Mode().Perm())
 	}
 	computed, err := os.ReadFile(filepath.Join(f.workdir, composeEnvFile))
 	if err != nil || !strings.Contains(string(computed), "PLUGIN_NSELF_BETA_INTERNAL_URL=http://plugin-nself-beta:3902") {
