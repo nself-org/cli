@@ -20,9 +20,12 @@ package bundle
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
@@ -75,6 +78,7 @@ type InstallResult struct {
 	RolledBack    []string // plugins removed during rollback after a failure
 	LicenseBypass bool     // reserved — always false; --force never bypasses license
 	DryRun        bool
+	Changed       bool // membership changed; the command layer must reconcile
 }
 
 // Install runs the bundle install flow. The returned InstallResult is populated
@@ -199,6 +203,14 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 
 	// Build a lookup of currently installed plugin versions for downgrade detection.
 	existingVersions := buildInstalledVersionMap(pluginDir)
+	backups := make(map[string]string)
+	backupRoot := ""
+	rollback := func() error {
+		result.RolledBack = rollbackInstalled(ctx, cfg, removeFn, pluginDir, result.Installed, out)
+		restoreErr := restoreBundleUpgrades(pluginDir, backupRoot, backups, out)
+		result.Changed = !maps.Equal(existingVersions, buildInstalledVersionMap(pluginDir)) || restoreErr != nil
+		return restoreErr
+	}
 
 	// Sequential install with rollback on failure.
 	for _, name := range planned {
@@ -216,8 +228,8 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 				// Existing is HIGHER than what the bundle pins.
 				if opts.Strict {
 					// --strict: fail if any plugin already at a higher version.
-					result.RolledBack = rollbackInstalled(ctx, cfg, removeFn, pluginDir, result.Installed, out)
-					return result, fmt.Errorf("--strict: plugin %q is at %s (higher than bundle pin %s); use without --strict to skip", name, existingVer, targetVer)
+					rollbackErr := rollback()
+					return result, errors.Join(fmt.Errorf("--strict: plugin %q is at %s (higher than bundle pin %s); use without --strict to skip", name, existingVer, targetVer), rollbackErr)
 				}
 				// Default: skip with warning, no silent downgrade.
 				_, _ = fmt.Fprintf(out, "  ⚠ %s: installed at %s (higher than bundle pin %s) — skipping to avoid downgrade\n", name, existingVer, targetVer)
@@ -225,34 +237,41 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 			}
 			// cmp < 0: existing is lower → upgrade, fall through to install.
 			_, _ = fmt.Fprintf(out, "  ↑ upgrading %s: %s → %s\n", name, existingVer, targetVer)
+			if backupRoot == "" {
+				backupRoot, err = os.MkdirTemp(pluginDir, ".bundle-rollback-")
+				if err != nil {
+					rollbackErr := rollback()
+					return result, errors.Join(fmt.Errorf("creating bundle upgrade backup: %w", err), rollbackErr)
+				}
+			}
+			backup := filepath.Join(backupRoot, name)
+			if err := os.Rename(filepath.Join(pluginDir, name), backup); err != nil {
+				rollbackErr := rollback()
+				return result, errors.Join(fmt.Errorf("backing up plugin %q: %w", name, err), rollbackErr)
+			}
+			backups[name] = backup
 		} else {
 			_, _ = fmt.Fprintf(out, "  → installing %s@%s...\n", name, targetVer)
 		}
 
 		if err := installFn(ctx, cfg, name, pluginDir); err != nil {
 			_, _ = fmt.Fprintf(out, "  ✗ %s install failed: %v\n", name, err)
-			result.RolledBack = rollbackInstalled(ctx, cfg, removeFn, pluginDir, result.Installed, out)
-			return result, fmt.Errorf("bundle %q install failed at plugin %q: %w", b.Slug, name, err)
+			rollbackErr := rollback()
+			return result, errors.Join(fmt.Errorf("bundle %q install failed at plugin %q: %w", b.Slug, name, err), rollbackErr)
 		}
 		result.Installed = append(result.Installed, name)
+		result.Changed = true
 		_, _ = fmt.Fprintf(out, "  ✓ %s@%s installed\n", name, targetVer)
+	}
+	if backupRoot != "" {
+		if err := os.RemoveAll(backupRoot); err != nil {
+			return result, fmt.Errorf("removing bundle upgrade backup: %w", err)
+		}
 	}
 
 	_, _ = fmt.Fprintf(out, "\nBundle %q (%s) installed: %d plugins.\n", b.Name, b.Slug, len(result.Installed))
 	if len(result.Skipped) > 0 {
 		_, _ = fmt.Fprintf(out, "Skipped (missing from registry): %s\n", strings.Join(result.Skipped, ", "))
-	}
-
-	// Trigger a single nself build to regenerate docker-compose.yml and nginx
-	// configs with the newly installed plugins. This must happen ONCE at the
-	// very end — not per-plugin. Skip when no plugins were actually installed.
-	if len(result.Installed) > 0 {
-		if err := triggerBuild(ctx, out); err != nil {
-			// Build failure is non-fatal: plugins are on disk; user can run
-			// nself build manually. Surface as a warning, not a hard error.
-			_, _ = fmt.Fprintf(out, "\nWARNING: nself build failed after bundle install: %v\n", err)
-			_, _ = fmt.Fprintln(out, "Run 'nself build' manually to apply the new plugins.")
-		}
 	}
 
 	return result, nil

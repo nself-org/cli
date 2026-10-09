@@ -15,11 +15,14 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/plugin"
+	"github.com/nself-org/cli/internal/reconcile"
 
 	"github.com/spf13/cobra"
 )
@@ -150,6 +153,7 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	// Install each named plugin. Collect per-plugin errors so that a failure on
 	// one plugin does not abort the remaining installs.
 	var failures []string
+	var installed []string
 	installedCount := 0
 	for _, name := range officialNames {
 		// S58-T03: EOL gate — check status before attempting install.
@@ -167,7 +171,11 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "Plugin %q installed successfully.\n", name)
 		installedCount++
-		printPluginPostInstallHint(name)
+		installed = append(installed, name)
+		// compat.V15(P7-LIVE-06): post-install build hint -> automatic reconcile
+		if !compat.V15() {
+			printPluginPostInstallHint(name)
+		}
 
 		// S20: Fire install telemetry for free-tier keys (non-blocking).
 		currentKey := os.Getenv("NSELF_PLUGIN_LICENSE_KEY")
@@ -193,17 +201,33 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 			continue
 		}
 		installedCount++
+		installed = append(installed, srcURL)
 	}
 
 	// S20: Upsell prompt after 3rd successful free-plugin install.
 	if installedCount > 0 {
 		maybeShowFreeUpsell(installedCount)
 	}
+	// compat.V15(P7-LIVE-06): plugin install leaves generated state for a later build -> reconcile now
+	return finishPluginInstall(compat.V15(), installed, failures, func() error {
+		return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installed, ",")})
+	})
+}
 
-	if len(failures) > 0 {
-		return fmt.Errorf("failed to install: %s", strings.Join(failures, ", "))
+// finishPluginInstall reconciles once after any successful install (v1.5) and
+// reports every failure together: a failed reconcile never hides the plugins
+// that failed to install, and vice versa (errors.Join, as bundle install does).
+func finishPluginInstall(v15 bool, installed, failures []string, reconcileFn func() error) error {
+	var all []error
+	if v15 && len(installed) > 0 {
+		if err := reconcileFn(); err != nil {
+			all = append(all, err)
+		}
 	}
-	return nil
+	if len(failures) > 0 {
+		all = append(all, fmt.Errorf("failed to install: %s", strings.Join(failures, ", ")))
+	}
+	return errors.Join(all...)
 }
 
 // runPluginInstallDryRun simulates bundle installation and shows what would change

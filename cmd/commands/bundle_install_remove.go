@@ -7,8 +7,10 @@ package commands
 
 import (
 	"context"
+	"errors"
 
 	"github.com/nself-org/cli/internal/bundle"
+	"github.com/nself-org/cli/internal/reconcile"
 
 	"github.com/spf13/cobra"
 )
@@ -44,6 +46,10 @@ Examples:
 	RunE: runBundleRemove,
 }
 
+// bundleInstall is a command seam so the regeneration branch can be exercised
+// with a local fixture after the bundle installer reports changed membership.
+var bundleInstall = bundle.Install
+
 func runBundleInstall(cmd *cobra.Command, args []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	force, _ := cmd.Flags().GetBool("force")
@@ -56,7 +62,11 @@ func runBundleInstall(cmd *cobra.Command, args []string) error {
 		Strict:  strict,
 		Channel: bundle.Channel(channelStr),
 	}
-	_, err := bundle.Install(context.Background(), args[0], opts)
+	result, err := bundleInstall(context.Background(), args[0], opts)
+	if result != nil && result.Changed {
+		// compat.V15(P7-LIVE-06): bundle subprocess build -> cmd-layer reconcile in both modes
+		return errors.Join(err, reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerBundle, Subject: args[0]}))
+	}
 	return err
 }
 
@@ -68,7 +78,11 @@ func runBundleRemove(cmd *cobra.Command, args []string) error {
 		DryRun:   dryRun,
 		KeepData: keepData,
 	}
-	_, err := bundle.Remove(context.Background(), args[0], opts)
+	result, err := bundle.Remove(context.Background(), args[0], opts)
+	if result != nil && result.Changed {
+		// compat.V15(P7-LIVE-06): bundle subprocess build -> cmd-layer reconcile in both modes
+		return errors.Join(err, reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerBundle, Subject: args[0]}))
+	}
 	return err
 }
 
