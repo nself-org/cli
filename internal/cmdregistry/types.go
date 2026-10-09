@@ -60,6 +60,20 @@ type Command struct {
 	JSON       string            `json:"json"`
 	DataSchema *string           `json:"data_schema"`
 	ExitCodes  map[string]string `json:"exit_codes"`
+	Confirm    *Confirm          `json:"confirm"`
+	Surface    string            `json:"surface"`
+}
+
+// Confirm is the registry's machine-readable confirmation declaration.
+type Confirm struct {
+	Flags []string  `json:"flags"`
+	Plan  *PlanForm `json:"plan"`
+}
+
+// PlanForm names the boolean plan flag and string plan identifier flag.
+type PlanForm struct {
+	Flag   string `json:"flag"`
+	IDFlag string `json:"id_flag"`
 }
 
 // Arg is one positional argument parsed from the command's Use string.
@@ -67,6 +81,7 @@ type Arg struct {
 	Name     string `json:"name"`
 	Required bool   `json:"required"`
 	Variadic bool   `json:"variadic"`
+	Secret   bool   `json:"secret"`
 }
 
 // Flag is one flag declared on a command (or on the root).
@@ -84,6 +99,8 @@ type Flag struct {
 	SideEffect *string `json:"side_effect"`
 	JSON       *string `json:"json"`
 	Output     *string `json:"output"`
+	CLIOnly    bool    `json:"cli_only"`
+	Secret     bool    `json:"secret"`
 }
 
 // Counts are the derived totals.

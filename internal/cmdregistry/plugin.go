@@ -24,6 +24,7 @@ package cmdregistry
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/nself-org/cli/internal/canon"
 	"github.com/spf13/cobra"
@@ -39,6 +40,8 @@ const (
 	annJSONKey      = "nself.json"
 	annArgsKey      = "nself.args"
 	annFlagsKey     = "nself.flags"
+	annConfirmKey   = "nself.confirm"
+	annSurfaceKey   = "nself.surface"
 	sourceInstalled = "installed"
 	sourceBuiltin   = "builtin"
 )
@@ -64,7 +67,7 @@ func isBuiltinMount(cmd *cobra.Command) bool {
 // annotations: canon plugin, side_effect destructive / output document /
 // json none by default (contract v1). The args/flags annotations are for the
 // surface audit (P7-SURF-30), not the registry shapes.
-func buildInstalledCommand(cmd *cobra.Command) Command {
+func buildInstalledCommand(cmd *cobra.Command, warned map[string]bool) Command {
 	a := cmd.Annotations
 	slug := a[annPluginKey]
 	ann := func(key, def string) string {
@@ -72,6 +75,29 @@ func buildInstalledCommand(cmd *cobra.Command) Command {
 			return v
 		}
 		return def
+	}
+	surface := ann(annSurfaceKey, "all")
+	invalidSurface := surface != "all" && surface != "cli-only"
+	if invalidSurface {
+		warnPlugin(slug, warned, "invalid surface")
+		surface = "all"
+	}
+	var confirm *Confirm
+	if raw := a[annConfirmKey]; raw != "" {
+		var declared canon.Confirm
+		if err := json.Unmarshal([]byte(raw), &declared); err != nil {
+			warnPlugin(slug, warned, "invalid confirm JSON")
+		} else {
+			validated, problems := validateConfirm("plugin "+cmd.CommandPath(), &declared, cmd.Run != nil || cmd.RunE != nil, cmd, pluginFlags(a[annFlagsKey]))
+			if len(problems) != 0 {
+				warnPlugin(slug, warned, problems[0])
+			} else {
+				confirm = validated
+			}
+		}
+	}
+	if invalidSurface {
+		confirm = nil
 	}
 	return Command{
 		Path:       cmd.CommandPath(),
@@ -91,7 +117,17 @@ func buildInstalledCommand(cmd *cobra.Command) Command {
 		Output:     ann(annOutputKey, canon.OutputDocument),
 		JSON:       ann(annJSONKey, canon.JSONNone),
 		ExitCodes:  map[string]string{},
+		Confirm:    confirm,
+		Surface:    surface,
 	}
+}
+
+func warnPlugin(slug string, warned map[string]bool, message string) {
+	if warned[slug] {
+		return
+	}
+	warned[slug] = true
+	fmt.Fprintf(os.Stderr, "[E437] plugin %s: %s; confirm disabled\n", slug, message)
 }
 
 func pluginArgs(raw string) []Arg {
@@ -103,12 +139,13 @@ func pluginArgs(raw string) []Arg {
 		Name     string `json:"name"`
 		Required bool   `json:"required"`
 		Variadic bool   `json:"variadic"`
+		Secret   bool   `json:"secret"`
 	}
 	if json.Unmarshal([]byte(raw), &declared) != nil {
 		return out
 	}
 	for _, a := range declared {
-		out = append(out, Arg{Name: a.Name, Required: a.Required, Variadic: a.Variadic})
+		out = append(out, Arg{Name: a.Name, Required: a.Required, Variadic: a.Variadic, Secret: a.Secret})
 	}
 	return out
 }
@@ -131,6 +168,8 @@ func pluginFlags(raw string) []Flag {
 		Hidden     bool   `json:"hidden"`
 		Required   bool   `json:"required"`
 		Persistent bool   `json:"persistent"`
+		Secret     bool   `json:"secret"`
+		CLIOnly    bool   `json:"cli_only"`
 	}
 	if json.Unmarshal([]byte(raw), &declared) != nil {
 		return out
@@ -138,7 +177,7 @@ func pluginFlags(raw string) []Flag {
 	for _, f := range declared {
 		out = append(out, Flag{Name: f.Name, Shorthand: strPtr(f.Shorthand), Type: f.Type, Default: f.Default,
 			Usage: f.Usage, Hidden: f.Hidden, Required: f.Required, Persistent: f.Persistent,
-			Env: strPtr(f.Env), SideEffect: strPtr(f.SideEffect), JSON: strPtr(f.JSON), Output: strPtr(f.Output)})
+			Env: strPtr(f.Env), SideEffect: strPtr(f.SideEffect), JSON: strPtr(f.JSON), Output: strPtr(f.Output), Secret: f.Secret, CLIOnly: f.CLIOnly})
 	}
 	return out
 }

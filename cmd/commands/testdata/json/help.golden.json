@@ -41,7 +41,9 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null
+          "output": null,
+          "cli_only": false,
+          "secret": false
         },
         {
           "name": "no-deprecation-warnings",
@@ -56,7 +58,9 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null
+          "output": null,
+          "cli_only": false,
+          "secret": false
         },
         {
           "name": "no-monorepo",
@@ -71,7 +75,9 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null
+          "output": null,
+          "cli_only": false,
+          "secret": false
         },
         {
           "name": "version",
@@ -86,7 +92,9 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ]
     },
@@ -116,7 +124,9 @@
             "env": null,
             "side_effect": null,
             "json": null,
-            "output": null
+            "output": null,
+            "cli_only": false,
+            "secret": false
           },
           {
             "name": "json",
@@ -131,7 +141,9 @@
             "env": null,
             "side_effect": null,
             "json": null,
-            "output": null
+            "output": null,
+            "cli_only": false,
+            "secret": false
           },
           {
             "name": "reveal",
@@ -146,7 +158,9 @@
             "env": null,
             "side_effect": null,
             "json": null,
-            "output": null
+            "output": null,
+            "cli_only": false,
+            "secret": false
           }
         ],
         "canon": "core",
@@ -155,7 +169,9 @@
         "output": "document",
         "json": "none",
         "data_schema": null,
-        "exit_codes": {}
+        "exit_codes": {},
+        "confirm": null,
+        "surface": "all"
       },
       {
         "path": "nself config export",
@@ -182,7 +198,9 @@
             "env": null,
             "side_effect": null,
             "json": null,
-            "output": null
+            "output": null,
+            "cli_only": false,
+            "secret": false
           },
           {
             "name": "output",
@@ -197,7 +215,9 @@
             "env": null,
             "side_effect": "write",
             "json": null,
-            "output": null
+            "output": null,
+            "cli_only": false,
+            "secret": false
           }
         ],
         "canon": "subcommand",
@@ -206,7 +226,9 @@
         "output": "document",
         "json": "none",
         "data_schema": null,
-        "exit_codes": {}
+        "exit_codes": {},
+        "confirm": null,
+        "surface": "all"
       },
       {
         "path": "nself config features",
@@ -226,7 +248,9 @@
         "output": "document",
         "json": "none",
         "data_schema": null,
-        "exit_codes": {}
+        "exit_codes": {},
+        "confirm": null,
+        "surface": "all"
       },
       {
         "path": "nself config features disable",
@@ -242,7 +266,8 @@
           {
             "name": "flag",
             "required": true,
-            "variadic": false
+            "variadic": false,
+            "secret": false
           }
         ],
         "flags": [],
@@ -252,7 +277,9 @@
         "output": "document",
         "json": "none",
         "data_schema": null,
-        "exit_codes": {}
+        "exit_codes": {},
+        "confirm": null,
+        "surface": "all"
       },
       {
         "path": "nself config features enable",
@@ -268,7 +295,8 @@
           {
             "name": "flag",
             "required": true,
-            "variadic": false
+            "variadic": false,
+            "secret": false
           }
         ],
         "flags": [],
@@ -278,7 +306,9 @@
         "output": "document",
         "json": "none",
         "data_schema": null,
-        "exit_codes": {}
+        "exit_codes": {},
+        "confirm": null,
+        "surface": "all"
       },
       {
         "path": "nself config features list",
@@ -305,7 +335,9 @@
             "env": null,
             "side_effect": null,
             "json": null,
-            "output": null
+            "output": null,
+            "cli_only": false,
+            "secret": false
           }
         ],
         "canon": "subcommand",
@@ -314,7 +346,9 @@
         "output": "document",
         "json": "legacy",
         "data_schema": null,
-        "exit_codes": {}
+        "exit_codes": {},
+        "confirm": null,
+        "surface": "all"
       },
       {
         "path": "nself config features status",
@@ -330,7 +364,8 @@
           {
             "name": "flag",
             "required": true,
-            "variadic": false
+            "variadic": false,
+            "secret": false
           }
         ],
         "flags": [
@@ -347,7 +382,9 @@
             "env": null,
             "side_effect": null,
             "json": null,
-            "output": null
+            "output": null,
+            "cli_only": false,
+            "secret": false
           }
         ],
         "canon": "subcommand",
@@ -356,7 +393,9 @@
         "output": "document",
         "json": "legacy",
         "data_schema": null,
-        "exit_codes": {}
+        "exit_codes": {},
+        "confirm": null,
+        "surface": "all"
       },
       {
         "path": "nself config get",
@@ -372,7 +411,8 @@
           {
             "name": "key",
             "required": true,
-            "variadic": false
+            "variadic": false,
+            "secret": false
           }
         ],
         "flags": [],
@@ -382,7 +422,9 @@
         "output": "document",
         "json": "envelope",
         "data_schema": "schemas/commands/config-get.v1.schema.json",
-        "exit_codes": {}
+        "exit_codes": {},
+        "confirm": null,
+        "surface": "all"
       },
       {
         "path": "nself config import",
@@ -398,7 +440,8 @@
           {
             "name": "file",
             "required": true,
-            "variadic": false
+            "variadic": false,
+            "secret": false
           }
         ],
         "flags": [
@@ -415,7 +458,9 @@
             "env": null,
             "side_effect": null,
             "json": null,
-            "output": null
+            "output": null,
+            "cli_only": false,
+            "secret": false
           },
           {
             "name": "force",
@@ -430,7 +475,9 @@
             "env": null,
             "side_effect": null,
             "json": null,
-            "output": null
+            "output": null,
+            "cli_only": false,
+            "secret": false
           }
         ],
         "canon": "subcommand",
@@ -439,7 +486,9 @@
         "output": "document",
         "json": "none",
         "data_schema": null,
-        "exit_codes": {}
+        "exit_codes": {},
+        "confirm": null,
+        "surface": "all"
       },
       {
         "path": "nself config list",
@@ -459,7 +508,9 @@
         "output": "document",
         "json": "envelope",
         "data_schema": "schemas/commands/config-list.v1.schema.json",
-        "exit_codes": {}
+        "exit_codes": {},
+        "confirm": null,
+        "surface": "all"
       },
       {
         "path": "nself config set",
@@ -475,12 +526,14 @@
           {
             "name": "key",
             "required": true,
-            "variadic": false
+            "variadic": false,
+            "secret": false
           },
           {
             "name": "value",
             "required": true,
-            "variadic": false
+            "variadic": false,
+            "secret": false
           }
         ],
         "flags": [],
@@ -490,7 +543,9 @@
         "output": "document",
         "json": "none",
         "data_schema": null,
-        "exit_codes": {}
+        "exit_codes": {},
+        "confirm": null,
+        "surface": "all"
       },
       {
         "path": "nself config show",
@@ -517,7 +572,9 @@
             "env": null,
             "side_effect": null,
             "json": null,
-            "output": null
+            "output": null,
+            "cli_only": false,
+            "secret": false
           }
         ],
         "canon": "subcommand",
@@ -526,7 +583,9 @@
         "output": "document",
         "json": "envelope",
         "data_schema": "schemas/commands/config-show.v1.schema.json",
-        "exit_codes": {}
+        "exit_codes": {},
+        "confirm": null,
+        "surface": "all"
       },
       {
         "path": "nself config validate",
@@ -548,7 +607,9 @@
         "data_schema": null,
         "exit_codes": {
           "1": "one or more validators fail (exits 0 when all pass)"
-        }
+        },
+        "confirm": null,
+        "surface": "all"
       }
     ],
     "counts": {

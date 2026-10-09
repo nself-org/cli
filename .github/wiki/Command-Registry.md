@@ -72,7 +72,7 @@ Fields are in this order. Consumers must ignore fields they do not know: new fie
 | `aliases` | string[] | alternative names, sorted |
 | `group` | string or null | the `--help` group |
 | `runnable` | bool | has a body; a hub that only prints help is not runnable |
-| `args` | Arg[] | positional arguments parsed from the usage line: `{name, required, variadic}` |
+| `args` | Arg[] | positional arguments parsed from the usage line: `{name, required, variadic, secret}` |
 | `flags` | Flag[] | flags declared on this command, sorted by name. Inherited flags appear on the command that declares them. cobra's own `--help` is never listed |
 | `canon` | enum | canon status, below |
 | `target` | string or null | for `deprecated-shim`: the canonical path to use instead |
@@ -81,10 +81,18 @@ Fields are in this order. Consumers must ignore fields they do not know: new fie
 | `json` | enum | `envelope`, `legacy` or `none` |
 | `data_schema` | string or null | schema file for the envelope data when `json` is `envelope` |
 | `exit_codes` | object | state exit codes this command documents beyond the exit classes, `{}` when none |
+| `confirm` | object or null | `{flags: [bool flag names], plan: {flag: bool flag, id_flag: string flag} or null}`; null when no confirmation is declared |
+| `surface` | enum | `all` by default, or `cli-only` when the whole command is unavailable to machine surfaces |
 
 ### Flag
 
-`name`, `shorthand`, `type` (`bool`, `string`, `int`, `stringSlice`, `duration`, ...), `default` (the flag's default text, parse it by `type`), `usage`, `hidden`, `deprecated`, `required`, `persistent`, `env` (always null in v1), and three optional escalations that apply when the flag is set: `side_effect`, `json` and `output`.
+`name`, `shorthand`, `type` (`bool`, `string`, `int`, `stringSlice`, `duration`, ...), `default` (the flag's default text, parse it by `type`), `usage`, `hidden`, `deprecated`, `required`, `persistent`, `env` (always null in v1), and three optional escalations that apply when the flag is set: `side_effect`, `json` and `output`. `cli_only` keeps the flag off machine surfaces; `secret` marks its value for redaction. Both booleans are printed even when false. Positional arguments have the same `secret` marker.
+
+### Surface declarations
+
+Declare `confirm`, `surface: cli-only`, and `secret_args` on the command row in its canon fragment. `confirm.flags` lists local or inherited boolean flags; an empty list is valid for nonce confirmation. A plan form names its boolean `flag` and string `id_flag`. A flag override may declare `cli_only: true` or `secret: true`, alongside the existing `output: stream` override for a follow-style flag. A deprecated shim receives none of these declarations. Installed plugin commands carry the same facts through their mount annotations. Invalid plugin confirmation is omitted with one E437 warning per plugin.
+
+`cmdregistry.ToolName(path)` replaces spaces and hyphens with underscores and prefixes `nself_`; names must be unique, at most 64 characters, and contain only lowercase letters, digits, and underscores. `RoutePath(path)` separates path words under `/v1/commands/`. `EffectiveSideEffect` takes the highest class from the command and set flag overrides. `EffectiveOutput` returns `stream` when a set flag declares `output: stream`, otherwise the command output.
 
 ### Canon status
 

@@ -84,10 +84,12 @@ internal/oplock 74  # measured 79.3 2026-10-05
 internal/oplock/oplockcmd 88  # measured 93.5 2026-10-05
 internal/output 96  # measured 98.2 2026-10-05
 internal/plugin 50  # measured 53.0 2026-10-05
-internal/plugin/mount 82  # measured 82.9 2026-10-08
-internal/plugin/manifestv2 80  # measured 82.2 2026-10-05
 internal/plugin/count 98  # measured 100.0 2026-10-05
 internal/plugin/lifecycle 74  # measured 76.4 2026-10-05
+internal/plugin/manifestv2 80  # measured 82.2 2026-10-05
+internal/plugin/mount 82  # measured 82.9 2026-10-08
+internal/plugin/readiness 90  # measured 92.2 2026-10-05
+internal/plugin/requires 70  # measured 72.0 2026-10-05
 internal/plugin/scaffold 64  # measured 66.3 2026-10-05
 internal/plugin/verify 85  # measured 87.2 2026-10-05
 internal/portable 85  # measured 87.5 2026-10-05
@@ -121,6 +123,8 @@ internal/ui 75
 internal/upgrade 88  # measured 90.6 2026-10-05
 internal/version 98  # measured 100.0 2026-10-05
 internal/webhook 75  # measured 77.1 2026-10-05
+schemas 98  # measured 100.0 2026-10-08
+tools/canongen 63  # measured 65.2 2026-10-05
 tools/catalog 89  # measured 91.4 2026-10-05
 tools/cmdinventory 0  # measured 0.0 2026-10-05
 tools/covfloor 90  # measured 92.4 2026-10-05
@@ -130,12 +134,9 @@ tools/imagelist 0  # measured 0.0 2026-10-05
 tools/imagelock 57  # measured 59.7 2026-10-05
 tools/manifestv2migrate 70  # measured 72.3 2026-10-05
 tools/mcpdoc 0  # measured 0.0 2026-10-05
+tools/parity 16  # measured 18.2 2026-10-05
 tools/perfbench 79  # measured 80.3 2026-10-05 (go test -mod=vendor -coverprofile ./tools/perfbench/...)
 tools/perfbench/scenarios 0  # measured 0.0 2026-10-05 (no own tests; exercised via tools/perfbench)
-tools/parity 16  # measured 18.2 2026-10-05
 tools/schemagen 85  # measured 87.1 2026-10-05
 tools/servicecatalog 0  # measured 0.0 2026-10-05
 tools/wikigen 0  # measured 0.0 2026-10-05
-internal/plugin/requires 70  # measured 72.0 2026-10-05
-internal/plugin/readiness 90  # measured 92.2 2026-10-05
-tools/canongen 63  # measured 65.2 2026-10-05

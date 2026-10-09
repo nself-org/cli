@@ -58,6 +58,7 @@ func Build(root *cobra.Command, c *canon.File, dataTypes map[string]any, opts Bu
 		Commands:      make([]Command, 0, len(nodes)),
 		rootPath:      rootPath,
 	}
+	warnedPlugins := map[string]bool{}
 	for _, n := range nodes {
 		entry, ok := c.Commands[n.key]
 		switch {
@@ -68,7 +69,7 @@ func Build(root *cobra.Command, c *canon.File, dataTypes map[string]any, opts Bu
 				problems = append(problems, fmt.Sprintf("commands[%q]: plugin-mounted command's canon entry must say canon plugin, not %q", n.key, entry.Canon))
 				continue
 			}
-			reg.Commands = append(reg.Commands, buildInstalledCommand(n.cmd))
+			reg.Commands = append(reg.Commands, buildInstalledCommand(n.cmd, warnedPlugins))
 		case isBuiltinMount(n.cmd):
 			// A builtin family's attributes come from its canon entry, which
 			// says canon plugin only in v1.5. The v1.4 registry keeps the

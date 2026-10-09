@@ -51,6 +51,25 @@ func buildCommand(n node, e canon.Entry, rootPath string, byKey map[string]*node
 	flags := localFlags(cmd)
 	fp := applyOverrides(at, e, side, output, flags)
 	p = append(p, fp...)
+	args := parseArgs(cmd.Use)
+	for _, name := range e.SecretArgs {
+		found := false
+		for i := range args {
+			if args[i].Name == name {
+				args[i].Secret = true
+				found = true
+			}
+		}
+		if !found {
+			p = append(p, fmt.Sprintf("%s secret_args: %q is not a declared arg", at, name))
+		}
+	}
+	confirm, cp := validateConfirm(at, e.Confirm, runnable, cmd, flags)
+	p = append(p, cp...)
+	surface := e.Surface
+	if surface == "" {
+		surface = "all"
+	}
 
 	codes := e.ExitCodes
 	if opts.V15 && len(e.ExitCodesV15) > 0 {
@@ -73,7 +92,7 @@ func buildCommand(n node, e canon.Entry, rootPath string, byKey map[string]*node
 		Aliases:    aliases,
 		Group:      strPtr(cmd.GroupID),
 		Runnable:   runnable,
-		Args:       parseArgs(cmd.Use),
+		Args:       args,
 		Flags:      flags,
 		Canon:      cn,
 		Target:     target,
@@ -82,6 +101,8 @@ func buildCommand(n node, e canon.Entry, rootPath string, byKey map[string]*node
 		JSON:       jsonKind,
 		DataSchema: schema,
 		ExitCodes:  exit,
+		Confirm:    confirm,
+		Surface:    surface,
 	}, p
 }
 
@@ -152,6 +173,8 @@ func applyOverrides(at string, e canon.Entry, side, output string, flags []Flag)
 			}
 			flags[idx].Output = strPtr(ov.Output)
 		}
+		flags[idx].CLIOnly = ov.CLIOnly
+		flags[idx].Secret = ov.Secret
 	}
 	return p
 }
