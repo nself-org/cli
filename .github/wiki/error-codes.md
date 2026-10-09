@@ -246,6 +246,7 @@ These errors come from `nself deploy` and related commands. Only the codes regis
 | <a id="e485"></a>E485 | 1 | Invalid deploy inventory | The control-plane inventory violates a required field or invariant. | Correct the named field in .nself/control-plane.yaml. |
 | <a id="e486"></a>E486 | 1 | No deploy target matched | The selector matched no server. | Run nself deploy targets to list available targets. |
 | <a id="e487"></a>E487 | 1 | Deploy host key is unknown | A secret-bearing operation requires a trusted host key. | Verify the fingerprint and enrol it with nself env target add --trust-host-key. |
+| <a id="e491"></a>E491 | 1 | Deploy image architecture unavailable | At least one image has no proven manifest for a target host architecture. | Publish the missing platform or use a compatible image, then rebuild and retry. |
 <!-- END GENERATED:codes-deploy -->
 
 ---

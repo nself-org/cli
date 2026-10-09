@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/nself-org/cli/internal/deploy"
 )
@@ -46,22 +47,9 @@ type DeployResult struct {
 // Run executes the topology-aware deployment pipeline for the given inventory
 // and compose file path.
 //
-// Ordering (per §6 of the architecture spec):
-//  1. Build local environment once (kind == "local").
-//  2. Deploy observability servers.
-//  3. Deploy app servers in rolling fashion: if an LB is present for the env,
-//     drain the server, deploy, health-check, then re-add. Otherwise deploy directly.
-//  4. Reload LB config.
+// Remote order: observability, app servers, then LB reload.
 //
-// Servers with CapReadOnly are skipped with a SKIPPED log line.
-// Servers with CapHidden are silently omitted.
-// If a primary app server is skipped, DeployResult.PrimarySkipped is set.
-//
-// Run operates on exactly one environment, env. An empty env, a nil inventory,
-// or an env that is not an exact key of inv.Environments is refused with an
-// error before any probe or deploy: the pipeline never falls back to "all
-// environments" or a default one. Only env's servers are probed.
-//
+// Only the named environment is probed; unsupported targets fail closed.
 // The composePath argument is the local path to the generated docker-compose.yml
 // produced by `nself build`. Run reuses deploy.DeployViaSsh for every remote server.
 func Run(ctx context.Context, inv *Inventory, env string, prober Prober, composePath string) (*DeployResult, error) {
@@ -79,6 +67,17 @@ func RunWithEnv(ctx context.Context, inv *Inventory, env string, prober Prober, 
 	}
 	statuses := Resolve(scoped, prober)
 	emitAudit(statuses)
+	reader, ok := prober.(archReader)
+	if !ok {
+		reader = NewSSHProber(filepath.Dir(composePath), false)
+	}
+	files, err := ComposeFilesForDeploy(composePath)
+	if err != nil {
+		return nil, err
+	}
+	if err := preflightWith(ctx, scoped, env, files, reader, nil); err != nil {
+		return nil, err
+	}
 
 	result := &DeployResult{}
 

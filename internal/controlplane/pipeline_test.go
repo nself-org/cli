@@ -648,7 +648,11 @@ func TestEnvScopeRun(t *testing.T) {
 	t.Setenv("NSELF_SSH_KEY_STAGING", filepath.Join(t.TempDir(), "k"))
 
 	prober := &recordingProber{}
-	res, err := Run(context.Background(), threeEnvInventory(), "qa", prober, "/tmp/compose.yml")
+	compose := filepath.Join(t.TempDir(), "compose.yml")
+	if err := os.WriteFile(compose, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Run(context.Background(), threeEnvInventory(), "qa", prober, compose)
 	if err != nil {
 		t.Fatalf("Run qa: %v", err)
 	}
