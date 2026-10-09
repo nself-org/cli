@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,6 +149,12 @@ func TestDBHasuraNoEnvSyncApplyRefLocalGolden(t *testing.T) {
 }
 
 func TestDBHasuraArchiveMonorepoNoticeStderr(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"version":3,"sources":[]}`)
+	}))
+	defer server.Close()
+	port := server.URL[strings.LastIndex(server.URL, ":")+1:]
+	t.Setenv("HASURA_PORT", port)
 	root := t.TempDir()
 	backend := filepath.Join(root, "backend")
 	if err := os.MkdirAll(backend, 0755); err != nil {
@@ -174,6 +182,7 @@ func TestDBHasuraArchiveMonorepoNoticeStderr(t *testing.T) {
 	os.Stdout, os.Stderr = out, stderr
 	t.Cleanup(func() { os.Stdout, os.Stderr = oldOut, oldErr })
 	cmd := dbHasuraMetadataExportCmd
+	cmd.SetContext(context.Background())
 	oldArchive, _ := cmd.Flags().GetString("archive")
 	if err := cmd.Flags().Set("archive", "-"); err != nil {
 		t.Fatal(err)
@@ -197,7 +206,9 @@ func TestDBHasuraArchiveMonorepoNoticeStderr(t *testing.T) {
 	if !os.SameFile(actual, expected) {
 		t.Fatalf("chdir changed: %q", cwd)
 	}
-	if _, err := out.Write(archiveFixture(t, "tables: []\n")); err != nil {
+	cmd.SetOut(out)
+	t.Cleanup(func() { cmd.SetOut(nil) })
+	if err := runDBHasuraMetadataExportArchive(cmd, nil); err != nil {
 		t.Fatal(err)
 	}
 	stdoutBytes, _ := os.ReadFile(out.Name())
