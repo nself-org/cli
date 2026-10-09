@@ -254,7 +254,7 @@ func TestDBHasuraRemoteSyncRejectsDirtyMetadata(t *testing.T) {
 	cmd.SetContext(context.Background())
 	cmd.Flags().String("message", "", "")
 	err := runDBHasuraRemoteSync(cmd, dbRemoteTarget{SSHTarget: "fixture.invalid", RemotePath: "/project", EnvName: "staging", AllowVersionDrift: true})
-	if err == nil || !strings.Contains(err.Error(), "tables.yaml") || !strings.Contains(err.Error(), "commit or stash") {
+	if err == nil || !strings.Contains(err.Error(), "tables.yaml") || !strings.Contains(err.Error(), "commit, stash") {
 		t.Fatalf("dirty metadata accepted: %v", err)
 	}
 	if data, err := os.ReadFile(file); err != nil || string(data) != "uncommitted\n" {
@@ -484,5 +484,52 @@ func TestDBRemoteRejectsOptionLikeHost(t *testing.T) {
 		if got := !validSSHDestination(host); got != want {
 			t.Errorf("validSSHDestination(%q) refused=%v, want %v", host, got, want)
 		}
+	}
+}
+
+// TestDBHasuraRemoteSyncRejectsIgnoredMetadata: a gitignored local file under
+// hasura/metadata would be deleted by the tree swap, so sync --env refuses it
+// too, before any ssh.
+func TestDBHasuraRemoteSyncRejectsIgnoredMetadata(t *testing.T) {
+	project := t.TempDir()
+	dir := filepath.Join(project, "hasura", "metadata")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tables.yaml"), []byte("committed\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, ".gitignore"), []byte("*.local.yaml\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, argv := range [][]string{{"init", project}, {"-C", project, "config", "user.email", "test@example.invalid"}, {"-C", project, "config", "user.name", "Test"}, {"-C", project, "add", "."}, {"-C", project, "commit", "-m", "fixture"}} {
+		if out, err := exec.Command("git", argv...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s %v", argv, out, err)
+		}
+	}
+	secret := filepath.Join(dir, "secret.local.yaml")
+	if err := os.WriteFile(secret, []byte("keep me\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	old, _ := os.Getwd()
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+	oldStream := runSSHStream
+	t.Cleanup(func() { runSSHStream = oldStream })
+	runSSHStream = func(context.Context, []string, io.Reader, io.Writer) (string, error) {
+		t.Fatal("SSH opened before the ignored-file check")
+		return "", nil
+	}
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+	cmd.Flags().String("message", "", "")
+	err := runDBHasuraRemoteSync(cmd, dbRemoteTarget{SSHTarget: "fixture.invalid", RemotePath: "/project", EnvName: "staging", AllowVersionDrift: true})
+	if err == nil || !strings.Contains(err.Error(), "secret.local.yaml") {
+		t.Fatalf("an ignored local file must block sync --env: %v", err)
+	}
+	if data, err := os.ReadFile(secret); err != nil || string(data) != "keep me\n" {
+		t.Fatalf("ignored file changed: %q %v", data, err)
 	}
 }

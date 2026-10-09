@@ -90,12 +90,12 @@ func runDBHasuraRemoteSync(cmd *cobra.Command, rt dbRemoteTarget) error {
 	if err != nil {
 		return err
 	}
-	status, err := exec.Command("git", "-C", dir, "status", "--porcelain", "--", "hasura/metadata").Output()
+	status, err := exec.Command("git", "-C", dir, "status", "--porcelain", "--ignored", "--", "hasura/metadata").Output() // --ignored: sync replaces the whole tree, so ignored local files would go too
 	if err != nil {
 		return fmt.Errorf("checking local metadata changes: %w", err)
 	}
 	if len(status) != 0 {
-		return fmt.Errorf("uncommitted hasura/metadata changes: %s; commit or stash them before remote sync", strings.TrimSpace(string(status)))
+		return fmt.Errorf("uncommitted or ignored files in hasura/metadata: %s; commit, stash or move them before remote sync", strings.TrimSpace(string(status)))
 	}
 	archive, err := remoteMetadataExport(cmd, rt)
 	if err != nil {
