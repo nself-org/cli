@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,7 +39,7 @@ func HostKeyOptions(ctx context.Context, env, server string, tier Tier, host str
 // hostKeyIdentity maps callers with generic labels to the inventory entry so
 // the E487 command can be pasted into `env target add` unchanged.
 func hostKeyIdentity(env, server, host string) (string, string) {
-	root, err := os.Getwd()
+	root, err := inventoryProjectRoot()
 	if err != nil {
 		return env, server
 	}
@@ -75,6 +76,24 @@ func hostKeyIdentity(env, server, host string) (string, string) {
 		return matchEnv, matchServer
 	}
 	return env, server
+}
+
+// inventoryProjectRoot finds the inventory used by the active project.
+func inventoryProjectRoot() (string, error) {
+	root, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(root, inventoryFileName)); err == nil {
+			return root, nil
+		}
+		parent := filepath.Dir(root)
+		if parent == root {
+			return "", os.ErrNotExist
+		}
+		root = parent
+	}
 }
 
 func printFirstContact(ctx context.Context, host string) {

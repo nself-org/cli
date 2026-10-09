@@ -213,15 +213,15 @@ func deployOne(ctx context.Context, envName string, srv Server, ts TargetStatus,
 		logSkipped(envName, srv.Name)
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "skipped", Primary: srv.Primary}
 	}
-
 	keyPath := os.Getenv(srv.SSHKeyRef)
 	cfg := deploy.SSHConfig{
-		Host:       srv.Host,
-		RemotePath: srv.RemotePath,
-		ServerName: srv.Name,
-		KeyPath:    keyPath,
-		EnvFile:    pl.envFile,
-		EnvName:    pl.envName,
+		Host:         srv.Host,
+		RemotePath:   srv.RemotePath,
+		ServerName:   srv.Name,
+		KeyPath:      keyPath,
+		EnvFile:      pl.envFile,
+		EnvName:      pl.envName,
+		InventoryEnv: envName,
 	}
 	if err := deployServerFn(ctx, cfg, pl.compose); err != nil {
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "failed", Err: err, Primary: srv.Primary}
@@ -246,15 +246,15 @@ func deployApp(ctx context.Context, envName string, srv Server, ts TargetStatus,
 			_, _ = fmt.Fprintf(os.Stderr, "controlplane: lb drain WARN for %s: nself-lb helper not found on %s\n", srv.Name, lbSrv.Name)
 		}
 	}
-
 	keyPath := os.Getenv(srv.SSHKeyRef)
 	cfg := deploy.SSHConfig{
-		Host:       srv.Host,
-		RemotePath: srv.RemotePath,
-		ServerName: srv.Name,
-		KeyPath:    keyPath,
-		EnvFile:    pl.envFile,
-		EnvName:    pl.envName,
+		Host:         srv.Host,
+		RemotePath:   srv.RemotePath,
+		ServerName:   srv.Name,
+		KeyPath:      keyPath,
+		EnvFile:      pl.envFile,
+		EnvName:      pl.envName,
+		InventoryEnv: envName,
 	}
 	if err := deployServerFn(ctx, cfg, pl.compose); err != nil {
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "failed", Err: err, Primary: srv.Primary}

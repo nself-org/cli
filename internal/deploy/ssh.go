@@ -70,6 +70,8 @@ type SSHConfig struct {
 	// built from. EnvName must be a plain name (a-z, 0-9, _ and -).
 	EnvFile string
 	EnvName string
+	// InventoryEnv is the inventory key used by the host-key enrolment command.
+	InventoryEnv string
 	// ServerName is the inventory key used by the host-key enrolment command.
 	ServerName string
 }
@@ -199,7 +201,11 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 	if serverName == "" {
 		serverName = cfg.EnvName + "-app"
 	}
-	policy, err := HostKeyOptions(ctx, spec.String(), cfg.EnvName, serverName, true)
+	identityEnv := cfg.InventoryEnv
+	if identityEnv == "" {
+		identityEnv = cfg.EnvName
+	}
+	policy, err := HostKeyOptions(ctx, spec.String(), identityEnv, serverName, true)
 	if err != nil {
 		return err
 	}

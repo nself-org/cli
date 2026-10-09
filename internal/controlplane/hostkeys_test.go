@@ -63,6 +63,27 @@ func TestHostKeyPolicy(t *testing.T) {
 	}
 }
 
+func TestHostKeyIdentityFromProjectRoot(t *testing.T) {
+	root := t.TempDir()
+	host := "u@host.example:2222"
+	inv := &Inventory{SchemaVersion: 2, Environments: map[string]Environment{
+		"local": {Name: "local", Kind: "local", Tier: TierLocal},
+		"live":  {Name: "live", Kind: "remote", Tier: TierProd, Servers: []Server{{Name: "web", Role: RoleApp, Host: host, RemotePath: "/opt/nself", Primary: true}}},
+	}}
+	if err := Write(root, inv); err != nil {
+		t.Fatal(err)
+	}
+	child := filepath.Join(root, "nested")
+	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(child)
+	env, server := hostKeyIdentity("prod", "primary", host)
+	if env != "live" || server != "web" {
+		t.Fatalf("inventory identity = %q/%q, want live/web", env, server)
+	}
+}
+
 func TestReadOnlyProdTierRequiresKnownHost(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("requires POSIX stubs")
