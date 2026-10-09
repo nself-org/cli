@@ -18,6 +18,7 @@ internal/deploy/slo_rollback_helpers.go 2
 internal/deploy/ssh.go 1
 internal/docker/compose_exec.go 2
 internal/docker/exec.go 1
+internal/docker/pull_fallback.go 2
 internal/installer/ollama_systemd.go 2
 internal/license/tail.go 1
 internal/migration/migrator.go 2
