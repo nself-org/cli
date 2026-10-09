@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -35,7 +36,7 @@ func TestHasuraArchiveRoundTrip(t *testing.T) {
 		t.Fatalf("round trip: %q, %v", got, err)
 	}
 	info, err := os.Stat(dest)
-	if err != nil || info.Mode().Perm() != 0755 {
+	if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0755) {
 		t.Fatalf("metadata directory mode: %v, %v", info, err)
 	}
 }
