@@ -4,11 +4,15 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestDoctorFixItEngineAllowlistAndReport(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake executables are POSIX shell scripts")
+	}
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=demo\nENV=dev\nBASE_DOMAIN=example.test\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -50,6 +54,9 @@ func TestDoctorFixItEngineAllowlistAndReport(t *testing.T) {
 }
 
 func TestDoctorFixItEngineFailureInReport(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake executable is a POSIX shell script")
+	}
 	dir := t.TempDir()
 	bin := t.TempDir()
 	if err := os.WriteFile(filepath.Join(bin, "nself"), []byte("#!/bin/sh\nexit 7\n"), 0o755); err != nil {
