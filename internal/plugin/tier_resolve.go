@@ -182,6 +182,10 @@ func notEntitledError(name string, pro *PluginManifest) error {
 	if len(pro.Bundles) == 0 {
 		return fmt.Errorf("%w: plugin %q (Licensed plugin requires a plugin-level license, run 'nself license set <key>')", errs.ErrTierNotEntitled, name)
 	}
+	requirement := fmt.Sprintf("a licence for the %s Bundle", pro.Bundles[0])
+	if len(pro.Bundles) > 1 {
+		requirement = fmt.Sprintf("a licence for one of these Bundles: %s", strings.Join(pro.Bundles, ", "))
+	}
 	return fmt.Errorf("%w: plugin %q requires %s (or ɳSelf+) — buy at https://nself.org/pricing or run 'nself license set <key>'",
-		errs.ErrTierNotEntitled, name, BundleLabel(strings.Join(pro.Bundles, "/")))
+		errs.ErrTierNotEntitled, name, requirement)
 }

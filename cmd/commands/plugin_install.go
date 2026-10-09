@@ -43,8 +43,11 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	// so plugin.installLocked (and its dependency-install recursion) sees it
 	// without widening plugin.Install's signature.
 	tier = strings.ToLower(strings.TrimSpace(tier))
-	if tier != "" && tier != "free" && tier != "pro" {
-		return fmt.Errorf(`invalid --tier %q: must be "free" or "pro"`, tier)
+	if tier == plugin.LicenseLicensed {
+		tier = plugin.WireTierPro
+	}
+	if tier != "" && tier != "free" && tier != plugin.WireTierPro {
+		return fmt.Errorf(`invalid --tier %q: must be "free" or "licensed" ("pro" remains an alias)`, tier)
 	}
 	if tier != "" {
 		if err := os.Setenv("NSELF_PLUGIN_INSTALL_TIER", tier); err != nil {

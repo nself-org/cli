@@ -133,15 +133,18 @@ func runPluginListAvailable(cmd *cobra.Command, category string) error {
 	jsonOut, _ := cmd.Flags().GetBool("json")
 	if jsonOut {
 		enc := json.NewEncoder(cmd.OutOrStdout())
-		// compat.V15(P7-PLUG-11): tier pro -> license licensed
-		if compat.V15() {
-			result := make([]map[string]interface{}, 0, len(rows))
-			for _, r := range rows {
-				result = append(result, map[string]interface{}{"name": r.Name, "license": plugin.LicenseValue(r.Tier), "version": r.Version, "category": r.Category, "tier_pair": r.TierPair, "is_default": r.IsDefault})
+		result := make([]map[string]interface{}, 0, len(rows))
+		for _, r := range rows {
+			item := map[string]interface{}{"name": r.Name, "version": r.Version, "category": r.Category, "tier_pair": r.TierPair, "is_default": r.IsDefault}
+			// compat.V15(P7-PLUG-11): tier pro -> license licensed
+			if compat.V15() {
+				item["license"] = plugin.LicenseValue(r.Tier)
+			} else {
+				item["tier"] = r.Tier
 			}
-			return enc.Encode(result)
+			result = append(result, item)
 		}
-		return enc.Encode(rows)
+		return enc.Encode(result)
 	}
 
 	tbl := ui.NewTable("Name", "License", "Version", "Default")
