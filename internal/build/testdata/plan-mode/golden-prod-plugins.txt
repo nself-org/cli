@@ -36,6 +36,7 @@ f 0644 project/.nself/backups/nginx-sites-<TS>/hand-written.conf db823e7687a059d
 f 0644 project/.nself/backups/nginx-sites-<TS>/stale.conf 018e9e30e6ff93f0874816beee42a63c0d593e4ee9bb08d22fa8eb9e4a2b4feb
 f 0644 project/.nself/build-profile a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333
 f 0644 project/.nself/build-version 9a66809cf210f6d1149c329fac8661098d04fc0b2c6fb00bf5bb7aa98f7ae1fd
+f 0644 project/.nself/compose-env-files.txt 7d3e777d4d376c34edad2c78f512e08ec2d1819efdea2a89bbf91cb62e675a92
 f 0644 project/.nself/compose-files.txt 25d73fff7b9c29b632245996fcb310ee06b61b0238473a0bf84c90e37f9184ff
 f 0644 project/.nself/dist/openapi.json dd0fe1e385e794d0d382290a08f71b0056a87564a4616e28f5fc66eb94f82479
 f 0644 project/.nself/dist/scalar.html 650a899517b6771cb32ebacf366efb67e25583b475fa9de342b04dadff732c44

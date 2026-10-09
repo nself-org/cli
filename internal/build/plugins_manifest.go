@@ -12,14 +12,75 @@ import (
 	"github.com/nself-org/cli/internal/docker"
 )
 
-// Purpose: the compose-files manifest (read/write, used by start/stop/restart
-// to build docker compose's `-f` flag list) and per-plugin env var
-// computation (PLUGIN_{DEP}_INTERNAL_URL wiring for Go plugin dependencies).
-// Inputs: workdir, the base compose path or plugin file list, or the global
-// plugin directory.
-// Outputs: an error, an ordered []string of compose paths, or a map of env vars.
-// Constraints: split out of plugins.go (CLI-R12) as a pure move; no behavior
-// changed. Depends on composeManifestFile, defined in plugins.go.
+// Purpose: the compose-file and compose-env-file manifests (contract:
+// build.generated-compose v1) and per-plugin env var computation.
+// Inputs: workdir, compose paths, plugin files, or the global plugin directory.
+// Outputs: ordered paths, plugin env vars, or an error.
+// Constraints: manifest contents contain paths only; compose.env remains 0600.
+// Depends on composeManifestFile, defined in plugins.go.
+
+const composeEnvManifestFile = ".nself/compose-env-files.txt"
+
+// writeComposeEnvManifestVia records the env files ComposeEnvFiles uses. The
+// sink sees compose.env during a plan build even before it exists on disk.
+func writeComposeEnvManifestVia(sink Sink, workdir string) error {
+	absWorkdir, err := filepath.Abs(workdir)
+	if err != nil {
+		return fmt.Errorf("resolving compose env manifest workdir: %w", err)
+	}
+	var files []string
+	for _, rel := range []string{".env", composeEnvFile} {
+		path := filepath.Join(absWorkdir, rel)
+		if _, err := sink.Stat(path); err == nil {
+			files = append(files, path)
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("stat compose env file %s: %w", path, err)
+		}
+	}
+	// ComposeEnvFiles returns nil for a legacy project with only .env.
+	if len(files) == 1 && files[0] == filepath.Join(absWorkdir, ".env") {
+		files = nil
+	}
+	content := ""
+	if len(files) != 0 {
+		content = strings.Join(files, "\n") + "\n"
+	}
+	path := filepath.Join(absWorkdir, composeEnvManifestFile)
+	if err := sink.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("creating compose env manifest directory: %w", err)
+	}
+	if err := sink.WriteAtomic(path, []byte(content), 0644); err != nil {
+		return fmt.Errorf("writing compose env manifest: %w", err)
+	}
+	return nil
+}
+
+// ReadComposeEnvManifest reads the ordered absolute env-file paths. A missing
+// or empty manifest means a legacy project and returns nil, but only when
+// .nself/compose.env is absent too: otherwise the manifest is stale and a
+// consumer would resolve plugin variables without their computed values.
+func ReadComposeEnvManifest(workdir string) ([]string, error) {
+	path := filepath.Join(workdir, composeEnvManifestFile)
+	data, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("reading compose env manifest: %w", err)
+	}
+	if len(data) == 0 {
+		if _, statErr := os.Lstat(filepath.Join(workdir, composeEnvFile)); statErr == nil {
+			return nil, fmt.Errorf("compose env manifest %s is missing or empty but %s exists: run nself build", composeEnvManifestFile, composeEnvFile)
+		} else if !os.IsNotExist(statErr) {
+			return nil, fmt.Errorf("checking %s: %w", composeEnvFile, statErr)
+		}
+		return nil, nil
+	}
+	var files []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if line != "" {
+			files = append(files, line)
+		}
+	}
+	return files, nil
+}
 
 // WriteComposeManifest writes .nself/compose-files.txt with one compose file
 // path per line. The first line is always the base docker-compose.yml

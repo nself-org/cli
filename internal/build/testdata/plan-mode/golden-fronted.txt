@@ -23,6 +23,7 @@ f 0600 fronted-stack/backend/.nself/compose.env 8ac6f515d04636e91434b945702345e5
 f 0600 fronted-stack/backend/docker-compose.yml c7bf88c70dee617d138b8b161c5e3bcb1c1c2988882a8425e107906f4cf72624
 f 0644 fronted-stack/backend/.nself/build-profile a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333
 f 0644 fronted-stack/backend/.nself/build-version 9a66809cf210f6d1149c329fac8661098d04fc0b2c6fb00bf5bb7aa98f7ae1fd
+f 0644 fronted-stack/backend/.nself/compose-env-files.txt c5cc831deacff2b9ea7dc6ca55d7b7c15fc1fc87ca8d5c377467c10abcdf9e90
 f 0644 fronted-stack/backend/.nself/compose-files.txt 7d77a6f6014dd7dcb6edddc669ced57180e36e04300b0e6f0206631b935bfaab
 f 0644 fronted-stack/backend/.nself/dist/openapi.json 930f5017f004813b05d87fa8bf3d7e9a689fed9ef384fbf873095a8a89985a4d
 f 0644 fronted-stack/backend/.nself/dist/scalar.html 650a899517b6771cb32ebacf366efb67e25583b475fa9de342b04dadff732c44

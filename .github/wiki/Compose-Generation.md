@@ -44,6 +44,8 @@ This makes repeated builds fast. Use `--force` to bypass the cache and rebuild e
 
 ## Multi-File Compose Merge
 
+After a build, `.nself/compose-files.txt` lists the generated Compose files in merge order. `.nself/compose-env-files.txt` lists the absolute paths to the interpolation files in order: `.env`, then the computed `.nself/compose.env` when present. Consumers should pass each path with `docker compose --env-file` before the `-f` files. The env manifest contains paths only; it is empty for legacy projects without `.nself/compose.env`.
+
 When plugins are installed, each one provides a `docker-compose.plugin.yml` overlay file. During `nself build`, these overlay files are merged into the final `docker-compose.yml` in a well-defined order:
 
 1. **Base compose**, core required services
