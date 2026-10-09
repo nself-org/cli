@@ -70,6 +70,8 @@ type SSHConfig struct {
 	// built from. EnvName must be a plain name (a-z, 0-9, _ and -).
 	EnvFile string
 	EnvName string
+	// ServerName is the inventory key used by the host-key enrolment command.
+	ServerName string
 }
 
 // DeployKnownHostsPath is the dedicated pin file. The operator's SSH file is read only.
@@ -156,8 +158,10 @@ func SSHConfigFromEnv(target string) SSHConfig {
 		host = os.Getenv(upper + "_DEPLOY_HOST")
 	}
 	return SSHConfig{
-		Host:    host,
-		KeyPath: remote.DefaultKeyPath(),
+		Host:       host,
+		KeyPath:    remote.DefaultKeyPath(),
+		EnvName:    strings.ToLower(target),
+		ServerName: strings.ToLower(target) + "-app",
 	}
 }
 
@@ -191,8 +195,11 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 		remoteCompose = "/tmp/nself-compose.yml"
 	}
 
-	strict := cfg.EnvFile != "" || cfg.EnvName == "prod" || cfg.EnvName == "production"
-	policy, err := HostKeyOptions(ctx, spec.String(), cfg.EnvName, spec.Host, strict)
+	serverName := cfg.ServerName
+	if serverName == "" {
+		serverName = cfg.EnvName + "-app"
+	}
+	policy, err := HostKeyOptions(ctx, spec.String(), cfg.EnvName, serverName, true)
 	if err != nil {
 		return err
 	}

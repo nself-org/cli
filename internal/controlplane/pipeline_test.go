@@ -545,6 +545,24 @@ func stubDeployServer(t *testing.T) *[]string {
 	return &got
 }
 
+func TestPipelinePortHostSeparatePath(t *testing.T) {
+	orig := deployServerFn
+	defer func() { deployServerFn = orig }()
+	called := false
+	deployServerFn = func(_ context.Context, cfg deploy.SSHConfig, _ string) error {
+		called = true
+		if cfg.Host != "u@port.example:2222" || cfg.RemotePath != "/opt/nself" || cfg.ServerName != "web" {
+			t.Fatalf("bad deploy destination: %+v", cfg)
+		}
+		return nil
+	}
+	srv := Server{Name: "web", Role: RoleApp, Host: "u@port.example:2222", RemotePath: "/opt/nself"}
+	result := deployApp(context.Background(), "qa", srv, TargetStatus{}, payload{}, false, nil)
+	if !called || result.Status != "ok" {
+		t.Fatalf("pipeline deploy: called=%v result=%+v", called, result)
+	}
+}
+
 // TestEnvScopeRun: Run deploys and probes only the named env; an unknown,
 // empty or differently-cased env is refused and nothing is contacted.
 func TestEnvScopeRun(t *testing.T) {

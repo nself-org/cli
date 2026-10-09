@@ -189,14 +189,12 @@ func serversByRole(env Environment, statuses []TargetStatus, role ServerRole) []
 }
 
 // runLocal handles a "local" kind environment in the deployment pipeline.
-//
 // The local deployment target is managed by `nself build` + `nself start`,
 // which the caller invokes before Run(). The pipeline itself has no primitives
 // to drive a local Docker stack — that path belongs to the nself CLI commands,
 // not the control-plane library. Returning a silent empty-success (nil, nil)
 // would cause `nself deploy --target local` to exit 0 with 0 servers, which
 // masks the fact that nothing was actually deployed.
-//
 // Instead we return a clear error so callers surface the unsupported path to
 // the operator. When local-deploy execution primitives exist (future ticket),
 // this function should be replaced with a real implementation that builds a
@@ -218,10 +216,12 @@ func deployOne(ctx context.Context, envName string, srv Server, ts TargetStatus,
 
 	keyPath := os.Getenv(srv.SSHKeyRef)
 	cfg := deploy.SSHConfig{
-		Host:    srv.Host + ":" + srv.RemotePath,
-		KeyPath: keyPath,
-		EnvFile: pl.envFile,
-		EnvName: pl.envName,
+		Host:       srv.Host,
+		RemotePath: srv.RemotePath,
+		ServerName: srv.Name,
+		KeyPath:    keyPath,
+		EnvFile:    pl.envFile,
+		EnvName:    pl.envName,
 	}
 	if err := deployServerFn(ctx, cfg, pl.compose); err != nil {
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "failed", Err: err, Primary: srv.Primary}
@@ -249,10 +249,12 @@ func deployApp(ctx context.Context, envName string, srv Server, ts TargetStatus,
 
 	keyPath := os.Getenv(srv.SSHKeyRef)
 	cfg := deploy.SSHConfig{
-		Host:    srv.Host + ":" + srv.RemotePath,
-		KeyPath: keyPath,
-		EnvFile: pl.envFile,
-		EnvName: pl.envName,
+		Host:       srv.Host,
+		RemotePath: srv.RemotePath,
+		ServerName: srv.Name,
+		KeyPath:    keyPath,
+		EnvFile:    pl.envFile,
+		EnvName:    pl.envName,
 	}
 	if err := deployServerFn(ctx, cfg, pl.compose); err != nil {
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "failed", Err: err, Primary: srv.Primary}

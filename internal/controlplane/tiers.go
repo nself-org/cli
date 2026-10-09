@@ -101,6 +101,12 @@ func validateInventoryV2(inv *Inventory) error {
 		if !validTier(e.Tier) {
 			return errs.New("E485", fmt.Sprintf("environments.%s.tier: invalid tier %q", name, e.Tier))
 		}
+		if (name == "prod" || name == "production") && e.Tier != TierProd {
+			return errs.New("E485", fmt.Sprintf("environments.%s.tier: prod name requires prod tier", name))
+		}
+		if (e.Kind == "local") != (e.Tier == TierLocal) {
+			return errs.New("E485", fmt.Sprintf("environments.%s.tier: %s kind conflicts with %s tier", name, e.Kind, e.Tier))
+		}
 		if e.Kind == "local" {
 			localCount++
 		}

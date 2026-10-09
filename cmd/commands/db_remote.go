@@ -46,8 +46,9 @@ type dbRemoteTarget struct {
 
 	// EnvName is the resolved environment name ("local", "staging", "prod",
 	// or a custom control-plane environment name).
-	EnvName string
-	Tier    controlplane.Tier
+	EnvName    string
+	Tier       controlplane.Tier
+	ServerName string
 
 	// SSHTarget is "user@host" for a remote target. Empty when Local.
 	SSHTarget string
@@ -138,6 +139,7 @@ func resolveDBRemoteTarget(cmd *cobra.Command) (dbRemoteTarget, error) {
 		Local:      false,
 		EnvName:    envName,
 		Tier:       env.Tier,
+		ServerName: srv.Name,
 		SSHTarget:  srv.Host,
 		KeyPath:    os.Getenv(srv.SSHKeyRef),
 		RemotePath: remotePath,
@@ -201,7 +203,7 @@ func runRemoteNselfCommand(ctx context.Context, rt dbRemoteTarget, args ...strin
 		keyPath = defaultSSHKeyPath()
 	}
 
-	keyOpts, err := controlplane.HostKeyOptions(ctx, rt.EnvName, "db", rt.Tier, rt.SSHTarget, false)
+	keyOpts, err := controlplane.HostKeyOptions(ctx, rt.EnvName, rt.ServerName, rt.Tier, rt.SSHTarget, false)
 	if err != nil {
 		return err
 	}

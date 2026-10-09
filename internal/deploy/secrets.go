@@ -97,7 +97,11 @@ func PushSecrets(ctx context.Context, cfg SSHConfig, opts PushSecretsOptions) er
 			remoteDestination, envFile)
 		return nil
 	}
-	policy, err := HostKeyOptions(ctx, spec.String(), opts.Target, spec.Host, true)
+	serverName := cfg.ServerName
+	if serverName == "" {
+		serverName = opts.Target + "-app"
+	}
+	policy, err := HostKeyOptions(ctx, spec.String(), opts.Target, serverName, true)
 	if err != nil {
 		return err
 	}

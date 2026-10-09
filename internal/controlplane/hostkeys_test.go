@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -59,6 +60,38 @@ func TestHostKeyPolicy(t *testing.T) {
 	}
 	if !strings.HasPrefix(DeployKnownHostsPath(), filepath.Join(dir, ".config")) {
 		t.Fatal("pin path outside HOME")
+	}
+}
+
+func TestReadOnlyProdTierRequiresKnownHost(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires POSIX stubs")
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NSELF_V15", "1")
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "ssh-keyscan"), []byte("#!/bin/sh\nprintf 'prod.example ssh-ed25519 AQID\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	if _, err := HostKeyOptions(context.Background(), "live", "web", TierProd, "u@prod.example", false); err == nil || !strings.Contains(err.Error(), "E487") {
+		t.Fatalf("read-only prod host accepted unknown key: %v", err)
+	}
+	if _, err := HostKeyOptions(context.Background(), "production", "web", TierLocalServers, "u@prod.example", false); err == nil || !strings.Contains(err.Error(), "E487") {
+		t.Fatalf("prod-name host accepted unknown key: %v", err)
+	}
+}
+
+func TestProbeTierLoadErrorFailsClosed(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".nself"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".nself", "control-plane.yaml"), []byte("{bad yaml"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if tier, _ := probeTier(root, Server{Name: "web", Host: "u@host.example"}); tier != TierProd {
+		t.Fatalf("unreadable inventory tier = %s", tier)
 	}
 }
 
@@ -135,14 +168,25 @@ func TestDockerOKHostSpecPort(t *testing.T) {
 }
 
 func TestHostSpecArgvSites(t *testing.T) {
-	files := []string{
-		"internal/controlplane/probe.go", "internal/controlplane/lb.go",
-		"internal/deploy/ssh.go", "internal/deploy/remote_exec.go", "internal/deploy/secrets.go",
-		"internal/access/transport_ssh.go", "cmd/commands/deploy_remote.go",
-		"cmd/commands/deploy_run.go", "cmd/commands/deploy_diagnostics.go",
-		"cmd/commands/deploy_health_remote.go", "cmd/commands/db_remote.go", "cmd/commands/db_remote_version.go",
+	// Discover direct exec sites from git; these exceptions have separate owners.
+	// db_remote_exec.go receives argv already built by db_remote.go.
+	// internal/admin/connect.go is owned by P7-CANON-19 / DEPL-14.
+	// db_remote_dryrun.go's raw probe destination is deferred to DEPL-14.
+	root := filepath.Join("..", "..")
+	grep := exec.Command("git", "grep", "-lE", `exec\.Command(Context)?\([^)]*"(ssh|scp|rsync)"`, "--", "cmd/", "internal/", "sdk/")
+	grep.Dir = root
+	out, err := grep.Output()
+	if err != nil {
+		t.Fatalf("discover exec sites: %v", err)
+	}
+	files := strings.Fields(string(out))
+	if len(files) == 0 {
+		t.Fatal("no ssh/scp/rsync exec sites discovered")
 	}
 	for _, file := range files {
+		if file == "cmd/commands/db_remote_exec.go" || file == "internal/admin/connect.go" || strings.HasSuffix(file, "_test.go") {
+			continue
+		}
 		b, err := os.ReadFile(filepath.Join("..", "..", file))
 		if err != nil {
 			t.Fatal(err)
@@ -151,5 +195,10 @@ func TestHostSpecArgvSites(t *testing.T) {
 		if !strings.Contains(s, "ParseHostSpec") || !(strings.Contains(s, "SSHArgs()") || strings.Contains(s, "SSHOptions()")) {
 			t.Errorf("%s does not parse hosts and build argv from HostSpec", file)
 		}
+	}
+	// The dry-run probe is an indirect exec through db_remote_exec.go.
+	b, err := os.ReadFile(filepath.Join(root, "cmd/commands/db_remote_dryrun.go"))
+	if err != nil || !strings.Contains(string(b), "rt.SSHTarget") {
+		t.Fatal("dry-run argv passthrough exception changed")
 	}
 }

@@ -84,9 +84,16 @@ func TestDeploySimUnknownHostKey(t *testing.T) {
 	if err := os.WriteFile(envFile, []byte("A=1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := deploy.SSHConfig{Host: "nself@" + fleet.Servers[0].SSHHostPort(), KeyPath: fleet.PrivateKeyPath, RemotePath: "/tmp/nself-sim", EnvFile: envFile, EnvName: "qa"}
+	cfg := deploy.SSHConfig{Host: "nself@" + fleet.Servers[0].SSHHostPort(), KeyPath: fleet.PrivateKeyPath, RemotePath: "/tmp/nself-sim", EnvFile: envFile, EnvName: "qa", ServerName: "qa-app"}
 	t.Setenv("SIM_SSH_KEY", fleet.PrivateKeyPath)
-	prober := controlplane.NewSSHProber(t.TempDir(), true)
+	root := t.TempDir()
+	if err := controlplane.Write(root, &controlplane.Inventory{SchemaVersion: 2, Environments: map[string]controlplane.Environment{
+		"local": {Name: "local", Kind: "local", Tier: controlplane.TierLocal},
+		"qa":    {Name: "qa", Kind: "remote", Tier: controlplane.TierLocalServers, Servers: []controlplane.Server{{Name: "qa-app", Role: controlplane.RoleApp, Host: cfg.Host, RemotePath: cfg.RemotePath, Primary: true}}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	prober := controlplane.NewSSHProber(root, true)
 	stderrR, stderrW, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)

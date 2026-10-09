@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"github.com/spf13/cobra"
@@ -176,5 +177,71 @@ func TestEnvTargetTrustHostKey(t *testing.T) {
 	}
 	if _, err := os.Stat(controlplane.DeployKnownHostsPath()); err != nil {
 		t.Fatal("pin missing:", err)
+	}
+}
+
+func TestE487HintEnrollThenDeploy(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires POSIX command stubs")
+	}
+	root, cleanup := newTestRoot(t)
+	defer cleanup()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NSELF_V15", "1")
+	host := "u@host.example"
+	writeInventory(t, root, &controlplane.Inventory{SchemaVersion: 2, Environments: map[string]controlplane.Environment{
+		"qa": {Name: "qa", Kind: "remote", Tier: controlplane.TierLocalServers, Servers: []controlplane.Server{{Name: "web", Role: controlplane.RoleApp, Host: host, RemotePath: "/opt/nself", Primary: true}}},
+	}})
+	bin := t.TempDir()
+	marker := filepath.Join(bin, "deployed")
+	for name, body := range map[string]string{
+		"ssh-keyscan": "#!/bin/sh\nprintf 'host.example ssh-ed25519 AQID\\n'\n",
+		"ssh-keygen":  "#!/bin/sh\nif [ -f \"$4\" ]; then /bin/cat \"$4\"; fi\n",
+		"ssh":         "#!/bin/sh\nexit 0\n",
+		"rsync":       "#!/bin/sh\ntouch '" + marker + "'\n",
+	} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	_, err := controlplane.HostKeyOptions(context.Background(), "qa", "primary", controlplane.TierLocalServers, host, true)
+	if err == nil || !strings.Contains(err.Error(), "E487") {
+		t.Fatalf("expected E487 hint: %v", err)
+	}
+	_, hint, ok := strings.Cut(err.Error(), "nself env target add ")
+	if !ok {
+		t.Fatalf("missing enrolment command: %v", err)
+	}
+	argv := strings.Fields(strings.SplitN(hint, "\n", 2)[0])
+	if len(argv) != 4 || argv[0] != "qa" || argv[1] != "web" || argv[2] != "--trust-host-key" {
+		t.Fatalf("unusable hint: %q", hint)
+	}
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+	cmd.Flags().String("host", "", "")
+	cmd.Flags().String("role", "app", "")
+	cmd.Flags().String("key-ref", "", "")
+	cmd.Flags().String("remote-path", "/opt/nself", "")
+	cmd.Flags().Bool("primary", false, "")
+	cmd.Flags().StringSlice("upstreams", nil, "")
+	cmd.Flags().String("tier", "", "")
+	cmd.Flags().String("arch", "", "")
+	cmd.Flags().String("trust-host-key", "", "")
+	if err := cmd.Flags().Set("trust-host-key", argv[3]); err != nil {
+		t.Fatal(err)
+	}
+	if err := runEnvTargetAdd(cmd, argv[:2]); err != nil {
+		t.Fatalf("printed command failed: %v", err)
+	}
+	compose := filepath.Join(root, "compose.yml")
+	if err := os.WriteFile(compose, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := deploy.DeployViaSsh(context.Background(), deploy.SSHConfig{Host: host, RemotePath: "/opt/nself", KeyPath: "/tmp/key", EnvName: "qa", ServerName: "web"}, compose); err != nil {
+		t.Fatalf("deploy after enrolment: %v", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("fake transport did not deploy: %v", err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/google/jsonschema-go/jsonschema"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -30,6 +31,29 @@ func TestTierRank(t *testing.T) {
 		if got := TierRank(tc.tier); got != tc.rank {
 			t.Errorf("rank(%q)=%d, want %d", tc.tier, got, tc.rank)
 		}
+	}
+}
+
+func TestInventoryRejectsContradictoryTiers(t *testing.T) {
+	for _, tc := range []struct {
+		name, kind string
+		tier       Tier
+	}{
+		{"prod", "remote", TierLocalServers},
+		{"production", "remote", TierLocal},
+		{"qa", "remote", TierLocal},
+		{"qa", "local", TierProd},
+		{"qa", "local", TierLocalServers},
+	} {
+		t.Run(tc.name+"/"+tc.kind+"/"+string(tc.tier), func(t *testing.T) {
+			inv := &Inventory{SchemaVersion: 2, Environments: map[string]Environment{
+				"local": {Name: "local", Kind: "local", Tier: TierLocal},
+				tc.name: {Name: tc.name, Kind: tc.kind, Tier: tc.tier},
+			}}
+			if err := ValidateInventory(inv); err == nil || !strings.Contains(err.Error(), ".tier") {
+				t.Fatalf("contradictory tier accepted or wrong refusal: %v", err)
+			}
+		})
 	}
 }
 

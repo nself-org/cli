@@ -26,11 +26,55 @@ func TrustHostKey(ctx context.Context, host, offered string) error {
 
 // HostKeyOptions selects the strict policy for secret shipping and prod hosts.
 func HostKeyOptions(ctx context.Context, env, server string, tier Tier, host string, shipping bool) ([]string, error) {
+	env, server = hostKeyIdentity(env, server, host)
+	prodClass := IsProdClass(&Inventory{Environments: map[string]Environment{env: {Name: env, Tier: tier}}}, env)
 	// compat.V15(P7-DEPL-13): quiet read-only first contact -> print the observed fingerprint once.
-	if compat.V15() && !shipping && tier != TierProd {
+	if compat.V15() && !shipping && !prodClass {
 		printFirstContact(ctx, host)
 	}
-	return deploy.HostKeyOptions(ctx, host, env, server, shipping || tier == TierProd)
+	return deploy.HostKeyOptions(ctx, host, env, server, shipping || prodClass)
+}
+
+// hostKeyIdentity maps callers with generic labels to the inventory entry so
+// the E487 command can be pasted into `env target add` unchanged.
+func hostKeyIdentity(env, server, host string) (string, string) {
+	root, err := os.Getwd()
+	if err != nil {
+		return env, server
+	}
+	inv, err := Load(root)
+	if err != nil {
+		return env, server
+	}
+	for name, item := range inv.Environments {
+		for _, candidate := range item.Servers {
+			if candidate.Host == host && candidate.Name == server && name == env {
+				return env, server
+			}
+			if candidate.Host == host && name == env && candidate.Primary && server == "primary" {
+				return name, candidate.Name
+			}
+			if candidate.Host == host && candidate.Name == server {
+				return name, candidate.Name
+			}
+		}
+	}
+	var matchEnv, matchServer string
+	for name, item := range inv.Environments {
+		for _, candidate := range item.Servers {
+			if candidate.Host != host {
+				continue
+			}
+			if matchServer != "" {
+				return env, server
+			}
+			matchEnv, matchServer = name, candidate.Name
+		}
+	}
+	if matchServer != "" {
+		return matchEnv, matchServer
+	}
+	return env, server
 }
 
 func printFirstContact(ctx context.Context, host string) {
@@ -64,5 +108,5 @@ func probeTier(projectRoot string, s Server) (Tier, string) {
 			}
 		}
 	}
-	return TierLocalServers, ""
+	return TierProd, ""
 }
