@@ -139,6 +139,11 @@ func adminSSHArgs(ctx context.Context, user, host string, port int) ([]string, e
 
 // adminHostKeyOptions validates the live key against operator or nSelf pins.
 func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, error) {
+	// Port 22 is the default: OpenSSH and the nSelf pin file store it under the
+	// bare host name, never [host]:22, so key lookups treat it like no port.
+	if spec.Port == 22 {
+		spec.Port = 0
+	}
 	port := spec.Port
 	if port == 0 {
 		port = 22

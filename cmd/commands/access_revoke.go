@@ -65,7 +65,7 @@ func revokeAccessTarget(cmd *cobra.Command, target accessTarget, selected bool, 
 
 	if dryRun {
 		if selected {
-			fmt.Printf("%s/%s host=%s status=dry-run diff=%q\n", target.Env, target.Server, target.Host, result.Diff)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=dry-run diff=%q\n", target.Env, target.Server, target.Host, result.Diff)
 			return nil
 		}
 		ui.Info("Dry run: no changes made. Resulting authorized_keys diff:")
@@ -75,13 +75,13 @@ func revokeAccessTarget(cmd *cobra.Command, target accessTarget, selected bool, 
 
 	if result.BackupPath != "" {
 		if selected {
-			fmt.Printf("%s/%s host=%s status=revoked fingerprint=%s backup=%s\n", target.Env, target.Server, target.Host, result.Fingerprint, result.BackupPath)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=revoked fingerprint=%s backup=%s\n", target.Env, target.Server, target.Host, result.Fingerprint, result.BackupPath)
 			return nil
 		}
 		ui.Info("Backed up authorized_keys to " + result.BackupPath)
 	}
 	if selected {
-		fmt.Printf("%s/%s host=%s status=revoked fingerprint=%s\n", target.Env, target.Server, target.Host, result.Fingerprint)
+		fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=revoked fingerprint=%s\n", target.Env, target.Server, target.Host, result.Fingerprint)
 		return nil
 	}
 	ui.Success(fmt.Sprintf("Revoked %s's access to %s", user, t.Describe()))
