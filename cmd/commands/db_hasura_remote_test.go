@@ -182,7 +182,19 @@ func TestDBHasuraArchiveMonorepoNoticeStderr(t *testing.T) {
 	if err := RootCmd.PersistentPreRunE(cmd, nil); err != nil {
 		t.Fatal(err)
 	}
-	if cwd, _ := os.Getwd(); cwd != backend {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual, err := os.Stat(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := os.Stat(backend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(actual, expected) {
 		t.Fatalf("chdir changed: %q", cwd)
 	}
 	if _, err := out.Write(archiveFixture(t, "tables: []\n")); err != nil {
