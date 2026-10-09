@@ -120,9 +120,16 @@ func FixItEngine(ctx context.Context, projectDir string, results []CheckResult) 
 		if len(parts) == 0 {
 			continue
 		}
-		allowed := parts[0] == "nself"
-		if len(parts) == 3 && parts[0] == "docker" && parts[1] == "restart" && project != "" {
-			allowed = strings.HasPrefix(parts[2], project+"_") && len(parts[2]) > len(project)+1 && !strings.ContainsAny(parts[2], ";|&$`/\\")
+		allowed := len(parts) >= 2 && parts[0] == "nself" && !strings.ContainsAny(r.FixCmd, "\n\r")
+		for _, part := range parts {
+			if strings.ContainsAny(part, ";&|$`<>()\n\r") {
+				allowed = false
+				break
+			}
+		}
+		if len(parts) == 3 && parts[0] == "docker" && parts[1] == "restart" && project != "" && !strings.ContainsAny(r.FixCmd, "\n\r") && !strings.ContainsAny(parts[2], ";&|$`<>()/\\") {
+			info, err := docker.InspectContainer(ctx, parts[2])
+			allowed = err == nil && info != nil && info.Labels["com.docker.compose.project"] == project
 		}
 		if !allowed {
 			r.Message += " (manual step: " + r.FixCmd + ")"

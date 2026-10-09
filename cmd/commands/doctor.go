@@ -177,6 +177,9 @@ in human and --json mode alike:
 			if !jsonOut {
 				ui.CommandHeader("nSelf Doctor (Deep)", "All 12 subsystem checks")
 			}
+			if fix {
+				printDeepDoctorChecks(checks)
+			}
 			printDoctorSummary(report)
 			return doctorExit(report)
 		}
@@ -288,4 +291,10 @@ in human and --json mode alike:
 		// Exit code: 1=failures, 2=warnings only, 0=all pass (10/12 in v1.5 mode)
 		return doctorExit(report)
 	},
+}
+
+func printDeepDoctorChecks(checks []doctorCheckResult) {
+	for _, check := range checks {
+		printCheck(check.Status, check.Name, check.Message, true)
+	}
 }

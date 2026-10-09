@@ -7,6 +7,7 @@ package commands
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,7 +50,7 @@ func doctorProjectRoot(cwd string) string {
 	return root
 }
 
-func checkGeneratedDrift(ctx context.Context, cwd string) (doctorCheckResult, *reconcile.Plan, error) {
+func checkGeneratedDrift(_ context.Context, cwd string) (doctorCheckResult, *reconcile.Plan, error) {
 	root := doctorProjectRoot(cwd)
 	if root == "" {
 		return doctorCheckResult{Name: "Generated files", Status: "skip", Message: "no project root found"}, nil, nil
@@ -58,10 +59,26 @@ func checkGeneratedDrift(ctx context.Context, cwd string) (doctorCheckResult, *r
 	if err != nil {
 		return doctorCheckResult{Name: "Generated files", Status: "fail", Message: err.Error()}, nil, err
 	}
-	req := doctorDriftRequest(root)
-	req.HandEdited = state.HandEditedFn(root)
-	p, err := reconcile.Compute(ctx, req)
-	if err != nil {
+	p := &reconcile.Plan{Command: reconcile.CmdDoctorFix, Trigger: reconcile.Trigger{Kind: reconcile.TriggerDrift}}
+	p.Containers.Known = true
+	if state != nil {
+		for name, recorded := range state.Files {
+			if !filepath.IsLocal(name) {
+				continue
+			}
+			body, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
+			if readErr == nil {
+				sum := sha256.Sum256(body)
+				if hex.EncodeToString(sum[:]) == recorded {
+					continue
+				}
+			} else if !os.IsNotExist(readErr) {
+				return doctorCheckResult{Name: "Generated files", Status: "fail", Message: readErr.Error()}, nil, readErr
+			}
+			p.Artifacts = append(p.Artifacts, reconcile.Artifact{Path: name, HandEdited: readErr == nil})
+		}
+	}
+	if err := p.Finalize(); err != nil {
 		return doctorCheckResult{Name: "Generated files", Status: "fail", Message: err.Error()}, nil, err
 	}
 	return driftResult(p, false), p, nil
@@ -117,12 +134,19 @@ func runDriftFix(ctx context.Context, cmd *cobra.Command, cwd string) (doctorChe
 }
 
 func printDoctorDriftPlan(ctx context.Context, cmd *cobra.Command, cwd string) error {
-	_, p, err := checkGeneratedDrift(ctx, cwd)
+	root := doctorProjectRoot(cwd)
+	if root == "" {
+		return fmt.Errorf("no nself project root found")
+	}
+	state, err := reconcile.LoadGeneratedState(root)
 	if err != nil {
 		return err
 	}
-	if p == nil {
-		return fmt.Errorf("no nself project root found")
+	req := doctorDriftRequest(root)
+	req.HandEdited = state.HandEditedFn(root)
+	p, err := reconcile.Compute(ctx, req)
+	if err != nil {
+		return err
 	}
 	return reconcile.RenderHuman(cmd.OutOrStdout(), *p)
 }

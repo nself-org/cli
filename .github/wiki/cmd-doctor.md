@@ -19,9 +19,9 @@ Run `nself doctor` when something is not working as expected, before deploying t
 
 The `--deep` flag runs all 12 subsystem checks including open port analysis, weak cipher detection, exposed service bindings, container-level security, and a CIS container benchmark subset. The deep scan runs without a license key: all hardening checks are free by design.
 
-The `Generated files` section compares the project with what a fresh build would generate, without querying Docker. It lists changed paths and marks files edited since nself last wrote them. If there is no project root, the check is skipped. `nself doctor --fix` repairs drift through the build reconcile path; a second run has no generated-file changes. `nself doctor --fix --plan` prints the repair plan without writing. On prod or staging, a noninteractive repair needs `--yes`; overwriting a hand-edited generated file needs `--force` in v1.5 mode.
+The `Generated files` section compares recorded file hashes in `.nself/state/generated.json` with the files on disk, without querying Docker or rendering a fresh build. It lists changed or deleted recorded paths and marks changed files as hand-edited. If there is no project root, the check is skipped. `nself doctor --fix` repairs through the build reconcile path; a second run has no generated-file changes. `nself doctor --fix --plan` prints the repair plan without writing. On prod or staging, a noninteractive repair needs `--yes`; overwriting a hand-edited generated file needs `--force` in v1.5 mode.
 
-Deep mode's automatic fixes run only `nself` commands and `docker restart` for this project's containers. Other suggestions, including system commands and Docker prune, are shown as manual steps. The report shows which fixes ran or failed.
+Deep mode's automatic fixes run only validated `nself` commands and `docker restart` for containers whose Compose project label matches this project. Suggestions with shell syntax, system commands, and Docker prune are shown as manual steps. The human and JSON reports show which fixes ran or failed.
 
 ## Exit Codes
 
