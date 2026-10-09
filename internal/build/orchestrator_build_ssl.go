@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/nginx"
+	"github.com/nself-org/cli/internal/nginx/routemodel"
 	"github.com/nself-org/cli/internal/postgres"
 	"github.com/nself-org/cli/internal/ssl"
 )
@@ -107,9 +108,23 @@ func (st *buildState) generateSSLAndNginx() error {
 	if len(assumedCerts) > 0 {
 		nginxGen.WithAssumedCerts(assumedCerts)
 	}
+	if st.routes == nil {
+		st.routes, err = st.modelRoutes(nginxGen.HasSSL(), nil)
+		if err != nil {
+			return fmt.Errorf("building proxy routes: %w", err)
+		}
+	}
+	routemodel.SetSSL(st.routes, nginxGen.HasSSL(), func(sslDir string) bool {
+		_, err := os.Stat(filepath.Join(st.workdir, "ssl", "certificates", sslDir, "chain.pem"))
+		return err == nil
+	})
+	nginxGen.WithModel(st.routes)
 	nginxFiles, err := nginxGen.Generate()
 	if err != nil {
 		return fmt.Errorf("generating nginx config: %w", err)
+	}
+	if err := st.writeRoutesJSON(st.routes); err != nil {
+		return err
 	}
 
 	// Write each nginx config file. Per-service site route confs

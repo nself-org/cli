@@ -25,6 +25,14 @@ nginx/
 
 `nginx.conf` is the top-level entry point. It includes everything under `conf.d/`, `conf.d-dev/` or `conf.d-prod/` (depending on environment), `sites/`, `includes/`, and `routes/`. Never edit `nginx.conf` or anything under `sites/` directly, those files are overwritten on every `nself build`.
 
+## Proxy route contract
+
+Each build writes `.nself/generated/routes.json`, version 1 of the proxy route contract. Its `_generated` key identifies the file as build output. The file describes the project and environment, HTTP defaults, the default server, rate zones, and every generated core, optional, custom service, frontend, and internal route. Route entries include their source, server names, TLS settings, security headers, blocked paths, upstream locations, rate limits, and any `shadowed_by` hand-managed file. Routes and zones have stable ordering. Hostnames, ports, and paths are included; credentials are excluded.
+
+The nginx renderer reads this model. A route suppressed by a hand-managed `conf.d` file remains in the JSON with `shadowed_by` set, while its generated `nginx/sites/` file is omitted. Plugin snippets and hand-managed server blocks are represented by a later contract extension.
+
+Duplicate generated domains use the compatibility gate: v1.4 keeps the existing build preflight refusal text for duplicates it already detects and warns once for additional duplicates found by the renderer. With `NSELF_V15=1`, every duplicate is refused as E055 with both route IDs. Give each service a distinct route before rebuilding.
+
 ---
 
 ## What You CAN Safely Edit

@@ -235,6 +235,9 @@ These errors come from `nself deploy` and related commands. Only the codes regis
 <!-- BEGIN GENERATED:codes-deploy -->
 | Code | Exit | Summary | Why | Fix |
 |------|------|---------|-----|-----|
+| <a id="e480"></a>E480 | 1 | Proxy provider plugin missing | The selected proxy provider plugin is not installed. | Install the selected proxy provider plugin and retry the build. |
+| <a id="e481"></a>E481 | 1 | Route not expressible by provider | The selected proxy cannot represent one of the project's routes. | Use nginx or simplify the route before selecting this provider. |
+| <a id="e482"></a>E482 | 1 | Proxy provider refused in fronted mode | A fronted project does not own the serving proxy. | Change the proxy provider in the fronting project. |
 | <a id="e483"></a>E483 | 1 | Unknown deploy environment | The environment you named is not in the deploy inventory (.nself/control-plane.yaml or NSELF_DEPLOY_HOST_<ENV>), so nothing was deployed. A deploy never falls back to another environment. | Run nself deploy environments to list the known environments, then re-run with one of them, or add the environment with nself env target add. |
 | <a id="e484"></a>E484 | 1 | Invalid deploy host | The host does not match the deploy host grammar. | Use [user@]host[:port] and set remote_path separately. |
 | <a id="e485"></a>E485 | 1 | Invalid deploy inventory | The control-plane inventory violates a required field or invariant. | Correct the named field in .nself/control-plane.yaml. |

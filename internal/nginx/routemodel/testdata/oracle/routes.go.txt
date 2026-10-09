@@ -2,9 +2,7 @@ package nginx
 
 import (
 	"fmt"
-	"strings"
 
-	"github.com/nself-org/cli/internal/nginx/routemodel"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
@@ -44,65 +42,77 @@ func HasDomainConflict(routes []NginxRoute) (bool, []string) {
 	return len(conflicts) > 0, conflicts
 }
 
-// generateAllRoutes projects the shared model into the existing template data.
+// generateAllRoutes generates per-service nginx site configs.
+// Returns map of filepath (e.g. "nginx/sites/hasura.conf") to nginx config content.
 func (g *Generator) generateAllRoutes() (map[string]string, error) {
-	if g.model == nil {
-		m, err := routemodel.Build(g.cfg, g.workdir, g.hasSSL, g.hasTrustedChain)
-		if err != nil {
-			return nil, err
-		}
-		g.model = m
-	}
 	files := make(map[string]string)
-	g.seenRoutes = make(map[string]bool)
-	for _, r := range g.model.Routes {
-		if r.Source == "frontend" && isLinuxServer() {
-			continue
-		}
-		if len(r.ServerNames) == 0 || r.ShadowedBy != nil {
-			continue
-		}
-		fqdn := r.ServerNames[0]
-		if g.seenRoutes[fqdn] {
-			continue
-		}
-		g.seenRoutes[fqdn] = true
-		route := r.RouteName
-		if route == "" {
-			route = strings.TrimSuffix(fqdn, "."+g.model.BaseDomain)
-		}
-		upstream := r.RawUpstream
-		if upstream == "" {
-			for _, loc := range r.Locations {
-				if loc.Path == "/" && loc.Upstream != nil {
-					upstream = fmt.Sprintf("%s://%s:%d", loc.Upstream.Scheme, loc.Upstream.Host, loc.Upstream.Port)
-					break
-				}
-			}
-		}
-		data := ServiceRouteData{Route: route, BaseDomain: g.model.BaseDomain, Upstream: upstream}
-		if r.TLS != nil {
-			data.SSLDir = r.TLS.SSLDir
-		}
-		if r.RateLimit != nil {
-			data.RateZone, data.Burst, data.ConnLimit = r.RateLimit.Zone, r.RateLimit.Burst, r.RateLimit.ConnLimit
-		}
-		for _, loc := range r.Locations {
-			if loc.Path == "/" {
-				data.WebSocket = loc.WebSocket
-			}
-			if loc.RateLimit != nil && loc.Path != "/" {
-				data.PathZones = append(data.PathZones, PathZone{Path: loc.Path, Exact: loc.Match == "exact", Zone: loc.RateLimit.Zone, Burst: loc.RateLimit.Burst})
-			}
-		}
-		g.finalizeServiceRoute(&data)
-		content, err := g.render("service.conf.tmpl", data)
-		if err != nil {
-			return nil, fmt.Errorf("rendering route %s: %w", r.File, err)
-		}
-		files[r.File] = content
+
+	baseDomain := g.cfg.BaseDomain
+	sslDir := sslDirName(baseDomain)
+
+	// Core routes (always generated)
+	coreRoutes := g.coreRoutes(baseDomain, sslDir)
+
+	// Optional service routes
+	optionalRoutes := g.optionalRoutes(baseDomain, sslDir)
+
+	// Custom service routes (CS_1..CS_10)
+	csRoutes := g.customServiceRoutes(baseDomain, sslDir)
+
+	// Frontend app routes (skipped on Linux servers)
+	var feRoutes []routeEntry
+	if !isLinuxServer() {
+		feRoutes = g.frontendRoutes(baseDomain, sslDir)
 	}
+
+	// Internal routes (INTERNAL_ROUTE_1..INTERNAL_ROUTE_20)
+	irRoutes, err := g.internalRoutes(baseDomain, sslDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Combine all route entries
+	allEntries := make([]routeEntry, 0, len(coreRoutes)+len(optionalRoutes)+len(csRoutes)+len(feRoutes)+len(irRoutes))
+	allEntries = append(allEntries, coreRoutes...)
+	allEntries = append(allEntries, optionalRoutes...)
+	allEntries = append(allEntries, csRoutes...)
+	allEntries = append(allEntries, feRoutes...)
+	allEntries = append(allEntries, irRoutes...)
+
+	// Initialize seen map for this generation batch.
+	g.seenRoutes = make(map[string]bool)
+
+	// Complete every route entry's ServiceRouteData through finalizeServiceRoute
+	// below, the single completion point it shares with RenderServiceRoute.
+	// This loop is the code path `nself build` actually uses to render every
+	// nginx/sites/*.conf file, so any field the two call sites set
+	// independently is prone to drift — see finalizeServiceRoute's doc
+	// comment for the SSLBasePath incident this caused (prod, 2026-09-21) and
+	// the earlier HasTrustedChain incident it also once caused (2026-09-03).
+	for i := range allEntries {
+		g.finalizeServiceRoute(&allEntries[i].data)
+	}
+
+	for _, entry := range allEntries {
+		// Domain conflict prevention: skip if domain already exists in conf.d/
+		if g.hasDomainConflict(entry.data.Route, entry.data.BaseDomain) {
+			continue
+		}
+
+		content, err := g.render("service.conf.tmpl", entry.data)
+		if err != nil {
+			return nil, fmt.Errorf("rendering route %s: %w", entry.filename, err)
+		}
+		files["nginx/sites/"+entry.filename] = content
+	}
+
 	return files, nil
+}
+
+// routeEntry pairs a filename with its template data.
+type routeEntry struct {
+	filename string
+	data     ServiceRouteData
 }
 
 // finalizeServiceRoute fills in every ServiceRouteData field the generator
@@ -128,4 +138,17 @@ func (g *Generator) finalizeServiceRoute(data *ServiceRouteData) {
 	if data.PathZones == nil {
 		data.PathZones = defaultSecurityPathZones()
 	}
+}
+
+// appPrefixedRoute returns route prefixed with the configured APP_NAME
+// (gap #5), producing e.g. "api.task" instead of "api" so the resulting
+// server_name is "api.task.{BASE_DOMAIN}". When APP_NAME is unset (the
+// default), route is returned unchanged, preserving the bare
+// "api.{BASE_DOMAIN}" scheme every existing single-app deployment
+// (ummat, unity) already relies on.
+func (g *Generator) appPrefixedRoute(route string) string {
+	if g.cfg.AppName == "" {
+		return route
+	}
+	return route + "." + g.cfg.AppName
 }

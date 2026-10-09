@@ -8,6 +8,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginx/routemodel"
 	"github.com/nself-org/cli/internal/ssl"
 )
 
@@ -247,6 +248,7 @@ type buildState struct {
 	opts    BuildOptions
 	start   time.Time
 	cfg     *config.Config
+	routes  *routemodel.Model
 
 	// sink receives every file the pipeline writes; fx performs or records
 	// every host effect. Both are chosen by newBuildState from opts.Mode.
