@@ -7,6 +7,7 @@ package canon
 import (
 	"io/fs"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -140,7 +141,8 @@ func TestFragmentAssignment(t *testing.T) {
 				extra = append(extra, k)
 			}
 		}
-		if len(extra) != 1 || extra[0] != "doctor images" {
+		sort.Strings(extra)
+		if len(extra) != 3 || extra[0] != "db hasura permissions" || extra[1] != "db hasura schema" || extra[2] != "doctor images" {
 			t.Errorf("fragments hold %d keys, pre-split canon had %d. Extra keys: %v", len(where), len(pre.Commands), extra)
 		}
 	}

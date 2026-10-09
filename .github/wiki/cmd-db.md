@@ -235,6 +235,8 @@ Hasura metadata operations.
 
 ```bash
 nself db hasura console
+nself db hasura schema --json
+nself db hasura permissions --json
 nself db hasura metadata apply
 nself db hasura metadata export
 nself db hasura metadata reload

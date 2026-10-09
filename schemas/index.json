@@ -26,6 +26,14 @@
       "id": "urn:nself:cli:schema:commands:config-show:v1"
     },
     {
+      "path": "commands/db-hasura-permissions.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-permissions:v1"
+    },
+    {
+      "path": "commands/db-hasura-schema.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-schema:v1"
+    },
+    {
       "path": "commands/deploy-targets.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:deploy-targets:v1"
     },

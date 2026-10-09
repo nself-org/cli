@@ -65,6 +65,10 @@ commands:
   db hasura metadata reload: {side_effect: write}
   # cmd/commands/db_hasura_git.go:73 RunE path changes no persistent state (prints/reads only)
   db hasura metadata-drift: {side_effect: read}
+  # cmd/commands/db_hasura_introspect.go:49 reads export_metadata and prints permission metadata only
+  db hasura permissions: {side_effect: read}
+  # cmd/commands/db_hasura_introspect.go:25 reads GraphQL introspection metadata only
+  db hasura schema: {side_effect: read}
   db hasura snapshot: {side_effect: write}
   # cmd/commands/db_hasura_git.go:115 exports Hasura metadata to local files and runs a local git commit; nothing is pushed (write, not remote)
   db hasura sync: {side_effect: write}

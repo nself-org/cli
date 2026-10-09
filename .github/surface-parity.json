@@ -132,7 +132,7 @@
       "group_id": "extend",
       "wiki_page": true,
       "mcp_tool": false,
-      "env_vars": "undocumented: HASURA_GRAPHQL_URL, INTEGRATION, NSELF_HASURA_ADMIN_SECRET, NSELF_HASURA_GRAPHQL_URL, NSENTRY_STATUS_URL, POSTGRES_URL",
+      "env_vars": "undocumented: INTEGRATION, NSELF_HASURA_ADMIN_SECRET, NSENTRY_STATUS_URL, POSTGRES_URL",
       "openapi": "n/a (see below)"
     },
     {
