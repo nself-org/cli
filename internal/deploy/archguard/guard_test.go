@@ -3,6 +3,9 @@ package archguard
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -61,5 +64,28 @@ func TestVerboseSinglePlatform(t *testing.T) {
 	platforms, err := parseVerbosePlatforms(raw)
 	if err != nil || platforms["linux/amd64"] != "sha256:abc" || platforms["linux/arm64"] != "" {
 		t.Fatalf("verbose platforms = %v, %v", platforms, err)
+	}
+}
+
+func TestRegistryLookupVerboseFallback(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a shell fixture")
+	}
+	dir := t.TempDir()
+	log := filepath.Join(dir, "docker.log")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + log + "'\n" +
+		"if [ \"$1\" = buildx ]; then exit 1; fi\n" +
+		"if [ \"$3\" = --verbose ]; then printf '%s\\n' '{\"Descriptor\":{\"digest\":\"sha256:abc\",\"platform\":{\"os\":\"linux\",\"architecture\":\"amd64\"}}}'; else printf '{}\\n'; fi\n"
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	platforms, err := RegistryLookup(context.Background(), "example.test/single:1")
+	if err != nil || platforms["linux/amd64"] != "sha256:abc" {
+		t.Fatalf("registry fallback = %v, %v", platforms, err)
+	}
+	commands, err := os.ReadFile(log)
+	if err != nil || strings.Contains(string(commands), "pull") || strings.Count(string(commands), "manifest inspect") != 2 {
+		t.Fatalf("docker calls = %q, %v", commands, err)
 	}
 }
