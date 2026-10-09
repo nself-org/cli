@@ -10,11 +10,14 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/compat"
-	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
@@ -125,13 +128,63 @@ func adminSSHArgs(ctx context.Context, user, host string, port int) ([]string, e
 	var args []string
 	// compat.V15(P7-DEPL-14): unpinned admin SSH -> pinned host-key policy.
 	if compat.V15() {
-		policy, err := deploy.HostKeyOptions(ctx, spec.String(), "<env>", "<server>", true)
+		policy, err := adminHostKeyOptions(ctx, spec)
 		if err != nil {
 			return nil, err
 		}
 		args = append(args, policy...)
 	}
 	return append(args, spec.SSHArgs()...), nil
+}
+
+// adminHostKeyOptions validates the live key against operator or nSelf pins.
+func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, error) {
+	port := spec.Port
+	if port == 0 {
+		port = 22
+	}
+	keys, err := remote.ScanHostKeys(ctx, spec.Host, port)
+	if err != nil {
+		return nil, errs.New("E487", fmt.Sprintf("host key scan for %s failed: %v", spec.Host, err))
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	operatorAlias := spec.Host
+	pinAlias := spec.Host
+	if spec.Port != 0 {
+		operatorAlias = "[" + spec.Host + "]:" + strconv.Itoa(spec.Port)
+		pinAlias = "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(spec.Port)
+	}
+	pinFile := filepath.Join(home, ".config", "nself", "deploy_known_hosts")
+	operator := adminTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
+	pinned := adminTrustedFingerprints(ctx, pinAlias, pinFile)
+	for _, key := range keys {
+		if operator[key.Fingerprint] || pinned[key.Fingerprint] {
+			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", "GlobalKnownHostsFile=" + pinFile}
+			if spec.Port != 0 && !operator[key.Fingerprint] {
+				opts = append(opts, "-o", "HostKeyAlias="+pinAlias)
+			}
+			return opts, nil
+		}
+	}
+	fingerprint := keys[0].Fingerprint
+	return nil, errs.New("E487", fmt.Sprintf("unknown host key %s for %s; verify it, then run nself env target add <env> <server> --trust-host-key %s", fingerprint, spec.String(), fingerprint))
+}
+
+func adminTrustedFingerprints(ctx context.Context, alias, path string) map[string]bool {
+	seen := map[string]bool{}
+	out, err := exec.CommandContext(ctx, "ssh-keygen", "-F", alias, "-f", path).Output()
+	if err != nil {
+		return seen
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if fingerprint, err := remote.Fingerprint(line); err == nil {
+			seen[fingerprint] = true
+		}
+	}
+	return seen
 }
 
 // OpenBrowser opens the admin URL in the user's default browser.

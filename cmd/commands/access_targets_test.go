@@ -237,6 +237,9 @@ func TestAccessSelectorPartialFailures(t *testing.T) {
 }
 
 func TestAccessListReadOnlyHostKeys(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX SSH recorder")
+	}
 	accessInventoryFixture(t)
 	t.Setenv("NSELF_V15", "1")
 	bin := t.TempDir()

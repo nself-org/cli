@@ -5,11 +5,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestAdminSSHKnownHostAndEntryPoints(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX SSH recorder")
+	}
 	t.Setenv("NSELF_V15", "1")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
