@@ -7,6 +7,7 @@ package build
 
 import (
 	"regexp"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 )
@@ -15,9 +16,20 @@ const CodeCLIMinVersion = "E061"
 
 var cliMinVersionPattern = regexp.MustCompile(`^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
 
-// ValidateCLIMinVersion reports whether value is a full semantic version.
+// ValidateCLIMinVersion reports whether value is a full semantic version whose
+// major, minor and patch fit an int, so the shared numeric comparator never
+// sees a saturated component.
 func ValidateCLIMinVersion(value string) bool {
-	return cliMinVersionPattern.MatchString(value)
+	m := cliMinVersionPattern.FindStringSubmatch(value)
+	if m == nil {
+		return false
+	}
+	for _, part := range m[1:4] {
+		if _, err := strconv.Atoi(part); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *collector) cliMinVersionErr(n *yaml.Node) {

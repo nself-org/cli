@@ -15,6 +15,8 @@ func TestValidateCLIMinVersion(t *testing.T) {
 		{"1.4.0", true}, {"v1.4.0", true}, {"0.0.1", true},
 		{"1.4.0-rc.1+build.2", true}, {"soon", false}, {"1.4", false},
 		{"", false}, {"01.2.3", false}, {"1.2.3-01", false},
+		{"9223372036854775807.0.0", true}, {"9223372036854775808.0.0", false},
+		{"1.9223372036854775808.0", false}, {"1.0.9223372036854775808", false},
 	} {
 		if got := ValidateCLIMinVersion(tc.value); got != tc.valid {
 			t.Errorf("%q: valid=%v, want %v", tc.value, got, tc.valid)
