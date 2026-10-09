@@ -21,6 +21,8 @@ import (
 
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"github.com/spf13/cobra"
 )
 
@@ -124,6 +126,20 @@ func runEnvTargetAdd(cmd *cobra.Command, args []string) error {
 	remotePath, _ := cmd.Flags().GetString("remote-path")
 	primary, _ := cmd.Flags().GetBool("primary")
 	upstreams, _ := cmd.Flags().GetStringSlice("upstreams")
+	tierStr, _ := cmd.Flags().GetString("tier")
+	arch, _ := cmd.Flags().GetString("arch")
+	trust, _ := cmd.Flags().GetString("trust-host-key")
+	if host != "" {
+		if _, err := remote.ParseHostSpec(host); err != nil {
+			return errs.New("E484", fmt.Sprintf("--host: %v", err))
+		}
+	}
+	if arch != "" && arch != "amd64" && arch != "arm64" {
+		return errs.New("E485", fmt.Sprintf("--arch: invalid %q", arch))
+	}
+	if tierStr != "" && tierStr != "local" && tierStr != "local-servers" && tierStr != "prod" {
+		return errs.New("E485", fmt.Sprintf("--tier: invalid %q", tierStr))
+	}
 
 	// Security: reject inline key material in --host or --key-ref.
 	if err := rejectInlineSecret("--host", host); err != nil {
@@ -162,12 +178,25 @@ func runEnvTargetAdd(cmd *cobra.Command, args []string) error {
 		if host == "" {
 			kind = "local"
 		}
-		env = controlplane.Environment{Name: envName, Kind: kind, Servers: nil}
+		env = controlplane.Environment{Name: envName, Kind: kind, Tier: controlplane.DeriveTier(envName, kind), Servers: nil}
+	}
+	if tierStr != "" {
+		env.Tier = controlplane.Tier(tierStr)
 	}
 
 	// Reject duplicate server name within the environment.
 	for _, s := range env.Servers {
 		if s.Name == serverName {
+			if trust != "" {
+				if host != "" && host != s.Host {
+					return errs.New("E487", "--host differs from the existing server host")
+				}
+				if err := controlplane.TrustHostKey(cmd.Context(), s.Host, trust); err != nil {
+					return err
+				}
+				fmt.Printf("Trusted host key for server %q in environment %q.\n", serverName, envName)
+				return nil
+			}
 			return fmt.Errorf("server %q already exists in environment %q; use 'env target remove' first", serverName, envName)
 		}
 	}
@@ -176,7 +205,6 @@ func runEnvTargetAdd(cmd *cobra.Command, args []string) error {
 	if env.Kind == "remote" && host == "" {
 		return fmt.Errorf("--host is required for remote environment %q", envName)
 	}
-
 	srv := controlplane.Server{
 		Name:       serverName,
 		Role:       role,
@@ -184,6 +212,7 @@ func runEnvTargetAdd(cmd *cobra.Command, args []string) error {
 		SSHKeyRef:  keyRef,
 		RemotePath: remotePath,
 		Primary:    primary,
+		Arch:       arch,
 		Upstreams:  upstreams,
 	}
 	env.Servers = append(env.Servers, srv)
@@ -192,6 +221,14 @@ func runEnvTargetAdd(cmd *cobra.Command, args []string) error {
 		inv.Environments = make(map[string]controlplane.Environment)
 	}
 	inv.Environments[envName] = env
+	if err := controlplane.ValidateInventory(inv); err != nil {
+		return err
+	}
+	if trust != "" {
+		if err := controlplane.TrustHostKey(cmd.Context(), host, trust); err != nil {
+			return err
+		}
+	}
 
 	if err := controlplane.Write(root, inv); err != nil {
 		return fmt.Errorf("env target add: %w", err)
@@ -233,6 +270,9 @@ func runEnvTargetRemove(_ *cobra.Command, args []string) error {
 	}
 	env.Servers = kept
 	inv.Environments[envName] = env
+	if err := controlplane.ValidateInventory(inv); err != nil {
+		return err
+	}
 
 	if err := controlplane.Write(root, inv); err != nil {
 		return fmt.Errorf("env target remove: %w", err)

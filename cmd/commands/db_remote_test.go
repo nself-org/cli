@@ -98,6 +98,7 @@ func TestResolveDBRemoteTarget_RemoteServer(t *testing.T) {
 		SchemaVersion: 1,
 		Project:       "test",
 		Environments: map[string]controlplane.Environment{
+			"local": {Name: "local", Kind: "local", Servers: []controlplane.Server{{Name: "local-app", Role: controlplane.RoleApp}}},
 			"staging": {
 				Name: "staging",
 				Kind: "remote",
@@ -150,6 +151,7 @@ func TestResolveDBRemoteTarget_ServerFlagOverridesPrimary(t *testing.T) {
 		SchemaVersion: 1,
 		Project:       "test",
 		Environments: map[string]controlplane.Environment{
+			"local": {Name: "local", Kind: "local", Servers: []controlplane.Server{{Name: "local-app", Role: controlplane.RoleApp}}},
 			"staging": {
 				Name: "staging",
 				Kind: "remote",
@@ -326,6 +328,7 @@ func TestResolveDBRemoteTarget_ProjectRootIsRespected(t *testing.T) {
 		SchemaVersion: 1,
 		Project:       "test",
 		Environments: map[string]controlplane.Environment{
+			"local": {Name: "local", Kind: "local", Servers: []controlplane.Server{{Name: "local-app", Role: controlplane.RoleApp}}},
 			"staging": {
 				Name:    "staging",
 				Kind:    "remote",
@@ -540,6 +543,7 @@ func TestDispatchRemoteIfNeeded_AllowVersionDriftFlagPropagates(t *testing.T) {
 		SchemaVersion: 1,
 		Project:       "test",
 		Environments: map[string]controlplane.Environment{
+			"local": {Name: "local", Kind: "local"},
 			"staging": {
 				Name:    "staging",
 				Kind:    "remote",
@@ -587,6 +591,7 @@ func writeRemoteInventory(t *testing.T) {
 		SchemaVersion: 1,
 		Project:       "test",
 		Environments: map[string]controlplane.Environment{
+			"local": {Name: "local", Kind: "local"},
 			"staging": {
 				Name: "staging", Kind: "remote",
 				Servers: []controlplane.Server{{Name: "staging-app", Host: "deploy@staging.example.com", RemotePath: "/opt/nself", Primary: true}},

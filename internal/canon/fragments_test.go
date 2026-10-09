@@ -132,6 +132,7 @@ func TestFragmentAssignment(t *testing.T) {
 			t.Errorf("%q is in fragment %s, the table says %s", key, got, want)
 		}
 	}
+	delete(where, "deploy targets") // Added after the pre-split snapshot.
 	if len(where) != len(pre.Commands) {
 		var extra []string
 		for k := range where {

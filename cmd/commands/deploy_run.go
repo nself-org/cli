@@ -20,6 +20,7 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/maintenance"
 	"github.com/nself-org/cli/internal/ui"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 
 	"github.com/spf13/cobra"
 )
@@ -248,23 +249,31 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		host := legacyDeployHost(target)
 		if host != "" {
 			// Remote follow: tail logs on the remote host via SSH.
-			colonIdx := strings.LastIndex(host, ":")
-			sshTarget := host
-			remotePath := ""
-			if colonIdx >= 0 {
-				sshTarget = host[:colonIdx]
-				remotePath = host[colonIdx+1:]
+			spec, err := remote.ParseHostSpec(host)
+			if err != nil {
+				return finalize(jsonOut, target, strategy, start, steps, err)
 			}
+			remotePath := spec.LegacyPath
 			sshKey := sshKeyPath()
 			logsCmd := "docker compose logs -f --tail=50"
 			if remotePath != "" {
-				logsCmd = fmt.Sprintf("cd %s && docker compose logs -f --tail=50", remotePath)
+				logsCmd = fmt.Sprintf("cd %s && docker compose logs -f --tail=50", remote.ShellQuote(remotePath))
 			}
-			sc := exec.CommandContext(cmd.Context(), "ssh",
+			sshArgs := []string{
 				"-i", sshKey,
-				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "ForwardAgent=no",
-				sshTarget, logsCmd)
+			}
+			tier := controlplane.TierLocalServers
+			if prodClassFn(gateInv, target) {
+				tier = controlplane.TierProd
+			}
+			keyOpts, err := controlplane.HostKeyOptions(cmd.Context(), target, "primary", tier, host, false)
+			if err != nil {
+				return err
+			}
+			sshArgs = append(sshArgs, keyOpts...)
+			sshArgs = append(sshArgs, spec.SSHArgs()...)
+			sc := exec.CommandContext(cmd.Context(), "ssh", append(sshArgs, logsCmd)...)
 			sc.Stdout = os.Stdout
 			sc.Stderr = os.Stderr
 			_ = sc.Run() // Ctrl-C exits; non-zero exit is not an error from user perspective.

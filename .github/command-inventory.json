@@ -797,6 +797,15 @@
         ]
       },
       {
+        "name": "targets",
+        "path": "nself deploy targets",
+        "short": "List deploy targets without connecting to them",
+        "hidden": false,
+        "flags": [
+          "--json"
+        ]
+      },
+      {
         "name": "web",
         "path": "nself deploy web",
         "short": "Build web apps locally and deploy prebuilt output to Vercel",

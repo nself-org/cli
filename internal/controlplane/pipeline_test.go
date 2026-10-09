@@ -545,6 +545,102 @@ func stubDeployServer(t *testing.T) *[]string {
 	return &got
 }
 
+func TestPipelinePortHostSeparatePath(t *testing.T) {
+	orig := deployServerFn
+	defer func() { deployServerFn = orig }()
+	called := false
+	deployServerFn = func(_ context.Context, cfg deploy.SSHConfig, _ string) error {
+		called = true
+		if cfg.Host != "u@port.example:2222" || cfg.RemotePath != "/opt/nself" || cfg.ServerName != "web" {
+			t.Fatalf("bad deploy destination: %+v", cfg)
+		}
+		return nil
+	}
+	srv := Server{Name: "web", Role: RoleApp, Host: "u@port.example:2222", RemotePath: "/opt/nself"}
+	result := deployApp(context.Background(), "qa", srv, TargetStatus{}, payload{}, false, nil)
+	if !called || result.Status != "ok" {
+		t.Fatalf("pipeline deploy: called=%v result=%+v", called, result)
+	}
+	called = false
+	srv.Role = RoleDB
+	result = deployOne(context.Background(), "qa", srv, TargetStatus{}, payload{})
+	if !called || result.Status != "ok" {
+		t.Fatalf("pipeline non-app deploy: called=%v result=%+v", called, result)
+	}
+}
+
+func TestPipelineE487InventoryEnv(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires POSIX command stubs")
+	}
+	for _, envName := range []string{"live", "production"} {
+		for _, deployKind := range []string{"app", "one"} {
+			t.Run(envName+"/"+deployKind, func(t *testing.T) {
+				root := t.TempDir()
+				t.Setenv("HOME", t.TempDir())
+				t.Setenv("NSELF_V15", "1")
+				host := "u@host.example:2222"
+				srv := Server{Name: "web", Role: RoleApp, Host: host, RemotePath: "/opt/nself", Primary: true}
+				inv := &Inventory{SchemaVersion: 2, Environments: map[string]Environment{
+					"local": {Name: "local", Kind: "local", Tier: TierLocal},
+					envName: {Name: envName, Kind: "remote", Tier: TierProd, Servers: []Server{srv}},
+				}}
+				if err := Write(root, inv); err != nil {
+					t.Fatal(err)
+				}
+				child := filepath.Join(root, "nested")
+				if err := os.Mkdir(child, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				t.Chdir(child)
+				bin := t.TempDir()
+				marker := filepath.Join(bin, "rsync-ran")
+				for name, body := range map[string]string{
+					"ssh-keyscan": "#!/bin/sh\nprintf 'host.example ssh-ed25519 AQID\\n'\n",
+					"ssh-keygen":  "#!/bin/sh\nif [ -f \"$4\" ]; then /bin/cat \"$4\"; fi\n",
+					"ssh":         "#!/bin/sh\nexit 0\n",
+					"rsync":       "#!/bin/sh\ntouch '" + marker + "'\n",
+				} {
+					if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o700); err != nil {
+						t.Fatal(err)
+					}
+				}
+				t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+				compose := filepath.Join(root, "compose.yml")
+				if err := os.WriteFile(compose, []byte("services: {}\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				pl := payload{compose: compose, envName: "prod"}
+				deployFn := func() ServerResult {
+					if deployKind == "one" {
+						return deployOne(context.Background(), envName, srv, TargetStatus{}, pl)
+					}
+					return deployApp(context.Background(), envName, srv, TargetStatus{}, pl, false, nil)
+				}
+				result := deployFn()
+				if result.Err == nil || !strings.Contains(result.Err.Error(), "E487") ||
+					!strings.Contains(result.Err.Error(), "env target add "+envName+" web --trust-host-key SHA256:") {
+					t.Fatalf("pipeline hint: %+v", result)
+				}
+				if _, err := os.Stat(marker); !os.IsNotExist(err) {
+					t.Fatal("rsync ran before enrolment")
+				}
+				fingerprint := strings.SplitN(result.Err.Error(), "--trust-host-key ", 2)[1]
+				fingerprint = strings.Fields(fingerprint)[0]
+				if err := TrustHostKey(context.Background(), host, fingerprint); err != nil {
+					t.Fatal(err)
+				}
+				if result = deployFn(); result.Status != "ok" {
+					t.Fatalf("deploy after enrolment: %+v", result)
+				}
+				if _, err := os.Stat(marker); err != nil {
+					t.Fatalf("rsync did not run: %v", err)
+				}
+			})
+		}
+	}
+}
+
 // TestEnvScopeRun: Run deploys and probes only the named env; an unknown,
 // empty or differently-cased env is refused and nothing is contacted.
 func TestEnvScopeRun(t *testing.T) {

@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 
 	"github.com/spf13/cobra"
 )
@@ -50,7 +51,7 @@ func runDeployHealthOnServer(cmd *cobra.Command, workdir, serverFilter string, j
 			if remotePath == "" {
 				remotePath = "/opt/nself"
 			}
-			return runDeployHealthSSH(cmd, srv.Host, keyPath, remotePath, jsonOut)
+			return runDeployHealthSSH(cmd, srv.Host, keyPath, remotePath, env.Name, srv.Name, env.Tier, jsonOut)
 		}
 	}
 	return fmt.Errorf("deploy health: --server %q not found in inventory", serverFilter)
@@ -58,12 +59,20 @@ func runDeployHealthOnServer(cmd *cobra.Command, workdir, serverFilter string, j
 
 // runDeployHealthOverSSH probes a legacy "user@host:/remote/path" target
 // (the NSELF_DEPLOY_HOST_<TARGET> convention, no control-plane.yaml entry).
-func runDeployHealthOverSSH(cmd *cobra.Command, host string, jsonOut bool) error {
-	sshTarget, remotePath := splitDeployHost(host)
+func runDeployHealthOverSSH(cmd *cobra.Command, host, target string, jsonOut bool) error {
+	spec, err := remote.ParseHostSpec(host)
+	if err != nil {
+		return err
+	}
+	sshTarget, remotePath := spec.String(), spec.LegacyPath
 	if remotePath == "" {
 		remotePath = "/opt/nself"
 	}
-	return runDeployHealthSSH(cmd, sshTarget, "", remotePath, jsonOut)
+	tier := controlplane.TierLocalServers
+	if controlplane.IsProdClass(nil, target) {
+		tier = controlplane.TierProd
+	}
+	return runDeployHealthSSH(cmd, sshTarget, "", remotePath, target, "primary", tier, jsonOut)
 }
 
 // runDeployHealthSSH invokes 'nself doctor [--json]' on the remote host via
@@ -71,20 +80,30 @@ func runDeployHealthOverSSH(cmd *cobra.Command, host string, jsonOut bool) error
 // remote nself binary doesn't support a flag/subcommand used here (gap #16:
 // version drift between the local and remote CLI), the wrapped error names
 // the likely cause instead of surfacing a bare non-zero exit or raw SSH error.
-func runDeployHealthSSH(cmd *cobra.Command, sshTarget, keyPath, remotePath string, jsonOut bool) error {
+func runDeployHealthSSH(cmd *cobra.Command, sshTarget, keyPath, remotePath, envName, serverName string, tier controlplane.Tier, jsonOut bool) error {
+	spec, err := remote.ParseHostSpec(sshTarget)
+	if err != nil {
+		return err
+	}
 	if keyPath == "" {
 		keyPath = sshKeyPath()
 	}
-	doctorCmd := fmt.Sprintf("cd %s && nself doctor", remotePath)
+	doctorCmd := fmt.Sprintf("cd %s && nself doctor", remote.ShellQuote(remotePath))
 	if jsonOut {
-		doctorCmd = fmt.Sprintf("cd %s && nself doctor --json", remotePath)
+		doctorCmd = fmt.Sprintf("cd %s && nself doctor --json", remote.ShellQuote(remotePath))
 	}
-	sc := exec.CommandContext(cmd.Context(), "ssh",
+	sshArgs := []string{
 		"-i", keyPath,
 		"-o", "BatchMode=yes",
 		"-o", "ForwardAgent=no",
-		"-o", "StrictHostKeyChecking=accept-new",
-		sshTarget, doctorCmd)
+	}
+	keyOpts, err := controlplane.HostKeyOptions(cmd.Context(), envName, serverName, tier, sshTarget, false)
+	if err != nil {
+		return err
+	}
+	sshArgs = append(sshArgs, keyOpts...)
+	sshArgs = append(sshArgs, spec.SSHArgs()...)
+	sc := exec.CommandContext(cmd.Context(), "ssh", append(sshArgs, doctorCmd)...)
 	var stderr strings.Builder
 	sc.Stdout = os.Stdout
 	sc.Stderr = io.MultiWriter(os.Stderr, &stderr)
@@ -111,9 +130,9 @@ func ResolveLegacyDeployHost(target string) (string, bool) {
 // splitDeployHost splits "user@host:/remote/path" into its two components,
 // mirroring the parsing already used by remoteDeployPush.
 func splitDeployHost(host string) (sshTarget, remotePath string) {
-	idx := strings.LastIndex(host, ":")
-	if idx < 0 {
-		return host, ""
+	spec, err := remote.ParseHostSpec(host)
+	if err != nil {
+		return "", ""
 	}
-	return host[:idx], host[idx+1:]
+	return spec.String(), spec.LegacyPath
 }

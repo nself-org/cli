@@ -16,8 +16,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
+	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -48,18 +53,37 @@ func (t *SSHTransport) remotePath() string {
 
 func (t *SSHTransport) Describe() string { return t.Host }
 
-func (t *SSHTransport) sshArgs() []string {
-	return []string{
+func (t *SSHTransport) sshArgs() ([]string, error) {
+	spec, err := remote.ParseHostSpec(t.Host)
+	if err != nil {
+		return nil, err
+	}
+	args := []string{
 		"-i", t.IdentityPath,
-		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "ForwardAgent=no",
 		"-o", "BatchMode=yes",
 	}
+	// compat.V15(P7-DEPL-13): accept-new -> strict host key checking for access writes.
+	if compat.V15() {
+		home, _ := os.UserHomeDir()
+		args = append(args, "-o", "StrictHostKeyChecking=yes", "-o", "GlobalKnownHostsFile="+filepath.Join(home, ".config", "nself", "deploy_known_hosts"))
+		if spec.Port != 0 {
+			alias := "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(spec.Port)
+			args = append(args, "-o", "HostKeyAlias="+alias)
+		}
+	} else {
+		args = append(args, "-o", "StrictHostKeyChecking=accept-new")
+	}
+	return append(args, spec.SSHArgs()...), nil
 }
 
 // runRemote executes command on the remote host and returns its stdout.
 func (t *SSHTransport) runRemote(ctx context.Context, command string) ([]byte, error) {
-	args := append(t.sshArgs(), t.Host, command)
+	args, err := t.sshArgs()
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, command)
 	cmd := exec.CommandContext(ctx, "ssh", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -108,7 +132,11 @@ func (t *SSHTransport) Write(ctx context.Context, content []byte) error {
 		"mkdir -p %s && chmod 700 %s && cat > %s && chmod 600 %s",
 		shellQuote(dir), shellQuote(dir), shellQuote(remote), shellQuote(remote))
 
-	args := append(t.sshArgs(), t.Host, script)
+	args, err := t.sshArgs()
+	if err != nil {
+		return err
+	}
+	args = append(args, script)
 	cmd := exec.CommandContext(ctx, "ssh", args...)
 	cmd.Stdin = bytes.NewReader(content)
 	var stderr bytes.Buffer

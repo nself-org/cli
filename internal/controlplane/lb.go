@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"os"
 	"os/exec"
 	"strings"
@@ -56,7 +57,7 @@ func Enable(ctx context.Context, srv Server, appName string) (DrainResult, error
 // runLBHelper invokes the nself-lb helper on the remote LB server via SSH.
 // It uses the same SSH hygiene rules as the probe layer:
 //   - BatchMode=yes (no passphrase prompt)
-//   - StrictHostKeyChecking=accept-new (first-connect safe; no TOFU prompts)
+//   - v1.5 host-key preflight before running the remote drain helper
 //   - ConnectTimeout=5 (fail fast; LB changes are on the hot path)
 //   - ForwardAgent=no (no agent forwarding)
 //
@@ -81,20 +82,30 @@ func runLBHelper(ctx context.Context, srv Server, action, appName string) (Drain
 	// directly — no shell expansion, no injection risk.
 	helperBin := remotePath + "/" + lbHelperPath
 
+	spec, err := remote.ParseHostSpec(srv.Host)
+	if err != nil {
+		return DrainFailed, err
+	}
 	args := []string{
 		"-i", keyPath,
 		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", fmt.Sprintf("ConnectTimeout=%d", probeConnectTimeout),
 		"-o", "ForwardAgent=no",
-		srv.Host,
+	}
+	keyOpts, err := HostKeyOptions(ctx, "", srv.Name, TierProd, srv.Host, false)
+	if err != nil {
+		return DrainFailed, err
+	}
+	args = append(args, keyOpts...)
+	args = append(args, spec.SSHArgs()...)
+	args = append(args,
 		// Three separate tokens: binary path, action, app name.
 		// SSH with a multi-token remote command joins them with spaces and
 		// passes the result to the remote sshd as the command to exec.
 		// Because each token is a distinct element in our local argv, the
 		// local shell never touches these values.
 		helperBin, action, appName,
-	}
+	)
 
 	cmd := exec.CommandContext(ctx, "ssh", args...) //nolint:gosec // argv tokens are validated; no shell interpolation
 	out, err := cmd.CombinedOutput()

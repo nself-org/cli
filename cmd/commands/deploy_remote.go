@@ -16,6 +16,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 // loadDeployEnvCascade loads target's env file cascade into the current process
@@ -91,19 +92,48 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 		return fmt.Errorf("NSELF_DEPLOY_SSH_KEY contains unsafe characters (got %q): only [a-zA-Z0-9/_.~-] allowed", sshKey)
 	}
 
-	// Split user@host:/path into ssh-target and remote-path.
-	colonIdx := strings.LastIndex(host, ":")
-	if colonIdx < 0 {
-		return fmt.Errorf("NSELF_DEPLOY_HOST_%s format must be user@host:/remote/path (got %q)", strings.ToUpper(target), host)
+	spec, err := remote.ParseHostSpec(host)
+	if err != nil {
+		return fmt.Errorf("NSELF_DEPLOY_HOST_%s: %w", strings.ToUpper(target), err)
 	}
-	sshTarget := host[:colonIdx]
-	remotePath := host[colonIdx+1:]
+	sshTarget := spec.Dest()
+	if strings.Contains(spec.Host, ":") {
+		sshTarget = spec.String()
+		if spec.Port != 0 {
+			sshTarget = strings.TrimSuffix(sshTarget, ":"+fmt.Sprint(spec.Port))
+		}
+	}
+	remotePath := spec.LegacyPath
 	if remotePath == "" {
-		return fmt.Errorf("NSELF_DEPLOY_HOST_%s remote path is empty (got %q)", strings.ToUpper(target), host)
+		remotePath = os.Getenv("NSELF_REMOTE_PATH_" + strings.ToUpper(target))
+	}
+	if remotePath == "" {
+		remotePath = "/opt/nself"
 	}
 	if !remotePathRe.MatchString(remotePath) {
 		return fmt.Errorf("NSELF_DEPLOY_HOST_%s remote path contains unsafe characters (got %q): only [a-zA-Z0-9/_.-] allowed", strings.ToUpper(target), remotePath)
 	}
+	inv, _ := controlplane.Load(workdir)
+	tier := controlplane.DeriveTier(target, "remote")
+	if inv != nil {
+		if e, ok := inv.Environments[target]; ok {
+			tier = e.Tier
+		}
+	}
+	policy, err := controlplane.HostKeyOptions(ctx, target, target+"-app", tier, spec.String(), true)
+	if err != nil {
+		return err
+	}
+	sshOptions := append([]string{"-i", sshKey}, policy...)
+	sshOptions = append(sshOptions, "-o", "ForwardAgent=no")
+	sshOptions = append(sshOptions, spec.SSHOptions()...)
+	sshArgs := append(append([]string{}, sshOptions...), spec.SSHArgs()[len(spec.SSHOptions()):]...)
+	for _, option := range sshOptions {
+		if strings.ContainsAny(option, " \t\n\r'\"\\`$;|&<>()") {
+			return fmt.Errorf("unsafe SSH option for rsync transport: %q", option)
+		}
+	}
+	sshCommand := "ssh " + strings.Join(sshOptions, " ")
 
 	// Gap #13 fix: the file that used to be rsynced here (.env.<target> alone,
 	// e.g. .env.staging) is only ONE layer of the cascade that config.Load
@@ -129,7 +159,8 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	// it is an ssh option and must never appear in rsync argv (breaks rsync 3.x).
 	rsyncArgs := []string{
 		"-az",
-		"-e", fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=accept-new -o ForwardAgent=no", sshKey),
+		"-e", sshCommand,
+		"--",
 		"docker-compose.yml",
 		resolvedEnvPath,
 		fmt.Sprintf("%s:%s/", sshTarget, remotePath),
@@ -154,7 +185,8 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 		}
 		hasuraRsync := exec.CommandContext(ctx, "rsync",
 			"-az", "--delete",
-			"-e", fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=accept-new -o ForwardAgent=no", sshKey),
+			"-e", sshCommand,
+			"--",
 			"hasura/",
 			fmt.Sprintf("%s:%s/hasura/", sshTarget, remotePath),
 		)
@@ -166,27 +198,19 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	}
 	// Rename the pushed snapshot to the expected .env.<target> name on the
 	// remote (rsync above pushes it under its resolvedEnvPath basename).
-	renameCmd := fmt.Sprintf("cd %s && mv %s .env.%s", remotePath, filepath.Base(resolvedEnvPath), target)
-	rn := exec.CommandContext(ctx, "ssh",
-		"-i", sshKey,
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ForwardAgent=no",
-		sshTarget, renameCmd)
+	renameCmd := fmt.Sprintf("cd %s && mv %s .env.%s", remote.ShellQuote(remotePath), remote.ShellQuote(filepath.Base(resolvedEnvPath)), target)
+	rn := exec.CommandContext(ctx, "ssh", append(sshArgs, renameCmd)...)
 	rn.Env = os.Environ()
 	if out, err := rn.CombinedOutput(); err != nil {
 		return fmt.Errorf("finalizing resolved .env on %s failed: %w\n%s", sshTarget, err, strings.TrimSpace(string(out)))
 	}
 
 	// Pull new images on the remote.
-	sshPull := fmt.Sprintf("cd %s && docker compose pull", remotePath)
+	sshPull := fmt.Sprintf("cd %s && docker compose pull", remote.ShellQuote(remotePath))
 	if !jsonOut {
 		fmt.Printf("  [running] docker compose pull on %s\n", sshTarget)
 	}
-	pc := exec.CommandContext(ctx, "ssh",
-		"-i", sshKey,
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ForwardAgent=no",
-		sshTarget, sshPull)
+	pc := exec.CommandContext(ctx, "ssh", append(sshArgs, sshPull)...)
 	pc.Env = os.Environ()
 	if out, err := pc.CombinedOutput(); err != nil {
 		return fmt.Errorf("remote pull on %s failed: %w\n%s", sshTarget, err, strings.TrimSpace(string(out)))
@@ -198,12 +222,8 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	// This must succeed: falling back to a fixed guess list when it fails is
 	// exactly the production incident (deploy_service_order.go) this guards
 	// against, just on the remote path instead of the local one.
-	lsCmd := fmt.Sprintf("cd %s && docker compose config --services", remotePath)
-	lc := exec.CommandContext(ctx, "ssh",
-		"-i", sshKey,
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ForwardAgent=no",
-		sshTarget, lsCmd)
+	lsCmd := fmt.Sprintf("cd %s && docker compose config --services", remote.ShellQuote(remotePath))
+	lc := exec.CommandContext(ctx, "ssh", append(sshArgs, lsCmd)...)
 	lc.Env = os.Environ()
 	out, err := lc.CombinedOutput()
 	if err != nil {
@@ -224,15 +244,11 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 
 	// Rolling restart on the remote: sequence the services via SSH.
 	for _, svc := range order {
-		restartCmd := fmt.Sprintf("cd %s && docker compose up -d --no-deps %s", remotePath, svc)
+		restartCmd := fmt.Sprintf("cd %s && docker compose up -d --no-deps %s", remote.ShellQuote(remotePath), remote.ShellQuote(svc))
 		if !jsonOut {
 			fmt.Printf("  [running] Rolling restart: %s on %s\n", svc, sshTarget)
 		}
-		sc := exec.CommandContext(ctx, "ssh",
-			"-i", sshKey,
-			"-o", "StrictHostKeyChecking=accept-new",
-			"-o", "ForwardAgent=no",
-			sshTarget, restartCmd)
+		sc := exec.CommandContext(ctx, "ssh", append(sshArgs, restartCmd)...)
 		sc.Env = os.Environ()
 		if out, err := sc.CombinedOutput(); err != nil {
 			return fmt.Errorf("remote rolling restart of %s failed: %w\n%s\nRun 'nself logs %s' on the remote host for details", svc, err, strings.TrimSpace(string(out)), svc)
@@ -246,15 +262,11 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	// subcommand" pattern as runRemoteNselfCommand (db_remote.go). A short
 	// retry loop absorbs the gap between "container up" (no health gate on
 	// this remote path, unlike the local rolling restart) and "API ready".
-	applyCmd := fmt.Sprintf("cd %s && for i in 1 2 3 4 5; do nself db hasura metadata apply && exit 0; sleep 3; done; exit 1", remotePath)
+	applyCmd := fmt.Sprintf("cd %s && for i in 1 2 3 4 5; do nself db hasura metadata apply && exit 0; sleep 3; done; exit 1", remote.ShellQuote(remotePath))
 	if !jsonOut {
 		fmt.Printf("  [running] hasura metadata apply on %s\n", sshTarget)
 	}
-	ac := exec.CommandContext(ctx, "ssh",
-		"-i", sshKey,
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ForwardAgent=no",
-		sshTarget, applyCmd)
+	ac := exec.CommandContext(ctx, "ssh", append(sshArgs, applyCmd)...)
 	ac.Env = os.Environ()
 	if out, err := ac.CombinedOutput(); err != nil {
 		// Mirrors hasura.IsStrict's default (strict in staging/prod, warn in

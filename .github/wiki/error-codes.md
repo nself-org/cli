@@ -236,6 +236,10 @@ These errors come from `nself deploy` and related commands. Only the codes regis
 | Code | Exit | Summary | Why | Fix |
 |------|------|---------|-----|-----|
 | <a id="e483"></a>E483 | 1 | Unknown deploy environment | The environment you named is not in the deploy inventory (.nself/control-plane.yaml or NSELF_DEPLOY_HOST_<ENV>), so nothing was deployed. A deploy never falls back to another environment. | Run nself deploy environments to list the known environments, then re-run with one of them, or add the environment with nself env target add. |
+| <a id="e484"></a>E484 | 1 | Invalid deploy host | The host does not match the deploy host grammar. | Use [user@]host[:port] and set remote_path separately. |
+| <a id="e485"></a>E485 | 1 | Invalid deploy inventory | The control-plane inventory violates a required field or invariant. | Correct the named field in .nself/control-plane.yaml. |
+| <a id="e486"></a>E486 | 1 | No deploy target matched | The selector matched no server. | Run nself deploy targets to list available targets. |
+| <a id="e487"></a>E487 | 1 | Deploy host key is unknown | A secret-bearing operation requires a trusted host key. | Verify the fingerprint and enrol it with nself env target add --trust-host-key. |
 <!-- END GENERATED:codes-deploy -->
 
 ---

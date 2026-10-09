@@ -10,6 +10,7 @@ import (
 
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"gopkg.in/yaml.v3"
 )
 
@@ -37,7 +38,7 @@ const (
 	inventoryFileName = ".nself/control-plane.yaml"
 
 	// currentSchemaVersion is the schema version this code produces.
-	currentSchemaVersion = 1
+	currentSchemaVersion = 2
 
 	// inventoryFileMode is the file permission for the inventory and its parent
 	// directory. Secrets must never be readable by group/other.
@@ -61,6 +62,9 @@ func Load(projectRoot string) (*Inventory, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			if err := rejectLegacyEnvCaseCollisions(); err != nil {
+				return nil, err
+			}
 			synthesized := synthesize()
 			// T31: synthesize() builds Server.RemotePath from
 			// NSELF_REMOTE_PATH_<TARGET> environment variables, another
@@ -108,13 +112,21 @@ func validateInventoryNames(inv *Inventory) error {
 	if err := rejectEnvCaseCollisions(inv); err != nil {
 		return err
 	}
+	if err := validateInventoryV2(inv); err != nil {
+		return err
+	}
 	for envName, env := range inv.Environments {
 		for _, srv := range env.Servers {
 			if err := ValidateServerName(srv.Name); err != nil {
-				return fmt.Errorf("controlplane: env %q: %w", envName, err)
+				return errs.New("E485", fmt.Sprintf("environments.%s.servers.name: %v", envName, err))
 			}
 			if err := deploy.ValidateRemotePath(srv.RemotePath); err != nil {
-				return fmt.Errorf("controlplane: env %q: server %q: %w", envName, srv.Name, err)
+				return errs.New("E485", fmt.Sprintf("environments.%s.servers.%s.remote_path: %v", envName, srv.Name, err))
+			}
+			if srv.Host != "" {
+				if _, err := remote.ParseHostSpec(srv.Host); err != nil {
+					return errs.New("E484", fmt.Sprintf("environments.%s.servers.%s.host: %v", envName, srv.Name, err))
+				}
 			}
 		}
 	}
@@ -145,6 +157,9 @@ func rejectEnvCaseCollisions(inv *Inventory) error {
 // The file and its parent directory are created with mode 0600 / 0700
 // respectively if they do not already exist.
 func Write(projectRoot string, inv *Inventory) error {
+	if err := Migrate(inv); err != nil {
+		return err
+	}
 	dir := filepath.Join(projectRoot, ".nself")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("controlplane: create .nself dir: %w", err)
@@ -185,10 +200,12 @@ func Migrate(inv *Inventory) error {
 				inv.Project = synthesized.Project
 			}
 		}
-		return nil
+		return migrateTiers(inv)
+	case 1:
+		inv.SchemaVersion = currentSchemaVersion
+		return migrateTiers(inv)
 	case currentSchemaVersion:
-		// Already current; nothing to do.
-		return nil
+		return migrateTiers(inv)
 	default:
 		return fmt.Errorf("controlplane: unsupported schema_version %d (max supported: %d)",
 			inv.SchemaVersion, currentSchemaVersion)
@@ -217,6 +234,7 @@ func synthesize() *Inventory {
 			"local": {
 				Name: "local",
 				Kind: "local",
+				Tier: TierLocal,
 				Servers: []Server{
 					{
 						Name:    "local-app",
@@ -251,6 +269,11 @@ func synthesize() *Inventory {
 		}
 
 		remotePath := os.Getenv("NSELF_REMOTE_PATH_" + target)
+		if spec, err := remote.ParseHostSpec(val); err == nil && spec.LegacyPath != "" {
+			remotePath = spec.LegacyPath
+			val = spec.String()
+			warnLegacyHost()
+		}
 		if remotePath == "" {
 			remotePath = "/opt/nself"
 		}
@@ -258,6 +281,7 @@ func synthesize() *Inventory {
 		inv.Environments[envName] = Environment{
 			Name: envName,
 			Kind: "remote",
+			Tier: DeriveTier(envName, "remote"),
 			Servers: []Server{
 				{
 					Name:       envName + "-app",
