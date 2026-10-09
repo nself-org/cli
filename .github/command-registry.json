@@ -10319,6 +10319,86 @@
       "surface": "all"
     },
     {
+      "path": "nself db hasura permissions",
+      "name": "permissions",
+      "parent": "nself db hasura",
+      "summary": "Read Hasura table permissions",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [],
+      "flags": [
+        {
+          "name": "json",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Emit a v1 JSON envelope",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        }
+      ],
+      "canon": "subcommand",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "envelope",
+      "data_schema": "schemas/commands/db-hasura-permissions.v1.schema.json",
+      "exit_codes": {},
+      "confirm": null,
+      "surface": "all"
+    },
+    {
+      "path": "nself db hasura schema",
+      "name": "schema",
+      "parent": "nself db hasura",
+      "summary": "Read the Hasura GraphQL schema",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [],
+      "flags": [
+        {
+          "name": "json",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Emit a v1 JSON envelope",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        }
+      ],
+      "canon": "subcommand",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "envelope",
+      "data_schema": "schemas/commands/db-hasura-schema.v1.schema.json",
+      "exit_codes": {},
+      "confirm": null,
+      "surface": "all"
+    },
+    {
       "path": "nself db hasura snapshot",
       "name": "snapshot",
       "parent": "nself db hasura",
@@ -21512,14 +21592,14 @@
     }
   ],
   "counts": {
-    "commands": 373,
+    "commands": 375,
     "top_level": 24,
     "core": 20,
     "pending": 4,
     "deprecated_shims": 43,
     "plugin": 10,
     "core_missing": [],
-    "json_envelope": 8,
+    "json_envelope": 10,
     "json_legacy": 48
   }
 }

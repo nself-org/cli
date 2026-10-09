@@ -1,0 +1,1 @@
+{"data":{"__schema":{"types":[{"name":"np_users","kind":"OBJECT","fields":[{"name":"id","type":{"name":"uuid","kind":"SCALAR"}}]}],"queryType":{"name":"query_root"},"mutationType":null,"subscriptionType":null}}}

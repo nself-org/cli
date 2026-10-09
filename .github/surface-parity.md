@@ -26,7 +26,7 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself init` | core | yes | no | documented | n/a (see below) |
 | `nself license` | extend | yes | no | undocumented: NSELF_LICENSE_SKIP_VERIFY, NSELF_PING_API_URL | n/a (see below) |
 | `nself logs` | core | yes | yes | n/a | n/a (see below) |
-| `nself mcp` | extend | yes | no | undocumented: HASURA_GRAPHQL_URL, INTEGRATION, NSELF_HASURA_ADMIN_SECRET, NSELF_HASURA_GRAPHQL_URL, NSENTRY_STATUS_URL, POSTGRES_URL | n/a (see below) |
+| `nself mcp` | extend | yes | no | undocumented: INTEGRATION, NSELF_HASURA_ADMIN_SECRET, NSENTRY_STATUS_URL, POSTGRES_URL | n/a (see below) |
 | `nself remove` | extend | yes | no | n/a | n/a (see below) |
 | `nself reset` | core | yes | no | n/a | n/a (see below) |
 | `nself restart` | core | yes | yes | n/a | n/a (see below) |
