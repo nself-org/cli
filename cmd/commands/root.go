@@ -165,9 +165,12 @@ func init() {
 			if cwd, err := os.Getwd(); err == nil {
 				if backendRoot := config.DetectMonorepoRoot(cwd); backendRoot != "" {
 					// In JSON mode stdout carries exactly one document, so the
-					// notice goes to stderr there; text mode is unchanged.
+					// notice goes to stderr there and for tar streams.
 					notice := io.Writer(os.Stdout)
 					if jsonOn, _ := cmd.Flags().GetBool("json"); jsonOn {
+						notice = os.Stderr
+					}
+					if archive, _ := cmd.Flags().GetString("archive"); archive == "-" {
 						notice = os.Stderr
 					}
 					_, _ = fmt.Fprintf(notice, "→ Detected monorepo layout. Using %s as project root.\n", filepath.Base(backendRoot))

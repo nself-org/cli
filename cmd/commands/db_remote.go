@@ -128,6 +128,10 @@ func resolveDBRemoteTarget(cmd *cobra.Command) (dbRemoteTarget, error) {
 		return dbRemoteTarget{Local: true, EnvName: envName}, nil
 	}
 
+	if !validSSHDestination(srv.Host) { // every db remote call resolves its target here
+		return dbRemoteTarget{}, fmt.Errorf("server host %q for env %q is not a valid ssh destination", srv.Host, envName)
+	}
+
 	remotePath := srv.RemotePath
 	if remotePath == "" {
 		remotePath = "/opt/nself"
@@ -190,17 +194,7 @@ func findDBTargetServer(env controlplane.Environment, serverFlag string) (contro
 // wrapRemoteVersionDriftError's after-the-fact "command not found" sniffing
 // cannot catch.
 func runRemoteNselfCommand(ctx context.Context, rt dbRemoteTarget, args ...string) error {
-	keyPath := rt.KeyPath
-	if keyPath == "" {
-		keyPath = defaultSSHKeyPath()
-	}
-
-	sshArgs := []string{
-		"-i", keyPath,
-		"-o", "BatchMode=yes",
-		"-o", "ForwardAgent=no",
-		"-o", "StrictHostKeyChecking=accept-new",
-	}
+	sshArgs := dbRemoteSSHOptions(rt)
 
 	if hasDryRunArg(args) {
 		// Never relaxed by AllowVersionDrift (P7-PROD-84).

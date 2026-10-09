@@ -1,8 +1,11 @@
 package database
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"time"
@@ -31,6 +34,11 @@ func ExportAndCommitMetadata(ctx context.Context, cfg *config.Config, projectDir
 		return "", fmt.Errorf("export metadata to YAML: %w", err)
 	}
 
+	return CommitMetadata(ctx, projectDir, commitMsg)
+}
+
+// CommitMetadata commits metadata already written by an export or remote sync.
+func CommitMetadata(ctx context.Context, projectDir, commitMsg string) (string, error) {
 	if commitMsg == "" {
 		commitMsg = fmt.Sprintf("chore(hasura): export metadata %s", time.Now().UTC().Format("2006-01-02T15:04:05Z"))
 	}
@@ -50,6 +58,94 @@ func ExportAndCommitMetadata(ctx context.Context, cfg *config.Config, projectDir
 		return "", fmt.Errorf("git rev-parse HEAD: %w", err)
 	}
 	return strings.TrimSpace(string(hashOut)), nil
+}
+
+// ArchiveMetadataRef obtains only the metadata tree without changing the checkout.
+func ArchiveMetadataRef(ctx context.Context, projectDir, ref string) ([]byte, error) {
+	// A leading dash is rejected even though -- terminates options: git archive
+	// interprets the tree-ish independently of its path arguments.
+	if ref == "" || strings.HasPrefix(ref, "-") {
+		return nil, fmt.Errorf("invalid git ref %q", ref)
+	}
+	// Streamed, never buffered whole: the entry count and the running byte
+	// total are checked before each entry is copied, so a ref holding a huge
+	// or very many files is refused (and git killed) at the first entry past
+	// the archive limits (64 MiB, 10000 entries), not after it is in memory.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "git", "-C", projectDir, "archive", "--format=tar", "--prefix=metadata/", ref+":hasura/metadata")
+	cmd.Stderr = &stderr
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("archive metadata ref %q: %w", ref, err)
+	}
+	normalized, nerr := normalizeRefArchive(pipe)
+	if nerr != nil {
+		cancel()
+		_ = cmd.Wait()
+		return nil, nerr
+	}
+	// tar.Reader stops at the end marker; git archive may still be writing
+	// padding. Drain it so the child can exit before Wait, especially on Windows.
+	if _, err := io.Copy(io.Discard, pipe); err != nil {
+		cancel()
+		_ = cmd.Wait()
+		return nil, fmt.Errorf("drain metadata ref archive: %w", err)
+	}
+	if err := cmd.Wait(); err != nil {
+		return nil, fmt.Errorf("archive metadata ref %q: %w: %s", ref, err, strings.TrimSpace(stderr.String()))
+	}
+	return normalized, nil
+}
+
+// normalizeRefArchive copies a git-archive tar stream into a canonical tar
+// (regular files only, mode 0644), enforcing maxMetadataEntries and
+// maxMetadataBytes per entry before any of its bytes are read.
+func normalizeRefArchive(src io.Reader) ([]byte, error) {
+	var normalized bytes.Buffer
+	r, w := tar.NewReader(src), tar.NewWriter(&normalized)
+	var total int64
+	count := 0
+	for {
+		h, err := r.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if hasDotPathComponent(h.Name) {
+			return nil, fmt.Errorf("metadata ref: invalid entry %q", h.Name)
+		}
+		if h.Typeflag == tar.TypeDir {
+			continue
+		}
+		if h.Typeflag != tar.TypeReg {
+			return nil, fmt.Errorf("metadata ref contains non-regular entry %q", h.Name)
+		}
+		count++
+		if count > maxMetadataEntries {
+			return nil, fmt.Errorf("metadata ref: more than %d entries", maxMetadataEntries)
+		}
+		if h.Size < 0 || h.Size > maxMetadataBytes-total {
+			return nil, fmt.Errorf("metadata ref: exceeds 64 MiB")
+		}
+		total += h.Size
+		if err := w.WriteHeader(&tar.Header{Name: h.Name, Mode: 0644, Typeflag: tar.TypeReg, Size: h.Size}); err != nil {
+			return nil, err
+		}
+		if _, err := io.CopyN(w, r, h.Size); err != nil {
+			return nil, err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return normalized.Bytes(), nil
 }
 
 // GetGitStatus returns the git status of the hasura/metadata/ directory.
@@ -98,6 +194,10 @@ func GetGitStatus(projectDir string) (HasuraGitStatus, error) {
 // then applies them via the standard metadata apply mechanism.
 // ref can be a branch name, tag, or commit hash.
 func ApplyMetadataFromGit(ctx context.Context, cfg *config.Config, projectDir string, ref string) error {
+	// git reads a leading-dash ref before "--" as an option (-f, -m): refuse it.
+	if ref == "" || strings.HasPrefix(ref, "-") {
+		return fmt.Errorf("invalid git ref %q", ref)
+	}
 	checkoutCmd := exec.CommandContext(ctx, "git", "-C", projectDir, "checkout", ref, "--", "hasura/metadata/")
 	if out, err := checkoutCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git checkout %s -- hasura/metadata/: %w\n%s", ref, err, strings.TrimSpace(string(out)))

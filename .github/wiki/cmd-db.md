@@ -238,6 +238,19 @@ nself db hasura diff
 nself db hasura validate
 ```
 
+`metadata export --archive -` writes a tar archive of `hasura/metadata` to
+stdout. `metadata apply --archive -` reads that archive from stdin and applies
+it without changing the checkout. Invalid paths, links, and archives above
+64 MiB are rejected before metadata is written.
+
+`db hasura sync --env staging` exports metadata from the selected remote
+environment into the local `hasura/metadata` and commits it locally.
+`db hasura apply-ref --env prod <ref>` compares the ref with the remote export
+and prints a Hasura change plan. A nonempty plan for `prod` or `staging`
+requires `--yes` in a noninteractive session; otherwise it returns E403
+(exit 4). Both commands use the configured db remote target and require a
+remote nself CLI that supports `--archive -`.
+
 ---
 <!-- END PROSE:description -->
 
