@@ -859,6 +859,12 @@
         ]
       },
       {
+        "name": "images",
+        "path": "nself doctor images",
+        "short": "Check availability of every locked image",
+        "hidden": false
+      },
+      {
         "name": "security",
         "path": "nself doctor security",
         "short": "Diagnose server security",

@@ -4502,7 +4502,9 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null
+          "output": null,
+          "cli_only": false,
+          "secret": false
         },
         {
           "name": "host",
@@ -4602,7 +4604,9 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null
+          "output": null,
+          "cli_only": false,
+          "secret": false
         },
         {
           "name": "trust-host-key",
@@ -4617,7 +4621,9 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null
+          "output": null,
+          "cli_only": false,
+          "secret": false
         },
         {
           "name": "upstreams",
@@ -14116,7 +14122,9 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": null
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -14125,7 +14133,9 @@
       "output": "document",
       "json": "envelope",
       "data_schema": "schemas/commands/deploy-targets.v1.schema.json",
-      "exit_codes": {}
+      "exit_codes": {},
+      "confirm": null,
+      "surface": "all"
     },
     {
       "path": "nself deploy web",
@@ -14667,6 +14677,31 @@
       "json": "none",
       "data_schema": null,
       "exit_codes": {},
+      "confirm": null,
+      "surface": "all"
+    },
+    {
+      "path": "nself doctor images",
+      "name": "images",
+      "parent": "nself doctor",
+      "summary": "Check availability of every locked image",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [],
+      "flags": [],
+      "canon": "subcommand",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "none",
+      "data_schema": null,
+      "exit_codes": {
+        "10": "one or more images unavailable",
+        "12": "warnings only"
+      },
       "confirm": null,
       "surface": "all"
     },
@@ -21222,7 +21257,7 @@
     }
   ],
   "counts": {
-    "commands": 372,
+    "commands": 373,
     "top_level": 24,
     "core": 20,
     "pending": 4,

@@ -224,6 +224,7 @@ Change-plan (E450) and operation-lock (E460) codes. The other codes in this bloc
 | <a id="e452"></a>E452 | 1 | Planned files were not written | After the build, a file the confirmed plan listed is missing, has other content, or has another mode. | Re-run nself build --plan to see what differs, then run nself build again; check that the project is writable. |
 | <a id="e453"></a>E453 | 1 | Plan id cannot bind plugin changes | The plan installs or removes plugins, and what those change is only known after they run, so a plan id cannot describe the final render. | Run nself build --yes without --plan-id (the render after the plugin changes is printed and held), or install or remove the plugins first. |
 | <a id="e460"></a>E460 | 1 | Project operation lock held | Another nself command is changing this project and holds its operation lock. | Wait for the running nself command to finish, or stop it, then run this command again. |
+| <a id="e465"></a>E465 | 1 | Image unavailable | The locked image could not be pulled from its upstream or digest-identical mirror. | Run nself doctor images, then check registry access and the locked digest. |
 <!-- END GENERATED:codes-reconcile -->
 
 ---

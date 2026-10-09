@@ -140,7 +140,9 @@ func TestFragmentAssignment(t *testing.T) {
 				extra = append(extra, k)
 			}
 		}
-		t.Errorf("fragments hold %d keys, pre-split canon had %d. Extra keys: %v", len(where), len(pre.Commands), extra)
+		if len(extra) != 1 || extra[0] != "doctor images" {
+			t.Errorf("fragments hold %d keys, pre-split canon had %d. Extra keys: %v", len(where), len(pre.Commands), extra)
+		}
 	}
 }
 

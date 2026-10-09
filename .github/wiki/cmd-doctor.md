@@ -372,6 +372,7 @@ In v1.4 mode `--json` prints the bare report and exits `0`, and human mode exits
 | Name | Description |
 |------|-------------|
 | `heal` | Run targeted self-healing routines for ɳSelf components |
+| `images` | Check availability of every locked image |
 | `security` | Diagnose server security |
 <!-- END GENERATED:subcommands -->
 
