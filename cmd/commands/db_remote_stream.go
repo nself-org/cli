@@ -13,8 +13,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/reconcile"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 	"github.com/spf13/cobra"
 )
 
@@ -22,17 +24,22 @@ import (
 // (key, batch mode, no agent forwarding, host-key policy). Every db remote
 // call (runRemoteNselfCommand, the metadata stream, the drift probes) starts
 // from it, so a change to how the transport authenticates lands in one place.
-func dbRemoteSSHOptions(rt dbRemoteTarget) []string {
+func dbRemoteSSHOptions(ctx context.Context, rt dbRemoteTarget) ([]string, error) {
 	keyPath := rt.KeyPath
 	if keyPath == "" {
 		keyPath = defaultSSHKeyPath()
 	}
-	return []string{
+	host := strings.TrimPrefix(rt.SSHTarget, "ssh://")
+	keyOpts, err := controlplane.HostKeyOptions(ctx, rt.EnvName, rt.ServerName, rt.Tier, host, false)
+	if err != nil {
+		return nil, err
+	}
+	opts := []string{
 		"-i", keyPath,
 		"-o", "BatchMode=yes",
 		"-o", "ForwardAgent=no",
-		"-o", "StrictHostKeyChecking=accept-new",
 	}
+	return append(opts, keyOpts...), nil
 }
 
 // validSSHDestination reports whether host can go into ssh argv right before
@@ -66,14 +73,24 @@ func (b *boundedMetadataWriter) Write(p []byte) (int, error) {
 }
 
 func runRemoteNselfStream(ctx context.Context, rt dbRemoteTarget, stdin io.Reader, stdout io.Writer, args ...string) error {
-	sshArgs := dbRemoteSSHOptions(rt)
+	// The ssh:// spelling is retained for LIVE-12's direct transport fixture.
+	// Inventory targets use the canonical HostSpec spelling.
+	spec, err := remote.ParseHostSpec(strings.TrimPrefix(rt.SSHTarget, "ssh://"))
+	if err != nil {
+		return err
+	}
+	sshArgs, err := dbRemoteSSHOptions(ctx, rt)
+	if err != nil {
+		return err
+	}
 	if !rt.AllowVersionDrift {
 		if err := checkRemoteVersionDrift(ctx, rt, sshArgs, joinRemoteArgs(args)); err != nil {
 			return err
 		}
 	}
 	remote := "cd " + shellQuoteArg(rt.RemotePath) + " && nself " + strings.Join(shellQuoteArgs(args), " ")
-	sshArgs = append(sshArgs, rt.SSHTarget, remote)
+	sshArgs = append(sshArgs, spec.SSHArgs()...)
+	sshArgs = append(sshArgs, remote)
 	out, err := runSSHStream(ctx, sshArgs, stdin, stdout)
 	if err != nil {
 		lower := strings.ToLower(out)

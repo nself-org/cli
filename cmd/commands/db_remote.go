@@ -198,21 +198,10 @@ func runRemoteNselfCommand(ctx context.Context, rt dbRemoteTarget, args ...strin
 	if err != nil {
 		return err
 	}
-	keyPath := rt.KeyPath
-	if keyPath == "" {
-		keyPath = defaultSSHKeyPath()
-	}
-
-	keyOpts, err := controlplane.HostKeyOptions(ctx, rt.EnvName, rt.ServerName, rt.Tier, rt.SSHTarget, false)
+	sshArgs, err := dbRemoteSSHOptions(ctx, rt)
 	if err != nil {
 		return err
 	}
-	sshArgs := []string{
-		"-i", keyPath,
-		"-o", "BatchMode=yes",
-		"-o", "ForwardAgent=no",
-	}
-	sshArgs = append(sshArgs, keyOpts...)
 
 	if hasDryRunArg(args) {
 		// Never relaxed by AllowVersionDrift (P7-PROD-84).
