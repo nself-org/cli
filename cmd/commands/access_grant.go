@@ -9,6 +9,7 @@ package commands
 // fingerprint; a non-nil error on any validation or transport failure.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -50,12 +51,17 @@ func runAccessGrant(cmd *cobra.Command, args []string) error {
 	if err := confirmAccessTargets(cmd, targets, dryRun); err != nil {
 		return err
 	}
+	var failures []error
 	for _, target := range targets {
 		if err := grantAccessTarget(cmd, target, selected, user, key, sudo, docker, expires, dryRun); err != nil {
-			return err
+			if !selected {
+				return err
+			}
+			printAccessFailure(cmd, target, err)
+			failures = append(failures, err)
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 func grantAccessTarget(cmd *cobra.Command, target accessTarget, selected bool, user string, key access.PublicKey, sudo, docker bool, expires *time.Time, dryRun bool) error {

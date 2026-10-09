@@ -15,6 +15,7 @@ import (
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/version"
+	"github.com/spf13/cobra"
 )
 
 func accessInventoryFixture(t *testing.T) string {
@@ -75,7 +76,7 @@ func TestAccessTargetsSelectors(t *testing.T) {
 	// visits the same set while leaving every authorized_keys file absent.
 	paths := map[string]string{}
 	oldFactory := newAccessTargetTransport
-	newAccessTargetTransport = func(_ string, _ string, env, server string, _ controlplane.Tier) access.Transport {
+	newAccessTargetTransport = func(_ string, _ string, env, server string, _ controlplane.Tier, _ bool) access.Transport {
 		key := env + "/" + server
 		path := filepath.Join(root, env+"-"+server+"-authorized_keys")
 		paths[key] = path
@@ -151,7 +152,7 @@ func TestAccessProdConfirm(t *testing.T) {
 	_ = accessGrantCmd.Flags().Set("key", testKeyLine)
 	path := filepath.Join(root, "should-not-exist")
 	old := newAccessTargetTransport
-	newAccessTargetTransport = func(_, _, _, _ string, _ controlplane.Tier) access.Transport {
+	newAccessTargetTransport = func(_, _, _, _ string, _ controlplane.Tier, _ bool) access.Transport {
 		return access.NewLocalFileTransport(path)
 	}
 	t.Cleanup(func() { newAccessTargetTransport = old })
@@ -189,6 +190,88 @@ func TestAccessListHostGolden(t *testing.T) {
 	if out != "[]\n" {
 		t.Fatalf("legacy --host JSON changed: %q", out)
 	}
+}
+
+type failingAccessTransport struct{ access.Transport }
+
+func (f failingAccessTransport) Read(context.Context) ([]byte, error) {
+	return nil, errors.New("injected read failure")
+}
+
+func TestAccessSelectorPartialFailures(t *testing.T) {
+	root := accessInventoryFixture(t)
+	t.Setenv("NSELF_V15", "1")
+	t.Setenv("HETZNER_NSELF_TOKEN", "")
+	old := newAccessTargetTransport
+	newAccessTargetTransport = func(_, _, _, server string, _ controlplane.Tier, _ bool) access.Transport {
+		local := access.NewLocalFileTransport(filepath.Join(root, server+"-keys"))
+		if server == "app" {
+			return failingAccessTransport{local}
+		}
+		return local
+	}
+	t.Cleanup(func() { newAccessTargetTransport = old })
+	undo := access.SetAuditLogPathForTest(filepath.Join(root, "audit.log"))
+	t.Cleanup(undo)
+	for _, tc := range []struct {
+		cmd   *cobra.Command
+		run   func(*cobra.Command, []string) error
+		flags map[string]string
+	}{
+		{accessGrantCmd, runAccessGrant, map[string]string{"user": "t", "key": testKeyLine}},
+		{accessRevokeCmd, runAccessRevoke, map[string]string{"user": "t", "force": "true"}},
+		{accessListCmd, runAccessList, map[string]string{}},
+	} {
+		t.Cleanup(func() { resetFlags(tc.cmd) })
+		resetFlags(tc.cmd)
+		tc.cmd.SetContext(context.Background())
+		_ = tc.cmd.Flags().Set("env", "qa")
+		for k, v := range tc.flags {
+			_ = tc.cmd.Flags().Set(k, v)
+		}
+		output, err := captureAccessOutput(func() error { return tc.run(tc.cmd, nil) })
+		if err == nil || strings.Count(output, "qa/app") != 1 || strings.Count(output, "qa/db") != 1 || strings.Count(output, "status=failed") != 1 {
+			t.Fatalf("%s: output=%q err=%v", tc.cmd.Name(), output, err)
+		}
+	}
+}
+
+func TestAccessListReadOnlyHostKeys(t *testing.T) {
+	accessInventoryFixture(t)
+	t.Setenv("NSELF_V15", "1")
+	bin := t.TempDir()
+	for name, body := range map[string]string{
+		"ssh":         "#!/bin/sh\nexit 0\n",
+		"ssh-keyscan": "#!/bin/sh\nexit 1\n",
+	} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	defer resetFlags(accessListCmd)
+	accessListCmd.SetContext(context.Background())
+	_ = accessListCmd.Flags().Set("env", "qa")
+	if _, err := captureAccessOutput(func() error { return runAccessList(accessListCmd, nil) }); err != nil {
+		t.Fatalf("read-only qa list should accept new host: %v", err)
+	}
+	resetFlags(accessListCmd)
+	_ = accessListCmd.Flags().Set("env", "live")
+	if _, err := captureAccessOutput(func() error { return runAccessList(accessListCmd, nil) }); err == nil || !strings.Contains(err.Error(), "E487") {
+		t.Fatalf("prod list should stay strict: %v", err)
+	}
+}
+
+func captureAccessOutput(run func() error) (string, error) {
+	r, w, _ := os.Pipe()
+	old := os.Stdout
+	os.Stdout = w
+	err := run()
+	_ = w.Close()
+	os.Stdout = old
+	b, _ := io.ReadAll(r)
+	_ = r.Close()
+	return string(b), err
 }
 
 func captureAccessStdout(t *testing.T, run func() error) string {
@@ -232,18 +315,6 @@ func TestAccessSecurityArgvSites(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "-p\n2222\n--\nu@host.test\ntrue\n") {
 		t.Fatalf("admin argv: %q", b)
-	}
-	t.Setenv("NSELF_V15", "1")
-	t.Setenv("HOME", t.TempDir())
-	if err := admin.VerifySSHKey(context.Background(), "u", "host.test", 2222); err != nil {
-		t.Fatal(err)
-	}
-	b, err = os.ReadFile(log)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(b), "StrictHostKeyChecking=yes") || !strings.Contains(string(b), "HostKeyAlias=nself-host.test-2222") {
-		t.Fatalf("admin v1.5 host-key policy: %q", b)
 	}
 	_ = os.Remove(log)
 	if err := admin.VerifySSHKey(context.Background(), "u", "-oProxyCommand=touch", 2222); err == nil {

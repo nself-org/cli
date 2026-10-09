@@ -25,9 +25,9 @@ type accessTarget struct {
 	Prod              bool
 }
 
-var newAccessTargetTransport = func(host, identity, env, server string, tier controlplane.Tier) access.Transport {
+var newAccessTargetTransport = func(host, identity, env, server string, tier controlplane.Tier, shipping bool) access.Transport {
 	return &access.SSHTransport{Host: host, IdentityPath: identity, HostKeyOptions: func(ctx context.Context) ([]string, error) {
-		return controlplane.HostKeyOptions(ctx, env, server, tier, host, true)
+		return controlplane.HostKeyOptions(ctx, env, server, tier, host, shipping)
 	}}
 }
 
@@ -60,6 +60,7 @@ func resolveAccessTargets(cmd *cobra.Command) ([]accessTarget, bool, error) {
 		return nil, true, err
 	}
 	identity, _ := cmd.Flags().GetString("identity")
+	shipping := cmd.Name() != "list"
 	out := make([]accessTarget, 0, len(targets))
 	for _, target := range targets {
 		if target.Server.Host == "" {
@@ -77,7 +78,7 @@ func resolveAccessTargets(cmd *cobra.Command) ([]accessTarget, bool, error) {
 		}
 		out = append(out, accessTarget{
 			Env: target.Env, Server: target.Server.Name, Host: target.Server.Host,
-			Transport: newAccessTargetTransport(target.Server.Host, hostIdentity, target.Env, target.Server.Name, target.Tier),
+			Transport: newAccessTargetTransport(target.Server.Host, hostIdentity, target.Env, target.Server.Name, target.Tier, shipping),
 			Prod:      controlplane.IsProdClass(inv, target.Env),
 		})
 	}
@@ -107,4 +108,8 @@ func confirmAccessTargets(cmd *cobra.Command, targets []accessTarget, dryRun boo
 		return nil
 	}
 	return errs.New("E403", "production SSH access change requires --yes or terminal confirmation")
+}
+
+func printAccessFailure(cmd *cobra.Command, target accessTarget, err error) {
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=failed reason=%q\n", target.Env, target.Server, target.Host, err.Error())
 }

@@ -33,12 +33,17 @@ func runAccessRevoke(cmd *cobra.Command, args []string) error {
 	if err := confirmAccessTargets(cmd, targets, dryRun); err != nil {
 		return err
 	}
+	var failures []error
 	for _, target := range targets {
 		if err := revokeAccessTarget(cmd, target, selected, user, force, dryRun); err != nil {
-			return err
+			if !selected {
+				return err
+			}
+			printAccessFailure(cmd, target, err)
+			failures = append(failures, err)
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 func revokeAccessTarget(cmd *cobra.Command, target accessTarget, selected bool, user string, force, dryRun bool) error {

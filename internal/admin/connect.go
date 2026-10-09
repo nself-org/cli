@@ -10,13 +10,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
@@ -36,7 +34,7 @@ type ConnectOpts struct {
 // VerifySSHKey checks that key-based SSH auth works for the given host.
 // Returns nil on success, an error describing the failure otherwise.
 func VerifySSHKey(ctx context.Context, user, host string, port int) error {
-	sshTail, err := adminSSHArgs(user, host, port)
+	sshTail, err := adminSSHArgs(ctx, user, host, port)
 	if err != nil {
 		return err
 	}
@@ -59,7 +57,7 @@ func VerifySSHKey(ctx context.Context, user, host string, port int) error {
 // EnsureRemoteAdmin starts nself-admin on the remote host if it is not
 // already running, via systemctl --user.
 func EnsureRemoteAdmin(ctx context.Context, user, host string, port int) error {
-	sshTail, err := adminSSHArgs(user, host, port)
+	sshTail, err := adminSSHArgs(ctx, user, host, port)
 	if err != nil {
 		return err
 	}
@@ -83,7 +81,7 @@ func NewSessionToken() (string, error) {
 // OpenTunnel starts an SSH tunnel: -L localPort:127.0.0.1:remotePort.
 // It returns the started exec.Cmd so the caller can wait on it or kill it.
 func OpenTunnel(ctx context.Context, opts ConnectOpts) (*exec.Cmd, error) {
-	sshTail, err := adminSSHArgs(opts.User, opts.Host, opts.SSHPort)
+	sshTail, err := adminSSHArgs(ctx, opts.User, opts.Host, opts.SSHPort)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +102,7 @@ func OpenTunnel(ctx context.Context, opts ConnectOpts) (*exec.Cmd, error) {
 	return cmd, nil
 }
 
-func adminSSHArgs(user, host string, port int) ([]string, error) {
+func adminSSHArgs(ctx context.Context, user, host string, port int) ([]string, error) {
 	spec, err := remote.ParseHostSpec(host)
 	if err != nil {
 		return nil, err
@@ -127,15 +125,11 @@ func adminSSHArgs(user, host string, port int) ([]string, error) {
 	var args []string
 	// compat.V15(P7-DEPL-14): unpinned admin SSH -> pinned host-key policy.
 	if compat.V15() {
-		home, err := os.UserHomeDir()
+		policy, err := deploy.HostKeyOptions(ctx, spec.String(), "<env>", "<server>", true)
 		if err != nil {
 			return nil, err
 		}
-		args = []string{"-o", "StrictHostKeyChecking=yes", "-o", "GlobalKnownHostsFile=" + filepath.Join(home, ".config", "nself", "deploy_known_hosts")}
-		if spec.Port != 0 {
-			alias := "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(spec.Port)
-			args = append(args, "-o", "HostKeyAlias="+alias)
-		}
+		args = append(args, policy...)
 	}
 	return append(args, spec.SSHArgs()...), nil
 }

@@ -7,6 +7,7 @@ package commands
 // foreign (non-nself-managed) keys sharing the file.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -113,17 +114,22 @@ type accessHostRow struct {
 	Host         string          `json:"host"`
 	Entries      []accessListRow `json:"entries"`
 	ForeignCount int             `json:"foreign_count"`
+	Status       string          `json:"status"`
+	Reason       string          `json:"reason,omitempty"`
 }
 
 func listSelectedAccess(cmd *cobra.Command, targets []accessTarget, jsonOut bool) error {
 	rows := make([]accessHostRow, 0, len(targets))
+	var failures []error
 	now := time.Now()
 	for _, target := range targets {
 		result, err := access.List(cmd.Context(), target.Transport)
 		if err != nil {
-			return fmt.Errorf("list access on %s/%s: %w", target.Env, target.Server, err)
+			failures = append(failures, fmt.Errorf("list access on %s/%s: %w", target.Env, target.Server, err))
+			rows = append(rows, accessHostRow{Env: target.Env, Server: target.Server, Host: target.Host, Entries: []accessListRow{}, Status: "failed", Reason: err.Error()})
+			continue
 		}
-		row := accessHostRow{Env: target.Env, Server: target.Server, Host: target.Host, Entries: []accessListRow{}, ForeignCount: result.ForeignCount}
+		row := accessHostRow{Env: target.Env, Server: target.Server, Host: target.Host, Entries: []accessListRow{}, ForeignCount: result.ForeignCount, Status: "ok"}
 		for _, e := range result.Entries {
 			item := accessListRow{User: e.User, Fingerprint: e.Fingerprint(), Sudo: e.Sudo, Docker: e.Docker, Expired: e.Expired(now), Granted: e.Granted.UTC().Format(time.RFC3339)}
 			if e.Expires != nil {
@@ -134,10 +140,17 @@ func listSelectedAccess(cmd *cobra.Command, targets []accessTarget, jsonOut bool
 		rows = append(rows, row)
 	}
 	if jsonOut {
-		return ui.PrintJSON(rows)
+		if err := ui.PrintJSON(rows); err != nil {
+			return err
+		}
+		return errors.Join(failures...)
 	}
 	for _, row := range rows {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s/%s %s: %d managed key(s), %d foreign key(s)\n", row.Env, row.Server, row.Host, len(row.Entries), row.ForeignCount)
+		if row.Status == "failed" {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=failed reason=%q\n", row.Env, row.Server, row.Host, row.Reason)
+			continue
+		}
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s/%s host=%s status=ok: %d managed key(s), %d foreign key(s)\n", row.Env, row.Server, row.Host, len(row.Entries), row.ForeignCount)
 	}
-	return nil
+	return errors.Join(failures...)
 }
