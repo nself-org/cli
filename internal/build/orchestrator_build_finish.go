@@ -70,6 +70,10 @@ func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 		return nil, fmt.Errorf("writing %s: %w", composeEnvFile, err)
 	}
 	st.filesGenerated++
+	if err := writeComposeEnvManifestVia(st.sink, st.workdir); err != nil {
+		return nil, err
+	}
+	st.filesGenerated++
 
 	// ── Step 11: Save build version to .nself/build-version ─────────
 	versionPath := filepath.Join(st.workdir, buildVersionFile)

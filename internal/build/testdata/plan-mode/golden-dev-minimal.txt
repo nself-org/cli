@@ -20,6 +20,7 @@ f 0600 project/.nself/compose.env 8ac6f515d04636e91434b945702345e5fd05443dd04952
 f 0600 project/docker-compose.yml 8cfaaa007382b88bc37f19365881c559e06d8d644fa1f52d4925cc36060aa5f9
 f 0644 project/.nself/build-profile a172cedcae47474b615c54d510a5d84a8dea3032e958587430b413538be3f333
 f 0644 project/.nself/build-version 9a66809cf210f6d1149c329fac8661098d04fc0b2c6fb00bf5bb7aa98f7ae1fd
+f 0644 project/.nself/compose-env-files.txt 7d3e777d4d376c34edad2c78f512e08ec2d1819efdea2a89bbf91cb62e675a92
 f 0644 project/.nself/compose-files.txt b557037f882d549c5afb2fc293a31e7f19f70d8c3fdd01a2b54123185ce44073
 f 0644 project/.nself/dist/openapi.json 930f5017f004813b05d87fa8bf3d7e9a689fed9ef384fbf873095a8a89985a4d
 f 0644 project/.nself/dist/scalar.html 650a899517b6771cb32ebacf366efb67e25583b475fa9de342b04dadff732c44
