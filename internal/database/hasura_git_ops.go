@@ -89,6 +89,13 @@ func ArchiveMetadataRef(ctx context.Context, projectDir, ref string) ([]byte, er
 		_ = cmd.Wait()
 		return nil, nerr
 	}
+	// tar.Reader stops at the end marker; git archive may still be writing
+	// padding. Drain it so the child can exit before Wait, especially on Windows.
+	if _, err := io.Copy(io.Discard, pipe); err != nil {
+		cancel()
+		_ = cmd.Wait()
+		return nil, fmt.Errorf("drain metadata ref archive: %w", err)
+	}
 	if err := cmd.Wait(); err != nil {
 		return nil, fmt.Errorf("archive metadata ref %q: %w: %s", ref, err, strings.TrimSpace(stderr.String()))
 	}
