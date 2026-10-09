@@ -133,6 +133,7 @@ tools/endpoint-auth-checker 69  # measured 71.9 2026-10-05
 tools/flagaudit 40  # measured 42.7 2026-10-05
 tools/imagelist 0  # measured 0.0 2026-10-05
 tools/imagelock 57  # measured 59.7 2026-10-05
+tools/jsonvalidate 72  # measured 74.4 2026-10-08
 tools/manifestv2migrate 70  # measured 72.3 2026-10-05
 tools/mcpdoc 0  # measured 0.0 2026-10-05
 tools/parity 16  # measured 18.2 2026-10-05

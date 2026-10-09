@@ -112,3 +112,9 @@ out, err := docker.GetContainerLogs(ctx, name, 50)
 ```
 
 Pick the helper that fits the call (`httptimeout.NoProxy`, `docker.ExecCapture`, `docker.RunOneShot`, `docker.InspectContainer`); add one to the funnel package when none fits.
+
+## Domain stdout writers
+
+`TestStdoutWriters` scans non-test Go files under `internal/`, excluding `internal/ui/`, `internal/output/`, and `internal/repoqa/`. It counts `os.Stdout` selectors and `fmt.Print`, `fmt.Printf`, and `fmt.Println` calls by imported package name, including aliases. Build tags do not hide a file from the scan. The tight, bytewise-sorted `<path> <count>` list is `internal/repoqa/testdata/stdout-writers-allowlist.txt`; `stdoutBasisTotal` pins its total. New sites fail the test.
+
+When moving a domain writer behind a shared output seam, run `go test ./internal/repoqa/ -run '^TestStdoutWriters$' -update`. The update lowers or removes existing lines only. Lower `stdoutBasisTotal` to the reported total in the same change. The scan does not follow helper calls or package aliases declared in another file.
