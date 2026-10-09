@@ -88,3 +88,30 @@ func TestComposeEnvManifestLegacy(t *testing.T) {
 		t.Fatalf("legacy manifest paths = %v, %v", files, err)
 	}
 }
+
+// TestComposeEnvManifestStaleFailsClosed proves a missing or empty manifest is
+// an error, not an empty list, once .nself/compose.env exists.
+func TestComposeEnvManifestStaleFailsClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		manifest *string
+	}{
+		{name: "missing"},
+		{name: "empty", manifest: new(string)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFixtureFile(t, filepath.Join(dir, composeEnvFile), "PLUGIN_VAR=1\n", 0o600)
+			if tc.manifest != nil {
+				writeFixtureFile(t, filepath.Join(dir, composeEnvManifestFile), *tc.manifest, 0o644)
+			}
+			files, err := ReadComposeEnvManifest(dir)
+			if err == nil || !strings.Contains(err.Error(), "run nself build") {
+				t.Fatalf("ReadComposeEnvManifest = %v, %v; want stale-manifest error", files, err)
+			}
+		})
+	}
+	if files, err := ReadComposeEnvManifest(t.TempDir()); err != nil || files != nil {
+		t.Fatalf("legacy project without compose.env = %v, %v; want nil, nil", files, err)
+	}
+}

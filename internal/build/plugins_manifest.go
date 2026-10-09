@@ -56,17 +56,21 @@ func writeComposeEnvManifestVia(sink Sink, workdir string) error {
 }
 
 // ReadComposeEnvManifest reads the ordered absolute env-file paths. A missing
-// manifest represents a legacy project and returns nil.
+// or empty manifest means a legacy project and returns nil, but only when
+// .nself/compose.env is absent too: otherwise the manifest is stale and a
+// consumer would resolve plugin variables without their computed values.
 func ReadComposeEnvManifest(workdir string) ([]string, error) {
 	path := filepath.Join(workdir, composeEnvManifestFile)
 	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("reading compose env manifest: %w", err)
 	}
 	if len(data) == 0 {
+		if _, statErr := os.Lstat(filepath.Join(workdir, composeEnvFile)); statErr == nil {
+			return nil, fmt.Errorf("compose env manifest %s is missing or empty but %s exists: run nself build", composeEnvManifestFile, composeEnvFile)
+		} else if !os.IsNotExist(statErr) {
+			return nil, fmt.Errorf("checking %s: %w", composeEnvFile, statErr)
+		}
 		return nil, nil
 	}
 	var files []string
