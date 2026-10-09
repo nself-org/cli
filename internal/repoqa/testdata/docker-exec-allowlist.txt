@@ -60,7 +60,6 @@ internal/doctor/hardening_check_db.go 4
 internal/doctor/hardening_check_license_metrics.go 1
 internal/doctor/hardening_check_nginx_zones.go 1
 internal/doctor/plugin_migrations.go 1
-internal/doctor/system.go 1
 internal/doctor/system_monitoring.go 1
 internal/doctor/system_security.go 3
 internal/health/probes.go 1
