@@ -126,7 +126,7 @@ func startPostgresPhase(ctx context.Context, opts startOpts, cfg *config.Config,
 		}
 		donePull := ui.FirstRunProgress(opts.quiet)
 		pullCtx, pullCancel := context.WithTimeout(ctx, 10*time.Minute)
-		pullErr := compose.ComposePull(pullCtx, projectDir)
+		pullErr := compose.ComposePullDiagnosed(pullCtx, projectDir)
 		pullCancel()
 		donePull()
 		if pullErr != nil {

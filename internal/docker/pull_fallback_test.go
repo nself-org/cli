@@ -93,7 +93,7 @@ func TestPullFallbackIntegration(t *testing.T) {
 		return "localhost:" + port, "http://localhost:" + port
 	}
 	upHost, upURL := registry()
-	mirrorHost, mirrorURL := registry()
+	mirrorHost, _ := registry()
 	upstream, mirror := upHost+"/l18fixture", mirrorHost+"/l18fixture"
 	for _, repo := range []string{upstream, mirror} {
 		dockerCmd("tag", "registry:2", repo+":test")
@@ -161,14 +161,16 @@ func TestPullFallbackIntegration(t *testing.T) {
 	if err := c.ComposeDown(ctx, project, DownOptions{}); err != nil {
 		t.Fatalf("stop fixture stack before cache-removal proof: %v", err)
 	}
+	if _, err := runCapture(ctx, "image", "inspect", upstream+"@"+digest[1]); err == nil {
+		t.Fatal("upstream image still cached; both-missing proof would be vacuous")
+	}
+	missingMirror := mirrorHost + "/l18missing"
+	missingRef := ref
+	missingRef.Mirror = &missingMirror
+	if _, err := EnsureImage(ctx, missingRef); err == nil || !strings.Contains(err.Error(), "repository or tag missing") {
+		t.Fatalf("both image sources unavailable: %v", err)
+	}
 	removeLocal(mirror)
-	if _, err := runCapture(ctx, "image", "inspect", mirror+"@"+digest[1]); err == nil {
-		t.Fatal("mirror image still cached; both-missing proof would be vacuous")
-	}
-	deleteManifest(mirrorURL)
-	if _, err := EnsureImage(ctx, ref); err == nil || !strings.Contains(err.Error(), "repository or tag missing") {
-		t.Fatalf("both registries deleted: %v", err)
-	}
 	t.Logf("same digest %s served from mirror; both-missing diagnosis verified", fmt.Sprintf("%.19s", digest[1]))
 }
 

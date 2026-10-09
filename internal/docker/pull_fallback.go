@@ -12,12 +12,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"golang.org/x/term"
 	"gopkg.in/yaml.v3"
 )
 
@@ -31,6 +34,30 @@ type LockedImage struct {
 }
 
 func (r LockedImage) String() string { return r.Repository + ":" + r.Version + "@" + r.IndexDigest }
+
+// ComposePullDiagnosed retains a bounded stderr tail for first-run diagnosis.
+// The general Compose runner can lose that tail when its pipe reader races
+// process exit; a pull failure must preserve the registry's actual message.
+func (c *Compose) ComposePullDiagnosed(ctx context.Context, workdir string) error {
+	args := append(c.buildBaseArgs(), "pull")
+	cmd := exec.CommandContext(ctx, c.dockerBin(), args...)
+	cmd.Dir = workdir
+	cmd.WaitDelay = 5 * time.Second
+	setProcGroupAttr(cmd)
+	cmd.Cancel = func() error { killProcessGroup(cmd); return cmd.Process.Kill() }
+	var tail tailBuffer
+	tail.limit = stderrTailLimit
+	out, errOut := io.Writer(io.Discard), io.Writer(io.Discard)
+	if term.IsTerminal(int(os.Stdout.Fd())) {
+		out, errOut = os.Stdout, os.Stderr
+	}
+	cmd.Stdout = out
+	cmd.Stderr = io.MultiWriter(errOut, &tail)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker compose pull: %w: %s", err, tail.String())
+	}
+	return nil
+}
 
 // Diagnose turns Docker and registry errors into stable operator diagnoses.
 func Diagnose(message string) string {
