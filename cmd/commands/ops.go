@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/ui"
@@ -81,6 +82,21 @@ func init() {
 func runOpsDeploy(cmd *cobra.Command, args []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	follow, _ := cmd.Flags().GetBool("follow")
+	// compat.V15(P7-DEPL-14): direct SSH deploy -> canonical deploy pipeline delegation.
+	if compat.V15() {
+		oldContext := deployCmd.Context()
+		oldDry, _ := deployCmd.Flags().GetBool("dry-run")
+		oldFollow, _ := deployCmd.Flags().GetBool("follow")
+		defer func() {
+			_ = deployCmd.Flags().Set("dry-run", fmt.Sprint(oldDry))
+			_ = deployCmd.Flags().Set("follow", fmt.Sprint(oldFollow))
+			deployCmd.SetContext(oldContext)
+		}()
+		_ = deployCmd.Flags().Set("dry-run", fmt.Sprint(dryRun))
+		_ = deployCmd.Flags().Set("follow", fmt.Sprint(follow))
+		deployCmd.SetContext(withDeployProfile(cmd.Context(), "ops"))
+		return runDeploy(deployCmd, nil)
+	}
 
 	cfg := deploy.SSHConfigFromEnv("ops")
 	cfg.Follow = follow

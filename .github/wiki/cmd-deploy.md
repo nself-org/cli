@@ -59,6 +59,28 @@ is refused with `E483` before anything is built; it never deploys on the current
 blue/green canary flags apply to `local` only; with a remote environment they are refused. In the
 control-plane pipeline, a server whose deploy fails makes the command exit non-zero and lists it.
 With a `.nself/control-plane.yaml`, a remote deploy first runs the same remote build (no `.env.local`) and writes the validated env snapshot, then ships both the compose file and `.env.<env>` to every server; if the build or snapshot fails nothing is probed or sent. A prod-class environment always uses the `prod` env cascade and is written to `.env.prod` on the host. The env file pushed to the host is read with the same dotenv reader as the build, so both see the same values. An inventory with two environment names that differ only by case is refused, here and in `nself deploy environments`. 
+## Access targets and ops profile
+
+`nself deploy access grant`, `revoke`, and `list` accept `--env`, `--tier`, and
+`--server`. The selectors may be combined and resolve the matching inventory
+hosts in environment, role, and server order. `--host` remains available for an
+explicit single host and cannot be combined with a selector. A selector that
+matches no hosts is refused before SSH runs. `--dry-run` on grant or revoke
+shows each host's resulting change without writing any host. In v1.5 mode,
+changes to a prod-tier host require `--yes` or terminal confirmation; an
+unconfirmed noninteractive command exits 4 (`E403`). Revoking the last key
+still requires `--force` on each host. Selector list JSON has one result object
+per host, with its `env`, `server`, `host`, `entries`, and `foreign_count`.
+Explicit `--host --json` keeps its existing JSON array.
+
+`nself deploy --profile ops` builds the ops compose profile and defaults to
+environment `ops`. An explicit target or `--env` overrides that default.
+`NSELF_DEPLOY_HOST_OPS` supplies a single-host target when no inventory file
+is present. `OPS_DEPLOY_HOST` remains a v1.5 fallback with a deprecation
+warning. In v1.5, `nself deploy ops` and `nself ops deploy` use the same
+pipeline path as `nself deploy --profile ops`. `--dry-run` prints the profile,
+target environment, host, and remote path before any build or SSH action.
+
 ## Deploy Strategies
 
 | Strategy | Status | Behavior |

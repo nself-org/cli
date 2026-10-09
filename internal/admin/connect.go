@@ -12,6 +12,10 @@ import (
 	"os/exec"
 	"runtime"
 	"time"
+
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 // ConnectOpts holds all parameters for an admin remote connection.
@@ -30,14 +34,17 @@ type ConnectOpts struct {
 // VerifySSHKey checks that key-based SSH auth works for the given host.
 // Returns nil on success, an error describing the failure otherwise.
 func VerifySSHKey(ctx context.Context, user, host string, port int) error {
+	sshTail, err := adminSSHArgs(ctx, user, host, port)
+	if err != nil {
+		return err
+	}
 	args := []string{
 		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=10",
 		"-o", "ServerAliveInterval=30",
-		"-p", fmt.Sprintf("%d", port),
-		fmt.Sprintf("%s@%s", user, host),
-		"true",
 	}
+	args = append(args, sshTail...)
+	args = append(args, "true")
 	cmd := exec.CommandContext(ctx, "ssh", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -50,12 +57,13 @@ func VerifySSHKey(ctx context.Context, user, host string, port int) error {
 // EnsureRemoteAdmin starts nself-admin on the remote host if it is not
 // already running, via systemctl --user.
 func EnsureRemoteAdmin(ctx context.Context, user, host string, port int) error {
-	sshCmd := exec.CommandContext(ctx, "ssh",
-		"-o", "ServerAliveInterval=30",
-		"-p", fmt.Sprintf("%d", port),
-		fmt.Sprintf("%s@%s", user, host),
-		"systemctl --user start nself-admin || true",
-	)
+	sshTail, err := adminSSHArgs(ctx, user, host, port)
+	if err != nil {
+		return err
+	}
+	args := append([]string{"-o", "ServerAliveInterval=30"}, sshTail...)
+	args = append(args, "systemctl --user start nself-admin || true")
+	sshCmd := exec.CommandContext(ctx, "ssh", args...)
 	sshCmd.Stdout = os.Stdout
 	sshCmd.Stderr = os.Stderr
 	return sshCmd.Run()
@@ -73,15 +81,18 @@ func NewSessionToken() (string, error) {
 // OpenTunnel starts an SSH tunnel: -L localPort:127.0.0.1:remotePort.
 // It returns the started exec.Cmd so the caller can wait on it or kill it.
 func OpenTunnel(ctx context.Context, opts ConnectOpts) (*exec.Cmd, error) {
+	sshTail, err := adminSSHArgs(ctx, opts.User, opts.Host, opts.SSHPort)
+	if err != nil {
+		return nil, err
+	}
 	forward := fmt.Sprintf("%d:127.0.0.1:%d", opts.LocalPort, opts.RemotePort)
 	args := []string{
 		"-N",
 		"-o", "ServerAliveInterval=30",
 		"-o", "ExitOnForwardFailure=yes",
 		"-L", forward,
-		"-p", fmt.Sprintf("%d", opts.SSHPort),
-		fmt.Sprintf("%s@%s", opts.User, opts.Host),
 	}
+	args = append(args, sshTail...)
 	cmd := exec.CommandContext(ctx, "ssh", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -89,6 +100,37 @@ func OpenTunnel(ctx context.Context, opts ConnectOpts) (*exec.Cmd, error) {
 		return nil, fmt.Errorf("ssh tunnel: %w", err)
 	}
 	return cmd, nil
+}
+
+func adminSSHArgs(ctx context.Context, user, host string, port int) ([]string, error) {
+	spec, err := remote.ParseHostSpec(host)
+	if err != nil {
+		return nil, err
+	}
+	if spec.User != "" && spec.User != user {
+		return nil, fmt.Errorf("admin SSH user conflicts with host specification")
+	}
+	if spec.Port != 0 && port != 0 && spec.Port != port {
+		return nil, fmt.Errorf("admin SSH port conflicts with host specification")
+	}
+	if user != "" {
+		spec.User = user
+	}
+	if port != 0 {
+		spec.Port = port
+	}
+	if err := spec.Validate(); err != nil {
+		return nil, err
+	}
+	var args []string
+	// compat.V15(P7-DEPL-14): unpinned admin SSH -> pinned host-key policy.
+	if compat.V15() {
+		args, err = deploy.HostKeyOptions(ctx, spec.String(), "admin", "connect", true)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return append(args, spec.SSHArgs()...), nil
 }
 
 // OpenBrowser opens the admin URL in the user's default browser.

@@ -31,11 +31,15 @@ type accessListRow struct {
 
 func runAccessList(cmd *cobra.Command, args []string) error {
 	jsonOut, _ := cmd.Flags().GetBool("json")
-
-	t, err := newAccessTransport(cmd)
+	targets, selected, err := resolveAccessTargets(cmd)
 	if err != nil {
 		return err
 	}
+	if selected {
+		return listSelectedAccess(cmd, targets, jsonOut)
+	}
+
+	t := targets[0].Transport
 
 	if !jsonOut {
 		ui.CommandHeader("nself access list", t.Describe())
@@ -98,6 +102,42 @@ func runAccessList(cmd *cobra.Command, args []string) error {
 		ui.Warn(fmt.Sprintf(
 			"%d key(s) in authorized_keys were not granted by nself access and are left untouched",
 			result.ForeignCount))
+	}
+	return nil
+}
+
+// accessHostRow keeps one selector result per resolved inventory host.
+type accessHostRow struct {
+	Env          string          `json:"env"`
+	Server       string          `json:"server"`
+	Host         string          `json:"host"`
+	Entries      []accessListRow `json:"entries"`
+	ForeignCount int             `json:"foreign_count"`
+}
+
+func listSelectedAccess(cmd *cobra.Command, targets []accessTarget, jsonOut bool) error {
+	rows := make([]accessHostRow, 0, len(targets))
+	now := time.Now()
+	for _, target := range targets {
+		result, err := access.List(cmd.Context(), target.Transport)
+		if err != nil {
+			return fmt.Errorf("list access on %s/%s: %w", target.Env, target.Server, err)
+		}
+		row := accessHostRow{Env: target.Env, Server: target.Server, Host: target.Host, Entries: []accessListRow{}, ForeignCount: result.ForeignCount}
+		for _, e := range result.Entries {
+			item := accessListRow{User: e.User, Fingerprint: e.Fingerprint(), Sudo: e.Sudo, Docker: e.Docker, Expired: e.Expired(now), Granted: e.Granted.UTC().Format(time.RFC3339)}
+			if e.Expires != nil {
+				item.Expires = e.Expires.Format("2006-01-02")
+			}
+			row.Entries = append(row.Entries, item)
+		}
+		rows = append(rows, row)
+	}
+	if jsonOut {
+		return ui.PrintJSON(rows)
+	}
+	for _, row := range rows {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s/%s %s: %d managed key(s), %d foreign key(s)\n", row.Env, row.Server, row.Host, len(row.Entries), row.ForeignCount)
 	}
 	return nil
 }

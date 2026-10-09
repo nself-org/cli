@@ -64,6 +64,11 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-DEPL-13 | accept-new | strict host key checking for access writes. | `internal/access/transport_ssh.go` |
 | P7-DEPL-13 | quiet read-only first contact | print the observed fingerprint once. | `internal/controlplane/hostkeys.go` |
 | P7-DEPL-13 | silent legacy host path | warn once until removal at v1.6.0. | `internal/controlplane/tiers.go` |
+| P7-DEPL-14 | direct SSH deploy | canonical deploy pipeline delegation. | `cmd/commands/ops.go` |
+| P7-DEPL-14 | direct SSH policy | inventory host-key policy. | `internal/access/transport_ssh.go` |
+| P7-DEPL-14 | silent legacy host fallback | deprecation warning. | `cmd/commands/deploy_profile.go` |
+| P7-DEPL-14 | unpinned admin SSH | pinned host-key policy. | `internal/admin/connect.go` |
+| P7-DEPL-14 | unrestricted inventory writes | prod-class confirmation. | `cmd/commands/access_targets.go` |
 | P7-LIVE-03 | a lock held by another command does not stop a build (it takes the O_EXCL build.lock) | a lock held by another command refuses the build | `internal/build/build_lock.go` |
 | P7-LIVE-03 | a prod-class or hand-edited change proceeds with a notice | refused with E403 without --yes or --force | `internal/reconcile/apply.go` |
 | P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |

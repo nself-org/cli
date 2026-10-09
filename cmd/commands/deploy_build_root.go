@@ -74,7 +74,18 @@ func deployBuildArgs(workdir string) []string {
 // --deploy-remote flag: the build then drops .env.local, like the env file
 // pushed to the host.
 func deployBuildArgsFor(workdir string, remote bool) []string {
+	return deployBuildArgsForProfile(workdir, remote, "full")
+}
+
+func deployBuildArgsForProfile(workdir string, remote bool, profile string) []string {
 	args := deployBuildArgs(workdir)
+	if profile != "" {
+		buildProfile := profile
+		if profile == "full" {
+			buildProfile = "app"
+		}
+		args = append(args, "--profile", buildProfile)
+	}
 	if remote {
 		args = append(args, "--deploy-remote")
 	}
@@ -126,7 +137,8 @@ func verifyDeployComposeFreshness(workdir string, buildStart time.Time) error {
 // the caller must stop before attempting any restart.
 func runDeployBuildStep(ctx context.Context, workdir string, remote bool, steps []deployStep) ([]deployStep, error) {
 	buildStart := time.Now()
-	if err := runCLISelf(ctx, workdir, deployBuildArgsFor(workdir, remote)...); err != nil {
+	profile, _ := ctx.Value(deployProfileContextKey{}).(string)
+	if err := runCLISelf(ctx, workdir, deployBuildArgsForProfile(workdir, remote, profile)...); err != nil {
 		return append(steps, deployStep{Name: "Build images", Status: "failed"}), err
 	}
 	if err := verifyDeployComposeFreshness(workdir, buildStart); err != nil {

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/version"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 // remoteProbeTimeout bounds the capability probe; a var so tests can shrink it.
@@ -53,9 +54,14 @@ func parseRemoteCapabilities(out string) ([]string, error) {
 // checkRemoteDryRunSupport refuses unless the remote advertises
 // version.CapDBDryRunSafe.
 func checkRemoteDryRunSupport(ctx context.Context, rt dbRemoteTarget, sshFlagArgs []string) error {
+	spec, err := remote.ParseHostSpec(rt.SSHTarget)
+	if err != nil {
+		return err
+	}
 	pctx, cancel := context.WithTimeout(ctx, remoteProbeTimeout)
 	defer cancel()
-	probeArgs := append(append([]string{}, sshFlagArgs...), rt.SSHTarget, "nself version --json")
+	probeArgs := append(append([]string{}, sshFlagArgs...), spec.SSHArgs()...)
+	probeArgs = append(probeArgs, "nself version --json")
 	out, err := runSSHCaptured(pctx, probeArgs)
 	if err != nil {
 		return fmt.Errorf("refusing remote --dry-run on %s (env=%s): could not read the remote capabilities: %w\nprobe output: %s", rt.SSHTarget, rt.EnvName, err, out)
