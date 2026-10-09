@@ -64,7 +64,7 @@ func buildCommand(n node, e canon.Entry, rootPath string, byKey map[string]*node
 			p = append(p, fmt.Sprintf("%s secret_args: %q is not a declared arg", at, name))
 		}
 	}
-	confirm, cp := validateConfirm(at, e.Confirm, runnable, cmd, nil)
+	confirm, cp := validateConfirm(at, e.Confirm, runnable, cmd, flags)
 	p = append(p, cp...)
 	surface := e.Surface
 	if surface == "" {
