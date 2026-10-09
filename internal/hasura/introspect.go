@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -112,8 +114,11 @@ func Permissions(ctx context.Context, endpoint, secret string) (PermissionSnapsh
 	if json.Unmarshal(raw, &meta) != nil {
 		return PermissionSnapshot{Raw: raw}, nil
 	}
+	sources, ok := meta["sources"].([]interface{})
+	if _, failed := meta["error"]; failed || !ok {
+		return PermissionSnapshot{Raw: raw}, nil
+	}
 	var result []TablePermissions
-	sources, _ := meta["sources"].([]interface{})
 	for _, source := range sources {
 		src, ok := source.(map[string]interface{})
 		if !ok {
@@ -142,11 +147,11 @@ func Permissions(ctx context.Context, endpoint, secret string) (PermissionSnapsh
 func postJSON(ctx context.Context, url, secret string, payload interface{}) ([]byte, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, errs.Wrap("E200", "marshal Hasura request", err)
+		return nil, legacyError("marshal payload", "marshal Hasura request", err, secret)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return nil, errs.Wrap("E200", "create Hasura request", err)
+		return nil, legacyError("create request", "create Hasura request", err, secret)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if secret != "" {
@@ -154,18 +159,51 @@ func postJSON(ctx context.Context, url, secret string, payload interface{}) ([]b
 	}
 	resp, err := httptimeout.Default.Do(req)
 	if err != nil {
-		return nil, errs.Wrap("E200", "Hasura request failed", err)
+		return nil, legacyError("request failed", "Hasura request failed", err, secret)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, errs.Wrap("E200", "read Hasura response", err)
+		return nil, legacyError("read response", "read Hasura response", err, secret)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// A server error body can echo an auth header. Never include it in errors.
-		return nil, errs.Newf("E200", "Hasura HTTP %d", resp.StatusCode)
+		return nil, &legacyHasuraError{
+			legacy:  fmt.Sprintf("HTTP %d: %s", resp.StatusCode, redactSecret(string(raw), secret)),
+			current: errs.Newf("E200", "Hasura HTTP %d", resp.StatusCode),
+		}
 	}
 	return raw, nil
+}
+
+type legacyHasuraError struct {
+	legacy  string
+	current error
+}
+
+func (e *legacyHasuraError) Error() string { return e.current.Error() }
+func (e *legacyHasuraError) Unwrap() error { return e.current }
+
+func legacyError(oldPrefix, currentPrefix string, cause error, secret string) error {
+	return &legacyHasuraError{
+		legacy:  fmt.Sprintf("%s: %s", oldPrefix, redactSecret(cause.Error(), secret)),
+		current: errs.Wrap("E200", currentPrefix, errors.New(redactSecret(cause.Error(), secret))),
+	}
+}
+
+func redactSecret(body, secret string) string {
+	if secret == "" {
+		return body
+	}
+	return strings.ReplaceAll(body, secret, "[REDACTED]")
+}
+
+// LegacyErrorText preserves the pre-command MCP error text with secret redaction.
+func LegacyErrorText(err error) string {
+	var legacy *legacyHasuraError
+	if errors.As(err, &legacy) {
+		return legacy.legacy
+	}
+	return err.Error()
 }
 
 // CompactSchema returns the legacy text representation byte for byte.

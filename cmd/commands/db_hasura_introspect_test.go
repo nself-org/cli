@@ -4,16 +4,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/hasura"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -128,6 +132,113 @@ func TestHasuraIntrospectCommands(t *testing.T) {
 		if !found {
 			t.Fatalf("missing registry path %s", path)
 		}
+	}
+}
+
+func TestHasuraPermissionsInvalidExportEnvelope(t *testing.T) {
+	defer chdir(t, t.TempDir())()
+	for _, body := range []string{`{"error":"metadata export disabled"}`, `{}`} {
+		t.Run(body, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(body))
+			}))
+			defer srv.Close()
+			t.Setenv("NSELF_HASURA_GRAPHQL_URL", srv.URL)
+			cmd := &cobra.Command{}
+			cmd.SetContext(context.Background())
+			cmd.Flags().Bool("json", true, "")
+			err := runDBHasuraPermissions(cmd, nil)
+			if err == nil || errs.ExitCodeFor(err) == 0 {
+				t.Fatalf("expected non-zero command error, got %v", err)
+			}
+			var stdout bytes.Buffer
+			if emitErr := output.EmitError(output.Writer{Out: &stdout}, "db hasura permissions", err); emitErr != nil {
+				t.Fatal(emitErr)
+			}
+			var envelope struct {
+				Error struct {
+					Code     string `json:"code"`
+					ExitCode int    `json:"exit_code"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(stdout.Bytes(), &envelope) != nil || envelope.Error.Code != "E200" || envelope.Error.ExitCode == 0 {
+				t.Fatalf("expected non-zero E200 error envelope: %s", stdout.String())
+			}
+		})
+	}
+}
+
+func TestHasuraPermissionsInvalidExportCLI(t *testing.T) {
+	if len(os.Args) > 1 && os.Args[1] == "-test.run=^TestHasuraPermissionsInvalidExportCLI$/child" {
+		os.Args = []string{"nself", "db", "hasura", "permissions", "--json"}
+		err := Execute()
+		if err == nil {
+			os.Exit(0)
+		}
+		_ = output.EmitError(output.Default(), "db hasura permissions", err)
+		os.Exit(errs.ExitCodeFor(err))
+	}
+	for _, body := range []string{`{"error":"metadata export disabled"}`, `{}`} {
+		t.Run(body, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(body))
+			}))
+			defer srv.Close()
+			child := exec.Command(os.Args[0], "-test.run=^TestHasuraPermissionsInvalidExportCLI$/child")
+			child.Dir = t.TempDir()
+			child.Env = append(os.Environ(), "NSELF_V15=1", "NSELF_HASURA_GRAPHQL_URL="+srv.URL)
+			stdout, err := child.Output()
+			var exit *exec.ExitError
+			if !errors.As(err, &exit) || exit.ExitCode() == 0 {
+				t.Fatalf("expected non-zero CLI exit, got %v, stdout %s", err, stdout)
+			}
+			var envelope struct {
+				Error struct {
+					Code     string `json:"code"`
+					ExitCode int    `json:"exit_code"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(stdout, &envelope) != nil || envelope.Error.Code != "E200" || envelope.Error.ExitCode != exit.ExitCode() {
+				t.Fatalf("expected CLI E200 envelope with exit %d, got %s; stderr %s", exit.ExitCode(), stdout, exit.Stderr)
+			}
+		})
+	}
+}
+
+func TestMCPLegacyHasuraErrorText(t *testing.T) {
+	const secret = "echoed-admin-secret"
+	for _, tc := range []struct {
+		status     int
+		body, want string
+	}{
+		{503, "unavailable", "HTTP 503: unavailable"},
+		{401, "denied: " + secret, "HTTP 401: denied: [REDACTED]"},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(tc.status)
+			_, _ = w.Write([]byte(tc.body))
+		}))
+		t.Setenv("NSELF_HASURA_GRAPHQL_URL", srv.URL)
+		t.Setenv("HASURA_GRAPHQL_ADMIN_SECRET", secret)
+		for _, tool := range []struct {
+			name string
+			run  func() (string, error)
+		}{
+			{"Schema introspection error", func() (string, error) {
+				r, e := mcpGetSchemaHandler()(context.Background(), mcp.CallToolRequest{})
+				return extractTextContent(r), e
+			}},
+			{"Permissions snapshot error", func() (string, error) {
+				r, e := mcpGetPermissionsHandler()(context.Background(), mcp.CallToolRequest{})
+				return extractTextContent(r), e
+			}},
+		} {
+			got, err := tool.run()
+			if err != nil || got != tool.name+": "+tc.want || strings.Contains(got, secret) {
+				t.Fatalf("legacy error text: got %q, err %v", got, err)
+			}
+		}
+		srv.Close()
 	}
 }
 

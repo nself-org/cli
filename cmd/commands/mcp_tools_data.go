@@ -19,6 +19,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -46,7 +47,7 @@ func mcpGetSchemaHandler() server.ToolHandlerFunc {
 
 		snapshot, err := hasura.Schema(ctx, hasuraURL, adminSecret)
 		if err != nil {
-			return mcpErrorResult("Schema introspection error: %v", err)
+			return mcpErrorResult("Schema introspection error: %s", hasura.LegacyErrorText(err))
 		}
 
 		return mcp.NewToolResultText(hasura.CompactSchema(snapshot.Raw)), nil
@@ -63,10 +64,14 @@ func mcpGetPermissionsHandler() server.ToolHandlerFunc {
 
 		snapshot, err := hasura.Permissions(ctx, hasuraURL, adminSecret)
 		if err != nil {
-			return mcpErrorResult("Permissions snapshot error: %v", err)
+			return mcpErrorResult("Permissions snapshot error: %s", hasura.LegacyErrorText(err))
 		}
 
 		if !snapshot.Valid {
+			var meta map[string]interface{}
+			if json.Unmarshal(snapshot.Raw, &meta) == nil {
+				return mcp.NewToolResultStructuredOnly(snapshot.Tables), nil
+			}
 			return mcp.NewToolResultText(string(snapshot.Raw)), nil
 		}
 		return mcp.NewToolResultStructuredOnly(snapshot.Tables), nil

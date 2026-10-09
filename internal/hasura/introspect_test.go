@@ -84,6 +84,21 @@ func TestIntrospectPermissions(t *testing.T) {
 	}
 }
 
+func TestPermissionsRejectsInvalidExport(t *testing.T) {
+	for _, body := range []string{`{"error":"metadata export disabled"}`, `{"sources":[],"error":"metadata export disabled"}`, `{}`, `{"sources":null}`, `{"sources":{}}`} {
+		t.Run(body, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(body))
+			}))
+			defer srv.Close()
+			snapshot, err := Permissions(context.Background(), srv.URL, "")
+			if err != nil || snapshot.Valid {
+				t.Fatalf("invalid export accepted: valid=%v err=%v", snapshot.Valid, err)
+			}
+		})
+	}
+}
+
 func TestIntrospectEndpointAndFailures(t *testing.T) {
 	t.Setenv("NSELF_HASURA_GRAPHQL_URL", "")
 	t.Setenv("HASURA_GRAPHQL_URL", "")
