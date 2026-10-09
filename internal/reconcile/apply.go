@@ -31,6 +31,9 @@ func Apply(ctx context.Context, req Request, opt ApplyOptions) (*Plan, error) {
 	return p, err
 }
 
+// buildBuild is a test seam for nbuild.Build.
+var buildBuild = nbuild.Build
+
 // ApplyBuild is Apply that also returns the write-mode build result.
 //
 // One locked render (EPIC ruling B): the project lock is taken first and held
@@ -58,11 +61,29 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 	}
 	defer release()
 
+	// P7-LIVE-04 (EPIC D5): the generated-state record tells a generated change
+	// from a human one. A missing record is the first run on an existing
+	// project: nothing is detected (never block), the apply records what it
+	// wrote and warns once below. A record a caller already supplied (tests,
+	// later callers) is used as given.
+	state, err := LoadGeneratedState(req.ProjectDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	if req.HandEdited == nil {
+		req.HandEdited = state.HandEditedFn(req.ProjectDir)
+	}
 	c, err := compute(ctx, req)
 	if err != nil {
 		return nil, nil, err
 	}
 	p := c.plan
+	// P7-LIVE-04: the diff of every hand-edited file comes first, so the
+	// operator sees exactly what a --force would discard (v1.5) or discard
+	// silently (v1.4's warning below) before the plan summary and the gate.
+	if err := warnHandEdits(req, p, c, v15); err != nil {
+		return nil, nil, err
+	}
 	if opt.PlanID != "" {
 		if c.generates {
 			return nil, nil, errs.New("E451", "this build generates secrets, so --plan-id cannot bind it").
@@ -85,7 +106,8 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 			return nil, nil, err
 		}
 	}
-	if err := Confirm(*p, opt, v15, req.Stderr); err != nil {
+	confirm := confirmWith(opt, v15, req.Stderr)
+	if err := confirm(p); err != nil {
 		return nil, nil, err
 	}
 	wopts := req.Build
@@ -118,6 +140,11 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 			return nil, nil, err
 		}
 		p = c.plan
+		// P7-LIVE-04: a hand-edited file only the render after the plugin
+		// changes overwrites gets its diff here too, before the second gate.
+		if err := warnHandEdits(req, p, c, v15); err != nil {
+			return nil, nil, err
+		}
 		if req.Stderr != nil && !p.Empty {
 			_, _ = fmt.Fprintln(req.Stderr, "nself: after the plugin changes the build will write:")
 			if err := RenderHuman(req.Stderr, *p); err != nil {
@@ -127,7 +154,7 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 		// The render after the plugin changes is confirmed again: --yes accepts it
 		// (it was printed above), a prompt asks again, and a hand-edited
 		// overwrite still needs --force or a yes, interactive or not.
-		if err := Confirm(*p, opt, v15, req.Stderr); err != nil {
+		if err := confirm(p); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -142,11 +169,36 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 	// with docker-compose.yml and would skip changes in .env.secrets, nself.yaml,
 	// plugin dirs and the like (EPIC round 3, F1).
 	wopts.Force = wopts.Force || !p.Empty
-	res, err := nbuild.Build(req.ProjectDir, wopts)
+	res, err := buildBuild(req.ProjectDir, wopts)
 	if err != nil {
 		return nil, nil, err
 	}
+	// P7-LIVE-04 (EPIC D5): the record is written only now that the whole
+	// write succeeded, and atomically (temp + rename) — an interrupted apply
+	// (a failed write between two files) leaves the previous record intact, so
+	// the next plan reports the half-written project as ordinary changes, not
+	// hand-edits. The bytes are c.record, the exact bytes the plan showed as
+	// the record artifact, so plan == apply holds for the record too.
+	firstRecorded := state == nil
+	if err := writeRecord(req.ProjectDir, c.record); err != nil {
+		return nil, nil, err
+	}
+	if firstRecorded && req.Stderr != nil {
+		_, _ = fmt.Fprint(req.Stderr, firstRunNotice)
+	}
 	return p, res, nil
+}
+
+// confirmWith runs Confirm with stderr muted for the one case whose generic
+// v1.4 notice would misname the flag: a hand-edit-only change (no prod-class
+// confirmation due), where P7-LIVE-04's warning above already names --force.
+func confirmWith(opt ApplyOptions, v15 bool, stderr io.Writer) func(*Plan) error {
+	return func(p *Plan) error {
+		if stderr != nil && !v15 && !p.RequiresConfirmation && len(HandEditedPaths(*p)) > 0 {
+			stderr = nil
+		}
+		return Confirm(*p, opt, v15, stderr)
+	}
 }
 
 // recheck renders again and refuses (E450) when the plan id moved.

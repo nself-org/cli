@@ -141,7 +141,7 @@ A first build generates secrets, so `--plan-id` is refused for it (E451); confir
 | `--check` | `false` | Validate only, don't build |
 | `--debug` | `false` | Enable debug mode |
 | `--diff` | `false` | Print unified diffs of the planned changes to stderr (env files show key names only) |
-| `--force`, `-f` | `false` | Force rebuild all components |
+| `--force`, `-f` | `false` | Force rebuild all components and overwrite hand-edited generated files |
 | `--hosts` | `false` | Opt in to /etc/hosts management for a BASE_DOMAIN that isn't a recognized local-dev domain (localhost/*.local.nself.org/*.localhost/*.local). Never overrides ENV=prod, which always skips /etc/hosts. |
 | `--no-auto-redis` | `false` | Disable automatic Redis enablement when a BullMQ-backed plugin is detected |
 | `--no-cache` | `false` | Disable build cache |
