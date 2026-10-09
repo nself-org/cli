@@ -4,10 +4,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestDoctorDockerVersionAndRestart(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake Docker is a POSIX shell script")
+	}
 	dir := t.TempDir()
 	log := filepath.Join(dir, "argv")
 	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$DOCKER_LOG\"\nif [ \"$1\" = version ]; then echo 27.3.1; fi\n"
