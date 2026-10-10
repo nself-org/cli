@@ -134,6 +134,7 @@ tools/cmdinventory 0  # measured 0.0 2026-10-05
 tools/covfloor 90  # measured 92.4 2026-10-05
 tools/endpoint-auth-checker 69  # measured 71.9 2026-10-05
 tools/flagaudit 40  # measured 42.7 2026-10-05
+tools/imagebump 79  # measured 81.7 2026-10-10
 tools/imagelist 0  # measured 0.0 2026-10-05
 tools/imagelock 57  # measured 59.7 2026-10-05
 tools/jsonvalidate 72  # measured 74.4 2026-10-08
