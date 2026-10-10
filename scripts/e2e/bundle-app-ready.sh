@@ -12,6 +12,8 @@
 #                    directory must exist at the same path on the host, because
 #                    compose bind-mounts it: mount it identically and set E2E_WORK.
 #          NSELF     checkout root holding web/ (only for --local-licence)
+#          E2E_KEEP_STACK=1  leave the stack and work dir for inspection (the
+#                    caller removes them)
 # Outputs: the install output, then "PASS" or "FAIL: <reason>" on stdout.
 # Exit:    0 PASS, 1 FAIL, 2 usage, 3 precondition not met (no Docker, no web/).
 # Constraints: bash 3.2 compatible. Runs sequentially, one bundle at a time. The
@@ -76,6 +78,10 @@ CLEAN_WORK=1
 LOG="$WORK/install.log"
 
 teardown() {
+  if [ "${E2E_KEEP_STACK:-0}" = "1" ]; then
+    echo "bundle-app-ready: E2E_KEEP_STACK=1, stack left running in $WORK/project" >&2
+    return
+  fi
   if [ -f "$WORK/project/.env" ] && [ -x "$WORK/nself" ]; then
     (cd "$WORK/project" && NSELF_PLUGIN_DIR="$WORK/plugins" "$WORK/nself" stop >/dev/null 2>&1) || true
   fi
