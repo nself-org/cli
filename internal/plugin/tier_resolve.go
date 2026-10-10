@@ -122,20 +122,8 @@ const (
 	TierReasonOverride    = "override"     // --tier chose it
 	TierReasonEntitlement = "entitlement"  // the licence entitles the Licensed tier
 	TierReasonDefaultFree = "default-free" // nothing else decided, so free
+	TierReasonUnresolved  = "unresolved"   // no single tier could be decided; see the error
 )
-
-// tierHint is what Update tells the resolver about the plugin it is updating.
-// It travels in the context (not the process environment), is keyed by plugin
-// name so dependency installs are unaffected, and dies with the call.
-type tierHint struct{ name, installed, override string }
-
-type tierHintKey struct{}
-
-// withTierHint returns ctx carrying the installed tier (and an optional
-// --tier override) of the plugin named name.
-func withTierHint(ctx context.Context, name, installed, override string) context.Context {
-	return context.WithValue(ctx, tierHintKey{}, tierHint{name, installed, override})
-}
 
 // tierClass reduces a registry tier to "free", "pro" (any licensed tier) or "".
 func tierClass(t string) string {
@@ -150,16 +138,11 @@ func tierClass(t string) string {
 }
 
 // ResolvePlugin picks the single registry entry `nself plugin install <name>`
-// (or a bundle's own install loop) should install; see ResolvePluginTier.
+// (or a bundle's own install loop) should install, by --tier and entitlement
+// alone (a fresh install); installLocked calls ResolvePluginTier with the
+// installed tier of an existing copy. See ResolvePluginTier.
 func ResolvePlugin(ctx context.Context, reg *Registry, name, tierOverride string, entitled EntitlementFunc) (*PluginManifest, error) {
-	installed := ""
-	if h, ok := ctx.Value(tierHintKey{}).(tierHint); ok && strings.EqualFold(h.name, name) {
-		installed = h.installed
-		if h.override != "" {
-			tierOverride = h.override
-		}
-	}
-	m, _, err := ResolvePluginTier(ctx, reg, name, tierOverride, installed, entitled)
+	m, _, err := ResolvePluginTier(ctx, reg, name, tierOverride, "", entitled)
 	return m, err
 }
 
@@ -262,6 +245,17 @@ func InstalledTier(pluginDir, name string) (tier, reason string, ok bool) {
 		return "", "", false
 	}
 	return LicenseValue(tierClass(raw)), TierReasonInstalled, true
+}
+
+// installedTierForInstall is the tier of the copy an install is about to
+// replace: the live copy, or the ".prev" backup Update parks it in while it
+// reinstalls (also what an Update interrupted by a crash leaves behind). ""
+// means a fresh install.
+func installedTierForInstall(pluginDir, name string) string {
+	if t := installedTierWire(filepath.Join(pluginDir, name)); t != "" {
+		return t
+	}
+	return installedTierWire(filepath.Join(pluginDir, name+".prev"))
 }
 
 // installedTierWire reads only the tier key of an installed plugin.json, so a

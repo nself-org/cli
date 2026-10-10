@@ -5813,7 +5813,7 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
+      "json": "legacy",
       "data_schema": null,
       "exit_codes": {},
       "confirm": null,
@@ -21687,6 +21687,6 @@
     "plugin": 10,
     "core_missing": [],
     "json_envelope": 14,
-    "json_legacy": 48
+    "json_legacy": 49
   }
 }

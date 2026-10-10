@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
@@ -265,30 +266,6 @@ func TestTierResolveSticky(t *testing.T) {
 	})
 }
 
-// TestTierResolveSticky_CtxHint: Update hands the installed tier to
-// ResolvePlugin in the context, only for the plugin it is updating.
-func TestTierResolveSticky_CtxHint(t *testing.T) {
-	compattest.Set(t, true)
-	ctx := withTierHint(context.Background(), "cron", "free", "")
-	m, err := ResolvePlugin(ctx, fixtureRegistry(), "cron", "", alwaysEntitled)
-	if err != nil || m.Tier != "free" {
-		t.Fatalf("with the hint: got %v/%v, want free", m, err)
-	}
-	other := withTierHint(context.Background(), "notify", "free", "")
-	m, err = ResolvePlugin(other, fixtureRegistry(), "cron", "", alwaysEntitled)
-	if err != nil || m.Tier != "pro" {
-		t.Fatalf("a hint for another plugin must not apply: got %v/%v, want pro", m, err)
-	}
-	m, err = ResolvePlugin(context.Background(), fixtureRegistry(), "cron", "", alwaysEntitled)
-	if err != nil || m.Tier != "pro" {
-		t.Fatalf("without the hint: got %v/%v, want pro", m, err)
-	}
-	m, err = ResolvePlugin(withTierHint(context.Background(), "cron", "free", "licensed"), fixtureRegistry(), "cron", "", alwaysEntitled)
-	if err != nil || m.Tier != "pro" {
-		t.Fatalf("--tier in the hint must win over the installed tier: got %v/%v", m, err)
-	}
-}
-
 // TestTierResolveOverride: --tier always wins over the installed tier and
 // still runs the entitlement check for the Licensed side.
 func TestTierResolveOverride(t *testing.T) {
@@ -453,5 +430,93 @@ func TestUpdateWithTierSwitchesOnPurpose(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "installing updated plugin") {
 		t.Fatalf("expected the update to reach the install step, got %v", err)
+	}
+}
+
+// installedPair writes a registry server serving the cron tier pair and a
+// plugin dir holding cron installed with the given wire tier.
+func installedPair(t *testing.T, installedWire string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"plugins":[` +
+			`{"name":"cron","version":"1.0.0","description":"d","category":"c","license":"MIT","tier":"free","tier_pair":true},` +
+			`{"name":"cron","version":"1.1.2","description":"d","category":"c","license":"x","tier":"pro","tier_pair":true,"bundles":["claw"]}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
+	t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "")
+	pluginDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(pluginDir, "cron"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"name":"cron","version":"1.0.0","description":"d","category":"c","license":"x","tier":"` + installedWire + `"}`
+	if err := os.WriteFile(filepath.Join(pluginDir, "cron", "plugin.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return pluginDir
+}
+
+// TestInstallKeepsInstalledTier (CR S1): a plain `plugin install cron` over an
+// installed Licensed copy, with the licence gone, stops with E131 in v1.5
+// instead of silently resolving to the free entry; v1.4 keeps the old
+// entitlement-only resolution.
+func TestInstallKeepsInstalledTier(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		pluginDir := installedPair(t, "pro")
+		err := Install(context.Background(), &config.Config{}, "cron", pluginDir)
+		var ce *errs.CLIError
+		isE131 := errors.As(err, &ce) && ce.Code == "E131"
+		if compat.V15() && !isE131 {
+			t.Fatalf("v1.5: reinstall over an installed licensed copy must stop with E131, got %v", err)
+		}
+		if !compat.V15() && isE131 {
+			t.Fatalf("v1.4: no E131 (base behaviour), got %v", err)
+		}
+	})
+}
+
+// TestInstalledTierForInstall: the live copy wins, the .prev backup Update
+// parks it in stands in while the live copy is gone, a fresh install has none.
+func TestInstalledTierForInstall(t *testing.T) {
+	dir := t.TempDir()
+	write := func(sub, tier string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, sub, "plugin.json"), []byte(`{"tier":"`+tier+`"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := installedTierForInstall(dir, "cron"); got != "" {
+		t.Fatalf("fresh install: got %q, want empty", got)
+	}
+	write("cron.prev", "pro")
+	if got := installedTierForInstall(dir, "cron"); got != "pro" {
+		t.Fatalf(".prev backup: got %q, want pro", got)
+	}
+	write("cron", "free")
+	if got := installedTierForInstall(dir, "cron"); got != "free" {
+		t.Fatalf("live copy must win over .prev: got %q, want free", got)
+	}
+}
+
+// TestUpdateWithTierRestoresEnv: --tier travels in NSELF_PLUGIN_INSTALL_TIER
+// for the call only; the caller's value comes back afterwards.
+func TestUpdateWithTierRestoresEnv(t *testing.T) {
+	pluginDir := installedPair(t, "pro")
+	compattest.Set(t, true)
+	t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "pro")
+	_ = UpdateWithTier(context.Background(), &config.Config{}, "cron", pluginDir, "free")
+	if v := os.Getenv("NSELF_PLUGIN_INSTALL_TIER"); v != "pro" {
+		t.Fatalf("env not restored: %q", v)
+	}
+	t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "")
+	_ = os.Unsetenv("NSELF_PLUGIN_INSTALL_TIER")
+	_ = UpdateWithTier(context.Background(), &config.Config{}, "cron", pluginDir, "free")
+	if _, set := os.LookupEnv("NSELF_PLUGIN_INSTALL_TIER"); set {
+		t.Fatal("env must be unset again after the call")
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
@@ -91,9 +92,9 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 			if missingFragmentIsError(pluginDir, entry.Name()) {
 				// compat.V15(P7-PLUG-17): a compose plugin without a fragment is skipped silently -> the build fails with E128 (v1.4 warns)
 				if compat.V15() {
-					return nil, errs.Newf("E128", "plugin %q declares a compose service but has no %s", entry.Name(), pluginComposeFilename)
+					return nil, errs.Newf("E128", "plugin %q (%s) declares a compose service but has no %s", entry.Name(), filepath.Join(pluginDir, entry.Name()), pluginComposeFilename)
 				}
-				ui.Warn(fmt.Sprintf("plugin %q declares a compose service but has no %s; it is left out of the stack (an error from v1.5)", entry.Name(), pluginComposeFilename))
+				warnOnce(fmt.Sprintf("plugin %q (%s) declares a compose service but has no %s; it is left out of the stack (an error from v1.5)", entry.Name(), filepath.Join(pluginDir, entry.Name()), pluginComposeFilename))
 			}
 			continue
 		}
@@ -151,6 +152,21 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 
 	return composePaths, nil
 }
+
+// fragmentWarned holds the fragment warnings already printed by this process.
+// One `nself build` runs plugin discovery more than once, and a warning that
+// repeats per pass reads as several problems.
+var fragmentWarned sync.Map
+
+// warnOnce prints msg with ui.Warn the first time this process sees it.
+func warnOnce(msg string) {
+	if _, seen := fragmentWarned.LoadOrStore(msg, struct{}{}); !seen {
+		ui.Warn(msg)
+	}
+}
+
+// resetWarnOnce forgets the warnings printed so far (tests).
+func resetWarnOnce() { fragmentWarned = sync.Map{} }
 
 // missingFragmentIsError reports whether an installed plugin that ships no
 // compose fragment is one that should have it: a v2 manifest with

@@ -1,11 +1,14 @@
 package commands
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -20,10 +23,16 @@ import (
 // notify there as that tier. It returns nothing; the env carries the setup.
 func infoFixture(t *testing.T, installedTier string) {
 	t.Helper()
+	infoFixtureRegistry(t, installedTier, `{"plugins":[`+
+		`{"name":"notify","tier":"free","tier_pair":true,"version":"1.0.0","description":"free notify"},`+
+		`{"name":"notify","tier":"pro","tier_pair":true,"version":"1.1.0","description":"licensed notify","bundles":["claw"]}]}`)
+}
+
+// infoFixtureRegistry is infoFixture with the registry body chosen by the test.
+func infoFixtureRegistry(t *testing.T, installedTier, registry string) {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"plugins":[` +
-			`{"name":"notify","tier":"free","tier_pair":true,"version":"1.0.0","description":"free notify"},` +
-			`{"name":"notify","tier":"pro","tier_pair":true,"version":"1.1.0","description":"licensed notify","bundles":["claw"]}]}`))
+		_, _ = w.Write([]byte(registry))
 	}))
 	t.Cleanup(srv.Close)
 	pluginDir := t.TempDir()
@@ -62,6 +71,12 @@ func runInfo(t *testing.T, asJSON bool) string {
 func TestPluginInfoJSONTier(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		infoFixture(t, "free")
+		if !compat.V15() {
+			if out := runInfo(t, true); json.Valid([]byte(out)) {
+				t.Fatalf("v1.4 ignores --json (CR S2), got JSON: %s", out)
+			}
+			return
+		}
 		var got struct {
 			Name       string `json:"name"`
 			Version    string `json:"version"`
@@ -89,11 +104,16 @@ func TestPluginInfoJSONTier(t *testing.T) {
 }
 
 // TestPluginInfoNotInstalled: with nothing installed, v1.5 reports what an
-// install would pick (free here: no licence) and why; v1.4 keeps the first
-// registry match and reports no reason.
+// install would pick (free here: no licence) and why; v1.4 ignores --json.
 func TestPluginInfoNotInstalled(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		infoFixture(t, "")
+		if !compat.V15() {
+			if out := runInfo(t, true); json.Valid([]byte(out)) {
+				t.Fatalf("v1.4 ignores --json (CR S2), got JSON: %s", out)
+			}
+			return
+		}
 		var got struct {
 			Tier       string `json:"tier"`
 			TierReason string `json:"tier_reason"`
@@ -101,12 +121,8 @@ func TestPluginInfoNotInstalled(t *testing.T) {
 		if err := json.Unmarshal([]byte(runInfo(t, true)), &got); err != nil {
 			t.Fatal(err)
 		}
-		wantReason := ""
-		if compat.V15() {
-			wantReason = "default-free"
-		}
-		if got.Tier != "free" || got.TierReason != wantReason {
-			t.Fatalf("not installed: %+v, want free/%q", got, wantReason)
+		if got.Tier != "free" || got.TierReason != "default-free" {
+			t.Fatalf("not installed: %+v, want free/default-free", got)
 		}
 	})
 }
@@ -143,5 +159,123 @@ func TestPluginUpdateTierFlag(t *testing.T) {
 	}
 	if err := run("licensed"); err == nil || !strings.Contains(err.Error(), "needs a plugin name") {
 		t.Fatalf("no name: %v", err)
+	}
+}
+
+// TestPluginInfoRootChild is the helper process of runInfoRoot: it runs the
+// command the way main does (commands.Execute: argv rewrite, tree
+// preparation, invocation decorator) in a process of its own, because Execute
+// relocates the shared command tree and would leave the other tests with it.
+func TestPluginInfoRootChild(t *testing.T) {
+	if os.Getenv("NSELF_TEST_INFO_CHILD") != "1" {
+		t.Skip("helper process for runInfoRoot")
+	}
+	os.Args = append([]string{"nself", "plugin", "info", "notify"}, strings.Fields(os.Getenv("NSELF_TEST_INFO_ARGS"))...)
+	if err := Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+// runInfoRoot runs `nself plugin info notify <extra...>` through the root
+// command in a child process (see TestPluginInfoRootChild), so the pre-run
+// gates, the E402 --json check against the registry row among them, run as a
+// user hits them. It returns the child's stdout and, on a non-zero exit, an
+// error carrying its stderr.
+func runInfoRoot(t *testing.T, extra ...string) (string, error) {
+	t.Helper()
+	child := exec.Command(os.Args[0], "-test.run=^TestPluginInfoRootChild$")
+	child.Dir = t.TempDir()
+	child.Env = append(os.Environ(), "NSELF_TEST_INFO_CHILD=1", "NSELF_TEST_INFO_ARGS="+strings.Join(extra, " "), "NSELF_ALLOW_SOURCE_DIR=1")
+	var stdout, stderr bytes.Buffer
+	child.Stdout, child.Stderr = &stdout, &stderr
+	if err := child.Run(); err != nil {
+		return stdout.String(), fmt.Errorf("%v: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
+}
+
+// TestPluginInfoJSONThroughRoot (CR M1, S2): `nself plugin info <n> --json`
+// works through the root command. v1.5 prints the JSON (the registry row is
+// json legacy, so the E402 gate lets it through); v1.4 still ignores the flag
+// and prints the table.
+func TestPluginInfoJSONThroughRoot(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		infoFixture(t, "free")
+		out, err := runInfoRoot(t, "--json")
+		if err != nil {
+			t.Fatalf("plugin info --json through the root command: %v", err)
+		}
+		if !compat.V15() {
+			if json.Valid([]byte(out)) || !strings.Contains(out, "Field") {
+				t.Fatalf("v1.4 must ignore --json and print the table, got %q", out)
+			}
+			return
+		}
+		var got struct {
+			Name       string `json:"name"`
+			Tier       string `json:"tier"`
+			TierReason string `json:"tier_reason"`
+		}
+		if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+			t.Fatalf("v1.5 output is not JSON: %v\n%s", jerr, out)
+		}
+		if got.Name != "notify" || got.Tier != "free" || got.TierReason != "installed" {
+			t.Fatalf("v1.5 JSON: %+v", got)
+		}
+	})
+}
+
+// TestPluginInfoUnresolvedTier (CR S3): a slug that resolves to no single tier
+// (two entries, not a declared tier pair) shows tier_reason "unresolved" and
+// the error in v1.5, never the first registry entry.
+func TestPluginInfoUnresolvedTier(t *testing.T) {
+	compattest.Set(t, true)
+	infoFixtureRegistry(t, "", `{"plugins":[`+
+		`{"name":"notify","tier":"free","version":"1.0.0","description":"first entry"},`+
+		`{"name":"notify","tier":"pro","version":"2.0.0","description":"second entry"}]}`)
+	out, err := runInfoRoot(t, "--json")
+	if err == nil {
+		t.Fatalf("an unresolved tier must fail, got output %s", out)
+	}
+	var got struct {
+		Version    string `json:"version"`
+		Tier       string `json:"tier"`
+		TierReason string `json:"tier_reason"`
+		TierError  string `json:"tier_error"`
+	}
+	if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+		t.Fatalf("not JSON: %v\n%s", jerr, out)
+	}
+	if got.TierReason != "unresolved" || got.TierError == "" || got.Version != "" || got.Tier != "" {
+		t.Fatalf("unresolved JSON must carry reason+error and no registry entry: %+v", got)
+	}
+	table, terr := runInfoRoot(t)
+	if terr == nil || !strings.Contains(terr.Error(), "tier unresolved") || strings.Contains(table, "first entry") {
+		t.Fatalf("table mode: err=%v out=%q", terr, table)
+	}
+}
+
+// TestPluginInfoInstalledTierNotServed (CR S3): a plugin installed as licensed
+// whose registry now serves only the free entry is unresolved in v1.5, not
+// described by that other entry.
+func TestPluginInfoInstalledTierNotServed(t *testing.T) {
+	compattest.Set(t, true)
+	infoFixtureRegistry(t, "pro", `{"plugins":[{"name":"notify","tier":"free","version":"1.0.0","description":"free only"}]}`)
+	out, err := runInfoRoot(t, "--json")
+	if err == nil {
+		t.Fatalf("want an error, got output %s", out)
+	}
+	var got struct {
+		Version    string `json:"version"`
+		TierReason string `json:"tier_reason"`
+		TierError  string `json:"tier_error"`
+	}
+	if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+		t.Fatalf("not JSON: %v\n%s", jerr, out)
+	}
+	if got.TierReason != "unresolved" || got.TierError == "" || got.Version != "" {
+		t.Fatalf("installed tier not served must be unresolved with the cause: %+v", got)
 	}
 }

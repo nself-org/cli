@@ -69,13 +69,20 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 	}
 
 	pluginDir := resolvePluginDir()
-	manifest, tier, tierReason := pluginInfoTier(ctx, reg, name, pluginDir)
-	if manifest == nil {
+	manifest, tier, tierReason, tierErr := pluginInfoTier(ctx, reg, name, pluginDir)
+	if manifest == nil && tierErr == nil {
 		return fmt.Errorf("plugin %q not found in registry", name)
 	}
 
-	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON {
-		return writePluginInfoJSON(cmd, manifest, tier, tierReason)
+	// compat.V15(P7-PLUG-17): --json is ignored by plugin info -> prints the info with its tier and why as JSON
+	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON && compat.V15() {
+		if err := writePluginInfoJSON(cmd, name, manifest, tier, tierReason, tierErr); err != nil {
+			return err
+		}
+		return tierErr
+	}
+	if tierErr != nil {
+		return fmt.Errorf("plugin %q: tier unresolved: %w", name, tierErr)
 	}
 
 	// Display plugin details.
@@ -159,7 +166,12 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 // vocabulary) and reason to report. An installed plugin reports the tier it is
 // installed as, with reason "installed". Otherwise v1.5 describes the entry an
 // install would pick; v1.4 keeps the first registry match.
-func pluginInfoTier(ctx context.Context, reg *plugin.Registry, name, pluginDir string) (*plugin.PluginManifest, string, string) {
+//
+// In v1.5 a tier that cannot be resolved (a duplicate slug that is not a tier
+// pair, or an installed tier the registry no longer serves) returns a nil
+// manifest, reason TierReasonUnresolved and the cause: it never falls back to
+// the first registry entry. A name the registry does not have returns nil, nil.
+func pluginInfoTier(ctx context.Context, reg *plugin.Registry, name, pluginDir string) (*plugin.PluginManifest, string, string, error) {
 	var first, match *plugin.PluginManifest
 	instTier, instReason, installed := plugin.InstalledTier(pluginDir, name)
 	for i := range reg.Plugins {
@@ -175,40 +187,50 @@ func pluginInfoTier(ctx context.Context, reg *plugin.Registry, name, pluginDir s
 		}
 	}
 	if first == nil {
-		return nil, "", ""
+		return nil, "", "", nil
 	}
 	// compat.V15(P7-PLUG-17): info describes the first registry match -> describes the installed tier's entry, or the one an install would pick
 	if !compat.V15() {
 		if installed {
-			return first, instTier, instReason
+			return first, instTier, instReason, nil
 		}
-		return first, plugin.LicenseValue(first.Tier), ""
+		return first, plugin.LicenseValue(first.Tier), "", nil
 	}
 	if installed {
 		if match == nil {
-			match = first
+			return nil, "", plugin.TierReasonUnresolved,
+				fmt.Errorf("installed as %s, but the registry serves no %s entry for %q", instTier, instTier, name)
 		}
-		return match, instTier, instReason
+		return match, instTier, instReason, nil
 	}
-	if m, reason, err := plugin.ResolvePluginTier(ctx, reg, name, "", "", nil); err == nil {
-		return m, plugin.LicenseValue(m.Tier), reason
+	m, reason, err := plugin.ResolvePluginTier(ctx, reg, name, "", "", nil)
+	if err != nil {
+		return nil, "", plugin.TierReasonUnresolved, err
 	}
-	return first, plugin.LicenseValue(first.Tier), ""
+	return m, plugin.LicenseValue(m.Tier), reason, nil
 }
 
 // writePluginInfoJSON prints `plugin info --json`: the registry fields plus
-// the reported tier (free or licensed) and why.
-func writePluginInfoJSON(cmd *cobra.Command, m *plugin.PluginManifest, tier, reason string) error {
+// the reported tier (free or licensed) and why. An unresolved tier (m nil)
+// prints only the name, tier_reason "unresolved" and the cause in tier_error.
+func writePluginInfoJSON(cmd *cobra.Command, name string, m *plugin.PluginManifest, tier, reason string, cause error) error {
 	out := struct {
 		Name        string `json:"name"`
-		Version     string `json:"version"`
-		Description string `json:"description"`
-		Category    string `json:"category"`
-		License     string `json:"license"`
+		Version     string `json:"version,omitempty"`
+		Description string `json:"description,omitempty"`
+		Category    string `json:"category,omitempty"`
+		License     string `json:"license,omitempty"`
 		Tier        string `json:"tier"`
 		TierReason  string `json:"tier_reason"`
+		TierError   string `json:"tier_error,omitempty"`
 		Port        int    `json:"port,omitempty"`
-	}{m.Name, m.Version, m.Description, m.Category, m.License, tier, reason, m.Port}
+	}{Name: name, Tier: tier, TierReason: reason}
+	if m != nil {
+		out.Name, out.Version, out.Description, out.Category, out.License, out.Port = m.Name, m.Version, m.Description, m.Category, m.License, m.Port
+	}
+	if cause != nil {
+		out.TierError = cause.Error()
+	}
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		return err

@@ -21,7 +21,6 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
-	"github.com/nself-org/cli/internal/ui"
 )
 
 // dockerNetworkDefaultRE matches ${DOCKER_NETWORK:-<fallback>} as a whole value.
@@ -120,7 +119,7 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 		if compat.V15() {
 			return content, errs.New("E129", msg)
 		}
-		ui.Warn(msg)
+		warnOnce(msg)
 	}
 	// compat.V15(P7-PLUG-17): fragments keep their own networks and ${DOCKER_NETWORK:-x} -> missing networks attached, ${DOCKER_NETWORK:-x} written as ${DOCKER_NETWORK}
 	if !compat.V15() {

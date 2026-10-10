@@ -146,11 +146,28 @@ func UpdateWithTier(ctx context.Context, cfg *config.Config, name string, plugin
 	currentDir := filepath.Join(pluginDir, name)
 	backupDir := filepath.Join(pluginDir, name+".prev")
 
-	// What the installed copy is, before it is replaced: its tier stays (v1.5,
-	// see ResolvePluginTier) and its image references tell which ones changed.
-	installedTier := installedTierWire(currentDir)
+	// --tier reaches the install through the same env var `plugin install
+	// --tier` uses; installLocked reads the installed tier itself (from the
+	// .prev backup below), so nothing else carries it. Restored on return.
+	if tierOverride != "" {
+		prev, had := os.LookupEnv("NSELF_PLUGIN_INSTALL_TIER")
+		if err := os.Setenv("NSELF_PLUGIN_INSTALL_TIER", tierOverride); err != nil {
+			return fmt.Errorf("setting tier override: %w", err)
+		}
+		defer func() {
+			if had {
+				_ = os.Setenv("NSELF_PLUGIN_INSTALL_TIER", prev)
+			} else {
+				_ = os.Unsetenv("NSELF_PLUGIN_INSTALL_TIER")
+			}
+		}()
+	}
+
+	// The installed copy's image references tell which ones changed. A
+	// fragment that does not parse gives no references, so the post-update
+	// pull treats every image as changed (the safe direction: it pulls more,
+	// never less).
 	prevImages, _ := fragmentImages(currentDir)
-	ctx = withTierHint(ctx, name, installedTier, tierOverride)
 
 	// Rename current install to .prev so we can restore on failure.
 	if _, err := os.Stat(currentDir); err == nil {

@@ -211,20 +211,21 @@ func loadConfig() (*config.Config, error) {
 	return cfg, nil
 }
 
-// runPluginUpdateTier is the RunE of `plugin update`. Without --tier it is
-// runPluginUpdate; with --tier (one plugin) the tier goes to Update as a
-// parameter, so the switch is explicit and nothing else carries it.
+// runPluginUpdateTier is the RunE of `plugin update`. One plugin name goes
+// through plugin.UpdateWithTier with the optional --tier (empty keeps the
+// installed tier); no name updates every installed plugin (runPluginUpdate),
+// where --tier is refused because a tier switch is per plugin.
 func runPluginUpdateTier(cmd *cobra.Command, args []string) error {
 	tier, _ := cmd.Flags().GetString("tier")
 	tier = strings.ToLower(strings.TrimSpace(tier))
-	if tier == "" {
-		return runPluginUpdate(cmd, args)
-	}
-	if tier != "free" && tier != plugin.LicenseLicensed && tier != plugin.WireTierPro {
+	if tier != "" && tier != "free" && tier != plugin.LicenseLicensed && tier != plugin.WireTierPro {
 		return fmt.Errorf(`invalid --tier %q: must be "free" or "licensed"`, tier)
 	}
 	if len(args) != 1 {
-		return fmt.Errorf("--tier needs a plugin name: nself plugin update <name> --tier %s", tier)
+		if tier != "" {
+			return fmt.Errorf("--tier needs a plugin name: nself plugin update <name> --tier %s", tier)
+		}
+		return runPluginUpdate(cmd, args)
 	}
 	name := args[0]
 	ctx := context.Background()
@@ -235,7 +236,11 @@ func runPluginUpdateTier(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Updating plugin %q (tier %s)...\n", name, tier)
+	if tier != "" {
+		fmt.Fprintf(os.Stderr, "Updating plugin %q (tier %s)...\n", name, tier)
+	} else {
+		fmt.Fprintf(os.Stderr, "Updating plugin %q...\n", name)
+	}
 	if err := plugin.UpdateWithTier(ctx, cfg, name, resolvePluginDir(), tier); err != nil {
 		return fmt.Errorf("updating plugin %q: %w", name, err)
 	}

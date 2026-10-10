@@ -115,7 +115,7 @@ func TestFragmentLessComposePluginE128(t *testing.T) {
 				files, err := discoverPluginComposeFilesFx(writeEffects{}, newDiskSink(dir), dir, dir)
 				var ce *errs.CLIError
 				if tc.compose {
-					if !errors.As(err, &ce) || ce.Code != "E128" || !strings.Contains(ce.What, `"p"`) {
+					if !errors.As(err, &ce) || ce.Code != "E128" || !strings.Contains(ce.What, `"p"`) || !strings.Contains(ce.What, filepath.Join(dir, "p")) {
 						t.Fatalf("want E128 naming the plugin, got %v", err)
 					}
 					return
@@ -128,6 +128,7 @@ func TestFragmentLessComposePluginE128(t *testing.T) {
 				compattest.Set(t, false)
 				dir := t.TempDir()
 				installPlugin(t, dir, "p", tc.manifest, "", tc.extra...)
+				resetWarnOnce()
 				var files []string
 				var err error
 				out := captureStderr(t, func() {
@@ -237,6 +238,7 @@ func TestFragmentNetworkForeignE129(t *testing.T) {
 		compattest.Set(t, false)
 		var out []byte
 		var err error
+		resetWarnOnce()
 		stderr := captureStderr(t, func() { out, err = normalizeComposeNetworks([]byte(fragForeign), "spy") })
 		if err != nil || string(out) != fragForeign {
 			t.Fatalf("v1.4 must only warn, err=%v", err)
@@ -316,5 +318,31 @@ func TestE130Registered(t *testing.T) {
 		if _, ok := errs.Registry[c]; !ok {
 			t.Errorf("%s is not registered", c)
 		}
+	}
+}
+
+// TestFragmentWarningsOncePerBuild (CR N1): one build runs plugin discovery
+// more than once; each v1.4 fragment warning (E128-style missing fragment,
+// foreign network) prints once, not once per pass.
+func TestFragmentWarningsOncePerBuild(t *testing.T) {
+	compattest.Set(t, false)
+	resetWarnOnce()
+	dir := t.TempDir()
+	installPlugin(t, dir, "p", `{"manifest_version":2,"name":"p","service":{"kind":"compose"}}`, "")
+	out := captureStderr(t, func() {
+		for pass := 0; pass < 3; pass++ {
+			if _, err := discoverPluginComposeFilesFx(writeEffects{}, newDiskSink(dir), dir, dir); err != nil {
+				t.Errorf("pass %d: %v", pass, err)
+			}
+			if _, err := normalizeComposeNetworks([]byte(fragForeign), "spy"); err != nil {
+				t.Errorf("pass %d: %v", pass, err)
+			}
+		}
+	})
+	if n := strings.Count(out, "no docker-compose.plugin.yml"); n != 1 {
+		t.Errorf("missing-fragment warning printed %d times, want 1: %q", n, out)
+	}
+	if n := strings.Count(out, "attaches external network"); n != 1 {
+		t.Errorf("foreign-network warning printed %d times, want 1: %q", n, out)
 	}
 }

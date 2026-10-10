@@ -8,9 +8,9 @@ Use `nself plugin search --licensed <query>` to find Licensed plugins. The older
 
 ## Tier resolution and stickiness (v1.5 mode)
 
-A plugin served as a Free and a Licensed pair (cron, notify) keeps the tier it was installed with. `nself plugin update notify` on a Free install stays Free even after you buy a licence, so a purchase never changes a running stack by itself. To move to the other tier on purpose, pass `--tier licensed` (or `--tier free`); `--tier licensed` still needs the licence.
+A plugin served as a Free and a Licensed pair (cron, notify) keeps the tier it was installed with. `nself plugin update notify` on a Free install stays Free even after you buy a licence, so a purchase never changes a running stack by itself. The same holds for `nself plugin install notify` over an installed copy and for a Bundle install that touches it. To move to the other tier on purpose, pass `--tier licensed` (or `--tier free`); `--tier licensed` still needs the licence.
 
-The reason a tier was chosen is one of `installed`, `override`, `entitlement` or `default-free`. If the installed tier cannot be kept (the licence lapsed, or the registry now serves only the other tier), the update stops with E131 and changes nothing; pass `--tier` to choose. A failed entitlement lookup is reported as itself, never as a downgrade. In v1.4 mode an update keeps resolving by entitlement as before. `nself plugin info <name> --json` reports `tier` (`free` or `licensed`) and `tier_reason`; `nself plugin update <name> --tier free|licensed` is the explicit switch.
+The reason a tier was chosen is one of `installed`, `override`, `entitlement` or `default-free`. If the installed tier cannot be kept (the licence lapsed, or the registry now serves only the other tier), the update stops with E131 and changes nothing; pass `--tier` to choose. A failed entitlement lookup is reported as itself, never as a downgrade. In v1.4 mode an update keeps resolving by entitlement as before. In v1.5 mode `nself plugin info <name> --json` reports `tier` (`free` or `licensed`) and `tier_reason` (v1.4 mode ignores `--json`); a tier that cannot be decided is reported as `tier_reason: "unresolved"` with the cause in `tier_error`, never as the first registry entry; `nself plugin update <name> --tier free|licensed` is the explicit switch.
 
 ## Compose fragment rules
 
