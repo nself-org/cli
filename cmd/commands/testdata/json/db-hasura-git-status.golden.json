@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "command": "db hasura git-status",
+  "data": {
+    "branch": "",
+    "commit": "",
+    "modified": [],
+    "clean": false
+  }
+}

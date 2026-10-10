@@ -25,6 +25,15 @@ func runDBMigrateAudit(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("audit migrations: %w", err)
 	}
 
+	audit := dbMigrateAuditData{Migrations: []dbMigrationAuditRow{}}
+	for _, r := range results {
+		issues := r.Issues
+		if issues == nil {
+			issues = []string{}
+		}
+		audit.Migrations = append(audit.Migrations, dbMigrationAuditRow{Name: r.Name, Applied: r.Applied, Idempotent: r.Idempotent, HasRollback: r.HasRollback, ChecksumMatch: r.ChecksumMatch, Issues: issues})
+	}
+	setData(cmd, audit)
 	if len(results) == 0 {
 		fmt.Println("No migration files found.")
 		return nil

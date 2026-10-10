@@ -68,6 +68,10 @@ func runTemplateList(cmd *cobra.Command, args []string) error {
 	registryTemplates, err := fetchTemplateList(ctx, baseURL, params)
 	if err != nil {
 		// Registry unavailable is non-fatal; bundled list above already printed.
+		if jsonEnvelopeOn(cmd) {
+			fmt.Fprintf(os.Stderr, "community registry unavailable: %v\n", err)
+			return emitEnv(cmd, newTemplateListData(nil), false)
+		}
 		if !asJSON {
 			fmt.Fprintf(os.Stderr, "  %s Community registry unavailable: %v\n\n",
 				ui.C(ui.Yellow, ui.IconWarning), err)
@@ -75,6 +79,9 @@ func runTemplateList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		return emitEnv(cmd, newTemplateListData(registryTemplates), false)
+	}
 	if len(registryTemplates) == 0 {
 		if !asJSON {
 			fmt.Fprintln(os.Stderr, "No community templates found matching the given filters.")
@@ -118,6 +125,9 @@ func runTemplateInfo(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		return emitEnv(cmd, t, true)
+	}
 	if asJSON {
 		return ui.PrintJSON(t)
 	}

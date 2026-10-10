@@ -25,6 +25,7 @@ func runDBHasuraConsole(cmd *cobra.Command, _ []string) error {
 		port = 8080
 	}
 	url := fmt.Sprintf("http://localhost:%d/console", port)
+	setData(cmd, dbConsoleData{URL: url})
 	fmt.Printf("Opening Hasura Console: %s\n", url)
 
 	// Attempt to open the browser. Best-effort on macOS/Linux.

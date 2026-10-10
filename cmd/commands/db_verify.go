@@ -25,7 +25,7 @@ reach. The admin secret is read from the running Hasura container, never
 from .env, and is used only to authenticate the impersonation; a bare role
 header with no secret is not honored by Hasura and always falls back to the
 unauthorized role.`,
-	RunE: runDBVerify,
+	RunE: dataEnv(runDBVerify),
 }
 
 func init() {
@@ -49,6 +49,7 @@ func runDBVerify(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("verify role %q: %w", role, err)
 	}
 
+	setData(cmd, dbVerifyData{Role: result.Role, Queries: result.Queries, Mutations: result.Mutations})
 	fmt.Printf("Role %q can reach:\n", result.Role)
 	fmt.Printf("  queries:   %d\n", result.Queries)
 	fmt.Printf("  mutations: %d\n", result.Mutations)

@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "command": "db pgbouncer status",
+  "data": {
+    "enabled": false,
+    "running": false,
+    "pool_mode": "",
+    "active_pools": 0,
+    "active_clients": 0,
+    "idle_servers": 0
+  }
+}

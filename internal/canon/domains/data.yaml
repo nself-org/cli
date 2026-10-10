@@ -8,7 +8,7 @@ commands:
   backup config: {side_effect: read, flags: {install-cron: {side_effect: write}}}
   # cmd/commands/backup_create_list.go:22 creates a local backup; --remote uploads it
   backup create: {side_effect: write, flags: {remote: {side_effect: remote}}}
-  backup drill: {side_effect: write, json: legacy}
+  backup drill: {side_effect: write}
   backup init-key: {side_effect: write}
   backup list: {side_effect: read}
   # cmd/commands/pitr.go:30 RunE path changes no persistent state (prints/reads only)
@@ -16,17 +16,19 @@ commands:
   backup pitr base-backup: {side_effect: write}
   backup pitr disable: {side_effect: write}
   backup pitr enable: {side_effect: write}
-  backup pitr restore: {side_effect: destructive}
+  # surface cli-only: overwrites the live data directory and has no consent flag or plan form; a flag is a behaviour change (debt)
+  backup pitr restore: {side_effect: destructive, surface: cli-only}
   backup pitr status: {side_effect: read}
-  backup prune: {side_effect: destructive}
-  backup restore: {side_effect: destructive}
+  backup prune: {side_effect: destructive, confirm: {flags: []}}
+  backup restore: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/backup_restore.go:85 downloads a backup from a remote and restores it over the database
-  backup restore-remote: {side_effect: destructive}
+  backup restore-remote: {side_effect: destructive, confirm: {flags: [yes]}}
   backup resume: {side_effect: write}
   backup schedule: {side_effect: write}
   backup status: {side_effect: read}
   # cmd/commands/backup_key_stream.go:61 streams the backup to a remote destination (--to)
-  backup stream: {side_effect: remote}
+  # cmd/commands/backup_key_stream.go writes the archive bytes to the destination (stream, json none); an envelope would corrupt it
+  backup stream: {side_effect: remote, output: stream} # writes archive bytes to the destination; stdout carries no document (stream, json none)
   # cmd/commands/backup_verify_prune.go:22 checks backup integrity; --restore-test restores into a scratch database
   backup verify: {side_effect: read, flags: {restore-test: {side_effect: write}}}
   # cmd/commands/db.go:27 RunE path changes no persistent state (prints/reads only)
@@ -34,7 +36,7 @@ commands:
   db backup: {side_effect: write}
   db backup list: {side_effect: read}
   # cmd/commands/db_pitr_ops.go:116 uploads local backups to the remote destination (--remote); name is not sync-shaped
-  db backup-sync: {side_effect: remote}
+  db backup-sync: {side_effect: remote, confirm: {flags: []}}
   # cmd/commands/db_pitr_ops.go:162 RunE path changes no persistent state (prints/reads only)
   db backup-sync-status: {side_effect: read}
   # cmd/commands/db_audit.go:52 RunE path changes no persistent state (prints/reads only)
@@ -42,7 +44,7 @@ commands:
   db drift fix: {side_effect: write}
   # cmd/commands/db_drift.go:17 RunE path changes no persistent state (prints/reads only)
   db drift scan: {side_effect: read}
-  db drop: {side_effect: destructive}
+  db drop: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/db_schema.go:56 RunE path changes no persistent state (prints/reads only)
   db fk-index: {side_effect: read}
   db fk-index apply: {side_effect: write}
@@ -86,7 +88,8 @@ commands:
   db migrate baseline: {side_effect: write}
   db migrate create: {side_effect: write}
   # cmd/commands/db_migrate.go:87 rolls a migration back; dropped objects and data are not restorable by a command
-  db migrate down: {side_effect: destructive}
+  # surface cli-only: rolls a migration back with no consent flag or plan form; a flag is a behaviour change (debt)
+  db migrate down: {side_effect: destructive, surface: cli-only}
   db migrate generate: {side_effect: write}
   db migrate idempotent: {side_effect: write}
   # cmd/commands/db_migrate_lint.go:45 RunE path changes no persistent state (prints/reads only)
@@ -95,25 +98,29 @@ commands:
   db migrate status: {side_effect: read}
   # cmd/commands/db_migrate.go:20 applies migrations locally; --server targets a remote control-plane server (json none: db_remote.go:273 reads Changed("json") only to hide a banner, nothing prints JSON)
   db migrate up: {side_effect: write, flags: {server: {side_effect: remote}}}
-  db migrate watch: {side_effect: write, output: stream}
+  # cmd/commands/migrate_watch.go polls until interrupted and prints events as they occur (stream, json none)
+  db migrate watch: {side_effect: write, output: stream} # polls until interrupted and prints events as they occur (stream, json none)
   # cmd/commands/db_pgbouncer.go:23 RunE path changes no persistent state (prints/reads only)
   db pgbouncer: {side_effect: read}
   # cmd/commands/db_pgbouncer.go:108 RunE path changes no persistent state (prints/reads only)
-  db pgbouncer connection-url: {side_effect: read}
+  # surface cli-only: prints a connection URL that carries the database password; secret output stays on the terminal
+  db pgbouncer connection-url: {side_effect: read, surface: cli-only}
   db pgbouncer generate: {side_effect: write}
   db pgbouncer status: {side_effect: read}
   # cmd/commands/db_pitr.go:19 RunE path changes no persistent state (prints/reads only)
   db pitr: {side_effect: read}
   db pitr enable: {side_effect: write}
-  db pitr restore: {side_effect: destructive}
+  # surface cli-only: overwrites the live database and has no consent flag or plan form; a flag is a behaviour change (debt)
+  db pitr restore: {side_effect: destructive, surface: cli-only}
   db pitr status: {side_effect: read}
   db pitr test: {side_effect: write}
   # cmd/commands/db_reconcile.go:40 dry-run by default (prints the plan); --apply escalates to write
   db reconcile: {side_effect: read, flags: {apply: {side_effect: write}}}
-  db reset: {side_effect: destructive}
+  db reset: {side_effect: destructive, confirm: {flags: [force, yes]}}
   # cmd/commands/db_hasura.go:111 rewrites stored migration checksum state; self-labelled dangerous
-  db reset-checksum: {side_effect: destructive}
-  db restore: {side_effect: destructive}
+  # surface cli-only: rewrites stored checksum state with no consent flag or plan form; a flag is a behaviour change (debt)
+  db reset-checksum: {side_effect: destructive, surface: cli-only}
+  db restore: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/db_pitr_ops.go:202 restores into a temporary database that is dropped afterwards (db_pitr.go:65-70): write, not destructive despite the name
   db restore-drill: {side_effect: write}
   # cmd/commands/db_pitr_ops.go:235 RunE path changes no persistent state (prints/reads only)
@@ -143,7 +150,7 @@ commands:
   db seed run: {side_effect: write, flags: {reset: {side_effect: destructive}}}
   db seed verify: {side_effect: read}
   # cmd/commands/db_admin.go:21 opens an interactive psql: arbitrary SQL, DROP included (worst case)
-  db shell: {side_effect: destructive, output: interactive}
+  db shell: {side_effect: destructive, output: interactive} # opens an interactive psql on the terminal (interactive, json none)
   # cmd/commands/db_schema.go:21 RunE path changes no persistent state (prints/reads only)
   db soft-delete: {side_effect: read}
   # cmd/commands/db_schema.go:121 adds a deleted_at column, index and active view to a table; deletes nothing (write)
@@ -157,9 +164,9 @@ commands:
   db verify-checksums: {side_effect: read}
   # cmd/commands/template.go:47 RunE path changes no persistent state (prints/reads only)
   init template: {side_effect: read}
-  init template info: {side_effect: read, json: legacy}
-  init template list: {side_effect: read, json: legacy}
-  init template publish: {side_effect: remote}
+  init template info: {side_effect: read}
+  init template list: {side_effect: read}
+  init template publish: {side_effect: remote, confirm: {flags: []}}
   # cmd/commands/template_publish_update.go:89 applies pending template migrations; --force allows DROP/TRUNCATE ones
   init template update: {side_effect: write, flags: {force: {side_effect: destructive}}}
   # cmd/commands/migrate.go:113 runs detection only; --from-bash escalates to write
@@ -168,7 +175,8 @@ commands:
   update project detect: {side_effect: read}
   update project from-bash: {side_effect: write}
   update project from-v099: {side_effect: write}
-  update project rollback: {side_effect: destructive}
+  # surface cli-only: restores an older project layout with no consent flag or plan form; a flag is a behaviour change (debt)
+  update project rollback: {side_effect: destructive, surface: cli-only}
   update project run: {side_effect: write}
 hubs:
   - {path: db import, summary: "Import data from another platform"}

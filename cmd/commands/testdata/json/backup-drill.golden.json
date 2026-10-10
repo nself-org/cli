@@ -1,0 +1,23 @@
+{
+  "schema_version": "1",
+  "command": "backup drill",
+  "data": {
+    "local": null,
+    "remote": {
+      "approx_rows": null,
+      "at": "2026-10-05T03:00:00Z",
+      "backup_key": "surf_stream_20261005_023000.sql.age",
+      "bytes": 10,
+      "cli_version": "1.5.0",
+      "encrypted": true,
+      "kind": "drill",
+      "mismatches": [],
+      "project": "surf",
+      "restored_rows": {
+        "public.users": 7
+      },
+      "result": "ok",
+      "schema_version": "1"
+    }
+  }
+}

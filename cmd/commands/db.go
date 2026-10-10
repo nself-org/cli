@@ -24,9 +24,9 @@ Subcommands:
   shell     Open psql interactive shell
   reset     Drop and recreate database (DESTRUCTIVE)
   hasura    Hasura metadata operations`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 // ── migrate ─────────────────────────────────────────────────────────
@@ -34,9 +34,9 @@ Subcommands:
 var dbMigrateCmd = &cobra.Command{
 	Use:   "migrate",
 	Short: "Manage database migrations",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 var dbMigrateUpCmd = &cobra.Command{
@@ -56,13 +56,13 @@ the same SSH connection). An older or newer remote CLI errors clearly,
 naming both versions and the host, instead of silently trusting output from
 a version-mismatched binary or failing with a raw SSH error. Pass
 --allow-version-drift to skip this check and run anyway.`,
-	RunE: runDBMigrateUp,
+	RunE: dataEnv(runDBMigrateUp),
 }
 
 var dbMigrateDownCmd = &cobra.Command{
 	Use:   "down",
 	Short: "Revert last migration",
-	RunE:  runDBMigrateDown,
+	RunE:  dataEnv(runDBMigrateDown),
 }
 
 var dbMigrateStatusCmd = &cobra.Command{
@@ -73,14 +73,14 @@ var dbMigrateStatusCmd = &cobra.Command{
 Pass --env staging|prod to check a deployed target instead of the local
 docker daemon (see 'nself db migrate up --help' for remote-targeting and
 version-drift details).`,
-	RunE: runDBMigrateStatus,
+	RunE: dataEnv(runDBMigrateStatus),
 }
 
 var dbMigrateCreateCmd = &cobra.Command{
 	Use:   "create <name>",
 	Short: "Create new migration file",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runDBMigrateCreate,
+	RunE:  dataEnv(runDBMigrateCreate),
 }
 
 var dbMigrateApplyCmd = &cobra.Command{
@@ -94,7 +94,7 @@ checksum), the command warns and exits cleanly without re-applying.
 
 This closes G-008: plugin-claw external RLS migrations can be applied
 via CLI without requiring 'nself db shell' as a workaround.`,
-	RunE: runDBMigrateApply,
+	RunE: dataEnv(runDBMigrateApply),
 }
 
 // ── seed ────────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ var dbBackupCmd = &cobra.Command{
 	Use:   "backup [file]",
 	Short: "Create pg_dump backup",
 	Args:  cobra.MaximumNArgs(1),
-	RunE:  runDBBackup,
+	RunE:  dataEnv(runDBBackup),
 }
 
 // ── restore ─────────────────────────────────────────────────────────
@@ -131,7 +131,7 @@ var dbRestoreCmd = &cobra.Command{
 	Use:   "restore <file>",
 	Short: "Restore from backup",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runDBRestore,
+	RunE:  dataEnv(runDBRestore),
 }
 
 // ── shell ───────────────────────────────────────────────────────────
@@ -162,7 +162,7 @@ var dbListCmd = &cobra.Command{
 Connects to the running Postgres container and prints all database names
 (equivalent to \l in psql). Useful for verifying that db create/drop/reset
 operated on the correct database.`,
-	RunE: runDBList,
+	RunE: dataEnv(runDBList),
 }
 
 // ── drop ────────────────────────────────────────────────────────────
@@ -170,7 +170,7 @@ operated on the correct database.`,
 var dbDropCmd = &cobra.Command{
 	Use:   "drop",
 	Short: "Drop the project database (DESTRUCTIVE)",
-	RunE:  runDBDrop,
+	RunE:  dataEnv(runDBDrop),
 }
 
 // ── reset ───────────────────────────────────────────────────────────

@@ -37,7 +37,7 @@ No live Firebase connection is required. The command operates entirely on
 the exported JSON files.
 
 See: https://github.com/nself-org/cli/wiki/cmd-migrate-firebase`,
-	RunE: runMigrateFirebase,
+	RunE: dataEnv(runMigrateFirebase),
 }
 
 func init() {

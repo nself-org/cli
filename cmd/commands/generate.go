@@ -35,7 +35,7 @@ Examples:
   nself generate --lang typescript,dart   # subset of languages
   nself generate --env staging --lang typescript
   nself generate --watch`,
-	RunE: runGenerate,
+	RunE: dataEnv(runGenerate),
 }
 
 func init() {

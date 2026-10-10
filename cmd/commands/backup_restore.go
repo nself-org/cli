@@ -20,7 +20,7 @@ var backupRestoreCmd = &cobra.Command{
 	Use:   "restore <backup-id|latest>",
 	Short: "Restore from a backup",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runBackupRestore,
+	RunE:  dataEnv(runBackupRestore),
 }
 
 func runBackupRestore(cmd *cobra.Command, args []string) error {
@@ -87,7 +87,7 @@ Examples:
 
   nself backup restore-remote --from s3:bucket/backup.sql.age --key ~/.age/key.txt
   nself backup restore-remote --from r2:bucket/backup.sql  # unencrypted`,
-	RunE: runBackupRestoreRemote,
+	RunE: dataEnv(runBackupRestoreRemote),
 }
 
 func runBackupRestoreRemote(cmd *cobra.Command, _ []string) error {

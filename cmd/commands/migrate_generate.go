@@ -45,7 +45,7 @@ Examples:
   nself migrate generate "add index on orders.created_at"
   nself migrate generate "add tenant_id to all np_ tables"`,
 	Args: cobra.ExactArgs(1),
-	RunE: runMigrateGenerate,
+	RunE: dataEnv(runMigrateGenerate),
 }
 
 var (

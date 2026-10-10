@@ -13,7 +13,7 @@ var dbMigrateAuditCmd = &cobra.Command{
   - Idempotency: safe-to-rerun SQL patterns (IF NOT EXISTS, CREATE OR REPLACE)
   - Rollback coverage: presence of a corresponding down.sql
   - Checksum drift: on-disk file matches the checksum recorded on apply`,
-	RunE: runDBMigrateAudit,
+	RunE: dataEnv(runDBMigrateAudit),
 }
 
 // ── migrate idempotent ───────────────────────────────────────────────
@@ -24,7 +24,7 @@ var dbMigrateIdempotentCmd = &cobra.Command{
 	Long: `Analyzes a migration SQL file for non-idempotent patterns and suggests
 (or generates) an idempotent version using IF NOT EXISTS / IF EXISTS clauses.`,
 	Args: cobra.ExactArgs(1),
-	RunE: runDBMigrateIdempotent,
+	RunE: dataEnv(runDBMigrateIdempotent),
 }
 
 // ── db drift ─────────────────────────────────────────────────────────
@@ -49,19 +49,19 @@ Subcommands:
 Flags:
   --metadata  Detect Hasura METADATA drift instead (permissions, relationships,
               table tracking) against a live instance — see 'nself db drift --metadata'`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		metadata, _ := cmd.Flags().GetBool("metadata")
 		if metadata {
 			return runDBDriftMetadata(cmd, args)
 		}
 		return cmd.Help()
-	},
+	}),
 }
 
 var dbDriftScanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Scan np_* tables for missing Theme 25 columns",
-	RunE:  runDBDriftScan,
+	RunE:  dataEnv(runDBDriftScan),
 }
 
 var dbDriftFixCmd = &cobra.Command{
@@ -72,7 +72,7 @@ var dbDriftFixCmd = &cobra.Command{
 With no arguments, lists drifted tables. Use --all to generate fixes for all drifted tables.
 With schema and table arguments, generates fixes for the specified table only.`,
 	Args: cobra.MaximumNArgs(2),
-	RunE: runDBDriftFix,
+	RunE: dataEnv(runDBDriftFix),
 }
 
 // ── run functions ────────────────────────────────────────────────────

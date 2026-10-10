@@ -74,6 +74,9 @@ func runDBBackupList(cmd *cobra.Command, _ []string) error {
 	entries, err := os.ReadDir(backupDir)
 	if err != nil {
 		if os.IsNotExist(err) {
+			if jsonEnvelopeOn(cmd) {
+				return emitEnv(cmd, []backupEntry{}, true)
+			}
 			fmt.Println("No backups found.")
 			return nil
 		}
@@ -115,6 +118,12 @@ func runDBBackupList(cmd *cobra.Command, _ []string) error {
 		})
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		if backups == nil {
+			backups = []backupEntry{}
+		}
+		return emitEnv(cmd, backups, true)
+	}
 	if len(backups) == 0 {
 		fmt.Println("No backups found.")
 		return nil

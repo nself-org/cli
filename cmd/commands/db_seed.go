@@ -81,7 +81,7 @@ func runDBSeedRun(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runDBSeedList(_ *cobra.Command, _ []string) error {
+func runDBSeedList(cmd *cobra.Command, _ []string) error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
@@ -92,6 +92,11 @@ func runDBSeedList(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("list seeds: %w", err)
 	}
 
+	listed := dbSeedListData{Seeds: seedRows(seeds), Fixtures: []string{}}
+	if fx, ferr := seed.ListFixtures(dir); ferr == nil && fx != nil {
+		listed.Fixtures = fx
+	}
+	setData(cmd, listed)
 	if len(seeds) == 0 {
 		fmt.Println("No seeds found. Create db/seeds/ directory to get started.")
 		return nil
@@ -138,6 +143,7 @@ func runDBSeedVerify(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("fixture %q has no seeds", fixture)
 	}
 
+	setData(cmd, dbSeedVerifyData{Fixture: fixture, Seeds: seedRows(seeds)})
 	fmt.Printf("Fixture %q: %d seed file(s)\n", fixture, len(seeds))
 	for _, s := range seeds {
 		marker := "  "
@@ -153,7 +159,7 @@ func runDBSeedVerify(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runDBSeedGraph(_ *cobra.Command, _ []string) error {
+func runDBSeedGraph(cmd *cobra.Command, _ []string) error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
@@ -164,6 +170,11 @@ func runDBSeedGraph(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("dependency graph: %w", err)
 	}
 
+	graph := dbSeedGraphData{Nodes: []dbSeedGraphNode{}}
+	for _, n := range nodes {
+		graph.Nodes = append(graph.Nodes, dbSeedGraphNode{Name: n.Name, Env: n.Env, DependsOn: nonNilStrings(n.DependsOn)})
+	}
+	setData(cmd, graph)
 	if len(nodes) == 0 {
 		fmt.Println("No seeds found.")
 		return nil
