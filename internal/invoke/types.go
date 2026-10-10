@@ -93,12 +93,21 @@ type Options struct {
 	Timeout time.Duration
 	// Stdout, with TransportHTTPStream, receives the child's NDJSON.
 	Stdout io.Writer
+	// Guard holds the confirmation nonces and the audit path (gate.go,
+	// confirm.go, audit.go). One Guard per server process. A nil Guard fails
+	// closed: remote and destructive commands are refused (E421), writes run
+	// and nothing is audited.
+	Guard *Guard
+	// Surface labels the audit line: mcp-stdio, mcp-sse, mcp-http or http.
+	// Empty selects http for TransportHTTP and TransportHTTPStream and
+	// mcp-stdio for TransportMCP.
+	Surface string
 }
 
 // Confirmation is the success-envelope data an invoker returns when a command
-// needs confirmation (contract:cli.machine-request v1; produced by the gate of
-// P7-SURF-25, defined here so the schema ships with the contract). Field order
-// is the contract's.
+// needs confirmation (contract:cli.machine-request v1; produced by Gate). Field
+// order is the contract's. Plan is the child's change-plan object for kind
+// plan and null for kind request.
 type Confirmation struct {
 	ConfirmationRequired bool   `json:"confirmation_required"`
 	Kind                 string `json:"kind"`

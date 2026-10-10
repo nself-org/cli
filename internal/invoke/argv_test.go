@@ -238,7 +238,7 @@ func TestExposure(t *testing.T) {
 		{"fx streamer", TransportHTTPStream, nil, true, ""},
 		{"fx streamwrite", TransportHTTPStream, nil, false, "write"},
 		{"fx remote", TransportMCP, nil, false, "no gate"},
-		{"fx destroy", TransportHTTP, nil, false, "no gate"},
+		{"fx destroy", TransportHTTP, nil, true, ""},
 		{"fx escalate", TransportMCP, nil, true, ""},
 		{"fx escalate", TransportMCP, []string{"wipe"}, false, "no gate"},
 		{"fx echo", TransportHTTPStream, nil, false, "not a stream"},
