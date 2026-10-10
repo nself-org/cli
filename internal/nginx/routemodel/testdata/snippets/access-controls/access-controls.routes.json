@@ -1,0 +1,110 @@
+{
+  "unmodelled_global": [
+    "upstream access_controls_backend { server 127.0.0.1:3027; keepalive 32; }"
+  ],
+  "routes": [
+    {
+      "id": "plugin:access-controls/access-controls.conf#1",
+      "source": "plugin",
+      "owner": "access-controls",
+      "file": "nginx/sites/access-controls-access-controls.conf",
+      "server_names": [
+        "access-controls.localhost"
+      ],
+      "listen": {
+        "http": true,
+        "https": false
+      },
+      "tls": null,
+      "http_to_https_redirect": false,
+      "security_headers": {},
+      "blocked_paths": [],
+      "rate_limit": null,
+      "locations": [
+        {
+          "path": "/",
+          "match": "prefix",
+          "upstream": {
+            "scheme": "http",
+            "host": "127.0.0.1",
+            "port": 3027
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": true,
+          "headers_set": {
+            "Connection": ""
+          },
+          "timeouts": {
+            "connect_s": 10,
+            "read_s": 30,
+            "send_s": 30
+          },
+          "max_body_bytes": null,
+          "access_log": true,
+          "deny_all": false,
+          "methods": null,
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        },
+        {
+          "path": "/health",
+          "match": "prefix",
+          "upstream": {
+            "scheme": "http",
+            "host": "127.0.0.1",
+            "port": 3027
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": false,
+          "headers_set": {
+            "Connection": ""
+          },
+          "timeouts": {
+            "connect_s": null,
+            "read_s": null,
+            "send_s": null
+          },
+          "max_body_bytes": null,
+          "access_log": false,
+          "deny_all": false,
+          "methods": null,
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        },
+        {
+          "path": "/ready",
+          "match": "prefix",
+          "upstream": {
+            "scheme": "http",
+            "host": "127.0.0.1",
+            "port": 3027
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": false,
+          "headers_set": {
+            "Connection": ""
+          },
+          "timeouts": {
+            "connect_s": null,
+            "read_s": null,
+            "send_s": null
+          },
+          "max_body_bytes": null,
+          "access_log": false,
+          "deny_all": false,
+          "methods": null,
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        }
+      ],
+      "shadowed_by": null,
+      "unmodelled": []
+    }
+  ]
+}

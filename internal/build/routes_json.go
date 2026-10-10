@@ -9,7 +9,7 @@ import (
 
 // writeRoutesJSON writes the deterministic proxy contract through the build sink.
 func (st *buildState) writeRoutesJSON(m *routemodel.Model) error {
-	b, err := routemodel.Marshal(m)
+	b, err := routemodel.Marshal(st.withSnippetRoutes(m))
 	if err != nil {
 		return fmt.Errorf("encoding routes.json: %w", err)
 	}
