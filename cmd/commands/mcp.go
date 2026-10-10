@@ -23,7 +23,6 @@ package commands
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -93,22 +92,7 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	registerMCPResources(s)
 	registerMCPPrompts(s)
 
-	switch transport {
-	case "stdio":
-		return server.ServeStdio(s)
-	case "sse":
-		addr := fmt.Sprintf("127.0.0.1:%d", port)
-		fmt.Fprintf(os.Stderr, "nSelf MCP server listening on %s (SSE)\n", addr)
-		httpSrv := &http.Server{Addr: addr, Handler: mcpBearerMiddleware(server.NewSSEServer(s))}
-		return httpSrv.ListenAndServe()
-	case "http":
-		addr := fmt.Sprintf("127.0.0.1:%d", port)
-		fmt.Fprintf(os.Stderr, "nSelf MCP server listening on %s (streamable HTTP)\n", addr)
-		httpSrv := &http.Server{Addr: addr, Handler: mcpBearerMiddleware(server.NewStreamableHTTPServer(s))}
-		return httpSrv.ListenAndServe()
-	default:
-		return fmt.Errorf("unknown transport %q (use stdio, sse, or http)", transport)
-	}
+	return serveMCP(s, transport, "127.0.0.1", port)
 }
 
 // registerMCPTools attaches every MCP tool: ɳSentry (mcp_sentry.go), the
