@@ -1,0 +1,86 @@
+{
+  "unmodelled_global": [],
+  "routes": [
+    {
+      "id": "plugin:audit-log/audit-log.conf#1",
+      "source": "plugin",
+      "owner": "audit-log",
+      "file": "nginx/sites/audit-log-audit-log.conf",
+      "server_names": [
+        "audit-log.example.test"
+      ],
+      "listen": {
+        "http": false,
+        "https": true
+      },
+      "tls": {
+        "ssl_dir": "example-test",
+        "has_trusted_chain": false,
+        "protocols": [],
+        "ciphers": null
+      },
+      "http_to_https_redirect": false,
+      "security_headers": {},
+      "blocked_paths": [],
+      "rate_limit": null,
+      "locations": [
+        {
+          "path": "/events",
+          "match": "exact",
+          "upstream": {
+            "scheme": "http",
+            "host": "audit-log",
+            "port": 3308
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": true,
+          "headers_set": {},
+          "timeouts": {
+            "connect_s": null,
+            "read_s": null,
+            "send_s": null
+          },
+          "max_body_bytes": null,
+          "access_log": true,
+          "deny_all": false,
+          "methods": [
+            "GET",
+            "POST",
+            "OPTIONS"
+          ],
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        },
+        {
+          "path": "/",
+          "match": "prefix",
+          "upstream": {
+            "scheme": "http",
+            "host": "audit-log",
+            "port": 3308
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": true,
+          "headers_set": {},
+          "timeouts": {
+            "connect_s": null,
+            "read_s": null,
+            "send_s": null
+          },
+          "max_body_bytes": null,
+          "access_log": true,
+          "deny_all": false,
+          "methods": null,
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        }
+      ],
+      "shadowed_by": null,
+      "unmodelled": []
+    }
+  ]
+}

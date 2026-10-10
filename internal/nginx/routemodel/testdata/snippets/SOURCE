@@ -1,0 +1,5 @@
+repo: nself-org/plugins
+commit: 5431b9043d6193a03a4f8fcc46d76f11c8f768e2
+paths: free/*/nginx/*.conf (the files nself build injects, 55 files; storage-transform.conf.tmpl is not injected and not copied)
+copied: 2026-10-10 with git show, unmodified
+layout: <plugin slug>/<file>.conf; goldens are <file>.routes.json beside each (regenerate: go test ./internal/nginx/routemodel/ -run TestSnippetCorpus -update)

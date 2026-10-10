@@ -8,8 +8,8 @@ package build
 // Inputs: the text of a .conf file under nginx/sites/.
 // Outputs: []nginxServerBlock, one per `server { ... }` in the file.
 // Constraints: a targeted reader for nginx site configs, not a general
-// nginx parser — it tokenizes on { } ; and reads two directives, and does
-// not evaluate includes, maps, or upstreams. It works on both the
+// nginx parser — it reads two directives from the routemodel tokenizer and
+// does not evaluate includes, maps, or upstreams. It works on both the
 // multi-line form this repo generates and the compact single-line form a
 // hand-written or plugin-shipped conf may use, because it tokenizes rather
 // than matching at the start of a line. Anything it cannot interpret it
@@ -18,6 +18,8 @@ package build
 import (
 	"strconv"
 	"strings"
+
+	"github.com/nself-org/cli/internal/nginx/routemodel"
 )
 
 // nginxServerBlock is one `server { ... }` block: the ports it listens on
@@ -33,79 +35,35 @@ const defaultListenPort = "80"
 
 // parseServerBlocks splits content into its `server { ... }` blocks.
 //
-// Directives are attributed to the block that encloses them, so a file with
+// It is a thin adapter over routemodel.Tokenize (the shared nginx tokenizer):
+// directives are attributed to the block that encloses them, so a file with
 // an http-only block and an https block is read as two blocks rather than
 // one merged set. That distinction matters: nginx only calls it a conflict
 // when two blocks collide on the same name AND the same port.
 func parseServerBlocks(content string) []nginxServerBlock {
 	var blocks []nginxServerBlock
-	// stack of open blocks; the element is the index into blocks for a
-	// server block, or -1 for any other context (http, location, upstream).
-	var stack []int
-	var buf strings.Builder
-
-	flushHeader := func() string {
-		h := strings.TrimSpace(buf.String())
-		buf.Reset()
-		return h
-	}
-
-	for _, ch := range stripComments(content) {
-		switch ch {
-		case '{':
-			header := flushHeader()
-			idx := -1
-			if firstWord(header) == "server" {
-				blocks = append(blocks, nginxServerBlock{})
-				idx = len(blocks) - 1
-			}
-			stack = append(stack, idx)
-		case '}':
-			buf.Reset()
-			if len(stack) > 0 {
-				stack = stack[:len(stack)-1]
-			}
-		case ';':
-			directive := flushHeader()
-			// Attribute the directive to the nearest enclosing server block.
-			for i := len(stack) - 1; i >= 0; i-- {
-				if stack[i] < 0 {
-					continue
-				}
-				b := &blocks[stack[i]]
-				if names := serverNamesIn(directive); len(names) > 0 {
-					b.ServerNames = append(b.ServerNames, names...)
-				} else if port, ok := listenPortIn(directive); ok {
-					b.Ports = append(b.Ports, port)
-				}
-				break
-			}
-		default:
-			buf.WriteRune(ch)
-		}
-	}
+	collectServerBlocks(routemodel.Tokenize(content), -1, &blocks)
 	return blocks
 }
 
-// stripComments removes `#` comments, which run to end of line in nginx.
-func stripComments(content string) string {
-	var out strings.Builder
-	for _, line := range strings.Split(content, "\n") {
-		if idx := strings.Index(line, "#"); idx != -1 {
-			line = line[:idx]
+// collectServerBlocks walks the token tree; cur is the index of the nearest
+// enclosing server block, or -1 outside any (http, location, upstream).
+func collectServerBlocks(tree []*routemodel.Block, cur int, blocks *[]nginxServerBlock) {
+	for _, b := range tree {
+		idx := cur
+		if b.Block && b.Name == "server" {
+			*blocks = append(*blocks, nginxServerBlock{})
+			idx = len(*blocks) - 1
+		} else if !b.Block && idx >= 0 {
+			directive := strings.Join(append([]string{b.Name}, b.Args...), " ")
+			if names := serverNamesIn(directive); len(names) > 0 {
+				(*blocks)[idx].ServerNames = append((*blocks)[idx].ServerNames, names...)
+			} else if port, ok := listenPortIn(directive); ok {
+				(*blocks)[idx].Ports = append((*blocks)[idx].Ports, port)
+			}
 		}
-		out.WriteString(line)
-		out.WriteByte('\n')
+		collectServerBlocks(b.Children, idx, blocks)
 	}
-	return out.String()
-}
-
-// firstWord returns the first whitespace-separated word of s.
-func firstWord(s string) string {
-	if f := strings.Fields(s); len(f) > 0 {
-		return f[0]
-	}
-	return ""
 }
 
 // serverNamesIn returns the domains declared by a `server_name` directive,

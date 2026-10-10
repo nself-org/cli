@@ -1,0 +1,87 @@
+{
+  "unmodelled_global": [],
+  "routes": [
+    {
+      "id": "plugin:shopify/shopify.conf#1",
+      "source": "plugin",
+      "owner": "shopify",
+      "file": "nginx/sites/shopify-shopify.conf",
+      "server_names": [
+        "shopify.example.test"
+      ],
+      "listen": {
+        "http": false,
+        "https": true
+      },
+      "tls": {
+        "ssl_dir": "",
+        "has_trusted_chain": false,
+        "protocols": [],
+        "ciphers": null
+      },
+      "http_to_https_redirect": false,
+      "security_headers": {},
+      "blocked_paths": [],
+      "rate_limit": null,
+      "locations": [
+        {
+          "path": "/",
+          "match": "prefix",
+          "upstream": {
+            "scheme": "http",
+            "host": "127.0.0.1",
+            "port": 3072
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": true,
+          "headers_set": {},
+          "timeouts": {
+            "connect_s": null,
+            "read_s": 60,
+            "send_s": 60
+          },
+          "max_body_bytes": null,
+          "access_log": true,
+          "deny_all": false,
+          "methods": null,
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        },
+        {
+          "path": "/health",
+          "match": "prefix",
+          "upstream": {
+            "scheme": "http",
+            "host": "127.0.0.1",
+            "port": 3072
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": false,
+          "headers_set": {},
+          "timeouts": {
+            "connect_s": null,
+            "read_s": null,
+            "send_s": null
+          },
+          "max_body_bytes": null,
+          "access_log": false,
+          "deny_all": false,
+          "methods": null,
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        }
+      ],
+      "shadowed_by": null,
+      "unmodelled": [
+        "ssl_certificate /etc/nginx/ssl/cert.pem;",
+        "ssl_certificate_key /etc/nginx/ssl/key.pem;",
+        "proxy_set_header X-Request-ID $request_id;",
+        "proxy_pass http://shopify_upstream/health;"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "unmodelled_global": [],
+  "routes": [
+    {
+      "id": "plugin:ddns/ddns.conf#1",
+      "source": "plugin",
+      "owner": "ddns",
+      "file": "nginx/sites/ddns-ddns.conf",
+      "server_names": [
+        "ddns.example.test"
+      ],
+      "listen": {
+        "http": true,
+        "https": false
+      },
+      "tls": null,
+      "http_to_https_redirect": false,
+      "security_headers": {},
+      "blocked_paths": [],
+      "rate_limit": null,
+      "locations": [
+        {
+          "path": "/",
+          "match": "prefix",
+          "upstream": null,
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": false,
+          "headers_set": {},
+          "timeouts": {
+            "connect_s": null,
+            "read_s": null,
+            "send_s": null
+          },
+          "max_body_bytes": null,
+          "access_log": true,
+          "deny_all": false,
+          "methods": null,
+          "return": {
+            "status": 301,
+            "to": "https://$host$request_uri"
+          },
+          "static_root": null,
+          "health_probe": false
+        }
+      ],
+      "shadowed_by": null,
+      "unmodelled": []
+    },
+    {
+      "id": "plugin:ddns/ddns.conf#2",
+      "source": "plugin",
+      "owner": "ddns",
+      "file": "nginx/sites/ddns-ddns.conf",
+      "server_names": [
+        "ddns.example.test"
+      ],
+      "listen": {
+        "http": false,
+        "https": true
+      },
+      "tls": {
+        "ssl_dir": "",
+        "has_trusted_chain": false,
+        "protocols": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "ciphers": "HIGH:!aNULL:!MD5"
+      },
+      "http_to_https_redirect": false,
+      "security_headers": {},
+      "blocked_paths": [],
+      "rate_limit": null,
+      "locations": [
+        {
+          "path": "/",
+          "match": "prefix",
+          "upstream": {
+            "scheme": "http",
+            "host": "127.0.0.1",
+            "port": 3217
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": true,
+          "headers_set": {
+            "Connection": ""
+          },
+          "timeouts": {
+            "connect_s": null,
+            "read_s": 60,
+            "send_s": 60
+          },
+          "max_body_bytes": 5242880,
+          "access_log": true,
+          "deny_all": false,
+          "methods": null,
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        },
+        {
+          "path": "/health",
+          "match": "prefix",
+          "upstream": {
+            "scheme": "http",
+            "host": "127.0.0.1",
+            "port": 3217
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": false,
+          "headers_set": {},
+          "timeouts": {
+            "connect_s": null,
+            "read_s": null,
+            "send_s": null
+          },
+          "max_body_bytes": 5242880,
+          "access_log": false,
+          "deny_all": false,
+          "methods": null,
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        }
+      ],
+      "shadowed_by": null,
+      "unmodelled": [
+        "ssl_certificate /etc/nginx/certs/example.test/fullchain.pem;",
+        "ssl_certificate_key /etc/nginx/certs/example.test/privkey.pem;",
+        "proxy_set_header Host $host;"
+      ]
+    }
+  ]
+}
