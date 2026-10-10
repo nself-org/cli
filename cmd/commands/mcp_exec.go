@@ -32,6 +32,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/invoke"
 )
 
 // mcpSelfExecOverride, when set, replaces os.Executable() as the binary
@@ -39,15 +41,12 @@ import (
 // re-exec at a binary built from this checkout instead of the `go test`
 // harness binary (which os.Executable() would otherwise resolve to and
 // which doesn't understand "build"/"start"/"stop"/"restart" as arguments).
-const mcpSelfExecOverrideEnv = "NSELF_MCP_EXEC_OVERRIDE"
+const mcpSelfExecOverrideEnv = invoke.SelfExecOverrideEnv
 
-// selfExecutablePath resolves the binary mcpExecSelf should invoke.
-func selfExecutablePath() (string, error) {
-	if override := os.Getenv(mcpSelfExecOverrideEnv); override != "" {
-		return override, nil
-	}
-	return os.Executable()
-}
+// selfExecutablePath resolves the binary mcpExecSelf should invoke. The rule
+// (override env, else os.Executable) lives in internal/invoke so the legacy
+// handlers and the machine invoker resolve the child the same way.
+func selfExecutablePath() (string, error) { return invoke.SelfExecutable() }
 
 // mcpExecTimeout bounds every re-exec'd nself subcommand so a hung child
 // process (e.g. waiting on a Docker pull) can't wedge a tool call forever.

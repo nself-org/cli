@@ -129,6 +129,8 @@ func TestRegistryExitTable(t *testing.T) {
 			return 1
 		case n == 400:
 			return 0
+		case n == 422 || n == 423: // P7-SURF-24: no single JSON document and invocation timeout are infra (EPIC SURF D14)
+			return 2
 		case n == 403:
 			return 4
 		}

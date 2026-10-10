@@ -1,0 +1,6 @@
+go test fuzz v1
+string("--json")
+string("-x")
+string("name")
+string("--tok=evil")
+byte('\x01')
