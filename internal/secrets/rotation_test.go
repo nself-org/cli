@@ -13,12 +13,12 @@ func TestDefaultSchedulesContainsSixSecrets(t *testing.T) {
 		t.Fatalf("expected 6 default schedules, got %d", len(schedules))
 	}
 	names := map[string]bool{
-		"PLUGIN_INTERNAL_SECRET": false,
-		"HASURA_ADMIN_SECRET":    false,
-		"JWT_SIGNING_KEY":        false,
-		"STRIPE_WEBHOOK_SECRET":  false,
-		"B2_APPLICATION_KEY":     false,
-		"AGE_BACKUP_KEY":         false,
+		"PLUGIN_INTERNAL_SECRET":      false,
+		"HASURA_GRAPHQL_ADMIN_SECRET": false,
+		"JWT_SIGNING_KEY":             false,
+		"STRIPE_WEBHOOK_SECRET":       false,
+		"B2_APPLICATION_KEY":          false,
+		"AGE_BACKUP_KEY":              false,
 	}
 	for _, s := range schedules {
 		if _, ok := names[s.SecretName]; !ok {
@@ -129,4 +129,19 @@ func TestRetireOldKeyMissing(t *testing.T) {
 	if err == nil {
 		t.Error("expected error retiring nonexistent key")
 	}
+}
+
+// TestDefaultSchedulesTrackHasuraGraphQLAdminSecret pins the P7-LIVE-05 fix:
+// the schedule tracks the key the stack reads (HASURA_GRAPHQL_ADMIN_SECRET),
+// with the cadence and window the old, never-set name had.
+func TestDefaultSchedulesTrackHasuraGraphQLAdminSecret(t *testing.T) {
+	for _, s := range DefaultSchedules() {
+		if s.SecretName == "HASURA_GRAPHQL_ADMIN_SECRET" {
+			if s.CadenceDays != 180 || s.WindowDays != 3 {
+				t.Fatalf("HASURA_GRAPHQL_ADMIN_SECRET schedule = %d/%d days, want 180/3", s.CadenceDays, s.WindowDays)
+			}
+			return
+		}
+	}
+	t.Fatal("DefaultSchedules does not track HASURA_GRAPHQL_ADMIN_SECRET")
 }

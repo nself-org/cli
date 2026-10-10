@@ -61,6 +61,11 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	if len(req.Seed) > 0 {
 		opts.Rand = newSeededRand(req.Seed)
 	}
+	env, err := pendingEnv(req.ProjectDir, req.EnvOverlay)
+	if err != nil {
+		return nil, err
+	}
+	opts.EnvOverlay = env
 	res, err := nbuild.Build(req.ProjectDir, opts)
 	if err != nil {
 		return nil, err
@@ -69,6 +74,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 		return nil, fmt.Errorf("plan-mode build returned no planned artifacts")
 	}
 	ov := newOverlay(req.ProjectDir, res.FrontingDir, res.Planned)
+	ov.env = env
 	before, after, err := artifactSets(ov, res.Planned)
 	if err != nil {
 		return nil, err
@@ -97,7 +103,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 		}
 		before[GeneratedStateDisplayPath] = File{Data: raw, Perm: perm}
 	}
-	arts := append(Diff(before, after, req.HandEdited), modeArtifacts(before, after)...)
+	arts := append(Diff(before, after, pendingHandEdited(req.HandEdited, state, env)), modeArtifacts(before, after)...)
 	p := &Plan{
 		Command:   req.Command,
 		Trigger:   req.Trigger,
@@ -197,7 +203,9 @@ func artifactSets(ov overlay, pb *nbuild.PlannedBuild) (before, after ArtifactSe
 		name := ov.display(k)
 		disk := ov.diskPath(k)
 		info, statErr := os.Stat(disk)
-		switch {
+		switch pending, isEnv := ov.env[k]; {
+		case isEnv: // the env file as `config set` leaves it (P7-LIVE-05)
+			before[name] = File{Data: pending, Perm: pendingEnvPerm}
 		case statErr == nil && info.Mode().IsRegular():
 			data, rerr := os.ReadFile(disk)
 			if rerr != nil {

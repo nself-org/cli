@@ -29,7 +29,7 @@ type RotationState struct {
 func DefaultSchedules() []RotationSchedule {
 	return []RotationSchedule{
 		{SecretName: "PLUGIN_INTERNAL_SECRET", CadenceDays: 90, WindowDays: 7},
-		{SecretName: "HASURA_ADMIN_SECRET", CadenceDays: 180, WindowDays: 3},
+		{SecretName: "HASURA_GRAPHQL_ADMIN_SECRET", CadenceDays: 180, WindowDays: 3},
 		{SecretName: "JWT_SIGNING_KEY", CadenceDays: 180, WindowDays: 1},
 		{SecretName: "STRIPE_WEBHOOK_SECRET", CadenceDays: 0, WindowDays: 0}, // on-demand
 		{SecretName: "B2_APPLICATION_KEY", CadenceDays: 365, WindowDays: 1},

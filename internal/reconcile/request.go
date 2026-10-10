@@ -53,6 +53,12 @@ type Request struct {
 	// Stderr receives notices (for example "container state unknown"). Nil
 	// discards them.
 	Stderr io.Writer
+	// EnvOverlay holds env lines a command is about to write: project-relative
+	// env file name (".env", ".env.secrets") -> key -> value (P7-LIVE-05). The
+	// plan renders the project as if they were written (overlay.go
+	// pendingEnv); nothing is written by Plan or Compute. Apply's write build
+	// reads the disk, so the caller writes the lines in BeforeWrite.
+	EnvOverlay map[string]map[string]string
 }
 
 // ApplyOptions are the operator's answers to a plan.
