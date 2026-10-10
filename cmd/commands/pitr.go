@@ -27,9 +27,9 @@ Subcommands:
   status       Show retention window and latest WAL timestamp
   base-backup  Take a manual base backup immediately
   restore      Restore the database to a specific point in time`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 // ── nself pitr enable ─────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ the destination. Mount this file into your PostgreSQL container to activate.
 
 Example:
   nself pitr enable --to s3://my-bucket/pitr`,
-	RunE: runPITREnable,
+	RunE: dataEnv(runPITREnable),
 }
 
 // ── nself pitr disable ────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ Example:
 var pitrDisableCmd = &cobra.Command{
 	Use:   "disable",
 	Short: "Stop WAL archiving (removes PITR config snippet)",
-	RunE:  runPITRDisable,
+	RunE:  dataEnv(runPITRDisable),
 }
 
 // ── nself pitr status ─────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ var pitrDisableCmd = &cobra.Command{
 var pitrStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show PITR retention window, segment count, and latest WAL timestamp",
-	RunE:  runPITRStatus,
+	RunE:  dataEnv(runPITRStatus),
 }
 
 // ── nself pitr base-backup ───────────────────────────────────────────────────
@@ -69,7 +69,7 @@ var pitrStatusCmd = &cobra.Command{
 var pitrBaseBackupCmd = &cobra.Command{
 	Use:   "base-backup",
 	Short: "Take a manual pg_basebackup snapshot now",
-	RunE:  runPITRBaseBackup,
+	RunE:  dataEnv(runPITRBaseBackup),
 }
 
 // ── nself pitr restore ────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ The --to flag accepts an RFC3339 timestamp or a relative duration:
 The command locates the latest base backup before the target time, downloads
 it, writes recovery configuration, restarts Postgres in recovery mode, and
 waits for replay to complete.`,
-	RunE: runPITRRestore,
+	RunE: dataEnv(runPITRRestore),
 }
 
 // ── init ──────────────────────────────────────────────────────────────────────
@@ -174,7 +174,7 @@ func runPITRDisable(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runPITRStatus(_ *cobra.Command, _ []string) error {
+func runPITRStatus(cmd *cobra.Command, _ []string) error {
 	catalogPath, err := pitr.CatalogPath()
 	if err != nil {
 		return err
@@ -187,6 +187,16 @@ func runPITRStatus(_ *cobra.Command, _ []string) error {
 
 	oldest, hasOldest := catalog.OldestRecoverableTime()
 	newest, hasNewest := catalog.NewestWALTime()
+	pitrData := backupPITRStatusData{BaseBackups: len(catalog.BaseBackups), WALSegments: len(catalog.WALSegments)}
+	if hasOldest {
+		t := oldest.Format(time.RFC3339)
+		pitrData.OldestRestore = &t
+	}
+	if hasNewest {
+		t := newest.Format(time.RFC3339)
+		pitrData.LatestWAL = &t
+	}
+	setData(cmd, pitrData)
 
 	if !hasOldest && !hasNewest {
 		fmt.Println("PITR: no catalog data found. Run 'nself pitr enable' to start WAL archiving.")

@@ -23,13 +23,13 @@ Examples:
   nself migrate run            # Migrate v1 project to v2
   nself migrate rollback       # Restore from the most recent backup
   nself migrate --from-bash    # Guide migration from v0.9.9 Bash-era config`,
-	RunE: runMigrate,
+	RunE: dataEnv(runMigrate),
 }
 
 var migrateDetectCmd = &cobra.Command{
 	Use:   "detect",
 	Short: "Detect v1 artifacts in the current project",
-	RunE:  runMigrate,
+	RunE:  dataEnv(runMigrate),
 }
 
 var migrateRunCmd = &cobra.Command{
@@ -46,7 +46,7 @@ Steps:
   6. Print migration summary
 
 On any failure, run 'nself migrate rollback' to restore the previous state.`,
-	RunE: runMigrateRun,
+	RunE: dataEnv(runMigrateRun),
 }
 
 var migrateRollbackCmd = &cobra.Command{
@@ -56,7 +56,7 @@ var migrateRollbackCmd = &cobra.Command{
 
 Use --backup to select a specific backup by timestamp.
 Use --list to see all available backups.`,
-	RunE: runMigrateRollback,
+	RunE: dataEnv(runMigrateRollback),
 }
 
 // migrateFromBashCmd handles the --from-bash migration path. Operators running
@@ -90,7 +90,7 @@ Full migration guide: https://github.com/nself-org/cli/wiki/Upgrading-from-v0.9.
 Examples:
   nself migrate from-bash            # Detect and print migration guide
   nself migrate from-bash --auto     # Run automatable steps after confirmation`,
-	RunE: runMigrateFromBash,
+	RunE: dataEnv(runMigrateFromBash),
 }
 
 func init() {

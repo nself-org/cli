@@ -22,9 +22,9 @@ Subcommands:
   apply        Enable RLS + default policies on tables missing them
   apply-table  Enable RLS + default policies on a specific schema.table
   rollback     Print rollback SQL that removes policies and disables RLS`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 // ── nself db rls audit ───────────────────────────────────────────────
@@ -50,6 +50,12 @@ func runDBRLSAudit(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("db rls audit: %w", err)
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		if tables == nil {
+			tables = []database.RLSTableInfo{}
+		}
+		return emitEnv(cmd, tables, true)
+	}
 	if len(tables) == 0 {
 		fmt.Println("No tables found in np_* or public schemas.")
 		return nil
@@ -86,7 +92,7 @@ any table that does not already have RLS enabled with at least one policy.
 Flags:
   --dry-run   Print generated SQL without executing it
   --pattern   Filter tables by name glob (e.g. "np_claw_*")`,
-	RunE: runDBRLSApply,
+	RunE: dataEnv(runDBRLSApply),
 }
 
 func runDBRLSApply(cmd *cobra.Command, _ []string) error {
@@ -163,7 +169,7 @@ policies on the specified schema.table. The table must exist in the database.
 Example:
   nself db rls apply-table np_claw claw_messages`,
 	Args: cobra.ExactArgs(2),
-	RunE: runDBRLSApplyTable,
+	RunE: dataEnv(runDBRLSApplyTable),
 }
 
 func runDBRLSApplyTable(cmd *cobra.Command, args []string) error {
@@ -205,7 +211,7 @@ stdout so you can review and apply it manually.
 Example:
   nself db rls rollback np_claw claw_messages | psql ...`,
 	Args: cobra.ExactArgs(2),
-	RunE: runDBRLSRollback,
+	RunE: dataEnv(runDBRLSRollback),
 }
 
 func runDBRLSRollback(_ *cobra.Command, args []string) error {

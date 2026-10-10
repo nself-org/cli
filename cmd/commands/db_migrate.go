@@ -184,6 +184,7 @@ func runDBMigrateStatus(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("migrate status: %w", err)
 	}
+	setData(cmd, newMigrateStatusData(statuses))
 	if len(statuses) == 0 {
 		fmt.Println("No migrations found.")
 		return nil

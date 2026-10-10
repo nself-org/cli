@@ -20,7 +20,7 @@ hasura/metadata/databases/default/tables/.
 Reports tables that are tracked in live Hasura but absent from committed files
 (added) and tables present on disk but no longer tracked in live Hasura
 (removed).`,
-	RunE: runDBHasuraDrift,
+	RunE: dataEnv(runDBHasuraDrift),
 }
 
 var dbHasuraSyncCmd = &cobra.Command{
@@ -30,13 +30,13 @@ var dbHasuraSyncCmd = &cobra.Command{
 
 Use --message to supply a custom commit message. If omitted, a timestamped
 default is generated.`,
-	RunE: runDBHasuraSync,
+	RunE: dataEnv(runDBHasuraSync),
 }
 
 var dbHasuraGitStatusCmd = &cobra.Command{
 	Use:   "git-status",
 	Short: "Show git status of the hasura/metadata/ directory",
-	RunE:  runDBHasuraGitStatus,
+	RunE:  dataEnv(runDBHasuraGitStatus),
 }
 
 var dbHasuraApplyRefCmd = &cobra.Command{
@@ -45,7 +45,7 @@ var dbHasuraApplyRefCmd = &cobra.Command{
 	Long: `Check out hasura/metadata/ at the given git ref (branch, tag, or commit hash)
 and apply it to the running Hasura instance.`,
 	Args: cobra.ExactArgs(1),
-	RunE: runDBHasuraApplyRef,
+	RunE: dataEnv(runDBHasuraApplyRef),
 }
 
 var dbHasuraSnapshotCmd = &cobra.Command{
@@ -56,7 +56,7 @@ var dbHasuraSnapshotCmd = &cobra.Command{
 Without --compare, prints the snapshot JSON to stdout.
 With --compare <file>, compares the captured snapshot against the file and
 prints a human-readable diff.`,
-	RunE: runDBHasuraSnapshot,
+	RunE: dataEnv(runDBHasuraSnapshot),
 }
 
 func init() {
@@ -146,7 +146,7 @@ func runDBHasuraSync(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runDBHasuraGitStatus(_ *cobra.Command, _ []string) error {
+func runDBHasuraGitStatus(cmd *cobra.Command, _ []string) error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
@@ -157,6 +157,11 @@ func runDBHasuraGitStatus(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("getting git status: %w", err)
 	}
 
+	modified := status.Modified
+	if modified == nil {
+		modified = []string{}
+	}
+	setData(cmd, dbGitStatusData{Branch: status.Branch, Commit: status.CommitHash, Modified: modified, Clean: status.IsClean})
 	fmt.Printf("Branch: %s\n", status.Branch)
 	fmt.Printf("Commit: %s\n", status.CommitHash)
 

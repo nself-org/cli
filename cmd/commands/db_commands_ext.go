@@ -13,7 +13,7 @@ import (
 var dbResetCmd = &cobra.Command{
 	Use:   "reset",
 	Short: "Drop and recreate database (DESTRUCTIVE)",
-	RunE:  runDBReset,
+	RunE:  dataEnv(runDBReset),
 }
 
 // ── backup list ─────────────────────────────────────────────────────
@@ -29,7 +29,7 @@ var dbBackupListCmd = &cobra.Command{
 var dbVerifyChecksumsCmd = &cobra.Command{
 	Use:   "verify-checksums",
 	Short: "Verify migration file checksums against stored values",
-	RunE:  runDBVerifyChecksums,
+	RunE:  dataEnv(runDBVerifyChecksums),
 }
 
 // ── reset-checksum ─────────────────────────────────────────────────
@@ -38,7 +38,7 @@ var dbResetChecksumCmd = &cobra.Command{
 	Use:   "reset-checksum <id>",
 	Short: "Reset stored checksum for a migration (dangerous)",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runDBResetChecksum,
+	RunE:  dataEnv(runDBResetChecksum),
 }
 
 // ── seed subcommands ───────────────────────────────────────────────
@@ -46,25 +46,25 @@ var dbResetChecksumCmd = &cobra.Command{
 var dbSeedRunCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Execute seeds for current environment",
-	RunE:  runDBSeedRun,
+	RunE:  dataEnv(runDBSeedRun),
 }
 
 var dbSeedListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List available seeds and fixtures",
-	RunE:  runDBSeedList,
+	RunE:  dataEnv(runDBSeedList),
 }
 
 var dbSeedVerifyCmd = &cobra.Command{
 	Use:   "verify",
 	Short: "Verify a fixture is deterministic (dry-run replay check)",
-	RunE:  runDBSeedVerify,
+	RunE:  dataEnv(runDBSeedVerify),
 }
 
 var dbSeedGraphCmd = &cobra.Command{
 	Use:   "graph",
 	Short: "Show seed dependency graph",
-	RunE:  runDBSeedGraph,
+	RunE:  dataEnv(runDBSeedGraph),
 }
 
 // ── hasura ──────────────────────────────────────────────────────────
@@ -72,23 +72,23 @@ var dbSeedGraphCmd = &cobra.Command{
 var dbHasuraCmd = &cobra.Command{
 	Use:   "hasura",
 	Short: "Hasura metadata operations",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 var dbHasuraConsoleCmd = &cobra.Command{
 	Use:   "console",
 	Short: "Open Hasura Console",
-	RunE:  runDBHasuraConsole,
+	RunE:  dataEnv(runDBHasuraConsole),
 }
 
 var dbHasuraMetadataCmd = &cobra.Command{
 	Use:   "metadata",
 	Short: "Manage Hasura metadata",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 var dbHasuraMetadataApplyCmd = &cobra.Command{
@@ -103,31 +103,31 @@ the remote host over SSH, so the remote box always uses its own local
 project/Hasura resolution. Note: this requires the remote host's nself CLI
 version to support this subcommand — an older remote CLI returns a clear
 version-drift error rather than a raw SSH failure.`,
-	RunE: runDBHasuraMetadataApplyArchive,
+	RunE: dataEnv(runDBHasuraMetadataApplyArchive),
 }
 
 var dbHasuraMetadataExportCmd = &cobra.Command{
 	Use:   "export",
 	Short: "Export Hasura metadata to git-friendly sorted YAML",
-	RunE:  runDBHasuraMetadataExportArchive,
+	RunE:  dataEnv(runDBHasuraMetadataExportArchive),
 }
 
 var dbHasuraMetadataReloadCmd = &cobra.Command{
 	Use:   "reload",
 	Short: "Reload metadata cache",
-	RunE:  runDBHasuraMetadataReload,
+	RunE:  dataEnv(runDBHasuraMetadataReload),
 }
 
 var dbHasuraDiffCmd = &cobra.Command{
 	Use:   "diff",
 	Short: "Compare live Hasura metadata against on-disk files",
-	RunE:  runDBHasuraDiff,
+	RunE:  dataEnv(runDBHasuraDiff),
 }
 
 var dbHasuraValidateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Validate Hasura metadata consistency and permission coverage",
-	RunE:  runDBHasuraValidate,
+	RunE:  dataEnv(runDBHasuraValidate),
 }
 
 // ── lint ────────────────────────────────────────────────────────────
