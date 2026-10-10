@@ -74,7 +74,7 @@ func nginxTree(t *testing.T, workdir string) map[string]string {
 		if err == nil && !info.IsDir() {
 			b, _ := os.ReadFile(p)
 			rel, _ := filepath.Rel(root, p)
-			out[rel] = string(b)
+			out[filepath.ToSlash(rel)] = string(b)
 		}
 		return nil
 	})
