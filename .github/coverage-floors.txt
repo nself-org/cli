@@ -43,6 +43,7 @@ internal/compat/compattest 98  # measured 100.0 2026-10-05
 internal/compose 85  # measured 88.0 2026-10-05
 internal/compose/monitoring 56  # measured 58.8 2026-10-05
 internal/config 78  # measured 80.9 2026-10-05
+internal/config/bindings 92  # measured 94.7 2026-10-10
 internal/confirm 25  # measured 27.8 2026-10-05
 internal/controlplane 84  # measured 86.0 2026-10-05
 internal/controlplane/sim 0  # measured 0.0 2026-10-05

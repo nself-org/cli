@@ -180,6 +180,7 @@ Subcommands:
 
 - `bundles` — Manage and inspect nSelf plugin bundles
 - `env` — Multi-environment management: switch, list, diff, copy
+- `explain` — Explain where a configuration key comes from
 - `export` — Export current config to a file or stdout
 - `features` — Manage CLI-built-in feature flags
 - `get` — Get a single configuration value
