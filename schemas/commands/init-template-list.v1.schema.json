@@ -115,11 +115,15 @@
         "null",
         "array"
       ]
+    },
+    "community_available": {
+      "type": "boolean"
     }
   },
   "required": [
     "bundled",
-    "community"
+    "community",
+    "community_available"
   ],
   "type": "object"
 }

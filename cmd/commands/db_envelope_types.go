@@ -232,6 +232,9 @@ type templateBundledRow struct {
 type templateListData struct {
 	Bundled   []templateBundledRow `json:"bundled"`
 	Community []templateEntry      `json:"community"`
+	// CommunityAvailable is false when the registry fetch failed; community
+	// is then empty because it is unknown, not because none exist.
+	CommunityAvailable bool `json:"community_available"`
 }
 
 type backupPITRStatusData struct {

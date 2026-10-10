@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/backup"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/spf13/pflag"
 )
@@ -143,8 +144,13 @@ func TestBackupStatusOffboxFlags(t *testing.T) {
 
 	writeStatusHB(t, hb, "backup", 27*time.Hour, "ok")
 	out, err = runStatusFlags(t, with("max-age", "26h"))
-	if !codeIn(err, "E217") || errs.ExitCodeFor(err) == 0 || !strings.Contains(out, `"max_age_exceeded": true`) {
+	if !codeIn(err, "E217") || errs.ExitCodeFor(err) == 0 {
 		t.Fatalf("27 h old backup: err=%v out=%s", err, out)
+	}
+	// v1.4 prints the state document before the coded error; in v1.5 the
+	// failure is the error envelope the top level prints, never a success one.
+	if compat.V15() != (out == "") || (!compat.V15() && !strings.Contains(out, `"max_age_exceeded": true`)) {
+		t.Fatalf("27 h old backup, stdout: %q", out)
 	}
 	writeStatusHB(t, hb, "drill", 36*24*time.Hour, "ok")
 	if _, err = runStatusFlags(t, with("max-drill-age", "35d")); !codeIn(err, "E218") {

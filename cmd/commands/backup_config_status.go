@@ -184,15 +184,16 @@ func runBackupStatus(cmd *cobra.Command, _ []string) error {
 	go func() { <-ctx.Done(); stop() }()
 	off, offErr := backup.ReadOffbox(ctx, hbTo, project, opts, time.Now())
 	if jsonEnvelopeOn(cmd) {
-		// The document carries the state; a coded failure (E217-E219) keeps
-		// its exit status without a second document.
-		if err := emitEnv(cmd, newBackupStatusData(info, off), true); err != nil {
-			return err
-		}
 		if offErr != nil {
-			return codedExit(cmd, offErr)
+			// A stale or unreadable heartbeat (E217-E219) is a failure: stdout
+			// gets the error envelope from the top level (no data member), the
+			// off-box state goes to stderr so it is not lost.
+			if text, ferr := backup.FormatStatusOffbox(info, off, "text"); ferr == nil {
+				fmt.Fprint(cmd.ErrOrStderr(), text)
+			}
+			return offErr
 		}
-		return nil
+		return emitEnv(cmd, newBackupStatusData(info, off), true)
 	}
 	output, err := backup.FormatStatusOffbox(info, off, format)
 	if err != nil {

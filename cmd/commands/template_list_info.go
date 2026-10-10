@@ -70,7 +70,7 @@ func runTemplateList(cmd *cobra.Command, args []string) error {
 		// Registry unavailable is non-fatal; bundled list above already printed.
 		if jsonEnvelopeOn(cmd) {
 			fmt.Fprintf(os.Stderr, "community registry unavailable: %v\n", err)
-			return emitEnv(cmd, newTemplateListData(nil), false)
+			return emitEnv(cmd, newTemplateListData(nil, false), false)
 		}
 		if !asJSON {
 			fmt.Fprintf(os.Stderr, "  %s Community registry unavailable: %v\n\n",
@@ -80,7 +80,7 @@ func runTemplateList(cmd *cobra.Command, args []string) error {
 	}
 
 	if jsonEnvelopeOn(cmd) {
-		return emitEnv(cmd, newTemplateListData(registryTemplates), false)
+		return emitEnv(cmd, newTemplateListData(registryTemplates, true), false)
 	}
 	if len(registryTemplates) == 0 {
 		if !asJSON {

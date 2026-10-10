@@ -385,6 +385,8 @@ Existing fields are unchanged. `--format json` appends the `offbox` object (cont
 nself backup status --project nself-web --heartbeat-to r2:nself-backup-heartbeat --max-age 26h --max-drill-age 35d --format json
 ```
 
+In v1.5 `--json` mode a stale, failed or unreadable heartbeat (E217-E219) prints the error envelope (`error.code`, no `data` member) and exits non-zero; the off-box state goes to stderr. Only a passing check prints the `data` document above. `backup drill --json` behaves the same: a failed drill prints the error envelope, not a `data` document.
+
 ---
 
 ## backup drill

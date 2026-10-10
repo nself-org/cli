@@ -3,6 +3,7 @@
   "command": "init template list",
   "data": {
     "bundled": [],
-    "community": []
+    "community": [],
+    "community_available": false
   }
 }

@@ -78,15 +78,15 @@ func runBackupDrill(cmd *cobra.Command, _ []string) error {
 
 	result, err := database.Drill(cmd.Context(), cfg, opts)
 	if jsonEnvelopeOn(cmd) {
-		// The outcome is the document even when the drill failed, so cron
-		// parsers see it; the failure keeps its exit status.
-		if eerr := emitEnv(cmd, backupDrillData{Local: &result}, false); eerr != nil {
-			return eerr
-		}
+		// A failed drill is an error envelope from the top level (no data
+		// member); the outcome goes to stderr so it is not lost.
 		if err != nil {
-			return codedExit(cmd, err)
+			if data, mErr := json.MarshalIndent(result, "", "  "); mErr == nil {
+				fmt.Fprintln(cmd.ErrOrStderr(), string(data))
+			}
+			return err
 		}
-		return nil
+		return emitEnv(cmd, backupDrillData{Local: &result}, false)
 	}
 	if jsonOut {
 		// Always emit JSON when --json is set, even on error, so cron parsers
@@ -161,13 +161,13 @@ func runBackupDrillRemote(cmd *cobra.Command, from string) error {
 	})
 	if res != nil {
 		if jsonEnvelopeOn(cmd) {
-			if eerr := emitEnv(cmd, backupDrillData{Remote: newDrillHeartbeat(res.Heartbeat)}, false); eerr != nil {
-				return eerr
-			}
 			if err != nil {
-				return codedExit(cmd, err)
+				if data, mErr := res.Heartbeat.Marshal(); mErr == nil {
+					fmt.Fprint(cmd.ErrOrStderr(), string(data))
+				}
+				return err
 			}
-			return nil
+			return emitEnv(cmd, backupDrillData{Remote: newDrillHeartbeat(res.Heartbeat)}, false)
 		}
 		if jsonOut {
 			if data, mErr := res.Heartbeat.Marshal(); mErr == nil {

@@ -9,6 +9,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -23,6 +24,12 @@ import (
 	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
+
+// prependPath puts dir first on PATH for the test (a command double).
+func prependPath(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
 
 // testPkgDir is this package directory, taken before a test changes directory.
 var testPkgDir, _ = os.Getwd()
@@ -113,6 +120,28 @@ func TestBackupStatusJSON(t *testing.T) {
 func TestBackupStatusProjectOffboxOnly(t *testing.T) {
 	hb := t.TempDir()
 	t.Chdir(t.TempDir()) // not a project
+	writeStatusHB(t, hb, "backup", 2*time.Hour, "ok")
+	flags := map[string]string{"json": "true", "project": "proj", "heartbeat-to": "path://" + hb, "max-age": "26h"}
+	out, err := jsonV15(t, backupStatusCmd, flags, func() error { return runBackupStatus(backupStatusCmd, nil) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := oneEnvelope(t, out, "backup status")
+	var data map[string]json.RawMessage
+	if err := json.Unmarshal(doc["data"], &data); err != nil {
+		t.Fatal(err)
+	}
+	if len(data) != 1 || data["offbox"] == nil || !strings.Contains(string(data["offbox"]), `"max_age_exceeded": false`) {
+		t.Fatalf("outside a project only offbox is present:\n%s", out)
+	}
+}
+
+// TestBackupStatusStaleIsErrorEnvelope: a stale backup (E217) must not print
+// a success envelope. The body writes nothing to stdout and returns the coded
+// error, which the top level turns into the error envelope (S4).
+func TestBackupStatusStaleIsErrorEnvelope(t *testing.T) {
+	hb := t.TempDir()
+	t.Chdir(t.TempDir())
 	writeStatusHB(t, hb, "backup", 27*time.Hour, "ok")
 	flags := map[string]string{"json": "true", "project": "proj", "heartbeat-to": "path://" + hb, "max-age": "26h"}
 	var runErr error
@@ -123,17 +152,15 @@ func TestBackupStatusProjectOffboxOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The stale backup fails with E217 and still leaves one document.
 	if runErr == nil || !strings.Contains(runErr.Error(), "[E217]") || errs.ExitCodeFor(runErr) == 0 {
 		t.Fatalf("a stale backup must keep a non-zero exit, got %v", runErr)
 	}
-	doc := oneEnvelope(t, out, "backup status")
-	var data map[string]json.RawMessage
-	if err := json.Unmarshal(doc["data"], &data); err != nil {
-		t.Fatal(err)
+	var silencer errs.Silencer
+	if errors.As(runErr, &silencer) && silencer.Silent() {
+		t.Fatal("the error must reach the top level so it prints the error envelope")
 	}
-	if len(data) != 1 || data["offbox"] == nil || !strings.Contains(string(data["offbox"]), `"max_age_exceeded": true`) {
-		t.Fatalf("outside a project only offbox is present:\n%s", out)
+	if strings.TrimSpace(out) != "" {
+		t.Fatalf("a failed status must not print a success envelope on stdout:\n%s", out)
 	}
 }
 

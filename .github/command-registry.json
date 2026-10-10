@@ -12076,8 +12076,13 @@
       "json": "envelope",
       "data_schema": "schemas/commands/db-reset-checksum.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
-      "surface": "cli-only"
+      "confirm": {
+        "flags": [
+          "i-know-what-im-doing"
+        ],
+        "plan": null
+      },
+      "surface": "all"
     },
     {
       "path": "nself db restore",

@@ -92,7 +92,10 @@ func emitDataEnvelope(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	if !set {
-		v = defaultData(cmd, args, typed)
+		var err error
+		if v, err = defaultData(cmd, args, typed); err != nil {
+			return err
+		}
 	}
 	if reflect.TypeOf(v) != reflect.TypeOf(typed) {
 		return fmt.Errorf("internal: %s data is %T, the registry type is %T", invokedKey(cmd), v, typed)
@@ -106,8 +109,9 @@ func registeredData(cmd *cobra.Command) (typed, v any, set bool) {
 	return typed, v, set
 }
 
-// defaultData builds the shared data for a command that set none.
-func defaultData(cmd *cobra.Command, args []string, typed any) any {
+// defaultData builds the shared data for a command that set none; a row
+// with its own type and no setData call is an error.
+func defaultData(cmd *cobra.Command, args []string, typed any) (any, error) {
 	switch typed.(type) {
 	case dataHub:
 		hub := dataHub{Subcommands: []dataHubEntry{}}
@@ -117,7 +121,7 @@ func defaultData(cmd *cobra.Command, args []string, typed any) any {
 			}
 			hub.Subcommands = append(hub.Subcommands, dataHubEntry{Name: c.Name(), Summary: c.Short})
 		}
-		return hub
+		return hub, nil
 	case dataResult:
 		res := dataResult{OK: true}
 		if f := cmd.Flags().Lookup("dry-run"); f != nil && f.Value.String() == "true" {
@@ -126,32 +130,16 @@ func defaultData(cmd *cobra.Command, args []string, typed any) any {
 		if len(args) > 0 && !dataTargetSecret[invokedKey(cmd)] {
 			res.Target = args[0]
 		}
-		return res
+		return res, nil
 	}
-	return reflect.Zero(reflect.TypeOf(typed)).Interface()
+	// A typed row that never called setData must fail loudly, not print a zero document.
+	return nil, fmt.Errorf("internal: %s has typed data %T but its body set none", invokedKey(cmd), typed)
 }
 
 // dataTargetSecret lists the paths whose first argument may carry a secret
 // (a connection string), so it never reaches the envelope.
 var dataTargetSecret = map[string]bool{
 	"db import firebase": true, "db import supabase": true,
-}
-
-// documentedFailure is an error whose document is already on stdout and whose
-// text is already on stderr: the top level prints nothing more (Silent) and
-// the exit status stays that of the wrapped error.
-type documentedFailure struct{ err error }
-
-func (e documentedFailure) Error() string { return e.err.Error() }
-func (e documentedFailure) Unwrap() error { return e.err }
-func (e documentedFailure) Silent() bool  { return true }
-
-// codedExit ends a JSON invocation whose document is already written: the
-// error keeps its exit status, the human text goes to stderr, and the top
-// level prints no second document.
-func codedExit(cmd *cobra.Command, err error) error {
-	output.RenderError(cmd.ErrOrStderr(), err)
-	return documentedFailure{err}
 }
 
 // emitEnv writes the envelope of the running command: data in its legacy
@@ -188,9 +176,11 @@ func newBackupStatusData(info *backup.StatusInfo, off *backup.OffboxStatus) back
 }
 
 // newTemplateListData builds the `init template list` document: the embedded
-// templates and the community registry entries (empty when it is unreachable).
-func newTemplateListData(community []templateEntry) templateListData {
-	d := templateListData{Bundled: []templateBundledRow{}, Community: community}
+// templates and the community registry entries. available is false when the
+// registry fetch failed: community is then empty because it is unknown, and a
+// consumer must not read it as "none exist".
+func newTemplateListData(community []templateEntry, available bool) templateListData {
+	d := templateListData{Bundled: []templateBundledRow{}, Community: community, CommunityAvailable: available}
 	if d.Community == nil {
 		d.Community = []templateEntry{}
 	}

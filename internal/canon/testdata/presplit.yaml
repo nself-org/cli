@@ -181,7 +181,7 @@ commands:
   db reconcile: {side_effect: read, flags: {apply: {side_effect: write}}}
   db reset: {side_effect: destructive, confirm: {flags: [force, yes]}}
   # cmd/commands/db_hasura.go:111 rewrites stored migration checksum state; self-labelled dangerous
-  db reset-checksum: {side_effect: destructive, surface: cli-only}
+  db reset-checksum: {side_effect: destructive, confirm: {flags: [i-know-what-im-doing]}}
   db restore: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/db_pitr_ops.go:202 restores into a temporary database that is dropped afterwards (db_pitr.go:65-70): write, not destructive despite the name
   db restore-drill: {side_effect: write}

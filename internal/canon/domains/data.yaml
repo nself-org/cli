@@ -118,8 +118,8 @@ commands:
   db reconcile: {side_effect: read, flags: {apply: {side_effect: write}}}
   db reset: {side_effect: destructive, confirm: {flags: [force, yes]}}
   # cmd/commands/db_hasura.go:111 rewrites stored migration checksum state; self-labelled dangerous
-  # surface cli-only: rewrites stored checksum state with no consent flag or plan form; a flag is a behaviour change (debt)
-  db reset-checksum: {side_effect: destructive, surface: cli-only}
+  # cmd/commands/db_commands_ext.go declares --i-know-what-im-doing and db_hasura.go refuses without it: that flag is the consent
+  db reset-checksum: {side_effect: destructive, confirm: {flags: [i-know-what-im-doing]}}
   db restore: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/db_pitr_ops.go:202 restores into a temporary database that is dropped afterwards (db_pitr.go:65-70): write, not destructive despite the name
   db restore-drill: {side_effect: write}
