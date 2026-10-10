@@ -15,6 +15,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -278,4 +279,46 @@ func TestPluginInfoInstalledTierNotServed(t *testing.T) {
 	if got.TierReason != "unresolved" || got.TierError == "" || got.Version != "" {
 		t.Fatalf("installed tier not served must be unresolved with the cause: %+v", got)
 	}
+}
+
+// TestUpdateWithTierEnv (CR r2 S1): the --tier override travels in
+// NSELF_PLUGIN_INSTALL_TIER set by the cmd layer for the update only. With it
+// a lapsed-licence update of an installed licensed plugin gets past tier
+// resolution (without it: E131); the caller's value is put back afterwards.
+func TestUpdateWithTierEnv(t *testing.T) {
+	setup := func(t *testing.T) string {
+		infoFixtureRegistry(t, "pro", `{"plugins":[`+
+			`{"name":"notify","tier":"free","tier_pair":true,"version":"1.0.0","description":"free"},`+
+			`{"name":"notify","tier":"pro","tier_pair":true,"version":"1.1.0","description":"licensed","bundles":["claw"]}]}`)
+		t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "")
+		compattest.Set(t, true)
+		return os.Getenv("NSELF_PLUGIN_DIR")
+	}
+	isE131 := func(err error) bool { return err != nil && strings.Contains(err.Error(), "E131") }
+
+	t.Run("without --tier the installed tier sticks (E131)", func(t *testing.T) {
+		dir := setup(t)
+		if err := updateWithTier(context.Background(), &config.Config{}, "notify", dir, ""); !isE131(err) {
+			t.Fatalf("want E131, got %v", err)
+		}
+	})
+	t.Run("with --tier free the switch goes through", func(t *testing.T) {
+		dir := setup(t)
+		if err := updateWithTier(context.Background(), &config.Config{}, "notify", dir, "free"); isE131(err) {
+			t.Fatalf("--tier free must not stop with E131: %v", err)
+		}
+	})
+	t.Run("the caller's env is restored", func(t *testing.T) {
+		dir := setup(t)
+		t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "pro")
+		_ = updateWithTier(context.Background(), &config.Config{}, "notify", dir, "free")
+		if v := os.Getenv("NSELF_PLUGIN_INSTALL_TIER"); v != "pro" {
+			t.Fatalf("env not restored: %q", v)
+		}
+		_ = os.Unsetenv("NSELF_PLUGIN_INSTALL_TIER")
+		_ = updateWithTier(context.Background(), &config.Config{}, "notify", dir, "free")
+		if _, set := os.LookupEnv("NSELF_PLUGIN_INSTALL_TIER"); set {
+			t.Fatal("env must be unset again after the call")
+		}
+	})
 }

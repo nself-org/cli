@@ -393,13 +393,18 @@ func TestUpdateKeepsInstalledTier(t *testing.T) {
 	if b, rerr := os.ReadFile(filepath.Join(pluginDir, "cron", "plugin.json")); rerr != nil || string(b) != manifest {
 		t.Fatalf("the previous copy must be restored untouched: %v", rerr)
 	}
-	if v := os.Getenv("NSELF_PLUGIN_INSTALLED_TIER"); v != "" {
-		t.Fatalf("Update must not use a process-environment side channel: %q", v)
+	// The failed update must leave no .prev backup behind and the tier must
+	// have come from the on-disk copy alone (the env var is not set).
+	if _, serr := os.Stat(filepath.Join(pluginDir, "cron.prev")); !os.IsNotExist(serr) {
+		t.Fatalf("a failed update must put the backup back: %v", serr)
+	}
+	if v := os.Getenv("NSELF_PLUGIN_INSTALL_TIER"); v != "" {
+		t.Fatalf("Update must not set the tier override itself: %q", v)
 	}
 }
 
 // TestUpdateWithTierSwitchesOnPurpose: the same lapsed-licence update that
-// stops with E131 gets past tier resolution once --tier free is given.
+// stops with E131 gets past tier resolution once the --tier override is set.
 func TestUpdateWithTierSwitchesOnPurpose(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"plugins":[` +
@@ -420,7 +425,8 @@ func TestUpdateWithTierSwitchesOnPurpose(t *testing.T) {
 		t.Fatal(err)
 	}
 	compattest.Set(t, true)
-	err := UpdateWithTier(context.Background(), &config.Config{}, "cron", pluginDir, "free")
+	t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "free") // what the cmd layer sets for --tier free
+	err := Update(context.Background(), &config.Config{}, "cron", pluginDir)
 	var ce *errs.CLIError
 	if errors.As(err, &ce) && ce.Code == "E131" {
 		t.Fatalf("--tier free must not stop with E131: %v", err)
@@ -500,23 +506,5 @@ func TestInstalledTierForInstall(t *testing.T) {
 	write("cron", "free")
 	if got := installedTierForInstall(dir, "cron"); got != "free" {
 		t.Fatalf("live copy must win over .prev: got %q, want free", got)
-	}
-}
-
-// TestUpdateWithTierRestoresEnv: --tier travels in NSELF_PLUGIN_INSTALL_TIER
-// for the call only; the caller's value comes back afterwards.
-func TestUpdateWithTierRestoresEnv(t *testing.T) {
-	pluginDir := installedPair(t, "pro")
-	compattest.Set(t, true)
-	t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "pro")
-	_ = UpdateWithTier(context.Background(), &config.Config{}, "cron", pluginDir, "free")
-	if v := os.Getenv("NSELF_PLUGIN_INSTALL_TIER"); v != "pro" {
-		t.Fatalf("env not restored: %q", v)
-	}
-	t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "")
-	_ = os.Unsetenv("NSELF_PLUGIN_INSTALL_TIER")
-	_ = UpdateWithTier(context.Background(), &config.Config{}, "cron", pluginDir, "free")
-	if _, set := os.LookupEnv("NSELF_PLUGIN_INSTALL_TIER"); set {
-		t.Fatal("env must be unset again after the call")
 	}
 }

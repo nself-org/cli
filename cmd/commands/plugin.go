@@ -212,7 +212,7 @@ func loadConfig() (*config.Config, error) {
 }
 
 // runPluginUpdateTier is the RunE of `plugin update`. One plugin name goes
-// through plugin.UpdateWithTier with the optional --tier (empty keeps the
+// through updateWithTier with the optional --tier (empty keeps the
 // installed tier); no name updates every installed plugin (runPluginUpdate),
 // where --tier is refused because a tier switch is per plugin.
 func runPluginUpdateTier(cmd *cobra.Command, args []string) error {
@@ -241,9 +241,30 @@ func runPluginUpdateTier(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Fprintf(os.Stderr, "Updating plugin %q...\n", name)
 	}
-	if err := plugin.UpdateWithTier(ctx, cfg, name, resolvePluginDir(), tier); err != nil {
+	if err := updateWithTier(ctx, cfg, name, resolvePluginDir(), tier); err != nil {
 		return fmt.Errorf("updating plugin %q: %w", name, err)
 	}
 	fmt.Fprintf(os.Stderr, "Plugin %q updated successfully.\n", name)
 	return nil
+}
+
+// updateWithTier is plugin.Update with --tier ("" keeps the installed tier).
+// The tier reaches the install through NSELF_PLUGIN_INSTALL_TIER, the variable
+// `plugin install --tier` sets in this layer; it is put back when the update
+// returns, so nothing after it sees an override it did not ask for.
+func updateWithTier(ctx context.Context, cfg *config.Config, name, pluginDir, tier string) error {
+	if tier != "" {
+		prev, had := os.LookupEnv("NSELF_PLUGIN_INSTALL_TIER")
+		if err := os.Setenv("NSELF_PLUGIN_INSTALL_TIER", tier); err != nil {
+			return fmt.Errorf("setting tier override: %w", err)
+		}
+		defer func() {
+			if had {
+				_ = os.Setenv("NSELF_PLUGIN_INSTALL_TIER", prev)
+			} else {
+				_ = os.Unsetenv("NSELF_PLUGIN_INSTALL_TIER")
+			}
+		}()
+	}
+	return plugin.Update(ctx, cfg, name, pluginDir)
 }

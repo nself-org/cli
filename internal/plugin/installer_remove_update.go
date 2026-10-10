@@ -134,34 +134,13 @@ func Remove(ctx context.Context, cfg *config.Config, name string, pluginDir stri
 
 // Update backs up the current installation, then reinstalls from the registry.
 // If the new install fails, the previous version is restored automatically.
-// The installed tier is kept (see UpdateWithTier).
+// The installed tier is kept: installLocked reads it from the backup (v1.5,
+// see ResolvePluginTier). A caller that wants to switch tier on purpose sets
+// NSELF_PLUGIN_INSTALL_TIER for the call, as `plugin install --tier` does
+// (the cmd layer does this for `plugin update --tier`).
 func Update(ctx context.Context, cfg *config.Config, name string, pluginDir string) error {
-	return UpdateWithTier(ctx, cfg, name, pluginDir, "")
-}
-
-// UpdateWithTier is Update with an explicit --tier ("", "free" or "licensed").
-// Without it, v1.5 keeps the tier the plugin is installed as and stops with
-// E131 when it cannot; with it the tier switches on purpose.
-func UpdateWithTier(ctx context.Context, cfg *config.Config, name string, pluginDir string, tierOverride string) error {
 	currentDir := filepath.Join(pluginDir, name)
 	backupDir := filepath.Join(pluginDir, name+".prev")
-
-	// --tier reaches the install through the same env var `plugin install
-	// --tier` uses; installLocked reads the installed tier itself (from the
-	// .prev backup below), so nothing else carries it. Restored on return.
-	if tierOverride != "" {
-		prev, had := os.LookupEnv("NSELF_PLUGIN_INSTALL_TIER")
-		if err := os.Setenv("NSELF_PLUGIN_INSTALL_TIER", tierOverride); err != nil {
-			return fmt.Errorf("setting tier override: %w", err)
-		}
-		defer func() {
-			if had {
-				_ = os.Setenv("NSELF_PLUGIN_INSTALL_TIER", prev)
-			} else {
-				_ = os.Unsetenv("NSELF_PLUGIN_INSTALL_TIER")
-			}
-		}()
-	}
 
 	// The installed copy's image references tell which ones changed. A
 	// fragment that does not parse gives no references, so the post-update
