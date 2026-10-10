@@ -15,6 +15,11 @@ import (
 	"time"
 )
 
+// openLockFile opens (creating) the lock file without following a symlink.
+func openLockFile(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+}
+
 // lockFile takes an exclusive flock on f, polling until wait elapses.
 func lockFile(f *os.File, wait time.Duration) (func(), error) {
 	deadline := time.Now().Add(wait)

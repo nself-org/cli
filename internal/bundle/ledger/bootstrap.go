@@ -16,6 +16,7 @@
 package ledger
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -38,7 +39,9 @@ type InstalledPlugin struct {
 	Checksum string // lowercase hex sha256 or empty
 }
 
-// Sources is everything Bootstrap reads.
+// Sources is everything Bootstrap reads. A Sources value must come from a
+// successful read of the plugin directory and bundle membership: an unreadable
+// source is an error for the caller (see Store.Sources), never an empty Sources.
 type Sources struct {
 	Bundles []BundleDef
 	Plugins []InstalledPlugin
@@ -53,15 +56,29 @@ func (s Sources) now() time.Time {
 	return time.Now().UTC()
 }
 
-// Bootstrap builds the first ledger from s.
+// Bootstrap builds the first ledger from s, dropping what cannot be recorded.
 func Bootstrap(s Sources) Ledger {
+	l, _ := BootstrapReport(s)
+	return l
+}
+
+// BootstrapReport builds the first ledger from s. A plugin or bundle whose name
+// is not a valid slug cannot be written to the ledger (one such name would
+// make every later write fail), so it is skipped and returned as a description
+// the caller can show. A bundle with a skipped member is not installed.
+func BootstrapReport(s Sources) (Ledger, []string) {
 	l := New()
+	var skipped []string
 	stamp := s.now().Format(time.RFC3339)
 
 	byName := map[string]InstalledPlugin{}
 	for _, p := range s.Plugins {
 		name := strings.ToLower(strings.TrimSpace(p.Name))
-		if name != "" {
+		switch {
+		case name == "":
+		case !slugRE.MatchString(name):
+			skipped = append(skipped, fmt.Sprintf("plugin %q is not a valid slug and is not recorded", p.Name))
+		default:
 			byName[name] = p
 		}
 	}
@@ -69,6 +86,10 @@ func Bootstrap(s Sources) Ledger {
 	installedBy := map[string][]string{}
 	for _, b := range s.Bundles {
 		slug := strings.ToLower(b.Slug)
+		if b.Installable && !slugRE.MatchString(slug) {
+			skipped = append(skipped, fmt.Sprintf("bundle %q is not a valid slug and is not recorded", b.Slug))
+			continue
+		}
 		if !b.Installable || len(b.Plugins) == 0 {
 			continue
 		}
@@ -97,5 +118,6 @@ func Bootstrap(s Sources) Ledger {
 		l.Plugins[name] = rec
 	}
 	l.normalize()
-	return l
+	sort.Strings(skipped)
+	return l, skipped
 }

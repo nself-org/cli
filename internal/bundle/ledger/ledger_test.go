@@ -127,7 +127,18 @@ func TestLedgerSchema(t *testing.T) {
 		"bad-time": mutate(func(m map[string]any) {
 			m["bundles"].(map[string]any)["chat"].(map[string]any)["installed_at"] = "yesterday"
 		}),
-		"missing-explicit": mutate(func(m map[string]any) { delete(plug(m, "bots"), "explicit") }),
+		"missing-explicit":    mutate(func(m map[string]any) { delete(plug(m, "bots"), "explicit") }),
+		"null-explicit":       mutate(func(m map[string]any) { plug(m, "bots")["explicit"] = nil }),
+		"null-installed-by":   mutate(func(m map[string]any) { plug(m, "bots")["installed_by"] = nil }),
+		"null-version":        mutate(func(m map[string]any) { plug(m, "bots")["version"] = nil }),
+		"null-checksum":       mutate(func(m map[string]any) { plug(m, "bots")["checksum"] = nil }),
+		"null-tier":           mutate(func(m map[string]any) { plug(m, "bots")["tier"] = nil }),
+		"null-bundles":        mutate(func(m map[string]any) { m["bundles"] = nil }),
+		"null-plugins":        mutate(func(m map[string]any) { m["plugins"] = nil }),
+		"null-schema-version": mutate(func(m map[string]any) { m["schema_version"] = nil }),
+		"null-installed-at":   mutate(func(m map[string]any) { m["bundles"].(map[string]any)["chat"].(map[string]any)["installed_at"] = nil }),
+		"null-plugin-record":  mutate(func(m map[string]any) { m["plugins"].(map[string]any)["bots"] = nil }),
+		"null-bundle-record":  mutate(func(m map[string]any) { m["bundles"].(map[string]any)["chat"] = nil }),
 	}
 	for name, raw := range bad {
 		if validates(t, s, raw) == nil {
@@ -254,5 +265,74 @@ func TestLedgerView(t *testing.T) {
 	raw, _ := json.Marshal(l.View("nothing", nil))
 	if !strings.Contains(string(raw), `"plugins":[]`) {
 		t.Errorf("empty view must print plugins as [], got %s", raw)
+	}
+}
+
+// TestLedgerDuplicateKeys: encoding/json keeps the last of two equal keys; the
+// reader must refuse them at every depth.
+func TestLedgerDuplicateKeys(t *testing.T) {
+	good, _ := Bootstrap(fixtureSources()).Marshal()
+	if _, err := Parse(good); err != nil {
+		t.Fatalf("control: %v", err)
+	}
+	bots := `"bots": {"installed_by": ["chat"], "explicit": false, "tier": "licensed", "version": "1", "checksum": ""}`
+	head := `{"_generated": ` + string(mustJSON(t, Generated)) + `, "schema_version": 1, `
+	chat := `"chat": {"installed_at": "2026-10-10T12:00:00Z"}`
+	cases := map[string]string{
+		"dup-plugin":    head + `"bundles": {` + chat + `}, "plugins": {` + bots + `, ` + bots + `}}`,
+		"dup-bundle":    head + `"bundles": {` + chat + `, ` + chat + `}, "plugins": {}}`,
+		"dup-field":     head + `"bundles": {` + chat + `}, "plugins": {"bots": {"installed_by": ["chat"], "explicit": false, "explicit": true, "tier": "free", "version": "", "checksum": ""}}}`,
+		"dup-root":      head + `"bundles": {}, "plugins": {}, "bundles": {}}`,
+		"dup-generated": `{"_generated": ` + string(mustJSON(t, Generated)) + `, "_generated": ` + string(mustJSON(t, Generated)) + `, "schema_version": 1, "bundles": {}, "plugins": {}}`,
+	}
+	for name, doc := range cases {
+		if _, err := Parse([]byte(doc)); err == nil || !strings.Contains(err.Error(), "duplicate key") {
+			t.Errorf("%s: err = %v, want a duplicate key error", name, err)
+		}
+	}
+	ok := head + `"bundles": {` + chat + `}, "plugins": {` + bots + `}}`
+	if _, err := Parse([]byte(ok)); err != nil {
+		t.Errorf("control without duplicates rejected: %v", err)
+	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// TestLedgerBootstrapSkipsInvalidSlugs: a name that is not a slug is reported
+// and left out, so the ledger stays writable.
+func TestLedgerBootstrapSkipsInvalidSlugs(t *testing.T) {
+	src := fixtureSources()
+	src.Plugins = append(src.Plugins, InstalledPlugin{Name: "my plugin", Version: "1"}, InstalledPlugin{Name: "UPPER_ok", Version: "1"})
+	src.Bundles = append(src.Bundles, BundleDef{Slug: "Bad Bundle", Installable: true, Plugins: []string{"notes"}})
+	l, skipped := BootstrapReport(src)
+	if len(skipped) != 2 {
+		t.Fatalf("skipped = %v, want the plugin %q and the bundle", skipped, "my plugin")
+	}
+	if _, ok := l.Plugins["my plugin"]; ok {
+		t.Error("invalid plugin slug was recorded")
+	}
+	if _, ok := l.Plugins["upper_ok"]; !ok {
+		t.Error("a valid name after lower-casing was dropped")
+	}
+	if _, err := l.Marshal(); err != nil {
+		t.Fatalf("bootstrap result with a bad name is not writable: %v", err)
+	}
+	// And through the store: the first write works and warns.
+	s := newTestStore(t)
+	s.Sources = func() (Sources, error) { return src, nil }
+	var warned []string
+	s.Warn = func(m string) { warned = append(warned, m) }
+	if created, err := s.EnsureBootstrapped(); err != nil || !created {
+		t.Fatalf("EnsureBootstrapped with a bad plugin name: created=%v err=%v", created, err)
+	}
+	if len(warned) != 2 {
+		t.Errorf("warnings = %v", warned)
 	}
 }

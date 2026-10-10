@@ -91,3 +91,36 @@ func TestLedgerAddBundleKeepsExplicit(t *testing.T) {
 		t.Fatal("explicit plugin dropped with its bundle")
 	}
 }
+
+// TestLedgerAddBundleKeepsFacts: callers pass members by name only (a bundle's
+// plugin list is []string); recorded facts must survive, and the first
+// installed_at must survive a re-add.
+func TestLedgerAddBundleKeepsFacts(t *testing.T) {
+	l := New()
+	full := InstalledPlugin{Name: "bots", Version: "1.2.0", Tier: TierLicensed, Checksum: "sha256:" + sum1}
+	l.MarkExplicit(full)
+	first := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	l.AddBundle("chat", []InstalledPlugin{{Name: "bots"}}, first)
+	p := l.Plugins["bots"]
+	if p.Tier != TierLicensed || p.Version != "1.2.0" || p.Checksum != sum1 || !p.Explicit {
+		t.Fatalf("name-only AddBundle erased facts: %+v", p)
+	}
+	l.MarkExplicit(InstalledPlugin{Name: "bots", Tier: "pro"}) // not free|licensed: ignored
+	if l.Plugins["bots"].Tier != TierLicensed || l.Plugins["bots"].Version != "1.2.0" {
+		t.Fatalf("MarkExplicit with empty facts erased them: %+v", l.Plugins["bots"])
+	}
+	l.AddBundle(" Chat ", []InstalledPlugin{{Name: "bots", Version: "1.3.0"}}, first.Add(48*time.Hour))
+	if got := l.Bundles["chat"].InstalledAt; got != "2026-01-01T00:00:00Z" {
+		t.Errorf("re-add moved installed_at to %s", got)
+	}
+	if l.Plugins["bots"].Version != "1.3.0" || l.Plugins["bots"].Checksum != sum1 {
+		t.Errorf("a carried version must update, others stay: %+v", l.Plugins["bots"])
+	}
+	l.AddBundle("chat", []InstalledPlugin{{Name: "fresh", Tier: "weird"}}, first)
+	if f := l.Plugins["fresh"]; f.Tier != TierFree || f.Explicit {
+		t.Errorf("new name-only record = %+v, want free and not explicit", f)
+	}
+	if _, err := l.Marshal(); err != nil {
+		t.Errorf("ledger invalid: %v", err)
+	}
+}

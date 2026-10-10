@@ -20,11 +20,16 @@ import (
 
 // AddBundle records bundle slug as installed at `at` with the given member
 // plugins. Existing plugin records keep their explicit flag; the bundle is
-// added to their installed_by. A new plugin record is explicit=false.
+// added to their installed_by. A new plugin record is explicit=false. Members
+// may be passed by name only: a fact the input does not carry (version, checksum,
+// a tier other than free or licensed) keeps its recorded value. Re-adding a
+// bundle that is already recorded keeps its first installed_at.
 func (l *Ledger) AddBundle(slug string, members []InstalledPlugin, at time.Time) {
-	slug = strings.ToLower(slug)
+	slug = strings.ToLower(strings.TrimSpace(slug))
 	l.normalize()
-	l.Bundles[slug] = BundleRecord{InstalledAt: at.UTC().Format(time.RFC3339)}
+	if _, ok := l.Bundles[slug]; !ok {
+		l.Bundles[slug] = BundleRecord{InstalledAt: at.UTC().Format(time.RFC3339)}
+	}
 	for _, m := range members {
 		name := strings.ToLower(strings.TrimSpace(m.Name))
 		if name == "" {
@@ -44,7 +49,7 @@ func (l *Ledger) AddBundle(slug string, members []InstalledPlugin, at time.Time)
 // another bundle, or explicit, stays in the ledger and is not returned. An
 // unknown bundle is an error and changes nothing.
 func (l *Ledger) RemoveBundle(slug string) ([]string, error) {
-	slug = strings.ToLower(slug)
+	slug = strings.ToLower(strings.TrimSpace(slug))
 	if _, ok := l.Bundles[slug]; !ok {
 		return nil, fmt.Errorf("ledger: bundle %q is not recorded as installed", slug)
 	}
@@ -83,18 +88,24 @@ func (l *Ledger) MarkExplicit(p InstalledPlugin) {
 	l.normalize()
 }
 
-// fillFacts copies tier, version and checksum from p into rec.
+// fillFacts copies the facts p carries into rec and leaves the rest alone. A
+// new record (Tier empty) defaults to free. Tier changes only to free or
+// licensed; version and checksum change only to a non-empty value.
 func fillFacts(rec *PluginRecord, p InstalledPlugin) {
-	rec.Tier = TierFree
-	if p.Tier == TierLicensed {
-		rec.Tier = TierLicensed
+	switch p.Tier {
+	case TierFree, TierLicensed:
+		rec.Tier = p.Tier
+	default:
+		if rec.Tier == "" {
+			rec.Tier = TierFree
+		}
 	}
-	rec.Version = p.Version
-	cs := strings.ToLower(strings.TrimPrefix(p.Checksum, "sha256:"))
-	if !checksumRE.MatchString(cs) {
-		cs = ""
+	if p.Version != "" {
+		rec.Version = p.Version
 	}
-	rec.Checksum = cs
+	if cs := strings.ToLower(strings.TrimPrefix(p.Checksum, "sha256:")); cs != "" && checksumRE.MatchString(cs) {
+		rec.Checksum = cs
+	}
 }
 
 func appendUnique(list []string, v string) []string {

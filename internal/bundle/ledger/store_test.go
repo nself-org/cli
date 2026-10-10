@@ -27,7 +27,14 @@ func needsFileLock(t *testing.T) {
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	s := NewStore(t.TempDir())
-	s.Sources = fixtureSources
+	s.Sources = func() (Sources, error) { return fixtureSources(), nil }
+	return s
+}
+
+// storeAt returns a store on root whose bootstrap source is "nothing installed".
+func storeAt(root string) *Store {
+	s := NewStore(root)
+	s.Sources = func() (Sources, error) { return Sources{Now: fixedNow}, nil }
 	return s
 }
 
@@ -123,7 +130,7 @@ func TestLedgerConcurrentWriters(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			s := NewStore(root)
+			s := storeAt(root)
 			errs <- s.Update(func(l *Ledger) error {
 				time.Sleep(2 * time.Millisecond)
 				return addPlugin(fmt.Sprintf("p%02d", i))(l)
@@ -137,7 +144,7 @@ func TestLedgerConcurrentWriters(t *testing.T) {
 			t.Fatalf("writer failed: %v", err)
 		}
 	}
-	l, persisted, err := NewStore(root).Load()
+	l, persisted, err := storeAt(root).Load()
 	if err != nil || !persisted {
 		t.Fatalf("load: persisted=%v err=%v", persisted, err)
 	}
@@ -165,7 +172,7 @@ func TestLedgerConcurrentProcesses(t *testing.T) {
 			t.Fatalf("helper %d: %v", i, err)
 		}
 	}
-	l, _, err := NewStore(root).Load()
+	l, _, err := storeAt(root).Load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +188,7 @@ func TestLedgerHelperWriter(t *testing.T) {
 	if root == "" {
 		t.Skip("helper process only")
 	}
-	err := NewStore(root).Update(func(l *Ledger) error {
+	err := storeAt(root).Update(func(l *Ledger) error {
 		time.Sleep(20 * time.Millisecond)
 		return addPlugin(slug)(l)
 	})
@@ -249,5 +256,108 @@ func TestLedgerDamagedFileIsAnError(t *testing.T) {
 		if got, _ := os.ReadFile(s.Path()); string(got) != content {
 			t.Errorf("%s: damaged file was modified", name)
 		}
+	}
+}
+
+// TestLedgerNoSourceIsAnError: a missing file with no usable bootstrap source
+// must not produce (or persist) an empty ledger.
+func TestLedgerNoSourceIsAnError(t *testing.T) {
+	for name, set := range map[string]func(s *Store){
+		"nil": func(s *Store) { s.Sources = nil },
+		"failing": func(s *Store) {
+			s.Sources = func() (Sources, error) { return Sources{}, errors.New("plugin dir unreadable") }
+		},
+	} {
+		s := NewStore(t.TempDir())
+		set(s)
+		if _, _, err := s.Load(); err == nil {
+			t.Errorf("%s: Load returned a ledger", name)
+		}
+		if err := s.Update(addPlugin("x")); err == nil {
+			t.Errorf("%s: Update succeeded", name)
+		}
+		if _, err := s.EnsureBootstrapped(); err == nil {
+			t.Errorf("%s: EnsureBootstrapped succeeded", name)
+		}
+		if _, err := os.Stat(s.Path()); !os.IsNotExist(err) {
+			t.Errorf("%s: a ledger file was written: %v", name, err)
+		}
+	}
+	// With an existing file the source is not consulted.
+	s := newTestStore(t)
+	if err := s.Update(addPlugin("x")); err != nil {
+		t.Fatal(err)
+	}
+	s.Sources = nil
+	if err := s.Update(addPlugin("y")); err != nil {
+		t.Errorf("Update on an existing ledger needs no source: %v", err)
+	}
+}
+
+// TestLedgerKilledWriterTempRemoved: a temp file left by a killed writer is
+// removed by the next writer; a fresh one is left alone.
+func TestLedgerKilledWriterTempRemoved(t *testing.T) {
+	s := newTestStore(t)
+	if err := os.MkdirAll(s.Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(s.Dir(), ".bundles.json.111.tmp")
+	fresh := filepath.Join(s.Dir(), ".bundles.json.222.tmp")
+	for _, p := range []string{stale, fresh} {
+		if err := os.WriteFile(p, []byte("partial"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-2 * lockWait)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Update(addPlugin("x")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Error("stale temp file survived")
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Error("fresh temp file was removed")
+	}
+}
+
+// TestLedgerLockSymlinkRefused: the lock file must not follow a symlink.
+func TestLedgerLockSymlinkRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on native Windows")
+	}
+	s := newTestStore(t)
+	if err := os.MkdirAll(s.Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "victim")
+	if err := os.Symlink(target, filepath.Join(s.Dir(), lockName)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Update(addPlugin("x")); err == nil {
+		t.Fatal("Update followed a symlinked lock file")
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("symlink target was created: %v", err)
+	}
+}
+
+// TestLedgerSizeCap: an oversized file is refused, not read whole.
+func TestLedgerSizeCap(t *testing.T) {
+	s := newTestStore(t)
+	if err := os.MkdirAll(s.Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	big := make([]byte, MaxBytes+10)
+	if err := os.WriteFile(s.Path(), big, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Load(); err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Fatalf("Load of an oversized file: %v", err)
+	}
+	if _, err := Parse(big); err == nil {
+		t.Fatal("Parse accepted an oversized document")
 	}
 }

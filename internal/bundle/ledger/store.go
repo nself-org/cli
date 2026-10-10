@@ -15,6 +15,7 @@ package ledger
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -29,9 +30,14 @@ const (
 // Store is the ledger of one project.
 type Store struct {
 	root string
-	// Sources supplies bootstrap input when the file does not exist yet. Nil
-	// bootstraps an empty ledger.
-	Sources func() Sources
+	// Sources supplies bootstrap input when the file does not exist yet. It
+	// returns an error when the installed plugins or bundle membership cannot be
+	// read. A missing file with a nil Sources, or a Sources error, is an error
+	// (never an empty ledger): an empty ledger would be written and then hide
+	// the real install state, because bootstrap runs only once.
+	Sources func() (Sources, error)
+	// Warn, when set, receives what Bootstrap had to skip (invalid slugs).
+	Warn func(msg string)
 
 	// beforeRename is a test seam: an error here aborts the write after the
 	// temp file is complete and before it replaces the ledger.
@@ -47,20 +53,31 @@ func (s *Store) Dir() string { return filepath.Join(s.root, ".nself", "state") }
 // Path is the ledger file.
 func (s *Store) Path() string { return filepath.Join(s.Dir(), fileName) }
 
-func (s *Store) bootstrap() Ledger {
+func (s *Store) bootstrap() (Ledger, error) {
 	if s.Sources == nil {
-		return New()
+		return Ledger{}, fmt.Errorf("ledger: %s does not exist and no bootstrap source is configured", s.Path())
 	}
-	return Bootstrap(s.Sources())
+	src, err := s.Sources()
+	if err != nil {
+		return Ledger{}, fmt.Errorf("ledger: bootstrap source: %w", err)
+	}
+	l, skipped := BootstrapReport(src)
+	if s.Warn != nil {
+		for _, m := range skipped {
+			s.Warn(m)
+		}
+	}
+	return l, nil
 }
 
 // Load returns the ledger and whether it came from the file. A missing file is
 // not an error: the bootstrap result is returned (persisted=false) and nothing
 // is written. A damaged file is an error.
 func (s *Store) Load() (l Ledger, persisted bool, err error) {
-	data, err := os.ReadFile(s.Path())
+	data, err := readCapped(s.Path())
 	if errors.Is(err, os.ErrNotExist) {
-		return s.bootstrap(), false, nil
+		l, err = s.bootstrap()
+		return l, false, err
 	}
 	if err != nil {
 		return Ledger{}, false, fmt.Errorf("ledger: read %s: %w", s.Path(), err)
@@ -79,7 +96,7 @@ func (s *Store) Update(fn func(*Ledger) error) error {
 	if err := os.MkdirAll(s.Dir(), 0o700); err != nil {
 		return fmt.Errorf("ledger: create %s: %w", s.Dir(), err)
 	}
-	lf, err := os.OpenFile(filepath.Join(s.Dir(), lockName), os.O_CREATE|os.O_RDWR, 0o600)
+	lf, err := openLockFile(filepath.Join(s.Dir(), lockName))
 	if err != nil {
 		return fmt.Errorf("ledger: open lock: %w", err)
 	}
@@ -89,6 +106,7 @@ func (s *Store) Update(fn func(*Ledger) error) error {
 		return fmt.Errorf("ledger: lock: %w", err)
 	}
 	defer unlock()
+	s.removeStaleTemps()
 
 	l, _, err := s.Load()
 	if err != nil {
@@ -98,6 +116,35 @@ func (s *Store) Update(fn func(*Ledger) error) error {
 		return err
 	}
 	return s.write(l)
+}
+
+// removeStaleTemps deletes temp files a killed writer left behind. The caller
+// holds the lock, so no live writer owns one; the age guard (older than the lock
+// wait) is a second safeguard.
+func (s *Store) removeStaleTemps() {
+	old, _ := filepath.Glob(filepath.Join(s.Dir(), ".bundles.json.*.tmp"))
+	for _, p := range old {
+		if st, err := os.Lstat(p); err == nil && time.Since(st.ModTime()) > lockWait {
+			_ = os.Remove(p)
+		}
+	}
+}
+
+// readCapped reads the file at path, refusing one larger than MaxBytes.
+func readCapped(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	data, err := io.ReadAll(io.LimitReader(f, MaxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > MaxBytes {
+		return nil, fmt.Errorf("file is larger than %d bytes", MaxBytes)
+	}
+	return data, nil
 }
 
 // EnsureBootstrapped writes the bootstrap ledger when no file exists and

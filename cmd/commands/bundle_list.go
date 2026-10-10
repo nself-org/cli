@@ -6,9 +6,10 @@ package commands
 // internal/bundle (P6-E4-W3-S3-T10 — no local bundle map here).
 // Each --json row gains an additive `ledger` object, the row's slice of the
 // install-state ledger (internal/bundle/ledger, P7-PLUG-18). The ledger is read
-// only here: when the file does not exist yet the view is bootstrapped in memory
-// and nothing is written. A damaged ledger file fails the command with the file
-// path and the way to re-bootstrap it.
+// only here, and only with --json (the table never loads it): when the file does
+// not exist yet the view is bootstrapped in memory and nothing is written. A
+// damaged ledger file fails `--json` with the file path and the way to
+// re-bootstrap it.
 // Constraints: split out of bundle.go (CLI-R12) as a pure move, no behavior change.
 
 import (
@@ -38,12 +39,15 @@ type bundleListRow struct {
 
 // ledgerSources adapts internal/bundle and the installed plugin directory to
 // the ledger package's bootstrap input (the ledger imports neither).
-func ledgerSources() ledger.Sources {
+func ledgerSources() (ledger.Sources, error) {
 	var src ledger.Sources
 	for _, b := range bundle.All() {
 		src.Bundles = append(src.Bundles, ledger.BundleDef{Slug: b.Slug, Installable: b.IsInstallable(), Plugins: b.Plugins})
 	}
-	manifests, _ := plugin.LoadManifestsFromDir(resolvePluginDir())
+	manifests, err := plugin.LoadManifestsFromDir(resolvePluginDir())
+	if err != nil {
+		return ledger.Sources{}, err
+	}
 	for _, m := range manifests {
 		tier := ledger.TierFree
 		if m.Tier == "pro" || m.Tier == "paid" || m.Tier == ledger.TierLicensed || m.RequiresLicense || m.LicenseType == "pro" {
@@ -51,17 +55,19 @@ func ledgerSources() ledger.Sources {
 		}
 		src.Plugins = append(src.Plugins, ledger.InstalledPlugin{Name: m.Name, Version: m.Version, Tier: tier, Checksum: m.Checksum})
 	}
-	return src
+	return src, nil
 }
 
-// loadBundleLedger reads the project's ledger without writing it.
-func loadBundleLedger() (ledger.Ledger, error) {
+// loadBundleLedger reads the project's ledger without writing it. warn
+// receives what bootstrap skipped.
+func loadBundleLedger(warn func(string)) (ledger.Ledger, error) {
 	root, err := projectRoot()
 	if err != nil {
 		return ledger.Ledger{}, err
 	}
 	store := ledger.NewStore(root)
 	store.Sources = ledgerSources
+	store.Warn = warn
 	l, _, err := store.Load()
 	return l, err
 }
@@ -73,9 +79,15 @@ func runBundleList(cmd *cobra.Command, _ []string) error {
 		asJSON, _ = cmd.Flags().GetBool("json")
 	}
 
-	led, err := loadBundleLedger()
-	if err != nil {
-		return err
+	// The ledger is read only for --json: the table never shows it, so a
+	// damaged or unreadable ledger must not break the plain catalog listing.
+	var led ledger.Ledger
+	if asJSON {
+		var err error
+		led, err = loadBundleLedger(func(m string) { fmt.Fprintln(cmd.ErrOrStderr(), "warning: ledger bootstrap:", m) })
+		if err != nil {
+			return err
+		}
 	}
 
 	// Build the row set, optionally filtering to installed-only.

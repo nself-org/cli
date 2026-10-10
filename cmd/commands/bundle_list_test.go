@@ -57,7 +57,7 @@ func listLedgerRows(t *testing.T) (map[string]ledgerRow, error) {
 	buf := &bytes.Buffer{}
 	root.SetOut(buf)
 	root.SetErr(buf)
-	root.SetArgs([]string{"bundle", "list", "--json", "--installed=false"})
+	root.SetArgs([]string{"bundle", "list", "--json=true", "--installed=false"})
 	if err := root.Execute(); err != nil {
 		return nil, err
 	}
@@ -112,6 +112,7 @@ func TestBundleListLedgerView(t *testing.T) {
 
 	// A ledger file wins over the on-disk inference.
 	st := ledger.NewStore(proj)
+	st.Sources = ledgerSources
 	if err := st.Update(func(l *ledger.Ledger) error {
 		l.Bundles["family"] = ledger.BundleRecord{InstalledAt: "2026-01-02T03:04:05Z"}
 		l.Plugins["social"] = ledger.PluginRecord{InstalledBy: []string{"family"}, Tier: ledger.TierLicensed, Version: "9.9.9"}
@@ -143,5 +144,44 @@ func TestBundleListLedgerDamaged(t *testing.T) {
 	_, err := listLedgerRows(t)
 	if err == nil || !strings.Contains(err.Error(), "bundles.json") {
 		t.Fatalf("damaged ledger: err = %v, want an error naming the file", err)
+	}
+}
+
+// TestBundleListTableIgnoresLedger: the plain table never loads the ledger, so
+// a damaged ledger or an unreadable state directory cannot break it.
+func TestBundleListTableIgnoresLedger(t *testing.T) {
+	proj := ledgerProject(t, "bots")
+	dir := filepath.Join(proj, ".nself", "state")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bundles.json"), []byte(`{"hand":"edited"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := newBundleTestCmd()
+	buf := &bytes.Buffer{}
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs([]string{"bundle", "list", "--json=false", "--installed=false"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("table-mode bundle list failed on a damaged ledger: %v", err)
+	}
+	// Control: the same ledger fails --json.
+	if _, err := listLedgerRows(t); err == nil {
+		t.Fatal("control: --json should fail on the damaged ledger")
+	}
+}
+
+// TestBundleListLedgerSourceError: an unreadable plugin directory is an error
+// for --json, never an "nothing installed" view.
+func TestBundleListLedgerSourceError(t *testing.T) {
+	ledgerProject(t)
+	notADir := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(notADir, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NSELF_PLUGIN_DIR", notADir)
+	if _, err := listLedgerRows(t); err == nil {
+		t.Fatal("--json hid an unreadable plugin directory")
 	}
 }
