@@ -70,6 +70,10 @@
       "id": "urn:nself:cli:schema:error:v1"
     },
     {
+      "path": "invoke/confirmation.v1.schema.json",
+      "id": "urn:nself:cli:schema:invoke:confirmation:v1"
+    },
+    {
       "path": "nself-yaml.v1.schema.json",
       "id": "urn:nself:cli:schema:nself-yaml:v1"
     },
