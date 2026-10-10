@@ -72,6 +72,6 @@ func afterCommand(cmd *cobra.Command, err error) {
 		return
 	}
 	if line, ok := updatecheck.Hint(updateCheckGuards(cmd)); ok {
-		fmt.Fprintln(cmd.ErrOrStderr(), line)
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), line)
 	}
 }

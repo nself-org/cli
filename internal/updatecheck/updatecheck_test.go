@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -69,7 +70,7 @@ func TestCacheCorruptIsReplacedAndMode0600(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 { // Windows has no POSIX mode bits
 		t.Fatalf("mode = %v, want 0600", st.Mode().Perm())
 	}
 	ents, _ := os.ReadDir(filepath.Dir(p))
@@ -301,8 +302,8 @@ func TestHintNotRepeatedWhenCacheCannotBeSaved(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
-	if os.Geteuid() == 0 {
-		t.Skip("root ignores directory modes")
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("directory modes do not block writes here")
 	}
 	if line, ok := Hint(g); ok {
 		t.Fatalf("hint %q printed although hinted_at could not be recorded", line)
