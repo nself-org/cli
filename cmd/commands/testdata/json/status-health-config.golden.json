@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "command": "status health config",
+  "data": {
+    "env": "",
+    "interval_seconds": 10,
+    "json_output": true,
+    "quiet": false,
+    "retries": 3,
+    "timeout_seconds": 30
+  }
+}

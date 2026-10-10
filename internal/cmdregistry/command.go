@@ -112,7 +112,7 @@ func buildCommand(n node, e canon.Entry, rootPath string, byKey map[string]*node
 func resolveJSON(at, key string, e canon.Entry, dataTypes map[string]any, opts BuildOptions) (string, *string, []string) {
 	_, registered := dataTypes[key]
 	var p []string
-	if registered && e.JSON == canon.JSONLegacy {
+	if registered && e.JSON == canon.JSONLegacy && !opts.V15OnlyEnvelope[key] {
 		p = append(p, at+": a data type is registered for this path but canon says json: legacy; a command is envelope or legacy, not both")
 	}
 	if registered && (!opts.V15OnlyEnvelope[key] || opts.V15) {

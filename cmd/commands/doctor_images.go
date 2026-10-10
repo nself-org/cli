@@ -15,6 +15,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -87,6 +88,13 @@ func runDoctorImages(cmd *cobra.Command, _ []string) error {
 	if err := compose.LockError(); err != nil {
 		return err
 	}
+	jsonOn, err := jsonModeOf(cmd)
+	if err != nil {
+		return err
+	}
+	if jsonOn {
+		return runDoctorImagesJSON(cmd, docker.ManifestInspect)
+	}
 	rows := make([]doctorCheckResult, 0, len(compose.LockedImages()))
 	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "IMAGE                 UPSTREAM                         MIRROR                           STATUS"); err != nil {
 		return err
@@ -104,4 +112,23 @@ func runDoctorImages(cmd *cobra.Command, _ []string) error {
 		rows = append(rows, doctorCheckResult{Name: row.Name, Status: row.Status, Message: row.Remedy})
 	}
 	return doctorExit(buildDoctorReport(rows))
+}
+
+// runDoctorImagesJSON probes every locked image and writes one envelope
+// (P7-SURF-11). The status exit code is the human mode's: nil when every image
+// passed, else 1/2 in v1.4 mode and 10/12 in v1.5 (doctorExit).
+func runDoctorImagesJSON(cmd *cobra.Command, inspect manifestProbe) error {
+	data := DoctorImages{Images: []DoctorImage{}}
+	checks := []doctorCheckResult{}
+	for _, ref := range compose.LockedImages() {
+		row := probeLockedImage(cmd.Context(), ref, inspect)
+		data.Images = append(data.Images, DoctorImage(row))
+		checks = append(checks, doctorCheckResult{Name: row.Name, Status: row.Status, Message: row.Remedy})
+	}
+	report := buildDoctorReport(checks)
+	data.State = doctorState(report)
+	if err := output.EmitData(pilotWriter(), "doctor images", data); err != nil {
+		return err
+	}
+	return doctorExit(report)
 }

@@ -1,0 +1,19 @@
+{
+  "schema_version": "1",
+  "command": "help topics",
+  "data": {
+    "topics": [
+      {
+        "key": "quickstart",
+        "title": "Quick Start",
+        "summary": "Get a backend running in under 5 minutes"
+      },
+      {
+        "key": "doctor",
+        "title": "Diagnostics",
+        "summary": "Diagnose and fix common issues",
+        "body": "  nself doctor              # Full system check"
+      }
+    ]
+  }
+}

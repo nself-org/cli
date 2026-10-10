@@ -56,7 +56,7 @@ var healthServiceCmd = &cobra.Command{
 		}
 
 		if healthJSON {
-			return printJSON(result)
+			return emitHealthJSON("status health service", result)
 		}
 		if healthQuiet && result.OK() {
 			return nil
@@ -87,7 +87,7 @@ var healthEndpointCmd = &cobra.Command{
 		}
 
 		if healthJSON {
-			return printJSON(result)
+			return emitHealthJSON("status health endpoint", result)
 		}
 		if healthQuiet && result.OK() {
 			return nil
@@ -145,13 +145,12 @@ var healthHistoryCmd = &cobra.Command{
 			return fmt.Errorf("reading history: %w", err)
 		}
 
+		if healthJSON {
+			return emitHealthHistory(entries)
+		}
 		if len(entries) == 0 {
 			fmt.Println("No health check history found.")
 			return nil
-		}
-
-		if healthJSON {
-			return printJSON(entries)
 		}
 
 		for _, report := range entries {
@@ -173,16 +172,16 @@ var healthConfigCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Show health check settings",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		settings := map[string]interface{}{
-			"timeout_seconds":  healthTimeout,
-			"interval_seconds": healthInterval,
-			"retries":          healthRetries,
-			"env":              healthEnv,
-			"json_output":      healthJSON,
-			"quiet":            healthQuiet,
+		settings := healthConfigData{
+			Env:             healthEnv,
+			IntervalSeconds: healthInterval,
+			JSONOutput:      healthJSON,
+			Quiet:           healthQuiet,
+			Retries:         healthRetries,
+			TimeoutSeconds:  healthTimeout,
 		}
 		if healthJSON {
-			return printJSON(settings)
+			return emitHealthJSON("status health config", settings)
 		}
 		fmt.Printf("%-20s %v\n", "Timeout (seconds):", healthTimeout)
 		fmt.Printf("%-20s %v\n", "Interval (seconds):", healthInterval)
