@@ -6,7 +6,9 @@ package invoke
 // Constraints: redaction fails closed. A positional past the declared args and
 // a flag the command does not declare are redacted too: such a request is
 // refused, but the refusal still hashes into the request id, and a secret sent
-// in the wrong slot must not reach it.
+// in the wrong slot must not reach it. Free-form plugin argv items carry no
+// registry secret marking, so every one is redacted and scrubbed (lead ruling
+// L1, SURF Invalidations 2026-10-10): the id keeps the item count, not the text.
 
 import (
 	"fmt"
@@ -46,7 +48,10 @@ func secretFlag(cmd *cmdregistry.Command, name string) bool {
 // RedactRequest returns a copy of r with every registry-secret arg and flag
 // value replaced by Redacted. A nil cmd (unknown path) redacts all of them.
 func RedactRequest(cmd *cmdregistry.Command, r Request) Request {
-	out := Request{Confirm: r.Confirm, Argv: append([]string(nil), r.Argv...)}
+	out := Request{Confirm: r.Confirm}
+	for range r.Argv {
+		out.Argv = append(out.Argv, Redacted)
+	}
 	for i, a := range r.Args {
 		if secretArg(cmd, i) {
 			a = Redacted
@@ -78,6 +83,9 @@ func SecretValues(cmd *cmdregistry.Command, r Request) []string {
 		if secretArg(cmd, i) {
 			add(a)
 		}
+	}
+	for _, a := range r.Argv {
+		add(a)
 	}
 	for name, v := range r.Flags {
 		if !secretFlag(cmd, name) {

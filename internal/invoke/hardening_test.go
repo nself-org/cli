@@ -236,3 +236,25 @@ func TestExecKillsGrandchildren(t *testing.T) {
 	pid, _ = startGrandchild(ctx, t, 0)
 	check("cancel", pid)
 }
+
+// TestRedactionFreeFormArgv proves lead ruling L1: free-form argv never reaches
+// the request id or a stderr tail in clear text.
+func TestRedactionFreeFormArgv(t *testing.T) {
+	r := Request{Argv: []string{"--token", "s3cr3t-value"}}
+	red := RedactRequest(nil, r)
+	if len(red.Argv) != 2 || red.Argv[0] != Redacted || red.Argv[1] != Redacted {
+		t.Fatalf("argv not redacted: %v", red.Argv)
+	}
+	if RequestID("pwn status", nil, r) != RequestID("pwn status", nil, Request{Argv: []string{"x", "y"}}) {
+		t.Fatal("request id depends on free-form argv text")
+	}
+	found := false
+	for _, v := range SecretValues(nil, r) {
+		if v == "s3cr3t-value" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("free-form argv value not scrubbed from tails")
+	}
+}
