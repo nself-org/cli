@@ -7306,6 +7306,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "tier",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "Switch the plugin to \"free\" or \"licensed\" on purpose (needs a plugin name); default keeps the installed tier",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",

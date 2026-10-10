@@ -134,9 +134,23 @@ func Remove(ctx context.Context, cfg *config.Config, name string, pluginDir stri
 
 // Update backs up the current installation, then reinstalls from the registry.
 // If the new install fails, the previous version is restored automatically.
+// The installed tier is kept (see UpdateWithTier).
 func Update(ctx context.Context, cfg *config.Config, name string, pluginDir string) error {
+	return UpdateWithTier(ctx, cfg, name, pluginDir, "")
+}
+
+// UpdateWithTier is Update with an explicit --tier ("", "free" or "licensed").
+// Without it, v1.5 keeps the tier the plugin is installed as and stops with
+// E131 when it cannot; with it the tier switches on purpose.
+func UpdateWithTier(ctx context.Context, cfg *config.Config, name string, pluginDir string, tierOverride string) error {
 	currentDir := filepath.Join(pluginDir, name)
 	backupDir := filepath.Join(pluginDir, name+".prev")
+
+	// What the installed copy is, before it is replaced: its tier stays (v1.5,
+	// see ResolvePluginTier) and its image references tell which ones changed.
+	installedTier := installedTierWire(currentDir)
+	prevImages, _ := fragmentImages(currentDir)
+	ctx = withTierHint(ctx, name, installedTier, tierOverride)
 
 	// Rename current install to .prev so we can restore on failure.
 	if _, err := os.Stat(currentDir); err == nil {
@@ -170,6 +184,15 @@ func Update(ctx context.Context, cfg *config.Config, name string, pluginDir stri
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not clear cached images for %q (%v); the next start may keep running the previous build\n", name, err)
+	}
+
+	// Fetch the images the new fragment points at, so the next start runs them.
+	pulled, err := pullChangedImages(ctx, prevImages, currentDir)
+	for _, ref := range pulled {
+		fmt.Fprintf(os.Stderr, "ℹ Pulled image %s for the updated plugin.\n", ref)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not pull images for %q (%v); 'nself start' will try again\n", name, err)
 	}
 	return nil
 }

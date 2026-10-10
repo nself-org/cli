@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/ui"
 )
@@ -42,7 +43,7 @@ var pluginCoreEnvKeys = []string{
 	"POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD",
 	"HASURA_GRAPHQL_ENDPOINT", "HASURA_GRAPHQL_ADMIN_SECRET",
 	"PLUGIN_INTERNAL_SECRET", "NOTIFY_INTERNAL_SECRET",
-	"SERVICE_NAME", "SERVICE_PORT",
+	"SERVICE_NAME", "SERVICE_PORT", "PORT",
 }
 
 // pluginCoreEnvValue returns the compose-fragment-literal text for key on a
@@ -87,6 +88,12 @@ func pluginCoreEnvValue(key, pluginName string, port int) (string, bool) {
 		return pluginName, true
 	case "SERVICE_PORT":
 		if port <= 0 {
+			return "", false
+		}
+		return fmt.Sprintf("%q", fmt.Sprintf("%d", port)), true
+	case "PORT":
+		// compat.V15(P7-PLUG-17): fragments get no PORT -> PORT equals SERVICE_PORT (a fragment's own PORT always wins)
+		if port <= 0 || !compat.V15() {
 			return "", false
 		}
 		return fmt.Sprintf("%q", fmt.Sprintf("%d", port)), true
