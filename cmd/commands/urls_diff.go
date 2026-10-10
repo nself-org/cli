@@ -42,11 +42,10 @@ func runURLsDiff(workdir, envA, envB string, jsonOut bool) error {
 	outB := buildURLOutput(cfgB, true)
 
 	if jsonOut {
-		diff := map[string]interface{}{
-			envA: outA,
-			envB: outB,
-		}
-		return ui.PrintJSON(diff)
+		// Bare v1.4 shape: one listing per environment name. The envelope
+		// data is the first listing plus `compared` (P7-SURF-11).
+		diff := map[string]urlsOutput{envA: outA, envB: outB}
+		return emitStateJSON("status urls", diff, urlsData{urlsOutput: outA, Compared: &urlsCompared{Env: envB, Listing: outB}})
 	}
 
 	// Build maps for comparison.

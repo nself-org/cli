@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "command": "status health endpoint",
+  "data": {
+    "service": "https://api.example.test/healthz",
+    "status": "healthy",
+    "duration": 45000000,
+    "details": "HTTP 200"
+  }
+}

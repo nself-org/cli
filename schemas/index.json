@@ -42,16 +42,60 @@
       "id": "urn:nself:cli:schema:commands:deploy-targets:v1"
     },
     {
+      "path": "commands/doctor-heal.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:doctor-heal:v1"
+    },
+    {
+      "path": "commands/doctor-images.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:doctor-images:v1"
+    },
+    {
       "path": "commands/doctor.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:doctor:v1"
+    },
+    {
+      "path": "commands/help-topics.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:help-topics:v1"
     },
     {
       "path": "commands/help.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:help:v1"
     },
     {
+      "path": "commands/status-health-check.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:status-health-check:v1"
+    },
+    {
+      "path": "commands/status-health-config.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:status-health-config:v1"
+    },
+    {
+      "path": "commands/status-health-endpoint.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:status-health-endpoint:v1"
+    },
+    {
+      "path": "commands/status-health-history.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:status-health-history:v1"
+    },
+    {
+      "path": "commands/status-health-service.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:status-health-service:v1"
+    },
+    {
+      "path": "commands/status-health.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:status-health:v1"
+    },
+    {
+      "path": "commands/status-urls.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:status-urls:v1"
+    },
+    {
       "path": "commands/status.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:status:v1"
+    },
+    {
+      "path": "commands/version.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:version:v1"
     },
     {
       "path": "control-plane.v2.schema.json",

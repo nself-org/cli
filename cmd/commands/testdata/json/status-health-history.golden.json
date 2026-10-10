@@ -1,0 +1,28 @@
+{
+  "schema_version": "1",
+  "command": "status health history",
+  "data": {
+    "entries": [
+      {
+        "timestamp": "2026-10-05T12:00:00Z",
+        "results": [
+          {
+            "service": "postgres",
+            "status": "healthy",
+            "duration": 12000000,
+            "details": "accepting connections"
+          },
+          {
+            "service": "hasura",
+            "status": "starting",
+            "duration": 3000000,
+            "details": "health check starting"
+          }
+        ],
+        "healthy": 1,
+        "unhealthy": 1,
+        "total": 2
+      }
+    ]
+  }
+}

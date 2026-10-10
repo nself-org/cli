@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "command": "status health service",
+  "data": {
+    "service": "postgres",
+    "status": "healthy",
+    "duration": 12000000,
+    "details": "accepting connections"
+  }
+}

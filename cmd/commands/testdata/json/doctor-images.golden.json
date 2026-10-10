@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "command": "doctor images",
+  "data": {
+    "images": [
+      {
+        "name": "postgres",
+        "upstream": "present",
+        "mirror": "present",
+        "status": "pass"
+      },
+      {
+        "name": "hasura",
+        "upstream": "present",
+        "mirror": "not configured",
+        "status": "warn",
+        "remedy": "Publish or repair the digest-identical mirror."
+      }
+    ],
+    "state": "warnings"
+  }
+}

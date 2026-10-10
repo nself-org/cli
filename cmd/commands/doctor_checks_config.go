@@ -145,7 +145,7 @@ func checkPasswordStrength(projectDir string, verbose, fix bool) []doctorCheckRe
 		name := "Password strength"
 		msg := fmt.Sprintf("cannot load config: %v", err)
 		printCheck("warn", name, msg, verbose)
-		return []doctorCheckResult{{Name: name, Status: "warn", Message: msg}}
+		return append([]doctorCheckResult{{Name: name, Status: "warn", Message: msg}}, checkBackupHints(projectDir, verbose)...)
 	}
 
 	// Check each critical password field
@@ -206,6 +206,24 @@ func checkPasswordStrength(projectDir string, verbose, fix bool) []doctorCheckRe
 	}
 
 	results = append(results, checkURLReservedPasswords(projectDir, cfg, verbose)...)
+	results = append(results, checkBackupHints(projectDir, verbose)...)
+	return results
+}
+
+// checkBackupHints lists the advisory backup hints of internal/doctor
+// (P7-PROD-08: hand-rolled pg_dump uploads, raw psql migrations, a backup
+// identity that was never copied off this host). Only a hint that fired is
+// listed, as a pass: the exit code and the doctor output of a project with
+// nothing to say stay unchanged.
+func checkBackupHints(projectDir string, verbose bool) []doctorCheckResult {
+	var results []doctorCheckResult
+	for _, h := range doctor.BackupHintChecks(projectDir) {
+		if !strings.Contains(h.Message, doctor.HintPrefix) {
+			continue
+		}
+		printCheck("pass", h.Name, h.Message, verbose)
+		results = append(results, doctorCheckResult{Name: h.Name, Status: "pass", Message: h.Message, Detail: h.FixCmd})
+	}
 	return results
 }
 

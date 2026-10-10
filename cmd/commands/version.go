@@ -6,6 +6,7 @@ import (
 	"runtime"
 
 	"github.com/nself-org/cli/internal/license"
+	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/nself-org/cli/internal/version"
 
@@ -35,20 +36,22 @@ var versionCmd = &cobra.Command{
 		platform := runtime.GOOS + "/" + runtime.GOARCH
 
 		if short {
-			fmt.Println(ver)
-			return nil
+			// The real stdout, also when --json isolated os.Stdout (v1.4 printed it there).
+			_, err := fmt.Fprintln(pilotWriter().Out, ver)
+			return err
 		}
 
 		if jsonOut {
 			// capabilities is how a remote caller proves a behaviour (for
 			// example db-dry-run-safe, P7-PROD-84); older builds omit it.
-			return ui.PrintJSON(map[string]any{
-				"version":      ver,
-				"commit":       commit,
-				"buildDate":    buildDate,
-				"goVersion":    goVer,
-				"platform":     platform,
-				"capabilities": version.Capabilities(),
+			// Pre-contract JSON: bare in v1.4, the v1 envelope in v1.5 (P7-SURF-11).
+			return output.EmitLegacyCompatible(pilotWriter(), "version", VersionResult{
+				BuildDate:    buildDate,
+				Capabilities: version.Capabilities(),
+				Commit:       commit,
+				GoVersion:    goVer,
+				Platform:     platform,
+				Version:      ver,
 			})
 		}
 
