@@ -28,13 +28,16 @@ var dockerNetworkDefaultRE = regexp.MustCompile(`^\$\{DOCKER_NETWORK:-[^}]*\}$`)
 
 // projectNetworkRE matches the names that are the project network: the
 // DOCKER_NETWORK variable or <project>_network spelled with the project vars.
+// The legacy literal legacyProjectNetwork is the project network too
+// (plugins_network_legacy.go) and is checked beside this pattern.
 var projectNetworkRE = regexp.MustCompile(`^\$\{DOCKER_NETWORK(:-[^}]*)?\}$|^\$\{(COMPOSE_PROJECT_NAME|PROJECT_NAME)(:-[^}]*)?\}_network$`)
 
 // lineEdit is one splice: replace old with new on a 1-based line, or (old
-// empty) insert the lines of new before it.
+// empty) insert the lines of new before it. A col > 0 (1-based) replaces old
+// only at that column; col 0 replaces its first occurrence on the line.
 type lineEdit struct {
-	line     int
-	old, new string
+	line, col int
+	old, new  string
 }
 
 // yamlGet returns the value node for key in mapping m, or nil.
@@ -70,7 +73,7 @@ func foreignExternalNetworks(top *yaml.Node) []string {
 		} else if n := yamlGet(ext, "name"); n != nil {
 			name = n.Value
 		}
-		if !projectNetworkRE.MatchString(name) {
+		if !projectNetworkRE.MatchString(name) && name != legacyProjectNetwork {
 			out = append(out, name)
 		}
 	}
@@ -135,6 +138,7 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 			edits = append(edits, serviceNetworkEdits(svcs.Content[i], cr)...)
 		}
 	}
+	edits = append(edits, legacyNetworkEdits(content, top, cr)...)
 	return applyLineEdits(content, edits), nil
 }
 
@@ -143,7 +147,12 @@ func applyLineEdits(content []byte, edits []lineEdit) []byte {
 	if len(edits) == 0 {
 		return content
 	}
-	sort.SliceStable(edits, func(a, b int) bool { return edits[a].line > edits[b].line })
+	sort.SliceStable(edits, func(a, b int) bool {
+		if edits[a].line != edits[b].line {
+			return edits[a].line > edits[b].line
+		}
+		return edits[a].col > edits[b].col
+	})
 	lines := strings.Split(string(content), "\n")
 	for _, e := range edits {
 		if e.line < 1 || e.line > len(lines) {
@@ -151,6 +160,10 @@ func applyLineEdits(content []byte, edits []lineEdit) []byte {
 		}
 		if e.old == "" {
 			lines[e.line-1] = e.new + lines[e.line-1]
+		} else if e.col > 0 {
+			if l := lines[e.line-1]; e.col-1 <= len(l) && strings.HasPrefix(l[e.col-1:], e.old) {
+				lines[e.line-1] = l[:e.col-1] + e.new + l[e.col-1+len(e.old):]
+			}
 		} else {
 			lines[e.line-1] = strings.Replace(lines[e.line-1], e.old, e.new, 1)
 		}

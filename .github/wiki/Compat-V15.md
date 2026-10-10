@@ -84,6 +84,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-17 | a compose plugin without a fragment is skipped silently | the build fails with E128 (v1.4 warns) | `internal/build/plugins.go` |
 | P7-PLUG-17 | a fragment may join any external network (warning) | E129 fails the build | `internal/build/plugins_network_normalize.go` |
 | P7-PLUG-17 | an update re-resolves a tier pair by entitlement and can switch the installed tier | the installed tier sticks unless --tier is given | `internal/plugin/tier_resolve.go` |
+| P7-PLUG-17 | external network nself_network keeps its literal name | its definition is named ${DOCKER_NETWORK} | `internal/build/plugins_network_legacy.go` |
 | P7-PLUG-17 | fragments get no PORT | PORT equals SERVICE_PORT (a fragment's own PORT always wins) | `internal/build/plugins_core_env.go` |
 | P7-PLUG-17 | fragments keep their own networks and ${DOCKER_NETWORK:-x} | missing networks attached, ${DOCKER_NETWORK:-x} written as ${DOCKER_NETWORK} | `internal/build/plugins_network_normalize.go` |
 | P7-PLUG-17 | info describes the first registry match | describes the installed tier's entry, or the one an install would pick | `cmd/commands/plugin_info.go` |

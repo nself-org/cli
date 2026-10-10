@@ -508,3 +508,26 @@ func TestInstalledTierForInstall(t *testing.T) {
 		t.Fatalf("live copy must win over .prev: got %q, want free", got)
 	}
 }
+
+// TestRemoveClearsPrevBackup: Remove also deletes the "<name>.prev" backup an
+// interrupted Update left, so a later fresh install does not inherit its tier.
+func TestRemoveClearsPrevBackup(t *testing.T) {
+	dir := t.TempDir()
+	for sub, tier := range map[string]string{"cron": "free", "cron.prev": "pro"} {
+		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, sub, "plugin.json"), []byte(`{"tier":"`+tier+`"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Remove(context.Background(), &config.Config{}, "cron", dir, true, true); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "cron.prev")); !os.IsNotExist(err) {
+		t.Fatalf("cron.prev must be gone after Remove, stat err %v", err)
+	}
+	if got := installedTierForInstall(dir, "cron"); got != "" {
+		t.Fatalf("fresh install after Remove inherited tier %q, want empty", got)
+	}
+}

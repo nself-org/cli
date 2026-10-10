@@ -8,12 +8,15 @@ package plugin
 //          the old tag. The update now pulls every image reference the new
 //          docker-compose.plugin.yml has that the old one did not.
 // Inputs:  the plugin directory before and after the update.
-// Outputs: the references pulled; an error naming the first one that failed
+// Outputs: the references pulled; an error joining every pull that failed
 //          (the caller reports it as a warning, the update itself is done).
+//          Every changed reference is tried, one failure does not hide the rest.
 // Constraints: services that build locally are not touched (image_invalidate.go
-//              handles them); a reference with a ${VAR} cannot be resolved
-//              here and is left for `nself start`; docker runs only through
-//              the internal/docker funnel.
+//              handles them), and neither is an `nself/...` image in a plugin
+//              that ships a Dockerfile (nself build turns it into a local
+//              build, so the ref is not on a registry); a reference with a
+//              ${VAR} cannot be resolved here and is left for `nself start`;
+//              docker runs only through the internal/docker funnel.
 
 import (
 	"context"
@@ -32,6 +35,24 @@ import (
 // pullImage pulls one image reference; a variable so tests can stub it.
 var pullImage = func(ctx context.Context, ref string) error {
 	return (&docker.Compose{}).Run(ctx, "", "pull", ref)
+}
+
+// nselfImagePrefix is the registry namespace of images nself does not publish.
+const nselfImagePrefix = "nself/"
+
+// buildsFromDockerfile reports whether `nself build` would turn an
+// `image: nself/...` line of this plugin into a local build. It mirrors
+// normalizeComposeImageToBuild + canonicalDockerfile in
+// internal/build/plugins_image_to_build.go (internal/plugin must not import
+// internal/build): the ref is under nself/ and the plugin directory holds a
+// Dockerfile. The service-has-build: half of that rule is already handled by
+// fragmentImages, which drops services that declare build:.
+func buildsFromDockerfile(pluginDir, ref string) bool {
+	if !strings.HasPrefix(ref, nselfImagePrefix) {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(pluginDir, "Dockerfile"))
+	return err == nil
 }
 
 // fragmentImages returns service -> image reference for every service in the
@@ -81,18 +102,27 @@ func changedImages(prev, next map[string]string) []string {
 }
 
 // pullChangedImages pulls every image the fragment in pluginDir references
-// that prev (the fragment's images before the update) did not.
+// that prev (the fragment's images before the update) did not. It tries every
+// changed reference and returns those pulled plus the joined failures.
 func pullChangedImages(ctx context.Context, prev map[string]string, pluginDir string) ([]string, error) {
 	next, err := fragmentImages(pluginDir)
 	if err != nil {
 		return nil, err
 	}
+	// Refs the build turns into a local build are not on a registry.
+	for svc, ref := range next {
+		if buildsFromDockerfile(pluginDir, ref) {
+			delete(next, svc)
+		}
+	}
 	var pulled []string
+	var errs []error
 	for _, ref := range changedImages(prev, next) {
 		if err := pullImage(ctx, ref); err != nil {
-			return pulled, fmt.Errorf("pulling %s: %w", ref, err)
+			errs = append(errs, fmt.Errorf("pulling %s: %w", ref, err))
+			continue
 		}
 		pulled = append(pulled, ref)
 	}
-	return pulled, nil
+	return pulled, errors.Join(errs...)
 }

@@ -95,8 +95,8 @@ func TestUpdateImagesDiffPulls(t *testing.T) {
 	}
 }
 
-// TestUpdateImagesDiffPulls_FailureNamesImage: a failed pull stops with the
-// reference named, and what was already pulled is still reported.
+// TestUpdateImagesDiffPulls_FailureNamesImage: a failed pull is reported with
+// the reference named, and what was pulled is still reported.
 func TestUpdateImagesDiffPulls_FailureNamesImage(t *testing.T) {
 	newDir := writeFragment(t, "services:\n  a:\n    image: x/a:2\n  b:\n    image: x/b:2\n")
 	stubPull(t, "x/b:2")
@@ -106,6 +106,52 @@ func TestUpdateImagesDiffPulls_FailureNamesImage(t *testing.T) {
 	}
 	if got := err.Error(); !strings.Contains(got, "x/b:2") {
 		t.Fatalf("error should name the image: %v", err)
+	}
+}
+
+// TestUpdateImagesSkipsLocallyBuiltNselfImages: the old fragment was already
+// normalized to a local build, the new one is a bare `image: nself/x`; the
+// plugin ships a Dockerfile, so nself/x is built, not pulled. Third-party
+// images still are.
+func TestUpdateImagesSkipsLocallyBuiltNselfImages(t *testing.T) {
+	oldDir := writeFragment(t, "services:\n  x:\n    image: nself/x:latest\n    build:\n      context: .\n")
+	newDir := writeFragment(t, "services:\n  x:\n    image: nself/x:latest\n  zz:\n    image: redis:7.4\n")
+	if err := os.WriteFile(filepath.Join(newDir, "Dockerfile"), []byte("FROM scratch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prev, err := fragmentImages(oldDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pulls := stubPull(t, "nself/x:latest") // a registry pull of the built image would fail
+	pulled, err := pullChangedImages(context.Background(), prev, newDir)
+	if err != nil {
+		t.Fatalf("pullChangedImages: %v", err)
+	}
+	if want := []string{"redis:7.4"}; !reflect.DeepEqual(pulled, want) || !reflect.DeepEqual(*pulls, want) {
+		t.Fatalf("pulled %v (calls %v), want %v", pulled, *pulls, want)
+	}
+	// Without a Dockerfile nothing builds it, so the nself/ ref is pulled.
+	if err := os.Remove(filepath.Join(newDir, "Dockerfile")); err != nil {
+		t.Fatal(err)
+	}
+	*pulls = nil
+	if _, err := pullChangedImages(context.Background(), prev, newDir); err == nil || !reflect.DeepEqual(*pulls, []string{"nself/x:latest", "redis:7.4"}) {
+		t.Fatalf("no Dockerfile: calls %v, err %v; want nself/x:latest pulled and failing", *pulls, err)
+	}
+}
+
+// TestUpdateImagesTriesEveryPull: two failures and one success; the success
+// is pulled and both failures are in the joined error.
+func TestUpdateImagesTriesEveryPull(t *testing.T) {
+	newDir := writeFragment(t, "services:\n  a:\n    image: x/a:2\n  b:\n    image: x/b:2\n  c:\n    image: x/c:2\n")
+	stubPull(t, "x/a:2", "x/c:2")
+	pulled, err := pullChangedImages(context.Background(), nil, newDir)
+	if !reflect.DeepEqual(pulled, []string{"x/b:2"}) {
+		t.Fatalf("pulled %v, want [x/b:2]", pulled)
+	}
+	if err == nil || !strings.Contains(err.Error(), "x/a:2") || !strings.Contains(err.Error(), "x/c:2") {
+		t.Fatalf("error must name both failures: %v", err)
 	}
 }
 

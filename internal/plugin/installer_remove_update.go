@@ -128,6 +128,13 @@ func Remove(ctx context.Context, cfg *config.Config, name string, pluginDir stri
 		return fmt.Errorf("removing plugin directory %q: %w", destDir, err)
 	}
 
+	// A ".prev" backup left by an interrupted Update would hand its tier to a
+	// later fresh install (installedTierForInstall reads it), so it goes too.
+	// RemoveAll ignores a path that does not exist and reports anything else.
+	if err := os.RemoveAll(filepath.Join(pluginDir, name+".prev")); err != nil {
+		return fmt.Errorf("removing plugin backup directory for %q: %w", name, err)
+	}
+
 	fmt.Fprintf(os.Stderr, "\nℹ Run 'nself build' to update your stack.\n")
 	return nil
 }
