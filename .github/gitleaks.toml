@@ -33,4 +33,6 @@ paths = [
   '''src/templates/certs/''',
   '''src/lib/''',
   '''src/cli/security_audit\.sh$''',
+  # Vendored third-party modules (go mod vendor output): not our code (D-0286)
+  '''(^|/)vendor/''',
 ]
