@@ -59,7 +59,9 @@ When no ledger exists, nself derives one from the installed plugin directories a
 
 Bootstrap cannot tell a plugin you installed yourself from one a bundle installed, if a bundle later covers it. It treats that plugin as bundle-owned. Installs recorded after the ledger exists are exact.
 
-`nself bundle list` only reads the ledger. When the file does not exist it computes the bootstrap view in memory and writes nothing.
+A plugin or bundle whose name is not a valid slug cannot be recorded; bootstrap skips it and prints a warning. If the installed plugins cannot be read, there is no bootstrap: nself reports the error and writes nothing, rather than recording an empty ledger.
+
+`nself bundle list --json` reads the ledger; the plain table never loads it. When the file does not exist it computes the bootstrap view in memory and writes nothing.
 
 ## `nself bundle list --json`
 
