@@ -1,0 +1,61 @@
+{
+  "unmodelled_global": [
+    "upstream object_storage_backend { server 127.0.0.1:3301; keepalive 32; }"
+  ],
+  "routes": [
+    {
+      "id": "plugin:object-storage/object-storage.conf#1",
+      "source": "plugin",
+      "owner": "object-storage",
+      "file": "nginx/sites/object-storage-object-storage.conf",
+      "server_names": [
+        "object-storage.example.test"
+      ],
+      "listen": {
+        "http": false,
+        "https": true
+      },
+      "tls": {
+        "ssl_dir": "example.test",
+        "has_trusted_chain": false,
+        "protocols": [],
+        "ciphers": null
+      },
+      "http_to_https_redirect": false,
+      "security_headers": {},
+      "blocked_paths": [],
+      "rate_limit": null,
+      "locations": [
+        {
+          "path": "/",
+          "match": "prefix",
+          "upstream": {
+            "scheme": "http",
+            "host": "127.0.0.1",
+            "port": 3301
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": true,
+          "headers_set": {
+            "Connection": ""
+          },
+          "timeouts": {
+            "connect_s": null,
+            "read_s": 60,
+            "send_s": 60
+          },
+          "max_body_bytes": 1073741824,
+          "access_log": true,
+          "deny_all": false,
+          "methods": null,
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        }
+      ],
+      "shadowed_by": null,
+      "unmodelled": []
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+# Fixture image list for the imagebump golden test. Same entry shape as
+# internal/compose/images.yaml, plus fixture_tags (dry-run only).
+schema_version: 1
+images:
+  - {name: current-svc, role: core, repository: r.example/current, version: v3.0.0}
+  - {name: float-svc, role: optional, repository: r.example/float, version: latest}
+  - {name: manual-svc, role: optional, repository: r.example/manual, version: v1.0.0}
+  - {name: minor-svc, role: optional, repository: r.example/minor, version: 1.9.0}
+  - {name: patch-svc, role: core, repository: r.example/patch, version: v1.4.2}
+  - {name: plugin-svc, role: plugin, repository: r.example/plugin, version: v1.0.0}
+  - {name: rc-svc, role: monitoring, repository: r.example/rc, version: v2.44.0}
+  - {name: two-part-svc, role: tool, repository: r.example/two, version: "1.36"}
+fixture_tags:
+  r.example/current: [v3.0.0, v2.9.9, v3.0.0-rc1]
+  r.example/float: [latest, edge, nightly]
+  r.example/manual: [v1.0.0, v1.0.1, v1.1.0]
+  r.example/minor: [1.8.0, 1.9.0, 1.9.5, 1.10.0, 1.10.0-beta1, 2.0.0, 2.1.0]
+  r.example/patch: [v1.4.1, v1.4.2, v1.4.3, v1.4.9, v1.4.10, v1.4.11-rc1, v1.5.0, v2.0.0]
+  r.example/plugin: [v1.0.0, v1.0.1, v9.9.9]
+  r.example/rc: [v2.44.0, v2.44.1, v2.45.0-rc1, v3.0.0-rc1, v3.0.0]
+  r.example/two: [1.36, 1.36.1, 1.37]

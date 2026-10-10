@@ -1,0 +1,2 @@
+# The repo-wide *.out rule would hide the golden file.
+!testdata/expected.out

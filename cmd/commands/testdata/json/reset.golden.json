@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "command": "reset",
+  "data": {
+    "removed": [
+      "docker-compose.yml",
+      ".env.computed",
+      "nginx/sites/app.conf"
+    ],
+    "kept_data": false
+  }
+}

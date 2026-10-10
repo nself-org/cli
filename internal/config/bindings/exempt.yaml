@@ -1,0 +1,31 @@
+# Authored (not generated). Flags whose name matches a known configuration key
+# but that do not supply that key's value (P7-SURF-06). Every row carries the
+# reason; a row naming a flag that does not exist, or a flag that is also bound
+# in flags.yaml, fails the bindings gate. Commands are canonical (v1.5) paths
+# without "nself "; "." is the root command.
+schema_version: 1
+exempt:
+  - {command: ".", flag: no-monorepo, reason: "NSELF_NO_MONOREPO is listed as a known key but no code reads it; the flag is the only control"}
+  - {command: build, flag: no-monorepo, reason: "NSELF_NO_MONOREPO is listed as a known key but no code reads it; the flag is the only control"}
+  - {command: reset, flag: no-monorepo, reason: "NSELF_NO_MONOREPO is listed as a known key but no code reads it; the flag is the only control"}
+  - {command: stop, flag: no-monorepo, reason: "NSELF_NO_MONOREPO is listed as a known key but no code reads it; the flag is the only control"}
+  - {command: logs, flag: no-color, reason: "boolean inverse of NO_COLOR, which is presence based and read by internal/ui and internal/output; the flag does not set it"}
+  - {command: start, flag: debug, reason: "shows debug output for this run only; it does not set DEBUG (build --debug does)"}
+  - {command: config plugins dev, flag: debug, reason: "attaches the dlv debugger; unrelated to the DEBUG key"}
+  - {command: db import firebase, flag: project-name, reason: "names generated SQL files; it is not the PROJECT_NAME of the project"}
+  - {command: backup list, flag: env, reason: "filters backup rows by environment label; it does not select the local ENV cascade"}
+  - {command: db drift, flag: env, reason: "carries a project directory (usage text: Project directory to read hasura/metadata/**), not an environment name"}
+  - {command: db reconcile, flag: env, reason: "carries a project directory (usage text: Project directory to read hasura/metadata/**), not an environment name"}
+  - {command: db generate, flag: env, reason: "names the target environment of the generated output (local, staging or prod), not the local ENV cascade"}
+  - {command: db hasura apply-ref, flag: env, reason: "selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml), not the local ENV cascade"}
+  - {command: db hasura metadata apply, flag: env, reason: "selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml), not the local ENV cascade"}
+  - {command: db hasura sync, flag: env, reason: "selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml), not the local ENV cascade"}
+  - {command: db migrate status, flag: env, reason: "selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml), not the local ENV cascade"}
+  - {command: db migrate up, flag: env, reason: "selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml), not the local ENV cascade"}
+  - {command: deploy, flag: env, reason: "selects the deploy inventory environment (staging, prod, qa), not the local ENV cascade"}
+  - {command: deploy access grant, flag: env, reason: "selects hosts in a deploy inventory environment, not the local ENV cascade"}
+  - {command: deploy access list, flag: env, reason: "selects hosts in a deploy inventory environment, not the local ENV cascade"}
+  - {command: deploy access revoke, flag: env, reason: "selects hosts in a deploy inventory environment, not the local ENV cascade"}
+  - {command: deploy status, flag: env, reason: "selects the deploy inventory environment to check, not the local ENV cascade"}
+  - {command: exec, flag: env, reason: "repeatable KEY=VALUE pairs for the child process, not the ENV key"}
+  - {command: functions deploy, flag: env, reason: "repeatable KEY=VALUE pairs for the function, not the ENV key"}
