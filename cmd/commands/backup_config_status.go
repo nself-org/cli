@@ -189,7 +189,7 @@ func runBackupStatus(cmd *cobra.Command, _ []string) error {
 			// gets the error envelope from the top level (no data member), the
 			// off-box state goes to stderr so it is not lost.
 			if text, ferr := backup.FormatStatusOffbox(info, off, "text"); ferr == nil {
-				fmt.Fprint(cmd.ErrOrStderr(), text)
+				_, _ = fmt.Fprint(cmd.ErrOrStderr(), text)
 			}
 			return offErr
 		}

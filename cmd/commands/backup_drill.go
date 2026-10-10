@@ -82,7 +82,7 @@ func runBackupDrill(cmd *cobra.Command, _ []string) error {
 		// member); the outcome goes to stderr so it is not lost.
 		if err != nil {
 			if data, mErr := json.MarshalIndent(result, "", "  "); mErr == nil {
-				fmt.Fprintln(cmd.ErrOrStderr(), string(data))
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), string(data))
 			}
 			return err
 		}
@@ -163,7 +163,7 @@ func runBackupDrillRemote(cmd *cobra.Command, from string) error {
 		if jsonEnvelopeOn(cmd) {
 			if err != nil {
 				if data, mErr := res.Heartbeat.Marshal(); mErr == nil {
-					fmt.Fprint(cmd.ErrOrStderr(), string(data))
+					_, _ = fmt.Fprint(cmd.ErrOrStderr(), string(data))
 				}
 				return err
 			}
