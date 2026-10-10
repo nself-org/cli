@@ -23,7 +23,8 @@ import (
 	"time"
 )
 
-// Gate timeouts by service kind (D17): healthcheck or one-shot exit, else running.
+// Gate timeouts by service kind (D17): healthcheck or one-shot exit, else running
+// (and still the same run one poll later).
 const (
 	HealthyTimeout = 60 * time.Second
 	RunningTimeout = 30 * time.Second
@@ -107,101 +108,15 @@ func (c *Compose) capture(ctx context.Context, workdir string, args ...string) (
 	return out, nil
 }
 
-// ContainerState is one container as `compose ps -a` reports it.
-type ContainerState struct {
-	ID       string `json:"ID"`
-	Name     string `json:"Name"`
-	State    string `json:"State"`  // running, exited, restarting, ...
-	Health   string `json:"Health"` // healthy, unhealthy, starting, or empty
-	ExitCode int    `json:"ExitCode"`
-}
-
-// ComposeServiceStates returns every container (running or stopped) of service.
-// Stopped containers matter: a one-shot is only visible once it has exited.
-func (c *Compose) ComposeServiceStates(ctx context.Context, workdir, service string) ([]ContainerState, error) {
-	out, err := c.capture(ctx, workdir, "ps", "-a", "--format", "json", service)
-	if err != nil {
-		return nil, err
-	}
-	return parseContainerStates(out)
-}
-
-// StateNotRestarted marks an exited container that has not started since the
-// baseline (see FreshStates).
-const StateNotRestarted = "not-restarted"
-
-// startedAt returns the daemon's StartedAt string for container id.
-func (c *Compose) startedAt(ctx context.Context, id string) (string, error) {
-	out, err := exec.CommandContext(ctx, c.dockerBin(), "inspect", "-f", "{{.State.StartedAt}}", id).Output()
-	if err != nil {
-		return "", fmt.Errorf("docker inspect %s: %w", id, err)
-	}
-	return strings.TrimSpace(string(out)), nil
-}
-
-// StartMarks maps container ID to StartedAt for each exited container of
-// service. Taken before `up`, it lets FreshStates tell a one-shot that ran
-// again (same container, new start time) from an old exit. Daemon strings are
-// compared with each other only, so clock skew is moot.
-func (c *Compose) StartMarks(ctx context.Context, workdir, service string) (map[string]string, error) {
-	cs, err := c.ComposeServiceStates(ctx, workdir, service)
-	if err != nil {
-		return nil, err
-	}
-	marks := map[string]string{}
-	for _, s := range cs {
-		if s.State == "exited" && s.ID != "" {
-			if marks[s.ID], err = c.startedAt(ctx, s.ID); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return marks, nil
-}
-
-// FreshStates is ComposeServiceStates, but an exited container whose StartedAt
-// still equals its baseline mark is reported as StateNotRestarted, so a stale
-// exit 0 cannot pass the one-shot gate. No ID (old compose) means no mark.
-func (c *Compose) FreshStates(ctx context.Context, workdir, service string, baseline map[string]string) ([]ContainerState, error) {
-	cs, err := c.ComposeServiceStates(ctx, workdir, service)
-	if err != nil {
-		return nil, err
-	}
-	for i, s := range cs {
-		if old, ok := baseline[s.ID]; ok && s.State == "exited" {
-			now, err := c.startedAt(ctx, s.ID)
-			if err != nil {
-				return nil, err
-			}
-			if now == old {
-				cs[i].State = StateNotRestarted
-			}
-		}
-	}
-	return cs, nil
-}
-
-// parseContainerStates accepts both ps JSON shapes: one array (compose 2.21+)
-// or one object per line (older).
-func parseContainerStates(raw []byte) ([]ContainerState, error) {
-	trimmed := bytes.TrimSpace(raw)
-	if len(trimmed) == 0 {
-		return nil, nil
-	}
-	if trimmed[0] != '[' {
-		trimmed = append(append([]byte("["), bytes.ReplaceAll(trimmed, []byte("}\n"), []byte("},\n"))...), ']')
-	}
-	var states []ContainerState
-	if err := json.Unmarshal(trimmed, &states); err != nil {
-		return nil, fmt.Errorf("parsing compose ps JSON: %w", err)
-	}
-	return states, nil
-}
-
-// Gate failures: ErrOneShotFailed maps to E250, ErrGateTimeout to E251.
+// Gate failures. ErrOneShotFailed and ErrServiceCrashed map to E250 (the
+// service is broken), ErrGateTimeout to E251 (too slow), ErrStateRead to no
+// service code at all: docker could not answer, which says nothing about the
+// service.
 var (
-	ErrOneShotFailed = errors.New("one-shot service exited non-zero")
-	ErrGateTimeout   = errors.New("service did not reach its ready state in time")
+	ErrOneShotFailed  = errors.New("one-shot service exited non-zero")
+	ErrServiceCrashed = errors.New("service exited non-zero or is restarting")
+	ErrGateTimeout    = errors.New("service did not reach its ready state in time")
+	ErrStateRead      = errors.New("could not read container state")
 )
 
 // Clock is the time source of the gate. Sleep returns early with the context's
@@ -230,14 +145,20 @@ func (SystemClock) Sleep(ctx context.Context, d time.Duration) error {
 }
 
 // StateSource reads the service's containers; a remote host supplies its own.
+// StartedAt on a running container lets the gate see a restart between polls;
+// a source that leaves it empty still gets the two-poll check.
 type StateSource func(ctx context.Context) ([]ContainerState, error)
 
-// HealthGate waits until spec's containers are ready for their kind (D17):
-// healthcheck declared -> every container healthy within HealthyTimeout
-// (checked first, even with restart "no"); one-shot (restart "no", no
-// healthcheck) -> every container exited 0 within HealthyTimeout, and any
-// non-zero exit fails at once; otherwise -> running within
-// RunningTimeout. A nil clock means SystemClock.
+// HealthGate waits until spec's containers are ready for their kind (D17).
+// Any kind fails at once on a container that exited non-zero or is
+// restarting. Healthcheck declared -> every container healthy within
+// HealthyTimeout (checked first, even with restart "no"). One-shot (restart
+// "no", no healthcheck) -> every container exited 0 within HealthyTimeout.
+// Otherwise -> every container running within RunningTimeout and seen running
+// on two polls in a row with the same StartedAt (a crash loop passes one
+// poll); a service with no restart line that exited 0 is done, as Docker
+// treats it. A cancelled ctx returns ctx's error; a failed state read wraps
+// ErrStateRead. A nil clock means SystemClock.
 func HealthGate(ctx context.Context, spec ServiceSpec, states StateSource, clock Clock) error {
 	if clock == nil {
 		clock = SystemClock{}
@@ -247,14 +168,18 @@ func HealthGate(ctx context.Context, spec ServiceSpec, states StateSource, clock
 		limit = HealthyTimeout
 	}
 	deadline := clock.Now().Add(limit)
+	var prev map[string]string
 	for {
 		cs, err := states(ctx)
 		if err != nil {
-			return fmt.Errorf("service %s: reading container state: %w", spec.Name, err)
+			if ctx.Err() != nil {
+				return fmt.Errorf("service %s: %w", spec.Name, ctx.Err())
+			}
+			return fmt.Errorf("service %s: %w: %w", spec.Name, ErrStateRead, err)
 		}
-		ready, detail, failed := gateReady(spec, cs)
-		if failed {
-			return fmt.Errorf("service %s: %w (%s)", spec.Name, ErrOneShotFailed, detail)
+		ready, detail, next, fail := gateReady(spec, cs, prev)
+		if fail != nil {
+			return fmt.Errorf("service %s: %w (%s)", spec.Name, fail, detail)
 		}
 		if ready {
 			return nil
@@ -265,23 +190,40 @@ func HealthGate(ctx context.Context, spec ServiceSpec, states StateSource, clock
 		if err := clock.Sleep(ctx, gatePollEvery); err != nil {
 			return fmt.Errorf("service %s: %w", spec.Name, err)
 		}
+		prev = next
 	}
 }
 
-// gateReady evaluates one poll. failed is true only for a one-shot that
-// exited non-zero (no point waiting on it).
-func gateReady(spec ServiceSpec, cs []ContainerState) (ready bool, detail string, failed bool) {
+// gateReady evaluates one poll against prev, the StartedAt of each container
+// seen running on the poll before. fail is non-nil for a container that will
+// not recover on its own (no point waiting). next is this poll's running set.
+func gateReady(spec ServiceSpec, cs []ContainerState, prev map[string]string) (ready bool, detail string, next map[string]string, fail error) {
+	next = map[string]string{}
 	if len(cs) == 0 {
-		return false, "no container found", false
+		return false, "no container found", next, nil
 	}
 	ready = true
 	for _, c := range cs {
+		key := c.ID
+		if key == "" {
+			key = c.Name
+		}
+		if c.State == "running" {
+			next[key] = c.StartedAt
+		}
+		if c.State == "restarting" || (c.State == "exited" && c.ExitCode != 0) {
+			fail = ErrServiceCrashed
+			if spec.OneShot() {
+				fail = ErrOneShotFailed
+			}
+			if c.State == "restarting" {
+				return false, c.Name + " is restarting", next, fail
+			}
+			return false, fmt.Sprintf("%s exited %d", c.Name, c.ExitCode), next, fail
+		}
 		wait := ""
 		switch {
 		case spec.OneShot():
-			if c.State == "exited" && c.ExitCode != 0 {
-				return false, fmt.Sprintf("%s exited %d", c.Name, c.ExitCode), true
-			}
 			if c.State != "exited" {
 				wait = "exit 0"
 			}
@@ -289,12 +231,18 @@ func gateReady(spec ServiceSpec, cs []ContainerState) (ready bool, detail string
 			if c.State != "running" || c.Health != "healthy" {
 				wait = "healthy"
 			}
+		case c.State == "exited" && spec.Restart == "":
+			// exit 0 and Docker's default restart policy ("no"): a finished run.
 		case c.State != "running":
 			wait = "running"
+		default:
+			if at, seen := prev[key]; !seen || at != c.StartedAt {
+				wait = "the same run on a second poll"
+			}
 		}
 		if wait != "" {
 			ready, detail = false, fmt.Sprintf("%s is %s/%s, waiting for %s", c.Name, c.State, c.Health, wait)
 		}
 	}
-	return ready, detail, false
+	return ready, detail, next, nil
 }

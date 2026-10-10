@@ -20,7 +20,7 @@ import (
 
 // rollingFakeDocker answers the four docker compose calls the restart makes.
 // Fixtures live next to the log: services (config --services), config.json,
-// ps.<svc>.json, upfail (a service name whose `up` exits 1) and startfixed
+// ps.<svc>.json, psfail (any `ps` exits 1), upfail (a service name whose `up` exits 1) and startfixed
 // (a constant `docker inspect` StartedAt, i.e. the container never restarted).
 const rollingFakeDocker = `#!/bin/sh
 D="$FAKE_DOCKER_DIR"
@@ -40,6 +40,7 @@ up)
   if [ -f "$D/upfail" ] && [ "$(cat "$D/upfail")" = "$last" ]; then echo "boom" >&2; exit 1; fi
   echo "$last" >> "$D/ups" ;;
 ps)
+  if [ -f "$D/psfail" ]; then echo "Cannot connect to the Docker daemon" >&2; exit 1; fi
   for last; do :; done
   cat "$D/ps.$last.json" 2>/dev/null || true ;;
 esac
@@ -144,7 +145,7 @@ func TestDeployStrategyManifest(t *testing.T) {
 		s.setPs(t, "postgres", `[{"Name":"p-pg-1","State":"running","Health":"healthy"}]`)
 		s.setPs(t, "web", psRunning)
 		s.setPs(t, "ntask", psRunning)
-		steps, err := runRollingRestart(context.Background(), s.dir, true)
+		steps, err := runPlan(t, s, &stepClock{now: time.Unix(0, 0)})
 		if err != nil {
 			t.Fatalf("rolling restart: %v", err)
 		}
@@ -218,13 +219,13 @@ func TestDeployStrategyManifest(t *testing.T) {
 		}
 	})
 
-	t.Run("a service missing from the resolved config is an E250 and nothing is restarted", func(t *testing.T) {
+	t.Run("a service missing from the resolved config is E252 and nothing is restarted", func(t *testing.T) {
 		s := newRollingStack(t, []string{"postgres", "ghost"}, stackConfig)
 		s.setPs(t, "postgres", `[{"Name":"p-pg-1","State":"running","Health":"healthy"}]`)
 		steps, err := runPlan(t, s, &stepClock{now: time.Unix(0, 0)})
 		var ce *errs.CLIError
-		if !errors.As(err, &ce) || ce.Code != "E250" || !strings.Contains(err.Error(), "ghost") {
-			t.Fatalf("want E250 naming ghost, got %v", err)
+		if !errors.As(err, &ce) || ce.Code != "E252" || !strings.Contains(err.Error(), "ghost") {
+			t.Fatalf("want E252 naming ghost, got %v", err)
 		}
 		if strings.Contains(s.read("ups"), "ghost") {
 			t.Errorf("ghost was restarted: %q", s.read("ups"))
@@ -280,11 +281,91 @@ func TestDeployStrategyManifest(t *testing.T) {
 		s := newRollingStack(t, []string{"postgres", "web"}, stackConfig)
 		s.setPs(t, "postgres", `[{"Name":"p-pg-1","State":"running","Health":"healthy"}]`)
 		s.setPs(t, "web", psRunning)
-		if _, err := runRollingRestart(context.Background(), s.dir, true); err != nil {
+		if _, err := runPlan(t, s, &stepClock{now: time.Unix(0, 0)}); err != nil {
 			t.Fatal(err)
 		}
 		if strings.Contains(s.read("ups"), "storage") {
 			t.Errorf("restarted a name no compose reported: %q", s.read("ups"))
 		}
 	})
+
+	t.Run("a crash-looping service fails with E250 at once instead of passing a poll", func(t *testing.T) {
+		for name, ps := range map[string]string{
+			"restarting":  `[{"ID":"c3","Name":"p-web-1","State":"restarting","ExitCode":1}]`,
+			"exited 1":    `[{"ID":"c3","Name":"p-web-1","State":"exited","ExitCode":1}]`,
+			"one replica": `[{"ID":"c3","Name":"p-web-1","State":"running"},{"ID":"c4","Name":"p-web-2","State":"restarting"}]`,
+			"healthcheck": `[{"ID":"c3","Name":"p-pg-1","State":"restarting","Health":"starting"}]`,
+		} {
+			svc := "web"
+			if name == "healthcheck" {
+				svc = "postgres"
+			}
+			s := newRollingStack(t, []string{svc, "ntask"}, stackConfig)
+			s.setPs(t, svc, ps)
+			clk := &stepClock{now: time.Unix(0, 0)}
+			steps, err := runPlan(t, s, clk)
+			var ce *errs.CLIError
+			if !errors.As(err, &ce) || ce.Code != "E250" || !strings.Contains(err.Error(), svc) {
+				t.Fatalf("%s: want E250 naming %s, got %v", name, svc, err)
+			}
+			if clk.sleeps != 0 || strings.Contains(s.read("ups"), "ntask") {
+				t.Errorf("%s: must fail at once and stop the roll (sleeps %d, ups %q)", name, clk.sleeps, s.read("ups"))
+			}
+			if last := steps[len(steps)-1]; last.Status != "failed" {
+				t.Errorf("%s: last step = %+v", name, last)
+			}
+		}
+	})
+
+	t.Run("a service with no restart line that exited 0 is done", func(t *testing.T) {
+		s := newRollingStack(t, []string{"web"}, stackConfig)
+		s.setPs(t, "web", `[{"ID":"c3","Name":"p-web-1","State":"exited","ExitCode":0}]`)
+		clk := &stepClock{now: time.Unix(0, 0)}
+		if _, err := runPlan(t, s, clk); err != nil || clk.sleeps != 0 {
+			t.Fatalf("exit 0 without a restart line must pass at once: %v (sleeps %d)", err, clk.sleeps)
+		}
+	})
+
+	t.Run("an unreadable docker state is its own error, not E250", func(t *testing.T) {
+		s := newRollingStack(t, []string{"web"}, stackConfig)
+		if err := os.WriteFile(filepath.Join(s.fix, "psfail"), []byte("1"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		steps, err := runPlan(t, s, &stepClock{now: time.Unix(0, 0)})
+		var ce *errs.CLIError
+		if err == nil || errors.As(err, &ce) || !errors.Is(err, docker.ErrStateRead) || !strings.Contains(err.Error(), "Cannot connect") {
+			t.Fatalf("want an uncoded state-read error carrying docker's message, got %v", err)
+		}
+		if last := steps[len(steps)-1]; last.Status != "failed" {
+			t.Errorf("last step = %+v", last)
+		}
+	})
+
+	t.Run("an interrupt passes through as context.Canceled, not E250", func(t *testing.T) {
+		s := newRollingStack(t, []string{"web"}, stackConfig)
+		s.setPs(t, "web", psRunning)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		compose, files, _ := deployCompose(s.dir)
+		order, _ := projectServiceOrder(ctx, compose, s.dir, files)
+		specs, _ := docker.ComposeServiceSpecs(ctx, compose, s.dir)
+		// The first sleep is the interrupt: the user hits ctrl-c while the gate waits.
+		clk := &cancelClock{stepClock: stepClock{now: time.Unix(0, 0)}, cancel: cancel}
+		_, err := rollingRestart(ctx, rollingPlan{compose: compose, workdir: s.dir, order: order, specs: specs, clock: clk, jsonOut: true})
+		var ce *errs.CLIError
+		if !errors.Is(err, context.Canceled) || errors.As(err, &ce) {
+			t.Fatalf("want an uncoded context.Canceled, got %v", err)
+		}
+	})
+}
+
+// cancelClock cancels the context on its first Sleep.
+type cancelClock struct {
+	stepClock
+	cancel context.CancelFunc
+}
+
+func (c *cancelClock) Sleep(ctx context.Context, d time.Duration) error {
+	c.cancel()
+	return c.stepClock.Sleep(ctx, d)
 }

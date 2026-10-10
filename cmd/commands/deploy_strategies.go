@@ -68,8 +68,9 @@ type rollingPlan struct {
 // 2026-09-20). Each service is brought up with `up -d --no-deps` and then
 // gated by kind: healthcheck declared -> healthy within 60s; restart "no"
 // without a healthcheck (one-shot) -> a new run that exited 0; otherwise
-// running within 30s. The deploy halts on
-// the first failure and names the service.
+// running within 30s and still the same run a poll later. Any kind fails at
+// once on a container that exited non-zero or keeps restarting. The deploy
+// halts on the first failure and names the service.
 func runRollingRestart(ctx context.Context, workdir string, jsonOut bool) ([]deployStep, error) {
 	compose, files, err := deployCompose(workdir)
 	if err != nil {
@@ -103,11 +104,11 @@ func rollingRestart(ctx context.Context, plan rollingPlan) ([]deployStep, error)
 			// config --services and config --format json read the same manifest; a
 			// miss means they disagree, and a guessed gate could skip a wait.
 			err := fmt.Errorf("service %s is in the restart order but missing from the resolved compose config", svc)
-			return append(steps, deployStep{Name: stepName, Status: "failed"}), gateError(svc, err)
+			return append(steps, deployStep{Name: stepName, Status: "failed"}), errs.Wrap("E252", "rolling restart: "+err.Error(), err)
 		}
 		marks, err := plan.compose.StartMarks(ctx, plan.workdir, svc)
 		if err != nil {
-			return append(steps, deployStep{Name: stepName, Status: "failed"}), gateError(svc, err)
+			return append(steps, deployStep{Name: stepName, Status: "failed"}), gateError(svc, markErr(ctx, err))
 		}
 		if err := plan.compose.ComposeUpNoDeps(ctx, plan.workdir, svc); err != nil {
 			steps = append(steps, deployStep{Name: stepName, Status: "failed"})
@@ -130,6 +131,15 @@ func rollingRestart(ctx context.Context, plan rollingPlan) ([]deployStep, error)
 	return steps, nil
 }
 
+// markErr classes a failed pre-restart state read: the user's interrupt as
+// such, anything else as an unreadable state.
+func markErr(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return fmt.Errorf("%w: %w", docker.ErrStateRead, err)
+}
+
 // gateKind names what the gate waits for, for the progress line.
 func gateKind(sp docker.ServiceSpec) string {
 	switch {
@@ -150,15 +160,24 @@ func gateFailStatus(err error) string {
 	return "failed"
 }
 
-// gateError wraps a gate failure in its error code: E250 when the service is
-// broken (a one-shot exited non-zero), E251 when it was too slow, E250 for
-// anything else (a state read that failed is still an unhealthy answer).
+// gateError turns a gate failure into the error the operator sees, by what
+// went wrong: E250 when the service is broken (a container exited non-zero or
+// keeps restarting), E251 when it was too slow, and no service code when the
+// cause is outside the service (docker could not be read, or the user
+// interrupted), so the message never blames a healthy service.
 func gateError(svc string, err error) error {
-	code := "E250"
-	if errors.Is(err, docker.ErrGateTimeout) {
-		code = "E251"
+	hint := fmt.Sprintf("Run 'nself logs %s' for details", svc)
+	switch {
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("rolling restart interrupted at service %s: %w", svc, err)
+	case errors.Is(err, docker.ErrStateRead):
+		return fmt.Errorf("rolling restart: cannot read the state of service %s, so it was not judged: %w", svc, err)
+	case errors.Is(err, docker.ErrOneShotFailed), errors.Is(err, docker.ErrServiceCrashed):
+		return errs.Wrap("E250", fmt.Sprintf("rolling restart: %v. %s", err, hint), err)
+	case errors.Is(err, docker.ErrGateTimeout):
+		return errs.Wrap("E251", fmt.Sprintf("rolling restart: %v. %s", err, hint), err)
 	}
-	return errs.Wrap(code, fmt.Sprintf("rolling restart: %v. Run 'nself logs %s' for details", err, svc), err)
+	return fmt.Errorf("rolling restart: service %s: %w", svc, err)
 }
 
 // runDeployHealthCheck calls nself doctor and gates the deploy result.

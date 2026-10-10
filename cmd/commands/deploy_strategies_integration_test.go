@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -128,4 +129,78 @@ func TestDeployStrategyIntegration(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("a leftover compose run container does not fail or stall the deploy", func(t *testing.T) {
+		dir := integrationProject(t, "depl16c"+suffix, "  bare:\n"+sleeper+"  after:\n"+sleeper, "  plug:\n"+sleeper)
+		if _, err := runRollingRestart(ctx, dir, true); err != nil {
+			t.Fatalf("first deploy: %v", err)
+		}
+		// `compose run` without --rm leaves an exited one-off container next to the replica.
+		compose, files, _ := deployCompose(dir)
+		args := []string{"compose"}
+		for _, f := range files {
+			args = append(args, "-f", f)
+		}
+		args = append(args, "run", "--no-deps", "bare", "true")
+		c := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // test drives the real docker CLI
+		c.Dir = dir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("compose run: %v: %s", err, out)
+		}
+		rows, err := compose.ComposeServiceStates(ctx, dir, "bare")
+		if err != nil || len(rows) != 1 || rows[0].State != "running" {
+			t.Fatalf("the read must show only the replica, got %+v (err %v)", rows, err)
+		}
+		left := exec.CommandContext(ctx, "docker", "ps", "-aq", "--filter", "label=com.docker.compose.oneoff=True",
+			"--filter", "label=com.docker.compose.project=depl16c"+suffix)
+		if out, err := left.Output(); err != nil || strings.TrimSpace(string(out)) == "" {
+			t.Fatalf("setup is vacuous: no one-off container exists (%q, %v)", out, err)
+		}
+		start := time.Now()
+		steps, err := runRollingRestart(ctx, dir, true)
+		if err != nil {
+			t.Fatalf("second deploy with a leftover one-off failed: %v (steps %+v)", err, steps)
+		}
+		if got := time.Since(start); got > 90*time.Second {
+			t.Errorf("deploy took %s, the leftover container made the gate wait", got)
+		}
+	})
+
+	t.Run("no restart line and exit 0 is a finished run", func(t *testing.T) {
+		dir := integrationProject(t, "depl16d"+suffix,
+			"  once:\n    image: alpine:3\n    command: [\"sh\", \"-c\", \"exit 0\"]\n  after:\n"+sleeper, "  plug:\n"+sleeper)
+		start := time.Now()
+		if steps, err := runRollingRestart(ctx, dir, true); err != nil {
+			t.Fatalf("deploy failed: %v (steps %+v)", err, steps)
+		}
+		if got := time.Since(start); got > 25*time.Second {
+			t.Errorf("deploy took %s, the exited-0 service made the gate wait for running", got)
+		}
+	})
+
+	// (postgres sorts first, so zlater is "later".) Restart always plus an exiting command is a crash loop: the gate must
+	// catch it instead of passing on a poll that sees it running.
+	for name, command := range map[string]string{
+		"exit 1 at once":        "exit 1",
+		"exit 0 at once":        "exit 0",
+		"exit 1 after a second": "sleep 1; exit 1",
+	} {
+		t.Run("restart always that exits ("+name+") fails the deploy and later services never start", func(t *testing.T) {
+			dir := integrationProject(t, "depl16e"+strings.NewReplacer(" ", "", ";", "").Replace(name)+suffix,
+				"  postgres:\n    image: alpine:3\n    command: [\"sh\", \"-c\", \""+command+"\"]\n    restart: always\n  zlater:\n"+sleeper, "  plug:\n"+sleeper)
+			_, err := runRollingRestart(ctx, dir, true)
+			var ce *errs.CLIError
+			if !errors.As(err, &ce) || !strings.Contains(err.Error(), "postgres") {
+				t.Fatalf("want a coded gate error naming postgres, got %v", err)
+			}
+			// A crash that is only seen between restarts may time out instead of being caught; passing is the bug.
+			if ce.Code != "E250" && !(name == "exit 1 after a second" && ce.Code == "E251") {
+				t.Errorf("code = %s, want E250", ce.Code)
+			}
+			compose, _, _ := deployCompose(dir)
+			if cs, _ := compose.ComposeServiceStates(ctx, dir, "zlater"); len(cs) != 0 {
+				t.Errorf("zlater started after postgres failed: %+v", cs)
+			}
+		})
+	}
 }

@@ -180,11 +180,22 @@ fallback for plugin variables: a plugin variable must be in `.nself/compose.env`
 |---|---|---|---|
 | Declares a healthcheck | `healthy` | 60s | E251 (health check timeout), service named |
 | One-shot (`restart: "no"`, no healthcheck) | a new run that exits 0 | 60s | non-zero exit fails at once with E250; never exiting, or never starting again, is E251 |
-| Anything else (including `on-failure` or `unless-stopped` init containers that exit) | `running` | 30s | E251, service named |
+| Anything else | `running`, seen as the same run on two polls 2s apart | 30s | E251, service named |
 
 The rows apply top to bottom: a service with `restart: "no"` and a healthcheck is long-running, so it
-waits for `healthy`. A service that appears in the restart order but not in the resolved config fails
-the deploy with E250 before anything is restarted.
+waits for `healthy`. For every kind, a container that exited non-zero or is restarting fails the
+deploy at once with E250, so a crash loop cannot pass because one poll caught it running. A service
+with no `restart` line that exited 0 counts as a finished run (Docker's default policy is "no"), so it
+is done. Containers left behind by `docker compose run` are ignored: they are not replicas of the
+service. A service that appears in the restart order but not in the resolved config fails the deploy
+with E252 before anything is restarted. If Docker cannot be read (daemon down, `compose ps` fails), the
+deploy stops with Docker's own message and no service code, because nothing is known about the
+service; an interrupt (ctrl-c) stops the same way.
+
+**What a failed deploy leaves behind.** Nothing rolls back. Services before the failed one already run
+the new config. The failed service is in whatever state `up` left it (running but not ready, restarting,
+or exited). Services after it are not touched and keep running the old config. Fix the cause and run
+`nself deploy` again: it restarts every service in order.
 
 Init containers that run once and exit never report `healthy`; the old gate waited for that and
 aborted real deploys.

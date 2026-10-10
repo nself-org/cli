@@ -7,6 +7,7 @@ package docker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -213,13 +214,15 @@ func TestHealthGateUnhealthy(t *testing.T) {
 		t.Errorf("healthy after 3 polls must pass: %v", err)
 	}
 
-	// No healthcheck: running passes at once; not running times out at 30 s.
+	// No healthcheck: running on two polls with the same StartedAt passes (one
+	// poll is not enough, see TestHealthGateRunning); a container that is not
+	// running times out at 30 s.
 	plain := ServiceSpec{Name: "web"}
 	if err := HealthGate(ctx, plain, fixed(ContainerState{Name: "w", State: "running"}), newFakeClock()); err != nil {
 		t.Errorf("running without healthcheck must pass: %v", err)
 	}
 	clk = newFakeClock()
-	err = HealthGate(ctx, plain, fixed(ContainerState{Name: "w", State: "restarting"}), clk)
+	err = HealthGate(ctx, plain, fixed(ContainerState{Name: "w", State: "created"}), clk)
 	if !errors.Is(err, ErrGateTimeout) || clk.elapsed() < 30*time.Second || clk.elapsed() > 32*time.Second {
 		t.Errorf("not running: err %v after %s, want a 30s timeout", err, clk.elapsed())
 	}
@@ -231,8 +234,8 @@ func TestHealthGateUnhealthy(t *testing.T) {
 	}
 	boom := errors.New("daemon down")
 	err = HealthGate(ctx, plain, func(context.Context) ([]ContainerState, error) { return nil, boom }, newFakeClock())
-	if !errors.Is(err, boom) {
-		t.Errorf("state read error must surface, got %v", err)
+	if !errors.Is(err, boom) || !errors.Is(err, ErrStateRead) || errors.Is(err, ErrOneShotFailed) || errors.Is(err, ErrServiceCrashed) {
+		t.Errorf("state read error must surface as ErrStateRead and not as a broken service, got %v", err)
 	}
 
 	// A cancelled context stops the poll.
@@ -240,6 +243,104 @@ func TestHealthGateUnhealthy(t *testing.T) {
 	cancel()
 	if err := HealthGate(cctx, hc, fixed(ContainerState{Name: "p", State: "running", Health: "starting"}), SystemClock{}); !errors.Is(err, context.Canceled) {
 		t.Errorf("cancelled ctx: %v", err)
+	}
+}
+
+// TestHealthGateRunning: the running gate (no healthcheck, not a one-shot)
+// fails fast on a crash, and needs the same run on two polls (S1, round 2).
+func TestHealthGateRunning(t *testing.T) {
+	ctx := context.Background()
+	always := ServiceSpec{Name: "web", Restart: "always"}
+	unlessStopped := ServiceSpec{Name: "web", Restart: "unless-stopped"}
+	noLine := ServiceSpec{Name: "web"}
+	up := func(at string) ContainerState {
+		return ContainerState{ID: "c1", Name: "w", State: "running", StartedAt: at}
+	}
+
+	// Fail fast, whatever the kind: no sleep, E250 sentinel.
+	for name, tc := range map[string]struct {
+		spec ServiceSpec
+		cs   []ContainerState
+		want error
+	}{
+		"restart always, exited 1":  {always, []ContainerState{{Name: "w", State: "exited", ExitCode: 1}}, ErrServiceCrashed},
+		"restarting":                {always, []ContainerState{{Name: "w", State: "restarting"}}, ErrServiceCrashed},
+		"no restart line, exited 2": {noLine, []ContainerState{{Name: "w", State: "exited", ExitCode: 2}}, ErrServiceCrashed},
+		"one replica restarting":    {always, []ContainerState{up("t1"), {ID: "c2", Name: "w2", State: "restarting"}}, ErrServiceCrashed},
+		"healthcheck, exited 1":     {ServiceSpec{Name: "web", HasHealthcheck: true, Restart: "always"}, []ContainerState{{Name: "w", State: "exited", ExitCode: 1}}, ErrServiceCrashed},
+		"healthcheck, restarting":   {ServiceSpec{Name: "web", HasHealthcheck: true}, []ContainerState{{Name: "w", State: "restarting", Health: "starting"}}, ErrServiceCrashed},
+		"one-shot, exited 1":        {ServiceSpec{Name: "web", Restart: "no"}, []ContainerState{{Name: "w", State: "exited", ExitCode: 1}}, ErrOneShotFailed},
+	} {
+		clk := newFakeClock()
+		err := HealthGate(ctx, tc.spec, fixed(tc.cs...), clk)
+		if !errors.Is(err, tc.want) || clk.sleeps != 0 {
+			t.Errorf("%s: err %v, sleeps %d; want %v at once", name, err, clk.sleeps, tc.want)
+		}
+	}
+
+	// One poll is not proof: the same run on a second poll passes.
+	clk := newFakeClock()
+	if err := HealthGate(ctx, unlessStopped, fixed(up("t1")), clk); err != nil || clk.sleeps != 1 {
+		t.Errorf("stable run: err %v, sleeps %d, want pass after exactly one wait", err, clk.sleeps)
+	}
+	// A different StartedAt on the second poll is a restart in between: keep
+	// waiting, and give up at 30 s (not 60 s) if it never settles.
+	n := 0
+	flapping := func(context.Context) ([]ContainerState, error) {
+		n++
+		return []ContainerState{up(fmt.Sprintf("t%d", n))}, nil
+	}
+	clk = newFakeClock()
+	err := HealthGate(ctx, unlessStopped, flapping, clk)
+	if !errors.Is(err, ErrGateTimeout) || clk.elapsed() < 30*time.Second || clk.elapsed() > 32*time.Second {
+		t.Errorf("never-settling service: err %v after %s, want a 30s timeout", err, clk.elapsed())
+	}
+	// It settles on the third poll: passes on the fourth.
+	n = 0
+	settling := func(context.Context) ([]ContainerState, error) {
+		n++
+		return []ContainerState{up(fmt.Sprintf("t%d", min(n, 3)))}, nil
+	}
+	clk = newFakeClock()
+	if err := HealthGate(ctx, unlessStopped, settling, clk); err != nil || clk.sleeps != 3 {
+		t.Errorf("settling service: err %v, sleeps %d", err, clk.sleeps)
+	}
+	// A state source without StartedAt (a remote host) still gets two polls.
+	clk = newFakeClock()
+	if err := HealthGate(ctx, unlessStopped, fixed(ContainerState{Name: "w", State: "running"}), clk); err != nil || clk.sleeps != 1 {
+		t.Errorf("no StartedAt: err %v, sleeps %d", err, clk.sleeps)
+	}
+
+	// No restart line plus exit 0 is a finished run (Docker's default policy): done.
+	clk = newFakeClock()
+	if err := HealthGate(ctx, noLine, fixed(ContainerState{Name: "w", State: "exited"}), clk); err != nil || clk.sleeps != 0 {
+		t.Errorf("no restart line, exit 0: err %v, sleeps %d, want done at once", err, clk.sleeps)
+	}
+	// With a restart policy, exit 0 means it is about to come back: not done.
+	clk = newFakeClock()
+	err = HealthGate(ctx, unlessStopped, fixed(ContainerState{Name: "w", State: "exited"}), clk)
+	if !errors.Is(err, ErrGateTimeout) {
+		t.Errorf("unless-stopped, exit 0: %v", err)
+	}
+	// A stale exit (not restarted since the baseline) is not a finished run.
+	clk = newFakeClock()
+	err = HealthGate(ctx, noLine, fixed(ContainerState{Name: "w", State: StateNotRestarted}), clk)
+	if !errors.Is(err, ErrGateTimeout) {
+		t.Errorf("stale exit: %v", err)
+	}
+}
+
+// TestHealthGateInterrupt: a cancelled context comes back as the context's own
+// error, also when the cancellation killed the state read.
+func TestHealthGateInterrupt(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	src := func(c context.Context) ([]ContainerState, error) {
+		cancel() // ctrl-c lands while docker is being asked
+		return nil, errors.New("signal: killed")
+	}
+	err := HealthGate(ctx, ServiceSpec{Name: "web"}, src, newFakeClock())
+	if !errors.Is(err, context.Canceled) || errors.Is(err, ErrStateRead) {
+		t.Errorf("interrupted read must be context.Canceled, not a state-read failure: %v", err)
 	}
 }
 
@@ -298,7 +399,7 @@ func TestFreshStates(t *testing.T) {
 		t.Fatalf("marks = %v, err = %v (only exited containers are marked)", marks, err)
 	}
 	cs, err := c.FreshStates(ctx, dir, "init", marks)
-	if err != nil || cs[0].State != StateNotRestarted || cs[1].State != "running" {
+	if err != nil || cs[0].State != StateNotRestarted || cs[1].State != "running" || cs[1].StartedAt != "t0" {
 		t.Fatalf("same StartedAt: states %+v, err %v", cs, err)
 	}
 	setStarted("t1")
