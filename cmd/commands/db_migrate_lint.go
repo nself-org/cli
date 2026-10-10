@@ -34,7 +34,7 @@ With no arguments, lints every migration in the auto-detected (or
 specific files instead.
 
 Exits non-zero (refuses) if any file trips the lint.`,
-	RunE: runDBMigrateLint,
+	RunE: dataEnv(runDBMigrateLint),
 }
 
 func init() {
@@ -70,6 +70,7 @@ func runDBMigrateLint(cmd *cobra.Command, args []string) error {
 		fmt.Printf("FAIL  %s: %s\n", f, finding.Message)
 	}
 
+	setData(cmd, dbMigrateLintData{Files: append([]string{}, files...)})
 	if failed > 0 {
 		return fmt.Errorf("db migrate lint: refused %d migration file(s) — see messages above", failed)
 	}

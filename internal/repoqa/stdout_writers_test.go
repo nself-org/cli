@@ -14,7 +14,7 @@ import (
 
 // stdoutBasisTotal pins the tight allowlist total. The list and this constant
 // only lower as domain writers move behind the output seam.
-const stdoutBasisTotal = 77
+const stdoutBasisTotal = 76
 
 // countStdoutWriters counts direct os.Stdout references and fmt.Print* calls.
 func countStdoutWriters(rel string, src []byte) (int, error) {

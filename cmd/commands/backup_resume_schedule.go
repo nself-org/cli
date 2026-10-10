@@ -23,7 +23,7 @@ Since rclone rcat uploads are not resumable at the protocol level, resume
 re-streams the full backup from pg_dump and overwrites the partial remote
 object. Resume state is stored in ~/.nself/backup-state/.`,
 	Args: cobra.ExactArgs(1),
-	RunE: runBackupResume,
+	RunE: dataEnv(runBackupResume),
 }
 
 func runBackupResume(cmd *cobra.Command, args []string) error {
@@ -61,7 +61,7 @@ Examples:
 Run it from the project directory. The unit's WorkingDirectory is that
 directory and its ExecStart is the absolute path of the nself binary that is
 running now. There is no EnvironmentFile line unless --env-file is given.`,
-	RunE: runBackupSchedule,
+	RunE: dataEnv(runBackupSchedule),
 }
 
 func init() {

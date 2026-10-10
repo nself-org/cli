@@ -21,36 +21,36 @@ Subcommands:
   run      Run a specific fixture
   verify   Verify fixture checksums against a stored manifest
   manifest Show or save the fixture manifest`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 var dbSeedFixturesListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List available fixtures",
-	RunE:  runDBSeedFixturesList,
+	RunE:  dataEnv(runDBSeedFixturesList),
 }
 
 var dbSeedFixturesRunCmd = &cobra.Command{
 	Use:   "run <name>",
 	Short: "Run a specific fixture",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runDBSeedFixturesRun,
+	RunE:  dataEnv(runDBSeedFixturesRun),
 }
 
 var dbSeedFixturesVerifyCmd = &cobra.Command{
 	Use:   "verify <name>",
 	Short: "Verify fixture checksums against a stored manifest",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runDBSeedFixturesVerify,
+	RunE:  dataEnv(runDBSeedFixturesVerify),
 }
 
 var dbSeedFixturesManifestCmd = &cobra.Command{
 	Use:   "manifest <name>",
 	Short: "Show or store a fixture manifest",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runDBSeedFixturesManifest,
+	RunE:  dataEnv(runDBSeedFixturesManifest),
 }
 
 // ── db seed matrix ───────────────────────────────────────────────────
@@ -58,7 +58,7 @@ var dbSeedFixturesManifestCmd = &cobra.Command{
 var dbSeedMatrixCmd = &cobra.Command{
 	Use:   "matrix",
 	Short: "Show the seed environment/file matrix",
-	RunE:  runDBSeedMatrix,
+	RunE:  dataEnv(runDBSeedMatrix),
 }
 
 // ── init ─────────────────────────────────────────────────────────────

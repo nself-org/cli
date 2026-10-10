@@ -28,7 +28,7 @@ a targeted per-object call, sent as one atomic bulk operation.
 
 Refuses unconditionally (no bypass) if the repo declares a table that does
 not exist in Postgres, or if live tracks a table the repo does not declare.`,
-	RunE: runDBReconcile,
+	RunE: dataEnv(runDBReconcile),
 }
 
 func init() {
@@ -57,6 +57,11 @@ func runDBReconcile(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("build reconcile plan: %w", err)
 	}
 
+	rec := dbReconcileData{Changes: []dbReconcileChange{}, Applied: apply && len(plan.Changes) > 0}
+	for _, c := range plan.Changes {
+		rec.Changes = append(rec.Changes, dbReconcileChange{Table: c.Table, Description: c.Description})
+	}
+	setData(cmd, rec)
 	if len(plan.Changes) == 0 {
 		fmt.Println("Nothing to reconcile: live metadata already matches the repo.")
 		return nil
