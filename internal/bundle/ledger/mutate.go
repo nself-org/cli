@@ -90,7 +90,10 @@ func (l *Ledger) MarkExplicit(p InstalledPlugin) {
 
 // fillFacts copies the facts p carries into rec and leaves the rest alone. A
 // new record (Tier empty) defaults to free. Tier changes only to free or
-// licensed; version and checksum change only to a non-empty value.
+// licensed; version changes only to a non-empty value. A changed version
+// replaces the checksum with the incoming one, or clears it when none is given:
+// an empty checksum means "not recorded", and the old one hashed another
+// artifact. With the same or no version, a given checksum updates and none keeps.
 func fillFacts(rec *PluginRecord, p InstalledPlugin) {
 	switch p.Tier {
 	case TierFree, TierLicensed:
@@ -100,10 +103,15 @@ func fillFacts(rec *PluginRecord, p InstalledPlugin) {
 			rec.Tier = TierFree
 		}
 	}
-	if p.Version != "" {
-		rec.Version = p.Version
+	cs := strings.ToLower(strings.TrimPrefix(p.Checksum, "sha256:"))
+	if !checksumRE.MatchString(cs) {
+		cs = ""
 	}
-	if cs := strings.ToLower(strings.TrimPrefix(p.Checksum, "sha256:")); cs != "" && checksumRE.MatchString(cs) {
+	if p.Version != "" && p.Version != rec.Version {
+		// A new version is a new artifact: never keep the old artifact's checksum.
+		rec.Version = p.Version
+		rec.Checksum = cs
+	} else if cs != "" {
 		rec.Checksum = cs
 	}
 }

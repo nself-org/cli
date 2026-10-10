@@ -127,7 +127,12 @@ func TestLedgerSchema(t *testing.T) {
 		"bad-time": mutate(func(m map[string]any) {
 			m["bundles"].(map[string]any)["chat"].(map[string]any)["installed_at"] = "yesterday"
 		}),
-		"missing-explicit":    mutate(func(m map[string]any) { delete(plug(m, "bots"), "explicit") }),
+		"missing-explicit": mutate(func(m map[string]any) { delete(plug(m, "bots"), "explicit") }),
+		"case-explicit":    mutate(func(m map[string]any) { plug(m, "bots")["EXPLICIT"] = false }),
+		"case-root":        mutate(func(m map[string]any) { m["PLUGINS"] = map[string]any{} }),
+		"case-installed-at": mutate(func(m map[string]any) {
+			m["bundles"].(map[string]any)["chat"].(map[string]any)["Installed_At"] = "2026-01-01T00:00:00Z"
+		}),
 		"null-explicit":       mutate(func(m map[string]any) { plug(m, "bots")["explicit"] = nil }),
 		"null-installed-by":   mutate(func(m map[string]any) { plug(m, "bots")["installed_by"] = nil }),
 		"null-version":        mutate(func(m map[string]any) { plug(m, "bots")["version"] = nil }),

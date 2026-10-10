@@ -98,34 +98,69 @@ func checkStructure(data []byte) error {
 	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
 		return fmt.Errorf("ledger: not a JSON object")
 	}
-	if err := walkObject(dec, true); err != nil {
+	if err := walkObject(dec, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
+// Exact, case-sensitive key sets of the struct-shaped levels. encoding/json
+// matches struct fields case-insensitively, so "EXPLICIT" would silently
+// override "explicit"; the schema rejects such a key and so must Parse.
+var (
+	rootKeys   = keySet("_generated", "schema_version", "bundles", "plugins")
+	bundleKeys = keySet("installed_at")
+	pluginKeys = keySet("installed_by", "explicit", "tier", "version", "checksum")
+)
+
+func keySet(keys ...string) map[string]bool {
+	m := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		m[k] = true
+	}
+	return m
+}
+
+// allowedKeys returns the permitted keys of the object at path, or nil when the
+// level is a free-form map (bundle and plugin slugs) or not part of the schema.
+func allowedKeys(path []string) map[string]bool {
+	switch {
+	case len(path) == 0:
+		return rootKeys
+	case len(path) == 2 && path[0] == "bundles":
+		return bundleKeys
+	case len(path) == 2 && path[0] == "plugins":
+		return pluginKeys
+	}
+	return nil
+}
+
 // walkObject reads object members up to and including the closing brace. The
-// opening brace is already consumed.
-func walkObject(dec *json.Decoder, root bool) error {
+// opening brace is already consumed. path holds the keys leading here.
+func walkObject(dec *json.Decoder, path []string) error {
 	seen := map[string]bool{}
+	allowed := allowedKeys(path)
 	for first := true; dec.More(); first = false {
 		kt, err := dec.Token()
 		if err != nil {
 			return fmt.Errorf("ledger: decode: %w", err)
 		}
 		key, _ := kt.(string)
-		if root && first && key != "_generated" {
+		if len(path) == 0 && first && key != "_generated" {
 			return fmt.Errorf("ledger: first key must be _generated")
+		}
+		if allowed != nil && !allowed[key] {
+			return fmt.Errorf("ledger: unknown key %q (keys are exact and case-sensitive)", key)
 		}
 		if seen[key] {
 			return fmt.Errorf("ledger: duplicate key %q", key)
 		}
 		seen[key] = true
-		if err := walkValue(dec); err != nil {
+		if err := walkValue(dec, append(append([]string(nil), path...), key)); err != nil {
 			return err
 		}
 	}
-	if root && len(seen) == 0 {
+	if len(path) == 0 && len(seen) == 0 {
 		return fmt.Errorf("ledger: first key must be _generated")
 	}
 	_, err := dec.Token() // closing brace
@@ -133,17 +168,17 @@ func walkObject(dec *json.Decoder, root bool) error {
 }
 
 // walkValue reads one value, recursing into objects and arrays.
-func walkValue(dec *json.Decoder) error {
+func walkValue(dec *json.Decoder, path []string) error {
 	t, err := dec.Token()
 	if err != nil {
 		return fmt.Errorf("ledger: decode: %w", err)
 	}
 	switch t {
 	case json.Delim('{'):
-		return walkObject(dec, false)
+		return walkObject(dec, path)
 	case json.Delim('['):
 		for dec.More() {
-			if err := walkValue(dec); err != nil {
+			if err := walkValue(dec, append(append([]string(nil), path...), "[]")); err != nil {
 				return err
 			}
 		}
