@@ -1,0 +1,39 @@
+[
+  {
+    "name": "plain read",
+    "path": "nself config get",
+    "secret_args": [],
+    "secret_flags": [],
+    "request": {
+      "args": [
+        "BASE_DOMAIN"
+      ]
+    },
+    "canonical": "{\"args\":[\"BASE_DOMAIN\"],\"argv\":[],\"command\":\"config get\",\"flags\":{}}",
+    "want": "234656f0228d2389ca2070e9c7844189aa22244592afdeb50e27ee475ad3e1d5"
+  },
+  {
+    "name": "secret arg and flag are redacted, confirm excluded",
+    "path": "config set",
+    "secret_args": [
+      "value"
+    ],
+    "secret_flags": [
+      "tok"
+    ],
+    "request": {
+      "args": [
+        "KEY",
+        "hunter2"
+      ],
+      "flags": {
+        "tok": "s3cr3t",
+        "name": "a<b>&c",
+        "count": 3.0
+      },
+      "confirm": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "canonical": "{\"args\":[\"KEY\",\"[REDACTED]\"],\"argv\":[],\"command\":\"config set\",\"flags\":{\"count\":3,\"name\":\"a<b>&c\",\"tok\":\"[REDACTED]\"}}",
+    "want": "b3c107982bbe7f913cbd6285b7776a6715ad4d1cb3052a3e5be128c3fc3a55bb"
+  }
+]

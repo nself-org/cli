@@ -65,6 +65,7 @@ internal/health 26  # measured 28.1 2026-10-05
 internal/httptimeout 98  # measured 100.0 2026-10-05
 internal/installer 11  # measured 13.2 2026-10-05
 internal/installmeta 75  # measured 77.8 2026-10-05
+internal/invoke 89  # measured 91.2 2026-10-10 (P7-SURF-24)
 internal/license 60
 internal/lifecycle 14  # measured 16.7 2026-10-05
 internal/maintenance 35  # measured 37.8 2026-10-05
