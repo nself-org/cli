@@ -38,13 +38,13 @@ Flags that are never exposed: `--json`, `--help`, the root switches, hidden, dep
 
 ## The machine request
 
-A request is a JSON object. Every member is optional and an unknown member is `E420`.
+A request is a JSON object. Every member is optional. Member names are matched exactly (`args`, not `ARGS`), a repeated member name (at the top level or inside `flags`) is `E420`, and so is an unknown member.
 
 | Member | Type | Meaning |
 |---|---|---|
 | `args` | array of strings | positional values, in declaration order |
 | `flags` | object | flag name to boolean, integer, number, string or array of strings |
-| `argv` | array of strings | verbatim arguments; only for a plugin command that declares no args and no flags |
+| `argv` | array of strings | arguments for a plugin command that declares no args and no flags and has no subcommands (a leaf); items naming a root flag such as `--no-monorepo` are `E420` because the plugin proxy would drop them |
 | `confirm` | string, 64 hex characters | a plan id or a server-issued nonce (commands with a `confirm` block only) |
 
 The params schema of each command (JSON Schema 2020-12, `additionalProperties: false`) is derived from the registry: `prefixItems` per declared argument, one typed property per exposed flag, defaults from the registry.
@@ -65,11 +65,13 @@ Example, flags and a value that looks like a flag:
 
 becomes `<path> --json --quiet --tags=a --tags=b -- -x`. Flags are sorted by name, a boolean `true` is `--name`, `false` is `--name=false`, and a list is one `--name=value` per item. Positional values always come after `--`, so none of them can be read as a flag. A `stringSlice` flag is split on commas by the child, so an item that holds a comma, a quote or a newline is refused instead of being silently changed.
 
+`argv` on a plugin command that has subcommands is `E421`: a mounted plugin node parses no flags, so the child would read the first word as a subcommand and run a node the exposure rules never checked. Its params schema does not offer `argv`. For a leaf, `argv` is the plugin's own input: the exposure decision covers the command at the requested path, not what the plugin binary does with its words.
+
 Refused with `E420`, naming the flag but never echoing its value: an unknown or unexposed flag, a value of the wrong type (`1.5` for an integer), too few or too many args, a NUL byte anywhere, an element over 32 KiB or an argv over 128 KiB.
 
 ## Request id
 
-The request id names a request in logs. It is the lowercase hex SHA-256 of the canonical JSON `{"args":[...],"argv":[...],"command":"<path>","flags":{...}}`: keys sorted, no whitespace, `confirm` left out, missing members empty, and every secret argument and flag value replaced by `"[REDACTED]"` first. Two requests that differ only in a secret value share an id, and no id is derived from a secret. The id is not a confirmation: anyone can compute it.
+The request id names a request in logs. It is the lowercase hex SHA-256 of the canonical JSON `{"args":[...],"argv":[...],"command":"<path>","flags":{...}}`: keys sorted, no whitespace, `confirm` left out, missing members empty, and every secret argument and flag value replaced by `"[REDACTED]"` first. Redaction fails closed: a positional past the declared args and a flag the command does not declare are replaced too. Free-form plugin `argv` items cannot be marked secret and are hashed as sent. Two requests that differ only in a secret value share an id, and no id is derived from a secret. The id is not a confirmation: anyone can compute it.
 
 ## Child environment
 
@@ -89,6 +91,6 @@ Any inherited value of these names is dropped first. The working directory is th
 
 ## Timeout and output limits
 
-A document request times out after 300 seconds by default (the invoker takes the timeout as an option; the servers expose it as `--timeout`). The child gets SIGTERM, and SIGKILL five seconds later; the result is `E423`. An NDJSON request has no timeout and ends when the client disconnects. A long-polling command such as `nself ci runs wait` reads `NSELF_INVOKE_DEADLINE_MS` and returns before the kill.
+A document request times out after 300 seconds by default (the invoker takes the timeout as an option; the servers expose it as `--timeout`). The child leads its own process group. The group gets SIGTERM, and SIGKILL five seconds later or as soon as the child is gone, so grandchildren (docker compose, ssh, helpers) do not outlive a timed-out or cancelled request; the result is `E423`. An NDJSON request has no timeout and ends when the client disconnects. A long-polling command such as `nself ci runs wait` reads `NSELF_INVOKE_DEADLINE_MS` and returns before the kill.
 
 The child's standard output is capped at 32 MiB and must be exactly one JSON object. Anything else is `E422` (exit class infra); its `cause` is the last 2 KiB of the child's standard error, with the request's secret values replaced and the usual redaction applied. A child envelope that carries `meta.deprecations` or `meta.warnings` passes through byte for byte.

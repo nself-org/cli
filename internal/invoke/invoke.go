@@ -49,6 +49,9 @@ func Invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Req
 	if ok, reason := Exposure(cmd, transport, SetFlags(req)); !ok {
 		return refuse(res, command, errs.New("E421", "command "+quoteName(command)+" is not exposed").WithWhy(reason)), nil
 	}
+	if err := CheckFreeForm(reg, cmd, req); err != nil {
+		return refuse(res, command, err), nil
+	}
 	argv, err := BuildArgvFor(cmd, req, transport)
 	if err != nil {
 		return refuse(res, command, err), nil

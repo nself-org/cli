@@ -162,12 +162,17 @@ func argsSchema(cmd *cmdregistry.Command) map[string]any {
 // mode (MCP tool input, HTTP body). A command with a confirm block also
 // accepts the confirm member; a free-form plugin command takes argv instead of
 // args and flags.
-func ParamsSchema(cmd *cmdregistry.Command) map[string]any {
+func ParamsSchema(cmd *cmdregistry.Command) map[string]any { return ParamsSchemaIn(nil, cmd) }
+
+// ParamsSchemaIn is ParamsSchema for a command of reg: the free-form argv
+// member is offered only on a leaf command (FreeFormArgv). A nil reg takes
+// the command as a leaf.
+func ParamsSchemaIn(reg *cmdregistry.Registry, cmd *cmdregistry.Command) map[string]any {
 	props := map[string]any{}
-	if cmd != nil && freeFormArgv(cmd) {
+	if cmd != nil && FreeFormArgv(reg, cmd) {
 		props["argv"] = map[string]any{"type": "array", "items": map[string]any{"type": "string"},
-			"description": "verbatim arguments for " + strings.TrimPrefix(cmd.Path, "nself ")}
-	} else if cmd != nil {
+			"description": "arguments passed to the plugin for " + strings.TrimPrefix(cmd.Path, "nself ") + " (root flags are refused)"}
+	} else if cmd != nil && !freeFormArgv(cmd) {
 		flags := map[string]any{}
 		for _, f := range ExposedFlags(cmd, TransportMCP) {
 			flags[f.Name] = flagSchema(f)

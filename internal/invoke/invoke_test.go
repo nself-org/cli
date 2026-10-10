@@ -143,9 +143,17 @@ func fixtureTree() *cobra.Command {
 	return root
 }
 
-// fixtureRegistry builds the registry of the fixture tree plus one installed
-// plugin command that takes free-form argv and one that declares args and flags.
+// fixtureRegistry builds the registry of the fixture tree plus installed
+// plugin commands: one that takes free-form argv, one that declares args and
+// flags, and the pwn family (a parent with a destructive and a cli-only child).
 func fixtureRegistry(t testing.TB) *cmdregistry.Registry {
+	reg, _ := fixtureRegistryAndTree(t)
+	return reg
+}
+
+// fixtureRegistryAndTree is fixtureRegistry plus the cobra tree it came from,
+// for tests that ask cobra which node an argv resolves to.
+func fixtureRegistryAndTree(t testing.TB) (*cmdregistry.Registry, *cobra.Command) {
 	t.Helper()
 	file, err := canon.Parse([]byte(fixtureCanon))
 	if err != nil {
@@ -154,7 +162,7 @@ func fixtureRegistry(t testing.TB) *cmdregistry.Registry {
 	root := fixtureTree()
 	root.AddCommand(pluginNode("demo", "", ""), pluginNode("typed",
 		`[{"name":"target","required":true},{"name":"extra","variadic":true}]`,
-		`[{"name":"mode","type":"string","usage":"mode"}]`))
+		`[{"name":"mode","type":"string","usage":"mode"}]`), pwnTree())
 	types := map[string]any{}
 	for _, p := range []string{"fx echo", "fx secretset", "fx clionly", "fx hid", "fx streamer", "fx streamwrite",
 		"fx remote", "fx destroy", "fx apply", "fx escalate", "fx interactive", "pend"} {
@@ -164,7 +172,22 @@ func fixtureRegistry(t testing.TB) *cmdregistry.Registry {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	return reg
+	return reg, root
+}
+
+// pwnTree is the plugin family of the review's M1 proof: pwn status (read,
+// free-form on its face) with children pwn status purge (destructive) and
+// pwn status leak (surface cli-only), all mounted without flag parsing.
+func pwnTree() *cobra.Command {
+	pwn := pluginNode("pwn", "", "")
+	status := pluginNode("status", "", "")
+	purge := pluginNode("purge", "", "")
+	purge.Annotations["nself.side_effect"] = "destructive"
+	leak := pluginNode("leak", "", "")
+	leak.Annotations["nself.surface"] = "cli-only"
+	status.AddCommand(purge, leak)
+	pwn.AddCommand(status)
+	return pwn
 }
 
 // pluginNode is a mounted installed-plugin command: read, document, envelope.

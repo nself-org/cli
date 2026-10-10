@@ -17,7 +17,6 @@ import (
 	"io"
 	"math"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -63,6 +62,9 @@ func DecodeRequest(data []byte) (Request, error) {
 	if trimmed[0] != '{' {
 		return r, badRequest("request must be a JSON object")
 	}
+	if err := checkMembers(trimmed); err != nil {
+		return Request{}, err
+	}
 	dec := json.NewDecoder(bytes.NewReader(trimmed))
 	dec.DisallowUnknownFields()
 	dec.UseNumber()
@@ -78,6 +80,74 @@ func DecodeRequest(data []byte) (Request, error) {
 	return r, nil
 }
 
+// requestMembers are the only top-level members of a request.
+var requestMembers = map[string]bool{"args": true, "flags": true, "argv": true, "confirm": true}
+
+// checkMembers walks the request object before it is decoded. encoding/json
+// matches member names case-insensitively (with Unicode folding) and keeps the
+// last of a duplicate, so DisallowUnknownFields alone would let {"ARGS":..} or
+// a repeated member through, and a gateway or schema validator that reads the
+// same bytes exactly would see a different request. Every member name must be
+// exact and appear once, at the top level and inside flags.
+func checkMembers(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if _, err := dec.Token(); err != nil { // the opening brace
+		return badRequest("request is not valid: %v", err)
+	}
+	seen := map[string]bool{}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return badRequest("request is not valid: %v", err)
+		}
+		name, _ := tok.(string)
+		if !requestMembers[name] {
+			return badRequest("request has an unknown member %s", quoteName(name))
+		}
+		if seen[name] {
+			return badRequest("request repeats the member %s", quoteName(name))
+		}
+		seen[name] = true
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			return badRequest("request is not valid: %v", err)
+		}
+		if name == "flags" {
+			if err := checkFlagNames(raw); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// checkFlagNames refuses a repeated flag name in the flags object. A value
+// that is not an object is left to the typed decode to refuse.
+func checkFlagNames(raw []byte) error {
+	if len(raw) == 0 || raw[0] != '{' {
+		return nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	_, _ = dec.Token() // the opening brace
+	names := map[string]bool{}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return badRequest("request is not valid: %v", err)
+		}
+		name, _ := tok.(string)
+		if names[name] {
+			return badRequest("flags repeats the flag %s", quoteName(name))
+		}
+		names[name] = true
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return badRequest("request is not valid: %v", err)
+		}
+	}
+	return nil
+}
+
 // SetFlags returns the names of the flags the request names.
 func SetFlags(r Request) map[string]bool {
 	set := make(map[string]bool, len(r.Flags))
@@ -90,88 +160,6 @@ func SetFlags(r Request) map[string]bool {
 // barePath strips the root name: "nself config get" -> "config get".
 func barePath(path string) string {
 	return strings.Join(strings.Fields(strings.TrimPrefix(strings.TrimSpace(path), "nself ")), " ")
-}
-
-// secretArg reports whether positional i is secret (a variadic secret covers the rest).
-func secretArg(cmd *cmdregistry.Command, i int) bool {
-	if cmd == nil {
-		return true
-	}
-	for j, a := range cmd.Args {
-		if j == i || (a.Variadic && i >= j) {
-			return a.Secret
-		}
-	}
-	return false
-}
-
-func secretFlag(cmd *cmdregistry.Command, name string) bool {
-	if cmd == nil {
-		return true
-	}
-	for _, f := range cmd.Flags {
-		if f.Name == name {
-			return f.Secret
-		}
-	}
-	return false
-}
-
-// RedactRequest returns a copy of r with every registry-secret arg and flag
-// value replaced by Redacted. A nil cmd (unknown path) redacts all of them.
-func RedactRequest(cmd *cmdregistry.Command, r Request) Request {
-	out := Request{Confirm: r.Confirm, Argv: append([]string(nil), r.Argv...)}
-	for i, a := range r.Args {
-		if secretArg(cmd, i) {
-			a = Redacted
-		}
-		out.Args = append(out.Args, a)
-	}
-	if r.Flags != nil {
-		out.Flags = make(map[string]any, len(r.Flags))
-		for name, v := range r.Flags {
-			if secretFlag(cmd, name) {
-				v = Redacted
-			}
-			out.Flags[name] = v
-		}
-	}
-	return out
-}
-
-// SecretValues lists every secret value the request carries, as the strings a
-// child could echo (longest first), for scrubbing stderr tails.
-func SecretValues(cmd *cmdregistry.Command, r Request) []string {
-	var vals []string
-	add := func(s string) {
-		if s != "" && s != Redacted {
-			vals = append(vals, s)
-		}
-	}
-	for i, a := range r.Args {
-		if secretArg(cmd, i) {
-			add(a)
-		}
-	}
-	for name, v := range r.Flags {
-		if !secretFlag(cmd, name) {
-			continue
-		}
-		switch x := v.(type) {
-		case []string:
-			for _, s := range x {
-				add(s)
-			}
-		case []any:
-			for _, e := range x {
-				add(fmt.Sprint(e))
-			}
-		default:
-			add(fmt.Sprint(x))
-		}
-	}
-	sort.SliceStable(vals, func(i, j int) bool { return len(vals[i]) > len(vals[j]) })
-	return vals
 }
 
 // canonNumber renders a numeric value in one form whatever its Go type.

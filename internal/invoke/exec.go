@@ -4,8 +4,9 @@ package invoke
 // Inputs: a Spec. Outputs: a Result (stdout, stderr tail, exit status).
 // Constraints: exec.CommandContext with an argv slice, never a shell; no stdin;
 // stdout capped at MaxStdoutBytes (the rest is drained so the child never
-// blocks), stderr kept as a ring of StderrRingBytes; SIGTERM on cancel, then
-// SIGKILL after killDelay. The child env is the parent env minus the machine
+// blocks), stderr kept as a ring of StderrRingBytes; SIGTERM to the child's
+// process group on cancel, then SIGKILL to the group once the child is gone
+// or killDelay has passed. The child env is the parent env minus the machine
 // token plus the v1.5 switches (EPIC D2) and, for a timed request, the
 // remaining deadline (D16).
 
@@ -18,6 +19,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -110,9 +112,10 @@ func (r *ringBuffer) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// terminate asks the child to stop; where signals are unsupported it kills.
+// terminate asks the child's process group to stop; where signals are
+// unsupported it kills.
 func terminate(p *os.Process) error {
-	if err := p.Signal(syscall.SIGTERM); err != nil {
+	if err := signalGroup(p, syscall.SIGTERM); err != nil {
 		return p.Kill()
 	}
 	return nil
@@ -147,7 +150,9 @@ func Exec(ctx context.Context, s Spec) (Result, error) {
 	cmd := exec.CommandContext(runCtx, bin, s.Argv...)
 	cmd.Dir = s.Dir
 	cmd.Env = env
-	cmd.Cancel = func() error { return terminate(cmd.Process) }
+	ownGroup(cmd)
+	var cancelled atomic.Bool
+	cmd.Cancel = func() error { cancelled.Store(true); return terminate(cmd.Process) }
 	cmd.WaitDelay = killDelay
 	out := &capBuffer{max: MaxStdoutBytes}
 	errTail := &ringBuffer{max: StderrRingBytes}
@@ -159,6 +164,9 @@ func Exec(ctx context.Context, s Spec) (Result, error) {
 	cmd.Stderr = errTail
 
 	waitErr := cmd.Run()
+	if cancelled.Load() && cmd.Process != nil {
+		killGroup(cmd.Process) // grandchildren that ignored SIGTERM or outlived the child
+	}
 	res.Stderr = errTail.buf
 	if s.Stdout == nil {
 		res.Stdout = out.buf.Bytes()

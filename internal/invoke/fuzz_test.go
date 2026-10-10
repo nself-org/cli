@@ -8,6 +8,8 @@ package invoke
 // Constraints: seeds also live in testdata/fuzz/FuzzBuildArgv.
 
 import (
+	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -104,4 +106,116 @@ func FuzzBuildArgv(f *testing.F) {
 			t.Fatalf("after -- got %q, want exactly the request args %q", after, r.Args)
 		}
 	})
+}
+
+// FuzzInvokeRequest drives raw request bytes through DecodeRequest, Exposure,
+// CheckFreeForm and BuildArgvFor over the fixture registry, which includes
+// plugin parents with destructive and cli-only children (review finding S3).
+// Properties of an accepted request:
+//  1. what the typed decode holds is what an exact reading of the bytes holds
+//     (no folded or repeated member);
+//  2. the node cobra resolves for the built argv is the requested command, and
+//     that command passes Exposure on the same transport;
+//  3. a refusal is E420.
+func FuzzInvokeRequest(f *testing.F) {
+	reg, tree := fixtureRegistryAndTree(f)
+	var paths []string
+	for _, c := range reg.Commands {
+		paths = append(paths, barePath(c.Path))
+	}
+	paths = append(paths, "no such command", "")
+	transports := []string{TransportMCP, TransportHTTP, TransportHTTPStream}
+	for _, doc := range []string{
+		`{}`, `{"args":["w"]}`, `{"args":["w"],"flags":{"name":"v","on":true,"tags":["a","b"]}}`,
+		`{"argv":["purge","--all"]}`, `{"argv":["leak"]}`, `{"argv":["status","purge"]}`, `{"argv":["--no-monorepo","x"]}`,
+		`{"ARGS":["a"]}`, `{"args":["safe"],"ARGS":["evil"]}`, `{"flags":{"x":1,"x":2}}`,
+		`{"args":["w"],"flags":{"follow":true}}`, `{"confirm":"` + strings.Repeat("a", 64) + `"}`,
+	} {
+		for sel := range paths {
+			f.Add([]byte(doc), uint8(sel), uint8(sel))
+		}
+	}
+	f.Fuzz(func(t *testing.T, raw []byte, sel, tsel uint8) {
+		path := paths[int(sel)%len(paths)]
+		transport := transports[int(tsel)%len(transports)]
+		r, err := DecodeRequest(raw)
+		if err != nil {
+			var ce *errs.CLIError
+			if !errorsAs(err, &ce) || ce.Code != "E420" {
+				t.Fatalf("a decode refusal must be E420, got %T %v", err, err)
+			}
+			return
+		}
+		exactMembers(t, raw, r)
+		cmd, ok := reg.Lookup(path)
+		if !ok {
+			return
+		}
+		if ok, _ := Exposure(cmd, transport, SetFlags(r)); !ok {
+			return
+		}
+		if err := CheckFreeForm(reg, cmd, r); err != nil {
+			return
+		}
+		argv, err := BuildArgvFor(cmd, r, transport)
+		if err != nil {
+			var ce *errs.CLIError
+			if !errorsAs(err, &ce) || ce.Code != "E420" {
+				t.Fatalf("an argv refusal must be E420, got %T %v", err, err)
+			}
+			return
+		}
+		found, _, ferr := tree.Find(argv)
+		if ferr != nil {
+			t.Fatalf("an accepted request does not resolve: %v (%q)", ferr, argv)
+		}
+		got := barePath(found.CommandPath())
+		if got != barePath(cmd.Path) {
+			t.Fatalf("request for %q resolves to %q in the child: argv %q", cmd.Path, got, argv)
+		}
+		resolved, ok := reg.Lookup(got)
+		if !ok {
+			t.Fatalf("resolved %q is not in the registry", got)
+		}
+		if ok, why := Exposure(resolved, transport, SetFlags(r)); !ok {
+			t.Fatalf("resolved %q is not exposed: %s (argv %q)", got, why, argv)
+		}
+	})
+}
+
+// exactMembers asserts the typed decode r equals an exact-name reading of raw.
+func exactMembers(t *testing.T, raw []byte, r Request) {
+	t.Helper()
+	m := map[string]json.RawMessage{}
+	if len(strings.TrimSpace(string(raw))) == 0 {
+		return
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("accepted bytes are not an object: %v", err)
+	}
+	var exact Request
+	for name, v := range m {
+		var err error
+		switch name {
+		case "args":
+			err = json.Unmarshal(v, &exact.Args)
+		case "argv":
+			err = json.Unmarshal(v, &exact.Argv)
+		case "confirm":
+			err = json.Unmarshal(v, &exact.Confirm)
+		case "flags":
+			dec := json.NewDecoder(strings.NewReader(string(v)))
+			dec.UseNumber()
+			err = dec.Decode(&exact.Flags)
+		default:
+			t.Fatalf("accepted a member named %q", name)
+		}
+		if err != nil {
+			t.Fatalf("member %q: %v", name, err)
+		}
+	}
+	if !reflect.DeepEqual(exact, r) && !(len(exact.Args) == 0 && len(r.Args) == 0 && len(exact.Argv) == 0 && len(r.Argv) == 0 &&
+		len(exact.Flags) == 0 && len(r.Flags) == 0 && exact.Confirm == r.Confirm) {
+		t.Fatalf("typed decode %+v differs from the exact reading %+v of %q", r, exact, raw)
+	}
 }

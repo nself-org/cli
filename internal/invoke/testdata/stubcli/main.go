@@ -13,12 +13,16 @@
 //	raw             print STUBCLI_STDOUT verbatim
 //	big             print about 34 MiB on stdout
 //	stream          print three NDJSON lines
+//	grandchild      start a detached copy of this stub (mode STUBCLI_GC_MODE,
+//	                default sleep-ignore), write its pid to STUBCLI_PIDFILE,
+//	                then sleep 30 s
 package main
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strconv"
 	"strings"
@@ -54,6 +58,17 @@ func main() {
 		for i := 0; i < 34; i++ {
 			fmt.Print(chunk)
 		}
+	case "grandchild":
+		gc := exec.Command(os.Args[0])
+		mode := os.Getenv("STUBCLI_GC_MODE")
+		if mode == "" {
+			mode = "sleep-ignore"
+		}
+		gc.Env = append(os.Environ(), "STUBCLI_MODE="+mode, "STUBCLI_STDERR=")
+		if err := gc.Start(); err == nil {
+			_ = os.WriteFile(os.Getenv("STUBCLI_PIDFILE"), []byte(strconv.Itoa(gc.Process.Pid)), 0o600)
+		}
+		time.Sleep(30 * time.Second)
 	case "stream":
 		for i := 1; i <= 3; i++ {
 			fmt.Printf("{\"n\":%d}\n", i)
