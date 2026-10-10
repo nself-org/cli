@@ -121,6 +121,8 @@ func TestDecodeRequestExactMembers(t *testing.T) {
 		"duplicate flag name":    `{"flags":{"name":"a","name":"b"}}`,
 		"duplicate in flags":     `{"args":["w"],"flags":{"on":true,"tags":["a"],"on":false}}`,
 		"duplicate argv":         `{"argv":["a"],"argv":["b"]}`,
+		"vertical tab lead":      "\v{}",
+		"form feed trail":        "{}\f",
 		"duplicate confirm":      `{"confirm":"","confirm":""}`,
 	}
 	for name, doc := range bad {

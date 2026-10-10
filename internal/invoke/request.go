@@ -55,7 +55,7 @@ func DecodeRequest(data []byte) (Request, error) {
 	if len(data) > MaxRequestBytes {
 		return r, badRequest("request is larger than %d bytes", MaxRequestBytes)
 	}
-	trimmed := bytes.TrimSpace(data)
+	trimmed := bytes.Trim(data, " \t\r\n") // JSON whitespace only (RFC 8259); TrimSpace also strips \v and \f
 	if len(trimmed) == 0 {
 		return r, nil
 	}
