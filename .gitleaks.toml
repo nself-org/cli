@@ -67,12 +67,38 @@ paths = [
   '''testdata/.*''',
   '''test/.*fixtures.*''',
   '''\.github/workflows/gitleaks\.yml''',
+  # Mirror of the .github/gitleaks.toml allowlist, so a bare `gitleaks detect`
+  # (cam ci's secret scan passes no --config and loads this file) agrees with
+  # security-scan and nself ci, which load .github/gitleaks.toml. Keep both in
+  # sync. ([extend] path would resolve against the caller's cwd.) (D-0286)
+  '''.*_test\.go''',
+  '''test/''',
+  '''src/tests/''',
+  '''\.bats$''',
+  '''\.env\.example$''',
+  '''\.example\.env$''',
+  '''\.env\.template$''',
+  '''internal/doctor/redact_audit\.go''',
+  '''docs/''',
+  '''\.wiki/''',
+  '''\.github/wiki/''',
+  '''\.github/docs/''',
+  '''\.github/workflows/''',
+  '''\.claude/''',
+  '''bin/certs/''',
+  '''src/templates/certs/''',
+  '''src/lib/''',
+  '''src/cli/security_audit\.sh$''',
   # Vendored third-party modules (go mod vendor output): not our code (D-0286)
   '''(^|/)vendor/''',
+  # Removed bash-era hook template that greps for key headers (history only)
+  '''^src/templates/git/pre-commit$''',
 ]
 regexes = [
   '''sk_live_FAKE_TEST_FOR_CI_GATE''',
   '''AKIA_FAKE_TEST_KEY_DO_NOT_USE''',
   '''AIza_FAKE_GOOGLE_KEY_DO_NOT_USE''',
   '''nself_pro_FAKE_TEST_KEY_DO_NOT_USE''',
+  # Documentation placeholder: nself_pro_ followed only by x (D-0286)
+  '''nself_pro_x{32,}\b''',
 ]

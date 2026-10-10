@@ -6,7 +6,9 @@
 097cbf5671bd63083763e8315b5a0443b2f066aa:internal/doctor/hardening_check_nginx_zones.go:generic-api-key:64
 # Reviewed 2026-10-10 by crunch D-0286: constant openAPIFinding: prose naming internal/apidocs, matched as generic-api-key; no secret (D-0286); public value: plain English sentence in a public Go source constant, no credential at all
 cff23f6b60bf2220bb1411be91f8a2be8580efdf:tools/parity/openapi.go:generic-api-key:43
-# Reviewed 2026-10-10 by crunch D-0286: filesystem-mode (--no-git) twins of the three findings above, for `cam ci offload` trees sent without .git; line-number based, so re-review if these lines move (D-0286)
+# Reviewed 2026-10-10 by crunch D-0286: filesystem-mode (--no-git) twin of the live-safety-fixture.sh finding above, for offload trees sent without .git; line-based, re-review if the line moves
 scripts/ci/live-safety-fixture.sh:generic-api-key:259
+# Reviewed 2026-10-10 by crunch D-0286: filesystem-mode (--no-git) twin of the hardening_check_nginx_zones.go finding above; line-based, re-review if the line moves
 internal/doctor/hardening_check_nginx_zones.go:generic-api-key:65
+# Reviewed 2026-10-10 by crunch D-0286: filesystem-mode (--no-git) twin of the tools/parity/openapi.go finding above; line-based, re-review if the line moves
 tools/parity/openapi.go:generic-api-key:43
