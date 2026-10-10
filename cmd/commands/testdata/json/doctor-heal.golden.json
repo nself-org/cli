@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "command": "doctor heal",
+  "data": {
+    "actions": [
+      {
+        "name": "jwt",
+        "status": "rotated",
+        "detail": "new key written to --to-file"
+      }
+    ],
+    "rotated": true,
+    "dry_run": false,
+    "key_file": "/tmp/jwt.key",
+    "log_path": "/home/user/.nself/jwt-rotation.log",
+    "grace_until": "2026-10-06T12:00:00Z"
+  }
+}

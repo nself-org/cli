@@ -162,6 +162,11 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 				case "clean":
 					got.Confirm, got.Flags = nil, nil
 					want.SideEffect = SideEffectWrite
+				case "self-heal":
+					// P7-SURF-11: `doctor heal` declares confirm {flags: []} (the
+					// request nonce is its whole confirmation); the v1.4 view of
+					// the moved row carries it.
+					want.Confirm = &Confirm{Flags: []string{}}
 				}
 				if !ok || !reflect.DeepEqual(got, want) {
 					t.Errorf("v15=%v: %q = %+v (present %v), want %+v", v15, k, got, ok, want)

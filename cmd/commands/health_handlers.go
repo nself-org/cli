@@ -13,8 +13,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/health"
+	"github.com/nself-org/cli/internal/output"
 
 	"github.com/spf13/cobra"
 )
@@ -42,7 +44,7 @@ func healthCheckRunE(cmd *cobra.Command, args []string) error {
 	}
 
 	if healthJSON {
-		return printJSON(report)
+		return emitHealthJSON(healthCommandName(cmd), report)
 	}
 	if healthQuiet && report.Unhealthy == 0 {
 		return nil
@@ -97,6 +99,38 @@ func printServiceResult(r *health.HealthResult) {
 		marker = "\u2713"
 	}
 	fmt.Printf("%-20s %s %-10s %-8s %s\n", r.Service, marker, r.Status, r.Duration.Truncate(time.Millisecond), r.Details)
+}
+
+// healthCommandName is the canonical (v1.5) registry path of a health handler
+// that serves both `status health` and `status health check`.
+func healthCommandName(cmd *cobra.Command) string {
+	if cmd.Name() == "check" {
+		return "status health check"
+	}
+	return "status health"
+}
+
+// emitHealthJSON writes a health document: the pre-contract JSON, bare in v1.4
+// (byte-identical to printJSON) and the v1 envelope in v1.5 (P7-SURF-11).
+func emitHealthJSON(command string, data any) error {
+	return output.EmitLegacyCompatible(pilotWriter(), command, data)
+}
+
+// emitHealthHistory writes `status health history --json`. The bare shape is
+// the array of reports; the envelope data wraps it as `entries`, never null.
+// With no history the pre-contract output was a text line, not JSON; that
+// stays so in v1.4 mode and with NSELF_JSON_LEGACY=1, and v1.5 prints an
+// envelope with an empty list.
+func emitHealthHistory(entries []health.HealthReport) error {
+	// compat.V15(P7-SURF-11): health history --json with no history prints a text line -> the v1 envelope with an empty entries list
+	if len(entries) == 0 && (!compat.V15() || legacyJSONRequested()) {
+		_, err := fmt.Fprintln(pilotWriter().Out, "No health check history found.")
+		return err
+	}
+	if entries == nil {
+		entries = []health.HealthReport{}
+	}
+	return emitStateJSON("status health history", entries, healthHistoryData{Entries: entries})
 }
 
 // printJSON marshals v to indented JSON and writes to stdout.

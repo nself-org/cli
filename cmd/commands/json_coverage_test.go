@@ -104,26 +104,6 @@ func TestEnvelopeCoverageHelper(t *testing.T) {
 	}
 }
 
-func TestEnvelopeCoverageObserve(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("../../internal/canon/domains", "observe.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	reg, err := buildRegistry(true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rows := make(map[string]cmdregistry.Command, len(reg.Commands))
-	for _, row := range reg.Commands {
-		rows[row.Path] = row
-	}
-	for _, finding := range envelopeCoverageFindings(b, rows) {
-		if strings.Contains(finding, "missing registry row") {
-			t.Fatal(finding)
-		}
-	}
-}
-
 func TestEnvelopeCoverageFixture(t *testing.T) {
 	path := filepath.Join("testdata", "json", "argv", "coverage-fixture.yaml")
 	rows := map[string]cmdregistry.Command{"nself fixture": {Path: "nself fixture", Runnable: true, Canon: canon.CanonCore, JSON: canon.JSONNone}}

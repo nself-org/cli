@@ -2,7 +2,15 @@
 status
 doctor
 config get BASE_DOMAIN #| legacy-json
-urls #| legacy-json no-json=converted-in-P7-SURF-11
-version #| legacy-json no-json=converted-in-P7-SURF-11
-health #| legacy-json no-json=converted-in-P7-SURF-11
+# Moved spellings: the v1.4 row compares the pre-contract --json bytes with the base. The v1.5 envelope of the same command is validated by the canonical-path row below it (the harness runs one argv in both modes, and `urls` has no data schema of its own in v1.5).
+urls #| legacy-json no-json=envelope-checked-by-status-urls
+status urls
+health #| legacy-json no-json=envelope-checked-by-status-health
+status health
+status health config
+status health history
+help topics
+version #| legacy-json
+doctor images
+doctor heal --jwt --dry-run
 plugin search x #| legacy-json no-json=converted-in-P7-SURF-13
