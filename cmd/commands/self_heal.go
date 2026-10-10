@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/nself-org/cli/internal/auth"
@@ -85,16 +86,9 @@ func runSelfHealJWTJSON(dryRun bool, toFile string) error {
 		return errs.New("E401", "doctor heal --jwt --json needs --to-file: the new key is never put in a JSON document").
 			WithFix("add --to-file <path> (written with mode 0600)")
 	}
-	currentKey := os.Getenv("HASURA_GRAPHQL_JWT_SECRET")
-	if currentKey == "" {
-		return fmt.Errorf("self-heal --jwt: HASURA_GRAPHQL_JWT_SECRET is not set — cannot determine old key for rotation log. Set the variable and retry")
-	}
-	result, err := auth.RotateJWTKey(currentKey)
+	result, err := rotateJWTToFile(toFile)
 	if err != nil {
 		return fmt.Errorf("self-heal --jwt: %w", err)
-	}
-	if err := os.WriteFile(toFile, []byte(result.NewKey+"\n"), 0o600); err != nil {
-		return fmt.Errorf("write key to file %s: %w", toFile, err)
 	}
 	res.Rotated, res.KeyFile = true, toFile
 	res.GraceUntil = result.GraceUntil.UTC().Format(time.RFC3339)
@@ -124,25 +118,13 @@ func runSelfHealJWT(dryRun bool, toFile string, noPrint bool) error {
 		return nil
 	}
 
-	// Read the existing raw key from the environment.
-	// HASURA_GRAPHQL_JWT_SECRET holds the JSON envelope: {"type":"HS256","key":"<rawHex>"}
-	// We pass the env var value as currentKey; RotateJWTKey stores it as OldKey (raw hex).
-	// The operator is responsible for constructing the JSON envelope for the new key.
-	currentKey := os.Getenv("HASURA_GRAPHQL_JWT_SECRET")
-	if currentKey == "" {
-		return fmt.Errorf("HASURA_GRAPHQL_JWT_SECRET is not set — cannot determine old key for rotation log. Set the variable and retry")
-	}
-
-	result, err := auth.RotateJWTKey(currentKey)
+	result, err := rotateJWTToFile(toFile)
 	if err != nil {
 		return err
 	}
 
-	// Deliver the new key: file, stdout, or suppressed.
+	// Deliver the new key: file (already written), stdout, or suppressed.
 	if toFile != "" {
-		if err := os.WriteFile(toFile, []byte(result.NewKey+"\n"), 0o600); err != nil {
-			return fmt.Errorf("write key to file %s: %w", toFile, err)
-		}
 		ui.Success(fmt.Sprintf("New JWT key written to %s (mode 0600)", toFile))
 	} else if !noPrint {
 		ui.Success(fmt.Sprintf("JWT key rotated. Rotation log updated: %s", logPath))
@@ -172,4 +154,91 @@ func runSelfHealJWT(dryRun bool, toFile string, noPrint bool) error {
 	fmt.Printf("Log entry: %s\n", result.LogEntry)
 
 	return nil
+}
+
+// rotateJWTToFile is the rotate-and-deliver step shared by the human and the
+// --json forms of --jwt. It reads the current key from the environment
+// (HASURA_GRAPHQL_JWT_SECRET; RotateJWTKey stores it as OldKey, and the
+// operator builds the JSON envelope for the new key), rotates it, and when
+// toFile is set writes the new key there through writeKeyFile. The target is
+// opened before the rotation, so a bad path fails with E401 and leaves no
+// rotation-log entry for a key nobody received.
+func rotateJWTToFile(toFile string) (*auth.RotateResult, error) {
+	currentKey := os.Getenv("HASURA_GRAPHQL_JWT_SECRET")
+	if currentKey == "" {
+		return nil, fmt.Errorf("HASURA_GRAPHQL_JWT_SECRET is not set — cannot determine old key for rotation log. Set the variable and retry")
+	}
+	var kf *keyFile
+	if toFile != "" {
+		var err error
+		if kf, err = openKeyFile(toFile); err != nil {
+			return nil, errs.New("E401", fmt.Sprintf("--to-file %s cannot be written: %v", toFile, err)).
+				WithFix("pass --to-file a path in an existing, writable directory")
+		}
+		defer kf.discard()
+	}
+	result, err := auth.RotateJWTKey(currentKey)
+	if err != nil {
+		return nil, err
+	}
+	if kf != nil {
+		if err := kf.commit(result.NewKey + "\n"); err != nil {
+			return nil, fmt.Errorf("write key to file %s: %w", toFile, err)
+		}
+	}
+	return result, nil
+}
+
+// keyFile is a private (0600) temp file in the directory of a --to-file
+// target. commit renames it over the target, so the key file ends 0600 even
+// when the target already existed with a wider mode.
+type keyFile struct {
+	tmp    *os.File
+	target string
+	done   bool
+}
+
+// openKeyFile creates the temp file next to target; it fails when the
+// directory is missing or not writable, or when target is a directory.
+func openKeyFile(target string) (*keyFile, error) {
+	if fi, err := os.Stat(target); err == nil && fi.IsDir() {
+		return nil, fmt.Errorf("%s is a directory", target)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".tmp-*")
+	if err != nil {
+		return nil, err
+	}
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return nil, err
+	}
+	return &keyFile{tmp: tmp, target: target}, nil
+}
+
+// commit writes data, syncs, and renames the temp file over the target.
+func (k *keyFile) commit(data string) error {
+	if _, err := k.tmp.WriteString(data); err != nil {
+		return err
+	}
+	if err := k.tmp.Sync(); err != nil {
+		return err
+	}
+	if err := k.tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(k.tmp.Name(), k.target); err != nil {
+		return err
+	}
+	k.done = true
+	return nil
+}
+
+// discard removes the temp file unless commit renamed it into place.
+func (k *keyFile) discard() {
+	if k.done {
+		return
+	}
+	_ = k.tmp.Close()
+	_ = os.Remove(k.tmp.Name())
 }

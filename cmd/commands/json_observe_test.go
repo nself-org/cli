@@ -409,6 +409,68 @@ func TestDoctorHealJSON(t *testing.T) {
 	}
 }
 
+// TestDoctorHealKeyFile covers the --to-file delivery shared by both forms of
+// --jwt (rotateJWTToFile): a pre-existing 0644 target ends 0600 with the new
+// key and no temp file left behind, and a target that cannot be written is
+// refused with E401 before anything rotates.
+func TestDoctorHealKeyFile(t *testing.T) {
+	compattest.Set(t, true)
+	t.Setenv("HASURA_GRAPHQL_JWT_SECRET", "00ff")
+	forms := map[string]func(string) error{
+		"json":  func(f string) error { return runSelfHealJWTJSON(false, f) },
+		"human": func(f string) error { return runSelfHealJWT(false, f, true) },
+	}
+	for name, run := range forms {
+		t.Run(name+"/pre-existing 0644 target", func(t *testing.T) {
+			t.Setenv("NSELF_JWT_ROTATION_LOG", filepath.Join(t.TempDir(), "rotation.log"))
+			pilotBuffers(t)
+			dir := t.TempDir()
+			keyPath := filepath.Join(dir, "jwt.key")
+			if err := os.WriteFile(keyPath, []byte("stale\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if runtime.GOOS != "windows" {
+				if err := os.Chmod(keyPath, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := run(keyPath); err != nil {
+				t.Fatal(err)
+			}
+			key, err := os.ReadFile(keyPath)
+			if err != nil || len(bytes.TrimSpace(key)) == 0 || string(key) == "stale\n" {
+				t.Fatalf("key file not replaced: %q, %v", key, err)
+			}
+			if runtime.GOOS != "windows" {
+				if fi, _ := os.Stat(keyPath); fi.Mode().Perm() != 0o600 {
+					t.Fatalf("pre-existing key file mode = %v, want 0600", fi.Mode().Perm())
+				}
+			}
+			if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+				t.Fatalf("temp file left behind: %v", entries)
+			}
+		})
+		t.Run(name+"/bad path", func(t *testing.T) {
+			logPath := filepath.Join(t.TempDir(), "rotation.log")
+			t.Setenv("NSELF_JWT_ROTATION_LOG", logPath)
+			out, _ := pilotBuffers(t)
+			for _, bad := range []string{filepath.Join(t.TempDir(), "missing", "jwt.key"), t.TempDir()} {
+				err := run(bad)
+				var ce *errs.CLIError
+				if !errors.As(err, &ce) || ce.Code != "E401" {
+					t.Fatalf("--to-file %s: err=%v, want E401", bad, err)
+				}
+				if name == "json" && out.Len() != 0 {
+					t.Fatalf("--to-file %s: a document was written: %q", bad, out)
+				}
+				if _, err := os.Stat(logPath); err == nil {
+					t.Fatalf("--to-file %s: a refused rotation wrote the rotation log", bad)
+				}
+			}
+		})
+	}
+}
+
 func TestDoctorBackupHintWiring(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
