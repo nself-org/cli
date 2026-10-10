@@ -2,8 +2,9 @@
 # Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
 schema_version: 1
 commands:
-  build: {canon: core, side_effect: write}
-  clean: {canon: core, side_effect: destructive}
-  reset: {canon: core, side_effect: destructive}
+  build: {canon: core, side_effect: write, confirm: {flags: [yes], plan: {flag: plan, id_flag: plan-id}}}
+  # cmd/commands/clean.go:146 clean without --all only removes artifacts `nself build` recreates (write); --all adds a host-wide docker system prune
+  clean: {canon: core, side_effect: write, flags: {all: {side_effect: destructive}}, confirm: {flags: [yes]}}
+  reset: {canon: core, side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/uninstall.go:66 hidden shim: bare uninstall keeps volumes, so the target flags matter (deprecation registry)
-  uninstall: {canon: deprecated-shim, target: reset, side_effect: destructive}
+  uninstall: {canon: deprecated-shim, target: reset, side_effect: destructive, confirm: {flags: [yes]}}

@@ -943,8 +943,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -1136,8 +1136,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-config.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -1261,8 +1261,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-create.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -1437,8 +1437,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-drill.v1.schema.json",
+      "json": "legacy",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -1459,8 +1459,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-init-key.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -1550,8 +1550,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-list.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -1572,8 +1572,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-pitr.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -1612,8 +1612,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-pitr-base-backup.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -1634,8 +1634,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-pitr-disable.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -1725,8 +1725,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-pitr-enable.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -1799,11 +1799,11 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-pitr-restore.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
-      "surface": "cli-only"
+      "surface": "all"
     },
     {
       "path": "nself backup pitr status",
@@ -1821,8 +1821,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-pitr-status.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -1929,13 +1929,10 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-prune.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
-      "confirm": {
-        "flags": [],
-        "plan": null
-      },
+      "confirm": null,
       "surface": "all"
     },
     {
@@ -2047,15 +2044,10 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-restore.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
-      "confirm": {
-        "flags": [
-          "yes"
-        ],
-        "plan": null
-      },
+      "confirm": null,
       "surface": "all"
     },
     {
@@ -2126,15 +2118,10 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-restore-remote.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
-      "confirm": {
-        "flags": [
-          "yes"
-        ],
-        "plan": null
-      },
+      "confirm": null,
       "surface": "all"
     },
     {
@@ -2160,8 +2147,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-resume.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -2302,8 +2289,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-schedule.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -2410,8 +2397,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-status.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -2534,7 +2521,7 @@
       "canon": "subcommand",
       "target": null,
       "side_effect": "remote",
-      "output": "stream",
+      "output": "document",
       "json": "none",
       "data_schema": null,
       "exit_codes": {},
@@ -2616,8 +2603,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/backup-verify.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -2982,7 +2969,15 @@
       "json": "envelope",
       "data_schema": "schemas/commands/build.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": {
+          "flag": "plan",
+          "id_flag": "plan-id"
+        }
+      },
       "surface": "all"
     },
     {
@@ -3911,7 +3906,7 @@
           "required": false,
           "persistent": false,
           "env": null,
-          "side_effect": null,
+          "side_effect": "destructive",
           "json": null,
           "output": null,
           "cli_only": false,
@@ -3937,12 +3932,17 @@
       ],
       "canon": "core",
       "target": null,
-      "side_effect": "destructive",
+      "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/clean.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -9412,8 +9412,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -9441,8 +9441,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-backup.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -9481,8 +9481,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-backup-list.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -9555,13 +9555,10 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-backup-sync.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
-      "confirm": {
-        "flags": [],
-        "plan": null
-      },
+      "confirm": null,
       "surface": "all"
     },
     {
@@ -9580,8 +9577,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-backup-sync-status.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -9639,8 +9636,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-drift.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -9686,8 +9683,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-drift-fix.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -9726,8 +9723,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-drift-scan.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -9766,15 +9763,10 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-drop.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
-      "confirm": {
-        "flags": [
-          "yes"
-        ],
-        "plan": null
-      },
+      "confirm": null,
       "surface": "all"
     },
     {
@@ -9793,8 +9785,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-fk-index.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -9833,8 +9825,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-fk-index-apply.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -9855,8 +9847,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-fk-index-audit.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -9997,8 +9989,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-generate.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10019,8 +10011,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10117,8 +10109,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura-apply-ref.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10139,8 +10131,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura-console.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10161,8 +10153,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura-diff.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10183,8 +10175,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura-git-status.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10205,8 +10197,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura-metadata.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10296,8 +10288,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura-metadata-apply.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10336,8 +10328,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura-metadata-export.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10358,8 +10350,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura-metadata-reload.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10380,8 +10372,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura-metadata-drift.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10500,8 +10492,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura-snapshot.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10591,8 +10583,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura-sync.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10613,8 +10605,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-hasura-validate.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10743,8 +10735,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-import-firebase.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10817,8 +10809,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-import-supabase.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10925,8 +10917,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-lint.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10947,8 +10939,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-list.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -10987,8 +10979,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-migrate.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11027,8 +11019,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-migrate-apply.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11049,8 +11041,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-migrate-audit.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11136,8 +11128,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-migrate-baseline.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11165,8 +11157,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-migrate-create.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11222,11 +11214,11 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-migrate-down.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
-      "surface": "cli-only"
+      "surface": "all"
     },
     {
       "path": "nself db migrate generate",
@@ -11337,8 +11329,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-migrate-generate.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11366,8 +11358,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-migrate-idempotent.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11413,8 +11405,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-migrate-lint.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11521,8 +11513,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-migrate-status.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11629,8 +11621,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-migrate-up.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11759,8 +11751,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-pgbouncer.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11781,11 +11773,11 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-pgbouncer-connection-url.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
-      "surface": "cli-only"
+      "surface": "all"
     },
     {
       "path": "nself db pgbouncer generate",
@@ -11803,8 +11795,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-pgbouncer-generate.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11825,8 +11817,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-pgbouncer-status.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11847,8 +11839,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-pitr.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11869,8 +11861,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-pitr-enable.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11909,11 +11901,11 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-pitr-restore.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
-      "surface": "cli-only"
+      "surface": "all"
     },
     {
       "path": "nself db pitr status",
@@ -11931,8 +11923,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-pitr-status.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -11953,8 +11945,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-pitr-test.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12010,8 +12002,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-reconcile.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12067,16 +12059,10 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-reset.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
-      "confirm": {
-        "flags": [
-          "force",
-          "yes"
-        ],
-        "plan": null
-      },
+      "confirm": null,
       "surface": "all"
     },
     {
@@ -12120,15 +12106,10 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-reset-checksum.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
-      "confirm": {
-        "flags": [
-          "i-know-what-im-doing"
-        ],
-        "plan": null
-      },
+      "confirm": null,
       "surface": "all"
     },
     {
@@ -12189,15 +12170,10 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-restore.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
-      "confirm": {
-        "flags": [
-          "yes"
-        ],
-        "plan": null
-      },
+      "confirm": null,
       "surface": "all"
     },
     {
@@ -12234,8 +12210,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-restore-drill.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12256,8 +12232,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-restore-drill-list.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12278,8 +12254,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-rls.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12335,8 +12311,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-rls-apply.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12370,8 +12346,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-rls-apply-table.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12410,8 +12386,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-rls-audit.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12445,8 +12421,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-rls-rollback.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12519,8 +12495,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-seed.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12541,8 +12517,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-seed-fixtures.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12563,8 +12539,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-seed-fixtures-list.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12610,8 +12586,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-seed-fixtures-manifest.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12639,8 +12615,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-seed-fixtures-run.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12668,8 +12644,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-seed-fixtures-verify.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12690,8 +12666,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-seed-graph.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12712,8 +12688,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-seed-list.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12734,8 +12710,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-seed-matrix.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12808,8 +12784,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-seed-run.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12848,8 +12824,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-seed-verify.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12892,8 +12868,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-soft-delete.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12927,8 +12903,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-soft-delete-apply.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12949,8 +12925,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-soft-delete-audit.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -12984,8 +12960,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-soft-delete-generate.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -13024,8 +13000,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-verify.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -13046,8 +13022,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/db-verify-checksums.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16177,8 +16153,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/init-template.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16224,8 +16200,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/init-template-info.v1.schema.json",
+      "json": "legacy",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16315,8 +16291,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/init-template-list.v1.schema.json",
+      "json": "legacy",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -16372,13 +16348,10 @@
       "target": null,
       "side_effect": "remote",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/init-template-publish.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
-      "confirm": {
-        "flags": [],
-        "plan": null
-      },
+      "confirm": null,
       "surface": "all"
     },
     {
@@ -16432,8 +16405,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/init-template-update.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -18757,10 +18730,15 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/reset.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -20986,10 +20964,15 @@
       "target": "nself reset",
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/uninstall.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -21195,8 +21178,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/update-project-detect.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -21252,8 +21235,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/update-project-from-bash.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -21309,8 +21292,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/update-project-from-v099.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -21366,11 +21349,11 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/update-project-rollback.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
-      "surface": "cli-only"
+      "surface": "all"
     },
     {
       "path": "nself update project run",
@@ -21388,8 +21371,8 @@
       "target": null,
       "side_effect": "write",
       "output": "document",
-      "json": "envelope",
-      "data_schema": "schemas/commands/update-project-run.v1.schema.json",
+      "json": "none",
+      "data_schema": null,
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -21686,7 +21669,7 @@
     "deprecated_shims": 43,
     "plugin": 10,
     "core_missing": [],
-    "json_envelope": 118,
-    "json_legacy": 45
+    "json_envelope": 14,
+    "json_legacy": 48
   }
 }
