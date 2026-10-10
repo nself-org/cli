@@ -14,13 +14,62 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"time"
+
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/ssl/acme"
+	"github.com/spf13/cobra"
 )
+
+// useACMEEngine reports whether setup, add or renew runs the ACME engine: always
+// with --acme, and by default in v1.5 mode (EPIC D15). v1.4 keeps certbot.
+func useACMEEngine(cmd *cobra.Command) bool {
+	if on, _ := cmd.Flags().GetBool("acme"); on {
+		return true
+	}
+	// compat.V15(P7-LIVE-22): certbot is the default certificate path -> the ACME engine is the default
+	return compat.V15()
+}
+
+// v15ACMEError re-codes an ACME run's E151 as E470, E471 or E472 by failure
+// class in v1.5 mode; v1.4 and unclassified failures keep E151.
+func v15ACMEError(err error) error {
+	var ce *errs.CLIError
+	if err == nil || !errors.As(err, &ce) || ce.Code != "E151" {
+		return err
+	}
+	// compat.V15(P7-LIVE-22): E151 for every ACME failure -> E470-E472 by failure class
+	if !compat.V15() {
+		return err
+	}
+	code := acme.CodeFor(ce.Wrapped)
+	if code == "" {
+		return err
+	}
+	out := errs.New(code, ce.What)
+	if ce.Fix != "" {
+		out.Fix = ce.Fix
+	}
+	out.Wrapped = ce.Wrapped
+	return out
+}
+
+// nginxCompose runs `docker compose exec nginx nginx <args>` in dir through the
+// docker funnel (internal/docker); the error carries the stderr tail.
+func nginxCompose(ctx context.Context, dir string, args ...string) error {
+	if ctx == nil { // commands run without a cobra context in tests
+		ctx = context.Background()
+	}
+	return docker.NewCompose().Run(ctx, dir, append([]string{"compose", "exec", "nginx", "nginx"}, args...)...)
+}
 
 // sslRenewalServiceUnit builds the systemd service unit for certbot renewal,
 // rooted at workdir.

@@ -27,13 +27,13 @@ nself ssl setup --provider route53 --email admin@example.com
 nself ssl setup --provider cloudflare --wildcard --install-cron
 ```
 
-Supported providers: `cloudflare`, `route53`, `digitalocean`. For other CAs, place credentials in `/etc/letsencrypt/{provider}.ini` and use `--provider custom`.
+Supported providers: `cloudflare`, `route53`, `digitalocean`. With certbot (v1.4 mode) the credentials file is `/etc/letsencrypt/{provider}.ini`.
 
 Certificates land in `ssl/{domain}/` inside the project directory. nginx reads them at `/etc/nginx/ssl/{domain}/` via the `./ssl:/etc/nginx/ssl:ro` mount.
 
 ## CLI-Owned ACME (DNS-01, no host certbot)
 
-`nself ssl setup --acme` and `nself ssl renew --acme` issue and renew Let's Encrypt certificates from inside the stack (ADR 0026). A pinned `lego` container runs once per issuance; nothing is installed on the host and the Docker socket is never mounted. Certbot keeps working for projects that do not pass `--acme`.
+`nself ssl setup --acme` and `nself ssl renew --acme` issue and renew Let's Encrypt certificates from inside the stack (ADR 0026). A pinned `lego` container runs once per issuance; nothing is installed on the host and the Docker socket is never mounted. **v1.5 default:** with `NSELF_V15=1`, `ssl setup`, `ssl add` and `ssl renew` use this client without `--acme`, and `--install-cron` installs the `nself-acme-renew` timer. ACME failures carry `E470` (issuance), `E471` (install or served-certificate check; the previous certificate is restored) or `E472` (DNS credential missing). Without `NSELF_V15`, certbot keeps working for projects that do not pass `--acme`, and failures stay `E151`. nginx no longer emits `ssl_stapling` or `ssl_trusted_certificate`: Let's Encrypt certificates carry no OCSP URL.
 
 ### Prerequisites
 
@@ -125,7 +125,7 @@ nself ssl add portal.example.com --upstream portal-app:8080
 nself ssl add portal.example.com
 ```
 
-After certbot completes, the command:
+After the certificate is issued (certbot in v1.4 mode, the ACME client in v1.5 mode), the command:
 
 1. Writes `nginx/conf.d/custom-{domain}.conf` with a full HTTPS server block (HTTP/2, security headers, HTTP-to-HTTPS redirect).
 2. Tests the nginx config (`nginx -t`).
