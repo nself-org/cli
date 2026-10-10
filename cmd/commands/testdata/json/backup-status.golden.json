@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "command": "backup status",
+  "data": {
+    "last_run": "never",
+    "next_run": "0 3 * * *",
+    "health": "warning",
+    "total_size": "0B",
+    "backup_count": 0,
+    "retention_daily": 7,
+    "retention_weekly": 4,
+    "retention_monthly": 12,
+    "offbox": {
+      "source": "none",
+      "last_backup": null,
+      "last_drill": null,
+      "backup_age_seconds": null,
+      "drill_age_seconds": null,
+      "max_age_exceeded": false,
+      "max_drill_age_exceeded": false,
+      "problems": []
+    }
+  }
+}

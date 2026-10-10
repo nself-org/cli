@@ -16,7 +16,7 @@ var backupVerifyCmd = &cobra.Command{
 	Use:   "verify <backup-id|latest>",
 	Short: "Verify backup integrity",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runBackupVerify,
+	RunE:  dataEnv(runBackupVerify),
 }
 
 func runBackupVerify(cmd *cobra.Command, args []string) error {
@@ -39,6 +39,7 @@ func runBackupVerify(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("backup verify: %w", err)
 	}
 
+	setData(cmd, *result)
 	if result.Verified {
 		fmt.Printf("Backup %s verified (%s, %s).\n", result.BackupID, result.Method, result.Duration)
 	} else {
@@ -77,8 +78,11 @@ func runBackupPrune(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("backup prune: %w", err)
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		return emitEnv(cmd, backup.BuildPruneReport(result, keepDaily), true)
+	}
 	if format == "json" {
-		return backup.FormatPruneJSON(result, keepDaily)
+		return backup.FormatPruneJSON(cmd.OutOrStdout(), result, keepDaily)
 	}
 
 	prefix := ""

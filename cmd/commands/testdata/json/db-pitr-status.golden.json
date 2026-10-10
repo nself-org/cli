@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "command": "db pitr status",
+  "data": {
+    "enabled": false,
+    "archive_mode": "",
+    "wal_level": "",
+    "max_wal_senders": 0,
+    "last_archived_wal": "",
+    "last_archive_time": ""
+  }
+}

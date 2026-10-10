@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "command": "db seed fixtures",
+  "data": {
+    "subcommands": [
+      {
+        "name": "list",
+        "summary": "List items"
+      }
+    ]
+  }
+}

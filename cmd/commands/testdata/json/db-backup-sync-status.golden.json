@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "command": "db backup-sync-status",
+  "data": {
+    "remote": "",
+    "last_sync": null,
+    "files": 0,
+    "bytes": 0,
+    "errors": []
+  }
+}
