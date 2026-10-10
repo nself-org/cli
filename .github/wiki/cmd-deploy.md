@@ -179,8 +179,12 @@ fallback for plugin variables: a plugin variable must be in `.nself/compose.env`
 | Service kind | Waits for | Limit | On failure |
 |---|---|---|---|
 | Declares a healthcheck | `healthy` | 60s | E251 (health check timeout), service named |
-| One-shot (`restart: "no"`) | exit code 0 | 60s | non-zero exit fails at once with E250; never exiting is E251 |
-| Anything else | `running` | 30s | E251, service named |
+| One-shot (`restart: "no"`, no healthcheck) | a new run that exits 0 | 60s | non-zero exit fails at once with E250; never exiting, or never starting again, is E251 |
+| Anything else (including `on-failure` or `unless-stopped` init containers that exit) | `running` | 30s | E251, service named |
+
+The rows apply top to bottom: a service with `restart: "no"` and a healthcheck is long-running, so it
+waits for `healthy`. A service that appears in the restart order but not in the resolved config fails
+the deploy with E250 before anything is restarted.
 
 Init containers that run once and exit never report `healthy`; the old gate waited for that and
 aborted real deploys.

@@ -73,6 +73,8 @@ func TestDeployStrategyIntegration(t *testing.T) {
 		dir := integrationProject(t, "depl16a"+suffix,
 			"  web:\n"+sleeper+"    healthcheck: {test: [\"CMD\", \"true\"], interval: 1s, timeout: 2s, retries: 3}\n"+
 				"  bare:\n"+sleeper+
+				// restart "no" with a healthcheck is long-running: gated on healthy, not on exit.
+				"  dbg:\n"+sleeper+"    restart: \"no\"\n    healthcheck: {test: [\"CMD\", \"true\"], interval: 1s, timeout: 2s, retries: 3}\n"+
 				"  init:\n    image: alpine:3\n    command: [\"sh\", \"-c\", \"exit 0\"]\n    restart: \"no\"\n",
 			"  plug:\n"+sleeper+"    environment:\n      GOT: ${PLUGIN_VAR}\n")
 		steps, err := runRollingRestart(ctx, dir, true)
@@ -86,8 +88,13 @@ func TestDeployStrategyIntegration(t *testing.T) {
 			}
 			names = append(names, strings.TrimPrefix(s.Name, "Restart "))
 		}
-		if len(names) != 4 || names[len(names)-1] != "plug" {
-			t.Fatalf("restart order = %v, want 4 services with the plugin service last", names)
+		if len(names) != 5 || names[len(names)-1] != "plug" {
+			t.Fatalf("restart order = %v, want 5 services with the plugin service last", names)
+		}
+		// A second deploy re-runs the already-exited one-shot: the gate must see the
+		// new run (changed StartedAt), not the old exit.
+		if steps, err := runRollingRestart(ctx, dir, true); err != nil {
+			t.Fatalf("second deploy failed: %v (steps %+v)", err, steps)
 		}
 		compose, _, _ := deployCompose(dir)
 		cs, err := compose.ComposeServiceStates(ctx, dir, "plug")

@@ -67,7 +67,8 @@ type rollingPlan struct {
 // that did not exist and aborted a real deploy half way (production incident
 // 2026-09-20). Each service is brought up with `up -d --no-deps` and then
 // gated by kind: healthcheck declared -> healthy within 60s; restart "no"
-// (one-shot) -> exited 0; otherwise running within 30s. The deploy halts on
+// without a healthcheck (one-shot) -> a new run that exited 0; otherwise
+// running within 30s. The deploy halts on
 // the first failure and names the service.
 func runRollingRestart(ctx context.Context, workdir string, jsonOut bool) ([]deployStep, error) {
 	compose, files, err := deployCompose(workdir)
@@ -97,19 +98,26 @@ func rollingRestart(ctx context.Context, plan rollingPlan) ([]deployStep, error)
 		if !plan.jsonOut {
 			fmt.Printf("  [running] Restart %s (sequenced rolling)\n", svc)
 		}
+		spec, ok := byName[svc]
+		if !ok {
+			// config --services and config --format json read the same manifest; a
+			// miss means they disagree, and a guessed gate could skip a wait.
+			err := fmt.Errorf("service %s is in the restart order but missing from the resolved compose config", svc)
+			return append(steps, deployStep{Name: stepName, Status: "failed"}), gateError(svc, err)
+		}
+		marks, err := plan.compose.StartMarks(ctx, plan.workdir, svc)
+		if err != nil {
+			return append(steps, deployStep{Name: stepName, Status: "failed"}), gateError(svc, err)
+		}
 		if err := plan.compose.ComposeUpNoDeps(ctx, plan.workdir, svc); err != nil {
 			steps = append(steps, deployStep{Name: stepName, Status: "failed"})
 			return steps, fmt.Errorf("rolling restart: service %s restart failed: %w\nRun 'nself logs %s' for details", svc, err, svc)
-		}
-		spec, ok := byName[svc]
-		if !ok {
-			spec = docker.ServiceSpec{Name: svc}
 		}
 		if !plan.jsonOut {
 			fmt.Printf("  [waiting] Waiting for %s (%s)\n", svc, gateKind(spec))
 		}
 		states := func(c context.Context) ([]docker.ContainerState, error) {
-			return plan.compose.ComposeServiceStates(c, plan.workdir, svc)
+			return plan.compose.FreshStates(c, plan.workdir, svc, marks)
 		}
 		if err := docker.HealthGate(ctx, spec, states, plan.clock); err != nil {
 			return append(steps, deployStep{Name: stepName, Status: gateFailStatus(err)}), gateError(svc, err)

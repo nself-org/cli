@@ -20,9 +20,15 @@ import (
 
 // rollingFakeDocker answers the four docker compose calls the restart makes.
 // Fixtures live next to the log: services (config --services), config.json,
-// ps.<svc>.json, and upfail (a service name whose `up` exits 1).
+// ps.<svc>.json, upfail (a service name whose `up` exits 1) and startfixed
+// (a constant `docker inspect` StartedAt, i.e. the container never restarted).
 const rollingFakeDocker = `#!/bin/sh
 D="$FAKE_DOCKER_DIR"
+if [ "$1" = "inspect" ]; then
+  # StartedAt of a container: fixed (startfixed) or one value per completed up.
+  if [ -f "$D/startfixed" ]; then cat "$D/startfixed"; else echo "start-$(cat "$D/ups" 2>/dev/null | wc -l | tr -d ' ')"; fi
+  exit 0
+fi
 echo "$*" >> "$D/log"
 shift
 while [ "$1" = "-f" ] || [ "$1" = "--env-file" ]; do shift; shift; done
@@ -114,6 +120,24 @@ const stackConfig = `{"services":{
  "ntask":{},
  "init":{"restart":"no"}}}`
 
+// runPlan runs rollingRestart for the stack with an injected clock.
+func runPlan(t *testing.T, s *rollingStack, clk docker.Clock) ([]deployStep, error) {
+	t.Helper()
+	compose, files, err := deployCompose(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := projectServiceOrder(context.Background(), compose, s.dir, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	specs, err := docker.ComposeServiceSpecs(context.Background(), compose, s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rollingRestart(context.Background(), rollingPlan{compose: compose, workdir: s.dir, order: order, specs: specs, clock: clk, jsonOut: true})
+}
+
 func TestDeployStrategyManifest(t *testing.T) {
 	t.Run("manifest and env files reach every call, order from the manifest, plugin last", func(t *testing.T) {
 		s := newRollingStack(t, []string{"ntask", "web", "postgres"}, stackConfig)
@@ -148,7 +172,7 @@ func TestDeployStrategyManifest(t *testing.T) {
 	t.Run("a one-shot that exits 1 fails with E250 and no later service is restarted", func(t *testing.T) {
 		s := newRollingStack(t, []string{"postgres", "init", "web"}, stackConfig)
 		s.setPs(t, "postgres", `[{"Name":"p-pg-1","State":"running","Health":"healthy"}]`)
-		s.setPs(t, "init", `[{"Name":"p-init-1","State":"exited","ExitCode":1}]`)
+		s.setPs(t, "init", `[{"ID":"c1","Name":"p-init-1","State":"exited","ExitCode":1}]`)
 		s.setPs(t, "web", psRunning)
 		steps, err := runRollingRestart(context.Background(), s.dir, true)
 		var ce *errs.CLIError
@@ -168,9 +192,54 @@ func TestDeployStrategyManifest(t *testing.T) {
 
 	t.Run("a one-shot that exits 0 passes", func(t *testing.T) {
 		s := newRollingStack(t, []string{"init"}, stackConfig)
-		s.setPs(t, "init", `[{"Name":"p-init-1","State":"exited","ExitCode":0}]`)
+		s.setPs(t, "init", `[{"ID":"c1","Name":"p-init-1","State":"exited","ExitCode":0}]`)
 		if _, err := runRollingRestart(context.Background(), s.dir, true); err != nil {
 			t.Fatalf("exit 0 one-shot must pass: %v", err)
+		}
+	})
+
+	t.Run("an exit 0 from before the restart does not pass the one-shot gate", func(t *testing.T) {
+		s := newRollingStack(t, []string{"init"}, stackConfig)
+		s.setPs(t, "init", `[{"ID":"c1","Name":"p-init-1","State":"exited","ExitCode":0}]`)
+		if err := os.WriteFile(filepath.Join(s.fix, "startfixed"), []byte("2026-10-10T00:00:00Z"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		clk := &stepClock{now: time.Unix(0, 0)}
+		steps, err := runPlan(t, s, clk)
+		var ce *errs.CLIError
+		if !errors.As(err, &ce) || ce.Code != "E251" {
+			t.Fatalf("a container that never restarted must time out with E251, got %v", err)
+		}
+		if got := clk.now.Sub(time.Unix(0, 0)); got < 60*time.Second {
+			t.Errorf("gave up after %s, want at least 60s", got)
+		}
+		if last := steps[len(steps)-1]; last.Status != "unhealthy" {
+			t.Errorf("last step = %+v", last)
+		}
+	})
+
+	t.Run("a service missing from the resolved config is an E250 and nothing is restarted", func(t *testing.T) {
+		s := newRollingStack(t, []string{"postgres", "ghost"}, stackConfig)
+		s.setPs(t, "postgres", `[{"Name":"p-pg-1","State":"running","Health":"healthy"}]`)
+		steps, err := runPlan(t, s, &stepClock{now: time.Unix(0, 0)})
+		var ce *errs.CLIError
+		if !errors.As(err, &ce) || ce.Code != "E250" || !strings.Contains(err.Error(), "ghost") {
+			t.Fatalf("want E250 naming ghost, got %v", err)
+		}
+		if strings.Contains(s.read("ups"), "ghost") {
+			t.Errorf("ghost was restarted: %q", s.read("ups"))
+		}
+		if last := steps[len(steps)-1]; last.Name != "Restart ghost" || last.Status != "failed" {
+			t.Errorf("last step = %+v", last)
+		}
+	})
+
+	t.Run("a long-running service with restart no and a healthcheck uses the healthcheck gate", func(t *testing.T) {
+		cfg := `{"services":{"dbg":{"restart":"no","healthcheck":{"test":["CMD","true"]}}}}`
+		s := newRollingStack(t, []string{"dbg"}, cfg)
+		s.setPs(t, "dbg", `[{"ID":"c2","Name":"p-dbg-1","State":"running","Health":"healthy"}]`)
+		if _, err := runPlan(t, s, &stepClock{now: time.Unix(0, 0)}); err != nil {
+			t.Fatalf("healthy restart-no service with a healthcheck must pass: %v", err)
 		}
 	})
 
@@ -178,20 +247,8 @@ func TestDeployStrategyManifest(t *testing.T) {
 		s := newRollingStack(t, []string{"postgres", "web"}, stackConfig)
 		s.setPs(t, "postgres", `[{"Name":"p-pg-1","State":"running","Health":"unhealthy"}]`)
 		s.setPs(t, "web", psRunning)
-		compose, files, err := deployCompose(s.dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		order, err := projectServiceOrder(context.Background(), compose, s.dir, files)
-		if err != nil {
-			t.Fatal(err)
-		}
-		specs, err := docker.ComposeServiceSpecs(context.Background(), compose, s.dir)
-		if err != nil {
-			t.Fatal(err)
-		}
 		clk := &stepClock{now: time.Unix(0, 0)}
-		steps, err := rollingRestart(context.Background(), rollingPlan{compose: compose, workdir: s.dir, order: order, specs: specs, clock: clk, jsonOut: true})
+		steps, err := runPlan(t, s, clk)
 		var ce *errs.CLIError
 		if !errors.As(err, &ce) || ce.Code != "E251" {
 			t.Fatalf("want E251, got %v", err)
@@ -220,9 +277,9 @@ func TestDeployStrategyManifest(t *testing.T) {
 	})
 
 	t.Run("never restarts a service the compose does not report", func(t *testing.T) {
-		s := newRollingStack(t, []string{"postgres", "minio"}, stackConfig)
+		s := newRollingStack(t, []string{"postgres", "web"}, stackConfig)
 		s.setPs(t, "postgres", `[{"Name":"p-pg-1","State":"running","Health":"healthy"}]`)
-		s.setPs(t, "minio", psRunning)
+		s.setPs(t, "web", psRunning)
 		if _, err := runRollingRestart(context.Background(), s.dir, true); err != nil {
 			t.Fatal(err)
 		}

@@ -22,6 +22,8 @@ func TestComposeServiceSpecs(t *testing.T) {
 	  "db":{"restart":"unless-stopped","healthcheck":{"test":["CMD","pg_isready"],"interval":"5s"}},
 	  "off":{"healthcheck":{"disable":true}},
 	  "none":{"healthcheck":{"test":["NONE"]}},
+	  "echo":{"healthcheck":{"test":["CMD","echo","NONE"]}},
+	  "dbg":{"restart":"no","healthcheck":{"test":["CMD","true"]}},
 	  "init":{"restart":"no"}}}`)
 	got, err := parseServiceSpecs(raw)
 	if err != nil {
@@ -29,6 +31,8 @@ func TestComposeServiceSpecs(t *testing.T) {
 	}
 	want := []ServiceSpec{
 		{Name: "db", HasHealthcheck: true, Restart: "unless-stopped"},
+		{Name: "dbg", HasHealthcheck: true, Restart: "no"},
+		{Name: "echo", HasHealthcheck: true},
 		{Name: "init", Restart: "no"},
 		{Name: "none"},
 		{Name: "off"},
@@ -37,8 +41,8 @@ func TestComposeServiceSpecs(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("specs = %+v\nwant   %+v", got, want)
 	}
-	if !got[1].OneShot() || got[4].OneShot() {
-		t.Error("only restart \"no\" is a one-shot; an absent restart is long-running")
+	if !got[3].OneShot() || got[6].OneShot() || got[1].OneShot() {
+		t.Error("only restart \"no\" without a healthcheck is a one-shot; a healthcheck or an absent restart is long-running")
 	}
 	if _, err := parseServiceSpecs([]byte("not json")); err == nil {
 		t.Error("malformed config JSON must error, not read as zero services")
@@ -155,6 +159,13 @@ func TestHealthGateOneShot(t *testing.T) {
 		t.Errorf("never-exiting one-shot: err %v after %s", err, clk.elapsed())
 	}
 
+	// A container that has not started since the baseline is not an exit yet.
+	clk = newFakeClock()
+	err = HealthGate(ctx, spec, fixed(ContainerState{Name: "i", State: StateNotRestarted}), clk)
+	if !errors.Is(err, ErrGateTimeout) || clk.elapsed() < 60*time.Second {
+		t.Errorf("stale exit: err %v after %s", err, clk.elapsed())
+	}
+
 	// One replica exited 0, the other exited 1: the failure wins.
 	err = HealthGate(ctx, spec, fixed(
 		ContainerState{Name: "a", State: "exited"}, ContainerState{Name: "b", State: "exited", ExitCode: 2}), newFakeClock())
@@ -174,6 +185,18 @@ func TestHealthGateUnhealthy(t *testing.T) {
 	}
 	if got := clk.elapsed(); got < 60*time.Second || got > 62*time.Second {
 		t.Errorf("healthcheck limit = %s, want 60s", got)
+	}
+
+	// restart "no" with a healthcheck is long-running: the healthcheck gate
+	// applies (healthy passes, starting times out at 60 s), never the exit rule.
+	dbg := ServiceSpec{Name: "dbg", HasHealthcheck: true, Restart: "no"}
+	if err := HealthGate(ctx, dbg, fixed(ContainerState{Name: "d", State: "running", Health: "healthy"}), newFakeClock()); err != nil {
+		t.Errorf("healthy restart-no service with a healthcheck must pass: %v", err)
+	}
+	clk = newFakeClock()
+	err = HealthGate(ctx, dbg, fixed(ContainerState{Name: "d", State: "running", Health: "starting"}), clk)
+	if !errors.Is(err, ErrGateTimeout) || clk.elapsed() < 60*time.Second {
+		t.Errorf("starting restart-no service: err %v after %s", err, clk.elapsed())
 	}
 
 	// running but still "starting" is not healthy yet; healthy later passes.
@@ -244,5 +267,55 @@ func TestComposeServiceStatesArgv(t *testing.T) {
 	want := "compose -f /m/base.yml --env-file /m/compose.env ps -a --format json init"
 	if strings.TrimSpace(string(b)) != want {
 		t.Errorf("argv = %q, want %q", strings.TrimSpace(string(b)), want)
+	}
+}
+
+// TestFreshStates: an exited container whose StartedAt equals the pre-up mark
+// is reported as not restarted; once StartedAt changes it is a real exit.
+func TestFreshStates(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake docker is a shell script")
+	}
+	dir := t.TempDir()
+	script := "#!/bin/sh\nif [ \"$1\" = inspect ]; then cat '" + filepath.Join(dir, "started") + "' || exit 1; exit 0; fi\n" +
+		"echo '[{\"ID\":\"c1\",\"Name\":\"p-init-1\",\"State\":\"exited\",\"ExitCode\":0},{\"ID\":\"c2\",\"Name\":\"p-init-2\",\"State\":\"running\"}]'\n"
+	bin := filepath.Join(dir, "docker")
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil { //nolint:gosec // test stub must be executable
+		t.Fatal(err)
+	}
+	setStarted := func(v string) {
+		if err := os.WriteFile(filepath.Join(dir, "started"), []byte(v+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := NewCompose("/m/base.yml")
+	c.DockerPath = bin
+	ctx := context.Background()
+
+	setStarted("t0")
+	marks, err := c.StartMarks(ctx, dir, "init")
+	if err != nil || !reflect.DeepEqual(marks, map[string]string{"c1": "t0"}) {
+		t.Fatalf("marks = %v, err = %v (only exited containers are marked)", marks, err)
+	}
+	cs, err := c.FreshStates(ctx, dir, "init", marks)
+	if err != nil || cs[0].State != StateNotRestarted || cs[1].State != "running" {
+		t.Fatalf("same StartedAt: states %+v, err %v", cs, err)
+	}
+	setStarted("t1")
+	cs, err = c.FreshStates(ctx, dir, "init", marks)
+	if err != nil || cs[0].State != "exited" {
+		t.Fatalf("new StartedAt: states %+v, err %v", cs, err)
+	}
+	// A new container (no mark) is never masked.
+	cs, err = c.FreshStates(ctx, dir, "init", map[string]string{})
+	if err != nil || cs[0].State != "exited" {
+		t.Fatalf("unmarked container: states %+v, err %v", cs, err)
+	}
+	// A failing inspect is an error, not a silent pass.
+	if err := os.Remove(filepath.Join(dir, "started")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.FreshStates(ctx, dir, "init", marks); err == nil {
+		t.Error("a failed docker inspect must surface")
 	}
 }
