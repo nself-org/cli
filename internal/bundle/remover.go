@@ -66,7 +66,10 @@ func Remove(ctx context.Context, bundleSlug string, opts RemoveOpts) (*RemoveRes
 	if !ok {
 		return nil, UnknownBundleError(bundleSlug)
 	}
-	if !b.IsInstallable() {
+	// A free bundle (the Task Bundle) is installable since P7-PLUG-19 but is still
+	// refused here: removing it would drop its members' data with no refcount.
+	// P7-PLUG-20 (refcounted, keep-data remove) lifts this.
+	if !b.IsInstallable() || b.IsFree() {
 		return nil, fmt.Errorf("bundle %q is not installable/removable as a unit (meta or free)", b.Slug)
 	}
 

@@ -1,14 +1,18 @@
-// Store: read and atomically update the ledger file of one project.
+// Store: read and atomically update the ledger file of one plugin directory.
 //
-// Purpose: the only code that touches <root>/.nself/state/bundles.json.
-// Inputs: a project root and an optional Sources func used to bootstrap.
+// Purpose: the only code that touches <pluginDir>/.nself-state/bundles.json.
+// Inputs: the plugin directory ($NSELF_PLUGIN_DIR or ~/.nself/plugins) and an
+// optional Sources func used to bootstrap. The ledger lives with the plugins it
+// describes (D-0284 option A), so it is the same for every project that shares
+// that plugin directory and needs no project root.
 // Outputs: Load (read only), Update (read, change, validate, write).
 // Constraints: writers take an OS lock on bundles.json.lock (next to the
 // ledger), write a temp file in the same directory, fsync it, then rename over
 // the ledger, so a reader sees the old or the new file, never a partial one,
 // and a crash between the temp write and the rename leaves the old ledger
 // intact. The file is 0644 (it holds no secret), its directory 0700 (same as
-// the other .nself/state files).
+// the other state directories). The directory name starts with a dot and holds
+// no plugin.json, so plugin scans skip it.
 // Load never writes and never creates a directory.
 package ledger
 
@@ -27,9 +31,9 @@ const (
 	lockWait = 15 * time.Second
 )
 
-// Store is the ledger of one project.
+// Store is the ledger of one plugin directory.
 type Store struct {
-	root string
+	root string // the plugin directory
 	// Sources supplies bootstrap input when the file does not exist yet. It
 	// returns an error when the installed plugins or bundle membership cannot be
 	// read. A missing file with a nil Sources, or a Sources error, is an error
@@ -44,11 +48,14 @@ type Store struct {
 	beforeRename func() error
 }
 
-// NewStore returns the store for the project at root.
-func NewStore(root string) *Store { return &Store{root: root} }
+// StateDirName is the directory inside the plugin directory that holds the ledger.
+const StateDirName = ".nself-state"
 
-// Dir is <root>/.nself/state.
-func (s *Store) Dir() string { return filepath.Join(s.root, ".nself", "state") }
+// NewStore returns the store for the plugin directory pluginDir.
+func NewStore(pluginDir string) *Store { return &Store{root: pluginDir} }
+
+// Dir is <pluginDir>/.nself-state.
+func (s *Store) Dir() string { return filepath.Join(s.root, StateDirName) }
 
 // Path is the ledger file.
 func (s *Store) Path() string { return filepath.Join(s.Dir(), fileName) }

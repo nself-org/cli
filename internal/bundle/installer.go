@@ -16,20 +16,24 @@
 //	(default: skip missing with a warning).
 //
 // --channel    selects stable/beta/canary for version resolution (T22).
+//
+// App-ready (P7-PLUG-19): after the members are installed the installer records
+// the ledger and, when InstallOpts.Hooks is set, runs reconcile, start, readiness,
+// tracking and health (package appready; installer_appready.go). The member loop
+// is in installer_members.go and the licence pre-flight in installer_licence.go.
+// A free bundle (Bundle.IsFree) skips the ping_api bundle entitlement call.
 package bundle
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"os"
-	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/nself-org/cli/internal/bundle/appready"
 	"github.com/nself-org/cli/internal/config"
-	"github.com/nself-org/cli/internal/license"
 	"github.com/nself-org/cli/internal/plugin"
 )
 
@@ -51,6 +55,11 @@ type InstallOpts struct {
 	// Config overrides the loaded project config. Optional — when nil the
 	// caller-loaded cfg is used by Install via cfg arg.
 	Config *config.Config
+
+	// Hooks, when non-nil, make Install run reconcile, start, readiness,
+	// tracking and health after the ledger step and judge app-ready. Nil keeps
+	// the legacy behaviour: install, ledger, and the caller reconciles.
+	Hooks *appready.Hooks
 
 	// licenseChecker is an internal hook for tests to replace the Phase 2
 	// (plugin-level) license validator. Production code leaves this nil.
@@ -79,6 +88,10 @@ type InstallResult struct {
 	LicenseBypass bool     // reserved — always false; --force never bypasses license
 	DryRun        bool
 	Changed       bool // membership changed; the command layer must reconcile
+	// Report lists the app-ready steps (nil for a dry run). Reconciled is true
+	// once the Reconcile hook ran, so the caller must not reconcile again.
+	Report     *appready.Report
+	Reconciled bool
 }
 
 // Install runs the bundle install flow. The returned InstallResult is populated
@@ -104,93 +117,54 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 		DryRun:        opts.DryRun,
 	}
 
-	// Resolve plugin version pins via T22. Channel filter applied here.
-	pins, err := ResolveBundleVersions(ctx, b.Slug, result.Channel)
-	if err != nil {
-		// Strict mode requires every plugin in the bundle to be in the registry.
-		// Non-strict mode degrades to "install whatever IS in the registry".
-		if opts.Strict {
-			return result, fmt.Errorf("resolve bundle versions (strict): %w", err)
-		}
-		// Try a per-plugin probe to determine which plugins are missing.
-		partialPins, partialSkipped, probeErr := probePartialBundle(ctx, b, result.Channel)
-		if probeErr != nil {
-			return result, fmt.Errorf("resolve bundle versions: %w", err)
-		}
-		pins = partialPins
-		result.Skipped = partialSkipped
-		if len(pins) == 0 {
-			return result, fmt.Errorf("no plugins in bundle %q are eligible under channel %q", b.Slug, result.Channel)
-		}
+	rn := appready.NewRunner(b.Slug)
+	if !opts.DryRun {
+		defer func() { rep := rn.Report(); result.Report = &rep }()
 	}
 
-	// Stable ordering for dry-run + install loop: walk b.Plugins, keep only
-	// those resolved by pins.
-	planned := make([]string, 0, len(pins))
-	for _, name := range b.Plugins {
-		if _, ok := pins[name]; ok {
-			planned = append(planned, name)
-		}
+	// Resolve plugin version pins via T22 (the "fetch" step).
+	fetchStart := time.Now()
+	pins, err := resolvePlan(ctx, b, result, opts.Strict)
+	if err != nil {
+		rn.Record(appready.StepFetch, appready.ResultFailed, time.Since(fetchStart), err.Error())
+		return result, err
 	}
-	result.Planned = planned
+	planned := result.Planned
+	rn.Record(appready.StepFetch, appready.ResultOK, time.Since(fetchStart), fmt.Sprintf("%d plugins resolved", len(planned)))
 
 	// Print the plan.
 	printPlan(out, b, result.Channel, planned, pins, result.Skipped, opts)
 
 	if opts.DryRun {
 		_, _ = fmt.Fprintln(out, "(dry-run) no changes made.")
+		appready.PrintPlan(out, b.Slug, planned)
 		return result, nil
 	}
 
-	// License pre-flight: two-phase check. Always runs — --force does NOT bypass.
-	//   Phase 1 (bundle-level): call ping_api /bundle/entitled to verify the
-	//   operator's key grants access to THIS bundle as a unit.
-	//   Phase 2 (plugin-level fallback): per-plugin registry/license probe via
-	//   defaultLicenseChecker to catch obvious missing-key cases before any FS
-	//   change (mirrors existing plugin install behavior).
-	{
-		// Phase 1: bundle-level entitlement via ping_api (or test hook).
-		key := license.CollectLicenseKey()
-		entitledFn := opts.bundleEntitledChecker
-		if entitledFn == nil {
-			entitledFn = license.BundleEntitled
+	// License pre-flight (see installer_licence.go). A free bundle makes no
+	// ping_api bundle-entitlement call; the per-plugin check still runs.
+	if err := rn.Step(appready.StepLicence, func() (string, error) {
+		if b.IsFree() {
+			return "free bundle: no bundle entitlement call; plugin licences checked", checkLicence(ctx, b, planned, opts)
 		}
-		entitled, entitleErr := entitledFn(ctx, key, b.Slug)
-		if entitleErr != nil || !entitled {
-			msg := fmt.Sprintf("bundle %q: not entitled", b.Slug)
-			if entitleErr != nil {
-				msg = entitleErr.Error()
-			}
-			return result, fmt.Errorf("license validation failed: %s\n\nBuy at: https://nself.org/pricing or run 'nself license set <key>'", msg)
-		}
-
-		// Phase 2: plugin-level pre-flight (catches no-key-at-all cases for free).
-		check := opts.licenseChecker
-		if check == nil {
-			check = defaultLicenseChecker
-		}
-		if err := check(ctx, planned); err != nil {
-			return result, fmt.Errorf("license validation failed for bundle %q: %w", b.Slug, err)
-		}
+		return "", checkLicence(ctx, b, planned, opts)
+	}); err != nil {
+		return result, err
 	}
 
 	pluginDir := opts.PluginDir
 	if pluginDir == "" {
 		pluginDir = defaultPluginDir()
 	}
+	// Bootstrap the ledger from the pre-install state before anything changes.
+	store := newLedgerStore(pluginDir)
+	if _, err := store.EnsureBootstrapped(); err != nil {
+		rn.Record(appready.StepLedger, appready.ResultFailed, 0, err.Error())
+		return result, fmt.Errorf("bundle %q: reading the install ledger before install: %w", b.Slug, err)
+	}
 
-	installFn := opts.installer
-	if installFn == nil {
-		installFn = func(ctx context.Context, cfg *config.Config, name, pd string) error {
-			return plugin.Install(ctx, cfg, name, pd)
-		}
-	}
-	removeFn := opts.remover
-	if removeFn == nil {
-		removeFn = func(ctx context.Context, cfg *config.Config, name, pd string) error {
-			return plugin.Remove(ctx, cfg, name, pd, false, true)
-		}
-	}
+	// What was on disk before this install: those members have no bundle origin.
+	before := buildInstalledVersionMap(pluginDir)
 
 	cfg := opts.Config
 	if cfg == nil {
@@ -200,79 +174,61 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 		}
 		cfg = loaded
 	}
-
-	// Build a lookup of currently installed plugin versions for downgrade detection.
-	existingVersions := buildInstalledVersionMap(pluginDir)
-	backups := make(map[string]string)
-	backupRoot := ""
-	rollback := func() error {
-		result.RolledBack = rollbackInstalled(ctx, cfg, removeFn, pluginDir, result.Installed, out)
-		restoreErr := restoreBundleUpgrades(pluginDir, backupRoot, backups, out)
-		result.Changed = !maps.Equal(existingVersions, buildInstalledVersionMap(pluginDir)) || restoreErr != nil
-		return restoreErr
+	mr := &memberRun{b: b, opts: opts, out: out, result: result, planned: planned, pins: pins, pluginDir: pluginDir, cfg: cfg,
+		installFn: opts.installer, removeFn: opts.remover}
+	if mr.installFn == nil {
+		mr.installFn = func(ctx context.Context, cfg *config.Config, name, pd string) error {
+			return plugin.Install(ctx, cfg, name, pd)
+		}
 	}
-
-	// Sequential install with rollback on failure.
-	for _, name := range planned {
-		targetVer := string(pins[name])
-		existingVer, alreadyExists := existingVersions[strings.ToLower(name)]
-
-		if alreadyExists {
-			cmp := plugin.CompareVersions(existingVer, targetVer)
-			if cmp == 0 {
-				// Same version: skip silently.
-				_, _ = fmt.Fprintf(out, "  ✓ %s@%s (already installed, same version)\n", name, targetVer)
-				continue
-			}
-			if cmp > 0 {
-				// Existing is HIGHER than what the bundle pins.
-				if opts.Strict {
-					// --strict: fail if any plugin already at a higher version.
-					rollbackErr := rollback()
-					return result, errors.Join(fmt.Errorf("--strict: plugin %q is at %s (higher than bundle pin %s); use without --strict to skip", name, existingVer, targetVer), rollbackErr)
-				}
-				// Default: skip with warning, no silent downgrade.
-				_, _ = fmt.Fprintf(out, "  ⚠ %s: installed at %s (higher than bundle pin %s) — skipping to avoid downgrade\n", name, existingVer, targetVer)
-				continue
-			}
-			// cmp < 0: existing is lower → upgrade, fall through to install.
-			_, _ = fmt.Fprintf(out, "  ↑ upgrading %s: %s → %s\n", name, existingVer, targetVer)
-			if backupRoot == "" {
-				backupRoot, err = os.MkdirTemp(pluginDir, ".bundle-rollback-")
-				if err != nil {
-					rollbackErr := rollback()
-					return result, errors.Join(fmt.Errorf("creating bundle upgrade backup: %w", err), rollbackErr)
-				}
-			}
-			backup := filepath.Join(backupRoot, name)
-			if err := os.Rename(filepath.Join(pluginDir, name), backup); err != nil {
-				rollbackErr := rollback()
-				return result, errors.Join(fmt.Errorf("backing up plugin %q: %w", name, err), rollbackErr)
-			}
-			backups[name] = backup
-		} else {
-			_, _ = fmt.Fprintf(out, "  → installing %s@%s...\n", name, targetVer)
+	if mr.removeFn == nil {
+		mr.removeFn = func(ctx context.Context, cfg *config.Config, name, pd string) error {
+			return plugin.Remove(ctx, cfg, name, pd, false, true)
 		}
-
-		if err := installFn(ctx, cfg, name, pluginDir); err != nil {
-			_, _ = fmt.Fprintf(out, "  ✗ %s install failed: %v\n", name, err)
-			rollbackErr := rollback()
-			return result, errors.Join(fmt.Errorf("bundle %q install failed at plugin %q: %w", b.Slug, name, err), rollbackErr)
-		}
-		result.Installed = append(result.Installed, name)
-		result.Changed = true
-		_, _ = fmt.Fprintf(out, "  ✓ %s@%s installed\n", name, targetVer)
 	}
-	if backupRoot != "" {
-		if err := os.RemoveAll(backupRoot); err != nil {
-			return result, fmt.Errorf("removing bundle upgrade backup: %w", err)
-		}
+	if err := rn.Step(appready.StepInstall, func() (string, error) {
+		err := mr.run(ctx)
+		return fmt.Sprintf("%d installed, %d unchanged", len(result.Installed), len(planned)-len(result.Installed)), err
+	}); err != nil {
+		return result, err
 	}
 
 	_, _ = fmt.Fprintf(out, "\nBundle %q (%s) installed: %d plugins.\n", b.Name, b.Slug, len(result.Installed))
 	if len(result.Skipped) > 0 {
 		_, _ = fmt.Fprintf(out, "Skipped (missing from registry): %s\n", strings.Join(result.Skipped, ", "))
 	}
+	return result, finishInstall(ctx, rn, store, pluginDir, planned, before, opts, result)
+}
 
-	return result, nil
+// resolvePlan resolves the version pins and sets result.Planned / Skipped. In
+// non-strict mode a plugin missing from the registry is skipped with a warning.
+func resolvePlan(ctx context.Context, b Bundle, result *InstallResult, strict bool) (VersionPins, error) {
+	pins, err := ResolveBundleVersions(ctx, b.Slug, result.Channel)
+	if err != nil {
+		// Strict mode requires every plugin in the bundle to be in the registry.
+		// Non-strict mode degrades to "install whatever IS in the registry".
+		if strict {
+			return nil, fmt.Errorf("resolve bundle versions (strict): %w", err)
+		}
+		// Try a per-plugin probe to determine which plugins are missing.
+		partialPins, partialSkipped, probeErr := probePartialBundle(ctx, b, result.Channel)
+		if probeErr != nil {
+			return nil, fmt.Errorf("resolve bundle versions: %w", err)
+		}
+		pins = partialPins
+		result.Skipped = partialSkipped
+		if len(pins) == 0 {
+			return nil, fmt.Errorf("no plugins in bundle %q are eligible under channel %q", b.Slug, result.Channel)
+		}
+	}
+	// Stable ordering for dry-run + install loop: walk b.Plugins, keep only
+	// those resolved by pins.
+	planned := make([]string, 0, len(pins))
+	for _, name := range b.Plugins {
+		if _, ok := pins[name]; ok {
+			planned = append(planned, name)
+		}
+	}
+	result.Planned = planned
+	return pins, nil
 }

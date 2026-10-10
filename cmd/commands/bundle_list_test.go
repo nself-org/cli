@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/bundle"
 	"github.com/nself-org/cli/internal/bundle/ledger"
 )
 
@@ -102,18 +103,22 @@ func TestBundleListLedgerView(t *testing.T) {
 	if claw.Ledger.Installed || len(claw.Ledger.Plugins) != 1 || !claw.Ledger.Plugins[0].Explicit {
 		t.Fatalf("claw (partial) ledger = %+v", claw.Ledger)
 	}
-	// task is a structural bundle: never installed as a unit, notifications explicit.
+	// task is installable since P7-PLUG-19, but only notifications is on disk (jobs is
+	// missing): not installed as a unit, notifications explicit.
 	task := rows["task"]
 	if task.Ledger.Installed || len(task.Ledger.Plugins) != 1 || !task.Ledger.Plugins[0].Explicit {
 		t.Fatalf("task ledger = %+v", task.Ledger)
 	}
-	if _, err := os.Stat(filepath.Join(proj, ".nself")); !os.IsNotExist(err) {
-		t.Fatalf("bundle list wrote %s/.nself (it must be read only): %v", proj, err)
+	pluginDir := os.Getenv("NSELF_PLUGIN_DIR")
+	for _, dir := range []string{filepath.Join(proj, ".nself"), filepath.Join(pluginDir, ".nself-state")} {
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("bundle list wrote %s (it must be read only): %v", dir, err)
+		}
 	}
 
 	// A ledger file wins over the on-disk inference.
-	st := ledger.NewStore(proj)
-	st.Sources = ledgerSources
+	st := ledger.NewStore(pluginDir)
+	st.Sources = bundle.LedgerSources(pluginDir)
 	if err := st.Update(func(l *ledger.Ledger) error {
 		l.Bundles["family"] = ledger.BundleRecord{InstalledAt: "2026-01-02T03:04:05Z"}
 		l.Plugins["social"] = ledger.PluginRecord{InstalledBy: []string{"family"}, Tier: ledger.TierLicensed, Version: "9.9.9"}
@@ -134,8 +139,8 @@ func TestBundleListLedgerView(t *testing.T) {
 // TestBundleListLedgerDamaged: a damaged ledger fails the command with the file
 // path; it is not replaced by a bootstrap guess.
 func TestBundleListLedgerDamaged(t *testing.T) {
-	proj := ledgerProject(t, "bots")
-	dir := filepath.Join(proj, ".nself", "state")
+	ledgerProject(t, "bots")
+	dir := filepath.Join(os.Getenv("NSELF_PLUGIN_DIR"), ".nself-state")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -151,8 +156,8 @@ func TestBundleListLedgerDamaged(t *testing.T) {
 // TestBundleListTableIgnoresLedger: the plain table never loads the ledger, so
 // a damaged ledger or an unreadable state directory cannot break it.
 func TestBundleListTableIgnoresLedger(t *testing.T) {
-	proj := ledgerProject(t, "bots")
-	dir := filepath.Join(proj, ".nself", "state")
+	ledgerProject(t, "bots")
+	dir := filepath.Join(os.Getenv("NSELF_PLUGIN_DIR"), ".nself-state")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -187,5 +192,19 @@ func TestBundleListLedgerSourceError(t *testing.T) {
 	t.Setenv("NSELF_PLUGIN_DIR", notADir)
 	if _, err := listLedgerRows(t); err == nil {
 		t.Fatal("--json hid an unreadable plugin directory")
+	}
+}
+
+// TestBundleListJSONOutsideProject: the ledger is per plugin directory, so
+// `bundle list --json` needs no nSelf project.
+func TestBundleListJSONOutsideProject(t *testing.T) {
+	ledgerProject(t, "bots", "livekit")
+	t.Chdir(t.TempDir()) // no .env anywhere above
+	rows, err := listLedgerRows(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chat := rows["chat"]; !chat.Ledger.Installed || len(chat.Ledger.Plugins) != 2 {
+		t.Fatalf("chat ledger outside a project = %+v", chat.Ledger)
 	}
 }

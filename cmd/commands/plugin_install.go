@@ -204,14 +204,27 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 		installed = append(installed, srcURL)
 	}
 
+	recordExplicitInstalls(os.Stderr, pluginDir, installed) // P7-PLUG-19: explicit in the bundle ledger
 	// S20: Upsell prompt after 3rd successful free-plugin install.
 	if installedCount > 0 {
 		maybeShowFreeUpsell(installedCount)
 	}
+	var reconcileErr error
 	// compat.V15(P7-LIVE-06): plugin install leaves generated state for a later build -> reconcile now
-	return finishPluginInstall(compat.V15(), installed, failures, func() error {
-		return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installed, ",")})
+	ferr := finishPluginInstall(compat.V15(), installed, failures, func() error {
+		reconcileErr = reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installed, ",")})
+		return reconcileErr
 	})
+	// P7-PLUG-19: wait for boot migrations of what was installed (plugin_install_readiness.go).
+	// Not after a failed reconcile: the stack would start from stale generated files.
+	var rerr error
+	if reconcileErr == nil {
+		rerr = pluginInstallReadiness(cmd, pluginDir, installed)
+	}
+	if ferr == nil {
+		return rerr
+	}
+	return errors.Join(ferr, rerr)
 }
 
 // finishPluginInstall reconciles once after any successful install (v1.5) and

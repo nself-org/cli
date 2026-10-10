@@ -20,9 +20,17 @@ var bundleInstallCmd = &cobra.Command{
 	Short: "Install every plugin in a bundle (license-gated, atomic rollback on failure)",
 	Long: `Install all plugins in the named bundle in a single transaction.
 
-License validation runs for every plugin BEFORE any filesystem change.
-On any per-plugin install failure, every plugin installed in this invocation
-is rolled back so the system is left in a clean state.
+Licence checks run BEFORE any filesystem change: a paid bundle needs the
+bundle entitlement and every plugin's licence; a free bundle skips the ping_api
+bundle entitlement call (plugin licences are still checked). On any per-plugin
+install failure, every plugin installed in this invocation is rolled back so
+the system is left in a clean state.
+
+After the plugins are installed the command records the bundle in the install
+ledger, then reconciles the project. With NSELF_V15=1 it also starts the stack
+and reports the app-ready steps: readiness (plugin migrations applied), tracking
+(tables tracked in Hasura) and health, and exits 2 (E135) at the first failing
+step. Without it, those steps print as "not verified" and the exit stays 0.
 
 Examples:
   nself bundle install nsentry
@@ -62,10 +70,16 @@ func runBundleInstall(cmd *cobra.Command, args []string) error {
 		Strict:  strict,
 		Channel: bundle.Channel(channelStr),
 	}
+	if !dryRun {
+		// P7-PLUG-19: Install runs reconcile, start, readiness, tracking and health.
+		opts.Hooks = newBundleAppReadyHooks(cmd, args[0])
+	}
 	result, err := bundleInstall(context.Background(), args[0], opts)
-	if result != nil && result.Changed {
+	// Reconcile exactly once: Install ran it through the hook unless it never got
+	// that far (a member failed and was rolled back, or no hooks ran).
+	if result != nil && result.Changed && !result.Reconciled {
 		// compat.V15(P7-LIVE-06): bundle subprocess build -> cmd-layer reconcile in both modes
-		return errors.Join(err, reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerBundle, Subject: args[0]}))
+		return errors.Join(err, bundleReconcile(cmd, reconcile.Trigger{Kind: reconcile.TriggerBundle, Subject: args[0]}))
 	}
 	return err
 }
