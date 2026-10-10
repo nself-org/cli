@@ -55,7 +55,7 @@ func InstallMultiple(ctx context.Context, bundleSlugs []string, opts InstallOpts
 			return nil, UnknownBundleError(slug)
 		}
 		if !b.IsInstallable() {
-			return nil, fmt.Errorf("bundle %q is not installable as a unit (meta or free)", b.Slug)
+			return nil, fmt.Errorf("bundle %q is not installable as a unit (meta-bundle or no plugins)", b.Slug)
 		}
 		bundles = append(bundles, b)
 

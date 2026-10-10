@@ -100,19 +100,19 @@ func All() []Bundle {
 }
 
 // IsInstallable reports whether the bundle can be installed via
-// `nself bundle install`. The ɳSelf+ meta-bundle and the free Task Bundle
-// are not installable as a unit — operators install their constituent
-// plugins directly via `nself plugin install` (free plugins need no license;
-// ɳSelf+ has no single SKU to install, only its union of entitlements).
+// `nself bundle install`. Only the ɳSelf+ meta-bundle (no single SKU, only the
+// union of every paid bundle's entitlements) and a bundle with no plugins are
+// not installable as a unit. The free Task Bundle is installable since
+// P7-PLUG-19 (`nself bundle install task` is its app-ready path); a free bundle
+// skips every licence call (see IsFree).
 //
-// Per Ruling 2, this is the ONLY bundle-membership rule the CLI hand-codes:
-// which two of the eight display slugs are non-installable structural
-// categories, not plugin data. IsInstallable's plugin SET for every other
-// bundle, including "sentry", is exactly bundles.json's plugins[] array —
-// no cli-side subsetting and no special case for nself-stripe or any other
-// plugin.
+// This is the ONLY bundle-membership rule the CLI hand-codes: which display
+// slug is a structural category, not plugin data. The plugin SET of every
+// installable bundle, including "sentry", is exactly bundles.json's plugins[]
+// array: no cli-side subsetting and no special case for nself-stripe or any
+// other plugin.
 func (b Bundle) IsInstallable() bool {
-	if b.Slug == selfPlusSlug || b.Slug == "task" {
+	if b.Slug == selfPlusSlug {
 		return false
 	}
 	if len(b.Plugins) == 0 {
@@ -120,6 +120,10 @@ func (b Bundle) IsInstallable() bool {
 	}
 	return true
 }
+
+// IsFree reports whether the bundle costs nothing. formatPrice in registry.go
+// yields "FREE" exactly for a free tier or a zero price.
+func (b Bundle) IsFree() bool { return b.Price == "FREE" }
 
 // UnknownBundleError formats a friendly error when a slug does not match a
 // known bundle. Includes the sorted list of valid names as a hint.

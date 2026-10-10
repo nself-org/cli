@@ -26,6 +26,9 @@ func DeepChecks(ctx context.Context, projectDir string, verbose bool) []CheckRes
 		results = append(results, PluginMigrationChecks(ctx, filepath.Join(home, ".nself", "plugins"))...)
 	}
 
+	// P7-PLUG-19: bundle ledger vs plugin directory (E136).
+	results = append(results, BundleLedgerDriftChecks(ctx, bundlePluginDir())...)
+
 	// P2-E7-W2-S6-T21: PayPal multi-account CSV parity validation.
 	results = append(results, CheckPayPalCSVParity(ctx))
 

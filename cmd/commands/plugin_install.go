@@ -209,9 +209,15 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 		maybeShowFreeUpsell(installedCount)
 	}
 	// compat.V15(P7-LIVE-06): plugin install leaves generated state for a later build -> reconcile now
-	return finishPluginInstall(compat.V15(), installed, failures, func() error {
+	ferr := finishPluginInstall(compat.V15(), installed, failures, func() error {
 		return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installed, ",")})
 	})
+	// P7-PLUG-19: wait for boot migrations of what was installed (plugin_install_readiness.go).
+	rerr := pluginInstallReadiness(cmd, pluginDir, installed)
+	if ferr == nil {
+		return rerr
+	}
+	return errors.Join(ferr, rerr)
 }
 
 // finishPluginInstall reconciles once after any successful install (v1.5) and

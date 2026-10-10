@@ -80,6 +80,8 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_marketplace_cmds.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_query.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_search.go` |
+| P7-PLUG-19 | bundle install not app-ready exits 0 with a warning | E135 exit 2 | `internal/bundle/installer_appready.go` |
+| P7-PLUG-19 | plugin install readiness failure warns | E118 exit 2 | `cmd/commands/plugin_install_readiness.go` |
 | P7-PLUG-63 | bundle reply trusted for any key and bundle | only a signed reply naming this key, this bundle and a live window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache age from the unsigned fetched_at | the older of fetched_at and the signed jwt iat | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache trusted whatever the clock says | refused when the clock is behind the signed iat or the highest time seen | `internal/license/cache.go` |

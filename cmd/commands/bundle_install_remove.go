@@ -62,10 +62,16 @@ func runBundleInstall(cmd *cobra.Command, args []string) error {
 		Strict:  strict,
 		Channel: bundle.Channel(channelStr),
 	}
+	if !dryRun {
+		// P7-PLUG-19: Install runs reconcile, start, readiness, tracking and health.
+		opts.Hooks = newBundleAppReadyHooks(cmd, args[0])
+	}
 	result, err := bundleInstall(context.Background(), args[0], opts)
-	if result != nil && result.Changed {
+	// Reconcile exactly once: Install ran it through the hook unless it never got
+	// that far (a member failed and was rolled back, or no hooks ran).
+	if result != nil && result.Changed && !result.Reconciled {
 		// compat.V15(P7-LIVE-06): bundle subprocess build -> cmd-layer reconcile in both modes
-		return errors.Join(err, reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerBundle, Subject: args[0]}))
+		return errors.Join(err, bundleReconcile(cmd, reconcile.Trigger{Kind: reconcile.TriggerBundle, Subject: args[0]}))
 	}
 	return err
 }

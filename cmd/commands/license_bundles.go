@@ -43,9 +43,9 @@ var productToBundleSlug = map[string]string{
 // no code path called the bundle union resolver at all. Rules, in order:
 //
 //   - owner/plus keys unlock every currently-installable paid bundle in
-//     bundles.json (IsInstallable already excludes the free "task" bundle
-//     and the synthetic "nself-plus" meta-bundle — Ruling 2's one
-//     hand-coded membership rule, reused here rather than re-derived).
+//     bundles.json (IsInstallable excludes the synthetic "nself-plus"
+//     meta-bundle — Ruling 2's one hand-coded membership rule — and IsFree
+//     excludes the free "task" bundle, installable since P7-PLUG-19).
 //   - a key tied to exactly one bundle (productToBundleSlug) unlocks that
 //     one bundle.
 //   - any other/unrecognized product code, or a bundle slug not present in
@@ -67,7 +67,7 @@ func resolveBundlesUnlocked(ctx context.Context, pp *license.ProductPrefix) []st
 	if pp.Product == "plus" || pp.Product == "owner" {
 		var names []string
 		for _, b := range bundle.All() {
-			if !b.IsInstallable() {
+			if !b.IsInstallable() || b.IsFree() {
 				continue
 			}
 			names = append(names, b.Name)

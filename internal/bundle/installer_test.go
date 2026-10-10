@@ -43,33 +43,17 @@ func TestInstall_MetaBundleNotInstallable(t *testing.T) {
 	}
 }
 
-// TestInstall_TaskBundleNotInstallable_ListsPerPluginCommands proves the free
-// Task Bundle's refusal is actionable: design-confirmed (Ruling 2 +
-// P6-E4-W3-S3-T10 — free bundles install their plugins individually, not as
-// a unit), the error must name the exact `nself plugin install <name>`
-// command for every plugin in bundles.json's task.plugins list rather than a
-// bare "not installable" dead end.
-func TestInstall_TaskBundleNotInstallable_ListsPerPluginCommands(t *testing.T) {
-	ctx := context.Background()
-	_, err := Install(ctx, "task", InstallOpts{DryRun: true, Out: &bytes.Buffer{}})
-	if err == nil {
-		t.Fatal("expected error: task is not installable as a unit")
+// TestInstall_TaskBundleInstallable proves the free Task Bundle installs as a
+// unit since P7-PLUG-19: its dry run plans every member and needs no licence.
+func TestInstall_TaskBundleInstallable(t *testing.T) {
+	setupOfflineRegistry(t, mockTaskRegistry())
+	var buf bytes.Buffer
+	res, err := Install(context.Background(), "task", InstallOpts{DryRun: true, Out: &buf, Channel: ChannelStable})
+	if err != nil {
+		t.Fatalf("task dry run: %v", err)
 	}
-	if !strings.Contains(err.Error(), "not installable") {
-		t.Errorf("error %v missing 'not installable'", err)
-	}
-	taskBundle, ok := Get("task")
-	if !ok {
-		t.Fatal("fixture missing task bundle")
-	}
-	if len(taskBundle.Plugins) == 0 {
-		t.Fatal("fixture task bundle has no plugins to assert against")
-	}
-	for _, p := range taskBundle.Plugins {
-		want := "nself plugin install " + p
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error missing per-plugin command %q; got: %v", want, err)
-		}
+	if len(res.Planned) != 2 || !strings.Contains(buf.String(), "notifications@") || !strings.Contains(buf.String(), "jobs@") {
+		t.Errorf("task plan = %v\n%s", res.Planned, buf.String())
 	}
 }
 

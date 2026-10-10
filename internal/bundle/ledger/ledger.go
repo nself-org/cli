@@ -1,11 +1,11 @@
 // Package ledger is the bundle install-state ledger (contract:cli.bundle-ledger
-// v1, P7 PLUG D6): per project, which bundles are installed and, per plugin,
+// v1, P7 PLUG D6): per plugin directory, which bundles are installed and, per plugin,
 // installed_by / explicit / tier / version / checksum.
 //
 // Purpose: record WHY a plugin is present, so refcounted bundle remove
 // (P7-PLUG-20), app-ready (P7-PLUG-19) and the surfaces (P7-SURF-13) stop
 // inferring it from plugin directories.
-// Inputs: a project root (the file lives at <root>/.nself/state/bundles.json)
+// Inputs: a plugin directory (the file lives at <pluginDir>/.nself-state/bundles.json)
 // and, for bootstrap, Sources (bundle membership plus installed plugins).
 // Outputs: a validated Ledger, written atomically (temp + rename) under a file
 // lock. The file is machine-owned: its first key is _generated and nothing in
