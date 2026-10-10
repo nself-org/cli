@@ -1,0 +1,58 @@
+# Image bump policy (ADR 0030 §4, P7-HYG-34). Read by tools/imagebump.
+#
+# One entry per non-plugin entry of internal/compose/images.yaml; plugin pins
+# move with plugin releases. tools/imagebump exits 1 when an entry is missing
+# here or its current version does not match its regex.
+#
+#   regex  anchored RE2 (^...$). The capture groups are the numeric version
+#          components. A tag the regex does not match is never chosen, so
+#          pre-releases (rc, beta, alpha) and variant tags (-ce, -ubuntu) stay out.
+#   track  patch  keeps the first two groups equal to the current tag's.
+#          minor  keeps the first group equal.
+#          A tag with fewer groups than that is fully fixed and never moves.
+#          A regex with no groups (latest, alpine, pg16) never moves; only its
+#          digest refreshes when imagelock -resolve runs.
+#          manual skips the entry (not used in this file).
+#
+# Moving a floating tag to a new line (postgres 17, python 3.13, redis 8, ...)
+# is a deliberate edit of images.yaml, not a weekly bump.
+schema_version: 1
+services:
+  # --- floating tags: the digest refreshes weekly, the tag does not move ---
+  admin: {regex: '^latest$', track: patch}
+  deno: {regex: '^alpine$', track: patch}
+  functions: {regex: '^latest$', track: patch}
+  mailpit: {regex: '^latest$', track: patch}
+  minio: {regex: '^latest$', track: patch}
+  nginx: {regex: '^alpine$', track: patch}
+  otel-collector: {regex: '^latest$', track: patch}
+  pgvector: {regex: '^pg16$', track: patch}
+  tempo: {regex: '^latest$', track: patch}
+  # --- floating major/minor lines: one group or two fixed groups, never moves ---
+  meilisearch: {regex: '^v(\d+)\.(\d+)$', track: patch}
+  meilisearch-init: {regex: '^(\d+)\.(\d+)$', track: patch}
+  postgres: {regex: '^(\d+)-alpine$', track: patch}
+  python: {regex: '^(\d+)\.(\d+)-slim$', track: patch}
+  redis: {regex: '^(\d+)-alpine$', track: patch}
+  # --- exact versions: patch releases within the current minor ---
+  alertmanager: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  auth: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
+  cadvisor: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  elasticsearch: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
+  grafana: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
+  hasura: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  lego: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  loki: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
+  mlflow: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  node-exporter: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  otel-collector-contrib: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
+  postgres-exporter: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  prometheus: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  promtail: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
+  redis-exporter: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  storage: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: patch}
+  # --- minor track: upstream ships fixes as minor releases ---
+  # reason: seaweedfs has no patch tags; every release is a new 4.N tag.
+  seaweedfs: {regex: '^(\d+)\.(\d+)$', track: minor}
+  # reason: typesense publishes releases as 27.N tags; fixes arrive as minors.
+  typesense: {regex: '^(\d+)\.(\d+)$', track: minor}
