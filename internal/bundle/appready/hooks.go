@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/plugin/manifestv2"
@@ -79,6 +80,9 @@ func LoadMembers(pluginDir string, names []string) ([]Member, error) {
 		}
 		if mem.HealthEndpoint == "" {
 			mem.HealthEndpoint = "/health"
+		}
+		if !strings.HasPrefix(mem.HealthEndpoint, "/") {
+			mem.HealthEndpoint = "/" + mem.HealthEndpoint
 		}
 		migDir := "migrations"
 		if m.Migrations != nil {

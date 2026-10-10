@@ -71,3 +71,14 @@ func installedMembers(pluginDir string, planned []string) ([]ledger.InstalledPlu
 	}
 	return out, nil
 }
+
+// InstalledFacts returns the ledger facts (name, version, tier, checksum) of the
+// named plugins that are on disk in pluginDir, from their plugin.json files. It
+// is the exported form of installedMembers for callers outside this package
+// (cmd/commands/plugin_install_ledger.go); a plugin that is not on disk is omitted.
+func InstalledFacts(pluginDir string, names []string) ([]ledger.InstalledPlugin, error) {
+	return installedMembers(pluginDir, names)
+}
+
+// LedgerStore returns the ledger store of pluginDir with its bootstrap source wired.
+func LedgerStore(pluginDir string) *ledger.Store { return newLedgerStore(pluginDir) }

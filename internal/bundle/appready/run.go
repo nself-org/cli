@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/plugin/readiness"
 )
 
@@ -176,8 +177,13 @@ func waitHealthy(ctx context.Context, h Hooks, m Member, deadline time.Time) err
 	url := h.healthURL(m)
 	for {
 		_, err := readiness.Probe(ctx, nil, m.Name, url)
-		if err == nil || !readiness.IsUnreachable(err) {
+		if err == nil || isE119(err) {
 			return nil
+		}
+		if !readiness.IsUnreachable(err) {
+			// Not "did not answer yet": a bad URL or another probe failure.
+			// Waiting longer cannot fix it, and it must not read as healthy.
+			return err
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -187,6 +193,13 @@ func waitHealthy(ctx context.Context, h Hooks, m Member, deadline time.Time) err
 		}
 		pause(ctx, h.interval())
 	}
+}
+
+// isE119 reports whether err is the readiness E119 (the plugin answered 200 but
+// its body has no migrations field), the only probe error that still proves health.
+func isE119(err error) bool {
+	var ce *errs.CLIError
+	return errors.As(err, &ce) && ce.Code == "E119"
 }
 
 // remaining is the time left until deadline, never below one millisecond so a

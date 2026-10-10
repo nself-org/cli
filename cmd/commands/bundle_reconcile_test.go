@@ -204,7 +204,7 @@ func TestBundleRemoveReconcileBothModes(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := bundle.LoadBytes([]byte(`{"schema_version":"2.0.0","bundles":{"fixture":{"display":"Fixture","tier":"paid","plugins":["zzfixture"]}}}`)); err != nil {
+		if err := bundle.LoadBytes([]byte(`{"schema_version":"2.0.0","bundles":{"fixture":{"display":"Fixture","tier":"paid","price_monthly":5,"price_yearly":50,"plugins":["zzfixture"]}}}`)); err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = bundle.LoadBytes([]byte(fixtureBundlesJSON)) })

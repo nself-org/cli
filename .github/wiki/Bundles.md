@@ -26,7 +26,7 @@ A bundle that is not app-ready fails with **E135** (exit 2) naming the bundle, t
 
 `nself plugin install <name>` of a plugin with boot migrations waits for them too when the stack is running (E118 or E119, exit 2; a warning with `NSELF_V15` off). With the stack stopped it says readiness is checked at the next `nself start` or `nself doctor`.
 
-`nself doctor --deep` reports **E136** for each plugin the ledger lists whose `plugin.json` is gone from the plugin directory, and nothing when the ledger matches the disk.
+`nself doctor --deep` reports **E136** for each plugin the ledger lists whose `plugin.json` is gone from the plugin directory, and nothing when the ledger matches the disk. The fix is to reinstall the bundle (`nself bundle install <bundle>`) to restore the missing plugin; do not delete the ledger. Until P7-PLUG-20 lands, a deliberate `nself plugin remove` of a bundle member is also reported, because plugin remove does not update the ledger.
 
 ## The bundle ledger
 

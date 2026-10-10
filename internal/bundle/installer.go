@@ -163,6 +163,9 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 		return result, fmt.Errorf("bundle %q: reading the install ledger before install: %w", b.Slug, err)
 	}
 
+	// What was on disk before this install: those members have no bundle origin.
+	before := buildInstalledVersionMap(pluginDir)
+
 	cfg := opts.Config
 	if cfg == nil {
 		loaded, lerr := loadConfigOrDefault()
@@ -194,7 +197,7 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 	if len(result.Skipped) > 0 {
 		_, _ = fmt.Fprintf(out, "Skipped (missing from registry): %s\n", strings.Join(result.Skipped, ", "))
 	}
-	return result, finishInstall(ctx, rn, store, pluginDir, planned, opts, result)
+	return result, finishInstall(ctx, rn, store, pluginDir, planned, before, opts, result)
 }
 
 // resolvePlan resolves the version pins and sets result.Planned / Skipped. In

@@ -19,7 +19,7 @@ func init() {
 			Category:   "plugin",
 			Summary:    "Bundle ledger lists a missing plugin",
 			DefaultWhy: "The bundle install ledger records a plugin whose directory or plugin.json is gone from the plugin directory, so the ledger and the disk disagree.",
-			DefaultFix: "Reinstall the bundle (nself bundle install <bundle>), or delete <plugin dir>/.nself-state/bundles.json to re-bootstrap it from the installed plugins.",
+			DefaultFix: "Reinstall the bundle (nself bundle install <bundle>) to restore the missing plugin.",
 			DocsPath:   "reference/error-codes#e136",
 			Exit:       1,
 		},

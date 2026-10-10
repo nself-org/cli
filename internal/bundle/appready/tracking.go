@@ -12,6 +12,7 @@ package appready
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -19,56 +20,71 @@ import (
 )
 
 // TrackedTables parses an export_metadata response into the set of tracked
-// tables, keyed "schema.name". It reads sources[].tables[].table and, for older
-// metadata, a top-level tables array.
+// postgres tables, keyed "schema.name". It reads sources[].tables[].table and,
+// for older metadata, a top-level tables array. Only postgres-kind sources count
+// (kind "postgres", "citus", "cockroach", or no kind); a data-connector or
+// BigQuery source is ignored. A table entry counts only in the {schema,name}
+// object form (schema defaults to public); any other shape is skipped.
 func TrackedTables(raw []byte) (map[string]bool, error) {
-	var doc struct {
-		Sources []struct {
-			Tables []tableEntry `json:"tables"`
-		} `json:"sources"`
-		Tables []tableEntry `json:"tables"`
-		// Hasura wraps the metadata in a "metadata" key on some endpoints.
-		Metadata *struct {
-			Sources []struct {
-				Tables []tableEntry `json:"tables"`
-			} `json:"sources"`
-			Tables []tableEntry `json:"tables"`
-		} `json:"metadata"`
-	}
+	var doc metadataDoc
 	if err := json.Unmarshal(raw, &doc); err != nil {
+		var te *json.UnmarshalTypeError
+		if errors.As(err, &te) {
+			return nil, fmt.Errorf("export_metadata response has an unexpected shape (%s is %s, want %s): %w", te.Field, te.Value, te.Type, err)
+		}
 		return nil, fmt.Errorf("export_metadata response is not JSON: %w", err)
 	}
 	set := map[string]bool{}
-	add := func(ts []tableEntry) {
-		for _, t := range ts {
-			if t.Table.Name == "" {
-				continue
-			}
-			schema := t.Table.Schema
-			if schema == "" {
-				schema = "public"
-			}
-			set[schema+"."+t.Table.Name] = true
-		}
-	}
-	for _, s := range doc.Sources {
-		add(s.Tables)
-	}
-	add(doc.Tables)
+	doc.collect(set)
 	if doc.Metadata != nil {
-		for _, s := range doc.Metadata.Sources {
-			add(s.Tables)
-		}
-		add(doc.Metadata.Tables)
+		doc.Metadata.collect(set)
 	}
 	return set, nil
 }
 
+// metadataDoc is export_metadata; Hasura wraps it in a "metadata" key on some endpoints.
+type metadataDoc struct {
+	Sources  []sourceDoc  `json:"sources"`
+	Tables   []tableEntry `json:"tables"`
+	Metadata *metadataDoc `json:"metadata"`
+}
+
+type sourceDoc struct {
+	Kind   string       `json:"kind"`
+	Tables []tableEntry `json:"tables"`
+}
+
+// tableEntry keeps "table" raw: it is an object for postgres but an array for
+// data connectors, and one wrong shape must not fail the whole document.
 type tableEntry struct {
-	Table struct {
-		Schema string `json:"schema"`
-		Name   string `json:"name"`
-	} `json:"table"`
+	Table json.RawMessage `json:"table"`
+}
+
+func (d metadataDoc) collect(set map[string]bool) {
+	for _, s := range d.Sources {
+		switch strings.ToLower(s.Kind) {
+		case "", "postgres", "citus", "cockroach":
+			addTables(set, s.Tables)
+		}
+	}
+	addTables(set, d.Tables) // older metadata: a top-level list is postgres
+}
+
+func addTables(set map[string]bool, ts []tableEntry) {
+	for _, t := range ts {
+		var obj struct {
+			Schema  string `json:"schema"`
+			Name    string `json:"name"`
+			Dataset string `json:"dataset"`
+		}
+		if json.Unmarshal(t.Table, &obj) != nil || obj.Name == "" || obj.Dataset != "" {
+			continue // not the {schema,name} object form
+		}
+		if obj.Schema == "" {
+			obj.Schema = "public"
+		}
+		set[obj.Schema+"."+obj.Name] = true
+	}
 }
 
 // tableKey normalises a manifest table name to "schema.name".

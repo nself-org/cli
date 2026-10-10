@@ -6,7 +6,8 @@ package bundle
 // Purpose: record the bundle in the ledger (<pluginDir>/.nself-state/bundles.json),
 // then, when InstallOpts.Hooks is set, run reconcile, start, readiness, tracking
 // and health and report app-ready or the first failing step as E135.
-// Inputs: the Runner, the ledger store, the plugin directory and the planned plugins.
+// Inputs: the Runner, the ledger store, the plugin directory, the planned plugins and
+// the plugins that were on disk before the install (name -> version).
 // Outputs: nil, or E135 (v1.5) / a printed warning (v1.4) for a failed step.
 // Constraints: a ledger write failure does NOT roll the install back (the plugins
 // are on disk); the error says so. Hooks nil: only the ledger step runs.
@@ -16,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/bundle/appready"
@@ -31,7 +33,7 @@ func newLedgerStore(pluginDir string) *ledger.Store {
 	return s
 }
 
-func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store, pluginDir string, planned []string, opts InstallOpts, result *InstallResult) error {
+func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store, pluginDir string, planned []string, before map[string]string, opts InstallOpts, result *InstallResult) error {
 	out := opts.Out
 	if out == nil {
 		out = os.Stderr
@@ -46,6 +48,18 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 			return "no installed members to record", nil
 		}
 		if err := store.Update(func(l *ledger.Ledger) error {
+			// A member that was on disk before this install and has no ledger
+			// record was installed on its own: record it explicit so a later
+			// bundle remove keeps it. (Errs toward keeping the plugin.)
+			for _, m := range members {
+				key := strings.ToLower(m.Name)
+				if _, wasThere := before[key]; !wasThere {
+					continue
+				}
+				if _, known := l.Plugins[key]; !known {
+					l.MarkExplicit(m)
+				}
+			}
 			l.AddBundle(result.Bundle, members, time.Now())
 			return nil
 		}); err != nil {
@@ -70,6 +84,18 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 	return nil
 }
 
+// stepCause keeps the failing step's error reachable for errors.Is and
+// errors.As while hiding any exit coder inside it (an *exec.ExitError from
+// docker compose): errs.ExitCodeFor finds ExitCode() first on the chain, so
+// without this E135 would exit with docker's status instead of its registered 2.
+type stepCause struct{ err error }
+
+func (c *stepCause) Error() string { return c.err.Error() }
+func (c *stepCause) Unwrap() error { return c.err }
+
+// ExitCode is E135's registered exit status (2, codes_bundle_install.go); never 0.
+func (c *stepCause) ExitCode() int { return 2 }
+
 // appReadyVerdict turns the first failed step into E135. A failed reconcile is
 // not an app-ready problem: it returns its error in both modes, as bundle install
 // did before the reconcile moved into Install (P7-LIVE-06).
@@ -78,7 +104,7 @@ func appReadyVerdict(out io.Writer, bundleSlug string, f *appready.Failure) erro
 		return fmt.Errorf("bundle %s: reconcile failed after install: %w", bundleSlug, f.Err)
 	}
 	e := errs.Newf("E135", "bundle %s is not app-ready: step %s failed for plugin %s", bundleSlug, f.Step, f.Plugin).WithWhy(f.Err.Error())
-	e.Wrapped = f.Err
+	e.Wrapped = &stepCause{err: f.Err}
 	// compat.V15(P7-PLUG-19): bundle install not app-ready exits 0 with a warning -> E135 exit 2
 	if compat.V15() {
 		return e

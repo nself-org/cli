@@ -29,7 +29,7 @@ const (
 	ledgerStateDir   = ".nself-state" // ledger.StateDirName
 	ledgerFileName   = "bundles.json"
 	ledgerReadCap    = 4 << 20
-	bundleDriftFixed = "reinstall the bundle (nself bundle install <bundle>), or delete <plugin dir>/.nself-state/bundles.json to re-bootstrap it from the installed plugins"
+	bundleDriftFixed = "reinstall the bundle (nself bundle install <bundle>) to restore the missing plugin"
 )
 
 // bundlePluginDir is where plugins (and the ledger) live: $NSELF_PLUGIN_DIR
