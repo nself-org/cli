@@ -68,6 +68,7 @@ internal/installer 11  # measured 13.2 2026-10-05
 internal/installmeta 75  # measured 77.8 2026-10-05
 internal/license 60
 internal/lifecycle 14  # measured 16.7 2026-10-05
+internal/lock 90  # measured 92.8 2026-10-10
 internal/maintenance 35  # measured 37.8 2026-10-05
 internal/metrics 88  # measured 90.5 2026-10-05
 internal/migrate 83  # measured 85.2 2026-10-05
