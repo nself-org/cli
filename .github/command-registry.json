@@ -9190,7 +9190,7 @@
           "shorthand": null,
           "type": "string",
           "default": "cloudflare",
-          "usage": "DNS provider (cloudflare, route53, digitalocean, custom)",
+          "usage": "DNS provider (cloudflare, route53, digitalocean)",
           "hidden": false,
           "deprecated": null,
           "required": false,

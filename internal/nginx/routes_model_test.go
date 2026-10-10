@@ -179,7 +179,7 @@ func (g *Generator) legacyGenerateAllRoutes() (map[string]string, error) {
 	// nginx/sites/*.conf file, so any field the two call sites set
 	// independently is prone to drift — see finalizeServiceRoute's doc
 	// comment for the SSLBasePath incident this caused (prod, 2026-09-21) and
-	// the earlier HasTrustedChain incident it also once caused (2026-09-03).
+	// the earlier chain.pem incident it also once caused (2026-09-03).
 	for i := range allEntries {
 		g.finalizeServiceRoute(&allEntries[i].data)
 	}

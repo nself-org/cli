@@ -28,8 +28,6 @@ http {
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 1d;
     ssl_session_tickets off;
-    ssl_stapling on;
-    ssl_stapling_verify on;
     # Docker's embedded DNS (127.0.0.11) resolves container names on the
     # user-defined bridge network. valid=10s keeps the cache short so a
     # recreated container (new IP) is picked up on the next request instead

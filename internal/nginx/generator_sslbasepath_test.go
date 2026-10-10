@@ -23,8 +23,7 @@ import (
 // actually uses to write every nginx/sites/*.conf file — never set it, so it
 // rendered empty. This test drives the real Generate() entrypoint (not
 // RenderServiceRoute) so it exercises the same loop `nself build` runs
-// through, the way TestGenerate_RealBuildPathEmitsTrustedChainWhenPresent
-// does for the sibling HasTrustedChain gap.
+// through.
 func TestGenerate_RealBuildPathRootsSSLCertificateAtMountPath(t *testing.T) {
 	dir := t.TempDir()
 	certDir := filepath.Join(dir, "ssl", "certificates", "local-nself-org")

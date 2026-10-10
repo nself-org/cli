@@ -16,10 +16,14 @@ import (
 var sslSetupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Set up SSL certificates via DNS-01 challenge",
-	Long: `Provision SSL certificates using certbot with DNS-01 validation.
+	Long: `Provision SSL certificates with DNS-01 validation.
+
+In v1.5 mode (NSELF_V15=1) the CLI's own ACME client issues the certificate and
+--install-cron installs the nself-acme-renew timer; in v1.4 mode certbot does
+(--acme selects the ACME client there too).
 
 Supports wildcard certificates for *.domain when --wildcard is specified.
-Providers: cloudflare (default), route53, digitalocean, custom.
+Providers: cloudflare (default), route53, digitalocean.
 
 Example:
   nself ssl setup --provider cloudflare --wildcard
@@ -30,7 +34,7 @@ Example:
 var sslAddCmd = &cobra.Command{
 	Use:   "add <domain>",
 	Short: "Provision an SSL certificate for a single domain",
-	Long: `Provision an SSL certificate for a custom domain using certbot.
+	Long: `Provision an SSL certificate for a custom domain (certbot in v1.4 mode, the ACME client over HTTP-01 in v1.5 mode).
 
 After provisioning, generates an nginx server block and reloads nginx.
 
@@ -41,7 +45,7 @@ Example:
 }
 
 func init() {
-	sslSetupCmd.Flags().String("provider", "cloudflare", "DNS provider (cloudflare, route53, digitalocean, custom)")
+	sslSetupCmd.Flags().String("provider", "cloudflare", "DNS provider (cloudflare, route53, digitalocean)")
 	sslSetupCmd.Flags().Bool("wildcard", false, "Request wildcard certificate (*.domain)")
 	sslSetupCmd.Flags().String("email", "", "Email for Let's Encrypt registration")
 	sslSetupCmd.Flags().Bool("staging", false, "Use Let's Encrypt staging environment")
@@ -49,13 +53,6 @@ func init() {
 	sslCmd.AddCommand(sslSetupCmd)
 	sslAddCmd.Flags().String("upstream", "", "Backend service to proxy to (host:port), e.g. app:3000")
 	sslCmd.AddCommand(sslAddCmd)
-}
-
-// certbotProviderPlugin maps provider names to certbot DNS plugin packages.
-var certbotProviderPlugin = map[string]string{ //nolint:unused // kept: certbot provider plugin never wired; see qa/bugs/declared-but-never-wired-symbols.md
-	"cloudflare":   "certbot-dns-cloudflare",
-	"route53":      "certbot-dns-route53",
-	"digitalocean": "certbot-dns-digitalocean",
 }
 
 // certbotProviderFlag maps provider names to certbot --dns-* flag names.
@@ -66,8 +63,8 @@ var certbotProviderFlag = map[string]string{
 }
 
 func runSSLSetup(cmd *cobra.Command, args []string) error {
-	if useACME, _ := cmd.Flags().GetBool("acme"); useACME {
-		return runSSLSetupACME(cmd, args)
+	if useACMEEngine(cmd) {
+		return v15ACMEError(runSSLSetupACME(cmd, args))
 	} else if err := rejectACMEFlags(cmd); err != nil {
 		return err
 	}
@@ -177,11 +174,7 @@ func runSSLSetup(cmd *cobra.Command, args []string) error {
 	}
 
 	// Reload nginx.
-	reloadCmd := exec.Command("docker", "compose", "exec", "nginx", "nginx", "-s", "reload")
-	reloadCmd.Dir = workdir
-	reloadCmd.Stdout = os.Stdout
-	reloadCmd.Stderr = os.Stderr
-	if err := reloadCmd.Run(); err != nil {
+	if err := nginxCompose(cmd.Context(), workdir, "-s", "reload"); err != nil {
 		ui.Warn(fmt.Sprintf("Nginx reload failed: %v (container may not be running)", err))
 	}
 

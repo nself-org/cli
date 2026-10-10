@@ -105,7 +105,7 @@ func (g *Generator) ensureModel() error {
 	if g.model != nil {
 		return nil
 	}
-	m, err := routemodel.Build(g.cfg, g.workdir, g.hasSSL, g.hasTrustedChain)
+	m, err := routemodel.Build(g.cfg, g.workdir, g.hasSSL, nil)
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func (g *Generator) ensureModel() error {
 }
 
 // finalizeServiceRoute fills in every ServiceRouteData field the generator
-// (not the caller) is responsible for computing: HasSSL, HasTrustedChain,
+// (not the caller) is responsible for computing: HasSSL,
 // SSLBasePath, UpstreamName, ProxyTarget, and a default PathZones.
 //
 // This is the single completion point for ServiceRouteData, called from both
@@ -129,7 +129,6 @@ func (g *Generator) ensureModel() error {
 // two paths cannot drift apart again.
 func (g *Generator) finalizeServiceRoute(data *ServiceRouteData) {
 	data.HasSSL = g.hasSSL
-	data.HasTrustedChain = g.hasTrustedChain(data.SSLDir)
 	data.SSLBasePath = nginxtopo.NginxSSLContainerPath
 	data.UpstreamName = upstreamName(data.Route)
 	data.ProxyTarget = proxyTarget(data.Upstream)

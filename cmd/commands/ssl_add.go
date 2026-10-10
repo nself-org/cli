@@ -40,8 +40,8 @@ import (
 )
 
 func runSSLAdd(cmd *cobra.Command, args []string) error {
-	if on, _ := cmd.Flags().GetBool("acme"); on {
-		return runSSLAddACME(cmd, args)
+	if useACMEEngine(cmd) {
+		return v15ACMEError(runSSLAddACME(cmd, args))
 	} else if err := rejectACMEFlags(cmd); err != nil {
 		return err
 	}
@@ -139,17 +139,11 @@ func runSSLAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate nginx config before reloading.
-	testCmd := exec.Command("docker", "compose", "exec", "nginx", "nginx", "-t")
-	testCmd.Dir = servedRoot
-	if out, testErr := testCmd.CombinedOutput(); testErr != nil {
-		return fmt.Errorf("nginx config test failed: %s", string(out))
+	if testErr := nginxCompose(cmd.Context(), servedRoot, "-t"); testErr != nil {
+		return fmt.Errorf("nginx config test failed: %w", testErr)
 	}
 
-	reloadCmd := exec.Command("docker", "compose", "exec", "nginx", "nginx", "-s", "reload")
-	reloadCmd.Dir = servedRoot
-	reloadCmd.Stdout = os.Stdout
-	reloadCmd.Stderr = os.Stderr
-	if err := reloadCmd.Run(); err != nil {
+	if err := nginxCompose(cmd.Context(), servedRoot, "-s", "reload"); err != nil {
 		ui.Warn(fmt.Sprintf("Nginx reload failed: %v", err))
 	}
 
