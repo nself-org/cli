@@ -49,7 +49,7 @@ commands:
   backup config: {side_effect: read, flags: {install-cron: {side_effect: write}}}
   # cmd/commands/backup_create_list.go:22 creates a local backup; --remote uploads it
   backup create: {side_effect: write, flags: {remote: {side_effect: remote}}}
-  backup drill: {side_effect: write, json: legacy}
+  backup drill: {side_effect: write}
   backup init-key: {side_effect: write}
   backup list: {side_effect: read}
   # cmd/commands/pitr.go:30 RunE path changes no persistent state (prints/reads only)
@@ -57,17 +57,17 @@ commands:
   backup pitr base-backup: {side_effect: write}
   backup pitr disable: {side_effect: write}
   backup pitr enable: {side_effect: write}
-  backup pitr restore: {side_effect: destructive}
+  backup pitr restore: {side_effect: destructive, surface: cli-only}
   backup pitr status: {side_effect: read}
-  backup prune: {side_effect: destructive}
-  backup restore: {side_effect: destructive}
+  backup prune: {side_effect: destructive, confirm: {flags: []}}
+  backup restore: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/backup_restore.go:85 downloads a backup from a remote and restores it over the database
-  backup restore-remote: {side_effect: destructive}
+  backup restore-remote: {side_effect: destructive, confirm: {flags: [yes]}}
   backup resume: {side_effect: write}
   backup schedule: {side_effect: write}
   backup status: {side_effect: read}
   # cmd/commands/backup_key_stream.go:61 streams the backup to a remote destination (--to)
-  backup stream: {side_effect: remote}
+  backup stream: {side_effect: remote, output: stream}
   # cmd/commands/backup_verify_prune.go:22 checks backup integrity; --restore-test restores into a scratch database
   backup verify: {side_effect: read, flags: {restore-test: {side_effect: write}}}
   build: {canon: core, side_effect: write}
@@ -112,7 +112,7 @@ commands:
   db backup: {side_effect: write}
   db backup list: {side_effect: read}
   # cmd/commands/db_pitr_ops.go:116 uploads local backups to the remote destination (--remote); name is not sync-shaped
-  db backup-sync: {side_effect: remote}
+  db backup-sync: {side_effect: remote, confirm: {flags: []}}
   # cmd/commands/db_pitr_ops.go:162 RunE path changes no persistent state (prints/reads only)
   db backup-sync-status: {side_effect: read}
   # cmd/commands/db_audit.go:52 RunE path changes no persistent state (prints/reads only)
@@ -120,7 +120,7 @@ commands:
   db drift fix: {side_effect: write}
   # cmd/commands/db_drift.go:17 RunE path changes no persistent state (prints/reads only)
   db drift scan: {side_effect: read}
-  db drop: {side_effect: destructive}
+  db drop: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/db_schema.go:56 RunE path changes no persistent state (prints/reads only)
   db fk-index: {side_effect: read}
   db fk-index apply: {side_effect: write}
@@ -157,7 +157,7 @@ commands:
   db migrate baseline: {side_effect: write}
   db migrate create: {side_effect: write}
   # cmd/commands/db_migrate.go:87 rolls a migration back; dropped objects and data are not restorable by a command
-  db migrate down: {side_effect: destructive}
+  db migrate down: {side_effect: destructive, surface: cli-only}
   db migrate idempotent: {side_effect: write}
   # cmd/commands/db_migrate_lint.go:45 RunE path changes no persistent state (prints/reads only)
   db migrate lint: {side_effect: read}
@@ -168,21 +168,21 @@ commands:
   # cmd/commands/db_pgbouncer.go:23 RunE path changes no persistent state (prints/reads only)
   db pgbouncer: {side_effect: read}
   # cmd/commands/db_pgbouncer.go:108 RunE path changes no persistent state (prints/reads only)
-  db pgbouncer connection-url: {side_effect: read}
+  db pgbouncer connection-url: {side_effect: read, surface: cli-only}
   db pgbouncer generate: {side_effect: write}
   db pgbouncer status: {side_effect: read}
   # cmd/commands/db_pitr.go:19 RunE path changes no persistent state (prints/reads only)
   db pitr: {side_effect: read}
   db pitr enable: {side_effect: write}
-  db pitr restore: {side_effect: destructive}
+  db pitr restore: {side_effect: destructive, surface: cli-only}
   db pitr status: {side_effect: read}
   db pitr test: {side_effect: write}
   # cmd/commands/db_reconcile.go:40 dry-run by default (prints the plan); --apply escalates to write
   db reconcile: {side_effect: read, flags: {apply: {side_effect: write}}}
-  db reset: {side_effect: destructive}
+  db reset: {side_effect: destructive, confirm: {flags: [force, yes]}}
   # cmd/commands/db_hasura.go:111 rewrites stored migration checksum state; self-labelled dangerous
-  db reset-checksum: {side_effect: destructive}
-  db restore: {side_effect: destructive}
+  db reset-checksum: {side_effect: destructive, surface: cli-only}
+  db restore: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/db_pitr_ops.go:202 restores into a temporary database that is dropped afterwards (db_pitr.go:65-70): write, not destructive despite the name
   db restore-drill: {side_effect: write}
   # cmd/commands/db_pitr_ops.go:235 RunE path changes no persistent state (prints/reads only)
@@ -329,7 +329,7 @@ commands:
   migrate from-bash: {side_effect: write}
   migrate from-v099: {side_effect: write}
   migrate generate: {side_effect: write}
-  migrate rollback: {side_effect: destructive}
+  migrate rollback: {side_effect: destructive, surface: cli-only}
   migrate run: {side_effect: write}
   migrate supabase: {side_effect: write}
   migrate watch: {side_effect: write, output: stream}
@@ -456,9 +456,9 @@ commands:
   telemetry status: {side_effect: read}
   # cmd/commands/template.go:47 RunE path changes no persistent state (prints/reads only)
   template: {canon: pending, side_effect: read}
-  template info: {side_effect: read, json: legacy}
-  template list: {side_effect: read, json: legacy}
-  template publish: {side_effect: remote}
+  template info: {side_effect: read}
+  template list: {side_effect: read}
+  template publish: {side_effect: remote, confirm: {flags: []}}
   # cmd/commands/template_publish_update.go:89 applies pending template migrations; --force allows DROP/TRUNCATE ones
   template update: {side_effect: write, flags: {force: {side_effect: destructive}}}
   trust: {canon: pending, side_effect: write}

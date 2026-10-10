@@ -19,6 +19,7 @@ import (
 
 	"github.com/nself-org/cli/internal/backup"
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -123,7 +124,7 @@ func TestBackupStatusProjectOffboxOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The stale backup fails with E217 and still leaves one document.
-	if runErr == nil || !strings.Contains(runErr.Error(), "exit status") {
+	if runErr == nil || !strings.Contains(runErr.Error(), "[E217]") || errs.ExitCodeFor(runErr) == 0 {
 		t.Fatalf("a stale backup must keep a non-zero exit, got %v", runErr)
 	}
 	doc := oneEnvelope(t, out, "backup status")
@@ -286,4 +287,30 @@ func emptyOf(t reflect.Type) reflect.Value {
 		}
 	}
 	return v
+}
+
+// unwrapEnvelopeData returns the bare legacy document of a command's stdout:
+// in v1.5 mode the envelope's data (member, when set); otherwise out as is.
+// The PROD-07 tests assert the legacy shapes and run in both compat modes.
+func unwrapEnvelopeData(out, member string) string {
+	var doc struct {
+		SchemaVersion string          `json:"schema_version"`
+		Data          json.RawMessage `json:"data"`
+	}
+	if json.Unmarshal([]byte(out), &doc) != nil || doc.SchemaVersion == "" || doc.Data == nil {
+		return out
+	}
+	data := doc.Data
+	if member != "" {
+		var m map[string]json.RawMessage
+		if json.Unmarshal(data, &m) != nil || m[member] == nil {
+			return out
+		}
+		data = m[member]
+	}
+	var buf bytes.Buffer
+	if json.Indent(&buf, data, "", "  ") != nil {
+		return out
+	}
+	return buf.String()
 }

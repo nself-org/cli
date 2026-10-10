@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/backup"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/database"
-	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/seed"
 	"github.com/nself-org/cli/internal/templates/clone"
@@ -66,8 +66,23 @@ func dataEnv(run func(*cobra.Command, []string) error) func(*cobra.Command, []st
 	}
 }
 
-// jsonEnvelopeOn reports whether this invocation answers with an envelope.
-func jsonEnvelopeOn(cmd *cobra.Command) bool { return shouldIsolateJSON(cmd) }
+// jsonEnvelopeOn reports whether this invocation answers with an envelope:
+// v1.5 mode, a registered path, and --json (or --format json). Every row of
+// this fragment is a v1.5-only envelope with no flag-level JSON override, so
+// the registry is not consulted (a plain run never builds it).
+func jsonEnvelopeOn(cmd *cobra.Command) bool {
+	if !compat.V15() {
+		return false
+	}
+	if _, ok := jsonDataTypes[invokedKey(cmd)]; !ok {
+		return false
+	}
+	if on, err := cmd.Flags().GetBool("json"); err == nil && on {
+		return true
+	}
+	f := cmd.Flags().Lookup("format")
+	return f != nil && f.Value.String() == "json"
+}
 
 func emitDataEnvelope(cmd *cobra.Command, args []string) error {
 	typed, v, set := registeredData(cmd)
@@ -121,12 +136,21 @@ var dataTargetSecret = map[string]bool{
 	"db import firebase": true, "db import supabase": true,
 }
 
+// documentedFailure is an error whose document is already on stdout and whose
+// text is already on stderr: the top level prints nothing more (Silent) and
+// the exit status stays that of the wrapped error.
+type documentedFailure struct{ err error }
+
+func (e documentedFailure) Error() string { return e.err.Error() }
+func (e documentedFailure) Unwrap() error { return e.err }
+func (e documentedFailure) Silent() bool  { return true }
+
 // codedExit ends a JSON invocation whose document is already written: the
 // error keeps its exit status, the human text goes to stderr, and the top
 // level prints no second document.
 func codedExit(cmd *cobra.Command, err error) error {
 	output.RenderError(cmd.ErrOrStderr(), err)
-	return errs.Exit(errs.ExitCodeFor(err))
+	return documentedFailure{err}
 }
 
 // emitEnv writes the envelope of the running command: data in its legacy
@@ -137,16 +161,6 @@ func emitEnv(cmd *cobra.Command, data any, legacyShape bool) error {
 		return output.EmitLegacyCompatible(output.Default(), invokedKey(cmd), data)
 	}
 	return output.EmitData(output.Default(), invokedKey(cmd), data)
-}
-
-// jsonFormat reports whether --json or --format json selected JSON output for
-// a command that had a pre-contract JSON form.
-func jsonFormat(cmd *cobra.Command) bool {
-	if f := cmd.Flags().Lookup("format"); f != nil && f.Value.String() == "json" {
-		return true
-	}
-	on, _ := cmd.Flags().GetBool("json")
-	return on
 }
 
 // newBackupStatusData builds the `backup status` document: the local fields

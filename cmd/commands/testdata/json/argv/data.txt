@@ -1,0 +1,26 @@
+# Data conversion fixture (P7-SURF-14). See README.md for tags.
+# Rows that need a live database, a remote or a TTY are covered by the Go tests
+# and goldens; these rows run against the fixture project with a docker stub.
+backup
+backup pitr
+backup list
+backup status
+backup config #| human-skip=text view iterates a map in random order
+backup pitr status
+db
+db migrate
+db hasura
+db pitr
+db rls
+db fk-index
+db soft-delete
+db seed fixtures
+db pgbouncer
+db list
+db seed list
+db seed graph
+db backup list
+db pgbouncer status
+db restore-drill-list
+init template
+update project detect
