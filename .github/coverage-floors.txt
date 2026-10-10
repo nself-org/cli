@@ -33,6 +33,7 @@ internal/backup/pitr 25  # measured 27.6 2026-10-05
 internal/build 71  # measured 73.5 2026-10-05
 internal/builtin/admin 12  # measured 12.4 2026-10-08 (P7-CANON-19, moved from cmd/commands)
 internal/bundle 64  # measured 67.0 2026-10-05
+internal/bundle/ledger 87  # measured 89.5 2026-10-10 (P7-PLUG-18)
 internal/canon 95  # measured 97.2 2026-10-05
 internal/cmd/ci 39  # measured 42.0 2026-10-05
 internal/cmdlog 75  # measured 77.0 2026-10-05
