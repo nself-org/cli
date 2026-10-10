@@ -8,11 +8,21 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+// needsFileLock skips a test that depends on the OS file lock: a native
+// Windows build has none (Windows is supported through WSL2, see lock_windows.go).
+func needsFileLock(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("no OS file lock on native Windows; WSL2 runs the unix build")
+	}
+}
 
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
@@ -104,6 +114,7 @@ func TestLedgerFnErrorWritesNothing(t *testing.T) {
 // file descriptor), all read-modify-write the same ledger. Every change must
 // survive; fn sleeps inside the critical section so a missing lock loses updates.
 func TestLedgerConcurrentWriters(t *testing.T) {
+	needsFileLock(t)
 	root := t.TempDir()
 	const n = 24
 	var wg sync.WaitGroup
@@ -137,6 +148,7 @@ func TestLedgerConcurrentWriters(t *testing.T) {
 
 // TestLedgerConcurrentProcesses: the same property across real processes.
 func TestLedgerConcurrentProcesses(t *testing.T) {
+	needsFileLock(t)
 	root := t.TempDir()
 	const n = 6
 	var cmds []*exec.Cmd
@@ -207,7 +219,7 @@ func TestLedgerLoadIsReadOnly(t *testing.T) {
 	if _, ok := l2.Plugins["later"]; !ok {
 		t.Fatal("EnsureBootstrapped overwrote an existing ledger")
 	}
-	if st, err := os.Stat(s.Path()); err != nil || st.Mode().Perm() != 0o644 {
+	if st, err := os.Stat(s.Path()); err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0o644) {
 		t.Fatalf("ledger mode = %v, %v; want 0644", st.Mode(), err)
 	}
 }
