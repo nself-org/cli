@@ -103,17 +103,60 @@ func InjectPluginNginxRoutes(workdir, pluginDir string, cfg *config.Config) (int
 	return injectPluginNginxRoutesVia(newDiskSink(workdir), workdir, pluginDir, cfg)
 }
 
-// injectPluginNginxRoutesVia is InjectPluginNginxRoutes writing through sink.
-func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *config.Config) (int, error) {
+// resolvePluginNginxDir returns the plugin directory the nginx snippets are
+// read from: pluginDir, else the configured one, else ~/.nself/plugins.
+func resolvePluginNginxDir(pluginDir string, cfg *config.Config) (string, error) {
 	if pluginDir == "" {
 		pluginDir = cfg.PluginSystem.Dir
 	}
 	if pluginDir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return 0, fmt.Errorf("resolving home directory: %w", err)
+			return "", fmt.Errorf("resolving home directory: %w", err)
 		}
 		pluginDir = filepath.Join(home, ".nself", "plugins")
+	}
+	return pluginDir, nil
+}
+
+// pluginConfPaths lists a plugin's nginx/*.conf files (none when it ships no
+// nginx/ directory).
+func pluginConfPaths(pluginDir, pluginName string) ([]string, error) {
+	nginxDir := filepath.Join(pluginDir, pluginName, "nginx")
+	if _, err := os.Stat(nginxDir); os.IsNotExist(err) {
+		return nil, nil
+	}
+	pattern := filepath.Join(nginxDir, "*.conf")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("globbing %s: %w", pattern, err)
+	}
+	return matches, nil
+}
+
+// renderPluginSnippet templates a snippet with the project values (reusing
+// renderTemplate from plugin_configs.go) and stamps the generated marker. The
+// result is exactly what is written to nginx/sites/ and what is parsed for
+// routes.json.
+func renderPluginSnippet(content string, vars map[string]string) string {
+	rendered := renderTemplate(content, vars)
+	// Plugin confs are generated artifacts in both compatibility modes.
+	// The sites sweep only prunes marked files after a plugin is removed.
+	head := rendered
+	if len(head) > 128 {
+		head = head[:128]
+	}
+	if !strings.Contains(head, nginxGeneratedMarker) {
+		rendered = nginxGeneratedMarker + "\n" + rendered
+	}
+	return rendered
+}
+
+// injectPluginNginxRoutesVia is InjectPluginNginxRoutes writing through sink.
+func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *config.Config) (int, error) {
+	pluginDir, err := resolvePluginNginxDir(pluginDir, cfg)
+	if err != nil {
+		return 0, err
 	}
 
 	// If the plugin directory does not exist, there is nothing to inject.
@@ -146,18 +189,11 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 			continue
 		}
 		pluginName := entry.Name()
-		nginxDir := filepath.Join(pluginDir, pluginName, "nginx")
 
-		// Skip plugins without an nginx/ directory.
-		if _, err := os.Stat(nginxDir); os.IsNotExist(err) {
-			continue
-		}
-
-		// Glob for .conf files inside the plugin's nginx/ directory.
-		pattern := filepath.Join(nginxDir, "*.conf")
-		matches, err := filepath.Glob(pattern)
+		// Plugins without an nginx/ directory are skipped.
+		matches, err := pluginConfPaths(pluginDir, pluginName)
 		if err != nil {
-			return count, fmt.Errorf("globbing %s: %w", pattern, err)
+			return count, err
 		}
 
 		for _, match := range matches {
@@ -167,17 +203,7 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 			}
 
 			// Template the config content with project values.
-			// Reuses renderTemplate from plugin_configs.go.
-			rendered := renderTemplate(string(content), vars)
-			// Plugin confs are generated artifacts in both compatibility modes.
-			// The sites sweep only prunes marked files after a plugin is removed.
-			head := rendered
-			if len(head) > 128 {
-				head = head[:128]
-			}
-			if !strings.Contains(head, nginxGeneratedMarker) {
-				rendered = nginxGeneratedMarker + "\n" + rendered
-			}
+			rendered := renderPluginSnippet(string(content), vars)
 
 			// Write to nginx/sites/{pluginname}-{filename} to avoid conflicts.
 			filename := filepath.Base(match)

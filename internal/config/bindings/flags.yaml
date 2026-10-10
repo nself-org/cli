@@ -1,0 +1,19 @@
+# Authored (not generated). Flag-to-configuration-key bindings (P7-SURF-06,
+# contract:config.env). One row says: this flag supplies the value of this key.
+# Declared once here; the command registry fills flag.env from it, `nself config
+# explain` reads it, and the generated table in .github/wiki/Configuration-Precedence.md
+# is rendered from it. Keys must be in config.KnownEnvVars(). Commands are
+# canonical (v1.5) paths without the leading "nself "; the v1.4 view is derived
+# through the canon moves rows. A flag whose upper-snake name (with or without
+# NSELF_) is a known key must be bound here or listed in exempt.yaml with a reason.
+schema_version: 1
+bindings:
+  - {command: build, flag: debug, key: DEBUG}
+  - {command: config, flag: env, key: ENV}
+  - {command: config secrets, flag: env, key: ENV}
+  - {command: config services, flag: env, key: ENV}
+  - {command: db seed run, flag: env, key: ENV}
+  - {command: init, flag: domain, key: BASE_DOMAIN}
+  - {command: start, flag: skip-health-checks, key: NSELF_SKIP_HEALTH_CHECKS}
+  - {command: status health, flag: env, key: ENV}
+  - {command: status urls, flag: env, key: ENV}
