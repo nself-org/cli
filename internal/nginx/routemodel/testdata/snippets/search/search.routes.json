@@ -1,0 +1,57 @@
+{
+  "unmodelled_global": [],
+  "routes": [
+    {
+      "id": "plugin:search/search.conf#1",
+      "source": "plugin",
+      "owner": "search",
+      "file": "nginx/sites/search-search.conf",
+      "server_names": [
+        "search.example.test"
+      ],
+      "listen": {
+        "http": false,
+        "https": true
+      },
+      "tls": {
+        "ssl_dir": "example-test",
+        "has_trusted_chain": false,
+        "protocols": [],
+        "ciphers": null
+      },
+      "http_to_https_redirect": false,
+      "security_headers": {},
+      "blocked_paths": [],
+      "rate_limit": null,
+      "locations": [
+        {
+          "path": "/",
+          "match": "prefix",
+          "upstream": {
+            "scheme": "http",
+            "host": "search",
+            "port": 3302
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": true,
+          "headers_set": {},
+          "timeouts": {
+            "connect_s": null,
+            "read_s": null,
+            "send_s": null
+          },
+          "max_body_bytes": null,
+          "access_log": true,
+          "deny_all": false,
+          "methods": null,
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        }
+      ],
+      "shadowed_by": null,
+      "unmodelled": []
+    }
+  ]
+}

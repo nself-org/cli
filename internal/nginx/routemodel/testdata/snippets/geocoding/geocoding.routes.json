@@ -1,0 +1,134 @@
+{
+  "unmodelled_global": [
+    "upstream geocoding_backend { server 127.0.0.1:3203; keepalive 16; }"
+  ],
+  "routes": [
+    {
+      "id": "plugin:geocoding/geocoding.conf#1",
+      "source": "plugin",
+      "owner": "geocoding",
+      "file": "nginx/sites/geocoding-geocoding.conf",
+      "server_names": [
+        "geocoding.example.test"
+      ],
+      "listen": {
+        "http": true,
+        "https": false
+      },
+      "tls": null,
+      "http_to_https_redirect": true,
+      "security_headers": {},
+      "blocked_paths": [],
+      "rate_limit": null,
+      "locations": [
+        {
+          "path": "/",
+          "match": "prefix",
+          "upstream": null,
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": false,
+          "headers_set": {},
+          "timeouts": {
+            "connect_s": null,
+            "read_s": null,
+            "send_s": null
+          },
+          "max_body_bytes": null,
+          "access_log": true,
+          "deny_all": false,
+          "methods": null,
+          "return": {
+            "status": 301,
+            "to": "https://$host$request_uri"
+          },
+          "static_root": null,
+          "health_probe": false
+        }
+      ],
+      "shadowed_by": null,
+      "unmodelled": []
+    },
+    {
+      "id": "plugin:geocoding/geocoding.conf#2",
+      "source": "plugin",
+      "owner": "geocoding",
+      "file": "nginx/sites/geocoding-geocoding.conf",
+      "server_names": [
+        "geocoding.example.test"
+      ],
+      "listen": {
+        "http": false,
+        "https": true
+      },
+      "tls": {
+        "ssl_dir": "example.test",
+        "has_trusted_chain": false,
+        "protocols": [],
+        "ciphers": null
+      },
+      "http_to_https_redirect": false,
+      "security_headers": {},
+      "blocked_paths": [],
+      "rate_limit": null,
+      "locations": [
+        {
+          "path": "/",
+          "match": "prefix",
+          "upstream": {
+            "scheme": "http",
+            "host": "127.0.0.1",
+            "port": 3203
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": true,
+          "headers_set": {
+            "Connection": ""
+          },
+          "timeouts": {
+            "connect_s": null,
+            "read_s": 30,
+            "send_s": null
+          },
+          "max_body_bytes": 5242880,
+          "access_log": true,
+          "deny_all": false,
+          "methods": null,
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        },
+        {
+          "path": "/health",
+          "match": "prefix",
+          "upstream": {
+            "scheme": "http",
+            "host": "127.0.0.1",
+            "port": 3203
+          },
+          "rate_limit": null,
+          "websocket": false,
+          "forwarded_headers": false,
+          "headers_set": {},
+          "timeouts": {
+            "connect_s": null,
+            "read_s": null,
+            "send_s": null
+          },
+          "max_body_bytes": 5242880,
+          "access_log": false,
+          "deny_all": false,
+          "methods": null,
+          "return": null,
+          "static_root": null,
+          "health_probe": false
+        }
+      ],
+      "shadowed_by": null,
+      "unmodelled": [
+        "proxy_pass http://geocoding_backend/health;"
+      ]
+    }
+  ]
+}
