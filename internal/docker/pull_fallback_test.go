@@ -79,9 +79,7 @@ func TestPullFallbackIntegration(t *testing.T) {
 		}
 		return strings.TrimSpace(string(out))
 	}
-	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("Docker is unavailable on this runner")
-	}
+	requireDockerDaemon(t)
 	if err := exec.CommandContext(ctx, "docker", "image", "inspect", "registry:2").Run(); err != nil {
 		dockerCmd("pull", "registry:2")
 	}
@@ -230,4 +228,30 @@ fi
 	if changed, err := EnsureComposeImages(context.Background(), dir, &Compose{DockerPath: bin}, []LockedImage{locked}); err != nil || !changed {
 		t.Fatalf("stale override not removed: %v, %v", changed, err)
 	}
+}
+
+// requireDockerDaemon skips the calling test when the docker CLI is missing or
+// its daemon socket is unusable (daemon down, or a CI host user without access
+// to the socket, as on the cam CI host). On a GitHub Actions Linux runner
+// (GITHUB_ACTIONS=true) docker is part of the image, so an unusable daemon is
+// a broken runner and the test fails there instead of skipping (D-0286).
+func requireDockerDaemon(t *testing.T) {
+	t.Helper()
+	strict := runtime.GOOS == "linux" && os.Getenv("GITHUB_ACTIONS") == "true"
+	if _, err := exec.LookPath("docker"); err != nil {
+		if strict {
+			t.Fatalf("docker CLI missing on a GitHub Linux runner: %v", err)
+		}
+		t.Skip("Docker is unavailable on this runner")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "docker", "info", "--format", "{{.ServerVersion}}").CombinedOutput()
+	if err == nil {
+		return
+	}
+	if strict {
+		t.Fatalf("docker daemon unusable on a GitHub Linux runner: %v: %s", err, strings.TrimSpace(string(out)))
+	}
+	t.Skipf("docker daemon unusable on this host: %v: %s", err, strings.TrimSpace(string(out)))
 }

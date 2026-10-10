@@ -67,6 +67,8 @@ paths = [
   '''testdata/.*''',
   '''test/.*fixtures.*''',
   '''\.github/workflows/gitleaks\.yml''',
+  # Vendored third-party modules (go mod vendor output): not our code (D-0286)
+  '''(^|/)vendor/''',
 ]
 regexes = [
   '''sk_live_FAKE_TEST_FOR_CI_GATE''',
