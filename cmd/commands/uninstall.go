@@ -64,19 +64,30 @@ func init() {
 }
 
 func runUninstall(cmd *cobra.Command, args []string) error {
+	res, done, err := uninstallProject(cmd)
+	if err != nil || !done {
+		return err
+	}
+	return emitBuildResult(cmd, "uninstall", res)
+}
+
+// uninstallProject is the original uninstall implementation, shared with
+// `reset --keep-data|--purge`. done is false when the user declined a prompt
+// (nothing was removed); in JSON mode that is an error, not a silent exit 0.
+func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err error) {
 	keepData, _ := cmd.Flags().GetBool("keep-data")
 	purge, _ := cmd.Flags().GetBool("purge")
 	yes, _ := cmd.Flags().GetBool("yes")
 
 	// --keep-data and --purge are mutually exclusive.
 	if keepData && purge {
-		return fmt.Errorf("--keep-data and --purge are mutually exclusive — choose one")
+		return res, false, fmt.Errorf("--keep-data and --purge are mutually exclusive — choose one")
 	}
 
 	// Locate project root.
 	cwd, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("getting working directory: %w", err)
+		return res, false, fmt.Errorf("getting working directory: %w", err)
 	}
 
 	// Verify this looks like an nSelf project.
@@ -84,7 +95,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	if _, statErr := os.Stat(nSelfDir); os.IsNotExist(statErr) {
 		envPath := filepath.Join(cwd, ".env.dev")
 		if _, envErr := os.Stat(envPath); os.IsNotExist(envErr) {
-			return fmt.Errorf("no nSelf project found in %s — nothing to uninstall", cwd)
+			return res, false, fmt.Errorf("no nSelf project found in %s — nothing to uninstall", cwd)
 		}
 	}
 
@@ -111,7 +122,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	if !yes {
 		if !confirmPrompt(cmd, "Continue with uninstall? [y/N] ") {
 			fmt.Println("Aborted.")
-			return nil
+			return res, false, abortedUninstall(cmd)
 		}
 	}
 
@@ -122,7 +133,7 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 			ui.C(ui.Red, ui.IconWarning))
 		if !confirmPrompt(cmd, "Type 'purge' to confirm: ") {
 			fmt.Println("Aborted.")
-			return nil
+			return res, false, abortedUninstall(cmd)
 		}
 	}
 
@@ -148,18 +159,26 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 			ui.C(ui.Yellow, ui.IconWarning), err)
 	}
 
+	removed := []string{}
 	steps.Next() // Remove compose file
-	removeIfExists(filepath.Join(cwd, "docker-compose.yml"))
+	removed = recordIfExists(removed, cwd, "docker-compose.yml", removeIfExists)
 
 	steps.Next() // Remove nginx sites
-	removeGlob(filepath.Join(cwd, "nginx", "sites", "*.conf"))
+	sites, _ := filepath.Glob(filepath.Join(cwd, "nginx", "sites", "*.conf"))
+	for _, m := range sites {
+		rel, relErr := filepath.Rel(cwd, m)
+		if relErr != nil {
+			rel = m
+		}
+		removed = recordIfExists(removed, cwd, filepath.ToSlash(rel), removeIfExists)
+	}
 
 	steps.Next() // Clear .nself/cache
-	removeDir(filepath.Join(cwd, ".nself", "cache"))
+	removed = recordIfExists(removed, cwd, ".nself/cache/", removeDir)
 
 	if purge {
 		steps.Next() // Remove volumes
-		removeDir(filepath.Join(cwd, ".nself", "volumes"))
+		removed = recordIfExists(removed, cwd, ".nself/volumes/", removeDir)
 	}
 
 	steps.Done()
@@ -169,7 +188,28 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Printf("  To start fresh: %s\n", ui.C(ui.Cyan, "nself init --force && nself build && nself start"))
 	fmt.Println()
+	return UninstallResult{Removed: removed, KeptData: !purge}, true, nil
+}
+
+// abortedUninstall is the result of a declined prompt: nil in human mode (the
+// command has always exited 0 there), a destructive_blocked error in JSON mode
+// so a machine caller does not read a refusal as success.
+func abortedUninstall(cmd *cobra.Command) error {
+	if buildEnvelopeWanted(cmd) {
+		return errConfirmRequired("uninstall")
+	}
 	return nil
+}
+
+// recordIfExists runs remove on project-relative rel when it exists and
+// appends rel to removed. Trailing "/" in rel marks a directory in the report.
+func recordIfExists(removed []string, root, rel string, remove func(string)) []string {
+	path := filepath.Join(root, filepath.FromSlash(strings.TrimSuffix(rel, "/")))
+	if _, err := os.Lstat(path); err != nil {
+		return removed
+	}
+	remove(path)
+	return append(removed, rel)
 }
 
 // runDockerComposeDown stops and removes containers for the project.
@@ -214,17 +254,6 @@ func removeIfExists(path string) {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "  %s removing %s: %v\n",
 			ui.C(ui.Yellow, ui.IconWarning), path, err)
-	}
-}
-
-// removeGlob removes all files matching the glob pattern.
-func removeGlob(pattern string) {
-	matches, err := filepath.Glob(pattern)
-	if err != nil {
-		return
-	}
-	for _, m := range matches {
-		removeIfExists(m)
 	}
 }
 

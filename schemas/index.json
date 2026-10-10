@@ -18,6 +18,10 @@
       "id": "urn:nself:cli:schema:commands:build:v1"
     },
     {
+      "path": "commands/clean.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:clean:v1"
+    },
+    {
       "path": "commands/config-get.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:config-get:v1"
     },
@@ -50,8 +54,16 @@
       "id": "urn:nself:cli:schema:commands:help:v1"
     },
     {
+      "path": "commands/reset.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:reset:v1"
+    },
+    {
       "path": "commands/status.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:status:v1"
+    },
+    {
+      "path": "commands/uninstall.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:uninstall:v1"
     },
     {
       "path": "control-plane.v2.schema.json",

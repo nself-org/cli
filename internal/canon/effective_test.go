@@ -153,7 +153,17 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 				if k == "completion" || k == "man" || k == "version" {
 					want.Canon = CanonBuiltin
 				}
-				if got, ok := v.Commands[k]; !ok || !reflect.DeepEqual(got, want) {
+				// P7-SURF-26 (planned): the build fragment declares confirm rows (a
+				// surface-only field), and clean is write until --all escalates it.
+				got, ok := v.Commands[k]
+				switch k {
+				case "build", "reset", "uninstall":
+					got.Confirm = nil
+				case "clean":
+					got.Confirm, got.Flags = nil, nil
+					want.SideEffect = SideEffectWrite
+				}
+				if !ok || !reflect.DeepEqual(got, want) {
 					t.Errorf("v15=%v: %q = %+v (present %v), want %+v", v15, k, got, ok, want)
 				}
 			}

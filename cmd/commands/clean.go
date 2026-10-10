@@ -145,23 +145,28 @@ func runClean(cmd *cobra.Command, args []string) error {
 	// 5. --all: host-wide docker system prune, gated behind confirmation.
 	all, _ := cmd.Flags().GetBool("all")
 	if !all {
-		return nil
+		return emitBuildResult(cmd, "clean", CleanResult{Removed: nonNil(removed)})
 	}
 
 	skipConfirm, _ := cmd.Flags().GetBool("yes")
 	if !skipConfirm {
 		if confirmErr := confirm.ConfirmHostWidePrune(cmd.InOrStdin(), out); confirmErr != nil {
 			_, _ = fmt.Fprintln(out, "\nHost-wide prune canceled.")
+			if buildEnvelopeWanted(cmd) {
+				return errConfirmRequired("clean --all")
+			}
 			return nil
 		}
 	}
 
 	_, _ = fmt.Fprintln(out, "\nPruning all unused Docker resources on this host...")
+	pruned := false
 	if pruneAllErr := dockerSystemPrune(cmd.Context(), out, cmd.ErrOrStderr()); pruneAllErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: docker system prune failed (Docker may not be running): %v\n", pruneAllErr)
 	} else {
 		_, _ = fmt.Fprintln(out, "Host-wide prune complete.")
+		pruned = true
 	}
 
-	return nil
+	return emitBuildResult(cmd, "clean", CleanResult{Removed: nonNil(removed), HostPrune: pruned})
 }

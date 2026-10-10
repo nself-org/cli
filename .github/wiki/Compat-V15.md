@@ -111,4 +111,5 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-REG-09 | human status exits 2 | 10 (unhealthy) or 11 (starting) | `cmd/commands/status.go` |
 | P7-REG-09 | status exits 2 (unhealthy) or 1 (starting), 0 with --json | 10 (unhealthy) or 11 (starting) in both modes | `cmd/commands/status_print.go` |
 | P7-SURF-07 | nself.yaml type errors and unknown keys warn | fail (E435/E436) | `internal/build/manifest_validate.go` |
+| P7-SURF-26 | --json ignored | envelope | `cmd/commands/registry_types_build.go` |
 <!-- END GENERATED:gated -->
