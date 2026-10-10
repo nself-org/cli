@@ -237,7 +237,7 @@ fi
 // a broken runner and the test fails there instead of skipping (D-0286).
 func requireDockerDaemon(t *testing.T) {
 	t.Helper()
-	strict := runtime.GOOS == "linux" && os.Getenv("GITHUB_ACTIONS") == "true"
+	strict := strictDocker(runtime.GOOS, os.Getenv("GITHUB_ACTIONS"))
 	if _, err := exec.LookPath("docker"); err != nil {
 		if strict {
 			t.Fatalf("docker CLI missing on a GitHub Linux runner: %v", err)
@@ -254,4 +254,27 @@ func requireDockerDaemon(t *testing.T) {
 		t.Fatalf("docker daemon unusable on a GitHub Linux runner: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 	t.Skipf("docker daemon unusable on this host: %v: %s", err, strings.TrimSpace(string(out)))
+}
+
+// strictDocker reports whether an unusable docker must fail rather than skip:
+// only on a GitHub Actions Linux runner, where docker ships in the image.
+func strictDocker(goos, githubActions string) bool {
+	return goos == "linux" && githubActions == "true"
+}
+
+func TestStrictDocker(t *testing.T) {
+	for _, tc := range []struct {
+		goos, ga string
+		want     bool
+	}{
+		{"linux", "true", true},
+		{"linux", "", false},  // cam CI host (CI=1, no GITHUB_ACTIONS)
+		{"linux", "1", false}, // only the exact value GitHub sets counts
+		{"darwin", "true", false},
+		{"windows", "true", false},
+	} {
+		if got := strictDocker(tc.goos, tc.ga); got != tc.want {
+			t.Errorf("strictDocker(%q, %q) = %v, want %v", tc.goos, tc.ga, got, tc.want)
+		}
+	}
 }
