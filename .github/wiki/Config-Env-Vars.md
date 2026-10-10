@@ -51,6 +51,8 @@ nSelf resolves config from several `.env*` files, later files overriding earlier
 
 **How `ENV` itself is resolved:** the cascade above selects `.env.{dev|staging|prod}` by matching `ENV`, but `ENV` is not read from the shell alone. `config.Load()` (and `nself env explain`, which calls the identical `ResolveEnv` helper so its output can never diverge from what a build actually does) resolves it in this order: the process environment wins outright if `ENV` is exported; otherwise the `ENV=` key inside the project's own committed `.env` file decides; otherwise it defaults to `dev`. This matters on a bare checkout of a production server: without the `.env` fallback, a plain `nself build` with no shell `ENV` set would silently build the dev compose (wrong images, `*.local.nself.org` routes, mailpit/nself-admin wired in) even though `.env` says `ENV=prod`.
 
+**Changing a value with `nself config set`:** the command writes one line into one cascade file (`.env`, or `.env.<name>` with `--env <name>`, for example `--env secrets` for `.env.secrets`). Before it writes, it loads the cascade with that line already applied in memory (the same `ENV` resolution and file order as above, so `config set ENV staging` previews the `.env.staging` layer) and renders the build from it, so `--preview` shows exactly what the change regenerates and writes nothing. See [[cmd-config]] for v1.5 auto-apply and prod-class confirmation.
+
 **Inspect the cascade for your project:**
 
 ```bash
