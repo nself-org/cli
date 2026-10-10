@@ -99,7 +99,7 @@ jobs:
           && steps.root_md.outcome == 'success'
         run: |
           set -euo pipefail
-          ALLOWED=".dockerignore .gitattributes .github .gitignore .gitleaks.toml .golangci.yml .goreleaser.yml Dockerfile LICENSE Makefile README.md bin cmd go.mod go.sum internal monitoring packaging schemas scripts sdk templates test tools vendor"
+          ALLOWED=".dockerignore .gitattributes .github .gitignore .gitleaks.toml .gitleaksignore .golangci.yml .goreleaser.yml Dockerfile LICENSE Makefile README.md bin cmd go.mod go.sum internal monitoring packaging schemas scripts sdk templates test tools vendor"
           echo "$ALLOWED" | tr ' ' '\n' | sort > /tmp/root-allowed.txt
           git ls-files | awk -F/ '{print $1}' | sort -u > /tmp/root-tracked.txt
           UNEXPECTED=$(comm -23 /tmp/root-tracked.txt /tmp/root-allowed.txt)
