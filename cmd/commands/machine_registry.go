@@ -67,17 +67,17 @@ func resetMachineRegistry() {
 // buildMachineRegistry prepares the tree as v1.5 with plugins mounted, builds
 // the registry and puts the tree back.
 func buildMachineRegistry() (*cmdregistry.Registry, error) {
-	if !compat.V15() {
-		prev, had := os.LookupEnv(compat.EnvVar)
-		_ = os.Setenv(compat.EnvVar, "1")
-		defer func() {
-			if had {
-				_ = os.Setenv(compat.EnvVar, prev)
-			} else {
-				_ = os.Unsetenv(compat.EnvVar)
-			}
-		}()
-	}
+	// The mount and the engine read the mode from the environment, so the build
+	// runs with NSELF_V15=1 whatever the process mode is, and puts it back.
+	prev, had := os.LookupEnv(compat.EnvVar)
+	_ = os.Setenv(compat.EnvVar, "1")
+	defer func() {
+		if had {
+			_ = os.Setenv(compat.EnvVar, prev)
+		} else {
+			_ = os.Unsetenv(compat.EnvVar)
+		}
+	}()
 	ApplyCommandGroups()
 	RootCmd.InitDefaultHelpCmd()
 	c, err := canonLoad(true)

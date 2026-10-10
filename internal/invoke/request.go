@@ -251,7 +251,7 @@ func RequestID(path string, cmd *cmdregistry.Command, r Request) string {
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(doc); err != nil {
 		buf.Reset()
-		buf.WriteString(fmt.Sprintf("unencodable:%q", barePath(path)))
+		fmt.Fprintf(&buf, "unencodable:%q", barePath(path))
 	}
 	sum := sha256.Sum256(bytes.TrimRight(buf.Bytes(), "\n"))
 	return hex.EncodeToString(sum[:])
