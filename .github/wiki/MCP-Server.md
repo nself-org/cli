@@ -94,3 +94,30 @@ Any inherited value of these names is dropped first. The working directory is th
 A document request times out after 300 seconds by default (the invoker takes the timeout as an option; the servers expose it as `--timeout`). The child leads its own process group. The group gets SIGTERM, and SIGKILL five seconds later or as soon as the child is gone, so grandchildren (docker compose, ssh, helpers) do not outlive a timed-out or cancelled request; the result is `E423`. An NDJSON request has no timeout and ends when the client disconnects. A long-polling command such as `nself ci runs wait` reads `NSELF_INVOKE_DEADLINE_MS` and returns before the kill.
 
 The child's standard output is capped at 32 MiB and must be exactly one JSON object. Anything else is `E422` (exit class infra); its `cause` is the last 2 KiB of the child's standard error, with the request's secret values replaced and the usual redaction applied. A child envelope that carries `meta.deprecations` or `meta.warnings` passes through byte for byte.
+
+## Machine token
+
+The `sse` and `http` transports of `nself mcp` check a bearer token on every request. The token comes from, in order:
+
+1. `NSELF_MCP_TOKEN` (source `env`).
+2. The file `~/.nself/mcp-token` (source `file`). It must be a regular file (a symlink is refused), mode `0600` on macOS and Linux, and not empty. A file that group or others can read is refused with `E426`; the message names the path and `chmod 600`.
+3. Neither. In v1.5 mode (`NSELF_V15=1`) the first loopback start generates 32 random bytes as 64 hex characters, creates `~/.nself` at `0700` if it is missing (an existing directory is never chmod-ed; one that group or others can write to is refused), writes the file at `0600` and prints its path and a `cat <path>` hint on standard error. The token value is never printed to any stream. Later starts read the file. In v1.4 mode (the default today) a start with no token serves an open loopback port and prints one warning.
+
+A request without the right `Authorization: Bearer <token>` header gets `401 unauthorized` with `WWW-Authenticate: Bearer realm="nself-mcp"`. The comparison hashes both sides first, so it does not depend on the token length. With a token set, behaviour is the same in both modes. `stdio` needs no token. The invoker removes `NSELF_MCP_TOKEN` from the environment of the commands it runs.
+
+## Transports and --host
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--transport` | `stdio` | `stdio`, `sse` or `http`. |
+| `--port` | `3825` | Port for `sse` and `http`. |
+| `--host` | `127.0.0.1` | Bind address for `sse` and `http`. |
+| `--allowed-host` | none | A host name the server is reachable under. Repeatable. |
+
+`stdio` ignores `--host` and `--allowed-host`. On `sse` and `http` the checks below run before the listener opens, in both compat modes, and a refused start writes no token file:
+
+- Loopback hosts (`localhost`, any `127.0.0.0/8` address, `::1`) are always allowed.
+- Any other host, including the empty host, `0.0.0.0` and `::`, exits non-zero with `E426` unless at least one `--allowed-host <name>` is given and a token is configured on that run through `NSELF_MCP_TOKEN` or an existing `~/.nself/mcp-token`. A token that this run would generate does not count, and a second start after a generated run is refused the same way.
+- An accepted non-loopback start prints one warning that the bearer token crosses the network over cleartext HTTP. The server has no TLS: put a TLS terminator in front of it.
+
+The HTTP server sets `ReadHeaderTimeout` 10 s and `ReadTimeout` 30 s and no write timeout, so SSE streams stay open. Headers, bodies and tokens are never logged.
