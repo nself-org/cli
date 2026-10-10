@@ -13,6 +13,10 @@ const EnvOptIn = "NSELF_UPDATE_CHECK"
 // Interval is the minimum time between refreshes and between hints.
 const Interval = 24 * time.Hour
 
+// retryBackoff is the minimum time between refresh attempts when none finished
+// (a command that ends before the request does leaves no CheckedAt).
+const retryBackoff = time.Hour
+
 // ciMarkers are the environment variables that mean "running in CI".
 var ciMarkers = []string{"CI", "GITHUB_ACTIONS", "GITLAB_CI", "BUILDKITE", "JENKINS_URL"}
 
@@ -61,7 +65,18 @@ func MaybeStartRefresh(g Guards) <-chan struct{} {
 	if !Allowed(g) {
 		return nil
 	}
-	if g.Now().Sub(Load(g.Path).CheckedAt) < Interval {
+	now := g.Now()
+	c := Load(g.Path)
+	if now.Sub(c.CheckedAt) < Interval {
+		return nil
+	}
+	if d := now.Sub(c.AttemptedAt); !c.AttemptedAt.IsZero() && d >= 0 && d < retryBackoff {
+		return nil
+	}
+	// Record the attempt before the request. If it cannot be recorded the
+	// backoff could not hold, so no request is made.
+	c.AttemptedAt = now
+	if Save(g.Path, c) != nil {
 		return nil
 	}
 	done := make(chan struct{})
@@ -78,10 +93,18 @@ func MaybeStartRefresh(g Guards) <-chan struct{} {
 		latest, err := Refresh(context.Background(), client, url)
 		c := Load(g.Path) // re-read: the hint may have recorded HintedAt meanwhile
 		c.CheckedAt = g.Now()
+		if c.AttemptedAt.IsZero() {
+			c.AttemptedAt = now
+		}
 		if err != nil {
 			c.LastError = err.Error()
 		} else {
 			c.Latest, c.LastError = latest, ""
+		}
+		// Re-load just before saving and keep the newer hinted_at, so this
+		// write never undoes a hint recorded since the load above.
+		if cur := Load(g.Path); cur.HintedAt.After(c.HintedAt) {
+			c.HintedAt = cur.HintedAt
 		}
 		_ = Save(g.Path, c)
 	}()

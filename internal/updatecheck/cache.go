@@ -17,12 +17,16 @@ import (
 //
 // CheckedAt is the time of the last refresh attempt (success or failure), so a
 // stale cache is visible to `nself doctor`. LastError is empty after a good
-// refresh. HintedAt is the time the hint was last printed.
+// refresh. HintedAt is the time the hint was last printed. AttemptedAt is the
+// time a refresh was last started, written before the request goes out, so a
+// refresh cut short by process exit still counts for the retry backoff.
 type Cache struct {
 	CheckedAt time.Time `json:"checked_at"`
 	Latest    string    `json:"latest"`
 	LastError string    `json:"last_error,omitempty"`
 	HintedAt  time.Time `json:"hinted_at"`
+
+	AttemptedAt time.Time `json:"attempted_at"`
 }
 
 // DefaultPath returns ~/.nself/cache/update-check.json, or "" when the home

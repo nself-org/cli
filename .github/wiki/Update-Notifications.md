@@ -26,7 +26,7 @@ The hint is never printed when any of these is true:
 
 - `NSELF_UPDATE_CHECK` is not `1`
 - the command failed
-- JSON mode is on (`--json`, or `--format json` on a command that supports it)
+- JSON mode is on: `--json`, or `--format json` / `--output json` (any case). This holds for older commands too, even those that do not use the JSON envelope
 - stderr is not a terminal (pipes, redirects, cron)
 - a CI marker is set: `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE` or `JENKINS_URL` (`CI=false` and `CI=0` do not count)
 - the command is `nself update` itself
@@ -57,8 +57,9 @@ The ping handler stores nothing. ping.nself.org's web proxy does log the client 
 | `latest` | last good answer from ping |
 | `last_error` | why the last refresh failed; empty after a good one |
 | `hinted_at` | when the hint was last printed |
+| `attempted_at` | when a refresh was last started, written before the request goes out |
 
-A failed refresh keeps the old `latest`, records `last_error`, and is not retried for 24 hours. A refresh that is cut short because the command ended first leaves no record, so the next opted-in command retries it. A corrupt file is replaced. Delete the file to reset it.
+A failed refresh keeps the old `latest`, records `last_error`, and is not retried for 24 hours. A refresh that is cut short because the command ended first records no `checked_at`. The `attempted_at` written before the request keeps the retry to once an hour: no new request starts within 1 hour of the last attempt. If the cache cannot be written, no request is made. A corrupt file is replaced. Delete the file to reset it.
 
 The hint itself reads only this file. It never touches the network.
 

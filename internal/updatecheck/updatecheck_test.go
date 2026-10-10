@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -221,11 +222,76 @@ func TestHangingServerIsAbandonedWithinBudget(t *testing.T) {
 		t.Fatalf("MaybeStartRefresh blocked %v", d)
 	}
 	<-done
-	if d := time.Since(start); d > 2*time.Second {
+	if d := time.Since(start); d > time.Second {
 		t.Fatalf("refresh took %v, budget is %v", d, Budget)
 	}
 	if c := Load(g.Path); c.LastError == "" || c.Latest != "" {
 		t.Fatalf("hang must be recorded as an error: %+v", c)
+	}
+}
+
+// An abandoned refresh (process exit before the request ends) records no
+// CheckedAt. The attempted_at written before the request holds the backoff.
+func TestAbandonedRefreshBacksOffForAnHour(t *testing.T) {
+	var hits atomic.Int32
+	arrived := make(chan struct{}, 4)
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		arrived <- struct{}{}
+		<-release
+		_, _ = w.Write([]byte(`{"latestCliVersion":"1.5.0"}`))
+	}))
+	t.Cleanup(srv.Close)
+	clk := &clock{t: time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC)}
+	g := guards(t, clk, map[string]string{EnvOptIn: "1"})
+	g.URL, g.Client = srv.URL, &http.Client{} // no timeout: the request hangs until released
+
+	first := MaybeStartRefresh(g)
+	if first == nil {
+		t.Fatal("first refresh not started")
+	}
+	<-arrived // the request is in flight; the "process" now exits without waiting
+	if c := Load(g.Path); !c.AttemptedAt.Equal(clk.t) || !c.CheckedAt.IsZero() {
+		t.Fatalf("attempt must be recorded before the request: %+v", c)
+	}
+	clk.t = clk.t.Add(retryBackoff - time.Minute)
+	if MaybeStartRefresh(g) != nil || hits.Load() != 1 {
+		t.Fatalf("new attempt inside the backoff (hits=%d)", hits.Load())
+	}
+	clk.t = clk.t.Add(2 * time.Minute)
+	second := MaybeStartRefresh(g)
+	if second == nil {
+		t.Fatal("no new attempt after the backoff")
+	}
+	<-arrived
+	close(release)
+	<-first
+	<-second
+	if hits.Load() != 2 {
+		t.Fatalf("hits = %d, want 2", hits.Load())
+	}
+	if c := Load(g.Path); c.Latest != "1.5.0" || c.AttemptedAt.IsZero() {
+		t.Fatalf("cache after finished refresh: %+v", c)
+	}
+}
+
+func TestRefreshKeepsHintedAtWrittenMeanwhile(t *testing.T) {
+	clk := &clock{t: time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC)}
+	g := guards(t, clk, map[string]string{EnvOptIn: "1"})
+	hintedAt := clk.t.Add(time.Minute)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		c := Load(g.Path) // the hint records itself while the request is in flight
+		c.HintedAt = hintedAt
+		_ = Save(g.Path, c)
+		_, _ = w.Write([]byte(`{"latestCliVersion":"1.5.0"}`))
+	}))
+	t.Cleanup(srv.Close)
+	g.URL, g.Client = srv.URL, NewClient()
+	<-MaybeStartRefresh(g)
+	c := Load(g.Path)
+	if !c.HintedAt.Equal(hintedAt) || !c.AttemptedAt.Equal(clk.t) || c.Latest != "1.5.0" {
+		t.Fatalf("refresh clobbered the cache: %+v", c)
 	}
 }
 

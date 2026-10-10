@@ -67,6 +67,9 @@ func Refresh(ctx context.Context, client *http.Client, url string) (string, erro
 	return v, nil
 }
 
+// The semver compare below is local on purpose: plugin.compareSemver lives in
+// an L2 package, which this L1 package must not import.
+
 // parse reads a strict MAJOR.MINOR.PATCH release version. Pre-release and
 // build suffixes are not accepted: a hint is only for a plain release.
 func parse(s string) ([3]int, bool) {

@@ -58,10 +58,19 @@ func newHintEnv(t *testing.T) *hintEnv {
 		&cobra.Command{Use: "failing", RunE: bad},
 		&cobra.Command{Use: "update", RunE: ok},
 		&cobra.Command{Use: "envl", RunE: ok},
+		&cobra.Command{Use: "legacyfmt", RunE: ok},
+		&cobra.Command{Use: "legacyout", RunE: ok},
 	)
+	root.PersistentFlags().String("output", "", "output format")
+	for _, c := range root.Commands() {
+		if c.Name() == "legacyfmt" {
+			c.Flags().String("format", "table", "output format")
+		}
+	}
 	entries := map[string]*cmdregistry.Command{
 		"nself plain": {JSON: canon.JSONEnvelope}, "nself failing": {JSON: canon.JSONEnvelope},
 		"nself update": {JSON: canon.JSONEnvelope}, "nself envl": {JSON: canon.JSONEnvelope},
+		"nself legacyfmt": {JSON: canon.JSONLegacy}, "nself legacyout": {JSON: canon.JSONLegacy},
 	}
 	oldEntry, oldGuards, oldStarted := jsonEntryFor, updateCheckGuards, updateCheckStarted
 	jsonEntryFor = func(c *cobra.Command) (*cmdregistry.Command, error) {
@@ -70,13 +79,13 @@ func newHintEnv(t *testing.T) *hintEnv {
 		}
 		return nil, errors.New("no entry for " + c.CommandPath())
 	}
-	updateCheckGuards = func(*cobra.Command) updatecheck.Guards {
-		_, jsonOn, known := output.Invocation()
-		return updatecheck.Guards{
-			JSON: jsonOn || !known, TTY: func() bool { return h.tty },
-			Env: func(k string) string { return h.env[k] }, Now: func() time.Time { return h.now },
-			Path: h.path, Current: "1.4.12", URL: srv.URL, Client: updatecheck.NewClient(),
-		}
+	updateCheckGuards = func(c *cobra.Command) updatecheck.Guards {
+		g := defaultUpdateCheckGuards(c) // JSON mode comes from the production logic
+		g.TTY = func() bool { return h.tty }
+		g.Env = func(k string) string { return h.env[k] }
+		g.Now = func() time.Time { return h.now }
+		g.Path, g.Current, g.URL, g.Client = h.path, "1.4.12", srv.URL, updatecheck.NewClient()
+		return g
 	}
 	updateCheckStarted = func(d <-chan struct{}) { h.done = d }
 	t.Cleanup(func() { jsonEntryFor, updateCheckGuards, updateCheckStarted = oldEntry, oldGuards, oldStarted })
@@ -129,6 +138,11 @@ func TestUpdateCheckHintGuards(t *testing.T) {
 		{"GITLAB_CI", map[string]string{"NSELF_UPDATE_CHECK": "1", "GITLAB_CI": "true"}, true, nil, "plain", false},
 		{"BUILDKITE", map[string]string{"NSELF_UPDATE_CHECK": "1", "BUILDKITE": "true"}, true, nil, "plain", false},
 		{"JENKINS_URL", map[string]string{"NSELF_UPDATE_CHECK": "1", "JENKINS_URL": "http://j"}, true, nil, "plain", false},
+		{"legacy --format json", map[string]string{"NSELF_UPDATE_CHECK": "1"}, true, []string{"--format", "json"}, "legacyfmt", false},
+		{"legacy --format JSON", map[string]string{"NSELF_UPDATE_CHECK": "1"}, true, []string{"--format=JSON"}, "legacyfmt", false},
+		{"legacy --format table", map[string]string{"NSELF_UPDATE_CHECK": "1"}, true, []string{"--format", "table"}, "legacyfmt", true},
+		{"legacy --output json", map[string]string{"NSELF_UPDATE_CHECK": "1"}, true, []string{"--output", "json"}, "legacyout", false},
+		{"legacy --output text", map[string]string{"NSELF_UPDATE_CHECK": "1"}, true, []string{"--output", "text"}, "legacyout", true},
 		{"failed command", map[string]string{"NSELF_UPDATE_CHECK": "1"}, true, nil, "failing", false},
 		{"update command itself", map[string]string{"NSELF_UPDATE_CHECK": "1"}, true, nil, "update", false},
 	}

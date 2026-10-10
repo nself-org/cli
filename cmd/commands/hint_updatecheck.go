@@ -23,17 +23,33 @@ import (
 // supply a clock, environment, TTY answer, cache path and server.
 var updateCheckGuards = defaultUpdateCheckGuards
 
-func defaultUpdateCheckGuards(*cobra.Command) updatecheck.Guards {
+func defaultUpdateCheckGuards(cmd *cobra.Command) updatecheck.Guards {
 	_, jsonOn, known := output.Invocation()
 	return updatecheck.Guards{
-		// An unrecorded invocation is treated as JSON mode: stay silent.
-		JSON:    jsonOn || !known,
+		// An unrecorded invocation is treated as JSON mode: stay silent. So is a
+		// legacy command asked for `--format json` or `--output json`: the
+		// invocation record only counts those for envelope commands.
+		JSON:    jsonOn || !known || jsonValuedFlag(cmd),
 		TTY:     func() bool { return term.IsTerminal(int(os.Stderr.Fd())) },
 		Env:     os.Getenv,
 		Now:     time.Now,
 		Path:    updatecheck.DefaultPath(),
 		Current: version.GetVersion(),
 	}
+}
+
+// jsonValuedFlag reports whether the command has a `format` or `output` flag
+// (inherited ones included) whose value is "json", whatever the canon kind.
+func jsonValuedFlag(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
+	}
+	for _, name := range []string{"format", "output"} {
+		if f := cmd.Flags().Lookup(name); f != nil && strings.EqualFold(strings.TrimSpace(f.Value.String()), "json") {
+			return true
+		}
+	}
+	return false
 }
 
 // updateCheckStarted, when set by a test, receives the refresh's done channel.
