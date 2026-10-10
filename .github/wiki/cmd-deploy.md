@@ -163,12 +163,48 @@ to inspect the current active environment and canary traffic split.
 
 ## Rolling Restart, Service Order and Downtime
 
-The rolling strategy restarts services in dependency order. Each service restart is health-gated
-(max 60s wait). If a service does not become healthy within 60s, the deploy halts and reports
-which service failed.
+The rolling strategy restarts services in dependency order, one `docker compose up -d --no-deps
+<service>` at a time, and gates each service before the next one starts. If a service fails its
+gate, the deploy halts, names the service, and restarts nothing after it.
+
+**Manifest and env files.** Every compose call uses the same inputs as `nself restart`: all files
+listed in `.nself/compose-files.txt` (the base file, plugin fragments, the user override) as `-f`,
+and the env files `.env` then `.nself/compose.env` as `--env-file` (later wins). Plugin services
+therefore get the variables `nself build` computed for them. The root `.env` is no longer a
+fallback for plugin variables: a plugin variable must be in `.nself/compose.env` (run `nself build`).
+
+**Health gate by service kind.** The kind comes from the resolved config (`docker compose config
+--format json` over the manifest):
+
+| Service kind | Waits for | Limit | On failure |
+|---|---|---|---|
+| Declares a healthcheck | `healthy` | 60s | E251 (health check timeout), service named |
+| One-shot (`restart: "no"`, no healthcheck) | a new run that exits 0 | 60s | non-zero exit fails at once with E250; never exiting, or never starting again, is E251 |
+| Anything else | `running`, seen as the same run on two polls 2s apart | 30s | E251, service named |
+
+The rows apply top to bottom: a service with `restart: "no"` and a healthcheck is long-running, so it
+waits for `healthy`. For every kind, a container that exited non-zero or is restarting fails the
+deploy at once with E250 when a poll sees it. After the last service, every gated service is read once
+more, and the deploy fails with E250 naming any that restarted, is restarting, or exited non-zero since its
+gate passed. That catches a crash loop that stays up for a few seconds, but it is not a guarantee: a crash
+after that final re-check is not detected, and the health checks (`nself doctor`) that follow the roll are
+the only backstop. A service with no `restart` line that exited 0 counts as a finished run (Docker's
+default policy is "no"), so it is done. Containers left behind by `docker compose run` are ignored: they are not replicas of the
+service. A service that appears in the restart order but not in the resolved config fails the deploy
+with E252, checked for every service before the first restart. If Docker cannot be read (daemon down, `compose ps` fails), the
+deploy stops with Docker's own message and no service code, because nothing is known about the
+service; an interrupt (ctrl-c) stops the same way.
+
+**What a failed deploy leaves behind.** Nothing rolls back. Services before the failed one already run
+the new config. The failed service is in whatever state `up` left it (running but not ready, restarting,
+or exited). Services after it are not touched and keep running the old config. Fix the cause and run
+`nself deploy` again: it restarts every service in order.
+
+Init containers that run once and exit never report `healthy`; the old gate waited for that and
+aborted real deploys.
 
 **The order is derived from the project's own resolved compose file, not a fixed list.** Before
-each restart, `nself deploy` runs `docker compose config --services` (locally, or over SSH for a
+each restart, `nself deploy` runs `docker compose config --services` over the manifest (locally, or over SSH for a
 remote push target) to get the set of services that actually exist, then orders them:
 
 1. **Core services first**, in dependency order, but only the ones actually present:
@@ -176,8 +212,8 @@ remote push target) to get the set of services that actually exist, then orders 
 2. **Every other present service next**, in the order docker reported them (e.g. `minio`,
    `nginx`, `redis`, `mailpit`, `ping-api`, `auth-server`, `nself-admin` — whatever this
    project's compose actually defines).
-3. **Plugin-contributed services last** — any service name that comes from an installed
-   plugin's `docker-compose.plugin.yml` fragment restarts after everything else.
+3. **Plugin-contributed services last** — any service a plugin fragment in the compose manifest
+   adds (and the base file does not define) restarts after everything else.
 
 A service name is never invented. Restarting a name that doesn't exist in this project's
 compose (the old fixed order included `storage` and `plugins`, neither of which is a real

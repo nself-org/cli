@@ -1,10 +1,11 @@
 package commands
 
 // Purpose: derive the rolling-restart service order from the project's own
-// resolved compose file instead of a hardcoded list. Inputs are the set of
-// service names actually present in the project's docker-compose.yml
-// (`docker compose config --services`) and the set contributed by installed
-// plugin compose fragments; output is the restart order to use.
+// resolved compose model instead of a hardcoded list. Inputs are the service
+// names `docker compose config --services` reports over the compose manifest
+// (.nself/compose-files.txt plus the env files, the same inputs restart uses)
+// and the set contributed by the manifest's plugin fragments; output is the
+// restart order to use.
 // Constraints: production incident 2026-09-20 — deployServiceOrder was a
 // fixed [postgres hasura auth storage plugins] list. A real project's
 // compose named object storage "minio" (never "storage") and had no
@@ -16,11 +17,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/docker"
 
 	"gopkg.in/yaml.v3"
 )
@@ -39,8 +39,8 @@ var composeCoreOrder = []string{"postgres", "hasura", "auth"}
 //     order.
 //
 // present is normally the output of `docker compose config --services`.
-// pluginServices is the set of service names contributed by installed
-// plugin compose fragments (see discoverPluginServiceNames). Passing a name
+// pluginServices is the set of service names contributed by the manifest's
+// plugin compose fragments (see manifestPluginServices). Passing a name
 // that isn't in present is impossible by construction — only services that
 // actually exist in the resolved compose ever appear in the result, which
 // is what prevents restarting a nonexistent placeholder name (e.g. the old
@@ -82,75 +82,79 @@ func resolveServiceOrder(present []string, pluginServices map[string]bool) []str
 	return order
 }
 
-// composeServiceNames runs `docker compose config --services` in workdir and
-// returns the service names it reports, in the order docker printed them.
-func composeServiceNames(ctx context.Context, workdir string) ([]string, error) {
-	c := exec.CommandContext(ctx, "docker", "compose", "config", "--services")
-	c.Dir = workdir
-	c.Env = os.Environ()
-	out, err := c.Output()
+// deployCompose builds the Compose for workdir the way restart does: every file
+// in .nself/compose-files.txt as -f and build.ComposeEnvFiles as --env-file, so
+// plugin fragments and the variables computed for them are part of every call.
+func deployCompose(workdir string) (*docker.Compose, []string, error) {
+	files, err := build.ReadComposeManifest(workdir)
 	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("docker compose config --services: %w\n%s", err, strings.TrimSpace(string(ee.Stderr)))
-		}
-		return nil, fmt.Errorf("docker compose config --services: %w", err)
+		return nil, nil, fmt.Errorf("reading compose manifest: %w", err)
 	}
-	var names []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if s := strings.TrimSpace(line); s != "" {
-			names = append(names, s)
-		}
-	}
-	return names, nil
+	c := docker.NewCompose(files...)
+	c.EnvFiles = build.ComposeEnvFiles(workdir)
+	return c, files, nil
 }
 
-// pluginComposeDoc is the minimal shape needed to read a plugin's compose
-// fragment's top-level service names — mirrors the pattern
-// internal/build/postvalidate.go's checkComposeYAML uses for the project's
-// own compose file.
-type pluginComposeDoc struct {
+// composeFragmentDoc is the minimal shape needed to read a compose file's
+// top-level service names.
+type composeFragmentDoc struct {
 	Services map[string]interface{} `yaml:"services"`
 }
 
-// discoverPluginServiceNames returns the set of compose service names
-// contributed by every installed, enabled plugin under workdir's plugin
-// directory. Best-effort: a missing plugin dir, an unreadable fragment, or a
-// parse failure for one plugin is silently skipped rather than failing the
-// whole deploy — this set only affects restart ORDER (plugins last), never
-// whether a service is restarted at all, so a partial result degrades
-// gracefully to "some plugin services sort with the general group instead
-// of last."
-func discoverPluginServiceNames(workdir string) map[string]bool {
+// manifestPluginServices returns the service names the manifest's plugin
+// fragments add on top of the base file (files[0]). The hand-written
+// docker-compose.override.yml and the image override file only adjust existing
+// services, so they never count. Best-effort: an unreadable fragment is
+// skipped, which only moves a plugin service out of the "last" group (order,
+// never whether a service is restarted).
+func manifestPluginServices(workdir string, files []string) map[string]bool {
 	names := map[string]bool{}
-	composeFiles, err := build.DiscoverPluginComposeFiles(workdir, build.DefaultPluginDir())
-	if err != nil {
+	if len(files) < 2 {
 		return names
 	}
-	for _, path := range composeFiles {
-		data, readErr := os.ReadFile(filepath.Clean(path))
-		if readErr != nil {
+	base := composeServiceSet(workdir, files[0])
+	for _, f := range files[1:] {
+		switch filepath.Base(f) {
+		case "docker-compose.override.yml", filepath.Base(docker.ImageOverrideFile):
 			continue
 		}
-		var doc pluginComposeDoc
-		if yaml.Unmarshal(data, &doc) != nil {
-			continue
-		}
-		for svc := range doc.Services {
-			names[svc] = true
+		for svc := range composeServiceSet(workdir, f) {
+			if !base[svc] {
+				names[svc] = true
+			}
 		}
 	}
 	return names
 }
 
-// projectServiceOrder resolves the rolling-restart order for workdir by
-// combining composeServiceNames (what actually exists) with
-// discoverPluginServiceNames (what sorts last). Returns an error only when
-// the compose services themselves cannot be determined — plugin discovery
-// failures never block a deploy (see discoverPluginServiceNames).
-func projectServiceOrder(ctx context.Context, workdir string) ([]string, error) {
-	present, err := composeServiceNames(ctx, workdir)
+// composeServiceSet reads the top-level service names of one compose file.
+func composeServiceSet(workdir, path string) map[string]bool {
+	set := map[string]bool{}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(workdir, path)
+	}
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return set
+	}
+	var doc composeFragmentDoc
+	if yaml.Unmarshal(data, &doc) != nil {
+		return set
+	}
+	for svc := range doc.Services {
+		set[svc] = true
+	}
+	return set
+}
+
+// projectServiceOrder resolves the rolling-restart order: what the manifest
+// compose reports (`config --services`) arranged by resolveServiceOrder, with
+// the manifest's plugin-fragment services last. It errors only when the
+// services themselves cannot be determined.
+func projectServiceOrder(ctx context.Context, compose *docker.Compose, workdir string, files []string) ([]string, error) {
+	present, err := compose.ComposeServiceNames(ctx, workdir)
 	if err != nil {
 		return nil, err
 	}
-	return resolveServiceOrder(present, discoverPluginServiceNames(workdir)), nil
+	return resolveServiceOrder(present, manifestPluginServices(workdir, files)), nil
 }
