@@ -112,3 +112,29 @@ func TestStartFrozenFlag(t *testing.T) {
 		t.Fatal("start has no PreRunE lock check")
 	}
 }
+
+// TestBuildWriteLockFlag: `build --plan --write-lock` reaches the pipeline as
+// BuildOptions.WriteLock (no environment side channel): a v1.4 plan lists
+// nself.lock.yaml with the flag and not without it.
+func TestBuildWriteLockFlag(t *testing.T) {
+	lockPlanned := func(args ...string) bool {
+		p := newL03Project(t, "dev-minimal")
+		r := p.run(t, false, append([]string{"build", "--plan", "--json"}, args...)...)
+		if r.code != 0 {
+			t.Fatalf("build %v exited %d\n%s\n%s", args, r.code, r.stdout, r.stderr)
+		}
+		arts, _ := validateEnvelope(t, r.stdout, "build")["artifacts"].([]any)
+		for _, a := range arts {
+			if m, _ := a.(map[string]any); m != nil && m["path"] == lock.FileName {
+				return true
+			}
+		}
+		return false
+	}
+	if lockPlanned() {
+		t.Fatal("a v1.4 plan without --write-lock lists the lock")
+	}
+	if !lockPlanned("--write-lock") {
+		t.Fatal("build --plan --write-lock does not list the lock")
+	}
+}

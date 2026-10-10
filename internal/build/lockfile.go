@@ -11,14 +11,14 @@ package build
 // Outputs: compose.SetProjectPins for the run; nself.lock.yaml when it changed;
 // CurrentLock, the state `start --frozen` compares with the file.
 // Constraints: active only when nself.lock.yaml exists, `build --write-lock`
-// was given (NSELF_WRITE_LOCK=1, set by the command; BuildOptions lives outside
-// this Ticket's scope) or v1.5 is selected. The first lock of a project with a
-// docker-compose.yml takes its pins from that file. The lock is rewritten only
-// when its bytes change. It records the compose as rendered: no digest lookup
+// was given (BuildOptions.WriteLock) or v1.5 is selected. The first lock of a
+// project with a docker-compose.yml takes its pins from that file. The lock is
+// rewritten only when its bytes change. It records the compose as rendered: no digest lookup
 // after rendering, so the lock and the compose never disagree.
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -26,25 +26,28 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/bundle"
 	"github.com/nself-org/cli/internal/bundle/ledger"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/version"
 )
 
-// EnvWriteLock opts a v1.4 build into writing the lock (`build --write-lock`).
-const EnvWriteLock = "NSELF_WRITE_LOCK"
-
 // localRepoDigest returns "sha256:<hex>" when the image for a tag reference is
-// present locally with a repo digest. It is a seam: the default finds nothing
-// until a docker-funnel accessor exists (internal/docker is outside this
-// Ticket's write scope), so a first lock falls back to the CLI image lock, then
-// to a tag-only entry.
-var localRepoDigest = func(ref string) string { return "" }
+// present locally with exactly one repo digest for its repository, through the
+// docker funnel (docker.LocalRepoDigest). It is a variable so tests can fake it.
+// "" means none: the caller falls back to the CLI image lock, then to a tag-only
+// entry.
+var localRepoDigest = func(ref string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return docker.LocalRepoDigest(ctx, ref)
+}
 
 var minorRE = regexp.MustCompile(`^v?([0-9]+)\.([0-9]+)`)
 
@@ -58,7 +61,7 @@ func cliMinor(v string) string {
 
 // lockActive reports whether this build reads and writes the project lock.
 func (st *buildState) lockActive() bool {
-	if os.Getenv(EnvWriteLock) == "1" {
+	if st.opts.WriteLock {
 		return true
 	}
 	// compat.V15(P7-LIVE-09): the project lock is written and honoured only when nself.lock.yaml exists or --write-lock is given -> always

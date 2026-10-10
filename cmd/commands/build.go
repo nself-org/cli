@@ -76,11 +76,10 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	removeOrphans, _ := cmd.Flags().GetBool("remove-orphans")
 	hosts, _ := cmd.Flags().GetBool("hosts")
 	// P7-LIVE-09: --write-lock opts a v1.4 build into the project lock. It
-	// reaches the pipeline through the environment (BuildOptions lives outside
-	// this Ticket's write scope) and skips the freshness cache; it is not --force,
-	// so a hand-edited generated file is still protected.
-	if writeLock, _ := cmd.Flags().GetBool("write-lock"); writeLock {
-		_ = os.Setenv(build.EnvWriteLock, "1")
+	// reaches the pipeline as BuildOptions.WriteLock and skips the freshness
+	// cache; it is not --force, so a hand-edited generated file is still protected.
+	writeLock, _ := cmd.Flags().GetBool("write-lock")
+	if writeLock {
 		noCache = true
 	}
 	pf := readBuildPlanFlags(cmd)
@@ -206,6 +205,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		Profile:        profile,
 		Hosts:          hosts,
 		RemoteDeploy:   remoteDeploy,
+		WriteLock:      writeLock,
 	}
 
 	if pf.plan {

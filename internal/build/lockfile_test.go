@@ -8,6 +8,7 @@ package build
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -208,15 +209,15 @@ func TestLockV14OptIn(t *testing.T) {
 	if _, err := os.Stat(lock.Path(f.workdir)); !os.IsNotExist(err) {
 		t.Fatalf("v1.4 build created the lock without --write-lock (stat err %v)", err)
 	}
-	t.Setenv(EnvWriteLock, "1")
-	lockBuild(t, f)
+	if _, err := Build(f.workdir, BuildOptions{Force: true, WriteLock: true}); err != nil {
+		t.Fatalf("Build --write-lock: %v", err)
+	}
 	// The earlier v1.4 build left a tag-only compose; the first lock takes its
 	// pins from it, with the digest from the CLI image lock (the versions match).
 	hasura, _ := compose.LockedRef("hasura")
 	if l := readLock(t, f); l.Images["hasura"] != hasura.String() {
 		t.Fatalf("first v1.4 lock pins hasura %q, want the CLI image lock's %q: %+v", l.Images["hasura"], hasura.String(), l)
 	}
-	_ = os.Unsetenv(EnvWriteLock)
 
 	// Honoured: a pin in the existing file moves the render; updated: the file is rewritten.
 	old := lock.New()
@@ -258,4 +259,71 @@ func TestLockPlanMode(t *testing.T) {
 	if string(got) != string(pf.Data) {
 		t.Fatalf("apply wrote other bytes than the plan:\nplan:\n%s\napply:\n%s", pf.Data, got)
 	}
+}
+
+// TestLockWriteLockOption: BuildOptions.WriteLock is the only opt-in. A process
+// environment variable (the old side channel) does nothing, and a build
+// without the field writes no lock under v1.4.
+func TestLockWriteLockOption(t *testing.T) {
+	f := newPlanFixture(t, "dev-minimal")
+	compattest.Set(t, false)
+	t.Setenv("NSELF_WRITE_LOCK", "1")
+	lockBuild(t, f)
+	if _, err := os.Stat(lock.Path(f.workdir)); !os.IsNotExist(err) {
+		t.Fatalf("an environment variable opted a v1.4 build into the lock (stat err %v)", err)
+	}
+	if _, err := Build(f.workdir, BuildOptions{Force: true, WriteLock: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(lock.Path(f.workdir)); err != nil {
+		t.Fatalf("WriteLock did not write the lock: %v", err)
+	}
+}
+
+// fakeImageInspect puts a docker first on PATH that answers `image inspect`
+// with out and fails every other call (a daemon that is otherwise down).
+func fakeImageInspect(t *testing.T, out string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake docker is a POSIX shell script")
+	}
+	dir := t.TempDir()
+	script := "#!/bin/sh\nif [ \"$1\" = image ] && [ \"$2\" = inspect ]; then echo '" + out + "'; exit 0; fi\n" +
+		"echo 'Cannot connect to the Docker daemon' >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// TestLockBootstrapDigestFunnel: with the real localRepoDigest (no test seam),
+// the first lock pins the digest `docker image inspect` reports for the local
+// image, and falls back to the CLI image lock when the image has no RepoDigest.
+func TestLockBootstrapDigestFunnel(t *testing.T) {
+	old := "services:\n  hasura:\n    image: " + hasura240 + "\n"
+	t.Run("local image with a repo digest", func(t *testing.T) {
+		fakeImageInspect(t, `["hasura/graphql-engine@`+testDig+`"]`)
+		f := newPlanFixture(t, "dev-minimal")
+		compattest.Set(t, true)
+		withExistingCompose(t, f, old)
+		lockBuild(t, f)
+		want := hasura240 + "@" + testDig
+		if got := readLock(t, f).Images["hasura"]; got != want {
+			t.Fatalf("lock pins %q, want %q", got, want)
+		}
+		if got := composeImagesOf(t, f)["hasura"]; got != want {
+			t.Fatalf("compose runs %q, want %q", got, want)
+		}
+	})
+	t.Run("no repo digest keeps the fallback order", func(t *testing.T) {
+		fakeImageInspect(t, "null")
+		f := newPlanFixture(t, "dev-minimal")
+		compattest.Set(t, true)
+		withExistingCompose(t, f, old)
+		lockBuild(t, f)
+		l := readLock(t, f)
+		if l.Unpinned["hasura"] != hasura240 || l.Images["hasura"] != "" {
+			t.Fatalf("an image without a RepoDigest must stay unpinned (v2.40.0 is not in the CLI lock): %v %v", l.Images, l.Unpinned)
+		}
+	})
 }
