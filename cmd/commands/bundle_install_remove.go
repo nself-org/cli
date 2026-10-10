@@ -20,9 +20,17 @@ var bundleInstallCmd = &cobra.Command{
 	Short: "Install every plugin in a bundle (license-gated, atomic rollback on failure)",
 	Long: `Install all plugins in the named bundle in a single transaction.
 
-License validation runs for every plugin BEFORE any filesystem change.
-On any per-plugin install failure, every plugin installed in this invocation
-is rolled back so the system is left in a clean state.
+Licence checks run BEFORE any filesystem change: a paid bundle needs the
+bundle entitlement and every plugin's licence; a free bundle skips the ping_api
+bundle entitlement call (plugin licences are still checked). On any per-plugin
+install failure, every plugin installed in this invocation is rolled back so
+the system is left in a clean state.
+
+After the plugins are installed the command records the bundle in the install
+ledger, then reconciles the project. With NSELF_V15=1 it also starts the stack
+and reports the app-ready steps: readiness (plugin migrations applied), tracking
+(tables tracked in Hasura) and health, and exits 2 (E135) at the first failing
+step. Without it, those steps print as "not verified" and the exit stays 0.
 
 Examples:
   nself bundle install nsentry

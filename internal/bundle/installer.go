@@ -21,7 +21,7 @@
 // the ledger and, when InstallOpts.Hooks is set, runs reconcile, start, readiness,
 // tracking and health (package appready; installer_appready.go). The member loop
 // is in installer_members.go and the licence pre-flight in installer_licence.go.
-// A free bundle (Bundle.IsFree) never calls ping_api.
+// A free bundle (Bundle.IsFree) skips the ping_api bundle entitlement call.
 package bundle
 
 import (
@@ -142,10 +142,13 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 	}
 
 	// License pre-flight (see installer_licence.go). A free bundle makes no
-	// ping_api call and no licence check.
-	if b.IsFree() {
-		rn.Skip(appready.StepLicence, "skipped (free)")
-	} else if err := rn.Step(appready.StepLicence, func() (string, error) { return "", checkLicence(ctx, b, planned, opts) }); err != nil {
+	// ping_api bundle-entitlement call; the per-plugin check still runs.
+	if err := rn.Step(appready.StepLicence, func() (string, error) {
+		if b.IsFree() {
+			return "free bundle: no bundle entitlement call; plugin licences checked", checkLicence(ctx, b, planned, opts)
+		}
+		return "", checkLicence(ctx, b, planned, opts)
+	}); err != nil {
 		return result, err
 	}
 

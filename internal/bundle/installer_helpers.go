@@ -105,7 +105,7 @@ func printPlan(out io.Writer, b Bundle, ch Channel, planned []string, pins Versi
 		_, _ = fmt.Fprintf(out, "  skipped (not in registry, non-strict): %s\n", strings.Join(skipped, ", "))
 	}
 	if b.IsFree() {
-		_, _ = fmt.Fprintln(out, "  license: not required (free bundle)")
+		_, _ = fmt.Fprintln(out, "  license: free bundle (no bundle entitlement call; each plugin's licence is still checked)")
 	} else if opts.Force {
 		_, _ = fmt.Fprintln(out, "  license: will validate (--force only skips same-version check)")
 	} else {

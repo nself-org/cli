@@ -147,7 +147,8 @@ func (r *Runner) Step(name string, fn func() (string, error)) error {
 	if err != nil {
 		r.record(name, StepResult{Name: name, Result: ResultFailed, DurationMS: ms, Detail: firstLine(err)})
 		f := &Failure{Step: name, Plugin: "(bundle)", Err: err}
-		if se, ok := err.(*StepError); ok && se.Plugin != "" {
+		var se *StepError
+		if errors.As(err, &se) && se.Plugin != "" {
 			f.Plugin = se.Plugin
 		}
 		r.failed = f

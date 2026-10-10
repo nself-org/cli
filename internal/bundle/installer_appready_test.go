@@ -84,7 +84,7 @@ func portOf(t *testing.T, srv *httptest.Server) int {
 	return port
 }
 
-// freeOpts is a task bundle install with fakes; a paid-bundle call would fail the test.
+// freeOpts is a task bundle install with fakes; a bundle entitlement call would fail the test.
 func freeOpts(t *testing.T, pluginDir string, out *bytes.Buffer, install func(name string) error) InstallOpts {
 	t.Helper()
 	return InstallOpts{
@@ -93,12 +93,11 @@ func freeOpts(t *testing.T, pluginDir string, out *bytes.Buffer, install func(na
 			t.Error("ping_api entitlement was called for a free bundle")
 			return false, nil
 		},
-		licenseChecker: func(context.Context, []string) error {
-			t.Error("plugin licence pre-check was called for a free bundle")
-			return nil
-		},
-		installer: func(_ context.Context, _ *config.Config, name, _ string) error { return install(name) },
-		remover:   func(context.Context, *config.Config, string, string) error { return nil },
+		// A free bundle skips only the bundle entitlement call; the per-plugin
+		// pre-flight still runs (and passes here).
+		licenseChecker: func(context.Context, []string) error { return nil },
+		installer:      func(_ context.Context, _ *config.Config, name, _ string) error { return install(name) },
+		remover:        func(context.Context, *config.Config, string, string) error { return nil },
 	}
 }
 
@@ -141,8 +140,8 @@ func TestBundleInstallDryRun(t *testing.T) {
 	if want := "(dry-run) no changes made."; !strings.Contains(text, want) {
 		t.Errorf("output lacks %q", want)
 	}
-	if !strings.Contains(text, "license: not required (free bundle)") {
-		t.Errorf("free bundle plan should say the licence is not required:\n%s", text)
+	if !strings.Contains(text, "license: free bundle (no bundle entitlement call") {
+		t.Errorf("free bundle plan should say it skips the bundle entitlement call:\n%s", text)
 	}
 	entries, _ := os.ReadDir(pluginDir)
 	if len(entries) != 0 {
@@ -173,19 +172,22 @@ func TestBundleInstallMemberFailsE135(t *testing.T) {
 		})
 		opts.Hooks = &appready.Hooks{
 			Reconcile: func(context.Context) error { atomic.AddInt32(&reconciled, 1); return nil },
-			Start:     func(context.Context) error { atomic.AddInt32(&started, 1); return nil },
 			Timeout:   200 * time.Millisecond, Interval: 10 * time.Millisecond,
 			ExportMetadata: func(context.Context) ([]byte, error) { t.Error("tracking ran after readiness failed"); return nil, nil },
+		}
+		// compat.V15(P7-PLUG-19): cmd builds the Start hook only in v1.5 (mirrored here).
+		if compat.V15() {
+			opts.Hooks.Start = func(context.Context) error { atomic.AddInt32(&started, 1); return nil }
 		}
 
 		res, err := Install(context.Background(), "task", opts)
 		text := out.String()
-		for _, want := range []string{"NOT APP-READY: step readiness failed for plugin notifications", "readiness FAILED"} {
-			if !strings.Contains(text, want) {
-				t.Errorf("report lacks %q:\n%s", want, text)
-			}
-		}
 		if compat.V15() {
+			for _, want := range []string{"NOT APP-READY: step readiness failed for plugin notifications", "readiness FAILED"} {
+				if !strings.Contains(text, want) {
+					t.Errorf("report lacks %q:\n%s", want, text)
+				}
+			}
 			d := errs.Describe(err)
 			if err == nil || d == nil || d.Code != "E135" || d.ExitCode != 2 {
 				t.Fatalf("v1.5: err = %v, detail = %+v, want E135 exit 2", err, d)
@@ -200,24 +202,45 @@ func TestBundleInstallMemberFailsE135(t *testing.T) {
 				t.Errorf("E135 cause = %+v, want E118", cause)
 			}
 		} else {
+			// v1.4: no start hook, so the four waiting steps are not verified
+			// (skipped), nothing polls, the report is printed and the exit is 0.
 			if err != nil {
-				t.Fatalf("v1.4: err = %v, want nil (warning only)", err)
+				t.Fatalf("v1.4: err = %v, want nil", err)
 			}
-			if !strings.Contains(text, "warning: bundle task is not app-ready: step readiness failed for plugin notifications") {
-				t.Errorf("v1.4 output lacks the warning:\n%s", text)
+			for _, want := range []string{"NOT VERIFIED", "not verified (v1.5 behaviour, NSELF_V15=1)"} {
+				if !strings.Contains(text, want) {
+					t.Errorf("v1.4 report lacks %q:\n%s", want, text)
+				}
+			}
+			for _, line := range strings.Split(text, "\n") {
+				if strings.TrimSpace(line) == "APP-READY" {
+					t.Errorf("v1.4 claims APP-READY:\n%s", text)
+				}
 			}
 		}
-		if res.Report == nil || res.Report.AppReady || res.Report.Failed != "readiness" || res.Report.FailedFor != "notifications" {
-			t.Errorf("report = %+v", res.Report)
+		if res.Report == nil || res.Report.AppReady {
+			t.Fatalf("report = %+v", res.Report)
 		}
-		if !res.Reconciled || reconciled != 1 || started != 1 {
-			t.Errorf("reconciled=%v reconcile calls=%d start calls=%d, want true/1/1", res.Reconciled, reconciled, started)
+		wantStart := int32(0)
+		wantFailed, wantFor := "", ""
+		if compat.V15() {
+			wantStart, wantFailed, wantFor = 1, "readiness", "notifications"
+		}
+		if res.Report.Failed != wantFailed || res.Report.FailedFor != wantFor {
+			t.Errorf("report failed=%q for=%q, want %q/%q", res.Report.Failed, res.Report.FailedFor, wantFailed, wantFor)
+		}
+		if !res.Reconciled || reconciled != 1 || started != wantStart {
+			t.Errorf("reconciled=%v reconcile calls=%d start calls=%d, want true/1/%d", res.Reconciled, reconciled, started, wantStart)
 		}
 		states := map[string]string{}
 		for _, s := range res.Report.Steps {
 			states[s.Name] = s.Result
 		}
-		for step, want := range map[string]string{"licence": "skipped", "fetch": "ok", "install": "ok", "ledger": "ok", "reconcile": "ok", "start": "ok", "readiness": "failed", "tracking": "skipped", "health": "skipped"} {
+		wantStates := map[string]string{"licence": "ok", "fetch": "ok", "install": "ok", "ledger": "ok", "reconcile": "ok", "start": "ok", "readiness": "failed", "tracking": "skipped", "health": "skipped"}
+		if !compat.V15() {
+			wantStates["start"], wantStates["readiness"] = "skipped", "skipped"
+		}
+		for step, want := range wantStates {
 			if states[step] != want {
 				t.Errorf("step %s = %q, want %q", step, states[step], want)
 			}

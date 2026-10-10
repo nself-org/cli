@@ -50,14 +50,15 @@ done
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-if ! command -v docker >/dev/null 2>&1; then
-  # The golang image has no Docker CLI; install it when we can (root + apt).
+if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
+  # The golang image has no Docker CLI and no compose plugin; install both when
+  # we can (root + apt; Debian's docker-compose package is the v2 plugin).
   if [ "$(id -u)" = "0" ] && command -v apt-get >/dev/null 2>&1; then
-    apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq docker.io >/dev/null 2>&1 || true
+    apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq docker.io docker-compose >/dev/null 2>&1 || true
   fi
 fi
-if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
-  echo "bundle-app-ready: Docker is not available in this environment" >&2
+if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
+  echo "bundle-app-ready: Docker with the compose plugin is not available in this environment" >&2
   exit 3
 fi
 
@@ -112,6 +113,12 @@ mkdir -p "$HOME"
 "$WORK/nself" init --non-interactive >"$WORK/init.log" 2>&1 || {
   cat "$WORK/init.log"
   fail "nself init"
+}
+# A clean project is `nself init && nself start` (the canonical local flow):
+# plugin install creates each plugin's schema in the running database.
+"$WORK/nself" start >"$WORK/start.log" 2>&1 || {
+  tail -n 60 "$WORK/start.log"
+  fail "nself start (base stack)"
 }
 
 set +e

@@ -10,6 +10,7 @@ import (
 
 	"github.com/nself-org/cli/internal/bundle"
 	"github.com/nself-org/cli/internal/bundle/appready"
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/health"
 	"github.com/nself-org/cli/internal/reconcile"
@@ -76,6 +77,7 @@ func TestBundleInstallPassesHooksExceptDryRun(t *testing.T) {
 
 // TestBundleHooksOutsideProject: reconcile reports ErrNoProject, never reconciles.
 func TestBundleHooksOutsideProject(t *testing.T) {
+	compattest.Set(t, true) // the metadata hook exists only in v1.5
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
 	n := countReconciles(t)
@@ -90,6 +92,7 @@ func TestBundleHooksOutsideProject(t *testing.T) {
 
 // TestBundleHooksInProject: reconcile runs, metadata and health go through the seams.
 func TestBundleHooksInProject(t *testing.T) {
+	compattest.Set(t, true) // start, metadata and health hooks exist only in v1.5
 	t.Setenv("HOME", t.TempDir())
 	proj := t.TempDir()
 	if err := os.WriteFile(filepath.Join(proj, ".env"), []byte("PROJECT_NAME=hk\n"), 0o600); err != nil {

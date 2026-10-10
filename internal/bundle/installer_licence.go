@@ -8,7 +8,9 @@ package bundle
 //	Phase 1 (bundle-level): ping_api /bundle/entitled grants this bundle as a unit.
 //	Phase 2 (plugin-level fallback): defaultLicenseChecker catches the no-key case.
 //
-// A free bundle (Bundle.IsFree) makes no ping call and no licence check.
+// A free bundle (Bundle.IsFree) skips Phase 1 only: IsFree trusts the Price
+// string, so Phase 2 (a local check that fails only when a member needs a licence
+// and no key exists) still runs for it.
 // Inputs: the bundle, the planned plugins and InstallOpts (test hooks).
 // Outputs: nil, or the "license validation failed" error.
 // Constraints: moved from installer.go to keep that file under 300 lines.
@@ -21,19 +23,21 @@ import (
 )
 
 func checkLicence(ctx context.Context, b Bundle, planned []string, opts InstallOpts) error {
-	// Phase 1: bundle-level entitlement via ping_api (or test hook).
-	key := license.CollectLicenseKey()
-	entitledFn := opts.bundleEntitledChecker
-	if entitledFn == nil {
-		entitledFn = license.BundleEntitled
-	}
-	entitled, entitleErr := entitledFn(ctx, key, b.Slug)
-	if entitleErr != nil || !entitled {
-		msg := fmt.Sprintf("bundle %q: not entitled", b.Slug)
-		if entitleErr != nil {
-			msg = entitleErr.Error()
+	// Phase 1: bundle-level entitlement via ping_api (or test hook); not for a free bundle.
+	if !b.IsFree() {
+		key := license.CollectLicenseKey()
+		entitledFn := opts.bundleEntitledChecker
+		if entitledFn == nil {
+			entitledFn = license.BundleEntitled
 		}
-		return fmt.Errorf("license validation failed: %s\n\nBuy at: https://nself.org/pricing or run 'nself license set <key>'", msg)
+		entitled, entitleErr := entitledFn(ctx, key, b.Slug)
+		if entitleErr != nil || !entitled {
+			msg := fmt.Sprintf("bundle %q: not entitled", b.Slug)
+			if entitleErr != nil {
+				msg = entitleErr.Error()
+			}
+			return fmt.Errorf("license validation failed: %s\n\nBuy at: https://nself.org/pricing or run 'nself license set <key>'", msg)
+		}
 	}
 
 	// Phase 2: plugin-level pre-flight (catches no-key-at-all cases for free).

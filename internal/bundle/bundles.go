@@ -104,7 +104,7 @@ func All() []Bundle {
 // union of every paid bundle's entitlements) and a bundle with no plugins are
 // not installable as a unit. The free Task Bundle is installable since
 // P7-PLUG-19 (`nself bundle install task` is its app-ready path); a free bundle
-// skips every licence call (see IsFree).
+// skips the bundle entitlement call (see IsFree).
 //
 // This is the ONLY bundle-membership rule the CLI hand-codes: which display
 // slug is a structural category, not plugin data. The plugin SET of every
@@ -122,7 +122,9 @@ func (b Bundle) IsInstallable() bool {
 }
 
 // IsFree reports whether the bundle costs nothing. formatPrice in registry.go
-// yields "FREE" exactly for a free tier or a zero price.
+// yields "FREE" exactly for a free tier or a zero price. It is a price heuristic,
+// not licence evidence, so a free bundle still gets the per-plugin licence
+// pre-flight; only the ping_api bundle entitlement call is skipped.
 func (b Bundle) IsFree() bool { return b.Price == "FREE" }
 
 // UnknownBundleError formats a friendly error when a slug does not match a

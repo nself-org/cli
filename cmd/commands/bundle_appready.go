@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/bundle/appready"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/health"
@@ -32,8 +33,12 @@ var (
 	bundleRunHealth      = health.RunAllChecks
 )
 
-// startStackInProcess runs `nself start` with its default flags.
+// startStackInProcess runs `nself start` with its default flags. Outside an
+// nSelf project it returns appready.ErrNoProject, not start's own error.
 func startStackInProcess(ctx context.Context) error {
+	if _, err := bundleProjectDir(); err != nil {
+		return err
+	}
 	startCmd.SetContext(ctx)
 	return startCmd.RunE(startCmd, nil)
 }
@@ -63,25 +68,29 @@ func bundleProjectConfig() (*config.Config, string, error) {
 	return cfg, root, nil
 }
 
-// newBundleAppReadyHooks builds the hooks for `bundle install <slug>`.
+// newBundleAppReadyHooks builds the hooks for `bundle install <slug>`: reconcile
+// in both modes; start, Hasura metadata and service health only in v1.5.
 func newBundleAppReadyHooks(cmd *cobra.Command, slug string) *appready.Hooks {
 	trigger := reconcile.Trigger{Kind: reconcile.TriggerBundle, Subject: slug}
-	return &appready.Hooks{
+	h := &appready.Hooks{
 		Reconcile: func(context.Context) error {
 			if _, err := bundleProjectDir(); err != nil {
 				return err
 			}
 			return bundleReconcile(cmd, trigger)
 		},
-		Start: bundleStartStack,
-		ExportMetadata: func(ctx context.Context) ([]byte, error) {
+	}
+	// compat.V15(P7-PLUG-19): bundle install reconciles only -> also starts the stack and waits for app-ready
+	if compat.V15() {
+		h.Start = func(ctx context.Context) error { return bundleStartStack(ctx) }
+		h.ExportMetadata = func(ctx context.Context) ([]byte, error) {
 			cfg, _, err := bundleProjectConfig()
 			if err != nil {
 				return nil, err
 			}
 			return bundleExportMetadata(ctx, cfg)
-		},
-		ServiceHealth: func(ctx context.Context) error {
+		}
+		h.ServiceHealth = func(ctx context.Context) error {
 			cfg, root, err := bundleProjectConfig()
 			if err != nil {
 				return err
@@ -100,6 +109,7 @@ func newBundleAppReadyHooks(cmd *cobra.Command, slug string) *appready.Hooks {
 				return fmt.Errorf("unhealthy services: %s", strings.Join(bad, ", "))
 			}
 			return nil
-		},
+		}
 	}
+	return h
 }

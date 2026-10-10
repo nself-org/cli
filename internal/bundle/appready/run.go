@@ -21,6 +21,10 @@ import (
 	"github.com/nself-org/cli/internal/plugin/readiness"
 )
 
+// NotVerifiedV15 is the detail of every step that did not run because the
+// install built no start hook (v1.4 default mode).
+const NotVerifiedV15 = "not verified (v1.5 behaviour, NSELF_V15=1)"
+
 // Outcome tells the caller what Run did beyond the Report.
 type Outcome struct {
 	// Reconciled is true once the Reconcile hook ran, success or not.
@@ -65,9 +69,31 @@ func Run(ctx context.Context, rn *Runner, h Hooks, pluginDir string, names []str
 			return out
 		}
 	}
-	rn.step(StepStart, h.Start != nil, "no start hook", func() (string, error) {
-		return "", h.Start(ctx)
+	if h.Start == nil {
+		// No start hook (v1.4 builds none): nothing booted the stack, so the
+		// waiting steps never poll. They are reported as not verified.
+		for _, s := range rest {
+			rn.Skip(s, NotVerifiedV15)
+		}
+		rn.Unverified("start, readiness, tracking and health " + NotVerifiedV15)
+		return out
+	}
+	startNoProject := false
+	rn.step(StepStart, true, "", func() (string, error) {
+		err := h.Start(ctx)
+		if errors.Is(err, ErrNoProject) {
+			startNoProject = true
+			return "", nil
+		}
+		return "", err
 	})
+	if startNoProject {
+		for _, s := range rest {
+			rn.Skip(s, "not in an nSelf project")
+		}
+		rn.Unverified("not in an nSelf project: no stack was started or checked")
+		return out
+	}
 	var members []Member
 	rn.step(StepReadiness, true, "", func() (string, error) {
 		var err error
@@ -96,6 +122,7 @@ func (r *Runner) step(name string, have bool, missing string, fn func() (string,
 // waitMembers is the readiness step.
 func waitMembers(ctx context.Context, h Hooks, members []Member) (string, error) {
 	var waited, unwaited []string
+	deadline := time.Now().Add(h.timeout()) // one bound for the step, not per member
 	for _, m := range members {
 		if !m.BootMigrations {
 			if m.HasMigrationsDir {
@@ -106,7 +133,7 @@ func waitMembers(ctx context.Context, h Hooks, members []Member) (string, error)
 		if m.Port <= 0 && h.HealthURL == nil {
 			return "", &StepError{Plugin: m.Name, Err: fmt.Errorf("plugin %s: plugin.json declares no port, so migrations readiness cannot be probed", m.Name)}
 		}
-		if err := readiness.Wait(ctx, m.Name, h.healthURL(m), h.timeout(), readiness.WithInterval(h.interval())); err != nil {
+		if err := readiness.Wait(ctx, m.Name, h.healthURL(m), remaining(deadline), readiness.WithInterval(h.interval())); err != nil {
 			return "", &StepError{Plugin: m.Name, Err: err}
 		}
 		waited = append(waited, m.Name)
@@ -129,11 +156,12 @@ func checkHealth(ctx context.Context, h Hooks, members []Member) (string, error)
 		}
 	}
 	probed := 0
+	deadline := time.Now().Add(h.timeout()) // one bound for the step, not per member
 	for _, m := range members {
 		if m.Port <= 0 && h.HealthURL == nil {
 			continue
 		}
-		if err := waitHealthy(ctx, h, m); err != nil {
+		if err := waitHealthy(ctx, h, m, deadline); err != nil {
 			return "", &StepError{Plugin: m.Name, Err: err}
 		}
 		probed++
@@ -144,9 +172,8 @@ func checkHealth(ctx context.Context, h Hooks, members []Member) (string, error)
 // waitHealthy polls one member until it answers HTTP 200 or the timeout ends.
 // An answered 200 without a migrations field (E119) still counts as healthy:
 // health, not migrations, is what this step proves.
-func waitHealthy(ctx context.Context, h Hooks, m Member) error {
+func waitHealthy(ctx context.Context, h Hooks, m Member, deadline time.Time) error {
 	url := h.healthURL(m)
-	deadline := time.Now().Add(h.timeout())
 	for {
 		_, err := readiness.Probe(ctx, nil, m.Name, url)
 		if err == nil || !readiness.IsUnreachable(err) {
@@ -160,6 +187,15 @@ func waitHealthy(ctx context.Context, h Hooks, m Member) error {
 		}
 		pause(ctx, h.interval())
 	}
+}
+
+// remaining is the time left until deadline, never below one millisecond so a
+// spent budget still gets one probe and a clear E118.
+func remaining(deadline time.Time) time.Duration {
+	if d := time.Until(deadline); d > time.Millisecond {
+		return d
+	}
+	return time.Millisecond
 }
 
 // pause sleeps for d or until ctx ends.

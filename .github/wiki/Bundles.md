@@ -22,7 +22,7 @@ The first failing step stops the run; later steps show `skipped`. Outside an nSe
 
 `nself bundle install <bundle> --dry-run` prints the nine steps as `planned` and changes nothing: no files, no ledger, no hooks.
 
-A bundle that is not app-ready fails with **E135** (exit 2) naming the bundle, the step and the plugin. With `NSELF_V15` off the same report is printed with a `warning:` line and the exit code is 0. Rerun the command after fixing the cause; members that are already installed are not reinstalled.
+A bundle that is not app-ready fails with **E135** (exit 2) naming the bundle, the step and the plugin. Starting the stack and the readiness, tracking and health steps are `NSELF_V15=1` behaviour. With `NSELF_V15` off the command installs, records the ledger and reconciles (a failed reconcile is an error in both modes), prints those four steps as `skipped` / `not verified (v1.5 behaviour, NSELF_V15=1)`, ends with `NOT VERIFIED` instead of `APP-READY`, and exits 0. A free bundle skips the ping_api bundle entitlement call; each plugin's licence is still checked. Rerun the command after fixing the cause; members that are already installed are not reinstalled.
 
 `nself plugin install <name>` of a plugin with boot migrations waits for them too when the stack is running (E118 or E119, exit 2; a warning with `NSELF_V15` off). With the stack stopped it says readiness is checked at the next `nself start` or `nself doctor`.
 
