@@ -135,13 +135,15 @@ func checkResolves(c *canon.File, dataTypes map[string]any, opts BuildOptions, b
 			p = append(p, fmt.Sprintf("commands[%q]: entry does not resolve to a command in the tree", key))
 		}
 	}
+	// A v1.5-only envelope of a command that v1.5 moved has no node in the
+	// v1.4 tree (its v1.4 name differs); it is not registered there at all.
 	for key := range dataTypes {
-		if byKey[key] == nil {
+		if byKey[key] == nil && (opts.V15 || !opts.V15OnlyEnvelope[key]) {
 			p = append(p, fmt.Sprintf("dataTypes[%q]: registered data type does not resolve to a command in the tree", key))
 		}
 	}
 	for key := range opts.V15OnlyEnvelope {
-		if byKey[key] == nil {
+		if byKey[key] == nil && opts.V15 {
 			p = append(p, fmt.Sprintf("V15OnlyEnvelope[%q]: path does not resolve to a command in the tree", key))
 		}
 	}

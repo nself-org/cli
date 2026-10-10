@@ -18,29 +18,29 @@ Subcommands:
   audit     Report soft-delete status for all tables
   apply     Add soft-delete support to a specific table
   generate  Print migration SQL to stdout without executing`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 var dbSoftDeleteAuditCmd = &cobra.Command{
 	Use:   "audit",
 	Short: "Audit tables for soft-delete status",
-	RunE:  runDBSoftDeleteAudit,
+	RunE:  dataEnv(runDBSoftDeleteAudit),
 }
 
 var dbSoftDeleteApplyCmd = &cobra.Command{
 	Use:   "apply <schema> <table>",
 	Short: "Add deleted_at column, index, and active view to a table",
 	Args:  cobra.ExactArgs(2),
-	RunE:  runDBSoftDeleteApply,
+	RunE:  dataEnv(runDBSoftDeleteApply),
 }
 
 var dbSoftDeleteGenerateCmd = &cobra.Command{
 	Use:   "generate <schema> <table>",
 	Short: "Print soft-delete migration SQL to stdout",
 	Args:  cobra.ExactArgs(2),
-	RunE:  runDBSoftDeleteGenerate,
+	RunE:  dataEnv(runDBSoftDeleteGenerate),
 }
 
 // ── db fk-index ──────────────────────────────────────────────────────
@@ -53,21 +53,21 @@ var dbFKIndexCmd = &cobra.Command{
 Subcommands:
   audit   Report FK columns with and without indexes
   apply   Create missing FK indexes (use --dry-run to preview)`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 var dbFKIndexAuditCmd = &cobra.Command{
 	Use:   "audit",
 	Short: "Find FK columns without supporting indexes",
-	RunE:  runDBFKIndexAudit,
+	RunE:  dataEnv(runDBFKIndexAudit),
 }
 
 var dbFKIndexApplyCmd = &cobra.Command{
 	Use:   "apply",
 	Short: "Create missing FK indexes",
-	RunE:  runDBFKIndexApply,
+	RunE:  dataEnv(runDBFKIndexApply),
 }
 
 // ── init ─────────────────────────────────────────────────────────────
@@ -93,6 +93,11 @@ func runDBSoftDeleteAudit(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("soft-delete audit: %w", err)
 	}
+	sd := dbSoftDeleteAuditData{Tables: []dbSoftDeleteRow{}}
+	for _, f := range findings {
+		sd.Tables = append(sd.Tables, dbSoftDeleteRow{Schema: f.TableSchema, Table: f.TableName, HasDeletedAt: f.HasDeletedAt, HasIndex: f.HasIndex, HasView: f.HasView})
+	}
+	setData(cmd, sd)
 	if len(findings) == 0 {
 		fmt.Println("No tables found.")
 		return nil
@@ -153,6 +158,11 @@ func runDBFKIndexAudit(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("fk-index audit: %w", err)
 	}
+	fk := dbFKIndexAuditData{Columns: []dbFKIndexRow{}}
+	for _, f := range findings {
+		fk.Columns = append(fk.Columns, dbFKIndexRow{Schema: f.TableSchema, Table: f.TableName, Column: f.ColumnName, ForeignSchema: f.ForeignSchema, ForeignTable: f.ForeignTable, HasIndex: f.HasIndex})
+	}
+	setData(cmd, fk)
 	if len(findings) == 0 {
 		fmt.Println("No foreign key columns found.")
 		return nil

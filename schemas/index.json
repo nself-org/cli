@@ -14,6 +14,82 @@
       "id": "urn:nself:cli:schema:command-registry:v1"
     },
     {
+      "path": "commands/backup-config.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-config:v1"
+    },
+    {
+      "path": "commands/backup-create.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-create:v1"
+    },
+    {
+      "path": "commands/backup-drill.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-drill:v1"
+    },
+    {
+      "path": "commands/backup-init-key.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-init-key:v1"
+    },
+    {
+      "path": "commands/backup-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-list:v1"
+    },
+    {
+      "path": "commands/backup-pitr-base-backup.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-pitr-base-backup:v1"
+    },
+    {
+      "path": "commands/backup-pitr-disable.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-pitr-disable:v1"
+    },
+    {
+      "path": "commands/backup-pitr-enable.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-pitr-enable:v1"
+    },
+    {
+      "path": "commands/backup-pitr-restore.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-pitr-restore:v1"
+    },
+    {
+      "path": "commands/backup-pitr-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-pitr-status:v1"
+    },
+    {
+      "path": "commands/backup-pitr.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-pitr:v1"
+    },
+    {
+      "path": "commands/backup-prune.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-prune:v1"
+    },
+    {
+      "path": "commands/backup-restore-remote.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-restore-remote:v1"
+    },
+    {
+      "path": "commands/backup-restore.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-restore:v1"
+    },
+    {
+      "path": "commands/backup-resume.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-resume:v1"
+    },
+    {
+      "path": "commands/backup-schedule.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-schedule:v1"
+    },
+    {
+      "path": "commands/backup-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-status:v1"
+    },
+    {
+      "path": "commands/backup-verify.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup-verify:v1"
+    },
+    {
+      "path": "commands/backup.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:backup:v1"
+    },
+    {
       "path": "commands/build.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:build:v1"
     },
@@ -30,12 +106,324 @@
       "id": "urn:nself:cli:schema:commands:config-show:v1"
     },
     {
+      "path": "commands/db-backup-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-backup-list:v1"
+    },
+    {
+      "path": "commands/db-backup-sync-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-backup-sync-status:v1"
+    },
+    {
+      "path": "commands/db-backup-sync.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-backup-sync:v1"
+    },
+    {
+      "path": "commands/db-backup.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-backup:v1"
+    },
+    {
+      "path": "commands/db-drift-fix.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-drift-fix:v1"
+    },
+    {
+      "path": "commands/db-drift-scan.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-drift-scan:v1"
+    },
+    {
+      "path": "commands/db-drift.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-drift:v1"
+    },
+    {
+      "path": "commands/db-drop.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-drop:v1"
+    },
+    {
+      "path": "commands/db-fk-index-apply.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-fk-index-apply:v1"
+    },
+    {
+      "path": "commands/db-fk-index-audit.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-fk-index-audit:v1"
+    },
+    {
+      "path": "commands/db-fk-index.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-fk-index:v1"
+    },
+    {
+      "path": "commands/db-generate.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-generate:v1"
+    },
+    {
+      "path": "commands/db-hasura-apply-ref.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-apply-ref:v1"
+    },
+    {
+      "path": "commands/db-hasura-console.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-console:v1"
+    },
+    {
+      "path": "commands/db-hasura-diff.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-diff:v1"
+    },
+    {
+      "path": "commands/db-hasura-git-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-git-status:v1"
+    },
+    {
+      "path": "commands/db-hasura-metadata-apply.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-metadata-apply:v1"
+    },
+    {
+      "path": "commands/db-hasura-metadata-drift.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-metadata-drift:v1"
+    },
+    {
+      "path": "commands/db-hasura-metadata-export.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-metadata-export:v1"
+    },
+    {
+      "path": "commands/db-hasura-metadata-reload.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-metadata-reload:v1"
+    },
+    {
+      "path": "commands/db-hasura-metadata.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-metadata:v1"
+    },
+    {
       "path": "commands/db-hasura-permissions.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:db-hasura-permissions:v1"
     },
     {
       "path": "commands/db-hasura-schema.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:db-hasura-schema:v1"
+    },
+    {
+      "path": "commands/db-hasura-snapshot.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-snapshot:v1"
+    },
+    {
+      "path": "commands/db-hasura-sync.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-sync:v1"
+    },
+    {
+      "path": "commands/db-hasura-validate.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura-validate:v1"
+    },
+    {
+      "path": "commands/db-hasura.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-hasura:v1"
+    },
+    {
+      "path": "commands/db-import-firebase.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-import-firebase:v1"
+    },
+    {
+      "path": "commands/db-import-supabase.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-import-supabase:v1"
+    },
+    {
+      "path": "commands/db-lint.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-lint:v1"
+    },
+    {
+      "path": "commands/db-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-list:v1"
+    },
+    {
+      "path": "commands/db-migrate-apply.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-migrate-apply:v1"
+    },
+    {
+      "path": "commands/db-migrate-audit.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-migrate-audit:v1"
+    },
+    {
+      "path": "commands/db-migrate-baseline.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-migrate-baseline:v1"
+    },
+    {
+      "path": "commands/db-migrate-create.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-migrate-create:v1"
+    },
+    {
+      "path": "commands/db-migrate-down.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-migrate-down:v1"
+    },
+    {
+      "path": "commands/db-migrate-generate.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-migrate-generate:v1"
+    },
+    {
+      "path": "commands/db-migrate-idempotent.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-migrate-idempotent:v1"
+    },
+    {
+      "path": "commands/db-migrate-lint.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-migrate-lint:v1"
+    },
+    {
+      "path": "commands/db-migrate-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-migrate-status:v1"
+    },
+    {
+      "path": "commands/db-migrate-up.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-migrate-up:v1"
+    },
+    {
+      "path": "commands/db-migrate.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-migrate:v1"
+    },
+    {
+      "path": "commands/db-pgbouncer-connection-url.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-pgbouncer-connection-url:v1"
+    },
+    {
+      "path": "commands/db-pgbouncer-generate.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-pgbouncer-generate:v1"
+    },
+    {
+      "path": "commands/db-pgbouncer-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-pgbouncer-status:v1"
+    },
+    {
+      "path": "commands/db-pgbouncer.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-pgbouncer:v1"
+    },
+    {
+      "path": "commands/db-pitr-enable.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-pitr-enable:v1"
+    },
+    {
+      "path": "commands/db-pitr-restore.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-pitr-restore:v1"
+    },
+    {
+      "path": "commands/db-pitr-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-pitr-status:v1"
+    },
+    {
+      "path": "commands/db-pitr-test.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-pitr-test:v1"
+    },
+    {
+      "path": "commands/db-pitr.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-pitr:v1"
+    },
+    {
+      "path": "commands/db-reconcile.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-reconcile:v1"
+    },
+    {
+      "path": "commands/db-reset-checksum.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-reset-checksum:v1"
+    },
+    {
+      "path": "commands/db-reset.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-reset:v1"
+    },
+    {
+      "path": "commands/db-restore-drill-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-restore-drill-list:v1"
+    },
+    {
+      "path": "commands/db-restore-drill.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-restore-drill:v1"
+    },
+    {
+      "path": "commands/db-restore.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-restore:v1"
+    },
+    {
+      "path": "commands/db-rls-apply-table.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-rls-apply-table:v1"
+    },
+    {
+      "path": "commands/db-rls-apply.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-rls-apply:v1"
+    },
+    {
+      "path": "commands/db-rls-audit.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-rls-audit:v1"
+    },
+    {
+      "path": "commands/db-rls-rollback.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-rls-rollback:v1"
+    },
+    {
+      "path": "commands/db-rls.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-rls:v1"
+    },
+    {
+      "path": "commands/db-seed-fixtures-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-seed-fixtures-list:v1"
+    },
+    {
+      "path": "commands/db-seed-fixtures-manifest.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-seed-fixtures-manifest:v1"
+    },
+    {
+      "path": "commands/db-seed-fixtures-run.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-seed-fixtures-run:v1"
+    },
+    {
+      "path": "commands/db-seed-fixtures-verify.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-seed-fixtures-verify:v1"
+    },
+    {
+      "path": "commands/db-seed-fixtures.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-seed-fixtures:v1"
+    },
+    {
+      "path": "commands/db-seed-graph.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-seed-graph:v1"
+    },
+    {
+      "path": "commands/db-seed-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-seed-list:v1"
+    },
+    {
+      "path": "commands/db-seed-matrix.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-seed-matrix:v1"
+    },
+    {
+      "path": "commands/db-seed-run.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-seed-run:v1"
+    },
+    {
+      "path": "commands/db-seed-verify.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-seed-verify:v1"
+    },
+    {
+      "path": "commands/db-seed.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-seed:v1"
+    },
+    {
+      "path": "commands/db-soft-delete-apply.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-soft-delete-apply:v1"
+    },
+    {
+      "path": "commands/db-soft-delete-audit.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-soft-delete-audit:v1"
+    },
+    {
+      "path": "commands/db-soft-delete-generate.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-soft-delete-generate:v1"
+    },
+    {
+      "path": "commands/db-soft-delete.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-soft-delete:v1"
+    },
+    {
+      "path": "commands/db-verify-checksums.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-verify-checksums:v1"
+    },
+    {
+      "path": "commands/db-verify.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-verify:v1"
+    },
+    {
+      "path": "commands/db.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db:v1"
     },
     {
       "path": "commands/deploy-targets.v1.schema.json",
@@ -50,8 +438,48 @@
       "id": "urn:nself:cli:schema:commands:help:v1"
     },
     {
+      "path": "commands/init-template-info.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:init-template-info:v1"
+    },
+    {
+      "path": "commands/init-template-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:init-template-list:v1"
+    },
+    {
+      "path": "commands/init-template-publish.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:init-template-publish:v1"
+    },
+    {
+      "path": "commands/init-template-update.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:init-template-update:v1"
+    },
+    {
+      "path": "commands/init-template.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:init-template:v1"
+    },
+    {
       "path": "commands/status.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:status:v1"
+    },
+    {
+      "path": "commands/update-project-detect.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:update-project-detect:v1"
+    },
+    {
+      "path": "commands/update-project-from-bash.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:update-project-from-bash:v1"
+    },
+    {
+      "path": "commands/update-project-from-v099.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:update-project-from-v099:v1"
+    },
+    {
+      "path": "commands/update-project-rollback.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:update-project-rollback:v1"
+    },
+    {
+      "path": "commands/update-project-run.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:update-project-run:v1"
     },
     {
       "path": "control-plane.v2.schema.json",

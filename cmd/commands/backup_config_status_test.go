@@ -94,7 +94,8 @@ func runStatusFlags(t *testing.T, flags map[string]string) (string, error) {
 			t.Fatal(err)
 		}
 	}
-	return captureStdout(t, func() error { return runBackupStatus(backupStatusCmd, nil) })
+	out, err := captureStdout(t, func() error { return runBackupStatus(backupStatusCmd, nil) })
+	return unwrapEnvelopeData(out, ""), err
 }
 
 func TestBackupStatusOffboxFlags(t *testing.T) {

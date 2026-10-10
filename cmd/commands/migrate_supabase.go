@@ -38,7 +38,7 @@ Examples:
 
 Note: CI/offline test environments should set NSELF_SUPABASE_SKIP=1 to skip
 live Supabase connectivity.`,
-	RunE: runMigrateSupabase,
+	RunE: dataEnv(runMigrateSupabase),
 }
 
 func init() {

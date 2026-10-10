@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/database"
 	"github.com/spf13/cobra"
@@ -28,6 +29,7 @@ func runDBPITRStatus(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("pitr status: %w", err)
 	}
 
+	setData(cmd, dbPITRStatusData{Enabled: status.ArchiveEnabled, ArchiveMode: status.ArchiveMode, WALLevel: status.WALLevel, MaxWALSenders: status.MaxWALSenders, LastArchivedWAL: status.LastArchivedWAL, LastArchiveTime: status.LastArchiveTime})
 	enabled := "disabled"
 	if status.ArchiveEnabled {
 		enabled = "enabled"
@@ -179,6 +181,12 @@ func runDBBackupSyncStatus(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("backup sync status: %w", err)
 	}
 
+	syncData := dbSyncStatusData{Remote: remote, Files: status.FilesTransferred, Bytes: status.BytesTransferred, Errors: append([]string{}, status.Errors...)}
+	if !status.LastSync.IsZero() {
+		t := status.LastSync.UTC().Format(time.RFC3339)
+		syncData.LastSync = &t
+	}
+	setData(cmd, syncData)
 	if status.LastSync.IsZero() {
 		fmt.Println("No remote backups found.")
 		return nil
@@ -232,7 +240,9 @@ func runDBRestoreDrill(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runDBRestoreDrillList(_ *cobra.Command, _ []string) error {
+func runDBRestoreDrillList(cmd *cobra.Command, _ []string) error {
+	drills := dbRestoreDrillListData{Drills: []database.RestoreDrillResult{}}
+	setData(cmd, drills)
 	logPath := ".nself/restore-drills.log"
 
 	f, err := os.Open(logPath)
@@ -258,6 +268,8 @@ func runDBRestoreDrillList(_ *cobra.Command, _ []string) error {
 		if err := json.Unmarshal([]byte(line), &result); err != nil {
 			continue
 		}
+		drills.Drills = append(drills.Drills, result)
+		setData(cmd, drills)
 
 		status := "PASS"
 		if !result.Success {

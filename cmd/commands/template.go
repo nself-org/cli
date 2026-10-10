@@ -44,9 +44,9 @@ Browse at nself.org/templates or install from the CLI:
   nself template info saas-starter
   nself init --template saas-starter ./my-app
   nself template publish`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 // --- list subcommand ---
@@ -87,7 +87,7 @@ The current directory must contain a valid template.yml manifest and a built tar
 
   nself template publish
   nself template publish --tarball ./dist/my-template.tar.gz --manifest template.yml`,
-	RunE: runTemplatePublish,
+	RunE: dataEnv(runTemplatePublish),
 }
 
 // --- update subcommand ---
@@ -102,7 +102,7 @@ and explicit confirmation before running.
 
   nself template update
   nself template update --force`,
-	RunE: runTemplateUpdate,
+	RunE: dataEnv(runTemplateUpdate),
 }
 
 func init() {

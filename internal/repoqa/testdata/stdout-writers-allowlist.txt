@@ -1,7 +1,6 @@
 # Direct domain stdout writer sites, sorted by bytewise path.
 internal/admin/connect.go 3
 internal/backup/create_targets.go 1
-internal/backup/prune_format.go 1
 internal/backup/stream_schedule.go 1
 internal/backup/systemd.go 1
 internal/builtin/admin/cmd_health.go 3

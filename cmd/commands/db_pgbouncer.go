@@ -20,9 +20,9 @@ Subcommands:
   status         Show PgBouncer runtime status
   generate       Write config files to .nself/pgbouncer/
   connection-url Print the PgBouncer connection URL`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 // ── db pgbouncer status ──────────────────────────────────────────────
@@ -30,7 +30,7 @@ Subcommands:
 var dbPgBouncerStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show PgBouncer runtime status (SHOW STATS via psql)",
-	RunE:  runDBPgBouncerStatus,
+	RunE:  dataEnv(runDBPgBouncerStatus),
 }
 
 // ── db pgbouncer generate ────────────────────────────────────────────
@@ -38,7 +38,7 @@ var dbPgBouncerStatusCmd = &cobra.Command{
 var dbPgBouncerGenerateCmd = &cobra.Command{
 	Use:   "generate",
 	Short: "Write PgBouncer config files to .nself/pgbouncer/",
-	RunE:  runDBPgBouncerGenerate,
+	RunE:  dataEnv(runDBPgBouncerGenerate),
 }
 
 // ── db pgbouncer connection-url ──────────────────────────────────────
@@ -46,7 +46,7 @@ var dbPgBouncerGenerateCmd = &cobra.Command{
 var dbPgBouncerConnURLCmd = &cobra.Command{
 	Use:   "connection-url",
 	Short: "Print the PgBouncer connection URL",
-	RunE:  runDBPgBouncerConnURL,
+	RunE:  dataEnv(runDBPgBouncerConnURL),
 }
 
 func init() {
@@ -62,6 +62,7 @@ func runDBPgBouncerStatus(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	setData(cmd, dbPgBouncerStatusData{Enabled: cfg.PgBouncer.Enabled})
 	if !cfg.PgBouncer.Enabled {
 		ui.Info("PgBouncer is not enabled. Set PGBOUNCER_ENABLED=true in your .env file.")
 		return nil
@@ -72,6 +73,7 @@ func runDBPgBouncerStatus(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("pgbouncer status: %w", err)
 	}
 
+	setData(cmd, dbPgBouncerStatusData{Enabled: true, Running: status.Running, PoolMode: status.PoolMode, ActivePools: status.ActivePools, ActiveClients: status.ActiveClients, IdleServers: status.IdleServers})
 	if !status.Running {
 		ui.Warn("PgBouncer does not appear to be running.")
 		return nil

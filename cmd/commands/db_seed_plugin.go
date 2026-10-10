@@ -60,7 +60,10 @@ func init() {
 		one, _ := cmd.Flags().GetString("plugin")
 		all, _ := cmd.Flags().GetBool("all-plugins")
 		if one == "" && !all {
-			return legacy(cmd, args)
+			if err := legacy(cmd, args); err != nil || !jsonEnvelopeOn(cmd) {
+				return err
+			}
+			return emitEnv(cmd, pluginSeedData{Plugins: []pluginSeedResult{}}, false)
 		}
 		return runDBSeedPlugin(cmd, args, one, all)
 	}

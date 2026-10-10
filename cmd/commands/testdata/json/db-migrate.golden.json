@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "command": "db migrate",
+  "data": {
+    "subcommands": [
+      {
+        "name": "list",
+        "summary": "List items"
+      }
+    ]
+  }
+}

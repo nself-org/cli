@@ -1,0 +1,7 @@
+{
+  "schema_version": "1",
+  "command": "db seed",
+  "data": {
+    "plugins": []
+  }
+}

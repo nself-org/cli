@@ -45,7 +45,7 @@ Always prints exactly what would be recorded. Requires --yes (or an
 interactive "yes" confirmation) to actually write; --dry-run never writes
 anything, with or without --yes.`,
 	Args: cobra.MinimumNArgs(1),
-	RunE: runDBMigrateBaseline,
+	RunE: dataEnv(runDBMigrateBaseline),
 }
 
 func init() {

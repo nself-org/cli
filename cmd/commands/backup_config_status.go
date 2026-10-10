@@ -32,6 +32,7 @@ func runBackupConfig(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	jsonOn := jsonEnvelopeOn(cmd)
 	installCron, _ := cmd.Flags().GetBool("install-cron")
 	if installCron {
 		fullAt, _ := cmd.Flags().GetString("full-at")
@@ -56,6 +57,9 @@ func runBackupConfig(cmd *cobra.Command, _ []string) error {
 		if err := backup.InstallSystemdUnits(cfg, opts); err != nil {
 			return fmt.Errorf("install-cron: %w", err)
 		}
+		if jsonOn {
+			return emitEnv(cmd, map[string]any{"install_cron": true, "dry_run": dryRun}, true)
+		}
 		if dryRun {
 			return nil
 		}
@@ -64,6 +68,9 @@ func runBackupConfig(cmd *cobra.Command, _ []string) error {
 	}
 
 	format, _ := cmd.Flags().GetString("format")
+	if jsonOn {
+		format = "json"
+	}
 	output, err := backup.ConfigView(cfg, format)
 	if err != nil {
 		return err
@@ -71,6 +78,13 @@ func runBackupConfig(cmd *cobra.Command, _ []string) error {
 	output, err = withDestinationKinds(output, format, cfg.Backup.Remote)
 	if err != nil {
 		return err
+	}
+	if jsonOn {
+		var view map[string]any
+		if err := json.Unmarshal([]byte(output), &view); err != nil {
+			return err
+		}
+		return emitEnv(cmd, view, true)
 	}
 	fmt.Print(output)
 	return nil
@@ -169,6 +183,17 @@ func runBackupStatus(cmd *cobra.Command, _ []string) error {
 	defer stop()
 	go func() { <-ctx.Done(); stop() }()
 	off, offErr := backup.ReadOffbox(ctx, hbTo, project, opts, time.Now())
+	if jsonEnvelopeOn(cmd) {
+		// The document carries the state; a coded failure (E217-E219) keeps
+		// its exit status without a second document.
+		if err := emitEnv(cmd, newBackupStatusData(info, off), true); err != nil {
+			return err
+		}
+		if offErr != nil {
+			return codedExit(cmd, offErr)
+		}
+		return nil
+	}
 	output, err := backup.FormatStatusOffbox(info, off, format)
 	if err != nil {
 		return err

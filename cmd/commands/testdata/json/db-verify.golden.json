@@ -1,0 +1,9 @@
+{
+  "schema_version": "1",
+  "command": "db verify",
+  "data": {
+    "role": "",
+    "queries": 0,
+    "mutations": 0
+  }
+}

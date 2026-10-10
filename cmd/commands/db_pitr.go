@@ -16,33 +16,33 @@ Subcommands:
   enable   Write PITR configuration to .nself/pitr/
   test     Verify WAL archiving is working
   restore  Restore database to a specific point in time`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 var dbPITRStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show PITR/WAL archiving status",
-	RunE:  runDBPITRStatus,
+	RunE:  dataEnv(runDBPITRStatus),
 }
 
 var dbPITREnableCmd = &cobra.Command{
 	Use:   "enable",
 	Short: "Write PITR configuration to .nself/pitr/",
-	RunE:  runDBPITREnable,
+	RunE:  dataEnv(runDBPITREnable),
 }
 
 var dbPITRTestCmd = &cobra.Command{
 	Use:   "test",
 	Short: "Verify WAL archiving is working",
-	RunE:  runDBPITRTest,
+	RunE:  dataEnv(runDBPITRTest),
 }
 
 var dbPITRRestoreCmd = &cobra.Command{
 	Use:   "restore",
 	Short: "Restore database to a point in time (--target RFC3339)",
-	RunE:  runDBPITRRestore,
+	RunE:  dataEnv(runDBPITRRestore),
 }
 
 // ── db backup-sync ───────────────────────────────────────────────────
@@ -50,13 +50,13 @@ var dbPITRRestoreCmd = &cobra.Command{
 var dbBackupSyncCmd = &cobra.Command{
 	Use:   "backup-sync",
 	Short: "Sync local backups to remote storage (cross-region)",
-	RunE:  runDBBackupSync,
+	RunE:  dataEnv(runDBBackupSync),
 }
 
 var dbBackupSyncStatusCmd = &cobra.Command{
 	Use:   "backup-sync-status",
 	Short: "Show cross-region backup sync status",
-	RunE:  runDBBackupSyncStatus,
+	RunE:  dataEnv(runDBBackupSyncStatus),
 }
 
 // ── db restore-drill ─────────────────────────────────────────────────
@@ -69,13 +69,13 @@ var dbRestoreDrillCmd = &cobra.Command{
 Creates a temporary database, restores the most recent backup into it,
 verifies data integrity, then drops the temporary database. The production
 database is never touched.`,
-	RunE: runDBRestoreDrill,
+	RunE: dataEnv(runDBRestoreDrill),
 }
 
 var dbRestoreDrillListCmd = &cobra.Command{
 	Use:   "restore-drill-list",
 	Short: "List past restore drill results",
-	RunE:  runDBRestoreDrillList,
+	RunE:  dataEnv(runDBRestoreDrillList),
 }
 
 // ── init ─────────────────────────────────────────────────────────────

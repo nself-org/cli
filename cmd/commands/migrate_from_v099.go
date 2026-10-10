@@ -53,7 +53,7 @@ Examples:
 
 See also: nself migrate from-bash    (per-project Bash-era artifact migration)
 Wiki: https://github.com/nself-org/cli/wiki/migration/v099-to-v1x`,
-	RunE: runMigrateFromV099,
+	RunE: dataEnv(runMigrateFromV099),
 }
 
 func init() {

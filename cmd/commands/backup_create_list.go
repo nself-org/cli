@@ -16,7 +16,7 @@ import (
 var backupCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new backup",
-	RunE:  runBackupCreate,
+	RunE:  dataEnv(runBackupCreate),
 }
 
 func runBackupCreate(cmd *cobra.Command, _ []string) error {
@@ -85,6 +85,12 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("backup list: %w", err)
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		if entries == nil {
+			entries = []backup.BackupEntry{}
+		}
+		return emitEnv(cmd, entries, true)
+	}
 	if len(entries) == 0 {
 		fmt.Println("No backups found.")
 		return nil

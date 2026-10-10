@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "command": "db drift scan",
+  "data": {
+    "tables": [],
+    "total_tables": 0,
+    "compliant_tables": 0,
+    "drifted_tables": 0,
+    "overall_score": 0
+  }
+}

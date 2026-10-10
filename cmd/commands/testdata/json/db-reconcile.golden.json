@@ -1,0 +1,8 @@
+{
+  "schema_version": "1",
+  "command": "db reconcile",
+  "data": {
+    "changes": [],
+    "applied": false
+  }
+}

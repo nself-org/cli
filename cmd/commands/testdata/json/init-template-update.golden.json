@@ -1,0 +1,9 @@
+{
+  "schema_version": "1",
+  "command": "init template update",
+  "data": {
+    "ok": true,
+    "dry_run": false,
+    "target": ""
+  }
+}

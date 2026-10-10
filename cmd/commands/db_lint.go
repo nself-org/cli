@@ -33,6 +33,12 @@ func runDBLint(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("db lint: %w", err)
 		}
+		if jsonEnvelopeOn(cmd) {
+			if results == nil {
+				results = []tenant.LintResult{}
+			}
+			return emitEnv(cmd, dbLintData{Tables: results}, false)
+		}
 		if len(results) == 0 {
 			fmt.Println("No tenant-scoped tables found.")
 			return nil
@@ -74,6 +80,12 @@ func runDBLint(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		if !matrixFlag {
+			report.CoverageMatrix = nil
+		}
+		return emitEnv(cmd, dbLintData{Tables: []tenant.LintResult{}, Report: report}, false)
+	}
 	if formatFlag == "json" {
 		if !matrixFlag {
 			report.CoverageMatrix = nil
