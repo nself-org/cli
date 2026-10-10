@@ -1210,6 +1210,8 @@
     "hidden": false,
     "group_id": "extend",
     "flags": [
+      "--allowed-host",
+      "--host",
       "--port",
       "--transport"
     ]
