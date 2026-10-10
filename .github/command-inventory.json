@@ -225,6 +225,7 @@
       "--remove-orphans",
       "--security-report",
       "--verbose",
+      "--write-lock",
       "--yes"
     ]
   },
@@ -1367,6 +1368,7 @@
       "--embedded-pg",
       "--force-recreate",
       "--fresh",
+      "--frozen",
       "--profile",
       "--quick",
       "--quiet",

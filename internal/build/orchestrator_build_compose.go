@@ -34,6 +34,12 @@ func (st *buildState) generateCompose() error {
 	if profile == "" {
 		profile = compose.ProfileApp
 	}
+	// P7-LIVE-09: honour the project lock's image pins for this render.
+	restorePins, err := st.installLockPins()
+	if err != nil {
+		return err
+	}
+	defer restorePins()
 	composeGen := compose.NewGeneratorWithProfile(st.cfg, profile).WithWorkDir(st.workdir)
 	composeYAML, err := composeGen.Generate()
 	if err != nil {
@@ -86,6 +92,12 @@ func (st *buildState) generateCompose() error {
 		return fmt.Errorf("writing docker-compose.yml: %w", err)
 	}
 	st.filesGenerated++
+
+	// ── Step 9.4: nself.lock.yaml (P7-LIVE-09) ──────────────────────
+	// Written only when its content changes (lockfile.go).
+	if err := st.writeProjectLock(composeYAML); err != nil {
+		return err
+	}
 
 	// ── Step 9.5: Discover plugin compose files ────────────────────
 	pluginComposeFiles, err := discoverPluginComposeFilesFx(st.fx, st.sink, st.workdir, st.pluginDir)

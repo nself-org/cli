@@ -95,6 +95,7 @@ Pass `--quiet` to suppress all progress output. Useful in CI where the log is ca
 | `--embedded-pg` |  | `bool` | `false` |  |  |  | Boot PostgreSQL via embedded pglite/wasmtime — no Docker postgres container required; pgvector included |
 | `--force-recreate` |  | `bool` | `false` |  |  |  | Alias for --fresh |
 | `--fresh` |  | `bool` | `false` |  |  |  | Force recreate all containers |
+| `--frozen` |  | `bool` | `false` |  |  |  | Fail with E455 unless the stack matches nself.lock.yaml (compose images, plugin versions and checksums, CLI minor) |
 | `--profile` |  | `string` | `""` |  |  |  | Service profile passed to an automatic rebuild when the compose file is stale.   app (default) — full service set.   ops           — observability + CI server (postgres, hasura, auth, nginx, monitoring). Overrides NSELF_PROFILE env var. Has no effect when --skip-build is set. |
 | `--quick` |  | `bool` | `false` |  |  |  | Quick start (timeout=30, required=60%) |
 | `--quiet` |  | `bool` | `false` |  |  |  | Suppress progress output (for CI; preserves --json output) |
@@ -167,7 +168,12 @@ nself start --quiet
 
 # Boot without a Docker postgres container (embedded pglite/wasmtime)
 nself start --embedded-pg
+
+# CI and servers: fail with E455 unless the stack matches nself.lock.yaml
+nself start --frozen
 ```
+
+`--frozen` checks the compose images, the installed plugin versions and checksums, the installed bundles and the CLI minor against the project lock before anything starts. A plain `nself start` runs the same check and only warns. See [[Lock-File]].
 <!-- END PROSE:examples -->
 
 ## See Also
