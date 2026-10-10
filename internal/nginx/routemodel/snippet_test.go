@@ -271,8 +271,12 @@ func TestSnippetMapping(t *testing.T) {
 		t.Errorf("tls: %+v %+v", r, r.TLS)
 	}
 	// upstream block, set variable (location and server scope), upstream URI part
-	r = route(t, `upstream u { server 10.0.0.1:9000; keepalive 8; } server { listen 80; server_name a.test; resolver 1.1.1.1; set $v http://svc:3000;
+	sn, err := ParseSnippet("plugin", "p", "f.conf", `upstream u { server 10.0.0.1:9000; keepalive 8; } server { listen 80; server_name a.test; resolver 1.1.1.1; set $v http://svc:3000;
 	  location /a { proxy_pass http://u; } location /b { proxy_pass $v; } location /c { set $w 127.0.0.1:99; proxy_pass http://$w/; } }`)
+	if err != nil || len(sn.Global) != 1 {
+		t.Fatalf("%v %q", err, sn.Global)
+	}
+	r = sn.Routes[0]
 	got := map[string]Upstream{}
 	for _, l := range r.Locations {
 		got[l.Path] = *l.Upstream
@@ -414,5 +418,90 @@ func TestHandManagedRoutes(t *testing.T) {
 	rs, _ = FromSnippet("hand_managed", "", "conf.d-prod/x.conf", "server { listen 80; server_name c.test; }")
 	if rs[0].ID != "hand:conf.d-prod/x.conf#1" || rs[0].File != "nginx/conf.d-prod/x.conf" {
 		t.Errorf("env dir route wrong: %+v", rs[0])
+	}
+}
+
+// TestSnippetNginxLexing: words are read as nginx reads them (the reviewer's
+// hostile inputs, proven against nginx 1.27.5): a quote opens only at the start
+// of a word, a backslash escapes outside quotes, a } inside a word is literal.
+func TestSnippetNginxLexing(t *testing.T) {
+	r := route(t, "server { listen 80; server_name a.test; location / { proxy_pass http://127.0.0.1:3000;\n proxy_set_header X-A a\"; deny all; # \"\n } }")
+	l := r.Locations[0]
+	if !l.DenyAll || l.HeadersSet["X-A"] != `a"` || len(r.Unmodelled) != 0 {
+		t.Errorf("mid-word quote swallowed a directive: deny=%v headers=%v unmodelled=%v", l.DenyAll, l.HeadersSet, r.Unmodelled)
+	}
+	r = route(t, "server { listen 80; server_name a.test; location / { proxy_pass http://127.0.0.1:3000;\n proxy_set_header X-A \\\"; return 418; # \"\n } }")
+	if l := r.Locations[0]; l.Return == nil || l.Return.Status != 418 || l.HeadersSet["X-A"] != `"` {
+		t.Errorf("escaped quote swallowed a directive: %+v", l)
+	}
+	for in, want := range map[string]string{`a}b;`: "a}b;", `a "b;c" d;`: `a "b;c" d;`, `a 'x"y';`: `a 'x"y';`, `a\;b c;`: `a\;b c;`, `a"b;`: `a"b;`} {
+		if got := Tokenize(in)[0].Render(); got != want {
+			t.Errorf("Tokenize(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if b := Tokenize(`a "b"c;`); len(b) == 0 {
+		t.Error("no tree for glued quote")
+	}
+	if _, err := Parse(`a "b"c;`); err == nil {
+		t.Error("text glued to a closing quote accepted")
+	}
+	if got := Unquote(`"a\"b\\c\td"`); got != "a\"b\\c\td" {
+		t.Errorf("Unquote = %q", got)
+	}
+}
+
+func TestSnippetUpstreamsAreGlobal(t *testing.T) {
+	hand := "upstream api.internal { server 10.1.1.1:9000; keepalive 8; }\nupstream two { server a:1; server b:2; }"
+	sn, err := ParseSnippet("hand_managed", "", "x.conf", hand)
+	if err != nil || len(sn.Global) != 2 || sn.Global[0] != "upstream api.internal { server 10.1.1.1:9000; keepalive 8; }" {
+		t.Fatalf("upstreams dropped or not verbatim: %v %q", err, sn.Global)
+	}
+	plug := "server { listen 80; server_name p.test; location / { proxy_pass http://api.internal; } }"
+	if sn, _ = ParseSnippetIn("plugin", "p", "f.conf", plug, nil); sn.Routes[0].Locations[0].Upstream == nil || sn.Routes[0].Locations[0].Upstream.Port != 80 {
+		t.Errorf("dotted name with no upstream of that name should be a host: %+v", sn.Routes[0].Locations[0])
+	}
+	sn, _ = ParseSnippetIn("plugin", "p", "f.conf", plug, UpstreamNames(hand))
+	if r := sn.Routes[0]; r.Locations[0].Upstream != nil || !reflect.DeepEqual(r.Unmodelled, []string{"proxy_pass http://api.internal;"}) {
+		t.Errorf("proxy_pass to an upstream of another file was resolved as a host: %+v", r)
+	}
+	if got := UpstreamNames(hand); !reflect.DeepEqual(got, []string{"api.internal", "two"}) {
+		t.Errorf("UpstreamNames = %v", got)
+	}
+	own := "upstream u { server 10.0.0.1:9000; } server { listen 80; server_name p.test; location / { proxy_pass http://U; } }"
+	sn, _ = ParseSnippet("plugin", "p", "f.conf", own)
+	if sn.Routes[0].Locations[0].Upstream == nil || sn.Routes[0].Locations[0].Upstream.Port != 9000 || len(sn.Global) != 1 {
+		t.Errorf("in-file upstream: %+v global=%q", sn.Routes[0].Locations[0], sn.Global)
+	}
+}
+
+func TestSnippetDefaultListenAndNits(t *testing.T) {
+	r := route(t, "server { server_name A.Example.COM; location / { proxy_pass http://x.test:3000; } }")
+	if !r.Listen.HTTP || r.Listen.HTTPS || len(r.Unmodelled) != 0 || !reflect.DeepEqual(r.ServerNames, []string{"a.example.com"}) {
+		t.Errorf("no listen: %+v", r)
+	}
+	if r = route(t, "server { listen 8080; server_name a.test; }"); r.Listen.HTTP || len(r.Unmodelled) != 1 {
+		t.Errorf("listen 8080 must not become port 80: %+v", r)
+	}
+	for _, body := range []string{"return 403; proxy_pass http://x.test:1;", "proxy_pass http://x.test:1; return 403;"} {
+		r = route(t, "server { listen 80; server_name a.test; location / { "+body+" } }")
+		if !reflect.DeepEqual(r.Unmodelled, []string{"return 403;"}) {
+			t.Errorf("%q: unmodelled = %v", body, r.Unmodelled)
+		}
+	}
+	r = route(t, "server { listen 80; server_name a.test; location / { deny all; deny 1.2.3.4; access_log off; access_log /x; } }")
+	if !r.Locations[0].DenyAll || r.Locations[0].AccessLog {
+		t.Errorf("a later directive reset a mapped flag: %+v", r.Locations[0])
+	}
+	for in, want := range map[string]bool{"1m1s": true, "1s1m": false, "1m1m": false, "1h30m": true, "1s500ms": false, "5": true} {
+		_, ok := parseSeconds(Tokenize("x " + in + ";")[0])
+		if ok != want && in != "1s500ms" {
+			t.Errorf("parseSeconds(%s) ok=%v want %v", in, ok, want)
+		}
+	}
+	if _, ok := parseBodySize(Tokenize("x 17179869185g;")[0]); ok {
+		t.Error("overflowing body size accepted")
+	}
+	if n, ok := parseBodySize(Tokenize("x 8g;")[0]); !ok || n != 8<<30 {
+		t.Errorf("8g = %d %v", n, ok)
 	}
 }

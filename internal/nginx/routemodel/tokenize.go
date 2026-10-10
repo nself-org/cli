@@ -9,13 +9,17 @@ package routemodel
 // Outputs: []*Block, one per top-level directive or block, in source order.
 // Constraints: a lexical reader, not an evaluator: no variables, includes or
 // maps. The tree keeps every word as read (quotes included), so nothing is
-// dropped. A comment starts at a `#` that begins a token. Quotes and ${name}
-// keep `;{}` inside a word. Parse reports structural faults (unbalanced
-// braces, a missing `;` at the end, an open quote) and still returns the tree.
+// dropped. Words are read as ngx_conf_read_token reads them: a quote opens a
+// quoted span only at the start of a word, a backslash escapes the next byte,
+// a `}` inside a word is literal, a `#` starts a comment only at the start of
+// a token. Parse reports structural faults (unbalanced braces, a missing `;`
+// at the end, an open quote, text glued to a closing quote) and still returns
+// the tree.
 
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"regexp"
 	"strconv"
@@ -23,7 +27,6 @@ import (
 )
 
 var (
-	varRE  = regexp.MustCompile(`^\$\{[A-Za-z0-9_]+\}`)
 	hostRE = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 	durRE  = regexp.MustCompile(`^([0-9]{1,9})(ms|s|m|h|d|w)?`)
 	sizeRE = regexp.MustCompile(`^([0-9]{1,12})([kKmMgG]?)$`)
@@ -74,19 +77,23 @@ func (b *Block) Arg(i int) string {
 	return Unquote(b.Args[i])
 }
 
-// Unquote removes one pair of matching single or double quotes and resolves
-// backslash escapes inside them. An unquoted word is returned unchanged.
+// Unquote removes one pair of matching quotes from a quoted word and
+// resolves the escapes nginx resolves: \" \' \\ and \t \r \n. Other
+// backslash pairs are kept as written.
 func Unquote(w string) string {
-	if len(w) < 2 || (w[0] != '"' && w[0] != '\'') || w[len(w)-1] != w[0] {
-		return w
+	if len(w) >= 2 && (w[0] == '"' || w[0] == '\'') && w[len(w)-1] == w[0] {
+		w = w[1 : len(w)-1]
 	}
 	var sb strings.Builder
-	in := w[1 : len(w)-1]
-	for i := 0; i < len(in); i++ {
-		if in[i] == '\\' && i+1 < len(in) {
-			i++
+	for i := 0; i < len(w); i++ {
+		if w[i] == '\\' && i+1 < len(w) {
+			if r, ok := map[byte]byte{'"': '"', '\'': '\'', '\\': '\\', 't': '\t', 'r': '\r', 'n': '\n'}[w[i+1]]; ok {
+				sb.WriteByte(r)
+				i++
+				continue
+			}
 		}
-		sb.WriteByte(in[i])
+		sb.WriteByte(w[i])
 	}
 	return sb.String()
 }
@@ -144,9 +151,9 @@ func Parse(text string) ([]*Block, error) {
 			}
 			i++
 		default:
-			w, n, closed := readWord(text[i:])
-			if !closed {
-				errs = append(errs, errors.New("unterminated quote"))
+			w, n, ok := readWord(text[i:])
+			if !ok {
+				errs = append(errs, errors.New("bad quote"))
 			}
 			words = append(words, w)
 			i += n
@@ -162,34 +169,30 @@ func Parse(text string) ([]*Block, error) {
 	return root.Children, errors.Join(errs...)
 }
 
-// readWord reads one word from s: up to whitespace or one of ; { }, with
-// quoted spans and ${name} kept whole. closed is false for an open quote.
-func readWord(s string) (word string, n int, closed bool) {
-	closed = true
+// readWord reads one word from s the way ngx_conf_read_token does. A quote
+// opens a quoted span only at the start of the word; a backslash escapes the
+// next byte; an unquoted word ends at whitespace, `;` or `{` (a `{` after `$`
+// is part of ${name}); a `}` inside a word is literal. ok is false for an open
+// quote and for text glued to a closing quote.
+func readWord(s string) (word string, n int, ok bool) {
+	q := byte(0)
+	if s[0] == '"' || s[0] == '\'' {
+		q, n = s[0], 1
+	}
 	for n < len(s) {
-		c := s[n]
-		switch {
-		case c == '"' || c == '\'':
+		switch c := s[n]; {
+		case c == '\\':
+			n = min(n+2, len(s))
+		case q != 0 && c == q:
 			n++
-			for n < len(s) && s[n] != c {
-				if s[n] == '\\' && n+1 < len(s) {
-					n++
-				}
-				n++
-			}
-			if n >= len(s) {
-				return s, len(s), false
-			}
-			n++
-		case c == '$' && varRE.MatchString(s[n:]):
-			n += len(varRE.FindString(s[n:]))
-		case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v' || c == ';' || c == '{' || c == '}':
-			return s[:n], n, closed
+			return s[:n], n, n == len(s) || strings.IndexByte(" \t\r\n\f\v;{)", s[n]) >= 0
+		case q == 0 && (strings.IndexByte(" \t\r\n\f\v;", c) >= 0 || (c == '{' && n > 0 && s[n-1] != '$')):
+			return s[:n], n, true
 		default:
 			n++
 		}
 	}
-	return s[:n], n, closed
+	return s, len(s), q == 0
 }
 
 // unquoteAll unquotes every word of a.
@@ -241,12 +244,16 @@ func splitHostPort(s, scheme string) *hostPort {
 // seconds. Zero, sub-second remainders and unknown units are refused.
 func parseSeconds(d *Block) (int, bool) {
 	in := d.Arg(0)
-	units := map[string]int64{"": 1000, "ms": 1, "s": 1000, "m": 60000, "h": 3600000, "d": 86400000, "w": 604800000}
+	units := map[string]int64{"": 1000, "ms": 1, "s": 1000, "m": 6000, "h": 3600000, "d": 86400000, "w": 604800000}
 	var ms int64
+	prev := int64(1 << 62) // units must go from large to small, each at most once
 	for s := in; s != "" && len(d.Args) == 1; {
 		m := durRE.FindStringSubmatch(s)
-		if m == nil || (m[2] == "" && len(m[0]) != len(in)) {
+		if m == nil || (m[2] == "" && len(m[0]) != len(in)) || (m[2] != "" && units[m[2]] >= prev) {
 			return 0, false
+		}
+		if m[2] != "" {
+			prev = units[m[2]]
 		}
 		v, _ := strconv.ParseInt(m[1], 10, 64)
 		ms += v * units[m[2]]
@@ -263,6 +270,9 @@ func parseBodySize(d *Block) (int64, bool) {
 		return 0, false
 	}
 	n, _ := strconv.ParseInt(m[1], 10, 64)
-	n <<= map[string]uint{"": 0, "k": 10, "m": 20, "g": 30}[strings.ToLower(m[2])]
-	return n, n > 0
+	shift := map[string]uint{"": 0, "k": 10, "m": 20, "g": 30}[strings.ToLower(m[2])]
+	if n > math.MaxInt64>>shift {
+		return 0, false
+	}
+	return n << shift, n > 0
 }

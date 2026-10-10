@@ -27,7 +27,7 @@ func scanWords(text string) []string {
 	scan:
 		for i := 0; i < len(line); i++ {
 			switch c := line[i]; {
-			case strings.IndexByte(" \t\r\f\v;{}", c) >= 0:
+			case strings.IndexByte(" \t\r\f\v;{", c) >= 0 || (c == '}' && cur == ""):
 				flush()
 			case c == '#' && cur == "":
 				break scan

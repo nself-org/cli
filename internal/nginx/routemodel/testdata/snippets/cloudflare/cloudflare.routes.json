@@ -1,5 +1,7 @@
 {
-  "unmodelled_global": [],
+  "unmodelled_global": [
+    "upstream cloudflare_backend { server 127.0.0.1:3024; keepalive 16; }"
+  ],
   "routes": [
     {
       "id": "plugin:cloudflare/cloudflare.conf#1",

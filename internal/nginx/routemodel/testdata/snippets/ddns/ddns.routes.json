@@ -1,5 +1,7 @@
 {
-  "unmodelled_global": [],
+  "unmodelled_global": [
+    "upstream ddns_backend { server 127.0.0.1:3217; keepalive 16; }"
+  ],
   "routes": [
     {
       "id": "plugin:ddns/ddns.conf#1",

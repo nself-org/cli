@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -55,7 +56,7 @@ func TestPluginSnippetRoutes(t *testing.T) {
 	r1, r2 := byID["plugin:idme/idme.conf#1"], byID["plugin:idme/idme.conf#2"]
 	if r1.Source != "plugin" || *r1.Owner != "idme" || !r1.HTTPToHTTPSRedirect || !r2.Listen.HTTPS || r2.TLS == nil || r2.TLS.SSLDir != "example.test" ||
 		*r2.Locations[0].Upstream != (routemodel.Upstream{Scheme: "http", Host: "127.0.0.1", Port: 3010}) || *r2.Locations[0].Timeouts.ReadS != 60 ||
-		!reflect.DeepEqual(r2.Unmodelled, []string{"weird_thing on;"}) || len(out.UnmodelledGlobal) != 0 {
+		!reflect.DeepEqual(r2.Unmodelled, []string{"weird_thing on;"}) || !reflect.DeepEqual(out.UnmodelledGlobal, []string{"upstream idme_backend { server 127.0.0.1:3010; keepalive 32; }"}) {
 		t.Errorf("plugin routes wrong: %+v / %+v", r1, r2)
 	}
 	if len(m.Routes)+2 != len(out.Routes) || len(m.UnmodelledGlobal) != 0 {
@@ -72,7 +73,7 @@ func TestPluginSnippetRoutes(t *testing.T) {
 	}
 	// a snippet that does not parse is recorded, not dropped
 	writeFixtureFile(t, filepath.Join(plugins, "broken", "nginx", "b.conf"), "server { listen 80;", 0o644)
-	if out := st.withSnippetRoutes(m); len(out.UnmodelledGlobal) != 1 || !strings.HasPrefix(out.UnmodelledGlobal[0], "unparsed plugin broken/b.conf") {
+	if out := st.withSnippetRoutes(m); len(out.UnmodelledGlobal) != 2 || !strings.HasPrefix(out.UnmodelledGlobal[0], "unparsed plugin broken/b.conf") {
 		t.Errorf("unparsed snippet not recorded: %q", out.UnmodelledGlobal)
 	}
 }
@@ -146,5 +147,132 @@ func TestParseServerBlocksAdapter(t *testing.T) {
 	// the build conflict check still sees plugin-shaped confs (claimsOf over the adapter)
 	if c := claimsOf(`server{listen 80;server_name a.test b.test;}`); !c["80|a.test"] || !c["80|b.test"] || len(c) != 2 {
 		t.Errorf("claimsOf = %v", c)
+	}
+}
+
+// ---- differential against origin/main's parser (before the shared tokenizer) ----
+func legacyParseServerBlocks(content string) []nginxServerBlock {
+	var blocks []nginxServerBlock
+	// stack of open blocks; the element is the index into blocks for a
+	// server block, or -1 for any other context (http, location, upstream).
+	var stack []int
+	var buf strings.Builder
+
+	legacyFlushHeader := func() string {
+		h := strings.TrimSpace(buf.String())
+		buf.Reset()
+		return h
+	}
+
+	for _, ch := range legacyStripComments(content) {
+		switch ch {
+		case '{':
+			header := legacyFlushHeader()
+			idx := -1
+			if legacyFirstWord(header) == "server" {
+				blocks = append(blocks, nginxServerBlock{})
+				idx = len(blocks) - 1
+			}
+			stack = append(stack, idx)
+		case '}':
+			buf.Reset()
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		case ';':
+			directive := legacyFlushHeader()
+			// Attribute the directive to the nearest enclosing server block.
+			for i := len(stack) - 1; i >= 0; i-- {
+				if stack[i] < 0 {
+					continue
+				}
+				b := &blocks[stack[i]]
+				if names := serverNamesIn(directive); len(names) > 0 {
+					b.ServerNames = append(b.ServerNames, names...)
+				} else if port, ok := listenPortIn(directive); ok {
+					b.Ports = append(b.Ports, port)
+				}
+				break
+			}
+		default:
+			buf.WriteRune(ch)
+		}
+	}
+	return blocks
+}
+
+// stripComments removes `#` comments, which run to end of line in nginx.
+func legacyStripComments(content string) string {
+	var out strings.Builder
+	for _, line := range strings.Split(content, "\n") {
+		if idx := strings.Index(line, "#"); idx != -1 {
+			line = line[:idx]
+		}
+		out.WriteString(line)
+		out.WriteByte('\n')
+	}
+	return out.String()
+}
+
+// firstWord returns the first whitespace-separated word of s.
+func legacyFirstWord(s string) string {
+	if f := strings.Fields(s); len(f) > 0 {
+		return f[0]
+	}
+	return ""
+}
+
+func TestParseServerBlocksMatchesLegacy(t *testing.T) {
+	inputs := []string{
+		"server { listen 80; set $x a\"; server_name taken.example.com; # \"\n location / { proxy_pass http://x; } }",
+		"server { set $x \\\"; server_name taken2.example.com; # \";\n listen 81; }",
+		"server { listen 443 ssl; server_name \"quoted.example.com\"; }",
+		"server{listen 80;server_name compact.example.com;}",
+	}
+	files, _ := filepath.Glob(filepath.Join("..", "nginx", "routemodel", "testdata", "snippets", "*", "*.conf"))
+	if len(files) != 55 {
+		t.Fatalf("corpus has %d files", len(files))
+	}
+	for _, f := range files {
+		data, _ := os.ReadFile(f)
+		inputs = append(inputs, regexp.MustCompile(`\$\{[A-Z_]+\}`).ReplaceAllString(string(data), "example")) // the build renders ${VAR} before any parse
+	}
+	for _, in := range inputs {
+		if got, want := parseServerBlocks(in), legacyParseServerBlocks(in); !reflect.DeepEqual(got, want) {
+			t.Errorf("parseServerBlocks differs from origin/main's parser:\n%q\n got %+v\nwant %+v", in, got, want)
+		}
+	}
+	// the reviewer's duplicate server_name: both conflict checks must still see it
+	if c := claimsOf(inputs[0]); !c["80|taken.example.com"] {
+		t.Errorf("claimsOf misses a server_name hidden behind a mid-word quote: %v", c)
+	}
+}
+
+// Plugin "a-b" with c.conf and plugin "a" with b-c.conf would write one file.
+func TestPluginSiteFileCollision(t *testing.T) {
+	workdir, plugins := t.TempDir(), t.TempDir()
+	cfg := minimalTestConfig("example.test")
+	writeFixtureFile(t, filepath.Join(plugins, "a-b", "nginx", "c.conf"), "server { listen 80; server_name one.example.test; }\n", 0o644)
+	writeFixtureFile(t, filepath.Join(plugins, "a", "nginx", "b-c.conf"), "server { listen 80; server_name two.example.test; }\n", 0o644)
+	if _, err := InjectPluginNginxRoutes(workdir, plugins, cfg); err == nil || !strings.Contains(err.Error(), "both write nginx/sites/a-b-c.conf") {
+		t.Errorf("colliding site file names accepted: %v", err)
+	}
+}
+
+func TestPluginUpstreamAcrossFiles(t *testing.T) {
+	workdir, plugins := t.TempDir(), t.TempDir()
+	writeFixtureFile(t, filepath.Join(plugins, "p", "nginx", "p.conf"), "server { listen 80; server_name p.example.test; location / { proxy_pass http://api.internal; } }\n", 0o644)
+	writeFixtureFile(t, filepath.Join(workdir, "nginx", "conf.d", "up.conf"), "upstream api.internal { server 10.1.1.1:9000; keepalive 8; }\n", 0o644)
+	st, m := snippetModel(t, workdir, plugins)
+	out := st.withSnippetRoutes(m)
+	var got routemodel.Route
+	for _, r := range out.Routes {
+		if r.ID == "plugin:p/p.conf#1" {
+			got = r
+		}
+	}
+	if got.Locations[0].Upstream != nil || !reflect.DeepEqual(got.Unmodelled, []string{"proxy_pass http://api.internal;"}) ||
+		!reflect.DeepEqual(out.UnmodelledGlobal, []string{"upstream api.internal { server 10.1.1.1:9000; keepalive 8; }"}) {
+		t.Errorf("upstream of another file: route=%+v global=%q", got, out.UnmodelledGlobal)
 	}
 }

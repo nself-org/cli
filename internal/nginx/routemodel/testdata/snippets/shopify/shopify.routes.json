@@ -1,5 +1,7 @@
 {
-  "unmodelled_global": [],
+  "unmodelled_global": [
+    "upstream shopify_upstream { server 127.0.0.1:3072; }"
+  ],
   "routes": [
     {
       "id": "plugin:shopify/shopify.conf#1",

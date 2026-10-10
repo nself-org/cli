@@ -108,7 +108,7 @@ func TestPluginRoutesInRoutesJSON(t *testing.T) {
 	r1, r2 := byID["plugin:idme/idme.conf#1"], byID["plugin:idme/idme.conf#2"]
 	if r1.Source != "plugin" || *r1.Owner != "idme" || !r1.HTTPToHTTPSRedirect || !r2.Listen.HTTPS || r2.TLS == nil || r2.TLS.SSLDir != "example.test" ||
 		*r2.Locations[0].Upstream != (routemodel.Upstream{Scheme: "http", Host: "127.0.0.1", Port: 3010}) || *r2.Locations[0].Timeouts.ReadS != 60 ||
-		!reflect.DeepEqual(r2.Unmodelled, []string{"weird_thing on;"}) || len(m.UnmodelledGlobal) != 0 {
+		!reflect.DeepEqual(r2.Unmodelled, []string{"weird_thing on;"}) || !reflect.DeepEqual(m.UnmodelledGlobal, []string{"upstream idme_backend { server 127.0.0.1:3010; keepalive 32; }"}) {
 		t.Errorf("plugin routes wrong: %+v / %+v", r1, r2)
 	}
 	// the generated routes are untouched and plugin routes are the only addition

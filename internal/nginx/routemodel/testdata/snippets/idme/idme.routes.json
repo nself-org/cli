@@ -1,5 +1,7 @@
 {
-  "unmodelled_global": [],
+  "unmodelled_global": [
+    "upstream idme_backend { server 127.0.0.1:3010; keepalive 32; }"
+  ],
   "routes": [
     {
       "id": "plugin:idme/idme.conf#1",

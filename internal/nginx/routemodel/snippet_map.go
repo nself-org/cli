@@ -17,12 +17,8 @@ package routemodel
 import (
 	"net"
 	"regexp"
-	"strconv"
 	"strings"
 )
-
-// redirectHTTPS is the one `return` target that sets http_to_https_redirect.
-const redirectHTTPS = "https://$host$request_uri"
 
 var (
 	identRE = regexp.MustCompile(`^[A-Za-z0-9_]+`)
@@ -47,14 +43,7 @@ type locAcc struct {
 	local []*setVar
 	hdrs  []hdr
 	done  map[string]bool // single-valued directives already seen
-}
-
-func isHTTPSRedirect(r *Return) bool {
-	switch r.Status {
-	case 301, 302, 307, 308:
-		return r.To != nil && *r.To == redirectHTTPS
-	}
-	return false
+	ret   *Block          // the mapped return, if any
 }
 
 // location maps one `location` block; the rest are recorded whole.
@@ -130,15 +119,20 @@ func (a *locAcc) apply(d *Block) {
 			a.loc.MaxBodyBytes = &n
 		}
 	case "access_log":
-		a.loc.AccessLog = !a.take(d, len(d.Args) == 1 && d.Arg(0) == "off")
+		if a.take(d, len(d.Args) == 1 && d.Arg(0) == "off") {
+			a.loc.AccessLog = false
+		}
 	case "deny":
-		a.loc.DenyAll = a.take(d, len(d.Args) == 1 && d.Arg(0) == "all")
+		if a.take(d, len(d.Args) == 1 && d.Arg(0) == "all") {
+			a.loc.DenyAll = true
+		}
 	case "limit_except":
 		a.limitExcept(d)
 	case "return":
 		ret, ok, lossy := parseReturn(d)
 		if a.take(d, ok) {
 			a.loc.Return = ret
+			a.ret = d
 			if lossy {
 				a.s.unm(d)
 			}
@@ -176,9 +170,9 @@ func (a *locAcc) limitExcept(d *Block) {
 
 // proxyPass resolves the target to scheme, host and port. A `set` variable is
 // substituted literally when it is the only variable and is in scope; an
-// upstream name resolves through upstream{}; a portless name that is neither
-// an upstream of this file, dotted nor an IP could be an upstream defined in
-// another file, so it is recorded.
+// upstream name resolves through upstream{}; a portless name defined as an
+// upstream in another file of the scan, or neither dotted nor an IP (it may be
+// defined outside the scan), is recorded.
 func (a *locAcc) proxyPass(d *Block) {
 	raw := d.Arg(0)
 	var used *setVar
@@ -196,9 +190,10 @@ func (a *locAcc) proxyPass(d *Block) {
 	}
 	hp := splitHostPort(hostport, scheme)
 	if hp != nil && !strings.Contains(hostport, ":") {
-		if up, known := a.s.sn.ups[hostport]; known {
+		h := strings.ToLower(hostport)
+		if up, known := a.s.sn.ups[h]; known {
 			hp = up
-		} else if !strings.Contains(hostport, ".") && net.ParseIP(hostport) == nil {
+		} else if a.s.sn.out[h] || (!strings.Contains(h, ".") && net.ParseIP(h) == nil) {
 			hp = nil
 		}
 	}
@@ -217,6 +212,9 @@ func (a *locAcc) proxyPass(d *Block) {
 // finish turns the collected proxy_set_header lines into flags and
 // headers_set and records `set` lines no proxy_pass used.
 func (a *locAcc) finish() {
+	if a.ret != nil && a.loc.Upstream != nil {
+		a.s.unm(a.ret) // nginx runs return before proxy_pass; the model has no precedence between them
+	}
 	by := map[string]*hdr{}
 	for i := range a.hdrs {
 		h := &a.hdrs[i]
@@ -259,40 +257,4 @@ func (a *locAcc) finish() {
 			a.s.unm(v.node)
 		}
 	}
-}
-
-// serverReturn maps a server-level return. With no location in the server it
-// becomes the "/" location; otherwise it pre-empts every location, which the
-// model cannot say, so it is recorded.
-func (s *srv) serverReturn(d *Block, nLoc int) {
-	ret, ok, lossy := parseReturn(d)
-	if !s.take(d, ok && nLoc == 0) {
-		return
-	}
-	s.r.Locations = append(s.r.Locations, Location{Path: "/", Match: "prefix", HeadersSet: map[string]string{}, AccessLog: true, Return: ret})
-	s.r.HTTPToHTTPSRedirect = isHTTPSRedirect(ret)
-	if lossy {
-		s.unm(d)
-	}
-}
-
-// parseReturn reads `return CODE;` and `return 30x URL;`. lossy is true when
-// the URL holds an nginx variable other than the canonical https redirect, so
-// the directive is also recorded. A body (`return 200 "ok"`) or a bare URL is
-// refused.
-func parseReturn(d *Block) (ret *Return, ok, lossy bool) {
-	code, err := strconv.Atoi(d.Arg(0))
-	if d.Block || len(d.Args) < 1 || len(d.Args) > 2 || err != nil || code < 100 || code > 599 {
-		return nil, false, false
-	}
-	ret = &Return{Status: code}
-	if len(d.Args) == 1 {
-		return ret, true, false
-	}
-	to := d.Arg(1)
-	if code < 301 || code > 308 || !strings.HasPrefix(to, "/") && !strings.HasPrefix(to, "http://") && !strings.HasPrefix(to, "https://") {
-		return nil, false, false
-	}
-	ret.To = &to
-	return ret, true, strings.Contains(to, "$") && !isHTTPSRedirect(ret)
 }

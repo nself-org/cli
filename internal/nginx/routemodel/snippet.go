@@ -39,7 +39,8 @@ type Snippet struct {
 
 	disp map[*Block]string    // mapped, ignored, unmodelled or container
 	tree []*Block             // the parsed file (accounting checks walk it)
-	ups  map[string]*hostPort // upstream{} blocks; nil = not reducible to one host:port
+	ups  map[string]*hostPort // upstream{} blocks of this file; nil = not reducible to one host:port
+	out  map[string]bool      // upstream names defined in other files of the same scan
 }
 
 // FromSnippet returns the routes of one nginx file. Directives outside any
@@ -59,9 +60,16 @@ func FromSnippet(source, owner, file, text string) ([]Route, error) {
 	return sn.Routes, nil
 }
 
-// ParseSnippet reads text. It fails on an unknown source, oversized text and
-// structurally broken text.
+// ParseSnippet reads text with no knowledge of other files.
 func ParseSnippet(source, owner, file, text string) (*Snippet, error) {
+	return ParseSnippetIn(source, owner, file, text, nil)
+}
+
+// ParseSnippetIn reads text. upstreams are the names of the upstream{} blocks
+// defined in the other files of the scan: nginx upstreams are global, so a
+// portless proxy_pass to such a name is not a DNS host and is recorded. It
+// fails on an unknown source, oversized text and structurally broken text.
+func ParseSnippetIn(source, owner, file, text string, upstreams []string) (*Snippet, error) {
 	if source != "plugin" && source != "hand_managed" {
 		return nil, fmt.Errorf("unknown snippet source %q", source)
 	}
@@ -72,7 +80,10 @@ func ParseSnippet(source, owner, file, text string) (*Snippet, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	sn := &Snippet{disp: map[*Block]string{}, tree: tree, ups: map[string]*hostPort{}, Routes: []Route{}, Global: []string{}}
+	sn := &Snippet{disp: map[*Block]string{}, tree: tree, ups: map[string]*hostPort{}, out: map[string]bool{}, Routes: []Route{}, Global: []string{}}
+	for _, u := range upstreams {
+		sn.out[strings.ToLower(u)] = true
+	}
 	for _, b := range tree {
 		if b.Name == "upstream" && b.Block {
 			sn.upstream(b)
@@ -100,36 +111,6 @@ func ParseSnippet(source, owner, file, text string) (*Snippet, error) {
 func (sn *Snippet) global(b *Block) {
 	sn.disp[b] = "unmodelled"
 	sn.Global = append(sn.Global, b.Render())
-}
-
-// upstream reduces `upstream n { server host:port; keepalive N; }` to one
-// host and port. Anything else (several servers, weights, balancing, a unix
-// socket, a repeated name) goes to Global and leaves the name unresolvable,
-// so a proxy_pass naming it is recorded too.
-func (sn *Snippet) upstream(b *Block) {
-	name := b.Arg(0)
-	var hp *hostPort
-	_, dup := sn.ups[name]
-	servers, clean := 0, len(b.Args) == 1 && !dup
-	for _, d := range b.Children {
-		switch {
-		case d.Name == "server" && len(d.Args) == 1 && !d.Block:
-			servers++
-			hp = splitHostPort(d.Arg(0), "http")
-		case d.Name == "keepalive" && len(d.Args) == 1 && !d.Block && strings.Trim(d.Arg(0), "0123456789") == "" && d.Arg(0) != "":
-		default:
-			clean = false
-		}
-	}
-	if !clean || servers != 1 || hp == nil {
-		hp = nil // left unclaimed: ParseSnippet records it in source order
-	} else {
-		sn.disp[b] = "container"
-		for _, d := range b.Children {
-			sn.disp[d] = "ignored"
-		}
-	}
-	sn.ups[name] = hp
 }
 
 // srv is the working state of one server block.
@@ -180,9 +161,11 @@ func (sn *Snippet) server(b *Block, id, source, owner, file string) Route {
 	sn.disp[b] = "container"
 	var locs []*Block
 	var ret *Block // the first server-level return
+	listens := 0
 	for _, d := range b.Children {
 		switch d.Name {
 		case "listen":
+			listens++
 			s.listen(d)
 		case "server_name":
 			s.serverName(d)
@@ -219,6 +202,9 @@ func (sn *Snippet) server(b *Block, id, source, owner, file string) Route {
 		default:
 			s.unm(d)
 		}
+	}
+	if listens == 0 {
+		r.Listen.HTTP = true // nginx listens on *:80 when a server has no listen
 	}
 	if r.Listen.HTTPS || s.tls {
 		r.TLS = &RouteTLS{SSLDir: s.cert, Protocols: s.protos, Ciphers: s.cipher}
@@ -272,7 +258,7 @@ func (s *srv) serverName(d *Block) {
 	ok := len(d.Args) > 0
 	for _, n := range unquoteAll(d.Args) {
 		if fqdnRE.MatchString(n) {
-			s.r.ServerNames = appendUnique(s.r.ServerNames, n)
+			s.r.ServerNames = appendUnique(s.r.ServerNames, strings.ToLower(n))
 		} else {
 			ok = false
 		}

@@ -184,6 +184,7 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 		return 0, fmt.Errorf("creating %s: %w", sitesDir, err)
 	}
 
+	claimed := map[string]string{} // site file name -> plugin that writes it
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -209,6 +210,12 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 			filename := filepath.Base(match)
 			destName := pluginName + "-" + filename
 			destPath := filepath.Join(sitesDir, destName)
+			// Plugin "a-b" with c.conf and plugin "a" with b-c.conf would both
+			// write a-b-c.conf and one would silently replace the other.
+			if other, dup := claimed[destName]; dup {
+				return count, fmt.Errorf("plugins %s and %s both write nginx/sites/%s; rename one of the nginx files", other, pluginName, destName)
+			}
+			claimed[destName] = pluginName
 
 			// A duplicate server_name across two site files is not a warning
 			// — nginx silently serves only one of them ("conflicting server

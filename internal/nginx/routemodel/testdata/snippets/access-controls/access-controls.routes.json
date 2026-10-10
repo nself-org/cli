@@ -1,5 +1,7 @@
 {
-  "unmodelled_global": [],
+  "unmodelled_global": [
+    "upstream access_controls_backend { server 127.0.0.1:3027; keepalive 32; }"
+  ],
   "routes": [
     {
       "id": "plugin:access-controls/access-controls.conf#1",

@@ -1,5 +1,7 @@
 {
-  "unmodelled_global": [],
+  "unmodelled_global": [
+    "upstream cdn_backend { server 127.0.0.1:3036; keepalive 16; }"
+  ],
   "routes": [
     {
       "id": "plugin:cdn/cdn.conf#1",

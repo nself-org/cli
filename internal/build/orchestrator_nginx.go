@@ -39,28 +39,45 @@ func (st *buildState) withSnippetRoutes(m *routemodel.Model) *routemodel.Model {
 	set := &snippetSet{}
 	set.plugins(st.workdir, st.cfg)
 	set.handManaged(st.workdir, st.cfg, m.Env)
+	set.parse()
 	out := *m
 	out.Routes = append(append([]routemodel.Route{}, m.Routes...), set.routes...)
 	out.UnmodelledGlobal = append(append([]string{}, m.UnmodelledGlobal...), set.global...)
 	return &out
 }
 
-// snippetSet collects what the snippets of one build parse to.
+// snippetFile is one nginx file to parse.
+type snippetFile struct{ source, owner, file, text string }
+
+// snippetSet collects the nginx files of one build and what they parse to.
 type snippetSet struct {
+	files  []snippetFile
 	routes []routemodel.Route
 	global []string
 }
 
-// add parses one nginx file. A file that does not parse is recorded in global
-// (a provider other than nginx then refuses), never dropped.
+// add queues one nginx file.
 func (s *snippetSet) add(source, owner, file, text string) {
-	sn, err := routemodel.ParseSnippet(source, owner, file, text)
-	if err != nil {
-		s.global = append(s.global, fmt.Sprintf("unparsed %s %s/%s: %v", source, owner, file, err))
-		return
+	s.files = append(s.files, snippetFile{source, owner, file, text})
+}
+
+// parse reads every queued file. nginx upstreams are global, so each file
+// learns the upstream names of all the others. A file that does not parse is
+// recorded in global (a provider other than nginx then refuses), never dropped.
+func (s *snippetSet) parse() {
+	var names []string
+	for _, f := range s.files {
+		names = append(names, routemodel.UpstreamNames(f.text)...)
 	}
-	s.routes = append(s.routes, sn.Routes...)
-	s.global = append(s.global, sn.Global...)
+	for _, f := range s.files {
+		sn, err := routemodel.ParseSnippetIn(f.source, f.owner, f.file, f.text, names)
+		if err != nil {
+			s.global = append(s.global, fmt.Sprintf("unparsed %s %s/%s: %v", f.source, f.owner, f.file, err))
+			continue
+		}
+		s.routes = append(s.routes, sn.Routes...)
+		s.global = append(s.global, sn.Global...)
+	}
 }
 
 // plugins parses the snippets injectPluginNginxRoutesVia copies, rendered the
