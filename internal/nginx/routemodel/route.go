@@ -12,7 +12,7 @@ import (
 
 func isLinux() bool { return runtime.GOOS == "linux" }
 
-func makeRoute(cfg *config.Config, workdir, sslDir string, hasSSL bool, trusted func(string) bool, s routeSpec) Route {
+func makeRoute(cfg *config.Config, workdir, sslDir string, hasSSL bool, s routeSpec) Route {
 	name, err := config.RouteToFQDN(s.name, cfg.BaseDomain)
 	if err != nil {
 		name = s.name + "." + cfg.BaseDomain
@@ -29,11 +29,7 @@ func makeRoute(cfg *config.Config, workdir, sslDir string, hasSSL bool, trusted 
 		r.Owner = ptr(s.owner)
 	}
 	if hasSSL {
-		chain := false
-		if trusted != nil {
-			chain = trusted(sslDir)
-		}
-		r.TLS = &RouteTLS{SSLDir: sslDir, HasTrustedChain: chain, Protocols: []string{"TLSv1.2", "TLSv1.3"}, Ciphers: ptr(ciphers)}
+		r.TLS = &RouteTLS{SSLDir: sslDir, Protocols: []string{"TLSv1.2", "TLSv1.3"}, Ciphers: ptr(ciphers)}
 	}
 	if s.zone != "" {
 		r.RateLimit = &RateLimit{Zone: s.zone, Burst: s.burst, ConnLimit: s.conn}

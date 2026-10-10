@@ -76,6 +76,8 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-LIVE-06 | post-install build hint | automatic reconcile | `cmd/commands/plugin_install.go` |
 | P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |
 | P7-LIVE-17 | IMAGE_PINNING defaults to legacy | lock | `internal/compose/images_lock.go` |
+| P7-LIVE-22 | E151 for every ACME failure | E470-E472 by failure class | `cmd/commands/ssl_renewal.go` |
+| P7-LIVE-22 | certbot is the default certificate path | the ACME engine is the default | `cmd/commands/ssl_renewal.go` |
 | P7-PLUG-01 | v1 plugin.json read silently | one deprecation line per process on stderr | `internal/plugin/manifestv2/warn.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_marketplace_cmds.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_query.go` |

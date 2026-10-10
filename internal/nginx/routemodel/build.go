@@ -22,8 +22,10 @@ type routeSpec struct {
 	websocket                                             bool
 }
 
-// Build collects the route data before any provider renders it.
-func Build(cfg *config.Config, workdir string, hasSSL bool, trusted func(string) bool) (*Model, error) {
+// Build collects the route data before any provider renders it. The last
+// parameter is ignored: it was the chain.pem probe, removed with OCSP stapling
+// (P7-LIVE-22); callers pass nil and the parameter goes when they next change.
+func Build(cfg *config.Config, workdir string, hasSSL bool, _ func(string) bool) (*Model, error) {
 	maxBody := cfg.Nginx.MaxBody
 	if maxBody == "" {
 		maxBody = "100M"
@@ -152,15 +154,16 @@ func Build(cfg *config.Config, workdir string, hasSSL bool, trusted func(string)
 		add(fmt.Sprintf("internal:%d", ir.Index), "internal", "", "ir-"+ir.Name+".conf", ir.Subdomain, ir.Subdomain, ir.Target, zone, 10, 10, ir.WebSocket)
 	}
 	for _, s := range specs {
-		m.Routes = append(m.Routes, makeRoute(cfg, workdir, sslDir, hasSSL, trusted, s))
+		m.Routes = append(m.Routes, makeRoute(cfg, workdir, sslDir, hasSSL, s))
 	}
 	return m, nil
 }
 
 func ptr(s string) *string { return &s }
 
-// SetSSL refreshes TLS facts after the build's certificate phase.
-func SetSSL(m *Model, hasSSL bool, trusted func(string) bool) {
+// SetSSL refreshes TLS facts after the build's certificate phase. The last
+// parameter is ignored (see Build).
+func SetSSL(m *Model, hasSSL bool, _ func(string) bool) {
 	m.DefaultServer.HTTP.RedirectHTTPS = hasSSL
 	sslDir := strings.ReplaceAll(m.BaseDomain, ".", "-")
 	if sslDir == "" {
@@ -171,11 +174,7 @@ func SetSSL(m *Model, hasSSL bool, trusted func(string) bool) {
 		r.Listen = Listen{HTTP: !hasSSL, HTTPS: hasSSL}
 		r.SecurityHeaders = headers(hasSSL)
 		if hasSSL {
-			chain := false
-			if trusted != nil {
-				chain = trusted(sslDir)
-			}
-			r.TLS = &RouteTLS{SSLDir: sslDir, HasTrustedChain: chain, Protocols: []string{"TLSv1.2", "TLSv1.3"}, Ciphers: ptr(ciphers)}
+			r.TLS = &RouteTLS{SSLDir: sslDir, Protocols: []string{"TLSv1.2", "TLSv1.3"}, Ciphers: ptr(ciphers)}
 		} else {
 			r.TLS = nil
 		}

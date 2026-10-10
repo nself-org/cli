@@ -430,9 +430,6 @@
                   "string"
                 ]
               },
-              "has_trusted_chain": {
-                "type": "boolean"
-              },
               "protocols": {
                 "items": {
                   "type": "string"
@@ -445,7 +442,6 @@
             },
             "required": [
               "ssl_dir",
-              "has_trusted_chain",
               "protocols",
               "ciphers"
             ],

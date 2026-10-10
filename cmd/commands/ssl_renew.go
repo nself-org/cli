@@ -26,8 +26,8 @@ import (
 
 // runSSLRenew implements `nself ssl renew [domain]`.
 func runSSLRenew(cmd *cobra.Command, args []string) error {
-	if useACME, _ := cmd.Flags().GetBool("acme"); useACME {
-		return runSSLRenewACME(cmd, args)
+	if useACMEEngine(cmd) {
+		return v15ACMEError(runSSLRenewACME(cmd, args))
 	} else if err := rejectACMEFlags(cmd); err != nil {
 		return err
 	}
@@ -87,11 +87,7 @@ func runSSLRenew(cmd *cobra.Command, args []string) error {
 	// 2. Reload nginx via docker compose exec — after any renewal+install
 	// above, so a freshly installed cert is the one actually served.
 	fmt.Println("Reloading nginx...")
-	reloadCmd := exec.Command("docker", "compose", "exec", "nginx", "nginx", "-s", "reload")
-	reloadCmd.Dir = workdir
-	reloadCmd.Stdout = os.Stdout
-	reloadCmd.Stderr = os.Stderr
-	if err := reloadCmd.Run(); err != nil {
+	if err := nginxCompose(cmd.Context(), workdir, "-s", "reload"); err != nil {
 		// Non-fatal: nginx container may not be running.
 		fmt.Fprintf(os.Stderr, "Warning: nginx reload reported an error (may not be running): %v\n", err)
 	} else {

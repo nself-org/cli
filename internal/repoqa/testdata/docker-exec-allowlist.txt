@@ -23,9 +23,6 @@ cmd/commands/plugin_logs.go 4
 cmd/commands/plugin_test_cmd.go 2
 cmd/commands/reset.go 1
 cmd/commands/security_checks_system.go 1
-cmd/commands/ssl_add.go 2
-cmd/commands/ssl_renew.go 1
-cmd/commands/ssl_setup.go 1
 cmd/commands/start_health.go 1
 cmd/commands/uninstall.go 1
 cmd/commands/update.go 2

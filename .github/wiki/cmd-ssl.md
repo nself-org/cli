@@ -21,7 +21,7 @@ Certificates written by `ssl setup` and `ssl add` land in `ssl/certificates/{dom
 
 ## nself ssl setup
 
-Provisions SSL certificates using certbot with DNS-01 validation. Supports wildcard certificates for `*.domain`.
+Provisions SSL certificates with DNS-01 validation. In v1.5 mode (`NSELF_V15=1`) the CLI's own ACME client issues them and `--install-cron` installs the `nself-acme-renew` timer; in v1.4 mode certbot does (pass `--acme` to use the ACME client there too). Supports wildcard certificates for `*.domain`.
 
 ```
 nself ssl setup [flags]
@@ -31,7 +31,7 @@ nself ssl setup [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--provider` | `cloudflare` | DNS provider (`cloudflare`, `route53`, `digitalocean`, `custom`) |
+| `--provider` | `cloudflare` | DNS provider (`cloudflare`, `route53`, `digitalocean`) |
 | `--wildcard` | `false` | Request a wildcard certificate (`*.domain`) |
 | `--email` | (from `ADMIN_EMAIL`) | Email address for Let's Encrypt registration |
 | `--staging` | `false` | Use the Let's Encrypt staging environment |
@@ -52,7 +52,7 @@ nself ssl setup --provider cloudflare --staging
 
 ## nself ssl add
 
-Provisions an SSL certificate for a single custom domain via HTTP-01 challenge (no DNS provider needed). After certbot succeeds, writes an nginx server block to `nginx/conf.d/custom-{domain}.conf` and reloads nginx.
+Provisions an SSL certificate for a single custom domain via HTTP-01 challenge (no DNS provider needed). In v1.4 mode certbot issues the certificate; in v1.5 mode the ACME client does. After the certificate is installed, writes an nginx server block to `nginx/conf.d/custom-{domain}.conf` and reloads nginx.
 
 Certificates are stored in `ssl/certificates/{domain-safe}/` (domain with dots/colons replaced by dashes) so nginx can read them at `/etc/nginx/ssl/certificates/{domain-safe}/` inside the container.
 
@@ -95,7 +95,7 @@ The generated conf file (`nginx/conf.d/custom-custom-example-com.conf`) includes
 
 ## nself ssl setup --acme and nself ssl renew --acme
 
-The CLI's own ACME client (DNS-01) issues, adopts and renews the certificates nginx serves, without host certbot. It runs a pinned `lego` container once per issuance through the docker funnel (no Docker socket). The certbot flows above are unchanged; `--acme` is additive.
+The CLI's own ACME client (DNS-01) issues, adopts and renews the certificates nginx serves, without host certbot. It runs a pinned `lego` container once per issuance through the docker funnel (no Docker socket). In v1.5 mode (`NSELF_V15=1`) `ssl setup`, `ssl add` and `ssl renew` use this client without `--acme`, and an ACME failure carries E470 (issuance), E471 (install or served-certificate check) or E472 (DNS credential missing) instead of E151. In v1.4 mode the certbot flows above are unchanged and `--acme` is additive.
 
 ```
 nself ssl setup --acme [--provider cloudflare|route53|digitalocean] [--wildcard] [--email <addr>] [--agree-tos] [--dry-run] [--install-cron]
@@ -105,7 +105,7 @@ nself ssl renew --acme [<lineage>] [--force] [--staging] [--quiet] [--dry-run]
 
 | Flag | Applies to | Description |
 |------|-----------|-------------|
-| `--acme` | setup, renew | Use the CLI's ACME client instead of certbot. Every flag below needs it. |
+| `--acme` | setup, renew | Use the CLI's ACME client instead of certbot (the default in v1.5 mode). In v1.4 mode every flag below needs it. |
 | `--dry-run` | setup, renew | Print the resolved served root, ssl dir, nginx dir, nginx container, ssl mount, lineages and targets, then stop. Nothing is written. |
 | `--nginx-container <name>` | setup, renew | The nginx container to reload. Default: the running `nginx` service of the served stack. |
 | `--agree-tos` | setup, renew | Accept the ACME CA's terms of service when the account is first registered. Without it a terminal asks; a non-terminal run refuses. |

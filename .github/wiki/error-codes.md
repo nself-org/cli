@@ -227,6 +227,9 @@ Change-plan (E450) and operation-lock (E460) codes. The other codes in this bloc
 | <a id="e453"></a>E453 | 1 | Plan id cannot bind plugin changes | The plan installs or removes plugins, and what those change is only known after they run, so a plan id cannot describe the final render. | Run nself build --yes without --plan-id (the render after the plugin changes is printed and held), or install or remove the plugins first. |
 | <a id="e460"></a>E460 | 1 | Project operation lock held | Another nself command is changing this project and holds its operation lock. | Wait for the running nself command to finish, or stop it, then run this command again. |
 | <a id="e465"></a>E465 | 1 | Image unavailable | The locked image could not be pulled from its upstream or digest-identical mirror. | Run nself doctor images, then check registry access and the locked digest. |
+| <a id="e470"></a>E470 | 1 | ACME issuance failed | The ACME client could not obtain a certificate from the certificate authority. | Check that the names resolve to this server and that port 80 or the DNS credential is reachable, then run nself trust ssl renew --dry-run. |
+| <a id="e471"></a>E471 | 1 | Certificate install or verification failed | The new certificate was issued but could not be installed, or nginx did not serve it after the reload. The previous certificate was restored. | Run nginx -t in the nginx container, fix the reported error, then run nself trust ssl renew --force. |
+| <a id="e472"></a>E472 | 1 | DNS credential missing | A DNS-01 certificate needs the DNS provider credential, and it is not in the secret store. | Store the credential with nself secrets set <NAME> <value>, then run the command again. |
 <!-- END GENERATED:codes-reconcile -->
 
 ---
