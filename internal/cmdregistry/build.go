@@ -136,7 +136,7 @@ func checkResolves(c *canon.File, dataTypes map[string]any, opts BuildOptions, b
 		}
 	}
 	for key := range dataTypes {
-		if byKey[key] == nil && !(!opts.V15 && opts.V15OnlyEnvelope[key]) {
+		if byKey[key] == nil && (opts.V15 || !opts.V15OnlyEnvelope[key]) {
 			p = append(p, fmt.Sprintf("dataTypes[%q]: registered data type does not resolve to a command in the tree", key))
 		}
 	}
