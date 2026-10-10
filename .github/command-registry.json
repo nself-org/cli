@@ -2969,7 +2969,15 @@
       "json": "envelope",
       "data_schema": "schemas/commands/build.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": {
+          "flag": "plan",
+          "id_flag": "plan-id"
+        }
+      },
       "surface": "all"
     },
     {
@@ -3898,7 +3906,7 @@
           "required": false,
           "persistent": false,
           "env": null,
-          "side_effect": null,
+          "side_effect": "destructive",
           "json": null,
           "output": null,
           "cli_only": false,
@@ -3924,12 +3932,17 @@
       ],
       "canon": "core",
       "target": null,
-      "side_effect": "destructive",
+      "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/clean.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -18670,10 +18683,15 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/reset.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -20899,10 +20917,15 @@
       "target": "nself reset",
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/uninstall.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -21599,7 +21622,7 @@
     "deprecated_shims": 43,
     "plugin": 10,
     "core_missing": [],
-    "json_envelope": 10,
+    "json_envelope": 13,
     "json_legacy": 48
   }
 }

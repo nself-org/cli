@@ -45,7 +45,11 @@ func runReset(cmd *cobra.Command, args []string) error {
 	keepData, _ := cmd.Flags().GetBool("keep-data")
 	purge, _ := cmd.Flags().GetBool("purge")
 	if keepData || purge {
-		return runUninstall(cmd, args)
+		res, done, err := uninstallProject(cmd)
+		if err != nil || !done {
+			return err
+		}
+		return emitBuildResult(cmd, "reset", ResetResult(res))
 	}
 
 	skipConfirm, _ := cmd.Flags().GetBool("yes")
@@ -83,6 +87,9 @@ func runReset(cmd *cobra.Command, args []string) error {
 		}
 		if err := confirm.ConfirmDestruction(projectName, os.Stdin, os.Stdout); err != nil {
 			fmt.Println("Destruction canceled.")
+			if buildEnvelopeWanted(cmd) {
+				return errConfirmRequired("reset")
+			}
 			return nil
 		}
 	}
@@ -141,7 +148,7 @@ func runReset(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Removed %d generated file(s).\n", len(removed))
 	}
 	fmt.Println("Reset complete. Run 'nself init' or 'nself build' to recreate the stack.")
-	return nil
+	return emitBuildResult(cmd, "reset", ResetResult{Removed: nonNil(removed), KeptData: false})
 }
 
 // removeFile removes a single file by path, appending its relative name (relative

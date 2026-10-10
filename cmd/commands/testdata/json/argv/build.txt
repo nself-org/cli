@@ -1,0 +1,7 @@
+# Build fragment conversion rows. See README.md for tags.
+# The fixture project holds only .env, so reset and clean find nothing to remove
+# and uninstall refuses (no nSelf project); the rows that cannot run on it are
+# tagged. The populated-project paths are covered by TestBuildFragment* in json_build_test.go.
+clean
+reset --yes
+uninstall --yes #| no-json=fixture-has-no-nself-dir-so-uninstall-refuses-see-json_build_test.go
