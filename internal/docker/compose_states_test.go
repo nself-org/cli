@@ -6,9 +6,11 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -72,5 +74,39 @@ func TestParseContainerStatesLines(t *testing.T) {
 	}
 	if _, err := parseContainerStates([]byte("{\"Name\":\"a\"}\nnot json\n")); err == nil {
 		t.Error("a bad line must error, not be skipped")
+	}
+}
+
+func TestRegressed(t *testing.T) {
+	run := func(id, at string) ContainerState {
+		return ContainerState{ID: id, Name: "p-" + id, State: "running", StartedAt: at}
+	}
+	before := []ContainerState{run("a", "t1"), run("b", "t1")}
+	cases := []struct {
+		name  string
+		after []ContainerState
+		want  string // substring of the error, "" for none
+	}{
+		{"same run", []ContainerState{run("a", "t1"), run("b", "t1")}, ""},
+		{"new StartedAt", []ContainerState{run("a", "t1"), run("b", "t2")}, "p-b restarted"},
+		{"restarting", []ContainerState{{ID: "a", Name: "p-a", State: "restarting"}}, "p-a is restarting"},
+		{"exited non-zero", []ContainerState{{ID: "a", Name: "p-a", State: "exited", ExitCode: 3}}, "p-a exited 3"},
+		{"exited zero is not a crash", []ContainerState{{ID: "a", Name: "p-a", State: "exited"}}, ""},
+		{"no StartedAt cannot be compared", []ContainerState{{ID: "a", Name: "p-a", State: "running"}}, ""},
+		{"unknown container is not compared", []ContainerState{run("c", "t9")}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Regressed(before, tc.after)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("want nil, got %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, ErrServiceCrashed) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want ErrServiceCrashed containing %q, got %v", tc.want, err)
+			}
+		})
 	}
 }

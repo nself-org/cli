@@ -184,11 +184,14 @@ fallback for plugin variables: a plugin variable must be in `.nself/compose.env`
 
 The rows apply top to bottom: a service with `restart: "no"` and a healthcheck is long-running, so it
 waits for `healthy`. For every kind, a container that exited non-zero or is restarting fails the
-deploy at once with E250, so a crash loop cannot pass because one poll caught it running. A service
-with no `restart` line that exited 0 counts as a finished run (Docker's default policy is "no"), so it
-is done. Containers left behind by `docker compose run` are ignored: they are not replicas of the
+deploy at once with E250 when a poll sees it. After the last service, every gated service is read once
+more, and the deploy fails with E250 naming any that restarted, is restarting, or exited non-zero since its
+gate passed. That catches a crash loop that stays up for a few seconds, but it is not a guarantee: a crash
+after that final re-check is not detected, and the health checks (`nself doctor`) that follow the roll are
+the only backstop. A service with no `restart` line that exited 0 counts as a finished run (Docker's
+default policy is "no"), so it is done. Containers left behind by `docker compose run` are ignored: they are not replicas of the
 service. A service that appears in the restart order but not in the resolved config fails the deploy
-with E252 before anything is restarted. If Docker cannot be read (daemon down, `compose ps` fails), the
+with E252, checked for every service before the first restart. If Docker cannot be read (daemon down, `compose ps` fails), the
 deploy stops with Docker's own message and no service code, because nothing is known about the
 service; an interrupt (ctrl-c) stops the same way.
 

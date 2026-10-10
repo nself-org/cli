@@ -87,25 +87,31 @@ func runRollingRestart(ctx context.Context, workdir string, jsonOut bool) ([]dep
 	return rollingRestart(ctx, rollingPlan{compose: compose, workdir: workdir, order: order, specs: specs, jsonOut: jsonOut})
 }
 
-// rollingRestart runs plan: up each service, then gate it.
+// rollingRestart runs plan. Every service's spec is checked first, so E252
+// fires before anything restarts. Then each service is brought up and gated.
+// After the last one, every gated service is read once more: a crash loop
+// slower than the gate's two polls shows up as a restart since its gate passed.
 func rollingRestart(ctx context.Context, plan rollingPlan) ([]deployStep, error) {
 	byName := make(map[string]docker.ServiceSpec, len(plan.specs))
 	for _, sp := range plan.specs {
 		byName[sp.Name] = sp
 	}
+	for _, svc := range plan.order {
+		if _, ok := byName[svc]; !ok {
+			// config --services and config --format json read the same manifest; a
+			// miss means they disagree, and a guessed gate could skip a wait.
+			err := fmt.Errorf("service %s is in the restart order but missing from the resolved compose config", svc)
+			return []deployStep{{Name: "Restart " + svc, Status: "failed"}}, errs.Wrap("E252", "rolling restart: "+err.Error(), err)
+		}
+	}
 	steps := []deployStep{}
+	var gated []gatedService
 	for _, svc := range plan.order {
 		stepName := fmt.Sprintf("Restart %s", svc)
 		if !plan.jsonOut {
 			fmt.Printf("  [running] Restart %s (sequenced rolling)\n", svc)
 		}
-		spec, ok := byName[svc]
-		if !ok {
-			// config --services and config --format json read the same manifest; a
-			// miss means they disagree, and a guessed gate could skip a wait.
-			err := fmt.Errorf("service %s is in the restart order but missing from the resolved compose config", svc)
-			return append(steps, deployStep{Name: stepName, Status: "failed"}), errs.Wrap("E252", "rolling restart: "+err.Error(), err)
-		}
+		spec := byName[svc]
 		marks, err := plan.compose.StartMarks(ctx, plan.workdir, svc)
 		if err != nil {
 			return append(steps, deployStep{Name: stepName, Status: "failed"}), gateError(svc, markErr(ctx, err))
@@ -117,15 +123,51 @@ func rollingRestart(ctx context.Context, plan rollingPlan) ([]deployStep, error)
 		if !plan.jsonOut {
 			fmt.Printf("  [waiting] Waiting for %s (%s)\n", svc, gateKind(spec))
 		}
+		var seen []docker.ContainerState // the last read, i.e. the one that passed the gate
 		states := func(c context.Context) ([]docker.ContainerState, error) {
-			return plan.compose.FreshStates(c, plan.workdir, svc, marks)
+			cs, err := plan.compose.FreshStates(c, plan.workdir, svc, marks)
+			if err == nil {
+				seen = cs
+			}
+			return cs, err
 		}
 		if err := docker.HealthGate(ctx, spec, states, plan.clock); err != nil {
 			return append(steps, deployStep{Name: stepName, Status: gateFailStatus(err)}), gateError(svc, err)
 		}
 		steps = append(steps, deployStep{Name: stepName, Status: "done"})
+		gated = append(gated, gatedService{name: svc, step: len(steps) - 1, seen: seen})
 		if !plan.jsonOut {
 			fmt.Printf("  [done] %s ready\n", svc)
+		}
+	}
+	return recheckGated(ctx, plan, steps, gated)
+}
+
+// gatedService is a service whose gate passed: its step index and the
+// containers as the passing read saw them.
+type gatedService struct {
+	name string
+	step int
+	seen []docker.ContainerState
+}
+
+// recheckGated reads every gated service once more and fails E250 on the first
+// that restarted or exited non-zero since its gate passed. It costs one ps and
+// inspect per service and no sleep. A crash after this read is not detected.
+func recheckGated(ctx context.Context, plan rollingPlan, steps []deployStep, gated []gatedService) ([]deployStep, error) {
+	if !plan.jsonOut && len(gated) > 0 {
+		fmt.Printf("  [waiting] Re-checking %d services\n", len(gated))
+	}
+	for _, g := range gated {
+		cs, err := plan.compose.FreshStates(ctx, plan.workdir, g.name, nil)
+		if err == nil {
+			err = docker.Regressed(g.seen, cs)
+		} else {
+			err = markErr(ctx, err)
+		}
+		if err != nil {
+			steps[g.step].Status = "failed"
+			return steps, gateError(g.name, err)
 		}
 	}
 	return steps, nil

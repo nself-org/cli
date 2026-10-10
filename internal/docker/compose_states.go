@@ -156,3 +156,29 @@ func parseContainerStates(raw []byte) ([]ContainerState, error) {
 	}
 	return states, nil
 }
+
+// Regressed compares the containers a service's gate saw (before) with a later
+// read (after). It returns ErrServiceCrashed, with the container named, for one
+// that is restarting, exited non-zero, or started again since the gate passed
+// (a new StartedAt). Rows without an ID or StartedAt cannot be compared by start
+// time and are only judged on state.
+func Regressed(before, after []ContainerState) error {
+	started := map[string]string{}
+	for _, b := range before {
+		if b.State == "running" && b.ID != "" && b.StartedAt != "" {
+			started[b.ID] = b.StartedAt
+		}
+	}
+	for _, a := range after {
+		switch {
+		case a.State == "restarting":
+			return fmt.Errorf("%w (%s is restarting after its gate passed)", ErrServiceCrashed, a.Name)
+		case a.State == "exited" && a.ExitCode != 0:
+			return fmt.Errorf("%w (%s exited %d after its gate passed)", ErrServiceCrashed, a.Name, a.ExitCode)
+		}
+		if was, ok := started[a.ID]; ok && a.StartedAt != "" && a.StartedAt != was {
+			return fmt.Errorf("%w (%s restarted after its gate passed)", ErrServiceCrashed, a.Name)
+		}
+	}
+	return nil
+}

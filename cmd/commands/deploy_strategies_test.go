@@ -42,7 +42,16 @@ up)
 ps)
   if [ -f "$D/psfail" ]; then echo "Cannot connect to the Docker daemon" >&2; exit 1; fi
   for last; do :; done
-  cat "$D/ps.$last.json" 2>/dev/null || true ;;
+  # psfaillate holds "<svc> <n>": once n ups have run, ps of that service fails.
+  if [ -f "$D/psfaillate" ] && [ "$last" = "$(cut -d' ' -f1 "$D/psfaillate")" ] && [ "$(wc -l < "$D/ups" 2>/dev/null | tr -d ' ')" -ge "$(cut -d' ' -f2 "$D/psfaillate")" ]; then
+    echo "Cannot connect to the Docker daemon" >&2; exit 1
+  fi
+  # late.<svc> holds a count of ups: once that many have run, serve ps.<svc>.late.json (the final re-check).
+  if [ -f "$D/late.$last" ] && [ "$(wc -l < "$D/ups" 2>/dev/null | tr -d ' ')" -ge "$(cat "$D/late.$last")" ]; then
+    cat "$D/ps.$last.late.json"
+  else
+    cat "$D/ps.$last.json" 2>/dev/null || true
+  fi ;;
 esac
 exit 0
 `
@@ -219,7 +228,8 @@ func TestDeployStrategyManifest(t *testing.T) {
 		}
 	})
 
-	t.Run("a service missing from the resolved config is E252 and nothing is restarted", func(t *testing.T) {
+	t.Run("a service missing from the resolved config is E252 before anything is restarted", func(t *testing.T) {
+		// ghost comes after postgres: the spec check must run over the whole order first.
 		s := newRollingStack(t, []string{"postgres", "ghost"}, stackConfig)
 		s.setPs(t, "postgres", `[{"Name":"p-pg-1","State":"running","Health":"healthy"}]`)
 		steps, err := runPlan(t, s, &stepClock{now: time.Unix(0, 0)})
@@ -227,8 +237,8 @@ func TestDeployStrategyManifest(t *testing.T) {
 		if !errors.As(err, &ce) || ce.Code != "E252" || !strings.Contains(err.Error(), "ghost") {
 			t.Fatalf("want E252 naming ghost, got %v", err)
 		}
-		if strings.Contains(s.read("ups"), "ghost") {
-			t.Errorf("ghost was restarted: %q", s.read("ups"))
+		if got := s.read("ups"); got != "" {
+			t.Errorf("services were restarted before the spec check failed: %q", got)
 		}
 		if last := steps[len(steps)-1]; last.Name != "Restart ghost" || last.Status != "failed" {
 			t.Errorf("last step = %+v", last)
@@ -355,6 +365,80 @@ func TestDeployStrategyManifest(t *testing.T) {
 		var ce *errs.CLIError
 		if !errors.Is(err, context.Canceled) || errors.As(err, &ce) {
 			t.Fatalf("want an uncoded context.Canceled, got %v", err)
+		}
+	})
+}
+
+// recheckStack is two running services: web is gated first, then ntask. The ps
+// for web changes to lateWeb once both have been brought up, which is what the
+// final re-check sees. fixedStart pins StartedAt so only lateWeb can differ.
+func recheckStack(t *testing.T, lateWeb string, fixedStart bool) *rollingStack {
+	t.Helper()
+	s := newRollingStack(t, []string{"web", "ntask"}, stackConfig)
+	s.setPs(t, "web", `[{"ID":"w1","Name":"p-web-1","State":"running"}]`)
+	s.setPs(t, "ntask", `[{"ID":"n1","Name":"p-ntask-1","State":"running"}]`)
+	for name, body := range map[string]string{"ps.web.late.json": lateWeb, "late.web": "2"} {
+		if err := os.WriteFile(filepath.Join(s.fix, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if fixedStart {
+		if err := os.WriteFile(filepath.Join(s.fix, "startfixed"), []byte("2026-10-10T00:00:00Z"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return s
+}
+
+func TestDeployFinalRecheck(t *testing.T) {
+	cases := []struct {
+		name, lateWeb string
+		fixedStart    bool
+		wantFail      bool
+		wantIn        string
+	}{
+		{"unchanged services pass", `[{"ID":"w1","Name":"p-web-1","State":"running"}]`, true, false, ""},
+		{"exited non-zero since the gate passed", `[{"ID":"w1","Name":"p-web-1","State":"exited","ExitCode":1}]`, true, true, "exited 1"},
+		{"restarting since the gate passed", `[{"ID":"w1","Name":"p-web-1","State":"restarting"}]`, true, true, "restarting"},
+		{"started again since the gate passed", `[{"ID":"w1","Name":"p-web-1","State":"running"}]`, false, true, "restarted"},
+		{"exit 0 of a finished container is not a crash", `[{"ID":"w1","Name":"p-web-1","State":"exited","ExitCode":0}]`, true, false, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := recheckStack(t, tc.lateWeb, tc.fixedStart)
+			steps, err := runPlan(t, s, &stepClock{now: time.Unix(0, 0)})
+			if !tc.wantFail {
+				if err != nil {
+					t.Fatalf("want a pass, got %v", err)
+				}
+				return
+			}
+			var ce *errs.CLIError
+			if !errors.As(err, &ce) || ce.Code != "E250" || !strings.Contains(err.Error(), "web") || !strings.Contains(err.Error(), tc.wantIn) {
+				t.Fatalf("want E250 naming web and %q, got %v", tc.wantIn, err)
+			}
+			// Both services were brought up: the crash was only visible at the end.
+			if got := strings.Fields(s.read("ups")); len(got) != 2 {
+				t.Errorf("ups = %v, want both services restarted before the re-check", got)
+			}
+			if steps[0].Name != "Restart web" || steps[0].Status != "failed" || steps[1].Status != "done" {
+				t.Errorf("steps = %+v, want web failed and ntask done", steps)
+			}
+		})
+	}
+
+	t.Run("a docker read failure during the re-check is uncoded, not E250", func(t *testing.T) {
+		s := recheckStack(t, `[{"ID":"w1","Name":"p-web-1","State":"running"}]`, true)
+		if err := os.WriteFile(filepath.Join(s.fix, "psfaillate"), []byte("web 2"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		steps, err := runPlan(t, s, &stepClock{now: time.Unix(0, 0)})
+		var ce *errs.CLIError
+		if err == nil || errors.As(err, &ce) || !errors.Is(err, docker.ErrStateRead) || !strings.Contains(err.Error(), "Cannot connect") {
+			t.Fatalf("want an uncoded state-read error carrying docker's message, got %v", err)
+		}
+		if steps[0].Status != "failed" {
+			t.Errorf("steps = %+v", steps)
 		}
 	})
 }

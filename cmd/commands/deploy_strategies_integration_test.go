@@ -193,8 +193,7 @@ func TestDeployStrategyIntegration(t *testing.T) {
 			if !errors.As(err, &ce) || !strings.Contains(err.Error(), "postgres") {
 				t.Fatalf("want a coded gate error naming postgres, got %v", err)
 			}
-			// A crash that is only seen between restarts may time out instead of being caught; passing is the bug.
-			if ce.Code != "E250" && !(name == "exit 1 after a second" && ce.Code == "E251") {
+			if ce.Code != "E250" {
 				t.Errorf("code = %s, want E250", ce.Code)
 			}
 			compose, _, _ := deployCompose(dir)
@@ -203,4 +202,32 @@ func TestDeployStrategyIntegration(t *testing.T) {
 			}
 		})
 	}
+
+	// The gate's two polls are 2 s apart, so a service that stays up for 3 s passes
+	// them. The re-check after the last service must still catch the crash loop.
+	t.Run("restart always that exits after 3 s passes the gate but fails the final re-check with E250", func(t *testing.T) {
+		dir := integrationProject(t, "depl16f"+suffix,
+			"  postgres:\n    image: alpine:3\n    command: [\"sh\", \"-c\", \"sleep 3; exit 1\"]\n    restart: always\n"+
+				// A later one-shot that takes 4 s keeps the roll going past the crash.
+				"  zlater:\n    image: alpine:3\n    command: [\"sh\", \"-c\", \"sleep 4\"]\n    restart: \"no\"\n", "  plug:\n"+sleeper)
+		steps, err := runRollingRestart(ctx, dir, true)
+		var ce *errs.CLIError
+		if !errors.As(err, &ce) || ce.Code != "E250" || !strings.Contains(err.Error(), "postgres") {
+			t.Fatalf("want E250 naming postgres from the final re-check, got %v", err)
+		}
+		// The roll finished before the re-check: every service was restarted and postgres is marked failed.
+		if len(steps) != 3 || steps[0].Name != "Restart postgres" || steps[0].Status != "failed" || steps[1].Status != "done" || steps[2].Status != "done" {
+			t.Errorf("steps = %+v, want postgres failed (re-check) and the two later services done", steps)
+		}
+	})
+
+	t.Run("a one-shot that exits 1 after a delay still fails E250", func(t *testing.T) {
+		dir := integrationProject(t, "depl16g"+suffix,
+			"  postgres:\n    image: alpine:3\n    command: [\"sh\", \"-c\", \"sleep 1; exit 1\"]\n    restart: \"no\"\n  zlater:\n"+sleeper, "  plug:\n"+sleeper)
+		_, err := runRollingRestart(ctx, dir, true)
+		var ce *errs.CLIError
+		if !errors.As(err, &ce) || ce.Code != "E250" || !strings.Contains(err.Error(), "postgres") {
+			t.Fatalf("want E250 naming postgres, got %v", err)
+		}
+	})
 }
