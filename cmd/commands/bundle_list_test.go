@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -175,6 +176,9 @@ func TestBundleListTableIgnoresLedger(t *testing.T) {
 // TestBundleListLedgerSourceError: an unreadable plugin directory is an error
 // for --json, never an "nothing installed" view.
 func TestBundleListLedgerSourceError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ReadDir of a regular file reports not-exist on Windows, so the error cannot be provoked this way")
+	}
 	ledgerProject(t)
 	notADir := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(notADir, []byte("x"), 0o600); err != nil {

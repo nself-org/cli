@@ -84,7 +84,7 @@ func runBundleList(cmd *cobra.Command, _ []string) error {
 	var led ledger.Ledger
 	if asJSON {
 		var err error
-		led, err = loadBundleLedger(func(m string) { fmt.Fprintln(cmd.ErrOrStderr(), "warning: ledger bootstrap:", m) })
+		led, err = loadBundleLedger(func(m string) { _, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: ledger bootstrap:", m) })
 		if err != nil {
 			return err
 		}
