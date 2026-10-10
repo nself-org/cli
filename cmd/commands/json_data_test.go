@@ -341,3 +341,63 @@ func unwrapEnvelopeData(out, member string) string {
 	}
 	return buf.String()
 }
+
+// v14JSONRows lists the data rows whose command prints JSON in v1.4, as the
+// v1.4 registry path and the v1.5 key of the same row. The v1.4 view keeps
+// them json: legacy; the v1.5 view reports envelope (CR N2).
+var v14JSONRows = map[string]string{
+	"backup config": "backup config", "backup drill": "backup drill", "backup list": "backup list",
+	"backup prune": "backup prune", "backup status": "backup status", "db backup list": "db backup list",
+	"db lint": "db lint", "db rls audit": "db rls audit",
+	"template info": "init template info", "template list": "init template list",
+}
+
+// TestRegistryV14KeepsJSONLegacy: the v1.4 registry view describes v1.4
+// behaviour. A row that prints JSON there keeps json: legacy with no data
+// schema even though its v1.5 row is envelope; every other data row that
+// exists in the v1.4 tree maps to none, never envelope.
+func TestRegistryV14KeepsJSONLegacy(t *testing.T) {
+	old, err := buildRegistry(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cur, err := buildRegistry(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for v14, v15 := range v14JSONRows {
+		row, ok := old.Lookup("nself " + v14)
+		if !ok {
+			t.Errorf("v1.4 registry has no row %q", v14)
+			continue
+		}
+		if row.JSON != "legacy" || row.DataSchema != nil {
+			t.Errorf("v1.4 %q: json=%q data_schema=%v, want legacy and no schema", v14, row.JSON, row.DataSchema)
+		}
+		nrow, ok := cur.Lookup("nself " + v15)
+		if !ok || nrow.JSON != "envelope" || nrow.DataSchema == nil {
+			t.Errorf("v1.5 %q: %+v, want envelope with a data schema", v15, nrow)
+		}
+	}
+	legacyKeys := map[string]bool{}
+	for _, v15 := range v14JSONRows {
+		legacyKeys[v15] = true
+	}
+	checked := 0
+	for key := range dataEnvelopeTypes {
+		if legacyKeys[key] {
+			continue
+		}
+		row, ok := old.Lookup("nself " + key)
+		if !ok {
+			continue // moved in v1.5: no row at this path in v1.4
+		}
+		checked++
+		if row.JSON == "envelope" || row.JSON == "legacy" {
+			t.Errorf("v1.4 %q: json=%q, but no JSON is printed there in v1.4 (want none)", key, row.JSON)
+		}
+	}
+	if checked < 40 {
+		t.Errorf("only %d other data rows were checked in the v1.4 view; the check ran nothing", checked)
+	}
+}

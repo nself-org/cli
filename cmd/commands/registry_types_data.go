@@ -6,8 +6,9 @@
 // their subcommands (dataHub); read commands with typed facts
 // (db_envelope_types.go); write, remote and destructive commands, and reads
 // whose facts only a child process holds, with the shared dataResult.
-// Commands that printed JSON before the contract keep that output in v1.4;
-// all rows are v1.5-only envelopes. `backup stream`, `db migrate watch` and
+// Commands that printed JSON before the contract keep that output in v1.4 and
+// say so in the v1.4 registry view (`json: legacy` in data.yaml, kept by the
+// cmdregistry mapping for V15-only rows); all rows are v1.5-only envelopes. `backup stream`, `db migrate watch` and
 // `db shell` are stream or interactive and register nothing.
 // Constraints: registers from init(); see registry_types.go for the rules.
 

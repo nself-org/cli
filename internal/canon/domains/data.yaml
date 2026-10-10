@@ -5,12 +5,12 @@ commands:
   # cmd/commands/backup_ops.go:23 RunE path changes no persistent state (prints/reads only)
   backup: {canon: core, side_effect: read}
   # cmd/commands/backup_config_status.go:21 prints the configuration; --install-cron writes systemd units
-  backup config: {side_effect: read, flags: {install-cron: {side_effect: write}}}
+  backup config: {side_effect: read, json: legacy, flags: {install-cron: {side_effect: write}}}
   # cmd/commands/backup_create_list.go:22 creates a local backup; --remote uploads it
   backup create: {side_effect: write, flags: {remote: {side_effect: remote}}}
-  backup drill: {side_effect: write}
+  backup drill: {side_effect: write, json: legacy}
   backup init-key: {side_effect: write}
-  backup list: {side_effect: read}
+  backup list: {side_effect: read, json: legacy}
   # cmd/commands/pitr.go:30 RunE path changes no persistent state (prints/reads only)
   backup pitr: {side_effect: read}
   backup pitr base-backup: {side_effect: write}
@@ -19,13 +19,13 @@ commands:
   # surface cli-only: overwrites the live data directory and has no consent flag or plan form; a flag is a behaviour change (debt)
   backup pitr restore: {side_effect: destructive, surface: cli-only}
   backup pitr status: {side_effect: read}
-  backup prune: {side_effect: destructive, confirm: {flags: []}}
+  backup prune: {side_effect: destructive, json: legacy, confirm: {flags: []}}
   backup restore: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/backup_restore.go:85 downloads a backup from a remote and restores it over the database
   backup restore-remote: {side_effect: destructive, confirm: {flags: [yes]}}
   backup resume: {side_effect: write}
   backup schedule: {side_effect: write}
-  backup status: {side_effect: read}
+  backup status: {side_effect: read, json: legacy}
   # cmd/commands/backup_key_stream.go:61 streams the backup to a remote destination (--to)
   # cmd/commands/backup_key_stream.go writes the archive bytes to the destination (stream, json none); an envelope would corrupt it
   backup stream: {side_effect: remote, output: stream} # writes archive bytes to the destination; stdout carries no document (stream, json none)
@@ -34,7 +34,7 @@ commands:
   # cmd/commands/db.go:27 RunE path changes no persistent state (prints/reads only)
   db: {canon: core, side_effect: read}
   db backup: {side_effect: write}
-  db backup list: {side_effect: read}
+  db backup list: {side_effect: read, json: legacy}
   # cmd/commands/db_pitr_ops.go:116 uploads local backups to the remote destination (--remote); name is not sync-shaped
   db backup-sync: {side_effect: remote, confirm: {flags: []}}
   # cmd/commands/db_pitr_ops.go:162 RunE path changes no persistent state (prints/reads only)
@@ -78,7 +78,7 @@ commands:
   db import firebase: {side_effect: write}
   db import supabase: {side_effect: write}
   # cmd/commands/db_lint.go:18 RunE path changes no persistent state (prints/reads only)
-  db lint: {side_effect: read}
+  db lint: {side_effect: read, json: legacy}
   db list: {side_effect: read}
   # cmd/commands/db.go:37 RunE path changes no persistent state (prints/reads only)
   db migrate: {side_effect: read}
@@ -130,7 +130,7 @@ commands:
   db rls apply: {side_effect: write}
   db rls apply-table: {side_effect: write}
   # cmd/commands/db_rls.go:42 RunE path changes no persistent state (prints/reads only)
-  db rls audit: {side_effect: read}
+  db rls audit: {side_effect: read, json: legacy}
   # cmd/commands/db_rls.go:211 prints rollback SQL only; does not execute it
   db rls rollback: {side_effect: read}
   db seed: {side_effect: write}
@@ -164,8 +164,8 @@ commands:
   db verify-checksums: {side_effect: read}
   # cmd/commands/template.go:47 RunE path changes no persistent state (prints/reads only)
   init template: {side_effect: read}
-  init template info: {side_effect: read}
-  init template list: {side_effect: read}
+  init template info: {side_effect: read, json: legacy}
+  init template list: {side_effect: read, json: legacy}
   init template publish: {side_effect: remote, confirm: {flags: []}}
   # cmd/commands/template_publish_update.go:89 applies pending template migrations; --force allows DROP/TRUNCATE ones
   init template update: {side_effect: write, flags: {force: {side_effect: destructive}}}
