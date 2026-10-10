@@ -290,7 +290,7 @@ func parseReturn(d *Block) (ret *Return, ok, lossy bool) {
 		return ret, true, false
 	}
 	to := d.Arg(1)
-	if code < 301 || code > 308 || !(strings.HasPrefix(to, "https://") || strings.HasPrefix(to, "http://") || strings.HasPrefix(to, "/")) {
+	if code < 301 || code > 308 || !strings.HasPrefix(to, "/") && !strings.HasPrefix(to, "http://") && !strings.HasPrefix(to, "https://") {
 		return nil, false, false
 	}
 	ret.To = &to

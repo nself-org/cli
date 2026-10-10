@@ -118,7 +118,7 @@ func Parse(text string) ([]*Block, error) {
 	}
 	for i := 0; i < len(text); {
 		switch c := text[i]; {
-		case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v':
+		case strings.IndexByte(" \t\n\r\f\v", c) >= 0:
 			i++
 		case c == '#':
 			for i < len(text) && text[i] != '\n' {
