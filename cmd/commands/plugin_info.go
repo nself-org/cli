@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -66,15 +68,14 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("fetching registry: %w", err)
 	}
 
-	var manifest *plugin.PluginManifest
-	for i := range reg.Plugins {
-		if strings.EqualFold(reg.Plugins[i].Name, name) {
-			manifest = &reg.Plugins[i]
-			break
-		}
-	}
+	pluginDir := resolvePluginDir()
+	manifest, tier, tierReason := pluginInfoTier(ctx, reg, name, pluginDir)
 	if manifest == nil {
 		return fmt.Errorf("plugin %q not found in registry", name)
+	}
+
+	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON {
+		return writePluginInfoJSON(cmd, manifest, tier, tierReason)
 	}
 
 	// Display plugin details.
@@ -84,7 +85,15 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 	tbl.AddRow("Description", manifest.Description)
 	tbl.AddRow("Category", manifest.Category)
 	tbl.AddRow("License", manifest.License)
-	tbl.AddRow("Tier", manifest.Tier)
+	// compat.V15(P7-PLUG-17): the Tier row shows the registry word -> shows the licence word and why (Tier reason)
+	if compat.V15() {
+		tbl.AddRow("Tier", tier)
+		if tierReason != "" {
+			tbl.AddRow("Tier reason", tierReason)
+		}
+	} else {
+		tbl.AddRow("Tier", manifest.Tier)
+	}
 
 	if manifest.Author != "" {
 		tbl.AddRow("Author", manifest.Author)
@@ -130,7 +139,6 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if installed locally.
-	pluginDir := resolvePluginDir()
 	installed, err := plugin.ListInstalled(pluginDir)
 	if err == nil {
 		for _, p := range installed {
@@ -145,6 +153,68 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Install:     nself plugin install %s\n", name)
 
 	return nil
+}
+
+// pluginInfoTier picks the registry entry to describe and the tier (licence
+// vocabulary) and reason to report. An installed plugin reports the tier it is
+// installed as, with reason "installed". Otherwise v1.5 describes the entry an
+// install would pick; v1.4 keeps the first registry match.
+func pluginInfoTier(ctx context.Context, reg *plugin.Registry, name, pluginDir string) (*plugin.PluginManifest, string, string) {
+	var first, match *plugin.PluginManifest
+	instTier, instReason, installed := plugin.InstalledTier(pluginDir, name)
+	for i := range reg.Plugins {
+		e := &reg.Plugins[i]
+		if !strings.EqualFold(e.Name, name) {
+			continue
+		}
+		if first == nil {
+			first = e
+		}
+		if installed && match == nil && plugin.LicenseValue(e.Tier) == instTier {
+			match = e
+		}
+	}
+	if first == nil {
+		return nil, "", ""
+	}
+	// compat.V15(P7-PLUG-17): info describes the first registry match -> describes the installed tier's entry, or the one an install would pick
+	if !compat.V15() {
+		if installed {
+			return first, instTier, instReason
+		}
+		return first, plugin.LicenseValue(first.Tier), ""
+	}
+	if installed {
+		if match == nil {
+			match = first
+		}
+		return match, instTier, instReason
+	}
+	if m, reason, err := plugin.ResolvePluginTier(ctx, reg, name, "", "", nil); err == nil {
+		return m, plugin.LicenseValue(m.Tier), reason
+	}
+	return first, plugin.LicenseValue(first.Tier), ""
+}
+
+// writePluginInfoJSON prints `plugin info --json`: the registry fields plus
+// the reported tier (free or licensed) and why.
+func writePluginInfoJSON(cmd *cobra.Command, m *plugin.PluginManifest, tier, reason string) error {
+	out := struct {
+		Name        string `json:"name"`
+		Version     string `json:"version"`
+		Description string `json:"description"`
+		Category    string `json:"category"`
+		License     string `json:"license"`
+		Tier        string `json:"tier"`
+		TierReason  string `json:"tier_reason"`
+		Port        int    `json:"port,omitempty"`
+	}{m.Name, m.Version, m.Description, m.Category, m.License, tier, reason, m.Port}
+	data, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(cmd.OutOrStdout(), string(data))
+	return err
 }
 
 // permissionRiskPrefix returns a short risk label for a permission string.
