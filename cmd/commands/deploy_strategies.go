@@ -3,17 +3,20 @@ package commands
 // Purpose: shared deploy-strategy tables and the rolling-restart and health-check
 // helpers used by runDeploy. Inputs are the target workdir and strategy name;
 // outputs are per-step results consumed by the deploy command's summary.
-// Constraints: split out of deploy.go (CLI-R12) as a pure move, no behavior change.
+// Constraints: every docker call goes through internal/docker (docker funnel);
+// the rolling restart reads the compose manifest and env files like restart.
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/hasura"
 )
 
@@ -43,63 +46,111 @@ var deployServiceOrder = []string{
 	"plugins",
 }
 
-// runRollingRestart performs a per-service sequenced restart with health-
-// gating between each service. The restart order is resolved from the
-// project's own compose file (projectServiceOrder), never a hardcoded list —
-// restarting a service name that doesn't exist in this project's compose
-// aborts the whole deploy after earlier services have already been
-// recreated (production incident 2026-09-20: a project whose compose named
-// object storage "minio" was restarted against the old fixed list's
-// "storage", which does not exist in any project's compose).
-// It calls "docker compose up -d --no-deps <service>" per entry and waits
-// up to 60s for service_healthy before continuing. The deploy halts on the
-// first unhealthy service with a clear error and a pointer to nself logs.
+// rollingPlan is everything one rolling restart needs. compose carries the
+// manifest files and env files; clock is injectable so the gate's 30 s and
+// 60 s limits are testable without waiting.
+type rollingPlan struct {
+	compose *docker.Compose
+	workdir string
+	order   []string
+	specs   []docker.ServiceSpec
+	clock   docker.Clock
+	jsonOut bool
+}
+
+// runRollingRestart performs a per-service sequenced restart with a health
+// gate between each service (D17). Everything goes through docker.NewCompose
+// over .nself/compose-files.txt with build.ComposeEnvFiles, as restart does,
+// so plugin fragments and the variables computed for them are included. The
+// order is `docker compose config --services` over that manifest (plugin
+// services last), never a hardcoded list: a fixed list restarted a service
+// that did not exist and aborted a real deploy half way (production incident
+// 2026-09-20). Each service is brought up with `up -d --no-deps` and then
+// gated by kind: healthcheck declared -> healthy within 60s; restart "no"
+// (one-shot) -> exited 0; otherwise running within 30s. The deploy halts on
+// the first failure and names the service.
 func runRollingRestart(ctx context.Context, workdir string, jsonOut bool) ([]deployStep, error) {
-	order, err := projectServiceOrder(ctx, workdir)
+	compose, files, err := deployCompose(workdir)
+	if err != nil {
+		return nil, fmt.Errorf("rolling restart: %w", err)
+	}
+	order, err := projectServiceOrder(ctx, compose, workdir, files)
 	if err != nil {
 		return nil, fmt.Errorf("rolling restart: resolving project service order: %w", err)
 	}
+	specs, err := docker.ComposeServiceSpecs(ctx, compose, workdir)
+	if err != nil {
+		return nil, fmt.Errorf("rolling restart: reading resolved service config: %w", err)
+	}
+	return rollingRestart(ctx, rollingPlan{compose: compose, workdir: workdir, order: order, specs: specs, jsonOut: jsonOut})
+}
+
+// rollingRestart runs plan: up each service, then gate it.
+func rollingRestart(ctx context.Context, plan rollingPlan) ([]deployStep, error) {
+	byName := make(map[string]docker.ServiceSpec, len(plan.specs))
+	for _, sp := range plan.specs {
+		byName[sp.Name] = sp
+	}
 	steps := []deployStep{}
-	for _, svc := range order {
-		if !jsonOut {
+	for _, svc := range plan.order {
+		stepName := fmt.Sprintf("Restart %s", svc)
+		if !plan.jsonOut {
 			fmt.Printf("  [running] Restart %s (sequenced rolling)\n", svc)
 		}
-		// Restart the service.
-		c := exec.CommandContext(ctx, "docker", "compose", "up", "-d", "--no-deps", svc)
-		c.Dir = workdir
-		c.Env = os.Environ()
-		if out, err := c.CombinedOutput(); err != nil {
-			steps = append(steps, deployStep{Name: fmt.Sprintf("Restart %s", svc), Status: "failed"})
-			return steps, fmt.Errorf("rolling restart: service %s restart failed: %w\nOutput: %s\nRun 'nself logs %s' for details", svc, err, strings.TrimSpace(string(out)), svc)
+		if err := plan.compose.ComposeUpNoDeps(ctx, plan.workdir, svc); err != nil {
+			steps = append(steps, deployStep{Name: stepName, Status: "failed"})
+			return steps, fmt.Errorf("rolling restart: service %s restart failed: %w\nRun 'nself logs %s' for details", svc, err, svc)
 		}
-
-		// Health-gate: poll for service_healthy up to 60s.
-		if !jsonOut {
-			fmt.Printf("  [waiting] Waiting for service_healthy: %s (max 60s)\n", svc)
+		spec, ok := byName[svc]
+		if !ok {
+			spec = docker.ServiceSpec{Name: svc}
 		}
-		deadline := time.Now().Add(60 * time.Second)
-		healthy := false
-		for time.Now().Before(deadline) {
-			out, err := exec.CommandContext(ctx, "docker", "compose", "ps", "--format", "{{.Name}}\t{{.Health}}", svc).Output()
-			if err == nil {
-				line := strings.TrimSpace(string(out))
-				if strings.Contains(line, "healthy") && !strings.Contains(line, "unhealthy") {
-					healthy = true
-					break
-				}
-			}
-			time.Sleep(2 * time.Second)
+		if !plan.jsonOut {
+			fmt.Printf("  [waiting] Waiting for %s (%s)\n", svc, gateKind(spec))
 		}
-		if !healthy {
-			steps = append(steps, deployStep{Name: fmt.Sprintf("Restart %s", svc), Status: "unhealthy"})
-			return steps, fmt.Errorf("rolling restart: service %s did not become healthy within 60s. Run 'nself logs %s' for details", svc, svc)
+		states := func(c context.Context) ([]docker.ContainerState, error) {
+			return plan.compose.ComposeServiceStates(c, plan.workdir, svc)
 		}
-		steps = append(steps, deployStep{Name: fmt.Sprintf("Restart %s", svc), Status: "done"})
-		if !jsonOut {
-			fmt.Printf("  [done] %s healthy\n", svc)
+		if err := docker.HealthGate(ctx, spec, states, plan.clock); err != nil {
+			return append(steps, deployStep{Name: stepName, Status: gateFailStatus(err)}), gateError(svc, err)
+		}
+		steps = append(steps, deployStep{Name: stepName, Status: "done"})
+		if !plan.jsonOut {
+			fmt.Printf("  [done] %s ready\n", svc)
 		}
 	}
 	return steps, nil
+}
+
+// gateKind names what the gate waits for, for the progress line.
+func gateKind(sp docker.ServiceSpec) string {
+	switch {
+	case sp.OneShot():
+		return "one-shot: exit 0, max 60s"
+	case sp.HasHealthcheck:
+		return "healthy, max 60s"
+	default:
+		return "running, max 30s"
+	}
+}
+
+// gateFailStatus is the step status for a gate error.
+func gateFailStatus(err error) string {
+	if errors.Is(err, docker.ErrGateTimeout) {
+		return "unhealthy"
+	}
+	return "failed"
+}
+
+// gateError wraps a gate failure in its error code: E250 when the service is
+// broken (a one-shot exited non-zero), E251 when it was too slow, E250 for
+// anything else (a state read that failed is still an unhealthy answer).
+func gateError(svc string, err error) error {
+	code := "E250"
+	if errors.Is(err, docker.ErrGateTimeout) {
+		code = "E251"
+	}
+	return errs.Wrap(code, fmt.Sprintf("rolling restart: %v. Run 'nself logs %s' for details", err, svc), err)
 }
 
 // runDeployHealthCheck calls nself doctor and gates the deploy result.

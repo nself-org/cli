@@ -8,8 +8,6 @@ cmd/commands/db_migrate.go 1
 cmd/commands/deploy_diagnostics.go 1
 cmd/commands/deploy_lifecycle.go 1
 cmd/commands/deploy_run.go 1
-cmd/commands/deploy_service_order.go 1
-cmd/commands/deploy_strategies.go 2
 cmd/commands/dev.go 2
 cmd/commands/doctor_checks_env.go 4
 cmd/commands/functions_deploy.go 1
