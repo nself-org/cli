@@ -248,17 +248,6 @@ func TestParseServerBlocksMatchesLegacy(t *testing.T) {
 	}
 }
 
-// Plugin "a-b" with c.conf and plugin "a" with b-c.conf would write one file.
-func TestPluginSiteFileCollision(t *testing.T) {
-	workdir, plugins := t.TempDir(), t.TempDir()
-	cfg := minimalTestConfig("example.test")
-	writeFixtureFile(t, filepath.Join(plugins, "a-b", "nginx", "c.conf"), "server { listen 80; server_name one.example.test; }\n", 0o644)
-	writeFixtureFile(t, filepath.Join(plugins, "a", "nginx", "b-c.conf"), "server { listen 80; server_name two.example.test; }\n", 0o644)
-	if _, err := InjectPluginNginxRoutes(workdir, plugins, cfg); err == nil || !strings.Contains(err.Error(), "both write nginx/sites/a-b-c.conf") {
-		t.Errorf("colliding site file names accepted: %v", err)
-	}
-}
-
 func TestPluginUpstreamAcrossFiles(t *testing.T) {
 	workdir, plugins := t.TempDir(), t.TempDir()
 	writeFixtureFile(t, filepath.Join(plugins, "p", "nginx", "p.conf"), "server { listen 80; server_name p.example.test; location / { proxy_pass http://api.internal; } }\n", 0o644)

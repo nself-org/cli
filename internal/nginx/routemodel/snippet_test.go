@@ -494,7 +494,7 @@ func TestSnippetDefaultListenAndNits(t *testing.T) {
 	}
 	for in, want := range map[string]bool{"1m1s": true, "1s1m": false, "1m1m": false, "1h30m": true, "1s500ms": false, "5": true} {
 		_, ok := parseSeconds(Tokenize("x " + in + ";")[0])
-		if ok != want && in != "1s500ms" {
+		if ok != want {
 			t.Errorf("parseSeconds(%s) ok=%v want %v", in, ok, want)
 		}
 	}

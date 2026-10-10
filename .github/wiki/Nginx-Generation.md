@@ -49,7 +49,7 @@ Each directive is read with a closed vocabulary. It is mapped to a model field, 
 | Directive | Result |
 |---|---|
 | `listen 80`, `listen 443 ssl [http2]` (also `[::]:` and `0.0.0.0:` forms) | `listen.http`, `listen.https` |
-| `server_name` (plain FQDNs) | `server_names`; a wildcard, regex, `_` or variable name keeps the directive in `unmodelled` |
+| `server_name` (plain FQDNs, lower-cased: nginx matches names without case) | `server_names`; a wildcard, regex, `_` or variable name keeps the directive in `unmodelled` |
 | `ssl_certificate`, `ssl_certificate_key` at `/etc/nginx/ssl/<dir>/fullchain.pem` and `privkey.pem` | `tls.ssl_dir`; another path or file name is `unmodelled` |
 | `ssl_protocols`, `ssl_ciphers` | `tls.protocols`, `tls.ciphers` (empty and `null` mean the http-level default) |
 | `return 30x https://$host$request_uri;` | `return` on a `/` location and `http_to_https_redirect: true`; another redirect target with a variable is mapped and also `unmodelled`; `return CODE;` maps to `return`; a body text stays `unmodelled` |
@@ -57,7 +57,7 @@ Each directive is read with a closed vocabulary. It is mapped to a model field, 
 | `proxy_pass http://host:port` or an `upstream` name with one `server` | `upstream`; a URI part (`http://h:1/v1/`) is mapped AND kept in `unmodelled`, because v1 cannot carry the path |
 | the four standard forwarded headers (`Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`, all present) | `forwarded_headers`; a partial set stays `unmodelled` |
 | `Upgrade $http_upgrade` with `Connection "upgrade"` | `websocket` |
-| other `proxy_set_header` with a literal value | `headers_set`; a value with a variable stays `unmodelled` |
+| other `proxy_set_header` with a literal value | `headers_set`; a value with a variable stays `unmodelled`. An empty value (`proxy_set_header Authorization "";`) is kept as `""` and means "do not pass this header to the upstream", as in nginx |
 | `proxy_connect_timeout`, `proxy_read_timeout`, `proxy_send_timeout` | `timeouts` in whole seconds; a sub-second or zero value stays `unmodelled` |
 | `client_max_body_size` with `k`, `m`, `g` | `max_body_bytes`; `0` (unlimited) stays `unmodelled` |
 | `access_log off` | `access_log: false` |
@@ -66,7 +66,7 @@ Each directive is read with a closed vocabulary. It is mapped to a model field, 
 | `keepalive`, `proxy_http_version`, `proxy_buffer_size`, `proxy_buffers`, `proxy_busy_buffers_size`, `http2`, `resolver`, a `set` used only for `proxy_pass` | no effect; not recorded |
 | anything else | `unmodelled`, verbatim |
 
-Timeouts, `client_max_body_size`, `access_log` and `proxy_set_header` written at server level apply to every location that does not set its own, as in nginx.
+Timeouts, `client_max_body_size`, `access_log` and `proxy_set_header` written at server level apply to every location that does not set its own, as in nginx. A server block with no `listen` listens on port 80, as in nginx. A location with both `return` and `proxy_pass` maps the `proxy_pass` and keeps the `return` in `unmodelled` (nginx always answers the `return`; v1 does not say which wins). Every top-level `upstream` is kept verbatim in `unmodelled_global`, even when its name resolves inside the file, because nginx upstreams are visible to every file; a `proxy_pass` to an upstream name defined in another file is `unmodelled`, never resolved as a DNS host.
 
 `unmodelled` is the fail-closed list for other providers: a route whose `unmodelled` is not empty has behaviour the model cannot say, so a provider that is not nginx must refuse it, never serve a partial route. The same holds for the top-level `unmodelled_global` list, which holds the directives outside any server block: `map`, `limit_req_zone`, an `upstream` with several servers, and the bare `location` blocks some plugin files ship without a server block. A snippet that does not parse is recorded there too. Snippets are third-party input; the reader is fuzzed and a test checks that every directive is mapped, ignored or recorded.
 

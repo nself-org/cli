@@ -244,7 +244,7 @@ func splitHostPort(s, scheme string) *hostPort {
 // seconds. Zero, sub-second remainders and unknown units are refused.
 func parseSeconds(d *Block) (int, bool) {
 	in := d.Arg(0)
-	units := map[string]int64{"": 1000, "ms": 1, "s": 1000, "m": 6000, "h": 3600000, "d": 86400000, "w": 604800000}
+	units := map[string]int64{"": 1000, "ms": 1, "s": 1000, "m": 60000, "h": 3600000, "d": 86400000, "w": 604800000}
 	var ms int64
 	prev := int64(1 << 62) // units must go from large to small, each at most once
 	for s := in; s != "" && len(d.Args) == 1; {
