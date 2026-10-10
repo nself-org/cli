@@ -136,7 +136,7 @@ nself init --fast
 |---|---|---|---|---|---|---|---|
 | `--cs-template` |  | `string` | `""` |  |  |  | Scaffold a custom service at init time: specify language (go, node, python, rust, other) |
 | `--demo` |  | `bool` | `false` |  |  |  | Auto-configure with all services enabled |
-| `--domain` |  | `string` | `""` |  |  |  | Base domain (default: local.nself.org; init never prompts for it, e.g. myapp.dev) |
+| `--domain` |  | `string` | `""` | `BASE_DOMAIN` |  |  | Base domain (default: local.nself.org; init never prompts for it, e.g. myapp.dev) |
 | `--dry-run` |  | `bool` | `false` |  |  |  | Print files that would be written without writing them (clone templates only) |
 | `--fast` |  | `bool` | `false` |  |  |  | Skip advanced options, use smart defaults |
 | `--force` |  | `bool` | `false` |  |  |  | Overwrite existing configuration |

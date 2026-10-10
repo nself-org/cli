@@ -144,7 +144,7 @@ A first build generates secrets, so `--plan-id` is refused for it (E451); confir
 | `--allow-insecure` |  | `bool` | `false` |  |  |  | Allow insecure config (dev only) |
 | `--allow-legacy` |  | `bool` | `false` |  |  |  | Bypass v0.9 artifact check and proceed with WARNING (not recommended) |
 | `--check` |  | `bool` | `false` |  |  |  | Validate only, don't build |
-| `--debug` |  | `bool` | `false` |  |  |  | Enable debug mode |
+| `--debug` |  | `bool` | `false` | `DEBUG` |  |  | Enable debug mode |
 | `--diff` |  | `bool` | `false` |  |  |  | Print unified diffs of the planned changes to stderr (env files show key names only) |
 | `--force` | `-f` | `bool` | `false` |  |  |  | Force rebuild all components and overwrite hand-edited generated files |
 | `--hosts` |  | `bool` | `false` |  |  |  | Opt in to /etc/hosts management for a BASE_DOMAIN that isn't a recognized local-dev domain (localhost/*.local.nself.org/*.localhost/*.local). Never overrides ENV=prod, which always skips /etc/hosts. |

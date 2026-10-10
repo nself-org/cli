@@ -21,6 +21,8 @@ commands:
   # cmd/commands/env_target_crud.go:204 removes one server entry from control-plane.yaml; `env target add` restores it (write, not destructive)
   config env target remove: {side_effect: write}
   config env use: {side_effect: write}
+  # cmd/commands/config_explain.go reads the env cascade files and prints where a key comes from; --reveal prints values, so it stays CLI-only
+  config explain: {side_effect: read, flags: {reveal: {cli_only: true}}}
   # cmd/commands/config_export_import.go:22 writes to stdout by default; --output escalates to write
   config export: {side_effect: read, flags: {output: {side_effect: write}}}
   # cmd/commands/feature.go:48 RunE path changes no persistent state (prints/reads only)

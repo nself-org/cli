@@ -121,7 +121,7 @@
             "deprecated": null,
             "required": false,
             "persistent": true,
-            "env": null,
+            "env": "ENV",
             "side_effect": null,
             "json": null,
             "output": null,
