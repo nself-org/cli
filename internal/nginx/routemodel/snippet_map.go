@@ -212,8 +212,8 @@ func (a *locAcc) proxyPass(d *Block) {
 // finish turns the collected proxy_set_header lines into flags and
 // headers_set and records `set` lines no proxy_pass used.
 func (a *locAcc) finish() {
-	if a.ret != nil && a.loc.Upstream != nil {
-		a.s.unm(a.ret) // nginx runs return before proxy_pass; the model has no precedence between them
+	if a.ret != nil && (a.loc.Upstream != nil || a.loc.DenyAll) {
+		a.s.unm(a.ret) // nginx runs return before proxy_pass and before deny (rewrite phase before access); the model has no precedence for either
 	}
 	by := map[string]*hdr{}
 	for i := range a.hdrs {

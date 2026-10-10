@@ -125,7 +125,7 @@ func Parse(text string) ([]*Block, error) {
 	}
 	for i := 0; i < len(text); {
 		switch c := text[i]; {
-		case strings.IndexByte(" \t\n\r\f\v", c) >= 0:
+		case strings.IndexByte(" \t\n\r", c) >= 0:
 			i++
 		case c == '#':
 			for i < len(text) && text[i] != '\n' {
@@ -171,24 +171,30 @@ func Parse(text string) ([]*Block, error) {
 
 // readWord reads one word from s the way ngx_conf_read_token does. A quote
 // opens a quoted span only at the start of the word; a backslash escapes the
-// next byte; an unquoted word ends at whitespace, `;` or `{` (a `{` after `$`
-// is part of ${name}); a `}` inside a word is literal. ok is false for an open
+// next byte; an unquoted word ends at space, tab, CR, LF (never form feed or
+// vertical tab: nginx reads those as word bytes), `;` or `{` (a `{` after an
+// unescaped `$` is part of ${name}); a `}` inside a word is literal. ok is false for an open
 // quote and for text glued to a closing quote.
 func readWord(s string) (word string, n int, ok bool) {
 	q := byte(0)
 	if s[0] == '"' || s[0] == '\'' {
 		q, n = s[0], 1
 	}
+	inVar := false // set by an unescaped `$`, kept by `{`, cleared by any other byte
 	for n < len(s) {
 		switch c := s[n]; {
 		case c == '\\':
+			inVar = false
 			n = min(n+2, len(s))
 		case q != 0 && c == q:
 			n++
-			return s[:n], n, n == len(s) || strings.IndexByte(" \t\r\n\f\v;{)", s[n]) >= 0
-		case q == 0 && (strings.IndexByte(" \t\r\n\f\v;", c) >= 0 || (c == '{' && n > 0 && s[n-1] != '$')):
+			return s[:n], n, n == len(s) || strings.IndexByte(" \t\r\n;{)", s[n]) >= 0
+		case q == 0 && c == '{' && inVar && n > 0:
+			n++
+		case q == 0 && (strings.IndexByte(" \t\r\n;", c) >= 0 || c == '{'):
 			return s[:n], n, true
 		default:
+			inVar = c == '$'
 			n++
 		}
 	}

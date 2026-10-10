@@ -242,6 +242,14 @@ func TestParseServerBlocksMatchesLegacy(t *testing.T) {
 			t.Errorf("parseServerBlocks differs from origin/main's parser:\n%q\n got %+v\nwant %+v", in, got, want)
 		}
 	}
+	// N1 proof D: a # after a form feed or vertical tab is no comment in nginx, so
+	// the server_name behind it still counts (origin/main's parser misses it).
+	for _, sep := range []string{"\f", "\v"} {
+		in := "server { listen 80; set $x a" + sep + "#; server_name taken.example.com; set $y b\n; }"
+		if c := claimsOf(in); !c["80|taken.example.com"] {
+			t.Errorf("claimsOf misses a server_name behind %q then #: %v", sep, c)
+		}
+	}
 	// the reviewer's duplicate server_name: both conflict checks must still see it
 	if c := claimsOf(inputs[0]); !c["80|taken.example.com"] {
 		t.Errorf("claimsOf misses a server_name hidden behind a mid-word quote: %v", c)

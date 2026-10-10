@@ -27,7 +27,7 @@ func scanWords(text string) []string {
 	scan:
 		for i := 0; i < len(line); i++ {
 			switch c := line[i]; {
-			case strings.IndexByte(" \t\r\f\v;{", c) >= 0 || (c == '}' && cur == ""):
+			case strings.IndexByte(" \t\r;{", c) >= 0 || (c == '}' && cur == ""):
 				flush()
 			case c == '#' && cur == "":
 				break scan
@@ -44,7 +44,7 @@ func FuzzSnippet(f *testing.F) {
 	for _, c := range corpusFiles() {
 		f.Add(c)
 	}
-	for _, s := range []string{"server{listen{}}", "", "{", "}", ";", "server{", "server {{{{ location / { proxy_pass $v; set $v http://a:1; }", "a \"b", "${", "$ {x}",
+	for _, s := range []string{"server{listen{}}", "", "{", "}", ";", "server{", "server {{{{ location / { proxy_pass $v; set $v http://a:1; }", "a \"b", "${", "$ {x}", "location / { proxy_pass http://127.0.0.1:3000; proxy_set_header X-A a\f#; deny all; }", "server { listen 80; set $x a\v#; server_name t.test; set $y b\n; }", "a\f\"; b; # \";", "a\x00b;", "a\\${b; c;}", "a${b};",
 		"upstream u { server a:1; } server { location / { proxy_pass http://u; } } upstream u { server b:2; }"} {
 		f.Add(s)
 	}

@@ -439,6 +439,41 @@ func TestSnippetNginxLexing(t *testing.T) {
 			t.Errorf("Tokenize(%q) = %q, want %q", in, got, want)
 		}
 	}
+	// N1: form feed and vertical tab are word bytes, not separators (nginx 1.27.5:
+	// each of these returns 403 / 418, the model must see the same directives).
+	for _, sep := range []string{"\f", "\v"} {
+		r = route(t, "server { listen 80; server_name a.test; location / { proxy_pass http://127.0.0.1:3000; proxy_set_header X-A a"+sep+"#; deny all; proxy_set_header X-B b\n; } }")
+		if l := r.Locations[0]; !l.DenyAll || l.HeadersSet["X-A"] != "a"+sep+"#" {
+			t.Errorf("%q then #: deny=%v headers=%v unmodelled=%v", sep, l.DenyAll, l.HeadersSet, r.Unmodelled)
+		}
+		r = route(t, "server { listen 80; server_name a.test; location / { proxy_pass http://127.0.0.1:3000; proxy_set_header X-A a"+sep+"\"; deny all; # \";\n } }")
+		if l := r.Locations[0]; !l.DenyAll || l.HeadersSet["X-A"] != "a"+sep+`"` {
+			t.Errorf("%q then quote: deny=%v headers=%v unmodelled=%v", sep, l.DenyAll, l.HeadersSet, r.Unmodelled)
+		}
+		r = route(t, "server { listen 80; server_name a.test; location / { proxy_pass http://127.0.0.1:3000; proxy_set_header X-A "+sep+"#; deny all; proxy_set_header X-B b\n; } }")
+		if l := r.Locations[0]; !l.DenyAll || l.HeadersSet["X-A"] != sep+"#" {
+			t.Errorf("word starting with %q then #: deny=%v headers=%v unmodelled=%v", sep, l.DenyAll, l.HeadersSet, r.Unmodelled)
+		}
+		if got := Tokenize("a" + sep + "b c;")[0]; len(got.Args) != 1 || got.Name != "a"+sep+"b" {
+			t.Errorf("%q split a word: %+v", sep, got)
+		}
+		if _, err := Parse(`a "b"` + sep + "c;"); err == nil {
+			t.Errorf("%q accepted after a closing quote", sep)
+		}
+	}
+	// N3: an escaped $ does not make the next { part of a variable name.
+	if b := Tokenize(`a\${b; c {}`); len(b) != 1 || !b[0].Block || b[0].Name != `a\$` {
+		t.Errorf("escaped $ before {: %+v", b)
+	}
+	if b := Tokenize(`a${b} c;`); len(b) != 1 || b[0].Name != `a${b}` || b[0].Arg(0) != "c" {
+		t.Errorf("${name} must stay one word: %+v", b)
+	}
+	if b := Tokenize(`a${{b} c;`); len(b) != 1 || b[0].Name != `a${{b}` {
+		t.Errorf("nginx keeps a { after ${ in the word: %+v", b)
+	}
+	if b := Tokenize(`a$b{ c; }`); len(b) != 1 || !b[0].Block || b[0].Name != `a$b` {
+		t.Errorf("$b{ ends the word at { (variable flag cleared by b): %+v", b)
+	}
 	if b := Tokenize(`a "b"c;`); len(b) == 0 {
 		t.Error("no tree for glued quote")
 	}
@@ -487,6 +522,15 @@ func TestSnippetDefaultListenAndNits(t *testing.T) {
 		if !reflect.DeepEqual(r.Unmodelled, []string{"return 403;"}) {
 			t.Errorf("%q: unmodelled = %v", body, r.Unmodelled)
 		}
+	}
+	// N2: return runs before deny, so the pair needs a record, as return + proxy_pass does.
+	r = route(t, "server { listen 80; server_name a.test; location / { return 200; deny all; } }")
+	if !r.Locations[0].DenyAll || r.Locations[0].Return == nil || !reflect.DeepEqual(r.Unmodelled, []string{"return 200;"}) {
+		t.Errorf("return + deny all: %+v unmodelled=%v", r.Locations[0], r.Unmodelled)
+	}
+	r = route(t, "server { listen 80; server_name a.test; location / { return 204; limit_except GET { deny all; } } }")
+	if len(r.Unmodelled) != 0 {
+		t.Errorf("return + limit_except is modelled exactly: %v", r.Unmodelled)
 	}
 	r = route(t, "server { listen 80; server_name a.test; location / { deny all; deny 1.2.3.4; access_log off; access_log /x; } }")
 	if !r.Locations[0].DenyAll || r.Locations[0].AccessLog {
