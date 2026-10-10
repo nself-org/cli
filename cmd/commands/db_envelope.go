@@ -71,6 +71,7 @@ func dataEnv(run func(*cobra.Command, []string) error) func(*cobra.Command, []st
 // this fragment is a v1.5-only envelope with no flag-level JSON override, so
 // the registry is not consulted (a plain run never builds it).
 func jsonEnvelopeOn(cmd *cobra.Command) bool {
+	// compat.V15(P7-SURF-14): --json on the data commands is ignored or the pre-contract form -> v1 envelope
 	if !compat.V15() {
 		return false
 	}
