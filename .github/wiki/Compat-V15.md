@@ -89,6 +89,10 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-17 | fragments keep their own networks and ${DOCKER_NETWORK:-x} | missing networks attached, ${DOCKER_NETWORK:-x} written as ${DOCKER_NETWORK} | `internal/build/plugins_network_normalize.go` |
 | P7-PLUG-17 | info describes the first registry match | describes the installed tier's entry, or the one an install would pick | `cmd/commands/plugin_info.go` |
 | P7-PLUG-17 | the Tier row shows the registry word | shows the licence word and why (Tier reason) | `cmd/commands/plugin_info.go` |
+| P7-PLUG-19 | bundle install not app-ready exits 0 with a warning | E135 exit 2 | `internal/bundle/installer_appready.go` |
+| P7-PLUG-19 | bundle install reconciles only | also starts the stack and waits for app-ready | `cmd/commands/bundle_appready.go` |
+| P7-PLUG-19 | plugin install readiness failure warns | E118 exit 2 | `cmd/commands/plugin_install_readiness.go` |
+| P7-PLUG-19 | plugin install readiness setup problems warn | returned error | `cmd/commands/plugin_install_readiness.go` |
 | P7-PLUG-63 | bundle reply trusted for any key and bundle | only a signed reply naming this key, this bundle and a live window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache age from the unsigned fetched_at | the older of fetched_at and the signed jwt iat | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache trusted whatever the clock says | refused when the clock is behind the signed iat or the highest time seen | `internal/license/cache.go` |

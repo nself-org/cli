@@ -8,8 +8,13 @@ package commands
 // postgres/hasura/auth had already been recreated.
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/nself-org/cli/internal/docker"
 )
 
 // TestResolveServiceOrder_RealProjectCompose reproduces the exact production
@@ -129,4 +134,51 @@ func contains(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestServiceOrderManifest: the plugin set comes from the manifest's own
+// fragments (relative paths resolve against the workdir; the user override and
+// the image override never count; a service the base already defines is not a
+// plugin service), and the order is `config --services` over the manifest.
+func TestServiceOrderManifest(t *testing.T) {
+	dir := t.TempDir()
+	put := func(rel, body string) string {
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	base := put("docker-compose.yml", "services:\n  postgres: {}\n  hasura: {}\n")
+	frag := put(".nself/plugins/ntask.yml", "services:\n  ntask: {}\n  hasura: {}\n")
+	put("docker-compose.override.yml", "services:\n  from-override: {}\n")
+	img := put(docker.ImageOverrideFile, "services:\n  from-image-override: {}\n")
+	files := []string{base, frag, "docker-compose.override.yml", img, filepath.Join(dir, "gone.yml")}
+
+	got := manifestPluginServices(dir, files)
+	if !reflect.DeepEqual(got, map[string]bool{"ntask": true}) {
+		t.Fatalf("plugin services = %v, want only ntask", got)
+	}
+	if len(manifestPluginServices(dir, []string{base})) != 0 {
+		t.Error("a base-only manifest has no plugin services")
+	}
+
+	s := newRollingStack(t, []string{"ntask", "web", "postgres", "hasura"}, "{}")
+	compose, mfiles, err := deployCompose(s.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := projectServiceOrder(context.Background(), compose, s.dir, mfiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"postgres", "hasura", "web", "ntask"}; !reflect.DeepEqual(order, want) {
+		t.Fatalf("order = %v, want %v", order, want)
+	}
+	if !reflect.DeepEqual(compose.ComposeFiles, []string{s.base, s.plugin}) || len(compose.EnvFiles) != 2 {
+		t.Errorf("compose = files %v env %v, want the manifest and both env files", compose.ComposeFiles, compose.EnvFiles)
+	}
 }

@@ -104,7 +104,9 @@ func printPlan(out io.Writer, b Bundle, ch Channel, planned []string, pins Versi
 	if len(skipped) > 0 {
 		_, _ = fmt.Fprintf(out, "  skipped (not in registry, non-strict): %s\n", strings.Join(skipped, ", "))
 	}
-	if opts.Force {
+	if b.IsFree() {
+		_, _ = fmt.Fprintln(out, "  license: free bundle (no bundle entitlement call; each plugin's licence is still checked)")
+	} else if opts.Force {
 		_, _ = fmt.Fprintln(out, "  license: will validate (--force only skips same-version check)")
 	} else {
 		_, _ = fmt.Fprintln(out, "  license: will validate each plugin before any FS change")
@@ -112,14 +114,11 @@ func printPlan(out io.Writer, b Bundle, ch Channel, planned []string, pins Versi
 }
 
 // notInstallableError builds an actionable error for a bundle that
-// IsInstallable() rejected. The ɳSelf+ meta-bundle and the free Task Bundle
-// are deliberately not installable as a unit (design confirmed, Ruling 2 +
-// P6-E4-W3-S3-T10): ɳSelf+ has no SKU of its own (it's the union of every
-// paid bundle's entitlements) and free bundles need no license, so their
-// plugins install directly via `nself plugin install`, one at a time, with
-// zero license gate. Rather than a bare "not installable" message, name the
-// exact commands the operator should run instead so the refusal is
-// actionable, not a dead end.
+// IsInstallable() rejected. Since P7-PLUG-19 only the ɳSelf+ meta-bundle (no SKU
+// of its own: it is the union of every paid bundle's entitlements) and a bundle
+// with no plugins are refused; the free Task Bundle installs as a unit. Rather
+// than a bare "not installable" message, name what the operator should run
+// instead so the refusal is actionable, not a dead end.
 func notInstallableError(b Bundle) error {
 	if b.Slug == selfPlusSlug {
 		return fmt.Errorf(
@@ -127,17 +126,7 @@ func notInstallableError(b Bundle) error {
 			b.Slug,
 		)
 	}
-	if len(b.Plugins) == 0 {
-		return fmt.Errorf("bundle %q is not installable as a unit: it has no plugins", b.Slug)
-	}
-	cmds := make([]string, 0, len(b.Plugins))
-	for _, p := range b.Plugins {
-		cmds = append(cmds, "  nself plugin install "+p)
-	}
-	return fmt.Errorf(
-		"bundle %q is not installable as a unit: it is a free bundle, and its plugins need no license — install each one directly instead:\n%s",
-		b.Slug, strings.Join(cmds, "\n"),
-	)
+	return fmt.Errorf("bundle %q is not installable as a unit: it has no plugins", b.Slug)
 }
 
 // defaultLicenseChecker validates every paid plugin in the bundle has license

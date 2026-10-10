@@ -205,8 +205,8 @@ func TestLedgerLoadIsReadOnly(t *testing.T) {
 	if err != nil || persisted || len(l.Bundles) != 2 {
 		t.Fatalf("Load = persisted %v err %v bundles %d", persisted, err, len(l.Bundles))
 	}
-	if _, err := os.Stat(filepath.Join(s.root, ".nself")); !os.IsNotExist(err) {
-		t.Fatal("Load created .nself")
+	if _, err := os.Stat(filepath.Join(s.root, StateDirName)); !os.IsNotExist(err) {
+		t.Fatal("Load created " + StateDirName)
 	}
 	created, err := s.EnsureBootstrapped()
 	if err != nil || !created {
@@ -359,5 +359,31 @@ func TestLedgerSizeCap(t *testing.T) {
 	}
 	if _, err := Parse(big); err == nil {
 		t.Fatal("Parse accepted an oversized document")
+	}
+}
+
+// TestLedgerLivesInPluginDir: D-0284 option A. The ledger is
+// <pluginDir>/.nself-state/bundles.json, not a project file.
+func TestLedgerLivesInPluginDir(t *testing.T) {
+	needsFileLock(t)
+	dir := t.TempDir()
+	s := storeAt(dir)
+	if want := filepath.Join(dir, ".nself-state"); s.Dir() != want {
+		t.Fatalf("Dir = %s, want %s", s.Dir(), want)
+	}
+	if want := filepath.Join(dir, ".nself-state", "bundles.json"); s.Path() != want {
+		t.Fatalf("Path = %s, want %s", s.Path(), want)
+	}
+	if err := s.Update(addPlugin("x")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nself-state", "bundles.json")); err != nil {
+		t.Fatalf("ledger not written in the plugin dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nself")); !os.IsNotExist(err) {
+		t.Errorf("old project-style .nself dir was created: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nself-state", "bundles.json.lock")); err != nil {
+		t.Errorf("lock file is not next to the ledger: %v", err)
 	}
 }

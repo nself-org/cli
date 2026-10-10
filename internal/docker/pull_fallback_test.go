@@ -230,6 +230,39 @@ fi
 	}
 }
 
+// TestEnsureComposeImagesIgnoresStderrWarnings: compose prints a warning line
+// to stderr and the JSON to stdout; only stdout is parsed. A failing config
+// returns the stderr text in the error.
+func TestEnsureComposeImagesIgnoresStderrWarnings(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix shell fixture")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "docker")
+	script := `#!/bin/sh
+if [ "$1" = compose ]; then
+  echo 'time="2026-10-10T00:00:00Z" level=warning msg="the attribute version is obsolete"' >&2
+  if [ "$TEST_FAIL" = 1 ]; then echo 'time="2026-10-10T00:00:00Z" level=error msg="bad compose file"' >&2; exit 1; fi
+  printf '{"services":{"postgres":{"image":"postgres:16"}}}\n'
+else
+  echo 'unexpected docker command' >&2; exit 1
+fi
+`
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TEST_FAIL", "0")
+	changed, err := EnsureComposeImages(context.Background(), dir, &Compose{DockerPath: bin}, nil)
+	if err != nil || changed {
+		t.Fatalf("stderr warning must not break the JSON parse: changed=%v err=%v", changed, err)
+	}
+	t.Setenv("TEST_FAIL", "1")
+	_, err = EnsureComposeImages(context.Background(), dir, &Compose{DockerPath: bin}, nil)
+	if err == nil || !strings.Contains(err.Error(), "bad compose file") {
+		t.Fatalf("failure should carry stderr, got %v", err)
+	}
+}
+
 // requireDockerDaemon skips the calling test when the docker CLI is missing or
 // its daemon socket is unusable (daemon down, or a CI host user without access
 // to the socket, as on the cam CI host). On a GitHub Actions Linux runner
