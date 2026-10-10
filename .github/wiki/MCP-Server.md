@@ -12,9 +12,10 @@ A machine request names a command from the **machine registry** and gives typed 
 
 1. looks the command up in the registry (an unknown path is `E432`),
 2. applies the exposure rules (a refusal is `E421`, with the reason in `cause`),
-3. builds an argv from the typed parameters (a bad request is `E420`),
-4. runs `nself <path> --json ...` as a **child process of the same binary**, never in the server process,
-5. returns the child's single JSON document and its exit code, or an error envelope (`E422` for no single document, `E423` for a timeout).
+3. applies the confirmation gate (see [Gate](#gate)): the request runs, gets a confirmation back, or is refused (`E424`, `E425`),
+4. builds an argv from the typed parameters (a bad request is `E420`),
+5. runs `nself <path> --json ...` as a **child process of the same binary**, never in the server process,
+6. returns the child's single JSON document and its exit code, or an error envelope (`E422` for no single document, `E423` for a timeout).
 
 Running as a child keeps global state, `os.Exit` and the project operation lock identical to a typed command. There is no shell anywhere: every request value is exactly one argv element.
 
@@ -28,11 +29,11 @@ A command is served only when all of these hold:
 - its registry `surface` is not `cli-only` (for example `config export`),
 - its JSON support is `envelope`,
 - its effective output is `document`. Stream commands are served only as HTTP NDJSON, and only when the effective side effect is `read`,
-- its effective side effect is `read` or `write`.
+- its effective side effect is `read` or `write`, or it is `remote` or `destructive` and its registry row has a `confirm` block.
 
 The effective side effect and output apply the flags a request sets: a flag that escalates a command to `destructive`, or that switches a document command to `stream`, changes the verdict for that request.
 
-Remote and destructive commands are refused with `E421` ("no gate") until the confirmation gate ships. The gate will accept a plan id or a server-issued single-use nonce; it is not part of this page yet.
+A remote or destructive command without a `confirm` block is refused with `E421` ("no gate"). One with a block goes through the confirmation round trip below.
 
 Flags that are never exposed: `--json`, `--help`, the root switches, hidden, deprecated and `cli_only` flags (every `--reveal`), the consent and plan-id flags of a `confirm` block, and, in document mode, a flag that carries the `output: stream` override. Secret values never leave the process: a flag or argument marked `secret` in the registry is replaced by `[REDACTED]` in the request id and in any `E422` stderr tail.
 
@@ -121,3 +122,56 @@ A request without the right `Authorization: Bearer <token>` header gets `401 una
 - An accepted non-loopback start prints one warning that the bearer token crosses the network over cleartext HTTP. The server has no TLS: put a TLS terminator in front of it.
 
 The HTTP server sets `ReadHeaderTimeout` 10 s and `ReadTimeout` 30 s and no write timeout, so SSE streams stay open. Headers, bodies and tokens are never logged.
+
+## Gate
+
+The gate decides on the effective side effect of the request (flag escalation applied). A command's registry `confirm` block names its consent flags (`--yes`, `--force`, ...) and, optionally, its plan form (`plan.flag`, `plan.id_flag`).
+
+- Consent and plan-id flags belong to the invoker. A request that sets one is refused with `E425` before anything runs.
+- `read` runs.
+- `write` without a plan form runs, with no consent flags.
+- A command with a plan form and no `confirm`: the invoker runs the plan form once (`<path> --json --<plan.flag> ...`) and reads `data.plan_id` and `data.requires_confirmation` from the child's change plan. When `requires_confirmation` is true, or the class is `remote` or `destructive`, it returns a confirmation of kind `plan` whose `confirm` is the plan id. Otherwise it runs the command once with `--<id_flag>=<plan_id>`. A plan exec that fails returns the child's error envelope unchanged; a plan without a valid `plan_id` or `requires_confirmation` is `E422`.
+- `remote` or `destructive` without a plan form and no `confirm`: a confirmation of kind `request`, whose `confirm` is a nonce.
+- A server without a confirmation store refuses every remote and destructive command with `E421`.
+
+The gate is not a prompt-injection control: an agent that was told to confirm will confirm. The controls are the token, the loopback default, Host and Origin checks, request validation, the confirmation round trip and the audit log.
+
+## Confirmation round trip
+
+A confirmation is a success envelope (HTTP 428 on the HTTP API, `isError: false` over MCP) whose `data` is:
+
+```json
+{"confirmation_required": true, "kind": "request", "confirm": "<64 hex>", "side_effect": "destructive", "reason": "...", "plan": null}
+```
+
+For kind `plan`, `plan` is the child's change plan. Nothing has changed yet: the plan exec reads only.
+
+To go ahead, send the identical request again with `"confirm": "<value>"`.
+
+- Kind `plan`: the command runs with its consent flags and `--<id_flag>=<confirm>`. It recomputes its plan and refuses with `E450` when the state moved since the plan; that envelope comes back unchanged. Start again without `confirm` to get the new plan.
+- Kind `request`: the nonce is 32 random bytes from `crypto/rand`, held in the server's memory with a digest of the full, unredacted request (so a different secret value is a different request), valid for 10 minutes and good for one run. The confirmed call must present a live nonce for the identical request; the nonce is then spent and the command runs with its consent flags. A reused, expired or unknown nonce, a value the client computed (the request id included), or a different request is `E424`, and the nonce is spent either way. Nonces die with the server process: after a restart, start the round trip again. The server keeps at most 1024 live nonces.
+
+Mutations serialise through the project operation lock the child takes; contention in v1.5 mode is the child's `E460`.
+
+## Audit log
+
+Every non-read invocation and every refusal is appended to `~/.nself/logs/machine-audit.jsonl` (contract `cli.machine-audit` v1). Reads that run are not logged. The directory is created `0700` and the file `0600`; writers append under an exclusive file lock, and the file rotates at 10 MiB to `.1`, `.2`, `.3` (older ones are dropped).
+
+One compact JSON object per line, keys in this order:
+
+| Key | Value |
+|---|---|
+| `time` | RFC 3339 UTC with milliseconds |
+| `transport` | `mcp-stdio`, `mcp-sse`, `mcp-http` or `http` |
+| `project` | absolute project directory |
+| `command` | registry path |
+| `side_effect` | effective side effect |
+| `decision` | `run`, `confirmation_required` or `refused` |
+| `confirm_kind` | `plan`, `request` or `null` |
+| `request_id` | the request id (nonces are never logged) |
+| `request` | `{args, argv, flags}` with secret-marked args and flags, flag values whose name looks secret (`config.IsSecretKey`: SECRET, PASSWORD, KEY, TOKEN) and free-form argv items replaced by `"[REDACTED]"`, then the usual redaction on every string |
+| `exit_code` | the child's exit status, or `null` for a confirmation or an invoker refusal |
+| `error_code` | the invoker's `E42x`, the child's `error.code`, or `null` |
+| `duration_ms` | wall time of the invocation |
+
+A failed audit write prints one line with the operating-system error on the server's standard error (never the request) and does not stop the server.
