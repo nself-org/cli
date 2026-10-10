@@ -40,7 +40,7 @@ f 0644 project/.nself/compose-env-files.txt 7d3e777d4d376c34edad2c78f512e08ec2d1
 f 0644 project/.nself/compose-files.txt 25d73fff7b9c29b632245996fcb310ee06b61b0238473a0bf84c90e37f9184ff
 f 0644 project/.nself/dist/openapi.json dd0fe1e385e794d0d382290a08f71b0056a87564a4616e28f5fc66eb94f82479
 f 0644 project/.nself/dist/scalar.html 650a899517b6771cb32ebacf366efb67e25583b475fa9de342b04dadff732c44
-f 0644 project/.nself/generated/routes.json 3c96c43c4aea0587589d5a3bed32e1a5290e492188727a51e30869f0ae81a2a3
+f 0644 project/.nself/generated/routes.json 0f0f9e977a23a13a384b6b24c77381ef0fcf61a3c92c60c9317dfbc33b565a8d
 f 0644 project/monitoring/loki.yml e8c903c6cf8227a401796e2389f7c1676e6d5593db8ce7999b346e4f421e3961
 f 0644 project/monitoring/prometheus.yml 675b28186f2f4f5c63bdc24abb374ba1694db8de24bfae7a72537baa5fe5f820
 f 0644 project/monitoring/promtail.yml 7e3cb278089764c12294a58d362edbb30e1ff18da47fe76687f28b10519dac96

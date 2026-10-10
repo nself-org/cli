@@ -29,9 +29,46 @@ nginx/
 
 Each build writes `.nself/generated/routes.json`, version 1 of the proxy route contract. Its `_generated` key identifies the file as build output. The file describes the project and environment, HTTP defaults, the default server, rate zones, and every generated core, optional, custom service, frontend, and internal route. Route entries include their source, server names, TLS settings, security headers, blocked paths, upstream locations, rate limits, and any `shadowed_by` hand-managed file. Routes and zones have stable ordering. Hostnames, ports, and paths are included; credentials are excluded.
 
-The nginx renderer reads this model. A route suppressed by a hand-managed `conf.d` file remains in the JSON with `shadowed_by` set, while its generated `nginx/sites/` file is omitted. Plugin snippets and hand-managed server blocks are represented by a later contract extension.
+The nginx renderer reads this model. A route suppressed by a hand-managed `conf.d` file remains in the JSON with `shadowed_by` set, while its generated `nginx/sites/` file is omitted. Plugin snippets and hand-managed server blocks are in the same file; see [Plugin and hand-managed routes](#plugin-and-hand-managed-routes).
 
 Duplicate generated domains use the compatibility gate: v1.4 keeps the existing build preflight refusal text for duplicates it already detects and warns once for additional duplicates found by the renderer. With `NSELF_V15=1`, every duplicate is refused as E055 with both route IDs. Give each service a distinct route before rebuilding.
+
+## Plugin and hand-managed routes
+
+`routes.json` also describes the nginx files nself does not render itself: every `nginx/*.conf` a plugin ships (copied unchanged to `nginx/sites/<plugin>-<file>`) and every hand-managed `nginx/conf.d/*.conf` and `nginx/conf.d-<env>/*.conf` (not `default.conf`). Each `server { }` block becomes one route:
+
+| Route | `source` | `id` | `file` |
+|---|---|---|---|
+| Plugin snippet | `plugin` | `plugin:<plugin>/<file>#<k>` | `nginx/sites/<plugin>-<file>` |
+| Hand-managed file | `hand_managed` | `hand:<file>#<k>` (`hand:<conf.d-env>/<file>#<k>` for an env directory) | `nginx/conf.d/<file>` |
+
+`<k>` is the 1-based index of the server block in the file. A usual snippet has two blocks for one name (port 80 redirect, port 443 proxy), so one name can appear in two routes. nginx behaviour does not change: plugin files are still copied byte for byte and hand-managed files are never touched.
+
+Each directive is read with a closed vocabulary. It is mapped to a model field, judged to have no effect a second provider could observe, or copied word for word into the route's `unmodelled` list. Nothing is evaluated: no `include`, `map` or `if`, and a variable is substituted only for `set $v <url>;` followed by `proxy_pass $v;` in the same location or server.
+
+| Directive | Result |
+|---|---|
+| `listen 80`, `listen 443 ssl [http2]` (also `[::]:` and `0.0.0.0:` forms) | `listen.http`, `listen.https` |
+| `server_name` (plain FQDNs) | `server_names`; a wildcard, regex, `_` or variable name keeps the directive in `unmodelled` |
+| `ssl_certificate`, `ssl_certificate_key` at `/etc/nginx/ssl/<dir>/fullchain.pem` and `privkey.pem` | `tls.ssl_dir`; another path or file name is `unmodelled` |
+| `ssl_protocols`, `ssl_ciphers` | `tls.protocols`, `tls.ciphers` (empty and `null` mean the http-level default) |
+| `return 30x https://$host$request_uri;` | `return` on a `/` location and `http_to_https_redirect: true`; another redirect target with a variable is mapped and also `unmodelled`; `return CODE;` maps to `return`; a body text stays `unmodelled` |
+| `location /p` and `location = /p` | `locations` with `match` `prefix` or `exact`; regex, `^~`, named, nested and repeated locations stay `unmodelled` whole |
+| `proxy_pass http://host:port` or an `upstream` name with one `server` | `upstream`; a URI part (`http://h:1/v1/`) is mapped AND kept in `unmodelled`, because v1 cannot carry the path |
+| the four standard forwarded headers (`Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`, all present) | `forwarded_headers`; a partial set stays `unmodelled` |
+| `Upgrade $http_upgrade` with `Connection "upgrade"` | `websocket` |
+| other `proxy_set_header` with a literal value | `headers_set`; a value with a variable stays `unmodelled` |
+| `proxy_connect_timeout`, `proxy_read_timeout`, `proxy_send_timeout` | `timeouts` in whole seconds; a sub-second or zero value stays `unmodelled` |
+| `client_max_body_size` with `k`, `m`, `g` | `max_body_bytes`; `0` (unlimited) stays `unmodelled` |
+| `access_log off` | `access_log: false` |
+| `deny all` | `deny_all` |
+| `limit_except M... { deny all; }` | `methods` as written (nginx also allows HEAD when GET is listed) |
+| `keepalive`, `proxy_http_version`, `proxy_buffer_size`, `proxy_buffers`, `proxy_busy_buffers_size`, `http2`, `resolver`, a `set` used only for `proxy_pass` | no effect; not recorded |
+| anything else | `unmodelled`, verbatim |
+
+Timeouts, `client_max_body_size`, `access_log` and `proxy_set_header` written at server level apply to every location that does not set its own, as in nginx.
+
+`unmodelled` is the fail-closed list for other providers: a route whose `unmodelled` is not empty has behaviour the model cannot say, so a provider that is not nginx must refuse it, never serve a partial route. The same holds for the top-level `unmodelled_global` list, which holds the directives outside any server block: `map`, `limit_req_zone`, an `upstream` with several servers, and the bare `location` blocks some plugin files ship without a server block. A snippet that does not parse is recorded there too. Snippets are third-party input; the reader is fuzzed and a test checks that every directive is mapped, ignored or recorded.
 
 ---
 
