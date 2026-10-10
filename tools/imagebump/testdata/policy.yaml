@@ -1,0 +1,10 @@
+# Fixture policy for the imagebump golden test.
+schema_version: 1
+services:
+  patch-svc: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  minor-svc: {regex: '^(\d+)\.(\d+)\.(\d+)$', track: minor}
+  rc-svc: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: minor}
+  float-svc: {regex: '^latest$', track: patch}
+  manual-svc: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: manual}
+  current-svc: {regex: '^v(\d+)\.(\d+)\.(\d+)$', track: patch}
+  two-part-svc: {regex: '^(\d+)\.(\d+)$', track: patch}

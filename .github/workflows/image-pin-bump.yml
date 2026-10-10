@@ -1,0 +1,237 @@
+name: Image pin bump
+
+# Weekly reviewed bump of the image pins (ADR 0030 section 4, P7-HYG-34).
+#
+# Pins in internal/compose/images.yaml move only through one reviewed PR. Every
+# Monday this workflow runs tools/imagebump (policy: .github/image-bump-policy.yaml),
+# which rewrites the allowed versions and regenerates internal/compose/images.lock.json
+# through tools/imagelock -resolve. It then checks the result on the PR branch:
+# imagelock -check, the daily image probe (default-images-pullable.yml), the stack
+# smoke (e2e-golden-path.yml with source=local) and `mirror-images.sh --plan`. One PR
+# (branch chore/image-pins, label image-pins) carries the results and is updated in
+# place while it is open. It is never merged automatically.
+#
+# Pull requests opened with GITHUB_TOKEN do not start pull_request workflows, so the
+# probe and the smoke are dispatched explicitly on the branch head. Reviewers close
+# and reopen the PR to start the normal PR checks.
+#
+# After a merge that touches the lock, job mirror-apply publishes the mirrors with
+# `mirror-images.sh --apply` ONLY when the repository variable IMAGE_MIRROR_APPLY is
+# the string true. The owner sets it:
+#   gh variable set IMAGE_MIRROR_APPLY --body true -R nself-org/cli
+# Mirroring is a public push to docker.io/nself, so it stays off until then.
+#
+# dry_run_pr=true (workflow_dispatch) runs the whole flow on the throwaway branch
+# chore/image-pins-dry-run: no PR is opened, the rendered PR body goes to the job
+# summary, and the branch is deleted at the end.
+#
+# Concurrency is set per job (not at the top) so a queued weekly run can never
+# replace a queued post-merge mirror-apply run.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run_pr:
+        description: 'Run on a throwaway branch, open no PR, write the PR body to the job summary'
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches: [main]
+    paths:
+      - 'internal/compose/images.lock.json'
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -mod=vendor
+  CGO_ENABLED: '0'
+
+jobs:
+  bump:
+    name: Propose pin bumps and open the PR
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    concurrency:
+      group: image-pin-bump
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DRY_RUN_PR: ${{ inputs.dry_run_pr == true && 'true' || 'false' }}
+      BRANCH: ${{ inputs.dry_run_pr == true && 'chore/image-pins-dry-run' || 'chore/image-pins' }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Prepare the scratch directory
+        run: |
+          mkdir -p "$RUNNER_TEMP/pinbump"
+          echo "OUT=$RUNNER_TEMP/pinbump" >> "$GITHUB_ENV"
+
+      - name: Propose bumps and regenerate the lock
+        id: bump
+        run: |
+          set -euo pipefail
+          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          go run ./tools/imagebump | tee "$OUT/bumps.txt"
+          rc=0
+          go run ./tools/imagelock -check > "$OUT/lockcheck.txt" 2>&1 || rc=$?
+          cat "$OUT/lockcheck.txt"
+          echo "$rc" > "$OUT/lockcheck.rc"
+          if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+          if git diff --quiet; then
+            echo "no pin changes"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push the dry-run branch
+        id: dry_push
+        if: steps.bump.outputs.changed == 'true' && env.DRY_RUN_PR == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add internal/compose/images.yaml internal/compose/images.lock.json
+          git commit -m "chore(images): weekly image pin bump"
+          git push --force origin "$BRANCH"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure the image-pins label
+        if: steps.bump.outputs.changed == 'true' && env.DRY_RUN_PR != 'true'
+        run: gh label create image-pins --force --description "Weekly image pin bump" -R "$GITHUB_REPOSITORY"
+
+      - name: Open or update the PR
+        id: cpr
+        if: steps.bump.outputs.changed == 'true' && env.DRY_RUN_PR != 'true'
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7.0.8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/image-pins
+          add-paths: |
+            internal/compose/images.yaml
+            internal/compose/images.lock.json
+          commit-message: 'chore(images): weekly image pin bump'
+          title: 'chore(images): weekly image pin bump'
+          body: 'Weekly image pin bump. The body is replaced with the check results when the workflow finishes.'
+          labels: image-pins
+          delete-branch: false
+
+      - name: Find the branch head
+        id: head
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ "$DRY_RUN_PR" != 'true' ]; then
+            pr="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+            [ -n "$pr" ] || { echo "no open PR for $BRANCH" >&2; exit 1; }
+            echo "pr=$pr" >> "$GITHUB_OUTPUT"
+          fi
+          git fetch --no-tags origin "$BRANCH"
+          git checkout --detach "$sha"
+          git diff --stat "${{ steps.bump.outputs.base }}" "$sha" > "$OUT/diffstat.txt"
+
+      - name: Probe the pins (default-images-pullable.yml on the branch)
+        id: probe
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          rc=0
+          bash tools/imagebump/dispatch-wait.sh default-images-pullable.yml "$BRANCH" "${{ steps.head.outputs.sha }}" > "$OUT/probe.txt" || rc=$?
+          cat "$OUT/probe.txt"
+          echo "$rc" > "$OUT/probe.rc"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Stack smoke (e2e-golden-path.yml, source=local, on the branch)
+        id: smoke
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          rc=0
+          bash tools/imagebump/dispatch-wait.sh e2e-golden-path.yml "$BRANCH" "${{ steps.head.outputs.sha }}" -f source=local > "$OUT/smoke.txt" || rc=$?
+          cat "$OUT/smoke.txt"
+          echo "$rc" > "$OUT/smoke.rc"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Mirror plan (dry run; pushes nothing)
+        id: mirror
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          rc=0
+          bash scripts/images/mirror-images.sh --plan > "$OUT/mirror.out" 2> "$OUT/mirror.plan" || rc=$?
+          cat "$OUT/mirror.out"
+          echo "$rc" > "$OUT/mirror.rc"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+
+      - name: Write the PR body
+        if: steps.bump.outputs.changed == 'true' && always()
+        run: |
+          set -euo pipefail
+          bash tools/imagebump/render-body.sh "$OUT" > "$OUT/body.md"
+          if [ "$DRY_RUN_PR" = 'true' ]; then
+            cat "$OUT/body.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr edit "${{ steps.head.outputs.pr }}" --body-file "$OUT/body.md"
+          fi
+
+      - name: Delete the dry-run branch
+        if: always() && steps.dry_push.outcome != 'skipped'
+        run: |
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
+            git push origin --delete "$BRANCH"
+          fi
+
+      - name: Fail when a check failed
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          PROBE_RC: ${{ steps.probe.outputs.rc }}
+          SMOKE_RC: ${{ steps.smoke.outputs.rc }}
+          MIRROR_RC: ${{ steps.mirror.outputs.rc }}
+        run: |
+          fail=0
+          for pair in "probe:$PROBE_RC" "smoke:$SMOKE_RC" "mirror plan:$MIRROR_RC"; do
+            if [ "${pair#*:}" != "0" ]; then
+              echo "check failed: ${pair%%:*} (exit ${pair#*:})" >&2
+              fail=1
+            fi
+          done
+          exit "$fail"
+
+  mirror-apply:
+    name: Mirror the pinned images after merge (owner switch)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: image-pin-mirror-apply
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Skip unless the owner switch is on
+        if: vars.IMAGE_MIRROR_APPLY != 'true'
+        run: 'echo "skipped: IMAGE_MIRROR_APPLY != true"'
+
+      - name: Apply the mirrors
+        if: vars.IMAGE_MIRROR_APPLY == 'true'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          printf '%s' "$DOCKERHUB_TOKEN" | bash scripts/images/mirror-images.sh --apply --auth-user "$DOCKERHUB_USERNAME" --auth-token-stdin docker.io
