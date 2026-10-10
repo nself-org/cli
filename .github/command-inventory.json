@@ -345,6 +345,15 @@
         "hidden": false
       },
       {
+        "name": "explain",
+        "path": "nself config explain",
+        "short": "Explain where a configuration key comes from",
+        "hidden": false,
+        "flags": [
+          "--reveal"
+        ]
+      },
+      {
         "name": "export",
         "path": "nself config export",
         "short": "Export current config to a file or stdout",

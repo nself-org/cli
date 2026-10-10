@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "command": "uninstall",
+  "data": {
+    "removed": [
+      "docker-compose.yml",
+      "nginx/sites/app.conf",
+      ".nself/cache/"
+    ],
+    "kept_data": true
+  }
+}

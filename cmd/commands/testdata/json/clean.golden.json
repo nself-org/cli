@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "command": "clean",
+  "data": {
+    "removed": [
+      "docker-compose.yml",
+      "nginx/sites/app.conf",
+      ".nself/cache/"
+    ],
+    "host_prune": false
+  }
+}

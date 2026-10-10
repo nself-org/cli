@@ -58,6 +58,8 @@ nself env explain             # every file, whether it exists, precedence order
 nself env explain VAR         # which file wins for VAR (redacted; add --reveal for the value)
 ```
 
+**Flags that supply a key:** each command flag with a configuration meaning is bound to its key once (`internal/config/bindings/flags.yaml`), and `nself help --json` shows the key as the flag's `env` field. `nself config explain KEY` prints the key's default, the flags that supply it and the winning source; see [[Configuration-Precedence]].
+
 **Escape hatch:** `NSELF_LEGACY_ENV_ORDER=1` restores the pre-CLI-R18 order (`.env.dev → .env.{staging|prod} → .env.secrets → .env.local → .env → .env.ai`) for exactly one minor version, printing a warning naming the variable and removal version on every use. This exists only to unblock a project mid-migration — run `nself migrate` to move off it permanently. See [[cmd-migrate]] for exactly what the migration shim auto-fixes versus flags for manual review.
 
 ---

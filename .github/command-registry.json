@@ -2682,7 +2682,7 @@
           "deprecated": null,
           "required": false,
           "persistent": false,
-          "env": null,
+          "env": "DEBUG",
           "side_effect": null,
           "json": null,
           "output": null,
@@ -2969,7 +2969,15 @@
       "json": "envelope",
       "data_schema": "schemas/commands/build.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": {
+          "flag": "plan",
+          "id_flag": "plan-id"
+        }
+      },
       "surface": "all"
     },
     {
@@ -3898,7 +3906,7 @@
           "required": false,
           "persistent": false,
           "env": null,
-          "side_effect": null,
+          "side_effect": "destructive",
           "json": null,
           "output": null,
           "cli_only": false,
@@ -3924,12 +3932,17 @@
       ],
       "canon": "core",
       "target": null,
-      "side_effect": "destructive",
+      "side_effect": "write",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/clean.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -3983,7 +3996,7 @@
           "deprecated": null,
           "required": false,
           "persistent": true,
-          "env": null,
+          "env": "ENV",
           "side_effect": null,
           "json": null,
           "output": null,
@@ -4880,6 +4893,53 @@
       "output": "document",
       "json": "none",
       "data_schema": null,
+      "exit_codes": {},
+      "confirm": null,
+      "surface": "all"
+    },
+    {
+      "path": "nself config explain",
+      "name": "explain",
+      "parent": "nself config",
+      "summary": "Explain where a configuration key comes from",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [
+        {
+          "name": "key-or-command",
+          "required": true,
+          "variadic": true,
+          "secret": false
+        }
+      ],
+      "flags": [
+        {
+          "name": "reveal",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Show actual values instead of redacting them",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": true,
+          "secret": false
+        }
+      ],
+      "canon": "subcommand",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "envelope",
+      "data_schema": "schemas/commands/config-explain.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -7379,7 +7439,7 @@
           "deprecated": null,
           "required": false,
           "persistent": true,
-          "env": null,
+          "env": "ENV",
           "side_effect": null,
           "json": null,
           "output": null,
@@ -7886,7 +7946,7 @@
           "deprecated": null,
           "required": false,
           "persistent": true,
-          "env": null,
+          "env": "ENV",
           "side_effect": null,
           "json": null,
           "output": null,
@@ -12695,7 +12755,7 @@
           "deprecated": null,
           "required": false,
           "persistent": false,
-          "env": null,
+          "env": "ENV",
           "side_effect": null,
           "json": null,
           "output": null,
@@ -15804,7 +15864,7 @@
           "deprecated": null,
           "required": false,
           "persistent": false,
-          "env": null,
+          "env": "BASE_DOMAIN",
           "side_effect": null,
           "json": null,
           "output": null,
@@ -18687,10 +18747,15 @@
       "target": null,
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/reset.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -19984,7 +20049,7 @@
           "deprecated": null,
           "required": false,
           "persistent": false,
-          "env": null,
+          "env": "NSELF_SKIP_HEALTH_CHECKS",
           "side_effect": null,
           "json": null,
           "output": null,
@@ -20274,7 +20339,7 @@
           "deprecated": null,
           "required": false,
           "persistent": true,
-          "env": null,
+          "env": "ENV",
           "side_effect": null,
           "json": null,
           "output": null,
@@ -20596,7 +20661,7 @@
           "deprecated": null,
           "required": false,
           "persistent": false,
-          "env": null,
+          "env": "ENV",
           "side_effect": null,
           "json": null,
           "output": null,
@@ -20916,10 +20981,15 @@
       "target": "nself reset",
       "side_effect": "destructive",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/uninstall.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -21609,14 +21679,14 @@
     }
   ],
   "counts": {
-    "commands": 375,
+    "commands": 376,
     "top_level": 24,
     "core": 20,
     "pending": 4,
     "deprecated_shims": 43,
     "plugin": 10,
     "core_missing": [],
-    "json_envelope": 10,
+    "json_envelope": 14,
     "json_legacy": 48
   }
 }
