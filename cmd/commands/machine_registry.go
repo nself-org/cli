@@ -101,6 +101,14 @@ func buildMachineRegistry() (*cmdregistry.Registry, error) {
 	if buildErr != nil {
 		return nil, fmt.Errorf("machine registry: %w", buildErr)
 	}
+	// Flag.env comes from the one config-bindings declaration, as in buildRegistry.
+	b, err := configBindings()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmdregistry.ApplyFlagEnv(reg, b.FlagEnv(), bindingMoves(), true); err != nil {
+		return nil, fmt.Errorf("machine registry: %w", err)
+	}
 	return reg, nil
 }
 
