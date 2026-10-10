@@ -71,6 +71,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-DEPL-14 | unrestricted inventory writes | prod-class confirmation. | `cmd/commands/access_targets.go` |
 | P7-LIVE-03 | a lock held by another command does not stop a build (it takes the O_EXCL build.lock) | a lock held by another command refuses the build | `internal/build/build_lock.go` |
 | P7-LIVE-03 | a prod-class or hand-edited change proceeds with a notice | refused with E403 without --yes or --force | `internal/reconcile/apply.go` |
+| P7-LIVE-05 | env line written, regeneration left to the next build | plan, confirm (prod-class), write the line, regenerate | `cmd/commands/config_set_plan.go` |
 | P7-LIVE-06 | plugin install leaves generated state for a later build | reconcile now | `cmd/commands/plugin_install.go` |
 | P7-LIVE-06 | plugin removal leaves generated state for a later build | reconcile now | `cmd/commands/plugin_lifecycle.go` |
 | P7-LIVE-06 | post-install build hint | automatic reconcile | `cmd/commands/plugin_install.go` |

@@ -118,13 +118,29 @@ type overlayCase struct {
 	name, fixture, file, key, value string
 	prep                            func(t *testing.T, f *fixture)
 	wantKinds                       []ArtifactKind
-	fresh                           bool // plan a never-built project (no apply first)
+	fresh                           bool                           // plan a never-built project (no apply first)
+	after                           func(t *testing.T, f *fixture) // runs after the baseline apply
 }
 
 var overlayCases = []overlayCase{
 	{name: "base domain", fixture: "dev-minimal", file: ".env", key: "BASE_DOMAIN", value: "other.test",
 		wantKinds: []ArtifactKind{KindCompose, KindNginx}},
-	{name: "env to staging", fixture: "dev-minimal", file: ".env", key: "ENV", value: "staging"},
+	// ENV picks the cascade layer: the overlay's ENV must select .env.staging.
+	{name: "env to staging", fixture: "dev-minimal", file: ".env", key: "ENV", value: "staging",
+		prep: func(t *testing.T, f *fixture) {
+			writeFile(t, filepath.Join(f.project, ".env.staging"), "BASE_DOMAIN=staging.test\n", 0o600)
+		}, wantKinds: []ArtifactKind{KindCompose, KindNginx}},
+	// config set leaves the file 0600, so the plan must not chmod it.
+	{name: "loose env mode", fixture: "dev-minimal", file: ".env", key: "BASE_DOMAIN", value: "other.test",
+		after: func(t *testing.T, f *fixture) {
+			if err := os.Chmod(filepath.Join(f.project, ".env"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	// The build appends a generated secret to the pending .env.secrets bytes.
+	{name: "persist appends to pending secrets", fixture: "dev-minimal", file: ".env.secrets", key: "SMTP_PASSWORD", value: "Vt4pN8sQ2xL6mK9rB3wY7cF1hJ5dG0aZu",
+		prep: func(t *testing.T, f *fixture) { dropEnvKey(t, f, "PLUGIN_INTERNAL_SECRET") }, fresh: true,
+		wantKinds: []ArtifactKind{KindEnv}},
 	// The build would persist a generated PLUGIN_INTERNAL_SECRET into
 	// .env.secrets; the pending line supplies it, so the plan must not.
 	{name: "secret not yet persisted", fixture: "dev-minimal", file: ".env.secrets", key: "PLUGIN_INTERNAL_SECRET", value: "Vt4pN8sQ2xL6mK9rB3wY7cF1hJ5dG0aZu",
@@ -147,6 +163,9 @@ func TestPlanOfPendingLineEqualsPlanAfterWrite(t *testing.T) {
 			}
 			if !tc.fresh {
 				applyFixture(t, f)
+			}
+			if tc.after != nil {
+				tc.after(t, f)
 			}
 			overlay := func(r *Request) {
 				r.EnvOverlay = map[string]map[string]string{tc.file: {tc.key: tc.value}}
@@ -286,4 +305,51 @@ func dropEnvKey(t *testing.T, f *fixture, key string) {
 func sha256Hex(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// envCapture is a fakeRuntime that keeps the bytes of the project .env the
+// hash invocation was given, so a test can see the pending line reached it.
+type envCapture struct {
+	fakeRuntime
+	dotenv string
+}
+
+func (e *envCapture) ConfigHashes(ctx context.Context, files, envFiles []string, dir string) (map[string]string, error) {
+	for _, f := range envFiles {
+		if filepath.Base(f) == ".env" {
+			b, err := os.ReadFile(f)
+			if err != nil {
+				return nil, err
+			}
+			e.dotenv = string(b)
+		}
+	}
+	return e.fakeRuntime.ConfigHashes(ctx, files, envFiles, dir)
+}
+
+// TestContainerImpactSeesPendingLine: the compose invocation container impact
+// hashes reads the pending .env, not the file on disk.
+func TestContainerImpactSeesPendingLine(t *testing.T) {
+	f := loadFixture(t, "prod-plugins")
+	applyFixture(t, f)
+	rt := &envCapture{fakeRuntime: fakeRuntime{running: runningFromDisk(t, f)}}
+	planOf(t, f, func(r *Request) {
+		r.Containers, r.Runtime = true, rt
+		r.EnvOverlay = map[string]map[string]string{".env": {"NSELF_LIVE05_PROBE": "pending-value"}}
+	})
+	if !strings.Contains(rt.dotenv, "NSELF_LIVE05_PROBE=pending-value\n") {
+		t.Fatalf("the hashed .env lacks the pending line:\n%s", rt.dotenv)
+	}
+	if strings.Contains(readFixtureEnv(t, f), "NSELF_LIVE05_PROBE") {
+		t.Fatal("the plan wrote the pending line to disk")
+	}
+}
+
+func readFixtureEnv(t *testing.T, f *fixture) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(f.project, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

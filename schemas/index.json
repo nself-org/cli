@@ -110,6 +110,10 @@
       "id": "urn:nself:cli:schema:commands:config-list:v1"
     },
     {
+      "path": "commands/config-set.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-set:v1"
+    },
+    {
       "path": "commands/config-show.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:config-show:v1"
     },
