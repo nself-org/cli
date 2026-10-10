@@ -304,6 +304,18 @@ func TestConfigSetRestoresEnvOnInjectedFailure(t *testing.T) {
 
 func ptr(s string) *string { return &s }
 
+// TestConfigSetRelFile: the overlay names the file the write targets; a
+// name with a path in it is passed through for the planner to refuse.
+func TestConfigSetRelFile(t *testing.T) {
+	dir := t.TempDir()
+	for env, want := range map[string]string{"": ".env", "secrets": ".env.secrets", "x/.env.prod": ".env.x/.env.prod"} {
+		r := configSetRun{projectDir: dir, envFile: envFileName(dir, env)}
+		if got := r.relFile(); got != want {
+			t.Errorf("--env %q: relFile %q, want %q", env, got, want)
+		}
+	}
+}
+
 // TestConfigSetApplyErrorKeepsCodes: a refusal is re-issued as E403 naming
 // the key; any other error keeps its code and gains the key.
 func TestConfigSetApplyErrorKeepsCodes(t *testing.T) {

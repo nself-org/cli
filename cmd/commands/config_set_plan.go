@@ -61,9 +61,16 @@ type configSetRun struct {
 	jsonOut    bool
 }
 
-// relFile is the env file name relative to the project (env files sit at the
-// project root: envFileName).
-func (r configSetRun) relFile() string { return filepath.Base(r.envFile) }
+// relFile is the env file relative to the project, slash form. envFileName
+// puts it at the root; an --env value holding a path separator does not, and
+// the planner refuses such a name rather than plan a different file.
+func (r configSetRun) relFile() string {
+	rel, err := filepath.Rel(r.projectDir, r.envFile)
+	if err != nil {
+		return r.envFile
+	}
+	return filepath.ToSlash(rel)
+}
 
 // request is the reconcile request with the pending line as an env overlay.
 func (r configSetRun) request() reconcile.Request {
@@ -148,7 +155,7 @@ func (r configSetRun) apply() error {
 			if rerr := w.restore(); rerr != nil {
 				return errors.Join(configSetApplyError(r.key, err), fmt.Errorf("restoring %s: %w", r.envFile, rerr))
 			}
-			_, _ = fmt.Fprintf(r.cmd.ErrOrStderr(), "nself: %s restored; %s is unchanged\n", r.envFile, r.key)
+			_, _ = fmt.Fprintf(r.cmd.ErrOrStderr(), "nself: %s restored; %s is unchanged. Generated files may be partly rewritten: review with 'nself build --plan'.\n", r.envFile, r.key)
 		}
 		return configSetApplyError(r.key, err)
 	}
