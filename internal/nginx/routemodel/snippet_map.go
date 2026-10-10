@@ -44,6 +44,7 @@ type locAcc struct {
 	hdrs  []hdr
 	done  map[string]bool // single-valued directives already seen
 	ret   *Block          // the mapped return, if any
+	h11   *Block          // proxy_http_version 1.1 in effect, if any (nginx defaults to 1.0)
 }
 
 // location maps one `location` block; the rest are recorded whole.
@@ -69,6 +70,22 @@ func (s *srv) location(l *Block) {
 		loc: Location{Path: path, Match: match, HeadersSet: map[string]string{}, AccessLog: true}}
 	for k, v := range s.vars {
 		acc.vars[k] = v
+	}
+	// nginx runs every `set` (rewrite phase) before proxy_pass (content phase),
+	// so the location's own set lines are in scope wherever they sit.
+	seen := map[string]bool{}
+	for _, d := range l.Children {
+		if d.Name != "set" || len(d.Args) != 2 || !strings.HasPrefix(d.Arg(0), "$") {
+			continue
+		}
+		name := d.Arg(0)[1:]
+		v := &setVar{val: d.Arg(1), node: d}
+		acc.local = append(acc.local, v)
+		if seen[name] {
+			v = &setVar{dup: true}
+		}
+		seen[name] = true
+		acc.vars[name] = v
 	}
 	own := map[string]bool{}
 	for _, d := range l.Children {
@@ -98,8 +115,13 @@ func (a *locAcc) take(d *Block, ok bool) bool {
 // apply handles one directive of the location (or one inherited from the server).
 func (a *locAcc) apply(d *Block) {
 	switch d.Name {
-	case "proxy_http_version", "proxy_buffer_size", "proxy_buffers", "proxy_busy_buffers_size", "resolver":
+	case "proxy_buffer_size", "proxy_buffers", "proxy_busy_buffers_size", "resolver":
 		a.s.sn.disp[d] = "ignored"
+	case "proxy_http_version":
+		if a.take(d, len(d.Args) == 1 && d.Arg(0) == "1.1") { // 1.0 (also nginx's default) cannot upgrade: recorded
+			a.h11 = d
+			a.s.sn.disp[d] = "ignored" // mapped in finish when it carries a websocket
+		}
 	case "proxy_pass":
 		a.proxyPass(d)
 	case "proxy_set_header":
@@ -139,10 +161,7 @@ func (a *locAcc) apply(d *Block) {
 		}
 	case "set":
 		if len(d.Args) == 2 && strings.HasPrefix(d.Arg(0), "$") {
-			v := &setVar{d.Arg(1), d}
-			a.vars[d.Arg(0)[1:]] = v
-			a.local = append(a.local, v)
-			return
+			return // loaded before the other directives (location)
 		}
 		a.s.unm(d)
 	default:
@@ -179,7 +198,7 @@ func (a *locAcc) proxyPass(d *Block) {
 	if i := strings.IndexByte(raw, '$'); i >= 0 {
 		name := identRE.FindString(raw[i+1:])
 		rest := raw[i+1+len(name):]
-		if v := a.vars[name]; v != nil && !strings.ContainsAny(raw[:i]+rest, "$") {
+		if v := a.vars[name]; v != nil && !v.dup && !strings.ContainsAny(raw[:i]+rest, "$") {
 			raw, used = raw[:i]+v.val+rest, v
 		}
 	}
@@ -235,9 +254,15 @@ func (a *locAcc) finish() {
 		}
 	}
 	a.loc.ForwardedHeaders = all
+	refused := map[*Block]bool{}
 	if u, c := by["upgrade"], by["connection"]; u != nil && c != nil && u.val == "$http_upgrade" && strings.EqualFold(c.val, "upgrade") {
-		a.loc.WebSocket = true
-		taken[u.node], taken[c.node] = true, true
+		if a.h11 != nil {
+			a.loc.WebSocket = true
+			taken[u.node], taken[c.node] = true, true
+			a.s.sn.disp[a.h11] = "mapped"
+		} else {
+			refused[u.node], refused[c.node] = true, true // HTTP/1.0 upstream: the upgrade never happens
+		}
 	}
 	for i := range a.hdrs {
 		h := &a.hdrs[i]
@@ -245,6 +270,8 @@ func (a *locAcc) finish() {
 		case by[strings.ToLower(h.name)] != h:
 		case taken[h.node]:
 			a.s.sn.disp[h.node] = "mapped"
+		case refused[h.node]:
+			a.s.unm(h.node)
 		case !strings.Contains(h.val, "$"):
 			a.loc.HeadersSet[h.name] = h.val
 			a.s.sn.disp[h.node] = "mapped"

@@ -253,7 +253,7 @@ func TestSnippetMapping(t *testing.T) {
 		t.Errorf("methods = %v", got)
 	}
 	std := `proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto $scheme; `
-	if l := loc(std + `proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header X-A b; proxy_set_header Connection2 "";`); !l.ForwardedHeaders || !l.WebSocket || !reflect.DeepEqual(l.HeadersSet, map[string]string{"X-A": "b", "Connection2": ""}) {
+	if l := loc(std + `proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header X-A b; proxy_set_header Connection2 "";`); !l.ForwardedHeaders || !l.WebSocket || !reflect.DeepEqual(l.HeadersSet, map[string]string{"X-A": "b", "Connection2": ""}) {
 		t.Errorf("headers: %+v", l)
 	}
 	if l := loc(`proxy_pass http://x.test:81; proxy_http_version 1.1; proxy_buffers 8 4k; proxy_buffer_size 4k; proxy_busy_buffers_size 8k; resolver 127.0.0.11;`); *l.Upstream != (Upstream{"http", "x.test", 81}) {

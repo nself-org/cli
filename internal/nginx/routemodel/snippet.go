@@ -23,7 +23,7 @@ const maxSnippetBytes = 1 << 20
 
 var (
 	fqdnRE = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$`)
-	certRE = regexp.MustCompile(`^/etc/nginx/ssl/([^/]+)/(fullchain|privkey)\.pem$`)
+	certRE = regexp.MustCompile(`^/etc/nginx/ssl/([A-Za-z0-9][A-Za-z0-9._-]*)/(fullchain|privkey)\.pem$`) // no `.`, `..` or dot dirs: a renderer joins ssl_dir into a path
 )
 
 type hostPort struct {
@@ -129,6 +129,7 @@ type srv struct {
 type setVar struct {
 	val  string
 	node *Block
+	dup  bool // set more than once in one scope: nginx runs them all in order, the model does not pick one
 }
 
 // unm records d verbatim in the route's `unmodelled`, once.
@@ -181,12 +182,17 @@ func (sn *Snippet) server(b *Block, id, source, owner, file string) Route {
 				c := d.Arg(0)
 				s.cipher = &c
 			}
-		case "http2", "resolver", "proxy_http_version", "proxy_buffer_size", "proxy_buffers", "proxy_busy_buffers_size":
+		case "http2", "resolver", "proxy_buffer_size", "proxy_buffers", "proxy_busy_buffers_size":
 			sn.disp[d] = "ignored"
 		case "set":
 			name := strings.TrimPrefix(d.Arg(0), "$")
-			if s.take(d, len(d.Args) == 2 && strings.HasPrefix(d.Arg(0), "$") && s.vars[name] == nil) {
-				s.vars[name] = &setVar{d.Arg(1), d}
+			ok := len(d.Args) == 2 && strings.HasPrefix(d.Arg(0), "$")
+			if v := s.vars[name]; ok && v != nil {
+				v.dup = true
+				s.unm(v.node)
+			}
+			if s.take(d, ok && s.vars[name] == nil) {
+				s.vars[name] = &setVar{val: d.Arg(1), node: d}
 				sn.disp[d] = "" // claimed only when a proxy_pass uses it
 			}
 		case "return":
@@ -197,7 +203,7 @@ func (sn *Snippet) server(b *Block, id, source, owner, file string) Route {
 			}
 		case "location":
 			locs = append(locs, d)
-		case "proxy_connect_timeout", "proxy_read_timeout", "proxy_send_timeout", "client_max_body_size", "access_log", "proxy_set_header":
+		case "proxy_connect_timeout", "proxy_read_timeout", "proxy_send_timeout", "client_max_body_size", "access_log", "proxy_set_header", "proxy_http_version":
 			s.inh = append(s.inh, d)
 		default:
 			s.unm(d)
