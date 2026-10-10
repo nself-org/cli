@@ -122,7 +122,7 @@ func runDoctorImagesJSON(cmd *cobra.Command, inspect manifestProbe) error {
 	checks := []doctorCheckResult{}
 	for _, ref := range compose.LockedImages() {
 		row := probeLockedImage(cmd.Context(), ref, inspect)
-		data.Images = append(data.Images, DoctorImage{Name: row.Name, Upstream: row.Upstream, Mirror: row.Mirror, Status: row.Status, Remedy: row.Remedy})
+		data.Images = append(data.Images, DoctorImage(row))
 		checks = append(checks, doctorCheckResult{Name: row.Name, Status: row.Status, Message: row.Remedy})
 	}
 	report := buildDoctorReport(checks)
