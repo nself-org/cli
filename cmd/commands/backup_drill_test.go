@@ -59,7 +59,8 @@ func TestBackupDrillRemoteFlags(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		return captureStdout(t, func() error { return runBackupDrill(backupDrillCmd, nil) })
+		out, err := captureStdout(t, func() error { return runBackupDrill(backupDrillCmd, nil) })
+		return unwrapEnvelopeData(out, "remote"), err
 	}
 	// The remote-only flags are refused without --from, and --from refuses the local-only ones.
 	if _, err := run(map[string]string{"identity": "k"}); err == nil || !strings.Contains(err.Error(), "--identity needs --from") {

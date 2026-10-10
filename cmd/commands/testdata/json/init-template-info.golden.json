@@ -1,0 +1,21 @@
+{
+  "schema_version": "1",
+  "command": "init template info",
+  "data": {
+    "slug": "",
+    "displayName": "",
+    "description": "",
+    "category": "",
+    "author": "",
+    "priceUsd": 0,
+    "ratingAvg": 0,
+    "ratingCount": 0,
+    "installCount": 0,
+    "requiredPlugins": [],
+    "previewUrl": "",
+    "templateVersion": "",
+    "cliMinVersion": "",
+    "tarballUrl": "",
+    "tarballSha256": ""
+  }
+}
