@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/joho/godotenv"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -65,7 +64,11 @@ func runEnvExplain(cmd *cobra.Command, args []string) error {
 	}
 
 	reveal, _ := cmd.Flags().GetBool("reveal")
-	return printVarExplain(cascade, args[0], reveal)
+	exp, err := config.ExplainKey(dir, activeEnv, args[0])
+	if err != nil {
+		return err
+	}
+	return printVarExplain(exp, reveal)
 }
 
 // printCascadeOverview prints every file in load order with existence and
@@ -115,53 +118,29 @@ func printCascadeOverview(cascade []config.CascadeFile, activeEnv, envSource str
 	return nil
 }
 
-// printVarExplain prints every existing cascade file that sets VAR, the
-// value each sets, and which one wins.
-func printVarExplain(cascade []config.CascadeFile, key string, reveal bool) error {
-	type setter struct {
-		file  string
-		value string
-	}
-	var setters []setter
-	var winner string
-	var winnerValue string
-
-	for _, f := range cascade {
-		if !f.Exists {
-			continue
-		}
-		vars, err := godotenv.Read(f.Path)
-		if err != nil {
-			return fmt.Errorf("reading %s: %w", f.Path, err)
-		}
-		v, ok := vars[key]
-		if !ok {
-			continue
-		}
-		setters = append(setters, setter{file: f.Name, value: v})
-		// Cascade is lowest-precedence first, so the last match wins.
-		winner = f.Name
-		winnerValue = v
-	}
-
+// printVarExplain prints every existing cascade file that sets the key, the
+// value each sets, and which one wins. The walk is config.ExplainKey, shared
+// with `nself config explain`.
+func printVarExplain(exp config.Explanation, reveal bool) error {
 	fmt.Println()
-	if len(setters) == 0 {
-		fmt.Printf("%s is not set by any file in the cascade.\n", ui.C(ui.Bold, key))
+	winner, winnerValue, ok := exp.Winner()
+	if !ok {
+		fmt.Printf("%s is not set by any file in the cascade.\n", ui.C(ui.Bold, exp.Key))
 		return nil
 	}
 
-	fmt.Printf("%s\n\n", ui.C(ui.Bold, key))
+	fmt.Printf("%s\n\n", ui.C(ui.Bold, exp.Key))
 	tbl := ui.NewTable("File", "Value", "Winner")
-	for _, s := range setters {
+	for _, s := range exp.Setters {
 		display := "(set, use --reveal to show)"
 		if reveal {
-			display = s.value
+			display = s.Value
 		}
 		mark := ""
-		if s.file == winner {
+		if s.File == winner {
 			mark = ui.C(ui.Green, "yes")
 		}
-		tbl.AddRow(s.file, display, mark)
+		tbl.AddRow(s.File, display, mark)
 	}
 	tbl.Render()
 
@@ -170,6 +149,6 @@ func printVarExplain(cascade []config.CascadeFile, key string, reveal bool) erro
 	if !reveal {
 		value = "(redacted — use --reveal to show)"
 	}
-	ui.Success(fmt.Sprintf("%s wins: %s=%s", winner, key, value))
+	ui.Success(fmt.Sprintf("%s wins: %s=%s", winner, exp.Key, value))
 	return nil
 }

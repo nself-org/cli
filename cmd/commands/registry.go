@@ -19,11 +19,13 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/config/bindings"
 )
 
 // canonLoad is the canon loader. A variable so tests can count calls and prove
@@ -46,13 +48,21 @@ type regResult struct {
 // commandRegistry returns the registry of the live RootCmd tree for the
 // current compat mode, building it on first use.
 func commandRegistry() (*cmdregistry.Registry, error) {
+	reg, _, err := commandRegistryMode()
+	return reg, err
+}
+
+// commandRegistryMode is commandRegistry plus the compat mode the registry was
+// built for, so a caller that spells command paths reads them in the mode's
+// spelling without a second compat call.
+func commandRegistryMode() (*cmdregistry.Registry, bool, error) {
 	// compat.V15(P7-REG-05): registry reports v1.4 exit codes and hides v1.5-only envelopes -> v1.5 exit codes and envelopes
 	v15 := compat.V15()
 
 	regCache.mu.Lock()
 	defer regCache.mu.Unlock()
 	if r, ok := regCache.done[v15]; ok {
-		return r.reg, r.err
+		return r.reg, v15, r.err
 	}
 	if regCache.done == nil {
 		regCache.done = map[bool]*regResult{}
@@ -60,7 +70,7 @@ func commandRegistry() (*cmdregistry.Registry, error) {
 	r := &regResult{}
 	r.reg, r.err = buildRegistry(v15)
 	regCache.done[v15] = r
-	return r.reg, r.err
+	return r.reg, v15, r.err
 }
 
 // buildRegistry runs the idempotent tree preparation and Build. The tree is
@@ -90,7 +100,38 @@ func buildRegistry(v15 bool) (*cmdregistry.Registry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("command registry: %w", err)
 	}
+	// Flag.env comes from the one declaration (internal/config/bindings); every
+	// consumer of the registry, the generators included, gets it from here.
+	b, err := configBindings()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmdregistry.ApplyFlagEnv(reg, b.FlagEnv(), bindingMoves(), v15); err != nil {
+		return nil, fmt.Errorf("command registry: %w", err)
+	}
 	return reg, nil
+}
+
+// configBindings loads the config bindings once; a malformed declaration is a
+// build error of the registry, never a silently empty set.
+var configBindings = sync.OnceValues(bindings.Load)
+
+// bindingMoves is the canon moves table as registry path moves (v1.4 spelling
+// to canonical path), the input of the v1.4 translation of canonical bindings.
+func bindingMoves() []cmdregistry.PathMove {
+	moves := make([]cmdregistry.PathMove, 0, len(canonTable.Moves))
+	for _, m := range canonTable.Moves {
+		moves = append(moves, cmdregistry.PathMove{From: strings.Join(m.From, " "), To: strings.Join(m.To, " ")})
+	}
+	return moves
+}
+
+// treePath is the spelling of a canonical command path in the tree of a mode.
+func treePath(canonical string, v15 bool) string {
+	if v15 || canonical == bindings.Root {
+		return canonical
+	}
+	return cmdregistry.V14Path(canonical, bindingMoves())
 }
 
 // resetRegistryCache drops the memoised registries (tests only).

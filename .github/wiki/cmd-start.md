@@ -100,7 +100,7 @@ Pass `--quiet` to suppress all progress output. Useful in CI where the log is ca
 | `--quiet` |  | `bool` | `false` |  |  |  | Suppress progress output (for CI; preserves --json output) |
 | `--skip-build` |  | `bool` | `false` |  |  |  | Skip automatic rebuild detection |
 | `--skip-db-init` |  | `bool` | `false` |  |  |  | Skip database migrations and seed; bring up Postgres+Hasura+hasura-auth only. Intended for CI/E2E environments. |
-| `--skip-health-checks` |  | `bool` | `false` |  |  |  | Skip health validation after startup |
+| `--skip-health-checks` |  | `bool` | `false` | `NSELF_SKIP_HEALTH_CHECKS` |  |  | Skip health validation after startup |
 | `--skip-plugins` |  | `bool` | `false` |  |  |  | Start base stack only, skip all plugin compose files |
 | `--skip-port-check` |  | `bool` | `false` |  |  |  | Skip port availability check |
 | `--timeout` |  | `int` | `120` |  |  |  | Health check timeout in seconds (range: 30-600) |

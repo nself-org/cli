@@ -1,0 +1,43 @@
+{
+  "schema_version": "1",
+  "command": "config explain",
+  "data": {
+    "key": "BASE_DOMAIN",
+    "env_name": "BASE_DOMAIN",
+    "known": true,
+    "default": "local.nself.org",
+    "environment": "dev",
+    "cascade_mode": "canonical",
+    "flags": [
+      {
+        "command": "nself init",
+        "flag": "domain",
+        "mcp_tool": "nself_init",
+        "mcp_parameter": "flags.domain",
+        "http_route": "/v1/commands/init",
+        "http_parameter": "flags.domain"
+      }
+    ],
+    "nself_yaml": "not a source; nself.yaml carries app, bundle, bundles, plugins",
+    "sources": [
+      {
+        "source": ".env",
+        "kind": "file",
+        "value": null,
+        "winner": false
+      },
+      {
+        "source": ".env.local",
+        "kind": "file",
+        "value": null,
+        "winner": true
+      }
+    ],
+    "effective": {
+      "source": ".env.local",
+      "value": null
+    },
+    "revealed": false,
+    "resolved_from": null
+  }
+}

@@ -134,6 +134,7 @@ func TestFragmentAssignment(t *testing.T) {
 		}
 	}
 	delete(where, "deploy targets") // Added after the pre-split snapshot.
+	delete(where, "config explain") // Added after the pre-split snapshot (P7-SURF-06).
 	if len(where) != len(pre.Commands) {
 		var extra []string
 		for k := range where {
