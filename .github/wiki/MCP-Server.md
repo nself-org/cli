@@ -71,7 +71,7 @@ Refused with `E420`, naming the flag but never echoing its value: an unknown or 
 
 ## Request id
 
-The request id names a request in logs. It is the lowercase hex SHA-256 of the canonical JSON `{"args":[...],"argv":[...],"command":"<path>","flags":{...}}`: keys sorted, no whitespace, `confirm` left out, missing members empty, and every secret argument and flag value replaced by `"[REDACTED]"` first. Redaction fails closed: a positional past the declared args and a flag the command does not declare are replaced too. Free-form plugin `argv` items cannot be marked secret and are hashed as sent. Two requests that differ only in a secret value share an id, and no id is derived from a secret. The id is not a confirmation: anyone can compute it.
+The request id names a request in logs. It is the lowercase hex SHA-256 of the canonical JSON `{"args":[...],"argv":[...],"command":"<path>","flags":{...}}`: keys sorted, no whitespace, `confirm` left out, missing members empty, and every secret argument and flag value replaced by `"[REDACTED]"` first. Redaction fails closed: a positional past the declared args and a flag the command does not declare are replaced too. Free-form plugin `argv` items cannot be marked secret, so every one is replaced by `"[REDACTED]"` before hashing (the id keeps their count) and scrubbed from `E422` stderr tails. Two requests that differ only in a secret value share an id, and no id is derived from a secret. The id is not a confirmation: anyone can compute it.
 
 ## Child environment
 
