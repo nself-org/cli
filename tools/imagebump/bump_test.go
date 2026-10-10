@@ -65,7 +65,7 @@ func TestExecuteErrors(t *testing.T) {
 			dir := t.TempDir()
 			args := append([]string{"--policy", writeTemp(t, dir, "p.yaml", c.policy), "--lock", writeTemp(t, dir, "l.yaml", c.lock)}, c.args...)
 			var out, errb bytes.Buffer
-			d := deps{lister: stubLister{}, resolve: func(string, io.Writer) int { return 0 }}
+			d := deps{lister: stubLister{"r/a": {"weird", "v1.0.0"}}, resolve: func(string, io.Writer) int { return 0 }}
 			if got := execute(args, &out, &errb, d); got != c.code {
 				t.Fatalf("exit %d, want %d; stderr: %s", got, c.code, errb.String())
 			}
@@ -86,7 +86,7 @@ func TestApplyRewritesAndResolves(t *testing.T) {
 	dir := t.TempDir()
 	lp := writeTemp(t, dir, "l.yaml", lock)
 	pp := writeTemp(t, dir, "p.yaml", testPolicy)
-	for _, tags := range [][]string{{"v1.0.0", "v1.0.4", "v1.1.0"}, {"v1.0.0"}} {
+	for _, tags := range [][]string{{"v1.0.0", "v1.0.4", "v1.1.0"}, {"v1.0.4"}} {
 		resolved := 0
 		d := deps{lister: stubLister{"r/a": tags}, resolve: func(p string, _ io.Writer) int {
 			resolved++
@@ -114,7 +114,7 @@ func TestDryRunWritesNothing(t *testing.T) {
 	lock := "schema_version: 1\nimages:\n  - {name: a, role: core, repository: r/a, version: v1.0.0}\n"
 	dir := t.TempDir()
 	lp := writeTemp(t, dir, "l.yaml", lock)
-	d := deps{lister: stubLister{"r/a": {"v1.0.9"}}, resolve: func(string, io.Writer) int {
+	d := deps{lister: stubLister{"r/a": {"v1.0.0", "v1.0.9"}}, resolve: func(string, io.Writer) int {
 		t.Error("resolver must not run on --dry-run")
 		return 1
 	}}

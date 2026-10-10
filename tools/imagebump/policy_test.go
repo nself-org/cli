@@ -34,7 +34,9 @@ func TestSelectTag(t *testing.T) {
 		{"floating unchanged", `^latest$`, "patch", "latest", []string{"latest", "edge"}, "latest"},
 		{"two groups fixed on patch", `^(\d+)\.(\d+)$`, "patch", "1.36", []string{"1.37", "1.36"}, "1.36"},
 		{"one group fixed", `^(\d+)-alpine$`, "patch", "16-alpine", []string{"17-alpine"}, "16-alpine"},
-		{"optional third group", opt, "patch", "v1.6", []string{"v1.6.3", "v1.7"}, "v1.6.3"},
+		{"optional group: other shape is not a candidate", opt, "patch", "v1.6", []string{"v1.6.3", "v1.7"}, "v1.6"},
+		{"optional group: same shape moves", opt, "patch", "v1.6.1", []string{"v1.6.3", "v1.6", "v1.7.0"}, "v1.6.3"},
+		{"optional group: 16 never takes 16.4", `^(\d+)(?:\.(\d+))?$`, "patch", "16", []string{"16.4", "16"}, "16"},
 		{"no tags", v3, "patch", "v1.0.0", nil, "v1.0.0"},
 		{"huge group skipped", v3, "patch", "v1.0.0", []string{"v1.0.99999999999999999999999"}, "v1.0.0"},
 	}
@@ -139,5 +141,45 @@ func TestListTimeout(t *testing.T) {
 	t.Setenv("IMAGEBUMP_LIST_TIMEOUT", "bogus")
 	if got := listTimeout(); got != defaultListTimeout {
 		t.Errorf("bogus = %v", got)
+	}
+}
+
+func TestLoadPolicyRejectsNonNumericGroups(t *testing.T) {
+	bad := []string{`^v(\w+)$`, `^(rc\d+)$`, `^(.+)$`, `^(\d*)$`, `^(\d+|x)$`}
+	good := []string{`^(\d+)\.(\d+)$`, `^([0-9]+)-alpine$`, `^v(\d{1,3})\.(\d+)(?:\.(\d+))?$`, `^latest$`}
+	for _, re := range bad {
+		_, err := loadPolicy([]byte("schema_version: 1\nservices:\n  x: {regex: '" + re + "', track: patch}\n"))
+		if err == nil || !strings.Contains(err.Error(), "not purely numeric") {
+			t.Errorf("%s: err = %v", re, err)
+		}
+	}
+	for _, re := range good {
+		if _, err := loadPolicy([]byte("schema_version: 1\nservices:\n  x: {regex: '" + re + "', track: patch}\n")); err != nil {
+			t.Errorf("%s: %v", re, err)
+		}
+	}
+}
+
+func TestPlanBumpsTagListErrors(t *testing.T) {
+	pol, err := loadPolicy([]byte("schema_version: 1\nservices:\n  s: {regex: '^v(\\d+)\\.(\\d+)$', track: patch}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	imgs := []Image{{"s", "core", "r/s", "v1.2"}}
+	cases := []struct {
+		name string
+		tags []string
+		want string
+	}{
+		{"empty list", nil, "registry returned no tags for r/s"},
+		{"current version missing", []string{"v1.3", "v2.0"}, `current tag "v1.2" is not in the 2 tags`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, probs := planBumps(imgs, pol, stubLister{"r/s": c.tags}, &strings.Builder{})
+			if len(got) != 0 || len(probs) != 1 || !strings.Contains(probs[0].Error(), c.want) {
+				t.Fatalf("bumps %v problems %v", got, probs)
+			}
+		})
 	}
 }

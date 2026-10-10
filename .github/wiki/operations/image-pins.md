@@ -18,6 +18,8 @@ The workflow `.github/workflows/image-pin-bump.yml` runs every Monday at 06:00 U
    - `scripts/images/mirror-images.sh --plan` (status-line counts and the plan detail).
 8. The job fails if the probe, the smoke or the plan failed. The PR body is written first.
 
+If a later run finds no pin changes, a stale open `chore/image-pins` PR is left untouched. Close it by hand.
+
 The PR is never merged automatically. A person reads the bumps and the check results, then merges.
 
 PRs opened with the workflow token do not start the normal PR checks. Close and reopen the PR to run them.

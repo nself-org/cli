@@ -49,7 +49,9 @@ func parseLockFile(raw []byte) (*lockFile, error) {
 }
 
 // planBumps applies the policy to every non-plugin image. Every such image must
-// have a policy entry whose regex matches its current version; all violations
+// have a policy entry whose regex matches its current version, and the registry
+// must list tags that include that version (an empty or foreign list is an
+// error, never "no change"); all violations
 // are returned together. Policy entries with no matching image are noted on
 // note. Bumps are sorted by name.
 func planBumps(images []Image, pol *Policy, lister TagLister, note io.Writer) ([]Bump, []error) {
@@ -75,6 +77,14 @@ func planBumps(images []Image, pol *Policy, lister TagLister, note io.Writer) ([
 			problems = append(problems, fmt.Errorf("%s: %w", img.Name, err))
 			continue
 		}
+		if len(tags) == 0 {
+			problems = append(problems, fmt.Errorf("%s: registry returned no tags for %s", img.Name, img.Repository))
+			continue
+		}
+		if !containsTag(tags, img.Version) {
+			problems = append(problems, fmt.Errorf("%s: current tag %q is not in the %d tags listed for %s", img.Name, img.Version, len(tags), img.Repository))
+			continue
+		}
 		pick, err := selectTag(r, img.Version, tags)
 		if err != nil {
 			problems = append(problems, fmt.Errorf("%s: %w", img.Name, err))
@@ -91,6 +101,16 @@ func planBumps(images []Image, pol *Policy, lister TagLister, note io.Writer) ([
 	}
 	sort.Slice(bumps, func(i, j int) bool { return bumps[i].Name < bumps[j].Name })
 	return bumps, problems
+}
+
+// containsTag reports whether tags includes want.
+func containsTag(tags []string, want string) bool {
+	for _, t := range tags {
+		if t == want {
+			return true
+		}
+	}
+	return false
 }
 
 var versionKeyRe = regexp.MustCompile(`((?:\{|,)\s*version:\s*)("[^"]*"|'[^']*'|[^,}\s]+)`)

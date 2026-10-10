@@ -10,7 +10,9 @@ package main
 // version components, so a pre-release tag that the regex does not match is never
 // a candidate. track patch keeps the first two groups equal to the current tag's,
 // track minor keeps the first one; a tag with fewer groups than that keeps all
-// its groups fixed, so it never moves. No groups (latest, alpine, pg16) means no
+// its groups fixed, so it never moves. A candidate must also have the same
+// number of groups as the current version, so an optional group cannot let a
+// tag of another shape (16 vs 16.4) through. No groups (latest, alpine, pg16) means no
 // version movement. The highest candidate by numeric comparison wins and is never
 // lower than the current version. track manual skips the entry.
 
@@ -18,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"regexp/syntax"
 	"sort"
 	"strconv"
 	"strings"
@@ -69,9 +72,43 @@ func loadPolicy(data []byte) (*Policy, error) {
 		if err != nil {
 			return nil, fmt.Errorf("service %s: regex: %w", name, err)
 		}
+		if err := checkNumericGroups(r.Regex); err != nil {
+			return nil, fmt.Errorf("service %s: %w", name, err)
+		}
 		p.rules[name] = rule{re: re, track: r.Track}
 	}
 	return p, nil
+}
+
+// checkNumericGroups rejects a regex with a capture group that is not purely
+// digits (\d+, [0-9]+, \d{1,3}). Version components are compared as numbers, so
+// a group such as (rc\d+) or (.+) could never be compared safely.
+func checkNumericGroups(expr string) error {
+	tree, err := syntax.Parse(expr, syntax.Perl)
+	if err != nil {
+		return err
+	}
+	var bad error
+	var walk func(n *syntax.Regexp)
+	walk = func(n *syntax.Regexp) {
+		if n.Op == syntax.OpCapture && !isDigits(n.Sub[0]) && bad == nil {
+			bad = fmt.Errorf("regex %q: capture group %s is not purely numeric (use \\d+)", expr, n.String())
+		}
+		for _, sub := range n.Sub {
+			walk(sub)
+		}
+	}
+	walk(tree)
+	return bad
+}
+
+// isDigits reports whether n is one or more ASCII digits.
+func isDigits(n *syntax.Regexp) bool {
+	if (n.Op != syntax.OpPlus && n.Op != syntax.OpRepeat) || len(n.Sub) != 1 || (n.Op == syntax.OpRepeat && n.Min < 1) {
+		return false
+	}
+	c := n.Sub[0]
+	return c.Op == syntax.OpCharClass && len(c.Rune) == 2 && c.Rune[0] == '0' && c.Rune[1] == '9'
 }
 
 // names returns the policy's service names, sorted.
@@ -151,7 +188,7 @@ func selectTag(r rule, current string, tags []string) (string, error) {
 	best, bestTag := cur, current
 	for _, t := range tags {
 		v, matched, vErr := versionOf(r.re, t)
-		if !matched || vErr != nil || len(v) < fixed || compareVersions(v[:fixed], cur[:fixed]) != 0 {
+		if !matched || vErr != nil || len(v) != len(cur) || compareVersions(v[:fixed], cur[:fixed]) != 0 {
 			continue
 		}
 		c := compareVersions(v, best)

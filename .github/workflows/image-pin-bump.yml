@@ -134,6 +134,8 @@ jobs:
       - name: Find the branch head
         id: head
         if: steps.bump.outputs.changed == 'true'
+        env:
+          BASE_SHA: ${{ steps.bump.outputs.base }}
         run: |
           set -euo pipefail
           sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" --jq .object.sha)"
@@ -145,14 +147,16 @@ jobs:
           fi
           git fetch --no-tags origin "$BRANCH"
           git checkout --detach "$sha"
-          git diff --stat "${{ steps.bump.outputs.base }}" "$sha" > "$OUT/diffstat.txt"
+          git diff --stat "$BASE_SHA" "$sha" > "$OUT/diffstat.txt"
 
       - name: Probe the pins (default-images-pullable.yml on the branch)
         id: probe
         if: steps.bump.outputs.changed == 'true'
+        env:
+          HEAD_SHA: ${{ steps.head.outputs.sha }}
         run: |
           rc=0
-          bash tools/imagebump/dispatch-wait.sh default-images-pullable.yml "$BRANCH" "${{ steps.head.outputs.sha }}" > "$OUT/probe.txt" || rc=$?
+          bash tools/imagebump/dispatch-wait.sh default-images-pullable.yml "$BRANCH" "$HEAD_SHA" > "$OUT/probe.txt" || rc=$?
           cat "$OUT/probe.txt"
           echo "$rc" > "$OUT/probe.rc"
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
@@ -160,9 +164,11 @@ jobs:
       - name: Stack smoke (e2e-golden-path.yml, source=local, on the branch)
         id: smoke
         if: steps.bump.outputs.changed == 'true'
+        env:
+          HEAD_SHA: ${{ steps.head.outputs.sha }}
         run: |
           rc=0
-          bash tools/imagebump/dispatch-wait.sh e2e-golden-path.yml "$BRANCH" "${{ steps.head.outputs.sha }}" -f source=local > "$OUT/smoke.txt" || rc=$?
+          bash tools/imagebump/dispatch-wait.sh e2e-golden-path.yml "$BRANCH" "$HEAD_SHA" -f source=local > "$OUT/smoke.txt" || rc=$?
           cat "$OUT/smoke.txt"
           echo "$rc" > "$OUT/smoke.rc"
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
@@ -179,13 +185,15 @@ jobs:
 
       - name: Write the PR body
         if: steps.bump.outputs.changed == 'true' && always()
+        env:
+          PR_NUMBER: ${{ steps.head.outputs.pr }}
         run: |
           set -euo pipefail
           bash tools/imagebump/render-body.sh "$OUT" > "$OUT/body.md"
           if [ "$DRY_RUN_PR" = 'true' ]; then
             cat "$OUT/body.md" >> "$GITHUB_STEP_SUMMARY"
           else
-            gh pr edit "${{ steps.head.outputs.pr }}" --body-file "$OUT/body.md"
+            gh pr edit "$PR_NUMBER" --body-file "$OUT/body.md"
           fi
 
       - name: Delete the dry-run branch
