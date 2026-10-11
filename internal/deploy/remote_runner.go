@@ -59,13 +59,20 @@ func NewSSHRemote(ctx context.Context, host, keyPath, env, server string) (*SSHR
 	if err != nil {
 		return nil, err
 	}
+	opts := sshOpts(keyPath, policy)
+	return &SSHRemote{Spec: spec, Opts: opts}, nil
+}
+
+// sshOpts are the ssh options placed before the HostSpec argv. BatchMode: the
+// children run in their own process group, so a prompt on the tty would stop
+// them (SIGTTIN) and hang the deploy; auth must be non-interactive.
+func sshOpts(keyPath string, policy []string) []string {
 	var opts []string
 	if keyPath != "" {
 		opts = append(opts, "-i", keyPath)
 	}
 	opts = append(opts, policy...)
-	opts = append(opts, "-o", "ForwardAgent=no")
-	return &SSHRemote{Spec: spec, Opts: opts}, nil
+	return append(opts, "-o", "ForwardAgent=no", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10")
 }
 
 // Label returns the canonical host string.
@@ -85,7 +92,11 @@ func (r *SSHRemote) Run(ctx context.Context, command string) ([]byte, error) {
 	cmd.Stderr = &se
 	out, err := cmd.Output()
 	if err != nil {
-		return out, fmt.Errorf("ssh %s: %w: %s", r.Spec.Dest(), err, tail(se.String()))
+		msg := tail(se.String())
+		if strings.Contains(se.String(), "Permission denied") {
+			msg += " (deploys run non-interactively: use ssh-agent or an unencrypted deploy key)"
+		}
+		return out, fmt.Errorf("ssh %s: %w: %s", r.Spec.Dest(), err, msg)
 	}
 	return out, nil
 }

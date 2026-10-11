@@ -124,6 +124,15 @@ func RestorePreDeployTar(ctx context.Context, r Remote, remotePath, tar string, 
 	if err := checkPaths("the absent list", spec.Absent); err != nil {
 		return err
 	}
+	isChanged := map[string]bool{}
+	for _, c := range spec.Changed {
+		isChanged[c] = true
+	}
+	for _, a := range spec.Absent {
+		if !isChanged[a] {
+			return fmt.Errorf("the absent list names %q, which this deploy did not ship; refusing to remove it", a)
+		}
+	}
 	listing, err := r.Run(ctx, shScript(fmt.Sprintf(`tar -tzf %s`, q(tar))))
 	if err != nil {
 		return fmt.Errorf("reading %s on %s: %w", tar, r.Label(), err)

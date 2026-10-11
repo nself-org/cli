@@ -1,6 +1,6 @@
 package deploy
 
-// G5: a real SIGINT in the middle of a remote apply. The test re-executes the
+// G5, H6: a real SIGINT, SIGHUP or SIGTERM in the middle of a remote apply. The test re-executes the
 // test binary as a child (the helper runs ApplyRemote against a fake host with
 // a signal-aware context), waits until the child is inside the pull step, sends
 // SIGINT to its pid, and reads back what the child reports: the old files are
@@ -52,6 +52,14 @@ func TestInterruptHelper(t *testing.T) {
 }
 
 func TestInterruptRestoresAndUnlocks(t *testing.T) {
+	for name, sig := range map[string]syscall.Signal{"SIGINT": syscall.SIGINT, "SIGHUP": syscall.SIGHUP, "SIGTERM": syscall.SIGTERM} {
+		t.Run(name, func(t *testing.T) { interruptWith(t, sig) })
+	}
+}
+
+// interruptWith sends sig to a child that is inside the pull step.
+func interruptWith(t *testing.T, sig syscall.Signal) {
+	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("no SIGINT delivery to a child on windows")
 	}
@@ -85,7 +93,7 @@ func TestInterruptRestoresAndUnlocks(t *testing.T) {
 			}
 			if l == "READY" && !sent {
 				sent = true
-				if err := c.Process.Signal(syscall.SIGINT); err != nil {
+				if err := c.Process.Signal(sig); err != nil {
 					t.Fatal(err)
 				}
 			}

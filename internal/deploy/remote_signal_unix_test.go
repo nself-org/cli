@@ -3,6 +3,7 @@
 package deploy
 
 import (
+	"context"
 	"os/exec"
 	"syscall"
 	"testing"
@@ -11,7 +12,7 @@ import (
 // G5: remote children start in their own process group, so a terminal SIGINT
 // aimed at the operator's group does not kill an in-flight ssh or rsync.
 func TestRemoteChildrenGetOwnProcessGroup(t *testing.T) {
-	cmd := exec.Command("sleep", "5")
+	cmd := exec.CommandContext(context.Background(), "sleep", "5")
 	ownProcessGroup(cmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
