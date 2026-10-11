@@ -111,8 +111,8 @@ jobs:
         if: steps.bump.outputs.changed == 'true'
         run: |
           # D-0332: imagelock -check alone let a red-on-tests bump look green. The
-          # rc and the failing package/test names (never the log) go to the PR
-          # body, and the last step fails the run on a non-zero rc. Nothing is
+          # rc and the failing package/test names go to the PR body (the log
+          # stays in the run log), and the last step fails the run on a non-zero rc. Nothing is
           # skipped. TestAcmeChallengeNginx (D-0286, needs a docker socket) is a
           # known red in internal/nginx, which this list does not run.
           rc=0
