@@ -103,31 +103,45 @@ func TestPluginInstallLedgerFailureWarns(t *testing.T) {
 	}
 }
 
-// TestRemoveFreeBundleChangesNothing: `nself remove task` and `nself bundle
-// remove task` are refused in both modes and leave the member plugins in place.
-func TestRemoveFreeBundleChangesNothing(t *testing.T) {
-	compattest.Both(t, func(t *testing.T) {
-		dir := t.TempDir()
-		t.Setenv("NSELF_PLUGIN_DIR", dir)
-		t.Setenv("HOME", t.TempDir())
-		writeLedgerFixturePlugin(t, dir, "notifications", "1.0.0") // before Chdir: the fixture path is relative
-		writeLedgerFixturePlugin(t, dir, "jobs", "1.0.0")
-		t.Chdir(t.TempDir())
-		for name, run := range map[string]func() error{
-			"nself remove task":        func() error { return runRemove(removeCmd, []string{"task"}) },
-			"nself bundle remove task": func() error { return runBundleRemove(removeCmd, []string{"task"}) },
-		} {
-			err := run()
-			if err == nil || !strings.Contains(err.Error(), "not installable/removable as a unit") {
-				t.Errorf("%s: err = %v, want the free-bundle refusal", name, err)
-			}
-		}
-		for _, p := range []string{"notifications", "jobs"} {
-			if _, err := os.Stat(filepath.Join(dir, p, "plugin.json")); err != nil {
-				t.Errorf("%s was removed: %v", p, err)
-			}
-		}
-	})
+// TestRemoveFreeBundleLifted: `nself remove task` and `nself bundle remove task`
+// were refused until P7-PLUG-20 (R2). Both now remove the Task Bundle's members
+// per the ledger plan, in both modes (data handling is covered in internal/bundle).
+func TestRemoveFreeBundleLifted(t *testing.T) {
+	for name, run := range map[string]func() error{
+		"nself remove task":        func() error { return runRemove(removeCmd, []string{"task"}) },
+		"nself bundle remove task": func() error { return runBundleRemove(removeCmd, []string{"task"}) },
+	} {
+		run := run
+		t.Run(name, func(t *testing.T) {
+			compattest.Both(t, func(t *testing.T) {
+				// Earlier tests leave a closed pipe as the root error writer; the remove
+				// plan and the reconcile report write through it. Back to os.Stderr.
+				RootCmd.SetErr(nil)
+				p := extensionFixture(t, "")
+				if err := bundle.LoadBytes([]byte(fixtureBundlesJSON)); err != nil {
+					t.Fatal(err)
+				}
+				for _, pl := range []string{"notifications", "jobs"} { // plain manifests: extensionFixture changed the cwd
+					dir := filepath.Join(p.plugins, pl)
+					if err := os.MkdirAll(dir, 0o755); err != nil {
+						t.Fatal(err)
+					}
+					manifest := `{"name":"` + pl + `","version":"1.0.0","description":"fixture","category":"utility","license":"MIT"}`
+					if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := run(); err != nil {
+					t.Fatalf("err = %v", err)
+				}
+				for _, pl := range []string{"notifications", "jobs"} {
+					if _, err := os.Stat(filepath.Join(p.plugins, pl)); !os.IsNotExist(err) {
+						t.Errorf("%s was not removed: %v", pl, err)
+					}
+				}
+			})
+		})
+	}
 }
 
 // TestBundleHooksLoadConfigOnce: the metadata and health hooks poll; the project

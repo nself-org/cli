@@ -84,6 +84,10 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-19 | bundle install reconciles only | also starts the stack and waits for app-ready | `cmd/commands/bundle_appready.go` |
 | P7-PLUG-19 | plugin install readiness failure warns | E118 exit 2 | `cmd/commands/plugin_install_readiness.go` |
 | P7-PLUG-19 | plugin install readiness setup problems warn | returned error | `cmd/commands/plugin_install_readiness.go` |
+| P7-PLUG-20 | --keep-data keeps plugin data | deprecated no-op (data is kept by default) | `cmd/commands/bundle_install_remove.go` |
+| P7-PLUG-20 | bundle remove drops plugin data by default (paid bundle) | keeps it unless --delete-data | `internal/bundle/remover_plan.go` |
+| P7-PLUG-20 | bundle remove of an unrecorded bundle removes its members | fails with E134 | `internal/bundle/remover_plan.go` |
+| P7-PLUG-20 | remove <plugin> of a bundle member proceeds | refuses with E133 unless --force | `internal/bundle/remove_guard.go` |
 | P7-PLUG-63 | bundle reply trusted for any key and bundle | only a signed reply naming this key, this bundle and a live window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache age from the unsigned fetched_at | the older of fetched_at and the signed jwt iat | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache trusted whatever the clock says | refused when the clock is behind the signed iat or the highest time seen | `internal/license/cache.go` |

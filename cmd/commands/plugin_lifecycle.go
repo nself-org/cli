@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/bundle"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/reconcile"
@@ -40,9 +41,17 @@ func runPluginRemove(cmd *cobra.Command, args []string) error {
 	pluginDir := resolvePluginDir()
 	ctx := context.Background()
 
+	// P7-PLUG-20: a plugin an installed bundle references is refused (E133) unless --force.
+	if err := bundle.GuardPluginRemove(os.Stderr, pluginDir, name, force); err != nil {
+		return err
+	}
+
 	fmt.Fprintf(os.Stderr, "Removing plugin %q...\n", name)
 	if err := plugin.Remove(ctx, cfg, name, pluginDir, keepData, force); err != nil {
 		return fmt.Errorf("removing plugin %q: %w", name, err)
+	}
+	if err := bundle.ForgetPlugin(pluginDir, name); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: plugin %q is removed but the bundle ledger could not be updated: %v\n", name, err)
 	}
 
 	fmt.Fprintf(os.Stderr, "Plugin %q removed successfully.\n", name)

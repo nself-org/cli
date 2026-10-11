@@ -39,6 +39,8 @@ func TestRemove_DryRunListsInstalled(t *testing.T) {
 			t.Fatalf("setup: %v", err)
 		}
 	}
+	// P7-PLUG-20: remove plans from the ledger, so the bundle must be recorded.
+	recordBundle(t, pluginDir, "sentry")
 	var buf bytes.Buffer
 	res, err := Remove(context.Background(), "nsentry", RemoveOpts{
 		DryRun:    true,
@@ -69,6 +71,7 @@ func TestRemove_FullSuccess(t *testing.T) {
 		}
 	}
 
+	recordBundle(t, pluginDir, "sentry") // P7-PLUG-20: remove plans from the ledger
 	var calls []string
 	removeFn := func(ctx context.Context, cfg *config.Config, name, pd string, kd, force bool) error {
 		calls = append(calls, name)
@@ -105,6 +108,7 @@ func TestRemove_KeepDataPropagates(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(pluginDir, "nself-uptime-monitor"), 0700); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
+	recordBundle(t, pluginDir, "sentry") // P7-PLUG-20: remove plans from the ledger
 	var gotKeepData bool
 	removeFn := func(ctx context.Context, cfg *config.Config, name, pd string, kd, force bool) error {
 		if name == "nself-uptime-monitor" {
@@ -130,8 +134,9 @@ func TestRemove_KeepDataPropagates(t *testing.T) {
 	}
 }
 
-// TestRemove_PartialFailure verifies that a per-plugin failure does NOT abort
-// the remaining removals and is surfaced as an error with the failed name.
+// TestRemove_PartialFailure verifies that a per-plugin failure STOPS the remaining
+// removals (P7-PLUG-20: the old continue-on-failure left a bundle half removed
+// with no record of where) and is surfaced as an error with the failed name.
 func TestRemove_PartialFailure(t *testing.T) {
 	pluginDir := t.TempDir()
 	for _, p := range []string{"nself-uptime-monitor", "nself-status-page", "nself-incident-mgmt"} {
@@ -139,6 +144,7 @@ func TestRemove_PartialFailure(t *testing.T) {
 			t.Fatalf("setup: %v", err)
 		}
 	}
+	recordBundle(t, pluginDir, "sentry")
 	failed := "nself-status-page"
 	removeFn := func(ctx context.Context, cfg *config.Config, name, pd string, kd, force bool) error {
 		if name == failed {
@@ -158,9 +164,13 @@ func TestRemove_PartialFailure(t *testing.T) {
 	if !strings.Contains(err.Error(), failed) {
 		t.Errorf("error missing failed plugin name: %v", err)
 	}
-	// Other plugins should still have been removed.
-	if len(res.Removed) < 2 {
-		t.Errorf("expected partial cleanup; got %d removed", len(res.Removed))
+	// Reverse order is incident-mgmt, status-page, uptime-monitor: the first
+	// is removed, the second fails, the third is never attempted.
+	if len(res.Removed) != 1 || res.Removed[0] != "nself-incident-mgmt" {
+		t.Errorf("Removed = %v; want [nself-incident-mgmt]", res.Removed)
+	}
+	if _, statErr := os.Stat(filepath.Join(pluginDir, "nself-uptime-monitor")); statErr != nil {
+		t.Errorf("removal continued past the failure: %v", statErr)
 	}
 	if len(res.Failed) != 1 || res.Failed[0] != failed {
 		t.Errorf("Failed = %v; want [%s]", res.Failed, failed)
