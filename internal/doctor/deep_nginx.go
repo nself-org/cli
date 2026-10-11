@@ -147,6 +147,14 @@ func DeadAddr(err error) bool {
 // environment put back afterwards: Load overlays the .env cascade onto it, and
 // a check must not change what later code sees.
 func LoadConfigIsolated(dir string) (*config.Config, error) {
+	cfg, _, err := LoadConfigIsolatedLookup(dir)
+	return cfg, err
+}
+
+// LoadConfigIsolatedLookup is LoadConfigIsolated that also returns the values
+// the project's .env cascade gives the named keys (read while Load's overlay
+// is in place, before the environment is put back). An unset key is absent.
+func LoadConfigIsolatedLookup(dir string, keys ...string) (*config.Config, map[string]string, error) {
 	saved := map[string]string{}
 	for _, kv := range os.Environ() {
 		if k, v, ok := strings.Cut(kv, "="); ok && k != "" {
@@ -165,7 +173,14 @@ func LoadConfigIsolated(dir string) (*config.Config, error) {
 			_ = os.Setenv(k, v)
 		}
 	}()
-	return config.Load(dir)
+	cfg, err := config.Load(dir)
+	values := map[string]string{}
+	for _, k := range keys {
+		if v, ok := os.LookupEnv(k); ok {
+			values[k] = v
+		}
+	}
+	return cfg, values, err
 }
 
 // SSLChecks verifies LE renewal cron, last renewal, OCSP stapling.

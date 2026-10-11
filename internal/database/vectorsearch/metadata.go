@@ -37,18 +37,24 @@ func metadataPaths(projectDir string) (yamlFile, jsonFile, yamlDir string) {
 // changed (false when the entry already holds every role). The edit is
 // idempotent. ErrUnsupportedLayout means nothing was written.
 func MirrorFunction(projectDir, schema, name string, roles []string) (file string, changed bool, err error) {
+	return mirror(projectDir, schema, name, roles, nil)
+}
+
+// mirror is MirrorFunction with a precondition run just before the write (nil
+// for none); an error from it aborts the edit with nothing written.
+func mirror(projectDir, schema, name string, roles []string, pre func() error) (file string, changed bool, err error) {
 	yamlFile, jsonFile, yamlDir := metadataPaths(projectDir)
 	if st, statErr := os.Stat(yamlDir); statErr == nil && st.IsDir() {
 		if _, e := os.Stat(yamlFile); e != nil {
 			return "", false, fmt.Errorf("%w: %s has no sources.yaml", ErrUnsupportedLayout, yamlDir)
 		}
-		changed, err = editFile(yamlFile, unmarshalYAML, marshalYAML, schema, name, roles)
+		changed, err = editFileChecked(yamlFile, unmarshalYAML, marshalYAML, schema, name, roles, pre)
 		return yamlFile, changed, err
 	}
 	if _, e := os.Stat(jsonFile); e != nil {
 		return "", false, fmt.Errorf("%w: no hasura/metadata.json", ErrUnsupportedLayout)
 	}
-	changed, err = editFile(jsonFile, unmarshalJSON, marshalJSON, schema, name, roles)
+	changed, err = editFileChecked(jsonFile, unmarshalJSON, marshalJSON, schema, name, roles, pre)
 	return jsonFile, changed, err
 }
 
@@ -56,6 +62,11 @@ func MirrorFunction(projectDir, schema, name string, roles []string) (file strin
 // the file back only when the entry changed. In sources.yaml the document is
 // the sources list; in metadata.json it is an object holding "sources".
 func editFile(path string, dec func([]byte) (any, error), enc func(any) ([]byte, error), schema, name string, roles []string) (bool, error) {
+	return editFileChecked(path, dec, enc, schema, name, roles, nil)
+}
+
+// editFileChecked is editFile with pre run after the read and before the write.
+func editFileChecked(path string, dec func([]byte) (any, error), enc func(any) ([]byte, error), schema, name string, roles []string, pre func() error) (bool, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return false, fmt.Errorf("read %s: %w", path, err)
@@ -81,6 +92,11 @@ func editFile(path string, dec func([]byte) (any, error), enc func(any) ([]byte,
 	out, err := enc(doc)
 	if err != nil {
 		return false, fmt.Errorf("encode %s: %w", path, err)
+	}
+	if pre != nil {
+		if err := pre(); err != nil {
+			return false, err
+		}
 	}
 	if err := os.WriteFile(path, out, 0o644); err != nil {
 		return false, fmt.Errorf("write %s: %w", path, err)

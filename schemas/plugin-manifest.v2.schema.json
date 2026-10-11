@@ -120,7 +120,8 @@
         "json": {
           "enum": [
             "none",
-            "legacy"
+            "legacy",
+            "envelope"
           ],
           "type": "string"
         },
@@ -225,7 +226,8 @@
                     "json": {
                       "enum": [
                         "none",
-                        "legacy"
+                        "legacy",
+                        "envelope"
                       ],
                       "type": "string"
                     },
@@ -279,7 +281,8 @@
               "json": {
                 "enum": [
                   "none",
-                  "legacy"
+                  "legacy",
+                  "envelope"
                 ],
                 "type": "string"
               },

@@ -20,14 +20,14 @@ d 0755 project/services
 d 0755 project/ssl
 d 0755 project/ssl/certificates
 d 0755 project/ssl/certificates/example-org
-f 0600 project/.env a20de391ab2712583ade701e2dd23f3cf76fc598d933a0e8e2c7538f0e3a2756
+f 0600 project/.env b226c19dcc9639a63c4838ecec3a1f97c10f6647b26e0a3536ced49bf5c31912
 f 0600 project/.env.computed 2f35a3b9b8f489945a149d23e41588cca4a7a21686ab5e8b365d09b991ed6756
-f 0600 project/.nself/compose.env de570204831b720da526cdc01affe91fdbcbb4340e8b6a143315282b8d9dd786
+f 0600 project/.nself/compose.env 71d9ced8339ba6b866a6bd9ee480bbcd9959b3778741e73b8797daaafb4d463b
 f 0600 project/docker-compose.yml 0995bd2323d06fc4f6cb42b3925c19347b3e597de71316df07f6a7db5198b41b
 f 0600 project/ssl/certificates/example-org/privkey.pem 4a3ec3730504983f960fb2df35a1d68d640ff55d151fa3128ca0fc707f86882e
 f 0644 plugins/nself-alpha/Dockerfile bb57c7da220a8753d7bdabac0d3afdb6efa742e4c736c5bc93ab40dfd5e23b9b
 f 0644 plugins/nself-alpha/docker-compose.plugin.yml ff8aad07a570e4060a9f589be0e1dcf3d07239db499f3dac8294214bf03272b7
-f 0644 plugins/nself-alpha/nginx/route.conf 63e48ab0956b38193f6297d80a3ef36d91d69c41cb0f34f8ddef8abbcf3c3f22
+f 0644 plugins/nself-alpha/nginx/route.conf d8586723e3d5418015f71309c86ac832f8af193b882b07680ac992b633134603
 f 0644 plugins/nself-alpha/plugin.json 8c46ee583329954ef46056837232bf508fb6e4e7fcb660073c80b9b4b9d9df14
 f 0644 plugins/nself-beta/Dockerfile bb57c7da220a8753d7bdabac0d3afdb6efa742e4c736c5bc93ab40dfd5e23b9b
 f 0644 plugins/nself-beta/docker-compose.plugin.yml 40090a7e7616c3574e77c366f92ac0e38a7b468d400dee546d1e6cbf8f115e26
@@ -40,7 +40,7 @@ f 0644 project/.nself/compose-env-files.txt 7d3e777d4d376c34edad2c78f512e08ec2d1
 f 0644 project/.nself/compose-files.txt 25d73fff7b9c29b632245996fcb310ee06b61b0238473a0bf84c90e37f9184ff
 f 0644 project/.nself/dist/openapi.json dd0fe1e385e794d0d382290a08f71b0056a87564a4616e28f5fc66eb94f82479
 f 0644 project/.nself/dist/scalar.html 650a899517b6771cb32ebacf366efb67e25583b475fa9de342b04dadff732c44
-f 0644 project/.nself/generated/routes.json 6d8f34d1b5948e1a58df65ccb4bc00658e5b19cc2fdb1062ff3451a3f75f4475
+f 0644 project/.nself/generated/routes.json 5f251b90fdc43a38545a502ca9788b49ef80239c60b8b1d9597a2ce1b33d6ae7
 f 0644 project/monitoring/loki.yml e8c903c6cf8227a401796e2389f7c1676e6d5593db8ce7999b346e4f421e3961
 f 0644 project/monitoring/prometheus.yml 675b28186f2f4f5c63bdc24abb374ba1694db8de24bfae7a72537baa5fe5f820
 f 0644 project/monitoring/promtail.yml 7e3cb278089764c12294a58d362edbb30e1ff18da47fe76687f28b10519dac96
@@ -51,7 +51,7 @@ f 0644 project/nginx/sites/api-docs.conf 7d9f95da0b6ae7262df3ca4e530970483a1fad6
 f 0644 project/nginx/sites/auth.conf 55924316068cabda843a0780c74f1f42fc33ab9c6a206d67ef28f288c2ece8d3
 f 0644 project/nginx/sites/hand-written.conf db823e7687a059dc5161877380f7824a115321a9908bf9d1458a002b50db5b7c
 f 0644 project/nginx/sites/hasura.conf 03c124e23e897020b9102d2df387c47b0ccb289c2fefe884a7ce3658358d2cf8
-f 0644 project/nginx/sites/nself-alpha-route.conf 565befe613dff3f10b8536134f0896b9e9e181acda2ce076b986208c9b53b2c1
+f 0644 project/nginx/sites/nself-alpha-route.conf 6b2f3590a56b4d074449ec955de15ce21c971f1ed4624ff756788f34294b360f
 f 0644 project/nginx/sites/storage-console.conf 2f7a42894d55015d9e4383aeadd5619c767d17df51ad3459226b4a3f3c4f4d6c
 f 0644 project/nginx/sites/storage.conf 2326e27267d70903ba6299c9626d258ae2f19512dd3c50dcdc5e29ae8aca8d1f
 f 0644 project/postgres/init/01-init.sql 0238a6519fd10168af604249e45bf5234d3e6cec6ff9b927410a74ad90127637

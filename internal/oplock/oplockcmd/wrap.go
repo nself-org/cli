@@ -31,6 +31,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// guard is oplock.Guard; a variable so tests can see the Request.
+var guard = oplock.Guard
+
 // EntryFunc resolves the registry entry of a command.
 type EntryFunc func(*cobra.Command) (*cmdregistry.Command, error)
 
@@ -66,7 +69,12 @@ func take(cmd *cobra.Command, entry EntryFunc) (context.Context, func(), error) 
 		return ctx, none, nil
 	}
 	side, out := Effective(cmd, e)
-	return oplock.Guard(ctx, oplock.Request{Dir: dir, Command: cmd.CommandPath(), SideEffect: side, Output: out})
+	// --quiet is per command (no global flag): read it where the command has it.
+	quiet := false
+	if f := cmd.Flags().Lookup("quiet"); f != nil && f.Value.Type() == "bool" {
+		quiet = f.Value.String() == "true"
+	}
+	return guard(ctx, oplock.Request{Dir: dir, Command: cmd.CommandPath(), SideEffect: side, Output: out, Quiet: quiet})
 }
 
 // Effective returns the side effect and output kind of e after the flags given

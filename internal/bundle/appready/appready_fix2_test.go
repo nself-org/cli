@@ -13,7 +13,8 @@ import (
 
 // TestTrackedTablesSkipsOtherShapesAndSources: a data-connector source exports
 // "table" as an array, BigQuery as {dataset,name}; neither may fail the parse or
-// count as public.<name>. The postgres source in the same document still counts.
+// count as public.<name>. The default postgres source in the same document still
+// counts; the named non-default sources (nokind, cit) do not.
 func TestTrackedTablesSkipsOtherShapesAndSources(t *testing.T) {
 	raw := `{"sources":[
 	 {"name":"chinook","kind":"sqlite","tables":[{"table":["Album"]},{"table":"Artist"}]},
@@ -29,18 +30,18 @@ func TestTrackedTablesSkipsOtherShapesAndSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a non-postgres shape must not fail the parse: %v", err)
 	}
-	for _, want := range []string{"public.np_a_t", "public.np_a_noschema", "audit.np_a_log", "public.np_c"} {
+	for _, want := range []string{"public.np_a_t", "public.np_a_noschema"} {
 		if !set[want] {
 			t.Errorf("%s not tracked: %v", want, set)
 		}
 	}
-	for _, bad := range []string{"public.events", "public.Album", "public.Artist", "public.leak", "d.events"} {
+	for _, bad := range []string{"public.events", "public.Album", "public.Artist", "public.leak", "d.events", "audit.np_a_log", "public.np_c"} {
 		if set[bad] {
 			t.Errorf("%s must be ignored: %v", bad, set)
 		}
 	}
-	if len(set) != 4 {
-		t.Errorf("set = %v, want exactly the four postgres tables", set)
+	if len(set) != 2 {
+		t.Errorf("set = %v, want exactly the two default-source postgres tables", set)
 	}
 }
 

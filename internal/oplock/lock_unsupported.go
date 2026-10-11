@@ -14,3 +14,6 @@ const supported = false
 func tryLock(*os.File) (bool, error) { return false, ErrUnsupported }
 
 func unlock(*os.File) {}
+
+// pidAlive is never consulted here (Acquire returns ErrUnsupported first).
+func pidAlive(int) bool { return true }

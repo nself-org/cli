@@ -109,6 +109,12 @@ func track(ctx context.Context, d Deps, o Options, s Spec, res Result) (Result, 
 	if err := CheckFunctionShape(ctx, d.Exec, d.PG, s); err != nil {
 		return res, err
 	}
+	// Hash disk before the drift check reads it: the mirror below writes only
+	// while disk still hashes the same (D-0369).
+	before, err := DiskFingerprint(o.ProjectDir)
+	if err != nil {
+		return res, err
+	}
 	drift, err := d.Drift(ctx, o.ProjectDir)
 	if err != nil {
 		return res, fmt.Errorf("compare on-disk metadata with live Hasura: %w", err)
@@ -123,11 +129,14 @@ func track(ctx context.Context, d Deps, o Options, s Spec, res Result) (Result, 
 			"); it was left unchanged. Run nself db hasura metadata export to refresh it."
 		return res, nil
 	}
-	file, changed, err := MirrorFunction(o.ProjectDir, s.Schema, s.FunctionName(), s.Roles)
+	file, changed, err := MirrorFunctionIfUnchanged(o.ProjectDir, s.Schema, s.FunctionName(), s.Roles, before)
 	switch {
 	case errors.Is(err, ErrUnsupportedLayout):
 		res.DiskMetadata = "skipped"
 		res.Note = "on-disk metadata was left unchanged: " + err.Error()
+	case errors.Is(err, ErrDiskChanged):
+		res.DiskMetadata = "skipped"
+		res.Note = "on-disk metadata changed while the function was being tracked; it was left unchanged. Run nself db hasura metadata export to refresh it."
 	case err != nil:
 		return res, err
 	case changed:

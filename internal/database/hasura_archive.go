@@ -6,7 +6,6 @@ package database
 import (
 	"archive/tar"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -15,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
-	"gopkg.in/yaml.v3"
 )
 
 const maxMetadataBytes int64 = 64 << 20
@@ -23,7 +21,8 @@ const maxMetadataEntries = 10000
 
 var removeMetadataBackup = os.RemoveAll
 
-// ExportMetadataArchive encodes live metadata as a self-contained config.yaml.
+// ExportMetadataArchive encodes live metadata in the shared layout: config.yaml
+// with an !include per top-level key, plus one <key>.yaml each.
 func ExportMetadataArchive(ctx context.Context, cfg *config.Config, w io.Writer) error {
 	data, err := HasuraExportMetadata(ctx, cfg)
 	if err != nil {
@@ -32,24 +31,28 @@ func ExportMetadataArchive(ctx context.Context, cfg *config.Config, w io.Writer)
 	return packMetadataJSON(data, w)
 }
 
+// packMetadataJSON writes the shared metadata layout (config.yaml plus one
+// <key>.yaml per top-level key) as metadata/<name> tar entries, sorted by name.
 func packMetadataJSON(data []byte, w io.Writer) error {
-	var metadata interface{}
-	if err := json.Unmarshal(data, &metadata); err != nil {
-		return fmt.Errorf("parse exported metadata: %w", err)
-	}
-	yml, err := yaml.Marshal(metadata)
+	files, err := metadataLayout(data)
 	if err != nil {
 		return err
 	}
-	if len(yml) > int(maxMetadataBytes) {
+	var total int64
+	for _, f := range files {
+		total += int64(len(f.Data))
+	}
+	if total > maxMetadataBytes {
 		return fmt.Errorf("metadata archive: exceeds 64 MiB")
 	}
 	tw := tar.NewWriter(w)
-	if err := tw.WriteHeader(&tar.Header{Name: "metadata/config.yaml", Mode: 0644, Size: int64(len(yml)), Typeflag: tar.TypeReg}); err != nil {
-		return err
-	}
-	if _, err := tw.Write(yml); err != nil {
-		return err
+	for _, f := range files {
+		if err := tw.WriteHeader(&tar.Header{Name: "metadata/" + f.Name, Mode: 0644, Size: int64(len(f.Data)), Typeflag: tar.TypeReg}); err != nil {
+			return err
+		}
+		if _, err := tw.Write(f.Data); err != nil {
+			return err
+		}
 	}
 	return tw.Close()
 }

@@ -1,7 +1,6 @@
 package database
 
-// Purpose: TrackPluginTables unit tests against an httptest Hasura stub (loopback
-// only, no Docker); the stub applies bulk ops in order and can fail one (non-atomic).
+// Purpose: TrackPluginTables tests on a loopback httptest Hasura stub (bulk ops apply in order, one can fail).
 
 import (
 	"context"
@@ -118,22 +117,23 @@ func (s *hasuraStub) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// parseTracked is the test stand-in for appready.TrackedTables.
+// parseTracked stands in for appready.TrackedTables (default source only).
 func parseTracked(raw []byte) (map[string]bool, error) {
 	var doc struct {
 		Sources []struct {
-			Tables []struct {
-				Table struct{ Schema, Name string } `json:"table"`
-			} `json:"tables"`
-		} `json:"sources"`
+			Name   string
+			Tables []struct{ Table struct{ Schema, Name string } }
+		}
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, fmt.Errorf("export_metadata response is not JSON: %w", err)
+		return nil, fmt.Errorf("not JSON: %w", err)
 	}
 	set := map[string]bool{}
 	for _, s := range doc.Sources {
 		for _, t := range s.Tables {
-			set[t.Table.Schema+"."+t.Table.Name] = true
+			if s.Name == "" || s.Name == "default" {
+				set[t.Table.Schema+"."+t.Table.Name] = true
+			}
 		}
 	}
 	return set, nil

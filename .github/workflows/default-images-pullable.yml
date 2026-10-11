@@ -67,8 +67,8 @@ jobs:
 
           # The list comes from the image lock (internal/compose/images.lock.json)
           # itself, so a new pin is covered the moment it lands and there is no
-          # second list. Each ref is repository:version@digest, so the gate also
-          # proves the pinned digest still exists upstream.
+          # second list. Each ref is repository:version@digest; the gate probes
+          # repository@digest, which proves the pinned digest still exists.
           go run ./tools/imagelist -platforms > /tmp/default-images.tsv
           if [ ! -s /tmp/default-images.tsv ]; then
             echo "::error::imagelist produced no images — the generator or the map is broken"
@@ -85,9 +85,31 @@ jobs:
           while IFS="$(printf '\t')" read -r service image platforms; do
             [ -n "${image}" ] || continue
             
-            echo "Probing ${service} -> ${image}"
-            
-            if ! manifest_json=$(docker manifest inspect "${image}" 2>&1); then
+            # Probe by digest alone. `docker manifest inspect repo:tag@digest`
+            # fetches the TAG and then checks the result against the digest, so
+            # it fails ("manifest verification failed for digest") every time
+            # upstream moves a floating tag such as python:3.12-slim or
+            # mailpit:latest, even though the pinned digest still pulls. A pull
+            # of repo:tag@digest ignores the tag, so the probe must as well.
+            # Tag drift is the weekly pin-bump PR's job, not this gate's.
+            digest="${image##*@}"
+            if [ "${digest}" = "${image}" ]; then
+              failed=1
+              echo "FAIL  ${service}  ${image} has no @digest pin"
+              echo "::error title=${service} image is not pinned::${image} has no @digest; re-run go run ./tools/imagelock -resolve"
+              continue
+            fi
+            name="${image%@*}"
+            last="${name##*/}"
+            case "${name}" in
+              */*) repo="${name%/*}/${last%%:*}" ;;
+              *)   repo="${last%%:*}" ;;
+            esac
+            probe_ref="${repo}@${digest}"
+
+            echo "Probing ${service} -> ${probe_ref}"
+
+            if ! manifest_json=$(docker manifest inspect "${probe_ref}" 2>&1); then
               failed=1
               echo "FAIL  ${service}  ${image}"
               echo "::error title=${service} image is not pullable::${image} — ${manifest_json}"
@@ -114,8 +136,7 @@ jobs:
             done
             
             if [ "$IMAGE_MIRROR_PROBE" = "true" ] && [[ "$service" != plugin/* ]]; then
-                version_digest="${image#*:}"
-                mirror="docker.io/nself/${service}:${version_digest}"
+                mirror="docker.io/nself/${service}@${digest}"
                 echo "Probing mirror -> ${mirror}"
                 if ! docker manifest inspect "${mirror}" >/dev/null 2>&1; then
                     failed=1
