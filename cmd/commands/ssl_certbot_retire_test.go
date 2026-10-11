@@ -51,7 +51,8 @@ type fakeSystemd struct {
 	svcAfter           string // the service's ActiveState once disable/stop ran
 	raw                string // when set, `show` of the timer prints this instead
 	showErr, disErr    error
-	sticky             bool // disable/stop succeed but change nothing
+	sticky             bool   // disable/stop succeed but change nothing
+	onDisable          func() // runs when disable/stop succeeds (a renewal finishing mid-retire)
 	calls              []string
 }
 
@@ -78,6 +79,9 @@ func (s *fakeSystemd) run(_ context.Context, args ...string) (string, error) {
 		}
 		if s.svcAfter != "" {
 			s.svcActive = s.svcAfter
+		}
+		if s.onDisable != nil {
+			s.onDisable()
 		}
 		if !s.sticky {
 			s.active = "inactive"
@@ -140,7 +144,8 @@ func TestRetireCertbotTimer(t *testing.T) {
 			wantErr: "Access denied", wantCalls: c(show, disable)},
 		"still enabled after disable": {sd: fakeSystemd{load: "loaded", file: "enabled", active: "active", sticky: true},
 			wantErr: "still enabled", wantCalls: c(show, disable, show)},
-		"systemd down, no unit file": {sd: fakeSystemd{load: "loaded", showErr: errors.New("exit status 1")}, wantCalls: c(show)},
+		"no systemctl, unit file present": {unitFile: true, wantErr: "systemctl not found on PATH", wantCalls: c(show)},
+		"systemd down, no unit file":      {sd: fakeSystemd{load: "loaded", showErr: errors.New("exit status 1")}, wantCalls: c(show)},
 		"systemd down, unit file present": {sd: fakeSystemd{load: "loaded", showErr: errors.New("exit status 1")}, unitFile: true,
 			wantErr: "not been booted", wantCalls: c(show)},
 		"unexpected output": {sd: fakeSystemd{load: "loaded", raw: "garbage"}, wantErr: "unexpected output", wantCalls: c(show)},
@@ -221,9 +226,11 @@ func TestCertbotHooks(t *testing.T) {
 	hit(file("renewal/a.example.org.conf", "version = 2.9.0\n[renewalparams]\n"+nselfDeployHook(workdir)+"post_hook = docker compose exec nginx nginx -s reload\n", 0o644), 3)
 	hit(file("renewal/b.example.org.conf", "[renewalparams]\ndeploy_hook = cp x "+filepath.Join(sslDir, "b")+"/\n", 0o644), 2)
 	hit(file("renewal/c.example.org.conf", "[renewalparams]\npost_hook = DEST=\""+sslDir+"\"; cp x $DEST\nrenew_hook = cp x /srv/other/ssl/\n# deploy_hook = cp x "+sslDir+"/\nserver = "+sslDir+"\n", 0o644), 2)
+	hit(file("renewal/e.example.org.conf", "\"renew_hook\" = cp x "+sslDir+"/\n", 0o644), 1)
 	file("renewal/d.example.org.conf.bak", "deploy_hook = cp x "+sslDir+"/\n", 0o644)
 	deploy := file("renewal-hooks/deploy/00-copy-cert.sh", "#!/bin/sh\n# copies into "+sslDir+"/ (comment)\ncp \"$RENEWED_LINEAGE\"/*.pem '"+filepath.Join(sslDir, "certificates", "x")+"/'\n", 0o755)
 	file("renewal-hooks/deploy/other.sh", "#!/bin/sh\nsystemctl reload postfix\ncp x /data"+sslDir+"/\ncp x "+sslDir+"-old/\nsystemctl reload nginx # was: cp x "+sslDir+"/\n", 0o755)
+	quoted := file("renewal-hooks/deploy/20-quoted.sh", "echo \"renewal # done\"; cp x "+sslDir+"/x/ # copy\n", 0o755)
 	redirect := file("renewal-hooks/deploy/10-redirect.sh", "cat \"$RENEWED_LINEAGE/fullchain.pem\" >"+filepath.Join(sslDir, "certificates", "x", "fullchain.pem")+"\n", 0o755)
 	if runtime.GOOS != "windows" { // backups certbot ignores are never opened, even a symlink loop
 		_ = os.Symlink("loop.conf.bak", filepath.Join(le, "renewal", "loop.conf.bak"))
@@ -239,6 +246,7 @@ func TestCertbotHooks(t *testing.T) {
 		hit(notExec, 1)
 	}
 	hit(redirect, 1)
+	hit(quoted, 1)
 	hit(dot, 1)
 	if err != nil || strings.Join(hits, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("hits =\n%s\nwant\n%s (err %v)", strings.Join(hits, "\n"), strings.Join(want, "\n"), err)
@@ -275,5 +283,10 @@ func TestRetireCertbotSystemdDownHint(t *testing.T) {
 	r := &acmeRun{out: io.Discard}
 	if _, err := r.retireCertbot(); err == nil || codeOf(err) != "E151" || !strings.Contains(err.Error(), "nself-ssl-renew.{timer,service}") {
 		t.Fatalf("err = %v", err)
+	}
+	// no systemctl on PATH with the unit file present: refuse, never read it as "no timer"
+	sd.load = ""
+	if _, err := r.retireCertbot(); err == nil || codeOf(err) != "E151" || !strings.Contains(err.Error(), "with systemctl on PATH") {
+		t.Fatalf("no systemctl: err = %v", err)
 	}
 }

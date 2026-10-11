@@ -63,17 +63,19 @@ var systemctlRun = func(ctx context.Context, args ...string) (string, error) {
 // unitState is what systemd says about one unit.
 type unitState struct{ enabled, active bool }
 
-// readUnit reads unit's state. No systemctl or an unknown unit is the zero
-// state; when systemd cannot answer, only a unit file on disk is an error. A
-// masked unit (UnitFileState "masked") is not enabled but can still be active.
+// readUnit reads unit's state. An unknown unit is the zero state; when
+// systemctl is missing from PATH or systemd cannot answer, only a unit file on
+// disk is an error (a PATH without systemctl does not stop systemd). A masked
+// unit (UnitFileState "masked") is not enabled but can still be active.
 func readUnit(ctx context.Context, unit string) (unitState, error) {
 	out, err := systemctlRun(ctx, "show", unit, "-p", "LoadState", "-p", "UnitFileState", "-p", "ActiveState")
-	if errors.Is(err, errNoSystemctl) {
-		return unitState{}, nil
-	}
 	if err != nil {
-		if _, serr := os.Stat(filepath.Join(systemdUnitDir, unit)); errors.Is(serr, os.ErrNotExist) {
+		file := filepath.Join(systemdUnitDir, unit)
+		if _, serr := os.Stat(file); errors.Is(serr, os.ErrNotExist) {
 			return unitState{}, nil
+		}
+		if errors.Is(err, errNoSystemctl) {
+			return unitState{}, fmt.Errorf("%w on PATH, but %s exists", errNoSystemctl, file)
 		}
 		return unitState{}, fmt.Errorf("%w: systemctl show %s: %v %s", errSystemdDown, unit, err, strings.TrimSpace(out))
 	}
@@ -173,12 +175,31 @@ func (r *acmeRun) retireCertbot() (bool, error) {
 	}
 	if err != nil {
 		fix := "run `sudo systemctl disable --now " + certbotTimer + "` (and `sudo systemctl disable --runtime " + certbotTimer + "` if it was enabled at runtime), then re-run this command"
-		if errors.Is(err, errSystemdDown) {
+		switch {
+		case errors.Is(err, errSystemdDown):
 			fix = "remove " + filepath.Join(systemdUnitDir, "nself-ssl-renew.{timer,service}") + ", then re-run this command"
+		case errors.Is(err, errNoSystemctl):
+			fix = "re-run this command with systemctl on PATH (e.g. under sudo); if this host does not run systemd, remove " + filepath.Join(systemdUnitDir, "nself-ssl-renew.{timer,service}") + " first"
 		}
 		return false, e151(acmeRefuse(fix, "%s (certbot renewal) would overwrite ACME-managed certificates and could not be disabled: %v", certbotTimer, err))
 	}
 	return done, nil
+}
+
+// retireAndRecheck retires the certbot timer, then scans the certbot hooks
+// again: a renewal that ran between the first scan and the retirement can have
+// saved its deploy hook into renewal/<lineage>.conf, and once the timer is down
+// nothing can add one (D-0411). The first scan still refuses before any change.
+func (r *acmeRun) retireAndRecheck(dirs ...string) (bool, error) {
+	retired, err := r.retireCertbot()
+	if err != nil {
+		return retired, err
+	}
+	if err := r.refuseCertbotHooks(dirs...); err != nil {
+		r.retiredHint(retired)
+		return retired, err
+	}
+	return retired, nil
 }
 
 // retiredHint tells the operator, when a run fails after it disabled the

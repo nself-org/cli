@@ -132,6 +132,22 @@ func TestACMEIssueRetiresCertbotTimer(t *testing.T) {
 	}
 }
 
+// TestACMEIssueRechecksHooksAfterRetire: a certbot renewal that saves its
+// deploy hook between the first scan and the retirement is caught by the scan
+// after it; nothing is issued and the operator is told the timer is now off.
+func TestACMEIssueRechecksHooksAfterRetire(t *testing.T) {
+	f := newACMEFix(t)
+	le := useCertbotDir(t)
+	hook := filepath.Join(le, "renewal", "x.conf")
+	sd := &fakeSystemd{load: "loaded", file: "enabled", active: "active",
+		onDisable: func() { acmeWriteFile(t, hook, []byte("[renewalparams]\n"+nselfDeployHook(f.project))) }}
+	useSystemd(t, sd)
+	out, err := f.run(sslSetupCmd, "--acme", "--agree-tos")
+	if err == nil || codeOf(err) != "E151" || !strings.Contains(err.Error(), hook+":2") || len(f.runs) != 0 || !strings.Contains(out, "was disabled before this failure") {
+		t.Fatalf("hook saved mid-retire: err=%v lego runs=%d\n%s", err, len(f.runs), out)
+	}
+}
+
 // TestCertbotSetupRefusesUnderACME: the v1.4 certbot `ssl setup` refuses before
 // running certbot in a project whose certificates ACME manages, or whose
 // lineages.json cannot be read; without lineages it runs as before.

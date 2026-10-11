@@ -77,7 +77,7 @@ func (r *acmeRun) issueNew(ctx context.Context, l acme.Lineage, cron bool) error
 	}
 	var retired bool // before the first write: no certbot copy lands on a new generation
 	if !r.staging {
-		if retired, err = r.retireCertbot(); err != nil {
+		if retired, err = r.retireAndRecheck(certbotDir); err != nil {
 			return err
 		}
 	}

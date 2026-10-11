@@ -108,21 +108,40 @@ func certbotHooks(dir string, sslDirs ...string) ([]string, error) {
 }
 
 // hookCode returns the part of line certbot or the shell acts on: for a conf,
-// only a "*_hook"/"*-hook" key's line; comment lines ('#', and ';' in confs)
-// are dropped and a trailing " #" comment is cut.
+// only a "*_hook"/"*-hook" key's line (configobj allows a quoted key); comment
+// lines ('#', and ';' in confs) are dropped and a trailing comment is cut.
 func hookCode(line string, isConf bool) (string, bool) {
 	t := strings.TrimSpace(line)
 	if t == "" || t[0] == '#' || (isConf && t[0] == ';') {
 		return "", false
 	}
 	// the key ends at '=', or for cli.ini (configargparse) also at ':' or a space
-	if k := t[:strings.IndexFunc(t+"=", func(c rune) bool { return strings.ContainsRune("=: \t", c) })]; isConf && !strings.HasSuffix(k, "_hook") && !strings.HasSuffix(k, "-hook") {
+	if k := strings.Trim(t[:strings.IndexFunc(t+"=", func(c rune) bool { return strings.ContainsRune("=: \t", c) })], `"'`); isConf && !strings.HasSuffix(k, "_hook") && !strings.HasSuffix(k, "-hook") {
 		return "", false
 	}
-	for _, c := range []string{" #", "\t#"} {
-		t, _, _ = strings.Cut(t, c)
+	return cutComment(t), true
+}
+
+// cutComment cuts a trailing comment: a '#' after a space or tab that is
+// outside quotes. A '#' inside "..." or '...' (or escaped) is text the shell
+// runs past, so the rest of the line is kept.
+func cutComment(t string) string {
+	var quote byte
+	for i := 0; i < len(t); i++ {
+		switch c := t[i]; {
+		case c == '\\' && quote != '\'':
+			i++
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == '#' && i > 0 && (t[i-1] == ' ' || t[i-1] == '\t'):
+			return t[:i-1]
+		}
 	}
-	return t, true
+	return t
 }
 
 // mentionsPath reports whether line names dir or a path under it: dir starts
