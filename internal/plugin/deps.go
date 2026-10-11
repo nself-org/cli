@@ -21,6 +21,9 @@ func validateConsumes(pluginDir, pluginName string, consumes []string) error {
 		if dep == pluginName {
 			continue // self-reference is harmless, skip
 		}
+		if err := ValidateName(dep); err != nil {
+			return fmt.Errorf("plugin %q consumes an invalid plugin name: %w", pluginName, err)
+		}
 		depManifestPath := filepath.Join(pluginDir, dep, "plugin.json")
 		if _, err := os.Stat(depManifestPath); os.IsNotExist(err) {
 			missing = append(missing, dep)

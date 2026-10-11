@@ -11,6 +11,9 @@ import (
 	"github.com/nself-org/cli/internal/config"
 )
 
+// invalidSchemaName is the fallback sanitizeSchemaName returns for an unusable name.
+const invalidSchemaName = "np_invalid"
+
 // validSchemaChars matches only lowercase letters, digits, and underscores.
 var validSchemaChars = regexp.MustCompile(`^[a-z0-9_]+$`)
 
@@ -25,9 +28,24 @@ func sanitizeSchemaName(pluginName string) string {
 	if !validSchemaChars.MatchString(name) {
 		// Return a safe fallback that will fail schema creation with a clear name
 		// rather than allowing SQL-significant characters through.
-		return "np_invalid"
+		return invalidSchemaName
 	}
 	return "np_" + name
+}
+
+// checkSchemaMapsBack refuses to build DROP SQL for a name whose schema is not
+// provably the plugin's own. sanitizeSchemaName falls back to np_invalid for
+// anything outside [a-z0-9_] (so "notify.prev" would have dropped plugin
+// "invalid"'s schema); the name must also be a valid plugin slug and the schema
+// must be exactly np_ + the slug with '-' as '_'. No SQL runs on a refusal.
+func checkSchemaMapsBack(pluginName, schema string) error {
+	if err := ValidateName(pluginName); err != nil {
+		return fmt.Errorf("refusing to drop a schema for %q: %w", pluginName, err)
+	}
+	if schema == invalidSchemaName || schema != "np_"+strings.ReplaceAll(pluginName, "-", "_") {
+		return fmt.Errorf("refusing to drop schema %q: it does not map one-to-one to plugin %q", schema, pluginName)
+	}
+	return nil
 }
 
 // quoteIdent double-quotes a SQL identifier that has already been validated
@@ -216,6 +234,9 @@ END $$;`, role, qRole)
 // Safe to call even if the schema or role does not exist.
 func dropPluginSchema(ctx context.Context, cfg *config.Config, pluginName string) error {
 	schema := sanitizeSchemaName(pluginName)
+	if err := checkSchemaMapsBack(pluginName, schema); err != nil {
+		return err
+	}
 	role := schema + "_role"
 	qSchema := quoteIdent(schema)
 	qRole := quoteIdent(role)

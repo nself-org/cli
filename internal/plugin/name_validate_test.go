@@ -20,8 +20,8 @@ import (
 func TestValidateName(t *testing.T) {
 	valid := []string{
 		"notify", "cron", "claw", "chat", "ai", "content-acquisition",
-		"pentest-kit", "dup-a", "py", "a1", "9lives", "notify.prev",
-		"my_plugin", strings.Repeat("a", maxPluginNameLen),
+		"pentest-kit", "dup-a", "py", "a1", "sentry-server",
+		strings.Repeat("a", maxPluginNameLen),
 	}
 	for _, n := range valid {
 		if err := ValidateName(n); err != nil {
@@ -45,6 +45,9 @@ func TestValidateName(t *testing.T) {
 		{"leading dash", "-rf"},
 		{"leading dot", ".hidden"},
 		{"trailing dot", "py."},
+		{"dotted backup dir", "notify.prev"},
+		{"underscore", "my_plugin"},
+		{"leading digit", "9lives"},
 		{"nul", "py\x00"},
 		{"newline", "py\n"},
 		{"tab", "py\t"},

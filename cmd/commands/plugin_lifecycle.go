@@ -296,3 +296,12 @@ func runPluginEnable(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "Plugin %q enabled. Run 'nself build' to update your stack.\n", name)
 	return nil
 }
+
+// validatePluginFlag checks a non-empty --plugin value with plugin.ValidateName,
+// so a path-shaped name is refused before any directory is read (P7-PLUG-20).
+func validatePluginFlag(name string) error {
+	if name == "" {
+		return nil
+	}
+	return plugin.ValidateName(name)
+}

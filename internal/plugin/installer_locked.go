@@ -152,6 +152,17 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	// their manifest on disk for the resolver. We call installLocked here
 	// (not Install) because the lock is already held by this goroutine.
 	deps := manifest.Dependencies
+	// Validate every dependency name and every binary name before any join, stat or
+	// install: an existing sibling dir named "../victim" must not skip the install
+	// loop, and a registry entry must not reach a path outside pluginDir (P7-PLUG-20).
+	for _, dep := range deps {
+		if err := ValidateName(dep); err != nil {
+			return fmt.Errorf("plugin %q lists an invalid dependency: %w", name, err)
+		}
+	}
+	if err := validateCLIBinaries(name, manifest); err != nil {
+		return fmt.Errorf("plugin %q: %w", name, err)
+	}
 	if len(deps) > 0 {
 		fmt.Fprintf(os.Stderr, "Installing %s (requires: %s)\n", name, strings.Join(deps, ", "))
 	}

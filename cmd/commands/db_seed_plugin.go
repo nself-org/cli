@@ -149,7 +149,7 @@ func installedPluginNames(pluginDir string) ([]string, error) {
 	}
 	var out []string
 	for _, e := range entries {
-		if !e.IsDir() || !pluginSeedNameRe.MatchString(e.Name()) {
+		if !e.IsDir() || !pluginSeedNameRe.MatchString(e.Name()) || plugin.ValidateName(e.Name()) != nil {
 			continue
 		}
 		if _, serr := os.Stat(filepath.Join(pluginDir, e.Name(), "plugin.json")); serr == nil {
