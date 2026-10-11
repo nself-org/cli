@@ -75,7 +75,12 @@ func containerImpact(ctx context.Context, req Request, dir string, res *nbuild.B
 		notice("container impact unknown: %v", err)
 		return Containers{Known: false, Items: []ContainerItem{}}, nil
 	}
-	items, orphans := compareRunning(running, hashes, defined, stateful)
+	inits, err := initContainerServices(files)
+	if err != nil {
+		notice("container impact unknown: %v", err)
+		return Containers{Known: false, Items: []ContainerItem{}}, nil
+	}
+	items, orphans := compareRunning(running, hashes, defined, stateful, inits)
 	var effects []Effect
 	if req.RemoveOrphans {
 		for _, o := range orphans {
@@ -86,19 +91,15 @@ func containerImpact(ctx context.Context, req Request, dir string, res *nbuild.B
 	return Containers{Known: true, Items: items}, effects
 }
 
-// ContainerCreate is the action of a planned service the project has no
-// container for yet (D-0505): the next start creates it. Only reported when
-// the project has containers at all; on a project with none, every service
-// would be "create" and no plan could be empty.
-const ContainerCreate ContainerAction = "create"
-
 // compareRunning matches running containers with the planned hashes. A service
 // is recreate when any of its containers carries a different hash, unknown
 // when one carries none (treated as a recreate), none otherwise, and create
-// when it is in the active configuration but has no container while others
-// do. A container whose service is defined nowhere in the planned compose is
-// an orphan.
-func compareRunning(running []RunningContainer, hashes map[string]string, defined map[string]struct{}, stateful map[string]bool) ([]ContainerItem, []RunningContainer) {
+// when it is in the active configuration but has no container (running or
+// stopped) while the project has some. On a project with none, every service
+// would be create and no plan could be empty. Init services (inits) never
+// are: `nself start` removes their containers after every run. A container
+// whose service is defined nowhere in the planned compose is an orphan.
+func compareRunning(running []RunningContainer, hashes map[string]string, defined map[string]struct{}, stateful, inits map[string]bool) ([]ContainerItem, []RunningContainer) {
 	action := map[string]ContainerAction{}
 	var orphans []RunningContainer
 	present := map[string]bool{}
@@ -125,7 +126,7 @@ func compareRunning(running []RunningContainer, hashes map[string]string, define
 	}
 	if len(running) > 0 {
 		for svc := range hashes {
-			if !present[svc] {
+			if !present[svc] && !inits[svc] {
 				action[svc] = ContainerCreate
 			}
 		}

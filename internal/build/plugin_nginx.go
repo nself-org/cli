@@ -5,10 +5,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginx/routemodel"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
@@ -107,14 +109,44 @@ func InjectPluginNginxRoutes(workdir, pluginDir string, cfg *config.Config) (int
 	return injectPluginNginxRoutesVia(newDiskSink(workdir), workdir, pluginDir, cfg, true)
 }
 
-// skipForMissingCert reports whether a rendered snippet must stay out of
-// nginx/sites because it loads the base domain's certificate pair (the
-// ${SSL_DIR} path) while the build serves no TLS (hasSSL false: SSL_MODE
-// none, or letsencrypt/custom before the pair exists). nginx would refuse
-// to start on the missing file, taking every route down, including the
-// ACME challenge that would issue it.
-func skipForMissingCert(rendered string, vars map[string]string, hasSSL bool) bool {
-	return !hasSSL && strings.Contains(rendered, nginxtopo.NginxSSLContainerPath+"/"+vars["SSL_DIR"]+"/")
+// placeholderRE matches a ${NAME} template variable buildTemplateVars does
+// not provide. nginx's own variables are lower case, so ${host} is left alone.
+var placeholderRE = regexp.MustCompile(`\$\{[A-Z][A-Z0-9_]*\}`)
+
+// serverOnly lists directives nginx accepts only inside server (or deeper):
+// at the http{} level nginx/sites is included in, each one stops nginx with
+// "directive is not allowed here".
+var serverOnly = map[string]bool{"location": true, "if": true, "listen": true, "server_name": true,
+	"proxy_pass": true, "return": true, "rewrite": true, "try_files": true, "ssl_certificate": true, "ssl_certificate_key": true}
+
+// pluginSnippetSkip returns why a rendered plugin snippet must stay out of
+// nginx/sites, or "" to inject it. One bad file in nginx/sites stops nginx,
+// taking every route down, and installed plugin copies can be old, so the
+// build checks what it can before nginx does (D-0478 review):
+//   - a ${NAME} the CLI does not render (nginx reads it as an unknown variable);
+//   - text that does not parse, or a top-level directive that is valid only
+//     inside a server block (a bare location block);
+//   - a load of the base domain's certificate pair (the ${SSL_DIR} path) while
+//     the build serves no TLS (hasSSL false: SSL_MODE none, or letsencrypt/
+//     custom before the pair exists), which would also block the ACME
+//     challenge that issues it.
+func pluginSnippetSkip(rendered string, vars map[string]string, hasSSL bool) string {
+	if m := placeholderRE.FindString(rendered); m != "" {
+		return "it uses " + m + ", which nself does not provide"
+	}
+	tree, err := routemodel.Parse(rendered)
+	if err != nil {
+		return "it does not parse: " + err.Error()
+	}
+	for _, b := range tree {
+		if serverOnly[b.Name] {
+			return "it has a top-level " + b.Name + " directive, which nginx accepts only inside a server block"
+		}
+	}
+	if !hasSSL && strings.Contains(rendered, nginxtopo.NginxSSLContainerPath+"/"+vars["SSL_DIR"]+"/") {
+		return "it needs the base domain's TLS certificate, which this build does not serve (issue it with nself trust ssl setup, or set SSL_MODE=local)"
+	}
+	return ""
 }
 
 // resolvePluginNginxDir returns the plugin directory the nginx snippets are
@@ -219,10 +251,10 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 
 			// Template the config content with project values.
 			rendered := renderPluginSnippet(string(content), vars)
-			if skipForMissingCert(rendered, vars, hasSSL) {
-				slog.Warn("plugin nginx route skipped: it needs the base domain's TLS certificate, which this build does not serve",
-					"plugin", pluginName, "file", filepath.Base(match),
-					"fix", "issue the certificate (nself trust ssl setup) or set SSL_MODE=local, then run nself build again")
+			if why := pluginSnippetSkip(rendered, vars, hasSSL); why != "" {
+				slog.Warn("plugin nginx route skipped: nginx would refuse to start with it",
+					"plugin", pluginName, "file", filepath.Base(match), "reason", why,
+					"fix", "update the plugin (nself plugin update "+pluginName+") or report it to the plugin, then run nself build again")
 				continue
 			}
 

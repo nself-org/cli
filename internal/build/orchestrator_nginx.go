@@ -81,7 +81,8 @@ func (s *snippetSet) parse() {
 }
 
 // plugins parses the snippets injectPluginNginxRoutesVia copies, rendered and
-// skipped (skipForMissingCert, hasSSL = the model's TLS) the same way. Read errors are left to the injection step, which reports them.
+// skipped (pluginSnippetSkip, hasSSL = the model's TLS) the same way; a
+// skipped snippet is recorded in global, not dropped. Read errors are left to the injection step, which reports them.
 func (s *snippetSet) plugins(workdir string, cfg *config.Config, hasSSL bool) {
 	pluginDir, err := resolvePluginNginxDir("", cfg)
 	if err != nil {
@@ -99,9 +100,12 @@ func (s *snippetSet) plugins(workdir string, cfg *config.Config, hasSSL bool) {
 		matches, _ := pluginConfPaths(pluginDir, e.Name())
 		for _, match := range matches {
 			if data, err := os.ReadFile(match); err == nil {
-				if text := renderPluginSnippet(string(data), vars); !skipForMissingCert(text, vars, hasSSL) {
-					s.add("plugin", e.Name(), filepath.Base(match), text)
+				text := renderPluginSnippet(string(data), vars)
+				if why := pluginSnippetSkip(text, vars, hasSSL); why != "" {
+					s.global = append(s.global, fmt.Sprintf("skipped plugin %s/%s: %s", e.Name(), filepath.Base(match), why))
+					continue
 				}
+				s.add("plugin", e.Name(), filepath.Base(match), text)
 			}
 		}
 	}

@@ -4,12 +4,14 @@ package reconcile
 // with no container is "create" while the project has containers.
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
 
 func TestCompareRunning(t *testing.T) {
-	defined := map[string]struct{}{"postgres": {}, "hasura": {}, "traefik": {}, "traefik-config": {}, "redis": {}}
+	defined := map[string]struct{}{"postgres": {}, "hasura": {}, "traefik": {}, "traefik-config": {}, "redis": {}, "meilisearch-init": {}}
 	stateful := map[string]bool{"postgres": true, "traefik": false}
 	cases := []struct {
 		name    string
@@ -64,6 +66,13 @@ func TestCompareRunning(t *testing.T) {
 			orphans: []string{"p_ghost"},
 		},
 		{
+			// nself start removes init containers after every run.
+			name:    "removed init container is not create",
+			running: []RunningContainer{{Name: "p_postgres", Service: "postgres", ConfigHash: "a"}},
+			hashes:  map[string]string{"postgres": "a", "meilisearch-init": "m"},
+			want:    []ContainerItem{},
+		},
+		{
 			// Only containers of services the plan no longer defines (a
 			// rename): the next start creates every planned service.
 			name:    "only orphans: planned services are create",
@@ -76,7 +85,7 @@ func TestCompareRunning(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		items, orphans := compareRunning(c.running, c.hashes, defined, stateful)
+		items, orphans := compareRunning(c.running, c.hashes, defined, stateful, map[string]bool{"meilisearch-init": true})
 		if !reflect.DeepEqual(items, c.want) {
 			t.Errorf("%s: items\n got %+v\nwant %+v", c.name, items, c.want)
 		}
@@ -87,5 +96,46 @@ func TestCompareRunning(t *testing.T) {
 		if !reflect.DeepEqual(names, c.orphans) {
 			t.Errorf("%s: orphans %q, want %q", c.name, names, c.orphans)
 		}
+	}
+}
+
+func TestInitContainerServices(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	base := write("docker-compose.yml", `services:
+  postgres:
+    image: postgres
+    labels:
+      nself.type: database
+  meilisearch-init:
+    image: busybox
+    labels:
+      nself.type: init-container
+      nself.auto-remove: "true"
+`)
+	frag := write("plugin.yml", `services:
+  plugin-init:
+    image: busybox
+    labels:
+      - "nself.type=init-container"
+  plugin:
+    image: x
+    labels: ["nself.type=plugin"]
+`)
+	got, err := initContainerServices([]string{base, frag, filepath.Join(dir, "missing.yml")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]bool{"meilisearch-init": true, "plugin-init": true}; !reflect.DeepEqual(got, want) {
+		t.Errorf("initContainerServices = %v, want %v", got, want)
+	}
+	if _, err := initContainerServices([]string{write("bad.yml", "services: [")}); err == nil {
+		t.Error("a broken compose file must be an error (container impact unknown), not an empty set")
 	}
 }
