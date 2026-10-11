@@ -10,23 +10,28 @@ import "github.com/nself-org/cli/internal/controlplane"
 // Outputs: Engine.Run copies public outcome fields into Result.
 // Constraints: Values is opaque wiring state; this package does not interpret it.
 type State struct {
-	Source              string
-	Target              string
-	SourceTier          controlplane.Tier
-	TargetTier          controlplane.Tier
-	SnapshotTag         string
-	BackupID            string
-	BackupHost          string
-	DBRestoredAt        string
-	MigrateStarted      bool
-	Digests             []DigestRow
-	PreDeployTar        map[string]string
-	PreDeployChanged    map[string][]string
-	PreDeployAbsent     map[string][]string
-	RemotePaths         map[string]string
-	AppliedManifestHash map[string]string
-	Values              map[string]any
-	DryRun              bool
+	Source                string
+	Target                string
+	SourceTier            controlplane.Tier
+	TargetTier            controlplane.Tier
+	SnapshotTag           string
+	BackupID              string
+	BackupHost            string
+	DBRestoredAt          string
+	MigrateStarted        bool
+	ApplyStarted          bool
+	PriorManifestIdentity map[string]ManifestIdentity
+	FilesRestored         map[string]bool
+	RecoveryPhase         string
+	RecoveryCheckpoint    func(*State) error
+	Digests               []DigestRow
+	PreDeployTar          map[string]string
+	PreDeployChanged      map[string][]string
+	PreDeployAbsent       map[string][]string
+	RemotePaths           map[string]string
+	AppliedManifestHash   map[string]string
+	Values                map[string]any
+	DryRun                bool
 }
 
 // DigestRow records the per-platform release identity comparison.

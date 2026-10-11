@@ -55,20 +55,13 @@ func TestPromoteRecordInProgressRecovery(t *testing.T) {
 		t.Run(fmt.Sprint(migrated), func(t *testing.T) {
 			root := t.TempDir()
 			r := &recordRemote{label: "primary"}
-			rec := &Record{ID: "interrupted", Target: "prodsim", Status: "in_progress", BackupID: "backup-1", BackupHost: "primary", MigrateStarted: migrated, RemotePaths: map[string]string{"primary": "/srv/app"}}
+			rec := &Record{ID: "interrupted", Target: "prodsim", Status: "in_progress", ApplyStarted: true, BackupID: "backup-1", BackupHost: "primary", MigrateStarted: migrated, RemotePaths: map[string]string{"primary": "/srv/app"}}
 			if err := SaveRecord(root, *rec); err != nil {
 				t.Fatal(err)
 			}
-			got, err := LoadLatestRecord(root, rec.Target)
-			if err != nil || got == nil {
-				t.Fatalf("provisional record unavailable: %#v %v", got, err)
-			}
-			if err := RollbackRecord(context.Background(), root, rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
-				t.Fatal(err)
-			}
-			restored := strings.Contains(strings.Join(r.calls, "\n"), "backup restore")
-			if restored != migrated {
-				t.Fatalf("DB restore=%v migrate started=%v calls=%v", restored, migrated, r.calls)
+			err := RollbackRecord(context.Background(), root, rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"})
+			if err == nil || !strings.Contains(err.Error(), "E485") || !strings.Contains(err.Error(), "backup-1") || len(r.calls) != 0 {
+				t.Fatalf("uncertain apply must refuse with backup id: err=%v calls=%v", err, r.calls)
 			}
 		})
 	}

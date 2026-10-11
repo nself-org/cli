@@ -6,6 +6,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
@@ -16,8 +17,24 @@ func checkpointPromoteStep(w *promoteWiring, step cpromote.Step, before bool) cp
 	run := step.Run
 	step.Run = func(ctx context.Context, st *cpromote.State) error {
 		if before {
-			if err := savePromoteRecord(w, st, "in_progress"); err != nil {
+			st.MigrateStarted = false
+			if err := ctx.Err(); err != nil {
 				return err
+			}
+			if err := provePromoteApplied(ctx, w, st); err != nil {
+				return err
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			st.MigrateStarted = true
+			if err := savePromoteRecord(w, st, "in_progress"); err != nil {
+				st.MigrateStarted = false
+				return err
+			}
+			if err := ctx.Err(); err != nil {
+				st.MigrateStarted = false
+				return errors.Join(err, savePromoteRecord(w, st, "in_progress"))
 			}
 		}
 		if err := run(ctx, st); err != nil {
@@ -38,12 +55,28 @@ func runPromoteRecord(w *promoteWiring) func(context.Context, *cpromote.State) e
 
 func savePromoteRecord(w *promoteWiring, st *cpromote.State, status string) error {
 	saved, _ := st.Values["saved_manifest"].(cpromote.SavedManifest)
-	return cpromote.SaveRecord(w.workdir, cpromote.Record{
-		ID: deploy.NewBackupID(w.started), Source: st.Source, Target: st.Target,
+	if w.id == "" {
+		w.id = deploy.NewBackupID(w.started)
+	}
+	rec := cpromote.Record{
+		ID: w.id, Source: st.Source, Target: st.Target,
 		StartedAt: w.started, CompletedAt: time.Now().UTC(), Status: status, SnapshotTag: st.SnapshotTag,
 		BackupID: st.BackupID, BackupHost: st.BackupHost, PreDeployTar: st.PreDeployTar,
 		Changed: st.PreDeployChanged, Absent: st.PreDeployAbsent, Digests: st.Digests, SavedManifest: saved,
 		DBRestoredAt: st.DBRestoredAt, MigrateStarted: st.MigrateStarted,
 		RemotePaths: st.RemotePaths, AppliedManifestHash: st.AppliedManifestHash,
-	})
+		ApplyStarted: st.ApplyStarted, FilesRestored: st.FilesRestored,
+		RecoveryPhase: st.RecoveryPhase, PriorManifestIdentity: st.PriorManifestIdentity,
+	}
+	if st.ApplyStarted {
+		rec.DeployIdentity = &cpromote.DeployIdentity{StartedAt: w.started}
+	}
+	kept, _ := st.Values["apply_kept_changes"].(bool)
+	if len(st.PreDeployTar) == 0 || (st.ApplyStarted && !kept) {
+		if done, _ := st.Values["apply_finished"].(bool); done && len(st.PreDeployTar) == 0 {
+			rec.ApplyStarted = false
+		}
+		return cpromote.SaveAttempt(w.workdir, rec)
+	}
+	return cpromote.SaveRecord(w.workdir, rec)
 }

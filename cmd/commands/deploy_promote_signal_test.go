@@ -20,6 +20,7 @@ type promoteSignalRemote struct {
 	*v15Remote
 	root        string
 	provisional bool
+	proof       *promoteSafetyRemote
 }
 
 func (r *promoteSignalRemote) Run(ctx context.Context, command string) ([]byte, error) {
@@ -30,7 +31,11 @@ func (r *promoteSignalRemote) Run(ctx context.Context, command string) ([]byte, 
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
-	return r.v15Remote.Run(ctx, command)
+	raw, err := r.v15Remote.Run(ctx, command)
+	if err == nil && (strings.Contains(command, "images --format json") || strings.Contains(command, "image inspect") || strings.Contains(command, "config --format json --no-env-resolution") || strings.Contains(command, "__NSELF_ABSENT__")) {
+		return r.proof.Run(ctx, command)
+	}
+	return raw, err
 }
 
 func TestPromoteInterruptDuringMigrate(t *testing.T) {
@@ -46,14 +51,14 @@ func TestPromoteInterruptHelper(t *testing.T) {
 	}
 	compattest.Set(t, true)
 	locked := compose.LockedImages()[0]
-	source, _ := setupPromoteSafety(t, locked.LegacyRef, locked.String(), false)
+	source, proof := setupPromoteSafety(t, locked.LegacyRef, locked.String(), false)
 	root := mustProjectRoot(t)
 	// Build services require no external registry or SSH architecture preflight.
 	wf(t, filepath.Join(root, "docker-compose.yml"), "services:\n  api:\n    image: "+locked.LegacyRef+"\n    build: .\n")
 	key := filepath.Join(t.TempDir(), "key")
 	wf(t, key, "fixture")
 	t.Setenv("TEST_KEY", key)
-	target := &promoteSignalRemote{v15Remote: &v15Remote{label: "prod-app"}, root: root}
+	target := &promoteSignalRemote{v15Remote: &v15Remote{label: "prod-app"}, root: root, proof: proof}
 	deployRemoteOpen = func(_ context.Context, srv controlplane.Server, _, _ string) (deploy.Remote, error) {
 		if srv.Name == "ls-app" {
 			return source, nil

@@ -74,6 +74,13 @@ func runPromoteRecordRollback(cmd *cobra.Command) error {
 	if err != nil {
 		return errs.Wrap("E485", "promotion record is unusable; nothing was changed", err)
 	}
+	attempt, err := cpromote.LoadAttempt(workdir)
+	if err != nil {
+		return errs.Wrap("E485", "promotion attempt is unusable; nothing was changed", err)
+	}
+	if attempt != nil && attempt.ApplyStarted && (attempt.Status == "in_progress" || attempt.Status == "rollback_failed") && (rec == nil || attempt.StartedAt.After(rec.StartedAt)) {
+		rec = attempt
+	}
 	if rec == nil {
 		state, stateErr := deploy.LoadDeployState(workdir)
 		if stateErr != nil {

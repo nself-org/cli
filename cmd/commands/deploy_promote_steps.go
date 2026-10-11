@@ -38,6 +38,7 @@ type promoteWiring struct {
 	compose                 string
 	started                 time.Time
 	yes                     bool
+	id                      string
 }
 
 // preparePromoteEngine resolves local inventory facts and wires concrete steps.
@@ -175,23 +176,38 @@ func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) er
 			return err
 		}
 		st.RemotePaths, st.AppliedManifestHash = paths, map[string]string{}
+		st.ApplyStarted = true
+		st.RecoveryCheckpoint = func(s *cpromote.State) error { return savePromoteRecord(w, s, "in_progress") }
+		if err := savePromoteRecord(w, st, "in_progress"); err != nil {
+			return err
+		}
 		w.apply.Yes = w.yes
 		w.apply.ProdClass, w.apply.BackupID, w.apply.BackupHost = prodClassFn(w.inv, w.target), st.BackupID, st.BackupHost
 		w.apply.Open = func(c context.Context, srv controlplane.Server, key, env string) (deploy.Remote, error) {
 			r, err := openDeployRemote(c, srv, key, env)
 			if err == nil {
 				remotes[r.Label()], paths[r.Label()] = r, srv.RemotePath
+				st.AppliedManifestHash[r.Label()] = cpromote.ManifestHash(manifest)
+				r = newPromoteEvidenceRemote(r, srv.RemotePath, w.apply.Set, w.apply.Previous, st, func() error { return savePromoteRecord(w, st, "in_progress") })
 			}
 			return r, err
 		}
-		originalRecord := w.apply.Record
+		originalRecord := recordRemoteApply(w.workdir, w.target, w.started, st.BackupID, st.BackupHost)
 		w.apply.Record = func(srv controlplane.Server, res deploy.ApplyResult, err error) {
 			if originalRecord != nil {
 				originalRecord(srv, res, err)
 			}
 			cpromote.RecordApplied(st, res)
 			if res.Synced {
+				st.Values["apply_kept_changes"] = true
 				st.AppliedManifestHash[res.BackupHost] = cpromote.ManifestHash(manifest)
+			} else {
+				delete(st.PreDeployTar, res.BackupHost)
+				delete(st.PreDeployChanged, res.BackupHost)
+				delete(st.PreDeployAbsent, res.BackupHost)
+			}
+			if serr := savePromoteRecord(w, st, "in_progress"); serr != nil {
+				st.Values["apply_record_error"] = serr
 			}
 		}
 		st.Values["apply_remotes"], st.Values["apply_paths"] = remotes, paths
@@ -204,7 +220,9 @@ func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) er
 				}
 			}
 		}
-		return errors.Join(err, savePromoteRecord(w, st, "in_progress"))
+		st.Values["apply_finished"] = true
+		recordErr, _ := st.Values["apply_record_error"].(error)
+		return errors.Join(err, recordErr, savePromoteRecord(w, st, "in_progress"))
 	}
 }
 

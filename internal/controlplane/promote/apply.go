@@ -40,11 +40,24 @@ func UndoApplied(ctx context.Context, st *State, remotes map[string]deploy.Remot
 		if r == nil {
 			return fmt.Errorf("promotion rollback has no remote for %s", host)
 		}
+		if st.FilesRestored[host] {
+			continue
+		}
 		if err := deploy.RollbackRemote(ctx, deploy.RollbackOptions{
 			Remote: r, RemotePath: paths[host], Tar: st.PreDeployTar[host],
 			Changed: st.PreDeployChanged[host], Absent: st.PreDeployAbsent[host], StrictHasura: true,
 		}); err != nil {
 			return err
+		}
+		if st.FilesRestored == nil {
+			st.FilesRestored = map[string]bool{}
+		}
+		st.FilesRestored[host] = true
+		st.RecoveryPhase = "files_restored"
+		if st.RecoveryCheckpoint != nil {
+			if err := st.RecoveryCheckpoint(st); err != nil {
+				return fmt.Errorf("files restored but promotion checkpoint failed: %w", err)
+			}
 		}
 	}
 	return nil

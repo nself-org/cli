@@ -246,7 +246,7 @@ func setupPromoteSafety(t *testing.T, sourceRef, targetRef string, failVerify bo
 	sourceRepo, sourceTag := splitImageTag(sourceRef)
 	sourceLock := lockedRefByLegacy(t, sourceRef)
 	source := &promoteSafetyRemote{label: "ls-app", repository: sourceRepo, tag: sourceTag, imageID: "sha256:running-source", index: sourceLock.IndexDigest}
-	target := &promoteSafetyRemote{label: "prod-app", failVerify: failVerify}
+	target := &promoteSafetyRemote{label: "prod-app", failVerify: failVerify, repository: sourceRepo, tag: sourceTag, imageID: "sha256:running-target", index: sourceLock.IndexDigest}
 	oldOpen, oldBuild, oldProber := deployRemoteOpen, deployScratchBuildFn, newDeployProber
 	t.Cleanup(func() { deployRemoteOpen, deployScratchBuildFn, newDeployProber = oldOpen, oldBuild, oldProber })
 	deployRemoteOpen = func(_ context.Context, srv controlplane.Server, _, _ string) (deploy.Remote, error) {
@@ -585,8 +585,8 @@ func TestPromoteRecordMigrationEvidence(t *testing.T) {
 	if err := savePromoteRecord(w, st, "rollback_failed"); err != nil {
 		t.Fatal(err)
 	}
-	rec, err := cpromote.LoadRecord(root)
-	if err != nil || !rec.MigrateStarted || rec.DBRestoredAt != st.DBRestoredAt {
+	rec, err := cpromote.LoadAttempt(root)
+	if err != nil || rec == nil || !rec.MigrateStarted || rec.DBRestoredAt != st.DBRestoredAt {
 		t.Fatalf("record evidence: %+v %v", rec, err)
 	}
 }

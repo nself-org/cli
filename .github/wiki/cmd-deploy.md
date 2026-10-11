@@ -108,6 +108,8 @@ Drift exits 1 (`E490`) and names the affected services and lookup failures.
 Services with a compose `build:` context are unverifiable: prod refuses them;
 other tiers warn. The snapshot is created, located by tag, and verified before
 save or apply. A failed verification exits with `E206` without applying anything.
+After apply, running image identities are inspected again before migration. A
+changed tag fails promotion and restores files without restoring the database.
 
 Failures after the verified snapshot restore the saved artifacts. The database
 is restored only if migration started, followed by another health check.
@@ -594,8 +596,10 @@ laptop are not covered: the lock stays, and the error for the next deploy says h
 
 For v1.5 environment promotion, Ctrl-C cancels the current step and runs compensation
 on a fresh context, returning `E488` when recovery succeeds. A provisional
-`.nself/state/promote.json` is saved after the verified snapshot, after apply, and
-before migration starts. Interrupted records can be recovered with `deploy rollback
+`.nself/state/promote-attempt.json` keeps snapshot and pre-sync tar evidence until
+a host keeps changes, when it atomically becomes the `promote.json` authority.
+A failed attempt with no changed hosts preserves the previous live promotion.
+Interrupted records can be recovered with `deploy rollback
 <target>`; the database is restored only if migration started and it has not already
 been restored. If the final record write fails after health succeeds, `E489` says
 the promotion is live and names the snapshot, backup and pre-deploy tars. It leaves
@@ -607,6 +611,10 @@ or artifact identity refuses with `E485`. Restoring a production-class database
 requires `deploy rollback <target> --yes` or terminal confirmation; without either,
 non-interactive use returns `E403` (exit 4). The `promote rollback --yes` shim uses
 the same confirmation rule in v1.5.
+Recovery checkpoints completed file and database restores. After a transient DB
+restore failure, retry accepts the restored prior manifest (including absence)
+and skips file restoration. An interrupted apply without matching tar evidence
+refuses with `E485` and names the verified backup for operator recovery.
 
 All ssh and rsync commands use the strict host-key policy; an unknown key is `E487`.
 

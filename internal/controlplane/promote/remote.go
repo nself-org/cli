@@ -78,6 +78,10 @@ func SnapshotStep(r deploy.Remote, remotePath, tag string) Step {
 		_, err := r.Run(ctx, "cd "+remotesdk.ShellQuote(remotePath)+" && nself backup restore "+remotesdk.ShellQuote(st.BackupID)+" --yes")
 		if err == nil {
 			st.DBRestoredAt = time.Now().UTC().Format(time.RFC3339Nano)
+			st.RecoveryPhase = "db_restored"
+			if st.RecoveryCheckpoint != nil {
+				return st.RecoveryCheckpoint(st)
+			}
 		}
 		return err
 	}}
