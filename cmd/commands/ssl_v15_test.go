@@ -13,10 +13,12 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/ssl"
 	"github.com/nself-org/cli/internal/ssl/acme"
 )
 
@@ -92,15 +94,18 @@ func TestSSLV15RoutesACME(t *testing.T) {
 
 // TestSSLV14KeepsCertbot: without NSELF_V15 the same commands exec certbot with
 // the argv of origin/main, reload nginx through `docker compose exec`, install
-// the certbot cron, and never touch the ACME engine.
+// the certbot cron (setup --install-cron), and never touch the ACME engine.
 func TestSSLV14KeepsCertbot(t *testing.T) {
 	log := certbotStubs(t)
 	compattest.Set(t, false)
 	t.Setenv("ENV", "dev")
-	runs := 0
+	runs, crons, timers := 0, 0, 0
+	oldCron := installSSLRenewalCron
+	installSSLRenewalCron = func(string) error { crons++; return nil }
+	t.Cleanup(func() { installSSLRenewalCron = oldCron })
 	oldD := acmeD
 	acmeD.run = func(context.Context, docker.RunSpec) (string, string, error) { runs++; return "", "", nil }
-	acmeD.timer = func(string, string) error { runs++; return nil }
+	acmeD.timer = func(string, string) error { timers++; return nil }
 	t.Cleanup(func() {
 		acmeD = oldD
 		acmeResetFlags(sslSetupCmd)
@@ -127,6 +132,11 @@ func TestSSLV14KeepsCertbot(t *testing.T) {
 	}{
 		"setup": {func() error { acmeResetFlags(sslSetupCmd); return runSSLSetup(sslSetupCmd, nil) },
 			dns + " -d example.org -d api.example.org -d auth.example.org\n" + reload},
+		"setup cron": {func() error {
+			acmeResetFlags(sslSetupCmd)
+			_ = sslSetupCmd.Flags().Set("install-cron", "true")
+			return runSSLSetup(sslSetupCmd, nil)
+		}, dns + " -d example.org -d api.example.org -d auth.example.org\n" + reload},
 		"renew": {func() error { acmeResetFlags(sslRenewCmd); return runSSLRenew(sslRenewCmd, []string{"renew.invalid"}) },
 			"certbot renew --cert-name renew.invalid\n" + reload},
 		"add": {func() error { acmeResetFlags(sslAddCmd); return runSSLAdd(sslAddCmd, []string{"add.example.org"}) },
@@ -143,52 +153,90 @@ func TestSSLV14KeepsCertbot(t *testing.T) {
 	if runs != 0 {
 		t.Errorf("the ACME engine ran %d times in v1.4 mode", runs)
 	}
+	if timers != 0 {
+		t.Errorf("the ACME renewal timer was installed %d times in v1.4 mode", timers)
+	}
+	if crons != 1 {
+		t.Errorf("the certbot renewal cron was installed %d times (want 1, by the setup --install-cron case)", crons)
+	}
+}
+
+// errCase is one row of TestSSLV15ErrorCodes. drive runs the command under test
+// (default: `setup --acme`) after arrange has set up the failure.
+type errCase struct {
+	name           string
+	arrange        func(f *acmeFix)
+	drive          func(f *acmeFix) error
+	want14, want15 string
+}
+
+func driveSetup(f *acmeFix) error { _, err := f.run(sslSetupCmd, "--acme", "--agree-tos"); return err }
+
+// driveAdd runs `ssl add --acme` for a fresh domain on the add fixture.
+func driveAdd(f *acmeFix) error {
+	_, err := f.runAdd("app.example.org", "--acme", "--agree-tos")
+	return err
+}
+
+// driveRenew issues the lineages with a working lego, arms the failure, then
+// runs `renew --force`.
+func driveRenew(fail func(f *acmeFix)) func(f *acmeFix) error {
+	return func(f *acmeFix) error {
+		if err := driveSetup(f); err != nil {
+			return err
+		}
+		fail(f)
+		_, err := f.run(sslRenewCmd, "--acme", "--force")
+		return err
+	}
 }
 
 // TestSSLV15ErrorCodes: an ACME failure is E151 in v1.4 and E470, E471 or E472
 // in v1.5 by class; a refusal that never reached the CA stays E151. Each case
-// drives the real engine, so a reworded engine message fails here.
+// drives the real engine (setup, add and renew), so a reworded engine message
+// fails here.
 func TestSSLV15ErrorCodes(t *testing.T) {
-	cases := []struct {
-		name           string
-		arrange        func(f *acmeFix)
-		want14, want15 string
-	}{
-		{"lego fails", func(f *acmeFix) {
-			acmeD.run = func(context.Context, docker.RunSpec) (string, string, error) { return "", "boom", errors.New("exit 1") }
-		}, "E151", "E470"},
+	legoFails := func(context.Context, docker.RunSpec) (string, string, error) { return "", "boom", errors.New("exit 1") }
+	cases := []errCase{
+		{"lego fails", func(f *acmeFix) { acmeD.run = legoFails }, driveSetup, "E151", "E470"},
 		{"nginx -t fails after issue", func(f *acmeFix) {
 			acmeD.exec = func(context.Context, string, []string) (string, string, error) {
 				return "", "bad conf", errors.New("exit 1")
 			}
-		}, "E151", "E471"},
-		{"dns credential missing", func(f *acmeFix) { delete(f.secrets, "SSL_DNS_CLOUDFLARE_API_TOKEN") }, "E151", "E472"},
+		}, driveSetup, "E151", "E471"},
+		{"dns credential missing", func(f *acmeFix) { delete(f.secrets, "SSL_DNS_CLOUDFLARE_API_TOKEN") }, driveSetup, "E151", "E472"},
 		{"refusal before the CA", func(f *acmeFix) {
 			acmeWriteFile(t, filepath.Join(f.project, ".env"), []byte("BASE_DOMAIN=localhost\nENV=dev\nPROJECT_NAME=backend\nNGINX_FRONTED_BY=nself-web\n"))
-		}, "E151", "E151"},
+		}, driveSetup, "E151", "E151"},
+		{"add: served certificate check fails", func(f *acmeFix) {
+			acmeD.probe = func(context.Context, string, string, time.Duration) (ssl.ServedCert, error) {
+				return ssl.ServedCert{}, errors.New("dial refused")
+			}
+		}, driveAdd, "E151", "E471"},
+		{"add: lego fails", func(f *acmeFix) { acmeD.run = legoFails }, driveAdd, "E151", "E470"},
+		{"renew: lego fails", func(f *acmeFix) {}, driveRenew(func(f *acmeFix) { acmeD.run = legoFails }), "E151", "E470"},
 	}
 	compattest.Both(t, func(t *testing.T) {
-		want := func(c struct {
-			name           string
-			arrange        func(f *acmeFix)
-			want14, want15 string
-		}) string {
-			if strings.HasSuffix(t.Name(), "v1.5") {
-				return c.want15
-			}
-			return c.want14
-		}
 		for _, c := range cases {
-			f := newACMEFix(t)
+			var f *acmeFix
+			if strings.HasPrefix(c.name, "add:") {
+				f, _ = addFix(t, nil)
+			} else {
+				f = newACMEFix(t)
+			}
 			c.arrange(f)
-			_, err := f.run(sslSetupCmd, "--acme", "--agree-tos")
+			want := c.want14
+			if strings.HasSuffix(t.Name(), "v1.5") {
+				want = c.want15
+			}
+			err := c.drive(f)
 			if err == nil {
 				t.Fatalf("%s: no error", c.name)
 			}
-			if got := codeOf(err); got != want(c) {
-				t.Errorf("%s: code = %q, want %q (%v)", c.name, got, want(c), err)
+			if got := codeOf(err); got != want {
+				t.Errorf("%s: code = %q, want %q (%v)", c.name, got, want, err)
 			}
-			if w := want(c); w != "E151" {
+			if want != "E151" {
 				var ce *errs.CLIError
 				if errors.As(err, &ce) && (ce.Fix == "" || ce.Wrapped == nil) {
 					t.Errorf("%s: re-coded error lost its fix or cause: %+v", c.name, ce)
@@ -196,6 +244,26 @@ func TestSSLV15ErrorCodes(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestSSLV15AddInstallKeepsMessage: tagging an after-install failure for E471
+// must not change the message or lose the *acme.Error (v1.4 text is frozen).
+func TestSSLV15AddInstallKeepsMessage(t *testing.T) {
+	base := acme.Refuse("fix it", "served certificate check failed: %v", "dial refused")
+	tagged := installFailed(base)
+	if tagged.Error() != base.Error() {
+		t.Errorf("message changed: %q -> %q", base.Error(), tagged.Error())
+	}
+	var ae *acme.Error
+	if !errors.As(tagged, &ae) || !errors.Is(tagged, acme.ErrInstall) {
+		t.Errorf("chain lost the *acme.Error or ErrInstall: %v", tagged)
+	}
+	if got := acme.CodeFor(tagged); got != acme.CodeInstall {
+		t.Errorf("CodeFor(tagged) = %q, want %q", got, acme.CodeInstall)
+	}
+	if got := acme.CodeFor(base); got != "" {
+		t.Errorf("CodeFor(untagged refusal) = %q, want none", got)
+	}
 }
 
 // TestSSLV15CodeForUnclassified: errors that are none of the three classes, and

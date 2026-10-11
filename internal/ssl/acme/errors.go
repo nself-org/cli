@@ -23,6 +23,12 @@ const (
 	CodeCredential = "E472" // the DNS credential is not in the secret store
 )
 
+// ErrInstall marks an error as "issued, but not installed or not served". The
+// commands wrap a refusal built after the install step (conf write, reload,
+// served-certificate check) with it so CodeFor answers E471 for what would
+// otherwise read as a refusal. It adds no text to the message.
+var ErrInstall = errors.New("certificate install or verification failed")
+
 // installMarkers are fragments of the errors Install returns.
 var installMarkers = []string{
 	"previous certificates restored", "ROLLBACK FAILED", "nothing installed",
@@ -37,6 +43,9 @@ var issueMarkers = []string{"lego run for ", "lego run (http-01) for "}
 func CodeFor(err error) string {
 	if err == nil {
 		return ""
+	}
+	if errors.Is(err, ErrInstall) {
+		return CodeInstall
 	}
 	var ae *Error
 	if errors.As(err, &ae) {

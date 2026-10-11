@@ -37,7 +37,7 @@ func snippetModel(t *testing.T, workdir, pluginDir string) (*buildState, *routem
 	t.Helper()
 	cfg := &config.Config{ProjectName: "unit", BaseDomain: "example.test", Env: "dev"}
 	cfg.PluginSystem.Dir = pluginDir
-	m, err := routemodel.Build(cfg, workdir, false, nil)
+	m, err := routemodel.Build(cfg, workdir, false)
 	if err != nil {
 		t.Fatal(err)
 	}

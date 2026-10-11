@@ -105,7 +105,7 @@ func (g *Generator) ensureModel() error {
 	if g.model != nil {
 		return nil
 	}
-	m, err := routemodel.Build(g.cfg, g.workdir, g.hasSSL, nil)
+	m, err := routemodel.Build(g.cfg, g.workdir, g.hasSSL)
 	if err != nil {
 		return err
 	}

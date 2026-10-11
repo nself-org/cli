@@ -22,10 +22,8 @@ type routeSpec struct {
 	websocket                                             bool
 }
 
-// Build collects the route data before any provider renders it. The last
-// parameter is ignored: it was the chain.pem probe, removed with OCSP stapling
-// (P7-LIVE-22); callers pass nil and the parameter goes when they next change.
-func Build(cfg *config.Config, workdir string, hasSSL bool, _ func(string) bool) (*Model, error) {
+// Build collects the route data before any provider renders it.
+func Build(cfg *config.Config, workdir string, hasSSL bool) (*Model, error) {
 	maxBody := cfg.Nginx.MaxBody
 	if maxBody == "" {
 		maxBody = "100M"
@@ -161,9 +159,8 @@ func Build(cfg *config.Config, workdir string, hasSSL bool, _ func(string) bool)
 
 func ptr(s string) *string { return &s }
 
-// SetSSL refreshes TLS facts after the build's certificate phase. The last
-// parameter is ignored (see Build).
-func SetSSL(m *Model, hasSSL bool, _ func(string) bool) {
+// SetSSL refreshes TLS facts after the build's certificate phase.
+func SetSSL(m *Model, hasSSL bool) {
 	m.DefaultServer.HTTP.RedirectHTTPS = hasSSL
 	sslDir := strings.ReplaceAll(m.BaseDomain, ".", "-")
 	if sslDir == "" {

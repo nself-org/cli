@@ -46,7 +46,7 @@ func v15ACMEError(err error) error {
 	if err == nil || !errors.As(err, &ce) || ce.Code != "E151" {
 		return err
 	}
-	// compat.V15(P7-LIVE-22): E151 for every ACME failure -> E470-E472 by failure class
+	// compat.V15(P7-LIVE-22): E151 (exit 2) for every ACME failure -> E470/E471 (exit 2) or E472 (exit 1) by failure class
 	if !compat.V15() {
 		return err
 	}
@@ -121,7 +121,8 @@ WantedBy=timers.target
 // installSSLRenewalCron installs automatic Let's Encrypt certificate renewal.
 // On Linux with systemd, creates and enables a systemd timer unit.
 // Returns an error with crontab fallback instructions if installation fails.
-func installSSLRenewalCron(workdir string) error {
+// A variable so tests can observe the call.
+var installSSLRenewalCron = func(workdir string) error {
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		return fmt.Errorf("systemd not available — add to crontab: 30 3 * * * certbot renew --quiet")
 	}
