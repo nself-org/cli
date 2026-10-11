@@ -30,9 +30,24 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 )
 
-// legacyProjectNetwork is the literal external network name older fragments
-// (access-controls, forgejo and others) use for the project network.
-const legacyProjectNetwork = "nself_network"
+// legacyNetworkNames are the literal external network names older fragments
+// use for the project network: nself_network (access-controls, forgejo and
+// others), nself-network (analytics, cdn, cloudflare, ddns) and nself (e2ee,
+// auth, google).
+var legacyNetworkNames = []string{"nself_network", "nself-network", "nself"}
+
+// isLegacyNetwork reports whether name is one of legacyNetworkNames.
+func isLegacyNetwork(name string) bool {
+	for _, n := range legacyNetworkNames {
+		if name == n {
+			return true
+		}
+	}
+	return false
+}
+
+// legacyNetworkLabel names the set in messages.
+const legacyNetworkLabel = "legacy external project network (nself_network, nself-network or nself)"
 
 // projectNetworkName is what service references to the legacy network become.
 const projectNetworkName = "${DOCKER_NETWORK}"
@@ -188,9 +203,15 @@ func dropBlock(key, val *yaml.Node, lines []string) (lineEdit, bool) {
 	end := key.Line // 0-based index of the first line after the key line
 	for end < len(lines) {
 		t := strings.TrimSpace(lines[end])
-		if t == "" { // a blank line belongs to the block only if deeper content follows
+		// A blank line, or a comment at or left of the key's indent, belongs to
+		// the block only if deeper content of the entry follows (YAML allows a
+		// dedented comment inside a block).
+		if t == "" || (strings.HasPrefix(t, "#") && leadingSpaces(lines[end]) <= indent) {
 			j := end + 1
-			for j < len(lines) && strings.TrimSpace(lines[j]) == "" {
+			for j < len(lines) {
+				if tj := strings.TrimSpace(lines[j]); tj != "" && !strings.HasPrefix(tj, "#") {
+					break
+				}
 				j++
 			}
 			if j >= len(lines) || leadingSpaces(lines[j]) <= indent {

@@ -254,7 +254,7 @@ func TestFragmentNetworkForeignE129(t *testing.T) {
 			"networks:\n  a:\n    external:\n      name: other\n":                        true,
 			"networks:\n  a:\n    external: true\n    name: ${DOCKER_NETWORK:-x}\n":      false,
 			"networks:\n  a:\n    external: true\n    name: ${PROJECT_NAME}_network\n":   false,
-			"networks:\n  a:\n    external: false\n    name: other\n":                    false,
+			"networks:\n  a:\n    external: false\n    name: other\n":                    true, // named: compose reuses an existing network of that name
 			"networks:\n  a:\n    driver: bridge\n":                                      false,
 			"networks:\n  a:\n    external: true\n    name: ${COMPOSE_PROJECT_NAME}_x\n": true,
 		} {

@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  access-controls:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nself/nself-access-controls:latest
+    container_name: nself_access_controls
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3027:3027"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      ACL_PLUGIN_PORT: "3027"
+      ACL_CACHE_TTL_SECONDS: ${ACL_CACHE_TTL_SECONDS:-300}
+      ACL_MAX_ROLE_DEPTH: ${ACL_MAX_ROLE_DEPTH:-10}
+      ACL_DEFAULT_DENY: ${ACL_DEFAULT_DENY:-true}
+      ACL_API_KEY: ${ACL_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3027/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - nself_network
+
+networks:
+  nself_network:
+    external: true

@@ -83,6 +83,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-17 | --json is ignored by plugin info | prints the info with its tier and why as JSON | `cmd/commands/plugin_info.go` |
 | P7-PLUG-17 | a compose plugin without a fragment is skipped silently | the build fails with E128 (v1.4 warns) | `internal/build/plugins.go` |
 | P7-PLUG-17 | a fragment may join any external network (warning) | E129 fails the build | `internal/build/plugins_network_normalize.go` |
+| P7-PLUG-17 | a fragment that decodes as nodes but not as values is passed on unchecked | E129, the network policy could not be checked | `internal/build/plugins_network_normalize.go` |
 | P7-PLUG-17 | an update re-resolves a tier pair by entitlement and can switch the installed tier | the installed tier sticks unless --tier is given | `internal/plugin/tier_resolve.go` |
 | P7-PLUG-17 | external network nself_network keeps its literal name | its definition is dropped and service references use ${DOCKER_NETWORK} | `internal/build/plugins_network_legacy.go` |
 | P7-PLUG-17 | fragments get no PORT | PORT equals SERVICE_PORT (a fragment's own PORT always wins) | `internal/build/plugins_core_env.go` |

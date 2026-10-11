@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  ddns:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nself/nself-ddns:latest
+    container_name: nself-ddns
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3217:3217"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DDNS_PLUGIN_PORT: 3217
+      DDNS_API_KEY: ${DDNS_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3217/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - nself-network
+
+networks:
+  nself-network:
+    external: true

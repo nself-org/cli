@@ -564,3 +564,13 @@ func TestResolveMaxTierAndOnlyTier(t *testing.T) {
 		}
 	})
 }
+
+// TestDuplicateSlugErrorUsesLicenceWord: the collision report names the
+// licence word (licensed), not the raw registry tier (max).
+func TestDuplicateSlugErrorUsesLicenceWord(t *testing.T) {
+	reg := &Registry{Plugins: []PluginManifest{{Name: "dup", Version: "1", Tier: "max"}, {Name: "dup", Version: "2", Tier: "free"}}}
+	_, err := ResolvePlugin(context.Background(), reg, "dup", "", neverEntitled)
+	if err == nil || !strings.Contains(err.Error(), "license=licensed") || strings.Contains(err.Error(), "license=max") {
+		t.Fatalf("want license=licensed in %v", err)
+	}
+}

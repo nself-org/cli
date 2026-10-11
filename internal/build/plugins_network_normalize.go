@@ -28,7 +28,7 @@ var dockerNetworkDefaultRE = regexp.MustCompile(`^\$\{DOCKER_NETWORK:-[^}]*\}$`)
 
 // projectNetworkRE matches the names that are the project network: the
 // DOCKER_NETWORK variable or <project>_network spelled with the project vars.
-// The legacy literal legacyProjectNetwork is the project network too
+// The legacy literal the legacy literals (legacyNetworkNames) are the project network too
 // (plugins_network_legacy.go) and is checked beside this pattern.
 var projectNetworkRE = regexp.MustCompile(`^\$\{DOCKER_NETWORK(:-[^}]*)?\}$|^\$\{(COMPOSE_PROJECT_NAME|PROJECT_NAME)(:-[^}]*)?\}_network$`)
 
@@ -97,7 +97,11 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 	top := doc.Content[0]
 	res, err := resolveFragment(content)
 	if err != nil {
-		return content, nil // decodes as nodes but not as values: compose reports it
+		// compat.V15(P7-PLUG-17): a fragment that decodes as nodes but not as values is passed on unchecked -> E129, the network policy could not be checked
+		if compat.V15() {
+			return content, errs.New("E129", fmt.Sprintf("plugin %q: the network policy could not be checked, the compose fragment does not decode (%v)", pluginName, err))
+		}
+		return content, nil
 	}
 	if foreign := res.foreignExternalNetworks(); len(foreign) > 0 {
 		msg := fmt.Sprintf("plugin %q attaches external network %s other than the project network", pluginName, strings.Join(foreign, ", "))
@@ -120,14 +124,21 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 		for i := 1; i < len(svcs.Content); i += 2 {
 			edits = append(edits, serviceNetworkEdits(svcs.Content[i], res.Services[svcs.Content[i-1].Value], cr)...)
 		}
+		// A service supplied by a merge key under services: has no node to
+		// splice a networks: into, and a written key would replace it whole.
+		for name, rs := range res.Services {
+			if yamlGet(svcs, name) == nil && !rs.usesNetworks() {
+				return content, errs.New("E129", fmt.Sprintf("plugin %q: service %q comes from a merge key under services: and has no networks; write the service out with networks: [${DOCKER_NETWORK}]", pluginName, name))
+			}
+		}
 	}
 	legacy, keys, why := legacyNetworkEdits(content, top, res)
 	if why != "" {
-		return content, errs.New("E129", fmt.Sprintf("plugin %q uses the legacy external network %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (%s)", pluginName, legacyProjectNetwork, why))
+		return content, errs.New("E129", fmt.Sprintf("plugin %q uses the %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (%s)", pluginName, legacyNetworkLabel, why))
 	}
 	out := applyLineEdits(content, append(edits, legacy...))
 	if len(keys) > 0 && legacyNetworkRemains(out, keys) {
-		return content, errs.New("E129", fmt.Sprintf("plugin %q uses the legacy external network %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (a definition or reference is supplied through an alias or merge key)", pluginName, legacyProjectNetwork))
+		return content, errs.New("E129", fmt.Sprintf("plugin %q uses the %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (a definition or reference is supplied through an alias or merge key)", pluginName, legacyNetworkLabel))
 	}
 	return out, nil
 }

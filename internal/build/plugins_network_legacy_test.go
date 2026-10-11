@@ -101,7 +101,7 @@ func TestLegacyNselfNetworkFolds(t *testing.T) {
 					return
 				}
 				svc, nets := parsed(t, string(out))
-				if strings.Contains(string(out), legacyProjectNetwork) {
+				if strings.Contains(string(out), "nself_network") {
 					t.Fatalf("output still names nself_network:\n%s", out)
 				}
 				if name == "forgejo" {
@@ -179,7 +179,7 @@ func TestLegacyNselfNetworkE129(t *testing.T) {
 				out, err := normalizeComposeNetworks([]byte(frag), "s")
 				var ce *errs.CLIError
 				if compat.V15() {
-					if !errors.As(err, &ce) || ce.Code != "E129" || !strings.Contains(ce.What, `"s"`) || !strings.Contains(ce.What, legacyProjectNetwork) {
+					if !errors.As(err, &ce) || ce.Code != "E129" || !strings.Contains(ce.What, `"s"`) || !strings.Contains(ce.What, "legacy external project network") {
 						t.Fatalf("want E129 naming plugin and nself_network, got %v", err)
 					}
 					return

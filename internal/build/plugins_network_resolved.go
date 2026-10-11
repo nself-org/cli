@@ -11,7 +11,9 @@ package build
 // misses a network or service that an alias or merge key supplies.
 
 import (
+	"regexp"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -43,16 +45,23 @@ func resolveFragment(content []byte) (*resolvedFragment, error) {
 	return &r, nil
 }
 
-// isExternal reports whether the network is external: `external: true` (any
-// spelling yaml.v3 decodes as true) or an `external:` mapping.
+// isExternal reports whether the network is external, failing closed: compose
+// reads `external: "true"`, `yes`, `on` and `${VAR:-true}` as external too, so
+// everything is external except an absent value and a false (bool, or the
+// strings false, no, n, off in any case).
 func (n resolvedNetwork) isExternal() bool {
 	switch v := n.External.(type) {
+	case nil:
+		return false
 	case bool:
 		return v
-	case map[string]any:
-		return true
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "false", "no", "n", "off":
+			return false
+		}
 	}
-	return false
+	return true
 }
 
 // realName is the name compose uses: name:, else external.name, else the key.
@@ -68,16 +77,27 @@ func (n resolvedNetwork) realName(key string) string {
 	return key
 }
 
+// projectScopedNameRE matches a name that starts with the project name, so a
+// network of that name belongs to this project: ${COMPOSE_PROJECT_NAME[:-x]}_...
+// or ${PROJECT_NAME[:-x]}_...
+var projectScopedNameRE = regexp.MustCompile(`^\$\{(COMPOSE_PROJECT_NAME|PROJECT_NAME)(:-[^}]*)?\}_`)
+
 // foreignExternalNetworks returns the sorted names of top-level networks the
-// fragment declares external that are not the project network.
+// fragment would join that are not the project network: an external network
+// that is not the project network or a legacy literal, and a network that is
+// not external but carries an explicit name that is not project-scoped
+// (compose reuses an existing network of that name instead of creating one).
 func (r *resolvedFragment) foreignExternalNetworks() []string {
 	var out []string
 	for key, n := range r.Networks {
-		if !n.isExternal() {
+		if n.isExternal() {
+			if name := n.realName(key); !projectNetworkRE.MatchString(name) && !isLegacyNetwork(name) {
+				out = append(out, name)
+			}
 			continue
 		}
-		if name := n.realName(key); !projectNetworkRE.MatchString(name) && name != legacyProjectNetwork {
-			out = append(out, name)
+		if n.Name != "" && !projectNetworkRE.MatchString(n.Name) && !projectScopedNameRE.MatchString(n.Name) {
+			out = append(out, n.Name)
 		}
 	}
 	sort.Strings(out)
@@ -89,7 +109,7 @@ func (r *resolvedFragment) foreignExternalNetworks() []string {
 func (r *resolvedFragment) legacyKeys() map[string]bool {
 	keys := map[string]bool{}
 	for key, n := range r.Networks {
-		if n.isExternal() && n.realName(key) == legacyProjectNetwork {
+		if n.isExternal() && isLegacyNetwork(n.realName(key)) {
 			keys[key] = true
 		}
 	}

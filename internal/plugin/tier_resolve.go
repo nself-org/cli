@@ -110,7 +110,7 @@ func splitTierPair(entries []*PluginManifest) (free, pro *PluginManifest, ok boo
 func duplicateSlugError(name string, entries []*PluginManifest) error {
 	descs := make([]string, len(entries))
 	for i, e := range entries {
-		descs[i] = fmt.Sprintf("%s@%s (license=%s)", e.Name, e.Version, LicenseValue(e.Tier))
+		descs[i] = fmt.Sprintf("%s@%s (license=%s)", e.Name, e.Version, LicenseTier(e.Tier))
 	}
 	return fmt.Errorf("%w: %q resolves to %d registry entries that are not a declared tier_pair: %s",
 		errs.ErrDuplicatePluginSlug, name, len(entries), strings.Join(descs, ", "))
