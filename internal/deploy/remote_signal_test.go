@@ -8,13 +8,13 @@ package deploy
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -29,10 +29,15 @@ type blockingPull struct {
 }
 
 func (b blockingPull) Run(ctx context.Context, cmd string) ([]byte, error) {
-	if strings.Contains(unshell(cmd), " pull") {
+	script := unshell(cmd)
+	if strings.Contains(script, " pull") {
 		fmt.Println("READY")
 		<-b.ctx.Done()
 		return nil, b.ctx.Err()
+	}
+	if strings.Contains(script, "tar -xzf") { // the restore: hold it until the parent says go
+		fmt.Println("RESTORING")
+		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 	}
 	return b.fakeRemote.Run(ctx, cmd)
 }
@@ -71,12 +76,38 @@ func interruptWith(t *testing.T, sig syscall.Signal, twice bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var stderr bytes.Buffer
-	c.Stderr = &stderr
+	errPipe, err := c.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := c.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Process.Kill(); _ = c.Wait() })
+	// stderr: record everything and flag the two notices as they appear.
+	var mu sync.Mutex
+	var stderr strings.Builder
+	first, second := make(chan struct{}), make(chan struct{})
+	go func() {
+		sc := bufio.NewScanner(errPipe)
+		var once1, once2 sync.Once
+		for sc.Scan() {
+			l := sc.Text()
+			mu.Lock()
+			stderr.WriteString(l + "\n")
+			mu.Unlock()
+			if strings.Contains(l, "interrupted: finishing the current step (up to 2m0s)") {
+				once1.Do(func() { close(first) })
+			}
+			if strings.Contains(l, "still finishing the step or restoring") {
+				once2.Do(func() { close(second) })
+			}
+		}
+	}()
 	lines := make(chan string)
 	go func() {
 		sc := bufio.NewScanner(out)
@@ -85,7 +116,14 @@ func interruptWith(t *testing.T, sig syscall.Signal, twice bool) {
 		}
 		close(lines)
 	}()
-	deadline := time.After(90 * time.Second)
+	wait := func(ch chan struct{}, what string) {
+		select {
+		case <-ch:
+		case <-time.After(60 * time.Second):
+			t.Fatalf("timed out waiting for %s", what)
+		}
+	}
+	deadline := time.After(120 * time.Second)
 	sent, result := false, ""
 	for result == "" {
 		select {
@@ -93,17 +131,22 @@ func interruptWith(t *testing.T, sig syscall.Signal, twice bool) {
 			if !ok {
 				t.Fatal("the helper exited without reporting a result")
 			}
-			if l == "READY" && !sent {
+			switch {
+			case l == "READY" && !sent:
 				sent = true
 				if err := c.Process.Signal(sig); err != nil {
 					t.Fatal(err)
 				}
-				if twice {
-					time.Sleep(300 * time.Millisecond) // identical signals sent back to back coalesce
-					_ = c.Process.Signal(sig)
+				wait(first, "the first notice") // only then may a second signal be told apart from the first
+			case l == "RESTORING":
+				if twice { // the child is held inside the restore until the second notice is read
+					if err := c.Process.Signal(sig); err != nil {
+						t.Fatal(err)
+					}
+					wait(second, "the second notice")
 				}
-			}
-			if strings.HasPrefix(l, "RESULT ") {
+				_, _ = in.Write([]byte("go\n"))
+			case strings.HasPrefix(l, "RESULT "):
 				result = l
 			}
 		case <-deadline:
@@ -111,15 +154,18 @@ func interruptWith(t *testing.T, sig syscall.Signal, twice bool) {
 		}
 	}
 	_ = c.Wait()
-	if !strings.Contains(stderr.String(), "interrupted: finishing the current step (up to 2m0s)") {
-		t.Errorf("N3: the first signal printed no notice; stderr:\n%s", stderr.String())
+	mu.Lock()
+	got := stderr.String()
+	mu.Unlock()
+	if !strings.Contains(got, "interrupted: finishing the current step (up to 2m0s)") {
+		t.Errorf("N3: the first signal printed no notice; stderr:\n%s", got)
 	}
-	if got := strings.Contains(stderr.String(), "still finishing the step or restoring"); got != twice {
-		t.Errorf("second-signal notice printed = %v, want %v; stderr:\n%s", got, twice, stderr.String())
+	if has := strings.Contains(got, "still finishing the step or restoring"); has != twice {
+		t.Errorf("second-signal notice printed = %v, want %v; stderr:\n%s", has, twice, got)
 	}
 	want := "RESULT err=true synced=false restored=true lock=false restoreRan=true"
 	if result != want {
-		t.Errorf("after SIGINT:\n got %s\nwant %s", result, want)
+		t.Errorf("after the signal:\n got %s\nwant %s", result, want)
 	}
 }
 
