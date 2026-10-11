@@ -91,7 +91,9 @@ func (r *matrixRow) fixture(t *testing.T) {
 	t.Helper()
 	render := func(name string, extra map[string]string) string {
 		var got string
-		t.Run(name, func(t *testing.T) { got = compose.CanonicalRef(renderStack(t, merge(r.env, extra))[r.Service]) })
+		t.Run(name, func(t *testing.T) {
+			got = compose.CanonicalRef(renderStack(t, merge(r.env, extra))[composeName(r.Service)])
+		})
 		return got
 	}
 	if r.feeds(r.vVar) {
@@ -164,7 +166,7 @@ func (r *matrixRow) expect(t *testing.T, env map[string]string, plain string) (k
 			only[o] = "" // a lone render sees one variable of the state
 		}
 		only[v] = env[v]
-		t.Run("lone-"+v, func(t *testing.T) { lone = renderStack(t, merge(env, only))[r.Service] })
+		t.Run("lone-"+v, func(t *testing.T) { lone = renderStack(t, merge(env, only))[composeName(r.Service)] })
 		if lone == plain {
 			if name != "" {
 				t.Fatalf("fixture is ambiguous: %s and %s render the same image %q", name, v, plain)
@@ -201,14 +203,14 @@ func TestProjectLockPinMatrix(t *testing.T) {
 func (r *matrixRow) run(t *testing.T, env map[string]string) {
 	t.Helper()
 	restore := compose.SetProjectPins(nil)
-	plain := renderStack(t, env)[r.Service]
+	plain := renderStack(t, env)[composeName(r.Service)]
 	restore()
 	kept, name := r.expect(t, env, plain)
 
 	defer compose.SetProjectPins(map[string]string{r.Service: r.pin})()
 	var notices bytes.Buffer
 	defer compose.PinNoticeSink(&notices)()
-	pinned := renderStack(t, env)[r.Service]
+	pinned := renderStack(t, env)[composeName(r.Service)]
 	_ = renderStack(t, env) // a build installs the pins and renders more than once
 	n := strings.Count(notices.String(), "notice:")
 	switch {

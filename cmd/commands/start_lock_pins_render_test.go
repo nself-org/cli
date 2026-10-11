@@ -90,3 +90,12 @@ func blankImageVars(t *testing.T) {
 	t.Setenv("ADMIN_VERSION", "")
 	t.Setenv("ADMIN_IMAGE", "")
 }
+
+// composeName is the compose service key of a pin key: the admin image is
+// pinned as "admin" (its lock entry) but runs as the service "nself-admin".
+func composeName(pinKey string) string {
+	if pinKey == "admin" {
+		return compose.AdminServiceName
+	}
+	return pinKey
+}
