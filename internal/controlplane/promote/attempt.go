@@ -8,6 +8,7 @@ package promote
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -70,8 +71,13 @@ func loadRecoveryAttempt(root, target string, live *Record) (*Record, error) {
 	if err != nil {
 		return nil, err
 	}
+	if state.Target == target && attempt.DeployIdentity != nil && !attempt.DeployIdentity.StartedAt.Equal(state.StartedAt) {
+		return live, nil
+	}
 	if state.Target != target || attempt.DeployIdentity == nil || !attempt.DeployIdentity.StartedAt.Equal(state.StartedAt) || len(state.PreDeployTars) == 0 {
-		return nil, errs.Newf("E485", "interrupted apply has no host recovery evidence; backup %s needs operator; nothing was changed", attempt.BackupID)
+		return nil, errs.Newf("E485", "interrupted apply has no host recovery evidence; backup %s needs operator; nothing was changed", attempt.BackupID).
+			WithWhy("The interrupted promotion has no recorded host recovery tar.").
+			WithFix(fmt.Sprintf("Verify the interrupted apply on the target and restore backup %s by hand if needed; preserve the attempt record until recovery is verified.", attempt.BackupID))
 	}
 	attempt.PreDeployTar, attempt.Changed, attempt.Absent = state.PreDeployTars, state.PreDeployChanged, state.PreDeployAbsent
 	attempt.DeployIdentity = &DeployIdentity{StartedAt: state.StartedAt, PreDeployTar: state.PreDeployTar, PreDeployTars: state.PreDeployTars}

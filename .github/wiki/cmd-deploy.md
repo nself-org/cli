@@ -119,6 +119,15 @@ command. The local `.nself/state/promote.json` records each host's saved tar and
 changed or absent files. `nself deploy rollback <target>` and the v1.5
 `nself promote rollback` shim restore that record when it is the latest change,
 using the verified backup on its recorded target host.
+Before a promotion database restore starts, recovery persists `db_restore_started`;
+after success it persists `DBRestoredAt`. If completion cannot be saved or the
+process stops, a retry refuses with `E489`, naming the backup and warning that
+the restore may already have run. Verify the database on the backup host first.
+If the restore completed (including a restore performed by hand), run
+`nself deploy rollback <target> --db-restore-done` to record completion and finish
+recovery without restoring again. The flag asserts operator verification; it
+does not run a database restore.
+
 Record rollback reapplies all saved stacks before restoring the database, only
 when migration started and the backup has not already been restored. An already
 rolled-back record changes nothing. The project deploy operation lock covers record

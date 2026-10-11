@@ -72,6 +72,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-DEPL-15 | deploy promote ignored args as a canary flip | two args promote environments | `cmd/commands/deploy_promote.go` |
 | P7-DEPL-15 | local internal/promote implementation | deploy promote control-plane engine | `cmd/commands/promote.go` |
 | P7-DEPL-15 | local promote snapshot | verified remote promote record | `cmd/commands/promote.go` |
+| P7-DEPL-15 | uncertain restore repeated | explicit operator completion checkpoint | `cmd/commands/deploy_promote_confirm.go` |
 | P7-DEPL-15 | unconfirmed promote rollback | require production database restore approval | `cmd/commands/deploy_promote_confirm.go` |
 | P7-DEPL-24 | DeployViaSsh single-compose push | ApplyRemote artifact-set apply | `internal/controlplane/remote_apply.go` |
 | P7-DEPL-24 | RunWithEnv single-compose push | target snapshot, scratch build, artifact-set apply | `cmd/commands/deploy_apply_v15.go` |

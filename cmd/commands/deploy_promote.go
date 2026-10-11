@@ -121,6 +121,14 @@ func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Re
 	if rec.Status == "rolled_back" {
 		return errs.Newf("E485", "the last promote of %s was already rolled back; nothing was changed", rec.Target)
 	}
+	if done, _ := ctx.Value(promoteRollbackDBDoneKey{}).(bool); done {
+		if err := cpromote.MarkDBRestoreDone(workdir, rec); err != nil {
+			return err
+		}
+	}
+	if err := cpromote.CheckDBRestoreCompletion(rec); err != nil {
+		return err
+	}
 	inv, err := controlplane.Load(workdir)
 	if err != nil {
 		return err
@@ -148,7 +156,7 @@ func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Re
 	}
 	if err := cpromote.RollbackRecord(ctx, workdir, rec, remotes, paths); err != nil {
 		var coded *errs.CLIError
-		if errors.As(err, &coded) && coded.Code == "E485" {
+		if errors.As(err, &coded) && (coded.Code == "E485" || coded.Code == "E489") {
 			return err
 		}
 		return errs.Newf("E489", "promote rollback failed for snapshot %s backup %s; needs operator: %v", rec.SnapshotTag, rec.BackupID, err).
@@ -158,6 +166,7 @@ func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Re
 }
 
 func init() {
+	deployRollbackCmd.Flags().Bool("db-restore-done", false, "Record operator verification that an uncertain database restore completed")
 	deployPromoteCmd.Flags().Bool("dry-run", false, "Print the promotion plan without remote writes")
 	deployPromoteCmd.Flags().Bool("yes", false, "Confirm promotion to a production-class target")
 	deployPromoteCmd.Flags().Bool("json", false, "Emit JSON output")

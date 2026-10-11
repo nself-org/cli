@@ -12,12 +12,17 @@ import (
 )
 
 type promoteRollbackYesKey struct{}
+type promoteRollbackDBDoneKey struct{}
 
 // Purpose: Carry rollback's explicit approval through the record-lock context.
 // Inputs: Command flags and context. Outputs: Context with --yes approval.
 // Constraints: No other deploy flag authorizes a production database restore.
 func withPromoteRollbackConfirmation(ctx context.Context, cmd *cobra.Command) context.Context {
 	yes, _ := cmd.Flags().GetBool("yes")
+	// compat.V15(P7-DEPL-15): uncertain restore repeated -> explicit operator completion checkpoint
+	if done, _ := cmd.Flags().GetBool("db-restore-done"); compat.V15() && done {
+		ctx = context.WithValue(ctx, promoteRollbackDBDoneKey{}, true)
+	}
 	return context.WithValue(ctx, promoteRollbackYesKey{}, yes)
 }
 

@@ -115,7 +115,7 @@ func TestPromoteKilledApplyFirstRollbackRestoresFiles(t *testing.T) {
 func TestPromoteInterruptedApplyDeployFallback(t *testing.T) {
 	for _, matching := range []bool{false, true} {
 		t.Run(map[bool]string{false: "different-attempt", true: "same-attempt"}[matching], func(t *testing.T) {
-			root := t.TempDir()
+			root := promoteFixture(t)
 			when := time.Now().UTC()
 			rec := cpromote.Record{ID: "interrupted", Target: "prodsim", Status: "in_progress", StartedAt: when, ApplyStarted: true, BackupID: "backup-live", BackupHost: "target",
 				DeployIdentity: &cpromote.DeployIdentity{StartedAt: when}, RemotePaths: map[string]string{"target": "/srv/fixture"}, AppliedManifestHash: map[string]string{"target": cpromote.ManifestHash(nil)}}
@@ -125,14 +125,32 @@ func TestPromoteInterruptedApplyDeployFallback(t *testing.T) {
 			state := deploy.StrategyState{Target: rec.Target, StartedAt: when, PreDeployTars: map[string]string{"target": "/srv/fixture/.nself/backups/pre-deploy-fixture.tar.gz"}, PreDeployChanged: map[string][]string{"target": {"docker-compose.yml"}}}
 			if !matching {
 				state.StartedAt = when.Add(time.Second)
+				state.BackupID, state.BackupHost = "backup-deploy", "target"
 			}
 			if err := deploy.SaveDeployState(root, state); err != nil {
 				t.Fatal(err)
 			}
 			got, err := cpromote.LoadLatestRecord(root, rec.Target)
 			if !matching {
-				if err == nil || !strings.Contains(err.Error(), "E485") || !strings.Contains(err.Error(), rec.BackupID) {
-					t.Fatalf("mismatched fallback must refuse naming DB backup: %v", err)
+				if err != nil || got != nil {
+					t.Fatalf("different deploy identity must supersede the interrupted attempt: %#v %v", got, err)
+				}
+				compattest.Set(t, true)
+				recovery := &v15Remote{label: "target"}
+				old := deployRemoteOpen
+				t.Cleanup(func() { deployRemoteOpen = old })
+				deployRemoteOpen = func(context.Context, controlplane.Server, string, string) (deploy.Remote, error) {
+					return recovery, nil
+				}
+				cmd := &cobra.Command{}
+				cmd.SetContext(context.Background())
+				cmd.Flags().Bool("yes", true, "")
+				if err := runDeployRollback(cmd, []string{rec.Target}); err != nil {
+					t.Fatal(err)
+				}
+				log := recovery.commands()
+				if firstIndex(log, "tar -xzf") < 0 || firstIndex(log, "backup restore 'backup-deploy'") < 0 || firstIndex(log, rec.BackupID) >= 0 {
+					t.Fatalf("fallback must restore the deploy record, never the superseded attempt backup: %v", log)
 				}
 				return
 			}

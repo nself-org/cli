@@ -145,6 +145,11 @@ func TestSimPromote(t *testing.T) {
 	const equalDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	run := func(targetDigest string) error {
 		state := &promote.State{Source: "ls", Target: "prodsim", TargetTier: controlplane.TierProd, Values: map[string]any{}}
+		state.RecoveryCheckpoint = func(st *promote.State) error {
+			return promote.SaveRecord(recordRoot, promote.Record{Source: st.Source, Target: st.Target,
+				Status: "in_progress", BackupID: st.BackupID, BackupHost: st.BackupHost,
+				RecoveryPhase: st.RecoveryPhase, DBRestoredAt: st.DBRestoredAt, FilesRestored: st.FilesRestored})
+		}
 		steps := make([]promote.Step, 0, len(promote.StepNames))
 		for _, name := range promote.StepNames {
 			steps = append(steps, promote.Step{Name: name})

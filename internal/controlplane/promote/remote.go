@@ -12,7 +12,6 @@ import (
 	"path"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
@@ -75,15 +74,12 @@ func SnapshotStep(r deploy.Remote, remotePath, tag string) Step {
 		if st.BackupID == "" {
 			return fmt.Errorf("promote snapshot has no backup id")
 		}
-		_, err := r.Run(ctx, "cd "+remotesdk.ShellQuote(remotePath)+" && nself backup restore "+remotesdk.ShellQuote(st.BackupID)+" --yes")
-		if err == nil {
-			st.DBRestoredAt = time.Now().UTC().Format(time.RFC3339Nano)
-			st.RecoveryPhase = "db_restored"
-			if st.RecoveryCheckpoint != nil {
-				return st.RecoveryCheckpoint(st)
-			}
+		if st.RecoveryCheckpoint == nil {
+			return fmt.Errorf("promote snapshot restore requires a recovery checkpoint writer")
 		}
-		return err
+		return RestoreDatabase(ctx, r, remotePath, st.BackupID, &st.RecoveryPhase, &st.DBRestoredAt, func() error {
+			return st.RecoveryCheckpoint(st)
+		})
 	}}
 }
 

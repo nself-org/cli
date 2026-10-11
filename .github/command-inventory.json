@@ -800,6 +800,7 @@
         "short": "Roll back the last deployment for a target",
         "hidden": false,
         "flags": [
+          "--db-restore-done",
           "--yes"
         ]
       },

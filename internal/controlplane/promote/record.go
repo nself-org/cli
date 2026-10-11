@@ -19,7 +19,6 @@ import (
 
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
-	remotesdk "github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 // RecordFile is the local promotion rollback authority.
@@ -167,6 +166,9 @@ func RollbackRecord(ctx context.Context, projectRoot string, rec *Record, remote
 	if rec.Status == "rolled_back" {
 		return nil
 	}
+	if rec.RecoveryPhase == "db_restore_started" && rec.DBRestoredAt == "" {
+		return uncertainDBRestore(rec.BackupID)
+	}
 	keys := make([]string, 0, len(rec.PreDeployTar))
 	for key := range rec.PreDeployTar {
 		keys = append(keys, key)
@@ -231,14 +233,8 @@ func RollbackRecord(ctx context.Context, projectRoot string, rec *Record, remote
 		}
 	}
 	if restoreDB {
-		_, err := remotes[backupKey].Run(recoveryCtx, "cd "+remotesdk.ShellQuote(rec.RemotePaths[backupKey])+" && nself backup restore "+remotesdk.ShellQuote(rec.BackupID)+" --yes")
-		if err != nil {
-			return fmt.Errorf("restoring promotion backup %s: %w", rec.BackupID, err)
-		}
-		rec.DBRestoredAt = time.Now().UTC().Format(time.RFC3339Nano)
-		rec.RecoveryPhase = "db_restored"
-		if err := SaveRecord(projectRoot, *rec); err != nil {
-			return fmt.Errorf("database restored but promotion record could not be saved: %w", err)
+		if err := RestoreDatabase(recoveryCtx, remotes[backupKey], rec.RemotePaths[backupKey], rec.BackupID, &rec.RecoveryPhase, &rec.DBRestoredAt, func() error { return SaveRecord(projectRoot, *rec) }); err != nil {
+			return err
 		}
 	}
 	for _, key := range keys {

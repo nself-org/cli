@@ -17,7 +17,10 @@ func (*restoreRemote) Rsync(context.Context, []string, string, string, string) e
 
 func TestSnapshotUndoRecordsRestore(t *testing.T) {
 	r := &restoreRemote{}
-	st := &State{BackupID: "backup-fixture"}
+	root := t.TempDir()
+	st := &State{BackupID: "backup-fixture", RecoveryCheckpoint: func(st *State) error {
+		return SaveAttempt(root, Record{BackupID: st.BackupID, RecoveryPhase: st.RecoveryPhase, DBRestoredAt: st.DBRestoredAt})
+	}}
 	step := SnapshotStep(r, "/srv/fixture", "pre-promote-1-aaaaaaaa")
 	if err := step.Undo(context.Background(), st); err != nil {
 		t.Fatal(err)

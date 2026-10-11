@@ -68,16 +68,23 @@ func TestPromoteRecordRetryAfterFilesRestored(t *testing.T) {
 				t.Fatalf("first rollback: %v files=%d", err, r.files)
 			}
 			saved, err := LoadRecord(root)
-			if err != nil || saved == nil || saved.RecoveryPhase != "files_restored" || !saved.FilesRestored["primary"] {
+			if err != nil || saved == nil || saved.RecoveryPhase != "db_restore_started" || !saved.FilesRestored["primary"] {
 				t.Fatalf("files phase not durable: %#v %v", saved, err)
 			}
+			if err := RollbackRecord(context.Background(), root, rec, remotes, paths); err == nil || !strings.Contains(err.Error(), "E489") {
+				t.Fatalf("uncertain retry must refuse: %v", err)
+			}
+			// The operator restored by hand and verified the database on the host.
+			if err := MarkDBRestoreDone(root, rec); err != nil {
+				t.Fatal(err)
+			}
 			if err := RollbackRecord(context.Background(), root, rec, remotes, paths); err != nil {
-				t.Fatalf("retry must recover: %v", err)
+				t.Fatalf("verified completion must recover: %v", err)
 			}
 			if rec.RecoveryPhase != "db_restored" {
 				t.Fatalf("DB phase missing: %#v", rec)
 			}
-			if r.files != 1 || r.dbSuccess != 1 || r.dbAttempts != 2 {
+			if r.files != 1 || r.dbSuccess != 0 || r.dbAttempts != 1 {
 				t.Fatalf("files=%d DB successes=%d attempts=%d", r.files, r.dbSuccess, r.dbAttempts)
 			}
 		})
