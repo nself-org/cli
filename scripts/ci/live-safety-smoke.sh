@@ -81,7 +81,13 @@ case "$BIN" in /*) ;; *) BIN="$ROOT/$BIN" ;; esac
 HAVE_DOCKER=0
 NO_DOCKER_WHY="docker not on PATH"
 if command -v docker >/dev/null 2>&1; then
-  if docker info >/dev/null 2>&1; then HAVE_DOCKER=1; else NO_DOCKER_WHY="docker daemon unreachable"; fi
+  if ! docker info >/dev/null 2>&1; then
+    NO_DOCKER_WHY="docker daemon unreachable"
+  elif ! docker compose version >/dev/null 2>&1; then
+    NO_DOCKER_WHY="docker compose plugin missing"
+  else
+    HAVE_DOCKER=1
+  fi
 fi
 
 # ---- helpers ----------------------------------------------------------------

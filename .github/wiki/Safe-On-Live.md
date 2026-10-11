@@ -141,7 +141,7 @@ A command that changes a setting, a plugin or a bundle used to leave the generat
 
 - `--preview` (config set): prints the plan and writes nothing, not even the env line.
 - `--yes`: confirms a change on a prod-class env (`ENV` is `prod` or `staging`). Also accepted by plugin and bundle install and remove, and by `doctor --fix`.
-- `--force`: allows overwriting a hand-edited generated file (config set, bundle remove, doctor, build). On `plugin remove`, `--force` also keeps its older meaning, so check the plan first.
+- `--force`: allows overwriting a hand-edited generated file (config set, bundle remove, doctor, build). `plugin install --force` also overrides the hand-edit refusal. On `plugin remove`, `--force` also keeps its older meaning, so check the plan first.
 - `nself doctor --fix --plan` prints the repair plan and writes nothing.
 
 ### The two gates
@@ -153,9 +153,9 @@ Both refuse with E403 and exit 4 in v1.5 mode. v1.4 prints the plan summary and 
 
 ### Proof
 
-The cascade integration suite (`internal/reconcile/cascade_integration_test.go`) drives the real binary against temp projects and a real Docker daemon. It covers a plugin install adding its route, `config set BASE_DOMAIN` cascading to nginx and compose, a hand-edit refused and then forced, the prod-class refusal, and an idempotent `doctor --fix`. Every scenario runs in v1.5 and in v1.4. It runs in the golden-path workflow and fails there if it is skipped.
+The cascade integration suite ([`internal/reconcile/cascade_integration_test.go`](https://github.com/nself-org/cli/blob/main/internal/reconcile/cascade_integration_test.go)) drives the real binary against temp projects and a real Docker daemon. It covers a plugin install adding its route, `config set BASE_DOMAIN` cascading to nginx and compose, a hand-edit refused and then forced, the prod-class refusal, and an idempotent `doctor --fix`. Every scenario runs in v1.5 and in v1.4. It skips when Docker is missing, its daemon is unreachable, the docker compose v2 plugin is missing, or on Windows. It runs in the golden-path workflow and fails there if it is skipped.
 
-`scripts/ci/live-safety-smoke.sh` is the fast check of the same guarantees. It prints one `PASS` or `FAIL` line per assertion and exits 1 on any `FAIL`. Lines that need Docker print `SKIP` when it is missing; a skip is never a pass.
+[`scripts/ci/live-safety-smoke.sh`](https://github.com/nself-org/cli/blob/main/scripts/ci/live-safety-smoke.sh) is the fast check of the same guarantees. It prints one `PASS` or `FAIL` line per assertion and exits 1 on any `FAIL`. Lines that need Docker print `SKIP` when Docker, its daemon or the compose plugin is missing; a skip is never a pass.
 
 ```
 bash scripts/ci/live-safety-smoke.sh [path-to-nself-binary]

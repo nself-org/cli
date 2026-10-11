@@ -18,10 +18,11 @@ package reconcile_test
 // Outputs: pass/fail. Containers, images and networks are created only under a
 // unique project name and removed by label in t.Cleanup. No fixed host ports
 // are bound: nothing is started.
-// Constraints: skips only when docker is not on PATH (and on Windows, where
+// Constraints: skips only when docker is not on PATH, its daemon is
+// unreachable, the docker compose v2 plugin is missing, or on Windows (where
 // the suite's POSIX paths and modes do not apply). Fixture values are
-// synthetic (testdata/fixtures/secrets.env). No bare sleeps: waits poll state
-// against a deadline.
+// synthetic (testdata/fixtures/secrets.env). No bare sleeps and no polled
+// waits: every step is a synchronous child process.
 
 import (
 	"archive/tar"
@@ -94,7 +95,9 @@ func TestCascadeIntegration(t *testing.T) {
 func cascadeBuildBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "nself")
-	cmd := exec.Command("go", "build", "-mod=vendor", "-o", bin, "../../cmd/nself")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "build", "-mod=vendor", "-buildvcs=false", "-o", bin, "../../cmd/nself")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("building nself: %v\n%s", err, out)
@@ -496,8 +499,10 @@ func cascadeSHA(s string) string {
 
 // ---- docker helpers ----------------------------------------------------------
 
-// cascadeDockerReady asks the daemon once (`docker info`, 20 s cap). A CLI
-// with no reachable daemon skips: this suite runs in every plain
+// cascadeDockerReady asks the daemon once (`docker info`) and the compose v2
+// plugin once (`docker compose version`), 20 s cap for both. A CLI with no
+// reachable daemon, or with no compose plugin (the plan reports the container
+// impact as unknown, so no plan is ever empty), skips: this suite runs in every plain
 // `go test ./...`, and shared hosts (a CI user without socket access, a laptop
 // with Colima stopped) must not go red for an unrelated change. Docker is
 // never mocked; the golden-path workflow step fails on any SKIP of this test,
@@ -508,6 +513,9 @@ func cascadeDockerReady(t *testing.T) {
 	defer cancel()
 	if out, err := exec.CommandContext(ctx, "docker", "info").CombinedOutput(); err != nil {
 		t.Skipf("docker is on PATH but the daemon is not reachable: %v: %s", err, bytes.TrimSpace(out))
+	}
+	if out, err := exec.CommandContext(ctx, "docker", "compose", "version").CombinedOutput(); err != nil {
+		t.Skipf("docker is reachable but the docker compose v2 plugin is missing: %v: %s", err, bytes.TrimSpace(out))
 	}
 }
 
@@ -922,7 +930,10 @@ func cascadeDoctorFix(t *testing.T, bin string, mode cascadeMode) {
 	// A second --fix changes nothing.
 	before := p.snapshotNoHome()
 	r = p.run(fix...)
-	cascadeContains(t, "second doctor --fix", r.all(), "Generated files")
+	if r.code != 0 {
+		t.Fatalf("second doctor --fix: exit %d, want 0\n%s", r.code, r.all())
+	}
+	cascadeContains(t, "second doctor --fix", r.all(), "Generated files: no generated-file drift")
 	p.assertUnchanged(before, "a second doctor --fix")
 	p.assertDoctorDrift(false)
 }
