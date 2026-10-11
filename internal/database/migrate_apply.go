@@ -21,8 +21,12 @@ import (
 // ApplyFile applies a single external SQL migration file and records it in
 // schema_versions by filename + SHA-256 checksum (G-008).
 //
-// Double-apply protection: if a file with the same filename is already present
+// Double-apply protection: if the file's migration key (migrationKey: the
+// filename, or the directory name for a nested <dir>/up.sql) is already present
 // in schema_versions, the function logs the skip and returns (true, nil).
+// A nested up.sql is refused while the ledger still holds a legacy 'up.sql' row:
+// one file cannot say which directory that row belongs to, so run
+// 'nself db migrate up --migration-dir <dir>' once to upgrade the ledger.
 // The checksum is stored in nself_ops.migrations for audit purposes.
 //
 // This enables plugin-claw external RLS migrations to be applied via CLI
@@ -31,7 +35,9 @@ func ApplyFile(ctx context.Context, cfg *config.Config, filePath string) (skippe
 	return applyFile(ctx, cfg, filePath, false, nil)
 }
 
-// applyFile is ApplyFile; guarded is set by MigrateUpDir (P7-PROD-77): the
+// applyFile is ApplyFile; the ledger key is migrationKey(filePath), so every
+// nested <ts>_<name>/up.sql gets its directory name rather than "up.sql".
+// guarded is set by MigrateUpDir (P7-PROD-77): the
 // transactional path then runs the file through dirSQL and dirTxSQL (outer
 // wrapper dropped, transaction control refused, same-transaction check, ledger
 // first) and verifies the ledger row. `db migrate apply --file` stays unguarded
@@ -50,7 +56,7 @@ func applyFile(ctx context.Context, cfg *config.Config, filePath string, guarded
 		}
 	}
 
-	name := filepath.Base(filePath)
+	name := migrationKey(filePath)
 	if err := validateMigrationName(name); err != nil {
 		return false, err
 	}
@@ -80,6 +86,9 @@ func applyFile(ctx context.Context, cfg *config.Config, filePath string, guarded
 		applied, err := appliedMigrations(ctx, cfg)
 		if err != nil {
 			return false, fmt.Errorf("check applied migrations: %w", err)
+		}
+		if _, legacy := applied["up.sql"]; legacy && filepath.Base(filePath) == "up.sql" {
+			return false, fmt.Errorf("migration %s: the ledger has a legacy 'up.sql' row and one file cannot say which directory it belongs to; run 'nself db migrate up --migration-dir <migrations dir>' once to upgrade the ledger, then retry", name)
 		}
 		led = &ledgerSnapshot{applied: applied}
 		if _, ok := applied[name]; ok {
@@ -196,7 +205,7 @@ func MigrateUpDirProgress(ctx context.Context, cfg *config.Config, dir string, p
 	// files run as written, as before, and are not scanned).
 	for _, f := range pending {
 		if data, readErr := os.ReadFile(f); readErr == nil && !isNonTransactional(string(data)) {
-			if _, txErr := dirSQL(filepath.Base(f), string(data), "up"); txErr != nil {
+			if _, txErr := dirSQL(migrationKey(f), string(data), "up"); txErr != nil {
 				return 0, txErr
 			}
 		}
