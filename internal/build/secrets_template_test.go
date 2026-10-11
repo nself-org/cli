@@ -177,58 +177,6 @@ func TestTemplateSecrets_AliasKeyLeftAloneWhenValueDiffers(t *testing.T) {
 	}
 }
 
-// TestTemplateSecrets_URLEscapedPasswordUsesEncodedTwin: a password that
-// needs percent-encoding is never substituted raw into a URL (compose would
-// inject the unescaped value); its encoded literal becomes a reference to the
-// _URLENC twin, so no "$" in it is left for compose to interpolate (D-0635).
-func TestTemplateSecrets_URLEscapedPasswordUsesEncodedTwin(t *testing.T) {
-	const twin = ":${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@"
-	cases := []struct{ name, pw, want string }{
-		{"space-percent", "has space%pw", twin},
-		{"dollar-hash", `fakepw$abc#def ghi"jk`, twin},
-		{"dollar-brace", "fakepw${x}notreal", twin},
-		{"reserved", "fake@pw:/?notreal", twin},
-		{"short-dollar", "a$b", twin},
-		// URL-safe passwords keep the Phase B bytes they always had.
-		{"url-safe", "fakepwnotreal0123", ":${POSTGRES_PASSWORD}@"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			yaml := "      DATABASE_URL: postgresql://postgres:" + config.URLPassword(c.pw) + "@postgres:5432/db\n"
-			out := string(TemplateSecrets([]byte(yaml), map[string]string{"POSTGRES_PASSWORD": c.pw}))
-			if !strings.Contains(out, c.want) {
-				t.Errorf("want %s in:\n%s", c.want, out)
-			}
-			if strings.Contains(out, config.URLPassword(c.pw)+"@") {
-				t.Errorf("encoded password left literal:\n%s", out)
-			}
-		})
-	}
-}
-
-// TestTemplateSecrets_EscapedLiteralsRewritten: a secret the YAML encoder
-// escaped (quotes, backslashes) is still found, on alias lines (Phase A2)
-// and anywhere else (Phase C), and the rewritten line stays valid YAML.
-func TestTemplateSecrets_EscapedLiteralsRewritten(t *testing.T) {
-	pg := `fake"pw\$abc`
-	minio := `minio"pw\$abc`
-	in := "services:\n  auth:\n    environment:\n      AUTH_DB_PASSWORD: \"fake\\\"pw\\\\$abc\"\n" +
-		"  api:\n    environment:\n      S3_SECRET_KEY: \"minio\\\"pw\\\\$abc\"\n      OTHER: \"x minio\\\"pw\\\\$abc y\"\n"
-	out := string(TemplateSecrets([]byte(in), map[string]string{"POSTGRES_PASSWORD": pg, "MINIO_ROOT_PASSWORD": minio}))
-	for _, want := range []string{
-		"AUTH_DB_PASSWORD: ${POSTGRES_PASSWORD}",
-		"S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}",
-		"OTHER: x ${MINIO_ROOT_PASSWORD} y",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("want %q in:\n%s", want, out)
-		}
-	}
-	if strings.Contains(out, "$abc") {
-		t.Errorf("escaped literal left in:\n%s", out)
-	}
-}
-
 func TestWriteComposeEnv_ContentAndPermissions(t *testing.T) {
 	workdir := t.TempDir()
 	cfg := secretTestConfig()

@@ -233,6 +233,12 @@ var d0635Passwords = map[string]string{
 	"url-reserved":     "fake@pw:/?%notreal",
 	"everything":       "fa$k'e\"p`w #x\\y$1@:/%",
 	"url-safe":         "fakepwnotreal0123456789",
+	// A quote at the edge of a YAML-quoted scalar: a raw byte replace cut
+	// through the '' escape and wrote YAML compose could not load.
+	"quote-edges":  "'fakepwnotreal'",
+	"quote-end":    "@fake$abcpw'",
+	"tab":          "fake\tpwnotreal",
+	"spells-a-ref": "PASSWORD}fakepw",
 }
 
 // TestSecretConsumersResolveIdentically runs the nself build path for each
@@ -248,9 +254,11 @@ func TestSecretConsumersResolveIdentically(t *testing.T) {
 			cfg.Postgres.Password = pw
 			cfg.Redis.Password = "redis" + pw
 			cfg.Redis.Port = 6379
-			cfg.Minio.RootPassword = "minio" + pw
+			cfg.Minio.RootPassword = pw + "m"
+			cfg.Hasura.AdminSecret = "adm" + pw
 			cfg.CustomServices = []config.CustomService{
-				{Index: 1, Name: "api", Template: "go", Port: 8001, Route: "api", Memory: "256m", CPU: "0.5"},
+				{Index: 1, Name: "api", Template: "go", Port: 8001, Route: "api", Memory: "256m", CPU: "0.5",
+					ExtraEnv: "APP_DB_PASS=" + pw},
 			}
 			out, err := compose.NewGenerator(cfg).WithWorkDir(t.TempDir()).Generate()
 			if err != nil {
@@ -268,6 +276,10 @@ func TestSecretConsumersResolveIdentically(t *testing.T) {
 				{"redis", "REDISCLI_AUTH", rd},
 				{"minio", "MINIO_ROOT_PASSWORD", cfg.Minio.RootPassword},
 				{"api", "S3_SECRET_KEY", cfg.Minio.RootPassword},
+				{"hasura", "HASURA_GRAPHQL_ADMIN_SECRET", cfg.Hasura.AdminSecret},
+				{"api", "HASURA_GRAPHQL_ADMIN_SECRET", cfg.Hasura.AdminSecret},
+				// CS_N_ENV values are trimmed by the parser (applyExtraEnv).
+				{"api", "APP_DB_PASS", strings.TrimSpace(pg)},
 			}
 			for _, c := range plain {
 				got, ok := svcs[c.svc][c.key]
@@ -304,7 +316,7 @@ func TestSecretConsumersResolveIdentically(t *testing.T) {
 			if leaks := build.LiteralSecretLeaks(templated, secrets); len(leaks) > 0 {
 				t.Errorf("literal secrets left in generated compose: %v", leaks)
 			}
-			for _, leak := range decodedLeaks(t, templated, []string{pg, rd, cfg.Minio.RootPassword}) {
+			for _, leak := range decodedLeaks(t, templated, []string{pg, rd, cfg.Minio.RootPassword, cfg.Hasura.AdminSecret}) {
 				t.Errorf("secret left literal in generated compose: %s", leak)
 			}
 		})

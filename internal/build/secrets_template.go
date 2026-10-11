@@ -27,8 +27,6 @@ import (
 	"sort"
 	"strings"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -173,97 +171,10 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 		out = strings.ReplaceAll(out, ":"+enc+"@", ":${"+key+config.URLPasswordEnvSuffix+":-${"+key+"}}@")
 	}
 
-	// Phase C: any other literal occurrence — a generator may embed a secret
-	// in a `command:` string or a healthcheck `test:` argument (Redis and
-	// Typesense did until D-0282) rather than a plain "KEY: value" env line
-	// or a URL credential position, so Phases A/B never see them (custom
-	// services still carry MINIO_ROOT_PASSWORD as S3_SECRET_KEY). A raw value
-	// that is still in the file is substituted verbatim wherever it sits, so
-	// replacing it with ${VAR} resolves to the same bytes, and compose.env
-	// quotes every value since D-0333. Values that need percent-encoding are
-	// replaced too: left literal, compose interpolated a "$" in them
-	// (D-0635). Encoded URL positions were handled by Phases B and B2.
-	// LiteralSecretLeaks still reports anything left.
-	for _, key := range keys {
-		val := secrets[key]
-		if len(val) < 8 {
-			continue
-		}
-		out = strings.ReplaceAll(out, val, "${"+key+"}")
-	}
-	// The YAML encoder escapes a value holding a quote or a backslash, so
-	// the byte search above misses it; decode each "KEY: value" line and
-	// rewrite the ones still holding a secret.
-	out = envLinePattern.ReplaceAllStringFunc(out, func(line string) string {
-		return templateDecodedLine(line, keys, secrets)
-	})
+	// Phase C: any other literal occurrence (secrets_template_rewrite.go).
+	out = templateOtherLiterals(out, keys, secrets)
 
 	return []byte(out)
-}
-
-// envLinePattern matches a one-line "KEY: value" entry of a compose env map.
-var envLinePattern = regexp.MustCompile(`(?m)^(\s+)([A-Za-z_][A-Za-z0-9_]*): (.+)$`)
-
-// templateDecodedLine returns line with every secret (8+ characters) in its
-// YAML-decoded value replaced by ${KEY}, re-encoded as YAML. Lines that do
-// not decode to a single string, or hold no secret, are returned unchanged.
-func templateDecodedLine(line string, keys []string, secrets map[string]string) string {
-	m := envLinePattern.FindStringSubmatch(line)
-	var decoded map[string]string
-	if yaml.Unmarshal([]byte(m[2]+": "+m[3]), &decoded) != nil || len(decoded) != 1 {
-		return line
-	}
-	v, ok := decoded[m[2]]
-	if !ok {
-		return line
-	}
-	nv := v
-	for _, key := range keys {
-		if val := secrets[key]; len(val) >= 8 {
-			nv = strings.ReplaceAll(nv, val, "${"+key+"}")
-		}
-	}
-	if nv == v {
-		return line
-	}
-	b, err := yaml.Marshal(map[string]string{m[2]: nv})
-	enc := strings.TrimSuffix(string(b), "\n")
-	if err != nil || strings.Contains(enc, "\n") {
-		return line // a block scalar would need re-indenting; keep the line
-	}
-	return m[1] + enc
-}
-
-// lineValueIs reports whether the "KEY: value" YAML line decodes to val. A
-// value holding a quote or a backslash is escaped in the line, so a substring
-// check misses it and the literal stayed in the file (D-0635).
-func lineValueIs(line, val string) bool {
-	var m map[string]string
-	if err := yaml.Unmarshal([]byte(strings.TrimSpace(line)), &m); err != nil {
-		return false
-	}
-	for _, v := range m {
-		return v == val
-	}
-	return false
-}
-
-// LiteralSecretLeaks returns the names of secrets whose literal value (>= 8
-// chars) still appears in the compose YAML after templating. Callers surface
-// each as a build warning — the safety net behind TemplateSecrets.
-func LiteralSecretLeaks(composeYAML []byte, secrets map[string]string) []string {
-	var leaked []string
-	doc := string(composeYAML)
-	for key, val := range secrets {
-		if len(val) < 8 {
-			continue
-		}
-		if strings.Contains(doc, val) {
-			leaked = append(leaked, key)
-		}
-	}
-	sort.Strings(leaked)
-	return leaked
 }
 
 // WriteComposeEnv writes .nself/compose.env (0600) — the single interpolation
