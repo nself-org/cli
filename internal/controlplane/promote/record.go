@@ -106,13 +106,13 @@ func LoadLatestRecord(projectRoot, target string) (*Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	if state.Target == target && !(rec.Status == "in_progress" && len(rec.PreDeployTar) == 0) && !recordMatchesDeploy(rec, state) {
+	if state.Target == target && (rec.Status != "in_progress" || len(rec.PreDeployTar) != 0) && !recordMatchesDeploy(rec, state) {
 		return nil, nil
 	}
 	if rec.SchemaVersion != 1 || rec.ID == "" || (rec.CompletedAt.IsZero() && rec.Status != "in_progress") || (rec.Status != "ok" && rec.Status != "rollback_failed" && rec.Status != "rolled_back" && rec.Status != "in_progress") {
 		return nil, errs.New("E485", "promotion record is unusable; nothing was changed")
 	}
-	if rec.Status != "rolled_back" && !(rec.Status == "in_progress" && len(rec.PreDeployTar) == 0) && !recordHasRestoreLists(rec) {
+	if rec.Status != "rolled_back" && (rec.Status != "in_progress" || len(rec.PreDeployTar) != 0) && !recordHasRestoreLists(rec) {
 		return nil, errs.New("E485", "promotion record has missing tar or changed lists; nothing was changed")
 	}
 	return rec, nil
