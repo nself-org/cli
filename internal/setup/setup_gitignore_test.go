@@ -82,7 +82,7 @@ func TestGitignoreSSL(t *testing.T) {
 		{"present", "ssl/\n", false},
 		{"anchored", "/ssl/\n", false},
 		{"bare", "ssl\n", false},
-		{"leading-space", "  ssl/*  \n", true},
+		{"leading-space", "  ssl/\n", true}, // D-0537: kills a leading-trim mutant
 		{"glob-appends", "ssl/*\n", true},
 		{"trailing-spaces", "ssl/  \n", false},
 		{"leading-tab", "\tssl/\n", true},

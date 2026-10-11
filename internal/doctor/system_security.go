@@ -142,6 +142,9 @@ func SecurityChecks(ctx context.Context, projectDir string) []CheckResult {
 	// WARN by default; callers may re-run with strict=true for --strict mode.
 	results = append(results, CheckEncryptionKeyScope(projectDir, false)...)
 
+	// D-0459: ssl/ keys and .env.secrets ignored by git and not tracked (SEC-GITIGNORE-01).
+	results = append(results, CheckSSLTracked(ctx, projectDir))
+
 	// Check for root containers
 	cmd := exec.CommandContext(ctx, "docker", "ps", "--format", "{{.Names}}")
 	out, err := cmd.Output()
