@@ -12,9 +12,11 @@ package database
 //     that is not JSON is an error, never "nothing to track".
 //   - Every untracked table is checked to exist in Postgres BEFORE any write; a
 //     missing table fails the whole call and no track request is sent.
-//   - The only write is ONE `bulk` request on source `default` made of
-//     pg_track_table ops. Never replace_metadata, an untrack, a relationship or
-//     a permission op (see metadata_reconcile.go for the outage that causes).
+//   - The only write is one `bulk` request on source `default` made of
+//     pg_track_table ops, plus at most one retry bulk after a fresh export when
+//     Hasura reports a concurrent change (already-tracked and friends). Never
+//     replace_metadata, an untrack, a relationship or a permission op (see
+//     metadata_reconcile.go for the outage that causes).
 //   - bulk is treated as non-atomic: a rerun tracks only what is still missing.
 //   - The admin secret comes from the running Hasura container (the way
 //     `nself db reconcile` reads it) and is never put in an error string.
@@ -38,8 +40,10 @@ type PluginTables struct {
 	Tables []string
 }
 
-// TrackResult lists qualified "schema.table" names, sorted. Tracked are the
-// tables this call tracked; Already were tracked before it.
+// TrackResult lists qualified "schema.table" names, sorted. Already were
+// tracked at the first export. Tracked are the tables that were untracked then:
+// they are all tracked now, by this call or, after a concurrent metadata write
+// and one retry, partly by another writer.
 type TrackResult struct {
 	Tracked []string
 	Already []string
@@ -86,13 +90,9 @@ func TrackPluginTables(ctx context.Context, cfg *config.Config, plugins []Plugin
 	if err != nil {
 		return TrackResult{}, fmt.Errorf("track plugin tables: %w", err)
 	}
-	body, err := postMetadataAdmin(ctx, cfg, secret, "export_metadata", struct{}{})
+	tracked, err := readTrackedSet(ctx, cfg, secret, parse)
 	if err != nil {
-		return TrackResult{}, fmt.Errorf("track plugin tables: export metadata: %w", err)
-	}
-	tracked, err := parse(body)
-	if err != nil {
-		return TrackResult{}, fmt.Errorf("track plugin tables: %w", err)
+		return TrackResult{}, err
 	}
 	pending, already := splitUntracked(plugins, tracked)
 	if len(pending) == 0 {
@@ -101,6 +101,53 @@ func TrackPluginTables(ctx context.Context, cfg *config.Config, plugins []Plugin
 	if err := checkTablesExist(ctx, cfg, pending); err != nil {
 		return TrackResult{}, err
 	}
+	if err := trackBulk(ctx, cfg, secret, pending); err != nil {
+		if !isConcurrentChange(err) {
+			return TrackResult{}, bulkRejection(err, pending)
+		}
+		// Another writer changed the metadata between our export and the bulk.
+		// Re-read once and send one more bulk for what is still untracked. The
+		// retry covers only the first pending list, so no second existence
+		// check: every table in it was checked above.
+		fresh, rerr := readTrackedSet(ctx, cfg, secret, parse)
+		if rerr != nil {
+			return TrackResult{}, rerr
+		}
+		var retry []pendingTable
+		for _, p := range pending {
+			if !fresh[p.table] {
+				retry = append(retry, p)
+			}
+		}
+		if len(retry) > 0 {
+			if err := trackBulk(ctx, cfg, secret, retry); err != nil {
+				return TrackResult{}, bulkRejection(err, retry)
+			}
+		}
+	}
+	out := TrackResult{Already: already}
+	for _, p := range pending {
+		out.Tracked = append(out.Tracked, p.table)
+	}
+	sort.Strings(out.Tracked)
+	return out, nil
+}
+
+// readTrackedSet reads export_metadata and parses it into the tracked set.
+func readTrackedSet(ctx context.Context, cfg *config.Config, secret string, parse TrackedSetFunc) (map[string]bool, error) {
+	body, err := postMetadataAdmin(ctx, cfg, secret, "export_metadata", struct{}{})
+	if err != nil {
+		return nil, fmt.Errorf("track plugin tables: export metadata: %w", err)
+	}
+	tracked, err := parse(body)
+	if err != nil {
+		return nil, fmt.Errorf("track plugin tables: %w", err)
+	}
+	return tracked, nil
+}
+
+// trackBulk sends one bulk of pg_track_table ops on source default.
+func trackBulk(ctx context.Context, cfg *config.Config, secret string, pending []pendingTable) error {
 	ops := make([]map[string]interface{}, 0, len(pending))
 	for _, p := range pending {
 		schema, name := splitQualified(p.table)
@@ -112,15 +159,8 @@ func TrackPluginTables(ctx context.Context, cfg *config.Config, plugins []Plugin
 			},
 		})
 	}
-	if _, err := postMetadataAdmin(ctx, cfg, secret, "bulk", ops); err != nil {
-		return TrackResult{}, bulkRejection(err, pending)
-	}
-	out := TrackResult{Already: already}
-	for _, p := range pending {
-		out.Tracked = append(out.Tracked, p.table)
-	}
-	sort.Strings(out.Tracked)
-	return out, nil
+	_, err := postMetadataAdmin(ctx, cfg, secret, "bulk", ops)
+	return err
 }
 
 // pendingTable is one untracked qualified table and the plugin that declares it.
@@ -181,21 +221,50 @@ func splitQualified(q string) (schema, name string) {
 
 var bulkPathRE = regexp.MustCompile(`\$\.args\[(\d+)\]`)
 
+// hasuraReply is the JSON error body Hasura sends on a rejected metadata call.
+type hasuraReply struct {
+	Path  string `json:"path"`
+	Error string `json:"error"`
+	Code  string `json:"code"`
+}
+
+// parseHasuraReply extracts the JSON body that postMetadataAdmin puts after the
+// first "{" in its error text. ok is false when there is no parsable body.
+func parseHasuraReply(err error) (hasuraReply, bool) {
+	msg := err.Error()
+	i := strings.Index(msg, "{")
+	if i < 0 {
+		return hasuraReply{}, false
+	}
+	var reply hasuraReply
+	if json.Unmarshal([]byte(msg[i:]), &reply) != nil {
+		return hasuraReply{}, false
+	}
+	return reply, true
+}
+
+// isConcurrentChange reports whether a bulk error means another writer changed
+// the metadata after our export (the one case worth a single retry).
+func isConcurrentChange(err error) bool {
+	reply, ok := parseHasuraReply(err)
+	if !ok {
+		return false
+	}
+	switch reply.Code {
+	case "already-tracked", "already-exists", "conflict", "inconsistent-metadata":
+		return true
+	}
+	return false
+}
+
 // bulkRejection names the table Hasura rejected, from the error path
 // ("$.args[N]") of the bulk reply, when the reply carries one.
 func bulkRejection(err error, pending []pendingTable) error {
-	msg := err.Error()
-	if i := strings.Index(msg, "{"); i >= 0 {
-		var reply struct {
-			Path  string `json:"path"`
-			Error string `json:"error"`
-		}
-		if json.Unmarshal([]byte(msg[i:]), &reply) == nil {
-			if m := bulkPathRE.FindStringSubmatch(reply.Path); m != nil {
-				if n, cerr := strconv.Atoi(m[1]); cerr == nil && n < len(pending) {
-					p := pending[n]
-					return &TrackError{Plugin: p.plugin, Table: p.table, Err: fmt.Errorf("plugin %s: hasura rejected tracking %s (%s); tables before it in the request may already be tracked, rerun to track the rest: %w", p.plugin, p.table, reply.Error, err)}
-				}
+	if reply, ok := parseHasuraReply(err); ok {
+		if m := bulkPathRE.FindStringSubmatch(reply.Path); m != nil {
+			if n, cerr := strconv.Atoi(m[1]); cerr == nil && n < len(pending) {
+				p := pending[n]
+				return &TrackError{Plugin: p.plugin, Table: p.table, Err: fmt.Errorf("plugin %s: hasura rejected tracking %s (%s); tables before it in the request may already be tracked, rerun to track the rest: %w", p.plugin, p.table, reply.Error, err)}
 			}
 		}
 	}

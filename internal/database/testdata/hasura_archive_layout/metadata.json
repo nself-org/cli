@@ -1,0 +1,33 @@
+{
+  "version": 3,
+  "sources": [
+    {
+      "name": "default",
+      "kind": "postgres",
+      "tables": [
+        {
+          "table": {"schema": "public", "name": "np_note"},
+          "select_permissions": [
+            {
+              "role": "user",
+              "permission": {
+                "columns": ["id", "body"],
+                "filter": {"_and": [{"owner_id": {"_eq": "X-Hasura-User-Id"}}, {"_or": [{"deleted": {"_eq": false}}, {"shared": {"_eq": true}}]}]}
+              }
+            }
+          ]
+        },
+        {"table": {"schema": "public", "name": "np_tag"}}
+      ],
+      "configuration": {"connection_info": {"database_url": {"from_env": "FAKE_DATABASE_URL"}}}
+    }
+  ],
+  "actions": [
+    {
+      "name": "do_it",
+      "definition": {"handler": "http://example.invalid/hook", "kind": "synchronous"},
+      "comment": "line one\nline two\n"
+    }
+  ],
+  "remote_schemas": []
+}

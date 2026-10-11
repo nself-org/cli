@@ -54,8 +54,11 @@ func TestHasuraArchiveJSONExportIsApplicable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "sources:") || !strings.Contains(string(data), "version: 3") {
-		t.Fatalf("not a self-contained Hasura config: %s", data)
+	if !strings.Contains(string(data), "sources: !include sources.yaml") || !strings.Contains(string(data), "version: !include version.yaml") {
+		t.Fatalf("config.yaml must be an !include index of the top-level keys: %s", data)
+	}
+	if v, err := os.ReadFile(filepath.Join(dest, "version.yaml")); err != nil || string(v) != "3\n" {
+		t.Fatalf("version.yaml = %q, %v, want 3", v, err)
 	}
 }
 

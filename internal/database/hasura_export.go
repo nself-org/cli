@@ -18,47 +18,24 @@ import (
 // the required RLS-adjacent permission roles.
 // Inputs: a context, *config.Config, and (for export/diff) a project directory.
 // Outputs: an output directory path, a diff list, or a missing-permissions list.
-// Constraints: split out of hasura.go (CLI-R12) as a pure move; no behavior
-// changed. Depends on HasuraExportMetadata (hasura.go) and convertYAMLToJSON
-// (hasura_apply.go).
+// Constraints: split out of hasura.go (CLI-R12). Depends on HasuraExportMetadata
+// (hasura.go), convertYAMLToJSON (hasura_apply.go) and the shared file layout in
+// hasura_export_layout.go.
 
 // HasuraExportToYAML exports live Hasura metadata to a git-friendly sorted YAML
-// directory structure under {projectDir}/hasura/metadata/.
+// directory under {projectDir}/hasura/metadata/: one <key>.yaml per top-level
+// key plus a config.yaml index of !include lines (the same layout the archive
+// uses, see hasura_export_layout.go).
 // Returns the output directory path.
 func HasuraExportToYAML(ctx context.Context, cfg *config.Config, projectDir string) (string, error) {
 	data, err := HasuraExportMetadata(ctx, cfg)
 	if err != nil {
 		return "", err
 	}
-
-	var raw map[string]interface{}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return "", fmt.Errorf("parse metadata JSON: %w", err)
-	}
-
 	outDir := filepath.Join(projectDir, "hasura", "metadata")
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return "", fmt.Errorf("create metadata dir: %w", err)
+	if err := writeMetadataTree(outDir, data); err != nil {
+		return "", err
 	}
-
-	// Write each top-level key as a separate YAML file with sorted keys.
-	for key, val := range raw {
-		yamlData, err := yaml.Marshal(val)
-		if err != nil {
-			return "", fmt.Errorf("marshal %s to YAML: %w", key, err)
-		}
-		outPath := filepath.Join(outDir, key+".yaml")
-		if err := os.WriteFile(outPath, yamlData, 0o644); err != nil {
-			return "", fmt.Errorf("write %s: %w", outPath, err)
-		}
-	}
-
-	// Write a version marker.
-	if v, ok := raw["version"]; ok {
-		vData, _ := yaml.Marshal(v)
-		_ = os.WriteFile(filepath.Join(outDir, "version.yaml"), vData, 0o644)
-	}
-
 	return outDir, nil
 }
 
@@ -112,6 +89,9 @@ func HasuraDiffMetadata(ctx context.Context, cfg *config.Config, projectDir stri
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
 			continue
+		}
+		if e.Name() == metadataIndexFile {
+			continue // the !include index, not a metadata key
 		}
 		key := strings.TrimSuffix(e.Name(), ".yaml")
 		if _, ok := liveMap[key]; !ok {
