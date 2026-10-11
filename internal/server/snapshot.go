@@ -50,6 +50,9 @@ func TakeVerifiedSnapshot(ctx context.Context, client Client, serverID int64, de
 // ctx is canceled — whichever comes first.
 func waitForSnapshotAvailable(ctx context.Context, client Client, imageID int64, act *Action, deadline time.Time, wait time.Duration) (*Image, error) {
 	for {
+		if act == nil {
+			return nil, fmt.Errorf("snapshot of image %d returned no action to poll", imageID)
+		}
 		if act.Status == "error" {
 			msg := "unknown error"
 			if act.Error != nil {
@@ -78,9 +81,11 @@ func waitForSnapshotAvailable(ctx context.Context, client Client, imageID int64,
 		case <-time.After(snapshotPollInterval):
 		}
 
-		act, err = client.GetAction(ctx, act.ID)
+		// Keep the id: a failed GetAction returns a nil action (D-0262).
+		actionID := act.ID
+		act, err = client.GetAction(ctx, actionID)
 		if err != nil {
-			return nil, fmt.Errorf("poll snapshot action %d: %w", act.ID, err)
+			return nil, fmt.Errorf("poll snapshot action %d: %w", actionID, err)
 		}
 	}
 }

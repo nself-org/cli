@@ -19,7 +19,12 @@
 //   - Re-entrancy: a process whose NSELF_OPLOCK_TOKEN equals the token in the
 //     holder file of a currently held lock runs without acquiring, so a child
 //     `nself` spawned by the holder never deadlocks. A child that outlives its
-//     parent runs unlocked.
+//     parent runs unlocked. The token is exported into the holder's
+//     environment, so every child inherits it (docker, hooks, plugins), not
+//     only a child `nself`. It is cooperative, not a secret.
+//   - A waiter that reads a record naming a dead process on this host treats it
+//     as stale (the new holder has locked but not yet rewritten the file) and
+//     re-reads; it never names the dead pid or re-enters on its token.
 //   - Layer L1: standard library, plus internal/compat and internal/errs (L0)
 //     in guard.go.
 package oplock
@@ -235,10 +240,11 @@ func sameAsPath(f *os.File, projectDir string) bool {
 }
 
 // readHolderSettled reads the holder record, retrying briefly: a holder that
-// has just locked has not necessarily written its record yet.
+// has just locked has not necessarily written its record yet, so the file may
+// be empty or still name the previous, dead holder (D-0241).
 func readHolderSettled(ctx context.Context, projectDir string, o Opts) (Holder, bool) {
 	for i := 0; i < 5; i++ {
-		if h, err := ReadHolder(projectDir); err == nil {
+		if h, err := ReadHolder(projectDir); err == nil && !staleHolder(h) {
 			return h, true
 		}
 		if o.Clock.Sleep(ctx, 10*time.Millisecond) != nil {
@@ -246,4 +252,19 @@ func readHolderSettled(ctx context.Context, projectDir string, o Opts) (Holder, 
 		}
 	}
 	return Holder{}, false
+}
+
+// processAlive reports whether a pid on this host is running. A variable so
+// tests can fake a dead holder.
+var processAlive = pidAlive
+
+// staleHolder reports a record whose process ran on this host and is gone.
+// The flock is held, so the record is the previous holder's history. A record
+// from another host (shared folder) cannot be checked and is taken as is.
+func staleHolder(h Holder) bool {
+	host, err := os.Hostname()
+	if err != nil || host == "" || h.Host != host {
+		return false
+	}
+	return !processAlive(h.PID)
 }
