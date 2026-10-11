@@ -223,6 +223,11 @@ These errors come from the command line itself: usage, JSON support, destructive
 | <a id="e424"></a>E424 | 4 | Confirmation does not match | The confirm value is not a live server-issued nonce or plan id for this exact request: it was reused, expired, unknown, computed by the client, or issued for a different request. | Send the request again without confirm, read the confirmation it returns, and repeat the identical request with that confirm value. |
 | <a id="e425"></a>E425 | 1 | Consent or plan-id flag set by the caller | Consent flags (such as --yes or --force) and plan-id flags belong to the invoker; a machine request cannot set them. | Remove the flag from the request and use the confirmation round trip: the server adds it once you confirm. |
 | <a id="e426"></a>E426 | 3 | Machine token missing, invalid or insecure | The machine surface needs a bearer token it can trust: the token file is unreadable or readable by others, or a non-loopback bind lacks --allowed-host and a configured token. | Set NSELF_MCP_TOKEN or keep ~/.nself/mcp-token at mode 0600; for a non-loopback --host also pass --allowed-host <name>. |
+| <a id="e428"></a>E428 | 1 | Host not allowed | The request Host is outside the server's allowed hosts and port. | Use the configured listener host or pass --allowed-host explicitly. |
+| <a id="e429"></a>E429 | 1 | Origin not allowed | The request Origin is outside the server's allowed HTTP origins. | Use an allowed HTTP origin on the listener port. |
+| <a id="e430"></a>E430 | 1 | Malformed HTTP request | The method, JSON body, content type, body size or Accept header is invalid. | POST a JSON machine request no larger than 1 MiB and accept application/json or application/x-ndjson. |
+| <a id="e431"></a>E431 | 2 | Server saturated | All machine invocation slots are in use. | Retry after one second. |
+| <a id="e432"></a>E432 | 1 | No such route | The registry has no command at this route. | Read /openapi.json and use a documented command route. |
 | <a id="e434"></a>E434 | 1 | Unknown configuration key or unbound flag | nself config explain was given a key that is not a known configuration key, or a command flag that supplies no configuration key. | Run 'nself config list' for the known keys, or 'nself help --json' and read each flag's env field for the flags that supply one. |
 | <a id="e435"></a>E435 | 1 | nself.yaml has a type or syntax error | nself.yaml cannot be read as YAML, or a key holds a value of the wrong type (for example plugins as a number, or a plugin entry that is a map instead of a name). | Fix the value at the reported line so it matches schemas/nself-yaml.v1.schema.json (see the nself.yaml wiki page). |
 | <a id="e436"></a>E436 | 1 | Unknown key in nself.yaml | nself.yaml has a key that nself does not read. Silent keys hide typos and drift. | Rename the key to x-<key> if it is app metadata, or remove it. nself reads app, bundle, bundles and plugins only. |
@@ -295,6 +300,22 @@ These errors come from adopting an existing stack: custom services that name dep
 <!-- END GENERATED:codes-adopt -->
 
 See [[Config-Custom-Services]] for the keys and [[Import-Export-Format]] for the bundle codes.
+
+---
+
+## Secret (E540-E549)
+
+These errors come from resolving secrets for a service.
+
+<!-- BEGIN GENERATED:codes-secret -->
+| Code | Exit | Summary | Why | Fix |
+|------|------|---------|-----|-----|
+| <a id="e540"></a>E540 | 1 | Invalid secret reference | The reference, environment name or store name is invalid, or references collide on a NAME. | Use project/NAME, team/NAME, release/NAME, environment/<env>/NAME or deploy/<env>/NAME with distinct uppercase names and no reserved environments. |
+| <a id="e541"></a>E541 | 1 | Secret reference not found | The encrypted file or requested key does not exist. | Create the secret with config secrets set in the mapped store using the operator identity. |
+| <a id="e542"></a>E542 | 1 | Secret resolution requires FIFO stdout | Stdout is not a named or anonymous pipe. | Pipe config secrets resolve --json to the secret consumer; do not redirect to a file. |
+| <a id="e543"></a>E543 | 1 | Age identity unreadable or decryption failed | The identity cannot be read, cannot decrypt this store, or the decrypted store is invalid. | Check SECRETS_AGE_KEY_PATH and have the operator grant this identity access to the required file. |
+| <a id="e544"></a>E544 | 1 | Secret class or recipient change not permitted | Only the store owner may change recipients, the owner cannot be removed, and release or deploy changes require explicit release-class consent. | Run recipient changes with the store owner identity, preserve its recipient, and use --allow-release-class only for an eligible dedicated trusted node. Use secrets rekey for owner changes. |
+<!-- END GENERATED:codes-secret -->
 
 ---
 

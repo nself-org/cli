@@ -24,6 +24,9 @@ import (
 // after its ledger upgrade: a legacy 'up.sql' row (nested layout, written
 // before keys were unique) is resolved in memory with the same resolver.
 func PendingMigrations(ctx context.Context, cfg *config.Config, plugin string) ([]string, error) {
+	if err := validatePluginArg(plugin); err != nil {
+		return nil, err
+	}
 	files, err := scanMigrations(migrationsDir(cfg, plugin))
 	if err != nil {
 		return nil, err

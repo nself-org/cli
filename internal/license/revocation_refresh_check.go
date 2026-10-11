@@ -145,7 +145,7 @@ func IsRecordRevoked(rec LicenseRecord) bool {
 	if err != nil || cache == nil {
 		return false
 	}
-	if isStaleFailOpen(cache) {
+	if isStaleFailOpen(cache, time.Now()) {
 		warnFailOpenOnce(cache)
 		return false
 	}
@@ -179,12 +179,11 @@ func matchAny(list *RevocationList, rec LicenseRecord) bool {
 }
 
 // isStaleFailOpen reports whether the cache is past the FAIL-OPEN cutoff.
-func isStaleFailOpen(cache *RevocationCache) bool {
+func isStaleFailOpen(cache *RevocationCache, now time.Time) bool {
 	if cache == nil {
 		return true
 	}
-	fetched := time.Unix(cache.FetchedAt, 0)
-	return time.Since(fetched) > RevocationFailOpenStaleness
+	return now.Sub(time.Unix(cache.FetchedAt, 0)) > RevocationFailOpenStaleness
 }
 
 // ─── Stale-warning suppression (one log per process) ────────────────────────
@@ -230,10 +229,7 @@ func StartRevocationRefresher(ctx context.Context) (stop func()) {
 	loopCtx, cancel := context.WithCancel(ctx)
 	saferecover.SafeGo("license_revocation_refresh", func() {
 		// Initial best-effort refresh on startup.
-		if _, err := RefreshRevocationList(loopCtx); err != nil {
-			fmt.Fprintf(os.Stderr,
-				"warning: initial revocation refresh failed: %v\n", err)
-		}
+		refreshAndWarn(loopCtx, os.Stderr, "initial revocation refresh")
 		ticker := time.NewTicker(RevocationRefreshInterval)
 		defer ticker.Stop()
 		for {
@@ -241,12 +237,17 @@ func StartRevocationRefresher(ctx context.Context) (stop func()) {
 			case <-loopCtx.Done():
 				return
 			case <-ticker.C:
-				if _, err := RefreshRevocationList(loopCtx); err != nil {
-					fmt.Fprintf(os.Stderr,
-						"warning: revocation refresh failed: %v\n", err)
-				}
+				refreshAndWarn(loopCtx, os.Stderr, "revocation refresh")
 			}
 		}
 	})
 	return cancel
+}
+
+// refreshAndWarn runs one refresh and reports a failure on w as "warning: <what> failed".
+// A failure never stops the refresher: FAIL-OPEN is decided at lookup time.
+func refreshAndWarn(ctx context.Context, w io.Writer, what string) {
+	if _, err := RefreshRevocationList(ctx); err != nil {
+		_, _ = fmt.Fprintf(w, "warning: %s failed: %v\n", what, err)
+	}
 }

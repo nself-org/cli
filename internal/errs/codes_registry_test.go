@@ -131,6 +131,8 @@ func TestRegistryExitTable(t *testing.T) {
 			return 0
 		case n == 422 || n == 423: // P7-SURF-24: no single JSON document and invocation timeout are infra (EPIC SURF D14)
 			return 2
+		case n == 431: // P7-SURF-02: E431 server saturated is infra (EPIC SURF D14)
+			return 2
 		case n == 470 || n == 471: // P7-LIVE-22: ACME issue and install failures keep E151's infra class
 			return 2
 		case n == 488 || n == 489: // P7-DEPL-15: promote rolled back / rollback failed are infra (EPIC DEPL D16)

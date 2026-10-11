@@ -147,15 +147,15 @@ func TestGraceStateForPinsTheCeilingToPostExpiryOnly(t *testing.T) {
 	compattest.Set(t, true)
 	day := 24 * time.Hour
 	old := signedEntry(t, -10*day, 8*day)
-	if g := graceStateFor(old); g.State != GracePostExpiry || g.CanProceed != true || g.WriteAllowed {
+	if g := graceStateFor(old, time.Now()); g.State != GracePostExpiry || g.CanProceed != true || g.WriteAllowed {
 		t.Errorf("old post-expiry cache: %+v, want read-only post-expiry", g)
 	}
 	young := signedEntry(t, -10*day, day)
-	if g := graceStateFor(young); !g.WriteAllowed || g.State != GracePostExpiry {
+	if g := graceStateFor(young, time.Now()); !g.WriteAllowed || g.State != GracePostExpiry {
 		t.Errorf("young post-expiry cache: %+v, want write allowed", g)
 	}
 	live := signedEntry(t, 30*day, time.Hour)
-	if g := graceStateFor(live); !g.WriteAllowed || g.State != GraceValid {
+	if g := graceStateFor(live, time.Now()); !g.WriteAllowed || g.State != GraceValid {
 		t.Errorf("live cache: %+v", g)
 	}
 }

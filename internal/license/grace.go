@@ -88,6 +88,11 @@ type GraceCheckResult struct {
 // DetermineGraceState evaluates the current grace state from a cache entry.
 // If entry is nil, returns GraceExpired (no cache means no validation).
 func DetermineGraceState(entry *CacheEntry) GraceCheckResult {
+	return graceStateAt(entry, time.Now())
+}
+
+// graceStateAt is DetermineGraceState evaluated at now.
+func graceStateAt(entry *CacheEntry, now time.Time) GraceCheckResult {
 	if entry == nil {
 		return GraceCheckResult{
 			State:        GraceExpired,
@@ -97,8 +102,7 @@ func DetermineGraceState(entry *CacheEntry) GraceCheckResult {
 		}
 	}
 
-	now := time.Now()
-	cacheAge := entry.CacheAge()
+	cacheAge := entry.AgeAt(now)
 	expiresAt := time.Unix(entry.ExpiresAt, 0)
 
 	// Check if the license itself has expired (server-reported expiry).
@@ -117,8 +121,7 @@ func DetermineGraceState(entry *CacheEntry) GraceCheckResult {
 // Split out of DetermineGraceState to keep that function under the repo's
 // 50-line cap.
 func cacheFreshnessGraceState(entry *CacheEntry, expiresAt time.Time, cacheAge time.Duration) GraceCheckResult {
-	switch {
-	case cacheAge < GraceSoftThreshold:
+	if cacheAge < GraceSoftThreshold {
 		return GraceCheckResult{
 			State:        GraceValid,
 			CacheAge:     cacheAge,
@@ -127,7 +130,8 @@ func cacheFreshnessGraceState(entry *CacheEntry, expiresAt time.Time, cacheAge t
 			CanProceed:   true,
 			WriteAllowed: true,
 		}
-	case cacheAge < GraceHardThreshold:
+	}
+	if cacheAge < GraceHardThreshold {
 		return GraceCheckResult{
 			State:     GraceSoft,
 			CacheAge:  cacheAge,
@@ -142,20 +146,19 @@ func cacheFreshnessGraceState(entry *CacheEntry, expiresAt time.Time, cacheAge t
 			CanProceed:   true,
 			WriteAllowed: true,
 		}
-	default:
-		return GraceCheckResult{
-			State:     GraceHard,
-			CacheAge:  cacheAge,
-			ExpiresAt: expiresAt,
-			Tier:      entry.Tier,
-			Message: fmt.Sprintf(
-				"License validation expired (%s offline). "+
-					"Paid plugins are in read-only mode. Connect to refresh.",
-				formatDuration(cacheAge),
-			),
-			CanProceed:   true,
-			WriteAllowed: false,
-		}
+	}
+	return GraceCheckResult{
+		State:     GraceHard,
+		CacheAge:  cacheAge,
+		ExpiresAt: expiresAt,
+		Tier:      entry.Tier,
+		Message: fmt.Sprintf(
+			"License validation expired (%s offline). "+
+				"Paid plugins are in read-only mode. Connect to refresh.",
+			formatDuration(cacheAge),
+		),
+		CanProceed:   true,
+		WriteAllowed: false,
 	}
 }
 

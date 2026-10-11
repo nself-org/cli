@@ -55,11 +55,20 @@ func (c *Compose) buildBaseArgs() []string {
 	return args
 }
 
+// withServices appends "--" and then services to args, so a service name that
+// starts with "-" is never read as a flag. With no services it appends nothing
+// (no trailing "--"): the command then acts on every service.
+func withServices(args []string, services ...string) []string {
+	if len(services) == 0 {
+		return args
+	}
+	return append(append(args, "--"), services...)
+}
+
 // ComposeUp runs `docker compose up -d [services...]` in the given workdir.
 func (c *Compose) ComposeUp(ctx context.Context, workdir string, services ...string) error {
 	args := c.buildBaseArgs()
-	args = append(args, "up", "-d")
-	args = append(args, services...)
+	args = withServices(append(args, "up", "-d"), services...)
 	return c.Run(ctx, workdir, args...)
 }
 
@@ -88,16 +97,14 @@ func (c *Compose) ComposeDown(ctx context.Context, workdir string, opts DownOpti
 // to the named services instead of pulling their dependencies up with them.
 func (c *Compose) ComposeUpNoDeps(ctx context.Context, workdir string, services ...string) error {
 	args := c.buildBaseArgs()
-	args = append(args, "up", "-d", "--no-deps")
-	args = append(args, services...)
+	args = withServices(append(args, "up", "-d", "--no-deps"), services...)
 	return c.Run(ctx, workdir, args...)
 }
 
 // ComposeRestart runs `docker compose restart [services...]` in the given workdir.
 func (c *Compose) ComposeRestart(ctx context.Context, workdir string, services ...string) error {
 	args := c.buildBaseArgs()
-	args = append(args, "restart")
-	args = append(args, services...)
+	args = withServices(append(args, "restart"), services...)
 	return c.Run(ctx, workdir, args...)
 }
 
@@ -113,7 +120,7 @@ func (c *Compose) ComposePull(ctx context.Context, workdir string) error {
 // pulling a fresh image only for the named service.
 func (c *Compose) ComposePullService(ctx context.Context, workdir, service string) error {
 	args := c.buildBaseArgs()
-	args = append(args, "pull", service)
+	args = withServices(append(args, "pull"), service)
 	return c.Run(ctx, workdir, args...)
 }
 
@@ -122,8 +129,7 @@ func (c *Compose) ComposePullService(ctx context.Context, workdir, service strin
 // their state for a subsequent ComposeUp.
 func (c *Compose) ComposeStop(ctx context.Context, workdir string, services ...string) error {
 	args := c.buildBaseArgs()
-	args = append(args, "stop")
-	args = append(args, services...)
+	args = withServices(append(args, "stop"), services...)
 	return c.Run(ctx, workdir, args...)
 }
 
@@ -131,14 +137,13 @@ func (c *Compose) ComposeStop(ctx context.Context, workdir string, services ...s
 // workdir, adjusting the replica count for the named service.
 func (c *Compose) ComposeScale(ctx context.Context, workdir, service string, replicas int) error {
 	args := c.buildBaseArgs()
-	args = append(args, "up", "-d", "--no-deps",
-		fmt.Sprintf("--scale=%s=%d", service, replicas), service,
-	)
+	args = withServices(append(args, "up", "-d", "--no-deps",
+		fmt.Sprintf("--scale=%s=%d", service, replicas)), service)
 	return c.Run(ctx, workdir, args...)
 }
 
 // composePsEntry maps the JSON output of `docker compose ps --format json`.
-// Docker Compose v2 emits one JSON object per line (not an array).
+// Docker Compose v2 emits one JSON array or one object per line, by release.
 type composePsEntry struct {
 	ID      string `json:"ID"`
 	Name    string `json:"Name"`
@@ -153,9 +158,8 @@ type composePsEntry struct {
 // ComposePs runs `docker compose ps --format json` and parses the output
 // into a slice of ContainerInfo.
 //
-// Docker Compose v2 changed its JSON output format across versions:
-//   - v2.20 and earlier: one JSON object per stdout line (NDJSON)
-//   - v2.21 and later:   a single JSON array containing all objects
+// Docker Compose v2 prints either one JSON array or one JSON object per
+// stdout line (NDJSON), depending on the release.
 //
 // Both formats are handled: the raw output is first attempted as a JSON array;
 // if that fails (or yields nothing), the output is re-scanned line by line as

@@ -226,8 +226,28 @@
       "id": "urn:nself:cli:schema:commands:config-secrets-list:v1"
     },
     {
+      "path": "commands/config-secrets-recipients-add.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-recipients-add:v1"
+    },
+    {
+      "path": "commands/config-secrets-recipients-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-recipients-list:v1"
+    },
+    {
+      "path": "commands/config-secrets-recipients-remove.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-recipients-remove:v1"
+    },
+    {
+      "path": "commands/config-secrets-recipients.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-recipients:v1"
+    },
+    {
       "path": "commands/config-secrets-rekey.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:config-secrets-rekey:v1"
+    },
+    {
+      "path": "commands/config-secrets-resolve.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-resolve:v1"
     },
     {
       "path": "commands/config-secrets-retire.v1.schema.json",
