@@ -561,16 +561,21 @@ func TestMatchesFilters_AllBranches(t *testing.T) {
 	}
 }
 
-// TestMin12_AllBranches covers both branches.
-func TestMin12_AllBranches(t *testing.T) {
-	if got := min12("short"); got != 5 {
-		t.Errorf("min12(short) = %d, want 5", got)
-	}
-	if got := min12("exactly_twelve_plus_more"); got != 12 {
-		t.Errorf("min12(longstring) = %d, want 12", got)
-	}
-	if got := min12(""); got != 0 {
-		t.Errorf("min12(empty) = %d, want 0", got)
+// TestKeyFilterComparesAtMost12Chars: the key filter matches on its first 12
+// characters (the length of ping's key prefix), or all of a shorter filter.
+func TestKeyFilterComparesAtMost12Chars(t *testing.T) {
+	ev := LicenseEvent{KeyPrefix: "nself_pro_ab"}
+	for filter, want := range map[string]bool{
+		"":                         true,
+		"nself":                    true,
+		"nself_pro_ab":             true,
+		"nself_pro_abXYZ_ignored":  true,
+		"nself_pro_ac":             false,
+		"nself_pro_aXbcdefghijklm": false,
+	} {
+		if got := matchesFilters(ev, map[string]string{"key": filter}); got != want {
+			t.Errorf("key filter %q: match=%v, want %v", filter, got, want)
+		}
 	}
 }
 

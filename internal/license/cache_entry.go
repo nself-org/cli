@@ -119,32 +119,18 @@ func (c *CacheEntry) matchesSignedBody() bool {
 	return err == nil && claims.Sub == c.KeyHash
 }
 
-// verifyLegacy is the v1.4 check, unchanged.
+// verifyLegacy is the v1.4 check: any active key verifies the legacy
+// signature. The stored key id is not consulted: v1.4 tried the matching key
+// first and then every key (rotation window), which is the same verdict.
 func (c *CacheEntry) verifyLegacy() bool {
-	keys := GetPublicKeys()
-	for _, pk := range keys {
-		if c.SignatureKeyID != 0 && pk.ID != c.SignatureKeyID {
-			continue
-		}
-		sigBytes, err := hex.DecodeString(c.Signature)
-		if err != nil {
-			continue
-		}
-		if ed25519.Verify(pk.Key, c.signablePayload(), sigBytes) {
-			return true
-		}
+	sigBytes, err := hex.DecodeString(c.Signature)
+	if err != nil {
+		return false
 	}
-	// If keyID was specified and didn't match, try all keys (rotation window).
-	if c.SignatureKeyID != 0 {
-		sigBytes, err := hex.DecodeString(c.Signature)
-		if err != nil {
-			return false
-		}
-		payload := c.signablePayload()
-		for _, pk := range keys {
-			if ed25519.Verify(pk.Key, payload, sigBytes) {
-				return true
-			}
+	payload := c.signablePayload()
+	for _, pk := range GetPublicKeys() {
+		if ed25519.Verify(pk.Key, payload, sigBytes) {
+			return true
 		}
 	}
 	return false
@@ -273,9 +259,7 @@ func (c *CacheEntry) AgeAt(now time.Time) time.Duration {
 	// compat.V15(P7-PLUG-63): cache age from the unsigned fetched_at -> the older of fetched_at and the signed jwt iat
 	if compat.V15() {
 		if iat, ok := c.signedIssuedAt(); ok {
-			if signed := now.Sub(time.Unix(iat, 0)); signed > age {
-				age = signed
-			}
+			age = max(age, now.Sub(time.Unix(iat, 0)))
 		}
 	}
 	return age

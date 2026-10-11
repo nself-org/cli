@@ -128,7 +128,7 @@ func ValidateFull(ctx context.Context, key string) (*ValidationResult, error) {
 	}
 
 	// Evaluate grace state.
-	grace := graceStateFor(entry)
+	grace := graceStateFor(entry, time.Now())
 	return &ValidationResult{
 		Valid:        grace.CanProceed,
 		Tier:         entry.Tier,
