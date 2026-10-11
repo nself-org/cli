@@ -39,6 +39,10 @@ func TestSnippetDenyAllNeedsNoWayIn(t *testing.T) {
 			t.Errorf("%s: deny_all=%v unmodelled=%q", name, r.Locations[0].DenyAll, r.Unmodelled)
 		}
 	}
+	// A nested location's allow is its own scope.
+	if !route(t, `server { listen 80; server_name a.test; location /a { deny all; location /a/b { allow 1.1.1.1; } } }`).Locations[0].DenyAll {
+		t.Error("nested location allow blocked deny all")
+	}
 	// A server-level allow is not inherited by a location with its own deny.
 	if !route(t, `server { listen 80; server_name a.test; allow 10.0.0.0/8; satisfy all; location /admin { deny all; } }`).Locations[0].DenyAll {
 		t.Error("server allow blocked a location deny all")

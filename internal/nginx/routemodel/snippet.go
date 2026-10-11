@@ -163,7 +163,6 @@ func (sn *Snippet) server(b *Block, id, source, owner, file string) Route {
 	s := &srv{sn: sn, r: &r, vars: map[string]*setVar{}, rec: map[*Block]bool{}, protos: []string{}}
 	sn.disp[b] = "container"
 	s.g = sn.gg.join(scanGuard(b))
-	s.g.allow = false // a server allow is not inherited by a location with its own deny
 	s.taint = locationSets(b, false, map[string]bool{})
 	var locs []*Block
 	var ret *Block // the first server-level return
