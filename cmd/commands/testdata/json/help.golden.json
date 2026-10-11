@@ -473,7 +473,7 @@
             "required": false,
             "persistent": false,
             "env": null,
-            "side_effect": null,
+            "side_effect": "destructive",
             "json": null,
             "output": null,
             "cli_only": false,
@@ -487,7 +487,10 @@
         "json": "envelope",
         "data_schema": "schemas/commands/config-import.v1.schema.json",
         "exit_codes": {},
-        "confirm": null,
+        "confirm": {
+          "flags": [],
+          "plan": null
+        },
         "surface": "all"
       },
       {
