@@ -114,7 +114,8 @@ func TestHostDestinationRejectsBeforeSSH(t *testing.T) {
 func TestHostDestinationRefusesUnpinnedServer(t *testing.T) {
 	logf := fakeBin(t)
 	inv := hostFixture(t)
-	t.Setenv(KnownHostsEnv, filepath.Join(t.TempDir(), "empty"))
+	// Same directory as the fixture's pin file (0700), but a file with no keys.
+	t.Setenv(KnownHostsEnv, filepath.Join(filepath.Dir(os.Getenv(KnownHostsEnv)), "empty"))
 	d, err := Parse("host://bk1/srv/backups", inv)
 	if err != nil {
 		t.Fatal(err)
