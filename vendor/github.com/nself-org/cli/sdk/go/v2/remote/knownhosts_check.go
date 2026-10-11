@@ -3,13 +3,16 @@
 // Outputs: errors naming the path and 1-based line numbers; a release func.
 // Constraints: never echoes a key blob. The parent dir may be a symlink (the
 //              target is checked); the pin file may not (rename would replace
-//              the link). Mode and owner checks are skipped on windows.
+//              the link). Every ancestor of the parent dir, on the path as
+//              given and with symlinks resolved, gets sshd's secure_path test.
+//              Mode and owner checks are skipped on windows.
 //              Nothing here chmods a user directory. Lock is the sidecar
 //              "<Path>.lock" (0600, never truncated, left in place, opened
 //              O_NOFOLLOW|O_NONBLOCK, and must be a regular file
 //              we own and nobody else can write) because write() renames over the pin file and so
 //              changes its inode. Lines are split as ssh does: on ' ' and
-//              '\t' only, after one trailing '\r' is dropped.
+//              '\t' only, after one trailing '\r' is dropped. The flock is
+//              polled with LOCK_NB for at most pinLockWait, then refused.
 
 package remote
 
@@ -19,7 +22,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
+
+// pinLockWait bounds how long an operation waits for another process to
+// release the pin lock. A var so tests can shorten it.
+var pinLockWait = 30 * time.Second
 
 // foreignChars in a host field mean ssh would match more than one exact alias.
 const foreignChars = "*?!,[]|"
@@ -113,6 +121,52 @@ func checkDir(dir string) error {
 	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o022 != 0 {
 		return fmt.Errorf("pinned host keys directory %s has mode %04o: group/world writable; chmod it 0700", dir, fi.Mode().Perm())
 	}
+	return checkAncestors(dir)
+}
+
+// checkAncestors is sshd's secure_path over every directory above dir, up to
+// the root: on the path as given and on the path with symlinks resolved. ssh
+// re-opens the pin file by name at connect time, so a directory another user
+// can write could swap the file after these checks. Skipped on windows.
+func checkAncestors(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return err
+	}
+	for _, start := range []string{abs, resolved} {
+		for d := filepath.Dir(start); ; d = filepath.Dir(d) {
+			fi, err := os.Stat(d)
+			if err != nil {
+				return err
+			}
+			if err := ancestorOK(fi, dir, d); err != nil {
+				return err
+			}
+			if d == filepath.Dir(d) {
+				break
+			}
+		}
+	}
+	return nil
+}
+
+// ancestorOK applies the secure_path rule to one ancestor d of the pin dir:
+// owned by you or root, and not group/world writable unless it is a
+// root-owned sticky directory such as /tmp.
+func ancestorOK(fi os.FileInfo, dir, d string) error {
+	if !ownerOK(fi) {
+		return fmt.Errorf("pinned host keys directory %s: ancestor %s is not owned by you or root; move the pin file under a directory you own", dir, d)
+	}
+	if fi.Mode().Perm()&0o022 != 0 && (fi.Mode()&os.ModeSticky == 0 || !rootOwned(fi)) {
+		return fmt.Errorf("pinned host keys directory %s: ancestor %s has mode %04o: group/world writable; chmod go-w it or move the pin file", dir, d, fi.Mode().Perm())
+	}
 	return nil
 }
 
@@ -183,9 +237,32 @@ func (p PinnedHostKeys) acquire(write bool) (func(), error) {
 		_ = f.Close()
 		return nil, cerr
 	}
-	if err := lockFD(f, write); err != nil {
+	if err := waitLock(f, write, p.Path+".lock"); err != nil {
 		_ = f.Close()
 		return nil, err
 	}
 	return func() { unlockFD(f); _ = f.Close() }, nil
+}
+
+// waitLock polls a non-blocking flock until it is granted or pinLockWait has
+// passed, so a hung holder cannot block every other nself process forever.
+func waitLock(f *os.File, write bool, lock string) error {
+	deadline := time.Now().Add(pinLockWait)
+	delay := 5 * time.Millisecond
+	for {
+		ok, err := tryLockFD(f, write)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("pinned host keys lock %s is held by another process; gave up after %s (find the holder with lsof)", lock, pinLockWait)
+		}
+		time.Sleep(delay)
+		if delay < 200*time.Millisecond {
+			delay *= 2
+		}
+	}
 }

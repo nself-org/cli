@@ -8,8 +8,10 @@ import (
 	"syscall"
 
 	"github.com/nself-org/cli/internal/ui"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // AdminConnection represents a saved remote admin connection.
@@ -80,6 +82,7 @@ Steps performed:
 				return connectAllProjects(ctx, user, port, localPort, remotePort, asUser)
 			}
 
+			user, port = specUserPort(cmd.Flags(), host)
 			return connectSingle(ctx, host, user, port, localPort, remotePort, asUser)
 		},
 	}
@@ -91,4 +94,26 @@ Steps performed:
 	adminConnectCmd.Flags().Bool("all", false, "Connect with all registered projects")
 	adminConnectCmd.Flags().String("as", "", "Override authenticated identity (for ACL testing)")
 	return adminConnectCmd
+}
+
+// specUserPort returns the --user and --port values for one host. A flag the
+// operator did not set takes the host spec's own user or port when the spec
+// carries one, so alice@h or h:2222 decides instead of conflicting with the
+// nself/22 defaults, which still apply when neither sets it. The spec's value
+// is passed, not ""/0: the SSH step reads an empty user as a different user.
+// An unparsable host keeps the flag values; the SSH step reports the error.
+func specUserPort(flags *pflag.FlagSet, host string) (string, int) {
+	user, _ := flags.GetString("user")
+	port, _ := flags.GetInt("port")
+	spec, err := remote.ParseHostSpec(host)
+	if err != nil {
+		return user, port
+	}
+	if !flags.Changed("user") && spec.User != "" {
+		user = spec.User
+	}
+	if !flags.Changed("port") && spec.Port != 0 {
+		port = spec.Port
+	}
+	return user, port
 }
