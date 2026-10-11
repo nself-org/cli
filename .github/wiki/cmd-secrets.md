@@ -21,6 +21,36 @@ The persistent `--env` flag selects which environment a subcommand operates on (
 `secrets schedule` shows the rotation schedule status for tracked secrets. `secrets audit` lists secrets older than the rotation policy. `secrets lint` greps git-tracked files for plaintext secrets. `secrets decrypt-on-deploy` outputs `KEY=VALUE` lines for CI/CD consumption. `secrets rekey --remove <pubkey>` re-encrypts everything without a departed team member's key.
 
 ### Persistent (all subcommands)
+### Resolve references
+
+`nself config secrets resolve --project <directory> --for-attempt a1 --json project/FOO | <consumer>` emits a `cli.secret-resolve/v1` data document. In v1.4 use `nself secrets resolve`; both modes emit the canonical envelope. Stdout must be an anonymous or named pipe (FIFO). Terminals, regular files, sockets and `/dev/null` are E542 before decryption. There is no reveal option; stdin is never read.
+
+| Reference | Encrypted file |
+| --- | --- |
+| `project/NAME` | `<project>/.secrets/ci.age` |
+| `environment/<env>/NAME` | `<project>/.secrets/ci-<env>.age` |
+| `deploy/<env>/NAME` | `<project>/.secrets/<env>.age` |
+| `release/NAME` | `<project>/.secrets/release.age` |
+| `team/NAME` | `$HOME/.config/nself/secrets/team.age` |
+
+NAME matches `^[A-Z][A-Z0-9_]{0,127}$`; environments match `^[a-z][a-z0-9-]{0,31}$` and cannot be `ci`, `release`, `team` or begin with `ci-`. Duplicate NAMEs, malformed refs and explicit `--env` are E540. Missing files or keys are E541; unreadable identities and failed decryption are E543. `--json` and a valid `--for-attempt` are required. Values retain input order, include `source: age:<basename>` and have `expires_at: null`.
+
+Resolve and recipient commands refuse symlinked store directories and files with E543. Project stores require a real `.secrets` directory and regular encrypted files; team references require a real `$HOME/.config/nself/secrets` directory and regular `team.age` file.
+
+Every resolver call records exactly one `secret-resolve` audit event with grammar-valid refs, a valid attempt ID, absolute project, user and outcome, including refusals. Invalid refs are represented by their count and SHA-256 prefixes; invalid attempt IDs are represented by a SHA-256 prefix. Values never enter the audit record; an audit failure prevents value delivery. Resolve is CLI-only and refused over MCP and HTTP.
+
+### Manage recipients
+
+`nself config secrets recipients add --project <directory> --file ci <age-public-key>` grants access to an existing store. `remove --file ci <age-public-key>` removes a recipient; `list --file ci` prints public recipients. `--project` defaults to the current directory, is made absolute, and must name an existing directory for every action. In v1.4 use `nself secrets recipients`. In v1.5 `--json` emits recipient envelopes.
+
+Files are `ci`, `ci-<env>`, `release` or a deploy `<env>`, with the reserved environment rules above. Only the store owner, the first recorded recipient, may add or remove recipients (E544 otherwise). Removing the owner is E544; use `secrets rekey` for owner changes. Add and remove on release or deploy files also require `--allow-release-class`. Add never creates a missing store. Empty or malformed recipient metadata is E543, including on list. Duplicate additions leave ciphertext unchanged. Each change records one `secret-recipients` event with action, file, public recipient, project and user before re-encryption; a failed audit leaves ciphertext unchanged. A save failure after the audit is E543. The operator private identity is never copied or printed. Add, remove and list are CLI-only.
+
+Removal does not revoke plaintext already read. Rotate secret values after removing a recipient. Any identity that can decrypt a file can re-encrypt it with age directly, so nodes must get read-only checkouts. The CLI owner guard prevents accidents; it is not a security boundary.
+
+Run grants against an operator-trusted checkout. A writer can copy ciphertext from `release.age` to `ci.age`; granting that copy uses the lower class because the filename determines the class (D-0509). Symlink refusal does not prevent ciphertext copies.
+
+Pass an absolute `--project` to resolve and recipient commands. Monorepo startup may change the working directory to `backend/` before a relative path or the default project is resolved (D-0510).
+
 ### `secrets rotate <KEY>`
 ### `secrets rekey`
 <!-- END PROSE:description -->

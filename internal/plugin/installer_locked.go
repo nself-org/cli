@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/nself-org/cli/internal/audit"
 	"github.com/nself-org/cli/internal/config"
@@ -26,6 +25,9 @@ import (
 // acquired the install lock. Dependency installs call this directly to avoid
 // attempting to re-acquire the lock (which would deadlock).
 func installLocked(ctx context.Context, cfg *config.Config, name string, pluginDir string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
 	// Step 1: Fetch registry and locate the plugin. The license check runs
 	// AFTER resolution (Step 2b), not here: tier is not a property of the
 	// NAME, so the static paidPlugins map cannot answer it for a tier_pair
@@ -148,21 +150,8 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	// For plugins not yet installed we install them first, which places
 	// their manifest on disk for the resolver. We call installLocked here
 	// (not Install) because the lock is already held by this goroutine.
-	deps := manifest.Dependencies
-	if len(deps) > 0 {
-		fmt.Fprintf(os.Stderr, "Installing %s (requires: %s)\n", name, strings.Join(deps, ", "))
-	}
-	for _, dep := range deps {
-		depDir := filepath.Join(pluginDir, dep)
-		if _, err := os.Stat(depDir); err == nil {
-			fmt.Fprintf(os.Stderr, "  ✓ %s (already installed)\n", dep)
-			continue // dependency already installed
-		}
-		fmt.Fprintf(os.Stderr, "  → Installing dependency %s...\n", dep)
-		if err := installLocked(ctx, cfg, dep, pluginDir); err != nil {
-			return fmt.Errorf("installing dependency %q: %w", dep, err)
-		}
-		fmt.Fprintf(os.Stderr, "  ✓ %s installed\n", dep)
+	if err := installDependencies(ctx, cfg, name, manifest, pluginDir); err != nil {
+		return err
 	}
 
 	// Step 4: Download the plugin archive. A plugin that provides a command

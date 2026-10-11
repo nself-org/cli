@@ -37,30 +37,29 @@ import (
 // is moved aside first; any other non-directory is an error.
 func ensureDir(dir string) error {
 	info, err := os.Lstat(dir)
-	switch {
-	case err == nil && info.IsDir():
-		return nil
-
-	case err == nil && isLegacyLicenseFilePath(dir):
-		// Keep it: this is the user's license data, and the problem is a layout
-		// collision rather than a reason to discard it.
-		moved := fmt.Sprintf("%s.legacy-%d", dir, time.Now().Unix())
-		if rerr := os.Rename(dir, moved); rerr != nil {
-			return fmt.Errorf("a file exists at %s where a directory is required, "+
-				"and it could not be moved to %s: %w", dir, moved, rerr)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("checking %s: %w", dir, err)
 		}
-		fmt.Fprintf(os.Stderr,
-			"note: %s was a file from an older nSelf layout; moved to %s\n", dir, moved)
-
-	case err == nil:
+		return os.MkdirAll(dir, 0700)
+	}
+	if info.IsDir() {
+		return nil
+	}
+	if !isLegacyLicenseFilePath(dir) {
 		// Not the known legacy artifact. Say so plainly instead of renaming a
 		// path this code has no business moving.
 		return fmt.Errorf("%s exists but is not a directory; move or remove it and retry", dir)
-
-	case !os.IsNotExist(err):
-		return fmt.Errorf("checking %s: %w", dir, err)
 	}
-
+	// Keep it: this is the user's license data, and the problem is a layout
+	// collision rather than a reason to discard it.
+	moved := fmt.Sprintf("%s.legacy-%d", dir, time.Now().Unix())
+	if rerr := os.Rename(dir, moved); rerr != nil {
+		return fmt.Errorf("a file exists at %s where a directory is required, "+
+			"and it could not be moved to %s: %w", dir, moved, rerr)
+	}
+	fmt.Fprintf(os.Stderr,
+		"note: %s was a file from an older nSelf layout; moved to %s\n", dir, moved)
 	return os.MkdirAll(dir, 0700)
 }
 

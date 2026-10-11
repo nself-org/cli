@@ -20,11 +20,17 @@ import (
 	"github.com/nself-org/cli/internal/bundle/ledger"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/plugin"
 )
 
 // ReferencingBundles returns, sorted, the installed bundles whose install
 // references the plugin (its installed_by), or nil when none does.
 func ReferencingBundles(pluginDir, name string) ([]string, error) {
+	// The ledger key is derived from the name, so a path-shaped name ("./py") must
+	// not reach it: it would miss the record of "py" while the removal still hits "py".
+	if err := plugin.ValidateName(name); err != nil {
+		return nil, err
+	}
 	l, _, err := newLedgerStore(pluginDir).Load()
 	if err != nil {
 		return nil, err
@@ -59,6 +65,11 @@ func IsRecorded(pluginDir, slug string) (bool, error) {
 // written to w and the remove proceeds. A ledger that cannot be read cannot
 // prove the plugin is unreferenced, so v1.5 without force returns that error.
 func GuardPluginRemove(w io.Writer, pluginDir, name string, force bool) error {
+	// An invalid name is refused outright, never downgraded to a ledger warning or
+	// bypassed by --force.
+	if err := plugin.ValidateName(name); err != nil {
+		return err
+	}
 	refs, err := ReferencingBundles(pluginDir, name)
 	// compat.V15(P7-PLUG-20): remove <plugin> of a bundle member proceeds -> refuses with E133 unless --force
 	strict := compat.V15() && !force
@@ -90,6 +101,9 @@ var errNoRecord = errors.New("no record")
 // remove never bootstraps the ledger) or has no record of the plugin; a ledger
 // file that cannot be stat'ed for another reason is an error.
 func ForgetPlugin(pluginDir, name string) error {
+	if err := plugin.ValidateName(name); err != nil {
+		return err
+	}
 	store := newLedgerStore(pluginDir)
 	if _, err := os.Stat(store.Path()); err != nil {
 		if errors.Is(err, os.ErrNotExist) {

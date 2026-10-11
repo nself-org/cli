@@ -53,20 +53,16 @@ const (
 // Tier matching is case-insensitive.
 func CacheTTLForTier(tier string) time.Duration {
 	t := strings.ToLower(tier)
-	switch {
-	case t == "" || t == "free":
+	if t == "" || t == "free" {
 		return TTLFree
-	case strings.Contains(t, "owner"),
-		strings.Contains(t, "plus"),
-		strings.Contains(t, "+"),
-		strings.Contains(t, "max"),
-		strings.Contains(t, "enterprise"),
-		strings.Contains(t, "business"):
-		return TTLPlus
-	default:
-		// Pro, bundle tiers, and unknowns default to Pro TTL.
-		return TTLPro
 	}
+	for _, marker := range []string{"owner", "plus", "+", "max", "enterprise", "business"} {
+		if strings.Contains(t, marker) {
+			return TTLPlus
+		}
+	}
+	// Pro, bundle tiers, and unknowns default to Pro TTL.
+	return TTLPro
 }
 
 // CacheTTLExpiry returns the time.Time when a cache entry written at
@@ -89,36 +85,29 @@ func CacheTTLExpiry(tier string, fetchedAt time.Time) time.Time {
 // S132-T02: post-expiry grace — "Cache expired. Run nself license revalidate
 // after connecting."
 func PreExpiryWarning(entry *CacheEntry) (message string, isPostExpiry bool) {
-	if entry == nil {
+	return preExpiryWarningAt(entry, time.Now())
+}
+
+// preExpiryWarningAt is PreExpiryWarning evaluated at now.
+func preExpiryWarningAt(entry *CacheEntry, now time.Time) (message string, isPostExpiry bool) {
+	// Free tier caches (and no cache) have no TTL to warn about.
+	if entry == nil || CacheTTLForTier(entry.Tier) == 0 {
 		return "", false
 	}
-
-	tier := entry.Tier
-	fetchedAt := time.Unix(entry.FetchedAt, 0)
-	ttlExpiry := CacheTTLExpiry(tier, fetchedAt)
-	now := time.Now()
-
-	// Free tier caches have no TTL to warn about.
-	if CacheTTLForTier(tier) == 0 {
-		return "", false
-	}
-
-	remaining := ttlExpiry.Sub(now)
-
-	switch {
-	case remaining <= 0:
+	remaining := CacheTTLExpiry(entry.Tier, time.Unix(entry.FetchedAt, 0)).Sub(now)
+	if remaining <= 0 {
 		// Post-expiry: cache has expired.
 		return "Cache expired. Run nself license revalidate after connecting.", true
-	case remaining <= PreExpiryWarnStart:
-		// Pre-expiry warning window.
-		days := int(remaining.Hours()/24) + 1
-		if days == 1 {
-			return "License cache expires in 1 day. Connect to revalidate.", false
-		}
-		return "License cache expires in " + itoa(days) + " days. Connect to revalidate.", false
-	default:
+	}
+	if remaining > PreExpiryWarnStart {
 		return "", false
 	}
+	// Pre-expiry warning window.
+	days := int(remaining.Hours()/24) + 1
+	if days == 1 {
+		return "License cache expires in 1 day. Connect to revalidate.", false
+	}
+	return "License cache expires in " + itoa(days) + " days. Connect to revalidate.", false
 }
 
 // itoa converts an int to its decimal string representation without importing

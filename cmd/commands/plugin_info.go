@@ -37,6 +37,9 @@ func init() {
 
 func runPluginInfo(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	if err := plugin.ValidateName(name); err != nil {
+		return err
+	}
 	openBrowser, _ := cmd.Flags().GetBool("open")
 
 	marketplaceURL := fmt.Sprintf("https://plugins.nself.org/%s", name)

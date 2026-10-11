@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/plugin/manifestv2"
 )
 
@@ -48,6 +49,11 @@ func printAddedCommandHints(names []string) {
 		return
 	}
 	for _, name := range names {
+		// names are raw install arguments, including third-party URLs and paths: only a
+		// plain plugin name may be joined to the plugin directory (P7-PLUG-20).
+		if plugin.ValidateName(name) != nil {
+			continue
+		}
 		data, err := os.ReadFile(filepath.Join(resolvePluginDir(), name, "plugin.json"))
 		if err != nil {
 			continue

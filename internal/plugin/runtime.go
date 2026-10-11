@@ -99,6 +99,9 @@ func isProcessRunning(pid int) bool {
 }
 
 func Stop(ctx context.Context, name string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
 	pid, err := readPID(name)
 	if err != nil {
 		return fmt.Errorf("plugin %s is not running: %w", name, err)
@@ -155,6 +158,9 @@ func Stop(ctx context.Context, name string) error {
 // files. If the PID file indicates a process that is no longer running, the
 // state is corrected to "stopped".
 func Status(name string) (*PluginStatus, error) {
+	if err := ValidateName(name); err != nil {
+		return nil, err
+	}
 	state := readState(name)
 	pid := 0
 

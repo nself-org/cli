@@ -65,7 +65,7 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 		emit(o.Out, "  [skip] database backup %s was already restored by an earlier rollback; not restoring it again", o.BackupID)
 	case o.BackupID != "":
 		emit(o.Out, "  [running] restore database backup %s", o.BackupID)
-		if _, err := r.Run(ctx, fmt.Sprintf("cd %s && nself backup restore %s --yes", q(rp), q(o.BackupID))); err != nil {
+		if _, err := r.Run(ctx, shScript(fmt.Sprintf("cd %s && nself backup restore %s --yes", q(rp), q(o.BackupID)))); err != nil {
 			return fmt.Errorf("restoring backup %s on %s: %w; the files are restored, the stack was not restarted", o.BackupID, r.Label(), err)
 		}
 		if o.OnDBRestored != nil {

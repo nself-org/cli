@@ -113,8 +113,7 @@ func gateError(svc string, err error) error {
 // no-op when hasura/ is absent): strict fails the deploy, otherwise a warning.
 func applyHasuraMetadata(ctx context.Context, o ApplyOptions) error {
 	emit(o.Out, "  [running] hasura metadata apply on %s", o.Remote.Label())
-	cmd := fmt.Sprintf("cd %s && for i in 1 2 3 4 5; do nself db hasura metadata apply && exit 0; sleep 3; done; exit 1", q(o.RemotePath))
-	if out, err := o.Remote.Run(ctx, cmd); err != nil {
+	if out, err := o.Remote.Run(ctx, HasuraMetadataApplyCommand(o.RemotePath)); err != nil {
 		msg := fmt.Sprintf("remote hasura metadata apply failed: %v\n%s", err, string(out))
 		if o.StrictHasura {
 			return fmt.Errorf("%s", msg)
@@ -122,4 +121,11 @@ func applyHasuraMetadata(ctx context.Context, o ApplyOptions) error {
 		emit(o.Out, "  [warn] %s (non-fatal; set NSELF_HASURA_METADATA_STRICT=true to fail deploys on this)", msg)
 	}
 	return nil
+}
+
+// HasuraMetadataApplyCommand is the remote metadata apply with a short retry
+// loop, wrapped in sh -c: the for-loop is POSIX syntax that a fish or csh login
+// shell would reject (D-0542). The legacy single-host push uses it too.
+func HasuraMetadataApplyCommand(remotePath string) string {
+	return shScript(fmt.Sprintf("cd %s && for i in 1 2 3 4 5; do nself db hasura metadata apply && exit 0; sleep 3; done; exit 1", q(remotePath)))
 }

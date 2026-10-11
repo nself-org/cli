@@ -267,6 +267,10 @@ func TestReplyWindowEdges(t *testing.T) {
 		"expires 1 s from now":             {n - 100, n + 1, true},
 		"expires exactly now":              {n - 100, n, false},
 		"expired":                          {n - 7200, n - 1, false},
+		// D-0233: trust ends at iat + 24 h whatever exp says.
+		"exp 1 y away, issued 24 h - 1 s ago":   {n - replyMaxWindowSec + 1, n + 365*86400, true},
+		"exp 1 y away, issued exactly 24 h ago": {n - replyMaxWindowSec, n + 365*86400, false},
+		"exp 1 y away, issued 25 h ago":         {n - 25*3600, n + 365*86400, false},
 	} {
 		if err := replyBoundToKey(jwtFor(c.iat, c.exp), testLicenseKey, now); (err == nil) != c.ok {
 			t.Errorf("jwt %s: err=%v, want ok=%v", name, err, c.ok)
