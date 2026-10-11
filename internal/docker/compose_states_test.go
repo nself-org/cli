@@ -120,6 +120,10 @@ func TestRegressed(t *testing.T) {
 		{"remote rows, ID but no StartedAt, same", []ContainerState{{ID: "a", Name: "p-a", State: "running", Health: "healthy"}}, []ContainerState{{ID: "a", Name: "p-a", State: "running", Health: "healthy"}}, ""},
 		{"remote rows, ID but no StartedAt, replaced", []ContainerState{{ID: "a", Name: "p-a", State: "running"}}, []ContainerState{{ID: "b", Name: "p-b", State: "running"}}, "was not seen"},
 		{"remote rows, ID but no StartedAt, unhealthy", []ContainerState{{ID: "a", Name: "p-a", State: "running", Health: "healthy"}}, []ContainerState{{ID: "a", Name: "p-a", State: "running", Health: "unhealthy"}}, "unhealthy"},
+		{"image HEALTHCHECK, gated on running: starting stays starting", []ContainerState{hc("a", "t1", "starting")}, []ContainerState{hc("a", "t1", "starting")}, ""},
+		{"never required health, so running/starting to running/unhealthy is not held", []ContainerState{hc("a", "t1", "starting")}, []ContainerState{hc("a", "t1", "unhealthy")}, ""},
+		{"healthy to unhealthy", healthy[:1], []ContainerState{hc("a", "t1", "unhealthy")}, "p-a is running/unhealthy"},
+		{"healthy to exited 0", healthy[:1], []ContainerState{exited("a", 0)}, "p-a is exited/"},
 		{"nothing before, anything after", nil, []ContainerState{run("a", "t1")}, ""},
 	}
 	for _, tc := range cases {

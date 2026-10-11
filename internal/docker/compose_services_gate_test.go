@@ -174,12 +174,14 @@ func TestParseServiceSpecsHealthTiming(t *testing.T) {
 		has  bool
 		want time.Duration
 	}{
-		"declared timing":     {`{"test":["CMD","true"],"interval":"1m30s","timeout":"5s","start_period":"2m0s","retries":4}`, true, 2*time.Minute + 4*(95*time.Second)},
-		"test only: defaults": {`{"test":["CMD","true"]}`, true, 3 * (30*time.Second + 30*time.Second)},
-		"partial: interval":   {`{"test":["CMD","true"],"interval":"10s"}`, true, 3 * (10*time.Second + 30*time.Second)},
-		"zero retries":        {`{"test":["CMD","true"],"retries":0,"start_period":"5s"}`, true, 5 * time.Second},
-		"disabled":            {`{"disable":true,"interval":"5m"}`, false, 0},
-		"NONE":                {`{"test":["NONE"],"interval":"5m"}`, false, 0},
+		"declared timing":                 {`{"test":["CMD","true"],"interval":"1m30s","timeout":"5s","start_period":"2m0s","retries":4}`, true, 2*time.Minute + 4*(95*time.Second)},
+		"test only: defaults":             {`{"test":["CMD","true"]}`, true, 3 * (30*time.Second + 30*time.Second)},
+		"partial: interval":               {`{"test":["CMD","true"],"interval":"10s"}`, true, 3 * (10*time.Second + 30*time.Second)},
+		"one retry, start_period":         {`{"test":["CMD","true"],"retries":1,"start_period":"5s"}`, true, 65 * time.Second},
+		"retries 0 is Docker's default 3": {`{"test":["CMD","true"],"retries":0}`, true, 180 * time.Second},
+		"interval 0s is the default 30s":  {`{"test":["CMD","true"],"interval":"0s","timeout":"10s"}`, true, 3 * 40 * time.Second},
+		"disabled":                        {`{"disable":true,"interval":"5m"}`, false, 0},
+		"NONE":                            {`{"test":["NONE"],"interval":"5m"}`, false, 0},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, err := parseServiceSpecs([]byte(hcOf(tc.hc)))
