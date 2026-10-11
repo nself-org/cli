@@ -28,8 +28,7 @@ func ledgerSelect(ctx context.Context, cfg *config.Config, q string) (string, er
 // ledgerTableExists reports, read-only via to_regclass (NULL, never an error,
 // for a missing schema or table), whether a schema-qualified table exists.
 func ledgerTableExists(ctx context.Context, cfg *config.Config, qualified string) (bool, error) {
-	out, err := ledgerSelect(ctx, cfg, fmt.Sprintf(
-		"SELECT CASE WHEN to_regclass('%s') IS NULL THEN 'no' ELSE 'yes' END", qualified))
+	out, err := ledgerSelect(ctx, cfg, fmt.Sprintf("SELECT CASE WHEN to_regclass('%s') IS NULL THEN 'no' ELSE 'yes' END", qualified))
 	if err != nil {
 		return false, fmt.Errorf("check %s: %w", qualified, err)
 	}
@@ -70,6 +69,9 @@ func PendingDirMigrations(ctx context.Context, cfg *config.Config, dir string) (
 		if applied, err = appliedMigrations(ctx, cfg); err != nil {
 			return nil, fmt.Errorf("check applied migrations: %w", err)
 		}
+		if err = resolveLegacyAppliedRow(ctx, cfg, files, applied); err != nil {
+			return nil, err
+		}
 	}
 	sums, err := opsChecksums(ctx, cfg)
 	if err != nil {
@@ -77,7 +79,7 @@ func PendingDirMigrations(ctx context.Context, cfg *config.Config, dir string) (
 	}
 	var pendingFiles, names []string
 	for _, f := range files {
-		name := filepath.Base(f)
+		name := migrationKey(f)
 		data, readErr := os.ReadFile(f)
 		if nameErr := validateMigrationName(name); nameErr != nil || readErr != nil {
 			return nil, errors.Join(nameErr, readErr)
