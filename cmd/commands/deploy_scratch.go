@@ -28,6 +28,7 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/plugin"
+	"golang.org/x/term"
 )
 
 // deployScratchBuildFn runs the build inside the scratch dir. A variable so
@@ -214,4 +215,24 @@ func localPluginRefs() ([]deploy.PluginRef, error) {
 		refs = append(refs, deploy.PluginRef{Name: m.Name, Version: m.Version, Disabled: plugin.IsDisabled(m.Name, dir)})
 	}
 	return refs, nil
+}
+
+// hasuraStrictFor is the legacy strict rule: the target's default, overridden by
+// NSELF_HASURA_METADATA_STRICT.
+func hasuraStrictFor(workdir, target string) bool {
+	if raw := os.Getenv("NSELF_HASURA_METADATA_STRICT"); raw != "" {
+		return raw == "true"
+	}
+	return remoteHasuraStrict(workdir, target)
+}
+
+// ttyConfirm asks on a terminal; without one the answer is no.
+func ttyConfirm(msg string) bool {
+	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stderr.Fd())) {
+		return false
+	}
+	_, _ = fmt.Fprintf(os.Stderr, "%s. Type yes to continue: ", msg)
+	var ans string
+	_, _ = fmt.Scanln(&ans)
+	return strings.EqualFold(strings.TrimSpace(ans), "yes")
 }

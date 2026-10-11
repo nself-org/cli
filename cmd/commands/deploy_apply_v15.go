@@ -28,7 +28,6 @@ import (
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
-	"golang.org/x/term"
 
 	"github.com/spf13/cobra"
 )
@@ -130,26 +129,6 @@ func prepareRemoteApply(ctx context.Context, p v15Params) (*controlplane.RemoteA
 	return ra, filepath.Join(scratch, "docker-compose.yml"), nil
 }
 
-// hasuraStrictFor is the legacy strict rule: the target's default, overridden by
-// NSELF_HASURA_METADATA_STRICT.
-func hasuraStrictFor(workdir, target string) bool {
-	if raw := os.Getenv("NSELF_HASURA_METADATA_STRICT"); raw != "" {
-		return raw == "true"
-	}
-	return remoteHasuraStrict(workdir, target)
-}
-
-// ttyConfirm asks on a terminal; without one the answer is no.
-func ttyConfirm(msg string) bool {
-	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stderr.Fd())) {
-		return false
-	}
-	_, _ = fmt.Fprintf(os.Stderr, "%s. Type yes to continue: ", msg)
-	var ans string
-	_, _ = fmt.Scanln(&ans)
-	return strings.EqualFold(strings.TrimSpace(ans), "yes")
-}
-
 // recordRemoteApply writes deploy.json as servers finish, but only once some
 // server kept changes (refused or restored servers alone leave the last good
 // record). Success and per-host outcomes cover every server seen, so a later
@@ -226,6 +205,8 @@ func runDeployPipeline(cmd *cobra.Command, workdir string, inv *controlplane.Inv
 	if !compat.V15() || target == "local" {
 		return controlplane.RunWithEnv(ctx, inv, target, prober, composePath, envFile, envName)
 	}
+	ctx, stop := deploy.WithInterrupt(ctx)
+	defer stop()
 	srv, ok := primaryServer(inv, target)
 	if !ok {
 		return nil, errs.New("E483", fmt.Sprintf("invalid target %q: no servers to deploy to", target))
@@ -251,6 +232,8 @@ func remoteDeployPushDispatch(ctx context.Context, workdir, host, target string,
 }
 
 func remoteDeployV15(ctx context.Context, workdir, host, target string, jsonOut bool) error {
+	ctx, stop := deploy.WithInterrupt(ctx)
+	defer stop()
 	key := sshKeyPath()
 	if key != "" && !sshKeyRe.MatchString(key) {
 		return fmt.Errorf("NSELF_DEPLOY_SSH_KEY contains unsafe characters (got %q): only [a-zA-Z0-9/_.~-] allowed", key)

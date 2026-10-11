@@ -135,6 +135,9 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	// restore survives a cancelled ctx) and removes what the deploy created.
 	touched := false
 	defer func() {
+		if err != nil && ctx.Err() != nil {
+			err = fmt.Errorf("interrupted: %w", err)
+		}
 		if err != nil && res.Synced && !touched {
 			if rerr := RestorePreDeployTar(ctx, r, rp, bk.Tar, RestoreSpec{Changed: res.Changed, Absent: res.Absent}); rerr != nil {
 				// The host may be half restored: keep the record, but never offer the

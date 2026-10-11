@@ -80,6 +80,7 @@ func (r *SSHRemote) Run(ctx context.Context, command string) ([]byte, error) {
 		return nil, err
 	}
 	cmd.Env = os.Environ()
+	ownProcessGroup(cmd)
 	var se bytes.Buffer
 	cmd.Stderr = &se
 	out, err := cmd.Output()
@@ -100,6 +101,7 @@ func (r *SSHRemote) Rsync(ctx context.Context, flags []string, filesFrom, srcDir
 		return err
 	}
 	cmd.Env = os.Environ()
+	ownProcessGroup(cmd)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("rsync to %s: %w\n%s", r.Spec.Dest(), err, strings.TrimSpace(string(out)))
 	}

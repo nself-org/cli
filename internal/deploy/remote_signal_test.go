@@ -1,0 +1,103 @@
+package deploy
+
+// G5: a real SIGINT in the middle of a remote apply. The test re-executes the
+// test binary as a child (the helper runs ApplyRemote against a fake host with
+// a signal-aware context), waits until the child is inside the pull step, sends
+// SIGINT to its pid, and reads back what the child reports: the old files are
+// back, what the deploy created is gone, and the deploy lock is released.
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+)
+
+const signalHelperEnv = "NSELF_DEPLOY_SIGNAL_HELPER"
+
+// blockingPull makes the pull step wait for the context, like a slow ssh does.
+type blockingPull struct {
+	*fakeRemote
+	ctx context.Context
+}
+
+func (b blockingPull) Run(ctx context.Context, cmd string) ([]byte, error) {
+	if strings.Contains(unshell(cmd), " pull") {
+		fmt.Println("READY")
+		<-b.ctx.Done()
+		return nil, b.ctx.Err()
+	}
+	return b.fakeRemote.Run(ctx, cmd)
+}
+
+// TestInterruptHelper is the child process; it does nothing unless re-executed.
+func TestInterruptHelper(t *testing.T) {
+	if os.Getenv(signalHelperEnv) == "" {
+		t.Skip("helper process for TestInterruptRestoresAndUnlocks")
+	}
+	f, o, rp := applyFixture(t, "")
+	ctx, stop := WithInterrupt(context.Background())
+	defer stop()
+	o.Remote = blockingPull{fakeRemote: f, ctx: ctx}
+	res, err := ApplyRemote(ctx, o)
+	restored := strings.Contains(readFile(t, rp+"/docker-compose.yml"), "# v1")
+	fmt.Printf("RESULT err=%v synced=%v restored=%v lock=%v restoreRan=%v\n", err != nil && strings.Contains(err.Error(), "interrupted"),
+		res.Synced, restored, exists(rp+"/.nself/deploy.lock"), indexOf(steps(f), "restore") >= 0)
+}
+
+func TestInterruptRestoresAndUnlocks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no SIGINT delivery to a child on windows")
+	}
+	needTools(t)
+	c := exec.Command(os.Args[0], "-test.run=^TestInterruptHelper$", "-test.count=1")
+	c.Env = append(os.Environ(), signalHelperEnv+"=1")
+	out, err := c.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Stderr = os.Stderr
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Process.Kill(); _ = c.Wait() })
+	lines := make(chan string)
+	go func() {
+		sc := bufio.NewScanner(out)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+		close(lines)
+	}()
+	deadline := time.After(90 * time.Second)
+	sent, result := false, ""
+	for result == "" {
+		select {
+		case l, ok := <-lines:
+			if !ok {
+				t.Fatal("the helper exited without reporting a result")
+			}
+			if l == "READY" && !sent {
+				sent = true
+				if err := c.Process.Signal(syscall.SIGINT); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if strings.HasPrefix(l, "RESULT ") {
+				result = l
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for the helper")
+		}
+	}
+	want := "RESULT err=true synced=false restored=true lock=false restoreRan=true"
+	if result != want {
+		t.Errorf("after SIGINT:\n got %s\nwant %s", result, want)
+	}
+}

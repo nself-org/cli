@@ -224,6 +224,8 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 	if st.RolledBack {
 		return true, fmt.Errorf("deploy rollback: the last deploy of %s was already rolled back; nothing was changed (deploy again to get a new rollback point)", target)
 	}
+	ctx, stop := deploy.WithInterrupt(cmd.Context())
+	defer stop()
 	inv, _ := controlplane.Load(workdir)
 	hosts := make([]string, 0, len(tars))
 	for h := range tars {
@@ -253,13 +255,13 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 				}
 			}
 		}
-		r, err := openDeployRemote(cmd.Context(), srv, key, target)
+		r, err := openDeployRemote(ctx, srv, key, target)
 		if err == nil {
 			backupID := ""
 			if host == st.BackupHost {
 				backupID = st.BackupID
 			}
-			err = deploy.RollbackRemote(cmd.Context(), deploy.RollbackOptions{
+			err = deploy.RollbackRemote(ctx, deploy.RollbackOptions{
 				Remote: r, RemotePath: srv.RemotePath, Tar: tar, BackupID: backupID,
 				Changed: st.PreDeployChanged[host], Absent: st.PreDeployAbsent[host],
 				DBRestored: st.DBRestoredAt != "", StrictHasura: hasuraStrictFor(workdir, target),
