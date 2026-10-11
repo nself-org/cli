@@ -375,3 +375,29 @@ func TestHintNotRepeatedWhenCacheCannotBeSaved(t *testing.T) {
 		t.Fatalf("hint %q printed although hinted_at could not be recorded", line)
 	}
 }
+
+func TestNoRefreshWhenAttemptCannotBeRecorded(t *testing.T) {
+	hits := 0
+	srv := versionServer(t, `{"latestCliVersion":"1.5.0"}`, &hits, nil)
+	clk := &clock{t: time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC)}
+	g := guards(t, clk, map[string]string{EnvOptIn: "1"})
+	g.URL = srv.URL
+	if err := Save(g.Path, Cache{CheckedAt: clk.t.Add(-2 * Interval)}); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(g.Path)
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("directory modes do not block writes here")
+	}
+	if done := MaybeStartRefresh(g); done != nil {
+		<-done
+		t.Fatal("refresh started although attempted_at could not be recorded")
+	}
+	if hits != 0 {
+		t.Fatalf("hits = %d, want 0", hits)
+	}
+}
