@@ -64,7 +64,12 @@ func TestSymlinkedNginxInsideRemotePath(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 	f.fail["docker run --rm"] = errBoom // nginx -t refuses after the sync
+	var out strings.Builder
+	o.Out = &out
 	res, err := ApplyRemote(context.Background(), o)
+	if !strings.Contains(out.String(), "[notice] nginx/sites is a symlink to ") || !strings.Contains(out.String(), ".shared-nginx/sites, writing through it") {
+		t.Errorf("J4: no notice that the write goes through a symlink:\n%s", out.String())
+	}
 	if err == nil || strings.Contains(err.Error(), "also failed") {
 		t.Fatalf("want a clean refusal, got %v", err)
 	}

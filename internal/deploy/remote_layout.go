@@ -15,6 +15,7 @@ package deploy
 import (
 	"context"
 	"fmt"
+	"io"
 	"path"
 	"sort"
 	"strings"
@@ -116,4 +117,14 @@ func refusedPaths(out []byte) error {
 		return nil
 	}
 	return fmt.Errorf("refusing to delete %s: a symlink on the path leaves remote_path (or the file is a symlink); nothing was deleted", strings.Join(bad, ", "))
+}
+
+// noticeLinks tells the operator, once per directory that holds a shipped file,
+// that the write goes through a symlink to another place inside remote_path.
+func noticeLinks(w io.Writer, linked map[string]string, shipped []string) {
+	for _, d := range layoutDirsOnly(shipped) {
+		if real, ok := linked[d]; ok {
+			emit(w, "  [notice] %s is a symlink to %s, writing through it", d, real)
+		}
+	}
 }

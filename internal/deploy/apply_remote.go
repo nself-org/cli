@@ -114,9 +114,11 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	}
 
 	// A symlink that leaves remote_path is refused before the lock and the tar.
-	if _, err := ResolveDirs(ctx, r, rp, layoutDirs(append(o.Set.shippedPaths(), o.Previous...))); err != nil {
+	linked, err := ResolveDirs(ctx, r, rp, layoutDirs(append(o.Set.shippedPaths(), o.Previous...)))
+	if err != nil {
 		return res, err
 	}
+	noticeLinks(o.Out, linked, o.Set.shippedPaths())
 	id := NewBackupID(o.Now())
 	release, err := AcquireLock(ctx, r, rp, id)
 	if err != nil {
