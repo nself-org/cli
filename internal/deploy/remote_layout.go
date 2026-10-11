@@ -8,9 +8,11 @@ package deploy
 //          refused with E485 before the lock and the tar, nothing sent.
 // Inputs:  a Remote, the remote path, relative paths or directories.
 // Outputs: dir -> real path for links that stay inside; an E485 error otherwise.
-// Constraints: one quoted remote script per call. Links inside the dirs the tar
-//              follows (nginx/, hasura/, .nself/plugins/, top-level files) are
-//              checked too, because the tar dereferences them (tar -h).
+// Constraints: one quoted remote script per call. Everything reachable through
+//              the dirs the tar follows (nginx/, hasura/, .nself/plugins/, top-level
+//              files), link chains included (find -L), must resolve inside
+//              remote_path, because the tar dereferences them (tar -h). The backup
+//              dir is a root too: the tar is written there.
 
 import (
 	"context"
@@ -25,7 +27,7 @@ import (
 )
 
 // layoutRoots are directories always checked, with the tar's follow-links sources.
-var layoutRoots = []string{"nginx", "hasura", ".nself", ".nself/plugins"}
+var layoutRoots = []string{"nginx", "hasura", ".nself", ".nself/plugins", BackupDir}
 
 // layoutDirs are the distinct directories (relative, not ".") that hold rels,
 // plus layoutRoots.
@@ -67,7 +69,7 @@ bad() { printf 'OUTSIDE %%s\t%%s\n' "$(san "$1")" "$(san "$2")"; }
 inside() { case "$1/" in "$base/"*) return 0;; esac; return 1; }
 for d in %s; do if [ -d "$d" ]; then x=$(cd -P "$d" 2>/dev/null && pwd -P && echo X) || x=; x=${x%%X}; x=${x%%?}; if ! safe "$x"; then bad "$d" "$x"; elif inside "$x"; then [ "$x" = "$base/$d" ] || printf 'LINK %%s\t%%s\n' "$d" "$x"; else bad "$d" "${x:-?}"; fi; fi; done
 for l in %s .env.*; do if [ -L "$l" ]; then x=$(res "$l"); inside "$x" || bad "$l" "${x:-?}"; fi; done
-for s in nginx hasura .nself/plugins; do if [ -e "$s" ]; then find -H "$s" -type l 2>/dev/null | while IFS= read -r l; do x=$(res "$l"); inside "$x" || bad "$l" "${x:-?}"; done; fi; done
+for s in nginx hasura .nself/plugins; do if [ -e "$s" ]; then find -L "$s" -exec sh -c 'for f; do r=$(readlink -f -- "$f" 2>/dev/null || realpath -- "$f" 2>/dev/null); case "$r/" in "$0/"*) ;; *) printf "OUTSIDE %%s\t%%s\n" "$(printf %%s "$f" | tr -c "[:print:]" "?")" "$(printf %%s "${r:-?}" | tr -c "[:print:]" "?")";; esac; done' "$base" {} + 2>/dev/null; fi; done
 exit 0`, q(remotePath), strings.Join(quoteAll(dirs), " "), strings.Join(quoteAll(tarSources), " "))
 	raw, err := r.Run(ctx, shScript(script))
 	if err != nil {

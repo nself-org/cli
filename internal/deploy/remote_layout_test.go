@@ -23,6 +23,22 @@ func TestOutsideSymlinkRefusedBeforeLock(t *testing.T) {
 			return os.Symlink(outside, rp+"/hasura")
 		},
 		"dir inside nginx": func(rp, outside string) error { return os.Symlink(outside, rp+"/nginx/sites/ext") },
+		"backup dir": func(rp, outside string) error { // N1: the pre-deploy tar (with .env) is written here
+			if err := os.MkdirAll(rp+"/.nself", 0o755); err != nil {
+				return err
+			}
+			return os.Symlink(outside, rp+"/.nself/backups")
+		},
+		"link chain": func(rp, outside string) error { // N2: nginx/a -> inside, whose b -> outside
+			writeFile(t, outside+"/privkey.pem", "KEY\n", 0o600)
+			if err := os.MkdirAll(rp+"/other", 0o755); err != nil {
+				return err
+			}
+			if err := os.Symlink(outside+"/privkey.pem", rp+"/other/b"); err != nil {
+				return err
+			}
+			return os.Symlink("../../other", rp+"/nginx/sites/a")
+		},
 		"env file": func(rp, outside string) error {
 			writeFile(t, outside+"/secret", "S=1\n", 0o600)
 			return os.Symlink(outside+"/secret", rp+"/.env.prod")
