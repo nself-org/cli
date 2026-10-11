@@ -158,6 +158,9 @@ func Exec(ctx context.Context, s Spec) (Result, error) {
 	var cancelled atomic.Bool
 	cmd.Cancel = func() error { cancelled.Store(true); return terminate(cmd.Process) }
 	cmd.WaitDelay = killDelay
+	if s.KillDelay > 0 {
+		cmd.WaitDelay = s.KillDelay
+	}
 	out := &capBuffer{max: MaxStdoutBytes}
 	errTail := &ringBuffer{max: StderrRingBytes}
 	if s.Stdout != nil {

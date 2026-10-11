@@ -82,6 +82,9 @@ func manifestCandidates(destDir string) []string {
 // "moved to a plugin" notice. Once the plugin is installed the old spelling is
 // the supported spelling, and repeating the install hint is noise.
 func IsCommandInstalled(cmdName string) bool {
+	if ValidateCommandName(cmdName) != nil {
+		return false
+	}
 	candidate := PublishedBinaryPath("nself-" + cmdName)
 	info, err := os.Stat(candidate)
 	return err == nil && !info.IsDir()

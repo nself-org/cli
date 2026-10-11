@@ -105,7 +105,7 @@ commands:
   # cmd/commands/config_export_import.go:131 --force overwrites existing values without the prompt; the old values are not restorable
   config import: {side_effect: write, flags: {force: {side_effect: destructive}}, confirm: {flags: []}}
   config list: {side_effect: read}
-  config set: {side_effect: write, secret_args: [value]}
+  config set: {side_effect: write, surface: cli-only, secret_args: [value]}
   config show: {side_effect: read}
   config validate: {side_effect: read, exit_codes: {"1": "one or more validators fail (exits 0 when all pass)"}}
   # cmd/commands/db.go:27 RunE path changes no persistent state (prints/reads only)
@@ -465,8 +465,8 @@ commands:
   template publish: {side_effect: remote, confirm: {flags: []}}
   # cmd/commands/template_publish_update.go:89 applies pending template migrations; --force allows DROP/TRUNCATE ones
   template update: {side_effect: write, flags: {force: {side_effect: destructive}}}
-  trust: {canon: pending, side_effect: write}
-  trust dns: {side_effect: write}
+  trust: {canon: pending, side_effect: write, surface: cli-only}
+  trust dns: {side_effect: write, surface: cli-only}
   # cmd/commands/ssl.go:38 RunE path changes no persistent state (prints/reads only)
   trust ssl: {side_effect: read}
   trust ssl add: {side_effect: remote, confirm: {flags: [agree-tos]}}

@@ -152,22 +152,32 @@ var approxQuery = func(ctx context.Context, pgURL string) (string, error) {
 
 // splitPgPassword returns the DSN without its password and the password
 // itself. It never hands back a DSN that still carries a password: one that
-// cannot be parsed, or that holds the password in a query parameter or in the
-// keyword form ("host=... password=..."), is an error, so the secret cannot
-// land in argv. A URL DSN with no password is returned unchanged.
+// cannot be parsed, that holds the password in a query parameter (including a
+// query string Go cannot parse cleanly, such as a ";" separator or a broken
+// escape), or that uses the keyword form ("host=... password=..."), is an
+// error, so the secret cannot land in argv. A URL DSN with no password is
+// returned unchanged. Error text is fixed and never echoes the DSN.
 func splitPgPassword(dsn string) (string, string, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return "", "", fmt.Errorf("the database DSN cannot be parsed, so it is not passed to psql (its password would be visible in argv)")
+		return "", "", fmt.Errorf("the database DSN cannot be parsed, so it is not passed to a child process (its password would be visible in argv)")
 	}
 	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
 		if strings.Contains(strings.ToLower(dsn), "password") {
-			return "", "", fmt.Errorf("the database DSN is not a postgres:// URL and names a password, so it is not passed to psql (its password would be visible in argv)")
+			return "", "", fmt.Errorf("the database DSN is not a postgres:// URL and names a password, so it is not passed to a child process (its password would be visible in argv)")
 		}
 		return dsn, "", nil
 	}
-	if _, ok := u.Query()["password"]; ok {
-		return "", "", fmt.Errorf("the database DSN carries the password as a query parameter, so it is not passed to psql (its password would be visible in argv)")
+	// ParseQuery reports the pairs u.Query() silently drops, and those can
+	// still hide a password.
+	q, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return "", "", fmt.Errorf("the database DSN has a query string that cannot be parsed, so it is not passed to a child process (a password in it would be visible in argv)")
+	}
+	for k := range q {
+		if strings.EqualFold(k, "password") {
+			return "", "", fmt.Errorf("the database DSN carries the password as a query parameter, so it is not passed to a child process (its password would be visible in argv)")
+		}
 	}
 	if u.User == nil {
 		return dsn, "", nil

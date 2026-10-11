@@ -12,12 +12,13 @@ package deploy
 //   3 deploy lock   4 pre-deploy tar (every tier)
 //   5 verified database backup, prod-class only (E206): before any compose command
 //   6 sync, no delete, env 0600, previous-shipped marker prune   7 compose model
-//   8 nginx -t   9 pull   10 recreate preview + stateful confirm (E403)
+//   8 nginx -t   9 save image ids, pull   10 recreate preview + stateful confirm (E403)
 //   11 per service in compose order: up -d --no-deps, health gate (E250/E251)
 //   12 final regression recheck, nginx reload   13 hasura metadata apply.
 // A failure in steps 6-10 happens before any container is touched, so the
 // pre-deploy tar is restored in place (files only, plus removal of what the
-// deploy created) and nothing is left half shipped. Later failures keep the new
+// deploy created), image tags the pull moved point back at their old images,
+// and nothing is left half shipped. Later failures keep the new
 // files and name the tar and `nself deploy rollback`.
 
 import (
@@ -149,10 +150,22 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 
 	// From the sync to the first `up`, a failure puts the old files back (the
 	// restore survives a cancelled ctx) and removes what the deploy created.
+	// Once the pull started it also points the moved image tags back (D-0426).
 	touched := false
+	var pulled []imageTag
 	defer func() {
 		if err != nil && ctx.Err() != nil {
 			err = fmt.Errorf("interrupted: %w", err)
+		}
+		if err != nil && !touched && len(pulled) > 0 {
+			if terr := restoreImageTags(ctx, r, pulled); terr != nil {
+				// Emitted as well: a rendered CLIError shows only its own message.
+				warn := fmt.Sprintf("the image tags the pull moved could not be put back (%v): a manual `docker compose up` on the host would run the new images without the stateful-recreate confirmation", terr)
+				emit(o.Out, "  [warn] %s", warn)
+				err = fmt.Errorf("%w; %s", err, warn)
+			} else {
+				emit(o.Out, "  [restored] %d image tag(s) pointed back at the images they had before the pull", len(pulled))
+			}
 		}
 		if err != nil && res.Synced && !touched {
 			if rerr := RestorePreDeployTar(ctx, r, rp, bk.Tar, RestoreSpec{Changed: res.Changed, Absent: res.Absent}); rerr != nil {
@@ -193,6 +206,9 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 		return res, err
 	}
 	base := composeBase(o.Set.Compose, o.Set.EnvManifest)
+	if pulled, err = saveImageTags(ctx, r, imageRefs(model)); err != nil {
+		return res, err
+	}
 	say("docker compose pull")
 	if _, err = r.Run(ctx, shScript(fmt.Sprintf("cd %s && %s pull", q(rp), base))); err != nil {
 		return res, fmt.Errorf("remote pull on %s: %w", r.Label(), err)

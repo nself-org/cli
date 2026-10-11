@@ -46,6 +46,7 @@ Admin is a builtin plugin family. Use `nself remove admin` to disable its comman
 | `health` | Check Admin service liveness |
 | `logs` | Tail Admin container logs |
 | `projects` | Manage multi-project admin configuration |
+| `serve` | Serve the authenticated ɳSelf HTTP API |
 | `start` | Start the Admin service |
 | `stop` | Stop the Admin container |
 <!-- END GENERATED:subcommands -->

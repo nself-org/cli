@@ -70,6 +70,9 @@ func checkReverseDependencies(pluginDir, name string) ([]string, error) {
 // A file lock on {pluginDir}/.install.lock is held for the duration of the
 // operation so that concurrent install and remove calls serialize correctly.
 func Remove(ctx context.Context, cfg *config.Config, name string, pluginDir string, keepData bool, force bool) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
 	lock, err := acquireInstallLock(pluginDir)
 	if err != nil {
 		return err
@@ -146,6 +149,9 @@ func Remove(ctx context.Context, cfg *config.Config, name string, pluginDir stri
 // NSELF_PLUGIN_INSTALL_TIER for the call, as `plugin install --tier` does
 // (the cmd layer does this for `plugin update --tier`).
 func Update(ctx context.Context, cfg *config.Config, name string, pluginDir string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
 	currentDir := filepath.Join(pluginDir, name)
 	backupDir := filepath.Join(pluginDir, name+".prev")
 
