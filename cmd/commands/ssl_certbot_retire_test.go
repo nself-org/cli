@@ -176,27 +176,50 @@ func TestSystemctlRunReal(t *testing.T) {
 	}
 }
 
-// TestCertbotHooks: saved deploy_hook/renew_hook lines and deploy scripts that
-// write into the project's ssl dir are found; other hooks, keys and projects are not.
+// TestCertbotHooks: saved deploy_hook/renew_hook lines and executable deploy
+// scripts that write into an ssl dir are found; other keys, comments,
+// non-executable scripts, other projects and longer paths are not.
 func TestCertbotHooks(t *testing.T) {
-	le, workdir := t.TempDir(), filepath.Join(t.TempDir(), "proj")
-	if hits, err := certbotHooks(filepath.Join(le, "absent"), workdir); err != nil || len(hits) != 0 {
+	tmp, _ := filepath.EvalSymlinks(t.TempDir()) // macOS: /var is a symlink
+	le, workdir := t.TempDir(), filepath.Join(tmp, "proj")
+	sslDir := filepath.Join(workdir, "ssl")
+	if hits, err := certbotHooks(filepath.Join(le, "absent"), sslDir); err != nil || len(hits) != 0 {
 		t.Fatalf("missing tree: hits=%v err=%v", hits, err)
 	}
+	script := func(name, body string) {
+		p := filepath.Join(le, "renewal-hooks", "deploy", name)
+		acmeWriteFile(t, p, []byte(body))
+		_ = os.Chmod(p, 0o755)
+	}
 	acmeWriteFile(t, filepath.Join(le, "renewal", "a.example.org.conf"), []byte("version = 2.9.0\n[renewalparams]\n"+nselfDeployHook(workdir)+"post_hook = docker compose exec nginx nginx -s reload\n"))
-	acmeWriteFile(t, filepath.Join(le, "renewal", "b.example.org.conf"), []byte("[renewalparams]\ndeploy_hook = cp x "+filepath.Join(workdir, "ssl", "b")+"/\n"))
-	acmeWriteFile(t, filepath.Join(le, "renewal", "c.example.org.conf"), []byte("[renewalparams]\npost_hook = ls "+filepath.Join(workdir, "ssl")+"/\nrenew_hook = cp x /srv/other/ssl/\n"))
-	acmeWriteFile(t, filepath.Join(le, "renewal-hooks", "deploy", "00-copy-cert.sh"), []byte("#!/bin/sh\ncp \"$RENEWED_LINEAGE\"/*.pem "+filepath.Join(workdir, "ssl", "certificates", "x")+"/\n"))
-	acmeWriteFile(t, filepath.Join(le, "renewal-hooks", "deploy", "other.sh"), []byte("#!/bin/sh\nsystemctl reload postfix\n"))
-	acmeWriteFile(t, filepath.Join(le, "renewal-hooks", "deploy", "sub", "x"), []byte(filepath.Join(workdir, "ssl")+"/\n"))
-	hits, err := certbotHooks(le, workdir)
+	acmeWriteFile(t, filepath.Join(le, "renewal", "b.example.org.conf"), []byte("[renewalparams]\ndeploy_hook = cp x "+filepath.Join(sslDir, "b")+"/\n"))
+	acmeWriteFile(t, filepath.Join(le, "renewal", "c.example.org.conf"), []byte("[renewalparams]\npost_hook = ls "+sslDir+"/\nrenew_hook = cp x /srv/other/ssl/\n# deploy_hook = cp x "+sslDir+"/\n"))
+	script("00-copy-cert.sh", "#!/bin/sh\n# copies into "+sslDir+"/ (comment)\ncp \"$RENEWED_LINEAGE\"/*.pem '"+filepath.Join(sslDir, "certificates", "x")+"/'\n")
+	script("other.sh", "#!/bin/sh\nsystemctl reload postfix\ncp x /data"+sslDir+"/\n")
+	acmeWriteFile(t, filepath.Join(le, "renewal-hooks", "deploy", "00-copy-cert.sh.bak"), []byte("cp x "+sslDir+"/\n"))
+	acmeWriteFile(t, filepath.Join(le, "renewal-hooks", "deploy", "sub", "x"), []byte(sslDir+"/\n"))
+	hits, err := certbotHooks(le, filepath.Join(t.TempDir(), "served", "ssl"), sslDir)
 	want := []string{
 		filepath.Join(le, "renewal", "a.example.org.conf") + ":3",
 		filepath.Join(le, "renewal", "b.example.org.conf") + ":2",
-		filepath.Join(le, "renewal-hooks", "deploy", "00-copy-cert.sh") + ":2",
+		filepath.Join(le, "renewal-hooks", "deploy", "00-copy-cert.sh") + ":3",
+	}
+	if runtime.GOOS == "windows" { // no exec bit: every regular file in deploy/ counts
+		want = append(want, filepath.Join(le, "renewal-hooks", "deploy", "00-copy-cert.sh.bak")+":1")
 	}
 	if err != nil || strings.Join(hits, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("hits =\n%s\nwant\n%s (err %v)", strings.Join(hits, "\n"), strings.Join(want, "\n"), err)
+	}
+
+	// A symlinked ssl dir also matches a hook that names its real path.
+	if runtime.GOOS != "windows" {
+		link := filepath.Join(t.TempDir(), "ssl")
+		if err := os.Symlink(sslDir, link); err == nil {
+			_ = os.MkdirAll(sslDir, 0o750)
+			if hits, err := certbotHooks(le, link); err != nil || len(hits) != len(want) {
+				t.Errorf("symlinked ssl dir: hits=%v err=%v", hits, err)
+			}
+		}
 	}
 }
 

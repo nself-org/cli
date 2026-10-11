@@ -109,7 +109,7 @@ nself ssl renew --acme [<lineage>] [--force] [--staging] [--quiet] [--dry-run]
 | `--dry-run` | setup, renew | Print the resolved served root, ssl dir, nginx dir, nginx container, ssl mount, lineages and targets, then stop. Nothing is written. |
 | `--nginx-container <name>` | setup, renew | The nginx container to reload. Default: the running `nginx` service of the served stack. |
 | `--agree-tos` | setup, renew | Accept the ACME CA's terms of service when the account is first registered. Without it a terminal asks; a non-terminal run refuses. |
-| `--adopt-certbot[=<dir>]` | setup | Adopt the lineages of a certbot tree (default `/etc/letsencrypt`). Never writes certbot's files and never issues; refuses while a certbot hook copies into `ssl/`, and disables `nself-ssl-renew.timer` afterwards. |
+| `--adopt-certbot[=<dir>]` | setup | Adopt the lineages of a certbot tree (default `/etc/letsencrypt`). Never writes certbot's files and never issues; refuses while a certbot hook copies into the served or project `ssl/`, and disables `nself-ssl-renew.timer` afterwards. |
 | `--dns-credential-file <file>` | setup | A certbot DNS-plugin INI. Its token is stored in the project secret store by name. |
 | `--challenge dns-01\|http-01` | setup | Challenge for converted lineages. A `webroot` lineage with no credential file is adopted as `http-01` when the served nginx answers the challenge location for every name, and refused with a remediation otherwise; the other lineages convert to `dns-01`. |
 | `--lineage <name>` | setup | Adopt only this certbot lineage. |

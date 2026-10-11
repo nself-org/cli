@@ -21,6 +21,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"time"
 )
@@ -101,17 +103,26 @@ func retireCertbotTimer(ctx context.Context) (bool, error) {
 	return err == nil, err
 }
 
-// certbotHooks lists the certbot hooks under dir that write into workdir's ssl
-// dir: deploy_hook/renew_hook lines saved in renewal/*.conf and scripts in
-// renewal-hooks/deploy. A missing tree has none.
-func certbotHooks(dir, workdir string) ([]string, error) {
-	needle := filepath.Join(workdir, "ssl") + string(filepath.Separator)
+// certbotHooks lists the certbot hooks under dir that write into one of
+// sslDirs: deploy_hook/renew_hook lines saved in renewal/*.conf and the
+// executable scripts certbot runs from renewal-hooks/deploy (comment lines
+// skipped). A missing tree has none.
+func certbotHooks(dir string, sslDirs ...string) ([]string, error) {
+	var needles []string
+	for _, d := range sslDirs {
+		needles = append(needles, filepath.Clean(d)+string(filepath.Separator))
+		if real, err := filepath.EvalSymlinks(d); err == nil && real != filepath.Clean(d) {
+			needles = append(needles, real+string(filepath.Separator))
+		}
+	}
 	var hits []string
 	confs, _ := filepath.Glob(filepath.Join(dir, "renewal", "*.conf"))
 	scripts, _ := filepath.Glob(filepath.Join(dir, "renewal-hooks", "deploy", "*"))
 	for _, p := range append(confs, scripts...) {
-		if st, err := os.Stat(p); err != nil || st.IsDir() {
-			continue // gone since the glob, or a directory: nothing certbot runs
+		isConf := strings.HasSuffix(p, ".conf") && filepath.Base(filepath.Dir(p)) == "renewal"
+		st, err := os.Stat(p)
+		if err != nil || st.IsDir() || (!isConf && runtime.GOOS != "windows" && st.Mode()&0o111 == 0) {
+			continue // gone since the glob, a directory, or a script certbot does not run
 		}
 		data, err := os.ReadFile(p) //nolint:gosec // certbot's tree, read only
 		if err != nil {
@@ -120,8 +131,10 @@ func certbotHooks(dir, workdir string) ([]string, error) {
 		for i, line := range strings.Split(string(data), "\n") {
 			k, _, _ := strings.Cut(line, "=")
 			k = strings.TrimSpace(k)
-			isConf := strings.HasSuffix(p, ".conf")
-			if strings.Contains(line, needle) && (!isConf || k == "deploy_hook" || k == "renew_hook") {
+			if (isConf && k != "deploy_hook" && k != "renew_hook") || (!isConf && strings.HasPrefix(strings.TrimSpace(line), "#")) {
+				continue
+			}
+			if slices.ContainsFunc(needles, func(n string) bool { return mentionsPath(line, n) }) {
 				hits = append(hits, fmt.Sprintf("%s:%d", p, i+1))
 			}
 		}
@@ -129,10 +142,27 @@ func certbotHooks(dir, workdir string) ([]string, error) {
 	return hits, nil
 }
 
+// mentionsPath reports whether dir (ending in a separator) starts a path in
+// line: at the line start or after a space, quote, '=' or ':'.
+func mentionsPath(line, dir string) bool {
+	for off := 0; ; {
+		i := strings.Index(line[off:], dir)
+		if i < 0 {
+			return false
+		}
+		if at := off + i; at == 0 || strings.ContainsRune(" \t\"'=:", rune(line[at-1])) {
+			return true
+		}
+		off += i + 1
+	}
+}
+
 // refuseCertbotHooks refuses (in every mode, before anything is written) while
-// a certbot hook under dir would copy certbot's files over ACME-managed ones.
+// a certbot hook under dir would copy certbot's files over ACME-managed ones:
+// into the served ssl dir (NGINX_FRONTED_BY moves it out of the project) or
+// the project's own ssl dir.
 func (r *acmeRun) refuseCertbotHooks(dir string) error {
-	hits, err := certbotHooks(dir, r.workdir)
+	hits, err := certbotHooks(dir, r.res.SSLDir, filepath.Join(r.workdir, "ssl"))
 	if err != nil {
 		return e151(acmeRefuse("run as the user that owns "+dir, "cannot read certbot's hooks: %v", err))
 	}
@@ -158,7 +188,7 @@ func (r *acmeRun) retireCertbot() (bool, error) {
 	}
 	done, err := retireCertbotTimer(ctx)
 	if err != nil {
-		fix := "run `sudo systemctl disable --now " + certbotTimer + "`, then re-run this command"
+		fix := "run `sudo systemctl disable --now " + certbotTimer + "` (and `sudo systemctl disable --runtime " + certbotTimer + "` if it was enabled at runtime), then re-run this command"
 		if errors.Is(err, errSystemdDown) {
 			fix = "remove " + filepath.Join(systemdUnitDir, "nself-ssl-renew.{timer,service}") + ", then re-run this command"
 		}

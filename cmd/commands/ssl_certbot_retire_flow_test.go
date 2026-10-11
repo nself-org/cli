@@ -62,7 +62,8 @@ func TestACMETimerRetiresCertbotTimer(t *testing.T) {
 }
 
 // TestACMEAdoptRetiresCertbotTimer: adoption refuses, writing nothing, while a
-// saved certbot hook copies into the ssl dir; otherwise it disables the certbot
+// certbot deploy script copies into the served ssl dir (outside the project, as
+// with NGINX_FRONTED_BY on prod); otherwise it disables the certbot
 // timer after the lineages are saved and says no renewal is scheduled, or with
 // --install-cron installs the ACME timer. A refused disable keeps the lineages.
 func TestACMEAdoptRetiresCertbotTimer(t *testing.T) {
@@ -75,7 +76,9 @@ func TestACMEAdoptRetiresCertbotTimer(t *testing.T) {
 	useSystemd(t, sd)
 
 	hook := filepath.Join(le, "renewal-hooks", "deploy", "00-copy-cert.sh")
-	acmeWriteFile(t, hook, []byte("#!/bin/sh\ncp \"$RENEWED_LINEAGE\"/fullchain.pem "+filepath.Join(f.project, "ssl", "certificates", "api-task-nself-org")+"/\n"))
+	// prod's layout: the project is nself-web/backend, nginx serves nself-web/ssl, and the hook copies there
+	acmeWriteFile(t, hook, []byte("#!/bin/sh\ncp \"$RENEWED_LINEAGE\"/fullchain.pem "+filepath.Join(f.ssl, "certificates", "api-task-nself-org")+"/\n"))
+	_ = os.Chmod(hook, 0o755)
 	_, err := f.run(sslSetupCmd, adopt...)
 	if lf, _ := acme.Load(f.ssl); err == nil || !strings.Contains(err.Error(), hook+":2") || len(lf.Lineages) != 0 || len(f.set) != 0 || sd.disables() != 0 {
 		t.Fatalf("saved hook: err=%v lineages=%d secrets=%d disables=%d (want a refusal that writes nothing)", err, len(lf.Lineages), len(f.set), sd.disables())
