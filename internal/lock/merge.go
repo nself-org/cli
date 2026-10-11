@@ -126,7 +126,7 @@ func LoadSources(workdir string, base []byte, paths []string, mirror string) ([]
 	}
 	listed := false
 	for _, p := range paths {
-		listed = listed || abs(p) == basePath
+		listed = listed || samePath(abs(p), basePath)
 	}
 	if !listed {
 		return nil, errors.New("compose manifest does not include docker-compose.yml")
@@ -135,16 +135,32 @@ func LoadSources(workdir string, base []byte, paths []string, mirror string) ([]
 	for _, p := range paths {
 		p = abs(p)
 		data := base
-		if p != basePath || base == nil {
+		if !samePath(p, basePath) || base == nil {
 			var err error
 			if data, err = os.ReadFile(p); err != nil {
-				if p != basePath && os.IsNotExist(err) {
+				if !samePath(p, basePath) && os.IsNotExist(err) {
 					continue
 				}
 				return nil, fmt.Errorf("reading %s: %w", filepath.Base(p), err)
 			}
 		}
-		files = append(files, SourceFile{Name: filepath.Base(p), Data: data, Mirror: p == mirrorPath})
+		files = append(files, SourceFile{Name: filepath.Base(p), Data: data, Mirror: samePath(p, mirrorPath)})
 	}
 	return files, nil
+}
+
+// samePath reports whether a and b name the same file. Equal cleaned strings
+// match; otherwise both are stat'd and compared with os.SameFile, so a
+// symlinked or differently spelled project dir still matches. When either stat
+// fails (the file may not exist) the string comparison stands.
+func samePath(a, b string) bool {
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	sa, errA := os.Stat(a)
+	sb, errB := os.Stat(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return os.SameFile(sa, sb)
 }

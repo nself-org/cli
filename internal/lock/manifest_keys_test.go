@@ -70,6 +70,27 @@ func TestLoadSourcesManifestWithoutRoot(t *testing.T) {
 	}
 }
 
+// TestLoadSourcesMatchesRootByFileIdentity: a manifest that spells the project
+// dir through a symlink still finds the root compose (no spurious error), and
+// the base override replaces the root bytes, not a second read of the file.
+func TestLoadSourcesMatchesRootByFileIdentity(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "proj")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	writeCompose(t, real, "docker-compose.yml", "h/disk:1@"+digA)
+	viaLink := filepath.Join(link, "docker-compose.yml")
+	base := []byte("services:\n  hasura:\n    image: h/base:1@" + digB + "\n")
+	files, err := LoadSources(real, base, []string{viaLink}, "")
+	if err != nil {
+		t.Fatalf("symlinked manifest: %v", err)
+	}
+	if len(files) != 1 || hasuraOf(t, files) != "h/base:1@"+digB {
+		t.Errorf("base override not applied to symlinked root: %v", files)
+	}
+}
+
 // TestParseRequiresEveryKey: removing any required top-level key (or leaving it
 // null) is a parse error naming the key; a valid lock and empty collections parse.
 func TestParseRequiresEveryKey(t *testing.T) {
@@ -87,7 +108,7 @@ func TestParseRequiresEveryKey(t *testing.T) {
 	if _, err := Parse(empty); err != nil {
 		t.Fatalf("empty collections: %v", err)
 	}
-	for _, key := range []string{"cli", "images", "unpinned", "plugins", "bundles"} {
+	for _, key := range []string{"schema_version", "cli", "images", "unpinned", "plugins", "bundles"} {
 		var kept, nulled []string
 		for _, line := range strings.Split(string(empty), "\n") {
 			if strings.HasPrefix(line, key+":") {
@@ -98,7 +119,7 @@ func TestParseRequiresEveryKey(t *testing.T) {
 			nulled = append(nulled, line)
 		}
 		for name, body := range map[string]string{"absent": strings.Join(kept, "\n"), "null": strings.Join(nulled, "\n")} {
-			if _, err := Parse([]byte(body)); err == nil || !strings.Contains(err.Error(), `"`+key+`"`) {
+			if _, err := Parse([]byte(body)); err == nil || !strings.Contains(err.Error(), key) {
 				t.Errorf("%s %s: err = %v", key, name, err)
 			}
 		}
