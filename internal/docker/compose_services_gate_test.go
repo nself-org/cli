@@ -57,8 +57,8 @@ func TestStateReadsAreBounded(t *testing.T) {
 		want        string
 	}{
 		"ps":                      {false, func(c *Compose) error { _, err := c.ComposeServiceStates(ctx, t.TempDir(), "init"); return err }, "docker compose ps for init"},
-		"inspect via StartMarks":  {true, func(c *Compose) error { _, err := c.StartMarks(ctx, t.TempDir(), "init"); return err }, "docker inspect c1"},
-		"inspect via FreshStates": {true, func(c *Compose) error { _, err := c.FreshStates(ctx, t.TempDir(), "init", nil); return err }, "docker inspect c1"},
+		"inspect via StartMarks":  {true, func(c *Compose) error { _, err := c.StartMarks(ctx, t.TempDir(), "init"); return err }, "docker state read for init"},
+		"inspect via FreshStates": {true, func(c *Compose) error { _, err := c.FreshStates(ctx, t.TempDir(), "init", nil); return err }, "docker state read for init"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			start := time.Now()
@@ -66,8 +66,8 @@ func TestStateReadsAreBounded(t *testing.T) {
 			if took := time.Since(start); took > 3*time.Second {
 				t.Errorf("took %s, want the call cut off near %s", took, stateCallTimeout)
 			}
-			if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "200ms") {
-				t.Errorf("err = %v, want a DeadlineExceeded naming %q and the limit", err, tc.want)
+			if !errors.Is(err, ErrStateTimeout) || errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "200ms") {
+				t.Errorf("err = %v, want ErrStateTimeout (not DeadlineExceeded) naming %q and the limit", err, tc.want)
 			}
 		})
 	}
@@ -78,8 +78,8 @@ func TestStateReadParentCancelStaysCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := hangingDocker(t, false).ComposeServiceStates(ctx, t.TempDir(), "init")
-	if err == nil || errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("a cancelled parent must not read as the call's own timeout: %v", err)
+	if !errors.Is(err, context.Canceled) || errors.Is(err, ErrStateTimeout) || errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("a cancelled parent must read as a cancel, not the call's own timeout: %v", err)
 	}
 }
 
@@ -122,9 +122,9 @@ func TestHealthGateBoundsEachRead(t *testing.T) {
 		}
 	})
 
-	t.Run("a deadline error on a live ctx is a gate timeout", func(t *testing.T) {
+	t.Run("a state-timeout error on a live ctx is a gate timeout", func(t *testing.T) {
 		src := func(context.Context) ([]ContainerState, error) {
-			return nil, errors.Join(errors.New("x"), context.DeadlineExceeded)
+			return nil, errors.Join(errors.New("x"), ErrStateTimeout)
 		}
 		err := HealthGate(context.Background(), spec, src, newFakeClock())
 		if !errors.Is(err, ErrGateTimeout) || errors.Is(err, ErrStateRead) {

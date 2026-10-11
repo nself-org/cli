@@ -55,7 +55,7 @@ func (s ServiceSpec) OneShot() bool { return s.Restart == "no" && !s.HasHealthch
 // ComposeServiceNames returns `docker compose config --services` over the
 // manifest and env files, in docker's order.
 func (c *Compose) ComposeServiceNames(ctx context.Context, workdir string) ([]string, error) {
-	out, err := c.capture(ctx, workdir, "config", "--services")
+	out, err := c.captureBounded(ctx, "docker compose config", workdir, "config", "--services")
 	if err != nil {
 		return nil, err
 	}
@@ -68,18 +68,27 @@ func (c *Compose) capture(ctx context.Context, workdir string, args ...string) (
 	full := append(c.buildBaseArgs(), args...)
 	cmd := exec.CommandContext(ctx, c.dockerBin(), full...)
 	cmd.Dir = workdir
-	cmd.WaitDelay = stateWaitDelay
 	var se bytes.Buffer
 	cmd.Stderr = &se
-	out, err := cmd.Output()
+	out, err := boundedOutput(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("docker %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(lastLine(se.String())))
 	}
 	return out, nil
 }
 
+// captureBounded is capture under one stateCallTimeout.
+func (c *Compose) captureBounded(ctx context.Context, what, workdir string, args ...string) ([]byte, error) {
+	var out []byte
+	err := bounded(ctx, what, func(ctx context.Context) (err error) {
+		out, err = c.capture(ctx, workdir, args...)
+		return err
+	})
+	return out, err
+}
+
 // Gate failures. ErrOneShotFailed and ErrServiceCrashed map to E250 (the
-// service is broken), ErrGateTimeout to E251 (too slow), ErrStateRead to no
+// service is broken), ErrGateTimeout to E251 (too slow), ErrStateRead and ErrStateTimeout to no
 // service code at all: docker could not answer, which says nothing about the
 // service.
 var (
@@ -154,10 +163,13 @@ func HealthGate(ctx context.Context, spec ServiceSpec, states StateSource, clock
 			if ctx.Err() != nil {
 				return fmt.Errorf("service %s: %w", spec.Name, ctx.Err())
 			}
-			if cut || errors.Is(err, context.DeadlineExceeded) {
+			if cut || errors.Is(err, ErrStateTimeout) {
 				return fmt.Errorf("service %s: %w (container state read gave no answer within %s)", spec.Name, ErrGateTimeout, budget)
 			}
 			return fmt.Errorf("service %s: %w: %w", spec.Name, ErrStateRead, err)
+		}
+		if ctx.Err() != nil { // cancelled while the read was in flight
+			return fmt.Errorf("service %s: %w", spec.Name, ctx.Err())
 		}
 		ready, detail, next, fail := gateReady(spec, cs, prev)
 		if fail != nil {
@@ -193,13 +205,13 @@ func gateReady(spec ServiceSpec, cs []ContainerState, prev map[string]string) (r
 		if c.State == "running" {
 			next[key] = c.StartedAt
 		}
-		if c.State == "restarting" || (c.State == "exited" && c.ExitCode != 0) {
+		if c.State == "restarting" || c.State == "dead" || (c.State == "exited" && c.ExitCode != 0) {
 			fail = ErrServiceCrashed
 			if spec.OneShot() {
 				fail = ErrOneShotFailed
 			}
-			if c.State == "restarting" {
-				return false, c.Name + " is restarting", next, fail
+			if c.State == "restarting" || c.State == "dead" {
+				return false, c.Name + " is " + c.State, next, fail
 			}
 			return false, fmt.Sprintf("%s exited %d", c.Name, c.ExitCode), next, fail
 		}

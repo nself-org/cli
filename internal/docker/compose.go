@@ -143,7 +143,7 @@ func (c *Compose) ComposeScale(ctx context.Context, workdir, service string, rep
 }
 
 // composePsEntry maps the JSON output of `docker compose ps --format json`.
-// Docker Compose v2 emits one JSON object per line (not an array).
+// Docker Compose v2 emits one JSON array or one object per line, by release.
 type composePsEntry struct {
 	ID      string `json:"ID"`
 	Name    string `json:"Name"`
@@ -158,9 +158,8 @@ type composePsEntry struct {
 // ComposePs runs `docker compose ps --format json` and parses the output
 // into a slice of ContainerInfo.
 //
-// Docker Compose v2 changed its JSON output format across versions:
-//   - v2.20 and earlier: one JSON object per stdout line (NDJSON)
-//   - v2.21 and later:   a single JSON array containing all objects
+// Docker Compose v2 prints either one JSON array or one JSON object per
+// stdout line (NDJSON), depending on the release.
 //
 // Both formats are handled: the raw output is first attempted as a JSON array;
 // if that fails (or yields nothing), the output is re-scanned line by line as
