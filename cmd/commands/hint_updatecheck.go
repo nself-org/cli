@@ -65,29 +65,56 @@ func updateCheckSkipped(cmd *cobra.Command) bool {
 // runWithUpdateHint runs body between startUpdateCheck and afterCommand. The
 // invocation decorator calls it in place of calling the body directly.
 func runWithUpdateHint(cmd *cobra.Command, args []string, body func(*cobra.Command, []string) error) error {
-	startUpdateCheck(cmd)
+	early := startUpdateCheck(cmd)
 	err := body(cmd, args)
-	afterCommand(cmd, err)
+	afterCommand(cmd, err, early)
 	return err
+}
+
+// earlyHint is the hint decision startUpdateCheck takes before it starts a
+// refresh. decided false leaves the decision to afterCommand; line is empty
+// when no hint is due.
+type earlyHint struct {
+	decided bool
+	line    string
 }
 
 // startUpdateCheck starts the background refresh when opted in and the cache
 // is stale. It never blocks.
-func startUpdateCheck(cmd *cobra.Command) {
+//
+// When the cache is stale (this command is about to refresh it) the hint is
+// decided first, from the cache as it is now (D-0361). So the refresh this
+// command starts never feeds its own hint, and the hint never reads or writes
+// the cache file while that refresh does: on Windows a rename over a file
+// another handle has open fails, which dropped a due hint. A hint decided here
+// is spent even if the command then fails; that costs at most one hint a day.
+func startUpdateCheck(cmd *cobra.Command) earlyHint {
 	if updateCheckSkipped(cmd) {
-		return
+		return earlyHint{}
 	}
-	if done := updatecheck.MaybeStartRefresh(updateCheckGuards(cmd)); done != nil && updateCheckStarted != nil {
+	g := updateCheckGuards(cmd)
+	var early earlyHint
+	if updatecheck.Allowed(g) && g.Now().Sub(updatecheck.Load(g.Path).CheckedAt) >= updatecheck.Interval {
+		early.decided = true
+		early.line, _ = updatecheck.Hint(g)
+	}
+	if done := updatecheck.MaybeStartRefresh(g); done != nil && updateCheckStarted != nil {
 		updateCheckStarted(done)
 	}
+	return early
 }
 
-// afterCommand prints the hint once, after a successful command.
-func afterCommand(cmd *cobra.Command, err error) {
+// afterCommand prints the hint once, after a successful command: the one
+// startUpdateCheck decided, or else one read from the cache now.
+func afterCommand(cmd *cobra.Command, err error, early earlyHint) {
 	if err != nil || updateCheckSkipped(cmd) {
 		return
 	}
-	if line, ok := updatecheck.Hint(updateCheckGuards(cmd)); ok {
+	line := early.line
+	if !early.decided {
+		line, _ = updatecheck.Hint(updateCheckGuards(cmd))
+	}
+	if line != "" {
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), line)
 	}
 }

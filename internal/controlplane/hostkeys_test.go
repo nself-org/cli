@@ -2,9 +2,10 @@ package controlplane
 
 import (
 	"context"
+	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -189,18 +190,12 @@ func TestDockerOKHostSpecPort(t *testing.T) {
 }
 
 func TestHostSpecArgvSites(t *testing.T) {
-	// Discover direct exec sites from git; these exceptions have separate owners.
+	// Discover direct exec sites from the source tree; these exceptions have separate owners.
 	// db_remote_exec.go receives argv already built by db_remote.go.
 	// internal/admin/connect.go is owned by P7-CANON-19 / DEPL-14.
 	// db_remote_dryrun.go's raw probe destination is deferred to DEPL-14.
 	root := filepath.Join("..", "..")
-	grep := exec.Command("git", "grep", "-lE", `exec\.Command(Context)?\([^)]*"(ssh|scp|rsync)"`, "--", "cmd/", "internal/", "sdk/")
-	grep.Dir = root
-	out, err := grep.Output()
-	if err != nil {
-		t.Fatalf("discover exec sites: %v", err)
-	}
-	files := strings.Fields(string(out))
+	files := sshExecSites(t, root)
 	if len(files) == 0 {
 		t.Fatal("no ssh/scp/rsync exec sites discovered")
 	}
@@ -222,4 +217,44 @@ func TestHostSpecArgvSites(t *testing.T) {
 	if err != nil || !strings.Contains(string(b), "rt.SSHTarget") {
 		t.Fatal("dry-run argv passthrough exception changed")
 	}
+}
+
+// sshExecPattern matches a direct ssh, scp or rsync exec on one line.
+var sshExecPattern = regexp.MustCompile(`exec\.Command(Context)?\([^)\n]*"(ssh|scp|rsync)"`)
+
+// sshExecSites lists the .go files under cmd/, internal/ and sdk/ of the module
+// at root (slash-separated, relative to root) that exec ssh, scp or rsync
+// directly. It walks the tree rather than running `git grep`, so the test also
+// runs in a copy without .git, such as a cam CI offload tree (D-0286).
+func sshExecSites(t *testing.T, root string) []string {
+	t.Helper()
+	var files []string
+	for _, dir := range []string{"cmd", "internal", "sdk"} {
+		err := filepath.WalkDir(filepath.Join(root, dir), func(p string, d fs.DirEntry, err error) error {
+			switch {
+			case err != nil:
+				return err
+			case d.IsDir() && (d.Name() == "node_modules" || strings.HasPrefix(d.Name(), ".")):
+				return filepath.SkipDir
+			case d.IsDir() || !strings.HasSuffix(p, ".go"):
+				return nil
+			}
+			b, err := os.ReadFile(p) //nolint:gosec // test reads the module's own source
+			if err != nil {
+				return err
+			}
+			if sshExecPattern.Match(b) {
+				rel, err := filepath.Rel(root, p)
+				if err != nil {
+					return err
+				}
+				files = append(files, filepath.ToSlash(rel))
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("discover exec sites under %s: %v", dir, err)
+		}
+	}
+	return files
 }

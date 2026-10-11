@@ -168,9 +168,10 @@ func dirSQL(name, sql, kind string) (string, error) {
 
 // dirTxSQL wraps one migration in the CLI's transaction: timeouts, the
 // transaction mark, the ledger change first, the file, the same-transaction
-// check, COMMIT.
-func dirTxSQL(body, ledger string) string {
-	return "BEGIN;\nSET LOCAL lock_timeout = '5s';\nSET LOCAL statement_timeout = '60s';\n" +
+// check, COMMIT. stmtTimeout is the file's statementTimeoutFor value (default
+// "60s"); the directive regex limits it to digits and letters.
+func dirTxSQL(body, ledger, stmtTimeout string) string {
+	return "BEGIN;\nSET LOCAL lock_timeout = '5s';\nSET LOCAL statement_timeout = '" + stmtTimeout + "';\n" +
 		xactMark + ledger + "\n" + body + "\n" + xactCheck + "COMMIT;\n"
 }
 
@@ -194,7 +195,7 @@ func verifyLedger(ctx context.Context, cfg *config.Config, name string, present 
 	return nil
 }
 
-type downStep struct{ name, sql string }
+type downStep struct{ name, sql, timeout string }
 
 // MigrateDownDir reverts the `steps` newest applied migrations, all files of
 // dir whose checksum equals the one recorded for that name (the ledger keys on
@@ -207,7 +208,14 @@ func MigrateDownDir(ctx context.Context, cfg *config.Config, dir string, steps i
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		return nil, fmt.Errorf("migrations directory not found: %s", dir)
 	}
-	if err := ensureSchemaVersions(ctx, cfg); err != nil {
+	if err := ensureLedgerTables(ctx, cfg); err != nil {
+		return nil, fmt.Errorf("ensure ledger tables: %w", err)
+	}
+	files, err := scanMigrations(dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := upgradeLedgerIfNeeded(ctx, cfg, files); err != nil {
 		return nil, err
 	}
 	out, err := ledgerSelect(ctx, cfg, fmt.Sprintf(
@@ -280,11 +288,11 @@ func planDownStep(dir, name, storedSum string) (downStep, error) {
 		return downStep{}, fmt.Errorf("read down migration %s: %w", downPath, err)
 	}
 	body, err := dirSQL(downPath, string(data), "down") // callers check err first
-	return downStep{name: name, sql: body}, err
+	return downStep{name: name, sql: body, timeout: statementTimeoutFor(string(data))}, err
 }
 
 // downTxSQL: both ledger deletes first, then the down SQL, in dirTxSQL's transaction.
 func downTxSQL(s downStep) string {
 	q := strings.ReplaceAll(s.name, "'", "''")
-	return dirTxSQL(s.sql, fmt.Sprintf("DELETE FROM np_common.schema_versions WHERE name = '%s';\nDELETE FROM nself_ops.migrations WHERE name = '%s';", q, q))
+	return dirTxSQL(s.sql, fmt.Sprintf("DELETE FROM np_common.schema_versions WHERE name = '%s';\nDELETE FROM nself_ops.migrations WHERE name = '%s';", q, q), s.timeout)
 }

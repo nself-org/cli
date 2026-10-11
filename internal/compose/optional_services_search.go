@@ -15,7 +15,7 @@ import (
 // Uses the same init-container pattern as MinIO.
 func (g *Generator) buildMeiliInitService() ServiceConfig {
 	return ServiceConfig{
-		Image:         ImageRef("meilisearch-init", ""),
+		Image:         ResolveImage("meilisearch-init", ImageRef("meilisearch-init", "")),
 		ContainerName: fmt.Sprintf("%s_meilisearch_init", g.cfg.ProjectName),
 		Restart:       "no",
 		User:          "root",

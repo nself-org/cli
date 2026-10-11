@@ -18,7 +18,9 @@ package oplock
 //     output kind document. read, stream and interactive commands never do.
 //   - v1.5: a held lock fails fast with E460. v1.4: poll up to 30 s, then warn
 //     on stderr and run unlocked. Platform or I/O failures never block a
-//     command: a notice goes to stderr and the command runs unlocked.
+//     command: a notice goes to stderr and the command runs unlocked. The
+//     platform notice (no flock, native Windows) is skipped under --quiet and
+//     when stderr is not a terminal (D-0241).
 //   - Notices go to Stderr, never stdout, so a --json envelope stays one
 //     document.
 
@@ -61,6 +63,8 @@ type Request struct {
 	// SideEffect and Output are the effective registry classes.
 	SideEffect string
 	Output     string
+	// Quiet is true when the command was given --quiet.
+	Quiet bool
 }
 
 type ctxKey struct{}
@@ -107,9 +111,7 @@ func Guard(ctx context.Context, r Request) (context.Context, func(), error) {
 	switch {
 	case err == nil:
 	case err == ErrUnsupported:
-		unsupportedOnce.Do(func() {
-			notef("nself: the project operation lock is not supported on this platform; running without it\n")
-		})
+		noteUnsupported(r.Quiet)
 		return ctx, noop, nil
 	case isHeld(err):
 		he := err.(*HeldError)
@@ -141,6 +143,28 @@ func exportToken(l *Lock) func() {
 			_ = os.Unsetenv(EnvToken)
 		}
 	}
+}
+
+// noteUnsupported prints the platform notice once per process, and only to a
+// person: never under --quiet, never into a pipe or log.
+func noteUnsupported(quiet bool) {
+	if quiet || !stderrIsTerminal() {
+		return
+	}
+	unsupportedOnce.Do(func() {
+		notef("nself: the project operation lock is not supported on this platform; running without it\n")
+	})
+}
+
+// stderrIsTerminal reports whether Stderr is a character device. A variable so
+// tests can pretend to be a terminal.
+var stderrIsTerminal = func() bool {
+	f, ok := Stderr.(*os.File)
+	if !ok {
+		return false
+	}
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
 func isHeld(err error) bool { _, ok := err.(*HeldError); return ok }

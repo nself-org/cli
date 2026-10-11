@@ -17,13 +17,16 @@ package commands
 // Constraints: requires 'build' binary (self-invocation) and rsync/ssh in PATH.
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/ui"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 
 	"github.com/spf13/cobra"
 )
@@ -118,7 +121,7 @@ func runOpsDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build the compose file with the ops profile.
-	result, err := build.Build(workdir, build.BuildOptions{
+	result, err := opsBuildFn(workdir, build.BuildOptions{
 		Profile: compose.ProfileOps,
 	})
 	if err != nil {
@@ -131,11 +134,62 @@ func runOpsDeploy(cmd *cobra.Command, args []string) error {
 		composePath = workdir + "/docker-compose.yml"
 	}
 
+	// D-0276: refuse to push images the target cannot run (arch guard), the
+	// same preflight `nself deploy` runs before its remote push.
+	if err := opsPreflightFn(cmd.Context(), workdir, cfg.Host, composePath); err != nil {
+		return fmt.Errorf("ops deploy: %w", err)
+	}
+
 	ui.Info(fmt.Sprintf("Deploying ops profile to %s...", cfg.Host))
-	if err := deploy.DeployViaSsh(cmd.Context(), cfg, composePath); err != nil {
+	if err := opsDeployViaSSHFn(cmd.Context(), cfg, composePath); err != nil {
 		return fmt.Errorf("ops deploy: %w", err)
 	}
 
 	ui.Success("Ops deploy complete")
 	return nil
+}
+
+// Seams so tests can drive runOpsDeploy without building, probing or ssh.
+var (
+	opsBuildFn           = build.Build
+	opsPreflightFn       = opsPreflight
+	opsControlplaneCheck = controlplane.Preflight
+	opsDeployViaSSHFn    = deploy.DeployViaSsh
+)
+
+// opsEnvName is the one-environment inventory name the ops preflight scopes to.
+const opsEnvName = "ops"
+
+// opsPreflight runs the architecture-guard preflight (controlplane.Preflight)
+// for the ops host before anything is pushed. It mirrors the inventory
+// scoping in remoteDeployPush (deploy_remote.go, which is not edited here): the
+// inventory server whose Host matches the parsed host spec is used, else a
+// synthetic app server; the check then runs on a one-environment inventory.
+// Inputs:  project workdir, the NSELF_DEPLOY_HOST_OPS value, built compose path.
+// Outputs: nil when every image can run on the host; the preflight error otherwise.
+func opsPreflight(ctx context.Context, workdir, host, composePath string) error {
+	spec, err := remote.ParseHostSpec(host)
+	if err != nil {
+		return fmt.Errorf("NSELF_DEPLOY_HOST_OPS: %w", err)
+	}
+	loaded, err := controlplane.Load(workdir)
+	if err != nil {
+		return err
+	}
+	server := controlplane.Server{Name: "ops-app", Role: controlplane.RoleApp, Host: spec.String(), Primary: true}
+	for _, environment := range loaded.Environments {
+		for _, candidate := range environment.Servers {
+			if candidate.Host == spec.String() {
+				server = candidate
+			}
+		}
+	}
+	inv := &controlplane.Inventory{Environments: map[string]controlplane.Environment{
+		opsEnvName: {Name: opsEnvName, Kind: "remote", Servers: []controlplane.Server{server}},
+	}}
+	files, err := controlplane.ComposeFilesForDeploy(composePath)
+	if err != nil {
+		return err
+	}
+	return opsControlplaneCheck(ctx, inv, opsEnvName, files)
 }

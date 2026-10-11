@@ -58,12 +58,13 @@ func scpOptions(opts []string) ([]string, error) {
 	out := make([]string, 0, len(opts))
 	for i := 0; i < len(opts); i++ {
 		a := opts[i]
-		switch {
-		case a == "-T" || a == "-a" || a == "-x":
+		// An if-chain, not a switch: Go's coverage blocks start after a case
+		// colon, so mutation testing cannot measure a case expression.
+		if a == "-T" || a == "-a" || a == "-x" {
 			// ssh-only: drop.
-		case a == "-4" || a == "-6" || a == "-q" || a == "-v":
+		} else if a == "-4" || a == "-6" || a == "-q" || a == "-v" {
 			out = append(out, a)
-		case a == "-o" || a == "-i" || a == "-p":
+		} else if a == "-o" || a == "-i" || a == "-p" {
 			if i+1 >= len(opts) {
 				return nil, fmt.Errorf("scp option %s has no value", a)
 			}
@@ -72,9 +73,9 @@ func scpOptions(opts []string) ([]string, error) {
 				a = "-P"
 			}
 			out = append(out, a, opts[i])
-		case strings.HasPrefix(a, "-o") && len(a) > 2:
+		} else if strings.HasPrefix(a, "-o") {
 			out = append(out, a)
-		default:
+		} else {
 			return nil, fmt.Errorf("option %q cannot be passed to scp", a)
 		}
 	}

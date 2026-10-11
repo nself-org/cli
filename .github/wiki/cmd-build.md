@@ -159,6 +159,7 @@ A first build generates secrets, so `--plan-id` is refused for it (E451); confir
 | `--remove-orphans` |  | `bool` | `false` |  |  |  | Remove containers with no matching service in the freshly generated compose (G-014). Detection always runs; removal is opt-in. |
 | `--security-report` |  | `bool` | `false` |  |  |  | Generate security analysis |
 | `--verbose` | `-v` | `bool` | `false` |  |  |  | Show environment cascade |
+| `--write-lock` |  | `bool` | `false` |  |  |  | Write and keep nself.lock.yaml (pins images and plugins) even before v1.5, where the lock is always on |
 | `--yes` |  | `bool` | `false` |  |  |  | Confirm a change on a prod-class env (prod, staging) without a prompt |
 | `--help` | `-h` | `bool` | `false` | | | | Show help |
 <!-- END GENERATED:flags -->

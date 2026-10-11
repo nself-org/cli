@@ -12,6 +12,9 @@ package plugin
 import (
 	"context"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -371,7 +374,7 @@ func TestUpdateKeepsInstalledTier(t *testing.T) {
 			`{"name":"cron","version":"1.1.2","description":"d","category":"c","license":"x","tier":"pro","tier_pair":true,"bundles":["claw"]}]}`))
 	}))
 	defer srv.Close()
-	t.Setenv("HOME", t.TempDir()) // registry cache lands here
+	setTestHome(t, t.TempDir()) // registry cache lands here
 	t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
 	t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "")
@@ -412,7 +415,7 @@ func TestUpdateWithTierSwitchesOnPurpose(t *testing.T) {
 			`{"name":"cron","version":"1.1.2","description":"d","category":"c","license":"x","tier":"pro","tier_pair":true,"bundles":["claw"]}]}`))
 	}))
 	defer srv.Close()
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir()) // registry cache lands here
 	t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
 	t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "")
@@ -449,7 +452,7 @@ func installedPair(t *testing.T, installedWire string) string {
 			`{"name":"cron","version":"1.1.2","description":"d","category":"c","license":"x","tier":"pro","tier_pair":true,"bundles":["claw"]}]}`))
 	}))
 	t.Cleanup(srv.Close)
-	t.Setenv("HOME", t.TempDir())
+	setTestHome(t, t.TempDir()) // registry cache lands here
 	t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
 	t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "")
@@ -572,5 +575,46 @@ func TestDuplicateSlugErrorUsesLicenceWord(t *testing.T) {
 	_, err := ResolvePlugin(context.Background(), reg, "dup", "", neverEntitled)
 	if err == nil || !strings.Contains(err.Error(), "license=licensed") || strings.Contains(err.Error(), "license=max") {
 		t.Fatalf("want license=licensed in %v", err)
+	}
+}
+
+// TestTempHomeAlsoSetsUserProfile keeps this package's tests from pointing
+// only $HOME at a temp dir (D-0431). os.UserHomeDir reads %USERPROFILE% on
+// Windows, so such a test reads the runner profile's shared registry cache
+// there and fails by test order. Use setTestHome; a function that skips on
+// Windows may set HOME alone.
+func TestTempHomeAlsoSetsUserProfile(t *testing.T) {
+	files, err := filepath.Glob("*_test.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no test files found: %v", err)
+	}
+	fset := token.NewFileSet()
+	checked := 0
+	for _, name := range files {
+		src, err := os.ReadFile(name) //nolint:gosec // the package's own test sources
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, err := parser.ParseFile(fset, name, src, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range f.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+			body := string(src[fset.Position(fn.Body.Pos()).Offset:fset.Position(fn.Body.End()).Offset])
+			if !strings.Contains(body, `Setenv("HOME"`) {
+				continue
+			}
+			checked++
+			if !strings.Contains(body, `Setenv("USERPROFILE"`) && !strings.Contains(body, `"windows"`) {
+				t.Errorf("%s: %s sets HOME without USERPROFILE; call setTestHome", fset.Position(fn.Pos()), fn.Name.Name)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no function sets HOME: the scan is not reading this package's tests")
 	}
 }

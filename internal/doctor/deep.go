@@ -26,8 +26,11 @@ func DeepChecks(ctx context.Context, projectDir string, verbose bool) []CheckRes
 		results = append(results, PluginMigrationChecks(ctx, filepath.Join(home, ".nself", "plugins"))...)
 	}
 
-	// P7-PLUG-19: bundle ledger vs plugin directory (E136).
+	// P7-PLUG-19: bundle ledger vs plugin directory (E136, D-0323).
 	results = append(results, BundleLedgerDriftChecks(ctx, bundlePluginDir())...)
+
+	// D-0339: tracked vector-search functions vs live select permissions (E514).
+	results = append(results, VectorSearchChecks(ctx, projectDir)...)
 
 	// P2-E7-W2-S6-T21: PayPal multi-account CSV parity validation.
 	results = append(results, CheckPayPalCSVParity(ctx))
