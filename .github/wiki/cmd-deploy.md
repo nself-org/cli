@@ -85,8 +85,6 @@ warning. In v1.5, `nself deploy ops` and `nself ops deploy` use the same
 pipeline path as `nself deploy --profile ops`. `--dry-run` prints the profile,
 target environment, host, and remote path before any build or SSH action.
 
-## Deploy Strategies
-
 ### Environment promotion (v1.5)
 
 `nself deploy promote <source> <target> --yes` promotes between inventory environments.
@@ -101,7 +99,9 @@ compare, snapshot, save, apply, migrate, health, and record. Builds use the targ
 cascade in a scratch directory. Production values never enter the operator's tree.
 
 Compare proves per-platform image digest equality before taking a snapshot or
-changing the target. Drift exits 1 (`E490`) and names the affected services.
+changing the target. It resolves every staged compose fragment with the target's
+environment files and captures the source using its compose manifest.
+Drift exits 1 (`E490`) and names the affected services and lookup failures.
 Services with a compose `build:` context are unverifiable: prod refuses them;
 other tiers warn. The snapshot is created, located by tag, and verified before
 save or apply. A failed verification exits with `E206` without applying anything.
@@ -114,12 +114,19 @@ command. The local `.nself/state/promote.json` records each host's saved tar and
 changed or absent files. `nself deploy rollback <target>` and the v1.5
 `nself promote rollback` shim restore that record when it is the latest change,
 using the verified backup on its recorded target host.
+Record rollback reapplies all saved stacks before restoring the database, only
+when migration started and the backup has not already been restored. An already
+rolled-back record changes nothing. Foreign, superseded, or unusable promotion
+records are refused; an absent promotion record uses the v1.5 deploy record.
+Promotions also update the record used by `deploy status` and the next deployment.
 
 With no arguments, `deploy promote` keeps the existing canary flip. In v1.4,
 its arguments retain their previous behavior and `promote` keeps its legacy
 implementation. In v1.5, `promote <source> <target>` and
 `deploy promote-env <source> <target>` delegate to the environment promotion
 runner with one deprecation warning per process.
+
+## Deploy Strategies
 
 | Strategy | Status | Behavior |
 |---|---|---|

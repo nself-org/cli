@@ -17,6 +17,7 @@ import (
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/deploy/bluegreen"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/promote"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
@@ -166,6 +167,7 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 		if handled, rbErr := rollbackRemoteV15(cmd, workdir, target); handled {
 			return rbErr
 		}
+		return errs.New("E485", "no usable v1.5 rollback record; nothing was changed")
 	}
 
 	// PREVIEW: rollback is a PREVIEW feature. It restores the last promote snapshot
@@ -176,9 +178,6 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 
 	// DEP-04: wire to last promote tag written by nself promote.
 	// An empty tag reads the latest promote record and restores its snapshot.
-	// This ensures rollback always targets
-	// the last honest production-change surface (nself promote), not an
-	// arbitrary git tag or manual state.
 	if err := promote.Rollback(cmd.Context(), workdir, ""); err != nil {
 		return fmt.Errorf("rollback failed: %w", err)
 	}

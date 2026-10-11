@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
@@ -205,7 +207,9 @@ func (r *promoteSafetyRemote) Run(_ context.Context, command string) ([]byte, er
 	switch {
 	case strings.Contains(command, `printf '%s\n' "$HOME"`):
 		return []byte("/home/deploy\n"), nil
-	case strings.Contains(command, "docker compose images --format json"):
+	case strings.Contains(command, "compose-files.txt") || strings.Contains(command, "compose-env-files.txt"):
+		return []byte("__NSELF_ABSENT__"), nil
+	case strings.Contains(command, " images --format json"):
 		return []byte(fmt.Sprintf(`[{"Service":"api","Repository":%q,"Tag":%q,"ID":%q}]`, r.repository, r.tag, r.imageID)), nil
 	case strings.Contains(command, "docker image inspect"):
 		return []byte(fmt.Sprintf(`[%q]|linux/amd64`, r.repository+"@"+r.index)), nil
@@ -227,6 +231,12 @@ func (r *promoteSafetyRemote) Run(_ context.Context, command string) ([]byte, er
 func setupPromoteSafety(t *testing.T, sourceRef, targetRef string, failVerify bool) (*promoteSafetyRemote, *promoteSafetyRemote) {
 	t.Helper()
 	root := promoteFixture(t)
+	bin := t.TempDir()
+	wf(t, filepath.Join(bin, "docker"), "#!/bin/sh\nprintf '%s' '{\"services\":{\"api\":{\"image\":\""+targetRef+"\"}}}'\n")
+	if err := os.Chmod(filepath.Join(bin, "docker"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
 	wf(t, filepath.Join(root, "docker-compose.yml"), "services:\n  api:\n    image: "+sourceRef+"\n")
 	wf(t, filepath.Join(root, ".env"), "PROJECT_NAME=fixture\n")
 	t.Setenv("NSELF_PLUGIN_DIR", t.TempDir())
@@ -304,4 +314,224 @@ func TestPromoteDriftStopsWrite(t *testing.T) {
 		t.Fatalf("drift reached backup create: %v", target.log)
 	}
 	assertNoPromoteWrites(t, target.log)
+}
+
+func TestPromoteUnknownNames(t *testing.T) {
+	root := promoteFixture(t)
+	for _, names := range [][2]string{{"missing-source", "prodsim"}, {"ls", "missing-target"}} {
+		_, _, err := preparePromoteEngine(promoteTestCommand(&bytes.Buffer{}, true, false, false), root, names[0], names[1], true, false)
+		if err == nil || !strings.Contains(err.Error(), "missing-") {
+			t.Fatalf("unknown name lost: %v", err)
+		}
+	}
+}
+
+func TestPromoteRecordRollbackCommands(t *testing.T) {
+	for _, shim := range []bool{false, true} {
+		t.Run(fmt.Sprint(shim), func(t *testing.T) {
+			compattest.Set(t, true)
+			root := promoteFixture(t)
+			rec := cpromote.Record{ID: "fixture", Source: "ls", Target: "prodsim", Status: "ok", CompletedAt: time.Now(), BackupID: "fixture_backup", BackupHost: "prod-app", SnapshotTag: "pre-promote-fixture", PreDeployTar: map[string]string{"prod-app": "/srv/fixture/.nself/backups/pre-deploy-fixture.tar.gz"}, Changed: map[string][]string{"prod-app": {"docker-compose.yml"}}}
+			rec.MigrateStarted = true
+			if err := cpromote.SaveRecord(root, rec); err != nil {
+				t.Fatal(err)
+			}
+			r := &v15Remote{label: "prod-app"}
+			old := deployRemoteOpen
+			t.Cleanup(func() { deployRemoteOpen = old })
+			deployRemoteOpen = func(context.Context, controlplane.Server, string, string) (deploy.Remote, error) { return r, nil }
+			tree := &cobra.Command{Use: "nself"}
+			mounted := deployCmd
+			args := []string{"deploy", "rollback", "prodsim"}
+			if shim {
+				mounted, args = promoteCmd, []string{"promote", "rollback"}
+			}
+			if mounted.GroupID != "" {
+				tree.AddGroup(&cobra.Group{ID: mounted.GroupID, Title: "Fixture commands"})
+			}
+			parent := mounted.Parent()
+			if parent != nil {
+				parent.RemoveCommand(mounted)
+			}
+			tree.AddCommand(mounted)
+			t.Cleanup(func() {
+				tree.RemoveCommand(mounted)
+				if parent != nil {
+					parent.AddCommand(mounted)
+				}
+			})
+			tree.SetArgs(args)
+			err := tree.Execute()
+			if err != nil {
+				t.Fatal(err)
+			}
+			log := r.commands()
+			prev := -1
+			for _, event := range []string{"tar -xzf", "up -d --no-deps -- 'web'", "nself backup restore 'fixture_backup' --yes", "nself doctor"} {
+				at := firstIndex(log, event)
+				if at <= prev {
+					t.Fatalf("event %q at %d after %d: %v", event, at, prev, log)
+				}
+				prev = at
+			}
+		})
+	}
+}
+
+func TestPromoteForeignRecordRefused(t *testing.T) {
+	compattest.Set(t, true)
+	root := promoteFixture(t)
+	if err := cpromote.SaveRecord(root, cpromote.Record{ID: "foreign", Target: "ls", Status: "ok", CompletedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	handled, err := rollbackPromoteForTarget(context.Background(), root, "prodsim")
+	if !handled || err == nil || !strings.Contains(err.Error(), "nothing") {
+		t.Fatalf("foreign record handled=%v err=%v", handled, err)
+	}
+}
+
+func TestPromoteApplyPreservesRecord(t *testing.T) {
+	root, r := v15Project(t)
+	key := filepath.Join(t.TempDir(), "key")
+	wf(t, key, "fake")
+	t.Setenv("TEST_KEY", key)
+	inv := prodInventory(controlplane.Server{Name: "prod-app", Role: controlplane.RoleApp, Host: "deploy@app.example.test", SSHKeyRef: "TEST_KEY", RemotePath: "/opt/nself", Primary: true})
+	ra, composePath, err := prepareRemoteApply(context.Background(), v15Params{workdir: root, target: "prod", srv: inv.Environments["prod"].Servers[0], yes: true, jsonOut: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := newDeployProber
+	t.Cleanup(func() { newDeployProber = old })
+	newDeployProber = func(string) controlplane.Prober { return okProber{} }
+	w := &promoteWiring{workdir: root, target: "prod", inv: inv, apply: ra, compose: composePath, yes: true}
+	st := &cpromote.State{Values: map[string]any{}, BackupID: "fixture_backup", BackupHost: r.Label()}
+	if err := runPromoteApply(w)(context.Background(), st); err != nil {
+		t.Fatal(err)
+	}
+	state, err := deploy.LoadDeployState(root)
+	if err != nil || state.Target != "prod" || len(state.PreDeployTars) == 0 {
+		t.Fatalf("deploy state lost: %+v %v", state, err)
+	}
+}
+
+func TestPromoteStatefulConfirmation(t *testing.T) {
+	root, r := v15Project(t)
+	r.stateful = true
+	key := filepath.Join(t.TempDir(), "key")
+	wf(t, key, "fake")
+	t.Setenv("TEST_KEY", key)
+	inv := prodInventory(controlplane.Server{Name: "prod-app", Role: controlplane.RoleApp, Host: "deploy@app.example.test", SSHKeyRef: "TEST_KEY", RemotePath: "/opt/nself", Primary: true})
+	ra, composePath, err := prepareRemoteApply(context.Background(), v15Params{workdir: root, target: "prod", srv: inv.Environments["prod"].Servers[0], yes: true, jsonOut: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := newDeployProber
+	t.Cleanup(func() { newDeployProber = old })
+	newDeployProber = func(string) controlplane.Prober { return okProber{} }
+	w := &promoteWiring{workdir: root, target: "prod", inv: inv, apply: ra, compose: composePath}
+	err = runPromoteApply(w)(context.Background(), &cpromote.State{Values: map[string]any{}, BackupID: "fixture_backup", BackupHost: r.Label()})
+	if err == nil || !strings.Contains(err.Error(), "E403") || errs.ExitCodeFor(err) != 4 {
+		t.Fatalf("confirmation bypass: %v", err)
+	}
+	if firstIndex(r.commands(), "up -d --no-deps") >= 0 {
+		t.Fatal("unconfirmed recreate applied")
+	}
+}
+
+func TestPromoteCompareResolvedManifest(t *testing.T) {
+	root := promoteFixture(t)
+	locked := compose.LockedImages()
+	wf(t, filepath.Join(root, "docker-compose.yml"), "services:\n  api:\n    image: "+locked[0].String()+"\n")
+	wf(t, filepath.Join(root, "override.yml"), "services:\n  api:\n    image: ${PROMOTE_IMAGE}\n")
+	wf(t, filepath.Join(root, ".nself", "compose-files.txt"), "docker-compose.yml\noverride.yml\n")
+	wf(t, filepath.Join(root, ".env"), "PROMOTE_IMAGE="+locked[1].String()+"\n")
+	wf(t, filepath.Join(root, ".nself", "compose-env-files.txt"), ".env\n")
+	bin := t.TempDir()
+	script := `#!/bin/sh
+case "$*" in
+ *"override.yml"*"--env-file"*"config --format json"*) printf '%s' '{"services":{"api":{"image":"` + locked[1].String() + `"}}}' ;;
+ *) exit 3 ;;
+esac
+`
+	wf(t, filepath.Join(bin, "docker"), script)
+	if err := os.Chmod(filepath.Join(bin, "docker"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	w := &promoteWiring{workdir: root, compose: filepath.Join(root, "docker-compose.yml"), targetServer: controlplane.Server{Arch: "amd64"}}
+	st := &cpromote.State{TargetTier: controlplane.TierProd, Values: map[string]any{"source_images": []cpromote.SourceImage{{Service: "api", Digest: locked[0].Platforms["linux/amd64"]}}}}
+	err := runPromoteCompare(w)(context.Background(), st)
+	if err == nil || !strings.Contains(err.Error(), "E490") {
+		t.Fatalf("fragment drift passed: %v", err)
+	}
+}
+
+func TestPromoteRolledBackRecordNoRemote(t *testing.T) {
+	compattest.Set(t, true)
+	root := promoteFixture(t)
+	if err := cpromote.SaveRecord(root, cpromote.Record{ID: "fixture", Target: "prodsim", Status: "rolled_back", CompletedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	old := deployRemoteOpen
+	t.Cleanup(func() { deployRemoteOpen = old })
+	opens := 0
+	deployRemoteOpen = func(context.Context, controlplane.Server, string, string) (deploy.Remote, error) {
+		opens++
+		return &v15Remote{}, nil
+	}
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+	err := deployRollbackCmd.RunE(cmd, []string{"prodsim"})
+	if err == nil || !strings.Contains(err.Error(), "the last promote of prodsim was already rolled back; nothing was changed") || opens != 0 {
+		t.Fatalf("err=%v opens=%d", err, opens)
+	}
+}
+
+func TestPromoteRecordMigrationEvidence(t *testing.T) {
+	root := promoteFixture(t)
+	w := &promoteWiring{workdir: root, started: time.Now()}
+	st := &cpromote.State{Source: "ls", Target: "prodsim", MigrateStarted: true, DBRestoredAt: "fixture-restored", Values: map[string]any{}}
+	if err := savePromoteRecord(w, st, "rollback_failed"); err != nil {
+		t.Fatal(err)
+	}
+	rec, err := cpromote.LoadRecord(root)
+	if err != nil || !rec.MigrateStarted || rec.DBRestoredAt != st.DBRestoredAt {
+		t.Fatalf("record evidence: %+v %v", rec, err)
+	}
+}
+
+func TestPromoteRollbackAbsentUsesDeployRecord(t *testing.T) {
+	compattest.Set(t, true)
+	root := promoteFixture(t)
+	state := deploy.StrategyState{Target: "prodsim", BackupHost: "prod-app", PreDeployTars: map[string]string{"prod-app": "/srv/fixture/.nself/backups/pre-deploy-fixture.tar.gz"}, PreDeployChanged: map[string][]string{"prod-app": {"docker-compose.yml"}}}
+	if err := deploy.SaveDeployState(root, state); err != nil {
+		t.Fatal(err)
+	}
+	r := &v15Remote{label: "prod-app"}
+	old := deployRemoteOpen
+	t.Cleanup(func() { deployRemoteOpen = old })
+	deployRemoteOpen = func(context.Context, controlplane.Server, string, string) (deploy.Remote, error) { return r, nil }
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+	if err := runPromoteRecordRollback(cmd); err != nil {
+		t.Fatal(err)
+	}
+	if firstIndex(r.commands(), "tar -xzf") < 0 {
+		t.Fatal("absent promote did not use deploy record")
+	}
+}
+
+func TestLocalPromoteOutput(t *testing.T) {
+	raw, err := (localPromoteRemote{root: t.TempDir()}).Run(context.Background(), "printf '{\"services\":{}}'; printf 'warning' >&2")
+	if err != nil || string(raw) != `{"services":{}}` {
+		t.Fatalf("stderr corrupted model: %s %v", raw, err)
+	}
+}
+
+func TestPromoteModelEnvironment(t *testing.T) {
+	t.Setenv("PROMOTE_IMAGE_OPERATOR", "example.invalid/operator:fixture")
+	got, err := (localPromoteRemote{root: t.TempDir()}).resolveModel(context.Background(), `[ -n "$HOME" ] && [ -z "$PROMOTE_IMAGE_OPERATOR" ] && printf model`)
+	if err != nil || string(got) != "model" {
+		t.Fatalf("model runner environment: %q, %v", got, err)
+	}
 }

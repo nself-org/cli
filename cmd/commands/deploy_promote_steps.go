@@ -11,14 +11,15 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/controlplane"
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
 	"github.com/nself-org/cli/internal/deploy"
@@ -47,14 +48,15 @@ func preparePromoteEngine(cmd *cobra.Command, workdir, source, target string, dr
 	if err != nil {
 		return cpromote.Engine{}, nil, err
 	}
-	source, ok := inventoryEnvName(inv, source)
+	sourceName, ok := inventoryEnvName(inv, source)
 	if !ok {
 		return cpromote.Engine{}, nil, errs.Newf("E483", "unknown promotion source %q", source)
 	}
-	target, ok = inventoryEnvName(inv, target)
+	targetName, ok := inventoryEnvName(inv, target)
 	if !ok {
 		return cpromote.Engine{}, nil, errs.Newf("E483", "unknown promotion target %q", target)
 	}
+	source, target = sourceName, targetName
 	sourceEnv, targetEnv := inv.Environments[source], inv.Environments[target]
 	st := &cpromote.State{Source: source, Target: target, SourceTier: sourceEnv.Tier, TargetTier: targetEnv.Tier, DryRun: dryRun, Values: map[string]any{}}
 	if err := cpromote.ValidateTiers(source, target, st.SourceTier, st.TargetTier); err != nil {
@@ -137,7 +139,6 @@ func promoteSteps(w *promoteWiring, jsonOut bool) []cpromote.Step {
 	steps = append(steps, step("record", runPromoteRecord(w)))
 	return steps
 }
-
 func promotePath(s controlplane.Server, local string) string {
 	if s.Host == "" {
 		return local
@@ -151,7 +152,7 @@ func (r localPromoteRemote) Label() string { return "local" }
 func (r localPromoteRemote) Run(ctx context.Context, command string) ([]byte, error) {
 	c := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // command is built from validated paths and fixed fragments
 	c.Dir = r.root
-	return c.CombinedOutput()
+	return c.Output()
 }
 func (localPromoteRemote) Rsync(context.Context, []string, string, string, string) error {
 	return fmt.Errorf("local promotion does not use rsync")
@@ -171,6 +172,7 @@ func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) er
 		}
 		remotes := map[string]deploy.Remote{}
 		paths := map[string]string{}
+		w.apply.Yes = w.yes
 		w.apply.ProdClass, w.apply.BackupID, w.apply.BackupHost = prodClassFn(w.inv, w.target), st.BackupID, st.BackupHost
 		w.apply.Open = func(c context.Context, srv controlplane.Server, key, env string) (deploy.Remote, error) {
 			r, err := openDeployRemote(c, srv, key, env)
@@ -179,20 +181,22 @@ func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) er
 			}
 			return r, err
 		}
-		w.apply.Record = func(_ controlplane.Server, res deploy.ApplyResult, err error) {
-			if !res.Synced {
-				return
+		originalRecord := w.apply.Record
+		w.apply.Record = func(srv controlplane.Server, res deploy.ApplyResult, err error) {
+			if originalRecord != nil {
+				originalRecord(srv, res, err)
 			}
-			if st.PreDeployTar == nil {
-				st.PreDeployTar, st.PreDeployChanged, st.PreDeployAbsent = map[string]string{}, map[string][]string{}, map[string][]string{}
-			}
-			st.PreDeployTar[res.BackupHost] = res.PreDeployTar
-			st.PreDeployChanged[res.BackupHost], st.PreDeployAbsent[res.BackupHost] = res.Changed, res.Absent
+			cpromote.RecordApplied(st, res)
 		}
 		st.Values["apply_remotes"], st.Values["apply_paths"] = remotes, paths
 		result, err := controlplane.RunWithApply(ctx, w.inv, w.target, newDeployProber(w.workdir), w.compose, w.apply)
 		if err == nil {
 			err = failedServersError(result)
+			for _, server := range result.Servers {
+				if server.Err != nil {
+					err = errors.Join(err, server.Err)
+				}
+			}
 		}
 		return err
 	}
@@ -201,22 +205,7 @@ func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) er
 func rollbackPromoteApply(ctx context.Context, w *promoteWiring, st *cpromote.State) error {
 	remotes, _ := st.Values["apply_remotes"].(map[string]deploy.Remote)
 	paths, _ := st.Values["apply_paths"].(map[string]string)
-	hosts := make([]string, 0, len(st.PreDeployTar))
-	for host := range st.PreDeployTar {
-		hosts = append(hosts, host)
-	}
-	sort.Strings(hosts)
-	for _, host := range hosts {
-		tar := st.PreDeployTar[host]
-		r := remotes[host]
-		if r == nil {
-			return fmt.Errorf("promotion rollback has no remote for %s", host)
-		}
-		if err := deploy.RollbackRemote(ctx, deploy.RollbackOptions{Remote: r, RemotePath: paths[host], Tar: tar, Changed: st.PreDeployChanged[host], Absent: st.PreDeployAbsent[host], StrictHasura: true}); err != nil {
-			return err
-		}
-	}
-	return nil
+	return cpromote.UndoApplied(ctx, st, remotes, paths)
 }
 
 func runPromoteRecord(w *promoteWiring) func(context.Context, *cpromote.State) error {
@@ -232,29 +221,47 @@ func savePromoteRecord(w *promoteWiring, st *cpromote.State, status string) erro
 		StartedAt: w.started, CompletedAt: time.Now().UTC(), Status: status, SnapshotTag: st.SnapshotTag,
 		BackupID: st.BackupID, BackupHost: st.BackupHost, PreDeployTar: st.PreDeployTar,
 		Changed: st.PreDeployChanged, Absent: st.PreDeployAbsent, Digests: st.Digests, SavedManifest: saved,
-		DBRestoredAt: st.DBRestoredAt,
+		DBRestoredAt: st.DBRestoredAt, MigrateStarted: st.MigrateStarted,
 	})
 }
-
 func runPromoteCapture(w *promoteWiring) func(context.Context, *cpromote.State) error {
 	return func(ctx context.Context, st *cpromote.State) error {
-		images, err := cpromote.ReadComposeImages([]string{filepath.Join(w.workdir, "docker-compose.yml")})
-		if err != nil {
-			return err
-		}
 		rp := promotePath(w.sourceServer, w.workdir)
 		run := func(c context.Context, command string) ([]byte, error) {
 			return w.sourceRemote.Run(c, "cd "+remotesdk.ShellQuote(rp)+" && "+command)
 		}
-		captured, err := cpromote.CaptureSource(ctx, run, images, archguard.RegistryLookup)
-		st.Values["source_images"] = captured
+		capturedRun, raw, err := cpromote.CaptureSourceManifest(ctx, run, rp)
+		st.Values["source_runner"], st.Values["source_raw"] = capturedRun, raw
 		return err
 	}
 }
 
 func runPromoteCompare(w *promoteWiring) func(context.Context, *cpromote.State) error {
 	return func(ctx context.Context, st *cpromote.State) error {
-		images, err := cpromote.ReadComposeImages([]string{w.compose})
+		var images []cpromote.Image
+		var err error
+		if w.apply != nil {
+			images, err = cpromote.ResolvedArtifactImages(ctx, localPromoteRemote{root: w.apply.Set.StageDir}.resolveModel, w.targetRemote.Run, w.apply.Set)
+		} else {
+			files, fileErr := controlplane.ComposeFilesForDeploy(w.compose)
+			if fileErr != nil {
+				return fileErr
+			}
+			root := filepath.Dir(w.compose)
+			envs, envErr := build.ReadComposeEnvManifest(root)
+			if envErr != nil {
+				return envErr
+			}
+			if len(envs) == 0 {
+				envs = build.ComposeEnvFiles(root)
+			}
+			for i, file := range envs {
+				if !filepath.IsAbs(file) {
+					envs[i] = filepath.Join(root, file)
+				}
+			}
+			images, err = cpromote.ResolvedComposeImages(ctx, localPromoteRemote{root: root}.resolveModel, files, envs)
+		}
 		if err != nil {
 			return err
 		}
@@ -273,6 +280,19 @@ func runPromoteCompare(w *promoteWiring) func(context.Context, *cpromote.State) 
 			arch = "arm64"
 		}
 		source, _ := st.Values["source_images"].([]cpromote.SourceImage)
+		if run, ok := st.Values["source_runner"].(cpromote.Runner); ok {
+			raw, _ := st.Values["source_raw"].([]byte)
+			replay := func(c context.Context, command string) ([]byte, error) {
+				if command == "docker compose images --format json" {
+					return raw, nil
+				}
+				return run(c, command)
+			}
+			source, err = cpromote.CaptureSource(ctx, replay, images, archguard.RegistryLookup)
+			if err != nil {
+				return err
+			}
+		}
 		rows, err := cpromote.CompareDigests(ctx, source, images, arch, st.TargetTier, nil, func(msg string) { _, _ = fmt.Fprintln(os.Stderr, "warning:", msg) })
 		st.Digests = rows
 		return err

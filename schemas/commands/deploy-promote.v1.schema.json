@@ -11,6 +11,9 @@
       "items": {
         "additionalProperties": false,
         "properties": {
+          "detail": {
+            "type": "string"
+          },
           "service": {
             "type": "string"
           },

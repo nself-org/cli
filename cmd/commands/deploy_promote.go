@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"sync"
 
 	"github.com/nself-org/cli/internal/compat"
@@ -63,10 +64,17 @@ func runPromoteRecordRollback(cmd *cobra.Command) error {
 	}
 	rec, err := cpromote.LoadRecord(workdir)
 	if err != nil {
-		return err
+		return errs.Wrap("E485", "promotion record is unusable; nothing was changed", err)
 	}
 	if rec == nil {
-		return errs.New("E401", "no promotion record is available to roll back")
+		state, stateErr := deploy.LoadDeployState(workdir)
+		if stateErr != nil {
+			return errs.Wrap("E485", "unusable deploy rollback record; nothing was changed", stateErr)
+		}
+		if handled, rollbackErr := rollbackRemoteV15(cmd, workdir, state.Target); handled {
+			return rollbackErr
+		}
+		return errs.New("E485", "no usable v1.5 rollback record; nothing was changed")
 	}
 	rec, err = cpromote.LoadLatestRecord(workdir, rec.Target)
 	if err != nil {
@@ -90,6 +98,9 @@ func rollbackPromoteForTarget(ctx context.Context, workdir, target string) (bool
 }
 
 func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Record) error {
+	if rec.Status == "rolled_back" {
+		return errs.Newf("E485", "the last promote of %s was already rolled back; nothing was changed", rec.Target)
+	}
 	inv, err := controlplane.Load(workdir)
 	if err != nil {
 		return err
@@ -181,4 +192,17 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Promoted %s to %s\n", source, target)
 	return nil
+}
+
+// resolveModel isolates Compose interpolation from the operator's shell values.
+func (r localPromoteRemote) resolveModel(ctx context.Context, command string) ([]byte, error) {
+	c := exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // fixed command and validated, quoted paths
+	c.Dir = r.root
+	c.Env = []string{"PATH=" + os.Getenv("PATH")}
+	for _, key := range []string{"HOME", "DOCKER_CONFIG", "XDG_CONFIG_HOME"} {
+		if value, ok := os.LookupEnv(key); ok {
+			c.Env = append(c.Env, key+"="+value)
+		}
+	}
+	return c.Output()
 }

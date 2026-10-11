@@ -9,7 +9,9 @@ package sim_test
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -29,9 +31,29 @@ case "$*" in
   "backup create --tag "*) cp /tmp/sim-db-fp /tmp/sim-db-backup; echo "$4" > /tmp/sim-tag ;;
   "backup list --format json") t=$(cat /tmp/sim-tag); printf '[{"id":"sim_%s","tag":"%s","date":"2026-10-11T12:00:00Z"}]' "$t" "$t" ;;
   "backup verify "*) [ -f /tmp/sim-verify-fail ] && exit 1; exit 0 ;;
-  "backup restore "*) cp /tmp/sim-db-backup /tmp/sim-db-fp ;;
+  "backup restore "*) [ -f /tmp/sim-restore-fail ] && exit 1; cp /tmp/sim-db-backup /tmp/sim-db-fp ;;
 esac
 `
+
+// TestPromoteSimRestoreFailureFixture proves the restore-failure fixture exits
+// unsuccessfully rather than silently copying the backup and hiding E489.
+func TestPromoteSimRestoreFailureFixture(t *testing.T) {
+	root := t.TempDir()
+	stub := strings.ReplaceAll(promoteNselfStub, "/tmp/sim-", root+"/sim-")
+	file := filepath.Join(root, "nself")
+	for name, data := range map[string]string{"nself": stub, "sim-db-backup": "original", "sim-db-fp": "migrated", "sim-restore-fail": ""} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(data), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := exec.Command(file, "backup", "restore", "sim_backup", "--yes").Run(); err == nil {
+		t.Fatal("restore failure fixture succeeded; E489 would never be exercised")
+	}
+	got, err := os.ReadFile(filepath.Join(root, "sim-db-fp"))
+	if err != nil || string(got) != "migrated" {
+		t.Fatalf("failed restore changed database: %q, %v", got, err)
+	}
+}
 
 func TestSimPromote(t *testing.T) {
 	source, target := startHost(t), startHost(t)
@@ -58,7 +80,7 @@ func TestSimPromote(t *testing.T) {
 	for _, h := range []*simHost{source, target} {
 		h.put("/usr/local/bin/nself", promoteNselfStub)
 		docker := strings.Replace(dockerStub, `case "$*" in`, `case "$*" in
-  *"compose images --format json"*) printf '[{"Service":"web","Repository":"example.invalid/web","Tag":"2","ID":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]' ;;
+  *" images --format json"*) printf '[{"Service":"web","Repository":"example.invalid/web","Tag":"2","ID":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]' ;;
   *"image inspect --format"*) printf '["example.invalid/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]|linux/amd64' ;;`, 1)
 		h.put("/usr/local/bin/docker", docker)
 		h.sh("chmod 755 /usr/local/bin/nself /usr/local/bin/docker; printf original > /tmp/sim-db-fp; chown nself /tmp/sim-db-fp")
@@ -70,7 +92,8 @@ func TestSimPromote(t *testing.T) {
 	tag := "pre-promote-1791720000-deadbeef"
 	recordRoot := t.TempDir()
 
-	run := func(compareErr error) error {
+	const equalDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	run := func(targetDigest string) error {
 		state := &promote.State{Source: "ls", Target: "prodsim", TargetTier: controlplane.TierProd, Values: map[string]any{}}
 		steps := make([]promote.Step, 0, len(promote.StepNames))
 		for _, name := range promote.StepNames {
@@ -79,27 +102,30 @@ func TestSimPromote(t *testing.T) {
 		steps[4] = promote.SourceHealthStep(sourceRemote, source.rp)
 		steps[5].Run = func(ctx context.Context, st *promote.State) error {
 			runRemote := func(c context.Context, command string) ([]byte, error) {
-				return sourceRemote.Run(c, "cd "+source.rp+" && "+command)
+				return sourceRemote.Run(c, "cd "+remotesdk.ShellQuote(source.rp)+" && "+command)
+			}
+			capturedRun, _, err := promote.CaptureSourceManifest(ctx, runRemote, source.rp)
+			if err != nil {
+				return err
 			}
 			sourceLookup := func(context.Context, string) (map[string]string, error) {
 				return map[string]string{"linux/amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
 			}
-			images, err := promote.CaptureSource(ctx, runRemote, []promote.Image{{Service: "web", Ref: "example.invalid/web:2"}}, sourceLookup)
+			images, err := promote.CaptureSource(ctx, capturedRun, []promote.Image{{Service: "web", Ref: "example.invalid/web:2"}}, sourceLookup)
 			st.Values["source_images"] = images
 			return err
 		}
-		steps[6].Run = func(_ context.Context, st *promote.State) error {
+		steps[6].Run = func(ctx context.Context, st *promote.State) error {
 			set, _ := stageSet(t, target.rp, "2")
 			st.Values["staged_set"] = set
-			return nil
+			expected, err := deploy.TakeTargetSnapshot(ctx, targetRemote, target.rp)
+			st.Values["expected"] = expected
+			return err
 		}
 		steps[7].Run = func(ctx context.Context, st *promote.State) error {
-			digest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-			if compareErr != nil {
-				digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-			}
+			// Drift is a registry fixture difference consumed by real comparison.
 			lookup := func(context.Context, string) (map[string]string, error) {
-				return map[string]string{"linux/amd64": digest}, nil
+				return map[string]string{"linux/amd64": targetDigest}, nil
 			}
 			rows, err := promote.CompareDigests(ctx, st.Values["source_images"].([]promote.SourceImage),
 				[]promote.Image{{Service: "web", Ref: "example.invalid/web:2"}}, "amd64", st.TargetTier, lookup, nil)
@@ -110,32 +136,29 @@ func TestSimPromote(t *testing.T) {
 		steps[9] = promote.SaveStep(targetRemote, target.rp)
 		steps[10].Run = func(ctx context.Context, st *promote.State) error {
 			set := st.Values["staged_set"].(deploy.ArtifactSet)
-			res, err := deploy.ApplyRemote(ctx, deploy.ApplyOptions{Remote: targetRemote, RemotePath: target.rp, Set: set,
-				ProdClass: true, Yes: true, BackupID: st.BackupID, Env: "prodsim"})
-			if res.Synced {
-				st.PreDeployTar = map[string]string{"prodsim": res.PreDeployTar}
-				st.PreDeployChanged = map[string][]string{"prodsim": res.Changed}
-				st.PreDeployAbsent = map[string][]string{"prodsim": res.Absent}
-			}
-			return err
+			ra := &controlplane.RemoteApply{Set: set, Expected: st.Values["expected"].(deploy.TargetSnapshot), ProdClass: true, Yes: true, BackupID: st.BackupID,
+				Open: func(context.Context, controlplane.Server, string, string) (deploy.Remote, error) {
+					return targetRemote, nil
+				},
+				Record: func(_ controlplane.Server, res deploy.ApplyResult, _ error) { promote.RecordApplied(st, res) }}
+			return controlplane.ApplyServer(ctx, "prodsim", controlplane.Server{Name: "app", RemotePath: target.rp}, "", ra)
 		}
 		steps[10].Undo = func(ctx context.Context, st *promote.State) error {
-			return deploy.RollbackRemote(ctx, deploy.RollbackOptions{Remote: targetRemote, RemotePath: target.rp,
-				Tar: st.PreDeployTar["prodsim"], Changed: st.PreDeployChanged["prodsim"], Absent: st.PreDeployAbsent["prodsim"], StrictHasura: true})
+			return promote.UndoApplied(ctx, st, map[string]deploy.Remote{targetRemote.Label(): targetRemote}, map[string]string{targetRemote.Label(): target.rp})
 		}
 		steps[11] = promote.MigrateStep(targetRemote, target.rp)
 		steps[12] = promote.HealthStep(targetRemote, target.rp)
 		steps[13].Run = func(_ context.Context, st *promote.State) error {
 			saved, _ := st.Values["saved_manifest"].(promote.SavedManifest)
 			return promote.SaveRecord(recordRoot, promote.Record{Source: st.Source, Target: st.Target,
-				Status: "ok", BackupID: st.BackupID, BackupHost: st.BackupHost, SavedManifest: saved})
+				Status: "ok", BackupID: st.BackupID, BackupHost: st.BackupHost, SavedManifest: saved, Digests: st.Digests})
 		}
 		_, err := (promote.Engine{Steps: steps}).Run(context.Background(), state)
 		return err
 	}
 
 	t.Run("full promote", func(t *testing.T) {
-		if err := run(nil); err != nil {
+		if err := run(equalDigest); err != nil {
 			t.Fatal(err)
 		}
 		if got := target.sh("cat /tmp/sim-db-fp"); got != "migrated" {
@@ -144,6 +167,9 @@ func TestSimPromote(t *testing.T) {
 		rec, err := promote.LoadRecord(recordRoot)
 		if err != nil || rec == nil || rec.SavedManifest.Host != targetRemote.Label() {
 			t.Fatalf("saved target manifest = %#v, %v", rec, err)
+		}
+		if len(rec.Digests) != 1 || rec.Digests[0].Source != equalDigest || rec.Digests[0].Target != equalDigest || rec.Digests[0].Status != "equal" {
+			t.Fatalf("source and target digest identities differ: %#v", rec.Digests)
 		}
 	})
 	t.Run("health rollback", func(t *testing.T) {
@@ -154,19 +180,32 @@ func TestSimPromote(t *testing.T) {
 		if got := target.sh("cat /tmp/sim-db-fp"); got != "original" {
 			t.Fatalf("pre-promote database fingerprint = %q, want original", got)
 		}
-		err = run(nil)
+		beforeCompose, err := targetRemote.Run(context.Background(), "cat "+remotesdk.ShellQuote(target.rp+"/docker-compose.yml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		beforeFP, err := targetRemote.Run(context.Background(), "cat /tmp/sim-db-fp")
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = run(equalDigest)
 		var cliErr *errs.CLIError
 		if !errors.As(err, &cliErr) || cliErr.Code != "E488" {
 			t.Fatalf("error = %v, want E488", err)
 		}
-		if got := target.sh("cat " + target.rp + "/docker-compose.yml; cat /tmp/sim-db-fp"); !strings.Contains(got, "old") || !strings.Contains(got, "original") {
-			t.Fatalf("rollback state = %q", got)
+		afterCompose, err := targetRemote.Run(context.Background(), "cat "+remotesdk.ShellQuote(target.rp+"/docker-compose.yml"))
+		if err != nil || string(afterCompose) != string(beforeCompose) {
+			t.Fatalf("compose changed: before %q, after %q, %v", beforeCompose, afterCompose, err)
+		}
+		afterFP, err := targetRemote.Run(context.Background(), "cat /tmp/sim-db-fp")
+		if err != nil || string(afterFP) != string(beforeFP) {
+			t.Fatalf("database changed: before %q, after %q, %v", beforeFP, afterFP, err)
 		}
 	})
 	t.Run("verify and drift stop before apply", func(t *testing.T) {
 		targetRemote.log = nil
 		target.sh("touch /tmp/sim-verify-fail")
-		err := run(nil)
+		err := run(equalDigest)
 		var verifyErr *errs.CLIError
 		verifyLog := strings.Join(targetRemote.log, "\n")
 		if !errors.As(err, &verifyErr) || verifyErr.Code != "E206" {
@@ -179,7 +218,7 @@ func TestSimPromote(t *testing.T) {
 		}
 		target.sh("rm -f /tmp/sim-verify-fail")
 		targetRemote.log = nil
-		err = run(errs.New("E490", "release drift: web"))
+		err = run("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 		var driftErr *errs.CLIError
 		driftLog := strings.Join(targetRemote.log, "\n")
 		if !errors.As(err, &driftErr) || driftErr.Code != "E490" {
@@ -189,6 +228,19 @@ func TestSimPromote(t *testing.T) {
 			if strings.Contains(driftLog, forbidden) {
 				t.Fatalf("drift reached remote write %q:\n%s", forbidden, driftLog)
 			}
+		}
+	})
+	t.Run("restore failure stops rollback", func(t *testing.T) {
+		target.sh("touch /tmp/sim-health-fail /tmp/sim-restore-fail")
+		targetRemote.log = nil
+		err := run(equalDigest)
+		var cliErr *errs.CLIError
+		if !errors.As(err, &cliErr) || cliErr.Code != "E489" || !strings.Contains(err.Error(), tag) {
+			t.Fatalf("restore failure = %v, want E489 naming %s", err, tag)
+		}
+		log := targetRemote.log
+		if len(log) == 0 || !strings.Contains(log[len(log)-1], "nself backup restore") {
+			t.Fatalf("commands continued after failed restore: %#v", log)
 		}
 	})
 }

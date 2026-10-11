@@ -21,6 +21,8 @@ The existing `promote` spelling reaches the same runner through
 backup, and rollback behavior. A prod-tier target requires `--yes` or terminal
 confirmation. `promote rollback` restores the latest promotion record on its
 target, including the verified target backup.
+In v1.5, `--confirm` and `--approve-id` are ignored. Use `--yes` or terminal
+confirmation for a production-class target.
 
 In v1.4, the following legacy behavior remains available:
 

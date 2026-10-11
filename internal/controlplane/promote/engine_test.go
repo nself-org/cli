@@ -92,6 +92,7 @@ func TestPromoteRollback(t *testing.T) {
 				cancel()
 				return errors.New("unhealthy")
 			}
+			events = append(events, "health")
 		}
 		return nil
 	}, func(name string, _ *State) error {
@@ -115,7 +116,7 @@ func TestPromoteRollback(t *testing.T) {
 	if result.Status != "rolled_back" || err == nil || !strings.Contains(err.Error(), "E488") || !strings.Contains(err.Error(), "health") {
 		t.Fatalf("health failure = %#v, %v", result, err)
 	}
-	if strings.Join(events, ",") != "undo:health,undo:migrate,undo:apply,undo:save,undo:snapshot" || healthCalls != 2 {
+	if strings.Join(events, ",") != "undo:health,undo:migrate,undo:apply,undo:save,undo:snapshot,health" || healthCalls != 2 {
 		t.Fatalf("rollback events=%v health calls=%d", events, healthCalls)
 	}
 
