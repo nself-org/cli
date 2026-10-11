@@ -301,33 +301,6 @@ func TestMetadataTracksTable(t *testing.T) {
 	}
 }
 
-func TestVectorMetadataDriftJSON(t *testing.T) {
-	live := `{"version":3,"sources":[{"name":"default","tables":[]}]}`
-	f := &fakeHasura{exports: []string{live}}
-	cfg := f.serve(t)
-	dir := t.TempDir()
-	file := filepath.Join(dir, "hasura", "metadata.json")
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// Same document, different formatting and key order: no drift.
-	if err := os.WriteFile(file, []byte("{\n \"sources\": [{\"tables\": [], \"name\": \"default\"}],\n \"version\": 3\n}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := VectorMetadataDrift(t.Context(), cfg, dir); err != nil || len(got) != 0 {
-		t.Fatalf("equal documents: drift=%v err=%v", got, err)
-	}
-	if err := os.WriteFile(file, []byte(`{"version":3,"sources":[]}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := VectorMetadataDrift(t.Context(), cfg, dir); err != nil || len(got) == 0 {
-		t.Fatalf("different documents: drift=%v err=%v", got, err)
-	}
-	if _, err := VectorMetadataDrift(t.Context(), cfg, t.TempDir()); err == nil {
-		t.Error("drift check without on-disk metadata must fail")
-	}
-}
-
 func TestCheckDiskColumnVisible(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "hasura", "metadata", "sources.yaml")

@@ -50,6 +50,8 @@ The second rule exists because Hasura, by default, infers function permissions f
 
 `--roles` adds explicit function permissions. They only gate access when Hasura runs with `HASURA_GRAPHQL_INFER_FUNCTION_PERMISSIONS=false`; with the default inference, every select role can call the function.
 
+The column check reads each role's own select permission. Inherited roles are not evaluated (their parent roles are), which is a known limitation: check the parents' columns.
+
 ## On-disk metadata
 
 The generator reads your project's on-disk Hasura metadata to confirm the table is tracked. Without it the command stops with E513. Create it with `nself db hasura metadata export`.

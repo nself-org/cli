@@ -102,7 +102,7 @@ var vectorDepsFor = func(cfg *config.Config) vectorsearch.Deps {
 		TableTracked:  database.MetadataTracksTable,
 		ColumnVisible: database.CheckDiskColumnVisible,
 		Drift: func(ctx context.Context, projectDir string) ([]string, error) {
-			return database.VectorMetadataDrift(ctx, cfg, projectDir)
+			return vectorsearch.MetadataDrift(ctx, cfg, projectDir)
 		},
 		Track: func(ctx context.Context, schema, name, table, column string, roles []string) error {
 			return database.TrackFunction(ctx, cfg, schema, name, table, column, roles)

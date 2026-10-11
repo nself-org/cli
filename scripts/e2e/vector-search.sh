@@ -102,9 +102,11 @@ meta() { # meta <json body>: Hasura metadata API as admin
 }
 
 DOCS='{"schema":"public","name":"docs"}'
-sel_perm() { # sel_perm <role> <columns json>: (re)create a select permission on docs for <role> with filter {}
+sel_perm() { # sel_perm <role> <columns json> [filter json]: (re)create a select permission on docs for <role> (filter default {})
+  local flt="${3:-}"
+  [ -n "$flt" ] || flt='{}'
   meta '{"type":"pg_drop_select_permission","args":{"source":"default","table":'"$DOCS"',"role":"'"$1"'"}}' >/dev/null 2>&1 || true
-  meta '{"type":"pg_create_select_permission","args":{"source":"default","table":'"$DOCS"',"role":"'"$1"'","permission":{"columns":'"$2"',"filter":{}}}}' >>"$LOG"
+  meta '{"type":"pg_create_select_permission","args":{"source":"default","table":'"$DOCS"',"role":"'"$1"'","permission":{"columns":'"$2"',"filter":'"$flt"'}}}' >>"$LOG"
 }
 drop_perm() { meta '{"type":"pg_drop_select_permission","args":{"source":"default","table":'"$DOCS"',"role":"'"$1"'"}}' >>"$LOG"; }
 live_funcs() { meta '{"type":"export_metadata","args":{}}' | jq '[.sources[].functions[]?] | length'; }
@@ -191,7 +193,7 @@ set -e
 [ "$code" != "0" ] && grep -q "E514" "$W/e514hidden.out" && grep -q "staff" "$W/e514hidden.out" \
   || { cat "$W/e514hidden.out"; fail "a role hiding the column was not refused with E514 naming it (exit $code)"; }
 [ "$(live_funcs)" = "0" ] || fail "a refused --track changed live metadata"
-sel_perm staff '["id","owner","embedding"]' || fail "fixing the staff permission"
+sel_perm staff '["id","owner","embedding"]' '{"owner":{"_eq":"bob"}}' || fail "fixing the staff permission"
 nself db hasura metadata export >>"$LOG" 2>&1 || fail "nself db hasura metadata export (after the fix)"
 
 nself db generate vector-search public.docs.embedding --track --json >"$W/track1.json" 2>"$W/track1.err" || { cat "$W/track1.err"; fail "generate --track"; }
@@ -202,6 +204,13 @@ nself db generate vector-search public.docs.embedding --track --json >"$W/track2
 jq -e '.data.tracked == true and .data.disk_metadata == "unchanged" and .data.migration_written == false' "$W/track2.json" >/dev/null \
   || { cat "$W/track2.json"; fail "second --track was not a no-op"; }
 [ "$(ls migrations/*_vector_search_docs_embedding.sql | wc -l | tr -d ' ')" = "1" ] || fail "reruns wrote extra migration files"
+
+step "inference: staff (full columns, not in --roles) is served by its own select filter"
+STAFF="$(mint carol staff)"
+OUT="$(gql "$STAFF" 'query { docs_nearest_embedding(args: {query: "[1,0,0]"}, limit: 100) { owner } }')"
+printf '%s\n' "$OUT" >>"$LOG"
+printf '%s' "$OUT" | jq -e '.data.docs_nearest_embedding | length == 3 and all(.owner == "bob")' >/dev/null \
+  || fail "staff did not get exactly the rows its own select filter allows: $OUT"
 
 step "the filtered role sees only its own rows, nearest first"
 ALICE="$(mint alice user)"

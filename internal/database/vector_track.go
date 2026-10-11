@@ -11,13 +11,11 @@ package database
 // "already-tracked"/"already-exists" race is re-planned from a fresh export.
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -257,42 +255,4 @@ func CheckDiskColumnVisible(projectDir, schema, table, column string) error {
 	}
 	sort.Strings(hidden)
 	return hiddenColumnErr(schema, table, column, hidden)
-}
-
-// VectorMetadataDrift lists what differs between live Hasura and the project's
-// on-disk metadata: the YAML directory goes through HasuraDiffMetadata, the
-// legacy hasura/metadata.json is compared as a whole document. Empty means no
-// drift.
-func VectorMetadataDrift(ctx context.Context, cfg *config.Config, projectDir string) ([]string, error) {
-	if st, err := os.Stat(filepath.Join(projectDir, "hasura", "metadata")); err == nil && st.IsDir() {
-		return HasuraDiffMetadata(ctx, cfg, projectDir)
-	}
-	file := filepath.Join(projectDir, "hasura", "metadata.json")
-	disk, err := os.ReadFile(file)
-	if err != nil {
-		return nil, fmt.Errorf("no on-disk metadata: %w", err)
-	}
-	live, err := HasuraExportMetadata(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	a, b := decodeNumbers(live), decodeNumbers(disk)
-	if a == nil || b == nil {
-		return []string{"metadata.json (unreadable)"}, nil
-	}
-	if reflect.DeepEqual(a, b) {
-		return nil, nil
-	}
-	return []string{"metadata.json"}, nil
-}
-
-// decodeNumbers decodes JSON keeping numbers exact; nil means invalid JSON.
-func decodeNumbers(b []byte) any {
-	dec := json.NewDecoder(bytes.NewReader(b))
-	dec.UseNumber()
-	var v any
-	if err := dec.Decode(&v); err != nil {
-		return nil
-	}
-	return v
 }
