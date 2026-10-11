@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 // TestKeyStatePresent verifies KeyState returns true when the key file exists.
@@ -71,63 +73,69 @@ func TestKeyStateEnvVarUnset(t *testing.T) {
 
 // TestSSHProbeArgHygiene verifies that the SSH probe does NOT invoke sudo,
 // osascript, or any privileged command. We do this by constructing a fake SSH
-// binary that captures argv and checking the argument list.
+// binary that captures argv and checking the argument list, in both compat
+// modes.
 func TestSSHProbeArgHygiene(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skipped on Windows: requires Unix shell-script PATH override")
 	}
-	dir := t.TempDir()
+	for _, m := range hostKeyModes {
+		t.Run(m.name, func(t *testing.T) {
+			compattest.Set(t, m.v15)
+			dir := t.TempDir()
 
-	// Create a fake key file.
-	keyFile := filepath.Join(dir, "id_ed25519")
-	if err := os.WriteFile(keyFile, []byte("fake key"), 0o600); err != nil {
-		t.Fatalf("write key: %v", err)
-	}
-	t.Setenv("NSELF_SSH_KEY_STAGING", keyFile)
+			// Create a fake key file.
+			keyFile := filepath.Join(dir, "id_ed25519")
+			if err := os.WriteFile(keyFile, []byte("fake key"), 0o600); err != nil {
+				t.Fatalf("write key: %v", err)
+			}
+			t.Setenv("NSELF_SSH_KEY_STAGING", keyFile)
 
-	// Create a fake "ssh" that writes its args to a file and exits 0.
-	fakeSSH := filepath.Join(dir, "ssh")
-	argsFile := filepath.Join(dir, "args.txt")
-	script := `#!/bin/sh
+			// Create a fake "ssh" that writes its args to a file and exits 0.
+			fakeSSH := filepath.Join(dir, "ssh")
+			argsFile := filepath.Join(dir, "args.txt")
+			script := `#!/bin/sh
 echo "$@" > ` + argsFile + `
 exit 0
 `
-	if err := os.WriteFile(fakeSSH, []byte(script), 0o700); err != nil {
-		t.Fatalf("write fake ssh: %v", err)
-	}
+			if err := os.WriteFile(fakeSSH, []byte(script), 0o700); err != nil {
+				t.Fatalf("write fake ssh: %v", err)
+			}
 
-	// Prepend dir to PATH so our fake "ssh" shadows the real one.
-	origPath := os.Getenv("PATH")
-	t.Setenv("PATH", dir+":"+origPath)
+			// Prepend dir to PATH so our fake "ssh" shadows the real one.
+			t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+			stubHostKeyPin(t, dir)
 
-	p := NewSSHProber(dir, true)
-	s := Server{
-		Name:      "stg-app",
-		Host:      "ubuntu@staging.example.com",
-		SSHKeyRef: "NSELF_SSH_KEY_STAGING",
-	}
+			p := NewSSHProber(dir, true)
+			s := Server{
+				Name:      "stg-app",
+				Host:      "ubuntu@staging.example.com",
+				SSHKeyRef: "NSELF_SSH_KEY_STAGING",
+			}
 
-	_, _, _ = p.SSHReachable(s)
+			_, _, _ = p.SSHReachable(s)
 
-	argsRaw, err := os.ReadFile(argsFile)
-	if err != nil {
-		t.Fatalf("read args file: %v", err)
-	}
-	args := string(argsRaw)
+			argsRaw, err := os.ReadFile(argsFile)
+			if err != nil {
+				t.Fatalf("read args file: %v", err)
+			}
+			args := string(argsRaw)
 
-	// Verify required arguments are present.
-	for _, want := range []string{"-i", "BatchMode=yes", "StrictHostKeyChecking=accept-new",
-		"ConnectTimeout=5", "ForwardAgent=no", "ubuntu@staging.example.com", "true"} {
-		if !containsFold(args, want) {
-			t.Errorf("expected arg %q in SSH invocation %q", want, args)
-		}
-	}
+			// Verify required arguments are present.
+			for _, want := range []string{"-i", "BatchMode=yes", m.policy,
+				"ConnectTimeout=5", "ForwardAgent=no", "ubuntu@staging.example.com", "true"} {
+				if !containsFold(args, want) {
+					t.Errorf("expected arg %q in SSH invocation %q", want, args)
+				}
+			}
 
-	// Verify forbidden commands are not present.
-	for _, forbidden := range []string{"sudo", "osascript", "pfctl", "launchctl", "-A"} {
-		if containsFold(args, forbidden) {
-			t.Errorf("forbidden arg/command %q found in SSH invocation %q", forbidden, args)
-		}
+			// Verify forbidden commands are not present.
+			for _, forbidden := range []string{"sudo", "osascript", "pfctl", "launchctl", "-A"} {
+				if containsFold(args, forbidden) {
+					t.Errorf("forbidden arg/command %q found in SSH invocation %q", forbidden, args)
+				}
+			}
+		})
 	}
 }
 
@@ -242,6 +250,7 @@ func TestCacheTTLHonored(t *testing.T) {
 	}
 	origPath := os.Getenv("PATH")
 	t.Setenv("PATH", dir+":"+origPath)
+	stubHostKeyPin(t, dir)
 
 	p := NewSSHProber(dir, false)
 	s := Server{

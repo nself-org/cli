@@ -69,7 +69,7 @@ func sshKeyPath() string {
 
 // remoteDeployPushFn is the remote push. A variable so tests can record the
 // host and environment a deploy reaches without running ssh or rsync.
-var remoteDeployPushFn = remoteDeployPush
+var remoteDeployPushFn = remoteDeployPushDispatch
 
 // remoteDeployPush checks image architecture before rsyncing the compose and
 // environment to the host, then pulls and restarts services over SSH.

@@ -58,6 +58,7 @@ internal/deprecation 75  # measured 77.3 2026-10-05
 internal/docker 52  # measured 54.7 2026-10-05
 internal/docker/dockertest 85  # measured 89.5 (darwin, local) 2026-10-11; new package (D-0286)
 internal/doctor 47  # measured 49.6 2026-10-05
+internal/doctor/report 85  # measured 87.8 2026-10-11
 internal/domain 60  # measured 62.1 2026-10-05
 internal/embedded 78  # measured 80.8 2026-10-05
 internal/env 19  # measured 21.7 2026-10-05
@@ -73,6 +74,7 @@ internal/installmeta 75  # measured 77.8 2026-10-05
 internal/invoke 89  # measured 91.2 2026-10-10 (P7-SURF-24)
 internal/license 60
 internal/lifecycle 14  # measured 16.7 2026-10-05
+internal/lock 90  # measured 92.8 2026-10-10
 internal/machineauth 71  # measured 75.7 2026-10-10
 internal/maintenance 35  # measured 37.8 2026-10-05
 internal/metrics 88  # measured 90.5 2026-10-05

@@ -91,11 +91,17 @@ func DefaultImage(service string) string {
 // ResolveImage returns the image reference for a service, optionally with a
 // sha256 digest suffix when a project digest is recorded.
 //
-// Precedence: a non-empty caller-supplied image (built from env/config such as
-// POSTGRES_VERSION / HASURA_VERSION via ImageRef, or ResolvePostgresImage for
-// postgres) ALWAYS wins. DefaultImage applies only when the caller supplies no
-// image. A reference that already carries a digest (lock mode) is left alone.
+// Precedence: an explicit *_IMAGE/*_VERSION in the env wins, then the project
+// lock pin (nself.lock.yaml, P7-LIVE-09), then the caller-supplied image
+// (built from config via ImageRef, or ResolvePostgresImage for postgres), then
+// DefaultImage when the caller supplies none. A reference that already carries
+// a digest (lock mode) is left alone.
 func ResolveImage(service, image string) string {
+	// P7-LIVE-09: a project lock pin outranks the CLI default and any version the
+	// config defaulted, but never an explicit *_IMAGE/*_VERSION in the env.
+	if pin, ok := projectPin(service, image); ok {
+		return pin
+	}
 	resolved := image
 	if resolved == "" {
 		resolved = DefaultImage(service)

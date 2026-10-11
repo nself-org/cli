@@ -225,6 +225,7 @@
       "--remove-orphans",
       "--security-report",
       "--verbose",
+      "--write-lock",
       "--yes"
     ]
   },
@@ -882,6 +883,16 @@
         "hidden": false
       },
       {
+        "name": "report",
+        "path": "nself doctor report",
+        "short": "Write a redacted support bundle (tar.gz) to share in an issue",
+        "hidden": false,
+        "flags": [
+          "--log-lines",
+          "--output"
+        ]
+      },
+      {
         "name": "security",
         "path": "nself doctor security",
         "short": "Diagnose server security",
@@ -1384,6 +1395,7 @@
       "--embedded-pg",
       "--force-recreate",
       "--fresh",
+      "--frozen",
       "--profile",
       "--quick",
       "--quiet",

@@ -70,9 +70,11 @@ func checkCallerOptions(opts []string) error {
 			}
 			return "", false
 		}
-		switch {
-		case a == "-4" || a == "-6" || a == "-q" || a == "-v":
-		case a == "-o":
+		// An if-chain, not a switch: Go's coverage blocks start after a case
+		// colon, so mutation testing cannot measure a case expression.
+		if a == "-4" || a == "-6" || a == "-q" || a == "-v" {
+			// flags without a value.
+		} else if a == "-o" {
 			v, ok := next()
 			if !ok {
 				return fmt.Errorf("ssh option -o has no value")
@@ -80,21 +82,21 @@ func checkCallerOptions(opts []string) error {
 			if err := checkSSHOption(v); err != nil {
 				return err
 			}
-		case strings.HasPrefix(a, "-o") && len(a) > 2:
+		} else if strings.HasPrefix(a, "-o") {
 			if err := checkSSHOption(a[2:]); err != nil {
 				return err
 			}
-		case a == "-i":
+		} else if a == "-i" {
 			v, ok := next()
 			if !ok || !safeOptValue(v) {
 				return fmt.Errorf("ssh option -i needs a plain path (got %q)", v)
 			}
-		case a == "-p":
+		} else if a == "-p" {
 			v, ok := next()
 			if !ok || !isDigits(v) {
 				return fmt.Errorf("ssh option -p needs a port number (got %q)", v)
 			}
-		default:
+		} else {
 			return fmt.Errorf("ssh option %q is not allowed", a)
 		}
 	}

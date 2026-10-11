@@ -83,6 +83,19 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   package directory, so no version of the module could be fetched. No repository
   imported the old path. `modzip_test.go` now builds the module zip file set and
   fails on any such collision.
+- **Behaviour change:** `httpx.ClientOptions.MaxRetries` 0 now means no retries
+  (D-0152). Before, 0 and negative values were replaced with 2, so retries could
+  not be turned off and a zero `ClientOptions{}` retried twice. Callers that
+  want the old default set `MaxRetries: httpx.DefaultMaxRetries` (new constant,
+  2). The API is source compatible: no field or signature changed.
+
+### Fixed
+
+- `httpx.Client.Do` resent 5xx retries with an empty body, because every
+  attempt shared the request body the first attempt had consumed (D-0152). Each
+  attempt now gets a fresh body from `GetBody`. A body without `GetBody` is read
+  into memory once (up to 8 MiB) and replayed with its `Content-Length` set; a
+  larger body without `GetBody` is sent once, without retries.
 
 ## [2.0.0] - 2026-05-13
 

@@ -678,6 +678,10 @@
       "id": "urn:nself:cli:schema:commands:doctor-images:v1"
     },
     {
+      "path": "commands/doctor-report.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:doctor-report:v1"
+    },
+    {
       "path": "commands/doctor.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:doctor:v1"
     },
@@ -792,6 +796,10 @@
     {
       "path": "invoke/confirmation.v1.schema.json",
       "id": "urn:nself:cli:schema:invoke:confirmation:v1"
+    },
+    {
+      "path": "lockfile.v1.schema.json",
+      "id": "urn:nself:cli:schema:lockfile:v1"
     },
     {
       "path": "nself-yaml.v1.schema.json",

@@ -153,7 +153,7 @@ func TestFragmentAssignment(t *testing.T) {
 			}
 		}
 		sort.Strings(extra)
-		if len(extra) != 3 || extra[0] != "db hasura permissions" || extra[1] != "db hasura schema" || extra[2] != "doctor images" {
+		if len(extra) != 4 || extra[0] != "db hasura permissions" || extra[1] != "db hasura schema" || extra[2] != "doctor images" || extra[3] != "doctor report" {
 			t.Errorf("fragments hold %d keys, pre-split canon had %d. Extra keys: %v", len(where), len(pre.Commands), extra)
 		}
 	}

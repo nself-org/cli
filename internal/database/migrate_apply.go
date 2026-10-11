@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -137,7 +136,7 @@ func applyFile(ctx context.Context, cfg *config.Config, filePath string, guarded
 		if txErr != nil {
 			return false, txErr
 		}
-		if err := pipeSQLToContainer(ctx, cfg, dirTxSQL(body, legacyRecord+"\n"+opsRecord)); err != nil {
+		if err := pipeSQLToContainer(ctx, cfg, dirTxSQL(body, legacyRecord+"\n"+opsRecord, statementTimeoutFor(sqlContent))); err != nil {
 			return false, txRunError(name, err)
 		}
 		if err := verifyLedger(ctx, cfg, name, true); err != nil {
@@ -146,7 +145,7 @@ func applyFile(ctx context.Context, cfg *config.Config, filePath string, guarded
 	} else {
 		txSQL := "BEGIN;\n" +
 			"SET LOCAL lock_timeout = '5s';\n" +
-			"SET LOCAL statement_timeout = '60s';\n" +
+			"SET LOCAL statement_timeout = '" + statementTimeoutFor(sqlContent) + "';\n" +
 			sqlContent + "\n" + legacyRecord + "\n" + opsRecord + "\nCOMMIT;\n"
 		if err := pipeSQLToContainer(ctx, cfg, txSQL); err != nil {
 			return false, fmt.Errorf("migration %s: %w: %v", name, errs.ErrMigrationFailed, err)
@@ -174,6 +173,9 @@ func MigrateUpDirProgress(ctx context.Context, cfg *config.Config, dir string, p
 
 	files, err := scanMigrations(dir)
 	if err != nil {
+		return 0, err
+	}
+	if err := upgradeLedgerIfNeeded(ctx, cfg, files); err != nil {
 		return 0, err
 	}
 
@@ -224,68 +226,4 @@ func MigrateUpDirProgress(ctx context.Context, cfg *config.Config, dir string, p
 // ApplyDir is an alias for MigrateUpDir with the name the task spec expects (G-008).
 func ApplyDir(ctx context.Context, cfg *config.Config, dirPath string) (int, error) {
 	return MigrateUpDir(ctx, cfg, dirPath)
-}
-
-// MigrateStatus returns the status of all known migrations (applied and pending).
-// It merges on-disk migration files with the schema_versions table, so orphaned
-// migrations (applied but no longer on disk) are also reported.
-//
-// dir overrides the auto-detected migrations directory (the --migration-dir
-// companion to MigrateUpDir, G-008): repos with non-standard layouts, e.g.
-// ntask's postgres/migrations, would otherwise report "No migrations found".
-// Pass "" to auto-detect via migrationsDir.
-func MigrateStatus(ctx context.Context, cfg *config.Config, dir string) ([]MigrationStatus, error) {
-	if err := ensureSchemaVersions(ctx, cfg); err != nil {
-		return nil, fmt.Errorf("ensure schema_versions: %w", err)
-	}
-	if err := ensureMigrationsTable(ctx, cfg); err != nil {
-		return nil, fmt.Errorf("ensure migrations table: %w", err)
-	}
-
-	if dir == "" {
-		dir = migrationsDir(cfg, "")
-	}
-	files, err := scanMigrations(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := upgradeLedger(ctx, cfg, files); err != nil {
-		return nil, fmt.Errorf("upgrade migration ledger: %w", err)
-	}
-
-	applied, err := appliedMigrations(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("check applied migrations: %w", err)
-	}
-
-	var statuses []MigrationStatus
-	onDisk := make(map[string]bool)
-
-	for _, f := range files {
-		name := migrationKey(f)
-		onDisk[name] = true
-		ts, ok := applied[name]
-		statuses = append(statuses, MigrationStatus{
-			Name:      name,
-			Applied:   ok,
-			Timestamp: ts,
-		})
-	}
-
-	// Include any applied migrations not found on disk (orphans).
-	for name, ts := range applied {
-		if !onDisk[name] {
-			statuses = append(statuses, MigrationStatus{
-				Name:      name,
-				Applied:   true,
-				Timestamp: ts,
-			})
-		}
-	}
-
-	sort.Slice(statuses, func(i, j int) bool {
-		return statuses[i].Name < statuses[j].Name
-	})
-	return statuses, nil
 }

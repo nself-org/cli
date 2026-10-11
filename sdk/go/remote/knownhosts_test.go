@@ -101,7 +101,13 @@ func TestPinned_ModesAndAtomicity(t *testing.T) {
 	}
 	_ = p.Replace("n1", keyB)
 	ents, _ := os.ReadDir(filepath.Dir(p.Path))
-	if len(ents) != 1 {
+	n := 0
+	for _, e := range ents {
+		if e.Name() != "known_hosts.lock" { // the sidecar lock stays by design
+			n++
+		}
+	}
+	if n != 1 {
 		t.Errorf("temp files left behind: %v", ents)
 	}
 }
