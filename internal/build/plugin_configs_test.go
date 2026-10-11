@@ -135,3 +135,44 @@ func TestInjectPluginNginxRoutes_DefaultDirRendersSSLDir(t *testing.T) {
 		}
 	}
 }
+
+// TestInjectPluginNginxRoutes_SkipsSnippetWithoutServedCert: when the build
+// serves no TLS (SSL_MODE none, or letsencrypt before issuance), a snippet
+// that loads the ${SSL_DIR} pair stays out of nginx/sites (nginx would not
+// start on the missing file) and out of routes.json; one that does not
+// load it is still injected.
+func TestInjectPluginNginxRoutes_SkipsSnippetWithoutServedCert(t *testing.T) {
+	pluginDir := t.TempDir()
+	plain := "server {\n    listen 80;\n    server_name plain.${BASE_DOMAIN};\n    location / { return 204; }\n}\n"
+	for name, body := range map[string]string{"backup": backupSnippet, "plain": plain} {
+		d := filepath.Join(pluginDir, name, "nginx")
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, name+".conf"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg, err := config.ApplyDefaults(&config.Config{ProjectName: "d0478", BaseDomain: "example.com", SSLMode: "none"})
+	if err != nil {
+		t.Fatalf("ApplyDefaults: %v", err)
+	}
+	cfg.PluginSystem.Dir = pluginDir
+	for _, hasSSL := range []bool{false, true} {
+		workdir := t.TempDir()
+		n, err := injectPluginNginxRoutesVia(newDiskSink(workdir), workdir, pluginDir, cfg, hasSSL)
+		if err != nil {
+			t.Fatalf("hasSSL=%v: %v", hasSSL, err)
+		}
+		_, backupErr := os.Stat(filepath.Join(workdir, "nginx", "sites", "backup-backup.conf"))
+		_, plainErr := os.Stat(filepath.Join(workdir, "nginx", "sites", "plain-plain.conf"))
+		if wantN := map[bool]int{false: 1, true: 2}[hasSSL]; n != wantN || plainErr != nil || (backupErr == nil) != hasSSL {
+			t.Errorf("hasSSL=%v: n=%d backup written=%v plain err=%v", hasSSL, n, backupErr == nil, plainErr)
+		}
+		set := &snippetSet{}
+		set.plugins(workdir, cfg, hasSSL)
+		if want := map[bool]int{false: 1, true: 2}[hasSSL]; len(set.files) != want {
+			t.Errorf("hasSSL=%v: routes.json snippet files = %d, want %d", hasSSL, len(set.files), want)
+		}
+	}
+}

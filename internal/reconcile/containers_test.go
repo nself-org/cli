@@ -63,6 +63,17 @@ func TestCompareRunning(t *testing.T) {
 			},
 			orphans: []string{"p_ghost"},
 		},
+		{
+			// Only containers of services the plan no longer defines (a
+			// rename): the next start creates every planned service.
+			name:    "only orphans: planned services are create",
+			running: []RunningContainer{{Name: "p_old", Service: "old", ConfigHash: "z"}},
+			hashes:  map[string]string{"postgres": "a"},
+			want: []ContainerItem{
+				{Service: "postgres", Action: ContainerCreate, Stateful: true, AppliedBy: AppliedNextStart},
+			},
+			orphans: []string{"p_old"},
+		},
 	}
 	for _, c := range cases {
 		items, orphans := compareRunning(c.running, c.hashes, defined, stateful)

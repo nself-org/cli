@@ -2,12 +2,14 @@ package build
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // claimsOf returns the set of "<port>|<server_name>" claims a rendered
@@ -98,9 +100,21 @@ func checkServerNameConflict(sink Sink, sitesDir, destName, content string) erro
 // project's nginx/sites/ directory after templating config variables.
 //
 // Returns the number of config files injected.
-// Plugins without a nginx/ directory are silently skipped.
+// Plugins without a nginx/ directory are silently skipped. It renders as if
+// the base domain's certificate pair is served; the build passes its own
+// TLS decision to injectPluginNginxRoutesVia.
 func InjectPluginNginxRoutes(workdir, pluginDir string, cfg *config.Config) (int, error) {
-	return injectPluginNginxRoutesVia(newDiskSink(workdir), workdir, pluginDir, cfg)
+	return injectPluginNginxRoutesVia(newDiskSink(workdir), workdir, pluginDir, cfg, true)
+}
+
+// skipForMissingCert reports whether a rendered snippet must stay out of
+// nginx/sites because it loads the base domain's certificate pair (the
+// ${SSL_DIR} path) while the build serves no TLS (hasSSL false: SSL_MODE
+// none, or letsencrypt/custom before the pair exists). nginx would refuse
+// to start on the missing file, taking every route down, including the
+// ACME challenge that would issue it.
+func skipForMissingCert(rendered string, vars map[string]string, hasSSL bool) bool {
+	return !hasSSL && strings.Contains(rendered, nginxtopo.NginxSSLContainerPath+"/"+vars["SSL_DIR"]+"/")
 }
 
 // resolvePluginNginxDir returns the plugin directory the nginx snippets are
@@ -154,7 +168,7 @@ func renderPluginSnippet(content string, vars map[string]string) string {
 }
 
 // injectPluginNginxRoutesVia is InjectPluginNginxRoutes writing through sink.
-func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *config.Config) (int, error) {
+func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *config.Config, hasSSL bool) (int, error) {
 	pluginDir, err := resolvePluginNginxDir(pluginDir, cfg)
 	if err != nil {
 		return 0, err
@@ -205,6 +219,12 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 
 			// Template the config content with project values.
 			rendered := renderPluginSnippet(string(content), vars)
+			if skipForMissingCert(rendered, vars, hasSSL) {
+				slog.Warn("plugin nginx route skipped: it needs the base domain's TLS certificate, which this build does not serve",
+					"plugin", pluginName, "file", filepath.Base(match),
+					"fix", "issue the certificate (nself trust ssl setup) or set SSL_MODE=local, then run nself build again")
+				continue
+			}
 
 			// Write to nginx/sites/{pluginname}-{filename} to avoid conflicts.
 			filename := filepath.Base(match)
