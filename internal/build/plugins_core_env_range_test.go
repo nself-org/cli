@@ -33,6 +33,14 @@ func TestPluginServiceRange(t *testing.T) {
 		{"null first document", "---\n---\nservices:\n  w:\n    image: a\n", rangeUnsafe, ""},
 		{"unparseable", "services: [\n  w:\n", rangeWhole, "services: [\n  w:\n"},
 		{"no services", "networks:\n  n: {}\n", rangeWhole, "networks:\n  n: {}\n"},
+		{"lone CR line breaks", "services:\r  w:\r    image: example/w\r    environment:\r      A: value\r    networks: [p]\r  side:\n    image: example/side\n    environment:\n      B: value\n    networks: [p]\nnetworks:\n  p: {}\n", rangeUnsafe, ""},
+		{"lone CR after the target", "services:\n  w:\n    image: a\n    environment:\n      A: v\n  side:\r    image: s\r", rangeUnsafe, ""},
+		{"anchored target", "services:\n  w: &base\n    image: a\n    environment:\n      A: v\n  side:\n    <<: *base\n    image: b\n", rangeUnsafe, ""},
+		{"nested environment before the direct one", "services:\n  w:\n    image: a\n    x-meta:\n      environment:\n        M: v\n    environment:\n      A: v\n  side:\n    image: s\n", rangeUnsafe, ""},
+		{"nested environment after the direct one", "services:\n  w:\n    image: a\n    environment:\n      A: v\n    x-meta:\n      environment:\n        M: v\n  side:\n    image: s\n", rangeFound, "  w:\n    image: a\n    environment:\n      A: v\n    x-meta:\n      environment:\n        M: v\n"},
+		{"block scalar mentions environment first", "services:\n  w:\n    image: a\n    command: |\n      environment:\n        x\n    environment:\n      A: v\n  side:\n    image: s\n", rangeUnsafe, ""},
+		{"no direct environment, nested networks first", "services:\n  w:\n    image: a\n    x-meta:\n      networks:\n        - z\n    networks:\n      - p\n  side:\n    image: s\n", rangeUnsafe, ""},
+		{"no direct environment, direct networks list", "services:\n  w:\n    image: a\n    networks:\n      - p\n  side:\n    image: s\n", rangeFound, "  w:\n    image: a\n    networks:\n      - p\n"},
 		{"several services, no match", "services:\n  a:\n    image: x\n  b:\n    image: y\n", rangeNoMatch, ""},
 	}
 	for _, c := range cases {

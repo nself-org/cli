@@ -15,6 +15,7 @@ package build
 
 import (
 	"bytes"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
@@ -119,8 +120,14 @@ func pluginServiceRange(content []byte, pluginName, manifestName string) (start,
 	if svc.Kind != yaml.MappingNode || svc.Style&yaml.FlowStyle != 0 {
 		return 0, 0, rangeUnsafe
 	}
+	if svc.Anchor != "" {
+		return 0, 0, rangeUnsafe // another service may inherit it and would get the env too
+	}
 	if yamlGet(svc, "<<") != nil && yamlGet(svc, "environment") == nil {
 		return 0, 0, rangeUnsafe // an inherited environment would be replaced
+	}
+	if hasLoneCR(content) {
+		return 0, 0, rangeUnsafe // yaml.v3 counts a lone CR as a line break, the offsets do not
 	}
 
 	offs := lineOffsets(content)
@@ -142,5 +149,76 @@ func pluginServiceRange(content []byte, pluginName, manifestName string) (start,
 	if end <= start || end > len(content) || !bytes.HasSuffix(content[:start], []byte("\n")) {
 		return 0, 0, rangeUnsafe
 	}
+	if !directKeysBindable(content[start:end], services.Content[pick].Line, svc) {
+		return 0, 0, rangeUnsafe
+	}
 	return start, end, rangeFound
+}
+
+// hasLoneCR reports a '\r' that is not part of a "\r\n" pair.
+func hasLoneCR(content []byte) bool {
+	for i, b := range content {
+		if b == '\r' && (i+1 >= len(content) || content[i+1] != '\n') {
+			return true
+		}
+	}
+	return false
+}
+
+// yamlKey returns the key node for key in mapping m, or nil.
+func yamlKey(m *yaml.Node, key string) *yaml.Node {
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			return m.Content[i]
+		}
+	}
+	return nil
+}
+
+var (
+	envLineRE  = regexp.MustCompile(`^[ \t]+environment:`)
+	netsLineRE = regexp.MustCompile(`^[ \t]+networks:`)
+)
+
+// directKeysBindable checks that the text rewrite will act on the service's
+// DIRECT environment (or, with none, its direct short networks list), not on a
+// nested key or a block scalar that merely has the same text. seg is the
+// service's byte range and firstLine the 1-based file line it starts at.
+// The regexes the rewrite uses take the first match in seg, so the first
+// matching line must be the direct key's line.
+func directKeysBindable(seg []byte, firstLine int, svc *yaml.Node) bool {
+	envKey, netKey := yamlKey(svc, "environment"), yamlKey(svc, "networks")
+	firstEnv, firstNets := -1, -1
+	for i, line := range bytes.Split(seg, []byte("\n")) {
+		if firstEnv < 0 && envLineRE.Match(line) {
+			firstEnv = firstLine + i
+		}
+		if firstNets < 0 && netsLineRE.Match(line) {
+			firstNets = firstLine + i
+		}
+	}
+	if envKey != nil {
+		return firstEnv == envKey.Line
+	}
+	if firstEnv >= 0 {
+		return false // a nested or block-scalar "environment:" and no direct one
+	}
+	if netKey == nil {
+		return firstNets < 0
+	}
+	// The short-list anchor must be the direct networks: key, in block list form.
+	if nets := yamlGet(svc, "networks"); nets.Kind != yaml.SequenceNode || nets.Style&yaml.FlowStyle != 0 {
+		return firstNets == netKey.Line && !hasLaterLine(seg, firstLine, netsLineRE, netKey.Line)
+	}
+	return firstNets == netKey.Line
+}
+
+// hasLaterLine reports a line of seg after the given file line that matches re.
+func hasLaterLine(seg []byte, firstLine int, re *regexp.Regexp, after int) bool {
+	for i, line := range bytes.Split(seg, []byte("\n")) {
+		if firstLine+i > after && re.Match(line) {
+			return true
+		}
+	}
+	return false
 }
