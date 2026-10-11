@@ -56,7 +56,7 @@ drop the old kid after the grace window (see the key rotation runbook in the web
 
 From v1.5 a reply from ping counts only if bytes ping signed name the requesting licence and a window:
 
-- `POST /license/validate` (main reply): the signed body carries `jwt`; its `sub` must be sha256 of the key asked about and `iat`/`exp` must contain now. A reply for another key, or without a jwt, is refused.
+- `POST /license/validate` (main reply): the signed body carries `jwt`; its `sub` must be sha256 of the key asked about, and the reply is trusted from `iat` (5 minutes of clock skew allowed) until `exp` or `iat` + 24 h, whichever comes first, so a jwt with a far `exp` cannot keep a replayed reply fresh. A reply for another key, or without a jwt, is refused.
 - `POST /license/validate?bundle=<name>`: the signed body must carry `bundle` (equal to the bundle asked about), `key_hash` (sha256 of the key), and `issued_at`/`expires_at` (unix seconds, at most 24 h apart, containing now), with an `X-NSelf-License-Sig` header over the exact body. Until ping signs this, v1.5 refuses every bundle reply.
 - Cache age is the older of the local `fetched_at` and the signed jwt `iat`, so re-stamping `fetched_at` cannot extend the offline grace window.
 
@@ -71,10 +71,13 @@ v1.4 behaviour is unchanged except that a present-but-invalid signature is refus
 ## Checking the code
 
 `bash scripts/mutation.sh internal/license` runs go-gremlins (pinned release, fetched from the
-module proxy into a temp dir) and exits 1 if any mutant survives.
+module proxy into a temp dir) over the whole package and exits 1 if any mutant survives. This
+full-package run is the licence mutation gate: `.github/workflows/license-mutation.yml` runs it
+nightly, on demand, and on every pull request that touches `internal/license/` or the script.
 
 Add `--only a.go,b.go` to judge just those files of the package: every other file is excluded from
-the run, and any surviving or uncovered mutant in a listed file exits 1. The licence verdict files
-are checked this way (`validate.go,validator.go,validator_validate.go,checker.go,cache.go,cache_entry.go,keys.go,keys_release.go,keys_devkeys.go,jwt.go`).
-Files tagged `nself_devkeys` run in a second pass with that tag. The few equivalent mutants (no test
-can tell them from the original) are listed with a reason in `MUTATION_EQUIVALENT` in the script.
+the run, and any surviving or uncovered mutant in a listed file exits 1. Use it for a quick check of
+the licence verdict files while working (`validate.go,validator.go,validator_validate.go,checker.go,cache.go,cache_entry.go,keys.go,keys_release.go,keys_devkeys.go,jwt.go,trust.go`);
+it does not replace the full-package gate. Files tagged `nself_devkeys` run in a second pass with
+that tag. A mutant `--only` can only report as not covered (a const initialiser has no coverage
+block) is listed with a reason in `MUTATION_EQUIVALENT` in the script.
