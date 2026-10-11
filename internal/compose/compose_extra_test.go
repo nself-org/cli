@@ -245,10 +245,15 @@ func TestBuildRedisService_WithPassword(t *testing.T) {
 	g := NewGenerator(cfg)
 	svc := g.buildRedisService()
 
-	if cmdStr, ok := svc.Command.(string); ok {
-		if !strings.Contains(cmdStr, "requirepass") {
-			t.Error("Redis with password should have requirepass in command")
-		}
+	cmd, ok := svc.Command.([]string)
+	if !ok || len(cmd) != 3 || cmd[0] != "sh" || !strings.Contains(cmd[2], `--requirepass "$$REDISCLI_AUTH"`) {
+		t.Errorf("Redis with password: command = %#v, want sh -c with requirepass from REDISCLI_AUTH", svc.Command)
+	}
+	if strings.Contains(strings.Join(cmd, " "), cfg.Redis.Password) {
+		t.Error("Redis password must not appear in the command (D-0282)")
+	}
+	if svc.Environment["REDISCLI_AUTH"] != "${REDIS_PASSWORD}" {
+		t.Errorf("REDISCLI_AUTH = %q, want ${REDIS_PASSWORD}", svc.Environment["REDISCLI_AUTH"])
 	}
 }
 

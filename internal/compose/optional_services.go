@@ -6,6 +6,11 @@ import (
 
 // buildRedisService returns the Redis cache/queue service configuration.
 // Command and health check are conditional on whether a password is set.
+// With a password, no argv carries it (D-0282): compose would interpolate a
+// ${REDIS_PASSWORD} argument into the container config, where docker inspect
+// shows it. The password reaches the container as REDISCLI_AUTH, which
+// redis-cli reads on its own (so the healthcheck needs no -a), and a shell
+// expands it for redis-server ($$ survives compose interpolation as $).
 func (g *Generator) buildRedisService() ServiceConfig {
 	rc := g.cfg.Redis
 
@@ -31,21 +36,19 @@ func (g *Generator) buildRedisService() ServiceConfig {
 	}
 
 	var command interface{}
-	var healthTest []string
+	var env map[string]string
 
 	if rc.Password != "" {
-		password := secretRef("REDIS_PASSWORD", rc.Password)
-		command = fmt.Sprintf(
-			"redis-server --appendonly yes --protected-mode yes --requirepass %s --maxclients %d",
-			password, poolSize,
-		)
-		healthTest = []string{"CMD", "redis-cli", "-a", password, "ping"}
+		env = map[string]string{"REDISCLI_AUTH": secretRef("REDIS_PASSWORD", rc.Password)}
+		command = []string{"sh", "-c", fmt.Sprintf(
+			`exec redis-server --appendonly yes --protected-mode yes --requirepass "$$REDISCLI_AUTH" --maxclients %d`,
+			poolSize,
+		)}
 	} else {
 		command = fmt.Sprintf(
 			"redis-server --appendonly yes --protected-mode no --maxclients %d",
 			poolSize,
 		)
-		healthTest = []string{"CMD", "redis-cli", "ping"}
 	}
 
 	return ServiceConfig{
@@ -54,11 +57,12 @@ func (g *Generator) buildRedisService() ServiceConfig {
 		Restart:       "unless-stopped",
 		User:          "999:999",
 		Networks:      []string{g.cfg.DockerNetwork},
+		Environment:   env,
 		Command:       command,
 		Volumes:       []string{"redis_data:/data"},
 		Ports:         []string{fmt.Sprintf("127.0.0.1:%d:6379", port)},
 		Healthcheck: &Healthcheck{
-			Test:     healthTest,
+			Test:     []string{"CMD", "redis-cli", "ping"},
 			Interval: "10s",
 			Timeout:  "5s",
 			Retries:  5,
