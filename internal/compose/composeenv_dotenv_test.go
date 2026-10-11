@@ -275,6 +275,11 @@ func TestQuoteComposeEnvValueRoundTrip(t *testing.T) {
 			// closing quote differently; such values must be double-quoted.
 			t.Errorf("%q: single-quoted form %q is not portable", v, q)
 		}
+		if !strings.ContainsFunc(v, unicode.IsSpace) && !strings.ContainsAny(v, "#$'\"`") && q != v {
+			// unquoted backslashes read verbatim on every compose; a quoted
+			// trailing backslash breaks the whole file before compose 2.20.
+			t.Errorf("%q: backslash-only value was quoted as %q", v, q)
+		}
 		line := "K=" + q + "\n"
 		got, err := parseComposeDotenv(line)
 		if err != nil {

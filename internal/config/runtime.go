@@ -57,8 +57,10 @@ func isSingleQuoted(v string) bool {
 // --env-file line so that compose's dotenv parser reads back exactly v
 // (D-0333). Unquoted compose dotenv values are trimmed, cut at " #",
 // expanded on "$" and opened as quoted strings by a leading quote, so any
-// value holding whitespace, '#', '$', a quote, a backtick or a backslash is
-// quoted:
+// value holding whitespace, '#', '$', a quote or a backtick is quoted. A
+// value whose only special character is a backslash stays unquoted: every
+// compose reads unquoted backslashes verbatim, while compose before 2.20
+// rejects the whole file when a quoted value ends in a backslash.
 //
 //   - Single quotes when v has no ' and no \: compose reads the bytes
 //     between them verbatim.
@@ -69,19 +71,21 @@ func isSingleQuoted(v string) bool {
 //     as an escape.
 //
 // Verified byte for byte with `docker compose config` on 2.20.3, 2.24.0,
-// 2.27.0 and 5.6.0. Unlike QuoteEnvValue it is not idempotent: a value that
-// is already wrapped in quotes is a value with quotes in it and is quoted
-// again.
+// 2.27.0 and 5.6.0. Older compose (2.17 and before) still cannot read a
+// quoted value with a backslash before its closing quote. Unlike
+// QuoteEnvValue it is not idempotent: a value that is already wrapped in
+// quotes is a value with quotes in it and is quoted again.
 //
 // Example:
 //
 //	QuoteComposeEnvValue("plain-value") → plain-value
 //	QuoteComposeEnvValue("$2a$10$abc")  → '$2a$10$abc'
 //	QuoteComposeEnvValue("it's $5")     → "it's $$5"
+//	QuoteComposeEnvValue(`a\b`)         → a\b
 //	QuoteComposeEnvValue(`a\b"c`)       → "a\\b\"c"
 func QuoteComposeEnvValue(v string) string {
-	if !strings.ContainsFunc(v, unicode.IsSpace) && !strings.ContainsAny(v, "#$'\"`\\") {
-		return v
+	if !strings.ContainsFunc(v, unicode.IsSpace) && !strings.ContainsAny(v, "#$'\"`") {
+		return v // unquoted values keep backslashes verbatim on every compose
 	}
 	if !strings.ContainsAny(v, `'\`) {
 		return "'" + v + "'"
