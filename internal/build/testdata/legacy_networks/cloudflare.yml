@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  cloudflare:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nself/nself-cloudflare:latest
+    container_name: nself-cloudflare
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3024:3024"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      CF_PLUGIN_PORT: 3024
+      CF_API_TOKEN: ${CF_API_TOKEN:-}
+      CF_ACCOUNT_ID: ${CF_ACCOUNT_ID:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3024/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - nself-network
+
+networks:
+  nself-network:
+    external: true

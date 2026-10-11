@@ -39,13 +39,13 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	}
 
 	// Tier resolution (OWNER-ACTIONS.md item 15): a slug served twice (a
-	// genuine free/pro pair) no longer silently first-matches to free.
-	// --tier is threaded down as an env var by the cmd layer, matching the
-	// existing NSELF_SKIP_SBOM_CHECK / NSELF_PLUGIN_LICENSE_KEY convention so
-	// every recursive installLocked call (dependencies) and every caller of
-	// plugin.Install (including bundle/installer.go, which never sets this
-	// var and so always gets the entitlement-based default) shares one path.
-	manifest, err := ResolvePlugin(ctx, reg, name, os.Getenv("NSELF_PLUGIN_INSTALL_TIER"), nil)
+	// genuine free/pro pair) never silently first-matches to free. --tier is
+	// threaded down as an env var by the cmd layer (like NSELF_SKIP_SBOM_CHECK)
+	// so every dependency install and every caller of plugin.Install shares
+	// one path. The tier of a copy already on disk (or parked as .prev by
+	// Update) is read here, per plugin, so install, update and the bundle loop
+	// all keep it (v1.5, see ResolvePluginTier) unless --tier says otherwise.
+	manifest, _, err := ResolvePluginTier(ctx, reg, name, os.Getenv("NSELF_PLUGIN_INSTALL_TIER"), installedTierForInstall(pluginDir, name), nil)
 	if err != nil {
 		return err
 	}
