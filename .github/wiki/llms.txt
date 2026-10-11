@@ -490,6 +490,7 @@ nself remove <name> [flags]
 
 Flags:
 
+- `--delete-data` (default false) — Delete plugin data (schema/tables); asks for confirmation, or pass --yes
 - `--dry-run` (default false) — Print the planned actions without removing
 - `--force` (default false) — Remove even if other plugins depend on this one
 - `--keep-data` (default false) — Preserve database data on remove
