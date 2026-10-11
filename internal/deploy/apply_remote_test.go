@@ -71,6 +71,8 @@ func classify(s string) string {
 		return "reload"
 	case strings.Contains(s, "inside()"):
 		return "layout"
+	case strings.Contains(s, "UNMARKED"):
+		return "foreign"
 	case strings.Contains(s, "deploy-shipped.txt"):
 		return "shipped"
 	case strings.Contains(s, "head -n 5"), strings.Contains(s, "find \"$d\" -type f"):
