@@ -5,7 +5,7 @@ package secrets
 // Purpose: load and save the encrypted SecretStore, set/get/list individual secrets, and rotate a secret's value, used by the commands built on top of secrets.go, split out for file size.
 // Inputs: an environment name and, for Set/Rotate, the secret key and value.
 // Outputs: an updated, re-encrypted SecretStore on disk.
-// Constraints: pure move from secrets.go (CLI-R12 Batch E); no behaviour change.
+// Constraints: moved from secrets.go (CLI-R12 Batch E); saveStore replaces the store atomically (temp file + rename).
 
 import (
 	"crypto/rand"
@@ -91,12 +91,28 @@ func saveStore(projectRoot, env string, store *SecretStore) error {
 		}
 		args = append(args, "-r", pubKey)
 	}
-	args = append(args, "-o", path)
+	// Encrypt to a private temp file in the same directory, then rename it over
+	// the store: a failed or interrupted age run never truncates the live
+	// ciphertext, and the rename replaces the directory entry instead of writing
+	// through a hardlink or a swapped-in symlink (P7-TRUST-03 Codex pre-merge).
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("creating temporary secrets file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer func() { _ = os.Remove(tmpPath) }()
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("creating temporary secrets file: %w", err)
+	}
+	args = append(args, "-o", tmpPath)
 
 	cmd := exec.Command("age", args...)
 	cmd.Stdin = strings.NewReader(string(data))
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("encrypting secrets: %w\n%s", err, output)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("replacing secrets file: %w", err)
 	}
 	return nil
 }

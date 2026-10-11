@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -268,6 +269,9 @@ func TestRecipientsAuditBeforeSave(t *testing.T) {
 	}
 	req := RecipientsRequest{ProjectRoot: root, File: "ci", Action: "add", Recipient: node}
 	for _, failSink := range []bool{true, false} {
+		if !failSink && runtime.GOOS == "windows" {
+			continue // a read-only directory does not refuse file creation on Windows
+		}
 		calls := 0
 		rows, changed, err := Recipients(req, func(event string, fields map[string]string) error {
 			calls++
@@ -278,11 +282,11 @@ func TestRecipientsAuditBeforeSave(t *testing.T) {
 			if failSink {
 				return errors.New(trustFakeValue)
 			}
-			// Deny the subsequent age output write after the audit succeeds.
+			// Deny the subsequent temp-file create after the audit succeeds.
 			if os.Geteuid() == 0 {
 				t.Fatal("write refusal proof must run as non-root")
 			}
-			return os.Chmod(path, 0400)
+			return os.Chmod(filepath.Dir(path), 0500)
 		})
 		code := "E543"
 		if failSink {
@@ -296,7 +300,7 @@ func TestRecipientsAuditBeforeSave(t *testing.T) {
 		if readErr != nil || calls != 1 || rows != nil || changed || !reflect.DeepEqual(before, after) {
 			t.Fatal("failed audit or save altered ciphertext", readErr)
 		}
-		if err := os.Chmod(path, 0600); err != nil {
+		if err := os.Chmod(filepath.Dir(path), 0700); err != nil {
 			t.Fatal(err)
 		}
 	}
