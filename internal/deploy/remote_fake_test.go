@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +35,9 @@ type fakeRemote struct {
 
 func newFakeRemote(t *testing.T) *fakeRemote {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake host runs remote scripts with sh against a local temp dir; remote paths are POSIX")
+	}
 	return &fakeRemote{t: t, home: t.TempDir(), fail: map[string]error{}}
 }
 

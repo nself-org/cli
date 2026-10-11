@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -40,6 +41,10 @@ func hashProject(t *testing.T, root, skipPrefix string) string {
 		}
 		info, _ := d.Info()
 		line := rel + " " + info.Mode().String() + " " + info.ModTime().String()
+		if runtime.GOOS == "windows" && d.IsDir() {
+			// NTFS updates a directory's time lazily after its children change: not a signal.
+			line = rel + " " + info.Mode().String()
+		}
 		if d.Type().IsRegular() {
 			b, _ := os.ReadFile(p)
 			sum := sha256.Sum256(b)

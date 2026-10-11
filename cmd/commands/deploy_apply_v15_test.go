@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -671,6 +672,9 @@ func TestRollbackInterruptHelper(t *testing.T) {
 // dies from it and reports nothing, which fails the caller.
 func runSignalChild(t *testing.T, helper string) string {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("real signals to a child process: unix only")
+	}
 	c := exec.Command(os.Args[0], "-test.run=^"+helper+"$", "-test.count=1")
 	c.Env = append(os.Environ(), rollbackSignalEnv+"=1")
 	out, err := c.StdoutPipe()
