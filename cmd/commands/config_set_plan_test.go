@@ -264,7 +264,7 @@ func TestConfigSetRestoresEnvOnInjectedFailure(t *testing.T) {
 	// calls Rollback the way Apply does (TestApplyRollback* in reconcile).
 	writeThenFail := func(_ context.Context, _ reconcile.Request, opt reconcile.ApplyOptions) (*reconcile.Plan, error) {
 		if err := opt.BeforeWrite(); err != nil {
-			return nil, err
+			return nil, errors.Join(err, opt.Rollback()) // Apply rolls back a failed BeforeWrite too
 		}
 		if err := opt.Rollback(); err != nil {
 			return nil, errors.Join(injected, err)
@@ -303,6 +303,7 @@ func TestConfigSetRestoresEnvOnInjectedFailure(t *testing.T) {
 			if err := r.apply(); !errors.Is(err, injected) {
 				t.Fatalf("apply error = %v, want the injected one", err)
 			}
+
 			got, err := os.ReadFile(path)
 			switch {
 			case tc.seed == nil && !os.IsNotExist(err):
@@ -441,6 +442,35 @@ func TestConfigSetRestoreDanglingLink(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "outside", "secrets.env")); !os.IsNotExist(err) {
 		t.Fatalf("the file the write created through the link must be removed: %v", err)
+	}
+}
+
+// TestConfigSetNoRestoreWhenNothingWritten: a BeforeWrite that fails before
+// touching the file (the env path is unreadable) rolls back silently: no
+// "restored" claim, nothing removed.
+func TestConfigSetNoRestoreWhenNothingWritten(t *testing.T) {
+	compattest.Set(t, true)
+	old := configSetApply
+	t.Cleanup(func() { configSetApply = old })
+	configSetApply = func(_ context.Context, _ reconcile.Request, opt reconcile.ApplyOptions) (*reconcile.Plan, error) {
+		err := opt.BeforeWrite()
+		return nil, errors.Join(err, opt.Rollback())
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env.secrets")
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := configSetTestCmd()
+	err := configSetRun{cmd: cmd, projectDir: dir, envFile: path, key: "KEY", value: "v"}.apply()
+	if err == nil || !strings.Contains(err.Error(), "reading") {
+		t.Fatalf("err = %v, want the read failure", err)
+	}
+	if stderr := cmd.ErrOrStderr().(*strings.Builder).String(); strings.Contains(stderr, "restored") {
+		t.Fatalf("nothing was written, yet stderr claims a restore: %q", stderr)
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		t.Fatalf("the path was touched: %v %v", info, err)
 	}
 }
 
