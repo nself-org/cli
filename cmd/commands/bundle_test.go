@@ -59,6 +59,20 @@ func TestMain(m *testing.M) {
 	// make a real network install; this is the package-wide guard against it.
 	_ = os.Setenv("AI_AUTO_INSTALL", "false")
 
+	// No test in this package may reach GitHub's release endpoints. The error
+	// harness runs `nself update` and `nself upgrade` for real; whenever the
+	// local version differs from the published latest (every release-bump
+	// branch, before the release exists) they call selfUpdate, which downloads
+	// the published binary and atomically replaces os.Executable(), that is
+	// the running test binary. Every later `exec.Command(os.Args[0], ...)`
+	// helper child then runs the real nself and prints root help. A stub that
+	// answers 404 makes those commands fail fast, whatever version.Version is.
+	releaseStub := httptest.NewServer(http.NotFoundHandler())
+	defer releaseStub.Close()
+	githubLatestReleaseURL = releaseStub.URL + "/releases/latest"
+	githubReleaseByTagURL = releaseStub.URL + "/releases/tags/%s"
+	githubDownloadBaseURL = releaseStub.URL + "/releases/download"
+
 	os.Exit(m.Run())
 }
 
