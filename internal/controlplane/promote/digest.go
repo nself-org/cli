@@ -91,7 +91,7 @@ func CaptureSource(ctx context.Context, run Runner, services []Image, lookup arc
 		if err != nil {
 			return nil, err
 		}
-		if platform := declared[image.Service].Platform; platform != "" && platform != identity.Platform {
+		if platform := normalizePlatform(declared[image.Service].Platform); platform != "" && platform != identity.Platform {
 			return nil, errs.Newf("E490", "release drift: service %s runs %s but source compose selects %s", image.Service, identity.Platform, platform)
 		}
 		out = append(out, identity)
@@ -118,12 +118,13 @@ func inspectSource(ctx context.Context, run Runner, lookup archguard.Lookup, ser
 }
 
 func sourcePlatformDigest(ctx context.Context, ref, inspected, platform string, lookup archguard.Lookup) (string, error) {
+	platform = normalizePlatform(platform)
 	if err := compose.LockError(); err != nil {
 		return "", err
 	}
 	for _, locked := range compose.LockedImages() {
 		if ref == locked.String() || ref == locked.LegacyRef {
-			lockedPlatform := locked.Platforms[platform]
+			lockedPlatform := platformDigest(locked.Platforms, platform)
 			if inspected == locked.IndexDigest && lockedPlatform != "" {
 				return lockedPlatform, nil
 			}
@@ -141,10 +142,11 @@ func sourcePlatformDigest(ctx context.Context, ref, inspected, platform string, 
 	if err != nil {
 		return "", err
 	}
-	if !manifestDigestRE.MatchString(platforms[platform]) {
+	digest := platformDigest(platforms, platform)
+	if !manifestDigestRE.MatchString(digest) {
 		return "", fmt.Errorf("%s has no %s manifest", manifestRef, platform)
 	}
-	return platforms[platform], nil
+	return digest, nil
 }
 
 // CompareDigests proves that source and target resolve to equal platform manifests.
@@ -185,8 +187,9 @@ func CompareDigests(ctx context.Context, source []SourceImage, target []Image, t
 		if platform == "" {
 			platform = "linux/" + targetArch
 		}
+		platform = normalizePlatform(platform)
 		targetDigest, err := targetPlatformDigest(ctx, image.Ref, platform, lookup)
-		if src.Platform != "" && src.Platform != platform {
+		if src.Platform != "" && normalizePlatform(src.Platform) != platform {
 			err = fmt.Errorf("source runs %s; target selects %s", src.Platform, platform)
 		}
 		row := DigestRow{Service: image.Service, Source: src.Digest, Target: targetDigest, Status: "equal"}
@@ -221,6 +224,7 @@ func CompareDigests(ctx context.Context, source []SourceImage, target []Image, t
 }
 
 func targetPlatformDigest(ctx context.Context, ref, platform string, lookup archguard.Lookup) (string, error) {
+	platform = normalizePlatform(platform)
 	if err := compose.LockError(); err != nil {
 		return "", err
 	}
@@ -228,7 +232,7 @@ func targetPlatformDigest(ctx context.Context, ref, platform string, lookup arch
 		_, pinnedDigest, pinned := strings.Cut(ref, "@")
 		immutableLocked := ref == locked.String() || (pinned && pinnedDigest == locked.IndexDigest && sameRepository(imageRepository(ref), locked.Repository))
 		if immutableLocked {
-			if digest := locked.Platforms[platform]; digest != "" {
+			if digest := platformDigest(locked.Platforms, platform); digest != "" {
 				return digest, nil
 			}
 			return "", fmt.Errorf("%s has no %s manifest", ref, platform)
@@ -238,8 +242,9 @@ func targetPlatformDigest(ctx context.Context, ref, platform string, lookup arch
 	if err != nil {
 		return "", err
 	}
-	if !manifestDigestRE.MatchString(platforms[platform]) {
+	digest := platformDigest(platforms, platform)
+	if !manifestDigestRE.MatchString(digest) {
 		return "", fmt.Errorf("%s has no %s manifest", ref, platform)
 	}
-	return platforms[platform], nil
+	return digest, nil
 }

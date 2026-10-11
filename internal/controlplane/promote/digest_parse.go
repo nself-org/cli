@@ -14,7 +14,7 @@ import (
 
 var (
 	manifestDigestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-	linuxPlatformRE  = regexp.MustCompile(`^linux/(amd64|arm64)$`)
+	linuxPlatformRE  = regexp.MustCompile(`^linux/(amd64|arm64|arm)(/v[0-9]+)?$`)
 )
 
 func parseComposeImages(raw []byte) ([]composeImage, error) {
@@ -51,17 +51,46 @@ func parseInspect(raw []byte, ref string) (string, string, error) {
 	if len(repoDigests) == 0 {
 		return "", "", fmt.Errorf("image %s has no repo digest", ref)
 	}
-	if !linuxPlatformRE.MatchString(parts[1]) {
+	platform := normalizePlatform(parts[1])
+	if !linuxPlatformRE.MatchString(platform) {
 		return "", "", fmt.Errorf("unsupported image platform %q", parts[1])
 	}
 	repository := imageRepository(ref)
 	for _, candidate := range repoDigests {
 		repo, digest, ok := strings.Cut(candidate, "@")
 		if ok && sameRepository(repo, repository) && manifestDigestRE.MatchString(digest) {
-			return digest, parts[1], nil
+			return digest, platform, nil
 		}
 	}
 	return "", "", fmt.Errorf("image %s has no matching repo digest", ref)
+}
+
+// Purpose: equate arm64's default variant while preserving other platform identities.
+// Inputs: a Docker or Compose platform selector.
+// Outputs: the canonical selector used by capture, comparison and manifest lookup.
+// Constraints: only linux/arm64/v8 aliases linux/arm64; other variants remain distinct.
+func normalizePlatform(platform string) string {
+	if platform == "linux/arm64/v8" {
+		return "linux/arm64"
+	}
+	return platform
+}
+
+// Purpose: select the same platform identity from registry and image-lock maps.
+// Inputs: manifest digests keyed by platform and the requested selector.
+// Outputs: the matching manifest digest, or an empty string when absent.
+// Constraints: canonical keys take precedence over equivalent default variants.
+func platformDigest(platforms map[string]string, platform string) string {
+	platform = normalizePlatform(platform)
+	if digest := platforms[platform]; digest != "" {
+		return digest
+	}
+	for candidate, digest := range platforms {
+		if digest != "" && normalizePlatform(candidate) == platform {
+			return digest
+		}
+	}
+	return ""
 }
 
 func sameRepository(left, right string) bool {
