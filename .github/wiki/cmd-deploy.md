@@ -450,25 +450,53 @@ written, a service with a `build:` context that is not already a directory on th
 deploy with `E485` (`build context not shippable`) naming the services. Publish an image for the
 service, or place its context on the host.
 
-If any step from the sync to the preview fails, no container has been touched yet, so the
-pre-deploy tar is restored in place, the files the deploy created (the `.absent` list) are removed
-and the host is left as it was; the restore runs even if you press Ctrl-C. A failure after the first
-`up` keeps the new files and the error names the tar and `nself deploy rollback <target>`. A refused
-deploy that never reached the sync leaves `.nself/state/deploy.json` as it was.
+**Limits.**
+
+- Generated `nginx/conf.d/*.conf` files are never shipped: the artifact set must not touch `conf.d*/`,
+  so a fresh host lacks the generated `default.conf` and `api-docs.conf` until you add them by hand.
+- A project fronted by an external nginx (`NGINX_FRONTED_BY`) cannot be built in the scratch dir: the
+  v1.5 deploy fails closed instead of guessing.
+- A deploy refused at `E403` (unconfirmed stateful recreate) is restored, but the images the pull
+  fetched stay on the host.
+- A symlinked directory on the host (for example `nginx/` pointing at a shared dir) is written
+  through, never replaced. A rollback cannot delete a file the deploy created inside one: it refuses
+  and names the path.
+
+If any step from the sync to the preview fails, no container has been touched yet. The files this
+deploy shipped are put back from the pre-deploy tar in place, the ones it created are removed, and
+the host is left as it was. Which paths those are comes from this process (and, for a rollback, from
+`deploy.json`), never from files read back from the host; the host's own `.env` and anything the
+deploy did not ship are never restored or removed. Directories that already exist keep their mode
+and owner. A failure after the first `up` keeps the new files and the error names the tar and
+`nself deploy rollback <target>`. A deploy that was refused or restored cleanly leaves
+`.nself/state/deploy.json` byte for byte as it was.
+
+**Ctrl-C.** SIGINT and SIGTERM during a v1.5 apply or rollback cancel the step in flight (ssh and
+rsync run in their own process group, so the terminal does not kill them behind the tool's back).
+Before the first `up`, the tar is then restored (on a fresh context, at most 5 minutes) and the
+deploy lock is released; after the first `up` the new files stay and the error names the rollback.
+This is tested with a real SIGINT sent to the apply. SIGKILL, a lost connection or a powered-off
+laptop are not covered: the lock stays, and the error for the next deploy says how to remove it.
 
 All ssh and rsync commands use the strict host-key policy; an unknown key is `E487`.
 
 ### Rollback in v1.5 mode
 
 `nself deploy rollback <target>` reads `.nself/state/deploy.json`. When it holds a `pre_deploy_tar`
-for the target, it restores the tar on `backup_host` in place (extract to a temp dir under
-`.nself/backups/`, `rsync -ac` into `<remote_path>`, no directory is moved, so a bind-mounted
-`nginx/` keeps its inode; the files the deploy created are removed, nothing else), then
-runs `nself backup restore <backup_id> --yes` on `backup_host` when a verified backup was taken (tier
-prod), then re-applies the restored compose set with the same pull, per-service `up`, health gate and
-nginx reload. It does this on every host in `pre_deploy_tars`. The database restore returns the data
-to the moment of the backup: writes made since then, while the new containers ran, are lost. A
-record that was already rolled back is refused, so the database is never restored twice. Without such
+for the target, it restores the tar on every host in `pre_deploy_tars` in place: extract to a temp
+dir under `.nself/backups/`, `rsync -ac` back only the files the record lists as shipped (no
+directory is moved or re-moded, so a bind-mounted `nginx/` keeps its inode), and remove only the
+listed files that did not exist before. On `backup_host` it then runs `nself backup restore
+<backup_id> --yes` when a verified backup was taken (tier prod), and re-applies the restored compose
+set with the same pull, per-service `up`, health gate, `nginx -t`, nginx reload and hasura metadata
+apply. The database restore returns the data to the moment of the backup: writes made since then,
+while the new containers ran, are lost.
+
+The database is restored at most once per record: `db_restored_at` is saved right after
+`nself backup restore` succeeds, before the re-apply, so a retry of a rollback that failed later
+(on any host) skips it and redoes only files and services. If that command itself fails midway the
+marker is not set and a retry runs it again. A record already rolled back is refused. The record's
+`success` covers every server of the env, with each server's outcome in `host_outcomes`. Without such
 a record the older promote rollback below runs.
 
 ## Rollback
