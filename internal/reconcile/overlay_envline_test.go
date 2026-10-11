@@ -144,3 +144,20 @@ func TestEnvFileWithLineKeepsDependentValues(t *testing.T) {
 		t.Fatalf("got %v", m)
 	}
 }
+
+// TestEnvFileWithLineStatementBoundaries: when godotenv's statements do not
+// match the line splitter's (a second quoted value starts on the same line as
+// the first and runs across lines), the rewrite errors and no text changes.
+func TestEnvFileWithLineStatementBoundaries(t *testing.T) {
+	old := "A=\"keep\" OTHER=\"prefix\nKEY=old\nsuffix\"\nKEY=old\n"
+	if _, err := godotenv.UnmarshalBytes([]byte(old)); err != nil {
+		t.Fatalf("fixture does not load: %v", err)
+	}
+	out, _, err := EnvFileWithLine([]byte(old), true, "KEY", "new-secret123")
+	if err == nil {
+		t.Fatalf("expected an error, got output %q", out)
+	}
+	if out != nil || strings.Contains(err.Error(), "new-secret123") || strings.Contains(err.Error(), "prefix") {
+		t.Errorf("out=%q err=%v", out, err)
+	}
+}

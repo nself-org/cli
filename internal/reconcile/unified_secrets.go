@@ -40,7 +40,22 @@ var (
 )
 
 // secretScan collects the secret values hidden during one pass.
-type secretScan struct{ vals []string }
+type secretScan struct {
+	vals    []string
+	literal bool // the open scope is a block scalar: its lines are literal text
+}
+
+// commentStart matches the start of a YAML comment: a # at the start of the
+// text or after a space or tab.
+var commentStart = regexp.MustCompile(`(^|[ \t])#`)
+
+// stripComment cuts a trailing whitespace-delimited comment from plain text.
+func stripComment(v string) string {
+	if loc := commentStart.FindStringIndex(v); loc != nil {
+		v = v[:loc[0]]
+	}
+	return strings.TrimSpace(v)
+}
 
 // note records a hidden value: quotes and spaces trimmed, at least
 // minSecretValueLen long, not a boolean or null literal, not a redaction.
@@ -55,10 +70,8 @@ func (sc *secretScan) note(v string) {
 	}
 }
 
-// scalarText returns the text of a YAML scalar value for collection: no
-// leading &anchor or !tag, no block indicator, quotes removed, and for a plain
-// value no trailing " # comment". An unclosed quote yields the rest of v.
-func scalarText(v string) string {
+// stripAnnotations removes leading &anchor and !tag tokens from a YAML value.
+func stripAnnotations(v string) string {
 	v = strings.TrimSpace(v)
 	for v != "" && (v[0] == '&' || v[0] == '!') {
 		i := strings.IndexAny(v, " \t")
@@ -67,6 +80,14 @@ func scalarText(v string) string {
 		}
 		v = strings.TrimSpace(v[i:])
 	}
+	return v
+}
+
+// scalarText returns the text of a YAML scalar value for collection: no
+// leading &anchor or !tag, no block indicator, quotes removed, and for a plain
+// value no trailing " # comment". An unclosed quote yields the rest of v.
+func scalarText(v string) string {
+	v = stripAnnotations(v)
 	if v == "" || blockScalar.MatchString(v) {
 		return ""
 	}
@@ -74,10 +95,7 @@ func scalarText(v string) string {
 		end, _ := closeAt(v, 1, v[0])
 		return v[1:end]
 	}
-	if i := strings.Index(v, " #"); i >= 0 {
-		v = v[:i]
-	}
-	return strings.TrimSpace(v)
+	return stripComment(v)
 }
 
 // redactSecretLines renders the lines of one non-env artifact so no secret
@@ -119,14 +137,20 @@ func scanSecretLines(lines []string) ([]string, []string) {
 		skip := t == "" || strings.HasPrefix(t, "#")
 		switch {
 		case quote != 0:
-			if _, q := closeAt(line, 0, quote); q == 0 {
+			if end, q := closeAt(line, 0, quote); q == 0 {
 				quote = 0
+				sc.note(line[:end]) // text up to the closing quote; a comment after it is not part of the value
+			} else {
+				sc.note(t)
 			}
-			sc.note(t)
 			out[i] = ind + redactedValue + nl
 			continue
 		case block >= 0 && (t == "" || len(ind) > block):
-			sc.note(strings.TrimPrefix(t, "- "))
+			if text := strings.TrimPrefix(t, "- "); sc.literal {
+				sc.note(text)
+			} else {
+				sc.note(stripComment(text))
+			}
 			if t == "" {
 				out[i] = line + nl // a blank line stays blank
 			} else {
@@ -140,7 +164,7 @@ func scanSecretLines(lines []string) ([]string, []string) {
 				dash = "- "
 				t = strings.TrimPrefix(t, "- ")
 			}
-			sc.note(t)
+			sc.note(stripComment(t))
 			out[i] = ind + dash + redactedValue + nl
 			continue
 		}
@@ -175,6 +199,7 @@ func (sc *secretScan) line(line string) (text string, block int, quote byte, fla
 // a value that continues on deeper lines is hidden too (safe side).
 func (sc *secretScan) secretEntry(line string, m []string) (string, int, byte, bool) {
 	col := len(m[1]) + len(m[2])
+	sc.literal = false
 	head := m[1] + m[2] + m[3] + m[4] + m[5]
 	v := strings.TrimSpace(m[6])
 	switch {
@@ -182,6 +207,7 @@ func (sc *secretScan) secretEntry(line string, m []string) (string, int, byte, b
 		return line, col, 0, false // nothing to hide on this line
 	case v[0] == '&' || v[0] == '!' || blockScalar.MatchString(v):
 		sc.note(scalarText(v))
+		sc.literal = blockScalar.MatchString(strings.TrimSpace(stripAnnotations(v)))
 		return head + ": " + redactedValue, col, 0, false
 	}
 	var open byte

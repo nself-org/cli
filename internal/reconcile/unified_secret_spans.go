@@ -211,11 +211,8 @@ var directiveToken = regexp.MustCompile(`\S+`)
 // every argument up to the ";" becomes one [REDACTED] and each argument is
 // collected for repeat masking. Other lines come back unchanged.
 func (sc *secretScan) directive(line string) string {
-	semi := strings.LastIndex(line, ";")
-	if semi < 0 {
-		return line
-	}
-	if rest := strings.TrimSpace(line[semi+1:]); rest != "" && rest[0] != '#' {
+	semi, ok := directiveEnd(line)
+	if !ok {
 		return line
 	}
 	locs := directiveToken.FindAllStringIndex(line[:semi], -1)
@@ -230,4 +227,31 @@ func (sc *secretScan) directive(line string) string {
 		return line[:loc[1]] + " " + redactedValue + line[semi:]
 	}
 	return line
+}
+
+// directiveEnd finds the ";" that ends a directive line: the first ";" outside
+// quotes, with nothing but an optional # comment after it (a # outside quotes,
+// at the line start or after whitespace, starts the comment, and a ";" inside
+// the comment does not count). ok is false for any other line.
+func directiveEnd(line string) (semi int, ok bool) {
+	var q byte
+	semi = -1
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case q != 0:
+			if c == '\\' && q == '"' {
+				i++
+			} else if c == q {
+				q = 0
+			}
+		case c == '"' || c == '\'':
+			q = c
+		case c == ';' && semi < 0:
+			semi = i
+		case c == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t'):
+			return semi, semi >= 0 && strings.TrimSpace(line[semi+1:i]) == ""
+		}
+	}
+	return semi, semi >= 0 && strings.TrimSpace(line[semi+1:]) == ""
 }

@@ -45,11 +45,32 @@ func EnvFileWithLine(old []byte, exists bool, key, value string) (out []byte, fo
 	if err != nil {
 		return nil, false, err
 	}
+	if _, perr := godotenv.UnmarshalBytes(old); perr == nil {
+		if err := proveStatements(stmts, key); err != nil {
+			return nil, false, err
+		}
+	}
 	out, found = rewriteEnvStatements(stmts, key, newLine)
 	if err := checkEnvRewrite(old, out, stmts, key, value); err != nil {
 		return nil, false, err
 	}
 	return out, found, nil
+}
+
+// proveStatements checks the statement boundaries splitEnvStatements chose:
+// each statement, parsed alone, must load and yield exactly its own key (no
+// key for a blank or comment statement). If every statement parses alone into
+// its own key, godotenv's sequential parse of the whole file sees the same
+// boundaries. The error names key only.
+func proveStatements(stmts []envStatement, key string) error {
+	for _, st := range stmts {
+		m, err := godotenv.UnmarshalBytes([]byte(strings.Join(st.lines, "\n") + "\n"))
+		_, has := m[st.key]
+		if err != nil || (st.key == "" && len(m) != 0) || (st.key != "" && (len(m) != 1 || !has)) {
+			return fmt.Errorf("cannot set %s without breaking the env file; edit it by hand", key)
+		}
+	}
+	return nil
 }
 
 // rewriteEnvStatements replaces every statement whose key is key with newLine

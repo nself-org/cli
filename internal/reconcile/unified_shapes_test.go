@@ -257,3 +257,36 @@ func TestUnifiedDirectives(t *testing.T) {
 			want:   []string{"-  ssl_certificate_key /etc/x.key;\n", "+  proxy_pass http://x:9090;\n", "  listen 443 ssl;\n"}},
 	})
 }
+
+// TestUnifiedDirectiveCommentAndQuotes: the directive ends at the first ";"
+// outside quotes, and a ";" inside a trailing comment does not move it.
+func TestUnifiedDirectiveCommentAndQuotes(t *testing.T) {
+	runShapes(t, []shapeCase{{
+		name: "comment holds a semicolon", path: "nginx/sites/a.conf",
+		before:  "  proxy_set_header X-Plugin-Secret fakeheader123; # rotate; later\n  add_header X-Id fakeheader123;\n  add_header X-Note \"a;b\";\n",
+		after:   "  proxy_set_header X-Plugin-Secret fakeheader124; # rotate; now\n  add_header X-Id fakeheader123;\n  add_header X-Note \"a;b\";\n",
+		secrets: []string{"fakeheader123", "fakeheader124"},
+		want:    []string{"X-Plugin-Secret [REDACTED]; # rotate; later\n", "add_header X-Id [REDACTED];", "add_header X-Note \"a;b\";"},
+	}})
+}
+
+// TestUnifiedCollectsAroundComments: comments are not part of the collected
+// value (space or tab before #), a quoted continuation line contributes only
+// the text up to its closing quote, and block scalar content stays literal.
+func TestUnifiedCollectsAroundComments(t *testing.T) {
+	cases := []struct{ name, lines, echo string }{
+		{"quoted continuation then comment", "PASSWORD: \"quotedfirst\n  continuationsecret\" # note\n", "continuationsecret"},
+		{"plain continuation then comment", "PASSWORD: firstpart\n  continuationsecret # note\n", "continuationsecret"},
+		{"tab before comment", "PASSWORD: commentsecret\t# note\n", "commentsecret"},
+		{"block scalar stays literal", "PASSWORD: |\n  literalsecret # kept\n", "literalsecret # kept"},
+	}
+	var tests []shapeCase
+	for _, c := range cases {
+		tests = append(tests, shapeCase{
+			name: c.name, secrets: []string{c.echo},
+			before: c.lines + "command: echo old\n", after: c.lines + "command: echo " + c.echo + "\n",
+			want: []string{"command: echo [REDACTED]\n"},
+		})
+	}
+	runShapes(t, tests)
+}
