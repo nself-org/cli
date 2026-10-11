@@ -69,6 +69,7 @@ func take(cmd *cobra.Command, entry EntryFunc) (context.Context, func(), error) 
 		return ctx, none, nil
 	}
 	side, out := Effective(cmd, e)
+	// --quiet is per command (no global flag): read it where the command has it.
 	quiet := false
 	if f := cmd.Flags().Lookup("quiet"); f != nil && f.Value.Type() == "bool" {
 		quiet = f.Value.String() == "true"

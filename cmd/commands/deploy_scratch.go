@@ -28,6 +28,7 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/plugin"
+	"github.com/nself-org/cli/internal/ui"
 	"golang.org/x/term"
 )
 
@@ -259,9 +260,14 @@ func confirmFrom(ctx context.Context, in io.Reader, out io.Writer, msg string) b
 }
 
 // previousShipped is the union of the paths the target's last recorded deploy
-// shipped or pruned, on every host: what a prune may remove.
+// shipped or pruned, on every host: what a prune may remove. An unreadable
+// record is reported and yields nothing, so the prune removes less, never more.
 func previousShipped(workdir, target string) []string {
-	st, _ := deploy.LoadDeployState(workdir)
+	st, err := deploy.LoadDeployState(workdir)
+	if err != nil {
+		ui.Warn(fmt.Sprintf("deploy: %v; pruning only what this deploy knows", err))
+		return nil
+	}
 	var out []string
 	if st.Target == target {
 		for _, paths := range st.PreDeployChanged {

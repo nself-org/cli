@@ -136,7 +136,15 @@ func TestOpLockPidAlive(t *testing.T) {
 		t.Fatal(err)
 	}
 	if pidAlive(cmd.Process.Pid) {
-		t.Errorf("reaped child %d reported alive", cmd.Process.Pid)
+		// Either pidAlive is wrong or the kernel already reused the pid; tell
+		// them apart by a second, unrelated reaped child.
+		again := exec.Command(os.Args[0], "-test.run=^$")
+		if err := again.Run(); err != nil {
+			t.Fatal(err)
+		}
+		if pidAlive(again.Process.Pid) {
+			t.Errorf("reaped children %d and %d reported alive", cmd.Process.Pid, again.Process.Pid)
+		}
 	}
 }
 

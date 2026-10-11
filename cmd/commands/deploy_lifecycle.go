@@ -210,14 +210,15 @@ func runDeployPromote(cmd *cobra.Command, args []string) error {
 }
 
 // rollbackRemoteV15 undoes the last v1.5 remote apply recorded for target on every
-// host that kept a pre-deploy tar, restoring the verified database backup on
-// backup_host only. It reports handled=false when there is no such record, so the
-// caller keeps the old rollback. A record already rolled back is refused: a second
-// rollback would restore the database again.
+// host that kept a pre-deploy tar, restoring the database backup on backup_host
+// only. handled=false (no such record) keeps the old rollback. A record already
+// rolled back is refused (the database would be restored twice).
 func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error) {
-	st, _ := deploy.LoadDeployState(workdir)
+	st, err := deploy.LoadDeployState(workdir)
+	if err != nil { // unreadable or corrupt: never fall back blind (D-0144)
+		return true, fmt.Errorf("deploy rollback: %w; nothing was changed (fix or remove %s, then run it again)", err, deploy.DeployStateFile)
+	}
 	tars := st.PreDeployTars
-
 	if target == "local" || len(tars) == 0 || st.Target != target {
 		return false, nil
 	}
