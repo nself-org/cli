@@ -84,7 +84,7 @@ func ScheduleStream(cfg *config.Config, opts ScheduleOptions) error {
 	// A line break would add a unit directive; checked before % is doubled.
 	rawEnvFile := envFile
 	envFile = strings.ReplaceAll(envFile, "%", "%%")
-	for _, v := range append([]string{to, opts.HeartbeatTo, rawEnvFile, projectDir, binaryPath}, opts.Recipients...) {
+	for _, v := range append([]string{opts.Cron, to, opts.HeartbeatTo, rawEnvFile, projectDir, binaryPath}, opts.Recipients...) {
 		if strings.ContainsAny(v, "\n\r") {
 			return fmt.Errorf("a schedule value contains a line break")
 		}

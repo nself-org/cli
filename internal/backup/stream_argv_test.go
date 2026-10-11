@@ -9,6 +9,7 @@ package backup
 
 import (
 	"context"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -139,6 +140,8 @@ func TestPgDumpCmd(t *testing.T) {
 		{"url with password", "postgresql://u:" + argvTestPassword + "@localhost:5432/db?sslmode=disable", false, argvTestPassword, true},
 		{"url without password", "postgresql://u@localhost:5432/db?sslmode=disable", false, "", false},
 		{"password in query param", "postgresql://u@localhost:5432/db?password=" + argvTestPassword, true, "", false},
+		{"password in query param after sslmode, semicolon form", "postgresql://u@localhost:5432/db?sslmode=disable&password=" + argvTestPassword + ";x", true, "", false},
+		{"broken escape in the query", "postgresql://u@localhost:5432/db?sslmode=%zz&password=" + argvTestPassword, true, "", false},
 		{"keyword dsn", "host=localhost user=u password=" + argvTestPassword + " dbname=db", true, "", false},
 	}
 	for _, tc := range cases {
@@ -212,5 +215,32 @@ func TestPgDumpCmdHostilePasswords(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRunPgDumpRedactsPasswordFromStderr: a failing pg_dump that echoes its
+// PGPASSWORD on stderr must not carry it into the returned error, and the
+// error must still say what failed.
+func TestRunPgDumpRedactsPasswordFromStderr(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell shims need /bin/sh")
+	}
+	dir := t.TempDir()
+	shim := "#!/bin/sh\necho \"connection failed for $PGPASSWORD\" >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "pg_dump"), []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+":/usr/bin:/bin")
+	cfg := minimalConfig()
+	cfg.Postgres.Password = argvTestPassword
+	err := runPgDump(context.Background(), cfg, buildPgURL(cfg), io.Discard)
+	if err == nil {
+		t.Fatal("a failing pg_dump must return an error")
+	}
+	if strings.Contains(err.Error(), argvTestPassword) {
+		t.Errorf("error leaks the password: %v", err)
+	}
+	if !strings.Contains(err.Error(), "connection failed for ***") {
+		t.Errorf("error lost the failure context or the redaction marker: %v", err)
 	}
 }

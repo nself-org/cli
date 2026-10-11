@@ -446,3 +446,28 @@ func TestScheduleStreamEnvRefusesUnsafe(t *testing.T) {
 		t.Error("an unsafe ENV in .env must be refused")
 	}
 }
+
+// TestScheduleStreamRefusesLineBreakInCron: a cron value with a line break
+// passes the 5-field split but would land in the timer Description and add a
+// directive, so it is refused before anything is printed or written.
+func TestScheduleStreamRefusesLineBreakInCron(t *testing.T) {
+	skipUnitTestOnWindows(t)
+	setScheduleProcessEnv(t, "")
+	const cron = "0 2 *\nOnFailure=evil.service\n*"
+	var out bytes.Buffer
+	opts := ScheduleOptions{Cron: cron, To: "r2:b", ProjectDir: t.TempDir(), BinaryPath: "/bin/sh", DryRun: true, Out: &out}
+	if err := ScheduleStream(minimalConfig(), opts); err == nil || !strings.Contains(err.Error(), "line break") {
+		t.Errorf("dry-run err = %v, want a line break refusal", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("nothing may be printed, got %q", out.String())
+	}
+	unitDir := t.TempDir()
+	opts.DryRun, opts.UnitDir = false, unitDir
+	if err := ScheduleStream(minimalConfig(), opts); err == nil {
+		t.Error("an install with a line break in --cron must be refused")
+	}
+	if entries, _ := os.ReadDir(unitDir); len(entries) != 0 {
+		t.Errorf("nothing may be written, found %d files", len(entries))
+	}
+}
