@@ -5,8 +5,10 @@ package deploy
 // Inputs:  a host spec string, the inventory env and server names, and whether
 //          the call is strict or ships secrets.
 // Outputs: "-o ..." option tokens, or an E487 error before any copy starts.
-// Constraints: never writes ~/.ssh/known_hosts; the pin file is read through
-//              remote.PinnedHostKeys, which refuses foreign lines (fail closed).
+// Constraints: nself's own code never writes ~/.ssh/known_hosts (ssh's
+//              UpdateHostKeys may, on the operator-match path); the pin file is
+//              read through remote.PinnedHostKeys, which refuses foreign lines
+//              (fail closed).
 
 import (
 	"context"

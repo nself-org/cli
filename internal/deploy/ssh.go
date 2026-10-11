@@ -101,6 +101,17 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 		return err
 	}
 
+	// Local operands are checked before the host-key scan and any copy, so a bad
+	// compose path cannot be found only after the env file was already sent.
+	if _, err := localOperand(composePath); err != nil {
+		return err
+	}
+	if cfg.EnvFile != "" {
+		if _, err := localOperand(cfg.EnvFile); err != nil {
+			return err
+		}
+	}
+
 	// The env name is checked before the host-key scan: a bad name needs no network.
 	var envTmp, envFinal string
 	if cfg.EnvFile != "" {

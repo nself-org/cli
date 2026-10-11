@@ -278,15 +278,22 @@ holding whitespace or a quote (rsync re-splits its `-e` string on spaces).
 
 **Host keys.** Which policy a deploy uses depends on what it sends:
 
-| Deploy | v1.4 (default) | v1.5 (`NSELF_V15=1`) |
+| Deploy path | v1.4 (default) | v1.5 (`NSELF_V15=1`) |
 |---|---|---|
-| Ships an env file (`.env.<target>`, `nself deploy` with an env file, secrets push) | strict | strict |
+| Inventory deploy that ships an env file to a server, and the secrets push | strict | strict |
+| `nself deploy <target>` push from `NSELF_DEPLOY_HOST_<TARGET>` (ships `.env` files) | `StrictHostKeyChecking=accept-new` (being closed, see below) | strict |
 | Compose file only | `StrictHostKeyChecking=accept-new` | strict |
 
 Strict means the CLI scans the host's live ED25519 key and continues only when that key is already
 trusted, either in your `~/.ssh/known_hosts` or in the deploy pin file
 `~/.config/nself/deploy_known_hosts`. ssh then runs with `StrictHostKeyChecking=yes`. Nothing is
-copied before the check, so env files never reach a host whose key nobody verified.
+copied before the check. Only ED25519 host keys are scanned: a host that offers only RSA or ECDSA
+keys fails the strict check (`host key scan ... returned no ED25519 key`).
+
+Known gaps in v1.4 mode: the `nself deploy <target>` push still uses `accept-new`, and any
+`accept-new` connection (a probe, a compose-only deploy) records a first-seen key in
+`~/.ssh/known_hosts`, which the strict check then trusts. Until both are closed, verify a new
+host's fingerprint before its first deploy, or run with `NSELF_V15=1`.
 
 **First contact with a new host.** A secret-bearing deploy to a host you have never connected to
 fails with `E487` and prints the live fingerprint:

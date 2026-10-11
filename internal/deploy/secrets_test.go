@@ -197,3 +197,25 @@ func TestPushSecretsLocalOperand(t *testing.T) {
 		t.Errorf("local operand = %q", local)
 	}
 }
+
+// TestPushSecretsUnknownHostRefused: in v1.4 secret shipping still verifies
+// the host key; an unknown key is refused and scp never runs.
+func TestPushSecretsUnknownHostRefused(t *testing.T) {
+	t.Setenv("NSELF_V15", "")
+	t.Setenv("HOME", t.TempDir())
+	read := installFakeSSHTools(t)
+	installFakeKeyscan(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("K=v\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err := PushSecrets(context.Background(), SSHConfig{Host: "deploy@203.0.113.7", KeyPath: "/k/id"}, PushSecretsOptions{
+		Target: "prod", ProjectRoot: dir, RemotePath: "/opt/app/.env",
+	})
+	if err == nil || !strings.Contains(err.Error(), "E487") || !strings.Contains(err.Error(), "--trust-host-key SHA256:") {
+		t.Fatalf("unknown host: %v", err)
+	}
+	if n := len(read()); n != 0 {
+		t.Fatalf("scp recorded %d call(s) after the refusal", n)
+	}
+}

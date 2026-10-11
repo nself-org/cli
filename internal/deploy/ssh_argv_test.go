@@ -18,15 +18,27 @@ import (
 )
 
 // installFakeKeyscan puts a fake ssh-keyscan first on PATH. It prints one
-// ed25519 line for the last argument (the host), key blob "AQID".
-func installFakeKeyscan(t *testing.T) {
+// ed25519 line for the last argument (the host), key blob "AQID", and logs one
+// line per run; the returned func reports how many runs happened.
+func installFakeKeyscan(t *testing.T) func() int {
 	t.Helper()
 	dir := t.TempDir()
-	script := "#!/bin/sh\nfor a in \"$@\"; do h=\"$a\"; done\nprintf '%s ssh-ed25519 AQID\\n' \"$h\"\n"
+	logFile := filepath.Join(dir, "scans.log")
+	if err := os.WriteFile(logFile, nil, 0o644); err != nil {
+		t.Fatalf("create scan log: %v", err)
+	}
+	script := "#!/bin/sh\necho scan >> \"" + logFile + "\"\nfor a in \"$@\"; do h=\"$a\"; done\nprintf '%s ssh-ed25519 AQID\\n' \"$h\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "ssh-keyscan"), []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake ssh-keyscan: %v", err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return func() int {
+		raw, err := os.ReadFile(logFile)
+		if err != nil {
+			t.Fatalf("read scan log: %v", err)
+		}
+		return strings.Count(string(raw), "scan\n")
+	}
 }
 
 func mustSpec(t *testing.T, s string) remote.HostSpec {
@@ -148,7 +160,7 @@ func TestDeployArgvHostileInputs(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("NSELF_V15", "")
 	read := installFakeSSHTools(t)
-	installFakeKeyscan(t)
+	scans := installFakeKeyscan(t)
 	dir := t.TempDir()
 	envFile := filepath.Join(dir, ".env.prod")
 	if err := os.WriteFile(envFile, []byte("A=1\n"), 0o600); err != nil {
@@ -174,6 +186,12 @@ func TestDeployArgvHostileInputs(t *testing.T) {
 			t.Errorf("DeployViaSsh %s: refused only at the host-key stage: %v", name, err)
 		}
 	}
+	// A bad compose path must be refused before the env file is sent and before any scan.
+	cpErr := DeployViaSsh(context.Background(), SSHConfig{Host: "u@h.example", RemotePath: "/opt/x", EnvName: "live",
+		EnvFile: envFile, KeyPath: "/k/id"}, "/w/a\nb.yml")
+	if cpErr == nil {
+		t.Error("DeployViaSsh: newline in compose path accepted")
+	}
 	push := map[string]struct {
 		cfg  SSHConfig
 		path string
@@ -197,5 +215,8 @@ func TestDeployArgvHostileInputs(t *testing.T) {
 	}
 	if calls := read(); len(calls) != 0 {
 		t.Fatalf("refused inputs started %d process(es): %#v", len(calls), calls)
+	}
+	if n := scans(); n != 0 {
+		t.Fatalf("refused inputs ran ssh-keyscan %d time(s)", n)
 	}
 }

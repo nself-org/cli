@@ -9,6 +9,7 @@ package deploy
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -127,5 +128,52 @@ func TestDeployKeyAliasIPHost(t *testing.T) {
 	}
 	if got := strings.Join(opts, " "); !strings.Contains(got, "HostKeyAlias=nself-203.0.113.7-22") {
 		t.Errorf("options = %q", got)
+	}
+}
+
+// TestSecretShippingOperatorKnownHost: a key the operator already trusts in
+// ~/.ssh/known_hosts satisfies strict checking with no HostKeyAlias.
+func TestSecretShippingOperatorKnownHost(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	for host, line := range map[string]string{
+		"u@host.example":      "host.example ssh-ed25519 AQID",
+		"u@host.example:2222": "[host.example]:2222 ssh-ed25519 AQID",
+	} {
+		host, line := host, line
+		t.Run(host, func(t *testing.T) {
+			t.Setenv("NSELF_V15", "")
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(home, ".ssh", "known_hosts"), []byte(line+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			read := installFakeSSHTools(t)
+			installFakeKeyscan(t)
+			cfg := SSHConfig{Host: host, RemotePath: "/opt/nself", EnvName: "live", ServerName: "web",
+				EnvFile: writeEnvFile(t), KeyPath: "/k/id"}
+			if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
+				t.Fatalf("deploy with operator-known host: %v", err)
+			}
+			calls := read()
+			if len(calls) < 2 {
+				t.Fatalf("calls = %#v", calls)
+			}
+			for _, c := range []recordedCall{calls[0], calls[len(calls)-1]} {
+				joined := strings.Join(c.args, " ")
+				for _, w := range []string{"StrictHostKeyChecking=yes", "GlobalKnownHostsFile=" + DeployKnownHostsPath()} {
+					if !strings.Contains(joined, w) {
+						t.Errorf("%s argv lacks %q: %s", c.tool, w, joined)
+					}
+				}
+				if strings.Contains(joined, "HostKeyAlias") {
+					t.Errorf("%s argv has HostKeyAlias: %s", c.tool, joined)
+				}
+			}
+		})
 	}
 }
