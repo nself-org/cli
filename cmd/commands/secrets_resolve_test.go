@@ -202,7 +202,7 @@ func TestSecretsResolveRegistryGolden(t *testing.T) {
 		if v15 {
 			prefix = "config " + prefix
 		}
-		for _, leaf := range []string{"resolve", "recipients add", "recipients remove"} {
+		for _, leaf := range []string{"resolve", "recipients add", "recipients remove", "recipients list"} {
 			for _, transport := range []string{invoke.TransportMCP, invoke.TransportHTTP} {
 				res, err := invoke.Invoke(context.Background(), reg, prefix+leaf, invoke.Request{}, invoke.Options{Transport: transport})
 				if err != nil || res.ErrorCode != "E421" {

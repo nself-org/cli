@@ -301,3 +301,162 @@ func TestRecipientsAuditBeforeSave(t *testing.T) {
 		}
 	}
 }
+
+// TestRecipientsForgedOwnerComment proves comments cannot authorize node grants.
+func TestRecipientsForgedOwnerComment(t *testing.T) {
+	root, home, key := trustFixture(t)
+	trustStore(t, root, "ci", "FOO")
+	owner, err := GetPublicKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodePath := filepath.Join(home, "node.key")
+	node := trustKey(t, nodePath)
+	third := trustKey(t, filepath.Join(home, "third.key"))
+	sink := func(string, map[string]string) error { return nil }
+	if _, _, err := Recipients(RecipientsRequest{ProjectRoot: root, File: "ci", Action: "add", Recipient: node}, sink); err != nil {
+		t.Fatal(err)
+	}
+	identity, err := os.ReadFile(nodePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity = []byte(strings.Replace(string(identity), "# public key: "+node, "# public key: "+owner, 1))
+	if err := os.WriteFile(nodePath, identity, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SECRETS_AGE_KEY_PATH", nodePath)
+	path := filepath.Join(root, ".secrets", "ci.age")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, changed, err := Recipients(RecipientsRequest{ProjectRoot: root, File: "ci", Action: "add", Recipient: third}, sink)
+	trustCode(t, err, "E544")
+	after, readErr := os.ReadFile(path)
+	if readErr != nil || rows != nil || changed || !reflect.DeepEqual(before, after) {
+		t.Fatal("forged comment altered ciphertext", readErr)
+	}
+}
+
+// TestMappedStoreSymlinks proves both operations refuse redirected real age stores.
+func TestMappedStoreSymlinks(t *testing.T) {
+	for _, kind := range []string{"file", "directory", "team file", "team directory"} {
+		t.Run(kind, func(t *testing.T) {
+			root, home, _ := trustFixture(t)
+			trustStore(t, root, "release", "X")
+			node := trustKey(t, filepath.Join(home, "node.key"))
+			release := filepath.Join(root, ".secrets", "release.age")
+			before, err := os.ReadFile(release)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ref := "project/X"
+			var link, target string
+			switch kind {
+			case "file":
+				link, target = filepath.Join(root, ".secrets", "ci.age"), "release.age"
+			case "directory":
+				original := root
+				root = t.TempDir()
+				link, target = filepath.Join(root, ".secrets"), filepath.Join(original, ".secrets")
+			case "team file", "team directory":
+				ref = "team/X"
+				dir := filepath.Join(home, ".config", "nself", "secrets")
+				if err := os.MkdirAll(filepath.Dir(dir), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if kind == "team directory" {
+					link, target = dir, filepath.Dir(release)
+				} else {
+					if err := os.Mkdir(dir, 0700); err != nil {
+						t.Fatal(err)
+					}
+					link, target = filepath.Join(dir, "team.age"), release
+				}
+			}
+			if err := os.Symlink(target, link); err != nil {
+				t.Fatal(err)
+			}
+			sink := func(string, map[string]string) error { return nil }
+			if !strings.HasPrefix(kind, "team") {
+				rows, changed, err := Recipients(RecipientsRequest{ProjectRoot: root, File: "ci", Action: "add", Recipient: node}, sink)
+				trustCode(t, err, "E543")
+				if rows != nil || changed || err.Error() != decryptError().Error() {
+					t.Fatal("redirected grant escaped fixed refusal")
+				}
+			}
+			values, err := Resolve(context.Background(), ResolveRequest{ProjectRoot: root, Refs: []string{ref}}, sink)
+			trustCode(t, err, "E543")
+			if values != nil || err.Error() != decryptError().Error() {
+				t.Fatal("redirected resolve returned values")
+			}
+			after, readErr := os.ReadFile(release)
+			if readErr != nil || !reflect.DeepEqual(before, after) {
+				t.Fatal("redirected operation altered release ciphertext", readErr)
+			}
+		})
+	}
+}
+
+// TestRecipientsSaveSymlinkRefusal proves the path is checked again before saving.
+func TestRecipientsSaveSymlinkRefusal(t *testing.T) {
+	root, home, _ := trustFixture(t)
+	trustStore(t, root, "ci", "X")
+	trustStore(t, root, "release", "X")
+	node := trustKey(t, filepath.Join(home, "node.key"))
+	path := filepath.Join(root, ".secrets", "ci.age")
+	release := filepath.Join(root, ".secrets", "release.age")
+	before, err := os.ReadFile(release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, changed, err := Recipients(RecipientsRequest{ProjectRoot: root, File: "ci", Action: "add", Recipient: node}, func(string, map[string]string) error {
+		if err := os.Rename(path, path+".original"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("release.age", path); err != nil {
+			t.Fatal(err)
+		}
+		return nil
+	})
+	trustCode(t, err, "E543")
+	after, readErr := os.ReadFile(release)
+	if readErr != nil || rows != nil || changed || !reflect.DeepEqual(before, after) {
+		t.Fatal("save followed replacement symlink", readErr)
+	}
+}
+
+// TestMappedStoreNonregularAndMissing preserves fixed refusal and missing codes.
+func TestMappedStoreNonregularAndMissing(t *testing.T) {
+	for _, kind := range []string{"missing directory", "missing file", "directory file"} {
+		t.Run(kind, func(t *testing.T) {
+			root, home, _ := trustFixture(t)
+			node := trustKey(t, filepath.Join(home, "node.key"))
+			path := filepath.Join(root, ".secrets", "ci.age")
+			code := "E541"
+			if kind != "missing directory" {
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if kind == "directory file" {
+				code = "E543"
+				if err := os.Mkdir(path, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			sink := func(string, map[string]string) error { return nil }
+			rows, changed, err := Recipients(RecipientsRequest{ProjectRoot: root, File: "ci", Action: "add", Recipient: node}, sink)
+			trustCode(t, err, code)
+			if rows != nil || changed {
+				t.Fatal("invalid store granted access")
+			}
+			values, err := Resolve(context.Background(), ResolveRequest{ProjectRoot: root, Refs: []string{"project/X"}}, sink)
+			trustCode(t, err, code)
+			if values != nil {
+				t.Fatal("invalid store returned values")
+			}
+		})
+	}
+}

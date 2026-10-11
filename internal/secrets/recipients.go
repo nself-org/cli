@@ -8,6 +8,7 @@ package secrets
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -17,6 +18,36 @@ import (
 )
 
 var recipientPattern = regexp.MustCompile(`^age1[02-9ac-hj-np-z]{58}$`)
+
+// checkStorePath refuses symlinks and special files without following them.
+// Inputs: expected directory, mapped path and missing-store error.
+// Outputs: nil for a real directory and regular file, otherwise fixed errors.
+// Constraints: age opens by name later; SPORT: P7-TRUST-03, G1.
+func checkStorePath(dir, path string, missing error) error {
+	info, err := os.Lstat(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return missing
+		}
+		return decryptError()
+	}
+	if !info.IsDir() {
+		return decryptError()
+	}
+	info, err = os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return missing
+		}
+		return decryptError()
+	}
+	if !info.Mode().IsRegular() {
+		return decryptError()
+	}
+	// Residual TOCTOU: age opens this name after the check. A racing writer
+	// already needs write access to .secrets (or the team store directory).
+	return nil
+}
 
 // RecipientsRequest selects a store and an owner-authorized recipient operation.
 type RecipientsRequest struct {
@@ -56,11 +87,9 @@ func Recipients(req RecipientsRequest, sink AuditFunc) ([]string, bool, error) {
 		return nil, false, errs.New("E401", "Invalid age public recipient")
 	}
 	path := filepath.Join(req.ProjectRoot, ".secrets", req.File+".age")
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return nil, false, errs.Newf("E541", "Secret store %s not found", req.File)
-		}
-		return nil, false, decryptError()
+	missing := errs.Newf("E541", "Secret store %s not found", req.File)
+	if err := checkStorePath(filepath.Join(req.ProjectRoot, ".secrets"), path, missing); err != nil {
+		return nil, false, err
 	}
 	key, err := readableIdentity()
 	if err != nil {
@@ -82,7 +111,7 @@ func Recipients(req RecipientsRequest, sink AuditFunc) ([]string, bool, error) {
 	if req.Action == "list" {
 		return append([]string{}, store.Recipients...), false, nil
 	}
-	operator, err := GetPublicKey(key)
+	operator, err := deriveRecipientKey(key)
 	if err != nil || !recipientPattern.MatchString(operator) {
 		return nil, false, decryptError()
 	}
@@ -111,10 +140,26 @@ func Recipients(req RecipientsRequest, sink AuditFunc) ([]string, bool, error) {
 	if !slices.Contains(store.Recipients, owner) {
 		return nil, false, errs.New("E544", "The store owner must remain a recipient")
 	}
+	if err := checkStorePath(filepath.Join(req.ProjectRoot, ".secrets"), path, missing); err != nil {
+		return nil, false, err
+	}
 	if err := saveStore(req.ProjectRoot, req.File, store); err != nil {
 		return nil, false, decryptError()
 	}
 	return append([]string{}, store.Recipients...), true, nil
+}
+
+// deriveRecipientKey uses identity material, never its untrusted public comment.
+func deriveRecipientKey(key string) (string, error) {
+	data, err := exec.Command("age-keygen", "-y", key).Output()
+	if err != nil {
+		return "", decryptError()
+	}
+	public := strings.TrimSpace(string(data))
+	if !recipientPattern.MatchString(public) {
+		return "", decryptError()
+	}
+	return public, nil
 }
 
 // changeRecipient preserves the store owner's access during additions and removals.

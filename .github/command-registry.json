@@ -7821,7 +7821,7 @@
       "data_schema": "schemas/commands/config-secrets-recipients-list.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
-      "surface": "all"
+      "surface": "cli-only"
     },
     {
       "path": "nself config secrets recipients remove",

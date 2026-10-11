@@ -20,6 +20,12 @@ func TestSecretResolveCodes(t *testing.T) {
 			t.Errorf("invalid entry %s: %+v", code, e)
 		}
 	}
+	owner := Registry["E544"]
+	if owner.Summary != "Secret class or recipient change not permitted" ||
+		owner.DefaultWhy != "Only the store owner may change recipients, the owner cannot be removed, and release or deploy changes require explicit release-class consent." ||
+		owner.DefaultFix != "Run recipient changes with the store owner identity, preserve its recipient, and use --allow-release-class only for an eligible dedicated trusted node. Use secrets rekey for owner changes." {
+		t.Errorf("E544 must preserve owner-only refusal and release consent guidance: %+v", owner)
+	}
 	if e := RegistryErrors(); len(e) != 0 {
 		t.Fatal(e)
 	}

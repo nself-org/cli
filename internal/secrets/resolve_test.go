@@ -8,8 +8,10 @@ package secrets
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -133,10 +135,16 @@ func TestResolveAuditNoValue(t *testing.T) {
 		calls := 0
 		sink := func(event string, fields map[string]string) error {
 			calls++
-			if event != "secret-resolve" || fields["outcome"] != tc.outcome || fields["attempt_id"] != "a1" || fields["project"] != root || fields["user"] == "" || len(fields) != 5 {
+			if event != "secret-resolve" || fields["outcome"] != tc.outcome || fields["attempt_id"] != "a1" || fields["project"] != root || fields["user"] == "" {
 				t.Errorf("bad audit: %s %+v", event, fields)
 			}
-			b, _ := json.Marshal(tc.refs)
+			valid := []string{}
+			for _, ref := range tc.refs {
+				if _, err := ParseRef(ref); err == nil {
+					valid = append(valid, ref)
+				}
+			}
+			b, _ := json.Marshal(valid)
 			if fields["refs"] != string(b) {
 				t.Error("wrong refs")
 			}
@@ -170,6 +178,41 @@ func TestResolveAuditNoValue(t *testing.T) {
 	trustCode(t, err, "E401")
 	if calls != 1 || v != nil {
 		t.Fatal("audit failure must fail closed")
+	}
+}
+
+// TestResolveAuditInvalidInputs proves pasted values are hashed before reaching the audit log.
+func TestResolveAuditInvalidInputs(t *testing.T) {
+	invalid := []string{"project/fake-adv-value-xyz", "fake-raw-value-trust03"}
+	for _, attempt := range []string{"a1", "fake-attempt-value\ntrust03", strings.Repeat("x", 129)} {
+		var fields map[string]string
+		err := AuditResolve(func(_ string, f map[string]string) error { fields = f; return nil }, ResolveRequest{
+			ProjectRoot: t.TempDir(), Refs: append([]string{"project/FOO"}, invalid...), AttemptID: attempt,
+		}, "E540")
+		if err != nil || fields["refs"] != `["project/FOO"]` || fields["invalid_refs"] != "2" {
+			t.Fatalf("bad sanitized audit: %+v %v", fields, err)
+		}
+		wantHashes := []string{}
+		for _, ref := range invalid {
+			wantHashes = append(wantHashes, fmt.Sprintf("%x", sha256.Sum256([]byte(ref)))[:12])
+		}
+		b, _ := json.Marshal(wantHashes)
+		if fields["invalid_ref_hashes"] != string(b) {
+			t.Fatalf("incorrect invalid ref digests: %+v", fields)
+		}
+		log, _ := json.Marshal(fields)
+		for _, ref := range invalid {
+			if strings.Contains(string(log), ref) {
+				t.Fatal("audit log contains pasted secret")
+			}
+		}
+		if attempt == "a1" {
+			if fields["attempt_id"] != attempt || fields["attempt_id_sha256"] != "" {
+				t.Fatal("valid attempt was changed")
+			}
+		} else if _, ok := fields["attempt_id"]; ok || fields["attempt_id_sha256"] != fmt.Sprintf("%x", sha256.Sum256([]byte(attempt)))[:12] {
+			t.Fatal("invalid attempt was not hashed")
+		}
 	}
 }
 

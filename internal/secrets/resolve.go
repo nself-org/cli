@@ -8,13 +8,16 @@ package secrets
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
@@ -25,6 +28,7 @@ type Ref struct{ Raw, Class, Env, Name string }
 
 var refNamePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,127}$`)
 var refEnvPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+var auditAttemptPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 
 // validRefEnv validates syntax and rejects names that collide with store classes.
 func validRefEnv(s string) bool {
@@ -118,19 +122,33 @@ func auditUser() string {
 // AuditResolve is shared with command refusals; never pass values to the sink.
 // A failed sink is deliberately not wrapped: sink errors are not trusted text.
 func AuditResolve(sink AuditFunc, req ResolveRequest, outcome string) error {
-	refs := req.Refs
-	if refs == nil {
-		refs = []string{}
+	refs, invalid := []string{}, []string{}
+	for _, ref := range req.Refs {
+		if _, err := ParseRef(ref); err == nil {
+			refs = append(refs, ref)
+		} else {
+			invalid = append(invalid, fmt.Sprintf("%x", sha256.Sum256([]byte(ref)))[:12])
+		}
 	}
 	b, _ := json.Marshal(refs)
 	project, err := filepath.Abs(req.ProjectRoot)
 	if err != nil {
 		return errs.New("E401", "Cannot determine absolute project directory")
 	}
-	if sink == nil || sink("secret-resolve", map[string]string{
-		"refs": string(b), "attempt_id": req.AttemptID, "project": project,
+	fields := map[string]string{
+		"refs": string(b), "project": project,
 		"user": auditUser(), "outcome": outcome,
-	}) != nil {
+	}
+	if auditAttemptPattern.MatchString(req.AttemptID) {
+		fields["attempt_id"] = req.AttemptID
+	} else {
+		fields["attempt_id_sha256"] = fmt.Sprintf("%x", sha256.Sum256([]byte(req.AttemptID)))[:12]
+	}
+	if len(invalid) > 0 {
+		b, _ := json.Marshal(invalid)
+		fields["invalid_refs"], fields["invalid_ref_hashes"] = strconv.Itoa(len(invalid)), string(b)
+	}
+	if sink == nil || sink("secret-resolve", fields) != nil {
 		return errs.New("E401", "Secret resolution audit could not be written")
 	}
 	return nil
@@ -246,11 +264,12 @@ func loadRefStore(ctx context.Context, root, path string, r Ref) (*SecretStore, 
 	if ctx.Err() != nil {
 		return nil, decryptError()
 	}
-	if _, err := os.Stat(path); err != nil {
-		if os.IsNotExist(err) {
-			return nil, errs.Newf("E541", "Secret reference %s not found", r.Raw)
-		}
-		return nil, decryptError()
+	dir := filepath.Join(root, ".secrets")
+	if r.Class == "team" {
+		dir = filepath.Dir(path)
+	}
+	if err := checkStorePath(dir, path, errs.Newf("E541", "Secret reference %s not found", r.Raw)); err != nil {
+		return nil, err
 	}
 	key, err := readableIdentity()
 	if err != nil {
