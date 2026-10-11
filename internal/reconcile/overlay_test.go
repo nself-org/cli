@@ -526,6 +526,7 @@ func TestApplyRollbackOnPanic(t *testing.T) {
 // the confirmation and plan_id hold across the write (Apply with --yes).
 func TestPlanProdEnvLineOnlyNeedsConfirmation(t *testing.T) {
 	f := loadFixture(t, "prod-plugins")
+	compattest.Set(t, true) // one mode throughout, so the baseline apply leaves nothing to do
 	applyFixture(t, f)
 	rt := &fakeRuntime{running: runningFromDisk(t, f)}
 	overlay := map[string]map[string]string{".env": {"NSELF_LIVE05_PROBE": "x"}}
@@ -545,11 +546,14 @@ func TestPlanProdEnvLineOnlyNeedsConfirmation(t *testing.T) {
 	if same.PendingEnv || same.RequiresConfirmation {
 		t.Fatalf("a line equal to the file changes nothing: %+v", same)
 	}
-	compattest.Set(t, true)
 	req := Request{Runtime: rt, Containers: true, ProjectDir: f.project, Seed: []byte("fixture-seed"), EnvOverlay: overlay}
-	if _, err := Apply(context.Background(), req, ApplyOptions{Yes: true,
-		BeforeWrite: func() error { writeLine(t, f, ".env", "NSELF_LIVE05_PROBE", "x"); return nil }}); err != nil {
+	applied, err := Apply(context.Background(), req, ApplyOptions{Yes: true,
+		BeforeWrite: func() error { writeLine(t, f, ".env", "NSELF_LIVE05_PROBE", "x"); return nil }})
+	if err != nil {
 		t.Fatalf("--yes must apply an env-line-only prod change (stable plan across the write): %v", err)
+	}
+	if !applied.Empty || !applied.RequiresConfirmation {
+		t.Fatalf("the applied plan must be the env-line-only one: empty=%v rc=%v %v", applied.Empty, applied.RequiresConfirmation, applied.Artifacts)
 	}
 }
 
