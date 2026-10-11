@@ -142,7 +142,7 @@ wait_healthy() {
   compose "$W/a" logs --tail 50 "$service" >&2
   echo "FAIL: $service did not become healthy" >&2; return 1
 }
-nself "$W/a" add echo --yes
+nself "$W/a" add echo --force --yes
 nself "$W/a" build --yes
 # D2 snippet cert parsing accepts the flat cert dir; core writes certificates/<dir>.
 # Alias only fixture certificate bytes, without editing generated configuration.
@@ -208,7 +208,7 @@ p=pathlib.Path(sys.argv[1]); p.write_text(p.read_text().replace('ENV=dev','ENV=p
 PY
 manifest "$W/a" prod-before.manifest
 rc=0
-NSELF_V15=1 nself "$W/a" add traefik </dev/null >"$W/evidence/prod-plan.stdout" 2>"$W/evidence/prod-plan.stderr" || rc=$?
+NSELF_V15=1 nself "$W/a" add traefik --force </dev/null >"$W/evidence/prod-plan.stdout" 2>"$W/evidence/prod-plan.stderr" || rc=$?
 if [[ $rc != 4 ]] || ! grep -q E403 "$W/evidence/prod-plan.stderr"; then
   echo "FAIL: prod add expected exit 4 E403, got exit $rc" >&2
   cat "$W/evidence/prod-plan.stderr" >&2
@@ -242,7 +242,7 @@ PY
 cp "$FIXTURE/confd-variant/nginx/conf.d/shadow.conf" "$W/a/nginx/conf.d/shadow.conf"
 manifest "$W/a" confd-before.manifest
 rc=0
-NSELF_V15=1 nself "$W/a" add traefik --yes >"$W/evidence/confd.stdout" 2>"$W/evidence/confd.stderr" || rc=$?
+NSELF_V15=1 nself "$W/a" add traefik --force --yes >"$W/evidence/confd.stdout" 2>"$W/evidence/confd.stderr" || rc=$?
 if [[ $rc != 1 ]] || ! grep -q E481 "$W/evidence/confd.stderr"; then
   echo "FAIL: conf.d add expected exit 1 E481, got exit $rc" >&2
   cat "$W/evidence/confd.stderr" >&2
@@ -261,7 +261,7 @@ rm "$W/a/nginx/conf.d/shadow.conf"
   done
 ) > "$W/evidence/downtime.log" &
 probe_pid=$!
-NSELF_V15=1 nself "$W/a" add traefik --yes
+NSELF_V15=1 nself "$W/a" add traefik --force --yes
 nself "$W/a" build --remove-orphans --yes
 nself "$W/a" start --timeout 180
 wait_healthy traefik
