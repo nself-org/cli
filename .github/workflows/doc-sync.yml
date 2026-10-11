@@ -140,14 +140,23 @@ jobs:
               git grep -I -h -o -w -E '[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]' "$1" -- \
                 internal/env internal/config ':(exclude,glob)**/*.go' \
                 ':(exclude,glob)**/testdata/**' || true
-            } | sed -e 's/^[^"]*://' -e 's/"//g' | sort -u
+              # Bare names (ENV, PORT) as binding keys in the bindings yaml.
+              git grep -I -h -o -E 'key: [A-Z][A-Z0-9_]*' "$1" -- \
+                internal/env internal/config ':(exclude,glob)**/*.go' \
+                ':(exclude,glob)**/testdata/**' || true
+            } | sed -e 's/^[^"]*://' -e 's/^ *//' -e 's/"//g' | sort -u
           }
           envnames "origin/${{ github.base_ref }}" > /tmp/env-base.txt
           envnames HEAD > /tmp/env-head.txt
           added=$(comm -13 /tmp/env-base.txt /tmp/env-head.txt | tr '\n' ' ')
           removed=$(comm -23 /tmp/env-base.txt /tmp/env-head.txt | tr '\n' ' ')
           echo "env var names: base $(wc -l < /tmp/env-base.txt), head $(wc -l < /tmp/env-head.txt)"
-          if [ -n "$added$removed" ]; then
+          if [ ! -s /tmp/env-head.txt ]; then
+            # An empty head set means the scan itself broke (bad pathspec,
+            # git error): never read that as "unchanged".
+            echo "::warning::env var name scan found nothing at HEAD; treating env vars as changed"
+            echo "changed=1" >> "$GITHUB_OUTPUT"
+          elif [ -n "$added$removed" ]; then
             echo "changed=1" >> "$GITHUB_OUTPUT"
             echo "env var names added: ${added:-none}; removed: ${removed:-none}"
           else

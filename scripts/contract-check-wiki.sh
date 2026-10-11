@@ -67,7 +67,8 @@ while IFS= read -r p; do
 done < <(jq -r '.schemas[].path' "$index")
 
 # 2. JSON support values.
-documented="$(grep -m1 'JSON support value' "$jsonout" | grep -oE '`[a-z]+`' | tr -d '`' | sort -u)"
+documented="$(grep -m1 'JSON support value' "$jsonout" | grep -oE '`[a-z]+`' | tr -d '`' | sort -u || true)"
+[ -n "$documented" ] || problem "JSON-Output.md: no \"JSON support value\" sentence with backticked values found"
 used="$(jq -r '[.. | objects | select(has("json")) | .json | strings] | unique[]' "$registry")"
 [ -n "$used" ] || problem "no json support values found in .github/command-registry.json"
 [ "$documented" = "$used" ] || problem "JSON-Output.md documents JSON support values [$(echo $documented)] but the registry uses [$(echo $used)]"
@@ -86,18 +87,20 @@ while IFS= read -r row; do
   [ -n "$row" ] || continue
   cell="$(printf '%s' "$row" | awk -F'|' '{ print $3 }')"
   now="$(printf '%s' "$row" | awk -F'|' '{ gsub(/ /, "", $5); print $5 }')"
+  checked=0
   for tok in $(printf '%s' "$cell" | tr ',' ' '); do
     if [[ "$tok" =~ ^E([0-9]{3})-E([0-9]{3})$ ]]; then
       lo=$((10#${BASH_REMATCH[1]})); hi=$((10#${BASH_REMATCH[2]}))
       for c in $(printf '%s\n' "$codes" | awk -v lo="$lo" -v hi="$hi" '{ n = substr($1, 2) + 0; if (n >= lo && n <= hi) print $1 }'); do
-        e="$(exit_of "$c")"
+        e="$(exit_of "$c")"; checked=$((checked + 1))
         [ "$e" = "$now" ] || problem "Exit-Codes.md says $c (in $tok) now exits $now; error-codes.md says $e"
       done
     elif [[ "$tok" =~ ^E[0-9]{3}$ ]]; then
-      e="$(exit_of "$tok")"
+      e="$(exit_of "$tok")"; checked=$((checked + 1))
       [ "$e" = "$now" ] || problem "Exit-Codes.md says $tok now exits $now; error-codes.md says ${e:-unregistered}"
     fi
   done
+  [ "$checked" -gt 0 ] || problem "Exit-Codes.md: no registered code checked in the v1.5.0 row: $(printf '%s' "$row" | cut -c1-80)"
 done <<< "$changes"
 
 [ "$bad" = 0 ] || exit 1
