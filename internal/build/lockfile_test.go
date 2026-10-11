@@ -173,6 +173,7 @@ func TestLockBootstrapDigest(t *testing.T) {
 		}{
 			{"local digest", "redis:7-alpine", testDig, "redis:7-alpine@" + testDig},
 			{"CLI lock version matches", "redis:7-alpine", "", redis.String()},
+			{"docker.io spelling of the same image", "docker.io/redis:7-alpine", "", redis.String()},
 			{"unknown version stays a tag", "redis:6", "", "redis:6"},
 		}
 		for _, c := range cases {
