@@ -217,6 +217,12 @@ func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err e
 	}
 
 	fmt.Println()
+	if len(failed) > 0 {
+		// Human mode: the warnings above named each path; no success line.
+		// Exit status stays 0, as for removal failures.
+		printIncompleteRemoval(len(failed))
+		return UninstallResult{Removed: removed, KeptData: uninstallKeptData(volumesDeleted, removed)}, true, nil
+	}
 	fmt.Printf("  %s nSelf project files removed.\n", ui.C(ui.Green, ui.IconSuccess))
 	fmt.Println()
 	fmt.Printf("  To start fresh: %s\n", ui.C(ui.Cyan, "nself init --force && nself build && nself start"))

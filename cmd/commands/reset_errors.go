@@ -9,9 +9,11 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/ui"
 )
 
 // volumesGone is the entry errPartialRemoval lists, ahead of the paths, once
@@ -44,4 +46,19 @@ func partialRemovalError(what string, cause error, removed []string, none string
 		done = "already removed: " + strings.Join(jsonPaths(removed), ", ")
 	}
 	return errs.ExitWith(errs.ExitInfraError, fmt.Errorf("%s (%s): %w", what, done, cause))
+}
+
+// warnPathFailure prints err on stderr in the style removeIfExists/removeDir
+// use and returns it, for failures to inspect or list a path (removal failures
+// are already warned about by the remove funcs themselves).
+func warnPathFailure(err error) error {
+	fmt.Fprintf(os.Stderr, "  %s %v\n", ui.C(ui.Yellow, ui.IconWarning), err)
+	return err
+}
+
+// printIncompleteRemoval is the human-mode closing line when n paths could not
+// be inspected or removed; it replaces the "already clean"/"removed" success.
+func printIncompleteRemoval(n int) {
+	fmt.Fprintf(os.Stderr, "  %s %d path(s) could not be inspected or removed (see warnings above); the project may not be clean.\n",
+		ui.C(ui.Yellow, ui.IconWarning), n)
 }

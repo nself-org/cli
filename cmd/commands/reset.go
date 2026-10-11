@@ -144,7 +144,7 @@ func runReset(cmd *cobra.Command, args []string) error {
 		info, statErr := os.Stat(dir.abs)
 		if statErr != nil {
 			if !errors.Is(statErr, os.ErrNotExist) {
-				failed = append(failed, fmt.Errorf("checking %s: %w", dir.rel, statErr))
+				failed = append(failed, warnPathFailure(fmt.Errorf("checking %s: %w", dir.rel, statErr)))
 			}
 			continue
 		}
@@ -153,7 +153,7 @@ func runReset(cmd *cobra.Command, args []string) error {
 		}
 		entries, readErr := os.ReadDir(dir.abs)
 		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-			failed = append(failed, fmt.Errorf("listing %s: %w", dir.rel, readErr))
+			failed = append(failed, warnPathFailure(fmt.Errorf("listing %s: %w", dir.rel, readErr)))
 		}
 		for _, entry := range entries {
 			record(dir.rel+"/"+entry.Name(), removeDir)
@@ -168,6 +168,12 @@ func runReset(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
+	if len(failed) > 0 {
+		// Human mode: the warnings above named each path; never close with a
+		// success line over them. Exit status stays 0, as for removal failures.
+		printIncompleteRemoval(len(failed))
+		return emitBuildResult(cmd, "reset", ResetResult{Removed: jsonPaths(removed), KeptData: !volumesRemoved})
+	}
 	if len(removed) == 0 {
 		fmt.Println("No generated files found — project is already clean.")
 	} else {
@@ -190,7 +196,8 @@ var resetComposeDown = func(ctx context.Context, projectDir string) error {
 // recordIfExists runs remove on project-relative rel when it exists and
 // appends rel to removed only when the removal succeeded; the removal error is
 // returned otherwise. A path that is absent (ENOENT) is skipped silently; an
-// Lstat failure of any other kind is returned as an error. Trailing "/" in rel marks a directory in the report.
+// Lstat failure of any other kind is warned about on stderr and returned as an
+// error. Trailing "/" in rel marks a directory in the report.
 func recordIfExists(removed []string, root, rel string, remove func(string) error) ([]string, error) {
 	path := filepath.Join(root, filepath.FromSlash(strings.TrimSuffix(rel, "/")))
 	if _, err := os.Lstat(path); err != nil {
@@ -200,7 +207,7 @@ func recordIfExists(removed []string, root, rel string, remove func(string) erro
 		// Any other error (EACCES on a parent, ELOOP, ...) means the path
 		// could not be inspected, not that it is gone: report it so the caller
 		// counts it as a failure instead of "already clean".
-		return removed, fmt.Errorf("checking %s: %w", rel, err)
+		return removed, warnPathFailure(fmt.Errorf("checking %s: %w", rel, err))
 	}
 	if err := remove(path); err != nil {
 		return removed, fmt.Errorf("removing %s: %w", rel, err)
