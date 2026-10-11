@@ -119,6 +119,9 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 		return res, err
 	}
 	noticeLinks(o.Out, linked, o.Set.shippedPaths())
+	if err := CheckNotOverwritingForeign(ctx, r, rp, o.Set.Files, o.Previous); err != nil {
+		return res, err
+	}
 	id := NewBackupID(o.Now())
 	release, err := AcquireLock(ctx, r, rp, id)
 	if err != nil {

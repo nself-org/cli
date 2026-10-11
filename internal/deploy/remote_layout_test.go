@@ -125,3 +125,30 @@ func TestPruneNeedsLocalRecord(t *testing.T) {
 		t.Fatalf("pruned without a record: %v %v", removed, err)
 	}
 }
+
+// P2: a hand-written nginx file at a path the set ships is not overwritten unless
+// the previous deploy's record says nSelf put it there; nothing is sent.
+func TestUnmarkedNginxFileIsNotOverwritten(t *testing.T) {
+	f, o, rp := applyFixture(t, "")
+	writeFile(t, rp+"/nginx/sites/api.conf", "# hand written\nserver { listen 8080; }\n", 0o644)
+	_, err := ApplyRemote(context.Background(), o)
+	var ce *errs.CLIError
+	if !errors.As(err, &ce) || ce.Code != "E485" || !strings.Contains(err.Error(), `unmarked file would be overwritten: "nginx/sites/api.conf"`) {
+		t.Fatalf("err = %v", err)
+	}
+	for _, s := range steps(f) {
+		if s == "lock" || s == "tar" || s == "rsync" {
+			t.Errorf("%s ran before the refusal: %v", s, steps(f))
+		}
+	}
+	if got := readFile(t, rp+"/nginx/sites/api.conf"); !strings.Contains(got, "hand written") {
+		t.Error("the hand-written file was overwritten")
+	}
+	// The same file is fine when the last recorded deploy shipped that path.
+	_, o2, rp2 := applyFixture(t, "")
+	writeFile(t, rp2+"/nginx/sites/api.conf", "# hand written\n", 0o644)
+	o2.Previous = append(o2.Previous, "nginx/sites/api.conf")
+	if _, err := ApplyRemote(context.Background(), o2); err != nil {
+		t.Fatalf("a path nSelf shipped before was refused: %v", err)
+	}
+}

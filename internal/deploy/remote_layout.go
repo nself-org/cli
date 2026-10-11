@@ -137,3 +137,41 @@ func noticeLinks(w io.Writer, linked map[string]string, shipped []string) {
 		}
 	}
 }
+
+// CheckNotOverwritingForeign refuses (E485 `unmarked file would be overwritten`,
+// nothing sent) when a nginx/ file of the set already exists on the host without
+// the nself generated marker in its first lines and is not in the previous deploy's
+// local record (previous): such a file is hand written, or another tool's. The
+// printed paths are always taken from the set, never from the host's output.
+func CheckNotOverwritingForeign(ctx context.Context, r Remote, remotePath string, files, previous []string) error {
+	known := map[string]bool{}
+	for _, f := range previous {
+		known[f] = true
+	}
+	var cand []string
+	for _, f := range files {
+		if strings.HasPrefix(f, "nginx/") && !known[f] && pruneable(f) {
+			cand = append(cand, f)
+		}
+	}
+	if len(cand) == 0 {
+		return nil
+	}
+	script := fmt.Sprintf(`cd %s 2>/dev/null || exit 0; for f in %s; do if [ -f "$f" ] && ! head -n 5 -- "$f" 2>/dev/null | grep -qi %s; then printf 'UNMARKED %%s\n' "$f"; fi; done; exit 0`,
+		q(remotePath), strings.Join(quoteAll(cand), " "), q(GeneratedMarker))
+	out, err := r.Run(ctx, shScript(script))
+	if err != nil {
+		return fmt.Errorf("checking existing nginx files on %s: %w", r.Label(), err)
+	}
+	inSet := map[string]bool{}
+	for _, f := range cand {
+		inSet[f] = true
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if p, ok := strings.CutPrefix(line, "UNMARKED "); ok && inSet[p] {
+			return errs.New("E485", fmt.Sprintf("unmarked file would be overwritten: %q", p)).
+				WithFix("move or delete that hand-written file on the host (or add the nself generated marker to it), then deploy again; nothing was sent")
+		}
+	}
+	return nil
+}

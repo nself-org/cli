@@ -464,6 +464,11 @@ service, or place its context on the host.
   remote_path`) before the lock, the tar and any sync. Move the shared dir inside the project dir.
   A link that stays inside is written through, and the deploy prints a `[notice]` line with the real
   path. The sync never changes the mode of a directory that already exists.
+- A `nginx/` file the set ships is never overwritten when it already exists on the host without the
+  nself generated marker and the last recorded deploy did not ship it: the deploy stops with `E485`
+  (`unmarked file would be overwritten`) before the lock, naming the path. A first deploy onto a
+  host with hand-written nginx files stops at the first collision; move or delete the file, then
+  deploy again.
 - Remote steps are non-interactive (`BatchMode=yes`, `ConnectTimeout=10`): use ssh-agent or an
   unencrypted deploy key. A password or passphrase prompt would hang a step that runs in its own
   process group.
