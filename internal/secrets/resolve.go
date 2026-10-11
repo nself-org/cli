@@ -160,6 +160,10 @@ func readableIdentity() (string, error) {
 	if err != nil {
 		return "", decryptError()
 	}
+	// Stat before Open: opening a FIFO with no writer would block forever.
+	if fi, err := os.Stat(p); err != nil || !fi.Mode().IsRegular() {
+		return "", decryptError()
+	}
 	f, err := os.Open(p)
 	if err != nil {
 		return "", decryptError()
