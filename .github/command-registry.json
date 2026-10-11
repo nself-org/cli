@@ -19431,7 +19431,12 @@
       "json": "none",
       "data_schema": null,
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {

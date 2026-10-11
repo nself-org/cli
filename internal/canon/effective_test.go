@@ -159,6 +159,11 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 				switch k {
 				case "build", "reset", "uninstall":
 					got.Confirm = nil
+				case "bundle remove", "remove":
+					// D-0331 (P7-PLUG-20 ruling R1 deviation): --yes confirms
+					// --delete-data, so both rows declare confirm {flags: [yes]}
+					// (a surface-only field the frozen pre-split table lacks).
+					got.Confirm = nil
 				case "clean":
 					got.Confirm, got.Flags = nil, nil
 					want.SideEffect = SideEffectWrite
