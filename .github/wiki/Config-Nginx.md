@@ -91,7 +91,7 @@ ssl/certificates/<domain-dir>/fullchain.pem   ← full chain certificate
 ssl/certificates/<domain-dir>/privkey.pem     ← private key
 ```
 
-`nself build` emits HTTPS server blocks only once both files exist. Add `chain.pem` in the same directory to turn on OCSP stapling; without it, stapling is left off.
+`nself build` emits HTTPS server blocks only once both files exist. OCSP stapling is not configured: Let's Encrypt certificates carry no OCSP URL, so a `chain.pem` in the directory is ignored.
 
 ɳSelf will not touch these files. Renewal and rotation are your responsibility.
 
