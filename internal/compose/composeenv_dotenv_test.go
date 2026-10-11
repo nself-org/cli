@@ -8,7 +8,7 @@ package compose_test
 // (parser.go at v2.16.1, the parser `docker compose --env-file` uses), with
 // template.Substitute reduced to the forms it can meet here: $$, $NAME,
 // ${NAME} and ${NAME:-default}. The PR evidence checks the same corpus
-// against a real `docker compose config`.
+// against a real `docker compose config` on compose 2.20.3 through 5.6.0.
 
 import (
 	"errors"
@@ -269,7 +269,13 @@ func TestQuoteComposeEnvValueRoundTrip(t *testing.T) {
 		if strings.TrimSpace(v) == "" {
 			continue // SecretEnvMap never carries a blank value
 		}
-		line := "K=" + config.QuoteComposeEnvValue(v) + "\n"
+		q := config.QuoteComposeEnvValue(v)
+		if strings.HasPrefix(q, "'") && strings.ContainsAny(q[1:len(q)-1], `'\`) {
+			// compose before 2.24 reads \' and a backslash before the
+			// closing quote differently; such values must be double-quoted.
+			t.Errorf("%q: single-quoted form %q is not portable", v, q)
+		}
+		line := "K=" + q + "\n"
 		got, err := parseComposeDotenv(line)
 		if err != nil {
 			t.Errorf("%q: parse %q: %v", v, line, err)
