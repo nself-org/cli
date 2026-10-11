@@ -14,7 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/deploy/bluegreen"
 	"github.com/nself-org/cli/internal/promote"
 	"github.com/nself-org/cli/internal/ui"
@@ -156,6 +158,13 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// compat.V15(P7-DEPL-24): promote snapshot rollback -> restore the remote pre-deploy tar (and the prod database backup) in place
+	if compat.V15() {
+		if handled, rbErr := rollbackRemoteV15(cmd, workdir, target); handled {
+			return rbErr
+		}
+	}
+
 	// PREVIEW: rollback is a PREVIEW feature. It restores the last promote snapshot
 	// created by nself promote. DNS failback and full cluster-level rollback are not
 	// yet automated — see cross-cutting.md §3 Lifecycle for the roadmap.
@@ -196,4 +205,42 @@ func runDeployPromote(cmd *cobra.Command, args []string) error {
 	}
 	ui.Success(fmt.Sprintf("Promoted to 100%% green in %s", result.Duration.Round(time.Millisecond)))
 	return nil
+}
+
+// rollbackRemoteV15 undoes the last v1.5 remote apply recorded for target. It
+// reports handled=false when there is no such record, so the caller keeps the
+// old rollback.
+func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error) {
+	st, _ := deploy.LoadDeployState(workdir)
+	if target == "local" || st.PreDeployTar == "" || st.Target != target {
+		return false, nil
+	}
+	idx := strings.Index(st.PreDeployTar, "/"+deploy.BackupDir+"/pre-deploy-")
+	if idx <= 0 {
+		return true, fmt.Errorf("deploy rollback: the recorded tar %q is not a pre-deploy tar; nothing was changed", st.PreDeployTar)
+	}
+	rp := st.PreDeployTar[:idx]
+	srv, key := controlplane.Server{Name: target + "-app", Host: st.BackupHost, RemotePath: rp}, sshKeyPath()
+	if inv, err := controlplane.Load(workdir); err == nil {
+		for _, e := range inv.Environments {
+			for _, c := range e.Servers {
+				if c.Host == st.BackupHost {
+					srv.Name = c.Name
+					if v := os.Getenv(c.SSHKeyRef); v != "" {
+						key = v
+					}
+				}
+			}
+		}
+	}
+	r, err := openDeployRemote(cmd.Context(), srv, key, target)
+	if err != nil {
+		return true, err
+	}
+	err = deploy.RollbackRemote(cmd.Context(), deploy.RollbackOptions{Remote: r, RemotePath: srv.RemotePath, Tar: st.PreDeployTar, BackupID: st.BackupID, Clock: deployGateClock, Out: os.Stdout})
+	if err == nil {
+		st.RolledBack = true
+		_ = deploy.SaveDeployState(workdir, st)
+	}
+	return true, err
 }

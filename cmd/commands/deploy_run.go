@@ -21,7 +21,7 @@ import (
 
 // deployBuildStepFn is the build step. A variable so tests can prove a path
 // never builds (or records that it did) without running docker.
-var deployBuildStepFn = runDeployBuildStep
+var deployBuildStepFn = deployBuildStepForMode
 
 func runDeploy(cmd *cobra.Command, args []string) error {
 	profile, err := selectedDeployProfile(cmd)
@@ -29,7 +29,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	oldContext := cmd.Context()
-	cmd.SetContext(withDeployProfile(oldContext, profile))
+	cmd.SetContext(withDeployYes(cmd, withDeployProfile(oldContext, profile)))
 	defer cmd.SetContext(oldContext)
 	// Resolve target: --env flag takes priority over the positional argument.
 	envFlag, _ := cmd.Flags().GetString("env")

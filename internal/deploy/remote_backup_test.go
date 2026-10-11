@@ -148,3 +148,54 @@ func TestDeployRollbackInPlace(t *testing.T) {
 		t.Error("restore accepted a tar outside the backup dir")
 	}
 }
+
+func TestRollbackRemoteOrder(t *testing.T) {
+	needTools(t)
+	f, o, rp := applyFixture(t, "")
+	// Deployed once already, so the host has a set to come back to.
+	if _, err := ApplyRemote(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	prev := readFile(t, rp+"/.nself/compose-files.txt")
+	res, err := ApplyRemote(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	f.log = nil
+	f.mu.Unlock()
+	writeFile(t, rp+"/.nself/compose-files.txt", "# broken by the second deploy\n", 0o644)
+	err = RollbackRemote(context.Background(), RollbackOptions{Remote: f, RemotePath: rp, Tar: res.PreDeployTar, BackupID: "backup-1", Clock: &fakeClock{now: time.Unix(0, 0)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, rp+"/.nself/compose-files.txt"); got != prev {
+		t.Errorf("manifest not restored: %q", got)
+	}
+	got := steps(f)
+	order := []string{"restore", "dbbackup", "model", "pull", "up:db", "up:web", "up:nginx"}
+	prevAt := -1
+	for _, want := range order {
+		i := indexOf(got, want)
+		if i < 0 || i <= prevAt {
+			t.Fatalf("step %q at %d (previous %d) in %v", want, i, prevAt, got)
+		}
+		prevAt = i
+	}
+	// Off prod-class there is no database restore, and a first deploy is not re-applied.
+	empty := newFakeRemote(t)
+	empty.handler = stackHandler(t.TempDir(), "")
+	fresh := t.TempDir()
+	bk, err := CreatePreDeployTar(context.Background(), empty, fresh, NewBackupID(time.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RollbackRemote(context.Background(), RollbackOptions{Remote: empty, RemotePath: fresh, Tar: bk.Tar}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range empty.commands() {
+		if strings.Contains(c, "nself backup restore") || strings.Contains(c, "docker compose") {
+			t.Errorf("first-deploy rollback ran %q", c)
+		}
+	}
+}

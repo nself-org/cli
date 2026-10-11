@@ -17,19 +17,19 @@ import (
 func TestRemoteApplyDispatch(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		composePath := fakeDeploy(t)
-		oldDeploy, oldRemote := deployServerFn, newRemoteFn
-		defer func() { deployServerFn, newRemoteFn = oldDeploy, oldRemote }()
+		oldDeploy := deployServerFn
+		defer func() { deployServerFn = oldDeploy }()
 		var viaSSH, opened []string
 		deployServerFn = func(_ context.Context, cfg deploy.SSHConfig, _ string) error {
 			viaSSH = append(viaSSH, cfg.ServerName)
 			return nil
 		}
-		newRemoteFn = func(_ context.Context, srv Server, _, _ string) (deploy.Remote, error) {
-			opened = append(opened, srv.Name)
-			return &recRemote{}, nil
-		}
 		var recorded []string
 		ra := &RemoteApply{
+			Open: func(_ context.Context, srv Server, _, _ string) (deploy.Remote, error) {
+				opened = append(opened, srv.Name)
+				return &recRemote{}, nil
+			},
 			Set: deploy.ArtifactSet{RemotePath: "/opt/nself", StageDir: t.TempDir()},
 			Record: func(srv Server, res deploy.ApplyResult, err error) {
 				recorded = append(recorded, srv.Name)
@@ -68,10 +68,10 @@ func TestRemoteApplyRefusesMismatchedRemotePath(t *testing.T) {
 	env := inv.Environments["staging"]
 	env.Servers[2].RemotePath = "/srv/other" // app-02
 	inv.Environments["staging"] = env
-	oldRemote := newRemoteFn
-	defer func() { newRemoteFn = oldRemote }()
-	newRemoteFn = func(_ context.Context, srv Server, _, _ string) (deploy.Remote, error) { return &recRemote{}, nil }
-	ra := &RemoteApply{Set: deploy.ArtifactSet{RemotePath: "/opt/nself", StageDir: t.TempDir()}}
+	ra := &RemoteApply{
+		Set:  deploy.ArtifactSet{RemotePath: "/opt/nself", StageDir: t.TempDir()},
+		Open: func(_ context.Context, srv Server, _, _ string) (deploy.Remote, error) { return &recRemote{}, nil },
+	}
 	result, err := RunWithApply(context.Background(), inv, "staging", &pipelineStubProber{}, composePath, ra)
 	if err != nil {
 		t.Fatal(err)

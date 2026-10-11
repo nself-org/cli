@@ -38,11 +38,16 @@ type RemoteApply struct {
 	Out          io.Writer
 	// Record is called after each server's apply, whether it succeeded or not.
 	Record func(srv Server, res deploy.ApplyResult, err error)
+	// Open opens the remote of a server; nil means the strict-host-key ssh
+	// remote. Tests substitute a recorder.
+	Open func(ctx context.Context, srv Server, keyPath, env string) (deploy.Remote, error)
 }
 
-// newRemoteFn opens the strict-host-key ssh remote for a server. A variable so
-// tests substitute a recorder.
-var newRemoteFn = func(ctx context.Context, srv Server, keyPath, env string) (deploy.Remote, error) {
+// OpenRemote opens the remote of srv through ra.Open or the ssh default.
+func (ra *RemoteApply) OpenRemote(ctx context.Context, srv Server, keyPath, env string) (deploy.Remote, error) {
+	if ra.Open != nil {
+		return ra.Open(ctx, srv, keyPath, env)
+	}
 	return deploy.NewSSHRemote(ctx, srv.Host, keyPath, env, srv.Name)
 }
 
@@ -57,16 +62,18 @@ func RunWithApply(ctx context.Context, inv *Inventory, env string, prober Prober
 func deployTo(ctx context.Context, envName string, srv Server, cfg deploy.SSHConfig, pl payload) error {
 	// compat.V15(P7-DEPL-24): DeployViaSsh single-compose push -> ApplyRemote artifact-set apply
 	if compat.V15() && pl.apply != nil {
-		return applyServer(ctx, envName, srv, cfg.KeyPath, pl.apply)
+		return ApplyServer(ctx, envName, srv, cfg.KeyPath, pl.apply)
 	}
 	return deployServerFn(ctx, cfg, pl.compose)
 }
 
-func applyServer(ctx context.Context, envName string, srv Server, keyPath string, ra *RemoteApply) error {
+// ApplyServer applies the env's artifact set to one server: the pipeline's
+// per-server step, and the legacy single-host deploy's.
+func ApplyServer(ctx context.Context, envName string, srv Server, keyPath string, ra *RemoteApply) error {
 	if srv.RemotePath == "" || srv.RemotePath != ra.Set.RemotePath {
 		return errs.New("E485", fmt.Sprintf("environments.%s.servers.%s.remote_path: %q must equal %q, the path the artifact set was built for; every server of an env shares one remote_path in v1.5", envName, srv.Name, srv.RemotePath, ra.Set.RemotePath))
 	}
-	r, err := newRemoteFn(ctx, srv, keyPath, envName)
+	r, err := ra.OpenRemote(ctx, srv, keyPath, envName)
 	if err != nil {
 		return err
 	}

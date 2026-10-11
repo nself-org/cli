@@ -207,7 +207,7 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 			return true, fmt.Errorf("deploy: remote build failed, nothing was sent: %w", buildErr)
 		}
 		envName = deployCascadeEnv(workdir, target)
-		snap, cleanup, snapErr := writeResolvedDeployEnv(workdir, envName)
+		snap, cleanup, snapErr := resolveDeployEnvSnapshot(workdir, envName)
 		if snapErr != nil {
 			return true, fmt.Errorf("deploy: env snapshot failed, nothing was sent: %w", snapErr)
 		}
@@ -223,7 +223,7 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 		ui.CommandHeader(fmt.Sprintf("nself deploy %s (pipeline)", target), fmt.Sprintf("strategy=%s server=%s", strategy, serverFilter))
 	}
 
-	result, pipeErr := controlplane.RunWithEnv(cmd.Context(), inv, target, prober, composePath, envFile, envName)
+	result, pipeErr := runDeployPipeline(cmd, workdir, inv, target, prober, composePath, envFile, envName, jsonOut)
 	if pipeErr != nil {
 		return true, fmt.Errorf("deploy pipeline: %w", pipeErr)
 	}
