@@ -45,6 +45,10 @@ type InstalledPlugin struct {
 type Sources struct {
 	Bundles []BundleDef
 	Plugins []InstalledPlugin
+	// Unreadable lists plugin directories whose plugin.json exists but could
+	// not be read, one description each. Plugins then lacks them, so Store
+	// never persists such a bootstrap (Load shows it with a warning).
+	Unreadable []string
 	// Now stamps installed_at; nil means time.Now.
 	Now func() time.Time
 }
