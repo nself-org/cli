@@ -24,6 +24,10 @@ func stackHandler(rp string, crash string) func(string) (string, bool) {
 			upDone[m[1]] = true
 		}
 		switch {
+		case strings.Contains(s, "docker image inspect"):
+			return fakeImageID("a") + " postgres:16\n" + fakeImageID("b") + " web:1\n", true
+		case strings.Contains(s, "docker tag"):
+			return "", true
 		case strings.Contains(s, "config --format json"):
 			return modelJSON(rp), true
 		case strings.Contains(s, "config --services"):
@@ -51,8 +55,15 @@ func stackHandler(rp string, crash string) func(string) (string, bool) {
 	}
 }
 
+// fakeImageID is a synthetic image id: 64 copies of one hex digit.
+func fakeImageID(digit string) string { return "sha256:" + strings.Repeat(digit, 64) }
+
 func classify(s string) string {
 	switch {
+	case strings.Contains(s, "docker image inspect"):
+		return "imgsave"
+	case strings.Contains(s, "docker tag"):
+		return "imgrestore"
 	case strings.HasPrefix(s, "rsync "):
 		return "rsync"
 	case strings.Contains(s, "deploy.lock"):
@@ -143,7 +154,7 @@ func applyFixture(t *testing.T, crash string) (*fakeRemote, ApplyOptions, string
 	return f, o, rp
 }
 
-var orderedMilestones = []string{"snapshot", "lock", "tar", "dbbackup", "shipped", "rsync", "perms", "model", "nginx", "pull", "preview", "up:db", "up:web", "up:nginx", "reload", "hasura"}
+var orderedMilestones = []string{"snapshot", "lock", "tar", "dbbackup", "shipped", "rsync", "perms", "model", "nginx", "imgsave", "pull", "preview", "up:db", "up:web", "up:nginx", "reload", "hasura"}
 
 func TestRemoteApplyOrder(t *testing.T) {
 	f, o, rp := applyFixture(t, "")
@@ -173,8 +184,8 @@ func TestRemoteApplyOrder(t *testing.T) {
 			t.Errorf("service %s was not gated right after its up: %v", svc, got)
 		}
 	}
-	if indexOf(got, "restore") >= 0 {
-		t.Errorf("a clean apply restored files: %v", got)
+	if indexOf(got, "restore") >= 0 || indexOf(got, "imgrestore") >= 0 {
+		t.Errorf("a clean apply restored files or image tags: %v", got)
 	}
 	for _, c := range f.commands() {
 		if strings.Contains(c, "--delete") {
@@ -202,6 +213,7 @@ func TestRemoteApplyOrder(t *testing.T) {
 		{"perms", "stat -c", any, "perms", true},
 		{"model", "config --format json", any, "model", true},
 		{"nginx -t", "docker run --rm", any, "nginx", true},
+		{"image ids", "docker image inspect", any, "imgsave", true},
 		{"pull", " pull", any, "pull", true},
 		{"preview", "up -d --dry-run", any, "preview", true},
 		{"first up", "up -d --no-deps -- 'db'", any, "up:db", false},
@@ -236,6 +248,11 @@ func TestRemoteApplyOrder(t *testing.T) {
 			}
 			if restored := indexOf(steps(f), "restore") >= 0; restored != c.restored {
 				t.Errorf("restore ran = %v, want %v: %v", restored, c.restored, steps(f))
+			}
+			// Image tags go back only when the pull may have moved them and no container was touched.
+			wantTags := c.restored && indexOf(orderedMilestones, c.last) > indexOf(orderedMilestones, "imgsave")
+			if tags := indexOf(steps(f), "imgrestore") >= 0; tags != wantTags {
+				t.Errorf("image tag restore ran = %v, want %v: %v", tags, wantTags, steps(f))
 			}
 			if c.restored && c.name != "rsync" {
 				if after := readFile(t, rp+"/docker-compose.yml"); after != before {
@@ -295,6 +312,47 @@ func TestRemoteApplyRefusals(t *testing.T) {
 			if indexOf(got, s) >= 0 {
 				t.Errorf("%s ran after E403: %v", s, got)
 			}
+		}
+		// D-0426: the tags the pull moved point back at the images they had, so a
+		// manual compose up cannot run the refused images. Absent and digest-pinned refs are left alone.
+		var tagCmd string
+		for _, c := range f.commands() {
+			if strings.Contains(c, "docker tag") {
+				tagCmd = c
+			}
+		}
+		for _, want := range []string{"docker tag '" + fakeImageID("a") + "' 'postgres:16' || rc=1", "docker tag '" + fakeImageID("b") + "' 'web:1' || rc=1", "exit $rc"} {
+			if !strings.Contains(tagCmd, want) {
+				t.Errorf("tag restore %q lacks %q", tagCmd, want)
+			}
+		}
+		if strings.Contains(tagCmd, "job:1") || strings.Contains(tagCmd, "nginx:") {
+			t.Errorf("a ref the host lacked, or a digest pin, was retagged: %q", tagCmd)
+		}
+		if indexOf(got, "imgrestore") < indexOf(got, "preview") {
+			t.Errorf("tags restored before the refusal: %v", got)
+		}
+	})
+	t.Run("E403 says so when the image tags cannot be put back", func(t *testing.T) {
+		f, o, _ := applyFixture(t, "")
+		o.Yes = false
+		f.fail["docker tag"] = errBoom
+		var out strings.Builder
+		o.Out = &out
+		f.handler = func(s string) (string, bool) {
+			if strings.Contains(s, "up -d --dry-run") {
+				return " Container proj-db-1 Recreate\n", true
+			}
+			return stackHandler(o.RemotePath, "")(s)
+		}
+		_, err := ApplyRemote(context.Background(), o)
+		var ce *errs.CLIError
+		if !errors.As(err, &ce) || ce.Code != "E403" || !strings.Contains(err.Error(), "image tags the pull moved could not be put back") {
+			t.Fatalf("err = %v", err)
+		}
+		// The rendered E403 shows only the CLIError message, so the warning must reach the output too.
+		if !strings.Contains(out.String(), "[warn] the image tags the pull moved could not be put back") {
+			t.Errorf("no warning line in the output: %q", out.String())
 		}
 	})
 	t.Run("non-prod takes no database backup and needs no confirm", func(t *testing.T) {

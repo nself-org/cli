@@ -16,6 +16,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
@@ -273,11 +274,10 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	// subcommand" pattern as runRemoteNselfCommand (db_remote.go). A short
 	// retry loop absorbs the gap between "container up" (no health gate on
 	// this remote path, unlike the local rolling restart) and "API ready".
-	applyCmd := fmt.Sprintf("cd %s && for i in 1 2 3 4 5; do nself db hasura metadata apply && exit 0; sleep 3; done; exit 1", remote.ShellQuote(remotePath))
 	if !jsonOut {
 		fmt.Printf("  [running] hasura metadata apply on %s\n", sshTarget)
 	}
-	ac := exec.CommandContext(ctx, "ssh", append(sshArgs, applyCmd)...)
+	ac := exec.CommandContext(ctx, "ssh", append(sshArgs, deploy.HasuraMetadataApplyCommand(remotePath))...)
 	ac.Env = os.Environ()
 	if out, err := ac.CombinedOutput(); err != nil {
 		// Mirrors hasura.IsStrict's default (strict in staging/prod, warn in
