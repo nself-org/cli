@@ -81,17 +81,28 @@ func (n resolvedNetwork) realName(key string) string {
 	return key
 }
 
-// projectScopedNameRE matches a name that starts with the project name, so a
-// network of that name belongs to this project: ${COMPOSE_PROJECT_NAME[:-x]}_...
-// or ${PROJECT_NAME[:-x]}_...
-var projectScopedNameRE = regexp.MustCompile(`^\$\{(COMPOSE_PROJECT_NAME|PROJECT_NAME)(:-[^}]*)?\}_`)
+// projectScopedFor reports whether name is a network of this project that
+// belongs to plugin: ${COMPOSE_PROJECT_NAME[:-x]}_<plugin>_<suffix> or
+// ${PROJECT_NAME[:-x]}_<plugin>_<suffix>. The plugin's own namespace is
+// required: a bare ${COMPOSE_PROJECT_NAME}_x_network would land on the default
+// network of a sibling project named <project>_x. Plugin names match
+// ^[a-z][a-z0-9-]*$ (no underscore), so "_<plugin>_" cannot match a longer
+// plugin name. An empty plugin accepts nothing (fail closed).
+func projectScopedFor(plugin, name string) bool {
+	if plugin == "" {
+		return false
+	}
+	re := regexp.MustCompile(`^\$\{(COMPOSE_PROJECT_NAME|PROJECT_NAME)(:-[^}]*)?\}_` + regexp.QuoteMeta(plugin) + `_.+$`)
+	return re.MatchString(name)
+}
 
 // foreignExternalNetworks returns the sorted names of top-level networks the
 // fragment would join that are not the project network: an external network
 // that is not the project network or a legacy literal, and a network that is
-// not external but carries an explicit name that is not project-scoped
-// (compose reuses an existing network of that name instead of creating one).
-func (r *resolvedFragment) foreignExternalNetworks() []string {
+// not external but carries an explicit name that is not scoped to this plugin
+// of this project (compose reuses an existing network of that name instead of
+// creating one).
+func (r *resolvedFragment) foreignExternalNetworks(pluginName string) []string {
 	var out []string
 	for key, n := range r.Networks {
 		if n.isExternal() {
@@ -100,7 +111,7 @@ func (r *resolvedFragment) foreignExternalNetworks() []string {
 			}
 			continue
 		}
-		if n.Name != "" && !projectNetworkRE.MatchString(n.Name) && !projectScopedNameRE.MatchString(n.Name) {
+		if n.Name != "" && !projectNetworkRE.MatchString(n.Name) && !projectScopedFor(pluginName, n.Name) {
 			out = append(out, n.Name)
 		}
 	}
@@ -144,22 +155,28 @@ func (s resolvedService) refersTo(keys map[string]bool) bool {
 	return false
 }
 
-// documentCount returns how many non-empty YAML documents content holds.
-// Compose merges every document of a -f file, while the policy decodes the
-// first one only, so a fragment with more than one is refused.
+// documentCount returns how many YAML documents content holds, counting a
+// null document ("---" with nothing after it) when it comes before real
+// content: "---\n---\nservices: ..." is two, because the policy decodes only
+// the first (null) one and would never see the services. Null documents after
+// the last real one ("services: ...\n---\n") hide nothing and are not
+// counted. An empty stream, or one of only comments, counts 0. Compose merges
+// every document of a -f file, while the policy decodes the first one only, so
+// a fragment with more than one is refused.
 func documentCount(content []byte) int {
 	dec := yaml.NewDecoder(bytes.NewReader(content))
-	n := 0
+	n, upToLastReal := 0, 0
 	for {
 		var doc yaml.Node
 		if err := dec.Decode(&doc); err != nil {
 			if !errors.Is(err, io.EOF) {
-				n++ // a document that fails to parse is still a document
+				return n + 1 // a document that fails to parse is still a document
 			}
-			return n
+			return upToLastReal
 		}
+		n++
 		if len(doc.Content) > 0 && (doc.Content[0].Kind != yaml.ScalarNode || doc.Content[0].Tag != "!!null") {
-			n++
+			upToLastReal = n
 		}
 	}
 }

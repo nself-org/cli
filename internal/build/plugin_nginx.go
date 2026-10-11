@@ -7,7 +7,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // claimsOf returns the set of "<port>|<server_name>" claims a rendered
@@ -184,6 +186,10 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 		return 0, fmt.Errorf("creating %s: %w", sitesDir, err)
 	}
 
+	// destOwner remembers which plugin and source file wrote each sites file,
+	// so two plugins mapping to one name (a-b + c.conf, a + b-c.conf) are seen.
+	destOwner := map[string]nginxDestOwner{}
+
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -210,6 +216,10 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 			destName := pluginName + "-" + filename
 			destPath := filepath.Join(sitesDir, destName)
 
+			if err := checkNginxDestCollision(destOwner, destName, pluginName, match); err != nil {
+				return count, err
+			}
+
 			// A duplicate server_name across two site files is not a warning
 			// — nginx silently serves only one of them ("conflicting server
 			// name ... ignored"). Fail the build so the conflict is fixed
@@ -226,4 +236,29 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 	}
 
 	return count, nil
+}
+
+// nginxDestOwner is the plugin and source file that produced a sites file.
+type nginxDestOwner struct{ plugin, source string }
+
+// checkNginxDestCollision records destName as written by pluginName from
+// source, and reports when a different plugin already wrote that name: the
+// later file would replace the earlier one and its route would vanish.
+func checkNginxDestCollision(owners map[string]nginxDestOwner, destName, pluginName, source string) error {
+	prev, seen := owners[destName]
+	if !seen || prev.plugin == pluginName {
+		owners[destName] = nginxDestOwner{plugin: pluginName, source: source}
+		return nil
+	}
+	msg := fmt.Sprintf("plugins %q and %q both map to nginx/sites/%s (%s and %s)", prev.plugin, pluginName, destName, prev.source, source)
+	// compat.V15(D-0287): two plugins mapping to one nginx/sites file overwrite silently (warning) -> E055 fails the build
+	if compat.V15() {
+		e := errs.New("E055", msg)
+		e.Why = "Both plugins map to the same nginx/sites file name (<plugin>-<file>), so one would silently replace the other and its route vanish."
+		e.Fix = "Rename one plugin's nginx conf file, or remove one of the two plugins."
+		return e
+	}
+	warnOnce(msg + "; the later plugin's file replaces the earlier one (an error from v1.5)")
+	owners[destName] = nginxDestOwner{plugin: pluginName, source: source}
+	return nil
 }

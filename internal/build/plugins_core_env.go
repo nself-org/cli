@@ -25,6 +25,7 @@ package build
 // supported (see normalizeComposePluginCoreEnv and plugins_core_env_inject.go).
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -156,16 +157,41 @@ var pluginEnvListEntryKeyRE = regexp.MustCompile(`^-[ \t]+([A-Za-z_][A-Za-z0-9_]
 // env_file-only fragment with no networks: anchor either, or a block using
 // a YAML merge key "<<: *anchor" whose expanded keys we can't see) is left
 // unchanged with a ui.Warn naming the plugin and file, rather than silently
-// dropping the injection.
+// dropping the injection. Only the plugin's own service is rewritten when the
+// fragment has sidecars (see plugins_core_env_target.go).
 func normalizeComposePluginCoreEnv(content []byte, pluginDir, pluginName string) []byte {
 	if pluginName == "" {
 		return content
 	}
 	port := 0
+	manifestName := ""
 	if m := readPluginManifest(pluginDir, pluginName); m != nil {
 		port = m.Port
+		manifestName = m.Name
 	}
 
+	// A fragment can hold sidecar services: only the plugin's own service
+	// range is rewritten (D-0319); the rest of the bytes pass through.
+	start, end, found := pluginServiceRange(content, pluginName, manifestName)
+	if !found {
+		warnOnce(fmt.Sprintf(
+			"plugin %q: %s has several services and none is named %s, nself-%s or plugin-%s, so the core env vars were not injected",
+			pluginName, filepath.Join(pluginDir, pluginName, pluginComposeFilename), pluginName, pluginName, pluginName))
+		return content
+	}
+	seg := normalizeServiceCoreEnv(content[start:end], pluginDir, pluginName, port)
+	if bytes.Equal(seg, content[start:end]) {
+		return content
+	}
+	out := make([]byte, 0, len(content)+len(seg)-(end-start))
+	out = append(out, content[:start]...)
+	out = append(out, seg...)
+	return append(out, content[end:]...)
+}
+
+// normalizeServiceCoreEnv applies the core-env rewrite to one service's bytes
+// (or a whole fragment when no service range could be found).
+func normalizeServiceCoreEnv(content []byte, pluginDir, pluginName string, port int) []byte {
 	if loc := pluginEnvEmptyListRE.FindSubmatchIndex(content); loc != nil {
 		return injectIntoEmptyListEnvBlock(content, loc, pluginName, port)
 	}
