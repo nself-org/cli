@@ -8,6 +8,7 @@ package commands
 // that hook in renewal/<lineage>.conf, where any certbot scheduler (the distro
 // certbot.timer, snap, cron.d) replays it, and an operator's
 // renewal-hooks/deploy script can do the same.
+// The certbot hook scan lives in ssl_certbot_hooks.go.
 // Inputs: systemd state through systemctlRun and the certbot tree (seams tests replace).
 // Outputs: a disabled and stopped nself-ssl-renew.timer; a refusal naming
 // any certbot hook that writes into the project's ssl dir.
@@ -22,7 +23,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -127,115 +127,6 @@ func retireCertbotTimer(ctx context.Context) (bool, error) {
 		return true, cmp.Or(err, fmt.Errorf("%s %w (it started while the timer was being disabled)", certbotService, errRenewalRunning))
 	}
 	return true, nil
-}
-
-// certbotHookFiles lists where certbot reads hooks under dir: cli.ini and
-// renewal/*.conf (confs), and the files it runs from renewal-hooks/{pre,deploy,post}
-// (scripts: regular, executable, no trailing '~', dot files included). Only
-// absence is tolerated; any other read error is returned.
-func certbotHookFiles(dir string) (confs, scripts []string, err error) {
-	list := func(d string) ([]string, error) {
-		es, err := os.ReadDir(d)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
-		}
-		var out []string
-		for _, e := range es {
-			out = append(out, filepath.Join(d, e.Name()))
-		}
-		return out, err
-	}
-	regular := func(p string) (os.FileInfo, bool, error) {
-		st, err := os.Stat(p)
-		if errors.Is(err, os.ErrNotExist) { // dangling link: nothing to run
-			return nil, false, nil
-		}
-		return st, err == nil && st.Mode().IsRegular(), err
-	}
-	renewal, err := list(filepath.Join(dir, "renewal"))
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, p := range append([]string{filepath.Join(dir, "cli.ini")}, renewal...) {
-		_, ok, err := regular(p)
-		if err != nil {
-			return nil, nil, err
-		}
-		if ok && (strings.HasSuffix(p, ".conf") || filepath.Base(p) == "cli.ini") {
-			confs = append(confs, p)
-		}
-	}
-	for _, sub := range []string{"pre", "deploy", "post"} {
-		ps, err := list(filepath.Join(dir, "renewal-hooks", sub))
-		if err != nil {
-			return nil, nil, err
-		}
-		for _, p := range ps {
-			st, ok, err := regular(p)
-			if err != nil {
-				return nil, nil, err
-			}
-			if ok && !strings.HasSuffix(p, "~") && (runtime.GOOS == "windows" || st.Mode()&0o111 != 0) {
-				scripts = append(scripts, p)
-			}
-		}
-	}
-	return confs, scripts, nil
-}
-
-// certbotHooks lists the certbot hooks under dir that name one of sslDirs:
-// "*_hook"/"*-hook" lines in cli.ini and renewal/*.conf, and non-comment
-// lines of the scripts certbot runs. A missing tree has none.
-func certbotHooks(dir string, sslDirs ...string) ([]string, error) {
-	var needles []string
-	for _, d := range sslDirs {
-		needles = append(needles, filepath.Clean(d))
-		if real, err := filepath.EvalSymlinks(d); err == nil && real != filepath.Clean(d) {
-			needles = append(needles, real)
-		}
-	}
-	confs, scripts, err := certbotHookFiles(dir)
-	if err != nil {
-		return nil, err
-	}
-	var hits []string
-	for _, p := range append(confs, scripts...) {
-		data, err := os.ReadFile(p) //nolint:gosec // certbot's tree, read only
-		if err != nil {
-			return nil, err
-		}
-		isConf := slices.Contains(confs, p)
-		for i, line := range strings.Split(string(data), "\n") {
-			k, _, _ := strings.Cut(line, "=")
-			k = strings.TrimSpace(k)
-			if (isConf && !strings.HasSuffix(k, "_hook") && !strings.HasSuffix(k, "-hook")) || strings.HasPrefix(strings.TrimSpace(line), "#") || (isConf && strings.HasPrefix(strings.TrimSpace(line), ";")) {
-				continue
-			}
-			if slices.ContainsFunc(needles, func(n string) bool { return mentionsPath(line, n) }) {
-				hits = append(hits, fmt.Sprintf("%s:%d", p, i+1))
-			}
-		}
-	}
-	return hits, nil
-}
-
-// mentionsPath reports whether line names dir or a path under it: dir starts
-// at the line start or after a space, quote, '=' or ':', and ends at the line
-// end or before a separator, space, quote, ';' or ')'.
-func mentionsPath(line, dir string) bool {
-	for off := 0; ; {
-		i := strings.Index(line[off:], dir)
-		if i < 0 {
-			return false
-		}
-		at, end := off+i, off+i+len(dir)
-		before := at == 0 || strings.ContainsRune(" \t\"'=:", rune(line[at-1]))
-		after := end == len(line) || strings.ContainsRune(string(filepath.Separator)+"/ \t\"';)\r", rune(line[end]))
-		if before && after {
-			return true
-		}
-		off = at + 1
-	}
 }
 
 // refuseCertbotHooks refuses (in every mode, before anything is written) while
