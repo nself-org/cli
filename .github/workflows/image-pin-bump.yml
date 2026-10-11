@@ -119,7 +119,10 @@ jobs:
           go test -count=1 ./internal/compose ./internal/config ./cmd/commands ./tools/imagebump/... > "$OUT/gotest.txt" 2>&1 || rc=$?
           cat "$OUT/gotest.txt"
           echo "$rc" > "$OUT/gotest.rc"
-          grep -E '^(--- FAIL: |FAIL[[:space:]])' "$OUT/gotest.txt" | sed -E 's/[[:space:]]+\([0-9.]+s\)$//; s/[[:space:]]+[0-9.]+s$//' | sort -u > "$OUT/gotest.fail" || true
+          # Top-level "--- FAIL: TestX" lines and go's own "FAIL<TAB>pkg" lines only:
+          # a test may print "FAIL  <text>" as expected output (migrate lint does).
+          awk -F'\t' '/^--- FAIL: / { sub(/ \([0-9.]+s\)$/, ""); print; next }
+            $1 == "FAIL" && $2 != "" { print "FAIL " $2 }' "$OUT/gotest.txt" | sort -u > "$OUT/gotest.fail"
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
 
       - name: Push the dry-run branch
