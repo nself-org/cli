@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/nself-org/cli/internal/errs"
@@ -63,6 +64,28 @@ func TestCommandSecretValues_ConfigSecretsSet(t *testing.T) {
 	}
 	if got := commandSecretValues(set, []string{"FAKEKEY"}); got != nil {
 		t.Errorf("value omitted: got %v", got)
+	}
+}
+
+// TestCommandSecretValues_UnresolvedSpelling: in default (v1.4) mode
+// `config secrets set K V` resolves to the `config` parent, which swallows the
+// words and prints help. Every positional is masked.
+func TestCommandSecretValues_UnresolvedSpelling(t *testing.T) {
+	t.Setenv("NSELF_V15", "")
+	cmd, args, err := RootCmd.Find([]string{"config", "secrets", "set", "FAKEKEY", fakeSecret0468})
+	if err != nil || cmd == nil {
+		t.Fatalf("find: %v", err)
+	}
+	if !cmd.HasSubCommands() || len(args) == 0 {
+		t.Skipf("config no longer swallows the words (resolved %q, args %v)", cmd.CommandPath(), args)
+	}
+	got := commandSecretValues(cmd, args)
+	if !reflect.DeepEqual(got, args) || !slices.Contains(got, fakeSecret0468) {
+		t.Errorf("got %v, want every positional %v", got, args)
+	}
+	// Control: a parent invoked with no words masks nothing.
+	if got := commandSecretValues(cmd, nil); got != nil {
+		t.Errorf("no args: got %v", got)
 	}
 }
 

@@ -93,7 +93,7 @@ func invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Req
 	tr.decision = DecisionRun
 	spec := specFor(o, transport, withFlags(argv, d.Flags...))
 	spec.Secrets = secretBundle
-	out, refusal, err := runChild(ctx, res, command, spec, requestSecrets(cmd, req), transport == TransportHTTPStream)
+	out, refusal, err := runChild(ctx, res, command, spec, scrubSet(requestSecrets(cmd, req), secretBundle), transport == TransportHTTPStream)
 	switch {
 	case err != nil:
 		return res, err

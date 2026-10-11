@@ -310,7 +310,7 @@ func TestBuildPlanWritesOnlyTheInvocationLog(t *testing.T) {
 	before := p.whole(t)
 	p.planData(t, true)
 	got := l03LineDiff(before, p.whole(t))
-	for _, want := range []string{"+ d 0755 home/.nself", "+ d 0755 home/.nself/logs", "+ f 0644 home/.nself/logs/nself.log "} {
+	for _, want := range []string{"+ d 0755 home/.nself", "+ d 0700 home/.nself/logs", "+ f 0600 home/.nself/logs/nself.log "} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected %q in the diff:\n%s", want, got)
 		}

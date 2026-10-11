@@ -45,7 +45,7 @@ func TestScrubQuotedForms(t *testing.T) {
 		scrubbed           bool
 	}{
 		{"go-quoted control byte", `bad "a\ab" here`, "a\x07b", true},
-		{"go-quoted non-ascii escapes", `v=caféx`, "caféx", true},
+		{"go-quoted non-ascii escapes", `v=caf\u00e9x`, "caféx", true},
 		{"plain secret", "tok=a\x07b", "a\x07b", true},
 		{"other text stays", `bad "a\ab" here`, "zzz", false},
 	}
@@ -54,7 +54,7 @@ func TestScrubQuotedForms(t *testing.T) {
 		if has := strings.Contains(got, Redacted); has != c.scrubbed {
 			t.Errorf("%s: scrub(%q) = %q, scrubbed=%v want %v", c.name, c.text, got, has, c.scrubbed)
 		}
-		if c.scrubbed && (strings.Contains(got, `\ab`) || strings.Contains(got, `éx`)) {
+		if c.scrubbed && (strings.Contains(got, `\ab`) || strings.Contains(got, `\u00e9x`) || strings.Contains(got, `éx`)) {
 			t.Errorf("%s: a spelling of the secret survived: %q", c.name, got)
 		}
 	}

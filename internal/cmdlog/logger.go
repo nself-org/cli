@@ -73,9 +73,15 @@ func (l *Logger) write(entry Entry) error {
 	defer l.mu.Unlock()
 
 	logDir := filepath.Dir(l.path)
+	// The parent (~/.nself) keeps its historic 0755 creation mode; only the
+	// logs directory is private.
+	if err := os.MkdirAll(filepath.Dir(logDir), 0o755); err != nil {
+		return fmt.Errorf("cmdlog: mkdir %s: %w", filepath.Dir(logDir), err)
+	}
 	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		return fmt.Errorf("cmdlog: mkdir %s: %w", logDir, err)
 	}
+	l.narrowExisting(logDir)
 
 	if err := l.rotateIfNeeded(); err != nil {
 		// Non-fatal — still attempt to write.
@@ -100,6 +106,22 @@ func (l *Logger) write(entry Entry) error {
 
 	_, err = f.Write(line)
 	return err
+}
+
+// narrowExisting tightens what an older release left behind: a logs directory
+// wider than 0700 and every rotated nself.log.N wider than 0600. The current
+// nself.log is narrowed by write.
+func (l *Logger) narrowExisting(logDir string) {
+	narrowTo(logDir, 0o700)
+	rotated, err := filepath.Glob(l.path + ".*")
+	if err != nil {
+		return
+	}
+	for _, p := range rotated {
+		if n, perr := strconv.Atoi(strings.TrimPrefix(p, l.path+".")); perr == nil && n > 0 {
+			narrowTo(p, 0o600)
+		}
+	}
 }
 
 // rotateIfNeeded renames nself.log → nself.log.1 → … → nself.log.N when the
@@ -141,12 +163,10 @@ func (l *Logger) rotateIfNeeded() error {
 // secretFlags are flag names whose values must be redacted.
 var secretFlags = []string{"--password", "--token", "--key", "--secret", "--api-key"}
 
-// redactArgs returns the argv joined as a string with secret values replaced
-// by [REDACTED].
-func redactArgs(argv []string) string { return redactArgsWith(argv, nil) }
-
-// redactArgsWith is redactArgs plus the secret values: the flag-name rules run
-// first, then every element holding a secret value is scrubbed (mask.go).
+// redactArgsWith returns the argv joined as a string with secret values
+// replaced by [REDACTED]: the flag-name rules run first (the five secretFlags,
+// then any --name whose name looks secret, names.go), then URL credentials,
+// then every element holding a registered secret value is scrubbed (mask.go).
 func redactArgsWith(argv []string, extra []string) string {
 	if len(argv) == 0 {
 		return ""
@@ -173,11 +193,20 @@ func redactArgsWith(argv []string, extra []string) string {
 				break
 			}
 		}
+
+		// Any other flag whose name looks secret (--db-password, --auth-token).
+		if name, _, ok := strings.Cut(arg, "="); ok {
+			if secretFlagName(name) {
+				out[i] = name + "=[REDACTED]"
+			}
+		} else if secretFlagName(arg) && i+1 < len(out) {
+			out[i+1] = "[REDACTED]"
+		}
 	}
 
 	secrets := secretSet(extra)
 	for i, arg := range out {
-		out[i] = scrubElem(arg, secrets)
+		out[i] = scrubElem(maskURLCredentials(arg), secrets)
 	}
 	return strings.Join(out, " ")
 }

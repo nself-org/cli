@@ -95,7 +95,7 @@ func TestEmptySecretIgnored(t *testing.T) {
 
 func TestFlagNameRulesStillApply(t *testing.T) {
 	resetMask(t)
-	got := redactArgs([]string{"nself", "x", "--token", planted, "--password=" + planted})
+	got := redactArgsWith([]string{"nself", "x", "--token", planted, "--password=" + planted}, nil)
 	if strings.Contains(got, planted) {
 		t.Errorf("flag-name rule lost: %q", got)
 	}

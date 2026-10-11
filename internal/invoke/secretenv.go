@@ -13,12 +13,18 @@ package invoke
 // the text after it is replaced. The child unsets SecretsEnv at once so no
 // grandchild inherits it, and ignores it unless InvokedByEnv is set. Any
 // mismatch (bad JSON, bad index, a value unused or used twice) is E421.
+// MaxSecretEnvBytes caps the bundle per OS (secretenv_limit_*.go).
+// Known boundary: a mounted plugin binary that the nself child proxies to
+// (internal/plugin/router.go) receives the restored secret values on its own
+// argv, where ps shows them. The plugin protocol has no hand-off for the bundle
+// yet; the gap is tracked in hq debt.
 
 import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -27,10 +33,6 @@ import (
 
 // placeholderPrefix starts every secret placeholder.
 const placeholderPrefix = "nself-invoke-secret:"
-
-// MaxSecretEnvBytes bounds the SecretsEnv value: one environment string is
-// capped near 128 KiB on Linux, and a bigger one would make exec fail.
-const MaxSecretEnvBytes = 96 << 10
 
 // SecretBundle is the secret values of one child run: Values[n] is what the
 // placeholder with index n stands for.
@@ -64,6 +66,27 @@ func hideSecrets(argv []string, marks map[int]int) ([]string, *SecretBundle, err
 		}
 	}
 	return argv, b, nil
+}
+
+// scrubSet is the list runChild scrubs from a child's stderr: the request
+// secrets plus the values of the bundle as rendered (an integer flag sent as
+// 007 reaches the child as 7, which is what the child can echo). Deduplicated,
+// longest first.
+func scrubSet(secrets []string, b *SecretBundle) []string {
+	all := append([]string{}, secrets...)
+	if b != nil {
+		all = append(all, b.Values...)
+	}
+	seen := make(map[string]bool, len(all))
+	out := all[:0]
+	for _, v := range all {
+		if v != "" && !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return len(out[i]) > len(out[j]) })
+	return out
 }
 
 // withSecretsEnv adds the SecretsEnv entry for b (when it holds values) to env.

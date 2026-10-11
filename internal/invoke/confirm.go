@@ -166,8 +166,8 @@ func requestDigest(command string, r Request) (sum [32]byte, ok bool) {
 // auditWritable checks, before a remote or destructive run, that the audit
 // file can be opened for append and locked. The audit line is written after
 // the run, so without this probe a broken log (no path, unwritable dir, stuck
-// lock) would lose the record of a destructive change; the run is refused instead. A failure after
-// the probe (disk full) still only prints a notice.
+// lock) would lose the record of a destructive change; the run is refused
+// instead. A failure after the probe (disk full) still only prints a notice.
 func (g *Guard) auditWritable() error {
 	if g.auditPath == "" {
 		return errors.New("this server has no machine audit log")

@@ -7,6 +7,7 @@ package invoke
 // control proving the scan could have found the value.
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"reflect"
@@ -225,5 +226,51 @@ func TestRestoreSecretArgv(t *testing.T) {
 				t.Errorf("got %q %q, want %q %q", got, vals, c.want, c.wantVals)
 			}
 		})
+	}
+}
+
+// TestScrubSetCoversRenderedValues: a secret integer flag sent as 007 reaches
+// the child as 7, so only the rendered bundle value lets runChild scrub a
+// stderr that echoes 7 (D-0468). The request-only list is the negative control.
+func TestScrubSetCoversRenderedValues(t *testing.T) {
+	cmd := *mustCmd(t, fixtureRegistry(t), "fx echo")
+	cmd.Flags = append([]cmdregistry.Flag{}, cmd.Flags...)
+	for i := range cmd.Flags {
+		if cmd.Flags[i].Name == "count" {
+			cmd.Flags[i].Secret = true
+		}
+	}
+	r := Request{Args: []string{"w"}, Flags: map[string]any{"count": json.Number("007")}}
+	argv, b, err := BuildArgvSecrets(&cmd, r, TransportMCP)
+	if err != nil || b == nil || !contains(b.Values, "7") {
+		t.Fatalf("bundle = %+v, err %v", b, err)
+	}
+	useStub(t, "STUBCLI_MODE", "text", "STUBCLI_STDERR", "boom code 7 here")
+	spec := Spec{Argv: argv, Transport: TransportMCP, Secrets: b}
+
+	_, refusal, err := runChild(context.Background(), Result{}, "fx echo", spec, requestSecrets(&cmd, r), false)
+	if err != nil || refusal == nil {
+		t.Fatalf("want a refusal, got %v %v", refusal, err)
+	}
+	if c, _ := errorOf(t, *refusal)["cause"].(string); !strings.Contains(c, "code 7 here") {
+		t.Fatalf("negative control: the request-only list should not know the rendered 7: %q", c)
+	}
+	_, refusal, err = runChild(context.Background(), Result{}, "fx echo", spec, scrubSet(requestSecrets(&cmd, r), b), false)
+	if err != nil || refusal == nil {
+		t.Fatalf("want a refusal, got %v %v", refusal, err)
+	}
+	if c, _ := errorOf(t, *refusal)["cause"].(string); strings.Contains(c, "code 7") || !strings.Contains(c, Redacted) {
+		t.Errorf("rendered value not scrubbed: %q", c)
+	}
+}
+
+func TestScrubSetDedupesAndSortsLongestFirst(t *testing.T) {
+	got := scrubSet([]string{"ab", "", "abcd"}, &SecretBundle{Values: []string{"ab", "abcdef"}})
+	want := []string{"abcdef", "abcd", "ab"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if got := scrubSet(nil, nil); len(got) != 0 {
+		t.Errorf("nil in, got %q", got)
 	}
 }

@@ -38,6 +38,11 @@ nself secrets set STRIPE_SECRET_KEY sk_test_xxx
 # Set a secret in production by prompt
 nself secrets set --env prod STRIPE_SECRET_KEY
 
+# Keep the value off the command line: with VALUE omitted (or "-"), the value is
+# read from stdin. A terminal gets a no-echo prompt; a pipe is read up to 1 MiB
+# and one trailing newline is trimmed
+printf '%s' "$STRIPE_KEY_FROM_VAULT" | nself secrets set --env prod STRIPE_SECRET_KEY -
+
 # Show all secret keys (values redacted)
 nself secrets list --env prod
 

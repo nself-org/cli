@@ -218,7 +218,7 @@ func planGate(ctx context.Context, cmd *cmdregistry.Command, req Request, o Opti
 	argv = withFlags(argv, "--"+plan.Flag+"=true")
 	planSpec := specFor(o, transport, argv)
 	planSpec.Secrets = secretBundle
-	ran, out, err := runChild(ctx, Result{}, barePath(cmd.Path), planSpec, requestSecrets(cmd, req), false)
+	ran, out, err := runChild(ctx, Result{}, barePath(cmd.Path), planSpec, scrubSet(requestSecrets(cmd, req), secretBundle), false)
 	if err != nil {
 		return d, err
 	}
