@@ -846,6 +846,98 @@
       "surface": "all"
     },
     {
+      "path": "nself admin serve",
+      "name": "serve",
+      "parent": "nself admin",
+      "summary": "Serve the authenticated nSelf HTTP API",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [],
+      "flags": [
+        {
+          "name": "allowed-host",
+          "shorthand": null,
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "Additional reachable host name (repeatable; required for non-loopback)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "host",
+          "shorthand": null,
+          "type": "string",
+          "default": "127.0.0.1",
+          "usage": "Bind address",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "port",
+          "shorthand": null,
+          "type": "int",
+          "default": "3857",
+          "usage": "HTTP API port",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "timeout",
+          "shorthand": null,
+          "type": "duration",
+          "default": "5m0s",
+          "usage": "Document invocation timeout",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        }
+      ],
+      "canon": "plugin",
+      "plugin": "admin",
+      "target": null,
+      "side_effect": "write",
+      "output": "stream",
+      "json": "none",
+      "data_schema": null,
+      "exit_codes": {},
+      "confirm": null,
+      "surface": "all"
+    },
+    {
       "path": "nself admin start",
       "name": "start",
       "parent": "nself admin",
@@ -8551,7 +8643,7 @@
       "data_schema": "schemas/commands/config-set.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
-      "surface": "all"
+      "surface": "cli-only"
     },
     {
       "path": "nself config show",
@@ -8804,7 +8896,7 @@
       "data_schema": "schemas/commands/config-trust.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
-      "surface": "all"
+      "surface": "cli-only"
     },
     {
       "path": "nself config trust dns",
@@ -8861,7 +8953,7 @@
       "data_schema": "schemas/commands/config-trust-dns.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
-      "surface": "all"
+      "surface": "cli-only"
     },
     {
       "path": "nself config trust ssl",
@@ -21976,12 +22068,12 @@
     }
   ],
   "counts": {
-    "commands": 377,
+    "commands": 378,
     "top_level": 24,
     "core": 20,
     "pending": 4,
     "deprecated_shims": 43,
-    "plugin": 10,
+    "plugin": 11,
     "core_missing": [],
     "json_envelope": 185,
     "json_legacy": 34
