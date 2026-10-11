@@ -17,6 +17,7 @@ import (
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/nginx/routemodel"
+	"github.com/nself-org/cli/internal/nginxtopo"
 	"github.com/nself-org/cli/internal/plugin"
 )
 
@@ -259,7 +260,12 @@ func proxyPluginSiteNames(cfg *config.Config, names map[string]bool) error {
 // proxyForeignSites reports every served conf this build does not own.
 func proxyForeignSites(workdir string, names map[string]bool) ([]string, error) {
 	var items []string
-	files, err := filepath.Glob(filepath.Join(workdir, "nginx", "sites", "*.conf"))
+	// checkProviderRoutes refuses fronted mode before scanning foreign sites.
+	nginxDir, err := nginxtopo.ServedNginxDir(workdir, "")
+	if err != nil {
+		return nil, err
+	}
+	files, err := filepath.Glob(filepath.Join(nginxDir, "sites", "*.conf"))
 	if err != nil {
 		return nil, err
 	}
