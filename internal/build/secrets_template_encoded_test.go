@@ -239,3 +239,32 @@ func TestTemplateSecrets_PreservesEveryValue(t *testing.T) {
 		}
 	}
 }
+
+// TestTemplateSecrets_MultiLineAndKeyPositions: a multi-line secret on a
+// secret-named key loses its whole block, not only the first line (lens
+// round 2), and a secret that spells a mapping key (a volume name) does not
+// rename it, since compose does not interpolate keys.
+func TestTemplateSecrets_MultiLineAndKeyPositions(t *testing.T) {
+	secrets := map[string]string{
+		"POSTGRES_PASSWORD": "line1-abcdef\nline2$x-longer",
+		"MINIO_ROOT_USER":   "postgres-db-data",
+	}
+	in := "services:\n  app:\n    environment:\n      POSTGRES_PASSWORD: |-\n        line1-abcdef\n        line2$x-longer\n" +
+		"      OTHER: kept\n    volumes:\n      - postgres-db-data:/var/lib\nvolumes:\n  postgres-db-data: {}\n"
+	env, out := templatedEnv(t, []byte(in), secrets)
+	if env["POSTGRES_PASSWORD"] != "${POSTGRES_PASSWORD}" || env["OTHER"] != "kept" {
+		t.Errorf("multi-line value not replaced whole:\n%s", out)
+	}
+	if !strings.Contains(out, "\n  postgres-db-data: {}") || !strings.Contains(out, "- postgres-db-data:/var/lib") {
+		t.Errorf("volume key renamed by a secret:\n%s", out)
+	}
+	if leaks := LiteralSecretLeaks([]byte(out), secrets); len(leaks) != 1 || leaks[0] != "MINIO_ROOT_USER" {
+		t.Errorf("LiteralSecretLeaks = %v, want [MINIO_ROOT_USER] (left literal, reported)", leaks)
+	}
+	// The leak net also catches a secret-named key whose value is not its
+	// bare reference (what Phase A used to leave behind).
+	broken := "services:\n  app:\n    environment:\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}\n        line2-tail\n"
+	if leaks := LiteralSecretLeaks([]byte(broken), map[string]string{"POSTGRES_PASSWORD": "x"}); len(leaks) != 1 {
+		t.Errorf("LiteralSecretLeaks = %v, want the extended value reported", leaks)
+	}
+}

@@ -23,7 +23,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -111,10 +110,9 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		re := regexp.MustCompile(`(?m)^(\s+)` + regexp.QuoteMeta(key) + `:\s.*$`)
-		// $$ emits a literal $ in Go regexp replacement templates — the
-		// output must contain the un-expanded ${KEY} for docker compose.
-		out = re.ReplaceAllString(out, "${1}"+key+": $${"+key+"}")
+		out = rewriteKeyLines(out, key, func(string) (string, bool) {
+			return "${" + key + "}", true
+		})
 	}
 
 	// Phase A2: alias keys (e.g. AUTH_JWT_SECRET carries HASURA_JWT_KEY's
@@ -131,13 +129,11 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 		if !ok {
 			continue
 		}
-		re := regexp.MustCompile(`(?m)^(\s+)` + regexp.QuoteMeta(alias) + `:\s.*$`)
-		out = re.ReplaceAllStringFunc(out, func(line string) string {
+		out = rewriteKeyLines(out, alias, func(line string) (string, bool) {
 			if !strings.Contains(line, val) && !lineValueIs(line, val) {
-				return line
+				return "", false
 			}
-			indent := line[:strings.Index(line, alias)]
-			return indent + alias + ": ${" + canonical + "}"
+			return "${" + canonical + "}", true
 		})
 	}
 

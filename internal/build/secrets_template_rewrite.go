@@ -1,12 +1,13 @@
 package build
 
-// Purpose: Phase C of TemplateSecrets and its safety net. A secret that is
-//          still literal in the generated compose YAML after the env-key and
-//          URL phases is replaced by its ${VAR} reference, without breaking
-//          the YAML or rewriting an existing reference. LiteralSecretLeaks
-//          reports whatever stays literal, raw or YAML-escaped.
+// Purpose: the line rewrites of TemplateSecrets. Phase A/A2 replace whole
+//          "KEY: value" entries (rewriteKeyLines); Phase C replaces a secret
+//          still literal after the env-key and URL phases by its ${VAR}
+//          reference, without breaking the YAML, renaming a mapping key or
+//          rewriting an existing reference. LiteralSecretLeaks
+//          (secrets_template_leaks.go) reports whatever stays literal.
 // Inputs:  compose YAML text, the sorted secret names, build.SecretEnvMap.
-// Outputs: rewritten YAML text; leaked secret names.
+// Outputs: rewritten YAML text.
 // Constraints: docker compose interpolates every string value, so a literal
 //              "$" in a secret resolves differently from the ${VAR} consumers
 //              (D-0635). A rewrite must leave the YAML loadable and every
@@ -16,7 +17,6 @@ package build
 
 import (
 	"regexp"
-	"sort"
 	"strings"
 	"unicode"
 
@@ -43,14 +43,19 @@ var blockScalarStart = regexp.MustCompile(`(?:^|:|-)\s*(?:(?:&\S+|!\S*)\s+)*[|>]
 // YAML encoder escaped (quotes, backslashes) is found and the line re-encoded.
 // Neither pass rewrites text inside an existing ${...} reference.
 func templateOtherLiterals(out string, keys []string, secrets map[string]string) string {
-	loads := yamlLoads(out)
+	shape, loads := yamlShape(out)
 	for _, key := range keys {
 		val := secrets[key]
 		if len(val) < 8 || !rawReplaceSafe(val) {
 			continue
 		}
 		next := replaceOutsideRefs(out, val, "${"+key+"}")
-		if next != out && (!loads || yamlLoads(next)) {
+		if next == out {
+			continue
+		}
+		// compose does not interpolate mapping keys: a secret that spells a
+		// service or volume name must not rename it.
+		if nextShape, ok := yamlShape(next); !loads || (ok && nextShape == shape) {
 			out = next
 		}
 	}
@@ -74,10 +79,38 @@ func templateOtherLiterals(out string, keys []string, secrets map[string]string)
 		}
 	}
 	next := strings.Join(lines, "\n")
-	if loads && !yamlLoads(next) {
+	if nextShape, ok := yamlShape(next); loads && (!ok || nextShape != shape) {
 		return out
 	}
 	return next
+}
+
+// rewriteKeyLines replaces the value of every "<indent>KEY: value" line for
+// which fn returns a new value, and drops the lines indented deeper below
+// it: they belong to the old value (a block scalar or a multi-line plain
+// scalar), and kept under a one-line value they would extend it.
+func rewriteKeyLines(out, key string, fn func(line string) (string, bool)) string {
+	lines := strings.Split(out, "\n")
+	kept := lines[:0]
+	dropBelow := -1
+	for _, line := range lines {
+		indent := len(line) - len(strings.TrimLeft(line, " \t"))
+		if dropBelow >= 0 {
+			if strings.TrimSpace(line) == "" || indent > dropBelow {
+				continue
+			}
+			dropBelow = -1
+		}
+		rest := line[indent:]
+		if indent > 0 && strings.HasPrefix(rest, key+":") && len(rest) > len(key)+1 && unicode.IsSpace(rune(rest[len(key)+1])) {
+			if v, ok := fn(line); ok {
+				line = line[:indent] + key + ": " + v
+				dropBelow = indent
+			}
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
 }
 
 // rawReplaceSafe reports whether val can be replaced byte for byte in YAML
@@ -131,10 +164,27 @@ func replaceOutsideRefs(s, old, repl string) string {
 	return sb.String()
 }
 
-// yamlLoads reports whether text parses as YAML.
-func yamlLoads(text string) bool {
-	var n yaml.Node
-	return yaml.Unmarshal([]byte(text), &n) == nil
+// yamlShape returns the mapping keys of text in document order (the part
+// of a compose file docker compose does not interpolate) and whether text
+// parses as YAML at all.
+func yamlShape(text string) (string, bool) {
+	var root yaml.Node
+	if yaml.Unmarshal([]byte(text), &root) != nil {
+		return "", false
+	}
+	var sb strings.Builder
+	var walk func(n *yaml.Node)
+	walk = func(n *yaml.Node) {
+		for i, c := range n.Content {
+			if n.Kind == yaml.MappingNode && i%2 == 0 {
+				sb.WriteString(c.Value)
+				sb.WriteByte(0)
+			}
+			walk(c)
+		}
+	}
+	walk(&root)
+	return sb.String(), true
 }
 
 // templateDecodedLine returns line with every secret (8+ characters) in its
@@ -177,65 +227,6 @@ func lineValueIs(line, val string) bool {
 	}
 	for _, v := range m {
 		return v == val
-	}
-	return false
-}
-
-// LiteralSecretLeaks returns the names of secrets whose literal value (>= 8
-// chars) still appears in the compose YAML after templating, as raw bytes or
-// inside a YAML-decoded string value (an escaped secret hides from a byte
-// search). Text inside ${...} references is not a leak. Callers surface each as a build warning — the safety net behind
-// TemplateSecrets.
-func LiteralSecretLeaks(composeYAML []byte, secrets map[string]string) []string {
-	doc := composeRefPattern.ReplaceAllString(string(composeYAML), "")
-	values := decodedScalarValues(composeYAML)
-	var leaked []string
-	for key, val := range secrets {
-		if len(val) < 8 {
-			continue
-		}
-		if strings.Contains(doc, val) || containsAny(values, val) {
-			leaked = append(leaked, key)
-		}
-	}
-	sort.Strings(leaked)
-	return leaked
-}
-
-// decodedScalarValues returns every scalar value (mapping keys excluded) of
-// the YAML document with its ${...} references removed, or nil when it does
-// not parse.
-func decodedScalarValues(doc []byte) []string {
-	var root yaml.Node
-	if yaml.Unmarshal(doc, &root) != nil {
-		return nil
-	}
-	var out []string
-	var walk func(n *yaml.Node)
-	walk = func(n *yaml.Node) {
-		switch n.Kind {
-		case yaml.ScalarNode:
-			out = append(out, composeRefPattern.ReplaceAllString(n.Value, ""))
-		case yaml.MappingNode:
-			for i := 1; i < len(n.Content); i += 2 {
-				walk(n.Content[i])
-			}
-		default:
-			for _, c := range n.Content {
-				walk(c)
-			}
-		}
-	}
-	walk(&root)
-	return out
-}
-
-// containsAny reports whether any of values contains sub.
-func containsAny(values []string, sub string) bool {
-	for _, v := range values {
-		if strings.Contains(v, sub) {
-			return true
-		}
 	}
 	return false
 }
