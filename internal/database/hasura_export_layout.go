@@ -5,7 +5,15 @@ package database
 // Inputs: export_metadata JSON bytes.
 // Outputs: an ordered file set: <key>.yaml per top-level key, plus config.yaml
 // holding one `<key>: !include <key>.yaml` line per key (sorted).
-// Constraints: pure and deterministic (sorted keys, no clock, no disk) except
+// Constraints: the include resolver (resolveIncludes) is line based and inlines
+// a ONE-LINE file onto the key's own line. Block YAML such as `a: true` or
+// `- x` would then yield invalid YAML (`key: a: true`). So a key whose YAML body
+// is one line is written as its single-line JSON encoding (valid YAML flow
+// style) instead. The same JSON form is used when the body contains the text
+// "!include", with each "!include" written as "\u0021include", so a string value
+// is never mistaken for an include directive; YAML decodes it back to "!".
+// Multi-line bodies without "!include" stay block YAML.
+// Pure and deterministic (sorted keys, no clock, no disk) except
 // writeMetadataTree, which only writes the files it is given. A key that is not
 // a safe file name is rejected. The layout is what applyViaIncludeResolver reads.
 
@@ -47,7 +55,7 @@ func metadataLayout(data []byte) ([]metadataFile, error) {
 	files := make([]metadataFile, 0, len(keys)+1)
 	var index strings.Builder
 	for _, k := range keys {
-		body, err := yaml.Marshal(raw[k])
+		body, err := marshalMetadataValue(raw[k])
 		if err != nil {
 			return nil, fmt.Errorf("marshal %s to YAML: %w", k, err)
 		}
@@ -57,6 +65,26 @@ func metadataLayout(data []byte) ([]metadataFile, error) {
 	files = append(files, metadataFile{Name: metadataIndexFile, Data: []byte(index.String())})
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 	return files, nil
+}
+
+// marshalMetadataValue encodes one top-level value for its <key>.yaml file:
+// block YAML, except single-line bodies and bodies containing "!include", which
+// become one line of JSON with "!include" escaped (see the header for why).
+func marshalMetadataValue(v interface{}) ([]byte, error) {
+	body, err := yaml.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	oneLine := strings.Count(strings.TrimRight(string(body), "\n"), "\n") == 0
+	if !oneLine && !strings.Contains(string(body), "!include") {
+		return body, nil
+	}
+	js, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	esc := strings.ReplaceAll(string(js), "!include", `\u0021include`)
+	return []byte(esc + "\n"), nil
 }
 
 // checkMetadataKey rejects a top-level key that would escape the directory,
