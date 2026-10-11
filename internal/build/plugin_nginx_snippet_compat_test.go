@@ -109,7 +109,10 @@ func TestDefaultPluginDirDiscovery_V15Injects(t *testing.T) {
 		t.Errorf("v1.5 routes snippet set = %d files, want 1", len(set.files))
 	}
 
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got, want := buildTemplateVars(workdir, cfg)["NSELF_PLUGIN_DIR"], filepath.Join(home, ".nself", "plugins"); got != want {
 		t.Errorf("v1.5 NSELF_PLUGIN_DIR = %q, want %q", got, want)
 	}
@@ -154,4 +157,28 @@ func TestDefaultPluginDirDiscovery_HandCopiedSnippet(t *testing.T) {
 			t.Errorf("v1.4 nginx/sites = %v, want only the hand copy", names)
 		}
 	})
+}
+
+// TestDefaultPluginDirDiscovery_RecoversFromUngatedBuild: a project built once
+// by an ungated main binary (cli#673, before D-0634) holds a marked
+// <plugin>-<file>.conf. The next v1.4 build's sites prune removes it and
+// injects nothing, so the plugin route goes away again.
+func TestDefaultPluginDirDiscovery_RecoversFromUngatedBuild(t *testing.T) {
+	workdir, cfg := defaultPluginProject(t)
+	compattest.Set(t, true)
+	if n, err := InjectPluginNginxRoutes(workdir, "", cfg); err != nil || n != 1 {
+		t.Fatalf("ungated build: InjectPluginNginxRoutes = %d, %v; want 1", n, err)
+	}
+
+	compattest.Set(t, false)
+	removed, foreign, err := pruneGeneratedNginxSites(filepath.Join(workdir, "nginx", "sites"))
+	if err != nil || removed != 1 || len(foreign) != 0 {
+		t.Fatalf("v1.4 prune = removed %d, foreign %v, %v; want 1 removed, none foreign", removed, foreign, err)
+	}
+	if n, err := InjectPluginNginxRoutes(workdir, "", cfg); err != nil || n != 0 {
+		t.Fatalf("v1.4 InjectPluginNginxRoutes = %d, %v; want 0, nil", n, err)
+	}
+	if names := siteFiles(t, workdir); len(names) != 0 {
+		t.Errorf("v1.4 nginx/sites after recovery = %v, want empty", names)
+	}
 }

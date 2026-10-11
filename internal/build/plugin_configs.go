@@ -162,15 +162,15 @@ func pluginSSLDir(baseDomain string) string {
 	return "certificates/" + dir
 }
 
-// expandPluginDir is expandHomeDir under v1.5 only. v1.4.13 used PLUGIN_DIR
-// as written, so the default "~/.nself/plugins" never resolved and a project
-// on default config got no plugin nginx snippets and ${NSELF_PLUGIN_DIR}
-// rendered as "~/.nself/plugins". Expanding it in a patch would publish every installed
-// plugin at <plugin>.<base> on the first rebuild after an upgrade and fail
-// the build on a snippet the user had copied into nginx/sites by hand
-// (D-0634), so v1.4 keeps the old value.
+// expandPluginDir is expandHomeDir under v1.5 only (D-0634). v1.4.13 used
+// PLUGIN_DIR as written, so the default "~/.nself/plugins" never resolved: a
+// default-config project got no plugin nginx snippets, and
+// ${NSELF_PLUGIN_DIR} rendered as "~/.nself/plugins". Expanding it in a patch
+// would publish every installed plugin at <plugin>.<base> on the first
+// rebuild after an upgrade, and fail the build on a snippet the user had
+// copied into nginx/sites by hand, so v1.4 keeps the old value.
 func expandPluginDir(dir string) string {
-	// compat.V15(D-0478): PLUGIN_DIR "~/..." used as written, so default-config projects get no plugin nginx snippets -> "~" expands to the home dir and installed plugins' snippets are injected
+	// compat.V15(D-0478): PLUGIN_DIR "~/..." used as written, no plugin snippets on default config -> "~" expanded, installed plugins' snippets injected
 	if compat.V15() {
 		return expandHomeDir(dir)
 	}

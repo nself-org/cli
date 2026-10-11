@@ -95,6 +95,7 @@ func TestInjectPluginNginxRoutes_DefaultDirRendersSSLDir(t *testing.T) {
 	compattest.Set(t, true)
 	home := t.TempDir()
 	setHome(t, home)
+	t.Chdir(t.TempDir())
 	confDir := filepath.Join(home, ".nself", "plugins", "backup", "nginx")
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
