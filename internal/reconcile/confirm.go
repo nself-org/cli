@@ -25,7 +25,7 @@ const ConfirmFlagHint = "--yes"
 
 // Confirm applies the D4 rules to p.
 func Confirm(p Plan, opt ApplyOptions, v15 bool, stderr io.Writer) error {
-	if p.Empty {
+	if p.Empty && !p.RequiresConfirmation { // an env line alone on prod still asks (P7-LIVE-05)
 		return nil
 	}
 	needYes := p.RequiresConfirmation && !opt.Yes

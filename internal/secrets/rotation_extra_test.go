@@ -65,7 +65,7 @@ func TestAppendRotationEvent_WritesAndReads(t *testing.T) {
 func TestAppendRotationEvent_MultipleEvents(t *testing.T) {
 	dir := t.TempDir()
 
-	secrets := []string{"HASURA_ADMIN_SECRET", "PLUGIN_INTERNAL_SECRET", "AGE_BACKUP_KEY"}
+	secrets := []string{"HASURA_GRAPHQL_ADMIN_SECRET", "PLUGIN_INTERNAL_SECRET", "AGE_BACKUP_KEY"}
 	for _, s := range secrets {
 		if err := AppendRotationEvent(dir, s, "success", ""); err != nil {
 			t.Fatalf("AppendRotationEvent(%q): %v", s, err)
@@ -268,7 +268,7 @@ func TestGenerateRotationValue_PasswordKey(t *testing.T) {
 		{"_PASSWORD suffix", "DB_PASSWORD", true},
 		{"_PASS suffix", "ADMIN_PASS", true},
 		{"JWT key", "JWT_SIGNING_KEY", true},
-		{"SECRET key", "HASURA_ADMIN_SECRET", true},
+		{"SECRET key", "HASURA_GRAPHQL_ADMIN_SECRET", true},
 		{"API_KEY key", "STRIPE_API_KEY", false}, // must rotate via provider
 		{"TOKEN key", "GITHUB_TOKEN", false},
 		{"default", "MY_CUSTOM_VAR", true},

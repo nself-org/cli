@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -42,15 +41,16 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 		{"CRON_INTERNAL_SECRET", cfg.PluginConfig.CronSecret},
 	}
 
-	// Collect env keys already present in any .env file on disk.
+	// Collect env keys already present in any .env file on disk (or pending
+	// in a plan's env overlay, P7-LIVE-05).
 	onDisk := make(map[string]bool)
 	for _, name := range []string{".env", ".env.dev", ".env.staging", ".env.prod", ".env.secrets", ".env.local"} {
 		p := filepath.Join(workdir, name)
-		f, err := os.Open(p)
+		data, err := envLayerBytes(sink, p)
 		if err != nil {
 			continue
 		}
-		sc := bufio.NewScanner(f)
+		sc := bufio.NewScanner(bytes.NewReader(data))
 		for sc.Scan() {
 			line := strings.TrimSpace(sc.Text())
 			if line == "" || line[0] == '#' {
@@ -60,7 +60,6 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 				onDisk[line[:idx]] = true
 			}
 		}
-		_ = f.Close()
 	}
 
 	// Determine which secrets need persisting.

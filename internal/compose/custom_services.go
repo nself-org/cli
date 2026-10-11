@@ -184,7 +184,7 @@ func (g *Generator) buildCustomService(cs config.CustomService) (ServiceConfig, 
 
 	var envFileVars map[string]string
 	if files := customServiceEnvFiles(cs); len(files) > 0 {
-		vars, err := loadCustomServiceEnvFiles(g.workDir, files)
+		vars, err := loadCustomServiceEnvFiles(g.workDir, files, g.envOverlay)
 		if err != nil {
 			return ServiceConfig{}, fmt.Errorf("CS_%d_ENV_FILE: %w", cs.Index, err)
 		}

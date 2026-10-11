@@ -27,6 +27,9 @@ type Generator struct {
 	// unaffected. Set via WithWorkDir when the caller has an explicit
 	// project directory (e.g. the build orchestrator's st.workdir).
 	workDir string
+	// envOverlay holds pending env-file bytes by project-relative path that
+	// CS_N_ENV_FILE reads see instead of the disk (plan mode, P7-LIVE-05).
+	envOverlay map[string][]byte
 }
 
 // NewGenerator creates a compose Generator from the given config using the

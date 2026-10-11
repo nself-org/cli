@@ -21,6 +21,18 @@ nself config <subcommand> [flags]
 
 Secret keys (any key containing `SECRET`, `PASSWORD`, `KEY`, or `TOKEN`) are masked as `***` in output by default. Pass `--reveal` to show plaintext values. Use `--env` to target a specific environment file (e.g., `--env staging` reads `.env.staging`).
 
+### Setting a value: what `config set` regenerates
+
+`nself config set KEY VALUE` writes `KEY=VALUE` into `.env` (or `.env.<name>` with `--env <name>`), keeping comments and every other line. A setting usually feeds generated files: `BASE_DOMAIN` reaches `docker-compose.yml` and every nginx site conf. Before anything is written, `config set` renders the whole build with the new value in memory and compares it with the disk, so it knows exactly which generated files the change touches (the same change plan as `nself build --plan`, see [[Safe-On-Live]]).
+
+- `--preview` prints that plan and writes nothing, not even the env line. In v1.5 mode `--json` makes it one v1 envelope (`data`: `key`, `file`, `applied: false`, `plan`); in v1.4 mode `config set` ignores `--json`, as before.
+- **v1.5 mode** (`NSELF_V15=1`, the default from v1.5.0): on a dev env the line is written and the change is applied at once through the build pipeline, then one summary line is printed, for example `config: BASE_DOMAIN → 7 artifacts changed (compose, env, nginx, state)`. No container is restarted: run `nself start` to pick the new files up. On a prod-class env (`ENV` is `prod` or `staging`) every `config set` that changes the file needs `--yes` or a `y` at the terminal prompt, even when nothing generated changes (the env line is a change of its own); without a terminal and without `--yes` it is refused with E403 (exit 4), the plan is printed on stderr and nothing is written. Changing `ENV` itself away from `prod` or `staging` (for example `config set ENV dev` on a production box) counts as a prod-class change too; the plan header shows `env prod → dev`. Overwriting a generated file someone edited by hand needs `--force` in any env. If the project cannot be built with the new value (it fails validation, for example), nothing is written and the error says why. If the apply fails after the line was written, the env file is put back exactly as it was (atomically, while the project lock is still held) and the command exits non-zero with the error; generated files the build had already rewritten stay rewritten, so review them with `nself build --plan`. Ctrl-C, SIGTERM and a dropped SSH session (SIGHUP) during the apply are held until the apply finishes, so an interrupt cannot leave the new line behind a half-written tree; Ctrl-C at the confirmation prompt still exits at once.
+- **v1.4 mode**: the line is written exactly as before and nothing is regenerated; the plan summary and a notice go to stderr. Run `nself build` to apply.
+
+With `--json` in v1.5 mode an applied change prints the envelope with `applied: true` (schema `schemas/commands/config-set.v1.schema.json`).
+
+**Rotating a live secret.** Put the new value in `.env.secrets` and let the regeneration carry it: `nself config set HASURA_GRAPHQL_ADMIN_SECRET <new> --env secrets --yes` on a prod-class env. The generated env and compose files are updated; the running containers keep the old value until they are recreated (`nself start`). `nself secrets rotate` is a different tool: it rotates the encrypted secret store (`.secrets/<env>.age`), which the build does not read, so it does not regenerate anything. Its schedule tracks `HASURA_GRAPHQL_ADMIN_SECRET`, the name the stack reads.
+
 The `validate` subcommand runs all registered configuration validators and reports pass/fail per rule. It is automatically run during `nself build`, but you can run it independently to check config without rebuilding.
 
 ### JSON output
@@ -106,9 +118,19 @@ nself config get BASE_DOMAIN
 # Get a secret value
 nself config get POSTGRES_PASSWORD --reveal
 
-# Set a value
+# Set a value (v1.5 regenerates the dependent files at once)
 nself config set BASE_DOMAIN myapp.dev
 nself config set REDIS_ENABLED true
+
+# See what a change would regenerate, write nothing
+nself config set BASE_DOMAIN myapp.dev --preview
+nself config set BASE_DOMAIN myapp.dev --preview --json
+
+# Prod-class env: confirm without a prompt
+nself config set BASE_DOMAIN example.com --yes
+
+# Rotate a live secret through .env.secrets
+nself config set HASURA_GRAPHQL_ADMIN_SECRET "$(openssl rand -hex 32)" --env secrets --yes
 
 # List all known keys with current values and source
 nself config list
