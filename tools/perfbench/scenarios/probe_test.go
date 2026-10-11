@@ -255,15 +255,16 @@ func TestWaitHTTPReady(t *testing.T) {
 		answers []func() (*http.Response, error) // last one repeats
 		wantErr error                            // nil: ready; else errors.Is target
 		badURL  bool
+		timeout time.Duration
 	}{
 		{name: "ready after refusal and 503", base: "http://127.0.0.1:1", answers: []func() (*http.Response, error){
 			func() (*http.Response, error) { return nil, errors.New("connection refused") },
 			func() (*http.Response, error) { return reply(http.StatusServiceUnavailable), nil },
 			func() (*http.Response, error) { return reply(http.StatusOK), nil },
-		}},
+		}, timeout: 2 * time.Second}, // returns early; the slack absorbs -race stalls
 		{name: "never ready", base: "http://127.0.0.1:1", answers: []func() (*http.Response, error){
 			func() (*http.Response, error) { return reply(http.StatusUnauthorized), nil },
-		}, wantErr: context.DeadlineExceeded},
+		}, wantErr: context.DeadlineExceeded, timeout: 150 * time.Millisecond},
 		{name: "bad base URL", base: "http://bad\x7fhost", badURL: true},
 	}
 	for _, c := range cases {
@@ -277,7 +278,7 @@ func TestWaitHTTPReady(t *testing.T) {
 				calls++
 				return a()
 			})}
-			err := waitHTTPReady(context.Background(), client, c.base, 150*time.Millisecond)
+			err := waitHTTPReady(context.Background(), client, c.base, c.timeout)
 			switch {
 			case c.badURL:
 				if err == nil || calls != 0 {
