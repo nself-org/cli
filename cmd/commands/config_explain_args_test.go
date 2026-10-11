@@ -45,6 +45,7 @@ func TestParseExplainArgs(t *testing.T) {
 		{"key with a stray flag", []string{"BASE_DOMAIN", "--domain"}, nil, "", false, false, nil, "E401"},
 		{"short option", []string{"BASE_DOMAIN", "-x"}, nil, "", false, false, nil, "E401"},
 		{"leading nself", []string{"nself", "init", "--domain"}, []string{"init"}, "domain", false, false, nil, ""},
+		{"bare double dash is skipped", []string{"--", "BASE_DOMAIN"}, []string{"BASE_DOMAIN"}, "", false, false, nil, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -74,6 +75,15 @@ func TestParseExplainArgs(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseExplainArgsHelp(t *testing.T) {
+	for _, a := range []string{"-h", "--help"} {
+		in, err := parseExplainArgs([]string{"BASE_DOMAIN", a})
+		if err != nil || !in.help || in.flag != "" {
+			t.Errorf("%s: help=%v flag=%q err=%v; want help and no target flag", a, in.help, in.flag, err)
+		}
 	}
 }
 
