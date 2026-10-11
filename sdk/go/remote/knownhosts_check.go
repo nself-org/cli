@@ -157,6 +157,36 @@ func checkAncestors(dir string) error {
 	return nil
 }
 
+// checkBeforeMkdir runs the ancestor rule from the deepest existing part of
+// dir upward, so a refused path gets no directories created under it. An
+// existing dir is left to checkDir.
+func checkBeforeMkdir(dir string) error {
+	e := dir
+	for {
+		if _, err := os.Stat(e); !os.IsNotExist(err) {
+			break
+		}
+		if e == filepath.Dir(e) {
+			return nil
+		}
+		e = filepath.Dir(e)
+	}
+	if e == dir {
+		return nil
+	}
+	fi, err := os.Stat(e)
+	if err != nil {
+		return err
+	}
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	if err := ancestorOK(fi, dir, e); err != nil {
+		return err
+	}
+	return checkAncestors(e)
+}
+
 // ancestorOK applies the secure_path rule to one ancestor d of the pin dir:
 // owned by you or root, and not group/world writable unless it is a
 // root-owned sticky directory such as /tmp.
@@ -211,6 +241,9 @@ func (p PinnedHostKeys) acquire(write bool) (func(), error) {
 	dir := filepath.Dir(p.Path)
 	flags := os.O_RDONLY
 	if write {
+		if err := checkBeforeMkdir(dir); err != nil {
+			return nil, err
+		}
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return nil, err
 		}
@@ -246,6 +279,7 @@ func (p PinnedHostKeys) acquire(write bool) (func(), error) {
 
 // waitLock polls a non-blocking flock until it is granted or pinLockWait has
 // passed, so a hung holder cannot block every other nself process forever.
+// Production code locks only through here; lockFD (blocking) is for tests.
 func waitLock(f *os.File, write bool, lock string) error {
 	deadline := time.Now().Add(pinLockWait)
 	delay := 5 * time.Millisecond
@@ -261,8 +295,6 @@ func waitLock(f *os.File, write bool, lock string) error {
 			return fmt.Errorf("pinned host keys lock %s is held by another process; gave up after %s (find the holder with lsof)", lock, pinLockWait)
 		}
 		time.Sleep(delay)
-		if delay < 200*time.Millisecond {
-			delay *= 2
-		}
+		delay = min(2*delay, 200*time.Millisecond)
 	}
 }

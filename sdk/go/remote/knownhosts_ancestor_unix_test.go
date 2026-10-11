@@ -143,3 +143,39 @@ func TestAncestor_ResolvedPathChecked(t *testing.T) {
 		})
 	}
 }
+
+// A new pin dir under a writable ancestor is refused before anything is
+// created there.
+func TestAncestor_NothingCreatedUnderWritableAncestor(t *testing.T) {
+	skipWindows(t)
+	for _, tc := range []struct {
+		mode os.FileMode
+		ok   bool
+	}{{0o755, true}, {0o777, false}} {
+		t.Run(fmt.Sprintf("%04o", tc.mode), func(t *testing.T) {
+			_, home := pinFile(t)
+			open := filepath.Join(home, "open")
+			if err := os.Mkdir(open, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(open, tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			p := PinnedHostKeys{Path: filepath.Join(open, "new", "ci", "known_hosts")}
+			err := p.Add("n1", keyA)
+			_, serr := os.Stat(filepath.Join(open, "new"))
+			if tc.ok {
+				if err != nil || serr != nil {
+					t.Fatalf("0755 ancestor: Add %v, stat %v", err, serr)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "ancestor "+open+" ") {
+				t.Errorf("Add under a %04o ancestor: %v", tc.mode, err)
+			}
+			if !os.IsNotExist(serr) {
+				t.Errorf("Add created %s under a writable ancestor (%v)", filepath.Join(open, "new"), serr)
+			}
+		})
+	}
+}
