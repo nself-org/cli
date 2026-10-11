@@ -1,7 +1,7 @@
 package reconcile
 
 // unified_secrets.go — secret redaction for the unified diff of non-env
-// artifacts (D-0321). Split from unified.go for the file-size cap.
+// artifacts (D-0321). unified_secret_spans.go holds the in-line span rules.
 //
 // Purpose: a docker-compose.yml, a JSON file or a shell snippet can hold a
 // secret value (HASURA_GRAPHQL_ADMIN_SECRET in an environment map, a
@@ -10,15 +10,25 @@ package reconcile
 // Inputs: the artifact's lines, each with its newline if any. Outputs: the same
 // number of lines with the values replaced by [REDACTED].
 // Constraints: the only name rule is config.IsSecretKey; over-masking is the
-// safe side. Redaction runs on the line text before any hunk is written.
+// safe side. Redaction runs on the line text before any hunk is written. Two
+// passes: scanSecretLines redacts by key, flag and pair and collects the values
+// it hid; applySecretValues then hides every other literal copy of those values
+// (a healthcheck that repeats the --requirepass password). Unified collects
+// from both sides of the diff before applying. observability.Redact is not used
+// here: it masks IPs, ports and digit runs and emits NUL bytes, which would
+// hide a port change in a compose file.
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
-	"github.com/nself-org/cli/internal/observability"
 )
+
+// minSecretValueLen is the shortest collected value that is replaced
+// everywhere else in the file; shorter ones would mask ordinary words.
+const minSecretValueLen = 4
 
 var (
 	// yamlEntry matches a map entry: indent plus optional "- ", a bare or
@@ -27,27 +37,51 @@ var (
 	// blockScalar matches a YAML block scalar header (| or >, chomp and indent
 	// indicators, optional comment).
 	blockScalar = regexp.MustCompile(`^[|>][+-]?[0-9]?[+-]?\s*(?:#.*)?$`)
-	// assignKey matches the "KEY=" of an assignment anywhere in a line.
-	assignKey = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_.]*=`)
-	// jsonPair matches a JSON "KEY": "value" pair.
-	jsonPair = regexp.MustCompile(`("[A-Za-z_][A-Za-z0-9_.\-]*"\s*:\s*)"(?:[^"\\]|\\.)*"`)
-	// secretFlag matches --name, then "=", whitespace or a quote-comma-quote
-	// (a JSON/YAML list) and the value token or quoted string, if any.
-	secretFlag = regexp.MustCompile(`(--[A-Za-z][A-Za-z0-9_-]*)(?:(=|[ \t]+|["']\s*,\s*["'])("[^"]*"|'[^']*'|[^\s"',\]]+))?`)
 )
 
-// redactSecretLines renders the lines of a non-env artifact so no secret value
-// survives, tracking block scalars, multi-line quotes and split flags.
-//
-// Per line, in order: a YAML map entry with a secret key prints
-// "<indent><key>: [REDACTED]" (a block scalar value redacts every deeper line;
-// a quote that stays open redacts lines until it closes); then KEY=value
-// assignments, JSON "KEY": "value" pairs and --flag value pairs with a secret
-// name are masked in place; last, config.MaskURLCredentials and
-// observability.Redact mask URL credentials and token shapes.
+// secretScan collects the secret values hidden during one pass.
+type secretScan struct{ vals []string }
+
+// note records a hidden value: quotes and spaces trimmed, at least
+// minSecretValueLen long, not a boolean or null literal, not a redaction.
+func (sc *secretScan) note(v string) {
+	v = strings.Trim(strings.TrimSpace(v), `"'`)
+	switch strings.ToLower(v) {
+	case "true", "false", "null":
+		return
+	}
+	if len(v) >= minSecretValueLen && !strings.Contains(v, redactedValue) {
+		sc.vals = append(sc.vals, v)
+	}
+}
+
+// redactSecretLines renders the lines of one non-env artifact so no secret
+// value survives (scan, then replace the collected values in the same lines).
 func redactSecretLines(lines []string) []string {
+	out, vals := scanSecretLines(lines)
+	return applySecretValues(out, vals)
+}
+
+// redactSecretSides redacts the before and after lines of one artifact. The
+// values hidden on either side are replaced on both, so a secret that changed
+// does not survive as the old copy on the other side.
+func redactSecretSides(al, bl []string) ([]string, []string) {
+	ao, av := scanSecretLines(al)
+	bo, bv := scanSecretLines(bl)
+	vals := append(av, bv...)
+	return applySecretValues(ao, vals), applySecretValues(bo, vals)
+}
+
+// scanSecretLines is the first pass: it returns the lines with secret values
+// hidden and the values it hid. Per line, in order: a YAML map entry with a
+// secret key prints "<indent><key>: [REDACTED]" and opens a scope (a block
+// scalar, a value that continues on deeper lines, or a quote that stays open
+// redacts those lines); then --flag values, then KEY=value and KEY: value pairs
+// anywhere in the line are masked in place; last, config.MaskURLCredentials.
+func scanSecretLines(lines []string) ([]string, []string) {
+	sc := &secretScan{}
 	out := make([]string, len(lines))
-	block := -1       // key indent of an open block scalar, -1 when none
+	block := -1       // key column of an open secret scope, -1 when none
 	quote := byte(0)  // open quote character of a multi-line value
 	flagNext := false // previous line was a bare secret flag; this line is its value
 	for i, line := range lines {
@@ -57,162 +91,105 @@ func redactSecretLines(lines []string) []string {
 		}
 		t := strings.TrimSpace(line)
 		ind := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		skip := t == "" || strings.HasPrefix(t, "#")
 		switch {
-		case block >= 0 && (t == "" || len(ind) > block):
-			out[i] = ind + redactedValue + nl
-			continue
 		case quote != 0:
-			if closesQuote(line, quote) {
+			if _, q := closeAt(line, 0, quote); q == 0 {
 				quote = 0
 			}
 			out[i] = ind + redactedValue + nl
 			continue
-		case flagNext && t != "":
+		case block >= 0 && (t == "" || len(ind) > block):
+			out[i] = ind + redactedValue + nl
+			continue
+		case flagNext && !skip:
 			flagNext = false
 			dash := ""
 			if strings.HasPrefix(t, "- ") {
 				dash = "- "
+				t = strings.TrimPrefix(t, "- ")
 			}
+			sc.note(t)
 			out[i] = ind + dash + redactedValue + nl
 			continue
 		}
 		block = -1
-		text, nb, nq, nf := redactSecretLine(line)
-		block, quote, flagNext = nb, nq, nf
-		out[i] = observability.Redact(config.MaskURLCredentials(text)) + nl
+		text, nb, nq, nf := sc.line(line)
+		block, quote, flagNext = nb, nq, nf || (flagNext && skip)
+		out[i] = config.MaskURLCredentials(text) + nl
 	}
-	return out
+	return out, sc.vals
 }
 
-// redactSecretLine redacts one line (no newline). It returns the new text, the
-// block-scalar key indent (-1 for none), the open quote (0 for none) and
-// whether the line ended in a bare secret flag whose value is the next line.
-func redactSecretLine(line string) (text string, block int, quote byte, flagNext bool) {
-	block = -1
-	if m := yamlEntry.FindStringSubmatch(line); m != nil && config.IsSecretKey(m[4]) {
-		v := strings.TrimSpace(m[6])
-		switch {
-		case v == "":
-		case blockScalar.MatchString(v):
-			block = len(m[1])
-			return m[1] + m[2] + m[3] + m[4] + m[5] + ": " + redactedValue, block, 0, false
-		default:
-			if v[0] == '"' || v[0] == '\'' {
-				if !closesQuote(v[1:], v[0]) {
-					quote = v[0]
-				}
-			}
-			tail := ""
-			if strings.HasSuffix(v, ",") && quote == 0 {
-				tail = ","
-			}
-			return m[1] + m[2] + m[3] + m[4] + m[5] + ": " + redactedValue + tail, -1, quote, false
-		}
+// line redacts one line (no newline). It returns the new text, the key column
+// of a scope that deeper lines belong to (-1 for none), the open quote (0 for
+// none) and whether the line ended in a bare secret flag.
+func (sc *secretScan) line(line string) (text string, block int, quote byte, flagNext bool) {
+	if m := yamlEntry.FindStringSubmatch(line); m != nil && m[3] == m[5] && config.IsSecretKey(m[4]) {
+		return sc.secretEntry(line, m)
 	}
-	text, quote = redactAssignments(line)
-	text = jsonPair.ReplaceAllStringFunc(text, func(s string) string {
-		k := jsonPair.FindStringSubmatch(s)
-		name := strings.Trim(strings.TrimSpace(strings.SplitN(k[1], ":", 2)[0]), `"`)
-		if config.IsSecretKey(name) {
-			return k[1] + `"` + redactedValue + `"`
-		}
-		return s
-	})
-	text, flagNext = redactFlags(text)
+	text, quote = sc.flags(line)
+	flagNext = endsInSecretFlag(text)
+	text, q := sc.pairs(text)
+	if quote == 0 {
+		quote = q
+	}
 	return text, -1, quote, flagNext
 }
 
-// redactAssignments masks the value of every KEY=value whose KEY is a secret
-// name, keeping the quote and comma syntax around it. An unclosed quote
-// returns its character so the following lines are redacted until it closes.
-func redactAssignments(line string) (string, byte) {
-	var sb strings.Builder
-	pos, open := 0, byte(0)
-	for _, loc := range assignKey.FindAllStringIndex(line, -1) {
-		s, e := loc[0], loc[1]
-		if s < pos || !config.IsSecretKey(line[s:e-1]) {
-			continue
-		}
-		start, end, q := assignValueSpan(line, s, e)
-		if end <= start {
-			continue // empty value
-		}
-		sb.WriteString(line[pos:start])
-		sb.WriteString(redactedValue)
-		pos = end
-		if q != 0 {
-			open = q
-			break
-		}
+// secretEntry redacts a YAML map entry whose key is a secret name (m is the
+// yamlEntry match of line; a quote before the key with none after is the
+// opening quote of a scalar, not a quoted key, and goes to pairs instead). Any such entry opens a scope at its key column, so
+// a value that continues on deeper lines is hidden too (safe side).
+func (sc *secretScan) secretEntry(line string, m []string) (string, int, byte, bool) {
+	col := len(m[1]) + len(m[2])
+	head := m[1] + m[2] + m[3] + m[4] + m[5]
+	v := strings.TrimSpace(m[6])
+	switch {
+	case v == "" || v[0] == '#':
+		return line, col, 0, false // nothing to hide on this line
+	case v[0] == '&' || v[0] == '!' || blockScalar.MatchString(v):
+		return head + ": " + redactedValue, col, 0, false
 	}
-	sb.WriteString(line[pos:])
-	return sb.String(), open
+	var open byte
+	if v[0] == '"' || v[0] == '\'' {
+		_, open = closeAt(v, 1, v[0])
+	}
+	sc.note(v)
+	tail := ""
+	if strings.HasSuffix(v, ",") && open == 0 {
+		tail = ","
+	}
+	return head + ": " + redactedValue + tail, col, open, false
 }
 
-// assignValueSpan returns the span of the value of the assignment whose key
-// spans line[s:e] (e is just past the "="), and the quote left open (0 if
-// none). A value after a quote that opened before the key (- "KEY=value")
-// ends at that quote; a quoted value spans its text between the quotes; an
-// unquoted value ends at whitespace or a quote (and at a comma inside a
-// [ ] or { } list), except after a line-leading KEY= where it ends the line.
-func assignValueSpan(line string, s, e int) (start, end int, open byte) {
-	if e >= len(line) {
-		return e, e, 0
+// applySecretValues is the second pass: it replaces every literal copy of the
+// collected values (and their YAML-quoted spellings) in lines, longest first.
+func applySecretValues(lines, vals []string) []string {
+	if len(vals) == 0 {
+		return lines
 	}
-	if s > 0 && (line[s-1] == '"' || line[s-1] == '\'') {
-		end, open = closeAt(line, e, line[s-1])
-		return e, end, open
-	}
-	if c := line[e]; c == '"' || c == '\'' {
-		end, open = closeAt(line, e+1, c)
-		return e + 1, end, open
-	}
-	// A line-leading assignment (KEY=v, - KEY=v, export KEY=v) owns the rest
-	// of the line: a plain YAML or dotenv value may hold spaces and commas.
-	switch strings.TrimSpace(line[:s]) {
-	case "", "-", "export":
-		return e, len(line), 0
-	}
-	delims := " \t\"'"
-	if strings.ContainsAny(line[:s], "[{") {
-		delims += ","
-	}
-	end = e
-	for end < len(line) && !strings.ContainsRune(delims, rune(line[end])) {
-		end++
-	}
-	return e, end, 0
-}
-
-// closeAt returns the offset of the first closing q at or after from (a
-// backslash escapes in double quotes), or len(line) and q when it stays open.
-func closeAt(line string, from int, q byte) (int, byte) {
-	for i := from; i < len(line); i++ {
-		if q == '"' && line[i] == '\\' {
-			i++
-			continue
-		}
-		if line[i] == q {
-			return i, 0
+	seen := map[string]bool{}
+	var all []string
+	for _, v := range vals {
+		for _, s := range []string{v, strings.ReplaceAll(v, "'", "''"), strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(v)} {
+			if !seen[s] {
+				seen[s] = true
+				all = append(all, s)
+			}
 		}
 	}
-	return len(line), q
-}
-
-// bareFlag matches a secret-capable flag that ends the line with no value.
-var bareFlag = regexp.MustCompile(`(--[A-Za-z][A-Za-z0-9_-]*)["']?[\s,]*$`)
-
-// redactFlags masks the value of every --name flag whose name is a secret
-// name. It reports true when a secret flag ends the line with no value (a YAML
-// list splits "--requirepass" and its value over two lines).
-func redactFlags(line string) (string, bool) {
-	out := secretFlag.ReplaceAllStringFunc(line, func(s string) string {
-		m := secretFlag.FindStringSubmatch(s)
-		if m[3] == "" || !config.IsSecretKey(m[1]) {
-			return s
+	sort.Slice(all, func(i, j int) bool { return len(all[i]) > len(all[j]) })
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		parts := strings.Split(line, redactedValue)
+		for j, p := range parts {
+			for _, v := range all {
+				p = strings.ReplaceAll(p, v, redactedValue)
+			}
+			parts[j] = p
 		}
-		return m[1] + m[2] + redactedValue
-	})
-	m := bareFlag.FindStringSubmatch(out)
-	return out, m != nil && config.IsSecretKey(m[1])
+		out[i] = strings.Join(parts, redactedValue)
+	}
+	return out
 }

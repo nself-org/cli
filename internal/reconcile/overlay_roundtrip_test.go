@@ -12,31 +12,34 @@ import (
 
 // roundTripValues are synthetic values for the write-then-load tests. The
 // names say what each one stresses in godotenv v1.5.1.
-var roundTripValues = []struct{ name, value string }{
-	{"plain", "plain"},
-	{"space", "a b"},
-	{"trailing backslash", `ends-in-backslash\`},
-	{"literal backslash n", `a\nb`},
-	{"double backslash", `back\\slash`},
-	{"double quote", `has"dq`},
-	{"single quote", `has'sq`},
-	{"hash", "hash # not comment"},
-	{"leading hash", "#leading"},
-	{"dollar", "dollar$HOME and ${PATH} and $"},
-	{"escaped dollar", `\$`},
-	{"mixed", `mix "q" \ $X # end`},
-	{"tab", "tab\there"},
-	{"real newline", "line1\nline2"},
-	{"real CR", "line1\rline2"},
-	{"empty", ""},
-	{"backtick", "back`tick"},
-	{"ends in double quote", `ends-in-dq"`},
-	{"only a double quote", `"`},
-	{"leading and trailing quotes", `"quoted"`},
-	{"ends in single quote", `it's'`},
-	{"backslash then quote", `a\"b`},
-	{"spaced trailing backslash", `a b\`},
-	{"only backslash", `\`},
+var roundTripValues = []struct {
+	name, value string
+	wantErr     bool // the encoder must reject the value (error without the value)
+}{
+	{"plain", "plain", false},
+	{"space", "a b", false},
+	{"trailing backslash", `ends-in-backslash\`, false},
+	{"literal backslash n", `a\nb`, false},
+	{"double backslash", `back\\slash`, false},
+	{"double quote", `has"dq`, false},
+	{"single quote", `has'sq`, false},
+	{"hash", "hash # not comment", false},
+	{"leading hash", "#leading", false},
+	{"dollar", "dollar$HOME and ${PATH} and $", false},
+	{"escaped dollar", `\$`, false},
+	{"mixed", `mix "q" \ $X # end`, false},
+	{"tab", "tab\there", false},
+	{"real newline", "line1\nline2", false},
+	{"real CR", "line1\rline2", false},
+	{"empty", "", false},
+	{"backtick", "back`tick", false},
+	{"ends in double quote", `ends-in-dq"`, false},
+	{"only a double quote", `"`, false},
+	{"leading and trailing quotes", `"quoted"`, false},
+	{"ends in single quote", `it's'`, false},
+	{"backslash then quote", `a\"b`, false},
+	{"spaced trailing backslash", `a b\`, true},
+	{"only backslash", `\`, false},
 }
 
 // TestEnvFileWithLineRoundTrip proves a written line loads back to the exact
@@ -45,14 +48,17 @@ func TestEnvFileWithLineRoundTrip(t *testing.T) {
 	for _, tc := range roundTripValues {
 		t.Run(tc.name, func(t *testing.T) {
 			out, _, err := EnvFileWithLine(nil, false, "FAKE_SECRET", tc.value)
-			if err != nil {
-				if tc.value != "" && strings.Contains(err.Error(), tc.value) {
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("value %q was accepted: %q", tc.value, out)
+				}
+				if strings.Contains(err.Error(), tc.value) {
 					t.Fatalf("error holds the value: %v", err)
 				}
-				if !strings.Contains(tc.name, "spaced trailing backslash") {
-					t.Fatalf("value %q was rejected: %v", tc.value, err)
-				}
 				return
+			}
+			if err != nil {
+				t.Fatalf("value %q was rejected: %v", tc.value, err)
 			}
 			if strings.Count(string(out), "\n") != 1 {
 				t.Fatalf("line is not a single line: %q", out)
@@ -99,25 +105,23 @@ func TestEnvFileWithLineKeepsOtherLines(t *testing.T) {
 // with EnvOverlay, the path `config set` plans with.
 func TestEnvOverlayLoadRoundTrip(t *testing.T) {
 	for _, tc := range roundTripValues {
-		if tc.value == "" || strings.ContainsAny(tc.value, "\r") || strings.HasSuffix(tc.value, " ") {
+		if tc.wantErr || tc.value == "" || strings.ContainsAny(tc.value, "\r") || strings.HasSuffix(tc.value, " ") {
 			continue
 		}
 		t.Run(tc.name, func(t *testing.T) {
 			out, _, err := EnvFileWithLine(nil, false, "FAKE_ROUNDTRIP_SECRET", tc.value)
 			if err != nil {
-				return
+				t.Fatal(err)
 			}
 			dir := t.TempDir()
 			t.Setenv("FAKE_ROUNDTRIP_SECRET", "")
 			_ = os.Unsetenv("FAKE_ROUNDTRIP_SECRET")
 			_, err = config.LoadWithOptions(filepath.Clean(dir), config.LoadOptions{EnvOverlay: map[string][]byte{".env.secrets": out}})
-			if err != nil {
-				if strings.Contains(err.Error(), tc.value) {
-					t.Fatalf("error holds the value: %v", err)
-				}
-			}
 			if got := os.Getenv("FAKE_ROUNDTRIP_SECRET"); got != tc.value {
 				t.Fatalf("overlay load: wrote %q, process env holds %q (err %v)", out, got, err)
+			}
+			if err != nil {
+				t.Fatalf("overlay load failed although the value loaded: %v", err)
 			}
 		})
 	}

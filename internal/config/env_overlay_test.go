@@ -139,3 +139,19 @@ func TestExportEnvFileKeepsOverloadSemantics(t *testing.T) {
 		t.Fatalf("env=%q loaded=%v", os.Getenv("FAKE_EXPORT_KEY"), loaded)
 	}
 }
+
+// TestExportEnvFileSkipsRejectedKeys proves a key the OS refuses does not fail
+// the load (godotenv.Overload ignores that error) and is not recorded.
+func TestExportEnvFileSkipsRejectedKeys(t *testing.T) {
+	t.Setenv("ENV", "")
+	loaded := map[string]string{}
+	if err := exportEnvFile("x/.env", []byte("ENV=dev\n=orphan\n"), loaded); err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	if loaded["ENV"] != "dev" || len(loaded) != 1 {
+		t.Fatalf("loaded = %v, want only ENV=dev", loaded)
+	}
+	if _, err := LoadWithOptions(t.TempDir(), LoadOptions{EnvOverlay: map[string][]byte{".env": []byte("ENV=dev\n=orphan\n")}}); err != nil {
+		t.Fatalf("LoadWithOptions: %v", err)
+	}
+}
