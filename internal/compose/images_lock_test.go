@@ -212,6 +212,9 @@ func fixtureConfigs(t *testing.T) map[string]*config.Config {
 		if mut != nil {
 			mut(c)
 		}
+		// These fixtures assert the redis image strings; the cache engine default
+		// is v1.5-dependent (P7-LIVE-19), so pin the engine and stay mode-independent.
+		c.Redis.Engine = "redis"
 		out, err := config.ApplyDefaults(c)
 		if err != nil {
 			t.Fatalf("ApplyDefaults: %v", err)
@@ -316,7 +319,7 @@ func TestUserVersionOverrideTable(t *testing.T) {
 	} {
 		setMode(t, tc.mode)
 		cfg := minimalCfg()
-		cfg.Redis = config.RedisConfig{Enabled: true, Version: tc.version, Port: 6379}
+		cfg.Redis = config.RedisConfig{Enabled: true, Engine: "redis", Version: tc.version, Port: 6379}
 		if got := NewGenerator(cfg).buildRedisService().Image; got != tc.want {
 			t.Errorf("%s REDIS_VERSION=%q -> %q, want %q", tc.mode, tc.version, got, tc.want)
 		}
