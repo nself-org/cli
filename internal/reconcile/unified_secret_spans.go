@@ -205,8 +205,9 @@ func pairValueSpan(line string, loc []int) (start, end int, open byte) {
 var directiveToken = regexp.MustCompile(`\S+`)
 
 // directive masks the arguments of a directive line (nginx and similar: tokens
-// ending in ";", optionally followed by a # comment). After the first token
-// that names a secret (config.IsSecretKey, quotes and a leading $ stripped),
+// ending in ";", optionally followed by a # comment). The first token is the
+// directive name and is never tested. After the first later token that names a
+// secret (config.IsSecretKey, quotes and a leading $ stripped),
 // every argument up to the ";" becomes one [REDACTED] and each argument is
 // collected for repeat masking. Other lines come back unchanged.
 func (sc *secretScan) directive(line string) string {
@@ -220,8 +221,8 @@ func (sc *secretScan) directive(line string) string {
 	locs := directiveToken.FindAllStringIndex(line[:semi], -1)
 	for i, loc := range locs {
 		tok := strings.TrimLeft(strings.Trim(line[loc[0]:loc[1]], `"'`), "$")
-		if !config.IsSecretKey(tok) || i == len(locs)-1 || (i == 0 && strings.HasSuffix(tok, "_pass")) {
-			continue // the *_pass directives (proxy_pass) name an upstream, not a secret
+		if i == 0 || i == len(locs)-1 || !config.IsSecretKey(tok) {
+			continue // the directive name (first token) is never tested
 		}
 		for _, arg := range locs[i+1:] {
 			sc.note(line[arg[0]:arg[1]])

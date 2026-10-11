@@ -200,3 +200,60 @@ func TestRedactSecretLinesBlankStaysBlank(t *testing.T) {
 		t.Fatalf("got %q", out)
 	}
 }
+
+// TestUnifiedSwappedValuesAcrossSides: each side holds the other side's secret
+// in a plain line. Collection must span both sides (through Unified).
+func TestUnifiedSwappedValuesAcrossSides(t *testing.T) {
+	runShapes(t, []shapeCase{{
+		name: "swapped", secrets: []string{"alphapass", "betapass"},
+		before: "PASSWORD: alphapass\ncommand: echo betapass\n",
+		after:  "PASSWORD: betapass\ncommand: echo alphapass\n",
+		want:   []string{"command: echo [REDACTED]\n"},
+	}})
+}
+
+// TestUnifiedCollectsScalarText: the collected value is the scalar text, not
+// the YAML around it (block content, anchor, tag, trailing comment, plain and
+// quoted continuation lines), so a repeat elsewhere is hidden.
+func TestUnifiedCollectsScalarText(t *testing.T) {
+	cases := []struct{ name, lines, pw string }{
+		{"block scalar", "PASSWORD: |\n  blocksecret\n", "blocksecret"},
+		{"anchor", "PASSWORD: &pw anchorsecret\n", "anchorsecret"},
+		{"tag", "PASSWORD: !!str tagsecret\n", "tagsecret"},
+		{"comment", "PASSWORD: commentsecret # note\n", "commentsecret"},
+		{"plain continuation", "PASSWORD: firstpart\n  contsecret\n", "contsecret"},
+		{"quoted continuation", "PASSWORD: \"quotedfirst\n  quotedsecret\"\n", "quotedsecret"},
+		{"quoted anchor", "PASSWORD: &pw \"qanchorsecret\" # note\n", "qanchorsecret"},
+	}
+	var tests []shapeCase
+	for _, c := range cases {
+		tests = append(tests, shapeCase{
+			name: c.name, secrets: []string{c.pw},
+			before: c.lines + "command: echo old\n", after: c.lines + "command: echo " + c.pw + "\n",
+			want: []string{"command: echo [REDACTED]\n"},
+		})
+	}
+	runShapes(t, tests)
+}
+
+// TestUnifiedDirectives: nginx-style directives. The first token (the
+// directive name) is never tested; a later token that names a secret hides the
+// arguments after it, and they are collected. Other directives print as is.
+func TestUnifiedDirectives(t *testing.T) {
+	runShapes(t, []shapeCase{
+		{name: "header", path: "nginx/sites/a.conf",
+			before:  "  listen 443 ssl;\n  proxy_set_header X-Plugin-Secret fake-header-secret;\n  proxy_pass http://x:8080;\n",
+			after:   "  listen 443 ssl;\n  proxy_set_header X-Plugin-Secret fake-header-secret2;\n  proxy_pass http://x:8080;\n",
+			secrets: []string{"fake-header-secret"},
+			want:    []string{"  proxy_set_header X-Plugin-Secret [REDACTED];\n", "  listen 443 ssl;\n", "  proxy_pass http://x:8080;\n"}},
+		{name: "set variable with comment", path: "nginx/sites/a.conf",
+			before:  "  set $api_token fakeTok123; # rotate\n  add_header X-Id fakeTok123;\n",
+			after:   "  set $api_token fakeTok124; # rotate\n  add_header X-Id fakeTok123;\n",
+			secrets: []string{"fakeTok123", "fakeTok124"},
+			want:    []string{"  set $api_token [REDACTED]; # rotate\n", "add_header X-Id [REDACTED];"}},
+		{name: "directive name is not tested", path: "nginx/sites/a.conf",
+			before: "  ssl_certificate_key /etc/x.key;\n  proxy_pass http://x:8080;\n  listen 443 ssl;\n",
+			after:  "  ssl_certificate_key /etc/y.key;\n  proxy_pass http://x:9090;\n  listen 443 ssl;\n",
+			want:   []string{"-  ssl_certificate_key /etc/x.key;\n", "+  proxy_pass http://x:9090;\n", "  listen 443 ssl;\n"}},
+	})
+}
