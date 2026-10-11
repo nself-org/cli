@@ -40,9 +40,9 @@ func (s coldStartPlugins) Name() string {
 	return "cold-start-plugins"
 }
 
-// Probes are the EPIC G8 probes: `status` runs in an empty directory and is
+// probes are the EPIC G8 probes: `status` runs in an empty directory and is
 // expected to exit 1.
-func (coldStartPlugins) Probes() []Probe {
+func (coldStartPlugins) probes() []Probe {
 	return []Probe{
 		{Metric: "cold_start.version", Args: []string{"version"}, Exit: 0},
 		{Metric: "cold_start.help", Args: []string{"--help"}, Exit: 0},
@@ -64,7 +64,7 @@ func (s coldStartPlugins) Run(ctx context.Context, cfg Config) ([]Sample, error)
 	if s.v15 {
 		cfg.Env = append(cfg.Env, "NSELF_V15=1")
 	}
-	return RunProbes(ctx, cfg, s.Probes())
+	return RunProbes(ctx, cfg, s.probes())
 }
 
 // WritePluginHome creates n CLI plugins under home/.nself/plugins: one
