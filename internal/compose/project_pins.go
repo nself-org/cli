@@ -55,10 +55,6 @@ func SetProjectPins(pins map[string]string) (restore func()) {
 	prev := projectPins
 	projectPins = next
 	pinsMu.Unlock()
-	// A new set of pins is a new run: its drop notices print again.
-	pinNoticedMu.Lock()
-	pinNoticed = map[string]bool{}
-	pinNoticedMu.Unlock()
 	return func() {
 		pinsMu.Lock()
 		projectPins = prev
@@ -108,30 +104,48 @@ func LoadProjectPins(projectDir string) error {
 }
 
 // pinNoticeW receives the one-line notice printed when an explicit env value
-// drops a pin. Tests replace it; the build leaves it on stderr.
+// drops a pin. Tests replace it; the build leaves it on stderr. A notice prints
+// once per service, variable and pin for the whole process (a build installs
+// the pins several times), and only when the pin really is not used.
 var (
 	pinNoticeW   io.Writer = os.Stderr
 	pinNoticed             = map[string]bool{}
 	pinNoticedMu sync.Mutex
 )
 
-// projectPin returns the pin for service. An explicit env value drops the pin
-// only when it names a different image: nself init writes *_VERSION defaults
-// into .env, and a value that equals the pin's reference (the part before
-// "@") keeps ref@digest. A different explicit value drops the pin with a
-// one-line notice on stderr.
-func projectPin(service string) (string, bool) {
+// projectPin returns the pin for service, given the reference the caller
+// rendered from the config (image; "" means the CLI default). Without an
+// explicit *_IMAGE/*_VERSION in the env the pin always wins. With one, the pin
+// is kept only when that value renders to the pin's own reference: nself init
+// writes *_VERSION defaults into .env, and for postgres 16-alpine renders to the
+// pgvector entry, so the comparison is on the rendered reference (what the
+// generator would emit), never on the raw env text. A value that renders to a
+// different image drops the pin, with a one-line notice on stderr.
+func projectPin(service, image string) (string, bool) {
 	pinsMu.RLock()
 	pin, ok := projectPins[service]
 	pinsMu.RUnlock()
 	if !ok {
 		return "", false
 	}
-	if name, differs := explicitDiffers(service, pin); differs {
-		noticePinDropped(service, name, pin)
-		return "", false
+	name := explicitEnvName(service)
+	if name == "" {
+		return pin, true
 	}
-	return pin, true
+	if image == "" {
+		image = DefaultImage(service)
+	}
+	want := CanonicalRef(pin)
+	if CanonicalRef(image) == want {
+		return pin, true
+	}
+	// nself init writes POSTGRES_VERSION=16-alpine; a project that runs the
+	// pgvector image gets it from the extension list, which may be set elsewhere.
+	if v := strings.TrimSpace(os.Getenv("POSTGRES_VERSION")); service == "postgres" && v != "" && CanonicalRef(pgvectorImageForVersion(v)) == want {
+		return pin, true
+	}
+	noticePinDropped(service, name, pin)
+	return "", false
 }
 
 // noticePinDropped prints the drop notice once per service, variable and pin.
@@ -148,29 +162,19 @@ func noticePinDropped(service, envName, pin string) {
 	_, _ = fmt.Fprintf(w, "notice: %s is set, so the %s pin in %s is not used\n", envName, service, ProjectLockFile)
 }
 
-// explicitDiffers returns the first env variable of service that is set to
-// something other than the pin's reference.
-func explicitDiffers(service, pin string) (string, bool) {
+// explicitEnvName returns the first env variable of service that is set, or "".
+func explicitEnvName(service string) string {
 	names, ok := explicitVars[service]
 	if !ok {
 		base := strings.ToUpper(strings.ReplaceAll(service, "-", "_"))
 		names = []string{base + "_VERSION", base + "_IMAGE"}
 	}
-	want, _, _ := strings.Cut(pin, "@")
 	for _, n := range names {
-		v := strings.TrimSpace(os.Getenv(n))
-		if v == "" {
-			continue
+		if strings.TrimSpace(os.Getenv(n)) != "" {
+			return n
 		}
-		switch {
-		case strings.HasSuffix(n, "_VERSION") && refMatches(service, v, want):
-			continue
-		case strings.HasSuffix(n, "_IMAGE") && imageBase(v) == want:
-			continue
-		}
-		return n, true
 	}
-	return "", false
+	return ""
 }
 
 func imageBase(ref string) string {
@@ -178,11 +182,15 @@ func imageBase(ref string) string {
 	return base
 }
 
-// refMatches reports whether version v of service resolves to the reference want.
-func refMatches(service, v, want string) bool {
-	if b := imageBase(ImageRef(service, v)); b != "" && b == want {
-		return true
+// CanonicalRef reduces an image reference to one spelling for comparison: no
+// digest, no docker.io/, index.docker.io/ or library/ prefix, lower case. The
+// bootstrap pins a reference as docker.io/<repo>:<tag>@sha256 while the legacy
+// image strings omit the host, so every comparison of two spellings goes through
+// here (internal/docker cannot be imported: its tests import this package).
+func CanonicalRef(ref string) string {
+	ref = strings.ToLower(strings.TrimSpace(imageBase(ref)))
+	for _, host := range []string{"registry-1.docker.io/", "index.docker.io/", "docker.io/"} {
+		ref = strings.TrimPrefix(ref, host)
 	}
-	r, ok := LockedRef(service)
-	return ok && r.LegacyRepository()+":"+v == want
+	return strings.TrimPrefix(ref, "library/")
 }

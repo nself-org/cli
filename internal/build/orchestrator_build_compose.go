@@ -93,12 +93,6 @@ func (st *buildState) generateCompose() error {
 	}
 	st.filesGenerated++
 
-	// ── Step 9.4: nself.lock.yaml (P7-LIVE-09) ──────────────────────
-	// Written only when its content changes (lockfile.go).
-	if err := st.writeProjectLock(composeYAML); err != nil {
-		return err
-	}
-
 	// ── Step 9.5: Discover plugin compose files ────────────────────
 	pluginComposeFiles, err := discoverPluginComposeFilesFx(st.fx, st.sink, st.workdir, st.pluginDir)
 	if err != nil {
@@ -112,6 +106,14 @@ func (st *buildState) generateCompose() error {
 		return fmt.Errorf("writing compose manifest: %w", err)
 	}
 	st.filesGenerated++
+
+	// ── Step 9.55: nself.lock.yaml (P7-LIVE-09) ─────────────────────
+	// After the compose-file list above is rediscovered and written, with that
+	// same list, so build and `start --frozen` read the same files. Written only
+	// when its content changes (lockfile.go).
+	if err := st.writeProjectLock(composeYAML, withUserOverride(st.workdir, append([]string{st.composePath}, st.pluginComposeFiles...))); err != nil {
+		return err
+	}
 
 	if st.opts.Verbose && len(st.pluginComposeFiles) > 0 {
 		slog.Info("discovered plugin compose files", "count", len(st.pluginComposeFiles), "files", st.pluginComposeFiles)

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/config"
 )
 
 const pinDigest = "sha256:4444444444444444444444444444444444444444444444444444444444444444"
@@ -51,11 +52,11 @@ func TestProjectPinsExplicitNames(t *testing.T) {
 	restore := SetProjectPins(map[string]string{"postgres": "postgres:15", "admin": "nself/nself-admin:1", "meilisearch": "m:1"})
 	defer restore()
 	for env, svc := range map[string]string{"POSTGRES_IMAGE": "postgres", "POSTGRES_EXTENSIONS": "postgres", "NSELF_ADMIN_VERSION": "admin", "MEILISEARCH_VERSION": "meilisearch"} {
-		if _, ok := projectPin(svc); !ok {
+		if _, ok := projectPin(svc, ""); !ok {
 			t.Fatalf("%s: pin not applied with %s unset", svc, env)
 		}
 		t.Setenv(env, "x")
-		if _, ok := projectPin(svc); ok {
+		if _, ok := projectPin(svc, ""); ok {
 			t.Errorf("%s set but the pin still applies to %s", env, svc)
 		}
 		_ = os.Unsetenv(env)
@@ -91,39 +92,98 @@ func TestProjectPinsLoad(t *testing.T) {
 	}
 }
 
-// TestProjectPinEnvEqualToPin: nself init writes *_VERSION defaults into .env;
-// a value equal to the pin's reference keeps ref@digest, a different one drops
-// the pin with a single notice (lens must-fix 2).
+// resetPinNotices clears the process-wide notice dedupe for a test.
+func resetPinNotices(t *testing.T) {
+	t.Helper()
+	pinNoticedMu.Lock()
+	pinNoticed = map[string]bool{}
+	pinNoticedMu.Unlock()
+}
+
+// TestProjectPinEnvEqualToPin: nself init writes *_VERSION defaults into .env.
+// A value that renders to the pin's reference keeps ref@digest, in both pinning
+// modes, whether the pin was bootstrapped in the short or the docker.io/
+// spelling (lens round 3 must-fix; CR r3 S1 for postgres), and a different one
+// drops the pin with a single notice.
 func TestProjectPinEnvEqualToPin(t *testing.T) {
-	for _, v15 := range []bool{false, true} {
-		v15 := v15
-		t.Run(map[bool]string{false: "v14", true: "v15"}[v15], func(t *testing.T) { testProjectPinEnvEqualToPin(t, v15) })
+	type svc struct {
+		name, env, version string
+		render             func(version string) string
+	}
+	pgCfg := func(v string, ext ...string) string {
+		return ResolvePostgresImage(config.PostgresConfig{Version: v, Extensions: ext})
+	}
+	for _, mode := range []string{PinningLegacy, PinningLock} {
+		for _, spelling := range []string{"short", "docker.io"} {
+			for _, sv := range []svc{
+				{"hasura", "HASURA_VERSION", "v2.44.0", func(v string) string { return ImageRef("hasura", v) }},
+				{"auth", "AUTH_VERSION", "", func(v string) string { return ImageRef("auth", v) }},
+				{"nginx", "NGINX_VERSION", "", func(string) string { return ImageRef("nginx", "") }},
+				{"redis", "REDIS_VERSION", "", func(v string) string { return ImageRef("redis", v) }},
+				{"postgres", "POSTGRES_VERSION", "16-alpine", func(v string) string { return pgCfg(v, "uuid-ossp", "pgvector") }},
+				{"postgres", "POSTGRES_VERSION", "16-alpine", func(v string) string { return pgCfg(v, "uuid-ossp") }},
+			} {
+				name := mode + "/" + spelling + "/" + sv.name + "/" + sv.env
+				t.Run(name, func(t *testing.T) {
+					t.Setenv(EnvImagePinning, mode)
+					for _, v15 := range []bool{false, true} {
+						compattest.Set(t, v15)
+						version := sv.version
+						if r, ok := LockedRef(sv.name); ok && version == "" {
+							version = r.Version
+						}
+						// The pin: the reference the project already runs.
+						base := sv.render(version)
+						if sv.name == "postgres" {
+							base = ImageRef("pgvector", "pg16")
+						}
+						base = CanonicalRef(base)
+						if spelling == "docker.io" {
+							base = "docker.io/" + base
+						}
+						pin := base + "@" + pinDigest
+						restore := SetProjectPins(map[string]string{sv.name: pin})
+						resetPinNotices(t)
+						var notice bytes.Buffer
+						prevW := pinNoticeW
+						pinNoticeW = &notice
+						t.Cleanup(func() { pinNoticeW = prevW; restore() })
+
+						t.Setenv(sv.env, version)
+						got := ResolveImage(sv.name, sv.render(version))
+						if got != pin {
+							t.Errorf("v15=%v: %s=%s dropped the pin: got %q want %q", v15, sv.env, version, got, pin)
+						}
+						if notice.Len() != 0 {
+							t.Errorf("v15=%v: a kept pin must not print a notice: %q", v15, notice.String())
+						}
+					}
+				})
+			}
+		}
 	}
 }
 
-func testProjectPinEnvEqualToPin(t *testing.T, v15 bool) {
-	{
+// TestProjectPinEnvDifferentDropsPin: a value that renders to another image
+// drops the pin, with exactly one notice per build however many times the pins
+// are installed and resolved (CR r3 S2).
+func TestProjectPinEnvDifferentDropsPin(t *testing.T) {
+	for _, v15 := range []bool{false, true} {
 		compattest.Set(t, v15)
 		pin := "hasura/graphql-engine:v2.44.0@" + pinDigest
-		restore := SetProjectPins(map[string]string{"hasura": pin})
+		resetPinNotices(t)
 		var notice bytes.Buffer
 		prevW := pinNoticeW
 		pinNoticeW = &notice
 		t.Cleanup(func() { pinNoticeW = prevW })
 
-		t.Setenv("HASURA_VERSION", "v2.44.0")
-		if got := ResolveImage("hasura", ImageRef("hasura", "v2.44.0")); got != pin {
-			t.Errorf("v15=%v: HASURA_VERSION equal to the pin dropped the digest: %q", v15, got)
-		}
-		if notice.Len() != 0 {
-			t.Errorf("v15=%v: equal value must not print a notice: %q", v15, notice.String())
-		}
-
 		t.Setenv("HASURA_VERSION", "v2.51.0")
-		for i := 0; i < 2; i++ {
-			if got := ResolveImage("hasura", ImageRef("hasura", "v2.51.0")); got == pin {
-				t.Errorf("v15=%v: a different explicit version kept the pin", v15)
+		for i := 0; i < 3; i++ {
+			restore := SetProjectPins(map[string]string{"hasura": pin}) // a build installs the pins repeatedly
+			if got := ResolveImage("hasura", ImageRef("hasura", "v2.51.0")); got == pin || !strings.Contains(got, "v2.51.0") {
+				t.Errorf("v15=%v: a different explicit version kept the pin: %q", v15, got)
 			}
+			restore()
 		}
 		if n := strings.Count(notice.String(), "notice:"); n != 1 || !strings.Contains(notice.String(), "HASURA_VERSION") {
 			t.Errorf("v15=%v: want one notice naming HASURA_VERSION, got %q", v15, notice.String())
@@ -131,11 +191,11 @@ func testProjectPinEnvEqualToPin(t *testing.T, v15 bool) {
 
 		t.Setenv("HASURA_VERSION", "")
 		t.Setenv("HASURA_IMAGE", "hasura/graphql-engine:v2.44.0")
-		if got, ok := projectPin("hasura"); !ok || got != pin {
+		restore := SetProjectPins(map[string]string{"hasura": pin})
+		if got, ok := projectPin("hasura", "hasura/graphql-engine:v2.44.0"); !ok || got != pin {
 			t.Errorf("v15=%v: HASURA_IMAGE equal to the pin base dropped it: %q %v", v15, got, ok)
 		}
-		t.Setenv("HASURA_IMAGE", "other/engine:1")
-		if _, ok := projectPin("hasura"); ok {
+		if _, ok := projectPin("hasura", "other/engine:1"); ok {
 			t.Errorf("v15=%v: a different HASURA_IMAGE kept the pin", v15)
 		}
 		restore()

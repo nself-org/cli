@@ -99,7 +99,7 @@ func DefaultImage(service string) string {
 func ResolveImage(service, image string) string {
 	// P7-LIVE-09: a project lock pin outranks the CLI default and any version the
 	// config defaulted, but never an explicit *_IMAGE/*_VERSION in the env.
-	if pin, ok := projectPin(service); ok {
+	if pin, ok := projectPin(service, image); ok {
 		return pin
 	}
 	resolved := image

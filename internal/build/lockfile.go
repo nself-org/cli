@@ -128,43 +128,56 @@ func cliOwnedImages(composeYAML []byte) (map[string]string, error) {
 }
 
 // mergedComposeImages reads the image of every service across the compose files
-// `nself start` runs (ReadComposeManifest: the generated base, plugin fragments,
-// docker-compose.override.yml). Docker merges them in order and the last image
-// wins, so an override file cannot move a pinned image unseen. base is the rendered docker-compose.yml bytes, used in
-// place of the file on disk when the build has them (nil reads the file).
-func mergedComposeImages(workdir string, base []byte) (map[string]string, error) {
-	paths, err := ReadComposeManifest(workdir)
-	if err != nil {
-		return nil, err
+// `nself start` runs (the generated base, plugin fragments, docker-compose.override.yml).
+// Docker merges them in order and the last image wins, so an override file cannot
+// move a pinned image unseen. base is the rendered docker-compose.yml bytes, used
+// in place of the file on disk when the build has them (nil reads the file).
+// paths is the file list (nil reads .nself/compose-files.txt): the build passes
+// the list it has just discovered, so the lock and the manifest agree.
+//
+// The generated .nself/state/image-overrides.yml (written by ensureStartImages
+// for a registry mirror) is never recorded (forCompare false: the lock holds
+// the pinned reference, not the mirror). When forCompare is true (start --frozen)
+// an entry from it is accepted only if its digest equals the digest of the
+// reference it replaces; any other override is a mismatch against the lock.
+func mergedComposeImages(workdir string, base []byte, paths []string, forCompare bool) (map[string]string, error) {
+	if paths == nil {
+		var err error
+		if paths, err = ReadComposeManifest(workdir); err != nil {
+			return nil, err
+		}
 	}
-	basePath := filepath.Join(workdir, "docker-compose.yml")
 	abs := func(p string) string {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(workdir, p)
 		}
 		return filepath.Clean(p)
 	}
+	basePath, mirrorPath := abs("docker-compose.yml"), abs(docker.ImageOverrideFile)
 	files := []string{basePath}
 	for _, p := range paths {
-		// image-overrides.yml is written by start from the digests this very
-		// lock pins, so it mirrors the lock and is left out of the comparison.
-		if abs(p) != basePath && filepath.Base(p) != docker.ImageOverrideFile {
+		if _, err := os.Stat(abs(p)); err == nil && abs(p) != basePath && (forCompare || abs(p) != mirrorPath) {
 			files = append(files, abs(p))
 		}
 	}
 	merged := map[string]string{}
 	for _, f := range files {
-		var data []byte
-		if f == basePath && base != nil {
-			data = base
-		} else if data, err = os.ReadFile(f); err != nil {
-			return nil, fmt.Errorf("reading %s: %w", filepath.Base(f), err)
+		data := base
+		if f != basePath || base == nil {
+			var err error
+			if data, err = os.ReadFile(f); err != nil {
+				return nil, fmt.Errorf("reading %s: %w", filepath.Base(f), err)
+			}
 		}
 		imgs, err := lock.ComposeImages(data)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", filepath.Base(f), err)
 		}
 		for svc, ref := range imgs {
+			// A same-digest mirror serves the bytes the lock pins.
+			if prev, seen := merged[svc]; f == mirrorPath && seen && lock.RefDigest(ref) != "" && lock.RefDigest(ref) == lock.RefDigest(prev) {
+				continue
+			}
 			merged[svc] = ref
 		}
 	}
@@ -183,11 +196,15 @@ func filterCLIOwned(all map[string]string) map[string]string {
 	return out
 }
 
-// cliLockedRef finds the CLI image lock entry whose version a tag reference names.
+// cliLockedRef finds the CLI image lock entry whose version a tag reference
+// names, in the short or the docker.io/ spelling.
 func cliLockedRef(ref string) (string, bool) {
+	c := compose.CanonicalRef(ref)
 	for _, r := range compose.LockedImages() {
-		if ref == r.LegacyRef || ref == r.LegacyRepository()+":"+r.Version || ref == r.Repository+":"+r.Version {
-			return r.String(), true
+		for _, cand := range []string{r.LegacyRef, r.LegacyRepository() + ":" + r.Version, r.Repository + ":" + r.Version} {
+			if c == compose.CanonicalRef(cand) {
+				return r.String(), true
+			}
 		}
 	}
 	return "", false
@@ -218,8 +235,8 @@ func ledgerSources(pluginDir string) func() (ledger.Sources, error) {
 
 // lockFromState assembles a Lock from a rendered compose, the bundle ledger and
 // the CLI version. No digest is looked up: the lock records the compose as is.
-func lockFromState(pluginDir, workdir string, composeYAML []byte) (lock.Lock, error) {
-	all, err := mergedComposeImages(workdir, composeYAML)
+func lockFromState(pluginDir, workdir string, composeYAML []byte, files []string, forCompare bool) (lock.Lock, error) {
+	all, err := mergedComposeImages(workdir, composeYAML, files, forCompare)
 	if err != nil {
 		return lock.Lock{}, err
 	}
@@ -244,11 +261,11 @@ func lockFromState(pluginDir, workdir string, composeYAML []byte) (lock.Lock, er
 
 // writeProjectLock writes nself.lock.yaml through the sink when its content
 // changed. A byte-identical lock is not touched (not even its mtime).
-func (st *buildState) writeProjectLock(composeYAML []byte) error {
+func (st *buildState) writeProjectLock(composeYAML []byte, files []string) error {
 	if !st.lockActive() {
 		return nil
 	}
-	l, err := lockFromState(st.pluginDir, st.workdir, composeYAML)
+	l, err := lockFromState(st.pluginDir, st.workdir, composeYAML, files, false)
 	if err != nil {
 		return err
 	}
@@ -275,5 +292,5 @@ func CurrentLock(workdir string) (lock.Lock, error) {
 	if _, err := os.Stat(filepath.Join(workdir, "docker-compose.yml")); err != nil {
 		return lock.Lock{}, fmt.Errorf("reading docker-compose.yml: %w", err)
 	}
-	return lockFromState(DefaultPluginDir(), workdir, nil)
+	return lockFromState(DefaultPluginDir(), workdir, nil, nil, true)
 }

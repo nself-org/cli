@@ -82,3 +82,12 @@ func ComposeImages(data []byte) (map[string]string, error) {
 	}
 	return out, nil
 }
+
+// RefDigest returns the "sha256:<hex>" of a reference of the form repo[:tag]@digest,
+// or "" when it has none or the digest is malformed.
+func RefDigest(ref string) string {
+	if i := strings.LastIndex(ref, "@"); i >= 0 && digestRE.MatchString(ref[i+1:]) {
+		return ref[i+1:]
+	}
+	return ""
+}
