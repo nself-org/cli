@@ -53,3 +53,24 @@ func TestWriteNarrowsOldLogDirAndRotatedFiles(t *testing.T) {
 		}
 	}
 }
+
+// TestNarrowExistingGlobMetacharsInPath: a HOME holding [ ] * ? must not hide
+// the rotated logs from the narrowing pass (the old Glob misread the pattern).
+func TestNarrowExistingGlobMetacharsInPath(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "h[o]me*?", "logs")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rot := filepath.Join(dir, "nself.log.1")
+	if err := os.WriteFile(rot, []byte("fakeOldValue123\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	New(dir).narrowExisting(dir)
+	info, err := os.Stat(rot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("mode %o, want 600", got)
+	}
+}

@@ -29,11 +29,11 @@ func TestRootLogsNoSecretPositional(t *testing.T) {
 	home, proj := t.TempDir(), t.TempDir()
 	var env []string
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "NSELF_") && !strings.HasPrefix(kv, "HOME=") {
+		if !strings.HasPrefix(kv, "NSELF_") && !strings.HasPrefix(kv, "HOME=") && !strings.HasPrefix(kv, "USERPROFILE=") {
 			env = append(env, kv)
 		}
 	}
-	env = append(env, "HOME="+home, "NSELF_CMD_LOG_ENABLED=true")
+	env = append(env, "HOME="+home, "USERPROFILE="+home, "NSELF_CMD_LOG_ENABLED=true")
 	cmd := exec.Command(bin, "secrets", "set", "FAKEKEY", fakeCallsite0473)
 	cmd.Dir, cmd.Env = proj, env
 	_ = cmd.Run() // the exit code is not the point: the log line is written before RunE

@@ -113,13 +113,18 @@ func (l *Logger) write(entry Entry) error {
 // nself.log is narrowed by write.
 func (l *Logger) narrowExisting(logDir string) {
 	narrowTo(logDir, 0o700)
-	rotated, err := filepath.Glob(l.path + ".*")
+	entries, err := os.ReadDir(logDir)
 	if err != nil {
 		return
 	}
-	for _, p := range rotated {
-		if n, perr := strconv.Atoi(strings.TrimPrefix(p, l.path+".")); perr == nil && n > 0 {
-			narrowTo(p, 0o600)
+	prefix := filepath.Base(l.path) + "."
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		if n, perr := strconv.Atoi(strings.TrimPrefix(name, prefix)); perr == nil && n > 0 {
+			narrowTo(filepath.Join(logDir, name), 0o600)
 		}
 	}
 }

@@ -6,7 +6,8 @@ package commands
 // Outputs: the secret values: positionals the canon marks secret_args, plus
 // the values of changed flags the canon marks secret or whose name looks like
 // a secret (config.IsSecretKey).
-// Constraints: a parent command that swallowed words masks all of them. The list comes from internal/canon (memoised), never hand-coded.
+// Constraints: a parent command that swallowed words masks all of them. The
+// list comes from internal/canon (memoised), never hand-coded.
 // Cheap and best-effort: any lookup problem returns nil, it never fails or
 // slows a command. Boolean flags are skipped (their value is not a secret).
 

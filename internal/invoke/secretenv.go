@@ -17,7 +17,9 @@ package invoke
 // Known boundary: a mounted plugin binary that the nself child proxies to
 // (internal/plugin/router.go) receives the restored secret values on its own
 // argv, where ps shows them. The plugin protocol has no hand-off for the bundle
-// yet; the gap is tracked in hq debt.
+// yet; the gap is tracked in hq debt. A free-form plugin command (no declared
+// args or flags) is also not hidden: nothing marks its words secret, so
+// Request.Argv goes on the child argv as given (argv.go).
 
 import (
 	"crypto/rand"
