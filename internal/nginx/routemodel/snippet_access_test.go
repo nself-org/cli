@@ -26,8 +26,15 @@ func TestSnippetDenyAllNeedsNoWayIn(t *testing.T) {
 		"allow":          `server { listen 80; server_name a.test; location /admin { allow 10.0.0.0/8; deny all; } }`,
 		"satisfy any":    `server { listen 80; server_name a.test; location /admin { satisfy any; auth_basic x; deny all; } }`,
 		"server satisfy": `server { listen 80; server_name a.test; satisfy any; location /admin { auth_basic x; deny all; } }`,
+		"limit_except":   `server { listen 80; server_name a.test; location /le { deny all; limit_except GET { allow all; } proxy_pass http://127.0.0.1:8001; } }`,
+		"if allow":       `server { listen 80; server_name a.test; location /admin { if ($x) { allow 1.1.1.1; } deny all; } }`,
+		"global satisfy": `satisfy any; server { listen 80; server_name a.test; location /sa { auth_basic x; auth_basic_user_file /f; deny all; } }`,
 	} {
-		r := route(t, text)
+		sn, err := ParseSnippet("plugin", "p", "f.conf", text)
+		if err != nil || len(sn.Routes) != 1 {
+			t.Fatalf("%s: %v", name, err)
+		}
+		r := sn.Routes[0]
 		if r.Locations[0].DenyAll || !contains(r.Unmodelled, "deny all;") {
 			t.Errorf("%s: deny_all=%v unmodelled=%q", name, r.Locations[0].DenyAll, r.Unmodelled)
 		}

@@ -74,6 +74,9 @@ func (s *srv) location(l *Block) {
 	acc := &locAcc{s: s, vars: map[string]*setVar{}, done: map[string]bool{}, g: s.g.join(scanGuard(l)),
 		loc: Location{Path: path, Match: match, HeadersSet: map[string]string{}, AccessLog: true}}
 	for k, v := range s.vars {
+		if s.taint[k] {
+			v = &setVar{dup: true}
+		}
 		acc.vars[k] = v
 	}
 	// nginx runs every `set` (rewrite phase) before proxy_pass (content phase),
@@ -194,8 +197,8 @@ func (a *locAcc) limitExcept(d *Block) {
 
 // proxyPass resolves the target to scheme, host and port. A `set` variable is
 // substituted literally when it is the only variable, is set once in its scope
-// and nothing else could skip or change that set (guard); a hostname is then
-// resolved per request by the http-level resolver of nginx.conf.tmpl; an
+// and nothing else could skip or change that set (guard); a hostname behind a
+// variable relies on the http-level resolver of nginx.conf.tmpl; an
 // upstream name resolves through upstream{}; a portless name defined as an
 // upstream in another file of the scan, or neither dotted nor an IP (it may be
 // defined outside the scan), is recorded.

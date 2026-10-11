@@ -69,11 +69,18 @@ func TestSnippetSetRunsBeforeProxyPass(t *testing.T) {
 		{"server writer", "$w", `server{listen 80;server_name a.test;set_by_lua $W 'return 1';location /{set $w http://a.test:1;proxy_pass $w;}}`},
 		{"global map writer", "$w", `map $host $w { default http://b.test:2; } server{listen 80;server_name a.test;location /{set $w http://a.test:1;proxy_pass $w;}}`},
 		{"global js_set writer", "$w", `js_set $w m.f; server{listen 80;server_name a.test;location /{set $w http://a.test:1;proxy_pass $w;}}`},
+		{"include beside set", "$up", `server{listen 80;server_name a.test;set $up http://a.test:1;location /{include extra.conf;proxy_pass $up;}}`},
 	} {
 		r := route(t, c.text)
 		if r.Locations[0].Upstream != nil || !contains(r.Unmodelled, "proxy_pass "+c.pass+";") {
 			t.Errorf("%s: upstream=%+v unmodelled=%q", c.name, r.Locations[0].Upstream, r.Unmodelled)
 		}
+	}
+	// rewrite ... last in a sibling location carries its set into /q without
+	// re-running the server's set: /q's server-scope value is not certain.
+	r = route(t, `server{listen 80;server_name a.test;set $up http://a.test:1;location /p {set $up http://b.test:2;rewrite ^ /q last;} location /q {proxy_pass $up;}}`)
+	if r.Locations[1].Path != "/q" || r.Locations[1].Upstream != nil || !contains(r.Unmodelled, "proxy_pass $up;") {
+		t.Errorf("rewrite last sibling: %+v unmodelled=%q", r.Locations[1], r.Unmodelled)
 	}
 	// Without a variable, an if elsewhere does not block a literal upstream.
 	if u := route(t, `server{listen 80;server_name a.test;if ($host = b) {return 404;} location /{proxy_pass http://a.test:1;}}`).Locations[0].Upstream; u == nil {

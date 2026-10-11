@@ -13,31 +13,30 @@ package routemodel
 import "strings"
 
 // guard is what one scope holds.
-//   - flow: an if, rewrite, break or return, which can skip a later `set`
-//     or set a variable conditionally.
+//   - flow: an if, rewrite, break, return or include, which can skip a later
+//     `set`, set a variable conditionally or hide either.
 //   - writes: variables another directive writes, by lower-case name: the
 //     first argument of any directive but `set` and *_pass
 //     (auth_request_set, set_by_lua ...).
-//   - allow: an allow rule; with it `deny all` no longer denies everyone.
-//     Only a location's own allow counts (nginx inherits access rules
-//     all-or-none and the location has a deny).
-//   - satisfyAny: `satisfy` other than all (any auth passing lets the request in).
+//   - allow: an allow rule, also inside if or limit_except; with it `deny
+//     all` no longer denies everyone. Only a location's own allow counts
+//     (nginx inherits access rules all-or-none and the location has a deny).
+//   - satisfyAny: `satisfy` other than all (any auth passing lets the
+//     request in); inherited from the top of the file and the server.
 type guard struct {
 	flow, allow, satisfyAny bool
 	writes                  map[string]bool
 }
 
 func scanGuard(b *Block) guard {
-	g := guard{writes: map[string]bool{}}
+	g := guard{writes: map[string]bool{}, allow: hasAllow(b)}
 	for _, d := range b.Children {
 		switch d.Name {
-		case "if", "rewrite", "break", "return":
+		case "if", "rewrite", "break", "return", "include":
 			g.flow = true
-		case "allow":
-			g.allow = true
 		case "satisfy":
 			g.satisfyAny = g.satisfyAny || d.Arg(0) != "all"
-		case "set":
+		case "set", "allow":
 		default: // *_pass only reads its target
 			if strings.HasSuffix(d.Name, "_pass") {
 				continue
@@ -48,6 +47,17 @@ func scanGuard(b *Block) guard {
 		}
 	}
 	return g
+}
+
+// hasAllow reports an allow in b or in a block under it other than a nested
+// location (if, limit_except).
+func hasAllow(b *Block) bool {
+	for _, d := range b.Children {
+		if d.Name == "allow" || d.Block && d.Name != "location" && hasAllow(d) {
+			return true
+		}
+	}
+	return false
 }
 
 // join is the guard of a location l inside the server scope g.
@@ -61,19 +71,35 @@ func (g guard) join(l guard) guard {
 	return out
 }
 
-// globalVars names every variable an argument mentions outside any server
-// block (map, geo, split_clients, js_set, perl_set ...): any of them may be
-// written there.
-func globalVars(tree []*Block) map[string]bool {
-	out := map[string]bool{}
+// globalGuard is the guard of the directives outside any server block: every
+// variable an argument names (map, geo, split_clients, js_set, perl_set ...
+// may write it) and an inherited `satisfy`.
+func globalGuard(tree []*Block) guard {
+	g := guard{writes: map[string]bool{}}
 	for _, b := range tree {
 		if b.Name == "server" {
 			continue
 		}
+		g.satisfyAny = g.satisfyAny || b.Name == "satisfy" && b.Arg(0) != "all"
 		for _, a := range unquoteAll(b.Args) {
 			if v, ok := strings.CutPrefix(a, "$"); ok {
-				out[strings.ToLower(v)] = true
+				g.writes[strings.ToLower(v)] = true
 			}
+		}
+	}
+	return g
+}
+
+// locationSets names every variable a location under b sets. An internal
+// redirect (rewrite ... last) carries that value into a sibling location
+// without re-running the server's set, so the server's value is not certain.
+func locationSets(b *Block, in bool, out map[string]bool) map[string]bool {
+	for _, d := range b.Children {
+		if in && d.Name == "set" {
+			out[strings.ToLower(strings.TrimPrefix(d.Arg(0), "$"))] = true
+		}
+		if d.Block {
+			locationSets(d, in || d.Name == "location", out)
 		}
 	}
 	return out

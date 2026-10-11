@@ -39,7 +39,7 @@ type Snippet struct {
 	disp map[*Block]string    // mapped, ignored, unmodelled or container
 	tree []*Block             // the parsed file (accounting checks walk it)
 	ups  map[string]*hostPort // upstream{} blocks of this file; nil = not reducible to one host:port
-	gw   map[string]bool      // variables named by directives outside any server block (map, geo, js_set ...)
+	gg   guard                // the directives outside any server block (globalGuard)
 	out  map[string]bool      // upstream names defined in other files of the same scan
 }
 
@@ -80,7 +80,7 @@ func ParseSnippetIn(source, owner, file, text string, upstreams []string) (*Snip
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	sn := &Snippet{disp: map[*Block]string{}, tree: tree, ups: map[string]*hostPort{}, out: map[string]bool{}, Routes: []Route{}, Global: []string{}, gw: globalVars(tree)}
+	sn := &Snippet{disp: map[*Block]string{}, tree: tree, ups: map[string]*hostPort{}, out: map[string]bool{}, Routes: []Route{}, Global: []string{}, gg: globalGuard(tree)}
 	for _, u := range upstreams {
 		sn.out[strings.ToLower(u)] = true
 	}
@@ -124,7 +124,8 @@ type srv struct {
 	cipher *string
 	certs  []*Block // ssl_certificate and ssl_certificate_key lines (certDir)
 	tls    bool
-	g      guard // what the server scope holds that limits locations (snippet_guard.go)
+	g      guard           // what the server scope holds that limits locations (snippet_guard.go)
+	taint  map[string]bool // variables some location sets (locationSets)
 }
 
 type setVar struct {
@@ -161,10 +162,9 @@ func (sn *Snippet) server(b *Block, id, source, owner, file string) Route {
 	}
 	s := &srv{sn: sn, r: &r, vars: map[string]*setVar{}, rec: map[*Block]bool{}, protos: []string{}}
 	sn.disp[b] = "container"
-	s.g = scanGuard(b)
-	for k := range sn.gw {
-		s.g.writes[k] = true
-	}
+	s.g = sn.gg.join(scanGuard(b))
+	s.g.allow = false // a server allow is not inherited by a location with its own deny
+	s.taint = locationSets(b, false, map[string]bool{})
 	var locs []*Block
 	var ret *Block // the first server-level return
 	listens := 0
