@@ -15,7 +15,7 @@ package commands
 //   touch internal/config or cmd/commands/env.go. It lists each candidate
 //   env file that exists, redacted, and points at `nself env explain` (the
 //   CLI-R18 deliverable) as the authority on precedence. Secrets are always
-//   redacted (reused from config.go's isSecretKey/maskValue).
+//   redacted (reused from config.IsSecretKey/maskValue).
 // SPORT: CLI-CMD-MCP-001
 
 import (

@@ -16,12 +16,17 @@ import (
 	"github.com/nself-org/cli/internal/config"
 )
 
-// maskValue returns "****" when reveal is false and the key is a secret key.
+// maskValue returns "***" when reveal is false and the key is a secret key,
+// and otherwise the value with any URL credentials masked
+// (config.MaskURLCredentials). reveal prints the stored value as is.
 func maskValue(key, value string, reveal bool) string {
-	if !reveal && config.IsSecretKey(key) && value != "" {
+	if reveal {
+		return value
+	}
+	if config.IsSecretKey(key) && value != "" {
 		return "***"
 	}
-	return value
+	return config.MaskURLCredentials(value)
 }
 
 // envFileName returns the .env filename to use for the given env flag value.

@@ -1,12 +1,14 @@
 # Config conversion fixture (P7-SURF-12). See README.md for tags.
 # Rows that write state non-idempotently, need age, sudo, a network, docker or a TTY
 # (env use/copy/target add, secrets, oauth refresh, trust, telemetry on/off, import,
-# features enable, env show: the fixture has no .env.dev) are covered by the Go tests in cmd/commands/json_config_test.go.
+# features enable) are covered by the Go tests in cmd/commands/json_config_test.go.
 # Moved spellings: the v1.4 row compares the pre-contract --json bytes with the base;
 # the canonical-path row below it validates the v1.5 envelope.
 config
 config env
 config env list
+config env show #| human-skip=env show masks URL credentials and PASS/WEBHOOK/DSN/SALT keys (P7-SURF-12 security fix)
+config env diff dev prod #| human-skip=env diff masks URL credentials and PASS/WEBHOOK/DSN/SALT keys (P7-SURF-12 security fix)
 config env explain
 config env explain POSTGRES_PASSWORD
 config env target
@@ -14,13 +16,18 @@ env target list #| legacy-json no-json=envelope-checked-by-config-env-target-lis
 config env target list
 env target probe #| legacy-json no-json=envelope-checked-by-config-env-target-probe
 config env target probe
+config explain POSTGRES_PASSWORD
 config features
 config features list #| legacy-json
 config features status nsentry-enabled #| legacy-json
-config export --format json #| legacy-json no-json=envelope-checked-by-config-export human-skip=--format json is the JSON form: v1.5 prints the envelope
-config export
+config export --format json #| no-json=envelope-checked-by-config-export human-skip=--format json is the JSON form: v1.5 prints the envelope
+config export #| human-skip=export masks URL credentials and the widened secret keys (P7-SURF-12 security fix)
+config get DATABASE_URL #| human-skip=get masks URL credentials (P7-SURF-12 security fix)
+config get AUTH_SMTP_PASS #| human-skip=get masks PASS keys (P7-SURF-12 security fix)
+config list #| human-skip=list masks URL credentials and the widened secret keys (P7-SURF-12 security fix)
 config oauth
 config secrets
+config show #| human-skip=show masks URL credentials and the widened secret keys (P7-SURF-12 security fix)
 config telemetry
 config telemetry status
 config trust ssl

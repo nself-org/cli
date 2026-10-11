@@ -4688,12 +4688,15 @@
       ],
       "canon": "subcommand",
       "target": null,
-      "side_effect": "write",
+      "side_effect": "remote",
       "output": "document",
       "json": "envelope",
       "data_schema": "schemas/commands/config-env-target-add.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -5257,7 +5260,7 @@
           "required": false,
           "persistent": false,
           "env": null,
-          "side_effect": null,
+          "side_effect": "destructive",
           "json": null,
           "output": null,
           "cli_only": false,
@@ -5271,7 +5274,10 @@
       "json": "envelope",
       "data_schema": "schemas/commands/config-import.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -7912,12 +7918,15 @@
       "flags": [],
       "canon": "subcommand",
       "target": null,
-      "side_effect": "write",
+      "side_effect": "destructive",
       "output": "document",
       "json": "envelope",
       "data_schema": "schemas/commands/config-secrets-set.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -8906,7 +8915,7 @@
           "required": false,
           "persistent": false,
           "env": null,
-          "side_effect": null,
+          "side_effect": "remote",
           "json": null,
           "output": null,
           "cli_only": false,
@@ -8988,7 +8997,12 @@
       "json": "envelope",
       "data_schema": "schemas/commands/config-trust-ssl-add.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "agree-tos"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -9021,7 +9035,7 @@
           "required": false,
           "persistent": false,
           "env": null,
-          "side_effect": null,
+          "side_effect": "remote",
           "json": null,
           "output": null,
           "cli_only": false,
@@ -9154,7 +9168,12 @@
       "json": "envelope",
       "data_schema": "schemas/commands/config-trust-ssl-renew.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "agree-tos"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -9180,7 +9199,7 @@
           "required": false,
           "persistent": false,
           "env": null,
-          "side_effect": null,
+          "side_effect": "remote",
           "json": null,
           "output": null,
           "cli_only": false,
@@ -9398,7 +9417,12 @@
       "json": "envelope",
       "data_schema": "schemas/commands/config-trust-ssl-setup.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [
+          "agree-tos"
+        ],
+        "plan": null
+      },
       "surface": "all"
     },
     {

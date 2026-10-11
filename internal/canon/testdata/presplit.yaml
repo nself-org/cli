@@ -102,7 +102,8 @@ commands:
   config features list: {side_effect: read, json: legacy}
   config features status: {side_effect: read, json: legacy}
   config get: {side_effect: read}
-  config import: {side_effect: write}
+  # cmd/commands/config_export_import.go:131 --force overwrites existing values without the prompt; the old values are not restorable
+  config import: {side_effect: write, flags: {force: {side_effect: destructive}}, confirm: {flags: []}}
   config list: {side_effect: read}
   config set: {side_effect: write, secret_args: [value]}
   config show: {side_effect: read}
@@ -249,7 +250,8 @@ commands:
   env show: {side_effect: read}
   # cmd/commands/env_target.go:40 RunE path changes no persistent state (prints/reads only)
   env target: {side_effect: read}
-  env target add: {side_effect: write}
+  # cmd/commands/env_target_crud.go:119 runs ssh-keyscan against a caller-chosen host and can repoint a deploy target
+  env target add: {side_effect: remote, confirm: {flags: []}}
   env target list: {side_effect: read, json: legacy}
   env target migrate: {side_effect: write}
   # cmd/commands/env_target_probe.go:38 RunE path changes no persistent state (prints/reads only)
@@ -413,7 +415,8 @@ commands:
   # cmd/commands/secrets_audit.go:29 RunE path changes no persistent state (prints/reads only)
   secrets rotation-log: {side_effect: read}
   secrets schedule: {side_effect: write}
-  secrets set: {side_effect: write, secret_args: [VALUE]}
+  # cmd/commands/secrets_core.go:40 overwrites a stored secret with a caller-chosen value; the old value is not restorable
+  secrets set: {side_effect: destructive, secret_args: [VALUE], confirm: {flags: []}}
   secrets verify: {side_effect: read}
   # cmd/commands/security.go:27 RunE path changes no persistent state (prints/reads only)
   security: {canon: pending, side_effect: read}
@@ -466,9 +469,9 @@ commands:
   trust dns: {side_effect: write}
   # cmd/commands/ssl.go:38 RunE path changes no persistent state (prints/reads only)
   trust ssl: {side_effect: read}
-  trust ssl add: {side_effect: write}
-  trust ssl renew: {side_effect: write}
-  trust ssl setup: {side_effect: write}
+  trust ssl add: {side_effect: write, flags: {acme: {side_effect: remote}}, confirm: {flags: [agree-tos]}}
+  trust ssl renew: {side_effect: write, flags: {acme: {side_effect: remote}}, confirm: {flags: [agree-tos]}}
+  trust ssl setup: {side_effect: write, flags: {acme: {side_effect: remote}}, confirm: {flags: [agree-tos]}}
   trust ssl status: {side_effect: read}
   trust status: {side_effect: read, exit_codes: {"0": "all trust components configured and no expiry warnings", "2": "one or more components missing or cert expiry <30 days"}}
   # cmd/commands/uninstall.go:66 hidden shim: bare uninstall keeps volumes, so the target flags matter (deprecation registry)

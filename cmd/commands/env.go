@@ -157,9 +157,10 @@ func runEnvShow(cmd *cobra.Command, _ []string) error {
 	if jsonEnvelopeOn(cmd) {
 		data := envShowData{Environment: current, Pairs: []envPairRow{}}
 		for _, p := range pairs {
-			data.Pairs = append(data.Pairs, envPairRow{Key: p.Key, Value: redactURLUserinfo(p.Value)})
+			data.Pairs = append(data.Pairs, envPairRow{Key: p.Key, Value: p.Value})
 		}
 		setData(cmd, data)
+		return nil // the envelope is the output; no human render on stderr
 	}
 	fmt.Printf("Environment: %s\n\n", current)
 	for _, p := range pairs {
@@ -182,9 +183,10 @@ func runEnvDiff(cmd *cobra.Command, args []string) error {
 	if jsonEnvelopeOn(cmd) {
 		data := envDiffData{EnvA: args[0], EnvB: args[1], Differences: []envDiffRow{}}
 		for _, d := range diffs {
-			data.Differences = append(data.Differences, envDiffRow{Key: d.Key, ValueA: redactURLUserinfo(d.ValueA), ValueB: redactURLUserinfo(d.ValueB)})
+			data.Differences = append(data.Differences, envDiffRow{Key: d.Key, ValueA: d.ValueA, ValueB: d.ValueB})
 		}
 		setData(cmd, data)
+		return nil // the envelope is the output; no human render on stderr
 	}
 	if len(diffs) == 0 {
 		fmt.Printf("No differences between %s and %s.\n", args[0], args[1])

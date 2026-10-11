@@ -100,6 +100,9 @@ func runTrust(cmd *cobra.Command, args []string) error {
 	goos := runtime.GOOS
 	if goos != "darwin" && goos != "linux" {
 		ui.Warn(fmt.Sprintf("nself trust is not supported on %s (supports macOS and Linux)", goos))
+		if jsonEnvelopeOn(cmd) {
+			setData(cmd, dataResult{OK: false}) // nothing was set up
+		}
 		return nil
 	}
 

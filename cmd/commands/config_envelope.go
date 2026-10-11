@@ -12,14 +12,15 @@ package commands
 // for export); v1.4 output and every human output are unchanged.
 // Constraints: a secret value never reaches an envelope except through the two
 // CLI-only rows (config secrets get, decrypt-on-deploy). URL credentials in
-// echoed values are redacted (redactURLUserinfo).
+// echoed values are masked (config.MaskURLCredentials).
 // SPORT: P7-SURF-12, contract:cli.json-envelope
 
 import (
 	"fmt"
-	"regexp"
+	"os"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/spf13/cobra"
 )
 
@@ -96,10 +97,13 @@ func legacyList[T any](rows []T) []T {
 	return rows
 }
 
-// urlUserinfo matches the password of a URL with credentials.
-var urlUserinfo = regexp.MustCompile(`(://[^/\s:@]*:)[^@\s/]+@`)
+// machineInvoked reports that this process runs as the child of the MCP or HTTP
+// invoker (NSELF_INVOKED_BY is set by internal/invoke).
+func machineInvoked() bool { return os.Getenv("NSELF_INVOKED_BY") != "" }
 
-// redactURLUserinfo replaces the password in scheme://user:password@host with
-// ****. env.Show and env.Diff redact by key name only; a DATABASE_URL carries
-// its password inside the value.
-func redactURLUserinfo(v string) string { return urlUserinfo.ReplaceAllString(v, "${1}****@") }
+// refuseRevealForMachine is the defence in depth behind the cli_only marking of
+// every --reveal flag: a machine-invoked child never prints a secret value,
+// whatever argv shape asked for it.
+func refuseRevealForMachine() error {
+	return errs.New("E421", "--reveal is not available over MCP or HTTP: secret values never leave the process")
+}

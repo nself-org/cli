@@ -124,7 +124,7 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 		if r.Err != nil {
 			fmt.Fprintf(os.Stderr, "✗ %s: %s\n", r.Name, r.Err.Error())
 			errorCount++
-			checks = append(checks, configValidateCheck{Name: r.Name, Error: redactURLUserinfo(r.Err.Error())})
+			checks = append(checks, configValidateCheck{Name: r.Name, Error: config.MaskURLCredentials(r.Err.Error())})
 		} else {
 			fmt.Printf("[PASS] %s\n", r.Name)
 			checks = append(checks, configValidateCheck{Name: r.Name, Passed: true})
@@ -163,7 +163,7 @@ func manifestLines(text string) []string {
 	lines := []string{}
 	for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
 		if l != "" {
-			lines = append(lines, redactURLUserinfo(l))
+			lines = append(lines, config.MaskURLCredentials(l))
 		}
 	}
 	return lines

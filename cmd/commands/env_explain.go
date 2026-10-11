@@ -67,6 +67,9 @@ func runEnvExplain(cmd *cobra.Command, args []string) error {
 	}
 
 	reveal, _ := cmd.Flags().GetBool("reveal")
+	if reveal && machineInvoked() {
+		return refuseRevealForMachine()
+	}
 	exp, err := config.ExplainKey(dir, activeEnv, args[0])
 	if err != nil {
 		return err
@@ -79,7 +82,7 @@ func runEnvExplain(cmd *cobra.Command, args []string) error {
 		for _, s := range exp.Setters {
 			row := envExplainSetter{File: s.File, Winner: s.File == winner}
 			if reveal {
-				v := redactURLUserinfo(s.Value)
+				v := s.Value // --reveal is cli_only: the stored value as is
 				row.Value = &v
 			}
 			data.Setters = append(data.Setters, row)

@@ -2,9 +2,9 @@ package config
 
 import "testing"
 
-// TestIsSecretKey pins IsSecretKey to the answers of the basis rule
-// (cmd/commands isSecretKey at cli f6c45e2f: upper-case the key, then match
-// SECRET, PASSWORD, KEY or TOKEN as a substring) for 20 keys.
+// TestIsSecretKey pins IsSecretKey: the basis rule of cmd/commands isSecretKey
+// at cli f6c45e2f (SECRET, PASSWORD, KEY, TOKEN) widened by P7-SURF-12 with
+// PASS, CREDENTIAL, WEBHOOK, PRIVATE, DSN and SALT, for 30 keys.
 func TestIsSecretKey(t *testing.T) {
 	cases := []struct {
 		key  string
@@ -28,15 +28,50 @@ func TestIsSecretKey(t *testing.T) {
 		{"BASE_DOMAIN", false},
 		{"POSTGRES_USER", false},
 		{"HASURA_GRAPHQL_ENABLE_CONSOLE", false},
-		{"PASSWD", false},
+		{"PASSWD", true},
 		{"", false},
+		{"AUTH_SMTP_PASS", true},
+		{"SLACK_WEBHOOK_URL", true},
+		{"SENTRY_DSN", true},
+		{"TLS_PRIVATE_DIR", true},
+		{"PASSWORD_SALT", true},
+		{"DB_CREDENTIAL_FILE", true},
+		{"AUTH_JWT_ALGO", false},
+		{"HASURA_GRAPHQL_ENABLE_CONSOLE", false},
+		{"SMTP_HOST", false},
+		{"BASE_URL", false},
 	}
-	if len(cases) != 20 {
-		t.Fatalf("table has %d keys, want 20", len(cases))
+	if len(cases) != 30 {
+		t.Fatalf("table has %d keys, want 30", len(cases))
 	}
 	for _, c := range cases {
 		if got := IsSecretKey(c.key); got != c.want {
 			t.Errorf("IsSecretKey(%q) = %v, want %v", c.key, got, c.want)
+		}
+	}
+}
+
+// TestMaskURLCredentials: user and password are masked up to the last @, so a
+// password with @, /, : or a space never leaks.
+func TestMaskURLCredentials(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"postgres://app:pw@db:5432/app", "postgres://****@db:5432/app"},
+		{"postgres://app:FAKE@AT444@db/x", "postgres://****@db/x"},
+		{"redis://u:FAKE/SL555@cache:6379", "redis://****@cache:6379"},
+		{"amqp://u:FAKE SP666@mq/vhost", "amqp://****@mq/vhost"},
+		{"mongodb://u:a:b:c@h/db?x=1", "mongodb://****@h/db?x=1"},
+		{"postgresql://postgres:ab/cd+ef@postgres/db", "postgresql://****@postgres/db"},
+		{"postgres://u:p@ss@h/db", "postgres://****@h/db"},
+		{"postgres://h/db?sslmode=require&password=x", "postgres://h/db?sslmode=require&password=****"},
+		{"https://h/p?SSLPassword=x&API_KEY=y#f", "https://h/p?SSLPassword=****&API_KEY=****#f"},
+		{"https://example.test/path", "https://example.test/path"},
+		{"user@example.test", "user@example.test"},
+		{"plain-value", "plain-value"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := MaskURLCredentials(c.in); got != c.want {
+			t.Errorf("MaskURLCredentials(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

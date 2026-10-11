@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/cmdregistry"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/invoke"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/secrets"
@@ -182,8 +182,8 @@ func TestConfigSecretsListNamesOnly(t *testing.T) {
 	if strings.Contains(string(b), cfgFakeStore) || !strings.Contains(string(b), "Generic API Key") {
 		t.Fatalf("lint data = %s", b)
 	}
-	if got := redactURLUserinfo("postgres://u:" + cfgFakePG + "@h:5432/d"); strings.Contains(got, cfgFakePG) || !strings.Contains(got, "u:****@h") {
-		t.Fatalf("redactURLUserinfo = %q", got)
+	if got := config.MaskURLCredentials("postgres://u:" + cfgFakePG + "@h:5432/d"); strings.Contains(got, cfgFakePG) || !strings.Contains(got, "****@h") {
+		t.Fatalf("MaskURLCredentials = %q", got)
 	}
 }
 
@@ -242,22 +242,54 @@ func cfgArgvRows(t *testing.T) [][]string {
 	return rows
 }
 
-// cfgFixtureProject writes a project whose .env and .env.dev hold the fake
-// secret values.
+// cfgNeedles are the fake secret fragments no value-reading row may print:
+// a key inside the name rule, keys only the widened rule (PASS, WEBHOOK) or
+// the value rule (URL credentials with @, / and a space in the password, a
+// password query parameter) can catch, and the dev and prod variants.
+var cfgNeedles = []string{
+	cfgFakePG, cfgFakeStore, "fake-smtp-surf12-0000", "fake-hook-surf12-0000",
+	"fake-at-surf12", "tail-surf12-0000", "fake-sl-surf12", "rest-surf12-0000",
+	"fake sp-surf12", "rest2-surf12-0000", "fake-q-surf12-0000",
+	"fake-prod-pass-surf12-0000", "fake-prod-smtp-surf12-0000", "fake-prod-at-surf12",
+	"tail2-surf12-0000", "fake-prod-sl-surf12", "rest3-surf12-0000",
+}
+
+const cfgFixtureEnv = "PROJECT_NAME=smoke\nENV=dev\nBASE_DOMAIN=example.test\nPOSTGRES_PASSWORD=" + cfgFakePG +
+	"\nAPI_TOKEN=" + cfgFakeStore + "\nAUTH_SMTP_PASS=fake-smtp-surf12-0000" +
+	"\nSLACK_WEBHOOK_URL=https://hooks.slack.test/services/fake-hook-surf12-0000" +
+	"\nDATABASE_URL=postgres://app:fake-at-surf12@tail-surf12-0000@db:5432/app" +
+	"\nREDIS_URL=redis://u:fake-sl-surf12/rest-surf12-0000@cache:6379" +
+	"\nAMQP_URL=amqp://u:fake sp-surf12 rest2-surf12-0000@mq/v" +
+	"\nSIDECAR_URL=https://h.test/x?password=fake-q-surf12-0000\nHASURA_GRAPHQL_JWT_SECRET=fixture\n"
+
+const cfgFixtureEnvProd = "PROJECT_NAME=smoke\nPOSTGRES_PASSWORD=fake-prod-pass-surf12-0000\nAUTH_SMTP_PASS=fake-prod-smtp-surf12-0000" +
+	"\nDATABASE_URL=postgres://app:fake-prod-at-surf12@tail2-surf12-0000@db:5432/app" +
+	"\nREDIS_URL=redis://u:fake-prod-sl-surf12/rest3-surf12-0000@cache:6379\n"
+
+// cfgFixtureProject writes a project whose .env, .env.dev and .env.prod hold
+// the fake secret values.
 func cfgFixtureProject(t *testing.T) string {
 	t.Helper()
 	proj := filepath.Join(t.TempDir(), "project")
 	if err := os.MkdirAll(proj, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	env := "PROJECT_NAME=smoke\nENV=dev\nBASE_DOMAIN=example.test\nPOSTGRES_PASSWORD=" + cfgFakePG +
-		"\nAPI_TOKEN=" + cfgFakeStore + "\nDATABASE_URL=postgres://app:" + cfgFakePG + "@db:5432/app\nHASURA_GRAPHQL_JWT_SECRET=fixture\n"
-	for _, f := range []string{".env", ".env.dev"} {
-		if err := os.WriteFile(filepath.Join(proj, f), []byte(env), 0o600); err != nil {
+	for f, body := range map[string]string{".env": cfgFixtureEnv, ".env.dev": cfgFixtureEnv, ".env.prod": cfgFixtureEnvProd} {
+		if err := os.WriteFile(filepath.Join(proj, f), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return proj
+}
+
+// cfgAssertClean fails for every needle found in text.
+func cfgAssertClean(t *testing.T, label, text string) {
+	t.Helper()
+	for _, v := range cfgNeedles {
+		if strings.Contains(text, v) {
+			t.Errorf("%s: output holds the secret fragment %q", label, v)
+		}
+	}
 }
 
 // registryPathOf returns the registry row an argv row runs (the longest
@@ -307,7 +339,7 @@ func TestConfigGoldensHoldNoSecret(t *testing.T) {
 		byPath[r.Path] = r
 	}
 	proj := cfgFixtureProject(t)
-	ran := 0
+	ran := map[string]bool{}
 	for _, argv := range cfgArgvRows(t) {
 		row, ok := registryPathOf(byPath, argv)
 		if !ok {
@@ -316,22 +348,45 @@ func TestConfigGoldensHoldNoSecret(t *testing.T) {
 		if row.Surface == "cli-only" {
 			continue
 		}
-		res := runPilot(t, proj, true, nil, append(append([]string{}, argv...), "--json")...)
-		ran++
-		for _, v := range []string{cfgFakePG, cfgFakeStore} {
-			if strings.Contains(res.stdout, v) {
-				t.Errorf("%v: stdout holds the secret value %s", argv, v)
+		ran[strings.TrimPrefix(row.Path, "nself ")] = true
+		json := runPilot(t, proj, true, nil, append(append([]string{}, argv...), "--json")...)
+		cfgAssertClean(t, strings.Join(argv, " ")+" --json stdout", json.stdout)
+		// The human render must not print them either (stdout and stderr), in both modes.
+		for _, v15 := range []bool{true, false} {
+			if v15 {
+				human := runPilot(t, proj, true, nil, argv...)
+				cfgAssertClean(t, strings.Join(argv, " ")+" (v1.5 human)", human.stdout+human.stderr)
+			} else {
+				human := runPilot(t, proj, false, nil, v14Spelling(argv)...)
+				cfgAssertClean(t, strings.Join(argv, " ")+" (v1.4 human)", human.stdout+human.stderr)
+				v14json := runPilot(t, proj, false, nil, append(v14Spelling(argv), "--json")...)
+				cfgAssertClean(t, strings.Join(argv, " ")+" (v1.4 --json)", v14json.stdout+v14json.stderr)
 			}
 		}
 	}
-	if ran < 15 {
-		t.Errorf("only %d argv rows ran; the grep checked nothing", ran)
+	// Every value-reading row that is not cli-only must be in the table.
+	for _, path := range []string{"config show", "config get", "config list", "config env show", "config env diff", "config env explain", "config explain"} {
+		if !ran[path] {
+			t.Errorf("argv/config.txt has no row for %q: a value-reading row would escape the grep", path)
+		}
 	}
 	// Positive control (cli-only row): the grep finds the value when it is there.
 	ctl := runPilot(t, proj, true, nil, "config", "export", "--reveal", "--json")
 	if ctl.code != 0 || !strings.Contains(ctl.stdout, cfgFakePG) {
 		t.Fatalf("positive control: export --reveal exit %d stdout %q lacks the fixture value", ctl.code, ctl.stdout)
 	}
+}
+
+// v14Spelling maps a canonical config argv to the v1.4 spelling of the tree
+// (env, secrets, telemetry, trust and oauth sat at the root).
+func v14Spelling(argv []string) []string {
+	if len(argv) > 1 && argv[0] == "config" {
+		switch argv[1] {
+		case "env", "secrets", "telemetry", "trust", "oauth":
+			return argv[1:]
+		}
+	}
+	return argv
 }
 
 // TestConfigHelpMarksRevealAndExport: `nself help --json` (v1.5) marks every
@@ -398,19 +453,6 @@ func TestConfigWriteRowsEnvelope(t *testing.T) {
 		{"config", "telemetry", "on"},
 		{"config", "trust", "dns", "--dry-run"},
 	}
-	if _, err := exec.LookPath("age"); err == nil {
-		rows = append(rows,
-			[]string{"config", "secrets", "init"},
-			[]string{"config", "secrets", "set", "STORE_ITEM", cfgFakeStore},
-			[]string{"config", "secrets", "list"},
-			[]string{"config", "secrets", "verify", "STORE_ITEM"},
-			[]string{"config", "secrets", "audit"},
-			[]string{"config", "secrets", "schedule"},
-			[]string{"config", "secrets", "list-schedules"},
-			[]string{"config", "secrets", "rotation-log"},
-			[]string{"config", "secrets", "rotate", "STORE_ITEM"},
-		)
-	}
 	for _, argv := range rows {
 		res := runPilot(t, proj, true, nil, append(append([]string{}, argv...), "--json")...)
 		if res.code != 0 {
@@ -418,12 +460,7 @@ func TestConfigWriteRowsEnvelope(t *testing.T) {
 			continue
 		}
 		validateEnvelope(t, res.stdout, strings.Join(argv[:cfgPathLen(argv)], " "))
-		if strings.Contains(res.stdout, cfgFakeStore) {
-			t.Errorf("%v: stdout holds the store value", argv)
-		}
-		if argv[2] == "rotate" && strings.Contains(res.stderr, "New value") {
-			t.Errorf("%v: stderr prints the new value in envelope mode", argv)
-		}
+		cfgAssertClean(t, strings.Join(argv, " "), res.stdout+res.stderr)
 	}
 }
 

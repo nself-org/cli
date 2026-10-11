@@ -22,7 +22,7 @@ type envListData struct {
 }
 
 // envPairRow is one key of `config env show`; secret values are redacted by
-// internal/env (key-name rule) and by redactURLUserinfo (URL credentials).
+// internal/env (config.IsSecretKey and config.MaskURLCredentials).
 type envPairRow struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`

@@ -12,6 +12,7 @@ package commands
 // SPORT: P7-SURF-12, contract:cli.json-envelope
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/nself-org/cli/internal/secrets"
@@ -79,12 +80,22 @@ func newSecretsRotationLogData(events []secrets.RotationLogEntry, filter string)
 	return d
 }
 
-// newSecretsDecryptData parses the KEY=VALUE lines DecryptForDeploy prints.
+// secretLineKey matches the start of a KEY=VALUE line.
+var secretLineKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*=`)
+
+// newSecretsDecryptData parses the KEY=VALUE text DecryptForDeploy prints. A
+// line that does not start a new KEY= continues the previous value, so a
+// multi-line secret (a PEM key) is not truncated.
 func newSecretsDecryptData(env, text string) secretsDecryptData {
 	d := secretsDecryptData{Environment: env, Values: map[string]string{}}
+	key := ""
 	for _, line := range strings.Split(text, "\n") {
-		if k, v, ok := strings.Cut(line, "="); ok && k != "" {
-			d.Values[k] = v
+		if secretLineKey.MatchString(line) {
+			k, v, _ := strings.Cut(line, "=")
+			key = k
+			d.Values[key] = v
+		} else if key != "" {
+			d.Values[key] += "\n" + line
 		}
 	}
 	return d
