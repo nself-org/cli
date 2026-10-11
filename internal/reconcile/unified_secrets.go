@@ -180,7 +180,6 @@ func scanSecretLines(lines []string) ([]string, []string) {
 			out[i] = ind + dash + redactedValue + nl
 			continue
 		}
-		block = -1
 		text, nb, nq, nf := sc.line(line)
 		block, quote, flagNext = nb, nq, nf || (flagNext && skip)
 		out[i] = config.MaskURLCredentials(text) + nl

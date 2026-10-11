@@ -18,14 +18,14 @@ import (
 // valueTrie is a byte trie of the spellings to hide: edges maps
 // node<<8|byte to the child node, end marks nodes that finish a spelling.
 type valueTrie struct {
-	edges map[uint32]uint32
+	edges map[uint64]uint32
 	end   []bool
 }
 
 // newValueTrie builds the trie of values and their YAML spellings (a single
 // quote doubled; backslash and double quote escaped).
 func newValueTrie(vals []string) *valueTrie {
-	t := &valueTrie{edges: map[uint32]uint32{}, end: []bool{false}}
+	t := &valueTrie{edges: map[uint64]uint32{}, end: []bool{false}}
 	jsonEsc := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
 	for _, v := range vals {
 		for _, s := range []string{v, strings.ReplaceAll(v, "'", "''"), jsonEsc.Replace(v)} {
@@ -39,7 +39,7 @@ func newValueTrie(vals []string) *valueTrie {
 func (t *valueTrie) add(s string) {
 	node := uint32(0)
 	for i := 0; i < len(s); i++ {
-		key := node<<8 | uint32(s[i])
+		key := uint64(node)<<8 | uint64(s[i])
 		next, ok := t.edges[key]
 		if !ok {
 			next = uint32(len(t.end))
@@ -57,7 +57,7 @@ func (t *valueTrie) add(s string) {
 func (t *valueTrie) longestAt(s string, i int) int {
 	node, best := uint32(0), 0
 	for j := i; j < len(s); j++ {
-		next, ok := t.edges[node<<8|uint32(s[j])]
+		next, ok := t.edges[uint64(node)<<8|uint64(s[j])]
 		if !ok {
 			break
 		}
