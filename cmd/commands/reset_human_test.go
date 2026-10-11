@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -46,6 +47,9 @@ func captureStdStreams(t *testing.T, fn func()) (stdout, stderr string) {
 func TestHumanModeUninspectablePathIsNotReportedClean(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory permissions")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 000 does not make a directory unreadable on Windows")
 	}
 	cases := []struct {
 		name, lock, warn string
