@@ -83,7 +83,8 @@ func TestGitignoreSSL(t *testing.T) {
 		{"anchored", "/ssl/\n", false},
 		{"bare", "ssl\n", false},
 		{"leading-space", "  ssl/*  \n", true},
-		{"trailing-spaces", "ssl/*  \n", false},
+		{"glob-appends", "ssl/*\n", true},
+		{"trailing-spaces", "ssl/  \n", false},
 		{"leading-tab", "\tssl/\n", true},
 		{"trailing-tab", "ssl/\t\n", true},
 		{"crlf", "ssl/\r\n", false},
@@ -142,14 +143,16 @@ func TestGitignoreSSLGitSemantics(t *testing.T) {
 	cases := []struct {
 		name, body string
 		nestedFree bool
+		nestedBody string // written to ssl/.gitignore when set
 	}{
-		{"fresh", "", true},
-		{"negated", "ssl/*\n!ssl/certificates/\n", false},
-		{"leading-space", "  ssl/*\n", false},
-		{"plain", "ssl/\n", false},
-		{"plain-glob", "ssl/**\n", false},
-		{"neg-name", "ssl/*\n!privkey.pem\n", false},
-		{"neg-deep-glob", "ssl/**\n!**/privkey.pem\n", false},
+		{"fresh", "", true, ""},
+		{"negated", "ssl/*\n!ssl/certificates/\n", false, ""},
+		{"leading-space", "  ssl/*\n", false, ""},
+		{"plain", "ssl/\n", false, ""},
+		{"nested-reinclude", "ssl/*\n", false, "!privkey.pem\n"},
+		{"plain-glob", "ssl/**\n", false, ""},
+		{"neg-name", "ssl/*\n!privkey.pem\n", false, ""},
+		{"neg-deep-glob", "ssl/**\n!**/privkey.pem\n", false, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -161,6 +164,14 @@ func TestGitignoreSSLGitSemantics(t *testing.T) {
 			}
 			if err := ensureGitignore(dir); err != nil {
 				t.Fatal(err)
+			}
+			if tc.nestedBody != "" {
+				if err := os.MkdirAll(filepath.Join(dir, "ssl"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "ssl", ".gitignore"), []byte(tc.nestedBody), 0o644); err != nil {
+					t.Fatal(err)
+				}
 			}
 			env := append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
 			run := func(args ...string) int {

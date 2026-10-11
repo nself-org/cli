@@ -46,9 +46,11 @@ var nselfDirLines = map[string]bool{".nself/": true, "/.nself/": true, ".nself":
 
 // sslDirLines are existing spellings that already ignore everything under
 // ssl/. Only whole normalised lines count: `ssl/.acme/` contains "ssl/" but
-// leaves the certificate keys committable. They count only when no ssl
+// leaves the certificate keys committable. `ssl/*` and `ssl/**` are not
+// listed: they leave the dir itself unexcluded, so a nested ssl/.gitignore
+// `!privkey.pem` could re-include keys. They count only when no ssl
 // negation follows (see sslIgnored).
-var sslDirLines = map[string]bool{"ssl/": true, "/ssl/": true, "ssl": true, "/ssl": true, "ssl/*": true, "/ssl/*": true, "ssl/**": true, "/ssl/**": true}
+var sslDirLines = map[string]bool{"ssl/": true, "/ssl/": true, "ssl": true, "/ssl": true}
 
 // ensureGitignore creates or appends to .gitignore with required entries.
 func ensureGitignore(workDir string) error {
