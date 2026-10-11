@@ -119,3 +119,30 @@ func TestPruneRefusesUnsafePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestArtifactsKeepHostEnv(t *testing.T) {
+	m, compose, envs, snap := buildScratch(t)
+	set, err := Stage(stageIn(m, compose, envs, snap, t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, hasEnv := range []bool{true, false} {
+		f := newFakeRemote(t)
+		rp := filepath.Join(t.TempDir(), "proj") // does not exist yet on a first deploy
+		set.RemotePath = rp
+		if hasEnv {
+			writeFile(t, filepath.Join(rp, ".env"), "HOST_ONLY=1\nPLUGIN_DIR=/srv/plugins\n", 0o600)
+		}
+		if err := SyncArtifacts(context.Background(), f, set); err != nil {
+			t.Fatal(err)
+		}
+		got := readFile(t, filepath.Join(rp, ".env"))
+		info, _ := os.Stat(filepath.Join(rp, ".env"))
+		switch {
+		case hasEnv && got != "HOST_ONLY=1\nPLUGIN_DIR=/srv/plugins\n":
+			t.Errorf("the host's .env was overwritten: %q", got)
+		case !hasEnv && (got != "" || info.Mode().Perm() != 0o600):
+			t.Errorf("a missing .env must be created empty and 0600, got %q %v", got, info.Mode().Perm())
+		}
+	}
+}

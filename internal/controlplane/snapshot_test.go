@@ -11,10 +11,9 @@ import (
 
 // recRemote records commands and answers the three backup commands.
 type recRemote struct {
-	log       []string
-	failOn    string
-	listOut   string
-	createErr error
+	log     []string
+	failOn  string
+	listOut string
 }
 
 func (r *recRemote) Label() string { return "host-a" }

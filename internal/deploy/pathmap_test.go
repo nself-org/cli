@@ -76,8 +76,15 @@ func TestPathMapNoLocalPath(t *testing.T) {
 			t.Errorf("%s must not be shipped", rel)
 		}
 	}
-	if !contains(set.EnvFiles, ".env.prod") || !contains(set.EnvFiles, ".env") || !contains(set.EnvFiles, ".nself/compose.env") {
+	if !contains(set.EnvFiles, ".env.prod") || !contains(set.EnvFiles, ".nself/compose.env") {
 		t.Errorf("env files %v", set.EnvFiles)
+	}
+	// The project .env is the host's own file: listed for compose, never shipped.
+	if contains(set.EnvFiles, ".env") || contains(set.Files, ".env") || !set.KeepHostEnv || !contains(set.EnvManifest, "/opt/nself/.env") {
+		t.Errorf(".env must be in the env manifest but not in the shipped set: %+v", set)
+	}
+	if exists(filepath.Join(stage, ".env")) {
+		t.Error("the operator's .env was staged")
 	}
 	for _, rel := range set.EnvFiles {
 		if info, _ := os.Stat(filepath.Join(stage, rel)); info.Mode().Perm() != 0o600 {
@@ -88,9 +95,9 @@ func TestPathMapNoLocalPath(t *testing.T) {
 
 func TestPathMapRefusesLeftoverHome(t *testing.T) {
 	m, compose, envs, snap := buildScratch(t)
-	writeFile(t, envs[0], "KEY="+m.Home+"/.ssh/id\n", 0o600) // home cannot be mapped
+	writeFile(t, envs[1], "KEY="+m.Home+"/.ssh/id\n", 0o600) // home cannot be mapped
 	_, err := Stage(stageIn(m, compose, envs, snap, t.TempDir()))
-	if err == nil || !strings.Contains(err.Error(), "the home dir") || !strings.Contains(err.Error(), ".env") {
+	if err == nil || !strings.Contains(err.Error(), "the home dir") || !strings.Contains(err.Error(), "compose.env") {
 		t.Fatalf("a home path in a shipped file must fail Stage, got %v", err)
 	}
 	m2, compose2, envs2, snap2 := buildScratch(t)

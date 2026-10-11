@@ -8,7 +8,8 @@ package deploy
 //          file lists (build.ReadComposeManifest / ReadComposeEnvManifest,
 //          read by the caller), the resolved env snapshot.
 // Outputs: ArtifactSet (relative file lists plus the remote manifests).
-// Constraints: nothing under ssl/ is ever staged (the stub certs of the
+// Constraints: the project .env is never shipped (see ArtifactSet.KeepHostEnv).
+//              Nothing under ssl/ is ever staged (the stub certs of the
 //              scratch build are never shipped). Every staged file is
 //              checked for a surviving local path; one survivor fails Stage.
 //              Env files are staged 0600 (they carry secrets); the staging
@@ -35,6 +36,11 @@ type ArtifactSet struct {
 	EnvFiles    []string // relative; shipped 0600
 	Compose     []string // remote absolute compose files, in -f order
 	EnvManifest []string // remote absolute env files, in --env-file order
+	// KeepHostEnv: the project .env is in EnvManifest but not shipped. It is the
+	// host's own file (the target snapshot reads PLUGIN_DIR from it, the host's
+	// nself reads it); the operator's copy would replace it with local values.
+	// A sync only creates it, empty and 0600, when the host has none.
+	KeepHostEnv bool
 }
 
 // StageInput is what Stage reads.
@@ -82,10 +88,14 @@ func Stage(in StageInput) (ArtifactSet, error) {
 		if err != nil {
 			return set, err
 		}
+		set.EnvManifest = append(set.EnvManifest, remote)
+		if rel == ".env" {
+			set.KeepHostEnv = true
+			continue
+		}
 		if err := put(rel, data, 0o600); err != nil {
 			return set, err
 		}
-		set.EnvManifest = append(set.EnvManifest, remote)
 		set.EnvFiles = append(set.EnvFiles, rel)
 	}
 	if in.EnvSnapshot != "" {
