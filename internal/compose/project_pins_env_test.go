@@ -104,14 +104,14 @@ func TestEnvDigestDiffersNames(t *testing.T) {
 	pin := "x:1@" + pinDigest
 	t.Setenv("POSTGRES_VERSION", "x:1@"+otherDigest) // a version never carries a digest
 	t.Setenv("HASURA_IMAGE", "x:1@"+otherDigest)
-	if got := envDigestDiffers("postgres", pin); got != "" {
+	if got := envDigestDiffers(inputFor("postgres", "postgres:16-alpine"), pin); got != "" {
 		t.Errorf("POSTGRES_VERSION must not count: %q", got)
 	}
-	if got := envDigestDiffers("hasura", pin); got != "" {
+	if got := envDigestDiffers(inputFor("hasura", DefaultImage("hasura")), pin); got != "" {
 		t.Errorf("HASURA_IMAGE has no consumer: %q", got)
 	}
 	t.Setenv("POSTGRES_IMAGE", "x:1@"+otherDigest)
-	if got := envDigestDiffers("postgres", pin); got != "POSTGRES_IMAGE" {
+	if got := envDigestDiffers(inputFor("postgres", "postgres:16-alpine"), pin); got != "POSTGRES_IMAGE" {
 		t.Errorf("got %q, want POSTGRES_IMAGE", got)
 	}
 }

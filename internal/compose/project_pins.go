@@ -5,8 +5,9 @@ package compose
 //
 // Purpose: a CLI upgrade must never silently move an existing project's images.
 // ResolveImage consults the pins after an explicit override and before the CLI
-// image lock (precedence: explicit *_IMAGE/*_VERSION in the env > lock pin >
-// CLI image lock).
+// image lock (precedence: an env variable the generator reads for that image >
+// lock pin > CLI image lock). Which variables the generator reads is decided by
+// one table, image_inputs.go; any other variable is not an override.
 // Inputs: SetProjectPins (the build computes the pins, also for a project's
 // first lock, from its existing docker-compose.yml) or LoadProjectPins (the
 // lock file of a project directory).
@@ -35,23 +36,6 @@ const ProjectLockFile = "nself.lock.yaml"
 var (
 	pinsMu      sync.RWMutex
 	projectPins = map[string]string{}
-	// imageVars lists, per service, the *_IMAGE variables the compose generator
-	// really reads. Only POSTGRES_IMAGE has a consumer: config.PostgresConfig.Image
-	// (types_datastores.go) feeds ResolvePostgresImage (images.go), where it wins
-	// over every other input. Every other service renders from its *_VERSION
-	// (core_services.go, optional_services*.go), so a stray HASURA_IMAGE or
-	// STORAGE_IMAGE changes nothing and must neither drop a pin nor print a
-	// notice. Add a service here only together with a generator that reads it.
-	imageVars = map[string][]string{
-		"postgres": {"POSTGRES_IMAGE"},
-	}
-	// explicitVars lists the variables that can override a service's image, in
-	// the generator's precedence order (an *_IMAGE the generator reads first).
-	explicitVars = map[string][]string{
-		"admin":    {"NSELF_ADMIN_VERSION", "ADMIN_VERSION"},
-		"postgres": {"POSTGRES_IMAGE", "POSTGRES_VERSION"},
-		"storage":  {"STORAGE_VERSION"},
-	}
 )
 
 // SetProjectPins installs pins (service -> reference) and returns a function
@@ -125,12 +109,29 @@ var (
 	pinNoticedMu sync.Mutex
 )
 
+// PinNoticeSink routes the drop notices to w (nil silences them), forgets which
+// notices were already printed, and returns the function that restores the
+// previous writer. Tests use it to count notices.
+func PinNoticeSink(w io.Writer) (restore func()) {
+	pinNoticedMu.Lock()
+	prev := pinNoticeW
+	pinNoticeW = w
+	pinNoticed = map[string]bool{}
+	pinNoticedMu.Unlock()
+	return func() {
+		pinNoticedMu.Lock()
+		pinNoticeW = prev
+		pinNoticedMu.Unlock()
+	}
+}
+
 // projectPin returns the pin for service, given the reference the caller
 // rendered from the config (image; "" means the CLI default). The pin applies
 // only when its repository (tag and digest stripped, docker.io/library
 // canonicalised) is the rendered image's repository: a runtime switch
 // (deno to node) or pgvector turned off renders another image, and the pin
-// must not hide that. With an explicit *_IMAGE/*_VERSION in the env the pin is
+// must not hide that. With a variable the generator reads for this image set
+// in the env (the table in image_inputs.go; no other variable counts) the pin is
 // also kept only when the rendered reference equals the pin's reference: nself
 // init writes *_VERSION defaults into .env, and for postgres 16-alpine renders
 // to the pgvector entry only when the extension list asks for it, so the
@@ -146,7 +147,8 @@ func projectPin(service, image string) (string, bool) {
 	if image == "" {
 		image = DefaultImage(service)
 	}
-	name := explicitEnvName(service)
+	in := inputFor(service, image)
+	name := in.Set(os.Getenv)
 	switch {
 	case repoOf(image) != repoOf(pin):
 		if name == "" {
@@ -157,7 +159,7 @@ func projectPin(service, image string) (string, bool) {
 		// own digest must name the pin's, or the user's digest wins. Every
 		// *_IMAGE the generator reads is checked, not only the first variable
 		// set: nself init writes POSTGRES_VERSION next to POSTGRES_IMAGE.
-		over := envDigestDiffers(service, pin)
+		over := envDigestDiffers(in, pin)
 		if over == "" {
 			return pin, true
 		}
@@ -167,12 +169,12 @@ func projectPin(service, image string) (string, bool) {
 	return "", false
 }
 
-// envDigestDiffers returns the name of the first *_IMAGE variable of service
-// (from imageVars, the ones the generator reads) that carries a digest which is
-// not the pin's, or "" when there is none.
-func envDigestDiffers(service, pin string) string {
+// envDigestDiffers returns the name of the first *_IMAGE variable of the row
+// (the ones the generator reads) that carries a digest which is not the pin's,
+// or "" when there is none.
+func envDigestDiffers(in ImageInput, pin string) string {
 	_, pd, _ := strings.Cut(pin, "@")
-	for _, name := range imageVars[service] {
+	for _, name := range in.ImageVars() {
 		_, d, ok := strings.Cut(strings.TrimSpace(os.Getenv(name)), "@")
 		if ok && d != pd {
 			return name
@@ -206,23 +208,6 @@ func noticePinDropped(service, envName, pin string) {
 		return
 	}
 	_, _ = fmt.Fprintf(w, "notice: %s is set, so the %s pin in %s is not used\n", envName, service, ProjectLockFile)
-}
-
-// explicitEnvName returns the first env variable of service that is set, in
-// explicitVars order, or "". Services without an entry use <SVC>_VERSION only:
-// the generator reads no <SVC>_IMAGE for them (see imageVars).
-func explicitEnvName(service string) string {
-	names, ok := explicitVars[service]
-	if !ok {
-		base := strings.ToUpper(strings.ReplaceAll(service, "-", "_"))
-		names = []string{base + "_VERSION"}
-	}
-	for _, n := range names {
-		if strings.TrimSpace(os.Getenv(n)) != "" {
-			return n
-		}
-	}
-	return ""
 }
 
 func imageBase(ref string) string {

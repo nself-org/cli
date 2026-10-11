@@ -51,13 +51,29 @@ There are no timestamps. Keys are sorted. Two builds with unchanged inputs leave
 
 When build renders `docker-compose.yml`, each service image is resolved in this order:
 
-1. An explicit `*_IMAGE` or `*_VERSION` in the env cascade (`HASURA_VERSION`, `POSTGRES_IMAGE`, `REDIS_VERSION`, and so on).
+1. A variable in the env cascade that the generator reads to build that service's image (`HASURA_VERSION`, `POSTGRES_IMAGE`, `REDIS_VERSION`; the table below lists them all).
 2. The pin in `nself.lock.yaml`.
 3. The CLI image lock ([[Image-Lock]]).
 
 So a CLI upgrade never silently moves an existing project's images. To move one, change the env value, or delete its line from the lock and build.
 
-`nself init` writes `*_VERSION` defaults into `.env`. A value that renders to the same image as the pin (`HASURA_VERSION=v2.44.0` against a `hasura/graphql-engine:v2.44.0@sha256:...` pin, with or without the `docker.io/` prefix, in legacy or lock pinning mode) keeps the digest. For postgres the comparison uses the image the generator renders (`POSTGRES_VERSION=16-alpine` matches a `pgvector/pgvector:pg16` pin). A different value drops the pin, and build prints one notice naming the variable, once per run. `POSTGRES_IMAGE` is the one `*_IMAGE` the generator reads, and it wins over `POSTGRES_VERSION`. When it names its own digest (`POSTGRES_IMAGE=pgvector/pgvector:pg16@sha256:...`) it keeps the pin only when that digest is the pin's; another digest at the same tag wins and drops the pin, even when `POSTGRES_VERSION` is also set. Other services render from their `*_VERSION`, so an `*_IMAGE` for them (`HASURA_IMAGE`, `STORAGE_IMAGE`) has no effect and does not touch the pin. Tags compare as written (`V1` and `v1` are different tags).
+`nself init` writes `*_VERSION` defaults into `.env`. A value that renders to the same image as the pin (`HASURA_VERSION=v2.44.0` against a `hasura/graphql-engine:v2.44.0@sha256:...` pin, with or without the `docker.io/` prefix, in legacy or lock pinning mode) keeps the digest. For postgres the comparison uses the image the generator renders (`POSTGRES_VERSION=16-alpine` matches a `pgvector/pgvector:pg16` pin). A different value drops the pin, and build prints one notice naming the variable, once per run. Only a variable the generator really reads for that image counts, whatever its name looks like. One table in the CLI source (`internal/compose/image_inputs.go`) lists them, and a test fails when it drifts from the generator:
+
+| Service | Variables that feed its image (first wins) |
+| --- | --- |
+| postgres | `POSTGRES_IMAGE`, then `POSTGRES_VERSION` (`POSTGRES_EXTENSIONS=pgvector` picks the pgvector repository) |
+| hasura | `HASURA_VERSION` |
+| auth | `AUTH_VERSION` |
+| redis | `REDIS_VERSION` |
+| minio | `MINIO_VERSION` |
+| mailpit | `MAILPIT_VERSION` |
+| admin | `NSELF_ADMIN_VERSION` |
+| functions | `FUNCTIONS_VERSION` for the node runtime; none for deno and python |
+| meilisearch | `MEILISEARCH_VERSION` |
+| typesense | `TYPESENSE_VERSION` |
+| nginx, meilisearch-init | none (fixed image) |
+
+Any other variable (`NGINX_VERSION`, `ADMIN_VERSION`, `HASURA_IMAGE`, `STORAGE_IMAGE`, `MEILISEARCH_INIT_VERSION`) has no effect on the image, does not touch the pin and prints no notice. `POSTGRES_IMAGE` is the only `*_IMAGE` the generator reads, and it wins over `POSTGRES_VERSION`. When it names its own digest (`POSTGRES_IMAGE=pgvector/pgvector:pg16@sha256:...`) it keeps the pin only when that digest is the pin's; another digest at the same tag wins and drops the pin, even when `POSTGRES_VERSION` is also set. Tags compare as written (`V1` and `v1` are different tags).
 
 ## The first lock
 

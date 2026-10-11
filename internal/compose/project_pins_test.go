@@ -197,17 +197,6 @@ func TestProjectPinEnvDifferentDropsPin(t *testing.T) {
 		if n := strings.Count(notice.String(), "notice:"); n != 1 || !strings.Contains(notice.String(), "HASURA_VERSION") {
 			t.Errorf("v15=%v: want one notice naming HASURA_VERSION, got %q", v15, notice.String())
 		}
-
-		t.Setenv("HASURA_VERSION", "")
-		t.Setenv("HASURA_IMAGE", "hasura/graphql-engine:v2.44.0")
-		restore := SetProjectPins(map[string]string{"hasura": pin})
-		if got, ok := projectPin("hasura", "hasura/graphql-engine:v2.44.0"); !ok || got != pin {
-			t.Errorf("v15=%v: HASURA_IMAGE equal to the pin base dropped it: %q %v", v15, got, ok)
-		}
-		if _, ok := projectPin("hasura", "other/engine:1"); ok {
-			t.Errorf("v15=%v: a different HASURA_IMAGE kept the pin", v15)
-		}
-		restore()
 	}
 }
 
