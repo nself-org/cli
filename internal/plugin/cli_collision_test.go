@@ -99,12 +99,13 @@ func TestLinkCLIBinary_ReinstallIsNotACollision(t *testing.T) {
 }
 
 // TestLinkCLIBinary_RefusesCoreVerbAndBadNames: the installer runs the
-// manifestv2 name rules before writing anything (E113 core verb, E106 name).
+// manifestv2 name rules before writing anything (E113 core verb, E106 name;
+// a name with a space is refused earlier by validateCLIBinaries).
 func TestLinkCLIBinary_RefusesCoreVerbAndBadNames(t *testing.T) {
 	pluginsDir := collisionHome(t)
 	for _, c := range []struct {
 		cmd, code string
-	}{{"init", "E113"}, {"status", "E113"}, {"roms list", "E106"}} {
+	}{{"init", "E113"}, {"status", "E113"}, {"Feeds", "E106"}} {
 		dir := extractFake(t, pluginsDir, "gamma", `{"name":"gamma","version":"1.0.0","description":"fake","category":"utility","license":"MIT"}`, "nself-init", "nself-status")
 		err := linkCLIBinary(dir, "gamma", &PluginManifest{Name: "gamma", CLICommands: []CLICommand{{Name: c.cmd}}})
 		if codeOfErr(err) != c.code {
