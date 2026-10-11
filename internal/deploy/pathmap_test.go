@@ -3,6 +3,7 @@ package deploy
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -87,6 +88,9 @@ func TestPathMapNoLocalPath(t *testing.T) {
 		t.Error("the operator's .env was staged")
 	}
 	for _, rel := range set.EnvFiles {
+		if runtime.GOOS == "windows" {
+			break // NTFS has no 0600: the mode is set on the host by rsync --chmod
+		}
 		if info, _ := os.Stat(filepath.Join(stage, rel)); info.Mode().Perm() != 0o600 {
 			t.Errorf("staged env file %s mode %v", rel, info.Mode().Perm())
 		}
