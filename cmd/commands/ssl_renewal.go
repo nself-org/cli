@@ -207,7 +207,11 @@ func acmeUnitsFor(workdir, keyPath string) (service, timer string, err error) {
 // timer refuses while a certbot hook writes into the ssl dir, retires the
 // certbot timer, then installs the renewal units (D-0411); under --dry-run it
 // prints them instead.
-func (r *acmeRun) timer() error {
+func (r *acmeRun) timer() error { return r.timerAfter(false) }
+
+// timerAfter is timer for a run that may already have retired the certbot
+// timer (retired), so a failed install still says that nothing renews.
+func (r *acmeRun) timerAfter(retired bool) error {
 	if err := r.refuseCertbotHooks(certbotDir); err != nil {
 		return err
 	}
@@ -217,10 +221,11 @@ func (r *acmeRun) timer() error {
 		_, err := r.retireCertbot()
 		return err
 	}
-	retired, err := r.retireCertbot()
+	now, err := r.retireCertbot()
 	if err != nil {
 		return err
 	}
+	retired = retired || now
 	if err := acmeD.timer(r.workdir, r.res.AgeKey); err != nil {
 		var gone string
 		if retired {

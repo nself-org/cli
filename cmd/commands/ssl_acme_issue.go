@@ -61,6 +61,9 @@ func (r *acmeRun) issueNew(ctx context.Context, l acme.Lineage, cron bool) error
 		if cron {
 			return r.timer()
 		}
+		if r.staging {
+			return nil
+		}
 		_, err := r.retireCertbot()
 		return err
 	}
@@ -89,7 +92,7 @@ func (r *acmeRun) issueNew(ctx context.Context, l acme.Lineage, cron bool) error
 		return e151(err)
 	}
 	if cron {
-		return r.timer()
+		return r.timerAfter(retired)
 	}
 	r.say("renew with `nself trust ssl renew --acme`; add --install-cron for the timer")
 	return nil

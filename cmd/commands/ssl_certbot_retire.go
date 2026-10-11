@@ -41,6 +41,9 @@ var certbotDir = "/etc/letsencrypt"
 // errNoSystemctl means systemctl is not on PATH, so no systemd timer can run.
 var errNoSystemctl = errors.New("systemctl not found")
 
+// errRenewalRunning means the certbot service is in the middle of a renewal.
+var errRenewalRunning = errors.New("is running a certbot renewal now")
+
 // errSystemdDown means systemctl cannot reach systemd but the unit file exists.
 var errSystemdDown = errors.New("systemd is not answering")
 
@@ -103,7 +106,7 @@ func certbotTimerLive(ctx context.Context) (bool, error) {
 // reports whether it changed the timer.
 func retireCertbotTimer(ctx context.Context) (bool, error) {
 	if svc, err := readUnit(ctx, certbotService); err != nil || svc.active {
-		return false, cmp.Or(err, fmt.Errorf("%s is running a certbot renewal now; re-run when it has finished", certbotService))
+		return false, cmp.Or(err, fmt.Errorf("%s %w", certbotService, errRenewalRunning))
 	}
 	st, err := readUnit(ctx, certbotTimer)
 	if err != nil || !(st.enabled || st.active) {
@@ -118,6 +121,10 @@ func retireCertbotTimer(ctx context.Context) (bool, error) {
 	}
 	if live, err := certbotTimerLive(ctx); err != nil || live {
 		return false, cmp.Or(err, fmt.Errorf("%s is still enabled or running after disable", certbotTimer))
+	}
+	// the timer may have fired between the first check and the disable
+	if svc, err := readUnit(ctx, certbotService); err != nil || svc.active {
+		return true, cmp.Or(err, fmt.Errorf("%s %w (it started while the timer was being disabled)", certbotService, errRenewalRunning))
 	}
 	return true, nil
 }
@@ -201,7 +208,7 @@ func certbotHooks(dir string, sslDirs ...string) ([]string, error) {
 		for i, line := range strings.Split(string(data), "\n") {
 			k, _, _ := strings.Cut(line, "=")
 			k = strings.TrimSpace(k)
-			if (isConf && !strings.HasSuffix(k, "_hook") && !strings.HasSuffix(k, "-hook")) || strings.HasPrefix(strings.TrimSpace(line), "#") {
+			if (isConf && !strings.HasSuffix(k, "_hook") && !strings.HasSuffix(k, "-hook")) || strings.HasPrefix(strings.TrimSpace(line), "#") || (isConf && strings.HasPrefix(strings.TrimSpace(line), ";")) {
 				continue
 			}
 			if slices.ContainsFunc(needles, func(n string) bool { return mentionsPath(line, n) }) {
@@ -236,6 +243,10 @@ func mentionsPath(line, dir string) bool {
 // ACME-managed ones: into the served ssl dir (NGINX_FRONTED_BY moves it out of
 // the project) or the project's own ssl dir.
 func (r *acmeRun) refuseCertbotHooks(dirs ...string) error {
+	for i, d := range dirs {
+		dirs[i] = filepath.Clean(d)
+	}
+	slices.Sort(dirs)
 	for _, dir := range slices.Compact(dirs) {
 		hits, err := certbotHooks(dir, r.res.SSLDir, filepath.Join(r.workdir, "ssl"))
 		if err != nil {
@@ -263,15 +274,19 @@ func (r *acmeRun) retireCertbot() (bool, error) {
 		return false, nil
 	}
 	done, err := retireCertbotTimer(ctx)
+	if done {
+		r.say("disabled %s: its certbot deploy hook would overwrite ACME-managed certificates", certbotTimer)
+	}
+	if errors.Is(err, errRenewalRunning) {
+		return done, e151(acmeRefuse("wait for it to finish (`systemctl status "+certbotService+"`), then re-run this command",
+			"%v; nothing was written", err))
+	}
 	if err != nil {
 		fix := "run `sudo systemctl disable --now " + certbotTimer + "` (and `sudo systemctl disable --runtime " + certbotTimer + "` if it was enabled at runtime), then re-run this command"
 		if errors.Is(err, errSystemdDown) {
 			fix = "remove " + filepath.Join(systemdUnitDir, "nself-ssl-renew.{timer,service}") + ", then re-run this command"
 		}
 		return false, e151(acmeRefuse(fix, "%s (certbot renewal) would overwrite ACME-managed certificates and could not be disabled: %v", certbotTimer, err))
-	}
-	if done {
-		r.say("disabled %s: its certbot deploy hook would overwrite ACME-managed certificates", certbotTimer)
 	}
 	return done, nil
 }

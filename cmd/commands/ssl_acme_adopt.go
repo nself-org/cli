@@ -88,7 +88,7 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 	}
 	r.say("adopted %d lineage(s) (%s); certbot's files were not touched", len(adopt), adoptedKinds(adopt))
 	if cron {
-		return r.timer()
+		return r.timerAfter(retired)
 	}
 	if retired {
 		r.say("no renewal is scheduled now: run `nself trust ssl setup --acme --install-cron`")

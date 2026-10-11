@@ -48,6 +48,7 @@ func nselfDeployHook(workdir string) string {
 type fakeSystemd struct {
 	load, file, active string // timer state; load "" means systemctl is not installed
 	svcActive          string // the service's ActiveState ("" = inactive)
+	svcAfter           string // the service's ActiveState once disable/stop ran
 	raw                string // when set, `show` of the timer prints this instead
 	showErr, disErr    error
 	sticky             bool // disable/stop succeed but change nothing
@@ -74,6 +75,9 @@ func (s *fakeSystemd) run(_ context.Context, args ...string) (string, error) {
 	case "disable", "stop":
 		if s.disErr != nil {
 			return "Access denied", s.disErr
+		}
+		if s.svcAfter != "" {
+			s.svcActive = s.svcAfter
 		}
 		if !s.sticky {
 			s.active = "inactive"
@@ -120,14 +124,16 @@ func TestRetireCertbotTimer(t *testing.T) {
 		"unknown unit":           {sd: fakeSystemd{load: "not-found", active: "inactive"}, wantCalls: c(show)},
 		"already disabled":       {sd: fakeSystemd{load: "loaded", file: "disabled", active: "inactive"}, wantCalls: c(show)},
 		"masked":                 {sd: fakeSystemd{load: "masked", file: "masked", active: "inactive"}, wantCalls: c(show)},
-		"masked but running":     {sd: fakeSystemd{load: "masked", file: "masked", active: "active"}, retired: true, wantCalls: c(show, stop, show)},
-		"enabled and waiting":    {sd: fakeSystemd{load: "loaded", file: "enabled", active: "active"}, retired: true, wantCalls: c(show, disable, show)},
-		"enabled, last run fail": {sd: fakeSystemd{load: "loaded", file: "enabled", active: "failed"}, retired: true, wantCalls: c(show, disable, show)},
-		"disabled but running":   {sd: fakeSystemd{load: "loaded", file: "disabled", active: "active"}, retired: true, wantCalls: c(show, stop, show)},
-		"starting":               {sd: fakeSystemd{load: "loaded", file: "disabled", active: "activating"}, retired: true, wantCalls: c(show, stop, show)},
-		"enabled-runtime, idle":  {sd: fakeSystemd{load: "loaded", file: "enabled-runtime", active: "inactive"}, retired: true, wantCalls: c(show, disable, show)},
+		"masked but running":     {sd: fakeSystemd{load: "masked", file: "masked", active: "active"}, retired: true, wantCalls: c(show, stop, show, svc)},
+		"enabled and waiting":    {sd: fakeSystemd{load: "loaded", file: "enabled", active: "active"}, retired: true, wantCalls: c(show, disable, show, svc)},
+		"enabled, last run fail": {sd: fakeSystemd{load: "loaded", file: "enabled", active: "failed"}, retired: true, wantCalls: c(show, disable, show, svc)},
+		"disabled but running":   {sd: fakeSystemd{load: "loaded", file: "disabled", active: "active"}, retired: true, wantCalls: c(show, stop, show, svc)},
+		"starting":               {sd: fakeSystemd{load: "loaded", file: "disabled", active: "activating"}, retired: true, wantCalls: c(show, stop, show, svc)},
+		"enabled-runtime, idle":  {sd: fakeSystemd{load: "loaded", file: "enabled-runtime", active: "inactive"}, retired: true, wantCalls: c(show, disable, show, svc)},
 		"static, idle":           {sd: fakeSystemd{load: "loaded", file: "static", active: "inactive"}, wantCalls: c(show)},
 		"linked, idle":           {sd: fakeSystemd{load: "loaded", file: "linked", active: "inactive"}, wantCalls: c(show)},
+		"renewal starts during disable": {sd: fakeSystemd{load: "loaded", file: "enabled", active: "active", svcAfter: "active"},
+			retired: true, wantErr: "started while the timer was being disabled", wantCalls: c(show, disable, show, svc)},
 		"renewal running now": {sd: fakeSystemd{load: "loaded", file: "enabled", active: "active", svcActive: "activating"},
 			wantErr: "running a certbot renewal now", wantCalls: c()},
 		"disable refused": {sd: fakeSystemd{load: "loaded", file: "enabled", active: "active", disErr: errors.New("exit status 1")},
@@ -208,7 +214,7 @@ func TestCertbotHooks(t *testing.T) {
 	}
 	var want []string
 	hit := func(p string, line int) { want = append(want, fmt.Sprintf("%s:%d", p, line)) }
-	hit(file("cli.ini", "deploy-hook = cp x "+sslDir+"\n", 0o644), 1)
+	hit(file("cli.ini", "deploy-hook = cp x "+sslDir+"\n; deploy-hook = cp x "+sslDir+"/\n", 0o644), 1)
 	hit(file("renewal/a.example.org.conf", "version = 2.9.0\n[renewalparams]\n"+nselfDeployHook(workdir)+"post_hook = docker compose exec nginx nginx -s reload\n", 0o644), 3)
 	hit(file("renewal/b.example.org.conf", "[renewalparams]\ndeploy_hook = cp x "+filepath.Join(sslDir, "b")+"/\n", 0o644), 2)
 	hit(file("renewal/c.example.org.conf", "[renewalparams]\npost_hook = DEST=\""+sslDir+"\"; cp x $DEST\nrenew_hook = cp x /srv/other/ssl/\n# deploy_hook = cp x "+sslDir+"/\nserver = "+sslDir+"\n", 0o644), 2)

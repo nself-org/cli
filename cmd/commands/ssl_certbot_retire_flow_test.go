@@ -180,3 +180,27 @@ func TestCertbotSetupRefusesUnderACME(t *testing.T) {
 		}
 	}
 }
+
+// TestACMERetiredNoteSurvivesTimerFailure: adopt --install-cron disables the
+// certbot timer, then a failed ACME timer install still says nothing renews;
+// a staging dry run never offers to disable it.
+func TestACMERetiredNoteSurvivesTimerFailure(t *testing.T) {
+	f := newACMEFix(t)
+	le := adoptFix(t, f)
+	cred := filepath.Join(f.root, "cloudflare.ini")
+	acmeWriteFile(t, cred, []byte("# certbot\ndns_cloudflare_api_token = fake-token-not-a-secret\n"))
+	sd := &fakeSystemd{load: "loaded", file: "enabled", active: "active"}
+	useSystemd(t, sd)
+	acmeD.timer = func(string, string) error { return errors.New("systemd timers need Linux") }
+	_, err := f.run(sslSetupCmd, "--acme", "--adopt-certbot="+le, "--dns-credential-file="+cred, "--install-cron")
+	if err == nil || !strings.Contains(err.Error(), "nothing renews") || sd.file != "disabled" {
+		t.Fatalf("err=%v file=%s (want the ACME timer failure to say nothing renews)", err, sd.file)
+	}
+
+	g := newACMEFix(t)
+	sd.file, sd.active, sd.calls = "enabled", "active", nil
+	out, err := g.run(sslSetupCmd, "--acme", "--agree-tos", "--staging", "--dry-run")
+	if err != nil || strings.Contains(out, "would disable") || len(sd.calls) != 0 {
+		t.Fatalf("staging dry run: err=%v calls=%v\n%s", err, sd.calls, out)
+	}
+}
