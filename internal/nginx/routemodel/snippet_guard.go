@@ -78,7 +78,7 @@ func (g guard) join(l guard) guard {
 
 // globalGuard is the guard of the directives outside any server block: every
 // variable an argument names (map, geo, split_clients, js_set, perl_set ...
-// may write it) and an inherited `satisfy`.
+// may write it), an inherited `satisfy` and an inherited `error_page`.
 func globalGuard(tree []*Block) guard {
 	g := guard{writes: map[string]bool{}}
 	for _, b := range tree {
@@ -86,6 +86,7 @@ func globalGuard(tree []*Block) guard {
 			continue
 		}
 		g.satisfyAny = g.satisfyAny || b.Name == "satisfy" && b.Arg(0) != "all"
+		g.flow = g.flow || b.Name == "error_page" // inherited from http into every location
 		for _, a := range unquoteAll(b.Args) {
 			if v, ok := strings.CutPrefix(a, "$"); ok {
 				g.writes[strings.ToLower(v)] = true

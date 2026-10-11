@@ -23,16 +23,17 @@ func TestSnippetReturnRedirectCodes(t *testing.T) {
 
 func TestSnippetDenyAllNeedsNoWayIn(t *testing.T) {
 	for name, text := range map[string]string{
-		"allow":          `server { listen 80; server_name a.test; location /admin { allow 10.0.0.0/8; deny all; } }`,
-		"satisfy any":    `server { listen 80; server_name a.test; location /admin { satisfy any; auth_basic x; deny all; } }`,
-		"server satisfy": `server { listen 80; server_name a.test; satisfy any; location /admin { auth_basic x; deny all; } }`,
-		"limit_except":   `server { listen 80; server_name a.test; location /le { deny all; limit_except GET { allow all; } proxy_pass http://127.0.0.1:8001; } }`,
-		"if allow":       `server { listen 80; server_name a.test; location /admin { if ($x) { allow 1.1.1.1; } deny all; } }`,
-		"global satisfy": `satisfy any; server { listen 80; server_name a.test; location /sa { auth_basic x; auth_basic_user_file /f; deny all; } }`,
-		"quoted allow":   `server { listen 80; server_name a.test; location /q1 { "allow" all; deny all; } }`,
-		"include":        `server { listen 80; server_name a.test; location /a { include extra.conf; deny all; } }`,
-		"rewrite last":   `server { listen 80; server_name a.test; location /a { rewrite ^ /b last; deny all; } }`,
-		"error_page":     `server { listen 80; server_name a.test; location /a { error_page 403 = @o; deny all; } }`,
+		"allow":             `server { listen 80; server_name a.test; location /admin { allow 10.0.0.0/8; deny all; } }`,
+		"satisfy any":       `server { listen 80; server_name a.test; location /admin { satisfy any; auth_basic x; deny all; } }`,
+		"server satisfy":    `server { listen 80; server_name a.test; satisfy any; location /admin { auth_basic x; deny all; } }`,
+		"limit_except":      `server { listen 80; server_name a.test; location /le { deny all; limit_except GET { allow all; } proxy_pass http://127.0.0.1:8001; } }`,
+		"if allow":          `server { listen 80; server_name a.test; location /admin { if ($x) { allow 1.1.1.1; } deny all; } }`,
+		"global satisfy":    `satisfy any; server { listen 80; server_name a.test; location /sa { auth_basic x; auth_basic_user_file /f; deny all; } }`,
+		"quoted allow":      `server { listen 80; server_name a.test; location /q1 { "allow" all; deny all; } }`,
+		"include":           `server { listen 80; server_name a.test; location /a { include extra.conf; deny all; } }`,
+		"rewrite last":      `server { listen 80; server_name a.test; location /a { rewrite ^ /b last; deny all; } }`,
+		"global error_page": `error_page 403 = /ok; server { listen 80; server_name a.test; location /a { deny all; } }`,
+		"error_page":        `server { listen 80; server_name a.test; location /a { error_page 403 = @o; deny all; } }`,
 	} {
 		sn, err := ParseSnippet("plugin", "p", "f.conf", text)
 		if err != nil || len(sn.Routes) != 1 {
