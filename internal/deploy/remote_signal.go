@@ -14,23 +14,59 @@ package deploy
 // Constraints: after the cancel, ApplyRemote's restore and the lock release run
 //              on context.WithoutCancel bounded by a timeout, so a signal leaves
 //              the host restored (before the first `up`) and unlocked. A second
-//              signal is not special: the restore is bounded by restoreTimeout.
+//              signal is absorbed with one line saying so: the restore is
+//              bounded by restoreTimeout and the lock is released after it.
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"os/signal"
+	"sync"
 	"time"
 )
+
+// interruptOut is where the second-signal notice goes.
+var interruptOut io.Writer = os.Stderr
 
 // stepGrace bounds how long a cancelled ssh or rsync may keep running to finish
 // its remote script before it is killed.
 const stepGrace = 120 * time.Second
 
-// WithInterrupt returns a context that is cancelled on SIGINT or SIGTERM. Call
-// stop when the operation ends to release the handler.
+// WithInterrupt returns a context that is cancelled on the first SIGINT, SIGTERM
+// or (unix) SIGHUP. A later signal does not kill the process: it prints one line
+// that the restore is in progress. Call stop when the operation ends.
 func WithInterrupt(ctx context.Context) (context.Context, context.CancelFunc) {
-	return signal.NotifyContext(ctx, interruptSignals()...)
+	ctx, cancel := context.WithCancel(ctx)
+	ch := make(chan os.Signal, 4)
+	signal.Notify(ch, interruptSignals()...)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ch:
+			cancel()
+		case <-done:
+			return
+		}
+		told := false
+		for {
+			select {
+			case <-ch:
+				if !told {
+					told = true
+					_, _ = fmt.Fprintf(interruptOut, "\nsignal received again: the restore is in progress (bounded by %s) and the deploy lock is released after it; please wait\n", restoreTimeout)
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	var once sync.Once
+	return ctx, func() {
+		once.Do(func() { close(done); signal.Stop(ch); cancel() })
+	}
 }
 
 // ownProcessGroup starts cmd in its own process group where the platform has

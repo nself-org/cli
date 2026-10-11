@@ -8,6 +8,7 @@ package deploy
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -53,12 +54,12 @@ func TestInterruptHelper(t *testing.T) {
 
 func TestInterruptRestoresAndUnlocks(t *testing.T) {
 	for name, sig := range map[string]syscall.Signal{"SIGINT": syscall.SIGINT, "SIGHUP": syscall.SIGHUP, "SIGTERM": syscall.SIGTERM} {
-		t.Run(name, func(t *testing.T) { interruptWith(t, sig) })
+		t.Run(name, func(t *testing.T) { interruptWith(t, sig, false) })
 	}
 }
 
 // interruptWith sends sig to a child that is inside the pull step.
-func interruptWith(t *testing.T, sig syscall.Signal) {
+func interruptWith(t *testing.T, sig syscall.Signal, twice bool) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("no SIGINT delivery to a child on windows")
@@ -70,7 +71,8 @@ func interruptWith(t *testing.T, sig syscall.Signal) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.Stderr = os.Stderr
+	var stderr bytes.Buffer
+	c.Stderr = &stderr
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +98,10 @@ func interruptWith(t *testing.T, sig syscall.Signal) {
 				if err := c.Process.Signal(sig); err != nil {
 					t.Fatal(err)
 				}
+				if twice {
+					time.Sleep(300 * time.Millisecond) // identical signals sent back to back coalesce
+					_ = c.Process.Signal(sig)
+				}
 			}
 			if strings.HasPrefix(l, "RESULT ") {
 				result = l
@@ -104,8 +110,16 @@ func interruptWith(t *testing.T, sig syscall.Signal) {
 			t.Fatal("timed out waiting for the helper")
 		}
 	}
+	_ = c.Wait()
+	if got := strings.Contains(stderr.String(), "restore is in progress"); got != twice {
+		t.Errorf("second-signal notice printed = %v, want %v; stderr:\n%s", got, twice, stderr.String())
+	}
 	want := "RESULT err=true synced=false restored=true lock=false restoreRan=true"
 	if result != want {
 		t.Errorf("after SIGINT:\n got %s\nwant %s", result, want)
 	}
 }
+
+// J2: a second signal while the restore runs is absorbed with one line saying the
+// restore is in progress, not silently ignored.
+func TestSecondSignalIsAnnounced(t *testing.T) { interruptWith(t, syscall.SIGINT, true) }
