@@ -1,0 +1,66 @@
+name: SDK Go remote mutation gate
+
+# D-0483: cli#654 brought sdk/go/remote (the ssh/scp argv funnel and the pin
+# store) to zero surviving and zero uncovered mutants. This re-runs that gate
+# on every change that can weaken it. The command, the --only file set and
+# the equivalent-mutant allowlist all come from
+# sdk/go/remote/testdata/mutation-allow.txt via scripts/ci/sdk-remote-mutation.sh,
+# which also fails when a new package file is missing from the set.
+# nself ci runs the same script (plugins free/ci gate_runners.go) on every cli
+# run and is its enforcement: this workflow is path-filtered, so GitHub cannot
+# make it a required check and a red run here is advisory for merging.
+
+on:
+  push:
+    branches:
+      - main
+    # Spelled out, not an alias (repo convention, see coverage.yml).
+    paths:
+      - "go.mod"
+      - "sdk/go/remote/**"
+      - "sdk/go/go.mod"
+      - "sdk/go/go.sum"
+      - "scripts/mutation.sh"
+      - "scripts/ci/sdk-remote-mutation*.sh"
+      - ".github/workflows/sdk-go-remote-mutation.yml"
+  pull_request:
+    paths:
+      - "go.mod"
+      - "sdk/go/remote/**"
+      - "sdk/go/go.mod"
+      - "sdk/go/go.sum"
+      - "scripts/mutation.sh"
+      - "scripts/ci/sdk-remote-mutation*.sh"
+      - ".github/workflows/sdk-go-remote-mutation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A newer push to main must not cancel the gate run of the previous merge.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  mutation:
+    name: sdk/go/remote mutation gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GREMLINS_WORKERS: "4"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: sdk/go/go.sum
+
+      - name: Wrapper controls
+        run: bash scripts/ci/sdk-remote-mutation_test.sh
+
+      - name: Mutation gate
+        run: bash scripts/ci/sdk-remote-mutation.sh
