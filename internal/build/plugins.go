@@ -13,11 +13,17 @@ package build
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/ui"
 )
 
 // composeManifestFile is the path relative to workdir where the ordered list
@@ -27,7 +33,8 @@ const composeManifestFile = ".nself/compose-files.txt"
 
 // pluginComposeFilename is the well-known name for a plugin's Docker Compose
 // fragment. Plugins that only contribute background processes (no containers)
-// will not have this file and are silently skipped.
+// will not have this file and are silently skipped (a plugin that declares a
+// compose service and lacks it is E128 in v1.5, see missingFragmentIsError).
 const pluginComposeFilename = "docker-compose.plugin.yml"
 
 // DefaultPluginDir returns the default global plugin installation directory
@@ -82,6 +89,13 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 			continue
 		}
 		if _, err := os.Stat(absPath); err != nil {
+			if missingFragmentIsError(pluginDir, entry.Name()) {
+				// compat.V15(P7-PLUG-17): a compose plugin without a fragment is skipped silently -> the build fails with E128 (v1.4 warns)
+				if compat.V15() {
+					return nil, errs.Newf("E128", "plugin %q (%s) declares a compose service but has no %s", entry.Name(), filepath.Join(pluginDir, entry.Name()), pluginComposeFilename)
+				}
+				warnOnce(fmt.Sprintf("plugin %q (%s) declares a compose service but has no %s; it is left out of the stack (an error from v1.5)", entry.Name(), filepath.Join(pluginDir, entry.Name()), pluginComposeFilename))
+			}
 			continue
 		}
 
@@ -92,6 +106,13 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 		// manual docker-compose.override.yml edits.
 		if content, readErr := os.ReadFile(absPath); readErr == nil {
 			normalized := normalizeComposeDockerfile(content, pluginDir, entry.Name())
+			// Attach missing networks, write ${DOCKER_NETWORK:-x} as
+			// ${DOCKER_NETWORK} and refuse a foreign external network, before
+			// the alias pass so it sees the final network list.
+			normalized, netErr := normalizeComposeNetworks(normalized, entry.Name())
+			if netErr != nil {
+				return nil, netErr
+			}
 			normalized = normalizeComposeNetworkAliases(normalized, entry.Name())
 			// Rebuild nself/* images from source instead of pulling
 			// never-published tags, and drop the obsolete version: key —
@@ -130,6 +151,50 @@ func discoverPluginComposeFilesFx(fx Effects, sink Sink, workdir, pluginDir stri
 	}
 
 	return composePaths, nil
+}
+
+// fragmentWarned holds the fragment warnings already printed by this process.
+// One `nself build` runs plugin discovery more than once, and a warning that
+// repeats per pass reads as several problems.
+var fragmentWarned sync.Map
+
+// warnOnce prints msg with ui.Warn the first time this process sees it.
+func warnOnce(msg string) {
+	if _, seen := fragmentWarned.LoadOrStore(msg, struct{}{}); !seen {
+		ui.Warn(msg)
+	}
+}
+
+// resetWarnOnce forgets the warnings printed so far (tests).
+func resetWarnOnce() { fragmentWarned = sync.Map{} }
+
+// missingFragmentIsError reports whether an installed plugin that ships no
+// compose fragment is one that should have it: a v2 manifest with
+// service.kind compose, or a v1 manifest with a Dockerfile and a port. A
+// plugin whose manifest is absent or unreadable is not one (no signal).
+func missingFragmentIsError(pluginDir, name string) bool {
+	data, err := os.ReadFile(filepath.Join(pluginDir, name, "plugin.json"))
+	if err != nil {
+		return false
+	}
+	var m struct {
+		Version json.RawMessage `json:"manifest_version"`
+		Port    int             `json:"port"`
+		Service *struct {
+			Kind string `json:"kind"`
+		} `json:"service"`
+	}
+	if json.Unmarshal(data, &m) != nil {
+		return false
+	}
+	if strings.TrimSpace(string(m.Version)) == "2" {
+		return m.Service != nil && m.Service.Kind == "compose"
+	}
+	if m.Port <= 0 {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(pluginDir, name, "Dockerfile"))
+	return err == nil
 }
 
 // canonicalDockerfile returns the correct Dockerfile name for a plugin.

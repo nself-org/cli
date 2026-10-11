@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  analytics:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nself/nself-analytics:latest
+    container_name: nself-analytics
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3206:3206"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      ANALYTICS_PLUGIN_PORT: 3206
+      ANALYTICS_API_KEY: ${ANALYTICS_API_KEY:-}
+      ANALYTICS_BATCH_SIZE: ${ANALYTICS_BATCH_SIZE:-100}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3206/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - nself-network
+
+networks:
+  nself-network:
+    external: true

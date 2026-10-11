@@ -19,7 +19,7 @@ commands:
   config plugins count: {side_effect: read, json: legacy}
   config plugins disable: {side_effect: write}
   config plugins enable: {side_effect: write}
-  config plugins info: {side_effect: read}
+  config plugins info: {side_effect: read, json: legacy}
   # cmd/commands/plugin_query.go:143 only queries installed-plugin inventory
   config plugins inventory: {side_effect: read}
   config plugins list: {side_effect: read}

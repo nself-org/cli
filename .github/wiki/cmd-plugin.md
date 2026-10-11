@@ -179,8 +179,14 @@ nself plugin remove recording --force
 # Update a specific plugin
 nself plugin update ai
 
-# Update all plugins
+# Update all plugins (each keeps the tier it is installed as)
 nself plugin update
+
+# Switch a plugin's tier on purpose while updating it (otherwise E131 if it cannot keep its tier)
+nself plugin update cron --tier licensed
+
+# Show the tier a plugin is installed as, and why
+nself plugin info cron --json
 
 # Check for available updates without installing
 nself plugin updates

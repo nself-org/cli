@@ -2,9 +2,10 @@
 # tools/imagebump/render-body.sh — render the weekly pin-bump PR body.
 #
 # Purpose: P7-HYG-34. Turns the files the workflow collected into one Markdown
-# body: bumps, diff stat, lock check, probe, stack smoke, mirror plan.
+# body: bumps, diff stat, lock check, go test, probe, stack smoke, mirror plan.
 # Usage:  tools/imagebump/render-body.sh <dir>   (body on stdout)
 # Inputs: <dir>/bumps.txt (imagebump stdout), diffstat.txt, lockcheck.txt,
+#         gotest.rc, gotest.fail (failing package and test names only),
 #         probe.txt and smoke.txt (dispatch-wait.sh stdout), probe.rc, smoke.rc,
 #         mirror.out (status lines), mirror.plan (detail), mirror.rc. A missing
 #         file renders as "not run".
@@ -46,10 +47,21 @@ echo
 echo "| Check | Result | Run |"
 echo "|---|---|---|"
 echo "| imagelock -check | $(verdict "$d/lockcheck.rc") | |"
+echo "| go test (internal/compose, internal/config, cmd/commands, tools/imagebump) | $(verdict "$d/gotest.rc") | |"
 echo "| Image probe (default-images-pullable.yml) | $(verdict "$d/probe.rc") | $(field "$d/probe.txt" RUN_URL) |"
 echo "| Stack smoke (e2e-golden-path.yml, source=local) | $(verdict "$d/smoke.rc") | $(field "$d/smoke.txt" RUN_URL) |"
 echo "| Mirror plan (mirror-images.sh --plan) | $(verdict "$d/mirror.rc") | |"
 echo
+if [ -f "$d/gotest.rc" ] && [ "$(cat "$d/gotest.rc")" != "0" ]; then
+  echo "## Failing tests"
+  echo
+  echo "Names only; the full log is in the workflow run."
+  echo
+  echo '```'
+  cap "$d/gotest.fail" 4000
+  echo '```'
+  echo
+fi
 echo "## Mirror plan"
 echo
 if [ -f "$d/mirror.out" ]; then

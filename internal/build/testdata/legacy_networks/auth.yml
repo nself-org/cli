@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  nself-auth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nself/nself-auth:latest
+    container_name: nself-auth
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3821:3821"
+    environment:
+      - AUTH_PLUGIN_PORT=3821
+      - DATABASE_URL=${DATABASE_URL}
+      - AUTH_ENCRYPTION_KEY=${AUTH_ENCRYPTION_KEY}
+      - AUTH_PLUGIN_HOST=${AUTH_PLUGIN_HOST:-0.0.0.0}
+      - AUTH_LOG_LEVEL=${AUTH_LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3821/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - nself
+
+networks:
+  nself:
+    external: true
