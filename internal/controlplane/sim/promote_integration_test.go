@@ -61,7 +61,7 @@ func TestSimPromote(t *testing.T) {
   *"compose images --format json"*) printf '[{"Service":"web","Repository":"example.invalid/web","Tag":"2","ID":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]' ;;
   *"image inspect --format"*) printf '["example.invalid/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]|linux/amd64' ;;`, 1)
 		h.put("/usr/local/bin/docker", docker)
-		h.sh("chmod 755 /usr/local/bin/nself /usr/local/bin/docker; printf original > /tmp/sim-db-fp")
+		h.sh("chmod 755 /usr/local/bin/nself /usr/local/bin/docker; printf original > /tmp/sim-db-fp; chown nself /tmp/sim-db-fp")
 		h.put(h.rp+"/docker-compose.yml", "old\n")
 		h.own()
 		h.scenario(" Container proj-web-1 Recreate\n")
@@ -147,7 +147,7 @@ func TestSimPromote(t *testing.T) {
 		}
 	})
 	t.Run("health rollback", func(t *testing.T) {
-		target.sh("printf original > /tmp/sim-db-fp; printf old > " + target.rp + "/docker-compose.yml; touch /tmp/sim-health-fail")
+		target.sh("printf original > /tmp/sim-db-fp; printf old > " + target.rp + "/docker-compose.yml; touch /tmp/sim-health-fail; chown nself /tmp/sim-health-fail")
 		err := run(nil)
 		var cliErr *errs.CLIError
 		if !errors.As(err, &cliErr) || cliErr.Code != "E488" {
