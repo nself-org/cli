@@ -592,6 +592,22 @@ deploy lock is released; after the first `up` the new files stay and the error n
 This is tested with real signals sent to the apply and to the rollback. SIGKILL, a lost connection or a powered-off
 laptop are not covered: the lock stays, and the error for the next deploy says how to remove it.
 
+For v1.5 environment promotion, Ctrl-C cancels the current step and runs compensation
+on a fresh context, returning `E488` when recovery succeeds. A provisional
+`.nself/state/promote.json` is saved after the verified snapshot, after apply, and
+before migration starts. Interrupted records can be recovered with `deploy rollback
+<target>`; the database is restored only if migration started and it has not already
+been restored. If the final record write fails after health succeeds, `E489` says
+the promotion is live and names the snapshot, backup and pre-deploy tars. It leaves
+the provisional record available and does not undo the healthy promotion.
+
+Record rollback checks each recorded remote path, backup tar location, and the
+host's applied compose manifest identity before changing any host. A changed path
+or artifact identity refuses with `E485`. Restoring a production-class database
+requires `deploy rollback <target> --yes` or terminal confirmation; without either,
+non-interactive use returns `E403` (exit 4). The `promote rollback --yes` shim uses
+the same confirmation rule in v1.5.
+
 All ssh and rsync commands use the strict host-key policy; an unknown key is `E487`.
 
 ### Rollback in v1.5 mode

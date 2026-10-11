@@ -27,24 +27,26 @@ const RecordFile = ".nself/state/promote.json"
 
 // Record describes one completed promotion and everything its rollback may touch.
 type Record struct {
-	SchemaVersion  int                 `json:"schema_version"`
-	ID             string              `json:"id"`
-	Source         string              `json:"source"`
-	Target         string              `json:"target"`
-	StartedAt      time.Time           `json:"started_at"`
-	CompletedAt    time.Time           `json:"completed_at"`
-	Status         string              `json:"status"`
-	SnapshotTag    string              `json:"snapshot_tag,omitempty"`
-	BackupID       string              `json:"backup_id,omitempty"`
-	BackupHost     string              `json:"backup_host,omitempty"`
-	PreDeployTar   map[string]string   `json:"pre_deploy_tar,omitempty"`
-	Changed        map[string][]string `json:"changed,omitempty"`
-	Absent         map[string][]string `json:"absent,omitempty"`
-	Digests        []DigestRow         `json:"digests,omitempty"`
-	SavedManifest  SavedManifest       `json:"saved_manifest"`
-	DBRestoredAt   string              `json:"db_restored_at,omitempty"`
-	MigrateStarted bool                `json:"migrate_started"`
-	DeployIdentity *DeployIdentity     `json:"deploy_identity,omitempty"`
+	SchemaVersion       int                 `json:"schema_version"`
+	ID                  string              `json:"id"`
+	Source              string              `json:"source"`
+	Target              string              `json:"target"`
+	StartedAt           time.Time           `json:"started_at"`
+	CompletedAt         time.Time           `json:"completed_at"`
+	Status              string              `json:"status"`
+	SnapshotTag         string              `json:"snapshot_tag,omitempty"`
+	BackupID            string              `json:"backup_id,omitempty"`
+	BackupHost          string              `json:"backup_host,omitempty"`
+	PreDeployTar        map[string]string   `json:"pre_deploy_tar,omitempty"`
+	Changed             map[string][]string `json:"changed,omitempty"`
+	Absent              map[string][]string `json:"absent,omitempty"`
+	Digests             []DigestRow         `json:"digests,omitempty"`
+	SavedManifest       SavedManifest       `json:"saved_manifest"`
+	DBRestoredAt        string              `json:"db_restored_at,omitempty"`
+	MigrateStarted      bool                `json:"migrate_started"`
+	DeployIdentity      *DeployIdentity     `json:"deploy_identity,omitempty"`
+	RemotePaths         map[string]string   `json:"remote_paths,omitempty"`
+	AppliedManifestHash map[string]string   `json:"applied_manifest_hash,omitempty"`
 }
 
 // LoadRecord reads promote.json; a missing record returns nil, nil.
@@ -104,13 +106,13 @@ func LoadLatestRecord(projectRoot, target string) (*Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	if state.Target == target && !recordMatchesDeploy(rec, state) {
+	if state.Target == target && !(rec.Status == "in_progress" && len(rec.PreDeployTar) == 0) && !recordMatchesDeploy(rec, state) {
 		return nil, nil
 	}
-	if rec.SchemaVersion != 1 || rec.ID == "" || rec.CompletedAt.IsZero() || (rec.Status != "ok" && rec.Status != "rollback_failed" && rec.Status != "rolled_back") {
+	if rec.SchemaVersion != 1 || rec.ID == "" || (rec.CompletedAt.IsZero() && rec.Status != "in_progress") || (rec.Status != "ok" && rec.Status != "rollback_failed" && rec.Status != "rolled_back" && rec.Status != "in_progress") {
 		return nil, errs.New("E485", "promotion record is unusable; nothing was changed")
 	}
-	if rec.Status != "rolled_back" && !recordHasRestoreLists(rec) {
+	if rec.Status != "rolled_back" && !(rec.Status == "in_progress" && len(rec.PreDeployTar) == 0) && !recordHasRestoreLists(rec) {
 		return nil, errs.New("E485", "promotion record has missing tar or changed lists; nothing was changed")
 	}
 	return rec, nil
@@ -158,6 +160,9 @@ func RollbackRecord(ctx context.Context, projectRoot string, rec *Record, remote
 	for key := range rec.PreDeployTar {
 		keys = append(keys, key)
 	}
+	if err := validateRecordHosts(ctx, rec, keys, remotes, remotePaths); err != nil {
+		return err
+	}
 	backupKey := ""
 	for _, key := range keys {
 		r, ok := remotes[key]
@@ -167,22 +172,31 @@ func RollbackRecord(ctx context.Context, projectRoot string, rec *Record, remote
 		if rec.PreDeployTar[key] == "" {
 			return fmt.Errorf("promotion rollback has no pre-deploy tar for %s", key)
 		}
-		if err := deploy.ValidateRemotePath(remotePaths[key]); err != nil {
-			return fmt.Errorf("promotion rollback path for %s: %w", key, err)
-		}
 		if recordHostMatches(r, rec.BackupHost) {
 			backupKey = key
+		}
+	}
+	if backupKey == "" {
+		for key, r := range remotes {
+			if recordHostMatches(r, rec.BackupHost) {
+				backupKey = key
+			}
 		}
 	}
 	restoreDB := rec.MigrateStarted && rec.DBRestoredAt == ""
 	if restoreDB && (rec.BackupID == "" || backupKey == "") {
 		return fmt.Errorf("promotion backup host %q is absent from the local record", rec.BackupHost)
 	}
+	if restoreDB {
+		if err := validateRecordPath(rec, backupKey, remotePaths[backupKey]); err != nil {
+			return err
+		}
+	}
 	sort.Strings(keys)
 	recoveryCtx := context.WithoutCancel(ctx)
 	for _, key := range keys {
 		r := remotes[key]
-		rp := remotePaths[key]
+		rp := rec.RemotePaths[key]
 		err := deploy.RollbackRemote(recoveryCtx, deploy.RollbackOptions{
 			Remote: r, RemotePath: rp, Tar: rec.PreDeployTar[key], BackupID: "",
 			Changed: rec.Changed[key], Absent: rec.Absent[key], StrictHasura: true,
@@ -192,7 +206,7 @@ func RollbackRecord(ctx context.Context, projectRoot string, rec *Record, remote
 		}
 	}
 	if restoreDB {
-		_, err := remotes[backupKey].Run(recoveryCtx, "cd "+remotesdk.ShellQuote(remotePaths[backupKey])+" && nself backup restore "+remotesdk.ShellQuote(rec.BackupID)+" --yes")
+		_, err := remotes[backupKey].Run(recoveryCtx, "cd "+remotesdk.ShellQuote(rec.RemotePaths[backupKey])+" && nself backup restore "+remotesdk.ShellQuote(rec.BackupID)+" --yes")
 		if err != nil {
 			return fmt.Errorf("restoring promotion backup %s: %w", rec.BackupID, err)
 		}
@@ -202,7 +216,7 @@ func RollbackRecord(ctx context.Context, projectRoot string, rec *Record, remote
 		}
 	}
 	for _, key := range keys {
-		if err := HealthStep(remotes[key], remotePaths[key]).Run(recoveryCtx, &State{}); err != nil {
+		if err := HealthStep(remotes[key], rec.RemotePaths[key]).Run(recoveryCtx, &State{}); err != nil {
 			return fmt.Errorf("checking target health after promotion rollback: %w", err)
 		}
 	}

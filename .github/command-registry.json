@@ -15015,6 +15015,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm restoring a production-class database",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -15045,7 +15062,25 @@
           "secret": false
         }
       ],
-      "flags": [],
+      "flags": [
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm restoring a production-class database",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        }
+      ],
       "canon": "subcommand",
       "target": null,
       "side_effect": "destructive",

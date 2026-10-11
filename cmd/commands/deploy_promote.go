@@ -91,7 +91,7 @@ func runPromoteRecordRollback(cmd *cobra.Command) error {
 	if rec == nil {
 		return errs.New("E401", "the promotion record is no longer the latest target change")
 	}
-	return rollbackPromoteRecord(cmd.Context(), workdir, rec)
+	return rollbackPromoteRecord(withPromoteRollbackConfirmation(cmd.Context(), cmd), workdir, rec)
 }
 
 func rollbackPromoteForTarget(ctx context.Context, workdir, target string) (bool, error) {
@@ -118,6 +118,9 @@ func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Re
 	if err != nil {
 		return err
 	}
+	if err := confirmPromoteRecordRollback(ctx, inv, rec); err != nil {
+		return err
+	}
 	targets, err := controlplane.ResolveTargets(inv, controlplane.Selector{Env: rec.Target})
 	if err != nil {
 		return err
@@ -137,6 +140,10 @@ func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Re
 		remotes[r.Label()], paths[r.Label()] = r, promotePath(target.Server, workdir)
 	}
 	if err := cpromote.RollbackRecord(ctx, workdir, rec, remotes, paths); err != nil {
+		var coded *errs.CLIError
+		if errors.As(err, &coded) && coded.Code == "E485" {
+			return err
+		}
 		return errs.Newf("E489", "promote rollback failed for snapshot %s backup %s; needs operator: %v", rec.SnapshotTag, rec.BackupID, err).
 			WithFix(fmt.Sprintf("On %s run: nself backup restore %s --yes", rec.BackupHost, rec.BackupID))
 	}
@@ -173,6 +180,8 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	ctx, stop := deploy.WithInterrupt(ctx)
+	defer stop()
 	eng, st, err := preparePromoteEngine(cmd, workdir, source, target, dryRun, jsonOut)
 	if err != nil {
 		return err
@@ -183,7 +192,7 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 	} else {
 		result, err = eng.Run(ctx, st)
 		if err != nil {
-			if len(st.PreDeployTar) > 0 {
+			if result.FailedStep != "record" && st.SnapshotTag != "" {
 				if wiring, ok := st.Values["wiring"].(*promoteWiring); ok {
 					if saveErr := savePromoteRecord(wiring, st, result.Status); saveErr != nil {
 						return errs.Wrap("E489", fmt.Sprintf("promote rollback evidence for snapshot %s backup %s could not be recorded", st.SnapshotTag, st.BackupID), errors.Join(err, saveErr)).

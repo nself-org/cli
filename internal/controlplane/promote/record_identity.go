@@ -27,7 +27,7 @@ func captureDeployIdentity(root string, rec *Record) error {
 	if err != nil {
 		return err
 	}
-	if previous != nil && previous.ID == rec.ID {
+	if previous != nil && previous.ID == rec.ID && previous.DeployIdentity != nil {
 		rec.DeployIdentity = previous.DeployIdentity
 		return nil
 	}

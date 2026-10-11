@@ -48,6 +48,20 @@ func persistRollbackFixture(t *testing.T, root string, rec *Record) {
 			rec.Changed[host] = nil
 		}
 	}
+	if rec.RemotePaths == nil {
+		rec.RemotePaths = map[string]string{}
+	}
+	if rec.AppliedManifestHash == nil {
+		rec.AppliedManifestHash = map[string]string{}
+	}
+	for host := range rec.PreDeployTar {
+		if rec.RemotePaths[host] == "" {
+			rec.RemotePaths[host] = "/srv/app"
+		}
+		if rec.AppliedManifestHash[host] == "" {
+			rec.AppliedManifestHash[host] = ManifestHash(nil)
+		}
+	}
 	if err := SaveRecord(root, *rec); err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +126,7 @@ func TestPromoteRecordRollbackConcurrent(t *testing.T) {
 	cleanup := func() { released.Do(func() { close(r.release) }) }
 	t.Cleanup(cleanup)
 	rec := Record{ID: "fixture", Target: "prodsim", CompletedAt: time.Now(), Status: "ok", MigrateStarted: true,
-		BackupID: "backup-1", BackupHost: "primary", PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"}, Changed: map[string][]string{"primary": {"docker-compose.yml"}}}
+		BackupID: "backup-1", BackupHost: "primary", PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"}, Changed: map[string][]string{"primary": {"docker-compose.yml"}}, RemotePaths: map[string]string{"primary": "/srv/app"}, AppliedManifestHash: map[string]string{"primary": ManifestHash(nil)}}
 	if err := SaveRecord(root, rec); err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +228,7 @@ func TestPromoteRecordMigrationEvidence(t *testing.T) {
 
 func TestPromoteRecordRestoreOrder(t *testing.T) {
 	r := &recordRemote{label: "primary", compose: true}
-	rec := &Record{BackupID: "backup-1", BackupHost: r.label, PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"}}
+	rec := &Record{BackupID: "backup-1", BackupHost: r.label, PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"}, AppliedManifestHash: map[string]string{"primary": ManifestHash([]byte("/srv/app/docker-compose.yml\n"))}}
 	if err := json.Unmarshal([]byte(`{"migrate_started":true}`), rec); err != nil {
 		t.Fatal(err)
 	}

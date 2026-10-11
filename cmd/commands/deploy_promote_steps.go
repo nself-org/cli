@@ -129,11 +129,11 @@ func promoteSteps(w *promoteWiring, jsonOut bool) []cpromote.Step {
 	var suffix [4]byte
 	_, _ = rand.Read(suffix[:])
 	tag := fmt.Sprintf("pre-promote-%d-%s", time.Now().Unix(), hex.EncodeToString(suffix[:]))
-	steps = append(steps, cpromote.SnapshotStep(w.targetRemote, promotePath(w.targetServer, w.workdir), tag))
+	steps = append(steps, checkpointPromoteStep(w, cpromote.SnapshotStep(w.targetRemote, promotePath(w.targetServer, w.workdir), tag), false))
 	steps = append(steps, cpromote.SaveStep(w.targetRemote, promotePath(w.targetServer, w.workdir)))
 	apply := step("apply", runPromoteApply(w))
 	apply.Undo = func(ctx context.Context, st *cpromote.State) error { return rollbackPromoteApply(ctx, w, st) }
-	steps = append(steps, apply, cpromote.MigrateStep(w.targetRemote, promotePath(w.targetServer, w.workdir)), cpromote.HealthStep(w.targetRemote, promotePath(w.targetServer, w.workdir)))
+	steps = append(steps, apply, checkpointPromoteStep(w, cpromote.MigrateStep(w.targetRemote, promotePath(w.targetServer, w.workdir)), true), cpromote.HealthStep(w.targetRemote, promotePath(w.targetServer, w.workdir)))
 	steps = append(steps, step("record", runPromoteRecord(w)))
 	return steps
 }
@@ -170,6 +170,11 @@ func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) er
 		}
 		remotes := map[string]deploy.Remote{}
 		paths := map[string]string{}
+		manifest, err := os.ReadFile(filepath.Join(w.apply.Set.StageDir, ".nself", "compose-files.txt"))
+		if err != nil {
+			return err
+		}
+		st.RemotePaths, st.AppliedManifestHash = paths, map[string]string{}
 		w.apply.Yes = w.yes
 		w.apply.ProdClass, w.apply.BackupID, w.apply.BackupHost = prodClassFn(w.inv, w.target), st.BackupID, st.BackupHost
 		w.apply.Open = func(c context.Context, srv controlplane.Server, key, env string) (deploy.Remote, error) {
@@ -185,6 +190,9 @@ func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) er
 				originalRecord(srv, res, err)
 			}
 			cpromote.RecordApplied(st, res)
+			if res.Synced {
+				st.AppliedManifestHash[res.BackupHost] = cpromote.ManifestHash(manifest)
+			}
 		}
 		st.Values["apply_remotes"], st.Values["apply_paths"] = remotes, paths
 		result, err := controlplane.RunWithApply(ctx, w.inv, w.target, newDeployProber(w.workdir), w.compose, w.apply)
@@ -196,7 +204,7 @@ func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) er
 				}
 			}
 		}
-		return err
+		return errors.Join(err, savePromoteRecord(w, st, "in_progress"))
 	}
 }
 
@@ -206,22 +214,6 @@ func rollbackPromoteApply(ctx context.Context, w *promoteWiring, st *cpromote.St
 	return cpromote.UndoApplied(ctx, st, remotes, paths)
 }
 
-func runPromoteRecord(w *promoteWiring) func(context.Context, *cpromote.State) error {
-	return func(_ context.Context, st *cpromote.State) error {
-		return savePromoteRecord(w, st, "ok")
-	}
-}
-
-func savePromoteRecord(w *promoteWiring, st *cpromote.State, status string) error {
-	saved, _ := st.Values["saved_manifest"].(cpromote.SavedManifest)
-	return cpromote.SaveRecord(w.workdir, cpromote.Record{
-		ID: deploy.NewBackupID(w.started), Source: st.Source, Target: st.Target,
-		StartedAt: w.started, CompletedAt: time.Now().UTC(), Status: status, SnapshotTag: st.SnapshotTag,
-		BackupID: st.BackupID, BackupHost: st.BackupHost, PreDeployTar: st.PreDeployTar,
-		Changed: st.PreDeployChanged, Absent: st.PreDeployAbsent, Digests: st.Digests, SavedManifest: saved,
-		DBRestoredAt: st.DBRestoredAt, MigrateStarted: st.MigrateStarted,
-	})
-}
 func runPromoteCapture(w *promoteWiring) func(context.Context, *cpromote.State) error {
 	return func(ctx context.Context, st *cpromote.State) error {
 		rp := promotePath(w.sourceServer, w.workdir)

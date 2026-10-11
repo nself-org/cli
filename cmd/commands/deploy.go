@@ -193,6 +193,7 @@ func init() {
 	deployStatusCmd.Flags().String("env", "", "Environment to check")
 	deployStatusCmd.Flags().Bool("json", false, "Emit JSON output")
 	deployStatusCmd.Flags().Bool("blue-green", false, "Show blue/green state alongside deployment status")
+	deployRollbackCmd.Flags().Bool("yes", false, "Confirm restoring a production-class database")
 
 	// T05: --server selects a subset of servers for the pipeline.
 	f.String("server", "", "Deploy to a specific server only (name from control-plane inventory)")

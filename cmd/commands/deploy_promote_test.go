@@ -335,6 +335,8 @@ func TestPromoteRecordRollbackCommands(t *testing.T) {
 			root := promoteFixture(t)
 			rec := cpromote.Record{ID: "fixture", Source: "ls", Target: "prodsim", Status: "ok", CompletedAt: time.Now(), BackupID: "fixture_backup", BackupHost: "prod-app", SnapshotTag: "pre-promote-fixture", PreDeployTar: map[string]string{"prod-app": "/srv/fixture/.nself/backups/pre-deploy-fixture.tar.gz"}, Changed: map[string][]string{"prod-app": {"docker-compose.yml"}}}
 			rec.MigrateStarted = true
+			rec.RemotePaths = map[string]string{"prod-app": "/srv/fixture"}
+			rec.AppliedManifestHash = map[string]string{"prod-app": cpromote.ManifestHash(nil)}
 			if err := cpromote.SaveRecord(root, rec); err != nil {
 				t.Fatal(err)
 			}
@@ -344,9 +346,9 @@ func TestPromoteRecordRollbackCommands(t *testing.T) {
 			deployRemoteOpen = func(context.Context, controlplane.Server, string, string) (deploy.Remote, error) { return r, nil }
 			tree := &cobra.Command{Use: "nself"}
 			mounted := deployCmd
-			args := []string{"deploy", "rollback", "prodsim"}
+			args := []string{"deploy", "rollback", "prodsim", "--yes"}
 			if shim {
-				mounted, args = promoteCmd, []string{"promote", "rollback"}
+				mounted, args = promoteCmd, []string{"promote", "rollback", "--yes"}
 			}
 			if mounted.GroupID != "" {
 				tree.AddGroup(&cobra.Group{ID: mounted.GroupID, Title: "Fixture commands"})

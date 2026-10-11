@@ -161,7 +161,7 @@ func runDeployRollback(cmd *cobra.Command, args []string) error {
 	// compat.V15(P7-DEPL-24): promote snapshot rollback -> restore the remote pre-deploy tar (and the prod database backup) in place
 	if compat.V15() {
 		// compat.V15(P7-DEPL-15): local promote snapshot -> latest verified remote promotion record
-		if handled, rbErr := rollbackPromoteForTarget(cmd.Context(), workdir, target); handled {
+		if handled, rbErr := rollbackPromoteForTarget(withPromoteRollbackConfirmation(cmd.Context(), cmd), workdir, target); handled {
 			return rbErr
 		}
 		if handled, rbErr := rollbackRemoteV15(cmd, workdir, target); handled {

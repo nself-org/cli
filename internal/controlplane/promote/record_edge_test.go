@@ -43,6 +43,11 @@ func TestPromoteRecordDeployIdentity(t *testing.T) {
 			if got.DeployIdentity == nil || !got.DeployIdentity.StartedAt.Equal(state.StartedAt) {
 				t.Fatalf("deploy identity was not persisted: %#v", got.DeployIdentity)
 			}
+			got.RemotePaths = map[string]string{"primary": "/srv/app"}
+			got.AppliedManifestHash = map[string]string{"primary": ManifestHash(nil)}
+			if err := SaveRecord(root, *got); err != nil {
+				t.Fatal(err)
+			}
 			r := &recordRemote{label: "primary"}
 			if err := RollbackRecord(context.Background(), root, got, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
 				t.Fatal(err)
