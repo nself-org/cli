@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -689,5 +690,29 @@ func TestRollbackInterrupt(t *testing.T) {
 		case <-deadline:
 			t.Fatal("timed out")
 		}
+	}
+}
+
+// J1: Ctrl-C at the confirmation prompt answers no at once; the blocking read does
+// not swallow it. An answer of yes still passes.
+func TestConfirmReturnsOnInterrupt(t *testing.T) {
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan bool, 1)
+	var out strings.Builder
+	go func() { done <- confirmFrom(ctx, pr, &out, "recreates db") }()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case ok := <-done:
+		if ok {
+			t.Error("an interrupted prompt must answer no")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the prompt kept waiting after the interrupt")
+	}
+	if !confirmFrom(context.Background(), strings.NewReader("yes\n"), &out, "x") || confirmFrom(context.Background(), strings.NewReader("no\n"), &out, "x") {
+		t.Error("yes must confirm and no must not")
 	}
 }

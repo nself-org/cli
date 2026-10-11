@@ -119,7 +119,7 @@ func prepareRemoteApply(ctx context.Context, p v15Params) (*controlplane.RemoteA
 	}
 	ra := &controlplane.RemoteApply{
 		BackupID: backupID, BackupHost: backupHost, Previous: previousShipped(p.workdir, p.target),
-		Set: set, Expected: snap, LocalPlugins: local, ProdClass: p.prodClass, Yes: p.yes, Confirm: ttyConfirm,
+		Set: set, Expected: snap, LocalPlugins: local, ProdClass: p.prodClass, Yes: p.yes, Confirm: func(msg string) bool { return ttyConfirm(ctx, msg) },
 		StrictHasura: hasuraStrictFor(p.workdir, p.target), Out: out, Clock: deployGateClock,
 		Open: func(c context.Context, s controlplane.Server, k, e string) (deploy.Remote, error) {
 			return openDeployRemote(c, s, k, e)

@@ -226,13 +226,30 @@ func hasuraStrictFor(workdir, target string) bool {
 	return remoteHasuraStrict(workdir, target)
 }
 
-// ttyConfirm asks on a terminal; without one the answer is no.
-func ttyConfirm(msg string) bool {
+// ttyConfirm asks on a terminal; without one the answer is no. A cancelled ctx
+// (Ctrl-C while the prompt waits) answers no at once, so the command aborts.
+func ttyConfirm(ctx context.Context, msg string) bool {
 	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stderr.Fd())) {
 		return false
 	}
-	_, _ = fmt.Fprintf(os.Stderr, "%s. Type yes to continue: ", msg)
-	var ans string
-	_, _ = fmt.Scanln(&ans)
-	return strings.EqualFold(strings.TrimSpace(ans), "yes")
+	return confirmFrom(ctx, os.Stdin, os.Stderr, msg)
+}
+
+// confirmFrom prompts on out and reads one line from in in a goroutine, so a
+// blocking read cannot swallow the interrupt.
+func confirmFrom(ctx context.Context, in io.Reader, out io.Writer, msg string) bool {
+	_, _ = fmt.Fprintf(out, "%s. Type yes to continue: ", msg)
+	line := make(chan string, 1)
+	go func() {
+		var ans string
+		_, _ = fmt.Fscanln(in, &ans)
+		line <- ans
+	}()
+	select {
+	case ans := <-line:
+		return strings.EqualFold(strings.TrimSpace(ans), "yes")
+	case <-ctx.Done():
+		_, _ = fmt.Fprintln(out)
+		return false
+	}
 }
