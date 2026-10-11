@@ -9,6 +9,8 @@ package sim_test
 import (
 	"context"
 	"errors"
+	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/nself-org/cli/internal/controlplane/promote"
 	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
+	remotesdk "github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 const promoteNselfStub = `#!/bin/sh
@@ -32,6 +35,26 @@ esac
 
 func TestSimPromote(t *testing.T) {
 	source, target := startHost(t), startHost(t)
+	// startHost resets HOME for each fleet. Trust both keys again in the final
+	// HOME so strict promotion remotes can open either host.
+	for _, h := range []*simHost{source, target} {
+		spec, err := remotesdk.ParseHostSpec(h.host)
+		if err != nil {
+			t.Fatal(err)
+		}
+		scan, err := exec.Command("ssh-keyscan", "-T", "5", "-t", "ed25519", "-p", strconv.Itoa(spec.Port), "--", spec.Host).Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(scan), "\n") {
+			if fingerprint, fpErr := remotesdk.Fingerprint(line); fpErr == nil {
+				if err := controlplane.TrustHostKey(context.Background(), h.host, fingerprint); err != nil {
+					t.Fatal(err)
+				}
+				break
+			}
+		}
+	}
 	for _, h := range []*simHost{source, target} {
 		h.put("/usr/local/bin/nself", promoteNselfStub)
 		docker := strings.Replace(dockerStub, `case "$*" in`, `case "$*" in
