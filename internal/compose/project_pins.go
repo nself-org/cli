@@ -33,12 +33,24 @@ import (
 const ProjectLockFile = "nself.lock.yaml"
 
 var (
-	pinsMu       sync.RWMutex
-	projectPins  = map[string]string{}
+	pinsMu      sync.RWMutex
+	projectPins = map[string]string{}
+	// imageVars lists, per service, the *_IMAGE variables the compose generator
+	// really reads. Only POSTGRES_IMAGE has a consumer: config.PostgresConfig.Image
+	// (types_datastores.go) feeds ResolvePostgresImage (images.go), where it wins
+	// over every other input. Every other service renders from its *_VERSION
+	// (core_services.go, optional_services*.go), so a stray HASURA_IMAGE or
+	// STORAGE_IMAGE changes nothing and must neither drop a pin nor print a
+	// notice. Add a service here only together with a generator that reads it.
+	imageVars = map[string][]string{
+		"postgres": {"POSTGRES_IMAGE"},
+	}
+	// explicitVars lists the variables that can override a service's image, in
+	// the generator's precedence order (an *_IMAGE the generator reads first).
 	explicitVars = map[string][]string{
-		"admin":    {"NSELF_ADMIN_VERSION", "ADMIN_VERSION", "ADMIN_IMAGE"},
-		"postgres": {"POSTGRES_VERSION", "POSTGRES_IMAGE"},
-		"storage":  {"STORAGE_VERSION", "STORAGE_IMAGE"},
+		"admin":    {"NSELF_ADMIN_VERSION", "ADMIN_VERSION"},
+		"postgres": {"POSTGRES_IMAGE", "POSTGRES_VERSION"},
+		"storage":  {"STORAGE_VERSION"},
 	}
 )
 
@@ -142,24 +154,31 @@ func projectPin(service, image string) (string, bool) {
 		}
 	case name == "" || CanonicalRef(image) == CanonicalRef(pin):
 		// Canonical references carry no digest. An *_IMAGE value that names its
-		// own digest must name the pin's, or the user's digest wins.
-		if !envDigestDiffers(name, pin) {
+		// own digest must name the pin's, or the user's digest wins. Every
+		// *_IMAGE the generator reads is checked, not only the first variable
+		// set: nself init writes POSTGRES_VERSION next to POSTGRES_IMAGE.
+		over := envDigestDiffers(service, pin)
+		if over == "" {
 			return pin, true
 		}
+		name = over
 	}
 	noticePinDropped(service, name, pin)
 	return "", false
 }
 
-// envDigestDiffers reports whether the explicit *_IMAGE variable name carries a
-// digest that is not the pin's.
-func envDigestDiffers(name, pin string) bool {
-	if !strings.HasSuffix(name, "_IMAGE") {
-		return false
-	}
-	_, d, ok := strings.Cut(strings.TrimSpace(os.Getenv(name)), "@")
+// envDigestDiffers returns the name of the first *_IMAGE variable of service
+// (from imageVars, the ones the generator reads) that carries a digest which is
+// not the pin's, or "" when there is none.
+func envDigestDiffers(service, pin string) string {
 	_, pd, _ := strings.Cut(pin, "@")
-	return ok && d != pd
+	for _, name := range imageVars[service] {
+		_, d, ok := strings.Cut(strings.TrimSpace(os.Getenv(name)), "@")
+		if ok && d != pd {
+			return name
+		}
+	}
+	return ""
 }
 
 // repoOf is CanonicalRef without the tag.
@@ -189,12 +208,14 @@ func noticePinDropped(service, envName, pin string) {
 	_, _ = fmt.Fprintf(w, "notice: %s is set, so the %s pin in %s is not used\n", envName, service, ProjectLockFile)
 }
 
-// explicitEnvName returns the first env variable of service that is set, or "".
+// explicitEnvName returns the first env variable of service that is set, in
+// explicitVars order, or "". Services without an entry use <SVC>_VERSION only:
+// the generator reads no <SVC>_IMAGE for them (see imageVars).
 func explicitEnvName(service string) string {
 	names, ok := explicitVars[service]
 	if !ok {
 		base := strings.ToUpper(strings.ReplaceAll(service, "-", "_"))
-		names = []string{base + "_VERSION", base + "_IMAGE"}
+		names = []string{base + "_VERSION"}
 	}
 	for _, n := range names {
 		if strings.TrimSpace(os.Getenv(n)) != "" {

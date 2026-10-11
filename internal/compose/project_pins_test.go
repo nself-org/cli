@@ -257,56 +257,6 @@ func TestProjectPinRepositoryMustMatch(t *testing.T) {
 	}
 }
 
-// TestProjectPinEnvImageDigest: an explicit *_IMAGE that names its own digest
-// beats the pin when the digest differs (same repository and tag), with one
-// notice; the pin's own digest keeps it, and a digest-free value keeps it
-// (adversarial r2 N2). A *_VERSION never carries a digest, so it is unaffected.
-func TestProjectPinEnvImageDigest(t *testing.T) {
-	const other = "sha256:7777777777777777777777777777777777777777777777777777777777777777"
-	const base = "hasura/graphql-engine:v2.44.0"
-	pin := base + "@" + pinDigest
-	cases := []struct {
-		name, env string
-		kept      bool
-	}{
-		{"different digest", base + "@" + other, false},
-		{"different digest, docker.io spelling", "docker.io/" + base + "@" + other, false},
-		{"same digest", base + "@" + pinDigest, true},
-		{"no digest", base, true},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			resetPinNotices(t)
-			var notice bytes.Buffer
-			prevW := pinNoticeW
-			pinNoticeW = &notice
-			t.Cleanup(func() { pinNoticeW = prevW })
-			t.Setenv("HASURA_VERSION", "")
-			t.Setenv("HASURA_IMAGE", c.env)
-			restore := SetProjectPins(map[string]string{"hasura": pin})
-			defer restore()
-			for i := 0; i < 3; i++ {
-				got, ok := projectPin("hasura", c.env)
-				if ok != c.kept || (ok && got != pin) {
-					t.Fatalf("HASURA_IMAGE=%s: pin kept=%v (%q), want kept=%v", c.env, ok, got, c.kept)
-				}
-			}
-			n := strings.Count(notice.String(), "notice:")
-			if c.kept && n != 0 {
-				t.Errorf("a kept pin must not print a notice: %q", notice.String())
-			}
-			if !c.kept && (n != 1 || !strings.Contains(notice.String(), "HASURA_IMAGE")) {
-				t.Errorf("want one notice naming HASURA_IMAGE, got %q", notice.String())
-			}
-		})
-	}
-	// The digest rule is for *_IMAGE only: a *_VERSION value is never read for one.
-	t.Setenv("HASURA_VERSION", "v2.44.0@"+other)
-	if envDigestDiffers("HASURA_VERSION", pin) || envDigestDiffers("", pin) {
-		t.Error("only an *_IMAGE variable may carry a digest")
-	}
-}
-
 // TestCanonicalRefTable: one spelling for comparison; host and path lower case,
 // the tag exactly as written because registries treat tags case-sensitively
 // (adversarial r2 N3).
