@@ -2,6 +2,11 @@ package dockertest
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -37,5 +42,70 @@ func TestReason(t *testing.T) {
 		if got := reason(tc.out, tc.err); (got == "") != tc.usable {
 			t.Errorf("%s: reason = %q, want usable=%v", tc.name, got, tc.usable)
 		}
+	}
+}
+
+// fakeTB records Skipf and Fatalf instead of ending the test.
+type fakeTB struct {
+	testing.TB
+	skipped, failed string
+}
+
+func (f *fakeTB) Helper()                           {}
+func (f *fakeTB) Skipf(format string, args ...any)  { f.skipped = fmt.Sprintf(format, args...) }
+func (f *fakeTB) Fatalf(format string, args ...any) { f.failed = fmt.Sprintf(format, args...) }
+
+func TestRequire(t *testing.T) {
+	for _, tc := range []struct {
+		name, why, ga      string
+		wantSkip, wantFail bool
+	}{
+		{"usable daemon", "", "true", false, false},
+		{"unusable, not GitHub", "permission denied", "", true, false},
+		{"unusable, GitHub", "permission denied", "true", runtime.GOOS != "linux", runtime.GOOS == "linux"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			old := probeDocker
+			probeDocker = func() string { return tc.why }
+			t.Cleanup(func() { probeDocker = old })
+			t.Setenv("GITHUB_ACTIONS", tc.ga)
+			f := &fakeTB{TB: t}
+			Require(f)
+			if (f.skipped != "") != tc.wantSkip || (f.failed != "") != tc.wantFail {
+				t.Fatalf("skipped %q failed %q, want skip=%v fail=%v", f.skipped, f.failed, tc.wantSkip, tc.wantFail)
+			}
+			if tc.why != "" && !strings.Contains(f.skipped+f.failed, tc.why) {
+				t.Fatalf("reason %q not reported: skipped %q failed %q", tc.why, f.skipped, f.failed)
+			}
+		})
+	}
+}
+
+func TestProbe(t *testing.T) {
+	t.Run("no docker CLI", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		if why := probe(); !strings.Contains(why, "docker CLI not found") {
+			t.Fatalf("probe = %q", why)
+		}
+	})
+	if runtime.GOOS == "windows" {
+		return // the stub below is a shell script
+	}
+	for _, tc := range []struct{ name, script, want string }{
+		{"linux daemon", "echo linux", ""},
+		{"socket refused", "echo 'permission denied' >&2; exit 1", "permission denied"},
+		{"windows daemon", "echo windows", "OS type is windows"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "docker"), []byte("#!/bin/sh\n"+tc.script+"\n"), 0o755); err != nil { //nolint:gosec // test stub must be executable
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", dir)
+			why := probe()
+			if (tc.want == "" && why != "") || !strings.Contains(why, tc.want) {
+				t.Fatalf("probe = %q, want %q", why, tc.want)
+			}
+		})
 	}
 }

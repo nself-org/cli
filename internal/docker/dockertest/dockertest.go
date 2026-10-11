@@ -29,12 +29,13 @@ const probeTimeout = 15 * time.Second
 // when `docker info` answers with a Linux daemon.
 func Require(t testing.TB) {
 	t.Helper()
-	why := probe()
+	why := probeDocker()
 	if why == "" {
 		return
 	}
 	if Strict(runtime.GOOS, os.Getenv("GITHUB_ACTIONS")) {
 		t.Fatalf("docker is required on a GitHub Linux runner: %s", why)
+		return
 	}
 	t.Skipf("docker unusable on this host: %s", why)
 }
@@ -46,6 +47,9 @@ func Require(t testing.TB) {
 func Strict(goos, githubActions string) bool {
 	return goos == "linux" && githubActions == "true"
 }
+
+// probeDocker is probe; tests replace it.
+var probeDocker = probe
 
 // probe returns "" when `docker info` reports a Linux daemon, else the reason
 // the daemon is unusable.
