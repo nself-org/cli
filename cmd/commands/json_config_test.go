@@ -387,6 +387,7 @@ func TestConfigWriteRowsEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := [][]string{
+		{"config", "env", "show"},
 		{"config", "env", "copy", "dev", "staging"},
 		{"config", "env", "use", "dev"},
 		{"config", "env", "diff", "dev", "staging"},
@@ -419,6 +420,9 @@ func TestConfigWriteRowsEnvelope(t *testing.T) {
 		validateEnvelope(t, res.stdout, strings.Join(argv[:cfgPathLen(argv)], " "))
 		if strings.Contains(res.stdout, cfgFakeStore) {
 			t.Errorf("%v: stdout holds the store value", argv)
+		}
+		if argv[2] == "rotate" && strings.Contains(res.stderr, "New value") {
+			t.Errorf("%v: stderr prints the new value in envelope mode", argv)
 		}
 	}
 }
