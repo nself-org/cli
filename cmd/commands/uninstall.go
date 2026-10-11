@@ -1,8 +1,8 @@
 package commands
 
 import (
-	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -126,12 +126,13 @@ func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err e
 		}
 	}
 
-	// Extra confirmation for --purge.
+	// Extra confirmation for --purge: only the word itself passes, so a
+	// stream of "y" answers cannot reach the database.
 	if purge && !yes {
 		fmt.Println()
 		fmt.Printf("  %s DANGER: This will permanently delete your database.\n",
 			ui.C(ui.Red, ui.IconWarning))
-		if !confirmPrompt(cmd, "Type 'purge' to confirm: ") {
+		if !confirmWord(cmd, "Type 'purge' to confirm: ", "purge") {
 			fmt.Println("Aborted.")
 			return res, false, abortedUninstall(cmd)
 		}
@@ -153,15 +154,35 @@ func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err e
 		)
 	}
 
+	jsonMode := buildEnvelopeWanted(cmd)
+
 	steps.Next() // Stopping containers
-	if err := runDockerComposeDown(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cwd, purge); err != nil {
+	// volumesDeleted is true only when compose down --volumes really ran: with no
+	// compose file nothing touched the named volumes, so the data is kept.
+	ran, err := composeDown(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cwd, purge)
+	volumesDeleted := purge && ran && err == nil
+	if err != nil {
+		// JSON mode stops here, before the compose file is deleted: the
+		// containers (and under --purge the volumes) are still there, and the
+		// caller needs the file to retry the shutdown.
+		if jsonMode {
+			return res, false, errPartialRemoval("docker compose down failed, so containers and volumes may still exist", err, nil)
+		}
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  %s docker compose down: %v (continuing)\n",
 			ui.C(ui.Yellow, ui.IconWarning), err)
 	}
 
 	removed := []string{}
+	var failed []error
+	record := func(rel string, remove func(string) error) {
+		var err error
+		removed, err = recordIfExists(removed, cwd, rel, remove)
+		if err != nil {
+			failed = append(failed, err)
+		}
+	}
 	steps.Next() // Remove compose file
-	removed = recordIfExists(removed, cwd, "docker-compose.yml", removeIfExists)
+	record("docker-compose.yml", removeIfExists)
 
 	steps.Next() // Remove nginx sites
 	sites, _ := filepath.Glob(filepath.Join(cwd, "nginx", "sites", "*.conf"))
@@ -170,25 +191,36 @@ func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err e
 		if relErr != nil {
 			rel = m
 		}
-		removed = recordIfExists(removed, cwd, filepath.ToSlash(rel), removeIfExists)
+		record(filepath.ToSlash(rel), removeIfExists)
 	}
 
 	steps.Next() // Clear .nself/cache
-	removed = recordIfExists(removed, cwd, ".nself/cache/", removeDir)
+	record(".nself/cache/", removeDir)
 
 	if purge {
 		steps.Next() // Remove volumes
-		removed = recordIfExists(removed, cwd, ".nself/volumes/", removeDir)
+		record(".nself/volumes/", removeDir)
 	}
 
 	steps.Done()
+
+	// A path that could not be deleted is never reported as removed, and in
+	// JSON mode any such failure fails the command: kept_data false after a
+	// failed purge would tell the caller the data is gone when it is not.
+	if len(failed) > 0 && jsonMode {
+		done := removed
+		if volumesDeleted {
+			done = append([]string{volumesGone}, removed...)
+		}
+		return res, false, errPartialRemoval("could not remove every path", errors.Join(failed...), done)
+	}
 
 	fmt.Println()
 	fmt.Printf("  %s nSelf project files removed.\n", ui.C(ui.Green, ui.IconSuccess))
 	fmt.Println()
 	fmt.Printf("  To start fresh: %s\n", ui.C(ui.Cyan, "nself init --force && nself build && nself start"))
 	fmt.Println()
-	return UninstallResult{Removed: removed, KeptData: !purge}, true, nil
+	return UninstallResult{Removed: removed, KeptData: !volumesDeleted}, true, nil
 }
 
 // abortedUninstall is the result of a declined prompt: nil in human mode (the
@@ -201,25 +233,19 @@ func abortedUninstall(cmd *cobra.Command) error {
 	return nil
 }
 
-// recordIfExists runs remove on project-relative rel when it exists and
-// appends rel to removed. Trailing "/" in rel marks a directory in the report.
-func recordIfExists(removed []string, root, rel string, remove func(string)) []string {
-	path := filepath.Join(root, filepath.FromSlash(strings.TrimSuffix(rel, "/")))
-	if _, err := os.Lstat(path); err != nil {
-		return removed
-	}
-	remove(path)
-	return append(removed, rel)
-}
+// composeDown stops the project's containers and, when purge is true, removes
+// its volumes. A package variable so tests can make it fail without Docker.
+var composeDown = runDockerComposeDown
 
 // runDockerComposeDown stops and removes containers for the project.
-// If purge is true it also removes volumes.
+// If purge is true it also removes volumes. ran is false when there is no
+// compose file, so nothing was stopped and no volume was touched.
 // ctx is used to cancel the docker subprocess if the command context fires
 // (e.g. test harness deadline), preventing orphan I/O after the test exits.
-func runDockerComposeDown(ctx context.Context, stdout, stderr io.Writer, projectDir string, purge bool) error {
+func runDockerComposeDown(ctx context.Context, stdout, stderr io.Writer, projectDir string, purge bool) (ran bool, err error) {
 	composeFile := filepath.Join(projectDir, "docker-compose.yml")
 	if _, err := os.Stat(composeFile); os.IsNotExist(err) {
-		return nil // nothing to stop
+		return false, nil // nothing to stop
 	}
 
 	dockerArgs := []string{"compose", "--file", composeFile, "down"}
@@ -230,7 +256,7 @@ func runDockerComposeDown(ctx context.Context, stdout, stderr io.Writer, project
 	dcmd.Stdout = stdout
 	dcmd.Stderr = stderr
 	dcmd.WaitDelay = 5 * time.Second
-	return dcmd.Run()
+	return true, dcmd.Run()
 }
 
 // confirmPrompt prints the given prompt and returns true if the user typed
@@ -241,26 +267,14 @@ func runDockerComposeDown(ctx context.Context, stdout, stderr io.Writer, project
 // than blocking forever on the real os.Stdin.
 func confirmPrompt(cmd *cobra.Command, prompt string) bool {
 	_, _ = fmt.Fprint(cmd.OutOrStdout(), prompt)
-	scanner := bufio.NewScanner(cmd.InOrStdin())
-	if !scanner.Scan() {
-		return false
-	}
-	answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
-	return answer == "y" || answer == "yes" || answer == "purge"
+	answer, ok := readAnswer(cmd.InOrStdin())
+	return ok && (answer == "y" || answer == "yes" || answer == "purge")
 }
 
-// removeIfExists deletes a single file if it exists; ignores missing files.
-func removeIfExists(path string) {
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "  %s removing %s: %v\n",
-			ui.C(ui.Yellow, ui.IconWarning), path, err)
-	}
-}
-
-// removeDir removes a directory and its contents; ignores missing directories.
-func removeDir(path string) {
-	if err := os.RemoveAll(path); err != nil {
-		fmt.Fprintf(os.Stderr, "  %s removing directory %s: %v\n",
-			ui.C(ui.Yellow, ui.IconWarning), path, err)
-	}
+// confirmWord prints prompt and returns true only when the user typed word
+// (case-insensitive). It is the gate for prompts that name what to type.
+func confirmWord(cmd *cobra.Command, prompt, word string) bool {
+	_, _ = fmt.Fprint(cmd.OutOrStdout(), prompt)
+	answer, ok := readAnswer(cmd.InOrStdin())
+	return ok && answer == strings.ToLower(word)
 }
