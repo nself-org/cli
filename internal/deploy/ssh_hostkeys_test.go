@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -26,47 +27,100 @@ func writeEnvFile(t *testing.T) string {
 	return p
 }
 
+// requireKeygen skips the test when ssh-keygen is missing: pinned and operator
+// keys are matched with ssh-keygen -F, the matcher ssh itself uses.
+func requireKeygen(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		// HOME does not move os.UserHomeDir there, so the pin file would be the real one.
+		t.Skip("pin-file tests need a POSIX HOME")
+	}
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+}
+
+// TestSecretShippingPinsHostKeyV14: PushSecrets ships secrets, so it verifies
+// the host key in v1.4 as well. DeployViaSsh with an env file stays accept-new
+// in v1.4 (moved to P7-DEPL-29) and runs no ssh-keyscan.
 func TestSecretShippingPinsHostKeyV14(t *testing.T) {
+	requireKeygen(t)
 	for _, v15 := range []string{"", "0"} {
-		t.Run("NSELF_V15="+v15, func(t *testing.T) {
+		t.Run("PushSecrets NSELF_V15="+v15, func(t *testing.T) {
 			t.Setenv("NSELF_V15", v15)
 			t.Setenv("HOME", t.TempDir())
 			read := installFakeSSHTools(t)
 			installFakeKeyscan(t)
-			cfg := SSHConfig{Host: "u@203.0.113.7", RemotePath: "/opt/nself", EnvName: "live", ServerName: "web",
-				EnvFile: writeEnvFile(t), KeyPath: "/k/id"}
-			err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml")
+			cfg := SSHConfig{Host: "u@203.0.113.7", KeyPath: "/k/id", ServerName: "web"}
+			opts := PushSecretsOptions{Target: "live", EnvFile: writeEnvFile(t), RemotePath: "/opt/nself/.env"}
+			err := PushSecrets(context.Background(), cfg, opts)
 			if err == nil || !strings.Contains(err.Error(), "E487") || !strings.Contains(err.Error(), "--trust-host-key SHA256:") {
-				t.Fatalf("unknown host with env file: %v", err)
+				t.Fatalf("unknown host: %v", err)
 			}
 			if n := len(read()); n != 0 {
 				t.Fatalf("%d process(es) ran before the host-key refusal", n)
 			}
-			alias := "nself-203.0.113.7-22"
+			alias := deployKeyAlias(mustSpec(t, cfg.Host))
 			if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add(alias, "ssh-ed25519 AQID"); err != nil {
 				t.Fatal(err)
 			}
-			if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
-				t.Fatalf("pinned deploy: %v", err)
+			if err := PushSecrets(context.Background(), cfg, opts); err != nil {
+				t.Fatalf("pinned push: %v", err)
 			}
 			calls := read()
-			if len(calls) == 0 || calls[0].tool != "rsync" {
+			if len(calls) != 1 || calls[0].tool != "scp" {
 				t.Fatalf("calls = %#v", calls)
 			}
 			joined := strings.Join(calls[0].args, " ")
 			for _, w := range []string{"StrictHostKeyChecking=yes", "GlobalKnownHostsFile=" + DeployKnownHostsPath(), "HostKeyAlias=" + alias} {
 				if !strings.Contains(joined, w) {
-					t.Errorf("rsync argv lacks %q: %s", w, joined)
+					t.Errorf("scp argv lacks %q: %s", w, joined)
 				}
 			}
 		})
 	}
+	t.Run("DeployViaSsh env file v1.4 stays accept-new without a scan", func(t *testing.T) {
+		t.Setenv("NSELF_V15", "")
+		t.Setenv("HOME", t.TempDir())
+		read := installFakeSSHTools(t)
+		scans := installFakeKeyscan(t)
+		cfg := SSHConfig{Host: "u@203.0.113.7", RemotePath: "/opt/nself", EnvName: "live", EnvFile: writeEnvFile(t), KeyPath: "/k/id"}
+		if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
+			t.Fatalf("env deploy: %v", err)
+		}
+		calls := read()
+		if len(calls) == 0 || !strings.Contains(strings.Join(calls[0].args, " "), "StrictHostKeyChecking=accept-new") {
+			t.Fatalf("calls = %#v", calls)
+		}
+		if n := scans(); n != 0 {
+			t.Errorf("ssh-keyscan ran %d time(s)", n)
+		}
+	})
+	t.Run("DeployViaSsh strict in v1.5", func(t *testing.T) {
+		t.Setenv("NSELF_V15", "1")
+		t.Setenv("HOME", t.TempDir())
+		read := installFakeSSHTools(t)
+		installFakeKeyscan(t)
+		cfg := SSHConfig{Host: "u@203.0.113.7", RemotePath: "/opt/nself", EnvName: "live", EnvFile: writeEnvFile(t), KeyPath: "/k/id"}
+		err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml")
+		if err == nil || !strings.Contains(err.Error(), "E487") || len(read()) != 0 {
+			t.Fatalf("v1.5 unknown host: %v", err)
+		}
+		if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
+			t.Fatal(err)
+		}
+		if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
+			t.Fatalf("pinned deploy: %v", err)
+		}
+		if joined := strings.Join(read()[0].args, " "); !strings.Contains(joined, "StrictHostKeyChecking=yes") {
+			t.Errorf("rsync argv: %s", joined)
+		}
+	})
 	t.Run("compose-only v1.4 stays accept-new without a scan", func(t *testing.T) {
 		t.Setenv("NSELF_V15", "")
 		t.Setenv("HOME", t.TempDir())
 		read := installFakeSSHTools(t)
-		// No ssh-keyscan on PATH beyond the real one: a scan would hit the network
-		// or fail, so success proves none ran.
+		scans := installFakeKeyscan(t)
 		cfg := SSHConfig{Host: "u@203.0.113.7", RemotePath: "/opt/nself", EnvName: "live", KeyPath: "/k/id"}
 		if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
 			t.Fatalf("compose-only deploy: %v", err)
@@ -75,11 +129,14 @@ func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 		if len(calls) == 0 || !strings.Contains(strings.Join(calls[0].args, " "), "StrictHostKeyChecking=accept-new") {
 			t.Fatalf("calls = %#v", calls)
 		}
+		if n := scans(); n != 0 {
+			t.Errorf("ssh-keyscan ran %d time(s)", n)
+		}
 	})
 }
 
 func TestPinnedLookupRefusesForeignLine(t *testing.T) {
-	t.Setenv("NSELF_V15", "")
+	t.Setenv("NSELF_V15", "1")
 	t.Setenv("HOME", t.TempDir())
 	read := installFakeSSHTools(t)
 	installFakeKeyscan(t)
@@ -101,6 +158,7 @@ func TestPinnedLookupRefusesForeignLine(t *testing.T) {
 }
 
 func TestDeployKeyAliasIPHost(t *testing.T) {
+	requireKeygen(t)
 	for in, want := range map[string]string{
 		"u@203.0.113.7":        "nself-203.0.113.7-22",
 		"u@[2001:db8::1]:2222": "nself-2001-db8--1-2222",
@@ -134,16 +192,14 @@ func TestDeployKeyAliasIPHost(t *testing.T) {
 // TestSecretShippingOperatorKnownHost: a key the operator already trusts in
 // ~/.ssh/known_hosts satisfies strict checking with no HostKeyAlias.
 func TestSecretShippingOperatorKnownHost(t *testing.T) {
-	if _, err := exec.LookPath("ssh-keygen"); err != nil {
-		t.Skip("ssh-keygen not on PATH")
-	}
+	requireKeygen(t)
 	for host, line := range map[string]string{
 		"u@host.example":      "host.example ssh-ed25519 AQID",
 		"u@host.example:2222": "[host.example]:2222 ssh-ed25519 AQID",
 	} {
 		host, line := host, line
 		t.Run(host, func(t *testing.T) {
-			t.Setenv("NSELF_V15", "")
+			t.Setenv("NSELF_V15", "1")
 			home := t.TempDir()
 			t.Setenv("HOME", home)
 			if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {

@@ -170,6 +170,7 @@ func TestPushSecretsRemotePathValidation(t *testing.T) {
 // TestPushSecretsLocalOperand proves a relative env file named like host:path
 // reaches scp as an absolute path.
 func TestPushSecretsLocalOperand(t *testing.T) {
+	requireKeygen(t)
 	t.Setenv("HOME", t.TempDir())
 	read := installFakeSSHTools(t)
 	installFakeKeyscan(t)

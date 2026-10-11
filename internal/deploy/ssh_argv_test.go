@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -22,6 +23,10 @@ import (
 // line per run; the returned func reports how many runs happened.
 func installFakeKeyscan(t *testing.T) func() int {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		// A POSIX stub cannot run there, and the real ssh-keyscan would reach the network.
+		t.Skip("fake ssh-keyscan is a POSIX shell stub")
+	}
 	dir := t.TempDir()
 	logFile := filepath.Join(dir, "scans.log")
 	if err := os.WriteFile(logFile, nil, 0o644); err != nil {

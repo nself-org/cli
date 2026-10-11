@@ -280,8 +280,8 @@ holding whitespace or a quote (rsync re-splits its `-e` string on spaces).
 
 | Deploy path | v1.4 (default) | v1.5 (`NSELF_V15=1`) |
 |---|---|---|
-| Inventory deploy that ships an env file to a server, and the secrets push | strict | strict |
-| `nself deploy <target>` push from `NSELF_DEPLOY_HOST_<TARGET>` (ships `.env` files) | `StrictHostKeyChecking=accept-new` (being closed, see below) | strict |
+| Secrets push (`.env.<target>` copied with scp) | strict | strict |
+| Deploy that ships an env file (inventory deploy, `nself deploy <target>` push) | `StrictHostKeyChecking=accept-new` (being closed, see below) | strict |
 | Compose file only | `StrictHostKeyChecking=accept-new` | strict |
 
 Strict means the CLI scans the host's live ED25519 key and continues only when that key is already
@@ -290,12 +290,12 @@ trusted, either in your `~/.ssh/known_hosts` or in the deploy pin file
 copied before the check. Only ED25519 host keys are scanned: a host that offers only RSA or ECDSA
 keys fails the strict check (`host key scan ... returned no ED25519 key`).
 
-Known gaps in v1.4 mode: the `nself deploy <target>` push still uses `accept-new`, and any
-`accept-new` connection (a probe, a compose-only deploy) records a first-seen key in
-`~/.ssh/known_hosts`, which the strict check then trusts. Until both are closed, verify a new
-host's fingerprint before its first deploy, or run with `NSELF_V15=1`.
+Known gap in v1.4 mode: deploys that ship env files still use `accept-new`, and any `accept-new`
+connection (a probe, a compose-only deploy) records a first-seen key in `~/.ssh/known_hosts`.
+Until that is closed, verify a new host's fingerprint before its first deploy (or pin it with
+`--trust-host-key`), or run with `NSELF_V15=1`.
 
-**First contact with a new host.** A secret-bearing deploy to a host you have never connected to
+**First contact with a new host.** A strict deploy to a host you have never connected to
 fails with `E487` and prints the live fingerprint:
 
 ```text
@@ -305,8 +305,8 @@ E487 unknown host key SHA256:... for deploy@203.0.113.10; verify it, then run ns
 
 Compare the fingerprint with the one your provider shows (console or `ssh-keygen -lf
 /etc/ssh/ssh_host_ed25519_key.pub` on the server), then either pin it with
-`--trust-host-key`, or ssh to the host once and accept the key. Before this change a v1.4 deploy
-with an env file accepted any key on first contact (`accept-new`).
+`--trust-host-key`, or ssh to the host once and accept the key. Before this change the v1.4 secrets push
+accepted any key on first contact (`accept-new`).
 
 IP-address hosts are pinned under the alias `nself-<ip>-<port>` (for example
 `nself-203.0.113.10-22`) and ssh gets a matching `HostKeyAlias`; hosts on a non-default port use

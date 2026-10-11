@@ -73,21 +73,15 @@ func HostKeyOptions(ctx context.Context, host, env, server string, strict bool) 
 }
 
 // pinnedFingerprints returns the fingerprints pinned for alias in the deploy
-// pin file. A pin file the sdk refuses (foreign wildcard or CA line, bad mode)
-// is an error: fail closed, before any copy.
-func pinnedFingerprints(alias string) (map[string]bool, error) {
+// pin file. The sdk Lookup is only the guard: a pin file it refuses (foreign
+// wildcard or CA line, bad mode) is an error, fail closed before any copy. The
+// set itself comes from ssh-keygen -F, the matcher ssh uses on this file.
+func pinnedFingerprints(ctx context.Context, alias string) (map[string]bool, error) {
 	pin := remote.PinnedHostKeys{Path: DeployKnownHostsPath()}
-	lines, err := pin.Lookup(alias)
-	if err != nil {
+	if _, err := pin.Lookup(alias); err != nil {
 		return nil, errs.New("E487", fmt.Sprintf("deploy pin file %s refused: %v", DeployKnownHostsPath(), err))
 	}
-	seen := map[string]bool{}
-	for _, l := range lines {
-		if fp, ferr := remote.Fingerprint(l); ferr == nil {
-			seen[fp] = true
-		}
-	}
-	return seen, nil
+	return deployTrustedFingerprints(ctx, alias, DeployKnownHostsPath()), nil
 }
 
 // hostKeyPolicy is the shared host-key policy. shipsSecrets forces strict
@@ -112,7 +106,7 @@ func hostKeyPolicy(ctx context.Context, host, env, server string, strict, shipsS
 	}
 	alias := deployKeyAlias(spec)
 	operator := deployTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
-	pinned, err := pinnedFingerprints(alias)
+	pinned, err := pinnedFingerprints(ctx, alias)
 	if err != nil {
 		return nil, err
 	}

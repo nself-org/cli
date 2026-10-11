@@ -152,6 +152,7 @@ func TestGoldenArgv_DeployViaSshDefaultRemotePath(t *testing.T) {
 // shipping is strict in v1.4 too, so the argv now carries the pinned host-key
 // policy, a HostKeyAlias for the IP host, and an absolute local operand.
 func TestGoldenArgv_PushSecrets(t *testing.T) {
+	requireKeygen(t)
 	t.Setenv("HOME", t.TempDir())
 	read := installFakeSSHTools(t)
 	installFakeKeyscan(t)

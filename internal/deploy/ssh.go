@@ -135,8 +135,9 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 	if identityEnv == "" {
 		identityEnv = cfg.EnvName
 	}
-	// Shipping an env file means shipping secrets: strict in v1.4 as well.
-	policy, err := hostKeyPolicy(ctx, spec.String(), identityEnv, serverName, true, cfg.EnvFile != "")
+	// v1.4 env shipping stays accept-new until P7-DEPL-29 (the pipeline's
+	// accept-new probe would seed ~/.ssh/known_hosts first). PushSecrets is strict.
+	policy, err := hostKeyPolicy(ctx, spec.String(), identityEnv, serverName, true, false)
 	if err != nil {
 		return err
 	}
