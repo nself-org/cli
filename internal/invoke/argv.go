@@ -149,10 +149,11 @@ func flagItems(f cmdregistry.Flag, v any) ([]string, error) {
 		if !ok {
 			return bad("a boolean")
 		}
-		if b {
-			return []string{"--" + f.Name}, nil
-		}
-		return []string{"--" + f.Name + "=false"}, nil
+		// Always --name=true|false, never a bare --name: a mounted plugin node
+		// parses no flags, and cobra's command lookup reads an unknown bare
+		// --name as taking the next word, so a trailing bare bool would eat
+		// the "--" and turn the first positional into a subcommand name.
+		return []string{"--" + f.Name + "=" + strconv.FormatBool(b)}, nil
 	case kindInteger:
 		s, ok := integerText(v, strings.HasPrefix(f.Type, "uint"))
 		if !ok {

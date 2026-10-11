@@ -337,7 +337,7 @@ func TestInvokeEchoesArgvToChild(t *testing.T) {
 	if err := json.Unmarshal(res.Stdout, &d); err != nil {
 		t.Fatalf("%v: %s", err, res.Stdout)
 	}
-	want := []string{"fx", "echo", "--json", "--name=v;$(id)", "--on", "--", "--json", "a b"}
+	want := []string{"fx", "echo", "--json", "--name=v;$(id)", "--on=true", "--", "--json", "a b"}
 	if !reflect.DeepEqual(d.Data.Argv, want) {
 		t.Errorf("child argv %q, want %q", d.Data.Argv, want)
 	}

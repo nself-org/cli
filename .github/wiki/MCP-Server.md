@@ -17,6 +17,8 @@ A machine request names a command from the **machine registry** and gives typed 
 5. runs `nself <path> --json ...` as a **child process of the same binary**, never in the server process,
 6. returns the child's single JSON document and its exit code, or an error envelope (`E422` for no single document, `E423` for a timeout).
 
+The child refuses to run anything but the command the invoker checked: the invoker sets `NSELF_INVOKE_PATH` to the classified path, and the child resolves its own argv with the same lookup it is about to execute and answers `E421` when the two differ (for example after a plugin upgrade gave a leaf new subcommands, or the binary was replaced, while the server kept its registry from start-up). The variable is removed before the command runs, so nothing the command spawns inherits it.
+
 Running as a child keeps global state, `os.Exit` and the project operation lock identical to a typed command. There is no shell anywhere: every request value is exactly one argv element.
 
 The **machine registry** is the v1.5 registry of the running binary with installed plugin commands mounted. It is the same in both compat modes ([[Compat-V15]]), so tool names and routes are the v1.5 shape in 1.4.x too. The plugin set is read when the server starts; install a plugin, then restart the server.
@@ -64,9 +66,9 @@ Example, flags and a value that looks like a flag:
 {"args": ["-x"], "flags": {"tags": ["a", "b"], "quiet": true}}
 ```
 
-becomes `<path> --json --quiet --tags=a --tags=b -- -x`. Flags are sorted by name, a boolean `true` is `--name`, `false` is `--name=false`, and a list is one `--name=value` per item. Positional values always come after `--`, so none of them can be read as a flag. A `stringSlice` flag is split on commas by the child, so an item that holds a comma, a quote or a newline is refused instead of being silently changed.
+becomes `<path> --json --quiet=true --tags=a --tags=b -- -x`. Flags are sorted by name, a boolean is always `--name=true` or `--name=false` (never a bare `--name`: a mounted plugin node parses no flags, and cobra's command lookup would read a bare unknown flag as taking the next word, swallow the `--` and run the first positional as a subcommand), and a list is one `--name=value` per item. Positional values always come after `--`, so none of them can be read as a flag. A `stringSlice` flag is split on commas by the child, so an item that holds a comma, a quote or a newline is refused instead of being silently changed.
 
-`argv` on a plugin command that has subcommands is `E421`: a mounted plugin node parses no flags, so the child would read the first word as a subcommand and run a node the exposure rules never checked. Its params schema does not offer `argv`. For a leaf, `argv` is the plugin's own input: the exposure decision covers the command at the requested path, not what the plugin binary does with its words.
+`argv` on a plugin command that has subcommands is `E421`: a mounted plugin node parses no flags, so the child would read the first word as a subcommand and run a node the exposure rules never checked. Its params schema does not offer `argv`. For a leaf, `argv` is the plugin's own input: the exposure decision covers the command at the requested path, not what the plugin binary does with its words. Accepted risk: free-form `argv` can carry the plugin's own undeclared flags (for example `--force`), which the side-effect classification cannot see, so a plugin leaf declared `read` that takes undeclared mutating flags can write. Plugin authors declare every flag with its side effect in the manifest to get the gate.
 
 Refused with `E420`, naming the flag but never echoing its value: an unknown or unexposed flag, a value of the wrong type (`1.5` for an integer), too few or too many args, a NUL byte anywhere, an element over 32 KiB or an argv over 128 KiB.
 

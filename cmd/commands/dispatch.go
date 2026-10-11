@@ -115,6 +115,12 @@ func Execute() error {
 	// Wrap every command with the --json guard and coded usage errors.
 	installInvocationDecorator(RootCmd)
 
+	// A machine-invoked child runs only the command the invoker classified
+	// (invoke_pin.go, P7-SURF-25).
+	if err := checkInvokePin(RootCmd, os.Args[1:]); err != nil {
+		return err
+	}
+
 	// Intercept unknown commands for the plugin router
 	if len(os.Args) > 1 {
 		cmdName := os.Args[1]

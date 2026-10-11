@@ -68,7 +68,7 @@ func TestExecChildEnv(t *testing.T) {
 		}
 	}
 	// Exactly one entry per owned name, whatever the parent held.
-	env, err := childEnv([]string{"CI=0", "CI=2", TokenEnv + "=x", "A=1", "noequals", DeadlineEnv + "=5"}, TransportMCP, 0)
+	env, err := childEnv([]string{"CI=0", "CI=2", TokenEnv + "=x", "A=1", "noequals", DeadlineEnv + "=5", PathEnv + "=evil"}, TransportMCP, "fx echo", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,13 @@ func TestExecChildEnv(t *testing.T) {
 	if count[TokenEnv] != 0 || count[DeadlineEnv] != 0 || count["noequals"] != 0 {
 		t.Errorf("owned or malformed entries survived: %v", env)
 	}
-	if _, err := childEnv(nil, "carrier-pigeon", 0); err == nil {
+	if count[PathEnv] != 1 || !contains(env, PathEnv+"=fx echo") {
+		t.Errorf("the path pin must be the invoker's, exactly once: %v", env)
+	}
+	if env, _ := childEnv([]string{PathEnv + "=evil"}, TransportMCP, "", 0); contains(env, PathEnv+"=evil") {
+		t.Errorf("an inherited path pin must be dropped: %v", env)
+	}
+	if _, err := childEnv(nil, "carrier-pigeon", "", 0); err == nil {
 		t.Error("an unknown transport must be refused")
 	}
 }

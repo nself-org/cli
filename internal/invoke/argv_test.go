@@ -291,7 +291,7 @@ func TestExposedFlagsStreamOverride(t *testing.T) {
 	_, err := BuildArgv(cmd, req(t, `{"args":["w"],"flags":{"follow":true}}`))
 	wantCode(t, err, "E420", "follow")
 	argv, err := BuildArgvFor(cmd, req(t, `{"args":["w"],"flags":{"follow":true}}`), TransportHTTPStream)
-	if err != nil || !contains(argv, "--follow") {
+	if err != nil || !contains(argv, "--follow=true") {
 		t.Errorf("NDJSON argv %v, %v", argv, err)
 	}
 }
@@ -313,7 +313,7 @@ func TestBuildArgv(t *testing.T) {
 		want      []string
 	}{
 		{"no flags", `{"args":["w"]}`, []string{"fx", "echo", "--json", "--", "w"}},
-		{"bool true", `{"args":["w"],"flags":{"on":true}}`, []string{"fx", "echo", "--json", "--on", "--", "w"}},
+		{"bool true", `{"args":["w"],"flags":{"on":true}}`, []string{"fx", "echo", "--json", "--on=true", "--", "w"}},
 		{"bool false", `{"args":["w"],"flags":{"on":false}}`, []string{"fx", "echo", "--json", "--on=false", "--", "w"}},
 		{"slice is one flag per item", `{"args":["w"],"flags":{"items":["a b","c;d"]}}`, []string{"fx", "echo", "--json", "--items=a b", "--items=c;d", "--", "w"}},
 		{"stringSlice", `{"args":["w"],"flags":{"tags":["a","b"]}}`, []string{"fx", "echo", "--json", "--tags=a", "--tags=b", "--", "w"}},
@@ -435,5 +435,41 @@ func TestBuildArgv(t *testing.T) {
 	}
 	if _, err := BuildArgv(nil, Request{}); err == nil {
 		t.Error("nil command must be refused")
+	}
+}
+
+// TestBuildArgvNoBareFlag pins that no flag element before "--" is a bare
+// --name: a mounted plugin node parses no flags, and cobra's command lookup
+// reads an unknown bare --name as taking the next word, so a bare trailing
+// bool would swallow "--" and promote the first positional to a subcommand
+// (post-merge review of P7-SURF-24, must-fix 1).
+func TestBuildArgvNoBareFlag(t *testing.T) {
+	reg := fixtureRegistry(t)
+	echo := mustCmd(t, reg, "fx echo")
+	for _, doc := range []string{
+		`{"args":["w"],"flags":{"on":true}}`,
+		`{"args":["w"],"flags":{"on":false}}`,
+		`{"args":["w"],"flags":{"on":true,"name":"x","count":1}}`,
+		`{"args":["drop"],"flags":{"on":true}}`,
+	} {
+		got, err := BuildArgv(echo, req(t, doc))
+		if err != nil {
+			t.Fatalf("%s: %v", doc, err)
+		}
+		sep := -1
+		for i, a := range got {
+			if a == "--" {
+				sep = i
+				break
+			}
+		}
+		if sep < 0 {
+			t.Fatalf("%s: no -- separator in %q", doc, got)
+		}
+		for _, a := range got[:sep] {
+			if strings.HasPrefix(a, "--") && a != "--json" && !strings.Contains(a, "=") {
+				t.Errorf("%s: bare flag element %q in %q", doc, a, got)
+			}
+		}
 	}
 }

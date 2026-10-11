@@ -40,6 +40,9 @@ const (
 	TokenEnv            = "NSELF_MCP_TOKEN"
 	InvokedByEnv        = "NSELF_INVOKED_BY"
 	DeadlineEnv         = "NSELF_INVOKE_DEADLINE_MS"
+	// PathEnv pins the command path the invoker classified; the child refuses
+	// to run when its own command lookup resolves a different command (E421).
+	PathEnv = "NSELF_INVOKE_PATH"
 )
 
 // Redacted replaces secret values in ids, audit records and stderr tails.
@@ -53,6 +56,9 @@ type Spec struct {
 	Dir string
 	// Transport is TransportMCP, TransportHTTP or TransportHTTPStream.
 	Transport string
+	// Path, when set, is the classified command path the child must resolve
+	// to (PathEnv); empty sets no pin.
+	Path string
 	// Timeout of 0 means none (NDJSON): only context cancellation ends the child.
 	Timeout time.Duration
 	// Stdout, when set, receives the child's stdout as it is produced (NDJSON);

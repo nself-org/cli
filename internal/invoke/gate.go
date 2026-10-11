@@ -158,7 +158,7 @@ func requestSecrets(cmd *cmdregistry.Command, req Request) []string {
 func consentFlags(cmd *cmdregistry.Command) []string {
 	var out []string
 	for _, name := range cmd.Confirm.Flags {
-		out = append(out, "--"+name)
+		out = append(out, "--"+name+"=true") // never bare: see flagItems
 	}
 	return out
 }
@@ -213,7 +213,7 @@ func planGate(ctx context.Context, cmd *cmdregistry.Command, req Request, o Opti
 	if err != nil {
 		return refused(d, err), nil
 	}
-	argv = withFlags(argv, "--"+plan.Flag)
+	argv = withFlags(argv, "--"+plan.Flag+"=true")
 	ran, out, err := runChild(ctx, Result{}, barePath(cmd.Path), specFor(o, transport, argv), requestSecrets(cmd, req), false)
 	if err != nil {
 		return d, err

@@ -333,7 +333,7 @@ func TestGatePlanForm(t *testing.T) {
 		t.Fatalf("apply: %+v %s", res, res.Stdout)
 	}
 	av := e.argvs()
-	if len(av) != 2 || !hasArg(av[0], "--plan") || hasArg(av[0], "--plan-id="+id) {
+	if len(av) != 2 || !hasArg(av[0], "--plan=true") || hasArg(av[0], "--plan-id="+id) {
 		t.Fatalf("plan exec: %q", av)
 	}
 	if !reflect.DeepEqual(av[1], []string{"gx", "apply", "--json", "--target=x", "--plan-id=" + id}) {
@@ -353,7 +353,7 @@ func TestGatePlanForm(t *testing.T) {
 	if conf.Kind != "plan" || conf.Confirm != id || plan["plan_id"] != id || conf.SideEffect != "write" {
 		t.Fatalf("plan confirmation: %+v", conf)
 	}
-	if len(e.argvs()) != 1 || !hasArg(e.argvs()[0], "--plan") {
+	if len(e.argvs()) != 1 || !hasArg(e.argvs()[0], "--plan=true") {
 		t.Errorf("only the plan exec runs: %q", e.argvs())
 	}
 
@@ -362,7 +362,7 @@ func TestGatePlanForm(t *testing.T) {
 	if res.ExitCode != 0 || res.ErrorCode != "" {
 		t.Fatalf("confirmed apply: %+v", res)
 	}
-	if got := e.argvs()[1]; !reflect.DeepEqual(got, []string{"gx", "apply", "--json", "--target=x", "--force", "--plan-id=" + id}) {
+	if got := e.argvs()[1]; !reflect.DeepEqual(got, []string{"gx", "apply", "--json", "--target=x", "--force=true", "--plan-id=" + id}) {
 		t.Errorf("confirmed argv %q", got)
 	}
 	lines := e.auditLines()
@@ -432,7 +432,7 @@ func TestGateRequestNonce(t *testing.T) {
 	if res.ExitCode != 0 || res.ErrorCode != "" {
 		t.Fatalf("confirmed: %+v %s", res, res.Stdout)
 	}
-	want := []string{"gx", "wipe", "--json", "--target=t", "--yes", "--force", "--", "n1"}
+	want := []string{"gx", "wipe", "--json", "--target=t", "--yes=true", "--force=true", "--", "n1"}
 	if av := e.argvs(); len(av) != 1 || !reflect.DeepEqual(av[0], want) {
 		t.Errorf("apply argv %q, want %q", av, want)
 	}

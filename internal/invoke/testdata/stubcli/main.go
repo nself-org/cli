@@ -60,7 +60,7 @@ func planStub() int {
 	sum := sha256.Sum256(state)
 	id := hex.EncodeToString(sum[:])
 	for _, a := range os.Args[1:] {
-		if a == "--plan" {
+		if a == "--plan" || a == "--plan=true" {
 			emit(map[string]any{"plan_id": id, "requires_confirmation": os.Getenv("STUBCLI_REQCONF") == "1",
 				"changes": []any{map[string]any{"kind": "file", "path": "stub.txt", "action": "write"}}})
 			return 0

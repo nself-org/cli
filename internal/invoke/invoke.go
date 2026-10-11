@@ -104,7 +104,7 @@ func transportOf(o Options) string {
 // specFor builds the child spec for argv: an NDJSON request has no timeout and
 // streams to o.Stdout, any other uses o.Timeout or DefaultTimeout.
 func specFor(o Options, transport string, argv []string) Spec {
-	spec := Spec{Argv: argv, Dir: o.Dir, Transport: transport, Timeout: o.Timeout}
+	spec := Spec{Argv: argv, Dir: o.Dir, Transport: transport, Timeout: o.Timeout, Path: pathOf(argv)}
 	switch {
 	case transport == TransportHTTPStream:
 		spec.Timeout, spec.Stdout = 0, o.Stdout
@@ -112,6 +112,16 @@ func specFor(o Options, transport string, argv []string) Spec {
 		spec.Timeout = DefaultTimeout
 	}
 	return spec
+}
+
+// pathOf is the command path of an invoker argv: the words before --json.
+func pathOf(argv []string) string {
+	for i, a := range argv {
+		if a == "--json" {
+			return strings.Join(argv[:i], " ")
+		}
+	}
+	return ""
 }
 
 // withFlags inserts extra before the "--" separator of argv (or at the end).
