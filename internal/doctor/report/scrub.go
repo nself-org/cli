@@ -66,6 +66,7 @@ func (s *Scrubber) Scrub(text string) string {
 	text = s.scrubUserinfo(text)
 	text = s.scrubRedact(text)
 	text = s.scrubExtraTokens(text)
+	text = s.scrubWebhooks(text)
 	return s.scrubAssignments(text)
 }
 

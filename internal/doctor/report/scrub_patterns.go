@@ -36,7 +36,7 @@ var (
 	// ?token=abc&x=1 : the value ends at & or #.
 	queryRe = regexp.MustCompile(`(?i)([?&;]` + ident + `=)([^&#\s"']+)`)
 	// --password value, --password=value, -p-style flags with a secret word.
-	flagRe = regexp.MustCompile(`(?i)(--?` + ident + `(?:=|[ \t]+))([^\s\-][^\s]*|"[^"\r\n]*"|'[^'\r\n]*')`)
+	flagRe = regexp.MustCompile(`(?i)(--?` + ident + `(?:=|[ \t]+))("[^"\r\n]*"|'[^'\r\n]*'|[^\s\-][^\s]*)`)
 	// ["--admin-secret", "abc"] and --admin-secret","abc" list forms.
 	flagListRe = regexp.MustCompile(`(?i)(--?` + ident + `["']?[ \t]*,[ \t]*["']?)([^"',\]\s]+)`)
 	// nginx: proxy_set_header X-Admin-Secret abc;  set $token abc;
@@ -65,7 +65,7 @@ func (s *Scrubber) scrubUserinfo(text string) string {
 // scrubAssignments is the defense-in-depth pass.
 func (s *Scrubber) scrubAssignments(text string) string {
 	text = s.scrubBlockScalars(text)
-	for _, re := range []*regexp.Regexp{headerRe, queryRe, assignRe, flagRe, flagListRe, nginxRe} {
+	for _, re := range []*regexp.Regexp{headerRe, queryRe, sqlPasswordRe, curlUserRe, assignRe, flagRe, flagListRe, nginxRe} {
 		text = s.rewriteValue(re, text)
 	}
 	return text

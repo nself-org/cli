@@ -25,6 +25,7 @@ import (
 // and returns the project dir and the secret.
 func reportFixture(t *testing.T) (proj, secret string) {
 	t.Helper()
+	t.Setenv("HOME", t.TempDir()) // never read the real ~/.nself licence key
 	proj = t.TempDir()
 	secret = "cmd" + strings.Repeat("Rw5", 8)
 	if err := os.WriteFile(filepath.Join(proj, ".env"), []byte("PROJECT_NAME=proj\nENV=dev\nPOSTGRES_DB=myapp\nADMIN_SECRET="+secret+"\n"), 0o600); err != nil {
@@ -213,5 +214,23 @@ func TestDoctorReportFragmentAndLogsDir(t *testing.T) {
 	}
 	if !hasDir {
 		t.Errorf("no logs/ entry in %v", names)
+	}
+}
+
+// S-4: an unreadable compose manifest is a manifest note, not silence. A
+// directory in place of .nself/compose-files.txt cannot be read as a file.
+func TestDoctorReportUnreadableComposeManifestIsANote(t *testing.T) {
+	proj, _ := reportFixture(t)
+	if err := os.MkdirAll(filepath.Join(proj, ".nself", "compose-files.txt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(proj, "note.tar.gz")
+	setReportFlags(t, map[string]string{"output": out, "log-lines": "5"})
+	if err := runDoctorReport(doctorReportCmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	_, all := archiveNames(t, out)
+	if !strings.Contains(all, "compose manifest unreadable") {
+		t.Error("manifest.json has no note about the unreadable compose manifest")
 	}
 }

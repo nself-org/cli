@@ -27,21 +27,25 @@ const maxFileBytes = 1 << 20
 // inputSet accumulates the scrub inputs of one collection.
 type inputSet struct {
 	values  []SecretValue
-	keys    map[string]bool   // cascade key names listed in config-keys.txt
-	refs    map[string]string // key -> last value, for CS_N_ENV_FILE lookup
+	keys    map[string]bool     // cascade key names listed in config-keys.txt
+	refs    map[string][]string // CS_N_ENV_FILE key -> every value seen (cascade layers, process env)
 	seen    map[string]bool
 	short   map[string]bool // secret-named keys whose value is under MinSecretLen
 	notes   []string
 	process bool // learning from the process environment (shorts not counted)
+
+	projectDir string // confinement root for env files read as inputs
 }
 
-func newInputSet() *inputSet {
-	return &inputSet{keys: map[string]bool{}, refs: map[string]string{}, seen: map[string]bool{}, short: map[string]bool{}}
+func newInputSet(projectDir string) *inputSet {
+	return &inputSet{keys: map[string]bool{}, refs: map[string][]string{}, seen: map[string]bool{}, short: map[string]bool{}, projectDir: projectDir}
 }
 
 // learn adds the scrub inputs of one key=value pair.
 func (in *inputSet) learn(k, v string) {
-	in.refs[k] = v
+	if csEnvFileKeyRe.MatchString(k) {
+		in.refs[k] = appendUnique(in.refs[k], v)
+	}
 	if !in.process && IsKeyName(k) && IsSecretName(k) {
 		if tv := TrimQuotes(v); tv != "" && len(tv) < MinSecretLen && !refValueRe.MatchString(tv) && !isWordValue(tv) {
 			in.short[k] = true
@@ -138,7 +142,8 @@ func loadEnvInputs(projectDir string, in *inputSet) {
 }
 
 // readCompose returns the generated docker-compose.yml text and learns the
-// secret values found in environment/args/labels maps and lists anywhere in it.
+// secret values found in environment/args/labels maps and lists anywhere in it,
+// plus the files its env_file entries name.
 func readCompose(projectDir string, in *inputSet) (text, note string) {
 	path := filepath.Join(projectDir, "docker-compose.yml")
 	st, err := os.Lstat(path)
@@ -152,19 +157,22 @@ func readCompose(projectDir string, in *inputSet) (text, note string) {
 	if err != nil {
 		return "", "docker-compose.yml unreadable"
 	}
-	if !learnComposeYAML(raw, in) {
+	if !learnComposeYAML(raw, projectDir, in) {
 		note = "docker-compose.yml is not valid YAML: environment values were not extracted"
 	}
 	return string(raw), note
 }
 
-// learnComposeYAML learns the environment values of a compose document.
-func learnComposeYAML(raw []byte, in *inputSet) bool {
+// learnComposeYAML learns the environment values of a compose document and the
+// files of its env_file entries (resolved against dir, the document's own
+// directory; see learnComposeEnvFile).
+func learnComposeYAML(raw []byte, dir string, in *inputSet) bool {
 	var doc any
 	if yaml.Unmarshal(raw, &doc) != nil {
 		return false
 	}
 	walkEnv(doc, in.learn)
+	walkEnvFiles(doc, func(p string) { in.learnComposeEnvFile(dir, p) })
 	return true
 }
 

@@ -41,8 +41,8 @@ By default the report is saved as `nself-report-<UTC timestamp>.tar.gz` in the p
 - `.env*` files as files (only their variable names, in `config-keys.txt`)
 - Secret store content or credential metadata
 - SSL/TLS certificates and private keys (the `ssl/` directory and similar key directories are skipped)
-- License key data from `~/.nself`
-- The contents of compose fragment files and `CS_N_ENV_FILE` files (they are read only to learn what to scrub)
+- License key data from `~/.nself` (the stored key is read only to learn what to scrub; it never enters the archive)
+- The contents of compose fragment files, `CS_N_ENV_FILE` files and compose `env_file` files (they are read only to learn what to scrub)
 
 Not every value is hidden. The generated compose file, the nginx files, the doctor output and the logs carry ordinary non-secret values (ports, hostnames, service names). That is intended: support needs them. Only values the scrubber recognizes as secret are replaced.
 
@@ -53,18 +53,22 @@ The scrubber learns secrets from these inputs, as scrub inputs only (they never 
 - every env cascade file (`.env`, `.env.local`, `.env.secrets`, `.env.<environment>`, and the other layers)
 - the environment of the process that runs the report (the doctor run inherits it)
 - the compose files listed in `.nself/compose-files.txt` (plugin fragments and the user override)
-- the files named by `CS_N_ENV_FILE` (custom services); paths must stay inside the project directory
+- the files named by `CS_N_ENV_FILE` (custom services). Every value seen for a key in any env layer or in the process environment is read, not only the one the build picks. Paths must stay inside the project directory
+- the files named by `env_file:` in the generated `docker-compose.yml` and in every listed fragment (a string, a list of strings or a list of `{path: ...}` entries). A relative path is resolved from the directory of the compose file that names it, then from the project directory. The file must be a regular file of at most 1 MiB inside the project directory
 - the `environment`, `args` and `labels` entries of those compose files
+- the stored license key (`~/.nself/license/key`), `NSELF_PLUGIN_LICENSE_KEY` and `NSELF_LICENSE_KEY_1` to `_10`
 
-A variable counts as secret-like when its name contains `SECRET`, `PASSWORD`, `PASS`, `TOKEN`, `KEY`, `PRIVATE`, `CREDENTIAL`, `DSN`, `SALT`, `SEED`, `LICENSE` (or `LICENCE`), `COOKIE`, `SESSION`, `SIGNING`, `HTPASSWD` or `BASIC_AUTH`, or ends in `_AUTH`. A bare `AUTH` prefix (for example `AUTH_URL`) does not count, because those values are hostnames that routing support needs.
+An input file that is missing, outside the project, too large or unreadable is listed as a note in `manifest.json`, and so is an unreadable compose manifest or nginx file. The shell's own `PWD` and `OLDPWD` variables are not learned (they hold a directory, not a secret).
+
+A variable counts as secret-like when its name contains `SECRET`, `PASSWORD`, `PASS`, `TOKEN`, `KEY`, `PRIVATE`, `CREDENTIAL`, `DSN`, `SALT`, `SEED`, `LICENSE` (or `LICENCE`), `COOKIE`, `SESSION`, `SIGNING`, `HTPASSWD`, `BASIC_AUTH`, `PWD`, `WEBHOOK` or `HMAC`, or ends in `_AUTH`, or has `PAT` (personal access token) as a whole word between underscores or dashes (`GITHUB_PAT` and `PAT_TOKEN` count; `PATH`, `PATTERN` and `XPATH` do not). `ENCRYPT` alone does not count. A bare `AUTH` prefix (for example `AUTH_URL`) does not count, because those values are hostnames that routing support needs.
 
 Then every file passes five steps in this order:
 
 1. **Known values.** Each secret-like value of 6 or more characters is replaced by `[REDACTED:<NAME>]` everywhere it appears. The scrubber also looks for its URL-escaped, JSON-escaped, base64 (standard and URL alphabets, padded and unpadded), lowercase hex and shell single-quote forms, and each line of a multi-line value on its own. The password inside any URL-shaped value is learned too, even when it holds `#`, `?`, `/` or a space, along with the base64 form of `user:password` (HTTP Basic). Overlapping matches become one redaction.
 2. **PEM blocks.** Every `-----BEGIN ... -----` block is replaced by `[REDACTED:PEM]`, including a block cut off at either end, a block with a log prefix on each line, and a JSON-wrapped block with `\n` escapes.
 3. **Passwords in URLs.** `scheme://user:password@host` becomes `scheme://[REDACTED]@host`. The forms `//user:password@host` and `user:password@tcp(host)` are covered too.
-4. **Standard patterns.** JWTs, common API key prefixes, bearer tokens, email addresses, phone numbers, IP and MAC addresses and card-like numbers.
-5. **Assignments.** Any `NAME=value`, `NAME: value`, `"name": "value"`, `--password value`, `Authorization` or `Cookie` header, `?token=` query value or nginx `proxy_set_header` value whose name looks secret-like is redacted, and so is the body of a YAML block scalar (`NAME: |`) under such a name.
+4. **Standard patterns.** JWTs, common API key prefixes, bearer tokens, every license key prefix the CLI accepts (`nself_<product>_...`), the secret path token of Slack, Discord and Telegram webhook URLs, email addresses, phone numbers, IP and MAC addresses and card-like numbers.
+5. **Assignments.** Any `NAME=value`, `NAME: value`, `"name": "value"`, `--password value`, `--password=-value`, `Authorization` or `Cookie` header, `?token=` query value or nginx `proxy_set_header` value whose name looks secret-like is redacted, and so is the body of a YAML block scalar (`NAME: |`) under such a name. SQL `PASSWORD '...'` and `IDENTIFIED BY '...'` values and the `user:password` of `curl -u` or `--user` are redacted too.
 
 `manifest.json` counts each class, so you can see how much was removed.
 
@@ -84,7 +88,9 @@ The scrubber removes the values and patterns it knows. It does not understand yo
 
 - a secret stored under a variable name outside the list above, or typed by hand into a log or config line with no secret-like name around it
 - a secret shorter than 6 characters
-- an encoded form it does not generate (for example base64 inside a larger base64 blob, or a value split across lines by a log shipper)
+- an encoded form it does not generate (best effort: uppercase hex, the YAML `''` spelling of a single quote inside a single-quoted value, `\uXXXX` escapes of non-ASCII characters, base64 inside a larger base64 blob, or a value split across lines by a log shipper)
+- a literal value that starts with `$` and looks like a variable reference (`$Name`): it is treated as a reference and not learned (an assignment with a secret-like name still catches it)
+- a webhook URL on another service, or a license key held only in a file other than `~/.nself/license/key`
 - secrets that live only in the age secret store: that store is read at deploy time, not at build time, so it is not a scrub input
 
 Review the archive before you share it:

@@ -75,10 +75,11 @@ func Collect(ctx context.Context, opt Options, src Sources) (*Bundle, error) {
 	if opt.Environ != nil {
 		environ = opt.Environ
 	}
-	in := newInputSet()
+	in := newInputSet(opt.ProjectDir)
 	loadEnvInputs(opt.ProjectDir, in)
 	loadProcessEnv(environ(), in)
-	loadCustomEnvFiles(opt.ProjectDir, environ(), in)
+	loadLicenseKeys(in)
+	loadCustomEnvFiles(in)
 	compose, cnote := readCompose(opt.ProjectDir, in)
 	loadFragments(opt.ComposeFragments, in)
 	notes := append(in.notes, opt.Notes...)
@@ -121,7 +122,7 @@ func Collect(ctx context.Context, opt Options, src Sources) (*Bundle, error) {
 	}
 	b.Files = append(b.Files, File{Name: "logs/", Dir: true})
 	notes = append(notes, collectLogs(ctx, opt, src, add, scr)...)
-	return finish(b, scr, notes, src.Now()), nil
+	return finish(b, scr, notes, src.Now())
 }
 
 // collectDoctor adds doctor.txt; a timeout keeps the partial output and says so.
@@ -194,7 +195,7 @@ func capTail(text string, limit int) (string, bool) {
 }
 
 // finish writes manifest.json (counts are final: scrubbing it adds none).
-func finish(b *Bundle, scr *Scrubber, notes []string, now time.Time) *Bundle {
+func finish(b *Bundle, scr *Scrubber, notes []string, now time.Time) (*Bundle, error) {
 	for i := range notes {
 		notes[i] = scr.Scrub(notes[i])
 	}
@@ -223,7 +224,10 @@ func finish(b *Bundle, scr *Scrubber, notes []string, now time.Time) *Bundle {
 	// (it converges in two or three rounds; the digit count only grows).
 	var data []byte
 	for i := 0; i < 5; i++ {
-		data, _ = json.MarshalIndent(man, "", "  ")
+		var err error
+		if data, err = json.MarshalIndent(man, "", "  "); err != nil {
+			return nil, fmt.Errorf("encoding manifest: %w", err)
+		}
 		data = append(data, '\n')
 		if list[len(list)-1].Bytes == len(data) {
 			break
@@ -231,7 +235,7 @@ func finish(b *Bundle, scr *Scrubber, notes []string, now time.Time) *Bundle {
 		list[len(list)-1].Bytes = len(data)
 	}
 	b.Files = append(b.Files, File{Name: "manifest.json", Data: data})
-	return b
+	return b, nil
 }
 
 // LogName maps a service name to logs/<name>.log with no path separators or

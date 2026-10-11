@@ -76,12 +76,15 @@ func runDoctorReport(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	ds := reportDockerSetup(projectDir)
+	ds, setupNote := reportDockerSetup(projectDir)
 	src := doctorReportSources(ds)
 	if src.Now == nil {
 		src.Now = time.Now
 	}
 	opts := report.Options{ProjectDir: projectDir, LogLines: lines, ComposeFragments: ds.ComposeFiles}
+	if setupNote != "" {
+		opts.Notes = append(opts.Notes, setupNote)
+	}
 	var note string
 	if opts.NginxDir, note = reportNginxDir(projectDir); note != "" {
 		opts.Notes = append(opts.Notes, note)
@@ -124,11 +127,14 @@ func reportNginxDir(projectDir string) (dir, note string) {
 }
 
 // reportDockerSetup resolves the compose files and env files of the project.
-func reportDockerSetup(projectDir string) report.DockerSetup {
-	ds := report.DockerSetup{ProjectDir: projectDir}
+// An unreadable compose manifest returns a note: the fragments it lists are
+// scrub inputs, so the report must say they were skipped.
+func reportDockerSetup(projectDir string) (ds report.DockerSetup, note string) {
+	ds = report.DockerSetup{ProjectDir: projectDir}
 	files, err := build.ReadComposeManifest(projectDir)
 	if err != nil {
 		files = nil
+		note = "compose manifest unreadable: fragment values were not scrubbed as inputs"
 	}
 	for _, f := range files {
 		if !filepath.IsAbs(f) {
@@ -147,5 +153,5 @@ func reportDockerSetup(projectDir string) report.DockerSetup {
 			ds.EnvFiles = append(ds.EnvFiles, f.Path)
 		}
 	}
-	return ds
+	return ds, note
 }

@@ -25,6 +25,12 @@ var skipNginxDirs = map[string]bool{
 func readNginx(root string) (files []File, notes []string) {
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if !os.IsNotExist(err) { // a vanished path is not a data loss worth a note
+				notes = append(notes, nginxName(root, p)+" skipped: unreadable")
+			}
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if d.IsDir() {
@@ -41,12 +47,18 @@ func readNginx(root string) (files []File, notes []string) {
 			return nil
 		}
 		name := "nginx/" + filepath.ToSlash(rel)
-		if st, serr := d.Info(); serr != nil || st.Size() > maxFileBytes {
+		st, serr := d.Info()
+		if serr != nil {
+			notes = append(notes, name+" skipped: unreadable")
+			return nil
+		}
+		if st.Size() > maxFileBytes {
 			notes = append(notes, name+" skipped: larger than 1 MiB")
 			return nil
 		}
 		data, rerr := os.ReadFile(p) // #nosec G304 -- walked under the project nginx dir
 		if rerr != nil {
+			notes = append(notes, name+" skipped: unreadable")
 			return nil
 		}
 		if strings.Contains(string(data), "-----BEGIN") {
@@ -57,4 +69,13 @@ func readNginx(root string) (files []File, notes []string) {
 		return nil
 	})
 	return files, notes
+}
+
+// nginxName is the bundle name of a path under root, for notes.
+func nginxName(root, p string) string {
+	rel, err := filepath.Rel(root, p)
+	if err != nil || rel == "." {
+		return "nginx"
+	}
+	return "nginx/" + filepath.ToSlash(rel)
 }

@@ -20,15 +20,22 @@ import (
 const MinSecretLen = 6
 
 // secretWords is the one definition of "secret-like name" (EPIC D21 as widened
-// by the lead ruling R2). A name ending in _AUTH also counts (secretAuthSuffix);
-// a bare AUTH prefix (AUTH_URL) does not.
-const secretWords = `SECRET|PASSWORD|PASS|TOKEN|KEY|PRIVATE|CREDENTIAL|DSN|SALT|SEED|LICEN[CS]E|COOKIE|SESSION|SIGNING|HTPASSWD|BASIC[_-]?AUTH`
+// by the lead rulings R2 and R5). A name ending in _AUTH also counts; a bare
+// AUTH prefix (AUTH_URL) does not. PAT (personal access token) is a whole
+// word only (patWord), so PATH and PATTERN stay out; ENCRYPT stays out on
+// purpose (R5: ENCRYPTION_KEY is covered by KEY).
+const secretWords = `SECRET|PASSWORD|PASS|PWD|TOKEN|KEY|PRIVATE|CREDENTIAL|DSN|SALT|SEED|LICEN[CS]E|COOKIE|SESSION|SIGNING|HTPASSWD|BASIC[_-]?AUTH|WEBHOOK|HMAC`
+
+// patWord is the whole-word PAT alternative inside free text: GITHUB_PAT and
+// PAT_TOKEN match; PATH, PATTERN and XPAT do not. RE2 has no lookaround, so the
+// left edge is either a delimiter-ended prefix or a word boundary.
+const patWord = `(?:[A-Za-z0-9_.\-]*[_.\-]|\b)PAT(?:[_.\-][A-Za-z0-9_.\-]*)?`
 
 // secretIdent matches a whole secret-like identifier inside free text; the
 // assignment pass builds on it so both passes share one definition.
-const secretIdent = `(?:[A-Za-z0-9_.\-]*(?:` + secretWords + `)[A-Za-z0-9_.\-]*|[A-Za-z0-9_.\-]*[_-]AUTH)`
+const secretIdent = `(?:[A-Za-z0-9_.\-]*(?:` + secretWords + `)[A-Za-z0-9_.\-]*|[A-Za-z0-9_.\-]*[_-]AUTH|` + patWord + `)`
 
-var secretNameRe = regexp.MustCompile(`(?i)(?:` + secretWords + `)|_AUTH$`)
+var secretNameRe = regexp.MustCompile(`(?i)(?:` + secretWords + `)|_AUTH$|(?:^|[_.\-])PAT(?:$|[_.\-])`)
 
 // refValueRe matches a value that is only a compose/shell variable reference
 // (${NAME} or $NAME): it carries no secret, so it is not a scrub input.

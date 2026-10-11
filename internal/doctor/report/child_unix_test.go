@@ -21,6 +21,7 @@ import (
 const helperEnv = "NSELF_REPORT_TEST_CHILD"
 
 func TestMain(m *testing.M) {
+	cleanup := isolateHome()
 	switch os.Getenv(helperEnv) {
 	case "slow": // prints, then outlives the timeout
 		fmt.Println(os.Getenv(helperEnv+"_OUT") + " partial output")
@@ -34,7 +35,9 @@ func TestMain(m *testing.M) {
 		time.Sleep(3 * time.Second)
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	code := m.Run()
+	cleanup()
+	os.Exit(code)
 }
 
 func selfExe() (string, error) { return os.Args[0], nil }
