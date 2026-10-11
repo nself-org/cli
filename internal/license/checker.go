@@ -150,8 +150,8 @@ func bundleEntitledFromCache(key, bundleName string) (bool, error) {
 	if entry.KeyHash != HashKey(key) {
 		return false, fmt.Errorf("cached license does not match current key (bundle=%q)", bundleName)
 	}
-	if !cacheSignatureOK(entry) {
-		return false, fmt.Errorf("cached license is not signed by ping (unsigned, altered or for another key); connect to validate (bundle=%q)", bundleName)
+	if err := cacheTrust(entry); err != nil {
+		return false, fmt.Errorf("%w; connect to validate (bundle=%q)", err, bundleName)
 	}
 
 	if !cacheWithinTerm(entry, time.Now()) {
@@ -202,8 +202,8 @@ func bundleEntitledFromGrace(key, bundleName string) (bool, error) {
 	if entry.KeyHash != HashKey(key) {
 		return false, fmt.Errorf("license server unreachable and cached license does not match current key (bundle=%q)", bundleName)
 	}
-	if !cacheSignatureOK(entry) {
-		return false, fmt.Errorf("license server unreachable and the cached license is not signed by ping (unsigned, altered or for another key) (bundle=%q)", bundleName)
+	if err := cacheTrust(entry); err != nil {
+		return false, fmt.Errorf("license server unreachable and %w (bundle=%q)", err, bundleName)
 	}
 
 	// Revocation is never overridden by grace, regardless of cache freshness.

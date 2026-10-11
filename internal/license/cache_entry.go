@@ -119,23 +119,6 @@ func (c *CacheEntry) matchesSignedBody() bool {
 	return err == nil && claims.Sub == c.KeyHash
 }
 
-// cacheSignatureOK reports whether a cache entry may back a licence decision.
-// Every path that reads tier or plugins from the cache calls it, so no decision
-// rests on bytes that did not verify. The caller has already matched
-// entry.KeyHash to the requested key, and v1.5 verification binds KeyHash to
-// the licence JWT inside the signed body.
-func cacheSignatureOK(entry *CacheEntry) bool {
-	// compat.V15(P7-PLUG-63): cache trusted without a signature check -> only a cache whose server-signed body verifies
-	if compat.V15() {
-		now := time.Now()
-		if !entry.VerifySignature() || !entry.clockTrusted(now) {
-			return false
-		}
-		noteTrustedTime(now)
-	}
-	return true
-}
-
 // verifyLegacy is the v1.4 check, unchanged.
 func (c *CacheEntry) verifyLegacy() bool {
 	keys := GetPublicKeys()
@@ -203,6 +186,9 @@ func verifyResponseSig(rawBody []byte, sigHex string) error {
 // claim a validity window of at most 24 h (ping's licence JWT TTL).
 const replySkewSec = 300
 
+// replyMaxWindowSec is the longest a signed reply is trusted after its issued-at.
+const replyMaxWindowSec = int64(24 * time.Hour / time.Second)
+
 // replyBoundToKey is the v1.5 check on a verified /license/validate reply: its
 // signed bytes must name the requesting licence and be inside their validity
 // window. The licence JWT inside the signed body is the only such field ping
@@ -220,7 +206,10 @@ func replyBoundToKey(resp *ValidateResponse, key string, now time.Time) error {
 	if claims.Sub != HashKey(key) {
 		return fmt.Errorf("signed reply is for a different licence key")
 	}
-	if claims.Iat > now.Unix()+replySkewSec || claims.Exp <= now.Unix() {
+	// Trust ends at exp or iat + 24 h, whichever is first: a jwt with a far exp
+	// must not keep a replayed reply fresh (ping issues 24 h tokens today).
+	end := min(claims.Exp, claims.Iat+replyMaxWindowSec)
+	if claims.Iat > now.Unix()+replySkewSec || end <= now.Unix() {
 		return fmt.Errorf("signed reply is outside its validity window (replayed or clock skew)")
 	}
 	return nil
@@ -254,7 +243,7 @@ func bundleReplyBound(r *bundleValidateResponse, key, bundle string, now time.Ti
 	if r.KeyHash != HashKey(key) {
 		return fmt.Errorf("signed reply does not name this licence key (key_hash)")
 	}
-	if r.IssuedAt <= 0 || r.ExpiresAt <= r.IssuedAt || r.ExpiresAt-r.IssuedAt > int64(24*time.Hour/time.Second) {
+	if r.IssuedAt <= 0 || r.ExpiresAt <= r.IssuedAt || r.ExpiresAt-r.IssuedAt > replyMaxWindowSec {
 		return fmt.Errorf("signed reply carries no usable issued_at/expires_at window")
 	}
 	if r.IssuedAt > now.Unix()+replySkewSec || r.ExpiresAt <= now.Unix() {
