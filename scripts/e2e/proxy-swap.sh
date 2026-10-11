@@ -89,6 +89,8 @@ fi
 export HOME=$W/home
 export NSELF_V15=1
 export NSELF_LICENSE_SKIP_VERIFY=1
+# The install command acknowledges --force but does not propagate it to this gate.
+export NSELF_LICENSE_SKIP_VERIFY_FORCE=1
 # security.go documents this development opt-out; archive checksums still verify.
 export NSELF_PLUGIN_REQUIRE_CHECKSUM=0
 CGO_ENABLED=0 go build -mod=vendor -o "$W/nself" "$ROOT/cmd/nself"
@@ -208,7 +210,9 @@ p=pathlib.Path(sys.argv[1]); p.write_text(p.read_text().replace('ENV=dev','ENV=p
 PY
 manifest "$W/a" prod-before.manifest
 rc=0
-NSELF_V15=1 nself "$W/a" add traefik --force </dev/null >"$W/evidence/prod-plan.stdout" 2>"$W/evidence/prod-plan.stderr" || rc=$?
+# Production forbids the dev bypass. A fake free-account key suppresses registration;
+# the local registry still verifies its archive checksum, without a paid licence.
+NSELF_V15=1 NSELF_LICENSE_SKIP_VERIFY=0 NSELF_LICENSE_SKIP_VERIFY_FORCE=0 NSELF_PLUGIN_LICENSE_KEY=fixture-fake-free-account nself "$W/a" add traefik --force </dev/null >"$W/evidence/prod-plan.stdout" 2>"$W/evidence/prod-plan.stderr" || rc=$?
 if [[ $rc != 4 ]] || ! grep -q E403 "$W/evidence/prod-plan.stderr"; then
   echo "FAIL: prod add expected exit 4 E403, got exit $rc" >&2
   cat "$W/evidence/prod-plan.stderr" >&2
