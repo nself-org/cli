@@ -1,0 +1,131 @@
+package deploy
+
+// Purpose: tests for deploy host-key policy: secret shipping pins in v1.4, the
+//          pin-file lookup fails closed, and IP hosts get a synthetic alias.
+// Inputs:  HOME set to a temp dir, fake ssh-keyscan, ssh, scp and rsync.
+// Outputs: asserts error codes, argv and that no copy ran on refusal.
+// Constraints: no network; only fake binaries run.
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/nself-org/cli/sdk/go/v2/remote"
+)
+
+func writeEnvFile(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), ".env.live")
+	if err := os.WriteFile(p, []byte("A=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestSecretShippingPinsHostKeyV14(t *testing.T) {
+	for _, v15 := range []string{"", "0"} {
+		t.Run("NSELF_V15="+v15, func(t *testing.T) {
+			t.Setenv("NSELF_V15", v15)
+			t.Setenv("HOME", t.TempDir())
+			read := installFakeSSHTools(t)
+			installFakeKeyscan(t)
+			cfg := SSHConfig{Host: "u@203.0.113.7", RemotePath: "/opt/nself", EnvName: "live", ServerName: "web",
+				EnvFile: writeEnvFile(t), KeyPath: "/k/id"}
+			err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml")
+			if err == nil || !strings.Contains(err.Error(), "E487") || !strings.Contains(err.Error(), "--trust-host-key SHA256:") {
+				t.Fatalf("unknown host with env file: %v", err)
+			}
+			if n := len(read()); n != 0 {
+				t.Fatalf("%d process(es) ran before the host-key refusal", n)
+			}
+			alias := "nself-203.0.113.7-22"
+			if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add(alias, "ssh-ed25519 AQID"); err != nil {
+				t.Fatal(err)
+			}
+			if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
+				t.Fatalf("pinned deploy: %v", err)
+			}
+			calls := read()
+			if len(calls) == 0 || calls[0].tool != "rsync" {
+				t.Fatalf("calls = %#v", calls)
+			}
+			joined := strings.Join(calls[0].args, " ")
+			for _, w := range []string{"StrictHostKeyChecking=yes", "GlobalKnownHostsFile=" + DeployKnownHostsPath(), "HostKeyAlias=" + alias} {
+				if !strings.Contains(joined, w) {
+					t.Errorf("rsync argv lacks %q: %s", w, joined)
+				}
+			}
+		})
+	}
+	t.Run("compose-only v1.4 stays accept-new without a scan", func(t *testing.T) {
+		t.Setenv("NSELF_V15", "")
+		t.Setenv("HOME", t.TempDir())
+		read := installFakeSSHTools(t)
+		// No ssh-keyscan on PATH beyond the real one: a scan would hit the network
+		// or fail, so success proves none ran.
+		cfg := SSHConfig{Host: "u@203.0.113.7", RemotePath: "/opt/nself", EnvName: "live", KeyPath: "/k/id"}
+		if err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml"); err != nil {
+			t.Fatalf("compose-only deploy: %v", err)
+		}
+		calls := read()
+		if len(calls) == 0 || !strings.Contains(strings.Join(calls[0].args, " "), "StrictHostKeyChecking=accept-new") {
+			t.Fatalf("calls = %#v", calls)
+		}
+	})
+}
+
+func TestPinnedLookupRefusesForeignLine(t *testing.T) {
+	t.Setenv("NSELF_V15", "")
+	t.Setenv("HOME", t.TempDir())
+	read := installFakeSSHTools(t)
+	installFakeKeyscan(t)
+	pin := DeployKnownHostsPath()
+	if err := os.MkdirAll(filepath.Dir(pin), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pin, []byte("* ssh-ed25519 AQID\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := SSHConfig{Host: "u@host.example", RemotePath: "/opt/nself", EnvName: "live", EnvFile: writeEnvFile(t), KeyPath: "/k/id"}
+	err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml")
+	if err == nil || !strings.Contains(err.Error(), "E487") || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("foreign pin line: %v", err)
+	}
+	if n := len(read()); n != 0 {
+		t.Fatalf("%d process(es) ran despite the refused pin file", n)
+	}
+}
+
+func TestDeployKeyAliasIPHost(t *testing.T) {
+	for in, want := range map[string]string{
+		"u@203.0.113.7":        "nself-203.0.113.7-22",
+		"u@[2001:db8::1]:2222": "nself-2001-db8--1-2222",
+		"u@host.example:2222":  "nself-host.example-2222",
+		"u@host.example":       "host.example",
+	} {
+		if got := deployKeyAlias(mustSpec(t, in)); got != want {
+			t.Errorf("deployKeyAlias(%q) = %q, want %q", in, got, want)
+		}
+	}
+	t.Setenv("HOME", t.TempDir())
+	installFakeKeyscan(t)
+	ctx := context.Background()
+	fp, err := remote.Fingerprint("h ssh-ed25519 AQID")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := TrustHostKey(ctx, "u@203.0.113.7", fp); err != nil {
+		t.Fatalf("TrustHostKey on an IP host: %v", err)
+	}
+	t.Setenv("NSELF_V15", "1")
+	opts, err := HostKeyOptions(ctx, "u@203.0.113.7", "live", "web", true)
+	if err != nil {
+		t.Fatalf("HostKeyOptions: %v", err)
+	}
+	if got := strings.Join(opts, " "); !strings.Contains(got, "HostKeyAlias=nself-203.0.113.7-22") {
+		t.Errorf("options = %q", got)
+	}
+}

@@ -270,8 +270,42 @@ nself deploy staging
 
 SSH key defaults to `~/.ssh/id_ed25519`. Override with `NSELF_DEPLOY_SSH_KEY`.
 
-Agent forwarding is disabled by default. The CLI uses
-`-o ForwardAgent=no -o StrictHostKeyChecking=accept-new` for all SSH connections.
+Agent forwarding is always disabled (`-o ForwardAgent=no`). ssh, scp and rsync get their options as
+separate arguments from one builder; no option, key path or remote path is ever parsed by a shell.
+Before any process starts, the CLI refuses a key path outside `[a-zA-Z0-9/_.~-]` or starting with
+`-`, a remote path with shell metacharacters, a leading `-` or a `..` segment, and any ssh option
+holding whitespace or a quote (rsync re-splits its `-e` string on spaces).
+
+**Host keys.** Which policy a deploy uses depends on what it sends:
+
+| Deploy | v1.4 (default) | v1.5 (`NSELF_V15=1`) |
+|---|---|---|
+| Ships an env file (`.env.<target>`, `nself deploy` with an env file, secrets push) | strict | strict |
+| Compose file only | `StrictHostKeyChecking=accept-new` | strict |
+
+Strict means the CLI scans the host's live ED25519 key and continues only when that key is already
+trusted, either in your `~/.ssh/known_hosts` or in the deploy pin file
+`~/.config/nself/deploy_known_hosts`. ssh then runs with `StrictHostKeyChecking=yes`. Nothing is
+copied before the check, so env files never reach a host whose key nobody verified.
+
+**First contact with a new host.** A secret-bearing deploy to a host you have never connected to
+fails with `E487` and prints the live fingerprint:
+
+```text
+E487 unknown host key SHA256:... for deploy@203.0.113.10; verify it, then run nself env target add <env> <server> --trust-host-key SHA256:...
+(or connect once with plain ssh and accept the key into ~/.ssh/known_hosts)
+```
+
+Compare the fingerprint with the one your provider shows (console or `ssh-keygen -lf
+/etc/ssh/ssh_host_ed25519_key.pub` on the server), then either pin it with
+`--trust-host-key`, or ssh to the host once and accept the key. Before this change a v1.4 deploy
+with an env file accepted any key on first contact (`accept-new`).
+
+IP-address hosts are pinned under the alias `nself-<ip>-<port>` (for example
+`nself-203.0.113.10-22`) and ssh gets a matching `HostKeyAlias`; hosts on a non-default port use
+`nself-<host>-<port>`. A pin file holding a line the CLI did not write (a wildcard,
+`@cert-authority` or hashed entry) or with group- or world-writable permissions is refused with
+`E487`; fix or remove that line and pin again.
 
 - `nself deploy environments`, list all environments and per-server SSH capabilities (JSON)
 - `nself deploy status [--blue-green] [--server <name>]`, report current deploy state; `--server` filters to one server; `--blue-green` adds slot info

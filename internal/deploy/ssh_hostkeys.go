@@ -1,0 +1,128 @@
+package deploy
+
+// Purpose: deploy host-key trust: the dedicated pin file, enrolment, and the
+//          ssh host-key policy DeployViaSsh and PushSecrets pass to ssh.
+// Inputs:  a host spec string, the inventory env and server names, and whether
+//          the call is strict or ships secrets.
+// Outputs: "-o ..." option tokens, or an E487 error before any copy starts.
+// Constraints: never writes ~/.ssh/known_hosts; the pin file is read through
+//              remote.PinnedHostKeys, which refuses foreign lines (fail closed).
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
+)
+
+// DeployKnownHostsPath is the dedicated pin file. The operator's SSH file is read only.
+func DeployKnownHostsPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "nself", "deploy_known_hosts")
+}
+
+func deployHostPort(spec remote.HostSpec) int {
+	if spec.Port == 0 {
+		return 22
+	}
+	return spec.Port
+}
+
+// deployKeyAlias is the pin alias. A port or an IP literal needs a synthetic
+// alias: the sdk refuses an IP literal as a pin alias.
+func deployKeyAlias(spec remote.HostSpec) string {
+	if spec.Port != 0 || net.ParseIP(spec.Host) != nil {
+		return "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(deployHostPort(spec))
+	}
+	return spec.Host
+}
+
+// TrustHostKey scans live keys and pins only the key with the offered fingerprint.
+func TrustHostKey(ctx context.Context, host, offered string) error {
+	spec, err := remote.ParseHostSpec(host)
+	if err != nil {
+		return errs.New("E484", err.Error())
+	}
+	if !strings.HasPrefix(offered, "SHA256:") {
+		return errs.New("E487", "--trust-host-key needs a SHA256 fingerprint")
+	}
+	keys, err := ScanDeployKeys(ctx, spec)
+	if err != nil {
+		return errs.New("E487", fmt.Sprintf("host key scan for %s failed: %v", spec.Host, err))
+	}
+	for _, k := range keys {
+		if k.Fingerprint == offered {
+			return (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add(deployKeyAlias(spec), k.Line)
+		}
+	}
+	return errs.New("E487", fmt.Sprintf("host %s presented no key matching %s", spec.Host, offered))
+}
+
+// HostKeyOptions returns accept-new or strict policy after validating the live key.
+func HostKeyOptions(ctx context.Context, host, env, server string, strict bool) ([]string, error) {
+	return hostKeyPolicy(ctx, host, env, server, strict, false)
+}
+
+// pinnedFingerprints returns the fingerprints pinned for alias in the deploy
+// pin file. A pin file the sdk refuses (foreign wildcard or CA line, bad mode)
+// is an error: fail closed, before any copy.
+func pinnedFingerprints(alias string) (map[string]bool, error) {
+	pin := remote.PinnedHostKeys{Path: DeployKnownHostsPath()}
+	lines, err := pin.Lookup(alias)
+	if err != nil {
+		return nil, errs.New("E487", fmt.Sprintf("deploy pin file %s refused: %v", DeployKnownHostsPath(), err))
+	}
+	seen := map[string]bool{}
+	for _, l := range lines {
+		if fp, ferr := remote.Fingerprint(l); ferr == nil {
+			seen[fp] = true
+		}
+	}
+	return seen, nil
+}
+
+// hostKeyPolicy is the shared host-key policy. shipsSecrets forces strict
+// checking in v1.4 too (EPIC D28, D-0248): secrets never go to an unverified key.
+func hostKeyPolicy(ctx context.Context, host, env, server string, strict, shipsSecrets bool) ([]string, error) {
+	spec, err := remote.ParseHostSpec(host)
+	if err != nil {
+		return nil, errs.New("E484", err.Error())
+	}
+	// compat.V15(P7-DEPL-13): accept-new -> strict for secret shipping and prod targets.
+	if !shipsSecrets && (!compat.V15() || !strict) {
+		return []string{"-o", "StrictHostKeyChecking=accept-new"}, nil
+	}
+	keys, err := ScanDeployKeys(ctx, spec)
+	if err != nil {
+		return nil, errs.New("E487", fmt.Sprintf("host key scan for %s failed: %v", spec.Host, err))
+	}
+	home, _ := os.UserHomeDir()
+	operatorAlias := spec.Host
+	if spec.Port != 0 {
+		operatorAlias = "[" + spec.Host + "]:" + strconv.Itoa(spec.Port)
+	}
+	alias := deployKeyAlias(spec)
+	operator := deployTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
+	pinned, err := pinnedFingerprints(alias)
+	if err != nil {
+		return nil, err
+	}
+	for _, k := range keys {
+		if operator[k.Fingerprint] || pinned[k.Fingerprint] {
+			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", "GlobalKnownHostsFile=" + DeployKnownHostsPath()}
+			if alias != spec.Host && !operator[k.Fingerprint] {
+				opts = append(opts, "-o", "HostKeyAlias="+alias)
+			}
+			return opts, nil
+		}
+	}
+	fp := keys[0].Fingerprint
+	return nil, errs.New("E487", fmt.Sprintf("unknown host key %s for %s; verify it, then run nself env target add %s %s --trust-host-key %s\n(or connect once with plain ssh and accept the key into ~/.ssh/known_hosts)", fp, host, env, server, fp))
+}

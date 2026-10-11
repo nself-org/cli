@@ -17,6 +17,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 const goldenProbeEnv = "NSELF_GOLDEN_PROBE"
@@ -42,6 +44,10 @@ func installFakeSSHTools(t *testing.T) func() []recordedCall {
 		"{ echo \"TOOL $(basename \"$0\")\"; echo \"PROBE ${" + goldenProbeEnv + "}\";" +
 		" for a in \"$@\"; do printf 'ARG %s\\n' \"$a\"; done; echo END; } >> \"" + logFile + "\"\n" +
 		"exit 0\n"
+	// Create the log up front so a run that records nothing reads back as zero calls.
+	if err := os.WriteFile(logFile, nil, 0o644); err != nil {
+		t.Fatalf("create call log: %v", err)
+	}
 	for _, tool := range []string{"ssh", "scp", "rsync"} {
 		if err := os.WriteFile(filepath.Join(dir, tool), []byte(script), 0o755); err != nil {
 			t.Fatalf("write fake %s: %v", tool, err)
@@ -142,8 +148,16 @@ func TestGoldenArgv_DeployViaSshDefaultRemotePath(t *testing.T) {
 	}
 }
 
+// TestGoldenArgv_PushSecrets changes ON PURPOSE (P7-DEPL-28, D-0248): secret
+// shipping is strict in v1.4 too, so the argv now carries the pinned host-key
+// policy, a HostKeyAlias for the IP host, and an absolute local operand.
 func TestGoldenArgv_PushSecrets(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	read := installFakeSSHTools(t)
+	installFakeKeyscan(t)
+	if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
+		t.Fatalf("pin: %v", err)
+	}
 	dir := t.TempDir()
 	envFile := filepath.Join(dir, ".env.prod")
 	if err := os.WriteFile(envFile, []byte("A=1\n"), 0o600); err != nil {
@@ -157,8 +171,15 @@ func TestGoldenArgv_PushSecrets(t *testing.T) {
 		t.Fatalf("PushSecrets: %v", err)
 	}
 	want := []recordedCall{{
-		tool:  "scp",
-		args:  append(goldenBase("/k/id"), "--", envFile, "deploy@203.0.113.7:/opt/app/.env"),
+		tool: "scp",
+		args: []string{
+			"-i", "/k/id",
+			"-o", "StrictHostKeyChecking=yes",
+			"-o", "GlobalKnownHostsFile=" + DeployKnownHostsPath(),
+			"-o", "HostKeyAlias=nself-203.0.113.7-22",
+			"-o", "ForwardAgent=no",
+			"--", envFile, "deploy@203.0.113.7:/opt/app/.env",
+		},
 		probe: "inherited",
 	}}
 	assertCalls(t, read(), want)
