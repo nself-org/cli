@@ -24,16 +24,28 @@ import (
 	"github.com/nself-org/cli/internal/invoke"
 )
 
-type Principal struct{ Subject string }
+// Principal identifies an authenticated caller; it carries no authorization grants.
+type Principal struct {
+	// Subject is the caller's opaque identity, not a token or a permission list.
+	Subject string
+}
+
+// AuthHook authenticates every route before its body is read. An error refuses
+// the request with E426; a successful principal does not bypass invocation gates.
 type AuthHook interface {
+	// Authenticate returns the caller identity or an error without consuming the body.
 	Authenticate(*http.Request) (Principal, error)
 }
 type authFunc func(*http.Request) (Principal, error)
 
 func (f authFunc) Authenticate(r *http.Request) (Principal, error) { return f(r) }
 
+// Invoker executes a registry command with the request context and server guard.
+// Implementations must honor cancellation and the shared invocation contracts.
 type Invoker func(context.Context, *cmdregistry.Registry, string, invoke.Request, invoke.Options) (invoke.Result, error)
 
+// BearerAuth checks a case-sensitive Bearer token using constant-time comparison
+// of SHA-256 digests. An empty configured token rejects every request.
 func BearerAuth(tok string) AuthHook {
 	want := sha256.Sum256([]byte(tok))
 	return authFunc(func(r *http.Request) (Principal, error) {
@@ -46,20 +58,43 @@ func BearerAuth(tok string) AuthHook {
 	})
 }
 
+// Options configures one server. Registry and Auth are required; New supplies
+// documented defaults for optional limits without opening a listener.
 type Options struct {
-	Registry                                    *cmdregistry.Registry
-	Invoker                                     Invoker
-	ProjectDir                                  string
-	Port                                        int
-	AllowedHosts                                []string
-	Timeout                                     time.Duration
-	MaxInFlight                                 int
-	Auth                                        AuthHook
-	DataSchema                                  func(string) ([]byte, bool)
-	Log                                         io.Writer
-	ReadHeaderTimeout, ReadTimeout, IdleTimeout time.Duration
+	// Registry is the startup command snapshot; callers must not mutate it while serving.
+	Registry *cmdregistry.Registry
+	// Invoker executes commands; nil selects invoke.Invoke with the server's guard.
+	Invoker Invoker
+	// ProjectDir is the invocation working directory, not an HTTP-controlled value.
+	ProjectDir string
+	// Port is the required Host/Origin port; it must match the listener's actual port.
+	Port int
+	// AllowedHosts adds DNS names, IPv4 or bracketed IPv6 literals to the loopback
+	// defaults. Values must omit ports, schemes, paths and whitespace.
+	AllowedHosts []string
+	// Timeout limits document invocations; nonpositive values use invoke.DefaultTimeout.
+	// NDJSON invocations instead run until their request context ends.
+	Timeout time.Duration
+	// MaxInFlight caps command invocations; nonpositive values default to four.
+	MaxInFlight int
+	// Auth authenticates all routes before body reads and must not be nil.
+	Auth AuthHook
+	// DataSchema supplies committed data schemas by command path for OpenAPI.
+	// Nil or a missing schema produces an open data object.
+	DataSchema func(string) ([]byte, bool)
+	// Log receives serialized request metadata only; nil selects os.Stderr.
+	Log io.Writer
+	// ReadHeaderTimeout bounds header reads; nonpositive values default to ten seconds.
+	ReadHeaderTimeout time.Duration
+	// ReadTimeout bounds request reads; nonpositive values default to thirty seconds.
+	// The deadline is cleared after command request decoding to permit streams.
+	ReadTimeout time.Duration
+	// IdleTimeout bounds keep-alive idle time; nonpositive values default to sixty seconds.
+	IdleTimeout time.Duration
 }
 
+// Server owns one authenticated mux, startup registry snapshot and invocation
+// guard. Configure mounts before serving; concurrent mount changes are unsupported.
 type Server struct {
 	o       Options
 	guard   *invoke.Guard
@@ -71,7 +106,12 @@ type Server struct {
 	logMu   sync.Mutex
 }
 
+// New validates options and builds routes, OpenAPI and one shared invocation
+// guard. It does not listen or execute commands; Registry and Auth are required.
 func New(o Options) (*Server, error) {
+	if err := ValidateAllowedHosts(o.AllowedHosts); err != nil {
+		return nil, err
+	}
 	if o.Registry == nil {
 		return nil, errors.New("HTTP API requires a registry")
 	}
@@ -118,9 +158,13 @@ func New(o Options) (*Server, error) {
 	return s, nil
 }
 
-// Handler wraps the private mux so mounted routes share every safety check.
+// Handler returns the private mux behind Host, Origin and AuthHook checks and
+// request logging. Command routes additionally enforce invocation validation.
 func (s *Server) Handler() http.Handler { return s.logged(s.authorized(s.mux)) }
 
+// Mount adds a handler behind Host, Origin and AuthHook checks before serving.
+// It refuses nil handlers, conflicting patterns, the root, /v1 and /openapi.json
+// prefixes, non-absolute paths and pattern, escape, whitespace or query syntax.
 func (s *Server) Mount(prefix string, h http.Handler) (err error) {
 	if h == nil || !strings.HasPrefix(prefix, "/") || strings.ContainsAny(prefix, "%{} \t\r\n?#") || strings.HasPrefix(prefix, "/v1") || strings.HasPrefix(prefix, "/openapi.json") || prefix == "/" {
 		return errors.New("reserved or invalid mount")
@@ -134,8 +178,13 @@ func (s *Server) Mount(prefix string, h http.Handler) (err error) {
 	return nil
 }
 
+// ListenAndServe listens on addr without TLS or a write timeout. Cancellation
+// stops accepting requests and permits five seconds to drain before closing
+// remaining connections and canceling their request contexts. Context values are
+// preserved; its deadline and cancellation do not interrupt the graceful drain.
+// A completed shutdown returns nil; listener failures return their error.
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
-	h := &http.Server{Addr: addr, Handler: s.Handler(), ReadHeaderTimeout: s.o.ReadHeaderTimeout, ReadTimeout: s.o.ReadTimeout, IdleTimeout: s.o.IdleTimeout, BaseContext: func(net.Listener) context.Context { return ctx }}
+	h := &http.Server{Addr: addr, Handler: s.Handler(), ReadHeaderTimeout: s.o.ReadHeaderTimeout, ReadTimeout: s.o.ReadTimeout, IdleTimeout: s.o.IdleTimeout, BaseContext: func(net.Listener) context.Context { return context.WithoutCancel(ctx) }}
 	done := make(chan struct{})
 	stopped := make(chan struct{})
 	go func() {

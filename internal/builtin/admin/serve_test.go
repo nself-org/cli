@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -167,6 +168,28 @@ func TestNonLoopbackBind(t *testing.T) {
 				if _, err := os.Stat(path); !os.IsNotExist(err) {
 					t.Fatalf("non-loopback run created token file: %v", err)
 				}
+			}
+		})
+	}
+}
+
+func TestServeAllowedHostValidation(t *testing.T) {
+	for _, host := range []string{"myhost:3857", "http://myhost", "a/b", "my host", " myhost", "myhost ", "myhost\nignored", ""} {
+		t.Run(host, func(t *testing.T) {
+			cmd := ServeCommand(ServeDeps{
+				ProjectDir: func() (string, error) { t.Fatal("invalid host reached project lookup"); return "", nil },
+				Registry:   func() (*cmdregistry.Registry, error) { t.Fatal("invalid host reached registry"); return nil, nil },
+			})
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs([]string{"--allowed-host", "api.example.test", "--allowed-host", host})
+			err := cmd.Execute()
+			var cliErr *errs.CLIError
+			if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("%q", host)) {
+				t.Fatalf("invalid allowed host %q: %v", host, err)
+			}
+			if errors.As(err, &cliErr) && cliErr.Code != "E430" {
+				t.Fatalf("invalid allowed host code: %v", err)
 			}
 		})
 	}

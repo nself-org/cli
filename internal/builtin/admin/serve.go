@@ -15,12 +15,15 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/nself-org/cli/internal/cmdregistry"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/httpapi"
 	"github.com/nself-org/cli/internal/machineauth"
 	"github.com/nself-org/cli/internal/ports"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // ServeDeps supplies composition-root providers without importing commands.
@@ -49,11 +52,33 @@ func ServeCommand(d ServeDeps) *cobra.Command {
 	cmd.Flags().StringVar(&host, "host", "127.0.0.1", "Bind address")
 	cmd.Flags().IntVar(&port, "port", ports.AdminAPIPort, "HTTP API port")
 	cmd.Flags().StringSliceVar(&allowed, "allowed-host", nil, "Additional reachable host name (repeatable; required for non-loopback)")
+	flag := cmd.Flags().Lookup("allowed-host")
+	flag.Value = allowedHostsValue{Value: flag.Value, SliceValue: flag.Value.(pflag.SliceValue)}
 	cmd.Flags().DurationVar(&timeout, "timeout", 300*time.Second, "Document invocation timeout")
 	return cmd
 }
 
+// allowedHostsValue preserves string-slice flags while rejecting input that CSV
+// would discard, including empty occurrences and extra newline records.
+type allowedHostsValue struct {
+	pflag.Value
+	pflag.SliceValue
+}
+
+func (v allowedHostsValue) Set(raw string) error {
+	if raw == "" || strings.IndexFunc(raw, unicode.IsSpace) >= 0 {
+		return errs.Newf("E430", "Invalid allowed host %q: hosts must be non-empty and contain no whitespace", raw)
+	}
+	return v.Value.Set(raw)
+}
+
 func runServe(cmd *cobra.Command, d ServeDeps, host string, port int, allowed []string, timeout time.Duration) error {
+	if cmd.Flags().Changed("allowed-host") && len(allowed) == 0 {
+		return httpapi.ValidateAllowedHosts([]string{""})
+	}
+	if err := httpapi.ValidateAllowedHosts(allowed); err != nil {
+		return err
+	}
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("port must be between 1 and 65535")
 	}

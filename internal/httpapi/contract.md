@@ -22,6 +22,10 @@ envelope with `data.confirmation_required: true` requires HTTP 428 and a second
 request carrying the returned `confirm`. One server guard owns confirmations and
 the shared machine audit log; every call passes through `internal/invoke`.
 
+`config set`, `config trust` and `config trust dns` are cli-only until they gain
+a confirmation round trip (D-0403/D-0402). They have no HTTP routes exposed or
+OpenAPI operations in v1.
+
 `Accept: application/x-ndjson` requests exposed read commands whose effective
 output is stream, including document commands with an enabled stream override.
 The response carries the child's JSON stream records and final envelope,
@@ -63,11 +67,12 @@ OpenAPI is 3.1.0 with `info.version: "1"`, global bearer security and
 operationId is `cmdregistry.ToolName`, request schema is the machine params
 schema, 200 data references a copied `<ToolName>_data` component, 428 references
 the confirmation schema, and default references the error envelope. GET
-`/openapi.json` is also documented. The document deliberately describes document
-requests only; NDJSON-only commands and stream-override flags are described by
-the stream contract above. Keys are sorted, indentation is two spaces, and the
-bytes end in a newline. There is no timestamp or CLI version. Under an isolated
-HOME and plugin directory, served bytes equal `.github/openapi.json`.
+`/openapi.json` is also documented. OpenAPI v1 is document-only: stream-read
+commands are served as NDJSON but have no OpenAPI operation in v1.
+Stream-override flags are described by the stream contract above. Keys are
+sorted, indentation is two spaces, and the bytes end in a newline. There is no
+timestamp or CLI version. Under an isolated HOME and plugin directory, served
+bytes equal `.github/openapi.json`.
 
 ## Synthetic request and response examples
 

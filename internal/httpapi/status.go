@@ -73,7 +73,7 @@ func document(w http.ResponseWriter, r invoke.Result, code int) {
 
 func (s *Server) failure(w http.ResponseWriter, r *http.Request, code string, httpCode int) {
 	path := s.routes[r.URL.Path]
-	e := errs.New(code, "HTTP request refused")
+	e := errs.New(code, errs.Registry[code].Summary)
 	var b bytes.Buffer
 	_ = output.EmitError(output.Writer{Out: &b, Err: io.Discard}, path, e)
 	id := invoke.RequestID(path, nil, invoke.Request{})

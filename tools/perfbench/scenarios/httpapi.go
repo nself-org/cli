@@ -124,7 +124,7 @@ func (httpInvoke) Run(ctx context.Context, cfg Config) ([]Sample, error) {
 		if err != nil {
 			return 0, nil, err
 		}
-		defer res.Body.Close()
+		defer func() { _ = res.Body.Close() }()
 		b, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 		if res.StatusCode != http.StatusOK {
 			return 0, nil, fmt.Errorf("http-invoke: status %d", res.StatusCode)
