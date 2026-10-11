@@ -10,10 +10,12 @@ package build
 // Outputs: compose YAML with ${VAR} references instead of literals, plus the
 //          .nself/compose.env interpolation file (0600) that `nself start`
 //          passes to docker compose via --env-file.
-// Constraints: Two-phase rewrite — exact env-key lines first, then
-//              URL-credential positions (":<pw>@"). URL rewrite only when the
-//              password needs no percent-encoding (raw == escaped), otherwise
-//              the literal is left and reported by LiteralSecretLeaks.
+// Constraints: env-key lines first, then URL-credential positions
+//              (":<pw>@" → ${VAR}; percent-encoded ":<enc>@" →
+//              ${VAR_URLENC:-${VAR}}), then any other literal. No literal may
+//              stay: compose interpolates it, so a "$" in a secret would
+//              resolve differently per consumer (D-0635). Anything left is
+//              reported by LiteralSecretLeaks.
 // SPORT: cli/internal/build — secret templating (S-secret-env-templating).
 
 import (
@@ -24,6 +26,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/nself-org/cli/internal/config"
 )
@@ -74,6 +78,21 @@ var secretAliasKeys = map[string]string{
 	"AUTH_DB_PASSWORD":       "POSTGRES_PASSWORD", // Nhost Auth AUTH_DB_* alias set
 }
 
+// urlEncodedTwinKeys are the passwords WriteComposeEnv also writes
+// percent-encoded as <KEY>_URLENC, for compose references inside a URL.
+var urlEncodedTwinKeys = []string{"POSTGRES_PASSWORD", "REDIS_PASSWORD"}
+
+// twinSource returns the configured password behind a urlEncodedTwinKeys entry.
+func twinSource(cfg *config.Config, key string) string {
+	switch key {
+	case "POSTGRES_PASSWORD":
+		return cfg.Postgres.Password
+	case "REDIS_PASSWORD":
+		return cfg.Redis.Password
+	}
+	return ""
+}
+
 // TemplateSecrets rewrites generated compose YAML so no literal secret value
 // remains: env entries become ${VAR} references and URL-embedded database
 // credentials become :${VAR}@. Docker Compose interpolates the references at
@@ -116,7 +135,7 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 		}
 		re := regexp.MustCompile(`(?m)^(\s+)` + regexp.QuoteMeta(alias) + `:\s.*$`)
 		out = re.ReplaceAllStringFunc(out, func(line string) string {
-			if !strings.Contains(line, val) {
+			if !strings.Contains(line, val) && !lineValueIs(line, val) {
 				return line
 			}
 			indent := line[:strings.Index(line, alias)]
@@ -138,24 +157,95 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 		out = strings.ReplaceAll(out, ":"+val+"@", ":${"+key+"}@")
 	}
 
+	// Phase B2: percent-encoded credential positions — ":<URLPassword(pw)>@"
+	// → ":${VAR_URLENC:-${VAR}}@" for every password WriteComposeEnv writes
+	// an encoded twin for. Phase B leaves these literal, and docker compose
+	// interpolates the literal: a "$" in it was expanded or rejected while
+	// ${VAR} consumers read the verbatim password (D-0635). The twin holds the
+	// exact encoded bytes, so the resolved URL is unchanged for every other
+	// password, and the fallback matches the fragment form (P7-PROD-31).
+	for _, key := range urlEncodedTwinKeys {
+		val, ok := secrets[key]
+		if !ok {
+			continue
+		}
+		enc := config.URLPassword(val)
+		out = strings.ReplaceAll(out, ":"+enc+"@", ":${"+key+config.URLPasswordEnvSuffix+":-${"+key+"}}@")
+	}
+
 	// Phase C: any other literal occurrence — a generator may embed a secret
 	// in a `command:` string or a healthcheck `test:` argument (Redis and
 	// Typesense did until D-0282) rather than a plain "KEY: value" env line
-	// or a URL credential position, so Phases A/B never see them. Safe to replace
-	// unconditionally for values that need no percent-encoding — those are
-	// exactly the values compose interpolation can substitute verbatim
-	// anywhere. Percent-encoding-sensitive values are left literal
-	// everywhere (same rationale as Phase B) and still caught by
-	// LiteralSecretLeaks as a defense-in-depth warning.
+	// or a URL credential position, so Phases A/B never see them (custom
+	// services still carry MINIO_ROOT_PASSWORD as S3_SECRET_KEY). A raw value
+	// that is still in the file is substituted verbatim wherever it sits, so
+	// replacing it with ${VAR} resolves to the same bytes, and compose.env
+	// quotes every value since D-0333. Values that need percent-encoding are
+	// replaced too: left literal, compose interpolated a "$" in them
+	// (D-0635). Encoded URL positions were handled by Phases B and B2.
+	// LiteralSecretLeaks still reports anything left.
 	for _, key := range keys {
 		val := secrets[key]
-		if len(val) < 8 || url.PathEscape(val) != val {
+		if len(val) < 8 {
 			continue
 		}
 		out = strings.ReplaceAll(out, val, "${"+key+"}")
 	}
+	// The YAML encoder escapes a value holding a quote or a backslash, so
+	// the byte search above misses it; decode each "KEY: value" line and
+	// rewrite the ones still holding a secret.
+	out = envLinePattern.ReplaceAllStringFunc(out, func(line string) string {
+		return templateDecodedLine(line, keys, secrets)
+	})
 
 	return []byte(out)
+}
+
+// envLinePattern matches a one-line "KEY: value" entry of a compose env map.
+var envLinePattern = regexp.MustCompile(`(?m)^(\s+)([A-Za-z_][A-Za-z0-9_]*): (.+)$`)
+
+// templateDecodedLine returns line with every secret (8+ characters) in its
+// YAML-decoded value replaced by ${KEY}, re-encoded as YAML. Lines that do
+// not decode to a single string, or hold no secret, are returned unchanged.
+func templateDecodedLine(line string, keys []string, secrets map[string]string) string {
+	m := envLinePattern.FindStringSubmatch(line)
+	var decoded map[string]string
+	if yaml.Unmarshal([]byte(m[2]+": "+m[3]), &decoded) != nil || len(decoded) != 1 {
+		return line
+	}
+	v, ok := decoded[m[2]]
+	if !ok {
+		return line
+	}
+	nv := v
+	for _, key := range keys {
+		if val := secrets[key]; len(val) >= 8 {
+			nv = strings.ReplaceAll(nv, val, "${"+key+"}")
+		}
+	}
+	if nv == v {
+		return line
+	}
+	b, err := yaml.Marshal(map[string]string{m[2]: nv})
+	enc := strings.TrimSuffix(string(b), "\n")
+	if err != nil || strings.Contains(enc, "\n") {
+		return line // a block scalar would need re-indenting; keep the line
+	}
+	return m[1] + enc
+}
+
+// lineValueIs reports whether the "KEY: value" YAML line decodes to val. A
+// value holding a quote or a backslash is escaped in the line, so a substring
+// check misses it and the literal stayed in the file (D-0635).
+func lineValueIs(line, val string) bool {
+	var m map[string]string
+	if err := yaml.Unmarshal([]byte(strings.TrimSpace(line)), &m); err != nil {
+		return false
+	}
+	for _, v := range m {
+		return v == val
+	}
+	return false
 }
 
 // LiteralSecretLeaks returns the names of secrets whose literal value (>= 8
@@ -207,12 +297,9 @@ func writeComposeEnvVia(sink Sink, workdir string, cfg *config.Config, secrets, 
 	// (P7-PROD-31): compose can substitute but not encode. Encoded exactly once
 	// here; fragments use ${X_URLENC:-${X}} so an older compose.env without the
 	// twin renders what it always rendered. Empty passwords get no twin.
-	for _, pw := range []struct{ key, val string }{
-		{"POSTGRES_PASSWORD", cfg.Postgres.Password},
-		{"REDIS_PASSWORD", cfg.Redis.Password},
-	} {
-		if enc := config.URLPassword(pw.val); enc != "" {
-			merged[pw.key+config.URLPasswordEnvSuffix] = enc
+	for _, key := range urlEncodedTwinKeys {
+		if enc := config.URLPassword(twinSource(cfg, key)); enc != "" {
+			merged[key+config.URLPasswordEnvSuffix] = enc
 		}
 	}
 	merged["HASURA_GRAPHQL_ENABLE_CONSOLE"] = fmt.Sprintf("%t", cfg.Hasura.Console)
