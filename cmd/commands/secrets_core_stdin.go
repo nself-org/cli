@@ -26,9 +26,9 @@ const maxSecretStdinBytes = 1 << 20
 func readSecretValue(cmd *cobra.Command, key string) (string, error) {
 	in := cmd.InOrStdin()
 	if f, ok := in.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Enter value for %s: ", key)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Enter value for %s: ", key)
 		raw, err := term.ReadPassword(int(f.Fd()))
-		fmt.Fprintln(cmd.ErrOrStderr())
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr())
 		if err != nil {
 			return "", fmt.Errorf("reading value: %w", err)
 		}
