@@ -143,7 +143,7 @@ func TestACMEIssueRechecksHooksAfterRetire(t *testing.T) {
 		onDisable: func() { acmeWriteFile(t, hook, []byte("[renewalparams]\n"+nselfDeployHook(f.project))) }}
 	useSystemd(t, sd)
 	out, err := f.run(sslSetupCmd, "--acme", "--agree-tos")
-	if err == nil || codeOf(err) != "E151" || !strings.Contains(err.Error(), hook+":2") || len(f.runs) != 0 || !strings.Contains(out, "was disabled before this failure") {
+	if err == nil || codeOf(err) != "E151" || !strings.Contains(err.Error(), hook+":2") || len(f.runs) != 0 || strings.Count(out, "was disabled before this failure") != 1 {
 		t.Fatalf("hook saved mid-retire: err=%v lego runs=%d\n%s", err, len(f.runs), out)
 	}
 }

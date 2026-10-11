@@ -124,8 +124,13 @@ func hookCode(line string, isConf bool) (string, bool) {
 
 // cutComment cuts a trailing comment: a '#' after a space or tab that is
 // outside quotes. A '#' inside "..." or '...' (or escaped) is text the shell
-// runs past, so the rest of the line is kept.
+// runs past, so the rest of the line is kept. A line with a command
+// substitution ("$(" or a backtick) nests quotes this scan cannot follow, so it
+// is kept whole: a false refusal names the line, a false pass loses the certs.
 func cutComment(t string) string {
+	if strings.Contains(t, "$(") || strings.ContainsRune(t, '`') {
+		return t
+	}
 	var quote byte
 	for i := 0; i < len(t); i++ {
 		switch c := t[i]; {

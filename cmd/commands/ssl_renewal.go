@@ -221,7 +221,7 @@ func (r *acmeRun) timerAfter(retired bool) error {
 		_, err := r.retireCertbot()
 		return err
 	}
-	now, err := r.retireAndRecheck(certbotDir)
+	now, err := r.retireAndRecheck(retired, certbotDir)
 	if err != nil {
 		return err
 	}

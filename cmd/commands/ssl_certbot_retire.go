@@ -190,13 +190,14 @@ func (r *acmeRun) retireCertbot() (bool, error) {
 // again: a renewal that ran between the first scan and the retirement can have
 // saved its deploy hook into renewal/<lineage>.conf, and once the timer is down
 // nothing can add one (D-0411). The first scan still refuses before any change.
-func (r *acmeRun) retireAndRecheck(dirs ...string) (bool, error) {
+// already says an earlier step of the run disabled the timer, for the hint.
+func (r *acmeRun) retireAndRecheck(already bool, dirs ...string) (bool, error) {
 	retired, err := r.retireCertbot()
 	if err != nil {
 		return retired, err
 	}
 	if err := r.refuseCertbotHooks(dirs...); err != nil {
-		r.retiredHint(retired)
+		r.retiredHint(already || retired)
 		return retired, err
 	}
 	return retired, nil

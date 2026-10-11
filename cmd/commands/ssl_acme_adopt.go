@@ -78,7 +78,7 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 		return err
 	}
 	defer r.unlock()
-	retired, err := r.retireAndRecheck(dir, certbotDir) // before the first write: no certbot copy lands on a new generation
+	retired, err := r.retireAndRecheck(false, dir, certbotDir) // before the first write: no certbot copy lands on a new generation
 	if err != nil {
 		return err
 	}
