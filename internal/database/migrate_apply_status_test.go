@@ -9,6 +9,7 @@ package database
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,5 +221,94 @@ func TestLedgerNeedsUpgrade_NonIntegerCountIsError(t *testing.T) {
 	fakeDockerState(t, map[string]string{"q_ops_exists": "yes", "q_ops_legacy_count": "boom"})
 	if _, err := ledgerNeedsUpgrade(context.Background(), fakeCfg, nil); err == nil {
 		t.Fatal("want an error for a non-integer count")
+	}
+}
+
+// pipeFile reads the n-th SQL batch the fake docker received.
+func pipeFile(t *testing.T, sd string, n int) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(sd, fmt.Sprintf("pipe-%d.sql", n)))
+	if err != nil {
+		t.Fatalf("pipe-%d.sql: %v", n, err)
+	}
+	return string(b)
+}
+
+func TestMigrateUpDir_NestedDirLegacyUpRowPipesRename(t *testing.T) {
+	dir := nestedDir(t, "001_x")
+	sd := fakeDockerState(t, map[string]string{
+		"q_legacy_exists": "yes", "q_ops_exists": "yes", "q_ops_legacy_count": "0",
+		"q_applied": "up.sql|2026-10-04T10:00:00Z", "q_up_count": "1", "q_ops_ids": "001\n",
+	})
+	if _, err := MigrateUpDir(context.Background(), fakeCfg, dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := pipeFile(t, sd, 0); strings.TrimSpace(got) != strings.TrimSpace(legacyOpsIDBackfillSQL) {
+		t.Errorf("pipe-0 is not the backfill:\n%s", got)
+	}
+	if got := pipeFile(t, sd, 1); got != legacyNestedRenameSQL("001_x") {
+		t.Errorf("pipe-1 is not the nested rename:\n%s", got)
+	}
+}
+
+func TestMigrateDownDir_NestedLegacyUpRowUpgradedBeforeLedgerRead(t *testing.T) {
+	dir := mkMigDir(t, dirTestFiles)
+	if err := os.MkdirAll(filepath.Join(dir, "000_n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "000_n", "up.sql"), []byte("SELECT 1;"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sd := fakeDockerState(t, downAnswers(t, dir, "002_b.sql", "q_up_count", "1"))
+	if _, err := MigrateDownDir(context.Background(), fakeCfg, dir, 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := pipeFile(t, sd, 1); got != legacyNestedRenameSQL("000_n") {
+		t.Errorf("pipe-1 is not the nested rename:\n%s", got)
+	}
+	if got := pipeFile(t, sd, 2); !strings.Contains(got, "DROP TABLE dir_b;") {
+		t.Errorf("pipe-2 is not the revert:\n%s", got)
+	}
+	calls, lastPipeBeforeRead, read := recordedCalls(t, sd), -1, -1
+	for i, c := range calls {
+		if strings.HasPrefix(c, "CALL QUERY SELECT name FROM np_common.schema_versions ORDER BY applied_at DESC") {
+			read = i
+			break
+		}
+		if strings.HasPrefix(c, "CALL PIPE") {
+			lastPipeBeforeRead = i
+		}
+	}
+	if read < 0 || lastPipeBeforeRead < 0 {
+		t.Errorf("upgrade did not run before the ledger read: %v", calls)
+	}
+}
+
+func TestMigrateUpDir_FlatDirLegacyUpRowPipesNoUpgrade(t *testing.T) {
+	dir := mkMigDir(t, dirTestFiles)
+	sd := fakeDockerState(t, upToDateAnswers(t, dir, map[string]string{
+		"q_applied": appliedAnswer([]string{"001_a.sql", "002_b.sql", "up.sql"}), "q_up_count": "1",
+	}))
+	if _, err := MigrateUpDir(context.Background(), fakeCfg, dir); err != nil {
+		t.Fatal(err)
+	}
+	if n := countPrefix(recordedCalls(t, sd), "CALL PIPE"); n != 0 {
+		t.Errorf("flat dir with no nested migration piped %d upgrade batches", n)
+	}
+}
+
+func TestMigrateUpDir_NoopRerunExecBudget(t *testing.T) {
+	dir := mkMigDir(t, dirTestFiles)
+	fakeDockerState(t, upToDateAnswers(t, dir, nil))
+	execs, restore := countExecs(t)
+	_, err := MigrateUpDir(context.Background(), fakeCfg, dir)
+	restore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("execs=%d", execs())
+	// ensure (1) + legacy ops-id count (1) + two ledger reads; no to_regclass probes.
+	if execs() > 4 {
+		t.Errorf("%d execs on a flat no-op rerun, want <= 4", execs())
 	}
 }

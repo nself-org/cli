@@ -156,9 +156,19 @@ func upgradeLedger(ctx context.Context, cfg *config.Config, files []string) erro
 // a nested migration on disk can take its key. A missing ledger table means
 // nothing to upgrade (false, no error); nothing is ever created.
 func ledgerNeedsUpgrade(ctx context.Context, cfg *config.Config, files []string) (bool, error) {
-	opsExists, err := ledgerTableExists(ctx, cfg, "nself_ops.migrations")
-	if err != nil {
-		return false, err
+	return legacyLedgerRows(ctx, cfg, files, false)
+}
+
+// legacyLedgerRows is ledgerNeedsUpgrade; tablesEnsured says ensureLedgerTables
+// just ran, so both tables exist and the to_regclass probes are skipped (up and
+// down; status passes false and tolerates missing tables).
+func legacyLedgerRows(ctx context.Context, cfg *config.Config, files []string, tablesEnsured bool) (bool, error) {
+	opsExists := true
+	if !tablesEnsured {
+		var err error
+		if opsExists, err = ledgerTableExists(ctx, cfg, "nself_ops.migrations"); err != nil {
+			return false, err
+		}
 	}
 	if opsExists {
 		n, err := ledgerCount(ctx, cfg, legacyOpsIDCountSQL)
@@ -174,9 +184,10 @@ func ledgerNeedsUpgrade(ctx context.Context, cfg *config.Config, files []string)
 	if resolveLegacyNestedKey(files, nil) == "" {
 		return false, nil
 	}
-	svExists, err := ledgerTableExists(ctx, cfg, "np_common.schema_versions")
-	if err != nil || !svExists {
-		return false, err
+	if !tablesEnsured {
+		if svExists, err := ledgerTableExists(ctx, cfg, "np_common.schema_versions"); err != nil || !svExists {
+			return false, err
+		}
 	}
 	n, err := ledgerCount(ctx, cfg, legacyUpRowCountSQL)
 	if err != nil {
@@ -207,7 +218,7 @@ func ledgerCount(ctx context.Context, cfg *config.Config, q string) (int, error)
 // would write, so a clean ledger costs reads, never writes. The ledger tables
 // must already exist (ensureLedgerTables).
 func upgradeLedgerIfNeeded(ctx context.Context, cfg *config.Config, files []string) error {
-	need, err := ledgerNeedsUpgrade(ctx, cfg, files)
+	need, err := legacyLedgerRows(ctx, cfg, files, true)
 	if err != nil {
 		return fmt.Errorf("check migration ledger: %w", err)
 	}
