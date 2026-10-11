@@ -7,6 +7,9 @@
 // Outputs: a Destination of one of three kinds: rclone (s3 r2 minio b2 gcs az
 // and bare rclone remotes written name:path), path (path://<abs dir>) and host
 // (host://<inventory server>/<abs dir>).
+// Each kind also implements the optional Opener, Streamer and Remover
+// interfaces, so backup stream and the heartbeat use the same destinations
+// (and the same refusals) as create and restore.
 // Constraints: Parse never touches the network or starts a process.
 package destinations
 
@@ -52,7 +55,9 @@ type Destination interface {
 }
 
 // Opener is implemented by destinations that can stream an object without a
-// local copy (restore-remote pipes it into age and pg_restore).
+// local copy (restore-remote pipes it into age and pg_restore). Streamer and
+// Remover (stream.go) are the write and delete counterparts; all three kinds
+// implement all three.
 type Opener interface {
 	Open(ctx context.Context, key string) (io.ReadCloser, error)
 }
@@ -94,7 +99,8 @@ func IsNativeKey(uri string) bool {
 	return k == KindPath || k == KindHost
 }
 
-// Parse returns the Destination uri names. rcloneEnv is appended to the
+// Parse returns the Destination uri names; the result also implements Opener,
+// Streamer and Remover. rcloneEnv is appended to the
 // environment of every rclone process (nil: none); inv is used by host://
 // only and may be nil for the other kinds.
 func Parse(uri string, inv *Inventory, rcloneEnv ...string) (Destination, error) {
@@ -134,6 +140,9 @@ var rcloneNameRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*:`)
 func validateRcloneRemote(uri string) error {
 	if strings.ContainsAny(uri, "\x00\r\n") {
 		return fmt.Errorf("rclone remote contains a control character")
+	}
+	if HasInlineCredentials(uri) {
+		return fmt.Errorf("rclone remote carries inline options or credentials; they would be written to logs and unit files. Use a named remote from rclone.conf (rclone config), or define it in the environment (RCLONE_CONFIG_<NAME>_TYPE plus its keys, e.g. through backup schedule --env-file) and pass <name>:<path>")
 	}
 	if IsRemoteKey(uri) {
 		if _, err := toRclonePath(uri); err != nil {

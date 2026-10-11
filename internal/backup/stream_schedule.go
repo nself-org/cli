@@ -23,7 +23,7 @@ import (
 // empty they resolve to the running binary and the current project directory.
 type ScheduleOptions struct {
 	Cron        string
-	To          string   // rclone destination; falls back to cfg.Backup.Remote
+	To          string   // rclone remote, path:// or host://; falls back to cfg.Backup.Remote
 	Recipients  []string // repeatable --recipient, written as repeated flags
 	HeartbeatTo string   // --heartbeat-to, written into the unit when given
 	EnvFile     string   // --env-file; no EnvironmentFile line when empty
@@ -90,6 +90,16 @@ func ScheduleStream(cfg *config.Config, opts ScheduleOptions) error {
 		}
 	}
 
+	// Same grammar as backup stream; inline credentials would land in the unit.
+	if err := checkScheduleDestination("--to", to, projectDir); err != nil {
+		return err
+	}
+	if opts.HeartbeatTo != "" {
+		if err := checkScheduleDestination("--heartbeat-to", opts.HeartbeatTo, projectDir); err != nil {
+			return err
+		}
+	}
+
 	args := []string{binaryPath, "backup", "stream", "--to", to}
 	for _, r := range opts.Recipients {
 		args = append(args, "--recipient", r)
@@ -133,18 +143,8 @@ func ScheduleStream(cfg *config.Config, opts ScheduleOptions) error {
 		return nil
 	}
 
-	if err := os.MkdirAll(unitDir, 0755); err != nil {
-		return fmt.Errorf("mkdir %s: %w", unitDir, err)
-	}
-
-	servicePath := filepath.Join(unitDir, "nself-backup-stream.service")
-	timerPath := filepath.Join(unitDir, "nself-backup-stream.timer")
-
-	if err := os.WriteFile(servicePath, []byte(service), 0644); err != nil {
-		return fmt.Errorf("write service unit: %w", err)
-	}
-	if err := os.WriteFile(timerPath, []byte(timer), 0644); err != nil {
-		return fmt.Errorf("write timer unit: %w", err)
+	if err := writeUnitFiles(unitDir, service, timer); err != nil {
+		return err
 	}
 
 	if err := run("systemctl", "daemon-reload"); err != nil {

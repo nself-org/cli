@@ -102,6 +102,23 @@ func TestHostDestinationSSHD(t *testing.T) {
 	if err := d.Get(t.Context(), "p/missing", filepath.Join(tmp, "m")); err == nil {
 		t.Fatal("get of a missing object succeeded")
 	}
+	// PutStream, Get round trip, then Remove.
+	if err := d.PutStream(t.Context(), strings.NewReader("sshd streamed"), "p/s.dump"); err != nil {
+		t.Fatalf("put stream: %v", err)
+	}
+	sback := filepath.Join(tmp, "sback")
+	if err := d.Get(t.Context(), "p/s.dump", sback); err != nil {
+		t.Fatalf("get streamed: %v", err)
+	}
+	if b, _ := os.ReadFile(sback); string(b) != "sshd streamed" {
+		t.Fatalf("streamed object came back as %q", b)
+	}
+	if err := d.Remove(t.Context(), "p/s.dump"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if err := d.Get(t.Context(), "p/s.dump", filepath.Join(tmp, "gone")); err == nil {
+		t.Fatal("removed object still downloads")
+	}
 }
 
 // dockerLogs returns the tail of a container's logs for skip messages.
