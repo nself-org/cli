@@ -237,6 +237,14 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 		}
 		return hosts[i] < hosts[j]
 	})
+	for _, host := range hosts { // every record is checked before any host is opened
+		if len(st.PreDeployChanged[host]) == 0 {
+			return true, fmt.Errorf("deploy rollback: the record for %s has no list of changed paths; it cannot be rolled back safely (nothing was changed)", host)
+		}
+		if strings.Index(tars[host], "/"+deploy.BackupDir+"/pre-deploy-") <= 0 {
+			return true, fmt.Errorf("deploy rollback: the recorded tar %q for %s is not a pre-deploy tar; nothing was changed", tars[host], host)
+		}
+	}
 	manualDB := st.BackupID != "" && tars[st.BackupHost] == ""
 	if manualDB {
 		fmt.Printf("  [warn] database backup %s was not restored: %s kept no changes of this deploy. If the database must go back, run on %s: nself backup restore %s --yes\n", st.BackupID, st.BackupHost, st.BackupHost, st.BackupID)
@@ -244,13 +252,7 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 	var failed []string
 	for _, host := range hosts {
 		tar := tars[host]
-		if len(st.PreDeployChanged[host]) == 0 {
-			return true, fmt.Errorf("deploy rollback: the record for %s has no list of changed paths; it cannot be rolled back safely (nothing was changed)", host)
-		}
 		idx := strings.Index(tar, "/"+deploy.BackupDir+"/pre-deploy-")
-		if idx <= 0 {
-			return true, fmt.Errorf("deploy rollback: the recorded tar %q is not a pre-deploy tar; nothing was changed", tar)
-		}
 		srv, key := controlplane.Server{Name: target + "-app", Host: host, RemotePath: tar[:idx]}, sshKeyPath()
 		if inv != nil {
 			for _, e := range inv.Environments {

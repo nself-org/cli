@@ -54,6 +54,8 @@ func (r *v15Remote) Rsync(_ context.Context, flags []string, _, _, dest string) 
 var (
 	quotedPath = regexp.MustCompile(`'(/[^']+)'`)
 	tagArg     = regexp.MustCompile(`--tag '([^']+)'`)
+	absentLoop = regexp.MustCompile(`for p in ((?:'[^']*' ?)+); do if \[ ! -e`)
+	quotedArg  = regexp.MustCompile(`'([^']*)'`)
 )
 
 func (r *v15Remote) Run(ctx context.Context, cmd string) ([]byte, error) {
@@ -103,6 +105,16 @@ func (r *v15Remote) Run(ctx context.Context, cmd string) ([]byte, error) {
 		return nil, nil
 	case strings.Contains(s, "nself backup list"):
 		return []byte(`[{"id":"demo_full_20261010_120000_` + r.tag + `","tag":"120000_` + r.tag + `","date":"2026-10-10T12:00:00Z"}]`), nil
+	case strings.Contains(s, "ABSENT %s"):
+		// The pre-deploy tar: the host has docker-compose.yml, none of the other shipped paths.
+		m := absentLoop.FindStringSubmatch(s)
+		var b strings.Builder
+		for _, q := range quotedArg.FindAllStringSubmatch(m[1], -1) {
+			if q[1] != "docker-compose.yml" {
+				fmt.Fprintf(&b, "ABSENT %s\n", q[1])
+			}
+		}
+		return []byte(b.String()), nil
 	case strings.Contains(s, "tar -tzf") && !strings.Contains(s, "-czf"):
 		return []byte("docker-compose.yml\n"), nil
 	case strings.Contains(s, "compose-files.txt") && strings.HasPrefix(s, "if [ -f"):
@@ -815,5 +827,40 @@ func TestRecordedAbsentListDrivesRollbackRemoval(t *testing.T) {
 	}
 	if !removed {
 		t.Errorf("the rollback did not remove the file the deploy created: %v", primary.commands())
+	}
+}
+
+// K4: a bad record on a later host refuses the whole rollback before any host is
+// opened, so the database host is not rolled back (nor its database restored).
+func TestRollbackValidatesEveryHostFirst(t *testing.T) {
+	proj, primary, second, _ := twoHostProd(t)
+	opened := 0
+	deployRemoteOpen = func(_ context.Context, srv controlplane.Server, _, _ string) (deploy.Remote, error) {
+		opened++
+		return primary, nil
+	}
+	rollbackRecord(t, proj, "deploy@app.example.test", "deploy@app.example.test", "deploy@app2.example.test")
+	st, _ := deploy.LoadDeployState(proj)
+	delete(st.PreDeployChanged, "deploy@app2.example.test") // a legacy or tampered record for the second host
+	if err := deploy.SaveDeployState(proj, st); err != nil {
+		t.Fatal(err)
+	}
+	handled, err := rollbackRemoteV15(yesCmd(), proj, "prod")
+	if !handled || err == nil || !strings.Contains(err.Error(), "app2.example.test") || !strings.Contains(err.Error(), "no list of changed paths") {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	if opened != 0 || len(primary.commands())+len(second.commands()) != 0 {
+		t.Errorf("a refused rollback opened %d remotes and ran %v", opened, primary.commands())
+	}
+	if after, _ := deploy.LoadDeployState(proj); after.DBRestoredAt != "" || after.RolledBack {
+		t.Errorf("the record changed: %+v", after)
+	}
+	// A malformed tar entry on the second host is refused the same way.
+	st, _ = deploy.LoadDeployState(proj)
+	st.PreDeployChanged["deploy@app2.example.test"] = []string{"docker-compose.yml"}
+	st.PreDeployTars["deploy@app2.example.test"] = "/etc/passwd"
+	_ = deploy.SaveDeployState(proj, st)
+	if _, err := rollbackRemoteV15(yesCmd(), proj, "prod"); err == nil || !strings.Contains(err.Error(), "not a pre-deploy tar") || opened != 0 {
+		t.Errorf("bad tar entry: err=%v opened=%d", err, opened)
 	}
 }
