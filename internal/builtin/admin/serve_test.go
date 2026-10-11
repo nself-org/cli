@@ -158,22 +158,45 @@ func assertServeAuth(t *testing.T, s *httpapi.Server) {
 }
 
 func TestNonLoopbackBind(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-	t.Setenv(machineauth.EnvVar, "")
+	strong := "fake-token-00000000000000000000000"
 	for _, tc := range []struct {
 		name, token string
 		allowed     []string
 		accepted    bool
+		file, weak  bool
 	}{
-		{"neither", "", nil, false},
-		{"allowed-only", "", []string{"api.example.test"}, false},
-		{"token-only", "fake-token-0000", nil, false},
-		{"explicit", "fake-token-0000", []string{"api.example.test"}, true},
+		{"neither", "", nil, false, false, false},
+		{"allowed-only", "", []string{"api.example.test"}, false, false, false},
+		{"token-only", strong, nil, false, false, false},
+		{"explicit", strong, []string{"api.example.test"}, true, false, false},
+		{"short-env", "fake-token-0000", []string{"api.example.test"}, false, false, true},
+		{"31-bytes", strings.Repeat("x", 31), []string{"api.example.test"}, false, false, true},
+		{"32-bytes", strings.Repeat("x", 32), []string{"api.example.test"}, true, false, false},
+		{"space-env", strong + " ", []string{"api.example.test"}, false, false, true},
+		{"unicode-space-env", strong + "\u2003", []string{"api.example.test"}, false, false, true},
+		{"short-file", "fake-token-0000", []string{"api.example.test"}, false, true, true},
+		{"whitespace-file", strong + "\tbad", []string{"api.example.test"}, false, true, true},
+		{"strong-file", strong, []string{"api.example.test"}, true, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv(machineauth.EnvVar, tc.token)
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
+			t.Setenv(machineauth.EnvVar, "")
+			path, err := machineauth.TokenPath()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.file {
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(tc.token+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				t.Setenv(machineauth.EnvVar, tc.token)
+			}
 			for i := 0; i < 2; i++ {
 				var log bytes.Buffer
 				built, listened := false, false
@@ -209,6 +232,9 @@ func TestNonLoopbackBind(t *testing.T) {
 					if !errors.As(err, &e) || e.Code != "E426" {
 						t.Fatalf("refusal = %v", err)
 					}
+					if tc.weak && (!strings.Contains(e.Fix, path) || !strings.Contains(e.Fix, "nself admin serve on loopback")) {
+						t.Fatalf("weak token guidance = %q", e.Fix)
+					}
 					if built || listened {
 						t.Fatal("refused bind reached registry or listener")
 					}
@@ -216,8 +242,7 @@ func TestNonLoopbackBind(t *testing.T) {
 				if tc.token != "" && strings.Contains(log.String(), tc.token) {
 					t.Fatal("warning leaked token")
 				}
-				path, _ := machineauth.TokenPath()
-				if _, err := os.Stat(path); !os.IsNotExist(err) {
+				if _, err := os.Stat(path); !tc.file && !os.IsNotExist(err) {
 					t.Fatalf("non-loopback run created token file: %v", err)
 				}
 			}

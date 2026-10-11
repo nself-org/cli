@@ -139,6 +139,14 @@ func serveToken(cmd *cobra.Command, host string, allowed []string) (string, erro
 	if err := machineauth.CheckBind(host, allowed, source); err != nil {
 		return "", err
 	}
+	if len(tok) < 32 || strings.IndexFunc(tok, unicode.IsSpace) >= 0 {
+		path, err := machineauth.TokenPath()
+		if err != nil {
+			return "", err
+		}
+		return "", errs.New("E426", "non-loopback HTTP API requires a token of at least 32 bytes without whitespace").
+			WithFix("Run nself admin serve on loopback to create " + path + "; use its generated token for the non-loopback bind.")
+	}
 	_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "nself: warning: bearer tokens cross the network over cleartext HTTP; use a trusted network or TLS proxy")
 	return tok, nil
 }
