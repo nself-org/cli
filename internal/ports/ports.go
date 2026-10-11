@@ -11,6 +11,9 @@
 // SPORT: F10-PORT-REGISTRY.md — update both files together.
 package ports
 
+// AdminAPIPort is the API-only admin listener reserved by SPORT F10-PORT-REGISTRY.
+const AdminAPIPort = 3857
+
 // AI gateway ports (E6 canonical trio).
 const (
 	// AICCPort is the port for nself-ai-cc (Claude Code PTY session relay).

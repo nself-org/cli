@@ -1,0 +1,4 @@
+# Authored canon fragment for the HTTP API listener (ADR 0022).
+schema_version: 1
+commands:
+  admin serve: {canon: plugin, side_effect: write, output: stream}

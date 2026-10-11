@@ -1,0 +1,173 @@
+package admin
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/nself-org/cli/internal/cmdregistry"
+	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/httpapi"
+	"github.com/nself-org/cli/internal/machineauth"
+	"github.com/nself-org/cli/internal/ports"
+)
+
+func TestAdminServe(t *testing.T) {
+	for _, configured := range []bool{false, true} {
+		name := "generated"
+		if configured {
+			name = "configured"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv(machineauth.EnvVar, "")
+			if configured {
+				t.Setenv(machineauth.EnvVar, "fake-token-0000")
+			}
+			dir := t.TempDir()
+			var log bytes.Buffer
+			calls, listens := 0, 0
+			cmd := ServeCommand(ServeDeps{
+				ProjectDir: func() (string, error) { return dir, nil },
+				Registry: func() (*cmdregistry.Registry, error) {
+					calls++
+					return &cmdregistry.Registry{SchemaVersion: "1"}, nil
+				},
+				Listen: func(_ context.Context, s *httpapi.Server, addr string) error {
+					listens++
+					if addr != "127.0.0.1:3857" {
+						t.Fatalf("listen address = %s", addr)
+					}
+					assertServeAuth(t, s)
+					return nil
+				},
+			})
+			cmd.SetErr(&log)
+			if cmd.Flags().Lookup("port").DefValue != "3857" || ports.AdminAPIPort != 3857 {
+				t.Fatal("incorrect default API port")
+			}
+			if cmd.Flags().Lookup("timeout").DefValue != "5m0s" {
+				t.Fatal("incorrect timeout default")
+			}
+			cmd.SetArgs(nil)
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if calls != 1 || listens != 1 {
+				t.Fatalf("registry/listen calls = %d/%d", calls, listens)
+			}
+			tok, _, err := machineauth.Lookup()
+			if err != nil || tok == "" {
+				t.Fatalf("missing machine token: %v", err)
+			}
+			if strings.Contains(log.String(), tok) {
+				t.Fatal("stderr leaked token")
+			}
+			if !configured && !strings.Contains(log.String(), filepath.Join(".nself", "mcp-token")) {
+				t.Fatal("generated token file path was not printed")
+			}
+		})
+	}
+	t.Run("project-required", func(t *testing.T) {
+		cmd := ServeCommand(ServeDeps{
+			ProjectDir: func() (string, error) { return "", errors.New("no nself project") },
+			Registry:   func() (*cmdregistry.Registry, error) { t.Fatal("registry built outside project"); return nil, nil },
+		})
+		cmd.SetArgs(nil)
+		if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "no nself project") {
+			t.Fatalf("project refusal = %v", err)
+		}
+	})
+}
+
+func assertServeAuth(t *testing.T, s *httpapi.Server) {
+	t.Helper()
+	for _, authorized := range []bool{false, true} {
+		r := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:3857/openapi.json", nil)
+		if authorized {
+			tok, _, err := machineauth.Lookup()
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.Header.Set("Authorization", "Bearer "+tok)
+		}
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		want := http.StatusUnauthorized
+		if authorized {
+			want = http.StatusOK
+		}
+		if w.Code != want {
+			t.Fatalf("authenticated=%t: status %d, body %s", authorized, w.Code, w.Body.String())
+		}
+		for name := range w.Header() {
+			if strings.HasPrefix(strings.ToLower(name), "access-control-") {
+				t.Fatalf("unexpected CORS header %s", name)
+			}
+		}
+	}
+}
+
+func TestNonLoopbackBind(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(machineauth.EnvVar, "")
+	for _, tc := range []struct {
+		name, token string
+		allowed     []string
+		accepted    bool
+	}{
+		{"neither", "", nil, false},
+		{"allowed-only", "", []string{"api.example.test"}, false},
+		{"token-only", "fake-token-0000", nil, false},
+		{"explicit", "fake-token-0000", []string{"api.example.test"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(machineauth.EnvVar, tc.token)
+			for i := 0; i < 2; i++ {
+				var log bytes.Buffer
+				built, listened := false, false
+				cmd := ServeCommand(ServeDeps{
+					ProjectDir: func() (string, error) { return t.TempDir(), nil },
+					Registry: func() (*cmdregistry.Registry, error) {
+						built = true
+						return &cmdregistry.Registry{SchemaVersion: "1"}, nil
+					},
+					Listen: func(_ context.Context, _ *httpapi.Server, _ string) error { listened = true; return nil },
+				})
+				cmd.SetErr(&log)
+				args := []string{"--host", "0.0.0.0"}
+				for _, allowed := range tc.allowed {
+					args = append(args, "--allowed-host", allowed)
+				}
+				cmd.SetArgs(args)
+				err := cmd.Execute()
+				if tc.accepted {
+					if err != nil || !built || !listened || strings.Count(log.String(), "cleartext HTTP") != 1 {
+						t.Fatalf("accepted bind: %v %q", err, log.String())
+					}
+				} else {
+					var e *errs.CLIError
+					if !errors.As(err, &e) || e.Code != "E426" {
+						t.Fatalf("refusal = %v", err)
+					}
+					if built || listened {
+						t.Fatal("refused bind reached registry or listener")
+					}
+				}
+				if tc.token != "" && strings.Contains(log.String(), tc.token) {
+					t.Fatal("warning leaked token")
+				}
+				path, _ := machineauth.TokenPath()
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Fatalf("non-loopback run created token file: %v", err)
+				}
+			}
+		})
+	}
+}

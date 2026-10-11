@@ -69,15 +69,18 @@ commands:
   # cmd/commands/secrets_core.go:40 overwrites a stored secret with a caller-chosen value; the old value is not restorable
   config secrets set: {side_effect: destructive, secret_args: [VALUE], confirm: {flags: []}}
   config secrets verify: {side_effect: read}
-  config set: {side_effect: write, secret_args: [value]}
+  # surface cli-only: arbitrary secret overwrites need a plan confirmation round trip.
+  config set: {side_effect: write, secret_args: [value], surface: cli-only}
   config show: {side_effect: read}
   # cmd/commands/telemetry.go:42 RunE path changes no persistent state (prints/reads only)
   config telemetry: {side_effect: read}
   config telemetry off: {side_effect: write}
   config telemetry on: {side_effect: write}
   config telemetry status: {side_effect: read}
-  config trust: {side_effect: write}
-  config trust dns: {side_effect: write}
+  # surface cli-only: OS administrator prompts cannot be answered by a machine child.
+  config trust: {side_effect: write, surface: cli-only}
+  # surface cli-only: OS administrator prompts cannot be answered by a machine child.
+  config trust dns: {side_effect: write, surface: cli-only}
   # cmd/commands/ssl.go:38 RunE path changes no persistent state (prints/reads only)
   config trust ssl: {side_effect: read}
   # cmd/commands/ssl_renewal.go:38 v1.5 makes the ACME engine the default (P7-LIVE-22): add, renew and setup reach the CA; accepting its terms is the invoker-owned consent flag
