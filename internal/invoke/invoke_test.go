@@ -337,7 +337,7 @@ func TestInvokeEchoesArgvToChild(t *testing.T) {
 	if err := json.Unmarshal(res.Stdout, &d); err != nil {
 		t.Fatalf("%v: %s", err, res.Stdout)
 	}
-	want := []string{"fx", "echo", "--json", "--name=v;$(id)", "--on", "--", "--json", "a b"}
+	want := []string{"fx", "echo", "--json", "--name=v;$(id)", "--on=true", "--", "--json", "a b"}
 	if !reflect.DeepEqual(d.Data.Argv, want) {
 		t.Errorf("child argv %q, want %q", d.Data.Argv, want)
 	}
@@ -357,13 +357,13 @@ func TestInvokeRefusals(t *testing.T) {
 		{"hidden", "fx hid", `{}`, "E421", "hidden", 1},
 		{"legacy json", "fx legacy", `{}`, "E421", "envelope", 1},
 		{"remote", "fx remote", `{}`, "E421", "no gate", 1},
-		{"destructive", "fx destroy", `{"confirm":"` + strings.Repeat("a", 64) + `"}`, "E421", "no gate", 1},
+		{"destructive without a Guard fails closed", "fx destroy", `{"confirm":"` + strings.Repeat("a", 64) + `"}`, "E421", "no gate", 1},
 		{"flag-escalated destructive", "fx escalate", `{"flags":{"wipe":true}}`, "E421", "no gate", 1},
 		{"stream over mcp", "fx streamer", `{}`, "E421", "NDJSON", 1},
 		{"stream override flag", "fx echo", `{"args":["w"],"flags":{"follow":true}}`, "E421", "NDJSON", 1},
 		{"unknown flag", "fx echo", `{"args":["w"],"flags":{"zzz":1}}`, "E420", "zzz", 1},
-		{"consent flag is invoker-owned", "fx apply", `{"flags":{"force":true}}`, "E420", "force", 1},
-		{"plan id flag is invoker-owned", "fx apply", `{"flags":{"plan-id":"` + strings.Repeat("a", 64) + `"}}`, "E420", "plan-id", 1},
+		{"consent flag is invoker-owned", "fx apply", `{"flags":{"force":true}}`, "E425", "force", 1},
+		{"plan id flag is invoker-owned", "fx apply", `{"flags":{"plan-id":"` + strings.Repeat("a", 64) + `"}}`, "E425", "plan-id", 1},
 		{"missing arg", "fx echo", `{}`, "E420", "too few", 1},
 		{"path with root prefix works", "nself fx clionly", `{}`, "E421", "cli-only", 1},
 	}

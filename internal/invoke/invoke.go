@@ -7,8 +7,8 @@ package invoke
 // v1 error envelope (E420-E423, E432) written through internal/output.
 // Constraints: a refusal is a Result, not a Go error; the error return is for
 // a cancelled context only. stderr never leaves this package except as the
-// scrubbed 2 KiB cause of an E422. Confirm is validated and ignored here: the
-// gate that consumes it is P7-SURF-25.
+// scrubbed 2 KiB cause of an E422. Gate (gate.go) decides between running,
+// a confirmation and a refusal; audit.go records every mutation and refusal.
 
 import (
 	"bytes"
@@ -20,18 +20,25 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/observability"
 	"github.com/nself-org/cli/internal/output"
 )
 
-// Invoke runs the registry command at path for req.
+// Invoke runs the registry command at path for req. With a Guard in o the
+// invocation is gated (Gate) and every mutation and refusal is audited.
 func Invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Request, o Options) (Result, error) {
-	transport := o.Transport
-	if transport == "" {
-		transport = TransportMCP
-	}
+	start := o.Guard.now()
+	tr := trace{decision: DecisionRefuse, side: "unknown"}
+	res, err := invoke(ctx, reg, path, req, o, &tr)
+	o.Guard.audit(o, &tr, req, res, err, start)
+	return res, err
+}
+
+func invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Request, o Options, tr *trace) (Result, error) {
+	transport := transportOf(o)
 	command := barePath(path)
 	var cmd *cmdregistry.Command
 	if reg != nil {
@@ -42,51 +49,134 @@ func Invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Req
 		if r := []rune(command); len(r) > 96 {
 			command = string(r[:96]) // the envelope never echoes an unbounded caller string
 		}
+		tr.command = command
 		return refuse(res, command, errs.Newf("E432", "no command %s", quoteName(command)).
 			WithWhy("The registry has no command at this path.").
 			WithFix("List the commands with nself help capabilities and use one of those paths.")), nil
 	}
+	tr.command, tr.cmd = command, cmd
+	tr.side = cmdregistry.EffectiveSideEffect(cmd, SetFlags(req))
 	if ok, reason := Exposure(cmd, transport, SetFlags(req)); !ok {
 		return refuse(res, command, errs.New("E421", "command "+quoteName(command)+" is not exposed").WithWhy(reason)), nil
 	}
 	if err := CheckFreeForm(reg, cmd, req); err != nil {
 		return refuse(res, command, err), nil
 	}
+	d, err := Gate(ctx, reg, cmd, req, o)
+	if err != nil {
+		return res, err
+	}
+	tr.side, tr.confirmKind = d.SideEffect, d.ConfirmKind
+	switch d.Kind {
+	case DecisionRefuse:
+		if d.Result != nil {
+			res.Stdout, res.ExitCode, res.ErrorCode = d.Result.Stdout, d.Result.ExitCode, d.Result.ErrorCode
+			return res, nil
+		}
+		return refuse(res, command, d.Refusal), nil
+	case DecisionConfirm:
+		tr.decision = DecisionConfirm
+		return confirmationResult(res, command, d.Confirmation), nil
+	}
 	argv, err := BuildArgvFor(cmd, req, transport)
 	if err != nil {
 		return refuse(res, command, err), nil
 	}
-	stream := transport == TransportHTTPStream
-	spec := Spec{Argv: argv, Dir: o.Dir, Transport: transport, Timeout: o.Timeout}
+	if d.SideEffect != canon.SideEffectRead && o.Guard != nil {
+		if aerr := o.Guard.auditWritable(); aerr != nil {
+			return refuse(res, command, errs.New("E421", "command "+quoteName(command)+" is not exposed").
+				WithWhy("no gate: the machine audit log cannot be written ("+aerr.Error()+"), so commands that change anything are refused")), nil
+		}
+	}
+	tr.decision = DecisionRun
+	spec := specFor(o, transport, withFlags(argv, d.Flags...))
+	out, refusal, err := runChild(ctx, res, command, spec, requestSecrets(cmd, req), transport == TransportHTTPStream)
 	switch {
-	case stream:
+	case err != nil:
+		return res, err
+	case refusal != nil:
+		return *refusal, nil
+	}
+	return out, nil
+}
+
+// transportOf is the transport of o with its default.
+func transportOf(o Options) string {
+	if o.Transport == "" {
+		return TransportMCP
+	}
+	return o.Transport
+}
+
+// specFor builds the child spec for argv: an NDJSON request has no timeout and
+// streams to o.Stdout, any other uses o.Timeout or DefaultTimeout.
+func specFor(o Options, transport string, argv []string) Spec {
+	spec := Spec{Argv: argv, Dir: o.Dir, Transport: transport, Timeout: o.Timeout, Path: pathOf(argv)}
+	switch {
+	case transport == TransportHTTPStream:
 		spec.Timeout, spec.Stdout = 0, o.Stdout
 	case spec.Timeout <= 0:
 		spec.Timeout = DefaultTimeout
 	}
+	return spec
+}
+
+// pathOf is the command path of an invoker argv: the words before --json.
+func pathOf(argv []string) string {
+	for i, a := range argv {
+		if a == "--json" {
+			return strings.Join(argv[:i], " ")
+		}
+	}
+	return ""
+}
+
+// withFlags inserts extra before the "--" separator of argv (or at the end).
+func withFlags(argv []string, extra ...string) []string {
+	if len(extra) == 0 {
+		return argv
+	}
+	cut := len(argv)
+	for i, a := range argv {
+		if a == "--" {
+			cut = i
+			break
+		}
+	}
+	out := append([]string{}, argv[:cut]...)
+	out = append(out, extra...)
+	return append(out, argv[cut:]...)
+}
+
+// runChild executes spec. It returns the child's result with res's identity
+// (ran), or a non-nil refusal when the child could not run, timed out or wrote
+// no single document (stream skips the document check). The error return is
+// the context error.
+func runChild(ctx context.Context, res Result, command string, spec Spec, secrets []string, stream bool) (Result, *Result, error) {
 	ran, err := Exec(ctx, spec)
 	if ctx.Err() != nil {
-		return res, ctx.Err()
+		return res, nil, ctx.Err()
 	}
-	secrets := SecretValues(cmd, req)
 	if err != nil {
-		return refuse(res, command, errs.New("E422", "could not run the nself child").
-			WithWhy(scrub(err.Error(), secrets))), nil
+		r := refuse(res, command, errs.New("E422", "could not run the nself child").WithWhy(scrub(err.Error(), secrets)))
+		return res, &r, nil
 	}
 	if ran.TimedOut {
-		return refuse(res, command, errs.Newf("E423", "%s did not finish within %s", quoteName(command), spec.Timeout).
-			WithWhy("The command was stopped after the invocation timeout.")), nil
+		r := refuse(res, command, errs.Newf("E423", "%s did not finish within %s", quoteName(command), spec.Timeout).
+			WithWhy("The command was stopped after the invocation timeout."))
+		return res, &r, nil
 	}
 	res.Stdout, res.ExitCode = ran.Stdout, ran.ExitCode
 	if stream {
-		return res, nil
+		return res, nil, nil
 	}
 	if why := notOneDocument(ran); why != "" {
 		tail := observability.Redact(lastBytes(scrub(string(ran.Stderr), secrets), CauseTailBytes))
-		return refuse(res, command, errs.New("E422", fmt.Sprintf("%s produced no single JSON document (%s)", quoteName(command), why)).
-			WithWhy(tail)), nil
+		r := refuse(res, command, errs.New("E422", fmt.Sprintf("%s produced no single JSON document (%s)", quoteName(command), why)).
+			WithWhy(tail))
+		return res, &r, nil
 	}
-	return res, nil
+	return res, nil, nil
 }
 
 // refuse writes err as the v1 error envelope for command into res.

@@ -5,7 +5,7 @@ package compose
 // Purpose: build the compose service definitions for MeiliSearch (including its init service) and Typesense, used by the compose builder alongside optional_services.go, split out for file size.
 // Inputs: the loaded Config identifying whether these services are enabled and their settings.
 // Outputs: compose service definitions for MeiliSearch and Typesense.
-// Constraints: pure move from optional_services.go (CLI-R12 Batch E); no behaviour change.
+// Constraints: secrets are emitted as ${VAR} references via secretRef, never literals (D-0266).
 
 import (
 	"fmt"
@@ -60,7 +60,7 @@ func (g *Generator) buildMeiliService() ServiceConfig {
 		},
 		Environment: map[string]string{
 			"MEILI_ENV":        env,
-			"MEILI_MASTER_KEY": mc.MasterKey,
+			"MEILI_MASTER_KEY": secretRef("MEILISEARCH_MASTER_KEY", mc.MasterKey),
 		},
 		Command: "meilisearch --db-path=/meili_data",
 		Volumes: []string{"meilisearch_data:/meili_data"},
@@ -97,6 +97,7 @@ func (g *Generator) buildTypesenseService() ServiceConfig {
 	if logLevel == "" {
 		logLevel = "info"
 	}
+	apiKey := secretRef("TYPESENSE_API_KEY", tc.APIKey)
 
 	return ServiceConfig{
 		Image:         ResolveImage("typesense", ImageRef("typesense", version)),
@@ -104,15 +105,15 @@ func (g *Generator) buildTypesenseService() ServiceConfig {
 		Restart:       "unless-stopped",
 		Networks:      []string{g.cfg.DockerNetwork},
 		Environment: map[string]string{
-			"TYPESENSE_API_KEY":     tc.APIKey,
+			"TYPESENSE_API_KEY":     apiKey,
 			"TYPESENSE_ENABLE_CORS": enableCORS,
 			"TYPESENSE_LOG_LEVEL":   logLevel,
 		},
-		Command: fmt.Sprintf("--data-dir /data --api-key=%s --enable-cors", tc.APIKey),
+		Command: fmt.Sprintf("--data-dir /data --api-key=%s --enable-cors", apiKey),
 		Volumes: []string{"typesense_data:/data"},
 		Ports:   []string{fmt.Sprintf("127.0.0.1:%d:8108", port)},
 		Healthcheck: &Healthcheck{
-			Test:     []string{"CMD", "curl", "-f", "-H", fmt.Sprintf("X-TYPESENSE-API-KEY: %s", tc.APIKey), "http://localhost:8108/health"},
+			Test:     []string{"CMD", "curl", "-f", "-H", fmt.Sprintf("X-TYPESENSE-API-KEY: %s", apiKey), "http://localhost:8108/health"},
 			Interval: "30s",
 			Timeout:  "10s",
 			Retries:  3,

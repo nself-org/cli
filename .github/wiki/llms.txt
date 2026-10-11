@@ -476,6 +476,8 @@ nself mcp [flags]
 
 Flags:
 
+- `--allowed-host` (default []) — Host name this server is reachable under; required (repeatable) for a non-loopback --host
+- `--host` (default 127.0.0.1) — Bind address for the sse/http transports
 - `--port` (default 3825) — Port for the sse/http transports
 - `--transport` (default stdio) — Transport: stdio, sse, or http
 
@@ -491,6 +493,7 @@ nself remove <name> [flags]
 
 Flags:
 
+- `--delete-data` (default false) — Delete plugin data (schema/tables); asks for confirmation, or pass --yes
 - `--dry-run` (default false) — Print the planned actions without removing
 - `--force` (default false) — Remove even if other plugins depend on this one
 - `--keep-data` (default false) — Preserve database data on remove

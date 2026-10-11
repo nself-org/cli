@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nself-org/cli/internal/bundle"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/reconcile"
@@ -31,18 +32,37 @@ func runPluginRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	keepData, _ := cmd.Flags().GetBool("keep-data")
 	force, _ := cmd.Flags().GetBool("force")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	deleteData, _ := cmd.Flags().GetBool("delete-data")
+	if deleteData && keepData {
+		return fmt.Errorf("--delete-data and --keep-data cannot be used together")
+	}
+
+	pluginDir := resolvePluginDir()
+	// --delete-data on a plugin target is a no-op: plugin remove already drops data unless --keep-data.
+	// A --dry-run that deletes is a bug fix, not a behaviour change, so it is not V15-gated (P7-PLUG-20 S1).
+	if dryRun {
+		return printPluginRemovePlan(pluginDir, name, keepData, force)
+	}
 
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
 	}
 
-	pluginDir := resolvePluginDir()
 	ctx := context.Background()
+
+	// P7-PLUG-20: a plugin an installed bundle references is refused (E133) unless --force.
+	if err := bundle.GuardPluginRemove(os.Stderr, pluginDir, name, force); err != nil {
+		return err
+	}
 
 	fmt.Fprintf(os.Stderr, "Removing plugin %q...\n", name)
 	if err := plugin.Remove(ctx, cfg, name, pluginDir, keepData, force); err != nil {
 		return fmt.Errorf("removing plugin %q: %w", name, err)
+	}
+	if err := bundle.ForgetPlugin(pluginDir, name); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: plugin %q is removed but the bundle ledger could not be updated: %v\n", name, err)
 	}
 
 	fmt.Fprintf(os.Stderr, "Plugin %q removed successfully.\n", name)
@@ -50,6 +70,34 @@ func runPluginRemove(cmd *cobra.Command, args []string) error {
 	if compat.V15() {
 		return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: name})
 	}
+	return nil
+}
+
+// printPluginRemovePlan is the --dry-run of a plugin remove: what would happen,
+// including whether the bundle-reference guard would refuse. It changes nothing.
+func printPluginRemovePlan(pluginDir, name string, keepData, force bool) error {
+	fmt.Fprintf(os.Stderr, "Remove plan (dry-run) for plugin %s\n", name)
+	if keepData {
+		fmt.Fprintln(os.Stderr, "  data: preserve (--keep-data)")
+	} else {
+		fmt.Fprintln(os.Stderr, "  data: drop plugin schema/tables (the default for plugin remove)")
+	}
+	refs, err := bundle.ReferencingBundles(pluginDir, name)
+	switch {
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "  bundles: unknown (ledger unreadable: %v)\n", err)
+	case len(refs) == 0:
+		fmt.Fprintln(os.Stderr, "  bundles: none reference this plugin")
+	default:
+		fmt.Fprintf(os.Stderr, "  bundles: referenced by %s\n", strings.Join(refs, ", "))
+	}
+	var warnings strings.Builder
+	if gerr := bundle.GuardPluginRemove(&warnings, pluginDir, name, force); gerr != nil {
+		fmt.Fprintf(os.Stderr, "  guard: would refuse: %v\n", gerr)
+	} else {
+		fmt.Fprintln(os.Stderr, "  guard: would proceed")
+	}
+	fmt.Fprintln(os.Stderr, "(dry-run) no changes made.")
 	return nil
 }
 

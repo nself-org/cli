@@ -18187,6 +18187,40 @@
       "args": [],
       "flags": [
         {
+          "name": "allowed-host",
+          "shorthand": null,
+          "type": "stringSlice",
+          "default": "[]",
+          "usage": "Host name this server is reachable under; required (repeatable) for a non-loopback --host",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "host",
+          "shorthand": null,
+          "type": "string",
+          "default": "127.0.0.1",
+          "usage": "Bind address for the sse/http transports",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
           "name": "port",
           "shorthand": "p",
           "type": "int",
@@ -18626,6 +18660,23 @@
         }
       ],
       "flags": [
+        {
+          "name": "delete-data",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Delete plugin data (schema/tables); asks for confirmation, or pass --yes",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
         {
           "name": "dry-run",
           "shorthand": null,
