@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/nself-org/cli/internal/canon"
@@ -40,6 +41,11 @@ var auditMaxBytes int64 = 10 << 20
 
 // auditKeep is the number of rotated files kept (.1 to .3).
 const auditKeep = 3
+
+// auditFileMu serialises every audit write of this process, across Guards:
+// the file lock covers other processes, and on Windows (no flock) it is the
+// only thing keeping two in-process writers from racing a rotation.
+var auditFileMu sync.Mutex
 
 // auditErrOut receives the one-line notice of a failed audit write.
 var auditErrOut io.Writer = os.Stderr
@@ -200,8 +206,8 @@ func childErrorCode(stdout []byte) *string {
 
 // appendLine writes one line under the in-process mutex and the file lock.
 func (g *Guard) appendLine(line []byte) error {
-	g.auditMu.Lock()
-	defer g.auditMu.Unlock()
+	auditFileMu.Lock()
+	defer auditFileMu.Unlock()
 	if err := ensureAuditDir(filepath.Dir(g.auditPath)); err != nil {
 		return err
 	}

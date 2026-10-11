@@ -42,7 +42,6 @@ type Guard struct {
 	Now func() time.Time
 
 	auditPath string
-	auditMu   sync.Mutex
 
 	mu     sync.Mutex
 	seq    uint64
@@ -173,8 +172,8 @@ func (g *Guard) auditWritable() error {
 	if g.auditPath == "" {
 		return errors.New("this server has no machine audit log")
 	}
-	g.auditMu.Lock()
-	defer g.auditMu.Unlock()
+	auditFileMu.Lock()
+	defer auditFileMu.Unlock()
 	if err := ensureAuditDir(filepath.Dir(g.auditPath)); err != nil {
 		return err
 	}
