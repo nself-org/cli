@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"sort"
 
@@ -166,6 +165,9 @@ func consentFlags(cmd *cmdregistry.Command) []string {
 // requestGate is the nonce round trip for remote and destructive commands
 // without a plan form.
 func requestGate(cmd *cmdregistry.Command, req Request, o Options, d Decision) Decision {
+	if _, err := BuildArgvFor(cmd, req, transportOf(o)); err != nil {
+		return refused(d, err) // never issue or spend a nonce for a request that cannot run
+	}
 	command := barePath(cmd.Path)
 	digest, ok := requestDigest(command, req)
 	if !ok {
@@ -284,7 +286,7 @@ func parsePlan(stdout []byte) (f planFacts, childErr bool, problem string) {
 func confirmationResult(res Result, command string, c *Confirmation) Result {
 	var buf bytes.Buffer
 	if err := output.EmitData(output.Writer{Out: &buf, Err: io.Discard}, command, c); err != nil {
-		return refuse(res, command, errs.New("E422", "could not write the confirmation").WithWhy(errors.Unwrap(err).Error()))
+		return refuse(res, command, errs.New("E422", "could not write the confirmation").WithWhy(err.Error()))
 	}
 	res.Stdout, res.ExitCode, res.ErrorCode = buf.Bytes(), 0, ""
 	return res

@@ -20,6 +20,9 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -159,4 +162,25 @@ func requestDigest(command string, r Request) (sum [32]byte, ok bool) {
 		return sum, false
 	}
 	return sha256.Sum256(bytes.TrimRight(buf.Bytes(), "\n")), true
+}
+
+// auditWritable checks, before a remote or destructive run, that the audit
+// file can be opened for append. The audit line is written after the run, so
+// without this probe a broken log (no path, unwritable dir) would lose the
+// record of a destructive change; the run is refused instead. A failure after
+// the probe (disk full) still only prints a notice.
+func (g *Guard) auditWritable() error {
+	if g.auditPath == "" {
+		return errors.New("this server has no machine audit log")
+	}
+	g.auditMu.Lock()
+	defer g.auditMu.Unlock()
+	if err := ensureAuditDir(filepath.Dir(g.auditPath)); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(g.auditPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }

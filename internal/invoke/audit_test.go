@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/nself-org/cli/internal/cmdregistry"
 )
 
 var (
@@ -27,7 +29,8 @@ var (
 
 // normalizeAudit makes an audit file comparable with a golden.
 func normalizeAudit(raw, projectDir string) string {
-	s := strings.ReplaceAll(raw, projectDir, "<DIR>")
+	enc, _ := json.Marshal(projectDir) // JSON escapes Windows backslashes
+	s := strings.ReplaceAll(raw, strings.Trim(string(enc), `"`), "<DIR>")
 	s = timeRe.ReplaceAllString(s, `"time":"<TIME>"`)
 	return durationRe.ReplaceAllString(s, `"duration_ms":0`)
 }
@@ -181,7 +184,7 @@ func TestAuditRotate(t *testing.T) {
 		}
 	}
 
-	t.Run("an existing dir keeps its mode and a wide file is narrowed", func(t *testing.T) {
+	t.Run("an existing wide dir and a wide file are narrowed", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("no unix permission bits")
 		}
@@ -202,7 +205,7 @@ func TestAuditRotate(t *testing.T) {
 		}
 		di, _ := os.Stat(dir)
 		fi, _ := os.Stat(path)
-		if di.Mode().Perm() != 0o755 || fi.Mode().Perm() != 0o600 {
+		if di.Mode().Perm() != 0o700 || fi.Mode().Perm() != 0o600 {
 			t.Errorf("dir %v file %v", di.Mode().Perm(), fi.Mode().Perm())
 		}
 	})
@@ -294,5 +297,23 @@ func TestDefaultAuditPath(t *testing.T) {
 	got, err := DefaultAuditPath()
 	if err != nil || got != filepath.Join(home, ".nself", "logs", "machine-audit.jsonl") {
 		t.Errorf("%q %v", got, err)
+	}
+}
+
+// TestRequestIDRedactsSecretNamedFlags pins that a flag named like a secret
+// (config.IsSecretKey) is redacted before hashing even when the registry does
+// not mark it: two requests that differ only in its value share an id, so the
+// id is no guess oracle for a weak secret.
+func TestRequestIDRedactsSecretNamedFlags(t *testing.T) {
+	cmd := &cmdregistry.Command{Path: "nself gx put", Flags: []cmdregistry.Flag{{Name: "db-password", Type: "string"}, {Name: "note", Type: "string"}}}
+	a := RequestID("gx put", cmd, Request{Flags: map[string]any{"db-password": "one"}})
+	b := RequestID("gx put", cmd, Request{Flags: map[string]any{"db-password": "two"}})
+	c := RequestID("gx put", cmd, Request{Flags: map[string]any{"note": "one"}})
+	d := RequestID("gx put", cmd, Request{Flags: map[string]any{"note": "two"}})
+	if a != b {
+		t.Error("a secret-named flag value changed the request id")
+	}
+	if c == d {
+		t.Error("a plain flag value must still change the request id")
 	}
 }

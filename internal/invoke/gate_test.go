@@ -624,3 +624,31 @@ func TestGateCallerConsentFlag(t *testing.T) {
 		t.Errorf("unknown flag on a command without a confirm block: %v", x)
 	}
 }
+
+// TestGateAuditProbe pins the fail-closed audit rule for gated runs: a
+// confirmed destructive call whose audit log cannot be written is refused
+// (E421) and runs nothing, a Guard with no audit path refuses the same way,
+// and a bad request never gets a nonce (validated before issue).
+func TestGateAuditProbe(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, path := range map[string]string{"unwritable": filepath.Join(blocker, "logs", "machine-audit.jsonl"), "no path": ""} {
+		e := newGateEnv(t)
+		e.guard = NewGuard(path)
+		conf := confirmationOf(t, e.call("gx wipe", `{"args":["n1"],"flags":{"target":"t"}}`))
+		x := errorOf(t, e.call("gx wipe", `{"args":["n1"],"flags":{"target":"t"},"confirm":"`+conf.Confirm+`"}`))
+		if x["code"] != "E421" || !strings.Contains(x["cause"].(string), "audit") {
+			t.Errorf("%s: want E421 naming the audit log, got %v", name, x)
+		}
+		if len(e.argvs()) != 0 {
+			t.Errorf("%s: the command ran: %v", name, e.argvs())
+		}
+	}
+	e := newGateEnv(t)
+	x := errorOf(t, e.call("gx wipe", `{"args":["n1"],"flags":{"target":"t","nope":1}}`))
+	if x["code"] != "E420" || e.guard.liveNonces() != 0 {
+		t.Errorf("a bad request must be E420 with no nonce issued: %v live=%d", x, e.guard.liveNonces())
+	}
+}

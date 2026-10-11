@@ -100,7 +100,7 @@ func Lookup() (tok, source string, err error) {
 	if err != nil {
 		return "", "", errs.Wrap("E426", fmt.Sprintf("cannot read the machine token file %s", path), err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if fst, serr := f.Stat(); serr != nil || !os.SameFile(lst, fst) {
 		return "", "", errs.New("E426", fmt.Sprintf("machine token file %s changed while it was being read", path))
 	}
@@ -154,7 +154,7 @@ func ResolveTo(notice io.Writer) (tok, source string, generated bool, err error)
 		return "", "", false, errs.Wrap("E426", fmt.Sprintf("cannot write the machine token file %s", path), errors.Join(werr, cerr))
 	}
 	if notice != nil {
-		fmt.Fprintf(notice, "nself: generated a machine token for the MCP server and saved it to %s\n  read it with: cat %s\n", path, path)
+		_, _ = fmt.Fprintf(notice, "nself: generated a machine token for the MCP server and saved it to %s\n  read it with: cat %s\n", path, path)
 	}
 	return tok, SourceGenerated, true, nil
 }
@@ -177,9 +177,10 @@ func lookupAfterRace() (string, string, bool, error) {
 	return "", "", false, err
 }
 
-// ensureDir creates dir with mode 0700 when missing. An existing directory is
-// never chmod-ed; on non-Windows one that group or others can write to is
-// refused.
+// ensureDir creates dir with mode 0700 when missing. On non-Windows an
+// existing directory is narrowed to 0700 (group and other bits removed, never
+// widened: other nself commands create ~/.nself at 0755 first); when that
+// fails and group or others can still write to it, it is refused.
 func ensureDir(dir string) error {
 	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
 		return errs.Wrap("E426", fmt.Sprintf("cannot create %s", dir), err)
@@ -190,6 +191,11 @@ func ensureDir(dir string) error {
 	}
 	if !st.IsDir() {
 		return errs.New("E426", fmt.Sprintf("%s exists and is not a directory", dir))
+	}
+	if unixPerms() && st.Mode().Perm()&0o077 != 0 {
+		if os.Chmod(dir, st.Mode().Perm()&^0o077) == nil {
+			return nil
+		}
 	}
 	if unixPerms() && st.Mode().Perm()&0o022 != 0 {
 		return errs.New("E426", fmt.Sprintf("%s is writable by other users (mode %04o), so a token stored there could be replaced", dir, st.Mode().Perm())).

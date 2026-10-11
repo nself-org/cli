@@ -15,6 +15,7 @@ import (
 	"sort"
 
 	"github.com/nself-org/cli/internal/cmdregistry"
+	"github.com/nself-org/cli/internal/config"
 )
 
 // secretArg reports whether positional i is secret (a variadic secret covers
@@ -31,11 +32,12 @@ func secretArg(cmd *cmdregistry.Command, i int) bool {
 	return true
 }
 
-// secretFlag reports whether flag name is secret (a flag the command does not
-// declare is treated as secret).
+// secretFlag reports whether flag name is secret: marked secret in the
+// registry, named like a secret (config.IsSecretKey), or not declared by the
+// command.
 func secretFlag(cmd *cmdregistry.Command, name string) bool {
-	if cmd == nil {
-		return true
+	if cmd == nil || config.IsSecretKey(name) {
+		return true // a secret-looking name is redacted even when unmarked: no id is a guess oracle for it
 	}
 	for _, f := range cmd.Flags {
 		if f.Name == name {

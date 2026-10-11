@@ -6,11 +6,13 @@ package commands
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/machineauth"
@@ -198,5 +200,53 @@ func TestMCPHostFlagSecondStartAfterGenerated(t *testing.T) {
 	}
 	if len(warns) != 1 || !strings.Contains(warns[0], "cleartext HTTP") {
 		t.Errorf("warnings = %q", warns)
+	}
+}
+
+// TestMCPReadTimeoutKeepsStreams proves the listener's ReadTimeout bounds the
+// request read only: a handler that streams past it (SSE, a long tool call
+// answered on a POST) keeps its context and finishes. The control server
+// without mcpBodyThenStream shows that a bare ReadTimeout cancels it.
+func TestMCPReadTimeoutKeepsStreams(t *testing.T) {
+	oldRead := mcpReadTimeout
+	mcpReadTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { mcpReadTimeout = oldRead })
+	streamer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		_, _ = io.WriteString(w, "start\n")
+		http.NewResponseController(w).Flush()
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(700 * time.Millisecond):
+		}
+		_, _ = io.WriteString(w, "done\n")
+	})
+	run := func(srv *http.Server, method string) string {
+		ts := httptest.NewUnstartedServer(srv.Handler)
+		ts.Config = srv
+		ts.Start()
+		defer ts.Close()
+		var body io.Reader
+		if method == http.MethodPost {
+			body = strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`)
+		}
+		req, _ := http.NewRequest(method, ts.URL, body)
+		resp, err := ts.Client().Do(req)
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+	for _, m := range []string{http.MethodGet, http.MethodPost} {
+		if got := run(newMCPHTTPServer("", streamer), m); !strings.Contains(got, "done") {
+			t.Errorf("%s: stream cut by ReadTimeout: %q", m, got)
+		}
+	}
+	control := &http.Server{Handler: streamer, ReadTimeout: mcpReadTimeout}
+	if got := run(control, http.MethodGet); strings.Contains(got, "done") {
+		t.Logf("control: a bare ReadTimeout did not cancel the stream on this platform (%q)", got)
 	}
 }

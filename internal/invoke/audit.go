@@ -25,6 +25,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/nself-org/cli/internal/canon"
@@ -127,11 +128,11 @@ func (g *Guard) audit(o Options, tr *trace, req Request, res Result, runErr erro
 	enc := json.NewEncoder(&line)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(rec); err != nil {
-		fmt.Fprintln(auditErrOut, "nself: machine audit line could not be encoded")
+		_, _ = fmt.Fprintln(auditErrOut, "nself: machine audit line could not be encoded")
 		return
 	}
 	if err := g.appendLine(line.Bytes()); err != nil {
-		fmt.Fprintf(auditErrOut, "nself: machine audit write failed: %v\n", err)
+		_, _ = fmt.Fprintf(auditErrOut, "nself: machine audit write failed: %v\n", err)
 	}
 }
 
@@ -210,16 +211,16 @@ func (g *Guard) appendLine(line []byte) error {
 			return err
 		}
 		if err := lockFile(f); err != nil {
-			f.Close()
+			_ = f.Close()
 			return err
 		}
 		fi, err := f.Stat()
 		if err != nil {
-			f.Close()
+			_ = f.Close()
 			return err
 		}
 		if cur, err := os.Stat(g.auditPath); err != nil || !os.SameFile(cur, fi) {
-			f.Close() // another process rotated it between open and lock
+			_ = f.Close() // another process rotated it between open and lock
 			continue
 		}
 		if fi.Mode().Perm()&0o077 != 0 {
@@ -228,10 +229,10 @@ func (g *Guard) appendLine(line []byte) error {
 		if fi.Size() >= auditMaxBytes {
 			rerr := rotateAudit(g.auditPath, f)
 			if !closeBeforeRotate {
-				f.Close()
+				_ = f.Close()
 			}
-			if rerr != nil {
-				return rerr
+			if rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
+				return rerr // ErrNotExist: another writer rotated first (no flock on Windows); reopen
 			}
 			continue
 		}
@@ -244,7 +245,10 @@ func (g *Guard) appendLine(line []byte) error {
 	return errors.New("the audit file kept changing under the lock")
 }
 
-// ensureAuditDir creates dir, chmod-ing to 0700 only the directories it made.
+// ensureAuditDir creates dir at 0700 and narrows an existing dir to 0700 on
+// unix (group and other bits removed, never widened: the command log creates
+// ~/.nself/logs at 0755 first). A failed narrowing is not fatal: the file
+// itself is 0600.
 func ensureAuditDir(dir string) error {
 	var made []string
 	for d := dir; ; d = filepath.Dir(d) {
@@ -261,6 +265,9 @@ func ensureAuditDir(dir string) error {
 			return err
 		}
 	}
+	if st, err := os.Stat(dir); err == nil && runtime.GOOS != "windows" && st.Mode().Perm()&0o077 != 0 {
+		_ = os.Chmod(dir, st.Mode().Perm()&^0o077)
+	}
 	return nil
 }
 
@@ -269,7 +276,7 @@ func ensureAuditDir(dir string) error {
 // it first (closeBeforeRotate).
 func rotateAudit(path string, f *os.File) error {
 	if closeBeforeRotate {
-		f.Close()
+		_ = f.Close()
 	}
 	_ = os.Remove(fmt.Sprintf("%s.%d", path, auditKeep))
 	for i := auditKeep - 1; i >= 1; i-- {

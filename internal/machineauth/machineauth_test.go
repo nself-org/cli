@@ -158,26 +158,25 @@ func TestTokenResolve(t *testing.T) {
 		}
 	})
 
-	t.Run("group-writable dir refused and untouched", func(t *testing.T) {
+	t.Run("a wide existing dir is narrowed to 0700", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("POSIX modes only")
 		}
-		home := homeDir(t)
-		dir := filepath.Join(home, ".nself")
-		if err := os.Mkdir(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(dir, 0o770); err != nil {
-			t.Fatal(err)
-		}
-		_, _, _, err := ResolveTo(&bytes.Buffer{})
-		wantE426(t, err, dir)
-		di, _ := os.Stat(dir)
-		if di.Mode().Perm() != 0o770 {
-			t.Errorf("existing dir was chmod-ed to %v", di.Mode().Perm())
-		}
-		if _, err := os.Stat(filepath.Join(dir, "mcp-token")); err == nil {
-			t.Error("a refused Resolve must not create the token file")
+		for _, mode := range []os.FileMode{0o755, 0o770, 0o777} {
+			home := homeDir(t)
+			dir := filepath.Join(home, ".nself")
+			if err := os.Mkdir(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(dir, mode); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, gen, err := ResolveTo(&bytes.Buffer{}); err != nil || !gen {
+				t.Fatalf("mode %v: resolve %v %v", mode, gen, err)
+			}
+			if di, _ := os.Stat(dir); di.Mode().Perm() != 0o700 {
+				t.Errorf("existing dir at %v left at %v, want 0700", mode, di.Mode().Perm())
+			}
 		}
 	})
 }

@@ -104,9 +104,9 @@ The `sse` and `http` transports of `nself mcp` check a bearer token on every req
 
 1. `NSELF_MCP_TOKEN` (source `env`).
 2. The file `~/.nself/mcp-token` (source `file`). It must be a regular file (a symlink is refused), mode `0600` on macOS and Linux, and not empty. A file that group or others can read is refused with `E426`; the message names the path and `chmod 600`.
-3. Neither. In v1.5 mode (`NSELF_V15=1`) the first loopback start generates 32 random bytes as 64 hex characters, creates `~/.nself` at `0700` if it is missing (an existing directory is never chmod-ed; one that group or others can write to is refused), writes the file at `0600` and prints its path and a `cat <path>` hint on standard error. The token value is never printed to any stream. Later starts read the file. In v1.4 mode (the default today) a start with no token serves an open loopback port and prints one warning.
+3. Neither. In v1.5 mode (`NSELF_V15=1`) the first loopback start generates 32 random bytes as 64 hex characters, creates `~/.nself` at `0700` if it is missing (an existing one is narrowed to `0700`, never widened; if that fails and group or others can write to it, the start is refused), writes the file at `0600` and prints its path and a `cat <path>` hint on standard error. The token value is never printed to any stream. Later starts read the file. In v1.4 mode (the default today) a start with no token serves an open loopback port and prints one warning.
 
-A request without the right `Authorization: Bearer <token>` header gets `401 unauthorized` with `WWW-Authenticate: Bearer realm="nself-mcp"`. The comparison hashes both sides first, so it does not depend on the token length. With a token set, behaviour is the same in both modes. `stdio` needs no token. The invoker removes `NSELF_MCP_TOKEN` from the environment of the commands it runs.
+Long-lived responses (SSE streams, a tool call that runs for minutes) are not cut by the read timeout: the request body is read under it, then the read deadline is cleared. A request without the right `Authorization: Bearer <token>` header gets `401 unauthorized` with `WWW-Authenticate: Bearer realm="nself-mcp"`. The comparison hashes both sides first, so it does not depend on the token length. With a token set, behaviour is the same in both modes. Both modes also read an existing token file, so a malformed or group-readable `~/.nself/mcp-token` stops a v1.4 start with `E426` too (the file is new in 1.5; nothing created it before). `stdio` needs no token. The invoker removes `NSELF_MCP_TOKEN` from the environment of the commands it runs.
 
 ## Transports and --host
 
@@ -121,9 +121,10 @@ A request without the right `Authorization: Bearer <token>` header gets `401 una
 
 - Loopback hosts (`localhost`, any `127.0.0.0/8` address, `::1`) are always allowed.
 - Any other host, including the empty host, `0.0.0.0` and `::`, exits non-zero with `E426` unless at least one `--allowed-host <name>` is given and a token is configured on that run through `NSELF_MCP_TOKEN` or an existing `~/.nself/mcp-token`. A token that this run would generate does not count, and a second start after a generated run is refused the same way.
+- `--allowed-host` gates the bind only; the MCP server does not compare the request's Host header with it.
 - An accepted non-loopback start prints one warning that the bearer token crosses the network over cleartext HTTP. The server has no TLS: put a TLS terminator in front of it.
 
-The HTTP server sets `ReadHeaderTimeout` 10 s and `ReadTimeout` 30 s and no write timeout, so SSE streams stay open. Headers, bodies and tokens are never logged.
+The HTTP server sets `ReadHeaderTimeout` 10 s and `ReadTimeout` 30 s and no write timeout, so SSE streams stay open. Request bodies are capped at 32 MiB. Headers, bodies and tokens are never logged.
 
 ## Gate
 
@@ -132,11 +133,11 @@ The gate decides on the effective side effect of the request (flag escalation ap
 - Consent and plan-id flags belong to the invoker. A request that sets one is refused with `E425` before anything runs.
 - `read` runs.
 - `write` without a plan form runs, with no consent flags.
-- A command with a plan form and no `confirm`: the invoker runs the plan form once (`<path> --json --<plan.flag> ...`) and reads `data.plan_id` and `data.requires_confirmation` from the child's change plan. When `requires_confirmation` is true, or the class is `remote` or `destructive`, it returns a confirmation of kind `plan` whose `confirm` is the plan id. Otherwise it runs the command once with `--<id_flag>=<plan_id>`. A plan exec that fails returns the child's error envelope unchanged; a plan without a valid `plan_id` or `requires_confirmation` is `E422`.
+- A command with a plan form and no `confirm`: the invoker runs the plan form once (`<path> --json --<plan.flag> ...`) and reads `data.plan_id` and `data.requires_confirmation` from the child's change plan. When `requires_confirmation` is true, or the class is `remote` or `destructive`, it returns a confirmation of kind `plan` whose `confirm` is the plan id. Otherwise it runs the command once with `--<id_flag>=<plan_id>`. A plan exec that fails returns the child's error envelope unchanged; a plan without a valid `plan_id` or `requires_confirmation` is `E422`. The plan exec and the run are two children, each with the full invocation timeout.
 - `remote` or `destructive` without a plan form and no `confirm`: a confirmation of kind `request`, whose `confirm` is a nonce.
 - A server without a confirmation store refuses every remote and destructive command with `E421`.
 
-The gate is not a prompt-injection control: an agent that was told to confirm will confirm. The controls are the token, the loopback default, Host and Origin checks, request validation, the confirmation round trip and the audit log.
+The gate is not a prompt-injection control: an agent that was told to confirm will confirm. The controls are the token, the loopback default, request validation, the confirmation round trip and the audit log; the HTTP API adds Host and Origin checks (`nself mcp` does not check the Host header).
 
 ## Confirmation round trip
 
@@ -176,4 +177,4 @@ One compact JSON object per line, keys in this order:
 | `error_code` | the invoker's `E42x`, the child's `error.code`, or `null` |
 | `duration_ms` | wall time of the invocation |
 
-A failed audit write prints one line with the operating-system error on the server's standard error (never the request) and does not stop the server.
+Before a remote or destructive command runs, the server checks that the audit file can be opened for append; when it cannot (or the server has no audit log), the run is refused with `E421` and nothing changes. A write that fails after the run (a full disk) prints one line with the operating-system error on the server's standard error (never the request) and does not stop the server. An existing log directory that group or others can read (other nself commands create `~/.nself/logs` at `0755`) is narrowed to `0700`.

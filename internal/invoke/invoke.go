@@ -20,6 +20,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/observability"
@@ -80,6 +81,12 @@ func invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Req
 	argv, err := BuildArgvFor(cmd, req, transport)
 	if err != nil {
 		return refuse(res, command, err), nil
+	}
+	if d.SideEffect == canon.SideEffectRemote || d.SideEffect == canon.SideEffectDestructive {
+		if aerr := o.Guard.auditWritable(); aerr != nil {
+			return refuse(res, command, errs.New("E421", "command "+quoteName(command)+" is not exposed").
+				WithWhy("no gate: the machine audit log cannot be written ("+aerr.Error()+"), so remote and destructive commands are refused")), nil
+		}
 	}
 	tr.decision = DecisionRun
 	spec := specFor(o, transport, withFlags(argv, d.Flags...))

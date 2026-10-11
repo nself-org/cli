@@ -91,7 +91,7 @@ func prepareMCPHTTP(transport, host string, allowed []string, errw io.Writer) (f
 		return nil, err
 	}
 	for _, w := range warns {
-		fmt.Fprintln(errw, w)
+		_, _ = fmt.Fprintln(errw, w)
 	}
 	return wrap, nil
 }
