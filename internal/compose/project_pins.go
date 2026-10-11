@@ -206,3 +206,29 @@ func CanonicalRef(ref string) string {
 	}
 	return strings.TrimPrefix(ref, "library/")
 }
+
+// CLILockedRef finds the CLI image lock entry whose version a tag reference
+// names, in the short or the docker.io/ spelling.
+func CLILockedRef(ref string) (string, bool) {
+	c := CanonicalRef(ref)
+	for _, r := range LockedImages() {
+		for _, cand := range []string{r.LegacyRef, r.LegacyRepository() + ":" + r.Version, r.Repository + ":" + r.Version} {
+			if c == CanonicalRef(cand) {
+				return r.String(), true
+			}
+		}
+	}
+	return "", false
+}
+
+// CLIOwned keeps the services the CLI image lock names and whose image is a
+// literal reference (no variable).
+func CLIOwned(all map[string]string) map[string]string {
+	out := map[string]string{}
+	for svc, ref := range all {
+		if _, owned := LockedRef(svc); owned && !strings.Contains(ref, "$") {
+			out[svc] = ref
+		}
+	}
+	return out
+}

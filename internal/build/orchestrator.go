@@ -269,4 +269,7 @@ type buildState struct {
 	composePath        string
 	secretMap          map[string]string
 	pluginComposeFiles []string
+
+	// lockWarned dedupes the lock warnings of one build (lockfile.go).
+	lockWarned map[string]bool
 }

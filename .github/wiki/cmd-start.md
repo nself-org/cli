@@ -173,7 +173,7 @@ nself start --embedded-pg
 nself start --frozen
 ```
 
-`--frozen` checks the images of the CLI-owned services (not CS_N custom services or plugin-fragment services), the installed plugin versions and checksums, the installed bundles and the CLI minor against the project lock before anything starts, and turns off the automatic rebuild and the AI auto-install so the checked stack is the one that starts. A plain `nself start` runs the same check and only warns. See [[Lock-File]].
+`--frozen` checks the images of the CLI-owned services (not CS_N custom services or plugin-fragment services), the installed plugin versions and checksums, the installed bundles and the CLI minor against the project lock before anything starts, and turns off the automatic rebuild and the AI auto-install so the checked stack is the one that starts. It cannot be combined with `--skip-plugins` (usage error E401): the lock describes the full stack. A plain `nself start` runs the same check and only warns. See [[Lock-File]].
 <!-- END PROSE:examples -->
 
 ## See Also

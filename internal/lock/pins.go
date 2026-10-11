@@ -118,3 +118,13 @@ func RefDigest(ref string) string {
 	}
 	return ""
 }
+
+var minorRE = regexp.MustCompile(`^v?([0-9]+)\.([0-9]+)`)
+
+// CLIMinor returns major.minor of a version string, or "" when it has none.
+func CLIMinor(v string) string {
+	if m := minorRE.FindStringSubmatch(strings.TrimSpace(v)); m != nil {
+		return m[1] + "." + m[2]
+	}
+	return ""
+}

@@ -25,7 +25,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -48,16 +47,6 @@ var localRepoDigest = func(ref string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return docker.LocalRepoDigest(ctx, ref)
-}
-
-var minorRE = regexp.MustCompile(`^v?([0-9]+)\.([0-9]+)`)
-
-// cliMinor returns major.minor of a version string, or "" when it has none.
-func cliMinor(v string) string {
-	if m := minorRE.FindStringSubmatch(strings.TrimSpace(v)); m != nil {
-		return m[1] + "." + m[2]
-	}
-	return ""
 }
 
 // lockActive reports whether this build reads and writes the project lock.
@@ -108,92 +97,37 @@ func (st *buildState) bootstrapPins() (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading docker-compose.yml: %w", err)
 	}
-	refs, err := cliOwnedImages(data)
+	all, err := lock.ComposeImages(data)
 	if err != nil {
 		return nil, err
 	}
-	images, unpinned := lock.Pin(refs, lock.Resolver{LocalDigest: localRepoDigest, CLILocked: cliLockedRef})
+	refs := compose.CLIOwned(all)
+	images, unpinned := lock.Pin(refs, lock.Resolver{LocalDigest: localRepoDigest, CLILocked: compose.CLILockedRef})
 	for k, v := range unpinned {
 		images[k] = v
 	}
 	return images, nil
 }
 
-// cliOwnedImages lists the images of compose services the CLI image lock names.
-func cliOwnedImages(composeYAML []byte) (map[string]string, error) {
-	all, err := lock.ComposeImages(composeYAML)
-	if err != nil {
-		return nil, err
-	}
-	return filterCLIOwned(all), nil
-}
-
-// mergedComposeImages reads the compose files `nself start` runs (lock.MergeImages
+// mergedComposeImages reads the compose files `nself start` runs (lock.MergeDetailed
 // has the rules) and returns the merged image of each service plus what could
 // not be verified. base is the rendered docker-compose.yml bytes, used in place
 // of the file on disk when the build has them (nil reads the file). paths is the
 // file list (nil reads .nself/compose-files.txt): the build passes the list it
 // has just discovered, so the lock and the manifest agree. forCompare is true
 // for start --frozen.
-func mergedComposeImages(workdir string, base []byte, paths []string, forCompare bool) (map[string]string, []string, error) {
+func mergedComposeImages(workdir string, base []byte, paths []string, forCompare bool) (lock.Merged, error) {
 	if paths == nil {
 		var err error
 		if paths, err = ReadComposeManifest(workdir); err != nil {
-			return nil, nil, err
+			return lock.Merged{}, err
 		}
 	}
-	abs := func(p string) string {
-		if !filepath.IsAbs(p) {
-			p = filepath.Join(workdir, p)
-		}
-		return filepath.Clean(p)
+	files, err := lock.LoadSources(workdir, base, paths, docker.ImageOverrideFile)
+	if err != nil {
+		return lock.Merged{}, err
 	}
-	basePath, mirrorPath := abs("docker-compose.yml"), abs(docker.ImageOverrideFile)
-	var files []lock.SourceFile
-	for _, p := range append([]string{basePath}, paths...) {
-		p = abs(p)
-		if p == basePath && len(files) > 0 {
-			continue
-		}
-		data := base
-		if p != basePath || base == nil {
-			var err error
-			if data, err = os.ReadFile(p); err != nil {
-				if p != basePath && os.IsNotExist(err) {
-					continue
-				}
-				return nil, nil, fmt.Errorf("reading %s: %w", filepath.Base(p), err)
-			}
-		}
-		files = append(files, lock.SourceFile{Name: filepath.Base(p), Data: data, Mirror: p == mirrorPath})
-	}
-	return lock.MergeImages(files, func(svc string) bool { _, ok := compose.LockedRef(svc); return ok }, forCompare)
-}
-
-// filterCLIOwned keeps the services the CLI image lock names and whose image
-// is a literal reference.
-func filterCLIOwned(all map[string]string) map[string]string {
-	out := map[string]string{}
-	for svc, ref := range all {
-		if _, owned := compose.LockedRef(svc); owned && !strings.Contains(ref, "$") {
-			out[svc] = ref
-		}
-	}
-	return out
-}
-
-// cliLockedRef finds the CLI image lock entry whose version a tag reference
-// names, in the short or the docker.io/ spelling.
-func cliLockedRef(ref string) (string, bool) {
-	c := compose.CanonicalRef(ref)
-	for _, r := range compose.LockedImages() {
-		for _, cand := range []string{r.LegacyRef, r.LegacyRepository() + ":" + r.Version, r.Repository + ":" + r.Version} {
-			if c == compose.CanonicalRef(cand) {
-				return r.String(), true
-			}
-		}
-	}
-	return "", false
+	return lock.MergeDetailed(files, func(svc string) bool { _, ok := compose.LockedRef(svc); return ok }, forCompare)
 }
 
 // ledgerSources adapts internal/bundle and the plugin directory to the ledger's
@@ -221,20 +155,33 @@ func ledgerSources(pluginDir string) func() (ledger.Sources, error) {
 
 // lockFromState assembles a Lock from a rendered compose, the bundle ledger and
 // the CLI version. No digest is looked up: the lock records the compose as is.
-func lockFromState(pluginDir, workdir string, composeYAML []byte, files []string, forCompare bool) (lock.Lock, error) {
-	all, _, err := mergedComposeImages(workdir, composeYAML, files, forCompare)
+// prev is the lock on disk (nil for none): a CLI-owned service whose image cannot
+// be verified (a variable, extends, build) keeps its previous entry instead of
+// losing its pin.
+func lockFromState(pluginDir, workdir string, composeYAML []byte, files []string, forCompare bool, prev *lock.Lock) (lock.Lock, lock.Merged, error) {
+	m, err := mergedComposeImages(workdir, composeYAML, files, forCompare)
 	if err != nil {
-		return lock.Lock{}, err
+		return lock.Lock{}, m, err
 	}
-	refs := filterCLIOwned(all)
 	l := lock.New()
-	l.CLI = cliMinor(version.GetVersion())
-	l.Images, l.Unpinned = lock.Pin(refs, lock.Resolver{})
+	l.CLI = lock.CLIMinor(version.GetVersion())
+	l.Images, l.Unpinned = lock.Pin(compose.CLIOwned(m.Images), lock.Resolver{})
+	if prev != nil {
+		for _, svc := range m.Services {
+			if ref, ok := prev.Images[svc]; ok {
+				l.Images[svc] = ref
+				delete(l.Unpinned, svc)
+			} else if ref, ok := prev.Unpinned[svc]; ok {
+				l.Unpinned[svc] = ref
+				delete(l.Images, svc)
+			}
+		}
+	}
 	store := ledger.NewStore(pluginDir)
 	store.Sources = ledgerSources(pluginDir)
 	led, _, err := store.Load()
 	if err != nil {
-		return lock.Lock{}, fmt.Errorf("reading the bundle ledger for %s: %w", lock.FileName, err)
+		return lock.Lock{}, m, fmt.Errorf("reading the bundle ledger for %s: %w", lock.FileName, err)
 	}
 	for slug, p := range led.Plugins {
 		l.Plugins[slug] = lock.PluginPin{Version: p.Version, SHA256: p.Checksum, Tier: p.Tier}
@@ -242,7 +189,48 @@ func lockFromState(pluginDir, workdir string, composeYAML []byte, files []string
 	for slug := range led.Bundles {
 		l.Bundles = append(l.Bundles, slug)
 	}
-	return l, nil
+	return l, m, nil
+}
+
+// warnOnce logs a warning once per build, however often the lock is written.
+func (st *buildState) warnOnce(msg, key, val string) {
+	if k := msg + "\x00" + val; !st.lockWarned[k] {
+		if st.lockWarned == nil {
+			st.lockWarned = map[string]bool{}
+		}
+		st.lockWarned[k] = true
+		slog.Warn(msg, key, val)
+	}
+}
+
+// pruneMirror drops the entries of the registry-mirror override file whose
+// digest is not the digest of the image the compose files render without it
+// (see lock.PruneMirror). A file that cannot be read as YAML is left alone.
+func (st *buildState) pruneMirror(rendered map[string]string) error {
+	path := filepath.Join(st.workdir, docker.ImageOverrideFile)
+	data, err := st.sink.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	out, dropped, err := lock.PruneMirror(data, rendered)
+	if err != nil {
+		st.warnOnce("cannot prune "+docker.ImageOverrideFile, "reason", err.Error())
+		return nil
+	}
+	if len(dropped) == 0 {
+		return nil
+	}
+	if out == nil {
+		err = st.sink.Remove(path)
+	} else {
+		err = st.sink.WriteAtomic(path, out, 0o600)
+	}
+	if err != nil {
+		return fmt.Errorf("updating %s: %w", docker.ImageOverrideFile, err)
+	}
+	st.warnOnce("dropped stale registry-mirror entries from "+docker.ImageOverrideFile, "services", strings.Join(dropped, ","))
+	st.filesGenerated++
+	return nil
 }
 
 // writeProjectLock writes nself.lock.yaml through the sink when its content
@@ -251,21 +239,27 @@ func (st *buildState) writeProjectLock(composeYAML []byte, files []string) error
 	if !st.lockActive() {
 		return nil
 	}
-	l, err := lockFromState(st.pluginDir, st.workdir, composeYAML, files, false)
+	path := lock.Path(st.workdir)
+	have, rerr := st.sink.ReadFile(path)
+	var prev *lock.Lock
+	if pl, perr := lock.Parse(have); rerr == nil && perr == nil {
+		prev = &pl
+	}
+	l, m, err := lockFromState(st.pluginDir, st.workdir, composeYAML, files, false, prev)
 	if err != nil {
 		return err
 	}
-	if _, bad, err := mergedComposeImages(st.workdir, composeYAML, files, false); err == nil {
-		for _, b := range bad {
-			slog.Warn("not pinned in "+lock.FileName, "reason", b)
-		}
+	for _, b := range m.Unverifiable {
+		st.warnOnce("not verified in "+lock.FileName+" (an existing pin is kept)", "reason", b)
+	}
+	if err := st.pruneMirror(m.Images); err != nil {
+		return err
 	}
 	want, err := l.Marshal()
 	if err != nil {
 		return fmt.Errorf("rendering %s: %w", lock.FileName, err)
 	}
-	path := lock.Path(st.workdir)
-	if have, rerr := st.sink.ReadFile(path); rerr == nil && bytes.Equal(have, want) {
+	if rerr == nil && bytes.Equal(have, want) {
 		return nil
 	}
 	// Atomic (temp file + rename): a reader, a crash or a full disk never leaves
@@ -281,8 +275,8 @@ func (st *buildState) writeProjectLock(composeYAML []byte, files []string) error
 // all be verified (a variable image, extends, build or include on a CLI-owned
 // service): `start --frozen` fails on any.
 func UnverifiableImages(workdir string) ([]string, error) {
-	_, bad, err := mergedComposeImages(workdir, nil, nil, true)
-	return bad, err
+	m, err := mergedComposeImages(workdir, nil, nil, true)
+	return m.Unverifiable, err
 }
 
 // CurrentLock computes the lock the project's docker-compose.yml and installed
@@ -291,5 +285,6 @@ func CurrentLock(workdir string) (lock.Lock, error) {
 	if _, err := os.Stat(filepath.Join(workdir, "docker-compose.yml")); err != nil {
 		return lock.Lock{}, fmt.Errorf("reading docker-compose.yml: %w", err)
 	}
-	return lockFromState(DefaultPluginDir(), workdir, nil, nil, true)
+	l, _, err := lockFromState(DefaultPluginDir(), workdir, nil, nil, true, nil)
+	return l, err
 }

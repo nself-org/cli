@@ -386,3 +386,50 @@ func TestMergeImagesUnverifiable(t *testing.T) {
 		t.Errorf("user services and literal images must pass: %v %v", bad, err)
 	}
 }
+
+// TestMergeDetailedServices: the unverifiable CLI-owned services are named; an
+// include or a user-owned service adds none.
+func TestMergeDetailedServices(t *testing.T) {
+	owned := func(s string) bool { return s == "hasura" || s == "postgres" }
+	yml := "include:\n  - x.yml\nservices:\n  hasura:\n    image: $H\n  postgres:\n    extends:\n      service: p\n  custom:\n    build: .\n"
+	m, err := MergeDetailed([]SourceFile{{Name: "o.yml", Data: []byte(yml)}}, owned, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(m.Services, ","); got != "hasura,postgres" {
+		t.Fatalf("services = %q, want hasura,postgres", got)
+	}
+	if len(m.Unverifiable) != 3 {
+		t.Fatalf("want include + two services, got %v", m.Unverifiable)
+	}
+}
+
+// TestPruneMirror: an entry stays only while its digest equals the rendered
+// image's digest; with none left the output is nil.
+func TestPruneMirror(t *testing.T) {
+	d1 := "sha256:" + strings.Repeat("1", 64)
+	d2 := "sha256:" + strings.Repeat("2", 64)
+	rendered := map[string]string{"a": "r/a:1@" + d1, "b": "r/b:1@" + d1, "c": "r/c:1"}
+	file := MirrorHeader + "services:\n    a:\n        image: m/a@" + d1 + "\n    b:\n        image: m/b@" + d2 + "\n    c:\n        image: m/c@" + d1 + "\n    z:\n        image: m/z@" + d1 + "\n"
+	out, dropped, err := PruneMirror([]byte(file), rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(dropped, ",") != "b,c,z" {
+		t.Fatalf("dropped = %v, want b,c,z", dropped)
+	}
+	want := MirrorHeader + "services:\n    a:\n        image: m/a@" + d1 + "\n"
+	if string(out) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", out, want)
+	}
+	same, dropped, err := PruneMirror(out, rendered)
+	if err != nil || len(dropped) != 0 || string(same) != want {
+		t.Fatalf("a clean file must come back unchanged: %v %v", dropped, err)
+	}
+	if out, dropped, _ := PruneMirror([]byte(file), map[string]string{}); out != nil || len(dropped) != 4 {
+		t.Fatalf("nothing left must give nil bytes: %q %v", out, dropped)
+	}
+	if _, _, err := PruneMirror([]byte("services: [\n"), rendered); err == nil {
+		t.Fatal("unparseable input must be an error")
+	}
+}

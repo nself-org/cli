@@ -89,7 +89,7 @@ The comparison covers every compose file `start` runs: the generated file, plugi
 
 **Not covered:** your own services (`CS_N`) and the services that plugin compose fragments add. Their images are not in the lock and `--frozen` does not compare them; plugins are covered by their version and sha256. A CLI-owned image built from a variable is not pinned: `nself build` logs a warning that names it.
 
-The file `.nself/state/image-overrides.yml`, which `start` writes when a pull falls back to a registry mirror, is read too, but an entry from it counts only when its digest equals the digest of the image it replaces (same bytes, other registry). Any other override in that file is an `image` mismatch, and `nself build` never records it in the lock.
+The file `.nself/state/image-overrides.yml`, which `start` writes when a pull falls back to a registry mirror, is read too, but an entry from it counts only when its digest equals the digest of the image it replaces (same bytes, other registry). Any other override in that file is an `image` mismatch, and `nself build` never records it in the lock. When such an entry is the difference, the E455 message names the file. `nself build` drops the entries whose digest no longer equals the image the compose files render (and removes the file when none is left), so a pin that moved does not leave a stale mirror entry behind; you can also delete the file.
 
 A service pinned by tag only (listed under `unpinned`) cannot detect a moved tag, so `--frozen` prints one warning that lists those services.
 
@@ -100,7 +100,7 @@ nself build
 nself start --frozen
 ```
 
-Under `--frozen`, `start` does not rebuild and does not auto-install the AI plugins, so the stack it checked is the stack it starts. If the compose file is stale, run `nself build` first.
+Under `--frozen`, `start` does not rebuild and does not auto-install the AI plugins, so the stack it checked is the stack it starts. If the compose file is stale, run `nself build` first. `--frozen` cannot be combined with `--skip-plugins` (usage error E401): the lock describes the full stack, and `--skip-plugins` starts a smaller one the check never compared.
 
 A plain `nself start` runs the same comparison, prints one warning that lists the differences, and starts anyway. See [[cmd-start]] and [[error-codes]].
 
