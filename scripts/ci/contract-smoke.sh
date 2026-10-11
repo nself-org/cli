@@ -159,8 +159,12 @@ done
 run v14 -- config validate --json
 if has_err "[E402]"; then fail "v14 config validate --json: behaves as before (no E402)" "stderr mentions E402"
 else pass "v14 config validate --json: behaves as before (no E402)"; fi
+# config validate is an envelope row since P7-SURF-12 (was json none, refused
+# with E402); restart above keeps the E402 refusal covered.
 run v15 -- config validate --json
-check "v15 config validate --json: refused with E402" rc_err 1 "[E402]"
+check "v15 config validate --json: one v1 envelope, no E402 (P7-SURF-12)" envelope "config validate"
+if has_err "[E402]"; then fail "v15 config validate --json: no E402" "stderr mentions E402"
+else pass "v15 config validate --json: no E402"; fi
 
 # ---- acceptance 5: exit-code contract with a failing docker ----
 run v14 -- start
