@@ -5,7 +5,10 @@ package deploy
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
@@ -95,5 +98,68 @@ func TestSyncWritesThroughSymlinkedDir(t *testing.T) {
 	}
 	if readFile(t, rp+"/docker-compose.yml") != "# new\n" || readFile(t, rp+"/hasura/metadata/version.yaml") != "version: 3\n" {
 		t.Error("files outside the link were not synced")
+	}
+}
+
+// localRsyncRemote runs the real rsync, with the argv rsyncArgv builds for a host,
+// against a local directory standing in for it.
+type localRsyncRemote struct{ *fakeRemote }
+
+func (l localRsyncRemote) Rsync(ctx context.Context, flags []string, filesFrom, srcDir, destDir string) error {
+	args, err := rsyncArgv(sshSpecForTest(), nil, flags, filesFrom, srcDir, destDir)
+	if err != nil {
+		return err
+	}
+	var local []string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-e" {
+			i++ // drop the ssh transport
+			continue
+		}
+		local = append(local, args[i])
+	}
+	local[len(local)-1] = strings.TrimSuffix(destDir, "/") + "/"
+	if out, err := exec.CommandContext(ctx, "rsync", local...).CombinedOutput(); err != nil {
+		return fmt.Errorf("rsync: %w: %s", err, out)
+	}
+	return nil
+}
+
+// J5: the sync never re-modes a directory that already exists: a host nginx/ of
+// 0755 stays 0755 although the stage dir (built under umask 077) holds it at 0700.
+func TestSyncKeepsExistingDirModes(t *testing.T) {
+	needTools(t)
+	f := localRsyncRemote{newFakeRemote(t)}
+	rp, stage := t.TempDir(), t.TempDir()
+	if err := os.Chmod(rp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, rp+"/nginx/sites/old.conf", "# old\n", 0o644)
+	for _, d := range []string{rp + "/nginx", rp + "/nginx/sites"} {
+		if err := os.Chmod(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, stage+"/nginx/sites/api.conf", "# new\n", 0o600)
+	for _, d := range []string{stage + "/nginx", stage + "/nginx/sites"} {
+		if err := os.Chmod(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set := ArtifactSet{StageDir: stage, RemotePath: rp, Files: []string{"nginx/sites/api.conf", "hasura/metadata/version.yaml"}}
+	writeFile(t, stage+"/hasura/metadata/version.yaml", "version: 3\n", 0o644)
+	if err := SyncArtifacts(context.Background(), f, set); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{rp, rp + "/nginx", rp + "/nginx/sites"} {
+		if got := modeOf(t, d); got != 0o755 {
+			t.Errorf("%s mode %o after the sync, want 755", d, got)
+		}
+	}
+	if got := modeOf(t, rp+"/hasura/metadata"); got != 0o755 {
+		t.Errorf("a directory the sync had to create has mode %o, want 755", got)
+	}
+	if readFile(t, rp+"/nginx/sites/api.conf") != "# new\n" {
+		t.Error("the file was not synced")
 	}
 }

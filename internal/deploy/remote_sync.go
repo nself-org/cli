@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sort"
 	"strings"
 )
 
@@ -74,6 +75,14 @@ func rsyncList(ctx context.Context, r Remote, set ArtifactSet, rels, flags []str
 	// Files in a directory that is (or sits behind) a symlink on the host go to the
 	// directory's real path: rsync >= 3.4 refuses to traverse a symlink in the
 	// destination even with --keep-dirlinks, and a real dir must never replace it.
+	// Parents are made here (umask 022), never transferred by rsync: an implied
+	// parent dir would take the stage dir's mode and re-mode the host's own.
+	if dirs := layoutDirsOnly(rels); len(dirs) > 0 {
+		mk := fmt.Sprintf(`cd %s && (umask 022; mkdir -p %s)`, q(set.RemotePath), strings.Join(quoteAll(dirs), " "))
+		if _, err := r.Run(ctx, shScript(mk)); err != nil {
+			return fmt.Errorf("creating directories on %s: %w", r.Label(), err)
+		}
+	}
 	plain := []string{}
 	byDir := map[string][]string{}
 	for _, rel := range rels {
@@ -231,4 +240,18 @@ func (s ArtifactSet) KeepSet() map[string]bool {
 		m[f] = true
 	}
 	return m
+}
+
+// layoutDirsOnly are the distinct parent directories (not ".") of rels, sorted.
+func layoutDirsOnly(rels []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, d := range dirsOf(rels) {
+		if d != "." && !seen[d] {
+			seen[d] = true
+			out = append(out, d)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
