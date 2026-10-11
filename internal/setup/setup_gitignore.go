@@ -14,8 +14,8 @@ package setup
 // ssl/certificates/*/privkey.pem never lands in git. Lines are matched like
 // git does (only a trailing CR and trailing spaces are dropped, so a leading
 // space or tab is part of the pattern), whole-line, so `ssl/.acme/` does not
-// count. An ssl negation (`!ssl/...`) after the last ssl-dir line re-includes
-// keys, so the entry is appended again.
+// count. A negation that can reach ssl/ (see negationMayHitSSL) after the last
+// ssl-dir line re-includes keys, so the entry is appended again.
 
 import (
 	"os"
@@ -120,14 +120,28 @@ func gitignoreLine(l string) string {
 	return strings.TrimRight(strings.TrimSuffix(l, "\r"), " ")
 }
 
+// negationMayHitSSL reports whether a normalised "!" line could re-include
+// something under ssl/. Only a pattern anchored to the .gitignore dir (a "/"
+// before its last char) whose first segment is a plain name other than ssl
+// (git may match case-insensitively) is harmless, e.g. !.nself/ci.yaml.
+func negationMayHitSSL(l string) bool {
+	p := strings.TrimPrefix(strings.TrimPrefix(l, "!"), "/")
+	i := strings.Index(p, "/")
+	if i < 0 || i >= len(p)-1 {
+		return true
+	}
+	seg := p[:i]
+	return strings.ContainsAny(seg, "*?[\\") || strings.ToLower(seg) == "ssl"
+}
+
 // sslIgnored reports whether the last ssl-dir line comes after the last
-// negation line that mentions ssl, so no negation re-includes the keys.
+// negation line that may reach ssl/, so no negation re-includes the keys.
 func sslIgnored(lines []string) bool {
 	lastDir, lastNeg := -1, -1
 	for i, l := range lines {
 		if sslDirLines[l] {
 			lastDir = i
-		} else if strings.HasPrefix(l, "!") && strings.Contains(l, "ssl") {
+		} else if strings.HasPrefix(l, "!") && negationMayHitSSL(l) {
 			lastNeg = i
 		}
 	}

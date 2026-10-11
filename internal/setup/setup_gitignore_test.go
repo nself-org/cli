@@ -89,6 +89,13 @@ func TestGitignoreSSL(t *testing.T) {
 		{"crlf", "ssl/\r\n", false},
 		{"negated-dir", "ssl/*\n!ssl/certificates/\n", true},
 		{"negated-key", "ssl/**\n!ssl/**/privkey.pem\n", true},
+		{"neg-name", "ssl/*\n!privkey.pem\n", true},
+		{"neg-glob", "ssl/*\n!*.pem\n", true},
+		{"neg-deep-glob", "ssl/**\n!**/privkey.pem\n", true},
+		{"neg-subdir", "ssl/*\n!certificates/\n", true},
+		{"neg-case", "ssl/*\n!SSL/certificates/\n", true},
+		{"neg-nself", "ssl/\n!.nself/ci.yaml\n", false},
+		{"neg-nself-anchored", "ssl/\n!/.nself/ci.yaml\n", false},
 		{"negation-before", "!ssl/x\nssl/\n", false},
 	}
 	for _, tc := range cases {
@@ -140,6 +147,9 @@ func TestGitignoreSSLGitSemantics(t *testing.T) {
 		{"negated", "ssl/*\n!ssl/certificates/\n", false},
 		{"leading-space", "  ssl/*\n", false},
 		{"plain", "ssl/\n", false},
+		{"plain-glob", "ssl/**\n", false},
+		{"neg-name", "ssl/*\n!privkey.pem\n", false},
+		{"neg-deep-glob", "ssl/**\n!**/privkey.pem\n", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
