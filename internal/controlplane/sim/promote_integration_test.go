@@ -35,7 +35,7 @@ func TestSimPromote(t *testing.T) {
 	for _, h := range []*simHost{source, target} {
 		h.put("/usr/local/bin/nself", promoteNselfStub)
 		docker := strings.Replace(dockerStub, `case "$*" in`, `case "$*" in
-  *"compose images --format json"*) printf '[{"Service":"web","Repository":"example.invalid/web","Tag":"2"}]' ;;
+  *"compose images --format json"*) printf '[{"Service":"web","Repository":"example.invalid/web","Tag":"2","ID":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]' ;;
   *"image inspect --format"*) printf '["example.invalid/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]|linux/amd64' ;;`, 1)
 		h.put("/usr/local/bin/docker", docker)
 		h.sh("chmod 755 /usr/local/bin/nself; printf original > /tmp/sim-db-fp")
@@ -58,7 +58,10 @@ func TestSimPromote(t *testing.T) {
 			runRemote := func(c context.Context, command string) ([]byte, error) {
 				return sourceRemote.Run(c, "cd "+source.rp+" && "+command)
 			}
-			images, err := promote.CaptureSource(ctx, runRemote, []promote.Image{{Service: "web", Ref: "example.invalid/web:2"}}, nil)
+			sourceLookup := func(context.Context, string) (map[string]string, error) {
+				return map[string]string{"linux/amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
+			}
+			images, err := promote.CaptureSource(ctx, runRemote, []promote.Image{{Service: "web", Ref: "example.invalid/web:2"}}, sourceLookup)
 			st.Values["source_images"] = images
 			return err
 		}

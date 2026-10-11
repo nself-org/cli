@@ -10,6 +10,8 @@ package commands
 import (
 	"context"
 	"fmt"
+	"os"
+	"sync"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/controlplane"
@@ -19,6 +21,39 @@ import (
 	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
+
+type lazyPromoteRemote struct {
+	srv      controlplane.Server
+	env, key string
+	once     sync.Once
+	r        deploy.Remote
+	err      error
+}
+
+func (r *lazyPromoteRemote) open(ctx context.Context) (deploy.Remote, error) {
+	r.once.Do(func() { r.r, r.err = openDeployRemote(ctx, r.srv, r.key, r.env) })
+	return r.r, r.err
+}
+func (r *lazyPromoteRemote) Label() string {
+	if r.r != nil {
+		return r.r.Label()
+	}
+	return r.srv.Host
+}
+func (r *lazyPromoteRemote) Run(ctx context.Context, command string) ([]byte, error) {
+	remote, err := r.open(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return remote.Run(ctx, command)
+}
+func (r *lazyPromoteRemote) Rsync(ctx context.Context, flags []string, filesFrom, srcDir, destDir string) error {
+	remote, err := r.open(ctx)
+	if err != nil {
+		return err
+	}
+	return remote.Rsync(ctx, flags, filesFrom, srcDir, destDir)
+}
 
 func runPromoteRecordRollback(cmd *cobra.Command) error {
 	workdir, err := projectRoot()
@@ -44,8 +79,11 @@ func runPromoteRecordRollback(cmd *cobra.Command) error {
 
 func rollbackPromoteForTarget(ctx context.Context, workdir, target string) (bool, error) {
 	rec, err := cpromote.LoadLatestRecord(workdir, target)
-	if err != nil || rec == nil {
-		return false, err
+	if err != nil {
+		return true, err
+	}
+	if rec == nil {
+		return false, nil
 	}
 	return true, rollbackPromoteRecord(ctx, workdir, rec)
 }
@@ -61,14 +99,21 @@ func rollbackPromoteRecord(ctx context.Context, workdir string, rec *cpromote.Re
 	}
 	remotes, paths := map[string]deploy.Remote{}, map[string]string{}
 	for _, target := range targets {
-		r, openErr := promoteRemote(ctx, target.Server, rec.Target, workdir)
+		var r deploy.Remote
+		var openErr error
+		if target.Server.Host == "" {
+			r = localPromoteRemote{root: workdir}
+		} else {
+			r, openErr = openDeployRemote(ctx, target.Server, os.Getenv(target.Server.SSHKeyRef), rec.Target)
+		}
 		if openErr != nil {
 			return openErr
 		}
 		remotes[r.Label()], paths[r.Label()] = r, promotePath(target.Server, workdir)
 	}
 	if err := cpromote.RollbackRecord(ctx, workdir, rec, remotes, paths); err != nil {
-		return errs.Newf("E489", "promote rollback failed for snapshot %s backup %s; needs operator: %v", rec.SnapshotTag, rec.BackupID, err)
+		return errs.Newf("E489", "promote rollback failed for snapshot %s backup %s; needs operator: %v", rec.SnapshotTag, rec.BackupID, err).
+			WithFix(fmt.Sprintf("On %s run: nself backup restore %s --yes", rec.BackupHost, rec.BackupID))
 	}
 	return nil
 }
@@ -109,6 +154,11 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 	} else {
 		result, err = eng.Run(cmd.Context(), st)
 		if err != nil {
+			if len(st.PreDeployTar) > 0 {
+				if wiring, ok := st.Values["wiring"].(*promoteWiring); ok {
+					_ = savePromoteRecord(wiring, st, result.Status)
+				}
+			}
 			return err
 		}
 	}

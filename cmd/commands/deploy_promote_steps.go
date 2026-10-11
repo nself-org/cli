@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -26,7 +25,6 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	remotesdk "github.com/nself-org/cli/sdk/go/v2/remote"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 type promoteWiring struct {
@@ -39,6 +37,7 @@ type promoteWiring struct {
 	apply                   *controlplane.RemoteApply
 	compose                 string
 	started                 time.Time
+	yes                     bool
 }
 
 // preparePromoteEngine resolves local inventory facts and wires concrete steps.
@@ -55,29 +54,28 @@ func preparePromoteEngine(cmd *cobra.Command, workdir, source, target string, dr
 	if !ok {
 		return cpromote.Engine{}, nil, errs.Newf("E483", "unknown promotion target %q", target)
 	}
-	srcTargets, err := controlplane.ResolveTargets(inv, controlplane.Selector{Env: source})
-	if err != nil {
-		return cpromote.Engine{}, nil, err
-	}
-	tgtTargets, err := controlplane.ResolveTargets(inv, controlplane.Selector{Env: target})
-	if err != nil {
-		return cpromote.Engine{}, nil, err
-	}
-	st := &cpromote.State{Source: source, Target: target, SourceTier: srcTargets[0].Tier, TargetTier: tgtTargets[0].Tier, DryRun: dryRun, Values: map[string]any{}}
+	sourceEnv, targetEnv := inv.Environments[source], inv.Environments[target]
+	st := &cpromote.State{Source: source, Target: target, SourceTier: sourceEnv.Tier, TargetTier: targetEnv.Tier, DryRun: dryRun, Values: map[string]any{}}
 	if err := cpromote.ValidateTiers(source, target, st.SourceTier, st.TargetTier); err != nil {
 		return cpromote.Engine{}, nil, err
 	}
 	w := &promoteWiring{workdir: workdir, source: source, target: target, inv: inv, started: time.Now().UTC()}
-	w.sourceServer, _ = primaryServer(inv, source)
-	w.targetServer, _ = primaryServer(inv, target)
+	st.Values["wiring"] = w
+	w.sourceServer, ok = primaryServer(inv, source)
+	if !ok && sourceEnv.Kind == "local" {
+		w.sourceServer = controlplane.Server{Name: "local", RemotePath: workdir, Primary: true}
+	} else if !ok {
+		return cpromote.Engine{}, nil, errs.Newf("E486", "promotion source %q has no server", source)
+	}
+	w.targetServer, ok = primaryServer(inv, target)
+	if !ok {
+		return cpromote.Engine{}, nil, errs.Newf("E486", "promotion target %q has no server", target)
+	}
 	eng := cpromote.Engine{Steps: promoteSteps(w, jsonOut)}
 	if dryRun {
 		return eng, st, nil
 	}
-	yes, _ := cmd.Flags().GetBool("yes")
-	if prodClassFn(inv, target) && !yes && !deployConfirmPrompt(cmd.Context(), fmt.Sprintf("Promote %s to production target %s", source, target)) {
-		return cpromote.Engine{}, nil, errs.New("E403", "promotion to a production-class target requires --yes or terminal confirmation")
-	}
+	w.yes, _ = cmd.Flags().GetBool("yes")
 	w.sourceRemote, err = promoteRemote(cmd.Context(), w.sourceServer, source, workdir)
 	if err != nil {
 		return cpromote.Engine{}, nil, err
@@ -94,8 +92,24 @@ func promoteSteps(w *promoteWiring, jsonOut bool) []cpromote.Step {
 		return cpromote.Step{Name: name, Run: run}
 	}
 	steps := []cpromote.Step{
-		step("resolve", func(context.Context, *cpromote.State) error { return nil }),
-		step("confirm", func(context.Context, *cpromote.State) error { return nil }),
+		step("resolve", func(_ context.Context, st *cpromote.State) error {
+			if err := cpromote.ValidateTiers(st.Source, st.Target, st.SourceTier, st.TargetTier); err != nil {
+				return err
+			}
+			if w.inv.Environments[st.Source].Kind != "local" {
+				if _, err := controlplane.ResolveTargets(w.inv, controlplane.Selector{Env: st.Source}); err != nil {
+					return err
+				}
+			}
+			_, err := controlplane.ResolveTargets(w.inv, controlplane.Selector{Env: st.Target})
+			return err
+		}),
+		step("confirm", func(ctx context.Context, _ *cpromote.State) error {
+			if prodClassFn(w.inv, w.target) && !w.yes && !deployConfirmPrompt(ctx, fmt.Sprintf("Promote %s to production target %s", w.source, w.target)) {
+				return errs.New("E403", "promotion to a production-class target requires --yes or terminal confirmation")
+			}
+			return nil
+		}),
 		{Name: "verify"},
 		step("preflight", func(ctx context.Context, _ *cpromote.State) error {
 			return controlplane.Preflight(ctx, w.inv, w.target, []string{filepath.Join(w.workdir, "docker-compose.yml")})
@@ -142,11 +156,11 @@ func (localPromoteRemote) Rsync(context.Context, []string, string, string, strin
 	return fmt.Errorf("local promotion does not use rsync")
 }
 
-func promoteRemote(ctx context.Context, srv controlplane.Server, env, workdir string) (deploy.Remote, error) {
+func promoteRemote(_ context.Context, srv controlplane.Server, env, workdir string) (deploy.Remote, error) {
 	if srv.Host == "" {
 		return localPromoteRemote{root: workdir}, nil
 	}
-	return openDeployRemote(ctx, srv, os.Getenv(srv.SSHKeyRef), env)
+	return &lazyPromoteRemote{srv: srv, env: env, key: os.Getenv(srv.SSHKeyRef)}, nil
 }
 
 func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) error {
@@ -200,21 +214,24 @@ func rollbackPromoteApply(ctx context.Context, w *promoteWiring, st *cpromote.St
 
 func runPromoteRecord(w *promoteWiring) func(context.Context, *cpromote.State) error {
 	return func(_ context.Context, st *cpromote.State) error {
-		now := time.Now().UTC()
-		saved, _ := st.Values["saved_manifest"].(cpromote.SavedManifest)
-		return cpromote.SaveRecord(w.workdir, cpromote.Record{
-			ID: deploy.NewBackupID(w.started), Source: st.Source, Target: st.Target,
-			StartedAt: w.started, CompletedAt: now, Status: "ok", SnapshotTag: st.SnapshotTag,
-			BackupID: st.BackupID, BackupHost: st.BackupHost, PreDeployTar: st.PreDeployTar,
-			Changed: st.PreDeployChanged, Absent: st.PreDeployAbsent, Digests: st.Digests,
-			SavedManifest: saved,
-		})
+		return savePromoteRecord(w, st, "ok")
 	}
+}
+
+func savePromoteRecord(w *promoteWiring, st *cpromote.State, status string) error {
+	saved, _ := st.Values["saved_manifest"].(cpromote.SavedManifest)
+	return cpromote.SaveRecord(w.workdir, cpromote.Record{
+		ID: deploy.NewBackupID(w.started), Source: st.Source, Target: st.Target,
+		StartedAt: w.started, CompletedAt: time.Now().UTC(), Status: status, SnapshotTag: st.SnapshotTag,
+		BackupID: st.BackupID, BackupHost: st.BackupHost, PreDeployTar: st.PreDeployTar,
+		Changed: st.PreDeployChanged, Absent: st.PreDeployAbsent, Digests: st.Digests, SavedManifest: saved,
+		DBRestoredAt: st.DBRestoredAt,
+	})
 }
 
 func runPromoteCapture(w *promoteWiring) func(context.Context, *cpromote.State) error {
 	return func(ctx context.Context, st *cpromote.State) error {
-		images, err := readPromoteImages(filepath.Join(w.workdir, "docker-compose.yml"))
+		images, err := cpromote.ReadComposeImages([]string{filepath.Join(w.workdir, "docker-compose.yml")})
 		if err != nil {
 			return err
 		}
@@ -230,7 +247,7 @@ func runPromoteCapture(w *promoteWiring) func(context.Context, *cpromote.State) 
 
 func runPromoteCompare(w *promoteWiring) func(context.Context, *cpromote.State) error {
 	return func(ctx context.Context, st *cpromote.State) error {
-		images, err := readPromoteImages(w.compose)
+		images, err := cpromote.ReadComposeImages([]string{w.compose})
 		if err != nil {
 			return err
 		}
@@ -242,9 +259,10 @@ func runPromoteCompare(w *promoteWiring) func(context.Context, *cpromote.State) 
 			}
 			arch = strings.TrimSpace(string(raw))
 		}
-		if arch == "x86_64" {
+		switch arch {
+		case "x86_64":
 			arch = "amd64"
-		} else if arch == "aarch64" {
+		case "aarch64":
 			arch = "arm64"
 		}
 		source, _ := st.Values["source_images"].([]cpromote.SourceImage)
@@ -252,26 +270,4 @@ func runPromoteCompare(w *promoteWiring) func(context.Context, *cpromote.State) 
 		st.Digests = rows
 		return err
 	}
-}
-
-func readPromoteImages(file string) ([]cpromote.Image, error) {
-	raw, err := os.ReadFile(file)
-	if err != nil {
-		return nil, fmt.Errorf("reading promotion compose: %w", err)
-	}
-	var doc struct {
-		Services map[string]struct {
-			Image string    `yaml:"image"`
-			Build yaml.Node `yaml:"build"`
-		} `yaml:"services"`
-	}
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return nil, fmt.Errorf("parsing promotion compose: %w", err)
-	}
-	images := make([]cpromote.Image, 0, len(doc.Services))
-	for name, service := range doc.Services {
-		images = append(images, cpromote.Image{Service: name, Ref: service.Image, Build: service.Build.Kind != 0})
-	}
-	sort.Slice(images, func(i, j int) bool { return images[i].Service < images[j].Service })
-	return images, nil
 }

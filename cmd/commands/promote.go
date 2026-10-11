@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/promote"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -108,6 +109,10 @@ var promoteRollbackCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// compat.V15(P7-DEPL-15): local promote snapshot -> verified remote promote record
 		if compat.V15() {
+			tag, _ := cmd.Flags().GetString("tag")
+			if tag != "" {
+				return errs.New("E401", "v1.5 promote rollback restores the latest promote record; --tag is unsupported")
+			}
 			return runPromoteRecordRollback(cmd)
 		}
 		tag, _ := cmd.Flags().GetString("tag")

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,6 +74,9 @@ func TestPromoteDryRun(t *testing.T) {
 	if err := runPromoteEnvironments(cmd, "ls", "prodsim"); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := preparePromoteEngine(cmd, mustProjectRoot(t), "local", "ls", true, false); err != nil {
+		t.Fatalf("local source dry-run: %v", err)
+	}
 	for _, name := range []string{"resolve", "confirm", "verify", "preflight", "source-health", "capture", "build", "compare", "snapshot", "save", "apply", "migrate", "health", "record"} {
 		if !strings.Contains(out.String(), name) {
 			t.Errorf("plan missing %s", name)
@@ -98,7 +102,11 @@ func TestPromoteDryRun(t *testing.T) {
 
 func TestPromoteArity(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
+		promoteFixture(t)
 		cmd := promoteTestCommand(&bytes.Buffer{}, true, false, false)
+		if err := runDeployPromote(cmd, nil); err != nil {
+			t.Fatalf("zero-argument canary path: %v", err)
+		}
 		err := runDeployPromote(cmd, []string{"only-one"})
 		if compat.V15() {
 			if errs.ExitCodeFor(err) != 1 || !strings.Contains(err.Error(), "E401") {
@@ -106,6 +114,13 @@ func TestPromoteArity(t *testing.T) {
 			}
 		} else if err != nil && strings.Contains(err.Error(), "E401") {
 			t.Fatalf("v1.4 interpreted args: %v", err)
+		} else {
+			old, _ := promoteCmd.Flags().GetBool("dry-run")
+			_ = promoteCmd.Flags().Set("dry-run", "true")
+			t.Cleanup(func() { _ = promoteCmd.Flags().Set("dry-run", fmt.Sprint(old)) })
+			if legacyErr := promoteCmd.RunE(promoteCmd, []string{"ls", "prodsim"}); legacyErr != nil {
+				t.Fatalf("v1.4 promote did not reach internal/promote dry-run: %v", legacyErr)
+			}
 		}
 	})
 }
@@ -113,15 +128,58 @@ func TestPromoteArity(t *testing.T) {
 func TestPromoteEquivalence(t *testing.T) {
 	compattest.Set(t, true)
 	promoteFixture(t)
-	run := func() string {
+	undo := prepareTreeWith(&canonTable, RootCmd, true, false)
+	defer undo()
+	deployDry, _ := deployPromoteCmd.Flags().GetBool("dry-run")
+	promoteDry, _ := promoteCmd.Flags().GetBool("dry-run")
+	deployOut, promoteOut := deployPromoteCmd.OutOrStdout(), promoteCmd.OutOrStdout()
+	t.Cleanup(func() {
+		_ = deployPromoteCmd.Flags().Set("dry-run", fmt.Sprint(deployDry))
+		_ = promoteCmd.Flags().Set("dry-run", fmt.Sprint(promoteDry))
+		deployPromoteCmd.SetOut(deployOut)
+		promoteCmd.SetOut(promoteOut)
+	})
+	oldArgs := os.Args
+	os.Args = []string{"nself", "--quiet"}
+	t.Cleanup(func() { os.Args = oldArgs })
+	resetCanonWarning()
+	var warnings bytes.Buffer
+	run := func(argv string) string {
+		rewritten, notes, err := rewriteCanonArgsWith(&canonTable, RootCmd, strings.Fields(argv), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		emitCanonWarning(&warnings, strings.Fields(argv), notes, "", "deploy promote")
+		cmd, args, err := RootCmd.Find(rewritten)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Flags().Set("dry-run", "true"); err != nil {
+			t.Fatal(err)
+		}
 		var out bytes.Buffer
-		if err := runPromoteEnvironments(promoteTestCommand(&out, true, false, false), "ls", "prodsim"); err != nil {
+		cmd.SetOut(&out)
+		if err := cmd.RunE(cmd, args); err != nil {
 			t.Fatal(err)
 		}
 		return out.String()
 	}
-	canonical, legacy, top := run(), run(), run()
+	canonical := run("deploy promote ls prodsim")
+	legacy := run("deploy promote-env ls prodsim")
+	top := run("promote ls prodsim")
 	if canonical != legacy || canonical != top {
 		t.Fatalf("promotion spellings produced different plans")
 	}
+	if got := strings.Count(warnings.String(), "warning:"); got != 1 {
+		t.Fatalf("deprecation warnings = %d, want one: %q", got, warnings.String())
+	}
+}
+
+func mustProjectRoot(t *testing.T) string {
+	t.Helper()
+	root, err := projectRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
