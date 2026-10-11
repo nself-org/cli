@@ -375,40 +375,62 @@ func TestCronDOWName(t *testing.T) {
 
 // ── schedule ENV selector (D-0277) ────────────────────────────────────
 
-// TestScheduleStreamEnvSelector: a project env is written as exactly one
-// Environment=ENV= line, directly after the PATH line.
+// scheduleServiceFor renders the dry-run unit for a project dir whose .env is
+// envFileBody ("" writes no .env) with the process ENV set to procEnv.
+func scheduleServiceFor(t *testing.T, procEnv, envFileBody string) (string, error) {
+	t.Helper()
+	setScheduleProcessEnv(t, procEnv)
+	dir := t.TempDir()
+	if envFileBody != "" {
+		if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(envFileBody), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out bytes.Buffer
+	err := ScheduleStream(minimalConfig(), ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", ProjectDir: dir, BinaryPath: "/bin/sh", DryRun: true, Out: &out})
+	return out.String(), err
+}
+
+// TestScheduleStreamEnvSelector: the unit carries exactly one
+// Environment=ENV= line, directly after the PATH line, and its value is the
+// selector that picks the cascade: process ENV, else .env, else dev. cfg.Env
+// is not used (the loader rewrites it).
 func TestScheduleStreamEnvSelector(t *testing.T) {
 	skipUnitTestOnWindows(t)
-	cfg := minimalConfig()
-	cfg.Env = "prod"
-	var out bytes.Buffer
-	err := ScheduleStream(cfg, ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", ProjectDir: t.TempDir(), BinaryPath: "/bin/sh", DryRun: true, Out: &out})
-	if err != nil {
-		t.Fatalf("ScheduleStream: %v", err)
+	cases := []struct {
+		name, procEnv, dotEnv, want string
+	}{
+		{"process ENV wins over .env", "prod", "ENV=dev\n", "prod"},
+		{".env when the process has none", "", "PROJECT_NAME=x\nENV=staging\n", "staging"},
+		{"dev when neither sets it", "", "PROJECT_NAME=x\n", "dev"},
+		{"dev with no .env at all", "", "", "dev"},
 	}
-	got := out.String()
-	if n := strings.Count(got, "Environment=ENV=prod\n"); n != 1 {
-		t.Fatalf("want exactly one Environment=ENV=prod line, got %d:\n%s", n, got)
-	}
-	if strings.Count(got, "ENV=") != 1 {
-		t.Errorf("unexpected extra ENV= text:\n%s", got)
-	}
-	pathLine := "Environment=PATH=/usr/local/bin:/usr/bin:/bin\nEnvironment=ENV=prod\n"
-	if !strings.Contains(got, pathLine) {
-		t.Errorf("ENV line must follow the PATH line directly:\n%s", got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := scheduleServiceFor(t, tc.procEnv, tc.dotEnv)
+			if err != nil {
+				t.Fatalf("ScheduleStream: %v", err)
+			}
+			if n := strings.Count(got, "ENV="); n != 1 {
+				t.Fatalf("want exactly one ENV= occurrence, got %d:\n%s", n, got)
+			}
+			pathThenEnv := "Environment=PATH=/usr/local/bin:/usr/bin:/bin\nEnvironment=ENV=" + tc.want + "\n"
+			if !strings.Contains(got, pathThenEnv) {
+				t.Errorf("want %q right after the PATH line:\n%s", "Environment=ENV="+tc.want, got)
+			}
+		})
 	}
 }
 
-// TestScheduleStreamEnvRefusesUnsafe: an env name that could add a directive or
+// TestScheduleStreamEnvRefusesUnsafe: a selector that could add a directive or
 // expand in systemd is refused with nothing printed or written.
 func TestScheduleStreamEnvRefusesUnsafe(t *testing.T) {
 	skipUnitTestOnWindows(t)
 	for _, env := range []string{"prod\nExecStartPre=/x", "prod\r", "pr$od", "a b", "a%h", "a/b", "a\"b"} {
-		cfg := minimalConfig()
-		cfg.Env = env
+		setScheduleProcessEnv(t, env)
 		var out bytes.Buffer
 		unitDir := t.TempDir()
-		err := ScheduleStream(cfg, ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", ProjectDir: t.TempDir(), BinaryPath: "/bin/sh", UnitDir: unitDir, Out: &out})
+		err := ScheduleStream(minimalConfig(), ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", ProjectDir: t.TempDir(), BinaryPath: "/bin/sh", UnitDir: unitDir, Out: &out})
 		if err == nil {
 			t.Errorf("env %q must be refused", env)
 		}
@@ -418,5 +440,9 @@ func TestScheduleStreamEnvRefusesUnsafe(t *testing.T) {
 		if entries, _ := os.ReadDir(unitDir); len(entries) != 0 {
 			t.Errorf("env %q: nothing may be written, found %d files", env, len(entries))
 		}
+	}
+	// The same applies to a bad value that comes from .env.
+	if _, err := scheduleServiceFor(t, "", "ENV=a b\n"); err == nil {
+		t.Error("an unsafe ENV in .env must be refused")
 	}
 }

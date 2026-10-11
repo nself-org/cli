@@ -44,10 +44,12 @@ func applyDefaultsRedis(cfg *Config) {
 func applyDefaultsMinio(cfg *Config) error {
 	applyDefaultsMinioConn(cfg)
 	// Guard: reject minioadmin defaults in staging/prod before any container is
-	// started. Only when MinIO is enabled, like validator.go and the doctor
-	// checks: with MinIO off no container gets these credentials, and a prod
-	// project without MinIO must still load for commands such as `backup
-	// stream` (D-0277).
+	// started, but only when MinIO is enabled. With MinIO off no container gets
+	// these credentials, and a prod project without MinIO must still load for
+	// commands such as `backup stream` (D-0277). The build-time password check
+	// (validator.go:152) and the doctor checks gate on Enabled the same way;
+	// the registered minio-credentials validator used by config.Validate is
+	// still ungated.
 	if cfg.Minio.Enabled {
 		if err := ValidateMinioCredentials(cfg); err != nil {
 			return err

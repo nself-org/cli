@@ -9,6 +9,7 @@ package backup
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -171,6 +172,44 @@ func TestPgDumpCmd(t *testing.T) {
 			}
 			if hasEnv != tc.wantEnvVar {
 				t.Errorf("PGPASSWORD in Env = %v, want %v", hasEnv, tc.wantEnvVar)
+			}
+		})
+	}
+}
+
+// TestPgDumpCmdHostilePasswords builds the DSN the way production does
+// (buildPgURL) for passwords full of URL metacharacters. PGPASSWORD must be
+// the exact raw password, and no argv element may hold the raw password or any
+// escaped form of it.
+func TestPgDumpCmdHostilePasswords(t *testing.T) {
+	for _, pw := range []string{"p@ss", "a:b", "100%", "a/b", "%41", "p\u00e4\U0001F4A5ss"} {
+		t.Run(pw, func(t *testing.T) {
+			cfg := minimalConfig()
+			cfg.Postgres.User = "pguser"
+			cfg.Postgres.Password = pw
+			cmd, got, err := pgDumpCmd(context.Background(), buildPgURL(cfg))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != pw {
+				t.Errorf("returned password = %q, want %q", got, pw)
+			}
+			hasEnv := false
+			for _, e := range cmd.Env {
+				if e == "PGPASSWORD="+pw {
+					hasEnv = true
+				}
+			}
+			if !hasEnv {
+				t.Errorf("PGPASSWORD must equal the raw password %q", pw)
+			}
+			forms := []string{pw, url.QueryEscape(pw), url.PathEscape(pw)}
+			for _, a := range cmd.Args {
+				for _, f := range forms {
+					if strings.Contains(a, f) {
+						t.Errorf("argv element %q holds the password form %q", a, f)
+					}
+				}
 			}
 		})
 	}

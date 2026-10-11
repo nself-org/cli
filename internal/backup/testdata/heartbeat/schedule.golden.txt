@@ -7,6 +7,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=ENV=dev
 WorkingDirectory=<PROJECT>
 ExecStart=<BINARY> backup stream --to r2:bkt/nself-web --recipient age1qqqq --recipient age1zzzz --heartbeat-to r2hb:hb
 Nice=10
