@@ -267,6 +267,7 @@ type InternalRoute struct {
 }
 
 // ApiDocsConfig holds the api_docs section from nself.yaml.
+// The fields are filled from the API_DOCS_* env vars in loader_parse_env_apidocs.go.
 // Controls generation of the OpenAPI 3.1 spec and Scalar interactive docs page.
 type ApiDocsConfig struct {
 	Enabled         bool     `env:"API_DOCS_ENABLED"`      // default: true

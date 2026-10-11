@@ -96,6 +96,10 @@ type RateLimit struct {
 	Burst     int    `json:"burst"`
 	ConnLimit int    `json:"conn_limit"`
 }
+
+// Location is one nginx location of a route. HeadersAdd holds the response
+// headers the location adds (nginx add_header) and StaticFile the single file
+// it serves (nginx alias of a file); both are absent from routes.json when unset.
 type Location struct {
 	Path             string            `json:"path"`
 	Match            string            `json:"match"`
@@ -104,6 +108,7 @@ type Location struct {
 	WebSocket        bool              `json:"websocket"`
 	ForwardedHeaders bool              `json:"forwarded_headers"`
 	HeadersSet       map[string]string `json:"headers_set"`
+	HeadersAdd       map[string]string `json:"headers_add,omitempty"`
 	Timeouts         Timeouts          `json:"timeouts"`
 	MaxBodyBytes     *int64            `json:"max_body_bytes"`
 	AccessLog        bool              `json:"access_log"`
@@ -111,12 +116,20 @@ type Location struct {
 	Methods          []string          `json:"methods"`
 	Return           *Return           `json:"return"`
 	StaticRoot       *string           `json:"static_root"`
+	StaticFile       *string           `json:"static_file,omitempty"`
 	HealthProbe      bool              `json:"health_probe"`
 }
+
+// Upstream is a proxy target. Path is the escaped URL path exactly as nginx
+// proxy_pass carries it ("" = none; "/" is kept because it changes proxy_pass
+// semantics). Query is the raw query without the '?' (nil = no '?', "" = a bare
+// trailing '?'). Both are absent from routes.json when unset.
 type Upstream struct {
-	Scheme string `json:"scheme"`
-	Host   string `json:"host"`
-	Port   int    `json:"port"`
+	Scheme string  `json:"scheme"`
+	Host   string  `json:"host"`
+	Port   int     `json:"port"`
+	Path   string  `json:"path,omitempty"`
+	Query  *string `json:"query,omitempty"`
 }
 type LocationRate struct {
 	Zone    string `json:"zone"`

@@ -196,6 +196,12 @@
                 "forwarded_headers": {
                   "type": "boolean"
                 },
+                "headers_add": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
                 "headers_set": {
                   "additionalProperties": {
                     "type": "string"
@@ -275,6 +281,12 @@
                     "object"
                   ]
                 },
+                "static_file": {
+                  "type": [
+                    "null",
+                    "string"
+                  ]
+                },
                 "static_root": {
                   "type": [
                     "null",
@@ -316,8 +328,17 @@
                     "host": {
                       "type": "string"
                     },
+                    "path": {
+                      "type": "string"
+                    },
                     "port": {
                       "type": "integer"
+                    },
+                    "query": {
+                      "type": [
+                        "null",
+                        "string"
+                      ]
                     },
                     "scheme": {
                       "enum": [

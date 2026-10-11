@@ -32,6 +32,13 @@ func Build(cfg *config.Config, workdir string, hasSSL bool) (*Model, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Validate API_DOCS_PATH here so a bad value fails before anything is
+	// written. The api-docs route itself is appended at routes.json time:
+	// nginx renders Build's routes, and api-docs.conf comes from the build
+	// finish step, so adding it to m.Routes would render it twice.
+	if _, err := APIDocs(cfg, workdir); err != nil {
+		return nil, err
+	}
 	env := cfg.Env
 	if env == "" {
 		env = "dev"

@@ -9,7 +9,17 @@ import (
 
 // writeRoutesJSON writes the deterministic proxy contract through the build sink.
 func (st *buildState) writeRoutesJSON(m *routemodel.Model) error {
-	b, err := routemodel.Marshal(st.withSnippetRoutes(m))
+	out := st.withSnippetRoutes(m)
+	// api-docs.conf is written by the build finish step, not by Build, so its
+	// route is added here (withSnippetRoutes already returned a fresh slice).
+	docs, err := routemodel.APIDocs(st.cfg, st.workdir)
+	if err != nil {
+		return fmt.Errorf("modelling api-docs route: %w", err)
+	}
+	if docs != nil {
+		out.Routes = append(out.Routes, *docs)
+	}
+	b, err := routemodel.Marshal(out)
 	if err != nil {
 		return fmt.Errorf("encoding routes.json: %w", err)
 	}

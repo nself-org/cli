@@ -24,6 +24,7 @@ func parseEnvToConfig() *Config {
 	parseEnvCore(cfg)
 	parseEnvStorage(cfg)
 	parseEnvOps(cfg)
+	parseEnvAPIDocs(cfg)
 
 	return cfg
 }
