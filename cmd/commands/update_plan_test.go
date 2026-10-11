@@ -25,6 +25,7 @@ import (
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 const (
@@ -377,5 +378,38 @@ func TestUpdatePlanFlagRules(t *testing.T) {
 	c.Flags().Bool("json", false, "")
 	if handled, err := runUpdatePlanMode(c); handled || err != nil {
 		t.Errorf("plain update must fall through: handled=%v err=%v", handled, err)
+	}
+}
+
+// resetUpdateFlags puts every flag of c back to its default and unchanged, so a later
+// Execute on the shared command tree starts clean.
+func resetUpdateFlags(c *cobra.Command) {
+	c.Flags().VisitAll(func(f *pflag.Flag) {
+		_ = f.Value.Set(f.DefValue)
+		f.Changed = false
+	})
+}
+
+// TestUpdatePlanRealPathIsReadOnly runs `update --plan` through the real command
+// tree (decorator, registry, op-lock policy) in a project and asserts nothing was
+// written: the tree hash is unchanged and .nself/op.lock was never created.
+func TestUpdatePlanRealPathIsReadOnly(t *testing.T) {
+	dir := updateProject(t)
+	newUpdateRecorder(t)
+	before := hashTree(t, dir)
+	installInvocationDecorator(RootCmd)
+	t.Cleanup(func() { resetUpdateFlags(updateCmd); RootCmd.SetArgs(nil) })
+	var out bytes.Buffer
+	RootCmd.SetOut(&out)
+	RootCmd.SetErr(&out)
+	RootCmd.SetArgs([]string{"update", "--plan"})
+	if err := RootCmd.Execute(); err != nil {
+		t.Fatalf("update --plan: %v\n%s", err, out.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nself", "op.lock")); err == nil {
+		t.Fatal("update --plan created .nself/op.lock")
+	}
+	if after := hashTree(t, dir); after != before {
+		t.Fatal("update --plan changed the project tree")
 	}
 }
