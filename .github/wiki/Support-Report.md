@@ -29,16 +29,16 @@ By default the report is saved as `nself-report-<UTC timestamp>.tar.gz` in the p
 | File | Contents |
 |------|----------|
 | `versions.json` | nself version, commit, build date, Go version, platform (OS/arch), and the Docker server version when Docker answers |
-| `config-keys.txt` | Names (never values) of the variables in your env files (`.env`, `.env.local`, `.env.secrets`, and the other env cascade files) |
+| `config-keys.txt` | Names (never values) of the variables in your env cascade files (`.env`, `.env.local`, `.env.secrets`, and the other cascade layers). Build-written and extra env files (below) are scrub inputs only; their names are not listed |
 | `docker-compose.yml` | The generated compose file of your project, scrubbed |
 | `nginx/` | The generated nginx `*.conf` files, scrubbed (no symlinks, no certificate or key directories, no file that holds a PEM block, 1 MiB per file) |
 | `doctor.txt` | Output of `nself doctor`, run with a 120-second timeout. On a timeout the partial output is kept and `manifest.json` says so |
-| `logs/` | Always present. Holds `logs/<service>.log`, the last N lines of every service container (running or exited; default 200, set with `--log-lines`), at most 4 MiB per service (the end is kept, and `manifest.json` notes any cut). The directory is empty when no stack is running |
+| `logs/` | Always present. Holds `logs/<service>.log`, the last N lines of every service container (running or exited; default 200, set with `--log-lines`), at most 4 MiB per service (the end is kept, and `manifest.json` notes any cut; the log is scrubbed before it is cut). Each container log read has a 60-second limit, and `manifest.json` notes one that ran out. The directory is empty when no stack is running |
 | `manifest.json` | File list, redaction counts per class, and notes (for example "no running stack", a timeout, a truncated log, secret-named values too short to scrub) |
 
 ## What is never collected
 
-- `.env*` files as files (only their variable names, in `config-keys.txt`)
+- `.env*` files as files (only the variable names of the env cascade, in `config-keys.txt`)
 - Secret store content or credential metadata
 - SSL/TLS certificates and private keys (the `ssl/` directory and similar key directories are skipped)
 - License key data from `~/.nself` (the stored key is read only to learn what to scrub; it never enters the archive)
@@ -51,24 +51,27 @@ Not every value is hidden. The generated compose file, the nginx files, the doct
 The scrubber learns secrets from these inputs, as scrub inputs only (they never enter the archive):
 
 - every env cascade file (`.env`, `.env.local`, `.env.secrets`, `.env.<environment>`, and the other layers)
+- every `.env.*` file in the project directory (a stack started with `ENV=demo` leaves `.env.demo`), `.nself/compose.env` and `.env.computed`, the interpolation files `nself build` writes. Their values are scrub inputs only; their variable names never reach `config-keys.txt`
 - the environment of the process that runs the report (the doctor run inherits it)
 - the compose files listed in `.nself/compose-files.txt` (plugin fragments and the user override)
 - the files named by `CS_N_ENV_FILE` (custom services). Every value seen for a key in any env layer or in the process environment is read, not only the one the build picks. Paths must stay inside the project directory
-- the files named by `env_file:` in the generated `docker-compose.yml` and in every listed fragment (a string, a list of strings or a list of `{path: ...}` entries). A relative path is resolved from the directory of the compose file that names it, then from the project directory. The file must be a regular file of at most 1 MiB inside the project directory
-- the `environment`, `args` and `labels` entries of those compose files
+- the files named by `env_file:` in the generated `docker-compose.yml` and in every listed fragment (a string, a list of strings or a list of `{path: ...}` entries). A relative path is resolved from the directory of the compose file that names it, then from the project directory. The file must be a regular file of at most 1 MiB inside the project directory. A fragment outside the project (a plugin fragment) may also use files inside its own directory
+- the `environment`, `args` and `labels` entries of those compose files, in the spelling the container sees as well as the file spelling: `$$` becomes `$`, the defaults of `${NAME:-default}`, `${NAME-default}` and `${NAME:+alt}` are learned (the innermost literal of nested ones too), and a YAML scalar is learned as written (`0x1F2E...`) and as the YAML decoder prints it
 - the stored license key (`~/.nself/license/key`), `NSELF_PLUGIN_LICENSE_KEY` and `NSELF_LICENSE_KEY_1` to `_10`
 
-An input file that is missing, outside the project, too large or unreadable is listed as a note in `manifest.json`, and so is an unreadable compose manifest or nginx file. The shell's own `PWD` and `OLDPWD` variables are not learned (they hold a directory, not a secret).
+The age secret store is not a scrub input. An input file that is missing, outside the project, too large or unreadable is listed as a note in `manifest.json`, and so is an unreadable compose manifest or nginx file. The shell's own `PWD` and `OLDPWD` variables are not learned (they hold a directory, not a secret).
 
 A variable counts as secret-like when its name contains `SECRET`, `PASSWORD`, `PASS`, `TOKEN`, `KEY`, `PRIVATE`, `CREDENTIAL`, `DSN`, `SALT`, `SEED`, `LICENSE` (or `LICENCE`), `COOKIE`, `SESSION`, `SIGNING`, `HTPASSWD`, `BASIC_AUTH`, `PWD`, `WEBHOOK` or `HMAC`, or ends in `_AUTH`, or has `PAT` (personal access token) as a whole word between underscores or dashes (`GITHUB_PAT` and `PAT_TOKEN` count; `PATH`, `PATTERN` and `XPATH` do not). `ENCRYPT` alone does not count. A bare `AUTH` prefix (for example `AUTH_URL`) does not count, because those values are hostnames that routing support needs.
 
 Then every file passes five steps in this order:
 
-1. **Known values.** Each secret-like value of 6 or more characters is replaced by `[REDACTED:<NAME>]` everywhere it appears. The scrubber also looks for its URL-escaped, JSON-escaped, base64 (standard and URL alphabets, padded and unpadded), lowercase hex and shell single-quote forms, and each line of a multi-line value on its own. The password inside any URL-shaped value is learned too, even when it holds `#`, `?`, `/` or a space, along with the base64 form of `user:password` (HTTP Basic). Overlapping matches become one redaction.
-2. **PEM blocks.** Every `-----BEGIN ... -----` block is replaced by `[REDACTED:PEM]`, including a block cut off at either end, a block with a log prefix on each line, and a JSON-wrapped block with `\n` escapes.
+1. **Known values.** Each secret-like value of 6 or more characters is replaced by `[REDACTED:<NAME>]` everywhere it appears. The scrubber also looks for its URL-escaped, JSON-escaped, base64 (standard and URL alphabets, padded and unpadded), lowercase hex and shell single-quote forms, and each line of a multi-line value on its own. The password inside any URL-shaped value is learned too, even when it holds `#`, `?`, `/` or a space, along with the base64 form of `user:password` (HTTP Basic). The userinfo spelling of a password (`url.UserPassword`, as the build writes the `*_URLENC` variables) and the `\/` spelling of a JSON log are covered. A token used as the user of a URL (`https://<token>@host`) is learned when it is 20 or more characters. An unquoted multi-line PEM in a `.env` file is read through its `-----END` line, so its body lines are scrubbed and never listed as variable names. Overlapping matches become one redaction.
+2. **PEM blocks.** Every `-----BEGIN ... -----` block is replaced by `[REDACTED:PEM]`, including a block cut off at either end, a block with a log prefix on each line (the body is recognised by its last word, so a long prefix such as the Postgres timestamp and process id is fine), and a JSON-wrapped block with `\n` escapes.
 3. **Passwords in URLs.** `scheme://user:password@host` becomes `scheme://[REDACTED]@host`. The forms `//user:password@host` and `user:password@tcp(host)` are covered too.
 4. **Standard patterns.** JWTs, common API key prefixes, bearer tokens, every license key prefix the CLI accepts (`nself_<product>_...`), the secret path token of Slack, Discord and Telegram webhook URLs, email addresses, phone numbers, IP and MAC addresses and card-like numbers.
 5. **Assignments.** Any `NAME=value`, `NAME: value`, `"name": "value"`, `--password value`, `--password=-value`, `Authorization` or `Cookie` header, `?token=` query value or nginx `proxy_set_header` value whose name looks secret-like is redacted, and so is the body of a YAML block scalar (`NAME: |`) under such a name. SQL `PASSWORD '...'` and `IDENTIFIED BY '...'` values and the `user:password` of `curl -u` or `--user` are redacted too.
+
+A value that holds a known secret only in part is not trusted: when a step above replaced only the head of a longer secret-named value, the assignment step redacts the whole token. File names inside the archive (log and nginx entries) go through the scrubber too, then a filter that keeps them path-safe.
 
 `manifest.json` counts each class, so you can see how much was removed.
 
@@ -91,7 +94,8 @@ The scrubber removes the values and patterns it knows. It does not understand yo
 - an encoded form it does not generate (best effort: uppercase hex, the YAML `''` spelling of a single quote inside a single-quoted value, `\uXXXX` escapes of non-ASCII characters, base64 inside a larger base64 blob, or a value split across lines by a log shipper)
 - a literal value that starts with `$` and looks like a variable reference (`$Name`): it is treated as a reference and not learned (an assignment with a secret-like name still catches it)
 - a webhook URL on another service, or a license key held only in a file other than `~/.nself/license/key`
-- secrets that live only in the age secret store: that store is read at deploy time, not at build time, so it is not a scrub input
+- secrets that live only in the age secret store: the store is not a scrub input
+- a compose value interpolated from a variable that is set only in your shell at run time, when the shell was different from the one that runs the report. The process environment of the report run is a scrub input; a different shell's is not
 
 Review the archive before you share it:
 

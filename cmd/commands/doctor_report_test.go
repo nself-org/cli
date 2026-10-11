@@ -234,3 +234,34 @@ func TestDoctorReportUnreadableComposeManifestIsANote(t *testing.T) {
 		t.Error("manifest.json has no note about the unreadable compose manifest")
 	}
 }
+
+// N2: an interrupt during collection returns an error and claims no output
+// file (no 0-byte archive or temp file is left behind).
+func TestDoctorReportInterruptLeavesNothing(t *testing.T) {
+	proj, _ := reportFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	doctorReportCmd.SetContext(ctx)
+	t.Cleanup(func() { doctorReportCmd.SetContext(context.Background()); cancel() })
+	old := doctorReportSources
+	doctorReportSources = func(ds report.DockerSetup) report.Sources {
+		s := old(ds)
+		s.Logs = func(context.Context, int) (map[string]string, error) {
+			cancel() // the user pressed Ctrl-C while the logs were read
+			return map[string]string{"a": "x\n"}, nil
+		}
+		return s
+	}
+	t.Cleanup(func() { doctorReportSources = old })
+	out := filepath.Join(proj, "int.tar.gz")
+	setReportFlags(t, map[string]string{"output": out, "log-lines": "5"})
+	err := runDoctorReport(doctorReportCmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "interrupted") {
+		t.Fatalf("err = %v, want an interrupted error", err)
+	}
+	ents, _ := os.ReadDir(proj)
+	for _, e := range ents {
+		if strings.HasSuffix(e.Name(), ".tar.gz") || strings.HasSuffix(e.Name(), ".tmp") {
+			t.Errorf("left behind: %s", e.Name())
+		}
+	}
+}

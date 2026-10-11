@@ -40,7 +40,7 @@ func (s *Scrubber) scrubBlockScalars(text string) string {
 				break
 			}
 			last = j
-			if !strings.HasPrefix(trimmed, "[REDACTED") {
+			if !onlyPlaceholders(strings.TrimRight(trimmed, " \t")) {
 				lines[j] = body[:indent] + placeholder
 				s.counts[ClassAssignment]++
 			}

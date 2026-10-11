@@ -5,7 +5,9 @@ package report
 // Purpose: the literal pass can only remove what it can spell, so each value
 // is expanded: URL-query / URL-path / JSON escapes, lowercase-hex escapes,
 // base64 (standard and URL alphabets, padded and raw), lowercase hex, the
-// shell single-quote form, and each line of a multi-line value. For URL
+// shell single-quote form, the \/ JSON spelling, the url.UserPassword userinfo
+// spelling (build writes the *_URLENC twins with it), and each line of a
+// multi-line value. For URL
 // credentials, base64 of user:pass (HTTP Basic) as well.
 // Inputs: a raw value.
 // Outputs: distinct spellings of length >= MinSecretLen.
@@ -35,6 +37,8 @@ func variantsOf(raw string) []string {
 		}
 	}
 	add(raw)
+	// url.UserPassword leaves ; , $ & + = unescaped, unlike the two escapes below.
+	add(strings.TrimPrefix(url.UserPassword("x", raw).String(), "x:"))
 	for _, esc := range []string{url.QueryEscape(raw), url.PathEscape(raw)} {
 		add(esc)
 		add(hexEscapeRe.ReplaceAllStringFunc(esc, strings.ToLower))
@@ -42,6 +46,7 @@ func variantsOf(raw string) []string {
 	for _, html := range []bool{true, false} {
 		if s, ok := jsonEscape(raw, html); ok {
 			add(s)
+			add(strings.ReplaceAll(s, "/", `\/`)) // PHP json_encode and friends
 		}
 	}
 	if strings.ContainsAny(raw, "\r\n") { // multi-line value written on one line

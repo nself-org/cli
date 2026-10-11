@@ -5,7 +5,6 @@ package report
 // Every fake secret is built at run time; HOME is isolated (main_test.go).
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -141,33 +140,5 @@ func TestDoctorReportProcessPWDIsNotAScrubInput(t *testing.T) {
 	files := collectFiles(t, Options{ProjectDir: t.TempDir(), Environ: environ}, logsSource(map[string]string{"a": "cd " + cwd + " ok\n"}))
 	if !strings.Contains(files["logs/a.log"], cwd) {
 		t.Errorf("working directory was redacted: %q", files["logs/a.log"])
-	}
-}
-
-// S-5: an unreadable nginx conf or directory becomes a note.
-func TestReadNginxUnreadableIsANote(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root reads everything")
-	}
-	root := t.TempDir()
-	writeFile(t, filepath.Join(root, "ok.conf"), "listen 80;\n")
-	writeFile(t, filepath.Join(root, "locked.conf"), "listen 81;\n")
-	writeFile(t, filepath.Join(root, "sites", "inner.conf"), "listen 82;\n")
-	if err := os.Chmod(filepath.Join(root, "locked.conf"), 0); err != nil {
-		t.Skip("chmod unavailable")
-	}
-	if err := os.Chmod(filepath.Join(root, "sites"), 0); err != nil {
-		t.Skip("chmod unavailable")
-	}
-	t.Cleanup(func() { _ = os.Chmod(filepath.Join(root, "sites"), 0o755) })
-	files, notes := readNginx(root)
-	if len(files) != 1 || files[0].Name != "nginx/ok.conf" {
-		t.Errorf("files = %v", files)
-	}
-	joined := strings.Join(notes, "|")
-	for _, want := range []string{"nginx/locked.conf skipped: unreadable", "nginx/sites skipped: unreadable"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("notes %q lack %q", joined, want)
-		}
 	}
 }

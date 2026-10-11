@@ -17,7 +17,17 @@ import (
 	"strings"
 )
 
-type urlCred struct{ user, pass string }
+// userOnlyMinLen is the shortest user-only userinfo learned as a literal: a
+// token used as the URL username (https://<token>@host). The floor keeps names
+// such as "postgres" from being redacted everywhere.
+const userOnlyMinLen = 20
+
+// urlCred is one userinfo; only means there was no password (user is the
+// whole userinfo and is learned as a literal when long enough).
+type urlCred struct {
+	user, pass string
+	only       bool
+}
 
 var (
 	schemePrefixRe = regexp.MustCompile(`^(?:[A-Za-z][A-Za-z0-9+.\-]*:)?//`)
@@ -29,7 +39,9 @@ func urlCredentials(key, value string) []urlCred {
 	var out []urlCred
 	if u, err := url.Parse(value); err == nil && u.User != nil {
 		if pw, has := u.User.Password(); has {
-			out = append(out, urlCred{u.User.Username(), pw})
+			out = append(out, urlCred{user: u.User.Username(), pass: pw})
+		} else if len(u.User.Username()) >= userOnlyMinLen {
+			out = append(out, urlCred{user: u.User.Username(), only: true})
 		}
 	}
 	rest, schemed := value, false
@@ -43,8 +55,14 @@ func urlCredentials(key, value string) []urlCred {
 		return out
 	}
 	user, pass, ok := strings.Cut(rest[:at], ":")
-	if !ok || strings.ContainsAny(user, "/?#@ \t\r\n") || (user == "" && !schemed) {
+	if !ok {
+		if tok := rest[:at]; schemed && len(tok) >= userOnlyMinLen && !strings.ContainsAny(tok, "/?#@ \t\r\n") {
+			out = append(out, urlCred{user: tok, only: true})
+		}
 		return out
 	}
-	return append(out, urlCred{user, pass})
+	if strings.ContainsAny(user, "/?#@ \t\r\n") || (user == "" && !schemed) {
+		return out
+	}
+	return append(out, urlCred{user: user, pass: pass})
 }

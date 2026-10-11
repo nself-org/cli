@@ -7,7 +7,8 @@ package report
 // Outputs: the file at the path (mode 0600 whatever the umask), its size.
 // Constraints: an existing path is never overwritten (O_EXCL claims the name);
 //         the archive is written to a temp file in the same directory and
-//         renamed over the claimed name; failures remove both.
+//         renamed over the claimed name; failures remove both. No chmod by path after
+//         the rename (a symlink swapped into that window would be followed).
 
 import (
 	"archive/tar"
@@ -76,10 +77,7 @@ func WriteTarball(b *Bundle, path string, now time.Time) (size int64, err error)
 	if err = os.Rename(tmp.Name(), path); err != nil {
 		return 0, fmt.Errorf("publishing %s: %w", path, err)
 	}
-	done = true
-	if err = os.Chmod(path, 0o600); err != nil {
-		return 0, err
-	}
+	done = true // the temp file is 0600 (tmp.Chmod above); no path-based chmod here, it would follow a swapped symlink
 	st, err := os.Stat(path)
 	if err != nil {
 		return 0, err

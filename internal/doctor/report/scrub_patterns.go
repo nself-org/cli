@@ -102,10 +102,31 @@ func redactedForm(v string) (string, bool) {
 	trimmed := strings.TrimRight(core, edge)
 	trail := core[len(trimmed):]
 	switch {
-	case trimmed == "", strings.HasPrefix(trimmed, "[REDACTED"), refValueRe.MatchString(trimmed), isWordValue(trimmed):
+	case trimmed == "", onlyPlaceholders(trimmed), refValueRe.MatchString(trimmed), isWordValue(trimmed):
+		return "", false
+	case strings.HasPrefix(trimmed, placeholder+"&"), strings.HasPrefix(trimmed, placeholder+"#"):
+		// queryRe already redacted this value and stopped at the & or #: what
+		// follows is the next query parameter or the fragment, not a tail.
 		return "", false
 	}
 	return lead + placeholder + trail, true
+}
+
+// placeholderRe is one placeholder as the literal pass or this pass writes it.
+var placeholderRe = regexp.MustCompile(`\[REDACTED(?::[^\]\s]*)?\]`)
+
+// onlyPlaceholders reports whether s holds at least one placeholder and nothing
+// else but separators (no letter or digit). A token that is a placeholder plus
+// more text is NOT already redacted: the literal pass may have replaced only
+// the head of a longer secret (R6 d), so the later passes redact it whole.
+func onlyPlaceholders(s string) bool {
+	if !placeholderRe.MatchString(s) {
+		return false
+	}
+	rest := placeholderRe.ReplaceAllString(s, "")
+	return !strings.ContainsFunc(rest, func(r rune) bool {
+		return r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= 0x80
+	})
 }
 
 func isWordValue(v string) bool {

@@ -9,13 +9,18 @@ package report
 // Outputs: Sources whose functions never print and never panic.
 // Constraints: docker is reached only via internal/docker (ComposeServiceNames,
 //         ComposeServiceStates, GetContainerLogs, ServerVersion); the doctor
-//         child has a 120 s timeout; its output is scrubbed by Collect.
+//         child has a 120 s timeout; each container log read has its own 60 s
+//         deadline and an expiry becomes a manifest note; all output is
+//         scrubbed by Collect.
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nself-org/cli/internal/docker"
@@ -30,12 +35,27 @@ type DockerSetup struct {
 	EnvFiles     []string
 }
 
+// ContainerLogTimeout bounds one container's log read (N3).
+const ContainerLogTimeout = 60 * time.Second
+
 // RealSources returns the production seams.
 func RealSources(ds DockerSetup) Sources {
+	var mu sync.Mutex
+	var logNotes []string
+	note := func(n string) {
+		mu.Lock()
+		defer mu.Unlock()
+		logNotes = append(logNotes, n)
+	}
 	return Sources{
+		LogNotes: func() []string {
+			mu.Lock()
+			defer mu.Unlock()
+			return append([]string(nil), logNotes...)
+		},
 		Versions: func(ctx context.Context) map[string]string { return realVersions(ctx) },
 		Doctor:   func(ctx context.Context) (string, error) { return RunDoctorChild(ctx, ds.ProjectDir, os.Executable) },
-		Logs:     func(ctx context.Context, tail int) (map[string]string, error) { return dockerLogs(ctx, ds, tail) },
+		Logs:     func(ctx context.Context, tail int) (map[string]string, error) { return dockerLogs(ctx, ds, tail, note) },
 		Now:      time.Now,
 	}
 }
@@ -57,7 +77,7 @@ func realVersions(ctx context.Context) map[string]string {
 }
 
 // dockerLogs reads the log tail of every container of every compose service.
-func dockerLogs(ctx context.Context, ds DockerSetup, tail int) (map[string]string, error) {
+func dockerLogs(ctx context.Context, ds DockerSetup, tail int, note func(string)) (map[string]string, error) {
 	c := docker.NewCompose(ds.ComposeFiles...)
 	c.EnvFiles, c.DockerPath = ds.EnvFiles, ds.DockerPath
 	services, err := c.ComposeServiceNames(ctx, ds.ProjectDir)
@@ -75,10 +95,9 @@ func dockerLogs(ctx context.Context, ds DockerSetup, tail int) (map[string]strin
 			if st.Name == "" {
 				continue
 			}
-			text, lerr := docker.GetContainerLogs(ctx, st.Name, tail)
-			if lerr != nil {
-				text = "log read failed: " + lerr.Error() + "\n"
-			}
+			text := readContainerLog(ctx, ContainerLogTimeout, st.Name, note, func(c context.Context) (string, error) {
+				return docker.GetContainerLogs(c, st.Name, tail)
+			})
 			if len(states) > 1 {
 				text = "==> " + st.Name + " <==\n" + text
 			}
@@ -89,4 +108,21 @@ func dockerLogs(ctx context.Context, ds DockerSetup, tail int) (map[string]strin
 		}
 	}
 	return out, nil
+}
+
+// readContainerLog runs fetch under its own deadline. A failure becomes the
+// log text; an expiry also becomes a manifest note (via note) naming the
+// container, so a hung daemon cannot hang the report (N3).
+func readContainerLog(ctx context.Context, timeout time.Duration, container string, note func(string), fetch func(context.Context) (string, error)) string {
+	lctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	text, err := fetch(lctx)
+	switch {
+	case err == nil:
+		return text
+	case errors.Is(lctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:
+		note(fmt.Sprintf("log read for container %s timed out after %s: its log is incomplete", container, timeout))
+		return text + "[log read timed out after " + timeout.String() + "]\n"
+	}
+	return "log read failed: " + err.Error() + "\n"
 }

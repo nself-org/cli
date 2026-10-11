@@ -13,9 +13,13 @@ package commands
 //          error: the archive then holds an empty logs/ directory.
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/nself-org/cli/internal/build"
@@ -89,9 +93,20 @@ func runDoctorReport(cmd *cobra.Command, _ []string) error {
 	if opts.NginxDir, note = reportNginxDir(projectDir); note != "" {
 		opts.Notes = append(opts.Notes, note)
 	}
-	bundle, err := report.Collect(cmd.Context(), opts, src)
+	parent := cmd.Context()
+	if parent == nil {
+		parent = context.Background()
+	}
+	// Ctrl-C (or SIGTERM) cancels the collection and returns, so nothing is
+	// claimed or left behind in the output directory (N2).
+	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	bundle, err := report.Collect(ctx, opts, src)
 	if err != nil {
 		return err
+	}
+	if ctx.Err() != nil {
+		return errors.New("interrupted: no report was written")
 	}
 	out, _ := cmd.Flags().GetString("output")
 	if out == "" {

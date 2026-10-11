@@ -82,6 +82,12 @@ func ExpandSecretValues(key, value string) []SecretValue {
 		out = append(out, sv)
 	}
 	for _, c := range urlCredentials(key, value) {
+		if c.only {
+			if sv, ok := literalValue(key, c.user); ok {
+				out = append(out, sv)
+			}
+			continue
+		}
 		if sv, ok := literalValue(key, c.pass); ok {
 			sv.Variants = append(sv.Variants, basicAuthVariants(c.user+":"+c.pass)...)
 			out = append(out, sv)

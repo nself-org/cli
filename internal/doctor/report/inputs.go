@@ -59,7 +59,9 @@ func (in *inputSet) learn(k, v string) {
 	}
 }
 
-// learnEnvText learns a dotenv text; listKeys also records its key names.
+// learnEnvText learns a dotenv text; listKeys also records its key names. A
+// key godotenv reports that scanDotenv does not is a PEM body line, never a
+// key (M2): only scanDotenv's keys are listed or learned.
 func (in *inputSet) learnEnvText(raw string, listKeys bool) {
 	add := func(k, v string) {
 		in.learn(k, v)
@@ -67,12 +69,25 @@ func (in *inputSet) learnEnvText(raw string, listKeys bool) {
 			in.keys[k] = true
 		}
 	}
-	if m, err := godotenv.Unmarshal(raw); err == nil {
-		for k, v := range m {
-			add(k, v)
+	pairs := scanDotenv(raw) // raw spelling, even if godotenv refused the file
+	real := map[string]bool{}
+	for _, p := range pairs {
+		if p.Key != "" {
+			real[p.Key] = true
 		}
 	}
-	for _, p := range scanDotenv(raw) { // raw spelling, even if godotenv refused the file
+	if m, err := godotenv.Unmarshal(raw); err == nil {
+		for k, v := range m {
+			if real[k] {
+				add(k, v)
+			}
+		}
+	}
+	for _, p := range pairs {
+		if p.Key == "" { // bare PEM block: a value only, learned under a secret-like label
+			in.learn("PRIVATE_KEY", p.Value)
+			continue
+		}
 		add(p.Key, p.Value)
 	}
 }
@@ -123,22 +138,9 @@ func loadEnvInputs(projectDir string, in *inputSet) {
 	}
 	sort.Strings(sorted)
 	for _, n := range sorted {
-		path := filepath.Join(projectDir, n)
-		st, err := os.Stat(path)
-		if err != nil || !st.Mode().IsRegular() {
-			continue
-		}
-		if st.Size() > maxFileBytes {
-			in.notes = append(in.notes, fmt.Sprintf("%s skipped as a scrub input: larger than 1 MiB", n))
-			continue
-		}
-		raw, err := os.ReadFile(path) // #nosec G304 -- fixed cascade names under the project dir
-		if err != nil {
-			in.notes = append(in.notes, fmt.Sprintf("%s unreadable: values in it cannot be scrubbed", n))
-			continue
-		}
-		in.learnEnvText(string(raw), true)
+		in.readEnvInput(filepath.Join(projectDir, n), n, true)
 	}
+	loadBuildInputs(projectDir, names, in)
 }
 
 // readCompose returns the generated docker-compose.yml text and learns the
@@ -171,7 +173,11 @@ func learnComposeYAML(raw []byte, dir string, in *inputSet) bool {
 	if yaml.Unmarshal(raw, &doc) != nil {
 		return false
 	}
-	walkEnv(doc, in.learn)
+	walkEnv(doc, in.learnCompose)
+	var root yaml.Node // the raw scalar text, not the decoded number (S6)
+	if yaml.Unmarshal(raw, &root) == nil {
+		walkEnvNodes(&root, in.learnCompose)
+	}
 	walkEnvFiles(doc, func(p string) { in.learnComposeEnvFile(dir, p) })
 	return true
 }

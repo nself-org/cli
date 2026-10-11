@@ -14,7 +14,9 @@ package report
 //         CS_N_ENV_FILE paths are project-relative with no absolute path or
 //         "..". Compose env_file paths are relative to the document's own
 //         directory, then to the project dir; an absolute one is accepted only
-//         when it lands inside the project.
+//         when it lands inside the project, or inside the directory of the
+//         fragment that names it (plugin fragments live outside the project,
+//         lead ruling R6 b).
 
 import (
 	"fmt"
@@ -50,34 +52,46 @@ func loadCustomEnvFiles(in *inputSet) {
 		for _, v := range in.refs[k] {
 			for _, rel := range strings.Split(TrimQuotes(v), ",") {
 				if rel = strings.TrimSpace(rel); rel != "" {
-					in.learnEnvFile("CS_N_ENV_FILE", in.projectDir, rel, true)
+					in.learnEnvFile("CS_N_ENV_FILE", rel, true, envRoot{in.projectDir, in.projectDir})
 				}
 			}
 		}
 	}
 }
 
-// learnComposeEnvFile learns one env_file entry of the compose document in dir.
+// learnComposeEnvFile learns one env_file entry of the compose document in dir:
+// first against dir inside the project, then against the project dir, then (a
+// fragment outside the project) against dir confined to dir itself.
 func (in *inputSet) learnComposeEnvFile(dir, rel string) {
 	rel = strings.TrimSpace(rel)
 	if rel == "" {
 		return
 	}
-	in.learnEnvFile("compose env_file", dir, rel, false)
+	roots := []envRoot{{in.projectDir, dir}}
+	if dir != in.projectDir {
+		roots = append(roots, envRoot{in.projectDir, in.projectDir}, envRoot{dir, dir})
+	}
+	in.learnEnvFile("compose env_file", rel, false, roots...)
 }
 
-// learnEnvFile resolves rel (strict: CS_N_ENV_FILE rules) and learns the file.
-// A non-strict miss under base is retried under the project dir.
-func (in *inputSet) learnEnvFile(label, base, rel string, strict bool) {
-	path, ok := confinedFile(in.projectDir, base, rel, strict)
-	if !ok && !strict && base != in.projectDir {
-		path, ok = confinedFile(in.projectDir, in.projectDir, rel, strict)
+// envRoot is a confinement root and the directory rel is resolved against.
+type envRoot struct{ root, base string }
+
+// learnEnvFile resolves rel against each root in turn (strict: CS_N_ENV_FILE
+// rules) and learns the first file that resolves.
+func (in *inputSet) learnEnvFile(label, rel string, strict bool, roots ...envRoot) {
+	var path string
+	ok := false
+	for _, r := range roots {
+		if path, ok = confinedFile(r.root, r.base, rel, strict); ok {
+			break
+		}
 	}
 	if !ok {
 		in.notes = append(in.notes, fmt.Sprintf("%s %q skipped as a scrub input: missing, not a regular file, or outside the project directory", label, rel))
 		return
 	}
-	raw, err := os.ReadFile(path) // #nosec G304 -- confined to the project dir by confinedFile
+	raw, err := os.ReadFile(path) // #nosec G304 -- confined to the project dir (or the fragment dir) by confinedFile
 	if err != nil {
 		in.notes = append(in.notes, fmt.Sprintf("%s %q unreadable: values in it cannot be scrubbed", label, rel))
 		return

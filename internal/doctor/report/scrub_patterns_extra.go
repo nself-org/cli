@@ -29,7 +29,7 @@ var (
 	// ALTER ROLE x PASSWORD 'v'; IDENTIFIED BY 'v'; WITH ENCRYPTED PASSWORD "v".
 	sqlPasswordRe = regexp.MustCompile(`(?i)(\b(?:PASSWORD|IDENTIFIED[ \t]+BY)[ \t]+)('(?:[^'\r\n]|'')*'|"[^"\r\n]*")`)
 	// curl -u user:value, curl --user user:value, also inside a JSON/YAML list.
-	curlUserRe = regexp.MustCompile(`(\bcurl\b[^\r\n]*?[\s"',\[](?:-u|--user)(?:=|[ \t]+|["']?[ \t]*,[ \t]*["']?)["']?[^\s"':,]*:)([^\s"',\]]+)`)
+	curlUserRe = regexp.MustCompile(`(\bcurl\b[^\r\n]*?[\s"',\[](?:-u|--user)(?:=|[ \t]+|["']?[ \t]*,[ \t]*["']?)["']?(?:\[REDACTED(?::[^\]\s]*)?\]|[^\s"':,])*:)([^\s"',\]]+)`)
 )
 
 // scrubWebhooks redacts licence keys and webhook URL path tokens.

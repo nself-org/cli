@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"time"
 )
@@ -29,7 +28,10 @@ type Sources struct {
 	Doctor   func(ctx context.Context) (string, error)
 	// Logs returns the log tail of each service, keyed by service name.
 	Logs func(ctx context.Context, tail int) (map[string]string, error)
-	Now  func() time.Time
+	// LogNotes returns the notes the Logs call collected (for example a
+	// container whose log read timed out); optional, called right after Logs.
+	LogNotes func() []string
+	Now      func() time.Time
 }
 
 // DefaultMaxLogBytes caps one service log (the tail is kept).
@@ -91,9 +93,10 @@ func Collect(ctx context.Context, opt Options, src Sources) (*Bundle, error) {
 	}
 	scr := NewScrubber(in.values)
 	b := &Bundle{}
-	add := func(name, text string) {
-		b.Files = append(b.Files, File{Name: name, Data: []byte(scr.Scrub(text))})
+	addRaw := func(name, text string) { // text is already scrubbed
+		b.Files = append(b.Files, File{Name: name, Data: []byte(text)})
 	}
+	add := func(name, text string) { addRaw(name, scr.Scrub(text)) }
 
 	vers := map[string]string{}
 	if src.Versions != nil {
@@ -114,14 +117,17 @@ func Collect(ctx context.Context, opt Options, src Sources) (*Bundle, error) {
 		nginxFiles, nnotes = readNginx(opt.NginxDir)
 		notes = append(notes, nnotes...)
 	}
+	usedNginx := map[string]bool{}
 	for _, nf := range nginxFiles {
-		add(nf.Name, string(nf.Data))
+		rel := strings.TrimPrefix(nf.Name, "nginx/")
+		name := uniqueName(usedNginx, func(suffix string) string { return scr.entryPath("nginx/", rel+suffix) })
+		add(name, string(nf.Data))
 	}
 	if src.Doctor != nil {
 		notes = append(notes, collectDoctor(ctx, src, add)...)
 	}
 	b.Files = append(b.Files, File{Name: "logs/", Dir: true})
-	notes = append(notes, collectLogs(ctx, opt, src, add, scr)...)
+	notes = append(notes, collectLogs(ctx, opt, src, addRaw, scr)...)
 	return finish(b, scr, notes, src.Now())
 }
 
@@ -141,57 +147,6 @@ func collectDoctor(ctx context.Context, src Sources, add func(string, string)) [
 	}
 	add("doctor.txt", out)
 	return notes
-}
-
-// collectLogs adds logs/<service>.log files and returns notes.
-func collectLogs(ctx context.Context, opt Options, src Sources, add func(string, string), scr *Scrubber) []string {
-	if src.Logs == nil {
-		return []string{"no running stack: log collection is not available"}
-	}
-	logs, err := src.Logs(ctx, opt.LogLines)
-	if err != nil {
-		return []string{"no running stack: " + scr.Scrub(err.Error())}
-	}
-	if len(logs) == 0 {
-		return []string{"no running stack: no containers found, logs/ is empty"}
-	}
-	limit := opt.MaxLogBytes
-	if limit <= 0 {
-		limit = DefaultMaxLogBytes
-	}
-	names := make([]string, 0, len(logs))
-	for n := range logs {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	used := map[string]bool{}
-	var notes []string
-	for _, n := range names {
-		f := LogName(n)
-		for i := 2; used[f]; i++ {
-			f = LogName(fmt.Sprintf("%s-%d", n, i))
-		}
-		used[f] = true
-		text, cut := capTail(logs[n], limit)
-		if cut {
-			notes = append(notes, fmt.Sprintf("%s truncated to its last %d bytes (was %d bytes)", f, limit, len(logs[n])))
-		}
-		add(f, text)
-	}
-	return notes
-}
-
-// capTail keeps the last limit bytes of text, starting at a line boundary when
-// one is near, and reports whether it cut anything.
-func capTail(text string, limit int) (string, bool) {
-	if len(text) <= limit {
-		return text, false
-	}
-	tail := text[len(text)-limit:]
-	if i := strings.IndexByte(tail, '\n'); i >= 0 && i < len(tail)-1 {
-		tail = tail[i+1:]
-	}
-	return "[truncated: only the end of this log is kept]\n" + tail, true
 }
 
 // finish writes manifest.json (counts are final: scrubbing it adds none).
@@ -236,24 +191,4 @@ func finish(b *Bundle, scr *Scrubber, notes []string, now time.Time) (*Bundle, e
 	}
 	b.Files = append(b.Files, File{Name: "manifest.json", Data: data})
 	return b, nil
-}
-
-// LogName maps a service name to logs/<name>.log with no path separators or
-// dot-dot components.
-func LogName(service string) string {
-	var sb strings.Builder
-	for _, r := range service {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
-			sb.WriteRune(r)
-		default:
-			sb.WriteByte('_')
-		}
-	}
-	n := strings.ReplaceAll(sb.String(), "..", "_")
-	n = strings.Trim(n, ".")
-	if n == "" {
-		n = "unnamed"
-	}
-	return "logs/" + n + ".log"
 }
