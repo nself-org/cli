@@ -293,3 +293,38 @@ func TestValkeyIntegration(t *testing.T) {
 		t.Fatalf("GET -> %q, %v", rep, err)
 	}
 }
+
+// TestExistingCacheEngine: the engine an existing docker-compose.yml shows, in
+// any image form, and its place in the precedence (below the explicit key and a
+// pin, above the mode default).
+func TestExistingCacheEngine(t *testing.T) {
+	for _, tc := range []struct{ name, yaml, want string }{
+		{"literal redis", "services:\n  redis:\n    image: redis:7-alpine\n", EngineRedis},
+		{"variable tag", "services:\n  redis:\n    image: redis:${REDIS_VERSION:-7-alpine}\n", EngineRedis},
+		{"variable whole ref", "services:\n  redis:\n    image: ${R:-redis:7-alpine}\n", EngineRedis},
+		{"built service", "services:\n  redis:\n    build: .\n", EngineRedis},
+		{"valkey image", "services:\n  redis:\n    image: valkey/valkey:8.1-alpine\n", EngineValkey},
+		{"redis_data volume", "services:\n  a:\n    image: x\nvolumes:\n  redis_data: {}\n", EngineRedis},
+		{"valkey_data volume", "volumes:\n  valkey_data: {}\n", EngineValkey},
+		{"no cache", "services:\n  a:\n    image: x\n", ""},
+		{"not yaml", "services: [\n", ""},
+	} {
+		if got := ExistingCacheEngine([]byte(tc.yaml)); got != tc.want {
+			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	compattest.Both(t, func(t *testing.T) {
+		t.Cleanup(SetProjectPins(nil))
+		t.Cleanup(SetExistingCacheEngine(EngineRedis))
+		if got := NewGenerator(cacheCfg("", "", "")).cacheEngine(); got != EngineRedis {
+			t.Errorf("existing redis evidence: engine %s", got)
+		}
+		if got := NewGenerator(cacheCfg("valkey", "", "")).cacheEngine(); got != EngineValkey {
+			t.Errorf("explicit key must win over the evidence: engine %s", got)
+		}
+		SetProjectPins(map[string]string{"redis": "valkey/valkey:8.1-alpine"})
+		if got := NewGenerator(cacheCfg("", "", "")).cacheEngine(); got != EngineValkey {
+			t.Errorf("a pin must win over the evidence: engine %s", got)
+		}
+	})
+}

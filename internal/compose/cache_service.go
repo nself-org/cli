@@ -13,6 +13,7 @@ package compose
 // Precedence: explicit REDIS_ENGINE (both modes) > the engine of the project
 // lock's `redis` pin (an existing project keeps its engine; the build takes the
 // pin from the existing docker-compose.yml when no lock exists yet, review F14)
+// > the engine of the existing docker-compose.yml in any form (SetExistingCacheEngine)
 // > the mode default (v1.4 redis, v1.5 valkey). Valkey keeps its data in the
 // new volume valkey_data; redis_data is never touched, so switching back reuses
 // it. Queued jobs in Redis are not migrated on a switch.
@@ -20,8 +21,11 @@ package compose
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/nself-org/cli/internal/compat"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Cache engines REDIS_ENGINE accepts.
@@ -45,11 +49,74 @@ func (g *Generator) cacheEngine() string {
 		}
 		return EngineRedis
 	}
+	// Evidence that the project already runs a cache beats the mode default, so an
+	// existing project never moves to a new empty volume without being asked.
+	if e := existingCacheEngine(); e != "" {
+		return e
+	}
 	// compat.V15(P7-LIVE-19): the default cache engine is redis -> valkey
 	if compat.V15() {
 		return EngineValkey
 	}
 	return EngineRedis
+}
+
+var (
+	existingMu     sync.RWMutex
+	existingEngine string
+)
+
+// SetExistingCacheEngine installs the engine the project's existing compose
+// shows (ExistingCacheEngine; "" = no evidence) for one render and returns the
+// function that restores the previous value. The build calls it when the lock
+// has no redis pin, so an image the bootstrap cannot pin (${VAR} forms, a build:
+// section) or a bare redis_data volume still counts as a running cache.
+func SetExistingCacheEngine(engine string) (restore func()) {
+	existingMu.Lock()
+	prev := existingEngine
+	existingEngine = engine
+	existingMu.Unlock()
+	return func() {
+		existingMu.Lock()
+		existingEngine = prev
+		existingMu.Unlock()
+	}
+}
+
+func existingCacheEngine() string {
+	existingMu.RLock()
+	defer existingMu.RUnlock()
+	return existingEngine
+}
+
+// ExistingCacheEngine reads the cache engine out of an existing docker-compose.yml:
+// EngineValkey when the `redis` service image names valkey, EngineRedis when that
+// service exists in any other form (a literal or ${VAR:-default} image, a build)
+// or a redis_data volume is declared, EngineValkey for a valkey_data volume alone,
+// "" when the file shows no cache at all. An unparseable file shows nothing.
+func ExistingCacheEngine(composeYAML []byte) string {
+	var doc struct {
+		Services map[string]struct {
+			Image string `yaml:"image"`
+		} `yaml:"services"`
+		Volumes map[string]interface{} `yaml:"volumes"`
+	}
+	if yaml.Unmarshal(composeYAML, &doc) != nil {
+		return ""
+	}
+	if svc, ok := doc.Services["redis"]; ok {
+		if strings.Contains(strings.ToLower(svc.Image), "valkey") {
+			return EngineValkey
+		}
+		return EngineRedis
+	}
+	if _, ok := doc.Volumes["redis_data"]; ok {
+		return EngineRedis
+	}
+	if _, ok := doc.Volumes["valkey_data"]; ok {
+		return EngineValkey
+	}
+	return ""
 }
 
 // cacheVolume is the named data volume of the cache engine.
