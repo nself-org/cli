@@ -54,6 +54,10 @@ func computePlan(b Bundle, l ledger.Ledger, pluginDir string) (removePlan, error
 	if err != nil {
 		return removePlan{}, errBundleNotRecorded
 	}
+	// A released plugin the catalog lists under another recorded bundle stays: the
+	// ledger lost that reference (a forced plugin remove, then a reinstall).
+	memberOf := map[string]string{}
+	released = keepCatalogMembers(&work, l, released, memberOf)
 	rel := make(map[string]bool, len(released))
 	for _, n := range released {
 		rel[n] = true
@@ -67,7 +71,7 @@ func computePlan(b Bundle, l ledger.Ledger, pluginDir string) (removePlan, error
 		case !isAlreadyInstalled(pluginDir, name):
 			plan.NotInstalled = append(plan.NotInstalled, name)
 		case !rel[key]:
-			plan.Kept = append(plan.Kept, KeptPlugin{Name: name, Reason: keptReason(l, b.Slug, key)})
+			plan.Kept = append(plan.Kept, KeptPlugin{Name: name, Reason: keptReason(l, b.Slug, key, memberOf)})
 		}
 	}
 	for i := len(b.Plugins) - 1; i >= 0; i-- {
@@ -83,8 +87,50 @@ func computePlan(b Bundle, l ledger.Ledger, pluginDir string) (removePlan, error
 	return plan, nil
 }
 
+// keepCatalogMembers takes out of released every plugin that the catalog lists
+// as a member of a bundle still recorded in work, and restores its record there
+// (facts from the original record, explicit=false, installed_by = those
+// bundles). memberOf receives "<bundle>, <bundle>" per kept plugin.
+func keepCatalogMembers(work *ledger.Ledger, orig ledger.Ledger, released []string, memberOf map[string]string) []string {
+	recorded := make([]string, 0, len(work.Bundles))
+	for slug := range work.Bundles {
+		recorded = append(recorded, slug)
+	}
+	sort.Strings(recorded)
+	var out []string
+	for _, name := range released {
+		var holders []string
+		for _, slug := range recorded {
+			if other, ok := Get(slug); ok && containsFold(other.Plugins, name) {
+				holders = append(holders, slug)
+			}
+		}
+		if len(holders) == 0 {
+			out = append(out, name)
+			continue
+		}
+		rec := orig.Plugins[name]
+		rec.InstalledBy, rec.Explicit = holders, false
+		work.Plugins[name] = rec
+		memberOf[name] = strings.Join(holders, ", ")
+	}
+	return out
+}
+
+func containsFold(list []string, name string) bool {
+	for _, x := range list {
+		if strings.EqualFold(x, name) {
+			return true
+		}
+	}
+	return false
+}
+
 // keptReason says why a plugin stays when bundle slug is removed.
-func keptReason(l ledger.Ledger, slug, key string) string {
+func keptReason(l ledger.Ledger, slug, key string, memberOf map[string]string) string {
+	if m, ok := memberOf[key]; ok {
+		return "member of " + m
+	}
 	rec, ok := l.Plugins[key]
 	if !ok {
 		return "not recorded in the bundle ledger"

@@ -70,11 +70,15 @@ var errNoRecord = errors.New("no record")
 
 // ForgetPlugin drops the plugin's record from the ledger after it was removed
 // from disk. It does nothing when the ledger file does not exist (a plugin
-// remove never bootstraps the ledger) or has no record of the plugin.
+// remove never bootstraps the ledger) or has no record of the plugin; a ledger
+// file that cannot be stat'ed for another reason is an error.
 func ForgetPlugin(pluginDir, name string) error {
 	store := newLedgerStore(pluginDir)
 	if _, err := os.Stat(store.Path()); err != nil {
-		return nil
+		if errors.Is(err, os.ErrNotExist) {
+			return nil // no ledger yet: nothing to keep in step
+		}
+		return err // unreadable is not "no ledger"
 	}
 	key := strings.ToLower(strings.TrimSpace(name))
 	err := store.Update(func(l *ledger.Ledger) error {

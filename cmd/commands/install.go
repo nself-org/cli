@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/nself-org/cli/internal/bundle"
@@ -146,6 +147,13 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 	name := args[0]
 
+	// P7-PLUG-20: the catalog is not loaded outside `nself bundle`; without it a bundle
+	// name would be treated as a plugin. A load failure keeps today's routing.
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	_ = bundle.EnsureLoaded(ctx)
 	if resolvesToBundle(name) {
 		return runBundleRemove(cmd, []string{name})
 	}

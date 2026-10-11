@@ -9,6 +9,8 @@ package commands
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -170,6 +172,112 @@ func TestPluginRemoveDryRunCmd(t *testing.T) {
 		setFlags(t, removeCmd, "keep-data")
 		if runErr = runPluginRemove(removeCmd, []string{"bots"}); runErr == nil || !strings.Contains(runErr.Error(), "cannot be used together") {
 			t.Errorf("--delete-data with --keep-data: err = %v, want the contradictory-flags error", runErr)
+		}
+	})
+}
+
+// unloadedCatalog puts the process in the state of `nself remove <x>`: the bundle
+// catalog is not loaded, and the loader is aimed at url with an empty cache.
+func unloadedCatalog(t *testing.T, url string) {
+	t.Helper()
+	t.Setenv("NSELF_BUNDLES_URL", url)
+	t.Setenv("NSELF_BUNDLES_CACHE_PATH", filepath.Join(t.TempDir(), "bundles-cache.json"))
+	t.Cleanup(bundle.UnloadCatalogForTest())
+}
+
+func catalogFixtureServer(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(fixtureBundlesJSON))
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// installChatPlugins puts bots and livekit on disk with no ledger file and no catalog loaded.
+func installChatPlugins(t *testing.T) *l03Project {
+	t.Helper()
+	RootCmd.SetErr(nil)
+	p := extensionFixture(t, "")
+	for _, pl := range []string{"bots", "livekit"} {
+		dir := filepath.Join(p.plugins, pl)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		manifest := `{"name":"` + pl + `","version":"1.0.0","description":"fixture","category":"utility","license":"MIT"}`
+		if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return p
+}
+
+// TestPluginRemoveGuardNoLedgerNoCatalogCmd is the case the other cmd tests miss: no ledger
+// file and a catalog nobody loaded. v1.5 loads it and refuses with E133; with no catalog
+// reachable it refuses too, because it cannot prove the plugin is unreferenced.
+func TestPluginRemoveGuardNoLedgerNoCatalogCmd(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		if !compat.V15() {
+			return
+		}
+		t.Run("catalog reachable", func(t *testing.T) {
+			p := installChatPlugins(t)
+			unloadedCatalog(t, catalogFixtureServer(t))
+			err := runPluginRemove(pluginRemoveCmd, []string{"bots"})
+			if d := errs.Describe(err); err == nil || d == nil || d.Code != "E133" || !strings.Contains(err.Error(), "chat") {
+				t.Fatalf("err = %v, want E133 naming chat", err)
+			}
+			if _, serr := os.Stat(filepath.Join(p.plugins, "bots")); serr != nil {
+				t.Errorf("bots was removed: %v", serr)
+			}
+		})
+		t.Run("catalog unreachable", func(t *testing.T) {
+			p := installChatPlugins(t)
+			dead := httptest.NewServer(http.NotFoundHandler())
+			url := dead.URL
+			dead.Close()
+			unloadedCatalog(t, url)
+			err := runPluginRemove(pluginRemoveCmd, []string{"bots"})
+			if err == nil || !strings.Contains(err.Error(), "--force") {
+				t.Fatalf("err = %v, want a refusal that names --force", err)
+			}
+			if _, serr := os.Stat(filepath.Join(p.plugins, "bots")); serr != nil {
+				t.Errorf("bots was removed: %v", serr)
+			}
+		})
+	})
+}
+
+// TestRemoveBundleRoutesWithoutCatalogCmd: `nself remove chat` with the catalog not loaded
+// still reaches bundle remove (E403 for --delete-data without --yes), not plugin remove.
+func TestRemoveBundleRoutesWithoutCatalogCmd(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		p := installChatPlugins(t)
+		unloadedCatalog(t, catalogFixtureServer(t))
+		setFlags(t, removeCmd, "delete-data")
+		err := runRemove(removeCmd, []string{"chat"})
+		if err == nil || errs.ExitCodeFor(err) != 4 {
+			t.Fatalf("err = %v (exit %d), want the bundle remove E403 exit 4", err, errs.ExitCodeFor(err))
+		}
+		if _, serr := os.Stat(filepath.Join(p.plugins, "bots")); serr != nil {
+			t.Errorf("bots was removed: %v", serr)
+		}
+	})
+}
+
+// TestBundleRemoveKeepDataDeprecationCmd: --keep-data prints its deprecation line in v1.5 only.
+func TestBundleRemoveKeepDataDeprecationCmd(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		chatFixture(t)
+		setFlags(t, bundleRemoveCmd, "keep-data", "dry-run")
+		var err error
+		stderr := captureStderr(t, func() { err = runBundleRemove(bundleRemoveCmd, []string{"chat"}) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		has := strings.Contains(stderr, "--keep-data is deprecated")
+		if has != compat.V15() {
+			t.Errorf("deprecation line present = %v in %s mode:\n%s", has, compat.Mode(), stderr)
 		}
 	})
 }
