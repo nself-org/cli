@@ -38,8 +38,7 @@ func factsOf(t *testing.T, cfg *config.Config) svcFacts {
 	t.Helper()
 	g := NewGenerator(cfg)
 	svc := g.buildRedisService()
-	cmd, _ := svc.Command.(string)
-	f := svcFacts{engine: g.cacheEngine(), image: svc.Image, command: strings.Fields(cmd)[0], volume: strings.SplitN(svc.Volumes[0], ":", 2)[0]}
+	f := svcFacts{engine: g.cacheEngine(), image: svc.Image, command: serverBinary(svc.Command), volume: strings.SplitN(svc.Volumes[0], ":", 2)[0]}
 	if _, ok := g.buildVolumes()[f.volume]; !ok {
 		t.Errorf("volume %s of the redis service is not declared in the compose volumes", f.volume)
 	}
@@ -48,6 +47,22 @@ func factsOf(t *testing.T, cfg *config.Config) svcFacts {
 		t.Errorf("volume %s declared next to %s: one engine, one data volume", other, f.volume)
 	}
 	return f
+}
+
+// serverBinary names the server binary a service command starts: the command is a
+// string without a password and sh -c "exec <server> ..." with one (D-0282).
+func serverBinary(command interface{}) string {
+	var text string
+	switch c := command.(type) {
+	case string:
+		text = c
+	case []string:
+		text = strings.Join(c, " ")
+	}
+	if _, after, ok := strings.Cut(text, "exec "); ok {
+		text = after
+	}
+	return strings.Fields(text)[0]
 }
 
 // TestCacheEngineMatrix covers the D16 precedence in both compat modes.
@@ -127,14 +142,17 @@ func TestCacheEngineExistingProjectNeverMoves(t *testing.T) {
 		if svc.Image != pin {
 			t.Errorf("image = %q, want the lock pin %q", svc.Image, pin)
 		}
-		want := "redis-server --appendonly yes --protected-mode yes --requirepass ${REDIS_PASSWORD} --maxclients 20"
-		if svc.Command != want {
-			t.Errorf("command = %q, want %q", svc.Command, want)
+		wantCmd := []string{"sh", "-c", `exec redis-server --appendonly yes --protected-mode yes --requirepass "$$REDISCLI_AUTH" --maxclients 20`}
+		if got, _ := svc.Command.([]string); strings.Join(got, "\x00") != strings.Join(wantCmd, "\x00") {
+			t.Errorf("command = %q, want %q", svc.Command, wantCmd)
+		}
+		if svc.Environment["REDISCLI_AUTH"] != "${REDIS_PASSWORD}" {
+			t.Errorf("REDISCLI_AUTH = %q, want ${REDIS_PASSWORD}", svc.Environment["REDISCLI_AUTH"])
 		}
 		if svc.Volumes[0] != "redis_data:/data" || svc.Ports[0] != "127.0.0.1:6390:6379" || svc.User != "999:999" {
 			t.Errorf("volume/port/user changed: %v %v %s", svc.Volumes, svc.Ports, svc.User)
 		}
-		if got := svc.Healthcheck.Test; strings.Join(got, " ") != "CMD redis-cli -a ${REDIS_PASSWORD} ping" {
+		if got := svc.Healthcheck.Test; strings.Join(got, " ") != "CMD redis-cli ping" {
 			t.Errorf("healthcheck = %v", got)
 		}
 	})
@@ -269,6 +287,19 @@ func TestValkeyIntegration(t *testing.T) {
 	}
 	if out, _ := dc("ps", "--format", "{{.Service}} {{.Image}} {{.Health}}", "redis"); !strings.Contains(string(out), "valkey") || !strings.Contains(string(out), "healthy") {
 		t.Fatalf("redis service is not a healthy valkey container: %s", out)
+	}
+
+	// The health check command (valkey-cli ping, no -a) must authenticate through
+	// REDISCLI_AUTH alone, and the same command without it must be refused: that
+	// proves the PONG comes from the env var, not from an open server.
+	if out, err := dc("exec", "-T", "redis", "valkey-cli", "ping"); err != nil || strings.TrimSpace(string(out)) != "PONG" {
+		t.Fatalf("valkey-cli ping with REDISCLI_AUTH = %q, %v; want PONG", out, err)
+	}
+	if out, _ := dc("exec", "-T", "redis", "env", "-u", "REDISCLI_AUTH", "valkey-cli", "ping"); !strings.Contains(string(out), "NOAUTH") {
+		t.Fatalf("valkey-cli ping without a password = %q; want a NOAUTH refusal", out)
+	}
+	if out, err := dc("exec", "-T", "redis", "redis-cli", "ping"); err != nil || strings.TrimSpace(string(out)) != "PONG" {
+		t.Fatalf("redis-cli symlink ping = %q, %v; want PONG", out, err)
 	}
 
 	u, _ := url.Parse(fmt.Sprintf("redis://:%s@127.0.0.1:%d", password, port))
