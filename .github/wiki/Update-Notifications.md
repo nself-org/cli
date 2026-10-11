@@ -63,6 +63,8 @@ A failed refresh keeps the old `latest`, records `last_error`, and is not retrie
 
 The hint itself reads only this file. It never touches the network.
 
+When a command is about to refresh a stale cache, it decides the hint first, from the cache as it was before the refresh. The answer that refresh brings back shows up on a later command, never on the one that fetched it. A hint decided this way counts as that day's hint even if the command then fails, so a failed command can use up the day's hint without printing it.
+
 ## Related
 
 - [[Command-Canon]]
