@@ -179,3 +179,55 @@ func TestAncestor_NothingCreatedUnderWritableAncestor(t *testing.T) {
 		})
 	}
 }
+
+// The walk goes all the way up: a writable directory two levels above the
+// pin dir is refused too, not only the immediate ancestor.
+func TestAncestor_DeepAncestorRefused(t *testing.T) {
+	skipWindows(t)
+	for _, tc := range []struct {
+		mode os.FileMode
+		ok   bool
+	}{{0o755, true}, {0o777, false}} {
+		t.Run(fmt.Sprintf("%04o", tc.mode), func(t *testing.T) {
+			_, home := pinFile(t)
+			open := filepath.Join(home, "open")
+			p := PinnedHostKeys{Path: filepath.Join(open, "a", "b", "known_hosts")}
+			if err := os.MkdirAll(filepath.Dir(p.Path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(open, tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			err := p.Add("n1", keyA)
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("0755 deep ancestor refused: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "ancestor "+open+" ") {
+				t.Errorf("Add under a 0777 deep ancestor: %v", err)
+			}
+		})
+	}
+}
+
+func TestTryLockFD_BadDescriptorErrors(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	for _, ex := range []bool{true, false} {
+		ok, err := tryLockFD(f, ex)
+		if ok || err == nil {
+			t.Errorf("tryLockFD(closed, %v) = %v, %v; want false and an error", ex, ok, err)
+		}
+	}
+}
+
+func TestPinLockWaitDefaultIsThirtySeconds(t *testing.T) {
+	if pinLockWait != 30*time.Second {
+		t.Errorf("pinLockWait = %v, want 30s (docs and changelog say 30 seconds)", pinLockWait)
+	}
+}
