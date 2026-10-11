@@ -18,6 +18,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -465,6 +466,41 @@ func TestDoctorHealKeyFile(t *testing.T) {
 				}
 				if _, err := os.Stat(logPath); err == nil {
 					t.Fatalf("--to-file %s: a refused rotation wrote the rotation log", bad)
+				}
+			}
+		})
+	}
+}
+
+// TestDoctorHealHumanKeepsKeyOffStdout: the human form of --jwt with
+// --to-file or --no-print never prints the new key, the next-steps text
+// included; without either it does.
+func TestDoctorHealHumanKeepsKeyOffStdout(t *testing.T) {
+	t.Setenv("HASURA_GRAPHQL_JWT_SECRET", "00ff")
+	hexKey := regexp.MustCompile(`[0-9a-f]{32,}`)
+	for _, tc := range []struct {
+		name    string
+		toFile  bool
+		noPrint bool
+		leaks   bool
+	}{{"to-file", true, false, false}, {"no-print", false, true, false}, {"stdout", false, false, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("NSELF_JWT_ROTATION_LOG", filepath.Join(t.TempDir(), "rotation.log"))
+			keyPath := ""
+			if tc.toFile {
+				keyPath = filepath.Join(t.TempDir(), "jwt.key")
+			}
+			stdout, err := captureStdout(t, func() error { return runSelfHealJWT(false, keyPath, tc.noPrint) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := hexKey.MatchString(stdout); got != tc.leaks {
+				t.Fatalf("key on stdout = %v, want %v:\n%s", got, tc.leaks, stdout)
+			}
+			if tc.toFile {
+				key, _ := os.ReadFile(keyPath)
+				if k := strings.TrimSpace(string(key)); k == "" || strings.Contains(stdout, k) {
+					t.Fatalf("key file %q empty or its key on stdout", keyPath)
 				}
 			}
 		})

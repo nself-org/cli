@@ -136,8 +136,16 @@ func runSelfHealJWT(dryRun bool, toFile string, noPrint bool) error {
 
 	fmt.Println()
 	fmt.Println("Next steps (manual — apply before grace period expires):")
+	// --to-file and --no-print promise the key stays off stdout, so the
+	// instruction names where the key is instead of repeating it.
+	shown := result.NewKey
+	if toFile != "" {
+		shown = "<the key in " + toFile + ">"
+	} else if noPrint {
+		shown = "<the new key>"
+	}
 	fmt.Printf("  1. Add the new key to .env.secrets:\n")
-	fmt.Printf("       HASURA_GRAPHQL_JWT_SECRET={\"type\":\"HS256\",\"key\":\"%s\"}\n", result.NewKey)
+	fmt.Printf("       HASURA_GRAPHQL_JWT_SECRET={\"type\":\"HS256\",\"key\":\"%s\"}\n", shown)
 	fmt.Println()
 	fmt.Printf("  2. Restart all services that cache JWT keys:\n")
 	fmt.Println("       nself build && nself restart")
@@ -183,7 +191,7 @@ func rotateJWTToFile(toFile string) (*auth.RotateResult, error) {
 	}
 	if kf != nil {
 		if err := kf.commit(result.NewKey + "\n"); err != nil {
-			return nil, fmt.Errorf("write key to file %s: %w", toFile, err)
+			return nil, fmt.Errorf("write key to file %s: %w (the rotation was logged but the key was not delivered; run the rotation again)", toFile, err)
 		}
 	}
 	return result, nil
@@ -191,7 +199,8 @@ func rotateJWTToFile(toFile string) (*auth.RotateResult, error) {
 
 // keyFile is a private (0600) temp file in the directory of a --to-file
 // target. commit renames it over the target, so the key file ends 0600 even
-// when the target already existed with a wider mode.
+// when the target already existed with a wider mode. A symlink target is
+// replaced by a regular file; the file it pointed to is left untouched.
 type keyFile struct {
 	tmp    *os.File
 	target string
