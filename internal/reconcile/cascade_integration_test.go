@@ -930,10 +930,13 @@ func cascadeDoctorFix(t *testing.T, bin string, mode cascadeMode) {
 	// A second --fix changes nothing.
 	before := p.snapshotNoHome()
 	r = p.run(fix...)
-	if r.code != 0 {
-		t.Fatalf("second doctor --fix: exit %d, want 0\n%s", r.code, r.all())
-	}
 	cascadeContains(t, "second doctor --fix", r.all(), "Generated files: no generated-file drift")
 	p.assertUnchanged(before, "a second doctor --fix")
 	p.assertDoctorDrift(false)
+	// Its exit code is the plain doctor's on the same host: host checks (ports
+	// in use on a CI runner) may warn and set doctor's warning exit code, but a
+	// fix step that failed would make --fix differ from the read-only run.
+	if plain := p.run("doctor"); r.code != plain.code {
+		t.Fatalf("second doctor --fix: exit %d, plain doctor: exit %d\n%s", r.code, plain.code, r.all())
+	}
 }
