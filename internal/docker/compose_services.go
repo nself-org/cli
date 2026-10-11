@@ -31,11 +31,22 @@ const (
 	gatePollEvery  = 2 * time.Second
 )
 
+// gateReadGrace is the least time one gate state read may take, even past the
+// gate's deadline: the one read after the deadline still counts, but a hung
+// read is cut off. A var so tests can shorten it.
+var gateReadGrace = 10 * time.Second
+
 // ServiceSpec is what the resolved compose model says about one service.
 type ServiceSpec struct {
 	Name           string `json:"name"`
 	HasHealthcheck bool   `json:"has_healthcheck"`
 	Restart        string `json:"restart"`
+
+	// HealthTimeout is how long Docker may take to declare the healthcheck
+	// failed: start_period + retries*(interval+timeout). 0 without a healthcheck
+	// or when unknown (a spec built elsewhere). The latest Docker can still
+	// report healthy before it would declare the container unhealthy.
+	HealthTimeout time.Duration `json:"-"`
 }
 
 // OneShot reports a service that is meant to run once and exit: restart "no"
@@ -69,8 +80,12 @@ func parseServiceSpecs(raw []byte) ([]ServiceSpec, error) {
 		Services map[string]struct {
 			Restart     string `json:"restart"`
 			Healthcheck *struct {
-				Test    json.RawMessage `json:"test"`
-				Disable bool            `json:"disable"`
+				Test        json.RawMessage `json:"test"`
+				Disable     bool            `json:"disable"`
+				Interval    string          `json:"interval"`
+				Timeout     string          `json:"timeout"`
+				StartPeriod string          `json:"start_period"`
+				Retries     *int            `json:"retries"`
 			} `json:"healthcheck"`
 		} `json:"services"`
 	}
@@ -81,10 +96,44 @@ func parseServiceSpecs(raw []byte) ([]ServiceSpec, error) {
 	for name, s := range doc.Services {
 		hc := s.Healthcheck
 		has := hc != nil && !hc.Disable && !healthcheckNone(hc.Test)
-		specs = append(specs, ServiceSpec{Name: name, HasHealthcheck: has, Restart: s.Restart})
+		spec := ServiceSpec{Name: name, HasHealthcheck: has, Restart: s.Restart}
+		if has {
+			var err error
+			if spec.HealthTimeout, err = healthTimeout(name, hc.Interval, hc.Timeout, hc.StartPeriod, hc.Retries); err != nil {
+				return nil, err
+			}
+		}
+		specs = append(specs, spec)
 	}
 	sort.Slice(specs, func(i, j int) bool { return specs[i].Name < specs[j].Name })
 	return specs, nil
+}
+
+// healthTimeout is start_period + retries*(interval+timeout) from the compose
+// duration strings; an absent value takes Docker's default (interval 30s,
+// timeout 30s, retries 3, start_period 0). A bad duration is an error.
+func healthTimeout(name, interval, timeout, startPeriod string, retries *int) (time.Duration, error) {
+	var d [3]time.Duration
+	for i, f := range []struct {
+		field, v string
+		def      time.Duration
+	}{
+		{"interval", interval, 30 * time.Second}, {"timeout", timeout, 30 * time.Second}, {"start_period", startPeriod, 0},
+	} {
+		d[i] = f.def
+		if f.v == "" {
+			continue
+		}
+		var err error
+		if d[i], err = time.ParseDuration(f.v); err != nil {
+			return 0, fmt.Errorf("service %s: healthcheck %s %q: %w", name, f.field, f.v, err)
+		}
+	}
+	n := 3
+	if retries != nil {
+		n = *retries
+	}
+	return d[2] + time.Duration(n)*(d[0]+d[1]), nil
 }
 
 // healthcheckNone: the test is ["NONE"], i.e. the healthcheck is disabled.
@@ -99,6 +148,7 @@ func (c *Compose) capture(ctx context.Context, workdir string, args ...string) (
 	full := append(c.buildBaseArgs(), args...)
 	cmd := exec.CommandContext(ctx, c.dockerBin(), full...)
 	cmd.Dir = workdir
+	cmd.WaitDelay = stateWaitDelay
 	var se bytes.Buffer
 	cmd.Stderr = &se
 	out, err := cmd.Output()
@@ -157,7 +207,9 @@ type StateSource func(ctx context.Context) ([]ContainerState, error)
 // Otherwise -> every container running within RunningTimeout and seen running
 // on two polls in a row with the same StartedAt (a crash loop passes one
 // poll); a service with no restart line that exited 0 is done, as Docker
-// treats it. A cancelled ctx returns ctx's error; a failed state read wraps
+// treats it. A healthcheck service waits max(HealthyTimeout, spec.HealthTimeout).
+// Each state read is bounded (see gateReadGrace); a read that gets no answer
+// wraps ErrGateTimeout. A cancelled ctx returns ctx's error; a failed state read wraps
 // ErrStateRead. A nil clock means SystemClock.
 func HealthGate(ctx context.Context, spec ServiceSpec, states StateSource, clock Clock) error {
 	if clock == nil {
@@ -167,13 +219,23 @@ func HealthGate(ctx context.Context, spec ServiceSpec, states StateSource, clock
 	if spec.HasHealthcheck || spec.OneShot() {
 		limit = HealthyTimeout
 	}
+	if spec.HasHealthcheck {
+		limit = max(limit, spec.HealthTimeout)
+	}
 	deadline := clock.Now().Add(limit)
 	var prev map[string]string
 	for {
-		cs, err := states(ctx)
+		budget := max(deadline.Sub(clock.Now()), gateReadGrace)
+		readCtx, cancel := context.WithTimeout(ctx, budget)
+		cs, err := states(readCtx)
+		cut := readCtx.Err() != nil // before cancel(), which sets it too
+		cancel()
 		if err != nil {
 			if ctx.Err() != nil {
 				return fmt.Errorf("service %s: %w", spec.Name, ctx.Err())
+			}
+			if cut || errors.Is(err, context.DeadlineExceeded) {
+				return fmt.Errorf("service %s: %w (container state read gave no answer within %s)", spec.Name, ErrGateTimeout, budget)
 			}
 			return fmt.Errorf("service %s: %w: %w", spec.Name, ErrStateRead, err)
 		}

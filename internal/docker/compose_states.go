@@ -12,9 +12,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
+)
+
+// Bounds on one docker read, so a hung daemon cannot hang a deploy. They are
+// vars only so tests can shorten them. stateWaitDelay is how long a killed
+// docker CLI may keep its pipes open: `docker compose` runs the compose plugin
+// as a child, and killing the CLI leaves that child holding stdout.
+var (
+	stateCallTimeout = 30 * time.Second
+	stateWaitDelay   = 2 * time.Second
 )
 
 // oneOffLabel is set to "True" by Compose on containers made by `compose run`.
@@ -56,9 +67,11 @@ func (s ContainerState) OneOff() bool {
 // Stopped containers matter: a one-shot is only visible once it has exited.
 // One-off `compose run` containers are dropped.
 func (c *Compose) ComposeServiceStates(ctx context.Context, workdir, service string) ([]ContainerState, error) {
-	out, err := c.capture(ctx, workdir, "ps", "-a", "--format", "json", service)
+	cctx, cancel := context.WithTimeout(ctx, stateCallTimeout)
+	defer cancel()
+	out, err := c.capture(cctx, workdir, "ps", "-a", "--format", "json", "--", service)
 	if err != nil {
-		return nil, err
+		return nil, stateCallErr(ctx, cctx, "docker compose ps for "+service, err)
 	}
 	all, err := parseContainerStates(out)
 	if err != nil {
@@ -77,10 +90,27 @@ func (c *Compose) ComposeServiceStates(ctx context.Context, workdir, service str
 // baseline (see FreshStates).
 const StateNotRestarted = "not-restarted"
 
+// stateCallErr is err, unless the call's own deadline fired while the parent
+// ctx was still live: then it names the call and the limit and wraps
+// context.DeadlineExceeded. A cancelled parent surfaces as before.
+func stateCallErr(parent, call context.Context, what string, err error) error {
+	if parent.Err() == nil && errors.Is(call.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("%s gave no answer within %s: %w", what, stateCallTimeout, context.DeadlineExceeded)
+	}
+	return err
+}
+
 // startedAt returns the daemon's StartedAt string for container id.
 func (c *Compose) startedAt(ctx context.Context, id string) (string, error) {
-	out, err := exec.CommandContext(ctx, c.dockerBin(), "inspect", "-f", "{{.State.StartedAt}}", id).Output()
+	cctx, cancel := context.WithTimeout(ctx, stateCallTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(cctx, c.dockerBin(), "inspect", "-f", "{{.State.StartedAt}}", "--", id)
+	cmd.WaitDelay = stateWaitDelay
+	out, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() == nil && errors.Is(cctx.Err(), context.DeadlineExceeded) {
+			return "", stateCallErr(ctx, cctx, "docker inspect "+id, err)
+		}
 		return "", fmt.Errorf("docker inspect %s: %w", id, err)
 	}
 	return strings.TrimSpace(string(out)), nil
@@ -159,25 +189,51 @@ func parseContainerStates(raw []byte) ([]ContainerState, error) {
 
 // Regressed compares the containers a service's gate saw (before) with a later
 // read (after). It returns ErrServiceCrashed, with the container named, for one
-// that is restarting, exited non-zero, or started again since the gate passed
-// (a new StartedAt). Rows without an ID or StartedAt cannot be compared by start
-// time and are only judged on state.
+// that is restarting, exited non-zero, absent from before (a replica replaced or
+// added after the gate), started again since the gate (a new StartedAt), or, for
+// a service whose gate required health, no longer running and healthy. A running
+// container of before that is missing from after is also a failure. Containers
+// match by ID, or by Name when the ID is empty (old compose). Rows without a
+// StartedAt cannot be compared by start time and are judged on state, identity
+// and health. Exited 0 without a healthcheck is not a crash.
 func Regressed(before, after []ContainerState) error {
+	key := func(c ContainerState) string {
+		if c.ID != "" {
+			return c.ID
+		}
+		return c.Name
+	}
+	seen := map[string]bool{}
 	started := map[string]string{}
+	hasHC := false
 	for _, b := range before {
-		if b.State == "running" && b.ID != "" && b.StartedAt != "" {
-			started[b.ID] = b.StartedAt
+		seen[key(b)] = true
+		hasHC = hasHC || b.Health != ""
+		if b.State == "running" && b.StartedAt != "" {
+			started[key(b)] = b.StartedAt
 		}
 	}
+	present := map[string]bool{}
 	for _, a := range after {
+		present[key(a)] = true
 		switch {
 		case a.State == "restarting":
 			return fmt.Errorf("%w (%s is restarting after its gate passed)", ErrServiceCrashed, a.Name)
 		case a.State == "exited" && a.ExitCode != 0:
 			return fmt.Errorf("%w (%s exited %d after its gate passed)", ErrServiceCrashed, a.Name, a.ExitCode)
+		case len(before) > 0 && !seen[key(a)]:
+			return fmt.Errorf("%w (%s was not seen by its gate)", ErrServiceCrashed, a.Name)
 		}
-		if was, ok := started[a.ID]; ok && a.StartedAt != "" && a.StartedAt != was {
+		if was, ok := started[key(a)]; ok && a.StartedAt != "" && a.StartedAt != was {
 			return fmt.Errorf("%w (%s restarted after its gate passed)", ErrServiceCrashed, a.Name)
+		}
+		if hasHC && (a.State != "running" || a.Health != "healthy") {
+			return fmt.Errorf("%w (%s is %s/%s after its gate passed)", ErrServiceCrashed, a.Name, a.State, a.Health)
+		}
+	}
+	for _, b := range before {
+		if b.State == "running" && !present[key(b)] {
+			return fmt.Errorf("%w (%s is gone after its gate passed)", ErrServiceCrashed, b.Name)
 		}
 	}
 	return nil

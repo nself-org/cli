@@ -81,23 +81,50 @@ func TestRegressed(t *testing.T) {
 	run := func(id, at string) ContainerState {
 		return ContainerState{ID: id, Name: "p-" + id, State: "running", StartedAt: at}
 	}
-	before := []ContainerState{run("a", "t1"), run("b", "t1")}
+	hc := func(id, at, health string) ContainerState {
+		c := run(id, at)
+		c.Health = health
+		return c
+	}
+	exited := func(id string, code int) ContainerState {
+		return ContainerState{ID: id, Name: "p-" + id, State: "exited", ExitCode: code}
+	}
+	plain := []ContainerState{run("a", "t1"), run("b", "t1")}
+	healthy := []ContainerState{hc("a", "t1", "healthy"), hc("b", "t1", "healthy")}
+	oneShot := []ContainerState{exited("a", 0)}
 	cases := []struct {
-		name  string
-		after []ContainerState
-		want  string // substring of the error, "" for none
+		name          string
+		before, after []ContainerState
+		want          string // substring of the error, "" for none
 	}{
-		{"same run", []ContainerState{run("a", "t1"), run("b", "t1")}, ""},
-		{"new StartedAt", []ContainerState{run("a", "t1"), run("b", "t2")}, "p-b restarted"},
-		{"restarting", []ContainerState{{ID: "a", Name: "p-a", State: "restarting"}}, "p-a is restarting"},
-		{"exited non-zero", []ContainerState{{ID: "a", Name: "p-a", State: "exited", ExitCode: 3}}, "p-a exited 3"},
-		{"exited zero is not a crash", []ContainerState{{ID: "a", Name: "p-a", State: "exited"}}, ""},
-		{"no StartedAt cannot be compared", []ContainerState{{ID: "a", Name: "p-a", State: "running"}}, ""},
-		{"unknown container is not compared", []ContainerState{run("c", "t9")}, ""},
+		{"same run", plain, []ContainerState{run("a", "t1"), run("b", "t1")}, ""},
+		{"new StartedAt", plain, []ContainerState{run("a", "t1"), run("b", "t2")}, "p-b restarted"},
+		{"restarting", plain, []ContainerState{run("a", "t1"), {ID: "b", Name: "p-b", State: "restarting"}}, "p-b is restarting"},
+		{"exited non-zero", plain, []ContainerState{run("a", "t1"), exited("b", 3)}, "p-b exited 3"},
+		{"exited zero, no healthcheck, is not a crash", plain, []ContainerState{run("a", "t1"), exited("b", 0)}, ""},
+		{"no StartedAt cannot be compared", plain, []ContainerState{{ID: "a", Name: "p-a", State: "running"}, run("b", "t1")}, ""},
+		{"unknown container was not seen by its gate", plain, []ContainerState{run("a", "t1"), run("b", "t1"), run("c", "t9")}, "p-c was not seen by its gate"},
+		{"new ID replaces the old one", plain, []ContainerState{run("a", "t1"), run("z", "t5")}, "p-z was not seen by its gate"},
+		{"vanished one of two", plain, []ContainerState{run("a", "t1")}, "p-b is gone"},
+		{"empty after, running before", plain, nil, "is gone"},
+		{"healthy stays healthy", healthy, []ContainerState{hc("a", "t1", "healthy"), hc("b", "t1", "healthy")}, ""},
+		{"healthy to unhealthy", healthy, []ContainerState{hc("a", "t1", "healthy"), hc("b", "t1", "unhealthy")}, "p-b is running/unhealthy"},
+		{"healthy to starting", healthy, []ContainerState{hc("a", "t1", "starting"), hc("b", "t1", "healthy")}, "p-a is running/starting"},
+		{"healthy to running with empty health", healthy, []ContainerState{hc("a", "t1", ""), hc("b", "t1", "healthy")}, "p-a is running/"},
+		{"healthcheck service exited 0", healthy, []ContainerState{hc("a", "t1", "healthy"), exited("b", 0)}, "p-b is exited/"},
+		{"one-shot exited 0 and identical", oneShot, []ContainerState{exited("a", 0)}, ""},
+		{"one-shot exited 0 present, none running before", oneShot, []ContainerState{exited("a", 0)}, ""},
+		{"rows without ID match by Name", []ContainerState{{Name: "p-a", State: "running"}}, []ContainerState{{Name: "p-a", State: "running"}}, ""},
+		{"rows without ID: other name is new", []ContainerState{{Name: "p-a", State: "running"}}, []ContainerState{{Name: "p-b", State: "running"}}, "p-b was not seen"},
+		{"rows without ID: vanished", []ContainerState{{Name: "p-a", State: "running"}}, nil, "p-a is gone"},
+		{"remote rows, ID but no StartedAt, same", []ContainerState{{ID: "a", Name: "p-a", State: "running", Health: "healthy"}}, []ContainerState{{ID: "a", Name: "p-a", State: "running", Health: "healthy"}}, ""},
+		{"remote rows, ID but no StartedAt, replaced", []ContainerState{{ID: "a", Name: "p-a", State: "running"}}, []ContainerState{{ID: "b", Name: "p-b", State: "running"}}, "was not seen"},
+		{"remote rows, ID but no StartedAt, unhealthy", []ContainerState{{ID: "a", Name: "p-a", State: "running", Health: "healthy"}}, []ContainerState{{ID: "a", Name: "p-a", State: "running", Health: "unhealthy"}}, "unhealthy"},
+		{"nothing before, anything after", nil, []ContainerState{run("a", "t1")}, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := Regressed(before, tc.after)
+			err := Regressed(tc.before, tc.after)
 			if tc.want == "" {
 				if err != nil {
 					t.Fatalf("want nil, got %v", err)
