@@ -224,3 +224,41 @@ func TestApplyFile_FlatRecordsFilenameAsBefore(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyFile_SingleFileKeying(t *testing.T) {
+	cases := []struct {
+		name, file, applied, wantInsert string
+		wantSkip                        bool
+	}{
+		{"flat file not refused by a legacy row", "001_a.sql", "up.sql", "VALUES ('001_a.sql');", false},
+		{"nested file on a clean ledger records the dir key", "001_x/up.sql", "", "VALUES ('001_x');", false},
+		{"nested file already applied under its key is skipped", "001_x/up.sql", "001_x", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := mkNested(t, "001_x")
+			if err := os.WriteFile(filepath.Join(dir, "001_a.sql"), []byte("CREATE TABLE flat_a (id int);"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			ans := map[string]string{}
+			if tc.applied != "" {
+				ans["q_applied"] = appliedAnswer([]string{tc.applied})
+			}
+			sd := fakeDockerState(t, baseAnswers(ans))
+			skipped, err := ApplyFile(context.Background(), fakeCfg, filepath.Join(dir, tc.file))
+			if err != nil || skipped != tc.wantSkip {
+				t.Fatalf("skipped=%v err=%v, want skipped=%v", skipped, err, tc.wantSkip)
+			}
+			pipes := allPipes(t, sd)
+			if tc.wantSkip {
+				if len(pipes) != 0 {
+					t.Errorf("skip ran SQL: %v", pipes)
+				}
+				return
+			}
+			if len(pipes) != 1 || !strings.Contains(pipes[0], tc.wantInsert) || strings.Contains(pipes[0], "VALUES ('up.sql')") {
+				t.Errorf("want one batch with %q and no 'up.sql' row, got %v", tc.wantInsert, pipes)
+			}
+		})
+	}
+}
