@@ -1,7 +1,7 @@
 package bundle
 
 // installer_appready_fix2_test.go — P7-PLUG-19 fix round 2: E135 always exits 2
-// (M1), a free bundle is not removable as a unit (M2) and members that were on
+// (M1), a free bundle was not removable as a unit (M2, lifted by P7-PLUG-20) and members that were on
 // disk before the install are recorded explicit (M3).
 
 import (
@@ -16,7 +16,6 @@ import (
 	"github.com/nself-org/cli/internal/bundle/appready"
 	"github.com/nself-org/cli/internal/bundle/ledger"
 	"github.com/nself-org/cli/internal/compat/compattest"
-	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -47,25 +46,34 @@ func TestE135ExitsTwoEvenWithProcessErrorInChain(t *testing.T) {
 	}
 }
 
-// TestRemoveRefusesFreeBundle: the Task Bundle is installable but not removable
-// as a unit until P7-PLUG-20, in both modes, and no remover hook is called.
-func TestRemoveRefusesFreeBundle(t *testing.T) {
+// TestRemoveFreeBundleLifted: the Task Bundle was refused as a unit until
+// P7-PLUG-20 (R2). It is now removed from the ledger like any bundle, and its
+// data is kept without a flag in both modes.
+func TestRemoveFreeBundleLifted(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		pluginDir := isolate(t)
 		writeMember(t, pluginDir, "notifications", 1, nil)
-		var calls int
-		res, err := Remove(context.Background(), "task", RemoveOpts{
-			Out: &bytes.Buffer{}, PluginDir: pluginDir, Config: &config.Config{},
-			remover: func(context.Context, *config.Config, string, string, bool, bool) error { calls++; return nil },
-		})
-		if err == nil || !strings.Contains(err.Error(), "not installable/removable as a unit (meta or free)") {
-			t.Fatalf("err = %v, want the free-bundle refusal", err)
+		writeMember(t, pluginDir, "jobs", 2, nil)
+		recordBundle(t, pluginDir, "task")
+		rec := &recorder{}
+		var out bytes.Buffer
+		res, err := Remove(context.Background(), "task", removeOpts(pluginDir, &out, rec))
+		if err != nil {
+			t.Fatalf("free bundle remove: %v\n%s", err, out.String())
 		}
-		if res != nil || calls != 0 {
-			t.Errorf("a refused remove must change nothing: result=%v calls=%d", res, calls)
+		if !sameStrings(rec.names(), []string{"jobs", "notifications"}) {
+			t.Errorf("calls = %v, want both members in reverse bundle order", rec.names())
 		}
-		if !isAlreadyInstalled(pluginDir, "notifications") {
-			t.Error("the member plugin was removed")
+		for _, c := range rec.calls {
+			if !c.KeepData {
+				t.Errorf("%s removed with keepData=false: a free bundle keeps data without --delete-data", c.Name)
+			}
+		}
+		if !res.KeepData || strings.Contains(out.String(), "warning:") {
+			t.Errorf("KeepData=%v out=%s, want kept and no warning", res.KeepData, out.String())
+		}
+		if l := loadLedger(t, pluginDir); len(l.Bundles) != 0 || len(l.Plugins) != 0 {
+			t.Errorf("ledger after the free bundle remove = %+v, want empty", l)
 		}
 	})
 }

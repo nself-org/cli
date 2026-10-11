@@ -26,7 +26,7 @@ A bundle that is not app-ready fails with **E135** (exit 2) naming the bundle, t
 
 `nself plugin install <name>` of a plugin with boot migrations waits for them too when the stack is running (E118 or E119, exit 2; a warning with `NSELF_V15` off). With the stack stopped it says readiness is checked at the next `nself start` or `nself doctor`.
 
-`nself doctor --deep` reports **E136** for each plugin the ledger lists whose `plugin.json` is gone from the plugin directory, and nothing when the ledger matches the disk. The fix is to reinstall the bundle (`nself bundle install <bundle>`) to restore the missing plugin; do not delete the ledger. Until P7-PLUG-20 lands, a deliberate `nself plugin remove` of a bundle member is also reported, because plugin remove does not update the ledger.
+`nself doctor --deep` reports **E136** for each plugin the ledger lists whose `plugin.json` is gone from the plugin directory, and nothing when the ledger matches the disk. The fix is to reinstall the bundle (`nself bundle install <bundle>`) to restore the missing plugin; do not delete the ledger. A deliberate `nself plugin remove` of a bundle member drops that plugin's record from the ledger, so it is not reported.
 
 ## The bundle ledger
 
@@ -73,7 +73,33 @@ A plugin record exists only while `installed_by` is not empty or `explicit` is t
 
 ## Remove rule
 
-A bundle remove may delete a plugin only when the bundle was the last one in its `installed_by` and `explicit` is false. A plugin that another installed bundle still references, or that was installed on its own, stays. The ledger package implements the rule (`RemoveBundle`); wiring it into `nself bundle remove` is a separate change. Bundle install records each install exactly: the bundle is added to `installed_by` of every member that is on disk after the run.
+A bundle remove deletes a plugin only when the bundle was the last one in its `installed_by` and `explicit` is false. A plugin that another installed bundle still references, or that was installed on its own, stays. The ledger package implements the rule (`RemoveBundle`); `nself bundle remove` (and `nself remove <bundle>`) apply it.
+
+## Bundle remove
+
+`nself bundle remove <bundle>` plans from the ledger, prints the plan, then removes:
+
+- **Refcounts.** Only plugins whose `installed_by` becomes empty and that are not `explicit` are removed, in reverse bundle order. Every other member stays and the plan says why (`kept: py (installed_by: beta)`). With bundles A={x,y} and B={y,z}, removing A removes x; y stays with `installed_by: [B]`.
+- **Shared plugin directory.** The ledger lives in the plugin directory (`$NSELF_PLUGIN_DIR` or `~/.nself/plugins`), so every project that uses that directory shares one record per bundle. `bundle remove A` in one project removes A's plugins for every project sharing the directory, as `plugin remove` always has. Use a per-project `NSELF_PLUGIN_DIR` to isolate projects.
+- **Free bundles** (the Task Bundle) remove like any other bundle.
+- **Data is kept** (schema and tables) unless you pass `--delete-data`. `--delete-data` asks for confirmation on a terminal; without a terminal it needs `--yes`, otherwise it exits 4 with E403 and changes nothing. A dry run needs neither.
+- **Not recorded.** The ledger at `<plugin dir>/.nself-state/bundles.json` records a bundle only when all its plugins are installed. For a bundle it does not record, `bundle remove` fails with E134 (exit 1): nothing it installed is removable as a unit. Remove the individual plugins with `nself plugin remove <plugin>`.
+- **`--dry-run`** prints the plan and changes nothing; it never creates the ledger. `nself remove <plugin> --dry-run` prints the plugin, the data rule, the referencing bundles and whether E133 would refuse, and changes nothing.
+- **A failure stops the run.** The ledger then keeps the bundle recorded and drops only the plugins already removed, so running the same command again continues from there.
+- `--force` keeps its meaning (overwrite hand-edited generated files). `--keep-data` is a hidden, deprecated alias; from v1.5 it does nothing and prints a warning. It is removed in v1.6.0.
+
+`nself remove <plugin>` (and `nself plugin remove`) refuses a plugin an installed bundle still references: **E133**, exit 1, naming the bundle. Remove the bundle, or pass `--force` to remove only that plugin; the ledger then drops the plugin's record.
+
+| | v1.4 mode (default today) | v1.5 mode (`NSELF_V15=1`) |
+|---|---|---|
+| Paid bundle, no data flag | drops plugin data, with one warning naming `--delete-data` and `--keep-data` | keeps plugin data |
+| Free bundle, no data flag | keeps plugin data | keeps plugin data |
+| `--delete-data` | needs `--yes` or a terminal confirmation (E403, exit 4) | same |
+| `remove <plugin>` of a bundle member | removes it, with a warning | refuses with E133 unless `--force` |
+| Unrecorded bundle | warns, removes nothing, exit 0 | E134, exit 1 |
+| `--keep-data` | keeps data | deprecated no-op, with a warning |
+
+Plugin removal inside a bundle remove still bypasses the reverse-dependency check (`force`), as before.
 
 ## First use (bootstrap)
 

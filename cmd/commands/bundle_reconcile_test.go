@@ -208,6 +208,8 @@ func TestBundleRemoveReconcileBothModes(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = bundle.LoadBytes([]byte(fixtureBundlesJSON)) })
+		// P7-PLUG-20: bundle remove plans from the install ledger, so the bundle is recorded.
+		seedBundleLedger(t, p.plugins, "fixture", "zzfixture")
 		if err := runBundleRemove(bundleRemoveCmd, []string{"fixture"}); err != nil {
 			t.Fatal(err)
 		}

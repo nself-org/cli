@@ -131,8 +131,10 @@ func TestRegistryExitTable(t *testing.T) {
 			return 0
 		case n == 422 || n == 423: // P7-SURF-24: no single JSON document and invocation timeout are infra (EPIC SURF D14)
 			return 2
-		case n == 403:
+		case n == 403, n == 424: // P7-SURF-25: E424 confirmation mismatch is destructive_blocked (EPIC SURF D14)
 			return 4
+		case n == 426: // P7-SURF-25: E426 machine token is auth (EPIC SURF D14)
+			return 3
 		}
 		return 1
 	}

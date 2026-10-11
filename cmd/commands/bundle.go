@@ -75,7 +75,9 @@ func init() {
 
 	// remove flags
 	bundleRemoveCmd.Flags().Bool("dry-run", false, "Print the planned actions without removing")
-	bundleRemoveCmd.Flags().Bool("keep-data", false, "Preserve plugin data (schema/tables) on remove")
+	bundleRemoveCmd.Flags().Bool("delete-data", false, "Delete plugin data (schema/tables); asks for confirmation, or pass --yes")
+	bundleRemoveCmd.Flags().Bool("keep-data", false, "Deprecated: no-op from v1.5 (data is kept by default); removed in v1.6.0")
+	_ = bundleRemoveCmd.Flags().MarkHidden("keep-data")
 
 	bundleCmd.AddCommand(bundleListCmd)
 	bundleCmd.AddCommand(bundleInfoCmd)

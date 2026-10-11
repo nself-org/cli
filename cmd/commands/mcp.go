@@ -8,8 +8,9 @@ package commands
 //   plugin list/install) plus the pre-existing Hasura data tools, as MCP
 //   tools with output schemas and annotations, so an agent can plan around
 //   them instead of guessing from prose.
-// Inputs:  --transport (stdio|sse|http), --port, NSELF_MCP_TOKEN (bearer
-//   auth on sse/http — see mcp_auth.go).
+// Inputs:  --transport (stdio|sse|http), --port, --host, --allowed-host,
+//   NSELF_MCP_TOKEN or ~/.nself/mcp-token (bearer auth on sse/http — see
+//   mcp_auth.go for the bind and token policy).
 // Outputs: an MCP server over the chosen transport.
 // Constraints: every mcp.NewTool(...) registration call for the non-Sentry
 //   tools MUST stay physically in this file (or mcp_sentry.go) —
@@ -23,7 +24,6 @@ package commands
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -43,8 +43,15 @@ resources, and prompts for Claude Code and other MCP clients.
 
 Runs on stdio by default — the correct mode for Claude Code's mcpServers
 config. Use --transport sse or --transport http to expose the server over
-a local HTTP port instead; set NSELF_MCP_TOKEN to require a bearer token on
-those transports.
+a local HTTP port instead. The HTTP transports require a bearer token: set
+NSELF_MCP_TOKEN, or keep one in ~/.nself/mcp-token (mode 0600). With neither,
+the first start generates the file and prints its path, never the token.
+(v1.4 mode, the current default, serves an open loopback port with a warning
+when no token is set.)
+
+--host sets the bind address (default 127.0.0.1). A non-loopback host needs
+--allowed-host <name> (repeatable) plus a configured token on every start, and
+prints a warning that the token crosses the network over cleartext HTTP.
 
 Run 'nself mcp' from inside an nSelf project directory. See the generated
 tool/resource/prompt list at .github/wiki/cmd-mcp.md (run 'make mcp-docs'
@@ -63,12 +70,16 @@ Claude Code config (.claude/settings.json):
 func init() {
 	mcpCmd.Flags().StringP("transport", "t", "stdio", "Transport: stdio, sse, or http")
 	mcpCmd.Flags().IntP("port", "p", mcpServerPort, "Port for the sse/http transports")
+	mcpCmd.Flags().String("host", "127.0.0.1", "Bind address for the sse/http transports")
+	mcpCmd.Flags().StringSlice("allowed-host", nil, "Host name this server is reachable under; required (repeatable) for a non-loopback --host")
 	RootCmd.AddCommand(mcpCmd)
 }
 
 func runMCPServe(cmd *cobra.Command, args []string) error {
 	transport, _ := cmd.Flags().GetString("transport")
 	port, _ := cmd.Flags().GetInt("port")
+	host, _ := cmd.Flags().GetString("host")
+	allowed, _ := cmd.Flags().GetStringSlice("allowed-host")
 
 	// Require an nSelf project directory so tool handlers that assume one
 	// (nearly all of them) fail fast with a clear message instead of an
@@ -79,6 +90,13 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	}
 	if _, findErr := config.FindNSelfRoot(cwd); findErr != nil {
 		return fmt.Errorf("no nself project found in %s — run 'nself init' first", cwd)
+	}
+
+	// Bind and token policy first: a refused start must not build anything or
+	// write a token file. stdio skips it.
+	wrap, err := prepareMCPHTTP(transport, host, allowed, os.Stderr)
+	if err != nil {
+		return err
 	}
 
 	s := server.NewMCPServer(
@@ -93,22 +111,7 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	registerMCPResources(s)
 	registerMCPPrompts(s)
 
-	switch transport {
-	case "stdio":
-		return server.ServeStdio(s)
-	case "sse":
-		addr := fmt.Sprintf("127.0.0.1:%d", port)
-		fmt.Fprintf(os.Stderr, "nSelf MCP server listening on %s (SSE)\n", addr)
-		httpSrv := &http.Server{Addr: addr, Handler: mcpBearerMiddleware(server.NewSSEServer(s))}
-		return httpSrv.ListenAndServe()
-	case "http":
-		addr := fmt.Sprintf("127.0.0.1:%d", port)
-		fmt.Fprintf(os.Stderr, "nSelf MCP server listening on %s (streamable HTTP)\n", addr)
-		httpSrv := &http.Server{Addr: addr, Handler: mcpBearerMiddleware(server.NewStreamableHTTPServer(s))}
-		return httpSrv.ListenAndServe()
-	default:
-		return fmt.Errorf("unknown transport %q (use stdio, sse, or http)", transport)
-	}
+	return serveMCP(s, transport, host, port, wrap)
 }
 
 // registerMCPTools attaches every MCP tool: ɳSentry (mcp_sentry.go), the

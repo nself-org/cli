@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/nself-org/cli/internal/bundle"
@@ -89,6 +90,7 @@ func init() {
 
 	removeCmd.Flags().Bool("yes", false, "Skip confirmation prompts")
 	removeCmd.Flags().Bool("keep-data", false, "Preserve database data on remove")
+	removeCmd.Flags().Bool("delete-data", false, "Delete plugin data (schema/tables); asks for confirmation, or pass --yes")
 	removeCmd.Flags().Bool("force", false, "Remove even if other plugins depend on this one")
 	removeCmd.Flags().Bool("dry-run", false, "Print the planned actions without removing")
 
@@ -145,8 +147,20 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 	name := args[0]
 
+	// P7-PLUG-20: the catalog is not loaded outside `nself bundle`; without it a bundle
+	// name would be treated as a plugin. A load failure keeps today's routing.
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	_ = bundle.EnsureLoaded(ctx)
+	// Real plugins (chat, claw, family) share names with bundles: the bundle route runs only
+	// when the ledger records that bundle as installed. An unreadable ledger means the plugin
+	// route, whose own guard still refuses in v1.5 if it cannot read the ledger.
 	if resolvesToBundle(name) {
-		return runBundleRemove(cmd, []string{name})
+		if recorded, _ := bundle.IsRecorded(resolvePluginDir(), name); recorded {
+			return runBundleRemove(cmd, []string{name})
+		}
 	}
 	return runPluginRemove(cmd, []string{name})
 }
