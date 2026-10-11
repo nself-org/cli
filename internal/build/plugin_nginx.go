@@ -109,6 +109,7 @@ func resolvePluginNginxDir(pluginDir string, cfg *config.Config) (string, error)
 	if pluginDir == "" {
 		pluginDir = cfg.PluginSystem.Dir
 	}
+	pluginDir = expandHomeDir(pluginDir)
 	if pluginDir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {

@@ -5,8 +5,8 @@ package reconcile
 // Purpose: say which running services the next `nself start` would recreate
 // and which of those hold a named volume, without changing anything.
 // Inputs: the planned build (bytes it would write) and the project on disk.
-// Outputs: Containers items (action recreate or unknown, stateful, applied by
-// the next start) and, with RemoveOrphans, orphan-remove effects.
+// Outputs: Containers items (action recreate, unknown or create, stateful,
+// applied by the next start) and, with RemoveOrphans, orphan-remove effects.
 // Constraints: the invocation is the one `nself start` builds: the files of
 // build.ReadComposeManifest and the env files of build.ComposeEnvFiles, run
 // over a temporary "shadow" copy of the project's small inputs with the planned
@@ -86,14 +86,24 @@ func containerImpact(ctx context.Context, req Request, dir string, res *nbuild.B
 	return Containers{Known: true, Items: items}, effects
 }
 
+// ContainerCreate is the action of a planned service the project has no
+// container for yet (D-0505): the next start creates it. Only reported when
+// the project has containers at all; on a project with none, every service
+// would be "create" and no plan could be empty.
+const ContainerCreate ContainerAction = "create"
+
 // compareRunning matches running containers with the planned hashes. A service
 // is recreate when any of its containers carries a different hash, unknown
-// when one carries none (treated as a recreate), none otherwise. A container
-// whose service is defined nowhere in the planned compose is an orphan.
+// when one carries none (treated as a recreate), none otherwise, and create
+// when it is in the active configuration but has no container while others
+// do. A container whose service is defined nowhere in the planned compose is
+// an orphan.
 func compareRunning(running []RunningContainer, hashes map[string]string, defined map[string]struct{}, stateful map[string]bool) ([]ContainerItem, []RunningContainer) {
 	action := map[string]ContainerAction{}
 	var orphans []RunningContainer
+	present := map[string]bool{}
 	for _, c := range running {
+		present[c.Service] = true
 		if _, ok := defined[c.Service]; !ok {
 			orphans = append(orphans, c)
 			continue
@@ -113,6 +123,13 @@ func compareRunning(running []RunningContainer, hashes map[string]string, define
 			action[c.Service] = a
 		}
 	}
+	if len(running) > 0 {
+		for svc := range hashes {
+			if !present[svc] {
+				action[svc] = ContainerCreate
+			}
+		}
+	}
 	items := []ContainerItem{}
 	for svc, a := range action {
 		if a == ContainerNone {
@@ -125,7 +142,8 @@ func compareRunning(running []RunningContainer, hashes map[string]string, define
 	return items, orphans
 }
 
-// rank orders actions by severity: none < unknown < recreate.
+// rank orders actions by severity: none < unknown < recreate. create never
+// competes: it is set only for a service with no container.
 func rank(a ContainerAction) int {
 	switch a {
 	case ContainerRecreate:
