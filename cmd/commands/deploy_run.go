@@ -21,7 +21,7 @@ import (
 
 // deployBuildStepFn is the build step. A variable so tests can prove a path
 // never builds (or records that it did) without running docker.
-var deployBuildStepFn = runDeployBuildStep
+var deployBuildStepFn = deployBuildStepForMode
 
 func runDeploy(cmd *cobra.Command, args []string) error {
 	profile, err := selectedDeployProfile(cmd)
@@ -29,7 +29,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	oldContext := cmd.Context()
-	cmd.SetContext(withDeployProfile(oldContext, profile))
+	cmd.SetContext(withDeployYes(cmd, withDeployProfile(oldContext, profile)))
 	defer cmd.SetContext(oldContext)
 	// Resolve target: --env flag takes priority over the positional argument.
 	envFlag, _ := cmd.Flags().GetString("env")
@@ -209,9 +209,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			if !jsonOut {
 				fmt.Printf("  [running] Remote push to %s\n", host)
 			}
-			// The push names the cascade env, so a prod-class env writes .env.prod
-			// on the host (the file the remote nself reads), never .env.production.
-			pushErr := remoteDeployPushFn(cmd.Context(), workdir, host, deployCascadeEnv(workdir, target), jsonOut)
+			// The push names the cascade env (.env.prod on the host, never .env.production);
+			// ctx carries the target's own name for the v1.5 record and inventory key.
+			pushErr := remoteDeployPushFn(withDeployTarget(cmd.Context(), target), workdir, host, deployCascadeEnv(workdir, target), jsonOut)
 			if pushErr != nil {
 				steps = append(steps, deployStep{Name: fmt.Sprintf("Push artefacts to %s", host), Status: "failed"})
 				return finalize(jsonOut, target, strategy, start, steps, pushErr)

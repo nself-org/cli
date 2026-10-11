@@ -1,0 +1,180 @@
+package deploy
+
+// Fix round 3 (H1, H2, H4): the symlink rule and the locally driven prune.
+
+import (
+	"context"
+	"errors"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/nself-org/cli/internal/errs"
+)
+
+// H1: a link that leaves remote_path is refused with E485 before the lock, the
+// tar and any sync; nothing is sent.
+func TestOutsideSymlinkRefusedBeforeLock(t *testing.T) {
+	for name, mk := range map[string]func(rp, outside string) error{
+		"dir": func(rp, outside string) error {
+			if err := os.RemoveAll(rp + "/hasura"); err != nil {
+				return err
+			}
+			return os.Symlink(outside, rp+"/hasura")
+		},
+		"dir inside nginx": func(rp, outside string) error { return os.Symlink(outside, rp+"/nginx/sites/ext") },
+		"backup dir": func(rp, outside string) error { // N1: the pre-deploy tar (with .env) is written here
+			if err := os.MkdirAll(rp+"/.nself", 0o755); err != nil {
+				return err
+			}
+			return os.Symlink(outside, rp+"/.nself/backups")
+		},
+		"link chain": func(rp, outside string) error { // N2: nginx/a -> inside, whose b -> outside
+			writeFile(t, outside+"/privkey.pem", "KEY\n", 0o600)
+			if err := os.MkdirAll(rp+"/other", 0o755); err != nil {
+				return err
+			}
+			if err := os.Symlink(outside+"/privkey.pem", rp+"/other/b"); err != nil {
+				return err
+			}
+			return os.Symlink("../../other", rp+"/nginx/sites/a")
+		},
+		"env file": func(rp, outside string) error {
+			writeFile(t, outside+"/secret", "S=1\n", 0o600)
+			return os.Symlink(outside+"/secret", rp+"/.env.prod")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, o, rp := applyFixture(t, "")
+			outside := t.TempDir()
+			os.Remove(rp + "/.env.prod")
+			if err := mk(rp, outside); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			_, err := ApplyRemote(context.Background(), o)
+			var ce *errs.CLIError
+			if !errors.As(err, &ce) || ce.Code != "E485" || !strings.Contains(err.Error(), "symlink outside remote_path") {
+				t.Fatalf("err = %v", err)
+			}
+			for _, s := range steps(f) {
+				if s == "lock" || s == "tar" || s == "rsync" || s == "dbbackup" {
+					t.Errorf("%s ran before the refusal: %v", s, steps(f))
+				}
+			}
+			if exists(outside + "/metadata/version.yaml") {
+				t.Error("a file was written outside remote_path")
+			}
+		})
+	}
+}
+
+// H2: with nginx/ a link that stays inside remote_path, a deploy that fails after
+// the sync removes the file it created through the link and leaves the record
+// alone; a later prune through the link works.
+func TestSymlinkedNginxInsideRemotePath(t *testing.T) {
+	f, o, rp := applyFixture(t, "")
+	if err := os.Rename(rp+"/nginx", rp+"/.shared-nginx"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(".shared-nginx", rp+"/nginx"); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	f.fail["docker run --rm"] = errBoom // nginx -t refuses after the sync
+	var out strings.Builder
+	o.Out = &out
+	res, err := ApplyRemote(context.Background(), o)
+	if !strings.Contains(out.String(), `[notice] "nginx/sites" is a symlink to "`) || !strings.Contains(out.String(), `.shared-nginx/sites", writing through it`) {
+		t.Errorf("J4: no notice that the write goes through a symlink:\n%s", out.String())
+	}
+	if err == nil || strings.Contains(err.Error(), "also failed") {
+		t.Fatalf("want a clean refusal, got %v", err)
+	}
+	if res.Synced {
+		t.Errorf("a restored deploy must report Synced=false: %+v", res)
+	}
+	if len(res.Absent) == 0 {
+		t.Fatal("the fixture should create at least one file through the link")
+	}
+	for _, a := range res.Absent {
+		if exists(rp + "/" + a) {
+			t.Errorf("%s created through the link survived the restore", a)
+		}
+	}
+	if info, err := os.Lstat(rp + "/nginx"); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Error("nginx/ is no longer a symlink")
+	}
+	// A later prune through the link.
+	writeFile(t, rp+"/.shared-nginx/sites/dropped.conf", markedConf, 0o644)
+	writeFile(t, rp+"/"+ShippedFile, "nginx/sites/dropped.conf\n", 0o644)
+	removed, err := PrunePrevious(context.Background(), f, rp, map[string]bool{}, []string{"nginx/sites/dropped.conf"})
+	if err != nil || len(removed) != 1 || exists(rp+"/.shared-nginx/sites/dropped.conf") {
+		t.Fatalf("prune through an inside link: removed %v err %v", removed, err)
+	}
+}
+
+// H4: without a local record nothing is pruned, even when the host's list names
+// a marked file.
+func TestPruneNeedsLocalRecord(t *testing.T) {
+	needTools(t)
+	f := newFakeRemote(t)
+	rp := t.TempDir()
+	writeFile(t, rp+"/nginx/sites/foreign.conf", markedConf, 0o644)
+	writeFile(t, rp+"/"+ShippedFile, "nginx/sites/foreign.conf\n", 0o644)
+	removed, err := PrunePrevious(context.Background(), f, rp, map[string]bool{}, nil)
+	if err != nil || len(removed) != 0 || !exists(rp+"/nginx/sites/foreign.conf") {
+		t.Fatalf("pruned without a record: %v %v", removed, err)
+	}
+}
+
+// P2: a hand-written nginx file at a path the set ships is not overwritten unless
+// the previous deploy's record says nSelf put it there; nothing is sent.
+func TestUnmarkedNginxFileIsNotOverwritten(t *testing.T) {
+	f, o, rp := applyFixture(t, "")
+	writeFile(t, rp+"/nginx/sites/api.conf", "# hand written\nserver { listen 8080; }\n", 0o644)
+	_, err := ApplyRemote(context.Background(), o)
+	var ce *errs.CLIError
+	if !errors.As(err, &ce) || ce.Code != "E485" || !strings.Contains(err.Error(), `unmarked file would be overwritten: "nginx/sites/api.conf"`) {
+		t.Fatalf("err = %v", err)
+	}
+	for _, s := range steps(f) {
+		if s == "lock" || s == "tar" || s == "rsync" {
+			t.Errorf("%s ran before the refusal: %v", s, steps(f))
+		}
+	}
+	if got := readFile(t, rp+"/nginx/sites/api.conf"); !strings.Contains(got, "hand written") {
+		t.Error("the hand-written file was overwritten")
+	}
+	// The same file is fine when the last recorded deploy shipped that path.
+	_, o2, rp2 := applyFixture(t, "")
+	writeFile(t, rp2+"/nginx/sites/api.conf", "# hand written\n", 0o644)
+	o2.Previous = append(o2.Previous, "nginx/sites/api.conf")
+	if _, err := ApplyRemote(context.Background(), o2); err != nil {
+		t.Fatalf("a path nSelf shipped before was refused: %v", err)
+	}
+}
+
+// R8: a path the host's own shipped list names (nSelf put it there in an earlier
+// deploy of another env) is not a foreign file, even without a local record.
+func TestUnmarkedNginxFileInHostListIsOurs(t *testing.T) {
+	_, o, rp := applyFixture(t, "")
+	writeFile(t, rp+"/nginx/sites/api.conf", "# written by nself without the marker\n", 0o644)
+	writeFile(t, rp+"/"+ShippedFile, "nginx/sites/api.conf\n", 0o644)
+	o.Previous = []string{"docker-compose.yml"} // the record is of another deploy
+	if _, err := ApplyRemote(context.Background(), o); err != nil {
+		t.Fatalf("a path on the host's shipped list was refused: %v", err)
+	}
+}
+
+// R9: the marker must be in the first five lines; on line 6 the file is foreign.
+func TestMarkerOnLineSixIsNotMarked(t *testing.T) {
+	_, o, rp := applyFixture(t, "")
+	writeFile(t, rp+"/nginx/sites/api.conf", "# 1\n# 2\n# 3\n# 4\n# 5\n"+markedConf, 0o644)
+	_, err := ApplyRemote(context.Background(), o)
+	if err == nil || !strings.Contains(err.Error(), "unmarked file would be overwritten") {
+		t.Fatalf("err = %v", err)
+	}
+	writeFile(t, rp+"/nginx/sites/api.conf", "# 1\n# 2\n# 3\n# 4\n"+markedConf, 0o644) // marker on line 5
+	if _, err := ApplyRemote(context.Background(), o); err != nil {
+		t.Fatalf("a marker inside the first five lines was refused: %v", err)
+	}
+}
