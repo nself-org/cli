@@ -54,6 +54,7 @@ const (
 	OutInteractive  = "interactive"
 	JSONNone        = "none"
 	JSONLegacy      = "legacy"
+	JSONEnvelope    = "envelope"
 	SurfaceAll      = "all"
 	SurfaceCLIOnly  = "cli-only"
 )
@@ -66,7 +67,7 @@ var (
 	ServiceKinds = []string{KindCompose, KindCLI, KindLibrary}
 	SideEffects  = []string{SideRead, SideWrite, SideRemote, SideDestructive}
 	Outputs      = []string{OutDocument, OutStream, OutInteractive}
-	JSONModes    = []string{JSONNone, JSONLegacy}
+	JSONModes    = []string{JSONNone, JSONLegacy, JSONEnvelope}
 	Surfaces     = []string{SurfaceAll, SurfaceCLIOnly}
 	Languages    = []string{"go", "rust", "typescript", "python", "bash"}
 )
