@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/nself-org/cli/internal/config"
 )
 
 // stateDir is the directory within .nself/ that stores env state.
@@ -237,21 +239,15 @@ func loadEnvMap(projectDir, env string) (map[string]string, error) {
 	return result, nil
 }
 
-// secretPatterns are key substrings that indicate a value should be redacted.
-var secretPatterns = []string{
-	"PASSWORD", "SECRET", "KEY", "TOKEN", "CREDENTIAL",
-}
-
-// redactIfSecret replaces the value with "****" if the key looks like a secret.
+// redactIfSecret replaces the value with "****" if the key looks like a secret
+// (config.IsSecretKey, the one rule) and masks URL credentials in any other
+// value (config.MaskURLCredentials).
 func redactIfSecret(key, val string) string {
 	if val == "" {
 		return val
 	}
-	upper := strings.ToUpper(key)
-	for _, pat := range secretPatterns {
-		if strings.Contains(upper, pat) {
-			return "****"
-		}
+	if config.IsSecretKey(key) {
+		return "****"
 	}
-	return val
+	return config.MaskURLCredentials(val)
 }

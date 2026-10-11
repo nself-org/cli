@@ -77,6 +77,9 @@ var secretsGetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if jsonEnvelopeOn(cmd) { // CLI-only row: the decrypted value never crosses a machine surface
+			setData(cmd, secretsGetData{Key: args[0], Environment: secretsEnvFlag, Value: value})
+		}
 		fmt.Println(value)
 		return nil
 	},
@@ -93,6 +96,9 @@ var secretsListCmd = &cobra.Command{
 		keys, entries, err := secrets.List(cwd, secretsEnvFlag)
 		if err != nil {
 			return err
+		}
+		if jsonEnvelopeOn(cmd) {
+			setData(cmd, newSecretsListData(secretsEnvFlag, keys, entries))
 		}
 		if len(keys) == 0 {
 			fmt.Printf("No secrets in %s environment.\n", secretsEnvFlag)

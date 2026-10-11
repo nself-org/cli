@@ -78,6 +78,8 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-LIVE-06 | post-install build hint | automatic reconcile | `cmd/commands/plugin_install.go` |
 | P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |
 | P7-LIVE-17 | IMAGE_PINNING defaults to legacy | lock | `internal/compose/images_lock.go` |
+| P7-LIVE-22 | E151 for every ACME failure (exit of the failed process, else 2) | E470/E471 (exit 2) or E472 (exit 1) by failure class | `cmd/commands/ssl_renewal.go` |
+| P7-LIVE-22 | certbot is the default certificate path | the ACME engine is the default | `cmd/commands/ssl_renewal.go` |
 | P7-PLUG-01 | v1 plugin.json read silently | one deprecation line per process on stderr | `internal/plugin/manifestv2/warn.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_marketplace_cmds.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_query.go` |
@@ -114,6 +116,8 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-63 | signature over a locally built payload | server signature over the raw body | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | signed reply trusted for any licence | only a reply whose signed jwt names this key and is in window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | unsigned bundle response accepted | unsigned bundle response refused | `internal/license/checker.go` |
+| P7-PLUG-78 | bundle install only verifies Hasura tracking | tracks the manifest tables first | `cmd/commands/bundle_appready.go` |
+| P7-PLUG-78 | plugin install does not track manifest tables | tracks them in Hasura after readiness (E140) | `cmd/commands/plugin_install_readiness.go` |
 | P7-PROD-08 | age-key.txt only | shared identity search, E223 when none | `internal/backup/restore.go` |
 | P7-PROD-08 | age-key.txt only | shared identity search, E223 when none | `internal/backup/stream_restore_remote.go` |
 | P7-PROD-08 | only FATAL or "could not" fails | any unlisted pg_restore error: line fails | `internal/backup/drill_support.go` |
@@ -134,6 +138,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-REG-09 | status exits 2 (unhealthy) or 1 (starting), 0 with --json | 10 (unhealthy) or 11 (starting) in both modes | `cmd/commands/status_print.go` |
 | P7-SURF-07 | nself.yaml type errors and unknown keys warn | fail (E435/E436) | `internal/build/manifest_validate.go` |
 | P7-SURF-11 | health history --json with no history prints a text line | the v1 envelope with an empty entries list | `cmd/commands/health_handlers.go` |
+| P7-SURF-12 | an empty list is the JSON array [] (v1.4 and NSELF_JSON_LEGACY=1 print null) | v1 envelope with an array | `cmd/commands/config_envelope.go` |
 | P7-SURF-14 | --json on the data commands is ignored or the pre-contract form (NSELF_JSON_LEGACY=1 then prints an empty list as bare []) | v1 envelope | `cmd/commands/db_envelope.go` |
 | P7-SURF-25 | no token = open loopback with a warning | token required (generated on first start) | `cmd/commands/mcp_auth.go` |
 | P7-SURF-26 | --json ignored | envelope | `cmd/commands/registry_types_build.go` |

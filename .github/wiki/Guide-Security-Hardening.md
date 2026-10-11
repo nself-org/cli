@@ -34,6 +34,12 @@ AUTH_JWT_SECRET=<strong-random>
 
 Never commit `.env.secrets` to git. Verify it is in `.gitignore`.
 
+`nself secrets set <KEY> [VALUE]` checks a value before it reaches the store. It refuses an empty value, an unexpanded `${VAR}` reference, a bracketed placeholder such as `<strong-random>`, and a value too short for the kind of key. `nself secrets rotate <KEY>` generates a new value only for passwords; API keys and tokens must be rotated at the provider, and a rotate that cannot generate one fails and leaves the old value in place.
+
+## Check the Stack with `nself doctor`
+
+Run `nself doctor` after every configuration change and before going live. It lists advisory backup hints too: a hand-rolled `pg_dump` upload script, or a backup identity that was never copied off this machine (see [[Guide-Backup-Restore]]). Advisory hints never change the exit code. `nself doctor --deep` adds the subsystem checks, including plugin migrations that have not finished and a bundle ledger that disagrees with the installed plugins.
+
 ## Disable Hasura Console in Production
 
 The Hasura GraphQL console exposes schema information and must be disabled in production:

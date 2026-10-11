@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -23,6 +22,7 @@ import (
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/docker/dockertest"
 	"github.com/nself-org/cli/internal/ssl/acme"
 )
 
@@ -126,7 +126,9 @@ func TestAcmeChallengeLocation(t *testing.T) {
 }
 
 func TestAcmeChallengeNginx(t *testing.T) {
-	// Only a Linux CI runner is required to have docker; macOS and Windows runners have no Linux containers.
+	// Skips without a usable Linux docker daemon, except on a GitHub Linux
+	// runner, where it fails (D-0286).
+	dockertest.Require(t)
 	home, err := os.UserHomeDir() // Colima shares only $HOME
 	if err != nil {
 		t.Fatal(err)
@@ -169,10 +171,6 @@ func TestAcmeChallengeNginx(t *testing.T) {
 	defer cancel()
 	out, stderr, err := docker.RunOneShot(ctx, docker.RunSpec{Image: nginxTestImage, Mounts: mounts, Args: []string{"sh", "-c", string(script)}})
 	if err != nil {
-		missing := strings.Contains(err.Error(), "executable file not found") || strings.Contains(err.Error(), "Cannot connect to the Docker daemon")
-		if ci := os.Getenv("CI") != ""; (!ci && missing) || (ci && runtime.GOOS != "linux") {
-			t.Skip("docker not available")
-		}
 		t.Fatalf("container run failed: %v\n%s\n%s", err, out, stderr)
 	}
 	if !strings.Contains(out, "PROBE-PASS") {

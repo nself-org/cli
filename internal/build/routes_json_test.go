@@ -77,7 +77,7 @@ func TestRoutesJSONDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := routemodel.Build(cfg, t.TempDir(), true, func(string) bool { return true })
+	m, err := routemodel.Build(cfg, t.TempDir(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestRoutesJSONDefaults(t *testing.T) {
 		t.Fatalf("want all rate zones, got %d", len(m.Zones))
 	}
 	for _, r := range m.Routes {
-		if len(r.SecurityHeaders) == 0 || len(r.BlockedPaths) != 2 || r.TLS == nil || !r.TLS.HasTrustedChain {
+		if len(r.SecurityHeaders) == 0 || len(r.BlockedPaths) != 2 || r.TLS == nil {
 			t.Fatalf("incomplete route %s", r.ID)
 		}
 	}
@@ -138,7 +138,7 @@ func TestDuplicateRouteRefusal(t *testing.T) {
 		}
 		cfg.CustomServices = []config.CustomService{{Index: 1, Name: "worker", Route: "same", Port: 9000}}
 		cfg.FrontendApps = []config.FrontendApp{{Index: 1, SystemName: "web", Route: "same", Port: 3000}}
-		m, err := routemodel.Build(cfg, t.TempDir(), false, nil)
+		m, err := routemodel.Build(cfg, t.TempDir(), false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -156,7 +156,7 @@ func TestDuplicateRouteRefusal(t *testing.T) {
 		cfg.FrontendApps = nil
 		cfg.AppName = "app"
 		cfg.CustomServices[0].Route = "api.app"
-		m, err = routemodel.Build(cfg, t.TempDir(), false, nil)
+		m, err = routemodel.Build(cfg, t.TempDir(), false)
 		if err != nil {
 			t.Fatal(err)
 		}

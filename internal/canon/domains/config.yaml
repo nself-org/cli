@@ -3,17 +3,18 @@
 schema_version: 1
 commands:
   # cmd/commands/config.go:22 RunE path changes no persistent state (prints/reads only)
-  config: {canon: core, side_effect: read}
+  config: {canon: core, side_effect: read, flags: {reveal: {cli_only: true}}}
   # cmd/commands/env.go:32 RunE path changes no persistent state (prints/reads only)
   config env: {side_effect: read}
   config env copy: {side_effect: write}
   config env diff: {side_effect: read}
-  config env explain: {side_effect: read}
+  config env explain: {side_effect: read, flags: {reveal: {cli_only: true}}}
   config env list: {side_effect: read}
   config env show: {side_effect: read}
   # cmd/commands/env_target.go:40 RunE path changes no persistent state (prints/reads only)
   config env target: {side_effect: read}
-  config env target add: {side_effect: write}
+  # cmd/commands/env_target_crud.go:119 runs ssh-keyscan against a caller-chosen host and can repoint a deploy target
+  config env target add: {side_effect: remote, confirm: {flags: []}}
   config env target list: {side_effect: read, json: legacy}
   config env target migrate: {side_effect: write}
   # cmd/commands/env_target_probe.go:38 RunE path changes no persistent state (prints/reads only)
@@ -24,7 +25,8 @@ commands:
   # cmd/commands/config_explain.go reads the env cascade files and prints where a key comes from; --reveal prints values, so it stays CLI-only
   config explain: {side_effect: read, flags: {reveal: {cli_only: true}}}
   # cmd/commands/config_export_import.go:22 writes to stdout by default; --output escalates to write
-  config export: {side_effect: read, flags: {output: {side_effect: write}}}
+  # surface cli-only: prints the exported key/value pairs, secret values included with --reveal; secret output stays on the terminal
+  config export: {side_effect: read, surface: cli-only, flags: {output: {side_effect: write}}}
   # cmd/commands/feature.go:48 RunE path changes no persistent state (prints/reads only)
   config features: {side_effect: read}
   config features disable: {side_effect: write}
@@ -32,37 +34,42 @@ commands:
   config features list: {side_effect: read, json: legacy}
   config features status: {side_effect: read, json: legacy}
   config get: {side_effect: read}
-  config import: {side_effect: write}
+  # cmd/commands/config_export_import.go:131 --force overwrites existing values without the prompt; the old values are not restorable
+  config import: {side_effect: write, flags: {force: {side_effect: destructive}}, confirm: {flags: []}}
   config list: {side_effect: read}
   # cmd/commands/oauth_refresh.go:18 RunE path changes no persistent state (prints/reads only)
   config oauth: {side_effect: read}
   # cmd/commands/oauth_refresh.go:59 triggers a token refresh on the remote OAuth service
-  config oauth refresh: {side_effect: remote}
+  config oauth refresh: {side_effect: remote, confirm: {flags: []}}
   # cmd/commands/secrets.go:29 RunE path changes no persistent state (prints/reads only)
   config secrets: {side_effect: read}
   # cmd/commands/secrets_audit.go:86 RunE path changes no persistent state (prints/reads only)
   config secrets audit: {side_effect: read}
   # cmd/commands/secrets_audit.go:69 RunE path changes no persistent state (prints/reads only)
-  config secrets decrypt-on-deploy: {side_effect: read}
-  config secrets edit: {side_effect: write, output: interactive}
-  config secrets get: {side_effect: read}
+  # surface cli-only: prints every decrypted secret as KEY=VALUE; no useful machine answer without the values
+  config secrets decrypt-on-deploy: {side_effect: read, surface: cli-only}
+  config secrets edit: {side_effect: write, output: interactive} # opens $EDITOR on the decrypted store and needs a TTY
+  # surface cli-only: prints the decrypted value; no useful machine answer without it (escalate_if ruling)
+  config secrets get: {side_effect: read, surface: cli-only}
   config secrets init: {side_effect: write}
   # cmd/commands/secrets_audit.go:112 RunE path changes no persistent state (prints/reads only)
   config secrets lint: {side_effect: read}
   config secrets list: {side_effect: read}
   # cmd/commands/secrets_schedule.go:103 RunE path changes no persistent state (prints/reads only)
   config secrets list-schedules: {side_effect: read}
-  config secrets rekey: {side_effect: write}
+  # cmd/commands/secrets_audit.go:133 re-encrypts the store; --remove can lock the caller out of it and the old ciphertext is not restorable without another key holder
+  config secrets rekey: {side_effect: destructive, confirm: {flags: []}}
   # cmd/commands/secrets_edit_rotate.go:124 deletes the _PREVIOUS variant of a dual-window rotated secret
-  config secrets retire: {side_effect: destructive}
+  config secrets retire: {side_effect: destructive, confirm: {flags: []}}
   # cmd/commands/secrets_edit_rotate.go:94 replaces a secret with a new random value; the old value is not restorable without --dual-window
-  config secrets rotate: {side_effect: destructive}
+  config secrets rotate: {side_effect: destructive, confirm: {flags: []}}
   # cmd/commands/secrets_audit.go:29 RunE path changes no persistent state (prints/reads only)
   config secrets rotation-log: {side_effect: read}
   config secrets schedule: {side_effect: write}
-  config secrets set: {side_effect: write}
+  # cmd/commands/secrets_core.go:40 overwrites a stored secret with a caller-chosen value; the old value is not restorable
+  config secrets set: {side_effect: destructive, secret_args: [VALUE], confirm: {flags: []}}
   config secrets verify: {side_effect: read}
-  config set: {side_effect: write}
+  config set: {side_effect: write, secret_args: [value]}
   config show: {side_effect: read}
   # cmd/commands/telemetry.go:42 RunE path changes no persistent state (prints/reads only)
   config telemetry: {side_effect: read}
@@ -73,9 +80,12 @@ commands:
   config trust dns: {side_effect: write}
   # cmd/commands/ssl.go:38 RunE path changes no persistent state (prints/reads only)
   config trust ssl: {side_effect: read}
-  config trust ssl add: {side_effect: write}
-  config trust ssl renew: {side_effect: write}
-  config trust ssl setup: {side_effect: write}
+  # cmd/commands/ssl_renewal.go:38 v1.5 makes the ACME engine the default (P7-LIVE-22): add, renew and setup reach the CA; accepting its terms is the invoker-owned consent flag
+  config trust ssl add: {side_effect: remote, confirm: {flags: [agree-tos]}}
+  # cmd/commands/ssl_renewal.go:38 v1.5 ACME default (P7-LIVE-22): renew reaches the CA; agree-tos is the invoker-owned consent flag
+  config trust ssl renew: {side_effect: remote, confirm: {flags: [agree-tos]}}
+  # cmd/commands/ssl_renewal.go:38 v1.5 ACME default (P7-LIVE-22): setup reaches the CA; agree-tos is the invoker-owned consent flag
+  config trust ssl setup: {side_effect: remote, confirm: {flags: [agree-tos]}}
   config trust ssl status: {side_effect: read}
   config trust status: {side_effect: read, exit_codes: {"0": "all trust components configured and no expiry warnings", "2": "one or more components missing or cert expiry <30 days"}}
   config validate: {side_effect: read, exit_codes: {"1": "one or more validators fail (exits 0 when all pass)"}}

@@ -10,7 +10,6 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/nself-org/cli/internal/database"
 	"github.com/spf13/cobra"
@@ -38,19 +37,25 @@ func init() {
 }
 
 func runDBReconcile(cmd *cobra.Command, _ []string) error {
+	apply, _ := cmd.Flags().GetBool("apply")
+	// --env is an environment name (or, for back-compat, a project directory).
+	// --apply is forwarded so the remote run writes exactly when this one would;
+	// without it the remote stays a dry run.
+	remoteArgs := []string{"db", "reconcile"}
+	if apply {
+		remoteArgs = append(remoteArgs, "--apply")
+	}
+	dir, handled, err := resolveDBMetadataDir(cmd, remoteArgs...)
+	if handled {
+		return err
+	}
+	if err != nil {
+		return err
+	}
 	cfg, err := loadProjectConfig()
 	if err != nil {
 		return err
 	}
-
-	dir, _ := cmd.Flags().GetString("env")
-	if dir == "" {
-		dir, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("getting working directory: %w", err)
-		}
-	}
-	apply, _ := cmd.Flags().GetBool("apply")
 
 	plan, err := database.BuildReconcilePlan(cmd.Context(), cfg, dir)
 	if err != nil {

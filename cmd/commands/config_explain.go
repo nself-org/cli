@@ -99,6 +99,9 @@ func runConfigExplain(cmd *cobra.Command, args []string) error {
 	if !exp.Known {
 		return errs.Newf("E434", "%q is not a known configuration key", key)
 	}
+	if in.reveal && machineInvoked() {
+		return refuseRevealForMachine()
+	}
 	data := buildConfigExplain(exp, b, reg, v15, in.reveal, from)
 	if on, _ := cmd.Flags().GetBool("json"); on || in.json {
 		return output.EmitData(pilotWriter(), "config explain", data)

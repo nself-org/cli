@@ -159,7 +159,7 @@
             "side_effect": null,
             "json": null,
             "output": null,
-            "cli_only": false,
+            "cli_only": true,
             "secret": false
           }
         ],
@@ -167,8 +167,8 @@
         "target": null,
         "side_effect": "read",
         "output": "document",
-        "json": "none",
-        "data_schema": null,
+        "json": "envelope",
+        "data_schema": "schemas/commands/config.v1.schema.json",
         "exit_codes": {},
         "confirm": null,
         "surface": "all"
@@ -224,11 +224,11 @@
         "target": null,
         "side_effect": "read",
         "output": "document",
-        "json": "none",
-        "data_schema": null,
+        "json": "envelope",
+        "data_schema": "schemas/commands/config-export.v1.schema.json",
         "exit_codes": {},
         "confirm": null,
-        "surface": "all"
+        "surface": "cli-only"
       },
       {
         "path": "nself config features",
@@ -246,8 +246,8 @@
         "target": null,
         "side_effect": "read",
         "output": "document",
-        "json": "none",
-        "data_schema": null,
+        "json": "envelope",
+        "data_schema": "schemas/commands/config-features.v1.schema.json",
         "exit_codes": {},
         "confirm": null,
         "surface": "all"
@@ -275,8 +275,8 @@
         "target": null,
         "side_effect": "write",
         "output": "document",
-        "json": "none",
-        "data_schema": null,
+        "json": "envelope",
+        "data_schema": "schemas/commands/config-features-disable.v1.schema.json",
         "exit_codes": {},
         "confirm": null,
         "surface": "all"
@@ -304,8 +304,8 @@
         "target": null,
         "side_effect": "write",
         "output": "document",
-        "json": "none",
-        "data_schema": null,
+        "json": "envelope",
+        "data_schema": "schemas/commands/config-features-enable.v1.schema.json",
         "exit_codes": {},
         "confirm": null,
         "surface": "all"
@@ -344,8 +344,8 @@
         "target": null,
         "side_effect": "read",
         "output": "document",
-        "json": "legacy",
-        "data_schema": null,
+        "json": "envelope",
+        "data_schema": "schemas/commands/config-features-list.v1.schema.json",
         "exit_codes": {},
         "confirm": null,
         "surface": "all"
@@ -391,8 +391,8 @@
         "target": null,
         "side_effect": "read",
         "output": "document",
-        "json": "legacy",
-        "data_schema": null,
+        "json": "envelope",
+        "data_schema": "schemas/commands/config-features-status.v1.schema.json",
         "exit_codes": {},
         "confirm": null,
         "surface": "all"
@@ -473,7 +473,7 @@
             "required": false,
             "persistent": false,
             "env": null,
-            "side_effect": null,
+            "side_effect": "destructive",
             "json": null,
             "output": null,
             "cli_only": false,
@@ -484,10 +484,13 @@
         "target": null,
         "side_effect": "write",
         "output": "document",
-        "json": "none",
-        "data_schema": null,
+        "json": "envelope",
+        "data_schema": "schemas/commands/config-import.v1.schema.json",
         "exit_codes": {},
-        "confirm": null,
+        "confirm": {
+          "flags": [],
+          "plan": null
+        },
         "surface": "all"
       },
       {
@@ -533,7 +536,7 @@
             "name": "value",
             "required": true,
             "variadic": false,
-            "secret": false
+            "secret": true
           }
         ],
         "flags": [
@@ -655,8 +658,8 @@
         "target": null,
         "side_effect": "read",
         "output": "document",
-        "json": "none",
-        "data_schema": null,
+        "json": "envelope",
+        "data_schema": "schemas/commands/config-validate.v1.schema.json",
         "exit_codes": {
           "1": "one or more validators fail (exits 0 when all pass)"
         },

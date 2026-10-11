@@ -55,7 +55,7 @@ Exit codes:
 		project, _ := cmd.Flags().GetString("project")
 		opts := trustOpts{Project: project}
 		cfg := buildTrustConfig(opts)
-		return runTrustStatusDetailed(cfg)
+		return runTrustStatusDetailed(cmd, cfg)
 	},
 }
 
@@ -100,6 +100,9 @@ func runTrust(cmd *cobra.Command, args []string) error {
 	goos := runtime.GOOS
 	if goos != "darwin" && goos != "linux" {
 		ui.Warn(fmt.Sprintf("nself trust is not supported on %s (supports macOS and Linux)", goos))
+		if jsonEnvelopeOn(cmd) {
+			setData(cmd, dataResult{OK: false}) // nothing was set up
+		}
 		return nil
 	}
 
@@ -128,6 +131,10 @@ func runTrust(cmd *cobra.Command, args []string) error {
 
 	// Print summary.
 	printTrustSummary(result)
+
+	if jsonEnvelopeOn(cmd) && len(result.Errors) > 0 {
+		setData(cmd, dataResult{OK: false}) // some steps reported errors
+	}
 
 	// Surface any non-fatal errors.
 	if len(result.Errors) > 0 {

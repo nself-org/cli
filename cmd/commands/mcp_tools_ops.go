@@ -10,7 +10,7 @@ package commands
 // Outputs: mcp.CallToolResult with StructuredContent set to a typed result.
 // Constraints: config_get/config_show never accept a "reveal" argument —
 //   an MCP client is an AI agent, not the operator at the terminal, so
-//   secrets are always masked via config.go's maskValue/isSecretKey
+//   secrets are always masked via config.go's maskValue/config.IsSecretKey
 //   regardless of what the caller asks for. deploy_status intentionally
 //   covers only the fast, local, side-effect-free signal (postgres
 //   container presence + control-plane inventory contents) and does not
@@ -30,6 +30,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nself-org/cli/internal/backup"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/plugin"
@@ -69,7 +70,7 @@ func mcpConfigGetHandler() server.ToolHandlerFunc {
 		return mcp.NewToolResultStructuredOnly(ConfigGetResult{
 			Key:      key,
 			Value:    maskValue(key, val, false),
-			Redacted: isSecretKey(key) && val != "",
+			Redacted: config.IsSecretKey(key) && val != "",
 		}), nil
 	}
 }

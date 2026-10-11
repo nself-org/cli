@@ -34,12 +34,26 @@ func TestNew_ExplicitOptions(t *testing.T) {
 	}
 }
 
-// TestNew_NegativeRetries verifies that MaxRetries < 0 is clamped to 0 then
-// gets the default of 2 (the guard in New applies the default when == 0).
-func TestNew_NegativeRetries(t *testing.T) {
-	c := New(ClientOptions{MaxRetries: -1})
-	if c == nil {
-		t.Fatal("New returned nil")
+// TestNew_MaxRetries verifies that New honours MaxRetries as given: 0 stays
+// 0 (no retries, D-0152), negative clamps to 0, positive is kept.
+func TestNew_MaxRetries(t *testing.T) {
+	tests := []struct {
+		name string
+		in   int
+		want int
+	}{
+		{name: "zero means no retries", in: 0, want: 0},
+		{name: "negative clamps to zero", in: -1, want: 0},
+		{name: "explicit default", in: DefaultMaxRetries, want: 2},
+		{name: "explicit value kept", in: 5, want: 5},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := New(ClientOptions{MaxRetries: tc.in})
+			if c.opts.MaxRetries != tc.want {
+				t.Errorf("MaxRetries = %d, want %d", c.opts.MaxRetries, tc.want)
+			}
+		})
 	}
 }
 

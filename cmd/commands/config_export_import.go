@@ -80,13 +80,18 @@ func runConfigExport(cmd *cobra.Command, args []string) error {
 
 	output := sb.String()
 
+	// --json (or --format json) answers with the v1 envelope (the map; bare with NSELF_JSON_LEGACY=1)
+	asEnvelope := jsonEnvelopeOn(cmd)
 	if outputFile != "" {
 		if writeErr := os.WriteFile(outputFile, []byte(output), 0600); writeErr != nil {
 			return fmt.Errorf("writing export file %s: %w", outputFile, writeErr)
 		}
 		ui.Success(fmt.Sprintf("Config exported to %s (%d keys)", outputFile, len(keys)))
-	} else {
+	} else if !asEnvelope {
 		fmt.Print(output)
+	}
+	if asEnvelope {
+		return emitEnv(cmd, maskedPairs(pairs, keys, reveal), format == "json")
 	}
 
 	return nil
@@ -165,6 +170,9 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 		var response string
 		if _, scanErr := fmt.Scanln(&response); scanErr != nil || strings.ToLower(strings.TrimSpace(response)) != "y" {
 			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Import cancelled.")
+			if jsonEnvelopeOn(cmd) {
+				setData(cmd, dataResult{OK: false, Target: srcFile}) // nothing was written
+			}
 			return nil
 		}
 	}

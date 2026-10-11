@@ -33,6 +33,7 @@ paths = [
   '''src/templates/certs/''',
   '''src/lib/''',
   '''src/cli/security_audit\.sh$''',
-  # Vendored third-party modules (go mod vendor output): not our code (D-0286)
-  '''(^|/)vendor/''',
+  # vendor/ (tracked go mod vendor output) is scanned on purpose: it scans
+  # clean today, and an allowlist would hide a secret a module update brings
+  # in. Review a finding there, do not allowlist the tree (D-0286).
 ]

@@ -24,10 +24,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// fakeDockerSQL answers the two queries the typed rows read and nothing else.
+// fakeDockerSQL answers the queries the typed rows read and nothing else; the
+// to_regclass probe is the read-only status ledger check (D-0378).
 const fakeDockerSQL = `#!/bin/sh
 for a; do last="$a"; done
 case "$last" in
+  *"to_regclass("*) echo yes ;;
   *information_schema.columns*) printf 'np_demo|np_orders|id|uuid\nnp_demo|np_orders|created_at|timestamptz\n' ;;
   *"FROM np_common.schema_versions ORDER BY applied_at"*) printf '20260101_init.sql|2026-01-02T03:04:05Z\n' ;;
 esac

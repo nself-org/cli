@@ -62,6 +62,9 @@ Examples:
 			if err := secrets.AddSchedule(cwd, secretName, cadenceDays, 7); err != nil {
 				return err
 			}
+			if jsonEnvelopeOn(cmd) {
+				setData(cmd, secretsScheduleData{Action: "set", Secret: secretName, CadenceDays: cadenceDays, Schedules: []secretsScheduleRow{}})
+			}
 			fmt.Printf("Rotation schedule set: %s every %dd.\n", secretName, cadenceDays)
 			return nil
 		}
@@ -70,6 +73,9 @@ Examples:
 		checks, err := secrets.CheckSchedule(cwd)
 		if err != nil {
 			return err
+		}
+		if jsonEnvelopeOn(cmd) {
+			setData(cmd, secretsScheduleData{Action: "show", Schedules: newScheduleRows(checks)})
 		}
 		if len(checks) == 0 {
 			fmt.Println("No rotation schedules configured.")
@@ -108,6 +114,9 @@ var secretsListSchedulesCmd = &cobra.Command{
 		checks, err := secrets.CheckSchedule(cwd)
 		if err != nil {
 			return err
+		}
+		if jsonEnvelopeOn(cmd) {
+			setData(cmd, secretsSchedulesData{Schedules: newScheduleRows(checks)})
 		}
 		if len(checks) == 0 {
 			fmt.Println("No rotation schedules configured.")

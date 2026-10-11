@@ -239,13 +239,21 @@ func TestBuildLockHelper(t *testing.T) {
 	if dir == "" {
 		t.Skip("helper process only")
 	}
-	if _, err := nbuild.AcquireBuildLock(context.Background(), dir); err != nil {
+	release, err := nbuild.AcquireBuildLock(context.Background(), dir)
+	if err != nil {
 		os.Stdout.WriteString("error: " + err.Error() + "\n")
 		os.Exit(3)
 	}
+	// Keep the lock reachable: a discarded release func lets the GC finalize
+	// the lock file, which drops the flock while the parent still expects it
+	// held (D-0309: "must fail with ErrHeld, got <nil>" on macos-15-intel).
+	lockHelperRelease = release
 	os.Stdout.WriteString("locked\n")
 	select {}
 }
+
+// lockHelperRelease pins the lock TestBuildLockHelper holds until it is killed.
+var lockHelperRelease func()
 
 // TestBuildLockAfterKill: a build refuses to run while another process holds
 // the project lock (naming the holder), and after that holder is SIGKILLed two

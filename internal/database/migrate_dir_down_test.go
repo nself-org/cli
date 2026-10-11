@@ -46,6 +46,9 @@ case "$last" in
   *"ORDER BY applied_at DESC"*) cat "$D/q_latest" 2>/dev/null;;
   *"name || '|' || applied_at"*) cat "$D/q_applied" 2>/dev/null;;
   *"name || '|' || checksum"*) cat "$D/q_checksums" 2>/dev/null;;
+  *"count(*) FROM nself_ops.migrations"*) cat "$D/q_ops_legacy_count" 2>/dev/null;;
+  *"SELECT id FROM nself_ops.migrations"*) cat "$D/q_ops_ids" 2>/dev/null;;
+  *"count(*) FROM np_common.schema_versions WHERE name = 'up.sql'"*) cat "$D/q_up_count" 2>/dev/null;;
   *"count(*) FROM np_common.schema_versions WHERE name"*) cat "$D/q_count" 2>/dev/null;;
 esac
 exit 0
@@ -752,7 +755,7 @@ func TestMigrateDirIntegration_GuardAndSameTransactionCheck(t *testing.T) {
 	if n, err := MigrateUpDir(ctx, cfg, dir); err == nil || n != 0 {
 		t.Fatalf("DO with COMMIT: %d, %v", n, err)
 	}
-	if err := pipeSQLToContainer(ctx, cfg, dirTxSQL(doSQL, "SELECT 1;")); err == nil {
+	if err := pipeSQLToContainer(ctx, cfg, dirTxSQL(doSQL, "SELECT 1;", "60s")); err == nil {
 		t.Fatal("Postgres accepted COMMIT inside a DO block in our transaction")
 	}
 	if exists("p77_do") {
@@ -779,7 +782,7 @@ func TestMigrateDirIntegration_GuardAndSameTransactionCheck(t *testing.T) {
 	}
 
 	// 5. Layer 2 on its own, with layer 1 bypassed: a COMMIT mid-file is detected.
-	err := pipeSQLToContainer(ctx, cfg, dirTxSQL("CREATE TABLE p77_l2 (id int);\nCOMMIT;\nSELECT 1;\n", "SELECT 1;"))
+	err := pipeSQLToContainer(ctx, cfg, dirTxSQL("CREATE TABLE p77_l2 (id int);\nCOMMIT;\nSELECT 1;\n", "SELECT 1;", "60s"))
 	if err == nil || !strings.Contains(err.Error(), xactMismatchMarker) {
 		t.Fatalf("same-transaction check did not fire: %v", err)
 	}

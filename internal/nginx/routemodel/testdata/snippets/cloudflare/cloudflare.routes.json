@@ -63,7 +63,6 @@
       },
       "tls": {
         "ssl_dir": "",
-        "has_trusted_chain": false,
         "protocols": [
           "TLSv1.2",
           "TLSv1.3"
