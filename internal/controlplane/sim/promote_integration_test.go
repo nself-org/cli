@@ -147,8 +147,14 @@ func TestSimPromote(t *testing.T) {
 		}
 	})
 	t.Run("health rollback", func(t *testing.T) {
-		target.sh("printf original > /tmp/sim-db-fp; printf old > " + target.rp + "/docker-compose.yml; touch /tmp/sim-health-fail; chown nself /tmp/sim-health-fail")
-		err := run(nil)
+		_, err := targetRemote.Run(context.Background(), "printf original > /tmp/sim-db-fp && printf old > "+remotesdk.ShellQuote(target.rp+"/docker-compose.yml")+" && touch /tmp/sim-health-fail")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := target.sh("cat /tmp/sim-db-fp"); got != "original" {
+			t.Fatalf("pre-promote database fingerprint = %q, want original", got)
+		}
+		err = run(nil)
 		var cliErr *errs.CLIError
 		if !errors.As(err, &cliErr) || cliErr.Code != "E488" {
 			t.Fatalf("error = %v, want E488", err)
