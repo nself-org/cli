@@ -94,3 +94,35 @@ func TestAdminSSHV15RefusesUnquotablePinPath(t *testing.T) {
 		})
 	}
 }
+
+// TestAdminPinFileOption pins the pure helper: a path is double-quoted into one
+// option value, a Windows-shaped path already holding forward slashes passes
+// through (the ToSlash result on Windows), and a quote, backslash or control
+// character is refused. Backslash refusal applies to the converted path, so on
+// POSIX a real backslash is still refused.
+func TestAdminPinFileOption(t *testing.T) {
+	cases := []struct {
+		name, in, want string
+		wantErr        bool
+	}{
+		{"posix plain", "/home/u/.config/nself/deploy_known_hosts", `GlobalKnownHostsFile="/home/u/.config/nself/deploy_known_hosts"`, false},
+		{"posix space", "/Users/a b/.config/nself/deploy_known_hosts", `GlobalKnownHostsFile="/Users/a b/.config/nself/deploy_known_hosts"`, false},
+		{"windows slashed", "C:/Users/a b/.config/nself/deploy_known_hosts", `GlobalKnownHostsFile="C:/Users/a b/.config/nself/deploy_known_hosts"`, false},
+		{"quote", `/Users/a"b/kh`, "", true},
+		{"backslash", `/Users/a\b/kh`, "", true},
+		{"newline", "/Users/a\nb/kh", "", true},
+		{"tab", "/Users/a\tb/kh", "", true},
+		{"nul", "/Users/a\x00b/kh", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := adminPinFileOption(tc.in)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
