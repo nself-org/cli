@@ -18,6 +18,11 @@ import (
 	"time"
 )
 
+// maxBufferedBody caps how much of a body without GetBody Do copies into
+// memory so it can retry. A larger body is sent once, without retries. A var
+// so tests can lower it.
+var maxBufferedBody int64 = 8 << 20
+
 // DefaultMaxRetries is the retry count callers set explicitly to get the
 // pre-D-0152 behaviour of a zero ClientOptions (two retries). MaxRetries 0
 // now means no retries.
@@ -65,7 +70,8 @@ func New(opts ClientOptions) *Client {
 // Every attempt sends the full request body. If retries are enabled and the
 // request has a body but no GetBody (a body built from a plain io.Reader),
 // Do reads the body into memory once and closes it, then replays those bytes
-// on each attempt.
+// on each attempt. A body over 8 MiB without GetBody is sent once, without
+// retries; set GetBody to retry large bodies.
 func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, error) {
 	if req.Header.Get("User-Agent") == "" {
 		req.Header.Set("User-Agent", c.opts.UserAgent)
@@ -75,12 +81,17 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 	if err != nil {
 		return nil, err
 	}
+	maxRetries := c.opts.MaxRetries
+	if req.Body != nil && req.Body != http.NoBody && getBody == nil {
+		// Nothing to replay: a single attempt, or a body too large to buffer.
+		maxRetries = 0
+	}
 
 	var (
 		lastErr error
 		resp    *http.Response
 	)
-	for attempt := 0; attempt <= c.opts.MaxRetries; attempt++ {
+	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			wait := c.opts.RetryDelay * (1 << (attempt - 1))
 			select {
@@ -95,9 +106,9 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 			// The first attempt can send the caller's own body unless Do
 			// already consumed it into the buffer.
 			if attempt > 0 || buffered {
-				body, err := getBody()
-				if err != nil {
-					return nil, fmt.Errorf("httpx: rewind request body: %w", err)
+				body, berr := getBody()
+				if berr != nil {
+					return nil, fmt.Errorf("httpx: rewind request body: %w", berr)
 				}
 				reqClone.Body = body
 			}
@@ -121,9 +132,12 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*http.Response, err
 }
 
 // bodySource returns a function that yields a fresh copy of req's body for
-// each attempt. It returns nil when there is nothing to replay: no body, or
-// a single attempt (retries false). buffered reports that req.Body was read
-// into memory and closed, so even the first attempt must use the copy.
+// each attempt. It returns nil when there is nothing to replay: no body, a
+// single attempt (retries false), or a body without GetBody larger than
+// maxBufferedBody (req.Body is then rebuilt so the one attempt still sends it
+// whole). buffered reports that req.Body was read into memory and closed, so
+// even the first attempt must use the copy; req.ContentLength is set to the
+// buffered length.
 func bodySource(req *http.Request, retries bool) (getBody func() (io.ReadCloser, error), buffered bool, err error) {
 	if !retries || req.Body == nil || req.Body == http.NoBody {
 		return nil, false, nil
@@ -131,11 +145,21 @@ func bodySource(req *http.Request, retries bool) (getBody func() (io.ReadCloser,
 	if req.GetBody != nil {
 		return req.GetBody, false, nil
 	}
-	data, err := io.ReadAll(req.Body)
-	_ = req.Body.Close()
+	orig := req.Body
+	data, err := io.ReadAll(io.LimitReader(orig, maxBufferedBody+1))
 	if err != nil {
+		_ = orig.Close()
 		return nil, false, fmt.Errorf("httpx: read request body: %w", err)
 	}
+	if int64(len(data)) > maxBufferedBody {
+		req.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(data), orig), orig}
+		return nil, false, nil
+	}
+	_ = orig.Close()
+	req.ContentLength = int64(len(data))
 	return func() (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewReader(data)), nil
 	}, true, nil

@@ -135,3 +135,106 @@ func TestDo_GetBodyErrorStopsRetry(t *testing.T) {
 		t.Errorf("server saw %d requests, want 1", n)
 	}
 }
+
+// TestDo_OversizedBodyIsNotRetried verifies that a body without GetBody
+// larger than maxBufferedBody is sent once, whole, and not retried.
+func TestDo_OversizedBodyIsNotRetried(t *testing.T) {
+	old := maxBufferedBody
+	maxBufferedBody = 4
+	defer func() { maxBufferedBody = old }()
+
+	rec := &recordingServer{failFirst: 1}
+	srv := httptest.NewServer(rec)
+	defer srv.Close()
+
+	const payload = "longer-than-four-bytes"
+	c := New(ClientOptions{MaxRetries: 2, RetryDelay: time.Millisecond, Timeout: 5 * time.Second})
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL,
+		onlyReader{strings.NewReader(payload)})
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	if _, err := c.Do(context.Background(), req); err == nil {
+		t.Fatal("expected error from the single 503 attempt, got nil")
+	}
+	bodies := rec.seen()
+	if len(bodies) != 1 || bodies[0] != payload {
+		t.Fatalf("server saw %q, want one request with %q", bodies, payload)
+	}
+}
+
+// TestDo_BufferedBodySendsContentLength verifies that a buffered body goes out
+// with a Content-Length instead of chunked encoding.
+func TestDo_BufferedBodySendsContentLength(t *testing.T) {
+	var mu sync.Mutex
+	var lengths []int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		mu.Lock()
+		lengths = append(lengths, r.ContentLength)
+		n := len(lengths)
+		mu.Unlock()
+		if n == 1 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New(ClientOptions{MaxRetries: 1, RetryDelay: time.Millisecond, Timeout: 5 * time.Second})
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL,
+		onlyReader{strings.NewReader("12345")})
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	resp, err := c.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	resp.Body.Close()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lengths) != 2 || lengths[0] != 5 || lengths[1] != 5 {
+		t.Errorf("Content-Length per attempt = %v, want [5 5]", lengths)
+	}
+}
+
+// TestDo_RedirectReplaysBufferedBody verifies that a 307 redirect after a
+// buffered body still carries the body to the new location.
+func TestDo_RedirectReplaysBufferedBody(t *testing.T) {
+	var mu sync.Mutex
+	var final string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/start", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		http.Redirect(w, r, "/final", http.StatusTemporaryRedirect)
+	})
+	mux.HandleFunc("/final", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		final = string(b)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	const payload = "redirected-body"
+	c := New(ClientOptions{MaxRetries: 1, RetryDelay: time.Millisecond, Timeout: 5 * time.Second})
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+"/start",
+		onlyReader{strings.NewReader(payload)})
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	resp, err := c.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	resp.Body.Close()
+	mu.Lock()
+	defer mu.Unlock()
+	if final != payload {
+		t.Errorf("body at redirect target = %q, want %q", final, payload)
+	}
+}

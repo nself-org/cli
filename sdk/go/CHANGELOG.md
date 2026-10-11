@@ -93,8 +93,9 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `httpx.Client.Do` resent 5xx retries with an empty body, because every
   attempt shared the request body the first attempt had consumed (D-0152). Each
-  attempt now gets a fresh body from `GetBody`; a body without `GetBody` is read
-  into memory once and replayed.
+  attempt now gets a fresh body from `GetBody`. A body without `GetBody` is read
+  into memory once (up to 8 MiB) and replayed with its `Content-Length` set; a
+  larger body without `GetBody` is sent once, without retries.
 
 ## [2.0.0] - 2026-05-13
 
