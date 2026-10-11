@@ -1,14 +1,17 @@
 package commands
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -29,6 +32,8 @@ type v15Remote struct {
 	failOn string // a command containing this fails
 	// stateful makes the model's web service keep a volume and the dry-run recreate it.
 	stateful bool
+	// hang makes a command containing it print READY and block until ctx is done.
+	hang string
 }
 
 func (r *v15Remote) Label() string {
@@ -50,7 +55,7 @@ var (
 	tagArg     = regexp.MustCompile(`--tag '([^']+)'`)
 )
 
-func (r *v15Remote) Run(_ context.Context, cmd string) ([]byte, error) {
+func (r *v15Remote) Run(ctx context.Context, cmd string) ([]byte, error) {
 	s := cmd
 	if rest, ok := strings.CutPrefix(cmd, "sh -c '"); ok {
 		s = strings.ReplaceAll(strings.TrimSuffix(rest, "'"), `'\''`, `'`)
@@ -58,6 +63,13 @@ func (r *v15Remote) Run(_ context.Context, cmd string) ([]byte, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.log = append(r.log, s)
+	if r.hang != "" && strings.Contains(s, r.hang) {
+		r.mu.Unlock()
+		fmt.Println("READY")
+		<-ctx.Done()
+		r.mu.Lock()
+		return nil, ctx.Err()
+	}
 	if r.failOn != "" && strings.Contains(s, r.failOn) {
 		return nil, errors.New("exit status 1: injected")
 	}
@@ -611,5 +623,71 @@ func TestRollbackWithoutBackupHostTar(t *testing.T) {
 	}
 	if st, _ := deploy.LoadDeployState(proj); st.BackupID != "demo_full_9" || !st.RolledBack {
 		t.Errorf("the record must keep the backup id for a manual restore: %+v", st)
+	}
+}
+
+const rollbackSignalEnv = "NSELF_DEPLOY_ROLLBACK_SIGNAL_HELPER"
+
+// TestRollbackInterruptHelper is the child process; it does nothing unless re-executed.
+func TestRollbackInterruptHelper(t *testing.T) {
+	if os.Getenv(rollbackSignalEnv) == "" {
+		t.Skip("helper process for TestRollbackInterrupt")
+	}
+	proj, remote := v15Project(t)
+	inv := prodInventory(prodServers(t)[0])
+	cmd := yesCmd()
+	if res, err := runDeployPipeline(cmd, proj, inv, "prod", okProber{}, filepath.Join(proj, "docker-compose.yml"), "", "", true); err != nil || failedServersError(res) != nil {
+		t.Fatalf("deploy: %v", err)
+	}
+	remote.mu.Lock()
+	remote.log = nil
+	remote.hang = " pull" // the rollback's re-apply is in flight when the signal arrives
+	remote.mu.Unlock()
+	_, err := rollbackRemoteV15(cmd, proj, "prod")
+	st, _ := deploy.LoadDeployState(proj)
+	fmt.Printf("RESULT err=%v restored=%v unlocked=%v rolledback=%v\n", err != nil, firstIndex(remote.commands(), "tar -xzf") >= 0,
+		countCmds(remote, "/holder; rmdir") == 1, st.RolledBack)
+}
+
+// H-rollback: a real SIGINT during a rollback stops it, leaves the lock released
+// and the record not marked rolled back, so the rollback can be retried.
+func TestRollbackInterrupt(t *testing.T) {
+	c := exec.Command(os.Args[0], "-test.run=^TestRollbackInterruptHelper$", "-test.count=1")
+	c.Env = append(os.Environ(), rollbackSignalEnv+"=1")
+	out, err := c.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Process.Kill(); _ = c.Wait() })
+	lines := make(chan string)
+	go func() {
+		sc := bufio.NewScanner(out)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+		close(lines)
+	}()
+	deadline := time.After(90 * time.Second)
+	for {
+		select {
+		case l, ok := <-lines:
+			if !ok {
+				t.Fatal("the helper exited without a result")
+			}
+			if l == "READY" {
+				_ = c.Process.Signal(syscall.SIGINT)
+			}
+			if strings.HasPrefix(l, "RESULT ") {
+				if want := "RESULT err=true restored=true unlocked=true rolledback=false"; l != want {
+					t.Errorf("after SIGINT:\n got %s\nwant %s", l, want)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatal("timed out")
+		}
 	}
 }

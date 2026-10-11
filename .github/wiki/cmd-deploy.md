@@ -458,9 +458,16 @@ service, or place its context on the host.
   v1.5 deploy fails closed instead of guessing.
 - A deploy refused at `E403` (unconfirmed stateful recreate) is restored, but the images the pull
   fetched stay on the host.
-- A symlinked directory on the host (for example `nginx/` pointing at a shared dir) is written
-  through, never replaced. A rollback cannot delete a file the deploy created inside one: it refuses
-  and names the path.
+- A symlinked directory under the project dir is followed only when its real path is inside the
+  real `remote_path`. A link that resolves outside it (for example `nginx/` pointing at a shared dir
+  next to the project, or a symlinked `.env.prod`) stops the deploy with `E485` (`symlink outside
+  remote_path`) before the lock, the tar and any sync. Move the shared dir inside the project dir.
+- Remote steps are non-interactive (`BatchMode=yes`, `ConnectTimeout=10`): use ssh-agent or an
+  unencrypted deploy key. A password or passphrase prompt would hang a step that runs in its own
+  process group.
+- The prune (generated files the new set dropped) is driven by the last recorded deploy in
+  `.nself/state/deploy.json`; the host's `deploy-shipped.txt` can only narrow it. With no record
+  nothing is pruned.
 
 If any step from the sync to the preview fails, no container has been touched yet. The files this
 deploy shipped are put back from the pre-deploy tar in place, the ones it created are removed, and
@@ -471,11 +478,12 @@ and owner. A failure after the first `up` keeps the new files and the error name
 `nself deploy rollback <target>`. A deploy that was refused or restored cleanly leaves
 `.nself/state/deploy.json` byte for byte as it was.
 
-**Ctrl-C.** SIGINT and SIGTERM during a v1.5 apply or rollback cancel the step in flight (ssh and
+**Ctrl-C.** SIGINT, SIGTERM and SIGHUP (a closed terminal or ssh session) during a v1.5 apply or rollback cancel the step in flight (ssh and
 rsync run in their own process group, so the terminal does not kill them behind the tool's back).
-Before the first `up`, the tar is then restored (on a fresh context, at most 5 minutes) and the
+The step in flight is not killed: it gets up to two minutes to finish, so its remote script is not
+still running when the restore starts. Before the first `up`, the tar is then restored (on a fresh context, at most 5 minutes) and the
 deploy lock is released; after the first `up` the new files stay and the error names the rollback.
-This is tested with a real SIGINT sent to the apply. SIGKILL, a lost connection or a powered-off
+This is tested with real signals sent to the apply and to the rollback. SIGKILL, a lost connection or a powered-off
 laptop are not covered: the lock stays, and the error for the next deploy says how to remove it.
 
 All ssh and rsync commands use the strict host-key policy; an unknown key is `E487`.
@@ -494,7 +502,10 @@ while the new containers ran, are lost.
 
 The database is restored at most once per record: `db_restored_at` is saved right after
 `nself backup restore` succeeds, before the re-apply, so a retry of a rollback that failed later
-(on any host) skips it and redoes only files and services. If that command itself fails midway the
+(on any host) skips it and redoes only files and services. The `backup_host` is rolled back first. If it
+kept no changes of the deploy (so it has no tar), the database is not restored: the rollback prints the
+backup id and the manual `nself backup restore <id> --yes` command and keeps `backup_id` in the record.
+`backup_id` is recorded only once a server ran `up`. If that command itself fails midway the
 marker is not set and a retry runs it again. A record already rolled back is refused. The record's
 `success` covers every server of the env, with each server's outcome in `host_outcomes`. Without such
 a record the older promote rollback below runs.
