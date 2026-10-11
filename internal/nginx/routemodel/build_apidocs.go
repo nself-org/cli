@@ -20,11 +20,12 @@ var apiDocsPathRE = regexp.MustCompile(`^/[A-Za-z0-9._~/-]*$`)
 // and the finish step already writes api-docs.conf, so a second copy would be a
 // duplicate server block. The routes.json writer appends it instead.
 //
-// workdir is used only to flag a hand-managed conf.d file that already serves
-// the same server name (ShadowedBy), as makeRoute does for the core routes.
-// An API_DOCS_PATH that nginx would reject or that collides with /api-docs is
-// an error.
-func APIDocs(cfg *config.Config, workdir string) (*Route, error) {
+// ShadowedBy is always nil: on core routes it means the generated file was not
+// written, and the finish step writes api-docs.conf regardless of conf.d.
+// An API_DOCS_PATH that nginx would reject, or that is exactly /api-docs (the
+// duplicate location nginx refuses), is an error; /api-docs-v2 and /api-docs/
+// are distinct locations and are valid.
+func APIDocs(cfg *config.Config) (*Route, error) {
 	if !cfg.ApiDocs.Enabled && cfg.ApiDocs.Path != "" {
 		return nil, nil
 	}
@@ -35,8 +36,8 @@ func APIDocs(cfg *config.Config, workdir string) (*Route, error) {
 	if !apiDocsPathRE.MatchString(path) {
 		return nil, fmt.Errorf("API_DOCS_PATH %q: must start with / and contain only letters, digits and . _ ~ / -", path)
 	}
-	if strings.HasPrefix(path, "/api-docs") {
-		return nil, fmt.Errorf("API_DOCS_PATH %q: must not equal or start with /api-docs (nginx rejects the duplicate location)", path)
+	if path == "/api-docs" {
+		return nil, fmt.Errorf("API_DOCS_PATH %q: must not equal /api-docs (nginx rejects the duplicate location)", path)
 	}
 	base := cfg.BaseDomain
 	if base == "" {
@@ -62,6 +63,6 @@ func APIDocs(cfg *config.Config, workdir string) (*Route, error) {
 				HeadersAdd: map[string]string{"Content-Type": "text/html", "Cache-Control": "no-store"},
 				HeadersSet: map[string]string{}, Timeouts: Timeouts{}, AccessLog: true},
 		},
-		ShadowedBy: shadowFile(cfg, workdir, name), Unmodelled: []string{},
+		Unmodelled: []string{},
 	}, nil
 }

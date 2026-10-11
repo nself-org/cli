@@ -120,10 +120,14 @@ type Location struct {
 	HealthProbe      bool              `json:"health_probe"`
 }
 
-// Upstream is a proxy target. Path is the escaped URL path exactly as nginx
-// proxy_pass carries it ("" = none; "/" is kept because it changes proxy_pass
-// semantics). Query is the raw query without the '?' (nil = no '?', "" = a bare
-// trailing '?'). Both are absent from routes.json when unset.
+// Upstream is a proxy target. The cli renders "set $up_x <target>; proxy_pass
+// $up_x;". With a variable proxy_pass nginx sends the target's path (and query)
+// INSTEAD of the request URI: a whole-URI replacement, not a prefix
+// replacement. A consumer that cannot do the same must refuse the route.
+// Path is the escaped URL path of the target ("" = none; "/" is kept because
+// it replaces the request URI with "/"). Query is the raw query without the
+// '?' (nil = no '?', "" = a bare trailing '?'), likewise sent instead of the
+// request query. Both are absent from routes.json when unset.
 type Upstream struct {
 	Scheme string  `json:"scheme"`
 	Host   string  `json:"host"`

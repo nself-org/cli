@@ -12,7 +12,7 @@ func (st *buildState) writeRoutesJSON(m *routemodel.Model) error {
 	out := st.withSnippetRoutes(m)
 	// api-docs.conf is written by the build finish step, not by Build, so its
 	// route is added here (withSnippetRoutes already returned a fresh slice).
-	docs, err := routemodel.APIDocs(st.cfg, st.workdir)
+	docs, err := routemodel.APIDocs(st.cfg)
 	if err != nil {
 		return fmt.Errorf("modelling api-docs route: %w", err)
 	}

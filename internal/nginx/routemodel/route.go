@@ -97,8 +97,10 @@ func parseUpstream(raw string) Upstream {
 		}
 	}
 	up := Upstream{Scheme: u.Scheme, Host: u.Hostname(), Port: port, Path: u.EscapedPath()}
-	// proxy_pass receives the full target, so a path or query is part of the
-	// contract; dropping them made routes.json disagree with the rendered conf.
+	// proxy_pass receives the full target through a variable, so nginx sends
+	// the target's path and query instead of the request URI (whole-URI
+	// replacement). They are part of the contract; dropping them made
+	// routes.json disagree with the rendered conf.
 	if u.RawQuery != "" || u.ForceQuery {
 		q := u.RawQuery
 		up.Query = &q

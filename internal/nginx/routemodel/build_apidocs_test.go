@@ -35,7 +35,7 @@ func TestAPIDocsRoute(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := tc.cfg
-			r, err := APIDocs(&cfg, t.TempDir())
+			r, err := APIDocs(&cfg)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -72,13 +72,25 @@ func TestAPIDocsRoute(t *testing.T) {
 // TestAPIDocsRejectsBadPaths checks the nginx-unsafe and colliding paths, and
 // that Build refuses them before anything is written.
 func TestAPIDocsRejectsBadPaths(t *testing.T) {
-	for _, p := range []string{"/x;", "/x {", "docs", "/api-docs", "/api-docsx", "/a b", "/x\n"} {
+	for _, p := range []string{"/x;", "/x {", "docs", "/api-docs", "/a b", "/x\n"} {
 		cfg := &config.Config{BaseDomain: "example.test", ApiDocs: config.ApiDocsConfig{Enabled: true, Path: p}}
-		if _, err := APIDocs(cfg, t.TempDir()); err == nil || !strings.Contains(err.Error(), "API_DOCS_PATH") {
+		if _, err := APIDocs(cfg); err == nil || !strings.Contains(err.Error(), "API_DOCS_PATH") {
 			t.Errorf("APIDocs accepted path %q: %v", p, err)
 		}
 		if _, err := Build(cfg, t.TempDir(), false); err == nil || !strings.Contains(err.Error(), "API_DOCS_PATH") {
 			t.Errorf("Build accepted path %q: %v", p, err)
+		}
+	}
+}
+
+// TestAPIDocsAcceptsNearMissPaths checks that only the exact /api-docs path is
+// refused: /api-docs-v2 and /api-docs/ are distinct nginx locations.
+func TestAPIDocsAcceptsNearMissPaths(t *testing.T) {
+	for _, p := range []string{"/api-docs-v2", "/api-docs/", "/api-docsx", "/api-docs/v2"} {
+		cfg := &config.Config{BaseDomain: "example.test", ApiDocs: config.ApiDocsConfig{Enabled: true, Path: p}}
+		r, err := APIDocs(cfg)
+		if err != nil || r == nil || r.Locations[1].Path != p {
+			t.Errorf("APIDocs(%q) = %v, %v; want the path accepted", p, r, err)
 		}
 	}
 }
@@ -124,10 +136,7 @@ func TestMarshalOmitsNewFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{`"path": "/"`, `"query"`, `"static_file"`, `"headers_add"`} {
-		if key == `"path": "/"` {
-			continue // location path is always present
-		}
+	for _, key := range []string{`"query"`, `"static_file"`, `"headers_add"`} {
 		if strings.Contains(string(b), key) {
 			t.Errorf("plain model emitted %s:\n%s", key, b)
 		}
@@ -135,7 +144,7 @@ func TestMarshalOmitsNewFields(t *testing.T) {
 	if strings.Count(string(b), `"path"`) != 1 {
 		t.Errorf("upstream emitted a path key:\n%s", b)
 	}
-	r, err := APIDocs(&config.Config{BaseDomain: "example.test"}, t.TempDir())
+	r, err := APIDocs(&config.Config{BaseDomain: "example.test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,5 +162,38 @@ func TestMarshalOmitsNewFields(t *testing.T) {
 	b, _ = Marshal(withQuery)
 	if !strings.Contains(string(b), `"query": ""`) || !strings.Contains(string(b), `"path": "/p"`) {
 		t.Errorf("bare query or path not emitted:\n%s", b)
+	}
+}
+
+// TestValidateTarget checks the targets nginx cannot use or the model cannot
+// represent: fragments, user info, and any byte outside printable ASCII.
+func TestValidateTarget(t *testing.T) {
+	for _, tc := range []struct {
+		target  string
+		wantErr string // "" = accepted
+	}{
+		{"http://hasura:8080", ""},
+		{"https://h/p?a=b", ""},
+		{"http://h:1/a%20b", ""},
+		{"http://h/p#frag", "fragment"},
+		{"http://h/p#", "fragment"},
+		{"http://user@h:1", "user info"},
+		{"http://user:pw@h:1", "user info"},
+		{"http://h/a b", "non-ASCII"},
+		{"http://h/\tx", "non-ASCII"},
+		{"http://h/\x01", "non-ASCII"},
+		{"http://h/café", "non-ASCII"},
+		{"http://h/\x7f", "non-ASCII"},
+		{"http://h;x", "forbidden character"},
+		{"ftp://h", "scheme"},
+		{"http://", "host"},
+	} {
+		err := validateTarget(tc.target)
+		switch {
+		case tc.wantErr == "" && err != nil:
+			t.Errorf("validateTarget(%q) = %v, want accepted", tc.target, err)
+		case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
+			t.Errorf("validateTarget(%q) = %v, want error containing %q", tc.target, err, tc.wantErr)
+		}
 	}
 }

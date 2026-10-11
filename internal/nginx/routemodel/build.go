@@ -36,7 +36,7 @@ func Build(cfg *config.Config, workdir string, hasSSL bool) (*Model, error) {
 	// written. The api-docs route itself is appended at routes.json time:
 	// nginx renders Build's routes, and api-docs.conf comes from the build
 	// finish step, so adding it to m.Routes would render it twice.
-	if _, err := APIDocs(cfg, workdir); err != nil {
+	if _, err := APIDocs(cfg); err != nil {
 		return nil, err
 	}
 	env := cfg.Env
@@ -223,9 +223,22 @@ func validateTarget(target string) error {
 			return fmt.Errorf("target contains forbidden character %q", c)
 		}
 	}
+	// nginx cannot use spaces, control or non-ASCII bytes in a proxy_pass
+	// target, and the model cannot represent them.
+	for i := 0; i < len(target); i++ {
+		if c := target[i]; c < 0x21 || c > 0x7E {
+			return fmt.Errorf("target contains a space, control or non-ASCII byte 0x%02x (only printable ASCII is allowed)", c)
+		}
+	}
 	u, err := url.Parse(target)
 	if err != nil {
 		return fmt.Errorf("target is not a valid URL: %w", err)
+	}
+	if u.Fragment != "" || strings.Contains(target, "#") {
+		return fmt.Errorf("target must not contain a fragment (#): nginx cannot use it")
+	}
+	if u.User != nil {
+		return fmt.Errorf("target must not contain user info (user@): nginx cannot use it")
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return fmt.Errorf("target scheme must be http or https, got %q", u.Scheme)
