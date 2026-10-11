@@ -42,7 +42,7 @@ func TestGitignoreFresh(t *testing.T) {
 // rewritten and no .nself entry is appended (the negation could not take
 // effect under an excluded directory); other missing entries still are.
 func TestGitignoreExistingLine(t *testing.T) {
-	full := strings.Join([]string{".env", ".env.local", ".env.*.local", ".env.secrets", ".env.ai", ".volumes/", "logs/", "*.log", "node_modules/", ".DS_Store", ".nself/"}, "\n") + "\n"
+	full := strings.Join([]string{".env", ".env.local", ".env.*.local", ".env.secrets", ".env.ai", ".volumes/", "logs/", "*.log", "node_modules/", ".DS_Store", "ssl/", ".nself/"}, "\n") + "\n"
 	for name, body := range map[string]string{"complete": full, "only-nself": "/.nself/\n"} {
 		dir := t.TempDir()
 		p := filepath.Join(dir, ".gitignore")
@@ -62,5 +62,56 @@ func TestGitignoreExistingLine(t *testing.T) {
 		if strings.Contains(string(got[len(body):]), ".nself") {
 			t.Fatalf("%s: .nself entries appended under an existing directory ignore:\n%s", name, got)
 		}
+	}
+}
+
+// TestGitignoreSSL (D-0163): ssl/ is ignored so certificate private keys
+// cannot be committed. Only a whole line that ignores the directory counts as
+// present; `ssl/.acme/` or a comment mentioning ssl/ does not. Runs twice to
+// prove the append is idempotent.
+func TestGitignoreSSL(t *testing.T) {
+	cases := []struct {
+		name, body string
+		wantAppend bool
+	}{
+		{"fresh", "", true},
+		{"acme-only", "ssl/.acme/\n", true},
+		{"comment", "# keep ssl/ out of git\n", true},
+		{"nested-path", "backend/ssl/\n", true},
+		{"present", "ssl/\n", false},
+		{"anchored", "/ssl/\n", false},
+		{"bare", "ssl\n", false},
+		{"contents", "  ssl/*  \n", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			p := filepath.Join(dir, ".gitignore")
+			if tc.body != "" {
+				if err := os.WriteFile(p, []byte(tc.body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := ensureGitignore(dir); err != nil {
+				t.Fatal(err)
+			}
+			first, _ := os.ReadFile(p)
+			if !strings.HasPrefix(string(first), tc.body) {
+				t.Fatalf("existing content was rewritten:\n%s", first)
+			}
+			appended := false
+			for _, l := range strings.Split(string(first[len(tc.body):]), "\n") {
+				appended = appended || l == "ssl/"
+			}
+			if appended != tc.wantAppend {
+				t.Fatalf("ssl/ appended = %v, want %v:\n%s", appended, tc.wantAppend, first)
+			}
+			if err := ensureGitignore(dir); err != nil {
+				t.Fatal(err)
+			}
+			if again, _ := os.ReadFile(p); string(again) != string(first) {
+				t.Fatalf("second run changed the file:\n%s", again)
+			}
+		})
 	}
 }

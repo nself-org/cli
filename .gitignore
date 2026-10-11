@@ -99,7 +99,9 @@ bin/certs/
 *.dll
 *.so
 *.dylib
-endpoint-auth-checker
+# Built binary only (D-0217): unanchored, this also ignored the source dir.
+/endpoint-auth-checker
+/tools/endpoint-auth-checker/endpoint-auth-checker
 # Explicitly block Vercel OIDC token lines (P2-E2-W2-S3-T13d)
 VERCEL_OIDC_TOKEN=*
 

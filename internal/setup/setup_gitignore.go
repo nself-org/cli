@@ -10,6 +10,9 @@ package setup
 // `.nself/*` + `!.nself/ci.yaml`. An existing `.nself/` line is left alone and
 // nothing .nself-related is appended: git cannot re-include a file under an
 // excluded directory, so appending would look fixed while staying ignored.
+// D-0163: `ssl/` is ignored so ssl/certificates/*/privkey.pem never lands in
+// git; it is matched line-exact so an existing `ssl/.acme/` line does not
+// count as present.
 
 import (
 	"os"
@@ -29,6 +32,7 @@ var gitignoreEntries = []string{
 	"*.log",
 	"node_modules/",
 	".DS_Store",
+	"ssl/", // certificate private keys (D-0163)
 	".nself/*",
 	"!.nself/ci.yaml", // after the wildcard: a negation only re-includes what an earlier line excluded
 }
@@ -36,6 +40,11 @@ var gitignoreEntries = []string{
 // nselfDirLines are the spellings of an existing whole-directory ignore that
 // a `!.nself/ci.yaml` negation cannot undo.
 var nselfDirLines = map[string]bool{".nself/": true, "/.nself/": true, ".nself": true, "/.nself": true}
+
+// sslDirLines are existing spellings that already ignore everything under
+// ssl/. Only whole lines count: `ssl/.acme/` contains "ssl/" but leaves the
+// certificate keys committable.
+var sslDirLines = map[string]bool{"ssl/": true, "/ssl/": true, "ssl": true, "/ssl": true, "ssl/*": true, "/ssl/*": true, "ssl/**": true, "/ssl/**": true}
 
 // ensureGitignore creates or appends to .gitignore with required entries.
 func ensureGitignore(workDir string) error {
@@ -49,16 +58,19 @@ func ensureGitignore(workDir string) error {
 	for _, l := range strings.Split(existing, "\n") {
 		lines[strings.TrimSpace(l)] = true
 	}
-	dirIgnored := false
-	for l := range nselfDirLines {
-		dirIgnored = dirIgnored || lines[l]
-	}
+	dirIgnored := anyLine(lines, nselfDirLines)
 	var toAdd []string
 	for _, entry := range gitignoreEntries {
 		if strings.HasPrefix(entry, ".nself/") || strings.HasPrefix(entry, "!.nself/") {
 			// Line-exact: ".nself/*" must not count as present because the
 			// text ".nself/" is; and an existing directory ignore wins.
 			if !dirIgnored && !lines[entry] {
+				toAdd = append(toAdd, entry)
+			}
+			continue
+		}
+		if entry == "ssl/" {
+			if !anyLine(lines, sslDirLines) {
 				toAdd = append(toAdd, entry)
 			}
 			continue
@@ -92,6 +104,16 @@ func ensureGitignore(workDir string) error {
 		}
 	}
 	return nil
+}
+
+// anyLine reports whether any of the spellings is a whole line in lines.
+func anyLine(lines, spellings map[string]bool) bool {
+	for l := range spellings {
+		if lines[l] {
+			return true
+		}
+	}
+	return false
 }
 
 // writeFile writes content to path with the given permissions.
