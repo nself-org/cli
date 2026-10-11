@@ -8,7 +8,9 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -263,6 +265,66 @@ func TestSSLV15AddInstallKeepsMessage(t *testing.T) {
 	}
 	if got := acme.CodeFor(base); got != "" {
 		t.Errorf("CodeFor(untagged refusal) = %q, want none", got)
+	}
+}
+
+// TestSSLV15ExitClass: in v1.5 a re-coded failure exits with its registry
+// class even when the chain holds the failed docker process's *exec.ExitError
+// (exit 1), and shows the registry fix unless a refusal carries its own.
+func TestSSLV15ExitClass(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs sh")
+	}
+	t.Setenv("NSELF_V15", "1")
+	procErr := exec.Command("sh", "-c", "exit 1").Run()
+	var xe *exec.ExitError
+	if !errors.As(procErr, &xe) {
+		t.Fatalf("not an exit error: %v", procErr)
+	}
+	cases := []struct {
+		name, code string
+		exit       int
+		arrange    func(f *acmeFix)
+		registry   bool // the fix must be the registry DefaultFix
+	}{
+		{"lego fails", "E470", 2, func(f *acmeFix) {
+			acmeD.run = func(context.Context, docker.RunSpec) (string, string, error) {
+				return "", "boom", fmt.Errorf("docker run lego: %w", procErr)
+			}
+		}, true},
+		{"nginx -t fails after issue", "E471", 2, func(f *acmeFix) {
+			acmeD.exec = func(context.Context, string, []string) (string, string, error) {
+				return "", "bad conf", fmt.Errorf("docker exec nginx: %w", procErr)
+			}
+		}, true},
+		{"dns credential missing", "E472", 1, func(f *acmeFix) { delete(f.secrets, "SSL_DNS_CLOUDFLARE_API_TOKEN") }, false},
+	}
+	for _, c := range cases {
+		f := newACMEFix(t)
+		c.arrange(f)
+		err := driveSetup(f)
+		if got := codeOf(err); got != c.code {
+			t.Fatalf("%s: code = %q, want %q (%v)", c.name, got, c.code, err)
+		}
+		if got := errs.ExitCodeFor(err); got != c.exit {
+			t.Errorf("%s: exit = %d, want %d", c.name, got, c.exit)
+		}
+		var ce *errs.CLIError
+		if !errors.As(err, &ce) {
+			t.Fatalf("%s: no CLIError in %v", c.name, err)
+		}
+		if def := errs.Registry[c.code].DefaultFix; (ce.Fix == def) != c.registry {
+			t.Errorf("%s: fix = %q (registry default %q, want default: %v)", c.name, ce.Fix, def, c.registry)
+		}
+	}
+}
+
+// TestSSLV15CodeForLegoTail: lego's stderr tail can hold an install marker
+// word; the failure is still issuance (E470).
+func TestSSLV15CodeForLegoTail(t *testing.T) {
+	err := fmt.Errorf("lego run for app failed: %w\n%s", errors.New("exit status 1"), "switching to fallback resolver; nothing installed")
+	if got := acme.CodeFor(err); got != acme.CodeIssue {
+		t.Errorf("CodeFor = %q, want %q", got, acme.CodeIssue)
 	}
 }
 

@@ -6,7 +6,8 @@ package acme
 // all of them in v1.4. In v1.5 the failure class picks E470, E471 or E472.
 // Inputs: the error an ACME run returned (any wrapping depth).
 // Outputs: the code, or "" for an error that is none of the three classes (a
-// preflight refusal, a state-file error), which keeps its E151.
+// preflight refusal, a state-file error, a failed read of the files lego just
+// wrote), which keeps its E151.
 // Constraints: the classes are told apart by the engine's own message text
 // (lego.go, http01.go, install.go); TestSSLV15ErrorCodes (cmd/commands) drives the real
 // functions so a reworded message fails there, not in the field.
@@ -54,15 +55,17 @@ func CodeFor(err error) string {
 		}
 		return "" // a refusal: the run never reached the CA
 	}
+	// Issue first: a lego error carries lego's stderr tail, which may hold an
+	// install marker word ("switching ", "nothing installed", ...).
 	msg := err.Error()
-	for _, m := range installMarkers {
-		if strings.Contains(msg, m) {
-			return CodeInstall
-		}
-	}
 	for _, m := range issueMarkers {
 		if strings.Contains(msg, m) {
 			return CodeIssue
+		}
+	}
+	for _, m := range installMarkers {
+		if strings.Contains(msg, m) {
+			return CodeInstall
 		}
 	}
 	return ""
