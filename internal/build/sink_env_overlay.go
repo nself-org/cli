@@ -70,7 +70,7 @@ func (s *envOverlaySink) Stat(p string) (fs.FileInfo, error) {
 // of a file that exists (memSink.WriteFile would read it from the disk copy).
 func (s *envOverlaySink) WriteFile(p string, data []byte, perm fs.FileMode) error {
 	if _, ok := s.pending(p); ok {
-		return s.memSink.WriteAtomic(p, data, envOverlayPerm)
+		return s.WriteAtomic(p, data, envOverlayPerm)
 	}
 	return s.memSink.WriteFile(p, data, perm)
 }

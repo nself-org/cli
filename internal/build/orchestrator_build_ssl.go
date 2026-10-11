@@ -210,10 +210,9 @@ func (st *buildState) markFronting(sitesDir string) {
 	if strings.HasPrefix(sitesDir, st.workdir+string(filepath.Separator)) {
 		return
 	}
-	switch m := st.sink.(type) {
-	case *memSink:
+	if m := planSink(st.sink); m != nil { // memSink, or the env-overlay wrapper (P7-LIVE-05)
 		m.fronting = sitesDir
-	case *expectSink:
+	} else if m, ok := st.sink.(*expectSink); ok {
 		m.setFronting(sitesDir)
 	}
 }

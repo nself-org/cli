@@ -13,11 +13,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	nbuild "github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/oplock"
 )
 
 func TestEnvFileWithLine(t *testing.T) {
@@ -98,18 +103,49 @@ func TestPendingEnv(t *testing.T) {
 }
 
 func TestPendingHandEdited(t *testing.T) {
+	dir := t.TempDir()
 	next := func(p string) bool { return p == "other" }
-	if f := pendingHandEdited(next, nil, nil); !f("other") {
+	if f := pendingHandEdited(next, nil, nil, dir); !f("other") {
 		t.Fatal("no overlay must return next unchanged")
 	}
 	state := &GeneratedState{Files: map[string]string{".env.secrets": sha256Hex([]byte("S=x\n"))}}
-	f := pendingHandEdited(next, state, map[string][]byte{".env.secrets": []byte("S=x\n")})
+	f := pendingHandEdited(next, state, map[string][]byte{".env.secrets": []byte("S=x\n")}, dir)
 	if f(".env.secrets") || !f("other") || f("nope") {
 		t.Fatal("pending bytes equal to the record are not hand-edited; others go to next")
 	}
-	f = pendingHandEdited(nil, state, map[string][]byte{".env.secrets": []byte("S=y\n")})
-	if !f(".env.secrets") || f("other") {
-		t.Fatal("pending bytes that differ from the record are hand-edited; nil next is never")
+	f = pendingHandEdited(next, state, map[string][]byte{".env.secrets": []byte("S=y\n")}, dir)
+	if !f(".env.secrets") {
+		t.Fatal("pending bytes that differ from the record are hand-edited")
+	}
+	if pendingHandEdited(nil, state, map[string][]byte{".env": nil}, dir) != nil {
+		t.Fatal("no detection asked for stays no detection")
+	}
+}
+
+// TestPendingHandEditedFronting: a pending NGINX_FRONTED_BY moves the fronting
+// stack the hand-edit check reads; the disk's value is not used.
+func TestPendingHandEditedFronting(t *testing.T) {
+	t.Setenv("ENV", "")
+	t.Setenv("NGINX_FRONTED_BY", "")
+	root := t.TempDir()
+	project := filepath.Join(root, "front", "backend")
+	writeFile(t, filepath.Join(project, ".env"), "PROJECT_NAME=p\n", 0o600)
+	conf := "server {}\n"
+	writeFile(t, filepath.Join(root, "front", "nginx", "f.conf"), "edited by hand\n", 0o644)
+	state := &GeneratedState{Files: map[string]string{FrontingPrefix + "nginx/f.conf": sha256Hex([]byte(conf))}}
+	next := state.HandEditedFn(project)
+	if next(FrontingPrefix + "nginx/f.conf") {
+		t.Fatal("without NGINX_FRONTED_BY on disk the fronting path must not resolve")
+	}
+	f := pendingHandEdited(next, state, map[string][]byte{".env": []byte("PROJECT_NAME=p\nNGINX_FRONTED_BY=front\n")}, project)
+	if !f(FrontingPrefix + "nginx/f.conf") {
+		t.Fatal("the pending NGINX_FRONTED_BY must resolve the fronting stack and see the hand edit")
+	}
+	// A pending ENV picks the layer that names the stack.
+	writeFile(t, filepath.Join(project, ".env.staging"), "NGINX_FRONTED_BY=front\n", 0o600)
+	f = pendingHandEdited(next, state, map[string][]byte{".env": []byte("PROJECT_NAME=p\nENV=staging\n")}, project)
+	if !f(FrontingPrefix + "nginx/f.conf") {
+		t.Fatal("the pending ENV must select .env.staging for NGINX_FRONTED_BY")
 	}
 }
 
@@ -352,4 +388,86 @@ func readFixtureEnv(t *testing.T, f *fixture) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// TestApplyRollbackUnderLock: a failure after BeforeWrite runs Rollback while
+// the project lock is still held (its token is exported), joins a rollback
+// error, and a failure before BeforeWrite never rolls back.
+func TestApplyRollbackUnderLock(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	applyFixture(t, f)
+	_ = os.Unsetenv(oplock.EnvToken)
+	oldBuild := buildBuild
+	t.Cleanup(func() { buildBuild = oldBuild })
+	writeFailed := errors.New("write build failed")
+	buildBuild = func(string, nbuild.BuildOptions) (*nbuild.BuildResult, error) { return nil, writeFailed }
+	req := Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("fixture-seed"),
+		EnvOverlay: map[string]map[string]string{".env": {"BASE_DOMAIN": "other.test"}}}
+	var underLock, rolled bool
+	_, err := Apply(context.Background(), req, ApplyOptions{
+		BeforeWrite: func() error { writeLine(t, f, ".env", "BASE_DOMAIN", "other.test"); return nil },
+		Rollback: func() error {
+			rolled, underLock = true, os.Getenv(oplock.EnvToken) != ""
+			return errors.New("rollback failed")
+		},
+	})
+	if !errors.Is(err, writeFailed) || !strings.Contains(fmt.Sprint(err), "rollback failed") {
+		t.Fatalf("err = %v, want the write error joined with the rollback error", err)
+	}
+	if !rolled || !underLock {
+		t.Fatalf("rollback ran=%v under the lock=%v", rolled, underLock)
+	}
+	// A refusal (prod-class env, no --yes, v1.5) fails before BeforeWrite.
+	compattest.Set(t, true)
+	rolled = false
+	req.EnvOverlay = map[string]map[string]string{".env": {"ENV": "prod"}}
+	_, err = Apply(context.Background(), req, ApplyOptions{
+		Rollback: func() error { rolled = true; return nil },
+	})
+	if err == nil || rolled {
+		t.Fatalf("a refusal must not roll back: err=%v rolled=%v", err, rolled)
+	}
+}
+
+// TestPlanEnvLeavingProdNeedsConfirmation: a pending ENV change away from a
+// prod-class env requires confirmation and names both envs in the header.
+func TestPlanEnvLeavingProdNeedsConfirmation(t *testing.T) {
+	f := loadFixture(t, "prod-ssl")
+	applyFixture(t, f)
+	p := planOf(t, f, func(r *Request) { r.EnvOverlay = map[string]map[string]string{".env": {"ENV": "dev"}} })
+	if p.Empty || p.EnvClass != ClassDev || !p.RequiresConfirmation {
+		t.Fatalf("empty=%v class=%v requires_confirmation=%v", p.Empty, p.EnvClass, p.RequiresConfirmation)
+	}
+	var sb strings.Builder
+	if err := RenderHuman(&sb, *p); err != nil || !strings.Contains(sb.String(), "env prod → dev/dev") {
+		t.Fatalf("header: %q %v", sb.String(), err)
+	}
+	same := planOf(t, f, func(r *Request) {
+		r.EnvOverlay = map[string]map[string]string{".env": {"BASE_DOMAIN": "x.example.org"}}
+		r.EnvBefore = "dev" // an explicit EnvBefore is used as given
+	})
+	if same.EnvClass != ClassProd || !same.RequiresConfirmation {
+		t.Fatalf("a prod plan still needs confirmation: %+v", same)
+	}
+}
+
+// TestDiskEnvLikeConfigLoad: the ENV a pending change starts from is the one
+// config.Load ends with: a file value wins over the process environment, the
+// layer picked by ENV counts, and nothing set means dev.
+func TestDiskEnvLikeConfigLoad(t *testing.T) {
+	t.Setenv("ENV", "")
+	dir := t.TempDir()
+	if got := diskEnv(dir); got != "dev" {
+		t.Fatalf("empty project: %q", got)
+	}
+	writeFile(t, filepath.Join(dir, ".env"), "ENV=dev\n", 0o600)
+	t.Setenv("ENV", "prod")
+	if got := diskEnv(dir); got != "dev" {
+		t.Fatalf("the .env value must win over the process env, as Overload does: %q", got)
+	}
+	t.Setenv("ENV", "")
+	writeFile(t, filepath.Join(dir, ".env.secrets"), "ENV=staging\n", 0o600)
+	if got := diskEnv(dir); got != "staging" {
+		t.Fatalf("a later layer wins: %q", got)
+	}
 }

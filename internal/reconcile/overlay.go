@@ -9,6 +9,7 @@ package reconcile
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -137,16 +138,23 @@ func validEnvName(name string) bool {
 }
 
 // pendingHandEdited judges an overlaid env file on its pending bytes, as the
-// apply will find it after the line is written; other paths go to next.
-func pendingHandEdited(next func(string) bool, state *GeneratedState, env map[string][]byte) func(string) bool {
-	if len(env) == 0 {
+// apply will find it after the line is written; other paths go to next. A nil
+// next (no hand-edit detection asked for) stays nil.
+// A fronting path is resolved against the fronting stack the pending env
+// names (a change of NGINX_FRONTED_BY moves it).
+func pendingHandEdited(next func(string) bool, state *GeneratedState, env map[string][]byte, projectDir string) func(string) bool {
+	if len(env) == 0 || next == nil {
 		return next
 	}
+	fronting := state.handEditedFnWith(projectDir, env)
 	return func(path string) bool {
 		if data, ok := env[path]; ok {
 			return state.HandEdited(path, data)
 		}
-		return next != nil && next(path)
+		if strings.HasPrefix(path, FrontingPrefix) {
+			return fronting(path)
+		}
+		return next(path)
 	}
 }
 
@@ -192,4 +200,28 @@ func quoteEnvLineValue(v string) string {
 		return `"` + strings.ReplaceAll(v, `"`, `\"`) + `"`
 	}
 	return v
+}
+
+// rollbackOnFailure wraps opt.BeforeWrite to note that it ran and returns the
+// deferred step that calls opt.Rollback when the apply then fails (*err set).
+func rollbackOnFailure(opt *ApplyOptions, err *error) func() {
+	if opt.Rollback == nil {
+		return func() {}
+	}
+	wrote := false
+	before := opt.BeforeWrite
+	opt.BeforeWrite = func() error {
+		wrote = true
+		if before != nil {
+			return before()
+		}
+		return nil
+	}
+	return func() {
+		if *err != nil && wrote {
+			if rerr := opt.Rollback(); rerr != nil {
+				*err = errors.Join(*err, rerr)
+			}
+		}
+	}
 }

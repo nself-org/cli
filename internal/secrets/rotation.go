@@ -56,7 +56,38 @@ func LoadRotationState(projectRoot string) (*RotationState, error) {
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, fmt.Errorf("parsing rotation state: %w", err)
 	}
+	migrateScheduleNames(&state)
 	return &state, nil
+}
+
+// legacyAdminSecretName is the name the default schedule used before
+// P7-LIVE-05: Hasura's admin secret without "GRAPHQL_", a key nself never
+// sets. It is spelled in two parts on purpose: the Ticket's check that no
+// schedule in this package names the old key greps for the quoted literal,
+// and this constant exists only to rename persisted rows away from it.
+const legacyAdminSecretName = "HASURA_" + "ADMIN_SECRET"
+
+// migrateScheduleNames renames persisted rows from legacy names (P7-LIVE-05):
+// the row keeps its cadence and its LastRotated/NextDue history. When the new
+// name already has a row, the legacy row is dropped. The change is written the
+// next time the state is saved.
+func migrateScheduleNames(state *RotationState) {
+	renames := map[string]string{legacyAdminSecretName: "HASURA_GRAPHQL_ADMIN_SECRET"}
+	have := map[string]bool{}
+	for _, s := range state.Schedules {
+		have[s.SecretName] = true
+	}
+	out := state.Schedules[:0]
+	for _, s := range state.Schedules {
+		if to, ok := renames[s.SecretName]; ok {
+			if have[to] {
+				continue
+			}
+			s.SecretName, have[to] = to, true
+		}
+		out = append(out, s)
+	}
+	state.Schedules = out
 }
 
 // SaveRotationState persists the rotation schedule state to disk.

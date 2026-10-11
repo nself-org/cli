@@ -106,6 +106,16 @@ func TestConfigSetPreviewWritesNothing(t *testing.T) {
 			if r.code != 0 {
 				t.Fatalf("%s v15=%v: preview --json exited %d\n%s", fixture, v15, r.code, r.stderr)
 			}
+			if !v15 {
+				// v1.4: config set's --json stays accepted and ignored.
+				if !strings.Contains(r.stdout, "Preview: BASE_DOMAIN") {
+					t.Fatalf("%s v1.4: --preview --json must print the human plan:\n%s", fixture, r.stdout)
+				}
+				if after := p.whole(t); after != before {
+					t.Fatalf("%s v1.4: --preview changed the root:\n%s", fixture, l03LineDiff(before, after))
+				}
+				continue
+			}
 			data := validateEnvelope(t, r.stdout, "config set")
 			plan, _ := data["plan"].(map[string]any)
 			trig, _ := plan["trigger"].(map[string]any)
@@ -250,9 +260,14 @@ func TestConfigSetRestoresEnvOnInjectedFailure(t *testing.T) {
 	old := configSetApply
 	t.Cleanup(func() { configSetApply = old })
 	injected := errors.New("injected apply failure")
+	// writeThenFail stands in for reconcile.Apply failing after the write: it
+	// calls Rollback the way Apply does (TestApplyRollback* in reconcile).
 	writeThenFail := func(_ context.Context, _ reconcile.Request, opt reconcile.ApplyOptions) (*reconcile.Plan, error) {
 		if err := opt.BeforeWrite(); err != nil {
 			return nil, err
+		}
+		if err := opt.Rollback(); err != nil {
+			return nil, errors.Join(injected, err)
 		}
 		return nil, injected
 	}
@@ -313,6 +328,61 @@ func TestConfigSetRelFile(t *testing.T) {
 		if got := r.relFile(); got != want {
 			t.Errorf("--env %q: relFile %q, want %q", env, got, want)
 		}
+	}
+}
+
+// TestConfigSetProdToDevNeedsYes: changing ENV away from prod is a prod-class
+// change: without --yes it is refused (E403, exit 4) and .env is unchanged.
+func TestConfigSetProdToDevNeedsYes(t *testing.T) {
+	p := builtL03(t, "prod-plugins", true, "--yes")
+	envPath := filepath.Join(p.project, ".env")
+	was := readFileT(t, envPath)
+	r := p.run(t, true, "config", "set", "ENV", "dev")
+	if r.code != 4 || !strings.Contains(r.stderr, "E403") || !strings.Contains(r.stderr, "env prod → dev/dev") {
+		t.Fatalf("exit %d, want 4 with E403 and the env change in the plan header\n%s\n%s", r.code, r.stdout, r.stderr)
+	}
+	if readFileT(t, envPath) != was {
+		t.Fatal("the refused ENV change wrote .env")
+	}
+	if r = p.run(t, true, "config", "set", "ENV", "dev", "--yes"); r.code != 0 {
+		t.Fatalf("--yes exited %d\n%s", r.code, r.stderr)
+	}
+}
+
+// TestConfigSetRestoreKeepsSymlink: restoring a symlinked env file writes the
+// target and keeps the link.
+func TestConfigSetRestoreKeepsSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	dir := t.TempDir()
+	target := filepath.Join(dir, "real.env")
+	if err := os.WriteFile(target, []byte("KEY=old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, ".env")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	w := &envLineWrite{path: link}
+	if err := w.write("KEY", "new"); err != nil {
+		t.Fatal(err)
+	}
+	w.releaseSignals()
+	if err := w.restore(); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the link was replaced: %v %v", info, err)
+	}
+	if got := readFileT(t, target); got != "KEY=old\n" {
+		t.Fatalf("target not restored: %q", got)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, ".nself-restore-*")); len(left) != 0 {
+		t.Fatalf("temp files left: %v", left)
+	}
+	if err := (&envLineWrite{path: link}).restore(); err != nil {
+		t.Fatalf("a restore with no write must do nothing: %v", err)
 	}
 }
 

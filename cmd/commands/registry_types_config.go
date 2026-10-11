@@ -2,8 +2,8 @@
 //
 // Purpose: config show/get/list answer with the v1 envelope in v1.5 mode only;
 // their --json was accepted and ignored before P7-REG (EPIC D8). config set
-// (P7-LIVE-05) answers with configSetData: in v1.5 mode after an apply, and in
-// both modes with --preview (a new flag, nothing to stay compatible with).
+// (P7-LIVE-05) answers with configSetData in v1.5 mode (an apply or a
+// --preview); in v1.4 mode its --json stays accepted and ignored.
 // Constraints: registers from init(); see registry_types.go for the rules.
 
 package commands

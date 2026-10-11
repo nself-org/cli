@@ -59,6 +59,12 @@ type Request struct {
 	// pendingEnv); nothing is written by Plan or Compute. Apply's write build
 	// reads the disk, so the caller writes the lines in BeforeWrite.
 	EnvOverlay map[string]map[string]string
+	// EnvBefore is the project's ENV before the pending lines (empty: resolved
+	// from the disk as config.Load would, when EnvOverlay is set). A prod-class EnvBefore makes a
+	// non-empty plan need confirmation even when the lines change ENV to a
+	// dev-class one (`config set ENV dev` on a prod box). ApplyBuild resolves it
+	// once, before BeforeWrite, so its rechecks after the write agree.
+	EnvBefore string
 }
 
 // ApplyOptions are the operator's answers to a plan.
@@ -75,6 +81,10 @@ type ApplyOptions struct {
 	// Interactive asks the operator a yes/no question and reports the answer.
 	// Nil means the session is not interactive: nothing can be asked.
 	Interactive func(prompt string) bool
+	// Rollback runs when the apply fails after BeforeWrite was called, still
+	// under the project lock, so no other command sees the half-applied state
+	// first; its error joins the apply error. Nil does nothing.
+	Rollback func() error
 }
 
 // ContainerRuntime is the docker half of container impact. The default

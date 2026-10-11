@@ -57,10 +57,17 @@ func (s *GeneratedState) HandEdited(path string, current []byte) bool {
 // current bytes. A nil record (no state yet) answers false for everything:
 // the first run on an existing project records and never blocks.
 func (s *GeneratedState) HandEditedFn(projectDir string) func(path string) bool {
+	return s.handEditedFnWith(projectDir, nil)
+}
+
+// handEditedFnWith is HandEditedFn with the env files a pending change will
+// leave (P7-LIVE-05): the fronting stack is resolved from them, so a change of
+// NGINX_FRONTED_BY is judged against the stack the build will write to.
+func (s *GeneratedState) handEditedFnWith(projectDir string, env map[string][]byte) func(path string) bool {
 	var fronting string
 	var frontingOK, frontingDone bool
 	return func(path string) bool {
-		disk, ok := displayDiskPath(projectDir, path, &fronting, &frontingOK, &frontingDone)
+		disk, ok := displayDiskPath(projectDir, env, path, &fronting, &frontingOK, &frontingDone)
 		if !ok {
 			return false
 		}
@@ -103,12 +110,12 @@ func displayPath(key string) string {
 // out the way the build resolves it (NGINX_FRONTED_BY naming the parent
 // directory); its resolution is computed once and cached in the three closure
 // variables HandEditedFn owns.
-func displayDiskPath(projectDir, display string, fronting *string, frontingOK, frontingDone *bool) (string, bool) {
+func displayDiskPath(projectDir string, env map[string][]byte, display string, fronting *string, frontingOK, frontingDone *bool) (string, bool) {
 	rel := filepath.FromSlash(strings.TrimPrefix(display, FrontingPrefix))
 	switch {
 	case strings.HasPrefix(display, FrontingPrefix):
 		if !*frontingDone {
-			*fronting, *frontingOK = frontingRoot(projectDir)
+			*fronting, *frontingOK = frontingRoot(projectDir, env)
 			*frontingDone = true
 		}
 		if !*frontingOK {
@@ -126,23 +133,48 @@ func displayDiskPath(projectDir, display string, fronting *string, frontingOK, f
 
 // frontingRoot resolves the fronting stack's root the way the build does:
 // NGINX_FRONTED_BY names the stack and its root is the parent directory when
-// that directory carries the name (nginxtopo.ResolveFrontingDir). The key is
-// read from the env cascade, a file value winning over the process
-// environment exactly as config.Load's Overload does, without loading the
-// whole config.
-func frontingRoot(projectDir string) (string, bool) {
-	value := os.Getenv("NGINX_FRONTED_BY")
+// that directory carries the name (nginxtopo.ResolveFrontingDir). pending,
+// when set, stands in for the named env files (P7-LIVE-05).
+func frontingRoot(projectDir string, pending map[string][]byte) (string, bool) {
+	return nginxtopo.ResolveFrontingDir(projectDir, strings.TrimSpace(cascadeValue(projectDir, pending, "NGINX_FRONTED_BY")))
+}
+
+// cascadeValue reads one key from the env cascade the way config.Load leaves
+// it, without loading the whole config: the cascade layer is chosen by ENV as
+// config.ResolveEnv chooses it, and a file value wins over the process
+// environment (godotenv.Overload). pending, when set, stands in for the named
+// env files. Empty when no source sets the key.
+func cascadeValue(projectDir string, pending map[string][]byte, key string) string {
+	value := os.Getenv(key)
 	env, _ := config.ResolveEnv(projectDir)
+	if data, ok := pending[".env"]; ok && os.Getenv("ENV") == "" {
+		env = "dev"
+		if m, err := godotenv.UnmarshalBytes(data); err == nil && m["ENV"] != "" {
+			env = m["ENV"]
+		}
+	}
 	for _, name := range config.EnvCascadeOrder(env, config.LegacyOrderActive()) {
 		m, err := godotenv.Read(filepath.Join(projectDir, name))
+		if data, ok := pending[name]; ok {
+			m, err = godotenv.UnmarshalBytes(data)
+		}
 		if err != nil {
 			continue
 		}
-		if v, ok := m["NGINX_FRONTED_BY"]; ok {
+		if v, ok := m[key]; ok {
 			value = v
 		}
 	}
-	return nginxtopo.ResolveFrontingDir(projectDir, strings.TrimSpace(value))
+	return value
+}
+
+// diskEnv is the project's ENV as config.Load resolves it from the files on
+// disk now ("dev" when nothing sets it): the env a pending change starts from.
+func diskEnv(projectDir string) string {
+	if v := cascadeValue(projectDir, nil, "ENV"); strings.TrimSpace(v) != "" {
+		return v
+	}
+	return "dev"
 }
 
 // warnHandEdits prints the unified diff of every hand-edited artifact the plan

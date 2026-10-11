@@ -172,6 +172,10 @@ type Plan struct {
 	DestructiveReasons   []string     `json:"destructive_reasons"`
 	RequiresConfirmation bool         `json:"requires_confirmation"`
 	Empty                bool         `json:"empty"`
+	// EnvBefore is the ENV before a pending env change (P7-LIVE-05), when the
+	// change sets ENV itself; empty otherwise. Not part of the contract: it only
+	// feeds RequiresConfirmation and the human header.
+	EnvBefore string `json:"-"`
 }
 
 // Finalize normalises the plan and computes every derived field.
@@ -195,7 +199,9 @@ func (p *Plan) Finalize() error {
 	p.Empty = len(p.Artifacts) == 0 && len(p.Effects) == 0 && len(p.Containers.Items) == 0 && p.Containers.Known
 	p.DestructiveReasons = destructiveReasons(p)
 	p.Destructive = len(p.DestructiveReasons) > 0
-	p.RequiresConfirmation = p.EnvClass == ClassProd && !p.Empty
+	// A change that leaves a prod-class env (EnvBefore) is confirmed like one
+	// that targets it: `config set ENV dev` on a prod box is a prod change.
+	p.RequiresConfirmation = (p.EnvClass == ClassProd || (p.EnvBefore != "" && EnvClass(p.EnvBefore) == ClassProd)) && !p.Empty
 	id, err := PlanID(*p)
 	if err != nil {
 		return err

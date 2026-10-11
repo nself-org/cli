@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/reconcile"
 	"github.com/nself-org/cli/internal/security"
 	"github.com/nself-org/cli/internal/ui"
@@ -45,6 +46,8 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 
 	envFile := envFileName(projectDir, envFlag)
 	jsonOut, _ := cmd.Flags().GetBool("json")
+	// compat.V15(P7-LIVE-05): --json accepted and ignored -> v1 envelope {key, file, applied, plan}
+	jsonOut = jsonOut && compat.V15()
 	// P7-LIVE-05: plan the regeneration the change causes, then write the
 	// line (and in v1.5 apply it). See config_set_plan.go.
 	return configSetRun{cmd: cmd, projectDir: projectDir, envFile: envFile, key: key, value: value,

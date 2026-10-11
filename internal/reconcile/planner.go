@@ -103,7 +103,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 		}
 		before[GeneratedStateDisplayPath] = File{Data: raw, Perm: perm}
 	}
-	arts := append(Diff(before, after, pendingHandEdited(req.HandEdited, state, env)), modeArtifacts(before, after)...)
+	arts := append(Diff(before, after, pendingHandEdited(req.HandEdited, state, env, req.ProjectDir)), modeArtifacts(before, after)...)
 	p := &Plan{
 		Command:   req.Command,
 		Trigger:   req.Trigger,
@@ -113,6 +113,12 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	}
 	if p.Command == "" {
 		p.Command = CmdBuild
+	}
+	if len(req.EnvOverlay) > 0 {
+		p.EnvBefore = req.EnvBefore
+		if p.EnvBefore == "" {
+			p.EnvBefore = diskEnv(req.ProjectDir)
+		}
 	}
 	if p.Trigger.Kind == "" {
 		p.Trigger.Kind = TriggerBuild

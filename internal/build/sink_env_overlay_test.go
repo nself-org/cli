@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -69,5 +70,36 @@ func TestEnvOverlaySink(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".env.secrets")); !os.IsNotExist(err) {
 		t.Fatal("the overlay sink wrote to disk")
+	}
+}
+
+// TestEnvOverlayPlanMatchesPlainPlan: on every plan fixture (including the
+// fronted layout, whose files get "@fronting/" keys), an overlay that holds
+// the .env bytes already on disk plans exactly what a plain plan does.
+func TestEnvOverlayPlanMatchesPlainPlan(t *testing.T) {
+	for _, name := range []string{"dev-minimal", "fronted", "prod-plugins"} {
+		t.Run(name, func(t *testing.T) {
+			f := newPlanFixture(t, name)
+			dotenv, err := os.ReadFile(filepath.Join(f.workdir, ".env"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan := func(overlay map[string][]byte) *PlannedBuild {
+				res, err := Build(f.workdir, BuildOptions{Mode: ModePlan, Rand: strings.NewReader(strings.Repeat("s", 4096)), EnvOverlay: overlay})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return res.Planned
+			}
+			plain, over := plan(nil), plan(map[string][]byte{".env": dotenv})
+			if len(plain.Files) != len(over.Files) {
+				t.Fatalf("planned %d files with the overlay, %d without", len(over.Files), len(plain.Files))
+			}
+			for k, pf := range plain.Files {
+				if of, ok := over.Files[k]; !ok || string(of.Data) != string(pf.Data) || of.Perm != pf.Perm {
+					t.Fatalf("planned %s differs with the overlay (present=%v)", k, ok)
+				}
+			}
+		})
 	}
 }

@@ -145,3 +145,46 @@ func TestDefaultSchedulesTrackHasuraGraphQLAdminSecret(t *testing.T) {
 	}
 	t.Fatal("DefaultSchedules does not track HASURA_GRAPHQL_ADMIN_SECRET")
 }
+
+// TestLoadRotationStateMigratesLegacyName: a state saved before P7-LIVE-05
+// tracks the admin secret under the old name; loading renames the row and
+// keeps its history, and drops it when the new name already has a row.
+func TestLoadRotationStateMigratesLegacyName(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		schedules []RotationSchedule
+		wantLast  string
+	}{
+		{"rename", []RotationSchedule{{SecretName: legacyAdminSecretName, CadenceDays: 180, WindowDays: 3, LastRotated: "2026-01-02T00:00:00Z", NextDue: "2026-07-01T00:00:00Z"}}, "2026-01-02T00:00:00Z"},
+		{"both present", []RotationSchedule{
+			{SecretName: legacyAdminSecretName, CadenceDays: 180, LastRotated: "2025-01-01T00:00:00Z"},
+			{SecretName: "HASURA_GRAPHQL_ADMIN_SECRET", CadenceDays: 180, LastRotated: "2026-03-03T00:00:00Z"},
+		}, "2026-03-03T00:00:00Z"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := SaveRotationState(dir, &RotationState{Schedules: tc.schedules}); err != nil {
+				t.Fatal(err)
+			}
+			state, err := LoadRotationState(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var found int
+			for _, s := range state.Schedules {
+				if s.SecretName == legacyAdminSecretName {
+					t.Fatal("the legacy name survived the load")
+				}
+				if s.SecretName == "HASURA_GRAPHQL_ADMIN_SECRET" {
+					found++
+					if s.LastRotated != tc.wantLast {
+						t.Fatalf("LastRotated = %q, want %q", s.LastRotated, tc.wantLast)
+					}
+				}
+			}
+			if found != 1 {
+				t.Fatalf("HASURA_GRAPHQL_ADMIN_SECRET rows = %d, want 1", found)
+			}
+		})
+	}
+}

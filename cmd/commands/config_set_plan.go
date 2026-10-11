@@ -9,25 +9,25 @@ package commands
 // plan and writes nothing, not even the env line.
 //   - v1.5: plan -> confirm (a prod-class env needs --yes or a terminal yes;
 //     non-interactive refuses with E403, exit 4; a hand-edited overwrite needs
-//     --force) -> write the env line -> apply (the build pipeline; no container
-//     is restarted). If the apply fails after the line was written, the env
-//     file is restored byte for byte and the apply error is returned.
+//     --force; a change away from a prod-class ENV counts as prod-class) ->
+//     write the env line -> apply (the build pipeline; no container is
+//     restarted). If the apply fails after the line was written, the env file
+//     is restored byte for byte (under the project lock, atomically) and the
+//     apply error is returned.
 //   - v1.4: write the line as before, then print the plan summary and a
 //     notice on stderr; nothing is regenerated (stdout unchanged).
 //
 // Inputs: the parsed command (key, value, --env file, --preview, --yes,
 // --force, --json). Outputs: the env write, the applied plan and its one-line
-// summary `config: KEY → <n> artifacts changed (<kinds>)`, or with --json the
-// v1 envelope {key, file, applied, plan}.
+// summary `config: KEY → <n> artifacts changed (<kinds>)`, or with --json
+// (v1.5 mode) the v1 envelope {key, file, applied, plan}.
 // Constraints: only cmd/commands calls reconcile (EPIC D6). `secrets rotate`
 // is not wired here (EPIC D24); a live secret rotates with
 // `config set <KEY> <value> --env secrets`.
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -36,7 +36,6 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/reconcile"
-	"github.com/nself-org/cli/internal/security"
 	"github.com/spf13/cobra"
 )
 
@@ -137,26 +136,34 @@ func (r configSetRun) writeOnly() error {
 	return nil
 }
 
-// apply is the v1.5 behaviour: plan, confirm, write the line, regenerate;
-// restore the env file if anything fails after the line was written.
+// apply is the v1.5 behaviour: plan, confirm, write the line, regenerate.
+// If anything fails after the line was written, the rollback (run by Apply
+// under the project lock) puts the env file back. From the write until Apply
+// returns, SIGINT/SIGTERM are held back so an interrupt cannot strand the new
+// line next to a half-written tree; a held signal is reported afterwards.
 func (r configSetRun) apply() error {
 	yes, _ := r.cmd.Flags().GetBool("yes")
 	force, _ := r.cmd.Flags().GetBool("force")
+	stderr := r.cmd.ErrOrStderr()
 	w := &envLineWrite{path: r.envFile}
-	opt := reconcile.ApplyOptions{Yes: yes, Force: force, BeforeWrite: func() error {
-		return w.write(r.key, r.value)
-	}}
+	defer w.releaseSignals()
+	opt := reconcile.ApplyOptions{Yes: yes, Force: force,
+		BeforeWrite: func() error { return w.write(r.key, r.value) },
+		Rollback: func() error {
+			if err := w.restore(); err != nil {
+				return fmt.Errorf("restoring %s: %w", r.envFile, err)
+			}
+			_, _ = fmt.Fprintf(stderr, "nself: %s restored; %s is unchanged. Generated files may be partly rewritten: review with 'nself build --plan'.\n", r.envFile, r.key)
+			return nil
+		}}
 	if !r.jsonOut {
 		opt.Interactive = interactiveConfirm(r.cmd)
 	}
 	p, err := configSetApply(context.Background(), r.request(), opt)
+	if sig := w.releaseSignals(); sig != nil {
+		_, _ = fmt.Fprintf(stderr, "nself: %v received during the apply; it was held until the apply finished\n", sig)
+	}
 	if err != nil {
-		if w.written {
-			if rerr := w.restore(); rerr != nil {
-				return errors.Join(configSetApplyError(r.key, err), fmt.Errorf("restoring %s: %w", r.envFile, rerr))
-			}
-			_, _ = fmt.Fprintf(r.cmd.ErrOrStderr(), "nself: %s restored; %s is unchanged. Generated files may be partly rewritten: review with 'nself build --plan'.\n", r.envFile, r.key)
-		}
 		return configSetApplyError(r.key, err)
 	}
 	if r.jsonOut {
@@ -176,43 +183,6 @@ func configSetApplyError(key string, err error) error {
 			WithFix("review the change with --preview, then rerun with --yes (and --force for hand-edited files)")
 	}
 	return fmt.Errorf("config set %s: %w", key, err)
-}
-
-// envLineWrite writes the env line inside the held apply and remembers the
-// bytes it replaced, so a failed apply can put them back.
-type envLineWrite struct {
-	path             string
-	prev             []byte
-	existed, written bool
-	updated          bool
-}
-
-func (w *envLineWrite) write(key, value string) error {
-	data, err := os.ReadFile(w.path)
-	switch {
-	case err == nil:
-		w.prev, w.existed = data, true
-	case !os.IsNotExist(err):
-		return fmt.Errorf("reading %s: %w", w.path, err)
-	}
-	w.written = true // set before the write: a partial write is restored too
-	w.updated, err = setEnvFileLine(w.path, key, value)
-	return err
-}
-
-// restore puts back the bytes the write replaced (mode stays 0600), or removes
-// a file the write created.
-func (w *envLineWrite) restore() error {
-	if !w.existed {
-		if err := os.Remove(w.path); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		return nil
-	}
-	if err := os.WriteFile(w.path, w.prev, 0600); err != nil {
-		return err
-	}
-	return security.EnforceFilePermissions(w.path, 0600)
 }
 
 // configSetSummary is the one-line cascade summary of a plan.

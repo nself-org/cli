@@ -25,7 +25,11 @@ func RenderHuman(w io.Writer, p Plan) error {
 	if len(id) > idPrefixLen {
 		id = id[:idPrefixLen]
 	}
-	fmt.Fprintf(&sb, "Plan %s (%s, env %s/%s)\n", id, p.Command, p.Env, p.EnvClass)
+	env := p.Env
+	if p.EnvBefore != "" && NormalizeEnv(p.EnvBefore) != p.Env {
+		env = NormalizeEnv(p.EnvBefore) + " → " + p.Env
+	}
+	fmt.Fprintf(&sb, "Plan %s (%s, env %s/%s)\n", id, p.Command, env, p.EnvClass)
 	if p.Empty {
 		sb.WriteString("(no changes)\n")
 	}
