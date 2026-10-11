@@ -102,7 +102,7 @@ func TestSecretRef(t *testing.T) {
 		{"   ", "${MEILISEARCH_MASTER_KEY:-}"},
 		{"ab12", "${MEILISEARCH_MASTER_KEY}"},
 		{"a/b@c:d?e%f", "${MEILISEARCH_MASTER_KEY}"},
-		// compose.env is unquoted: these stay literal until D-0329.
+		// compose.env is unquoted: these stay literal until D-0330.
 		{"ab #cd", "ab #cd"},
 		{"ab$cd", "ab$cd"},
 		{"ab'cd", "ab'cd"},
