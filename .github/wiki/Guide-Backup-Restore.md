@@ -50,7 +50,7 @@ Compatible with AWS S3, MinIO, Cloudflare R2, Backblaze B2, and any S3-compatibl
 
 Values that rclone could read as an option (`-x`, `--config=...`), connection strings (`:s3,key=...:bucket`) and other URL schemes (`file://`, `http://`) are refused before anything runs.
 
-Credentials never go in the destination. `backup schedule` writes `--to` and `--heartbeat-to` into a systemd unit, so it refuses a value that carries inline options or credentials (`:s3,access_key_id=...:bucket`, `s3://KEY:SECRET@bucket/path`). Use a named remote from `rclone.conf` (`rclone config`), or define the remote in the environment with `RCLONE_CONFIG_<NAME>_TYPE` and its keys, put those lines in a file and pass it with `backup schedule --env-file`, then give the destination as `<name>:<path>`. The service unit is written with mode 0600.
+Credentials never go in the destination, and that includes userinfo in a scheme URI: `s3://user@bucket` and `s3://KEY:SECRET@bucket/path` are refused on purpose, because no bucket name can hold `@` or `:`. `backup schedule` writes `--to` and `--heartbeat-to` into a systemd unit, so it refuses a value that carries inline options or credentials (`:s3,access_key_id=...:bucket`, `s3://KEY:SECRET@bucket/path`). Use a named remote from `rclone.conf` (`rclone config`), or define the remote in the environment with `RCLONE_CONFIG_<NAME>_TYPE` and its keys, put those lines in a file and pass it with `backup schedule --env-file`, then give the destination as `<name>:<path>`. The service unit is written with mode 0600.
 
 ## Encryption and the backup key
 

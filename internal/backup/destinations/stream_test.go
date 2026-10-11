@@ -47,6 +47,15 @@ func TestHasInlineCredentialsAndParseRefusals(t *testing.T) {
 		{"s3://" + fakeKeyID + ":" + fakeSecret + "@bucket/p", true, false},
 		{"file:///etc/x", false, false},
 		{"http://h/x", false, false},
+		{"s3://" + fakeKeyID + ":fake/secret-not-real@bucket/p", true, false},
+		{"minio://http://u:" + fakeSecret + "@h/b", true, false},
+		{"az://acct:fake/key@c", true, false},
+		{"s3:" + fakeKeyID + ":" + fakeSecret + "@b", true, false},
+		{"s3://user@bucket", true, false},
+		{"S3://k:" + fakeSecret + "@b", true, false},
+		{" s3://k:" + fakeSecret + "@b", true, false},
+		{"s3://bucket/p@x", false, true},
+		{"s3://bucket/a:b@c", false, true},
 		{"name:path", false, true},
 		{"s3://bucket/p", false, true},
 		{"path:///abs", false, true},
@@ -61,7 +70,7 @@ func TestHasInlineCredentialsAndParseRefusals(t *testing.T) {
 			t.Errorf("Parse(%q) err = %v, want ok=%v", c.uri, err, c.ok)
 		}
 		if err != nil {
-			if strings.Contains(err.Error(), fakeSecret) || strings.Contains(err.Error(), fakeKeyID) {
+			if strings.Contains(err.Error(), "secret-not-real") || strings.Contains(err.Error(), fakeKeyID) {
 				t.Errorf("Parse(%q) error echoes the value: %v", c.uri, err)
 			}
 			if c.inline && !strings.Contains(err.Error(), "inline") {
@@ -260,5 +269,25 @@ func TestHostPutStreamFakeSSH(t *testing.T) {
 	}
 	if _, err := os.Stat(obj); err == nil {
 		t.Error("object still there")
+	}
+}
+
+// TestHostPutStreamErrorHasNoEmptyGap: with no ssh stderr the error text has
+// no empty "key on server: : " part.
+func TestHostPutStreamErrorHasNoEmptyGap(t *testing.T) {
+	fakeBin(t)
+	inv := hostFixture(t)
+	// A regular file where the directory should be: mkdir fails with stderr.
+	blocker := writeFile(t, t.TempDir(), "file", "x")
+	d, err := Parse("host://bk1"+blocker+"/sub", inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = d.(Streamer).PutStream(t.Context(), strings.NewReader("x"), "k.bin")
+	if err == nil {
+		t.Fatal("expected a failure")
+	}
+	if strings.Contains(err.Error(), ": : ") {
+		t.Errorf("empty gap in %q", err)
 	}
 }

@@ -31,6 +31,27 @@ func hostileRemotes() []string {
 		"file:///etc/x",
 		"http://h/x",
 		"path://relative/dir",
+		"s3://" + fakeKeyID + ":fake/secret-not-real@bucket/p",
+		"minio://http://u:" + fakeSecret + "@h/b",
+		"az://acct:fake/key@c",
+		"s3:" + fakeKeyID + ":" + fakeSecret + "@b",
+		"s3://user@bucket",
+		"S3://k:" + fakeSecret + "@b",
+		" s3://k:" + fakeSecret + "@b",
+	}
+}
+
+// assertNoProcessRan fails when any fake tool ran or a delete was attempted.
+func assertNoProcessRan(t *testing.T, store, log string) {
+	t.Helper()
+	if calls := readLog(t, log); len(calls) != 0 {
+		t.Errorf("a process ran: %v", calls)
+	}
+	if _, err := os.Stat(filepath.Join(store, "..", "deletes.log")); err == nil {
+		t.Error("a delete was attempted (deletes.log exists)")
+	}
+	if dirEntries(t, store) != 0 {
+		t.Error("something was stored")
 	}
 }
 
@@ -104,18 +125,13 @@ func TestStreamRefusesHostileRemotes(t *testing.T) {
 					t.Errorf("%s=%q dry=%v: Stream = %v, %v; want an error", field, v, dry, res, err)
 					continue
 				}
-				if strings.Contains(err.Error(), fakeSecret) || strings.Contains(err.Error(), fakeKeyID) {
+				if strings.Contains(err.Error(), "secret-not-real") || strings.Contains(err.Error(), fakeKeyID) {
 					t.Errorf("%s=%q: the error echoes the value: %v", field, v, err)
 				}
 			}
 		}
 	}
-	if calls := readLog(t, log); len(calls) != 0 {
-		t.Errorf("a process ran: %v", calls)
-	}
-	if dirEntries(t, store) != 0 {
-		t.Error("something was stored")
-	}
+	assertNoProcessRan(t, store, log)
 }
 
 // TestWriteHeartbeatRefusesHostileRemotes: WriteHeartbeat parses its remote
@@ -128,14 +144,44 @@ func TestWriteHeartbeatRefusesHostileRemotes(t *testing.T) {
 			t.Errorf("%q: accepted", v)
 			continue
 		}
-		if strings.Contains(err.Error(), fakeSecret) || strings.Contains(err.Error(), fakeKeyID) {
+		if strings.Contains(err.Error(), "secret-not-real") || strings.Contains(err.Error(), fakeKeyID) {
 			t.Errorf("%q: the error echoes the value: %v", v, err)
 		}
 	}
-	if calls := readLog(t, log); len(calls) != 0 {
-		t.Errorf("a process ran: %v", calls)
+	assertNoProcessRan(t, store, log)
+}
+
+// TestStreamFailedPipelineToPathLeavesNothing: a failing pg_dump with a path://
+// destination leaves neither an object nor a .tmp file.
+func TestStreamFailedPipelineToPathLeavesNothing(t *testing.T) {
+	fakeTools(t)
+	t.Setenv("FAKE_PGDUMP_FAIL", "1")
+	dir := filepath.Join(t.TempDir(), "dest")
+	res, err := Stream(context.Background(), minimalConfig(), StreamOptions{To: "path://" + dir, AllowUnencrypted: true})
+	if err == nil || res != nil {
+		t.Fatalf("Stream = %v, %v; want an error", res, err)
 	}
-	if dirEntries(t, store) != 0 {
-		t.Error("something was stored")
+	if n := dirEntries(t, dir); n != 0 {
+		entries, _ := os.ReadDir(dir)
+		t.Errorf("destination holds %d entries: %v", n, entries)
 	}
+}
+
+// TestStreamRefusesHostileConfigRemote: a hostile cfg.Backup.Remote (opts.To
+// empty) is refused before any process runs.
+func TestStreamRefusesHostileConfigRemote(t *testing.T) {
+	store, log := fakeTools(t)
+	for _, v := range hostileRemotes() {
+		cfg := minimalConfig()
+		cfg.Backup.Remote = v
+		res, err := Stream(context.Background(), cfg, StreamOptions{AllowUnencrypted: true})
+		if err == nil || res != nil {
+			t.Errorf("config remote %q: Stream = %v, %v; want an error", v, res, err)
+			continue
+		}
+		if strings.Contains(err.Error(), "secret-not-real") || strings.Contains(err.Error(), fakeKeyID) {
+			t.Errorf("config remote %q: the error echoes the value: %v", v, err)
+		}
+	}
+	assertNoProcessRan(t, store, log)
 }

@@ -38,21 +38,31 @@ type Remover interface {
 // HasInlineCredentials reports whether uri carries rclone options or
 // credentials in the remote itself: a comma in the remote-name segment
 // (`:s3,access_key_id=X:bucket`, `name,secret_access_key=Y:path`, quoted
-// values included) or userinfo in a scheme URI (`s3://KEY:SECRET@bucket/p`).
-// Such a value would be written to logs and unit files. path:// and host://
-// never carry any.
+// values included), userinfo in a scheme URI (`s3://KEY:SECRET@bucket/p`), or
+// the same shape in the bare form (`s3:KEY:SECRET@bucket`). Such a value would
+// be written to logs and unit files. path:// and host:// never carry any.
+//
+// For scheme URIs the bucket segment (text after "://" up to the first "/")
+// is checked, not the authority: a secret may itself contain "/", which would
+// hide the "@". No bucket or container name can hold "@" or ":".
 func HasInlineCredentials(uri string) bool {
 	if IsNativeKey(uri) {
 		return false
 	}
-	name, _, _ := strings.Cut(strings.TrimPrefix(uri, ":"), ":")
+	rest := strings.TrimPrefix(uri, ":")
+	name, path, _ := strings.Cut(rest, ":")
 	if strings.Contains(name, ",") {
 		return true
 	}
 	if IsRemoteKey(uri) {
-		_, rest, _ := strings.Cut(uri, "://")
-		authority, _, _ := strings.Cut(rest, "/")
-		return strings.Contains(authority, "@")
+		_, after, _ := strings.Cut(uri, "://")
+		bucket, _, _ := strings.Cut(after, "/")
+		return strings.ContainsAny(bucket, "@:")
+	}
+	// Bare form name:path. A ":" followed later by "@" in the path part is a
+	// KEY:SECRET@host shape (also reached by odd-cased or padded schemes).
+	if i := strings.Index(path, ":"); i >= 0 {
+		return strings.Contains(path[i:], "@")
 	}
 	return false
 }

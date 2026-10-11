@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/nself-org/cli/sdk/go/v2/remote"
@@ -58,7 +59,11 @@ func (d *hostDest) PutStream(ctx context.Context, r io.Reader, key string) error
 	<-done
 	werr := s.Wait()
 	if cerr == nil && werr != nil {
-		cerr = fmt.Errorf("write %s on %s: %s: %w", key, d.server, errBuf.String(), werr)
+		if msg := strings.TrimSpace(errBuf.String()); msg != "" {
+			cerr = fmt.Errorf("write %s on %s: %s: %w", key, d.server, msg, werr)
+		} else {
+			cerr = fmt.Errorf("write %s on %s: %w", key, d.server, werr)
+		}
 	}
 	if cerr != nil {
 		// The cleanup must run even when ctx is the reason for the failure.

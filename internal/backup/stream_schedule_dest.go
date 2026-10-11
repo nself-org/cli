@@ -46,6 +46,13 @@ func writeUnitFiles(unitDir, service, timer string) error {
 	}
 	servicePath := filepath.Join(unitDir, "nself-backup-stream.service")
 	timerPath := filepath.Join(unitDir, "nself-backup-stream.timer")
+	// Tighten an existing file before rewriting it, so the new content is never
+	// written into a world-readable file.
+	if _, err := os.Stat(servicePath); err == nil {
+		if err := os.Chmod(servicePath, 0600); err != nil {
+			return fmt.Errorf("restrict service unit: %w", err)
+		}
+	}
 	if err := os.WriteFile(servicePath, []byte(service), 0600); err != nil {
 		return fmt.Errorf("write service unit: %w", err)
 	}
