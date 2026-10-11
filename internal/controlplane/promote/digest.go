@@ -9,6 +9,7 @@ import (
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy/archguard"
+	"github.com/nself-org/cli/internal/errs"
 	remotesdk "github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
@@ -150,6 +151,9 @@ func sourcePlatformDigest(ctx context.Context, ref, inspected, platform string, 
 // Constraints: build-context services warn below prod and fail closed on prod.
 func CompareDigests(ctx context.Context, source []SourceImage, target []Image, targetArch string,
 	tier controlplane.Tier, lookup archguard.Lookup, warn func(string)) ([]DigestRow, error) {
+	if len(target) == 0 {
+		return nil, errs.New("E490", "release drift: target has zero services; nothing to prove")
+	}
 	if lookup == nil {
 		lookup = archguard.RegistryLookup
 	}
@@ -161,6 +165,7 @@ func CompareDigests(ctx context.Context, source []SourceImage, target []Image, t
 	var drift, unverifiable []string
 	for _, image := range target {
 		if image.Build {
+			delete(sourceByService, image.Service)
 			unverifiable = append(unverifiable, image.Service)
 			rows = append(rows, DigestRow{Service: image.Service, Status: "unverifiable"})
 			continue
@@ -176,7 +181,12 @@ func CompareDigests(ctx context.Context, source []SourceImage, target []Image, t
 		row := DigestRow{Service: image.Service, Source: src.Digest, Target: targetDigest, Status: "equal"}
 		if err != nil || src.Digest == "" || src.Digest != targetDigest {
 			row.Status = "drift"
-			drift = append(drift, image.Service)
+			detail := image.Service
+			if err != nil {
+				row.Detail = err.Error()
+				detail += ": " + err.Error()
+			}
+			drift = append(drift, detail)
 		}
 		rows = append(rows, row)
 	}

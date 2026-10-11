@@ -8,7 +8,7 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
-func (e Engine) rollback(ctx context.Context, st *State, result Result, failed int) (Result, error) {
+func (e Engine) rollback(ctx context.Context, st *State, result Result, failed int, cause error) (Result, error) {
 	ctx = context.WithoutCancel(ctx)
 	for i := failed; i >= 0 && e.Steps[i].Name != "compare"; i-- {
 		step := e.Steps[i]
@@ -35,7 +35,7 @@ func (e Engine) rollback(ctx context.Context, st *State, result Result, failed i
 		e.rollbackEvent("health", nil)
 	}
 	result.Status = "rolled_back"
-	return finishResult(result, st), errs.Newf("E488", "promote rolled back after %s failed", result.FailedStep)
+	return finishResult(result, st), errs.Wrap("E488", fmt.Sprintf("promote rolled back after %s failed", result.FailedStep), cause)
 }
 
 func rollbackFailed(result Result, st *State, step string, cause error) (Result, error) {

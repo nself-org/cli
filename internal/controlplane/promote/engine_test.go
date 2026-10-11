@@ -115,7 +115,7 @@ func TestPromoteRollback(t *testing.T) {
 	if result.Status != "rolled_back" || err == nil || !strings.Contains(err.Error(), "E488") || !strings.Contains(err.Error(), "health") {
 		t.Fatalf("health failure = %#v, %v", result, err)
 	}
-	if !contains(events, "undo:apply") || !contains(events, "undo:snapshot") || healthCalls != 2 {
+	if strings.Join(events, ",") != "undo:health,undo:migrate,undo:apply,undo:save,undo:snapshot" || healthCalls != 2 {
 		t.Fatalf("rollback events=%v health calls=%d", events, healthCalls)
 	}
 
@@ -140,6 +140,32 @@ func TestPromoteRollback(t *testing.T) {
 	result, err = (Engine{Steps: steps}).Run(context.Background(), &State{})
 	if result.Status != "failed" || err == nil || !strings.Contains(err.Error(), "verify backup") {
 		t.Fatalf("snapshot failure = %#v, %v", result, err)
+	}
+}
+
+func TestPromoteRollbackCauseAndHealth(t *testing.T) {
+	cause := errors.New("migration refused")
+	var events []string
+	steps := canonicalSteps(func(name string, _ *State) error {
+		if name == "migrate" {
+			return cause
+		}
+		if name == "health" {
+			events = append(events, "health")
+		}
+		return nil
+	}, func(name string, _ *State) error { events = append(events, "undo:"+name); return nil })
+	result, err := (Engine{Steps: steps}).Run(context.Background(), &State{})
+	if result.Status != "rolled_back" || !errors.Is(err, cause) {
+		t.Fatalf("trigger cause lost: %#v %v", result, err)
+	}
+	if strings.Join(events, ",") != "undo:migrate,undo:apply,undo:save,undo:snapshot,health" {
+		t.Fatalf("migrate rollback order %v", events)
+	}
+	steps[indexOf("health")].Run = func(context.Context, *State) error { return errors.New("rollback unhealthy") }
+	result, err = (Engine{Steps: steps}).Run(context.Background(), &State{SnapshotTag: "pre-promote-1-aaaaaaaa", BackupID: "backup-1"})
+	if result.Status != "rollback_failed" || err == nil || !strings.Contains(err.Error(), "E489") {
+		t.Fatalf("rollback health = %#v %v", result, err)
 	}
 }
 

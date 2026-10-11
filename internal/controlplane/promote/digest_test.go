@@ -84,3 +84,26 @@ func TestPromoteDigestIdentity(t *testing.T) {
 		t.Fatalf("malformed target digest = %#v, %v", rows, err)
 	}
 }
+
+func TestPromoteDigestEmptyAndBuild(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		if _, err := CompareDigests(context.Background(), nil, nil, "amd64", controlplane.TierProd, nil, nil); err == nil || !strings.Contains(err.Error(), "E490") {
+			t.Fatalf("empty comparison = %v", err)
+		}
+	})
+	t.Run("build", func(t *testing.T) {
+		_, err := CompareDigests(context.Background(), []SourceImage{{Service: "worker", Digest: "old"}}, []Image{{Service: "worker", Build: true}}, "amd64", controlplane.TierLocalServers, nil, nil)
+		if err != nil {
+			t.Fatalf("build warning turned into drift: %v", err)
+		}
+	})
+}
+
+func TestPromoteDigestLookupCause(t *testing.T) {
+	rows, err := CompareDigests(context.Background(), []SourceImage{{Service: "api", Digest: "old"}}, []Image{{Service: "api", Ref: "example.invalid/api:same"}}, "amd64", controlplane.TierProd, func(context.Context, string) (map[string]string, error) {
+		return nil, fmt.Errorf("registry unavailable")
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "registry unavailable") {
+		t.Fatalf("lookup cause lost: %#v %v", rows, err)
+	}
+}

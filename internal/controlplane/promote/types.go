@@ -33,6 +33,7 @@ type DigestRow struct {
 	Source  string `json:"source"`
 	Target  string `json:"target"`
 	Status  string `json:"status"`
+	Detail  string `json:"detail,omitempty"`
 }
 
 // StepResult is one deterministic plan or execution result row.

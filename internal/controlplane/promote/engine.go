@@ -123,7 +123,7 @@ func (e Engine) Run(ctx context.Context, st *State) (Result, error) {
 		if !snapshotDone {
 			return finishResult(result, st), err
 		}
-		return e.rollback(ctx, st, result, i)
+		return e.rollback(ctx, st, result, i, err)
 	}
 	result.Status = "ok"
 	return finishResult(result, st), nil

@@ -2,6 +2,7 @@ package promote
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -10,13 +11,20 @@ import (
 )
 
 type recordRemote struct {
-	label string
-	calls []string
+	label   string
+	calls   []string
+	compose bool
 }
 
 func (r *recordRemote) Label() string { return r.label }
 func (r *recordRemote) Run(_ context.Context, cmd string) ([]byte, error) {
 	r.calls = append(r.calls, cmd)
+	if r.compose && len(cmd) < 250 && strings.Contains(cmd, "compose-files.txt") {
+		return []byte("/srv/app/docker-compose.yml\n"), nil
+	}
+	if strings.Contains(cmd, "config --format json") {
+		return []byte(`{"services":{}}`), nil
+	}
 	if strings.Contains(cmd, "echo OK") {
 		return []byte("OK\n"), nil
 	}
@@ -27,17 +35,17 @@ func (r *recordRemote) Rsync(context.Context, []string, string, string, string) 
 func TestPromoteRecordLatest(t *testing.T) {
 	root := t.TempDir()
 	when := time.Unix(100, 0).UTC()
-	rec := Record{ID: "p1", Target: "prodsim", CompletedAt: when}
+	rec := Record{ID: "p1", Target: "prodsim", Status: "ok", CompletedAt: when}
 	if err := SaveRecord(root, rec); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := LoadLatestRecord(root, "other"); err != nil || got != nil {
+	if got, err := LoadLatestRecord(root, "other"); err == nil || got != nil {
 		t.Fatalf("mismatched target = %#v, %v", got, err)
 	}
 	if err := deploy.SaveDeployState(root, deploy.StrategyState{Target: "prodsim", CompletedAt: when.Add(time.Second)}); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := LoadLatestRecord(root, "prodsim"); err != nil || got != nil {
+	if got, err := LoadLatestRecord(root, "prodsim"); err == nil || got != nil {
 		t.Fatalf("superseded record = %#v, %v", got, err)
 	}
 	if err := deploy.SaveDeployState(root, deploy.StrategyState{Target: "other", CompletedAt: when.Add(time.Hour)}); err != nil {
@@ -54,6 +62,9 @@ func TestPromoteRecordRollbackOnce(t *testing.T) {
 	rec := &Record{Target: "prodsim", BackupID: "backup-1", BackupHost: r.label,
 		PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"},
 		Changed:      map[string][]string{"primary": nil}, Absent: map[string][]string{"primary": nil}}
+	if err := json.Unmarshal([]byte(`{"migrate_started":true}`), rec); err != nil {
+		t.Fatal(err)
+	}
 	remotes := map[string]deploy.Remote{"primary": r}
 	paths := map[string]string{"primary": "/srv/app"}
 	if err := RollbackRecord(context.Background(), root, rec, remotes, paths); err != nil {
@@ -62,12 +73,56 @@ func TestPromoteRecordRollbackOnce(t *testing.T) {
 	if rec.DBRestoredAt == "" || rec.Status != "rolled_back" {
 		t.Fatalf("record was not persisted after restore: %#v", rec)
 	}
+	saved, err := LoadRecord(root)
+	if err != nil || saved == nil || !saved.MigrateStarted || saved.DBRestoredAt != rec.DBRestoredAt {
+		t.Fatalf("migration/restore evidence was not persisted: %#v, %v", saved, err)
+	}
 	if err := RollbackRecord(context.Background(), root, rec, remotes, paths); err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(r.calls, "\n")
 	if got := strings.Count(joined, "nself backup restore 'backup-1' --yes"); got != 1 {
 		t.Fatalf("backup restore count = %d\n%s", got, joined)
+	}
+}
+
+func TestPromoteRecordMigrationEvidence(t *testing.T) {
+	for _, status := range []string{"ok", "rolled_back"} {
+		t.Run(status, func(t *testing.T) {
+			r := &recordRemote{label: "primary"}
+			rec := &Record{Status: status, BackupID: "backup-1", BackupHost: r.label,
+				PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"}}
+			if err := RollbackRecord(context.Background(), t.TempDir(), rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
+				t.Fatal(err)
+			}
+			for _, call := range r.calls {
+				if strings.Contains(call, "backup restore") {
+					t.Fatalf("restore before migration: %s", call)
+				}
+			}
+			if status == "rolled_back" && len(r.calls) != 0 {
+				t.Fatalf("already rolled back wrote remotely: %v", r.calls)
+			}
+		})
+	}
+}
+
+func TestPromoteRecordRestoreOrder(t *testing.T) {
+	r := &recordRemote{label: "primary", compose: true}
+	rec := &Record{BackupID: "backup-1", BackupHost: r.label, PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"}}
+	if err := json.Unmarshal([]byte(`{"migrate_started":true}`), rec); err != nil {
+		t.Fatal(err)
+	}
+	if err := RollbackRecord(context.Background(), t.TempDir(), rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(r.calls, "\n")
+	// The restored artifact set is read by RollbackRemote before its re-apply.
+	manifest := strings.Index(joined, " pull")
+	restore := strings.Index(joined, "backup restore")
+	health := strings.LastIndex(joined, "nself doctor")
+	if manifest < 0 || restore <= manifest || health <= restore {
+		t.Fatalf("not files/reapply, DB, health: %s", joined)
 	}
 }
 
