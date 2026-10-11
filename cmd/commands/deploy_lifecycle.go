@@ -215,7 +215,7 @@ func runDeployPromote(cmd *cobra.Command, args []string) error {
 // rolled back is refused (the database would be restored twice).
 func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error) {
 	st, err := deploy.LoadDeployState(workdir)
-	if err != nil { // unreadable or corrupt: never fall back blind (D-0144)
+	if err != nil && target != "local" { // unreadable or corrupt: never fall back blind (D-0144)
 		return true, fmt.Errorf("deploy rollback: %w; nothing was changed (fix or remove %s, then run it again)", err, deploy.DeployStateFile)
 	}
 	tars := st.PreDeployTars

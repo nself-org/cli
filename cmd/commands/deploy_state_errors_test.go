@@ -31,6 +31,10 @@ func TestRollbackRemoteV15RefusesCorruptState(t *testing.T) {
 	if !handled || err == nil || !strings.Contains(err.Error(), "nothing was changed") {
 		t.Fatalf("handled=%v err=%v, want a refusal that stops the old rollback", handled, err)
 	}
+	// A local rollback never reads the record, so a corrupt one does not block it.
+	if handled, err := rollbackRemoteV15(&cobra.Command{}, corruptDeployState(t), "local"); handled || err != nil {
+		t.Fatalf("local: handled=%v err=%v, want the old rollback", handled, err)
+	}
 }
 
 func TestPreviousShippedCorruptStateIsEmpty(t *testing.T) {
