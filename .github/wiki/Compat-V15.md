@@ -81,6 +81,10 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_marketplace_cmds.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_query.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_search.go` |
+| P7-PLUG-19 | bundle install not app-ready exits 0 with a warning | E135 exit 2 | `internal/bundle/installer_appready.go` |
+| P7-PLUG-19 | bundle install reconciles only | also starts the stack and waits for app-ready | `cmd/commands/bundle_appready.go` |
+| P7-PLUG-19 | plugin install readiness failure warns | E118 exit 2 | `cmd/commands/plugin_install_readiness.go` |
+| P7-PLUG-19 | plugin install readiness setup problems warn | returned error | `cmd/commands/plugin_install_readiness.go` |
 | P7-PLUG-63 | bundle reply trusted for any key and bundle | only a signed reply naming this key, this bundle and a live window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache age from the unsigned fetched_at | the older of fetched_at and the signed jwt iat | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache trusted whatever the clock says | refused when the clock is behind the signed iat or the highest time seen | `internal/license/cache.go` |
@@ -112,4 +116,6 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-REG-09 | human status exits 2 | 10 (unhealthy) or 11 (starting) | `cmd/commands/status.go` |
 | P7-REG-09 | status exits 2 (unhealthy) or 1 (starting), 0 with --json | 10 (unhealthy) or 11 (starting) in both modes | `cmd/commands/status_print.go` |
 | P7-SURF-07 | nself.yaml type errors and unknown keys warn | fail (E435/E436) | `internal/build/manifest_validate.go` |
+| P7-SURF-14 | --json on the data commands is ignored or the pre-contract form (NSELF_JSON_LEGACY=1 then prints an empty list as bare []) | v1 envelope | `cmd/commands/db_envelope.go` |
+| P7-SURF-26 | --json ignored | envelope | `cmd/commands/registry_types_build.go` |
 <!-- END GENERATED:gated -->

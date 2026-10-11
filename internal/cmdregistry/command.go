@@ -108,11 +108,16 @@ func buildCommand(n node, e canon.Entry, rootPath string, byKey map[string]*node
 
 // resolveJSON derives the json value: envelope iff a data type is registered
 // (for a V15OnlyEnvelope path, only when opts.V15), else the declared value
-// (default none). A registered type for a path declared legacy is an error.
+// (default none). A registered type for a path declared legacy is an error,
+// except for a V15OnlyEnvelope path: there canon's json: legacy declares what
+// the command prints in v1.4 (pre-contract JSON), so the v1.4 view keeps
+// legacy and the v1.5 view reports envelope (CR N2, SURF Invalidations
+// 2026-10-10). A V15OnlyEnvelope path with no JSON in v1.4 declares nothing
+// and maps to none.
 func resolveJSON(at, key string, e canon.Entry, dataTypes map[string]any, opts BuildOptions) (string, *string, []string) {
 	_, registered := dataTypes[key]
 	var p []string
-	if registered && e.JSON == canon.JSONLegacy {
+	if registered && e.JSON == canon.JSONLegacy && !opts.V15OnlyEnvelope[key] {
 		p = append(p, at+": a data type is registered for this path but canon says json: legacy; a command is envelope or legacy, not both")
 	}
 	if registered && (!opts.V15OnlyEnvelope[key] || opts.V15) {

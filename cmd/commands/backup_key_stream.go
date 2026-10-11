@@ -15,7 +15,7 @@ import (
 var backupInitKeyCmd = &cobra.Command{
 	Use:   "init-key",
 	Short: "Generate age encryption keypair for backups",
-	RunE:  runBackupInitKey,
+	RunE:  dataEnv(runBackupInitKey),
 }
 
 func runBackupInitKey(_ *cobra.Command, _ []string) error {

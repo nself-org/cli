@@ -43,6 +43,7 @@ func runDBDriftScan(cmd *cobra.Command, _ []string) error {
 	}
 
 	summary := database.SummarizeDrift(results)
+	setData(cmd, newDriftScanData(results, summary))
 
 	// Group by schema for display.
 	schemaOrder := []string{}

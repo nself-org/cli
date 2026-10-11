@@ -5,7 +5,8 @@ package commands
 // table or JSON of canonical bundles resolved from bundles.json via
 // internal/bundle (P6-E4-W3-S3-T10 — no local bundle map here).
 // Each --json row gains an additive `ledger` object, the row's slice of the
-// install-state ledger (internal/bundle/ledger, P7-PLUG-18). The ledger is read
+// install-state ledger (internal/bundle/ledger, P7-PLUG-18; stored in the plugin
+// directory since P7-PLUG-19, so it works outside a project). The ledger is read
 // only here, and only with --json (the table never loads it): when the file does
 // not exist yet the view is bootstrapped in memory and nothing is written. A
 // damaged ledger file fails `--json` with the file path and the way to
@@ -33,40 +34,18 @@ type bundleListRow struct {
 	Plugins     []string `json:"plugins"`
 	Status      string   `json:"status"`
 	HasActive   bool     `json:"has_active"`
-	// Ledger is this bundle's slice of .nself/state/bundles.json (additive).
+	// Ledger is this bundle's slice of <plugin dir>/.nself-state/bundles.json (additive).
 	Ledger ledger.BundleView `json:"ledger"`
 }
 
-// ledgerSources adapts internal/bundle and the installed plugin directory to
-// the ledger package's bootstrap input (the ledger imports neither).
-func ledgerSources() (ledger.Sources, error) {
-	var src ledger.Sources
-	for _, b := range bundle.All() {
-		src.Bundles = append(src.Bundles, ledger.BundleDef{Slug: b.Slug, Installable: b.IsInstallable(), Plugins: b.Plugins})
-	}
-	manifests, err := plugin.LoadManifestsFromDir(resolvePluginDir())
-	if err != nil {
-		return ledger.Sources{}, err
-	}
-	for _, m := range manifests {
-		tier := ledger.TierFree
-		if m.Tier == "pro" || m.Tier == "paid" || m.Tier == ledger.TierLicensed || m.RequiresLicense || m.LicenseType == "pro" {
-			tier = ledger.TierLicensed
-		}
-		src.Plugins = append(src.Plugins, ledger.InstalledPlugin{Name: m.Name, Version: m.Version, Tier: tier, Checksum: m.Checksum})
-	}
-	return src, nil
-}
-
-// loadBundleLedger reads the project's ledger without writing it. warn
-// receives what bootstrap skipped.
+// loadBundleLedger reads the plugin directory's ledger without writing it.
+// warn receives what bootstrap skipped. The ledger lives in the plugin
+// directory (<plugin dir>/.nself-state/bundles.json, D-0284), so no project
+// is needed.
 func loadBundleLedger(warn func(string)) (ledger.Ledger, error) {
-	root, err := projectRoot()
-	if err != nil {
-		return ledger.Ledger{}, err
-	}
-	store := ledger.NewStore(root)
-	store.Sources = ledgerSources
+	dir := resolvePluginDir()
+	store := ledger.NewStore(dir)
+	store.Sources = bundle.LedgerSources(dir)
 	store.Warn = warn
 	l, _, err := store.Load()
 	return l, err

@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -119,9 +120,17 @@ func EnsureComposeImages(ctx context.Context, workdir string, c *Compose, refs [
 	args := append(c.buildBaseArgs(), "config", "--format", "json")
 	cmd := exec.CommandContext(ctx, c.dockerBin(), args...)
 	cmd.Dir = workdir
-	raw, err := cmd.CombinedOutput()
+	// Parse stdout only: compose prints warnings (for example the obsolete
+	// "version:" key of plugin fragments) to stderr, and mixing them into the
+	// JSON broke `nself start`. Output captures stderr into ExitError for failures.
+	raw, err := cmd.Output()
 	if err != nil {
-		return false, fmt.Errorf("docker compose config: %w: %s", err, strings.TrimSpace(string(raw)))
+		detail := strings.TrimSpace(string(raw))
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && len(ee.Stderr) > 0 {
+			detail = strings.TrimSpace(string(ee.Stderr))
+		}
+		return false, fmt.Errorf("docker compose config: %w: %s", err, detail)
 	}
 	var doc composeImageDoc
 	if err := json.Unmarshal(raw, &doc); err != nil {

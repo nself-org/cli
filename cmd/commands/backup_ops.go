@@ -20,9 +20,9 @@ Subcommands:
   config     View/set backup configuration
   status     Show backup subsystem status
   init-key   Generate age encryption keypair`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: dataEnv(func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
-	},
+	}),
 }
 
 // ── backup create ──────────────────────────────────────────────────

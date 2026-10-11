@@ -40,7 +40,7 @@ func TestGet_KnownBundles(t *testing.T) {
 		{"CLAW", true, "claw", true},
 		{"  chat  ", true, "chat", true},
 		{"nself-plus", true, "nself-plus", false}, // meta, not installable
-		{"task", true, "task", false},             // free, not installable as a unit
+		{"task", true, "task", true},              // free, installable as a unit since P7-PLUG-19
 		{"nclaw", true, "claw", true},             // legacy n-prefixed alias
 		{"NSENTRY ", true, "sentry", true},        // alias case-insensitive + trimmed
 		{"ntv", true, "tv", true},
@@ -199,4 +199,19 @@ func contains(haystack, needle string) bool {
 		}
 	}
 	return false
+}
+
+// TestBundleIsFree: only a bundle priced FREE skips the licence calls.
+func TestBundleIsFree(t *testing.T) {
+	task, _ := Get("task")
+	claw, _ := Get("claw")
+	if !task.IsFree() || claw.IsFree() {
+		t.Fatalf("IsFree: task=%v claw=%v, want true/false (prices %q / %q)", task.IsFree(), claw.IsFree(), task.Price, claw.Price)
+	}
+	if !task.IsInstallable() {
+		t.Error("task must be installable as a unit")
+	}
+	if p, _ := Get("nself-plus"); p.IsInstallable() {
+		t.Error("nself-plus must stay non-installable")
+	}
 }

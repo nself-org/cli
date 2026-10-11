@@ -1,0 +1,6 @@
+go test fuzz v1
+string("$(id)")
+string(";rm -rf /")
+string("items")
+string("`id`")
+byte('\x03')

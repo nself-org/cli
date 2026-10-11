@@ -3,6 +3,7 @@ package backup
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -22,19 +23,23 @@ type PruneJSONReport struct {
 	Kept        []PruneJSONEntry `json:"kept"`
 }
 
-// FormatPruneJSON prints a PruneResult as JSON to stdout.
-func FormatPruneJSON(result *PruneResult, keepDaily int) error {
-	report := PruneJSONReport{
+// BuildPruneReport turns a PruneResult into the machine-readable report.
+func BuildPruneReport(result *PruneResult, keepDaily int) PruneJSONReport {
+	return PruneJSONReport{
 		DryRun:      result.DryRun,
 		KeepDaily:   keepDaily,
 		WouldDelete: toEntries(result.Pruned),
 		Kept:        toEntries(result.Kept),
 	}
-	data, err := json.MarshalIndent(report, "", "  ")
+}
+
+// FormatPruneJSON writes a PruneResult as JSON to w (the caller's stream).
+func FormatPruneJSON(w io.Writer, result *PruneResult, keepDaily int) error {
+	data, err := json.MarshalIndent(BuildPruneReport(result, keepDaily), "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal prune report: %w", err)
 	}
-	_, _ = fmt.Fprintln(os.Stdout, string(data))
+	_, _ = fmt.Fprintln(w, string(data))
 	return nil
 }
 

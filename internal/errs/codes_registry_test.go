@@ -123,12 +123,14 @@ func TestRegistryExitTable(t *testing.T) {
 			if (n >= 101 && n <= 104) || n == 110 {
 				return 3
 			}
-			if n == 118 || n == 119 { // P7-PLUG-59: readiness failures are infra (plugin did not become ready)
+			if n == 118 || n == 119 || n == 135 { // P7-PLUG-59, P7-PLUG-19: readiness failures are infra (plugin did not become ready)
 				return 2
 			}
 			return 1
 		case n == 400:
 			return 0
+		case n == 422 || n == 423: // P7-SURF-24: no single JSON document and invocation timeout are infra (EPIC SURF D14)
+			return 2
 		case n == 403:
 			return 4
 		}
