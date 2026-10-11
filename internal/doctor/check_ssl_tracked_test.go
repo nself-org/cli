@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -118,7 +119,11 @@ func TestCheckSSLTrackedNotARepo(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
-	t.Setenv("GIT_CEILING_DIRECTORIES", os.TempDir())
+	ceiling, err := filepath.EvalSymlinks(os.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CEILING_DIRECTORIES", ceiling)
 	dir := t.TempDir()
 	r := CheckSSLTracked(context.Background(), dir)
 	if r.Status != "pass" || !strings.Contains(r.Message, "skipped") {
@@ -138,4 +143,43 @@ func TestCheckSSLTrackedInSecurityChecks(t *testing.T) {
 		}
 	}
 	t.Fatalf("%s missing from SecurityChecks", sslTrackedCheckName)
+}
+
+// TestCheckSSLTrackedGitErrors: a git failure other than "not a git
+// repository" warns instead of passing as skipped, so a dubious-ownership or
+// broken repo cannot hide tracked keys. A stub git script fakes the exits.
+func TestCheckSSLTrackedGitErrors(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("stub git is a shell script")
+	}
+	cases := []struct{ name, script, want string }{
+		{"not-a-repo", `echo "fatal: not a git repository (or any of the parent directories): .git" >&2; exit 128`, "skipped"},
+		{"dubious-ownership", `echo "fatal: detected dubious ownership in repository at '/srv/app'" >&2; exit 128`, "git rev-parse failed (exit 128): fatal: detected dubious ownership"},
+		{"check-ignore-and-ls-files-fail", `if [ "$1" = rev-parse ]; then echo true; exit 0; fi; echo "fatal: index file corrupt" >&2; exit 128`, "git check-ignore ssl/privkey.pem failed (exit 128): fatal: index file corrupt"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bin := filepath.Join(t.TempDir(), "git")
+			if err := os.WriteFile(bin, []byte("#!/bin/sh\n"+tc.script+"\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			old := sslGitBin
+			sslGitBin = func() (string, error) { return bin, nil }
+			defer func() { sslGitBin = old }()
+			r := CheckSSLTracked(context.Background(), t.TempDir())
+			if !strings.Contains(r.Message, tc.want) {
+				t.Fatalf("message lacks %q: %s %s", tc.want, r.Status, r.Message)
+			}
+			wantStatus := "warn"
+			if tc.want == "skipped" {
+				wantStatus = "pass"
+			}
+			if r.Status != wantStatus {
+				t.Fatalf("status %q, want %q: %s", r.Status, wantStatus, r.Message)
+			}
+			if tc.name == "check-ignore-and-ls-files-fail" && !strings.Contains(r.Message, "git ls-files failed (exit 128)") {
+				t.Fatalf("ls-files failure not reported: %s", r.Message)
+			}
+		})
+	}
 }

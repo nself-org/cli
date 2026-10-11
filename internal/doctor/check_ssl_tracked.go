@@ -12,7 +12,9 @@ package doctor
 // Outputs: one CheckResult in the security section: warn with the remediation
 // when a probe path is not ignored or when ssl/ or .env.secrets is tracked.
 // Constraints: read-only (git check-ignore, git ls-files). Passes as skipped
-// when git is missing or the project is not inside a git work tree.
+// only when git is missing or git says the project is not a repository; any
+// other git failure (dubious ownership, a corrupt repo) warns, because a
+// skip there would hide tracked keys.
 
 import (
 	"context"
@@ -21,6 +23,9 @@ import (
 	"os/exec"
 	"strings"
 )
+
+// sslGitBin finds the git binary; tests swap it for a stub.
+var sslGitBin = func() (string, error) { return exec.LookPath("git") }
 
 const sslTrackedCheckName = "SEC-GITIGNORE-01"
 
@@ -39,24 +44,36 @@ var sslTrackedSpecs = []string{"ssl/", ".env.secrets"}
 // .env.secrets are ignored by git and not already tracked (D-0459).
 func CheckSSLTracked(ctx context.Context, projectDir string) CheckResult {
 	res := CheckResult{Section: "security", Name: sslTrackedCheckName}
-	gitBin, err := exec.LookPath("git")
+	gitBin, err := sslGitBin()
 	if err != nil {
 		res.Status, res.Message = "pass", "skipped: git not installed"
 		return res
 	}
+	var stderr string
 	git := func(args ...string) (string, int, error) {
 		cmd := exec.CommandContext(ctx, gitBin, args...)
 		cmd.Dir = projectDir
 		out, err := cmd.Output()
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
+			stderr = strings.TrimSpace(string(ee.Stderr))
 			return string(out), ee.ExitCode(), nil
 		}
 		return string(out), 0, err
 	}
 
-	if out, code, err := git("rev-parse", "--is-inside-work-tree"); err != nil || code != 0 || strings.TrimSpace(out) != "true" {
+	out, code, err := git("rev-parse", "--is-inside-work-tree")
+	switch {
+	case err == nil && code == 0 && strings.TrimSpace(out) == "true":
+	case err == nil && code != 0 && strings.Contains(stderr, "not a git repository"):
 		res.Status, res.Message = "pass", "skipped: project is not in a git work tree"
+		return res
+	case err == nil && code == 0:
+		res.Status, res.Message = "pass", "skipped: project is not in a git work tree (inside .git or a bare repo)"
+		return res
+	default:
+		res.Status = "warn"
+		res.Message = fmt.Sprintf("cannot tell whether ssl/ keys are tracked: git rev-parse failed (exit %d): %s", code, firstLine(stderr, err))
 		return res
 	}
 
@@ -66,7 +83,7 @@ func CheckSSLTracked(ctx context.Context, projectDir string) CheckResult {
 		_, code, err := git("check-ignore", "-q", "--no-index", "--", p)
 		switch {
 		case err != nil || code > 1:
-			problems = append(problems, fmt.Sprintf("git check-ignore %s failed (exit %d)", p, code))
+			problems = append(problems, fmt.Sprintf("git check-ignore %s failed (exit %d): %s", p, code, firstLine(stderr, err)))
 		case code == 1:
 			notIgnored = append(notIgnored, p)
 		}
@@ -75,10 +92,10 @@ func CheckSSLTracked(ctx context.Context, projectDir string) CheckResult {
 		problems = append(problems, "not ignored by git: "+strings.Join(notIgnored, ", "))
 	}
 
-	out, code, err := git(append([]string{"ls-files", "-z", "--"}, sslTrackedSpecs...)...)
+	out, code, err = git(append([]string{"ls-files", "-z", "--"}, sslTrackedSpecs...)...)
 	var tracked []string
 	if err != nil || code != 0 {
-		problems = append(problems, fmt.Sprintf("git ls-files failed (exit %d)", code))
+		problems = append(problems, fmt.Sprintf("git ls-files failed (exit %d): %s", code, firstLine(stderr, err)))
 	} else {
 		for _, f := range strings.Split(out, "\x00") {
 			if f != "" {
@@ -107,4 +124,14 @@ func CheckSSLTracked(ctx context.Context, projectDir string) CheckResult {
 		res.FixCmd = "git rm --cached -r --ignore-unmatch -- ssl/ .env.secrets"
 	}
 	return res
+}
+
+// firstLine returns the first line of git's stderr, or err's text when git
+// did not run.
+func firstLine(stderr string, err error) string {
+	if err != nil {
+		return err.Error()
+	}
+	line, _, _ := strings.Cut(stderr, "\n")
+	return line
 }
