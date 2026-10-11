@@ -8,13 +8,15 @@ package routemodel
 // Outputs: Return{Status, To}; a server-level return becomes the "/" location.
 // Constraints: a body (`return 200 "ok"`), a bare URL and a URL with an nginx
 // variable other than the canonical https redirect are recorded.
-// rewriteFlow flags the other rewrite-phase directives (if, rewrite, break)
-// that make a `set` variable unresolvable.
 
 import (
 	"strconv"
 	"strings"
 )
+
+// redirectCodes are the codes whose second argument nginx sends as Location;
+// with any other code (304, 305, 306 ...) it is the response body.
+var redirectCodes = map[int]bool{301: true, 302: true, 303: true, 307: true, 308: true}
 
 // redirectHTTPS is the one `return` target that sets http_to_https_redirect.
 const redirectHTTPS = "https://$host$request_uri"
@@ -42,7 +44,7 @@ func (s *srv) serverReturn(d *Block, nLoc int) {
 	}
 }
 
-// parseReturn reads `return CODE;` and `return 30x URL;`. lossy is true when
+// parseReturn reads `return CODE;` and `return 301|302|303|307|308 URL;`. lossy is true when
 // the URL holds an nginx variable other than the canonical https redirect, so
 // the directive is also recorded. A body (`return 200 "ok"`) or a bare URL is
 // refused.
@@ -56,21 +58,9 @@ func parseReturn(d *Block) (ret *Return, ok, lossy bool) {
 		return ret, true, false
 	}
 	to := d.Arg(1)
-	if code < 301 || code > 308 || !strings.HasPrefix(to, "/") && !strings.HasPrefix(to, "http://") && !strings.HasPrefix(to, "https://") {
+	if !redirectCodes[code] || !strings.HasPrefix(to, "/") && !strings.HasPrefix(to, "http://") && !strings.HasPrefix(to, "https://") {
 		return nil, false, false
 	}
 	ret.To = &to
 	return ret, true, strings.Contains(to, "$") && !isHTTPSRedirect(ret)
-}
-
-// rewriteFlow reports whether b holds an if, rewrite or break: rewrite-phase
-// directives that can skip a later `set` or set a variable conditionally, so
-// a variable in proxy_pass cannot be resolved from the `set` lines alone.
-func rewriteFlow(b *Block) bool {
-	for _, d := range b.Children {
-		if d.Name == "if" || d.Name == "rewrite" || d.Name == "break" {
-			return true
-		}
-	}
-	return false
 }

@@ -48,7 +48,7 @@ type locAcc struct {
 	done  map[string]bool // single-valued directives already seen
 	ret   *Block          // the mapped return, if any
 	h11   *Block          // proxy_http_version 1.1 in effect, if any (nginx defaults to 1.0)
-	flow  bool            // the server or location has an if, rewrite or break
+	g     guard           // the server's guard joined with the location's
 }
 
 // location maps one `location` block; the rest are recorded whole.
@@ -70,7 +70,7 @@ func (s *srv) location(l *Block) {
 		return
 	}
 	s.sn.disp[l] = "container"
-	acc := &locAcc{s: s, vars: map[string]*setVar{}, done: map[string]bool{}, flow: s.flow || rewriteFlow(l),
+	acc := &locAcc{s: s, vars: map[string]*setVar{}, done: map[string]bool{}, g: s.g.join(scanGuard(l)),
 		loc: Location{Path: path, Match: match, HeadersSet: map[string]string{}, AccessLog: true}}
 	for k, v := range s.vars {
 		acc.vars[k] = v
@@ -82,7 +82,7 @@ func (s *srv) location(l *Block) {
 		if d.Name != "set" || len(d.Args) != 2 || !strings.HasPrefix(d.Arg(0), "$") {
 			continue
 		}
-		name := d.Arg(0)[1:]
+		name := strings.ToLower(d.Arg(0)[1:])
 		v := &setVar{val: d.Arg(1), node: d}
 		acc.local = append(acc.local, v)
 		if seen[name] {
@@ -149,7 +149,7 @@ func (a *locAcc) apply(d *Block) {
 			a.loc.AccessLog = false
 		}
 	case "deny":
-		if a.take(d, len(d.Args) == 1 && d.Arg(0) == "all") {
+		if a.take(d, len(d.Args) == 1 && d.Arg(0) == "all" && !a.g.allow && !a.g.satisfyAny) {
 			a.loc.DenyAll = true
 		}
 	case "limit_except":
@@ -193,7 +193,8 @@ func (a *locAcc) limitExcept(d *Block) {
 
 // proxyPass resolves the target to scheme, host and port. A `set` variable is
 // substituted literally when it is the only variable, is set once in its scope
-// and no if, rewrite or break could skip or change that set; an
+// and nothing else could skip or change that set (guard); a hostname is then
+// resolved per request by the http-level resolver of nginx.conf.tmpl; an
 // upstream name resolves through upstream{}; a portless name defined as an
 // upstream in another file of the scan, or neither dotted nor an IP (it may be
 // defined outside the scan), is recorded.
@@ -203,7 +204,7 @@ func (a *locAcc) proxyPass(d *Block) {
 	if i := strings.IndexByte(raw, '$'); i >= 0 {
 		name := identRE.FindString(raw[i+1:])
 		rest := raw[i+1+len(name):]
-		if v := a.vars[name]; v != nil && !v.dup && !a.flow && !strings.ContainsAny(raw[:i]+rest, "$") {
+		if v := a.vars[strings.ToLower(name)]; v != nil && !v.dup && !a.g.flow && !a.g.writes[strings.ToLower(name)] && !strings.ContainsAny(raw[:i]+rest, "$") {
 			raw, used = raw[:i]+v.val+rest, v
 		}
 	}
