@@ -248,6 +248,6 @@ func StartRevocationRefresher(ctx context.Context) (stop func()) {
 // A failure never stops the refresher: FAIL-OPEN is decided at lookup time.
 func refreshAndWarn(ctx context.Context, w io.Writer, what string) {
 	if _, err := RefreshRevocationList(ctx); err != nil {
-		fmt.Fprintf(w, "warning: %s failed: %v\n", what, err)
+		_, _ = fmt.Fprintf(w, "warning: %s failed: %v\n", what, err)
 	}
 }

@@ -119,6 +119,24 @@ func (c *CacheEntry) matchesSignedBody() bool {
 	return err == nil && claims.Sub == c.KeyHash
 }
 
+// cacheTrust reports whether a cache entry may back a licence decision. Every
+// path that reads tier or plugins from the cache calls it, so no decision rests
+// on bytes that did not verify. The caller has already matched entry.KeyHash to
+// the requested key, and v1.5 verification binds KeyHash to the licence JWT
+// inside the signed body. A trusted decision raises the trusted-time mark.
+func cacheTrust(entry *CacheEntry) error {
+	// compat.V15(P7-PLUG-63): cache trusted without a signature check -> only a cache whose server-signed body verifies
+	if !compat.V15() {
+		return nil
+	}
+	now := time.Now()
+	if err := entryTrustAt(entry, now); err != nil {
+		return err
+	}
+	noteTrustedTime(now)
+	return nil
+}
+
 // verifyLegacy is the v1.4 check: any active key verifies the legacy
 // signature. The stored key id is not consulted: v1.4 tried the matching key
 // first and then every key (rotation window), which is the same verdict.
