@@ -232,6 +232,10 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 		return 0, fmt.Errorf("creating %s: %w", sitesDir, err)
 	}
 
+	// destOwner remembers which plugin and source file wrote each sites file (keyed lower-case),
+	// so two plugins mapping to one name (a-b + c.conf, a + b-c.conf) are seen.
+	destOwner := map[string]nginxDestOwner{}
+
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -263,6 +267,10 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 			filename := filepath.Base(match)
 			destName := pluginName + "-" + filename
 			destPath := filepath.Join(sitesDir, destName)
+
+			if err := checkNginxDestCollision(destOwner, destName, pluginName, match); err != nil {
+				return count, err
+			}
 
 			// A duplicate server_name across two site files is not a warning
 			// — nginx silently serves only one of them ("conflicting server

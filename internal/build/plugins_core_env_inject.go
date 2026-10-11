@@ -163,3 +163,47 @@ func spliceAt(content []byte, at int, add []byte) []byte {
 	out.Write(content[at:])
 	return out.Bytes()
 }
+
+// normalizeServiceCoreEnv applies the core-env rewrite to bytes that start at
+// a service's direct environment/networks key line (anchored true), or to a
+// whole fragment when no service range could be found (anchored false). When
+// anchored, every match the rewrite would act on must begin at offset 0: a
+// match further in belongs to a nested key (or the direct key has a shape no
+// regex matches), so the fragment is left unchanged with a warning.
+func normalizeServiceCoreEnv(content []byte, anchored bool, pluginDir, pluginName string, port int) []byte {
+	atStart := func(loc []int) bool { return !anchored || (loc != nil && loc[0] == 0) }
+	refuse := func() []byte {
+		warnUnrecognisedEnvBlock(pluginDir, pluginName)
+		return content
+	}
+	if loc := pluginEnvAnchoredRE.FindIndex(content); loc != nil && atStart(loc) {
+		return refuse()
+	}
+	if loc := pluginEnvEmptyListRE.FindSubmatchIndex(content); loc != nil {
+		if !atStart(loc) {
+			return refuse()
+		}
+		return injectIntoEmptyListEnvBlock(content, loc, pluginName, port)
+	}
+	if loc := pluginEnvBlockRE.FindSubmatchIndex(content); loc != nil {
+		if !atStart(loc) {
+			return refuse()
+		}
+		shape, blockEnd, entryIndent, existing := scanEnvBlock(content, loc)
+		switch shape {
+		case envBlockList:
+			return appendListEntries(content, blockEnd, entryIndent, existing, pluginName, port)
+		case envBlockUnrecognised:
+			return refuse()
+		default: // envBlockMap
+			return appendMapEntries(content, blockEnd, entryIndent, existing, pluginName, port)
+		}
+	}
+	if !atStart(shortNetworkListRE.FindIndex(content)) {
+		return refuse()
+	}
+	if out, ok := injectNewEnvBlock(content, pluginName, port); ok {
+		return out
+	}
+	return refuse()
+}

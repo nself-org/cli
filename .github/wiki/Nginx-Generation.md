@@ -42,6 +42,8 @@ Duplicate generated domains use the compatibility gate: v1.4 keeps the existing 
 | Plugin snippet | `plugin` | `plugin:<plugin>/<file>#<k>` | `nginx/sites/<plugin>-<file>` |
 | Hand-managed file | `hand_managed` | `hand:<file>#<k>` (`hand:<conf.d-env>/<file>#<k>` for an env directory) | `nginx/conf.d/<file>` |
 
+Two plugins whose `<plugin>-<file>` names resolve to the same `nginx/sites` file (compared case-insensitively, for example plugin `a-b` with `c.conf` and plugin `a` with `b-c.conf`) are refused as E055 with `NSELF_V15=1`. In v1.4 mode it is a warning and the later file replaces the earlier one.
+
 `<k>` is the 1-based index of the server block in the file. A usual snippet has two blocks for one name (port 80 redirect, port 443 proxy), so one name can appear in two routes. nginx behaviour does not change: plugin files are still copied byte for byte and hand-managed files are never touched.
 
 Each directive is read with a closed vocabulary. It is mapped to a model field, judged to have no observable effect, or copied word for word into the route's `unmodelled` list. Nothing is evaluated: no `include`, `map` or `if`, and a variable is substituted only for `set $v <url>;` followed by `proxy_pass $v;` in the same location or server. `deny all` and `limit_except` map only in a closed scope: the location has no `allow` of its own (also inside `if` or `limit_except`), no `satisfy` other than `all` is in effect (from the location, the server or the top of the file), and neither the location nor its server holds an `if`, `rewrite`, `break`, `return`, `include` or `error_page`. An `error_page` at the top of the file counts too, because nginx inherits it into every location. Any of these can let a request past the access rule or answer it first.
