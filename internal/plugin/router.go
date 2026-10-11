@@ -58,6 +58,11 @@ func ProxyCommand(cmdName string, args []string) error {
 // here stops the proxy contradicting it — the user was being shown
 // "use 'nself install claw-cli'" and "nself install claw" one line apart.
 func ProxyCommandWithHint(cmdName string, args []string, installHint string) error {
+	// cmdName is user input joined into a binary name and a manifest directory; a
+	// path-shaped one ("x/../../notify/run") must not reach either (P7-PLUG-20).
+	if err := ValidateCommandName(cmdName); err != nil {
+		return err
+	}
 	pluginBinary := fmt.Sprintf("nself-%s", cmdName)
 
 	// S-002: Only look in the plugin bin directory, never the full PATH.
@@ -193,6 +198,9 @@ func runPluginCommand(cmd *exec.Cmd, slug string) error {
 // unreadable manifest means nothing is declared, so nothing is passed —
 // degrading to the previous behaviour rather than failing the invocation.
 func pluginEnvForCommand(cmdName string) []string {
+	if ValidateCommandName(cmdName) != nil {
+		return nil // never read a manifest outside the plugin directory
+	}
 	// Installed plugins sit alongside the bin directory the proxy reads, so
 	// deriving the path from pluginBinDir keeps the two from drifting apart.
 	installed := filepath.Join(filepath.Dir(pluginBinDir()), cmdName)

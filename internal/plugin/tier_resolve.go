@@ -243,6 +243,9 @@ func tierChangeError(name, from, to string, cause error) error {
 // vocabulary: free or licensed) and why, for `plugin info --json`. ok is
 // false when the plugin is not installed or its manifest names no tier.
 func InstalledTier(pluginDir, name string) (tier, reason string, ok bool) {
+	if ValidateName(name) != nil {
+		return "", "", false // never read a manifest outside pluginDir
+	}
 	raw := installedTierWire(filepath.Join(pluginDir, name))
 	if tierClass(raw) == "" {
 		return "", "", false

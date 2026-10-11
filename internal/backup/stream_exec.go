@@ -5,13 +5,14 @@ package backup
 // Purpose: run the pg_dump, age-encrypt and rclone-rcat legs of the streaming pipeline that Stream (stream.go) wires together, split out for file size.
 // Inputs: a context, the resolved StreamConfig fields and the pipe endpoints connecting the three legs.
 // Outputs: the started *exec.Cmd for each leg, or an error if the binary is missing or fails to start.
-// Constraints: pure move from stream.go (CLI-R12 Batch E); no behaviour change. Keep in sync with runStreamPipeline in stream.go, which calls these in order.
+// Constraints: the database password never goes on an argv, it travels in PGPASSWORD (D-0352). Keep in sync with runStreamPipeline in stream.go, which calls these in order.
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -23,13 +24,10 @@ import (
 // runPgDump executes pg_dump and writes its output to w.
 // Uses pg_dump custom format for efficient streaming and restore.
 func runPgDump(ctx context.Context, cfg *config.Config, pgURL string, w io.Writer) error {
-	args := []string{
-		"--format=custom",
-		"--no-password",
-		pgURL,
+	cmd, password, err := pgDumpCmd(ctx, pgURL)
+	if err != nil {
+		return err
 	}
-
-	cmd := exec.CommandContext(ctx, "pg_dump", args...)
 	cmd.Stdout = w
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -43,12 +41,33 @@ func runPgDump(ctx context.Context, cfg *config.Config, pgURL string, w io.Write
 	errOut, _ := io.ReadAll(stderr)
 	if err := cmd.Wait(); err != nil {
 		if len(errOut) > 0 {
-			return fmt.Errorf("%w: %s", errs.ErrBackupFailed, strings.TrimSpace(string(errOut)))
+			msg := strings.TrimSpace(string(errOut))
+			if password != "" {
+				msg = strings.ReplaceAll(msg, password, "***")
+			}
+			return fmt.Errorf("%w: %s", errs.ErrBackupFailed, msg)
 		}
 		return fmt.Errorf("%w: %v", errs.ErrBackupFailed, err)
 	}
 
 	return nil
+}
+
+// pgDumpCmd builds the pg_dump command for pgURL and returns it with the
+// password it carries. The password travels in PGPASSWORD in the child's
+// environment, never in argv: argv is readable by every local user through
+// `ps` for the length of the dump (D-0352). A DSN whose password cannot be
+// split off is refused, so it never reaches argv either.
+func pgDumpCmd(ctx context.Context, pgURL string) (*exec.Cmd, string, error) {
+	connURL, password, err := splitPgPassword(pgURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("%w: refusing to start pg_dump: %v", errs.ErrBackupFailed, err)
+	}
+	cmd := exec.CommandContext(ctx, "pg_dump", "--format=custom", "--no-password", connURL)
+	if password != "" {
+		cmd.Env = append(os.Environ(), "PGPASSWORD="+password)
+	}
+	return cmd, password, nil
 }
 
 // ageEncryptStream pipes r through the age binary and writes ciphertext to w.

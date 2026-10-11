@@ -86,13 +86,16 @@ func TailStream(ctx context.Context, opts TailOptions) error {
 				return nil
 			case <-time.After(backoff):
 			}
-			if backoff < 30*time.Second {
-				backoff *= 2
-			}
+			backoff = nextBackoff(backoff)
 			continue
 		}
 		backoff = time.Second // reset on clean stream end
 	}
+}
+
+// nextBackoff doubles a reconnect delay, capped at 30 s.
+func nextBackoff(d time.Duration) time.Duration {
+	return min(2*d, 30*time.Second)
 }
 
 // streamOnce opens the SSE stream and reads events until the connection closes.
@@ -162,7 +165,7 @@ func matchesFilters(ev LicenseEvent, filters map[string]string) bool {
 	for k, v := range filters {
 		switch k {
 		case "key":
-			if !strings.HasPrefix(ev.KeyPrefix, v[:min12(v)]) {
+			if !strings.HasPrefix(ev.KeyPrefix, v[:min(len(v), 12)]) {
 				return false
 			}
 		case "result":
@@ -176,14 +179,6 @@ func matchesFilters(ev LicenseEvent, filters map[string]string) bool {
 		}
 	}
 	return true
-}
-
-// min12 returns min(len(s), 12) for key prefix matching.
-func min12(s string) int {
-	if len(s) < 12 {
-		return len(s)
-	}
-	return 12
 }
 
 // printEvent writes a color-coded event line to w.

@@ -101,13 +101,15 @@ func Validate(ctx context.Context, key string, opts *ValidatorOptions) (*Validat
 	}
 
 	// Verify signature unless explicitly skipped (tests).
-	if !opts.SkipSignatureVerify && (!entry.VerifySignature() || !entry.clockTrusted(clk.Now())) {
-		return &ValidatorResult{
-			Status:     StatusFailClosed,
-			CanProceed: false,
-			FromCache:  true,
-			Reason:     "license cache signature invalid (tampered or rotated key) — refusing fail-open",
-		}, nil
+	if !opts.SkipSignatureVerify {
+		if err := entryTrustAt(entry, clk.Now()); err != nil {
+			return &ValidatorResult{
+				Status:     StatusFailClosed,
+				CanProceed: false,
+				FromCache:  true,
+				Reason:     validatorRefusalReason(err),
+			}, nil
+		}
 	}
 
 	// If a key was supplied, ensure the cache matches.

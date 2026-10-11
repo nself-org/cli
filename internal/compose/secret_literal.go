@@ -7,15 +7,13 @@ package compose
 // value reaches the container through .nself/compose.env, which nself build
 // writes from build.SecretEnvMap (plus the _URLENC password twins).
 // Inputs: the env var name (a build.SecretEnvMap key) and the configured value.
-// Outputs: "${NAME}" when set, "${NAME:-}" when unset, the literal when
-// compose.env cannot carry the value unquoted (see dotenvSafe).
+// Outputs: "${NAME}" when set, "${NAME:-}" when unset.
 // Constraints: NAME must be a build.SecretEnvMap key, or compose.env never
 // carries the value (secret_literal_external_test.go enforces this). D-0266.
 
 import (
 	"net/url"
 	"strings"
-	"unicode"
 
 	"github.com/nself-org/cli/internal/config"
 )
@@ -27,30 +25,17 @@ import (
 //     Compose resolves it to the same empty string the old "" literal
 //     carried, without a "variable is not set" warning, and nchat Hygiene
 //     accepts it (it rejected `MEILI_MASTER_KEY: ""`).
-//   - Set and dotenvSafe: "${NAME}". For a value of 8+ URL-safe characters
-//     that is the exact text build.TemplateSecrets rewrote the literal to, so
-//     those builds produce the same bytes as before. Shorter or URL-unsafe
-//     values were left literal by the templater and now become references too.
-//   - Set but not dotenvSafe: the literal, as before D-0266. compose.env is
-//     written unquoted, so a reference would hand the container a truncated
-//     or expanded value; the literal stays until compose.env quotes such
-//     values (D-0333), and build.LiteralSecretLeaks still warns about it.
+//   - Set: "${NAME}". For a value of 8+ URL-safe characters that is the
+//     exact text build.TemplateSecrets rewrote the literal to, so those
+//     builds produce the same bytes as before. Values of any other shape
+//     (short, URL-unsafe, holding whitespace, '#', '$', quotes or
+//     backslashes) become references too: compose.env quotes each value so
+//     compose reads it back verbatim (config.QuoteComposeEnvValue, D-0333).
 func secretRef(name, value string) string {
-	switch {
-	case strings.TrimSpace(value) == "":
+	if strings.TrimSpace(value) == "" {
 		return "${" + name + ":-}"
-	case !dotenvSafe(value):
-		return value
-	default:
-		return "${" + name + "}"
 	}
-}
-
-// dotenvSafe reports whether value survives an unquoted compose.env line
-// intact. Docker Compose's dotenv parser trims surrounding whitespace, cuts
-// at " #", expands "$" and treats quotes and backslashes specially.
-func dotenvSafe(value string) bool {
-	return !strings.ContainsFunc(value, unicode.IsSpace) && !strings.ContainsAny(value, "#$\"'`\\")
+	return "${" + name + "}"
 }
 
 // secretURLUserInfo returns the "user:password" part of a connection URL with

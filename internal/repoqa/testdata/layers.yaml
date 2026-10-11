@@ -93,8 +93,8 @@ edges:
   - {from: internal/trust, to: internal/ssl}
   - {from: internal/ssl, to: internal/compose}           # P7-LIVE-17: lego image read from the image lock; needs the overview 4.2 line
   - {from: internal/reconcile, to: internal/build}
-  - {from: internal/builtin, to: internal/httpapi, pending: P7-SURF-02}
-  - {from: internal/httpapi, to: internal/invoke, pending: P7-SURF-02}
+  - {from: internal/builtin, to: internal/httpapi}
+  - {from: internal/httpapi, to: internal/invoke}
   - {from: internal/mcpgen, to: internal/invoke, pending: P7-SURF-03}
 ratchet:
   - {from: internal/health, to: internal/build}
