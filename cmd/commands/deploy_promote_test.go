@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,9 @@ import (
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -182,4 +186,122 @@ func mustProjectRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return root
+}
+
+type promoteSafetyRemote struct {
+	label, repository, tag, imageID, index string
+	backupTag                              string
+	failVerify                             bool
+	log                                    []string
+}
+
+func (r *promoteSafetyRemote) Label() string { return r.label }
+func (r *promoteSafetyRemote) Rsync(_ context.Context, _ []string, _, _, _ string) error {
+	r.log = append(r.log, "rsync")
+	return nil
+}
+func (r *promoteSafetyRemote) Run(_ context.Context, command string) ([]byte, error) {
+	r.log = append(r.log, command)
+	switch {
+	case strings.Contains(command, `printf '%s\n' "$HOME"`):
+		return []byte("/home/deploy\n"), nil
+	case strings.Contains(command, "docker compose images --format json"):
+		return []byte(fmt.Sprintf(`[{"Service":"api","Repository":%q,"Tag":%q,"ID":%q}]`, r.repository, r.tag, r.imageID)), nil
+	case strings.Contains(command, "docker image inspect"):
+		return []byte(fmt.Sprintf(`[%q]|linux/amd64`, r.repository+"@"+r.index)), nil
+	case strings.Contains(command, "nself backup create"):
+		match := tagArg.FindStringSubmatch(command)
+		if len(match) == 2 {
+			r.backupTag = match[1]
+		}
+		return nil, nil
+	case strings.Contains(command, "nself backup list"):
+		return []byte(fmt.Sprintf(`[{"id":"backup_%s","tag":%q,"date":"2026-10-11T00:00:00Z"}]`, r.backupTag, r.backupTag)), nil
+	case strings.Contains(command, "nself backup verify") && r.failVerify:
+		return nil, fmt.Errorf("injected backup verify failure")
+	default:
+		return nil, nil
+	}
+}
+
+func setupPromoteSafety(t *testing.T, sourceRef, targetRef string, failVerify bool) (*promoteSafetyRemote, *promoteSafetyRemote) {
+	t.Helper()
+	root := promoteFixture(t)
+	wf(t, filepath.Join(root, "docker-compose.yml"), "services:\n  api:\n    image: "+sourceRef+"\n")
+	wf(t, filepath.Join(root, ".env"), "PROJECT_NAME=fixture\n")
+	t.Setenv("NSELF_PLUGIN_DIR", t.TempDir())
+	t.Setenv("NSELF_HASURA_METADATA_STRICT", "false")
+	sourceRepo, sourceTag := splitImageTag(sourceRef)
+	sourceLock := lockedRefByLegacy(t, sourceRef)
+	source := &promoteSafetyRemote{label: "ls-app", repository: sourceRepo, tag: sourceTag, imageID: "sha256:running-source", index: sourceLock.IndexDigest}
+	target := &promoteSafetyRemote{label: "prod-app", failVerify: failVerify}
+	oldOpen, oldBuild, oldProber := deployRemoteOpen, deployScratchBuildFn, newDeployProber
+	t.Cleanup(func() { deployRemoteOpen, deployScratchBuildFn, newDeployProber = oldOpen, oldBuild, oldProber })
+	deployRemoteOpen = func(_ context.Context, srv controlplane.Server, _, _ string) (deploy.Remote, error) {
+		if srv.Name == "ls-app" {
+			return source, nil
+		}
+		return target, nil
+	}
+	deployScratchBuildFn = func(_ context.Context, workdir string, _ bool, steps []deployStep) ([]deployStep, error) {
+		wf(t, filepath.Join(workdir, "docker-compose.yml"), "services:\n  api:\n    image: "+targetRef+"\n")
+		wf(t, filepath.Join(workdir, ".nself", "compose-files.txt"), filepath.Join(workdir, "docker-compose.yml")+"\n")
+		wf(t, filepath.Join(workdir, ".nself", "compose-env-files.txt"), filepath.Join(workdir, ".env")+"\n")
+		return steps, nil
+	}
+	newDeployProber = func(string) controlplane.Prober { return okProber{} }
+	return source, target
+}
+
+func splitImageTag(ref string) (string, string) {
+	i := strings.LastIndex(ref, ":")
+	return ref[:i], ref[i+1:]
+}
+
+func lockedRefByLegacy(t *testing.T, ref string) compose.Ref {
+	t.Helper()
+	for _, locked := range compose.LockedImages() {
+		if locked.LegacyRef == ref {
+			return locked
+		}
+	}
+	t.Fatalf("locked legacy ref %q not found", ref)
+	return compose.Ref{}
+}
+
+func assertNoPromoteWrites(t *testing.T, commands []string) {
+	t.Helper()
+	for _, command := range commands {
+		if command == "rsync" || strings.Contains(command, "docker compose") || strings.Contains(command, "compose-files.txt") || strings.Contains(command, "compose-env-files.txt") || strings.Contains(command, "tar -czf") || strings.Contains(command, "db migrate") {
+			t.Fatalf("promotion wrote before refusal: %s\nlog:\n%s", command, strings.Join(commands, "\n"))
+		}
+	}
+}
+
+func TestPromoteVerifyStopsApply(t *testing.T) {
+	compattest.Set(t, true)
+	locked := compose.LockedImages()[0]
+	_, target := setupPromoteSafety(t, locked.LegacyRef, locked.String(), true)
+	err := runPromoteEnvironments(promoteTestCommand(&bytes.Buffer{}, false, true, false), "ls", "prodsim")
+	if err == nil || !strings.Contains(err.Error(), "E206") {
+		t.Fatalf("promotion error = %v, want E206", err)
+	}
+	if firstIndex(target.log, "nself backup verify") < 0 {
+		t.Fatalf("backup verify did not run: %v", target.log)
+	}
+	assertNoPromoteWrites(t, target.log)
+}
+
+func TestPromoteDriftStopsWrite(t *testing.T) {
+	compattest.Set(t, true)
+	locked := compose.LockedImages()
+	_, target := setupPromoteSafety(t, locked[0].LegacyRef, locked[1].String(), false)
+	err := runPromoteEnvironments(promoteTestCommand(&bytes.Buffer{}, false, true, false), "ls", "prodsim")
+	if err == nil || !strings.Contains(err.Error(), "E490") || !strings.Contains(err.Error(), "api") {
+		t.Fatalf("promotion error = %v, want E490", err)
+	}
+	if firstIndex(target.log, "nself backup create") >= 0 {
+		t.Fatalf("drift reached backup create: %v", target.log)
+	}
+	assertNoPromoteWrites(t, target.log)
 }

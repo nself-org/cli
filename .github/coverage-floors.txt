@@ -47,7 +47,7 @@ internal/config 78  # measured 80.9 2026-10-05
 internal/config/bindings 92  # measured 94.7 2026-10-10
 internal/confirm 25  # measured 27.8 2026-10-05
 internal/controlplane 84  # measured 86.0 2026-10-05
-internal/controlplane/promote 63  # measured 65.1 2026-10-11
+internal/controlplane/promote 66  # measured 68.1 2026-10-11
 internal/controlplane/sim 0  # measured 0.0 2026-10-05
 internal/cost 38  # measured 40.8 2026-10-05
 internal/database 21  # measured 23.1 2026-10-05

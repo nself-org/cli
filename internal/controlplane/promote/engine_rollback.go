@@ -42,7 +42,7 @@ func rollbackFailed(result Result, st *State, step string, cause error) (Result,
 	result.Status = "rollback_failed"
 	result = finishResult(result, st)
 	what := fmt.Sprintf("promote rollback failed at %s for snapshot %s backup %s; needs operator", step, st.SnapshotTag, st.BackupID)
-	return result, errs.Wrap("E489", what, cause).WithFix(fmt.Sprintf("Run nself backup restore %s --yes on the target, then run nself doctor.", st.BackupID))
+	return result, errs.Wrap("E489", what, cause).WithFix(fmt.Sprintf("Snapshot %s, backup %s: run nself backup restore %s --yes on the target, then run nself doctor.", st.SnapshotTag, st.BackupID, st.BackupID))
 }
 
 func resultFrom(st *State) Result {

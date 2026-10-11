@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -200,7 +201,13 @@ func runPromoteApply(w *promoteWiring) func(context.Context, *cpromote.State) er
 func rollbackPromoteApply(ctx context.Context, w *promoteWiring, st *cpromote.State) error {
 	remotes, _ := st.Values["apply_remotes"].(map[string]deploy.Remote)
 	paths, _ := st.Values["apply_paths"].(map[string]string)
-	for host, tar := range st.PreDeployTar {
+	hosts := make([]string, 0, len(st.PreDeployTar))
+	for host := range st.PreDeployTar {
+		hosts = append(hosts, host)
+	}
+	sort.Strings(hosts)
+	for _, host := range hosts {
+		tar := st.PreDeployTar[host]
 		r := remotes[host]
 		if r == nil {
 			return fmt.Errorf("promotion rollback has no remote for %s", host)

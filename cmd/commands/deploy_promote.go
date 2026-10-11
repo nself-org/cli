@@ -9,6 +9,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -144,6 +145,10 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 	}
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	jsonOut, _ := cmd.Flags().GetBool("json")
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	eng, st, err := preparePromoteEngine(cmd, workdir, source, target, dryRun, jsonOut)
 	if err != nil {
 		return err
@@ -152,11 +157,14 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 	if dryRun {
 		result = cpromote.Result{Status: "ok", Source: st.Source, Target: st.Target, Steps: eng.Plan(), DryRun: true}
 	} else {
-		result, err = eng.Run(cmd.Context(), st)
+		result, err = eng.Run(ctx, st)
 		if err != nil {
 			if len(st.PreDeployTar) > 0 {
 				if wiring, ok := st.Values["wiring"].(*promoteWiring); ok {
-					_ = savePromoteRecord(wiring, st, result.Status)
+					if saveErr := savePromoteRecord(wiring, st, result.Status); saveErr != nil {
+						return errs.Wrap("E489", fmt.Sprintf("promote rollback evidence for snapshot %s backup %s could not be recorded", st.SnapshotTag, st.BackupID), errors.Join(err, saveErr)).
+							WithFix(fmt.Sprintf("On %s run: nself backup restore %s --yes", st.BackupHost, st.BackupID))
+					}
 				}
 			}
 			return err
