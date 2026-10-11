@@ -244,7 +244,7 @@ All OAuth provider vars are optional. Set client ID and secret for each provider
 | `API_DOCS_PATH` | string | `/docs` | No | Path of the docs page on the docs subdomain. |
 | `API_DOCS_TITLE` | string | `<project> API` | No | Title shown on the docs page. Derived from `PROJECT_NAME` when unset. |
 | `API_DOCS_THEME` | string | `default` | No | Docs page theme. |
-| `API_DOCS_AUTH_ENV_VAR` | string | *(none)* | No | Name of an env var holding a bearer token the docs page uses for authenticated try-it requests. |
+| `API_DOCS_AUTH_ENV_VAR` | string | *(none)* | No | Accepted and passed to the docs generator, but not used yet: the docs page does not read a token from it. |
 | `API_DOCS_GRAPHQL_ENABLED` | bool | `true` | No | Include the GraphQL endpoint in the docs. |
 | `API_DOCS_GRAPHQL_ENDPOINT` | string | `/v1/graphql` | No | GraphQL endpoint path shown in the docs. |
 

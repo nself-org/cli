@@ -10,6 +10,7 @@ package routemodel
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -76,14 +77,14 @@ func TestAPIDocsMatchesNginxConf(t *testing.T) {
 			if !reflect.DeepEqual(got.ServerNames, names) {
 				t.Errorf("server_names = %v, conf has %v", got.ServerNames, names)
 			}
-			// Only 443 ssl is listened on (IPv4 and IPv6), never port 80.
-			for _, l := range listens {
-				if !strings.Contains(l, "443") || strings.Contains(l, ":80") || l == "80" {
-					t.Errorf("conf listens on %q, route models 443 only", l)
-				}
+			// Listen set must be exactly {"443 ssl", "[::]:443 ssl"} (IPv4 and IPv6).
+			want := []string{"443 ssl", "[::]:443 ssl"}
+			slices.Sort(listens)
+			if !slices.Equal(listens, want) {
+				t.Errorf("conf listens = %v, want %v", listens, want)
 			}
-			if got.Listen.HTTP || !got.Listen.HTTPS || len(listens) == 0 {
-				t.Errorf("route listen = %+v, conf listens %v", got.Listen, listens)
+			if got.Listen.HTTP || !got.Listen.HTTPS {
+				t.Errorf("route listen = %+v, want HTTP=false HTTPS=true", got.Listen)
 			}
 			if len(certs) != 1 || got.TLS == nil ||
 				!strings.Contains(certs[0], "/certificates/"+got.TLS.SSLDir+"/fullchain.pem") {
