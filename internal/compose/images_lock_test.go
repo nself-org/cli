@@ -40,8 +40,10 @@ func TestLockIsSound(t *testing.T) {
 	names := make([]string, len(imgs))
 	for i, r := range imgs {
 		names[i] = r.Name
-		if r.Role != RolePlugin && r.LegacyRepository()+":"+r.Version != r.LegacyRef {
-			t.Errorf("%s: legacy_ref %q is not <repo>:<version> (%s:%s)", r.Name, r.LegacyRef, r.LegacyRepository(), r.Version)
+		// legacy_ref is frozen at the pre-lock string (a pin bump moves only
+		// version), so it must name the same repository and carry a tag.
+		if r.Role != RolePlugin && (r.LegacyVersion() == "" || shortRepo(r.LegacyRepository()) != shortRepo(r.Repository)) {
+			t.Errorf("%s: legacy_ref %q is not <repository>:<tag> for %s", r.Name, r.LegacyRef, r.Repository)
 		}
 		if !lockedRefRE.MatchString(r.String()) {
 			t.Errorf("%s: %q is not repository:version@sha256:<64 hex>", r.Name, r.String())
@@ -57,6 +59,72 @@ func TestLockIsSound(t *testing.T) {
 	}
 	if r, _ := LockedRef("minio"); r.Repository != "docker.io/pgsty/minio" {
 		t.Errorf("minio repository = %q, want docker.io/pgsty/minio (ADR 0028)", r.Repository)
+	}
+}
+
+// shortRepo drops the docker.io/ and library/ prefixes Docker implies.
+func shortRepo(repo string) string {
+	return strings.TrimPrefix(strings.TrimPrefix(repo, "docker.io/"), "library/")
+}
+
+// TestImageForAfterPinBump: once a bump moves version past the frozen
+// legacy_ref, the pre-lock default (what config defaults and .env files carry)
+// must still resolve to the locked digest in lock mode and to legacy_ref in
+// legacy mode; only another version is an unpinned override.
+func TestImageForAfterPinBump(t *testing.T) {
+	d := "sha256:" + strings.Repeat("b", 64)
+	r := Ref{Name: "hasura", Repository: "docker.io/hasura/graphql-engine", Version: "v2.44.1", IndexDigest: d,
+		LegacyRef: "hasura/graphql-engine:v2.44.0"}
+	locked := "docker.io/hasura/graphql-engine:v2.44.1@" + d
+	for _, tc := range []struct{ mode, version, want string }{
+		{PinningLock, "", locked},
+		{PinningLock, "v2.44.0", locked},
+		{PinningLock, " v2.44.1 ", locked},
+		{PinningLock, "v2.43.0", "hasura/graphql-engine:v2.43.0"},
+		{PinningLegacy, "", "hasura/graphql-engine:v2.44.0"},
+		{PinningLegacy, "v2.44.0", "hasura/graphql-engine:v2.44.0"},
+		{PinningLegacy, "v2.44.1", "hasura/graphql-engine:v2.44.1"},
+	} {
+		if got := r.imageFor(tc.mode, tc.version); got != tc.want {
+			t.Errorf("%s %q -> %q, want %q", tc.mode, tc.version, got, tc.want)
+		}
+	}
+	if v := (Ref{LegacyRef: "busybox"}).LegacyVersion(); v != "" {
+		t.Errorf("untagged legacy_ref has version %q", v)
+	}
+}
+
+// TestConfigDefaultVersionsStayPinned: a documented *_VERSION default that is
+// neither the lock version nor the legacy_ref version would make ImageRef emit
+// an unpinned tag in lock mode. Guards the config literals against pin bumps.
+func TestConfigDefaultVersionsStayPinned(t *testing.T) {
+	setMode(t, PinningLock)
+	keys := map[string]string{"elasticsearch": "ELASTICSEARCH_VERSION"}
+	for _, e := range serviceCatalog {
+		if e.VersionEnv != "" {
+			name := e.Name
+			if e.ImageKey != "" {
+				name = e.ImageKey
+			}
+			keys[name] = e.VersionEnv
+		}
+	}
+	for name, key := range keys {
+		r, ok := LockedRef(name)
+		if !ok {
+			continue
+		}
+		if def := config.DefaultFor(key); def != "" && ImageRef(name, def) != r.String() {
+			t.Errorf("%s=%q (config default) is unpinned in lock mode: %s", key, def, ImageRef(name, def))
+		}
+	}
+	for name, cfg := range fixtureConfigs(t) {
+		for svc, v := range map[string]string{"hasura": cfg.Hasura.Version, "auth": cfg.Auth.Version,
+			"elasticsearch": cfg.Search.Elasticsearch.Version} {
+			if r, _ := LockedRef(svc); ImageRef(svc, v) != r.String() {
+				t.Errorf("%s: ApplyDefaults %s version %q is unpinned in lock mode", name, svc, v)
+			}
+		}
 	}
 }
 
