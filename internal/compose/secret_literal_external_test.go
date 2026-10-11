@@ -142,7 +142,7 @@ func TestOptionalSecretsAfterTemplating(t *testing.T) {
 	modes := []struct {
 		name       string
 		sec        func(string) string
-		wantLeaked bool // dotenv-unsafe values stay literal until D-0330
+		wantLeaked bool // dotenv-unsafe values stay literal until D-0333
 	}{
 		{"long", setSecrets, false},
 		{"short", func(v string) string { return v[:3] + "7" }, false},

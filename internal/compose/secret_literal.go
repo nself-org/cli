@@ -34,7 +34,7 @@ import (
 //   - Set but not dotenvSafe: the literal, as before D-0266. compose.env is
 //     written unquoted, so a reference would hand the container a truncated
 //     or expanded value; the literal stays until compose.env quotes such
-//     values (D-0330), and build.LiteralSecretLeaks still warns about it.
+//     values (D-0333), and build.LiteralSecretLeaks still warns about it.
 func secretRef(name, value string) string {
 	switch {
 	case strings.TrimSpace(value) == "":
