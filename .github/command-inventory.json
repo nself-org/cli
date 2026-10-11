@@ -1224,6 +1224,7 @@
       "rm"
     ],
     "flags": [
+      "--delete-data",
       "--dry-run",
       "--force",
       "--keep-data",
