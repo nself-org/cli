@@ -55,7 +55,7 @@ commands:
   config secrets list: {side_effect: read}
   # cmd/commands/secrets_schedule.go:103 RunE path changes no persistent state (prints/reads only)
   config secrets list-schedules: {side_effect: read}
-  # cmd/commands/secrets_audit.go rekey re-encrypts the store; --remove can lock the caller out of it and the old ciphertext is not restorable without another key holder
+  # cmd/commands/secrets_audit.go:133 re-encrypts the store; --remove can lock the caller out of it and the old ciphertext is not restorable without another key holder
   config secrets rekey: {side_effect: destructive, confirm: {flags: []}}
   # cmd/commands/secrets_edit_rotate.go:124 deletes the _PREVIOUS variant of a dual-window rotated secret
   config secrets retire: {side_effect: destructive, confirm: {flags: []}}

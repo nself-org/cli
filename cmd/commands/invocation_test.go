@@ -362,24 +362,22 @@ func TestInvocationRealRegistryBuildsAndGuardDecides(t *testing.T) {
 		defer prepareTreeWith(&canonTable, RootCmd, compat.V15(), false)()
 		// restart: root --json flag, none: E402 in both modes.
 		wantE402(t, refuseUnsupportedJSON(parseReal(t, "restart")))
-		// D-0216: decrypt-on-deploy prints plaintext secrets, has no json
-		// support, so JSON mode must refuse it in both modes. It moves under
-		// config in v1.5, so the spelling is the mode's rewrite of the old one.
-		dec, _, decErr := rewriteCanonArgsWith(&canonTable, RootCmd, []string{"secrets", "decrypt-on-deploy"}, compat.V15())
+		// secrets edit is interactive (json none): E402 in both modes. It moves
+		// under config in v1.5, so the spelling is the mode's rewrite of the old
+		// one. (decrypt-on-deploy answered E402 here under D-0216; P7-SURF-12
+		// makes it a cli-only envelope row, so it no longer refuses --json.)
+		dec, _, decErr := rewriteCanonArgsWith(&canonTable, RootCmd, []string{"secrets", "edit"}, compat.V15())
 		if decErr != nil {
-			t.Fatalf("rewrite decrypt-on-deploy: %v", decErr)
+			t.Fatalf("rewrite secrets edit: %v", decErr)
 		}
 		wantE402(t, refuseUnsupportedJSON(parseReal(t, dec...)))
 		// status: own legacy json flag, passes.
 		if err := refuseUnsupportedJSON(parseReal(t, "status")); err != nil {
 			t.Fatalf("status --json refused: %v", err)
 		}
-		// config validate: ancestor's own json flag; mode-gated.
-		err := refuseUnsupportedJSON(parseReal(t, "config", "validate"))
-		if compat.V15() {
-			wantE402(t, err)
-		} else if err != nil {
-			t.Fatalf("v1.4 config validate --json must pass through: %v", err)
+		// config validate: an envelope row since P7-SURF-12, so --json passes in both modes.
+		if err := refuseUnsupportedJSON(parseReal(t, "config", "validate")); err != nil {
+			t.Fatalf("config validate --json refused: %v", err)
 		}
 	})
 }
