@@ -7,8 +7,6 @@ package reconcile
 // file-size cap.
 
 import (
-	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -161,50 +159,6 @@ func pendingHandEdited(next func(string) bool, state *GeneratedState, env map[st
 		}
 		return next(path)
 	}
-}
-
-// EnvFileWithLine returns old with KEY=VALUE set: every line whose key is key
-// is replaced, else the line is appended; comments and blank lines are kept,
-// lines end in "\n". exists false means no file yet (the result is the line
-// alone). found reports a replacement. This is the one rewrite `config set`
-// writes and the planner previews (P7-LIVE-05).
-func EnvFileWithLine(old []byte, exists bool, key, value string) (out []byte, found bool, err error) {
-	newLine := key + "=" + quoteEnvLineValue(value)
-	if !exists {
-		return []byte(newLine + "\n"), false, nil
-	}
-	var lines []string
-	scanner := bufio.NewScanner(bytes.NewReader(old))
-	for scanner.Scan() {
-		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			lines = append(lines, line)
-			continue
-		}
-		if eq := strings.IndexByte(trimmed, '='); eq > 0 && strings.TrimSpace(trimmed[:eq]) == key {
-			lines = append(lines, newLine)
-			found = true
-			continue
-		}
-		lines = append(lines, line)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, false, err
-	}
-	if !found {
-		lines = append(lines, newLine)
-	}
-	return []byte(strings.Join(lines, "\n") + "\n"), found, nil
-}
-
-// quoteEnvLineValue double-quotes a value that is empty or holds a space, tab,
-// '#', a quote, a backslash, '$' or '`' (inner double quotes escaped).
-func quoteEnvLineValue(v string) string {
-	if v == "" || strings.ContainsAny(v, " \t#\"'\\$`") {
-		return `"` + strings.ReplaceAll(v, `"`, `\"`) + `"`
-	}
-	return v
 }
 
 // rollbackOnFailure wraps opt.BeforeWrite to note that it ran and returns the

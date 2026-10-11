@@ -256,7 +256,7 @@ func TestSnippetMapping(t *testing.T) {
 	if l := loc(std + `proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header X-A b; proxy_set_header Connection2 "";`); !l.ForwardedHeaders || !l.WebSocket || !reflect.DeepEqual(l.HeadersSet, map[string]string{"X-A": "b", "Connection2": ""}) {
 		t.Errorf("headers: %+v", l)
 	}
-	if l := loc(`proxy_pass http://x.test:81; proxy_http_version 1.1; proxy_buffers 8 4k; proxy_buffer_size 4k; proxy_busy_buffers_size 8k; resolver 127.0.0.11;`); *l.Upstream != (Upstream{"http", "x.test", 81}) {
+	if l := loc(`proxy_pass http://x.test:81; proxy_http_version 1.1; proxy_buffers 8 4k; proxy_buffer_size 4k; proxy_busy_buffers_size 8k; resolver 127.0.0.11;`); *l.Upstream != (Upstream{Scheme: "http", Host: "x.test", Port: 81}) {
 		t.Errorf("upstream: %+v", l.Upstream)
 	}
 	// http to https redirect
@@ -281,7 +281,7 @@ func TestSnippetMapping(t *testing.T) {
 	for _, l := range r.Locations {
 		got[l.Path] = *l.Upstream
 	}
-	want := map[string]Upstream{"/a": {"http", "10.0.0.1", 9000}, "/b": {"http", "svc", 3000}, "/c": {"http", "127.0.0.1", 99}}
+	want := map[string]Upstream{"/a": {Scheme: "http", Host: "10.0.0.1", Port: 9000}, "/b": {Scheme: "http", Host: "svc", Port: 3000}, "/c": {Scheme: "http", Host: "127.0.0.1", Port: 99}}
 	if !reflect.DeepEqual(got, want) || !reflect.DeepEqual(r.Unmodelled, []string{"proxy_pass http://$w/;"}) {
 		t.Errorf("upstreams: %v unmodelled=%v", got, r.Unmodelled)
 	}
@@ -412,7 +412,7 @@ func TestHandManagedRoutes(t *testing.T) {
 		t.Fatalf("routes=%d err=%v", len(rs), err)
 	}
 	if rs[0].ID != "hand:custom.conf#1" || rs[1].ID != "hand:custom.conf#2" || rs[0].Source != "hand_managed" || rs[0].Owner != nil ||
-		rs[0].File != "nginx/conf.d/custom.conf" || !rs[0].Listen.HTTP || !rs[1].Listen.HTTPS || *rs[1].Locations[0].Upstream != (Upstream{"https", "b.example.test", 443}) {
+		rs[0].File != "nginx/conf.d/custom.conf" || !rs[0].Listen.HTTP || !rs[1].Listen.HTTPS || *rs[1].Locations[0].Upstream != (Upstream{Scheme: "https", Host: "b.example.test", Port: 443}) {
 		t.Errorf("hand routes wrong: %+v", rs)
 	}
 	rs, _ = FromSnippet("hand_managed", "", "conf.d-prod/x.conf", "server { listen 80; server_name c.test; }")

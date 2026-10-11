@@ -40,6 +40,18 @@ BACKUP_S3_SECRET_KEY=<secret>
 
 Compatible with AWS S3, MinIO, Cloudflare R2, Backblaze B2, and any S3-compatible provider.
 
+## Destinations for stream, schedule and the heartbeat
+
+`nself backup stream`, `nself backup schedule` and the heartbeat (`--heartbeat-to`) accept the same destinations as `nself backup create`:
+
+- an rclone remote: `name:path`, or `s3://` `r2://` `minio://` `b2://` `gcs://` `az://`
+- a local or mounted directory: `path://<absolute dir>`
+- a server from `.nself/control-plane.yaml`: `host://<server>/<absolute dir>` (over SSH, with a pinned host key)
+
+Values that rclone could read as an option (`-x`, `--config=...`), connection strings (`:s3,key=...:bucket`) and other URL schemes (`file://`, `http://`) are refused before anything runs.
+
+Credentials never go in the destination, and that includes userinfo in a scheme URI: `s3://user@bucket` and `s3://KEY:SECRET@bucket/path` are refused on purpose, because no bucket name can hold `@` or `:`. `backup schedule` writes `--to` and `--heartbeat-to` into a systemd unit, so it refuses a value that carries inline options or credentials (`:s3,access_key_id=...:bucket`, `s3://KEY:SECRET@bucket/path`). Use a named remote from `rclone.conf` (`rclone config`), or define the remote in the environment with `RCLONE_CONFIG_<NAME>_TYPE` and its keys, put those lines in a file and pass it with `backup schedule --env-file`, then give the destination as `<name>:<path>`. The service unit is written with mode 0600.
+
 ## Encryption and the backup key
 
 `nself backup stream`, and `nself backup create` with encryption on (`--encrypt`), encrypt with [age](https://age-encryption.org). In v1.5 (`NSELF_V15=1`), a project with no recipient configured gets an identity created once at `~/.config/nself/<project>-age.key`, and restores find it on their own. Set `BACKUP_AGE_RECIPIENTS` to encrypt to a key you keep elsewhere; production should work that way, so the server never holds the key that decrypts its own backups.

@@ -54,7 +54,7 @@ nself ssl renew --acme --staging --agree-tos       # rehearse against the stagin
 
 ### Adopting certbot lineages
 
-Production boxes already hold certbot lineages. Adoption reads `/etc/letsencrypt/renewal/*.conf` and `live/<name>/cert.pem`, maps each lineage to the served directory its names are served from, and records it as `dns-01`. It never issues, and it never edits or removes certbot state (renewal files, hooks, timers, credential files).
+Production boxes already hold certbot lineages. Adoption reads `/etc/letsencrypt/renewal/*.conf` and `live/<name>/cert.pem`, maps each lineage to the served directory its names are served from, and records it as `dns-01`. It never issues, and it never edits or removes certbot's files (renewal files, hooks, credential files). It does disable nself's certbot timer, see below.
 
 ```bash
 nself ssl setup --acme --adopt-certbot --dns-credential-file ./cloudflare.ini --dry-run
@@ -66,7 +66,8 @@ nself ssl setup --acme --adopt-certbot --dns-credential-file ./cloudflare.ini
 - The credential file is a certbot DNS-plugin INI with exactly one provider: `dns_cloudflare_api_token`, `dns_digitalocean_token`, or `aws_access_key_id` + `aws_secret_access_key`. A Cloudflare global key is refused: create a scoped token.
 - Served certificates are left byte for byte as they are unless a target is missing or older than certbot's live certificate.
 - Adoption is saved lineage by lineage; if it fails part way, fix the cause and run it again to finish. Names that certbot also manages are flagged by `nself ssl status`.
-- After adopting, remove the certbot timer yourself once `nself ssl renew --acme --dry-run` shows the lineages; the CLI never touches it.
+- Adoption refuses (`E151`, nothing written) while a certbot hook would copy certificates into the served `ssl/` directory (with `NGINX_FRONTED_BY`, the fronting project's) or the project's own `ssl/`. It checks both the tree you adopt from and `/etc/letsencrypt`: any `*_hook` / `*-hook` line in `renewal/*.conf` or `cli.ini` (certbot saves the hook a `certbot renew --deploy-hook` run was given, and any certbot scheduler, such as the distro `certbot.timer`, replays it), and the scripts certbot runs from `renewal-hooks/pre`, `deploy` and `post` (executable, no trailing `~`; comment lines and trailing comments outside quotes are ignored). The check runs again right after the timer is disabled, in case a renewal saved its hook in between. The error names each file and line. Remove those lines and move those scripts aside, then run it again. A hook that only reads that directory refuses too: the check cannot tell a read from a write without running the shell, and a wrong guess would let certbot overwrite the ACME pair. A path the hook builds at run time (from variables, a relative path after `cd`, or another script it calls) is not detected, nor is a per-user `~/.config/letsencrypt/cli.ini`. The CLI only reads certbot's files.
+- Before its first write, adoption disables `nself-ssl-renew.timer` (installed by the certbot `ssl setup --install-cron`) with `systemctl disable --now` (or stops it if it is only running): its deploy hook would overwrite the ACME generation outside the ACME lock. The state is read first, so a re-run changes nothing; `--dry-run` only says it would. It refuses (`E151`, nothing written) if the timer cannot be disabled, naming the step to take (also when `systemctl` is not on `PATH` but the unit file exists), and while `nself-ssl-renew.service` is in the middle of a renewal (re-run when it finishes). If adoption fails after the disable, the message says so: re-run, or `sudo systemctl enable --now nself-ssl-renew.timer` to go back to certbot. Add `--install-cron` to install the ACME renewal timer in the same run; without it the command says that no renewal is scheduled.
 
 ### HTTP-01 for one host (`nself ssl add <domain> --acme`)
 
@@ -107,11 +108,13 @@ State lives in `ssl/.acme/` (0700, with a `.gitignore` of `*`): the ACME account
 
 ### Renewal timer
 
-`--install-cron` writes `nself-acme-renew.service` and `.timer` (daily 03:30, up to 1 hour random delay, `Persistent=true`). The service sets `SECRETS_AGE_KEY_PATH` and `HOME` explicitly, because systemd's bare environment has neither, and runs `nself trust ssl renew --acme --quiet` from the project directory. The unit runs as root: run `setup --acme --install-cron` as the user who owns the age key (the install message prints the key path the unit will use), or `HOME` and the key path will point at the wrong user. Lineages with 30 days or fewer left are renewed.
+`--install-cron` writes `nself-acme-renew.service` and `.timer` (daily 03:30, up to 1 hour random delay, `Persistent=true`). The service sets `SECRETS_AGE_KEY_PATH` and `HOME` explicitly, because systemd's bare environment has neither, and runs `nself trust ssl renew --acme --quiet` from the project directory. The unit runs as root: run `setup --acme --install-cron` as the user who owns the age key (the install message prints the key path the unit will use), or `HOME` and the key path will point at the wrong user. Lineages with 30 days or fewer left are renewed. Before writing the units it applies the same certbot hook check and disables `nself-ssl-renew.timer` the same way adoption does (and refuses, installing nothing, if it cannot); issuing a new lineage with `setup --acme` does both before it issues.
+
+Once `ssl/.acme/lineages.json` holds lineages, the v1.4 certbot `nself ssl setup` (without `--acme`) refuses: certbot would write over the ACME-managed certificates.
 
 ### What the CLI never touches
 
-Host certbot state (`/etc/letsencrypt`, certbot timers, hooks, credential files), nginx configuration, compose files and container definitions. It does not recreate or restart containers; only `nginx -s reload`.
+Host certbot files (`/etc/letsencrypt`, hooks, credential files; the only certbot change is disabling `nself-ssl-renew.timer`), nginx configuration, compose files and container definitions. It does not recreate or restart containers; only `nginx -s reload`.
 
 ## Custom Domain Certificates (HTTP-01)
 

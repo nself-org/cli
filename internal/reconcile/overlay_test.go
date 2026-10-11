@@ -39,7 +39,7 @@ func TestEnvFileWithLine(t *testing.T) {
 		{"replace every copy", "A=0\nB=2\n A =9\n", true, "A", "1", "A=1\nB=2\nA=1\n", true},
 		{"crlf normalised", "A=0\r\nB=2\r\n", true, "A", "1", "A=1\nB=2\n", true},
 		{"commented key untouched", "#A=0\n", true, "A", "1", "#A=0\nA=1\n", false},
-		{"quoted value", "", false, "A", `p a"s$`, `A="p a\"s$"` + "\n", false},
+		{"quoted value", "", false, "A", `p a"s$`, `A="p a\"s\$"` + "\n", false},
 		{"empty value", "", false, "A", "", "A=\"\"\n", false},
 		{"prefix key not matched", "AB=0\n", true, "A", "1", "AB=0\nA=1\n", false},
 	}

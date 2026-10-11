@@ -347,6 +347,13 @@ AI_TIMEOUT_PAID_MS                            (unset)                        uns
 AI_POOL_OAUTH_CLIENT_ID                       (unset)                        unset
 AI_POOL_OAUTH_CLIENT_SECRET                   (unset)                        unset
 NSELF_MASTER_SECRET                           (unset)                        unset
+API_DOCS_ENABLED                              (unset)                        unset
+API_DOCS_PATH                                 (unset)                        unset
+API_DOCS_TITLE                                (unset)                        unset
+API_DOCS_THEME                                (unset)                        unset
+API_DOCS_AUTH_ENV_VAR                         (unset)                        unset
+API_DOCS_GRAPHQL_ENABLED                      (unset)                        unset
+API_DOCS_GRAPHQL_ENDPOINT                     (unset)                        unset
 MEILISEARCH_ENABLED                           (unset)                        unset
 MEILISEARCH_PORT                              (unset)                        unset
 MEILISEARCH_ROUTE                             (unset)                        unset

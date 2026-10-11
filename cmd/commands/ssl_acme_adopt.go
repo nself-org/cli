@@ -6,6 +6,9 @@ package commands
 // name, records the lineages as dns-01 (a webroot lineage with no credential: http-01, when a probe
 // token is answered by the served nginx) and never issues. A served target is
 // replaced from certbot's live files only when it is missing or older.
+// Adoption refuses while a certbot hook copies into the ssl dir and disables
+// the certbot nself-ssl-renew.timer before its first write; --install-cron
+// then installs the ACME timer (D-0411).
 
 import (
 	"bytes"
@@ -58,14 +61,43 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 	if len(refused) > 0 || len(adopt) == 0 {
 		return e151(acmeRefuse("fix the lineages named above, or adopt selectively with --lineage <name>", "%d certbot lineage(s) cannot be adopted; nothing was changed", len(refused)))
 	}
+	// certbot hooks in the tree adopted from and in the one certbot runs (D-0411)
+	if err := r.refuseCertbotHooks(dir, certbotDir); err != nil {
+		return err
+	}
+	cron, _ := r.cmd.Flags().GetBool("install-cron")
 	if r.dry {
 		r.say("dry run: nothing written")
-		return nil
+		if cron {
+			return r.timer()
+		}
+		_, err := r.retireCertbot()
+		return err
 	}
 	if err := r.lock(); err != nil {
 		return err
 	}
 	defer r.unlock()
+	retired, err := r.retireAndRecheck(false, dir, certbotDir) // before the first write: no certbot copy lands on a new generation
+	if err != nil {
+		return err
+	}
+	if err := r.adoptWrite(ctx, dir, secs, adopt); err != nil {
+		r.retiredHint(retired)
+		return err
+	}
+	r.say("adopted %d lineage(s) (%s); certbot's files were not touched", len(adopt), adoptedKinds(adopt))
+	if cron {
+		return r.timerAfter(retired)
+	}
+	if retired {
+		r.say("no renewal is scheduled now: run `nself trust ssl setup --acme --install-cron`")
+	}
+	return nil
+}
+
+// adoptWrite stores the DNS credentials, then installs and saves each lineage.
+func (r *acmeRun) adoptWrite(ctx context.Context, dir string, secs map[string]string, adopt []acme.Lineage) error {
 	for name, v := range secs {
 		if err := acmeD.secSet(r.workdir, r.secEnv, name, v); err != nil {
 			return e151(acmeRefuse("check the age key and that the value is a real credential", "storing %s in the secret store failed: %v", name, err))
@@ -80,7 +112,6 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 			return e151(acmeRefuse("check permissions on the ssl/.acme directory", "saving lineages.json failed"))
 		}
 	}
-	r.say("adopted %d lineage(s) (%s); certbot state was not touched", len(adopt), adoptedKinds(adopt))
 	return nil
 }
 

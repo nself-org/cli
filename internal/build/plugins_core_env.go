@@ -25,6 +25,7 @@ package build
 // supported (see normalizeComposePluginCoreEnv and plugins_core_env_inject.go).
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -130,6 +131,11 @@ var pluginEnvBlockRE = regexp.MustCompile(`(?m)^([ \t]+)environment:[ \t]*\r?\n`
 // distinct from pluginEnvBlockRE because there is no child block to scan.
 var pluginEnvEmptyListRE = regexp.MustCompile(`(?m)^([ \t]+)environment:[ \t]*\[\][ \t]*\r?\n`)
 
+// pluginEnvAnchoredRE matches an environment: key whose value is an anchor
+// ("&e") or an alias ("*e"): the block's keys are not visible to the text
+// scan, and a new environment: key would duplicate it.
+var pluginEnvAnchoredRE = regexp.MustCompile(`(?m)^[ \t]+environment:[ \t]*[&*]`)
+
 // pluginEnvEntryKeyRE extracts the key name from a map-form environment:
 // child line such as "      DATABASE_URL: ${DATABASE_URL}".
 var pluginEnvEntryKeyRE = regexp.MustCompile(`^[ \t]+([A-Za-z_][A-Za-z0-9_]*):`)
@@ -156,50 +162,73 @@ var pluginEnvListEntryKeyRE = regexp.MustCompile(`^-[ \t]+([A-Za-z_][A-Za-z0-9_]
 // env_file-only fragment with no networks: anchor either, or a block using
 // a YAML merge key "<<: *anchor" whose expanded keys we can't see) is left
 // unchanged with a ui.Warn naming the plugin and file, rather than silently
-// dropping the injection.
+// dropping the injection. Only the plugin's own service is rewritten when the
+// fragment has sidecars (see plugins_core_env_target.go).
 func normalizeComposePluginCoreEnv(content []byte, pluginDir, pluginName string) []byte {
 	if pluginName == "" {
 		return content
 	}
 	port := 0
+	manifestName := ""
 	if m := readPluginManifest(pluginDir, pluginName); m != nil {
 		port = m.Port
+		manifestName = m.Name
 	}
 
-	if loc := pluginEnvEmptyListRE.FindSubmatchIndex(content); loc != nil {
-		return injectIntoEmptyListEnvBlock(content, loc, pluginName, port)
+	// A fragment can hold sidecar services: only the plugin's own service
+	// range is rewritten (D-0319); the rest of the bytes pass through.
+	start, end, anchor, state := pluginServiceRange(content, pluginName, manifestName)
+	switch state {
+	case rangeUnsafe:
+		warnUnrecognisedEnvBlock(pluginDir, pluginName)
+		return content
+	case rangeNoMatch:
+		// A pure third-party stack has no port (free/monitoring): nothing to
+		// inject by design, so no warning.
+		if port > 0 {
+			warnOnce(fmt.Sprintf(
+				"plugin %q: %s has several services and none is named %s, nself-%s or plugin-%s, so the core env vars were not injected",
+				pluginName, filepath.Join(pluginDir, pluginName, pluginComposeFilename), pluginName, pluginName, pluginName))
+		}
+		return content
 	}
-	if loc := pluginEnvBlockRE.FindSubmatchIndex(content); loc != nil {
-		shape, blockEnd, entryIndent, existing := scanEnvBlock(content, loc)
-		switch shape {
-		case envBlockList:
-			return appendListEntries(content, blockEnd, entryIndent, existing, pluginName, port)
-		case envBlockUnrecognised:
+	var seg []byte
+	if state == rangeFound {
+		// Rewrite only from the direct environment (or networks) key on, and
+		// only a match that begins exactly there. No such key: nothing safe
+		// to anchor on.
+		if anchor < 0 {
 			warnUnrecognisedEnvBlock(pluginDir, pluginName)
 			return content
-		default: // envBlockMap
-			return appendMapEntries(content, blockEnd, entryIndent, existing, pluginName, port)
 		}
+		cut := start + anchor
+		seg = append(append([]byte{}, content[start:cut]...), normalizeServiceCoreEnv(content[cut:end], true, pluginDir, pluginName, port)...)
+	} else {
+		seg = normalizeServiceCoreEnv(content[start:end], false, pluginDir, pluginName, port)
 	}
-	if out, ok := injectNewEnvBlock(content, pluginName, port); ok {
-		return out
+	if bytes.Equal(seg, content[start:end]) {
+		return content
 	}
-	warnUnrecognisedEnvBlock(pluginDir, pluginName)
-	return content
+	out := make([]byte, 0, len(content)+len(seg)-(end-start))
+	out = append(out, content[:start]...)
+	out = append(out, seg...)
+	return append(out, content[end:]...)
 }
 
 // warnUnrecognisedEnvBlock reports a plugin compose fragment whose
 // environment configuration normalizeComposePluginCoreEnv cannot safely
 // rewrite: an env_file-only fragment with no environment: block and no
-// networks: short-list anchor to insert a new one at, or an environment:
-// block using a YAML merge key ("<<: *anchor") whose expanded keys aren't
-// visible to a text-level rewrite. The plugin ships without
+// networks: short-list anchor to insert a new one at, an environment: block
+// using a YAML merge key ("<<: *anchor") or an anchor/alias whose expanded
+// keys aren't visible to a text-level rewrite, or a services mapping that
+// cannot be cut safely (sidecars behind an alias, flow style, a merge key or
+// several YAML documents). The plugin ships without
 // PLUGIN_INTERNAL_SECRET/NOTIFY_INTERNAL_SECRET and the rest of
 // pluginCoreEnvKeys until its fragment is updated by hand.
 func warnUnrecognisedEnvBlock(pluginDir, pluginName string) {
 	path := filepath.Join(pluginDir, pluginName, pluginComposeFilename)
 	ui.Warn(fmt.Sprintf(
-		"plugin %q: %s has an environment configuration nself can't safely extend (env_file-only with no networks: anchor, or a YAML merge key) — add PLUGIN_INTERNAL_SECRET, NOTIFY_INTERNAL_SECRET and the other core env vars manually",
+		"plugin %q: %s has an environment configuration nself can't safely extend (env_file-only with no networks: anchor, an anchored or merged environment, or services behind an alias, flow style, a merge key or several documents) — add PLUGIN_INTERNAL_SECRET, NOTIFY_INTERNAL_SECRET and the other core env vars manually",
 		pluginName, path))
 }
 

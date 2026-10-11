@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // ResumeState holds the persisted state for a resumable streaming backup.
@@ -125,8 +126,12 @@ func Resume(ctx context.Context, cfg *config.Config, opts ResumeOptions) (*Strea
 		"started_at", state.StartedAt,
 	)
 
+	st, _, err := streamerFor(state.Destination, rcloneEnvFor(cfg)...)
+	if err != nil {
+		return nil, fmt.Errorf("%w: resume destination: %v", errs.ErrBackupRemoteFailed, err)
+	}
 	pgURL := buildPgURL(cfg)
-	result, err := runStreamPipeline(ctx, cfg, pgURL, state.Destination, state.Key, state.Recipients)
+	result, err := runStreamPipeline(ctx, cfg, pgURL, state.Destination, st, state.Key, state.Recipients)
 	if err != nil {
 		return nil, fmt.Errorf("resume stream: %w", err)
 	}

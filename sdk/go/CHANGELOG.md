@@ -73,6 +73,12 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `PinnedHostKeys` (D-0484): every directory above the pin directory, on the
+  given path and with symlinks resolved, must be owned by you or root and not
+  group/world writable (a root-owned sticky directory such as `/tmp` passes),
+  as sshd's secure_path checks; the error names the ancestor. The lock on
+  `<Path>.lock` is polled with `LOCK_NB` and refused after 30 seconds instead
+  of waiting forever on a hung holder.
 - `ResolveSSHHost` checks its argument with `ParseHostSpec` instead of
   `ValidateAlias` and runs `ssh -G [-p N] -- [user@]host`: a bare IPv6 literal
   now needs brackets, `host:port` is read as a port, and a legacy `:/path`

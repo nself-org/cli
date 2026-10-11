@@ -96,7 +96,16 @@ func parseUpstream(raw string) Upstream {
 			port = 443
 		}
 	}
-	return Upstream{Scheme: u.Scheme, Host: u.Hostname(), Port: port}
+	up := Upstream{Scheme: u.Scheme, Host: u.Hostname(), Port: port, Path: u.EscapedPath()}
+	// proxy_pass receives the full target through a variable, so nginx sends
+	// the target's path and query instead of the request URI (whole-URI
+	// replacement). They are part of the contract; dropping them made
+	// routes.json disagree with the rendered conf.
+	if u.RawQuery != "" || u.ForceQuery {
+		q := u.RawQuery
+		up.Query = &q
+	}
+	return up
 }
 
 func buildZones(cfg *config.Config) []Zone {

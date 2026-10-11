@@ -30,20 +30,40 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     steps:
       # G14-CI-FIX: guard against missing GitHub App secrets so this meta-workflow
-      # does not itself go red and hide the real CI failure.  When the App is not
-      # yet provisioned the job logs the failure details and exits 0 so the
-      # meta-workflow stays green while still surfacing the information.
+      # does not itself go red and hide the real CI failure. D-0159: the skip
+      # used to print one plain log line nobody reads, so a failure notice could
+      # vanish without a trace. A missing secret now raises a ::warning::
+      # annotation (shown on the run page) and writes the failed run's details
+      # to the job summary, and the job still exits 0.
       - name: Check GitHub App configured
         id: app-check
         run: |
-          if [ -z "$APP_ID" ]; then
-            echo "NSELF_DISPATCH_APP_ID secret not set — skipping auto-PCI (configure GitHub App to enable)"
+          missing=""
+          [ -n "$APP_ID" ] || missing="NSELF_DISPATCH_APP_ID"
+          [ -n "$APP_KEY" ] || missing="${missing:+$missing, }NSELF_DISPATCH_APP_PRIVATE_KEY"
+          if [ -n "$missing" ]; then
+            echo "::warning title=ci-failure-pci skipped::secret(s) not set: ${missing}. No PCI was sent for ${WORKFLOW_NAME} run ${RUN_URL}"
+            {
+              echo "### CI failure PCI skipped"
+              echo ""
+              echo "Secret(s) not set: \`${missing}\`. No PCI was sent for this failure."
+              echo ""
+              echo "- Workflow: ${WORKFLOW_NAME}"
+              echo "- Branch: ${HEAD_BRANCH}"
+              echo "- SHA: ${HEAD_SHA}"
+              echo "- Run: ${RUN_URL}"
+            } >> "$GITHUB_STEP_SUMMARY"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
         env:
           APP_ID: ${{ secrets.NSELF_DISPATCH_APP_ID }}
+          APP_KEY: ${{ secrets.NSELF_DISPATCH_APP_PRIVATE_KEY }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
 
       - name: Generate GitHub App token
         id: app-token

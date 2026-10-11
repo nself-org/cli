@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/ssl/acme"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -88,6 +89,14 @@ func runSSLSetup(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load(workdir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
+	}
+
+	// certbot would write its pair over certificates the ACME engine owns, and
+	// --install-cron would add a second writer (D-0411).
+	if f, lerr := acme.Load(filepath.Join(workdir, "ssl")); lerr != nil {
+		return fmt.Errorf("reading the ACME lineages: %w (fix ssl/.acme/lineages.json, or use --acme)", lerr)
+	} else if len(f.Lineages) > 0 {
+		return fmt.Errorf("the ACME engine manages this project's certificates (%s): use `nself trust ssl setup --acme`; certbot would overwrite them", acme.StateDir(filepath.Join(workdir, "ssl")))
 	}
 
 	if _, err := exec.LookPath("certbot"); err != nil {

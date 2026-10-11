@@ -204,15 +204,34 @@ func acmeUnitsFor(workdir, keyPath string) (service, timer string, err error) {
 	return service, timer, err
 }
 
-// timer installs the renewal units; under --dry-run it prints them instead.
-func (r *acmeRun) timer() error {
+// timer refuses while a certbot hook writes into the ssl dir, retires the
+// certbot timer, then installs the renewal units (D-0411); under --dry-run it
+// prints them instead.
+func (r *acmeRun) timer() error { return r.timerAfter(false) }
+
+// timerAfter is timer for a run that may already have retired the certbot
+// timer (retired), so a failed install still says that nothing renews.
+func (r *acmeRun) timerAfter(retired bool) error {
+	if err := r.refuseCertbotHooks(certbotDir); err != nil {
+		return err
+	}
 	if r.dry {
 		service, timer, _ := acmeUnitsFor(r.workdir, r.res.AgeKey)
 		r.say("dry run: would write nself-acme-renew.service:\n%s\nand nself-acme-renew.timer:\n%s", service, timer)
-		return nil
+		_, err := r.retireCertbot()
+		return err
 	}
+	now, err := r.retireAndRecheck(retired, certbotDir)
+	if err != nil {
+		return err
+	}
+	retired = retired || now
 	if err := acmeD.timer(r.workdir, r.res.AgeKey); err != nil {
-		return e151(acmeRefuse("add to cron: 30 3 * * * nself trust ssl renew --acme --quiet", "installing the renewal timer: %v", err))
+		var gone string
+		if retired {
+			gone = "; " + certbotTimer + " was disabled, so nothing renews until this is fixed"
+		}
+		return e151(acmeRefuse("add to cron: 30 3 * * * nself trust ssl renew --acme --quiet", "installing the renewal timer: %v%s", err, gone))
 	}
 	r.say("renewal timer installed (nself-acme-renew.timer, runs as root with age key %s)", r.res.AgeKey)
 	return nil

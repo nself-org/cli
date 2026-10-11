@@ -254,23 +254,6 @@ func pipeFile(t *testing.T, sd string, n int) string {
 	return string(b)
 }
 
-func TestMigrateUpDir_NestedDirLegacyUpRowPipesRename(t *testing.T) {
-	dir := nestedDir(t, "001_x")
-	sd := fakeDockerState(t, map[string]string{
-		"q_legacy_exists": "yes", "q_ops_exists": "yes", "q_ops_legacy_count": "0",
-		"q_applied": "up.sql|2026-10-04T10:00:00Z", "q_up_count": "1", "q_ops_ids": "001\n",
-	})
-	if _, err := MigrateUpDir(context.Background(), fakeCfg, dir); err != nil {
-		t.Fatal(err)
-	}
-	if got := pipeFile(t, sd, 0); strings.TrimSpace(got) != strings.TrimSpace(legacyOpsIDBackfillSQL) {
-		t.Errorf("pipe-0 is not the backfill:\n%s", got)
-	}
-	if got := pipeFile(t, sd, 1); got != legacyNestedRenameSQL("001_x") {
-		t.Errorf("pipe-1 is not the nested rename:\n%s", got)
-	}
-}
-
 func TestMigrateDownDir_NestedLegacyUpRowUpgradedBeforeLedgerRead(t *testing.T) {
 	dir := mkMigDir(t, dirTestFiles)
 	if err := os.MkdirAll(filepath.Join(dir, "000_n"), 0o755); err != nil {

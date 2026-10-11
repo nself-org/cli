@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -119,5 +120,76 @@ func TestLock_ReaderBlocksOnWriter(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Lookup did not finish after release")
+	}
+}
+
+// holdLock takes the lock file of p from a second descriptor, as another
+// process would, and returns the release func.
+func holdLock(t *testing.T, p PinnedHostKeys, exclusive bool) func() {
+	t.Helper()
+	f, err := os.OpenFile(p.Path+".lock", os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lockFD(f, exclusive); err != nil {
+		t.Fatal(err)
+	}
+	return func() { unlockFD(f); _ = f.Close() }
+}
+
+func TestLock_HungHolderTimesOut(t *testing.T) {
+	skipWindows(t)
+	old := pinLockWait
+	pinLockWait = 100 * time.Millisecond
+	t.Cleanup(func() { pinLockWait = old })
+	p, _ := pinFile(t)
+	if err := p.Add("seed", keyA); err != nil {
+		t.Fatal(err)
+	}
+	before := readPin(t, p)
+	release := holdLock(t, p, true)
+	done := make(chan [3]error, 1)
+	go func() {
+		_, lerr := p.Lookup("seed")
+		done <- [3]error{lerr, p.Add("late", keyB), p.Remove("seed")}
+	}()
+	select {
+	case errs := <-done:
+		for i, err := range errs {
+			if err == nil || !strings.Contains(err.Error(), "held by another process") || !strings.Contains(err.Error(), p.Path+".lock") {
+				t.Errorf("op %d with the lock held: %v", i, err)
+			}
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("a held lock blocked past pinLockWait")
+	}
+	if readPin(t, p) != before {
+		t.Error("pin file changed while the lock was held")
+	}
+	release() // positive control: the same calls succeed once it is free
+	if err := p.Add("late", keyB); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := p.Lookup("late"); err != nil || len(got) != 1 {
+		t.Errorf("late = %q, %v", got, err)
+	}
+}
+
+func TestLock_SharedHolderLetsReadersIn(t *testing.T) {
+	skipWindows(t)
+	old := pinLockWait
+	pinLockWait = 100 * time.Millisecond
+	t.Cleanup(func() { pinLockWait = old })
+	p, _ := pinFile(t)
+	if err := p.Add("seed", keyA); err != nil {
+		t.Fatal(err)
+	}
+	release := holdLock(t, p, false)
+	defer release()
+	if got, err := p.Lookup("seed"); err != nil || len(got) != 1 {
+		t.Errorf("Lookup beside a shared holder = %q, %v", got, err)
+	}
+	if err := p.Add("late", keyB); err == nil || !strings.Contains(err.Error(), "held by another process") {
+		t.Errorf("Add beside a shared holder: %v", err)
 	}
 }

@@ -21,6 +21,7 @@ All ɳSelf project configuration lives in `.env` (and optionally `.env.local` fo
 - [Hasura (GraphQL API)](#hasura-graphql-api)
 - [Auth](#auth)
 - [Nginx and SSL](#nginx-and-ssl)
+- [API Docs](#api-docs)
 - [ɳSelf Admin](#nself-admin)
 - [AI (Zero-Config AI Pool)](#ai-zero-config-ai-pool)
 - [Optional Service Toggles](#optional-service-toggles)
@@ -52,6 +53,15 @@ nSelf resolves config from several `.env*` files, later files overriding earlier
 **How `ENV` itself is resolved:** the cascade above selects `.env.{dev|staging|prod}` by matching `ENV`, but `ENV` is not read from the shell alone. `config.Load()` (and `nself env explain`, which calls the identical `ResolveEnv` helper so its output can never diverge from what a build actually does) resolves it in this order: the process environment wins outright if `ENV` is exported; otherwise the `ENV=` key inside the project's own committed `.env` file decides; otherwise it defaults to `dev`. This matters on a bare checkout of a production server: without the `.env` fallback, a plain `nself build` with no shell `ENV` set would silently build the dev compose (wrong images, `*.local.nself.org` routes, mailpit/nself-admin wired in) even though `.env` says `ENV=prod`.
 
 **Changing a value with `nself config set`:** the command writes one line into one cascade file (`.env`, or `.env.<name>` with `--env <name>`, for example `--env secrets` for `.env.secrets`). Before it writes, it loads the cascade with that line already applied in memory (the same `ENV` resolution and file order as above, so `config set ENV staging` previews the `.env.staging` layer) and renders the build from it, so `--preview` shows exactly what the change regenerates and writes nothing. See [[cmd-config]] for v1.5 auto-apply and prod-class confirmation.
+
+### How config set writes values
+
+`nself config set` writes a value as-is when it has no special characters. Otherwise it writes the value in double quotes with backslash, double quote, `$`, newline and carriage return escaped, so the file loads back byte-identical and the new value is never expanded as `$VAR`.
+
+- A value a dotenv file cannot hold (for example one that ends in a backslash and contains a space) is refused with an error that names only the key.
+- `config set` also refuses to rewrite a file when it cannot prove that every other key stays unchanged. Edit that file by hand.
+- A malformed env file fails to load with `invalid dotenv syntax in <file>`. The parser text is not shown, because it would echo the offending line.
+- `nself build --diff` and the hand-edit warning hide the values of secret-named keys (the same rule as `config show`) in every generated file, not only env files.
 
 **Inspect the cascade for your project:**
 
@@ -237,6 +247,22 @@ All OAuth provider vars are optional. Set client ID and secret for each provider
 | `NGINX_FRONTED_BY` | string | *(empty)* | No | Names the stack whose Nginx already serves this project's domains. When set, `nself build` generates no Nginx service for this project and `nself status` stops expecting one. See [[Config-Nginx]]. |
 | `SSL_MODE` | enum | `local` | No | SSL certificate strategy. Accepted values: `local` (self-signed), `letsencrypt`, `custom`, `none`. |
 | `EXTRA_SSL_DOMAINS` | string | *(empty)* | No | Additional domains to include in the certificate SAN (comma-separated). |
+
+---
+
+## API Docs
+
+`nself build` serves the generated OpenAPI spec and a docs page on `docs.<BASE_DOMAIN>` (`/api-docs` is the raw spec, `API_DOCS_PATH` is the page). `API_DOCS_PATH` is written into an nginx `location` line, so it must start with `/` and use only letters, digits and `. _ ~ / -`. `/api-docs` itself is refused (it is already served); `/api-docs-v2` is fine. An invalid value fails the build.
+
+| Variable | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `API_DOCS_ENABLED` | bool | `true` | No | Serve the API docs site on `docs.<BASE_DOMAIN>`. Set `false` to turn it off. |
+| `API_DOCS_PATH` | string | `/docs` | No | Path of the docs page on the docs subdomain. |
+| `API_DOCS_TITLE` | string | `<project> API` | No | Title shown on the docs page. Derived from `PROJECT_NAME` when unset. |
+| `API_DOCS_THEME` | string | `default` | No | Docs page theme. |
+| `API_DOCS_AUTH_ENV_VAR` | string | *(none)* | No | Accepted and passed to the docs generator, but not used yet: the docs page does not read a token from it. |
+| `API_DOCS_GRAPHQL_ENABLED` | bool | `true` | No | Include the GraphQL endpoint in the docs. |
+| `API_DOCS_GRAPHQL_ENDPOINT` | string | `/v1/graphql` | No | GraphQL endpoint path shown in the docs. |
 
 ---
 

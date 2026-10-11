@@ -163,6 +163,13 @@ func (d *hostDest) Put(ctx context.Context, localPath, key string) error {
 	if err := remote.CopyTo(ctx, t, localPath, tmp); err != nil {
 		return err
 	}
+	return d.verifyAndMove(ctx, t, tmp, full, key, sum)
+}
+
+// verifyAndMove is the tail Put and PutStream share: compare the remote
+// sha256 of tmp with sum, then chmod 600 and mv it over full. On any failure
+// tmp is removed.
+func (d *hostDest) verifyAndMove(ctx context.Context, t remote.Target, tmp, full, key, sum string) error {
 	got, err := remote.Run(ctx, t, "sha256sum -- "+q(tmp))
 	if err == nil && !strings.HasPrefix(got, sum+" ") {
 		err = fmt.Errorf("sha256 mismatch for %s on %s", key, d.server)

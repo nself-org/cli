@@ -32,3 +32,13 @@ Before a remote deploy changes a host, the architecture guard checks every image
 `nself deploy targets --json` emits a v1 JSON envelope with every target sorted by environment and server. Rows include tier, role, primary status, user, host, port, `ssh_hostname`, sorted DNS addresses, known-hosts fingerprints, architecture and source. The command runs `ssh -G`, DNS lookup and `ssh-keygen -F`; it never opens a connection to a deploy host. OpenSSH `ssh -G` evaluates the operator's `Match exec` configuration, which can run local operator-configured commands.
 
 `controlplane.ResolveTargets` filters by environment, tier and server and returns matches ordered by environment, role (observability, app, load balancer, database, worker), and name. An empty result is E486.
+
+## Pinned host key files
+
+The deploy pin file (`~/.config/nself/deploy_known_hosts`) and the backup pin file (`~/.config/nself/backup_known_hosts`, or the path in `NSELF_BACKUP_KNOWN_HOSTS`) follow the same rules. nSelf refuses to read or change a pin file when:
+
+- it holds a line nSelf cannot represent: an `@cert-authority` or `@revoked` marker, a wildcard, negation, host list, `[host]:port` or hashed host, a control character, or a short line. The error names the file and line numbers. Remove those lines by hand.
+- the file, its directory, or any directory above it is group or world writable, or is owned by someone other than you or root. A root-owned directory with the sticky bit, such as `/tmp`, is allowed. ssh opens the file by name when it connects, so a directory another user can write could swap the file after nSelf checked it. Run `chmod go-w` on the directory the error names, or move the file under a directory you own. A symlinked directory is checked along both its own path and the path it points to.
+- you run nSelf with `sudo` while the pin directory belongs to your user. Run it as the user who owns the directory.
+
+nSelf never changes the mode of these files or directories for you. Each change to a pin file holds a lock on `<file>.lock`. If another nSelf process holds that lock for more than 30 seconds, the command stops with an error naming the lock file; find the holder with `lsof <file>.lock`.

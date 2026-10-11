@@ -51,8 +51,21 @@ Every JSON contract is published as a JSON Schema (draft 2020-12) under `schemas
 | `schemas/envelope.v1.schema.json` | The envelope: exactly one of `data` or `error`, `schema_version` `"1"`, optional `meta` (`deprecations[]` with `old`, `new`, `removal_at`; `warnings[]`) |
 | `schemas/error.v1.schema.json` | The error object: `code` (`E` and three digits), `message`, optional `cause`, `remediation`, `docs_url`, `exit_code`, `class` |
 | `schemas/command-registry.v1.schema.json` | The command registry document (`nself help --json` data and `.github/command-registry.json`) |
-| `schemas/commands/<command>.v1.schema.json` | The `data` of one envelope command; the path is the command with spaces as `-` (`help` today) |
+| `schemas/commands/<command>.v1.schema.json` | The `data` of one envelope command; the path is the command with spaces as `-` (`help`, `status`, `backup create` as `backup-create`) |
+| `schemas/invoke/confirmation.v1.schema.json` | The `data` of a machine confirmation (contract `cli.machine-request` v1) |
+| `schemas/deploy-targets.v1.schema.json` | The `data` of `nself deploy targets --json` |
+| `schemas/bundle-ledger.v1.schema.json` | The bundle install-state ledger (contract `cli.bundle-ledger` v1) |
+| `schemas/catalog.v1.schema.json` | The plugin catalog (contract `plugins.catalog` v1): one row per slug and tier, bundles and counts |
+| `schemas/releases.v1.schema.json` | `releases.json`: version, sha256, signature and tarball, written only by the release pipeline |
+| `schemas/control-plane.v2.schema.json` | The control-plane inventory in `.nself/control-plane.yaml` (secrets never inlined) |
+| `schemas/lockfile.v1.schema.json` | The project lock `nself.lock.yaml` (contract `cli.lockfile` v1), as its parsed document |
+| `schemas/nself-yaml.v1.schema.json` | `nself.yaml`, the project manifest `nself build` reads |
+| `schemas/plugin-manifest.v2.schema.json` | The plugin manifest v2 (`plugin.json` with `manifest_version` 2) |
+| `schemas/portable-export.v1.schema.json` | The portable bundle manifest (contract `cli.portable-export` v1) |
+| `schemas/proxy-routes.v1.schema.json` | The provider-neutral model of generated proxy routes |
 | `schemas/index.json` | Every generated schema with its `$id` |
+
+`make contract-check` fails when a schema in `schemas/index.json` has no row here or a row names a file that does not exist (`scripts/contract-check-wiki.sh`).
 
 Each schema has the `$id` `urn:nself:cli:schema:<name>:v1`. The envelope refers to the error schema by that `$id`, so a validator needs `error.v1` loaded alongside `envelope.v1` (the repository tests resolve it from `schemas/index.json`). Any 2020-12 validator works. To check a command's `data` with `check-jsonschema`:
 

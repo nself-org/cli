@@ -153,7 +153,7 @@ tools/mcpdoc 0  # measured 0.0 2026-10-05
 tools/openapigen 68  # measured 70.2 2026-10-11 (P7-SURF-02)
 tools/parity 16  # measured 18.2 2026-10-05
 tools/perfbench 79  # measured 80.3 2026-10-05 (go test -mod=vendor -coverprofile ./tools/perfbench/...)
-tools/perfbench/scenarios 0  # measured 0.0 2026-10-05 (no own tests; exercised via tools/perfbench)
+tools/perfbench/scenarios 63  # measured 65.7 2026-10-11 (D-0234; http-invoke Run needs a live admin serve, untested)
 tools/schemagen 85  # measured 87.1 2026-10-05
 tools/servicecatalog 0  # measured 0.0 2026-10-05
 tools/wikigen 0  # measured 0.0 2026-10-05

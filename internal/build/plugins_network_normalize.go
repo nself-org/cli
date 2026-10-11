@@ -120,7 +120,7 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 		}
 		return content, nil
 	}
-	if foreign := res.foreignExternalNetworks(); len(foreign) > 0 {
+	if foreign := res.foreignExternalNetworks(pluginName); len(foreign) > 0 {
 		msg := fmt.Sprintf("plugin %q attaches external network %s other than the project network", pluginName, strings.Join(foreign, ", "))
 		// compat.V15(P7-PLUG-17): a fragment may join any external network (warning) -> E129 fails the build
 		if compat.V15() {

@@ -73,10 +73,15 @@ func TestNetworkPolicyNamedNonExternal(t *testing.T) {
 		wantE129(t, "services:\n  w:\n    image: x\n    networks: [p]\nnetworks:\n  p:\n    external: false\n    name: other\n", "other")
 	})
 	compattest.Both(t, func(t *testing.T) {
-		for _, name := range []string{"${COMPOSE_PROJECT_NAME:-nself}_forgejo_runner_net", "${PROJECT_NAME}_x", "${DOCKER_NETWORK}", "${COMPOSE_PROJECT_NAME}_network"} {
-			frag := "services:\n  w:\n    image: x\n    networks: [p]\nnetworks:\n  p:\n    name: " + name + "\n"
-			if _, err := normalizeComposeNetworks([]byte(frag), "w"); err != nil {
-				t.Errorf("%s is project-scoped, got %v", name, err)
+		for _, c := range []struct{ plugin, name string }{
+			{"forgejo", "${COMPOSE_PROJECT_NAME:-nself}_forgejo_runner_net"},
+			{"w", "${PROJECT_NAME}_w_x"},
+			{"w", "${DOCKER_NETWORK}"},
+			{"w", "${COMPOSE_PROJECT_NAME}_network"},
+		} {
+			frag := "services:\n  w:\n    image: x\n    networks: [p]\nnetworks:\n  p:\n    name: " + c.name + "\n"
+			if _, err := normalizeComposeNetworks([]byte(frag), c.plugin); err != nil {
+				t.Errorf("%s is project-scoped for %s, got %v", c.name, c.plugin, err)
 			}
 		}
 	})
@@ -123,7 +128,10 @@ func TestLegacyNetworkRealFragments(t *testing.T) {
 				resetWarnOnce()
 				var out []byte
 				var nerr error
-				stderr := captureStderr(t, func() { out, nerr = normalizeComposeNetworks(raw, "p") })
+				// Each fixture is named after its plugin; a project-scoped network must
+				// sit in that plugin's namespace (D-0335).
+				plugin := strings.TrimSuffix(filepath.Base(f), ".yml")
+				stderr := captureStderr(t, func() { out, nerr = normalizeComposeNetworks(raw, plugin) })
 				if nerr != nil {
 					t.Fatalf("no E129 for a first-party fragment: %v", nerr)
 				}

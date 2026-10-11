@@ -5,7 +5,9 @@
 // Outputs: flock(2) held on that file until unlockFD or Close.
 //              Also the owner check (uid is you or root) and O_NOFOLLOW.
 // Constraints: flock is per open-file-description, so every caller opens its
-//              own descriptor. Retries on EINTR. Blocks until granted.
+//              own descriptor. Retries on EINTR. Production code locks with
+//              tryLockFD (LOCK_NB, polled by waitLock with a deadline);
+//              lockFD blocks until granted and is kept for tests.
 
 package remote
 
@@ -33,7 +35,38 @@ func ownerOK(fi os.FileInfo) bool {
 	return uidOK(int(st.Uid), os.Geteuid())
 }
 
-// lockFD takes LOCK_EX (exclusive) or LOCK_SH on f, retrying on EINTR.
+// rootOwned reports uid 0 (true when the platform reports no owner).
+func rootOwned(fi os.FileInfo) bool {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return true
+	}
+	return st.Uid == 0
+}
+
+// tryLockFD tries LOCK_EX or LOCK_SH with LOCK_NB. It reports false, nil when
+// another open file description holds a conflicting lock.
+func tryLockFD(f *os.File, exclusive bool) (bool, error) {
+	how := syscall.LOCK_SH | syscall.LOCK_NB
+	if exclusive {
+		how = syscall.LOCK_EX | syscall.LOCK_NB
+	}
+	for {
+		err := syscall.Flock(int(f.Fd()), how)
+		if err == nil {
+			return true, nil
+		}
+		if err == syscall.EWOULDBLOCK {
+			return false, nil
+		}
+		if err != syscall.EINTR {
+			return false, err
+		}
+	}
+}
+
+// lockFD takes LOCK_EX (exclusive) or LOCK_SH on f, retrying on EINTR. It
+// blocks with no deadline: tests only; acquire uses waitLock.
 func lockFD(f *os.File, exclusive bool) error {
 	how := syscall.LOCK_SH
 	if exclusive {
