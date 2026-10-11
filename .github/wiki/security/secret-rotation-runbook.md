@@ -6,7 +6,7 @@ Extends the S64 secrets-rotation baseline with automated schedule management and
 
 ```bash
 # Rotate a single secret immediately
-nself secrets rotate HASURA_ADMIN_SECRET
+nself secrets rotate HASURA_GRAPHQL_ADMIN_SECRET
 
 # Rotate with dual-key overlap window (keep old key as _PREVIOUS)
 nself secrets rotate JWT_SIGNING_KEY --dual-window
@@ -22,11 +22,13 @@ nself secrets retire JWT_SIGNING_KEY
 nself secrets schedule --secret JWT_SIGNING_KEY --every 90d
 
 # Set a 180-day schedule for the Hasura admin secret
-nself secrets schedule --secret HASURA_ADMIN_SECRET --every 180d
+nself secrets schedule --secret HASURA_GRAPHQL_ADMIN_SECRET --every 180d
 
 # View all schedules and their status
 nself secrets list-schedules
 ```
+
+The Hasura admin secret is tracked as `HASURA_GRAPHQL_ADMIN_SECRET`, the variable the stack reads. A schedule saved under the older name `HASURA_ADMIN_SECRET` is renamed automatically the next time the rotation state loads, keeping its cadence and history.
 
 Automated rotation fires when the `rotation` plugin is installed and
 `NSELF_SECRET_ROTATION=true` is set. The plugin registers a cron job (via
