@@ -186,3 +186,46 @@ func TestInstallLockedValidatesDependencyNamesFirst(t *testing.T) {
 		t.Fatalf("download hit %d times before the refusal", n)
 	}
 }
+
+// TestNameLengthCapKeepsIdentifiersUnder63Bytes: two names that differ only past
+// byte 63 of np_<name>_role would share one truncated schema and role.
+func TestNameLengthCapKeepsIdentifiersUnder63Bytes(t *testing.T) {
+	longest := strings.Repeat("a", maxPluginNameLen)
+	if err := ValidateName(longest); err != nil {
+		t.Fatalf("a name of exactly the cap was refused: %v", err)
+	}
+	if n := len(sanitizeSchemaName(longest) + "_role"); n > pgIdentMax {
+		t.Fatalf("longest accepted name yields a %d-byte identifier", n)
+	}
+	cfg := &config.Config{ProjectName: "t"}
+	for _, suffix := range []string{"x", "y"} {
+		name := strings.Repeat("a", 60) + suffix
+		if err := ValidateName(name); err == nil {
+			t.Errorf("ValidateName accepted a %d-byte name", len(name))
+		}
+		for label, err := range map[string]error{
+			"drop":   dropPluginSchema(context.Background(), cfg, name),
+			"create": createPluginSchema(context.Background(), cfg, name),
+		} {
+			if err == nil || !strings.Contains(err.Error(), "refusing") {
+				t.Errorf("%s(%q) = %v, want a refusal before any SQL", label, name, err)
+			}
+		}
+	}
+	// checkSchemaMapsBack itself refuses an over-long generated identifier.
+	if err := checkSchemaMapsBack("ab", "np_"+strings.Repeat("a", 70)); err == nil {
+		t.Error("checkSchemaMapsBack accepted a mismatched schema")
+	}
+}
+
+// TestInstalledTierIgnoresPathNames: `plugin info ../victim` read a manifest
+// outside the plugin dir.
+func TestInstalledTierIgnoresPathNames(t *testing.T) {
+	pluginDir, victim := victimFixture(t)
+	if err := os.WriteFile(filepath.Join(victim, "plugin.json"), []byte(`{"tier":"pro"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if tier, _, ok := InstalledTier(pluginDir, "../victim"); ok {
+		t.Fatalf("InstalledTier read outside the plugin dir: tier %q", tier)
+	}
+}

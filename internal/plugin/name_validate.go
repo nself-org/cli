@@ -24,9 +24,18 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
-// maxPluginNameLen caps a name well above any real slug and below filesystem
-// component limits.
-const maxPluginNameLen = 64
+// pgIdentMax is PostgreSQL's identifier limit in bytes (NAMEDATALEN-1). Longer
+// identifiers are silently truncated, so two long names could share one schema.
+const pgIdentMax = 63
+
+// longestIdentAffix is the extra bytes around a plugin name in the longest
+// identifier generated from it: "np_" + name + "_role".
+const longestIdentAffix = len("np_") + len("_role")
+
+// maxPluginNameLen is the longest accepted plugin name: the longest generated
+// identifier (np_<name>_role) must fit in pgIdentMax bytes. The longest real
+// plugin name in the tree is far below this.
+const maxPluginNameLen = pgIdentMax - longestIdentAffix
 
 // pluginSlugRe is the allowed shape, identical to namePattern in manifest.go:
 // a lowercase letter, then lowercase letters, digits or '-'.

@@ -45,6 +45,13 @@ func checkSchemaMapsBack(pluginName, schema string) error {
 	if schema == invalidSchemaName || schema != "np_"+strings.ReplaceAll(pluginName, "-", "_") {
 		return fmt.Errorf("refusing to drop schema %q: it does not map one-to-one to plugin %q", schema, pluginName)
 	}
+	// PostgreSQL truncates identifiers at 63 bytes: two long names would share one
+	// schema or role. Check every identifier generated from the name.
+	for _, ident := range []string{schema, schema + "_role"} {
+		if len(ident) > pgIdentMax {
+			return fmt.Errorf("refusing schema work for plugin %q: identifier %q is %d bytes, over PostgreSQL's %d-byte limit", pluginName, ident, len(ident), pgIdentMax)
+		}
+	}
 	return nil
 }
 
@@ -153,6 +160,9 @@ const schemaVersion = 1
 // applied). After successful creation it records the version.
 func createPluginSchema(ctx context.Context, cfg *config.Config, pluginName string) error {
 	schema := sanitizeSchemaName(pluginName)
+	if err := checkSchemaMapsBack(pluginName, schema); err != nil {
+		return err
+	}
 	role := schema + "_role"
 	// Double-quoted identifiers prevent injection even if the regex contract
 	// ever changes. Validated identifiers are [a-z0-9_] only, but quoting is

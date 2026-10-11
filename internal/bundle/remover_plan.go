@@ -20,6 +20,7 @@ import (
 	"github.com/nself-org/cli/internal/bundle/ledger"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/plugin"
 )
 
 // errBundleNotRecorded is the sentinel computePlan returns, and Remove's
@@ -49,6 +50,13 @@ func (r *RemoveResult) adopt(p removePlan) {
 // Planned is in reverse bundle order, then any released plugin the bundle no
 // longer lists. A member that stays gets its reason from the original ledger.
 func computePlan(b Bundle, l ledger.Ledger, pluginDir string) (removePlan, error) {
+	// Defence in depth: the catalog is validated on load, but a Bundle value can come
+	// from anywhere; no member name is joined to pluginDir unchecked.
+	for _, name := range b.Plugins {
+		if err := plugin.ValidateName(name); err != nil {
+			return removePlan{}, err
+		}
+	}
 	work := l.Clone()
 	released, err := work.RemoveBundle(b.Slug)
 	if err != nil {
