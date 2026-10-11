@@ -161,7 +161,7 @@ nself backup restore-remote --from r2:mybucket/backups/<object>.age
 **A lost identity makes every backup encrypted to it unrecoverable.** The recipient (public key) cannot decrypt, the storage provider cannot, and nSelf cannot. There is no recovery path.
 
 1. Right after the first backup, copy `~/.config/nself/<project>-age.key` somewhere that is not this machine: a password manager attachment or an offline drive.
-2. Optionally run `touch ~/.config/nself/<project>-age.key.backed-up` to record that you did. The marker is an empty file you create yourself and nothing checks that the copy is real. A later release (P7-SURF-11) wires a doctor reminder that reads it; no reminder runs today.
+2. Optionally run `touch ~/.config/nself/<project>-age.key.backed-up` to record that you did. The marker is an empty file you create yourself and nothing checks that the copy is real. While an auto-created identity exists without the marker, `nself doctor` prints an advisory line saying so, with the `touch` command as the fix. The hint never changes the exit code.
 3. Prove the copy once with `nself backup drill --from <remote> --identity <copy>`. It restores into a throwaway container. Do not use `restore-remote` or `restore` for this: they overwrite the project database.
 
 In v1.5, `backup restore`, `restore-remote` and `backup drill` look for the identity in this order when `--decrypt-key`, `--key` or `--identity` is not given (an explicit path is used as given). A default-lookup identity must be a regular file (not a symlink) that parses as an age identity, otherwise `E222` names the path: `~/.config/nself/<project>-age.key`, `<project>-backup-age.key`, then `age-key.txt`. If none exists they stop with `E223`.
