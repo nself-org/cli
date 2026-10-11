@@ -34,11 +34,12 @@ func (g *Generator) buildRedisService() ServiceConfig {
 	var healthTest []string
 
 	if rc.Password != "" {
+		password := secretRef("REDIS_PASSWORD", rc.Password)
 		command = fmt.Sprintf(
 			"redis-server --appendonly yes --protected-mode yes --requirepass %s --maxclients %d",
-			rc.Password, poolSize,
+			password, poolSize,
 		)
-		healthTest = []string{"CMD", "redis-cli", "-a", rc.Password, "ping"}
+		healthTest = []string{"CMD", "redis-cli", "-a", password, "ping"}
 	} else {
 		command = fmt.Sprintf(
 			"redis-server --appendonly yes --protected-mode no --maxclients %d",
@@ -99,7 +100,7 @@ func (g *Generator) buildMinioService() ServiceConfig {
 		Networks:      []string{g.cfg.DockerNetwork},
 		Environment: map[string]string{
 			"MINIO_ROOT_USER":       mc.RootUser,
-			"MINIO_ROOT_PASSWORD":   mc.RootPassword,
+			"MINIO_ROOT_PASSWORD":   secretRef("MINIO_ROOT_PASSWORD", mc.RootPassword),
 			"MINIO_DEFAULT_BUCKETS": mc.DefaultBuckets,
 			// Disable extended attributes — required on Docker Desktop macOS
 			// (VirtioFS does not support xattrs and MinIO errors with
@@ -154,7 +155,7 @@ func (g *Generator) buildMailpitService() ServiceConfig {
 	// Add UI basic auth for non-dev environments when password is configured
 	if g.cfg.Env != "dev" && g.cfg.Mailpit.UIPassword != "" {
 		// Format: "user:password" — Mailpit supports MP_UI_BASICAUTH for HTTP basic auth
-		env["MP_UI_BASICAUTH"] = fmt.Sprintf("%s:%s", g.cfg.Mailpit.UIUser, g.cfg.Mailpit.UIPassword)
+		env["MP_UI_BASICAUTH"] = fmt.Sprintf("%s:%s", g.cfg.Mailpit.UIUser, secretRef("MAILPIT_UI_PASSWORD", g.cfg.Mailpit.UIPassword))
 	}
 
 	return ServiceConfig{

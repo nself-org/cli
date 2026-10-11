@@ -74,10 +74,10 @@ func (g *Generator) buildAdminService() ServiceConfig {
 			"BASE_DOMAIN":                 g.cfg.BaseDomain,
 			"DATABASE_URL":                fmt.Sprintf("postgres://%s@postgres:5432/%s", config.URLUserInfo(g.cfg.Postgres.User, g.cfg.Postgres.Password), g.cfg.Postgres.DB),
 			"HASURA_GRAPHQL_ENDPOINT":     "http://hasura:8080/v1/graphql",
-			"HASURA_GRAPHQL_ADMIN_SECRET": g.cfg.Hasura.AdminSecret,
+			"HASURA_GRAPHQL_ADMIN_SECRET": secretRef("HASURA_GRAPHQL_ADMIN_SECRET", g.cfg.Hasura.AdminSecret),
 			"DOCKER_HOST":                 "unix:///var/run/docker.sock",
-			"ADMIN_SECRET_KEY":            ac.SecretKey,
-			"ADMIN_PASSWORD_HASH":         ac.PasswordHash,
+			"ADMIN_SECRET_KEY":            secretRef("ADMIN_SECRET_KEY", ac.SecretKey),
+			"ADMIN_PASSWORD_HASH":         secretRef("ADMIN_PASSWORD_HASH", ac.PasswordHash),
 		},
 		Ports: []string{fmt.Sprintf("127.0.0.1:%d:3021", port)},
 		Volumes: []string{
@@ -124,7 +124,7 @@ func (g *Generator) buildFunctionsService() ServiceConfig {
 	baseEnv := map[string]string{
 		"DATABASE_URL":                fmt.Sprintf("postgres://%s@postgres:5432/%s", config.URLUserInfo(g.cfg.Postgres.User, g.cfg.Postgres.Password), g.cfg.Postgres.DB),
 		"HASURA_GRAPHQL_ENDPOINT":     "http://hasura:8080/v1/graphql",
-		"HASURA_GRAPHQL_ADMIN_SECRET": g.cfg.Hasura.AdminSecret,
+		"HASURA_GRAPHQL_ADMIN_SECRET": secretRef("HASURA_GRAPHQL_ADMIN_SECRET", g.cfg.Hasura.AdminSecret),
 		"PORT":                        fmt.Sprintf("%d", port),
 	}
 
