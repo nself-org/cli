@@ -109,7 +109,7 @@ func retireCertbotTimer(ctx context.Context) (bool, error) {
 		return false, cmp.Or(err, fmt.Errorf("%s %w", certbotService, errRenewalRunning))
 	}
 	st, err := readUnit(ctx, certbotTimer)
-	if err != nil || !(st.enabled || st.active) {
+	if err != nil || (!st.enabled && !st.active) {
 		return false, err
 	}
 	args := []string{"stop", certbotTimer}
