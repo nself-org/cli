@@ -20,6 +20,7 @@ package compose
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,6 +55,10 @@ func SetProjectPins(pins map[string]string) (restore func()) {
 	prev := projectPins
 	projectPins = next
 	pinsMu.Unlock()
+	// A new set of pins is a new run: its drop notices print again.
+	pinNoticedMu.Lock()
+	pinNoticed = map[string]bool{}
+	pinNoticedMu.Unlock()
 	return func() {
 		pinsMu.Lock()
 		projectPins = prev
@@ -102,30 +107,82 @@ func LoadProjectPins(projectDir string) error {
 	return nil
 }
 
-// projectPin returns the pin for service unless the operator set it explicitly
-// in the environment (the env cascade is in the process environment while the
-// build runs).
+// pinNoticeW receives the one-line notice printed when an explicit env value
+// drops a pin. Tests replace it; the build leaves it on stderr.
+var (
+	pinNoticeW   io.Writer = os.Stderr
+	pinNoticed             = map[string]bool{}
+	pinNoticedMu sync.Mutex
+)
+
+// projectPin returns the pin for service. An explicit env value drops the pin
+// only when it names a different image: nself init writes *_VERSION defaults
+// into .env, and a value that equals the pin's reference (the part before
+// "@") keeps ref@digest. A different explicit value drops the pin with a
+// one-line notice on stderr.
 func projectPin(service string) (string, bool) {
 	pinsMu.RLock()
 	pin, ok := projectPins[service]
 	pinsMu.RUnlock()
-	if !ok || explicitlySet(service) {
+	if !ok {
+		return "", false
+	}
+	if name, differs := explicitDiffers(service, pin); differs {
+		noticePinDropped(service, name, pin)
 		return "", false
 	}
 	return pin, true
 }
 
-// explicitlySet reports whether the env sets a version or image variable of service.
-func explicitlySet(service string) bool {
+// noticePinDropped prints the drop notice once per service, variable and pin.
+func noticePinDropped(service, envName, pin string) {
+	key := service + "/" + envName + "/" + pin
+	pinNoticedMu.Lock()
+	seen := pinNoticed[key]
+	pinNoticed[key] = true
+	w := pinNoticeW
+	pinNoticedMu.Unlock()
+	if seen || w == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "notice: %s is set, so the %s pin in %s is not used\n", envName, service, ProjectLockFile)
+}
+
+// explicitDiffers returns the first env variable of service that is set to
+// something other than the pin's reference.
+func explicitDiffers(service, pin string) (string, bool) {
 	names, ok := explicitVars[service]
 	if !ok {
 		base := strings.ToUpper(strings.ReplaceAll(service, "-", "_"))
 		names = []string{base + "_VERSION", base + "_IMAGE"}
 	}
+	want, _, _ := strings.Cut(pin, "@")
 	for _, n := range names {
-		if strings.TrimSpace(os.Getenv(n)) != "" {
-			return true
+		v := strings.TrimSpace(os.Getenv(n))
+		if v == "" {
+			continue
 		}
+		switch {
+		case strings.HasSuffix(n, "_VERSION") && refMatches(service, v, want):
+			continue
+		case strings.HasSuffix(n, "_IMAGE") && imageBase(v) == want:
+			continue
+		}
+		return n, true
 	}
-	return false
+	return "", false
+}
+
+func imageBase(ref string) string {
+	base, _, _ := strings.Cut(ref, "@")
+	return base
+}
+
+// refMatches reports whether version v of service resolves to the reference want.
+func refMatches(service, v, want string) bool {
+	if b := imageBase(ImageRef(service, v)); b != "" && b == want {
+		return true
+	}
+	r, ok := LockedRef(service)
+	return ok && r.LegacyRepository()+":"+v == want
 }

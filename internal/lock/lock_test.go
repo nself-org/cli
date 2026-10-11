@@ -301,3 +301,28 @@ func TestLockComposeImages(t *testing.T) {
 		t.Fatal("broken YAML accepted")
 	}
 }
+
+// TestLockCompareStrict: --frozen treats an empty cli or sha256 on one side as
+// a difference when the other recorded it; the lenient Compare does not.
+func TestLockCompareStrict(t *testing.T) {
+	base := sample()
+	blank := sample()
+	blank.CLI = ""
+	pin := blank.Plugins["ai"]
+	pin.SHA256 = ""
+	blank.Plugins["ai"] = pin
+	for name, pair := range map[string][2]Lock{"lock blanked": {blank, base}, "stack blanked": {base, blank}} {
+		if d := Compare(pair[0], pair[1]); len(d) != 0 {
+			t.Errorf("%s: lenient Compare must skip empty values, got %v", name, d)
+		}
+		d := CompareStrict(pair[0], pair[1])
+		if len(d) != 2 || d[0].Kind != KindCLI || !strings.Contains(d[1].String(), "plugin ai sha256") {
+			t.Errorf("%s: CompareStrict want cli and ai sha256 mismatches, got %v", name, d)
+		}
+	}
+	both := sample()
+	both.CLI = ""
+	if d := CompareStrict(both, both); len(d) != 0 {
+		t.Errorf("both sides empty is equal: %v", d)
+	}
+}

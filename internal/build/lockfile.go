@@ -124,13 +124,63 @@ func cliOwnedImages(composeYAML []byte) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	return filterCLIOwned(all), nil
+}
+
+// mergedComposeImages reads the image of every service across the compose files
+// `nself start` runs (ReadComposeManifest: the generated base, plugin fragments,
+// docker-compose.override.yml). Docker merges them in order and the last image
+// wins, so an override file cannot move a pinned image unseen. base is the rendered docker-compose.yml bytes, used in
+// place of the file on disk when the build has them (nil reads the file).
+func mergedComposeImages(workdir string, base []byte) (map[string]string, error) {
+	paths, err := ReadComposeManifest(workdir)
+	if err != nil {
+		return nil, err
+	}
+	basePath := filepath.Join(workdir, "docker-compose.yml")
+	abs := func(p string) string {
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(workdir, p)
+		}
+		return filepath.Clean(p)
+	}
+	files := []string{basePath}
+	for _, p := range paths {
+		// image-overrides.yml is written by start from the digests this very
+		// lock pins, so it mirrors the lock and is left out of the comparison.
+		if abs(p) != basePath && filepath.Base(p) != docker.ImageOverrideFile {
+			files = append(files, abs(p))
+		}
+	}
+	merged := map[string]string{}
+	for _, f := range files {
+		var data []byte
+		if f == basePath && base != nil {
+			data = base
+		} else if data, err = os.ReadFile(f); err != nil {
+			return nil, fmt.Errorf("reading %s: %w", filepath.Base(f), err)
+		}
+		imgs, err := lock.ComposeImages(data)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", filepath.Base(f), err)
+		}
+		for svc, ref := range imgs {
+			merged[svc] = ref
+		}
+	}
+	return merged, nil
+}
+
+// filterCLIOwned keeps the services the CLI image lock names and whose image
+// is a literal reference.
+func filterCLIOwned(all map[string]string) map[string]string {
 	out := map[string]string{}
 	for svc, ref := range all {
 		if _, owned := compose.LockedRef(svc); owned && !strings.Contains(ref, "${") {
 			out[svc] = ref
 		}
 	}
-	return out, nil
+	return out
 }
 
 // cliLockedRef finds the CLI image lock entry whose version a tag reference names.
@@ -168,11 +218,12 @@ func ledgerSources(pluginDir string) func() (ledger.Sources, error) {
 
 // lockFromState assembles a Lock from a rendered compose, the bundle ledger and
 // the CLI version. No digest is looked up: the lock records the compose as is.
-func lockFromState(pluginDir string, composeYAML []byte) (lock.Lock, error) {
-	refs, err := cliOwnedImages(composeYAML)
+func lockFromState(pluginDir, workdir string, composeYAML []byte) (lock.Lock, error) {
+	all, err := mergedComposeImages(workdir, composeYAML)
 	if err != nil {
 		return lock.Lock{}, err
 	}
+	refs := filterCLIOwned(all)
 	l := lock.New()
 	l.CLI = cliMinor(version.GetVersion())
 	l.Images, l.Unpinned = lock.Pin(refs, lock.Resolver{})
@@ -197,7 +248,7 @@ func (st *buildState) writeProjectLock(composeYAML []byte) error {
 	if !st.lockActive() {
 		return nil
 	}
-	l, err := lockFromState(st.pluginDir, composeYAML)
+	l, err := lockFromState(st.pluginDir, st.workdir, composeYAML)
 	if err != nil {
 		return err
 	}
@@ -221,9 +272,8 @@ func (st *buildState) writeProjectLock(composeYAML []byte) error {
 // CurrentLock computes the lock the project's docker-compose.yml and installed
 // plugins describe right now, for `start --frozen` to compare with the file.
 func CurrentLock(workdir string) (lock.Lock, error) {
-	data, err := os.ReadFile(filepath.Join(workdir, "docker-compose.yml"))
-	if err != nil {
+	if _, err := os.Stat(filepath.Join(workdir, "docker-compose.yml")); err != nil {
 		return lock.Lock{}, fmt.Errorf("reading docker-compose.yml: %w", err)
 	}
-	return lockFromState(DefaultPluginDir(), data)
+	return lockFromState(DefaultPluginDir(), workdir, nil)
 }

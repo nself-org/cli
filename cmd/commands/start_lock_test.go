@@ -12,6 +12,7 @@ import (
 
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
+	"github.com/nself-org/cli/internal/version"
 
 	"github.com/spf13/cobra"
 )
@@ -24,6 +25,9 @@ func frozenProject(t *testing.T) (dir string, compose string) {
 	t.Helper()
 	dir = t.TempDir()
 	t.Setenv("NSELF_PLUGIN_DIR", filepath.Join(dir, "plugins"))
+	oldVersion := version.Version
+	version.Version = "1.4.0"
+	t.Cleanup(func() { version.Version = oldVersion })
 	compose = "services:\n  hasura:\n    image: hasura/graphql-engine:v2.44.0@" + frozenDigest + "\n  custom:\n    image: mine/app:1\n"
 	writeLockProject(t, dir, compose)
 	return dir, compose
@@ -35,7 +39,7 @@ func writeLockProject(t *testing.T, dir, compose string) {
 		t.Fatal(err)
 	}
 	l := lock.New()
-	l.CLI = ""
+	l.CLI = "1.4"
 	l.Images["hasura"] = "hasura/graphql-engine:v2.44.0@" + frozenDigest
 	raw, err := l.Marshal()
 	if err != nil {
@@ -176,5 +180,87 @@ func TestStartFrozenDisablesAutoChange(t *testing.T) {
 	}
 	if got := os.Getenv("AI_AUTO_INSTALL"); got != "false" {
 		t.Fatalf("--frozen left the AI auto-install on (AI_AUTO_INSTALL=%q)", got)
+	}
+}
+
+// TestStartFrozenOverrideImage: an override file that sets a pinned service's
+// image cannot change the stack without E455 (lens must-fix 1); one that does
+// not touch a CLI-owned image passes.
+func TestStartFrozenOverrideImage(t *testing.T) {
+	dir, _ := frozenProject(t)
+	over := filepath.Join(dir, "docker-compose.override.yml")
+
+	if err := os.WriteFile(over, []byte("services:\n  custom:\n    image: mine/app:2\n    environment:\n      A: b\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := checkStartLock(dir, true, &out); err != nil {
+		t.Fatalf("an override of a service the CLI does not own must pass: %v", err)
+	}
+
+	if err := os.WriteFile(over, []byte("services:\n  hasura:\n    image: hasura/graphql-engine:v2.51.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := checkStartLock(dir, true, &out)
+	var ce *errs.CLIError
+	if err == nil || !errors.As(err, &ce) || ce.Code != "E455" || !strings.Contains(err.Error(), "image hasura") {
+		t.Fatalf("an override moving hasura must fail with E455 naming it, got %v", err)
+	}
+}
+
+// TestStartFrozenStrictEmptyAndUnpinned: --frozen treats a blanked cli or
+// plugin sha256 as a mismatch and warns once listing tag-only services
+// (lens should-fix 5 and 6); a plain start keeps the lenient comparison.
+func TestStartFrozenStrictEmptyAndUnpinned(t *testing.T) {
+	dir, _ := frozenProject(t)
+	l, err := lock.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.CLI = ""
+	raw, err := l.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lock.Path(dir), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	err = checkStartLock(dir, true, &out)
+	if err == nil || !strings.Contains(err.Error(), "cli: lock has <empty>") {
+		t.Fatalf("--frozen: the lock cli is blank and the stack has one, want a cli mismatch, got %v", err)
+	}
+	out.Reset()
+	if err := checkStartLock(dir, false, &out); err != nil || out.Len() != 0 {
+		t.Fatalf("plain start stays lenient on an unknown cli: %v %q", err, out.String())
+	}
+
+	// Tag-only services: one warning that names them, and no failure.
+	dir2 := t.TempDir()
+	t.Setenv("NSELF_PLUGIN_DIR", filepath.Join(dir2, "plugins"))
+	if err := os.WriteFile(filepath.Join(dir2, "docker-compose.yml"), []byte("services:\n  hasura:\n    image: hasura/graphql-engine:v2.40.0\n  redis:\n    image: redis:6\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	u := lock.New()
+	u.CLI = "1.4"
+	u.Unpinned["hasura"] = "hasura/graphql-engine:v2.40.0"
+	u.Unpinned["redis"] = "redis:6"
+	raw, err = u.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lock.Path(dir2), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := checkStartLock(dir2, true, &out); err != nil {
+		t.Fatalf("tag-only services that match must pass: %v", err)
+	}
+	if n := strings.Count(out.String(), "warning:"); n != 1 || !strings.Contains(out.String(), "hasura, redis") {
+		t.Fatalf("want one warning listing hasura, redis; got %q", out.String())
+	}
+	out.Reset()
+	if err := checkStartLock(dir2, false, &out); err != nil || out.Len() != 0 {
+		t.Fatalf("plain start must not warn about tag-only services: %v %q", err, out.String())
 	}
 }

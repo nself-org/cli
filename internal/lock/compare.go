@@ -5,8 +5,8 @@ package lock
 // Purpose: say, deterministically, how the stack on disk differs from the lock.
 // Inputs: the locked Lock and the Lock computed from the current state.
 // Outputs: Mismatch values sorted by kind then name; none means equal.
-// Constraints: pure. An empty cli or sha256 on either side means "unknown" and
-// is not compared. Digest-pinned and tag-only entries compare as one map of
+// Constraints: pure. In Compare an empty cli or sha256 on either side means
+// "unknown" and is not compared; CompareStrict treats it as a difference. Digest-pinned and tag-only entries compare as one map of
 // service to reference.
 
 import (
@@ -41,11 +41,19 @@ func (m Mismatch) String() string {
 	return fmt.Sprintf("%s %s: lock has %s, stack has %s", m.Kind, m.Name, m.Locked, m.Actual)
 }
 
-// Compare lists how actual differs from locked.
-func Compare(locked, actual Lock) []Mismatch {
+// Compare lists how actual differs from locked. An empty cli or sha256 on
+// either side means "unknown" and is not compared (the plain-start warning).
+func Compare(locked, actual Lock) []Mismatch { return compare(locked, actual, false) }
+
+// CompareStrict is Compare for `start --frozen`: a cli or sha256 that one side
+// recorded and the other left empty is a mismatch, so a hand edit that blanks
+// them, or a build with no release version, cannot switch the check off.
+func CompareStrict(locked, actual Lock) []Mismatch { return compare(locked, actual, true) }
+
+func compare(locked, actual Lock, strict bool) []Mismatch {
 	var out []Mismatch
-	if locked.CLI != "" && actual.CLI != "" && locked.CLI != actual.CLI {
-		out = append(out, Mismatch{KindCLI, "", locked.CLI, actual.CLI})
+	if locked.CLI != actual.CLI && (strict || (locked.CLI != "" && actual.CLI != "")) {
+		out = append(out, Mismatch{KindCLI, "", orEmpty(locked.CLI), orEmpty(actual.CLI)})
 	}
 	lp, ap := locked.Pins(), actual.Pins()
 	for _, k := range unionKeys(lp, ap) {
@@ -70,8 +78,8 @@ func Compare(locked, actual Lock) []Mismatch {
 			out = append(out, Mismatch{KindPlugin, k, lv.Version, Absent})
 		case lv.Version != av.Version:
 			out = append(out, Mismatch{KindPlugin, k, lv.Version, av.Version})
-		case lv.SHA256 != "" && av.SHA256 != "" && lv.SHA256 != av.SHA256:
-			out = append(out, Mismatch{KindPlugin, k + " sha256", lv.SHA256, av.SHA256})
+		case lv.SHA256 != av.SHA256 && (strict || (lv.SHA256 != "" && av.SHA256 != "")):
+			out = append(out, Mismatch{KindPlugin, k + " sha256", orEmpty(lv.SHA256), orEmpty(av.SHA256)})
 		}
 	}
 	lb, ab := toSet(locked.Bundles), toSet(actual.Bundles)
@@ -81,6 +89,13 @@ func Compare(locked, actual Lock) []Mismatch {
 		}
 	}
 	return out
+}
+
+func orEmpty(v string) string {
+	if v == "" {
+		return "<empty>"
+	}
+	return v
 }
 
 func present(b bool) string {

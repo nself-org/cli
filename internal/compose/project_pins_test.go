@@ -4,8 +4,10 @@ package compose
 // precedence explicit env > lock pin > CLI image lock, restore, file loading.
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
@@ -86,5 +88,56 @@ func TestProjectPinsLoad(t *testing.T) {
 	}
 	if err := LoadProjectPins(dir); err == nil {
 		t.Fatal("a damaged lock must be an error")
+	}
+}
+
+// TestProjectPinEnvEqualToPin: nself init writes *_VERSION defaults into .env;
+// a value equal to the pin's reference keeps ref@digest, a different one drops
+// the pin with a single notice (lens must-fix 2).
+func TestProjectPinEnvEqualToPin(t *testing.T) {
+	for _, v15 := range []bool{false, true} {
+		v15 := v15
+		t.Run(map[bool]string{false: "v14", true: "v15"}[v15], func(t *testing.T) { testProjectPinEnvEqualToPin(t, v15) })
+	}
+}
+
+func testProjectPinEnvEqualToPin(t *testing.T, v15 bool) {
+	{
+		compattest.Set(t, v15)
+		pin := "hasura/graphql-engine:v2.44.0@" + pinDigest
+		restore := SetProjectPins(map[string]string{"hasura": pin})
+		var notice bytes.Buffer
+		prevW := pinNoticeW
+		pinNoticeW = &notice
+		t.Cleanup(func() { pinNoticeW = prevW })
+
+		t.Setenv("HASURA_VERSION", "v2.44.0")
+		if got := ResolveImage("hasura", ImageRef("hasura", "v2.44.0")); got != pin {
+			t.Errorf("v15=%v: HASURA_VERSION equal to the pin dropped the digest: %q", v15, got)
+		}
+		if notice.Len() != 0 {
+			t.Errorf("v15=%v: equal value must not print a notice: %q", v15, notice.String())
+		}
+
+		t.Setenv("HASURA_VERSION", "v2.51.0")
+		for i := 0; i < 2; i++ {
+			if got := ResolveImage("hasura", ImageRef("hasura", "v2.51.0")); got == pin {
+				t.Errorf("v15=%v: a different explicit version kept the pin", v15)
+			}
+		}
+		if n := strings.Count(notice.String(), "notice:"); n != 1 || !strings.Contains(notice.String(), "HASURA_VERSION") {
+			t.Errorf("v15=%v: want one notice naming HASURA_VERSION, got %q", v15, notice.String())
+		}
+
+		t.Setenv("HASURA_VERSION", "")
+		t.Setenv("HASURA_IMAGE", "hasura/graphql-engine:v2.44.0")
+		if got, ok := projectPin("hasura"); !ok || got != pin {
+			t.Errorf("v15=%v: HASURA_IMAGE equal to the pin base dropped it: %q %v", v15, got, ok)
+		}
+		t.Setenv("HASURA_IMAGE", "other/engine:1")
+		if _, ok := projectPin("hasura"); ok {
+			t.Errorf("v15=%v: a different HASURA_IMAGE kept the pin", v15)
+		}
+		restore()
 	}
 }

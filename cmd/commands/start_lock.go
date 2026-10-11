@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/build"
@@ -90,7 +91,12 @@ func checkStartLock(root string, frozen bool, w io.Writer) error {
 		_, _ = fmt.Fprintf(w, "warning: cannot compare the stack with %s: %v\n", lock.FileName, err)
 		return nil
 	}
-	diff := lock.Compare(*locked, actual)
+	cmp := lock.Compare
+	if frozen {
+		cmp = lock.CompareStrict
+		warnUnpinned(w, actual)
+	}
+	diff := cmp(*locked, actual)
 	if len(diff) == 0 {
 		return nil
 	}
@@ -106,4 +112,18 @@ func checkStartLock(root string, frozen bool, w io.Writer) error {
 	}
 	_, _ = fmt.Fprintf(w, "warning: the stack differs from %s (start --frozen would fail):\n%s\n", lock.FileName, list)
 	return nil
+}
+
+// warnUnpinned prints one warning listing the services whose image is a tag
+// only: a moved registry or local tag would not show as a mismatch for them.
+func warnUnpinned(w io.Writer, actual lock.Lock) {
+	if len(actual.Unpinned) == 0 {
+		return
+	}
+	names := make([]string, 0, len(actual.Unpinned))
+	for k := range actual.Unpinned {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	_, _ = fmt.Fprintf(w, "warning: %d service(s) are pinned by tag only, not by digest (a moved tag is not detected): %s\n", len(names), strings.Join(names, ", "))
 }

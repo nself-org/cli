@@ -200,6 +200,36 @@ func TestLockBootstrapDigest(t *testing.T) {
 			t.Fatalf("explicit HASURA_VERSION lost to the pin: %q", got)
 		}
 	})
+
+	// nself init writes *_VERSION defaults into .env: a value equal to the pin's
+	// reference must keep ref@digest (lens must-fix 2).
+	t.Run("env version equal to the pin keeps the digest", func(t *testing.T) {
+		f := newPlanFixture(t, "dev-minimal")
+		compattest.Set(t, true)
+		prev := localRepoDigest
+		localRepoDigest = func(ref string) string {
+			if ref == hasura240 {
+				return testDig
+			}
+			return ""
+		}
+		t.Cleanup(func() { localRepoDigest = prev })
+		raw, _ := os.ReadFile(filepath.Join(f.workdir, ".env"))
+		writeFixtureFile(t, filepath.Join(f.workdir, ".env"), "HASURA_VERSION=v2.40.0\n"+string(raw), 0o600)
+		withExistingCompose(t, f, old)
+		lockBuild(t, f)
+		want := hasura240 + "@" + testDig
+		if got := readLock(t, f).Images["hasura"]; got != want {
+			t.Fatalf("lock pins %q, want %q", got, want)
+		}
+		if got := composeImagesOf(t, f)["hasura"]; got != want {
+			t.Fatalf("an env default equal to the pin dropped the digest: compose runs %q, want %q", got, want)
+		}
+		lockBuild(t, f)
+		if got := readLock(t, f).Images["hasura"]; got != want {
+			t.Fatalf("second build turned the pin into %q", got)
+		}
+	})
 }
 
 // TestLockV14OptIn: v1.4 writes no lock unless build --write-lock opts in; once
@@ -403,5 +433,38 @@ func TestLockWrittenAtomically(t *testing.T) {
 	}
 	if left, _ := filepath.Glob(filepath.Join(f.workdir, lock.FileName+".tmp-*")); len(left) != 0 {
 		t.Fatalf("temp files left behind: %v", left)
+	}
+}
+
+// TestLockMergesComposeOverride: the lock records, and CurrentLock compares,
+// the image start runs: docker-compose.override.yml wins over the base file
+// (lens must-fix 1).
+func TestLockMergesComposeOverride(t *testing.T) {
+	f := newPlanFixture(t, "dev-minimal")
+	compattest.Set(t, true)
+	withExistingCompose(t, f, "services:\n  hasura:\n    image: "+hasura240+"\n")
+	lockBuild(t, f)
+	before, err := CurrentLock(f.workdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := before.Unpinned["hasura"] + before.Images["hasura"]; got != hasura240 {
+		t.Fatalf("base only: hasura %q, want %q", got, hasura240)
+	}
+	writeFixtureFile(t, filepath.Join(f.workdir, "docker-compose.override.yml"), "services:\n  hasura:\n    image: hasura/graphql-engine:v2.51.0\n  custom:\n    image: mine/app:2\n", 0o644)
+	after, err := CurrentLock(f.workdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := after.Unpinned["hasura"] + after.Images["hasura"]; got != "hasura/graphql-engine:v2.51.0" {
+		t.Fatalf("override ignored: hasura %q", got)
+	}
+	if _, ok := after.Unpinned["custom"]; ok {
+		t.Fatalf("a service the CLI does not own entered the lock: %v", after.Unpinned)
+	}
+	// A broken override file is an error, not a silent skip.
+	writeFixtureFile(t, filepath.Join(f.workdir, "docker-compose.override.yml"), "services: [unclosed\n", 0o644)
+	if _, err := CurrentLock(f.workdir); err == nil {
+		t.Fatal("an unparseable override file must fail the comparison")
 	}
 }
