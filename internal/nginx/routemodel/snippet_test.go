@@ -253,7 +253,7 @@ func TestSnippetMapping(t *testing.T) {
 		t.Errorf("methods = %v", got)
 	}
 	std := `proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto $scheme; `
-	if l := loc(std + `proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header X-A b; proxy_set_header Connection2 "";`); !l.ForwardedHeaders || !l.WebSocket || !reflect.DeepEqual(l.HeadersSet, map[string]string{"X-A": "b", "Connection2": ""}) {
+	if l := loc(std + `proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header X-A b; proxy_set_header Connection2 "";`); !l.ForwardedHeaders || !l.WebSocket || !reflect.DeepEqual(l.HeadersSet, map[string]string{"X-A": "b", "Connection2": ""}) {
 		t.Errorf("headers: %+v", l)
 	}
 	if l := loc(`proxy_pass http://x.test:81; proxy_http_version 1.1; proxy_buffers 8 4k; proxy_buffer_size 4k; proxy_busy_buffers_size 8k; resolver 127.0.0.11;`); *l.Upstream != (Upstream{"http", "x.test", 81}) {
@@ -523,14 +523,15 @@ func TestSnippetDefaultListenAndNits(t *testing.T) {
 			t.Errorf("%q: unmodelled = %v", body, r.Unmodelled)
 		}
 	}
-	// N2: return runs before deny, so the pair needs a record, as return + proxy_pass does.
+	// N2: return runs before deny (rewrite phase before access), so the return
+	// is mapped and the access rule that never fires is recorded.
 	r = route(t, "server { listen 80; server_name a.test; location / { return 200; deny all; } }")
-	if !r.Locations[0].DenyAll || r.Locations[0].Return == nil || !reflect.DeepEqual(r.Unmodelled, []string{"return 200;"}) {
+	if r.Locations[0].DenyAll || r.Locations[0].Return == nil || !reflect.DeepEqual(r.Unmodelled, []string{"deny all;"}) {
 		t.Errorf("return + deny all: %+v unmodelled=%v", r.Locations[0], r.Unmodelled)
 	}
 	r = route(t, "server { listen 80; server_name a.test; location / { return 204; limit_except GET { deny all; } } }")
-	if len(r.Unmodelled) != 0 {
-		t.Errorf("return + limit_except is modelled exactly: %v", r.Unmodelled)
+	if r.Locations[0].Return == nil || !reflect.DeepEqual(r.Unmodelled, []string{"limit_except GET { deny all; }"}) {
+		t.Errorf("return + limit_except: %v", r.Unmodelled)
 	}
 	r = route(t, "server { listen 80; server_name a.test; location / { deny all; deny 1.2.3.4; access_log off; access_log /x; } }")
 	if !r.Locations[0].DenyAll || r.Locations[0].AccessLog {

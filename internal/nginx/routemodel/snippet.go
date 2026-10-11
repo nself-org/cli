@@ -23,7 +23,6 @@ const maxSnippetBytes = 1 << 20
 
 var (
 	fqdnRE = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$`)
-	certRE = regexp.MustCompile(`^/etc/nginx/ssl/([^/]+)/(fullchain|privkey)\.pem$`)
 )
 
 type hostPort struct {
@@ -40,6 +39,7 @@ type Snippet struct {
 	disp map[*Block]string    // mapped, ignored, unmodelled or container
 	tree []*Block             // the parsed file (accounting checks walk it)
 	ups  map[string]*hostPort // upstream{} blocks of this file; nil = not reducible to one host:port
+	gg   guard                // the directives outside any server block (globalGuard)
 	out  map[string]bool      // upstream names defined in other files of the same scan
 }
 
@@ -80,7 +80,7 @@ func ParseSnippetIn(source, owner, file, text string, upstreams []string) (*Snip
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	sn := &Snippet{disp: map[*Block]string{}, tree: tree, ups: map[string]*hostPort{}, out: map[string]bool{}, Routes: []Route{}, Global: []string{}}
+	sn := &Snippet{disp: map[*Block]string{}, tree: tree, ups: map[string]*hostPort{}, out: map[string]bool{}, Routes: []Route{}, Global: []string{}, gg: globalGuard(tree)}
 	for _, u := range upstreams {
 		sn.out[strings.ToLower(u)] = true
 	}
@@ -122,13 +122,16 @@ type srv struct {
 	rec    map[*Block]bool
 	protos []string
 	cipher *string
-	cert   string
+	certs  []*Block // ssl_certificate and ssl_certificate_key lines (certDir)
 	tls    bool
+	g      guard           // what the server scope holds that limits locations (snippet_guard.go)
+	taint  map[string]bool // variables some location sets (locationSets)
 }
 
 type setVar struct {
 	val  string
 	node *Block
+	dup  bool // set more than once in one scope: nginx runs them all in order, the model does not pick one
 }
 
 // unm records d verbatim in the route's `unmodelled`, once.
@@ -159,6 +162,8 @@ func (sn *Snippet) server(b *Block, id, source, owner, file string) Route {
 	}
 	s := &srv{sn: sn, r: &r, vars: map[string]*setVar{}, rec: map[*Block]bool{}, protos: []string{}}
 	sn.disp[b] = "container"
+	s.g = sn.gg.join(scanGuard(b))
+	s.taint = locationSets(b, false, map[string]bool{})
 	var locs []*Block
 	var ret *Block // the first server-level return
 	listens := 0
@@ -170,7 +175,8 @@ func (sn *Snippet) server(b *Block, id, source, owner, file string) Route {
 		case "server_name":
 			s.serverName(d)
 		case "ssl_certificate", "ssl_certificate_key":
-			s.certPath(d)
+			s.tls = true
+			s.certs = append(s.certs, d)
 		case "ssl_protocols":
 			s.tls = true
 			s.protos = append(s.protos, unquoteAll(d.Args)...)
@@ -181,12 +187,17 @@ func (sn *Snippet) server(b *Block, id, source, owner, file string) Route {
 				c := d.Arg(0)
 				s.cipher = &c
 			}
-		case "http2", "resolver", "proxy_http_version", "proxy_buffer_size", "proxy_buffers", "proxy_busy_buffers_size":
+		case "http2", "resolver", "proxy_buffer_size", "proxy_buffers", "proxy_busy_buffers_size":
 			sn.disp[d] = "ignored"
 		case "set":
-			name := strings.TrimPrefix(d.Arg(0), "$")
-			if s.take(d, len(d.Args) == 2 && strings.HasPrefix(d.Arg(0), "$") && s.vars[name] == nil) {
-				s.vars[name] = &setVar{d.Arg(1), d}
+			name := strings.ToLower(strings.TrimPrefix(d.Arg(0), "$")) // nginx variable names are case-insensitive
+			ok := len(d.Args) == 2 && strings.HasPrefix(d.Arg(0), "$")
+			if v := s.vars[name]; ok && v != nil {
+				v.dup = true
+				s.unm(v.node)
+			}
+			if s.take(d, ok && s.vars[name] == nil) {
+				s.vars[name] = &setVar{val: d.Arg(1), node: d}
 				sn.disp[d] = "" // claimed only when a proxy_pass uses it
 			}
 		case "return":
@@ -197,7 +208,7 @@ func (sn *Snippet) server(b *Block, id, source, owner, file string) Route {
 			}
 		case "location":
 			locs = append(locs, d)
-		case "proxy_connect_timeout", "proxy_read_timeout", "proxy_send_timeout", "client_max_body_size", "access_log", "proxy_set_header":
+		case "proxy_connect_timeout", "proxy_read_timeout", "proxy_send_timeout", "client_max_body_size", "access_log", "proxy_set_header", "proxy_http_version":
 			s.inh = append(s.inh, d)
 		default:
 			s.unm(d)
@@ -207,7 +218,7 @@ func (sn *Snippet) server(b *Block, id, source, owner, file string) Route {
 		r.Listen.HTTP = true // nginx listens on *:80 when a server has no listen
 	}
 	if r.Listen.HTTPS || s.tls {
-		r.TLS = &RouteTLS{SSLDir: s.cert, Protocols: s.protos, Ciphers: s.cipher}
+		r.TLS = &RouteTLS{SSLDir: s.certDir(), Protocols: s.protos, Ciphers: s.cipher}
 	}
 	for _, l := range locs {
 		s.location(l)
@@ -264,15 +275,4 @@ func (s *srv) serverName(d *Block) {
 		}
 	}
 	s.take(d, ok)
-}
-
-// certPath maps /etc/nginx/ssl/<dir>/fullchain.pem and privkey.pem to the
-// route's ssl_dir; another path, file name or a second directory is recorded.
-func (s *srv) certPath(d *Block) {
-	s.tls = true
-	m := certRE.FindStringSubmatch(d.Arg(0))
-	want := map[string]string{"ssl_certificate": "fullchain", "ssl_certificate_key": "privkey"}[d.Name]
-	if s.take(d, len(d.Args) == 1 && m != nil && m[2] == want && (s.cert == "" || s.cert == m[1])) {
-		s.cert = m[1]
-	}
 }
