@@ -135,11 +135,16 @@ func hostOperand(spec remote.HostSpec, path string) string {
 	return host + ":" + path
 }
 
-// localOperand makes p absolute, so scp and rsync never read it as a
-// "host:path" operand or an option. Empty paths, newlines and NUL are refused.
+// localOperand makes a relative p absolute, so scp and rsync never read it as
+// a "host:path" operand or an option. A path that is already absolute (or
+// starts with '/') is returned unchanged, so argv stays as it was on every OS.
+// Empty paths, newlines and NUL are refused.
 func localOperand(p string) (string, error) {
 	if p == "" || strings.ContainsAny(p, "\n\x00") {
 		return "", fmt.Errorf("local path %q is empty or contains a newline or NUL", p)
+	}
+	if strings.HasPrefix(p, "/") || filepath.IsAbs(p) {
+		return p, nil
 	}
 	return filepath.Abs(p)
 }

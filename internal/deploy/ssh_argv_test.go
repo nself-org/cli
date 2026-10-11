@@ -150,8 +150,11 @@ func TestSSHTransportBuilder(t *testing.T) {
 	})
 	t.Run("local operand is absolute", func(t *testing.T) {
 		got, err := localOperand("host:x.env")
-		if err != nil || !strings.HasPrefix(got, "/") {
+		if err != nil || !filepath.IsAbs(got) || !strings.HasSuffix(got, "host:x.env") {
 			t.Errorf("localOperand = %q, %v", got, err)
+		}
+		if got, err := localOperand("/work/e"); err != nil || got != "/work/e" {
+			t.Errorf("absolute path changed: %q, %v", got, err)
 		}
 		for _, bad := range []string{"", "a\nb", "a\x00b"} {
 			if _, err := localOperand(bad); err == nil {
