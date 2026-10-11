@@ -89,7 +89,7 @@ A service the old compose lacks takes the CLI default. A project with no compose
 
 ## Review a diff
 
-The lock is written atomically (temp file, then rename) and ends with the line `# end of nself.lock.yaml`. A file without that line, such as one cut short by a crash or a full disk, is rejected as damaged instead of loading with fewer pins. If you edit the lock by hand, keep the last line.
+The lock is written atomically (temp file, then rename) and ends with the line `# end of nself.lock.yaml`. A file without that line, such as one cut short by a crash or a full disk, is rejected as damaged instead of loading with fewer pins. If you edit the lock by hand, keep the last line. Every top-level key (`schema_version`, `cli`, `images`, `unpinned`, `plugins`, `bundles`) must be present, as an empty `{}` or `[]` when there is nothing to record; a missing or null key is a parse error.
 
 The lock is plain YAML, so a pull request shows exactly which image, plugin or bundle moved. `nself build` and `nself.lock.yaml` change together, so review both.
 
@@ -103,7 +103,7 @@ The lock is plain YAML, so a pull request shows exactly which image, plugin or b
 - the installed bundles;
 - the CLI major.minor.
 
-The comparison covers every compose file `start` runs: the generated file, plugin fragments and `docker-compose.override.yml`. Docker lets the last file win, so an override that sets a CLI-owned service's `image:` shows up as an `image` mismatch, and `nself build` records it in the lock. Under `--frozen` a cli or plugin checksum that one side recorded and the other left empty also counts as a mismatch. A plain `start` still skips empty values.
+The files are merged in the order `.nself/compose-files.txt` lists them, the order `start` runs; if you edit that manifest, it must still include `docker-compose.yml` or `--frozen` fails with E455. The comparison covers every compose file `start` runs: the generated file, plugin fragments and `docker-compose.override.yml`. Docker lets the last file win, so an override that sets a CLI-owned service's `image:` shows up as an `image` mismatch, and `nself build` records it in the lock. Under `--frozen` a cli or plugin checksum that one side recorded and the other left empty also counts as a mismatch. A plain `start` still skips empty values.
 
 **Not covered:** your own services (`CS_N`) and the services that plugin compose fragments add. Their images are not in the lock and `--frozen` does not compare them; plugins are covered by their version and sha256. A CLI-owned image built from a variable is not pinned: `nself build` logs a warning that names it.
 
