@@ -11,9 +11,10 @@ package reconcile
 // overwrite or remove it without --force (reconcile.Confirm).
 // Inputs: the project directory, and the planned build of a successful apply.
 // Outputs: LoadGeneratedState and GeneratedState.Save; RecordPlanned folds a
-// successful apply's render into a record; PlannedRecord is that fold, pure,
-// so the plan can report the record itself as an artifact (kind state) with
-// the exact bytes the apply writes.
+// successful apply's render into a record; PlannedRecord is that fold plus
+// the removed-plugin prune, computed once at plan time, so the plan can report
+// the record itself as an artifact (kind state) with the exact bytes the
+// apply writes.
 // Constraints: the record is written only after the whole apply succeeded, and
 // atomically (temp file + rename), so an interrupted apply leaves the previous
 // record intact. Any byte change counts — the hash is of the exact bytes the
@@ -122,9 +123,11 @@ func (s *GeneratedState) Save(projectDir string) error {
 
 // PlannedRecord returns what a successful apply of pb leaves in the record,
 // and the exact bytes of it: a copy of the current record with pb folded in
-// (RecordPlanned), serialised the way Save writes it. Pure, so the plan can
+// (RecordPlanned), serialised the way Save writes it. Computed once, so the plan can
 // report the record as an artifact (kind state) whose bytes are exactly what
-// the apply then writes — plan == apply stays exact. The record never holds an
+// the apply then writes — plan == apply stays exact. It also drops the
+// "@plugins/" entries of plugins whose directory is gone (pruneGonePlugins,
+// one disk check per entry at plan time). The record never holds an
 // entry for itself: the folded set is the build's render, not the record, so
 // there is no self-reference to resolve.
 func PlannedRecord(state *GeneratedState, pb *nbuild.PlannedBuild) (*GeneratedState, []byte, error) {
@@ -137,6 +140,11 @@ func PlannedRecord(state *GeneratedState, pb *nbuild.PlannedBuild) (*GeneratedSt
 		next.Host = append([]GeneratedHostEntry(nil), state.Host...)
 	}
 	next.RecordPlanned(pb)
+	keep := make(map[string]bool, len(pb.Files))
+	for key := range pb.Files {
+		keep[displayPath(key)] = true
+	}
+	next.pruneGonePlugins(keep, pluginEntryExists) // D-0557: a removed plugin leaves the record
 	body, err := next.body()
 	if err != nil {
 		return nil, nil, err
