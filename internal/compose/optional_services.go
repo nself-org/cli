@@ -7,8 +7,9 @@ import (
 // buildRedisService returns the Redis cache/queue service configuration.
 // Command and health check are conditional on whether a password is set.
 // With a password, no argv carries it (D-0282): compose would interpolate a
-// ${REDIS_PASSWORD} argument into the container config, where docker inspect
-// shows it. The password reaches the container as REDISCLI_AUTH, which
+// ${REDIS_PASSWORD} argument into the container's Cmd and healthcheck, where
+// docker ps --no-trunc, docker inspect and host ps show it. The password
+// reaches the container as REDISCLI_AUTH (its Env, like every other secret), which
 // redis-cli reads on its own (so the healthcheck needs no -a), and a shell
 // expands it for redis-server ($$ survives compose interpolation as $).
 func (g *Generator) buildRedisService() ServiceConfig {

@@ -2,9 +2,10 @@ package compose_test
 
 // secret_argv_test.go — D-0282 guard: no generated command, entrypoint or
 // healthcheck carries a secret. A literal there is visible in the compose
-// file; a ${SECRET} reference is interpolated by compose into the container
-// config, where `docker inspect` shows the value (the prod Redis leak). A
-// secret reaches a process through its environment instead ($$NAME, expanded
+// file; a ${SECRET} reference is interpolated by compose into the container's
+// Cmd or healthcheck, where `docker ps --no-trunc`, `docker inspect` and host
+// `ps` show the value (the prod Redis leak). A secret reaches a process
+// through its environment instead, like every other secret ($$NAME, expanded
 // by a shell inside the container, is fine).
 
 import (

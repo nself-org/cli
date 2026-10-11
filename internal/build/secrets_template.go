@@ -138,11 +138,10 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 		out = strings.ReplaceAll(out, ":"+val+"@", ":${"+key+"}@")
 	}
 
-	// Phase C: any other literal occurrence — service generators sometimes
-	// embed a secret in a `command:` string or a healthcheck `test:` argument
-	// (e.g. Redis's `--requirepass <pw>`, Typesense's `--api-key=<key>` and
-	// its healthcheck header) rather than a plain "KEY: value" env line or a
-	// URL credential position, so Phases A/B never see them. Safe to replace
+	// Phase C: any other literal occurrence — a generator may embed a secret
+	// in a `command:` string or a healthcheck `test:` argument (Redis and
+	// Typesense did until D-0282) rather than a plain "KEY: value" env line
+	// or a URL credential position, so Phases A/B never see them. Safe to replace
 	// unconditionally for values that need no percent-encoding — those are
 	// exactly the values compose interpolation can substitute verbatim
 	// anywhere. Percent-encoding-sensitive values are left literal
