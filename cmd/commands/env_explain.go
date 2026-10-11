@@ -60,6 +60,9 @@ func runEnvExplain(cmd *cobra.Command, args []string) error {
 	cascade := config.EnvCascade(dir, activeEnv, legacy)
 
 	if len(args) == 0 {
+		if jsonEnvelopeOn(cmd) {
+			setData(cmd, newEnvExplainData(cascade, activeEnv, envSource, legacy))
+		}
 		return printCascadeOverview(cascade, activeEnv, envSource, legacy)
 	}
 
@@ -67,6 +70,21 @@ func runEnvExplain(cmd *cobra.Command, args []string) error {
 	exp, err := config.ExplainKey(dir, activeEnv, args[0])
 	if err != nil {
 		return err
+	}
+	if jsonEnvelopeOn(cmd) {
+		data := newEnvExplainData(cascade, activeEnv, envSource, legacy)
+		data.Key, data.Revealed = exp.Key, reveal
+		winner, _, set := exp.Winner()
+		data.Set = set
+		for _, s := range exp.Setters {
+			row := envExplainSetter{File: s.File, Winner: s.File == winner}
+			if reveal {
+				v := redactURLUserinfo(s.Value)
+				row.Value = &v
+			}
+			data.Setters = append(data.Setters, row)
+		}
+		setData(cmd, data)
 	}
 	return printVarExplain(exp, reveal)
 }
@@ -151,4 +169,19 @@ func printVarExplain(exp config.Explanation, reveal bool) error {
 	}
 	ui.Success(fmt.Sprintf("%s wins: %s=%s", winner, exp.Key, value))
 	return nil
+}
+
+// newEnvExplainData builds the cascade overview of `config env explain`; the
+// VAR form fills Key, Set and Setters on top of it.
+func newEnvExplainData(cascade []config.CascadeFile, activeEnv, envSource string, legacy bool) envExplainData {
+	mode := "canonical"
+	if legacy {
+		mode = "legacy"
+	}
+	d := envExplainData{Environment: activeEnv, EnvironmentSource: envSource, CascadeMode: mode,
+		Files: []envExplainFile{}, Setters: []envExplainSetter{}}
+	for i, f := range cascade {
+		d.Files = append(d.Files, envExplainFile{Name: f.Name, Exists: f.Exists, Precedence: i + 1})
+	}
+	return d
 }

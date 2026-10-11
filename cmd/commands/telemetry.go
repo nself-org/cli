@@ -69,6 +69,16 @@ It contains no personal data and is never linked to your account.`,
 			state = "disabled"
 		}
 
+		if jsonEnvelopeOn(cmd) {
+			override := ""
+			if os.Getenv("NSELF_TELEMETRY") == "0" {
+				override = "NSELF_TELEMETRY=0"
+			} else if os.Getenv("NSELF_TELEMETRY_OPT_OUT") == "1" {
+				override = "NSELF_TELEMETRY_OPT_OUT=1"
+			}
+			setData(cmd, telemetryStatusData{Enabled: enabled, InstallID: installID, Source: pref.Source, EnvOverride: override})
+		}
+
 		fmt.Printf("Telemetry:  %s\n", state)
 		fmt.Printf("Install-ID: %s\n", installID)
 		fmt.Printf("Source:     %s\n", pref.Source)

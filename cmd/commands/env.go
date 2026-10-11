@@ -113,13 +113,20 @@ func runEnvUse(_ *cobra.Command, args []string) error {
 	return nil
 }
 
-func runEnvList(_ *cobra.Command, _ []string) error {
+func runEnvList(cmd *cobra.Command, _ []string) error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
 	}
 
 	envs := env.List(dir)
+	if jsonEnvelopeOn(cmd) {
+		data := envListData{Environments: []envListRow{}}
+		for _, e := range envs {
+			data.Environments = append(data.Environments, envListRow{Name: e.Name, Active: e.Active})
+		}
+		setData(cmd, data)
+	}
 	if len(envs) == 0 {
 		fmt.Println("No environments found. Create .env.dev to get started.")
 		return nil
@@ -135,7 +142,7 @@ func runEnvList(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runEnvShow(_ *cobra.Command, _ []string) error {
+func runEnvShow(cmd *cobra.Command, _ []string) error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
@@ -147,6 +154,13 @@ func runEnvShow(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("show env: %w", err)
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		data := envShowData{Environment: current, Pairs: []envPairRow{}}
+		for _, p := range pairs {
+			data.Pairs = append(data.Pairs, envPairRow{Key: p.Key, Value: redactURLUserinfo(p.Value)})
+		}
+		setData(cmd, data)
+	}
 	fmt.Printf("Environment: %s\n\n", current)
 	for _, p := range pairs {
 		fmt.Printf("  %-40s %s\n", p.Key, p.Value)
@@ -154,7 +168,7 @@ func runEnvShow(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runEnvDiff(_ *cobra.Command, args []string) error {
+func runEnvDiff(cmd *cobra.Command, args []string) error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
@@ -165,6 +179,13 @@ func runEnvDiff(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("env diff: %w", err)
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		data := envDiffData{EnvA: args[0], EnvB: args[1], Differences: []envDiffRow{}}
+		for _, d := range diffs {
+			data.Differences = append(data.Differences, envDiffRow{Key: d.Key, ValueA: redactURLUserinfo(d.ValueA), ValueB: redactURLUserinfo(d.ValueB)})
+		}
+		setData(cmd, data)
+	}
 	if len(diffs) == 0 {
 		fmt.Printf("No differences between %s and %s.\n", args[0], args[1])
 		return nil

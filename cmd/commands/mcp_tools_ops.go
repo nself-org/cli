@@ -30,6 +30,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nself-org/cli/internal/backup"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/plugin"
@@ -69,7 +70,7 @@ func mcpConfigGetHandler() server.ToolHandlerFunc {
 		return mcp.NewToolResultStructuredOnly(ConfigGetResult{
 			Key:      key,
 			Value:    maskValue(key, val, false),
-			Redacted: isSecretKey(key) && val != "",
+			Redacted: config.IsSecretKey(key) && val != "",
 		}), nil
 	}
 }

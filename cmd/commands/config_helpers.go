@@ -5,35 +5,20 @@ package commands
 // config key/value or project/env flags; outputs are bools, masked strings, or
 // a resolved path.
 // Constraints: split out of config.go (CLI-R12) as a pure move, no behavior change.
+// The secret-key rule is config.IsSecretKey (internal/config/secretkeys.go),
+// the one rule shared with the machine audit log (P7-SURF-12).
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/nself-org/cli/internal/config"
 )
 
-// secretKeyParts contains substrings whose presence in a key name indicates
-// a secret value that should be masked by default.
-var secretKeyParts = []string{"SECRET", "PASSWORD", "KEY", "TOKEN"}
-
-// isSecretKey returns true when the key name contains any of the secret
-// indicator substrings (case-insensitive comparison against uppercased key).
-func isSecretKey(key string) bool {
-	upper := strings.ToUpper(key)
-	for _, part := range secretKeyParts {
-		if strings.Contains(upper, part) {
-			return true
-		}
-	}
-	return false
-}
-
 // maskValue returns "****" when reveal is false and the key is a secret key.
 func maskValue(key, value string, reveal bool) string {
-	if !reveal && isSecretKey(key) && value != "" {
+	if !reveal && config.IsSecretKey(key) && value != "" {
 		return "***"
 	}
 	return value

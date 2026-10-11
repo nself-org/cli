@@ -6,6 +6,7 @@ package commands
 // Constraints: split out of config.go (CLI-R12) as a pure move, no behavior change.
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/output"
+	"github.com/nself-org/cli/internal/plugin"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -117,24 +119,54 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 	// Run validators individually to report per-validator pass/fail.
 	results := config.RunAllWithResults(cfg)
 	errorCount := 0
+	checks := []configValidateCheck{}
 	for _, r := range results {
 		if r.Err != nil {
 			fmt.Fprintf(os.Stderr, "✗ %s: %s\n", r.Name, r.Err.Error())
 			errorCount++
+			checks = append(checks, configValidateCheck{Name: r.Name, Error: redactURLUserinfo(r.Err.Error())})
 		} else {
 			fmt.Printf("[PASS] %s\n", r.Name)
+			checks = append(checks, configValidateCheck{Name: r.Name, Passed: true})
 		}
 	}
 
-	errorCount += reportNselfYAML(cmd.ErrOrStderr(), projectDir)
+	var manifest bytes.Buffer
+	errorCount += reportNselfYAML(io.MultiWriter(cmd.ErrOrStderr(), &manifest), projectDir)
 
 	if errorCount == 0 {
 		fmt.Println("config OK")
+	} else {
+		fmt.Fprintf(os.Stderr, "\n%d error(s) found\n", errorCount)
+	}
+	if jsonEnvelopeOn(cmd) {
+		data := configValidateData{Valid: errorCount == 0, Checks: checks, Manifest: manifestLines(manifest.String()), ErrorCount: errorCount}
+		if errorCount == 0 {
+			setData(cmd, data)
+			return nil
+		}
+		// The verdict is the exit status; the document is still written (as doctor does).
+		if err := emitEnv(cmd, data, false); err != nil {
+			return err
+		}
+		return &plugin.ExitCodeError{Code: 1}
+	}
+	if errorCount == 0 {
 		return nil
 	}
-
-	fmt.Fprintf(os.Stderr, "\n%d error(s) found\n", errorCount)
 	return fmt.Errorf("one or more validators failed")
+}
+
+// manifestLines splits the nself.yaml findings text into one string per line,
+// with URL credentials redacted.
+func manifestLines(text string) []string {
+	lines := []string{}
+	for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
+		if l != "" {
+			lines = append(lines, redactURLUserinfo(l))
+		}
+	}
+	return lines
 }
 
 // reportNselfYAML validates nself.yaml / nself.yml when the project has one and
