@@ -15,6 +15,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/database"
 	"github.com/nself-org/cli/internal/database/vectorsearch"
 	"github.com/nself-org/cli/internal/docker"
@@ -74,11 +75,24 @@ func runGenerateVectorSearch(cmd *cobra.Command, args []string) error {
 	}
 	track, _ := cmd.Flags().GetBool("track")
 	migDir, _ := cmd.Flags().GetString("migration-dir")
+	deps := vectorDepsFor(cfg)
+	res, err := vectorsearch.Run(cmd.Context(), deps, vectorsearch.Options{Spec: spec, ProjectDir: dir, MigrationDir: migDir, Track: track})
+	if err != nil {
+		return err
+	}
+	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON {
+		return output.EmitData(output.Default(), "db generate vector-search", res)
+	}
+	return printVectorResult(cmd, res)
+}
+
+// vectorDepsFor wires the real seams; tests replace it.
+var vectorDepsFor = func(cfg *config.Config) vectorsearch.Deps {
 	user := cfg.Postgres.User
 	if user == "" {
 		user = "postgres"
 	}
-	deps := vectorsearch.Deps{
+	return vectorsearch.Deps{
 		Exec:         docker.ExecCapture,
 		PG:           vectorsearch.PG{Container: cfg.ProjectName + "_postgres", User: user, DB: cfg.Postgres.DB},
 		TableTracked: database.MetadataTracksTable,
@@ -90,14 +104,6 @@ func runGenerateVectorSearch(cmd *cobra.Command, args []string) error {
 		},
 		Now: time.Now,
 	}
-	res, err := vectorsearch.Run(cmd.Context(), deps, vectorsearch.Options{Spec: spec, ProjectDir: dir, MigrationDir: migDir, Track: track})
-	if err != nil {
-		return err
-	}
-	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON {
-		return output.EmitData(output.Default(), "db generate vector-search", res)
-	}
-	return printVectorResult(cmd, res)
 }
 
 // printVectorResult prints the human summary.
