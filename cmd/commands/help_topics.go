@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin/count"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -139,6 +140,11 @@ Examples:
   nself help-topics license`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if on, err := jsonModeOf(cmd); err != nil {
+			return err
+		} else if on {
+			return emitHelpTopics(args)
+		}
 		if len(args) == 0 {
 			return printHelpTopicIndex()
 		}
@@ -170,12 +176,41 @@ func pluginHelpBody() string {
   Docs: https://nself.org/docs/plugins`, a.Free.Installable, a.Pro.Installable)
 }
 
+// helpTopicOrder is the order topics are listed in.
+var helpTopicOrder = []string{"quickstart", "plugins", "license", "envs", "doctor", "errors"}
+
+// emitHelpTopics writes `help topics --json`: every topic without its body, or
+// the one named topic with its body (P7-SURF-11). An unknown name is an error.
+func emitHelpTopics(args []string) error {
+	entry := func(key string, withBody bool) HelpTopicEntry {
+		t := helpTopics[key]
+		e := HelpTopicEntry{Key: key, Title: t.Title, Summary: t.Summary}
+		if withBody {
+			e.Body = t.Body
+		}
+		return e
+	}
+	res := HelpTopicsResult{Topics: []HelpTopicEntry{}}
+	if len(args) == 0 {
+		for _, key := range helpTopicOrder {
+			res.Topics = append(res.Topics, entry(key, false))
+		}
+		return output.EmitData(pilotWriter(), "help topics", res)
+	}
+	key := strings.ToLower(strings.TrimSpace(args[0]))
+	if _, ok := helpTopics[key]; !ok {
+		return fmt.Errorf("unknown topic %q — available: %s", key, strings.Join(helpTopicOrder, ", "))
+	}
+	res.Topics = append(res.Topics, entry(key, true))
+	return output.EmitData(pilotWriter(), "help topics", res)
+}
+
 func printHelpTopicIndex() error {
 	fmt.Println()
 	ui.Section("Help Topics")
 	fmt.Println()
 
-	order := []string{"quickstart", "plugins", "license", "envs", "doctor", "errors"}
+	order := helpTopicOrder
 	for _, key := range order {
 		t := helpTopics[key]
 		fmt.Printf("  %-18s  %s\n", ui.C(ui.Bold, key), t.Summary)

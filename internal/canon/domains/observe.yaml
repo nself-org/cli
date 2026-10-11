@@ -6,10 +6,10 @@ commands:
   completion: {canon: builtin, side_effect: read}
   # cmd/commands/doctor.go:51 diagnostics only; --fix and --ai write (doctor_ai*.go honours --json)
   doctor: {canon: core, side_effect: read, exit_codes: {"1": "one or more checks failed", "2": "warnings only, no failures"}, exit_codes_v15: {"10": "one or more checks failed", "12": "warnings only, no failures"}, flags: {ai: {side_effect: write, json: legacy}, fix: {side_effect: write}, install-check: {json: legacy}}}
-  # cmd/commands/self_heal.go:36 prints help unless --jwt is given
-  doctor heal: {side_effect: read, flags: {jwt: {side_effect: write}}}
+  # cmd/commands/self_heal.go:36 prints help unless --jwt is given; --jwt rotates a secret (write); the D3 request nonce is the whole confirmation, the command never prompts and its --json never carries the key (D-0285)
+  doctor heal: {side_effect: read, flags: {jwt: {side_effect: write}}, confirm: {flags: []}}
   # cmd/commands/doctor_images.go:22 inspects remote manifests only; no local write
-  doctor images: {side_effect: read, output: document, json: none, exit_codes: {"1": "one or more images unavailable", "2": "warnings only"}, exit_codes_v15: {"10": "one or more images unavailable", "12": "warnings only"}}
+  doctor images: {side_effect: read, output: document, exit_codes: {"1": "one or more images unavailable", "2": "warnings only"}, exit_codes_v15: {"10": "one or more images unavailable", "12": "warnings only"}}
   help: {canon: builtin, side_effect: read}
   # cmd/commands/help_topics.go:152 RunE path changes no persistent state (prints/reads only)
   help topics: {side_effect: read}
@@ -27,7 +27,7 @@ commands:
   # cmd/commands/health.go:42 RunE path changes no persistent state (prints/reads only)
   status health service: {side_effect: read, json: legacy}
   # cmd/commands/health.go:103 RunE path changes no persistent state (prints/reads only)
-  status health watch: {side_effect: read, output: stream, json: legacy}
+  status health watch: {side_effect: read, output: stream, json: legacy} # a loop that prints one report per interval until interrupted; framed as NDJSON by P7-SURF-27
   status urls: {side_effect: read, json: legacy}
   version: {canon: builtin, side_effect: read, json: legacy}
 builtins:

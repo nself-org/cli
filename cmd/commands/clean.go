@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -74,7 +75,23 @@ func runClean(cmd *cobra.Command, args []string) error {
 		projectDir = root
 	}
 
+	all, _ := cmd.Flags().GetBool("all")
+	skipConfirm, _ := cmd.Flags().GetBool("yes")
+	jsonMode := buildEnvelopeWanted(cmd)
+
+	// JSON mode asks the --all question before anything is deleted: a refusal
+	// is an error there, and an error must mean nothing changed. Human mode
+	// keeps asking after the local clean, as it always has.
+	if all && !skipConfirm && jsonMode {
+		if confirmErr := confirm.ConfirmHostWidePrune(cmd.InOrStdin(), cmd.OutOrStdout()); confirmErr != nil {
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nHost-wide prune canceled.")
+			return errConfirmRequired("clean --all")
+		}
+		skipConfirm = true
+	}
+
 	var removed []string
+	var failed []error
 
 	// 1. docker-compose.yml
 	composePath := filepath.Join(projectDir, "docker-compose.yml")
@@ -83,6 +100,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 			removed = append(removed, "docker-compose.yml")
 		} else {
 			fmt.Fprintf(os.Stderr, "Warning: could not remove docker-compose.yml: %v\n", removeErr)
+			failed = append(failed, fmt.Errorf("removing docker-compose.yml: %w", removeErr))
 		}
 	}
 
@@ -97,6 +115,8 @@ func runClean(cmd *cobra.Command, args []string) error {
 					entryPath := filepath.Join(nginxSitesDir, name)
 					if removeErr := os.Remove(entryPath); removeErr == nil {
 						removed = append(removed, filepath.Join("nginx", "sites", name))
+					} else {
+						failed = append(failed, fmt.Errorf("removing nginx/sites/%s: %w", name, removeErr))
 					}
 				}
 			}
@@ -106,11 +126,18 @@ func runClean(cmd *cobra.Command, args []string) error {
 	// 3. .nself/cache/ directory
 	nSelfCacheDir := filepath.Join(projectDir, ".nself", "cache")
 	if _, statErr := os.Stat(nSelfCacheDir); statErr == nil {
-		if removeErr := os.RemoveAll(nSelfCacheDir); removeErr == nil {
+		if removeErr := removeAll(nSelfCacheDir); removeErr == nil {
 			removed = append(removed, ".nself/cache/")
 		} else {
 			fmt.Fprintf(os.Stderr, "Warning: could not remove .nself/cache/: %v\n", removeErr)
+			failed = append(failed, fmt.Errorf("removing .nself/cache/: %w", removeErr))
 		}
+	}
+
+	// A generated file that could not be deleted fails JSON mode before any
+	// host-wide prune: the envelope would otherwise read as a clean project.
+	if len(failed) > 0 && jsonMode {
+		return errPartialRemoval("could not remove every generated artifact", errors.Join(failed...), removed)
 	}
 
 	// 4. Docker build cache (non-fatal if docker not available)
@@ -143,30 +170,29 @@ func runClean(cmd *cobra.Command, args []string) error {
 	}
 
 	// 5. --all: host-wide docker system prune, gated behind confirmation.
-	all, _ := cmd.Flags().GetBool("all")
 	if !all {
 		return emitBuildResult(cmd, "clean", CleanResult{Removed: jsonPaths(removed)})
 	}
 
-	skipConfirm, _ := cmd.Flags().GetBool("yes")
+	// JSON mode already asked (or was told --yes) before step 1.
 	if !skipConfirm {
 		if confirmErr := confirm.ConfirmHostWidePrune(cmd.InOrStdin(), out); confirmErr != nil {
 			_, _ = fmt.Fprintln(out, "\nHost-wide prune canceled.")
-			if buildEnvelopeWanted(cmd) {
-				return errConfirmRequired("clean --all")
-			}
 			return nil
 		}
 	}
 
 	_, _ = fmt.Fprintln(out, "\nPruning all unused Docker resources on this host...")
-	pruned := false
 	if pruneAllErr := dockerSystemPrune(cmd.Context(), out, cmd.ErrOrStderr()); pruneAllErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: docker system prune failed (Docker may not be running): %v\n", pruneAllErr)
-	} else {
-		_, _ = fmt.Fprintln(out, "Host-wide prune complete.")
-		pruned = true
+		// The prune was asked for explicitly: in JSON mode its failure is the
+		// command's failure, not a success envelope with host_prune false.
+		if jsonMode {
+			return errPartialRemoval("docker system prune failed", pruneAllErr, removed)
+		}
+		return nil
 	}
+	_, _ = fmt.Fprintln(out, "Host-wide prune complete.")
 
-	return emitBuildResult(cmd, "clean", CleanResult{Removed: jsonPaths(removed), HostPrune: pruned})
+	return emitBuildResult(cmd, "clean", CleanResult{Removed: jsonPaths(removed), HostPrune: true})
 }
