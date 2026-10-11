@@ -21,7 +21,7 @@ var secretsRecipientsCmd = newSecretsRecipientsCmd()
 
 // newSecretsRecipientsCmd builds the hub and per-file recipient actions.
 func newSecretsRecipientsCmd() *cobra.Command {
-	hub := &cobra.Command{Use: "recipients", Short: "Manage age recipients of one secret store", RunE: func(cmd *cobra.Command, _ []string) error {
+	hub := &cobra.Command{Use: "recipients", Short: "Manage age recipients of one secret store", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if jsonEnvelopeOn(cmd) {
 			return output.EmitData(output.Default(), invokedKey(cmd), dataHub{Subcommands: []dataHubEntry{{Name: "add"}, {Name: "remove"}, {Name: "list"}}})
 		}
@@ -74,12 +74,14 @@ func runSecretsRecipients(cmd *cobra.Command, args []string) error {
 	}
 	if action == "list" {
 		for _, r := range rows {
-			fmt.Fprintln(cmd.OutOrStdout(), r)
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), r); err != nil {
+				return err
+			}
 		}
 	} else if changed {
-		fmt.Fprintln(cmd.OutOrStdout(), "Recipients updated")
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), "Recipients updated")
 	} else {
-		fmt.Fprintln(cmd.OutOrStdout(), "Recipients unchanged")
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), "Recipients unchanged")
 	}
-	return nil
+	return err
 }

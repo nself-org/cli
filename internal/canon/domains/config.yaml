@@ -55,19 +55,19 @@ commands:
   # cmd/commands/secrets_audit.go:112 RunE path changes no persistent state (prints/reads only)
   config secrets lint: {side_effect: read}
   config secrets list: {side_effect: read}
-  # cmd/commands/secrets_resolve.go RunE reads encrypted stores; values delivered only to FIFO stdout
-  config secrets resolve: {side_effect: read, surface: cli-only}
-  # cmd/commands/secrets_recipients.go RunE prints help or public recipient metadata
-  config secrets recipients: {side_effect: read}
-  config secrets recipients add: {side_effect: write, surface: cli-only}
-  # cmd/commands/secrets_recipients.go RunE re-encrypts without the removed recipient
-  config secrets recipients remove: {side_effect: destructive, surface: cli-only, confirm: {flags: []}}
-  # cmd/commands/secrets_recipients.go RunE reads public recipients from the encrypted store
-  config secrets recipients list: {side_effect: read}
   # cmd/commands/secrets_schedule.go:103 RunE path changes no persistent state (prints/reads only)
   config secrets list-schedules: {side_effect: read}
+  # cmd/commands/secrets_recipients.go:25 RunE prints help or public recipient metadata
+  config secrets recipients: {side_effect: read}
+  config secrets recipients add: {side_effect: write, surface: cli-only}
+  # cmd/commands/secrets_recipients.go RunE reads public recipients from the encrypted store
+  config secrets recipients list: {side_effect: read}
+  # cmd/commands/secrets_recipients.go RunE re-encrypts without the removed recipient
+  config secrets recipients remove: {side_effect: destructive, surface: cli-only, confirm: {flags: []}}
   # cmd/commands/secrets_audit.go:133 re-encrypts the store; --remove can lock the caller out of it and the old ciphertext is not restorable without another key holder
   config secrets rekey: {side_effect: destructive, confirm: {flags: []}}
+  # cmd/commands/secrets_resolve.go:91 RunE reads encrypted stores; values delivered only to FIFO stdout
+  config secrets resolve: {side_effect: read, surface: cli-only}
   # cmd/commands/secrets_edit_rotate.go:124 deletes the _PREVIOUS variant of a dual-window rotated secret
   config secrets retire: {side_effect: destructive, confirm: {flags: []}}
   # cmd/commands/secrets_edit_rotate.go:94 replaces a secret with a new random value; the old value is not restorable without --dual-window

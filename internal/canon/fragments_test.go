@@ -136,6 +136,15 @@ func TestFragmentAssignment(t *testing.T) {
 	delete(where, "deploy targets")         // Added after the pre-split snapshot.
 	delete(where, "config explain")         // Added after the pre-split snapshot (P7-SURF-06).
 	delete(where, "generate vector-search") // Added after the pre-split snapshot (P7-ADOPT-07).
+	for _, key := range []string{
+		"secrets resolve",
+		"secrets recipients",
+		"secrets recipients add",
+		"secrets recipients remove",
+		"secrets recipients list",
+	} {
+		delete(where, key) // Added after the pre-split snapshot (P7-TRUST-03).
+	}
 	if len(where) != len(pre.Commands) {
 		var extra []string
 		for k := range where {
