@@ -53,7 +53,7 @@ E481 lists every item that prevents a complete route swap:
 
 Remove or model the named items, or keep nginx with `nself remove traefik`. Both `nginx/` and `.nself/generated/routes.json` are always generated. With traefik selected, compose omits the nginx service. The plugin owns Traefik configuration and serves ports 80 and 443 through its file provider.
 
-Enabled API docs are an accepted difference (D-0310), not an E481 refusal. Traefik does not serve `docs.<base>`, because the docs host is absent from the version 1 route contract. Each build warns once and still writes its own `nginx/sites/api-docs.conf`. The config loader does not parse any `API_DOCS_*` variables (D-0435), so environment-only projects cannot disable docs through those variables. The e2e parity matrix excludes the docs host.
+Enabled API docs are an accepted difference (D-0310), not an E481 refusal. Traefik does not serve `docs.<base>`, because the docs host is absent from the version 1 route contract. Each build warns once and still writes its own `nginx/sites/api-docs.conf`. The config loader does not parse any `API_DOCS_*` variables (D-0455), so environment-only projects cannot disable docs through those variables. The e2e parity matrix excludes the docs host.
 
 Use this sequence to switch a running project:
 

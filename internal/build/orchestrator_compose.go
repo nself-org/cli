@@ -44,7 +44,7 @@ func (st *buildState) applyProxyProvider(g *compose.Generator) error {
 		g.OmitNginx()
 		// Compose is generated once per build, even when modelRoutes runs twice.
 		if proxyAPIDocsEnabled(st.cfg) {
-			slog.Warn("docs." + st.cfg.BaseDomain + " is not served by traefik (D-0310); api-docs is an accepted difference (API_DOCS_* parsing debt D-0435)")
+			slog.Warn("docs." + st.cfg.BaseDomain + " is not served by traefik (D-0310); api-docs is an accepted difference (API_DOCS_* parsing debt D-0455)")
 		}
 	}
 	return nil

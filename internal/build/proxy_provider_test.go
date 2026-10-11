@@ -22,7 +22,7 @@ func proxyFixture(t *testing.T) *planFixture {
 	t.Setenv("NSELF_V15", v15)
 	f.plugins = filepath.Join(f.workdir, ".nself", "plugins")
 	t.Setenv("NSELF_PLUGIN_DIR", f.plugins)
-	// API_DOCS_* is not parsed (D-0435), so docs retain their enabled default.
+	// API_DOCS_* is not parsed (D-0455), so docs retain their enabled default.
 	stubHostTools(t, f.root)
 	writeFixtureFile(t, filepath.Join(f.root, "stub-bin", "nginx"), "#!/bin/sh\nexit 0\n", 0755)
 	return f

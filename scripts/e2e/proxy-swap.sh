@@ -32,7 +32,7 @@ docker compose version >/dev/null || { echo 'FAIL: Docker Compose is unavailable
 W=$(mktemp -d "${E2E_TMP:-${RUNNER_TEMP:-/tmp}}/proxy-swap.XXXXXX")
 EVIDENCE=${E2E_EVIDENCE:-$W/evidence}
 mkdir -p "$W/evidence" "$W/home" "$W/registry" "$W/a" "$W/b"
-registry_pid='' probe_pid=''
+registry_pid='' probe_pid='' swap_started=0
 compose() {
   local dir=$1 path
   shift
@@ -46,10 +46,68 @@ compose() {
   fi
   "${args[@]}" "$@"
 }
+swap_diagnostics() (
+  # Best-effort evidence must neither interrupt cleanup nor replace its exit status.
+  set +e
+  trap - ERR
+  local dir project service id ids generated
+  for dir in "$W/a" "$W/b"; do
+    project=$(compose "$dir" config --format json 2>"$W/evidence/swap-config-$(basename "$dir").stderr" | jq -er .name)
+    if [[ -z $project ]]; then
+      project=$(python3 - "$dir/.env" <<'PY'
+import pathlib, sys
+for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
+    if line.startswith('PROJECT_NAME='): print(line.split('=', 1)[1]); break
+PY
+)
+    fi
+    docker ps -a --filter "label=com.docker.compose.project=$project" >"$W/evidence/swap-docker-ps-$(basename "$dir").txt" 2>&1
+    compose "$dir" ps -a --format json >"$W/evidence/swap-compose-ps-$(basename "$dir").json" 2>"$W/evidence/swap-compose-ps-$(basename "$dir").stderr"
+    for service in traefik traefik-config traefik-acme; do
+      ids=$(docker ps -aq --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.service=$service")
+      : >"$W/evidence/swap-$service-$(basename "$dir").log"
+      for id in $ids; do
+        printf 'container %s\n' "$id" >>"$W/evidence/swap-$service-$(basename "$dir").log"
+        docker logs --tail 200 "$id" >>"$W/evidence/swap-$service-$(basename "$dir").log" 2>&1
+        if [[ $service == traefik ]]; then
+          docker port "$id" >"$W/evidence/swap-traefik-ports-$(basename "$dir").txt" 2>&1
+        fi
+      done
+    done
+    generated=$dir/.nself/generated/traefik
+    python3 - "$generated" "$W/evidence" "$(basename "$dir")" <<'PY'
+import pathlib, re, sys
+root, evidence, label = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3]
+listing = evidence / ('swap-traefik-generated-' + label + '.txt')
+if not root.is_dir():
+    listing.write_text('generated traefik directory is absent\n')
+    raise SystemExit(0)
+listing.write_text('\n'.join(str(p.relative_to(root)) + (' -> ' + str(p.readlink()) if p.is_symlink() else '') for p in sorted(root.rglob('*'))) + '\n')
+source = root / 'dynamic.yml'
+if not source.is_file():
+    listing.write_text(listing.read_text() + 'dynamic.yml is absent\n')
+    raise SystemExit(0)
+resolved = source.resolve()
+if root.resolve() not in resolved.parents or 'ssl' in resolved.parts:
+    raise SystemExit('dynamic.yml refused: path escapes generated directory or enters ssl/')
+data = source.read_text()
+# Only configuration and certificate file paths are permitted, never PEM/key bytes.
+if '-----BEGIN' in data or re.search(r'(?im)^\s*[A-Za-z0-9+/]{64,}={0,2}\s*$', data) or re.search(r'(?i)[\"\x27]?(?:private[_-]?key|key)[\"\x27]?\s*:', data):
+    raise SystemExit('dynamic.yml refused: possible key material')
+(evidence / ('swap-traefik-dynamic-' + label + '.yml')).write_text(data)
+PY
+  done
+  command -v ss >/dev/null && ss -ltnp >"$W/evidence/swap-listeners.txt" 2>&1
+  curl --verbose --head --noproxy '*' -k --max-time 10 --resolve 'hasura.proxy.test:443:127.0.0.1' https://hasura.proxy.test/v1/version >"$W/evidence/swap-probe-headers.txt" 2>"$W/evidence/swap-probe-verbose.txt"
+  return 0
+)
 cleanup() {
   local rc=$?
   trap - EXIT
   [[ -z $probe_pid ]] || kill "$probe_pid" 2>/dev/null || true
+  if [[ $rc != 0 && $swap_started == 1 ]]; then
+    swap_diagnostics >"$W/evidence/swap-diagnostics.stdout" 2>"$W/evidence/swap-diagnostics.stderr" || true
+  fi
   for dir in "$W/a" "$W/b"; do
     [[ ! -f $dir/.nself/compose-files.txt ]] || compose "$dir" down -v --remove-orphans >"$W/evidence/cleanup-$(basename "$dir").log" 2>&1 || true
   done
@@ -77,7 +135,6 @@ for p in pathlib.Path(sys.argv[1]).iterdir():
 PY
   fi
   [[ $rc == 0 ]] || echo "FAIL: proxy swap stopped (exit $rc); evidence: $EVIDENCE" >&2
-  [[ $rc == 0 ]] || rc=1
   exit "$rc"
 }
 trap cleanup EXIT
@@ -290,6 +347,7 @@ manifest "$W/a" confd-after.manifest
 same confd-before.manifest confd-after.manifest
 NSELF_V15=0 nself "$W/a" remove traefik
 rm "$W/a/nginx/conf.d/shadow.conf"
+swap_started=1
 (
   while :; do
     timestamp=$(epoch_ms)
