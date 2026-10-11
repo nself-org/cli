@@ -56,7 +56,8 @@ func updateProject(t *testing.T) string {
 	return dir
 }
 
-// hashTree digests every file path and content under dir.
+// hashTree digests every file path and content under dir, except the op-lock
+// holder file .nself/op.lock, which `update --plan` creates like `build --plan`.
 func hashTree(t *testing.T, dir string) string {
 	t.Helper()
 	h := sha256.New()
@@ -64,8 +65,11 @@ func hashTree(t *testing.T, dir string) string {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		b, rerr := os.ReadFile(p)
 		rel, _ := filepath.Rel(dir, p)
+		if filepath.ToSlash(rel) == ".nself/op.lock" {
+			return nil // the op-lock holder file is runtime state (same rule as build --plan)
+		}
+		b, rerr := os.ReadFile(p)
 		fmt.Fprintf(h, "%s\x00%x\x00", rel, b)
 		return rerr
 	})
@@ -391,8 +395,9 @@ func resetUpdateFlags(c *cobra.Command) {
 }
 
 // TestUpdatePlanRealPathIsReadOnly runs `update --plan` through the real command
-// tree (decorator, registry, op-lock policy) in a project and asserts nothing was
-// written: the tree hash is unchanged and .nself/op.lock was never created.
+// tree (decorator, registry, op-lock policy) in a project: it exits 0, prints the
+// plan table, and creates or changes no project file. The op-lock holder file is
+// excluded from the hash, as it is for build --plan.
 func TestUpdatePlanRealPathIsReadOnly(t *testing.T) {
 	dir := updateProject(t)
 	newUpdateRecorder(t)
@@ -406,10 +411,12 @@ func TestUpdatePlanRealPathIsReadOnly(t *testing.T) {
 	if err := RootCmd.Execute(); err != nil {
 		t.Fatalf("update --plan: %v\n%s", err, out.String())
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".nself", "op.lock")); err == nil {
-		t.Fatal("update --plan created .nself/op.lock")
+	for _, want := range []string{"KIND", updSvc, "ai", "1. backup", "9. cli"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("plan table lacks %q:\n%s", want, out.String())
+		}
 	}
 	if after := hashTree(t, dir); after != before {
-		t.Fatal("update --plan changed the project tree")
+		t.Fatal("update --plan created or changed a project file")
 	}
 }

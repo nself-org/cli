@@ -37,8 +37,7 @@ commands:
   ops: {canon: pending, side_effect: read, mode: v1.4}
   # cmd/commands/security.go:27 RunE path changes no persistent state (prints/reads only)
   security: {canon: pending, side_effect: read, mode: v1.4}
-  # cmd/commands/update_plan.go: --plan only reads (lock, image lock, registry, release) and writes nothing, so it must not take the project operation lock (P7-LIVE-10); the flag-level output stream is the canon's lock exemption (oplock.Takes)
-  update: {canon: core, side_effect: write, flags: {plan: {output: stream}}}
+  update: {canon: core, side_effect: write}
   update images: {side_effect: write}
   update upgrade: {side_effect: write}
   # cmd/commands/verify_sbom.go:41 RunE path changes no persistent state (prints/reads only)
