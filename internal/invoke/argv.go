@@ -238,6 +238,9 @@ func stringItems(f cmdregistry.Flag, v any) ([]string, error) {
 	}
 	out := make([]string, 0, len(items))
 	for _, s := range items {
+		if f.Type == "stringSlice" && s == "" {
+			return nil, badRequest("flag %s is a comma-separated list: an item cannot be empty", quoteName(f.Name))
+		}
 		if f.Type == "stringSlice" && strings.ContainsAny(s, ",\"\r\n") {
 			return nil, badRequest("flag %s is a comma-separated list: an item cannot hold a comma, quote or newline", quoteName(f.Name))
 		}
@@ -253,10 +256,10 @@ func integerText(v any, unsigned bool) (string, bool) {
 	var s string
 	switch x := v.(type) {
 	case json.Number:
-		if _, err := strconv.ParseInt(string(x), 10, 64); err == nil {
-			s = string(x)
-		} else if _, err := strconv.ParseUint(string(x), 10, 64); err == nil {
-			s = string(x)
+		if i, err := strconv.ParseInt(string(x), 10, 64); err == nil {
+			s = strconv.FormatInt(i, 10) // "-0" and "007" render as the digest sees them
+		} else if u, err := strconv.ParseUint(string(x), 10, 64); err == nil {
+			s = strconv.FormatUint(u, 10)
 		} else if f, err := strconv.ParseFloat(string(x), 64); err == nil && f == math.Trunc(f) && math.Abs(f) < 1<<53 {
 			s = strconv.FormatInt(int64(f), 10)
 		} else {

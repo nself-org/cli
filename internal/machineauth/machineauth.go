@@ -96,6 +96,9 @@ func Lookup() (tok, source string, err error) {
 		return "", "", errs.New("E426", fmt.Sprintf("machine token file %s is readable by other users (mode %04o)", path, lst.Mode().Perm())).
 			WithFix("Run: chmod 600 " + path)
 	}
+	if err := checkTokenLocation(path, lst); err != nil {
+		return "", "", err
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return "", "", errs.Wrap("E426", fmt.Sprintf("cannot read the machine token file %s", path), err)
@@ -114,6 +117,28 @@ func Lookup() (tok, source string, err error) {
 			WithFix("Delete it to have nself generate a token, or put a token in it at mode 0600.")
 	}
 	return tok, SourceFile, nil
+}
+
+// checkTokenLocation refuses a token file that another user could replace or
+// that another user owns (non-Windows): a parent directory writable by group
+// or others without the sticky bit, or an owner other than the effective user.
+// It reads metadata only.
+func checkTokenLocation(path string, lst os.FileInfo) error {
+	if !unixPerms() {
+		return nil
+	}
+	dir := filepath.Dir(path)
+	if dst, err := os.Stat(dir); err != nil {
+		return errs.Wrap("E426", fmt.Sprintf("cannot stat %s", dir), err)
+	} else if dst.Mode().Perm()&0o022 != 0 && dst.Mode()&os.ModeSticky == 0 {
+		return errs.New("E426", fmt.Sprintf("%s is writable by other users (mode %04o), so the machine token file in it could be replaced", dir, dst.Mode().Perm())).
+			WithFix("Run: chmod go-w " + dir)
+	}
+	if uid, ok := fileOwner(lst); ok && uid != currentUID() {
+		return errs.New("E426", fmt.Sprintf("machine token file %s is owned by uid %d, not the current user", path, uid)).
+			WithFix(fmt.Sprintf("Run: chown %d %s", currentUID(), path))
+	}
+	return nil
 }
 
 // Resolve is Lookup, then token generation when nothing is configured. It

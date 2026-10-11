@@ -164,9 +164,9 @@ func requestDigest(command string, r Request) (sum [32]byte, ok bool) {
 }
 
 // auditWritable checks, before a remote or destructive run, that the audit
-// file can be opened for append. The audit line is written after the run, so
-// without this probe a broken log (no path, unwritable dir) would lose the
-// record of a destructive change; the run is refused instead. A failure after
+// file can be opened for append and locked. The audit line is written after
+// the run, so without this probe a broken log (no path, unwritable dir, stuck
+// lock) would lose the record of a destructive change; the run is refused instead. A failure after
 // the probe (disk full) still only prints a notice.
 func (g *Guard) auditWritable() error {
 	if g.auditPath == "" {
@@ -179,6 +179,13 @@ func (g *Guard) auditWritable() error {
 	}
 	f, err := openAuditFile(g.auditPath)
 	if err != nil {
+		return err
+	}
+	// Take the same flock appendLine takes, so a lock held by another process
+	// refuses the run now instead of losing its record afterwards. Closing f
+	// releases the lock.
+	if err := lockFile(f); err != nil {
+		_ = f.Close()
 		return err
 	}
 	return f.Close()

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -44,6 +45,18 @@ var ownedEnv = map[string]bool{
 	SecretsEnv: true,
 }
 
+// envCaseInsensitive is true where environment names compare case-insensitively
+// (Windows). A variable so a test can flip it.
+var envCaseInsensitive = runtime.GOOS == "windows"
+
+// owned reports whether the invoker sets name itself.
+func owned(name string) bool {
+	if envCaseInsensitive {
+		name = strings.ToUpper(name)
+	}
+	return ownedEnv[name]
+}
+
 // childEnv builds the child environment. deadline <= 0 means no deadline
 // value; an empty path sets no path pin.
 func childEnv(parent []string, transport, path string, deadline time.Duration) ([]string, error) {
@@ -59,7 +72,7 @@ func childEnv(parent []string, transport, path string, deadline time.Duration) (
 	env := make([]string, 0, len(parent)+6)
 	for _, kv := range parent {
 		name, _, found := strings.Cut(kv, "=")
-		if found && !ownedEnv[name] {
+		if found && !owned(name) {
 			env = append(env, kv)
 		}
 	}
