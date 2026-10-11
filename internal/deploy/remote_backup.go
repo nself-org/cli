@@ -145,7 +145,9 @@ func RestorePreDeployTar(ctx context.Context, r Remote, remotePath, tar string, 
 	tmp := path.Join(remotePath, BackupDir, "restore-"+strings.TrimSuffix(path.Base(tar), ".tar.gz"))
 	script := fmt.Sprintf(`set -e; umask 077; tmp=%s; rm -rf "$tmp"; mkdir -p "$tmp"; tar -xzf %s -C "$tmp"`, q(tmp), q(tar))
 	if len(restore) > 0 {
-		script += fmt.Sprintf(`; printf '%%s\n' %s > "$tmp.list"; rsync -acK --files-from="$tmp.list" "$tmp"/ %s/; rm -f "$tmp.list"`, strings.Join(quoteAll(restore), " "), q(remotePath))
+		// --no-implied-dirs: no parent directory is transferred, so an existing dir
+		// (remote_path included) keeps its mode and owner; a missing parent is made.
+		script += fmt.Sprintf(`; rp=%s; printf '%%s\n' %s > "$tmp.list"; (umask 022; while IFS= read -r f; do mkdir -p "$rp/$(dirname "$f")"; done < "$tmp.list"); rsync -acK --no-implied-dirs --files-from="$tmp.list" "$tmp"/ "$rp"/; rm -f "$tmp.list"`, q(remotePath), strings.Join(quoteAll(restore), " "))
 	}
 	script += `; rm -rf "$tmp"`
 	if _, err := r.Run(ctx, shScript(script)); err != nil {
