@@ -155,6 +155,32 @@ func TestUpdateImagesTriesEveryPull(t *testing.T) {
 	}
 }
 
+// TestUpdateImagesSkipsFlagAndUnbracedVarRefs (N1): a ref that docker would
+// read as a flag, or that has an unbraced $VAR, is never pulled.
+func TestUpdateImagesSkipsFlagAndUnbracedVarRefs(t *testing.T) {
+	newDir := writeFragment(t, "services:\n  a:\n    image: --help\n  b:\n    image: -q\n  c:\n    image: x/c:$TAG\n  d:\n    image: x/d:${TAG}\n  e:\n    image: x/e:1\n")
+	pulls := stubPull(t)
+	pulled, err := pullChangedImages(context.Background(), nil, newDir)
+	if want := []string{"x/e:1"}; err != nil || !reflect.DeepEqual(pulled, want) || !reflect.DeepEqual(*pulls, want) {
+		t.Fatalf("pulled %v (calls %v) err %v, want only %v", pulled, *pulls, err, want)
+	}
+}
+
+// TestUpdateImagesQuotedNselfRefStillPulled (CR r4 nit 2): the build only
+// converts an unquoted `image: nself/x` line, so a quoted ref or one with a
+// trailing comment in a plugin with a Dockerfile is not built and is pulled.
+func TestUpdateImagesQuotedNselfRefStillPulled(t *testing.T) {
+	newDir := writeFragment(t, "services:\n  q:\n    image: \"nself/q:1\"\n  c:\n    image: nself/c:1 # tag\n  u:\n    image: nself/u:1\n")
+	if err := os.WriteFile(filepath.Join(newDir, "Dockerfile"), []byte("FROM scratch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pulls := stubPull(t)
+	pulled, err := pullChangedImages(context.Background(), nil, newDir)
+	if want := []string{"nself/c:1", "nself/q:1"}; err != nil || !reflect.DeepEqual(pulled, want) || !reflect.DeepEqual(*pulls, want) {
+		t.Fatalf("pulled %v (calls %v) err %v, want %v (nself/u:1 is built)", pulled, *pulls, err, want)
+	}
+}
+
 // hasIntegrationTag reports whether this test binary was built with
 // -tags integration (the only file this Ticket may add tests to is this one,
 // so the integration test selects itself at run time instead of by build tag).

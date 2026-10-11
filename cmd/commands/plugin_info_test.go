@@ -281,6 +281,60 @@ func TestPluginInfoInstalledTierNotServed(t *testing.T) {
 	}
 }
 
+// TestPluginInfoMaxTier (Opus M1): a "max" entry is a licensed entry: installed
+// as max it resolves (reason installed), not installed it reports the licence
+// word "licensed", never the raw "max". Reason for the latter is only-tier (S3):
+// no entitlement is looked up.
+func TestPluginInfoMaxTier(t *testing.T) {
+	compattest.Set(t, true)
+	const reg = `{"plugins":[{"name":"notify","tier":"max","version":"1.0.0","description":"max notify","bundles":["claw"]}]}`
+	var got struct {
+		Tier       string `json:"tier"`
+		TierReason string `json:"tier_reason"`
+		TierError  string `json:"tier_error"`
+	}
+	for _, tc := range []struct{ installed, reason string }{{"max", "installed"}, {"", "only-tier"}} {
+		infoFixtureRegistry(t, tc.installed, reg)
+		out, err := runInfoRoot(t, "--json")
+		if err != nil {
+			t.Fatalf("installed=%q: %v\n%s", tc.installed, err, out)
+		}
+		if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+			t.Fatal(jerr)
+		}
+		if got.Tier != "licensed" || got.TierReason != tc.reason {
+			t.Fatalf("installed=%q: %+v, want licensed/%s", tc.installed, got, tc.reason)
+		}
+	}
+}
+
+// TestPluginInfoEntitlementLookupError (Opus N2): when the licence lookup
+// fails, info reports the error in tier_error with reason unresolved, not a
+// decided default-free (install still fails closed to free).
+func TestPluginInfoEntitlementLookupError(t *testing.T) {
+	compattest.Set(t, true)
+	infoFixture(t, "")
+	ping := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusInternalServerError) }))
+	t.Cleanup(ping.Close)
+	t.Setenv("LICENSE_PING_URL", ping.URL)
+	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "nself_pro_test_key")
+	out, err := runInfoRoot(t, "--json")
+	if err == nil {
+		t.Fatalf("a failed licence lookup must be an error, got %s", out)
+	}
+	var got struct {
+		Tier       string `json:"tier"`
+		TierReason string `json:"tier_reason"`
+		TierError  string `json:"tier_error"`
+	}
+	if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+		t.Fatalf("not JSON: %v\n%s", jerr, out)
+	}
+	if got.TierReason != "unresolved" || got.TierError == "" || got.Tier != "" || strings.Contains(out, "default-free") {
+		t.Fatalf("lookup error must be tier_error, not default-free: %+v", got)
+	}
+}
+
 // TestUpdateWithTierEnv (CR r2 S1): the --tier override travels in
 // NSELF_PLUGIN_INSTALL_TIER set by the cmd layer for the update only. With it
 // a lapsed-licence update of an installed licensed plugin gets past tier

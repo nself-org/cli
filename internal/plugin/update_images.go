@@ -12,10 +12,12 @@ package plugin
 //          (the caller reports it as a warning, the update itself is done).
 //          Every changed reference is tried, one failure does not hide the rest.
 // Constraints: services that build locally are not touched (image_invalidate.go
-//              handles them), and neither is an `nself/...` image in a plugin
-//              that ships a Dockerfile (nself build turns it into a local
-//              build, so the ref is not on a registry); a reference with a
-//              ${VAR} cannot be resolved here and is left for `nself start`;
+//              handles them), and neither is an `nself/...` image line, written
+//              the way the build's rule matches it, in a plugin that ships a
+//              Dockerfile (nself build turns it into a local build, so the
+//              ref is not on a registry); a reference with a ${VAR} or $VAR
+//              cannot be resolved here and is left for `nself start`, and one
+//              starting with '-' is never handed to docker;
 //              docker runs only through the internal/docker funnel.
 
 import (
@@ -24,6 +26,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -37,22 +40,33 @@ var pullImage = func(ctx context.Context, ref string) error {
 	return (&docker.Compose{}).Run(ctx, "", "pull", ref)
 }
 
-// nselfImagePrefix is the registry namespace of images nself does not publish.
-const nselfImagePrefix = "nself/"
+// composeImageNselfRE is the build's rule for an `image: nself/...` line,
+// copied from composeImageNselfRE in internal/build/plugins_image_to_build.go
+// (internal/plugin must not import internal/build). It matches the raw line,
+// so a quoted value or a trailing comment is not converted to a build there
+// and must still be pulled here.
+var composeImageNselfRE = regexp.MustCompile(`^(\s*)image:\s*nself/\S+\s*$`)
 
-// buildsFromDockerfile reports whether `nself build` would turn an
-// `image: nself/...` line of this plugin into a local build. It mirrors
-// normalizeComposeImageToBuild + canonicalDockerfile in
-// internal/build/plugins_image_to_build.go (internal/plugin must not import
-// internal/build): the ref is under nself/ and the plugin directory holds a
-// Dockerfile. The service-has-build: half of that rule is already handled by
-// fragmentImages, which drops services that declare build:.
-func buildsFromDockerfile(pluginDir, ref string) bool {
-	if !strings.HasPrefix(ref, nselfImagePrefix) {
-		return false
+// builtImages returns the references of the fragment's `image: nself/...`
+// lines that `nself build` turns into a local build: the line matches the
+// build's rule and the plugin directory holds a Dockerfile (the build's
+// canonicalDockerfile check; the service-has-build: half of the rule is
+// already handled by fragmentImages, which drops services that declare it).
+func builtImages(pluginDir string) map[string]bool {
+	if _, err := os.Stat(filepath.Join(pluginDir, "Dockerfile")); err != nil {
+		return nil
 	}
-	_, err := os.Stat(filepath.Join(pluginDir, "Dockerfile"))
-	return err == nil
+	data, err := os.ReadFile(filepath.Join(pluginDir, "docker-compose.plugin.yml"))
+	if err != nil {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, line := range strings.Split(string(data), "\n") {
+		if composeImageNselfRE.MatchString(line) {
+			out[strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "image:"))] = true
+		}
+	}
+	return out
 }
 
 // fragmentImages returns service -> image reference for every service in the
@@ -86,12 +100,14 @@ func fragmentImages(pluginDir string) (map[string]string, error) {
 
 // changedImages returns the sorted, de-duplicated references in next that
 // differ from the reference the same service had in prev (a service new to
-// the fragment counts as changed). References with a ${VAR} are skipped.
+// the fragment counts as changed). References with a variable (${VAR} or
+// $VAR) are skipped, and so is one starting with '-': `docker pull` would
+// read it as a flag, not an image.
 func changedImages(prev, next map[string]string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for svc, ref := range next {
-		if prev[svc] == ref || strings.Contains(ref, "${") || seen[ref] {
+		if prev[svc] == ref || strings.Contains(ref, "$") || strings.HasPrefix(ref, "-") || seen[ref] {
 			continue
 		}
 		seen[ref] = true
@@ -110,8 +126,9 @@ func pullChangedImages(ctx context.Context, prev map[string]string, pluginDir st
 		return nil, err
 	}
 	// Refs the build turns into a local build are not on a registry.
+	built := builtImages(pluginDir)
 	for svc, ref := range next {
-		if buildsFromDockerfile(pluginDir, ref) {
+		if built[ref] {
 			delete(next, svc)
 		}
 	}

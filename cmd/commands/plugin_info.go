@@ -182,7 +182,7 @@ func pluginInfoTier(ctx context.Context, reg *plugin.Registry, name, pluginDir s
 		if first == nil {
 			first = e
 		}
-		if installed && match == nil && plugin.LicenseValue(e.Tier) == instTier {
+		if installed && match == nil && plugin.LicenseTier(e.Tier) == instTier {
 			match = e
 		}
 	}
@@ -203,11 +203,24 @@ func pluginInfoTier(ctx context.Context, reg *plugin.Registry, name, pluginDir s
 		}
 		return match, instTier, instReason, nil
 	}
-	m, reason, err := plugin.ResolvePluginTier(ctx, reg, name, "", "", nil)
+	// Resolution fails closed to free when the licence lookup errors; that is
+	// right for install, but info must not report it as a decided default.
+	var lookupErr error
+	entitled := func(ctx context.Context, bundles []string) (bool, error) {
+		ok, err := plugin.DefaultEntitlement(ctx, bundles)
+		if err != nil {
+			lookupErr = err
+		}
+		return ok, err
+	}
+	m, reason, err := plugin.ResolvePluginTier(ctx, reg, name, "", "", entitled)
 	if err != nil {
 		return nil, "", plugin.TierReasonUnresolved, err
 	}
-	return m, plugin.LicenseValue(m.Tier), reason, nil
+	if lookupErr != nil {
+		return nil, "", plugin.TierReasonUnresolved, fmt.Errorf("checking entitlement for %q: %w", name, lookupErr)
+	}
+	return m, plugin.LicenseTier(m.Tier), reason, nil
 }
 
 // writePluginInfoJSON prints `plugin info --json`: the registry fields plus

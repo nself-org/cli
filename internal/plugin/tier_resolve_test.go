@@ -531,3 +531,36 @@ func TestRemoveClearsPrevBackup(t *testing.T) {
 		t.Fatalf("fresh install after Remove inherited tier %q, want empty", got)
 	}
 }
+
+// TestResolveMaxTierAndOnlyTier: a "max" entry is a licensed entry. --tier
+// licensed matches it (M1), a single licensed entry with nothing installed and
+// no override reports only-tier because no entitlement was looked up (S3), and
+// an installed max copy sticks.
+func TestResolveMaxTierAndOnlyTier(t *testing.T) {
+	reg := &Registry{Plugins: []PluginManifest{{Name: "claw", Version: "1.0.0", Tier: "max", Bundles: []string{"claw"}}}}
+	compattest.Both(t, func(t *testing.T) {
+		m, reason, err := ResolvePluginTier(context.Background(), reg, "claw", "licensed", "", alwaysEntitled)
+		if err != nil || m == nil || reason != TierReasonOverride {
+			t.Fatalf("--tier licensed on a max entry: %v %v %v", m, reason, err)
+		}
+		if _, _, err := ResolvePluginTier(context.Background(), reg, "claw", "free", "", alwaysEntitled); err == nil {
+			t.Fatal("--tier free on a max-only plugin must be refused")
+		}
+		entitlementCalls := 0
+		counting := func(context.Context, []string) (bool, error) { entitlementCalls++; return false, nil }
+		if _, reason, err = ResolvePluginTier(context.Background(), reg, "claw", "", "", counting); err != nil || reason != TierReasonOnlyTier || entitlementCalls != 0 {
+			t.Fatalf("single licensed entry: reason %q err %v calls %d, want only-tier with no lookup", reason, err, entitlementCalls)
+		}
+		if got := LicenseTier("max"); got != "licensed" {
+			t.Fatalf("LicenseTier(max) = %q, want licensed", got)
+		}
+		if got := LicenseTier("free"); got != "free" {
+			t.Fatalf("LicenseTier(free) = %q", got)
+		}
+		if _, reason, err = ResolvePluginTier(context.Background(), reg, "claw", "", "max", nil); err != nil {
+			t.Fatalf("installed max copy: %v", err)
+		} else if compat.V15() && reason != TierReasonInstalled {
+			t.Fatalf("v1.5 installed max copy: reason %q, want installed", reason)
+		}
+	})
+}

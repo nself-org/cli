@@ -34,10 +34,11 @@ var projectNetworkRE = regexp.MustCompile(`^\$\{DOCKER_NETWORK(:-[^}]*)?\}$|^\$\
 
 // lineEdit is one splice: replace old with new on a 1-based line, or (old
 // empty) insert the lines of new before it. A col > 0 (1-based) replaces old
-// only at that column; col 0 replaces its first occurrence on the line.
+// only at that column; col 0 replaces its first occurrence on the line. A
+// drop > 0 deletes that many whole lines starting at the line.
 type lineEdit struct {
-	line, col int
-	old, new  string
+	line, col, drop int
+	old, new        string
 }
 
 // yamlGet returns the value node for key in mapping m, or nil.
@@ -53,36 +54,11 @@ func yamlGet(m *yaml.Node, key string) *yaml.Node {
 	return nil
 }
 
-// foreignExternalNetworks returns the sorted names of top-level networks the
-// fragment declares external that are not the project network.
-func foreignExternalNetworks(top *yaml.Node) []string {
-	nets := yamlGet(top, "networks")
-	if nets == nil || nets.Kind != yaml.MappingNode {
-		return nil
-	}
-	var out []string
-	for i := 0; i+1 < len(nets.Content); i += 2 {
-		def := nets.Content[i+1]
-		ext := yamlGet(def, "external")
-		if ext == nil || ext.Value == "false" {
-			continue
-		}
-		name := nets.Content[i].Value
-		if n := yamlGet(def, "name"); n != nil {
-			name = n.Value
-		} else if n := yamlGet(ext, "name"); n != nil {
-			name = n.Value
-		}
-		if !projectNetworkRE.MatchString(name) && name != legacyProjectNetwork {
-			out = append(out, name)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 // serviceNetworkEdits plans the edits for one service mapping.
-func serviceNetworkEdits(svc *yaml.Node, cr string) []lineEdit {
+// res is the service's resolved view: a service whose networks or network_mode
+// arrive through a merge key must not get a second networks: key (it would
+// override the merged one).
+func serviceNetworkEdits(svc *yaml.Node, res resolvedService, cr string) []lineEdit {
 	if svc.Kind != yaml.MappingNode || svc.Style&yaml.FlowStyle != 0 || len(svc.Content) == 0 {
 		return nil
 	}
@@ -90,6 +66,9 @@ func serviceNetworkEdits(svc *yaml.Node, cr string) []lineEdit {
 		return nil
 	}
 	nets := yamlGet(svc, "networks")
+	if nets == nil && res.usesNetworks() {
+		return nil
+	}
 	if nets == nil {
 		first := svc.Content[0]
 		ind := strings.Repeat(" ", first.Column-1)
@@ -116,7 +95,11 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 		return content, nil // unparseable: other normalizers and compose report it
 	}
 	top := doc.Content[0]
-	if foreign := foreignExternalNetworks(top); len(foreign) > 0 {
+	res, err := resolveFragment(content)
+	if err != nil {
+		return content, nil // decodes as nodes but not as values: compose reports it
+	}
+	if foreign := res.foreignExternalNetworks(); len(foreign) > 0 {
 		msg := fmt.Sprintf("plugin %q attaches external network %s other than the project network", pluginName, strings.Join(foreign, ", "))
 		// compat.V15(P7-PLUG-17): a fragment may join any external network (warning) -> E129 fails the build
 		if compat.V15() {
@@ -135,11 +118,18 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 	var edits []lineEdit
 	if svcs := yamlGet(top, "services"); svcs != nil && svcs.Kind == yaml.MappingNode {
 		for i := 1; i < len(svcs.Content); i += 2 {
-			edits = append(edits, serviceNetworkEdits(svcs.Content[i], cr)...)
+			edits = append(edits, serviceNetworkEdits(svcs.Content[i], res.Services[svcs.Content[i-1].Value], cr)...)
 		}
 	}
-	edits = append(edits, legacyNetworkEdits(content, top, cr)...)
-	return applyLineEdits(content, edits), nil
+	legacy, keys, why := legacyNetworkEdits(content, top, res)
+	if why != "" {
+		return content, errs.New("E129", fmt.Sprintf("plugin %q uses the legacy external network %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (%s)", pluginName, legacyProjectNetwork, why))
+	}
+	out := applyLineEdits(content, append(edits, legacy...))
+	if len(keys) > 0 && legacyNetworkRemains(out, keys) {
+		return content, errs.New("E129", fmt.Sprintf("plugin %q uses the legacy external network %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (a definition or reference is supplied through an alias or merge key)", pluginName, legacyProjectNetwork))
+	}
+	return out, nil
 }
 
 // applyLineEdits applies edits bottom-up so earlier line numbers stay valid.
@@ -158,7 +148,13 @@ func applyLineEdits(content []byte, edits []lineEdit) []byte {
 		if e.line < 1 || e.line > len(lines) {
 			continue
 		}
-		if e.old == "" {
+		if e.drop > 0 {
+			end := e.line - 1 + e.drop
+			if end > len(lines) {
+				end = len(lines)
+			}
+			lines = append(lines[:e.line-1], lines[end:]...)
+		} else if e.old == "" {
 			lines[e.line-1] = e.new + lines[e.line-1]
 		} else if e.col > 0 {
 			if l := lines[e.line-1]; e.col-1 <= len(l) && strings.HasPrefix(l[e.col-1:], e.old) {

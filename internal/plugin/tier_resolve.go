@@ -121,6 +121,7 @@ const (
 	TierReasonInstalled   = "installed"    // an installed plugin keeps its tier
 	TierReasonOverride    = "override"     // --tier chose it
 	TierReasonEntitlement = "entitlement"  // the licence entitles the Licensed tier
+	TierReasonOnlyTier    = "only-tier"    // the registry serves one Licensed entry and nothing was checked
 	TierReasonDefaultFree = "default-free" // nothing else decided, so free
 	TierReasonUnresolved  = "unresolved"   // no single tier could be decided; see the error
 )
@@ -176,7 +177,7 @@ func ResolvePluginTier(ctx context.Context, reg *Registry, name, tierOverride, i
 		return nil, "", errs.ErrPluginNotFound
 	case 1:
 		only := entries[0]
-		if tierOverride != "" && only.Tier != "" && only.Tier != tierOverride {
+		if tierOverride != "" && only.Tier != "" && tierClass(only.Tier) != tierOverride {
 			return nil, "", fmt.Errorf("plugin %q only has a %q entry in the registry, not %q", name, only.Tier, tierOverride)
 		}
 		switch {
@@ -187,7 +188,9 @@ func ResolvePluginTier(ctx context.Context, reg *Registry, name, tierOverride, i
 		case sticky:
 			return only, TierReasonInstalled, nil
 		case tierClass(only.Tier) == WireTierPro:
-			return only, TierReasonEntitlement, nil
+			// Installing it still runs the licence check on the manifest; no
+			// entitlement was looked up here, so the reason says so.
+			return only, TierReasonOnlyTier, nil
 		}
 		return only, TierReasonDefaultFree, nil
 	}
