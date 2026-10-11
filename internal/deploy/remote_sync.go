@@ -72,9 +72,6 @@ func rsyncList(ctx context.Context, r Remote, set ArtifactSet, rels, flags []str
 	if err != nil {
 		return err
 	}
-	// Files in a directory that is (or sits behind) a symlink on the host go to the
-	// directory's real path: rsync >= 3.4 refuses to traverse a symlink in the
-	// destination even with --keep-dirlinks, and a real dir must never replace it.
 	// Parents are made here (umask 022), never transferred by rsync: an implied
 	// parent dir would take the stage dir's mode and re-mode the host's own.
 	if dirs := layoutDirsOnly(rels); len(dirs) > 0 {
@@ -83,22 +80,29 @@ func rsyncList(ctx context.Context, r Remote, set ArtifactSet, rels, flags []str
 			return fmt.Errorf("creating directories on %s: %w", r.Label(), err)
 		}
 	}
-	plain := []string{}
+	// One rsync per destination directory over bare file names, so no directory
+	// entry is ever transferred (no --no-implied-dirs, which Apple's rsync 2.6.9
+	// rejects). A directory that is, or sits behind, a symlink inside remote_path
+	// goes to its real path: rsync >= 3.4 refuses to traverse a symlink in the
+	// destination even with --keep-dirlinks, and a real dir must never replace it.
 	byDir := map[string][]string{}
 	for _, rel := range rels {
-		if _, ok := linked[path.Dir(rel)]; ok {
-			byDir[path.Dir(rel)] = append(byDir[path.Dir(rel)], path.Base(rel))
-		} else {
-			plain = append(plain, rel)
-		}
+		byDir[path.Dir(rel)] = append(byDir[path.Dir(rel)], path.Base(rel))
 	}
-	if len(plain) > 0 {
-		if err := rsyncFiles(ctx, r, flags, plain, set.StageDir, set.RemotePath); err != nil {
-			return err
-		}
+	dirs := make([]string, 0, len(byDir))
+	for d := range byDir {
+		dirs = append(dirs, d)
 	}
-	for d, names := range byDir {
-		if err := rsyncFiles(ctx, r, flags, names, path.Join(set.StageDir, d), linked[d]); err != nil {
+	sort.Strings(dirs)
+	for _, d := range dirs {
+		src, dest := set.StageDir, set.RemotePath
+		if d != "." {
+			src, dest = path.Join(set.StageDir, d), path.Join(set.RemotePath, d)
+		}
+		if real, ok := linked[d]; ok {
+			dest = real
+		}
+		if err := rsyncFiles(ctx, r, flags, byDir[d], src, dest); err != nil {
 			return err
 		}
 	}

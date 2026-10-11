@@ -145,7 +145,7 @@ func rsyncArgv(spec remote.HostSpec, sshOpts, flags []string, filesFrom, srcDir,
 		target = strings.TrimSuffix(target, ":"+strconv.Itoa(spec.Port))
 	}
 	// --keep-dirlinks: a symlinked nginx/ on the host is followed, never replaced by a real dir.
-	args := []string{"-a", "--keep-dirlinks", "--no-implied-dirs", "-e", "ssh " + strings.Join(all, " ")}
+	args := []string{"-a", "--keep-dirlinks", "-e", "ssh " + strings.Join(all, " ")}
 	args = append(args, flags...)
 	args = append(args, "--files-from="+filesFrom, "--", strings.TrimSuffix(srcDir, "/")+"/", target+":"+strings.TrimSuffix(destDir, "/")+"/")
 	return args, nil

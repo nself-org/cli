@@ -469,6 +469,11 @@ service, or place its context on the host.
   (`unmarked file would be overwritten`) before the lock, naming the path. A first deploy onto a
   host with hand-written nginx files stops at the first collision; move or delete the file, then
   deploy again.
+- The sync runs one rsync per destination directory over bare file names, so no directory entry is
+  transferred and it works with any rsync as sender or receiver. Proven operator-side rsync versions:
+  Apple's 2.6.9-compatible rsync (CI on macOS 14, also openrsync) and 3.x (the Linux sim). A Windows
+  operator's compose files may hold `C:\...` paths; the path map rewrites them (any separator
+  spelling, drive letters case-insensitive) and refuses a leftover.
 - Remote steps are non-interactive (`BatchMode=yes`, `ConnectTimeout=10`): use ssh-agent or an
   unencrypted deploy key. A password or passphrase prompt would hang a step that runs in its own
   process group.
