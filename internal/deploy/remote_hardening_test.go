@@ -193,3 +193,51 @@ func TestStageReadsRelativeSourceFromScratchRoot(t *testing.T) {
 		t.Errorf("compose list %v lacks the override", set.Compose)
 	}
 }
+
+// pureRemote records rsync calls and answers shell scripts without running any: it
+// works on every OS.
+type pureRemote struct {
+	flags [][]string
+	lists []string
+	envs  int
+}
+
+func (p *pureRemote) Label() string { return "pure-host" }
+func (p *pureRemote) Run(_ context.Context, cmd string) ([]byte, error) {
+	if strings.Contains(cmd, "stat -c") {
+		return []byte(strings.Repeat("600 f\n", p.envs)), nil
+	}
+	return nil, nil
+}
+func (p *pureRemote) Rsync(_ context.Context, flags []string, filesFrom, _, _ string) error {
+	b, err := os.ReadFile(filesFrom)
+	if err != nil {
+		return err
+	}
+	p.flags = append(p.flags, flags)
+	p.lists = append(p.lists, string(b))
+	return nil
+}
+
+// R: the host-side mode of env files is forced by the rsync call, not by the local
+// staging dir (Windows cannot hold 0600): env files go with --chmod=F600, others do not.
+func TestEnvFilesAreSentWithChmod600(t *testing.T) {
+	p := &pureRemote{envs: 1}
+	set := ArtifactSet{StageDir: t.TempDir(), RemotePath: "/opt/nself", Files: []string{"docker-compose.yml"}, EnvFiles: []string{".env.prod"}}
+	if err := SyncArtifacts(context.Background(), p, set); err != nil {
+		t.Fatal(err)
+	}
+	gotEnv, gotPlain := false, false
+	for i, fl := range p.flags {
+		has := strings.Join(fl, " ") == "--chmod=F600"
+		switch {
+		case strings.Contains(p.lists[i], ".env.prod"):
+			gotEnv = has
+		case strings.Contains(p.lists[i], "docker-compose.yml"):
+			gotPlain = !has
+		}
+	}
+	if !gotEnv || !gotPlain {
+		t.Errorf("rsync flags %v for lists %q: env files need --chmod=F600, others must not carry it", p.flags, p.lists)
+	}
+}
