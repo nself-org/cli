@@ -14,6 +14,10 @@ import (
 	"strings"
 )
 
+// redirectCodes are the codes whose second argument nginx sends as Location;
+// with any other code (304, 305, 306 ...) it is the response body.
+var redirectCodes = map[int]bool{301: true, 302: true, 303: true, 307: true, 308: true}
+
 // redirectHTTPS is the one `return` target that sets http_to_https_redirect.
 const redirectHTTPS = "https://$host$request_uri"
 
@@ -40,7 +44,7 @@ func (s *srv) serverReturn(d *Block, nLoc int) {
 	}
 }
 
-// parseReturn reads `return CODE;` and `return 30x URL;`. lossy is true when
+// parseReturn reads `return CODE;` and `return 301|302|303|307|308 URL;`. lossy is true when
 // the URL holds an nginx variable other than the canonical https redirect, so
 // the directive is also recorded. A body (`return 200 "ok"`) or a bare URL is
 // refused.
@@ -54,7 +58,7 @@ func parseReturn(d *Block) (ret *Return, ok, lossy bool) {
 		return ret, true, false
 	}
 	to := d.Arg(1)
-	if code < 301 || code > 308 || !strings.HasPrefix(to, "/") && !strings.HasPrefix(to, "http://") && !strings.HasPrefix(to, "https://") {
+	if !redirectCodes[code] || !strings.HasPrefix(to, "/") && !strings.HasPrefix(to, "http://") && !strings.HasPrefix(to, "https://") {
 		return nil, false, false
 	}
 	ret.To = &to

@@ -104,22 +104,23 @@ func runURLs(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	output := buildURLOutput(cfg, showAll)
+	out := buildURLOutput(cfg, showAll)
 
 	if checkConflicts {
-		output.Conflicts = detectConflicts(output)
+		out.Conflicts = detectConflicts(out)
 	}
 
 	if jsonOut {
-		return ui.PrintJSON(output)
+		// Pre-contract JSON: bare in v1.4, the v1 envelope in v1.5 (P7-SURF-11).
+		return emitStateJSON("status urls", out, urlsData{urlsOutput: out})
 	}
 
-	printURLGroups(output, showAll)
+	printURLGroups(out, showAll)
 
-	if checkConflicts && len(output.Conflicts) > 0 {
+	if checkConflicts && len(out.Conflicts) > 0 {
 		fmt.Println()
-		ui.Warn(fmt.Sprintf("%d route conflict(s) detected:", len(output.Conflicts)))
-		for _, c := range output.Conflicts {
+		ui.Warn(fmt.Sprintf("%d route conflict(s) detected:", len(out.Conflicts)))
+		for _, c := range out.Conflicts {
 			fmt.Printf("  %s: %s vs %s\n",
 				ui.C(ui.Yellow, c.Route),
 				ui.C(ui.Cyan, c.Service1),

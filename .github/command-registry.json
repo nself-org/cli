@@ -15123,10 +15123,13 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/doctor-heal.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
+      "confirm": {
+        "flags": [],
+        "plan": null
+      },
       "surface": "all"
     },
     {
@@ -15145,8 +15148,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/doctor-images.v1.schema.json",
       "exit_codes": {
         "10": "one or more images unavailable",
         "12": "warnings only"
@@ -15817,8 +15820,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "none",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/help-topics.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -20493,8 +20496,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/status-health.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -20515,8 +20518,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/status-health-check.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -20537,8 +20540,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/status-health-config.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -20566,8 +20569,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/status-health-endpoint.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -20588,8 +20591,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/status-health-history.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -20617,8 +20620,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/status-health-service.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -20747,8 +20750,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/status-urls.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -21728,8 +21731,8 @@
       "target": null,
       "side_effect": "read",
       "output": "document",
-      "json": "legacy",
-      "data_schema": null,
+      "json": "envelope",
+      "data_schema": "schemas/commands/version.v1.schema.json",
       "exit_codes": {},
       "confirm": null,
       "surface": "all"
@@ -21743,7 +21746,7 @@
     "deprecated_shims": 43,
     "plugin": 10,
     "core_missing": [],
-    "json_envelope": 121,
-    "json_legacy": 45
+    "json_envelope": 132,
+    "json_legacy": 37
   }
 }

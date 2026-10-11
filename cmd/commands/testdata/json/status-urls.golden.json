@@ -1,0 +1,28 @@
+{
+  "schema_version": "1",
+  "command": "status urls",
+  "data": {
+    "base_domain": "example.test",
+    "env": "dev",
+    "required_services": [
+      {
+        "name": "hasura",
+        "url": "https://api.example.test",
+        "group": "required"
+      },
+      {
+        "name": "auth",
+        "url": "https://auth.example.test",
+        "group": "required"
+      }
+    ],
+    "optional_services": [
+      {
+        "name": "minio",
+        "url": "https://storage.example.test",
+        "group": "optional"
+      }
+    ],
+    "total_routes": 3
+  }
+}
