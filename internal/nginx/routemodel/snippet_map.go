@@ -10,8 +10,9 @@ package routemodel
 // Outputs: one Location per mappable `location` block.
 // Constraints: a value that cannot be represented exactly is recorded, never
 // rounded. Every `set` of a location runs before its proxy_pass (rewrite
-// phase); a variable set twice, or beside an if, rewrite or break, is not
-// resolved. websocket needs proxy_http_version 1.1 (nginx defaults to 1.0).
+// phase); a variable set twice, or beside an if, rewrite, break, return or
+// another writer, is not resolved. websocket needs proxy_http_version 1.1
+// (nginx defaults to 1.0).
 // A proxy_pass with a URI part keeps its upstream AND is recorded (v1 cannot
 // carry the path). Regex, named and ^~ locations, nested locations,
 // `if`, `client_max_body_size 0`, a `deny` other than `all`, a sub-second

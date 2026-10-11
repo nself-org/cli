@@ -13,8 +13,8 @@ package routemodel
 import "strings"
 
 // guard is what one scope holds.
-//   - flow: an if, rewrite or break, which can skip a later `set` or set a
-//     variable conditionally.
+//   - flow: an if, rewrite, break or return, which can skip a later `set`
+//     or set a variable conditionally.
 //   - writes: variables another directive writes, by lower-case name: the
 //     first argument of any directive but `set` and *_pass
 //     (auth_request_set, set_by_lua ...).
@@ -31,7 +31,7 @@ func scanGuard(b *Block) guard {
 	g := guard{writes: map[string]bool{}}
 	for _, d := range b.Children {
 		switch d.Name {
-		case "if", "rewrite", "break":
+		case "if", "rewrite", "break", "return":
 			g.flow = true
 		case "allow":
 			g.allow = true

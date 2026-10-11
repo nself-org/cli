@@ -78,6 +78,10 @@ type Listen struct {
 	HTTP  bool `json:"http"`
 	HTTPS bool `json:"https"`
 }
+
+// RouteTLS is a route's TLS. SSLDir "" means the certificate lines were not
+// mapped (they are in the route's unmodelled): a renderer must not join it
+// into a path.
 type RouteTLS struct {
 	SSLDir          string   `json:"ssl_dir"`
 	HasTrustedChain bool     `json:"has_trusted_chain"`

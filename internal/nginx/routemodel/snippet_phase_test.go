@@ -35,12 +35,16 @@ func TestSnippetSetRunsBeforeProxyPass(t *testing.T) {
 			t.Errorf("%s: upstream mapped to %+v", name, r.Locations[0].Upstream)
 		}
 	}
-	// An if, rewrite or break in the server or location may skip or change a set.
+	// An if, rewrite, break or return in the server or location may skip or change a set.
 	for name, text := range map[string]string{
 		"location if":      `server{listen 80;server_name a.test;set $up http://a.test:1;location /{if ($arg_x) {set $up http://b.test:2;} proxy_pass $up;}}`,
 		"location break":   `server{listen 80;server_name a.test;location /{break;set $up http://a.test:1;proxy_pass $up;}}`,
 		"location rewrite": `server{listen 80;server_name a.test;location /{rewrite ^ /x break;set $up http://a.test:1;proxy_pass $up;}}`,
 		"server if":        `server{listen 80;server_name a.test;set $up http://a.test:1;if ($host = b) {set $up http://b.test:2;} location /{proxy_pass $up;}}`,
+		"location return":  `server{listen 80;server_name a.test;set $up http://a.test:1;location /{return 404;set $up http://b.test:2;proxy_pass $up;}}`,
+		"server return":    `server{listen 80;server_name a.test;set $up http://a.test:1;return 404;location /{proxy_pass $up;}}`,
+		"ms5 break repro":  `server{listen 80;server_name a.test;set $up http://a.test:1;location /{rewrite ^ /y break;set $up http://b.test:2;proxy_pass $up;}}`,
+		"server if around": `server{listen 80;server_name a.test;if ($x) {set $up http://b.test:2;} location /{set $up http://a.test:1;proxy_pass $up;}}`,
 	} {
 		r := route(t, text)
 		if r.Locations[0].Upstream != nil || !contains(r.Unmodelled, "proxy_pass $up;") {
