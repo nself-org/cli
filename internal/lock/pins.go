@@ -13,7 +13,10 @@ package lock
 // Constraints: a digest that is not sha256:<64 hex> is ignored.
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 
@@ -72,10 +75,11 @@ type ServiceSource struct {
 	Build   bool
 }
 
-// ComposeSources reads every service of a compose document, and whether the
-// document has a top-level include (which pulls in services this reader cannot
-// see).
-func ComposeSources(data []byte) (services map[string]ServiceSource, include bool, err error) {
+// ComposeSources reads every service of the first document of a compose file,
+// whether the file has a top-level include (which pulls in services this reader
+// cannot see), and whether it has a second YAML document (Compose merges every
+// document, and this reader sees only the first, so such a file is opaque).
+func ComposeSources(data []byte) (services map[string]ServiceSource, include, multiDoc bool, err error) {
 	var doc struct {
 		Include  yaml.Node `yaml:"include"`
 		Services map[string]struct {
@@ -84,20 +88,23 @@ func ComposeSources(data []byte) (services map[string]ServiceSource, include boo
 			Build   yaml.Node `yaml:"build"`
 		} `yaml:"services"`
 	}
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, false, fmt.Errorf("lock: parse compose: %w", err)
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	if err := dec.Decode(&doc); err != nil && !errors.Is(err, io.EOF) {
+		return nil, false, false, fmt.Errorf("lock: parse compose: %w", err)
 	}
+	var extra yaml.Node
+	multiDoc = !errors.Is(dec.Decode(&extra), io.EOF)
 	services = map[string]ServiceSource{}
 	for name, s := range doc.Services {
 		services[name] = ServiceSource{Image: s.Image, Extends: s.Extends.Kind != 0, Build: s.Build.Kind != 0}
 	}
-	return services, doc.Include.Kind != 0, nil
+	return services, doc.Include.Kind != 0, multiDoc, nil
 }
 
 // ComposeImages reads the image of every service of a compose document. A
 // service without an image (build only) is left out.
 func ComposeImages(data []byte) (map[string]string, error) {
-	svcs, _, err := ComposeSources(data)
+	svcs, _, _, err := ComposeSources(data)
 	if err != nil {
 		return nil, err
 	}

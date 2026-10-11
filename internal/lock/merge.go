@@ -60,9 +60,12 @@ func MergeDetailed(files []SourceFile, owned func(service string) bool, forCompa
 		if f.Mirror && !forCompare {
 			continue
 		}
-		svcs, include, err := ComposeSources(f.Data)
+		svcs, include, multi, err := ComposeSources(f.Data)
 		if err != nil {
 			return Merged{}, fmt.Errorf("%s: %w", f.Name, err)
+		}
+		if multi {
+			problems["more than one YAML document in "+f.Name+": image source cannot be verified"] = true
 		}
 		if include {
 			problems["include in "+f.Name+": image source cannot be verified"] = true

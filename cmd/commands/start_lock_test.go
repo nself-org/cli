@@ -304,6 +304,9 @@ func TestStartFrozenUnverifiableImages(t *testing.T) {
 		{"include", "include:\n  - evil.yml\n"},
 		{"variable", "services:\n  hasura:\n    image: ${HX:-hasura/graphql-engine:v2.44.0}\n"},
 		{"bare variable", "services:\n  hasura:\n    image: $HX\n"},
+		{"multi-document image", "services: {}\n---\nservices:\n  hasura:\n    image: evil/hasura:1\n"},
+		{"multi-document build", "services: {}\n---\nservices:\n  hasura:\n    build: ./evil\n"},
+		{"multi-document empty second", "services: {}\n---\n"},
 	}
 	for _, c := range cases {
 		dir, _ := frozenProject(t)

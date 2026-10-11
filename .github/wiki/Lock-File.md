@@ -57,7 +57,7 @@ When build renders `docker-compose.yml`, each service image is resolved in this 
 
 So a CLI upgrade never silently moves an existing project's images. To move one, change the env value, or delete its line from the lock and build.
 
-`nself init` writes `*_VERSION` defaults into `.env`. A value that renders to the same image as the pin (`HASURA_VERSION=v2.44.0` against a `hasura/graphql-engine:v2.44.0@sha256:...` pin, with or without the `docker.io/` prefix, in legacy or lock pinning mode) keeps the digest. For postgres the comparison uses the image the generator renders (`POSTGRES_VERSION=16-alpine` matches a `pgvector/pgvector:pg16` pin). A different value drops the pin, and build prints one notice naming the variable, once per run.
+`nself init` writes `*_VERSION` defaults into `.env`. A value that renders to the same image as the pin (`HASURA_VERSION=v2.44.0` against a `hasura/graphql-engine:v2.44.0@sha256:...` pin, with or without the `docker.io/` prefix, in legacy or lock pinning mode) keeps the digest. For postgres the comparison uses the image the generator renders (`POSTGRES_VERSION=16-alpine` matches a `pgvector/pgvector:pg16` pin). A different value drops the pin, and build prints one notice naming the variable, once per run. An `*_IMAGE` that names its own digest (`HASURA_IMAGE=hasura/graphql-engine:v2.44.0@sha256:...`) keeps the pin only when that digest is the pin's; another digest at the same tag wins and drops the pin. Tags compare as written (`V1` and `v1` are different tags).
 
 ## The first lock
 
@@ -80,7 +80,7 @@ The lock is plain YAML, so a pull request shows exactly which image, plugin or b
 `--frozen` compares the stack on disk with the lock and fails with E455 (exit 1) when any of these differ:
 
 - the image of a CLI-owned service from its pinned (or tag-only) reference, a pinned service missing from the compose, or a CLI-owned service the lock does not list;
-- an image that cannot be read as a plain reference: a CLI-owned service whose `image:` contains a variable (`$`), that has `extends` or `build`, or any compose file with a top-level `include` ("image source cannot be verified");
+- an image that cannot be read as a plain reference: a CLI-owned service whose `image:` contains a variable (`$`), that has `extends` or `build`, any compose file with a top-level `include`, or any compose file with more than one YAML document, which Compose merges but this check cannot read ("image source cannot be verified");
 - an installed plugin version or checksum;
 - the installed bundles;
 - the CLI major.minor.

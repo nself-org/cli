@@ -141,10 +141,25 @@ func projectPin(service, image string) (string, bool) {
 			name = "the rendered image"
 		}
 	case name == "" || CanonicalRef(image) == CanonicalRef(pin):
-		return pin, true
+		// Canonical references carry no digest. An *_IMAGE value that names its
+		// own digest must name the pin's, or the user's digest wins.
+		if !envDigestDiffers(name, pin) {
+			return pin, true
+		}
 	}
 	noticePinDropped(service, name, pin)
 	return "", false
+}
+
+// envDigestDiffers reports whether the explicit *_IMAGE variable name carries a
+// digest that is not the pin's.
+func envDigestDiffers(name, pin string) bool {
+	if !strings.HasSuffix(name, "_IMAGE") {
+		return false
+	}
+	_, d, ok := strings.Cut(strings.TrimSpace(os.Getenv(name)), "@")
+	_, pd, _ := strings.Cut(pin, "@")
+	return ok && d != pd
 }
 
 // repoOf is CanonicalRef without the tag.
@@ -195,16 +210,22 @@ func imageBase(ref string) string {
 }
 
 // CanonicalRef reduces an image reference to one spelling for comparison: no
-// digest, no docker.io/, index.docker.io/ or library/ prefix, lower case. The
-// bootstrap pins a reference as docker.io/<repo>:<tag>@sha256 while the legacy
-// image strings omit the host, so every comparison of two spellings goes through
-// here (internal/docker cannot be imported: its tests import this package).
+// digest, no docker.io/, index.docker.io/ or library/ prefix, host and path in
+// lower case, the tag as written (tags are case-sensitive). The bootstrap pins
+// a reference as docker.io/<repo>:<tag>@sha256 while the legacy image strings
+// omit the host, so every comparison of two spellings goes through here
+// (internal/docker cannot be imported: its tests import this package).
 func CanonicalRef(ref string) string {
-	ref = strings.ToLower(strings.TrimSpace(imageBase(ref)))
+	ref = strings.TrimSpace(imageBase(ref))
+	tag := ""
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		ref, tag = ref[:i], ref[i:]
+	}
+	ref = strings.ToLower(ref)
 	for _, host := range []string{"registry-1.docker.io/", "index.docker.io/", "docker.io/"} {
 		ref = strings.TrimPrefix(ref, host)
 	}
-	return strings.TrimPrefix(ref, "library/")
+	return strings.TrimPrefix(ref, "library/") + tag
 }
 
 // CLILockedRef finds the CLI image lock entry whose version a tag reference
