@@ -25,12 +25,13 @@ type overlay struct {
 	fronting string
 	files    map[string]nbuild.PlannedFile
 	removed  map[string]bool
+	plugins  string            // the build's plugin directory; "" falls back to DefaultPluginDir
 	env      map[string][]byte // pending env files by project-relative name
 }
 
 // newOverlay indexes a planned build.
 func newOverlay(dir, fronting string, pb *nbuild.PlannedBuild) overlay {
-	ov := overlay{dir: dir, fronting: fronting, files: pb.Files, removed: map[string]bool{}}
+	ov := overlay{dir: dir, fronting: fronting, files: pb.Files, removed: map[string]bool{}, plugins: pb.PluginDir}
 	for _, k := range pb.Removed {
 		ov.removed[k] = true
 	}
@@ -38,13 +39,13 @@ func newOverlay(dir, fronting string, pb *nbuild.PlannedBuild) overlay {
 }
 
 // display is the plan path of a canonical key: project-relative and
-// "@fronting/" keys as they are, an absolute key under the plugin directory as
-// "@plugins/<rel>", any other absolute key as "@abs/<path>".
+// "@fronting/" keys as they are, an absolute key under the build's plugin
+// directory as "@plugins/<rel>", any other absolute key as "@abs/<path>".
 func (o overlay) display(key string) string {
 	if !filepath.IsAbs(key) {
 		return key
 	}
-	if rel, err := filepath.Rel(nbuild.DefaultPluginDir(), key); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+	if rel, err := filepath.Rel(pluginDirOr(o.plugins), key); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
 		return PluginsPrefix + filepath.ToSlash(rel)
 	}
 	return AbsPrefix + strings.TrimPrefix(filepath.ToSlash(key), "/")
@@ -144,21 +145,32 @@ func validEnvName(name string) bool {
 // apply will find it after the line is written; other paths go to next. A nil
 // next (no hand-edit detection asked for) stays nil.
 // A fronting path is resolved against the fronting stack the pending env
-// names (a change of NGINX_FRONTED_BY moves it).
-func pendingHandEdited(next func(string) bool, state *GeneratedState, env map[string][]byte, projectDir string) func(string) bool {
-	if len(env) == 0 || next == nil {
-		return next
+// names (a change of NGINX_FRONTED_BY moves it). A "@plugins/" path is
+// resolved under pluginDir, the plugin directory the build resolved (D-0607):
+// next was built before the build ran and only knows the process env.
+func pendingHandEdited(next func(string) bool, state *GeneratedState, env map[string][]byte, projectDir, pluginDir string) func(string) bool {
+	if next == nil {
+		return nil
 	}
-	fronting := state.handEditedFnWith(projectDir, env)
+	own := state.handEditedFnWith(projectDir, env, pluginDir)
 	return func(path string) bool {
 		if data, ok := env[path]; ok {
 			return state.HandEdited(path, data)
 		}
-		if strings.HasPrefix(path, FrontingPrefix) {
-			return fronting(path)
+		if strings.HasPrefix(path, PluginsPrefix) || (len(env) > 0 && strings.HasPrefix(path, FrontingPrefix)) {
+			return own(path)
 		}
 		return next(path)
 	}
+}
+
+// pluginDirOr is dir, or DefaultPluginDir when the build resolved none (a
+// PlannedBuild made outside a plan-mode build).
+func pluginDirOr(dir string) string {
+	if dir != "" {
+		return dir
+	}
+	return nbuild.DefaultPluginDir()
 }
 
 // rollbackOnFailure wraps opt.BeforeWrite to note that it ran and returns the

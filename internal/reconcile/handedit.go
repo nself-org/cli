@@ -29,7 +29,6 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
-	nbuild "github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
@@ -57,17 +56,19 @@ func (s *GeneratedState) HandEdited(path string, current []byte) bool {
 // current bytes. A nil record (no state yet) answers false for everything:
 // the first run on an existing project records and never blocks.
 func (s *GeneratedState) HandEditedFn(projectDir string) func(path string) bool {
-	return s.handEditedFnWith(projectDir, nil)
+	return s.handEditedFnWith(projectDir, nil, "")
 }
 
 // handEditedFnWith is HandEditedFn with the env files a pending change will
 // leave (P7-LIVE-05): the fronting stack is resolved from them, so a change of
 // NGINX_FRONTED_BY is judged against the stack the build will write to.
-func (s *GeneratedState) handEditedFnWith(projectDir string, env map[string][]byte) func(path string) bool {
+// pluginDir is the plugin directory "@plugins/" paths resolve under ("" means
+// DefaultPluginDir).
+func (s *GeneratedState) handEditedFnWith(projectDir string, env map[string][]byte, pluginDir string) func(path string) bool {
 	var fronting string
 	var frontingOK, frontingDone bool
 	return func(path string) bool {
-		disk, ok := displayDiskPath(projectDir, env, path, &fronting, &frontingOK, &frontingDone)
+		disk, ok := displayDiskPath(projectDir, env, pluginDir, path, &fronting, &frontingOK, &frontingDone)
 		if !ok {
 			return false
 		}
@@ -98,19 +99,19 @@ func (s *GeneratedState) handEditedFnWith(projectDir string, env map[string][]by
 // displayPath is the plan display path of a canonical build key: the key
 // itself for project-relative and "@fronting/" keys, "@plugins/<rel>" or
 // "@abs/<path>" for absolute ones (overlay.display; a bare overlay maps
-// paths, it needs no render).
-func displayPath(key string) string {
-	return overlay{}.display(key)
+// paths, it needs no render). pluginDir is the build's plugin directory.
+func displayPath(pluginDir, key string) string {
+	return overlay{plugins: pluginDir}.display(key)
 }
 
 // displayDiskPath resolves a plan display path to its location on disk:
 // project files under the project, "@fronting/<rel>" under the fronting
-// stack's root, "@plugins/<rel>" under the plugin directory and "@abs/<path>"
-// as itself. A fronting path resolves only while the fronting stack is laid
-// out the way the build resolves it (NGINX_FRONTED_BY naming the parent
-// directory); its resolution is computed once and cached in the three closure
-// variables HandEditedFn owns.
-func displayDiskPath(projectDir string, env map[string][]byte, display string, fronting *string, frontingOK, frontingDone *bool) (string, bool) {
+// stack's root, "@plugins/<rel>" under pluginDir (DefaultPluginDir when "")
+// and "@abs/<path>" as itself. A fronting path resolves only while the
+// fronting stack is laid out the way the build resolves it (NGINX_FRONTED_BY
+// naming the parent directory); its resolution is computed once and cached in
+// the three closure variables HandEditedFn owns.
+func displayDiskPath(projectDir string, env map[string][]byte, pluginDir, display string, fronting *string, frontingOK, frontingDone *bool) (string, bool) {
 	rel := filepath.FromSlash(strings.TrimPrefix(display, FrontingPrefix))
 	switch {
 	case strings.HasPrefix(display, FrontingPrefix):
@@ -123,7 +124,7 @@ func displayDiskPath(projectDir string, env map[string][]byte, display string, f
 		}
 		return filepath.Join(*fronting, rel), true
 	case strings.HasPrefix(display, PluginsPrefix):
-		return filepath.Join(nbuild.DefaultPluginDir(),
+		return filepath.Join(pluginDirOr(pluginDir),
 			filepath.FromSlash(strings.TrimPrefix(display, PluginsPrefix))), true
 	case strings.HasPrefix(display, AbsPrefix):
 		return string(filepath.Separator) + filepath.FromSlash(strings.TrimPrefix(display, AbsPrefix)), true

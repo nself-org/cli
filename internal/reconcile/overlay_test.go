@@ -112,20 +112,29 @@ func TestPendingEnv(t *testing.T) {
 func TestPendingHandEdited(t *testing.T) {
 	dir := t.TempDir()
 	next := func(p string) bool { return p == "other" }
-	if f := pendingHandEdited(next, nil, nil, dir); !f("other") {
+	if f := pendingHandEdited(next, nil, nil, dir, ""); !f("other") {
 		t.Fatal("no overlay must return next unchanged")
 	}
 	state := &GeneratedState{Files: map[string]string{".env.secrets": sha256Hex([]byte("S=x\n"))}}
-	f := pendingHandEdited(next, state, map[string][]byte{".env.secrets": []byte("S=x\n")}, dir)
+	f := pendingHandEdited(next, state, map[string][]byte{".env.secrets": []byte("S=x\n")}, dir, "")
 	if f(".env.secrets") || !f("other") || f("nope") {
 		t.Fatal("pending bytes equal to the record are not hand-edited; others go to next")
 	}
-	f = pendingHandEdited(next, state, map[string][]byte{".env.secrets": []byte("S=y\n")}, dir)
+	f = pendingHandEdited(next, state, map[string][]byte{".env.secrets": []byte("S=y\n")}, dir, "")
 	if !f(".env.secrets") {
 		t.Fatal("pending bytes that differ from the record are hand-edited")
 	}
-	if pendingHandEdited(nil, state, map[string][]byte{".env": nil}, dir) != nil {
+	if pendingHandEdited(nil, state, map[string][]byte{".env": nil}, dir, "") != nil {
 		t.Fatal("no detection asked for stays no detection")
+	}
+	// D-0607: a "@plugins/" path resolves under the build's plugin directory,
+	// with no pending env and whatever the process env says.
+	plugins := t.TempDir()
+	t.Setenv("NSELF_PLUGIN_DIR", t.TempDir())
+	writeFile(t, filepath.Join(plugins, "p", "f.yml"), "edited by hand\n", 0o644)
+	ps := &GeneratedState{Files: map[string]string{PluginsPrefix + "p/f.yml": sha256Hex([]byte("rendered\n"))}}
+	if !pendingHandEdited(ps.HandEditedFn(dir), ps, nil, dir, plugins)(PluginsPrefix + "p/f.yml") {
+		t.Fatal("a hand-edited fragment under the build's plugin directory must be seen")
 	}
 }
 
@@ -144,13 +153,13 @@ func TestPendingHandEditedFronting(t *testing.T) {
 	if next(FrontingPrefix + "nginx/f.conf") {
 		t.Fatal("without NGINX_FRONTED_BY on disk the fronting path must not resolve")
 	}
-	f := pendingHandEdited(next, state, map[string][]byte{".env": []byte("PROJECT_NAME=p\nNGINX_FRONTED_BY=front\n")}, project)
+	f := pendingHandEdited(next, state, map[string][]byte{".env": []byte("PROJECT_NAME=p\nNGINX_FRONTED_BY=front\n")}, project, "")
 	if !f(FrontingPrefix + "nginx/f.conf") {
 		t.Fatal("the pending NGINX_FRONTED_BY must resolve the fronting stack and see the hand edit")
 	}
 	// A pending ENV picks the layer that names the stack.
 	writeFile(t, filepath.Join(project, ".env.staging"), "NGINX_FRONTED_BY=front\n", 0o600)
-	f = pendingHandEdited(next, state, map[string][]byte{".env": []byte("PROJECT_NAME=p\nENV=staging\n")}, project)
+	f = pendingHandEdited(next, state, map[string][]byte{".env": []byte("PROJECT_NAME=p\nENV=staging\n")}, project, "")
 	if !f(FrontingPrefix + "nginx/f.conf") {
 		t.Fatal("the pending ENV must select .env.staging for NGINX_FRONTED_BY")
 	}
