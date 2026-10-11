@@ -152,3 +152,29 @@ func TestUnmarkedNginxFileIsNotOverwritten(t *testing.T) {
 		t.Fatalf("a path nSelf shipped before was refused: %v", err)
 	}
 }
+
+// R8: a path the host's own shipped list names (nSelf put it there in an earlier
+// deploy of another env) is not a foreign file, even without a local record.
+func TestUnmarkedNginxFileInHostListIsOurs(t *testing.T) {
+	_, o, rp := applyFixture(t, "")
+	writeFile(t, rp+"/nginx/sites/api.conf", "# written by nself without the marker\n", 0o644)
+	writeFile(t, rp+"/"+ShippedFile, "nginx/sites/api.conf\n", 0o644)
+	o.Previous = []string{"docker-compose.yml"} // the record is of another deploy
+	if _, err := ApplyRemote(context.Background(), o); err != nil {
+		t.Fatalf("a path on the host's shipped list was refused: %v", err)
+	}
+}
+
+// R9: the marker must be in the first five lines; on line 6 the file is foreign.
+func TestMarkerOnLineSixIsNotMarked(t *testing.T) {
+	_, o, rp := applyFixture(t, "")
+	writeFile(t, rp+"/nginx/sites/api.conf", "# 1\n# 2\n# 3\n# 4\n# 5\n"+markedConf, 0o644)
+	_, err := ApplyRemote(context.Background(), o)
+	if err == nil || !strings.Contains(err.Error(), "unmarked file would be overwritten") {
+		t.Fatalf("err = %v", err)
+	}
+	writeFile(t, rp+"/nginx/sites/api.conf", "# 1\n# 2\n# 3\n# 4\n"+markedConf, 0o644) // marker on line 5
+	if _, err := ApplyRemote(context.Background(), o); err != nil {
+		t.Fatalf("a marker inside the first five lines was refused: %v", err)
+	}
+}

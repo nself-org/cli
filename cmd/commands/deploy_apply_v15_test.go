@@ -963,3 +963,26 @@ func TestLegacyPushRecordKeepsTargetName(t *testing.T) {
 		t.Fatalf("rollback live: handled=%v err=%v", handled, err)
 	}
 }
+
+// R6: runDeploy's remote branch hands the legacy push the cascade name ("prod") as
+// its argument and the target's own name ("live") in the context.
+func TestRunDeployCarriesTargetNameToLegacyPush(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	isolateDeployEnv(t)
+	t.Setenv("NSELF_DEPLOY_HOST_LIVE", "u@p.example.test:/opt/nself")
+	orig := prodClassFn
+	prodClassFn = func(i *controlplane.Inventory, env string) bool { return env == "live" || orig(i, env) }
+	ob, op := deployBuildStepFn, remoteDeployPushFn
+	var gotArg, gotCtx string
+	deployBuildStepFn = func(_ context.Context, _ string, _ bool, s []deployStep) ([]deployStep, error) { return s, nil }
+	remoteDeployPushFn = func(ctx context.Context, _ string, _ string, target string, _ bool) error {
+		gotArg, gotCtx = target, deployTargetFrom(ctx, "")
+		return errors.New("stub")
+	}
+	t.Cleanup(func() { prodClassFn, deployBuildStepFn, remoteDeployPushFn = orig, ob, op })
+	_ = runDeployArgs(t, map[string]string{"force": "true"}, "live")
+	if gotArg != "prod" || gotCtx != "live" {
+		t.Errorf("push argument %q (want prod), target in ctx %q (want live)", gotArg, gotCtx)
+	}
+}

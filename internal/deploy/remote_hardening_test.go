@@ -92,6 +92,40 @@ func TestSiblingPrefixLinkIsOutside(t *testing.T) {
 	}
 }
 
+// R7: the sibling-prefix boundary also holds for the backup dir and for a file link
+// inside a followed dir.
+func TestSiblingPrefixOtherSinksAreOutside(t *testing.T) {
+	needTools(t)
+	f := newFakeRemote(t)
+	for name, mk := range map[string]func(rp, sibling string) error{
+		"backup dir": func(rp, sibling string) error {
+			if err := os.MkdirAll(rp+"/.nself", 0o755); err != nil {
+				return err
+			}
+			return os.Symlink("../../app2", rp+"/.nself/backups")
+		},
+		"file link in nginx": func(rp, sibling string) error {
+			writeFile(t, sibling+"/file", "secret\n", 0o600)
+			return os.Symlink("../../app2/file", rp+"/nginx/f")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			base := t.TempDir()
+			rp, sibling := base+"/app", base+"/app2"
+			writeFile(t, rp+"/nginx/sites/a.conf", markedConf, 0o644)
+			if err := os.MkdirAll(sibling, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := mk(rp, sibling); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			if _, err := ResolveDirs(context.Background(), f, rp, layoutDirs([]string{"docker-compose.yml"})); err == nil || !strings.Contains(err.Error(), "symlink outside remote_path") {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}
+
 // N5: a path that is itself a symlink is never deleted or pruned, even inside remote_path.
 func TestLeafSymlinkIsNeverDeleted(t *testing.T) {
 	needTools(t)

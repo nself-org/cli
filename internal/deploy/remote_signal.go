@@ -37,7 +37,7 @@ const stepGrace = 120 * time.Second
 
 // WithInterrupt returns a context that is cancelled on the first SIGINT, SIGTERM
 // or (unix) SIGHUP. A later signal does not kill the process: it prints one line
-// that the restore is in progress. Call stop when the operation ends.
+// that it is still finishing the step or restoring. Call stop when the operation ends.
 func WithInterrupt(ctx context.Context) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(ctx)
 	ch := make(chan os.Signal, 4)
