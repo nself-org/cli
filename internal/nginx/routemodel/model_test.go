@@ -83,7 +83,7 @@ func TestParseUpstreamDefaultPorts(t *testing.T) {
 		"http://example.com":  {Scheme: "http", Host: "example.com", Port: 80},
 		"https://example.com": {Scheme: "https", Host: "example.com", Port: 443},
 		"hasura:8080":         {Scheme: "http", Host: "hasura", Port: 8080},
-		"http://auth:4000/":   {Scheme: "http", Host: "auth", Port: 4000},
+		"http://auth:4000/":   {Scheme: "http", Host: "auth", Port: 4000, Path: "/"},
 		"example.com":         {Scheme: "http", Host: "example.com", Port: 80},
 	} {
 		if got := parseUpstream(raw); got != want {

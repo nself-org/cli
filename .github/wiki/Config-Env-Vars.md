@@ -21,6 +21,7 @@ All ɳSelf project configuration lives in `.env` (and optionally `.env.local` fo
 - [Hasura (GraphQL API)](#hasura-graphql-api)
 - [Auth](#auth)
 - [Nginx and SSL](#nginx-and-ssl)
+- [API Docs](#api-docs)
 - [ɳSelf Admin](#nself-admin)
 - [AI (Zero-Config AI Pool)](#ai-zero-config-ai-pool)
 - [Optional Service Toggles](#optional-service-toggles)
@@ -246,6 +247,22 @@ All OAuth provider vars are optional. Set client ID and secret for each provider
 | `NGINX_FRONTED_BY` | string | *(empty)* | No | Names the stack whose Nginx already serves this project's domains. When set, `nself build` generates no Nginx service for this project and `nself status` stops expecting one. See [[Config-Nginx]]. |
 | `SSL_MODE` | enum | `local` | No | SSL certificate strategy. Accepted values: `local` (self-signed), `letsencrypt`, `custom`, `none`. |
 | `EXTRA_SSL_DOMAINS` | string | *(empty)* | No | Additional domains to include in the certificate SAN (comma-separated). |
+
+---
+
+## API Docs
+
+`nself build` serves the generated OpenAPI spec and a docs page on `docs.<BASE_DOMAIN>` (`/api-docs` is the raw spec, `API_DOCS_PATH` is the page). `API_DOCS_PATH` is written into an nginx `location` line, so it must start with `/` and use only letters, digits and `. _ ~ / -`. `/api-docs` itself is refused (it is already served); `/api-docs-v2` is fine. An invalid value fails the build.
+
+| Variable | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `API_DOCS_ENABLED` | bool | `true` | No | Serve the API docs site on `docs.<BASE_DOMAIN>`. Set `false` to turn it off. |
+| `API_DOCS_PATH` | string | `/docs` | No | Path of the docs page on the docs subdomain. |
+| `API_DOCS_TITLE` | string | `<project> API` | No | Title shown on the docs page. Derived from `PROJECT_NAME` when unset. |
+| `API_DOCS_THEME` | string | `default` | No | Docs page theme. |
+| `API_DOCS_AUTH_ENV_VAR` | string | *(none)* | No | Accepted and passed to the docs generator, but not used yet: the docs page does not read a token from it. |
+| `API_DOCS_GRAPHQL_ENABLED` | bool | `true` | No | Include the GraphQL endpoint in the docs. |
+| `API_DOCS_GRAPHQL_ENDPOINT` | string | `/v1/graphql` | No | GraphQL endpoint path shown in the docs. |
 
 ---
 

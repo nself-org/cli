@@ -13,7 +13,7 @@ import (
 func TestSnippetSetRunsBeforeProxyPass(t *testing.T) {
 	// The location's own set wins over the server's, even written after proxy_pass.
 	r := route(t, `server{listen 80;server_name a.example.com;set $up http://a.example:80;location /{proxy_pass $up;set $up http://b.example:81;}}`)
-	if u := r.Locations[0].Upstream; u == nil || *u != (Upstream{"http", "b.example", 81}) {
+	if u := r.Locations[0].Upstream; u == nil || *u != (Upstream{Scheme: "http", Host: "b.example", Port: 81}) {
 		t.Errorf("upstream = %+v, want b.example:81", u)
 	}
 	if !contains(r.Unmodelled, "set $up http://a.example:80;") || contains(r.Unmodelled, "set $up http://b.example:81;") {
@@ -53,10 +53,10 @@ func TestSnippetSetRunsBeforeProxyPass(t *testing.T) {
 	}
 	// nginx variable names are case-insensitive.
 	r = route(t, `server{listen 80;server_name a.test;set $up http://a.test:1;location /{set $UP http://b.test:2;proxy_pass $up;}}`)
-	if u := r.Locations[0].Upstream; u == nil || *u != (Upstream{"http", "b.test", 2}) {
+	if u := r.Locations[0].Upstream; u == nil || *u != (Upstream{Scheme: "http", Host: "b.test", Port: 2}) {
 		t.Errorf("case-folded location set: upstream = %+v", u)
 	}
-	if u := route(t, `server{listen 80;server_name a.test;location /{set $up http://b.test:2;proxy_pass $UP;}}`).Locations[0].Upstream; u == nil || *u != (Upstream{"http", "b.test", 2}) {
+	if u := route(t, `server{listen 80;server_name a.test;location /{set $up http://b.test:2;proxy_pass $UP;}}`).Locations[0].Upstream; u == nil || *u != (Upstream{Scheme: "http", Host: "b.test", Port: 2}) {
 		t.Errorf("case-folded lookup: upstream = %+v", u)
 	}
 	// A second set differing only in case, or another writer of the variable

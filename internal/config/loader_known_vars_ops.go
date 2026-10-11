@@ -172,4 +172,13 @@ var knownEnvVarsOps = []string{
 	// KEK for OAuth/API-key encryption in the zero-config AI pool — see
 	// internal/setup/envai.go's anti-clobber guarantee.
 	"NSELF_MASTER_SECRET",
+
+	// API docs (read by loader_parse_env_apidocs.go; D-0455)
+	"API_DOCS_ENABLED",
+	"API_DOCS_PATH",
+	"API_DOCS_TITLE",
+	"API_DOCS_THEME",
+	"API_DOCS_AUTH_ENV_VAR",
+	"API_DOCS_GRAPHQL_ENABLED",
+	"API_DOCS_GRAPHQL_ENDPOINT",
 }
