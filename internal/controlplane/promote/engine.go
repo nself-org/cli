@@ -3,6 +3,8 @@ package promote
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/controlplane"
@@ -120,6 +122,9 @@ func (e Engine) Run(ctx context.Context, st *State) (Result, error) {
 		e.failed(step.Name, err)
 		result.Steps = append(result.Steps, StepResult{Name: step.Name, Status: "failed", Detail: err.Error()})
 		result.Status, result.FailedStep = "failed", step.Name
+		if step.Name == "record" {
+			return finishResult(result, st), liveRecordFailure(st, err)
+		}
 		if !snapshotDone {
 			return finishResult(result, st), err
 		}
@@ -127,6 +132,25 @@ func (e Engine) Run(ctx context.Context, st *State) (Result, error) {
 	}
 	result.Status = "ok"
 	return finishResult(result, st), nil
+}
+
+// liveRecordFailure reports recovery evidence without undoing a healthy promotion.
+// Purpose: keep the final record write outside the compensating transaction.
+// Inputs: snapshot, backup, and host artifact evidence plus the write error.
+// Outputs: an E489 error naming every pre-deploy tar for manual recovery.
+// Constraints: the provisional record stays available for operator rollback.
+func liveRecordFailure(st *State, cause error) error {
+	hosts := make([]string, 0, len(st.PreDeployTar))
+	for host := range st.PreDeployTar {
+		hosts = append(hosts, host)
+	}
+	sort.Strings(hosts)
+	tars := make([]string, 0, len(hosts))
+	for _, host := range hosts {
+		tars = append(tars, fmt.Sprintf("%s=%s", host, st.PreDeployTar[host]))
+	}
+	message := fmt.Sprintf("promotion is live but final record failed; snapshot %s, backup %s, pre-deploy tars [%s]; roll back by hand if needed", st.SnapshotTag, st.BackupID, strings.Join(tars, ", "))
+	return errs.Wrap("E489", message, cause)
 }
 
 func (e Engine) validate() error {
