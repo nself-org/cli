@@ -44,6 +44,13 @@ var rowEnv = map[string]map[string]string{
 // returns service -> image. Pins are whatever the caller installed.
 func renderStack(t *testing.T, env map[string]string) map[string]string {
 	t.Helper()
+	return renderStackIn(t, t.TempDir(), env)
+}
+
+// renderStackIn is renderStack for a project directory: config.Load reads the
+// .env files in dir (for example the ones nself init wrote).
+func renderStackIn(t *testing.T, dir string, env map[string]string) map[string]string {
+	t.Helper()
 	for k, v := range env {
 		prev, had := os.LookupEnv(k)
 		_ = os.Setenv(k, v)
@@ -55,7 +62,7 @@ func renderStack(t *testing.T, env map[string]string) map[string]string {
 			}
 		}(k, prev, had)
 	}
-	cfg, err := config.Load(t.TempDir())
+	cfg, err := config.Load(dir)
 	if err != nil {
 		t.Fatalf("config.Load with %v: %v", env, err)
 	}
