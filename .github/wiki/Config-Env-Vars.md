@@ -58,7 +58,7 @@ nself env explain             # every file, whether it exists, precedence order
 nself env explain VAR         # which file wins for VAR (redacted; add --reveal for the value)
 ```
 
-**Flags that supply a key:** each command flag with a configuration meaning is bound to its key once (`internal/config/bindings/flags.yaml`), and `nself help --json` shows the key as the flag's `env` field. `nself config explain KEY` prints the key's default, the flags that supply it and the winning source; see [[Configuration-Precedence]].
+**Flags that supply a key:** each command flag with a configuration meaning is bound to its key once (`internal/config/bindings/flags.yaml`), and `nself help --json` shows the key as the flag's `env` field. `nself config explain KEY` prints the key's default, the flags that supply it and the winning source; see [[Configuration-Precedence]]. For `ENV` it also prints `cascade selected by: <source>` (`environment_source` in `--json`), because the process value of `ENV` chooses the cascade files before any file is applied.
 
 **Escape hatch:** `NSELF_LEGACY_ENV_ORDER=1` restores the pre-CLI-R18 order (`.env.dev → .env.{staging|prod} → .env.secrets → .env.local → .env → .env.ai`) for exactly one minor version, printing a warning naming the variable and removal version on every use. This exists only to unblock a project mid-migration — run `nself migrate` to move off it permanently. See [[cmd-migrate]] for exactly what the migration shim auto-fixes versus flags for manual review.
 
@@ -78,6 +78,7 @@ These vars control the top-level identity and behavior of a project.
 | `ADMIN_EMAIL` | string | `""` | No | Admin contact email for notifications and certificates. |
 | `DB_ENV_SEEDS` | bool | `true` | No | When `true`, database seed files run automatically on first boot. |
 | `NSELF_V15` | bool (`1` or `true`, any case) | unset (off in 1.4.x, on by default from 1.5.0) | No | Opts in to the v1.5 behaviour of every P7 change that breaks an existing user-visible contract (ADR 0021). Anything else (unset, empty, `0`, `yes`) keeps v1.4 behaviour. Read on every call, never cached. See [[Compat-V15]]. |
+| `NSELF_UPDATE_CHECK` | `1` to opt in | unset (off) | No | Process environment only. With `1`, a successful command prints at most one stderr line per 24 h when a newer CLI release exists (cached in `~/.nself/cache/update-check.json`, refreshed in the background from `ping.nself.org/version`). Never in JSON mode, CI or with a non-TTY stderr. See [[Update-Notifications]]. |
 | `IMAGE_PINNING` | `lock` or `legacy` | unset (`legacy` in 1.4.x, `lock` from 1.5.0) | No | How generated compose names images. `legacy` emits the exact pre-lock strings (`redis:7-alpine`); `lock` emits `repository:version@sha256:<index digest>` from the image lock. A `*_VERSION` other than the lock version is used as given, unpinned. Any other value is an error. See [[Image-Lock]]. |
 
 ---

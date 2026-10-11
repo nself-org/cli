@@ -56,18 +56,22 @@ type configExplainEffective struct {
 
 // configExplainData is the data of `config explain --json`.
 type configExplainData struct {
-	Key          string                 `json:"key"`
-	EnvName      string                 `json:"env_name"`
-	Known        bool                   `json:"known"`
-	Default      string                 `json:"default"`
-	Environment  string                 `json:"environment"`
-	CascadeMode  string                 `json:"cascade_mode"` // canonical | legacy
-	Flags        []configExplainFlag    `json:"flags"`
-	NselfYAML    string                 `json:"nself_yaml"`
-	Sources      []configExplainSource  `json:"sources"`
-	Effective    configExplainEffective `json:"effective"`
-	Revealed     bool                   `json:"revealed"`
-	ResolvedFrom *string                `json:"resolved_from"` // "init --domain" when asked by flag
+	Key         string `json:"key"`
+	EnvName     string `json:"env_name"`
+	Known       bool   `json:"known"`
+	Default     string `json:"default"`
+	Environment string `json:"environment"`
+	// EnvironmentSource is where Environment came from (config.ResolveEnv):
+	// "process environment", ".env" or "default". For the key ENV it names the
+	// source that chose the cascade files, which can differ from Effective.
+	EnvironmentSource string                 `json:"environment_source"`
+	CascadeMode       string                 `json:"cascade_mode"` // canonical | legacy
+	Flags             []configExplainFlag    `json:"flags"`
+	NselfYAML         string                 `json:"nself_yaml"`
+	Sources           []configExplainSource  `json:"sources"`
+	Effective         configExplainEffective `json:"effective"`
+	Revealed          bool                   `json:"revealed"`
+	ResolvedFrom      *string                `json:"resolved_from"` // "init --domain" when asked by flag
 }
 
 // buildConfigExplain assembles the explanation of exp's key. v15 selects the
@@ -85,7 +89,7 @@ func buildConfigExplain(exp config.Explanation, b bindings.Bindings, reg *cmdreg
 	}
 	data := configExplainData{
 		Key: exp.Key, EnvName: exp.Key, Known: exp.Known, Default: exp.Default,
-		Environment: exp.Env, CascadeMode: mode, NselfYAML: nselfYAMLNote,
+		Environment: exp.Env, EnvironmentSource: exp.EnvSource, CascadeMode: mode, NselfYAML: nselfYAMLNote,
 		Flags: []configExplainFlag{}, Sources: []configExplainSource{}, Revealed: reveal,
 	}
 	if resolvedFrom != "" {

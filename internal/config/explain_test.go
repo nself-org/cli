@@ -86,3 +86,52 @@ func TestExplainKeyUnknownAndUnreadable(t *testing.T) {
 		t.Error("expected an error for an unreadable cascade file")
 	}
 }
+
+func TestExplainActiveEnvSource(t *testing.T) {
+	// ENV selects the cascade with the process value first (ResolveEnv), then
+	// the files are applied over it, so the selector and the winner can differ.
+	t.Setenv(LegacyEnvOrderVar, "")
+	tests := []struct {
+		name       string
+		files      map[string]string
+		process    string
+		wantEnv    string
+		wantSource string
+		wantWinner string
+		wantValue  string
+	}{
+		{"process selects, .env wins the value", map[string]string{".env": "ENV=dev\n", ".env.prod": "OTHER=1\n"}, "prod", "prod", "process environment", ".env", "dev"},
+		{".env selects when the process has no ENV", map[string]string{".env": "ENV=staging\n"}, "", "staging", ".env", ".env", "staging"},
+		{"default when nothing sets ENV", map[string]string{}, "", "dev", "default", "default", "dev"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeEnvFiles(t, dir, tt.files)
+			t.Setenv("ENV", tt.process) // restores the caller's value on cleanup
+			if tt.process == "" {
+				os.Unsetenv("ENV")
+			}
+			exp, err := ExplainActive(dir, "ENV")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if exp.Env != tt.wantEnv || exp.EnvSource != tt.wantSource {
+				t.Errorf("Env, EnvSource = %q, %q; want %q, %q", exp.Env, exp.EnvSource, tt.wantEnv, tt.wantSource)
+			}
+			if !exp.SelectsCascade() {
+				t.Error("ENV must report SelectsCascade")
+			}
+			if src, val := exp.Effective(); src != tt.wantWinner || val != tt.wantValue {
+				t.Errorf("Effective() = %q, %q; want %q, %q", src, val, tt.wantWinner, tt.wantValue)
+			}
+		})
+	}
+	other, err := ExplainActive(t.TempDir(), "BASE_DOMAIN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.SelectsCascade() {
+		t.Error("BASE_DOMAIN must not report SelectsCascade")
+	}
+}
