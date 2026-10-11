@@ -753,10 +753,8 @@ func TestR2ProductionSnapshotRemoteName(t *testing.T) {
 	}
 	t.Cleanup(func() { deployBuildStepFn, remoteDeployPushFn = ob, op })
 	_ = runDeployArgs(t, map[string]string{"force": "true"}, "production")
-	// The push keeps the target's name (P7-DEPL-24 P1); the v1.4 dispatch maps it to
-	// the cascade env (prod, remote file .env.prod), the v1.5 apply derives it itself.
-	if gotTarget != "production" || deployCascadeEnv(dir, gotTarget) != "prod" {
-		t.Errorf("push target = %q (cascade %q), want production (cascade prod)", gotTarget, deployCascadeEnv(dir, gotTarget))
+	if gotTarget != "prod" {
+		t.Errorf("push target = %q, want prod (remote file .env.prod)", gotTarget)
 	}
 }
 

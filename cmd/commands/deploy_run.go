@@ -209,9 +209,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			if !jsonOut {
 				fmt.Printf("  [running] Remote push to %s\n", host)
 			}
-			// The push keeps the target's own name (record, inventory key); the push maps it
-			// to the cascade env (.env.prod on the host, never .env.production).
-			pushErr := remoteDeployPushFn(cmd.Context(), workdir, host, target, jsonOut)
+			// The push names the cascade env (.env.prod on the host, never .env.production);
+			// ctx carries the target's own name for the v1.5 record and inventory key.
+			pushErr := remoteDeployPushFn(withDeployTarget(cmd.Context(), target), workdir, host, deployCascadeEnv(workdir, target), jsonOut)
 			if pushErr != nil {
 				steps = append(steps, deployStep{Name: fmt.Sprintf("Push artefacts to %s", host), Status: "failed"})
 				return finalize(jsonOut, target, strategy, start, steps, pushErr)

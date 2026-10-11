@@ -270,3 +270,18 @@ func previousShipped(workdir, target string) []string {
 	}
 	return out
 }
+
+type deployTargetKey struct{}
+
+// withDeployTarget carries the target's own name to the legacy push, whose argument
+// is the cascade env (a prod-class env called "live" pushes as "prod").
+func withDeployTarget(ctx context.Context, target string) context.Context {
+	return context.WithValue(ctx, deployTargetKey{}, target)
+}
+
+func deployTargetFrom(ctx context.Context, fallback string) string {
+	if t, _ := ctx.Value(deployTargetKey{}).(string); t != "" {
+		return t
+	}
+	return fallback
+}

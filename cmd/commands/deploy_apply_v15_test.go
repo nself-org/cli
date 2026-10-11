@@ -947,8 +947,9 @@ func TestLegacyPushRecordKeepsTargetName(t *testing.T) {
 	orig := prodClassFn
 	prodClassFn = func(i *controlplane.Inventory, env string) bool { return env == "live" || orig(i, env) }
 	t.Cleanup(func() { prodClassFn = orig })
-	ctx := context.WithValue(context.Background(), deployYesKey{}, true)
-	if err := remoteDeployPushDispatch(ctx, proj, "deploy@app.example.test:/srv/nself", "live", true); err != nil {
+	ctx := withDeployTarget(context.WithValue(context.Background(), deployYesKey{}, true), "live")
+	// deploy_run passes the cascade name ("prod") as the argument and the target in ctx.
+	if err := remoteDeployPushDispatch(ctx, proj, "deploy@app.example.test:/srv/nself", deployCascadeEnv(proj, "live"), true); err != nil {
 		t.Fatal(err)
 	}
 	if st, _ := deploy.LoadDeployState(proj); st.Target != "live" || st.BackupID == "" {

@@ -231,10 +231,11 @@ func remoteDeployPushDispatch(ctx context.Context, workdir, host, target string,
 	if compat.V15() {
 		return remoteDeployV15(ctx, workdir, host, target, jsonOut)
 	}
-	return remoteDeployPush(ctx, workdir, host, deployCascadeEnv(workdir, target), jsonOut)
+	return remoteDeployPush(ctx, workdir, host, target, jsonOut)
 }
 
-func remoteDeployV15(ctx context.Context, workdir, host, target string, jsonOut bool) error {
+func remoteDeployV15(ctx context.Context, workdir, host, cascade string, jsonOut bool) error {
+	target := deployTargetFrom(ctx, cascade)
 	ctx, stop := deploy.WithInterrupt(ctx)
 	defer stop()
 	key := sshKeyPath()
@@ -251,7 +252,7 @@ func remoteDeployV15(ctx context.Context, workdir, host, target string, jsonOut 
 	}
 	rp := spec.LegacyPath
 	if rp == "" {
-		rp = os.Getenv("NSELF_REMOTE_PATH_" + strings.ToUpper(deployCascadeEnv(workdir, target)))
+		rp = os.Getenv("NSELF_REMOTE_PATH_" + strings.ToUpper(cascade))
 	}
 	if rp == "" {
 		rp = "/opt/nself"
