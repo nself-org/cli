@@ -1,0 +1,7 @@
+- comment: |
+    line one
+    line two
+  definition:
+    handler: http://example.invalid/hook
+    kind: synchronous
+  name: do_it
