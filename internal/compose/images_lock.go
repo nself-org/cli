@@ -86,6 +86,16 @@ func (r Ref) LegacyRepository() string {
 	return r.LegacyRef
 }
 
+// LegacyVersion is the tag of legacy_ref: the version the CLI ran before the
+// lock, which config defaults and `nself setup` .env files still carry. It
+// stays frozen when a pin bump moves Version.
+func (r Ref) LegacyVersion() string {
+	if repo := r.LegacyRepository(); repo != r.LegacyRef {
+		return r.LegacyRef[len(repo)+1:]
+	}
+	return ""
+}
+
 var digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // MarshalLock renders a lock deterministically: 2-space indent, trailing
@@ -209,19 +219,26 @@ func PinningMode() string {
 }
 
 // ImageRef returns the image string for lock entry name at the requested
-// version. An empty version, or one equal to the lock version, means "the
-// default": legacy_ref in legacy mode, repository:version@digest in lock mode.
-// Any other version is an explicit user override and is used as given,
-// unpinned, on the entry's pre-lock repository spelling. An unknown name yields
-// "" (the tests assert every generator name exists).
+// version. An empty version, the lock version, or the frozen legacy_ref version
+// (the pre-lock default that config and .env files carry) means "the default":
+// legacy_ref in legacy mode, repository:version@digest in lock mode. That keeps
+// a pin bump from turning the shipped default into an unpinned override. Any
+// other version is an explicit user override and is used as given, unpinned,
+// on the entry's pre-lock repository spelling. An unknown name yields "" (the
+// tests assert every generator name exists).
 func ImageRef(name, version string) string {
 	r, ok := LockedRef(name)
 	if !ok {
 		return ""
 	}
+	return r.imageFor(PinningMode(), version)
+}
+
+// imageFor is ImageRef for one entry and mode.
+func (r Ref) imageFor(mode, version string) string {
 	v := strings.TrimSpace(version)
-	if PinningMode() == PinningLock {
-		if v == "" || v == r.Version {
+	if mode == PinningLock {
+		if v == "" || v == r.Version || v == r.LegacyVersion() {
 			return r.String()
 		}
 		return r.LegacyRepository() + ":" + v

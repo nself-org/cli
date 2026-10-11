@@ -12,7 +12,7 @@ What the scan does not see: literals assembled from parts (for example `"postgre
 
 Each entry records `name`, `role` (`core`, `optional`, `monitoring`, `tool`, `plugin`), the fully qualified `repository`, `version`, the `index_digest` of the multi-arch index, the per-platform digests (`linux/amd64`, `linux/arm64`, `linux/arm/v7` when upstream publishes them), `legacy_ref`, `license`, `source` and `mirror`.
 
-The first lock records what each effective reference resolved to on 2026-10-04. No version moved: `legacy_ref` is the exact string the CLI emitted before the lock existed.
+The first lock records what each effective reference resolved to on 2026-10-04. No version moved: `legacy_ref` is the exact string the CLI emitted before the lock existed. `legacy_ref` stays frozen: a pin bump moves `version` (and the digests) only, so legacy mode keeps emitting the pre-lock string. The lock test checks that `legacy_ref` names the same repository with a tag; it does not require `legacy_ref` to equal `repository:version`.
 
 ## Pinning mode: `IMAGE_PINNING`
 
@@ -25,11 +25,11 @@ Set `IMAGE_PINNING=lock` in `.env` to opt a project in early. Moving to `lock` c
 
 ## Overrides
 
-A `*_VERSION` key in the env cascade is an explicit override and is used as given, unpinned, unless it equals the lock version.
+A `*_VERSION` key in the env cascade is an explicit override and is used as given, unpinned, unless it equals the lock version or the `legacy_ref` tag. The `legacy_ref` tag is what the config defaults and the `.env` files written by `nself setup` carry (`HASURA_VERSION=v2.44.0`), so it counts as "the default" and stays pinned after a bump. To run the pre-lock version itself, use `IMAGE_PINNING=legacy`.
 
 | Setting | `IMAGE_PINNING=lock` | `IMAGE_PINNING=legacy` |
 |---|---|---|
-| unset, or equal to the lock version (`REDIS_VERSION=7-alpine`) | `docker.io/library/redis:7-alpine@sha256:...` | `redis:7-alpine` |
+| unset, or equal to the lock version or the `legacy_ref` tag (`REDIS_VERSION=7-alpine`) | `docker.io/library/redis:7-alpine@sha256:...` | `redis:7-alpine` |
 | any other value (`REDIS_VERSION=6.2-alpine`) | `redis:6.2-alpine` (no digest) | `redis:6.2-alpine` |
 | `POSTGRES_IMAGE` / `CS_N_IMAGE` | used as given | used as given |
 
@@ -39,7 +39,7 @@ A project digest file written by `nself update images` (`.nself-image-digests.js
 
 ## How pins move
 
-1. Edit the entry in `internal/compose/images.yaml` (a version bump is its own reviewed change).
+1. Edit the entry's `version` in `internal/compose/images.yaml` (a version bump is its own reviewed change). Leave `legacy_ref` alone. The weekly bump (`tools/imagebump`, `.github/workflows/image-pin-bump.yml`) does the same.
 2. `go run ./tools/imagelock -resolve` reads each index through the docker CLI (network), proves each digest addresses the index it came from, and rewrites the lock.
 3. `go run ./tools/imagelock -check` verifies the lock offline: header, sorted, every entry has an index digest and `linux/amd64`, and the lock covers `images.yaml`. Adding an entry without resolving fails it.
 4. `go run ./tools/imagelock -resolve -plugins images.json` also merges the plugins repository's `images.json` v1: `kind: plugin` entries become `plugin/<slug>`, `kind: upstream` entries keep their name, `kind: ci` entries are ignored.
