@@ -650,10 +650,12 @@ func TestRollbackInterruptHelper(t *testing.T) {
 		countCmds(remote, "/holder; rmdir") == 1, st.RolledBack)
 }
 
-// H-rollback: a real SIGINT during a rollback stops it, leaves the lock released
-// and the record not marked rolled back, so the rollback can be retried.
-func TestRollbackInterrupt(t *testing.T) {
-	c := exec.Command(os.Args[0], "-test.run=^TestRollbackInterruptHelper$", "-test.count=1")
+// runSignalChild re-executes the test binary on helper, sends SIGINT when it prints
+// READY and returns its RESULT line. A command entry that does not trap the signal
+// dies from it and reports nothing, which fails the caller.
+func runSignalChild(t *testing.T, helper string) string {
+	t.Helper()
+	c := exec.Command(os.Args[0], "-test.run=^"+helper+"$", "-test.count=1")
 	c.Env = append(os.Environ(), rollbackSignalEnv+"=1")
 	out, err := c.StdoutPipe()
 	if err != nil {
@@ -676,20 +678,75 @@ func TestRollbackInterrupt(t *testing.T) {
 		select {
 		case l, ok := <-lines:
 			if !ok {
-				t.Fatal("the helper exited without a result")
+				t.Fatalf("%s exited without a result (the signal was not trapped?)", helper)
 			}
 			if l == "READY" {
 				_ = c.Process.Signal(syscall.SIGINT)
 			}
 			if strings.HasPrefix(l, "RESULT ") {
-				if want := "RESULT err=true restored=true unlocked=true rolledback=false"; l != want {
-					t.Errorf("after SIGINT:\n got %s\nwant %s", l, want)
-				}
-				return
+				return l
 			}
 		case <-deadline:
 			t.Fatal("timed out")
 		}
+	}
+}
+
+// H-rollback: a real SIGINT during a rollback stops it, leaves the lock released
+// and the record not marked rolled back, so the rollback can be retried.
+func TestRollbackInterrupt(t *testing.T) {
+	if got, want := runSignalChild(t, "TestRollbackInterruptHelper"), "RESULT err=true restored=true unlocked=true rolledback=false"; got != want {
+		t.Errorf("after SIGINT:\n got %s\nwant %s", got, want)
+	}
+}
+
+func applyInterruptResult(remote *v15Remote, proj string, err error) {
+	st, _ := deploy.LoadDeployState(proj)
+	fmt.Printf("RESULT err=%v restored=%v unlocked=%v recorded=%v\n", err != nil, firstIndex(remote.commands(), "tar -xzf") >= 0,
+		countCmds(remote, "/holder; rmdir") == 1, st.PreDeployTar != "")
+}
+
+const applyInterruptWant = "RESULT err=true restored=true unlocked=true recorded=false"
+
+// TestPipelineInterruptHelper is the child process of TestPipelineInterrupt.
+func TestPipelineInterruptHelper(t *testing.T) {
+	if os.Getenv(rollbackSignalEnv) == "" {
+		t.Skip("helper process")
+	}
+	proj, remote := v15Project(t)
+	remote.hang = " pull"
+	res, err := runDeployPipeline(yesCmd(), proj, prodInventory(prodServers(t)[0]), "prod", okProber{}, filepath.Join(proj, "docker-compose.yml"), "", "", true)
+	if err == nil {
+		err = failedServersError(res)
+	}
+	applyInterruptResult(remote, proj, err)
+}
+
+// J3: the pipeline's v1.5 branch traps a real SIGINT: the apply is restored, the
+// lock released and the record untouched.
+func TestPipelineInterrupt(t *testing.T) {
+	if got := runSignalChild(t, "TestPipelineInterruptHelper"); got != applyInterruptWant {
+		t.Errorf("after SIGINT:\n got %s\nwant %s", got, applyInterruptWant)
+	}
+}
+
+// TestLegacyPushInterruptHelper is the child process of TestLegacyPushInterrupt.
+func TestLegacyPushInterruptHelper(t *testing.T) {
+	if os.Getenv(rollbackSignalEnv) == "" {
+		t.Skip("helper process")
+	}
+	proj, remote := v15Project(t)
+	t.Setenv("NSELF_DEPLOY_SSH_KEY", "/tmp/key")
+	remote.hang = " pull"
+	ctx := context.WithValue(context.Background(), deployYesKey{}, true)
+	err := remoteDeployPushDispatch(ctx, proj, "deploy@app.example.test:/srv/nself", "staging", true)
+	applyInterruptResult(remote, proj, err)
+}
+
+// J3: the legacy single-host push (v1.5) traps a real SIGINT the same way.
+func TestLegacyPushInterrupt(t *testing.T) {
+	if got := runSignalChild(t, "TestLegacyPushInterruptHelper"); got != applyInterruptWant {
+		t.Errorf("after SIGINT:\n got %s\nwant %s", got, applyInterruptWant)
 	}
 }
 
@@ -714,5 +771,49 @@ func TestConfirmReturnsOnInterrupt(t *testing.T) {
 	}
 	if !confirmFrom(context.Background(), strings.NewReader("yes\n"), &out, "x") || confirmFrom(context.Background(), strings.NewReader("no\n"), &out, "x") {
 		t.Error("yes must confirm and no must not")
+	}
+}
+
+// J3: a record without the list of changed paths cannot be rolled back; nothing
+// is sent to the host.
+func TestRollbackNeedsRecordedChangeList(t *testing.T) {
+	proj, primary, second, _ := twoHostProd(t)
+	rollbackRecord(t, proj, "deploy@app.example.test", "deploy@app.example.test")
+	st, _ := deploy.LoadDeployState(proj)
+	st.PreDeployChanged = nil
+	if err := deploy.SaveDeployState(proj, st); err != nil {
+		t.Fatal(err)
+	}
+	handled, err := rollbackRemoteV15(yesCmd(), proj, "prod")
+	if !handled || err == nil || !strings.Contains(err.Error(), "no list of changed paths") {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	if len(primary.commands())+len(second.commands()) != 0 {
+		t.Errorf("a refused rollback touched the host: %v", primary.commands())
+	}
+}
+
+// J3: the recorded absent list reaches the rollback, which removes exactly those files.
+func TestRecordedAbsentListDrivesRollbackRemoval(t *testing.T) {
+	proj, primary, _, _ := twoHostProd(t)
+	srv := controlplane.Server{Name: "app-1", Host: "deploy@app.example.test", Primary: true}
+	host := "deploy@app.example.test"
+	rec := recordRemoteApply(proj, "prod", time.Now(), "", "")
+	rec(srv, deploy.ApplyResult{Synced: true, Touched: true, BackupHost: host, PreDeployTar: "/opt/nself/.nself/backups/pre-deploy-20261011T010101Z-aaaaaa.tar.gz",
+		Changed: []string{"docker-compose.yml", "nginx/sites/new.conf"}, Absent: []string{"nginx/sites/new.conf"}}, nil)
+	if st, _ := deploy.LoadDeployState(proj); len(st.PreDeployAbsent[host]) != 1 || st.PreDeployAbsent[host][0] != "nginx/sites/new.conf" {
+		t.Fatalf("the absent list was not recorded: %+v", st.PreDeployAbsent)
+	}
+	if handled, err := rollbackRemoteV15(yesCmd(), proj, "prod"); !handled || err != nil {
+		t.Fatalf("rollback: %v %v", handled, err)
+	}
+	removed := false
+	for _, c := range primary.commands() {
+		if strings.Contains(c, "'nginx/sites/new.conf'") && strings.Contains(c, `rm -f -- "$2"`) {
+			removed = true
+		}
+	}
+	if !removed {
+		t.Errorf("the rollback did not remove the file the deploy created: %v", primary.commands())
 	}
 }
