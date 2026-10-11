@@ -210,6 +210,11 @@ func respDo(c net.Conn, r *bufio.Reader, args ...string) (string, error) {
 // TestValkeyIntegration starts a stack with REDIS_ENGINE=valkey, waits for the
 // health check and does SET/GET on the port REDIS_URL names.
 func TestValkeyIntegration(t *testing.T) {
+	// The Windows CI leg runs `go test -short` and has no Docker (ci.yml); the
+	// other legs run this test, with no opt-in variable (ticket verify line).
+	if testing.Short() {
+		t.Skip("short mode: Docker integration test skipped")
+	}
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker is not installed")
 	}
