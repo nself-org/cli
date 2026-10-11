@@ -14,7 +14,7 @@ package deploy
 // Constraints: after the cancel, ApplyRemote's restore and the lock release run
 //              on context.WithoutCancel bounded by a timeout, so a signal leaves
 //              the host restored (before the first `up`) and unlocked. A second
-//              signal is absorbed with one line saying so: the restore is
+//              signal is absorbed with one line saying it is still finishing the step or restoring: the restore is
 //              bounded by restoreTimeout and the lock is released after it.
 
 import (
@@ -47,6 +47,7 @@ func WithInterrupt(ctx context.Context) (context.Context, context.CancelFunc) {
 		select {
 		case <-ch:
 			cancel()
+			_, _ = fmt.Fprintf(interruptOut, "\ninterrupted: finishing the current step (up to %s), then restoring if nothing was started yet\n", stepGrace)
 		case <-done:
 			return
 		}
@@ -56,7 +57,7 @@ func WithInterrupt(ctx context.Context) (context.Context, context.CancelFunc) {
 			case <-ch:
 				if !told {
 					told = true
-					_, _ = fmt.Fprintf(interruptOut, "\nsignal received again: the restore is in progress (bounded by %s) and the deploy lock is released after it; please wait\n", restoreTimeout)
+					_, _ = fmt.Fprintf(interruptOut, "\nsignal received again: still finishing the step or restoring (the restore is bounded by %s); the deploy lock is released after it; please wait\n", restoreTimeout)
 				}
 			case <-done:
 				return

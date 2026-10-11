@@ -111,7 +111,10 @@ func interruptWith(t *testing.T, sig syscall.Signal, twice bool) {
 		}
 	}
 	_ = c.Wait()
-	if got := strings.Contains(stderr.String(), "restore is in progress"); got != twice {
+	if !strings.Contains(stderr.String(), "interrupted: finishing the current step (up to 2m0s)") {
+		t.Errorf("N3: the first signal printed no notice; stderr:\n%s", stderr.String())
+	}
+	if got := strings.Contains(stderr.String(), "still finishing the step or restoring"); got != twice {
 		t.Errorf("second-signal notice printed = %v, want %v; stderr:\n%s", got, twice, stderr.String())
 	}
 	want := "RESULT err=true synced=false restored=true lock=false restoreRan=true"
@@ -121,5 +124,5 @@ func interruptWith(t *testing.T, sig syscall.Signal, twice bool) {
 }
 
 // J2: a second signal while the restore runs is absorbed with one line saying the
-// restore is in progress, not silently ignored.
+// that it is still finishing the step or restoring, not silently ignored.
 func TestSecondSignalIsAnnounced(t *testing.T) { interruptWith(t, syscall.SIGINT, true) }
