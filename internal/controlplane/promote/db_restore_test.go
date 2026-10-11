@@ -30,7 +30,7 @@ func (r *completionFailureRemote) Run(ctx context.Context, cmd string) ([]byte, 
 func TestPromoteRestoreCompletionSaveFailure(t *testing.T) {
 	root := t.TempDir()
 	r := &completionFailureRemote{recordRemote: recordRemote{label: "primary"}, root: root}
-	rec := &Record{BackupID: "backup-overlay", BackupHost: "primary", MigrateStarted: true,
+	rec := &Record{SnapshotTag: "pre-promote-1-abcdef12", BackupID: "backup-overlay", BackupHost: "primary", MigrateStarted: true,
 		PreDeployTar:          map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"},
 		PriorManifestIdentity: map[string]ManifestIdentity{"primary": {Hash: ManifestHash(nil)}}}
 	persistRollbackFixture(t, root, rec)
@@ -42,7 +42,7 @@ func TestPromoteRestoreCompletionSaveFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := RollbackRecord(context.Background(), root, rec, remotes, paths)
-	if err == nil || !strings.Contains(err.Error(), "E489") || !strings.Contains(err.Error(), "backup-overlay") || !strings.Contains(err.Error(), "may already have run") || !strings.Contains(err.Error(), "--db-restore-done") || r.restores != 1 {
+	if err == nil || !strings.Contains(err.Error(), "E489") || !strings.Contains(err.Error(), "backup-overlay") || !strings.Contains(err.Error(), "pre-promote-1-abcdef12") || !strings.Contains(err.Error(), "may already have run") || !strings.Contains(err.Error(), "--db-restore-done") || r.restores != 1 {
 		t.Fatalf("unsafe retry: restores=%d err=%v", r.restores, err)
 	}
 	if err := MarkDBRestoreDone(root, rec); err != nil {

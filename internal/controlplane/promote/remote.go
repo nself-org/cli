@@ -77,7 +77,7 @@ func SnapshotStep(r deploy.Remote, remotePath, tag string) Step {
 		if st.RecoveryCheckpoint == nil {
 			return fmt.Errorf("promote snapshot restore requires a recovery checkpoint writer")
 		}
-		return RestoreDatabase(ctx, r, remotePath, st.BackupID, &st.RecoveryPhase, &st.DBRestoredAt, func() error {
+		return RestoreDatabase(ctx, r, remotePath, st.SnapshotTag, st.BackupID, &st.RecoveryPhase, &st.DBRestoredAt, func() error {
 			return st.RecoveryCheckpoint(st)
 		})
 	}}

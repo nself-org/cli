@@ -15,26 +15,26 @@ import (
 	remotesdk "github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
-func uncertainDBRestore(backup string) error {
-	return errs.Newf("E489", "database restore of backup %s may already have run; needs operator", backup).
+func uncertainDBRestore(tag, backup string) error {
+	return errs.Newf("E489", "database restore of backup %s (snapshot %s) may already have run; needs operator", backup, tag).
 		WithFix("Verify the database on the backup host, then run deploy rollback <target> --db-restore-done to record completion; otherwise restore by hand.")
 }
 
 // CheckDBRestoreCompletion refuses recovery while a restore outcome is uncertain.
 func CheckDBRestoreCompletion(rec *Record) error {
 	if rec.RecoveryPhase == "db_restore_started" && rec.DBRestoredAt == "" {
-		return uncertainDBRestore(rec.BackupID)
+		return uncertainDBRestore(rec.SnapshotTag, rec.BackupID)
 	}
 	return nil
 }
 
 // RestoreDatabase checkpoints intent before running the remote restore.
-func RestoreDatabase(ctx context.Context, r deploy.Remote, remotePath, backup string, phase, restored *string, checkpoint func() error) error {
+func RestoreDatabase(ctx context.Context, r deploy.Remote, remotePath, tag, backup string, phase, restored *string, checkpoint func() error) error {
 	if *restored != "" {
 		return nil
 	}
 	if *phase == "db_restore_started" {
-		return uncertainDBRestore(backup)
+		return uncertainDBRestore(tag, backup)
 	}
 	*phase = "db_restore_started"
 	if err := checkpoint(); err != nil {

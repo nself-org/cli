@@ -167,7 +167,7 @@ func RollbackRecord(ctx context.Context, projectRoot string, rec *Record, remote
 		return nil
 	}
 	if rec.RecoveryPhase == "db_restore_started" && rec.DBRestoredAt == "" {
-		return uncertainDBRestore(rec.BackupID)
+		return uncertainDBRestore(rec.SnapshotTag, rec.BackupID)
 	}
 	keys := make([]string, 0, len(rec.PreDeployTar))
 	for key := range rec.PreDeployTar {
@@ -233,7 +233,7 @@ func RollbackRecord(ctx context.Context, projectRoot string, rec *Record, remote
 		}
 	}
 	if restoreDB {
-		if err := RestoreDatabase(recoveryCtx, remotes[backupKey], rec.RemotePaths[backupKey], rec.BackupID, &rec.RecoveryPhase, &rec.DBRestoredAt, func() error { return SaveRecord(projectRoot, *rec) }); err != nil {
+		if err := RestoreDatabase(recoveryCtx, remotes[backupKey], rec.RemotePaths[backupKey], rec.SnapshotTag, rec.BackupID, &rec.RecoveryPhase, &rec.DBRestoredAt, func() error { return SaveRecord(projectRoot, *rec) }); err != nil {
 			return err
 		}
 	}
