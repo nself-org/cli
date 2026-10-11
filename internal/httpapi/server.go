@@ -184,7 +184,17 @@ func (s *Server) Mount(prefix string, h http.Handler) (err error) {
 // preserved; its deadline and cancellation do not interrupt the graceful drain.
 // A completed shutdown returns nil; listener failures return their error.
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
-	h := &http.Server{Addr: addr, Handler: s.Handler(), ReadHeaderTimeout: s.o.ReadHeaderTimeout, ReadTimeout: s.o.ReadTimeout, IdleTimeout: s.o.IdleTimeout, BaseContext: func(net.Listener) context.Context { return context.WithoutCancel(ctx) }}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	return s.Serve(ctx, ln)
+}
+
+// Serve serves an already bound listener with the same cancellation and graceful
+// shutdown behavior as ListenAndServe. It closes the listener when serving ends.
+func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	h := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: s.o.ReadHeaderTimeout, ReadTimeout: s.o.ReadTimeout, IdleTimeout: s.o.IdleTimeout, BaseContext: func(net.Listener) context.Context { return context.WithoutCancel(ctx) }}
 	done := make(chan struct{})
 	stopped := make(chan struct{})
 	go func() {
@@ -199,7 +209,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 		case <-done:
 		}
 	}()
-	err := h.ListenAndServe()
+	err := h.Serve(ln)
 	close(done)
 	<-stopped
 	if errors.Is(err, http.ErrServerClosed) {

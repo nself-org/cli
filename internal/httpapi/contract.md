@@ -5,6 +5,8 @@
 configured machine token and allowed host on every start, and print a cleartext
 HTTP warning. Loopback starts resolve or create the machine token and print its
 file path only. Tokens are never arguments or request log fields.
+The listening line prints only after the listener binds successfully. A bind
+failure returns an error without printing that line.
 
 `GET /openapi.json` and `POST /v1/commands/<token>/<token>…`
 (`cmdregistry.RoutePath`) require `Authorization: Bearer <token>`. POST bodies
@@ -31,8 +33,11 @@ output is stream, including document commands with an enabled stream override.
 The response carries the child's JSON stream records and final envelope,
 flushes each write, and has no invocation timeout. The child is killed within
 2 seconds after client disconnect. Once streaming begins the status is 200 and
-`X-Nself-Exit-Code` is a trailer. A refusal before the first byte is a normal
-JSON error response with its mapped status.
+`X-Nself-Exit-Code` is a trailer carrying the child exit code only when invocation
+completes without an error. Cancellation or another invocation error sets it to
+`-1`. A refusal before the first byte is a normal JSON error response with its
+mapped status. If a child writes no bytes and returns empty stdout, the server
+answers with an E422 v1 error envelope and HTTP 502.
 
 Status selection uses error code first: E420/E425/E430 → 400, E426 → 401,
 E429 → 403, E421/E432 → 404, E424/E460 → 409, E428 → 421, E431 → 503
@@ -43,7 +48,12 @@ request validation can specialize E430 to 405, 406, 413 or 415.
 
 The host allowlist contains `localhost`, `127.0.0.1`, `[::1]` and each
 `--allowed-host`, with the listener port. Host matching is case-insensitive.
+Invalid allowed-host values use E430 with Why: "an allowed host is a DNS name,
+an IPv4 literal or a bracketed IPv6 literal, without scheme, port or path" and
+Fix: `pass --allowed-host <name>; the server adds the port itself`.
 A present Origin must be `http://<allowed host>:<port>`; `null` is refused.
+Requests with more than one Origin header receive HTTP 403 and E429 before
+authentication.
 No Access-Control-* header is sent. Middleware order is Host, Origin,
 AuthHook, method, content type, size, strict decode, Accept, then a maximum of
 four in-flight invocations. Unknown registry paths return E432; existing but
@@ -61,6 +71,8 @@ The server defaults to a 10-second ReadHeaderTimeout, 30-second ReadTimeout,
 gracefully within 5 seconds. Each request logs one stderr line containing method,
 path truncated to 200 bytes, status, and duration in milliseconds. No body,
 header, query string or token is logged.
+Non-context invocation errors add one stderr line, `invoke error: <Go error type
+name>`. The error message is never logged, and the per-request line stays unchanged.
 
 OpenAPI is 3.1.0 with `info.version: "1"`, global bearer security and
 `x-nself-experimental: true`. Each exposed document command has one POST whose
@@ -73,6 +85,8 @@ Stream-override flags are described by the stream contract above. Keys are
 sorted, indentation is two spaces, and the bytes end in a newline. There is no
 timestamp or CLI version. Under an isolated HOME and plugin directory, served
 bytes equal `.github/openapi.json`.
+Generation rejects exposed command paths whose `cmdregistry.ToolName` collides
+with another exposed path or exceeds 64 characters.
 
 ## Synthetic request and response examples
 

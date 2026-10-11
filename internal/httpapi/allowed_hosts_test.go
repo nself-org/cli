@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/cmdregistry"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 func TestAllowedHostValidation(t *testing.T) {
@@ -21,6 +23,10 @@ func TestAllowedHostValidation(t *testing.T) {
 			_, err := New(Options{Registry: &cmdregistry.Registry{}, Auth: BearerAuth("fake-token-0000"), AllowedHosts: []string{host}})
 			if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("%q", host)) {
 				t.Fatalf("invalid host %q: %v", host, err)
+			}
+			var cliErr *errs.CLIError
+			if !errors.As(err, &cliErr) || cliErr.Code != "E430" || cliErr.Why != "an allowed host is a DNS name, an IPv4 literal or a bracketed IPv6 literal, without scheme, port or path" || cliErr.Fix != "pass --allowed-host <name>; the server adds the port itself" {
+				t.Fatalf("invalid allowed host guidance: %v", err)
 			}
 		})
 	}

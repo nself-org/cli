@@ -17,7 +17,9 @@ import (
 func ValidateAllowedHosts(hosts []string) error {
 	for _, host := range hosts {
 		if !validAllowedHost(host) {
-			return errs.Newf("E430", "Invalid allowed host %q: use a DNS name, IPv4 literal or bracketed IPv6 literal without a port", host)
+			return errs.Newf("E430", "Invalid allowed host %q: use a DNS name, IPv4 literal or bracketed IPv6 literal without a port", host).
+				WithWhy("an allowed host is a DNS name, an IPv4 literal or a bracketed IPv6 literal, without scheme, port or path").
+				WithFix("pass --allowed-host <name>; the server adds the port itself")
 		}
 	}
 	return nil

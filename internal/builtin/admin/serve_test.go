@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -36,21 +37,28 @@ func TestAdminServe(t *testing.T) {
 			dir := t.TempDir()
 			var log bytes.Buffer
 			calls, listens := 0, 0
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 			cmd := ServeCommand(ServeDeps{
 				ProjectDir: func() (string, error) { return dir, nil },
 				Registry: func() (*cmdregistry.Registry, error) {
 					calls++
 					return &cmdregistry.Registry{SchemaVersion: "1"}, nil
 				},
-				Listen: func(_ context.Context, s *httpapi.Server, addr string) error {
+				Listen: func(network, addr string) (net.Listener, error) {
 					listens++
 					if addr != "127.0.0.1:3857" {
 						t.Fatalf("listen address = %s", addr)
 					}
-					assertServeAuth(t, s)
-					return nil
+					if strings.Contains(log.String(), "listening on") {
+						t.Fatal("readiness announced before binding")
+					}
+					ln, err := net.Listen(network, "127.0.0.1:0")
+					cancel()
+					return ln, err
 				},
 			})
+			cmd.SetContext(ctx)
 			cmd.SetErr(&log)
 			if cmd.Flags().Lookup("port").DefValue != "3857" || ports.AdminAPIPort != 3857 {
 				t.Fatal("incorrect default API port")
@@ -65,6 +73,9 @@ func TestAdminServe(t *testing.T) {
 			if calls != 1 || listens != 1 {
 				t.Fatalf("registry/listen calls = %d/%d", calls, listens)
 			}
+			if !strings.Contains(log.String(), "listening on") {
+				t.Fatal("bound listener was not announced")
+			}
 			tok, _, err := machineauth.Lookup()
 			if err != nil || tok == "" {
 				t.Fatalf("missing machine token: %v", err)
@@ -72,6 +83,11 @@ func TestAdminServe(t *testing.T) {
 			if strings.Contains(log.String(), tok) {
 				t.Fatal("stderr leaked token")
 			}
+			s, err := httpapi.New(httpapi.Options{Registry: &cmdregistry.Registry{SchemaVersion: "1"}, ProjectDir: dir, Port: 3857, Auth: httpapi.BearerAuth(tok), Log: &log})
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertServeAuth(t, s)
 			if !configured && !strings.Contains(log.String(), filepath.Join(".nself", "mcp-token")) {
 				t.Fatal("generated token file path was not printed")
 			}
@@ -85,6 +101,30 @@ func TestAdminServe(t *testing.T) {
 		cmd.SetArgs(nil)
 		if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "no nself project") {
 			t.Fatalf("project refusal = %v", err)
+		}
+	})
+	t.Run("occupied-port", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = ln.Close() }()
+		t.Setenv(machineauth.EnvVar, "fake-token-0000")
+		var log bytes.Buffer
+		cmd := ServeCommand(ServeDeps{
+			ProjectDir: func() (string, error) { return t.TempDir(), nil },
+			Registry: func() (*cmdregistry.Registry, error) {
+				return &cmdregistry.Registry{SchemaVersion: "1"}, nil
+			},
+		})
+		cmd.SetErr(&log)
+		cmd.SetOut(&bytes.Buffer{})
+		cmd.SetArgs([]string{"--port", fmt.Sprint(ln.Addr().(*net.TCPAddr).Port)})
+		if err := cmd.Execute(); err == nil {
+			t.Fatal("occupied port did not return an error")
+		}
+		if strings.Contains(log.String(), "listening on") {
+			t.Fatalf("failed bind announced readiness: %q", log.String())
 		}
 	})
 }
@@ -137,14 +177,22 @@ func TestNonLoopbackBind(t *testing.T) {
 			for i := 0; i < 2; i++ {
 				var log bytes.Buffer
 				built, listened := false, false
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
 				cmd := ServeCommand(ServeDeps{
 					ProjectDir: func() (string, error) { return t.TempDir(), nil },
 					Registry: func() (*cmdregistry.Registry, error) {
 						built = true
 						return &cmdregistry.Registry{SchemaVersion: "1"}, nil
 					},
-					Listen: func(_ context.Context, _ *httpapi.Server, _ string) error { listened = true; return nil },
+					Listen: func(network, _ string) (net.Listener, error) {
+						listened = true
+						ln, err := net.Listen(network, "127.0.0.1:0")
+						cancel()
+						return ln, err
+					},
 				})
+				cmd.SetContext(ctx)
 				cmd.SetErr(&log)
 				args := []string{"--host", "0.0.0.0"}
 				for _, allowed := range tc.allowed {
@@ -194,6 +242,9 @@ func TestServeAllowedHostValidation(t *testing.T) {
 			}
 			if errors.As(err, &cliErr) && cliErr.Code != "E430" {
 				t.Fatalf("invalid allowed host code: %v", err)
+			}
+			if errors.As(err, &cliErr) && (cliErr.Why != "an allowed host is a DNS name, an IPv4 literal or a bracketed IPv6 literal, without scheme, port or path" || cliErr.Fix != "pass --allowed-host <name>; the server adds the port itself") {
+				t.Fatalf("invalid allowed host guidance: %+v", cliErr)
 			}
 		})
 	}

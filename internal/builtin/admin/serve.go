@@ -6,7 +6,6 @@ package admin
 // Constraints: token always; non-loopback binds require explicit configuration.
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"os"
@@ -28,11 +27,14 @@ import (
 
 // ServeDeps supplies composition-root providers without importing commands.
 type ServeDeps struct {
-	Registry   func() (*cmdregistry.Registry, error)
+	// Registry supplies the command snapshot used by the server.
+	Registry func() (*cmdregistry.Registry, error)
+	// DataSchema provides committed command data schemas for OpenAPI.
 	DataSchema func(string) ([]byte, bool)
+	// ProjectDir resolves the invocation working directory.
 	ProjectDir func() (string, error)
-	// Listen is a test seam; nil uses Server.ListenAndServe.
-	Listen func(context.Context, *httpapi.Server, string) error
+	// Listen binds the listener before announcing readiness; nil uses net.Listen.
+	Listen func(network, address string) (net.Listener, error)
 }
 
 // ServeCommand creates an API-only server command, independently of compat mode.
@@ -67,7 +69,9 @@ type allowedHostsValue struct {
 
 func (v allowedHostsValue) Set(raw string) error {
 	if raw == "" || strings.IndexFunc(raw, unicode.IsSpace) >= 0 {
-		return errs.Newf("E430", "Invalid allowed host %q: hosts must be non-empty and contain no whitespace", raw)
+		return errs.Newf("E430", "Invalid allowed host %q: hosts must be non-empty and contain no whitespace", raw).
+			WithWhy("an allowed host is a DNS name, an IPv4 literal or a bracketed IPv6 literal, without scheme, port or path").
+			WithFix("pass --allowed-host <name>; the server adds the port itself")
 	}
 	return v.Value.Set(raw)
 }
@@ -109,13 +113,18 @@ func runServe(cmd *cobra.Command, d ServeDeps, host string, port int, allowed []
 		return err
 	}
 	addr := net.JoinHostPort(strings.TrimSuffix(strings.TrimPrefix(host, "["), "]"), strconv.Itoa(port))
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "nself: HTTP API listening on http://%s\n", addr)
-	if d.Listen != nil {
-		return d.Listen(cmd.Context(), s, addr)
+	listen := d.Listen
+	if listen == nil {
+		listen = net.Listen
 	}
+	ln, err := listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "nself: HTTP API listening on http://%s\n", ln.Addr())
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return s.ListenAndServe(ctx, addr)
+	return s.Serve(ctx, ln)
 }
 
 func serveToken(cmd *cobra.Command, host string, allowed []string) (string, error) {
