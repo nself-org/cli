@@ -241,12 +241,59 @@ func TestMCPReadTimeoutKeepsStreams(t *testing.T) {
 		return string(b)
 	}
 	for _, m := range []string{http.MethodGet, http.MethodPost} {
-		if got := run(newMCPHTTPServer("", streamer), m); !strings.Contains(got, "done") {
+		if got := run(newMCPHTTPServer("", mcpHandler(nil, streamer)), m); !strings.Contains(got, "done") {
 			t.Errorf("%s: stream cut by ReadTimeout: %q", m, got)
 		}
 	}
 	control := &http.Server{Handler: streamer, ReadTimeout: mcpReadTimeout}
 	if got := run(control, http.MethodGet); strings.Contains(got, "done") {
 		t.Logf("control: a bare ReadTimeout did not cancel the stream on this platform (%q)", got)
+	}
+}
+
+// countingReader is an endless body that counts the bytes read from it.
+type countingReader struct{ n, max int }
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	if c.n >= c.max {
+		return 0, io.EOF
+	}
+	if len(p) > c.max-c.n {
+		p = p[:c.max-c.n]
+	}
+	c.n += len(p)
+	return len(p), nil
+}
+
+// TestMCPAuthBeforeBody pins the handler order: an unauthenticated POST with a
+// 30 MiB body is answered 401 (same body and header as v1.4) after reading
+// less than 64 KiB, an authenticated one reaches the transport, and an
+// authenticated body over the cap is refused 413.
+func TestMCPAuthBeforeBody(t *testing.T) {
+	reached := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true })
+	h := mcpHandler(mcpBearerWith("tok"), inner)
+	body := &countingReader{max: 30 << 20}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/mcp", body))
+	if rec.Code != http.StatusUnauthorized || rec.Header().Get("WWW-Authenticate") != `Bearer realm="nself-mcp"` || rec.Body.String() != "unauthorized\n" {
+		t.Errorf("unauthenticated: %d %q %q", rec.Code, rec.Header().Get("WWW-Authenticate"), rec.Body.String())
+	}
+	if body.n >= 64<<10 || reached {
+		t.Errorf("read %d body bytes before the 401 (reached=%v)", body.n, reached)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0"}`))
+	req.Header.Set("Authorization", "Bearer tok")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if !reached || rec.Code != http.StatusOK {
+		t.Errorf("authenticated request did not reach the transport: %d", rec.Code)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/mcp", &countingReader{max: mcpMaxBodyBytes + 1})
+	req.Header.Set("Authorization", "Bearer tok")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("over-cap body: %d, want 413", rec.Code)
 	}
 }

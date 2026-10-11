@@ -124,7 +124,7 @@ Long-lived responses (SSE streams, a tool call that runs for minutes) are not cu
 - `--allowed-host` gates the bind only; the MCP server does not compare the request's Host header with it.
 - An accepted non-loopback start prints one warning that the bearer token crosses the network over cleartext HTTP. The server has no TLS: put a TLS terminator in front of it.
 
-The HTTP server sets `ReadHeaderTimeout` 10 s and `ReadTimeout` 30 s and no write timeout, so SSE streams stay open. Request bodies are capped at 32 MiB. Headers, bodies and tokens are never logged.
+The HTTP server sets `ReadHeaderTimeout` 10 s and `ReadTimeout` 30 s and no write timeout, so SSE streams stay open. The bearer check runs first, so an unauthenticated request is answered `401` before any body byte is read; an authenticated body is capped at 4 MiB (`413` above it). Headers, bodies and tokens are never logged.
 
 ## Gate
 
@@ -156,6 +156,11 @@ To go ahead, send the identical request again with `"confirm": "<value>"`.
 
 Mutations serialise through the project operation lock the child takes; contention in v1.5 mode is the child's `E460`.
 
+Accepted risks:
+
+- A plan confirmation also passes the command's consent flags, as D3 states. For `build`, `--yes` also accepts the second render after plugin effects, so the plan id binds the first render only.
+- The live nonce store is first in, first out. A client holding the token can issue 1024 confirmations and push out one that a person is about to approve; the round trip then starts again.
+
 ## Audit log
 
 Every non-read invocation and every refusal is appended to `~/.nself/logs/machine-audit.jsonl` (contract `cli.machine-audit` v1). Reads that run are not logged. The directory is created `0700` and the file `0600`; writers append under an exclusive file lock, and the file rotates at 10 MiB to `.1`, `.2`, `.3` (older ones are dropped).
@@ -177,4 +182,4 @@ One compact JSON object per line, keys in this order:
 | `error_code` | the invoker's `E42x`, the child's `error.code`, or `null` |
 | `duration_ms` | wall time of the invocation |
 
-Before a remote or destructive command runs, the server checks that the audit file can be opened for append; when it cannot (or the server has no audit log), the run is refused with `E421` and nothing changes. A write that fails after the run (a full disk) prints one line with the operating-system error on the server's standard error (never the request) and does not stop the server. An existing log directory that group or others can read (other nself commands create `~/.nself/logs` at `0755`) is narrowed to `0700`.
+Before any command that is not a read runs, the server checks that the audit file can be opened for append (a regular file, never a symlink); when it cannot (or the server has no audit log), the run is refused with `E421` and nothing changes. A writer waits at most 5 seconds for another process's lock on the file. A write that fails after the run (a full disk) prints one line with the operating-system error on the server's standard error (never the request) and does not stop the server. An existing log directory that group or others can read (other nself commands create `~/.nself/logs` at `0755`) is narrowed to `0700`.

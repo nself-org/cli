@@ -82,10 +82,10 @@ func invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Req
 	if err != nil {
 		return refuse(res, command, err), nil
 	}
-	if d.SideEffect == canon.SideEffectRemote || d.SideEffect == canon.SideEffectDestructive {
+	if d.SideEffect != canon.SideEffectRead && o.Guard != nil {
 		if aerr := o.Guard.auditWritable(); aerr != nil {
 			return refuse(res, command, errs.New("E421", "command "+quoteName(command)+" is not exposed").
-				WithWhy("no gate: the machine audit log cannot be written ("+aerr.Error()+"), so remote and destructive commands are refused")), nil
+				WithWhy("no gate: the machine audit log cannot be written ("+aerr.Error()+"), so commands that change anything are refused")), nil
 		}
 	}
 	tr.decision = DecisionRun

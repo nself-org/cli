@@ -170,6 +170,9 @@ func canonNumber(v any) (json.Number, bool) {
 		if i, err := strconv.ParseInt(string(x), 10, 64); err == nil {
 			return json.Number(strconv.FormatInt(i, 10)), true
 		}
+		if u, err := strconv.ParseUint(string(x), 10, 64); err == nil {
+			return json.Number(strconv.FormatUint(u, 10)), true // above MaxInt64: exact, as the argv renders it
+		}
 		g, err := strconv.ParseFloat(string(x), 64)
 		if err != nil {
 			return "", false

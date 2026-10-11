@@ -35,14 +35,26 @@ var (
 	mcpReadTimeout       = 30 * time.Second
 )
 
-// mcpMaxBodyBytes bounds one MCP request body read under the read deadline.
-const mcpMaxBodyBytes = 32 << 20
+// mcpMaxBodyBytes bounds one MCP request body, read only after the bearer
+// check passed.
+const mcpMaxBodyBytes = 4 << 20
 
-// newMCPHTTPServer builds the http.Server for the sse/http transports.
+// mcpHandler is the sse/http handler chain: the bearer check (wrap) first, so
+// an unauthenticated request is answered 401 before any body byte is read,
+// then the body read and deadline clear, then the transport.
+func mcpHandler(wrap func(http.Handler) http.Handler, inner http.Handler) http.Handler {
+	if wrap == nil {
+		wrap = mcpPassthrough
+	}
+	return wrap(mcpBodyThenStream(inner))
+}
+
+// newMCPHTTPServer builds the http.Server for the sse/http transports around
+// the finished handler chain (mcpHandler).
 func newMCPHTTPServer(addr string, h http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
-		Handler:           mcpBodyThenStream(h),
+		Handler:           h,
 		ReadHeaderTimeout: mcpReadHeaderTimeout,
 		ReadTimeout:       mcpReadTimeout,
 	}
@@ -58,7 +70,7 @@ func mcpBodyThenStream(h http.Handler) http.Handler {
 		if r.Body != nil && r.Body != http.NoBody {
 			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, mcpMaxBodyBytes))
 			if err != nil {
-				http.Error(w, "request body unreadable or too large", http.StatusBadRequest)
+				http.Error(w, "request body unreadable or too large", http.StatusRequestEntityTooLarge)
 				return
 			}
 			r.Body = io.NopCloser(bytes.NewReader(body))
@@ -69,11 +81,9 @@ func mcpBodyThenStream(h http.Handler) http.Handler {
 }
 
 // serveMCP serves s over transport, binding host:port for sse and http. wrap
-// guards the HTTP handler (nil means none); stdio ignores it.
+// is the bearer check put in front of everything (nil means none); stdio
+// ignores it.
 func serveMCP(s *server.MCPServer, transport, host string, port int, wrap func(http.Handler) http.Handler) error {
-	if wrap == nil {
-		wrap = mcpPassthrough
-	}
 	host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]") // JoinHostPort adds the brackets
 	switch transport {
 	case "stdio":
@@ -81,11 +91,11 @@ func serveMCP(s *server.MCPServer, transport, host string, port int, wrap func(h
 	case "sse":
 		addr := net.JoinHostPort(host, strconv.Itoa(port))
 		fmt.Fprintf(os.Stderr, "nSelf MCP server listening on %s (SSE)\n", addr)
-		return newMCPHTTPServer(addr, wrap(server.NewSSEServer(s))).ListenAndServe()
+		return newMCPHTTPServer(addr, mcpHandler(wrap, server.NewSSEServer(s))).ListenAndServe()
 	case "http":
 		addr := net.JoinHostPort(host, strconv.Itoa(port))
 		fmt.Fprintf(os.Stderr, "nSelf MCP server listening on %s (streamable HTTP)\n", addr)
-		return newMCPHTTPServer(addr, wrap(server.NewStreamableHTTPServer(s))).ListenAndServe()
+		return newMCPHTTPServer(addr, mcpHandler(wrap, server.NewStreamableHTTPServer(s))).ListenAndServe()
 	default:
 		return fmt.Errorf("unknown transport %q (use stdio, sse, or http)", transport)
 	}

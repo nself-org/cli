@@ -268,7 +268,7 @@ func TestAuditRotate(t *testing.T) {
 		}
 	})
 
-	t.Run("a failed audit write is reported without the request and never stops the call", func(t *testing.T) {
+	t.Run("an unwritable log refuses a change; a late failure only prints a notice", func(t *testing.T) {
 		auditMaxBytes = 10 << 20
 		blocker := filepath.Join(t.TempDir(), "blocker")
 		if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
@@ -281,11 +281,41 @@ func TestAuditRotate(t *testing.T) {
 		bad := newGateEnv(t)
 		bad.guard = NewGuard(filepath.Join(blocker, "logs", "machine-audit.jsonl"))
 		res := bad.call("gx put", `{"args":["POSTGRES_PASSWORD","Sup3rS3cretValue"]}`)
-		if res.ExitCode != 0 || res.ErrorCode != "" {
-			t.Errorf("the mutation result stands: %+v", res)
+		if x := errorOf(t, res); x["code"] != "E421" || !strings.Contains(x["cause"].(string), "audit") || len(bad.argvs()) != 0 {
+			t.Errorf("a write with an unwritable audit log must be refused before it runs: %v argv=%v", x, bad.argvs())
 		}
+		if strings.Contains(string(res.Stdout), "Sup3rS3cretValue") {
+			t.Error("the refusal echoed the secret")
+		}
+		// A write that fails after the probe (a full disk) is only reported.
+		bad.guard.audit(Options{}, &trace{command: "gx put", side: "write", decision: DecisionRun},
+			Request{Args: []string{"POSTGRES_PASSWORD", "Sup3rS3cretValue"}}, Result{}, nil, bad.guard.now())
 		if !strings.Contains(errOut.String(), "audit write failed") || strings.Contains(errOut.String(), "Sup3rS3cretValue") {
 			t.Errorf("stderr notice %q", errOut.String())
+		}
+	})
+
+	t.Run("a symlink at the audit path is refused and its target untouched", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("symlinks need privileges on Windows")
+		}
+		dir := t.TempDir()
+		target := filepath.Join(dir, "elsewhere")
+		if err := os.WriteFile(target, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, "machine-audit.jsonl")
+		if err := os.Symlink(target, path); err != nil {
+			t.Fatal(err)
+		}
+		if err := NewGuard(path).appendLine([]byte("{}\n")); err == nil {
+			t.Error("appendLine wrote through a symlink")
+		}
+		if err := NewGuard(path).auditWritable(); err == nil {
+			t.Error("the probe accepted a symlink")
+		}
+		if fi, _ := os.Stat(target); fi.Size() != 0 || fi.Mode().Perm() != 0o644 {
+			t.Errorf("target changed: size %d mode %v", fi.Size(), fi.Mode().Perm())
 		}
 	})
 }
@@ -315,5 +345,15 @@ func TestRequestIDRedactsSecretNamedFlags(t *testing.T) {
 	}
 	if c == d {
 		t.Error("a plain flag value must still change the request id")
+	}
+}
+
+// TestRequestDigestUint64 pins that two requests differing only in a uint64
+// value above MaxInt64 get different nonce digests, as their argv differ.
+func TestRequestDigestUint64(t *testing.T) {
+	a, okA := requestDigest("gx push", Request{Flags: map[string]any{"n": json.Number("18446744073709551615")}})
+	b, okB := requestDigest("gx push", Request{Flags: map[string]any{"n": json.Number("18446744073709551614")}})
+	if !okA || !okB || a == b {
+		t.Errorf("uint64 values collapse into one digest (ok %v %v)", okA, okB)
 	}
 }

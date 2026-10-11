@@ -177,9 +177,29 @@ func (g *Guard) auditWritable() error {
 	if err := ensureAuditDir(filepath.Dir(g.auditPath)); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(g.auditPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := openAuditFile(g.auditPath)
 	if err != nil {
 		return err
 	}
 	return f.Close()
+}
+
+// openAuditFile opens path for append (0600, created when missing) and
+// refuses anything but a regular file: a symlink planted at the audit path
+// would redirect the log and let the 0600 narrowing chmod its target.
+func openAuditFile(path string) (*os.File, error) {
+	if st, err := os.Lstat(path); err == nil && !st.Mode().IsRegular() {
+		return nil, errors.New("the machine audit path is not a regular file")
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	lst, lerr := os.Lstat(path)
+	fst, ferr := f.Stat()
+	if lerr != nil || ferr != nil || !lst.Mode().IsRegular() || !os.SameFile(lst, fst) {
+		_ = f.Close()
+		return nil, errors.New("the machine audit path changed while it was opened")
+	}
+	return f, nil
 }

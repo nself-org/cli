@@ -212,7 +212,7 @@ func (g *Guard) appendLine(line []byte) error {
 		return err
 	}
 	for attempt := 0; attempt < 8; attempt++ {
-		f, err := os.OpenFile(g.auditPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		f, err := openAuditFile(g.auditPath)
 		if err != nil {
 			return err
 		}

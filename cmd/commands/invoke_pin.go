@@ -37,8 +37,8 @@ func checkInvokePin(root *cobra.Command, argv []string) error {
 	if c, _, _ := root.Find(argv); c != nil {
 		got = strings.TrimSpace(strings.TrimPrefix(c.CommandPath(), root.Name()))
 	}
-	if got == strings.TrimSpace(want) {
-		return nil
+	if want = strings.TrimSpace(want); want != "" && got == want {
+		return nil // a blank pin never matches: the root is never a classified command
 	}
 	return errs.New("E421", "command "+quoteInvokePath(want)+" is not exposed").
 		WithWhy("the child resolved its arguments to " + quoteInvokePath(got) + ", not the command the invoker checked; restart the server after a plugin or binary change")

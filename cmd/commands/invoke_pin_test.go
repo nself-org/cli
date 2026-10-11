@@ -36,6 +36,8 @@ func TestInvokePin(t *testing.T) {
 		{"match leaf", "demo sub", true, []string{"demo", "sub", "--json", "--yes=true"}, true},
 		{"bare flag shifts the lookup", "demo", true, []string{"demo", "--json", "--verbose", "--", "sub"}, false},
 		{"unknown command", "gone", true, []string{"gone", "--json"}, false},
+		{"empty pin", "", true, []string{"gone", "--json"}, false},
+		{"blank pin", "  ", true, []string{"gone", "--json"}, false},
 		{"stale leaf grew a child", "demo nested", true, []string{"demo", "nested", "--json", "two"}, false},
 	}
 	for _, c := range cases {
