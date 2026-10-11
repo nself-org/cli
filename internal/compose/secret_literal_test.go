@@ -102,10 +102,11 @@ func TestSecretRef(t *testing.T) {
 		{"   ", "${MEILISEARCH_MASTER_KEY:-}"},
 		{"ab12", "${MEILISEARCH_MASTER_KEY}"},
 		{"a/b@c:d?e%f", "${MEILISEARCH_MASTER_KEY}"},
-		// compose.env is unquoted: these stay literal until D-0333.
-		{"ab #cd", "ab #cd"},
-		{"ab$cd", "ab$cd"},
-		{"ab'cd", "ab'cd"},
+		// compose.env quotes these, so they are references too (D-0333).
+		{"ab #cd", "${MEILISEARCH_MASTER_KEY}"},
+		{"ab$cd", "${MEILISEARCH_MASTER_KEY}"},
+		{"ab'cd", "${MEILISEARCH_MASTER_KEY}"},
+		{`ab\`, "${MEILISEARCH_MASTER_KEY}"},
 	}
 	for _, c := range cases {
 		if got := secretRef("MEILISEARCH_MASTER_KEY", c.value); got != c.want {
@@ -172,12 +173,19 @@ func TestOptionalServicesSecretRefsPerService(t *testing.T) {
 	}{
 		{"meilisearch", "meilisearch", true, []string{"MEILI_MASTER_KEY: ${MEILISEARCH_MASTER_KEY}"}},
 		{"meilisearch", "meilisearch", false, []string{"MEILI_MASTER_KEY: ${MEILISEARCH_MASTER_KEY:-}"}},
+		// The key reaches Typesense only through its environment; command and
+		// healthcheck no longer carry it (D-0282).
 		{"typesense", "typesense", true, []string{
 			"TYPESENSE_API_KEY: ${TYPESENSE_API_KEY}",
-			"--api-key=${TYPESENSE_API_KEY}",
-			"X-TYPESENSE-API-KEY: ${TYPESENSE_API_KEY}",
+			"command: --data-dir /data --enable-cors",
+			"- http://localhost:8108/health",
 		}},
-		{"meilisearch", "redis", true, []string{"--requirepass ${REDIS_PASSWORD}", "- ${REDIS_PASSWORD}"}},
+		// Redis gets the password as REDISCLI_AUTH: redis-cli reads it itself
+		// and the shell expands $$REDISCLI_AUTH for redis-server (D-0282).
+		{"meilisearch", "redis", true, []string{
+			"REDISCLI_AUTH: ${REDIS_PASSWORD}",
+			`--requirepass "$$REDISCLI_AUTH"`,
+		}},
 		{"meilisearch", "minio", true, []string{"MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}"}},
 		{"meilisearch", "minio", false, []string{"MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}"}},
 		{"meilisearch", "mailpit", true, []string{"MP_UI_BASICAUTH: admin:${MAILPIT_UI_PASSWORD}"}},

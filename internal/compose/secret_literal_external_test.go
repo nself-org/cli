@@ -77,7 +77,7 @@ func optionalText(t *testing.T, templated []byte) string {
 }
 
 // readComposeEnv writes .nself/compose.env the way nself build does and
-// returns it as a map (single-quoted values unwrapped, as compose reads them).
+// returns it as docker compose reads it (parseComposeDotenv).
 func readComposeEnv(t *testing.T, cfg *config.Config, secrets map[string]string) map[string]string {
 	t.Helper()
 	dir := t.TempDir()
@@ -88,13 +88,9 @@ func readComposeEnv(t *testing.T, cfg *config.Config, secrets map[string]string)
 	if err != nil {
 		t.Fatalf("read compose.env: %v", err)
 	}
-	env := make(map[string]string)
-	for _, line := range strings.Split(string(raw), "\n") {
-		k, v, ok := strings.Cut(line, "=")
-		if !ok || strings.HasPrefix(line, "#") {
-			continue
-		}
-		env[k] = config.UnquoteEnvValue(v)
+	env, err := parseComposeDotenv(string(raw))
+	if err != nil {
+		t.Fatalf("compose would reject compose.env: %v", err)
 	}
 	return env
 }
@@ -140,14 +136,15 @@ func TestSecretRefNamesAreComposeEnvKeys(t *testing.T) {
 // file holds no secret, while containers resolve the values they got before.
 func TestOptionalSecretsAfterTemplating(t *testing.T) {
 	modes := []struct {
-		name       string
-		sec        func(string) string
-		wantLeaked bool // dotenv-unsafe values stay literal until D-0333
+		name string
+		sec  func(string) string
 	}{
-		{"long", setSecrets, false},
-		{"short", func(v string) string { return v[:3] + "7" }, false},
-		{"url-unsafe", func(v string) string { return v[:6] + "/S@x:9?y%" }, false},
-		{"dotenv-unsafe", func(v string) string { return v[:6] + " #c$d" }, true},
+		{"long", setSecrets},
+		{"short", func(v string) string { return v[:3] + "7" }},
+		{"url-unsafe", func(v string) string { return v[:6] + "/S@x:9?y%" }},
+		// compose.env quotes these since D-0333, so they are references too.
+		{"dotenv-unsafe", func(v string) string { return v[:6] + " #c$d" }},
+		{"quotes-backslash", func(v string) string { return v[:6] + `'"\x\` }},
 	}
 	for _, engine := range []string{"meilisearch", "typesense"} {
 		for _, mode := range modes {
@@ -166,20 +163,17 @@ func TestOptionalSecretsAfterTemplating(t *testing.T) {
 				}
 				values := []string{cfg.Redis.Password, cfg.Mailpit.UIPassword, key}
 				for _, v := range values {
-					if got := strings.Contains(text, v); got != mode.wantLeaked {
-						t.Errorf("literal %q in generated compose = %v, want %v", v, got, mode.wantLeaked)
+					if strings.Contains(text, v) {
+						t.Errorf("literal %q in generated compose", v)
 					}
 				}
 				if enc := config.URLPassword(cfg.Postgres.Password); strings.Contains(text, ":"+enc+"@") {
 					t.Errorf("encoded postgres password left in a DATABASE_URL")
 				}
-				if mode.wantLeaked {
-					return
-				}
 
 				resolved := resolveRefs(text, readComposeEnv(t, cfg, secrets))
 				want := []string{
-					"--requirepass " + cfg.Redis.Password,
+					"REDISCLI_AUTH: " + cfg.Redis.Password,
 					"admin:" + cfg.Mailpit.UIPassword,
 					"postgres://" + config.URLUserInfo(cfg.Postgres.User, cfg.Postgres.Password) + "@postgres:5432/nself",
 					key,

@@ -77,6 +77,10 @@ func officialInstalledNames(pluginDir string, installed []string) []string {
 		if plugin.IsThirdPartyInstallSource(n) {
 			continue
 		}
+		// A path-shaped name is not an installed plugin; never stat or read outside pluginDir (P7-PLUG-20).
+		if plugin.ValidateName(n) != nil {
+			continue
+		}
 		if _, err := os.Stat(filepath.Join(pluginDir, n)); err == nil {
 			names = append(names, n)
 		}

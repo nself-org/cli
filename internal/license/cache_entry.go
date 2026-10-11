@@ -119,49 +119,36 @@ func (c *CacheEntry) matchesSignedBody() bool {
 	return err == nil && claims.Sub == c.KeyHash
 }
 
-// cacheSignatureOK reports whether a cache entry may back a licence decision.
-// Every path that reads tier or plugins from the cache calls it, so no decision
-// rests on bytes that did not verify. The caller has already matched
-// entry.KeyHash to the requested key, and v1.5 verification binds KeyHash to
-// the licence JWT inside the signed body.
-func cacheSignatureOK(entry *CacheEntry) bool {
+// cacheTrust reports whether a cache entry may back a licence decision. Every
+// path that reads tier or plugins from the cache calls it, so no decision rests
+// on bytes that did not verify. The caller has already matched entry.KeyHash to
+// the requested key, and v1.5 verification binds KeyHash to the licence JWT
+// inside the signed body. A trusted decision raises the trusted-time mark.
+func cacheTrust(entry *CacheEntry) error {
 	// compat.V15(P7-PLUG-63): cache trusted without a signature check -> only a cache whose server-signed body verifies
-	if compat.V15() {
-		now := time.Now()
-		if !entry.VerifySignature() || !entry.clockTrusted(now) {
-			return false
-		}
-		noteTrustedTime(now)
+	if !compat.V15() {
+		return nil
 	}
-	return true
+	now := time.Now()
+	if err := entryTrustAt(entry, now); err != nil {
+		return err
+	}
+	noteTrustedTime(now)
+	return nil
 }
 
-// verifyLegacy is the v1.4 check, unchanged.
+// verifyLegacy is the v1.4 check: any active key verifies the legacy
+// signature. The stored key id is not consulted: v1.4 tried the matching key
+// first and then every key (rotation window), which is the same verdict.
 func (c *CacheEntry) verifyLegacy() bool {
-	keys := GetPublicKeys()
-	for _, pk := range keys {
-		if c.SignatureKeyID != 0 && pk.ID != c.SignatureKeyID {
-			continue
-		}
-		sigBytes, err := hex.DecodeString(c.Signature)
-		if err != nil {
-			continue
-		}
-		if ed25519.Verify(pk.Key, c.signablePayload(), sigBytes) {
-			return true
-		}
+	sigBytes, err := hex.DecodeString(c.Signature)
+	if err != nil {
+		return false
 	}
-	// If keyID was specified and didn't match, try all keys (rotation window).
-	if c.SignatureKeyID != 0 {
-		sigBytes, err := hex.DecodeString(c.Signature)
-		if err != nil {
-			return false
-		}
-		payload := c.signablePayload()
-		for _, pk := range keys {
-			if ed25519.Verify(pk.Key, payload, sigBytes) {
-				return true
-			}
+	payload := c.signablePayload()
+	for _, pk := range GetPublicKeys() {
+		if ed25519.Verify(pk.Key, payload, sigBytes) {
+			return true
 		}
 	}
 	return false
@@ -203,6 +190,9 @@ func verifyResponseSig(rawBody []byte, sigHex string) error {
 // claim a validity window of at most 24 h (ping's licence JWT TTL).
 const replySkewSec = 300
 
+// replyMaxWindowSec is the longest a signed reply is trusted after its issued-at.
+const replyMaxWindowSec int64 = 86400 // 24 h
+
 // replyBoundToKey is the v1.5 check on a verified /license/validate reply: its
 // signed bytes must name the requesting licence and be inside their validity
 // window. The licence JWT inside the signed body is the only such field ping
@@ -220,7 +210,10 @@ func replyBoundToKey(resp *ValidateResponse, key string, now time.Time) error {
 	if claims.Sub != HashKey(key) {
 		return fmt.Errorf("signed reply is for a different licence key")
 	}
-	if claims.Iat > now.Unix()+replySkewSec || claims.Exp <= now.Unix() {
+	// Trust ends at exp or iat + 24 h, whichever is first: a jwt with a far exp
+	// must not keep a replayed reply fresh (ping issues 24 h tokens today).
+	end := min(claims.Exp, claims.Iat+replyMaxWindowSec)
+	if claims.Iat > now.Unix()+replySkewSec || end <= now.Unix() {
 		return fmt.Errorf("signed reply is outside its validity window (replayed or clock skew)")
 	}
 	return nil
@@ -254,7 +247,7 @@ func bundleReplyBound(r *bundleValidateResponse, key, bundle string, now time.Ti
 	if r.KeyHash != HashKey(key) {
 		return fmt.Errorf("signed reply does not name this licence key (key_hash)")
 	}
-	if r.IssuedAt <= 0 || r.ExpiresAt <= r.IssuedAt || r.ExpiresAt-r.IssuedAt > int64(24*time.Hour/time.Second) {
+	if r.IssuedAt <= 0 || r.ExpiresAt <= r.IssuedAt || r.ExpiresAt-r.IssuedAt > replyMaxWindowSec {
 		return fmt.Errorf("signed reply carries no usable issued_at/expires_at window")
 	}
 	if r.IssuedAt > now.Unix()+replySkewSec || r.ExpiresAt <= now.Unix() {
@@ -284,9 +277,7 @@ func (c *CacheEntry) AgeAt(now time.Time) time.Duration {
 	// compat.V15(P7-PLUG-63): cache age from the unsigned fetched_at -> the older of fetched_at and the signed jwt iat
 	if compat.V15() {
 		if iat, ok := c.signedIssuedAt(); ok {
-			if signed := now.Sub(time.Unix(iat, 0)); signed > age {
-				age = signed
-			}
+			age = max(age, now.Sub(time.Unix(iat, 0)))
 		}
 	}
 	return age

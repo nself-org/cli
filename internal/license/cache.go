@@ -278,11 +278,11 @@ func cacheWithinTerm(entry *CacheEntry, now time.Time) bool {
 	return true
 }
 
-// graceStateFor is DetermineGraceState with the offline ceiling also applied
-// after expiry: before expiry a cache older than GraceHardThreshold is
+// graceStateFor is DetermineGraceState at now with the offline ceiling also
+// applied after expiry: before expiry a cache older than GraceHardThreshold is
 // read-only, and from v1.5 so is one inside the post-expiry grace.
-func graceStateFor(entry *CacheEntry) GraceCheckResult {
-	g := DetermineGraceState(entry)
+func graceStateFor(entry *CacheEntry, now time.Time) GraceCheckResult {
+	g := graceStateAt(entry, now)
 	// compat.V15(P7-PLUG-63): post-expiry grace ignores cache age -> post-expiry write access also needs a cache younger than the 7-day offline ceiling
 	if compat.V15() && g.State == GracePostExpiry && g.CacheAge >= GraceHardThreshold {
 		g.WriteAllowed = false

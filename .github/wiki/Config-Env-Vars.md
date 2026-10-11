@@ -67,6 +67,13 @@ nself env explain VAR         # which file wins for VAR (redacted; add --reveal 
 
 **Escape hatch:** `NSELF_LEGACY_ENV_ORDER=1` restores the pre-CLI-R18 order (`.env.dev → .env.{staging|prod} → .env.secrets → .env.local → .env → .env.ai`) for exactly one minor version, printing a warning naming the variable and removal version on every use. This exists only to unblock a project mid-migration — run `nself migrate` to move off it permanently. See [[cmd-migrate]] for exactly what the migration shim auto-fixes versus flags for manual review.
 
+**Values with special characters:** in your own `.env*` files, single-quote any value that holds `$`, `#` or spaces (a bcrypt `ADMIN_PASSWORD_HASH='$2a$10$...'` is the common case). An unquoted `$name` is expanded when the cascade loads, and an unquoted ` #` starts a comment. `nself build` writes the resolved values to `.nself/compose.env` (0600), the `--env-file` every CLI `docker compose` call passes. Docker compose reads each value back byte for byte because the build quotes it:
+- Values with whitespace, `#`, `$`, quotes or a backtick are single-quoted.
+- Values that also hold `'` or `\` are double-quoted instead.
+- Plain values and backslash-only values stay unquoted.
+
+Use docker compose 2.20 or newer: 2.17 and older reject the whole file when a quoted value ends in a backslash.
+
 ---
 
 ## Core Project Settings

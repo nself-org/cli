@@ -30,6 +30,11 @@ import (
 
 func runPluginRemove(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	// Validate before the dry-run plan, the bundle ledger lookup and the removal so all three
+	// see one canonical name (P7-PLUG-20): `./py` must not miss the ledger yet delete `py`.
+	if err := plugin.ValidateName(name); err != nil {
+		return err
+	}
 	keepData, _ := cmd.Flags().GetBool("keep-data")
 	force, _ := cmd.Flags().GetBool("force")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -117,6 +122,9 @@ func runPluginUpdate(cmd *cobra.Command, args []string) error {
 
 	if len(args) == 1 {
 		name := args[0]
+		if err := plugin.ValidateName(name); err != nil {
+			return err
+		}
 		fmt.Fprintf(os.Stderr, "Updating plugin %q...\n", name)
 		if err := plugin.Update(ctx, cfg, name, pluginDir); err != nil {
 			return fmt.Errorf("updating plugin %q: %w", name, err)
@@ -234,6 +242,9 @@ func runPluginRefresh(cmd *cobra.Command, args []string) error {
 
 func runPluginStart(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	if err := plugin.ValidateName(name); err != nil {
+		return err
+	}
 	pluginDir := resolvePluginDir()
 	ctx := context.Background()
 

@@ -31,9 +31,9 @@ func TestComposeServiceSpecs(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []ServiceSpec{
-		{Name: "db", HasHealthcheck: true, Restart: "unless-stopped"},
-		{Name: "dbg", HasHealthcheck: true, Restart: "no"},
-		{Name: "echo", HasHealthcheck: true},
+		{Name: "db", HasHealthcheck: true, Restart: "unless-stopped", HealthTimeout: 105 * time.Second},
+		{Name: "dbg", HasHealthcheck: true, Restart: "no", HealthTimeout: 180 * time.Second},
+		{Name: "echo", HasHealthcheck: true, HealthTimeout: 180 * time.Second},
 		{Name: "init", Restart: "no"},
 		{Name: "none"},
 		{Name: "off"},
@@ -365,7 +365,7 @@ func TestComposeServiceStatesArgv(t *testing.T) {
 		t.Fatalf("states = %+v, err = %v", cs, err)
 	}
 	b, _ := os.ReadFile(log)
-	want := "compose -f /m/base.yml --env-file /m/compose.env ps -a --format json init"
+	want := "compose -f /m/base.yml --env-file /m/compose.env ps -a --format json -- init"
 	if strings.TrimSpace(string(b)) != want {
 		t.Errorf("argv = %q, want %q", strings.TrimSpace(string(b)), want)
 	}

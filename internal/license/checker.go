@@ -150,8 +150,8 @@ func bundleEntitledFromCache(key, bundleName string) (bool, error) {
 	if entry.KeyHash != HashKey(key) {
 		return false, fmt.Errorf("cached license does not match current key (bundle=%q)", bundleName)
 	}
-	if !cacheSignatureOK(entry) {
-		return false, fmt.Errorf("cached license is not signed by ping (unsigned, altered or for another key); connect to validate (bundle=%q)", bundleName)
+	if err := cacheTrust(entry); err != nil {
+		return false, fmt.Errorf("%w; connect to validate (bundle=%q)", err, bundleName)
 	}
 
 	if !cacheWithinTerm(entry, time.Now()) {
@@ -202,8 +202,8 @@ func bundleEntitledFromGrace(key, bundleName string) (bool, error) {
 	if entry.KeyHash != HashKey(key) {
 		return false, fmt.Errorf("license server unreachable and cached license does not match current key (bundle=%q)", bundleName)
 	}
-	if !cacheSignatureOK(entry) {
-		return false, fmt.Errorf("license server unreachable and the cached license is not signed by ping (unsigned, altered or for another key) (bundle=%q)", bundleName)
+	if err := cacheTrust(entry); err != nil {
+		return false, fmt.Errorf("license server unreachable and %w (bundle=%q)", err, bundleName)
 	}
 
 	// Revocation is never overridden by grace, regardless of cache freshness.
@@ -211,7 +211,7 @@ func bundleEntitledFromGrace(key, bundleName string) (bool, error) {
 		return false, fmt.Errorf("license has been revoked (bundle=%q); contact support if this is unexpected", bundleName)
 	}
 
-	grace := graceStateFor(entry)
+	grace := graceStateFor(entry, time.Now())
 	if !grace.CanProceed || !grace.WriteAllowed {
 		return false, fmt.Errorf(
 			"license server unreachable (bundle=%q) and the offline grace period has expired: %s",
@@ -252,10 +252,7 @@ func cacheCoversBundle(entry *CacheEntry, bundleName string) bool {
 // entitlement, and when the offline grace period runs out. Every grant made
 // on the grace path must be announced — never silent.
 func emitGraceWarning(bundleName string, grace GraceCheckResult) {
-	remaining := GraceHardThreshold - grace.CacheAge
-	if remaining < 0 {
-		remaining = 0
-	}
+	remaining := max(GraceHardThreshold-grace.CacheAge, 0)
 	fmt.Fprintf(os.Stderr,
 		"warning: license server unreachable; continuing bundle %q install on cached entitlement (last validated %s ago). Offline grace period expires in %s.\n",
 		bundleName, formatDuration(grace.CacheAge), formatDuration(remaining),

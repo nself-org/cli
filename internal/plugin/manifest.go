@@ -206,6 +206,11 @@ func validateManifest(m *PluginManifest) error {
 	if !namePattern.MatchString(m.Name) {
 		return fmt.Errorf("plugin name must be lowercase with hyphens only: %w", errs.ErrPluginManifest)
 	}
+	// The same rules every lifecycle command applies (length cap, reserved names), so
+	// a manifest cannot name a plugin that install accepts and remove then refuses.
+	if err := ValidateName(m.Name); err != nil {
+		return fmt.Errorf("%v: %w", err, errs.ErrPluginManifest)
+	}
 
 	if !versionPattern.MatchString(m.Version) {
 		return fmt.Errorf("version must be semver format (X.Y.Z, optional pre-release -suffix and build +suffix): %w", errs.ErrPluginManifest)
@@ -244,6 +249,16 @@ func validateManifest(m *PluginManifest) error {
 		}
 		if m.Deprecation.MigrationGuide == "" {
 			return fmt.Errorf("deprecation.migrationGuide is required: %w", errs.ErrPluginManifest)
+		}
+	}
+
+	// A published binary name is one plain file name (P7-PLUG-20): it is joined to the
+	// plugin bin directory on publish and unlink. Only a declared cli plugin is refused
+	// here: a service plugin with multi-word cliCommands (retro-gaming's "roms list")
+	// must still parse, and linkCLIBinary/unlinkCLIBinary validate every name anyway.
+	if m.PluginType == "cli" {
+		if err := validateCLIBinaries(m.Name, m); err != nil {
+			return fmt.Errorf("%v: %w", err, errs.ErrPluginManifest)
 		}
 	}
 

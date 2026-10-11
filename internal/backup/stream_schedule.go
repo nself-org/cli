@@ -5,7 +5,7 @@ package backup
 // Purpose: translate a cron expression into a systemd timer unit and drive ScheduleStream, split out of stream.go for file size.
 // Inputs: a cron expression and the StreamConfig to run on each tick.
 // Outputs: an installed systemd timer, or an error if the cron expression cannot be represented.
-// Constraints: pure move from stream.go (CLI-R12 Batch E); no behaviour change.
+// Constraints: the generated unit must run the project it was made in, with the env selector it was made with; refuse rather than guess (D-0245, D-0277). Project and selector checks live in stream_schedule_project.go.
 
 import (
 	"fmt"
@@ -74,10 +74,17 @@ func ScheduleStream(cfg *config.Config, opts ScheduleOptions) error {
 			return fmt.Errorf("resolve --env-file: %w", err)
 		}
 	}
+	// The ENV selector the nightly run needs: the one that picked the cascade
+	// when this schedule was made (see scheduleEnvSelector). It is written into
+	// the unit as a bare word, so it is checked before anything is rendered.
+	envSelector := scheduleEnvSelector(projectDir)
+	if err := checkScheduleEnv(envSelector); err != nil {
+		return err
+	}
 	// A line break would add a unit directive; checked before % is doubled.
 	rawEnvFile := envFile
 	envFile = strings.ReplaceAll(envFile, "%", "%%")
-	for _, v := range append([]string{to, opts.HeartbeatTo, rawEnvFile}, opts.Recipients...) {
+	for _, v := range append([]string{opts.Cron, to, opts.HeartbeatTo, rawEnvFile, projectDir, binaryPath}, opts.Recipients...) {
 		if strings.ContainsAny(v, "\n\r") {
 			return fmt.Errorf("a schedule value contains a line break")
 		}
@@ -105,6 +112,10 @@ func ScheduleStream(cfg *config.Config, opts ScheduleOptions) error {
 		// renderService always emits an EnvironmentFile line; with no env file
 		// requested the bare "EnvironmentFile=-" must not appear at all.
 		service = strings.Replace(service, "EnvironmentFile=-\n", "", 1)
+	}
+	service, err = addScheduleEnvLine(service, envSelector)
+	if err != nil {
+		return err
 	}
 	timer := renderTimer(timerSpec{
 		Description: "nSelf streaming backup: " + opts.Cron,
@@ -172,9 +183,10 @@ func scheduleBinaryPath(override string) (string, error) {
 // scheduleProjectDir returns the absolute project directory: the override, or
 // the current directory (what loadProjectConfig and every other command use).
 //
-// A resolved current directory must look like an nSelf project (.env or
-// nself.yaml): a unit that runs in /tmp would fail every night. An explicit
-// override (tests) is trusted.
+// A resolved current directory must look like an nSelf project: a .env file
+// AND an nSelf marker (see looksLikeProject). A bare .env is not enough, many
+// non-nSelf directories have one, and a unit that runs in the wrong directory
+// would fail every night. An explicit override (tests) is trusted.
 func scheduleProjectDir(override string) (string, error) {
 	d := override
 	if d == "" {
@@ -189,19 +201,9 @@ func scheduleProjectDir(override string) (string, error) {
 		return "", fmt.Errorf("resolve project directory %s: %w", d, err)
 	}
 	if override == "" && !looksLikeProject(abs) {
-		return "", fmt.Errorf("%s does not look like an nSelf project (no .env or nself.yaml): run `backup schedule` from the project directory", abs)
+		return "", fmt.Errorf("%s does not look like an nSelf project (it needs a .env file plus nself.yaml, nself.yml or a docker-compose.yml written by `nself build`): run `backup schedule` from the project directory", abs)
 	}
 	return abs, nil
-}
-
-// looksLikeProject reports whether dir holds a project marker.
-func looksLikeProject(dir string) bool {
-	for _, m := range []string{".env", "nself.yaml", "nself.yml"} {
-		if _, err := os.Stat(filepath.Join(dir, m)); err == nil {
-			return true
-		}
-	}
-	return false
 }
 
 // systemdExecLine joins argv into one ExecStart value. An argument with
