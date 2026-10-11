@@ -13,8 +13,9 @@
 #          covers the same ground in depth; this script is the fast, no-Go-test smoke.
 # Usage:   bash scripts/ci/live-safety-smoke.sh [path-to-nself-binary]
 # Inputs:  optional binary (built with go into a temp dir when absent); python3 on
-#          PATH. Docker is used only by acceptance 1 (container impact, and the
-#          plan-after-apply check of 3); without it those lines print SKIP.
+#          PATH. Docker is used only by acceptance 1 (the prod fixture, container
+#          impact, plan-after-apply) and the plan-after-apply check of 3; without
+#          it those lines print SKIP.
 # Outputs: one line per assertion, "PASS <name>", "FAIL <name>" or
 #          "SKIP <name> (<reason>)"; the last line is "LIVE-SAFETY-SMOKE: PASS" or
 #          "LIVE-SAFETY-SMOKE: FAIL". Exit 1 when any assertion FAILed (all lines
@@ -78,7 +79,10 @@ case "$BIN" in /*) ;; *) BIN="$ROOT/$BIN" ;; esac
 [ -x "$BIN" ] || { fail "binary $BIN is not executable"; finish; }
 
 HAVE_DOCKER=0
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then HAVE_DOCKER=1; fi
+NO_DOCKER_WHY="docker not on PATH"
+if command -v docker >/dev/null 2>&1; then
+  if docker info >/dev/null 2>&1; then HAVE_DOCKER=1; else NO_DOCKER_WHY="docker daemon unreachable"; fi
+fi
 
 # ---- helpers ----------------------------------------------------------------
 # mkproj <name> <fixture>: a project with HOME and the plugin dir beside it
@@ -136,21 +140,23 @@ jget() {
 }
 
 # ---- acceptance 1: prod class (live-safety-fixture.sh on this binary) --------------
-if bash "$ROOT/scripts/ci/live-safety-fixture.sh" "$BIN" > "$WORK/fx.out" 2> "$WORK/fx.err"; then FXRC=0; else FXRC=$?; fi
-while IFS= read -r line; do
-  case "$line" in "ok "*) pass "acc1 ${line#ok }" ;; esac
-done < "$WORK/fx.out"
-if [ "$FXRC" -ne 0 ]; then
-  fail "acc1 live-safety-fixture.sh exited $FXRC" "$(grep -m1 '^FAIL' "$WORK/fx.err" || tail -n 2 "$WORK/fx.err" | tr '\n' ' ')"
-elif grep -qx 'LIVE-SAFETY-FIXTURE: PASS' "$WORK/fx.out"; then
-  pass "acc1 live-safety-fixture.sh completed"
-else
-  fail "acc1 live-safety-fixture.sh printed no PASS line"
-fi
+# The fixture asserts "the plan after an apply is empty", which holds only when
+# Docker reports the container state (an unknown state is never an empty plan),
+# so without Docker it is skipped; the direct checks below still run.
 if [ "$HAVE_DOCKER" = 0 ]; then
-  skip "acc1 plan starts, stops and creates no container" "docker not on PATH"
-  skip "acc1 container impact: stale config hash plans recreate" "docker not on PATH"
+  skip "acc1 live-safety-fixture.sh (the full prod fixture)" "$NO_DOCKER_WHY"
 else
+  if bash "$ROOT/scripts/ci/live-safety-fixture.sh" "$BIN" > "$WORK/fx.out" 2> "$WORK/fx.err"; then FXRC=0; else FXRC=$?; fi
+  while IFS= read -r line; do
+    case "$line" in "ok "*) pass "acc1 ${line#ok }" ;; esac
+  done < "$WORK/fx.out"
+  if [ "$FXRC" -ne 0 ]; then
+    fail "acc1 live-safety-fixture.sh exited $FXRC" "$(grep -m1 '^FAIL' "$WORK/fx.err" || tail -n 2 "$WORK/fx.err" | tr '\n' ' ')"
+  elif grep -qx 'LIVE-SAFETY-FIXTURE: PASS' "$WORK/fx.out"; then
+    pass "acc1 live-safety-fixture.sh completed"
+  else
+    fail "acc1 live-safety-fixture.sh printed no PASS line"
+  fi
   grep -qx 'ok plan starts, stops and creates no container' "$WORK/fx.out" \
     || fail "acc1 plan starts, stops and creates no container: the fixture did not assert it"
   grep -qx 'ok container impact: stale config hash plans recreate' "$WORK/fx.out" \
@@ -188,7 +194,7 @@ if [ "$HAVE_DOCKER" = 1 ]; then
   run_nself p1 1 build --plan --json
   check "acc1 the plan after --yes is empty" test "$(jget 'd["empty"]')" = True
 else
-  skip "acc1 the plan after --yes is empty" "docker not on PATH: container state unknown, so a plan is never empty"
+  skip "acc1 the plan after --yes is empty" "$NO_DOCKER_WHY: container state unknown, so a plan is never empty"
 fi
 
 # ---- acceptance 2: hand-edited marked conf, v1.5 ----------------------------------
@@ -236,7 +242,7 @@ if [ "$HAVE_DOCKER" = 1 ]; then
   run_nself c 1 build --plan --json
   check "acc3 the plan afterwards is empty" test "$(jget 'd["empty"]')" = True
 else
-  skip "acc3 the plan afterwards is empty" "docker not on PATH: container state unknown, so a plan is never empty"
+  skip "acc3 the plan afterwards is empty" "$NO_DOCKER_WHY: container state unknown, so a plan is never empty"
 fi
 
 # ---- acceptance 4: doctor drift and --fix ----------------------------------------
