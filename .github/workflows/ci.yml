@@ -63,6 +63,29 @@ jobs:
           version: v2.13.2
           args: --timeout=10m
 
+  vendor-sync:
+    # D-0482: go.mod replaces the sdk module with ./sdk/go and every build uses
+    # -mod=vendor, so an sdk/go change that is not re-vendored passes its own
+    # tests while the cli binary keeps the stale copy. The _test.sh run is the
+    # positive control: it proves the check fails on planted drift.
+    name: vendor/ matches go mod vendor
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Vendor check controls
+        run: bash scripts/ci/vendor-sync-check_test.sh
+
+      - name: Vendor sync check
+        run: bash scripts/ci/vendor-sync-check.sh
+
   ci:
     name: Vet, Build & Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -96,6 +119,10 @@ jobs:
       # install during CI's unit-test run. Same guard already used by
       # e2e-golden-path.yml and rls-pentest-smoke.yml for the same reason.
       AI_AUTO_INSTALL: 'false'
+      # D-0413: the P7-SURF-12 config secrets leak gate
+      # (TestConfigSecretsStoreHoldsNoSecret) fails instead of skipping when
+      # age is missing. The step below installs it on every leg.
+      NSELF_REQUIRE_AGE: '1'
 
     steps:
       - name: Checkout
@@ -105,6 +132,21 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      # One pinned release on all five legs through the Go toolchain the job
+      # already has: Windows has neither apt nor brew, and apt and brew ship
+      # different age versions.
+      - name: Install age and age-keygen
+        shell: bash
+        run: |
+          go install filippo.io/age/cmd/age@v1.3.2 filippo.io/age/cmd/age-keygen@v1.3.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Check age is on PATH
+        shell: bash
+        run: |
+          age --version
+          age-keygen --version
 
       - name: Cache Go modules
         uses: actions/cache@v6
