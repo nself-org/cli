@@ -41,7 +41,7 @@ The installed `traefik` plugin selects the proxy provider. It must be enabled an
 
 The build checks the directory's resolved path, including symlinks. E480 refuses traefik in a shared directory such as `~/.nself/plugins`, or in the project root itself. A shared install would switch every project using that directory on its next build. Reinstall in a project subdirectory, or run `nself remove traefik` from the shared directory.
 
-E480 also refuses a missing Traefik compose fragment at the raw plugin directory used by compose discovery. The error names both the discovery path and the resolved installation path. Set an absolute `NSELF_PLUGIN_DIR` so builds from another working directory find the same plugin.
+Before writing generated files, E480 also refuses a symlinked `traefik` entry or a missing Traefik compose fragment. Compose discovery loads real plugin directories only. Install the plugin as a real directory inside this project. Relative `NSELF_PLUGIN_DIR` paths resolve against the process working directory, including when it differs from the project directory. A leading `~/` is a literal directory name, not a home-directory expansion. Set an absolute `NSELF_PLUGIN_DIR` so builds from another working directory find the same plugin.
 
 Fronted mode is nginx-only. E482 refuses traefik when `NGINX_FRONTED_BY` is set. Keep nginx in this project and change the provider in the fronting project, or unset `NGINX_FRONTED_BY`.
 

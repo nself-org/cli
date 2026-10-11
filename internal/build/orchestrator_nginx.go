@@ -42,7 +42,8 @@ func (st *buildState) modelRoutes(hasSSL bool) (*routemodel.Model, error) {
 
 // checkProxyProvider refuses a partial route set before any generation writes.
 func (st *buildState) checkProxyProvider(m *routemodel.Model) error {
-	provider, err := ProxyProvider(st.cfg, st.workdir, DefaultPluginDir())
+	pluginDir := DefaultPluginDir()
+	provider, err := ProxyProvider(st.cfg, st.workdir, pluginDir)
 	if err != nil {
 		return err
 	}

@@ -33,7 +33,13 @@ func ProxyProvider(cfg *config.Config, workdir, pluginDir string) (string, error
 	if err != nil {
 		return "", err
 	}
-	dir, err := proxyRealPath(pluginDir, project)
+	// Compose discovery uses filesystem paths relative to the process cwd and
+	// does not expand ~/. Treat a literal tilde directory exactly as it does.
+	absDir, err := filepath.Abs(pluginDir)
+	if err != nil {
+		return "", err
+	}
+	dir, err := proxyRealPath(absDir, project)
 	if os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) {
 		return ProviderNginx, nil
 	}
@@ -54,18 +60,48 @@ func ProxyProvider(cfg *config.Config, workdir, pluginDir string) (string, error
 			WithWhy("One install there would flip every project using that directory at its next build (EPIC D3).").
 			WithFix("Set NSELF_PLUGIN_DIR (PLUGIN_DIR) in this project's .env to " + filepath.Join(project, ".nself", "plugins") + " and reinstall, or run nself remove traefik from the shared directory.")
 	}
+	if err := proxyComposeDiscoverable(pluginDir); err != nil {
+		return "", err
+	}
 	return ProviderTraefik, nil
+}
+
+// proxyComposeDiscoverable mirrors discoverPluginComposeFilesFx in plugins.go:
+// ReadDir entry.IsDir (false for symlinks), disabled marker, then compose stat.
+// Run this during provider preflight, before any generated project file writes.
+func proxyComposeDiscoverable(pluginDir string) error {
+	entries, err := os.ReadDir(pluginDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.Name() != "traefik" {
+			continue
+		}
+		path := filepath.Join(pluginDir, entry.Name())
+		if !entry.IsDir() {
+			return errs.New("E480", "traefik entry "+path+" is not loaded by compose discovery").
+				WithWhy("Symlinked plugin entries are not loaded.").
+				WithFix("Install the plugin as a real directory inside this project.")
+		}
+		if _, err := os.Stat(filepath.Join(path, ".disabled")); err == nil {
+			break
+		}
+		composePath, err := filepath.Abs(filepath.Join(path, pluginComposeFilename))
+		if err == nil {
+			if _, err = os.Stat(composePath); err == nil {
+				return nil
+			}
+		}
+		break
+	}
+	return errs.New("E480", "traefik compose fragment is not loaded at "+filepath.Join(pluginDir, "traefik", pluginComposeFilename)).
+		WithWhy("Provider lookup and compose discovery must find the same project-local plugin.").
+		WithFix("Install traefik with its compose fragment in a real directory inside this project; use an absolute NSELF_PLUGIN_DIR for builds from another working directory.")
 }
 
 // proxyRealPath follows existing ancestors even when the final directory is absent.
 func proxyRealPath(path, workdir string) (string, error) {
-	if strings.HasPrefix(path, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		path = filepath.Join(home, path[2:])
-	}
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(workdir, path)
 	}

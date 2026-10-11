@@ -44,7 +44,14 @@ func proxyHashes(t *testing.T, dir string) map[string][32]byte {
 		if i.IsDir() {
 			return nil
 		}
-		b, e := os.ReadFile(p)
+		var b []byte
+		if i.Mode()&os.ModeSymlink != 0 {
+			var target string
+			target, e = os.Readlink(p)
+			b = []byte(target)
+		} else {
+			b, e = os.ReadFile(p)
+		}
 		if e != nil {
 			return e
 		}
@@ -102,6 +109,9 @@ func TestProxyProviderInstalled(t *testing.T) {
 		{"disabled", f.plugins, true, true, ProviderNginx},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "relative" {
+				t.Chdir(f.workdir)
+			}
 			if tc.install {
 				installProxy(t, f.plugins)
 			}
@@ -171,17 +181,52 @@ func TestProxyProviderInstalled(t *testing.T) {
 }
 
 func TestProxyProviderSharedDirRefused(t *testing.T) {
-	t.Run("relative discovery outside workdir", func(t *testing.T) {
+	t.Run("relative directory uses cwd instead of workdir", func(t *testing.T) {
 		f := proxyFixture(t)
 		installProxy(t, f.plugins)
 		t.Chdir(f.root)
-		t.Setenv("NSELF_PLUGIN_DIR", ".nself/plugins")
-		st := &buildState{cfg: &config.Config{}, workdir: f.workdir}
-		err := st.applyProxyProvider(compose.NewGenerator(st.cfg))
-		for _, want := range []string{"E480", ".nself/plugins/traefik/docker-compose.plugin.yml", filepath.Join(f.plugins, "traefik", pluginComposeFilename), "absolute NSELF_PLUGIN_DIR"} {
-			if err == nil || !strings.Contains(err.Error(), want) {
-				t.Fatalf("missing %q: %v", want, err)
-			}
+		if provider, err := ProxyProvider(nil, f.workdir, ".nself/plugins"); err != nil || provider != ProviderNginx {
+			t.Fatalf("absent cwd plugin: provider=%s error=%v", provider, err)
+		}
+		relative, err := filepath.Rel(f.root, f.plugins)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if provider, err := ProxyProvider(nil, f.workdir, relative); err != nil || provider != ProviderTraefik {
+			t.Fatalf("cwd-relative project plugin: provider=%s error=%v", provider, err)
+		}
+		outside := filepath.Join(f.root, ".nself", "plugins")
+		installProxy(t, outside)
+		if _, err := ProxyProvider(nil, f.workdir, ".nself/plugins"); err == nil || !strings.Contains(err.Error(), "E480") || !strings.Contains(err.Error(), outside) {
+			t.Fatalf("cwd-relative shared plugin: %v", err)
+		}
+	})
+	t.Run("symlinked traefik entry refused before writes", func(t *testing.T) {
+		f := proxyFixture(t)
+		if _, err := Build(f.workdir, BuildOptions{Force: true}); err != nil {
+			t.Fatal(err)
+		}
+		realPlugins := filepath.Join(f.workdir, "real-plugins")
+		installProxy(t, realPlugins)
+		if err := os.MkdirAll(f.plugins, 0755); err != nil {
+			t.Fatal(err)
+		}
+		entry := filepath.Join(f.plugins, "traefik")
+		if err := os.Symlink(filepath.Join(realPlugins, "traefik"), entry); err != nil {
+			t.Fatal(err)
+		}
+		proxyRefusedBuild(t, f, "E480", entry, "Symlinked plugin entries are not loaded", "real directory")
+	})
+	t.Run("tilde is a literal cwd path", func(t *testing.T) {
+		f := proxyFixture(t)
+		installProxy(t, filepath.Join(f.home, ".nself", "plugins"))
+		t.Chdir(f.workdir)
+		if provider, err := ProxyProvider(nil, f.workdir, "~/.nself/plugins"); err != nil || provider != ProviderNginx {
+			t.Fatalf("home must not be expanded: provider=%s error=%v", provider, err)
+		}
+		installProxy(t, filepath.Join(f.workdir, "~", ".nself", "plugins"))
+		if provider, err := ProxyProvider(nil, f.workdir, "~/.nself/plugins"); err != nil || provider != ProviderTraefik {
+			t.Fatalf("literal cwd plugin: provider=%s error=%v", provider, err)
 		}
 	})
 	f := proxyFixture(t)
@@ -192,7 +237,7 @@ func TestProxyProviderSharedDirRefused(t *testing.T) {
 	installProxy(t, shared)
 	t.Setenv("NSELF_PLUGIN_DIR", "")
 	proxyRefusedBuild(t, f, "E480", "NSELF_PLUGIN_DIR", shared)
-	for _, path := range []string{shared, "~/.nself/plugins", f.workdir} {
+	for _, path := range []string{shared, f.workdir} {
 		if path == f.workdir {
 			installProxy(t, path)
 		}

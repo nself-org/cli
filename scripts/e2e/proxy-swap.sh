@@ -2,6 +2,8 @@
 # Linux request parity and refusal proof for ADR 0027 / EPIC DEPL D3-D6.
 set -euo pipefail
 export LC_ALL=C
+# Keep every install/telemetry path away from the live ping service.
+export NSELF_PING_URL=http://127.0.0.1:9
 case ${1:-} in
   --round-trip) echo 'round-trip leg is P7-DEPL-04' >&2; exit 2 ;;
   --add) [[ $# == 1 ]] || exit 2 ;;
@@ -46,6 +48,11 @@ compose() {
   fi
   "${args[@]}" "$@"
 }
+redact_logs() {
+  python3 -c 'import re, sys
+for line in sys.stdin:
+    sys.stdout.write(re.sub(r"(PASSWORD|SECRET|TOKEN|KEY)[A-Z_]*=\S+", "<redacted>", line))'
+}
 swap_diagnostics() (
   # Best-effort evidence must neither interrupt cleanup nor replace its exit status.
   set +e
@@ -63,12 +70,12 @@ PY
     fi
     docker ps -a --filter "label=com.docker.compose.project=$project" >"$W/evidence/swap-docker-ps-$(basename "$dir").txt" 2>&1
     compose "$dir" ps -a --format json >"$W/evidence/swap-compose-ps-$(basename "$dir").json" 2>"$W/evidence/swap-compose-ps-$(basename "$dir").stderr"
-    for service in traefik traefik-config traefik-acme; do
+    for service in traefik traefik-config traefik-acme nginx; do
       ids=$(docker ps -aq --filter "label=com.docker.compose.project=$project" --filter "label=com.docker.compose.service=$service")
       : >"$W/evidence/swap-$service-$(basename "$dir").log"
       for id in $ids; do
         printf 'container %s\n' "$id" >>"$W/evidence/swap-$service-$(basename "$dir").log"
-        docker logs --tail 200 "$id" >>"$W/evidence/swap-$service-$(basename "$dir").log" 2>&1
+        docker logs --tail 200 "$id" 2>&1 | redact_logs >>"$W/evidence/swap-$service-$(basename "$dir").log"
         if [[ $service == traefik ]]; then
           docker port "$id" >"$W/evidence/swap-traefik-ports-$(basename "$dir").txt" 2>&1
         fi
@@ -109,7 +116,7 @@ cleanup() {
     swap_diagnostics >"$W/evidence/swap-diagnostics.stdout" 2>"$W/evidence/swap-diagnostics.stderr" || true
   fi
   for dir in "$W/a" "$W/b"; do
-    [[ ! -f $dir/.nself/compose-files.txt ]] || compose "$dir" down -v --remove-orphans >"$W/evidence/cleanup-$(basename "$dir").log" 2>&1 || true
+    [[ ! -f $dir/.nself/compose-files.txt ]] || compose "$dir" down -v --remove-orphans 2>&1 | redact_logs >"$W/evidence/cleanup-$(basename "$dir").log" || true
   done
   [[ -z $registry_pid ]] || kill "$registry_pid" 2>/dev/null || true
   # Containers may own generated fixture files; restore only this mktemp tree.
@@ -229,7 +236,10 @@ wait_healthy() {
     fi
     sleep 1
   done
-  compose "$W/a" logs --tail 50 "$service" >&2
+  case $service in
+    traefik|traefik-config|traefik-acme|nginx)
+      compose "$W/a" logs --no-color --tail 50 "$service" 2>&1 | redact_logs >&2 ;;
+  esac
   echo "FAIL: $service did not become healthy" >&2; return 1
 }
 nself "$W/a" add echo --force --yes
@@ -360,7 +370,7 @@ probe_pid=$!
 NSELF_V15=1 nself "$W/a" add traefik --force --yes
 nself "$W/a" build --remove-orphans --yes
 if ! nself "$W/a" start --timeout 180; then
-  compose "$W/a" logs --no-color --tail 60 > "$W/evidence/swap-start-failed.log" 2>&1
+  compose "$W/a" logs --no-color --tail 60 traefik traefik-config traefik-acme nginx 2>&1 | redact_logs > "$W/evidence/swap-start-failed.log"
   compose "$W/a" ps -a --format json > "$W/evidence/swap-start-failed.ps.json"
   echo 'FAIL: proxy swap start failed; container diagnostics saved' >&2
   exit 1
