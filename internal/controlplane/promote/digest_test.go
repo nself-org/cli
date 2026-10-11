@@ -16,8 +16,11 @@ func TestPromoteDigestIdentity(t *testing.T) {
 	runner := func(_ context.Context, command string) ([]byte, error) {
 		switch {
 		case command == "docker compose images --format json":
-			return []byte(`[{"Service":"api","Repository":"example.invalid/app","Tag":"same"}]`), nil
+			return []byte(`[{"Service":"api","Repository":"example.invalid/app","Tag":"same","ID":"sha256:running"}]`), nil
 		case strings.HasPrefix(command, "docker image inspect"):
+			if !strings.HasSuffix(command, "sha256:running") {
+				return nil, fmt.Errorf("inspected mutable tag instead of image ID: %s", command)
+			}
 			return []byte(fmt.Sprintf(`["example.invalid/app@%s"]|linux/amd64`, index)), nil
 		default:
 			return nil, fmt.Errorf("unexpected command %s", command)
@@ -25,7 +28,7 @@ func TestPromoteDigestIdentity(t *testing.T) {
 	}
 	lookup := func(_ context.Context, ref string) (map[string]string, error) {
 		switch ref {
-		case index, "example.invalid/app:same":
+		case "example.invalid/app@" + index, "example.invalid/app:same":
 			return map[string]string{"linux/amd64": a, "linux/arm64": b}, nil
 		case "example.invalid/app:rebuilt":
 			return map[string]string{"linux/amd64": b}, nil

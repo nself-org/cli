@@ -62,7 +62,7 @@ func CaptureSource(ctx context.Context, run Runner, services []Image, lookup arc
 			ref += ":" + image.Tag
 		}
 		if image.Service != "" {
-			refs[image.Service] = ref
+			refs[image.Service] = ref + "\x00" + image.ID
 		}
 	}
 	var out []SourceImage
@@ -70,11 +70,15 @@ func CaptureSource(ctx context.Context, run Runner, services []Image, lookup arc
 		if service.Build {
 			continue
 		}
-		ref := refs[service.Service]
-		if ref == "" {
+		captured := refs[service.Service]
+		if captured == "" {
 			return nil, fmt.Errorf("source compose image missing service %s", service.Service)
 		}
-		identity, err := inspectSource(ctx, run, lookup, service.Service, ref)
+		ref, imageID, _ := strings.Cut(captured, "\x00")
+		if imageID == "" {
+			return nil, fmt.Errorf("source compose image missing id for service %s", service.Service)
+		}
+		identity, err := inspectSource(ctx, run, lookup, service.Service, ref, imageID)
 		if err != nil {
 			return nil, err
 		}
@@ -84,8 +88,8 @@ func CaptureSource(ctx context.Context, run Runner, services []Image, lookup arc
 	return out, nil
 }
 
-func inspectSource(ctx context.Context, run Runner, lookup archguard.Lookup, service, ref string) (SourceImage, error) {
-	command := "docker image inspect --format '{{json .RepoDigests}}|{{.Os}}/{{.Architecture}}' " + remotesdk.ShellQuote(ref)
+func inspectSource(ctx context.Context, run Runner, lookup archguard.Lookup, service, ref, imageID string) (SourceImage, error) {
+	command := "docker image inspect --format '{{json .RepoDigests}}|{{.Os}}/{{.Architecture}}' " + remotesdk.ShellQuote(imageID)
 	raw, err := run(ctx, command)
 	if err != nil {
 		return SourceImage{}, fmt.Errorf("inspect source service %s: %w", service, err)
@@ -94,12 +98,37 @@ func inspectSource(ctx context.Context, run Runner, lookup archguard.Lookup, ser
 	if err != nil {
 		return SourceImage{}, fmt.Errorf("inspect source service %s: %w", service, err)
 	}
-	if lookup != nil {
-		if platforms, lookupErr := lookup(ctx, digest); lookupErr == nil && platforms[platform] != "" {
-			digest = platforms[platform]
+	resolved, err := sourcePlatformDigest(ctx, ref, digest, platform, lookup)
+	if err != nil {
+		return SourceImage{}, fmt.Errorf("resolve source service %s platform: %w", service, err)
+	}
+	return SourceImage{Service: service, Ref: ref, Platform: platform, Digest: resolved}, nil
+}
+
+func sourcePlatformDigest(ctx context.Context, ref, inspected, platform string, lookup archguard.Lookup) (string, error) {
+	if err := compose.LockError(); err != nil {
+		return "", err
+	}
+	for _, locked := range compose.LockedImages() {
+		if ref == locked.String() || ref == locked.LegacyRef {
+			if digest := locked.Platforms[platform]; digest != "" {
+				return digest, nil
+			}
+			return "", fmt.Errorf("%s has no %s manifest", ref, platform)
 		}
 	}
-	return SourceImage{Service: service, Ref: ref, Platform: platform, Digest: digest}, nil
+	if lookup == nil {
+		return "", fmt.Errorf("registry lookup is required for unlocked image %s", ref)
+	}
+	manifestRef := imageRepository(ref) + "@" + inspected
+	platforms, err := lookup(ctx, manifestRef)
+	if err != nil {
+		return "", err
+	}
+	if platforms[platform] == "" {
+		return "", fmt.Errorf("%s has no %s manifest", manifestRef, platform)
+	}
+	return platforms[platform], nil
 }
 
 // CompareDigests proves that source and target resolve to equal platform manifests.

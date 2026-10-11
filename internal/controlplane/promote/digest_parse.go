@@ -1,0 +1,96 @@
+package promote
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"sort"
+	"strings"
+
+	"github.com/nself-org/cli/internal/errs"
+)
+
+func parseComposeImages(raw []byte) ([]composeImage, error) {
+	var images []composeImage
+	if err := json.Unmarshal(raw, &images); err == nil {
+		return images, nil
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(raw))
+	for scanner.Scan() {
+		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
+			continue
+		}
+		var image composeImage
+		if err := json.Unmarshal(scanner.Bytes(), &image); err != nil {
+			return nil, fmt.Errorf("parse docker compose images: %w", err)
+		}
+		images = append(images, image)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("parse docker compose images: %w", err)
+	}
+	return images, nil
+}
+
+func parseInspect(raw []byte, ref string) (string, string, error) {
+	parts := strings.Split(strings.TrimSpace(string(raw)), "|")
+	if len(parts) != 2 || parts[1] == "" {
+		return "", "", fmt.Errorf("unexpected image inspect output")
+	}
+	var repoDigests []string
+	if err := json.Unmarshal([]byte(parts[0]), &repoDigests); err != nil {
+		return "", "", fmt.Errorf("repo digests: %w", err)
+	}
+	if len(repoDigests) == 0 {
+		return "", "", fmt.Errorf("image %s has no repo digest", ref)
+	}
+	if !regexp.MustCompile(`^linux/(amd64|arm64)$`).MatchString(parts[1]) {
+		return "", "", fmt.Errorf("unsupported image platform %q", parts[1])
+	}
+	repository := imageRepository(ref)
+	for _, candidate := range repoDigests {
+		repo, digest, ok := strings.Cut(candidate, "@")
+		if ok && sameRepository(repo, repository) && regexp.MustCompile(`^sha256:[0-9a-f]{64}$`).MatchString(digest) {
+			return digest, parts[1], nil
+		}
+	}
+	return "", "", fmt.Errorf("image %s has no matching repo digest", ref)
+}
+
+func sameRepository(left, right string) bool {
+	normalize := func(value string) string {
+		value = strings.TrimPrefix(value, "docker.io/")
+		if !strings.Contains(value, "/") {
+			value = "library/" + value
+		}
+		return value
+	}
+	return normalize(left) == normalize(right)
+}
+
+func imageRepository(ref string) string {
+	if at := strings.IndexByte(ref, '@'); at >= 0 {
+		ref = ref[:at]
+	}
+	if colon := strings.LastIndexByte(ref, ':'); colon > strings.LastIndexByte(ref, '/') {
+		ref = ref[:colon]
+	}
+	return ref
+}
+
+func releaseDriftError(drift, unverifiable []string) error {
+	var details []string
+	if len(drift) > 0 {
+		details = append(details, "different services: "+strings.Join(drift, ", "))
+	}
+	if len(unverifiable) > 0 {
+		details = append(details, "unverifiable services: "+strings.Join(unverifiable, ", "))
+	}
+	return errs.New("E490", "release drift: "+strings.Join(details, "; "))
+}
+
+func sortRows(rows []DigestRow) {
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Service < rows[j].Service })
+}
