@@ -371,7 +371,9 @@ func TestUpdateKeepsInstalledTier(t *testing.T) {
 			`{"name":"cron","version":"1.1.2","description":"d","category":"c","license":"x","tier":"pro","tier_pair":true,"bundles":["claw"]}]}`))
 	}))
 	defer srv.Close()
-	t.Setenv("HOME", t.TempDir()) // registry cache lands here
+	home := t.TempDir()
+	t.Setenv("HOME", home)        // registry cache lands here
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
 	t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "")
@@ -412,7 +414,9 @@ func TestUpdateWithTierSwitchesOnPurpose(t *testing.T) {
 			`{"name":"cron","version":"1.1.2","description":"d","category":"c","license":"x","tier":"pro","tier_pair":true,"bundles":["claw"]}]}`))
 	}))
 	defer srv.Close()
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
 	t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "")
@@ -449,7 +453,9 @@ func installedPair(t *testing.T, installedWire string) string {
 			`{"name":"cron","version":"1.1.2","description":"d","category":"c","license":"x","tier":"pro","tier_pair":true,"bundles":["claw"]}]}`))
 	}))
 	t.Cleanup(srv.Close)
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	t.Setenv("NSELF_PLUGIN_REGISTRY", srv.URL)
 	t.Setenv("NSELF_PLUGIN_LICENSE_KEY", "")
 	t.Setenv("NSELF_PLUGIN_INSTALL_TIER", "")
