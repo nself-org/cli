@@ -19,12 +19,22 @@ import (
 	"time"
 )
 
-// TrackedTables parses an export_metadata response into the set of tracked
-// postgres tables, keyed "schema.name". It reads sources[].tables[].table and,
-// for older metadata, a top-level tables array. Only postgres-kind sources count
-// (kind "postgres", "citus", "cockroach", or no kind); a data-connector or
-// BigQuery source is ignored. A table entry counts only in the {schema,name}
-// object form (schema defaults to public); any other shape is skipped.
+// DefaultSource is the Hasura source nself tracks plugin tables on
+// (database.TrackPluginTables writes pg_track_table to it). Only tables tracked
+// on this source count as tracked.
+const DefaultSource = "default"
+
+// TrackedTables parses an export_metadata response into the set of tables
+// tracked on the default Hasura source, keyed "schema.name". It reads
+// sources[].tables[].table and, for older single-source metadata, a top-level
+// tables array (that is the default source). Only the source named
+// DefaultSource counts; a source with no name is taken as the default (hand
+// made metadata). A same-named table tracked only in another source is not
+// counted, because install tracks on the default source. That source must be
+// postgres-kind (kind "postgres", "citus", "cockroach", or no kind); a
+// data-connector or BigQuery source is ignored. A table entry counts only in the
+// {schema,name} object form (schema defaults to public); any other shape is
+// skipped.
 func TrackedTables(raw []byte) (map[string]bool, error) {
 	var doc metadataDoc
 	if err := json.Unmarshal(raw, &doc); err != nil {
@@ -50,6 +60,7 @@ type metadataDoc struct {
 }
 
 type sourceDoc struct {
+	Name   string       `json:"name"`
 	Kind   string       `json:"kind"`
 	Tables []tableEntry `json:"tables"`
 }
@@ -62,6 +73,9 @@ type tableEntry struct {
 
 func (d metadataDoc) collect(set map[string]bool) {
 	for _, s := range d.Sources {
+		if s.Name != "" && s.Name != DefaultSource {
+			continue // tracked on another source: install tracks on default
+		}
 		switch strings.ToLower(s.Kind) {
 		case "", "postgres", "citus", "cockroach":
 			addTables(set, s.Tables)

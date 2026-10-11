@@ -131,10 +131,10 @@ func (g *Generator) buildFunctionsService() ServiceConfig {
 
 	switch runtime {
 	case "deno":
-		image = ImageRef("deno", "")
+		image = ResolveImage("functions", ImageRef("deno", ""))
 		command = "deno serve --allow-net --allow-read --allow-env /opt/project/server.ts"
 	case "python":
-		image = ImageRef("python", "")
+		image = ResolveImage("functions", ImageRef("python", ""))
 		command = "sh -c 'pip install -r /opt/project/requirements.txt --quiet && python /opt/project/server.py'"
 	default:
 		// node is the default (nhost/functions)

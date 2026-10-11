@@ -28,9 +28,16 @@ RETURNS SETOF {{.Schema}}.{{.Table}}
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT * FROM {{.Schema}}.{{.Table}} ORDER BY {{.Column}} {{.Op}} $1
+  {{.Body}}
 $$;
 `))
+
+// functionBody is the one statement of the generated function, built from
+// quoted identifiers and the distance operator. Render writes it and
+// CheckFunctionShape compares the live body with it (D-0369).
+func functionBody(schema, table, column, op string) string {
+	return "SELECT * FROM " + schema + "." + table + " ORDER BY " + column + " " + op + " $1"
+}
 
 // Render returns the migration SQL for a validated Spec whose Dim is set.
 func Render(s Spec) (string, error) {
@@ -60,7 +67,7 @@ func Render(s Spec) (string, error) {
 	var buf bytes.Buffer
 	err = migrationTmpl.Execute(&buf, map[string]any{
 		"Schema": schema, "Table": table, "Column": column, "Func": fn,
-		"Dim": s.Dim, "Op": s.Operator(), "Distance": string(s.Distance),
+		"Dim": s.Dim, "Distance": string(s.Distance), "Body": functionBody(schema, table, column, s.Operator()),
 	})
 	if err != nil {
 		return "", fmt.Errorf("render migration: %w", err)

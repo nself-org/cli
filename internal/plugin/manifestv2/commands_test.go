@@ -146,3 +146,70 @@ func TestCoreVerbsMatchCanon(t *testing.T) {
 		t.Fatalf("manifestv2.CoreVerbs %v != canon verbs %v", manifestv2.CoreVerbs, f.Verbs)
 	}
 }
+
+// TestCommandsJSONEnvelope: json envelope (D-0342) is accepted on the root,
+// a subcommand and a flag and round-trips; near-miss values are refused at
+// each level; every mode is a canon JSON value and the schema enum matches.
+func TestCommandsJSONEnvelope(t *testing.T) {
+	root := func(d map[string]any) map[string]any { return d["commands"].(map[string]any) }
+	flag := func(d map[string]any) map[string]any { return sub(d, 0)["flags"].([]any)[0].(map[string]any) }
+	levels := []struct {
+		field string
+		at    func(d map[string]any) map[string]any
+	}{
+		{"commands.json", root},
+		{"commands.subcommands[0].json", func(d map[string]any) map[string]any { return sub(d, 0) }},
+		{"commands.subcommands[0].flags[0].json", flag},
+	}
+	data := mutate(t, "v2/surface.json", func(d map[string]any) {
+		for _, l := range levels {
+			l.at(d)["json"] = "envelope"
+		}
+	})
+	m, err := manifestv2.Parse(data)
+	if err != nil {
+		t.Fatalf("json envelope must be valid: %v", err)
+	}
+	c := m.Commands
+	if c.JSON != manifestv2.JSONEnvelope || c.Subcommands[0].JSON != manifestv2.JSONEnvelope || c.Subcommands[0].Flags[0].JSON != manifestv2.JSONEnvelope {
+		t.Fatalf("json envelope did not decode: %+v", c)
+	}
+	out, err := manifestv2.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again, err := manifestv2.Parse(out); err != nil || !reflect.DeepEqual(m, again) {
+		t.Fatalf("json envelope did not round-trip: %v", err)
+	}
+	for _, bad := range []string{"envelopes", "Envelope", "v1", "legacy-envelope"} {
+		for _, l := range levels {
+			_, err := manifestv2.Parse(mutate(t, "v2/surface.json", func(d map[string]any) { l.at(d)["json"] = bad }))
+			wantCode(t, err, "E106", l.field)
+		}
+	}
+	for _, v := range manifestv2.JSONModes {
+		if !canon.ValidJSON(v) {
+			t.Errorf("manifestv2 json mode %q is not a canon JSON value", v)
+		}
+	}
+	raw, err := os.ReadFile("../../../schemas/plugin-manifest.v2.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	want := []any{}
+	for _, v := range manifestv2.JSONModes {
+		want = append(want, v)
+	}
+	cmd := doc["properties"].(map[string]any)["commands"].(map[string]any)["properties"].(map[string]any)
+	subProps := cmd["subcommands"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+	flagProps := subProps["flags"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+	for name, props := range map[string]map[string]any{"commands": cmd, "subcommand": subProps, "flag": flagProps} {
+		if got := props["json"].(map[string]any)["enum"]; !reflect.DeepEqual(got, want) {
+			t.Errorf("schema %s json enum %v, want %v", name, got, want)
+		}
+	}
+}

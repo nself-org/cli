@@ -142,10 +142,13 @@ func TestTrackedTables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"public.np_a_t", "public.np_a_noschema", "audit.np_b_log", "public.np_c_t", "public.np_legacy"} {
+	for _, want := range []string{"public.np_a_t", "public.np_a_noschema", "audit.np_b_log", "public.np_legacy"} {
 		if !set[want] {
 			t.Errorf("missing %s in %v", want, set)
 		}
+	}
+	if set["public.np_c_t"] {
+		t.Error("public.np_c_t is tracked only on source other, not on default")
 	}
 	if set["np_b_log"] || set["public.np_b_log"] {
 		t.Error("schema must not be dropped: audit.np_b_log is not public.np_b_log")

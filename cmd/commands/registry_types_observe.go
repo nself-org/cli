@@ -25,13 +25,14 @@ func init() {
 	registerJSONType("status health config", healthConfigData{})
 	registerJSONType("doctor heal", HealResult{})
 	registerJSONType("doctor images", DoctorImages{})
+	registerJSONType("doctor report", DoctorReport{})
 	registerJSONType("help topics", HelpTopicsResult{})
 	registerJSONType("version", VersionResult{})
 	// The envelope is a v1.5 class for every converted row except doctor
 	// images: the pre-contract rows (urls, health, version) keep `json: legacy`
 	// in v1.4 (their bytes are pinned by json-conversion-check.sh), and the
 	// moved paths (status urls, status health, doctor heal, help topics) exist
-	// only in the v1.5 tree. `doctor images --json` is additive in both modes.
+	// only in the v1.5 tree. `doctor images --json` and `doctor report --json` are additive in both modes.
 	for _, p := range []string{
 		"status urls", "status health", "status health check", "status health service",
 		"status health endpoint", "status health history", "status health config",

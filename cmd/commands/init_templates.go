@@ -3,7 +3,8 @@ package commands
 // Purpose: implements the app-clone and marketplace template scaffolding paths for `nself init`.
 // Inputs: template name/slug, destination directory, and scaffolding flags (noSeed, dryRun, force, quiet).
 // Outputs: a scaffolded project directory sourced from an embedded clone template or a downloaded marketplace template.
-// Constraints: split out of init.go as a pure move (CLI-R12); no behavior change.
+// Constraints: split out of init.go as a pure move (CLI-R12); the clone next-step hint
+// prints only commands that exist (D-0127).
 
 import (
 	"archive/tar"
@@ -83,17 +84,26 @@ func runInitCloneTemplate(name, destDir string, noSeed, dryRun, force, quiet boo
 			fmt.Printf("\n  Install plugins:\n")
 			fmt.Printf("    %s\n", ui.C(ui.Cyan, fmt.Sprintf("nself plugin install %s", strings.Join(m.RequiredPlugins, " "))))
 		}
-		fmt.Printf("\n  Next steps:\n")
-		fmt.Printf("    cd %s\n", absDest)
-		fmt.Printf("    nself start\n")
-		fmt.Printf("    nself db migrate\n")
-		fmt.Printf("    nself hasura metadata apply --file hasura/metadata.json\n")
-		if len(m.RequiredPlugins) > 0 {
-			fmt.Printf("    nself plugin install %s\n", strings.Join(m.RequiredPlugins, " "))
-		}
-		fmt.Printf("    cd flutter && flutter run\n\n")
+		printCloneNextSteps(os.Stdout, absDest, m.RequiredPlugins)
 	}
 	return nil
+}
+
+// printCloneNextSteps writes the commands that bring a scaffolded clone
+// template up. Metadata goes through `nself db hasura metadata apply`, which
+// reads hasura/metadata.json from the project directory (there is no --file
+// flag). The flutter/ starter is legacy (Flutter is eliminated for new
+// surfaces), so it is pointed at, never run.
+func printCloneNextSteps(w io.Writer, dest string, plugins []string) {
+	_, _ = fmt.Fprintf(w, "\n  Next steps:\n")
+	_, _ = fmt.Fprintf(w, "    cd %s\n", dest)
+	_, _ = fmt.Fprintf(w, "    nself start\n")
+	_, _ = fmt.Fprintf(w, "    nself db migrate\n")
+	_, _ = fmt.Fprintf(w, "    nself db hasura metadata apply\n")
+	if len(plugins) > 0 {
+		_, _ = fmt.Fprintf(w, "    nself plugin install %s\n", strings.Join(plugins, " "))
+	}
+	_, _ = fmt.Fprintf(w, "\n  The flutter/ folder holds a legacy starter app; see README.md.\n\n")
 }
 
 // runInitMarketplaceTemplate downloads a marketplace template tarball, verifies

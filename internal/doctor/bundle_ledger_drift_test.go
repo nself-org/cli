@@ -100,3 +100,82 @@ func TestBundlePluginDirResolution(t *testing.T) {
 		t.Errorf("home fallback: %s", got)
 	}
 }
+
+func installManifest(t *testing.T, pluginDir, dirName, manifest string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(pluginDir, dirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, dirName, "plugin.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestLedgerUnrecordedPlugin covers D-0323: an official plugin on disk with no
+// ledger record is a warning; recorded, third-party and non-plugin entries are not.
+func TestLedgerUnrecordedPlugin(t *testing.T) {
+	const ledgerJobs = `{"plugins":{"jobs":{"installed_by":["task"],"explicit":false}}}`
+	for _, tc := range []struct {
+		name     string
+		ledger   string // "" = no ledger file
+		dir      string
+		manifest string
+		want     string // expected check name, "" = no result
+	}{
+		{"official by author", ledgerJobs, "cron", `{"name":"cron","author":"nself"}`, "BUNDLE-LEDGER-UNRECORDED-cron"},
+		{"official by org author", ledgerJobs, "cron", `{"name":"cron","author":"nself-org"}`, "BUNDLE-LEDGER-UNRECORDED-cron"},
+		{"official by repository", ledgerJobs, "cron", `{"name":"cron","author":"x","repository":"https://github.com/nself-org/plugins"}`, "BUNDLE-LEDGER-UNRECORDED-cron"},
+		{"name decides the key, case folded", ledgerJobs, "cron-dir", `{"name":"Cron","author":"nself"}`, "BUNDLE-LEDGER-UNRECORDED-cron"},
+		{"recorded", ledgerJobs, "jobs", `{"name":"jobs","author":"nself"}`, ""},
+		{"recorded under another case", ledgerJobs, "Jobs", `{"name":"JOBS","author":"nself"}`, ""},
+		{"third party", ledgerJobs, "acme", `{"name":"acme","author":"Acme","repository":"https://github.com/acme/p"}`, ""},
+		{"lookalike repository", ledgerJobs, "acme", `{"name":"acme","repository":"https://github.com/nself-org-fake/p"}`, ""},
+		{"invalid manifest", ledgerJobs, "broken", `{not json`, ""},
+		{"hostile name with argv", ledgerJobs, "cron", `{"name":"cron --force","author":"nself"}`, ""},
+		{"hostile name with escapes", ledgerJobs, "cron", "{\"name\":\"cron\\u001b[2J\",\"author\":\"nself\"}", ""},
+		{"empty name falls back to a valid dir", ledgerJobs, "cron", `{"name":"","author":"nself"}`, "BUNDLE-LEDGER-UNRECORDED-cron"},
+		{"no ledger", "", "cron", `{"name":"cron","author":"nself"}`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			installManifest(t, dir, "jobs", `{"name":"jobs","author":"nself"}`)
+			if tc.ledger != "" {
+				writeLedger(t, dir, tc.ledger)
+			}
+			installManifest(t, dir, tc.dir, tc.manifest)
+			res := BundleLedgerDriftChecks(context.Background(), dir)
+			if tc.want == "" {
+				if len(res) != 0 {
+					t.Fatalf("want no result, got %+v", res)
+				}
+				return
+			}
+			if len(res) != 1 {
+				t.Fatalf("results = %+v, want exactly one", res)
+			}
+			r := res[0]
+			slug := strings.TrimPrefix(tc.want, "BUNDLE-LEDGER-UNRECORDED-")
+			// No FixCmd: doctor --fix would run it, and a reinstall is the owner's call.
+			if r.Name != tc.want || r.Status != "warn" || r.Section != "plugins" || r.FixCmd != "" ||
+				!strings.Contains(r.Message, "no record") || !strings.Contains(r.Message, "run nself plugin install "+slug+" again") {
+				t.Errorf("result = %+v", r)
+			}
+		})
+	}
+}
+
+// TestLedgerUnrecordedSkipsStateDir: the ledger's own .nself-state directory and
+// plain files in the plugin directory are never plugins.
+func TestLedgerUnrecordedSkipsStateDir(t *testing.T) {
+	dir := t.TempDir()
+	writeLedger(t, dir, `{"plugins":{}}`)
+	if err := os.WriteFile(filepath.Join(dir, ".nself-state", "plugin.json"), []byte(`{"name":"x","author":"nself"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if res := BundleLedgerDriftChecks(context.Background(), dir); len(res) != 0 {
+		t.Fatalf("want no result, got %+v", res)
+	}
+}

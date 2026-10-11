@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "command": "doctor report",
+  "data": {
+    "path": "/work/proj/nself-report-20261010T120000Z.tar.gz",
+    "files": 7,
+    "bytes": 2048,
+    "redactions": 5
+  }
+}

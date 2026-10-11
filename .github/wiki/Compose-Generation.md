@@ -54,7 +54,9 @@ When plugins are installed, each one provides a `docker-compose.plugin.yml` over
 4. **Custom services**, `CS_1` through `CS_10` as defined in your env
 5. **Plugin overlay files**, one per installed plugin, applied in install order
 
-Plugin overlays can add new services, volumes, and networks. They cannot remove or rename services that already exist in the base compose. This ensures the core stack remains stable regardless of which plugins are installed.
+Plugin overlays can add new services and volumes. They cannot remove or rename services that already exist in the base compose. This ensures the core stack remains stable regardless of which plugins are installed.
+
+Networks follow the fragment rules in [[Plugins#compose-fragment-rules]]. In v1.5 mode a plugin service joins the project network, `${DOCKER_NETWORK}`: a service with no `networks:` is attached to it, and the legacy `nself_network` is folded into it. A fragment that uses any other external network, that has more than one YAML document, or that sets a `network_mode` other than `none` or `service:<a service of the same fragment>` fails the build with [[error-codes#e129]]. A compose plugin that ships no fragment fails with [[error-codes#e128]]. In v1.4 mode the foreign-network, multi-document and `network_mode` cases print a warning and the build goes on, and a compose plugin with no fragment is left out of the stack with a warning.
 
 ---
 

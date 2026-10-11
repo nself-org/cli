@@ -44,23 +44,20 @@ type DeployResult struct {
 	PrimarySkipped bool
 }
 
-// Run executes the topology-aware deployment pipeline for the given inventory
-// and compose file path.
-//
-// Remote order: observability, app servers, then LB reload.
-//
-// Only the named environment is probed; unsupported targets fail closed.
-// The composePath argument is the local path to the generated docker-compose.yml
-// produced by `nself build`. Run reuses deploy.DeployViaSsh for every remote server.
+// Run executes the topology-aware pipeline (observability, app servers, then LB
+// reload) for env only, failing closed; every remote server gets deploy.DeployViaSsh.
 func Run(ctx context.Context, inv *Inventory, env string, prober Prober, composePath string) (*DeployResult, error) {
 	return RunWithEnv(ctx, inv, env, prober, composePath, "", "")
 }
 
-// RunWithEnv is Run that also ships envFile (a resolved env snapshot) next to
-// the compose file as .env.<envName> on every server it deploys. Both empty
-// means compose only.
+// RunWithEnv is Run that also ships envFile (a resolved env snapshot) as
+// .env.<envName> on every server; both empty means compose only.
 func RunWithEnv(ctx context.Context, inv *Inventory, env string, prober Prober, composePath, envFile, envName string) (*DeployResult, error) {
-	pl := payload{composePath, envFile, envName}
+	return runPayload(ctx, inv, env, prober, composePath, payload{compose: composePath, envFile: envFile, envName: envName})
+}
+
+// runPayload is the pipeline proper; pl says what each server receives.
+func runPayload(ctx context.Context, inv *Inventory, env string, prober Prober, composePath string, pl payload) (*DeployResult, error) {
 	scoped, err := ScopeToEnv(inv, env)
 	if err != nil {
 		return nil, err
@@ -146,8 +143,11 @@ func ScopeToEnv(inv *Inventory, env string) (*Inventory, error) {
 	}, nil
 }
 
-// payload is what the pipeline ships to each server.
-type payload struct{ compose, envFile, envName string }
+// payload is what the pipeline ships to each server (apply: the v1.5 artifact set).
+type payload struct {
+	compose, envFile, envName string
+	apply                     *RemoteApply
+}
 
 // serverPair bundles a Server with its resolved TargetStatus.
 type serverPair struct {
@@ -222,7 +222,7 @@ func deployOne(ctx context.Context, envName string, srv Server, ts TargetStatus,
 		EnvName:      pl.envName,
 		InventoryEnv: envName,
 	}
-	if err := deployServerFn(ctx, cfg, pl.compose); err != nil {
+	if err := deployTo(ctx, envName, srv, cfg, pl); err != nil {
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "failed", Err: err, Primary: srv.Primary}
 	}
 	return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "ok", Primary: srv.Primary}
@@ -255,7 +255,7 @@ func deployApp(ctx context.Context, envName string, srv Server, ts TargetStatus,
 		EnvName:      pl.envName,
 		InventoryEnv: envName,
 	}
-	if err := deployServerFn(ctx, cfg, pl.compose); err != nil {
+	if err := deployTo(ctx, envName, srv, cfg, pl); err != nil {
 		return ServerResult{Env: envName, Server: srv.Name, Role: srv.Role, Status: "failed", Err: err, Primary: srv.Primary}
 	}
 
