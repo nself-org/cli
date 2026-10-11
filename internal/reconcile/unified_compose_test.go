@@ -6,6 +6,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
+	"gopkg.in/yaml.v3"
 )
 
 // composeFixture builds a config whose redis password is pw and whose other
@@ -32,28 +33,50 @@ func composeFixture(pw string) *config.Config {
 	}
 }
 
-// TestUnifiedHidesGeneratedRedisPassword runs the real compose generator with
-// redis passwords that are not dotenv-safe (so the generator writes them
-// literally into the command and the healthcheck) and asserts the diff never
-// shows Hunter2Leak, for a new file and for a before/after pair.
+// legacyRedisCompose is the redis service as generators before cli#666 wrote it:
+// a password that is not dotenv-safe went literally into the command and the
+// healthcheck. Such files stay on disk until the next build, so the upgrade diff
+// still reads them.
+func legacyRedisCompose(t *testing.T, pw string) []byte {
+	t.Helper()
+	out, err := yaml.Marshal(map[string]any{"services": map[string]any{"redis": map[string]any{
+		"image":   "redis:7-alpine",
+		"command": "redis-server --appendonly yes --protected-mode yes --requirepass " + pw + " --maxclients 50",
+		"healthcheck": map[string]any{
+			"test": []string{"CMD", "redis-cli", "-a", pw, "ping"},
+		},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// TestUnifiedHidesGeneratedRedisPassword diffs a legacy compose file that holds
+// redis passwords which are not dotenv-safe (literal in the command and the
+// healthcheck) against itself changed and against the current generator's
+// output, and asserts no diff shows Hunter2Leak.
 func TestUnifiedHidesGeneratedRedisPassword(t *testing.T) {
 	for _, pw := range []string{"pa ss Hunter2Leak", "Hunter2Leak$x", "Hunter2'Leak", `Hunter2"Leak`, `Hunter2\Leak`} {
 		t.Run(pw, func(t *testing.T) {
-			out, err := compose.NewGenerator(composeFixture(pw)).Generate()
+			legacy := legacyRedisCompose(t, pw)
+			if !strings.Contains(string(legacy), "Hunter2") {
+				t.Fatalf("positive control: legacy compose lacks the password:\n%s", legacy)
+			}
+			current, err := compose.NewGenerator(composeFixture(pw)).Generate()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(string(out), "Hunter2") {
-				t.Fatalf("positive control: generated compose lacks the password:\n%s", out)
-			}
-			text := string(out)
+			text := string(legacy)
 			changed := strings.Replace(text, "image: redis", "image: redis-x", 1)
 			if changed == text {
 				t.Fatal("fixture: no redis image line to change")
 			}
 			for name, diff := range map[string]string{
-				"new file": Unified("docker-compose.yml", nil, out),
-				"change":   Unified("docker-compose.yml", out, []byte(changed)),
+				"new file": Unified("docker-compose.yml", nil, legacy),
+				"change":   Unified("docker-compose.yml", legacy, []byte(changed)),
+				"upgrade":  Unified("docker-compose.yml", legacy, current),
+				"current":  Unified("docker-compose.yml", nil, current),
 			} {
 				if diff == "" {
 					t.Fatalf("%s: empty diff", name)
