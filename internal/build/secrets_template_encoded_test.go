@@ -268,3 +268,19 @@ func TestTemplateSecrets_MultiLineAndKeyPositions(t *testing.T) {
 		t.Errorf("LiteralSecretLeaks = %v, want the extended value reported", leaks)
 	}
 }
+
+// TestTemplateSecrets_KeepsLayout: rewriting a key keeps the blank lines
+// after it and the document's final newline.
+func TestTemplateSecrets_KeepsLayout(t *testing.T) {
+	secrets := map[string]string{"POSTGRES_PASSWORD": "fakepw-notreal-123"}
+	cases := map[string]string{
+		"services:\n  a:\n    environment:\n      POSTGRES_PASSWORD: x\n":                       "services:\n  a:\n    environment:\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}\n",
+		"services:\n  a:\n    environment:\n      POSTGRES_PASSWORD: x\n\n  b:\n    image: y\n": "services:\n  a:\n    environment:\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}\n\n  b:\n    image: y\n",
+		"x:\n  POSTGRES_PASSWORD: |-\n    l1\n\n    l2\n\ny: z\n":                               "x:\n  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}\n\ny: z\n",
+	}
+	for in, want := range cases {
+		if got := string(TemplateSecrets([]byte(in), secrets)); got != want {
+			t.Errorf("TemplateSecrets(%q) =\n%q\nwant\n%q", in, got, want)
+		}
+	}
+}

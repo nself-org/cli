@@ -91,15 +91,23 @@ func templateOtherLiterals(out string, keys []string, secrets map[string]string)
 // scalar), and kept under a one-line value they would extend it.
 func rewriteKeyLines(out, key string, fn func(line string) (string, bool)) string {
 	lines := strings.Split(out, "\n")
-	kept := lines[:0]
+	kept := make([]string, 0, len(lines))
 	dropBelow := -1
+	var blanks []string // blank lines held until we know whose they are
 	for _, line := range lines {
 		indent := len(line) - len(strings.TrimLeft(line, " \t"))
 		if dropBelow >= 0 {
-			if strings.TrimSpace(line) == "" || indent > dropBelow {
+			if strings.TrimSpace(line) == "" {
+				blanks = append(blanks, line)
+				continue
+			}
+			if indent > dropBelow {
+				blanks = blanks[:0] // inside the old value
 				continue
 			}
 			dropBelow = -1
+			kept = append(kept, blanks...)
+			blanks = blanks[:0]
 		}
 		rest := line[indent:]
 		if indent > 0 && strings.HasPrefix(rest, key+":") && len(rest) > len(key)+1 && unicode.IsSpace(rune(rest[len(key)+1])) {
@@ -110,6 +118,7 @@ func rewriteKeyLines(out, key string, fn func(line string) (string, bool)) strin
 		}
 		kept = append(kept, line)
 	}
+	kept = append(kept, blanks...)
 	return strings.Join(kept, "\n")
 }
 
