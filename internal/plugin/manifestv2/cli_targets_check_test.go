@@ -42,7 +42,7 @@ func TestCheckCLITargets(t *testing.T) {
 		{"leading digit", "", []string{"9lives"}, "E106", []string{"9lives"}},
 		{"binary without prefix", "mytool", nil, "E106", []string{"mytool", manifestv2.BinaryPattern}},
 		{"binary upper case", "nself-Tool", nil, "E106", []string{"Tool"}},
-		{"core verb", "", []string{"search", "init"}, "E113", []string{"init", "p"}},
+		{"core verb", "", []string{"search", "init"}, "E113", []string{`"init"`}},
 		{"core verb via binaryName", "nself-backup", nil, "E113", []string{"backup"}},
 		{"declared twice", "", []string{"feeds", "feeds"}, "E106", []string{"feeds", "twice"}},
 	}

@@ -126,6 +126,13 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 		return err
 	}
 
+	// D-0259: refuse a command the proxy cannot serve or another installed
+	// plugin already publishes, before anything is downloaded or replaced. A
+	// refusal after extraction would roll back, and so remove, an upgrade.
+	if err := checkCLIBinaries(pluginDir, name, manifest); err != nil {
+		return err
+	}
+
 	// T23: Warn if this install would downgrade an already-installed plugin.
 	existingManifest, err := parseManifest(filepath.Join(pluginDir, name, "plugin.json"))
 	if err == nil {

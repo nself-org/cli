@@ -165,6 +165,13 @@ func InstallFromURL(ctx context.Context, cfg *config.Config, sourceURL string, p
 		return err
 	}
 
+	// D-0259: refuse a command the proxy cannot serve or another installed
+	// plugin already publishes, before anything is downloaded or replaced. A
+	// refusal after extraction would roll back, and so remove, an upgrade.
+	if err := checkCLIBinaries(pluginDir, manifest.Name, manifest); err != nil {
+		return err
+	}
+
 	if err := ValidateName(manifest.Name); err != nil {
 		return err
 	}

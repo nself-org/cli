@@ -122,9 +122,6 @@ func linkCLIBinary(destDir, name string, m *PluginManifest) error {
 	if err := validateCLIBinaries(name, m); err != nil {
 		return err
 	}
-	if err := checkCLIBinaries(destDir, name, m); err != nil {
-		return err
-	}
 
 	binDir := pluginBinDir()
 	if err := os.MkdirAll(binDir, 0o755); err != nil {

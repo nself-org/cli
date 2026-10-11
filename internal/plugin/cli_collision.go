@@ -1,14 +1,13 @@
 package plugin
 
 import (
-	"path/filepath"
-
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/plugin/manifestv2"
 )
 
 // checkCLIBinaries refuses a CLI plugin whose command binaries are unsafe to
-// publish (D-0259), before anything is written to the proxy's bin directory.
+// publish (D-0259). Both install paths call it with the registry or staged
+// manifest before they download, extract or replace anything.
 //
 // Purpose: linkCLIBinary copies every binary cliCommands names into
 // ~/.nself/plugins/bin and replaces an existing file without asking whose it
@@ -16,18 +15,21 @@ import (
 // as cliCommands, so one install could publish nself-init, which the built-in
 // `nself init` shadows, or replace another plugin's nself-server.
 //
-// Inputs: the extracted plugin directory (its parent is the plugins directory
-// whose installed manifests are read), the plugin name and its manifest.
+// Inputs: the plugins directory whose installed manifests are read, the plugin
+// name and the manifest it is being installed from.
 //
 // Outputs: nil, or the first refusal: E106 or E113 from
 // manifestv2.CheckCLITargets for a bad name or a core verb, E141 for a binary
 // another installed plugin already provides.
 //
-// Constraints: the plugin itself is skipped, so an upgrade or a reinstall is
-// never a collision. A bin file no installed manifest claims is an orphan and
-// is replaced as before. Lives apart from cli_binary.go so the collision rule
-// stays one unit (cli#643 rewrites that file).
-func checkCLIBinaries(destDir, name string, m *PluginManifest) error {
+// Constraints: it runs before extraction on purpose. After extraction a
+// refusal goes through rollbackInstall, which removes the plugin directory and
+// drops its schema, so a refused upgrade would lose a working install. The
+// plugin itself (by manifest name) is skipped, so an upgrade or a reinstall is
+// never a collision. Owners come from readable installed manifests only: a bin
+// file no manifest claims (an orphan, or a plugin whose plugin.json no longer
+// parses) is replaced by linkCLIBinary as before.
+func checkCLIBinaries(pluginDir, name string, m *PluginManifest) error {
 	if m == nil {
 		return nil
 	}
@@ -39,7 +41,7 @@ func checkCLIBinaries(destDir, name string, m *PluginManifest) error {
 	if err != nil || len(targets) == 0 {
 		return err
 	}
-	owners, err := installedCLIBinaryOwners(filepath.Dir(destDir), name)
+	owners, err := installedCLIBinaryOwners(pluginDir, name)
 	if err != nil {
 		return err
 	}

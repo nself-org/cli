@@ -1,14 +1,22 @@
 package plugin
 
 import (
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 )
+
+// fakeManifestFields are the required v1 fields parseManifest checks, so a
+// fixture is a readable installed plugin and not silently skipped.
+const fakeManifestFields = `"version":"1.0.0","description":"fake","category":"utility","license":"MIT"`
 
 // collisionHome points HOME at a temp dir and returns its plugins directory.
 func collisionHome(t *testing.T) string {
@@ -19,15 +27,15 @@ func collisionHome(t *testing.T) string {
 	return filepath.Join(home, ".nself", "plugins")
 }
 
-// extractFake writes plugin <name> into pluginsDir with its manifest and the
-// given binaries, as an extracted tarball leaves it.
-func extractFake(t *testing.T, pluginsDir, name, manifest string, bins ...string) string {
+// extractFake writes plugin <name> into pluginsDir with a manifest carrying
+// extra JSON members and the given binaries, as an extracted tarball leaves it.
+func extractFake(t *testing.T, pluginsDir, name, extra string, bins ...string) string {
 	t.Helper()
 	dir := filepath.Join(pluginsDir, name)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeManifest(t, dir, manifest)
+	writeManifest(t, dir, `{"name":"`+name+`",`+fakeManifestFields+extra+`}`)
 	for _, b := range bins {
 		if err := os.WriteFile(filepath.Join(dir, b), []byte("#!/bin/sh\necho "+name+"\n"), 0o755); err != nil {
 			t.Fatal(err)
@@ -44,75 +52,102 @@ func codeOfErr(err error) string {
 	return ""
 }
 
-// TestLinkCLIBinary_RefusesAnotherPluginsBinary is D-0259: a plugin whose
+// TestCheckCLIBinaries_RefusesAnotherPluginsBinary is D-0259: a plugin whose
 // cliCommands name a binary another installed plugin publishes is refused
-// with E141 naming both plugins, and the other plugin's binary is untouched.
-func TestLinkCLIBinary_RefusesAnotherPluginsBinary(t *testing.T) {
-	pluginsDir := collisionHome(t)
-	ownerDir := extractFake(t, pluginsDir, "alpha", `{"name":"alpha","version":"1.0.0","description":"fake","category":"utility","license":"MIT","cliCommands":[{"name":"media-server"}]}`, "nself-media-server")
-	owner := &PluginManifest{Name: "alpha", CLICommands: []CLICommand{{Name: "media-server"}}}
-	if err := linkCLIBinary(ownerDir, "alpha", owner); err != nil {
-		t.Fatalf("first install: %v", err)
-	}
-	published := PublishedBinaryPath("nself-media-server")
-	before, _ := os.ReadFile(published)
-
-	dir := extractFake(t, pluginsDir, "beta", `{"name":"beta","version":"1.0.0","description":"fake","category":"utility","license":"MIT","cliCommands":[{"name":"beta"},{"name":"media-server"}]}`, "nself-beta", "nself-media-server")
-	m := &PluginManifest{Name: "beta", CLICommands: []CLICommand{{Name: "beta"}, {Name: "media-server"}}}
-	err := linkCLIBinary(dir, "beta", m)
-	if codeOfErr(err) != "E141" {
-		t.Fatalf("want E141, got %v", err)
-	}
-	for _, s := range []string{`"beta"`, `"alpha"`, "media-server"} {
-		if !strings.Contains(err.Error(), s) {
-			t.Errorf("error does not name %s: %v", s, err)
+// with E141 naming both plugins. The owner may declare the binary through
+// cliCommands or through binaryName alone.
+func TestCheckCLIBinaries_RefusesAnotherPluginsBinary(t *testing.T) {
+	for _, owner := range []string{
+		`,"cliCommands":[{"name":"media-server"}]`,
+		`,"pluginType":"cli","binaryName":"nself-media-server"`,
+	} {
+		pluginsDir := collisionHome(t)
+		extractFake(t, pluginsDir, "alpha", owner, "nself-media-server")
+		m := &PluginManifest{Name: "beta", CLICommands: []CLICommand{{Name: "beta"}, {Name: "media-server"}}}
+		err := checkCLIBinaries(pluginsDir, "beta", m)
+		if codeOfErr(err) != "E141" {
+			t.Fatalf("owner %s: want E141, got %v", owner, err)
 		}
-	}
-	after, _ := os.ReadFile(published)
-	if string(after) != string(before) || !strings.Contains(string(after), "alpha") {
-		t.Errorf("alpha's binary was replaced: %q", after)
-	}
-	if _, err := os.Stat(PublishedBinaryPath("nself-beta")); !os.IsNotExist(err) {
-		t.Errorf("refused install published nself-beta anyway (stat err %v)", err)
+		for _, s := range []string{`"beta"`, `"alpha"`, "media-server"} {
+			if !strings.Contains(err.Error(), s) {
+				t.Errorf("error does not name %s: %v", s, err)
+			}
+		}
 	}
 }
 
-// TestLinkCLIBinary_ReinstallIsNotACollision: the plugin's own manifest is
-// skipped, so an upgrade replaces its binary as before, and an orphan bin
-// file no installed manifest claims is replaced too.
-func TestLinkCLIBinary_ReinstallIsNotACollision(t *testing.T) {
+// TestCheckCLIBinaries_ReinstallAndOrphan: the plugin's own manifest is
+// skipped, so an upgrade is not a collision, and an orphan bin file no
+// installed manifest claims is replaced by the plugin's binary.
+func TestCheckCLIBinaries_ReinstallAndOrphan(t *testing.T) {
 	pluginsDir := collisionHome(t)
-	dir := extractFake(t, pluginsDir, "alpha", `{"name":"alpha","version":"1.0.0","description":"fake","category":"utility","license":"MIT","cliCommands":[{"name":"media-server"}]}`, "nself-media-server")
+	extractFake(t, pluginsDir, "alpha", `,"cliCommands":[{"name":"media-server"}]`, "nself-media-server")
 	m := &PluginManifest{Name: "alpha", CLICommands: []CLICommand{{Name: "media-server"}}}
-	for i := 0; i < 2; i++ {
-		if err := linkCLIBinary(dir, "alpha", m); err != nil {
-			t.Fatalf("install %d: %v", i, err)
-		}
+	if err := checkCLIBinaries(pluginsDir, "alpha", m); err != nil {
+		t.Fatalf("reinstall refused: %v", err)
+	}
+
+	if err := os.MkdirAll(PluginBinDir(), 0o755); err != nil {
+		t.Fatal(err)
 	}
 	if err := os.WriteFile(PublishedBinaryPath("nself-orphan"), []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	odir := extractFake(t, pluginsDir, "orphan", `{"name":"orphan","version":"1.0.0","description":"fake","category":"utility","license":"MIT","pluginType":"cli"}`, "nself-orphan")
-	if err := linkCLIBinary(odir, "orphan", &PluginManifest{Name: "orphan", PluginType: "cli"}); err != nil {
+	odir := extractFake(t, pluginsDir, "orphan", `,"pluginType":"cli"`, "nself-orphan")
+	om := &PluginManifest{Name: "orphan", PluginType: "cli"}
+	if err := checkCLIBinaries(pluginsDir, "orphan", om); err != nil {
 		t.Fatalf("orphan bin file blocked install: %v", err)
+	}
+	if err := linkCLIBinary(odir, "orphan", om); err != nil {
+		t.Fatalf("linkCLIBinary: %v", err)
+	}
+	got, _ := os.ReadFile(PublishedBinaryPath("nself-orphan"))
+	if !strings.Contains(string(got), "echo orphan") {
+		t.Errorf("orphan bin file was not replaced: %q", got)
 	}
 }
 
-// TestLinkCLIBinary_RefusesCoreVerbAndBadNames: the installer runs the
-// manifestv2 name rules before writing anything (E113 core verb, E106 name;
-// a name with a space is refused earlier by validateCLIBinaries).
-func TestLinkCLIBinary_RefusesCoreVerbAndBadNames(t *testing.T) {
+// TestCheckCLIBinaries_RefusesCoreVerbAndBadNames runs the manifestv2 name
+// rules (E113 core verb, E106 name) as part of the same check.
+func TestCheckCLIBinaries_RefusesCoreVerbAndBadNames(t *testing.T) {
 	pluginsDir := collisionHome(t)
 	for _, c := range []struct {
 		cmd, code string
-	}{{"init", "E113"}, {"status", "E113"}, {"Feeds", "E106"}} {
-		dir := extractFake(t, pluginsDir, "gamma", `{"name":"gamma","version":"1.0.0","description":"fake","category":"utility","license":"MIT"}`, "nself-init", "nself-status")
-		err := linkCLIBinary(dir, "gamma", &PluginManifest{Name: "gamma", CLICommands: []CLICommand{{Name: c.cmd}}})
+	}{{"init", "E113"}, {"status", "E113"}, {"Feeds", "E106"}, {"roms list", "E106"}} {
+		err := checkCLIBinaries(pluginsDir, "gamma", &PluginManifest{Name: "gamma", CLICommands: []CLICommand{{Name: c.cmd}}})
 		if codeOfErr(err) != c.code {
 			t.Errorf("%q: want %s, got %v", c.cmd, c.code, err)
 		}
 	}
-	if _, err := os.Stat(PublishedBinaryPath("nself-init")); !os.IsNotExist(err) {
-		t.Errorf("nself-init was published (stat err %v)", err)
+}
+
+// TestInstallFromURL_RefusedReinstallKeepsTheOldInstall is the end-to-end
+// guard for the order: a reinstall of beta that now collides with alpha is
+// refused with E141 before the old beta directory is removed, and neither
+// plugin's published binary changes.
+func TestInstallFromURL_RefusedReinstallKeepsTheOldInstall(t *testing.T) {
+	pluginsDir := collisionHome(t)
+	extractFake(t, pluginsDir, "alpha", `,"cliCommands":[{"name":"media-server"}]`, "nself-media-server")
+	oldBeta := extractFake(t, pluginsDir, "beta", `,"pluginType":"cli","binaryName":"nself-beta"`, "nself-beta")
+
+	tarball := buildTarGz(t, []struct{ name, content string }{
+		{name: "plugin.json", content: `{"name":"beta",` + fakeManifestFields + `,"cliCommands":[{"name":"beta"},{"name":"media-server"}]}`},
+		{name: "nself-beta", content: "#!/bin/sh\necho new beta\n"},
+		{name: "nself-media-server", content: "#!/bin/sh\necho new beta\n"},
+	})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(tarball)
+	}))
+	defer srv.Close()
+
+	err := InstallFromURL(context.Background(), &config.Config{}, srv.URL+"/beta.tar.gz", pluginsDir, "")
+	if codeOfErr(err) != "E141" {
+		t.Fatalf("want E141, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(oldBeta, "plugin.json")); statErr != nil {
+		t.Errorf("refused reinstall removed the installed beta: %v", statErr)
+	}
+	if _, statErr := os.Stat(PublishedBinaryPath("nself-media-server")); !os.IsNotExist(statErr) {
+		t.Errorf("refused install published nself-media-server (stat err %v)", statErr)
 	}
 }
