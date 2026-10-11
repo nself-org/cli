@@ -36,6 +36,8 @@ rclone behaviour is unchanged.
 
 **host://** goes through the shared SSH funnel (`sdk/go/remote`): one `ssh` or `scp` argv builder, remote paths limited to `[a-zA-Z0-9/_.-]` with no `..`, and every unsafe name rejected before any connection. The server name must be in the inventory with a `host` (`user@host`); `ssh_key_ref` names an environment variable holding the key path. Host keys are pinned: ssh runs with `StrictHostKeyChecking=yes` against `~/.config/nself/backup_known_hosts` (override with `NSELF_BACKUP_KNOWN_HOSTS`), and the file must hold a key for the alias `nself-ci-<server>`. A server with no pinned key is refused. A file is copied to `<key>.tmp`, its sha256 compared, then moved into place.
 
+The pin file is refused if it holds a line nSelf cannot represent, or if it, its directory or any directory above it is group or world writable or owned by someone other than you or root. That includes running with `sudo` while the pin directory belongs to your user. A writer that holds the pin lock for over 30 seconds makes the command stop with an error. Rules and fixes: [Deploy tiers, pinned host key files](Deploy-Tiers#pinned-host-key-files).
+
 ```bash
 # Back up to a mounted disk, no rclone installed
 nself backup create --remote path:///mnt/backups
