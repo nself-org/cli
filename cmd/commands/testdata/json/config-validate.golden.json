@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "command": "config validate",
+  "data": {
+    "valid": true,
+    "checks": [
+      {
+        "name": "env",
+        "passed": true,
+        "error": ""
+      }
+    ],
+    "manifest_findings": [],
+    "error_count": 0
+  }
+}

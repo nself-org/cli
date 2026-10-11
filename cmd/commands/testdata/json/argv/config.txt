@@ -1,0 +1,28 @@
+# Config conversion fixture (P7-SURF-12). See README.md for tags.
+# Rows that write state non-idempotently, need age, sudo, a network, docker or a TTY
+# (env use/copy/target add, secrets, oauth refresh, trust, telemetry on/off, import,
+# features enable) are covered by the Go tests in cmd/commands/json_config_test.go.
+# Moved spellings: the v1.4 row compares the pre-contract --json bytes with the base;
+# the canonical-path row below it validates the v1.5 envelope.
+config
+config env
+config env list
+config env show
+config env explain
+config env explain POSTGRES_PASSWORD
+config env target
+env target list #| legacy-json no-json=envelope-checked-by-config-env-target-list
+config env target list
+env target probe #| legacy-json no-json=envelope-checked-by-config-env-target-probe
+config env target probe
+config features
+config features list #| legacy-json
+config features status nsentry-enabled #| legacy-json
+config export --format json #| legacy-json no-json=envelope-checked-by-config-export
+config export
+config oauth
+config secrets
+config telemetry
+config telemetry status
+config trust ssl
+config validate

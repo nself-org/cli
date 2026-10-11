@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "command": "config trust status",
+  "data": {
+    "mkcert_installed": false,
+    "ca_installed": false,
+    "certs_exist": false,
+    "certs_valid": false,
+    "dns_installed": false,
+    "dns_running": false,
+    "resolver_configured": false,
+    "ports_forwarding": false,
+    "warnings": false
+  }
+}
