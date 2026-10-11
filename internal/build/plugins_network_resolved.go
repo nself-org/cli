@@ -158,7 +158,7 @@ func documentCount(content []byte) int {
 			}
 			return n
 		}
-		if len(doc.Content) > 0 && !(doc.Content[0].Kind == yaml.ScalarNode && doc.Content[0].Tag == "!!null") {
+		if len(doc.Content) > 0 && (doc.Content[0].Kind != yaml.ScalarNode || doc.Content[0].Tag != "!!null") {
 			n++
 		}
 	}
