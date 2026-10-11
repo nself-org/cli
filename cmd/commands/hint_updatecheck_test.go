@@ -267,6 +267,25 @@ func TestUpdateCheckHintOwnRefreshNeverFeedsHint(t *testing.T) {
 			t.Fatalf("cache must keep both the refresh and the hint record: hits %d %+v", h.hits, c)
 		}
 	})
+	t.Run("stale cache, failing command: no hint, the day's hint is spent", func(t *testing.T) {
+		h := newHintEnv(t)
+		h.env = map[string]string{"NSELF_UPDATE_CHECK": "1"}
+		h.seed(t, "98.0.0", 25*time.Hour, 25*time.Hour)
+		if err := h.run("failing"); err == nil {
+			t.Fatal("failing command returned nil")
+		}
+		if strings.Contains(h.errw.String(), hintWord) {
+			t.Fatalf("a failed command printed a hint: %q", h.errw.String())
+		}
+		if c := updatecheck.Load(h.path); !c.HintedAt.Equal(h.now) {
+			t.Fatalf("the early decision records hinted_at (documented in Update-Notifications.md): %+v", c)
+		}
+		h.now = h.now.Add(time.Minute)
+		_ = h.run("plain")
+		if strings.Contains(h.errw.String(), hintWord) {
+			t.Fatalf("a second hint within 24h: %q", h.errw.String())
+		}
+	})
 }
 
 func TestUpdateCheckHintNoRequestWithoutOptIn(t *testing.T) {
