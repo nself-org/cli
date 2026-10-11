@@ -8,8 +8,11 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 
 	"github.com/nself-org/cli/internal/bundle"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/reconcile"
 
 	"github.com/spf13/cobra"
@@ -42,13 +45,21 @@ Examples:
 
 var bundleRemoveCmd = &cobra.Command{
 	Use:   "remove <bundle>",
-	Short: "Remove every plugin in a bundle",
-	Long: `Remove all plugins in the named bundle. Plugin data is dropped by default;
-pass --keep-data to preserve schema/tables for later reinstall.
+	Short: "Remove a bundle and the plugins only it needs",
+	Long: `Remove a bundle and the plugins only it needs.
+
+A plugin is removed only when no other installed bundle references it and you
+did not install it on your own; the rest stay, and the plan says why. The
+install ledger (<plugin dir>/.nself-state/bundles.json) holds those references.
+Plugin data (schema/tables) is kept by default from v1.5; pass --delete-data to
+drop it (asks for confirmation on a terminal, or pass --yes; without either it
+exits 4 with E403). In v1.4 mode a paid bundle still drops data by default and
+prints a warning. --dry-run prints the plan and changes nothing. If a removal
+fails the command stops; run it again to continue.
 
 Examples:
   nself bundle remove nsentry
-  nself bundle remove nclaw --keep-data
+  nself bundle remove nclaw --delete-data --yes
   nself bundle remove nchat --dry-run`,
 	Args: cobra.ExactArgs(1),
 	RunE: runBundleRemove,
@@ -87,10 +98,19 @@ func runBundleInstall(cmd *cobra.Command, args []string) error {
 func runBundleRemove(cmd *cobra.Command, args []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	keepData, _ := cmd.Flags().GetBool("keep-data")
+	deleteData, _ := cmd.Flags().GetBool("delete-data")
+	yes, _ := cmd.Flags().GetBool("yes")
 
+	// compat.V15(P7-PLUG-20): --keep-data keeps plugin data -> deprecated no-op (data is kept by default)
+	if compat.V15() && keepData {
+		fmt.Fprintln(os.Stderr, "warning: --keep-data is deprecated and has no effect from v1.5 (data is kept by default); it is removed in v1.6.0. Use --delete-data to drop data.")
+	}
 	opts := bundle.RemoveOpts{
-		DryRun:   dryRun,
-		KeepData: keepData,
+		DryRun:     dryRun,
+		KeepData:   keepData,
+		DeleteData: deleteData,
+		Yes:        yes,
+		Confirm:    interactiveConfirm(cmd),
 	}
 	result, err := bundle.Remove(context.Background(), args[0], opts)
 	if result != nil && result.Changed {

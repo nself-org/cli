@@ -11,6 +11,8 @@ package bundle
 // (plugin.LoadManifestsFromDir skips it, as it skips the .nself-state directory).
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
 	"github.com/nself-org/cli/internal/bundle/ledger"
@@ -19,9 +21,14 @@ import (
 
 // LedgerSources returns the bootstrap source for the ledger stored in pluginDir:
 // every bundle's membership plus the plugins installed there. A plugin
-// directory that cannot be read is an error, never an empty Sources.
+// directory that cannot be read is an error, never an empty Sources. So is a
+// bundle catalog that cannot be loaded (P7-PLUG-20): with no catalog every
+// plugin would bootstrap as explicit, which hides every bundle reference.
 func LedgerSources(pluginDir string) func() (ledger.Sources, error) {
 	return func() (ledger.Sources, error) {
+		if err := EnsureLoaded(context.Background()); err != nil {
+			return ledger.Sources{}, fmt.Errorf("loading the bundle catalog: %w", err)
+		}
 		var src ledger.Sources
 		for _, b := range All() {
 			src.Bundles = append(src.Bundles, ledger.BundleDef{Slug: b.Slug, Installable: b.IsInstallable(), Plugins: b.Plugins})

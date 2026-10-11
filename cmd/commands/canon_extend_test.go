@@ -323,19 +323,36 @@ func TestEquivalencePluginRemove(t *testing.T) {
 
 func TestEquivalenceBundleRemove(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
+		resetCmdWriters()    // earlier tests leave writers on the command tree: the reconcile note must reach the same stream for both commands
+		t.Chdir(t.TempDir()) // earlier tests can leave the cwd inside a project; both runs must see "outside a project" alike
 		if err := bundle.LoadBytes([]byte(fixtureBundlesJSON)); err != nil {
 			t.Fatal(err)
 		}
-		fixture := func(dir string) error { return os.MkdirAll(filepath.Join(dir, "bots"), 0o755) }
+		// P7-PLUG-20: the bundle is recorded in the install ledger (bundle remove plans from it).
+		fixture := func(dir string) error {
+			if err := os.MkdirAll(filepath.Join(dir, "bots"), 0o755); err != nil {
+				return err
+			}
+			seedBundleLedger(t, dir, "chat", "bots", "livekit")
+			return nil
+		}
 		for _, cmd := range []*cobra.Command{bundleRemoveCmd, removeCmd} {
 			if err := cmd.Flags().Set("keep-data", "true"); err != nil {
 				t.Fatal(err)
 			}
-			defer cmd.Flags().Set("keep-data", "false")
+			cmd := cmd
+			t.Cleanup(func() { resetFlag(cmd, "keep-data") })
 		}
 		legacy := runExtensionFixture(t, fixture, func() error { return runBundleRemove(bundleRemoveCmd, []string{"nchat"}) })
 		canonical := runExtensionFixture(t, fixture, func() error { return runRemove(removeCmd, []string{"nchat"}) })
-		if legacy.err != "" || !strings.Contains(legacy.stderr, "bots") || len(legacy.tree) != 1 {
+		// Only the ledger state may remain: the bots plugin dir is gone (tree = "." plus .nself-state entries).
+		leftover := false
+		for _, entry := range legacy.tree {
+			if entry != "." && !strings.HasPrefix(entry, ".nself-state") {
+				leftover = true
+			}
+		}
+		if legacy.err != "" || !strings.Contains(legacy.stderr, "bots") || leftover {
 			t.Fatalf("fixture bundle was not exercised: %+v", legacy)
 		}
 		compareExtensionResults(t, legacy, canonical)
