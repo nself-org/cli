@@ -30,7 +30,26 @@ import (
 
 // modelRoutes is the build preflight and renderer's single route snapshot.
 func (st *buildState) modelRoutes(hasSSL bool) (*routemodel.Model, error) {
-	return routemodel.Build(st.cfg, st.workdir, hasSSL)
+	m, err := routemodel.Build(st.cfg, st.workdir, hasSSL)
+	if err != nil {
+		return nil, err
+	}
+	if err := st.checkProxyProvider(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// checkProxyProvider refuses a partial route set before any generation writes.
+func (st *buildState) checkProxyProvider(m *routemodel.Model) error {
+	provider, err := ProxyProvider(st.cfg, st.workdir, DefaultPluginDir())
+	if err != nil {
+		return err
+	}
+	if provider == ProviderNginx {
+		return nil
+	}
+	return checkProviderRoutes(st.withSnippetRoutes(m), provider, st.cfg, st.workdir)
 }
 
 // withSnippetRoutes returns a copy of m extended with the plugin and

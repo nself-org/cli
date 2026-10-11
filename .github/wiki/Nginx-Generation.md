@@ -1,6 +1,6 @@
 # Nginx Generation
 
-Nginx is the single entry point for all external traffic in a ɳSelf stack. Rather than asking you to write or maintain nginx configuration by hand, `nself build` generates the full nginx configuration automatically based on which services are enabled, what SSL mode you have selected, and which plugins are installed. The generated files are written to an `nginx/` directory in your project root and are consumed by the nginx container at startup.
+Nginx is the default entry point for external traffic in a ɳSelf stack. `nself build` generates its configuration from the enabled services, SSL mode, and installed plugins. The generated files are written to `nginx/` in your project root.
 
 ---
 
@@ -34,6 +34,34 @@ The docs site is listed as the core route `core:api-docs` (server name `docs.<BA
 The nginx renderer reads this model. A route suppressed by a hand-managed `conf.d` file remains in the JSON with `shadowed_by` set, while its generated `nginx/sites/` file is omitted. Plugin snippets and hand-managed server blocks are in the same file; see [Plugin and hand-managed routes](#plugin-and-hand-managed-routes).
 
 Duplicate generated domains use the compatibility gate: v1.4 keeps the existing build preflight refusal text for duplicates it already detects and warns once for additional duplicates found by the renderer. With `NSELF_V15=1`, every duplicate is refused as E055 with both route IDs. Give each service a distinct route before rebuilding.
+
+## Proxy provider (nginx or traefik)
+
+The installed `traefik` plugin selects the proxy provider. It must be enabled and installed in a plugin directory inside this project. There is no provider config key. Set `NSELF_PLUGIN_DIR` in the project's `.env`, for example `NSELF_PLUGIN_DIR=.nself/plugins`, before installing it. Without an enabled traefik plugin, the provider is nginx.
+
+The build checks the directory's resolved path, including symlinks. E480 refuses traefik in a shared directory such as `~/.nself/plugins`, or in the project root itself. A shared install would switch every project using that directory on its next build. Reinstall in a project subdirectory, or run `nself remove traefik` from the shared directory.
+
+Fronted mode is nginx-only. E482 refuses traefik when `NGINX_FRONTED_BY` is set. Keep nginx in this project and change the provider in the fronting project, or unset `NGINX_FRONTED_BY`.
+
+E481 lists every item that prevents a complete route swap:
+
+- Route directives in `unmodelled`, routes with `shadowed_by`, and entries in `unmodelled_global`.
+- Generated upstream URLs with a path other than `/`, or a query. The version 1 contract cannot carry these (D-0310).
+- Foreign files in `nginx/sites/`, including hand-written files and marked files from another build that this build will not write.
+
+Remove or model the named items, or keep nginx with `nself remove traefik`. Both `nginx/` and `.nself/generated/routes.json` are always generated. With traefik selected, compose omits the nginx service. The plugin owns Traefik configuration and serves ports 80 and 443 through its file provider.
+
+Enabled API docs are an accepted difference (D-0310), not an E481 refusal. Traefik does not serve `docs.<base>`, because the docs host is absent from the version 1 route contract. Each build warns once and still writes its own `nginx/sites/api-docs.conf`. The config loader does not parse any `API_DOCS_*` variables (D-0435), so environment-only projects cannot disable docs through those variables. The e2e parity matrix excludes the docs host.
+
+Use this sequence to switch a running project:
+
+```bash
+nself add traefik --yes
+nself build --remove-orphans --yes
+nself start
+```
+
+The add writes files through reconcile. The build removes the nginx orphan, and start brings up traefik. In v1.5, prod-class changes print the reconcile plan and require confirmation. A refused add leaves generated files and containers unchanged, but leaves traefik installed. Remove it with `nself remove traefik`, or fix the refusal before the next build. For measured downtime, see the e2e evidence.
 
 ## Plugin and hand-managed routes
 

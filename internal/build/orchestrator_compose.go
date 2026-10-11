@@ -13,12 +13,30 @@ package build
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 )
+
+// applyProxyProvider applies the derived provider to the compose service gate.
+func (st *buildState) applyProxyProvider(g *compose.Generator) error {
+	provider, err := ProxyProvider(st.cfg, st.workdir, DefaultPluginDir())
+	if err != nil {
+		return err
+	}
+	if provider != ProviderNginx {
+		g.OmitNginx()
+		// Compose is generated once per build, even when modelRoutes runs twice.
+		if proxyAPIDocsEnabled(st.cfg) {
+			slog.Warn("docs." + st.cfg.BaseDomain + " is not served by traefik (D-0310); api-docs is an accepted difference (API_DOCS_* parsing debt D-0435)")
+		}
+	}
+	return nil
+}
 
 // buildEnvComputed generates the .env.computed file content with computed
 // values that other tools (e.g., Hasura migrations) depend on. The extra

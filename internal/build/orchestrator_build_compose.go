@@ -41,6 +41,9 @@ func (st *buildState) generateCompose() error {
 	}
 	defer restorePins()
 	composeGen := compose.NewGeneratorWithProfile(st.cfg, profile).WithWorkDir(st.workdir).WithEnvOverlay(st.opts.EnvOverlay)
+	if err := st.applyProxyProvider(composeGen); err != nil {
+		return fmt.Errorf("applying proxy provider: %w", err)
+	}
 	composeYAML, err := composeGen.Generate()
 	if err != nil {
 		return fmt.Errorf("generating docker-compose.yml: %w", err)
