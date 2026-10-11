@@ -301,6 +301,7 @@ func TestProjectPinEnvImageDigest(t *testing.T) {
 		})
 	}
 	// The digest rule is for *_IMAGE only: a *_VERSION value is never read for one.
+	t.Setenv("HASURA_VERSION", "v2.44.0@"+other)
 	if envDigestDiffers("HASURA_VERSION", pin) || envDigestDiffers("", pin) {
 		t.Error("only an *_IMAGE variable may carry a digest")
 	}
