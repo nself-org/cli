@@ -1,0 +1,54 @@
+{
+  "sources": [
+    {
+      "configuration": {
+        "connection_info": {
+          "database_url": {
+            "from_env": "HASURA_GRAPHQL_DATABASE_URL"
+          },
+          "use_prepared_statements": true
+        }
+      },
+      "functions": [
+        {
+          "function": {
+            "name": "docs_nearest_embedding",
+            "schema": "public"
+          },
+          "permissions": [
+            {
+              "role": "user"
+            }
+          ]
+        }
+      ],
+      "kind": "postgres",
+      "name": "default",
+      "tables": [
+        {
+          "select_permissions": [
+            {
+              "permission": {
+                "columns": [
+                  "id",
+                  "owner"
+                ],
+                "filter": {
+                  "owner": {
+                    "_eq": "X-Hasura-User-Id"
+                  }
+                }
+              },
+              "role": "user"
+            }
+          ],
+          "table": {
+            "name": "docs",
+            "schema": "public"
+          }
+        }
+      ]
+    }
+  ],
+  "version": 3
+}
