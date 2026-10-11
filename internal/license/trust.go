@@ -23,8 +23,7 @@ var errCacheUnsigned = errors.New("the cached license is not signed by ping (uns
 
 // errClockBehind is the refusal for a verified cache read while the clock is
 // behind the signed iat, or more than 10 minutes behind the highest trusted time.
-var errClockBehind = errors.New("the system clock is behind the time this license was last checked, so the cached license cannot be trusted; " +
-	"correct the clock, connect to the internet to validate, or run 'nself license import <file>' with a fresh export")
+var errClockBehind = errors.New("the system clock is behind the time this license was last checked, so the cached license cannot be trusted; correct the system clock, and if it is already correct, connect to the internet to validate or run 'nself license import <file>' with a fresh export")
 
 // cacheTrust reports whether a cache entry may back a licence decision. Every
 // path that reads tier or plugins from the cache calls it, so no decision rests
