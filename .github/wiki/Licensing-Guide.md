@@ -151,11 +151,11 @@ POST https://ping.nself.org/license/validate
 | 200 | Valid key, plugin allowed |
 | 401/403/404 | Invalid key or insufficient tier |
 
-Validation results are cached locally for 24 hours at `~/.nself/license/cache`.
+Validation results are cached at `~/.nself/license/cache`. How long a result counts depends on the tier: free keys are not cached (every command revalidates), Pro tiers 7 days, ɳSelf+, Max, Enterprise and owner keys 30 days. In v1.5 (`NSELF_V15=1`) the cache is checked against ping's signature before it is trusted; see [[Plugin-Security]].
 
 ### Runtime Revalidation
 
-Installed plugins revalidate on a 7-day cycle via libnclaw. If the network is down, a grace period allows continued operation. A Telegram alert fires on key expiry. Force revalidation:
+Installed plugins revalidate when their cached result runs out (the tier TTL above). If the licence server cannot be reached, the last good result keeps working: silently for up to 72 hours, with a warning after that, and access fails closed once the cached result is 7 days old. A licence that has expired keeps paid plugins working for a 30-day grace window before they go dormant. A warning starts 2 days before the cached result expires. Force revalidation:
 
 ```bash
 nself license revalidate
@@ -183,7 +183,7 @@ Stripe handles proration automatically. You pay the difference for the remainder
 
 ### Downgrade
 1. Change your tier in the Stripe customer portal (cloud.nself.org/license).
-2. Plugins above your new tier stop working at the next revalidation cycle (up to 7 days).
+2. Plugins above your new tier stop working at the next revalidation, when the cached result runs out (7 or 30 days, by tier).
 3. The CLI does not forcibly remove plugins, but they will fail health checks and be excluded from the tool registry.
 
 ### Cancellation
