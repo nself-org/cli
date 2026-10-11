@@ -12,6 +12,8 @@ import (
 
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
+
+	"github.com/spf13/cobra"
 )
 
 const frozenDigest = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
@@ -136,5 +138,43 @@ func TestBuildWriteLockFlag(t *testing.T) {
 	}
 	if !lockPlanned("--write-lock") {
 		t.Fatal("build --plan --write-lock does not list the lock")
+	}
+}
+
+// TestStartFrozenDisablesAutoChange: after the lock check passes, --frozen must
+// not let runStart rebuild (it would re-render the compose and rewrite the
+// lock) or auto-install the AI plugins. A plain start keeps both.
+func TestStartFrozenDisablesAutoChange(t *testing.T) {
+	dir, _ := frozenProject(t)
+	t.Setenv("AI_AUTO_INSTALL", "")
+	t.Chdir(dir)
+
+	newCmd := func(frozen bool) *cobra.Command {
+		c := &cobra.Command{Use: "start"}
+		c.Flags().Bool("skip-build", false, "")
+		c.Flags().Bool("frozen", false, "")
+		if frozen {
+			_ = c.Flags().Set("frozen", "true")
+		}
+		return c
+	}
+
+	plain := newCmd(false)
+	if err := startLockPreRun(plain, nil); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := plain.Flags().GetBool("skip-build"); v || os.Getenv("AI_AUTO_INSTALL") != "" {
+		t.Fatalf("a plain start was frozen: skip-build %v, AI_AUTO_INSTALL %q", v, os.Getenv("AI_AUTO_INSTALL"))
+	}
+
+	frozen := newCmd(true)
+	if err := startLockPreRun(frozen, nil); err != nil {
+		t.Fatalf("matching project failed --frozen: %v", err)
+	}
+	if v, _ := frozen.Flags().GetBool("skip-build"); !v {
+		t.Fatal("--frozen left the automatic rebuild on")
+	}
+	if got := os.Getenv("AI_AUTO_INSTALL"); got != "false" {
+		t.Fatalf("--frozen left the AI auto-install on (AI_AUTO_INSTALL=%q)", got)
 	}
 }

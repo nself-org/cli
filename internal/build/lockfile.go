@@ -168,7 +168,7 @@ func ledgerSources(pluginDir string) func() (ledger.Sources, error) {
 
 // lockFromState assembles a Lock from a rendered compose, the bundle ledger and
 // the CLI version. No digest is looked up: the lock records the compose as is.
-func lockFromState(workdir, pluginDir string, composeYAML []byte) (lock.Lock, error) {
+func lockFromState(pluginDir string, composeYAML []byte) (lock.Lock, error) {
 	refs, err := cliOwnedImages(composeYAML)
 	if err != nil {
 		return lock.Lock{}, err
@@ -176,7 +176,7 @@ func lockFromState(workdir, pluginDir string, composeYAML []byte) (lock.Lock, er
 	l := lock.New()
 	l.CLI = cliMinor(version.GetVersion())
 	l.Images, l.Unpinned = lock.Pin(refs, lock.Resolver{})
-	store := ledger.NewStore(workdir)
+	store := ledger.NewStore(pluginDir)
 	store.Sources = ledgerSources(pluginDir)
 	led, _, err := store.Load()
 	if err != nil {
@@ -197,7 +197,7 @@ func (st *buildState) writeProjectLock(composeYAML []byte) error {
 	if !st.lockActive() {
 		return nil
 	}
-	l, err := lockFromState(st.workdir, st.pluginDir, composeYAML)
+	l, err := lockFromState(st.pluginDir, composeYAML)
 	if err != nil {
 		return err
 	}
@@ -209,7 +209,9 @@ func (st *buildState) writeProjectLock(composeYAML []byte) error {
 	if have, rerr := st.sink.ReadFile(path); rerr == nil && bytes.Equal(have, want) {
 		return nil
 	}
-	if err := st.sink.WriteFile(path, want, 0o644); err != nil {
+	// Atomic (temp file + rename): a reader, a crash or a full disk never leaves
+	// a half-written lock whose missing pins would silently move images.
+	if err := st.sink.WriteAtomic(path, want, 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", lock.FileName, err)
 	}
 	st.filesGenerated++
@@ -223,5 +225,5 @@ func CurrentLock(workdir string) (lock.Lock, error) {
 	if err != nil {
 		return lock.Lock{}, fmt.Errorf("reading docker-compose.yml: %w", err)
 	}
-	return lockFromState(workdir, DefaultPluginDir(), data)
+	return lockFromState(DefaultPluginDir(), data)
 }

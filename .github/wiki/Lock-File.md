@@ -69,6 +69,8 @@ A service the old compose lacks takes the CLI default. A project with no compose
 
 ## Review a diff
 
+The lock is written atomically (temp file, then rename) and ends with the line `# end of nself.lock.yaml`. A file without that line, such as one cut short by a crash or a full disk, is rejected as damaged instead of loading with fewer pins. If you edit the lock by hand, keep the last line.
+
 The lock is plain YAML, so a pull request shows exactly which image, plugin or bundle moved. `nself build` and `nself.lock.yaml` change together, so review both.
 
 ## `nself start --frozen`
@@ -86,6 +88,8 @@ A project with no lock also fails. Use it in CI and on servers, after `nself bui
 nself build
 nself start --frozen
 ```
+
+Under `--frozen`, `start` does not rebuild and does not auto-install the AI plugins, so the stack it checked is the stack it starts. If the compose file is stale, run `nself build` first.
 
 A plain `nself start` runs the same comparison, prints one warning that lists the differences, and starts anyway. See [[cmd-start]] and [[error-codes]].
 

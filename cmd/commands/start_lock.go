@@ -11,12 +11,14 @@ package commands
 // Outputs: nil, or an E455 error naming every mismatch. The warning goes to
 // stderr, once per start.
 // Constraints: runs as the command's PreRunE, before any docker call or
-// automatic rebuild. A project without a lock and without --frozen is silent.
+// automatic rebuild. Under --frozen it also disables the automatic rebuild and
+// the AI auto-install, so the stack that was checked is the stack that starts. A project without a lock and without --frozen is silent.
 
 import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/nself-org/cli/internal/build"
@@ -36,7 +38,29 @@ func startLockPreRun(cmd *cobra.Command, _ []string) error {
 		}
 		return nil
 	}
-	return checkStartLock(root, frozen, cmd.ErrOrStderr())
+	if err := checkStartLock(root, frozen, cmd.ErrOrStderr()); err != nil {
+		return err
+	}
+	if frozen {
+		return freezeStart(cmd)
+	}
+	return nil
+}
+
+// freezeStart stops everything runStart does after this pre-run check from
+// changing the stack that was just compared with the lock: the automatic
+// rebuild (a full build that would re-render the compose and rewrite the lock)
+// and the AI auto-install (it installs plugins, so it moves the plugin
+// versions the lock pins). Both are switched off through the settings they
+// already read: --skip-build and AI_AUTO_INSTALL=false.
+func freezeStart(cmd *cobra.Command) error {
+	if err := cmd.Flags().Set("skip-build", "true"); err != nil {
+		return errs.New("E455", "cannot freeze the start: "+err.Error()).WithFix("report this as a bug")
+	}
+	if err := os.Setenv("AI_AUTO_INSTALL", "false"); err != nil {
+		return errs.New("E455", "cannot freeze the start: "+err.Error()).WithFix("report this as a bug")
+	}
+	return nil
 }
 
 // checkStartLock compares the project with its lock. frozen turns a mismatch

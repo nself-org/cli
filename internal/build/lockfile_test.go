@@ -6,6 +6,7 @@ package build
 // plan mode.
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nself-org/cli/internal/bundle/ledger"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/lock"
@@ -326,4 +328,80 @@ func TestLockBootstrapDigestFunnel(t *testing.T) {
 			t.Fatalf("an image without a RepoDigest must stay unpinned (v2.40.0 is not in the CLI lock): %v %v", l.Images, l.Unpinned)
 		}
 	})
+}
+
+// TestLockReadsLedgerFromPluginDir: the bundle ledger lives at
+// <plugin dir>/.nself-state/bundles.json (D-0284), not in the project. A ledger
+// recorded there must show in the lock's plugins and bundles sections.
+func TestLockReadsLedgerFromPluginDir(t *testing.T) {
+	f := newPlanFixture(t, "dev-minimal")
+	compattest.Set(t, true)
+	led := ledger.New()
+	led.Bundles["task"] = ledger.BundleRecord{InstalledAt: "2026-10-10T00:00:00Z"}
+	led.Plugins["notify"] = ledger.PluginRecord{InstalledBy: []string{"task"}, Tier: ledger.TierFree, Version: "9.8.7"}
+	data, err := led.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := ledger.NewStore(f.plugins)
+	if err := os.MkdirAll(store.Dir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.Path(), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lockBuild(t, f)
+	l := readLock(t, f)
+	if len(l.Bundles) != 1 || l.Bundles[0] != "task" {
+		t.Fatalf("lock bundles %v, want [task] from the plugin-dir ledger", l.Bundles)
+	}
+	if got := l.Plugins["notify"].Version; got != "9.8.7" {
+		t.Fatalf("lock plugin notify version %q, want 9.8.7: plugins %v", got, l.Plugins)
+	}
+	if _, err := os.Stat(filepath.Join(f.workdir, ledger.StateDirName)); !os.IsNotExist(err) {
+		t.Fatalf("the build created a ledger directory in the project (stat err %v)", err)
+	}
+}
+
+// writeSpySink records which write method wrote each path.
+type writeSpySink struct {
+	Sink
+	plain, atomic []string
+}
+
+func (w *writeSpySink) WriteFile(p string, d []byte, m fs.FileMode) error {
+	w.plain = append(w.plain, p)
+	return w.Sink.WriteFile(p, d, m)
+}
+
+func (w *writeSpySink) WriteAtomic(p string, d []byte, m fs.FileMode) error {
+	w.atomic = append(w.atomic, p)
+	return w.Sink.WriteAtomic(p, d, m)
+}
+
+// TestLockWrittenAtomically: nself.lock.yaml goes through Sink.WriteAtomic
+// (never the plain WriteFile), and what lands on disk parses (trailer included).
+func TestLockWrittenAtomically(t *testing.T) {
+	f := newPlanFixture(t, "dev-minimal")
+	st := newBuildState(f.workdir, BuildOptions{WriteLock: true})
+	spy := &writeSpySink{Sink: newDiskSink(f.workdir)}
+	st.sink = spy
+	st.pluginDir = f.plugins
+	if err := st.writeProjectLock([]byte("services:\n  hasura:\n    image: " + hasura240 + "\n")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range spy.plain {
+		if strings.HasSuffix(p, lock.FileName) {
+			t.Fatalf("the lock was written with a plain WriteFile: %v", spy.plain)
+		}
+	}
+	if len(spy.atomic) != 1 || !strings.HasSuffix(spy.atomic[0], lock.FileName) {
+		t.Fatalf("atomic writes %v, want exactly the lock", spy.atomic)
+	}
+	if _, err := lock.Load(f.workdir); err != nil {
+		t.Fatalf("the written lock does not load: %v", err)
+	}
+	if left, _ := filepath.Glob(filepath.Join(f.workdir, lock.FileName+".tmp-*")); len(left) != 0 {
+		t.Fatalf("temp files left behind: %v", left)
+	}
 }

@@ -131,7 +131,7 @@ func TestLockParseRejects(t *testing.T) {
 	good, _ := sample().Marshal()
 	cases := map[string]string{
 		"empty":       "",
-		"unknown key": string(good) + "ci_toolchain: x\n",
+		"unknown key": strings.Replace(string(good), Trailer, "ci_toolchain: x\n"+Trailer, 1),
 		"version 2":   strings.Replace(string(good), "schema_version: 1", "schema_version: 2", 1),
 		"not yaml":    "images: [",
 	}
@@ -139,6 +139,41 @@ func TestLockParseRejects(t *testing.T) {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: Parse accepted it", name)
 		}
+	}
+}
+
+// TestLockTruncatedNeverParses: a lock cut at any byte, or at any line boundary,
+// is an error. Without the trailer a prefix ending on a line boundary parses as
+// a valid lock with fewer images (the silent image move this file prevents).
+func TestLockTruncatedNeverParses(t *testing.T) {
+	good, err := sample().Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(good); err != nil {
+		t.Fatalf("the full file must parse: %v", err)
+	}
+	ran := 0
+	// The last byte is the final newline: without it the file still ends with the
+	// whole trailer and holds every pin, so it is complete, not truncated.
+	for i := 0; i < len(good)-1; i++ {
+		ran++
+		if _, err := Parse(good[:i]); err == nil {
+			t.Fatalf("a lock cut at byte %d of %d parsed as valid:\n%s", i, len(good), good[:i])
+		}
+	}
+	lines := strings.SplitAfter(string(good), "\n")
+	for n := 1; n < len(lines)-1; n++ {
+		ran++
+		if _, err := Parse([]byte(strings.Join(lines[:n], ""))); err == nil {
+			t.Fatalf("a lock cut after line %d parsed as valid", n)
+		}
+	}
+	if ran == 0 {
+		t.Fatal("no truncation was tried")
+	}
+	if !strings.HasSuffix(string(good), Trailer+"\n") {
+		t.Fatalf("Marshal does not end with the trailer: %q", good[len(good)-40:])
 	}
 }
 
