@@ -71,26 +71,24 @@ func PushSecrets(ctx context.Context, cfg SSHConfig, opts PushSecretsOptions) er
 		return err
 	}
 
-	// Resolve remote path.
+	// Resolve and validate the remote path before anything else runs.
 	remotePath := opts.RemotePath
 	if remotePath == "" {
 		remotePath = "~/app/.env"
 	}
+	if err := validateSecretsRemotePath(remotePath); err != nil {
+		return err
+	}
+	if err := checkDeployKeyPath(cfg.KeyPath); err != nil {
+		return err
+	}
 
-	// Extract sshTarget (strip any path component from Host).
+	// Extract the host (strip any path component from Host).
 	spec, err := remote.ParseHostSpec(cfg.Host)
 	if err != nil {
 		return fmt.Errorf("parsing deploy host: %w", err)
 	}
-	sshTarget := spec.Dest()
-	if strings.Contains(spec.Host, ":") {
-		sshTarget = "[" + spec.Host + "]"
-		if spec.User != "" {
-			sshTarget = spec.User + "@" + sshTarget
-		}
-	}
-
-	remoteDestination := fmt.Sprintf("%s:%s", sshTarget, remotePath)
+	remoteDestination := hostOperand(spec, remotePath)
 
 	if opts.DryRun {
 		fmt.Printf("DRY-RUN: would push secrets to %s (source: %s)\n",
@@ -101,20 +99,22 @@ func PushSecrets(ctx context.Context, cfg SSHConfig, opts PushSecretsOptions) er
 	if serverName == "" {
 		serverName = opts.Target + "-app"
 	}
-	policy, err := HostKeyOptions(ctx, spec.String(), opts.Target, serverName, true)
+	// Secret shipping is strict in v1.4 and v1.5 alike.
+	policy, err := hostKeyPolicy(ctx, spec.String(), opts.Target, serverName, true, true)
+	if err != nil {
+		return err
+	}
+	t, err := newSSHTransport(spec, cfg.KeyPath, policy)
 	if err != nil {
 		return err
 	}
 
 	// Build scp command. Stdout is not connected — prevents secret values from
 	// appearing in terminal output. Stderr is forwarded so scp errors are visible.
-	scpArgs := append([]string{"-i", cfg.KeyPath}, policy...)
-	scpArgs = append(scpArgs, "-o", "ForwardAgent=no")
-	scpArgs = append(scpArgs, spec.SSHOptions()...)
-	if spec.Port != 0 {
-		scpArgs[len(scpArgs)-2] = "-P"
+	scpArgs, err := t.scpArgv(envFile, remotePath)
+	if err != nil {
+		return err
 	}
-	scpArgs = append(scpArgs, "--", envFile, remoteDestination)
 
 	cmd, err := remote.Command(ctx, "scp", scpArgs...)
 	if err != nil {
@@ -129,6 +129,27 @@ func PushSecrets(ctx context.Context, cfg SSHConfig, opts PushSecretsOptions) er
 	}
 
 	fmt.Printf("Secrets pushed to %s\n", remoteDestination)
+	return nil
+}
+
+// validateSecretsRemotePath accepts an absolute path or "~/rest", where the
+// path (or rest) passes remote.ValidateCopyPath. The scp remote operand is
+// read by the remote side, so no other shape is allowed.
+func validateSecretsRemotePath(p string) error {
+	bad := fmt.Errorf("remote path %q must be absolute or start with ~/ and use only [a-zA-Z0-9/_.-] with no '..' segment", p)
+	switch {
+	case strings.HasPrefix(p, "/"):
+		if p == "/" || remote.ValidateCopyPath(p) != nil {
+			return bad
+		}
+	case strings.HasPrefix(p, "~/"):
+		rest := p[2:]
+		if rest == "" || strings.HasPrefix(rest, "/") || remote.ValidateCopyPath(rest) != nil {
+			return bad
+		}
+	default:
+		return bad
+	}
 	return nil
 }
 

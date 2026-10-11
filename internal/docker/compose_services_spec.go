@@ -93,6 +93,13 @@ func healthDuration(name, field string, raw json.RawMessage, def time.Duration) 
 	return min(d, MaxHealthTimeout), nil
 }
 
+// HealthTimeout is healthTimeout for callers that parse the resolved compose
+// config themselves (internal/deploy's copy of this parser), so both compute
+// the same wait.
+func HealthTimeout(name string, interval, timeout, startPeriod, retries json.RawMessage) (time.Duration, error) {
+	return healthTimeout(name, interval, timeout, startPeriod, retries)
+}
+
 // healthTimeout is start_period + retries*(interval+timeout), capped at
 // MaxHealthTimeout. Docker reads an absent or zero interval, timeout or retries
 // as its default (30s, 30s, 3), a non-positive start_period as 0. A bad value
