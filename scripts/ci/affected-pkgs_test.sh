@@ -9,8 +9,9 @@
 # Inputs:  optional path to the script under test (default: the sibling
 #          affected-pkgs.sh). A positive control runs a copy of the script
 #          with its embed mapping removed and must see a mismatch.
-# Outputs: "ok <awk> <case>" per passing case, "awks tested: ..." and
-#          "AFFECTED-PKGS-TEST: PASS"; exit 1 on the first mismatch.
+# Outputs: "ok <awk> <case>" per passing case, a note when no strict (BSD)
+#          awk or only one awk flavour ran, "awks tested: ..." and
+#          "AFFECTED-PKGS-TEST: PASS"; exit 1 after a run with any mismatch.
 # Constraints: bash 3.2 compatible; needs git and go; no network (the fixture
 #          module has no dependencies). Writes only under a mktemp dir.
 set -euo pipefail
@@ -109,7 +110,7 @@ fi
 # ---- runner ----------------------------------------------------------------
 FAILED=0
 # check <awk> <script> <case> <want-exit> <want-stdout> <change...>
-# A change is "edit:<path>" (append a line), "new:<path>" or "commit".
+# A change is "edit:<path>" (append a line), "new:<path>", "stage" or "commit".
 check() {
   local awk="$1" script="$2" name="$3" want_rc="$4" want="$5"; shift 5
   reset_fixture
@@ -118,6 +119,7 @@ check() {
     case "$c" in
       edit:*) printf '// changed\n' >> "$R/${c#edit:}" ;;
       new:*) mkdir -p "$(dirname "$R/${c#new:}")"; printf 'new\n' > "$R/${c#new:}" ;;
+      stage) git -C "$R" add -A ;;
       commit) git -C "$R" add -A && git -C "$R" commit -qm change ;;
     esac
   done
@@ -140,6 +142,7 @@ cases() { # cases <awk> <script>
   local w="$1" s="$2"
   check "$w" "$s" go-file 0 "$P/a $P/b" edit:a/a.go commit
   check "$w" "$s" go-file-uncommitted 0 "$P/a $P/b" edit:a/a.go
+  check "$w" "$s" go-file-staged 0 "$P/a $P/b" edit:a/a.go stage
   check "$w" "$s" embedded-yaml 0 "$P/a $P/a/assets $P/b" edit:a/assets/conf.yaml commit
   check "$w" "$s" testdata 0 "$P/c" new:c/testdata/more.txt
   check "$w" "$s" docs-read-by-test 0 "$P/d" edit:docs/guide.md commit
@@ -151,23 +154,47 @@ cases() { # cases <awk> <script>
   check "$w" "$s" bad-ref 2 ""
 }
 
+# strict_awk <label>: "yes" when this awk rejects a newline inside a -v value
+# (BSD awk does: the D-0269/D-0290 failure), so the run proves the script
+# survives it.
+strict_awk() {
+  if PATH="$WORK/awk-$1:$PATH" awk -v x="$(printf 'a\nb')" 'BEGIN { exit 0 }' >/dev/null 2>&1; then
+    echo no
+  else
+    echo yes
+  fi
+}
+
 TESTED=""
+STRICT=0
+NAWKS=0
 for w in $AWKS; do
+  NAWKS=$((NAWKS + 1))
+  st="$(strict_awk "$w")"
+  [ "$st" = yes ] && STRICT=$((STRICT + 1))
   cases "$w" "$SCRIPT" || true
-  TESTED="$TESTED $w"
+  TESTED="$TESTED $w(newline-in--v-rejected=$st)"
 done
 [ "$FAILED" = 0 ] || { echo "AFFECTED-PKGS-TEST: FAIL" >&2; exit 1; }
 
 # ---- positive control --------------------------------------------------------
-# A copy that ignores go:embed must miss the embedded-yaml case; if it does
-# not, the fixture no longer proves the embed mapping.
+# A copy that ignores go:embed must list a/assets alone (exit 0) for the
+# embedded-yaml change: the exact wrong answer, not just any mismatch, so a
+# copy that merely errors cannot pass the control.
 sed 's/if (f in embedded) {/if (0) {/' "$SCRIPT" > "$WORK/broken.sh"
 cmp -s "$SCRIPT" "$WORK/broken.sh" && { echo "FAIL positive control: the embed check was not found to break" >&2; exit 1; }
-if check system "$WORK/broken.sh" embedded-yaml 0 "$P/a $P/a/assets $P/b" edit:a/assets/conf.yaml commit 2>/dev/null; then
-  echo "FAIL positive control: a script without the embed mapping passed" >&2
+if ! check system "$WORK/broken.sh" embedded-yaml 0 "$P/a/assets" edit:a/assets/conf.yaml commit; then
+  echo "FAIL positive control: a script without the embed mapping did not give the expected wrong answer" >&2
   exit 1
 fi
-echo "ok positive-control (a script without the embed mapping fails the embedded-yaml case)"
+echo "ok positive-control (without the embed mapping the embedded-yaml case lists a/assets only)"
+
+if [ "$STRICT" = 0 ]; then
+  echo "note: no awk here rejects a newline in -v (BSD awk does); run on macOS for that class"
+fi
+if [ "$NAWKS" -lt 2 ]; then
+  echo "note: only one awk ran; install gawk or mawk for a second flavour"
+fi
 
 echo "awks tested:$TESTED"
 echo "AFFECTED-PKGS-TEST: PASS"

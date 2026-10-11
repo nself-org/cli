@@ -5,8 +5,8 @@
 #          merge-train batch and in CI.
 # Usage:   affected-pkgs.sh <base-ref>
 # Inputs:  <base-ref>: any git ref. The change set is every file that differs
-#          between merge-base(<base-ref>, HEAD) and HEAD, plus uncommitted and
-#          untracked files (so it also works before the commit).
+#          between merge-base(<base-ref>, HEAD) and HEAD, plus staged,
+#          unstaged and untracked files (so it also works before the commit).
 # Outputs: stdout, one import path per line, sorted. A changed file seeds:
 #            - the package that embeds it (go:embed, test embeds included);
 #            - the package in its nearest enclosing package directory (its own
@@ -47,9 +47,11 @@ fi
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/affected-pkgs.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
+# core.quotepath=false: a non-ASCII path is printed as is, not "\303\251".
 {
-  git diff --name-only "$BASE"...HEAD
-  git ls-files --modified --others --exclude-standard
+  git -c core.quotepath=false diff --name-only "$BASE"...HEAD
+  git -c core.quotepath=false diff --name-only HEAD
+  git -c core.quotepath=false ls-files --others --exclude-standard
 } | sed '/^$/d' | LC_ALL=C sort -u > "$TMP/changed"
 
 if [ ! -s "$TMP/changed" ]; then
