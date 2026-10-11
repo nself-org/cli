@@ -882,6 +882,16 @@
         "hidden": false
       },
       {
+        "name": "report",
+        "path": "nself doctor report",
+        "short": "Write a redacted support bundle (tar.gz) to share in an issue",
+        "hidden": false,
+        "flags": [
+          "--log-lines",
+          "--output"
+        ]
+      },
+      {
         "name": "security",
         "path": "nself doctor security",
         "short": "Diagnose server security",

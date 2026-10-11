@@ -15361,6 +15361,63 @@
       "surface": "all"
     },
     {
+      "path": "nself doctor report",
+      "name": "report",
+      "parent": "nself doctor",
+      "summary": "Write a redacted support bundle (tar.gz) to share in an issue",
+      "hidden": false,
+      "deprecated": null,
+      "aliases": [],
+      "group": null,
+      "runnable": true,
+      "args": [],
+      "flags": [
+        {
+          "name": "log-lines",
+          "shorthand": null,
+          "type": "int",
+          "default": "200",
+          "usage": "Log lines to keep per service",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "output",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "Archive path (default nself-report-<UTC timestamp>.tar.gz in the project directory)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
+        }
+      ],
+      "canon": "subcommand",
+      "target": null,
+      "side_effect": "read",
+      "output": "document",
+      "json": "envelope",
+      "data_schema": "schemas/commands/doctor-report.v1.schema.json",
+      "exit_codes": {},
+      "confirm": null,
+      "surface": "all"
+    },
+    {
       "path": "nself doctor security",
       "name": "security",
       "parent": "nself doctor",
@@ -21976,14 +22033,14 @@
     }
   ],
   "counts": {
-    "commands": 377,
+    "commands": 378,
     "top_level": 24,
     "core": 20,
     "pending": 4,
     "deprecated_shims": 43,
     "plugin": 10,
     "core_missing": [],
-    "json_envelope": 185,
+    "json_envelope": 186,
     "json_legacy": 34
   }
 }
