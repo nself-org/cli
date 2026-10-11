@@ -58,6 +58,14 @@ type StrategyState struct {
 	// BlueGreenStateFile is the path to the underlying blue/green state file,
 	// populated when strategy is blue-green or canary.
 	BlueGreenStateFile string `json:"blue_green_state_file,omitempty"`
+
+	// BackupID is the verified database backup taken before a v1.5 remote apply
+	// on a production-class target; BackupHost is the host it lives on, and
+	// PreDeployTar the in-place file backup (every tier). `deploy rollback`
+	// restores from them. Empty on every other deploy.
+	BackupID     string `json:"backup_id,omitempty"`
+	BackupHost   string `json:"backup_host,omitempty"`
+	PreDeployTar string `json:"pre_deploy_tar,omitempty"`
 }
 
 // LoadDeployState reads the deploy state from .nself/state/deploy.json.

@@ -1,0 +1,150 @@
+package deploy
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func needTools(t *testing.T) {
+	t.Helper()
+	for _, tool := range []string{"sh", "tar", "rsync", "find", "grep"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s not installed", tool)
+		}
+	}
+}
+
+func seedDeployedHost(t *testing.T, rp string) {
+	t.Helper()
+	writeFile(t, filepath.Join(rp, "docker-compose.yml"), "services: {a: {}}\n# v1\n", 0o644)
+	writeFile(t, filepath.Join(rp, ".env"), "SECRET=1\n", 0o600)
+	writeFile(t, filepath.Join(rp, ".env.prod"), "ENV=prod\n", 0o600)
+	writeFile(t, filepath.Join(rp, ".nself", "compose-files.txt"), rp+"/docker-compose.yml\n", 0o644)
+	writeFile(t, filepath.Join(rp, ".nself", "plugins", "ai", "docker-compose.plugin.yml"), "services: {ai: {}}\n", 0o644)
+	writeFile(t, filepath.Join(rp, "nginx", "nginx.conf"), markedConf+"# v1\n", 0o644)
+	writeFile(t, filepath.Join(rp, "nginx", "sites", "api.conf"), markedConf+"# v1\n", 0o644)
+	writeFile(t, filepath.Join(rp, "nginx", "sites", "foreign.conf"), "# hand written\n", 0o644)
+	writeFile(t, filepath.Join(rp, "nginx", "conf.d", "block.conf"), "# hand block\n", 0o644)
+	writeFile(t, filepath.Join(rp, "hasura", "metadata", "version.yaml"), "version: 3\n", 0o644)
+	writeFile(t, filepath.Join(rp, "ssl", "certificates", "x", "fullchain.pem"), "CERT", 0o644)
+}
+
+func tarList(t *testing.T, tar string) string {
+	t.Helper()
+	out, err := exec.Command("tar", "-tzf", tar).CombinedOutput()
+	if err != nil {
+		t.Fatalf("tar -tzf: %v\n%s", err, out)
+	}
+	return string(out)
+}
+
+func TestRemoteBackupTar(t *testing.T) {
+	needTools(t)
+	f := newFakeRemote(t)
+	rp := t.TempDir()
+	seedDeployedHost(t, rp)
+	id := NewBackupID(time.Date(2026, 10, 10, 20, 45, 16, 0, time.UTC))
+	if !strings.HasPrefix(id, "20261010T204516Z-") || !backupIDRe.MatchString(id) {
+		t.Fatalf("id %q", id)
+	}
+	bk, err := CreatePreDeployTar(context.Background(), f, rp, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(rp, ".nself", "backups", "pre-deploy-"+id+".tar.gz"); bk.Tar != want || !exists(want) {
+		t.Fatalf("tar path %q (exists %v), want %q", bk.Tar, exists(want), want)
+	}
+	list := tarList(t, bk.Tar)
+	for _, want := range []string{"docker-compose.yml", ".env", ".env.prod", ".nself/compose-files.txt", ".nself/plugins/ai/docker-compose.plugin.yml", "nginx/nginx.conf", "nginx/sites/api.conf", "hasura/metadata/version.yaml"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("tar lacks %s:\n%s", want, list)
+		}
+	}
+	for _, bad := range []string{"conf.d", "ssl/", ".nself/backups"} {
+		if strings.Contains(list, bad) {
+			t.Errorf("tar must not hold %s:\n%s", bad, list)
+		}
+	}
+	if info, _ := os.Stat(bk.Tar); info.Mode().Perm()&0o077 != 0 {
+		t.Errorf("tar mode %v: it holds env files and must be owner-only", info.Mode().Perm())
+	}
+	if _, err := CreatePreDeployTar(context.Background(), f, rp, "../evil"); err == nil {
+		t.Error("an id with .. was accepted")
+	}
+
+	// A first deploy: the project dir does not exist yet, nothing to save.
+	empty := filepath.Join(t.TempDir(), "fresh")
+	bk2, err := CreatePreDeployTar(context.Background(), f, empty, NewBackupID(time.Now()))
+	if err != nil {
+		t.Fatalf("first deploy with nothing to back up: %v", err)
+	}
+	if !exists(bk2.Tar) {
+		t.Fatal("no tar for the empty first deploy")
+	}
+	_ = tarList(t, bk2.Tar) // a valid, readable archive
+}
+
+func TestDeployRollbackInPlace(t *testing.T) {
+	needTools(t)
+	f := newFakeRemote(t)
+	rp := t.TempDir()
+	seedDeployedHost(t, rp)
+	ctx := context.Background()
+	bk, err := CreatePreDeployTar(ctx, f, rp, NewBackupID(time.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inode := func(p string) uint64 { return statIno(t, p) }
+	nginxIno, sitesIno := inode(filepath.Join(rp, "nginx")), inode(filepath.Join(rp, "nginx", "sites"))
+	foreign := readFile(t, filepath.Join(rp, "nginx", "sites", "foreign.conf"))
+	block := readFile(t, filepath.Join(rp, "nginx", "conf.d", "block.conf"))
+
+	// The deploy: new content, a new generated conf, a new unmarked file.
+	writeFile(t, filepath.Join(rp, "docker-compose.yml"), "# v2 broken\n", 0o644)
+	writeFile(t, filepath.Join(rp, "nginx", "sites", "api.conf"), markedConf+"# v2\n", 0o644)
+	writeFile(t, filepath.Join(rp, "nginx", "sites", "new-generated.conf"), markedConf, 0o644)
+	writeFile(t, filepath.Join(rp, "nginx", "sites", "new-hand.conf"), "# somebody's\n", 0o644)
+	writeFile(t, filepath.Join(rp, ".env"), "SECRET=2\n", 0o600)
+
+	pruned, err := RestorePreDeployTar(ctx, f, rp, bk.Tar)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, filepath.Join(rp, "docker-compose.yml")); !strings.Contains(got, "# v1") {
+		t.Errorf("compose not restored: %q", got)
+	}
+	if got := readFile(t, filepath.Join(rp, "nginx", "sites", "api.conf")); !strings.Contains(got, "# v1") {
+		t.Errorf("api.conf not restored: %q", got)
+	}
+	if got := readFile(t, filepath.Join(rp, ".env")); got != "SECRET=1\n" {
+		t.Errorf(".env not restored: %q", got)
+	}
+	if len(pruned) != 1 || pruned[0] != "nginx/sites/new-generated.conf" {
+		t.Errorf("pruned %v, want only the generated conf the tar does not hold", pruned)
+	}
+	if exists(filepath.Join(rp, "nginx", "sites", "new-generated.conf")) || !exists(filepath.Join(rp, "nginx", "sites", "new-hand.conf")) {
+		t.Error("the restore must remove the marked new conf and keep the unmarked one")
+	}
+	if readFile(t, filepath.Join(rp, "nginx", "sites", "foreign.conf")) != foreign || readFile(t, filepath.Join(rp, "nginx", "conf.d", "block.conf")) != block {
+		t.Error("a foreign conf or conf.d block changed")
+	}
+	if inode(filepath.Join(rp, "nginx")) != nginxIno || inode(filepath.Join(rp, "nginx", "sites")) != sitesIno {
+		t.Error("a bind-mounted directory was replaced: its inode changed")
+	}
+	if exists(filepath.Join(rp, ".nself", "backups", "restore-pre-deploy-"+strings.TrimSuffix(strings.TrimPrefix(filepath.Base(bk.Tar), "pre-deploy-"), ".tar.gz"))) {
+		t.Error("the temp extract dir was left behind")
+	}
+	for _, c := range f.commands() {
+		if strings.Contains(c, "--delete") || strings.Contains(c, "mv ") {
+			t.Errorf("restore ran %q", c)
+		}
+	}
+	if _, err := RestorePreDeployTar(ctx, f, rp, "/etc/passwd"); err == nil {
+		t.Error("restore accepted a tar outside the backup dir")
+	}
+}
