@@ -10,6 +10,8 @@ package setup
 // `.nself/*` + `!.nself/ci.yaml`. An existing `.nself/` line is left alone and
 // nothing .nself-related is appended: git cannot re-include a file under an
 // excluded directory, so appending would look fixed while staying ignored.
+// D-0537: whenever `.nself/*` is the last of the two lines (kept or appended),
+// `!.nself/ci.yaml` is appended after it so ci.yaml stays committable.
 // D-0163: `/ssl/` (anchored, so src/ssl/ stays tracked) is ignored so
 // ssl/certificates/*/privkey.pem never lands in git. Lines are matched like
 // git does (only a trailing CR and trailing spaces are dropped, so a leading
@@ -69,12 +71,21 @@ func ensureGitignore(workDir string) error {
 	}
 	dirIgnored := anyLine(lines, nselfDirLines)
 	var toAdd []string
+	wildAdded := false
 	for _, entry := range gitignoreEntries {
 		if strings.HasPrefix(entry, ".nself/") || strings.HasPrefix(entry, "!.nself/") {
 			// Line-exact: ".nself/*" must not count as present because the
 			// text ".nself/" is; and an existing directory ignore wins.
-			if !dirIgnored && !lines[entry] {
+			need := !lines[entry]
+			if entry == "!.nself/ci.yaml" {
+				// D-0537: a negation only re-includes what an earlier line
+				// excluded, so a kept negation before the wildcard (existing
+				// or appended just now) leaves ci.yaml ignored.
+				need = need || wildAdded || lastLine(ordered, ".nself/*") > lastLine(ordered, entry)
+			}
+			if !dirIgnored && need {
 				toAdd = append(toAdd, entry)
+				wildAdded = wildAdded || entry == ".nself/*"
 			}
 			continue
 		}
@@ -151,6 +162,16 @@ func sslIgnored(lines []string) bool {
 		}
 	}
 	return lastDir >= 0 && lastDir > lastNeg
+}
+
+// lastLine returns the index of the last line equal to want, or -1.
+func lastLine(lines []string, want string) int {
+	for i := len(lines) - 1; i >= 0; i-- {
+		if lines[i] == want {
+			return i
+		}
+	}
+	return -1
 }
 
 // anyLine reports whether any of the spellings is a whole line in lines.
