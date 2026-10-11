@@ -19,6 +19,9 @@ type flushWriter struct {
 }
 
 func (f *flushWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
 	if !f.started {
 		f.w.Header().Set("Content-Type", "application/x-ndjson")
 		f.w.Header().Set("Trailer", "X-Nself-Exit-Code")
@@ -38,14 +41,25 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request, path string, req
 	f := &flushWriter{w: w, id: invoke.RequestID(path, cmd, req)}
 	o.Transport, o.Timeout, o.Stdout, o.KillDelay = invoke.TransportHTTPStream, 0, f, 1500*time.Millisecond
 	res, err := s.o.Invoker(r.Context(), s.o.Registry, path, req, o)
+	if err != nil {
+		s.logInvokeError(r, err)
+	}
 	if f.started {
-		w.Header().Set("X-Nself-Exit-Code", strconv.Itoa(res.ExitCode))
+		exitCode := "-1"
+		if err == nil {
+			exitCode = strconv.Itoa(res.ExitCode)
+		}
+		w.Header().Set("X-Nself-Exit-Code", exitCode)
 		return
 	}
 	if err != nil {
 		if r.Context().Err() == nil {
 			s.failure(w, r, "E422", 502)
 		}
+		return
+	}
+	if len(res.Stdout) == 0 {
+		s.failure(w, r, "E422", 502)
 		return
 	}
 	document(w, res, status(res))

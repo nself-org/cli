@@ -5,11 +5,25 @@ package httpapi
 // Constraints: never log queries, headers or bodies; preserve streaming Flush.
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 )
+
+// Purpose: record invocation failures without exposing their error messages.
+// Inputs: request context and error. Outputs: one error type line in the log.
+// Constraints: cancellation stays silent; writes share the request log lock.
+func (s *Server) logInvokeError(r *http.Request, err error) {
+	if r.Context().Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return
+	}
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
+	_, _ = fmt.Fprintf(s.o.Log, "invoke error: %T\n", err)
+}
 
 type responseLog struct {
 	http.ResponseWriter

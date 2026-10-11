@@ -78,6 +78,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.o.Invoker(r.Context(), s.o.Registry, path, req, o)
 	if err != nil {
+		s.logInvokeError(r, err)
 		if r.Context().Err() == nil {
 			s.failure(w, r, "E422", 502)
 		}
