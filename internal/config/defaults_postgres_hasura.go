@@ -73,8 +73,6 @@ func applyDefaultsHasura(cfg *Config) error {
 
 // applyDefaultsHasuraCreds generates Hasura admin secret and JWT key when missing.
 func applyDefaultsHasuraCreds(cfg *Config) error {
-	// Pre-lock version (the lock's legacy_ref tag): compose.ImageRef pins it to the
-	// lock entry, so an image bump leaves it alone (TestConfigDefaultVersionsStayPinned).
 	if cfg.Hasura.Version == "" {
 		cfg.Hasura.Version = "v2.44.0"
 		slog.Debug("default", "key", "HASURA_VERSION", "value", cfg.Hasura.Version)

@@ -250,8 +250,6 @@ func applyDefaultsSearchEngines(cfg *Config) {
 	if !cfg.Search.Typesense.EnableCORS {
 		cfg.Search.Typesense.EnableCORS = true
 	}
-	// Pre-lock version (the lock's legacy_ref tag): compose.ImageRef pins it to the
-	// lock entry, so an image bump leaves it alone (TestConfigDefaultVersionsStayPinned).
 	if cfg.Search.Elasticsearch.Version == "" {
 		cfg.Search.Elasticsearch.Version = "8.11.3"
 		slog.Debug("default", "key", "ELASTICSEARCH_VERSION", "value", cfg.Search.Elasticsearch.Version)

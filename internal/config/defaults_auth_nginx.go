@@ -21,8 +21,6 @@ func applyDefaultsAuth(cfg *Config) error {
 
 // applyDefaultsAuthConn sets auth service version, port, token expiry, and resource limits.
 func applyDefaultsAuthConn(cfg *Config) {
-	// Pre-lock version (the lock's legacy_ref tag): compose.ImageRef pins it to the
-	// lock entry, so an image bump leaves it alone (TestConfigDefaultVersionsStayPinned).
 	if cfg.Auth.Version == "" {
 		cfg.Auth.Version = "0.36.0"
 		slog.Debug("default", "key", "AUTH_VERSION", "value", cfg.Auth.Version)

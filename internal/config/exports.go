@@ -11,8 +11,6 @@ func KnownEnvVars() []string {
 // human-readable string. Returns "" when the var has no static default
 // (e.g. generated secrets, or dynamic per-env defaults).
 func DefaultFor(key string) string {
-	// *_VERSION values are the pre-lock versions (each lock entry's legacy_ref
-	// tag); compose.ImageRef pins them to the lock, so an image bump leaves them alone.
 	defaults := map[string]string{
 		// Core
 		"PROJECT_NAME": "myproject",
