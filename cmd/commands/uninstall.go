@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -212,15 +213,28 @@ func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err e
 		if volumesDeleted {
 			done = append([]string{volumesGone}, removed...)
 		}
-		return res, false, errPartialRemoval("could not remove every path", errors.Join(failed...), done)
+		return res, false, errRemovalFailed("could not remove every path", errors.Join(failed...), done)
 	}
 
 	fmt.Println()
+	if len(failed) > 0 {
+		// Human mode: the warnings above named each path; no success line.
+		// Exit status stays 0, as for removal failures.
+		printIncompleteRemoval(len(failed))
+		return UninstallResult{Removed: removed, KeptData: uninstallKeptData(volumesDeleted, removed)}, true, nil
+	}
 	fmt.Printf("  %s nSelf project files removed.\n", ui.C(ui.Green, ui.IconSuccess))
 	fmt.Println()
 	fmt.Printf("  To start fresh: %s\n", ui.C(ui.Cyan, "nself init --force && nself build && nself start"))
 	fmt.Println()
-	return UninstallResult{Removed: removed, KeptData: !volumesDeleted}, true, nil
+	return UninstallResult{Removed: removed, KeptData: uninstallKeptData(volumesDeleted, removed)}, true, nil
+}
+
+// uninstallKeptData reports whether database data was left in place. It is
+// gone when compose down --volumes ran, and also when the .nself/volumes/
+// directory (bind-mounted data) was removed (D-0375).
+func uninstallKeptData(volumesDeleted bool, removed []string) bool {
+	return !volumesDeleted && !slices.Contains(removed, ".nself/volumes/")
 }
 
 // abortedUninstall is the result of a declined prompt: nil in human mode (the

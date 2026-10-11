@@ -414,8 +414,11 @@ func TestBuildFragmentGeneratedRemovalFailure(t *testing.T) {
 	})
 }
 
-// --purge with no compose file deletes no volume, so kept_data stays true.
-func TestBuildFragmentPurgeWithoutComposeKeepsData(t *testing.T) {
+// --purge with no compose file runs no compose down --volumes, but uninstall
+// (which `reset --purge` delegates to) still removes .nself/volumes/, the
+// data, so kept_data is false for both. Bare reset keeps true: see
+// TestBuildFragmentResetWithoutComposeKeepsData.
+func TestBuildFragmentPurgeWithoutCompose(t *testing.T) {
 	t.Setenv("NSELF_V15", "1")
 	for _, name := range []string{"reset", "uninstall"} {
 		t.Run(name, func(t *testing.T) {
@@ -431,8 +434,8 @@ func TestBuildFragmentPurgeWithoutComposeKeepsData(t *testing.T) {
 					t.Fatal(err)
 				}
 			})
-			if data := validateEnvelope(t, out, name); data["kept_data"] != true {
-				t.Fatalf("kept_data = %v, want true when no volume was deleted", data["kept_data"])
+			if data := validateEnvelope(t, out, name); data["kept_data"] != false {
+				t.Fatalf("kept_data = %v, want false: .nself/volumes/ was removed", data["kept_data"])
 			}
 		})
 	}

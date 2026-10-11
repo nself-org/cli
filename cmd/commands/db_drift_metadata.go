@@ -11,24 +11,25 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/nself-org/cli/internal/database"
 	"github.com/spf13/cobra"
 )
 
 func runDBDriftMetadata(cmd *cobra.Command, _ []string) error {
-	cfg, err := loadProjectConfig()
+	// --env is an environment name (or, for back-compat, a project directory):
+	// resolve it before touching local config so a remote name never needs a
+	// local project.
+	dir, handled, err := resolveDBMetadataDir(cmd, "db", "drift", "--metadata")
+	if handled {
+		return err
+	}
 	if err != nil {
 		return err
 	}
-
-	dir, _ := cmd.Flags().GetString("env")
-	if dir == "" {
-		dir, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("getting working directory: %w", err)
-		}
+	cfg, err := loadProjectConfig()
+	if err != nil {
+		return err
 	}
 
 	findings, err := database.ScanMetadataDrift(cmd.Context(), cfg, dir)
