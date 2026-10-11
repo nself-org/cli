@@ -19,6 +19,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -60,9 +61,11 @@ func ResolveDirs(ctx context.Context, r Remote, remotePath string, dirs []string
 	}
 	script := fmt.Sprintf(`rp=%s; cd -P "$rp" 2>/dev/null || exit 0; base=$(pwd -P)
 res() { readlink -f -- "$1" 2>/dev/null || realpath -- "$1" 2>/dev/null; }
-bad() { printf 'OUTSIDE %%s\t%%s\n' "$1" "$2"; }
+safe() { case "$1" in *[[:cntrl:]]*) return 1;; esac; return 0; }
+san() { printf '%%s' "$1" | tr -c '[:print:]' '?'; }
+bad() { printf 'OUTSIDE %%s\t%%s\n' "$(san "$1")" "$(san "$2")"; }
 inside() { case "$1/" in "$base/"*) return 0;; esac; return 1; }
-for d in %s; do if [ -d "$d" ]; then x=$(cd -P "$d" 2>/dev/null && pwd -P) || x=; if inside "$x"; then [ "$x" = "$base/$d" ] || printf 'LINK %%s\t%%s\n' "$d" "$x"; else bad "$d" "${x:-?}"; fi; fi; done
+for d in %s; do if [ -d "$d" ]; then x=$(cd -P "$d" 2>/dev/null && pwd -P && echo X) || x=; x=${x%%X}; x=${x%%?}; if ! safe "$x"; then bad "$d" "$x"; elif inside "$x"; then [ "$x" = "$base/$d" ] || printf 'LINK %%s\t%%s\n' "$d" "$x"; else bad "$d" "${x:-?}"; fi; fi; done
 for l in %s .env.*; do if [ -L "$l" ]; then x=$(res "$l"); inside "$x" || bad "$l" "${x:-?}"; fi; done
 for s in nginx hasura .nself/plugins; do if [ -e "$s" ]; then find -H "$s" -type l 2>/dev/null | while IFS= read -r l; do x=$(res "$l"); inside "$x" || bad "$l" "${x:-?}"; done; fi; done
 exit 0`, q(remotePath), strings.Join(quoteAll(dirs), " "), strings.Join(quoteAll(tarSources), " "))
@@ -78,6 +81,10 @@ exit 0`, q(remotePath), strings.Join(quoteAll(dirs), " "), strings.Join(quoteAll
 			}
 		} else if rest, ok := strings.CutPrefix(line, "LINK "); ok {
 			if d, real, ok := strings.Cut(rest, "\t"); ok && strings.HasPrefix(real, "/") {
+				if strings.ContainsFunc(real, unicode.IsControl) { // never trust a host path with control characters
+					outside = append(outside, fmt.Sprintf("%q -> %q", d, real))
+					continue
+				}
 				out[d] = real
 			}
 		}
@@ -124,7 +131,7 @@ func refusedPaths(out []byte) error {
 func noticeLinks(w io.Writer, linked map[string]string, shipped []string) {
 	for _, d := range layoutDirsOnly(shipped) {
 		if real, ok := linked[d]; ok {
-			emit(w, "  [notice] %s is a symlink to %s, writing through it", d, real)
+			emit(w, "  [notice] %q is a symlink to %q, writing through it", d, real)
 		}
 	}
 }

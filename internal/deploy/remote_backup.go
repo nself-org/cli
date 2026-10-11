@@ -84,15 +84,15 @@ func CreatePreDeployTar(ctx context.Context, r Remote, remotePath, id string, pa
 	}
 	tar := path.Join(remotePath, BackupDir, "pre-deploy-"+id+".tar.gz")
 	script := fmt.Sprintf(`set -e; umask 077; rp=%s; out=%s; mkdir -p "$rp/%s"; cd "$rp"; set --
-for p in %s; do if [ -e "$p" ]; then set -- "$@" "$p"; fi; done
+for p in %s %s; do if [ -e "$p" ]; then set -- "$@" "$p"; fi; done
 for f in .env.*; do if [ -f "$f" ]; then set -- "$@" "$f"; fi; done
 l="$rp/%s/.list-%s"; : > "$l"
-if [ -d .nself/plugins ]; then find .nself/plugins -type f -name '*.yml' > "$l"; fi
+if [ -d .nself/plugins ]; then find -H .nself/plugins -type f -name '*.yml' > "$l"; fi
 while IFS= read -r f; do set -- "$@" "$f"; done < "$l"; rm -f "$l"
 if [ "$#" -eq 0 ]; then e="$rp/%s/.empty-%s"; mkdir -p "$e"; tar -czf "$out" -C "$e" .; rmdir "$e"; else tar -hczf "$out" --exclude='conf.d*' "$@"; fi
 tar -tzf "$out" >/dev/null
 for p in %s; do if [ ! -e "$p" ] && [ ! -L "$p" ]; then printf 'ABSENT %%s\n' "$p"; fi; done`,
-		q(remotePath), q(tar), BackupDir, strings.Join(quoteAll(tarSources), " "), BackupDir, id, BackupDir, id,
+		q(remotePath), q(tar), BackupDir, strings.Join(quoteAll(tarSources), " "), strings.Join(quoteAll(paths), " "), BackupDir, id, BackupDir, id,
 		strings.Join(quoteAll(paths), " "))
 	out, err := r.Run(ctx, shScript(script))
 	if err != nil {
@@ -148,10 +148,19 @@ func RestorePreDeployTar(ctx context.Context, r Remote, remotePath, tar string, 
 			return fmt.Errorf("the absent list names %q but the tar holds it; refusing to remove it", a)
 		}
 	}
+	wasAbsent := map[string]bool{}
+	for _, a := range spec.Absent {
+		wasAbsent[a] = true
+	}
 	var restore []string
 	for _, c := range spec.Changed {
-		if inTar[c] {
+		switch {
+		case inTar[c]:
 			restore = append(restore, c)
+		case !wasAbsent[c]:
+			// Fail closed: the deploy changed this path, the tar does not hold it and it
+			// was not created by the deploy, so it cannot be put back.
+			return fmt.Errorf("cannot revert %q on %s: it is neither in %s nor recorded as created by the deploy; nothing was restored", c, r.Label(), path.Base(tar))
 		}
 	}
 	tmp := path.Join(remotePath, BackupDir, "restore-"+strings.TrimSuffix(path.Base(tar), ".tar.gz"))
@@ -171,8 +180,11 @@ func RestorePreDeployTar(ctx context.Context, r Remote, remotePath, tar string, 
 		dirs = append(dirs, d)
 	}
 	sort.Strings(dirs)
+	// Nothing is created before the deepest existing ancestor of the destination is
+	// proven to resolve inside the real remote_path.
+	script += `; base=$(cd -P "$rp" && pwd -P); inrp() { case "$1/" in "$base/"*) return 0;; esac; return 1; }; safe() { case "$1" in *[[:cntrl:]]*) return 1;; esac; return 0; }; refuse() { echo "refusing: a restore directory is outside remote_path or has an unsafe name" >&2; exit 1; }`
 	for _, d := range dirs {
-		script += fmt.Sprintf(`; d=%s; src="$tmp/$d"; dst="$rp/$d"; (umask 022; mkdir -p "$dst"); dst=$(cd -P "$dst" && pwd -P); case "$dst/" in "$(cd -P "$rp" && pwd -P)/"*) ;; *) echo "refusing: $dst is outside remote_path" >&2; exit 1;; esac; printf '%%s\n' %s > "$tmp.list"; rsync -ac --files-from="$tmp.list" "$src"/ "$dst"/; rm -f "$tmp.list"`,
+		script += fmt.Sprintf(`; d=%s; src="$tmp/$d"; dst="$rp/$d"; a="$dst"; while [ ! -d "$a" ]; do a=$(dirname "$a"); done; x=$(cd -P "$a" && pwd -P) || refuse; safe "$x" && inrp "$x" || refuse; (umask 022; mkdir -p "$dst"); dst=$(cd -P "$dst" && pwd -P && echo X); dst=${dst%%X}; dst=${dst%%?}; safe "$dst" && inrp "$dst" || refuse; printf '%%s\n' %s > "$tmp.list"; rsync -ac --files-from="$tmp.list" "$src"/ "$dst"/; rm -f "$tmp.list"`,
 			q(d), strings.Join(quoteAll(byDir[d]), " "))
 	}
 	script += `; rm -rf "$tmp"`
