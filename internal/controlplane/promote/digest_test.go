@@ -68,4 +68,19 @@ func TestPromoteDigestIdentity(t *testing.T) {
 	if err != nil || rebuilt != b {
 		t.Fatalf("rebuilt locked tag resolved to %q, %v", rebuilt, err)
 	}
+	rows, err = CompareDigests(context.Background(), []SourceImage{{Service: "locked", Digest: a}}, []Image{{Service: "locked", Ref: locked.LegacyRef}}, "amd64", controlplane.TierProd, func(_ context.Context, ref string) (map[string]string, error) {
+		if ref != locked.LegacyRef {
+			t.Fatalf("target legacy lookup ref = %q, want %q", ref, locked.LegacyRef)
+		}
+		return map[string]string{"linux/amd64": b}, nil
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "E490") || rows[0].Target != b {
+		t.Fatalf("rebuilt locked target tag = %#v, %v", rows, err)
+	}
+	rows, err = CompareDigests(context.Background(), []SourceImage{{Service: "api", Digest: "malformed"}}, []Image{{Service: "api", Ref: "example.invalid/app:bad"}}, "amd64", controlplane.TierProd, func(context.Context, string) (map[string]string, error) {
+		return map[string]string{"linux/amd64": "malformed"}, nil
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "E490") || rows[0].Status != "drift" {
+		t.Fatalf("malformed target digest = %#v, %v", rows, err)
+	}
 }

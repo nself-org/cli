@@ -17,6 +17,7 @@ type State struct {
 	SnapshotTag      string
 	BackupID         string
 	BackupHost       string
+	DBRestoredAt     string
 	MigrateStarted   bool
 	Digests          []DigestRow
 	PreDeployTar     map[string]string

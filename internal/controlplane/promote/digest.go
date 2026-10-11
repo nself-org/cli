@@ -136,7 +136,7 @@ func sourcePlatformDigest(ctx context.Context, ref, inspected, platform string, 
 	if err != nil {
 		return "", err
 	}
-	if platforms[platform] == "" {
+	if !manifestDigestRE.MatchString(platforms[platform]) {
 		return "", fmt.Errorf("%s has no %s manifest", manifestRef, platform)
 	}
 	return platforms[platform], nil
@@ -204,7 +204,9 @@ func targetPlatformDigest(ctx context.Context, ref, platform string, lookup arch
 		return "", err
 	}
 	for _, locked := range compose.LockedImages() {
-		if ref == locked.String() || ref == locked.LegacyRef {
+		_, pinnedDigest, pinned := strings.Cut(ref, "@")
+		immutableLocked := ref == locked.String() || (pinned && pinnedDigest == locked.IndexDigest && sameRepository(imageRepository(ref), locked.Repository))
+		if immutableLocked {
 			if digest := locked.Platforms[platform]; digest != "" {
 				return digest, nil
 			}
@@ -215,7 +217,7 @@ func targetPlatformDigest(ctx context.Context, ref, platform string, lookup arch
 	if err != nil {
 		return "", err
 	}
-	if platforms[platform] == "" {
+	if !manifestDigestRE.MatchString(platforms[platform]) {
 		return "", fmt.Errorf("%s has no %s manifest", ref, platform)
 	}
 	return platforms[platform], nil
