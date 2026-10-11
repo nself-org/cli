@@ -74,6 +74,21 @@ func runClean(cmd *cobra.Command, args []string) error {
 		projectDir = root
 	}
 
+	all, _ := cmd.Flags().GetBool("all")
+	skipConfirm, _ := cmd.Flags().GetBool("yes")
+	jsonMode := buildEnvelopeWanted(cmd)
+
+	// JSON mode asks the --all question before anything is deleted: a refusal
+	// is an error there, and an error must mean nothing changed. Human mode
+	// keeps asking after the local clean, as it always has.
+	if all && !skipConfirm && jsonMode {
+		if confirmErr := confirm.ConfirmHostWidePrune(cmd.InOrStdin(), cmd.OutOrStdout()); confirmErr != nil {
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nHost-wide prune canceled.")
+			return errConfirmRequired("clean --all")
+		}
+		skipConfirm = true
+	}
+
 	var removed []string
 
 	// 1. docker-compose.yml
@@ -143,30 +158,29 @@ func runClean(cmd *cobra.Command, args []string) error {
 	}
 
 	// 5. --all: host-wide docker system prune, gated behind confirmation.
-	all, _ := cmd.Flags().GetBool("all")
 	if !all {
 		return emitBuildResult(cmd, "clean", CleanResult{Removed: jsonPaths(removed)})
 	}
 
-	skipConfirm, _ := cmd.Flags().GetBool("yes")
+	// JSON mode already asked (or was told --yes) before step 1.
 	if !skipConfirm {
 		if confirmErr := confirm.ConfirmHostWidePrune(cmd.InOrStdin(), out); confirmErr != nil {
 			_, _ = fmt.Fprintln(out, "\nHost-wide prune canceled.")
-			if buildEnvelopeWanted(cmd) {
-				return errConfirmRequired("clean --all")
-			}
 			return nil
 		}
 	}
 
 	_, _ = fmt.Fprintln(out, "\nPruning all unused Docker resources on this host...")
-	pruned := false
 	if pruneAllErr := dockerSystemPrune(cmd.Context(), out, cmd.ErrOrStderr()); pruneAllErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: docker system prune failed (Docker may not be running): %v\n", pruneAllErr)
-	} else {
-		_, _ = fmt.Fprintln(out, "Host-wide prune complete.")
-		pruned = true
+		// The prune was asked for explicitly: in JSON mode its failure is the
+		// command's failure, not a success envelope with host_prune false.
+		if jsonMode {
+			return errPartialRemoval("docker system prune failed", pruneAllErr, removed)
+		}
+		return nil
 	}
+	_, _ = fmt.Fprintln(out, "Host-wide prune complete.")
 
-	return emitBuildResult(cmd, "clean", CleanResult{Removed: jsonPaths(removed), HostPrune: pruned})
+	return emitBuildResult(cmd, "clean", CleanResult{Removed: jsonPaths(removed), HostPrune: true})
 }

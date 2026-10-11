@@ -1,13 +1,17 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/confirm"
+	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
 )
@@ -85,7 +89,7 @@ func runReset(cmd *cobra.Command, args []string) error {
 		if baseDomain != "" {
 			fmt.Printf("   Project: %s (%s)\n", projectName, baseDomain)
 		}
-		if err := confirm.ConfirmDestruction(projectName, os.Stdin, os.Stdout); err != nil {
+		if err := confirm.ConfirmDestruction(projectName, cmd.InOrStdin(), cmd.OutOrStdout()); err != nil {
 			fmt.Println("Destruction canceled.")
 			if buildEnvelopeWanted(cmd) {
 				return errConfirmRequired("reset")
@@ -94,18 +98,23 @@ func runReset(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Stop containers and remove volumes
+	// Stop containers and remove volumes. volumesRemoved drives kept_data:
+	// the envelope only says the data is gone when compose down --volumes
+	// actually succeeded.
+	volumesRemoved := false
 	composePath := filepath.Join(projectDir, "docker-compose.yml")
 	if _, statErr := os.Stat(composePath); statErr == nil {
 		fmt.Println("Stopping containers and removing volumes...")
-		dcCmd := exec.CommandContext(cmd.Context(), "docker", "compose", "down", "--volumes", "--remove-orphans")
-		dcCmd.Dir = projectDir
-		dcCmd.Stdout = os.Stdout
-		dcCmd.Stderr = os.Stderr
-		if err := dcCmd.Run(); err != nil {
+		if err := resetComposeDown(cmd.Context(), projectDir); err != nil {
+			// JSON mode stops before deleting the compose file the caller
+			// needs to retry; human mode warns and carries on as before.
+			if buildEnvelopeWanted(cmd) {
+				return errPartialRemoval("docker compose down --volumes failed, so containers and volumes may still exist", err, nil)
+			}
 			fmt.Fprintf(os.Stderr, "Warning: docker compose down reported an error: %v\n", err)
 		} else {
 			fmt.Println("  Containers stopped and volumes removed.")
+			volumesRemoved = true
 		}
 	} else {
 		fmt.Println("No docker-compose.yml found — skipping container shutdown.")
@@ -148,7 +157,17 @@ func runReset(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Removed %d generated file(s).\n", len(removed))
 	}
 	fmt.Println("Reset complete. Run 'nself init' or 'nself build' to recreate the stack.")
-	return emitBuildResult(cmd, "reset", ResetResult{Removed: jsonPaths(removed), KeptData: false})
+	return emitBuildResult(cmd, "reset", ResetResult{Removed: jsonPaths(removed), KeptData: !volumesRemoved})
+}
+
+// resetComposeDown runs `docker compose down --volumes --remove-orphans` in
+// projectDir. A package variable so tests can make it fail without Docker.
+var resetComposeDown = func(ctx context.Context, projectDir string) error {
+	dcCmd := exec.CommandContext(ctx, "docker", "compose", "down", "--volumes", "--remove-orphans")
+	dcCmd.Dir = projectDir
+	dcCmd.Stdout = os.Stdout
+	dcCmd.Stderr = os.Stderr
+	return dcCmd.Run()
 }
 
 // removeFile removes a single file by path, appending its relative name (relative
@@ -168,3 +187,55 @@ func removeFile(path string, removed, notFound []string) ([]string, []string) {
 	removed = append(removed, filepath.Base(path))
 	return removed, notFound
 }
+
+// recordIfExists runs remove on project-relative rel when it exists and
+// appends rel to removed only when the removal succeeded; the removal error is
+// returned otherwise. Trailing "/" in rel marks a directory in the report.
+func recordIfExists(removed []string, root, rel string, remove func(string) error) ([]string, error) {
+	path := filepath.Join(root, filepath.FromSlash(strings.TrimSuffix(rel, "/")))
+	if _, err := os.Lstat(path); err != nil {
+		return removed, nil
+	}
+	if err := remove(path); err != nil {
+		return removed, err
+	}
+	return append(removed, rel), nil
+}
+
+// errPartialRemoval is what JSON mode returns when a destructive step failed:
+// an infra-class error (exit 2) whose message names the failure and every path
+// already removed, because an error envelope carries no data and the caller
+// must not read the failure as either success or "nothing changed".
+func errPartialRemoval(what string, cause error, removed []string) error {
+	done := "nothing was removed"
+	if len(removed) > 0 {
+		done = "already removed: " + strings.Join(jsonPaths(removed), ", ")
+	}
+	return errs.ExitWith(errs.ExitInfraError, fmt.Errorf("%s (%s): %w", what, done, cause))
+}
+
+// removeIfExists deletes a single file; a missing file is not an error. A
+// failure is warned about on stderr and returned.
+func removeIfExists(path string) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "  %s removing %s: %v\n",
+			ui.C(ui.Yellow, ui.IconWarning), path, err)
+		return fmt.Errorf("removing %s: %w", path, err)
+	}
+	return nil
+}
+
+// removeDir removes a directory and its contents; a missing directory is not
+// an error. A failure is warned about on stderr and returned.
+func removeDir(path string) error {
+	if err := removeAll(path); err != nil {
+		fmt.Fprintf(os.Stderr, "  %s removing directory %s: %v\n",
+			ui.C(ui.Yellow, ui.IconWarning), path, err)
+		return fmt.Errorf("removing directory %s: %w", path, err)
+	}
+	return nil
+}
+
+// removeAll is os.RemoveAll, a package variable so tests can make a removal
+// fail the way EACCES does without depending on file-permission semantics.
+var removeAll = os.RemoveAll
