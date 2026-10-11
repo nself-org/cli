@@ -6,7 +6,9 @@ name: SDK Go remote mutation gate
 # the equivalent-mutant allowlist all come from
 # sdk/go/remote/testdata/mutation-allow.txt via scripts/ci/sdk-remote-mutation.sh,
 # which also fails when a new package file is missing from the set.
-# nself ci runs the same script (plugins free/ci gate_runners.go).
+# nself ci runs the same script (plugins free/ci gate_runners.go) on every cli
+# run and is its enforcement: this workflow is path-filtered, so GitHub cannot
+# make it a required check and a red run here is advisory for merging.
 
 on:
   push:

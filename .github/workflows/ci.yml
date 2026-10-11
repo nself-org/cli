@@ -171,9 +171,6 @@ jobs:
         run: go test -mod=vendor -short -timeout=240s ./...
         shell: cmd
 
-      # P7-REG-10: the machine-contract gate. Linux legs only (Windows has no
-      # POSIX shell here and macOS legs add nothing the Linux proof lacks).
-      # jq and make ship on the GitHub-hosted ubuntu images.
       # D-0482: go.mod replaces the sdk module with ./sdk/go and every build
       # uses -mod=vendor, so an sdk/go change that is not re-vendored passes
       # its own tests while the cli binary keeps the stale copy. Run in this
@@ -187,6 +184,9 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: bash scripts/ci/vendor-sync-check.sh
 
+      # P7-REG-10: the machine-contract gate. Linux legs only (Windows has no
+      # POSIX shell here and macOS legs add nothing the Linux proof lacks).
+      # jq and make ship on the GitHub-hosted ubuntu images.
       - name: Contract gate (make contract-check)
         if: runner.os == 'Linux'
         run: make contract-check
