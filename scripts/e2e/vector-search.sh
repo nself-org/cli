@@ -196,6 +196,18 @@ set -e
 sel_perm staff '["id","owner","embedding"]' '{"owner":{"_eq":"bob"}}' || fail "fixing the staff permission"
 nself db hasura metadata export >>"$LOG" 2>&1 || fail "nself db hasura metadata export (after the fix)"
 
+step "E514: a root-less select permission (relationship-only pattern) blocks --track and changes nothing"
+meta '{"type":"pg_create_select_permission","args":{"source":"default","table":'"$DOCS"',"role":"rootless","permission":{"columns":"*","filter":{},"query_root_fields":[],"subscription_root_fields":[]}}}' >>"$LOG" || fail "rootless select permission"
+set +e
+nself db generate vector-search public.docs.embedding --track >"$W/e514root.out" 2>&1
+code=$?
+set -e
+[ "$code" != "0" ] && grep -q "E514" "$W/e514root.out" && grep -q "rootless" "$W/e514root.out" && grep -q "not exposed at the root" "$W/e514root.out" \
+  || { cat "$W/e514root.out"; fail "a root-less select permission was not refused with E514 naming it (exit $code)"; }
+[ "$(live_funcs)" = "0" ] || fail "a refused --track changed live metadata"
+drop_perm rootless || fail "dropping rootless"
+nself db hasura metadata export >>"$LOG" 2>&1 || fail "nself db hasura metadata export (rootless removed)"
+
 nself db generate vector-search public.docs.embedding --track --json >"$W/track1.json" 2>"$W/track1.err" || { cat "$W/track1.err"; fail "generate --track"; }
 jq -e '.data.tracked == true and .data.disk_metadata == "updated"' "$W/track1.json" >/dev/null \
   || { cat "$W/track1.json"; fail "first --track did not track and mirror the entry"; }
@@ -243,7 +255,7 @@ EXPL="$(curl -sS -X POST "$HASURA/v1/graphql/explain" -H "X-Hasura-Admin-Secret:
 printf '%s\n' "$EXPL" >>"$LOG"
 printf '%s' "$EXPL" | jq -e '(.[0].plan | length) > 0' >/dev/null || fail "Hasura returned no plan: $EXPL"
 if printf '%s' "$EXPL" | grep -q "Function Scan"; then fail "the Hasura plan has a Function Scan: $EXPL"; fi
-printf '%s' "$EXPL" | grep -q "docs" || fail "the plan does not scan docs: $EXPL"
+printf '%s' "$EXPL" | grep -Eq "Scan (using [a-z_0-9]+ )?on docs" || fail "the plan has no scan on the docs table itself: $EXPL"
 
 step "E514 for a role without select, and from the on-disk metadata"
 set +e

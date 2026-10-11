@@ -78,6 +78,18 @@ func (f *fakeHasura) serve(t *testing.T) *config.Config {
 func liveDoc(selectRoles []string, fnRoles []string, fnTracked bool) string {
 	var sel, fperm []string
 	for _, r := range selectRoles {
+		r, root, _ := strings.Cut(r, "!") // "name!query", "name!sub", "name!pk"
+		extra := ""
+		switch root {
+		case "query":
+			extra = `,"query_root_fields":[]`
+		case "sub":
+			extra = `,"subscription_root_fields":[]`
+		case "pk":
+			extra = `,"query_root_fields":["select_by_pk"]`
+		case "ok":
+			extra = `,"query_root_fields":["select","select_by_pk"],"subscription_root_fields":["select"]`
+		}
 		role, cols, _ := strings.Cut(r, ":")
 		switch cols {
 		case "":
@@ -87,7 +99,7 @@ func liveDoc(selectRoles []string, fnRoles []string, fnTracked bool) string {
 		default:
 			cols = fmt.Sprintf("[%q]", cols)
 		}
-		sel = append(sel, fmt.Sprintf(`{"role":%q,"permission":{"columns":%s,"filter":{}}}`, role, cols))
+		sel = append(sel, fmt.Sprintf(`{"role":%q,"permission":{"columns":%s,"filter":{}%s}}`, role, cols, extra))
 	}
 	for _, r := range fnRoles {
 		fperm = append(fperm, fmt.Sprintf(`{"role":%q}`, r))
@@ -220,6 +232,26 @@ func TestTrackFunction(t *testing.T) {
 		}
 	})
 
+	for _, root := range []string{"query", "sub", "pk"} {
+		t.Run("E514 for a root-less select permission ("+root+")", func(t *testing.T) {
+			f := &fakeHasura{exports: []string{liveDoc([]string{"user", "rootless:*!" + root}, nil, false)}}
+			err := track(f, "user")
+			if err == nil || !strings.Contains(err.Error(), "E514") || !strings.Contains(err.Error(), "rootless") || !strings.Contains(err.Error(), "not exposed at the root") {
+				t.Fatalf("err = %v, want E514 naming rootless and the root reason", err)
+			}
+			if len(f.bulks) != 0 {
+				t.Error("sent a bulk although a role is root-less")
+			}
+		})
+	}
+
+	t.Run("root fields that keep select pass", func(t *testing.T) {
+		f := &fakeHasura{exports: []string{liveDoc([]string{"user!ok"}, nil, false)}}
+		if err := track(f, "user"); err != nil {
+			t.Fatal(err)
+		}
+	})
+
 	t.Run("star columns and a hidden-role fix pass", func(t *testing.T) {
 		f := &fakeHasura{exports: []string{liveDoc([]string{"user:*", "staff"}, nil, false)}}
 		if err := track(f, "user", "staff"); err != nil {
@@ -302,21 +334,45 @@ func TestMetadataTracksTable(t *testing.T) {
 }
 
 func TestCheckDiskColumnVisible(t *testing.T) {
-	dir := t.TempDir()
-	file := filepath.Join(dir, "hasura", "metadata", "sources.yaml")
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		t.Fatal(err)
+	// perm is the permission body; each layout wraps it the way its reader expects.
+	layouts := map[string]func(perm string) (string, string){
+		"sources.yaml": func(perm string) (string, string) {
+			return "hasura/metadata/sources.yaml", "- name: default\n  tables:\n    - table: {name: docs, schema: public}\n      select_permissions:\n        - role: user\n          permission: {" + perm + "}\n"
+		},
+		"tables.yaml": func(perm string) (string, string) {
+			return "hasura/metadata/tables.yaml", "- table: {name: docs, schema: public}\n  select_permissions:\n    - role: user\n      permission: {" + perm + "}\n"
+		},
+		"metadata.json": func(perm string) (string, string) {
+			return "hasura/metadata.json", `{"sources":[{"name":"default","tables":[{"table":{"schema":"public","name":"docs"},"select_permissions":[{"role":"user","permission":{` + perm + `}}]}]}]}`
+		},
 	}
-	doc := func(cols string) string {
-		return "- name: default\n  tables:\n    - table: {name: docs, schema: public}\n      select_permissions:\n        - role: user\n          permission: {columns: " + cols + ", filter: {}}\n"
-	}
-	for cols, wantErr := range map[string]bool{"[id, embedding]": false, "'*'": false, "[id]": true, "[]": true} {
-		if err := os.WriteFile(file, []byte(doc(cols)), 0o644); err != nil {
-			t.Fatal(err)
+	for layout, build := range layouts {
+		cases := map[string]bool{
+			`"columns":["id","embedding"],"filter":{}`:                                false,
+			`"columns":"*","filter":{}`:                                               false,
+			`"columns":["id"],"filter":{}`:                                            true,
+			`"columns":[],"filter":{}`:                                                true,
+			`"columns":"*","filter":{},"query_root_fields":[]`:                        true,
+			`"columns":"*","filter":{},"subscription_root_fields":[]`:                 true,
+			`"columns":"*","filter":{},"query_root_fields":["select_by_pk"]`:          true,
+			`"columns":"*","filter":{},"query_root_fields":["select","select_by_pk"]`: false,
 		}
-		err := CheckDiskColumnVisible(dir, "public", "docs", "embedding")
-		if wantErr != (err != nil) || (err != nil && !strings.Contains(err.Error(), "E514")) {
-			t.Errorf("columns %s: err = %v, want error=%v", cols, err, wantErr)
+		for perm, wantErr := range cases {
+			dir := t.TempDir()
+			rel, body := build(perm)
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, rel)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			err := CheckDiskColumnVisible(dir, "public", "docs", "embedding")
+			if wantErr != (err != nil) || (err != nil && !strings.Contains(err.Error(), "E514")) {
+				t.Errorf("%s %s: err = %v, want error=%v", layout, perm, err, wantErr)
+			}
+			if wantErr && strings.Contains(perm, "root_fields") && (err == nil || !strings.Contains(err.Error(), "not exposed at the root")) {
+				t.Errorf("%s %s: err = %v, want the root reason", layout, perm, err)
+			}
 		}
 	}
 	if err := CheckDiskColumnVisible(t.TempDir(), "public", "docs", "embedding"); err != nil {

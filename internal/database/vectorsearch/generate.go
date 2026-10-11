@@ -106,6 +106,9 @@ func Run(ctx context.Context, d Deps, o Options) (Result, error) {
 
 // track sends the live call, then mirrors it to disk only on a clean diff.
 func track(ctx context.Context, d Deps, o Options, s Spec, res Result) (Result, error) {
+	if err := CheckFunctionShape(ctx, d.Exec, d.PG, s); err != nil {
+		return res, err
+	}
 	drift, err := d.Drift(ctx, o.ProjectDir)
 	if err != nil {
 		return res, fmt.Errorf("compare on-disk metadata with live Hasura: %w", err)
@@ -154,7 +157,19 @@ func writeMigration(dir string, s Spec, sqlText string, now time.Time) (string, 
 		return "", false, fmt.Errorf("create %s: %w", dir, err)
 	}
 	path := filepath.Join(dir, now.UTC().Format("20060102150405")+suffix)
-	if err := os.WriteFile(path, []byte(sqlText), 0o644); err != nil {
+	// O_EXCL: never truncate or overwrite a file that is already there.
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return "", false, fmt.Errorf("migration file %s already exists and was left untouched; run the command again in a moment or remove it", path)
+		}
+		return "", false, fmt.Errorf("create %s: %w", path, err)
+	}
+	if _, err := f.WriteString(sqlText); err != nil {
+		_ = f.Close()
+		return "", false, fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := f.Close(); err != nil {
 		return "", false, fmt.Errorf("write %s: %w", path, err)
 	}
 	return path, true, nil

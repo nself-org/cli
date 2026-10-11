@@ -44,7 +44,8 @@ nself db generate vector-search public.docs.embedding --track
 Before it sends anything, nself checks the live metadata:
 
 - The table must be tracked, and every role in `--roles` must have a select permission on it. Otherwise E514, because a function granted to a role without select would show no rows.
-- Every role that has a select permission on the table must see the vector column (`columns: "*"` or a list that includes it). Otherwise E514 naming each role. This applies to roles outside `--roles` too.
+- Every role that has a select permission on the table must expose `select` at the root. A permission with `query_root_fields` or `subscription_root_fields` set to a list without `select` (the relationship-only pattern) is refused with E514 ("table select is not exposed at the root"): Hasura still infers the function for it, and the function would return every row of the table.
+- Every role that has a select permission on the table must see the vector column (`columns: "*"` or a list that includes it). Otherwise E514 naming each role and the reason. This applies to roles outside `--roles` too.
 
 The second rule exists because Hasura, by default, infers function permissions from the table's select permissions: the function is visible to every role with select on the table. The function orders by the vector column inside Postgres, where column permissions do not apply, so a role that cannot read `embedding` could still learn it from the result order. nself refuses to track the function until every select role can see the column, and nothing is sent when the check fails. The generator (without `--track`) runs the same check against the on-disk metadata.
 
@@ -59,6 +60,12 @@ The generator reads your project's on-disk Hasura metadata to confirm the table 
 After `--track`, nself adds the function to the on-disk metadata only when that metadata matches live Hasura. If it differs (someone changed permissions in the console, for example), nself tracks the function live, leaves the files alone and prints a note. Run `nself db hasura metadata export` to refresh the files, then commit them.
 
 Two layouts are updated: the `hasura/metadata/sources.yaml` that `nself db hasura metadata export` writes, and the older `hasura/metadata.json` (rewritten as sorted-key JSON with two-space indent). Any other layout is left unchanged.
+
+Permissions changed after `--track` are not re-checked. After you change any select permission on the table, run `nself db generate vector-search ... --track` again: it re-validates every role and is a no-op when nothing else changed.
+
+Before tracking, nself also checks the function in Postgres: it must be `LANGUAGE sql`, `STABLE`, not `SECURITY DEFINER`, without a `SET` clause, and return `SETOF` the table. A function that exists in another shape is refused with E513; regenerate it.
+
+The migration is created with exclusive create. If a file with the same name exists, the command stops and leaves it untouched.
 
 ## Query it
 
@@ -80,6 +87,7 @@ To set a server-side ceiling, put a `limit` on the role's select permission for 
 - One function per column. Running the command with another `--distance` replaces the function body (`CREATE OR REPLACE`), because the name `<table>_nearest_<column>` and the argument type stay the same.
 - The column must be `vector(n)` with a fixed dimension. `halfvec`, `sparsevec` and `text` columns are refused with E513.
 - The function name must fit in 63 bytes.
+- With an `hnsw` or `ivfflat` index the approximate scan collects its candidates before the row filter runs, so a filtered role can get fewer rows than `limit`. Turn on pgvector's iterative scan (`hnsw.iterative_scan` or `ivfflat.iterative_scan`, pgvector 0.8 or later), or use exact scans for small, heavily filtered sets.
 - Without an index, a search sorts the visible rows. For large tables create a pgvector index (`hnsw` or `ivfflat`) on the column with the operator class that matches your distance. Because the function inlines into the caller's query, the planner can use it; check with `EXPLAIN`.
 
 ## Errors
@@ -87,6 +95,6 @@ To set a server-side ceiling, put a `limit` on the role's select permission for 
 | Code | When |
 |---|---|
 | E513 | The column is not `vector(n)`, the table is not in the on-disk metadata, there is no on-disk metadata, or the function is missing from Postgres when you run `--track` |
-| E514 | A role in `--roles` has no select permission on the table, or any role with a select permission hides the vector column |
+| E514 | A role in `--roles` has no select permission on the table, or any role with a select permission hides the vector column or does not expose select at the root |
 
 See [[error-codes]].

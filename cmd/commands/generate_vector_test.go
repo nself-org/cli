@@ -27,7 +27,12 @@ func useVectorFakes(t *testing.T, f *vectorFakes) {
 	t.Cleanup(func() { vectorDepsFor = old })
 	vectorDepsFor = func(*config.Config) vectorsearch.Deps {
 		return vectorsearch.Deps{
-			Exec:          func(context.Context, string, []string) (string, string, error) { return f.colType + "\n", "", nil },
+			Exec: func(_ context.Context, _ string, cmd []string) (string, string, error) {
+				if strings.Contains(strings.Join(cmd, " "), "pg_proc") {
+					return "t\n", "", nil
+				}
+				return f.colType + "\n", "", nil
+			},
 			PG:            vectorsearch.PG{Container: "demo_postgres", User: "postgres", DB: "nself"},
 			TableTracked:  func(string, string, string) (bool, bool, error) { return true, true, nil },
 			ColumnVisible: func(string, string, string, string) error { return nil },

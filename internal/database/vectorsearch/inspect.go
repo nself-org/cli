@@ -93,3 +93,48 @@ func InspectColumn(ctx context.Context, run Exec, pg PG, s Spec) (int, error) {
 	}
 	return dim, nil
 }
+
+// shapeQuery asks Postgres whether the function is the generated, inlinable
+// shape: LANGUAGE sql, STABLE, not SECURITY DEFINER, no SET clause, set
+// returning, and returning the table's own row type. It is built only from
+// validated identifiers; empty output means the function (or table) is missing.
+func shapeQuery(s Spec) (string, error) {
+	schema, err := database.SanitizeIdentifier(s.Schema)
+	if err != nil {
+		return "", err
+	}
+	table, err := database.SanitizeIdentifier(s.Table)
+	if err != nil {
+		return "", err
+	}
+	fn, err := database.SanitizeIdentifier(s.FunctionName())
+	if err != nil {
+		return "", err
+	}
+	return "SELECT p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'sql')" +
+		" AND p.provolatile = 's' AND NOT p.prosecdef AND p.proconfig IS NULL" +
+		" AND p.proretset AND p.prorettype = c.reltype" +
+		" FROM pg_proc p JOIN pg_class c ON c.oid = to_regclass('" + schema + "." + table + "')" +
+		" WHERE p.oid = to_regprocedure('" + schema + "." + fn + "(vector)')", nil
+}
+
+// CheckFunctionShape returns E513 when the function is missing from Postgres or
+// exists in a shape other than the one this command generates (for example one
+// hand-written with SECURITY DEFINER, which would bypass the row filter).
+func CheckFunctionShape(ctx context.Context, run Exec, pg PG, s Spec) error {
+	q, err := shapeQuery(s)
+	if err != nil {
+		return err
+	}
+	stdout, stderr, err := run(ctx, pg.Container, psqlArgv(pg, q))
+	if err != nil {
+		return fmt.Errorf("check function %s.%s: %w: %s", s.Schema, s.FunctionName(), err, strings.TrimSpace(stderr))
+	}
+	switch strings.TrimSpace(stdout) {
+	case "t":
+		return nil
+	case "":
+		return errs.Newf("E513", "function %s.%s does not exist in Postgres; run nself db migrate up --migration-dir migrations first", s.Schema, s.FunctionName())
+	}
+	return errs.Newf("E513", "function %s.%s exists but is not the generated inlinable shape (LANGUAGE sql, STABLE, SECURITY INVOKER, no SET, SETOF %s.%s); regenerate it with this command", s.Schema, s.FunctionName(), s.Schema, s.Table)
+}

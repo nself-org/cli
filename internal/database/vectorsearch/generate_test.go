@@ -16,6 +16,7 @@ type harness struct {
 	tracked  bool
 	present  bool
 	colErr   error
+	shape    string // psql answer to the function-shape query: "t", "f" or ""
 	drift    []string
 	trackErr error
 	tracks   [][]string
@@ -24,10 +25,15 @@ type harness struct {
 }
 
 func newHarness() *harness {
-	h := &harness{colType: "vector(3)", tracked: true, present: true, clock: time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)}
+	h := &harness{colType: "vector(3)", tracked: true, present: true, shape: "t", clock: time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)}
 	h.deps = Deps{
-		Exec: func(context.Context, string, []string) (string, string, error) { return h.colType + "\n", "", nil },
-		PG:   PG{Container: "demo_postgres", User: "postgres", DB: "nself"},
+		Exec: func(_ context.Context, _ string, cmd []string) (string, string, error) {
+			if strings.Contains(strings.Join(cmd, " "), "pg_proc") {
+				return h.shape + "\n", "", nil
+			}
+			return h.colType + "\n", "", nil
+		},
+		PG: PG{Container: "demo_postgres", User: "postgres", DB: "nself"},
 		TableTracked: func(string, string, string) (bool, bool, error) {
 			return h.present, h.tracked, nil
 		},
@@ -155,5 +161,135 @@ func TestRunTrackErrorsPropagate(t *testing.T) {
 	h2.deps.Drift = func(context.Context, string) ([]string, error) { return nil, errors.New("hasura down") }
 	if _, err := Run(t.Context(), h2.deps, opts(dir, true)); err == nil || len(h2.tracks) != 0 {
 		t.Fatalf("drift failure must stop before tracking: %v tracks=%v", err, h2.tracks)
+	}
+}
+
+func TestRunTrackRefusesWrongFunctionShape(t *testing.T) {
+	for name, tc := range map[string]struct{ shape, want string }{
+		"missing":   {"", "does not exist"},
+		"not shape": {"f", "not the generated inlinable shape"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness()
+			h.shape = tc.shape
+			dir, _ := writeFixture(t, "yaml")
+			_, err := Run(t.Context(), h.deps, opts(dir, true))
+			if err == nil || !strings.Contains(err.Error(), "E513") || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want E513 %q", err, tc.want)
+			}
+			if len(h.tracks) != 0 {
+				t.Errorf("tracked despite the shape check: %v", h.tracks)
+			}
+		})
+	}
+	h := newHarness()
+	h.deps.Exec = func(_ context.Context, _ string, cmd []string) (string, string, error) {
+		if strings.Contains(strings.Join(cmd, " "), "pg_proc") {
+			return "", "boom", errors.New("exec failed")
+		}
+		return "vector(3)\n", "", nil
+	}
+	dir, _ := writeFixture(t, "yaml")
+	if _, err := Run(t.Context(), h.deps, opts(dir, true)); err == nil || strings.Contains(err.Error(), "E513") {
+		t.Errorf("an exec failure must be a plain error, got %v", err)
+	}
+}
+
+func TestShapeQuery(t *testing.T) {
+	q, err := shapeQuery(docsSpec(Cosine))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"prosecdef", "proconfig IS NULL", "proretset", "provolatile = 's'", "c.reltype",
+		`to_regprocedure('"public"."docs_nearest_embedding"(vector)')`, `to_regclass('"public"."docs"')`} {
+		if !strings.Contains(q, want) {
+			t.Errorf("shape query lacks %q:\n%s", want, q)
+		}
+	}
+	bad := docsSpec(Cosine)
+	bad.Table = "x'; DROP"
+	if _, err := shapeQuery(bad); err == nil {
+		t.Error("shapeQuery accepted an unvalidated table")
+	}
+	for _, f := range []func(*Spec){func(s *Spec) { s.Schema = "a b" }, func(s *Spec) { s.Column = "a b" }} {
+		sp := docsSpec(Cosine)
+		f(&sp)
+		if _, err := shapeQuery(sp); err == nil {
+			t.Error("shapeQuery accepted a bad identifier")
+		}
+	}
+}
+
+func TestWriteMigrationNeverOverwrites(t *testing.T) {
+	dir := t.TempDir()
+	s := docsSpec(Cosine)
+	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	path := filepath.Join(dir, "20261010120000_vector_search_docs_embedding.sql")
+	if err := os.WriteFile(path, []byte("-- someone else's SQL\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, written, err := writeMigration(dir, s, "SELECT 1;\n", now)
+	if err == nil || written || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("err = %v written=%v, want an already-exists error", err, written)
+	}
+	if got, _ := os.ReadFile(path); string(got) != "-- someone else's SQL\n" {
+		t.Errorf("existing file was changed: %q", got)
+	}
+}
+
+func TestRunMigrationDirErrors(t *testing.T) {
+	h := newHarness()
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "migrations")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil { // a file where the dir should be
+		t.Fatal(err)
+	}
+	if _, err := Run(t.Context(), h.deps, opts(dir, false)); err == nil {
+		t.Error("an unwritable migration dir must fail")
+	}
+}
+
+func TestRunValidationAndLookupErrors(t *testing.T) {
+	h := newHarness()
+	o := opts(t.TempDir(), false)
+	o.Spec.Table = "bad table"
+	if _, err := Run(t.Context(), h.deps, o); err == nil {
+		t.Error("invalid spec accepted")
+	}
+	h.deps.TableTracked = func(string, string, string) (bool, bool, error) { return false, false, errors.New("disk unreadable") }
+	if _, err := Run(t.Context(), h.deps, opts(t.TempDir(), false)); err == nil || !strings.Contains(err.Error(), "disk unreadable") {
+		t.Errorf("tracked-check error lost: %v", err)
+	}
+}
+
+func TestRunTrackMirrorOutcomes(t *testing.T) {
+	// unsupported layout: tracked live, disk skipped with a note
+	h := newHarness()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "hasura", "metadata", "databases"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Run(t.Context(), h.deps, opts(dir, true))
+	if err != nil || !res.Tracked || res.DiskMetadata != "skipped" || !strings.Contains(res.Note, "left unchanged") {
+		t.Fatalf("unsupported layout: %+v %v", res, err)
+	}
+	// the entry is already on disk: unchanged
+	h2 := newHarness()
+	dir2, _ := writeFixture(t, "json")
+	if _, _, err := MirrorFunction(dir2, "public", "docs_nearest_embedding", []string{"user"}); err != nil {
+		t.Fatal(err)
+	}
+	res, err = Run(t.Context(), h2.deps, opts(dir2, true))
+	if err != nil || res.DiskMetadata != "unchanged" {
+		t.Fatalf("already mirrored: %+v %v", res, err)
+	}
+	// a mirror failure that is not a layout problem is an error
+	h3 := newHarness()
+	dir3, file := writeFixture(t, "json")
+	if err := os.WriteFile(file, []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(t.Context(), h3.deps, opts(dir3, true)); err == nil {
+		t.Error("a corrupt metadata.json must fail the mirror")
 	}
 }

@@ -37,7 +37,9 @@ type vtRole struct{ Role string }
 type vtSelect struct {
 	Role       string `json:"role"`
 	Permission struct {
-		Columns json.RawMessage `json:"columns"`
+		Columns   json.RawMessage `json:"columns"`
+		QueryRoot json.RawMessage `json:"query_root_fields"`
+		SubRoot   json.RawMessage `json:"subscription_root_fields"`
 	} `json:"permission"`
 }
 
@@ -123,11 +125,44 @@ func columnVisible(raw json.RawMessage, column string) bool {
 	return false
 }
 
-// hiddenColumnErr is the E514 for roles whose select permission hides column
-// (Hasura infers function permissions from select permissions).
-func hiddenColumnErr(schema, table, column string, hidden []string) error {
-	return errs.Newf("E514", "role(s) %s have a select permission on %s.%s that hides column %q; the search function orders by it and Hasura exposes the function to every role with select on the table, so ordering would reveal the hidden column. Add %q to their select columns or remove the permission",
-		strings.Join(hidden, ", "), schema, table, column, column)
+// rootExposed reports whether a query_root_fields / subscription_root_fields
+// value leaves "select" exposed. An absent value (or null) exposes everything.
+func rootExposed(raw json.RawMessage) bool {
+	var list []string
+	if len(raw) == 0 || json.Unmarshal(raw, &list) != nil || list == nil {
+		return true
+	}
+	for _, f := range list {
+		if f == "select" {
+			return true
+		}
+	}
+	return false
+}
+
+// selectProblem says why a select permission makes the search function unsafe,
+// or "" when it does not: the permission hides the ordered column, or it is the
+// relationship-only pattern (query or subscription root fields without
+// "select"), for which Hasura still infers the function and returns every row.
+func selectProblem(columns, queryRoot, subRoot json.RawMessage, column string) string {
+	switch {
+	case !columnVisible(columns, column):
+		return fmt.Sprintf("hides column %q", column)
+	case !rootExposed(queryRoot):
+		return "table select is not exposed at the root (query_root_fields)"
+	case !rootExposed(subRoot):
+		return "table select is not exposed at the root (subscription_root_fields)"
+	}
+	return ""
+}
+
+// unsafeSelectErr is the E514 for roles whose select permission makes the
+// function unsafe (problems are "role: reason"). Hasura infers function
+// permissions from select permissions, so every such role can call it.
+func unsafeSelectErr(schema, table string, problems []string) error {
+	sort.Strings(problems)
+	return errs.Newf("E514", "select permission(s) on %s.%s make the search function unsafe: %s. The function orders by the vector column inside Postgres and Hasura exposes it to every role with select on the table, so these roles could learn hidden data. Fix or remove those permissions",
+		schema, table, strings.Join(problems, "; "))
 }
 
 // planTrack reads the live export and returns the bulk operations still needed.
@@ -140,7 +175,7 @@ func planTrack(live []byte, schema, name, table, column string, roles []string) 
 		return nil, fmt.Errorf("parse live metadata: %w", err)
 	}
 	selectRoles, tableTracked := map[string]bool{}, false
-	var hidden []string
+	var unsafe []string
 	funcTracked, funcRoles := false, map[string]bool{}
 	for _, src := range m.Sources {
 		if src.Name != vtSource {
@@ -151,8 +186,8 @@ func planTrack(live []byte, schema, name, table, column string, roles []string) 
 				tableTracked = true
 				for _, p := range t.SelectPermissions {
 					selectRoles[p.Role] = true
-					if !columnVisible(p.Permission.Columns, column) {
-						hidden = append(hidden, p.Role)
+					if why := selectProblem(p.Permission.Columns, p.Permission.QueryRoot, p.Permission.SubRoot, column); why != "" {
+						unsafe = append(unsafe, p.Role+": "+why)
 					}
 				}
 			}
@@ -178,9 +213,8 @@ func planTrack(live []byte, schema, name, table, column string, roles []string) 
 	if len(lacking) > 0 {
 		return nil, errs.Newf("E514", "role(s) %s have no select permission on %s.%s", strings.Join(lacking, ", "), schema, table)
 	}
-	if len(hidden) > 0 {
-		sort.Strings(hidden)
-		return nil, hiddenColumnErr(schema, table, column, hidden)
+	if len(unsafe) > 0 {
+		return nil, unsafeSelectErr(schema, table, unsafe)
 	}
 	fn := map[string]string{"schema": schema, "name": name}
 	var ops []map[string]any
@@ -235,24 +269,23 @@ func MetadataTracksTable(projectDir, schema, table string) (present, tracked boo
 }
 
 // CheckDiskColumnVisible returns E514 when a role's on-disk select permission on
-// schema.table hides column: the generator refuses to write a search function
-// that would reveal it by ordering. Untracked tables or missing metadata pass
+// schema.table hides column or is root-less (see selectProblem): the generator
+// refuses to write a search function that would reveal rows or the column. Untracked tables or missing metadata pass
 // (MetadataTracksTable reports those).
 func CheckDiskColumnVisible(projectDir, schema, table, column string) error {
 	present, tables, err := loadDiskTables(projectDir)
 	if err != nil || !present {
 		return err
 	}
-	var hidden []string
+	var unsafe []string
 	for _, p := range tables[schema+"."+table].SelectPermissions {
-		raw, _ := json.Marshal(p.Permission["columns"])
-		if !columnVisible(raw, column) {
-			hidden = append(hidden, p.Role)
+		raw := func(k string) json.RawMessage { b, _ := json.Marshal(p.Permission[k]); return b }
+		if why := selectProblem(raw("columns"), raw("query_root_fields"), raw("subscription_root_fields"), column); why != "" {
+			unsafe = append(unsafe, p.Role+": "+why)
 		}
 	}
-	if len(hidden) == 0 {
+	if len(unsafe) == 0 {
 		return nil
 	}
-	sort.Strings(hidden)
-	return hiddenColumnErr(schema, table, column, hidden)
+	return unsafeSelectErr(schema, table, unsafe)
 }
