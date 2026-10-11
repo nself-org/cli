@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
@@ -20,21 +21,32 @@ import (
 // changed. Depends on migrate_sql.go (pipeSQLToContainer, querySQL) and
 // migrate_ledger.go (migrationKey, validateMigrationName).
 
-// legacyOpsIDBackfillSQL upgrades pre-existing nself_ops.migrations rows whose
-// id was the old date/timestamp prefix (extractMigrationID used to truncate at
-// the first underscore) to the new unique id (full name minus ".sql").
-// Idempotent: the `id <>` guard makes re-runs a no-op; the NOT EXISTS guard
-// avoids PK conflicts if a new-style row already exists. Rows named 'up.sql'
-// (legacy nested layout) are handled separately by legacyNestedRenameSQL.
-const legacyOpsIDBackfillSQL = `UPDATE nself_ops.migrations m
-SET id = left(m.name, length(m.name) - 4)
-WHERE m.name LIKE '%.sql'
+// legacyOpsIDBackfillWhere selects the nself_ops.migrations rows (alias m)
+// whose id was the old date/timestamp prefix (extractMigrationID used to
+// truncate at the first underscore) and can move to the new unique id (full
+// name minus ".sql"). The `id <>` guard makes re-runs a no-op; the NOT EXISTS
+// guard avoids PK conflicts if a new-style row already exists. Rows named
+// 'up.sql' (legacy nested layout) are handled separately by
+// legacyNestedRenameSQL. One predicate for the UPDATE and for the read-only
+// count in ledgerNeedsUpgrade, so the two cannot drift.
+const legacyOpsIDBackfillWhere = `m.name LIKE '%.sql'
   AND m.name <> 'up.sql'
   AND m.id <> left(m.name, length(m.name) - 4)
   AND NOT EXISTS (
     SELECT 1 FROM nself_ops.migrations m2
     WHERE m2.id = left(m.name, length(m.name) - 4)
-  );`
+  )`
+
+// legacyOpsIDBackfillSQL upgrades those rows in place. Idempotent.
+const legacyOpsIDBackfillSQL = `UPDATE nself_ops.migrations m
+SET id = left(m.name, length(m.name) - 4)
+WHERE ` + legacyOpsIDBackfillWhere + `;`
+
+// legacyOpsIDCountSQL counts the rows legacyOpsIDBackfillSQL would rewrite.
+const legacyOpsIDCountSQL = `SELECT count(*) FROM nself_ops.migrations m WHERE ` + legacyOpsIDBackfillWhere
+
+// legacyUpRowCountSQL counts the legacy nested-layout ledger rows.
+const legacyUpRowCountSQL = "SELECT count(*) FROM np_common.schema_versions WHERE name = 'up.sql'"
 
 // legacyNestedRenameSQL rewrites the single legacy nested-layout ledger row
 // (name = 'up.sql') to the resolved migration key. Idempotent: after the first
@@ -105,7 +117,7 @@ func upgradeLedger(ctx context.Context, cfg *config.Config, files []string) erro
 		db = "nself"
 	}
 
-	out, err := querySQL(ctx, cfg, db, "SELECT count(*) FROM np_common.schema_versions WHERE name = 'up.sql'")
+	out, err := querySQL(ctx, cfg, db, legacyUpRowCountSQL)
 	if err != nil {
 		return fmt.Errorf("ledger legacy row check: %w", err)
 	}
@@ -134,6 +146,76 @@ func upgradeLedger(ctx context.Context, cfg *config.Config, files []string) erro
 	}
 	if err := pipeSQLToContainer(ctx, cfg, legacyNestedRenameSQL(key)); err != nil {
 		return fmt.Errorf("ledger legacy row rename: %w", err)
+	}
+	return nil
+}
+
+// ledgerNeedsUpgrade reports, with SELECTs only, whether upgradeLedger would
+// write anything: (a) an nself_ops.migrations row matches the id-backfill
+// predicate, or (b) np_common.schema_versions holds the legacy 'up.sql' row and
+// a nested migration on disk can take its key. A missing ledger table means
+// nothing to upgrade (false, no error); nothing is ever created.
+func ledgerNeedsUpgrade(ctx context.Context, cfg *config.Config, files []string) (bool, error) {
+	opsExists, err := ledgerTableExists(ctx, cfg, "nself_ops.migrations")
+	if err != nil {
+		return false, err
+	}
+	if opsExists {
+		n, err := ledgerCount(ctx, cfg, legacyOpsIDCountSQL)
+		if err != nil {
+			return false, fmt.Errorf("ledger id backfill check: %w", err)
+		}
+		if n > 0 {
+			return true, nil
+		}
+	}
+	// With any nested migration on disk resolveLegacyNestedKey never returns "":
+	// the ops ids only choose which one, so nil is enough to ask "is there one".
+	if resolveLegacyNestedKey(files, nil) == "" {
+		return false, nil
+	}
+	svExists, err := ledgerTableExists(ctx, cfg, "np_common.schema_versions")
+	if err != nil || !svExists {
+		return false, err
+	}
+	n, err := ledgerCount(ctx, cfg, legacyUpRowCountSQL)
+	if err != nil {
+		return false, fmt.Errorf("ledger legacy row check: %w", err)
+	}
+	return n > 0, nil
+}
+
+// ledgerCount runs a read-only count(*) query; an empty answer reads as 0 and
+// a non-integer answer is an error, never a silent zero.
+func ledgerCount(ctx context.Context, cfg *config.Config, q string) (int, error) {
+	out, err := ledgerSelect(ctx, cfg, q)
+	if err != nil {
+		return 0, err
+	}
+	out = strings.TrimSpace(out)
+	if out == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(out)
+	if err != nil {
+		return 0, fmt.Errorf("unexpected count %q: %w", out, err)
+	}
+	return n, nil
+}
+
+// upgradeLedgerIfNeeded runs upgradeLedger only when ledgerNeedsUpgrade says it
+// would write, so a clean ledger costs reads, never writes. The ledger tables
+// must already exist (ensureLedgerTables).
+func upgradeLedgerIfNeeded(ctx context.Context, cfg *config.Config, files []string) error {
+	need, err := ledgerNeedsUpgrade(ctx, cfg, files)
+	if err != nil {
+		return fmt.Errorf("check migration ledger: %w", err)
+	}
+	if !need {
+		return nil
+	}
+	if err := upgradeLedger(ctx, cfg, files); err != nil {
+		return fmt.Errorf("upgrade migration ledger: %w", err)
 	}
 	return nil
 }
