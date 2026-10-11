@@ -33,8 +33,11 @@ type inputSet struct {
 	short   map[string]bool // secret-named keys whose value is under MinSecretLen
 	notes   []string
 	process bool // learning from the process environment (shorts not counted)
+	quiet   bool // learning from a file whose key names stay out of the bundle (shorts not counted)
 
-	structure map[string]bool // lower-case service, container and image names (R7)
+	cascade   map[string]bool     // cascade file names already read (loadBuildInputs skips them)
+	env       map[string][]string // every value seen per variable name in the env inputs (S-3)
+	structure map[string]bool     // lower-case service, container and image names (R7)
 
 	projectDir string // confinement root for env files read as inputs
 }
@@ -48,7 +51,7 @@ func (in *inputSet) learn(k, v string) {
 	if csEnvFileKeyRe.MatchString(k) {
 		in.refs[k] = appendUnique(in.refs[k], v)
 	}
-	if !in.process && IsKeyName(k) && IsSecretName(k) {
+	if !in.process && !in.quiet && IsKeyName(k) && IsSecretName(k) {
 		if tv := TrimQuotes(v); tv != "" && len(tv) < MinSecretLen && !refValueRe.MatchString(tv) && !isWordValue(tv) {
 			in.short[k] = true
 		}
@@ -65,7 +68,10 @@ func (in *inputSet) learn(k, v string) {
 // key godotenv reports that scanDotenv does not is a PEM body line, never a
 // key (M2): only scanDotenv's keys are listed or learned.
 func (in *inputSet) learnEnvText(raw string, listKeys bool) {
+	in.quiet = !listKeys
+	defer func() { in.quiet = false }()
 	add := func(k, v string) {
+		in.recordEnv(k, v)
 		in.learn(k, v)
 		if listKeys && IsKeyName(k) {
 			in.keys[k] = true
@@ -142,7 +148,7 @@ func loadEnvInputs(projectDir string, in *inputSet) {
 	for _, n := range sorted {
 		in.readEnvInput(filepath.Join(projectDir, n), n, true)
 	}
-	loadBuildInputs(projectDir, names, in)
+	in.cascade = names
 }
 
 // readCompose returns the generated docker-compose.yml text and learns the

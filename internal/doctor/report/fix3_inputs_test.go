@@ -23,7 +23,7 @@ func TestDoctorReportBuildWrittenEnvFilesAreScrubInputs(t *testing.T) {
 	writeFile(t, filepath.Join(dir, ".env.demo"), "DEMOONLY_API_KEY="+demo+"\n")
 	writeFile(t, filepath.Join(dir, "docker-compose.yml"), "services:\n  h:\n    image: x\n    environment:\n      COMPOSEONLY_ADMIN_SECRET: ${COMPOSEONLY_ADMIN_SECRET}\n")
 	logs := map[string]string{"h": "loaded " + adm + " and " + comp + " and " + demo + " ok\n"}
-	files := collectFiles(t, Options{ProjectDir: dir, Environ: noEnviron}, logsSource(logs))
+	files := collectFiles(t, Options{ProjectDir: dir, ComposeEnvFiles: []string{filepath.Join(dir, ".nself", "compose.env")}, Environ: noEnviron}, logsSource(logs))
 	assertAbsent(t, files, adm, comp, demo)
 	if !strings.Contains(files["logs/h.log"], " ok") {
 		t.Errorf("log over-redacted: %q", files["logs/h.log"])
@@ -210,18 +210,6 @@ func TestLearnComposeYAMLScalarForms(t *testing.T) {
 		if !have[want] {
 			t.Errorf("spelling %q was not learned", want)
 		}
-	}
-}
-
-// internal/doctor may not import internal/build (layering), so the compose.env
-// path is repeated in composeEnvName; this fails when the build package moves it.
-func TestComposeEnvNameMatchesBuildPackage(t *testing.T) {
-	src, err := os.ReadFile("../../build/secrets_template.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(src), `const composeEnvFile = "`+composeEnvName+`"`) {
-		t.Errorf("internal/build/secrets_template.go no longer defines composeEnvFile = %q", composeEnvName)
 	}
 }
 

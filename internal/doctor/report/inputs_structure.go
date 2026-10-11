@@ -12,7 +12,8 @@ package report
 // passes still apply to it.
 // Inputs: the compose documents already parsed (docker-compose.yml, fragments).
 // Outputs: a name set on the input set; the dropped count.
-// Constraints: a value is dropped by its raw spelling (Variants[0]).
+// Constraints: only the spelling that equals a structure name is dropped; the
+//         other spellings of the value stay.
 
 import (
 	"fmt"
@@ -58,17 +59,26 @@ func imageSegments(img string) []string {
 	return strings.Split(img, "/")
 }
 
-// dropStructureValues removes the learned values whose raw spelling is a
-// structure name and returns how many it removed.
+// dropStructureValues removes the structure-equal spellings of the learned
+// values (only those: a URL-credential value keeps its Basic-auth forms) and
+// returns how many values lost a spelling.
 func (in *inputSet) dropStructureValues() int {
 	kept := in.values[:0]
 	dropped := 0
 	for _, sv := range in.values {
-		if in.structure[strings.ToLower(sv.Variants[0])] {
-			dropped++
-			continue
+		var vs []string
+		for _, v := range sv.Variants {
+			if !in.structure[strings.ToLower(v)] {
+				vs = append(vs, v)
+			}
 		}
-		kept = append(kept, sv)
+		if len(vs) != len(sv.Variants) {
+			dropped++
+		}
+		if len(vs) > 0 {
+			sv.Variants = vs
+			kept = append(kept, sv)
+		}
 	}
 	in.values = kept
 	return dropped

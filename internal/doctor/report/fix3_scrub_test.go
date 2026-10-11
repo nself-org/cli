@@ -41,8 +41,9 @@ func TestScrubKnownLiteralDoesNotShieldTheTail(t *testing.T) {
 
 // R6 d: a token that holds only placeholders and separators stays as it is.
 func TestOnlyPlaceholders(t *testing.T) {
-	yes := []string{"[REDACTED]", "[REDACTED:A_B]", "[REDACTED:A]:[REDACTED:B]", "[REDACTED:A].[REDACTED]"}
-	no := []string{"", "plain", "[REDACTED:A]x", "x[REDACTED:A]", "[REDACTED:A].sig9", "[REDACTED:A]é"}
+	yes := []string{"[REDACTED]", "[REDACTED:A_B]", "[REDACTED:A]:[REDACTED:B]", "[REDACTED:A].[REDACTED]", "[REDACTED:A])", "[REDACTED:PEM]\x00"}
+	no := []string{"", "plain", "[REDACTED:A]x", "x[REDACTED:A]", "[REDACTED:A].sig9", "[REDACTED:A]é",
+		"[REDACTED:A]!@#$%^", "[REDACTED:A]+/=+/=", "[REDACTED:A]_-_-_-", "[REDACTED:A]!!!!!!", "[REDACTED:A]:::[REDACTED:B]"}
 	for _, s := range yes {
 		if !onlyPlaceholders(s) {
 			t.Errorf("%q should be only placeholders", s)

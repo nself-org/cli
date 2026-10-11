@@ -116,17 +116,29 @@ func redactedForm(v string) (string, bool) {
 var placeholderRe = regexp.MustCompile(`\[REDACTED(?::[^\]\s]*)?\]`)
 
 // onlyPlaceholders reports whether s holds at least one placeholder and nothing
-// else but separators (no letter or digit). A token that is a placeholder plus
-// more text is NOT already redacted: the literal pass may have replaced only
-// the head of a longer secret (R6 d), so the later passes redact it whole.
+// else but known separators: at most one closing bracket or semicolon after
+// the last placeholder, and one or two of ":.,;/@-_" between placeholders. A
+// token with any other text, symbols included, is NOT already redacted: the
+// literal pass may have replaced only the head of a longer secret (R6 d), so
+// the later passes redact it whole. A NUL (the PEM tail mark) is ignored.
 func onlyPlaceholders(s string) bool {
+	s = strings.ReplaceAll(s, "\x00", "")
 	if !placeholderRe.MatchString(s) {
 		return false
 	}
-	rest := placeholderRe.ReplaceAllString(s, "")
-	return !strings.ContainsFunc(rest, func(r rune) bool {
-		return r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= 0x80
-	})
+	parts := placeholderRe.Split(s, -1) // text before, between and after the placeholders
+	last := len(parts) - 1
+	for i, p := range parts {
+		switch {
+		case i == 0 && p != "":
+			return false
+		case i == last && i > 0 && (len(p) > 1 || strings.Trim(p, ")]}>;") != ""):
+			return false
+		case i > 0 && i < last && (len(p) > 2 || strings.Trim(p, ":.,;/@-_") != ""):
+			return false
+		}
+	}
+	return true
 }
 
 func isWordValue(v string) bool {

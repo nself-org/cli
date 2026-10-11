@@ -24,12 +24,6 @@ import (
 	"strings"
 )
 
-// composeEnvName is the interpolation file of `nself build`: the unexported
-// composeEnvFile in internal/build/secrets_template.go, read by
-// build.ComposeEnvFiles. internal/doctor may not import internal/build
-// (layers.yaml D3: same-layer edge), so the path is repeated here.
-const composeEnvName = ".nself/compose.env"
-
 // computedEnvFile is the .env.computed file `nself build` writes (Step 10 in
 // internal/build/orchestrator_build_finish.go; no exported name there).
 const computedEnvFile = ".env.computed"
@@ -53,10 +47,15 @@ func (in *inputSet) readEnvInput(path, name string, listKeys bool) {
 	in.learnEnvText(string(raw), listKeys)
 }
 
-// loadBuildInputs reads .nself/compose.env (see composeEnvName), .env.computed and every other .env.* regular
-// file of the project dir; done holds the cascade names already read.
-func loadBuildInputs(projectDir string, done map[string]bool, in *inputSet) {
-	in.readEnvInput(filepath.Join(projectDir, filepath.FromSlash(composeEnvName)), composeEnvName, false)
+// loadBuildInputs reads the env files `nself build` writes for compose
+// interpolation (composeFiles: build.ComposeEnvFiles, passed in by the command;
+// internal/doctor may not import internal/build), .env.computed and every other
+// .env.* regular file of the project dir. Cascade files already read are
+// skipped.
+func loadBuildInputs(projectDir string, composeFiles []string, in *inputSet) {
+	for _, p := range composeFiles {
+		in.readEnvInput(p, filepath.Base(p), false)
+	}
 	extra := map[string]bool{computedEnvFile: true}
 	if ents, err := os.ReadDir(projectDir); err == nil {
 		for _, e := range ents {
@@ -67,7 +66,7 @@ func loadBuildInputs(projectDir string, done map[string]bool, in *inputSet) {
 	}
 	names := make([]string, 0, len(extra))
 	for n := range extra {
-		if !done[n] {
+		if !in.cascade[n] {
 			names = append(names, n)
 		}
 	}

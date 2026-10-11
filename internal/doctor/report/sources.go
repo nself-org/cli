@@ -117,12 +117,13 @@ func readContainerLog(ctx context.Context, timeout time.Duration, container stri
 	lctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	text, err := fetch(lctx)
+	// docker logs killed by the deadline may return partial output and no error.
 	switch {
-	case err == nil:
-		return text
 	case errors.Is(lctx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:
 		note(fmt.Sprintf("log read for container %s timed out after %s: its log is incomplete", container, timeout))
 		return text + "[log read timed out after " + timeout.String() + "]\n"
+	case err == nil:
+		return text
 	}
 	return "log read failed: " + err.Error() + "\n"
 }

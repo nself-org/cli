@@ -9,6 +9,10 @@ package report
 // ruling R6 c). Nested defaults yield their innermost literal as well.
 // Inputs: a key and the raw value text of a compose environment/args/labels
 //         entry.
+// A compose value under a secret-named key that references variables
+// (${NAME}, $NAME) is also interpolated against the env inputs already loaded
+// (cascade layers, compose.env, .env.*, process env), and each referenced
+// variable's value is learned, whatever the variable's own name (S-3).
 // Outputs: extra literals added to the input set under the owning key, and
 //         under NAME when the default belongs to a variable.
 // Constraints: pure string work; a form that still holds an unresolved ${...}
@@ -19,6 +23,10 @@ import "strings"
 // runtimeExpander expands one value and records every default/alternative.
 type runtimeExpander struct {
 	lits []namedLit
+	// env, when set, resolves variables: a plain reference becomes its value
+	// (empty when unset) and the operators follow compose's rules. When nil
+	// every variable is taken as unset and a plain reference stays as written.
+	env func(name string) (string, bool)
 }
 
 type namedLit struct{ name, text string }
@@ -30,6 +38,7 @@ func (in *inputSet) learnCompose(k, v string) {
 	if !strings.Contains(v, "$") {
 		return
 	}
+	in.learnInterpolated(k, v)
 	var e runtimeExpander
 	forms := []string{strings.ReplaceAll(v, "$$", "$"), e.expand(v)}
 	for _, f := range forms {
@@ -65,6 +74,14 @@ func (e *runtimeExpander) expand(s string) string {
 			}
 			sb.WriteString(e.expandRef(s[i+2:end], s[i:end+1]))
 			i = end + 1
+		case e.env != nil && i+1 < len(s) && isNameByte(s[i+1], true):
+			n := i + 1
+			for n < len(s) && isNameByte(s[n], false) {
+				n++
+			}
+			val, _ := e.env(s[i+1 : n])
+			sb.WriteString(val)
+			i = n
 		default:
 			sb.WriteByte('$')
 			i++
@@ -73,11 +90,16 @@ func (e *runtimeExpander) expand(s string) string {
 	return sb.String()
 }
 
+// isNameByte reports whether c may appear in a variable name (first: may start one).
+func isNameByte(c byte, first bool) bool {
+	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || !first && c >= '0' && c <= '9'
+}
+
 // expandRef expands the inside of one ${...}; raw is returned for a plain
 // reference.
 func (e *runtimeExpander) expandRef(inner, raw string) string {
 	n := 0
-	for n < len(inner) && (inner[n] == '_' || inner[n] >= '0' && inner[n] <= '9' || inner[n] >= 'a' && inner[n] <= 'z' || inner[n] >= 'A' && inner[n] <= 'Z') {
+	for n < len(inner) && isNameByte(inner[n], false) {
 		n++
 	}
 	name, rest := inner[:n], inner[n:]
@@ -85,8 +107,34 @@ func (e *runtimeExpander) expandRef(inner, raw string) string {
 		if strings.HasPrefix(rest, op) {
 			arg := e.expand(rest[len(op):])
 			e.lits = append(e.lits, namedLit{name, arg})
+			if e.env == nil {
+				return arg
+			}
+			val, set := e.env(name)
+			switch op {
+			case ":-":
+				if val != "" {
+					return val
+				}
+			case "-":
+				if set {
+					return val
+				}
+			case ":+":
+				if val == "" {
+					return ""
+				}
+			case "+":
+				if !set {
+					return ""
+				}
+			}
 			return arg
 		}
+	}
+	if e.env != nil {
+		val, _ := e.env(name)
+		return val
 	}
 	return raw
 }

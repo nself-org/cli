@@ -13,7 +13,7 @@ package report
 //         (symlinks resolved and re-checked), be regular, and be at most 1 MiB.
 //         CS_N_ENV_FILE paths are project-relative with no absolute path or
 //         "..". Compose env_file paths are relative to the document's own
-//         directory, then to the project dir; an absolute one is accepted only
+//         directory and to the project dir (both are read); an absolute one is accepted only
 //         when it lands inside the project, or inside the directory of the
 //         fragment that names it (plugin fragments live outside the project,
 //         lead ruling R6 b).
@@ -60,8 +60,9 @@ func loadCustomEnvFiles(in *inputSet) {
 }
 
 // learnComposeEnvFile learns one env_file entry of the compose document in dir:
-// first against dir inside the project, then against the project dir, then (a
-// fragment outside the project) against dir confined to dir itself.
+// against dir inside the project, against the project dir, and (a fragment
+// outside the project) against dir confined to dir itself; every one that
+// resolves is read.
 func (in *inputSet) learnComposeEnvFile(dir, rel string) {
 	rel = strings.TrimSpace(rel)
 	if rel == "" {
@@ -77,26 +78,28 @@ func (in *inputSet) learnComposeEnvFile(dir, rel string) {
 // envRoot is a confinement root and the directory rel is resolved against.
 type envRoot struct{ root, base string }
 
-// learnEnvFile resolves rel against each root in turn (strict: CS_N_ENV_FILE
-// rules) and learns the first file that resolves.
+// learnEnvFile resolves rel against EVERY root (strict: CS_N_ENV_FILE rules)
+// and learns each distinct file that resolves: which root the stack really
+// uses depends on how it is started, and over-reading a scrub input is safe.
+// A miss is noted only when no root resolves.
 func (in *inputSet) learnEnvFile(label, rel string, strict bool, roots ...envRoot) {
-	var path string
-	ok := false
+	read := map[string]bool{}
 	for _, r := range roots {
-		if path, ok = confinedFile(r.root, r.base, rel, strict); ok {
-			break
+		path, ok := confinedFile(r.root, r.base, rel, strict)
+		if !ok || read[path] {
+			continue
 		}
+		read[path] = true
+		raw, err := os.ReadFile(path) // #nosec G304 -- confined to the project dir (or the fragment dir) by confinedFile
+		if err != nil {
+			in.notes = append(in.notes, fmt.Sprintf("%s %q unreadable: values in it cannot be scrubbed", label, rel))
+			continue
+		}
+		in.learnEnvText(string(raw), false)
 	}
-	if !ok {
+	if len(read) == 0 {
 		in.notes = append(in.notes, fmt.Sprintf("%s %q skipped as a scrub input: missing, not a regular file, or outside the project directory", label, rel))
-		return
 	}
-	raw, err := os.ReadFile(path) // #nosec G304 -- confined to the project dir (or the fragment dir) by confinedFile
-	if err != nil {
-		in.notes = append(in.notes, fmt.Sprintf("%s %q unreadable: values in it cannot be scrubbed", label, rel))
-		return
-	}
-	in.learnEnvText(string(raw), false)
 }
 
 // walkEnvFiles calls fn for every env_file entry at any depth: a string, a list

@@ -30,6 +30,7 @@ func loadProcessEnv(environ []string, in *inputSet) {
 	defer func() { in.process = false }()
 	for _, kv := range environ {
 		if k, v, ok := strings.Cut(kv, "="); ok && k != "" && k != "PWD" && k != "OLDPWD" {
+			in.recordEnv(k, v)
 			in.learn(k, v)
 		}
 	}

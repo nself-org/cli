@@ -85,7 +85,7 @@ func runDoctorReport(cmd *cobra.Command, _ []string) error {
 	if src.Now == nil {
 		src.Now = time.Now
 	}
-	opts := report.Options{ProjectDir: projectDir, LogLines: lines, ComposeFragments: ds.ComposeFiles}
+	opts := report.Options{ProjectDir: projectDir, LogLines: lines, ComposeFragments: ds.ComposeFiles, ComposeEnvFiles: build.ComposeEnvFiles(projectDir)}
 	if setupNote != "" {
 		opts.Notes = append(opts.Notes, setupNote)
 	}

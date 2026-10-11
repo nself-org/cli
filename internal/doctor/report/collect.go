@@ -47,6 +47,10 @@ type Options struct {
 	// ComposeFragments are the compose files of the stack (.nself/compose-files.txt
 	// resolved): read as scrub inputs only, never bundled.
 	ComposeFragments []string
+	// ComposeEnvFiles are the env files `nself build` writes for compose
+	// interpolation (build.ComposeEnvFiles: .env and .nself/compose.env); read as
+	// scrub inputs only.
+	ComposeEnvFiles []string
 	// Environ is the process environment seam; nil means os.Environ.
 	Environ func() []string
 	// MaxLogBytes caps each service log; 0 means DefaultMaxLogBytes.
@@ -79,6 +83,7 @@ func Collect(ctx context.Context, opt Options, src Sources) (*Bundle, error) {
 	}
 	in := newInputSet(opt.ProjectDir)
 	loadEnvInputs(opt.ProjectDir, in)
+	loadBuildInputs(opt.ProjectDir, opt.ComposeEnvFiles, in)
 	loadProcessEnv(environ(), in)
 	loadLicenseKeys(in)
 	loadCustomEnvFiles(in)
