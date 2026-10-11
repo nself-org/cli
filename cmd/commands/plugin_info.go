@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -66,15 +68,21 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("fetching registry: %w", err)
 	}
 
-	var manifest *plugin.PluginManifest
-	for i := range reg.Plugins {
-		if strings.EqualFold(reg.Plugins[i].Name, name) {
-			manifest = &reg.Plugins[i]
-			break
-		}
-	}
-	if manifest == nil {
+	pluginDir := resolvePluginDir()
+	manifest, tier, tierReason, tierErr := pluginInfoTier(ctx, reg, name, pluginDir)
+	if manifest == nil && tierErr == nil {
 		return fmt.Errorf("plugin %q not found in registry", name)
+	}
+
+	// compat.V15(P7-PLUG-17): --json is ignored by plugin info -> prints the info with its tier and why as JSON
+	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON && compat.V15() {
+		if err := writePluginInfoJSON(cmd, name, manifest, tier, tierReason, tierErr); err != nil {
+			return err
+		}
+		return tierErr
+	}
+	if tierErr != nil {
+		return fmt.Errorf("plugin %q: tier unresolved: %w", name, tierErr)
 	}
 
 	// Display plugin details.
@@ -84,7 +92,15 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 	tbl.AddRow("Description", manifest.Description)
 	tbl.AddRow("Category", manifest.Category)
 	tbl.AddRow("License", manifest.License)
-	tbl.AddRow("Tier", manifest.Tier)
+	// compat.V15(P7-PLUG-17): the Tier row shows the registry word -> shows the licence word and why (Tier reason)
+	if compat.V15() {
+		tbl.AddRow("Tier", tier)
+		if tierReason != "" {
+			tbl.AddRow("Tier reason", tierReason)
+		}
+	} else {
+		tbl.AddRow("Tier", manifest.Tier)
+	}
 
 	if manifest.Author != "" {
 		tbl.AddRow("Author", manifest.Author)
@@ -130,7 +146,6 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if installed locally.
-	pluginDir := resolvePluginDir()
 	installed, err := plugin.ListInstalled(pluginDir)
 	if err == nil {
 		for _, p := range installed {
@@ -145,6 +160,96 @@ func runPluginInfo(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Install:     nself plugin install %s\n", name)
 
 	return nil
+}
+
+// pluginInfoTier picks the registry entry to describe and the tier (licence
+// vocabulary) and reason to report. An installed plugin reports the tier it is
+// installed as, with reason "installed". Otherwise v1.5 describes the entry an
+// install would pick; v1.4 keeps the first registry match.
+//
+// In v1.5 a tier that cannot be resolved (a duplicate slug that is not a tier
+// pair, or an installed tier the registry no longer serves) returns a nil
+// manifest, reason TierReasonUnresolved and the cause: it never falls back to
+// the first registry entry. A name the registry does not have returns nil, nil.
+func pluginInfoTier(ctx context.Context, reg *plugin.Registry, name, pluginDir string) (*plugin.PluginManifest, string, string, error) {
+	var first, match *plugin.PluginManifest
+	instTier, instReason, installed := plugin.InstalledTier(pluginDir, name)
+	for i := range reg.Plugins {
+		e := &reg.Plugins[i]
+		if !strings.EqualFold(e.Name, name) {
+			continue
+		}
+		if first == nil {
+			first = e
+		}
+		if installed && match == nil && plugin.LicenseTier(e.Tier) == instTier {
+			match = e
+		}
+	}
+	if first == nil {
+		return nil, "", "", nil
+	}
+	// compat.V15(P7-PLUG-17): info describes the first registry match -> describes the installed tier's entry, or the one an install would pick
+	if !compat.V15() {
+		if installed {
+			return first, instTier, instReason, nil
+		}
+		return first, plugin.LicenseValue(first.Tier), "", nil
+	}
+	if installed {
+		if match == nil {
+			return nil, "", plugin.TierReasonUnresolved,
+				fmt.Errorf("installed as %s, but the registry serves no %s entry for %q", instTier, instTier, name)
+		}
+		return match, instTier, instReason, nil
+	}
+	// Resolution fails closed to free when the licence lookup errors; that is
+	// right for install, but info must not report it as a decided default.
+	var lookupErr error
+	entitled := func(ctx context.Context, bundles []string) (bool, error) {
+		ok, err := plugin.DefaultEntitlement(ctx, bundles)
+		if err != nil {
+			lookupErr = err
+		}
+		return ok, err
+	}
+	m, reason, err := plugin.ResolvePluginTier(ctx, reg, name, "", "", entitled)
+	if err != nil {
+		return nil, "", plugin.TierReasonUnresolved, err
+	}
+	if lookupErr != nil {
+		return nil, "", plugin.TierReasonUnresolved, fmt.Errorf("checking entitlement for %q: %w", name, lookupErr)
+	}
+	return m, plugin.LicenseTier(m.Tier), reason, nil
+}
+
+// writePluginInfoJSON prints `plugin info --json`: the registry fields plus
+// the reported tier (free or licensed) and why. An unresolved tier (m nil)
+// prints only the name, tier_reason "unresolved" and the cause in tier_error.
+func writePluginInfoJSON(cmd *cobra.Command, name string, m *plugin.PluginManifest, tier, reason string, cause error) error {
+	out := struct {
+		Name        string `json:"name"`
+		Version     string `json:"version,omitempty"`
+		Description string `json:"description,omitempty"`
+		Category    string `json:"category,omitempty"`
+		License     string `json:"license,omitempty"`
+		Tier        string `json:"tier"`
+		TierReason  string `json:"tier_reason"`
+		TierError   string `json:"tier_error,omitempty"`
+		Port        int    `json:"port,omitempty"`
+	}{Name: name, Tier: tier, TierReason: reason}
+	if m != nil {
+		out.Name, out.Version, out.Description, out.Category, out.License, out.Port = m.Name, m.Version, m.Description, m.Category, m.License, m.Port
+	}
+	if cause != nil {
+		out.TierError = cause.Error()
+	}
+	data, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(cmd.OutOrStdout(), string(data))
+	return err
 }
 
 // permissionRiskPrefix returns a short risk label for a permission string.

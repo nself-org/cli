@@ -5,3 +5,28 @@ Plugins have a **Free** or **Licensed** licence. A Licensed plugin belongs to a 
 Use `nself plugin search --licensed <query>` to find Licensed plugins. The older `--pro` spelling works through v1.5 and prints a deprecation warning; it is removed in v1.6.0. Use `nself plugin install <name> --tier licensed` to select the Licensed side of a tier pair. The older `--tier pro` spelling remains accepted.
 
 `nself plugin list --available` shows both sides of a tier pair with Free and Licensed labels. In v1.5 mode, JSON output uses `license: free|licensed`; v1.4 mode keeps the legacy tier value. Bundle membership and licence entitlement still determine whether a Licensed plugin can be installed.
+
+## Tier resolution and stickiness (v1.5 mode)
+
+A plugin served as a Free and a Licensed pair (cron, notify) keeps the tier it was installed with. `nself plugin update notify` on a Free install stays Free even after you buy a licence, so a purchase never changes a running stack by itself. The same holds for `nself plugin install notify` over an installed copy and for a Bundle install that touches it. To move to the other tier on purpose, pass `--tier licensed` (or `--tier free`); `--tier licensed` still needs the licence.
+
+The reason a tier was chosen is one of `installed`, `override`, `entitlement`, `only-tier` (the registry serves a single Licensed entry and no entitlement was looked up; install still checks the licence) or `default-free`. If the installed tier cannot be kept (the licence lapsed, or the registry now serves only the other tier), the update stops with E131 and changes nothing; pass `--tier` to choose. A failed entitlement lookup is reported as itself, never as a downgrade. In v1.4 mode an update keeps resolving by entitlement as before. In v1.5 mode `nself plugin info <name> --json` reports `tier` (`free` or `licensed`) and `tier_reason` (v1.4 mode ignores `--json`); a tier that cannot be decided, or a licence lookup that failed, is reported as `tier_reason: "unresolved"` with the cause in `tier_error`, never as the first registry entry or a default; `nself plugin update <name> --tier free|licensed` is the explicit switch.
+
+## Compose fragment rules
+
+`nself build` reads each installed plugin's `docker-compose.plugin.yml` and normalises it in place.
+
+- **No fragment (E128).** A plugin that declares a compose service (`service.kind: compose`, or a v1 manifest with a Dockerfile and a port) but ships no fragment fails the build in v1.5 mode and names the plugin. In v1.4 mode it warns and is left out of the stack. Plugins of kind `cli` or `library`, and disabled plugins, are not affected.
+- **Networks.** In v1.5 mode a service with no `networks:` is attached to `${DOCKER_NETWORK}`, and `${DOCKER_NETWORK:-nself_network}` is written as `${DOCKER_NETWORK}`. A service with an allowed `network_mode`, or one that gets `networks` through a YAML merge key, is left alone. The legacy external project networks `nself_network`, `nself-network` and `nself` are the project network: v1.5 deletes its definition and writes `${DOCKER_NETWORK}` wherever a service lists it (a form it cannot rewrite in place, such as a multi-line flow definition or a reference in mapping form, is E129); v1.4 leaves it as it is.
+- **Foreign networks (E129).** A fragment may use an external network only if it is the project network (`${DOCKER_NETWORK}`, or `<project>_network`); aliases and merge keys are resolved before this check, `external` written as a string (`"true"`, `yes`, `${VAR}`) counts as external, and a network with an explicit `name:` that is not project-scoped (`${COMPOSE_PROJECT_NAME}_...`) counts too, because compose would join an existing network of that name. Any other external network fails the build in v1.5 mode (E129 names the plugin and network) and warns in v1.4 mode. Other v1.5 network cases, each E129 with its own cause in the message (v1.4 warns for the first two and ignores the rest):
+  - A fragment with more than one YAML document (`---`): compose merges them all, the check reads the first.
+  - A service `network_mode` other than `none` or `service:<a service of this fragment>` (`host`, `container:x`, a network name, a variable).
+  - A service supplied by a `<<` merge key under `services:` with no `networks:`: it has no place to attach the project network, so write it out.
+  - A fragment that decodes as YAML but not as compose values, so the policy could not be checked.
+  - A legacy project network written in a form the build cannot rewrite in place (see Networks).
+- **PORT.** In v1.5 mode every fragment gets `PORT` equal to `SERVICE_PORT` when the plugin declares a port. A `PORT` the fragment sets itself wins.
+- **Policy (E130).** E130, "plugin compose fragment violates policy (ADR 0027)", is reserved for the fragment checks that forbid host-level access such as the Docker socket.
+
+## Updating pulls new images
+
+After `nself plugin update`, every image reference the new fragment has that the old one did not (a changed tag, or a new service) is pulled right away, so the next `nself start` runs it. Services that build locally are untouched here, and a reference that contains a `${VAR}` is pulled by `nself start`. A failed pull is a warning; the update itself is done.
