@@ -161,8 +161,9 @@ jobs:
       # cleaned up above (the suite binds no host ports and labels everything it
       # creates with a unique project name). `if: always()` so a red golden-path
       # step does not hide a cascade regression. No secrets in env. A skipped
-      # suite is a failure here: the suite skips only when docker is missing, and
-      # this runner has it, so a SKIP would mean the proof silently did not run.
+      # suite is a failure here: the suite skips only when docker is missing or
+      # its daemon is unreachable, and this runner has both, so a SKIP would mean
+      # the proof silently did not run.
       - name: Cascade integration suite
         if: always()
         shell: bash

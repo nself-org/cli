@@ -496,22 +496,18 @@ func cascadeSHA(s string) string {
 
 // ---- docker helpers ----------------------------------------------------------
 
-// cascadeDockerReady polls `docker info` against a deadline. A CLI with no
-// reachable daemon fails the suite: Docker is never mocked here.
+// cascadeDockerReady asks the daemon once (`docker info`, 20 s cap). A CLI
+// with no reachable daemon skips: this suite runs in every plain
+// `go test ./...`, and shared hosts (a CI user without socket access, a laptop
+// with Colima stopped) must not go red for an unrelated change. Docker is
+// never mocked; the golden-path workflow step fails on any SKIP of this test,
+// so the Linux proof cannot pass by skipping (LIVE Invalidations 2026-10-11).
 func cascadeDockerReady(t *testing.T) {
 	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
-	var last []byte
-	for {
-		out, err := exec.Command("docker", "info").CombinedOutput()
-		if err == nil {
-			return
-		}
-		last = out
-		if time.Now().After(deadline) {
-			t.Fatalf("docker is on PATH but the daemon is not reachable (the suite never mocks Docker): %s", last)
-		}
-		time.Sleep(500 * time.Millisecond) // poll interval inside the deadline loop
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if out, err := exec.CommandContext(ctx, "docker", "info").CombinedOutput(); err != nil {
+		t.Skipf("docker is on PATH but the daemon is not reachable: %v: %s", err, bytes.TrimSpace(out))
 	}
 }
 
