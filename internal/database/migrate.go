@@ -18,6 +18,9 @@ import (
 // run them outside a transaction.
 // Returns the count of migrations applied.
 func MigrateUp(ctx context.Context, cfg *config.Config, plugin string) (int, error) {
+	if err := validatePluginArg(plugin); err != nil {
+		return 0, err
+	}
 	if err := ensureSchemaVersions(ctx, cfg); err != nil {
 		return 0, fmt.Errorf("ensure schema_versions: %w", err)
 	}

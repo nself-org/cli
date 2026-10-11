@@ -132,6 +132,9 @@ func appliedMigrationsOps(ctx context.Context, cfg *config.Config) (map[string]M
 // VerifyChecksums compares on-disk migration checksums against stored values.
 // Returns a list of mismatches (empty means all good).
 func VerifyChecksums(ctx context.Context, cfg *config.Config, plugin string) ([]ChecksumMismatch, error) {
+	if err := validatePluginArg(plugin); err != nil {
+		return nil, err
+	}
 	if err := ensureSchemaVersions(ctx, cfg); err != nil {
 		return nil, fmt.Errorf("ensure schema_versions: %w", err)
 	}

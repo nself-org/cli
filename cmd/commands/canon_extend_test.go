@@ -358,3 +358,34 @@ func TestEquivalenceBundleRemove(t *testing.T) {
 		compareExtensionResults(t, legacy, canonical)
 	})
 }
+
+// TestAddNextHintIgnoresPathShapedSources: install arguments include URLs and
+// paths; the hint must not read a manifest outside the plugin directory.
+func TestAddNextHintIgnoresPathShapedSources(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		root := t.TempDir()
+		pluginDir := filepath.Join(root, "plugins")
+		victim := filepath.Join(root, "victim")
+		for _, d := range []string{pluginDir, victim} {
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Setenv("NSELF_PLUGIN_DIR", pluginDir)
+		manifest, err := os.ReadFile(filepath.Join("testdata", "mount", "collide-completion", "plugin.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(victim, "plugin.json"), manifest, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		names := []string{"../victim", "https://example.com/../../../victim", "./../victim"}
+		out, err := captureStdout(t, func() error { printAddedCommandHints(names); return nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out != "" {
+			t.Errorf("a manifest outside the plugin dir produced a hint: %q", out)
+		}
+	})
+}
