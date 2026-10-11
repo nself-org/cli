@@ -33,6 +33,10 @@ type Hooks struct {
 	Reconcile func(ctx context.Context) error
 	// Start boots the stack (the in-process `nself start`).
 	Start func(ctx context.Context) error
+	// TrackTables tracks the members' manifest tables in Hasura (P7-PLUG-78).
+	// The tracking step calls it before the ExportMetadata verification; nil
+	// skips it (v1.4 builds none). Return *StepError to name the plugin.
+	TrackTables func(ctx context.Context, members []Member) error
 	// ExportMetadata returns Hasura's export_metadata response.
 	ExportMetadata func(ctx context.Context) ([]byte, error)
 	// ServiceHealth returns an error listing unhealthy services.

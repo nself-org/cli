@@ -15,7 +15,7 @@ How `nself bundle install` reaches an app-ready stack, and how nself records whi
 | 5 | `reconcile` | Generated project files are regenerated for the new membership (`skipped` when nothing changed). |
 | 6 | `start` | `nself start` brings the stack up. |
 | 7 | `readiness` | Each member with `migrations.apply: boot` reports every migration applied in `/health` (waits up to `NSELF_PLUGIN_READY_TIMEOUT`). The plugin applies its own SQL; nself never does. |
-| 8 | `tracking` | Every table named in a member's manifest is tracked in Hasura (`export_metadata`). `x` means `public.x`; `s.x` means schema `s`. |
+| 8 | `tracking` | Tracks every table named in a member's manifest that Hasura does not track yet, with one targeted `bulk` request of `pg_track_table` operations (never `replace_metadata`, never an untrack; already tracked tables send no request), then verifies them with `export_metadata`. `x` means `public.x`; `s.x` means schema `s`. A manifest table missing from Postgres fails the step naming the plugin and the table. Tracking is `NSELF_V15=1` behaviour; `nself plugin install` does the same for the plugins it installs and fails with **E140** (exit 2). |
 | 9 | `health` | The stack services are healthy and each member answers HTTP 200 on `/health`. |
 
 The first failing step stops the run; later steps show `skipped`. Outside an nSelf project the plugins are installed and recorded, the later steps are skipped, and the output says `NOT VERIFIED`; the exit code stays 0.
