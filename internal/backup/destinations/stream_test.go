@@ -33,6 +33,7 @@ func (f *failReader) Read(p []byte) (int, error) {
 }
 
 func TestHasInlineCredentialsAndParseRefusals(t *testing.T) {
+	abs := t.TempDir()
 	cases := []struct {
 		uri    string
 		inline bool
@@ -58,8 +59,9 @@ func TestHasInlineCredentialsAndParseRefusals(t *testing.T) {
 		{"s3://bucket/a:b@c", false, true},
 		{"name:path", false, true},
 		{"s3://bucket/p", false, true},
-		{"path:///abs", false, true},
-		{"path:///abs,with,commas@x", false, true},
+		// t.TempDir is absolute on every OS ("/abs" is not absolute on Windows).
+		{"path://" + abs, false, true},
+		{"path://" + filepath.Join(abs, "abs,with,commas@x"), false, true},
 	}
 	for _, c := range cases {
 		if got := HasInlineCredentials(c.uri); got != c.inline {
