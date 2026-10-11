@@ -119,6 +119,9 @@ func ensureGitignore(workDir string) error {
 // trailing CR and trailing spaces are dropped; leading whitespace and tabs
 // stay part of the pattern.
 func gitignoreLine(l string) string {
+	if i := strings.IndexByte(l, 0); i >= 0 {
+		l = l[:i] // git truncates a pattern at the first NUL
+	}
 	return strings.TrimRight(strings.TrimSuffix(l, "\r"), " ")
 }
 
