@@ -159,9 +159,12 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 		}
 		if err != nil && !touched && len(pulled) > 0 {
 			if terr := restoreImageTags(ctx, r, pulled); terr != nil {
-				err = fmt.Errorf("%w; the image tags the pull moved could not be put back (%v): a manual `docker compose up` on the host would run the new images without the stateful-recreate confirmation", err, terr)
+				// Emitted as well: a rendered CLIError shows only its own message.
+				warn := fmt.Sprintf("the image tags the pull moved could not be put back (%v): a manual `docker compose up` on the host would run the new images without the stateful-recreate confirmation", terr)
+				emit(o.Out, "  [warn] %s", warn)
+				err = fmt.Errorf("%w; %s", err, warn)
 			} else {
-				emit(o.Out, "  [restored] %d image tag(s) the pull moved now point at the images they had before", len(pulled))
+				emit(o.Out, "  [restored] %d image tag(s) pointed back at the images they had before the pull", len(pulled))
 			}
 		}
 		if err != nil && res.Synced && !touched {

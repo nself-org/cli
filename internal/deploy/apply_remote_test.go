@@ -337,6 +337,8 @@ func TestRemoteApplyRefusals(t *testing.T) {
 		f, o, _ := applyFixture(t, "")
 		o.Yes = false
 		f.fail["docker tag"] = errBoom
+		var out strings.Builder
+		o.Out = &out
 		f.handler = func(s string) (string, bool) {
 			if strings.Contains(s, "up -d --dry-run") {
 				return " Container proj-db-1 Recreate\n", true
@@ -347,6 +349,10 @@ func TestRemoteApplyRefusals(t *testing.T) {
 		var ce *errs.CLIError
 		if !errors.As(err, &ce) || ce.Code != "E403" || !strings.Contains(err.Error(), "image tags the pull moved could not be put back") {
 			t.Fatalf("err = %v", err)
+		}
+		// The rendered E403 shows only the CLIError message, so the warning must reach the output too.
+		if !strings.Contains(out.String(), "[warn] the image tags the pull moved could not be put back") {
+			t.Errorf("no warning line in the output: %q", out.String())
 		}
 	})
 	t.Run("non-prod takes no database backup and needs no confirm", func(t *testing.T) {

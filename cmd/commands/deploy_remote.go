@@ -274,11 +274,10 @@ func remoteDeployPush(ctx context.Context, workdir, host, target string, jsonOut
 	// subcommand" pattern as runRemoteNselfCommand (db_remote.go). A short
 	// retry loop absorbs the gap between "container up" (no health gate on
 	// this remote path, unlike the local rolling restart) and "API ready".
-	applyCmd := deploy.HasuraMetadataApplyCommand(remotePath)
 	if !jsonOut {
 		fmt.Printf("  [running] hasura metadata apply on %s\n", sshTarget)
 	}
-	ac := exec.CommandContext(ctx, "ssh", append(sshArgs, applyCmd)...)
+	ac := exec.CommandContext(ctx, "ssh", append(sshArgs, deploy.HasuraMetadataApplyCommand(remotePath))...)
 	ac.Env = os.Environ()
 	if out, err := ac.CombinedOutput(); err != nil {
 		// Mirrors hasura.IsStrict's default (strict in staging/prod, warn in
