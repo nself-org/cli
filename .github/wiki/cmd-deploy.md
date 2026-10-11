@@ -462,6 +462,8 @@ service, or place its context on the host.
   real `remote_path`. A link that resolves outside it (for example `nginx/` pointing at a shared dir
   next to the project, or a symlinked `.env.prod`) stops the deploy with `E485` (`symlink outside
   remote_path`) before the lock, the tar and any sync. Move the shared dir inside the project dir.
+  A link that stays inside is written through, and the deploy prints a `[notice]` line with the real
+  path. The sync never changes the mode of a directory that already exists.
 - Remote steps are non-interactive (`BatchMode=yes`, `ConnectTimeout=10`): use ssh-agent or an
   unencrypted deploy key. A password or passphrase prompt would hang a step that runs in its own
   process group.
@@ -481,7 +483,8 @@ and owner. A failure after the first `up` keeps the new files and the error name
 **Ctrl-C.** SIGINT, SIGTERM and SIGHUP (a closed terminal or ssh session) during a v1.5 apply or rollback cancel the step in flight (ssh and
 rsync run in their own process group, so the terminal does not kill them behind the tool's back).
 The step in flight is not killed: it gets up to two minutes to finish, so its remote script is not
-still running when the restore starts. Before the first `up`, the tar is then restored (on a fresh context, at most 5 minutes) and the
+still running when the restore starts. A second signal while the restore runs prints one line saying so and does not kill it. Ctrl-C at the
+`Type yes` prompt aborts the command at once. Before the first `up`, the tar is then restored (on a fresh context, at most 5 minutes) and the
 deploy lock is released; after the first `up` the new files stay and the error names the rollback.
 This is tested with real signals sent to the apply and to the rollback. SIGKILL, a lost connection or a powered-off
 laptop are not covered: the lock stays, and the error for the next deploy says how to remove it.
