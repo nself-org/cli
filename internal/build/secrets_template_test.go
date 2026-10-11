@@ -108,13 +108,14 @@ func TestTemplateSecrets_NoLiteralSecretsInGeneratedCompose(t *testing.T) {
 }
 
 // TestTemplateSecrets_CommandAndHealthcheckLiteralsRewritten is the P6-E2-
-// W2-S3-T9 finding: Redis embeds REDIS_PASSWORD in its `command:` string
-// (--requirepass) and healthcheck `test:` args, and Typesense embeds
+// W2-S3-T9 finding: Redis embedded REDIS_PASSWORD in its `command:` string
+// (--requirepass) and healthcheck `test:` args, and Typesense embedded
 // TYPESENSE_API_KEY in its `command:` string (--api-key=) and healthcheck
-// header — none of these are "KEY: value" env lines or URL credential
-// positions, so Phases A/B never touched them and a real `nself build`
-// leaked both literally despite REDIS_PASSWORD being in SecretEnvMap and
-// LiteralSecretLeaks correctly warning. Phase C must catch both.
+// header. Since D-0282 the generator keeps both off argv entirely (Redis
+// reads REDISCLI_AUTH, Typesense its TYPESENSE_API_KEY env), so the
+// generated compose must hold no literal and the new env-only shape. Phase C
+// still has to rewrite a literal a generator puts in a command string; the
+// synthetic case below keeps that covered without a live fixture.
 func TestTemplateSecrets_CommandAndHealthcheckLiteralsRewritten(t *testing.T) {
 	cfg := secretTestConfig()
 	cfg.Redis.Enabled = true
@@ -145,12 +146,23 @@ func TestTemplateSecrets_CommandAndHealthcheckLiteralsRewritten(t *testing.T) {
 		t.Errorf("LiteralSecretLeaks reported %v, want none", leaks)
 	}
 	for _, ref := range []string{
-		"--requirepass ${REDIS_PASSWORD}",
-		"--api-key=${TYPESENSE_API_KEY}",
+		"REDISCLI_AUTH: ${REDIS_PASSWORD}",
+		`--requirepass "$$REDISCLI_AUTH"`,
+		"TYPESENSE_API_KEY: ${TYPESENSE_API_KEY}",
 	} {
 		if !strings.Contains(doc, ref) {
-			t.Errorf("expected templated reference %q in generated compose:\n%s", ref, doc)
+			t.Errorf("expected %q in generated compose:\n%s", ref, doc)
 		}
+	}
+	for _, gone := range []string{"--requirepass ${REDIS_PASSWORD}", "--api-key=", "X-TYPESENSE-API-KEY"} {
+		if strings.Contains(doc, gone) {
+			t.Errorf("%q is back on a generated argv (D-0282)", gone)
+		}
+	}
+
+	synthetic := "services:\n  x:\n    command: srv --requirepass " + cfg.Redis.Password + "\n"
+	if got := string(TemplateSecrets([]byte(synthetic), secrets)); !strings.Contains(got, "--requirepass ${REDIS_PASSWORD}") {
+		t.Errorf("Phase C did not rewrite a command-string literal:\n%s", got)
 	}
 }
 
@@ -261,7 +273,9 @@ var urlEncPasswords = []string{
 
 // readComposeEnvMap parses .nself/compose.env the way docker compose reads a
 // dotenv file for the values this test cares about: KEY=VALUE per line, one
-// layer of single quotes removed.
+// layer of single quotes removed, or the double-quoted form
+// config.QuoteComposeEnvValue writes for values holding ' or \ undone.
+// (internal/compose's parseComposeDotenv is the full compose-go port.)
 func readComposeEnvMap(t *testing.T, workdir string) map[string]string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(workdir, ".nself", "compose.env"))
@@ -276,6 +290,10 @@ func readComposeEnvMap(t *testing.T, workdir string) map[string]string {
 		k, v, ok := strings.Cut(line, "=")
 		if !ok {
 			t.Fatalf("malformed compose.env line (key %q)", k)
+		}
+		if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+			out[k] = strings.NewReplacer(`\\`, `\`, `\"`, `"`, "$$", "$").Replace(v[1 : len(v)-1])
+			continue
 		}
 		out[k] = config.UnquoteEnvValue(v)
 	}
