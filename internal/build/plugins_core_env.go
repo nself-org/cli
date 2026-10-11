@@ -177,7 +177,7 @@ func normalizeComposePluginCoreEnv(content []byte, pluginDir, pluginName string)
 
 	// A fragment can hold sidecar services: only the plugin's own service
 	// range is rewritten (D-0319); the rest of the bytes pass through.
-	start, end, state := pluginServiceRange(content, pluginName, manifestName)
+	start, end, anchor, state := pluginServiceRange(content, pluginName, manifestName)
 	switch state {
 	case rangeUnsafe:
 		warnUnrecognisedEnvBlock(pluginDir, pluginName)
@@ -192,7 +192,20 @@ func normalizeComposePluginCoreEnv(content []byte, pluginDir, pluginName string)
 		}
 		return content
 	}
-	seg := normalizeServiceCoreEnv(content[start:end], pluginDir, pluginName, port)
+	var seg []byte
+	if state == rangeFound {
+		// Rewrite only from the direct environment (or networks) key on, and
+		// only a match that begins exactly there. No such key: nothing safe
+		// to anchor on.
+		if anchor < 0 {
+			warnUnrecognisedEnvBlock(pluginDir, pluginName)
+			return content
+		}
+		cut := start + anchor
+		seg = append(append([]byte{}, content[start:cut]...), normalizeServiceCoreEnv(content[cut:end], true, pluginDir, pluginName, port)...)
+	} else {
+		seg = normalizeServiceCoreEnv(content[start:end], false, pluginDir, pluginName, port)
+	}
 	if bytes.Equal(seg, content[start:end]) {
 		return content
 	}
@@ -200,35 +213,6 @@ func normalizeComposePluginCoreEnv(content []byte, pluginDir, pluginName string)
 	out = append(out, content[:start]...)
 	out = append(out, seg...)
 	return append(out, content[end:]...)
-}
-
-// normalizeServiceCoreEnv applies the core-env rewrite to one service's bytes
-// (or a whole fragment when no service range could be found).
-func normalizeServiceCoreEnv(content []byte, pluginDir, pluginName string, port int) []byte {
-	if pluginEnvAnchoredRE.Match(content) {
-		warnUnrecognisedEnvBlock(pluginDir, pluginName)
-		return content
-	}
-	if loc := pluginEnvEmptyListRE.FindSubmatchIndex(content); loc != nil {
-		return injectIntoEmptyListEnvBlock(content, loc, pluginName, port)
-	}
-	if loc := pluginEnvBlockRE.FindSubmatchIndex(content); loc != nil {
-		shape, blockEnd, entryIndent, existing := scanEnvBlock(content, loc)
-		switch shape {
-		case envBlockList:
-			return appendListEntries(content, blockEnd, entryIndent, existing, pluginName, port)
-		case envBlockUnrecognised:
-			warnUnrecognisedEnvBlock(pluginDir, pluginName)
-			return content
-		default: // envBlockMap
-			return appendMapEntries(content, blockEnd, entryIndent, existing, pluginName, port)
-		}
-	}
-	if out, ok := injectNewEnvBlock(content, pluginName, port); ok {
-		return out
-	}
-	warnUnrecognisedEnvBlock(pluginDir, pluginName)
-	return content
 }
 
 // warnUnrecognisedEnvBlock reports a plugin compose fragment whose

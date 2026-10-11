@@ -36,16 +36,26 @@ func TestPluginServiceRange(t *testing.T) {
 		{"lone CR line breaks", "services:\r  w:\r    image: example/w\r    environment:\r      A: value\r    networks: [p]\r  side:\n    image: example/side\n    environment:\n      B: value\n    networks: [p]\nnetworks:\n  p: {}\n", rangeUnsafe, ""},
 		{"lone CR after the target", "services:\n  w:\n    image: a\n    environment:\n      A: v\n  side:\r    image: s\r", rangeUnsafe, ""},
 		{"anchored target", "services:\n  w: &base\n    image: a\n    environment:\n      A: v\n  side:\n    <<: *base\n    image: b\n", rangeUnsafe, ""},
-		{"nested environment before the direct one", "services:\n  w:\n    image: a\n    x-meta:\n      environment:\n        M: v\n    environment:\n      A: v\n  side:\n    image: s\n", rangeUnsafe, ""},
+		{"nested environment before the direct one", "services:\n  w:\n    image: a\n    x-meta:\n      environment:\n        M: v\n    environment:\n      A: v\n  side:\n    image: s\n", rangeFound, "  w:\n    image: a\n    x-meta:\n      environment:\n        M: v\n    environment:\n      A: v\n"},
 		{"nested environment after the direct one", "services:\n  w:\n    image: a\n    environment:\n      A: v\n    x-meta:\n      environment:\n        M: v\n  side:\n    image: s\n", rangeFound, "  w:\n    image: a\n    environment:\n      A: v\n    x-meta:\n      environment:\n        M: v\n"},
-		{"block scalar mentions environment first", "services:\n  w:\n    image: a\n    command: |\n      environment:\n        x\n    environment:\n      A: v\n  side:\n    image: s\n", rangeUnsafe, ""},
-		{"no direct environment, nested networks first", "services:\n  w:\n    image: a\n    x-meta:\n      networks:\n        - z\n    networks:\n      - p\n  side:\n    image: s\n", rangeUnsafe, ""},
+		{"block scalar mentions environment first", "services:\n  w:\n    image: a\n    command: |\n      environment:\n        x\n    environment:\n      A: v\n  side:\n    image: s\n", rangeFound, "  w:\n    image: a\n    command: |\n      environment:\n        x\n    environment:\n      A: v\n"},
+		{"no direct environment, nested networks first", "services:\n  w:\n    image: a\n    x-meta:\n      networks:\n        - z\n    networks:\n      - p\n  side:\n    image: s\n", rangeFound, "  w:\n    image: a\n    x-meta:\n      networks:\n        - z\n    networks:\n      - p\n"},
 		{"no direct environment, direct networks list", "services:\n  w:\n    image: a\n    networks:\n      - p\n  side:\n    image: s\n", rangeFound, "  w:\n    image: a\n    networks:\n      - p\n"},
 		{"several services, no match", "services:\n  a:\n    image: x\n  b:\n    image: y\n", rangeNoMatch, ""},
 	}
+	// The line the rewrite is anchored to; a found row not listed has no
+	// direct environment or networks key (anchor -1).
+	anchors := map[string]string{
+		"picked service merges and has environment":    "    environment:\n",
+		"nested environment before the direct one":     "    environment:\n      A: v\n",
+		"nested environment after the direct one":      "    environment:\n      A: v\n    x-meta",
+		"block scalar mentions environment first":      "    environment:\n      A: v\n",
+		"no direct environment, nested networks first": "    networks:\n      - p\n",
+		"no direct environment, direct networks list":  "    networks:\n      - p\n",
+	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			start, end, state := pluginServiceRange([]byte(c.in), "w", "")
+			start, end, anchor, state := pluginServiceRange([]byte(c.in), "w", "")
 			if state != c.state {
 				t.Fatalf("state %d, want %d", state, c.state)
 			}
@@ -54,6 +64,18 @@ func TestPluginServiceRange(t *testing.T) {
 			}
 			if got := c.in[start:end]; got != c.text {
 				t.Errorf("range text %q, want %q", got, c.text)
+			}
+			switch want, listed := anchors[c.name]; {
+			case state == rangeWhole:
+				if anchor != -1 {
+					t.Errorf("whole: anchor %d, want -1", anchor)
+				}
+			case !listed:
+				if anchor != -1 {
+					t.Errorf("anchor %d, want -1", anchor)
+				}
+			case anchor < 0 || !strings.HasPrefix(c.in[start+anchor:], want):
+				t.Errorf("anchor %d does not point at %q", anchor, want)
 			}
 		})
 	}
