@@ -100,10 +100,31 @@ func TestSecretRef(t *testing.T) {
 		{"s3cret-value", "${MEILISEARCH_MASTER_KEY}"},
 		{"", "${MEILISEARCH_MASTER_KEY:-}"},
 		{"   ", "${MEILISEARCH_MASTER_KEY:-}"},
+		{"ab12", "${MEILISEARCH_MASTER_KEY}"},
+		{"a/b@c:d?e%f", "${MEILISEARCH_MASTER_KEY}"},
+		// compose.env is unquoted: these stay literal until D-0329.
+		{"ab #cd", "ab #cd"},
+		{"ab$cd", "ab$cd"},
+		{"ab'cd", "ab'cd"},
 	}
 	for _, c := range cases {
 		if got := secretRef("MEILISEARCH_MASTER_KEY", c.value); got != c.want {
 			t.Errorf("secretRef(%q) = %q, want %q", c.value, got, c.want)
+		}
+	}
+}
+
+func TestSecretURLUserInfo(t *testing.T) {
+	cases := []struct {
+		user, password, want string
+	}{
+		{"postgres", "p/w@x", "postgres:${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}"},
+		{"", "pw", ":${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}"},
+		{"postgres", "", "postgres"},
+	}
+	for _, c := range cases {
+		if got := secretURLUserInfo(c.user, c.password, "POSTGRES_PASSWORD"); got != c.want {
+			t.Errorf("secretURLUserInfo(%q, %q) = %q, want %q", c.user, c.password, got, c.want)
 		}
 	}
 }
@@ -169,7 +190,13 @@ func TestOptionalServicesSecretRefsPerService(t *testing.T) {
 			"ADMIN_SECRET_KEY: ${ADMIN_SECRET_KEY:-}",
 			"ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}",
 		}},
-		{"meilisearch", "functions", true, []string{"HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}"}},
+		{"meilisearch", "functions", true, []string{
+			"HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET}",
+			"DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@postgres:5432/nself",
+		}},
+		{"meilisearch", AdminServiceName, true, []string{
+			"DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}@postgres:5432/nself",
+		}},
 	}
 	for _, c := range cases {
 		text := optionalServicesYAML(t, allOptionalServicesConfig(c.engine, c.set))[c.service]
