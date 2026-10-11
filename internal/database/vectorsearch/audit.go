@@ -46,6 +46,9 @@ type auditMeta struct {
 				Schema string `json:"schema"`
 				Name   string `json:"name"`
 			} `json:"function"`
+			Permissions []struct {
+				Role string `json:"role"`
+			} `json:"permissions"`
 		} `json:"functions"`
 	} `json:"sources"`
 }
@@ -54,10 +57,18 @@ type auditMeta struct {
 // functions of the default source named <table>_nearest_<column> (the name
 // FunctionName gives) over a tracked table of the same schema whose select
 // permissions fail the --track checks. The second value is the number of
-// search functions examined. A name that matches more than one table (a
-// table itself named x_nearest_y) is checked against each: failing closed is
-// the safe side for an ordering oracle.
-func AuditLive(live []byte) ([]Finding, int, error) {
+// search functions examined. The match is by name only: the metadata does
+// not carry the function's return type, and the _nearest_ name is the one
+// the generator owns, so a hand-written function with such a name is held to
+// the same rule. A name that matches more than one table (a table itself
+// named x_nearest_y) is checked against each: failing closed is the safe side
+// for an ordering oracle.
+//
+// inferred is Hasura's HASURA_GRAPHQL_INFER_FUNCTION_PERMISSIONS (true by
+// default): every role with select on the table can call the function. When
+// it is false only the roles with an explicit function permission can, so
+// only their select permissions are checked.
+func AuditLive(live []byte, inferred bool) ([]Finding, int, error) {
 	var m auditMeta
 	if err := json.Unmarshal(live, &m); err != nil {
 		return nil, 0, fmt.Errorf("parse live metadata: %w", err)
@@ -76,8 +87,15 @@ func AuditLive(live []byte) ([]Finding, int, error) {
 					continue
 				}
 				matched = true
+				callers := map[string]bool{}
+				for _, p := range f.Permissions {
+					callers[p.Role] = true
+				}
 				var problems []string
 				for _, p := range t.SelectPermissions {
+					if !inferred && !callers[p.Role] {
+						continue
+					}
 					if why := database.VectorSelectProblem(p.Permission.Columns, p.Permission.QueryRoot, p.Permission.SubRoot, column); why != "" {
 						problems = append(problems, p.Role+": "+why)
 					}

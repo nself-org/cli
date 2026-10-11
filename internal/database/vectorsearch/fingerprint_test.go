@@ -41,8 +41,18 @@ func TestDiskFingerprint(t *testing.T) {
 	if err := os.WriteFile(tables, []byte("table: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := DiskFingerprint(dir); got == first {
+	second, _ := DiskFingerprint(dir)
+	if second == first {
 		t.Fatal("a new file under hasura/metadata kept the fingerprint")
+	}
+	// Editor and OS litter is not metadata.
+	for _, name := range []string{".DS_Store", ".sources.yaml.swp", "notes.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, "hasura", "metadata", name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, _ := DiskFingerprint(dir); got != second {
+		t.Fatal("a non-metadata file changed the fingerprint")
 	}
 }
 

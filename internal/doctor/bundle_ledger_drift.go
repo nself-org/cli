@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -22,7 +23,7 @@ import (
 // Inputs: the plugin directory ($NSELF_PLUGIN_DIR or ~/.nself/plugins).
 // Outputs: one failing CheckResult per missing plugin (section "plugins", name
 // BUNDLE-LEDGER-DRIFT-<slug>) and one warning per unrecorded official plugin
-// (BUNDLE-LEDGER-UNRECORDED-<slug>). No ledger file, or a consistent ledger,
+// (BUNDLE-LEDGER-UNRECORDED-<slug>, the command to run in its message). No ledger file, or a consistent ledger,
 // gives no result at all. An unreadable or invalid ledger file gives one
 // warning naming it.
 // Constraints: internal/doctor may not import internal/bundle (layers.yaml), so
@@ -37,6 +38,11 @@ const (
 	bundleDriftFixed = "reinstall the bundle (nself bundle install <bundle>) to restore the missing plugin"
 	manifestReadCap  = 1 << 20
 )
+
+// ledgerSlugRE mirrors ledger.SlugPattern (internal/bundle/ledger/ledger.go):
+// only such a name can be a ledger key, and only such a name is safe to print
+// into a check name or a command hint.
+var ledgerSlugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 // bundlePluginDir is where plugins (and the ledger) live: $NSELF_PLUGIN_DIR
 // first, then ~/.nself/plugins; "" when neither can be resolved.
@@ -128,12 +134,13 @@ func unrecordedPluginChecks(pluginDir string, recorded map[string]bool) []CheckR
 		if slug == "" {
 			slug = strings.ToLower(e.Name())
 		}
-		if recorded[slug] {
-			continue
+		if !ledgerSlugRE.MatchString(slug) || recorded[slug] {
+			continue // an invalid slug can never be recorded (the bootstrap skips it too)
 		}
+		// No FixCmd on purpose: doctor --fix runs an "nself ..." FixCmd, and a
+		// reinstall (a download and a write) is the owner's call, not doctor's.
 		results = append(results, CheckResult{Section: "plugins", Name: "BUNDLE-LEDGER-UNRECORDED-" + slug, Status: "warn",
-			Message: fmt.Sprintf("plugin %s is installed in %s but the bundle ledger has no record of it (a ledger write after its install failed), so bundle state is wrong", slug, filepath.Join(pluginDir, e.Name())),
-			FixCmd:  fmt.Sprintf("nself plugin install %s again records it", slug)})
+			Message: fmt.Sprintf("plugin %s is installed in %q but the bundle ledger has no record of it (a ledger write after its install failed), so bundle state is wrong; run nself plugin install %s again to record it", slug, filepath.Join(pluginDir, e.Name()), slug)})
 	}
 	return results
 }

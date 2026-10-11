@@ -43,7 +43,7 @@ func TestAuditLive(t *testing.T) {
 		{"no functions", auditDoc(`{"role":"v","permission":{"columns":["id"]}}`), 0, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, seen, err := AuditLive(tc.live)
+			got, seen, err := AuditLive(tc.live, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -66,7 +66,7 @@ func TestAuditLive(t *testing.T) {
 			}
 		})
 	}
-	if _, _, err := AuditLive([]byte("{not json")); err == nil {
+	if _, _, err := AuditLive([]byte("{not json"), true); err == nil {
 		t.Error("invalid metadata accepted")
 	}
 }
@@ -78,8 +78,28 @@ func TestAuditLiveAmbiguousName(t *testing.T) {
 		`{"table":{"schema":"public","name":"a"},"select_permissions":[{"role":"r","permission":{"columns":["id"]}}]},` +
 		`{"table":{"schema":"public","name":"a_nearest_b"},"select_permissions":[{"role":"r","permission":{"columns":"*"}}]}` +
 		`],"functions":[{"function":{"schema":"public","name":"a_nearest_b_nearest_c"}}]}]}`)
-	got, seen, err := AuditLive(live)
+	got, seen, err := AuditLive(live, true)
 	if err != nil || seen != 1 || len(got) != 1 || got[0].Table != "public.a" || got[0].Column != "b_nearest_c" {
 		t.Fatalf("got %+v seen %d err %v", got, seen, err)
+	}
+}
+
+// TestAuditLiveExplicitPermissionsOnly: with function-permission inference off
+// only roles holding an explicit function permission can call the function.
+func TestAuditLiveExplicitPermissionsOnly(t *testing.T) {
+	live := []byte(`{"sources":[{"name":"default","tables":[{"table":{"schema":"public","name":"docs"},"select_permissions":[` +
+		`{"role":"user","permission":{"columns":"*"}},{"role":"viewer","permission":{"columns":["id"]}},{"role":"staff","permission":{"columns":["id"]}}]}],` +
+		`"functions":[{"function":{"schema":"public","name":"docs_nearest_embedding"},"permissions":[{"role":"user"},{"role":"staff"}]}]}]}`)
+	for _, tc := range []struct {
+		inferred bool
+		want     string
+	}{
+		{true, `staff: hides column "embedding"|viewer: hides column "embedding"`},
+		{false, `staff: hides column "embedding"`},
+	} {
+		got, seen, err := AuditLive(live, tc.inferred)
+		if err != nil || seen != 1 || len(got) != 1 || strings.Join(got[0].Problems, "|") != tc.want {
+			t.Errorf("inferred=%v: got %+v seen %d err %v, want %s", tc.inferred, got, seen, err, tc.want)
+		}
 	}
 }

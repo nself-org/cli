@@ -1,6 +1,6 @@
 package vectorsearch
 
-// fingerprint.go closes the gap between the drift check and the mirror write
+// fingerprint.go narrows the gap between the drift check and the mirror write
 // (D-0369): track hashes the on-disk metadata before it compares disk with
 // live Hasura, and the mirror writes only while the files still hash the same.
 // A concurrent export or hand edit in between leaves disk untouched.
@@ -13,15 +13,17 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // ErrDiskChanged means the on-disk metadata changed after the drift check
 // proved it equal to live Hasura; nothing was written.
 var ErrDiskChanged = errors.New("on-disk metadata changed after the drift check")
 
-// DiskFingerprint hashes the project's on-disk metadata: every regular file
-// under hasura/metadata (path and bytes, in walk order, which is lexical),
-// else hasura/metadata.json. It returns "" when neither exists.
+// DiskFingerprint hashes the project's on-disk metadata: every .yaml, .yml and
+// .json file under hasura/metadata (path and bytes, in walk order, which is
+// lexical; editor swap files and .DS_Store are not metadata), else
+// hasura/metadata.json. It returns "" when neither exists.
 func DiskFingerprint(projectDir string) (string, error) {
 	_, jsonFile, yamlDir := metadataPaths(projectDir)
 	h := sha256.New()
@@ -29,6 +31,11 @@ func DiskFingerprint(projectDir string) (string, error) {
 		err := filepath.WalkDir(yamlDir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil || !d.Type().IsRegular() {
 				return err
+			}
+			switch strings.ToLower(filepath.Ext(path)) {
+			case ".yaml", ".yml", ".json":
+			default:
+				return nil
 			}
 			body, err := os.ReadFile(path)
 			if err != nil {
@@ -59,7 +66,8 @@ func DiskFingerprint(projectDir string) (string, error) {
 // on-disk metadata still has fingerprint want (from DiskFingerprint taken
 // before the drift check). The files are hashed again after the edited file
 // is read and before it is written; a different hash is ErrDiskChanged and
-// nothing is written.
+// nothing is written. A write in the instant between that re-hash and the
+// write itself is not caught: files carry no lock.
 func MirrorFunctionIfUnchanged(projectDir, schema, name string, roles []string, want string) (string, bool, error) {
 	return mirror(projectDir, schema, name, roles, func() error {
 		got, err := DiskFingerprint(projectDir)

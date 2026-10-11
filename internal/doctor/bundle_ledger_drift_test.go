@@ -131,6 +131,9 @@ func TestLedgerUnrecordedPlugin(t *testing.T) {
 		{"third party", ledgerJobs, "acme", `{"name":"acme","author":"Acme","repository":"https://github.com/acme/p"}`, ""},
 		{"lookalike repository", ledgerJobs, "acme", `{"name":"acme","repository":"https://github.com/nself-org-fake/p"}`, ""},
 		{"invalid manifest", ledgerJobs, "broken", `{not json`, ""},
+		{"hostile name with argv", ledgerJobs, "cron", `{"name":"cron --force","author":"nself"}`, ""},
+		{"hostile name with escapes", ledgerJobs, "cron", "{\"name\":\"cron\\u001b[2J\",\"author\":\"nself\"}", ""},
+		{"empty name falls back to a valid dir", ledgerJobs, "cron", `{"name":"","author":"nself"}`, "BUNDLE-LEDGER-UNRECORDED-cron"},
 		{"no ledger", "", "cron", `{"name":"cron","author":"nself"}`, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -152,8 +155,9 @@ func TestLedgerUnrecordedPlugin(t *testing.T) {
 			}
 			r := res[0]
 			slug := strings.TrimPrefix(tc.want, "BUNDLE-LEDGER-UNRECORDED-")
-			if r.Name != tc.want || r.Status != "warn" || r.Section != "plugins" ||
-				!strings.Contains(r.Message, "no record") || r.FixCmd != "nself plugin install "+slug+" again records it" {
+			// No FixCmd: doctor --fix would run it, and a reinstall is the owner's call.
+			if r.Name != tc.want || r.Status != "warn" || r.Section != "plugins" || r.FixCmd != "" ||
+				!strings.Contains(r.Message, "no record") || !strings.Contains(r.Message, "run nself plugin install "+slug+" again") {
 				t.Errorf("result = %+v", r)
 			}
 		})
