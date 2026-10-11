@@ -1,12 +1,15 @@
 package commands
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -154,7 +157,7 @@ func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err e
 	jsonMode := buildEnvelopeWanted(cmd)
 
 	steps.Next() // Stopping containers
-	// volumesGone tracks whether compose down --volumes really ran: with no
+	// volumesDeleted is true only when compose down --volumes really ran: with no
 	// compose file nothing touched the named volumes, so the data is kept.
 	ran, err := composeDown(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cwd, purge)
 	volumesDeleted := purge && ran && err == nil
@@ -230,6 +233,32 @@ func abortedUninstall(cmd *cobra.Command) error {
 	return nil
 }
 
+// composeDown stops the project's containers and, when purge is true, removes
+// its volumes. A package variable so tests can make it fail without Docker.
+var composeDown = runDockerComposeDown
+
+// runDockerComposeDown stops and removes containers for the project.
+// If purge is true it also removes volumes. ran is false when there is no
+// compose file, so nothing was stopped and no volume was touched.
+// ctx is used to cancel the docker subprocess if the command context fires
+// (e.g. test harness deadline), preventing orphan I/O after the test exits.
+func runDockerComposeDown(ctx context.Context, stdout, stderr io.Writer, projectDir string, purge bool) (ran bool, err error) {
+	composeFile := filepath.Join(projectDir, "docker-compose.yml")
+	if _, err := os.Stat(composeFile); os.IsNotExist(err) {
+		return false, nil // nothing to stop
+	}
+
+	dockerArgs := []string{"compose", "--file", composeFile, "down"}
+	if purge {
+		dockerArgs = append(dockerArgs, "--volumes")
+	}
+	dcmd := exec.CommandContext(ctx, "docker", dockerArgs...)
+	dcmd.Stdout = stdout
+	dcmd.Stderr = stderr
+	dcmd.WaitDelay = 5 * time.Second
+	return true, dcmd.Run()
+}
+
 // confirmPrompt prints the given prompt and returns true if the user typed
 // "y", "yes", or "purge" (for the purge confirmation).
 //
@@ -248,38 +277,4 @@ func confirmWord(cmd *cobra.Command, prompt, word string) bool {
 	_, _ = fmt.Fprint(cmd.OutOrStdout(), prompt)
 	answer, ok := readAnswer(cmd.InOrStdin())
 	return ok && answer == strings.ToLower(word)
-}
-
-// readAnswer reads one line from r a byte at a time and returns it trimmed and
-// lower-cased; ok is false at EOF with nothing read. It never reads past the
-// newline, so consecutive prompts on one piped stream each get their own line
-// (a bufio.Scanner per prompt would swallow the later answers).
-// A line longer than maxAnswerLen, or a reader that keeps returning nothing,
-// is a refusal, so `</dev/zero` cannot grow memory or spin forever.
-func readAnswer(r io.Reader) (answer string, ok bool) {
-	const maxAnswerLen, maxEmptyReads = 1024, 100
-	var line []byte
-	buf := make([]byte, 1)
-	for empty := 0; ; {
-		n, err := r.Read(buf)
-		switch {
-		case n == 1 && buf[0] == '\n':
-			return strings.TrimSpace(strings.ToLower(string(line))), true
-		case n == 1:
-			empty = 0
-			if line = append(line, buf[0]); len(line) > maxAnswerLen {
-				return "", false
-			}
-		case err == nil:
-			if empty++; empty >= maxEmptyReads {
-				return "", false
-			}
-		}
-		if err != nil {
-			if len(line) == 0 {
-				return "", false
-			}
-			return strings.TrimSpace(strings.ToLower(string(line))), true
-		}
-	}
 }

@@ -7,9 +7,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/confirm"
@@ -136,11 +136,14 @@ func runReset(cmd *cobra.Command, args []string) error {
 	record("docker-compose.yml", removeIfExists)
 	record(".env.computed", removeIfExists)
 	// nginx/sites/ and ssl/ contents
-	for _, dir := range []string{"nginx/sites", "ssl"} {
-		if info, statErr := os.Stat(filepath.Join(projectDir, filepath.FromSlash(dir))); statErr == nil && info.IsDir() {
-			entries, _ := os.ReadDir(filepath.Join(projectDir, filepath.FromSlash(dir)))
+	for _, dir := range []struct{ abs, rel string }{
+		{filepath.Join(projectDir, "nginx", "sites"), path.Join("nginx", "sites")},
+		{filepath.Join(projectDir, "ssl"), "ssl"},
+	} {
+		if info, statErr := os.Stat(dir.abs); statErr == nil && info.IsDir() {
+			entries, _ := os.ReadDir(dir.abs)
 			for _, entry := range entries {
-				record(dir+"/"+entry.Name(), removeDir)
+				record(dir.rel+"/"+entry.Name(), removeDir)
 			}
 		}
 	}
@@ -170,32 +173,6 @@ var resetComposeDown = func(ctx context.Context, projectDir string) error {
 	dcCmd.Stdout = os.Stdout
 	dcCmd.Stderr = os.Stderr
 	return dcCmd.Run()
-}
-
-// composeDown stops the project's containers and, when purge is true, removes
-// its volumes. A package variable so tests can make it fail without Docker.
-var composeDown = runDockerComposeDown
-
-// runDockerComposeDown stops and removes containers for the project.
-// If purge is true it also removes volumes. ran is false when there is no
-// compose file, so nothing was stopped and no volume was touched.
-// ctx is used to cancel the docker subprocess if the command context fires
-// (e.g. test harness deadline), preventing orphan I/O after the test exits.
-func runDockerComposeDown(ctx context.Context, stdout, stderr io.Writer, projectDir string, purge bool) (ran bool, err error) {
-	composeFile := filepath.Join(projectDir, "docker-compose.yml")
-	if _, err := os.Stat(composeFile); os.IsNotExist(err) {
-		return false, nil // nothing to stop
-	}
-
-	dockerArgs := []string{"compose", "--file", composeFile, "down"}
-	if purge {
-		dockerArgs = append(dockerArgs, "--volumes")
-	}
-	dcmd := exec.CommandContext(ctx, "docker", dockerArgs...)
-	dcmd.Stdout = stdout
-	dcmd.Stderr = stderr
-	dcmd.WaitDelay = 5 * time.Second
-	return true, dcmd.Run()
 }
 
 // recordIfExists runs remove on project-relative rel when it exists and
@@ -254,3 +231,37 @@ func removeDir(path string) error {
 // removeAll is os.RemoveAll, a package variable so tests can make a removal
 // fail the way EACCES does without depending on file-permission semantics.
 var removeAll = os.RemoveAll
+
+// readAnswer reads one line from r a byte at a time and returns it trimmed and
+// lower-cased; ok is false at EOF with nothing read. It never reads past the
+// newline, so consecutive prompts on one piped stream each get their own line
+// (a bufio.Scanner per prompt would swallow the later answers).
+// A line longer than maxAnswerLen, or a reader that keeps returning nothing,
+// is a refusal, so `</dev/zero` cannot grow memory or spin forever.
+func readAnswer(r io.Reader) (answer string, ok bool) {
+	const maxAnswerLen, maxEmptyReads = 1024, 100
+	var line []byte
+	buf := make([]byte, 1)
+	for empty := 0; ; {
+		n, err := r.Read(buf)
+		switch {
+		case n == 1 && buf[0] == '\n':
+			return strings.TrimSpace(strings.ToLower(string(line))), true
+		case n == 1:
+			empty = 0
+			if line = append(line, buf[0]); len(line) > maxAnswerLen {
+				return "", false
+			}
+		case err == nil:
+			if empty++; empty >= maxEmptyReads {
+				return "", false
+			}
+		}
+		if err != nil {
+			if len(line) == 0 {
+				return "", false
+			}
+			return strings.TrimSpace(strings.ToLower(string(line))), true
+		}
+	}
+}
