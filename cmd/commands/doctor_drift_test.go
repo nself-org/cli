@@ -245,18 +245,26 @@ func TestDoctorDriftVirtualPluginKeys(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(fragment), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(plugins, "fxplug", "plugin.json"), []byte(`{"name":"fxplug","version":"1.0.0"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(fragment, []byte("services:\n  fxplug:\n    image: example.test/fxplug:1\n"), 0o644); err != nil {
-		t.Fatal(err)
+	// The fixture shape of the P7-LIVE-08 cascade suite: the build rewrites an
+	// nself/* image with a Dockerfile in place, so it records the fragment.
+	for name, body := range map[string]string{
+		"plugin.json":               `{"name":"fxplug","version":"1.0.0","description":"synthetic fixture","category":"utility","license":"MIT","port":3961,"language":"go"}`,
+		"docker-compose.plugin.yml": "services:\n  fxplug:\n    image: nself/fxplug:latest\n    ports:\n      - \"3961:3961\"\n",
+		"Dockerfile":                "FROM scratch\n",
+	} {
+		if err := os.WriteFile(filepath.Join(plugins, "fxplug", name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fx\nENV=dev\nBASE_DOMAIN=example.test\nSSL_MODE=none\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	req := doctorDriftRequest(dir)
-	req.Seed = []byte("doctor-seed")
-	if _, err := reconcile.Apply(context.Background(), req, reconcile.ApplyOptions{Yes: true}); err != nil {
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("yes", true, "")
+	cmd.Flags().Bool("force", false, "")
+	// The first fix builds the fresh project with doctor's own seed, the way
+	// a user's first build does; its report lists every new file.
+	if _, err := runDriftFix(context.Background(), cmd, dir); err != nil {
 		t.Fatal(err)
 	}
 	state, err := reconcile.LoadGeneratedState(dir)
@@ -275,9 +283,6 @@ func TestDoctorDriftVirtualPluginKeys(t *testing.T) {
 		}
 	}
 	clean("after install")
-	cmd := &cobra.Command{}
-	cmd.Flags().Bool("yes", true, "")
-	cmd.Flags().Bool("force", false, "")
 	for i := 1; i <= 2; i++ {
 		r, err := runDriftFix(context.Background(), cmd, dir)
 		if err != nil || r.Status != "pass" || r.Message != "no generated-file drift" {

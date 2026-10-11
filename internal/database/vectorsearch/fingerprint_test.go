@@ -83,7 +83,13 @@ func TestMirrorIfUnchangedRefusesStaleDisk(t *testing.T) {
 func TestRunTrackSkipsMirrorWhenDiskChanges(t *testing.T) {
 	h := newHarness()
 	dir, file := writeFixture(t, "json")
-	const concurrent = `{"version":3,"sources":[]}`
+	// A concurrent export that rewrote the file with the default source intact,
+	// so only the fingerprint can tell the mirror that disk moved.
+	orig, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	concurrent := string(orig) + "\n"
 	track := h.deps.Track
 	h.deps.Track = func(ctx context.Context, schema, name, table, column string, roles []string) error {
 		if err := os.WriteFile(file, []byte(concurrent), 0o644); err != nil {
