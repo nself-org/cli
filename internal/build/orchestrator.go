@@ -216,6 +216,7 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 	if m := planSink(st.sink); m != nil {
 		res.Planned = m.snapshot()
 		res.Planned.Effects = st.fx.Recorded()
+		res.Planned.PluginDir = st.pluginDir
 		res.FrontingDir = m.fronting
 	}
 	return res, nil

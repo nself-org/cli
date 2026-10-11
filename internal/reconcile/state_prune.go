@@ -24,8 +24,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	nbuild "github.com/nself-org/cli/internal/build"
 )
 
 // pruneGonePlugins deletes every "@plugins/" key whose plugin entry is gone
@@ -46,9 +44,12 @@ func (s *GeneratedState) pruneGonePlugins(keep map[string]bool, exists func(entr
 	}
 }
 
-// pluginEntryExists reports whether <plugin dir>/<entry> is still on disk.
-// Only a not-exist result counts as gone.
-func pluginEntryExists(entry string) bool {
-	_, err := os.Lstat(filepath.Join(nbuild.DefaultPluginDir(), entry))
-	return !errors.Is(err, fs.ErrNotExist)
+// pluginEntryIn reports whether <dir>/<entry> is still on disk. Only a
+// not-exist result counts as gone. dir is the plugin directory the build
+// resolved (D-0607), never re-read from the process env.
+func pluginEntryIn(dir string) func(entry string) bool {
+	return func(entry string) bool {
+		_, err := os.Lstat(filepath.Join(dir, entry))
+		return !errors.Is(err, fs.ErrNotExist)
+	}
 }
