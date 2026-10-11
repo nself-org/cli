@@ -19,8 +19,18 @@ type argvEnv struct {
 	home, bin string
 }
 
+// hostKey places a throwaway key under alias: in ~/.ssh/known_hosts, or in the
+// nSelf pin file when pin is true. The fake ssh-keyscan returns the same key.
+type hostKey struct {
+	alias string
+	pin   bool
+}
+
 func (e argvEnv) argvPath() string { return filepath.Join(e.bin, "argv") }
 func (e argvEnv) scanMark() string { return filepath.Join(e.bin, "keyscan-called") }
+func (e argvEnv) pinFile() string {
+	return filepath.Join(e.home, ".config", "nself", "deploy_known_hosts")
+}
 
 // argv returns the recorded ssh argv words, failing if ssh was never run.
 func (e argvEnv) argv(t *testing.T) []string {
@@ -32,31 +42,56 @@ func (e argvEnv) argv(t *testing.T) []string {
 	return strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
 }
 
-// newArgvEnv builds the sandbox. When trust is true it writes a throwaway host
-// key for [host.test]:2222 into known_hosts and makes ssh-keyscan return it.
-func newArgvEnv(t *testing.T, trust bool) argvEnv {
+// mustExist / mustNotExist assert a marker file (keyscan or ssh ran or not).
+func mustExist(t *testing.T, path, why string) {
+	t.Helper()
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("%s: %v", why, err)
+	}
+}
+
+func mustNotExist(t *testing.T, path, why string) {
+	t.Helper()
+	if _, err := os.Stat(path); err == nil {
+		t.Fatal(why)
+	}
+}
+
+// newArgvEnv builds the sandbox. home "" means a fresh temp dir. A non-nil key
+// is written to the trust store it names and returned by the fake ssh-keyscan.
+func newArgvEnv(t *testing.T, home string, key *hostKey) argvEnv {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX SSH recorder")
 	}
-	e := argvEnv{home: t.TempDir(), bin: t.TempDir()}
+	if home == "" {
+		home = t.TempDir()
+	}
+	e := argvEnv{home: home, bin: t.TempDir()}
 	t.Setenv("HOME", e.home)
 	scan := "#!/bin/sh\n: > '" + e.scanMark() + "'\n"
-	if trust {
-		key := filepath.Join(e.bin, "hostkey")
-		if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", key).CombinedOutput(); err != nil {
+	if key != nil {
+		if _, err := exec.LookPath("ssh-keygen"); err != nil {
+			t.Skip("ssh-keygen not on PATH")
+		}
+		kf := filepath.Join(e.bin, "hostkey")
+		if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", kf).CombinedOutput(); err != nil {
 			t.Fatalf("keygen: %v %s", err, out)
 		}
-		pub, err := os.ReadFile(key + ".pub")
+		pub, err := os.ReadFile(kf + ".pub")
 		if err != nil {
 			t.Fatal(err)
 		}
 		f := strings.Fields(string(pub))
-		line := "[host.test]:2222 " + f[0] + " " + f[1] + "\n"
-		if err := os.MkdirAll(filepath.Join(e.home, ".ssh"), 0700); err != nil {
+		line := key.alias + " " + f[0] + " " + f[1] + "\n"
+		store := filepath.Join(e.home, ".ssh", "known_hosts")
+		if key.pin {
+			store = e.pinFile()
+		}
+		if err := os.MkdirAll(filepath.Dir(store), 0700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(e.home, ".ssh", "known_hosts"), []byte(line), 0600); err != nil {
+		if err := os.WriteFile(store, []byte(line), 0600); err != nil {
 			t.Fatal(err)
 		}
 		scan += "printf '%s' '" + line + "'\n"
@@ -72,71 +107,75 @@ func newArgvEnv(t *testing.T, trust bool) argvEnv {
 	return e
 }
 
-// runEntry runs one admin entry point against host.test:2222 as user u.
-func runEntry(t *testing.T, name string) {
-	t.Helper()
+// callEntry runs one admin entry point (verify, ensure or tunnel) and waits for
+// the tunnel's ssh to exit. It returns the first error.
+func callEntry(name, user, host string, port int) error {
 	ctx := context.Background()
 	switch name {
 	case "verify":
-		if err := VerifySSHKey(ctx, "u", "host.test", 2222); err != nil {
-			t.Fatal(err)
-		}
+		return VerifySSHKey(ctx, user, host, port)
 	case "ensure":
-		if err := EnsureRemoteAdmin(ctx, "u", "host.test", 2222); err != nil {
-			t.Fatal(err)
-		}
-	case "tunnel":
-		cmd, err := OpenTunnel(ctx, ConnectOpts{User: "u", Host: "host.test", SSHPort: 2222, LocalPort: 18080, RemotePort: 8080})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := cmd.Wait(); err != nil {
-			t.Fatal(err)
-		}
+		return EnsureRemoteAdmin(ctx, user, host, port)
 	default:
-		t.Fatalf("unknown entry point %q", name)
+		cmd, err := OpenTunnel(ctx, ConnectOpts{User: user, Host: host, SSHPort: port, LocalPort: 18080, RemotePort: 8080})
+		if err != nil {
+			return err
+		}
+		return cmd.Wait()
 	}
 }
 
-var hostKeyFlags = []string{"StrictHostKeyChecking", "GlobalKnownHostsFile", "HostKeyAlias", "accept-new"}
+var entryNames = []string{"verify", "ensure", "tunnel"}
 
-// TestAdminSSHArgvV14Exact pins the exact v1.4 (v1.4 mode) argv of all
-// three entry points: no host-key option is added, the policy stays with the
-// operator's ssh_config (ADR 0021).
+// TestAdminSSHArgvV14Exact pins the exact v1.4 argv of all three entry points
+// for a DNS name and a bracketed IPv6 literal: no host-key option is added, the
+// policy stays with the operator's ssh_config (ADR 0021).
 func TestAdminSSHArgvV14Exact(t *testing.T) {
-	cases := []struct {
-		name string
-		want []string
-	}{
-		{"verify", []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=30", "-p", "2222", "--", "u@host.test", "true"}},
-		{"ensure", []string{"-o", "ServerAliveInterval=30", "-p", "2222", "--", "u@host.test", "systemctl --user start nself-admin || true"}},
-		{"tunnel", []string{"-N", "-o", "ServerAliveInterval=30", "-o", "ExitOnForwardFailure=yes", "-L", "18080:127.0.0.1:8080", "-p", "2222", "--", "u@host.test"}},
+	wants := map[string]func(dest string) []string{
+		"verify": func(d string) []string {
+			return []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=30", "-p", "2222", "--", d, "true"}
+		},
+		"ensure": func(d string) []string {
+			return []string{"-o", "ServerAliveInterval=30", "-p", "2222", "--", d, "systemctl --user start nself-admin || true"}
+		},
+		"tunnel": func(d string) []string {
+			return []string{"-N", "-o", "ServerAliveInterval=30", "-o", "ExitOnForwardFailure=yes", "-L", "18080:127.0.0.1:8080", "-p", "2222", "--", d}
+		},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			compattest.Set(t, false)
-			e := newArgvEnv(t, false)
-			runEntry(t, tc.name)
-			if got := e.argv(t); !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("v1.4 argv mismatch\n got: %q\nwant: %q", got, tc.want)
-			}
-		})
+	hosts := []struct{ spec, dest string }{
+		{"host.test", "u@host.test"},
+		{"[2001:db8::1]", "u@2001:db8::1"},
+	}
+	for _, h := range hosts {
+		for _, name := range entryNames {
+			t.Run(name+"/"+h.spec, func(t *testing.T) {
+				compattest.Set(t, false)
+				e := newArgvEnv(t, "", nil)
+				if err := callEntry(name, "u", h.spec, 2222); err != nil {
+					t.Fatal(err)
+				}
+				if got, want := e.argv(t), wants[name](h.dest); !reflect.DeepEqual(got, want) {
+					t.Fatalf("v1.4 argv mismatch\n got: %q\nwant: %q", got, want)
+				}
+			})
+		}
 	}
 }
 
 // TestAdminSSHV14NoKeyscanNoHostKeyPolicy pins that v1.4 mode never scans host
 // keys and never injects a host-key option (in particular never accept-new).
 func TestAdminSSHV14NoKeyscanNoHostKeyPolicy(t *testing.T) {
-	for _, name := range []string{"verify", "ensure", "tunnel"} {
+	flags := []string{"StrictHostKeyChecking", "GlobalKnownHostsFile", "HostKeyAlias", "accept-new"}
+	for _, name := range entryNames {
 		t.Run(name, func(t *testing.T) {
 			compattest.Set(t, false)
-			e := newArgvEnv(t, false)
-			runEntry(t, name)
-			if _, err := os.Stat(e.scanMark()); err == nil {
-				t.Fatal("ssh-keyscan ran in v1.4 mode")
+			e := newArgvEnv(t, "", nil)
+			if err := callEntry(name, "u", "host.test", 2222); err != nil {
+				t.Fatal(err)
 			}
+			mustNotExist(t, e.scanMark(), "ssh-keyscan ran in v1.4 mode")
 			joined := strings.Join(e.argv(t), " ")
-			for _, f := range hostKeyFlags {
+			for _, f := range flags {
 				if strings.Contains(joined, f) {
 					t.Fatalf("v1.4 argv carries %s: %s", f, joined)
 				}
@@ -145,16 +184,21 @@ func TestAdminSSHV14NoKeyscanNoHostKeyPolicy(t *testing.T) {
 	}
 }
 
-// TestAdminSSHV15TrustedKeyExact pins the exact v1.5 (v1.5 mode) VerifySSHKey
-// argv for a known_hosts-trusted key, and that accept-new never appears.
+// TestAdminSSHV15TrustedKeyExact pins the exact v1.5 VerifySSHKey argv for a
+// key trusted through the operator's known_hosts: strict checking and the
+// double-quoted pin file, no alias, no accept-new. The keyscan marker is the
+// positive control for the v1.4 absence checks.
 func TestAdminSSHV15TrustedKeyExact(t *testing.T) {
 	compattest.Set(t, true)
-	e := newArgvEnv(t, true)
-	runEntry(t, "verify")
+	e := newArgvEnv(t, "", &hostKey{alias: "[host.test]:2222"})
+	if err := callEntry("verify", "u", "host.test", 2222); err != nil {
+		t.Fatal(err)
+	}
+	mustExist(t, e.scanMark(), "ssh-keyscan must run in v1.5 mode")
 	want := []string{
 		"-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=30",
 		"-o", "StrictHostKeyChecking=yes",
-		"-o", "GlobalKnownHostsFile=" + filepath.Join(e.home, ".config", "nself", "deploy_known_hosts"),
+		"-o", `GlobalKnownHostsFile="` + e.pinFile() + `"`,
 		"-p", "2222", "--", "u@host.test", "true",
 	}
 	got := e.argv(t)
@@ -166,10 +210,10 @@ func TestAdminSSHV15TrustedKeyExact(t *testing.T) {
 	}
 }
 
-// TestAdminSSHArgsRejectsHostileInput pins that VerifySSHKey refuses option
-// injection, shell metacharacters, whitespace and user/port conflicts in both
-// modes, at validation: ssh and ssh-keyscan are never started and the error is
-// not the E487 host-key error.
+// TestAdminSSHArgsRejectsHostileInput pins that all three entry points refuse
+// option injection, shell metacharacters, whitespace, user/port conflicts and
+// bad ports in both modes, at validation: ssh and ssh-keyscan are never started
+// and the error is not the E487 host-key error.
 func TestAdminSSHArgsRejectsHostileInput(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -182,25 +226,29 @@ func TestAdminSSHArgsRejectsHostileInput(t *testing.T) {
 		{"option injection user", "-oX", "host.test", 2222},
 		{"user conflict", "u", "other@host.test", 2222},
 		{"port conflict", "u", "host.test:2200", 2222},
+		{"negative port", "u", "host.test", -1},
+		{"port above 65535", "u", "host.test", 70000},
+		// ParseHostSpec refuses an unbracketed IPv6 literal ("needs brackets").
+		{"unbracketed ipv6 with port", "u", "2001:db8::1:2222", 2222},
+		// The legacy host:/path form cannot carry a port.
+		{"legacy path with port", "u", "h:/etc", 2222},
 	}
 	compattest.Both(t, func(t *testing.T) {
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				e := newArgvEnv(t, false)
-				err := VerifySSHKey(context.Background(), tc.user, tc.host, tc.port)
-				if err == nil {
-					t.Fatal("accepted hostile input")
-				}
-				if strings.Contains(err.Error(), "E487") {
-					t.Fatalf("rejected by host-key scan, not validation: %v", err)
-				}
-				if _, statErr := os.Stat(e.argvPath()); statErr == nil {
-					t.Fatal("ssh ran despite rejected input")
-				}
-				if _, statErr := os.Stat(e.scanMark()); statErr == nil {
-					t.Fatal("ssh-keyscan ran before validation rejected input")
-				}
-			})
+		for _, name := range entryNames {
+			for _, tc := range cases {
+				t.Run(name+"/"+tc.name, func(t *testing.T) {
+					e := newArgvEnv(t, "", nil)
+					err := callEntry(name, tc.user, tc.host, tc.port)
+					if err == nil {
+						t.Fatal("accepted hostile input")
+					}
+					if strings.Contains(err.Error(), "E487") {
+						t.Fatalf("rejected by host-key scan, not validation: %v", err)
+					}
+					mustNotExist(t, e.argvPath(), "ssh ran despite rejected input")
+					mustNotExist(t, e.scanMark(), "ssh-keyscan ran before validation rejected input")
+				})
+			}
 		}
 	})
 }

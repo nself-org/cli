@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/errs"
@@ -150,13 +151,19 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 	if port == 0 {
 		port = 22
 	}
-	keys, err := remote.ScanHostKeys(ctx, spec.Host, port)
-	if err != nil {
-		return nil, errs.New("E487", fmt.Sprintf("host key scan for %s failed: %v", spec.Host, err))
-	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
+	}
+	pinFile := filepath.Join(home, ".config", "nself", "deploy_known_hosts")
+	// ssh splits GlobalKnownHostsFile on whitespace and parses a double-quoted word
+	// as one path, so a quote, backslash or control character cannot be carried.
+	if strings.ContainsAny(pinFile, "\"\\") || strings.IndexFunc(pinFile, unicode.IsControl) >= 0 {
+		return nil, fmt.Errorf("admin SSH pin file path %q has a quote, backslash or control character", pinFile)
+	}
+	keys, err := remote.ScanHostKeys(ctx, spec.Host, port)
+	if err != nil {
+		return nil, errs.New("E487", fmt.Sprintf("host key scan for %s failed: %v", spec.Host, err))
 	}
 	operatorAlias := spec.Host
 	pinAlias := spec.Host
@@ -164,12 +171,11 @@ func adminHostKeyOptions(ctx context.Context, spec remote.HostSpec) ([]string, e
 		operatorAlias = "[" + spec.Host + "]:" + strconv.Itoa(spec.Port)
 		pinAlias = "nself-" + strings.ReplaceAll(spec.Host, ":", "-") + "-" + strconv.Itoa(spec.Port)
 	}
-	pinFile := filepath.Join(home, ".config", "nself", "deploy_known_hosts")
 	operator := adminTrustedFingerprints(ctx, operatorAlias, filepath.Join(home, ".ssh", "known_hosts"))
 	pinned := adminTrustedFingerprints(ctx, pinAlias, pinFile)
 	for _, key := range keys {
 		if operator[key.Fingerprint] || pinned[key.Fingerprint] {
-			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", "GlobalKnownHostsFile=" + pinFile}
+			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", "GlobalKnownHostsFile=\"" + pinFile + "\""}
 			if spec.Port != 0 && !operator[key.Fingerprint] {
 				opts = append(opts, "-o", "HostKeyAlias="+pinAlias)
 			}
