@@ -131,7 +131,7 @@ func init() {
 		} else {
 			logDir = filepath.Join(os.TempDir(), "nself", "logs")
 		}
-		finishLog := cmdlog.New(logDir).Begin(os.Args)
+		finishLog := cmdlog.New(logDir).Begin(os.Args, commandSecretValues(cmd, args)...)
 		defer func() { finishLog(0, nil) }()
 
 		// `nself --version` prints and stops. Returning a silent exit-0 error

@@ -38,12 +38,15 @@ func New(logDir string) *Logger {
 // Begin records the command start. The returned function must be deferred by
 // the caller; it computes duration and appends the log entry.
 // If NSELF_CMD_LOG_ENABLED is "false" or "0", a no-op function is returned.
-func (l *Logger) Begin(argv []string) func(exitCode int, err error) {
+//
+// secrets are values the caller knows are secret (a positional or flag value);
+// they join the MaskValues set and are scrubbed from the argv and the error.
+func (l *Logger) Begin(argv []string, secrets ...string) func(exitCode int, err error) {
 	if !loggingEnabled() {
 		return func(int, error) {}
 	}
 
-	cmd := redactArgs(argv)
+	cmd := redactArgsWith(argv, secrets)
 	user := os.Getenv("USER")
 	start := time.Now()
 
@@ -57,7 +60,7 @@ func (l *Logger) Begin(argv []string) func(exitCode int, err error) {
 			ExitCode:  exitCode,
 		}
 		if err != nil {
-			entry.Error = err.Error()
+			entry.Error = scrubText(err.Error(), secretSet(secrets))
 		}
 		// Silently discard errors — logging must never fail a command.
 		_ = l.write(entry)
@@ -70,7 +73,7 @@ func (l *Logger) write(entry Entry) error {
 	defer l.mu.Unlock()
 
 	logDir := filepath.Dir(l.path)
-	if err := os.MkdirAll(logDir, 0o755); err != nil {
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		return fmt.Errorf("cmdlog: mkdir %s: %w", logDir, err)
 	}
 
@@ -85,11 +88,15 @@ func (l *Logger) write(entry Entry) error {
 	}
 	line = append(line, '\n')
 
-	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("cmdlog: open %s: %w", l.path, err)
 	}
 	defer func() { _ = f.Close() }()
+	// A log made before D-0473 may be 0644: narrow it, never widen it.
+	if info, serr := f.Stat(); serr == nil && info.Mode().Perm()&^0o600 != 0 {
+		_ = f.Chmod(info.Mode().Perm() & 0o600)
+	}
 
 	_, err = f.Write(line)
 	return err
@@ -136,7 +143,11 @@ var secretFlags = []string{"--password", "--token", "--key", "--secret", "--api-
 
 // redactArgs returns the argv joined as a string with secret values replaced
 // by [REDACTED].
-func redactArgs(argv []string) string {
+func redactArgs(argv []string) string { return redactArgsWith(argv, nil) }
+
+// redactArgsWith is redactArgs plus the secret values: the flag-name rules run
+// first, then every element holding a secret value is scrubbed (mask.go).
+func redactArgsWith(argv []string, extra []string) string {
 	if len(argv) == 0 {
 		return ""
 	}
@@ -164,6 +175,10 @@ func redactArgs(argv []string) string {
 		}
 	}
 
+	secrets := secretSet(extra)
+	for i, arg := range out {
+		out[i] = scrubElem(arg, secrets)
+	}
 	return strings.Join(out, " ")
 }
 

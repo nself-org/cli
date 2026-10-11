@@ -78,7 +78,7 @@ func invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Req
 		tr.decision = DecisionConfirm
 		return confirmationResult(res, command, d.Confirmation), nil
 	}
-	argv, err := BuildArgvFor(cmd, req, transport)
+	argv, secretBundle, err := BuildArgvSecrets(cmd, req, transport)
 	if err != nil {
 		return refuse(res, command, err), nil
 	}
@@ -90,6 +90,7 @@ func invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Req
 	}
 	tr.decision = DecisionRun
 	spec := specFor(o, transport, withFlags(argv, d.Flags...))
+	spec.Secrets = secretBundle
 	out, refusal, err := runChild(ctx, res, command, spec, requestSecrets(cmd, req), transport == TransportHTTPStream)
 	switch {
 	case err != nil:
