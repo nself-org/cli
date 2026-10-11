@@ -124,3 +124,41 @@ A generated file whose content on disk no longer matches its sha256 hash in `.ns
 Overwrite-on-regenerate stays the default in v1.4 mode (with a warning). In v1.5 mode, nself detects hand-edited generated files and refuses to overwrite them by default (Exit code 4, E403). It will print a unified diff of the file and require you to pass `--force` to forcefully overwrite your changes.
 
 When `--force` is used, the file is overwritten with the newly generated content and the new hash is recorded in `generated.json`.
+
+## Mutations
+
+A command that changes a setting, a plugin or a bundle used to leave the generated files stale until you ran `nself build`. In v1.5 mode these commands plan the regeneration they cause and apply it, through the same engine as `nself build` (`reconcile.Apply`). No container is restarted. The next `nself start` picks up the new files.
+
+| Command | v1.5 (`NSELF_V15=1`) | v1.4 (default) |
+|---|---|---|
+| `nself config set KEY VALUE` | Plans, confirms when the env is prod-class, writes the line, regenerates nginx, compose and the rest. Prints `config: KEY → <n> artifacts changed (<kinds>)`. If the apply fails the env file is put back byte for byte. | Writes the line as before. Prints the same summary and `not applied in v1.4 mode` on stderr. Nothing is regenerated until you run `nself build`. |
+| `nself plugin install` | Installs, then reconciles once after the last install, so the plugin's nginx route and compose service exist with no separate build. | Installs and prints the `nself build` hint. The route appears after `nself build`. |
+| `nself plugin remove` | Removes, then reconciles once. | Removes. The generated files change on the next `nself build`. |
+| `nself bundle install`, `nself bundle remove` | Reconciles once after the change (both modes). | Reconciles once after the change. |
+| `nself doctor --fix` | Repairs generated-file drift through the same engine. A second `--fix` changes nothing. | Same repair. A hand-edited file is overwritten with the v1.4 warning instead of the refusal. |
+
+### Flags
+
+- `--preview` (config set): prints the plan and writes nothing, not even the env line.
+- `--yes`: confirms a change on a prod-class env (`ENV` is `prod` or `staging`). Also accepted by plugin and bundle install and remove, and by `doctor --fix`.
+- `--force`: allows overwriting a hand-edited generated file (config set, bundle remove, doctor, build). `plugin install --force` also overrides the hand-edit refusal. On `plugin remove`, `--force` also keeps its older meaning, so check the plan first.
+- `nself doctor --fix --plan` prints the repair plan and writes nothing.
+
+### The two gates
+
+Both refuse with E403 and exit 4 in v1.5 mode. v1.4 prints the plan summary and a one-line notice on stderr, then proceeds as it always did.
+
+- **Prod-class.** A non-empty plan on a prod or staging env needs `--yes` or a terminal yes. A script with no terminal and no `--yes` is refused and nothing is written.
+- **Hand-edit.** A generated file changed since nself last wrote it is never overwritten without `--force`. The diff is printed first. A conf under `nginx/sites` that does not carry the generated marker is not nself's: it is never touched, with or without `--force`.
+
+### Proof
+
+The cascade integration suite ([`internal/reconcile/cascade_integration_test.go`](https://github.com/nself-org/cli/blob/main/internal/reconcile/cascade_integration_test.go)) drives the real binary against temp projects and a real Docker daemon. It covers a plugin install adding its route, `config set BASE_DOMAIN` cascading to nginx and compose, a hand-edit refused and then forced, the prod-class refusal, and an idempotent `doctor --fix`. Every scenario runs in v1.5 and in v1.4. It skips when Docker is missing, its daemon is unreachable, the docker compose v2 plugin is missing, or on Windows. It runs in the golden-path workflow and fails there if it is skipped.
+
+[`scripts/ci/live-safety-smoke.sh`](https://github.com/nself-org/cli/blob/main/scripts/ci/live-safety-smoke.sh) is the fast check of the same guarantees. It prints one `PASS` or `FAIL` line per assertion and exits 1 on any `FAIL`. Lines that need Docker print `SKIP` when Docker, its daemon or the compose plugin is missing; a skip is never a pass.
+
+```
+bash scripts/ci/live-safety-smoke.sh [path-to-nself-binary]
+```
+
+See also [[cmd-config]], [[cmd-plugin]], [[cmd-bundle]], [[cmd-doctor]] and [[Compat-V15]].

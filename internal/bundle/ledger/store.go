@@ -13,7 +13,10 @@
 // intact. The file is 0644 (it holds no secret), its directory 0700 (same as
 // the other state directories). The directory name starts with a dot and holds
 // no plugin.json, so plugin scans skip it.
-// Load never writes and never creates a directory.
+// Load never writes and never creates a directory. A bootstrap scan that could
+// not read every plugin manifest (Sources.Unreadable) may be shown by Load but
+// is never persisted by Update (D-0374): bootstrap runs once, so a persisted
+// partial scan would hide those plugins' bundle references for good.
 package ledger
 
 import (
@@ -22,6 +25,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -60,13 +64,24 @@ func (s *Store) Dir() string { return filepath.Join(s.root, StateDirName) }
 // Path is the ledger file.
 func (s *Store) Path() string { return filepath.Join(s.Dir(), fileName) }
 
-func (s *Store) bootstrap() (Ledger, error) {
+func (s *Store) bootstrap(persist bool) (Ledger, error) {
 	if s.Sources == nil {
 		return Ledger{}, fmt.Errorf("ledger: %s does not exist and no bootstrap source is configured", s.Path())
 	}
 	src, err := s.Sources()
 	if err != nil {
 		return Ledger{}, fmt.Errorf("ledger: bootstrap source: %w", err)
+	}
+	if len(src.Unreadable) > 0 {
+		if persist {
+			return Ledger{}, fmt.Errorf("ledger: cannot bootstrap %s: plugin manifests that exist could not be read (fix or remove them, then retry): %s",
+				s.Path(), strings.Join(src.Unreadable, "; "))
+		}
+		if s.Warn != nil {
+			for _, u := range src.Unreadable {
+				s.Warn("plugin manifest could not be read and is not in this view: " + u)
+			}
+		}
 	}
 	l, skipped := BootstrapReport(src)
 	if s.Warn != nil {
@@ -81,9 +96,15 @@ func (s *Store) bootstrap() (Ledger, error) {
 // not an error: the bootstrap result is returned (persisted=false) and nothing
 // is written. A damaged file is an error.
 func (s *Store) Load() (l Ledger, persisted bool, err error) {
+	return s.load(false)
+}
+
+// load is Load; persist says the result will be written, which makes an
+// incomplete bootstrap scan an error instead of a warning.
+func (s *Store) load(persist bool) (l Ledger, persisted bool, err error) {
 	data, err := readCapped(s.Path())
 	if errors.Is(err, os.ErrNotExist) {
-		l, err = s.bootstrap()
+		l, err = s.bootstrap(persist)
 		return l, false, err
 	}
 	if err != nil {
@@ -115,7 +136,7 @@ func (s *Store) Update(fn func(*Ledger) error) error {
 	defer unlock()
 	s.removeStaleTemps()
 
-	l, _, err := s.Load()
+	l, _, err := s.load(true)
 	if err != nil {
 		return err
 	}
@@ -178,6 +199,11 @@ func (s *Store) write(l Ledger) error {
 	if err != nil {
 		return err
 	}
+	// Load refuses a file over MaxBytes, so writing one would brick every later
+	// Load and Update (D-0374). Refuse before the temp file exists.
+	if len(data) > MaxBytes {
+		return fmt.Errorf("ledger: refusing to write %d bytes: over the %d-byte limit Load accepts", len(data), MaxBytes)
+	}
 	tmp, err := os.CreateTemp(s.Dir(), ".bundles.json.*.tmp")
 	if err != nil {
 		return fmt.Errorf("ledger: temp file: %w", err)
@@ -213,14 +239,8 @@ func (s *Store) write(l Ledger) error {
 		cleanup()
 		return fmt.Errorf("ledger: replace %s: %w", s.Path(), err)
 	}
-	syncDir(s.Dir())
-	return nil
-}
-
-// syncDir flushes the directory entry; best effort (not every filesystem allows it).
-func syncDir(dir string) {
-	if d, err := os.Open(dir); err == nil {
-		_ = d.Sync()
-		_ = d.Close()
+	if err := syncDir(s.Dir()); err != nil {
+		return fmt.Errorf("ledger: %s was replaced but its directory could not be flushed, so the change may not survive a crash: %w", s.Path(), err)
 	}
+	return nil
 }

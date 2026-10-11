@@ -19,6 +19,7 @@ import (
 	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/migration"
+	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 )
 
@@ -41,31 +42,53 @@ func checkLegacyProjectGate(projectDir string, allowLegacy bool) error {
 	return nil
 }
 
-// autoInstallAIIfNeeded runs `doctor --ai --yes --skip-pool` to get Ollama
-// running before the stack boots, when AI_AUTO_INSTALL is enabled (default)
-// and NSELF_MASTER_SECRET is present (T-05-05).
-//
-// CLI-R18: the AI config block (and NSELF_MASTER_SECRET) used to live in a
-// dedicated .env.ai file, and its mere existence gated this block. .env.ai
-// is now folded into .env.secrets, so the gate is NSELF_MASTER_SECRET
-// presence in the resolved environment — the same signal ("zero-config AI
-// was set up for this project"), just read from the cascade instead of the
-// filesystem.
-func autoInstallAIIfNeeded(ctx context.Context) {
-	if aiAutoInstall := os.Getenv("AI_AUTO_INSTALL"); aiAutoInstall == "" || strings.EqualFold(aiAutoInstall, "true") {
-		if os.Getenv("NSELF_MASTER_SECRET") != "" {
-			if !ollamaHealthy(ctx) {
-				ui.Info("AI_AUTO_INSTALL: setting up local AI...")
-				_ = runDoctorAI(ctx, doctorAIFlags{
-					yes:        true,
-					skipPool:   true,
-					skipOllama: false,
-					headless:   false,
-					jsonOut:    false,
-				})
-			}
-		}
+// runDoctorAIFn is the Ollama installer autoInstallAIIfNeeded calls. A package
+// variable so tests can assert it is (or is not) invoked without installing.
+var runDoctorAIFn = runDoctorAI
+
+// ollamaHealthyFn probes the local Ollama daemon. A package variable so tests
+// never touch the network.
+var ollamaHealthyFn = ollamaHealthy
+
+// aiPluginInstalledFn reports whether the ai plugin command is installed. A
+// package variable so tests do not depend on the machine's plugin directory.
+var aiPluginInstalledFn = func() bool { return plugin.IsCommandInstalled("ai") }
+
+// aiAutoInstallWanted decides whether `nself start` should set up local AI
+// (Ollama) before the stack boots. Opt-in only (D-0221): the install runs when
+// AI_AUTO_INSTALL is explicitly "true"/"1", or when the ai plugin is installed
+// (the user asked for AI by installing it). AI_AUTO_INSTALL set to anything
+// that is not true ("false", "0", ...) always suppresses it, even with the
+// plugin installed. An unset variable with no plugin never installs, and the
+// decision never depends on NSELF_MASTER_SECRET (a secret every project has).
+// Inputs: getenv (os.Getenv shape) and whether the ai plugin is installed.
+func aiAutoInstallWanted(getenv func(string) string, pluginInstalled bool) bool {
+	v := strings.TrimSpace(getenv("AI_AUTO_INSTALL"))
+	if v == "" {
+		return pluginInstalled
 	}
+	return strings.EqualFold(v, "true") || v == "1"
+}
+
+// autoInstallAIIfNeeded runs `doctor --ai --yes --skip-pool` to get Ollama
+// running before the stack boots, when aiAutoInstallWanted says the user opted
+// in (AI_AUTO_INSTALL=true or the ai plugin installed) and Ollama is not
+// already healthy (T-05-05, D-0221).
+func autoInstallAIIfNeeded(ctx context.Context) {
+	if !aiAutoInstallWanted(os.Getenv, aiPluginInstalledFn()) {
+		return
+	}
+	if ollamaHealthyFn(ctx) {
+		return
+	}
+	ui.Info("AI_AUTO_INSTALL: setting up local AI...")
+	_ = runDoctorAIFn(ctx, doctorAIFlags{
+		yes:        true,
+		skipPool:   true,
+		skipOllama: false,
+		headless:   false,
+		jsonOut:    false,
+	})
 }
 
 // autoRebuildIfNeeded runs an automatic `nself build` before the

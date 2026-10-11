@@ -40,8 +40,10 @@ func (p *pipelineStubProber) KeyState(s Server) (bool, string) {
 }
 
 // fakeDeploy installs fake SSH and rsync binaries that always exit 0, sets up
-// a fake key, and returns the compose path. deploy.DeployViaSsh calls rsync
-// (step 1) before SSH, so both must be faked for the deploy to succeed.
+// a fake key, pins a synthetic host key (stubHostKeyPin) so v1.5 strict
+// host-key checks pass, and returns the compose path. deploy.DeployViaSsh
+// calls rsync (step 1) before SSH, so both must be faked for the deploy to
+// succeed.
 // On Windows, shebang scripts cannot be executed directly, so callers must
 // skip the test before calling fakeDeploy.
 func fakeDeploy(t *testing.T) (composePath string) {
@@ -65,6 +67,7 @@ func fakeDeploy(t *testing.T) (composePath string) {
 
 	origPath := os.Getenv("PATH")
 	t.Setenv("PATH", dir+":"+origPath)
+	stubHostKeyPin(t, dir)
 
 	// Fake key file.
 	keyFile := filepath.Join(dir, "id_ed25519")

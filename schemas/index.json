@@ -98,16 +98,164 @@
       "id": "urn:nself:cli:schema:commands:clean:v1"
     },
     {
+      "path": "commands/config-env-copy.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env-copy:v1"
+    },
+    {
+      "path": "commands/config-env-diff.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env-diff:v1"
+    },
+    {
+      "path": "commands/config-env-explain.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env-explain:v1"
+    },
+    {
+      "path": "commands/config-env-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env-list:v1"
+    },
+    {
+      "path": "commands/config-env-show.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env-show:v1"
+    },
+    {
+      "path": "commands/config-env-target-add.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env-target-add:v1"
+    },
+    {
+      "path": "commands/config-env-target-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env-target-list:v1"
+    },
+    {
+      "path": "commands/config-env-target-migrate.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env-target-migrate:v1"
+    },
+    {
+      "path": "commands/config-env-target-probe.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env-target-probe:v1"
+    },
+    {
+      "path": "commands/config-env-target-remove.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env-target-remove:v1"
+    },
+    {
+      "path": "commands/config-env-target.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env-target:v1"
+    },
+    {
+      "path": "commands/config-env-use.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env-use:v1"
+    },
+    {
+      "path": "commands/config-env.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-env:v1"
+    },
+    {
       "path": "commands/config-explain.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:config-explain:v1"
+    },
+    {
+      "path": "commands/config-export.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-export:v1"
+    },
+    {
+      "path": "commands/config-features-disable.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-features-disable:v1"
+    },
+    {
+      "path": "commands/config-features-enable.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-features-enable:v1"
+    },
+    {
+      "path": "commands/config-features-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-features-list:v1"
+    },
+    {
+      "path": "commands/config-features-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-features-status:v1"
+    },
+    {
+      "path": "commands/config-features.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-features:v1"
     },
     {
       "path": "commands/config-get.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:config-get:v1"
     },
     {
+      "path": "commands/config-import.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-import:v1"
+    },
+    {
       "path": "commands/config-list.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:config-list:v1"
+    },
+    {
+      "path": "commands/config-oauth-refresh.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-oauth-refresh:v1"
+    },
+    {
+      "path": "commands/config-oauth.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-oauth:v1"
+    },
+    {
+      "path": "commands/config-secrets-audit.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-audit:v1"
+    },
+    {
+      "path": "commands/config-secrets-decrypt-on-deploy.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-decrypt-on-deploy:v1"
+    },
+    {
+      "path": "commands/config-secrets-get.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-get:v1"
+    },
+    {
+      "path": "commands/config-secrets-init.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-init:v1"
+    },
+    {
+      "path": "commands/config-secrets-lint.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-lint:v1"
+    },
+    {
+      "path": "commands/config-secrets-list-schedules.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-list-schedules:v1"
+    },
+    {
+      "path": "commands/config-secrets-list.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-list:v1"
+    },
+    {
+      "path": "commands/config-secrets-rekey.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-rekey:v1"
+    },
+    {
+      "path": "commands/config-secrets-retire.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-retire:v1"
+    },
+    {
+      "path": "commands/config-secrets-rotate.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-rotate:v1"
+    },
+    {
+      "path": "commands/config-secrets-rotation-log.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-rotation-log:v1"
+    },
+    {
+      "path": "commands/config-secrets-schedule.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-schedule:v1"
+    },
+    {
+      "path": "commands/config-secrets-set.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-set:v1"
+    },
+    {
+      "path": "commands/config-secrets-verify.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets-verify:v1"
+    },
+    {
+      "path": "commands/config-secrets.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-secrets:v1"
     },
     {
       "path": "commands/config-set.v1.schema.json",
@@ -116,6 +264,62 @@
     {
       "path": "commands/config-show.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:config-show:v1"
+    },
+    {
+      "path": "commands/config-telemetry-off.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-telemetry-off:v1"
+    },
+    {
+      "path": "commands/config-telemetry-on.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-telemetry-on:v1"
+    },
+    {
+      "path": "commands/config-telemetry-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-telemetry-status:v1"
+    },
+    {
+      "path": "commands/config-telemetry.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-telemetry:v1"
+    },
+    {
+      "path": "commands/config-trust-dns.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-trust-dns:v1"
+    },
+    {
+      "path": "commands/config-trust-ssl-add.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-trust-ssl-add:v1"
+    },
+    {
+      "path": "commands/config-trust-ssl-renew.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-trust-ssl-renew:v1"
+    },
+    {
+      "path": "commands/config-trust-ssl-setup.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-trust-ssl-setup:v1"
+    },
+    {
+      "path": "commands/config-trust-ssl-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-trust-ssl-status:v1"
+    },
+    {
+      "path": "commands/config-trust-ssl.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-trust-ssl:v1"
+    },
+    {
+      "path": "commands/config-trust-status.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-trust-status:v1"
+    },
+    {
+      "path": "commands/config-trust.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-trust:v1"
+    },
+    {
+      "path": "commands/config-validate.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config-validate:v1"
+    },
+    {
+      "path": "commands/config.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:config:v1"
     },
     {
       "path": "commands/db-backup-list.v1.schema.json",

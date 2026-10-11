@@ -65,19 +65,24 @@ func isRootPersistentFlag(name string) bool {
 // options of explain; their values are parsed with strconv.ParseBool. A root
 // persistent flag is an option too, unless it is the only flag after command
 // words, where it is the flag being asked about. Any other --name is the
-// target flag. A KEY takes no target flag.
+// target flag. A KEY takes no target flag. A bare "--" ends the options: the
+// invoker builds `config explain --json -- <args>`, so a machine caller's
+// "--reveal" arrives after it and must stay a word (P7-SURF-12 M1).
 func parseExplainArgs(args []string) (explainInput, error) {
 	var in explainInput
 	var globals []string
+	afterDashes := false
 	for _, a := range args {
 		switch {
+		case afterDashes:
+			in.words = append(in.words, a) // after a bare "--" every token is positional, never an option
+		case a == "--":
+			afterDashes = true
 		case a == "-h" || a == "--help":
 			in.help = true
 		case strings.HasPrefix(a, "--"):
 			name, value, hasValue := strings.Cut(strings.TrimPrefix(a, "--"), "=")
 			switch {
-			case name == "":
-				continue // a bare "--" ends nothing here
 			case name == "reveal" || name == "json":
 				v, err := explainBool(name, value, hasValue)
 				if err != nil {

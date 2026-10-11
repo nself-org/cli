@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -26,11 +27,44 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
-// newLedgerStore is the ledger of pluginDir with its bootstrap source wired.
+// newLedgerStore is the ledger of pluginDir with its bootstrap source wired:
+// the strict full-catalogue scan (installer_helpers_ledger.go, D-0374).
 func newLedgerStore(pluginDir string) *ledger.Store {
 	s := ledger.NewStore(pluginDir)
-	s.Sources = LedgerSources(pluginDir)
+	s.Sources = bootstrapSources(pluginDir)
 	return s
+}
+
+// addCatalogHolders adds to each member's installed_by every other recorded
+// bundle whose catalogue lists it (D-0338), the rule the remove plan uses to
+// restore lost references (keepCatalogMembers). A forced plugin remove and a
+// reinstall through bundle A would otherwise leave installed_by naming only A
+// although recorded bundle C also contains the plugin. Existing references are
+// kept: the ledger errs toward keeping a plugin.
+func addCatalogHolders(l *ledger.Ledger, installed string, members []ledger.InstalledPlugin, at time.Time) {
+	recorded := make([]string, 0, len(l.Bundles))
+	for slug := range l.Bundles {
+		if slug != installed {
+			recorded = append(recorded, slug)
+		}
+	}
+	sort.Strings(recorded)
+	for _, slug := range recorded {
+		other, ok := Get(slug)
+		if !ok {
+			continue
+		}
+		var held []ledger.InstalledPlugin
+		for _, m := range members {
+			if containsFold(other.Plugins, m.Name) {
+				// Name only: AddBundle keeps the recorded facts and installed_at.
+				held = append(held, ledger.InstalledPlugin{Name: m.Name})
+			}
+		}
+		if len(held) > 0 {
+			l.AddBundle(slug, held, at)
+		}
+	}
 }
 
 func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store, pluginDir string, planned []string, before map[string]string, opts InstallOpts, result *InstallResult) error {
@@ -61,6 +95,7 @@ func finishInstall(ctx context.Context, rn *appready.Runner, store *ledger.Store
 				}
 			}
 			l.AddBundle(result.Bundle, members, time.Now())
+			addCatalogHolders(l, result.Bundle, members, time.Now())
 			return nil
 		}); err != nil {
 			return "", fmt.Errorf("the plugins are installed (not rolled back) but recording them in %s failed: %w", store.Path(), err)

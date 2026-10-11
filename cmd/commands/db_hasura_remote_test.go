@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/database"
+	"github.com/nself-org/cli/internal/docker/dockertest"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/reconcile"
 	"github.com/spf13/cobra"
@@ -331,16 +332,15 @@ func TestDBHasuraRemoteRejectsOversizedStream(t *testing.T) {
 	}
 }
 
+// sshdReadyWait bounds the wait for the sshd container to accept the first
+// connection in TestDBHasuraRemoteIntegration.
+const sshdReadyWait = 90 * time.Second
+
 func TestDBHasuraRemoteIntegration(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Linux sshd bind-mount fixture")
 	}
-	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("docker unavailable")
-	}
-	if out, err := exec.Command("docker", "info", "--format", "{{.ServerVersion}}").CombinedOutput(); err != nil {
-		t.Skipf("docker unavailable: %s", out)
-	}
+	dockertest.Require(t) // skips without docker, fails on a GitHub Linux runner (D-0286)
 	root := t.TempDir()
 	if err := os.Chmod(root, 0777); err != nil {
 		t.Fatal(err)
@@ -377,18 +377,19 @@ func TestDBHasuraRemoteIntegration(t *testing.T) {
 		t.Fatalf("port: %s", endpoint)
 	}
 	rt := dbRemoteTarget{SSHTarget: "ssh://test@127.0.0.1:" + port, KeyPath: key, RemotePath: "/fixtures", EnvName: "staging", AllowVersionDrift: true}
+	// The image's init brings sshd up after `docker run -d` returns, slower on
+	// a loaded host (ssh exits 255 until it listens): poll up to sshdReadyWait.
 	var got bytes.Buffer
 	var last error
-	for i := 0; i < 30; i++ {
+	for deadline := time.Now().Add(sshdReadyWait); ; time.Sleep(500 * time.Millisecond) {
 		got.Reset()
 		last = runRemoteNselfStream(context.Background(), rt, nil, &got, "db", "hasura", "metadata", "export", "--archive", "-")
-		if last == nil {
+		if last == nil || time.Now().After(deadline) {
 			break
 		}
-		time.Sleep(500 * time.Millisecond)
 	}
 	if last != nil {
-		t.Fatalf("sshd export: %v", last)
+		t.Fatalf("sshd export after %s: %v", sshdReadyWait, last)
 	}
 	if !bytes.Equal(got.Bytes(), fixture) {
 		t.Fatal("remote export bytes differ")

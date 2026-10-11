@@ -142,7 +142,11 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 	}
 
 	// License pre-flight (see installer_licence.go). A free bundle makes no
-	// ping_api bundle-entitlement call; the per-plugin check still runs.
+	// ping_api bundle-entitlement call; the per-plugin check still runs, and for
+	// it also honours the cached entitlement list (installer_helpers_licence.go).
+	if opts.licenseChecker == nil {
+		opts.licenseChecker = licenceChecker(b.IsFree())
+	}
 	if err := rn.Step(appready.StepLicence, func() (string, error) {
 		if b.IsFree() {
 			return "free bundle: no bundle entitlement call; plugin licences checked", checkLicence(ctx, b, planned, opts)
@@ -196,6 +200,8 @@ func Install(ctx context.Context, bundleSlug string, opts InstallOpts) (*Install
 	_, _ = fmt.Fprintf(out, "\nBundle %q (%s) installed: %d plugins.\n", b.Name, b.Slug, len(result.Installed))
 	if len(result.Skipped) > 0 {
 		_, _ = fmt.Fprintf(out, "Skipped (missing from registry): %s\n", strings.Join(result.Skipped, ", "))
+		// A bundle with a member missing is not the app the bundle describes (D-0372).
+		rn.Unverified("bundle members skipped (not in the registry): " + strings.Join(result.Skipped, ", "))
 	}
 	return result, finishInstall(ctx, rn, store, pluginDir, planned, before, opts, result)
 }

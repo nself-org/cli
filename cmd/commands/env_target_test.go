@@ -5,8 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/nself-org/cli/internal/controlplane"
 )
@@ -50,6 +54,83 @@ func readInventory(t *testing.T, root string) *controlplane.Inventory {
 	return inv
 }
 
+// freshCmd returns a new command with src's RunE and a copy of every flag src
+// declares itself (name, type, default), then applies set. Tests run against
+// the copy, so they never reset or redeclare flags on the shared command tree
+// that the registry golden and the shipped binary read (D-0237). Flags merged
+// in from a parent's persistent set (the same *pflag.Flag) are left out; a
+// local flag that shadows one, like `list --json`, is copied.
+func freshCmd(t *testing.T, src *cobra.Command, set map[string]string) *cobra.Command {
+	t.Helper()
+	inherited := func(f *pflag.Flag) bool {
+		for p := src.Parent(); p != nil; p = p.Parent() {
+			if p.PersistentFlags().Lookup(f.Name) == f {
+				return true
+			}
+		}
+		return false
+	}
+	c := &cobra.Command{Use: src.Use, RunE: src.RunE}
+	src.Flags().VisitAll(func(f *pflag.Flag) {
+		if inherited(f) {
+			return
+		}
+		switch f.Value.Type() {
+		case "string":
+			c.Flags().String(f.Name, f.DefValue, f.Usage)
+		case "bool":
+			def, err := strconv.ParseBool(f.DefValue)
+			if err != nil {
+				t.Fatalf("flag --%s default %q: %v", f.Name, f.DefValue, err)
+			}
+			c.Flags().Bool(f.Name, def, f.Usage)
+		case "stringSlice":
+			var def []string
+			if v := strings.Trim(f.DefValue, "[]"); v != "" {
+				def = strings.Split(v, ",")
+			}
+			c.Flags().StringSlice(f.Name, def, f.Usage)
+		default:
+			t.Fatalf("freshCmd: flag --%s has unsupported type %s", f.Name, f.Value.Type())
+		}
+	})
+	for name, v := range set {
+		if err := c.Flags().Set(name, v); err != nil {
+			t.Fatalf("set --%s=%q: %v", name, v, err)
+		}
+	}
+	return c
+}
+
+// TestFreshCmdLeavesSharedTreeIntact guards D-0237: a copy carries the real
+// defaults, and setting flags on it leaves the shared command's flag set,
+// values and Changed state as init() registered them.
+func TestFreshCmdLeavesSharedTreeIntact(t *testing.T) {
+	snapshot := func() string {
+		var b strings.Builder
+		envTargetAddCmd.Flags().VisitAll(func(f *pflag.Flag) {
+			b.WriteString(f.Name + "=" + f.Value.Type() + ":" + f.Value.String() + ":" + strconv.FormatBool(f.Changed) + ";")
+		})
+		return b.String()
+	}
+	for _, name := range []string{"host", "role", "tier", "arch", "trust-host-key", "upstreams"} {
+		if envTargetAddCmd.Flags().Lookup(name) == nil {
+			t.Fatalf("shared `env target add` lost --%s before this test ran", name)
+		}
+	}
+	before := snapshot()
+	c := freshCmd(t, envTargetAddCmd, map[string]string{"host": "ubuntu@copy.example.com", "primary": "true"})
+	if role, _ := c.Flags().GetString("role"); role != "app" {
+		t.Errorf("copy --role default = %q, want the real default app", role)
+	}
+	if rp, _ := c.Flags().GetString("remote-path"); rp != "/opt/nself" {
+		t.Errorf("copy --remote-path default = %q, want /opt/nself", rp)
+	}
+	if after := snapshot(); after != before {
+		t.Fatalf("shared command flags changed:\nbefore %s\nafter  %s", before, after)
+	}
+}
+
 // ── T01: list ────────────────────────────────────────────────────────────────
 
 func TestEnvTargetList_EmptyInventory(t *testing.T) {
@@ -71,10 +152,7 @@ func TestEnvTargetList_EmptyInventory(t *testing.T) {
 		},
 	})
 
-	cmd := envTargetListCmd
-	cmd.ResetFlags()
-	cmd.Flags().Bool("json", false, "")
-	cmd.Flags().Bool("all", false, "")
+	cmd := freshCmd(t, envTargetListCmd, nil)
 
 	err := runEnvTargetList(cmd, nil)
 	if err != nil {
@@ -111,13 +189,7 @@ func TestEnvTargetList_JSON(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	cmd := envTargetListCmd
-	cmd.ResetFlags()
-	cmd.Flags().Bool("json", false, "")
-	cmd.Flags().Bool("all", false, "")
-	if err := cmd.Flags().Set("json", "true"); err != nil {
-		t.Fatal(err)
-	}
+	cmd := freshCmd(t, envTargetListCmd, map[string]string{"json": "true"})
 
 	err := runEnvTargetList(cmd, []string{"staging"})
 	_ = w.Close()
@@ -176,18 +248,9 @@ func TestEnvTargetAdd_RoundTrip(t *testing.T) {
 	})
 
 	// Add staging server.
-	cmd := envTargetAddCmd
-	cmd.ResetFlags()
-	cmd.Flags().String("host", "", "")
-	cmd.Flags().String("role", "app", "")
-	cmd.Flags().String("key-ref", "", "")
-	cmd.Flags().String("remote-path", "/opt/nself", "")
-	cmd.Flags().Bool("primary", false, "")
-	cmd.Flags().StringSlice("upstreams", nil, "")
-	_ = cmd.Flags().Set("host", "ubuntu@staging.example.com")
-	_ = cmd.Flags().Set("role", "app")
-	_ = cmd.Flags().Set("key-ref", "NSELF_SSH_KEY_STAGING")
-	_ = cmd.Flags().Set("primary", "true")
+	cmd := freshCmd(t, envTargetAddCmd, map[string]string{
+		"host": "ubuntu@staging.example.com", "role": "app", "key-ref": "NSELF_SSH_KEY_STAGING", "primary": "true",
+	})
 
 	if err := runEnvTargetAdd(cmd, []string{"staging", "web1"}); err != nil {
 		t.Fatalf("add: %v", err)
@@ -216,7 +279,7 @@ func TestEnvTargetAdd_RoundTrip(t *testing.T) {
 	}
 
 	// Remove staging server.
-	if err := runEnvTargetRemove(envTargetRemoveCmd, []string{"staging", "web1"}); err != nil {
+	if err := runEnvTargetRemove(freshCmd(t, envTargetRemoveCmd, nil), []string{"staging", "web1"}); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
 
@@ -245,14 +308,7 @@ func TestEnvTargetAdd_DuplicateServerRejected(t *testing.T) {
 		},
 	})
 
-	cmd := envTargetAddCmd
-	cmd.ResetFlags()
-	cmd.Flags().String("host", "ubuntu@staging.example.com", "")
-	cmd.Flags().String("role", "app", "")
-	cmd.Flags().String("key-ref", "NSELF_SSH_KEY_STAGING", "")
-	cmd.Flags().String("remote-path", "/opt/nself", "")
-	cmd.Flags().Bool("primary", false, "")
-	cmd.Flags().StringSlice("upstreams", nil, "")
+	cmd := freshCmd(t, envTargetAddCmd, map[string]string{"host": "ubuntu@staging.example.com", "key-ref": "NSELF_SSH_KEY_STAGING"})
 
 	err := runEnvTargetAdd(cmd, []string{"staging", "web1"})
 	if err == nil {
@@ -273,15 +329,8 @@ func TestEnvTargetAdd_InlineKeyRefRejected(t *testing.T) {
 		Environments:  map[string]controlplane.Environment{},
 	})
 
-	cmd := envTargetAddCmd
-	cmd.ResetFlags()
-	cmd.Flags().String("host", "ubuntu@staging.example.com", "")
-	cmd.Flags().String("role", "app", "")
 	// Passing a file path instead of an env-var name must be rejected.
-	cmd.Flags().String("key-ref", "/home/user/.ssh/id_ed25519", "")
-	cmd.Flags().String("remote-path", "/opt/nself", "")
-	cmd.Flags().Bool("primary", false, "")
-	cmd.Flags().StringSlice("upstreams", nil, "")
+	cmd := freshCmd(t, envTargetAddCmd, map[string]string{"host": "ubuntu@staging.example.com", "key-ref": "/home/user/.ssh/id_ed25519"})
 
 	err := runEnvTargetAdd(cmd, []string{"staging", "web1"})
 	if err == nil {
@@ -318,15 +367,9 @@ func TestEnvTargetAdd_RemotePathInjectionRejected(t *testing.T) {
 				Environments:  map[string]controlplane.Environment{},
 			})
 
-			cmd := envTargetAddCmd
-			cmd.ResetFlags()
-			cmd.Flags().String("host", "ubuntu@staging.example.com", "")
-			cmd.Flags().String("role", "app", "")
-			cmd.Flags().String("key-ref", "NSELF_SSH_KEY_STAGING", "")
-			cmd.Flags().String("remote-path", "/opt/nself", "")
-			cmd.Flags().Bool("primary", false, "")
-			cmd.Flags().StringSlice("upstreams", nil, "")
-			_ = cmd.Flags().Set("remote-path", payload)
+			cmd := freshCmd(t, envTargetAddCmd, map[string]string{
+				"host": "ubuntu@staging.example.com", "key-ref": "NSELF_SSH_KEY_STAGING", "remote-path": payload,
+			})
 
 			err := runEnvTargetAdd(cmd, []string{"staging", "web1"})
 			if err == nil {
@@ -361,14 +404,7 @@ func TestEnvTargetAdd_RemotePathNormalPathAccepted(t *testing.T) {
 		Environments:  map[string]controlplane.Environment{},
 	})
 
-	cmd := envTargetAddCmd
-	cmd.ResetFlags()
-	cmd.Flags().String("host", "ubuntu@staging.example.com", "")
-	cmd.Flags().String("role", "app", "")
-	cmd.Flags().String("key-ref", "NSELF_SSH_KEY_STAGING", "")
-	cmd.Flags().String("remote-path", "/opt/nself", "")
-	cmd.Flags().Bool("primary", false, "")
-	cmd.Flags().StringSlice("upstreams", nil, "")
+	cmd := freshCmd(t, envTargetAddCmd, map[string]string{"host": "ubuntu@staging.example.com", "key-ref": "NSELF_SSH_KEY_STAGING"})
 
 	if err := runEnvTargetAdd(cmd, []string{"staging", "web1"}); err != nil {
 		t.Fatalf("add with normal --remote-path: %v", err)
@@ -396,7 +432,7 @@ func TestEnvTargetRemove_NotFound(t *testing.T) {
 		},
 	})
 
-	err := runEnvTargetRemove(envTargetRemoveCmd, []string{"staging", "nonexistent"})
+	err := runEnvTargetRemove(freshCmd(t, envTargetRemoveCmd, nil), []string{"staging", "nonexistent"})
 	if err == nil {
 		t.Fatal("expected error for non-existent server")
 	}
@@ -425,11 +461,7 @@ func TestEnvTargetProbe_LocalEnv(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	cmd := envTargetProbeCmd
-	cmd.ResetFlags()
-	cmd.Flags().Bool("json", false, "")
-	cmd.Flags().Bool("refresh", false, "")
-	_ = cmd.Flags().Set("json", "true")
+	cmd := freshCmd(t, envTargetProbeCmd, map[string]string{"json": "true"})
 
 	err := runEnvTargetProbe(cmd, []string{"local"})
 	_ = w.Close()
@@ -473,10 +505,7 @@ func TestEnvTargetProbe_UnknownEnvError(t *testing.T) {
 		},
 	})
 
-	cmd := envTargetProbeCmd
-	cmd.ResetFlags()
-	cmd.Flags().Bool("json", false, "")
-	cmd.Flags().Bool("refresh", false, "")
+	cmd := freshCmd(t, envTargetProbeCmd, nil)
 
 	err := runEnvTargetProbe(cmd, []string{"nonexistent"})
 	if err == nil {
@@ -494,7 +523,7 @@ func TestEnvTargetMigrate_FromEnvVars(t *testing.T) {
 	t.Setenv("NSELF_DEPLOY_HOST_STAGING", "ubuntu@staging.example.com")
 	t.Setenv("NSELF_SSH_KEY_STAGING", "/nonexistent/key") // value irrelevant for this test
 
-	if err := runEnvTargetMigrate(envTargetMigrateCmd, nil); err != nil {
+	if err := runEnvTargetMigrate(freshCmd(t, envTargetMigrateCmd, nil), nil); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -534,10 +563,10 @@ func TestEnvTargetMigrate_Idempotent(t *testing.T) {
 	})
 
 	// Run migrate twice; the second run must not corrupt the file.
-	if err := runEnvTargetMigrate(envTargetMigrateCmd, nil); err != nil {
+	if err := runEnvTargetMigrate(freshCmd(t, envTargetMigrateCmd, nil), nil); err != nil {
 		t.Fatalf("first migrate: %v", err)
 	}
-	if err := runEnvTargetMigrate(envTargetMigrateCmd, nil); err != nil {
+	if err := runEnvTargetMigrate(freshCmd(t, envTargetMigrateCmd, nil), nil); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}
 
