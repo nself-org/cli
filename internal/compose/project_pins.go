@@ -37,7 +37,7 @@ var (
 	projectPins  = map[string]string{}
 	explicitVars = map[string][]string{
 		"admin":    {"NSELF_ADMIN_VERSION", "ADMIN_VERSION", "ADMIN_IMAGE"},
-		"postgres": {"POSTGRES_VERSION", "POSTGRES_IMAGE", "POSTGRES_EXTENSIONS"},
+		"postgres": {"POSTGRES_VERSION", "POSTGRES_IMAGE"},
 		"storage":  {"STORAGE_VERSION", "STORAGE_IMAGE"},
 	}
 )
@@ -114,13 +114,16 @@ var (
 )
 
 // projectPin returns the pin for service, given the reference the caller
-// rendered from the config (image; "" means the CLI default). Without an
-// explicit *_IMAGE/*_VERSION in the env the pin always wins. With one, the pin
-// is kept only when that value renders to the pin's own reference: nself init
-// writes *_VERSION defaults into .env, and for postgres 16-alpine renders to the
-// pgvector entry, so the comparison is on the rendered reference (what the
-// generator would emit), never on the raw env text. A value that renders to a
-// different image drops the pin, with a one-line notice on stderr.
+// rendered from the config (image; "" means the CLI default). The pin applies
+// only when its repository (tag and digest stripped, docker.io/library
+// canonicalised) is the rendered image's repository: a runtime switch
+// (deno to node) or pgvector turned off renders another image, and the pin
+// must not hide that. With an explicit *_IMAGE/*_VERSION in the env the pin is
+// also kept only when the rendered reference equals the pin's reference: nself
+// init writes *_VERSION defaults into .env, and for postgres 16-alpine renders
+// to the pgvector entry only when the extension list asks for it, so the
+// comparison is on the rendered reference, never on the raw env text. Dropping
+// a pin prints a one-line notice on stderr.
 func projectPin(service, image string) (string, bool) {
 	pinsMu.RLock()
 	pin, ok := projectPins[service]
@@ -128,24 +131,29 @@ func projectPin(service, image string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	name := explicitEnvName(service)
-	if name == "" {
-		return pin, true
-	}
 	if image == "" {
 		image = DefaultImage(service)
 	}
-	want := CanonicalRef(pin)
-	if CanonicalRef(image) == want {
-		return pin, true
-	}
-	// nself init writes POSTGRES_VERSION=16-alpine; a project that runs the
-	// pgvector image gets it from the extension list, which may be set elsewhere.
-	if v := strings.TrimSpace(os.Getenv("POSTGRES_VERSION")); service == "postgres" && v != "" && CanonicalRef(pgvectorImageForVersion(v)) == want {
+	name := explicitEnvName(service)
+	switch {
+	case repoOf(image) != repoOf(pin):
+		if name == "" {
+			name = "the rendered image"
+		}
+	case name == "" || CanonicalRef(image) == CanonicalRef(pin):
 		return pin, true
 	}
 	noticePinDropped(service, name, pin)
 	return "", false
+}
+
+// repoOf is CanonicalRef without the tag.
+func repoOf(ref string) string {
+	ref = CanonicalRef(ref)
+	if i := strings.LastIndex(ref, ":"); i > strings.LastIndex(ref, "/") {
+		ref = ref[:i]
+	}
+	return ref
 }
 
 // noticePinDropped prints the drop notice once per service, variable and pin.
@@ -157,6 +165,10 @@ func noticePinDropped(service, envName, pin string) {
 	w := pinNoticeW
 	pinNoticedMu.Unlock()
 	if seen || w == nil {
+		return
+	}
+	if envName == "the rendered image" {
+		_, _ = fmt.Fprintf(w, "notice: the %s image is now a different repository than its pin, so the pin in %s is not used\n", service, ProjectLockFile)
 		return
 	}
 	_, _ = fmt.Fprintf(w, "notice: %s is set, so the %s pin in %s is not used\n", envName, service, ProjectLockFile)

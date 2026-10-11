@@ -20002,7 +20002,7 @@
           "shorthand": null,
           "type": "bool",
           "default": "false",
-          "usage": "Fail with E455 unless the stack matches nself.lock.yaml (compose images, plugin versions and checksums, CLI minor)",
+          "usage": "Fail with E455 unless the CLI-owned service images (not CS_N or plugin-fragment services), plugin versions and checksums, and CLI minor match nself.lock.yaml",
           "hidden": false,
           "deprecated": null,
           "required": false,

@@ -52,7 +52,7 @@ func init() {
 	f.Bool("quiet", false, "Suppress progress output (for CI; preserves --json output)")
 	f.Bool("allow-legacy", false, "Bypass v0.9 artifact check and proceed with WARNING (not recommended)")
 	f.Bool("embedded-pg", false, "Boot PostgreSQL via embedded pglite/wasmtime — no Docker postgres container required; pgvector included")
-	f.Bool("frozen", false, "Fail with E455 unless the stack matches nself.lock.yaml (compose images, plugin versions and checksums, CLI minor)")
+	f.Bool("frozen", false, "Fail with E455 unless the CLI-owned service images (not CS_N or plugin-fragment services), plugin versions and checksums, and CLI minor match nself.lock.yaml")
 	f.Bool("skip-db-init", false, "Skip database migrations and seed; bring up Postgres+Hasura+hasura-auth only. Intended for CI/E2E environments.")
 	f.String("profile", "", `Service profile passed to an automatic rebuild when the compose file is stale.
   app (default) — full service set.

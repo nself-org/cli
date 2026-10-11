@@ -52,9 +52,9 @@ const (
 	// KeyPattern is the shape of a service, plugin or bundle name used as a key.
 	KeyPattern = `^[a-z0-9][a-z0-9._-]*$`
 	// PinnedPattern is an image reference carrying a sha256 digest.
-	PinnedPattern = `^[^\s@]+@sha256:[0-9a-f]{64}$`
+	PinnedPattern = `^[^\s@$]+@sha256:[0-9a-f]{64}$`
 	// UnpinnedPattern is a tag-only image reference (no digest).
-	UnpinnedPattern = `^[^\s@]+$`
+	UnpinnedPattern = `^[^\s@$]+$`
 	// ChecksumPattern is a lowercase hex sha256, or empty when unknown.
 	ChecksumPattern = `^([0-9a-f]{64})?$`
 	// CLIPattern is major.minor, or empty for a build that has no release version.
@@ -201,6 +201,15 @@ func Parse(data []byte) (Lock, error) {
 			return Lock{}, errors.New("lock: file is empty")
 		}
 		return Lock{}, fmt.Errorf("lock: parse: %w", err)
+	}
+	// A lock states its schema_version; a missing (zero) one is not defaulted.
+	if l.SchemaVersion == 0 {
+		return Lock{}, errors.New("lock: schema_version is missing")
+	}
+	// Exactly one YAML document: a second one would be silently ignored.
+	var extra yaml.Node
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return Lock{}, errors.New("lock: more than one YAML document")
 	}
 	l.normalize()
 	if err := l.Validate(); err != nil {

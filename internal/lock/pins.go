@@ -63,19 +63,46 @@ func Pin(refs map[string]string, r Resolver) (images, unpinned map[string]string
 	return images, unpinned
 }
 
-// ComposeImages reads the image of every service of a compose document. A
-// service without an image (build only) is left out.
-func ComposeImages(data []byte) (map[string]string, error) {
+// ServiceSource is what a compose service says about where its image comes
+// from: the image key, and whether it also carries extends or build, either of
+// which can change the image without an image key.
+type ServiceSource struct {
+	Image   string
+	Extends bool
+	Build   bool
+}
+
+// ComposeSources reads every service of a compose document, and whether the
+// document has a top-level include (which pulls in services this reader cannot
+// see).
+func ComposeSources(data []byte) (services map[string]ServiceSource, include bool, err error) {
 	var doc struct {
+		Include  yaml.Node `yaml:"include"`
 		Services map[string]struct {
-			Image string `yaml:"image"`
+			Image   string    `yaml:"image"`
+			Extends yaml.Node `yaml:"extends"`
+			Build   yaml.Node `yaml:"build"`
 		} `yaml:"services"`
 	}
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("lock: parse compose: %w", err)
+		return nil, false, fmt.Errorf("lock: parse compose: %w", err)
+	}
+	services = map[string]ServiceSource{}
+	for name, s := range doc.Services {
+		services[name] = ServiceSource{Image: s.Image, Extends: s.Extends.Kind != 0, Build: s.Build.Kind != 0}
+	}
+	return services, doc.Include.Kind != 0, nil
+}
+
+// ComposeImages reads the image of every service of a compose document. A
+// service without an image (build only) is left out.
+func ComposeImages(data []byte) (map[string]string, error) {
+	svcs, _, err := ComposeSources(data)
+	if err != nil {
+		return nil, err
 	}
 	out := map[string]string{}
-	for name, s := range doc.Services {
+	for name, s := range svcs {
 		if s.Image != "" {
 			out[name] = s.Image
 		}

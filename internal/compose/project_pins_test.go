@@ -49,17 +49,27 @@ func TestProjectPinsPrecedence(t *testing.T) {
 }
 
 func TestProjectPinsExplicitNames(t *testing.T) {
-	restore := SetProjectPins(map[string]string{"postgres": "postgres:15", "admin": "nself/nself-admin:1", "meilisearch": "m:1"})
-	defer restore()
-	for env, svc := range map[string]string{"POSTGRES_IMAGE": "postgres", "POSTGRES_EXTENSIONS": "postgres", "NSELF_ADMIN_VERSION": "admin", "MEILISEARCH_VERSION": "meilisearch"} {
-		if _, ok := projectPin(svc, ""); !ok {
+	envs := map[string]string{"POSTGRES_IMAGE": "postgres", "NSELF_ADMIN_VERSION": "admin", "MEILISEARCH_VERSION": "meilisearch", "POSTGRES_VERSION": "postgres"}
+	pins := map[string]string{}
+	for _, svc := range envs {
+		pins[svc] = CanonicalRef(DefaultImage(svc)) + "-pin" // same repository, another tag
+	}
+	defer SetProjectPins(pins)()
+	for env, svc := range envs {
+		image := DefaultImage(svc)
+		if _, ok := projectPin(svc, image); !ok {
 			t.Fatalf("%s: pin not applied with %s unset", svc, env)
 		}
 		t.Setenv(env, "x")
-		if _, ok := projectPin(svc, ""); ok {
+		if _, ok := projectPin(svc, image); ok {
 			t.Errorf("%s set but the pin still applies to %s", env, svc)
 		}
 		_ = os.Unsetenv(env)
+	}
+	// POSTGRES_EXTENSIONS is not a version override: the rendered image decides.
+	t.Setenv("POSTGRES_EXTENSIONS", "pgvector")
+	if _, ok := projectPin("postgres", DefaultImage("postgres")); !ok {
+		t.Error("POSTGRES_EXTENSIONS dropped the postgres pin")
 	}
 }
 
@@ -121,7 +131,6 @@ func TestProjectPinEnvEqualToPin(t *testing.T) {
 				{"nginx", "NGINX_VERSION", "", func(string) string { return ImageRef("nginx", "") }},
 				{"redis", "REDIS_VERSION", "", func(v string) string { return ImageRef("redis", v) }},
 				{"postgres", "POSTGRES_VERSION", "16-alpine", func(v string) string { return pgCfg(v, "uuid-ossp", "pgvector") }},
-				{"postgres", "POSTGRES_VERSION", "16-alpine", func(v string) string { return pgCfg(v, "uuid-ossp") }},
 			} {
 				name := mode + "/" + spelling + "/" + sv.name + "/" + sv.env
 				t.Run(name, func(t *testing.T) {
@@ -199,5 +208,51 @@ func TestProjectPinEnvDifferentDropsPin(t *testing.T) {
 			t.Errorf("v15=%v: a different HASURA_IMAGE kept the pin", v15)
 		}
 		restore()
+	}
+}
+
+// TestProjectPinRepositoryMustMatch: a pin applies only to the repository it
+// was taken from, so a runtime switch or pgvector turned off renders the new
+// image (adversarial M3), and deno, python and meilisearch-init honour pins.
+func TestProjectPinRepositoryMustMatch(t *testing.T) {
+	for _, mode := range []string{PinningLegacy, PinningLock} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv(EnvImagePinning, mode)
+			cfgs := fixtureConfigs(t)
+			deno := "denoland/deno:1.40.0@" + pinDigest
+			busy := "busybox:1.30@" + pinDigest
+			pgv := "pgvector/pgvector:pg16@" + pinDigest
+			resetPinNotices(t)
+			prev := pinNoticeW
+			pinNoticeW = &bytes.Buffer{}
+			defer func() { pinNoticeW = prev }()
+
+			has := func(cfg string, want string) bool {
+				for _, g := range generatedImages(t, cfgs[cfg]) {
+					if g == want {
+						return true
+					}
+				}
+				return false
+			}
+			defer SetProjectPins(map[string]string{"functions": deno, "meilisearch-init": busy, "postgres": pgv})()
+			if !has("search-typesense-deno", deno) {
+				t.Errorf("the deno functions runtime ignored its pin: %v", generatedImages(t, cfgs["search-typesense-deno"]))
+			}
+			if !has("all-optional", busy) {
+				t.Errorf("meilisearch-init ignored its pin: %v", generatedImages(t, cfgs["all-optional"]))
+			}
+			// all-optional runs the node functions runtime: the deno pin must not apply.
+			if has("all-optional", deno) {
+				t.Errorf("a deno pin hid the switch to the node runtime")
+			}
+			if !has("python-pgvector", pgv) {
+				t.Errorf("the pgvector pin was not kept for a pgvector project: %v", generatedImages(t, cfgs["python-pgvector"]))
+			}
+			// dev-minimal renders plain postgres (no pgvector): the pgvector pin must not apply.
+			if has("dev-minimal", pgv) {
+				t.Errorf("a pgvector pin kept the pgvector image after pgvector was switched off")
+			}
+		})
 	}
 }

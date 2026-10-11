@@ -91,6 +91,17 @@ func checkStartLock(root string, frozen bool, w io.Writer) error {
 		_, _ = fmt.Fprintf(w, "warning: cannot compare the stack with %s: %v\n", lock.FileName, err)
 		return nil
 	}
+	if frozen {
+		bad, err := build.UnverifiableImages(root)
+		if err != nil {
+			return errs.New("E455", "cannot compare the stack with "+lock.FileName+": "+err.Error()).WithFix("run nself build, then start again")
+		}
+		if len(bad) > 0 {
+			return errs.New("E455", fmt.Sprintf("%d image source(s) cannot be verified against %s:\n  %s", len(bad), lock.FileName, strings.Join(bad, "\n  "))).
+				WithWhy("--frozen cannot tell which image a variable, extends, build or include section resolves to").
+				WithFix("give each CLI-owned service a literal image: in the compose files start runs, then run nself build")
+		}
+	}
 	cmp := lock.Compare
 	if frozen {
 		cmp = lock.CompareStrict

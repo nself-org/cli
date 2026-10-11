@@ -588,3 +588,30 @@ func TestLockUsesRediscoveredComposeFiles(t *testing.T) {
 		}
 	}
 }
+
+// TestLockVariableImageNotPinned: a CLI-owned image built from a variable is not
+// pinned in the lock and is reported by name (UnverifiableImages), never
+// recorded as if it were verified (adversarial R2).
+func TestLockVariableImageNotPinned(t *testing.T) {
+	f := newPlanFixture(t, "dev-minimal")
+	compattest.Set(t, true)
+	writeFixtureFile(t, filepath.Join(f.workdir, "docker-compose.override.yml"), "services:\n  hasura:\n    image: ${HX:-hasura/graphql-engine:v2.44.0}\n", 0o644)
+	lockBuild(t, f)
+	l := readLock(t, f)
+	if v, ok := l.Images["hasura"]; ok {
+		t.Fatalf("a variable image was pinned: %q", v)
+	}
+	if v, ok := l.Unpinned["hasura"]; ok {
+		t.Fatalf("a variable image was recorded as tag-only: %q", v)
+	}
+	bad, err := UnverifiableImages(f.workdir)
+	if err != nil || len(bad) != 1 || !strings.Contains(bad[0], "hasura") || !strings.Contains(bad[0], "variable") {
+		t.Fatalf("want one entry naming hasura and the variable, got %v %v", bad, err)
+	}
+	if err := os.Remove(filepath.Join(f.workdir, "docker-compose.override.yml")); err != nil {
+		t.Fatal(err)
+	}
+	if bad, err := UnverifiableImages(f.workdir); err != nil || len(bad) != 0 {
+		t.Fatalf("the generated stack has nothing unverifiable: %v %v", bad, err)
+	}
+}

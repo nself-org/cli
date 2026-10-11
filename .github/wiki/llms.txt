@@ -585,7 +585,7 @@ Flags:
 - `--embedded-pg` (default false) — Boot PostgreSQL via embedded pglite/wasmtime — no Docker postgres container required; pgvector included
 - `--force-recreate` (default false) — Alias for --fresh
 - `--fresh` (default false) — Force recreate all containers
-- `--frozen` (default false) — Fail with E455 unless the stack matches nself.lock.yaml (compose images, plugin versions and checksums, CLI minor)
+- `--frozen` (default false) — Fail with E455 unless the CLI-owned service images (not CS_N or plugin-fragment services), plugin versions and checksums, and CLI minor match nself.lock.yaml
 - `--profile` (default "") — Service profile passed to an automatic rebuild when the compose file is stale.
   app (default) — full service set.
   ops           — observability + CI server (postgres, hasura, auth, nginx, monitoring).

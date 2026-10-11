@@ -4,7 +4,7 @@
 
 ---
 
-`nself.lock.yaml` pins what a project runs: the CLI major.minor, the service images, the installed plugin versions with their checksums, and the installed bundles. Commit it. `nself build` writes it, `nself build` honours its image pins, and `nself start --frozen` refuses to start a stack that no longer matches it.
+`nself.lock.yaml` pins what a project runs: the CLI major.minor, the images of the services the CLI owns, the installed plugin versions with their checksums, and the installed bundles. Commit it. `nself build` writes it, `nself build` honours its image pins, and `nself start --frozen` refuses to start a stack that no longer matches it.
 
 The file sits at the project root, not under `.nself/`, because `nself init` gitignores `.nself/` and git cannot re-include a file under an ignored directory.
 
@@ -79,12 +79,15 @@ The lock is plain YAML, so a pull request shows exactly which image, plugin or b
 
 `--frozen` compares the stack on disk with the lock and fails with E455 (exit 1) when any of these differ:
 
-- a compose image from its pinned (or tag-only) reference, a pinned service missing from the compose, or a CLI-owned service the lock does not list;
+- the image of a CLI-owned service from its pinned (or tag-only) reference, a pinned service missing from the compose, or a CLI-owned service the lock does not list;
+- an image that cannot be read as a plain reference: a CLI-owned service whose `image:` contains a variable (`$`), that has `extends` or `build`, or any compose file with a top-level `include` ("image source cannot be verified");
 - an installed plugin version or checksum;
 - the installed bundles;
 - the CLI major.minor.
 
 The comparison covers every compose file `start` runs: the generated file, plugin fragments and `docker-compose.override.yml`. Docker lets the last file win, so an override that sets a CLI-owned service's `image:` shows up as an `image` mismatch, and `nself build` records it in the lock. Under `--frozen` a cli or plugin checksum that one side recorded and the other left empty also counts as a mismatch. A plain `start` still skips empty values.
+
+**Not covered:** your own services (`CS_N`) and the services that plugin compose fragments add. Their images are not in the lock and `--frozen` does not compare them; plugins are covered by their version and sha256. A CLI-owned image built from a variable is not pinned: `nself build` logs a warning that names it.
 
 The file `.nself/state/image-overrides.yml`, which `start` writes when a pull falls back to a registry mirror, is read too, but an entry from it counts only when its digest equals the digest of the image it replaces (same bytes, other registry). Any other override in that file is an `image` mismatch, and `nself build` never records it in the lock.
 

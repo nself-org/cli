@@ -326,3 +326,63 @@ func TestLockCompareStrict(t *testing.T) {
 		t.Errorf("both sides empty is equal: %v", d)
 	}
 }
+
+// TestLockParseSchemaVersionAndDocuments: a lock must state schema_version
+// (not defaulted) and hold exactly one YAML document (adversarial R6).
+func TestLockParseSchemaVersionAndDocuments(t *testing.T) {
+	l := New()
+	good, err := l.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(good); err != nil {
+		t.Fatalf("a valid lock must parse: %v", err)
+	}
+	noVersion := strings.Replace(string(good), "schema_version: 1\n", "", 1)
+	if noVersion == string(good) {
+		t.Fatal("fixture has no schema_version line")
+	}
+	if _, err := Parse([]byte(noVersion)); err == nil || !strings.Contains(err.Error(), "schema_version") {
+		t.Fatalf("a missing schema_version must be rejected, got %v", err)
+	}
+	zero := strings.Replace(string(good), "schema_version: 1\n", "schema_version: 0\n", 1)
+	if _, err := Parse([]byte(zero)); err == nil {
+		t.Fatal("schema_version 0 must be rejected")
+	}
+	withVar := strings.Replace(string(good), "unpinned: {}", "unpinned:\n  postgres: $PGIMG", 1)
+	if withVar == string(good) {
+		t.Fatal("fixture has no empty unpinned map")
+	}
+	if _, err := Parse([]byte(withVar)); err == nil {
+		t.Fatal("an image containing a variable must not parse as a lock entry")
+	}
+	body := strings.TrimSuffix(string(good), Trailer+"\n")
+	two := body + "---\nimages:\n  hasura: evil/hasura:1@sha256:" + strings.Repeat("a", 64) + "\n" + Trailer + "\n"
+	if _, err := Parse([]byte(two)); err == nil || !strings.Contains(err.Error(), "more than one") {
+		t.Fatalf("a second YAML document must be rejected, got %v", err)
+	}
+}
+
+// TestMergeImagesUnverifiable: variables, extends, build and include on a
+// CLI-owned service cannot be read as an image, so they are reported (R1, R2).
+func TestMergeImagesUnverifiable(t *testing.T) {
+	owned := func(s string) bool { return s == "hasura" || s == "postgres" }
+	cases := []struct{ name, yaml, want string }{
+		{"variable", "services:\n  postgres:\n    image: ${PGIMG:-postgres:16}\n", "contains a variable"},
+		{"bare variable", "services:\n  postgres:\n    image: $PGIMG\n", "contains a variable"},
+		{"extends", "services:\n  hasura:\n    extends:\n      file: x.yml\n      service: y\n", "extends"},
+		{"build", "services:\n  hasura:\n    build: ./evil\n", "build"},
+		{"include", "include:\n  - other.yml\nservices:\n  custom:\n    image: mine/app:1\n", "include"},
+	}
+	for _, c := range cases {
+		_, bad, err := MergeImages([]SourceFile{{Name: "o.yml", Data: []byte(c.yaml)}}, owned, true)
+		if err != nil || len(bad) != 1 || !strings.Contains(bad[0], c.want) || !strings.Contains(bad[0], "cannot be verified") {
+			t.Errorf("%s: bad=%v err=%v, want one entry naming %q", c.name, bad, err, c.want)
+		}
+	}
+	// A service the CLI does not own may use all of them; plain images are fine.
+	_, bad, err := MergeImages([]SourceFile{{Name: "o.yml", Data: []byte("services:\n  custom:\n    build: .\n    image: $X\n  hasura:\n    image: a/b:1\n")}}, owned, true)
+	if err != nil || len(bad) != 0 {
+		t.Errorf("user services and literal images must pass: %v %v", bad, err)
+	}
+}

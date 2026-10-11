@@ -292,3 +292,42 @@ func TestStartFrozenMirrorOverride(t *testing.T) {
 		t.Fatalf("an override with another digest must fail with E455 naming hasura, got %v", err)
 	}
 }
+
+// TestStartFrozenUnverifiableImages: under --frozen an extends, build, include
+// or variable image on a CLI-owned service cannot be read as an image, so it is
+// an E455 ("image source cannot be verified"); a plain start only carries on.
+// A user-owned service may use all of them (adversarial R1, R2).
+func TestStartFrozenUnverifiableImages(t *testing.T) {
+	cases := []struct{ name, override string }{
+		{"extends", "services:\n  hasura:\n    extends:\n      file: evil.yml\n      service: evilbase\n"},
+		{"build", "services:\n  hasura:\n    build: ./evil\n    pull_policy: build\n"},
+		{"include", "include:\n  - evil.yml\n"},
+		{"variable", "services:\n  hasura:\n    image: ${HX:-hasura/graphql-engine:v2.44.0}\n"},
+		{"bare variable", "services:\n  hasura:\n    image: $HX\n"},
+	}
+	for _, c := range cases {
+		dir, _ := frozenProject(t)
+		over := filepath.Join(dir, "docker-compose.override.yml")
+		if err := os.WriteFile(over, []byte(c.override), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		err := checkStartLock(dir, true, &out)
+		var ce *errs.CLIError
+		if err == nil || !errors.As(err, &ce) || ce.Code != "E455" || !strings.Contains(err.Error(), "cannot be verified") {
+			t.Errorf("%s: --frozen must fail with E455 'cannot be verified', got %v", c.name, err)
+		}
+		out.Reset()
+		if err := checkStartLock(dir, false, &out); err != nil {
+			t.Errorf("%s: a plain start must not fail: %v", c.name, err)
+		}
+	}
+	dir, _ := frozenProject(t)
+	if err := os.WriteFile(filepath.Join(dir, "docker-compose.override.yml"), []byte("services:\n  custom:\n    build: .\n    image: $X\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := checkStartLock(dir, true, &out); err != nil {
+		t.Errorf("a user-owned service may use build and variables: %v", err)
+	}
+}
