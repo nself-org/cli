@@ -230,8 +230,9 @@ func applySecretValues(lines, vals []string) []string {
 	}
 	seen := map[string]bool{}
 	var all []string
+	jsonEsc := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
 	for _, v := range vals {
-		for _, s := range []string{v, strings.ReplaceAll(v, "'", "''"), strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(v)} {
+		for _, s := range []string{v, strings.ReplaceAll(v, "'", "''"), jsonEsc.Replace(v)} {
 			if !seen[s] {
 				seen[s] = true
 				all = append(all, s)
@@ -239,14 +240,18 @@ func applySecretValues(lines, vals []string) []string {
 		}
 	}
 	sort.Slice(all, func(i, j int) bool { return len(all[i]) > len(all[j]) })
+	// One replacer, longest spellings first (NewReplacer tries pairs in
+	// argument order), so the cost is linear in the text, not lines x values.
+	pairs := make([]string, 0, 2*len(all))
+	for _, v := range all {
+		pairs = append(pairs, v, redactedValue)
+	}
+	rep := strings.NewReplacer(pairs...)
 	out := make([]string, len(lines))
 	for i, line := range lines {
 		parts := strings.Split(line, redactedValue)
 		for j, p := range parts {
-			for _, v := range all {
-				p = strings.ReplaceAll(p, v, redactedValue)
-			}
-			parts[j] = p
+			parts[j] = rep.Replace(p)
 		}
 		out[i] = strings.Join(parts, redactedValue)
 	}
