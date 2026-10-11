@@ -10,7 +10,8 @@
 #          `go run` at the release pinned below, fetched from the module proxy.
 # Output:  gremlins' report on stdout; the gremlins output is also kept in
 #          $MUTATION_OUT (default: a temp file) and its path is printed.
-# Exit:    0 no mutant lived; 1 at least one lived (or gremlins failed to run).
+# Exit:    0 no mutant lived; 1 at least one lived, zero were judged, or
+#          gremlins failed to run.
 #          --only f.go,g.go  judge only those files (see below); --allow FILE.
 #          An --only file that does not exist, or a run that judges zero mutants
 #          in the listed files, exits 1 (a skipped check must never read as green).
@@ -85,11 +86,6 @@ fi
 # source; a moved line needs its entry moved. Keep this list short and honest.
 MUTATION_EQUIVALENT='
 ARITHMETIC_BASE at validate.go:23:32 | unmeasurable, not equivalent: const initialiser: Go emits no coverage block for a const, so gremlins can only report NOT COVERED; TestDefaultCheckIntervalIsSixHours pins the value
-CONDITIONALS_BOUNDARY at checker.go:256:15 | `remaining < 0` vs `<= 0` in emitGraceWarning: at remaining == 0 both branches leave 0, so the output is identical
-CONDITIONALS_BOUNDARY at cache_entry.go:257:16 | `IssuedAt <= 0` vs `< 0` in bundleReplyBound: with issued_at 0 any window of at most 24 h ends in 1970, so the expiry check rejects it either way (equivalent for any real clock)
-CONDITIONALS_BOUNDARY at cache.go:287:62 | `CacheAge >= GraceHardThreshold` vs `>` in graceStateFor: DetermineGraceState reads the wall clock, so the age equals the ceiling to the nanosecond only by chance; unmeasurable, not equivalent (the strict side is pinned by the 6 d and 8 d cases)
-CONDITIONALS_BOUNDARY at cache_entry.go:287:52 | `signed > age` vs `>=` in AgeAt: when the two ages are equal both branches yield the same age
-CONDITIONALS_NEGATION at cache_entry.go:143:37 | key-id filter in verifyLegacy is only a fast path: the rotation-window loop after it retries every key, so skipping the matching key changes no verdict
 '
 
 # --only mode. Passes: a file whose first line is `//go:build nself_devkeys` only
@@ -227,6 +223,13 @@ if [ "$status" -ne 0 ] && ! grep -q "Mutation testing completed" "$out"; then
   exit 1
 fi
 
+# Zero judged mutants means nothing was tested (wrong path, build failure the
+# report hides): a failure, never a pass. Same rule as --only.
+judged="$(grep -cE '^[[:space:]]*(KILLED|LIVED|NOT COVERED|TIMED OUT|NOT VIABLE)[[:space:]]' "$out" || true)"
+if [ "${judged:-0}" -eq 0 ]; then
+  echo "mutation: zero mutants were judged in $pkg (nothing was tested; see $out)" >&2
+  exit 1
+fi
 lived="$(grep -cE '^[[:space:]]*LIVED' "$out" || true)"
 if [ "${lived:-0}" -gt 0 ]; then
   echo "mutation: $lived mutant(s) survived in $pkg" >&2
