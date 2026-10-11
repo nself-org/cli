@@ -24,9 +24,20 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/nginx"
 	"github.com/nself-org/cli/internal/nginx/routemodel"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
+
+// preflightProxy refuses swaps before secrets persistence or env chmod.
+// An incomplete route model is left for the existing Step 2/2.5 diagnostics.
+func (st *buildState) preflightProxy() error {
+	m, err := routemodel.Build(st.cfg, st.workdir, nginx.NewGenerator(st.cfg, st.workdir).HasSSL())
+	if err != nil {
+		return nil
+	}
+	return st.checkProxyProvider(m)
+}
 
 // modelRoutes is the build preflight and renderer's single route snapshot.
 func (st *buildState) modelRoutes(hasSSL bool) (*routemodel.Model, error) {
@@ -48,9 +59,51 @@ func (st *buildState) checkProxyProvider(m *routemodel.Model) error {
 		return err
 	}
 	if provider == ProviderNginx {
-		return nil
+		if err := proxyComposeDiscoverable(st.workdir, pluginDir, provider); err != nil {
+			return err
+		}
+		if proxyDeclaredTraefik(st.cfg, st.workdir, pluginDir) {
+			project, err := proxyRealPath(st.workdir, st.workdir)
+			if err != nil {
+				return err
+			}
+			dir, err := filepath.Abs(pluginDir)
+			if err != nil {
+				return err
+			}
+			dir, err = proxyRealPath(dir, project)
+			if err != nil {
+				return err
+			}
+			if err := proxyLocalDir(project, dir); err != nil {
+				return err
+			}
+			// Step 7.05 will install this fragment; it cannot be discovered yet.
+			provider = ProviderTraefik
+		}
 	}
 	return checkProviderRoutes(st.withSnippetRoutes(m), provider, st.cfg, st.workdir)
+}
+
+// proxyDeclaredTraefik mirrors Step 7.05's install decision without installing.
+func proxyDeclaredTraefik(cfg *config.Config, workdir, pluginDir string) bool {
+	if !autoInstallEnabled() || pluginInstalled(pluginDir, "traefik") {
+		return false
+	}
+	manifest, err := LoadProjectManifest(workdir)
+	if err != nil {
+		return false
+	}
+	services := map[string]bool{}
+	for _, service := range expectedCoreServices(cfg) {
+		services[service] = true
+	}
+	for _, name := range manifest.DeclaredPlugins() {
+		if name == "traefik" && !satisfiedByCoreService(name, services) {
+			return true
+		}
+	}
+	return false
 }
 
 // withSnippetRoutes returns a copy of m extended with the plugin and

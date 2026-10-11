@@ -2,6 +2,7 @@ package build
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"log/slog"
 	"os"
@@ -34,9 +35,14 @@ func installProxy(t *testing.T, dir string) {
 	writeFixtureFile(t, filepath.Join(dir, "traefik", "docker-compose.plugin.yml"), "services:\n  traefik:\n    image: traefik:v3.3\n", 0644)
 }
 
-func proxyHashes(t *testing.T, dir string) map[string][32]byte {
+type proxyFileSnapshot struct {
+	Hash [32]byte
+	Mode os.FileMode
+}
+
+func proxyHashes(t *testing.T, dir string) map[string]proxyFileSnapshot {
 	t.Helper()
-	out := map[string][32]byte{}
+	out := map[string]proxyFileSnapshot{}
 	err := filepath.Walk(dir, func(p string, i os.FileInfo, e error) error {
 		if e != nil {
 			return e
@@ -55,13 +61,41 @@ func proxyHashes(t *testing.T, dir string) map[string][32]byte {
 		if e != nil {
 			return e
 		}
-		out[p] = sha256.Sum256(b)
+		out[p] = proxyFileSnapshot{Hash: sha256.Sum256(b), Mode: i.Mode()}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return out
+}
+
+func freshProxyFixture(t *testing.T) *planFixture {
+	t.Helper()
+	f := proxyFixture(t)
+	writeFixtureFile(t, filepath.Join(f.workdir, ".env"), "PROJECT_NAME=golden\nENV=dev\nBASE_DOMAIN=example.test\nSSL_MODE=none\n", 0644)
+	if err := os.Chmod(filepath.Join(f.workdir, ".env"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func declareProxy(t *testing.T, f *planFixture) *int {
+	t.Helper()
+	writeFixtureFile(t, filepath.Join(f.workdir, "nself.yaml"), "app: golden\nplugins:\n  free:\n    - traefik\n", 0644)
+	t.Setenv("NSELF_AUTO_INSTALL_PLUGINS", "true")
+	calls := new(int)
+	previous := PluginInstall
+	PluginInstall = func(_ context.Context, _ *config.Config, name, dir string) error {
+		*calls++
+		if name != "traefik" || dir != f.plugins {
+			t.Fatalf("unexpected install: %s in %s", name, dir)
+		}
+		installProxy(t, dir)
+		return nil
+	}
+	t.Cleanup(func() { PluginInstall = previous })
+	return calls
 }
 
 func proxyRefusedBuild(t *testing.T, f *planFixture, names ...string) {
@@ -84,6 +118,23 @@ func proxyRefusedBuild(t *testing.T, f *planFixture, names ...string) {
 }
 
 func TestProxyProviderInstalled(t *testing.T) {
+	t.Run("dry discovery records normalization without disk writes", func(t *testing.T) {
+		f := freshProxyFixture(t)
+		installProxy(t, f.plugins)
+		writeFixtureFile(t, filepath.Join(f.plugins, "traefik", pluginComposeFilename), "version: '3.8'\nservices:\n  traefik:\n    image: traefik:v3.3\n", 0644)
+		before := proxyHashes(t, f.workdir)
+		fx := &planEffects{}
+		files, err := discoverPluginComposeFilesFx(fx, newMemSink(f.workdir, ""), f.workdir, f.plugins)
+		if err != nil || !reflect.DeepEqual(files, []string{filepath.Join(f.plugins, "traefik", pluginComposeFilename)}) {
+			t.Fatalf("dry discovery: files=%v error=%v", files, err)
+		}
+		if len(fx.Recorded()) == 0 {
+			t.Fatal("fixture must exercise planned normalization")
+		}
+		if !reflect.DeepEqual(before, proxyHashes(t, f.workdir)) {
+			t.Fatal("dry discovery changed project files")
+		}
+	})
 	t.Run("non-directory plugin paths mean nginx", func(t *testing.T) {
 		f := proxyFixture(t)
 		file := filepath.Join(f.workdir, "file")
@@ -181,6 +232,29 @@ func TestProxyProviderInstalled(t *testing.T) {
 }
 
 func TestProxyProviderSharedDirRefused(t *testing.T) {
+	t.Run("installed compose manifest missing fragment refuses E480", func(t *testing.T) {
+		f := freshProxyFixture(t)
+		writeFixtureFile(t, filepath.Join(f.plugins, "traefik", "plugin.json"), `{"manifest_version":2,"name":"traefik","service":{"kind":"compose"}}`, 0644)
+		proxyRefusedBuild(t, f, "E480", filepath.Join(f.plugins, "traefik", pluginComposeFilename))
+	})
+	t.Run("declared shared traefik refuses before install", func(t *testing.T) {
+		f := freshProxyFixture(t)
+		calls := declareProxy(t, f)
+		shared := filepath.Join(f.home, ".nself", "plugins")
+		t.Setenv("NSELF_PLUGIN_DIR", shared)
+		proxyRefusedBuild(t, f, "E480", shared, "NSELF_PLUGIN_DIR")
+		if *calls != 0 {
+			t.Fatalf("refusal attempted %d installs", *calls)
+		}
+	})
+	for _, name := range []string{"traefik", "traefik.prev"} {
+		t.Run("compose-only "+name+" refuses without writes", func(t *testing.T) {
+			f := freshProxyFixture(t)
+			fragment := filepath.Join(f.plugins, name, pluginComposeFilename)
+			writeFixtureFile(t, fragment, "version: '3.8'\nservices:\n  traefik:\n    image: traefik:v3.3\n", 0644)
+			proxyRefusedBuild(t, f, "E480", "a traefik fragment would load while nginx serves 80/443", fragment)
+		})
+	}
 	t.Run("relative directory uses cwd instead of workdir", func(t *testing.T) {
 		f := proxyFixture(t)
 		installProxy(t, f.plugins)
@@ -259,6 +333,46 @@ func TestProxyProviderSharedDirRefused(t *testing.T) {
 }
 
 func TestProxyRefusalFronted(t *testing.T) {
+	t.Run("declared traefik refuses before install or writes", func(t *testing.T) {
+		f := freshProxyFixture(t)
+		calls := declareProxy(t, f)
+		t.Setenv("NGINX_FRONTED_BY", "fronting")
+		proxyRefusedBuild(t, f, "E482")
+		if *calls != 0 {
+			t.Fatalf("refusal attempted %d installs", *calls)
+		}
+	})
+	for _, tc := range []struct{ name, compose, manifest string }{
+		{"fronting compose lacks nginx", "services:\n  traefik:\n    image: traefik:v3.3\n", ""},
+		{"fronting manifest loads traefik", "services:\n  nginx:\n    image: nginx:alpine\n", "traefik"},
+		{"fronting manifest loads traefik.prev", "services:\n  nginx:\n    image: nginx:alpine\n", "traefik.prev"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := freshProxyFixture(t)
+			front := filepath.Join(f.root, "fronting")
+			backend := filepath.Join(front, "backend")
+			if err := os.MkdirAll(front, 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(f.workdir, backend); err != nil {
+				t.Fatal(err)
+			}
+			f.workdir = backend
+			f.plugins = filepath.Join(backend, ".nself", "plugins")
+			t.Setenv("NSELF_PLUGIN_DIR", f.plugins)
+			t.Setenv("NGINX_FRONTED_BY", "fronting")
+			writeFixtureFile(t, filepath.Join(front, "nginx", "sites", "front.conf"), "server {}\n", 0644)
+			writeFixtureFile(t, filepath.Join(front, "docker-compose.yml"), ComposeGeneratedHeader+tc.compose, 0644)
+			if tc.manifest != "" {
+				writeFixtureFile(t, filepath.Join(front, ".nself", "compose-files.txt"), "docker-compose.yml\n"+filepath.Join(front, ".nself", "plugins", tc.manifest, pluginComposeFilename)+"\n", 0644)
+			}
+			before := proxyHashes(t, front)
+			proxyRefusedBuild(t, f, "E482", front)
+			if !reflect.DeepEqual(before, proxyHashes(t, front)) {
+				t.Fatal("refused backend build changed fronting project")
+			}
+		})
+	}
 	f := proxyFixture(t)
 	if _, e := Build(f.workdir, BuildOptions{Force: true}); e != nil {
 		t.Fatal(e)
@@ -269,6 +383,58 @@ func TestProxyRefusalFronted(t *testing.T) {
 }
 
 func TestProxyRefusalUnmodelled(t *testing.T) {
+	t.Run("fresh project refuses before secret persistence or chmod", func(t *testing.T) {
+		f := freshProxyFixture(t)
+		installProxy(t, f.plugins)
+		writeFixtureFile(t, filepath.Join(f.plugins, "idme", "nginx", "idme.conf"), idmeSnippet, 0644)
+		if _, err := os.Stat(filepath.Join(f.workdir, ".env.secrets")); !os.IsNotExist(err) {
+			t.Fatalf("fresh project already has secrets file: %v", err)
+		}
+		proxyRefusedBuild(t, f, "E481", "weird_thing")
+	})
+	t.Run("declared traefik refuses unmodelled conf before install", func(t *testing.T) {
+		f := freshProxyFixture(t)
+		calls := declareProxy(t, f)
+		writeFixtureFile(t, filepath.Join(f.workdir, "nginx", "conf.d", "unsupported.conf"), "server { listen 80; server_name other.example.test; weird_thing on; location / { proxy_pass http://hasura:8080; } }", 0644)
+		proxyRefusedBuild(t, f, "E481", "weird_thing")
+		if *calls != 0 {
+			t.Fatalf("refusal attempted %d installs", *calls)
+		}
+	})
+	t.Run("disabled auto-install leaves declared traefik on nginx", func(t *testing.T) {
+		f := proxyFixture(t)
+		calls := declareProxy(t, f)
+		t.Setenv("NSELF_AUTO_INSTALL_PLUGINS", "false")
+		writeFixtureFile(t, filepath.Join(f.workdir, "nginx", "conf.d", "unsupported.conf"), "server { listen 80; server_name other.example.test; weird_thing on; location / { proxy_pass http://hasura:8080; } }", 0644)
+		if _, err := Build(f.workdir, BuildOptions{Force: true}); err != nil {
+			t.Fatal(err)
+		}
+		b, err := os.ReadFile(filepath.Join(f.workdir, "docker-compose.yml"))
+		if err != nil || !bytes.Contains(b, []byte("  nginx:\n")) || *calls != 0 {
+			t.Fatalf("nginx disabled-install build: calls=%d error=%v compose=%s", *calls, err, b)
+		}
+	})
+	t.Run("step eight rechecks newly installed provider routes", func(t *testing.T) {
+		f := proxyFixture(t)
+		cfg, err := config.Load(f.workdir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		model, err := routemodel.Build(cfg, f.workdir, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := &buildState{cfg: cfg, workdir: f.workdir, pluginDir: f.plugins, routes: model}
+		installProxy(t, f.plugins)
+		writeFixtureFile(t, filepath.Join(f.workdir, "nginx", "conf.d", "late.conf"), "server { listen 80; server_name late.example.test; weird_thing on; location / { proxy_pass http://hasura:8080; } }", 0644)
+		before := proxyHashes(t, f.workdir)
+		if err := st.applyProxyProvider(compose.NewGenerator(cfg)); err == nil || !strings.Contains(err.Error(), "E481") || !strings.Contains(err.Error(), "weird_thing") {
+			t.Fatalf("Step 8 failed to recheck routes: %v", err)
+		}
+		if !reflect.DeepEqual(before, proxyHashes(t, f.workdir)) {
+			t.Fatal("Step 8 dry discovery changed project files")
+		}
+	})
 	f := proxyFixture(t)
 	if _, e := Build(f.workdir, BuildOptions{Force: true}); e != nil {
 		t.Fatal(e)

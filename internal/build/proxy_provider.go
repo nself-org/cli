@@ -54,50 +54,75 @@ func ProxyProvider(cfg *config.Config, workdir, pluginDir string) (string, error
 	if plugin.IsDisabled("traefik", dir) {
 		return ProviderNginx, nil
 	}
-	rel, err := filepath.Rel(project, dir)
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", errs.New("E480", "traefik installed in shared plugin directory "+dir).
-			WithWhy("One install there would flip every project using that directory at its next build (EPIC D3).").
-			WithFix("Set NSELF_PLUGIN_DIR (PLUGIN_DIR) in this project's .env to " + filepath.Join(project, ".nself", "plugins") + " and reinstall, or run nself remove traefik from the shared directory.")
+	if err := proxyLocalDir(project, dir); err != nil {
+		return "", err
 	}
-	if err := proxyComposeDiscoverable(pluginDir); err != nil {
+	if err := proxyComposeDiscoverable(workdir, pluginDir, ProviderTraefik); err != nil {
 		return "", err
 	}
 	return ProviderTraefik, nil
 }
 
-// proxyComposeDiscoverable mirrors discoverPluginComposeFilesFx in plugins.go:
-// ReadDir entry.IsDir (false for symlinks), disabled marker, then compose stat.
-// Run this during provider preflight, before any generated project file writes.
-func proxyComposeDiscoverable(pluginDir string) error {
-	entries, err := os.ReadDir(pluginDir)
+// proxyLocalDir enforces the same isolation for installed and declared plugins.
+func proxyLocalDir(project, dir string) error {
+	rel, err := filepath.Rel(project, dir)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return errs.New("E480", "traefik installed in shared plugin directory "+dir).
+			WithWhy("One install there would flip every project using that directory at its next build (EPIC D3).").
+			WithFix("Export NSELF_PLUGIN_DIR=" + filepath.Join(project, ".nself", "plugins") + " in the shell for nself add, and set NSELF_PLUGIN_DIR in this project's .env for builds; reinstall there, or run nself remove traefik from the shared directory.")
+	}
+	return nil
+}
+
+// proxyComposeDiscoverable uses actual discovery with an isolated memory sink.
+// Normalisation records plan effects and writes only memory, never plugin files.
+func proxyComposeDiscoverable(workdir, pluginDir, provider string) error {
+	files, err := discoverPluginComposeFilesFx(&planEffects{}, newMemSink(workdir, ""), workdir, pluginDir)
+	expected, pathErr := filepath.Abs(filepath.Join(pluginDir, "traefik", pluginComposeFilename))
+	if pathErr != nil {
+		return pathErr
+	}
+	// Missing traefik must remain E480 even if v1.5 discovery reports E128.
+	if provider == ProviderTraefik {
+		if _, statErr := os.Stat(expected); os.IsNotExist(statErr) || errors.Is(statErr, syscall.ENOTDIR) {
+			return proxyMissingFragment(expected)
+		}
+	}
+	if errors.Is(err, syscall.ENOTDIR) && provider == ProviderNginx {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	for _, entry := range entries {
-		if entry.Name() != "traefik" {
-			continue
+	for _, file := range files {
+		if provider == ProviderTraefik && file == expected {
+			return nil
 		}
-		path := filepath.Join(pluginDir, entry.Name())
-		if !entry.IsDir() {
-			return errs.New("E480", "traefik entry "+path+" is not loaded by compose discovery").
-				WithWhy("Symlinked plugin entries are not loaded.").
-				WithFix("Install the plugin as a real directory inside this project.")
+		if provider == ProviderNginx && proxyTraefikFragment(file) {
+			return errs.New("E480", "a traefik fragment would load while nginx serves 80/443: "+file+"; remove it or reinstall traefik").
+				WithFix("Export NSELF_PLUGIN_DIR in the shell for nself add and set it in .env for builds, using this project's plugin directory.")
 		}
-		if _, err := os.Stat(filepath.Join(path, ".disabled")); err == nil {
-			break
-		}
-		composePath, err := filepath.Abs(filepath.Join(path, pluginComposeFilename))
-		if err == nil {
-			if _, err = os.Stat(composePath); err == nil {
-				return nil
-			}
-		}
-		break
 	}
-	return errs.New("E480", "traefik compose fragment is not loaded at "+filepath.Join(pluginDir, "traefik", pluginComposeFilename)).
+	if provider == ProviderNginx {
+		return nil
+	}
+	if info, err := os.Lstat(filepath.Dir(expected)); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return errs.New("E480", "traefik entry "+filepath.Dir(expected)+" is not loaded by compose discovery").
+			WithWhy("Symlinked plugin entries are not loaded.").
+			WithFix("Install the plugin as a real directory inside this project; export NSELF_PLUGIN_DIR in the shell for nself add and set it in .env for builds.")
+	}
+	return proxyMissingFragment(expected)
+}
+
+func proxyMissingFragment(expected string) error {
+	return errs.New("E480", "traefik compose fragment is not loaded at "+expected).
 		WithWhy("Provider lookup and compose discovery must find the same project-local plugin.").
-		WithFix("Install traefik with its compose fragment in a real directory inside this project; use an absolute NSELF_PLUGIN_DIR for builds from another working directory.")
+		WithFix("Install traefik with its compose fragment in a real directory inside this project; export an absolute NSELF_PLUGIN_DIR in the shell for nself add and set it in .env for builds.")
+}
+
+func proxyTraefikFragment(file string) bool {
+	name := filepath.Base(filepath.Dir(file))
+	return name == "traefik" || strings.HasPrefix(name, "traefik.")
 }
 
 // proxyRealPath follows existing ancestors even when the final directory is absent.
@@ -128,6 +153,9 @@ func proxyAPIDocsEnabled(cfg *config.Config) bool {
 
 // checkProviderRoutes collects every incompatibility before refusing a swap.
 func checkProviderRoutes(m *routemodel.Model, provider string, cfg *config.Config, workdir string) error {
+	if err := proxyFrontingStack(cfg, workdir); err != nil {
+		return err
+	}
 	if provider == ProviderNginx {
 		return nil
 	}
