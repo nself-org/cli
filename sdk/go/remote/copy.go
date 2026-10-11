@@ -72,7 +72,7 @@ func scpOptions(opts []string) ([]string, error) {
 				a = "-P"
 			}
 			out = append(out, a, opts[i])
-		case strings.HasPrefix(a, "-o") && len(a) > 2:
+		case strings.HasPrefix(a, "-o"):
 			out = append(out, a)
 		default:
 			return nil, fmt.Errorf("option %q cannot be passed to scp", a)

@@ -80,7 +80,7 @@ func checkCallerOptions(opts []string) error {
 			if err := checkSSHOption(v); err != nil {
 				return err
 			}
-		case strings.HasPrefix(a, "-o") && len(a) > 2:
+		case strings.HasPrefix(a, "-o"):
 			if err := checkSSHOption(a[2:]); err != nil {
 				return err
 			}
