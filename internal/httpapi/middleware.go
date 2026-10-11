@@ -28,7 +28,7 @@ func (s *Server) authorized(next http.Handler) http.Handler {
 		}
 		origin := headerValue(r.Header, "Origin")
 		_, originPresent := r.Header["Origin"]
-		if originPresent && (!strings.HasPrefix(origin, "http://") || !s.hosts[strings.ToLower(strings.TrimPrefix(origin, "http://"))]) {
+		if len(r.Header.Values("Origin")) > 1 || originPresent && (!strings.HasPrefix(origin, "http://") || !s.hosts[strings.ToLower(strings.TrimPrefix(origin, "http://"))]) {
 			s.failure(w, r, "E429", 403)
 			return
 		}

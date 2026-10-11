@@ -47,12 +47,20 @@ func OpenAPI(reg *cmdregistry.Registry, dataSchema func(string) ([]byte, bool)) 
 				"default": jsonResponse("Error envelope", schemaRef("error_envelope"))},
 		}},
 	}
+	names := map[string]string{}
 	for i := range reg.Commands {
 		cmd := &reg.Commands[i]
 		if exposed, _ := invoke.Exposure(cmd, invoke.TransportHTTP, nil); !exposed {
 			continue
 		}
 		name := cmdregistry.ToolName(cmd.Path)
+		if len(name) > 64 {
+			return nil, fmt.Errorf("OpenAPI: tool name %q for %q exceeds 64 characters", name, cmd.Path)
+		}
+		if previous, exists := names[name]; exists && previous != cmd.Path {
+			return nil, fmt.Errorf("OpenAPI: tool name %q collides for %q and %q", name, previous, cmd.Path)
+		}
+		names[name] = cmd.Path
 		data := map[string]any{"type": "object", "additionalProperties": true}
 		if cmd.DataSchema != nil && dataSchema != nil {
 			path := strings.TrimPrefix(*cmd.DataSchema, "schemas/")

@@ -8,10 +8,40 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/cmdregistry"
 )
+
+func TestOpenAPIToolNames(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		paths      []string
+	}{
+		{"collision", "collides", []string{"nself a-b c", "nself a b-c"}},
+		{"too long", "exceeds 64 characters", []string{"nself " + strings.Repeat("a", 59)}},
+		{"maximum length", "", []string{"nself " + strings.Repeat("a", 58)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := &cmdregistry.Registry{}
+			for _, path := range tc.paths {
+				reg.Commands = append(reg.Commands, cmdregistry.Command{
+					Path: path, Runnable: true, Canon: "subcommand", SideEffect: "read",
+					Output: "document", JSON: "envelope",
+				})
+			}
+			got, err := OpenAPI(reg, nil)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tc.want) || got != nil {
+				t.Fatalf("OpenAPI = %q, %v; want no document and error containing %q", got, err, tc.want)
+			}
+		})
+	}
+}
 
 func TestOpenAPIBuilder(t *testing.T) {
 	schema := "schemas/commands/config-get.v1.schema.json"

@@ -174,10 +174,37 @@ func TestRouteNotExposedVsUnknown(t *testing.T) {
 }
 func TestHostAllowlist(t *testing.T) {
 	s := server(t)
-	for _, host := range []string{"localhost:3857", "LOCALHOST:3857", "127.0.0.1:3857", "[::1]:3857"} {
-		expect(t, call(t, s, "/v1/commands/config/get", "{}", func(r *http.Request) { r.Host = host }), 200, "")
+	opts := s.o
+	opts.AllowedHosts = []string{"fake.example"}
+	var err error
+	s, err = New(opts)
+	if err != nil {
+		t.Fatal(err)
 	}
-	expect(t, call(t, s, "/v1/commands/config/get", "{}", func(r *http.Request) { r.Host = "evil.example" }), 421, "E428")
+	for _, tc := range []struct {
+		name, host string
+		status     int
+	}{
+		{"localhost", "localhost:3857", 200},
+		{"uppercase", "LOCALHOST:3857", 200},
+		{"IPv4", "127.0.0.1:3857", 200},
+		{"IPv6", "[::1]:3857", 200},
+		{"unknown", "evil.example", 421},
+		{"wrong port", "localhost:1", 421},
+		{"missing port", "localhost", 421},
+		{"trailing dot", "localhost.:3857", 421},
+		{"empty", "", 421},
+		{"allowed name", "fake.example:3857", 200},
+		{"allowed name wrong port", "fake.example:1", 421},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			code := ""
+			if tc.status == 421 {
+				code = "E428"
+			}
+			expect(t, call(t, s, "/v1/commands/config/get", "{}", func(r *http.Request) { r.Host = tc.host }), tc.status, code)
+		})
+	}
 }
 func TestOriginCheck(t *testing.T) {
 	s := server(t)
@@ -185,6 +212,12 @@ func TestOriginCheck(t *testing.T) {
 		expect(t, call(t, s, "/v1/commands/config/get", "{}", func(r *http.Request) { r.Header.Set("Origin", origin) }), 403, "E429")
 	}
 	expect(t, call(t, s, "/v1/commands/config/get", "{}", func(r *http.Request) { r.Header.Set("Origin", "http://localhost:3857") }), 200, "")
+	t.Run("multiple origins", func(t *testing.T) {
+		expect(t, call(t, s, "/v1/commands/config/get", "{}", func(r *http.Request) {
+			r.Header.Add("Origin", "http://localhost:3857")
+			r.Header.Add("Origin", "http://localhost:3857")
+		}), 403, "E429")
+	})
 }
 
 type panicReader struct{}
