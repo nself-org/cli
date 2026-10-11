@@ -32,10 +32,11 @@ func foreignLines(raw string) []string {
 			continue
 		}
 		f := strings.Fields(t)[0]
-		switch {
-		case f[0] == '@':
+		// if / else-if, not switch: a case expression has no cover block, so
+		// the mutation tool could not measure a condition written there.
+		if f[0] == '@' {
 			out = append(out, fmt.Sprintf("line %d: %s marker is not supported in a pinned file; remove it by hand", i+1, f))
-		case strings.ContainsAny(f, foreignChars):
+		} else if strings.ContainsAny(f, foreignChars) {
 			out = append(out, fmt.Sprintf("line %d: host field uses wildcard, negation, list, [host]:port or hashed syntax, which a pinned file does not support; remove it by hand", i+1))
 		}
 	}

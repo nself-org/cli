@@ -43,12 +43,13 @@ var keyTypes = map[string]bool{
 // optional trailing comment) and returns the type and base64 blob.
 func parseKeyLine(line string) (typ, b64 string, err error) {
 	f := strings.Fields(line)
-	switch {
-	case len(f) >= 2 && keyTypes[f[0]]:
+	// if / else-if, not switch: Go's cover profile has no block for a case
+	// expression, so the mutation tool could not see conditions written there.
+	if len(f) >= 2 && keyTypes[f[0]] {
 		typ, b64 = f[0], f[1]
-	case len(f) >= 3 && keyTypes[f[1]]:
+	} else if len(f) >= 3 && keyTypes[f[1]] {
 		typ, b64 = f[1], f[2]
-	default:
+	} else {
 		return "", "", fmt.Errorf("not a host key line: %q", line)
 	}
 	if _, derr := base64.StdEncoding.DecodeString(b64); derr != nil {
