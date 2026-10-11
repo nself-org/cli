@@ -95,7 +95,7 @@ func saveStore(projectRoot, env string, store *SecretStore) error {
 	// the store: a failed or interrupted age run never truncates the live
 	// ciphertext, and the rename replaces the directory entry instead of writing
 	// through a hardlink or a swapped-in symlink (P7-TRUST-03 Codex pre-merge).
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp") // *.tmp: covered by the generated .secrets/.gitignore
 	if err != nil {
 		return fmt.Errorf("creating temporary secrets file: %w", err)
 	}
