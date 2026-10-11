@@ -16,6 +16,9 @@ import "os"
 // openNoFollow is 0: no O_NOFOLLOW here.
 const openNoFollow = 0
 
+// openNonBlock is 0: no O_NONBLOCK here.
+const openNonBlock = 0
+
 // ownerOK is always true: owners are not meaningful here.
 func ownerOK(_ os.FileInfo) bool { return true }
 

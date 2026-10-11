@@ -6,7 +6,8 @@
 //              the link). Mode and owner checks are skipped on windows.
 //              Nothing here chmods a user directory. Lock is the sidecar
 //              "<Path>.lock" (0600, never truncated, left in place, opened
-//              O_NOFOLLOW) because write() renames over the pin file and so
+//              O_NOFOLLOW|O_NONBLOCK, and must be a regular file
+//              we own and nobody else can write) because write() renames over the pin file and so
 //              changes its inode. Lines are split as ssh does: on ' ' and
 //              '\t' only, after one trailing '\r' is dropped.
 
@@ -61,7 +62,8 @@ func hasHighByte(s string) bool {
 
 // foreignLines returns one "line N: reason" per line ssh would honour but a
 // pinned file cannot represent: @markers, wildcards, negation, lists,
-// [host]:port, hashed hosts, a second field that is not a key type, and lines whose host field ssh would end at a
+// [host]:port, hashed hosts, a line with fewer than 3 fields or a second field that is not a
+// key type, and lines whose host field ssh would end at a
 // different byte than Go does (control characters, non-ASCII). Blank and
 // # comment lines are fine.
 func foreignLines(raw string) []string {
@@ -81,7 +83,11 @@ func foreignLines(raw string) []string {
 			out = append(out, fmt.Sprintf("line %d: %s marker is not supported in a pinned file; remove it by hand", i+1, f[0]))
 		} else if strings.ContainsAny(f[0], foreignChars) {
 			out = append(out, fmt.Sprintf("line %d: host field uses wildcard, negation, list, [host]:port or hashed syntax, which a pinned file does not support; remove it by hand", i+1))
-		} else if len(f) >= 2 && !keyTypes[f[1]] {
+		} else if len(f) < 3 {
+			// hostfile.c steps one byte past the host field's NUL, so a short
+			// final line can be parsed with stale bytes of the previous line.
+			out = append(out, fmt.Sprintf("line %d: fewer than 3 fields (host, key type, key); ssh may read a short line differently; remove it by hand", i+1))
+		} else if !keyTypes[f[1]] {
 			// ssh can read "junk ,n1 <key>" as a host list; do not guess.
 			out = append(out, fmt.Sprintf("line %d: second field is not a known host key type, so ssh may read the host field differently; remove it by hand", i+1))
 		}
@@ -120,14 +126,20 @@ func checkFile(path string) error {
 	if err != nil {
 		return err
 	}
+	return checkInfo(fi, path, "file")
+}
+
+// checkInfo is the shared file test: regular, owned by us or root, and not
+// group/world writable. kind names it in the error ("file", "lock file").
+func checkInfo(fi os.FileInfo, path, kind string) error {
 	if !fi.Mode().IsRegular() {
-		return fmt.Errorf("pinned host keys file %s is not a regular file (mode %v)", path, fi.Mode())
+		return fmt.Errorf("pinned host keys %s %s is not a regular file (mode %v)", kind, path, fi.Mode())
 	}
 	if !ownerOK(fi) {
-		return fmt.Errorf("pinned host keys file %s is not owned by you or root", path)
+		return fmt.Errorf("pinned host keys %s %s is not owned by you or root", kind, path)
 	}
 	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o022 != 0 {
-		return fmt.Errorf("pinned host keys file %s has mode %04o: group/world writable; chmod it 0600", path, fi.Mode().Perm())
+		return fmt.Errorf("pinned host keys %s %s has mode %04o: group/world writable; chmod it 0600", kind, path, fi.Mode().Perm())
 	}
 	return nil
 }
@@ -156,12 +168,20 @@ func (p PinnedHostKeys) acquire(write bool) (func(), error) {
 		}
 		return nil, err
 	}
-	f, err := os.OpenFile(p.Path+".lock", flags|openNoFollow, 0o600)
+	f, err := os.OpenFile(p.Path+".lock", flags|openNoFollow|openNonBlock, 0o600)
 	if err != nil {
 		if !write && os.IsNotExist(err) {
 			return noUnlock, nil
 		}
 		return nil, err
+	}
+	// O_NONBLOCK kept a FIFO from hanging the open; refuse it before flock.
+	if fi, serr := f.Stat(); serr != nil {
+		_ = f.Close()
+		return nil, serr
+	} else if cerr := checkInfo(fi, p.Path+".lock", "lock file"); cerr != nil {
+		_ = f.Close()
+		return nil, cerr
 	}
 	if err := lockFD(f, write); err != nil {
 		_ = f.Close()

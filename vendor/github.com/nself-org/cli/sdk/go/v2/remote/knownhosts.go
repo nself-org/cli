@@ -20,7 +20,10 @@
 //              Lines are tokenised as ssh does (' ' and '\t' only, one
 //              trailing '\r' dropped); a control byte anywhere in a key line
 //              or a non-ASCII byte in its host field makes it foreign. The
-//              lock file is opened O_NOFOLLOW so a planted symlink is refused.
+//              lock file is opened O_NOFOLLOW|O_NONBLOCK and must be a
+//              regular file (a planted symlink or FIFO is refused). Any key
+//              line with fewer than 3 fields is foreign: hostfile.c reads
+//              past a short line's NUL into stale buffer bytes.
 
 package remote
 
@@ -180,8 +183,8 @@ func (p PinnedHostKeys) Add(alias, keyLine string) error {
 		return err
 	}
 	for _, l := range lines {
-		f := hostFields(l)
-		if len(f) < 3 || !strings.EqualFold(f[0], alias) || f[1] != typ {
+		f := hostFields(l) // read() guarantees 3+ fields on every key line
+		if f == nil || !strings.EqualFold(f[0], alias) || f[1] != typ {
 			continue
 		}
 		if f[2] == b64 {
@@ -211,7 +214,7 @@ func (p PinnedHostKeys) Lookup(alias string) ([]string, error) {
 	}
 	var keys []string
 	for _, l := range lines {
-		if f := hostFields(l); len(f) >= 3 && strings.EqualFold(f[0], alias) {
+		if f := hostFields(l); f != nil && strings.EqualFold(f[0], alias) {
 			keys = append(keys, f[1]+" "+f[2])
 		}
 	}
@@ -262,7 +265,7 @@ func (p PinnedHostKeys) replace(alias string, keyLines []string) error {
 	}
 	out := make([]string, 0, len(lines)+len(add))
 	for _, l := range lines {
-		if f := hostFields(l); len(f) >= 1 && strings.EqualFold(f[0], alias) {
+		if f := hostFields(l); f != nil && strings.EqualFold(f[0], alias) {
 			continue
 		}
 		out = append(out, l)

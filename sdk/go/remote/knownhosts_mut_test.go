@@ -61,8 +61,6 @@ func TestMut_ParseKeyLineFieldCounts(t *testing.T) {
 func TestMut_LookupReturnsTypeAndBlobOnly(t *testing.T) {
 	p, _ := pinFile(t)
 	writePin(t, p, "n1 ssh-ed25519 "+blobA+" trailing comment\n"+
-		"n1\n"+
-		"n1 ssh-rsa\n"+
 		"n2 ssh-ed25519 "+blobB+"\n")
 	got, err := p.Lookup("n1")
 	if err != nil || len(got) != 1 || got[0] != "ssh-ed25519 "+blobA {
@@ -77,23 +75,17 @@ func TestMut_LookupReturnsTypeAndBlobOnly(t *testing.T) {
 	}
 }
 
-func TestMut_AddSkipsShortLines(t *testing.T) {
+// Short lines (fewer than 3 fields) are foreign since D-0249 round 3: ssh can
+// parse them with stale bytes of the previous line, so nothing may touch them.
+func TestMut_AddRefusesShortLines(t *testing.T) {
 	p, _ := pinFile(t)
-	// Two-field and one-field lines for the same alias are not pins.
-	writePin(t, p, "n1 ssh-ed25519\nn1\n")
-	if err := p.Add("n1", "ssh-ed25519 "+blobA); err != nil {
-		t.Fatalf("Add beside short lines: %v", err)
+	want := "n1 ssh-ed25519\nn1\n"
+	writePin(t, p, want)
+	if err := p.Add("n1", "ssh-ed25519 "+blobA); err == nil {
+		t.Fatal("Add beside short lines succeeded")
 	}
-	want := "n1 ssh-ed25519\nn1\nn1 ssh-ed25519 " + blobA + "\n"
 	if got := readPin(t, p); got != want {
 		t.Fatalf("file = %q, want %q", got, want)
-	}
-	// The same key again is a no-op; a different key of that type is refused.
-	if err := p.Add("n1", "ssh-ed25519 "+blobA); err != nil || readPin(t, p) != want {
-		t.Fatalf("idempotent Add changed things: %v %q", err, readPin(t, p))
-	}
-	if err := p.Add("n1", "ssh-ed25519 "+blobB); err == nil {
-		t.Fatal("changed key accepted by Add")
 	}
 }
 
@@ -110,13 +102,14 @@ func TestMut_RemoveLastKeyLeavesEmptyFile(t *testing.T) {
 	}
 }
 
-func TestMut_RemoveDropsSingleFieldLine(t *testing.T) {
+func TestMut_RemoveRefusesSingleFieldLine(t *testing.T) {
 	p, _ := pinFile(t)
-	writePin(t, p, "n1\nn2 "+keyA+"\n")
-	if err := p.Remove("n1"); err != nil {
-		t.Fatal(err)
+	want := "n1\nn2 " + keyA + "\n"
+	writePin(t, p, want)
+	if err := p.Remove("n1"); err == nil {
+		t.Fatal("Remove rewrote a file with a short line")
 	}
-	if got, want := readPin(t, p), "n2 "+keyA+"\n"; got != want {
+	if got := readPin(t, p); got != want {
 		t.Fatalf("file = %q, want %q", got, want)
 	}
 }

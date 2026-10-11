@@ -17,6 +17,10 @@ import (
 // openNoFollow makes the lock open fail on a symlink planted at <Path>.lock.
 const openNoFollow = syscall.O_NOFOLLOW
 
+// openNonBlock keeps open(2) on a FIFO at <Path>.lock from blocking; acquire
+// then refuses it as not a regular file. flock itself still blocks.
+const openNonBlock = syscall.O_NONBLOCK
+
 // uidOK is the owner rule: the file belongs to the effective user or root.
 func uidOK(uid, euid int) bool { return uid == euid || uid == 0 }
 

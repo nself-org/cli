@@ -8,8 +8,10 @@ package remote
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 func TestOwner_UIDRule(t *testing.T) {
@@ -82,5 +84,50 @@ func TestLock_SymlinkedLockFileRefused(t *testing.T) {
 		if _, err := os.Stat(target); !dangling && err != nil || dangling && err == nil {
 			t.Errorf("dangling=%v: target touched (%v)", dangling, err)
 		}
+	}
+}
+
+func TestLock_FIFOLockFileRefusedPromptly(t *testing.T) {
+	p, _ := pinFile(t)
+	if err := p.Add("n1", keyA); err != nil {
+		t.Fatal(err)
+	}
+	lock := p.Path + ".lock"
+	if err := os.Remove(lock); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(lock, 0o600); err != nil {
+		t.Skipf("mkfifo: %v", err)
+	}
+	done := make(chan [3]error, 1)
+	go func() {
+		_, lerr := p.Lookup("n1")
+		done <- [3]error{lerr, p.Add("n2", keyB), p.Remove("n1")}
+	}()
+	select {
+	case errs := <-done:
+		for i, err := range errs {
+			if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+				t.Errorf("op %d on a FIFO lock: %v", i, err)
+			}
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("FIFO at the lock path hung the call")
+	}
+}
+
+func TestLock_GroupWritableLockFileRefused(t *testing.T) {
+	p, _ := pinFile(t)
+	if err := p.Add("n1", keyA); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p.Path+".lock", 0o660); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Add("n2", keyB); err == nil {
+		t.Error("Add accepted a group-writable lock file")
+	}
+	if _, err := p.Lookup("n1"); err == nil {
+		t.Error("Lookup accepted a group-writable lock file")
 	}
 }

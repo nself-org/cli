@@ -204,3 +204,38 @@ func TestWrite_RefusesForeignLinesAsLastGuard(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestShortLines_AreForeign(t *testing.T) {
+	cases := map[string]string{
+		"no-final-newline": "zz " + keyA + "\nn1",
+		"one-field":        "n1\n",
+		"two-fields":       "n1 ssh-ed25519\n",
+		"two-fields-crlf":  "n1 ssh-ed25519\r\n",
+	}
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			p, _ := pinFile(t)
+			writePin(t, p, want)
+			ops := map[string]func() error{
+				"Lookup":  func() error { _, err := p.Lookup("n1"); return err },
+				"Add":     func() error { return p.Add("n2", keyB) },
+				"Replace": func() error { return p.Replace("n1", keyB) },
+				"Remove":  func() error { return p.Remove("n1") },
+			}
+			for op, fn := range ops {
+				if err := fn(); err == nil || !strings.Contains(err.Error(), "fewer than 3 fields") || !strings.Contains(err.Error(), p.Path) {
+					t.Errorf("%s: %v", op, err)
+				}
+			}
+			if got := readPin(t, p); got != want {
+				t.Errorf("file changed: %q", got)
+			}
+		})
+	}
+	if bad := foreignLines("a b c\n"); len(bad) != 1 || !strings.Contains(bad[0], "key type") {
+		t.Errorf("three fields with a bad type = %q", bad)
+	}
+	if bad := foreignLines("a ssh-ed25519 K\n"); len(bad) != 0 {
+		t.Errorf("three valid fields flagged: %q", bad)
+	}
+}
