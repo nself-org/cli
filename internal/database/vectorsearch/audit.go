@@ -25,6 +25,10 @@ type Finding struct {
 }
 
 type auditMeta struct {
+	InheritedRoles []struct {
+		RoleName string   `json:"role_name"`
+		RoleSet  []string `json:"role_set"`
+	} `json:"inherited_roles"`
 	Sources []struct {
 		Name   string `json:"name"`
 		Tables []struct {
@@ -67,11 +71,16 @@ type auditMeta struct {
 // inferred is Hasura's HASURA_GRAPHQL_INFER_FUNCTION_PERMISSIONS (true by
 // default): every role with select on the table can call the function. When
 // it is false only the roles with an explicit function permission can, so
-// only their select permissions are checked.
+// only their select permissions are checked; an inherited role among them
+// stands for every role of its role set (its select comes from them).
 func AuditLive(live []byte, inferred bool) ([]Finding, int, error) {
 	var m auditMeta
 	if err := json.Unmarshal(live, &m); err != nil {
 		return nil, 0, fmt.Errorf("parse live metadata: %w", err)
+	}
+	roleSets := map[string][]string{}
+	for _, ir := range m.InheritedRoles {
+		roleSets[ir.RoleName] = ir.RoleSet
 	}
 	var out []Finding
 	seen := 0
@@ -89,7 +98,7 @@ func AuditLive(live []byte, inferred bool) ([]Finding, int, error) {
 				matched = true
 				callers := map[string]bool{}
 				for _, p := range f.Permissions {
-					callers[p.Role] = true
+					addCaller(callers, roleSets, p.Role)
 				}
 				var problems []string
 				for _, p := range t.SelectPermissions {
@@ -118,4 +127,16 @@ func AuditLive(live []byte, inferred bool) ([]Finding, int, error) {
 		return out[i].Table < out[j].Table
 	})
 	return out, seen, nil
+}
+
+// addCaller marks role and, for an inherited role, every role of its role set
+// (nested; the map doubles as the cycle guard).
+func addCaller(callers map[string]bool, roleSets map[string][]string, role string) {
+	if callers[role] {
+		return
+	}
+	callers[role] = true
+	for _, member := range roleSets[role] {
+		addCaller(callers, roleSets, member)
+	}
 }

@@ -106,8 +106,14 @@ func diskNamesSearchFunction(projectDir string) bool {
 	}
 	scan(filepath.Join(projectDir, "hasura", "metadata.json"))
 	_ = filepath.WalkDir(filepath.Join(projectDir, "hasura", "metadata"), func(path string, d fs.DirEntry, err error) error {
-		if err != nil || found {
+		if found {
 			return fs.SkipAll
+		}
+		if err != nil {
+			if path == filepath.Join(projectDir, "hasura", "metadata") {
+				return fs.SkipAll // no metadata directory
+			}
+			return nil // one unreadable entry must not hide the rest
 		}
 		if d.Type().IsRegular() {
 			scan(path)

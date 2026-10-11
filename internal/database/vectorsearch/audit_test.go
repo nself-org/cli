@@ -103,3 +103,16 @@ func TestAuditLiveExplicitPermissionsOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestAuditLiveInheritedCaller: with inference off, an inherited role holding
+// the function permission brings in the select permissions of its role set.
+func TestAuditLiveInheritedCaller(t *testing.T) {
+	live := []byte(`{"inherited_roles":[{"role_name":"team","role_set":["sub"]},{"role_name":"sub","role_set":["viewer","team"]}],` +
+		`"sources":[{"name":"default","tables":[{"table":{"schema":"public","name":"docs"},"select_permissions":[` +
+		`{"role":"viewer","permission":{"columns":["id"]}},{"role":"other","permission":{"columns":["id"]}}]}],` +
+		`"functions":[{"function":{"schema":"public","name":"docs_nearest_embedding"},"permissions":[{"role":"team"}]}]}]}`)
+	got, _, err := AuditLive(live, false)
+	if err != nil || len(got) != 1 || strings.Join(got[0].Problems, "|") != `viewer: hides column "embedding"` {
+		t.Fatalf("got %+v err %v", got, err)
+	}
+}
