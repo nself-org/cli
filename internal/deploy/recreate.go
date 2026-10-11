@@ -95,8 +95,12 @@ func parseComposeModel(raw []byte) (ComposeModel, error) {
 			ContainerName string `json:"container_name"`
 			Restart       string `json:"restart"`
 			Healthcheck   *struct {
-				Test    json.RawMessage `json:"test"`
-				Disable bool            `json:"disable"`
+				Test        json.RawMessage `json:"test"`
+				Disable     bool            `json:"disable"`
+				Interval    json.RawMessage `json:"interval"`
+				Timeout     json.RawMessage `json:"timeout"`
+				StartPeriod json.RawMessage `json:"start_period"`
+				Retries     json.RawMessage `json:"retries"`
 			} `json:"healthcheck"`
 			Volumes  []Mount                    `json:"volumes"`
 			Networks map[string]json.RawMessage `json:"networks"`
@@ -112,8 +116,16 @@ func parseComposeModel(raw []byte) (ComposeModel, error) {
 			var t []string
 			has = json.Unmarshal(hc.Test, &t) != nil || len(t) == 0 || t[0] != "NONE"
 		}
+		spec := docker.ServiceSpec{Name: name, HasHealthcheck: has, Restart: s.Restart}
+		if has {
+			hc := s.Healthcheck
+			var err error
+			if spec.HealthTimeout, err = docker.HealthTimeout(name, hc.Interval, hc.Timeout, hc.StartPeriod, hc.Retries); err != nil {
+				return ComposeModel{}, err
+			}
+		}
 		m.Services[name] = ModelService{
-			Spec:  docker.ServiceSpec{Name: name, HasHealthcheck: has, Restart: s.Restart},
+			Spec:  spec,
 			Image: s.Image, ContainerName: s.ContainerName, Mounts: s.Volumes, Aliases: networkAliases(s.Networks),
 		}
 	}

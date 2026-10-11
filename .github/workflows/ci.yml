@@ -96,6 +96,14 @@ jobs:
       # install during CI's unit-test run. Same guard already used by
       # e2e-golden-path.yml and rls-pentest-smoke.yml for the same reason.
       AI_AUTO_INSTALL: 'false'
+      # D-0413: the P7-SURF-12 config secrets leak gate
+      # (TestConfigSecretsStoreHoldsNoSecret) fails instead of skipping when
+      # age is missing. The step below installs it on the Linux and macOS legs.
+      # Windows is left out: the leak test skips there anyway (its pilot
+      # harness needs a POSIX docker stub), and age on PATH un-skips
+      # TestSecretsEdit_RoundTrip, whose fake editor is a .sh file Windows
+      # cannot exec.
+      NSELF_REQUIRE_AGE: ${{ startsWith(matrix.os, 'windows') && '0' || '1' }}
 
     steps:
       - name: Checkout
@@ -105,6 +113,22 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      # One pinned release on every non-Windows leg through the Go toolchain
+      # the job already has (apt and brew ship different age versions).
+      - name: Install age and age-keygen
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          go install filippo.io/age/cmd/age@v1.3.2 filippo.io/age/cmd/age-keygen@v1.3.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Check age is on PATH
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          age --version
+          age-keygen --version
 
       - name: Cache Go modules
         uses: actions/cache@v6
@@ -146,6 +170,19 @@ jobs:
         # instead of silently filling the 20-min job cap.
         run: go test -mod=vendor -short -timeout=240s ./...
         shell: cmd
+
+      # D-0482: go.mod replaces the sdk module with ./sdk/go and every build
+      # uses -mod=vendor, so an sdk/go change that is not re-vendored passes
+      # its own tests while the cli binary keeps the stale copy. Run in this
+      # required leg so drift blocks a merge. The _test.sh run is the positive
+      # control: it proves the check fails on planted drift.
+      - name: Vendor check controls
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/vendor-sync-check_test.sh
+
+      - name: Vendor sync check (vendor/ matches go mod vendor)
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/vendor-sync-check.sh
 
       # P7-REG-10: the machine-contract gate. Linux legs only (Windows has no
       # POSIX shell here and macOS legs add nothing the Linux proof lacks).

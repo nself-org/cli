@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -38,6 +39,10 @@ func init() {
 
 func runPluginDebug(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	// The name picks the plugin directory; a path-shaped name must never reach it (P7-PLUG-20).
+	if err := plugin.ValidateName(name); err != nil {
+		return err
+	}
 	manualPort, _ := cmd.Flags().GetInt("port")
 	portOnly, _ := cmd.Flags().GetBool("port-only")
 
@@ -63,7 +68,14 @@ func runPluginDebug(cmd *cobra.Command, args []string) error {
 	}
 
 	// Build the plugin binary first.
-	binaryPath := filepath.Join(os.TempDir(), "nself-debug-"+name)
+	// Into a private directory with a fixed file name, so the output path never depends
+	// on the plugin name or on a predictable shared temp path.
+	buildDir, err := os.MkdirTemp("", "nself-debug-")
+	if err != nil {
+		return fmt.Errorf("creating debug build directory: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(buildDir) }()
+	binaryPath := filepath.Join(buildDir, "plugin-debug")
 	uiInfof("Building %s for debug...", name)
 	buildCmd := exec.Command("go", "build", "-gcflags=all=-N -l", "-o", binaryPath, "./cmd")
 	buildCmd.Dir = pluginPath

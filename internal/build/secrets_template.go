@@ -138,11 +138,10 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 		out = strings.ReplaceAll(out, ":"+val+"@", ":${"+key+"}@")
 	}
 
-	// Phase C: any other literal occurrence — service generators sometimes
-	// embed a secret in a `command:` string or a healthcheck `test:` argument
-	// (e.g. Redis's `--requirepass <pw>`, Typesense's `--api-key=<key>` and
-	// its healthcheck header) rather than a plain "KEY: value" env line or a
-	// URL credential position, so Phases A/B never see them. Safe to replace
+	// Phase C: any other literal occurrence — a generator may embed a secret
+	// in a `command:` string or a healthcheck `test:` argument (Redis and
+	// Typesense did until D-0282) rather than a plain "KEY: value" env line
+	// or a URL credential position, so Phases A/B never see them. Safe to replace
 	// unconditionally for values that need no percent-encoding — those are
 	// exactly the values compose interpolation can substitute verbatim
 	// anywhere. Percent-encoding-sensitive values are left literal
@@ -181,7 +180,9 @@ func LiteralSecretLeaks(composeYAML []byte, secrets map[string]string) []string 
 // file that resolves every ${VAR} reference in the generated compose set:
 // secrets, Hasura console/dev-mode toggles, computed values (DATABASE_URL,
 // DOCKER_NETWORK), and plugin env vars. All CLI docker compose invocations
-// pass it via --env-file (see ComposeEnvFiles).
+// pass it via --env-file (see ComposeEnvFiles). Every value goes through
+// config.QuoteComposeEnvValue, so compose reads back the exact bytes even
+// for secrets holding whitespace, '#', '$', quotes or backslashes (D-0333).
 func WriteComposeEnv(workdir string, cfg *config.Config, secrets, pluginEnvVars map[string]string) error {
 	return writeComposeEnvVia(newDiskSink(workdir), workdir, cfg, secrets, pluginEnvVars)
 }
@@ -230,7 +231,7 @@ func writeComposeEnvVia(sink Sink, workdir string, cfg *config.Config, secrets, 
 	for _, k := range keys {
 		sb.WriteString(k)
 		sb.WriteString("=")
-		sb.WriteString(composeEnvValue(k, merged[k]))
+		sb.WriteString(config.QuoteComposeEnvValue(merged[k]))
 		sb.WriteString("\n")
 	}
 
@@ -246,18 +247,6 @@ func writeComposeEnvVia(sink Sink, workdir string, cfg *config.Config, secrets, 
 		return fmt.Errorf("chmod %s: %w", composeEnvFile, err)
 	}
 	return nil
-}
-
-// composeEnvValue renders one value for compose.env. An encoded password twin
-// keeps "$" literal in a URL, and docker compose expands "$name" in an unquoted
-// dotenv value, so a twin containing "$" is single-quoted (compose reads that
-// verbatim; the encoder never emits a single quote). Everything else follows
-// config.QuoteEnvValue.
-func composeEnvValue(key, val string) string {
-	if strings.HasSuffix(key, config.URLPasswordEnvSuffix) && strings.Contains(val, "$") {
-		return "'" + val + "'"
-	}
-	return config.QuoteEnvValue(val)
 }
 
 // ComposeEnvFiles returns the ordered --env-file list for docker compose

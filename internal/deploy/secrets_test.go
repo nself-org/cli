@@ -9,7 +9,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 )
 
 // baseSSHConfig returns a minimal SSHConfig with a placeholder host and a
@@ -137,5 +140,83 @@ func TestPushSecrets_EmptyHost(t *testing.T) {
 	err := PushSecrets(context.Background(), SSHConfig{KeyPath: "/tmp/key"}, opts)
 	if err == nil {
 		t.Error("expected error for empty host, got nil")
+	}
+}
+
+// TestPushSecretsRemotePathValidation checks the remote path before any
+// process runs; DryRun means no scp is needed.
+func TestPushSecretsRemotePathValidation(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("K=v\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for path, ok := range map[string]bool{
+		"/opt/app/.env": true, "~/app/.env": true,
+		"app/.env": false, "~": false, "~/": false, "~//etc/x": false, "/opt/../etc/x": false,
+		"/opt/x;id": false, "/opt/x$(id)": false, "-x": false, "/opt/x y": false, "/": false,
+	} {
+		err := PushSecrets(context.Background(), baseSSHConfig(), PushSecretsOptions{
+			Target: "staging", ProjectRoot: dir, DryRun: true, RemotePath: path,
+		})
+		if ok && err != nil {
+			t.Errorf("path %q refused: %v", path, err)
+		}
+		if !ok && err == nil {
+			t.Errorf("path %q accepted", path)
+		}
+	}
+}
+
+// TestPushSecretsLocalOperand proves a relative env file named like host:path
+// reaches scp as an absolute path.
+func TestPushSecretsLocalOperand(t *testing.T) {
+	requireKeygen(t)
+	t.Setenv("HOME", t.TempDir())
+	read := installFakeSSHTools(t)
+	installFakeKeyscan(t)
+	if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "host:x.env"), []byte("K=v\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	err := PushSecrets(context.Background(), SSHConfig{Host: "deploy@203.0.113.7", KeyPath: "/k/id"}, PushSecretsOptions{
+		Target: "prod", EnvFile: "host:x.env", ProjectRoot: dir, RemotePath: "/opt/app/.env",
+	})
+	if err != nil {
+		t.Fatalf("PushSecrets: %v", err)
+	}
+	calls := read()
+	if len(calls) != 1 || calls[0].tool != "scp" {
+		t.Fatalf("calls = %#v", calls)
+	}
+	a := calls[0].args
+	local := a[len(a)-2]
+	if !strings.HasPrefix(local, "/") || !strings.HasSuffix(local, "host:x.env") {
+		t.Errorf("local operand = %q", local)
+	}
+}
+
+// TestPushSecretsUnknownHostRefused: in v1.4 secret shipping still verifies
+// the host key; an unknown key is refused and scp never runs.
+func TestPushSecretsUnknownHostRefused(t *testing.T) {
+	t.Setenv("NSELF_V15", "")
+	t.Setenv("HOME", t.TempDir())
+	read := installFakeSSHTools(t)
+	installFakeKeyscan(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("K=v\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err := PushSecrets(context.Background(), SSHConfig{Host: "deploy@203.0.113.7", KeyPath: "/k/id"}, PushSecretsOptions{
+		Target: "prod", ProjectRoot: dir, RemotePath: "/opt/app/.env",
+	})
+	if err == nil || !strings.Contains(err.Error(), "E487") || !strings.Contains(err.Error(), "--trust-host-key SHA256:") {
+		t.Fatalf("unknown host: %v", err)
+	}
+	if n := len(read()); n != 0 {
+		t.Fatalf("scp recorded %d call(s) after the refusal", n)
 	}
 }
