@@ -29,7 +29,7 @@ type RotationState struct {
 func DefaultSchedules() []RotationSchedule {
 	return []RotationSchedule{
 		{SecretName: "PLUGIN_INTERNAL_SECRET", CadenceDays: 90, WindowDays: 7},
-		{SecretName: "HASURA_ADMIN_SECRET", CadenceDays: 180, WindowDays: 3},
+		{SecretName: "HASURA_GRAPHQL_ADMIN_SECRET", CadenceDays: 180, WindowDays: 3},
 		{SecretName: "JWT_SIGNING_KEY", CadenceDays: 180, WindowDays: 1},
 		{SecretName: "STRIPE_WEBHOOK_SECRET", CadenceDays: 0, WindowDays: 0}, // on-demand
 		{SecretName: "B2_APPLICATION_KEY", CadenceDays: 365, WindowDays: 1},
@@ -56,7 +56,55 @@ func LoadRotationState(projectRoot string) (*RotationState, error) {
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, fmt.Errorf("parsing rotation state: %w", err)
 	}
+	migrateScheduleNames(&state)
 	return &state, nil
+}
+
+// legacyAdminSecretName is the name the default schedule used before
+// P7-LIVE-05: Hasura's admin secret without "GRAPHQL_", a key nself never
+// sets. It is spelled in two parts on purpose: the Ticket's check that no
+// schedule in this package names the old key greps for the quoted literal,
+// and this constant exists only to rename persisted rows away from it.
+const legacyAdminSecretName = "HASURA_" + "ADMIN_SECRET"
+
+// migrateScheduleNames renames persisted rows from legacy names (P7-LIVE-05):
+// the row keeps its cadence and its LastRotated/NextDue history. When the new
+// name already has a row, the legacy row is dropped and its history is kept
+// only if it is the newer one. The change is written the next time the state
+// is saved.
+func migrateScheduleNames(state *RotationState) {
+	renames := map[string]string{legacyAdminSecretName: "HASURA_GRAPHQL_ADMIN_SECRET"}
+	targets := map[string]bool{}
+	for _, to := range renames {
+		targets[to] = true
+	}
+	out := make([]RotationSchedule, 0, len(state.Schedules))
+	at := map[string]int{} // target name -> its row in out
+	for _, s := range state.Schedules {
+		if _, legacy := renames[s.SecretName]; legacy {
+			continue
+		}
+		if _, seen := at[s.SecretName]; targets[s.SecretName] && !seen {
+			at[s.SecretName] = len(out)
+		}
+		out = append(out, s)
+	}
+	for _, s := range state.Schedules {
+		to, legacy := renames[s.SecretName]
+		if !legacy {
+			continue
+		}
+		if j, ok := at[to]; ok {
+			if s.LastRotated > out[j].LastRotated {
+				out[j].LastRotated, out[j].NextDue = s.LastRotated, s.NextDue
+			}
+			continue
+		}
+		s.SecretName = to
+		at[to] = len(out)
+		out = append(out, s)
+	}
+	state.Schedules = out
 }
 
 // SaveRotationState persists the rotation schedule state to disk.

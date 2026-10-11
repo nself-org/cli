@@ -44,7 +44,7 @@ var buildBuild = nbuild.Build
 // the write refuses (E450) a change made during the prompt before anything is
 // written. The compat switch is read once, first: a project file cannot toggle
 // it mid-command.
-func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbuild.BuildResult, error) {
+func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Plan, built *nbuild.BuildResult, err error) {
 	// compat.V15(P7-LIVE-03): a prod-class or hand-edited change proceeds with a notice -> refused with E403 without --yes or --force
 	v15 := compat.V15()
 	defer nbuild.SnapshotEnv()() // the write build exports the project's env; leave the process as found
@@ -60,6 +60,20 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 		return nil, nil, err
 	}
 	defer release()
+	// P7-LIVE-05: a failure once BeforeWrite ran is rolled back here, before
+	// the deferred release above, so the rollback is still under the lock.
+	defer rollbackOnFailure(&opt, &err)()
+	// The env a pending line changes is resolved once, before anything is
+	// written: every render of this apply judges confirmation against it.
+	if len(req.EnvOverlay) > 0 {
+		if req.EnvBefore == "" {
+			req.EnvBefore = diskEnv(req.ProjectDir)
+		}
+		if _, req.envChanged, err = pendingEnv(req.ProjectDir, req.EnvOverlay); err != nil {
+			return nil, nil, err
+		}
+		req.envChangedSet = true
+	}
 
 	// P7-LIVE-04 (EPIC D5): the generated-state record tells a generated change
 	// from a human one. A missing record is the first run on an existing
@@ -101,7 +115,7 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (*Plan, *nbu
 				WithFix("re-run nself build --plan and pass the new plan_id")
 		}
 	}
-	if req.Stderr != nil && !p.Empty && (p.RequiresConfirmation || len(HandEditedPaths(*p)) > 0) {
+	if req.Stderr != nil && (!p.Empty || p.RequiresConfirmation) && (p.RequiresConfirmation || len(HandEditedPaths(*p)) > 0) {
 		if err := RenderHuman(req.Stderr, *p); err != nil {
 			return nil, nil, err
 		}

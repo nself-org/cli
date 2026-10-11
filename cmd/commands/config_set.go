@@ -3,15 +3,17 @@ package commands
 // Purpose: RunE for "nself config set" plus its key/value validators and the
 // setEnvFileLine helper that rewrites the env file in place. Inputs are the
 // cobra command/args; outputs are an updated env file or an error.
-// Constraints: split out of config.go (CLI-R12) as a pure move, no behavior change.
+// Constraints: split out of config.go (CLI-R12). P7-LIVE-05 routes the write
+// through config_set_plan.go (plan, preview, v1.5 apply); validation, the
+// selectable files and the bytes written are unchanged.
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"regexp"
-	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/reconcile"
 	"github.com/nself-org/cli/internal/security"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -43,14 +45,17 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	}
 
 	envFile := envFileName(projectDir, envFlag)
+	jsonOut, _ := cmd.Flags().GetBool("json")
+	// compat.V15(P7-LIVE-05): --json accepted and ignored -> v1 envelope {key, file, applied, plan}
+	jsonOut = jsonOut && compat.V15()
+	// P7-LIVE-05: plan the regeneration the change causes, then write the
+	// line (and in v1.5 apply it). See config_set_plan.go.
+	return configSetRun{cmd: cmd, projectDir: projectDir, envFile: envFile, key: key, value: value,
+		monorepo: projectDir != cwd, jsonOut: jsonOut}.run()
+}
 
-	// Read the existing file line by line and update in-place.
-	// If the key doesn't exist, append it.
-	updated, err := setEnvFileLine(envFile, key, value)
-	if err != nil {
-		return err
-	}
-
+// reportWritten prints the result of the env write.
+func (r configSetRun) reportWritten(updated bool) {
 	// FindNSelfRoot's monorepo convenience silently resolves to a
 	// `.backend/` project root above cwd when one exists — fine for reads,
 	// but a write with no indication of where it actually landed is
@@ -58,16 +63,15 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	// .env" with no signal the file is two directories up. Surface the
 	// redirection explicitly whenever it happens; this does not change
 	// where the write lands, only what gets printed.
-	if projectDir != cwd {
-		ui.Info(fmt.Sprintf("Using monorepo backend at %s (found via .backend/ in a parent directory)", projectDir))
+	if r.monorepo {
+		ui.Info(fmt.Sprintf("Using monorepo backend at %s (found via .backend/ in a parent directory)", r.projectDir))
 	}
 
 	if updated {
-		ui.Success(fmt.Sprintf("Updated %s in %s", key, envFile))
+		ui.Success(fmt.Sprintf("Updated %s in %s", r.key, r.envFile))
 	} else {
-		ui.Success(fmt.Sprintf("Added %s to %s", key, envFile))
+		ui.Success(fmt.Sprintf("Added %s to %s", r.key, r.envFile))
 	}
-	return nil
 }
 
 // configKeyRe matches valid config keys: uppercase letters, digits, underscores only.
@@ -101,20 +105,13 @@ func validateConfigValue(value string) error {
 // setEnvFileLine updates KEY=VALUE in the named file in-place, preserving all
 // comments and blank lines. If the key is not found it is appended. Returns
 // true when an existing line was replaced, false when the key was appended.
+// The new content is reconcile.EnvFileWithLine, the same rewrite the
+// `config set` plan previews (P7-LIVE-05).
 func setEnvFileLine(envFile, key, value string) (updated bool, err error) {
-	// quoteIfNeeded wraps value in double-quotes when it contains spaces,
-	// special characters, or is empty.
-	quoteIfNeeded := func(v string) string {
-		if v == "" || strings.ContainsAny(v, " \t#\"'\\$`") {
-			return `"` + strings.ReplaceAll(v, `"`, `\"`) + `"`
-		}
-		return v
-	}
-	newLine := key + "=" + quoteIfNeeded(value)
-
 	// If the file does not exist, create it with just this key.
 	if _, statErr := os.Stat(envFile); os.IsNotExist(statErr) {
-		if writeErr := os.WriteFile(envFile, []byte(newLine+"\n"), 0600); writeErr != nil {
+		content, _, _ := reconcile.EnvFileWithLine(nil, false, key, value)
+		if writeErr := os.WriteFile(envFile, content, 0600); writeErr != nil {
 			return false, fmt.Errorf("creating %s: %w", envFile, writeErr)
 		}
 		if chmodErr := security.EnforceFilePermissions(envFile, 0600); chmodErr != nil {
@@ -123,47 +120,16 @@ func setEnvFileLine(envFile, key, value string) (updated bool, err error) {
 		return false, nil
 	}
 
-	// Read existing file.
-	f, openErr := os.Open(envFile)
+	// Read the existing file and rewrite it line by line.
+	old, openErr := os.ReadFile(envFile)
 	if openErr != nil {
 		return false, fmt.Errorf("opening %s: %w", envFile, openErr)
 	}
-	defer func() { _ = f.Close() }()
-
-	var lines []string
-	found := false
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
-		// Skip comment and blank lines.
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			lines = append(lines, line)
-			continue
-		}
-		// Match KEY= or KEY =
-		eqIdx := strings.IndexByte(trimmed, '=')
-		if eqIdx > 0 {
-			lineKey := strings.TrimSpace(trimmed[:eqIdx])
-			if lineKey == key {
-				lines = append(lines, newLine)
-				found = true
-				continue
-			}
-		}
-		lines = append(lines, line)
-	}
-	if scanErr := scanner.Err(); scanErr != nil {
+	content, found, scanErr := reconcile.EnvFileWithLine(old, true, key, value)
+	if scanErr != nil {
 		return false, fmt.Errorf("scanning %s: %w", envFile, scanErr)
 	}
-	_ = f.Close()
-
-	if !found {
-		lines = append(lines, newLine)
-	}
-
-	content := strings.Join(lines, "\n") + "\n"
-	if writeErr := os.WriteFile(envFile, []byte(content), 0600); writeErr != nil {
+	if writeErr := os.WriteFile(envFile, content, 0600); writeErr != nil {
 		return false, fmt.Errorf("writing %s: %w", envFile, writeErr)
 	}
 	if chmodErr := security.EnforceFilePermissions(envFile, 0600); chmodErr != nil {
