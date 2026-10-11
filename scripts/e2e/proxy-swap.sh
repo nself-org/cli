@@ -128,7 +128,8 @@ registry_pid=$!
 for _ in $(seq 1 100); do [[ ! -f $W/registry.port ]] || break; sleep .05; done
 NSELF_PLUGIN_REGISTRY=http://127.0.0.1:$(cat "$W/registry.port")
 export NSELF_PLUGIN_REGISTRY
-nself() { local dir=$1; shift; (cd "$dir" && "$W/nself" "$@"); }
+# remove resolves its plugin dir before loading .env, so provide the same path up front.
+nself() { local dir=$1; shift; (cd "$dir" && NSELF_PLUGIN_DIR="$dir/.nself/plugins" "$W/nself" "$@"); }
 manifest() { bash "$ROOT/scripts/e2e/gen-manifest.sh" "$1" > "$W/evidence/$2"; }
 same() { diff -u "$W/evidence/$1" "$W/evidence/$2" || { echo "FAIL: $1 differs from $2" >&2; return 1; }; }
 wait_healthy() {
