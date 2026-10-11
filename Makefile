@@ -98,14 +98,19 @@ schemas-check:
 ## test lines run twice, with NSELF_V15 unset and =1 (ADR 0021). Nothing is skipped: a missing input, a hand-edited
 ## generated file or a Go type that drifted from its schema exits non-zero with
 ## a message naming the check and the fix. The registry check regenerates with
-## `make cmd-inventory` into the tree, compares against what was committed (or
-## hand-edited) before, then restores those files, so a failing run leaves the
-## tree as it found it. The Linux smoke (scripts/ci/contract-smoke.sh) is
-## separate: it drives the built binary.
+## `make cmd-inventory` into the tree, compares every file it writes (registry,
+## inventory, Commands.md, Command-Canon.md) against what was committed (or
+## hand-edited) before, then restores them, so a failing run leaves the tree as
+## it found it. The wiki check runs tools/wikigen -check (the generated tables in
+## error-codes.md and Exit-Codes.md) and scripts/contract-check-wiki.sh (the
+## hand tables in JSON-Output.md and Exit-Codes.md against schemas/index.json,
+## the registry and error-codes.md; D-0254). The Linux smoke
+## (scripts/ci/contract-smoke.sh) is separate: it drives the built binary.
 CONTRACT_GOTEST := CGO_ENABLED=0 go test -mod=vendor -count=1
 CONTRACT_PKGS := ./internal/errs/... ./internal/output/... ./internal/canon/... ./internal/cmdregistry/... \
 	./internal/compat/... ./internal/portable/... ./internal/plugin/manifestv2/... ./tools/schemagen/...
-CONTRACT_REGEN := .github/command-registry.json .github/command-inventory.json .github/wiki/Commands.md
+CONTRACT_REGEN := .github/command-registry.json .github/command-inventory.json .github/wiki/Commands.md \
+	.github/wiki/Command-Canon.md
 contract-check:
 	@set -e; \
 	fail() { echo "contract-check: FAILED: $$1" >&2; echo "contract-check: fix: $$2" >&2; exit 1; }; \
@@ -122,12 +127,17 @@ contract-check:
 	trap restore EXIT; \
 	$(MAKE) --no-print-directory cmd-inventory >/dev/null \
 	  || fail "make cmd-inventory failed (the registry did not build)" "read the error above; a command missing from internal/canon/canon.yaml is the usual cause"; \
-	for f in .github/command-registry.json .github/command-inventory.json; do \
+	for f in $(CONTRACT_REGEN); do \
 	  cmp -s "$$snap/$$(basename $$f)" "$$f" || { \
 	    diff -u "$$snap/$$(basename $$f)" "$$f" | head -40 >&2; \
 	    fail "$$f is not what the generator produces (hand edit or stale)" "run make cmd-inventory and commit; never hand-edit generated files"; }; \
 	done; \
 	restore; trap - EXIT; \
+	echo "contract-check: wiki contract pages"; \
+	CGO_ENABLED=0 go run -mod=vendor ./tools/wikigen -check \
+	  || fail "tools/wikigen -check found stale generated wiki pages" "run make wiki-commands and commit; never hand-edit a GENERATED block"; \
+	bash scripts/contract-check-wiki.sh \
+	  || fail "a hand table in JSON-Output.md or Exit-Codes.md disagrees with its source" "edit the row the message names (scripts/contract-check-wiki.sh lists each check)"; \
 	echo "contract-check: compat markers"; \
 	bash scripts/ci/compat-markers.sh --check \
 	  || fail "compat-markers.sh --check failed" "run bash scripts/ci/compat-markers.sh --write-wiki and commit"; \

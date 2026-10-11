@@ -121,10 +121,45 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
           echo "$changed"
 
+      # D-0246: the env-var rule used to fire on ANY edit under internal/env or
+      # internal/config, so a refactor that adds or renames no variable still
+      # demanded a Config-Env-Vars.md edit. Compare the SET of env var names
+      # those packages name between base and head instead: quoted UPPER_SNAKE
+      # literals in non-test Go files (os.Getenv/LookupEnv calls and the
+      # knownEnvVars lists) plus UPPER_SNAKE words in the non-Go files there
+      # (bindings yaml, env templates). Same set = no env surface change.
+      # A failed base fetch yields an empty base set, so the rule fires (safe).
+      - name: Compare env var names (base vs head)
+        id: envnames
+        run: |
+          envnames() {
+            {
+              git grep -I -h -o -E '"[A-Z][A-Z0-9_]*[A-Z0-9]"' "$1" -- \
+                'internal/env/*.go' 'internal/config/*.go' \
+                ':(exclude,glob)**/*_test.go' ':(exclude,glob)**/testdata/**' || true
+              git grep -I -h -o -w -E '[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]' "$1" -- \
+                internal/env internal/config ':(exclude,glob)**/*.go' \
+                ':(exclude,glob)**/testdata/**' || true
+            } | sed -e 's/^[^"]*://' -e 's/"//g' | sort -u
+          }
+          envnames "origin/${{ github.base_ref }}" > /tmp/env-base.txt
+          envnames HEAD > /tmp/env-head.txt
+          added=$(comm -13 /tmp/env-base.txt /tmp/env-head.txt | tr '\n' ' ')
+          removed=$(comm -23 /tmp/env-base.txt /tmp/env-head.txt | tr '\n' ' ')
+          echo "env var names: base $(wc -l < /tmp/env-base.txt), head $(wc -l < /tmp/env-head.txt)"
+          if [ -n "$added$removed" ]; then
+            echo "changed=1" >> "$GITHUB_OUTPUT"
+            echo "env var names added: ${added:-none}; removed: ${removed:-none}"
+          else
+            echo "changed=0" >> "$GITHUB_OUTPUT"
+            echo "env var name set unchanged"
+          fi
+
       - name: Doc-Sync matrix check
         env:
           CHANGED: ${{ steps.diff.outputs.changed }}
           CMD_DRIFT: ${{ steps.cmddrift.outputs.drift }}
+          ENV_NAMES_CHANGED: ${{ steps.envnames.outputs.changed }}
         run: |
           set -u
           missing=0
@@ -161,8 +196,10 @@ jobs:
           # template, and a test that rewrites it should be fixed rather than
           # papered over with a docs edit.
           # Test fixture templates are not public configuration inventory.
-          env_changes=$(printf '%s\n' "$CHANGED" | grep -E '(^|/)\.env\.example$|^(cli/)?internal/(env|config)/' | grep -vE '^(cli/)?cmd/commands/testdata/' || true)
-          if [ -n "$env_changes" ]; then
+          # internal/env and internal/config count only when the set of env var
+          # names they read changed (ENV_NAMES_CHANGED, step envnames, D-0246).
+          env_changes=$(printf '%s\n' "$CHANGED" | grep -E '(^|/)\.env\.example$' | grep -vE '^(cli/)?cmd/commands/testdata/' || true)
+          if [ -n "$env_changes" ] || [ "${ENV_NAMES_CHANGED:-0}" = "1" ]; then
             if matches '^(cli/)?cmd/commands/\.env\.example$'; then
               echo "::warning::cmd/commands/.env.example changed — that is a test fixture. If a test rewrote it, fix the test; do not commit the churn."
             fi
