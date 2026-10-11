@@ -49,7 +49,7 @@ func codeOfErr(err error) string {
 // with E141 naming both plugins, and the other plugin's binary is untouched.
 func TestLinkCLIBinary_RefusesAnotherPluginsBinary(t *testing.T) {
 	pluginsDir := collisionHome(t)
-	ownerDir := extractFake(t, pluginsDir, "alpha", `{"name":"alpha","version":"1.0.0","cliCommands":[{"name":"media-server"}]}`, "nself-media-server")
+	ownerDir := extractFake(t, pluginsDir, "alpha", `{"name":"alpha","version":"1.0.0","description":"fake","category":"utility","license":"MIT","cliCommands":[{"name":"media-server"}]}`, "nself-media-server")
 	owner := &PluginManifest{Name: "alpha", CLICommands: []CLICommand{{Name: "media-server"}}}
 	if err := linkCLIBinary(ownerDir, "alpha", owner); err != nil {
 		t.Fatalf("first install: %v", err)
@@ -57,7 +57,7 @@ func TestLinkCLIBinary_RefusesAnotherPluginsBinary(t *testing.T) {
 	published := PublishedBinaryPath("nself-media-server")
 	before, _ := os.ReadFile(published)
 
-	dir := extractFake(t, pluginsDir, "beta", `{"name":"beta","version":"1.0.0","cliCommands":[{"name":"beta"},{"name":"media-server"}]}`, "nself-beta", "nself-media-server")
+	dir := extractFake(t, pluginsDir, "beta", `{"name":"beta","version":"1.0.0","description":"fake","category":"utility","license":"MIT","cliCommands":[{"name":"beta"},{"name":"media-server"}]}`, "nself-beta", "nself-media-server")
 	m := &PluginManifest{Name: "beta", CLICommands: []CLICommand{{Name: "beta"}, {Name: "media-server"}}}
 	err := linkCLIBinary(dir, "beta", m)
 	if codeOfErr(err) != "E141" {
@@ -82,7 +82,7 @@ func TestLinkCLIBinary_RefusesAnotherPluginsBinary(t *testing.T) {
 // file no installed manifest claims is replaced too.
 func TestLinkCLIBinary_ReinstallIsNotACollision(t *testing.T) {
 	pluginsDir := collisionHome(t)
-	dir := extractFake(t, pluginsDir, "alpha", `{"name":"alpha","version":"1.0.0","cliCommands":[{"name":"media-server"}]}`, "nself-media-server")
+	dir := extractFake(t, pluginsDir, "alpha", `{"name":"alpha","version":"1.0.0","description":"fake","category":"utility","license":"MIT","cliCommands":[{"name":"media-server"}]}`, "nself-media-server")
 	m := &PluginManifest{Name: "alpha", CLICommands: []CLICommand{{Name: "media-server"}}}
 	for i := 0; i < 2; i++ {
 		if err := linkCLIBinary(dir, "alpha", m); err != nil {
@@ -92,7 +92,7 @@ func TestLinkCLIBinary_ReinstallIsNotACollision(t *testing.T) {
 	if err := os.WriteFile(PublishedBinaryPath("nself-orphan"), []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	odir := extractFake(t, pluginsDir, "orphan", `{"name":"orphan","version":"1.0.0","pluginType":"cli"}`, "nself-orphan")
+	odir := extractFake(t, pluginsDir, "orphan", `{"name":"orphan","version":"1.0.0","description":"fake","category":"utility","license":"MIT","pluginType":"cli"}`, "nself-orphan")
 	if err := linkCLIBinary(odir, "orphan", &PluginManifest{Name: "orphan", PluginType: "cli"}); err != nil {
 		t.Fatalf("orphan bin file blocked install: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestLinkCLIBinary_RefusesCoreVerbAndBadNames(t *testing.T) {
 	for _, c := range []struct {
 		cmd, code string
 	}{{"init", "E113"}, {"status", "E113"}, {"roms list", "E106"}} {
-		dir := extractFake(t, pluginsDir, "gamma", `{"name":"gamma","version":"1.0.0"}`, "nself-init", "nself-status")
+		dir := extractFake(t, pluginsDir, "gamma", `{"name":"gamma","version":"1.0.0","description":"fake","category":"utility","license":"MIT"}`, "nself-init", "nself-status")
 		err := linkCLIBinary(dir, "gamma", &PluginManifest{Name: "gamma", CLICommands: []CLICommand{{Name: c.cmd}}})
 		if codeOfErr(err) != c.code {
 			t.Errorf("%q: want %s, got %v", c.cmd, c.code, err)
