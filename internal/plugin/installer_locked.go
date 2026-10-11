@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/nself-org/cli/internal/audit"
 	"github.com/nself-org/cli/internal/config"
@@ -151,32 +150,8 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	// For plugins not yet installed we install them first, which places
 	// their manifest on disk for the resolver. We call installLocked here
 	// (not Install) because the lock is already held by this goroutine.
-	deps := manifest.Dependencies
-	// Validate every dependency name and every binary name before any join, stat or
-	// install: an existing sibling dir named "../victim" must not skip the install
-	// loop, and a registry entry must not reach a path outside pluginDir (P7-PLUG-20).
-	for _, dep := range deps {
-		if err := ValidateName(dep); err != nil {
-			return fmt.Errorf("plugin %q lists an invalid dependency: %w", name, err)
-		}
-	}
-	if err := validateCLIBinaries(name, manifest); err != nil {
-		return fmt.Errorf("plugin %q: %w", name, err)
-	}
-	if len(deps) > 0 {
-		fmt.Fprintf(os.Stderr, "Installing %s (requires: %s)\n", name, strings.Join(deps, ", "))
-	}
-	for _, dep := range deps {
-		depDir := filepath.Join(pluginDir, dep)
-		if _, err := os.Stat(depDir); err == nil {
-			fmt.Fprintf(os.Stderr, "  ✓ %s (already installed)\n", dep)
-			continue // dependency already installed
-		}
-		fmt.Fprintf(os.Stderr, "  → Installing dependency %s...\n", dep)
-		if err := installLocked(ctx, cfg, dep, pluginDir); err != nil {
-			return fmt.Errorf("installing dependency %q: %w", dep, err)
-		}
-		fmt.Fprintf(os.Stderr, "  ✓ %s installed\n", dep)
+	if err := installDependencies(ctx, cfg, name, manifest, pluginDir); err != nil {
+		return err
 	}
 
 	// Step 4: Download the plugin archive. A plugin that provides a command
