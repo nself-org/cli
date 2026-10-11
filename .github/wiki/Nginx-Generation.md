@@ -35,7 +35,7 @@ Duplicate generated domains use the compatibility gate: v1.4 keeps the existing 
 
 ## Plugin and hand-managed routes
 
-`routes.json` also describes the nginx files nself does not render itself: every `nginx/*.conf` a plugin ships (copied unchanged to `nginx/sites/<plugin>-<file>`) and every hand-managed `nginx/conf.d/*.conf` and `nginx/conf.d-<env>/*.conf` (not `default.conf`). Each `server { }` block becomes one route:
+`routes.json` also describes the nginx files nself does not render itself: every `nginx/*.conf` a plugin ships (rendered into `nginx/sites/<plugin>-<file>`, see [Plugin Route Injection](#plugin-route-injection)) and every hand-managed `nginx/conf.d/*.conf` and `nginx/conf.d-<env>/*.conf` (not `default.conf`). Each `server { }` block becomes one route:
 
 | Route | `source` | `id` | `file` |
 |---|---|---|---|
@@ -68,7 +68,7 @@ Each directive is read with a closed vocabulary. It is mapped to a model field, 
 
 Timeouts, `client_max_body_size`, `access_log` and `proxy_set_header` written at server level apply to every location that does not set its own, as in nginx. A server block with no `listen` listens on port 80, as in nginx. A location with `return` plus `proxy_pass`, or `return` plus `deny all`, maps both and also keeps the `return` in `unmodelled` (nginx always answers the `return` first, before the proxy and before the access rules; v1 does not say which wins). The reader splits words only at space, tab, CR and LF, as nginx does: form feed and vertical tab are ordinary word bytes. Variable names are case-insensitive, as in nginx. A `set` variable is not substituted into `proxy_pass` when it is set twice, when the location or server holds an `if`, `rewrite`, `break`, `return`, `include` or `error_page`, when it is a server-level `set` and some location of that server sets the same variable, or when another directive can write it: `auth_request_set`, `set_by_lua` and the like, or any variable named outside the server blocks (`map`, `geo`, `js_set` ...). Every top-level `upstream` is kept verbatim in `unmodelled_global`, even when its name resolves inside the file, because nginx upstreams are visible to every file; a `proxy_pass` to an upstream name defined in another file is `unmodelled`, never resolved as a DNS host.
 
-`unmodelled` is the fail-closed list for other providers: a route whose `unmodelled` is not empty has behaviour the model cannot say, so a provider that is not nginx must refuse it, never serve a partial route. The same holds for the top-level `unmodelled_global` list, which holds the directives outside any server block: `map`, `limit_req_zone`, an `upstream` with several servers, and the bare `location` blocks some plugin files ship without a server block. A snippet that does not parse is recorded there too. Snippets are third-party input; the reader is fuzzed and a test checks that every directive is mapped, ignored or recorded.
+`unmodelled` is the fail-closed list for other providers: a route whose `unmodelled` is not empty has behaviour the model cannot say, so a provider that is not nginx must refuse it, never serve a partial route. The same holds for the top-level `unmodelled_global` list, which holds the directives outside any server block: `map`, `limit_req_zone`, an `upstream` with several servers, and bare `location` blocks in hand-managed files. A hand-managed file that does not parse is recorded there too, and so is each plugin file the build left out of `nginx/sites` (`skipped plugin <plugin>/<file>: <reason>`, see [Plugin Route Injection](#plugin-route-injection)). Snippets are third-party input; the reader is fuzzed and a test checks that every directive is mapped, ignored or recorded.
 
 ---
 
@@ -209,15 +209,27 @@ confined to an unrelated service's block (e.g. only a frontend app's
 
 ## Plugin Route Injection
 
-When plugins are installed, they can declare nginx routes in their plugin manifest. During `nself build`, the build system reads each installed plugin's manifest and writes the declared routes to `nginx/routes/`, which is included by `nginx.conf` automatically.
+An installed plugin can ship nginx server blocks as `nginx/*.conf` in its plugin directory (`NSELF_PLUGIN_DIR`, default `~/.nself/plugins`). During `nself build` each file is rendered and written to `nginx/sites/<plugin>-<file>` (for a fronted project, the fronting stack's `nginx/sites`), which `nginx.conf` includes at the `http` level.
 
-Plugins can add:
+Rendering replaces these variables and nothing else:
 
-- **Service subdomains**, for example, the chat plugin adds `chat.{BASE_DOMAIN}` pointing to the plugin's container.
-- **Webhook endpoints**, registered under `webhooks.{BASE_DOMAIN}/plugin-name` by default.
-- **Custom domains**, controlled by `PLUGIN_{NAME}_WEBHOOK_DOMAIN` when a plugin needs a fully independent domain rather than a subdomain of `BASE_DOMAIN`.
+| Variable | Value |
+|---|---|
+| `${BASE_DOMAIN}` | `BASE_DOMAIN` |
+| `${SSL_DIR}` | the base domain's certificate dir under the nginx ssl mount, `certificates/<domain-dir>` (`local.nself.org` gives `certificates/local-nself-org`), so `/etc/nginx/ssl/${SSL_DIR}/fullchain.pem` is the certificate ɳSelf serves |
+| `${PROJECT_NAME}`, `${COMPOSE_PROJECT_NAME}` | `PROJECT_NAME` |
+| `${DOCKER_NETWORK}` | the stack's Docker network |
+| `${POSTGRES_USER}`, `${POSTGRES_DB}`, `${POSTGRES_PASSWORD}`, `${HASURA_PORT}`, `${AUTH_PORT}`, `${NSELF_PLUGIN_DIR}` | the matching project values |
 
-Plugin routes follow the same conflict-detection logic as core service routes. If a plugin's declared server name already exists in `conf.d/`, the plugin route is skipped and a notice is printed.
+A file nginx would refuse to load would stop nginx, and with it every route, so the build leaves it out and prints a warning naming the plugin, the file and the reason:
+
+- it still holds a `${NAME}` variable from outside this table (nginx's own lower-case variables such as `${host}` are fine);
+- it does not parse, or it has a directive at the top level that nginx accepts only inside a `server` block (a bare `location` block, for example);
+- it loads the `${SSL_DIR}` certificate while the build serves no TLS (`SSL_MODE=none`, or `letsencrypt`/`custom` before the certificate exists).
+
+A skipped file is also listed in `routes.json` under `unmodelled_global`. Run `nself build` again after updating the plugin or issuing the certificate.
+
+A plugin file whose `server_name` is already claimed on the same port by another file in `nginx/sites` fails the build, naming both files, because nginx would silently serve only one of them.
 
 ---
 
