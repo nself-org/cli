@@ -24,7 +24,7 @@ func TestOwnership_Mutations(t *testing.T) {
 		{"another Epic claims E116", "codes_plugin_other.go", "E116", true},
 		{"owner strays into a neighbour range", "codes_catalog.go", "E121", true},
 		{"spare number E062 (TRUTH spare)", "codes_compat.go", "E062", true},
-		{"free number E140", "codes_catalog.go", "E140", true},
+		{"free number E141", "codes_catalog.go", "E141", true},
 		{"free number E006 in docker block", "codes_docker.go", "E006", true},
 		{"existing fragment grows past its range", "codes_cli.go", "E408", true},
 		{"cli codes from the wrong fragment", "codes_docker.go", "E409", true},

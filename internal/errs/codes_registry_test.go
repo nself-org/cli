@@ -123,7 +123,7 @@ func TestRegistryExitTable(t *testing.T) {
 			if (n >= 101 && n <= 104) || n == 110 {
 				return 3
 			}
-			if n == 118 || n == 119 || n == 135 { // P7-PLUG-59, P7-PLUG-19: readiness failures are infra (plugin did not become ready)
+			if n == 118 || n == 119 || n == 135 || n == 140 { // P7-PLUG-59, P7-PLUG-19, P7-PLUG-78: readiness and tracking failures are infra (plugin did not become ready, Hasura did not track)
 				return 2
 			}
 			return 1

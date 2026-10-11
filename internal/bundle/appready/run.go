@@ -104,6 +104,9 @@ func Run(ctx context.Context, rn *Runner, h Hooks, pluginDir string, names []str
 		return waitMembers(ctx, h, members)
 	})
 	rn.step(StepTracking, h.ExportMetadata != nil, "no Hasura metadata hook", func() (string, error) {
+		if err := trackMembers(ctx, h, members); err != nil {
+			return "", err
+		}
 		return waitTracked(ctx, h, members)
 	})
 	rn.step(StepHealth, true, "", func() (string, error) { return checkHealth(ctx, h, members) })
@@ -118,6 +121,21 @@ func (r *Runner) step(name string, have bool, missing string, fn func() (string,
 		return
 	}
 	_ = r.Step(name, fn)
+}
+
+// trackMembers calls the TrackTables hook for members that declare tables; the
+// verification read (waitTracked) follows. A failure names the plugin when the
+// hook returned a *StepError; otherwise it names the bundle.
+func trackMembers(ctx context.Context, h Hooks, members []Member) error {
+	if h.TrackTables == nil {
+		return nil
+	}
+	for _, m := range members {
+		if len(m.Tables) > 0 {
+			return h.TrackTables(ctx, members)
+		}
+	}
+	return nil
 }
 
 // waitMembers is the readiness step.
