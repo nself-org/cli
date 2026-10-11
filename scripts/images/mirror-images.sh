@@ -158,16 +158,23 @@ probe_entry() {
   [ -n "$have" ] && [ "$have" = "$want" ]
 }
 
-# verify_platforms MIRROR INDEX_DIGEST PLATFORMS... — the mirror's manifest at
-# the index digest must list exactly the lock's platform manifest digests (a
-# single-manifest entry carries the index digest itself).
+# verify_platforms MIRROR INDEX_DIGEST PLATFORMS... — every lock platform
+# manifest digest must appear in the mirror's manifest at the index digest (a
+# single-manifest entry carries the index digest itself). A subset check, not
+# equality: upstream indexes also carry BuildKit attestation manifests
+# (unknown/unknown) and platforms the lock does not pin (D-0350); the index
+# digest equality checked by the caller already proves the copy is exact.
 verify_platforms() {
-  local dst="$1" idx="$2" got expected
+  local dst="$1" idx="$2" manifest missing
   shift 2
-  got="$(crane_run manifest "$dst@$idx" \
-    | jq -r --arg self "$idx" 'if .manifests then [.manifests[].digest] else [$self] end | sort | join(" ")')"
-  expected="$(printf '%s\n' "$@" | sort | tr '\n' ' ' | sed 's/ $//')"
-  [ "$got" = "$expected" ] || fail "platform digests differ at $dst: lock=[$expected] mirror=[$got]"
+  manifest="$(crane_run manifest "$dst@$idx")" || fail "cannot read the mirror manifest at $dst@$idx"
+  # -n + input: an empty body is an error, not zero outputs (fail closed).
+  missing="$(jq -nr --arg self "$idx" \
+    'input | if type != "object" then error("not a manifest") else . end
+     | (if .manifests then [.manifests[].digest] else [$self] end) as $got
+     | $ARGS.positional - $got | join(" ")' --args "$@" <<<"$manifest")" \
+    || fail "unreadable mirror manifest at $dst@$idx"
+  [ -z "$missing" ] || fail "lock platform digest(s) missing from the mirror index at $dst: $missing"
 }
 
 # ---- --list-tags (weekly pin bump, P7-HYG-34) -------------------------------
