@@ -150,3 +150,68 @@ func TestDoctorReportRefusesBadLogLines(t *testing.T) {
 		}
 	}
 }
+
+// The default archive lands in the project directory, not the working directory.
+func TestDoctorReportDefaultOutputInProjectDir(t *testing.T) {
+	proj, _ := reportFixture(t)
+	sub := filepath.Join(proj, "deep", "er")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(sub)
+	setReportFlags(t, map[string]string{"log-lines": "5"})
+	var buf bytes.Buffer
+	doctorReportCmd.SetOut(&buf)
+	t.Cleanup(func() { doctorReportCmd.SetOut(nil) })
+	if err := runDoctorReport(doctorReportCmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.TrimSpace(buf.String())
+	wantDir, _ := filepath.EvalSymlinks(proj)
+	gotDir, _ := filepath.EvalSymlinks(filepath.Dir(got))
+	if gotDir != wantDir {
+		t.Errorf("archive written to %s, want the project directory %s", gotDir, wantDir)
+	}
+}
+
+// A compose fragment listed in .nself/compose-files.txt is a scrub input, and
+// the archive always carries a logs/ directory entry.
+func TestDoctorReportFragmentAndLogsDir(t *testing.T) {
+	proj, _ := reportFixture(t)
+	frag := "frg" + strings.Repeat("Tz6", 7)
+	fragPath := filepath.Join(proj, "plugin-compose.yml")
+	if err := os.WriteFile(fragPath, []byte("services:\n  p:\n    environment:\n      PLUGIN_TOKEN: "+frag+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(proj, ".nself"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(proj, ".nself", "compose-files.txt"), []byte(fragPath+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := doctorReportSources
+	doctorReportSources = func(ds report.DockerSetup) report.Sources {
+		s := old(ds)
+		s.Logs = func(context.Context, int) (map[string]string, error) {
+			return map[string]string{"p": "plugin booted with " + frag + "\n"}, nil
+		}
+		return s
+	}
+	t.Cleanup(func() { doctorReportSources = old })
+	out := filepath.Join(proj, "frag.tar.gz")
+	setReportFlags(t, map[string]string{"output": out, "log-lines": "5"})
+	if err := runDoctorReport(doctorReportCmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	names, all := archiveNames(t, out)
+	if strings.Contains(all, frag) {
+		t.Error("a fragment-only secret reached the archive")
+	}
+	hasDir := false
+	for _, n := range names {
+		hasDir = hasDir || n == "logs/"
+	}
+	if !hasDir {
+		t.Errorf("no logs/ entry in %v", names)
+	}
+}

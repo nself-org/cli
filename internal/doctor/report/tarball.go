@@ -54,6 +54,9 @@ func WriteTarball(b *Bundle, path string, now time.Time) (size int64, err error)
 	tw := tar.NewWriter(gz)
 	for _, f := range b.Files {
 		hdr := &tar.Header{Name: f.Name, Mode: 0o600, Size: int64(len(f.Data)), ModTime: now.UTC(), Typeflag: tar.TypeReg}
+		if f.Dir {
+			hdr = &tar.Header{Name: f.Name, Mode: 0o700, ModTime: now.UTC(), Typeflag: tar.TypeDir}
+		}
 		if err = tw.WriteHeader(hdr); err != nil {
 			return 0, err
 		}

@@ -12,11 +12,8 @@ package report
 //         child has a 120 s timeout; its output is scrubbed by Collect.
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 	"time"
@@ -24,9 +21,6 @@ import (
 	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/version"
 )
-
-// DoctorTimeout bounds the doctor child process.
-const DoctorTimeout = 120 * time.Second
 
 // DockerSetup tells the real log source which stack to read.
 type DockerSetup struct {
@@ -60,31 +54,6 @@ func realVersions(ctx context.Context) map[string]string {
 		v["docker"] = dv
 	}
 	return v
-}
-
-// RunDoctorChild runs `<this binary> doctor` in dir and returns its combined
-// output. A non-zero exit (failed checks) is not an error here. exe is the
-// seam for os.Executable.
-func RunDoctorChild(ctx context.Context, dir string, exe func() (string, error)) (string, error) {
-	self, err := exe()
-	if err != nil {
-		return "", fmt.Errorf("locating this binary: %w", err)
-	}
-	cctx, cancel := context.WithTimeout(ctx, DoctorTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(cctx, self, "doctor") // #nosec G204 -- own binary, fixed argument
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "NO_COLOR=1")
-	var out bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &out
-	err = cmd.Run()
-	if cctx.Err() != nil {
-		return out.String(), fmt.Errorf("doctor timed out after %s", DoctorTimeout)
-	}
-	if _, isExit := err.(*exec.ExitError); isExit {
-		return out.String(), nil
-	}
-	return out.String(), err
 }
 
 // dockerLogs reads the log tail of every container of every compose service.

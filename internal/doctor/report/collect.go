@@ -15,7 +15,9 @@ package report
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -30,6 +32,9 @@ type Sources struct {
 	Now  func() time.Time
 }
 
+// DefaultMaxLogBytes caps one service log (the tail is kept).
+const DefaultMaxLogBytes = 4 << 20
+
 // Options configure one collection.
 type Options struct {
 	ProjectDir string
@@ -37,12 +42,20 @@ type Options struct {
 	NginxDir string
 	Notes    []string // caller notes carried into manifest.json
 	LogLines int
+	// ComposeFragments are the compose files of the stack (.nself/compose-files.txt
+	// resolved): read as scrub inputs only, never bundled.
+	ComposeFragments []string
+	// Environ is the process environment seam; nil means os.Environ.
+	Environ func() []string
+	// MaxLogBytes caps each service log; 0 means DefaultMaxLogBytes.
+	MaxLogBytes int
 }
 
-// File is one entry of the bundle.
+// File is one entry of the bundle. Dir entries have no data.
 type File struct {
 	Name string
 	Data []byte
+	Dir  bool
 }
 
 // Bundle is the scrubbed result.
@@ -58,14 +71,24 @@ func Collect(ctx context.Context, opt Options, src Sources) (*Bundle, error) {
 	if src.Now == nil {
 		src.Now = time.Now
 	}
-	values, keys, notes := loadEnvInputs(opt.ProjectDir)
-	notes = append(notes, opt.Notes...)
-	compose, composeVals, cnote := readCompose(opt.ProjectDir)
-	values = append(values, composeVals...)
+	environ := os.Environ
+	if opt.Environ != nil {
+		environ = opt.Environ
+	}
+	in := newInputSet()
+	loadEnvInputs(opt.ProjectDir, in)
+	loadProcessEnv(environ(), in)
+	loadCustomEnvFiles(opt.ProjectDir, environ(), in)
+	compose, cnote := readCompose(opt.ProjectDir, in)
+	loadFragments(opt.ComposeFragments, in)
+	notes := append(in.notes, opt.Notes...)
 	if cnote != "" {
 		notes = append(notes, cnote)
 	}
-	scr := NewScrubber(values)
+	if sn := in.shortNote(); sn != "" {
+		notes = append(notes, sn)
+	}
+	scr := NewScrubber(in.values)
 	b := &Bundle{}
 	add := func(name, text string) {
 		b.Files = append(b.Files, File{Name: name, Data: []byte(scr.Scrub(text))})
@@ -80,7 +103,7 @@ func Collect(ctx context.Context, opt Options, src Sources) (*Bundle, error) {
 		return nil, fmt.Errorf("encoding versions: %w", err)
 	}
 	add("versions.json", string(vb)+"\n")
-	add("config-keys.txt", strings.Join(keys, "\n")+"\n")
+	add("config-keys.txt", strings.Join(in.sortedKeys(), "\n")+"\n")
 	if compose != "" {
 		add("docker-compose.yml", compose)
 	}
@@ -94,27 +117,46 @@ func Collect(ctx context.Context, opt Options, src Sources) (*Bundle, error) {
 		add(nf.Name, string(nf.Data))
 	}
 	if src.Doctor != nil {
-		out, derr := src.Doctor(ctx)
-		if derr != nil && out == "" {
-			out = "doctor did not produce output: " + derr.Error() + "\n"
-		}
-		add("doctor.txt", out)
+		notes = append(notes, collectDoctor(ctx, src, add)...)
 	}
-	notes = append(notes, collectLogs(ctx, opt.LogLines, src, add, scr)...)
+	b.Files = append(b.Files, File{Name: "logs/", Dir: true})
+	notes = append(notes, collectLogs(ctx, opt, src, add, scr)...)
 	return finish(b, scr, notes, src.Now()), nil
 }
 
+// collectDoctor adds doctor.txt; a timeout keeps the partial output and says so.
+func collectDoctor(ctx context.Context, src Sources, add func(string, string)) []string {
+	out, derr := src.Doctor(ctx)
+	var notes []string
+	var te *TimeoutError
+	switch {
+	case errors.As(derr, &te):
+		out += fmt.Sprintf("\n[doctor timed out after %s: the output above is partial]\n", te.After)
+		notes = append(notes, fmt.Sprintf("doctor timed out after %s: doctor.txt holds the partial output", te.After))
+	case derr != nil && out == "":
+		out = "doctor did not produce output: " + derr.Error() + "\n"
+	case derr != nil:
+		notes = append(notes, "doctor ended with an error: "+derr.Error())
+	}
+	add("doctor.txt", out)
+	return notes
+}
+
 // collectLogs adds logs/<service>.log files and returns notes.
-func collectLogs(ctx context.Context, tail int, src Sources, add func(string, string), scr *Scrubber) []string {
+func collectLogs(ctx context.Context, opt Options, src Sources, add func(string, string), scr *Scrubber) []string {
 	if src.Logs == nil {
 		return []string{"no running stack: log collection is not available"}
 	}
-	logs, err := src.Logs(ctx, tail)
+	logs, err := src.Logs(ctx, opt.LogLines)
 	if err != nil {
 		return []string{"no running stack: " + scr.Scrub(err.Error())}
 	}
 	if len(logs) == 0 {
 		return []string{"no running stack: no containers found, logs/ is empty"}
+	}
+	limit := opt.MaxLogBytes
+	if limit <= 0 {
+		limit = DefaultMaxLogBytes
 	}
 	names := make([]string, 0, len(logs))
 	for n := range logs {
@@ -122,15 +164,33 @@ func collectLogs(ctx context.Context, tail int, src Sources, add func(string, st
 	}
 	sort.Strings(names)
 	used := map[string]bool{}
+	var notes []string
 	for _, n := range names {
 		f := LogName(n)
 		for i := 2; used[f]; i++ {
 			f = LogName(fmt.Sprintf("%s-%d", n, i))
 		}
 		used[f] = true
-		add(f, logs[n])
+		text, cut := capTail(logs[n], limit)
+		if cut {
+			notes = append(notes, fmt.Sprintf("%s truncated to its last %d bytes (was %d bytes)", f, limit, len(logs[n])))
+		}
+		add(f, text)
 	}
-	return nil
+	return notes
+}
+
+// capTail keeps the last limit bytes of text, starting at a line boundary when
+// one is near, and reports whether it cut anything.
+func capTail(text string, limit int) (string, bool) {
+	if len(text) <= limit {
+		return text, false
+	}
+	tail := text[len(text)-limit:]
+	if i := strings.IndexByte(tail, '\n'); i >= 0 && i < len(tail)-1 {
+		tail = tail[i+1:]
+	}
+	return "[truncated: only the end of this log is kept]\n" + tail, true
 }
 
 // finish writes manifest.json (counts are final: scrubbing it adds none).
@@ -148,7 +208,7 @@ func finish(b *Bundle, scr *Scrubber, notes []string, now time.Time) *Bundle {
 	for _, f := range b.Files {
 		list = append(list, entry{f.Name, len(f.Data)})
 	}
-	list = append(list, entry{Name: "manifest.json"})
+	list = append(list, entry{Name: "manifest.json"}) // own size set below (N3)
 	man := struct {
 		Generated  string         `json:"generated"`
 		Files      []entry        `json:"files"`
@@ -159,8 +219,18 @@ func finish(b *Bundle, scr *Scrubber, notes []string, now time.Time) *Bundle {
 	if man.Notes == nil {
 		man.Notes = []string{}
 	}
-	data, _ := json.MarshalIndent(man, "", "  ")
-	b.Files = append(b.Files, File{Name: "manifest.json", Data: append(data, '\n')})
+	// The manifest lists its own size: re-encode until the number is stable
+	// (it converges in two or three rounds; the digit count only grows).
+	var data []byte
+	for i := 0; i < 5; i++ {
+		data, _ = json.MarshalIndent(man, "", "  ")
+		data = append(data, '\n')
+		if list[len(list)-1].Bytes == len(data) {
+			break
+		}
+		list[len(list)-1].Bytes = len(data)
+	}
+	b.Files = append(b.Files, File{Name: "manifest.json", Data: data})
 	return b
 }
 

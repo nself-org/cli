@@ -23,6 +23,8 @@ import (
 
 var fixedNow = time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
 
+func noEnviron() []string { return nil }
+
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -108,7 +110,7 @@ func TestDoctorReportPlantedSecrets(t *testing.T) {
 		},
 		Now: func() time.Time { return fixedNow },
 	}
-	b, err := Collect(context.Background(), Options{ProjectDir: dir, NginxDir: filepath.Join(dir, "nginx"), LogLines: 7}, src)
+	b, err := Collect(context.Background(), Options{ProjectDir: dir, NginxDir: filepath.Join(dir, "nginx"), LogLines: 7, Environ: noEnviron}, src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +124,7 @@ func TestDoctorReportPlantedSecrets(t *testing.T) {
 		}
 	}
 	files := extract(t, out)
-	want := []string{"config-keys.txt", "docker-compose.yml", "doctor.txt", "logs/__evil.log", "logs/hasura.log", "logs/postgres.log", "manifest.json", "nginx/sites/app.conf", "versions.json"}
+	want := []string{"config-keys.txt", "docker-compose.yml", "doctor.txt", "logs/", "logs/__evil.log", "logs/hasura.log", "logs/postgres.log", "manifest.json", "nginx/sites/app.conf", "versions.json"}
 	if got := names(files); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("file set\n got %v\nwant %v", got, want)
 	}
@@ -146,7 +148,10 @@ func TestDoctorReportPlantedSecrets(t *testing.T) {
 		t.Error("non-secret neighbours were over-redacted")
 	}
 	var man struct {
-		Files      []struct{ Name string }
+		Files []struct {
+			Name  string
+			Bytes int
+		}
 		Redactions map[string]int
 		Total      int `json:"redactions_total"`
 	}
@@ -155,6 +160,11 @@ func TestDoctorReportPlantedSecrets(t *testing.T) {
 	}
 	if man.Total == 0 || man.Redactions[ClassValue] == 0 || man.Total != b.Total || len(man.Files) != len(want) {
 		t.Errorf("manifest = %+v", man)
+	}
+	for _, f := range man.Files { // N3: every entry, the manifest itself included, lists its real size
+		if f.Bytes != len(files[f.Name]) {
+			t.Errorf("manifest lists %s as %d bytes, archive holds %d", f.Name, f.Bytes, len(files[f.Name]))
+		}
 	}
 }
 
@@ -176,7 +186,7 @@ func TestDoctorReportNoStack(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := Sources{Logs: logs, Doctor: func(context.Context) (string, error) { return "ok\n", nil }, Now: func() time.Time { return fixedNow }}
-			b, err := Collect(context.Background(), Options{ProjectDir: dir, LogLines: 50}, src)
+			b, err := Collect(context.Background(), Options{ProjectDir: dir, LogLines: 50, Environ: noEnviron}, src)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -185,8 +195,11 @@ func TestDoctorReportNoStack(t *testing.T) {
 				t.Fatal(err)
 			}
 			files := extract(t, out)
+			if _, ok := files["logs/"]; !ok {
+				t.Errorf("no logs/ directory entry: %v", names(files))
+			}
 			for n := range files {
-				if strings.HasPrefix(n, "logs/") {
+				if strings.HasPrefix(n, "logs/") && n != "logs/" {
 					t.Errorf("unexpected log file %s", n)
 				}
 			}
@@ -205,7 +218,7 @@ func TestDoctorReportNeverOverwrites(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "r.tar.gz")
 	writeFile(t, out, "precious")
-	b, _ := Collect(context.Background(), Options{ProjectDir: dir, LogLines: 5}, Sources{Now: func() time.Time { return fixedNow }})
+	b, _ := Collect(context.Background(), Options{ProjectDir: dir, LogLines: 5, Environ: noEnviron}, Sources{Now: func() time.Time { return fixedNow }})
 	if _, err := WriteTarball(b, out, fixedNow); err == nil {
 		t.Fatal("overwrote an existing file")
 	}

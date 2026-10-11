@@ -6,13 +6,16 @@ package report
 // Inputs: SecretValue literals (env cascade + compose environment) and the text
 //         of each file.
 // Outputs: scrubbed text and per-class redaction counts.
-// Constraints: pass order is fixed: (1) literal values, longest first, one scan
-//         so a placeholder is never rescanned; (2) PEM blocks; (3) URL
-//         userinfo; (4) observability.Redact; (5) secret-named assignments
-//         the earlier passes missed (scrub_patterns.go). Every file goes
-//         through Scrub, including versions.json and config-keys.txt.
+// Constraints: pass order is fixed: (1) literal values, overlapping hits merged
+//         into one span so a placeholder is never rescanned and no tail
+//         survives; (2) PEM blocks (scrub_pem.go); (3) URL userinfo; (4)
+//         observability.Redact; (5) secret-named assignments and YAML block
+//         scalars the earlier passes missed (scrub_patterns.go,
+//         scrub_block.go). Every file goes through Scrub, including
+//         versions.json and config-keys.txt.
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/observability"
@@ -66,40 +69,60 @@ func (s *Scrubber) Scrub(text string) string {
 	return s.scrubAssignments(text)
 }
 
-// scrubValues replaces every literal spelling in one left-to-right scan; at the
-// same position the longest candidate wins (cands are sorted longest first).
+// span is one literal hit [start, end) and the key of the value it belongs to.
+type span struct {
+	start, end int
+	key        string
+}
+
+// scrubValues replaces every literal spelling. All hits of all candidates are
+// collected first and overlapping or touching hits are merged into one span, so
+// no tail of any candidate can survive an overlap (S3). One placeholder (named
+// after the first span's key) replaces each merged span.
 func (s *Scrubber) scrubValues(text string) string {
 	if len(s.cands) == 0 || text == "" {
 		return text
 	}
-	next := make([]int, len(s.cands)) // absolute index of the next hit, -1 none
-	for i, c := range s.cands {
-		next[i] = strings.Index(text, c.text)
+	var spans []span
+	for _, c := range s.cands {
+		for from := 0; from < len(text); {
+			j := strings.Index(text[from:], c.text)
+			if j < 0 {
+				break
+			}
+			spans = append(spans, span{from + j, from + j + len(c.text), c.key})
+			from += j + 1
+		}
 	}
+	if len(spans) == 0 {
+		return text
+	}
+	sort.SliceStable(spans, func(a, b int) bool {
+		if spans[a].start != spans[b].start {
+			return spans[a].start < spans[b].start
+		}
+		return spans[a].end > spans[b].end
+	})
 	var sb strings.Builder
 	pos := 0
-	for {
-		best := -1
-		for i := range s.cands {
-			if next[i] >= 0 && next[i] < pos { // stale: overlapped by a replacement
-				if j := strings.Index(text[pos:], s.cands[i].text); j >= 0 {
-					next[i] = pos + j
-				} else {
-					next[i] = -1
-				}
-			}
-			if next[i] >= 0 && (best < 0 || next[i] < next[best]) {
-				best = i
-			}
-		}
-		if best < 0 {
-			break
-		}
-		sb.WriteString(text[pos:next[best]])
-		sb.WriteString("[REDACTED:" + s.cands[best].key + "]")
-		pos = next[best] + len(s.cands[best].text)
+	cur := spans[0]
+	flush := func() {
+		sb.WriteString(text[pos:cur.start])
+		sb.WriteString("[REDACTED:" + cur.key + "]")
+		pos = cur.end
 		s.counts[ClassValue]++
 	}
+	for _, sp := range spans[1:] {
+		if sp.start <= cur.end { // overlaps or touches: extend
+			if sp.end > cur.end {
+				cur.end = sp.end
+			}
+			continue
+		}
+		flush()
+		cur = sp
+	}
+	flush()
 	sb.WriteString(text[pos:])
 	return sb.String()
 }

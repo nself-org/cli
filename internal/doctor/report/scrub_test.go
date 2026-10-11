@@ -10,6 +10,15 @@ import (
 	"testing"
 )
 
+// scrubCase is one TestScrubCorpus row.
+type scrubCase struct {
+	name    string
+	known   bool // scrubber knows the values (value pass); false: patterns only
+	in      string
+	absent  []string
+	present []string
+}
+
 func rep(s string, n int) string { return strings.Repeat(s, n) }
 
 // corpus holds the fake secrets used across the tests.
@@ -45,6 +54,7 @@ func (c corpus) values() []SecretValue {
 			out = append(out, sv)
 		}
 	}
+	out = append(out, extraValues(c)...)
 	return out
 }
 
@@ -53,13 +63,7 @@ func TestScrubCorpus(t *testing.T) {
 	esc := func(f func(string) string) string { return f(c.tricky) }
 	jsonTricky, _ := json.Marshal(c.tricky)
 	neighbours := "POSTGRES_DB=myapp\nPORT=5432\nENV=dev\nHASURA_GRAPHQL_ENABLE_CONSOLE=true\n"
-	cases := []struct {
-		name    string
-		known   bool // scrubber knows the values (value pass); false: patterns only
-		in      string
-		absent  []string
-		present []string
-	}{
+	cases := []scrubCase{
 		{"env lines", true, neighbours + "HASURA_GRAPHQL_ADMIN_SECRET=" + c.admin + "\nPOSTGRES_PASSWORD=" + c.pg + "\n", []string{c.admin, c.pg}, []string{"POSTGRES_DB=myapp", "PORT=5432", "ENV=dev"}},
 		{"env lines patterns only", false, neighbours + "HASURA_GRAPHQL_ADMIN_SECRET=" + c.admin + "\nPOSTGRES_PASSWORD=" + c.pg + "\n", []string{c.admin, c.pg}, []string{"POSTGRES_DB=myapp", "PORT=5432"}},
 		{"env quoted", false, `JWT_SECRET="` + c.admin + `"` + "\nAPI_KEY='" + c.pg + "'\n", []string{c.admin, c.pg}, []string{`JWT_SECRET="[REDACTED]"`}},
@@ -101,6 +105,7 @@ func TestScrubCorpus(t *testing.T) {
 		{"placeholder untouched", true, "KEY=[REDACTED:META_KEY] and TOKEN: [REDACTED]\n", nil, []string{"KEY=[REDACTED:META_KEY]", "TOKEN: [REDACTED]"}},
 		{"words kept", false, "DEBUG_TOKEN=true\nPASSWORD_LOGIN: false\n", nil, []string{"DEBUG_TOKEN=true", "PASSWORD_LOGIN: false"}},
 	}
+	cases = append(cases, moreCases(c)...)
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var s *Scrubber

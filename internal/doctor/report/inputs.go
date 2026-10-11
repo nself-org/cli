@@ -2,18 +2,16 @@ package report
 
 // inputs.go: reads the project files the bundle is built from.
 //
-// Purpose: env key names + secret values (scrub inputs only), the generated
-// compose file and its environment values, and the generated nginx confs.
+// Purpose: env key names + secret values (scrub inputs only) from every env
+// cascade layer, and the generated compose file with its environment values.
 // Inputs: the project directory.
-// Outputs: SecretValue lists, key names, file texts, notes.
+// Outputs: an inputSet (values, key names, short-secret names), file texts, notes.
 // Constraints: env files are read only to learn names and values to scrub; a
-//         value never reaches the bundle. nginx: regular *.conf files only,
-//         no symlinks, no ssl/ or key/cert directories, nothing with a PEM
-//         header. Size caps keep a huge file from filling the bundle.
+//         value never reaches the bundle. Size caps keep a huge file from
+//         filling memory. More inputs: inputs_extra.go.
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,14 +24,87 @@ import (
 
 const maxFileBytes = 1 << 20
 
-var skipNginxDirs = map[string]bool{
-	"ssl": true, "certs": true, "certificates": true, "keys": true, "private": true, "secrets": true,
+// inputSet accumulates the scrub inputs of one collection.
+type inputSet struct {
+	values  []SecretValue
+	keys    map[string]bool   // cascade key names listed in config-keys.txt
+	refs    map[string]string // key -> last value, for CS_N_ENV_FILE lookup
+	seen    map[string]bool
+	short   map[string]bool // secret-named keys whose value is under MinSecretLen
+	notes   []string
+	process bool // learning from the process environment (shorts not counted)
+}
+
+func newInputSet() *inputSet {
+	return &inputSet{keys: map[string]bool{}, refs: map[string]string{}, seen: map[string]bool{}, short: map[string]bool{}}
+}
+
+// learn adds the scrub inputs of one key=value pair.
+func (in *inputSet) learn(k, v string) {
+	in.refs[k] = v
+	if !in.process && IsKeyName(k) && IsSecretName(k) {
+		if tv := TrimQuotes(v); tv != "" && len(tv) < MinSecretLen && !refValueRe.MatchString(tv) && !isWordValue(tv) {
+			in.short[k] = true
+		}
+	}
+	for _, sv := range ExpandSecretValues(k, v) {
+		if id := sv.Key + "\x00" + sv.Variants[0]; !in.seen[id] {
+			in.seen[id] = true
+			in.values = append(in.values, sv)
+		}
+	}
+}
+
+// learnEnvText learns a dotenv text; listKeys also records its key names.
+func (in *inputSet) learnEnvText(raw string, listKeys bool) {
+	add := func(k, v string) {
+		in.learn(k, v)
+		if listKeys && IsKeyName(k) {
+			in.keys[k] = true
+		}
+	}
+	if m, err := godotenv.Unmarshal(raw); err == nil {
+		for k, v := range m {
+			add(k, v)
+		}
+	}
+	for _, p := range scanDotenv(raw) { // raw spelling, even if godotenv refused the file
+		add(p.Key, p.Value)
+	}
+}
+
+// sortedKeys returns the cascade key names, sorted.
+func (in *inputSet) sortedKeys() []string {
+	out := make([]string, 0, len(in.keys))
+	for k := range in.keys {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// shortNote describes the secret-named values too short to be literal inputs.
+func (in *inputSet) shortNote() string {
+	if len(in.short) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(in.short))
+	for k := range in.short {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	list := names
+	more := ""
+	if len(list) > 20 {
+		list, more = list[:20], fmt.Sprintf(" and %d more", len(names)-20)
+	}
+	return fmt.Sprintf("%d secret-named values under %d characters were not literal-scrubbed (names: %s%s); check them by hand before sharing",
+		len(names), MinSecretLen, strings.Join(list, ", "), more)
 }
 
 // loadEnvInputs reads every env cascade file (the resolved environment's
-// cascade plus every other known layer) and returns the secret values, the
-// sorted key names, and notes.
-func loadEnvInputs(projectDir string) (values []SecretValue, keys []string, notes []string) {
+// cascade plus every other known layer).
+func loadEnvInputs(projectDir string, in *inputSet) {
 	env, _ := config.ResolveEnv(projectDir)
 	names := map[string]bool{}
 	for _, f := range config.EnvCascade(projectDir, env, config.LegacyOrderActive()) {
@@ -41,16 +112,6 @@ func loadEnvInputs(projectDir string) (values []SecretValue, keys []string, note
 	}
 	for _, n := range config.AllCascadeFilenames {
 		names[n] = true
-	}
-	seenKey, seenVal := map[string]bool{}, map[string]bool{}
-	addPair := func(k, v string) {
-		seenKey[k] = true
-		for _, sv := range ExpandSecretValues(k, v) {
-			if id := k + "\x00" + sv.Variants[0]; !seenVal[id] {
-				seenVal[id] = true
-				values = append(values, sv)
-			}
-		}
 	}
 	sorted := make([]string, 0, len(names))
 	for n := range names {
@@ -64,57 +125,47 @@ func loadEnvInputs(projectDir string) (values []SecretValue, keys []string, note
 			continue
 		}
 		if st.Size() > maxFileBytes {
-			notes = append(notes, fmt.Sprintf("%s skipped as a scrub input: larger than 1 MiB", n))
+			in.notes = append(in.notes, fmt.Sprintf("%s skipped as a scrub input: larger than 1 MiB", n))
 			continue
 		}
 		raw, err := os.ReadFile(path) // #nosec G304 -- fixed cascade names under the project dir
 		if err != nil {
-			notes = append(notes, fmt.Sprintf("%s unreadable: values in it cannot be scrubbed", n))
+			in.notes = append(in.notes, fmt.Sprintf("%s unreadable: values in it cannot be scrubbed", n))
 			continue
 		}
-		if m, perr := godotenv.Unmarshal(string(raw)); perr == nil {
-			for k, v := range m {
-				addPair(k, v)
-			}
-		}
-		for _, line := range strings.Split(string(raw), "\n") { // raw spelling, even if godotenv refused the file
-			line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "export "))
-			if k, v, ok := strings.Cut(line, "="); ok && !strings.HasPrefix(k, "#") && strings.TrimSpace(k) != "" {
-				addPair(strings.TrimSpace(k), v)
-			}
-		}
+		in.learnEnvText(string(raw), true)
 	}
-	for k := range seenKey {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return values, keys, notes
 }
 
-// readCompose returns the generated docker-compose.yml text and the secret
-// values found in environment/args/labels maps and lists anywhere in it.
-func readCompose(projectDir string) (text string, values []SecretValue, note string) {
+// readCompose returns the generated docker-compose.yml text and learns the
+// secret values found in environment/args/labels maps and lists anywhere in it.
+func readCompose(projectDir string, in *inputSet) (text, note string) {
 	path := filepath.Join(projectDir, "docker-compose.yml")
 	st, err := os.Lstat(path)
 	if err != nil || !st.Mode().IsRegular() {
-		return "", nil, "docker-compose.yml not found: run nself build"
+		return "", "docker-compose.yml not found: run nself build"
 	}
 	if st.Size() > 4*maxFileBytes {
-		return "", nil, "docker-compose.yml skipped: larger than 4 MiB"
+		return "", "docker-compose.yml skipped: larger than 4 MiB"
 	}
 	raw, err := os.ReadFile(path) // #nosec G304 -- fixed name under the project dir
 	if err != nil {
-		return "", nil, "docker-compose.yml unreadable"
+		return "", "docker-compose.yml unreadable"
 	}
+	if !learnComposeYAML(raw, in) {
+		note = "docker-compose.yml is not valid YAML: environment values were not extracted"
+	}
+	return string(raw), note
+}
+
+// learnComposeYAML learns the environment values of a compose document.
+func learnComposeYAML(raw []byte, in *inputSet) bool {
 	var doc any
 	if yaml.Unmarshal(raw, &doc) != nil {
-		note = "docker-compose.yml is not valid YAML: environment values were not extracted"
-	} else {
-		walkEnv(doc, func(k, v string) {
-			values = append(values, ExpandSecretValues(k, v)...)
-		})
+		return false
 	}
-	return string(raw), values, note
+	walkEnv(doc, in.learn)
+	return true
 }
 
 // walkEnv calls fn for every KEY/VALUE under a map key named environment, args
@@ -152,43 +203,4 @@ func emitPairs(v any, fn func(k, v string)) {
 			}
 		}
 	}
-}
-
-// readNginx returns <root>/**/*.conf regular files as bundle entries named
-// nginx/<relative path>. root is the served nginx directory (nginxtopo).
-func readNginx(root string) (files []File, notes []string) {
-	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			if p != root && skipNginxDirs[strings.ToLower(d.Name())] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !d.Type().IsRegular() || !strings.HasSuffix(strings.ToLower(d.Name()), ".conf") { // symlinks, keys, certs
-			return nil
-		}
-		rel, rerr := filepath.Rel(root, p)
-		if rerr != nil {
-			return nil
-		}
-		name := "nginx/" + filepath.ToSlash(rel)
-		if st, serr := d.Info(); serr != nil || st.Size() > maxFileBytes {
-			notes = append(notes, name+" skipped: larger than 1 MiB")
-			return nil
-		}
-		data, rerr := os.ReadFile(p) // #nosec G304 -- walked under the project nginx dir
-		if rerr != nil {
-			return nil
-		}
-		if strings.Contains(string(data), "-----BEGIN") {
-			notes = append(notes, name+" skipped: holds PEM material")
-			return nil
-		}
-		files = append(files, File{Name: name, Data: data})
-		return nil
-	})
-	return files, notes
 }

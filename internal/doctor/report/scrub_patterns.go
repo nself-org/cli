@@ -18,19 +18,18 @@ import (
 const placeholder = "[REDACTED]"
 
 var (
-	// A whole PEM block whose label holds KEY or CERTIFICATE.
-	pemBlockRe = regexp.MustCompile(`(?s)-----BEGIN [A-Z0-9 ]*(?:KEY|CERTIFICATE)[A-Z0-9 ]*-----.*?-----END [A-Z0-9 ]*(?:KEY|CERTIFICATE)[A-Z0-9 ]*-----`)
-	// A BEGIN with no END (a log tail cut the block): redact to the end.
-	pemOpenRe = regexp.MustCompile(`(?s)-----BEGIN [A-Z0-9 ]*(?:KEY|CERTIFICATE)[A-Z0-9 ]*-----.*$`)
-	// An END with its body but no BEGIN (the tail started mid-block).
-	pemTailRe = regexp.MustCompile(`(?s)(?:[A-Za-z0-9+/=]{16,}(?:\r?\n|\\n)?)+-----END [A-Z0-9 ]*(?:KEY|CERTIFICATE)[A-Z0-9 ]*-----`)
-
 	// Token shapes observability.Redact does not know, plus any-case bearer.
 	extraTokenRe = regexp.MustCompile(`\b(?:xox[abprs]-[A-Za-z0-9-]{10,}|glpat-[A-Za-z0-9_\-]{16,}|npm_[A-Za-z0-9]{30,}|ya29\.[A-Za-z0-9_\-]{20,}|shpat_[A-Fa-f0-9]{16,}|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}|AGE-SECRET-KEY-[A-Z0-9]{20,}|dop_v1_[a-f0-9]{20,}|hvs\.[A-Za-z0-9_\-]{20,})|(?i:\bbearer)[ \t]+[A-Za-z0-9._~+/=\-]{8,}`)
 
-	userinfoRe = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.\-]*://)[^/?#\s"'<>\\]+@`)
+	// scheme://user:pass@host where pass may hold / ? # and @ (the match runs to
+	// the LAST @ of the token); or scheme://token@host with no colon.
+	userinfoRe = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.\-]*://)(?:[^\s"'<>\\@/:?#]*:[^\s"'<>\\]*|[^/?#\s"'<>\\]+)@`)
+	// //user:pass@host (scheme dropped), preceded by a non-colon character.
+	userinfoNoSchemeRe = regexp.MustCompile(`(^|[^:A-Za-z0-9+.\-])(//)[^\s"'<>\\@/:?#]+:[^\s"'<>\\]*@`)
+	// user:pass@tcp(host) database DSN form.
+	userinfoDSNRe = regexp.MustCompile(`[A-Za-z0-9_.\-]+:[^\s"'<>\\]*@(tcp|udp|unix|pipe|cloudsql)\(`)
 
-	ident     = `[A-Za-z0-9_.\-]*(?:` + secretWords + `)[A-Za-z0-9_.\-]*`
+	ident     = secretIdent
 	valueExpr = `"(?:[^"\\\r\n]|\\.)*"|'[^'\r\n]*'|\S+`
 	// KEY=value, KEY: value, "key": "value", key = value.
 	assignRe = regexp.MustCompile(`(?i)(` + ident + `\\?["']?[ \t]*[:=][ \t]*)(` + valueExpr + `)`)
@@ -46,28 +45,26 @@ var (
 	headerRe = regexp.MustCompile(`(?i)(\b(?:proxy-)?authorization["']?[ \t]*[:=][ \t]*|\b(?:set-)?cookie["']?[ \t]*:[ \t]*)([^\r\n]+)`)
 )
 
-func (s *Scrubber) scrubPEM(text string) string {
-	for _, re := range []*regexp.Regexp{pemBlockRe, pemOpenRe, pemTailRe} {
-		n := len(re.FindAllStringIndex(text, -1))
-		if n > 0 {
-			text = re.ReplaceAllString(text, "[REDACTED:PEM]")
-			s.counts[ClassPEM] += n
-		}
-	}
-	return text
-}
-
 func (s *Scrubber) scrubUserinfo(text string) string {
-	n := len(userinfoRe.FindAllStringIndex(text, -1))
-	if n > 0 {
-		text = userinfoRe.ReplaceAllString(text, "${1}[REDACTED]@")
-		s.counts[ClassUserinfo] += n
+	for _, p := range []struct {
+		re   *regexp.Regexp
+		repl string
+	}{
+		{userinfoRe, "${1}[REDACTED]@"},
+		{userinfoNoSchemeRe, "${1}${2}[REDACTED]@"},
+		{userinfoDSNRe, "[REDACTED]@${1}("},
+	} {
+		if n := len(p.re.FindAllStringIndex(text, -1)); n > 0 {
+			text = p.re.ReplaceAllString(text, p.repl)
+			s.counts[ClassUserinfo] += n
+		}
 	}
 	return text
 }
 
 // scrubAssignments is the defense-in-depth pass.
 func (s *Scrubber) scrubAssignments(text string) string {
+	text = s.scrubBlockScalars(text)
 	for _, re := range []*regexp.Regexp{headerRe, queryRe, assignRe, flagRe, flagListRe, nginxRe} {
 		text = s.rewriteValue(re, text)
 	}

@@ -7,8 +7,10 @@ package commands
 //          confs, doctor run, per-service log tails, manifest) and its path on
 //          stdout; with --json one v1 envelope {path, files, bytes, redactions}.
 // Constraints: every file passes the scrubber in internal/doctor/report before
-//          it is archived; env values are scrub inputs only; the file is never
-//          overwritten; nothing is uploaded. A missing stack is not an error.
+//          it is archived; env values (cascade, process environment, compose
+//          fragments, CS_N_ENV_FILE files) are scrub inputs only; the file is
+//          never overwritten; nothing is uploaded. A missing stack is not an
+//          error: the archive then holds an empty logs/ directory.
 
 import (
 	"fmt"
@@ -36,8 +38,9 @@ var doctorReportCmd = &cobra.Command{
 	Long: `Collect versions, env key names (never values), the generated compose and
 nginx configs, a doctor run and recent service logs into one 0600 tar.gz.
 Every file is scrubbed first: known secret values, PEM keys, URL credentials
-and token patterns are replaced by [REDACTED]. Nothing is uploaded; review the
-archive before you share it.`,
+and token patterns are replaced by [REDACTED]. The scrubber removes known values
+and known patterns only, so review the archive before you share it. Nothing is
+uploaded.`,
 	Args: cobra.NoArgs,
 	RunE: runDoctorReport,
 }
@@ -73,11 +76,12 @@ func runDoctorReport(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	src := doctorReportSources(reportDockerSetup(projectDir))
+	ds := reportDockerSetup(projectDir)
+	src := doctorReportSources(ds)
 	if src.Now == nil {
 		src.Now = time.Now
 	}
-	opts := report.Options{ProjectDir: projectDir, LogLines: lines}
+	opts := report.Options{ProjectDir: projectDir, LogLines: lines, ComposeFragments: ds.ComposeFiles}
 	var note string
 	if opts.NginxDir, note = reportNginxDir(projectDir); note != "" {
 		opts.Notes = append(opts.Notes, note)
