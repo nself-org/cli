@@ -100,7 +100,7 @@ func TestLoadSources(t *testing.T) {
 	write("mirror.yml", "mirror")
 	abs := filepath.Join(dir, "docker-compose.override.yml")
 
-	files, err := LoadSources(dir, nil, []string{"docker-compose.override.yml", "missing.yml", "mirror.yml"}, "mirror.yml")
+	files, err := LoadSources(dir, nil, []string{"docker-compose.yml", "docker-compose.override.yml", "missing.yml", "mirror.yml"}, "mirror.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestLoadSources(t *testing.T) {
 		t.Errorf("files = %v, want %s", got, want)
 	}
 
-	// base bytes replace the file on disk; the base listed again is not read twice;
+	// base bytes replace the file on disk; the base listed again is read from memory;
 	// an absolute path is honoured.
 	files, err = LoadSources(dir, []byte("memory base"), []string{"docker-compose.yml", abs}, "")
 	if err != nil || len(files) != 2 || string(files[0].Data) != "memory base" || string(files[1].Data) != "override" {
@@ -134,7 +134,7 @@ func TestLoadSources(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, "adir.yml"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadSources(dir, nil, []string{"adir.yml"}, ""); err == nil || !strings.Contains(err.Error(), "adir.yml") {
+	if _, err := LoadSources(dir, nil, []string{"docker-compose.yml", "adir.yml"}, ""); err == nil || !strings.Contains(err.Error(), "adir.yml") {
 		t.Errorf("unreadable listed file: %v", err)
 	}
 }

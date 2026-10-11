@@ -18,6 +18,7 @@ package lock
 // be read without running docker compose, so it is reported, not guessed.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -103,11 +104,15 @@ func MergeDetailed(files []SourceFile, owned func(service string) bool, forCompa
 	return out, nil
 }
 
-// LoadSources reads the compose files start runs, in order: workdir's
-// docker-compose.yml first (base replaces its bytes when non-nil), then paths
-// (relative ones resolve against workdir). A listed file that does not exist is
-// skipped, except the base. mirror is the project-relative path of the
-// registry-mirror override file; its SourceFile has Mirror set.
+// LoadSources reads the compose files start runs, in the order start runs
+// them: paths exactly as given (relative ones resolve against workdir), so the
+// merge order (last wins) is the one `docker compose -f ...` sees. An empty
+// paths means workdir's docker-compose.yml alone. A non-empty paths that does
+// not list docker-compose.yml is an error: start would run a stack without the
+// base file. base replaces the bytes of docker-compose.yml when non-nil. A
+// listed file that does not exist is skipped, except the base. mirror is the
+// project-relative path of the registry-mirror override file; its SourceFile
+// has Mirror set.
 func LoadSources(workdir string, base []byte, paths []string, mirror string) ([]SourceFile, error) {
 	abs := func(p string) string {
 		if !filepath.IsAbs(p) {
@@ -116,12 +121,19 @@ func LoadSources(workdir string, base []byte, paths []string, mirror string) ([]
 		return filepath.Clean(p)
 	}
 	basePath, mirrorPath := abs("docker-compose.yml"), abs(mirror)
+	if len(paths) == 0 {
+		paths = []string{basePath}
+	}
+	listed := false
+	for _, p := range paths {
+		listed = listed || abs(p) == basePath
+	}
+	if !listed {
+		return nil, errors.New("compose manifest does not include docker-compose.yml")
+	}
 	var files []SourceFile
-	for _, p := range append([]string{basePath}, paths...) {
+	for _, p := range paths {
 		p = abs(p)
-		if p == basePath && len(files) > 0 {
-			continue
-		}
 		data := base
 		if p != basePath || base == nil {
 			var err error

@@ -211,11 +211,44 @@ func Parse(data []byte) (Lock, error) {
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
 		return Lock{}, errors.New("lock: more than one YAML document")
 	}
+	// Every schema-required key must be written, even as an empty collection:
+	// normalize would otherwise turn an absent key into an empty one.
+	if err := requireKeys(data); err != nil {
+		return Lock{}, err
+	}
 	l.normalize()
 	if err := l.Validate(); err != nil {
 		return Lock{}, err
 	}
 	return l, nil
+}
+
+// requiredKeys are the top-level keys the JSON Schema requires and Marshal
+// always writes.
+var requiredKeys = []string{"schema_version", "cli", "images", "unpinned", "plugins", "bundles"}
+
+// requireKeys fails when a required top-level key is absent or null in data.
+func requireKeys(data []byte) error {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return fmt.Errorf("lock: parse: %w", err)
+	}
+	var top *yaml.Node
+	if len(doc.Content) > 0 {
+		top = doc.Content[0]
+	}
+	have := map[string]bool{}
+	if top != nil && top.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(top.Content); i += 2 {
+			have[top.Content[i].Value] = top.Content[i+1].Tag != "!!null"
+		}
+	}
+	for _, k := range requiredKeys {
+		if !have[k] {
+			return fmt.Errorf("lock: required key %q is missing or null", k)
+		}
+	}
+	return nil
 }
 
 // hasTrailer reports whether the last non-blank line of data is the Trailer.
