@@ -30,7 +30,7 @@ f 0644 fronted-stack/backend/.nself/dist/scalar.html 650a899517b6771cb32ebacf366
 f 0644 fronted-stack/backend/.nself/generated/routes.json 087bea9ac7d8f77e77f38daf6cc57ab58deb291941320bb215a9470f3809e9a5
 f 0644 fronted-stack/backend/nginx/conf.d/default.conf ccc13780ced1a64b10360394d4b32693efc374590b9522b1988088dba5408f13
 f 0644 fronted-stack/backend/nginx/includes/rate-limits.conf 77e62d250a8c27ae3e563d4a9cdb7bd1ab999c5514fa972b498d30817d128f2a
-f 0644 fronted-stack/backend/nginx/nginx.conf 574687becdcc2fb334d71ff9b6cfae184caf50281744db0c7f275ef155de1dcd
+f 0644 fronted-stack/backend/nginx/nginx.conf 94095060d8a1226fd2b477f6fefbd3b588ed380f9d3ffcfbdf2b41937e507fac
 f 0644 fronted-stack/backend/postgres/init/01-init.sql 0238a6519fd10168af604249e45bf5234d3e6cec6ff9b927410a74ad90127637
 f 0644 fronted-stack/backend/postgres/init/04-np-plugins.sql 6d2f7e0d1a984fe96b69df552bfd7ec37ae7ceef46b757aa078f8c44809b53ab
 f 0644 fronted-stack/backend/postgres/init/05-np-plugins-seed.sql 30949e128d86d27eb1db142ea98273de6d7251fae143b6ecdc9ef28ae0eb318a

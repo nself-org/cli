@@ -68,8 +68,7 @@ func sslAssumed(cfg *config.Config, assumed []string) bool {
 
 // sslCertsPresent reports whether a usable certificate pair (fullchain.pem +
 // privkey.pem) already exists on disk for cfg.BaseDomain, at the same path
-// internal/ssl.Generator writes to and RenderServiceRoute/hasTrustedChain
-// read from.
+// internal/ssl.Generator writes to and RenderServiceRoute reads from.
 // sslDirName converts a domain to the directory-safe name nginx's
 // ssl_certificate directives are rooted at. Delegates to
 // internal/ssl.DomainToDirName — the same function internal/ssl.Generator

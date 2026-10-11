@@ -109,15 +109,12 @@ func (st *buildState) generateSSLAndNginx() error {
 		nginxGen.WithAssumedCerts(assumedCerts)
 	}
 	if st.routes == nil {
-		st.routes, err = st.modelRoutes(nginxGen.HasSSL(), nil)
+		st.routes, err = st.modelRoutes(nginxGen.HasSSL())
 		if err != nil {
 			return fmt.Errorf("building proxy routes: %w", err)
 		}
 	}
-	routemodel.SetSSL(st.routes, nginxGen.HasSSL(), func(sslDir string) bool {
-		_, err := os.Stat(filepath.Join(st.workdir, "ssl", "certificates", sslDir, "chain.pem"))
-		return err == nil
-	})
+	routemodel.SetSSL(st.routes, nginxGen.HasSSL())
 	nginxGen.WithModel(st.routes)
 	nginxFiles, err := nginxGen.Generate()
 	if err != nil {

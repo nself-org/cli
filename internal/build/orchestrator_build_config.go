@@ -66,7 +66,7 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	// ── Step 2: Validate config ─────────────────────────────────────
 	if err := config.Validate(st.cfg); err != nil {
 		if v15 && strings.Contains(err.Error(), "[duplicate-routes]") && !strings.Contains(err.Error(), "\n") {
-			m, buildErr := st.modelRoutes(nginx.NewGenerator(st.cfg, st.workdir).HasSSL(), nil)
+			m, buildErr := st.modelRoutes(nginx.NewGenerator(st.cfg, st.workdir).HasSSL())
 			if buildErr != nil {
 				return nil, buildErr
 			}
@@ -79,7 +79,7 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	}
 
 	// ── Step 2.5: Preflight — nginx domain conflict check ────────────
-	st.routes, err = st.modelRoutes(nginx.NewGenerator(st.cfg, st.workdir).HasSSL(), nil)
+	st.routes, err = st.modelRoutes(nginx.NewGenerator(st.cfg, st.workdir).HasSSL())
 	if err != nil {
 		return nil, err
 	}

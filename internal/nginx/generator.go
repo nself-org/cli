@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -227,19 +225,6 @@ type ServiceRouteData struct {
 	// HasSSL controls whether ssl_certificate directives and the listen 443
 	// directives are emitted. Set to false for letsencrypt/custom/none modes.
 	HasSSL bool
-	// HasTrustedChain controls whether ssl_trusted_certificate and OCSP
-	// stapling are emitted.
-	//
-	// The template used to emit them unconditionally, pointing at a chain.pem
-	// that `nself build` never writes — it emits only fullchain.pem and
-	// privkey.pem. nginx then refused to start on every fresh project with
-	// "cannot load certificate .../chain.pem: BIO_new_file() failed". Reported
-	// by the ntask clean-fork self-host drill, 2026-08-24.
-	//
-	// Set by the generator from what is actually on disk; callers do not
-	// populate it. Stapling is meaningless for a locally generated certificate
-	// anyway — there is no OCSP responder for a cert nobody issued.
-	HasTrustedChain bool
 }
 
 // RenderServiceRoute renders a single service route config from the service.conf.tmpl.
@@ -254,20 +239,6 @@ func (g *Generator) RenderServiceRoute(data ServiceRouteData) (string, error) {
 	}
 	g.finalizeServiceRoute(&data)
 	return g.render("service.conf.tmpl", data)
-}
-
-// hasTrustedChain reports whether a chain.pem exists for the given cert
-// directory. Only then is it safe to emit ssl_trusted_certificate: nginx treats
-// a missing file there as fatal and refuses to start.
-func (g *Generator) hasTrustedChain(sslDir string) bool {
-	if !g.hasSSL || sslDir == "" {
-		return false
-	}
-	chain := filepath.Join(g.workdir, "ssl", "certificates", sslDir, "chain.pem")
-	if _, err := os.Stat(chain); err != nil {
-		return false
-	}
-	return true
 }
 
 // render executes a named template with the given data and returns the result as a string.

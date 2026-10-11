@@ -2,6 +2,7 @@ package routemodel
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 // TestBuildAndSetSSL covers the provider contract through HTTP and TLS phases.
 func TestBuildAndSetSSL(t *testing.T) {
 	cfg := &config.Config{ProjectName: "demo", BaseDomain: "example.test"}
-	m, err := Build(cfg, t.TempDir(), false, nil)
+	m, err := Build(cfg, t.TempDir(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,10 +25,14 @@ func TestBuildAndSetSSL(t *testing.T) {
 	if m.Routes[0].Listen.HTTPS || m.Routes[0].TLS != nil || len(m.Routes[0].Locations) != 5 {
 		t.Fatalf("bad HTTP route: %+v", m.Routes[0])
 	}
-	SetSSL(m, true, func(dir string) bool { return dir == "example-test" })
+	SetSSL(m, true)
 	if !m.DefaultServer.HTTP.RedirectHTTPS || !m.Routes[0].Listen.HTTPS || m.Routes[0].Listen.HTTP ||
-		m.Routes[0].TLS == nil || !m.Routes[0].TLS.HasTrustedChain || len(m.Routes[0].Locations) != 4 {
+		m.Routes[0].TLS == nil || len(m.Routes[0].Locations) != 4 {
 		t.Fatalf("bad TLS route: %+v", m.Routes[0])
+	}
+	raw, err := json.Marshal(m.Routes[0].TLS)
+	if err != nil || strings.Contains(string(raw), "trusted_chain") || !strings.Contains(string(raw), "ssl_dir") {
+		t.Fatalf("TLS block must carry ssl_dir and no trusted-chain flag (P7-LIVE-22): %s %v", raw, err)
 	}
 }
 
@@ -35,13 +40,13 @@ func TestBuildAndSetSSL(t *testing.T) {
 func TestBuildRejectsInvalidInput(t *testing.T) {
 	cfg := &config.Config{BaseDomain: "example.test"}
 	cfg.Nginx.MaxBody = "many"
-	if _, err := Build(cfg, t.TempDir(), false, nil); err == nil {
+	if _, err := Build(cfg, t.TempDir(), false); err == nil {
 		t.Fatal("invalid body size accepted")
 	}
 	cfg.Nginx.MaxBody = "1M"
 	for _, target := range []string{"http://a;return 200", "ftp://a", "http:///missing"} {
 		cfg.InternalRoutes = []config.InternalRoute{{Index: 1, Name: "bad", Subdomain: "bad", Target: target}}
-		if _, err := Build(cfg, t.TempDir(), false, nil); err == nil {
+		if _, err := Build(cfg, t.TempDir(), false); err == nil {
 			t.Fatalf("invalid target %q accepted", target)
 		}
 	}
