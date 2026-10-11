@@ -133,3 +133,44 @@ func contains(ss []string, s string) bool {
 	}
 	return false
 }
+
+// R3: a Windows operator's build writes C:\... paths (backslashes, mixed with "/",
+// any drive-letter case) into compose files; they must map to the remote layout and
+// any survivor must be reported. Pure string work: it runs the same on every OS.
+func TestPathMapWindowsStylePaths(t *testing.T) {
+	m := PathMap{
+		ScratchRoot:  `C:/Users/Ann/proj/.nself/deploy-build/prod`,
+		OperatorRoot: `C:/Users/Ann/proj`,
+		PluginDir:    `C:/Users/Ann/.nself/plugins`,
+		Home:         `C:/Users/Ann`,
+		RemotePath:   "/opt/nself",
+	}
+	in := "services:\n" +
+		"  nginx:\n    volumes:\n" +
+		"      - C:\\Users\\Ann\\proj\\.nself\\deploy-build\\prod/nginx:/etc/nginx:ro\n" +
+		"      - c:\\users\\ann\\proj\\.nself\\deploy-build\\prod\\ssl:/etc/nginx/ssl:ro\n" +
+		"  web:\n    env_file: C:\\Users\\Ann\\proj/.env\n" +
+		"  ai:\n    build:\n      context: C:\\Users\\Ann\\.nself\\plugins/ai\n" +
+		"      dockerfile: \"C:/Users/Ann/.nself/plugins/ai/Dockerfile\"\n"
+	got := m.Rewrite(in)
+	for _, want := range []string{
+		"- /opt/nself/nginx:/etc/nginx:ro", "- /opt/nself/ssl:/etc/nginx/ssl:ro", "env_file: /opt/nself/.env",
+		"context: /opt/nself/.nself/plugins/ai", `dockerfile: "/opt/nself/.nself/plugins/ai/Dockerfile"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rewritten text lacks %q:\n%s", want, got)
+		}
+	}
+	if left := m.Leftovers(got); len(left) != 0 {
+		t.Errorf("leftovers after the rewrite: %v\n%s", left, got)
+	}
+	if left := m.Leftovers("HOME_DIR=C:\\Users\\Ann\\cache\n"); len(left) != 1 || !strings.Contains(left[0], "home dir") {
+		t.Errorf("a backslash home path must be reported: %v", left)
+	}
+	if left := m.Leftovers("path=c:/USERS/ann/x\n"); len(left) != 1 {
+		t.Errorf("drive paths match case-insensitively: %v", left)
+	}
+	if left := m.Leftovers("path=C:\\Users\\Annabel\\x\n"); len(left) != 0 {
+		t.Errorf("C:\\Users\\Annabel is not C:\\Users\\Ann: %v", left)
+	}
+}

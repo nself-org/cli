@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -111,44 +112,56 @@ func (m PathMap) Remote(local string) (string, error) {
 	return "", fmt.Errorf("%s is outside the scratch project and the plugin dir; it cannot be shipped", local)
 }
 
+// rootRE matches root as a path in any separator spelling a build can leave in a
+// file: "/" in root matches "/" or "\" (runs of them), and a Windows drive path
+// (C:\x) matches case-insensitively. Windows operators get C:\Users\a\p/nginx
+// from a compose file the build wrote with filepath.Join.
+func rootRE(root string) *regexp.Regexp {
+	parts := strings.Split(root, "/")
+	for i, p := range parts {
+		parts[i] = regexp.QuoteMeta(p)
+	}
+	pat := strings.Join(parts, `[\\/]+`)
+	if len(root) >= 2 && root[1] == ':' {
+		pat = "(?i)" + pat
+	}
+	return regexp.MustCompile(pat)
+}
+
 // replacePath replaces from with to wherever from stands as a whole path: not
 // in the middle of a longer name before it, and followed by a separator or a
-// non-name character.
+// non-name character. Backslashes in the rest of the path after a match become "/".
 func replacePath(s, from, to string) string {
 	if from == "" {
 		return s
 	}
+	re := rootRE(from)
 	var b strings.Builder
-	for {
-		i := strings.Index(s, from)
-		if i < 0 {
-			break
+	last := 0
+	for _, m := range re.FindAllStringIndex(s, -1) {
+		if m[0] < last || !boundaryBefore(s, m[0]) || !boundaryAfter(s, m[1]) {
+			continue
 		}
-		end := i + len(from)
-		if boundaryBefore(s, i) && boundaryAfter(s, end) {
-			b.WriteString(s[:i])
-			b.WriteString(to)
-		} else {
-			b.WriteString(s[:end])
+		b.WriteString(s[last:m[0]])
+		b.WriteString(to)
+		end := m[1]
+		for end < len(s) && !strings.ContainsRune(" \t\r\n\"',;:", rune(s[end])) {
+			end++
 		}
-		s = s[end:]
+		b.WriteString(strings.ReplaceAll(s[m[1]:end], `\`, "/"))
+		last = end
 	}
-	b.WriteString(s)
+	b.WriteString(s[last:])
 	return b.String()
 }
 
 func hasPath(s, p string) bool {
-	for off := 0; ; {
-		i := strings.Index(s[off:], p)
-		if i < 0 {
-			return false
-		}
-		i += off
-		if boundaryBefore(s, i) && boundaryAfter(s, i+len(p)) {
+	for _, m := range rootRE(p).FindAllStringIndex(s, -1) {
+		if boundaryBefore(s, m[0]) && boundaryAfter(s, m[1]) {
 			return true
 		}
-		off = i + len(p)
 	}
+	return false
 }
 
 func isNameByte(c byte) bool {
