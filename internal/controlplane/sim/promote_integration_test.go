@@ -160,14 +160,29 @@ func TestSimPromote(t *testing.T) {
 	t.Run("verify and drift stop before apply", func(t *testing.T) {
 		targetRemote.log = nil
 		target.sh("touch /tmp/sim-verify-fail")
-		if err := run(nil); err == nil || strings.Contains(strings.Join(targetRemote.log, "\n"), "docker compose") {
-			t.Fatalf("verify failure ran apply: %v\n%s", err, strings.Join(targetRemote.log, "\n"))
+		err := run(nil)
+		var verifyErr *errs.CLIError
+		verifyLog := strings.Join(targetRemote.log, "\n")
+		if !errors.As(err, &verifyErr) || verifyErr.Code != "E206" {
+			t.Fatalf("verify failure = %v, want E206\n%s", err, verifyLog)
+		}
+		for _, forbidden := range []string{"compose-files.txt", "compose-env-files.txt", "docker compose", "rsync", "tar -czf", "db migrate"} {
+			if strings.Contains(verifyLog, forbidden) {
+				t.Fatalf("verify failure reached %q:\n%s", forbidden, verifyLog)
+			}
 		}
 		target.sh("rm -f /tmp/sim-verify-fail")
 		targetRemote.log = nil
-		err := run(errs.New("E490", "release drift: web"))
-		if err == nil || strings.Contains(strings.Join(targetRemote.log, "\n"), "backup create") {
-			t.Fatalf("drift reached snapshot: %v\n%s", err, strings.Join(targetRemote.log, "\n"))
+		err = run(errs.New("E490", "release drift: web"))
+		var driftErr *errs.CLIError
+		driftLog := strings.Join(targetRemote.log, "\n")
+		if !errors.As(err, &driftErr) || driftErr.Code != "E490" {
+			t.Fatalf("drift failure = %v, want E490\n%s", err, driftLog)
+		}
+		for _, forbidden := range []string{"backup create", "db migrate", "docker compose", "rsync", "tar -czf"} {
+			if strings.Contains(driftLog, forbidden) {
+				t.Fatalf("drift reached remote write %q:\n%s", forbidden, driftLog)
+			}
 		}
 	})
 }
