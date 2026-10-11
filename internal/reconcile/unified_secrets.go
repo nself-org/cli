@@ -55,6 +55,31 @@ func (sc *secretScan) note(v string) {
 	}
 }
 
+// scalarText returns the text of a YAML scalar value for collection: no
+// leading &anchor or !tag, no block indicator, quotes removed, and for a plain
+// value no trailing " # comment". An unclosed quote yields the rest of v.
+func scalarText(v string) string {
+	v = strings.TrimSpace(v)
+	for v != "" && (v[0] == '&' || v[0] == '!') {
+		i := strings.IndexAny(v, " \t")
+		if i < 0 {
+			return ""
+		}
+		v = strings.TrimSpace(v[i:])
+	}
+	if v == "" || blockScalar.MatchString(v) {
+		return ""
+	}
+	if v[0] == '"' || v[0] == '\'' {
+		end, _ := closeAt(v, 1, v[0])
+		return v[1:end]
+	}
+	if i := strings.Index(v, " #"); i >= 0 {
+		v = v[:i]
+	}
+	return strings.TrimSpace(v)
+}
+
 // redactSecretLines renders the lines of one non-env artifact so no secret
 // value survives (scan, then replace the collected values in the same lines).
 func redactSecretLines(lines []string) []string {
@@ -97,10 +122,16 @@ func scanSecretLines(lines []string) ([]string, []string) {
 			if _, q := closeAt(line, 0, quote); q == 0 {
 				quote = 0
 			}
+			sc.note(t)
 			out[i] = ind + redactedValue + nl
 			continue
 		case block >= 0 && (t == "" || len(ind) > block):
-			out[i] = ind + redactedValue + nl
+			sc.note(strings.TrimPrefix(t, "- "))
+			if t == "" {
+				out[i] = line + nl // a blank line stays blank
+			} else {
+				out[i] = ind + redactedValue + nl
+			}
 			continue
 		case flagNext && !skip:
 			flagNext = false
@@ -128,6 +159,7 @@ func (sc *secretScan) line(line string) (text string, block int, quote byte, fla
 	if m := yamlEntry.FindStringSubmatch(line); m != nil && m[3] == m[5] && config.IsSecretKey(m[4]) {
 		return sc.secretEntry(line, m)
 	}
+	line = sc.directive(line)
 	text, quote = sc.flags(line)
 	flagNext = endsInSecretFlag(text)
 	text, q := sc.pairs(text)
@@ -149,13 +181,14 @@ func (sc *secretScan) secretEntry(line string, m []string) (string, int, byte, b
 	case v == "" || v[0] == '#':
 		return line, col, 0, false // nothing to hide on this line
 	case v[0] == '&' || v[0] == '!' || blockScalar.MatchString(v):
+		sc.note(scalarText(v))
 		return head + ": " + redactedValue, col, 0, false
 	}
 	var open byte
 	if v[0] == '"' || v[0] == '\'' {
 		_, open = closeAt(v, 1, v[0])
 	}
-	sc.note(v)
+	sc.note(scalarText(v))
 	tail := ""
 	if strings.HasSuffix(v, ",") && open == 0 {
 		tail = ","

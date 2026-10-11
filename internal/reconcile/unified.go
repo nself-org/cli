@@ -49,7 +49,7 @@ func Unified(path string, a, b []byte) string {
 	if IsEnvPath(path) {
 		al, bl = redactEnvLines(al), redactEnvLines(bl)
 	} else {
-		al, bl = redactSecretLines(al), redactSecretLines(bl)
+		al, bl = redactSecretSides(al, bl)
 	}
 	writeHunks(&sb, ops, al, bl)
 	return sb.String()

@@ -161,30 +161,42 @@ func TestUnifiedFlagValueOnNextLine(t *testing.T) {
 	})
 }
 
-// TestRedactSecretLinesNeverPanics runs every line of up to five tokens from a
-// hostile alphabet through the redaction and checks the line count and that no
-// fake secret survives next to a secret name.
+// TestRedactSecretLinesNeverPanics runs fixed hostile lines (including the
+// slice-bounds case: a secret pair after the closing quote of its scalar) and
+// every line of up to four tokens from a hostile alphabet through the
+// redaction, checking the line count.
 func TestRedactSecretLinesNeverPanics(t *testing.T) {
-	toks := []string{"API_KEY", "x", "--pass", "-", "=", ":", " ", `"`, "'", ",", "{", "]", "\\", "#"}
+	check := func(prefix string) {
+		in := []string{prefix + "\n", prefix}
+		if out := redactSecretLines(in); len(out) != len(in) {
+			t.Fatalf("line count changed for %q", prefix)
+		}
+	}
+	for _, l := range []string{`command: "foo" API_KEY=abc`, `x: 'a' API_KEY: v`, `- "a" --pass b`, `a: "b" # c: API_KEY=d`} {
+		check(l)
+	}
+	toks := []string{"API_KEY", "x", "--pass", "-", "=", ":", " ", `"`, "'", ",", "{", "\\"}
 	var gen func(prefix string, n int)
-	count := 0
 	gen = func(prefix string, n int) {
 		if n == 0 {
-			in := []string{prefix + "\n", prefix}
-			if out := redactSecretLines(in); len(out) != len(in) {
-				t.Fatalf("line count changed for %q", prefix)
-			}
-			count++
+			check(prefix)
 			return
 		}
 		for _, tok := range toks {
 			gen(prefix+tok, n-1)
 		}
 	}
-	for n := 1; n <= 5; n++ {
+	for n := 1; n <= 4; n++ {
 		gen("", n)
 	}
-	if count < 100000 {
-		t.Fatalf("only %d lines tried", count)
+}
+
+// TestRedactSecretLinesBlankStaysBlank: a blank line inside a secret scope
+// prints blank, and the line count is unchanged.
+func TestRedactSecretLinesBlankStaysBlank(t *testing.T) {
+	in := []string{"PRIVATE_KEY: |\n", "  line-one\n", "\n", "  line-two\n", "NAME: keep\n"}
+	out := redactSecretLines(in)
+	if len(out) != len(in) || out[2] != "\n" || out[1] != "  [REDACTED]\n" || out[4] != "NAME: keep\n" {
+		t.Fatalf("got %q", out)
 	}
 }

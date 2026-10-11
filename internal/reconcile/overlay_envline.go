@@ -30,9 +30,8 @@ type envStatement struct {
 //
 // Errors never hold the value: a value the dotenv parser cannot read back
 // unchanged (see quoteEnvLineValue), or a file the rewrite would corrupt. The
-// result is parsed again; it must load, hold key=value, and leave every other
-// key of a loadable old file unchanged (keys whose statement uses $ are
-// skipped, because they may expand the key being set).
+// result is parsed again and compared with the old file (checkEnvRewrite); a
+// rewrite that would lose or change another key is an error, never a silent edit.
 func EnvFileWithLine(old []byte, exists bool, key, value string) (out []byte, found bool, err error) {
 	enc, err := quoteEnvLineValue(key, value)
 	if err != nil {
@@ -46,6 +45,16 @@ func EnvFileWithLine(old []byte, exists bool, key, value string) (out []byte, fo
 	if err != nil {
 		return nil, false, err
 	}
+	out, found = rewriteEnvStatements(stmts, key, newLine)
+	if err := checkEnvRewrite(old, out, stmts, key, value); err != nil {
+		return nil, false, err
+	}
+	return out, found, nil
+}
+
+// rewriteEnvStatements replaces every statement whose key is key with newLine
+// (appending newLine when none matches) and joins the lines.
+func rewriteEnvStatements(stmts []envStatement, key, newLine string) (out []byte, found bool) {
 	var lines []string
 	for _, st := range stmts {
 		if st.key == key {
@@ -58,11 +67,7 @@ func EnvFileWithLine(old []byte, exists bool, key, value string) (out []byte, fo
 	if !found {
 		lines = append(lines, newLine)
 	}
-	out = []byte(strings.Join(lines, "\n") + "\n")
-	if err := checkEnvRewrite(old, out, stmts, key, value); err != nil {
-		return nil, false, err
-	}
-	return out, found, nil
+	return []byte(strings.Join(lines, "\n") + "\n"), found
 }
 
 // splitEnvStatements groups the lines of an env file into statements, tracking
@@ -84,8 +89,8 @@ func splitEnvStatements(old []byte) ([]envStatement, error) {
 		}
 		st := envStatement{lines: []string{line}}
 		trimmed := strings.TrimSpace(line)
-		if eq := strings.IndexByte(trimmed, '='); eq > 0 && !strings.HasPrefix(trimmed, "#") {
-			st.key = strings.TrimSpace(trimmed[:eq])
+		if eq := strings.IndexAny(trimmed, "=:"); eq > 0 && !strings.HasPrefix(trimmed, "#") {
+			st.key = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(trimmed[:eq]), "export "))
 			if v := strings.TrimSpace(trimmed[eq+1:]); v != "" && (v[0] == '"' || v[0] == '\'') && !closesDotenvQuote(v[1:], v[0]) {
 				open = v[0]
 			}
@@ -106,25 +111,57 @@ func closesDotenvQuote(s string, q byte) bool {
 	return false
 }
 
-// checkEnvRewrite parses out and fails, without the value in the text, when
-// out does not load, does not hold key=value, or changed another key that old
-// held (see EnvFileWithLine).
+// checkEnvRewrite is the grammar-independent check of a rewrite (see
+// EnvFileWithLine). It fails, with key names only, when out does not load or
+// does not hold key=value. When old loads: the key set of out must be old's
+// keys plus key; if key was new, every old value must be unchanged (the line is
+// appended last, and godotenv expands only from earlier statements); if key was
+// there, a probe (the same rewrite with key's old value) must reproduce old
+// exactly, which proves no other statement was touched, so out may differ from
+// old only where a value expands key.
 func checkEnvRewrite(old, out []byte, stmts []envStatement, key, value string) error {
-	m, err := godotenv.UnmarshalBytes(out)
-	if err != nil || m[key] != value {
-		return fmt.Errorf("cannot set %s without breaking the env file; edit it by hand", key)
+	broken := fmt.Errorf("cannot set %s without breaking the env file; edit it by hand", key)
+	nm, err := godotenv.UnmarshalBytes(out)
+	if err != nil || nm[key] != value {
+		return broken
 	}
 	om, err := godotenv.UnmarshalBytes(old)
 	if err != nil {
 		return nil // the old file did not load either; nothing to preserve
 	}
-	for _, st := range stmts {
-		prev, held := om[st.key]
-		if st.key == "" || st.key == key || !held || strings.Contains(strings.Join(st.lines, "\n"), "$") {
-			continue
+	_, had := om[key]
+	want := len(om)
+	if !had {
+		want++
+	}
+	if len(nm) != want {
+		return broken
+	}
+	for k := range om {
+		if _, ok := nm[k]; !ok {
+			return broken
 		}
-		if m[st.key] != prev {
-			return fmt.Errorf("cannot set %s without changing %s; edit the env file by hand", key, st.key)
+	}
+	if !had {
+		for k, v := range om {
+			if nm[k] != v {
+				return broken
+			}
+		}
+		return nil
+	}
+	enc, err := quoteEnvLineValue(key, om[key])
+	if err != nil {
+		return broken
+	}
+	probe, _ := rewriteEnvStatements(stmts, key, key+"="+enc)
+	pm, err := godotenv.UnmarshalBytes(probe)
+	if err != nil || len(pm) != len(om) {
+		return broken
+	}
+	for k, v := range om {
+		if pm[k] != v {
+			return broken
 		}
 	}
 	return nil

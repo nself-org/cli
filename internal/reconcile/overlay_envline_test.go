@@ -80,3 +80,67 @@ func TestEnvFileWithLineBrokenOldFile(t *testing.T) {
 		t.Fatalf("error text is wrong: %v", err)
 	}
 }
+
+// TestEnvFileWithLineNeverLosesNeighbours: for statement shapes the line
+// splitter may not see (several statements on one line, "KEY: value", a key
+// line inside a YAML-style value), the rewrite either errors or leaves every
+// other key as it was. Never a silent loss.
+func TestEnvFileWithLineNeverLosesNeighbours(t *testing.T) {
+	olds := []string{
+		"KEY=\"old\" OTHER=\"keep\"\n",
+		"OTHER: \"prefix\nKEY=inside\nsuffix\"\nKEY=old\n",
+		"OTHER='literal$\nKEY=inside\nsuffix'\nKEY=old\n",
+		"export KEY=old\nOTHER=keep\n",
+		"KEY: old\nOTHER=keep\n",
+		"OTHER=keep\n",
+	}
+	for _, old := range olds {
+		before, err := godotenv.UnmarshalBytes([]byte(old))
+		if err != nil {
+			t.Fatalf("fixture %q does not load: %v", old, err)
+		}
+		out, _, err := EnvFileWithLine([]byte(old), true, "KEY", "new-0000")
+		if err != nil {
+			if strings.Contains(err.Error(), "new-0000") || strings.Contains(err.Error(), "keep") {
+				t.Errorf("%q: error holds a value: %v", old, err)
+			}
+			continue
+		}
+		after, err := godotenv.UnmarshalBytes(out)
+		if err != nil {
+			t.Fatalf("%q: output does not load: %v", old, err)
+		}
+		if after["KEY"] != "new-0000" || len(after) != len(before)+boolInt(before["KEY"] == "") {
+			t.Errorf("%q: keys changed: before %v after %v", old, before, after)
+		}
+		for k, v := range before {
+			if k != "KEY" && after[k] != v {
+				t.Errorf("%q: %s changed from %q to %q", old, k, v, after[k])
+			}
+		}
+	}
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// TestEnvFileWithLineKeepsDependentValues: rotating a secret that another
+// value expands must work, and the dependent value follows the new secret.
+func TestEnvFileWithLineKeepsDependentValues(t *testing.T) {
+	old := "POSTGRES_PASSWORD=oldpw1\nDATABASE_URL=postgres://u:${POSTGRES_PASSWORD}@db/x\n"
+	out, found, err := EnvFileWithLine([]byte(old), true, "POSTGRES_PASSWORD", "newpw2")
+	if err != nil || !found {
+		t.Fatalf("found=%v err=%v", found, err)
+	}
+	m, err := godotenv.UnmarshalBytes(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m["POSTGRES_PASSWORD"] != "newpw2" || m["DATABASE_URL"] != "postgres://u:newpw2@db/x" {
+		t.Fatalf("got %v", m)
+	}
+}
