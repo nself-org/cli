@@ -37,6 +37,22 @@ An `IMAGE_PINNING` value other than `lock` or `legacy` (case ignored) is an erro
 
 A project digest file written by `nself update images` (`.nself-image-digests.json`) still applies to unpinned references; a lock reference already carries its digest and is left alone.
 
+## Valkey, the default cache
+
+Redis 7.4 and later is RSALv2/SSPLv1, so the lock carries a `valkey` entry (`docker.io/valkey/valkey:8.1-alpine`, BSD-3-Clause) and the `redis` compose service runs it by default in v1.5. The service name, `REDIS_*` variables and `REDIS_URL` stay. The engine is chosen by `REDIS_ENGINE` (`valkey` or `redis`), then by the engine of the project lock's `redis` pin, then by the mode default (v1.4 `redis`, v1.5 `valkey`):
+
+| Project | Result |
+|---|---|
+| v1.5, new project (no lock, no existing compose) | Valkey from the lock entry, volume `valkey_data` |
+| v1.5, lock pins a redis image | stays Redis; `nself build --plan` shows no cache change |
+| v1.5, no lock, existing `docker-compose.yml` runs redis | stays Redis (the first lock takes the pin from that file) |
+| `REDIS_ENGINE=valkey`, any mode | Valkey; a v1.4 project switches with `nself config set REDIS_ENGINE valkey`, then `nself build --plan`, `nself build`, `nself start` |
+| `REDIS_ENGINE=redis`, any mode | Redis, whatever the lock pins |
+
+Valkey runs `valkey-server` with the same flags, user, port and network, and its health check is `valkey-cli ping` (no reliance on `redis-*` symlinks). A `REDIS_VERSION` equal to the Redis default (`7-alpine`) means the Valkey default; any other value is used as the Valkey tag.
+
+Queued jobs are not migrated: Valkey starts on an empty `valkey_data` volume, and the plan shows a stateful recreate of the `redis` service. `redis_data` is kept, so setting `REDIS_ENGINE=redis` again reuses it.
+
 ## How pins move
 
 1. Edit the entry's `version` in `internal/compose/images.yaml` (a version bump is its own reviewed change). Leave `legacy_ref` alone. The weekly bump (`tools/imagebump`, `.github/workflows/image-pin-bump.yml`) does the same.

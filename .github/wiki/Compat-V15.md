@@ -86,6 +86,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-LIVE-09 | the project lock is written and honoured only when nself.lock.yaml exists or --write-lock is given | always | `internal/build/lockfile.go` |
 | P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |
 | P7-LIVE-17 | IMAGE_PINNING defaults to legacy | lock | `internal/compose/images_lock.go` |
+| P7-LIVE-19 | the default cache engine is redis | valkey | `internal/compose/cache_service.go` |
 | P7-LIVE-22 | E151 for every ACME failure (exit of the failed process, else 2) | E470/E471 (exit 2) or E472 (exit 1) by failure class | `cmd/commands/ssl_renewal.go` |
 | P7-LIVE-22 | certbot is the default certificate path | the ACME engine is the default | `cmd/commands/ssl_renewal.go` |
 | P7-PLUG-01 | v1 plugin.json read silently | one deprecation line per process on stderr | `internal/plugin/manifestv2/warn.go` |

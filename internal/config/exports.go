@@ -62,6 +62,7 @@ func DefaultFor(key string) string {
 		// Redis
 		"REDIS_ENABLED":   "false",
 		"REDIS_VERSION":   "7-alpine",
+		"REDIS_ENGINE":    "valkey (v1.5) / redis (v1.4); an existing project keeps the engine its lock pins",
 		"REDIS_PORT":      "6379",
 		"REDIS_MEMORY":    "512M",
 		"REDIS_CPU":       "0.5",

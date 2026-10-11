@@ -13,6 +13,9 @@ import (
 )
 
 // applyDefaultsRedis sets Redis connection, memory, and pool defaults.
+// Redis.Engine (REDIS_ENGINE) is deliberately left empty here: the engine is
+// resolved at generation (internal/compose cacheEngine) from the explicit key,
+// the project lock's redis pin and the compat mode, in that order (EPIC D16).
 func applyDefaultsRedis(cfg *Config) {
 	if cfg.Redis.Version == "" {
 		cfg.Redis.Version = "7-alpine"

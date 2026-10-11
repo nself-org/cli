@@ -48,3 +48,4 @@ images:
   - {name: storage, role: optional, repository: docker.io/nhost/hasura-storage, version: 0.6.1, legacy_ref: "nhost/hasura-storage:0.6.1", license: MIT, source: "https://github.com/nhost/hasura-storage", platforms: [linux/amd64, linux/arm64]}
   - {name: tempo, role: monitoring, repository: docker.io/grafana/tempo, version: latest, legacy_ref: "grafana/tempo:latest", license: AGPL-3.0, source: "https://github.com/grafana/tempo", platforms: [linux/amd64, linux/arm64]}
   - {name: typesense, role: optional, repository: docker.io/typesense/typesense, version: "27.1", legacy_ref: "typesense/typesense:27.1", license: GPL-3.0, source: "https://github.com/typesense/typesense", platforms: [linux/amd64, linux/arm64]}
+  - {name: valkey, role: optional, repository: docker.io/valkey/valkey, version: 8.1-alpine, legacy_ref: "valkey/valkey:8.1-alpine", license: BSD-3-Clause, source: "https://github.com/valkey-io/valkey", platforms: [linux/amd64, linux/arm64]}
