@@ -80,7 +80,7 @@ func trustCode(t *testing.T, err error, code string) {
 	}
 }
 
-// TestParseRefGrammar verifies the secret contract.
+// TestParseRefGrammar proves valid D5 references pass and malformed segments fail.
 func TestParseRefGrammar(t *testing.T) {
 	for _, s := range []string{"project/X", "team/FOO_42", "release/Z", "environment/staging/FOO", "deploy/prod/X", "project/" + strings.Repeat("A", 128)} {
 		if _, err := ParseRef(s); err != nil {
@@ -93,7 +93,7 @@ func TestParseRefGrammar(t *testing.T) {
 	}
 }
 
-// TestFileForMapping verifies the secret contract.
+// TestFileForMapping proves all five paths and sources and rejects reserved environments.
 func TestFileForMapping(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	for ref, rel := range map[string]string{"project/FOO": ".secrets/ci.age", "environment/staging/X": ".secrets/ci-staging.age", "deploy/prod/X": ".secrets/prod.age", "release/X": ".secrets/release.age", "team/X": ".config/nself/secrets/team.age"} {
@@ -118,7 +118,7 @@ func TestFileForMapping(t *testing.T) {
 	trustCode(t, err, "E540")
 }
 
-// TestResolveAuditNoValue verifies the secret contract.
+// TestResolveAuditNoValue proves exactly one value-free audit and fail-closed sink errors.
 func TestResolveAuditNoValue(t *testing.T) {
 	root, _, _ := trustFixture(t)
 	trustStore(t, root, "ci", "FOO")
@@ -173,7 +173,7 @@ func TestResolveAuditNoValue(t *testing.T) {
 	}
 }
 
-// TestResolveUnreadableIdentity verifies the secret contract.
+// TestResolveUnreadableIdentity proves a mode-000 identity returns E543 without values.
 func TestResolveUnreadableIdentity(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Fatal("mode-000 proof must run as non-root")
@@ -191,7 +191,7 @@ func TestResolveUnreadableIdentity(t *testing.T) {
 	}
 }
 
-// TestResolveMalformedPlaintext verifies the secret contract.
+// TestResolveMalformedPlaintext proves plaintext-derived parse errors cannot leak values.
 func TestResolveMalformedPlaintext(t *testing.T) {
 	root, _, key := trustFixture(t)
 	pub, err := GetPublicKey(key)
@@ -215,7 +215,7 @@ func TestResolveMalformedPlaintext(t *testing.T) {
 	}
 }
 
-// TestResolveAllClassesInOrder verifies the secret contract.
+// TestResolveAllClassesInOrder proves real age resolution preserves all five classes in order.
 func TestResolveAllClassesInOrder(t *testing.T) {
 	root, home, _ := trustFixture(t)
 	for env, name := range map[string]string{"ci": "P", "ci-staging": "E", "prod": "D", "release": "R"} {
@@ -235,13 +235,15 @@ func TestResolveAllClassesInOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	refs := []string{"team/T", "deploy/prod/D", "project/P", "release/R", "environment/staging/E"}
+	names := []string{"T", "D", "P", "R", "E"}
+	sources := []string{"age:team.age", "age:prod.age", "age:ci.age", "age:release.age", "age:ci-staging.age"}
 	v, err := Resolve(context.Background(), ResolveRequest{ProjectRoot: root, Refs: refs}, func(string, map[string]string) error { return nil })
 	if err != nil || len(v) != len(refs) {
 		t.Fatalf("resolve: %v", err)
 	}
 	for i, r := range refs {
-		if v[i].Ref != r || v[i].Value != trustFakeValue {
-			t.Fatal("order or value mismatch")
+		if v[i].Ref != r || v[i].Value != trustFakeValue || v[i].EnvName != names[i] || v[i].Source != sources[i] || v[i].ExpiresAt != nil {
+			t.Fatal("order, value, environment name or source mismatch")
 		}
 	}
 }

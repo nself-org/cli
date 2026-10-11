@@ -40,7 +40,19 @@ func newSecretsResolveCmd() *cobra.Command {
 	c.Flags().String("project", "", "Project directory (default current directory)")
 	c.Flags().String("for-attempt", "", "Required attempt identifier")
 	c.Flags().Bool("json", false, "Required JSON envelope output")
+	c.SetFlagErrorFunc(auditResolveFlagError)
 	return c
+}
+
+// auditResolveFlagError records parser refusals without echoing untrusted flag text.
+func auditResolveFlagError(cmd *cobra.Command, _ error) error {
+	project, _ := cmd.Flags().GetString("project")
+	attempt, _ := cmd.Flags().GetString("for-attempt")
+	req := secrets.ResolveRequest{ProjectRoot: project, AttemptID: attempt, Refs: cmd.Flags().Args()}
+	if err := secrets.AuditResolve(audit.Write, req, "E401"); err != nil {
+		return err
+	}
+	return errs.New("E401", "Invalid resolve flags")
 }
 
 func init() { secretsCmd.AddCommand(secretsResolveCmd) }

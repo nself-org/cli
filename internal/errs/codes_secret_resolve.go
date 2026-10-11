@@ -10,7 +10,7 @@ func init() {
 		{Code: "E541", Summary: "Secret reference not found", DefaultWhy: "The encrypted file or requested key does not exist.", DefaultFix: "Create the secret with config secrets set in the mapped store using the operator identity.", DocsPath: "reference/error-codes#e541", Exit: 1},
 		{Code: "E542", Summary: "Secret resolution requires FIFO stdout", DefaultWhy: "Stdout is not a named or anonymous pipe.", DefaultFix: "Pipe config secrets resolve --json to the secret consumer; do not redirect to a file.", DocsPath: "reference/error-codes#e542", Exit: 1},
 		{Code: "E543", Summary: "Age identity unreadable or decryption failed", DefaultWhy: "The identity cannot be read, cannot decrypt this store, or the decrypted store is invalid.", DefaultFix: "Check SECRETS_AGE_KEY_PATH and have the operator grant this identity access to the required file.", DocsPath: "reference/error-codes#e543", Exit: 1},
-		{Code: "E544", Summary: "Secret class not permitted", DefaultWhy: "Changing release or deploy recipients requires explicit release-class consent.", DefaultFix: "Use --allow-release-class only for an eligible dedicated trusted node.", DocsPath: "reference/error-codes#e544", Exit: 1},
+		{Code: "E544", Summary: "Secret class or recipient change not permitted", DefaultWhy: "Only the store owner may change recipients, the owner cannot be removed, and release or deploy changes require explicit release-class consent.", DefaultFix: "Run recipient changes with the store owner identity, preserve its recipient, and use --allow-release-class only for an eligible dedicated trusted node. Use secrets rekey for owner changes.", DocsPath: "reference/error-codes#e544", Exit: 1},
 	} {
 		Register(e)
 	}

@@ -7690,6 +7690,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "project",
+          "shorthand": null,
+          "type": "string",
+          "default": "",
+          "usage": "Project directory (default current directory)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": true,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",

@@ -39,9 +39,11 @@ Every resolver call records exactly one `secret-resolve` audit event with refs, 
 
 ### Manage recipients
 
-`nself config secrets recipients add --file ci <age-public-key>` grants access to an existing store. `remove --file ci <age-public-key>` revokes it; `list --file ci` prints public recipients. In v1.4 use `nself secrets recipients`. In v1.5 `--json` emits recipient envelopes.
+`nself config secrets recipients add --project <directory> --file ci <age-public-key>` grants access to an existing store. `remove --file ci <age-public-key>` removes a recipient; `list --file ci` prints public recipients. `--project` defaults to the current directory, is made absolute, and must name an existing directory for every action. In v1.4 use `nself secrets recipients`. In v1.5 `--json` emits recipient envelopes.
 
-Files are `ci`, `ci-<env>`, `release` or a deploy `<env>`, with the reserved environment rules above. Add and remove on release or deploy files require `--allow-release-class` (E544 otherwise). Add never creates a missing store and seeds an empty recipient list with the operator public key. Duplicate additions leave ciphertext unchanged. Remove refuses the last recipient and the operator recipient; use `secrets rekey` for operator changes. Each change records one `secret-recipients` event with action, file, public recipient, project and user. The operator private identity is never copied or printed. Add and remove are CLI-only.
+Files are `ci`, `ci-<env>`, `release` or a deploy `<env>`, with the reserved environment rules above. Only the store owner, the first recorded recipient, may add or remove recipients (E544 otherwise). Removing the owner is E544; use `secrets rekey` for owner changes. Add and remove on release or deploy files also require `--allow-release-class`. Add never creates a missing store. Empty or malformed recipient metadata is E543, including on list. Duplicate additions leave ciphertext unchanged. Each change records one `secret-recipients` event with action, file, public recipient, project and user before re-encryption; a failed audit leaves ciphertext unchanged. A save failure after the audit is E543. The operator private identity is never copied or printed. Add and remove are CLI-only.
+
+Removal does not revoke plaintext already read. Rotate secret values after removing a recipient. Any identity that can decrypt a file can re-encrypt it with age directly, so nodes must get read-only checkouts. The CLI owner guard prevents accidents; it is not a security boundary.
 
 ### `secrets rotate <KEY>`
 ### `secrets rekey`

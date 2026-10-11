@@ -6,12 +6,14 @@ package commands
 // SPORT: P7-TRUST-03.
 import "github.com/nself-org/cli/internal/secrets"
 
+// secretResolveData carries the ordered v1 resolution document for an attempt.
 type secretResolveData struct {
 	Schema    string          `json:"schema"`
 	AttemptID string          `json:"attempt_id"`
 	Values    []secrets.Value `json:"values"`
 }
 
+// secretRecipientsData reports public recipients and whether the store changed.
 type secretRecipientsData struct {
 	File       string   `json:"file"`
 	Recipients []string `json:"recipients"`

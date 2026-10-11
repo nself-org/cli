@@ -20,6 +20,7 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
+// Ref contains a validated secret reference and its class, environment and name.
 type Ref struct{ Raw, Class, Env, Name string }
 
 var refNamePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,127}$`)
@@ -84,14 +85,17 @@ func FileFor(projectRoot, home string, r Ref) (path, source string, err error) {
 	return path, "age:" + filepath.Base(path), nil
 }
 
+// ResolveRequest selects ordered references for an audited attempt in a project.
 type ResolveRequest struct {
 	ProjectRoot string
 	Refs        []string
 	AttemptID   string
 }
 
+// AuditFunc records value-free event fields and reports sink failures.
 type AuditFunc func(event string, fields map[string]string) error
 
+// Value is a resolved secret with its environment variable name and source.
 type Value struct {
 	Ref       string  `json:"ref"`
 	EnvName   string  `json:"env_name"`

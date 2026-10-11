@@ -8,6 +8,7 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/nself-org/cli/internal/audit"
@@ -28,6 +29,7 @@ func newSecretsRecipientsCmd() *cobra.Command {
 		return cmd.Help()
 	}}
 	hub.PersistentFlags().Bool("json", false, "JSON output in v1.5 mode")
+	hub.PersistentFlags().String("project", "", "Project directory (default current directory)")
 	for _, action := range []string{"add", "remove", "list"} {
 		use := action
 		if action != "list" {
@@ -56,9 +58,14 @@ func runSecretsRecipients(cmd *cobra.Command, args []string) error {
 	if len(args) != want {
 		return errs.New("E401", "Recipient action has the wrong number of arguments")
 	}
-	project, err := filepath.Abs(".")
+	project, _ := cmd.Flags().GetString("project")
+	project, err := filepath.Abs(project)
 	if err != nil {
 		return errs.New("E401", "Cannot determine project directory")
+	}
+	fi, err := os.Stat(project)
+	if err != nil || !fi.IsDir() {
+		return errs.New("E401", "Project must be an existing directory")
 	}
 	allow, _ := cmd.Flags().GetBool("allow-release-class")
 	req := secrets.RecipientsRequest{ProjectRoot: project, File: file, Action: action, AllowReleaseClass: allow}

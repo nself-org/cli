@@ -82,7 +82,7 @@ func resolveLeaf(t *testing.T, project string) *cobra.Command {
 	return c
 }
 
-// TestSecretsResolveFIFO verifies the secret contract.
+// TestSecretsResolveFIFO proves FIFO refusal precedes key/store access and isolation uses real stdout.
 func TestSecretsResolveFIFO(t *testing.T) {
 	root, home, _ := resolveCommandFixture(t)
 	r, w, err := os.Pipe()
@@ -122,6 +122,10 @@ func TestSecretsResolveFIFO(t *testing.T) {
 	if strings.Contains(string(b), resolveFakeValue) || strings.Count(string(b), `"event":"secret-resolve"`) != 1 || !strings.Contains(string(b), `"outcome":"E542"`) {
 		t.Fatal("refusal audit invalid")
 	}
+	t.Run("no store and missing identity", func(t *testing.T) {
+		t.Setenv("SECRETS_AGE_KEY_PATH", filepath.Join(t.TempDir(), "missing.key"))
+		resolveErrorCode(t, runSecretsResolve(resolveLeaf(t, t.TempDir()), []string{"project/FOO"}), "E542")
+	})
 	// The real stream retained by IsolateStdout must be used, not os.Stdout.
 	oldOut := os.Stdout
 	os.Stdout = w
@@ -149,7 +153,7 @@ func TestSecretsResolveFIFO(t *testing.T) {
 	}
 }
 
-// TestSecretsResolvePreflightAudit verifies the secret contract.
+// TestSecretsResolvePreflightAudit proves command-body refusals each write one audit event.
 func TestSecretsResolvePreflightAudit(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -173,7 +177,7 @@ func TestSecretsResolvePreflightAudit(t *testing.T) {
 	}
 }
 
-// TestSecretsResolveRegistryGolden verifies the secret contract.
+// TestSecretsResolveRegistryGolden proves both registries refuse machine access and retain wire shape.
 func TestSecretsResolveRegistryGolden(t *testing.T) {
 	for _, v15 := range []bool{false, true} {
 		reg, err := buildRegistry(v15)
@@ -194,16 +198,16 @@ func TestSecretsResolveRegistryGolden(t *testing.T) {
 		if !v15 && (row.JSON == "envelope" || row.DataSchema != nil) {
 			t.Fatalf("v1.4 registry advertises moved envelope: %+v", row)
 		}
-	}
-	reg, err := machineRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{"config secrets resolve", "config secrets recipients add", "config secrets recipients remove"} {
-		for _, transport := range []string{invoke.TransportMCP, invoke.TransportHTTP} {
-			res, err := invoke.Invoke(context.Background(), reg, path, invoke.Request{}, invoke.Options{Transport: transport})
-			if err != nil || res.ErrorCode != "E421" {
-				t.Fatalf("%s exposed on %s: %s %v", path, transport, res.ErrorCode, err)
+		prefix := "secrets "
+		if v15 {
+			prefix = "config " + prefix
+		}
+		for _, leaf := range []string{"resolve", "recipients add", "recipients remove"} {
+			for _, transport := range []string{invoke.TransportMCP, invoke.TransportHTTP} {
+				res, err := invoke.Invoke(context.Background(), reg, prefix+leaf, invoke.Request{}, invoke.Options{Transport: transport})
+				if err != nil || res.ErrorCode != "E421" {
+					t.Fatalf("v15=%v %s exposed on %s: %s %v", v15, leaf, transport, res.ErrorCode, err)
+				}
 			}
 		}
 	}
@@ -215,10 +219,10 @@ func TestSecretsResolveRegistryGolden(t *testing.T) {
 	}
 	const golden = `{"schema_version":"1","command":"config secrets resolve","data":{"schema":"cli.secret-resolve/v1","attempt_id":"a1","values":[{"ref":"project/FOO","env_name":"FOO","value":"fake-wire-trust03","source":"age:ci.age","expires_at":null}]}}`
 	var got, want any
-	if err = json.Unmarshal(b.Bytes(), &got); err != nil {
+	if err := json.Unmarshal(b.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if err = json.Unmarshal([]byte(golden), &want); err != nil {
+	if err := json.Unmarshal([]byte(golden), &want); err != nil {
 		t.Fatal(err)
 	}
 	gb, _ := json.Marshal(got)
@@ -228,7 +232,7 @@ func TestSecretsResolveRegistryGolden(t *testing.T) {
 	}
 }
 
-// TestSecretsResolveRealCommand verifies the secret contract.
+// TestSecretsResolveRealCommand proves both CLI spellings emit values only through pipes.
 func TestSecretsResolveRealCommand(t *testing.T) {
 	root, home, key := resolveCommandFixture(t)
 	bin := pilotBinary(t)
@@ -278,6 +282,42 @@ func TestSecretsResolveRealCommand(t *testing.T) {
 		}
 		if !bytes.Contains(b, []byte("E542")) || bytes.Contains(b, []byte(resolveFakeValue)) || strings.Contains(stderr.String(), resolveFakeValue) {
 			t.Fatal("regular-file refusal invalid")
+		}
+	}
+}
+
+// TestSecretsResolveFlagErrorAudit proves parser errors audit once without any secret output.
+func TestSecretsResolveFlagErrorAudit(t *testing.T) {
+	root, home, key := resolveCommandFixture(t)
+	bin := pilotBinary(t)
+	for _, mode := range []string{"0", "1"} {
+		for _, flag := range []string{"--json=bogus", "--unknown-resolve-flag"} {
+			t.Run(mode+flag, func(t *testing.T) {
+				auditPath := filepath.Join(home, ".nself", "audit.log")
+				before, err := os.ReadFile(auditPath)
+				if err != nil && !os.IsNotExist(err) {
+					t.Fatal(err)
+				}
+				args := []string{"secrets", "resolve", "--project", root, "--for-attempt", "a1", flag, "project/FOO"}
+				if mode == "1" {
+					args = append([]string{"config"}, args...)
+				}
+				cmd := exec.Command(bin, args...)
+				cmd.Dir = root
+				cmd.Env = append(os.Environ(), "NSELF_V15="+mode, "HOME="+home, "SECRETS_AGE_KEY_PATH="+key, "NSELF_NONINTERACTIVE=1", "NSELF_NO_UPDATE_CHECK=1")
+				b, runErr := cmd.CombinedOutput()
+				if runErr == nil || !bytes.Contains(b, []byte("E401")) || bytes.Contains(b, []byte(resolveFakeValue)) {
+					t.Fatal("parser refusal emitted value or wrong error", runErr)
+				}
+				after, err := os.ReadFile(auditPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				newEvents := after[len(before):]
+				if bytes.Count(newEvents, []byte(`"event":"secret-resolve"`)) != 1 || !bytes.Contains(newEvents, []byte(`"outcome":"E401"`)) || bytes.Contains(newEvents, []byte(resolveFakeValue)) {
+					t.Fatal("parser audit must be exactly one value-free E401 event")
+				}
+			})
 		}
 	}
 }

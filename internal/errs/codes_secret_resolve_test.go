@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// TestSecretResolveCodes verifies the secret contract.
+// TestSecretResolveCodes proves E540-E544 have registered descriptions, fixes and doc anchors.
 func TestSecretResolveCodes(t *testing.T) {
 	for i := 540; i <= 544; i++ {
 		code := fmt.Sprintf("E%d", i)

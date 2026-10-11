@@ -305,7 +305,7 @@ These errors come from resolving secrets for a service.
 | <a id="e541"></a>E541 | 1 | Secret reference not found | The encrypted file or requested key does not exist. | Create the secret with config secrets set in the mapped store using the operator identity. |
 | <a id="e542"></a>E542 | 1 | Secret resolution requires FIFO stdout | Stdout is not a named or anonymous pipe. | Pipe config secrets resolve --json to the secret consumer; do not redirect to a file. |
 | <a id="e543"></a>E543 | 1 | Age identity unreadable or decryption failed | The identity cannot be read, cannot decrypt this store, or the decrypted store is invalid. | Check SECRETS_AGE_KEY_PATH and have the operator grant this identity access to the required file. |
-| <a id="e544"></a>E544 | 1 | Secret class not permitted | Changing release or deploy recipients requires explicit release-class consent. | Use --allow-release-class only for an eligible dedicated trusted node. |
+| <a id="e544"></a>E544 | 1 | Secret class or recipient change not permitted | Only the store owner may change recipients, the owner cannot be removed, and release or deploy changes require explicit release-class consent. | Run recipient changes with the store owner identity, preserve its recipient, and use --allow-release-class only for an eligible dedicated trusted node. Use secrets rekey for owner changes. |
 <!-- END GENERATED:codes-secret -->
 
 ---

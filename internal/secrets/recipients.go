@@ -18,6 +18,7 @@ import (
 
 var recipientPattern = regexp.MustCompile(`^age1[02-9ac-hj-np-z]{58}$`)
 
+// RecipientsRequest selects a store and an owner-authorized recipient operation.
 type RecipientsRequest struct {
 	ProjectRoot, File, Action, Recipient string
 	AllowReleaseClass                    bool
@@ -69,6 +70,15 @@ func Recipients(req RecipientsRequest, sink AuditFunc) ([]string, bool, error) {
 	if err != nil {
 		return nil, false, decryptError()
 	}
+	// Decrypted metadata is untrusted even on list and unchanged paths.
+	if len(store.Recipients) == 0 {
+		return nil, false, decryptError()
+	}
+	for _, r := range store.Recipients {
+		if !recipientPattern.MatchString(r) {
+			return nil, false, decryptError()
+		}
+	}
 	if req.Action == "list" {
 		return append([]string{}, store.Recipients...), false, nil
 	}
@@ -76,41 +86,39 @@ func Recipients(req RecipientsRequest, sink AuditFunc) ([]string, bool, error) {
 	if err != nil || !recipientPattern.MatchString(operator) {
 		return nil, false, decryptError()
 	}
-	if len(store.Recipients) == 0 {
-		store.Recipients = []string{operator}
+	owner := store.Recipients[0]
+	if operator != owner {
+		return nil, false, errs.New("E544", "Only the store owner may change recipients")
 	}
-	changed, err := changeRecipient(store, req, operator)
+	changed, err := changeRecipient(store, req, owner)
 	if err != nil {
 		return nil, false, err
 	}
 	if !changed {
 		return append([]string{}, store.Recipients...), false, nil
 	}
-	// Persist only valid recipients: store contents are untrusted input to age argv.
-	for _, r := range store.Recipients {
-		if !recipientPattern.MatchString(r) {
-			return nil, false, decryptError()
-		}
-	}
 	if sink == nil {
 		return nil, false, errs.New("E401", "Recipient change audit is required")
+	}
+	project, err := filepath.Abs(req.ProjectRoot)
+	if err != nil {
+		return nil, false, errs.New("E401", "Cannot determine project directory")
+	}
+	if sink("secret-recipients", map[string]string{"action": req.Action, "file": req.File,
+		"recipient": req.Recipient, "project": project, "user": auditUser()}) != nil {
+		return nil, false, errs.New("E401", "Recipient change audit could not be written")
+	}
+	if !slices.Contains(store.Recipients, owner) {
+		return nil, false, errs.New("E544", "The store owner must remain a recipient")
 	}
 	if err := saveStore(req.ProjectRoot, req.File, store); err != nil {
 		return nil, false, decryptError()
 	}
-	project, err := filepath.Abs(req.ProjectRoot)
-	if err != nil {
-		return nil, true, errs.New("E401", "Cannot determine project directory")
-	}
-	if sink("secret-recipients", map[string]string{"action": req.Action, "file": req.File,
-		"recipient": req.Recipient, "project": project, "user": auditUser()}) != nil {
-		return nil, true, errs.New("E401", "Recipient change audit could not be written")
-	}
 	return append([]string{}, store.Recipients...), true, nil
 }
 
-// changeRecipient preserves operator access and refuses removal of the last key.
-func changeRecipient(store *SecretStore, req RecipientsRequest, operator string) (bool, error) {
+// changeRecipient preserves the store owner's access during additions and removals.
+func changeRecipient(store *SecretStore, req RecipientsRequest, owner string) (bool, error) {
 	index := slices.Index(store.Recipients, req.Recipient)
 	if req.Action == "add" {
 		if index >= 0 {
@@ -119,15 +127,15 @@ func changeRecipient(store *SecretStore, req RecipientsRequest, operator string)
 		store.Recipients = append(store.Recipients, req.Recipient)
 		return true, nil
 	}
-	if req.Recipient == operator {
-		return false, errs.New("E401", "Cannot remove the operator recipient; use secrets rekey")
+	if req.Recipient == owner {
+		return false, errs.New("E544", "Cannot remove the store owner; use secrets rekey")
 	}
 	if index < 0 {
 		return false, nil
 	}
 	store.Recipients = slices.DeleteFunc(store.Recipients, func(r string) bool { return r == req.Recipient })
 	if len(store.Recipients) == 0 {
-		return false, errs.New("E401", "Cannot remove the last recipient; use secrets rekey")
+		return false, errs.New("E544", "Cannot remove the last recipient; use secrets rekey")
 	}
 	return true, nil
 }
