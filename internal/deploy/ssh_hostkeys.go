@@ -30,6 +30,13 @@ func DeployKnownHostsPath() string {
 	return filepath.Join(home, ".config", "nself", "deploy_known_hosts")
 }
 
+// knownHostsOption is the GlobalKnownHostsFile option for the pin file. The
+// path uses forward slashes so a Windows home (C:\Users\...) passes the
+// transport token check (no backslash) and OpenSSH for Windows still reads it.
+func knownHostsOption() string {
+	return "GlobalKnownHostsFile=" + filepath.ToSlash(DeployKnownHostsPath())
+}
+
 func deployHostPort(spec remote.HostSpec) int {
 	if spec.Port == 0 {
 		return 22
@@ -112,7 +119,7 @@ func hostKeyPolicy(ctx context.Context, host, env, server string, strict, shipsS
 	}
 	for _, k := range keys {
 		if operator[k.Fingerprint] || pinned[k.Fingerprint] {
-			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", "GlobalKnownHostsFile=" + DeployKnownHostsPath()}
+			opts := []string{"-o", "StrictHostKeyChecking=yes", "-o", knownHostsOption()}
 			if alias != spec.Host && !operator[k.Fingerprint] {
 				opts = append(opts, "-o", "HostKeyAlias="+alias)
 			}

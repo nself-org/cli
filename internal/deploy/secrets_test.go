@@ -153,7 +153,7 @@ func TestPushSecretsRemotePathValidation(t *testing.T) {
 	for path, ok := range map[string]bool{
 		"/opt/app/.env": true, "~/app/.env": true,
 		"app/.env": false, "~": false, "~/": false, "~//etc/x": false, "/opt/../etc/x": false,
-		"/opt/x;id": false, "/opt/x$(id)": false, "-x": false, "/opt/x y": false,
+		"/opt/x;id": false, "/opt/x$(id)": false, "-x": false, "/opt/x y": false, "/": false,
 	} {
 		err := PushSecrets(context.Background(), baseSSHConfig(), PushSecretsOptions{
 			Target: "staging", ProjectRoot: dir, DryRun: true, RemotePath: path,

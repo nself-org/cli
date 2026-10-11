@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
+	"path"
 	"regexp"
 	"strings"
 
@@ -118,11 +118,12 @@ func DeployViaSsh(ctx context.Context, cfg SSHConfig, composePath string) error 
 		if !envNameRe.MatchString(cfg.EnvName) || remotePath == "" || remotePath == "/" {
 			return fmt.Errorf("env file %q needs a plain env name and a non-root remote path (got %q, %q)", cfg.EnvFile, cfg.EnvName, remotePath)
 		}
-		envFinal = filepath.Join(remotePath, ".env."+cfg.EnvName)
+		envFinal = path.Join(remotePath, ".env."+cfg.EnvName)
 		envTmp = envFinal + ".nself-new"
 	}
 
-	remoteCompose := filepath.Join(remotePath, "nself-compose.yml")
+	// Remote paths are POSIX on every client OS: path.Join, never filepath.Join.
+	remoteCompose := path.Join(remotePath, "nself-compose.yml")
 	if remotePath == "" || remotePath == "/" {
 		remoteCompose = "/tmp/nself-compose.yml"
 	}

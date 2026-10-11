@@ -139,7 +139,7 @@ func validateSecretsRemotePath(p string) error {
 	bad := fmt.Errorf("remote path %q must be absolute or start with ~/ and use only [a-zA-Z0-9/_.-] with no '..' segment", p)
 	switch {
 	case strings.HasPrefix(p, "/"):
-		if remote.ValidateCopyPath(p) != nil {
+		if p == "/" || remote.ValidateCopyPath(p) != nil {
 			return bad
 		}
 	case strings.HasPrefix(p, "~/"):

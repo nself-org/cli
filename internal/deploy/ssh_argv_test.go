@@ -228,3 +228,19 @@ func TestDeployArgvHostileInputs(t *testing.T) {
 		t.Fatalf("refused inputs ran ssh-keyscan %d time(s)", n)
 	}
 }
+
+// TestKnownHostsOptionIsAValidToken proves the pin-file option passes the
+// transport token check on every OS (Gemini pre-merge: a Windows home put a
+// backslash in GlobalKnownHostsFile and refused every strict deploy).
+func TestKnownHostsOptionIsAValidToken(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	opt := knownHostsOption()
+	if err := checkTransportToken(opt); err != nil {
+		t.Fatalf("knownHostsOption %q refused: %v", opt, err)
+	}
+	if strings.Contains(opt, `\`) {
+		t.Fatalf("knownHostsOption %q keeps a backslash", opt)
+	}
+}
