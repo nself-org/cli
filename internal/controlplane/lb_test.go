@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
@@ -44,6 +45,9 @@ func stubHostKeyPin(t *testing.T, bin string) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	pin := DeployKnownHostsPath()
+	if !strings.HasPrefix(pin, home+string(filepath.Separator)) {
+		t.Fatalf("pin file %q is outside the temp HOME %q", pin, home)
+	}
 	if err := os.MkdirAll(filepath.Dir(pin), 0o700); err != nil {
 		t.Fatalf("pin dir: %v", err)
 	}
@@ -209,6 +213,7 @@ func TestEnableHelperAbsent(t *testing.T) {
 // TestDrainFailedNonZero verifies that non-127 SSH failures return DrainFailed
 // with a non-nil error.
 func TestDrainFailedNonZero(t *testing.T) {
+	skipOnWindows(t)
 	dir := t.TempDir()
 
 	keyFile := filepath.Join(dir, "id_ed25519")
