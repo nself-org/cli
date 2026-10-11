@@ -19,7 +19,7 @@ const placeholder = "[REDACTED]"
 
 var (
 	// Token shapes observability.Redact does not know, plus any-case bearer.
-	extraTokenRe = regexp.MustCompile(`\b(?:xox[abprs]-[A-Za-z0-9-]{10,}|glpat-[A-Za-z0-9_\-]{16,}|npm_[A-Za-z0-9]{30,}|ya29\.[A-Za-z0-9_\-]{20,}|shpat_[A-Fa-f0-9]{16,}|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}|AGE-SECRET-KEY-[A-Z0-9]{20,}|dop_v1_[a-f0-9]{20,}|hvs\.[A-Za-z0-9_\-]{20,})|(?i:\bbearer)[ \t]+[A-Za-z0-9._~+/=\-]{8,}`)
+	extraTokenRe = regexp.MustCompile(`\b(?:xox[abprs]-[A-Za-z0-9-]{10,}|glpat-[A-Za-z0-9_\-]{16,}|npm_[A-Za-z0-9]{30,}|ya29\.[A-Za-z0-9_\-]{20,}|shpat_[A-Fa-f0-9]{16,}|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}|AGE-SECRET-KEY-[A-Z0-9]{20,}|dop_v1_[a-f0-9]{20,}|hvs\.[A-Za-z0-9_\-]{20,})|(?i:\bbearer)[ \t]+[A-Za-z0-9._~+/=\-]{8,}|` + jwtShape)
 
 	// scheme://user:pass@host where pass may hold / ? # and @ (the match runs to
 	// the LAST @ of the token); or scheme://token@host with no colon.
@@ -65,7 +65,7 @@ func (s *Scrubber) scrubUserinfo(text string) string {
 // scrubAssignments is the defense-in-depth pass.
 func (s *Scrubber) scrubAssignments(text string) string {
 	text = s.scrubBlockScalars(text)
-	for _, re := range []*regexp.Regexp{headerRe, queryRe, sqlPasswordRe, curlUserRe, assignRe, flagRe, flagListRe, nginxRe} {
+	for _, re := range []*regexp.Regexp{headerRe, nginxAuthRe, queryRe, sasSigRe, sqlPasswordRe, curlUserRe, assignRe, flagRe, flagListRe, nginxRe} {
 		text = s.rewriteValue(re, text)
 	}
 	return text

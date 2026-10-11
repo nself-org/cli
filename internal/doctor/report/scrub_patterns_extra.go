@@ -32,6 +32,25 @@ var (
 	curlUserRe = regexp.MustCompile(`(\bcurl\b[^\r\n]*?[\s"',\[](?:-u|--user)(?:=|[ \t]+|["']?[ \t]*,[ \t]*["']?)["']?(?:\[REDACTED(?::[^\]\s]*)?\]|[^\s"':,])*:)([^\s"',\]]+)`)
 )
 
+// Codex pre-merge items 3, 6 and 7 (all through rewriteValue or extraTokenRe).
+const (
+	// jwtShape: a JWS or JWE compact token by its eyJ header and any base64url
+	// payload, however short ({} is "e30"); observability.Redact wants 10+ chars
+	// in the payload.
+	jwtShape = `eyJ[A-Za-z0-9_\-]{5,}\.(?:[A-Za-z0-9_\-]*\.){1,3}[A-Za-z0-9_\-]{10,}`
+)
+
+var (
+	// nginx: proxy_set_header Authorization "Basic x"; in every directive and
+	// quote form (Authorization names carry no secret word, so nginxRe misses
+	// them). A $variable pass-through is left alone by redactedForm.
+	nginxAuthRe = regexp.MustCompile(`(?i)(\b(?:(?:proxy|grpc)_set_header|add_header|more_set_headers|more_set_input_headers|(?:fastcgi|uwsgi|scgi)_param)[ \t]+["']?(?:HTTP_)?(?:PROXY[-_])?AUTHORIZATION["']?:?[ \t]+)("[^"\r\n]*"|'[^'\r\n]*'|[^;\r\n]+)`)
+	// Signed-URL signatures: Azure SAS sig=, plus the presigned-URL spellings.
+	// Only the signature is secret; sv, sp, sr, se stay. A leading ; covers
+	// &amp; and %26 covers an encoded outer URL.
+	sasSigRe = regexp.MustCompile(`(?i)((?:[?&;]|%26)(?:sig|signature|x-amz-signature|x-goog-signature)=)([^&#\s"']+)`)
+)
+
 // scrubWebhooks redacts licence keys and webhook URL path tokens.
 func (s *Scrubber) scrubWebhooks(text string) string {
 	if n := len(licenseKeyRe.FindAllStringIndex(text, -1)); n > 0 {

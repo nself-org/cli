@@ -43,16 +43,17 @@ func (in *inputSet) learnInterpolated(k, v string) {
 		return
 	}
 	for idx := -1; idx < maxInterp; idx++ { // -1: every variable unset
-		pick := idx
+		pick, fromEnv := idx, false
 		e := runtimeExpander{env: func(name string) (string, bool) {
 			c := in.env[name]
 			if pick < 0 || len(c) == 0 {
 				return "", false
 			}
+			fromEnv = true
 			return c[min(pick, len(c)-1)], true
 		}}
 		if full := e.expand(v); full != v && !strings.Contains(full, "${") {
-			in.learn(k, full)
+			in.learnAs(k, full, !fromEnv) // a value an env variable supplied is an env literal (R9)
 		}
 		if idx >= 0 && idx+1 >= longestCandidates(in.env, v) {
 			break
@@ -60,7 +61,7 @@ func (in *inputSet) learnInterpolated(k, v string) {
 	}
 	for _, m := range refSplitRe.FindAllString(v, -1) {
 		for _, val := range in.env[refName(m)] {
-			in.learn(k, val)
+			in.learnAs(k, val, false)
 		}
 	}
 	for _, piece := range refSplitRe.Split(v, -1) {
@@ -68,6 +69,15 @@ func (in *inputSet) learnInterpolated(k, v string) {
 			in.learn(k, piece)
 		}
 	}
+}
+
+// learnAs is learn with the source set: fileSrc true for a compose-file
+// spelling, false for a value an env input supplied.
+func (in *inputSet) learnAs(k, v string, fileSrc bool) {
+	was := in.fileSrc
+	in.fileSrc = fileSrc
+	in.learn(k, v)
+	in.fileSrc = was
 }
 
 // refName is the variable name in ${NAME...} or $NAME.

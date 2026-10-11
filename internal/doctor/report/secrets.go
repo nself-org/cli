@@ -62,8 +62,17 @@ func TrimQuotes(v string) string {
 // NewSecretValue returns the scrub input for key=value, or false when the key
 // is not secret-like, the value is too short, or it is only a ${REF}.
 func NewSecretValue(key, value string) (SecretValue, bool) {
+	return newSecretValue(key, value, false)
+}
+
+// newSecretValue is NewSecretValue with the reference exclusion switchable:
+// keepRefs is true for a value that came from an env input (an exported
+// secret, a single-quoted dotenv value): it is already resolved, so a leading
+// $ makes it no reference (Codex pre-merge item 4). Only unresolved compose
+// syntax is excluded.
+func newSecretValue(key, value string, keepRefs bool) (SecretValue, bool) {
 	value = TrimQuotes(value)
-	if !IsSecretName(key) || len(value) < MinSecretLen || refValueRe.MatchString(value) {
+	if !IsSecretName(key) || len(value) < MinSecretLen || (!keepRefs && refValueRe.MatchString(value)) {
 		return SecretValue{}, false
 	}
 	return SecretValue{Key: key, Variants: variantsOf(value)}, true
@@ -76,19 +85,24 @@ func NewSecretValue(key, value string) (SecretValue, bool) {
 // (HASURA_GRAPHQL_JWT_SECRET), each string field of it that is secret-like or
 // named "key", so the inner key is scrubbed on its own.
 func ExpandSecretValues(key, value string) []SecretValue {
+	return expandSecretValues(key, value, false)
+}
+
+// expandSecretValues is ExpandSecretValues; keepRefs as in newSecretValue.
+func expandSecretValues(key, value string, keepRefs bool) []SecretValue {
 	value = TrimQuotes(value)
 	var out []SecretValue
-	if sv, ok := NewSecretValue(key, value); ok {
+	if sv, ok := newSecretValue(key, value, keepRefs); ok {
 		out = append(out, sv)
 	}
 	for _, c := range urlCredentials(key, value) {
 		if c.only {
-			if sv, ok := literalValue(key, c.user); ok {
+			if sv, ok := literalValue(key, c.user, keepRefs); ok {
 				out = append(out, sv)
 			}
 			continue
 		}
-		if sv, ok := literalValue(key, c.pass); ok {
+		if sv, ok := literalValue(key, c.pass, keepRefs); ok {
 			sv.Variants = append(sv.Variants, basicAuthVariants(c.user+":"+c.pass)...)
 			out = append(out, sv)
 		}
@@ -97,7 +111,7 @@ func ExpandSecretValues(key, value string) []SecretValue {
 	if IsSecretName(key) && strings.HasPrefix(value, "{") && json.Unmarshal([]byte(value), &obj) == nil {
 		for k, v := range obj {
 			if str, ok := v.(string); ok && (IsSecretName(k) || strings.EqualFold(k, "key")) {
-				if sv, ok := literalValue(key, str); ok {
+				if sv, ok := literalValue(key, str, keepRefs); ok {
 					out = append(out, sv)
 				}
 			}
@@ -107,8 +121,8 @@ func ExpandSecretValues(key, value string) []SecretValue {
 }
 
 // literalValue is a scrub input with no name check (the caller decided).
-func literalValue(key, value string) (SecretValue, bool) {
-	if len(value) < MinSecretLen || refValueRe.MatchString(value) {
+func literalValue(key, value string, keepRefs bool) (SecretValue, bool) {
+	if len(value) < MinSecretLen || (!keepRefs && refValueRe.MatchString(value)) {
 		return SecretValue{}, false
 	}
 	return SecretValue{Key: key, Variants: variantsOf(value)}, true

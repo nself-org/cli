@@ -18,10 +18,12 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf16"
 )
 
 var hexEscapeRe = regexp.MustCompile(`%[0-9A-F]{2}`)
@@ -47,6 +49,9 @@ func variantsOf(raw string) []string {
 		if s, ok := jsonEscape(raw, html); ok {
 			add(s)
 			add(strings.ReplaceAll(s, "/", `\/`)) // PHP json_encode and friends
+			for _, u := range unicodeEscapes(s) {
+				add(u)
+			}
 		}
 	}
 	if strings.ContainsAny(raw, "\r\n") { // multi-line value written on one line
@@ -63,6 +68,46 @@ func variantsOf(raw string) []string {
 	}
 	return out
 }
+
+// unicodeEscapes returns the \uXXXX spellings of a JSON-escaped string, in
+// lowercase and uppercase hex: every non-ASCII rune becomes \uXXXX (a
+// surrogate pair above the BMP), as Python json.dumps (ensure_ascii), Java,
+// JavaScript and .NET write it, and existing \uXXXX escapes (Go's \u003c)
+// change hex case (Codex pre-merge item 5). The result may equal s; the caller
+// de-duplicates.
+func unicodeEscapes(s string) []string {
+	var out []string
+	for _, upper := range []bool{false, true} {
+		var sb strings.Builder
+		for _, r := range s {
+			if r < 0x80 {
+				sb.WriteRune(r)
+				continue
+			}
+			for _, u := range utf16.Encode([]rune{r}) {
+				if upper {
+					fmt.Fprintf(&sb, `\u%04X`, u)
+				} else {
+					fmt.Fprintf(&sb, `\u%04x`, u)
+				}
+			}
+		}
+		out = append(out, upperUnicodeHex(sb.String(), upper))
+	}
+	return out
+}
+
+// upperUnicodeHex re-cases the hex digits of every \uXXXX in s.
+func upperUnicodeHex(s string, upper bool) string {
+	return uEscapeRe.ReplaceAllStringFunc(s, func(m string) string {
+		if upper {
+			return `\u` + strings.ToUpper(m[2:])
+		}
+		return `\u` + strings.ToLower(m[2:])
+	})
+}
+
+var uEscapeRe = regexp.MustCompile(`\\u[0-9a-fA-F]{4}`)
 
 // encodedForms are the base64 spellings and the lowercase hex of s.
 func encodedForms(s string) []string {

@@ -38,6 +38,8 @@ type inputSet struct {
 	cascade   map[string]bool     // cascade file names already read (loadBuildInputs skips them)
 	env       map[string][]string // every value seen per variable name in the env inputs (S-3)
 	structure map[string]bool     // lower-case service, container and image names (R7)
+	fileSrc   bool                // learning a compose-file spelling (R9, item 4)
+	envVals   map[string]bool     // first spelling of every value an env input gave (R9)
 
 	projectDir string // confinement root for env files read as inputs
 }
@@ -56,7 +58,13 @@ func (in *inputSet) learn(k, v string) {
 			in.short[k] = true
 		}
 	}
-	for _, sv := range ExpandSecretValues(k, v) {
+	for _, sv := range expandSecretValues(k, v, !in.fileSrc) {
+		if !in.fileSrc {
+			if in.envVals == nil {
+				in.envVals = map[string]bool{}
+			}
+			in.envVals[sv.Variants[0]] = true
+		}
 		if id := sv.Key + "\x00" + sv.Variants[0]; !in.seen[id] {
 			in.seen[id] = true
 			in.values = append(in.values, sv)

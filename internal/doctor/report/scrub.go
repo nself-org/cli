@@ -6,9 +6,11 @@ package report
 // Inputs: SecretValue literals (env cascade + compose environment) and the text
 //         of each file.
 // Outputs: scrubbed text and per-class redaction counts.
-// Constraints: pass order is fixed: (1) literal values, overlapping hits merged
-//         into one span so a placeholder is never rescanned and no tail
-//         survives; (2) PEM blocks (scrub_pem.go); (3) URL userinfo; (4)
+// Constraints: pass order is fixed: (1) PEM blocks (scrub_pem.go), first so a
+//         literal that spells part of a marker (KEY_FORMAT=OPENSSH) can never
+//         break BEGIN/END recognition (Codex pre-merge item 1); (2) literal
+//         values, overlapping hits merged into one span so a placeholder is
+//         never rescanned and no tail survives; (3) URL userinfo; (4)
 //         observability.Redact; (5) secret-named assignments and YAML block
 //         scalars the earlier passes missed (scrub_patterns.go,
 //         scrub_block.go). Every file goes through Scrub, including
@@ -61,8 +63,8 @@ func (s *Scrubber) Total() int {
 
 // Scrub runs all passes over text.
 func (s *Scrubber) Scrub(text string) string {
-	text = s.scrubValues(text)
 	text = s.scrubPEM(text)
+	text = s.scrubValues(text)
 	text = s.scrubUserinfo(text)
 	text = s.scrubRedact(text)
 	text = s.scrubExtraTokens(text)

@@ -34,6 +34,8 @@ type namedLit struct{ name, text string }
 // learnCompose learns a compose value in its file spelling and its runtime
 // spellings.
 func (in *inputSet) learnCompose(k, v string) {
+	in.fileSrc = true // a compose spelling: an unresolved ${REF} is no literal, a structure name may be dropped (R9)
+	defer func() { in.fileSrc = false }()
 	in.learn(k, v)
 	if !strings.Contains(v, "$") {
 		return

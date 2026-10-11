@@ -81,10 +81,11 @@ func TestReadContainerLogPartialOutputAtDeadlineIsANote(t *testing.T) {
 	}
 }
 
-// N-1: only the structure-equal spelling goes; the other spellings stay.
+// N-1: only the structure-equal spelling of a compose-only value goes; the
+// other spellings stay. R9: the same value from an env input is never dropped.
 func TestDropStructureValuesKeepsOtherSpellings(t *testing.T) {
 	in := newInputSet(t.TempDir())
-	in.learn("POSTGRES_PASSWORD", "postgres")
+	in.learnAs("POSTGRES_PASSWORD", "postgres", true) // a compose default (R9)
 	in.addStructure("Postgres")
 	if n := in.dropStructureValues(); n != 1 {
 		t.Fatalf("dropped = %d, want 1", n)
@@ -96,6 +97,15 @@ func TestDropStructureValuesKeepsOtherSpellings(t *testing.T) {
 		if v == "postgres" {
 			t.Error("the structure spelling was kept")
 		}
+	}
+	env := newInputSet(t.TempDir())
+	env.learn("POSTGRES_PASSWORD", "postgres")
+	env.addStructure("Postgres")
+	if n := env.dropStructureValues(); n != 0 || len(env.values) != 1 || env.values[0].Variants[0] != "postgres" {
+		t.Errorf("an env-given value was dropped: n=%d %+v", n, env.values)
+	}
+	if env.envStructureNote() == "" {
+		t.Error("no manifest note for an env value equal to a structure name")
 	}
 }
 
