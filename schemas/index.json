@@ -774,6 +774,10 @@
       "id": "urn:nself:cli:schema:commands:update-project-run:v1"
     },
     {
+      "path": "commands/update.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:update:v1"
+    },
+    {
       "path": "commands/version.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:version:v1"
     },

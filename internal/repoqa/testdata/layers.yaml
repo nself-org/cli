@@ -95,6 +95,7 @@ edges:
   - {from: internal/reconcile, to: internal/build}
   - {from: internal/builtin, to: internal/httpapi}
   - {from: internal/httpapi, to: internal/invoke}
+  - {from: internal/upgrade, to: internal/lock}          # P7-LIVE-10: the plan diffs the project lock; needs the overview 4.2 line
   - {from: internal/mcpgen, to: internal/invoke, pending: P7-SURF-03}
 ratchet:
   - {from: internal/health, to: internal/build}
