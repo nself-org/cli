@@ -118,6 +118,34 @@ func proxyRefusedBuild(t *testing.T, f *planFixture, names ...string) {
 }
 
 func TestProxyProviderInstalled(t *testing.T) {
+	for _, name := range []string{"traefik", "traefik.prev"} {
+		t.Run("nginx ignores disabled "+name+" fragment", func(t *testing.T) {
+			f := freshProxyFixture(t)
+			if name == "traefik" {
+				installProxy(t, f.plugins)
+			} else {
+				writeFixtureFile(t, filepath.Join(f.plugins, name, pluginComposeFilename), "services:\n  traefik:\n    image: traefik:v3.3\n", 0644)
+			}
+			writeFixtureFile(t, filepath.Join(f.plugins, name, ".disabled"), "", 0644)
+			if _, err := Build(f.workdir, BuildOptions{Force: true}); err != nil {
+				t.Fatalf("disabled fragment must build without E480: %v", err)
+			}
+			data, err := os.ReadFile(filepath.Join(f.workdir, "docker-compose.yml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(data, []byte("  nginx:\n")) {
+				t.Fatal("disabled traefik must keep nginx in compose")
+			}
+			manifest, err := os.ReadFile(filepath.Join(f.workdir, composeManifestFile))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Contains(manifest, []byte(filepath.Join(name, pluginComposeFilename))) {
+				t.Fatal("compose manifest includes disabled traefik fragment")
+			}
+		})
+	}
 	t.Run("safe declared traefik plan and write both omit nginx", func(t *testing.T) {
 		f := freshProxyFixture(t)
 		calls := declareProxy(t, f)

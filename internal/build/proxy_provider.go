@@ -78,10 +78,21 @@ func proxyLocalDir(project, dir string) error {
 // dry discovery only for traefik. Plan effects never rewrite plugin files.
 func proxyComposeDiscoverable(workdir, pluginDir, provider string) error {
 	if provider == ProviderNginx {
-		entries, _ := os.ReadDir(pluginDir)
+		entries, err := os.ReadDir(pluginDir)
+		if os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) {
+			return nil // Missing or non-directory paths have nothing to scan.
+		}
+		if err != nil {
+			// Other read errors are safe to defer: compose discovery fails loudly later.
+			return nil
+		}
 		for _, entry := range entries {
 			file := filepath.Join(pluginDir, entry.Name(), pluginComposeFilename)
 			if !entry.IsDir() || !proxyTraefikFragment(file) {
+				continue
+			}
+			// Match discovery's marker check in internal/build/plugins.go:81-84.
+			if _, err := os.Stat(filepath.Join(pluginDir, entry.Name(), ".disabled")); err == nil {
 				continue
 			}
 			if info, err := os.Stat(file); err == nil && !info.IsDir() {

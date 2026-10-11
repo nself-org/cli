@@ -28,6 +28,7 @@ import (
 
 // applyProxyProvider applies the derived provider to the compose service gate.
 func (st *buildState) applyProxyProvider(g *compose.Generator) error {
+	// Step 8 reuses the plugin directory resolved at Step 7.05.
 	pluginDir := st.pluginDir
 	provider, err := ProxyProvider(st.cfg, st.workdir, pluginDir)
 	if err != nil {
