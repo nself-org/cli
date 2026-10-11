@@ -53,6 +53,15 @@ nSelf resolves config from several `.env*` files, later files overriding earlier
 
 **Changing a value with `nself config set`:** the command writes one line into one cascade file (`.env`, or `.env.<name>` with `--env <name>`, for example `--env secrets` for `.env.secrets`). Before it writes, it loads the cascade with that line already applied in memory (the same `ENV` resolution and file order as above, so `config set ENV staging` previews the `.env.staging` layer) and renders the build from it, so `--preview` shows exactly what the change regenerates and writes nothing. See [[cmd-config]] for v1.5 auto-apply and prod-class confirmation.
 
+### How config set writes values
+
+`nself config set` writes a value as-is when it has no special characters. Otherwise it writes the value in double quotes with backslash, double quote, `$`, newline and carriage return escaped, so the file loads back byte-identical and the new value is never expanded as `$VAR`.
+
+- A value a dotenv file cannot hold (for example one that ends in a backslash and contains a space) is refused with an error that names only the key.
+- `config set` also refuses to rewrite a file when it cannot prove that every other key stays unchanged. Edit that file by hand.
+- A malformed env file fails to load with `invalid dotenv syntax in <file>`. The parser text is not shown, because it would echo the offending line.
+- `nself build --diff` and the hand-edit warning hide the values of secret-named keys (the same rule as `config show`) in every generated file, not only env files.
+
 **Inspect the cascade for your project:**
 
 ```bash

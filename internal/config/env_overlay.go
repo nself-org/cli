@@ -51,13 +51,28 @@ func loadOverlaid(projectDir, name string, data []byte, loaded map[string]string
 	if pos := bytes.IndexByte(data, 0); pos >= 0 {
 		return fmt.Errorf("invalid .env file: contains null byte at position %d in %s", pos, f)
 	}
+	return exportEnvFile(f, data, loaded)
+}
+
+// exportEnvFile parses one cascade file's bytes and exports every key into the
+// process environment (overload semantics: a file value replaces an existing
+// one), recording the keys in loaded for the unknown-variable warning.
+//
+// Inputs: the file path (for messages only), its bytes, and the loaded map.
+// Outputs: nil, or an error. A parse failure returns "invalid dotenv syntax in
+// <path>" and never carries the parser text, because godotenv quotes the
+// offending line, which can hold a secret. Constraints: the size and null-byte
+// checks are the caller's; nothing is exported when the parse fails; a key the
+// OS refuses (an empty name) is skipped and not recorded, as godotenv.Overload
+// ignores that error.
+func exportEnvFile(f string, data []byte, loaded map[string]string) error {
 	m, err := godotenv.UnmarshalBytes(data)
 	if err != nil {
-		return fmt.Errorf("loading %s: %w", f, err)
+		return fmt.Errorf("invalid dotenv syntax in %s", f)
 	}
 	for k, v := range m {
-		if err := os.Setenv(k, v); err != nil {
-			return fmt.Errorf("loading %s: %w", f, err)
+		if os.Setenv(k, v) != nil {
+			continue // a key the OS rejects (empty name): skipped, as godotenv.Overload does
 		}
 		loaded[k] = v
 	}

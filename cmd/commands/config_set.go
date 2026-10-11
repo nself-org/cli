@@ -110,7 +110,10 @@ func validateConfigValue(value string) error {
 func setEnvFileLine(envFile, key, value string) (updated bool, err error) {
 	// If the file does not exist, create it with just this key.
 	if _, statErr := os.Stat(envFile); os.IsNotExist(statErr) {
-		content, _, _ := reconcile.EnvFileWithLine(nil, false, key, value)
+		content, _, encErr := reconcile.EnvFileWithLine(nil, false, key, value)
+		if encErr != nil {
+			return false, fmt.Errorf("encoding %s: %w", key, encErr)
+		}
 		if writeErr := os.WriteFile(envFile, content, 0600); writeErr != nil {
 			return false, fmt.Errorf("creating %s: %w", envFile, writeErr)
 		}

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/joho/godotenv"
 )
 
 // overlayProject writes a minimal project .env and isolates the process env.
@@ -97,5 +99,59 @@ func TestLoadEnvOverlayChecks(t *testing.T) {
 		if _, err := LoadWithOptions(dir, LoadOptions{EnvOverlay: map[string][]byte{".env": data}}); err == nil {
 			t.Errorf("%s: an invalid overlay was accepted", name)
 		}
+	}
+}
+
+// fakeBadLine is an unterminated quoted value with a fake secret: godotenv
+// rejects it and quotes the raw line in its error text.
+const fakeBadLine = `FAKE_SECRET="s3cr3t-FAKE-0000` + "\n"
+
+// TestOverlayDotenvErrorCarriesNoValue proves a bad overlaid file reports
+// "invalid dotenv syntax in <path>" with no parser text, directly and through
+// the loader.
+func TestOverlayDotenvErrorCarriesNoValue(t *testing.T) {
+	// Positive control: the raw parser error does hold the fake secret.
+	_, rawErr := godotenv.UnmarshalBytes([]byte(fakeBadLine))
+	if rawErr == nil || !strings.Contains(rawErr.Error(), "s3cr3t-FAKE-0000") {
+		t.Fatalf("control: godotenv error should hold the secret, got %v", rawErr)
+	}
+	dir := t.TempDir()
+	err := loadOverlaid(dir, ".env.secrets", []byte(fakeBadLine), map[string]string{})
+	want := "invalid dotenv syntax in " + filepath.Join(dir, ".env.secrets")
+	if err == nil || err.Error() != want {
+		t.Fatalf("got %v, want %q", err, want)
+	}
+	_, err = LoadWithOptions(t.TempDir(), LoadOptions{EnvOverlay: map[string][]byte{".env.secrets": []byte(fakeBadLine)}})
+	if err == nil || strings.Contains(err.Error(), "s3cr3t-FAKE") || !strings.HasPrefix(err.Error(), "invalid dotenv syntax in ") {
+		t.Fatalf("through LoadWithOptions: got %v", err)
+	}
+}
+
+// TestExportEnvFileKeepsOverloadSemantics checks a good file replaces an
+// existing process value and records its keys.
+func TestExportEnvFileKeepsOverloadSemantics(t *testing.T) {
+	t.Setenv("FAKE_EXPORT_KEY", "old-0000")
+	loaded := map[string]string{}
+	if err := exportEnvFile("x/.env", []byte("FAKE_EXPORT_KEY=new-0000\n"), loaded); err != nil {
+		t.Fatal(err)
+	}
+	if os.Getenv("FAKE_EXPORT_KEY") != "new-0000" || loaded["FAKE_EXPORT_KEY"] != "new-0000" {
+		t.Fatalf("env=%q loaded=%v", os.Getenv("FAKE_EXPORT_KEY"), loaded)
+	}
+}
+
+// TestExportEnvFileSkipsRejectedKeys proves a key the OS refuses does not fail
+// the load (godotenv.Overload ignores that error) and is not recorded.
+func TestExportEnvFileSkipsRejectedKeys(t *testing.T) {
+	t.Setenv("ENV", "")
+	loaded := map[string]string{}
+	if err := exportEnvFile("x/.env", []byte("ENV=dev\n=orphan\n"), loaded); err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	if loaded["ENV"] != "dev" || len(loaded) != 1 {
+		t.Fatalf("loaded = %v, want only ENV=dev", loaded)
+	}
+	if _, err := LoadWithOptions(t.TempDir(), LoadOptions{EnvOverlay: map[string][]byte{".env": []byte("ENV=dev\n=orphan\n")}}); err != nil {
+		t.Fatalf("LoadWithOptions: %v", err)
 	}
 }

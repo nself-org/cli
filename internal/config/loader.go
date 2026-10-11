@@ -120,15 +120,8 @@ func LoadWithOptions(projectDir string, opts LoadOptions) (*Config, error) {
 		if pos := bytes.IndexByte(contents, 0); pos >= 0 {
 			return nil, fmt.Errorf("invalid .env file: contains null byte at position %d in %s", pos, f)
 		}
-		if err := godotenv.Overload(f); err != nil {
-			return nil, fmt.Errorf("loading %s: %w", f, err)
-		}
-		// godotenv.Read parses the file without touching os.Environ, giving
-		// us the raw key set to check for unknown vars.
-		if m, err := godotenv.Read(f); err == nil {
-			for k, v := range m {
-				loadedFromFiles[k] = v
-			}
+		if err := exportEnvFile(f, contents, loadedFromFiles); err != nil {
+			return nil, err
 		}
 	}
 
