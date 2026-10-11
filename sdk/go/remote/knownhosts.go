@@ -3,8 +3,9 @@
 // Outputs: OpenSSH known_hosts lines "<alias> <type> <base64>".
 // Constraints: touches only Path, its sidecar lock "<Path>.lock" (0600, never
 //              truncated, left in place) and its parent directory (created
-//              0700). Never ~/.ssh/known_hosts. Lookup matches the alias
-//              field exactly; an IP literal is refused, never matched.
+//              0700). Never ~/.ssh/known_hosts. Aliases are lowercased
+//              (ssh lowercases HostKeyAlias) and host fields are matched
+//              with EqualFold; an IP literal or a leading '@' is refused.
 //              Writers (Add, Replace, Remove) hold an exclusive flock on the
 //              lock file and Lookup a shared one, on top of the in-process
 //              mutex; the pin file itself is not locked because write()
@@ -14,7 +15,12 @@
 //              operation errors naming the file and line, and nothing is
 //              rewritten. A parent directory or pin file that is group or
 //              world writable, or is not a directory / regular file, is
-//              refused, never chmod-ed (mode checks skipped on windows).
+//              refused, never chmod-ed (mode checks skipped on windows). On
+//              unix they must also be owned by the effective user or root.
+//              Lines are tokenised as ssh does (' ' and '\t' only, one
+//              trailing '\r' dropped); a control byte anywhere in a key line
+//              or a non-ASCII byte in its host field makes it foreign. The
+//              lock file is opened O_NOFOLLOW so a planted symlink is refused.
 
 package remote
 
@@ -30,7 +36,11 @@ import (
 // PinnedHostKeys is a known_hosts file holding one or more keys per alias.
 type PinnedHostKeys struct{ Path string }
 
-var pinMu sync.Mutex // orders goroutines; the flock (acquire) orders processes
+// pinMu orders goroutines; the flock (acquire) orders processes. It is
+// process-global and held while waiting on the flock, so a call on another
+// path in this process can wait behind another process's hold (accepted:
+// holds are short).
+var pinMu sync.Mutex
 
 // keyTypes are the host key algorithms OpenSSH writes to known_hosts.
 var keyTypes = map[string]bool{
@@ -58,14 +68,19 @@ func parseKeyLine(line string) (typ, b64 string, err error) {
 	return typ, b64, nil
 }
 
-func checkPinAlias(alias string) error {
+// checkPinAlias validates alias and returns it lowercased, the form ssh
+// matches and every comparison here uses.
+func checkPinAlias(alias string) (string, error) {
 	if err := ValidateAlias(alias); err != nil {
-		return err
+		return "", err
 	}
 	if isIPLiteral(alias) {
-		return fmt.Errorf("pinned host keys are keyed by alias, not IP address (got %q)", alias)
+		return "", fmt.Errorf("pinned host keys are keyed by alias, not IP address (got %q)", alias)
 	}
-	return nil
+	if alias[0] == '@' {
+		return "", fmt.Errorf("alias %q starts with '@', which ssh reads as a known_hosts marker", alias)
+	}
+	return strings.ToLower(alias), nil
 }
 
 func (p PinnedHostKeys) read() ([]string, error) {
@@ -94,7 +109,7 @@ func (p PinnedHostKeys) read() ([]string, error) {
 	}
 	var lines []string
 	for _, l := range strings.Split(string(raw), "\n") {
-		if strings.TrimSpace(l) != "" {
+		if len(splitLine(l)) > 0 {
 			lines = append(lines, l)
 		}
 	}
@@ -110,6 +125,9 @@ func (p PinnedHostKeys) write(lines []string) error {
 	}
 	if err := checkDir(dir); err != nil {
 		return err
+	}
+	if bad := foreignLines(strings.Join(lines, "\n")); len(bad) > 0 { // last guard
+		return fmt.Errorf("refusing to write foreign lines to %s: %s", p.Path, strings.Join(bad, "; "))
 	}
 	tmp, err := os.CreateTemp(dir, ".known_hosts-*")
 	if err != nil {
@@ -142,7 +160,8 @@ func (p PinnedHostKeys) write(lines []string) error {
 // of a type already pinned for the alias is refused: that is a changed host
 // key and needs Replace, a deliberate act.
 func (p PinnedHostKeys) Add(alias, keyLine string) error {
-	if err := checkPinAlias(alias); err != nil {
+	alias, err := checkPinAlias(alias)
+	if err != nil {
 		return err
 	}
 	typ, b64, err := parseKeyLine(keyLine)
@@ -161,8 +180,8 @@ func (p PinnedHostKeys) Add(alias, keyLine string) error {
 		return err
 	}
 	for _, l := range lines {
-		f := strings.Fields(l)
-		if len(f) < 3 || f[0] != alias || f[1] != typ {
+		f := hostFields(l)
+		if len(f) < 3 || !strings.EqualFold(f[0], alias) || f[1] != typ {
 			continue
 		}
 		if f[2] == b64 {
@@ -175,7 +194,8 @@ func (p PinnedHostKeys) Add(alias, keyLine string) error {
 
 // Lookup returns the "<type> <base64>" keys pinned for alias (nil when none).
 func (p PinnedHostKeys) Lookup(alias string) ([]string, error) {
-	if err := checkPinAlias(alias); err != nil {
+	alias, err := checkPinAlias(alias)
+	if err != nil {
 		return nil, err
 	}
 	pinMu.Lock()
@@ -191,7 +211,7 @@ func (p PinnedHostKeys) Lookup(alias string) ([]string, error) {
 	}
 	var keys []string
 	for _, l := range lines {
-		if f := strings.Fields(l); len(f) >= 3 && f[0] == alias {
+		if f := hostFields(l); len(f) >= 3 && strings.EqualFold(f[0], alias) {
 			keys = append(keys, f[1]+" "+f[2])
 		}
 	}
@@ -212,7 +232,8 @@ func (p PinnedHostKeys) Replace(alias string, keyLines ...string) error {
 }
 
 func (p PinnedHostKeys) replace(alias string, keyLines []string) error {
-	if err := checkPinAlias(alias); err != nil {
+	alias, err := checkPinAlias(alias)
+	if err != nil {
 		return err
 	}
 	var add []string
@@ -241,7 +262,7 @@ func (p PinnedHostKeys) replace(alias string, keyLines []string) error {
 	}
 	out := make([]string, 0, len(lines)+len(add))
 	for _, l := range lines {
-		if f := strings.Fields(l); len(f) >= 1 && f[0] == alias {
+		if f := hostFields(l); len(f) >= 1 && strings.EqualFold(f[0], alias) {
 			continue
 		}
 		out = append(out, l)

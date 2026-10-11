@@ -83,8 +83,9 @@ func ValidateAlias(s string) error {
 }
 
 func aliasByte(c byte) bool {
-	switch {
-	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+	// An if, not a switch: Go's coverage blocks start after a case clause's
+	// colon, so the conditions of a case list are never attributed to a test.
+	if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
 		return true
 	}
 	return strings.IndexByte("._@:+-", c) >= 0

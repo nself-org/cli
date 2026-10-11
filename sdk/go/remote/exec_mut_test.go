@@ -1,5 +1,9 @@
 package remote
 
+// Purpose: mutation-killing tests for Command (D-0253): NUL bytes refused at
+// every argument position and the exec hook never reached for them.
+// No network; no real ssh runs.
+
 import (
 	"context"
 	"strings"

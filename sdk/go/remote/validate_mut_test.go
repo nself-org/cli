@@ -1,5 +1,9 @@
 package remote
 
+// Purpose: mutation-killing tests for the validators (D-0253): the exact
+// accepted byte set and the length boundaries of alias, node id and friends.
+// No network.
+
 import (
 	"strings"
 	"testing"

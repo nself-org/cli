@@ -3,10 +3,12 @@
 // Outputs: errors naming the path and 1-based line numbers; a release func.
 // Constraints: never echoes a key blob. The parent dir may be a symlink (the
 //              target is checked); the pin file may not (rename would replace
-//              the link). Mode checks are skipped on windows.
+//              the link). Mode and owner checks are skipped on windows.
 //              Nothing here chmods a user directory. Lock is the sidecar
-//              "<Path>.lock" (0600, never truncated, left in place) because
-//              write() renames over the pin file and so changes its inode.
+//              "<Path>.lock" (0600, never truncated, left in place, opened
+//              O_NOFOLLOW) because write() renames over the pin file and so
+//              changes its inode. Lines are split as ssh does: on ' ' and
+//              '\t' only, after one trailing '\r' is dropped.
 
 package remote
 
@@ -21,23 +23,67 @@ import (
 // foreignChars in a host field mean ssh would match more than one exact alias.
 const foreignChars = "*?!,[]|"
 
+// splitLine strips one trailing '\r' and splits on ' ' and '\t' only (runs
+// collapse), the way ssh ends the host field. strings.Fields would also split
+// on \v, \f, U+0085 and U+00A0, which ssh does not.
+func splitLine(l string) []string {
+	return strings.FieldsFunc(strings.TrimSuffix(l, "\r"), func(r rune) bool { return r == ' ' || r == '\t' })
+}
+
+// hostFields returns the fields of a key line, or nil for a blank or comment line.
+func hostFields(l string) []string {
+	f := splitLine(l)
+	if len(f) == 0 || f[0][0] == '#' {
+		return nil
+	}
+	return f
+}
+
+// hasControl reports a byte < 0x20 other than tab, or 0x7f.
+func hasControl(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if (s[i] < 0x20 && s[i] != '\t') || s[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// hasHighByte reports a non-ASCII byte.
+func hasHighByte(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return true
+		}
+	}
+	return false
+}
+
 // foreignLines returns one "line N: reason" per line ssh would honour but a
 // pinned file cannot represent: @markers, wildcards, negation, lists,
-// [host]:port and hashed hosts. Blank and # comment lines are fine.
+// [host]:port, hashed hosts, a second field that is not a key type, and lines whose host field ssh would end at a
+// different byte than Go does (control characters, non-ASCII). Blank and
+// # comment lines are fine.
 func foreignLines(raw string) []string {
 	var out []string
 	for i, l := range strings.Split(raw, "\n") {
-		t := strings.TrimSpace(l)
-		if t == "" || t[0] == '#' {
+		f := hostFields(l)
+		if f == nil {
 			continue
 		}
-		f := strings.Fields(t)[0]
 		// if / else-if, not switch: a case expression has no cover block, so
 		// the mutation tool could not measure a condition written there.
-		if f[0] == '@' {
-			out = append(out, fmt.Sprintf("line %d: %s marker is not supported in a pinned file; remove it by hand", i+1, f))
-		} else if strings.ContainsAny(f, foreignChars) {
+		if hasControl(strings.TrimSuffix(l, "\r")) {
+			out = append(out, fmt.Sprintf("line %d: control character in the line; ssh would split it differently from a pinned file; remove it by hand", i+1))
+		} else if hasHighByte(f[0]) {
+			out = append(out, fmt.Sprintf("line %d: host field has non-ASCII bytes; remove it by hand", i+1))
+		} else if f[0][0] == '@' {
+			out = append(out, fmt.Sprintf("line %d: %s marker is not supported in a pinned file; remove it by hand", i+1, f[0]))
+		} else if strings.ContainsAny(f[0], foreignChars) {
 			out = append(out, fmt.Sprintf("line %d: host field uses wildcard, negation, list, [host]:port or hashed syntax, which a pinned file does not support; remove it by hand", i+1))
+		} else if len(f) >= 2 && !keyTypes[f[1]] {
+			// ssh can read "junk ,n1 <key>" as a host list; do not guess.
+			out = append(out, fmt.Sprintf("line %d: second field is not a known host key type, so ssh may read the host field differently; remove it by hand", i+1))
 		}
 	}
 	return out
@@ -54,6 +100,9 @@ func checkDir(dir string) error {
 	}
 	if !fi.IsDir() {
 		return fmt.Errorf("pinned host keys directory %s is not a directory (mode %v)", dir, fi.Mode())
+	}
+	if !ownerOK(fi) {
+		return fmt.Errorf("pinned host keys directory %s is not owned by you or root", dir)
 	}
 	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o022 != 0 {
 		return fmt.Errorf("pinned host keys directory %s has mode %04o: group/world writable; chmod it 0700", dir, fi.Mode().Perm())
@@ -73,6 +122,9 @@ func checkFile(path string) error {
 	}
 	if !fi.Mode().IsRegular() {
 		return fmt.Errorf("pinned host keys file %s is not a regular file (mode %v)", path, fi.Mode())
+	}
+	if !ownerOK(fi) {
+		return fmt.Errorf("pinned host keys file %s is not owned by you or root", path)
 	}
 	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o022 != 0 {
 		return fmt.Errorf("pinned host keys file %s has mode %04o: group/world writable; chmod it 0600", path, fi.Mode().Perm())
@@ -104,7 +156,7 @@ func (p PinnedHostKeys) acquire(write bool) (func(), error) {
 		}
 		return nil, err
 	}
-	f, err := os.OpenFile(p.Path+".lock", flags, 0o600)
+	f, err := os.OpenFile(p.Path+".lock", flags|openNoFollow, 0o600)
 	if err != nil {
 		if !write && os.IsNotExist(err) {
 			return noUnlock, nil
