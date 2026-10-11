@@ -29,8 +29,8 @@ import (
 )
 
 // modelRoutes is the build preflight and renderer's single route snapshot.
-func (st *buildState) modelRoutes(hasSSL bool, trusted func(string) bool) (*routemodel.Model, error) {
-	return routemodel.Build(st.cfg, st.workdir, hasSSL, trusted)
+func (st *buildState) modelRoutes(hasSSL bool) (*routemodel.Model, error) {
+	return routemodel.Build(st.cfg, st.workdir, hasSSL)
 }
 
 // withSnippetRoutes returns a copy of m extended with the plugin and

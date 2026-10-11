@@ -128,15 +128,32 @@ func Remove(ctx context.Context, cfg *config.Config, name string, pluginDir stri
 		return fmt.Errorf("removing plugin directory %q: %w", destDir, err)
 	}
 
+	// A ".prev" backup left by an interrupted Update would hand its tier to a
+	// later fresh install (installedTierForInstall reads it), so it goes too.
+	// RemoveAll ignores a path that does not exist and reports anything else.
+	if err := os.RemoveAll(filepath.Join(pluginDir, name+".prev")); err != nil {
+		return fmt.Errorf("removing plugin backup directory for %q: %w", name, err)
+	}
+
 	fmt.Fprintf(os.Stderr, "\nℹ Run 'nself build' to update your stack.\n")
 	return nil
 }
 
 // Update backs up the current installation, then reinstalls from the registry.
 // If the new install fails, the previous version is restored automatically.
+// The installed tier is kept: installLocked reads it from the backup (v1.5,
+// see ResolvePluginTier). A caller that wants to switch tier on purpose sets
+// NSELF_PLUGIN_INSTALL_TIER for the call, as `plugin install --tier` does
+// (the cmd layer does this for `plugin update --tier`).
 func Update(ctx context.Context, cfg *config.Config, name string, pluginDir string) error {
 	currentDir := filepath.Join(pluginDir, name)
 	backupDir := filepath.Join(pluginDir, name+".prev")
+
+	// The installed copy's image references tell which ones changed. A
+	// fragment that does not parse gives no references, so the post-update
+	// pull treats every image as changed (the safe direction: it pulls more,
+	// never less).
+	prevImages, _ := fragmentImages(currentDir)
 
 	// Rename current install to .prev so we can restore on failure.
 	if _, err := os.Stat(currentDir); err == nil {
@@ -170,6 +187,15 @@ func Update(ctx context.Context, cfg *config.Config, name string, pluginDir stri
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not clear cached images for %q (%v); the next start may keep running the previous build\n", name, err)
+	}
+
+	// Fetch the images the new fragment points at, so the next start runs them.
+	pulled, err := pullChangedImages(ctx, prevImages, currentDir)
+	for _, ref := range pulled {
+		fmt.Fprintf(os.Stderr, "ℹ Pulled image %s for the updated plugin.\n", ref)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not pull images for %q (%v); 'nself start' will try again\n", name, err)
 	}
 	return nil
 }

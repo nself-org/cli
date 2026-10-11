@@ -27,7 +27,7 @@ f 0644 project/.nself/dist/scalar.html 650a899517b6771cb32ebacf366efb67e25583b47
 f 0644 project/.nself/generated/routes.json 087bea9ac7d8f77e77f38daf6cc57ab58deb291941320bb215a9470f3809e9a5
 f 0644 project/nginx/conf.d/default.conf ccc13780ced1a64b10360394d4b32693efc374590b9522b1988088dba5408f13
 f 0644 project/nginx/includes/rate-limits.conf 77e62d250a8c27ae3e563d4a9cdb7bd1ab999c5514fa972b498d30817d128f2a
-f 0644 project/nginx/nginx.conf 574687becdcc2fb334d71ff9b6cfae184caf50281744db0c7f275ef155de1dcd
+f 0644 project/nginx/nginx.conf 94095060d8a1226fd2b477f6fefbd3b588ed380f9d3ffcfbdf2b41937e507fac
 f 0644 project/nginx/sites/api-docs.conf e9c123c507404b40c062e15369038e9af46eb17841fa7135035675e702b6a4fb
 f 0644 project/nginx/sites/auth.conf 5e44d49fd8d1b8a6c998aaae1028cc834e5c9d12deedd3a471b0086cd7e6d666
 f 0644 project/nginx/sites/hasura.conf 1f4dcdb4a34770e4ff0ccb4b463e81ed700e7736de90008502a20da70e55fe83

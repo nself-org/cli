@@ -40,8 +40,8 @@ import (
 )
 
 func runSSLAdd(cmd *cobra.Command, args []string) error {
-	if on, _ := cmd.Flags().GetBool("acme"); on {
-		return runSSLAddACME(cmd, args)
+	if useACMEEngine(cmd) {
+		return v15ACMEError(runSSLAddACME(cmd, args))
 	} else if err := rejectACMEFlags(cmd); err != nil {
 		return err
 	}
@@ -139,17 +139,11 @@ func runSSLAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate nginx config before reloading.
-	testCmd := exec.Command("docker", "compose", "exec", "nginx", "nginx", "-t")
-	testCmd.Dir = servedRoot
-	if out, testErr := testCmd.CombinedOutput(); testErr != nil {
-		return fmt.Errorf("nginx config test failed: %s", string(out))
+	if testErr := nginxCompose(cmd.Context(), servedRoot, "-t"); testErr != nil {
+		return fmt.Errorf("nginx config test failed: %w", testErr)
 	}
 
-	reloadCmd := exec.Command("docker", "compose", "exec", "nginx", "nginx", "-s", "reload")
-	reloadCmd.Dir = servedRoot
-	reloadCmd.Stdout = os.Stdout
-	reloadCmd.Stderr = os.Stderr
-	if err := reloadCmd.Run(); err != nil {
+	if err := nginxCompose(cmd.Context(), servedRoot, "-s", "reload"); err != nil {
 		ui.Warn(fmt.Sprintf("Nginx reload failed: %v", err))
 	}
 
@@ -173,9 +167,9 @@ func domainToFilesafe(domain string) string {
 func init() {
 	f := sslAddCmd.Flags()
 	f.Bool("acme", false, "Use the CLI's own ACME client over HTTP-01 (lego one-shot container) instead of certbot")
-	f.Bool("dry-run", false, "With --acme: print the resolved stack, lineage and webroot; write nothing")
-	f.String("nginx-container", "", "With --acme: nginx container to reload (default: found by compose labels)")
-	f.Bool("agree-tos", false, "With --acme: accept the ACME CA's terms of service on first account registration")
+	f.Bool("dry-run", false, "ACME client: print the resolved stack, lineage and webroot; write nothing")
+	f.String("nginx-container", "", "ACME client: nginx container to reload (default: found by compose labels)")
+	f.Bool("agree-tos", false, "ACME client: accept the ACME CA's terms of service on first account registration")
 }
 
 // acmeHostRE is a plain DNS name with at least one dot: no wildcard, no port.
@@ -270,6 +264,11 @@ func runSSLAddACME(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// installFailed tags err as an after-install failure (E471 in v1.5). The chain
+// keeps the *acme.Error, so e151 still reads its What and Fix; the message text
+// is unchanged (the %.0w verb adds no output).
+func installFailed(err error) error { return fmt.Errorf("%w%.0w", err, acme.ErrInstall) }
+
 // writeAndVerifyAdd writes the domain's conf (unless a served conf already uses
 // the target), reloads nginx and checks the fingerprint it serves.
 func writeAndVerifyAdd(ctx context.Context, r *acmeRun, l acme.Lineage, cert []byte, reload acme.NginxReloader) error {
@@ -277,14 +276,14 @@ func writeAndVerifyAdd(ctx context.Context, r *acmeRun, l acme.Lineage, cert []b
 	if !strings.Contains(hosts[l.Domains[0]], "/"+l.Name+"/") {
 		upstream, _ := r.cmd.Flags().GetString("upstream")
 		if err := writeCustomDomainConfServed(r.workdir, r.cfg.Nginx.FrontedBy, l.Domains[0], upstream); err != nil {
-			return e151(acmeRefuse("the certificate is installed; fix the conf directory and re-run", "writing nginx conf: %v", err))
+			return e151(installFailed(acmeRefuse("the certificate is installed; fix the conf directory and re-run", "writing nginx conf: %v", err)))
 		}
 	}
 	if err := reload.Reload(ctx); err != nil {
-		return e151(acmeRefuse("fix the nginx error above; the certificate is installed", "%v", err))
+		return e151(installFailed(acmeRefuse("fix the nginx error above; the certificate is installed", "%v", err)))
 	}
 	if err := r.verifier(l, cert)(ctx); err != nil {
-		return e151(acmeRefuse("check that nginx serves the domain on its HTTPS port", "served certificate check failed: %v", err))
+		return e151(installFailed(acmeRefuse("check that nginx serves the domain on its HTTPS port", "served certificate check failed: %v", err)))
 	}
 	r.say("lineage %s: nginx reloaded, served certificate verified", l.Name)
 	return nil

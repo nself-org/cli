@@ -79,10 +79,24 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-LIVE-09 | the project lock is written and honoured only when nself.lock.yaml exists or --write-lock is given | always | `internal/build/lockfile.go` |
 | P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |
 | P7-LIVE-17 | IMAGE_PINNING defaults to legacy | lock | `internal/compose/images_lock.go` |
+| P7-LIVE-22 | E151 for every ACME failure (exit of the failed process, else 2) | E470/E471 (exit 2) or E472 (exit 1) by failure class | `cmd/commands/ssl_renewal.go` |
+| P7-LIVE-22 | certbot is the default certificate path | the ACME engine is the default | `cmd/commands/ssl_renewal.go` |
 | P7-PLUG-01 | v1 plugin.json read silently | one deprecation line per process on stderr | `internal/plugin/manifestv2/warn.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_marketplace_cmds.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_query.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_search.go` |
+| P7-PLUG-17 | --json is ignored by plugin info | prints the info with its tier and why as JSON | `cmd/commands/plugin_info.go` |
+| P7-PLUG-17 | a compose plugin without a fragment is skipped silently | the build fails with E128 (v1.4 warns) | `internal/build/plugins.go` |
+| P7-PLUG-17 | a fragment may join any external network (warning) | E129 fails the build | `internal/build/plugins_network_normalize.go` |
+| P7-PLUG-17 | a fragment that decodes as nodes but not as values is passed on unchecked | E129, the network policy could not be checked | `internal/build/plugins_network_normalize.go` |
+| P7-PLUG-17 | a fragment with several YAML documents is checked on the first only (warning) | E129, the fragment must be one document | `internal/build/plugins_network_normalize.go` |
+| P7-PLUG-17 | a service may set any network_mode (host, container:x, a network name) | E129 unless it is none or service:<a service of this fragment> | `internal/build/plugins_network_normalize.go` |
+| P7-PLUG-17 | an update re-resolves a tier pair by entitlement and can switch the installed tier | the installed tier sticks unless --tier is given | `internal/plugin/tier_resolve.go` |
+| P7-PLUG-17 | external network nself_network keeps its literal name | its definition is dropped and service references use ${DOCKER_NETWORK} | `internal/build/plugins_network_legacy.go` |
+| P7-PLUG-17 | fragments get no PORT | PORT equals SERVICE_PORT (a fragment's own PORT always wins) | `internal/build/plugins_core_env.go` |
+| P7-PLUG-17 | fragments keep their own networks and ${DOCKER_NETWORK:-x} | missing networks attached, ${DOCKER_NETWORK:-x} written as ${DOCKER_NETWORK} | `internal/build/plugins_network_normalize.go` |
+| P7-PLUG-17 | info describes the first registry match | describes the installed tier's entry, or the one an install would pick | `cmd/commands/plugin_info.go` |
+| P7-PLUG-17 | the Tier row shows the registry word | shows the licence word and why (Tier reason) | `cmd/commands/plugin_info.go` |
 | P7-PLUG-19 | bundle install not app-ready exits 0 with a warning | E135 exit 2 | `internal/bundle/installer_appready.go` |
 | P7-PLUG-19 | bundle install reconciles only | also starts the stack and waits for app-ready | `cmd/commands/bundle_appready.go` |
 | P7-PLUG-19 | plugin install readiness failure warns | E118 exit 2 | `cmd/commands/plugin_install_readiness.go` |

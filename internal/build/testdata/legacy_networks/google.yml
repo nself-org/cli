@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  nself-google:
+    build:
+      context: .
+      dockerfile: Dockerfile.golang
+    image: nself/nself-google:latest
+    container_name: nself-google
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3113:3113"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-${GOOGLE_CLIENT_SECRET}}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-https://nself.org/oauth/google/callback}
+      - GOOGLE_PORT=3113
+      - GOOGLE_INTERNAL_SECRET=${GOOGLE_INTERNAL_SECRET:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3113/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - nself
+
+networks:
+  nself:
+    external: true

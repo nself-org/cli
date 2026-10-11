@@ -1,26 +1,81 @@
 package commands
 
-// Purpose: Builds and installs the certbot auto-renewal hook — a systemd
-// service+timer unit on Linux, falling back to a cron entry — that
-// reinstalls a renewed certificate where nginx reads it (mirroring
-// installIssuedCert) whenever certbot renews a lineage. Split out of
-// ssl_setup.go (CLI-R12) to separate the renewal-hook installers from the
-// `ssl setup`/`ssl add` command handlers (ssl_setup.go, ssl_add.go) and
-// the cert-install/nginx-config helpers (ssl_install.go).
-// Inputs: the project workdir.
-// Outputs: an installed systemd service+timer (installSSLRenewalSystemd)
-// or cron entry (installSSLRenewalCron).
-// Constraints: pure move — no behavior changes.
+// Purpose: the certificate renewal installers and the engine switch for
+// `ssl setup|add|renew`. Builds and installs the certbot auto-renewal hook (a
+// systemd service+timer on Linux, falling back to a cron entry) that
+// reinstalls a renewed certificate where nginx reads it; useACMEEngine picks
+// the ACME engine (--acme, or the v1.5 default); v15ACMEError re-codes ACME
+// failures; nginxCompose runs nginx inside its container through the docker
+// funnel (P7-LIVE-22).
+// Inputs: the project workdir; the command's flags; an ACME run's error.
+// Outputs: an installed systemd service+timer (installSSLRenewalSystemd) or
+// cron entry (installSSLRenewalCron); the engine choice; the re-coded error.
+// Constraints: v1.4 behaviour stays as origin/main behind compat.V15().
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"time"
+
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/ssl/acme"
+	"github.com/spf13/cobra"
 )
+
+// useACMEEngine reports whether setup, add or renew runs the ACME engine: always
+// with --acme, and by default in v1.5 mode (EPIC D15). v1.4 keeps certbot.
+func useACMEEngine(cmd *cobra.Command) bool {
+	if on, _ := cmd.Flags().GetBool("acme"); on {
+		return true
+	}
+	// compat.V15(P7-LIVE-22): certbot is the default certificate path -> the ACME engine is the default
+	return compat.V15()
+}
+
+// v15ACMEError re-codes an ACME run's E151 as E470, E471 or E472 by failure
+// class in v1.5 mode, exiting with the registry's exit code; v1.4 and
+// unclassified failures keep E151.
+func v15ACMEError(err error) error {
+	var ce *errs.CLIError
+	if err == nil || !errors.As(err, &ce) || ce.Code != "E151" {
+		return err
+	}
+	// compat.V15(P7-LIVE-22): E151 for every ACME failure (exit of the failed process, else 2) -> E470/E471 (exit 2) or E472 (exit 1) by failure class
+	if !compat.V15() {
+		return err
+	}
+	code := acme.CodeFor(ce.Wrapped)
+	if code == "" {
+		return err
+	}
+	out := errs.New(code, ce.What)
+	// Only a refusal's own remediation replaces the registry fix; e151's
+	// generic default would hide it.
+	var ae *acme.Error
+	if errors.As(ce.Wrapped, &ae) && ae.Fix != "" {
+		out.Fix = ae.Fix
+	}
+	out.Wrapped = ce.Wrapped
+	// The chain can hold the failed docker process's *exec.ExitError, whose
+	// ExitCode() errs.ExitCodeFor would read before the registry Exit.
+	return errs.ExitWith(errs.Registry[code].Exit, out)
+}
+
+// nginxCompose runs `docker compose exec nginx nginx <args>` in dir through the
+// docker funnel (internal/docker); the error carries the stderr tail.
+func nginxCompose(ctx context.Context, dir string, args ...string) error {
+	if ctx == nil { // commands run without a cobra context in tests
+		ctx = context.Background()
+	}
+	return docker.NewCompose().Run(ctx, dir, append([]string{"compose", "exec", "nginx", "nginx"}, args...)...)
+}
 
 // sslRenewalServiceUnit builds the systemd service unit for certbot renewal,
 // rooted at workdir.
@@ -72,7 +127,8 @@ WantedBy=timers.target
 // installSSLRenewalCron installs automatic Let's Encrypt certificate renewal.
 // On Linux with systemd, creates and enables a systemd timer unit.
 // Returns an error with crontab fallback instructions if installation fails.
-func installSSLRenewalCron(workdir string) error {
+// A variable so tests can observe the call.
+var installSSLRenewalCron = func(workdir string) error {
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		return fmt.Errorf("systemd not available — add to crontab: 30 3 * * * certbot renew --quiet")
 	}

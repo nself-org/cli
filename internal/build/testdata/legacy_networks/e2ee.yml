@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  nself-e2ee:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nself/nself-e2ee:latest
+    container_name: nself-e2ee
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3055:3055"
+    environment:
+      - E2EE_PLUGIN_PORT=3055
+      - DATABASE_URL=${DATABASE_URL}
+      - E2EE_PLUGIN_HOST=${E2EE_PLUGIN_HOST:-0.0.0.0}
+      - E2EE_LOG_LEVEL=${E2EE_LOG_LEVEL:-info}
+      - E2EE_MAX_ONE_TIME_PREKEYS=${E2EE_MAX_ONE_TIME_PREKEYS:-100}
+      - E2EE_MAX_KYBER_PREKEYS=${E2EE_MAX_KYBER_PREKEYS:-100}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3055/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - nself
+
+networks:
+  nself:
+    external: true

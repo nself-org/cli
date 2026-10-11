@@ -83,10 +83,9 @@ type Listen struct {
 // mapped (they are in the route's unmodelled): a renderer must not join it
 // into a path.
 type RouteTLS struct {
-	SSLDir          string   `json:"ssl_dir"`
-	HasTrustedChain bool     `json:"has_trusted_chain"`
-	Protocols       []string `json:"protocols"`
-	Ciphers         *string  `json:"ciphers"`
+	SSLDir    string   `json:"ssl_dir"`
+	Protocols []string `json:"protocols"`
+	Ciphers   *string  `json:"ciphers"`
 }
 type BlockedPath struct {
 	Regex  string `json:"regex"`

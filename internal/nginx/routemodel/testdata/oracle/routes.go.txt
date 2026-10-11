@@ -88,7 +88,7 @@ func (g *Generator) generateAllRoutes() (map[string]string, error) {
 	// nginx/sites/*.conf file, so any field the two call sites set
 	// independently is prone to drift — see finalizeServiceRoute's doc
 	// comment for the SSLBasePath incident this caused (prod, 2026-09-21) and
-	// the earlier HasTrustedChain incident it also once caused (2026-09-03).
+	// the earlier chain.pem incident it also once caused (2026-09-03).
 	for i := range allEntries {
 		g.finalizeServiceRoute(&allEntries[i].data)
 	}
@@ -116,7 +116,7 @@ type routeEntry struct {
 }
 
 // finalizeServiceRoute fills in every ServiceRouteData field the generator
-// (not the caller) is responsible for computing: HasSSL, HasTrustedChain,
+// (not the caller) is responsible for computing: HasSSL,
 // SSLBasePath, UpstreamName, ProxyTarget, and a default PathZones.
 //
 // This is the single completion point for ServiceRouteData, called from both
@@ -131,7 +131,6 @@ type routeEntry struct {
 // two paths cannot drift apart again.
 func (g *Generator) finalizeServiceRoute(data *ServiceRouteData) {
 	data.HasSSL = g.hasSSL
-	data.HasTrustedChain = g.hasTrustedChain(data.SSLDir)
 	data.SSLBasePath = nginxtopo.NginxSSLContainerPath
 	data.UpstreamName = upstreamName(data.Route)
 	data.ProxyTarget = proxyTarget(data.Upstream)
