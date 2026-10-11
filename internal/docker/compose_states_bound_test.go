@@ -166,3 +166,31 @@ func TestParseHealthValues(t *testing.T) {
 		})
 	}
 }
+
+// TestConfigReadsAreBounded: ComposeServiceNames and ComposeServiceSpecs
+// (config reads through captureBounded) give up on a hung docker.
+func TestConfigReadsAreBounded(t *testing.T) {
+	shortenStateBounds(t)
+	for name, run := range map[string]func(c *Compose, dir string) error{
+		"ComposeServiceNames": func(c *Compose, dir string) error {
+			_, err := c.ComposeServiceNames(context.Background(), dir)
+			return err
+		},
+		"ComposeServiceSpecs": func(c *Compose, dir string) error {
+			_, err := ComposeServiceSpecs(context.Background(), c, dir)
+			return err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, dir := scriptDocker(t, "sleep 30\nexit 0\n")
+			begin := time.Now()
+			err := run(c, dir)
+			if took := time.Since(begin); took > 3*time.Second {
+				t.Errorf("took %s, want the read cut off near %s", took, stateCallTimeout)
+			}
+			if !errors.Is(err, ErrStateTimeout) || errors.Is(err, context.DeadlineExceeded) {
+				t.Errorf("err = %v, want ErrStateTimeout and not DeadlineExceeded", err)
+			}
+		})
+	}
+}

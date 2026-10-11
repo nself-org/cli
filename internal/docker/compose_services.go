@@ -88,9 +88,9 @@ func (c *Compose) captureBounded(ctx context.Context, what, workdir string, args
 }
 
 // Gate failures. ErrOneShotFailed and ErrServiceCrashed map to E250 (the
-// service is broken), ErrGateTimeout to E251 (too slow), ErrStateRead and ErrStateTimeout to no
-// service code at all: docker could not answer, which says nothing about the
-// service.
+// service is broken), ErrGateTimeout to E251 (too slow), ErrStateRead and
+// ErrStateTimeout to no service code at all: docker could not answer, which
+// says nothing about the service.
 var (
 	ErrOneShotFailed  = errors.New("one-shot service exited non-zero")
 	ErrServiceCrashed = errors.New("service exited non-zero or is restarting")
