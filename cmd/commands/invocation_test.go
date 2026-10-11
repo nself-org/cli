@@ -451,6 +451,9 @@ func TestInvocationRefusedBundleDoesNoWork(t *testing.T) {
 	t.Cleanup(resetRegistryCache)
 	decorate(bundleCmd) // what Execute does for the whole tree
 	compattest.Both(t, func(t *testing.T) {
+		// The mode's spelling resolves on the prepared tree: without it v1.5 found
+		// `config` itself, which only refused --json while it was json none.
+		defer prepareTreeWith(&canonTable, RootCmd, compat.V15(), false)()
 		hits = 0
 		path := []string{"bundle", "install"}
 		if compat.V15() {
