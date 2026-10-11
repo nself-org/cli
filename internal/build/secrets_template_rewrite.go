@@ -30,8 +30,10 @@ var composeRefPattern = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*(?::-(?:\$
 // envLinePattern matches a one-line "KEY: value" mapping entry.
 var envLinePattern = regexp.MustCompile(`^(\s+)([A-Za-z_][A-Za-z0-9_]*): (.+)$`)
 
-// blockScalarStart matches a line that opens a "|" or ">" block scalar.
-var blockScalarStart = regexp.MustCompile(`(?:^|:|-)\s*[|>][+-]?[0-9]?\s*$`)
+// blockScalarStart matches a line that opens a "|" or ">" block scalar,
+// including an anchor or tag before it, an indentation or chomping
+// indicator after it, and a trailing comment.
+var blockScalarStart = regexp.MustCompile(`(?:^|:|-)\s*(?:(?:&\S+|!\S*)\s+)*[|>](?:[0-9][+-]?|[+-][0-9]?)?\s*(?:#.*)?$`)
 
 // templateOtherLiterals is Phase C. Raw pass: a secret of 8+ characters that
 // holds no quote, backslash or control character cannot overlap a YAML

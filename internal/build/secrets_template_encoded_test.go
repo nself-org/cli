@@ -166,6 +166,12 @@ func TestTemplateSecrets_RefsAndBlockScalarsUntouched(t *testing.T) {
 	if !strings.Contains(out, `note: "fake\"pw\\$abc#def"`) {
 		t.Errorf("block scalar text was rewritten:\n%s", out)
 	}
+	for _, header := range []string{"|", "|-", ">+", "|2-", "| # c", "!!str |", "&a |"} {
+		doc := "services:\n  app:\n    command: " + header + "\n      note: \"fake\\\"pw\\\\$abc#def\"\n"
+		if got := string(TemplateSecrets([]byte(doc), secrets)); got != doc {
+			t.Errorf("block scalar %q text was rewritten:\n%s", header, got)
+		}
+	}
 	// The block scalar holds escaped text, not the secret; the reference
 	// spelling "PASSWORD}" is not a leak either.
 	if leaks := LiteralSecretLeaks([]byte(out), secrets); len(leaks) != 0 {
