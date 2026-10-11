@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -702,9 +703,10 @@ func TestTailStream_DefaultStdout(t *testing.T) {
 
 // TestTailStream_FilterParamsInURL covers the filter-param URL building.
 func TestTailStream_FilterParamsInURL(t *testing.T) {
-	var receivedQuery string
+	var receivedQuery atomic.Value // handler goroutines may still run after TailStream returns
+	receivedQuery.Store("")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedQuery = r.URL.RawQuery
+		receivedQuery.Store(r.URL.RawQuery)
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -721,8 +723,8 @@ func TestTailStream_FilterParamsInURL(t *testing.T) {
 		HTTPClient: srv.Client(),
 	})
 
-	if !strings.Contains(receivedQuery, "plugin=ai") {
-		t.Errorf("query should contain plugin=ai, got: %q", receivedQuery)
+	if got := receivedQuery.Load().(string); !strings.Contains(got, "plugin=ai") {
+		t.Errorf("query should contain plugin=ai, got: %q", got)
 	}
 }
 
@@ -1804,10 +1806,9 @@ func TestIsRevoked_HomeUnset_ReturnsFalse(t *testing.T) {
 
 // TestTailStream_ReconnectAfterError covers the time.After(backoff) branch.
 func TestTailStream_ReconnectAfterError(t *testing.T) {
-	calls := 0
+	var calls atomic.Int32 // handler goroutines may still run after TailStream returns
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		if calls == 1 {
+		if calls.Add(1) == 1 {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -1828,8 +1829,8 @@ func TestTailStream_ReconnectAfterError(t *testing.T) {
 		HTTPClient: srv.Client(),
 	})
 
-	if calls < 2 {
-		t.Errorf("expected at least 2 calls (initial + retry), got %d", calls)
+	if n := calls.Load(); n < 2 {
+		t.Errorf("expected at least 2 calls (initial + retry), got %d", n)
 	}
 }
 
