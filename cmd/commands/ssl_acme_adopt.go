@@ -5,7 +5,8 @@ package commands
 // its names are served from, stores the DNS credential in the age store by
 // name, records the lineages as dns-01 (a webroot lineage with no credential: http-01, when a probe
 // token is answered by the served nginx) and never issues. A served target is
-// replaced from certbot's live files only when it is missing or older.
+// replaced from certbot's live files only when it is missing or older. After
+// adoption the certbot nself-ssl-renew.timer is disabled (D-0411).
 
 import (
 	"bytes"
@@ -60,7 +61,7 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 	}
 	if r.dry {
 		r.say("dry run: nothing written")
-		return nil
+		return r.retireCertbot()
 	}
 	if err := r.lock(); err != nil {
 		return err
@@ -80,8 +81,8 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 			return e151(acmeRefuse("check permissions on the ssl/.acme directory", "saving lineages.json failed"))
 		}
 	}
-	r.say("adopted %d lineage(s) (%s); certbot state was not touched", len(adopt), adoptedKinds(adopt))
-	return nil
+	r.say("adopted %d lineage(s) (%s); certbot's files were not touched", len(adopt), adoptedKinds(adopt))
+	return r.retireCertbot()
 }
 
 // adoptedKinds names the challenges of the adopted lineages, e.g. "1 dns-01, 1 http-01".

@@ -204,12 +204,16 @@ func acmeUnitsFor(workdir, keyPath string) (service, timer string, err error) {
 	return service, timer, err
 }
 
-// timer installs the renewal units; under --dry-run it prints them instead.
+// timer retires the certbot timer, then installs the renewal units; under
+// --dry-run it prints them instead.
 func (r *acmeRun) timer() error {
 	if r.dry {
 		service, timer, _ := acmeUnitsFor(r.workdir, r.res.AgeKey)
 		r.say("dry run: would write nself-acme-renew.service:\n%s\nand nself-acme-renew.timer:\n%s", service, timer)
-		return nil
+		return r.retireCertbot()
+	}
+	if err := r.retireCertbot(); err != nil {
+		return err
 	}
 	if err := acmeD.timer(r.workdir, r.res.AgeKey); err != nil {
 		return e151(acmeRefuse("add to cron: 30 3 * * * nself trust ssl renew --acme --quiet", "installing the renewal timer: %v", err))

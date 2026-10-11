@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/ssl/acme"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -181,7 +182,10 @@ func runSSLSetup(cmd *cobra.Command, args []string) error {
 	ui.Success("SSL setup complete.")
 
 	if installCron {
-		if err := installSSLRenewalCron(workdir); err != nil {
+		// Its deploy hook would write over certificates the ACME engine owns (D-0411).
+		if f, lerr := acme.Load(filepath.Join(workdir, "ssl")); lerr != nil || len(f.Lineages) > 0 {
+			ui.Warn("Renewal timer not installed: the ACME engine manages this project's certificates (nself-acme-renew.timer).")
+		} else if err := installSSLRenewalCron(workdir); err != nil {
 			ui.Warn(fmt.Sprintf("Could not install renewal timer: %v", err))
 			ui.Info("Add manually to crontab: 30 3 * * * certbot renew --quiet")
 		} else {
