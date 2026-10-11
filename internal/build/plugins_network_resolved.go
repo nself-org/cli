@@ -11,6 +11,10 @@ package build
 // misses a network or service that an alias or merge key supplies.
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -138,4 +142,49 @@ func (s resolvedService) refersTo(keys map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// documentCount returns how many non-empty YAML documents content holds.
+// Compose merges every document of a -f file, while the policy decodes the
+// first one only, so a fragment with more than one is refused.
+func documentCount(content []byte) int {
+	dec := yaml.NewDecoder(bytes.NewReader(content))
+	n := 0
+	for {
+		var doc yaml.Node
+		if err := dec.Decode(&doc); err != nil {
+			if !errors.Is(err, io.EOF) {
+				n++ // a document that fails to parse is still a document
+			}
+			return n
+		}
+		if len(doc.Content) > 0 && !(doc.Content[0].Kind == yaml.ScalarNode && doc.Content[0].Tag == "!!null") {
+			n++
+		}
+	}
+}
+
+// badNetworkModes returns "service: mode" for every service whose network_mode
+// is not none or service:<a service defined in this fragment>. Any other value
+// (host, bridge, container:x, a network name, a variable) joins a network or
+// namespace outside this stack; compose accepts a network name there.
+func (r *resolvedFragment) badNetworkModes() []string {
+	var out []string
+	for name, s := range r.Services {
+		if s.NetworkMode == nil {
+			continue
+		}
+		mode, _ := s.NetworkMode.(string)
+		if mode == "none" {
+			continue
+		}
+		if target, ok := strings.CutPrefix(mode, "service:"); ok {
+			if _, defined := r.Services[target]; defined {
+				continue
+			}
+		}
+		out = append(out, fmt.Sprintf("%s: %v", name, s.NetworkMode))
+	}
+	sort.Strings(out)
+	return out
 }

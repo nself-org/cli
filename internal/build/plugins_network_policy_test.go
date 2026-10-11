@@ -167,3 +167,73 @@ func TestMergedServiceUnderServices(t *testing.T) {
 	frag := "x-s: &s\n  web:\n    image: x\nservices:\n  <<: *s\n  db:\n    image: y\n    networks: [n]\nnetworks:\n  n:\n    driver: bridge\n"
 	compattest.Both(t, func(t *testing.T) { wantE129(t, frag, `"web"`) })
 }
+
+// TestNetworkPolicyMultiDocument (MF1): compose merges every YAML document of
+// a file, so a second document is refused in v1.5 and warned about in v1.4.
+func TestNetworkPolicyMultiDocument(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		frag := "services:\n  web:\n    image: x\n    networks: [proxy]\n---\nnetworks:\n  proxy:\n    external: true\n    name: traefik_proxy\n"
+		wantE129(t, frag, "more than one YAML document")
+		if !compat.V15() {
+			resetWarnOnce()
+			stderr := captureStderr(t, func() { _, _ = normalizeComposeNetworks([]byte(frag), "spy") })
+			if !strings.Contains(stderr, "more than one YAML document") {
+				t.Fatalf("v1.4 must warn, got %q", stderr)
+			}
+		}
+	})
+	compattest.Set(t, true)
+	for _, ok := range []string{"services:\n  w:\n    image: x\n---\n", "---\nservices:\n  w:\n    image: x\n", "services:\n  w:\n    image: x\n...\n"} {
+		if _, err := normalizeComposeNetworks([]byte(ok), "w"); err != nil {
+			t.Errorf("a single document with markers must pass: %q: %v", ok, err)
+		}
+	}
+}
+
+// TestNetworkPolicyNetworkMode (MF2): network_mode must be none or
+// service:<a service of this fragment>.
+func TestNetworkPolicyNetworkMode(t *testing.T) {
+	for _, mode := range []string{"host", "container:x", "traefik_proxy", "service:missing", "bridge", `"service:${X}"`} {
+		mode := mode
+		t.Run(mode, func(t *testing.T) {
+			compattest.Both(t, func(t *testing.T) {
+				frag := "services:\n  w:\n    image: x\n    network_mode: " + mode + "\n"
+				wantE129(t, frag, "network_mode", `w: `)
+			})
+		})
+	}
+	compattest.Both(t, func(t *testing.T) {
+		for _, mode := range []string{"none", "service:db"} {
+			frag := "services:\n  w:\n    image: x\n    network_mode: " + mode + "\n  db:\n    image: y\n"
+			if _, err := normalizeComposeNetworks([]byte(frag), "w"); err != nil {
+				t.Errorf("network_mode %s must pass: %v", mode, err)
+			}
+		}
+	})
+}
+
+// TestNetworkPolicyErrorsStateTheirCause: each E129 carries a Why and Fix that
+// describe its own cause, not the registered foreign-network text.
+func TestNetworkPolicyErrorsStateTheirCause(t *testing.T) {
+	compattest.Set(t, true)
+	const registered = "attaches a service to an external network other than the project network"
+	cases := map[string]struct{ frag, cause string }{
+		"multi-document": {"services:\n  w:\n    image: x\n---\nnetworks: {}\n", "one YAML document"},
+		"network_mode":   {"services:\n  w:\n    image: x\n    network_mode: host\n", "network_mode"},
+		"undecodable":    {"services:\n  w:\n    image: x\nnetworks:\n  p:\n    name: [a]\n", "shape"},
+		"merged service": {"x-s: &s\n  web:\n    image: x\nservices:\n  <<: *s\n", "merge key"},
+		"legacy rewrite": {"services:\n  s:\n    image: x\n    networks:\n      nself_network: {}\nnetworks:\n  nself_network:\n    external: true\n", "legacy external project network"},
+		"foreign":        {"services:\n  s:\n    image: x\n    networks: [t]\nnetworks:\n  t:\n    external: true\n", "joins an external network"},
+	}
+	for name, tc := range cases {
+		_, err := normalizeComposeNetworks([]byte(tc.frag), "spy")
+		var ce *errs.CLIError
+		if !errors.As(err, &ce) || ce.Code != "E129" {
+			t.Errorf("%s: want E129, got %v", name, err)
+			continue
+		}
+		if !strings.Contains(ce.What+ce.Why+ce.Fix, tc.cause) || strings.Contains(ce.Why, registered) || ce.Why == "" || ce.Fix == "" {
+			t.Errorf("%s: cause %q not stated:\nwhat: %s\nwhy: %s\nfix: %s", name, tc.cause, ce.What, ce.Why, ce.Fix)
+		}
+	}
+}

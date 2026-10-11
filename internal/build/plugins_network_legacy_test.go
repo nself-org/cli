@@ -232,7 +232,7 @@ func TestForeignNetworkResolvedView(t *testing.T) {
 	}
 	t.Run("merge-key service keeps its networks", func(t *testing.T) {
 		compattest.Set(t, true)
-		frag := "x-base: &base\n  image: nginx\n  networks: [backend]\nservices:\n  web:\n    <<: *base\n  mode:\n    image: x\n    network_mode: host\n  plain:\n    image: x\nnetworks:\n  backend:\n    driver: bridge\n"
+		frag := "x-base: &base\n  image: nginx\n  networks: [backend]\nservices:\n  web:\n    <<: *base\n  mode:\n    image: x\n    network_mode: none\n  plain:\n    image: x\nnetworks:\n  backend:\n    driver: bridge\n"
 		out, err := normalizeComposeNetworks([]byte(frag), "w")
 		if err != nil {
 			t.Fatal(err)

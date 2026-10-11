@@ -28,8 +28,8 @@ var dockerNetworkDefaultRE = regexp.MustCompile(`^\$\{DOCKER_NETWORK:-[^}]*\}$`)
 
 // projectNetworkRE matches the names that are the project network: the
 // DOCKER_NETWORK variable or <project>_network spelled with the project vars.
-// The legacy literal the legacy literals (legacyNetworkNames) are the project network too
-// (plugins_network_legacy.go) and is checked beside this pattern.
+// The legacy literals (legacyNetworkNames, plugins_network_legacy.go) are the
+// project network too and are checked beside this pattern.
 var projectNetworkRE = regexp.MustCompile(`^\$\{DOCKER_NETWORK(:-[^}]*)?\}$|^\$\{(COMPOSE_PROJECT_NAME|PROJECT_NAME)(:-[^}]*)?\}_network$`)
 
 // lineEdit is one splice: replace old with new on a 1-based line, or (old
@@ -86,6 +86,14 @@ func serviceNetworkEdits(svc *yaml.Node, res resolvedService, cr string) []lineE
 	return edits
 }
 
+// policyError is an E129 that states its own cause: the registered text
+// describes a foreign external network, which is only one of the cases.
+func policyError(what, why, fix string) *errs.CLIError {
+	e := errs.New("E129", what)
+	e.Why, e.Fix = why, fix
+	return e
+}
+
 // normalizeComposeNetworks attaches missing networks to ${DOCKER_NETWORK},
 // rewrites ${DOCKER_NETWORK:-x}, and rejects a foreign external network
 // (E129; a warning in v1.4 mode, which also rewrites nothing).
@@ -95,11 +103,20 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 		return content, nil // unparseable: other normalizers and compose report it
 	}
 	top := doc.Content[0]
+	if documentCount(content) > 1 {
+		msg := fmt.Sprintf("plugin %q has a compose fragment with more than one YAML document; the network policy checks the first only", pluginName)
+		// compat.V15(P7-PLUG-17): a fragment with several YAML documents is checked on the first only (warning) -> E129, the fragment must be one document
+		if compat.V15() {
+			return content, policyError(msg, "Compose merges every document of a file, so a network declared after --- would escape the network policy.", "Put the whole fragment in one YAML document (remove ---), or ask the plugin author to.")
+		}
+		warnOnce(msg)
+	}
 	res, err := resolveFragment(content)
 	if err != nil {
 		// compat.V15(P7-PLUG-17): a fragment that decodes as nodes but not as values is passed on unchecked -> E129, the network policy could not be checked
 		if compat.V15() {
-			return content, errs.New("E129", fmt.Sprintf("plugin %q: the network policy could not be checked, the compose fragment does not decode (%v)", pluginName, err))
+			return content, policyError(fmt.Sprintf("plugin %q: the network policy could not be checked, the compose fragment does not decode (%v)", pluginName, err),
+				"A network, name or service field has a shape compose may read differently from the policy check.", "Fix the fragment's networks:, services: and network_mode: entries, or ask the plugin author to.")
 		}
 		return content, nil
 	}
@@ -107,7 +124,15 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 		msg := fmt.Sprintf("plugin %q attaches external network %s other than the project network", pluginName, strings.Join(foreign, ", "))
 		// compat.V15(P7-PLUG-17): a fragment may join any external network (warning) -> E129 fails the build
 		if compat.V15() {
-			return content, errs.New("E129", msg)
+			return content, policyError(msg, "The plugin's docker-compose.plugin.yml joins an external network, or a named network that is not project-scoped, other than the project network; compose reuses an existing network of that name.", "Attach the service to ${DOCKER_NETWORK} only, or remove the plugin; ask the plugin author to drop the network from the fragment.")
+		}
+		warnOnce(msg)
+	}
+	if modes := res.badNetworkModes(); len(modes) > 0 {
+		msg := fmt.Sprintf("plugin %q uses network_mode other than none or service:<a service of this fragment> (%s)", pluginName, strings.Join(modes, ", "))
+		// compat.V15(P7-PLUG-17): a service may set any network_mode (host, container:x, a network name) -> E129 unless it is none or service:<a service of this fragment>
+		if compat.V15() {
+			return content, policyError(msg, "network_mode host, container:x or a network name puts the service on a network or namespace outside this stack.", "Remove network_mode so the service joins ${DOCKER_NETWORK}, or ask the plugin author to.")
 		}
 		warnOnce(msg)
 	}
@@ -128,17 +153,18 @@ func normalizeComposeNetworks(content []byte, pluginName string) ([]byte, error)
 		// splice a networks: into, and a written key would replace it whole.
 		for name, rs := range res.Services {
 			if yamlGet(svcs, name) == nil && !rs.usesNetworks() {
-				return content, errs.New("E129", fmt.Sprintf("plugin %q: service %q comes from a merge key under services: and has no networks; write the service out with networks: [${DOCKER_NETWORK}]", pluginName, name))
+				return content, policyError(fmt.Sprintf("plugin %q: service %q comes from a merge key under services: and has no networks; write the service out with networks: [${DOCKER_NETWORK}]", pluginName, name),
+					"A service supplied by a merge key under services: has no place to attach the project network.", "Write the service out under services: with networks: [${DOCKER_NETWORK}], or ask the plugin author to.")
 			}
 		}
 	}
 	legacy, keys, why := legacyNetworkEdits(content, top, res)
 	if why != "" {
-		return content, errs.New("E129", fmt.Sprintf("plugin %q uses the %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (%s)", pluginName, legacyNetworkLabel, why))
+		return content, policyError(fmt.Sprintf("plugin %q uses the %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (%s)", pluginName, legacyNetworkLabel, why), legacyRewriteWhy, legacyRewriteFix)
 	}
 	out := applyLineEdits(content, append(edits, legacy...))
 	if len(keys) > 0 && legacyNetworkRemains(out, keys) {
-		return content, errs.New("E129", fmt.Sprintf("plugin %q uses the %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (a definition or reference is supplied through an alias or merge key)", pluginName, legacyNetworkLabel))
+		return content, policyError(fmt.Sprintf("plugin %q uses the %s in a form the build cannot rewrite to ${DOCKER_NETWORK} (a definition or reference is supplied through an alias or merge key)", pluginName, legacyNetworkLabel), legacyRewriteWhy, legacyRewriteFix)
 	}
 	return out, nil
 }

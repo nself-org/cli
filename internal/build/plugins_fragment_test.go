@@ -184,7 +184,7 @@ func TestFragmentNetworkNormalize(t *testing.T) {
 		if err != nil || string(out) != fragProjectExternal {
 			t.Fatalf("project network must pass untouched, err=%v\n%s", err, out)
 		}
-		host := "services:\n  h:\n    image: x\n    network_mode: host\n"
+		host := "services:\n  h:\n    image: x\n    network_mode: none\n"
 		if out, _ := normalizeComposeNetworks([]byte(host), "h"); string(out) != host {
 			t.Fatalf("network_mode service must not get networks:\n%s", out)
 		}

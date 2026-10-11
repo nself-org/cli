@@ -46,6 +46,13 @@ func isLegacyNetwork(name string) bool {
 	return false
 }
 
+// legacyRewriteWhy and legacyRewriteFix are the E129 text when the legacy
+// network cannot be folded into ${DOCKER_NETWORK}.
+const (
+	legacyRewriteWhy = "The build folds the legacy external project network into ${DOCKER_NETWORK}, but this fragment writes it in a form that cannot be edited safely line by line."
+	legacyRewriteFix = "Write the network definition and the services' networks: lists in plain block form, or use ${DOCKER_NETWORK} directly; ask the plugin author to."
+)
+
 // legacyNetworkLabel names the set in messages.
 const legacyNetworkLabel = "legacy external project network (nself_network, nself-network or nself)"
 
