@@ -92,6 +92,20 @@ func (d *pathDest) Put(ctx context.Context, localPath, key string) (err error) {
 		return err
 	}
 	defer func() { _ = src.Close() }()
+	return d.putReader(ctx, src, key)
+}
+
+// putReader writes src to <dir>/<key>: the body Put and PutStream share.
+// Guarantees: validated key, no symlink on the way, a 0600 tmp file, ctx
+// honoured while copying, fsync, rename, then a sha256 re-read. A failed or
+// cancelled write leaves neither the object nor the tmp file.
+func (d *pathDest) putReader(ctx context.Context, src io.Reader, key string) (err error) {
+	if err := validKey(key); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	r, err := d.root(true)
 	if err != nil {
 		return err

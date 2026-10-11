@@ -8,8 +8,9 @@ package backup
 // restore drill compares against.
 // Inputs: the project config, the heartbeat remote, the finished StreamResult
 // and the estimates read just before the dump.
-// Outputs: one JSON object uploaded through the same rclone rcat funnel as the
-// backup itself; an error when it cannot be written.
+// Outputs: one JSON object uploaded through the destination's Streamer (the
+// same destinations grammar as the backup itself); an error when it cannot be
+// written.
 // Constraints: written only after the backup upload returned success and only
 // when bytes were uploaded, so a failed backup never leaves a success heartbeat.
 // The object never carries a secret, hostname or bucket name: only the project
@@ -31,6 +32,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/nself-org/cli/internal/backup/destinations"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/version"
 )
 
@@ -90,12 +93,22 @@ func newBackupHeartbeat(project, key string, bytesUp int64, encrypted bool, appr
 	}
 }
 
-// WriteHeartbeat uploads hb to <remote>/<project>/backup.json through the same
-// rclone rcat funnel the backup uses.
+// WriteHeartbeat uploads hb to <remote>/<project>/backup.json. The remote is
+// parsed by the destinations package, so path://, host:// and rclone remotes
+// work and option-shaped or credential-carrying values are refused.
 func WriteHeartbeat(ctx context.Context, remote string, hb Heartbeat) error {
 	if strings.TrimSpace(remote) == "" {
 		return fmt.Errorf("heartbeat remote is empty")
 	}
+	st, _, err := streamerFor(remote)
+	if err != nil {
+		return fmt.Errorf("%w: heartbeat remote: %v", errs.ErrBackupRemoteFailed, err)
+	}
+	return writeHeartbeatTo(ctx, st, hb)
+}
+
+// writeHeartbeatTo marshals hb and writes <project>/backup.json through st.
+func writeHeartbeatTo(ctx context.Context, st destinations.Streamer, hb Heartbeat) error {
 	if !heartbeatProjectRe.MatchString(hb.Project) {
 		return fmt.Errorf("project name %q cannot be used as a heartbeat key", hb.Project)
 	}
@@ -103,17 +116,31 @@ func WriteHeartbeat(ctx context.Context, remote string, hb Heartbeat) error {
 	if err != nil {
 		return fmt.Errorf("marshal heartbeat: %w", err)
 	}
-	return rcloneRcat(ctx, bytes.NewReader(data), remote, hb.Project+"/backup.json")
+	if err := st.PutStream(ctx, bytes.NewReader(data), hb.Project+"/backup.json"); err != nil {
+		return fmt.Errorf("%w: %v", errs.ErrBackupRemoteFailed, err)
+	}
+	return nil
 }
 
-// publishHeartbeat writes the heartbeat for a backup that just uploaded. It
-// refuses to write when nothing was uploaded.
+// publishHeartbeat writes the heartbeat for a backup that just uploaded to
+// remote (parsed here); see publishHeartbeatTo.
 func publishHeartbeat(ctx context.Context, cfgProject, remote string, res *StreamResult, approx map[string]int64) error {
+	st, _, err := streamerFor(remote)
+	if err != nil {
+		return fmt.Errorf("%w: heartbeat remote: %v", errs.ErrBackupRemoteFailed, err)
+	}
+	return publishHeartbeatTo(ctx, cfgProject, st, res, approx)
+}
+
+// publishHeartbeatTo is publishHeartbeat with the destination already
+// resolved (Stream resolves it before the dump). It refuses to write when
+// nothing was uploaded.
+func publishHeartbeatTo(ctx context.Context, cfgProject string, st destinations.Streamer, res *StreamResult, approx map[string]int64) error {
 	if res == nil || res.Bytes <= 0 {
 		return fmt.Errorf("no bytes were uploaded, so no heartbeat is written")
 	}
 	hb := newBackupHeartbeat(cfgProject, res.BackupID, res.Bytes, res.Encrypted, approx, time.Now(), version.Version)
-	if err := WriteHeartbeat(ctx, remote, hb); err != nil {
+	if err := writeHeartbeatTo(ctx, st, hb); err != nil {
 		return err
 	}
 	slog.Info("backup heartbeat written", "project", cfgProject)
