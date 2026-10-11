@@ -1,6 +1,10 @@
 package manifestv2
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/nself-org/cli/internal/errs"
+)
 
 // CLITarget is one command binary a CLI plugin publishes: the binary file name
 // the command proxy execs and the command that names it.
@@ -41,6 +45,47 @@ func CLITargets(name, pluginType, binaryName string, commands []string) []CLITar
 		return nil
 	}
 	return []CLITarget{{Binary: bin, Command: strings.TrimPrefix(bin, "nself-")}}
+}
+
+// CheckedCLITargets is CLITargets followed by CheckCLITargets: the binaries an
+// installer may publish for the plugin, or the reason it must refuse it.
+func CheckedCLITargets(name, pluginType, binaryName string, commands []string) ([]CLITarget, error) {
+	t := CLITargets(name, pluginType, binaryName, commands)
+	if err := CheckCLITargets(name, t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// CheckCLITargets refuses command targets the proxy cannot serve (D-0259).
+//
+// A command outside NamePattern (a space, an upper-case letter, a leading
+// digit) or a binary outside BinaryPattern is never reached by
+// `nself <command>`; a core verb never reaches the proxy because the built-in
+// command wins, so its binary would sit unused; a command declared twice
+// publishes one binary over itself. plugin names the plugin in the message.
+//
+// Outputs: nil, E106 (name or binary pattern, duplicate) or E113 (core verb),
+// for the first bad target. CoreVerbs is the canon list
+// (TestCoreVerbsMatchCanon keeps it equal to internal/canon.Verbs).
+func CheckCLITargets(plugin string, targets []CLITarget) error {
+	seen := map[string]bool{}
+	for _, t := range targets {
+		if !segmentRe.MatchString(t.Command) {
+			return invalidf("cliCommands", "command %q of plugin %q must match %s", t.Command, plugin, NamePattern)
+		}
+		if !binaryRe.MatchString(t.Binary) {
+			return invalidf("binaryName", "binary %q of plugin %q must match %s", t.Binary, plugin, BinaryPattern)
+		}
+		if in(CoreVerbs, t.Command) {
+			return errs.Newf("E113", "cliCommands %q is a core command verb and cannot be published by plugin %q", t.Command, plugin)
+		}
+		if seen[t.Binary] {
+			return invalidf("cliCommands", "command %q of plugin %q is declared twice", t.Command, plugin)
+		}
+		seen[t.Binary] = true
+	}
+	return nil
 }
 
 // CLITargetsOf is CLITargets over a parsed manifest through its compatibility
