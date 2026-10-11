@@ -172,7 +172,7 @@ matrix() {
     local args=(--silent --show-error --noproxy '*' --resolve "$host:443:127.0.0.1" -k --max-time 10 -D "$W/headers" -o "$W/body")
     if [[ $ws == 1 ]]; then
       # RFC 6455 section 1.3 sample key, built at run time so secret scanners see no literal
-      args+=(-H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H "Sec-WebSocket-Key: $(printf 'the sample nonce' | base64)")
+      args+=(--http1.1 -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H "Sec-WebSocket-Key: $(printf 'the sample nonce' | base64)")
     fi
     # A successful upgrade stays open; curl's timeout 28 is expected only for 101.
     local rc=0
