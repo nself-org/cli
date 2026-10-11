@@ -47,6 +47,7 @@ type ModelService struct {
 	Image         string
 	ContainerName string
 	Mounts        []Mount
+	Aliases       []string // network aliases, for the nginx -t host entries
 }
 
 // ComposeModel is the resolved model of the shipped manifests.
@@ -97,7 +98,8 @@ func parseComposeModel(raw []byte) (ComposeModel, error) {
 				Test    json.RawMessage `json:"test"`
 				Disable bool            `json:"disable"`
 			} `json:"healthcheck"`
-			Volumes []Mount `json:"volumes"`
+			Volumes  []Mount                    `json:"volumes"`
+			Networks map[string]json.RawMessage `json:"networks"`
 		} `json:"services"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
@@ -112,10 +114,26 @@ func parseComposeModel(raw []byte) (ComposeModel, error) {
 		}
 		m.Services[name] = ModelService{
 			Spec:  docker.ServiceSpec{Name: name, HasHealthcheck: has, Restart: s.Restart},
-			Image: s.Image, ContainerName: s.ContainerName, Mounts: s.Volumes,
+			Image: s.Image, ContainerName: s.ContainerName, Mounts: s.Volumes, Aliases: networkAliases(s.Networks),
 		}
 	}
 	return m, nil
+}
+
+// networkAliases collects the aliases of a service's networks (the map form of
+// the resolved config; a network with no settings has none).
+func networkAliases(nets map[string]json.RawMessage) []string {
+	var out []string
+	for _, raw := range nets {
+		var n struct {
+			Aliases []string `json:"aliases"`
+		}
+		if json.Unmarshal(raw, &n) == nil {
+			out = append(out, n.Aliases...)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Stateful reports whether a service keeps data on the host: a volume mount
@@ -141,9 +159,17 @@ type RecreatePreview struct {
 	Recreate []string // services that exist and would be recreated
 	Create   []string // services that would be created new
 	Stateful []string // the Recreate subset that keeps data
+	// Unknown are dry-run lines about a recreate or create that did not parse or
+	// did not map to a known service. A production-class deploy refuses on them.
+	Unknown []string
 }
 
-var dryRunLine = regexp.MustCompile(`^\s*Container\s+(\S+)\s+(Recreate|Creating)\s*$`)
+var (
+	dryRunPrefix    = regexp.MustCompile(`^\s*DRY-RUN MODE\s*-\s*`)
+	dryRunContainer = regexp.MustCompile(`^\s*(?:\S+\s+)?Container\s+(\S+)\s+(\w+)\s*$`)
+	dryRunVerb      = regexp.MustCompile(`\b(Recreate|Recreating|Creating|Create)\b`)
+	dryRunOther     = regexp.MustCompile(`^\s*(?:\S+\s+)?(Network|Volume|Image|Secret|Config)\s`)
+)
 
 // PreviewRecreate runs `up -d --dry-run` over the shipped manifests.
 func PreviewRecreate(ctx context.Context, r Remote, remotePath string, files, envFiles []string, model ComposeModel) (RecreatePreview, error) {
@@ -155,20 +181,38 @@ func PreviewRecreate(ctx context.Context, r Remote, remotePath string, files, en
 	return parseDryRun(string(out), model, remotePath), nil
 }
 
+// parseDryRun reads the container lines of a compose dry run: the 5.x form
+// ` Container <name> Recreate` and the 2.x form with a `DRY-RUN MODE -` prefix.
+// Past tenses (Recreated, Created) and other verbs are ignored; a line that talks
+// about a recreate or create but does not parse, or names no known service, goes
+// to Unknown.
 func parseDryRun(out string, model ComposeModel, remotePath string) RecreatePreview {
 	var p RecreatePreview
 	seen := map[string]bool{}
 	for _, line := range strings.Split(out, "\n") {
-		mm := dryRunLine.FindStringSubmatch(line)
-		if mm == nil {
+		line = dryRunPrefix.ReplaceAllString(strings.TrimRight(line, "\r"), "")
+		m := dryRunContainer.FindStringSubmatch(line)
+		if m == nil {
+			if dryRunVerb.MatchString(line) && !dryRunOther.MatchString(line) {
+				p.Unknown = append(p.Unknown, strings.TrimSpace(line))
+			}
 			continue
 		}
-		svc := serviceOfContainer(mm[1], model)
-		if svc == "" || seen[svc+mm[2]] {
+		verb := m[2]
+		recreate, create := verb == "Recreate" || verb == "Recreating", verb == "Creating" || verb == "Create"
+		if !recreate && !create {
 			continue
 		}
-		seen[svc+mm[2]] = true
-		if mm[2] == "Recreate" {
+		svc := serviceOfContainer(m[1], model)
+		if svc == "" {
+			p.Unknown = append(p.Unknown, strings.TrimSpace(line))
+			continue
+		}
+		if seen[svc+verb] {
+			continue
+		}
+		seen[svc+verb] = true
+		if recreate {
 			p.Recreate = append(p.Recreate, svc)
 			if model.Stateful(svc, remotePath) {
 				p.Stateful = append(p.Stateful, svc)
@@ -216,9 +260,14 @@ func isDigits(s string) bool {
 
 // ConfirmStateful applies the D10/D24 rule: on a prod-class target a stateful
 // service in the recreate set needs confirmation (--yes, or a TTY answer from
-// confirm). Anything else returns nil. The refusal is E403 naming the services;
-// nothing has been applied when it is returned.
+// confirm), and a dry-run line that cannot be classified is refused outright
+// (--yes does not cover what the preview could not read). Anything else returns
+// nil. The refusal is E403; nothing has been applied when it is returned.
 func ConfirmStateful(p RecreatePreview, prodClass, yes bool, confirm func(msg string) bool) error {
+	if prodClass && len(p.Unknown) > 0 {
+		return errs.New("E403", "the recreate preview has line(s) that could not be classified: "+strings.Join(p.Unknown, " | ")+"; nothing was applied").
+			WithFix("run `docker compose up -d --dry-run` on the host and check the output; this compose version may need a newer nself")
+	}
 	if !prodClass || len(p.Stateful) == 0 || yes {
 		return nil
 	}

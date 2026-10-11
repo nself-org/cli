@@ -66,6 +66,9 @@ type StrategyState struct {
 	BackupID     string `json:"backup_id,omitempty"`
 	BackupHost   string `json:"backup_host,omitempty"`
 	PreDeployTar string `json:"pre_deploy_tar,omitempty"`
+	// PreDeployTars maps every host the deploy synced to its pre-deploy tar, so
+	// `deploy rollback` restores each server of the env, not just the primary.
+	PreDeployTars map[string]string `json:"pre_deploy_tars,omitempty"`
 }
 
 // LoadDeployState reads the deploy state from .nself/state/deploy.json.

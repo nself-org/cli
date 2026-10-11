@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/nself-org/cli/internal/deploy/bluegreen"
 	"github.com/nself-org/cli/internal/promote"
 	"github.com/nself-org/cli/internal/ui"
+	"github.com/nself-org/cli/sdk/go/v2/remote"
 
 	"github.com/spf13/cobra"
 )
@@ -207,40 +209,65 @@ func runDeployPromote(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// rollbackRemoteV15 undoes the last v1.5 remote apply recorded for target. It
-// reports handled=false when there is no such record, so the caller keeps the
-// old rollback.
+// rollbackRemoteV15 undoes the last v1.5 remote apply recorded for target on every
+// host that kept a pre-deploy tar, restoring the verified database backup on
+// backup_host only. It reports handled=false when there is no such record, so the
+// caller keeps the old rollback. A record already rolled back is refused: a second
+// rollback would restore the database again.
 func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error) {
 	st, _ := deploy.LoadDeployState(workdir)
-	if target == "local" || st.PreDeployTar == "" || st.Target != target {
+	tars := st.PreDeployTars
+	if len(tars) == 0 && st.PreDeployTar != "" {
+		tars = map[string]string{st.BackupHost: st.PreDeployTar}
+	}
+	if target == "local" || len(tars) == 0 || st.Target != target {
 		return false, nil
 	}
-	idx := strings.Index(st.PreDeployTar, "/"+deploy.BackupDir+"/pre-deploy-")
-	if idx <= 0 {
-		return true, fmt.Errorf("deploy rollback: the recorded tar %q is not a pre-deploy tar; nothing was changed", st.PreDeployTar)
+	if st.RolledBack {
+		return true, fmt.Errorf("deploy rollback: the last deploy of %s was already rolled back; nothing was changed (deploy again to get a new rollback point)", target)
 	}
-	rp := st.PreDeployTar[:idx]
-	srv, key := controlplane.Server{Name: target + "-app", Host: st.BackupHost, RemotePath: rp}, sshKeyPath()
-	if inv, err := controlplane.Load(workdir); err == nil {
-		for _, e := range inv.Environments {
-			for _, c := range e.Servers {
-				if c.Host == st.BackupHost {
-					srv.Name = c.Name
-					if v := os.Getenv(c.SSHKeyRef); v != "" {
-						key = v
+	inv, _ := controlplane.Load(workdir)
+	hosts := make([]string, 0, len(tars))
+	for h := range tars {
+		hosts = append(hosts, h)
+	}
+	sort.Strings(hosts)
+	var failed []string
+	for _, host := range hosts {
+		tar := tars[host]
+		idx := strings.Index(tar, "/"+deploy.BackupDir+"/pre-deploy-")
+		if idx <= 0 {
+			return true, fmt.Errorf("deploy rollback: the recorded tar %q is not a pre-deploy tar; nothing was changed", tar)
+		}
+		srv, key := controlplane.Server{Name: target + "-app", Host: host, RemotePath: tar[:idx]}, sshKeyPath()
+		if inv != nil {
+			for _, e := range inv.Environments {
+				for _, c := range e.Servers {
+					if spec, err := remote.ParseHostSpec(c.Host); err == nil && spec.String() == host {
+						srv.Name, srv.Host = c.Name, c.Host
+						if v := os.Getenv(c.SSHKeyRef); v != "" {
+							key = v
+						}
 					}
 				}
 			}
 		}
+		r, err := openDeployRemote(cmd.Context(), srv, key, target)
+		if err == nil {
+			backupID := ""
+			if host == st.BackupHost {
+				backupID = st.BackupID
+			}
+			err = deploy.RollbackRemote(cmd.Context(), deploy.RollbackOptions{Remote: r, RemotePath: srv.RemotePath, Tar: tar, BackupID: backupID, Clock: deployGateClock, Out: os.Stdout})
+		}
+		if err != nil {
+			failed = append(failed, fmt.Sprintf("%s: %v", host, err))
+		}
 	}
-	r, err := openDeployRemote(cmd.Context(), srv, key, target)
-	if err != nil {
-		return true, err
+	if len(failed) > 0 {
+		return true, fmt.Errorf("deploy rollback failed on %d host(s): %s", len(failed), strings.Join(failed, "; "))
 	}
-	err = deploy.RollbackRemote(cmd.Context(), deploy.RollbackOptions{Remote: r, RemotePath: srv.RemotePath, Tar: st.PreDeployTar, BackupID: st.BackupID, Clock: deployGateClock, Out: os.Stdout})
-	if err == nil {
-		st.RolledBack = true
-		_ = deploy.SaveDeployState(workdir, st)
-	}
-	return true, err
+	st.RolledBack, st.BackupID = true, ""
+	_ = deploy.SaveDeployState(workdir, st)
+	return true, nil
 }

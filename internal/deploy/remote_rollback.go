@@ -8,7 +8,7 @@ package deploy
 // Inputs:  a Remote, the remote path, the tar path and backup id the deploy
 //          recorded in .nself/state/deploy.json.
 // Outputs: an error naming the step that failed.
-// Constraints: files first, so the database restore and the re-apply see the old
+// Constraints: the host deploy lock is held; files first, so the database restore and the re-apply see the old
 //              configuration. Nothing is moved or deleted but generated files
 //              the tar does not hold. A host whose tar held no compose set (a
 //              first deploy) is restored but not re-applied, and says so.
@@ -39,6 +39,11 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 		o.Out = io.Discard
 	}
 	r, rp := o.Remote, o.RemotePath
+	release, err := AcquireLock(ctx, r, rp, strings.TrimSuffix(strings.TrimPrefix(path.Base(o.Tar), "pre-deploy-"), ".tar.gz"))
+	if err != nil {
+		return err
+	}
+	defer release()
 	emit(o.Out, "  [running] restore %s in place on %s", path.Base(o.Tar), r.Label())
 	pruned, err := RestorePreDeployTar(ctx, r, rp, o.Tar)
 	if err != nil {
@@ -57,13 +62,24 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	if err != nil {
 		return err
 	}
-	if len(compose) == 0 {
-		emit(o.Out, "  [skip] the restored tree has no compose manifest (it was a first deploy): files restored, nothing re-applied")
-		return nil
-	}
 	envs, err := remoteLines(ctx, r, path.Join(rp, ".nself", "compose-env-files.txt"))
 	if err != nil {
 		return err
+	}
+	if len(compose) == 0 {
+		// A host last deployed by v1.4 has no manifest, only docker-compose.yml.
+		single, err := remoteLines(ctx, r, path.Join(rp, "docker-compose.yml"))
+		if err != nil {
+			return err
+		}
+		if len(single) == 0 {
+			emit(o.Out, "  [skip] the restored tree has no compose file (it was a first deploy): files restored, nothing re-applied")
+			return nil
+		}
+		compose = []string{path.Join(rp, "docker-compose.yml")}
+		if e, _ := remoteLines(ctx, r, path.Join(rp, ".env")); len(e) > 0 {
+			envs = []string{path.Join(rp, ".env")}
+		}
 	}
 	emit(o.Out, "  [running] re-apply the restored artifact set")
 	return ReapplyRemote(ctx, ApplyOptions{

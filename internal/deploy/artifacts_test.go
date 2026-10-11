@@ -24,6 +24,9 @@ func TestArtifactsSyncNoDelete(t *testing.T) {
 	// What the host has already.
 	writeFile(t, filepath.Join(rp, "nginx", "sites", "foreign.conf"), "# written by hand\nserver { listen 8080; }\n", 0o644)
 	writeFile(t, filepath.Join(rp, "nginx", "sites", "old-generated.conf"), markedConf, 0o644)
+	// Another nself project's generated conf in the same dir: marker-carrying, never shipped by this project.
+	writeFile(t, filepath.Join(rp, "nginx", "sites", "other-project.conf"), markedConf+"# other\n", 0o644)
+	writeFile(t, filepath.Join(rp, ShippedFile), "nginx/sites/old-generated.conf\nnginx/sites/api.conf\nnginx/conf.d/block.conf\n", 0o644)
 	writeFile(t, filepath.Join(rp, "nginx", "sites", "api.conf"), markedConf+"# stale\n", 0o644)
 	writeFile(t, filepath.Join(rp, "nginx", "conf.d", "block.conf"), markedConf, 0o644) // marked, but under conf.d: never touched
 	writeFile(t, filepath.Join(rp, "nginx", "conf.d", "hand.conf"), "# hand written\n", 0o644)
@@ -33,11 +36,11 @@ func TestArtifactsSyncNoDelete(t *testing.T) {
 	blockBefore := readFile(t, filepath.Join(rp, "nginx", "conf.d", "block.conf"))
 
 	ctx := context.Background()
-	if err := SyncArtifacts(ctx, f, set); err != nil {
+	removed, err := PrunePrevious(ctx, f, rp, set.KeepSet())
+	if err != nil {
 		t.Fatal(err)
 	}
-	removed, err := PruneMarked(ctx, f, rp, set.KeepSet())
-	if err != nil {
+	if err := SyncArtifacts(ctx, f, set); err != nil {
 		t.Fatal(err)
 	}
 	if len(removed) != 1 || removed[0] != "nginx/sites/old-generated.conf" {
@@ -45,6 +48,15 @@ func TestArtifactsSyncNoDelete(t *testing.T) {
 	}
 	if exists(filepath.Join(rp, "nginx", "sites", "old-generated.conf")) {
 		t.Error("the dropped generated conf survived")
+	}
+	if !exists(filepath.Join(rp, "nginx", "sites", "other-project.conf")) {
+		t.Error("a marker-carrying conf this project never shipped was pruned")
+	}
+	shipped := readFile(t, filepath.Join(rp, ShippedFile))
+	for _, rel := range append(append([]string{}, set.Files...), set.EnvFiles...) {
+		if !strings.Contains(shipped, rel+"\n") {
+			t.Errorf("%s missing from the shipped list", rel)
+		}
 	}
 	if got := readFile(t, filepath.Join(rp, "nginx", "sites", "foreign.conf")); got != foreign {
 		t.Error("the unmarked foreign conf changed")

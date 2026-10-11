@@ -12,13 +12,13 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
-var psService = regexp.MustCompile(`ps -a --format json '([^']+)'`)
+var psService = regexp.MustCompile(`ps -a --format json -- '([^']+)'`)
 
 // stackHandler answers the docker and nself commands of one fake stack.
 // crash names a service whose container exits non-zero after its `up`.
 func stackHandler(rp string, crash string) func(string) (string, bool) {
 	upDone := map[string]bool{}
-	upSvc := regexp.MustCompile(`--no-deps '([^']+)'`)
+	upSvc := regexp.MustCompile(`--no-deps -- '([^']+)'`)
 	return func(s string) (string, bool) {
 		if m := upSvc.FindStringSubmatch(s); m != nil {
 			upDone[m[1]] = true
@@ -32,7 +32,7 @@ func stackHandler(rp string, crash string) func(string) (string, bool) {
 			return " Container proj-web-1 Recreate\n Container proj-db-1 Running\n", true
 		case strings.Contains(s, "docker run --rm"):
 			return "nginx: the configuration file syntax is ok\n", true
-		case strings.Contains(s, "up -d --no-deps"), strings.Contains(s, " pull"), strings.Contains(s, "nself db hasura metadata apply"), strings.Contains(s, "nself backup"):
+		case strings.Contains(s, "up -d --no-deps"), strings.Contains(s, " pull"), strings.Contains(s, "nginx -s reload"), strings.Contains(s, "nself db hasura metadata apply"), strings.Contains(s, "nself backup"):
 			return "", true
 		case strings.Contains(s, "docker inspect -f"):
 			return strings.Repeat("2026-10-10T20:00:00Z\n", strings.Count(s, "'id-")), true
@@ -55,6 +55,8 @@ func classify(s string) string {
 	switch {
 	case strings.HasPrefix(s, "rsync "):
 		return "rsync"
+	case strings.Contains(s, "deploy.lock"):
+		return "lock"
 	case strings.Contains(s, "plugin.json") || strings.Contains(s, `"$HOME"`) || strings.Contains(s, "NSELF_PLUGIN_DIR") || strings.Contains(s, "*.pem"):
 		return "snapshot"
 	case strings.Contains(s, "tar -czf"):
@@ -65,6 +67,10 @@ func classify(s string) string {
 		return "tarlist"
 	case strings.Contains(s, "stat -c"):
 		return "perms"
+	case strings.Contains(s, "nginx -s reload"):
+		return "reload"
+	case strings.Contains(s, "deploy-shipped.txt"):
+		return "shipped"
 	case strings.Contains(s, "head -n 5"), strings.Contains(s, "find \"$d\" -type f"):
 		return "prune"
 	case strings.Contains(s, "config --format json"), strings.Contains(s, "config --services"):
@@ -78,7 +84,7 @@ func classify(s string) string {
 	case strings.Contains(s, " pull"):
 		return "pull"
 	case strings.Contains(s, "up -d --no-deps"):
-		m := regexp.MustCompile(`--no-deps '([^']+)'`).FindStringSubmatch(s)
+		m := regexp.MustCompile(`--no-deps -- '([^']+)'`).FindStringSubmatch(s)
 		return "up:" + m[1]
 	case strings.Contains(s, "ps -a"), strings.Contains(s, "docker inspect"):
 		return "state"
@@ -133,7 +139,7 @@ func applyFixture(t *testing.T, crash string) (*fakeRemote, ApplyOptions, string
 	return f, o, rp
 }
 
-var orderedMilestones = []string{"snapshot", "tar", "rsync", "perms", "prune", "model", "nginx", "preview", "dbbackup", "pull", "up:db", "up:web", "up:nginx", "hasura"}
+var orderedMilestones = []string{"snapshot", "lock", "tar", "dbbackup", "shipped", "rsync", "perms", "model", "nginx", "pull", "preview", "up:db", "up:web", "up:nginx", "reload", "hasura"}
 
 func TestRemoteApplyOrder(t *testing.T) {
 	f, o, rp := applyFixture(t, "")
@@ -185,17 +191,18 @@ func TestRemoteApplyOrder(t *testing.T) {
 	any := func(error) bool { return true }
 	cases := []failure{
 		{"snapshot", "plugin.json", any, "snapshot", false},
+		{"lock", "if mkdir", any, "lock", false},
 		{"tar", "tar -czf", any, "tar", false},
+		{"db backup", "nself backup create", code("E206"), "dbbackup", false},
 		{"rsync", "<rsync>", any, "rsync", true},
 		{"perms", "stat -c", any, "perms", true},
-		{"prune", "head -n 5", any, "prune", true},
 		{"model", "config --format json", any, "model", true},
 		{"nginx -t", "docker run --rm", any, "nginx", true},
-		{"preview", "up -d --dry-run", any, "preview", true},
-		{"db backup", "nself backup create", code("E206"), "dbbackup", true},
 		{"pull", " pull", any, "pull", true},
-		{"first up", "up -d --no-deps 'db'", any, "up:db", false},
-		{"second up", "up -d --no-deps 'web'", any, "up:web", false},
+		{"preview", "up -d --dry-run", any, "preview", true},
+		{"first up", "up -d --no-deps -- 'db'", any, "up:db", false},
+		{"second up", "up -d --no-deps -- 'web'", any, "up:web", false},
+		{"reload", "nginx -s reload", any, "reload", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -260,10 +267,8 @@ func TestRemoteApplyRefusals(t *testing.T) {
 	t.Run("stateful recreate unconfirmed on prod", func(t *testing.T) {
 		f, o, _ := applyFixture(t, "")
 		o.Yes = false
-		o.Snapshot = func(context.Context, string) (string, error) {
-			t.Fatal("snapshot taken after a refusal")
-			return "", nil
-		}
+		snapshots := 0
+		o.Snapshot = func(context.Context, string) (string, error) { snapshots++; return "backup-1", nil }
 		f.handler = func(s string) (string, bool) {
 			if strings.Contains(s, "up -d --dry-run") {
 				return " Container proj-db-1 Recreate\n", true
@@ -275,8 +280,11 @@ func TestRemoteApplyRefusals(t *testing.T) {
 		if !errors.As(err, &ce) || ce.Code != "E403" || !strings.Contains(err.Error(), "db") {
 			t.Fatalf("err = %v", err)
 		}
+		if snapshots != 1 {
+			t.Errorf("the verified backup runs before the preview: snapshots = %d", snapshots)
+		}
 		got := steps(f)
-		for _, s := range []string{"dbbackup", "pull", "up:db", "hasura"} {
+		for _, s := range []string{"up:db", "reload", "hasura"} {
 			if indexOf(got, s) >= 0 {
 				t.Errorf("%s ran after E403: %v", s, got)
 			}

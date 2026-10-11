@@ -27,7 +27,7 @@ import (
 // RemoteStartMarks) turns an exited container that has not started since into
 // docker.StateNotRestarted; nil means no baseline.
 func RemoteStates(ctx context.Context, r Remote, remotePath string, files, envFiles []string, service string, baseline map[string]string) ([]docker.ContainerState, error) {
-	cmd := fmt.Sprintf("cd %s && %s ps -a --format json %s", q(remotePath), composeBase(files, envFiles), q(service))
+	cmd := fmt.Sprintf("cd %s && %s ps -a --format json -- %s", q(remotePath), composeBase(files, envFiles), q(service))
 	out, err := r.Run(ctx, shScript(cmd))
 	if err != nil {
 		return nil, err

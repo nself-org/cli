@@ -3,9 +3,13 @@ package controlplane
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/deploy"
 	"github.com/nself-org/cli/internal/errs"
 )
 
@@ -14,6 +18,7 @@ type recRemote struct {
 	log     []string
 	failOn  string
 	listOut string
+	tag     string
 }
 
 func (r *recRemote) Label() string { return "host-a" }
@@ -22,10 +27,19 @@ func (r *recRemote) Rsync(context.Context, []string, string, string, string) err
 }
 func (r *recRemote) Run(_ context.Context, c string) ([]byte, error) {
 	r.log = append(r.log, c)
+	if strings.Contains(c, "if mkdir") {
+		return []byte("OK\n"), nil
+	}
 	if r.failOn != "" && strings.Contains(c, r.failOn) {
 		return nil, errors.New("exit status 1: boom")
 	}
+	if m := regexp.MustCompile(`backup create --tag '([^']+)'`).FindStringSubmatch(c); m != nil {
+		r.tag = m[1]
+	}
 	if strings.Contains(c, "backup list") {
+		if r.listOut == "" && r.tag != "" {
+			return []byte(`[{"id":"b_full_1_2_` + r.tag + `","tag":"2_` + r.tag + `","date":"2026-10-10T12:00:00Z"}]`), nil
+		}
 		return []byte(r.listOut), nil
 	}
 	return nil, nil
@@ -67,11 +81,6 @@ func TestVerifiedSnapshot(t *testing.T) {
 			if id != "" || !errors.As(err, &ce) || ce.Code != "E206" {
 				t.Fatalf("id %q err %v, want E206", id, err)
 			}
-			for _, cmd := range r.log {
-				if strings.Contains(cmd, "docker") {
-					t.Errorf("a compose/docker command ran: %q", cmd)
-				}
-			}
 		})
 	}
 	t.Run("the --json envelope is read too", func(t *testing.T) {
@@ -80,4 +89,39 @@ func TestVerifiedSnapshot(t *testing.T) {
 			t.Fatalf("%q %v", got, err)
 		}
 	})
+}
+
+// TestVerifiedSnapshotBeforeAnyCompose (F2): driven through deploy.ApplyRemote on a
+// production-class target, a failing `backup verify` stops the deploy with E206 and
+// the whole recorded remote log holds no docker command and no artifact rsync. The
+// assertion can fail: the old order synced and ran compose commands first.
+func TestVerifiedSnapshotBeforeAnyCompose(t *testing.T) {
+	r := &recRemote{failOn: "backup verify"}
+	set := deploy.ArtifactSet{RemotePath: "/opt/nself", StageDir: t.TempDir(), Compose: []string{"/opt/nself/docker-compose.yml"}, Files: []string{"docker-compose.yml"}}
+	if err := os.WriteFile(filepath.Join(set.StageDir, "docker-compose.yml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := deploy.ApplyRemote(context.Background(), deploy.ApplyOptions{
+		Remote: r, RemotePath: "/opt/nself", Set: set, ProdClass: true,
+		Snapshot: func(ctx context.Context, id string) (string, error) {
+			return VerifiedSnapshot(ctx, r, "/opt/nself", id)
+		},
+	})
+	var ce *errs.CLIError
+	if !errors.As(err, &ce) || ce.Code != "E206" {
+		t.Fatalf("err = %v, want E206", err)
+	}
+	if res.Synced {
+		t.Error("the sync started before the backup was verified")
+	}
+	sawVerify := false
+	for _, cmd := range r.log {
+		if strings.Contains(cmd, "docker compose") || strings.Contains(cmd, "docker run") || strings.Contains(cmd, "docker inspect") || strings.HasPrefix(cmd, "rsync") {
+			t.Errorf("a docker/compose command ran before E206: %q", cmd)
+		}
+		sawVerify = sawVerify || strings.Contains(cmd, "backup verify")
+	}
+	if !sawVerify {
+		t.Errorf("the verify never ran:\n%s", strings.Join(r.log, "\n"))
+	}
 }

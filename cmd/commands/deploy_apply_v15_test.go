@@ -20,12 +20,19 @@ import (
 // v15Remote answers the remote commands of a v1.5 apply for a one-service stack
 // and records them. Nothing runs for real.
 type v15Remote struct {
-	mu  sync.Mutex
-	log []string
-	tag string
+	mu     sync.Mutex
+	log    []string
+	tag    string
+	locked bool // the host's deploy lock is held by someone else
+	label  string
 }
 
-func (r *v15Remote) Label() string { return "deploy@app.example.test" }
+func (r *v15Remote) Label() string {
+	if r.label != "" {
+		return r.label
+	}
+	return "deploy@app.example.test"
+}
 
 func (r *v15Remote) Rsync(_ context.Context, flags []string, _, _, dest string) error {
 	r.mu.Lock()
@@ -48,6 +55,13 @@ func (r *v15Remote) Run(_ context.Context, cmd string) ([]byte, error) {
 	defer r.mu.Unlock()
 	r.log = append(r.log, s)
 	switch {
+	case strings.HasPrefix(s, "if [ -d"):
+		return []byte("yes\n"), nil // the build context exists on the host
+	case strings.Contains(s, "if mkdir"):
+		if r.locked {
+			return []byte("LOCKED pid=7 host=other user=ops id=x\n"), nil
+		}
+		return []byte("OK\n"), nil
 	case strings.Contains(s, "stat -c"):
 		var b strings.Builder
 		for _, m := range quotedPath.FindAllStringSubmatch(s, -1) {
@@ -152,7 +166,7 @@ func TestDeployApplyV15Pipeline(t *testing.T) {
 		t.Fatalf("result %+v", res.Servers)
 	}
 	cmds := remote.commands()
-	order := []string{`"$HOME"`, "tar -czf", "rsync ", "stat -c", "config --format json", "up -d --dry-run", "nself backup create", "nself backup verify", " pull", "up -d --no-deps 'web'", "hasura metadata apply"}
+	order := []string{`"$HOME"`, "if mkdir", "tar -czf", "nself backup create", "nself backup verify", "rsync ", "stat -c", "config --format json", " pull", "up -d --dry-run", "up -d --no-deps -- 'web'", "hasura metadata apply"}
 	prev := -1
 	for _, want := range order {
 		i := firstIndex(cmds, want)
@@ -179,15 +193,27 @@ func TestDeployApplyV15Pipeline(t *testing.T) {
 	}
 	cmds = remote.commands()
 	prev = -1
-	for _, want := range []string{"tar -xzf", "nself backup restore '" + st.BackupID + "' --yes", "config --format json", " pull", "up -d --no-deps 'web'"} {
+	for _, want := range []string{"tar -xzf", "nself backup restore '" + st.BackupID + "' --yes", "config --format json", " pull", "up -d --no-deps -- 'web'"} {
 		i := firstIndex(cmds, want)
 		if i <= prev {
 			t.Fatalf("rollback: %q at %d after %d in:\n%s", want, i, prev, strings.Join(cmds, "\n"))
 		}
 		prev = i
 	}
-	if after, _ := deploy.LoadDeployState(proj); !after.RolledBack {
-		t.Error("deploy.json does not say the deploy was rolled back")
+	after, _ := deploy.LoadDeployState(proj)
+	if !after.RolledBack || after.BackupID != "" {
+		t.Errorf("deploy.json after the rollback: %+v", after)
+	}
+	// F7: a second rollback must not restore the database again.
+	remote.mu.Lock()
+	remote.log = nil
+	remote.mu.Unlock()
+	handled, err = rollbackRemoteV15(cmd, proj, "prod")
+	if !handled || err == nil || !strings.Contains(err.Error(), "already rolled back") {
+		t.Fatalf("second rollback: handled=%v err=%v", handled, err)
+	}
+	if got := remote.commands(); len(got) != 0 {
+		t.Errorf("the second rollback touched the host: %v", got)
 	}
 	if handled, _ := rollbackRemoteV15(cmd, t.TempDir(), "prod"); handled {
 		t.Error("a project with no v1.5 record must fall through to the old rollback")
@@ -206,7 +232,7 @@ func TestDeployApplyV15Legacy(t *testing.T) {
 	if firstIndex(cmds, "nself backup create") >= 0 {
 		t.Error("a non-production target takes no database backup")
 	}
-	if firstIndex(cmds, "tar -czf") < 0 || firstIndex(cmds, "up -d --no-deps 'web'") < 0 || firstIndex(cmds, "rsync ") < 0 {
+	if firstIndex(cmds, "tar -czf") < 0 || firstIndex(cmds, "up -d --no-deps -- 'web'") < 0 || firstIndex(cmds, "rsync ") < 0 {
 		t.Fatalf("legacy v1.5 path skipped the shared apply:\n%s", strings.Join(cmds, "\n"))
 	}
 	if !strings.Contains(strings.Join(cmds, "\n"), "/srv/nself/docker-compose.yml") {
@@ -219,4 +245,71 @@ func TestDeployApplyV15Legacy(t *testing.T) {
 		t.Fatalf("deploy.json %+v", st)
 	}
 	_ = os.Remove(filepath.Join(proj, deploy.DeployStateFile))
+}
+
+// F6: a deploy refused before its sync never overwrites the last good record, and
+// every synced server's tar is recorded so a rollback restores all of them.
+func TestDeployRecordOnlyAfterSync(t *testing.T) {
+	proj, remote := v15Project(t)
+	key := filepath.Join(t.TempDir(), "id_ed25519")
+	if err := os.WriteFile(key, []byte("fake"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NSELF_TEST_DEPLOY_KEY", key)
+	second := &v15Remote{label: "deploy@app2.example.test"}
+	deployRemoteOpen = func(_ context.Context, srv controlplane.Server, _, _ string) (deploy.Remote, error) {
+		if strings.Contains(srv.Host, "app2") {
+			return second, nil
+		}
+		return remote, nil
+	}
+	servers := []controlplane.Server{
+		{Name: "app-1", Role: controlplane.RoleApp, Host: "deploy@app.example.test", SSHKeyRef: "NSELF_TEST_DEPLOY_KEY", RemotePath: "/opt/nself", Primary: true},
+		{Name: "app-2", Role: controlplane.RoleApp, Host: "deploy@app2.example.test", SSHKeyRef: "NSELF_TEST_DEPLOY_KEY", RemotePath: "/opt/nself"},
+	}
+	inv := &controlplane.Inventory{SchemaVersion: 2, Environments: map[string]controlplane.Environment{
+		"staging": {Name: "staging", Kind: "remote", Tier: controlplane.TierLocalServers, Servers: servers}}}
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.WithValue(context.Background(), deployYesKey{}, true))
+	run := func() error {
+		res, err := runDeployPipeline(cmd, proj, inv, "staging", okProber{}, filepath.Join(proj, "docker-compose.yml"), "", "", true)
+		if err == nil {
+			err = failedServersError(res)
+		}
+		return err
+	}
+	if err := run(); err != nil {
+		t.Fatal(err)
+	}
+	good, _ := deploy.LoadDeployState(proj)
+	if len(good.PreDeployTars) != 2 || good.PreDeployTars["deploy@app.example.test"] == "" || good.PreDeployTars["deploy@app2.example.test"] == "" || good.BackupHost != "deploy@app.example.test" {
+		t.Fatalf("both hosts' tars must be recorded, primary as backup_host: %+v", good)
+	}
+	// Rollback restores every server of the env.
+	for _, r := range []*v15Remote{remote, second} {
+		r.mu.Lock()
+		r.log = nil
+		r.mu.Unlock()
+	}
+	if handled, err := rollbackRemoteV15(cmd, proj, "staging"); !handled || err != nil {
+		t.Fatalf("rollback: %v %v", handled, err)
+	}
+	for _, r := range []*v15Remote{remote, second} {
+		if firstIndex(r.commands(), "tar -xzf") < 0 {
+			t.Errorf("%s was not restored: %v", r.Label(), r.commands())
+		}
+	}
+	// A deploy refused by the lock changes nothing in the record.
+	good.RolledBack = false
+	if err := deploy.SaveDeployState(proj, good); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, _ := os.ReadFile(filepath.Join(proj, deploy.DeployStateFile))
+	remote.locked, second.locked = true, true
+	if err := run(); err == nil || !strings.Contains(err.Error(), "holds the lock") {
+		t.Fatalf("locked deploy: %v", err)
+	}
+	if now, _ := os.ReadFile(filepath.Join(proj, deploy.DeployStateFile)); string(now) != string(snapshot) {
+		t.Errorf("a refused deploy rewrote deploy.json:\n%s\nvs\n%s", snapshot, now)
+	}
 }

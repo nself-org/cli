@@ -42,7 +42,7 @@ var deployGateClock docker.Clock
 
 type deployYesKey struct{}
 
-// withDeployYes stores cmd's --yes (or --force) in ctx for the legacy push,
+// withDeployYes stores cmd's --yes in ctx for the legacy push,
 // which has no cmd.
 func withDeployYes(cmd *cobra.Command, ctx context.Context) context.Context {
 	yes, _ := cmd.Flags().GetBool("yes")
@@ -140,21 +140,31 @@ func ttyConfirm(msg string) bool {
 	return strings.EqualFold(strings.TrimSpace(ans), "yes")
 }
 
-// recordRemoteApply saves the primary server's backup record to deploy.json
-// (the first server when none is primary).
+// recordRemoteApply writes deploy.json as servers finish. A server that never
+// reached the sync (drift, lock held, tar or backup failure, build context) left
+// its files alone, so it never overwrites the last good record. Each synced host
+// adds its pre-deploy tar to pre_deploy_tars; the primary (the first host when
+// none is primary) supplies backup_host and pre_deploy_tar; backup_id comes from
+// whichever server took the verified backup.
 func recordRemoteApply(workdir, target string, start time.Time) func(controlplane.Server, deploy.ApplyResult, error) {
-	saved := false
+	st := deploy.StrategyState{Strategy: deploy.StrategyRolling, Target: target, StartedAt: start, Success: true}
 	return func(srv controlplane.Server, res deploy.ApplyResult, err error) {
-		if saved && !srv.Primary {
+		if !res.Synced {
 			return
 		}
-		saved = true
-		st := deploy.StrategyState{
-			Strategy: deploy.StrategyRolling, Target: target, StartedAt: start, CompletedAt: time.Now(), Success: err == nil,
-			BackupID: res.BackupID, BackupHost: res.BackupHost, PreDeployTar: res.PreDeployTar,
+		if st.PreDeployTars == nil {
+			st.PreDeployTars = map[string]string{}
 		}
+		st.PreDeployTars[res.BackupHost] = res.PreDeployTar
+		if srv.Primary || st.PreDeployTar == "" {
+			st.BackupHost, st.PreDeployTar = res.BackupHost, res.PreDeployTar
+		}
+		if res.BackupID != "" {
+			st.BackupID = res.BackupID
+		}
+		st.CompletedAt = time.Now()
 		if err != nil {
-			st.Error = err.Error()
+			st.Success, st.Error = false, err.Error()
 		}
 		if serr := deploy.SaveDeployState(workdir, st); serr != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "warning: could not save the deploy record: %v\n", serr)
