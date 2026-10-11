@@ -151,3 +151,28 @@ func TestInstallFromURL_RefusedReinstallKeepsTheOldInstall(t *testing.T) {
 		t.Errorf("refused install published nself-media-server (stat err %v)", statErr)
 	}
 }
+
+// TestCheckCLIBinaries_RunsBeforeTheInstallIsTouched pins the order the
+// D-0259 review asked for: the registry path checks before it extracts, the
+// third-party path before it removes the installed copy. A refusal after
+// either point goes through rollbackInstall and loses a working upgrade.
+func TestCheckCLIBinaries_RunsBeforeTheInstallIsTouched(t *testing.T) {
+	for _, c := range []struct{ file, fn, later string }{
+		{"installer_locked.go", "func installLocked(", "extractTarGz(archivePath, destDir)"},
+		{"install_thirdparty.go", "func InstallFromURL(", "os.RemoveAll(destDir)"},
+	} {
+		src := readFile(t, c.file)
+		start := strings.Index(src, c.fn)
+		if start < 0 {
+			t.Fatalf("%s: %s not found", c.file, c.fn)
+		}
+		body := src[start:]
+		if end := strings.Index(body[1:], "\nfunc "); end > 0 {
+			body = body[:end+1]
+		}
+		check, later := strings.Index(body, "checkCLIBinaries("), strings.Index(body, c.later)
+		if check < 0 || later < 0 || check > later {
+			t.Errorf("%s: checkCLIBinaries (at %d) must run before %s (at %d)", c.file, check, c.later, later)
+		}
+	}
+}
