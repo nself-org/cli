@@ -49,10 +49,21 @@ func commandSecretValues(cmd *cobra.Command, args []string) (out []string) {
 	if cmd == nil {
 		return nil
 	}
-	entry := canon.Entry{}
-	if file, err := canon.Load(); err == nil && file != nil {
-		path := strings.TrimSpace(strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()))
-		entry = file.Commands[path]
+	// The registry is parsed from embedded YAML, which costs milliseconds, so
+	// it is read only when a value could need its verdict: a positional word,
+	// or a changed flag whose name does not already look secret. A bare
+	// `nself version` or `nself status` never reaches it.
+	var loaded bool
+	var entry canon.Entry
+	canonEntry := func() canon.Entry {
+		if !loaded {
+			loaded = true
+			if file, err := canon.Load(); err == nil && file != nil {
+				path := strings.TrimSpace(strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()))
+				entry = file.Commands[path]
+			}
+		}
+		return entry
 	}
 	add := func(v string) {
 		if v != "" {
@@ -67,7 +78,7 @@ func commandSecretValues(cmd *cobra.Command, args []string) (out []string) {
 			add(a)
 		}
 	}
-	if len(entry.SecretArgs) > 0 {
+	if len(args) > 0 && len(canonEntry().SecretArgs) > 0 {
 		for i, name := range useArgNames(cmd.Use) {
 			if i >= len(args) {
 				break
@@ -86,7 +97,7 @@ func commandSecretValues(cmd *cobra.Command, args []string) (out []string) {
 		if f.Value.Type() == "bool" {
 			return
 		}
-		if !entry.Flags[f.Name].Secret && !config.IsSecretKey(f.Name) {
+		if !config.IsSecretKey(f.Name) && !canonEntry().Flags[f.Name].Secret {
 			return
 		}
 		if sv, ok := f.Value.(pflag.SliceValue); ok {

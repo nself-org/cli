@@ -73,15 +73,20 @@ func (l *Logger) write(entry Entry) error {
 	defer l.mu.Unlock()
 
 	logDir := filepath.Dir(l.path)
-	// The parent (~/.nself) keeps its historic 0755 creation mode; only the
-	// logs directory is private.
-	if err := os.MkdirAll(filepath.Dir(logDir), 0o755); err != nil {
-		return fmt.Errorf("cmdlog: mkdir %s: %w", filepath.Dir(logDir), err)
+	// One Stat on the common path. A missing directory is created (the parent
+	// keeps its historic 0755, only the logs directory is private). An existing
+	// one wider than 0700 is a leftover of an older release: narrow it and its
+	// rotated logs once. A directory already at 0700 holds nothing to narrow.
+	if info, serr := os.Stat(logDir); serr != nil {
+		if err := os.MkdirAll(filepath.Dir(logDir), 0o755); err != nil {
+			return fmt.Errorf("cmdlog: mkdir %s: %w", filepath.Dir(logDir), err)
+		}
+		if err := os.MkdirAll(logDir, 0o700); err != nil {
+			return fmt.Errorf("cmdlog: mkdir %s: %w", logDir, err)
+		}
+	} else if info.Mode().Perm()&0o077 != 0 {
+		l.narrowExisting(logDir)
 	}
-	if err := os.MkdirAll(logDir, 0o700); err != nil {
-		return fmt.Errorf("cmdlog: mkdir %s: %w", logDir, err)
-	}
-	l.narrowExisting(logDir)
 
 	if err := l.rotateIfNeeded(); err != nil {
 		// Non-fatal — still attempt to write.

@@ -12,6 +12,7 @@ package cmdlog
 import (
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // secretNameParts mirrors config.secretKeyParts (SECRET, PASS covering
@@ -36,12 +37,15 @@ func secretFlagName(name string) bool {
 
 // urlCredentials matches scheme://user:password@ up to the last "@" of the
 // whitespace-delimited chunk, so a password holding "@" or "/" cannot leak.
-var urlCredentials = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://[^\s:/@]+):\S*@`)
+// It is compiled on first use so a command without a URL pays nothing at start.
+var urlCredentials = sync.OnceValue(func() *regexp.Regexp {
+	return regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://[^\s:/@]+):\S*@`)
+})
 
 // maskURLCredentials replaces the password of every URL user:password@ in s.
 func maskURLCredentials(s string) string {
 	if !strings.Contains(s, "://") {
 		return s
 	}
-	return urlCredentials.ReplaceAllString(s, "${1}:"+redactedText+"@")
+	return urlCredentials().ReplaceAllString(s, "${1}:"+redactedText+"@")
 }
