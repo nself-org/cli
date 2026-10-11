@@ -1,6 +1,9 @@
 package config
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // isJSONValue reports whether v is a JSON object or array value (starts with
 // '{' or '['). These values must be quoted when written to .env files because
@@ -48,4 +51,45 @@ func UnquoteEnvValue(v string) string {
 // quotes with at least one character between them.
 func isSingleQuoted(v string) bool {
 	return len(v) >= 2 && v[0] == '\'' && v[len(v)-1] == '\''
+}
+
+// QuoteComposeEnvValue renders v as the value half of a docker compose
+// --env-file line so that compose's dotenv parser reads back exactly v
+// (D-0333). Unquoted compose dotenv values are trimmed, cut at " #",
+// expanded on "$" and opened as quoted strings by a leading quote, so any
+// value holding whitespace, '#', '$', a quote or a backtick is quoted. A
+// value whose only special character is a backslash stays unquoted: every
+// compose reads unquoted backslashes verbatim, while compose before 2.20
+// rejects the whole file when a quoted value ends in a backslash.
+//
+//   - Single quotes when v has no ' and no \: compose reads the bytes
+//     between them verbatim.
+//   - Double quotes otherwise: \ → \\, " → \", $ → $$. Compose unescapes \\
+//     and \" and turns $$ into a literal $. Escaping ' inside single quotes
+//     is not portable: compose before 2.24 (compose-go v1 dotenv) keeps the
+//     backslash of \', and treats any backslash before the closing quote
+//     as an escape.
+//
+// Verified byte for byte with `docker compose config` on 2.20.3, 2.24.0,
+// 2.27.0 and 5.6.0. Older compose (2.17 and before) still cannot read a
+// quoted value with a backslash before its closing quote. Unlike
+// QuoteEnvValue it is not idempotent: a value that is already wrapped in
+// quotes is a value with quotes in it and is quoted again.
+//
+// Example:
+//
+//	QuoteComposeEnvValue("plain-value") → plain-value
+//	QuoteComposeEnvValue("$2a$10$abc")  → '$2a$10$abc'
+//	QuoteComposeEnvValue("it's $5")     → "it's $$5"
+//	QuoteComposeEnvValue(`a\b`)         → a\b
+//	QuoteComposeEnvValue(`a\b"c`)       → "a\\b\"c"
+func QuoteComposeEnvValue(v string) string {
+	if !strings.ContainsFunc(v, unicode.IsSpace) && !strings.ContainsAny(v, "#$'\"`") {
+		return v // unquoted values keep backslashes verbatim on every compose
+	}
+	if !strings.ContainsAny(v, `'\`) {
+		return "'" + v + "'"
+	}
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "$", "$$")
+	return `"` + r.Replace(v) + `"`
 }

@@ -3,6 +3,7 @@ package license
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -107,5 +108,50 @@ func TestEnsureDir_RefusesToMoveUnrelatedFile(t *testing.T) {
 	}
 	if _, statErr := os.Stat(other); statErr != nil {
 		t.Errorf("the unrelated file was moved or removed: %v", statErr)
+	}
+}
+
+// TestEnsureDir_LstatErrorIsReported: an Lstat failure other than "missing"
+// (here a parent that is a file) is reported, never treated as "create it".
+func TestEnsureDir_LstatErrorIsReported(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("ENOTDIR from a file parent is a Unix error")
+	}
+	root := t.TempDir()
+	file := filepath.Join(root, "plain")
+	if err := os.WriteFile(file, []byte("x"), 0600); err != nil {
+		t.Fatalf("seeding: %v", err)
+	}
+	err := ensureDir(filepath.Join(file, "sub"))
+	if err == nil || !strings.HasPrefix(err.Error(), "checking ") {
+		t.Fatalf("ensureDir under a file parent: err = %v, want a 'checking' error", err)
+	}
+}
+
+// TestEnsureDir_LegacyMoveFailureKeepsTheFile: when the legacy file cannot be
+// moved aside, ensureDir fails and the user's licence file stays where it was.
+func TestEnsureDir_LegacyMoveFailureKeepsTheFile(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs Unix directory permissions enforced for a non-root user")
+	}
+	legacy := filepath.Join(t.TempDir(), licenseDir) // <tmp>/.nself/license
+	parent := filepath.Dir(legacy)
+	if err := os.MkdirAll(parent, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(legacy, []byte("legacy licence"), 0600); err != nil {
+		t.Fatalf("seeding: %v", err)
+	}
+	if err := os.Chmod(parent, 0500); err != nil { // no write: rename must fail
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0700) })
+
+	err := ensureDir(legacy)
+	if err == nil || !strings.Contains(err.Error(), "could not be moved to "+legacy+".legacy-") {
+		t.Fatalf("ensureDir with an unmovable legacy file: err = %v", err)
+	}
+	if b, rerr := os.ReadFile(legacy); rerr != nil || string(b) != "legacy licence" {
+		t.Errorf("the legacy file must stay in place: %q, %v", b, rerr)
 	}
 }

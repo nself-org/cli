@@ -79,6 +79,9 @@ func releaseInstallLock(f *os.File, pluginDir string) {
 // A file lock on {pluginDir}/.install.lock is held for the duration of the
 // operation to prevent concurrent installs from corrupting plugin state.
 func Install(ctx context.Context, cfg *config.Config, name string, pluginDir string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
 	lock, err := acquireInstallLock(pluginDir)
 	if err != nil {
 		return err

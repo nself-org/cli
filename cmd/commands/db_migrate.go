@@ -55,6 +55,9 @@ func runDBMigrateUp(cmd *cobra.Command, _ []string) error {
 	}
 
 	plugin, _ := cmd.Flags().GetString("plugin")
+	if err := validatePluginFlag(plugin); err != nil {
+		return err
+	}
 
 	// --migration-dir: apply all .sql files in the given directory (G-008).
 	// With --dry-run only list the pending files: that path issues SELECT

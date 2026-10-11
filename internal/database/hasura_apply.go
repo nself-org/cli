@@ -29,9 +29,11 @@ import (
 //
 //  1. YAML directory format (standard Hasura CLI): projectDir/hasura/metadata/
 //     Tables use !include directives referencing individual YAML files.
-//     This format is detected first. If the hasura CLI binary is in PATH it is
-//     used directly (handles all YAML features). Otherwise nSelf resolves
-//     !include directives in Go and sends the result to the metadata API.
+//     This format is detected first. For a real Hasura CLI project
+//     (hasura/config.yaml naming metadata_directory) with the hasura CLI binary
+//     in PATH, that binary applies it. Otherwise, including nSelf's own
+//     config.yaml index layout, nSelf resolves !include directives in Go and
+//     sends the result to the metadata API.
 //
 //  2. JSON format (legacy nSelf): projectDir/hasura/metadata.json
 //     Sent directly to the replace_metadata API.
@@ -74,12 +76,16 @@ func HasuraApplyMetadata(ctx context.Context, cfg *config.Config, projectDir str
 	return err
 }
 
-// applyYAMLMetadata handles the Hasura CLI YAML metadata directory format.
-// It prefers shelling out to the hasura CLI binary (which natively handles
-// !include), falling back to Go-based !include resolution.
+// applyYAMLMetadata handles a YAML metadata directory. nself's own layout
+// (config.yaml index at the metadata root) always goes through the Go
+// !include resolver; the hasura CLI binary, when on PATH, is used only for a
+// real Hasura CLI project (isHasuraCLIProject, D-0564), since it cannot read
+// nself's index.
 func applyYAMLMetadata(ctx context.Context, cfg *config.Config, hasuraDir, metadataDir string) error {
-	if hasuraBin, err := exec.LookPath("hasura"); err == nil {
-		return applyViaHasuraCLI(ctx, cfg, hasuraBin, hasuraDir)
+	if isHasuraCLIProject(hasuraDir, metadataDir) {
+		if hasuraBin, err := exec.LookPath("hasura"); err == nil {
+			return applyViaHasuraCLI(ctx, cfg, hasuraBin, hasuraDir)
+		}
 	}
 	return applyViaIncludeResolver(ctx, cfg, metadataDir)
 }
