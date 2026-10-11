@@ -11,6 +11,7 @@ package commands
 // file or process-wide state outlives a subtest.
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -44,11 +45,24 @@ var rowEnv = map[string]map[string]string{
 func renderStack(t *testing.T, env map[string]string) map[string]string {
 	t.Helper()
 	for k, v := range env {
-		t.Setenv(k, v)
+		prev, had := os.LookupEnv(k)
+		_ = os.Setenv(k, v)
+		defer func(k, prev string, had bool) { // each render sees only its own env
+			if had {
+				_ = os.Setenv(k, prev)
+			} else {
+				_ = os.Unsetenv(k)
+			}
+		}(k, prev, had)
 	}
 	cfg, err := config.Load(t.TempDir())
 	if err != nil {
 		t.Fatalf("config.Load with %v: %v", env, err)
+	}
+	// config.Load never reads FUNCTIONS_RUNTIME (the env tag on the field is
+	// not wired), so the runtime is applied to the loaded config here.
+	if rt := env["FUNCTIONS_RUNTIME"]; rt != "" {
+		cfg.Functions.Runtime = rt
 	}
 	raw, err := compose.NewGenerator(cfg).Generate()
 	if err != nil {

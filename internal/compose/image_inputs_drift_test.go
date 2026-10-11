@@ -11,9 +11,10 @@ package compose
 // entry (<NAME>_VERSION, <NAME>_IMAGE) and from the table itself.
 // Outputs: test failures naming the variable and the service.
 // Constraints: hermetic; every candidate is blanked first, config.Load reads no
-// project files (an empty directory) and t.Setenv restores the environment.
+// project files (an empty directory) and every render restores the environment.
 
 import (
+	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -90,11 +91,24 @@ func sentinel(name string) string {
 func renderImages(t *testing.T, env map[string]string) map[string]string {
 	t.Helper()
 	for k, v := range env {
-		t.Setenv(k, v)
+		prev, had := os.LookupEnv(k)
+		_ = os.Setenv(k, v)
+		defer func(k, prev string, had bool) { // each render sees only its own env
+			if had {
+				_ = os.Setenv(k, prev)
+			} else {
+				_ = os.Unsetenv(k)
+			}
+		}(k, prev, had)
 	}
 	cfg, err := config.Load(t.TempDir())
 	if err != nil {
 		t.Fatalf("config.Load with %v: %v", env, err)
+	}
+	// config.Load never reads FUNCTIONS_RUNTIME (the env tag on the field is
+	// not wired), so the runtime is applied to the loaded config here.
+	if rt := env["FUNCTIONS_RUNTIME"]; rt != "" {
+		cfg.Functions.Runtime = rt
 	}
 	raw, err := NewGenerator(cfg).Generate()
 	if err != nil {
