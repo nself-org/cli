@@ -135,7 +135,7 @@ func prepareRemoteApply(ctx context.Context, p v15Params) (*controlplane.RemoteA
 // refused server makes the env success=false. Servers that kept changes add their
 // tar and change and absent lists per host; the primary supplies pre_deploy_tar.
 func recordRemoteApply(workdir, target string, start time.Time, backupID, backupHost string) func(controlplane.Server, deploy.ApplyResult, error) {
-	st := deploy.StrategyState{Strategy: deploy.StrategyRolling, Target: target, StartedAt: start, Success: true, BackupID: backupID, BackupHost: backupHost, HostOutcomes: map[string]string{}}
+	st := deploy.StrategyState{Strategy: deploy.StrategyRolling, Target: target, StartedAt: start, Success: true, HostOutcomes: map[string]string{}}
 	var failures []string
 	return func(srv controlplane.Server, res deploy.ApplyResult, err error) {
 		st.HostOutcomes[srv.Name] = "ok"
@@ -143,6 +143,9 @@ func recordRemoteApply(workdir, target string, start time.Time, backupID, backup
 			st.HostOutcomes[srv.Name] = map[bool]string{true: "failed: ", false: "not changed: "}[res.Synced] + err.Error()
 			failures = append(failures, srv.Name+": "+err.Error())
 			st.Success, st.Error = false, strings.Join(failures, "; ")
+		}
+		if res.Touched && st.BackupID == "" {
+			st.BackupID, st.BackupHost = backupID, backupHost // only a deploy that ran `up` may offer the database restore
 		}
 		if res.Synced {
 			if st.PreDeployTars == nil {

@@ -543,3 +543,21 @@ func TestPartialRollbackRetryRestoresDBOnce(t *testing.T) {
 		t.Errorf("the retry should mark the record rolled back: %+v", st)
 	}
 }
+
+// H3: a server that kept changes but never ran `up` (its restore failed) must not
+// put the env's database backup into the record; one that ran `up` does.
+func TestRecordBackupOnlyAfterUp(t *testing.T) {
+	proj := t.TempDir()
+	srv := controlplane.Server{Name: "app-1", Host: "deploy@app.example.test", Primary: true}
+	rec := recordRemoteApply(proj, "prod", time.Now(), "demo_full_1", "deploy@app.example.test")
+	res := deploy.ApplyResult{Synced: true, BackupHost: "deploy@app.example.test", PreDeployTar: "/opt/nself/.nself/backups/pre-deploy-x.tar.gz", Changed: []string{"docker-compose.yml"}}
+	rec(srv, res, errors.New("restore also failed"))
+	if st, _ := deploy.LoadDeployState(proj); st.BackupID != "" || len(st.PreDeployTars) != 1 {
+		t.Fatalf("no container was touched, the record must not offer the database restore: %+v", st)
+	}
+	res.Touched = true
+	rec(srv, res, errors.New("health gate"))
+	if st, _ := deploy.LoadDeployState(proj); st.BackupID != "demo_full_1" || st.BackupHost != "deploy@app.example.test" {
+		t.Fatalf("after `up` the record names the backup: %+v", st)
+	}
+}

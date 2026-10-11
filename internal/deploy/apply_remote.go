@@ -75,6 +75,9 @@ type ApplyResult struct {
 	Changed   []string
 	Absent    []string
 	Recreated []string
+	// Touched is true once the first `up` ran: containers may have changed, so
+	// the env's database backup belongs in the record.
+	Touched bool
 }
 
 func emit(w io.Writer, format string, a ...any) { _, _ = fmt.Fprintf(w, format+"\n", a...) }
@@ -191,7 +194,7 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	if err = ConfirmStateful(pv, o.ProdClass, o.Yes, o.Confirm); err != nil {
 		return res, err
 	}
-	touched = true
+	touched, res.Touched = true, true
 	if err = applyServices(ctx, o, model); err != nil {
 		return res, err
 	}
