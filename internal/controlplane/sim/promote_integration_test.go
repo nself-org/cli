@@ -61,7 +61,7 @@ func TestSimPromote(t *testing.T) {
   *"compose images --format json"*) printf '[{"Service":"web","Repository":"example.invalid/web","Tag":"2","ID":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]' ;;
   *"image inspect --format"*) printf '["example.invalid/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]|linux/amd64' ;;`, 1)
 		h.put("/usr/local/bin/docker", docker)
-		h.sh("chmod 755 /usr/local/bin/nself; printf original > /tmp/sim-db-fp")
+		h.sh("chmod 755 /usr/local/bin/nself /usr/local/bin/docker; printf original > /tmp/sim-db-fp")
 		h.put(h.rp+"/docker-compose.yml", "old\n")
 		h.own()
 		h.scenario(" Container proj-web-1 Recreate\n")
