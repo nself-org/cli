@@ -102,6 +102,8 @@ Compare proves per-platform image digest equality before taking a snapshot or
 changing the target. It resolves every staged compose fragment with the target's
 environment files and captures the source using its compose manifest. Each service's
 `platform` override selects its manifest; a source platform mismatch is drift.
+`linux/arm64/v8` and `linux/arm64` select the same platform. Other variants,
+including `linux/arm/v6` and `linux/arm/v7`, remain distinct.
 Drift exits 1 (`E490`) and names the affected services and lookup failures.
 Services with a compose `build:` context are unverifiable: prod refuses them;
 other tiers warn. The snapshot is created, located by tag, and verified before
@@ -121,6 +123,11 @@ rolled-back record changes nothing. The project deploy operation lock covers rec
 reload, file reapply, database restore, health, and persistence. For `deploy rollback`,
 foreign or superseded promotion records use the v1.5 deploy record; an unusable
 same-target record is refused with `E485` before remote writes.
+Supersession uses the deployment identity saved by the promotion, rather than
+timestamp order. On platforms without operation-lock support, rollback follows
+the deploy guard's unlocked fallback. If `promote.json` is corrupt, the `E485`
+message names the file and tells you to move it aside; `deploy rollback <target>`
+then uses `deploy.json`.
 Promotions also update the record used by `deploy status` and the next deployment.
 
 With no arguments, `deploy promote` keeps the existing canary flip. In v1.4,

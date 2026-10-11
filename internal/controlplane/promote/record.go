@@ -44,6 +44,7 @@ type Record struct {
 	SavedManifest  SavedManifest       `json:"saved_manifest"`
 	DBRestoredAt   string              `json:"db_restored_at,omitempty"`
 	MigrateStarted bool                `json:"migrate_started"`
+	DeployIdentity *DeployIdentity     `json:"deploy_identity,omitempty"`
 }
 
 // LoadRecord reads promote.json; a missing record returns nil, nil.
@@ -64,6 +65,9 @@ func LoadRecord(projectRoot string) (*Record, error) {
 
 // SaveRecord atomically writes promote.json with private permissions.
 func SaveRecord(projectRoot string, rec Record) error {
+	if err := captureDeployIdentity(projectRoot, &rec); err != nil {
+		return err
+	}
 	rec.SchemaVersion = 1
 	file := filepath.Join(projectRoot, RecordFile)
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
@@ -84,12 +88,12 @@ func SaveRecord(projectRoot string, rec Record) error {
 	return nil
 }
 
-// LoadLatestRecord returns a target record only when no later deploy supersedes it.
+// LoadLatestRecord returns a target record only when no different deploy supersedes it.
 func LoadLatestRecord(projectRoot, target string) (*Record, error) {
 	rec, err := LoadRecord(projectRoot)
 	if err != nil || rec == nil {
 		if err != nil {
-			return nil, errs.Wrap("E485", "promotion record is unusable; nothing was changed", err)
+			return nil, errs.Wrap("E485", "promotion record "+RecordFile+" is unusable; move it aside, then deploy rollback uses deploy.json; nothing was changed", err)
 		}
 		return rec, nil
 	}
@@ -100,7 +104,7 @@ func LoadLatestRecord(projectRoot, target string) (*Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	if state.Target == target && !rec.CompletedAt.IsZero() && state.CompletedAt.After(rec.CompletedAt) {
+	if state.Target == target && !recordMatchesDeploy(rec, state) {
 		return nil, nil
 	}
 	if rec.SchemaVersion != 1 || rec.ID == "" || rec.CompletedAt.IsZero() || (rec.Status != "ok" && rec.Status != "rollback_failed" && rec.Status != "rolled_back") {
