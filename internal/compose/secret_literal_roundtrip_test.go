@@ -8,7 +8,7 @@ package compose_test
 // every string in docker-compose.yml from it (interpolateCompose, a port of
 // compose-go/v2 template.Substitute for the forms compose accepts). A secret
 // left literal in the YAML is interpolated too, so a "$" inside it is
-// expanded or rejected: cli#666 made postgres read a "$" password verbatim
+// expanded (or, by the strict reading, rejected): cli#666 made postgres read a "$" password verbatim
 // while the database URLs still carried the mangled literal.
 
 import (
@@ -24,8 +24,10 @@ import (
 	"github.com/nself-org/cli/internal/config"
 )
 
-// errInvalidTemplate is compose's "invalid interpolation format" error: a "$"
-// followed by anything but "$", a name or a "{".
+// errInvalidTemplate stands for a "$" followed by anything but "$", a name or
+// a "{". compose-go's template grammar names it "invalid"; compose 5.6.0
+// keeps such a "$" as written (checked with docker-compose config). The model
+// takes the strict reading: no generated value may depend on either.
 var errInvalidTemplate = errors.New("invalid interpolation format")
 
 // interpolateCompose resolves s the way compose-go/v2 template.Substitute
@@ -122,8 +124,8 @@ func isNameStart(c byte) bool {
 func isNameChar(c byte) bool { return isNameStart(c) || (c >= '0' && c <= '9') }
 
 // TestInterpolateComposeModelsCompose is the positive control: the
-// interpolator mangles and rejects bare "$" exactly as compose does, so the
-// round trip below can fail.
+// interpolator expands "$name" the way compose does and rejects a bare "$",
+// so the round trip below can fail.
 func TestInterpolateComposeModelsCompose(t *testing.T) {
 	env := map[string]string{"A": "a", "B": "b"}
 	cases := []struct {
@@ -170,15 +172,14 @@ func resolvedServices(t *testing.T, templated []byte, env map[string]string) map
 		for k, v := range svc.Environment {
 			r, err := interpolateCompose(v, env)
 			if err != nil {
-				t.Fatalf("%s %s: compose rejects the value: %v", name, k, err)
+				t.Fatalf("%s %s: invalid compose template: %v", name, k, err)
 			}
 			m[k] = r
 		}
-		// Healthchecks and commands are interpolated too; compose fails the
-		// whole file on an invalid template there.
+		// Healthchecks and commands are interpolated too.
 		for _, s := range flattenStrings(svc.Healthcheck.Test, svc.Command) {
 			if _, err := interpolateCompose(s, env); err != nil {
-				t.Fatalf("%s healthcheck/command %q: compose rejects it: %v", name, s, err)
+				t.Fatalf("%s healthcheck/command %q: invalid compose template: %v", name, s, err)
 			}
 		}
 		out[name] = m
