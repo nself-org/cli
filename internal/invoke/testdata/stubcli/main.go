@@ -2,7 +2,9 @@
 //
 // Purpose: prove what Exec and Invoke do to a child without building the real
 // binary. STUBCLI_MODE selects the behaviour; STUBCLI_STDERR is written to
-// stderr in every mode; STUBCLI_EXIT is the exit status.
+// stderr in every mode; STUBCLI_EXIT is the exit status. In every mode, when
+// STUBCLI_ARGVLOG is set, the argv (after the binary) is appended to that file
+// as one JSON array per line.
 //
 //	echo (default)  print an envelope whose data holds argv, env and cwd
 //	sleep           sleep 30 s (SIGTERM ends it)
@@ -13,12 +15,19 @@
 //	raw             print STUBCLI_STDOUT verbatim
 //	big             print about 34 MiB on stdout
 //	stream          print three NDJSON lines
+//	plan            a change-plan child. With --plan: print an envelope whose
+//	                data.plan_id is the sha256 hex of the file STUBCLI_STATE and
+//	                data.requires_confirmation is STUBCLI_REQCONF == "1". With
+//	                --plan-id=X where X differs from that hash: print an E450
+//	                error envelope and exit 1. Otherwise print a success envelope.
 //	grandchild      start a detached copy of this stub (mode STUBCLI_GC_MODE,
 //	                default sleep-ignore), write its pid to STUBCLI_PIDFILE,
 //	                then sleep 30 s
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -30,7 +39,55 @@ import (
 	"time"
 )
 
+// logArgv appends this invocation's argv to STUBCLI_ARGVLOG as one JSON line.
+func logArgv() {
+	path := os.Getenv("STUBCLI_ARGVLOG")
+	if path == "" {
+		return
+	}
+	line, _ := json.Marshal(os.Args[1:])
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	_, _ = f.Write(append(line, '\n'))
+	_ = f.Close()
+}
+
+// planStub is mode "plan". It returns the exit status.
+func planStub() int {
+	state, _ := os.ReadFile(os.Getenv("STUBCLI_STATE"))
+	sum := sha256.Sum256(state)
+	id := hex.EncodeToString(sum[:])
+	for _, a := range os.Args[1:] {
+		if a == "--plan" || a == "--plan=true" {
+			emit(map[string]any{"plan_id": id, "requires_confirmation": os.Getenv("STUBCLI_REQCONF") == "1",
+				"changes": []any{map[string]any{"kind": "file", "path": "stub.txt", "action": "write"}}})
+			return 0
+		}
+	}
+	for _, a := range os.Args[1:] {
+		if v, ok := strings.CutPrefix(a, "--plan-id="); ok && v != id {
+			doc := map[string]any{"schema_version": "1", "command": "stub", "error": map[string]any{
+				"code": "E450", "message": "plan id does not match", "remediation": "re-run with --plan",
+				"exit_code": 1, "class": "user"}}
+			b, _ := json.Marshal(doc)
+			fmt.Println(string(b))
+			return 1
+		}
+	}
+	emit(map[string]any{"ok": true, "applied": true})
+	return 0
+}
+
+// emit prints a success envelope with data.
+func emit(data any) {
+	b, _ := json.Marshal(map[string]any{"schema_version": "1", "command": "stub", "data": data})
+	fmt.Println(string(b))
+}
+
 func main() {
+	logArgv()
 	if s := os.Getenv("STUBCLI_STDERR"); s != "" {
 		fmt.Fprintln(os.Stderr, s)
 	}
@@ -58,6 +115,8 @@ func main() {
 		for i := 0; i < 34; i++ {
 			fmt.Print(chunk)
 		}
+	case "plan":
+		exit = planStub()
 	case "grandchild":
 		gc := exec.Command(os.Args[0])
 		mode := os.Getenv("STUBCLI_GC_MODE")

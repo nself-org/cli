@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/nself-org/cli/internal/canon"
+	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/invoke"
@@ -189,5 +190,35 @@ func TestMCPExecSelfDelegates(t *testing.T) {
 	got, _ := selfExecutablePath()
 	if got != want || got != "/opt/fake-nself" || mcpSelfExecOverrideEnv != invoke.SelfExecOverrideEnv {
 		t.Errorf("selfExecutablePath %q, invoke.SelfExecutable %q", got, want)
+	}
+}
+
+// TestInvokeArgvOnPluginParent runs invoker argv through the real cobra lookup
+// of a mounted plugin parent (demo, children sub and nested). Plugin nodes
+// parse no flags, so a bare trailing bool flag would eat the "--" and promote
+// the first positional to a subcommand: demo --json --verbose -- sub resolves
+// to demo sub, which the invoker never classified (post-merge review of
+// P7-SURF-24, must-fix 1). BuildArgv renders --verbose=true, which resolves
+// to demo.
+func TestInvokeArgvOnPluginParent(t *testing.T) {
+	r := pinRoot(t)
+	demo := &cmdregistry.Command{Path: "nself demo", Args: []cmdregistry.Arg{{Name: "word", Required: true}},
+		Flags: []cmdregistry.Flag{{Name: "verbose", Type: "bool", Default: "false"}}}
+	req, err := invoke.DecodeRequest([]byte(`{"args":["sub"],"flags":{"verbose":true}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	argv, err := invoke.BuildArgv(demo, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _, _ := r.Find(argv)
+	if c == nil || c.CommandPath() != "nself demo" {
+		t.Fatalf("argv %q resolved to %v, want nself demo", argv, c.CommandPath())
+	}
+	// The hazard the rendering avoids, pinned so the test proves something.
+	bare := []string{"demo", "--json", "--verbose", "--", "sub"}
+	if c, _, _ := r.Find(bare); c == nil || c.CommandPath() != "nself demo sub" {
+		t.Fatalf("bare form resolved to %v; the fixture no longer shows the lookup shift", c.CommandPath())
 	}
 }

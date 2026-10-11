@@ -3,9 +3,10 @@ package invoke
 // Purpose: decide whether a command may run over a machine surface.
 // Inputs: a registry command, the transport and the flags the request names.
 // Outputs: ok and, when refused, a reason that becomes the E421 cause.
-// Constraints: the rules are EPIC D2's "Exposed =" list. Remote and destructive
-// commands are refused until the confirmation gate (P7-SURF-25) exists; that
-// Ticket replaces the "no gate" rule below and nothing else.
+// Constraints: the rules are EPIC D2's "Exposed =" list. A remote or
+// destructive command is exposed only when its registry row has a confirm block
+// (EPIC D3); without one the reason says "no gate". Whether a Guard exists to
+// serve the confirmation is Gate's question, not this file's.
 
 import (
 	"fmt"
@@ -65,7 +66,10 @@ func Exposure(cmd *cmdregistry.Command, transport string, set map[string]bool) (
 	case canon.SideEffectRead, canon.SideEffectWrite:
 		return true, ""
 	case canon.SideEffectRemote, canon.SideEffectDestructive:
-		return false, "no gate: " + side + " commands wait for the confirmation gate (P7-SURF-25)"
+		if cmd.Confirm != nil {
+			return true, ""
+		}
+		return false, "no gate: a " + side + " command needs a confirm block in the registry"
 	}
 	return false, fmt.Sprintf("unknown side effect %q", side)
 }

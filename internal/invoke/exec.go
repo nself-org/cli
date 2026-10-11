@@ -40,11 +40,12 @@ func SelfExecutable() (string, error) {
 // ownedEnv are the variables the invoker sets itself; an inherited value is dropped.
 var ownedEnv = map[string]bool{
 	TokenEnv: true, "NSELF_V15": true, "NSELF_NONINTERACTIVE": true, "CI": true,
-	"NO_COLOR": true, InvokedByEnv: true, DeadlineEnv: true,
+	"NO_COLOR": true, InvokedByEnv: true, DeadlineEnv: true, PathEnv: true,
 }
 
-// childEnv builds the child environment. deadline <= 0 means no deadline value.
-func childEnv(parent []string, transport string, deadline time.Duration) ([]string, error) {
+// childEnv builds the child environment. deadline <= 0 means no deadline
+// value; an empty path sets no path pin.
+func childEnv(parent []string, transport, path string, deadline time.Duration) ([]string, error) {
 	invokedBy := ""
 	switch transport {
 	case TransportMCP:
@@ -62,6 +63,9 @@ func childEnv(parent []string, transport string, deadline time.Duration) ([]stri
 		}
 	}
 	env = append(env, "NSELF_V15=1", "NSELF_NONINTERACTIVE=1", "CI=1", "NO_COLOR=1", InvokedByEnv+"="+invokedBy)
+	if path != "" {
+		env = append(env, PathEnv+"="+path)
+	}
 	if deadline > 0 {
 		ms := deadline.Milliseconds()
 		if ms < 1 {
@@ -142,7 +146,7 @@ func Exec(ctx context.Context, s Spec) (Result, error) {
 	if dl, ok := runCtx.Deadline(); ok && s.Timeout > 0 {
 		remaining = time.Until(dl)
 	}
-	env, err := childEnv(os.Environ(), s.Transport, remaining)
+	env, err := childEnv(os.Environ(), s.Transport, s.Path, remaining)
 	if err != nil {
 		return res, err
 	}

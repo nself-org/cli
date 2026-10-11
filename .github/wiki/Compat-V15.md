@@ -117,5 +117,6 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-SURF-07 | nself.yaml type errors and unknown keys warn | fail (E435/E436) | `internal/build/manifest_validate.go` |
 | P7-SURF-11 | health history --json with no history prints a text line | the v1 envelope with an empty entries list | `cmd/commands/health_handlers.go` |
 | P7-SURF-14 | --json on the data commands is ignored or the pre-contract form (NSELF_JSON_LEGACY=1 then prints an empty list as bare []) | v1 envelope | `cmd/commands/db_envelope.go` |
+| P7-SURF-25 | no token = open loopback with a warning | token required (generated on first start) | `cmd/commands/mcp_auth.go` |
 | P7-SURF-26 | --json ignored | envelope | `cmd/commands/registry_types_build.go` |
 <!-- END GENERATED:gated -->

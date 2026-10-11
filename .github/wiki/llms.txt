@@ -475,6 +475,8 @@ nself mcp [flags]
 
 Flags:
 
+- `--allowed-host` (default []) — Host name this server is reachable under; required (repeatable) for a non-loopback --host
+- `--host` (default 127.0.0.1) — Bind address for the sse/http transports
 - `--port` (default 3825) — Port for the sse/http transports
 - `--transport` (default stdio) — Transport: stdio, sse, or http
 
