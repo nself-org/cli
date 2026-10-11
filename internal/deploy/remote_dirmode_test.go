@@ -67,3 +67,32 @@ func TestRestoreKeepsDirModes(t *testing.T) {
 		t.Errorf("fresh host: file removed=%v mode %o", !exists(fresh+"/docker-compose.yml"), modeOf(t, fresh))
 	}
 }
+
+// G3: the sync writes a symlinked directory's files to its real path (rsync >= 3.4
+// will not traverse the link), so the link survives and nothing else is touched.
+func TestSyncWritesThroughSymlinkedDir(t *testing.T) {
+	needTools(t)
+	f := newFakeRemote(t)
+	rp, shared, stage := t.TempDir(), t.TempDir(), t.TempDir()
+	writeFile(t, shared+"/sites/api.conf", "# old\n", 0o644)
+	writeFile(t, shared+"/sites/foreign.conf", "# foreign\n", 0o644)
+	if err := os.Symlink(shared, rp+"/nginx"); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	writeFile(t, stage+"/nginx/sites/api.conf", "# new\n", 0o644)
+	writeFile(t, stage+"/docker-compose.yml", "# new\n", 0o644)
+	writeFile(t, stage+"/hasura/metadata/version.yaml", "version: 3\n", 0o644)
+	set := ArtifactSet{StageDir: stage, RemotePath: rp, Files: []string{"docker-compose.yml", "nginx/sites/api.conf", "hasura/metadata/version.yaml"}}
+	if err := SyncArtifacts(context.Background(), f, set); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(rp + "/nginx"); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("nginx/ is no longer a symlink: %v %v", info, err)
+	}
+	if readFile(t, shared+"/sites/api.conf") != "# new\n" || readFile(t, shared+"/sites/foreign.conf") != "# foreign\n" {
+		t.Error("the file was not written through the link, or a foreign file changed")
+	}
+	if readFile(t, rp+"/docker-compose.yml") != "# new\n" || readFile(t, rp+"/hasura/metadata/version.yaml") != "version: 3\n" {
+		t.Error("files outside the link were not synced")
+	}
+}

@@ -67,6 +67,36 @@ func writeShipped(ctx context.Context, r Remote, set ArtifactSet) error {
 }
 
 func rsyncList(ctx context.Context, r Remote, set ArtifactSet, rels, flags []string) error {
+	linked, err := linkedDirs(ctx, r, set.RemotePath, rels)
+	if err != nil {
+		return err
+	}
+	// Files in a directory that is (or sits behind) a symlink on the host go to the
+	// directory's real path: rsync >= 3.4 refuses to traverse a symlink in the
+	// destination even with --keep-dirlinks, and a real dir must never replace it.
+	plain := []string{}
+	byDir := map[string][]string{}
+	for _, rel := range rels {
+		if _, ok := linked[path.Dir(rel)]; ok {
+			byDir[path.Dir(rel)] = append(byDir[path.Dir(rel)], path.Base(rel))
+		} else {
+			plain = append(plain, rel)
+		}
+	}
+	if len(plain) > 0 {
+		if err := rsyncFiles(ctx, r, flags, plain, set.StageDir, set.RemotePath); err != nil {
+			return err
+		}
+	}
+	for d, names := range byDir {
+		if err := rsyncFiles(ctx, r, flags, names, path.Join(set.StageDir, d), linked[d]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func rsyncFiles(ctx context.Context, r Remote, flags, rels []string, srcDir, destDir string) error {
 	list, err := os.CreateTemp("", "nself-deploy-files-*")
 	if err != nil {
 		return err
@@ -79,7 +109,37 @@ func rsyncList(ctx context.Context, r Remote, set ArtifactSet, rels, flags []str
 	if werr != nil {
 		return werr
 	}
-	return r.Rsync(ctx, flags, list.Name(), set.StageDir, set.RemotePath)
+	return r.Rsync(ctx, flags, list.Name(), srcDir, destDir)
+}
+
+// linkedDirs asks the host which of the directories holding rels resolve (cd -P)
+// to somewhere other than <real remote_path>/<dir>, i.e. have a symlink in their
+// path, and returns dir -> real absolute path. Directories that do not exist yet
+// are not listed (rsync creates them).
+func linkedDirs(ctx context.Context, r Remote, remotePath string, rels []string) (map[string]string, error) {
+	seen, dirs := map[string]bool{}, []string{}
+	for _, rel := range rels {
+		if d := path.Dir(rel); d != "." && !seen[d] {
+			seen[d] = true
+			dirs = append(dirs, d)
+		}
+	}
+	out := map[string]string{}
+	if len(dirs) == 0 {
+		return out, nil
+	}
+	script := fmt.Sprintf(`cd -P %s 2>/dev/null || exit 0; base=$(pwd -P); for d in %s; do if [ -d "$d" ]; then x=$(cd -P "$d" && pwd -P) || continue; if [ "$x" != "$base/$d" ]; then printf '%%s\t%%s\n' "$d" "$x"; fi; fi; done`,
+		q(remotePath), strings.Join(quoteAll(dirs), " "))
+	raw, err := r.Run(ctx, shScript(script))
+	if err != nil {
+		return nil, fmt.Errorf("resolving symlinked directories on %s: %w", r.Label(), err)
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if d, real, ok := strings.Cut(line, "\t"); ok && seen[d] && strings.HasPrefix(real, "/") {
+			out[d] = real
+		}
+	}
+	return out, nil
 }
 
 // assertEnvModes fails unless every shipped env file is mode 600 on the host.

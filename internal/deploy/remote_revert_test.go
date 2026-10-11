@@ -9,7 +9,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -102,30 +101,28 @@ func TestDeletesRefuseSymlinkedDirs(t *testing.T) {
 	}
 }
 
-// G3: a symlinked directory on the host is followed by rsync, never replaced by a real dir.
+// G3: a symlinked directory on the host is followed by rsync, never replaced by a
+// real dir, and the pre-deploy tar holds its contents (not just the link), so a
+// restore puts the old file back through the link.
 func TestRestoreKeepsSymlinkedDir(t *testing.T) {
 	needTools(t)
 	argv, err := rsyncArgv(remote.HostSpec{Host: "h.example"}, nil, nil, "/l", "/s", "/opt/nself")
 	if err != nil || !contains(argv, "--keep-dirlinks") {
 		t.Fatalf("the sync must follow symlinked dirs: %v %v", argv, err)
 	}
-	if runtime.GOOS == "darwin" {
-		t.Skip("macOS rsync cannot chmod through a symlinked implied dir (ELOOP); the sim covers a Linux host")
-	}
 	f := newFakeRemote(t)
 	rp, shared := t.TempDir(), t.TempDir()
-	writeFile(t, rp+"/nginx/sites/old.conf", markedConf+"# v1\n", 0o644)
+	writeFile(t, shared+"/nginx/sites/old.conf", markedConf+"# v1\n", 0o644)
+	if err := os.Symlink(shared+"/nginx", rp+"/nginx"); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
 	ctx := context.Background()
 	bk, err := CreatePreDeployTar(ctx, f, rp, NewBackupID(time.Now()), []string{"nginx/sites/old.conf"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The operator later moved nginx/ to a shared place and linked it.
-	if err := os.Rename(rp+"/nginx", shared+"/nginx"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(shared+"/nginx", rp+"/nginx"); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
+	if !strings.Contains(tarList(t, bk.Tar), "nginx/sites/old.conf") {
+		t.Fatalf("the tar must hold the symlinked dir's contents:\n%s", tarList(t, bk.Tar))
 	}
 	writeFile(t, shared+"/nginx/sites/old.conf", markedConf+"# v2\n", 0o644)
 	writeFile(t, shared+"/nginx/sites/foreign.conf", "# foreign\n", 0o644)

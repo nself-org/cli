@@ -17,7 +17,9 @@ package deploy
 //              (--keep-dirlinks) and never replaces it. The restore runs on a
 //              context that survives cancellation, bounded by restoreTimeout.
 //              Nothing is moved or replaced as a directory, so a bind-mounted
-//              nginx/ keeps its inode. rsync -ac: tar keeps whole-second mtimes.
+//              nginx/ keeps its inode. The tar follows symlinks (-h) so a
+//              symlinked nginx/ contributes its contents, not the link.
+//              rsync -ac: tar keeps whole-second mtimes.
 //              conf.d*/ is excluded from the tar and from every list. The tar is
 //              mode 0600 (it holds env files).
 
@@ -28,6 +30,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -86,7 +89,7 @@ for f in .env.*; do if [ -f "$f" ]; then set -- "$@" "$f"; fi; done
 l="$rp/%s/.list-%s"; : > "$l"
 if [ -d .nself/plugins ]; then find .nself/plugins -type f -name '*.yml' > "$l"; fi
 while IFS= read -r f; do set -- "$@" "$f"; done < "$l"; rm -f "$l"
-if [ "$#" -eq 0 ]; then e="$rp/%s/.empty-%s"; mkdir -p "$e"; tar -czf "$out" -C "$e" .; rmdir "$e"; else tar -czf "$out" --exclude='conf.d*' "$@"; fi
+if [ "$#" -eq 0 ]; then e="$rp/%s/.empty-%s"; mkdir -p "$e"; tar -czf "$out" -C "$e" .; rmdir "$e"; else tar -hczf "$out" --exclude='conf.d*' "$@"; fi
 tar -tzf "$out" >/dev/null
 for p in %s; do if [ ! -e "$p" ] && [ ! -L "$p" ]; then printf 'ABSENT %%s\n' "$p"; fi; done`,
 		q(remotePath), q(tar), BackupDir, strings.Join(quoteAll(tarSources), " "), BackupDir, id, BackupDir, id,
@@ -144,10 +147,24 @@ func RestorePreDeployTar(ctx context.Context, r Remote, remotePath, tar string, 
 	}
 	tmp := path.Join(remotePath, BackupDir, "restore-"+strings.TrimSuffix(path.Base(tar), ".tar.gz"))
 	script := fmt.Sprintf(`set -e; umask 077; tmp=%s; rm -rf "$tmp"; mkdir -p "$tmp"; tar -xzf %s -C "$tmp"`, q(tmp), q(tar))
-	if len(restore) > 0 {
-		// --no-implied-dirs: no parent directory is transferred, so an existing dir
-		// (remote_path included) keeps its mode and owner; a missing parent is made.
-		script += fmt.Sprintf(`; rp=%s; printf '%%s\n' %s > "$tmp.list"; (umask 022; while IFS= read -r f; do mkdir -p "$rp/$(dirname "$f")"; done < "$tmp.list"); rsync -acK --no-implied-dirs --files-from="$tmp.list" "$tmp"/ "$rp"/; rm -f "$tmp.list"`, q(remotePath), strings.Join(quoteAll(restore), " "))
+	script += fmt.Sprintf(`; rp=%s`, q(remotePath))
+	// One rsync per directory, over bare file names: no directory is ever
+	// transferred, so existing dirs (remote_path included) keep their mode and
+	// owner, and the destination is the directory's real path (cd -P), so a
+	// symlinked dir on the host is written through and never replaced. rsync >= 3.4
+	// refuses to traverse a symlink in the destination path, even with -K.
+	byDir := map[string][]string{}
+	for _, f := range restore {
+		byDir[path.Dir(f)] = append(byDir[path.Dir(f)], path.Base(f))
+	}
+	dirs := make([]string, 0, len(byDir))
+	for d := range byDir {
+		dirs = append(dirs, d)
+	}
+	sort.Strings(dirs)
+	for _, d := range dirs {
+		script += fmt.Sprintf(`; d=%s; src="$tmp/$d"; dst="$rp/$d"; (umask 022; mkdir -p "$dst"); dst=$(cd -P "$dst" && pwd -P); printf '%%s\n' %s > "$tmp.list"; rsync -ac --files-from="$tmp.list" "$src"/ "$dst"/; rm -f "$tmp.list"`,
+			q(d), strings.Join(quoteAll(byDir[d]), " "))
 	}
 	script += `; rm -rf "$tmp"`
 	if _, err := r.Run(ctx, shScript(script)); err != nil {
