@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -369,5 +370,104 @@ func TestCronDOWName(t *testing.T) {
 		if got != want {
 			t.Errorf("cronDOWName(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// ── schedule ENV selector (D-0277) ────────────────────────────────────
+
+// scheduleServiceFor renders the dry-run unit for a project dir whose .env is
+// envFileBody ("" writes no .env) with the process ENV set to procEnv.
+func scheduleServiceFor(t *testing.T, procEnv, envFileBody string) (string, error) {
+	t.Helper()
+	setScheduleProcessEnv(t, procEnv)
+	dir := t.TempDir()
+	if envFileBody != "" {
+		if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(envFileBody), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out bytes.Buffer
+	err := ScheduleStream(minimalConfig(), ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", ProjectDir: dir, BinaryPath: "/bin/sh", DryRun: true, Out: &out})
+	return out.String(), err
+}
+
+// TestScheduleStreamEnvSelector: the unit carries exactly one
+// Environment=ENV= line, directly after the PATH line, and its value is the
+// selector that picks the cascade: process ENV, else .env, else dev. cfg.Env
+// is not used (the loader rewrites it).
+func TestScheduleStreamEnvSelector(t *testing.T) {
+	skipUnitTestOnWindows(t)
+	cases := []struct {
+		name, procEnv, dotEnv, want string
+	}{
+		{"process ENV wins over .env", "prod", "ENV=dev\n", "prod"},
+		{".env when the process has none", "", "PROJECT_NAME=x\nENV=staging\n", "staging"},
+		{"dev when neither sets it", "", "PROJECT_NAME=x\n", "dev"},
+		{"dev with no .env at all", "", "", "dev"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := scheduleServiceFor(t, tc.procEnv, tc.dotEnv)
+			if err != nil {
+				t.Fatalf("ScheduleStream: %v", err)
+			}
+			if n := strings.Count(got, "ENV="); n != 1 {
+				t.Fatalf("want exactly one ENV= occurrence, got %d:\n%s", n, got)
+			}
+			pathThenEnv := "Environment=PATH=/usr/local/bin:/usr/bin:/bin\nEnvironment=ENV=" + tc.want + "\n"
+			if !strings.Contains(got, pathThenEnv) {
+				t.Errorf("want %q right after the PATH line:\n%s", "Environment=ENV="+tc.want, got)
+			}
+		})
+	}
+}
+
+// TestScheduleStreamEnvRefusesUnsafe: a selector that could add a directive or
+// expand in systemd is refused with nothing printed or written.
+func TestScheduleStreamEnvRefusesUnsafe(t *testing.T) {
+	skipUnitTestOnWindows(t)
+	for _, env := range []string{"prod\nExecStartPre=/x", "prod\r", "pr$od", "a b", "a%h", "a/b", "a\"b"} {
+		setScheduleProcessEnv(t, env)
+		var out bytes.Buffer
+		unitDir := t.TempDir()
+		err := ScheduleStream(minimalConfig(), ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", ProjectDir: t.TempDir(), BinaryPath: "/bin/sh", UnitDir: unitDir, Out: &out})
+		if err == nil {
+			t.Errorf("env %q must be refused", env)
+		}
+		if out.Len() != 0 {
+			t.Errorf("env %q: nothing may be printed, got %q", env, out.String())
+		}
+		if entries, _ := os.ReadDir(unitDir); len(entries) != 0 {
+			t.Errorf("env %q: nothing may be written, found %d files", env, len(entries))
+		}
+	}
+	// The same applies to a bad value that comes from .env.
+	if _, err := scheduleServiceFor(t, "", "ENV=a b\n"); err == nil {
+		t.Error("an unsafe ENV in .env must be refused")
+	}
+}
+
+// TestScheduleStreamRefusesLineBreakInCron: a cron value with a line break
+// passes the 5-field split but would land in the timer Description and add a
+// directive, so it is refused before anything is printed or written.
+func TestScheduleStreamRefusesLineBreakInCron(t *testing.T) {
+	skipUnitTestOnWindows(t)
+	setScheduleProcessEnv(t, "")
+	const cron = "0 2 *\nOnFailure=evil.service\n*"
+	var out bytes.Buffer
+	opts := ScheduleOptions{Cron: cron, To: "r2:b", ProjectDir: t.TempDir(), BinaryPath: "/bin/sh", DryRun: true, Out: &out}
+	if err := ScheduleStream(minimalConfig(), opts); err == nil || !strings.Contains(err.Error(), "line break") {
+		t.Errorf("dry-run err = %v, want a line break refusal", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("nothing may be printed, got %q", out.String())
+	}
+	unitDir := t.TempDir()
+	opts.DryRun, opts.UnitDir = false, unitDir
+	if err := ScheduleStream(minimalConfig(), opts); err == nil {
+		t.Error("an install with a line break in --cron must be refused")
+	}
+	if entries, _ := os.ReadDir(unitDir); len(entries) != 0 {
+		t.Errorf("nothing may be written, found %d files", len(entries))
 	}
 }

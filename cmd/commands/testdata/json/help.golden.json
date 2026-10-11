@@ -600,7 +600,7 @@
         "data_schema": "schemas/commands/config-set.v1.schema.json",
         "exit_codes": {},
         "confirm": null,
-        "surface": "all"
+        "surface": "cli-only"
       },
       {
         "path": "nself config show",

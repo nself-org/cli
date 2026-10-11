@@ -63,6 +63,10 @@ func TestBackupScheduleFlags(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(proj, ".env"), []byte("PROJECT_NAME=sched\nENV=dev\nPOSTGRES_PASSWORD=supersecretvalue123\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// A project needs .env plus an nSelf marker (D-0245).
+	if err := os.WriteFile(filepath.Join(proj, "nself.yaml"), []byte("name: sched\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	t.Chdir(proj)
 	for k, v := range map[string]string{"cron": "30 2 * * *", "to": "r2:bkt/nself-web", "heartbeat-to": "r2hb:hb", "dry-run": "true"} {
 		if err := fs.Set(k, v); err != nil {
@@ -96,5 +100,40 @@ func TestBackupScheduleFlags(t *testing.T) {
 	}
 	if strings.Contains(got, "EnvironmentFile") {
 		t.Errorf("no EnvironmentFile line expected without --env-file:\n%s", got)
+	}
+}
+
+// TestBackupScheduleRefusesBareEnvDir runs the real command path in a
+// directory that has only a .env. The CLI creates <cwd>/.nself (project lock)
+// before any command runs, so the test creates it too: a .nself directory must
+// not make the directory pass for an nSelf project (D-0245).
+func TestBackupScheduleRefusesBareEnvDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the schedule command is Linux-only")
+	}
+	fs := backupScheduleCmd.Flags()
+	resetBackupFlagSet(t, fs)
+	proj := t.TempDir()
+	if err := os.WriteFile(filepath.Join(proj, ".env"), []byte("PROJECT_NAME=sched\nENV=dev\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(proj, ".nself"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(proj)
+	for k, v := range map[string]string{"cron": "30 2 * * *", "to": "r2:bkt/nself-web", "dry-run": "true"} {
+		if err := fs.Set(k, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out bytes.Buffer
+	backupScheduleCmd.SetOut(&out)
+	defer backupScheduleCmd.SetOut(nil)
+	err := runBackupSchedule(backupScheduleCmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "does not look like an nSelf project") {
+		t.Fatalf("err = %v, want the not-a-project refusal", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("nothing may be printed for a refused schedule, got %q", out.String())
 	}
 }

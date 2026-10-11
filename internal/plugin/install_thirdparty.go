@@ -165,6 +165,9 @@ func InstallFromURL(ctx context.Context, cfg *config.Config, sourceURL string, p
 		return err
 	}
 
+	if err := ValidateName(manifest.Name); err != nil {
+		return err
+	}
 	destDir := filepath.Join(pluginDir, manifest.Name)
 	if _, statErr := os.Stat(destDir); statErr == nil {
 		if err := os.RemoveAll(destDir); err != nil {

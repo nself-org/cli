@@ -516,14 +516,14 @@ func TestWriteCache_HappyPathPermissions(t *testing.T) {
 // ── isStaleFailOpen branches ──────────────────────────────────────────────
 
 func TestIsStaleFailOpen_NilCache(t *testing.T) {
-	if !isStaleFailOpen(nil) {
+	if !isStaleFailOpen(nil, time.Now()) {
 		t.Error("expected true for nil cache")
 	}
 }
 
 func TestIsStaleFailOpen_FreshCache(t *testing.T) {
 	cache := &RevocationCache{FetchedAt: time.Now().Unix()}
-	if isStaleFailOpen(cache) {
+	if isStaleFailOpen(cache, time.Now()) {
 		t.Error("expected false for freshly-fetched cache")
 	}
 }
@@ -531,7 +531,7 @@ func TestIsStaleFailOpen_FreshCache(t *testing.T) {
 func TestIsStaleFailOpen_StaleCache(t *testing.T) {
 	// FetchedAt 30 days ago — definitely past any staleness threshold.
 	cache := &RevocationCache{FetchedAt: time.Now().Add(-30 * 24 * time.Hour).Unix()}
-	if !isStaleFailOpen(cache) {
+	if !isStaleFailOpen(cache, time.Now()) {
 		t.Error("expected true for 30-day-old cache")
 	}
 }

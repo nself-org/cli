@@ -24,6 +24,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/nself-org/cli/internal/plugin"
 )
 
 const (
@@ -105,6 +107,9 @@ func Load(ctx context.Context) error {
 				age.Round(time.Hour), fetchErr)
 		})
 	}
+	if err := validateCatalogNames(cached.Doc); err != nil {
+		return fmt.Errorf("cached bundles.json: %w", err)
+	}
 	setState(buildBundleMap(cached.Doc))
 	return nil
 }
@@ -146,7 +151,24 @@ func LoadBytes(data []byte) error {
 	if len(doc.Bundles) == 0 {
 		return fmt.Errorf("bundles.json has no bundles")
 	}
+	if err := validateCatalogNames(doc); err != nil {
+		return err
+	}
 	setState(buildBundleMap(doc))
+	return nil
+}
+
+// validateCatalogNames refuses a catalog whose member plugin names are not plain
+// plugin slugs. Member names are joined to the plugin directory when a bundle is
+// planned, installed or removed, so a path-shaped name must never get that far.
+func validateCatalogNames(doc bundlesDoc) error {
+	for slug, jb := range doc.Bundles {
+		for _, name := range jb.Plugins {
+			if err := plugin.ValidateName(name); err != nil {
+				return fmt.Errorf("bundles.json bundle %q lists an invalid plugin: %w", slug, err)
+			}
+		}
+	}
 	return nil
 }
 

@@ -118,6 +118,10 @@ func linkCLIBinary(destDir, name string, m *PluginManifest) error {
 	if len(binNames) == 0 {
 		return nil
 	}
+	// Validate every name before anything is created or copied.
+	if err := validateCLIBinaries(name, m); err != nil {
+		return err
+	}
 
 	binDir := pluginBinDir()
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -133,7 +137,10 @@ func linkCLIBinary(destDir, name string, m *PluginManifest) error {
 				name, strings.TrimPrefix(binName, "nself-"), binName)
 		}
 
-		dst := PublishedBinaryPath(binName)
+		dst, err := safePublishedBinaryPath(binName)
+		if err != nil {
+			return err
+		}
 
 		// Replace any previous version rather than failing on an existing file:
 		// an upgrade must leave the proxy pointing at the new binary.
@@ -157,7 +164,13 @@ func unlinkCLIBinary(name string, m *PluginManifest) error {
 	}
 
 	for _, binName := range binNames {
-		dst := PublishedBinaryPath(binName)
+		// The manifest is on disk and untrusted: a binary name that is not one plain
+		// file name is skipped (never removed), and the plugin itself still goes.
+		dst, err := safePublishedBinaryPath(binName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: not unpublishing %q: %v\n", binName, err)
+			continue
+		}
 		if err := os.Remove(dst); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("removing plugin binary %s: %w", dst, err)
 		}

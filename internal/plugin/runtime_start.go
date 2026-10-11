@@ -20,6 +20,9 @@ import (
 // ~/.nself/runtime/pids/{name}.pid, and records the state in
 // ~/.nself/runtime/states/{name}.state.
 func Start(ctx context.Context, pluginDir string, name string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
 	// Check if already running.
 	if pid, err := readPID(name); err == nil && isProcessRunning(pid) {
 		return fmt.Errorf("plugin %s is already running (pid %d)", name, pid)

@@ -5,7 +5,7 @@ package backup
 // Purpose: resolve encryption recipients (including GitHub-hosted SSH keys), build the target Postgres URL and drive RestoreFromRemote, split out of stream.go for file size.
 // Inputs: the remote backup location, recipient identifiers and the target database connection info.
 // Outputs: a restored database, or an error identifying which stage of the restore failed.
-// Constraints: pure move from stream.go (CLI-R12 Batch E); no behaviour change.
+// Constraints: buildPgURL output carries the password and must never reach an argv; exec sites split it into PGPASSWORD first (D-0352).
 
 import (
 	"context"
@@ -73,7 +73,10 @@ func fetchGitHubKeys(ctx context.Context, username string) ([]string, error) {
 	return keys, nil
 }
 
-// buildPgURL constructs a postgres DSN from config.
+// buildPgURL constructs a postgres DSN from config. The URL carries the
+// password, so it is never put on an argv: its only consumers, pgDumpCmd and
+// ReadApproxRows, split the password off with splitPgPassword and pass it to
+// the child in PGPASSWORD (D-0352).
 func buildPgURL(cfg *config.Config) string {
 	user := cfg.Postgres.User
 	if user == "" {
