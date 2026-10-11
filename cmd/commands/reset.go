@@ -13,7 +13,6 @@ import (
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/confirm"
-	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -140,11 +139,24 @@ func runReset(cmd *cobra.Command, args []string) error {
 		{filepath.Join(projectDir, "nginx", "sites"), path.Join("nginx", "sites")},
 		{filepath.Join(projectDir, "ssl"), "ssl"},
 	} {
-		if info, statErr := os.Stat(dir.abs); statErr == nil && info.IsDir() {
-			entries, _ := os.ReadDir(dir.abs)
-			for _, entry := range entries {
-				record(dir.rel+"/"+entry.Name(), removeDir)
+		// A directory that is absent is nothing to remove; one that cannot be
+		// inspected or listed is a failure, not "already clean" (D-0375).
+		info, statErr := os.Stat(dir.abs)
+		if statErr != nil {
+			if !errors.Is(statErr, os.ErrNotExist) {
+				failed = append(failed, fmt.Errorf("checking %s: %w", dir.rel, statErr))
 			}
+			continue
+		}
+		if !info.IsDir() {
+			continue
+		}
+		entries, readErr := os.ReadDir(dir.abs)
+		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+			failed = append(failed, fmt.Errorf("listing %s: %w", dir.rel, readErr))
+		}
+		for _, entry := range entries {
+			record(dir.rel+"/"+entry.Name(), removeDir)
 		}
 	}
 	if len(failed) > 0 && buildEnvelopeWanted(cmd) {
@@ -152,7 +164,7 @@ func runReset(cmd *cobra.Command, args []string) error {
 		if volumesRemoved {
 			done = append([]string{volumesGone}, removed...)
 		}
-		return errPartialRemoval("could not remove every generated file", errors.Join(failed...), done)
+		return errRemovalFailed("could not remove every generated file", errors.Join(failed...), done)
 	}
 
 	fmt.Println()
@@ -177,33 +189,23 @@ var resetComposeDown = func(ctx context.Context, projectDir string) error {
 
 // recordIfExists runs remove on project-relative rel when it exists and
 // appends rel to removed only when the removal succeeded; the removal error is
-// returned otherwise. Trailing "/" in rel marks a directory in the report.
+// returned otherwise. A path that is absent (ENOENT) is skipped silently; an
+// Lstat failure of any other kind is returned as an error. Trailing "/" in rel marks a directory in the report.
 func recordIfExists(removed []string, root, rel string, remove func(string) error) ([]string, error) {
 	path := filepath.Join(root, filepath.FromSlash(strings.TrimSuffix(rel, "/")))
 	if _, err := os.Lstat(path); err != nil {
-		return removed, nil
+		if errors.Is(err, os.ErrNotExist) {
+			return removed, nil // absent: nothing to remove
+		}
+		// Any other error (EACCES on a parent, ELOOP, ...) means the path
+		// could not be inspected, not that it is gone: report it so the caller
+		// counts it as a failure instead of "already clean".
+		return removed, fmt.Errorf("checking %s: %w", rel, err)
 	}
 	if err := remove(path); err != nil {
 		return removed, fmt.Errorf("removing %s: %w", rel, err)
 	}
 	return append(removed, rel), nil
-}
-
-// volumesGone is the entry errPartialRemoval lists, ahead of the paths, once
-// compose down --volumes has run: the database volumes are already deleted.
-const volumesGone = "docker volumes (compose down --volumes)"
-
-// errPartialRemoval is what JSON mode returns when a destructive step failed:
-// an infra-class error (exit 2) whose message names the failure and everything
-// already removed (paths, plus volumesGone when compose down --volumes ran),
-// because an error envelope carries no data and the caller must not read the
-// failure as either success or "nothing changed".
-func errPartialRemoval(what string, cause error, removed []string) error {
-	done := "no files were removed"
-	if len(removed) > 0 {
-		done = "already removed: " + strings.Join(jsonPaths(removed), ", ")
-	}
-	return errs.ExitWith(errs.ExitInfraError, fmt.Errorf("%s (%s): %w", what, done, cause))
 }
 
 // removeIfExists deletes a single file; a missing file is not an error. A
