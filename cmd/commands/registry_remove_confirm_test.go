@@ -1,8 +1,8 @@
 package commands
 
 // Purpose: D-0331: `remove` and `bundle remove` declare confirm {flags: [yes]},
-// so a machine caller can confirm --delete-data through the invoke gate
-// instead of passing a raw yes flag.
+// so a machine caller can run them (and confirm --delete-data) through the
+// invoke gate instead of being refused E421 or passing a raw yes flag.
 // Inputs: the real command tree built into the v1.5 and v1.4 registries.
 // Constraints: Gate only; no command body runs. The plugin name is synthetic.
 
@@ -42,13 +42,12 @@ func TestInvokeRemoveDeleteDataConfirm(t *testing.T) {
 			if err != nil {
 				t.Fatalf("build registry: %v", err)
 			}
-			path := tc.path
-			cmd, ok := reg.Lookup(path)
+			cmd, ok := reg.Lookup(tc.path)
 			if !ok {
-				t.Fatalf("%s is not in the registry", path)
+				t.Fatalf("%s is not in the registry", tc.path)
 			}
 			if cmd.Confirm == nil || !slices.Equal(cmd.Confirm.Flags, []string{"yes"}) {
-				t.Fatalf("%s confirm = %+v, want flags [yes]", path, cmd.Confirm)
+				t.Fatalf("%s confirm = %+v, want flags [yes]", tc.path, cmd.Confirm)
 			}
 			opts := invoke.Options{Transport: invoke.TransportMCP, Guard: invoke.NewGuard("")}
 			req := invoke.Request{Args: []string{"demo-plugin"}, Flags: map[string]any{"delete-data": true}}
@@ -64,6 +63,12 @@ func TestInvokeRemoveDeleteDataConfirm(t *testing.T) {
 			}
 			nonce := d.Confirmation.Confirm
 
+			// The gate is per command, not per flag: a plain remove asks too.
+			plain := invoke.Request{Args: req.Args}
+			if d, _ := invoke.Gate(ctx, reg, cmd, plain, opts); d.Kind != invoke.DecisionConfirm {
+				t.Errorf("plain remove: kind %q refusal %v, want a confirmation", d.Kind, d.Refusal)
+			}
+
 			// A wrong confirm is refused and runs nothing.
 			bad := req
 			bad.Confirm = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -78,9 +83,9 @@ func TestInvokeRemoveDeleteDataConfirm(t *testing.T) {
 			}
 
 			// Confirmed: runs with the invoker-owned --yes.
-			ok2 := req
-			ok2.Confirm = nonce
-			d, err = invoke.Gate(ctx, reg, cmd, ok2, opts)
+			confirmed := req
+			confirmed.Confirm = nonce
+			d, err = invoke.Gate(ctx, reg, cmd, confirmed, opts)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -4,7 +4,8 @@ schema_version: 1
 commands:
   # cmd/commands/install.go:129 delegates plugin installs, which can register a free account and send telemetry
   add: {canon: core, side_effect: remote}
-  # --yes confirms --delete-data (D-0331); a machine caller gets a nonce round trip
+  # D-0331: every machine call takes a nonce round trip, then runs with --yes, which confirms
+  # --delete-data and also pre-approves a prod-class regeneration plan (reconcile)
   bundle remove: {side_effect: destructive, mode: v1.4, confirm: {flags: [yes]}}
   # cmd/commands/bundle.go:39 RunE path changes no persistent state (prints/reads only)
   config bundles: {side_effect: read}
