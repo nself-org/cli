@@ -48,6 +48,9 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 		o.Out = io.Discard
 	}
 	r, rp := o.Remote, o.RemotePath
+	if _, err := ResolveDirs(ctx, r, rp, layoutDirs(o.Changed)); err != nil {
+		return err
+	}
 	release, err := AcquireLock(ctx, r, rp, strings.TrimSuffix(strings.TrimPrefix(path.Base(o.Tar), "pre-deploy-"), ".tar.gz"))
 	if err != nil {
 		return err

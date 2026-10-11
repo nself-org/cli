@@ -73,7 +73,8 @@ func TestRestoreKeepsDirModes(t *testing.T) {
 func TestSyncWritesThroughSymlinkedDir(t *testing.T) {
 	needTools(t)
 	f := newFakeRemote(t)
-	rp, shared, stage := t.TempDir(), t.TempDir(), t.TempDir()
+	rp, stage := t.TempDir(), t.TempDir()
+	shared := rp + "/.shared" // a link must resolve inside remote_path
 	writeFile(t, shared+"/sites/api.conf", "# old\n", 0o644)
 	writeFile(t, shared+"/sites/foreign.conf", "# foreign\n", 0o644)
 	if err := os.Symlink(shared, rp+"/nginx"); err != nil {

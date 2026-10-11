@@ -172,7 +172,7 @@ func RestorePreDeployTar(ctx context.Context, r Remote, remotePath, tar string, 
 	}
 	sort.Strings(dirs)
 	for _, d := range dirs {
-		script += fmt.Sprintf(`; d=%s; src="$tmp/$d"; dst="$rp/$d"; (umask 022; mkdir -p "$dst"); dst=$(cd -P "$dst" && pwd -P); printf '%%s\n' %s > "$tmp.list"; rsync -ac --files-from="$tmp.list" "$src"/ "$dst"/; rm -f "$tmp.list"`,
+		script += fmt.Sprintf(`; d=%s; src="$tmp/$d"; dst="$rp/$d"; (umask 022; mkdir -p "$dst"); dst=$(cd -P "$dst" && pwd -P); case "$dst/" in "$(cd -P "$rp" && pwd -P)/"*) ;; *) echo "refusing: $dst is outside remote_path" >&2; exit 1;; esac; printf '%%s\n' %s > "$tmp.list"; rsync -ac --files-from="$tmp.list" "$src"/ "$dst"/; rm -f "$tmp.list"`,
 			q(d), strings.Join(quoteAll(byDir[d]), " "))
 	}
 	script += `; rm -rf "$tmp"`
@@ -187,7 +187,7 @@ func RestorePreDeployTar(ctx context.Context, r Remote, remotePath, tar string, 
 func removeCreated(ctx context.Context, r Remote, remotePath string, absent []string) error {
 	for len(absent) > 0 {
 		n := min(len(absent), 50)
-		body := `for f in "$@"; do if [ -f "$f" ]; then rm -f -- "$f"; fi; done`
+		body := `if [ -f "$2" ]; then rm -f -- "$2"; fi`
 		out, err := r.Run(ctx, shScript(guardedScript(remotePath, absent[:n], body)))
 		if err != nil {
 			return fmt.Errorf("removing files the deploy created on %s: %w", r.Label(), err)

@@ -118,7 +118,7 @@ func prepareRemoteApply(ctx context.Context, p v15Params) (*controlplane.RemoteA
 		backupHost = r.Label()
 	}
 	ra := &controlplane.RemoteApply{
-		BackupID: backupID, BackupHost: backupHost,
+		BackupID: backupID, BackupHost: backupHost, Previous: previousShipped(p.workdir, p.target),
 		Set: set, Expected: snap, LocalPlugins: local, ProdClass: p.prodClass, Yes: p.yes, Confirm: ttyConfirm,
 		StrictHasura: hasuraStrictFor(p.workdir, p.target), Out: out, Clock: deployGateClock,
 		Open: func(c context.Context, s controlplane.Server, k, e string) (deploy.Remote, error) {
@@ -168,6 +168,19 @@ func recordRemoteApply(workdir, target string, start time.Time, backupID, backup
 			_, _ = fmt.Fprintf(os.Stderr, "warning: could not save the deploy record: %v\n", serr)
 		}
 	}
+}
+
+// previousShipped is the union of the paths the target's last recorded deploy
+// shipped or pruned, on every host: what a prune may remove.
+func previousShipped(workdir, target string) []string {
+	st, _ := deploy.LoadDeployState(workdir)
+	var out []string
+	if st.Target == target {
+		for _, paths := range st.PreDeployChanged {
+			out = append(out, paths...)
+		}
+	}
+	return out
 }
 
 // resolveDeployEnvSnapshot is writeResolvedDeployEnv for the pipeline: v1.5

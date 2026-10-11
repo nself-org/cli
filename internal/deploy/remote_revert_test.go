@@ -79,7 +79,7 @@ func TestDeletesRefuseSymlinkedDirs(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 	writeFile(t, rp+"/"+ShippedFile, "nginx/own.conf\nnginx/sites/other.conf\n", 0o644)
-	_, err := PrunePrevious(context.Background(), f, rp, map[string]bool{})
+	_, err := PrunePrevious(context.Background(), f, rp, map[string]bool{}, []string{"nginx/own.conf", "nginx/sites/other.conf"})
 	if err == nil || !strings.Contains(err.Error(), "nginx/sites/other.conf") || !strings.Contains(err.Error(), "symlink") {
 		t.Fatalf("prune through a symlink: %v", err)
 	}
@@ -111,13 +111,14 @@ func TestRestoreKeepsSymlinkedDir(t *testing.T) {
 		t.Fatalf("the sync must follow symlinked dirs: %v %v", argv, err)
 	}
 	f := newFakeRemote(t)
-	rp, shared := t.TempDir(), t.TempDir()
+	rp := t.TempDir()
+	shared := rp + "/.shared" // a link must resolve inside remote_path
 	writeFile(t, shared+"/nginx/sites/old.conf", markedConf+"# v1\n", 0o644)
 	if err := os.Symlink(shared+"/nginx", rp+"/nginx"); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 	ctx := context.Background()
-	bk, err := CreatePreDeployTar(ctx, f, rp, NewBackupID(time.Now()), []string{"nginx/sites/old.conf"})
+	bk, err := CreatePreDeployTar(ctx, f, rp, NewBackupID(time.Now()), []string{"nginx/sites/old.conf", "nginx/sites/new.conf"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,14 +127,15 @@ func TestRestoreKeepsSymlinkedDir(t *testing.T) {
 	}
 	writeFile(t, shared+"/nginx/sites/old.conf", markedConf+"# v2\n", 0o644)
 	writeFile(t, shared+"/nginx/sites/foreign.conf", "# foreign\n", 0o644)
-	if err := RestorePreDeployTar(ctx, f, rp, bk.Tar, RestoreSpec{Changed: []string{"nginx/sites/old.conf"}}); err != nil {
+	writeFile(t, shared+"/nginx/sites/new.conf", "created by the deploy\n", 0o644)
+	if err := RestorePreDeployTar(ctx, f, rp, bk.Tar, RestoreSpec{Changed: []string{"nginx/sites/old.conf", "nginx/sites/new.conf"}, Absent: bk.Absent}); err != nil {
 		t.Fatal(err)
 	}
 	if info, err := os.Lstat(rp + "/nginx"); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("nginx/ is no longer a symlink: %v %v", info, err)
 	}
-	if !strings.Contains(readFile(t, shared+"/nginx/sites/old.conf"), "# v1") || !exists(shared+"/nginx/sites/foreign.conf") {
-		t.Error("the restore did not write through the link, or lost a foreign file")
+	if !strings.Contains(readFile(t, shared+"/nginx/sites/old.conf"), "# v1") || !exists(shared+"/nginx/sites/foreign.conf") || exists(shared+"/nginx/sites/new.conf") {
+		t.Error("the restore did not write through the link, or lost a foreign file, or kept the file the deploy created")
 	}
 }
 

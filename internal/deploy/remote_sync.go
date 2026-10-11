@@ -67,7 +67,7 @@ func writeShipped(ctx context.Context, r Remote, set ArtifactSet) error {
 }
 
 func rsyncList(ctx context.Context, r Remote, set ArtifactSet, rels, flags []string) error {
-	linked, err := linkedDirs(ctx, r, set.RemotePath, rels)
+	linked, err := ResolveDirs(ctx, r, set.RemotePath, layoutDirs(rels))
 	if err != nil {
 		return err
 	}
@@ -112,36 +112,6 @@ func rsyncFiles(ctx context.Context, r Remote, flags, rels []string, srcDir, des
 	return r.Rsync(ctx, flags, list.Name(), srcDir, destDir)
 }
 
-// linkedDirs asks the host which of the directories holding rels resolve (cd -P)
-// to somewhere other than <real remote_path>/<dir>, i.e. have a symlink in their
-// path, and returns dir -> real absolute path. Directories that do not exist yet
-// are not listed (rsync creates them).
-func linkedDirs(ctx context.Context, r Remote, remotePath string, rels []string) (map[string]string, error) {
-	seen, dirs := map[string]bool{}, []string{}
-	for _, rel := range rels {
-		if d := path.Dir(rel); d != "." && !seen[d] {
-			seen[d] = true
-			dirs = append(dirs, d)
-		}
-	}
-	out := map[string]string{}
-	if len(dirs) == 0 {
-		return out, nil
-	}
-	script := fmt.Sprintf(`cd -P %s 2>/dev/null || exit 0; base=$(pwd -P); for d in %s; do if [ -d "$d" ]; then x=$(cd -P "$d" && pwd -P) || continue; if [ "$x" != "$base/$d" ]; then printf '%%s\t%%s\n' "$d" "$x"; fi; fi; done`,
-		q(remotePath), strings.Join(quoteAll(dirs), " "))
-	raw, err := r.Run(ctx, shScript(script))
-	if err != nil {
-		return nil, fmt.Errorf("resolving symlinked directories on %s: %w", r.Label(), err)
-	}
-	for _, line := range strings.Split(string(raw), "\n") {
-		if d, real, ok := strings.Cut(line, "\t"); ok && seen[d] && strings.HasPrefix(real, "/") {
-			out[d] = real
-		}
-	}
-	return out, nil
-}
-
 // assertEnvModes fails unless every shipped env file is mode 600 on the host.
 func assertEnvModes(ctx context.Context, r Remote, set ArtifactSet) error {
 	var quoted []string
@@ -162,16 +132,25 @@ func assertEnvModes(ctx context.Context, r Remote, set ArtifactSet) error {
 }
 
 // PrunePrevious removes the files the previous deploy shipped that the new set
-// dropped and that carry the generated marker. With no previous list (a first v1.5
-// deploy) nothing is removed. It returns the files it removed.
-func PrunePrevious(ctx context.Context, r Remote, remotePath string, keep map[string]bool) ([]string, error) {
+// dropped and that carry the generated marker. What may be removed is decided by
+// recorded, the local record of that deploy (deploy.json); the host's own shipped
+// list (informational) can only narrow it. With no record nothing is removed.
+// It returns the files it removed.
+func PrunePrevious(ctx context.Context, r Remote, remotePath string, keep map[string]bool, recorded []string) ([]string, error) {
+	if len(recorded) == 0 {
+		return nil, nil
+	}
+	known := map[string]bool{}
+	for _, f := range recorded {
+		known[f] = true
+	}
 	prev, err := remoteLines(ctx, r, path.Join(remotePath, ShippedFile))
 	if err != nil {
 		return nil, err
 	}
 	var cand []string
 	for _, f := range prev {
-		if !keep[f] {
+		if known[f] && !keep[f] {
 			cand = append(cand, f)
 		}
 	}
@@ -181,7 +160,7 @@ func PrunePrevious(ctx context.Context, r Remote, remotePath string, keep map[st
 // PruneMarked removes, from the candidates (paths relative to remotePath), the
 // files that carry the generated marker in their first lines. Entries that are not
 // safe project-relative paths (see pruneable) are skipped. A batch in which any
-// path has a symlink component is refused whole: nothing in it is deleted and the
+// path resolves outside the project (or is itself a symlink) is refused whole: nothing in it is deleted and the
 // error names the path. It returns the files it removed.
 func PruneMarked(ctx context.Context, r Remote, remotePath string, candidates []string) ([]string, error) {
 	var cand []string
@@ -193,7 +172,7 @@ func PruneMarked(ctx context.Context, r Remote, remotePath string, candidates []
 	var removed []string
 	for len(cand) > 0 {
 		n := min(len(cand), 50)
-		body := fmt.Sprintf(`for f in "$@"; do if [ -f "$f" ] && head -n 5 -- "$f" 2>/dev/null | grep -qi %s; then rm -f -- "$f" && printf '%%s\n' "$f"; fi; done`, q(GeneratedMarker))
+		body := fmt.Sprintf(`if [ -f "$2" ] && head -n 5 -- "$2" 2>/dev/null | grep -qi %s; then rm -f -- "$2" && printf '%%s\n' "$1"; fi`, q(GeneratedMarker))
 		out, err := r.Run(ctx, shScript(guardedScript(remotePath, cand[:n], body)))
 		if err != nil {
 			return removed, fmt.Errorf("pruning generated files on %s: %w", r.Label(), err)
@@ -209,31 +188,6 @@ func PruneMarked(ctx context.Context, r Remote, remotePath string, candidates []
 		cand = cand[n:]
 	}
 	return removed, nil
-}
-
-// guardedScript runs body with the batch as "$@", from remotePath, after proving
-// that no component of any path is a symlink (so no deletion can reach outside
-// the project through a link). If one is, it prints "REFUSE <path>" for each and
-// exits before body runs.
-func guardedScript(remotePath string, paths []string, body string) string {
-	return fmt.Sprintf(`rp=%s; cd "$rp" || exit 1; set -- %s; refuse=0
-for f in "$@"; do d="$rp"; oi=$IFS; IFS=/; set -f; for c in $f; do d="$d/$c"; if [ -L "$d" ]; then printf 'REFUSE %%s\n' "$f"; refuse=1; break; fi; done; IFS=$oi; set +f; done
-if [ "$refuse" = 1 ]; then exit 0; fi
-%s`, q(remotePath), strings.Join(quoteAll(paths), " "), body)
-}
-
-// refusedPaths turns the REFUSE lines of a guardedScript into an error.
-func refusedPaths(out []byte) error {
-	var bad []string
-	for _, l := range strings.Split(string(out), "\n") {
-		if p, ok := strings.CutPrefix(l, "REFUSE "); ok {
-			bad = append(bad, fmt.Sprintf("%q", p))
-		}
-	}
-	if len(bad) == 0 {
-		return nil
-	}
-	return fmt.Errorf("refusing to delete through a symlink on the host (a component of %s is a symlink); nothing was deleted", strings.Join(bad, ", "))
 }
 
 // pruneable reports whether rel is a safe project-relative file path: not empty,

@@ -50,6 +50,10 @@ type ApplyOptions struct {
 	// env (one per env, on its primary, before any server is touched). When set,
 	// no backup is taken here.
 	BackupID string
+	// Previous are the paths the env's previous deploy shipped or pruned, from the
+	// local record (deploy.json). They alone decide what the prune may remove; the
+	// host's own list can only narrow them. Empty: nothing is pruned.
+	Previous []string
 	// Snapshot takes and verifies a database backup tagged with id and returns
 	// its backup id (E206 on failure). Used when ProdClass and BackupID is empty.
 	Snapshot func(ctx context.Context, id string) (string, error)
@@ -109,6 +113,10 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 		return res, err
 	}
 
+	// A symlink that leaves remote_path is refused before the lock and the tar.
+	if _, err := ResolveDirs(ctx, r, rp, layoutDirs(append(o.Set.shippedPaths(), o.Previous...))); err != nil {
+		return res, err
+	}
 	id := NewBackupID(o.Now())
 	release, err := AcquireLock(ctx, r, rp, id)
 	if err != nil {
@@ -157,7 +165,10 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 
 	say("sync artifact set to %s:%s", r.Label(), rp)
 	res.Synced = true
-	pruned, err := PrunePrevious(ctx, r, rp, o.Set.KeepSet())
+	if len(o.Previous) == 0 {
+		say("no record of a previous deploy: nothing is pruned")
+	}
+	pruned, err := PrunePrevious(ctx, r, rp, o.Set.KeepSet(), o.Previous)
 	if err != nil {
 		return res, err
 	}

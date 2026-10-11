@@ -40,6 +40,8 @@ type RemoteApply struct {
 	// primary (BackupHost) before any server was touched; other servers never run
 	// `nself backup`. Empty off tier prod.
 	BackupID, BackupHost string
+	// Previous are the paths the env's previous deploy shipped (local record).
+	Previous []string
 	// Record is called after each server's apply, whether it succeeded or not.
 	Record func(srv Server, res deploy.ApplyResult, err error)
 	// Open opens the remote of a server; nil means the strict-host-key ssh
@@ -85,7 +87,7 @@ func ApplyServer(ctx context.Context, envName string, srv Server, keyPath string
 	res, err := deploy.ApplyRemote(ctx, deploy.ApplyOptions{
 		Remote: r, RemotePath: srv.RemotePath, Set: ra.Set, Expected: &expected, LocalPlugins: ra.LocalPlugins,
 		ProdClass: ra.ProdClass, Yes: ra.Yes, Confirm: ra.Confirm, StrictHasura: ra.StrictHasura, Clock: ra.Clock, Out: ra.Out,
-		BackupID: ra.BackupID, Env: envName,
+		BackupID: ra.BackupID, Env: envName, Previous: ra.Previous,
 	})
 	if ra.Record != nil {
 		ra.Record(srv, res, err)

@@ -26,7 +26,7 @@ func TestArtifactsSyncNoDelete(t *testing.T) {
 	writeFile(t, filepath.Join(rp, "nginx", "sites", "old-generated.conf"), markedConf, 0o644)
 	// Another nself project's generated conf in the same dir: marker-carrying, never shipped by this project.
 	writeFile(t, filepath.Join(rp, "nginx", "sites", "other-project.conf"), markedConf+"# other\n", 0o644)
-	writeFile(t, filepath.Join(rp, ShippedFile), "nginx/sites/old-generated.conf\nnginx/sites/api.conf\nnginx/conf.d/block.conf\n", 0o644)
+	writeFile(t, filepath.Join(rp, ShippedFile), "nginx/sites/old-generated.conf\nnginx/sites/api.conf\nnginx/conf.d/block.conf\nnginx/sites/other-project.conf\n", 0o644)
 	writeFile(t, filepath.Join(rp, "nginx", "sites", "api.conf"), markedConf+"# stale\n", 0o644)
 	writeFile(t, filepath.Join(rp, "nginx", "conf.d", "block.conf"), markedConf, 0o644) // marked, but under conf.d: never touched
 	writeFile(t, filepath.Join(rp, "nginx", "conf.d", "hand.conf"), "# hand written\n", 0o644)
@@ -36,7 +36,7 @@ func TestArtifactsSyncNoDelete(t *testing.T) {
 	blockBefore := readFile(t, filepath.Join(rp, "nginx", "conf.d", "block.conf"))
 
 	ctx := context.Background()
-	removed, err := PrunePrevious(ctx, f, rp, set.KeepSet())
+	removed, err := PrunePrevious(ctx, f, rp, set.KeepSet(), []string{"nginx/sites/old-generated.conf", "nginx/sites/api.conf"}) // other-project.conf is in the host's (tampered) list only
 	if err != nil {
 		t.Fatal(err)
 	}

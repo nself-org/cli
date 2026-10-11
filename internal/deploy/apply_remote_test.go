@@ -69,6 +69,8 @@ func classify(s string) string {
 		return "perms"
 	case strings.Contains(s, "nginx -s reload"):
 		return "reload"
+	case strings.Contains(s, "inside()"):
+		return "layout"
 	case strings.Contains(s, "deploy-shipped.txt"):
 		return "shipped"
 	case strings.Contains(s, "head -n 5"), strings.Contains(s, "find \"$d\" -type f"):
@@ -128,7 +130,7 @@ func applyFixture(t *testing.T, crash string) (*fakeRemote, ApplyOptions, string
 	}
 	f.handler = stackHandler(rp, crash)
 	o := ApplyOptions{
-		Remote: f, RemotePath: rp, Set: set, ProdClass: true, Yes: true, StrictHasura: true,
+		Remote: f, RemotePath: rp, Set: set, Previous: []string{"nginx/sites/old.conf"}, ProdClass: true, Yes: true, StrictHasura: true,
 		Clock: &fakeClock{now: time.Unix(0, 0)},
 		Now:   func() time.Time { return time.Date(2026, 10, 10, 20, 0, 0, 0, time.UTC) },
 		Snapshot: func(ctx context.Context, id string) (string, error) {
