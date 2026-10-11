@@ -12,6 +12,11 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
+var (
+	manifestDigestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	linuxPlatformRE  = regexp.MustCompile(`^linux/(amd64|arm64)$`)
+)
+
 func parseComposeImages(raw []byte) ([]composeImage, error) {
 	var images []composeImage
 	if err := json.Unmarshal(raw, &images); err == nil {
@@ -46,13 +51,13 @@ func parseInspect(raw []byte, ref string) (string, string, error) {
 	if len(repoDigests) == 0 {
 		return "", "", fmt.Errorf("image %s has no repo digest", ref)
 	}
-	if !regexp.MustCompile(`^linux/(amd64|arm64)$`).MatchString(parts[1]) {
+	if !linuxPlatformRE.MatchString(parts[1]) {
 		return "", "", fmt.Errorf("unsupported image platform %q", parts[1])
 	}
 	repository := imageRepository(ref)
 	for _, candidate := range repoDigests {
 		repo, digest, ok := strings.Cut(candidate, "@")
-		if ok && sameRepository(repo, repository) && regexp.MustCompile(`^sha256:[0-9a-f]{64}$`).MatchString(digest) {
+		if ok && sameRepository(repo, repository) && manifestDigestRE.MatchString(digest) {
 			return digest, parts[1], nil
 		}
 	}

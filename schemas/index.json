@@ -646,6 +646,10 @@
       "id": "urn:nself:cli:schema:commands:db:v1"
     },
     {
+      "path": "commands/deploy-promote.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:deploy-promote:v1"
+    },
+    {
       "path": "commands/deploy-targets.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:deploy-targets:v1"
     },

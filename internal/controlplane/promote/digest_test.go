@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/controlplane"
 )
 
@@ -18,7 +19,7 @@ func TestPromoteDigestIdentity(t *testing.T) {
 		case command == "docker compose images --format json":
 			return []byte(`[{"Service":"api","Repository":"example.invalid/app","Tag":"same","ID":"sha256:running"}]`), nil
 		case strings.HasPrefix(command, "docker image inspect"):
-			if !strings.HasSuffix(command, "sha256:running") {
+			if !strings.Contains(command, "'sha256:running'") {
 				return nil, fmt.Errorf("inspected mutable tag instead of image ID: %s", command)
 			}
 			return []byte(fmt.Sprintf(`["example.invalid/app@%s"]|linux/amd64`, index)), nil
@@ -56,5 +57,15 @@ func TestPromoteDigestIdentity(t *testing.T) {
 	rows, err = CompareDigests(context.Background(), nil, []Image{{Service: "worker", Build: true}}, "amd64", controlplane.TierLocalServers, lookup, func(s string) { warning = s })
 	if err != nil || !strings.Contains(warning, "worker") || rows[0].Status != "unverifiable" {
 		t.Fatalf("local-server build context = %#v, %q, %v", rows, warning, err)
+	}
+	locked := compose.LockedImages()[0]
+	rebuilt, err := sourcePlatformDigest(context.Background(), locked.LegacyRef, b, "linux/amd64", func(_ context.Context, ref string) (map[string]string, error) {
+		if !strings.HasSuffix(ref, "@"+b) {
+			t.Fatalf("rebuilt locked tag looked up as %q, want immutable digest %s", ref, b)
+		}
+		return map[string]string{"linux/amd64": b}, nil
+	})
+	if err != nil || rebuilt != b {
+		t.Fatalf("rebuilt locked tag resolved to %q, %v", rebuilt, err)
 	}
 }

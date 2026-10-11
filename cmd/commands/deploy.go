@@ -123,8 +123,8 @@ The output format and exit code semantics are preserved for backward compatibili
 
 // deployPromoteCmd promotes a canary deploy to 100% green traffic.
 var deployPromoteCmd = &cobra.Command{
-	Use:   "promote",
-	Short: "Promote a canary deploy to 100% green traffic",
+	Use:   "promote [source target]",
+	Short: "Promote a canary or an environment",
 	Long: `Flip Nginx upstream weights from the current canary split to 100% green.
 Use after manual inspection of a canary deploy.
 

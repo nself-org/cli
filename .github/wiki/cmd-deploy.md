@@ -87,6 +87,40 @@ target environment, host, and remote path before any build or SSH action.
 
 ## Deploy Strategies
 
+### Environment promotion (v1.5)
+
+`nself deploy promote <source> <target> --yes` promotes between inventory environments.
+Tiers must move forward or stay equal: `local`, `local-servers`, then `prod`.
+Source and target must differ. A prod-tier target requires `--yes` or terminal
+confirmation; an unconfirmed noninteractive promotion exits 4 (`E403`).
+
+`--dry-run` prints the ordered plan without contacting or changing a host. With
+`--json`, it emits one v1 envelope containing the result and planned steps.
+The steps are resolve, confirm, verify, preflight, source-health, capture, build,
+compare, snapshot, save, apply, migrate, health, and record. Builds use the target
+cascade in a scratch directory. Production values never enter the operator's tree.
+
+Compare proves per-platform image digest equality before taking a snapshot or
+changing the target. Drift exits 1 (`E490`) and names the affected services.
+Services with a compose `build:` context are unverifiable: prod refuses them;
+other tiers warn. The snapshot is created, located by tag, and verified before
+save or apply. A failed verification exits with `E206` without applying anything.
+
+Failures after the verified snapshot restore the saved artifacts. The database
+is restored only if migration started, followed by another health check.
+Successful rollback exits 2 (`E488`) naming the failed step. Failed rollback
+stops immediately with `E489`, the snapshot tag, backup ID, and a manual restore
+command. The local `.nself/state/promote.json` records each host's saved tar and
+changed or absent files. `nself deploy rollback <target>` and the v1.5
+`nself promote rollback` shim restore that record when it is the latest change,
+using the verified backup on its recorded target host.
+
+With no arguments, `deploy promote` keeps the existing canary flip. In v1.4,
+its arguments retain their previous behavior and `promote` keeps its legacy
+implementation. In v1.5, `promote <source> <target>` and
+`deploy promote-env <source> <target>` delegate to the environment promotion
+runner with one deprecation warning per process.
+
 | Strategy | Status | Behavior |
 |---|---|---|
 | `rolling` | **Default (v1.1.1)** | Per-service sequenced restart with health-gating. Each service waits up to 60s for `service_healthy` before the next restarts. |
@@ -690,7 +724,7 @@ configure an nginx static page via `nginx/conf.d/`.
 | `health` | Run health checks against a target deployment |
 | `logs` | Show deployment logs for a target |
 | `ops` | Deploy with the ops profile to the ops server |
-| `promote` | Promote a canary deploy to 100% green traffic |
+| `promote` | Promote a canary or an environment |
 | `promote-env` | Promote one environment to another (e.g. staging to prod) |
 | `rollback` | Roll back the last deployment for a target |
 | `security` | Apply server security |

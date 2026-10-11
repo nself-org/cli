@@ -52,6 +52,27 @@ func TestPromoteEngineOrder(t *testing.T) {
 	if !contains(observer.events, "skipped:verify:no release manifest") {
 		t.Fatalf("observer events lack verify skip: %v", observer.events)
 	}
+	var wantEvents []string
+	for _, name := range StepNames {
+		if name == "verify" {
+			wantEvents = append(wantEvents, "skipped:verify:no release manifest")
+			continue
+		}
+		wantEvents = append(wantEvents, "start:"+name, "done:"+name)
+	}
+	if strings.Join(observer.events, ",") != strings.Join(wantEvents, ",") {
+		t.Fatalf("observer events = %v, want %v", observer.events, wantEvents)
+	}
+	verifyCalls := 0
+	withVerify := Engine{Steps: canonicalSteps(func(name string, _ *State) error {
+		if name == "verify" {
+			t.Fatal("verify step Run called instead of Verify hook")
+		}
+		return nil
+	}, nil), Verify: func(context.Context, *State) error { verifyCalls++; return nil }}
+	if _, err = withVerify.Run(context.Background(), &State{}); err != nil || verifyCalls != 1 {
+		t.Fatalf("Verify hook calls=%d, err=%v", verifyCalls, err)
+	}
 	bad := engine
 	bad.Steps = append([]Step(nil), engine.Steps...)
 	bad.Steps[0], bad.Steps[1] = bad.Steps[1], bad.Steps[0]
@@ -63,10 +84,12 @@ func TestPromoteEngineOrder(t *testing.T) {
 func TestPromoteRollback(t *testing.T) {
 	var events []string
 	healthCalls := 0
+	ctx, cancel := context.WithCancel(context.Background())
 	steps := canonicalSteps(func(name string, _ *State) error {
 		if name == "health" {
 			healthCalls++
 			if healthCalls == 1 {
+				cancel()
 				return errors.New("unhealthy")
 			}
 		}
@@ -75,7 +98,20 @@ func TestPromoteRollback(t *testing.T) {
 		events = append(events, "undo:"+name)
 		return nil
 	})
-	result, err := (Engine{Steps: steps}).Run(context.Background(), &State{SnapshotTag: "pre-promote-1-aaaaaaaa", BackupID: "backup-1"})
+	for i := range steps {
+		if steps[i].Undo == nil {
+			continue
+		}
+		name := steps[i].Name
+		steps[i].Undo = func(rollbackCtx context.Context, _ *State) error {
+			if rollbackCtx.Err() != nil {
+				t.Fatalf("rollback %s inherited cancellation: %v", name, rollbackCtx.Err())
+			}
+			events = append(events, "undo:"+name)
+			return nil
+		}
+	}
+	result, err := (Engine{Steps: steps}).Run(ctx, &State{SnapshotTag: "pre-promote-1-aaaaaaaa", BackupID: "backup-1"})
 	if result.Status != "rolled_back" || err == nil || !strings.Contains(err.Error(), "E488") || !strings.Contains(err.Error(), "health") {
 		t.Fatalf("health failure = %#v, %v", result, err)
 	}

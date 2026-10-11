@@ -267,6 +267,9 @@ These errors come from `nself deploy` and related commands. Only the codes regis
 | <a id="e485"></a>E485 | 1 | Invalid deploy inventory | The control-plane inventory violates a required field or invariant. | Correct the named field in .nself/control-plane.yaml. |
 | <a id="e486"></a>E486 | 1 | No deploy target matched | The selector matched no server. | Run nself deploy targets to list available targets. |
 | <a id="e487"></a>E487 | 1 | Deploy host key is unknown | A secret-bearing operation requires a trusted host key. | Verify the fingerprint and enrol it with nself env target add --trust-host-key. |
+| <a id="e488"></a>E488 | 2 | Promote rolled back | A promotion step failed after the verified snapshot, so the target was restored. | Fix the named failing step and retry the promotion. |
+| <a id="e489"></a>E489 | 2 | Promote rollback failed | A compensating action or rollback health check failed, so the target needs operator recovery. | Restore the named backup with nself backup restore <id> --yes, then run nself doctor. |
+| <a id="e490"></a>E490 | 1 | Release drift | Source and target per-platform image identities differ or cannot be verified. | Rebuild the release so every service resolves to the source manifest digest, then retry. |
 | <a id="e491"></a>E491 | 1 | Deploy image architecture unavailable | At least one image has no proven manifest for a target host architecture. | Publish the missing platform or use a compatible image, then rebuild and retry. |
 <!-- END GENERATED:codes-deploy -->
 

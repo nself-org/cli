@@ -55,30 +55,37 @@ func CaptureSource(ctx context.Context, run Runner, services []Image, lookup arc
 	if err != nil {
 		return nil, err
 	}
-	refs := make(map[string]string, len(running))
+	if lookup == nil {
+		lookup = archguard.RegistryLookup
+	}
+	declared := make(map[string]Image, len(services))
+	for _, service := range services {
+		declared[service.Service] = service
+	}
+	seen := make(map[string]bool, len(running))
+	var out []SourceImage
 	for _, image := range running {
+		if image.Service == "" {
+			return nil, fmt.Errorf("source compose image has no service name")
+		}
+		if seen[image.Service] {
+			return nil, fmt.Errorf("source compose image repeats service %s", image.Service)
+		}
+		seen[image.Service] = true
+		if declared[image.Service].Build {
+			continue
+		}
 		ref := image.Repository
+		if ref == "" {
+			return nil, fmt.Errorf("source compose image missing repository for service %s", image.Service)
+		}
 		if image.Tag != "" && image.Tag != "<none>" {
 			ref += ":" + image.Tag
 		}
-		if image.Service != "" {
-			refs[image.Service] = ref + "\x00" + image.ID
+		if image.ID == "" {
+			return nil, fmt.Errorf("source compose image missing id for service %s", image.Service)
 		}
-	}
-	var out []SourceImage
-	for _, service := range services {
-		if service.Build {
-			continue
-		}
-		captured := refs[service.Service]
-		if captured == "" {
-			return nil, fmt.Errorf("source compose image missing service %s", service.Service)
-		}
-		ref, imageID, _ := strings.Cut(captured, "\x00")
-		if imageID == "" {
-			return nil, fmt.Errorf("source compose image missing id for service %s", service.Service)
-		}
-		identity, err := inspectSource(ctx, run, lookup, service.Service, ref, imageID)
+		identity, err := inspectSource(ctx, run, lookup, image.Service, ref, image.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -111,10 +118,14 @@ func sourcePlatformDigest(ctx context.Context, ref, inspected, platform string, 
 	}
 	for _, locked := range compose.LockedImages() {
 		if ref == locked.String() || ref == locked.LegacyRef {
-			if digest := locked.Platforms[platform]; digest != "" {
-				return digest, nil
+			lockedPlatform := locked.Platforms[platform]
+			if inspected == locked.IndexDigest && lockedPlatform != "" {
+				return lockedPlatform, nil
 			}
-			return "", fmt.Errorf("%s has no %s manifest", ref, platform)
+			if inspected == lockedPlatform && inspected != "" {
+				return inspected, nil
+			}
+			break
 		}
 	}
 	if lookup == nil {
