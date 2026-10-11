@@ -729,7 +729,13 @@ func cascadeHandEdit(t *testing.T, bin string, mode cascadeMode) {
 	if !mode.v15 {
 		// v1.4 (internal/reconcile handedit warning, cmd build path): the diff and
 		// a one-line notice go to stderr and the build proceeds, overwriting.
+		// config set does not regenerate in v1.4, so the edit survives it.
+		p.mustRun("config", "set", "BASE_DOMAIN", "other.example.test")
+		if !strings.Contains(p.read(conf), "# hand edit") {
+			t.Fatal("v1.4 config set touched a generated conf")
+		}
 		r := p.mustRun("build")
+		cascadeContains(t, "v1.4 diff", r.all(), "--- a/"+conf)
 		cascadeContains(t, "v1.4 notice", r.stderr, "hand-edited generated files would be overwritten: "+conf)
 		cascadeContains(t, "v1.4 notice", r.stderr, "v1.5 refuses without --force")
 		if strings.Contains(p.read(conf), "# hand edit") {
@@ -905,6 +911,9 @@ func cascadeDoctorFix(t *testing.T, bin string, mode cascadeMode) {
 		fix = append(fix, "--force")
 	}
 	r := p.run(fix...)
+	if !mode.v15 {
+		cascadeContains(t, "v1.4 doctor --fix notice", r.all(), "hand-edited generated files would be overwritten")
+	}
 	cascadeContains(t, "doctor --fix", r.all(), "Generated files: repaired")
 	for _, f := range files {
 		if got := p.read(f); got != want[f] {

@@ -156,6 +156,29 @@ jobs:
           docker network prune -f 2>/dev/null || true
           rm -rf /tmp/nself-golden-path-* /tmp/golden-path-diag-step*.txt /tmp/golden-path-claw-health.json /tmp/golden-path-ai-health.json 2>/dev/null || true
 
+      # P7-LIVE-08: the cascade integration suite and the live-safety smoke run on
+      # this runner's real Docker daemon, after the golden path's own stack is
+      # cleaned up above (the suite binds no host ports and labels everything it
+      # creates with a unique project name). `if: always()` so a red golden-path
+      # step does not hide a cascade regression. No secrets in env. A skipped
+      # suite is a failure here: the suite skips only when docker is missing, and
+      # this runner has it, so a SKIP would mean the proof silently did not run.
+      - name: Cascade integration suite
+        if: always()
+        shell: bash
+        run: |
+          LOG="${RUNNER_TEMP}/cascade-integration.log"
+          CGO_ENABLED=0 go test -mod=vendor -count=1 -v ./internal/reconcile/... -run CascadeIntegration 2>&1 | tee "$LOG"
+          if grep -q -- '--- SKIP: TestCascadeIntegration' "$LOG"; then
+            echo "::error::TestCascadeIntegration was skipped; this runner has Docker, so the suite must run"
+            exit 1
+          fi
+          if ! grep -q -- '--- PASS: TestCascadeIntegration ' "$LOG"; then
+            echo "::error::TestCascadeIntegration did not report PASS"
+            exit 1
+          fi
+          bash scripts/ci/live-safety-smoke.sh
+
       - name: Upload JSON report
         if: always()
         uses: actions/upload-artifact@v7
