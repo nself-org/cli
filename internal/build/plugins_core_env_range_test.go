@@ -29,6 +29,8 @@ func TestPluginServiceRange(t *testing.T) {
 		{"picked service merges, no own environment", "x: &base\n  environment:\n    K: \"1\"\nservices:\n  side:\n    image: s\n  w:\n    <<: *base\n    image: b\n", rangeUnsafe, ""},
 		{"picked service merges and has environment", "x: &base\n  image: a\nservices:\n  side:\n    image: s\n  w:\n    <<: *base\n    environment:\n      A: \"1\"\n", rangeFound, "  w:\n    <<: *base\n    environment:\n      A: \"1\"\n"},
 		{"multi-document", "services:\n  w:\n    image: a\n---\nservices:\n  w:\n    image: b\n", rangeUnsafe, ""},
+		{"services in a later document", "x-a: 1\n---\nservices:\n  w:\n    image: a\n  side:\n    image: b\n", rangeUnsafe, ""},
+		{"null first document", "---\n---\nservices:\n  w:\n    image: a\n", rangeUnsafe, ""},
 		{"unparseable", "services: [\n  w:\n", rangeWhole, "services: [\n  w:\n"},
 		{"no services", "networks:\n  n: {}\n", rangeWhole, "networks:\n  n: {}\n"},
 		{"several services, no match", "services:\n  a:\n    image: x\n  b:\n    image: y\n", rangeNoMatch, ""},

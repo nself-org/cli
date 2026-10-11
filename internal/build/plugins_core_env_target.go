@@ -61,14 +61,16 @@ func pluginServiceRange(content []byte, pluginName, manifestName string) (start,
 	if yaml.Unmarshal(content, &doc) != nil || len(doc.Content) == 0 {
 		return 0, len(content), rangeWhole
 	}
+	// Before the services check: the decode below reads the first document
+	// only, so services in a later one would look like none at all.
+	if documentCount(content) > 1 {
+		return 0, 0, rangeUnsafe
+	}
 	var resolved struct {
 		Services map[string]any `yaml:"services"`
 	}
 	if yaml.Unmarshal(content, &resolved) != nil || len(resolved.Services) == 0 {
 		return 0, len(content), rangeWhole
-	}
-	if documentCount(content) > 1 {
-		return 0, 0, rangeUnsafe
 	}
 
 	top := doc.Content[0]
