@@ -206,6 +206,11 @@ func validateManifest(m *PluginManifest) error {
 	if !namePattern.MatchString(m.Name) {
 		return fmt.Errorf("plugin name must be lowercase with hyphens only: %w", errs.ErrPluginManifest)
 	}
+	// The same rules every lifecycle command applies (length cap, reserved names), so
+	// a manifest cannot name a plugin that install accepts and remove then refuses.
+	if err := ValidateName(m.Name); err != nil {
+		return fmt.Errorf("%v: %w", err, errs.ErrPluginManifest)
+	}
 
 	if !versionPattern.MatchString(m.Version) {
 		return fmt.Errorf("version must be semver format (X.Y.Z, optional pre-release -suffix and build +suffix): %w", errs.ErrPluginManifest)

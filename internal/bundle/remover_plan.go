@@ -65,6 +65,13 @@ func computePlan(b Bundle, l ledger.Ledger, pluginDir string) (removePlan, error
 	// A released plugin the catalog lists under another recorded bundle stays: the
 	// ledger lost that reference (a forced plugin remove, then a reinstall).
 	memberOf := map[string]string{}
+	// Every name the ledger hands back is probed and scheduled below, so validate them
+	// all before any probe: a bad record refuses the whole plan and nothing is removed.
+	for _, n := range released {
+		if err := plugin.ValidateName(n); err != nil {
+			return removePlan{}, fmt.Errorf("bundle ledger lists an invalid plugin for bundle %q: %w", b.Slug, err)
+		}
+	}
 	released = keepCatalogMembers(&work, l, released, memberOf)
 	rel := make(map[string]bool, len(released))
 	for _, n := range released {

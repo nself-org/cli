@@ -48,3 +48,34 @@ func TestComputePlanRefusesPathShapedMembers(t *testing.T) {
 		t.Fatalf("computePlan = %v, want E401 for ../victim", err)
 	}
 }
+
+// TestComputePlanRefusesInvalidLedgerNames: a ledger record named "notify.prev"
+// used to be probed and scheduled, so the removal failed mid-run after the other
+// members were already gone. The whole plan must be refused up front.
+func TestComputePlanRefusesInvalidLedgerNames(t *testing.T) {
+	if err := LoadBytes([]byte(fixtureBundlesJSON)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = LoadBytes([]byte(fixtureBundlesJSON)) })
+	for _, bad := range []string{"notify.prev", "bin", "common", "../x"} {
+		pluginDir := t.TempDir()
+		for _, n := range []string{"bots", bad} {
+			if err := os.MkdirAll(filepath.Join(pluginDir, n), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		l := ledger.Ledger{
+			SchemaVersion: ledger.SchemaVersion,
+			Bundles:       map[string]ledger.BundleRecord{"chat": {}},
+			Plugins: map[string]ledger.PluginRecord{
+				"bots": {InstalledBy: []string{"chat"}},
+				bad:    {InstalledBy: []string{"chat"}},
+			},
+		}
+		b, _ := Get("chat")
+		_, err := computePlan(b, l, pluginDir)
+		if d := errs.Describe(err); d == nil || d.Code != "E401" {
+			t.Errorf("computePlan with ledger name %q = %v, want E401 for the whole plan", bad, err)
+		}
+	}
+}

@@ -45,38 +45,87 @@ var pluginSlugRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 // path element). It is wider than a plugin slug only for '.', '_' and capitals.
 var binaryNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
-// ValidateName reports whether name is a plain plugin slug that is safe to join
-// to the plugin directory. It rejects the empty string, ".", "..", any path
-// separator (slash or backslash, and the OS separator), absolute paths, a
-// leading '-', NUL and other control characters, whitespace, a trailing '.',
-// and anything filepath.Base would change.
-func ValidateName(name string) error {
-	reason := ""
+// reservedNames are plugin-shaped names that already mean something else to the
+// CLI, so no plugin may take them. Every entry is derived from code that creates
+// or reads the object, and a test (TestReservedNamesCoverSharedSchemas) fails when
+// a new shared np_ schema appears without a matching entry here.
+//
+// Direct children of the plugin directory that are NOT plugins:
+//   - "bin": the shared command-binary directory (router.go pluginBinDir,
+//     skipped by mount/discover.go). `plugin remove bin` would delete every
+//     published binary.
+//   - ".nself-state" (bundle ledger), ".install.lock", ".staging-thirdparty-*",
+//     ".bundle-rollback-*" and "<name>.prev" backups all start with '.' or hold a
+//     '.', so pluginSlugRe already refuses them; TestInfrastructureEntriesNeverSlugs
+//     pins that.
+//
+// Schemas and roles a plugin name can map onto (np_<name with '-' as '_'>, and
+// np_<name>_role):
+//   - "common": schema np_common, the shared ledger schema (np_common.schema_versions,
+//     np_common.plugin_schema_versions) created by database/migrate_ledger.go and
+//     plugin/schema_reconcile.go. Removing plugin "common" would run
+//     DROP SCHEMA "np_common" CASCADE.
+//
+// np_plugins and np_ai_usage are tables, not schemas, so they do not collide.
+var reservedNames = map[string]string{
+	"bin":    "it is the shared plugin command-binary directory",
+	"common": "it maps to np_common, the shared ledger schema",
+}
+
+// slugReason returns why name is not a plain single-element slug, or "".
+func slugReason(name string) string {
 	switch {
 	case name == "":
-		reason = "it is empty"
+		return "it is empty"
 	case name == "." || name == "..":
-		reason = "it is a directory reference"
+		return "it is a directory reference"
 	case len(name) > maxPluginNameLen:
-		reason = "it is too long"
+		return "it is too long"
 	case strings.ContainsAny(name, `/\`) || strings.ContainsRune(name, filepath.Separator):
-		reason = "it contains a path separator"
+		return "it contains a path separator"
 	case filepath.IsAbs(name) || filepath.VolumeName(name) != "":
-		reason = "it is an absolute path"
+		return "it is an absolute path"
 	case strings.HasPrefix(name, "-"):
-		reason = "it starts with '-'"
+		return "it starts with '-'"
 	case hasControlChar(name):
-		reason = "it contains a control character"
+		return "it contains a control character"
 	case filepath.Base(name) != name:
-		reason = "it is not a single path element"
+		return "it is not a single path element"
 	case !pluginSlugRe.MatchString(name):
-		reason = "plugin names use lowercase letters, digits and '-', and start with a letter"
+		return "plugin names use lowercase letters, digits and '-', and start with a letter"
+	}
+	return ""
+}
+
+// ValidateName reports whether name is a plain plugin slug that is safe to join
+// to the plugin directory and is not a reserved infrastructure name. It rejects
+// the empty string, ".", "..", any path separator (slash or backslash, and the
+// OS separator), absolute paths, a leading '-', NUL and other control
+// characters, whitespace, and anything filepath.Base would change.
+func ValidateName(name string) error {
+	reason := slugReason(name)
+	if reason == "" {
+		reason = reservedNames[name]
+		if reason != "" {
+			reason = "it is reserved: " + reason
+		}
 	}
 	if reason == "" {
 		return nil
 	}
 	return errs.Newf("E401", "invalid plugin name %q: %s", name, reason).
 		WithFix("use the plugin name as shown by 'nself plugin list', for example 'nself plugin remove notify'")
+}
+
+// ValidateCommandName reports whether cmd is a plain command name: the part after
+// "nself-" in a published binary, and the first argument of the command proxy.
+// Same shape as a plugin slug, but reserved plugin names are allowed.
+func ValidateCommandName(cmd string) error {
+	if reason := slugReason(cmd); reason != "" {
+		return errs.Newf("E401", "invalid command name %q: %s", cmd, reason).
+			WithFix("command names are lowercase letters, digits and '-'")
+	}
+	return nil
 }
 
 // hasControlChar reports whether s holds NUL, any other ASCII control
