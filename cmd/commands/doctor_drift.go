@@ -62,7 +62,18 @@ func checkGeneratedDrift(_ context.Context, cwd string) (doctorCheckResult, *rec
 	p := &reconcile.Plan{Command: reconcile.CmdDoctorFix, Trigger: reconcile.Trigger{Kind: reconcile.TriggerDrift}}
 	p.Containers.Known = true
 	if state != nil {
+		handEdited := state.HandEditedFn(root)
 		for name, recorded := range state.Files {
+			if virtualStateKey(name) {
+				// D-0382: a file outside the project ("@plugins/", "@fronting/",
+				// "@abs/") is resolved the way the record resolves it. Only a
+				// changed file is drift: a missing one is a removed plugin or an
+				// absent fronting stack, which the next build settles.
+				if handEdited(name) {
+					p.Artifacts = append(p.Artifacts, reconcile.Artifact{Path: name, HandEdited: true})
+				}
+				continue
+			}
 			if !filepath.IsLocal(name) {
 				continue
 			}
@@ -82,6 +93,19 @@ func checkGeneratedDrift(_ context.Context, cwd string) (doctorCheckResult, *rec
 		return doctorCheckResult{Name: "Generated files", Status: "fail", Message: err.Error()}, nil, err
 	}
 	return driftResult(p, false), p, nil
+}
+
+// virtualStateKey reports whether a generated-state key names a file outside
+// the project (reconcile.FrontingPrefix, PluginsPrefix or AbsPrefix) rather than
+// a project-relative path. filepath.IsLocal accepts these keys, so they must be
+// told apart before a key is joined onto the project root.
+func virtualStateKey(name string) bool {
+	for _, prefix := range []string{reconcile.FrontingPrefix, reconcile.PluginsPrefix, reconcile.AbsPrefix} {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func driftResult(p *reconcile.Plan, repaired bool) doctorCheckResult {

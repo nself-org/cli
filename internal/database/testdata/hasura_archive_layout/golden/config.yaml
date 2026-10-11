@@ -1,0 +1,4 @@
+actions: !include actions.yaml
+remote_schemas: !include remote_schemas.yaml
+sources: !include sources.yaml
+version: !include version.yaml

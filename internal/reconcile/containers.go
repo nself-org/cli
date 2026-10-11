@@ -5,8 +5,8 @@ package reconcile
 // Purpose: say which running services the next `nself start` would recreate
 // and which of those hold a named volume, without changing anything.
 // Inputs: the planned build (bytes it would write) and the project on disk.
-// Outputs: Containers items (action recreate or unknown, stateful, applied by
-// the next start) and, with RemoveOrphans, orphan-remove effects.
+// Outputs: Containers items (action recreate, unknown or create, stateful,
+// applied by the next start) and, with RemoveOrphans, orphan-remove effects.
 // Constraints: the invocation is the one `nself start` builds: the files of
 // build.ReadComposeManifest and the env files of build.ComposeEnvFiles, run
 // over a temporary "shadow" copy of the project's small inputs with the planned
@@ -75,7 +75,12 @@ func containerImpact(ctx context.Context, req Request, dir string, res *nbuild.B
 		notice("container impact unknown: %v", err)
 		return Containers{Known: false, Items: []ContainerItem{}}, nil
 	}
-	items, orphans := compareRunning(running, hashes, defined, stateful)
+	inits, err := initContainerServices(files)
+	if err != nil {
+		notice("container impact unknown: %v", err)
+		return Containers{Known: false, Items: []ContainerItem{}}, nil
+	}
+	items, orphans := compareRunning(running, hashes, defined, stateful, inits)
 	var effects []Effect
 	if req.RemoveOrphans {
 		for _, o := range orphans {
@@ -88,12 +93,18 @@ func containerImpact(ctx context.Context, req Request, dir string, res *nbuild.B
 
 // compareRunning matches running containers with the planned hashes. A service
 // is recreate when any of its containers carries a different hash, unknown
-// when one carries none (treated as a recreate), none otherwise. A container
+// when one carries none (treated as a recreate), none otherwise, and create
+// when it is in the active configuration but has no container (running or
+// stopped) while the project has some. On a project with none, every service
+// would be create and no plan could be empty. Init services (inits) never
+// are: `nself start` removes their containers after every run. A container
 // whose service is defined nowhere in the planned compose is an orphan.
-func compareRunning(running []RunningContainer, hashes map[string]string, defined map[string]struct{}, stateful map[string]bool) ([]ContainerItem, []RunningContainer) {
+func compareRunning(running []RunningContainer, hashes map[string]string, defined map[string]struct{}, stateful, inits map[string]bool) ([]ContainerItem, []RunningContainer) {
 	action := map[string]ContainerAction{}
 	var orphans []RunningContainer
+	present := map[string]bool{}
 	for _, c := range running {
+		present[c.Service] = true
 		if _, ok := defined[c.Service]; !ok {
 			orphans = append(orphans, c)
 			continue
@@ -113,6 +124,13 @@ func compareRunning(running []RunningContainer, hashes map[string]string, define
 			action[c.Service] = a
 		}
 	}
+	if len(running) > 0 {
+		for svc := range hashes {
+			if !present[svc] && !inits[svc] {
+				action[svc] = ContainerCreate
+			}
+		}
+	}
 	items := []ContainerItem{}
 	for svc, a := range action {
 		if a == ContainerNone {
@@ -125,7 +143,8 @@ func compareRunning(running []RunningContainer, hashes map[string]string, define
 	return items, orphans
 }
 
-// rank orders actions by severity: none < unknown < recreate.
+// rank orders actions by severity: none < unknown < recreate. create never
+// competes: it is set only for a service with no container.
 func rank(a ContainerAction) int {
 	switch a {
 	case ContainerRecreate:

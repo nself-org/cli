@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -74,5 +75,36 @@ func TestTakeVerifiedSnapshot_TimesOut(t *testing.T) {
 	_, err := waitForSnapshotAvailable(context.Background(), fc, 1, act, time.Now().Add(10*time.Millisecond), 10*time.Millisecond)
 	if err == nil {
 		t.Fatal("want timeout error when snapshot never becomes available")
+	}
+}
+
+// TestTakeVerifiedSnapshot_GetActionFails_ReturnsError pins D-0262: a failed
+// GetAction returns a nil action; the wait loop must return the error, not
+// dereference it.
+func TestTakeVerifiedSnapshot_GetActionFails_ReturnsError(t *testing.T) {
+	oldInterval := snapshotPollInterval
+	snapshotPollInterval = time.Millisecond
+	t.Cleanup(func() { snapshotPollInterval = oldInterval })
+
+	fc := newFakeClient()
+	fc.images[1] = &Image{ID: 1, Status: "creating"}
+	act := &Action{ID: 7, Status: "running"} // not in fc.actions: GetAction fails
+
+	_, err := waitForSnapshotAvailable(context.Background(), fc, 1, act, time.Now().Add(time.Second), time.Second)
+	if err == nil {
+		t.Fatal("want error when GetAction fails")
+	}
+	if !strings.Contains(err.Error(), "poll snapshot action 7") {
+		t.Errorf("error = %q, want it to name action 7", err)
+	}
+}
+
+// TestTakeVerifiedSnapshot_NilAction_ReturnsError covers a provider that
+// returns no action at all.
+func TestTakeVerifiedSnapshot_NilAction_ReturnsError(t *testing.T) {
+	fc := newFakeClient()
+	fc.images[1] = &Image{ID: 1, Status: "creating"}
+	if _, err := waitForSnapshotAvailable(context.Background(), fc, 1, nil, time.Now().Add(time.Second), time.Second); err == nil {
+		t.Fatal("want error for a nil action")
 	}
 }

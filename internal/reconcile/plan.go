@@ -101,6 +101,9 @@ const (
 	ContainerRecreate ContainerAction = "recreate"
 	ContainerNone     ContainerAction = "none"
 	ContainerUnknown  ContainerAction = "unknown"
+	// ContainerCreate: a planned service with no container that the next
+	// start creates (D-0505; rules in compareRunning).
+	ContainerCreate ContainerAction = "create"
 )
 
 // AppliedBy is the `containers.items[].applied_by` enum.

@@ -39,11 +39,11 @@ The lock is released when the command returns, fails or panics, and when the pro
 | v1.5 (`NSELF_V15=1`) | Fails at once with E460, exit 1, naming the holder: `wait for nself build (pid 4242) or stop it`. With `--json` the error envelope goes to stdout as usual. |
 | v1.4 (default) | Waits up to 30 seconds (one notice on stderr), then prints a warning on stderr and runs without the lock. |
 
-If the lock file cannot be created (read-only project folder) the command runs unlocked with a warning on stderr. The lock is a no-op on platforms without `flock` (Windows). Use WSL2 there. All notices go to stderr, never stdout.
+If the lock file cannot be created (read-only project folder) the command runs unlocked with a warning on stderr. The lock is a no-op on platforms without `flock` (Windows). Use WSL2 there. That platform notice prints once, and only to a terminal: never under `--quiet` or when stderr is a pipe or log. All notices go to stderr, never stdout.
 
 ### Nested nself commands
 
-A command that runs `nself` itself (`nself bundle`, `nself admin`, `nself deploy`, `nself mcp` call `nself build`) must not deadlock on its own lock. The holder exports its token as `NSELF_OPLOCK_TOKEN`. A child `nself` whose token equals the token in the holder file, while the lock is held, runs without taking it. A token whose lock is no longer held grants nothing.
+A command that runs `nself` itself (`nself bundle`, `nself admin`, `nself deploy`, `nself mcp` call `nself build`) must not deadlock on its own lock. The holder exports its token as `NSELF_OPLOCK_TOKEN`. A child `nself` whose token equals the token in the holder file, while the lock is held, runs without taking it. A token whose lock is no longer held grants nothing. A command that is waiting and finds a holder record naming a process on this host that has already exited treats the holder as unknown and reads again, so it never names a dead pid or re-enters on a dead holder's token.
 
 ### What it does not do
 
@@ -51,6 +51,7 @@ It is a cooperative lock between nself processes of the same user:
 
 - A process that does not use nself (a shell script, `docker compose` by hand, an editor) ignores it.
 - The token is in the holder file, so any reader of the project folder can export it and pass for a child. It stops accidents, not an adversary.
+- The holder sets `NSELF_OPLOCK_TOKEN` in its own environment, so every child process inherits it: docker, hooks and plugins as well as a child `nself`. It is a cooperative token, not a secret.
 - A child that outlives its parent runs unlocked: the parent's lock ended with the parent.
 - A `clean` that deletes `.nself/` while the lock is held orphans that lock. The next command locks the new file.
 - `nself build` takes this same lock (it no longer keeps its own `.nself/build.lock` except as described next), so a killed build leaves nothing stale. A build that finds the lock held by another build fails at once, naming the holder, and writes nothing. Held by another command: v1.5 fails at once naming that command; v1.4 keeps the old behaviour (the command guard waits up to 30 seconds, then the build goes ahead) but under the old O_EXCL `.nself/build.lock`, so two builds never overlap. Where flock is unsupported (native Windows) the O_EXCL `.nself/build.lock` is the lock, as before. A build never runs unlocked. `reconcile.Apply` holds the lock from the first render to the last write.
@@ -69,7 +70,7 @@ It is a cooperative lock between nself processes of the same user:
 ### What `--plan` guarantees
 
 - It writes nothing under the project, `~/.nself`, the plugin directory, the fronting stack's nginx directory or `/etc/hosts`, and it starts, stops and creates no container. The command guard still creates the operation lock file `.nself/op.lock` (build is a `write` command), and the usual one-line invocation log in `~/.nself/logs/nself.log` is written unless `NSELF_CMD_LOG_ENABLED=false`.
-- Container impact comes from `docker compose config --hash` over the planned files (the same files and env files `nself start` passes) compared with the `com.docker.compose.config-hash` label of the running containers. A service whose hash differs is `recreate`; one running without the label is `unknown` and treated as a recreate. A service that mounts a named volume is `stateful`. Every container item is `applied_by: next-start`: no build command recreates a container. If Docker cannot be asked, the plan says `containers.known: false` and prints a notice on stderr; it never fails for that reason.
+- Container impact comes from `docker compose config --hash` over the planned files (the same files and env files `nself start` passes) compared with the `com.docker.compose.config-hash` label of the running containers. A service whose hash differs is `recreate`; one running without the label is `unknown` and treated as a recreate. A planned service with no container (running or stopped) is `create` when the project already has containers; on a project with none, nothing is listed as `create`. A service that mounts a named volume is `stateful`. Every container item is `applied_by: next-start`: no build command recreates a container. If Docker cannot be asked, the plan says `containers.known: false` and prints a notice on stderr; it never fails for that reason.
 - Secrets are never printed: env-kind artifacts are redacted, `--diff` shows key names only, and an effect that persists a secret names the key, not the value.
 
 ### The plan

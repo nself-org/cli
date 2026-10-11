@@ -44,7 +44,8 @@ type vtSelect struct {
 }
 
 type vtMeta struct {
-	Sources []struct {
+	InheritedRoles []vtInherited `json:"inherited_roles"`
+	Sources        []struct {
 		Name   string `json:"name"`
 		Tables []struct {
 			Table             vtRef      `json:"table"`
@@ -204,9 +205,13 @@ func planTrack(live []byte, schema, name, table, column string, roles []string) 
 	if !tableTracked {
 		return nil, errs.Newf("E513", "table %s.%s is not tracked in live Hasura", schema, table)
 	}
+	inherited := map[string][]string{}
+	for _, ir := range m.InheritedRoles {
+		inherited[ir.RoleName] = ir.RoleSet
+	}
 	var lacking []string
 	for _, r := range roles {
-		if !selectRoles[r] {
+		if !hasSelect(r, selectRoles, inherited, map[string]bool{}) {
 			lacking = append(lacking, r)
 		}
 	}

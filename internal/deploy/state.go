@@ -6,7 +6,9 @@ package deploy
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -84,12 +86,17 @@ type StrategyState struct {
 }
 
 // LoadDeployState reads the deploy state from .nself/state/deploy.json.
-// Returns a zero-value StrategyState when no state file exists (fresh install).
+// Returns a zero-value StrategyState and nil when no state file exists (fresh
+// install). Any other read failure and a corrupt file are returned as errors,
+// never as an empty state (D-0144).
 func LoadDeployState(projectRoot string) (StrategyState, error) {
 	path := filepath.Join(projectRoot, DeployStateFile)
 	data, err := os.ReadFile(path)
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
 		return StrategyState{}, nil
+	}
+	if err != nil {
+		return StrategyState{}, fmt.Errorf("reading deploy state: %w", err)
 	}
 	var s StrategyState
 	if err := json.Unmarshal(data, &s); err != nil {
