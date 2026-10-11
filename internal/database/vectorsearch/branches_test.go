@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -175,6 +176,9 @@ func TestMirrorWriteFailureAndMigrationCreateFailure(t *testing.T) {
 	}
 	if _, _, err := MirrorFunction(dir, "public", "docs_nearest_embedding", []string{"user"}); err == nil {
 		t.Error("a read-only metadata file must fail the mirror")
+	}
+	if runtime.GOOS == "windows" {
+		return // a read-only directory mode does not stop file creation on Windows
 	}
 	ro := t.TempDir()
 	if err := os.Chmod(ro, 0o500); err != nil {
