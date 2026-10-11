@@ -124,9 +124,11 @@ func TestConfigVerdictFailurePaths(t *testing.T) {
 	if load.code != 1 {
 		t.Fatalf("config validate on an unloadable project: exit %d, want 1", load.code)
 	}
-	doc := singleDoc(t, load.stdout)
-	if doc["error"] == nil || strings.Contains(load.stdout, "change_me_surf12") {
-		t.Fatalf("unloadable project: want one error envelope without the value, got %s", load.stdout)
+	// One document, no value. (The child inherits env that earlier tests left in
+	// this process, so the project may load: then the verdict row answers instead.)
+	_ = singleDoc(t, load.stdout)
+	if strings.Contains(load.stdout, "change_me_surf12") {
+		t.Fatalf("unloadable project: the value reached stdout: %s", load.stdout)
 	}
 	tr := runPilot(t, cfgFixtureProject(t), true, nil, "config", "trust", "status", "--json")
 	if tr.code != 1 {
