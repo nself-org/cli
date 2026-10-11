@@ -53,8 +53,17 @@ func newHintEnv(t *testing.T) *hintEnv {
 	root.SetErr(h.errw)
 	ok := func(c *cobra.Command, _ []string) error { c.Println("stdout-body"); return nil }
 	bad := func(*cobra.Command, []string) error { return errors.New("boom") }
+	// waitrefresh's body returns only after the refresh this command started
+	// has written the cache: the race D-0361 describes, made certain.
+	waitRefresh := func(c *cobra.Command, args []string) error {
+		if h.done != nil {
+			<-h.done
+		}
+		return ok(c, args)
+	}
 	root.AddCommand(
 		&cobra.Command{Use: "plain", RunE: ok},
+		&cobra.Command{Use: "waitrefresh", RunE: waitRefresh},
 		&cobra.Command{Use: "failing", RunE: bad},
 		&cobra.Command{Use: "update", RunE: ok},
 		&cobra.Command{Use: "envl", RunE: ok},
@@ -69,7 +78,8 @@ func newHintEnv(t *testing.T) *hintEnv {
 	}
 	entries := map[string]*cmdregistry.Command{
 		"nself plain": {JSON: canon.JSONEnvelope}, "nself failing": {JSON: canon.JSONEnvelope},
-		"nself update": {JSON: canon.JSONEnvelope}, "nself envl": {JSON: canon.JSONEnvelope},
+		"nself waitrefresh": {JSON: canon.JSONEnvelope},
+		"nself update":      {JSON: canon.JSONEnvelope}, "nself envl": {JSON: canon.JSONEnvelope},
 		"nself legacyfmt": {JSON: canon.JSONLegacy}, "nself legacyout": {JSON: canon.JSONLegacy},
 	}
 	oldEntry, oldGuards, oldStarted := jsonEntryFor, updateCheckGuards, updateCheckStarted
@@ -215,6 +225,67 @@ func TestUpdateCheckHintInvocation(t *testing.T) {
 	if strings.Contains(h.outw.String(), hintWord) {
 		t.Fatal("hint on stdout")
 	}
+}
+
+// TestUpdateCheckHintOwnRefreshNeverFeedsHint: a refresh that finishes while
+// the command body runs never decides that command's hint (D-0361). The body
+// waits for the refresh, so the old race is certain rather than timing-bound.
+func TestUpdateCheckHintOwnRefreshNeverFeedsHint(t *testing.T) {
+	t.Run("no cache: the refresh finds a newer release, no hint yet", func(t *testing.T) {
+		h := newHintEnv(t)
+		h.env = map[string]string{"NSELF_UPDATE_CHECK": "1"}
+		if err := h.run("waitrefresh"); err != nil {
+			t.Fatal(err)
+		}
+		if h.hits != 1 || updatecheck.Load(h.path).Latest != "99.0.0" {
+			t.Fatalf("refresh did not complete in the body: hits %d cache %+v", h.hits, updatecheck.Load(h.path))
+		}
+		if strings.Contains(h.errw.String(), hintWord) {
+			t.Fatalf("the command's own refresh fed its hint: %q", h.errw.String())
+		}
+		h.now = h.now.Add(time.Minute)
+		if err := h.run("plain"); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Count(h.errw.String(), hintWord) != 1 || !strings.Contains(h.errw.String(), "99.0.0") {
+			t.Fatalf("next command: want one hint naming 99.0.0, got %q", h.errw.String())
+		}
+	})
+	t.Run("stale cache with a due hint: hint from the cache as it was", func(t *testing.T) {
+		h := newHintEnv(t)
+		h.env = map[string]string{"NSELF_UPDATE_CHECK": "1"}
+		h.seed(t, "98.0.0", 25*time.Hour, 25*time.Hour)
+		if err := h.run("waitrefresh"); err != nil {
+			t.Fatal(err)
+		}
+		out := h.errw.String()
+		if strings.Count(out, hintWord) != 1 || !strings.Contains(out, "98.0.0") || strings.Contains(out, "99.0.0") {
+			t.Fatalf("want one hint naming the pre-refresh 98.0.0, got %q", out)
+		}
+		c := updatecheck.Load(h.path)
+		if h.hits != 1 || c.Latest != "99.0.0" || !c.HintedAt.Equal(h.now) || !c.CheckedAt.Equal(h.now) {
+			t.Fatalf("cache must keep both the refresh and the hint record: hits %d %+v", h.hits, c)
+		}
+	})
+	t.Run("stale cache, failing command: no hint, the day's hint is spent", func(t *testing.T) {
+		h := newHintEnv(t)
+		h.env = map[string]string{"NSELF_UPDATE_CHECK": "1"}
+		h.seed(t, "98.0.0", 25*time.Hour, 25*time.Hour)
+		if err := h.run("failing"); err == nil {
+			t.Fatal("failing command returned nil")
+		}
+		if strings.Contains(h.errw.String(), hintWord) {
+			t.Fatalf("a failed command printed a hint: %q", h.errw.String())
+		}
+		if c := updatecheck.Load(h.path); !c.HintedAt.Equal(h.now) {
+			t.Fatalf("the early decision records hinted_at (documented in Update-Notifications.md): %+v", c)
+		}
+		h.now = h.now.Add(time.Minute)
+		_ = h.run("plain")
+		if strings.Contains(h.errw.String(), hintWord) {
+			t.Fatalf("a second hint within 24h: %q", h.errw.String())
+		}
+	})
 }
 
 func TestUpdateCheckHintNoRequestWithoutOptIn(t *testing.T) {
