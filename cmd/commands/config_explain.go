@@ -12,8 +12,8 @@ package commands
 // Outputs: a table (human) or the v1 envelope (--json). Values are redacted
 //          unless --reveal.
 // Constraints: flag parsing is off for this command because the target flag
-//          (`--domain`) is data, not an option of explain; --reveal, --json and
-//          -h/--help are the only reserved tokens and are read by hand. The
+//          (`--domain`) is data, not an option of explain; the arguments are
+//          read by hand in config_explain_args.go. The
 //          cascade walk is config.ExplainKey, shared with `config env explain`.
 //          Read only; never writes.
 
@@ -47,7 +47,9 @@ that supplies no key, exits 1 with E434.
 
 Values are redacted unless --reveal is given. --json prints one envelope.
 Precedence is the loader's: a file in the .env cascade replaces a process
-environment value, so the process environment wins only when no file sets the key.`,
+environment value, so the process environment wins only when no file sets the key.
+ENV is the exception on the way in: its process value chooses the cascade files
+before they are read, shown as "cascade selected by".`,
 	DisableFlagParsing: true,
 	PreRunE:            prepareConfigExplain,
 	RunE:               runConfigExplain,
@@ -56,70 +58,6 @@ environment value, so the process environment wins only when no file sets the ke
 func init() {
 	configExplainCmd.Flags().Bool("reveal", false, "Show actual values instead of redacting them")
 	configCmd.AddCommand(configExplainCmd)
-}
-
-// explainInput is the hand-parsed command line.
-type explainInput struct {
-	words  []string
-	flag   string
-	reveal bool
-	json   bool
-	help   bool
-}
-
-func explainUsage(format string, a ...any) error {
-	return errs.Newf("E401", format, a...).WithFix("Usage: nself config explain KEY, or nself config explain <command> --<flag>.")
-}
-
-// parseExplainArgs reads the raw arguments: --reveal, --json[=bool] and
-// -h/--help are reserved; any other --name is the target flag.
-func parseExplainArgs(args []string) (explainInput, error) {
-	var in explainInput
-	for _, a := range args {
-		switch {
-		case a == "--reveal":
-			in.reveal = true
-		case a == "--json" || a == "--json=true":
-			in.json = true
-		case a == "--json=false":
-			in.json = false
-		case a == "-h" || a == "--help":
-			in.help = true
-		case strings.HasPrefix(a, "--"):
-			name, _, _ := strings.Cut(strings.TrimPrefix(a, "--"), "=")
-			if name == "" {
-				continue // a bare "--" ends nothing here
-			}
-			if in.flag != "" {
-				return in, explainUsage("config explain takes one flag, got --%s and --%s", in.flag, name)
-			}
-			in.flag = name
-		case strings.HasPrefix(a, "-") && len(a) > 1:
-			return in, explainUsage("unknown option %q: only --reveal, --json and one target --flag are accepted", a)
-		default:
-			in.words = append(in.words, a)
-		}
-	}
-	if len(in.words) > 1 && in.words[0] == "nself" {
-		in.words = in.words[1:]
-	}
-	return in, nil
-}
-
-// prepareConfigExplain turns on the persistent json flag before the invocation
-// decorator runs the body, because flag parsing is disabled.
-func prepareConfigExplain(cmd *cobra.Command, args []string) error {
-	in, err := parseExplainArgs(args)
-	if err != nil {
-		return err
-	}
-	_ = cmd.InheritedFlags() // merge the persistent flags into cmd.Flags()
-	if in.json {
-		if err := cmd.Flags().Set("json", "true"); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func runConfigExplain(cmd *cobra.Command, args []string) error {
@@ -154,8 +92,7 @@ func runConfigExplain(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
 	}
-	activeEnv, _ := config.ResolveEnv(dir)
-	exp, err := config.ExplainKey(dir, activeEnv, key)
+	exp, err := config.ExplainActive(dir, key)
 	if err != nil {
 		return err
 	}
@@ -243,6 +180,11 @@ func printConfigExplain(d configExplainData) error {
 	}
 	fmt.Printf("%-12s %s\n%-12s %s\n", "Env name:", d.EnvName, "Default:", def)
 	fmt.Printf("%-12s %s (%s cascade)\n", "Environment:", d.Environment, d.CascadeMode)
+	if d.Key == "ENV" && d.EnvironmentSource != "" {
+		// ENV chooses the cascade before any file is read, so its process
+		// value can select the files even when a file wins the final value.
+		fmt.Printf("%-12s cascade selected by: %s\n", "", d.EnvironmentSource)
+	}
 	if len(d.Flags) == 0 {
 		fmt.Printf("%-12s none (the key is set by file or environment only)\n", "Flags:")
 	}

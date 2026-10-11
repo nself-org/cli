@@ -35,6 +35,9 @@
     "environment": {
       "type": "string"
     },
+    "environment_source": {
+      "type": "string"
+    },
     "flags": {
       "items": {
         "additionalProperties": false,
@@ -131,6 +134,7 @@
     "known",
     "default",
     "environment",
+    "environment_source",
     "cascade_mode",
     "flags",
     "nself_yaml",

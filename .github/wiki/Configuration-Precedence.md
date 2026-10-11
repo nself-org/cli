@@ -18,7 +18,7 @@ The loader reads the cascade files for the active environment, lowest precedence
 3. `.env.secrets`
 4. `.env.local`
 
-The process environment is the lowest source in practice: a file in the cascade replaces a value that the process environment carries, so the process environment wins only when no cascade file sets the key. A key that nothing sets falls back to its documented default. `NSELF_LEGACY_ENV_ORDER=1` restores the previous order for one minor version (see [[Configuration]]).
+The process environment is the lowest source in practice: a file in the cascade replaces a value that the process environment carries, so the process environment wins only when no cascade file sets the key. A key that nothing sets falls back to its documented default. `ENV` is the one exception: the loader reads the process value of `ENV` first (then `.env`, then `dev`) to choose which cascade files to read, so `nself config explain ENV` prints `cascade selected by: process environment` (`environment_source` in `--json`) even when a file wins the final value. `NSELF_LEGACY_ENV_ORDER=1` restores the previous order for one minor version (see [[Configuration]]).
 
 ## Asking which source wins
 
@@ -36,6 +36,8 @@ The answer lists the env name, the default, the flags that supply the key, the M
 ## Flags that supply a key
 
 Each flag with a configuration meaning is bound to its key once, in `internal/config/bindings/flags.yaml`. A flag whose upper-snake name is a known key and which is not bound is listed with a reason in `exempt.yaml`; a test fails for any flag that is neither. The command registry reports the bound key as `env` on the flag (`nself help --json`).
+
+An explicit flag sets its key for that one invocation and wins over every file and the process environment. `nself config explain` lists the flags that supply a key but never shows one as a source or the winner, because a flag exists only on the command line of the run it is given to. Two bindings do not meet this rule yet: `start --skip-health-checks=false` cannot override `NSELF_SKIP_HEALTH_CHECKS=true`, and `build --debug` sets `DEBUG`, which no code reads.
 
 <!-- BEGIN GENERATED: config-bindings (internal/config/bindings; do not hand edit) -->
 

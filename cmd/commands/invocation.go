@@ -113,7 +113,7 @@ func guarded(orig func(*cobra.Command, []string) error) func(*cobra.Command, []s
 			restore := output.IsolateStdout()
 			defer restore()
 		}
-		return orig(cmd, args)
+		return runWithUpdateHint(cmd, args, orig)
 	}
 }
 
