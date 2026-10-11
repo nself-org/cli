@@ -938,3 +938,23 @@ func TestPromptInterrupt(t *testing.T) {
 		t.Errorf("after SIGINT at the prompt:\n got %s\nwant %s", got, applyInterruptWant)
 	}
 }
+
+// P1: the legacy push keeps the target's own name: for a prod-class env called
+// "live" the record says "live", so `deploy rollback live` finds it.
+func TestLegacyPushRecordKeepsTargetName(t *testing.T) {
+	proj, _ := v15Project(t)
+	t.Setenv("NSELF_DEPLOY_SSH_KEY", "/tmp/key")
+	orig := prodClassFn
+	prodClassFn = func(i *controlplane.Inventory, env string) bool { return env == "live" || orig(i, env) }
+	t.Cleanup(func() { prodClassFn = orig })
+	ctx := context.WithValue(context.Background(), deployYesKey{}, true)
+	if err := remoteDeployPushDispatch(ctx, proj, "deploy@app.example.test:/srv/nself", "live", true); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := deploy.LoadDeployState(proj); st.Target != "live" || st.BackupID == "" {
+		t.Fatalf("record %+v: want target live with the prod backup", st)
+	}
+	if handled, err := rollbackRemoteV15(yesCmd(), proj, "live"); !handled || err != nil {
+		t.Fatalf("rollback live: handled=%v err=%v", handled, err)
+	}
+}

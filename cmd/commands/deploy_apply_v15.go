@@ -170,19 +170,6 @@ func recordRemoteApply(workdir, target string, start time.Time, backupID, backup
 	}
 }
 
-// previousShipped is the union of the paths the target's last recorded deploy
-// shipped or pruned, on every host: what a prune may remove.
-func previousShipped(workdir, target string) []string {
-	st, _ := deploy.LoadDeployState(workdir)
-	var out []string
-	if st.Target == target {
-		for _, paths := range st.PreDeployChanged {
-			out = append(out, paths...)
-		}
-	}
-	return out
-}
-
 // resolveDeployEnvSnapshot is writeResolvedDeployEnv for the pipeline: v1.5
 // writes the snapshot inside the scratch dir later, so nothing lands in the
 // operator's tree here.
@@ -244,7 +231,7 @@ func remoteDeployPushDispatch(ctx context.Context, workdir, host, target string,
 	if compat.V15() {
 		return remoteDeployV15(ctx, workdir, host, target, jsonOut)
 	}
-	return remoteDeployPush(ctx, workdir, host, target, jsonOut)
+	return remoteDeployPush(ctx, workdir, host, deployCascadeEnv(workdir, target), jsonOut)
 }
 
 func remoteDeployV15(ctx context.Context, workdir, host, target string, jsonOut bool) error {
@@ -264,7 +251,7 @@ func remoteDeployV15(ctx context.Context, workdir, host, target string, jsonOut 
 	}
 	rp := spec.LegacyPath
 	if rp == "" {
-		rp = os.Getenv("NSELF_REMOTE_PATH_" + strings.ToUpper(target))
+		rp = os.Getenv("NSELF_REMOTE_PATH_" + strings.ToUpper(deployCascadeEnv(workdir, target)))
 	}
 	if rp == "" {
 		rp = "/opt/nself"

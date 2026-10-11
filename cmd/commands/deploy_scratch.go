@@ -257,3 +257,16 @@ func confirmFrom(ctx context.Context, in io.Reader, out io.Writer, msg string) b
 		return false
 	}
 }
+
+// previousShipped is the union of the paths the target's last recorded deploy
+// shipped or pruned, on every host: what a prune may remove.
+func previousShipped(workdir, target string) []string {
+	st, _ := deploy.LoadDeployState(workdir)
+	var out []string
+	if st.Target == target {
+		for _, paths := range st.PreDeployChanged {
+			out = append(out, paths...)
+		}
+	}
+	return out
+}
