@@ -13,14 +13,15 @@ import (
 
 // sslRepo makes a temp git repo with the given root .gitignore and returns
 // its path plus a git runner. Global and system git config are off so the
-// developer's own excludes cannot change the result.
+// developer's own excludes cannot change the result. The literal /dev/null
+// (not os.DevNull, which is NUL) is what Git for Windows accepts.
 func sslRepo(t *testing.T, gitignore string) (string, func(args ...string)) {
 	t.Helper()
 	gitBin, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("git not on PATH")
 	}
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	dir := t.TempDir()
 	run := func(args ...string) {

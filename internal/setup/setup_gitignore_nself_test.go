@@ -10,7 +10,8 @@ import (
 
 // gitCheckIgnore returns git check-ignore's exit code for path in a fresh
 // repo at dir: 0 ignored, 1 not ignored. Global and system config are off so
-// a developer's core.excludesFile cannot change the answer.
+// a developer's core.excludesFile cannot change the answer. The literal
+// /dev/null (not os.DevNull, which is NUL) is what Git for Windows accepts.
 func gitCheckIgnore(t *testing.T, dir, path string) int {
 	t.Helper()
 	gitBin, err := exec.LookPath("git")
@@ -20,7 +21,7 @@ func gitCheckIgnore(t *testing.T, dir, path string) int {
 	run := func(args ...string) int {
 		cmd := exec.Command(gitBin, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
 		err := cmd.Run()
 		if ee, ok := err.(*exec.ExitError); ok {
 			return ee.ExitCode()
