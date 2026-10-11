@@ -148,8 +148,10 @@ func (r *recordingRemote) Run(ctx context.Context, c string) ([]byte, error) {
 func sha(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 
 // stageSet builds an artifact set for host path rp from a scratch project that holds
-// local paths everywhere, the way a build leaves them.
-func stageSet(t *testing.T, rp, version string) deploy.ArtifactSet {
+// local paths everywhere, the way a build leaves them. It also returns those local
+// roots (scratch, operator, plugin dir, home): the only paths that must not survive.
+// The remote path itself may sit under os.TempDir (it does on Linux runners).
+func stageSet(t *testing.T, rp, version string) (deploy.ArtifactSet, []string) {
 	t.Helper()
 	base := t.TempDir()
 	operator, scratch := filepath.Join(base, "operator"), filepath.Join(base, "operator", ".nself", "deploy-build", "prod")
@@ -179,7 +181,7 @@ func stageSet(t *testing.T, rp, version string) deploy.ArtifactSet {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return set
+	return set, []string{scratch, operator, plugins, filepath.Join(base, "home")}
 }
 
 func (h *simHost) scenario(dryRun string) {
@@ -219,7 +221,7 @@ func TestSimRemoteApplyAndRollback(t *testing.T) {
 	ctx := context.Background()
 	// 1. Unconfirmed stateful recreate on a prod-class target: E403, nothing applied.
 	h.scenario(" Container proj-db-1 Recreate\n")
-	set := stageSet(t, h.rp, "1")
+	set, local := stageSet(t, h.rp, "1")
 	r := h.remote()
 	_, err := deploy.ApplyRemote(ctx, h.options(set, r, false))
 	var ce *errs.CLIError
@@ -294,11 +296,14 @@ func TestSimRemoteApplyAndRollback(t *testing.T) {
 		t.Errorf("shipped conf does not reference the target's TLS dir and chain:\n%s", shipped)
 	}
 	for _, f := range []string{"/docker-compose.yml", "/.nself/compose-files.txt", "/.nself/compose.env", "/.nself/plugins/ai/docker-compose.plugin.yml"} {
-		if body := h.sh("cat " + h.rp + f); strings.Contains(body, os.TempDir()) || strings.Contains(body, "/operator/") || strings.Contains(body, "/home/.nself") {
-			t.Errorf("%s names an operator-local path:\n%s", f, body)
+		body := h.sh("cat " + h.rp + f)
+		for _, root := range local {
+			if strings.Contains(body, root) {
+				t.Errorf("%s names the operator-local path %s:\n%s", f, root, body)
+			}
 		}
 	}
-	mirrorResolves(t, h)
+	mirrorResolves(t, h, local)
 
 	// 4. Rollback restores in place: files, foreign conf, conf.d, the bind-mounted dir's inode.
 	rb := h.remote()
@@ -321,7 +326,7 @@ func TestSimRemoteApplyAndRollback(t *testing.T) {
 
 // mirrorResolves copies the shipped tree to the same absolute path on the test host and
 // resolves it with the real docker compose; no operator-local path may appear.
-func mirrorResolves(t *testing.T, h *simHost) {
+func mirrorResolves(t *testing.T, h *simHost, local []string) {
 	t.Helper()
 	root := filepath.Dir(h.rp)
 	if err := os.RemoveAll(root); err != nil {
@@ -355,8 +360,10 @@ func mirrorResolves(t *testing.T, h *simHost) {
 	if err != nil {
 		t.Fatalf("docker compose config on the mirrored tree: %v\n%s", err, out)
 	}
-	if home, _ := os.UserHomeDir(); home != "" && strings.Contains(string(out), home) || strings.Contains(string(out), "/operator/") {
-		t.Errorf("resolved model names an operator-local path:\n%s", out)
+	for _, root := range local {
+		if strings.Contains(string(out), root) {
+			t.Errorf("resolved model names the operator-local path %s:\n%s", root, out)
+		}
 	}
 	if !strings.Contains(string(out), h.rp+"/nginx") {
 		t.Errorf("resolved model does not use the remote layout:\n%s", out)
@@ -395,7 +402,7 @@ func TestSimRemoteApplyDriftAndSnapshot(t *testing.T) {
 	}
 
 	// A local plugin set that differs refuses before any sync, naming the difference.
-	set := stageSet(t, h.rp, "1")
+	set, _ := stageSet(t, h.rp, "1")
 	o := h.options(set, h.remote(), true)
 	o.LocalPlugins = []deploy.PluginRef{{Name: "ai", Version: "2.0.0"}}
 	_, err = deploy.ApplyRemote(context.Background(), o)
