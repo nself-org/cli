@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -125,6 +126,9 @@ func runPluginDev(cmd *cobra.Command, args []string) error {
 // resolvePluginPath returns the absolute path of the named plugin on disk.
 // It checks: (1) cwd/<name>, (2) ~/.nself/plugin-links.json entry.
 func resolvePluginPath(name string) (string, error) {
+	if err := plugin.ValidateName(name); err != nil {
+		return "", err
+	}
 	// Try current directory first.
 	cwd, err := os.Getwd()
 	if err == nil {

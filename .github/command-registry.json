@@ -19034,7 +19034,7 @@
           "shorthand": null,
           "type": "bool",
           "default": "false",
-          "usage": "Delete plugin data (schema/tables); asks for confirmation, or pass --yes",
+          "usage": "Delete plugin data (schema/tables). A bundle remove asks for confirmation (or pass --yes); a plugin remove never asks and drops data unless --keep-data",
           "hidden": false,
           "deprecated": null,
           "required": false,
