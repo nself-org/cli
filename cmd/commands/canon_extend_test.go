@@ -323,6 +323,8 @@ func TestEquivalencePluginRemove(t *testing.T) {
 
 func TestEquivalenceBundleRemove(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
+		resetCmdWriters()    // earlier tests leave writers on the command tree: the reconcile note must reach the same stream for both commands
+		t.Chdir(t.TempDir()) // earlier tests can leave the cwd inside a project; both runs must see "outside a project" alike
 		if err := bundle.LoadBytes([]byte(fixtureBundlesJSON)); err != nil {
 			t.Fatal(err)
 		}
@@ -338,7 +340,8 @@ func TestEquivalenceBundleRemove(t *testing.T) {
 			if err := cmd.Flags().Set("keep-data", "true"); err != nil {
 				t.Fatal(err)
 			}
-			defer cmd.Flags().Set("keep-data", "false")
+			cmd := cmd
+			t.Cleanup(func() { resetFlag(cmd, "keep-data") })
 		}
 		legacy := runExtensionFixture(t, fixture, func() error { return runBundleRemove(bundleRemoveCmd, []string{"nchat"}) })
 		canonical := runExtensionFixture(t, fixture, func() error { return runRemove(removeCmd, []string{"nchat"}) })

@@ -181,6 +181,12 @@ func dataPolicy(b Bundle, opts RemoveOpts) (deleteData, warn bool) {
 	return !opts.KeepData, !opts.KeepData
 }
 
+// defaultDeletes reports whether bundle remove drops plugin data when no data flag is given.
+func defaultDeletes(b Bundle) bool {
+	del, _ := dataPolicy(b, RemoveOpts{})
+	return del
+}
+
 // confirmDeleteData is the gate before anything changes: an explicit
 // --delete-data needs --yes or a terminal confirmation, else E403 (exit 4).
 // A dry run changes nothing and needs none.
@@ -220,10 +226,11 @@ func printRemovePlan(out io.Writer, b Bundle, r *RemoveResult, opts RemoveOpts) 
 	switch {
 	case !r.KeepData:
 		_, _ = fmt.Fprintln(out, "  data: drop plugin schema/tables")
-	case opts.KeepData:
+	case opts.KeepData && defaultDeletes(b):
+		// --keep-data is the reason data is kept only where the default would drop it (v1.4, paid bundle).
 		_, _ = fmt.Fprintln(out, "  data: preserve (--keep-data)")
 	default:
-		_, _ = fmt.Fprintln(out, "  data: preserve (pass --delete-data to drop it)")
+		_, _ = fmt.Fprintln(out, "  data: keep (default; --delete-data deletes it)")
 	}
 	if len(r.Planned) == 0 {
 		_, _ = fmt.Fprintln(out, "  (no installed plugins to remove)")

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -129,8 +130,13 @@ func TestRemove_KeepDataPropagates(t *testing.T) {
 	if !gotKeepData {
 		t.Error("--keep-data did not propagate to plugin.Remove")
 	}
-	if !strings.Contains(buf.String(), "data: preserve") {
-		t.Errorf("output missing keep-data banner: %s", buf.String())
+	// v1.4: --keep-data is why data is kept; v1.5: it is a no-op and the default line shows.
+	wantBanner := "data: preserve (--keep-data)"
+	if compat.V15() {
+		wantBanner = "data: keep (default; --delete-data deletes it)"
+	}
+	if !strings.Contains(buf.String(), wantBanner) {
+		t.Errorf("output missing %q: %s", wantBanner, buf.String())
 	}
 }
 

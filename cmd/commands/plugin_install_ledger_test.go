@@ -116,7 +116,7 @@ func TestRemoveFreeBundleLifted(t *testing.T) {
 			compattest.Both(t, func(t *testing.T) {
 				// Earlier tests leave a closed pipe as the root error writer; the remove
 				// plan and the reconcile report write through it. Back to os.Stderr.
-				RootCmd.SetErr(nil)
+				resetCmdWriters()
 				p := extensionFixture(t, "")
 				if err := bundle.LoadBytes([]byte(fixtureBundlesJSON)); err != nil {
 					t.Fatal(err)

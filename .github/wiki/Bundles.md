@@ -80,7 +80,7 @@ A bundle remove deletes a plugin only when the bundle was the last one in its `i
 `nself bundle remove <bundle>` plans from the ledger, prints the plan, then removes:
 
 - **Refcounts.** Only plugins whose `installed_by` becomes empty and that are not `explicit` are removed, in reverse bundle order. Every other member stays and the plan says why (`kept: py (installed_by: beta)`). With bundles A={x,y} and B={y,z}, removing A removes x; y stays with `installed_by: [B]`.
-- **Shared plugin directory.** The ledger lives in the plugin directory, so two projects that share one see each other's bundles.
+- **Shared plugin directory.** The ledger lives in the plugin directory (`$NSELF_PLUGIN_DIR` or `~/.nself/plugins`), so every project that uses that directory shares one record per bundle. `bundle remove A` in one project removes A's plugins for every project sharing the directory, as `plugin remove` always has. Use a per-project `NSELF_PLUGIN_DIR` to isolate projects.
 - **Free bundles** (the Task Bundle) remove like any other bundle.
 - **Data is kept** (schema and tables) unless you pass `--delete-data`. `--delete-data` asks for confirmation on a terminal; without a terminal it needs `--yes`, otherwise it exits 4 with E403 and changes nothing. A dry run needs neither.
 - **Not recorded.** The ledger at `<plugin dir>/.nself-state/bundles.json` records a bundle only when all its plugins are installed. For a bundle it does not record, `bundle remove` fails with E134 (exit 1): nothing it installed is removable as a unit. Remove the individual plugins with `nself plugin remove <plugin>`.

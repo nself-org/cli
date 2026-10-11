@@ -26,7 +26,7 @@ import (
 // chatFixture installs bots and livekit as plain plugins and records bundle chat.
 func chatFixture(t *testing.T) *l03Project {
 	t.Helper()
-	RootCmd.SetErr(nil) // earlier tests leave a closed pipe as the root error writer
+	resetCmdWriters() // earlier tests leave closed pipes or buffers as error writers
 	p := extensionFixture(t, "")
 	if err := bundle.LoadBytes([]byte(fixtureBundlesJSON)); err != nil {
 		t.Fatal(err)
@@ -46,6 +46,25 @@ func chatFixture(t *testing.T) *l03Project {
 	return p
 }
 
+// resetCmdWriters drops output writers earlier tests set on the remove command tree
+// (SetErr on the root or a parent leaks into every child), so output goes to os.Stderr.
+func resetCmdWriters() {
+	for _, c := range []*cobra.Command{RootCmd, bundleCmd, removeCmd, bundleRemoveCmd, pluginRemoveCmd} {
+		for p := c; p != nil; p = p.Parent() { // the writer is inherited from any ancestor
+			p.SetErr(nil)
+			p.SetOut(nil)
+		}
+	}
+}
+
+// resetFlag puts a flag back to its default and clears Changed.
+func resetFlag(cmd *cobra.Command, name string) {
+	if f := cmd.Flags().Lookup(name); f != nil {
+		_ = f.Value.Set(f.DefValue)
+		f.Changed = false
+	}
+}
+
 // setFlags sets bool flags on cmd and resets them when the test ends.
 func setFlags(t *testing.T, cmd *cobra.Command, names ...string) {
 	t.Helper()
@@ -54,7 +73,7 @@ func setFlags(t *testing.T, cmd *cobra.Command, names ...string) {
 			t.Fatal(err)
 		}
 		n := n
-		t.Cleanup(func() { _ = cmd.Flags().Set(n, "false") })
+		t.Cleanup(func() { resetFlag(cmd, n) })
 	}
 }
 
@@ -197,7 +216,7 @@ func catalogFixtureServer(t *testing.T) string {
 // installChatPlugins puts bots and livekit on disk with no ledger file and no catalog loaded.
 func installChatPlugins(t *testing.T) *l03Project {
 	t.Helper()
-	RootCmd.SetErr(nil)
+	resetCmdWriters()
 	p := extensionFixture(t, "")
 	for _, pl := range []string{"bots", "livekit"} {
 		dir := filepath.Join(p.plugins, pl)

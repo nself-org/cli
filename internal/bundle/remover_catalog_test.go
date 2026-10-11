@@ -137,3 +137,48 @@ func TestForgetPluginStatError(t *testing.T) {
 		t.Error("a ledger path that cannot be stat'ed (not ENOENT) was treated as no ledger")
 	}
 }
+
+// TestRemovePlanDataLine: the plan names --keep-data as the reason data is kept only
+// where the default would drop it (v1.4, paid bundle); otherwise it prints the default line.
+func TestRemovePlanDataLine(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		useOverlapBundles(t)
+		dir := t.TempDir()
+		installPlugins(t, dir, "px", "py", "pg")
+		recordBundle(t, dir, "chat")
+		recordBundle(t, dir, "task")
+		plan := func(bundleSlug string, mut func(*RemoveOpts)) string {
+			var out bytes.Buffer
+			opts := removeOpts(dir, &out, &recorder{})
+			opts.DryRun = true
+			mut(&opts)
+			if _, err := Remove(context.Background(), bundleSlug, opts); err != nil {
+				t.Fatal(err)
+			}
+			for _, line := range strings.Split(out.String(), "\n") {
+				if strings.Contains(line, "data:") {
+					return strings.TrimSpace(line)
+				}
+			}
+			t.Fatalf("no data line in:\n%s", out.String())
+			return ""
+		}
+		const keepDefault = "data: keep (default; --delete-data deletes it)"
+		withKeep := plan("chat", func(o *RemoveOpts) { o.KeepData = true })
+		if compat.V15() && withKeep != keepDefault {
+			t.Errorf("v1.5 paid with --keep-data (a no-op): %q, want %q", withKeep, keepDefault)
+		}
+		if !compat.V15() && withKeep != "data: preserve (--keep-data)" {
+			t.Errorf("v1.4 paid with --keep-data: %q, want the --keep-data line", withKeep)
+		}
+		if got := plan("task", func(o *RemoveOpts) { o.KeepData = true }); got != keepDefault {
+			t.Errorf("free bundle with --keep-data: %q, want %q", got, keepDefault)
+		}
+		if got := plan("task", func(*RemoveOpts) {}); got != keepDefault {
+			t.Errorf("free bundle, no flags: %q, want %q", got, keepDefault)
+		}
+		if got := plan("chat", func(o *RemoveOpts) { o.DeleteData = true }); got != "data: drop plugin schema/tables" {
+			t.Errorf("--delete-data: %q", got)
+		}
+	})
+}
