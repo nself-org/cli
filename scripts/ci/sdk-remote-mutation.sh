@@ -52,28 +52,30 @@ case "${only}" in
     ;;
 esac
 
-# golist GOOS TEMPLATE: go list over the remote package for one GOOS.
+# golist GOOS TEMPLATE: go list over the remote package for one GOOS. GOARCH
+# is pinned so the answer does not depend on the host (arm64 Mac vs runner).
 golist() {
-  (cd sdk/go && GOOS="$1" GOFLAGS=-mod=mod GOWORK=off go list -f "$2" ./remote) || {
+  (cd sdk/go && GOOS="$1" GOARCH=amd64 GOFLAGS=-mod=mod GOWORK=off go list -f "$2" ./remote) || {
     echo "sdk-remote-mutation: go list ./remote (GOOS=$1) failed" >&2
     exit 1
   }
 }
 
-# A non-test file go skips on linux escapes the gate unless another OS
-# compiles it (lock_other.go is !unix): a custom build tag (e.g. integration)
-# would hide code from every mutant, so it fails here.
+# Non-test files the linux gate may skip: lock_other.go is the !unix no-op
+# stub the allowlist header names. Any other file go skips on linux (a custom
+# build tag, a windows- or darwin-only file) would hide code from every
+# mutant, so it fails here until it is mutated or listed with a reason.
+IGNORED_OK="lock_other.go"
 ignored_all="$(golist linux '{{range .IgnoredGoFiles}}{{.}}{{"\n"}}{{end}}')"
-ignored="$(printf '%s\n' "${ignored_all}" | grep -v -e '_test\.go$' -e '^$' || true)"
-if [ -n "${ignored}" ]; then
-  other_os="$(golist windows '{{range .GoFiles}}{{.}}{{"\n"}}{{end}}')"
-  for f in ${ignored}; do
-    if ! printf '%s\n' "${other_os}" | grep -qxF "${f}"; then
-      echo "sdk-remote-mutation: ${f} is not compiled on linux or windows (custom build tag?), so no mutant reaches it" >&2
+for f in $(printf '%s\n' "${ignored_all}" | grep -v -e '_test\.go$' -e '^$' || true); do
+  case " ${IGNORED_OK} " in
+    *" ${f} "*) ;;
+    *)
+      echo "sdk-remote-mutation: ${f} is not compiled on linux (build tag?), so no mutant reaches it" >&2
       exit 1
-    fi
-  done
-fi
+      ;;
+  esac
+done
 
 # The gate runs on a linux host, so the set must equal the files go compiles
 # there (lock_other.go is !unix and drops out on its own).

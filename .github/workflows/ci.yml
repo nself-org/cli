@@ -63,29 +63,6 @@ jobs:
           version: v2.13.2
           args: --timeout=10m
 
-  vendor-sync:
-    # D-0482: go.mod replaces the sdk module with ./sdk/go and every build uses
-    # -mod=vendor, so an sdk/go change that is not re-vendored passes its own
-    # tests while the cli binary keeps the stale copy. The _test.sh run is the
-    # positive control: it proves the check fails on planted drift.
-    name: vendor/ matches go mod vendor
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      - name: Vendor check controls
-        run: bash scripts/ci/vendor-sync-check_test.sh
-
-      - name: Vendor sync check
-        run: bash scripts/ci/vendor-sync-check.sh
-
   ci:
     name: Vet, Build & Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -197,6 +174,19 @@ jobs:
       # P7-REG-10: the machine-contract gate. Linux legs only (Windows has no
       # POSIX shell here and macOS legs add nothing the Linux proof lacks).
       # jq and make ship on the GitHub-hosted ubuntu images.
+      # D-0482: go.mod replaces the sdk module with ./sdk/go and every build
+      # uses -mod=vendor, so an sdk/go change that is not re-vendored passes
+      # its own tests while the cli binary keeps the stale copy. Run in this
+      # required leg so drift blocks a merge. The _test.sh run is the positive
+      # control: it proves the check fails on planted drift.
+      - name: Vendor check controls
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/vendor-sync-check_test.sh
+
+      - name: Vendor sync check (vendor/ matches go mod vendor)
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/vendor-sync-check.sh
+
       - name: Contract gate (make contract-check)
         if: runner.os == 'Linux'
         run: make contract-check

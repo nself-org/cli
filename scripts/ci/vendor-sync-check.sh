@@ -7,7 +7,7 @@
 # Inputs:  none. Runs at the module root two levels above this script.
 # Outputs: exit 0 when vendor/ is in sync; exit 1 listing every drifted path
 #          (with a diff for first-party github.com/nself-org paths) or any
-#          symlinked .go file in a local replace target; exit 2
+#          symlink in a local replace target; exit 2
 #          when `go mod vendor` itself fails.
 # Constraints: bash 3.2 compatible; writes only to a temp dir, never to the
 #          tree. Needs the module cache or the module proxy (third-party code
@@ -25,12 +25,13 @@ fi
 # A developer's go.work must not change what is checked.
 export GOWORK=off
 
-# Go compiles a symlinked .go file but `go mod vendor` drops it, so a symlink
-# in a local replace target (./sdk/go) would reach go test but not the binary.
-for dir in $(go mod edit -json | grep -o '"Path": "\.\{1,2\}/[^"]*"' | sed 's/^"Path": "//; s/"$//'); do
-  links="$(find "${dir}" -name '*.go' -type l 2>/dev/null || true)"
+# Go builds through a symlinked .go file or directory but `go mod vendor`
+# drops it, so a symlink in a local replace target (./sdk/go) would reach
+# go test but not the binary. A local target is a ./, ../ or absolute path.
+for dir in $(go mod edit -json | grep -o '"Path": "\.\{0,2\}/[^"]*"' | sed 's/^"Path": "//; s/"$//'); do
+  links="$(find "${dir}" -type l 2>/dev/null || true)"
   if [ -n "${links}" ]; then
-    echo "vendor-sync-check: FAIL: symlinked Go files in ${dir} (go mod vendor drops them):" >&2
+    echo "vendor-sync-check: FAIL: symlinks in ${dir} (go mod vendor drops them):" >&2
     echo "${links}" >&2
     exit 1
   fi

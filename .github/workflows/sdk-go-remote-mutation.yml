@@ -14,6 +14,7 @@ on:
       - main
     # Spelled out, not an alias (repo convention, see coverage.yml).
     paths:
+      - "go.mod"
       - "sdk/go/remote/**"
       - "sdk/go/go.mod"
       - "sdk/go/go.sum"
@@ -22,6 +23,7 @@ on:
       - ".github/workflows/sdk-go-remote-mutation.yml"
   pull_request:
     paths:
+      - "go.mod"
       - "sdk/go/remote/**"
       - "sdk/go/go.mod"
       - "sdk/go/go.sum"

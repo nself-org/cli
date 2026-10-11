@@ -19,7 +19,7 @@ HDR="# Equivalent mutants for: bash scripts/mutation.sh sdk/go/remote --only"
 TAIL="--allow remote/testdata/mutation-allow.txt"
 
 # fixture DIR ONLY: a tree whose remote package compiles a.go and b.go on
-# linux (other.go is !unix, a_test.go is a test), with ONLY in the header.
+# linux (lock_other.go is !unix, a_test.go is a test), with ONLY in the header.
 fixture() {
   local m="$1" only="$2" r="$1/sdk/go/remote"
   mkdir -p "${m}/scripts/ci" "${r}/testdata"
@@ -33,7 +33,7 @@ FAKE
   printf 'module example.com/sdk\n\ngo 1.21\n' > "${m}/sdk/go/go.mod"
   printf 'package remote\n\nfunc A() {}\n' > "${r}/a.go"
   printf 'package remote\n\nfunc B() {}\n' > "${r}/b.go"
-  printf '//go:build !unix\n\npackage remote\n\nfunc Other() {}\n' > "${r}/other.go"
+  printf '//go:build !unix\n\npackage remote\n\nfunc Other() {}\n' > "${r}/lock_other.go"
   printf 'package remote\n\nimport "testing"\n\nfunc TestA(t *testing.T) { A() }\n' > "${r}/a_test.go"
   printf '%s %s %s\nARITHMETIC_BASE at a.go:3:1 | synthetic\n' "${HDR}" "${only}" "${TAIL}" > "${r}/testdata/mutation-allow.txt"
 }
@@ -77,7 +77,12 @@ expect new-file-not-in-set 1 "${d}" "< c.go"
 # A custom build tag would hide a file from every mutant (Opus review 4).
 d="${WORK}/tagged"; fixture "${d}" "a.go,b.go"
 printf '//go:build integration\n\npackage remote\n\nfunc T() {}\n' > "${d}/sdk/go/remote/tagged.go"
-expect build-tagged-file-escapes 1 "${d}" "tagged.go is not compiled on linux or windows"
+expect build-tagged-file-escapes 1 "${d}" "tagged.go is not compiled on linux"
+
+# Only lock_other.go may be skipped on linux: a windows-only file is not.
+d="${WORK}/winonly"; fixture "${d}" "a.go,b.go"
+printf '//go:build windows\n\npackage remote\n\nfunc W() {}\n' > "${d}/sdk/go/remote/guard_windows.go"
+expect windows-only-file-escapes 1 "${d}" "guard_windows.go is not compiled on linux"
 
 d="${WORK}/golistfail"; fixture "${d}" "a.go,b.go"
 printf 'not a go.mod\n' > "${d}/sdk/go/go.mod"
