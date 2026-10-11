@@ -202,8 +202,9 @@ func TestServiceManifestWithMultiWordCommandsParses(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	if err := linkCLIBinary(t.TempDir(), m.Name, &m); err == nil {
-		t.Fatal(`linkCLIBinary published "nself-roms list"; want a refusal before any copy`)
+	// The package dir is empty, so only the name check can produce this error text.
+	if err := linkCLIBinary(t.TempDir(), m.Name, &m); err == nil || !strings.Contains(err.Error(), "invalid plugin binary name") {
+		t.Fatalf(`linkCLIBinary("nself-roms list") = %v; want the binary-name refusal before any copy`, err)
 	}
 	cli := m
 	cli.PluginType = "cli"
