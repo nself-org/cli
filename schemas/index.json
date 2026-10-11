@@ -158,6 +158,10 @@
       "id": "urn:nself:cli:schema:commands:db-fk-index:v1"
     },
     {
+      "path": "commands/db-generate-vector-search.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-generate-vector-search:v1"
+    },
+    {
       "path": "commands/db-generate.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:db-generate:v1"
     },

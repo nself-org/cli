@@ -82,7 +82,7 @@ func TrackFunction(ctx context.Context, cfg *config.Config, schema, name, table 
 		msg := err.Error()
 		switch {
 		case hasuraCode(msg, "not-exists") && strings.Contains(msg, "function"):
-			return errs.Newf("E513", "function %s.%s does not exist in Postgres; run nself db migrate --migration-dir migrations first", schema, name)
+			return errs.Newf("E513", "function %s.%s does not exist in Postgres; run nself db migrate up --migration-dir migrations first", schema, name)
 		case hasuraCode(msg, "already-tracked"), hasuraCode(msg, "already-exists"):
 			continue // another writer got there first: plan again from live
 		}

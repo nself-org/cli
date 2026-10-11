@@ -10,7 +10,7 @@ func init() {
 			Category:   "adopt",
 			Summary:    "Vector search cannot be generated or tracked",
 			DefaultWhy: "The column is not a vector(n) column, the table is not tracked in the project's on-disk Hasura metadata, no on-disk metadata exists, or the search function is missing from Postgres when tracking it.",
-			DefaultFix: "Point at a vector(n) column of a tracked table (nself db hasura metadata export writes the on-disk metadata), and run nself db migrate --migration-dir migrations before --track.",
+			DefaultFix: "Point at a vector(n) column of a tracked table (nself db hasura metadata export writes the on-disk metadata), and run nself db migrate up --migration-dir migrations before --track.",
 			DocsPath:   "reference/error-codes#e513",
 			Exit:       1,
 		},

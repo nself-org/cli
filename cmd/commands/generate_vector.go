@@ -31,7 +31,7 @@ function <schema>.<table>_nearest_<column>(query vector(n)) that returns the
 table's rows ordered by distance. It has no LIMIT: Hasura applies the GraphQL
 limit after the table's select permission filter.
 
-Apply the migration with 'nself db migrate --migration-dir migrations', then run
+Apply the migration with 'nself db migrate up --migration-dir migrations', then run
 the command again with --track to track the function with a permission per role.
 --track sends one targeted Hasura call (never replace_metadata) and updates the
 on-disk metadata only when it matches live Hasura.
@@ -117,7 +117,7 @@ func printVectorResult(cmd *cobra.Command, res vectorsearch.Result) error {
 	if res.Tracked {
 		_, _ = fmt.Fprintf(w, "Tracked in Hasura for role(s): %v\n", res.Roles)
 	} else {
-		_, _ = fmt.Fprintln(w, "Next: nself db migrate --migration-dir migrations, then run this command again with --track.")
+		_, _ = fmt.Fprintln(w, "Next: nself db migrate up --migration-dir migrations, then run this command again with --track.")
 	}
 	if res.Note != "" {
 		_, _ = fmt.Fprintln(w, res.Note)
