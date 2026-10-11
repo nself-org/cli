@@ -1,9 +1,20 @@
 // Purpose: a pinned known_hosts file keyed by alias, written atomically.
 // Inputs:  the file path (PinnedHostKeys.Path), an alias, key lines.
 // Outputs: OpenSSH known_hosts lines "<alias> <type> <base64>".
-// Constraints: touches only Path (and its parent directory, created 0700).
-//              Never ~/.ssh/known_hosts. Lookup matches the alias field
-//              exactly; an IP literal is refused, never matched.
+// Constraints: touches only Path, its sidecar lock "<Path>.lock" (0600, never
+//              truncated, left in place) and its parent directory (created
+//              0700). Never ~/.ssh/known_hosts. Lookup matches the alias
+//              field exactly; an IP literal is refused, never matched.
+//              Writers (Add, Replace, Remove) hold an exclusive flock on the
+//              lock file and Lookup a shared one, on top of the in-process
+//              mutex; the pin file itself is not locked because write()
+//              renames over it. Non-unix builds have the mutex only.
+//              ssh honours every line, so any @marker, wildcard, negation,
+//              list, [host]:port or hashed line is "foreign": every
+//              operation errors naming the file and line, and nothing is
+//              rewritten. A parent directory or pin file that is group or
+//              world writable, or is not a directory / regular file, is
+//              refused, never chmod-ed (mode checks skipped on windows).
 
 package remote
 
@@ -19,7 +30,7 @@ import (
 // PinnedHostKeys is a known_hosts file holding one or more keys per alias.
 type PinnedHostKeys struct{ Path string }
 
-var pinMu sync.Mutex // serialises read-modify-write within this process
+var pinMu sync.Mutex // orders goroutines; the flock (acquire) orders processes
 
 // keyTypes are the host key algorithms OpenSSH writes to known_hosts.
 var keyTypes = map[string]bool{
@@ -60,12 +71,25 @@ func (p PinnedHostKeys) read() ([]string, error) {
 	if p.Path == "" {
 		return nil, fmt.Errorf("PinnedHostKeys.Path is empty")
 	}
+	dir := filepath.Dir(p.Path)
+	if err := checkDir(dir); err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if err := checkFile(p.Path); err != nil {
+		return nil, err
+	}
 	raw, err := os.ReadFile(p.Path)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if bad := foreignLines(string(raw)); len(bad) > 0 {
+		return nil, fmt.Errorf("pinned host keys %s: %s", p.Path, strings.Join(bad, "; "))
 	}
 	var lines []string
 	for _, l := range strings.Split(string(raw), "\n") {
@@ -81,6 +105,9 @@ func (p PinnedHostKeys) read() ([]string, error) {
 func (p PinnedHostKeys) write(lines []string) error {
 	dir := filepath.Dir(p.Path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := checkDir(dir); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(dir, ".known_hosts-*")
@@ -123,6 +150,11 @@ func (p PinnedHostKeys) Add(alias, keyLine string) error {
 	}
 	pinMu.Lock()
 	defer pinMu.Unlock()
+	unlock, err := p.acquire(true)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	lines, err := p.read()
 	if err != nil {
 		return err
@@ -147,6 +179,11 @@ func (p PinnedHostKeys) Lookup(alias string) ([]string, error) {
 	}
 	pinMu.Lock()
 	defer pinMu.Unlock()
+	unlock, err := p.acquire(false)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	lines, err := p.read()
 	if err != nil {
 		return nil, err
@@ -185,8 +222,18 @@ func (p PinnedHostKeys) replace(alias string, keyLines []string) error {
 		}
 		add = append(add, alias+" "+typ+" "+b64)
 	}
+	if len(add) == 0 && p.Path != "" {
+		if _, err := os.Lstat(p.Path); os.IsNotExist(err) {
+			return nil // Remove with no pin file: create nothing, not even the lock
+		}
+	}
 	pinMu.Lock()
 	defer pinMu.Unlock()
+	unlock, err := p.acquire(true)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	lines, err := p.read()
 	if err != nil {
 		return err
