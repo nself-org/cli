@@ -91,7 +91,7 @@ func init() {
 
 	removeCmd.Flags().Bool("yes", false, "Skip confirmation prompts")
 	removeCmd.Flags().Bool("keep-data", false, "Preserve database data on remove")
-	removeCmd.Flags().Bool("delete-data", false, "Delete plugin data (schema/tables). Bundle targets ask for confirmation (or pass --yes); plugin targets drop data by default and never ask (--keep-data preserves it)")
+	removeCmd.Flags().Bool("delete-data", false, "Delete plugin data (schema/tables). A bundle remove asks for confirmation (or pass --yes); a plugin remove never asks and drops data unless --keep-data")
 	removeCmd.Flags().Bool("force", false, "Remove even if other plugins depend on this one")
 	removeCmd.Flags().Bool("dry-run", false, "Print the planned actions without removing")
 
