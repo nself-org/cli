@@ -21997,14 +21997,14 @@
     }
   ],
   "counts": {
-    "commands": 377,
+    "commands": 378,
     "top_level": 24,
     "core": 20,
     "pending": 4,
     "deprecated_shims": 43,
     "plugin": 10,
     "core_missing": [],
-    "json_envelope": 134,
+    "json_envelope": 135,
     "json_legacy": 38
   }
 }
