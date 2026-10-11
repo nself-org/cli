@@ -169,8 +169,7 @@ func (r *acmeRun) retireCertbot() (bool, error) {
 		r.say("disabled %s: its certbot deploy hook would overwrite ACME-managed certificates", certbotTimer)
 	}
 	if errors.Is(err, errRenewalRunning) {
-		return done, e151(acmeRefuse("wait for it to finish (`systemctl status "+certbotService+"`), then re-run this command",
-			"%v; nothing was written", err))
+		return done, e151(acmeRefuse("wait for it to finish (`systemctl status "+certbotService+"`), then re-run this command", "%v", err))
 	}
 	if err != nil {
 		fix := "run `sudo systemctl disable --now " + certbotTimer + "` (and `sudo systemctl disable --runtime " + certbotTimer + "` if it was enabled at runtime), then re-run this command"

@@ -115,7 +115,8 @@ func hookCode(line string, isConf bool) (string, bool) {
 	if t == "" || t[0] == '#' || (isConf && t[0] == ';') {
 		return "", false
 	}
-	if k, _, _ := strings.Cut(t, "="); isConf && !strings.HasSuffix(strings.TrimSpace(k), "_hook") && !strings.HasSuffix(strings.TrimSpace(k), "-hook") {
+	// the key ends at '=', or for cli.ini (configargparse) also at ':' or a space
+	if k := t[:strings.IndexFunc(t+"=", func(c rune) bool { return strings.ContainsRune("=: \t", c) })]; isConf && !strings.HasSuffix(k, "_hook") && !strings.HasSuffix(k, "-hook") {
 		return "", false
 	}
 	for _, c := range []string{" #", "\t#"} {

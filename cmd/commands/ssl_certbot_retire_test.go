@@ -214,7 +214,10 @@ func TestCertbotHooks(t *testing.T) {
 	}
 	var want []string
 	hit := func(p string, line int) { want = append(want, fmt.Sprintf("%s:%d", p, line)) }
-	hit(file("cli.ini", "deploy-hook = cp x "+sslDir+"\n; deploy-hook = cp x "+sslDir+"/\n", 0o644), 1)
+	cli := file("cli.ini", "deploy-hook = cp x "+sslDir+"\n; deploy-hook = cp x "+sslDir+"/\npost-hook: cp x "+sslDir+"/\nrenew-hook cp x "+sslDir+"/\nwebroot-path: "+sslDir+"\n", 0o644)
+	hit(cli, 1)
+	hit(cli, 3)
+	hit(cli, 4)
 	hit(file("renewal/a.example.org.conf", "version = 2.9.0\n[renewalparams]\n"+nselfDeployHook(workdir)+"post_hook = docker compose exec nginx nginx -s reload\n", 0o644), 3)
 	hit(file("renewal/b.example.org.conf", "[renewalparams]\ndeploy_hook = cp x "+filepath.Join(sslDir, "b")+"/\n", 0o644), 2)
 	hit(file("renewal/c.example.org.conf", "[renewalparams]\npost_hook = DEST=\""+sslDir+"\"; cp x $DEST\nrenew_hook = cp x /srv/other/ssl/\n# deploy_hook = cp x "+sslDir+"/\nserver = "+sslDir+"\n", 0o644), 2)
