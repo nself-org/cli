@@ -125,7 +125,7 @@ func pilotBinary(t *testing.T) string {
 			return
 		}
 		pilotBin = filepath.Join(dir, "nself")
-		cmd := exec.Command("go", "build", "-mod=vendor", "-o", pilotBin, "./cmd/nself")
+		cmd := exec.Command("go", "build", "-mod=vendor", "-buildvcs=false", "-o", pilotBin, "./cmd/nself")
 		cmd.Dir = findRepoRootForTest(t)
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 		if out, err := cmd.CombinedOutput(); err != nil {

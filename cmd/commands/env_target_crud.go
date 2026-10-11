@@ -80,6 +80,9 @@ func runEnvTargetList(cmd *cobra.Command, args []string) error {
 	}
 
 	if jsonOut {
+		if jsonEnvelopeOn(cmd) {
+			return emitEnv(cmd, legacyList(rows), true)
+		}
 		b, _ := json.MarshalIndent(rows, "", "  ")
 		fmt.Println(string(b))
 		return nil

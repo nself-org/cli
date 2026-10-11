@@ -20,6 +20,12 @@ cleanup() {
 trap cleanup EXIT
 mkdir -p "$tmp/project" "$tmp/home" "$tmp/stub"
 printf 'PROJECT_NAME=smoke\nENV=dev\nBASE_DOMAIN=example.test\nPOSTGRES_PASSWORD=smoke-fixture-value\nHASURA_GRAPHQL_JWT_SECRET=fixture\n' > "$tmp/project/.env"
+# The config fragment also greps value-reading rows: URL credentials, a PASS key and a prod env for `env diff`.
+if [ "$fragment" = config ]; then
+  printf 'DATABASE_URL=postgres://app:smoke-url-pass@db:5432/app\nAUTH_SMTP_PASS=smoke-smtp-pass\n' >> "$tmp/project/.env"
+  cp "$tmp/project/.env" "$tmp/project/.env.dev"
+  printf 'PROJECT_NAME=smoke\nPOSTGRES_PASSWORD=smoke-prod-value\nDATABASE_URL=postgres://app:smoke-prod-url-pass@db:5432/app\n' > "$tmp/project/.env.prod"
+fi
 cat > "$tmp/stub/docker" <<'DOCKER'
 #!/bin/sh
 case " $* " in
