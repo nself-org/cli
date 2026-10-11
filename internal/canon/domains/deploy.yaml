@@ -19,7 +19,7 @@ commands:
   # cmd/commands/ops.go:81 builds locally then deploys to the configured remote ops host
   deploy ops: {side_effect: remote, flags: {follow: {output: stream}}}
   # The v1.5 envelope is derived from its registered Go type; dry-run only reads inventory.
-  deploy promote: {side_effect: remote, output: document}
+  deploy promote: {side_effect: remote}
   # cmd/commands/promote.go:23 promotes environment state to the selected target
   deploy promote-env: {side_effect: remote, json: legacy}
   deploy promote-env rollback: {side_effect: destructive}
