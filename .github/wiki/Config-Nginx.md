@@ -60,13 +60,13 @@ Set `SSL_MODE` in your env file to tell ɳSelf how to handle SSL certificates.
 
 ### `local` (default)
 
-ɳSelf generates a self-signed certificate and key at `nginx/ssl/`. The certificate is scoped to `*.{BASE_DOMAIN}` so all subdomains are covered. Your browser will show a security warning that you must accept once.
+ɳSelf generates a self-signed certificate and key in `ssl/certificates/<domain-dir>/` at the project root, where `<domain-dir>` is `BASE_DOMAIN` with dots replaced by dashes (`local.nself.org` becomes `local-nself-org`). The certificate is scoped to `*.{BASE_DOMAIN}` so all subdomains are covered. Your browser will show a security warning that you must accept once.
 
 Use this mode for local development. Do not use it in production.
 
 ### `letsencrypt`
 
-ɳSelf provisions a certificate from Let's Encrypt automatically using the ACME challenge. The domain must be publicly reachable on port 80 at the time of provisioning. Certificates are stored in `nginx/ssl/` and renewed automatically before expiry.
+ɳSelf provisions a certificate from Let's Encrypt automatically using the ACME challenge. The domain must be publicly reachable on port 80 at the time of provisioning. Certificates are stored in `ssl/certificates/<domain-dir>/` and renewed automatically before expiry. Until a certificate pair exists there, `nself build` emits no HTTPS server blocks for this mode.
 
 Use this mode for staging and production servers with public domains. Requires that `BASE_DOMAIN` is a real domain pointing at your server.
 
@@ -84,12 +84,14 @@ EXTRA_SSL_DOMAINS=www.myproject.example.com,myproject.io
 
 ### `custom`
 
-You provide your own certificate files. Place them at the paths Nginx expects:
+You provide your own certificate files. Place them at the paths Nginx expects (`<domain-dir>` is `BASE_DOMAIN` with dots replaced by dashes):
 
 ```
-nginx/ssl/cert.pem     ← full chain certificate
-nginx/ssl/key.pem      ← private key
+ssl/certificates/<domain-dir>/fullchain.pem   ← full chain certificate
+ssl/certificates/<domain-dir>/privkey.pem     ← private key
 ```
+
+`nself build` emits HTTPS server blocks only once both files exist. Add `chain.pem` in the same directory to turn on OCSP stapling; without it, stapling is left off.
 
 ɳSelf will not touch these files. Renewal and rotation are your responsibility.
 
@@ -119,9 +121,13 @@ nginx/
     auth.conf
     storage.conf
     ...
-  ssl/                ← SSL certificates (managed by nSelf or provided by you in custom mode)
-    cert.pem
-    key.pem
+  conf.d/default.conf ← Default server (HTTP to HTTPS redirect, /health)
+  includes/
+    rate-limits.conf
+ssl/                  ← project root, mounted read-only at /etc/nginx/ssl
+  certificates/<domain-dir>/
+    fullchain.pem     ← managed by nSelf, or provided by you in custom mode
+    privkey.pem
 ```
 
 If you want to change a value you see in `nginx/nginx.conf` or `nginx/sites/*.conf`, find the corresponding environment variable and set it in your `.env` file instead. The generated files are always the output, the env vars are the input.
@@ -134,7 +140,7 @@ nginx/
     *.conf            ← Any .conf files here are included after generated config
 ```
 
-Files in `nginx/conf.d/` are included by the main `nginx.conf` after all generated configuration, and they are **never touched by `nself build`**. This is the right place for:
+Files in `nginx/conf.d/` are included by the main `nginx.conf` after all generated configuration, and they are **never touched by `nself build`**. The one exception is `conf.d/default.conf`, which build writes. If a hand-managed file serves a name that ɳSelf would also generate, your file wins: the generated `nginx/sites/` file is left out and `.nself/generated/routes.json` marks that route `shadowed_by` your file (see [[Nginx-Generation]]). This is the right place for:
 
 - Custom rate limiting rules
 - Additional proxy pass entries for services outside the ɳSelf stack
@@ -207,7 +213,7 @@ Without it, a fronted project still generates an Nginx that can never start: `ns
 
 In production, verify your firewall allows inbound traffic only on ports 80 and 443. There is no need to open any other port to the internet.
 
-**HTTP to HTTPS redirect** is enabled automatically when `SSL_MODE` is anything other than `none`. Requests arriving on port 80 receive a `301` redirect to the HTTPS equivalent.
+**HTTP to HTTPS redirect** is enabled automatically when HTTPS server blocks are emitted: always in `local` mode, and in `letsencrypt` or `custom` mode once the certificate pair for `BASE_DOMAIN` exists. `none` never redirects. Requests arriving on port 80 receive a `301` redirect to the HTTPS equivalent.
 
 ---
 

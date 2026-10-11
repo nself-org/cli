@@ -1,0 +1,19 @@
+{
+  "schema_version": "1",
+  "command": "db generate vector-search",
+  "data": {
+    "function": "public.docs_nearest_embedding",
+    "table": "public.docs",
+    "column": "embedding",
+    "dim": 3,
+    "distance": "cosine",
+    "roles": [
+      "user"
+    ],
+    "migration": "migrations/20261010120000_vector_search_docs_embedding.sql",
+    "migration_written": true,
+    "tracked": true,
+    "disk_metadata": "updated",
+    "note": "on-disk metadata updated: hasura/metadata/sources.yaml"
+  }
+}

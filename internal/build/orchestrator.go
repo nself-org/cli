@@ -59,6 +59,11 @@ type BuildOptions struct {
 	// (`build --write-lock`, P7-LIVE-09). v1.5 always writes it; v1.4 writes
 	// it only when this is set or the file already exists.
 	WriteLock bool
+	// EnvOverlay, in ModePlan, replaces env files by project-relative name
+	// (".env", ".env.secrets") with pending bytes: the plan renders the
+	// project as it will be once those bytes are written (P7-LIVE-05,
+	// sink_env_overlay.go). ModeWrite refuses a non-empty overlay.
+	EnvOverlay map[string][]byte
 }
 
 // BuildMode selects what Build does with the files it renders.
@@ -143,6 +148,9 @@ var requiredDirs = []string{
 //  11. Save build version to .nself/build-version
 //  12. Return BuildResult with summary
 func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
+	if len(opts.EnvOverlay) > 0 && opts.Mode != ModePlan {
+		return nil, errEnvOverlayWrite
+	}
 	// Scope the secret source for this build only; restored on return.
 	defer config.UseRandSource(opts.Rand)()
 	if opts.Mode == ModePlan {
@@ -205,7 +213,7 @@ func Build(workdir string, opts BuildOptions) (*BuildResult, error) {
 	if st.cfg != nil {
 		res.Env = st.cfg.Env
 	}
-	if m, ok := st.sink.(*memSink); ok {
+	if m := planSink(st.sink); m != nil {
 		res.Planned = m.snapshot()
 		res.Planned.Effects = st.fx.Recorded()
 		res.FrontingDir = m.fronting
@@ -230,6 +238,9 @@ func (st *buildState) ensureSeam() {
 	}
 	if st.opts.Mode == ModePlan {
 		st.sink, st.fx = newMemSink(st.workdir, ""), &planEffects{}
+		if len(st.opts.EnvOverlay) > 0 {
+			st.sink = newEnvOverlaySink(st.sink.(*memSink), st.opts.EnvOverlay)
+		}
 	} else if st.opts.Expect != nil {
 		st.sink, st.fx = newExpectSink(st.workdir, st.opts.Expect), writeEffects{}
 	} else {

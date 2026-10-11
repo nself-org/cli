@@ -40,6 +40,14 @@ BACKUP_S3_SECRET_KEY=<secret>
 
 Compatible with AWS S3, MinIO, Cloudflare R2, Backblaze B2, and any S3-compatible provider.
 
+## Encryption and the backup key
+
+`nself backup stream`, and `nself backup create` with encryption on (`--encrypt`), encrypt with [age](https://age-encryption.org). In v1.5 (`NSELF_V15=1`), a project with no recipient configured gets an identity created once at `~/.config/nself/<project>-age.key`, and restores find it on their own. Set `BACKUP_AGE_RECIPIENTS` to encrypt to a key you keep elsewhere; production should work that way, so the server never holds the key that decrypts its own backups.
+
+**A lost identity makes every backup encrypted to it unrecoverable.** Copy it off the machine right after the first backup, then prove the copy with `nself backup drill --from <remote> --identity <copy>`, which restores into a throwaway container. `nself doctor` reminds you until you mark the copy done with `touch ~/.config/nself/<project>-age.key.backed-up`.
+
+Full rules, lookup order, error codes and the threat model: [[cmd-backup]] (Zero-config encryption key).
+
 ## Restore from Backup
 
 ```bash

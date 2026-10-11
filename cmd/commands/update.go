@@ -19,7 +19,11 @@ type githubRelease struct {
 	HTMLURL string `json:"html_url"`
 }
 
-const (
+// The release endpoints are variables so the cmd/commands test binary can point
+// them at a local stub (TestMain). A test that reaches selfUpdate with the real
+// URLs would download the published release and overwrite the running test
+// executable.
+var (
 	githubLatestReleaseURL = "https://api.github.com/repos/nself-org/cli/releases/latest"
 	githubReleaseByTagURL  = "https://api.github.com/repos/nself-org/cli/releases/tags/%s"
 	githubDownloadBaseURL  = "https://github.com/nself-org/cli/releases/download"

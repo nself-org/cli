@@ -426,7 +426,12 @@
         "name": "set",
         "path": "nself config set",
         "short": "Update a configuration value (writes to .env)",
-        "hidden": false
+        "hidden": false,
+        "flags": [
+          "--force",
+          "--preview",
+          "--yes"
+        ]
       },
       {
         "name": "show",

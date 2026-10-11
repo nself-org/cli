@@ -95,6 +95,25 @@ It exits 1 when, for any probe, `head_p50 > 1.25 x base_p50` and `head_p50 - bas
 
 New scenarios are registered with `scenarios.Register` from a file in `tools/perfbench/scenarios/`; see the package comment.
 
+### Startup with plugins installed
+
+Two scenarios measure what the canon engine, the plugin-command mount and plugin discovery add to startup. Each probe runs with a fresh `HOME` holding one generated CLI-plugin manifest (manifest v2 `commands` block plus the v1 keys) and a stub binary per plugin; the count is `scenarios.PluginCount`, the real v1 CLI-plugin count.
+
+| Scenario | What runs |
+|----------|-----------|
+| `cold-start-plugins` | the three `cold_start.*` probes with that `HOME` |
+| `cold-start-plugins-v15` | the same with `NSELF_V15=1` (tree relocation, mount and hubs) |
+
+Metric names are the same `cold_start.version|help|status`, so `perfbench check -budget .github/perf-budget.json` applies unchanged.
+
+`perfbench ab` cannot drive them, because they need the generated `HOME`. Compare base and head with the script instead:
+
+```bash
+scripts/ci/perf-ab-scenario.sh cold-start-plugins /path/to/base/nself /path/to/head/nself /tmp/perf-ab
+```
+
+It runs base and head interleaved in two passes (base first, then head first) and applies the same rule as `ab`: a metric regressed when head p50 > 1.25 x base p50 and the difference is over 3 ms (`PERF_AB_RATIO`, `PERF_AB_MIN_DELTA_MS`, `PERF_AB_RUNS`, default 40). Exit 0 means no regression, 1 a regression or a metric missing on the head side, 2 a usage error or a failed measurement. It needs `go` and `jq`. No workflow runs it today; run it by hand for changes to plugin discovery or the command mount.
+
 ### Checking a result against the budget
 
 ```bash

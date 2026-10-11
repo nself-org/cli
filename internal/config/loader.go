@@ -58,6 +58,12 @@ type LoadOptions struct {
 	// remote host, and a developer's personal override must not reach it (the
 	// env file pushed to the host omits it too).
 	RemoteDeploy bool
+	// EnvOverlay replaces cascade files by name (".env", ".env.secrets", ...)
+	// with the given bytes for this load only: the disk copy of an overlaid
+	// name is not read and need not exist. A plan uses it to load the cascade
+	// a pending `config set` will leave before the line is written
+	// (P7-LIVE-05, env_overlay.go). Nil reads every file from disk.
+	EnvOverlay map[string][]byte
 }
 
 // LoadWithOptions is Load with explicit options.
@@ -70,7 +76,7 @@ func LoadWithOptions(projectDir string, opts LoadOptions) (*Config, error) {
 	// Without the .env fallback, a bare `nself build` run on a server whose
 	// only signal is .env's ENV=prod silently built a dev compose instead
 	// (wrong images, *.local.nself.org routes, mailpit/nself-admin wired in).
-	env, envSource := ResolveEnv(projectDir)
+	env, envSource := resolveEnvWith(projectDir, opts.EnvOverlay)
 	env = normalizeEnv(env)
 	slog.Info("ENV resolved for .env cascade", "env", env, "source", envSource)
 
@@ -92,9 +98,14 @@ func LoadWithOptions(projectDir string, opts LoadOptions) (*Config, error) {
 	// 3. Load each file (skip if not exists, later overrides earlier).
 	// Simultaneously collect all keys that appear in any .env file so we can
 	// warn about unknown vars after loading is complete.
-	const maxEnvFileSize = 1 << 20 // 1 MB
 	loadedFromFiles := make(map[string]string)
-	for _, f := range files {
+	for i, f := range files {
+		if data, ok := opts.EnvOverlay[names[i]]; ok {
+			if err := loadOverlaid(projectDir, names[i], data, loadedFromFiles); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		info, statErr := os.Stat(f)
 		if statErr != nil {
 			continue // file doesn't exist, skip

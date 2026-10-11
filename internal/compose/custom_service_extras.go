@@ -23,20 +23,36 @@ import (
 // layer only splits them into the []string form ServiceConfig.Volumes wants.
 
 // loadCustomServiceEnvFile reads a dotenv-format file named by CS_N_ENV_FILE
-// and returns its KEY=VALUE pairs. workDir anchors the (already-validated,
+// and returns its KEY=VALUE pairs (from overlay when it holds the path). workDir anchors the (already-validated,
 // project-relative) path; an empty workDir falls back to resolving relative
 // to the process's current directory, matching how CS_N_PATH build contexts
 // are implicitly resolved when no explicit project root is threaded through.
-func loadCustomServiceEnvFile(workDir, relPath string) (map[string]string, error) {
+func loadCustomServiceEnvFile(workDir, relPath string, overlay map[string][]byte) (map[string]string, error) {
 	path := relPath
 	if workDir != "" {
 		path = filepath.Join(workDir, relPath)
+	}
+	if data, ok := overlay[filepath.ToSlash(filepath.Clean(relPath))]; ok {
+		vars, err := godotenv.UnmarshalBytes(data)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", path, err)
+		}
+		return vars, nil
 	}
 	vars, err := godotenv.Read(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
 	return vars, nil
+}
+
+// WithEnvOverlay sets pending env-file bytes (project-relative path -> bytes)
+// that CS_N_ENV_FILE reads use instead of the files on disk, and returns the
+// same Generator. The build sets it in plan mode only (P7-LIVE-05), so a plan
+// of a pending `config set` sees the value a custom service will get.
+func (g *Generator) WithEnvOverlay(files map[string][]byte) *Generator {
+	g.envOverlay = files
+	return g
 }
 
 // customServiceEnvFiles returns the CS_N_ENV_FILE list in load order. A
@@ -55,10 +71,10 @@ func customServiceEnvFiles(cs config.CustomService) []string {
 // loadCustomServiceEnvFiles reads each file in order and merges the pairs;
 // a later file wins on a repeated key (CS_N_ENV_FILE=.env.dev,.env.secrets).
 // A file that cannot be read fails the whole load, as for a single file.
-func loadCustomServiceEnvFiles(workDir string, relPaths []string) (map[string]string, error) {
+func loadCustomServiceEnvFiles(workDir string, relPaths []string, overlay map[string][]byte) (map[string]string, error) {
 	merged := map[string]string{}
 	for _, rel := range relPaths {
-		vars, err := loadCustomServiceEnvFile(workDir, rel)
+		vars, err := loadCustomServiceEnvFile(workDir, rel, overlay)
 		if err != nil {
 			return nil, err
 		}
