@@ -33,6 +33,8 @@ type v15Remote struct {
 	failOn string // a command containing this fails
 	// stateful makes the model's web service keep a volume and the dry-run recreate it.
 	stateful bool
+	// shipped is the host's .nself/deploy-shipped.txt.
+	shipped string
 	// hang makes a command containing it print READY and block until ctx is done.
 	hang string
 }
@@ -105,6 +107,8 @@ func (r *v15Remote) Run(ctx context.Context, cmd string) ([]byte, error) {
 		return nil, nil
 	case strings.Contains(s, "nself backup list"):
 		return []byte(`[{"id":"demo_full_20261010_120000_` + r.tag + `","tag":"120000_` + r.tag + `","date":"2026-10-10T12:00:00Z"}]`), nil
+	case strings.HasPrefix(s, "if [ -f") && strings.Contains(s, "deploy-shipped.txt"):
+		return []byte(r.shipped), nil
 	case strings.Contains(s, "ABSENT %s"):
 		// The pre-deploy tar: the host has docker-compose.yml, none of the other shipped paths.
 		m := absentLoop.FindStringSubmatch(s)
@@ -862,5 +866,44 @@ func TestRollbackValidatesEveryHostFirst(t *testing.T) {
 	_ = deploy.SaveDeployState(proj, st)
 	if _, err := rollbackRemoteV15(yesCmd(), proj, "prod"); err == nil || !strings.Contains(err.Error(), "not a pre-deploy tar") || opened != 0 {
 		t.Errorf("bad tar entry: err=%v opened=%d", err, opened)
+	}
+}
+
+// N4: the prune is driven by the last recorded deploy of the same target: with
+// the record it runs against the dropped file, with another target's record or none
+// it does not. Silently switching the prune off, or feeding it the wrong record, fails.
+func TestPruneFollowsTheRecordedDeploy(t *testing.T) {
+	const old = "nginx/sites/old.conf"
+	for name, tc := range map[string]struct {
+		record string
+		pruned bool
+	}{"record of this target": {"prod", true}, "record of another target": {"staging", false}, "no record": {"", false}} {
+		t.Run(name, func(t *testing.T) {
+			proj, remote := v15Project(t)
+			remote.shipped = old + "\n" // the host's own list names it too
+			if tc.record != "" {
+				st := deploy.StrategyState{Strategy: deploy.StrategyRolling, Target: tc.record, Success: true,
+					PreDeployChanged: map[string][]string{"deploy@app.example.test": {old, "docker-compose.yml"}}}
+				if err := deploy.SaveDeployState(proj, st); err != nil {
+					t.Fatal(err)
+				}
+			}
+			res, err := runDeployPipeline(yesCmd(), proj, prodInventory(prodServers(t)[0]), "prod", okProber{}, filepath.Join(proj, "docker-compose.yml"), "", "", true)
+			if err == nil {
+				err = failedServersError(res)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			pruned := false
+			for _, c := range remote.commands() {
+				if strings.Contains(c, "head -n 5") && strings.Contains(c, "'"+old+"'") {
+					pruned = true
+				}
+			}
+			if pruned != tc.pruned {
+				t.Errorf("prune of %s ran = %v, want %v", old, pruned, tc.pruned)
+			}
+		})
 	}
 }
