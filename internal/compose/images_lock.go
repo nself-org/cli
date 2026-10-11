@@ -234,11 +234,21 @@ func ImageRef(name, version string) string {
 	return r.imageFor(PinningMode(), version)
 }
 
+// IsDefaultVersion reports whether v means "use the default" for this entry: it
+// is blank, the lock version, or the frozen legacy_ref version that config
+// defaults and `nself init` .env files carry. It is the one definition of an
+// explicit override: ImageRef (imageFor) and the project pin rule (projectPin)
+// both ask it, so a *_VERSION holding the CLI default never counts as set.
+func (r Ref) IsDefaultVersion(v string) bool {
+	v = strings.TrimSpace(v)
+	return v == "" || v == r.Version || v == r.LegacyVersion()
+}
+
 // imageFor is ImageRef for one entry and mode.
 func (r Ref) imageFor(mode, version string) string {
 	v := strings.TrimSpace(version)
 	if mode == PinningLock {
-		if v == "" || v == r.Version || v == r.LegacyVersion() {
+		if r.IsDefaultVersion(v) {
 			return r.String()
 		}
 		return r.LegacyRepository() + ":" + v

@@ -71,9 +71,10 @@ func TestPluginSnippetRoutes(t *testing.T) {
 	if err != nil || string(got) != want {
 		t.Errorf("injected snippet changed: %v\n%q", err, got)
 	}
-	// a snippet that does not parse is recorded, not dropped
+	// a snippet that does not parse is skipped (nginx would refuse it) and
+	// recorded, not dropped
 	writeFixtureFile(t, filepath.Join(plugins, "broken", "nginx", "b.conf"), "server { listen 80;", 0o644)
-	if out := st.withSnippetRoutes(m); len(out.UnmodelledGlobal) != 2 || !strings.HasPrefix(out.UnmodelledGlobal[0], "unparsed plugin broken/b.conf") {
+	if out := st.withSnippetRoutes(m); len(out.UnmodelledGlobal) != 2 || !strings.HasPrefix(out.UnmodelledGlobal[0], "skipped plugin broken/b.conf: it does not parse") {
 		t.Errorf("unparsed snippet not recorded: %q", out.UnmodelledGlobal)
 	}
 }

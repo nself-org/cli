@@ -95,9 +95,13 @@ func InspectColumn(ctx context.Context, run Exec, pg PG, s Spec) (int, error) {
 }
 
 // shapeQuery asks Postgres whether the function is the generated, inlinable
-// shape: LANGUAGE sql, STABLE, not SECURITY DEFINER, no SET clause, set
-// returning, and returning the table's own row type. It is built only from
-// validated identifiers; empty output means the function (or table) is missing.
+// shape: LANGUAGE sql, STABLE, not SECURITY DEFINER, not STRICT, no SET
+// clause, set returning, returning the table's own row type, and with the
+// generated body (whitespace-normalised, so a hand edit that adds a LIMIT or
+// a WHERE inside the function is caught: D-0369). A STRICT function is not
+// inlined, so Hasura's limit and the row filter would apply after the
+// function ran. It is built only from validated identifiers; empty output
+// means the function (or table) is missing.
 func shapeQuery(s Spec) (string, error) {
 	schema, err := database.SanitizeIdentifier(s.Schema)
 	if err != nil {
@@ -111,9 +115,17 @@ func shapeQuery(s Spec) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	column, err := database.SanitizeIdentifier(s.Column)
+	if err != nil {
+		return "", err
+	}
+	// The body holds quoted identifiers (no single quote passes
+	// SanitizeIdentifier) and a fixed operator, so it is a safe literal.
+	body := functionBody(schema, table, column, s.Operator())
 	return "SELECT p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'sql')" +
-		" AND p.provolatile = 's' AND NOT p.prosecdef AND p.proconfig IS NULL" +
+		" AND p.provolatile = 's' AND NOT p.prosecdef AND NOT p.proisstrict AND p.proconfig IS NULL" +
 		" AND p.proretset AND p.prorettype = c.reltype" +
+		" AND regexp_replace(btrim(p.prosrc, E' \\t\\r\\n;'), '\\s+', ' ', 'g') = '" + body + "'" +
 		" FROM pg_proc p JOIN pg_class c ON c.oid = to_regclass('" + schema + "." + table + "')" +
 		" WHERE p.oid = to_regprocedure('" + schema + "." + fn + "(vector)')", nil
 }
@@ -136,5 +148,5 @@ func CheckFunctionShape(ctx context.Context, run Exec, pg PG, s Spec) error {
 	case "":
 		return errs.Newf("E513", "function %s.%s does not exist in Postgres; run nself db migrate up --migration-dir migrations first", s.Schema, s.FunctionName())
 	}
-	return errs.Newf("E513", "function %s.%s exists but is not the generated inlinable shape (LANGUAGE sql, STABLE, SECURITY INVOKER, no SET, SETOF %s.%s); regenerate it with this command", s.Schema, s.FunctionName(), s.Schema, s.Table)
+	return errs.Newf("E513", "function %s.%s exists but is not the generated inlinable shape (LANGUAGE sql, STABLE, SECURITY INVOKER, not STRICT, no SET, SETOF %s.%s, the generated body with no LIMIT or filter); regenerate it with this command", s.Schema, s.FunctionName(), s.Schema, s.Table)
 }

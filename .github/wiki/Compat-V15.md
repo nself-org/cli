@@ -69,6 +69,12 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-DEPL-14 | silent legacy host fallback | deprecation warning. | `cmd/commands/deploy_profile.go` |
 | P7-DEPL-14 | unpinned admin SSH | pinned host-key policy. | `internal/admin/connect.go` |
 | P7-DEPL-14 | unrestricted inventory writes | prod-class confirmation. | `cmd/commands/access_targets.go` |
+| P7-DEPL-24 | DeployViaSsh single-compose push | ApplyRemote artifact-set apply | `internal/controlplane/remote_apply.go` |
+| P7-DEPL-24 | RunWithEnv single-compose push | target snapshot, scratch build, artifact-set apply | `cmd/commands/deploy_apply_v15.go` |
+| P7-DEPL-24 | env snapshot written into the operator's project dir | written in the scratch dir at apply time | `cmd/commands/deploy_apply_v15.go` |
+| P7-DEPL-24 | promote snapshot rollback | restore the remote pre-deploy tar (and the prod database backup) in place | `cmd/commands/deploy_lifecycle.go` |
+| P7-DEPL-24 | remote build in the operator's project dir | scratch build after the target snapshot | `cmd/commands/deploy_scratch.go` |
+| P7-DEPL-24 | remoteDeployPush single-compose rsync + pull + up | artifact-set apply | `cmd/commands/deploy_apply_v15.go` |
 | P7-LIVE-03 | a lock held by another command does not stop a build (it takes the O_EXCL build.lock) | a lock held by another command refuses the build | `internal/build/build_lock.go` |
 | P7-LIVE-03 | a prod-class or hand-edited change proceeds with a notice | refused with E403 without --yes or --force | `internal/reconcile/apply.go` |
 | P7-LIVE-05 | --json accepted and ignored | v1 envelope {key, file, applied, plan} | `cmd/commands/config_set.go` |
@@ -76,6 +82,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-LIVE-06 | plugin install leaves generated state for a later build | reconcile now | `cmd/commands/plugin_install.go` |
 | P7-LIVE-06 | plugin removal leaves generated state for a later build | reconcile now | `cmd/commands/plugin_lifecycle.go` |
 | P7-LIVE-06 | post-install build hint | automatic reconcile | `cmd/commands/plugin_install.go` |
+| P7-LIVE-09 | the project lock is written and honoured only when nself.lock.yaml exists or --write-lock is given | always | `internal/build/lockfile.go` |
 | P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |
 | P7-LIVE-17 | IMAGE_PINNING defaults to legacy | lock | `internal/compose/images_lock.go` |
 | P7-LIVE-22 | E151 for every ACME failure (exit of the failed process, else 2) | E470/E471 (exit 2) or E472 (exit 1) by failure class | `cmd/commands/ssl_renewal.go` |

@@ -211,3 +211,24 @@ func TestExecKill(t *testing.T) {
 		t.Errorf("production kill delay is %s, EPIC D2 says 5s", old)
 	}
 }
+
+func TestExecKillDelayOverride(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("child signalling differs on Windows")
+	}
+	useStub(t, "STUBCLI_MODE", "sleep-ignore")
+	spec := specFor(Options{KillDelay: 150 * time.Millisecond}, TransportHTTPStream, []string{"x"})
+	if spec.KillDelay != 150*time.Millisecond {
+		t.Fatal("specFor dropped the stream kill delay")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := Exec(ctx, spec)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Exec: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("override did not stop the SIGTERM-ignoring child: %s", elapsed)
+	}
+}

@@ -58,6 +58,7 @@ internal/deprecation 75  # measured 77.3 2026-10-05
 internal/docker 52  # measured 54.7 2026-10-05
 internal/docker/dockertest 85  # measured 89.5 (darwin, local) 2026-10-11; new package (D-0286)
 internal/doctor 47  # measured 49.6 2026-10-05
+internal/doctor/report 85  # measured 87.8 2026-10-11
 internal/domain 60  # measured 62.1 2026-10-05
 internal/embedded 78  # measured 80.8 2026-10-05
 internal/env 19  # measured 21.7 2026-10-05
@@ -67,12 +68,14 @@ internal/featureflags 69  # measured 71.7 2026-10-05
 internal/generate 65  # measured 67.5 2026-10-05
 internal/hasura 87  # measured 89.1 2026-10-05
 internal/health 26  # measured 28.1 2026-10-05
+internal/httpapi 93  # measured 95.1 2026-10-11 (P7-SURF-02)
 internal/httptimeout 98  # measured 100.0 2026-10-05
 internal/installer 11  # measured 13.2 2026-10-05
 internal/installmeta 75  # measured 77.8 2026-10-05
 internal/invoke 89  # measured 91.2 2026-10-10 (P7-SURF-24)
 internal/license 60
 internal/lifecycle 14  # measured 16.7 2026-10-05
+internal/lock 90  # measured 92.8 2026-10-10
 internal/machineauth 71  # measured 75.7 2026-10-10
 internal/maintenance 35  # measured 37.8 2026-10-05
 internal/metrics 88  # measured 90.5 2026-10-05
@@ -146,6 +149,7 @@ tools/imagelock 57  # measured 59.7 2026-10-05
 tools/jsonvalidate 72  # measured 74.4 2026-10-08
 tools/manifestv2migrate 70  # measured 72.3 2026-10-05
 tools/mcpdoc 0  # measured 0.0 2026-10-05
+tools/openapigen 68  # measured 70.2 2026-10-11 (P7-SURF-02)
 tools/parity 16  # measured 18.2 2026-10-05
 tools/perfbench 79  # measured 80.3 2026-10-05 (go test -mod=vendor -coverprofile ./tools/perfbench/...)
 tools/perfbench/scenarios 0  # measured 0.0 2026-10-05 (no own tests; exercised via tools/perfbench)

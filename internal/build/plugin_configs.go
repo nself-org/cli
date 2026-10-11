@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/ssl"
 )
 
 // RenderPluginConfigs walks installed plugins' configs/ directories
@@ -122,7 +123,7 @@ func buildTemplateVars(workdir string, cfg *config.Config) map[string]string {
 		network = cfg.ProjectName + "_network"
 	}
 
-	pluginDir := cfg.PluginSystem.Dir
+	pluginDir := expandHomeDir(cfg.PluginSystem.Dir)
 	if pluginDir == "" {
 		home, _ := os.UserHomeDir()
 		if home != "" {
@@ -131,6 +132,7 @@ func buildTemplateVars(workdir string, cfg *config.Config) map[string]string {
 	}
 
 	return map[string]string{
+		"SSL_DIR":              pluginSSLDir(cfg.BaseDomain),
 		"PROJECT_NAME":         cfg.ProjectName,
 		"BASE_DOMAIN":          cfg.BaseDomain,
 		"POSTGRES_USER":        cfg.Postgres.User,
@@ -142,4 +144,34 @@ func buildTemplateVars(workdir string, cfg *config.Config) map[string]string {
 		"AUTH_PORT":            fmt.Sprintf("%d", cfg.Auth.Port),
 		"NSELF_PLUGIN_DIR":     pluginDir,
 	}
+}
+
+// pluginSSLDir is the ${SSL_DIR} of a plugin snippet: the base domain's
+// certificate dir relative to the nginx ssl mount, the one the CLI's own
+// templates read (service.conf.tmpl: <mount>/certificates/<dir>/fullchain.pem)
+// and internal/ssl.Generator writes. Snippets say
+// /etc/nginx/ssl/${SSL_DIR}/fullchain.pem, so the value carries the
+// certificates/ level. An empty domain falls back to localhost, as the
+// generator does.
+func pluginSSLDir(baseDomain string) string {
+	dir := ssl.DomainToDirName(baseDomain)
+	if dir == "" {
+		dir = "localhost"
+	}
+	return "certificates/" + dir
+}
+
+// expandHomeDir turns a leading "~" or "~/" into the user's home dir.
+// config.ApplyDefaults sets PLUGIN_DIR to the literal "~/.nself/plugins",
+// which os.Stat would otherwise read relative to the working dir, so no
+// plugin snippet was ever found. Anything else is returned unchanged.
+func expandHomeDir(dir string) string {
+	if dir != "~" && !strings.HasPrefix(dir, "~/") {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return dir
+	}
+	return filepath.Join(home, strings.TrimPrefix(dir, "~"))
 }

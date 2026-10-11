@@ -60,7 +60,7 @@ NOTIFY_INTERNAL_SECRET=Gp7Wc3Nx9Vb5Rt2Kq8Hy4Zl6Md1Js0Af
 CRON_INTERNAL_SECRET=Xe5Rn9Cw3Vb7Tk2Hq8Zp4Ly6Jd1Ms0Ga
 MINIO_ROOT_USER=minio-user-Tq8Zk
 MINIO_ROOT_PASSWORD=Vb3Nc7Rx9Wt5Kq2Hy8Zp4Lm6Jd1Sa0Fe
-REDIS_PASSWORD=Cw9Tn3Rx7Vb5Kq2Hy8Zp4Lm6Jd1Sa0Fg
+REDIS_PASSWORD=fixture-redis-pw-not-real
 GRAFANA_ADMIN_PASSWORD=Pq4Zk8Tn2Vx6Rc9Hw3Lb7Md5Jd1Sa0Fe
 AUTH_JWT_SECRET=Rt6Nc2Vx8Wb4Kq9Hy3Zp7Lm5Jd1Sa0FeGk
 HASURA_GRAPHQL_CORS_DOMAIN=https://example.org
@@ -205,7 +205,7 @@ func writePlanPlugin(t *testing.T, pluginsDir, name string, port int, withNginx 
 	writeFixtureFile(t, filepath.Join(dir, pluginComposeFilename), fmt.Sprintf("services:\n  %s:\n    image: nself/%s:latest\n    ports:\n      - \"%d:%d\"\n", name, name, port, port), 0o644)
 	writeFixtureFile(t, filepath.Join(dir, "Dockerfile"), "FROM scratch\n", 0o644)
 	if withNginx {
-		writeFixtureFile(t, filepath.Join(dir, "nginx", "route.conf"), "server {\n  listen 80;\n  server_name ${PLUGIN_NAME}.example.org;\n}\n", 0o644)
+		writeFixtureFile(t, filepath.Join(dir, "nginx", "route.conf"), "server {\n  listen 80;\n  server_name nself-alpha.${BASE_DOMAIN};\n}\n", 0o644)
 	}
 }
 

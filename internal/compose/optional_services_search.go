@@ -15,7 +15,7 @@ import (
 // Uses the same init-container pattern as MinIO.
 func (g *Generator) buildMeiliInitService() ServiceConfig {
 	return ServiceConfig{
-		Image:         ImageRef("meilisearch-init", ""),
+		Image:         ResolveImage("meilisearch-init", ImageRef("meilisearch-init", "")),
 		ContainerName: fmt.Sprintf("%s_meilisearch_init", g.cfg.ProjectName),
 		Restart:       "no",
 		User:          "root",
@@ -109,11 +109,14 @@ func (g *Generator) buildTypesenseService() ServiceConfig {
 			"TYPESENSE_ENABLE_CORS": enableCORS,
 			"TYPESENSE_LOG_LEVEL":   logLevel,
 		},
-		Command: fmt.Sprintf("--data-dir /data --api-key=%s --enable-cors", apiKey),
+		// Typesense reads the key from TYPESENSE_API_KEY above; on argv
+		// (--api-key=) docker inspect would show it (D-0282).
+		Command: "--data-dir /data --enable-cors",
 		Volumes: []string{"typesense_data:/data"},
 		Ports:   []string{fmt.Sprintf("127.0.0.1:%d:8108", port)},
 		Healthcheck: &Healthcheck{
-			Test:     []string{"CMD", "curl", "-f", "-H", fmt.Sprintf("X-TYPESENSE-API-KEY: %s", apiKey), "http://localhost:8108/health"},
+			// /health needs no API key; sending one put it on curl's argv.
+			Test:     []string{"CMD", "curl", "-f", "http://localhost:8108/health"},
 			Interval: "30s",
 			Timeout:  "10s",
 			Retries:  3,

@@ -55,6 +55,10 @@ type BuildOptions struct {
 	// removal and chmod must be one Expect planned, and the disk must hold it
 	// afterwards (expectSink). Nil writes as before. Set by reconcile.Apply.
 	Expect *PlannedBuild
+	// WriteLock opts a v1.4 build into the project lock nself.lock.yaml
+	// (`build --write-lock`, P7-LIVE-09). v1.5 always writes it; v1.4 writes
+	// it only when this is set or the file already exists.
+	WriteLock bool
 	// EnvOverlay, in ModePlan, replaces env files by project-relative name
 	// (".env", ".env.secrets") with pending bytes: the plan renders the
 	// project as it will be once those bytes are written (P7-LIVE-05,
@@ -276,4 +280,7 @@ type buildState struct {
 	composePath        string
 	secretMap          map[string]string
 	pluginComposeFiles []string
+
+	// lockWarned dedupes the lock warnings of one build (lockfile.go).
+	lockWarned map[string]bool
 }

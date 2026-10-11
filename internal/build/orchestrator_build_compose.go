@@ -34,6 +34,12 @@ func (st *buildState) generateCompose() error {
 	if profile == "" {
 		profile = compose.ProfileApp
 	}
+	// P7-LIVE-09: honour the project lock's image pins for this render.
+	restorePins, err := st.installLockPins()
+	if err != nil {
+		return err
+	}
+	defer restorePins()
 	composeGen := compose.NewGeneratorWithProfile(st.cfg, profile).WithWorkDir(st.workdir).WithEnvOverlay(st.opts.EnvOverlay)
 	composeYAML, err := composeGen.Generate()
 	if err != nil {
@@ -100,6 +106,14 @@ func (st *buildState) generateCompose() error {
 		return fmt.Errorf("writing compose manifest: %w", err)
 	}
 	st.filesGenerated++
+
+	// ── Step 9.55: nself.lock.yaml (P7-LIVE-09) ─────────────────────
+	// After the compose-file list above is rediscovered and written, with that
+	// same list, so build and `start --frozen` read the same files. Written only
+	// when its content changes (lockfile.go).
+	if err := st.writeProjectLock(composeYAML, withUserOverride(st.workdir, append([]string{st.composePath}, st.pluginComposeFiles...))); err != nil {
+		return err
+	}
 
 	if st.opts.Verbose && len(st.pluginComposeFiles) > 0 {
 		slog.Info("discovered plugin compose files", "count", len(st.pluginComposeFiles), "files", st.pluginComposeFiles)

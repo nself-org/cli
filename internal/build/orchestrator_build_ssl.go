@@ -161,7 +161,7 @@ func (st *buildState) generateSSLAndNginx() error {
 	}
 
 	// ── Step 7.1: Inject plugin nginx routes ────────────────────────
-	pluginRoutes, err := injectPluginNginxRoutesVia(st.sink, st.workdir, "", st.cfg)
+	pluginRoutes, err := injectPluginNginxRoutesVia(st.sink, st.workdir, "", st.cfg, nginxGen.HasSSL())
 	if err != nil {
 		return fmt.Errorf("injecting plugin nginx routes: %w", err)
 	}

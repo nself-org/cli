@@ -201,9 +201,27 @@ func TestShapeQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"prosecdef", "proconfig IS NULL", "proretset", "provolatile = 's'", "c.reltype",
+		"NOT p.proisstrict", `regexp_replace(btrim(p.prosrc, E' \t\r\n;'), '\s+', ' ', 'g')`,
+		`= 'SELECT * FROM "public"."docs" ORDER BY "embedding" <=> $1'`,
 		`to_regprocedure('"public"."docs_nearest_embedding"(vector)')`, `to_regclass('"public"."docs"')`} {
 		if !strings.Contains(q, want) {
 			t.Errorf("shape query lacks %q:\n%s", want, q)
+		}
+	}
+	// D-0369: the compared body is exactly the one Render writes, per distance.
+	for _, d := range []Distance{Cosine, L2, IP} {
+		sp := docsSpec(d)
+		sqlText, err := Render(sp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := functionBody(`"public"`, `"docs"`, `"embedding"`, sp.Operator())
+		if !strings.Contains(sqlText, "AS $$\n  "+body+"\n$$;") {
+			t.Errorf("%s: rendered SQL does not hold the body %q:\n%s", d, body, sqlText)
+		}
+		q, err := shapeQuery(sp)
+		if err != nil || !strings.Contains(q, "= '"+body+"'") {
+			t.Errorf("%s: shape query does not compare the body %q: %v\n%s", d, body, err, q)
 		}
 	}
 	bad := docsSpec(Cosine)

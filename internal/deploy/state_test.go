@@ -199,3 +199,43 @@ func TestSaveDeployState_filePerms(t *testing.T) {
 		t.Errorf("file permissions: got %04o, want 0600", got)
 	}
 }
+
+// TestLoadDeployState_readOutcomes pins D-0144: only an absent file is the
+// empty state; an unreadable or corrupt file is an error, never a zero state.
+func TestLoadDeployState_readOutcomes(t *testing.T) {
+	cases := []struct {
+		name    string
+		setup   func(t *testing.T, path string)
+		wantErr bool
+	}{
+		{name: "absent", setup: func(*testing.T, string) {}},
+		{name: "unreadable", wantErr: true, setup: func(t *testing.T, path string) {
+			// A directory at the file path fails ReadFile on every platform,
+			// without relying on permissions a root test runner would ignore.
+			if err := os.MkdirAll(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "corrupt", wantErr: true, setup: func(t *testing.T, path string) {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(`{"strategy": "rolling"`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			tc.setup(t, filepath.Join(root, DeployStateFile))
+			st, err := LoadDeployState(root)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+			if st.Strategy != "" || st.Target != "" {
+				t.Errorf("want zero state, got %+v", st)
+			}
+		})
+	}
+}

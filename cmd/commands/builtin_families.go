@@ -38,7 +38,11 @@ type builtinFamily struct {
 
 // builtinFamilies lists the builtin families. Generators mount them (minus disable
 // markers) so the committed registry contains admin and no installed plugin.
-var builtinFamilies = []builtinFamily{{slug: admin.Slug, build: func() *cobra.Command { return admin.Command(adminDeps()) }}}
+var builtinFamilies = []builtinFamily{{slug: admin.Slug, build: func() *cobra.Command {
+	node := admin.Command(adminDeps())
+	node.AddCommand(admin.ServeCommand(adminServeDeps()))
+	return node
+}}}
 
 func adminDeps() admin.Deps {
 	return admin.Deps{

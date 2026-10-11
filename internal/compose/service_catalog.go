@@ -144,6 +144,21 @@ var serviceCatalog = []CatalogEntry{
 	},
 }
 
+// PinKey maps a compose service name to the key of its image pin: the project
+// lock (images, unpinned), the CLI image lock and ResolveImage all use that key.
+// It is the catalog's ImageKey (nself-admin is pinned as "admin") and the name
+// itself for every other service. Every place that looks a compose service up
+// in the lock goes through here (CLIOwned, the build's lock merge, the
+// bootstrap), so a renamed service cannot slip out of the lock again.
+func PinKey(service string) string {
+	for _, e := range serviceCatalog {
+		if e.Name == service && e.ImageKey != "" {
+			return e.ImageKey
+		}
+	}
+	return service
+}
+
 // ServiceCatalog returns every catalogued service with its default image
 // resolved from the image lock (images.yaml).
 func ServiceCatalog() []CatalogEntry {

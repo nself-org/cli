@@ -1,0 +1,28 @@
+- configuration:
+    connection_info:
+        database_url:
+            from_env: FAKE_DATABASE_URL
+  kind: postgres
+  name: default
+  tables:
+    - select_permissions:
+        - permission:
+            columns:
+                - id
+                - body
+            filter:
+                _and:
+                    - owner_id:
+                        _eq: X-Hasura-User-Id
+                    - _or:
+                        - deleted:
+                            _eq: false
+                        - shared:
+                            _eq: true
+          role: user
+      table:
+        name: np_note
+        schema: public
+    - table:
+        name: np_tag
+        schema: public

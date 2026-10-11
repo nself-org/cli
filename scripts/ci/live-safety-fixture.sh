@@ -6,10 +6,14 @@
 #          fixture projects are built in temp dirs; no real project, host or
 #          remote is touched.
 # Usage:   bash scripts/ci/live-safety-fixture.sh <path-to-nself-binary>
-# Inputs:  the binary; python3 on PATH. Local Docker is used only to list
-#          containers (and to create, never start, one labelled scratch container
-#          when an image is cached); without Docker the container checks are
-#          skipped with a note.
+# Inputs:  the binary; python3 on PATH; a reachable local Docker (`docker info`
+#          must succeed). Docker is required, not optional: a plan is empty only
+#          when the container state is known, so every "plan after apply is
+#          empty" check needs it. Docker is used only to list containers (and to
+#          create, never start, one labelled scratch container when an image is
+#          cached). Without it the script fails at once with
+#          "FAIL docker is required"; live-safety-smoke.sh skips this fixture on
+#          such hosts.
 # Outputs: one line per assertion ("ok <name>"); the last line is
 #          "LIVE-SAFETY-FIXTURE: PASS" on success. Any failure prints
 #          "FAIL <name>" to stderr and exits 1.
@@ -85,31 +89,25 @@ jget() {
 }
 
 containers() { docker ps -a --format '{{.ID}} {{.Names}} {{.State}}' 2>/dev/null | LC_ALL=C sort; }
-HAVE_DOCKER=0
-if docker info >/dev/null 2>&1; then HAVE_DOCKER=1; fi
+docker info >/dev/null 2>&1 || fail "docker is required: docker info failed, so the container state (and every empty-plan check) is unknown"
 
 # ---- prod fixture -----------------------------------------------------------
 mkproj prod prod-plugins
-if [ "$HAVE_DOCKER" = 1 ]; then
-  IMG="$(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>' | head -1 || true)"
-  if [ -n "$IMG" ]; then
-    SCRATCH="l03-fx-$$"
-    docker create --name "$SCRATCH" --label com.docker.compose.project=fx --label com.docker.compose.service=hasura \
-      --label com.docker.compose.config-hash=stale "$IMG" >/dev/null
-  fi
+IMG="$(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>' | head -1 || true)"
+if [ -n "$IMG" ]; then
+  SCRATCH="l03-fx-$$"
+  docker create --name "$SCRATCH" --label com.docker.compose.project=fx --label com.docker.compose.service=hasura \
+    --label com.docker.compose.config-hash=stale "$IMG" >/dev/null
 fi
-CBEFORE=""
-if [ "$HAVE_DOCKER" = 1 ]; then CBEFORE="$(containers)"; fi
+CBEFORE="$(containers)"
 T0="$(tree prod)"
 
 run_nself prod 1 build --plan --json
 [ "$RC" = 0 ] || fail "plan exit $RC: $(cat "$WORK/err")"
 [ "$(tree prod)" = "$T0" ] || fail "build --plan changed the project tree, HOME or plugin dir"
 ok "plan writes nothing (tree hash unchanged)"
-if [ "$HAVE_DOCKER" = 1 ]; then
-  [ "$(containers)" = "$CBEFORE" ] || fail "build --plan changed the container list"
-  ok "plan starts, stops and creates no container"
-fi
+[ "$(containers)" = "$CBEFORE" ] || fail "build --plan changed the container list"
+ok "plan starts, stops and creates no container"
 [ "$(jget 'd["env_class"]')" = prod ] || fail "plan env_class is not prod"
 [ "$(jget 'len(d["artifacts"])>5')" = True ] || fail "plan lists no artifacts"
 [ "$(jget 'd["requires_confirmation"]')" = True ] || fail "plan does not require confirmation"

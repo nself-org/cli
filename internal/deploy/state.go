@@ -6,7 +6,9 @@ package deploy
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -58,15 +60,43 @@ type StrategyState struct {
 	// BlueGreenStateFile is the path to the underlying blue/green state file,
 	// populated when strategy is blue-green or canary.
 	BlueGreenStateFile string `json:"blue_green_state_file,omitempty"`
+
+	// BackupID is the verified database backup taken before a v1.5 remote apply
+	// on a production-class target; BackupHost is the host it lives on, and
+	// PreDeployTar the in-place file backup (every tier). `deploy rollback`
+	// restores from them. Empty on every other deploy.
+	BackupID     string `json:"backup_id,omitempty"`
+	BackupHost   string `json:"backup_host,omitempty"`
+	PreDeployTar string `json:"pre_deploy_tar,omitempty"`
+	// PreDeployTars maps every host the deploy synced to its pre-deploy tar, so
+	// `deploy rollback` restores each server of the env, not just the primary.
+	PreDeployTars map[string]string `json:"pre_deploy_tars,omitempty"`
+	// PreDeployChanged and PreDeployAbsent are, per host, the relative paths the
+	// deploy shipped or pruned and the subset the host did not have before. A
+	// rollback restores and removes exactly these, never anything read from the host.
+	PreDeployChanged map[string][]string `json:"pre_deploy_changed,omitempty"`
+	PreDeployAbsent  map[string][]string `json:"pre_deploy_absent,omitempty"`
+	// DBRestoredAt is set (RFC 3339) right after `nself backup restore` succeeded,
+	// before the re-apply, so a retried rollback never restores the database twice.
+	DBRestoredAt string `json:"db_restored_at,omitempty"`
+	// HostOutcomes is, per server name, what the deploy did there: "ok", "failed:
+	// <err>" (changes kept) or "not changed: <err>" (refused or restored). Success
+	// is true only when every server of the env is "ok".
+	HostOutcomes map[string]string `json:"host_outcomes,omitempty"`
 }
 
 // LoadDeployState reads the deploy state from .nself/state/deploy.json.
-// Returns a zero-value StrategyState when no state file exists (fresh install).
+// Returns a zero-value StrategyState and nil when no state file exists (fresh
+// install). Any other read failure and a corrupt file are returned as errors,
+// never as an empty state (D-0144).
 func LoadDeployState(projectRoot string) (StrategyState, error) {
 	path := filepath.Join(projectRoot, DeployStateFile)
 	data, err := os.ReadFile(path)
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
 		return StrategyState{}, nil
+	}
+	if err != nil {
+		return StrategyState{}, fmt.Errorf("reading deploy state: %w", err)
 	}
 	var s StrategyState
 	if err := json.Unmarshal(data, &s); err != nil {
