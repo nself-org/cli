@@ -20,7 +20,6 @@ package reconcile
 
 import (
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
@@ -45,18 +44,6 @@ type secretScan struct {
 	literal bool // the open scope is a block scalar: its lines are literal text
 }
 
-// commentStart matches the start of a YAML comment: a # at the start of the
-// text or after a space or tab.
-var commentStart = regexp.MustCompile(`(^|[ \t])#`)
-
-// stripComment cuts a trailing whitespace-delimited comment from plain text.
-func stripComment(v string) string {
-	if loc := commentStart.FindStringIndex(v); loc != nil {
-		v = v[:loc[0]]
-	}
-	return strings.TrimSpace(v)
-}
-
 // note records a hidden value: quotes and spaces trimmed, at least
 // minSecretValueLen long, not a boolean or null literal, not a redaction.
 func (sc *secretScan) note(v string) {
@@ -68,6 +55,31 @@ func (sc *secretScan) note(v string) {
 	if len(v) >= minSecretValueLen && !strings.Contains(v, redactedValue) {
 		sc.vals = append(sc.vals, v)
 	}
+}
+
+// stripComment cuts a trailing comment from plain text: a # at the start or
+// after a space or tab, outside quotes. A quote opens only at the start or
+// after whitespace (an apostrophe inside a word is text) and a backslash
+// escapes inside double quotes.
+func stripComment(v string) string {
+	var q byte
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		atWord := i == 0 || v[i-1] == ' ' || v[i-1] == '\t'
+		switch {
+		case q != 0:
+			if c == '\\' && q == '"' {
+				i++
+			} else if c == q {
+				q = 0
+			}
+		case (c == '"' || c == '\'') && atWord:
+			q = c
+		case c == '#' && atWord:
+			return strings.TrimSpace(v[:i])
+		}
+	}
+	return strings.TrimSpace(v)
 }
 
 // stripAnnotations removes leading &anchor and !tag tokens from a YAML value.
@@ -220,40 +232,4 @@ func (sc *secretScan) secretEntry(line string, m []string) (string, int, byte, b
 		tail = ","
 	}
 	return head + ": " + redactedValue + tail, col, open, false
-}
-
-// applySecretValues is the second pass: it replaces every literal copy of the
-// collected values (and their YAML-quoted spellings) in lines, longest first.
-func applySecretValues(lines, vals []string) []string {
-	if len(vals) == 0 {
-		return lines
-	}
-	seen := map[string]bool{}
-	var all []string
-	jsonEsc := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
-	for _, v := range vals {
-		for _, s := range []string{v, strings.ReplaceAll(v, "'", "''"), jsonEsc.Replace(v)} {
-			if !seen[s] {
-				seen[s] = true
-				all = append(all, s)
-			}
-		}
-	}
-	sort.Slice(all, func(i, j int) bool { return len(all[i]) > len(all[j]) })
-	// One replacer, longest spellings first (NewReplacer tries pairs in
-	// argument order), so the cost is linear in the text, not lines x values.
-	pairs := make([]string, 0, 2*len(all))
-	for _, v := range all {
-		pairs = append(pairs, v, redactedValue)
-	}
-	rep := strings.NewReplacer(pairs...)
-	out := make([]string, len(lines))
-	for i, line := range lines {
-		parts := strings.Split(line, redactedValue)
-		for j, p := range parts {
-			parts[j] = rep.Replace(p)
-		}
-		out[i] = strings.Join(parts, redactedValue)
-	}
-	return out
 }

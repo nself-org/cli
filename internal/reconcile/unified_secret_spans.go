@@ -204,54 +204,65 @@ func pairValueSpan(line string, loc []int) (start, end int, open byte) {
 // directiveToken matches one whitespace-separated token.
 var directiveToken = regexp.MustCompile(`\S+`)
 
-// directive masks the arguments of a directive line (nginx and similar: tokens
-// ending in ";", optionally followed by a # comment). The first token is the
-// directive name and is never tested. After the first later token that names a
-// secret (config.IsSecretKey, quotes and a leading $ stripped),
-// every argument up to the ";" becomes one [REDACTED] and each argument is
-// collected for repeat masking. Other lines come back unchanged.
+// directive masks the arguments of the directives on a line (nginx and
+// similar: segments ending in ";", then an optional # comment). Each segment is
+// handled alone: its first token is the directive name and is never tested;
+// after the first later token that names a secret (config.IsSecretKey, quotes
+// and a leading $ stripped) the arguments up to the ";" become one [REDACTED]
+// and are collected for repeat masking. A trailing segment without ";" is left
+// to the other rules. Other lines come back unchanged.
 func (sc *secretScan) directive(line string) string {
-	semi, ok := directiveEnd(line)
-	if !ok {
+	semis := directiveSemis(line)
+	var sb strings.Builder
+	pos, start := 0, 0
+	for _, semi := range semis {
+		locs := directiveToken.FindAllStringIndex(line[start:semi], -1)
+		for i, loc := range locs {
+			tok := strings.TrimLeft(strings.Trim(line[start+loc[0]:start+loc[1]], `"'`), "$")
+			if i == 0 || i == len(locs)-1 || !config.IsSecretKey(tok) {
+				continue // the directive name (first token) is never tested
+			}
+			args := line[start+locs[i+1][0] : semi]
+			sc.note(args)
+			for _, a := range locs[i+1:] {
+				sc.note(line[start+a[0] : start+a[1]])
+			}
+			sb.WriteString(line[pos : start+loc[1]])
+			sb.WriteString(" " + redactedValue)
+			pos = semi
+			break
+		}
+		start = semi + 1
+	}
+	if pos == 0 {
 		return line
 	}
-	locs := directiveToken.FindAllStringIndex(line[:semi], -1)
-	for i, loc := range locs {
-		tok := strings.TrimLeft(strings.Trim(line[loc[0]:loc[1]], `"'`), "$")
-		if i == 0 || i == len(locs)-1 || !config.IsSecretKey(tok) {
-			continue // the directive name (first token) is never tested
-		}
-		for _, arg := range locs[i+1:] {
-			sc.note(line[arg[0]:arg[1]])
-		}
-		return line[:loc[1]] + " " + redactedValue + line[semi:]
-	}
-	return line
+	sb.WriteString(line[pos:])
+	return sb.String()
 }
 
-// directiveEnd finds the ";" that ends a directive line: the first ";" outside
-// quotes, with nothing but an optional # comment after it (a # outside quotes,
-// at the line start or after whitespace, starts the comment, and a ";" inside
-// the comment does not count). ok is false for any other line.
-func directiveEnd(line string) (semi int, ok bool) {
+// directiveSemis returns the offsets of the ";" that end directives: outside
+// quotes, not escaped by a backslash, before a # comment (a # outside quotes at
+// the line start or after whitespace).
+func directiveSemis(line string) []int {
+	var semis []int
 	var q byte
-	semi = -1
 	for i := 0; i < len(line); i++ {
 		c := line[i]
 		switch {
+		case c == '\\':
+			i++
 		case q != 0:
-			if c == '\\' && q == '"' {
-				i++
-			} else if c == q {
+			if c == q {
 				q = 0
 			}
 		case c == '"' || c == '\'':
 			q = c
-		case c == ';' && semi < 0:
-			semi = i
+		case c == ';':
+			semis = append(semis, i)
 		case c == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t'):
-			return semi, semi >= 0 && strings.TrimSpace(line[semi+1:i]) == ""
+			return semis
 		}
 	}
-	return semi, semi >= 0 && strings.TrimSpace(line[semi+1:]) == ""
+	return semis
 }
