@@ -1,7 +1,7 @@
 //go:build integration
 
 // Integration test for TrackPluginTables against real postgres + hasura
-// containers (docker compose), through the production seams: the admin secret is
+// containers (docker run on a private network), through the production seams: the admin secret is
 // read from the running Hasura container and table existence from psql.
 //
 // Run with:
@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -27,33 +26,6 @@ import (
 )
 
 const trackIntegSecret = "fixture-admin-secret-track-integration"
-
-const trackIntegCompose = `
-services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: trk78_postgres
-    environment:
-      POSTGRES_PASSWORD: fixture-pg-password
-      POSTGRES_DB: nself
-    ports: ["15578:5432"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 2s
-      timeout: 3s
-      retries: 20
-  hasura:
-    image: hasura/graphql-engine:v2.44.0
-    container_name: trk78_hasura
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      HASURA_GRAPHQL_DATABASE_URL: postgres://postgres:fixture-pg-password@postgres:5432/nself
-      HASURA_GRAPHQL_ADMIN_SECRET: ` + trackIntegSecret + `
-      HASURA_GRAPHQL_ENABLE_CONSOLE: "false"
-    ports: ["18078:8080"]
-`
 
 // trackIntegParse is a minimal export_metadata parser (database cannot import
 // appready; the production caller injects appready.TrackedTables).
@@ -99,17 +71,29 @@ func TestTrackPluginTablesIntegration(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker not found in PATH")
 	}
-	dir := t.TempDir()
-	composeFile := filepath.Join(dir, "docker-compose.yml")
-	if err := os.WriteFile(composeFile, []byte(trackIntegCompose), 0o644); err != nil {
-		t.Fatal(err)
+	// docker run (not compose) so the test also runs where the compose plugin is absent.
+	run := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("docker", args...).CombinedOutput(); err != nil {
+			t.Fatalf("docker %s: %v\n%s", strings.Join(args[:2], " "), err, out)
+		}
 	}
-	if out, err := exec.Command("docker", "compose", "-f", composeFile, "-p", "nself-track78-integ", "up", "-d").CombinedOutput(); err != nil {
-		t.Fatalf("docker compose up: %v\n%s", err, out)
+	cleanup := func() {
+		for _, c := range []string{"trk78_hasura", "trk78_postgres"} {
+			_, _ = exec.Command("docker", "rm", "-f", "-v", c).CombinedOutput()
+		}
+		_, _ = exec.Command("docker", "network", "rm", "trk78_net").CombinedOutput()
 	}
-	t.Cleanup(func() {
-		_, _ = exec.Command("docker", "compose", "-f", composeFile, "-p", "nself-track78-integ", "down", "-v").CombinedOutput()
-	})
+	cleanup()
+	t.Cleanup(cleanup)
+	run("network", "create", "trk78_net")
+	run("run", "-d", "--name", "trk78_postgres", "--network", "trk78_net",
+		"--tmpfs", "/var/lib/postgresql/data", "-e", "POSTGRES_PASSWORD=fixture-pg-password", "-e", "POSTGRES_DB=nself", "postgres:16-alpine")
+	waitTrackIntegPostgres(t)
+	run("run", "-d", "--name", "trk78_hasura", "--network", "trk78_net", "-p", "18078:8080",
+		"-e", "HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:fixture-pg-password@trk78_postgres:5432/nself",
+		"-e", "HASURA_GRAPHQL_ADMIN_SECRET="+trackIntegSecret,
+		"-e", "HASURA_GRAPHQL_ENABLE_CONSOLE=false", "hasura/graphql-engine:v2.44.0")
 
 	cfg := &config.Config{Env: "dev", ProjectName: "trk78"}
 	cfg.Hasura.Port = 18078
@@ -164,6 +148,18 @@ func TestTrackPluginTablesIntegration(t *testing.T) {
 	if after := trackIntegVersion(t, cfg); after != before {
 		t.Fatalf("metadata resource_version moved %d -> %d: the second call wrote", before, after)
 	}
+}
+
+func waitTrackIntegPostgres(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		if exec.Command("docker", "exec", "trk78_postgres", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "nself").Run() == nil {
+			return
+		}
+		time.Sleep(time.Second)
+	}
+	t.Fatal("postgres never became ready")
 }
 
 func waitTrackIntegHealthy(t *testing.T, port int) {
