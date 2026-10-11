@@ -64,6 +64,9 @@ func Stage(in StageInput) (ArtifactSet, error) {
 		return os.WriteFile(dst, data, mode)
 	}
 	rewritten := func(local string) (rel, remote string, data []byte, err error) {
+		if !filepath.IsAbs(local) { // a relative source (the build's override) is relative to the scratch root, not the cwd
+			local = filepath.Join(in.Map.ScratchRoot, local)
+		}
 		if remote, err = in.Map.Remote(local); err != nil {
 			return
 		}

@@ -138,3 +138,24 @@ func TestRollbackChecksLayoutBeforeLock(t *testing.T) {
 		}
 	}
 }
+
+// P3: a relative compose source (the build's docker-compose.override.yml) is read
+// from the scratch root, never from the cwd, even when the cwd has a decoy.
+func TestStageReadsRelativeSourceFromScratchRoot(t *testing.T) {
+	m, compose, envs, snap := buildScratchFor(t, "/opt/nself")
+	writeFile(t, m.ScratchRoot+"/docker-compose.override.yml", "# real override\n", 0o644)
+	cwd := t.TempDir()
+	writeFile(t, cwd+"/docker-compose.override.yml", "# DECOY\n", 0o644)
+	t.Chdir(cwd)
+	stage := t.TempDir()
+	set, err := Stage(stageIn(m, append(compose, "docker-compose.override.yml"), envs, snap, stage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, stage+"/docker-compose.override.yml"); got != "# real override\n" {
+		t.Errorf("shipped override = %q", got)
+	}
+	if !contains(set.Compose, "/opt/nself/docker-compose.override.yml") {
+		t.Errorf("compose list %v lacks the override", set.Compose)
+	}
+}
