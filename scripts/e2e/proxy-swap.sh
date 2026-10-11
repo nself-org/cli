@@ -54,6 +54,12 @@ cleanup() {
     [[ ! -f $dir/.nself/compose-files.txt ]] || compose "$dir" down -v --remove-orphans >"$W/evidence/cleanup-$(basename "$dir").log" 2>&1 || true
   done
   [[ -z $registry_pid ]] || kill "$registry_pid" 2>/dev/null || true
+  # Containers may own generated fixture files; restore only this mktemp tree.
+  if [[ $(uname -s) == Linux ]] && command -v sudo >/dev/null; then
+    sudo -n chown -R "$(id -u):$(id -g)" "$W" || {
+      echo 'FAIL: could not restore temporary fixture ownership' >&2; rc=1;
+    }
+  fi
   if [[ $EVIDENCE != "$W/evidence" ]]; then
     mkdir -p "$EVIDENCE"
     cp -R "$W/evidence/." "$EVIDENCE/"
@@ -130,6 +136,30 @@ NSELF_PLUGIN_REGISTRY=http://127.0.0.1:$(cat "$W/registry.port")
 export NSELF_PLUGIN_REGISTRY
 # remove resolves its plugin dir before loading .env, so provide the same path up front.
 nself() { local dir=$1; shift; (cd "$dir" && NSELF_PLUGIN_DIR="$dir/.nself/plugins" "$W/nself" "$@"); }
+pin_fixture_credentials() {
+  # Reuse generated database/admin credentials, which build does not persist.
+  python3 - "$1" <<'PY'
+import os, pathlib, sys
+project = pathlib.Path(sys.argv[1])
+target = project / '.env.secrets'
+existing = target.read_text() if target.exists() else ''
+keys = {'POSTGRES_PASSWORD', 'HASURA_GRAPHQL_ADMIN_SECRET'}
+present = {line.split('=', 1)[0] for line in existing.splitlines() if '=' in line}
+generated = {}
+for line in (project / '.nself/compose.env').read_text().splitlines():
+    key = line.split('=', 1)[0]
+    if key in keys:
+        generated[key] = line
+if generated.keys() != keys:
+    raise SystemExit('FAIL: generated fixture credentials are incomplete')
+with target.open('a') as output:
+    os.chmod(target, 0o600)
+    if existing and not existing.endswith('\n'):
+        output.write('\n')
+    for key in sorted(keys - present):
+        output.write(generated[key] + '\n')
+PY
+}
 manifest() { bash "$ROOT/scripts/e2e/gen-manifest.sh" "$1" > "$W/evidence/$2"; }
 same() { diff -u "$W/evidence/$1" "$W/evidence/$2" || { echo "FAIL: $1 differs from $2" >&2; return 1; }; }
 wait_healthy() {
@@ -147,12 +177,14 @@ wait_healthy() {
 }
 nself "$W/a" add echo --force --yes
 nself "$W/a" build --yes
+pin_fixture_credentials "$W/a"
 # D2 snippet cert parsing accepts the flat cert dir; core writes certificates/<dir>.
 # Alias only fixture certificate bytes, without editing generated configuration.
 ln -s certificates/proxy-test "$W/a/ssl/proxy-test"
 nself "$W/a" start --timeout 180
 wait_healthy nginx
 nself "$W/b" build --yes
+pin_fixture_credentials "$W/b"
 manifest "$W/b" b-before.manifest
 matrix() {
   local label=$1 host path id status redirect ws cert docs_host
@@ -269,7 +301,12 @@ rm "$W/a/nginx/conf.d/shadow.conf"
 probe_pid=$!
 NSELF_V15=1 nself "$W/a" add traefik --force --yes
 nself "$W/a" build --remove-orphans --yes
-nself "$W/a" start --timeout 180
+if ! nself "$W/a" start --timeout 180; then
+  compose "$W/a" logs --no-color --tail 60 > "$W/evidence/swap-start-failed.log" 2>&1
+  compose "$W/a" ps -a --format json > "$W/evidence/swap-start-failed.ps.json"
+  echo 'FAIL: proxy swap start failed; container diagnostics saved' >&2
+  exit 1
+fi
 wait_healthy traefik
 recovered=0
 for _ in $(seq 1 60); do
