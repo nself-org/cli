@@ -151,12 +151,13 @@ func pluginSnippetSkip(rendered string, vars map[string]string, hasSSL bool) str
 }
 
 // resolvePluginNginxDir returns the plugin directory the nginx snippets are
-// read from: pluginDir, else the configured one, else ~/.nself/plugins.
+// read from: pluginDir, else the configured one, else ~/.nself/plugins. A
+// leading "~" is expanded under v1.5 only (expandPluginDir, D-0634).
 func resolvePluginNginxDir(pluginDir string, cfg *config.Config) (string, error) {
 	if pluginDir == "" {
 		pluginDir = cfg.PluginSystem.Dir
 	}
-	pluginDir = expandHomeDir(pluginDir)
+	pluginDir = expandPluginDir(pluginDir)
 	if pluginDir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
