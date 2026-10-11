@@ -30,15 +30,16 @@ func IsSecretKey(key string) bool {
 	return false
 }
 
-// urlSecretParam matches a query parameter that carries a credential.
-var urlSecretParam = regexp.MustCompile(`(?i)([?&;](?:password|sslpassword|pwd|passwd|token|secret|key|api_key|apikey)=)[^&;#\s]*`)
+// urlSecretParam matches a query parameter whose name carries a credential
+// word anywhere (access_token, client_secret, api-key, X-Amz-Signature, auth).
+var urlSecretParam = regexp.MustCompile(`(?i)([?&;][A-Za-z0-9_.-]*(?:pass|pwd|token|secret|key|signature|auth|credential)[A-Za-z0-9_.-]*=)[^&;#\s]*`)
 
 // MaskURLCredentials masks the credentials of a value that holds a URL. For
 // `scheme://` followed later by `@`, everything between `://` and the LAST `@`
 // becomes `****` (user and password), so a password that contains `@`, `/`,
 // `:`, `+` or spaces never leaks and the rule does not depend on net/url
-// accepting the string. Query parameters named password, sslpassword, pwd,
-// passwd, token, secret, key, api_key or apikey (any case) are masked too. A
+// accepting the string. Query parameters whose name contains pass, pwd, token,
+// secret, key, signature, auth or credential (any case) are masked too. A
 // value without `://` is returned unchanged. The rule over-masks a path that
 // holds an `@`; that is the safe side.
 func MaskURLCredentials(v string) string {
