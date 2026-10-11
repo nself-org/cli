@@ -162,6 +162,11 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 				case "clean":
 					got.Confirm, got.Flags = nil, nil
 					want.SideEffect = SideEffectWrite
+				case "plugin info":
+					// P7-PLUG-17 (lead ruling 2026-10-10): `config plugins info`
+					// is json legacy, so `plugin info <n> --json` is not refused
+					// with E402; the frozen pre-split table says none.
+					want.JSON = JSONLegacy
 				case "self-heal":
 					// P7-SURF-11: `doctor heal` declares confirm {flags: []} (the
 					// request nonce is its whole confirmation); the v1.4 view of

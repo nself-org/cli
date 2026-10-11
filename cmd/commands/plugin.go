@@ -1,9 +1,11 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/plugin"
@@ -69,8 +71,13 @@ var pluginRemoveCmd = &cobra.Command{
 var pluginUpdateCmd = &cobra.Command{
 	Use:   "update [name]",
 	Short: "Update a specific plugin or all plugins",
-	Args:  cobra.MaximumNArgs(1),
-	RunE:  runPluginUpdate,
+	Long: `Update one plugin, or every installed plugin.
+
+An installed plugin keeps its tier (free or licensed) when it updates; if it
+cannot (the licence lapsed, or the registry serves only the other tier) the
+update stops with E131. Pass --tier with a plugin name to switch on purpose.`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runPluginUpdateTier,
 }
 
 var pluginUpdatesCmd = &cobra.Command{
@@ -151,6 +158,7 @@ func init() {
 
 	// Flags on update.
 	pluginUpdateCmd.Flags().Bool("allow-eol", false, "Allow updating to/from an EOL plugin (not recommended)") // S58-T03
+	pluginUpdateCmd.Flags().String("tier", "", `Switch the plugin to "free" or "licensed" on purpose (needs a plugin name); default keeps the installed tier`)
 
 	// Flags on remove.
 	pluginRemoveCmd.Flags().Bool("keep-data", false, "Preserve database data on remove")
@@ -201,4 +209,62 @@ func loadConfig() (*config.Config, error) {
 		return nil, fmt.Errorf("loading config: %w", err)
 	}
 	return cfg, nil
+}
+
+// runPluginUpdateTier is the RunE of `plugin update`. One plugin name goes
+// through updateWithTier with the optional --tier (empty keeps the
+// installed tier); no name updates every installed plugin (runPluginUpdate),
+// where --tier is refused because a tier switch is per plugin.
+func runPluginUpdateTier(cmd *cobra.Command, args []string) error {
+	tier, _ := cmd.Flags().GetString("tier")
+	tier = strings.ToLower(strings.TrimSpace(tier))
+	if tier != "" && tier != "free" && tier != plugin.LicenseLicensed && tier != plugin.WireTierPro {
+		return fmt.Errorf(`invalid --tier %q: must be "free" or "licensed"`, tier)
+	}
+	if len(args) != 1 {
+		if tier != "" {
+			return fmt.Errorf("--tier needs a plugin name: nself plugin update <name> --tier %s", tier)
+		}
+		return runPluginUpdate(cmd, args)
+	}
+	name := args[0]
+	ctx := context.Background()
+	if err := plugin.ValidateNetworkAccess(ctx, os.Getenv("NSELF_PLUGIN_REGISTRY")); err != nil {
+		return err
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	if tier != "" {
+		fmt.Fprintf(os.Stderr, "Updating plugin %q (tier %s)...\n", name, tier)
+	} else {
+		fmt.Fprintf(os.Stderr, "Updating plugin %q...\n", name)
+	}
+	if err := updateWithTier(ctx, cfg, name, resolvePluginDir(), tier); err != nil {
+		return fmt.Errorf("updating plugin %q: %w", name, err)
+	}
+	fmt.Fprintf(os.Stderr, "Plugin %q updated successfully.\n", name)
+	return nil
+}
+
+// updateWithTier is plugin.Update with --tier ("" keeps the installed tier).
+// The tier reaches the install through NSELF_PLUGIN_INSTALL_TIER, the variable
+// `plugin install --tier` sets in this layer; it is put back when the update
+// returns, so nothing after it sees an override it did not ask for.
+func updateWithTier(ctx context.Context, cfg *config.Config, name, pluginDir, tier string) error {
+	if tier != "" {
+		prev, had := os.LookupEnv("NSELF_PLUGIN_INSTALL_TIER")
+		if err := os.Setenv("NSELF_PLUGIN_INSTALL_TIER", tier); err != nil {
+			return fmt.Errorf("setting tier override: %w", err)
+		}
+		defer func() {
+			if had {
+				_ = os.Setenv("NSELF_PLUGIN_INSTALL_TIER", prev)
+			} else {
+				_ = os.Unsetenv("NSELF_PLUGIN_INSTALL_TIER")
+			}
+		}()
+	}
+	return plugin.Update(ctx, cfg, name, pluginDir)
 }
