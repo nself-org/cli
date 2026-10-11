@@ -195,7 +195,8 @@ print('\n'.join(sorted(headers)))
 PY
     # whoami includes request headers and container identity; only version/health responses are stable.
     case $id in core:hasura|core:auth|core:storage) printf 'body %s\n' "$(sha256 "$W/body" | cut -d ' ' -f 1)" >> "$output" ;; esac
-    redirect=$(curl --silent --show-error --noproxy '*' --resolve "$host:80:127.0.0.1" --max-time 10 -o /dev/null -w '%{http_code}' "http://$host$path")
+    # /healthz is intentionally served over HTTP; use the root for redirect proof.
+    redirect=$(curl --silent --show-error --noproxy '*' --resolve "$host:80:127.0.0.1" --max-time 10 -o /dev/null -w '%{http_code}' "http://$host/")
     [[ $redirect == 301 || $redirect == 308 ]] || { echo "FAIL: $id HTTP redirect status $redirect" >&2; return 1; }
     printf 'redirect %s\n' "$redirect" >> "$output"
     cert=$(openssl s_client -connect 127.0.0.1:443 -servername "$host" </dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName)
