@@ -22,6 +22,7 @@ import (
 
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/output"
+	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/plugin/manifestv2"
 	"github.com/nself-org/cli/internal/seed"
 	"github.com/spf13/cobra"
@@ -164,6 +165,10 @@ func seedOnePlugin(ctx context.Context, rt seed.PluginRuntime, pluginDir, name s
 	res := pluginSeedResult{Name: name}
 	if !pluginSeedNameRe.MatchString(name) {
 		return res, errs.Newf("E401", "invalid plugin name %q", name)
+	}
+	// One validator for every plugin-dir join (P7-PLUG-20); the filter above is kept for listing.
+	if err := plugin.ValidateName(name); err != nil {
+		return res, err
 	}
 	root := filepath.Join(pluginDir, name)
 	m, err := loadSeedManifest(root, name)

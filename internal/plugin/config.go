@@ -22,6 +22,9 @@ import (
 // DisablePlugin creates a .disabled marker file in the plugin's directory,
 // causing it to be excluded from compose files on the next build.
 func DisablePlugin(name, pluginDir string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
 	destDir := filepath.Join(pluginDir, name)
 	if _, err := os.Stat(destDir); os.IsNotExist(err) {
 		return fmt.Errorf("plugin %q is not installed", name)
@@ -43,6 +46,9 @@ func DisablePlugin(name, pluginDir string) error {
 // EnablePlugin removes the .disabled marker file from the plugin's directory,
 // allowing it to be included in compose files on the next build.
 func EnablePlugin(name, pluginDir string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
 	destDir := filepath.Join(pluginDir, name)
 	if _, err := os.Stat(destDir); os.IsNotExist(err) {
 		return fmt.Errorf("plugin %q is not installed", name)
@@ -61,6 +67,9 @@ func EnablePlugin(name, pluginDir string) error {
 
 // IsDisabled returns true if the named plugin has a .disabled marker file.
 func IsDisabled(name, pluginDir string) bool {
+	if ValidateName(name) != nil {
+		return false
+	}
 	markerPath := filepath.Join(pluginDir, name, ".disabled")
 	_, err := os.Stat(markerPath)
 	return err == nil

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/nself-org/cli/internal/bundle"
+	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -90,7 +91,7 @@ func init() {
 
 	removeCmd.Flags().Bool("yes", false, "Skip confirmation prompts")
 	removeCmd.Flags().Bool("keep-data", false, "Preserve database data on remove")
-	removeCmd.Flags().Bool("delete-data", false, "Delete plugin data (schema/tables); asks for confirmation, or pass --yes")
+	removeCmd.Flags().Bool("delete-data", false, "Delete plugin data (schema/tables). Bundle targets ask for confirmation (or pass --yes); plugin targets drop data by default and never ask (--keep-data preserves it)")
 	removeCmd.Flags().Bool("force", false, "Remove even if other plugins depend on this one")
 	removeCmd.Flags().Bool("dry-run", false, "Print the planned actions without removing")
 
@@ -146,6 +147,10 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	name := args[0]
+	// P7-PLUG-20: a path-shaped name never reaches the bundle ledger or the plugin directory.
+	if err := plugin.ValidateName(name); err != nil {
+		return err
+	}
 
 	// P7-PLUG-20: the catalog is not loaded outside `nself bundle`; without it a bundle
 	// name would be treated as a plugin. A load failure keeps today's routing.

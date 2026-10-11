@@ -60,6 +60,10 @@ func pluginInstallReadiness(cmd *cobra.Command, pluginDir string, installed []st
 		if plugin.IsThirdPartyInstallSource(n) {
 			continue
 		}
+		// A path-shaped name is not an installed plugin; never stat or read outside pluginDir (P7-PLUG-20).
+		if plugin.ValidateName(n) != nil {
+			continue
+		}
 		// A name with no directory is not installed here: nothing to wait on.
 		// Anything else that cannot be read is a real problem (below).
 		if _, err := os.Stat(filepath.Join(pluginDir, n)); err == nil {

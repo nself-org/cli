@@ -26,6 +26,9 @@ import (
 // acquired the install lock. Dependency installs call this directly to avoid
 // attempting to re-acquire the lock (which would deadlock).
 func installLocked(ctx context.Context, cfg *config.Config, name string, pluginDir string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
 	// Step 1: Fetch registry and locate the plugin. The license check runs
 	// AFTER resolution (Step 2b), not here: tier is not a property of the
 	// NAME, so the static paidPlugins map cannot answer it for a tier_pair
