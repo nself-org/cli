@@ -275,10 +275,13 @@ func TestRemoteApplyRefusals(t *testing.T) {
 			}
 			return stackHandler(o.RemotePath, "")(s)
 		}
-		_, err := ApplyRemote(context.Background(), o)
+		res, err := ApplyRemote(context.Background(), o)
 		var ce *errs.CLIError
 		if !errors.As(err, &ce) || ce.Code != "E403" || !strings.Contains(err.Error(), "db") {
 			t.Fatalf("err = %v", err)
+		}
+		if res.Synced || !strings.Contains(readFile(t, o.RemotePath+"/docker-compose.yml"), "# v1") {
+			t.Errorf("an E403 refusal must be restored and report Synced=false: %+v", res)
 		}
 		if snapshots != 1 {
 			t.Errorf("the verified backup runs before the preview: snapshots = %d", snapshots)

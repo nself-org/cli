@@ -27,6 +27,8 @@ type v15Remote struct {
 	locked bool // the host's deploy lock is held by someone else
 	label  string
 	failOn string // a command containing this fails
+	// stateful makes the model's web service keep a volume and the dry-run recreate it.
+	stateful bool
 }
 
 func (r *v15Remote) Label() string {
@@ -75,6 +77,10 @@ func (r *v15Remote) Run(_ context.Context, cmd string) ([]byte, error) {
 		return []byte(b.String()), nil
 	case strings.Contains(s, `"$HOME"`):
 		return []byte("/home/deploy\n"), nil
+	case strings.Contains(s, "config --format json") && r.stateful:
+		return []byte(`{"name":"demo","services":{"web":{"image":"web:1","restart":"always","volumes":[{"type":"volume","source":"data","target":"/data"}]}}}`), nil
+	case strings.Contains(s, "up -d --dry-run") && r.stateful:
+		return []byte(" Container demo-web-1 Recreate\n"), nil
 	case strings.Contains(s, "config --format json"):
 		return []byte(`{"name":"demo","services":{"web":{"image":"web:1","restart":"always"}}}`), nil
 	case strings.Contains(s, "config --services"):
@@ -443,5 +449,36 @@ func TestDBRestoreRunsOnce(t *testing.T) {
 	}
 	if st, _ := deploy.LoadDeployState(proj); !st.RolledBack || st.BackupID != "" {
 		t.Errorf("record after the retry: %+v", st)
+	}
+}
+
+// RR-M1: a stateful recreate refused at E403 (after the sync and the prod backup,
+// cleanly restored) leaves deploy.json byte-identical.
+func TestUnconfirmedRecreateKeepsRecord(t *testing.T) {
+	proj, remote := v15Project(t)
+	inv := prodInventory(prodServers(t)[0])
+	run := func(cmd *cobra.Command) error {
+		res, err := runDeployPipeline(cmd, proj, inv, "prod", okProber{}, filepath.Join(proj, "docker-compose.yml"), "", "", true)
+		if err == nil {
+			err = failedServersError(res)
+		}
+		return err
+	}
+	if err := run(yesCmd()); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(filepath.Join(proj, deploy.DeployStateFile))
+	remote.stateful = true
+	noYes := &cobra.Command{}
+	noYes.SetContext(context.Background())
+	err := run(noYes)
+	if err == nil || !strings.Contains(err.Error(), "E403") {
+		t.Fatalf("want E403, got %v", err)
+	}
+	if firstIndex(remote.commands(), "nself backup verify") < 0 || firstIndex(remote.commands(), "tar -xzf") < 0 {
+		t.Fatal("the refusal must come after the prod backup and be restored")
+	}
+	if after, _ := os.ReadFile(filepath.Join(proj, deploy.DeployStateFile)); string(after) != string(before) {
+		t.Errorf("an E403 refusal rewrote deploy.json:\n%s\nvs\n%s", before, after)
 	}
 }
