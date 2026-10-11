@@ -144,7 +144,7 @@ func recordRemoteApply(workdir, target string, start time.Time, backupID, backup
 			failures = append(failures, srv.Name+": "+err.Error())
 			st.Success, st.Error = false, strings.Join(failures, "; ")
 		}
-		if res.Touched && st.BackupID == "" {
+		if res.Touched && backupID != "" {
 			st.BackupID, st.BackupHost = backupID, backupHost // only a deploy that ran `up` may offer the database restore
 		}
 		if res.Synced {
