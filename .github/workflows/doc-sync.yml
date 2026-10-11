@@ -114,8 +114,16 @@ jobs:
       - name: Compute PR diff
         id: diff
         run: |
-          git fetch origin "${{ github.base_ref }}" --depth=1
-          changed=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD || true)
+          # No --depth here: the checkout is full (fetch-depth 0), and a shallow
+          # fetch on top of it cut history at the base tip, so the three-dot diff
+          # failed with "no merge base", `|| true` hid it, and every path rule
+          # below checked an empty list (seen on cli#643 and cli#682). A failed
+          # diff now fails the job instead.
+          git fetch --no-tags origin "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+          if ! changed=$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD); then
+            echo "::error::cannot diff origin/${{ github.base_ref }}...HEAD; the Doc-Sync matrix would check nothing"
+            exit 1
+          fi
           echo "changed<<EOF" >> "$GITHUB_OUTPUT"
           echo "$changed" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
