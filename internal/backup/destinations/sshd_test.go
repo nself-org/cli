@@ -76,7 +76,12 @@ func TestHostDestinationSSHD(t *testing.T) {
 	if len(f) < 3 {
 		t.Skipf("sshd container gave no host key (%q); docker logs:\n%s", scan, dockerLogs(cid))
 	}
-	kh := filepath.Join(tmp, "kh")
+	// The pinned-keys directory must be 0700 whatever the umask (see hostFixture).
+	pinDir := filepath.Join(tmp, "pin")
+	if err := os.Mkdir(pinDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	kh := filepath.Join(pinDir, "kh")
 	if err := (remote.PinnedHostKeys{Path: kh}).Add("nself-ci-sshd", f[len(f)-2]+" "+f[len(f)-1]); err != nil {
 		t.Fatal(err)
 	}
