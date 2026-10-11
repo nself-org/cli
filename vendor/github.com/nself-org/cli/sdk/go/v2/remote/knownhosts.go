@@ -17,6 +17,10 @@
 //              world writable, or is not a directory / regular file, is
 //              refused, never chmod-ed (mode checks skipped on windows). On
 //              unix they must also be owned by the effective user or root.
+//              Every ancestor directory (given and resolved path) must be
+//              owned by the effective user or root and not group/world
+//              writable unless root-owned and sticky (sshd's secure_path).
+//              The flock is polled and refused after pinLockWait (30s).
 //              Lines are tokenised as ssh does (' ' and '\t' only, one
 //              trailing '\r' dropped); a control byte anywhere in a key line
 //              or a non-ASCII byte in its host field makes it foreign. The

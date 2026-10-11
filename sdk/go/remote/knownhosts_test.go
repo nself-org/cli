@@ -16,6 +16,10 @@ const (
 func pinFile(t *testing.T) (PinnedHostKeys, string) {
 	t.Helper()
 	home := t.TempDir()
+	// A 002 umask makes TempDir 0775, which the ancestor check refuses.
+	if err := os.Chmod(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", home) // proves ~/.ssh/known_hosts is never touched
 	p := filepath.Join(home, "ci", "known_hosts")
 	return PinnedHostKeys{Path: p}, home
