@@ -300,3 +300,35 @@ func TestBundleRemoveKeepDataDeprecationCmd(t *testing.T) {
 		}
 	})
 }
+
+// TestRemoveRoutePluginNamedLikeBundleCmd: claw is both a plugin and a bundle. With the
+// bundle not recorded in the ledger, `nself remove claw` removes the plugin; once the
+// ledger records the bundle it routes to bundle remove (E403 for --delete-data without --yes).
+func TestRemoveRoutePluginNamedLikeBundleCmd(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		p := chatFixture(t) // catalog loaded; plugin dir has bots+livekit, bundle chat recorded
+		dir := filepath.Join(p.plugins, "claw")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		manifest := `{"name":"claw","version":"1.0.0","description":"fixture","category":"utility","license":"MIT"}`
+		if err := os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		// bundle claw (ai, claw, claw-web) is not recorded: the plugin route runs and removes the plugin
+		if err := runRemove(removeCmd, []string{"claw"}); err != nil {
+			t.Fatalf("plugin route: %v", err)
+		}
+		if _, serr := os.Stat(dir); !os.IsNotExist(serr) {
+			t.Errorf("the claw plugin was not removed: %v", serr)
+		}
+
+		// bundle chat is recorded: `remove chat` is the bundle route
+		setFlags(t, removeCmd, "delete-data")
+		err := runRemove(removeCmd, []string{"chat"})
+		if err == nil || errs.ExitCodeFor(err) != 4 {
+			t.Fatalf("recorded bundle: err = %v (exit %d), want the bundle remove E403", err, errs.ExitCodeFor(err))
+		}
+	})
+}

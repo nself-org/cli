@@ -154,8 +154,13 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		ctx = context.Background()
 	}
 	_ = bundle.EnsureLoaded(ctx)
+	// Real plugins (chat, claw, family) share names with bundles: the bundle route runs only
+	// when the ledger records that bundle as installed. An unreadable ledger means the plugin
+	// route, whose own guard still refuses in v1.5 if it cannot read the ledger.
 	if resolvesToBundle(name) {
-		return runBundleRemove(cmd, []string{name})
+		if recorded, _ := bundle.IsRecorded(resolvePluginDir(), name); recorded {
+			return runBundleRemove(cmd, []string{name})
+		}
 	}
 	return runPluginRemove(cmd, []string{name})
 }

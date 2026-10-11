@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -129,6 +130,9 @@ func TestRemoveKeepsCatalogMemberOfRecordedBundle(t *testing.T) {
 
 // TestForgetPluginStatError: only a missing ledger file means "no ledger".
 func TestForgetPluginStatError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a stat through a regular file maps to ErrNotExist on Windows, so the trick yields no non-ENOENT error")
+	}
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".nself-state"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)

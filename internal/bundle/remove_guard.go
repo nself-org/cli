@@ -36,6 +36,23 @@ func ReferencingBundles(pluginDir, name string) ([]string, error) {
 	return append([]string(nil), rec.InstalledBy...), nil
 }
 
+// IsRecorded reports whether the bundle ledger of pluginDir records the bundle
+// (alias or slug) as installed. Read only: a missing ledger is bootstrapped in
+// memory and never written. An unknown bundle or a ledger that cannot be read is
+// reported as not recorded, with the error for callers that want it.
+func IsRecorded(pluginDir, slug string) (bool, error) {
+	b, ok := Get(slug)
+	if !ok {
+		return false, nil
+	}
+	l, _, err := newLedgerStore(pluginDir).Load()
+	if err != nil {
+		return false, err
+	}
+	_, recorded := l.Bundles[b.Slug]
+	return recorded, nil
+}
+
 // GuardPluginRemove checks a plugin remove against the bundle ledger. In v1.5
 // mode a plugin an installed bundle references is refused with E133 unless
 // force is set; in v1.4 mode (or with force) a warning naming the bundles is
