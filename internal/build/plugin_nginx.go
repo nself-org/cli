@@ -186,7 +186,7 @@ func injectPluginNginxRoutesVia(sink Sink, workdir, pluginDir string, cfg *confi
 		return 0, fmt.Errorf("creating %s: %w", sitesDir, err)
 	}
 
-	// destOwner remembers which plugin and source file wrote each sites file,
+	// destOwner remembers which plugin and source file wrote each sites file (keyed lower-case),
 	// so two plugins mapping to one name (a-b + c.conf, a + b-c.conf) are seen.
 	destOwner := map[string]nginxDestOwner{}
 
@@ -245,9 +245,12 @@ type nginxDestOwner struct{ plugin, source string }
 // source, and reports when a different plugin already wrote that name: the
 // later file would replace the earlier one and its route would vanish.
 func checkNginxDestCollision(owners map[string]nginxDestOwner, destName, pluginName, source string) error {
-	prev, seen := owners[destName]
+	// Keyed lower-case: the sites dir can be case-insensitive (APFS), where
+	// A-b.conf and a-B.conf are one file.
+	key := strings.ToLower(destName)
+	prev, seen := owners[key]
 	if !seen || prev.plugin == pluginName {
-		owners[destName] = nginxDestOwner{plugin: pluginName, source: source}
+		owners[key] = nginxDestOwner{plugin: pluginName, source: source}
 		return nil
 	}
 	msg := fmt.Sprintf("plugins %q and %q both map to nginx/sites/%s (%s and %s)", prev.plugin, pluginName, destName, prev.source, source)
@@ -259,6 +262,6 @@ func checkNginxDestCollision(owners map[string]nginxDestOwner, destName, pluginN
 		return e
 	}
 	warnOnce(msg + "; the later plugin's file replaces the earlier one (an error from v1.5)")
-	owners[destName] = nginxDestOwner{plugin: pluginName, source: source}
+	owners[key] = nginxDestOwner{plugin: pluginName, source: source}
 	return nil
 }

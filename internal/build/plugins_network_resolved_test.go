@@ -19,8 +19,14 @@ func TestProjectScopedFor(t *testing.T) {
 		{"w", "${COMPOSE_PROJECT_NAME}_x_network", false}, // a sibling project's network
 		{"w", "${COMPOSE_PROJECT_NAME}_w", false},         // no suffix
 		{"w", "${COMPOSE_PROJECT_NAME}_wx_net", false},
-		{"w", "${COMPOSE_PROJECT_NAME}_w-evil_net", false}, // another plugin's namespace
-		{"", "${COMPOSE_PROJECT_NAME}_w_net", false},       // fail closed
+		{"w", "${COMPOSE_PROJECT_NAME}_w-evil_net", false},        // another plugin's namespace
+		{"w", "${COMPOSE_PROJECT_NAME:-${X}_w_}2_network", false}, // nested variable in the default
+		{"w", "${PROJECT_NAME:-${X}_w_}other_default", false},
+		{"w", "${COMPOSE_PROJECT_NAME}_w_}x", false},      // stray brace in the suffix
+		{"w", "${COMPOSE_PROJECT_NAME}_w_default", false}, // a sibling project's default network
+		{"w", "${COMPOSE_PROJECT_NAME:-nself}_w_net", true},
+		{"w", "${COMPOSE_PROJECT_NAME}_w_default_net", true},
+		{"", "${COMPOSE_PROJECT_NAME}_w_net", false}, // fail closed
 		{"", "${COMPOSE_PROJECT_NAME}__net", false},
 		{"w", "plain_w_net", false},
 	}

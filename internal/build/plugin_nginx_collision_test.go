@@ -80,3 +80,30 @@ func TestPluginNginxDistinctNamesNoCollision(t *testing.T) {
 		}
 	})
 }
+
+// TestPluginNginxDestCollisionCaseInsensitive: a-b + C.conf and a + b-c.conf
+// are one file on a case-insensitive disk (APFS), so they count as a collision.
+func TestPluginNginxDestCollisionCaseInsensitive(t *testing.T) {
+	compattest.Set(t, true)
+	owners := map[string]nginxDestOwner{}
+	if err := checkNginxDestCollision(owners, "a-b-C.conf", "a-b", "/p/a-b/nginx/C.conf"); err != nil {
+		t.Fatal(err)
+	}
+	err := checkNginxDestCollision(owners, "a-b-c.conf", "a", "/p/a/nginx/b-c.conf")
+	var ce *errs.CLIError
+	if !errors.As(err, &ce) || ce.Code != "E055" {
+		t.Fatalf("want E055, got %v", err)
+	}
+	// Same plugin, same name: not a collision.
+	if err := checkNginxDestCollision(owners, "A-B-c.conf", "a-b", "/p/a-b/nginx/c.conf"); err != nil {
+		t.Errorf("same plugin must not collide: %v", err)
+	}
+
+	project, plugins := t.TempDir(), t.TempDir()
+	writeNginxConf(t, plugins, "a-b", "C.conf", "one.fixture.test")
+	writeNginxConf(t, plugins, "a", "b-c.conf", "two.fixture.test")
+	_, err = InjectPluginNginxRoutes(project, plugins, minimalTestConfig("test"))
+	if !errors.As(err, &ce) || ce.Code != "E055" {
+		t.Fatalf("inject: want E055, got %v", err)
+	}
+}

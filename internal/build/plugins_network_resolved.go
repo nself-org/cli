@@ -87,13 +87,21 @@ func (n resolvedNetwork) realName(key string) string {
 // required: a bare ${COMPOSE_PROJECT_NAME}_x_network would land on the default
 // network of a sibling project named <project>_x. Plugin names match
 // ^[a-z][a-z0-9-]*$ (no underscore), so "_<plugin>_" cannot match a longer
-// plugin name. An empty plugin accepts nothing (fail closed).
+// plugin name. The :-default and the suffix are limited to name characters, so
+// a nested ${...} or a stray } cannot smuggle in a second variable. The suffix
+// "default" is refused: <project>_<plugin>_default is the default network of a
+// sibling compose project named <project>_<plugin>. An empty plugin accepts
+// nothing (fail closed). Residual: a sibling project literally named
+// <project>_<plugin> can still share a name with a network written here. The
+// :-defaults never apply in practice, because nself always writes
+// COMPOSE_PROJECT_NAME and PROJECT_NAME (plugin_configs.go).
 func projectScopedFor(plugin, name string) bool {
 	if plugin == "" {
 		return false
 	}
-	re := regexp.MustCompile(`^\$\{(COMPOSE_PROJECT_NAME|PROJECT_NAME)(:-[^}]*)?\}_` + regexp.QuoteMeta(plugin) + `_.+$`)
-	return re.MatchString(name)
+	re := regexp.MustCompile(`^\$\{(COMPOSE_PROJECT_NAME|PROJECT_NAME)(:-[A-Za-z0-9_.-]*)?\}_` + regexp.QuoteMeta(plugin) + `_([A-Za-z0-9_.-]+)$`)
+	m := re.FindStringSubmatch(name)
+	return m != nil && m[3] != "default"
 }
 
 // foreignExternalNetworks returns the sorted names of top-level networks the

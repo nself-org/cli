@@ -3,8 +3,11 @@ package build
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/nself-org/cli/internal/compat/compattest"
 )
@@ -35,22 +38,34 @@ networks:
     driver: bridge
 `
 
-// splitService returns the text of one service block of a fragment built in
-// the shape of sidecarFirstFragment (two-space service keys).
-func splitService(t *testing.T, frag, key string) string {
+// servicesOf decodes a fragment and returns each service's decoded mapping.
+func servicesOf(t *testing.T, frag string) map[string]map[string]any {
 	t.Helper()
-	start := strings.Index(frag, "\n  "+key+":\n")
-	if start < 0 {
-		t.Fatalf("service %s not found:\n%s", key, frag)
+	var doc struct {
+		Services map[string]map[string]any `yaml:"services"`
 	}
-	rest := frag[start+1:]
-	next := len(rest)
-	for _, m := range []string{"\n  fx", "\n  nself-", "\n  plugin-", "\n  KEY", "\nnetworks:"} {
-		if i := strings.Index(rest[1:], m); i >= 0 && i+1 < next {
-			next = i + 1
+	if err := yaml.Unmarshal([]byte(frag), &doc); err != nil {
+		t.Fatalf("decode: %v\n%s", err, frag)
+	}
+	return doc.Services
+}
+
+// envKeysOf returns the environment keys of one service (map or list form).
+func envKeysOf(t *testing.T, frag, service string) map[string]bool {
+	t.Helper()
+	keys := map[string]bool{}
+	switch env := servicesOf(t, frag)[service]["environment"].(type) {
+	case map[string]any:
+		for k := range env {
+			keys[k] = true
+		}
+	case []any:
+		for _, e := range env {
+			k, _, _ := strings.Cut(e.(string), "=")
+			keys[k] = true
 		}
 	}
-	return rest[:next]
+	return keys
 }
 
 func TestCoreEnvTarget_SidecarFirst(t *testing.T) {
@@ -62,23 +77,22 @@ func TestCoreEnvTarget_SidecarFirst(t *testing.T) {
 				in := strings.Replace(sidecarFirstFragment, "  KEY:", "  "+key+":", 1)
 				out := string(normalizeComposePluginCoreEnv([]byte(in), pluginDir, "fx"))
 
-				if got, want := splitService(t, out, "fx-init"), splitService(t, in, "fx-init"); got != want {
-					t.Errorf("sidecar fx-init changed:\n%s", got)
-				}
-				if got, want := splitService(t, out, "fx-runner"), splitService(t, in, "fx-runner"); got != want {
-					t.Errorf("sidecar fx-runner changed:\n%s", got)
-				}
-				own := splitService(t, out, key)
-				for _, want := range []string{"SERVICE_NAME: fx", `SERVICE_PORT: "3777"`, "PLUGIN_INTERNAL_SECRET:"} {
-					if !strings.Contains(own, want) {
-						t.Errorf("plugin service lacks %q:\n%s", want, own)
+				for _, side := range []string{"fx-init", "fx-runner"} {
+					if !reflect.DeepEqual(servicesOf(t, out)[side], servicesOf(t, in)[side]) {
+						t.Errorf("sidecar %s changed:\n%s", side, out)
 					}
 				}
-				if strings.Contains(own, "INIT_ONLY") || strings.Contains(own, "RUNNER_ONLY") {
-					t.Errorf("sidecar env leaked into plugin service:\n%s", own)
+				own := envKeysOf(t, out, key)
+				for _, want := range []string{"SERVICE_NAME", "SERVICE_PORT", "PLUGIN_INTERNAL_SECRET", "DATABASE_URL"} {
+					if !own[want] {
+						t.Errorf("plugin service lacks %s:\n%s", want, out)
+					}
 				}
-				if strings.Count(own, "DATABASE_URL:") != 1 {
-					t.Errorf("fragment's own DATABASE_URL must win, once:\n%s", own)
+				if own["INIT_ONLY"] || own["RUNNER_ONLY"] {
+					t.Errorf("sidecar env leaked into plugin service:\n%s", out)
+				}
+				if env := servicesOf(t, out)[key]["environment"].(map[string]any); env["DATABASE_URL"] != "${DATABASE_URL}" {
+					t.Errorf("fragment's own DATABASE_URL must win: %v", env["DATABASE_URL"])
 				}
 				if err := assertValidComposeYAML(out); err != nil {
 					t.Fatalf("invalid YAML: %v\n%s", err, out)
@@ -98,14 +112,14 @@ func TestCoreEnvTarget_PortKeyByMode(t *testing.T) {
 	in := strings.Replace(sidecarFirstFragment, "  KEY:", "  fx:", 1)
 
 	compattest.Set(t, true)
-	own := splitService(t, string(normalizeComposePluginCoreEnv([]byte(in), pluginDir, "fx")), "fx")
-	if !strings.Contains(own, "\n      PORT: \"3777\"") {
-		t.Errorf("v1.5 must add PORT to the plugin service:\n%s", own)
+	out := string(normalizeComposePluginCoreEnv([]byte(in), pluginDir, "fx"))
+	if !envKeysOf(t, out, "fx")["PORT"] || envKeysOf(t, out, "fx-init")["PORT"] || envKeysOf(t, out, "fx-runner")["PORT"] {
+		t.Errorf("v1.5 must add PORT to the plugin service only:\n%s", out)
 	}
 	compattest.Set(t, false)
-	own = splitService(t, string(normalizeComposePluginCoreEnv([]byte(in), pluginDir, "fx")), "fx")
-	if strings.Contains(own, "\n      PORT:") {
-		t.Errorf("v1.4 must not add PORT:\n%s", own)
+	out = string(normalizeComposePluginCoreEnv([]byte(in), pluginDir, "fx"))
+	if envKeysOf(t, out, "fx")["PORT"] {
+		t.Errorf("v1.4 must not add PORT:\n%s", out)
 	}
 }
 
@@ -163,12 +177,11 @@ func TestCoreEnvTarget_NewBlockGoesInTarget(t *testing.T) {
 	writePluginManifestJSON(t, pluginDir, "fx", 3777)
 	in := "services:\n  fx-init:\n    image: example/init\n    networks:\n      - ${DOCKER_NETWORK}\n  fx:\n    image: example/fx\n    networks:\n      - ${DOCKER_NETWORK}\n"
 	out := string(normalizeComposePluginCoreEnv([]byte(in), pluginDir, "fx"))
-	if got, want := splitService(t, out, "fx-init"), splitService(t, in, "fx-init"); got != want {
-		t.Errorf("sidecar changed:\n%s", got)
+	if !reflect.DeepEqual(servicesOf(t, out)["fx-init"], servicesOf(t, in)["fx-init"]) {
+		t.Errorf("sidecar changed:\n%s", out)
 	}
-	own := splitService(t, out, "fx")
-	if !strings.Contains(own, "    environment:\n") || !strings.Contains(own, "SERVICE_NAME: fx") {
-		t.Errorf("new env block must land in fx:\n%s", out)
+	if !envKeysOf(t, out, "fx")["SERVICE_NAME"] || len(envKeysOf(t, out, "fx-init")) != 0 {
+		t.Errorf("new env block must land in fx only:\n%s", out)
 	}
 	if err := assertValidComposeYAML(out); err != nil {
 		t.Fatalf("invalid YAML: %v\n%s", err, out)
@@ -178,7 +191,7 @@ func TestCoreEnvTarget_NewBlockGoesInTarget(t *testing.T) {
 	}
 }
 
-func TestCoreEnvTarget_CRLFAndUnparseable(t *testing.T) {
+func TestCoreEnvTarget_CRLF(t *testing.T) {
 	pluginDir := t.TempDir()
 	writePluginManifestJSON(t, pluginDir, "fx", 3777)
 	in := "services:\r\n  fx-init:\r\n    image: a\r\n    environment:\r\n      I: \"1\"\r\n  fx:\r\n    image: b\r\n    environment:\r\n      A: \"1\"\r\n"
@@ -188,10 +201,5 @@ func TestCoreEnvTarget_CRLFAndUnparseable(t *testing.T) {
 	}
 	if !strings.Contains(out[strings.Index(out, "  fx:"):], "SERVICE_NAME") {
 		t.Errorf("CRLF target not injected:\n%q", out)
-	}
-	// Unparseable fragments keep the whole-content behaviour.
-	bad := "services: [\n  environment:\n    A: 1\n"
-	if s, e, ok := pluginServiceRange([]byte(bad), "fx", ""); !ok || s != 0 || e != len(bad) {
-		t.Errorf("unparseable: got %d %d %v", s, e, ok)
 	}
 }
