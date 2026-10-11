@@ -21,6 +21,28 @@ The persistent `--env` flag selects which environment a subcommand operates on (
 `secrets schedule` shows the rotation schedule status for tracked secrets. `secrets audit` lists secrets older than the rotation policy. `secrets lint` greps git-tracked files for plaintext secrets. `secrets decrypt-on-deploy` outputs `KEY=VALUE` lines for CI/CD consumption. `secrets rekey --remove <pubkey>` re-encrypts everything without a departed team member's key.
 
 ### Persistent (all subcommands)
+### Resolve references
+
+`nself config secrets resolve --project <directory> --for-attempt a1 --json project/FOO | <consumer>` emits a `cli.secret-resolve/v1` data document. In v1.4 use `nself secrets resolve`; both modes emit the canonical envelope. Stdout must be an anonymous or named pipe (FIFO). Terminals, regular files, sockets and `/dev/null` are E542 before decryption. There is no reveal option; stdin is never read.
+
+| Reference | Encrypted file |
+| --- | --- |
+| `project/NAME` | `<project>/.secrets/ci.age` |
+| `environment/<env>/NAME` | `<project>/.secrets/ci-<env>.age` |
+| `deploy/<env>/NAME` | `<project>/.secrets/<env>.age` |
+| `release/NAME` | `<project>/.secrets/release.age` |
+| `team/NAME` | `$HOME/.config/nself/secrets/team.age` |
+
+NAME matches `^[A-Z][A-Z0-9_]{0,127}$`; environments match `^[a-z][a-z0-9-]{0,31}$` and cannot be `ci`, `release`, `team` or begin with `ci-`. Duplicate NAMEs, malformed refs and explicit `--env` are E540. Missing files or keys are E541; unreadable identities and failed decryption are E543. `--json` and a valid `--for-attempt` are required. Values retain input order, include `source: age:<basename>` and have `expires_at: null`.
+
+Every resolver call records exactly one `secret-resolve` audit event with refs, attempt ID, absolute project, user and outcome, including refusals. Values never enter the audit record; an audit failure prevents value delivery. Resolve is CLI-only and refused over MCP and HTTP.
+
+### Manage recipients
+
+`nself config secrets recipients add --file ci <age-public-key>` grants access to an existing store. `remove --file ci <age-public-key>` revokes it; `list --file ci` prints public recipients. In v1.4 use `nself secrets recipients`. In v1.5 `--json` emits recipient envelopes.
+
+Files are `ci`, `ci-<env>`, `release` or a deploy `<env>`, with the reserved environment rules above. Add and remove on release or deploy files require `--allow-release-class` (E544 otherwise). Add never creates a missing store and seeds an empty recipient list with the operator public key. Duplicate additions leave ciphertext unchanged. Remove refuses the last recipient and the operator recipient; use `secrets rekey` for operator changes. Each change records one `secret-recipients` event with action, file, public recipient, project and user. The operator private identity is never copied or printed. Add and remove are CLI-only.
+
 ### `secrets rotate <KEY>`
 ### `secrets rekey`
 <!-- END PROSE:description -->
