@@ -21,6 +21,7 @@ import (
 	"github.com/nself-org/cli/internal/canon"
 	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/spf13/cobra"
 )
 
 func TestRegistryBundleRemoveDestructive(t *testing.T) {
@@ -44,25 +45,37 @@ func TestRegistryBundleRemoveDestructive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build registry: %v", err)
 	}
-	set := map[string]bool{"delete-data": true}
+	// Both cobra commands carry the flag (bundle remove directly, remove for the v1.5 shim target).
+	for _, c := range []*cobra.Command{bundleRemoveCmd, removeCmd} {
+		if f := c.Flags().Lookup("delete-data"); f == nil || f.Value.Type() != "bool" {
+			t.Errorf("%s has no bool --delete-data flag: %v", c.CommandPath(), f)
+		}
+	}
 	for _, path := range []string{"nself remove", "nself bundle remove"} {
 		c, ok := reg.Lookup(path)
 		if !ok {
 			t.Fatalf("%s is not in the v1.5 registry", path)
 		}
-		if got := cmdregistry.EffectiveSideEffect(c, set); got != canon.SideEffectDestructive {
-			t.Errorf("%s --delete-data side effect = %q, want destructive", path, got)
+		// The loaded entry itself must be destructive, with and without the flag set;
+		// setting --delete-data may only raise the class, never lower it.
+		without := cmdregistry.EffectiveSideEffect(c, map[string]bool{})
+		with := cmdregistry.EffectiveSideEffect(c, map[string]bool{"delete-data": true})
+		if c.SideEffect != canon.SideEffectDestructive || without != c.SideEffect {
+			t.Errorf("%s class = %q, effective without flag = %q, want destructive", path, c.SideEffect, without)
+		}
+		if canon.Rank(with) < canon.Rank(without) || with != canon.SideEffectDestructive {
+			t.Errorf("%s --delete-data effective = %q (without %q), want destructive", path, with, without)
 		}
 		// The shim lists no flags of its own; the target carries --delete-data.
 		if path == "nself remove" {
-			var hasDelete bool
-			for _, f := range c.Flags {
-				if f.Name == "delete-data" {
-					hasDelete = true
+			var flag *cmdregistry.Flag
+			for i := range c.Flags {
+				if c.Flags[i].Name == "delete-data" {
+					flag = &c.Flags[i]
 				}
 			}
-			if !hasDelete {
-				t.Errorf("%s has no --delete-data flag in the registry", path)
+			if flag == nil || flag.Type != "bool" || flag.Hidden {
+				t.Errorf("%s registry entry lacks a visible bool --delete-data flag: %+v", path, flag)
 			}
 		}
 	}

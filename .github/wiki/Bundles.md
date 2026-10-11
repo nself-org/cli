@@ -83,8 +83,8 @@ A bundle remove deletes a plugin only when the bundle was the last one in its `i
 - **Shared plugin directory.** The ledger lives in the plugin directory, so two projects that share one see each other's bundles.
 - **Free bundles** (the Task Bundle) remove like any other bundle.
 - **Data is kept** (schema and tables) unless you pass `--delete-data`. `--delete-data` asks for confirmation on a terminal; without a terminal it needs `--yes`, otherwise it exits 4 with E403 and changes nothing. A dry run needs neither.
-- **Not recorded.** A bundle the ledger does not record (a bundle is recorded only when all its plugins are installed) fails with E134 (exit 1). Run `nself bundle list --installed` to see what is recorded.
-- **`--dry-run`** prints the plan and changes nothing; it never creates the ledger.
+- **Not recorded.** The ledger at `<plugin dir>/.nself-state/bundles.json` records a bundle only when all its plugins are installed. For a bundle it does not record, `bundle remove` fails with E134 (exit 1): nothing it installed is removable as a unit. Remove the individual plugins with `nself plugin remove <plugin>`.
+- **`--dry-run`** prints the plan and changes nothing; it never creates the ledger. `nself remove <plugin> --dry-run` prints the plugin, the data rule, the referencing bundles and whether E133 would refuse, and changes nothing.
 - **A failure stops the run.** The ledger then keeps the bundle recorded and drops only the plugins already removed, so running the same command again continues from there.
 - `--force` keeps its meaning (overwrite hand-edited generated files). `--keep-data` is a hidden, deprecated alias; from v1.5 it does nothing and prints a warning. It is removed in v1.6.0.
 
