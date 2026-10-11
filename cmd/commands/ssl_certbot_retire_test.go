@@ -230,7 +230,7 @@ func TestCertbotHooks(t *testing.T) {
 	file("renewal/d.example.org.conf.bak", "deploy_hook = cp x "+sslDir+"/\n", 0o644)
 	deploy := file("renewal-hooks/deploy/00-copy-cert.sh", "#!/bin/sh\n# copies into "+sslDir+"/ (comment)\ncp \"$RENEWED_LINEAGE\"/*.pem '"+filepath.Join(sslDir, "certificates", "x")+"/'\n", 0o755)
 	file("renewal-hooks/deploy/other.sh", "#!/bin/sh\nsystemctl reload postfix\ncp x /data"+sslDir+"/\ncp x "+sslDir+"-old/\nsystemctl reload nginx # was: cp x "+sslDir+"/\n", 0o755)
-	quoted := file("renewal-hooks/deploy/20-quoted.sh", "echo \"renewal # done\"; cp x "+sslDir+"/x/ # copy\necho \"$(printf \" # \")\"; cp x "+sslDir+"/\n", 0o755)
+	quoted := file("renewal-hooks/deploy/20-quoted.sh", "echo \"renewal # done\"; cp x "+sslDir+"/x/ # copy\necho \"$(printf \" # \")\"; cp x "+sslDir+"/\necho $'it\\'s # x'; cp x "+sslDir+"/\n", 0o755)
 	redirect := file("renewal-hooks/deploy/10-redirect.sh", "cat \"$RENEWED_LINEAGE/fullchain.pem\" >"+filepath.Join(sslDir, "certificates", "x", "fullchain.pem")+"\n", 0o755)
 	if runtime.GOOS != "windows" { // backups certbot ignores are never opened, even a symlink loop
 		_ = os.Symlink("loop.conf.bak", filepath.Join(le, "renewal", "loop.conf.bak"))
@@ -248,6 +248,7 @@ func TestCertbotHooks(t *testing.T) {
 	hit(redirect, 1)
 	hit(quoted, 1)
 	hit(quoted, 2)
+	hit(quoted, 3)
 	hit(dot, 1)
 	if err != nil || strings.Join(hits, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("hits =\n%s\nwant\n%s (err %v)", strings.Join(hits, "\n"), strings.Join(want, "\n"), err)
