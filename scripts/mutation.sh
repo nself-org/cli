@@ -10,7 +10,8 @@
 #          `go run` at the release pinned below, fetched from the module proxy.
 # Output:  gremlins' report on stdout; the gremlins output is also kept in
 #          $MUTATION_OUT (default: a temp file) and its path is printed.
-# Exit:    0 no mutant lived; 1 at least one lived (or gremlins failed to run).
+# Exit:    0 no mutant lived; 1 at least one lived, zero were judged, or
+#          gremlins failed to run.
 #          --only f.go,g.go  judge only those files (see below); --allow FILE.
 #          An --only file that does not exist, or a run that judges zero mutants
 #          in the listed files, exits 1 (a skipped check must never read as green).
@@ -222,6 +223,13 @@ if [ "$status" -ne 0 ] && ! grep -q "Mutation testing completed" "$out"; then
   exit 1
 fi
 
+# Zero judged mutants means nothing was tested (wrong path, build failure the
+# report hides): a failure, never a pass. Same rule as --only.
+judged="$(grep -cE '^[[:space:]]*(KILLED|LIVED|NOT COVERED|TIMED OUT|NOT VIABLE)[[:space:]]' "$out" || true)"
+if [ "${judged:-0}" -eq 0 ]; then
+  echo "mutation: zero mutants were judged in $pkg (nothing was tested; see $out)" >&2
+  exit 1
+fi
 lived="$(grep -cE '^[[:space:]]*LIVED' "$out" || true)"
 if [ "${lived:-0}" -gt 0 ]; then
   echo "mutation: $lived mutant(s) survived in $pkg" >&2

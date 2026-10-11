@@ -15,6 +15,7 @@ on:
   pull_request:
     paths:
       - "internal/license/**"
+      - "internal/compat/**"
       - "scripts/mutation.sh"
       - ".github/workflows/license-mutation.yml"
 
@@ -24,6 +25,7 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
 jobs:
   mutation:
     name: internal/license mutants (full package)
