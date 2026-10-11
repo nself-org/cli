@@ -34,7 +34,8 @@ var (
 
 // Block is one nginx directive (Block=false) or block (Block=true).
 type Block struct {
-	Name     string   // first word of the header; "" for an anonymous `{`
+	Name     string   // first word of the header, unquoted as nginx reads it; "" for an anonymous `{`
+	raw      string   // the first word as written (Render keeps quotes)
 	Args     []string // remaining header words, raw (quotes kept)
 	Block    bool     // true when the header is followed by `{ ... }`
 	Children []*Block // directives and blocks inside the braces, in order
@@ -51,7 +52,11 @@ func (b *Block) Render() string {
 }
 
 func (b *Block) render(sb *strings.Builder) {
-	header := strings.Join(append([]string{b.Name}, b.Args...), " ")
+	name := b.raw
+	if name == "" {
+		name = b.Name
+	}
+	header := strings.Join(append([]string{name}, b.Args...), " ")
 	sb.WriteString(header)
 	if !b.Block {
 		sb.WriteByte(';')
@@ -116,7 +121,7 @@ func Parse(text string) ([]*Block, error) {
 	emit := func(block bool) *Block {
 		b := &Block{Block: block}
 		if len(words) > 0 {
-			b.Name, b.Args = words[0], append([]string(nil), words[1:]...)
+			b.Name, b.raw, b.Args = Unquote(words[0]), words[0], append([]string(nil), words[1:]...)
 		}
 		words = words[:0]
 		top := stack[len(stack)-1]

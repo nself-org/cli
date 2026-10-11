@@ -70,6 +70,7 @@ func TestSnippetSetRunsBeforeProxyPass(t *testing.T) {
 		{"global map writer", "$w", `map $host $w { default http://b.test:2; } server{listen 80;server_name a.test;location /{set $w http://a.test:1;proxy_pass $w;}}`},
 		{"global js_set writer", "$w", `js_set $w m.f; server{listen 80;server_name a.test;location /{set $w http://a.test:1;proxy_pass $w;}}`},
 		{"include beside set", "$up", `server{listen 80;server_name a.test;set $up http://a.test:1;location /{include extra.conf;proxy_pass $up;}}`},
+		{"quoted if", "$up", `server{listen 80;server_name a.test;set $up http://a.test:1;location /{"if" ($x) {set $up http://b.test:2;} proxy_pass $up;}}`},
 	} {
 		r := route(t, c.text)
 		if r.Locations[0].Upstream != nil || !contains(r.Unmodelled, "proxy_pass "+c.pass+";") {

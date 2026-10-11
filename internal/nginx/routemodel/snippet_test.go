@@ -523,14 +523,15 @@ func TestSnippetDefaultListenAndNits(t *testing.T) {
 			t.Errorf("%q: unmodelled = %v", body, r.Unmodelled)
 		}
 	}
-	// N2: return runs before deny, so the pair needs a record, as return + proxy_pass does.
+	// N2: return runs before deny (rewrite phase before access), so the return
+	// is mapped and the access rule that never fires is recorded.
 	r = route(t, "server { listen 80; server_name a.test; location / { return 200; deny all; } }")
-	if !r.Locations[0].DenyAll || r.Locations[0].Return == nil || !reflect.DeepEqual(r.Unmodelled, []string{"return 200;"}) {
+	if r.Locations[0].DenyAll || r.Locations[0].Return == nil || !reflect.DeepEqual(r.Unmodelled, []string{"deny all;"}) {
 		t.Errorf("return + deny all: %+v unmodelled=%v", r.Locations[0], r.Unmodelled)
 	}
 	r = route(t, "server { listen 80; server_name a.test; location / { return 204; limit_except GET { deny all; } } }")
-	if len(r.Unmodelled) != 0 {
-		t.Errorf("return + limit_except is modelled exactly: %v", r.Unmodelled)
+	if r.Locations[0].Return == nil || !reflect.DeepEqual(r.Unmodelled, []string{"limit_except GET { deny all; }"}) {
+		t.Errorf("return + limit_except: %v", r.Unmodelled)
 	}
 	r = route(t, "server { listen 80; server_name a.test; location / { deny all; deny 1.2.3.4; access_log off; access_log /x; } }")
 	if !r.Locations[0].DenyAll || r.Locations[0].AccessLog {

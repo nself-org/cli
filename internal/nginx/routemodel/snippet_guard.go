@@ -13,8 +13,9 @@ package routemodel
 import "strings"
 
 // guard is what one scope holds.
-//   - flow: an if, rewrite, break, return or include, which can skip a later
-//     `set`, set a variable conditionally or hide either.
+//   - flow: an if, rewrite, break, return, include or error_page, which can
+//     skip a later `set`, set a variable conditionally, hide either, or
+//     answer or redirect a request before or instead of an access rule.
 //   - writes: variables another directive writes, by lower-case name: the
 //     first argument of any directive but `set` and *_pass
 //     (auth_request_set, set_by_lua ...).
@@ -32,7 +33,7 @@ func scanGuard(b *Block) guard {
 	g := guard{writes: map[string]bool{}, allow: hasAllow(b)}
 	for _, d := range b.Children {
 		switch d.Name {
-		case "if", "rewrite", "break", "return", "include":
+		case "if", "rewrite", "break", "return", "include", "error_page":
 			g.flow = true
 		case "satisfy":
 			g.satisfyAny = g.satisfyAny || d.Arg(0) != "all"
@@ -59,6 +60,10 @@ func hasAllow(b *Block) bool {
 	}
 	return false
 }
+
+// closed reports that nothing in scope lets a request past an access rule
+// or answers it first: no allow, no satisfy other than all, no flow.
+func (g guard) closed() bool { return !g.allow && !g.satisfyAny && !g.flow }
 
 // join is the guard of a location l inside the server scope g.
 func (g guard) join(l guard) guard {

@@ -153,7 +153,7 @@ func (a *locAcc) apply(d *Block) {
 			a.loc.AccessLog = false
 		}
 	case "deny":
-		if a.take(d, len(d.Args) == 1 && d.Arg(0) == "all" && !a.g.allow && !a.g.satisfyAny) {
+		if a.take(d, len(d.Args) == 1 && d.Arg(0) == "all" && a.g.closed()) {
 			a.loc.DenyAll = true
 		}
 	case "limit_except":
@@ -177,7 +177,8 @@ func (a *locAcc) apply(d *Block) {
 	}
 }
 
-// limitExcept maps `limit_except M... { deny all; }` to methods.
+// limitExcept maps `limit_except M... { deny all; }` to methods when the
+// scope is closed (satisfy any or an allow would let other methods in).
 func (a *locAcc) limitExcept(d *Block) {
 	ok := d.Block && len(d.Args) > 0 && len(d.Children) == 1
 	if ok {
@@ -190,7 +191,7 @@ func (a *locAcc) limitExcept(d *Block) {
 		ok = ok && methRE.MatchString(m)
 		ms = appendUnique(ms, m)
 	}
-	if a.take(d, ok) {
+	if a.take(d, ok && a.g.closed()) {
 		a.loc.Methods = ms
 	}
 }

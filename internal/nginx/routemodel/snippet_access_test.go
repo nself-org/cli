@@ -29,6 +29,10 @@ func TestSnippetDenyAllNeedsNoWayIn(t *testing.T) {
 		"limit_except":   `server { listen 80; server_name a.test; location /le { deny all; limit_except GET { allow all; } proxy_pass http://127.0.0.1:8001; } }`,
 		"if allow":       `server { listen 80; server_name a.test; location /admin { if ($x) { allow 1.1.1.1; } deny all; } }`,
 		"global satisfy": `satisfy any; server { listen 80; server_name a.test; location /sa { auth_basic x; auth_basic_user_file /f; deny all; } }`,
+		"quoted allow":   `server { listen 80; server_name a.test; location /q1 { "allow" all; deny all; } }`,
+		"include":        `server { listen 80; server_name a.test; location /a { include extra.conf; deny all; } }`,
+		"rewrite last":   `server { listen 80; server_name a.test; location /a { rewrite ^ /b last; deny all; } }`,
+		"error_page":     `server { listen 80; server_name a.test; location /a { error_page 403 = @o; deny all; } }`,
 	} {
 		sn, err := ParseSnippet("plugin", "p", "f.conf", text)
 		if err != nil || len(sn.Routes) != 1 {
@@ -38,6 +42,25 @@ func TestSnippetDenyAllNeedsNoWayIn(t *testing.T) {
 		if r.Locations[0].DenyAll || !contains(r.Unmodelled, "deny all;") {
 			t.Errorf("%s: deny_all=%v unmodelled=%q", name, r.Locations[0].DenyAll, r.Unmodelled)
 		}
+	}
+	// limit_except is only a method list when nothing lets other methods in.
+	for name, text := range map[string]string{
+		"satisfy any":        `server { listen 80; server_name a.test; location /x { satisfy any; auth_basic x; limit_except GET { deny all; } } }`,
+		"server satisfy":     `server { listen 80; server_name a.test; satisfy any; location /x { auth_basic x; limit_except GET { deny all; } } }`,
+		"global satisfy":     `satisfy any; server { listen 80; server_name a.test; location /x { auth_basic x; limit_except GET { deny all; } } }`,
+		"quoted allow in le": `server { listen 80; server_name a.test; location /x { deny all; limit_except GET { "allow" all; } } }`,
+	} {
+		sn, err := ParseSnippet("plugin", "p", "f.conf", text)
+		if err != nil || len(sn.Routes) != 1 {
+			t.Fatalf("%s: %v", name, err)
+		}
+		l := sn.Routes[0].Locations[0]
+		if len(l.Methods) != 0 || l.DenyAll {
+			t.Errorf("%s: methods=%v deny_all=%v unmodelled=%q", name, l.Methods, l.DenyAll, sn.Routes[0].Unmodelled)
+		}
+	}
+	if r := route(t, `server { listen 80; server_name a.test; location /q1 { "allow" all; deny all; } }`); !contains(r.Unmodelled, `"allow" all;`) {
+		t.Errorf("quoted name not recorded as written: %q", r.Unmodelled)
 	}
 	// A nested location's allow is its own scope.
 	if !route(t, `server { listen 80; server_name a.test; location /a { deny all; location /a/b { allow 1.1.1.1; } } }`).Locations[0].DenyAll {
