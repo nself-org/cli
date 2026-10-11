@@ -231,7 +231,16 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 	for h := range tars {
 		hosts = append(hosts, h)
 	}
-	sort.Strings(hosts)
+	sort.Slice(hosts, func(i, j int) bool { // the database host first, then by name
+		if a, b := hosts[i] == st.BackupHost, hosts[j] == st.BackupHost; a != b {
+			return a
+		}
+		return hosts[i] < hosts[j]
+	})
+	manualDB := st.BackupID != "" && tars[st.BackupHost] == ""
+	if manualDB {
+		fmt.Printf("  [warn] database backup %s was not restored: %s kept no changes of this deploy. If the database must go back, run on %s: nself backup restore %s --yes\n", st.BackupID, st.BackupHost, st.BackupHost, st.BackupID)
+	}
 	var failed []string
 	for _, host := range hosts {
 		tar := tars[host]
@@ -279,7 +288,10 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 	if len(failed) > 0 {
 		return true, fmt.Errorf("deploy rollback failed on %d host(s): %s", len(failed), strings.Join(failed, "; "))
 	}
-	st.RolledBack, st.BackupID = true, ""
+	st.RolledBack = true
+	if !manualDB {
+		st.BackupID = ""
+	}
 	_ = deploy.SaveDeployState(workdir, st)
 	return true, nil
 }

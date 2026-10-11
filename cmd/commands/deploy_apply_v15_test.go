@@ -561,3 +561,55 @@ func TestRecordBackupOnlyAfterUp(t *testing.T) {
 		t.Fatalf("after `up` the record names the backup: %+v", st)
 	}
 }
+
+func rollbackRecord(t *testing.T, proj, backupHost string, tarHosts ...string) {
+	t.Helper()
+	st := deploy.StrategyState{Strategy: deploy.StrategyRolling, Target: "prod", Success: true, BackupID: "demo_full_9", BackupHost: backupHost,
+		PreDeployTars: map[string]string{}, PreDeployChanged: map[string][]string{}, PreDeployAbsent: map[string][]string{}}
+	for _, h := range tarHosts {
+		st.PreDeployTars[h] = "/opt/nself/.nself/backups/pre-deploy-20261011T010101Z-aaaaaa.tar.gz"
+		st.PreDeployChanged[h], st.PreDeployAbsent[h] = []string{"docker-compose.yml"}, []string{}
+	}
+	if err := deploy.SaveDeployState(proj, st); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// H8: the database host is rolled back first, whatever its name sorts as.
+func TestRollbackDBHostFirst(t *testing.T) {
+	proj, primary, second, _ := twoHostProd(t)
+	var order []string
+	deployRemoteOpen = func(_ context.Context, srv controlplane.Server, _, _ string) (deploy.Remote, error) {
+		order = append(order, srv.Host)
+		if strings.Contains(srv.Host, "app2") {
+			return second, nil
+		}
+		return primary, nil
+	}
+	rollbackRecord(t, proj, "deploy@app2.example.test", "deploy@app.example.test", "deploy@app2.example.test")
+	if handled, err := rollbackRemoteV15(yesCmd(), proj, "prod"); !handled || err != nil {
+		t.Fatalf("rollback: %v %v", handled, err)
+	}
+	if len(order) != 2 || !strings.Contains(order[0], "app2") {
+		t.Errorf("rollback order %v: the backup host must be first", order)
+	}
+	if countCmds(second, "nself backup restore") != 1 || countCmds(primary, "nself backup restore") != 0 {
+		t.Error("the database must be restored on the backup host only")
+	}
+}
+
+// H8: when the backup host kept no changes there is no database restore; the
+// record keeps the backup id so it can be restored by hand.
+func TestRollbackWithoutBackupHostTar(t *testing.T) {
+	proj, primary, second, _ := twoHostProd(t)
+	rollbackRecord(t, proj, "deploy@app.example.test", "deploy@app2.example.test")
+	if handled, err := rollbackRemoteV15(yesCmd(), proj, "prod"); !handled || err != nil {
+		t.Fatalf("rollback: %v %v", handled, err)
+	}
+	if countCmds(primary, "nself backup restore")+countCmds(second, "nself backup restore") != 0 {
+		t.Error("the database was restored although the backup host kept no changes")
+	}
+	if st, _ := deploy.LoadDeployState(proj); st.BackupID != "demo_full_9" || !st.RolledBack {
+		t.Errorf("the record must keep the backup id for a manual restore: %+v", st)
+	}
+}
