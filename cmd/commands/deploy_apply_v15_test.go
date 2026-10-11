@@ -907,3 +907,34 @@ func TestPruneFollowsTheRecordedDeploy(t *testing.T) {
 		})
 	}
 }
+
+// TestPromptInterruptHelper is the child process of TestPromptInterrupt.
+func TestPromptInterruptHelper(t *testing.T) {
+	if os.Getenv(rollbackSignalEnv) == "" {
+		t.Skip("helper process")
+	}
+	proj, remote := v15Project(t)
+	remote.stateful = true // the preview wants a confirmation
+	old := deployConfirmPrompt
+	defer func() { deployConfirmPrompt = old }()
+	deployConfirmPrompt = func(ctx context.Context, _ string) bool {
+		fmt.Println("READY")
+		<-ctx.Done()
+		return false
+	}
+	noYes := &cobra.Command{}
+	noYes.SetContext(context.Background())
+	res, err := runDeployPipeline(noYes, proj, prodInventory(prodServers(t)[0]), "prod", okProber{}, filepath.Join(proj, "docker-compose.yml"), "", "", true)
+	if err == nil {
+		err = failedServersError(res)
+	}
+	applyInterruptResult(remote, proj, err)
+}
+
+// N5: the command hands the interrupt-aware context to the confirmation prompt: a
+// real SIGINT at the prompt ends the command, restored and unlocked.
+func TestPromptInterrupt(t *testing.T) {
+	if got := runSignalChild(t, "TestPromptInterruptHelper"); got != applyInterruptWant {
+		t.Errorf("after SIGINT at the prompt:\n got %s\nwant %s", got, applyInterruptWant)
+	}
+}

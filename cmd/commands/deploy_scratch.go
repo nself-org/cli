@@ -226,6 +226,10 @@ func hasuraStrictFor(workdir, target string) bool {
 	return remoteHasuraStrict(workdir, target)
 }
 
+// deployConfirmPrompt is the prompt the apply uses; a variable so a test can observe the
+// context it is given.
+var deployConfirmPrompt = ttyConfirm
+
 // ttyConfirm asks on a terminal; without one the answer is no. A cancelled ctx
 // (Ctrl-C while the prompt waits) answers no at once, so the command aborts.
 func ttyConfirm(ctx context.Context, msg string) bool {

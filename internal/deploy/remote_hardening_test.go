@@ -4,6 +4,7 @@ package deploy
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -66,6 +67,74 @@ func TestPruneableRefusesEnvAndUnsafe(t *testing.T) {
 	for _, p := range []string{".env.prod", "nginx/sites/api.conf", "docker-compose.yml"} {
 		if !pruneable(p) {
 			t.Errorf("pruneable(%q) = false", p)
+		}
+	}
+}
+
+// N5: "inside remote_path" has a trailing-slash boundary: a link to /x/app2 is
+// outside /x/app, for the pre-flight and for the delete guard alike.
+func TestSiblingPrefixLinkIsOutside(t *testing.T) {
+	needTools(t)
+	f := newFakeRemote(t)
+	base := t.TempDir()
+	rp, sibling := base+"/app", base+"/app2"
+	writeFile(t, rp+"/docker-compose.yml", "# v1\n", 0o644)
+	writeFile(t, sibling+"/sites/x.conf", markedConf, 0o644)
+	if err := os.Symlink("../app2", rp+"/nginx"); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := ResolveDirs(context.Background(), f, rp, []string{"nginx", "nginx/sites"}); err == nil || !strings.Contains(err.Error(), "symlink outside remote_path") {
+		t.Fatalf("pre-flight: %v", err)
+	}
+	err := removeCreated(context.Background(), f, rp, []string{"nginx/sites/x.conf"})
+	if err == nil || !exists(sibling+"/sites/x.conf") {
+		t.Fatalf("delete guard: err %v, file survives = %v", err, exists(sibling+"/sites/x.conf"))
+	}
+}
+
+// N5: a path that is itself a symlink is never deleted or pruned, even inside remote_path.
+func TestLeafSymlinkIsNeverDeleted(t *testing.T) {
+	needTools(t)
+	f := newFakeRemote(t)
+	rp := t.TempDir()
+	writeFile(t, rp+"/nginx/sites/real.conf", markedConf, 0o644)
+	if err := os.Symlink("real.conf", rp+"/nginx/sites/leaf.conf"); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := removeCreated(context.Background(), f, rp, []string{"nginx/sites/leaf.conf"}); err == nil || !exists(rp+"/nginx/sites/real.conf") {
+		t.Fatalf("removal of a leaf symlink: %v", err)
+	}
+	if _, err := PruneMarked(context.Background(), f, rp, []string{"nginx/sites/leaf.conf"}); err == nil || !exists(rp+"/nginx/sites/real.conf") {
+		t.Fatalf("prune of a leaf symlink: %v", err)
+	}
+}
+
+// N5: a rollback runs the layout check before it takes the lock.
+func TestRollbackChecksLayoutBeforeLock(t *testing.T) {
+	needTools(t)
+	f := newFakeRemote(t)
+	rp, outside := t.TempDir(), t.TempDir()
+	seedDeployedHost(t, rp)
+	bk, err := CreatePreDeployTar(context.Background(), f, rp, NewBackupID(time.Now()), []string{"hasura/metadata/version.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(rp + "/hasura"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, rp+"/hasura"); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	f.mu.Lock()
+	f.log = nil
+	f.mu.Unlock()
+	err = RollbackRemote(context.Background(), RollbackOptions{Remote: f, RemotePath: rp, Tar: bk.Tar, Changed: []string{"hasura/metadata/version.yaml"}, Clock: &fakeClock{now: time.Unix(0, 0)}})
+	if err == nil || !strings.Contains(err.Error(), "symlink outside remote_path") {
+		t.Fatalf("err = %v", err)
+	}
+	for _, c := range f.commands() {
+		if strings.Contains(c, "deploy.lock") {
+			t.Errorf("the lock was taken before the layout check: %s", c)
 		}
 	}
 }
