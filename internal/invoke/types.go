@@ -61,6 +61,8 @@ type Spec struct {
 	Path string
 	// Timeout of 0 means none (NDJSON): only context cancellation ends the child.
 	Timeout time.Duration
+	// KillDelay overrides the SIGTERM grace period; zero keeps the 5 s default.
+	KillDelay time.Duration
 	// Stdout, when set, receives the child's stdout as it is produced (NDJSON);
 	// the child's output is then not captured and Result.Stdout is nil.
 	Stdout io.Writer
@@ -97,6 +99,8 @@ type Options struct {
 	// Timeout of 0 selects DefaultTimeout for document transports and no
 	// timeout for TransportHTTPStream.
 	Timeout time.Duration
+	// KillDelay overrides the SIGTERM grace period; zero keeps the 5 s default.
+	KillDelay time.Duration
 	// Stdout, with TransportHTTPStream, receives the child's NDJSON.
 	Stdout io.Writer
 	// Guard holds the confirmation nonces and the audit path (gate.go,

@@ -111,7 +111,7 @@ func transportOf(o Options) string {
 // specFor builds the child spec for argv: an NDJSON request has no timeout and
 // streams to o.Stdout, any other uses o.Timeout or DefaultTimeout.
 func specFor(o Options, transport string, argv []string) Spec {
-	spec := Spec{Argv: argv, Dir: o.Dir, Transport: transport, Timeout: o.Timeout, Path: pathOf(argv)}
+	spec := Spec{Argv: argv, Dir: o.Dir, Transport: transport, Timeout: o.Timeout, KillDelay: o.KillDelay, Path: pathOf(argv)}
 	switch {
 	case transport == TransportHTTPStream:
 		spec.Timeout, spec.Stdout = 0, o.Stdout
