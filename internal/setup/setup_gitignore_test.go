@@ -2,6 +2,7 @@ package setup
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -81,7 +82,14 @@ func TestGitignoreSSL(t *testing.T) {
 		{"present", "ssl/\n", false},
 		{"anchored", "/ssl/\n", false},
 		{"bare", "ssl\n", false},
-		{"contents", "  ssl/*  \n", false},
+		{"leading-space", "  ssl/*  \n", true},
+		{"trailing-spaces", "ssl/*  \n", false},
+		{"leading-tab", "\tssl/\n", true},
+		{"trailing-tab", "ssl/\t\n", true},
+		{"crlf", "ssl/\r\n", false},
+		{"negated-dir", "ssl/*\n!ssl/certificates/\n", true},
+		{"negated-key", "ssl/**\n!ssl/**/privkey.pem\n", true},
+		{"negation-before", "!ssl/x\nssl/\n", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -101,16 +109,75 @@ func TestGitignoreSSL(t *testing.T) {
 			}
 			appended := false
 			for _, l := range strings.Split(string(first[len(tc.body):]), "\n") {
-				appended = appended || l == "ssl/"
+				appended = appended || l == "/ssl/"
 			}
 			if appended != tc.wantAppend {
-				t.Fatalf("ssl/ appended = %v, want %v:\n%s", appended, tc.wantAppend, first)
+				t.Fatalf("/ssl/ appended = %v, want %v:\n%s", appended, tc.wantAppend, first)
 			}
 			if err := ensureGitignore(dir); err != nil {
 				t.Fatal(err)
 			}
 			if again, _ := os.ReadFile(p); string(again) != string(first) {
 				t.Fatalf("second run changed the file:\n%s", again)
+			}
+		})
+	}
+}
+
+// TestGitignoreSSLGitSemantics (D-0163): asks real git whether keys are
+// ignored after ensureGitignore, including past negations and odd spacing,
+// and that a nested src/ssl/ stays tracked.
+func TestGitignoreSSLGitSemantics(t *testing.T) {
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git not on PATH")
+	}
+	cases := []struct {
+		name, body string
+		nestedFree bool
+	}{
+		{"fresh", "", true},
+		{"negated", "ssl/*\n!ssl/certificates/\n", false},
+		{"leading-space", "  ssl/*\n", false},
+		{"plain", "ssl/\n", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if tc.body != "" {
+				if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(tc.body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := ensureGitignore(dir); err != nil {
+				t.Fatal(err)
+			}
+			env := append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+			run := func(args ...string) int {
+				cmd := exec.Command(gitBin, args...)
+				cmd.Dir, cmd.Env = dir, env
+				err := cmd.Run()
+				if err == nil {
+					return 0
+				}
+				if ee, ok := err.(*exec.ExitError); ok {
+					return ee.ExitCode()
+				}
+				t.Fatal(err)
+				return -1
+			}
+			if c := run("init", "-q"); c != 0 {
+				t.Fatalf("git init exit %d", c)
+			}
+			for _, p := range []string{"ssl/privkey.pem", "ssl/certificates/example.test/privkey.pem"} {
+				if c := run("check-ignore", "-q", "--no-index", p); c != 0 {
+					t.Errorf("%s not ignored (exit %d)", p, c)
+				}
+			}
+			if tc.nestedFree {
+				if c := run("check-ignore", "-q", "--no-index", "services/api/src/ssl/tls.go"); c != 1 {
+					t.Errorf("nested ssl/ path ignored (exit %d), want 1", c)
+				}
 			}
 		})
 	}

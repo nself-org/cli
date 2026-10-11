@@ -10,9 +10,12 @@ package setup
 // `.nself/*` + `!.nself/ci.yaml`. An existing `.nself/` line is left alone and
 // nothing .nself-related is appended: git cannot re-include a file under an
 // excluded directory, so appending would look fixed while staying ignored.
-// D-0163: `ssl/` is ignored so ssl/certificates/*/privkey.pem never lands in
-// git; it is matched line-exact so an existing `ssl/.acme/` line does not
-// count as present.
+// D-0163: `/ssl/` (anchored, so src/ssl/ stays tracked) is ignored so
+// ssl/certificates/*/privkey.pem never lands in git. Lines are matched like
+// git does (only a trailing CR and trailing spaces are dropped, so a leading
+// space or tab is part of the pattern), whole-line, so `ssl/.acme/` does not
+// count. An ssl negation (`!ssl/...`) after the last ssl-dir line re-includes
+// keys, so the entry is appended again.
 
 import (
 	"os"
@@ -32,7 +35,7 @@ var gitignoreEntries = []string{
 	"*.log",
 	"node_modules/",
 	".DS_Store",
-	"ssl/", // certificate private keys (D-0163)
+	"/ssl/", // certificate private keys (D-0163)
 	".nself/*",
 	"!.nself/ci.yaml", // after the wildcard: a negation only re-includes what an earlier line excluded
 }
@@ -42,8 +45,9 @@ var gitignoreEntries = []string{
 var nselfDirLines = map[string]bool{".nself/": true, "/.nself/": true, ".nself": true, "/.nself": true}
 
 // sslDirLines are existing spellings that already ignore everything under
-// ssl/. Only whole lines count: `ssl/.acme/` contains "ssl/" but leaves the
-// certificate keys committable.
+// ssl/. Only whole normalised lines count: `ssl/.acme/` contains "ssl/" but
+// leaves the certificate keys committable. They count only when no ssl
+// negation follows (see sslIgnored).
 var sslDirLines = map[string]bool{"ssl/": true, "/ssl/": true, "ssl": true, "/ssl": true, "ssl/*": true, "/ssl/*": true, "ssl/**": true, "/ssl/**": true}
 
 // ensureGitignore creates or appends to .gitignore with required entries.
@@ -55,8 +59,11 @@ func ensureGitignore(workDir string) error {
 	}
 
 	lines := map[string]bool{}
+	var ordered []string
 	for _, l := range strings.Split(existing, "\n") {
-		lines[strings.TrimSpace(l)] = true
+		n := gitignoreLine(l)
+		lines[n] = true
+		ordered = append(ordered, n)
 	}
 	dirIgnored := anyLine(lines, nselfDirLines)
 	var toAdd []string
@@ -69,8 +76,8 @@ func ensureGitignore(workDir string) error {
 			}
 			continue
 		}
-		if entry == "ssl/" {
-			if !anyLine(lines, sslDirLines) {
+		if entry == "/ssl/" {
+			if !sslIgnored(ordered) {
 				toAdd = append(toAdd, entry)
 			}
 			continue
@@ -104,6 +111,27 @@ func ensureGitignore(workDir string) error {
 		}
 	}
 	return nil
+}
+
+// gitignoreLine normalises a line the way git reads a pattern: only a
+// trailing CR and trailing spaces are dropped; leading whitespace and tabs
+// stay part of the pattern.
+func gitignoreLine(l string) string {
+	return strings.TrimRight(strings.TrimSuffix(l, "\r"), " ")
+}
+
+// sslIgnored reports whether the last ssl-dir line comes after the last
+// negation line that mentions ssl, so no negation re-includes the keys.
+func sslIgnored(lines []string) bool {
+	lastDir, lastNeg := -1, -1
+	for i, l := range lines {
+		if sslDirLines[l] {
+			lastDir = i
+		} else if strings.HasPrefix(l, "!") && strings.Contains(l, "ssl") {
+			lastNeg = i
+		}
+	}
+	return lastDir >= 0 && lastDir > lastNeg
 }
 
 // anyLine reports whether any of the spellings is a whole line in lines.
