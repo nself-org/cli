@@ -224,3 +224,37 @@ func TestComposeEnvNameMatchesBuildPackage(t *testing.T) {
 		t.Errorf("internal/build/secrets_template.go no longer defines composeEnvFile = %q", composeEnvName)
 	}
 }
+
+// R7: a default equal to a service, container or image name is public
+// structure, not a literal; a non-structure default is still redacted.
+func TestDoctorReportStructureNamesAreNotLiterals(t *testing.T) {
+	proj, fragDir := t.TempDir(), t.TempDir()
+	other := "o" + rep("Kx9", 4) // 13 chars, not a structure name
+	frag := filepath.Join(fragDir, "docker-compose.plugin.yml")
+	writeFile(t, frag, strings.Join([]string{
+		"services:",
+		"  postgres:",
+		"    image: postgres:16-alpine",
+		"    container_name: Mon-DB",
+		"    environment:",
+		"      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}",
+		"      MON_API_TOKEN: ${MON_API_TOKEN:-mon-db}",
+		"  app:",
+		"    image: ghcr.io/acme/webapp:1.2",
+		"    environment:",
+		"      APP_TOKEN: ${APP_TOKEN:-" + other + "}",
+		"      WEB_KEY: ${WEB_KEY:-webapp}",
+		"",
+	}, "\n"))
+	logs := map[string]string{"postgres": "postgres: ready; image postgres:16-alpine; mon-db up; webapp ok\n", "app": "token " + other + " end\n"}
+	files := collectFiles(t, Options{ProjectDir: proj, ComposeFragments: []string{frag}, Environ: noEnviron}, logsSource(logs))
+	for _, keep := range []string{"postgres: ready; image postgres:16-alpine; mon-db up; webapp ok"} {
+		if !strings.Contains(files["logs/postgres.log"], keep) {
+			t.Errorf("structure names were redacted: %q", files["logs/postgres.log"])
+		}
+	}
+	assertAbsent(t, files, other)
+	if !strings.Contains(files["manifest.json"], "learned values equal service/image names and were not used as literals") {
+		t.Errorf("manifest has no structure note: %s", files["manifest.json"])
+	}
+}

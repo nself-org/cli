@@ -34,6 +34,8 @@ type inputSet struct {
 	notes   []string
 	process bool // learning from the process environment (shorts not counted)
 
+	structure map[string]bool // lower-case service, container and image names (R7)
+
 	projectDir string // confinement root for env files read as inputs
 }
 
@@ -173,6 +175,7 @@ func learnComposeYAML(raw []byte, dir string, in *inputSet) bool {
 	if yaml.Unmarshal(raw, &doc) != nil {
 		return false
 	}
+	in.noteStructure(doc)
 	walkEnv(doc, in.learnCompose)
 	var root yaml.Node // the raw scalar text, not the decoded number (S6)
 	if yaml.Unmarshal(raw, &root) == nil {

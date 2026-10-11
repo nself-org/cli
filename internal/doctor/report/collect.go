@@ -88,6 +88,9 @@ func Collect(ctx context.Context, opt Options, src Sources) (*Bundle, error) {
 	if cnote != "" {
 		notes = append(notes, cnote)
 	}
+	if sn := structureNote(in.dropStructureValues()); sn != "" {
+		notes = append(notes, sn)
+	}
 	if sn := in.shortNote(); sn != "" {
 		notes = append(notes, sn)
 	}
