@@ -69,11 +69,11 @@ func TestEnvFileWithLineLongLine(t *testing.T) {
 
 func TestPendingEnv(t *testing.T) {
 	dir := t.TempDir()
-	if got, err := pendingEnv(dir, nil); got != nil || err != nil {
+	if got, changed, err := pendingEnv(dir, nil); got != nil || changed || err != nil {
 		t.Fatalf("no overlay: %v %v", got, err)
 	}
 	writeFile(t, filepath.Join(dir, ".env"), "A=0\n", 0o600)
-	got, err := pendingEnv(dir, map[string]map[string]string{
+	got, changed, err := pendingEnv(dir, map[string]map[string]string{
 		".env":         {"B": "2", "A": "1"},
 		".env.secrets": {"S": "x"},
 	})
@@ -83,8 +83,15 @@ func TestPendingEnv(t *testing.T) {
 	if string(got[".env"]) != "A=1\nB=2\n" || string(got[".env.secrets"]) != "S=x\n" {
 		t.Fatalf("pending bytes: %q", got)
 	}
+	if !changed {
+		t.Fatal("new lines must report a change")
+	}
+	writeFile(t, filepath.Join(dir, ".env"), "A=1\nB=2\n", 0o600)
+	if _, changed, _ := pendingEnv(dir, map[string]map[string]string{".env": {"A": "1"}}); changed {
+		t.Fatal("a line the file already holds is no change")
+	}
 	for _, bad := range []string{"env", "../.env", "sub/.env", ".envrc", `.env.a\b`} {
-		if _, err := pendingEnv(dir, map[string]map[string]string{bad: {"A": "1"}}); err == nil {
+		if _, _, err := pendingEnv(dir, map[string]map[string]string{bad: {"A": "1"}}); err == nil {
 			t.Errorf("%q accepted as an env file", bad)
 		}
 	}
@@ -92,12 +99,12 @@ func TestPendingEnv(t *testing.T) {
 		if err := os.Mkdir(filepath.Join(dir, ".env.dir"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pendingEnv(dir, map[string]map[string]string{".env.dir": {"A": "1"}}); err == nil {
+		if _, _, err := pendingEnv(dir, map[string]map[string]string{".env.dir": {"A": "1"}}); err == nil {
 			t.Error("an unreadable env file must fail the plan")
 		}
 	}
 	writeFile(t, filepath.Join(dir, ".env.long"), "B="+strings.Repeat("x", 70*1024)+"\n", 0o600)
-	if _, err := pendingEnv(dir, map[string]map[string]string{".env.long": {"A": "1"}}); err == nil {
+	if _, _, err := pendingEnv(dir, map[string]map[string]string{".env.long": {"A": "1"}}); err == nil {
 		t.Error("an unscannable env file must fail the plan")
 	}
 }
@@ -183,6 +190,13 @@ var overlayCases = []overlayCase{
 		prep: func(t *testing.T, f *fixture) { dropEnvKey(t, f, "PLUGIN_INTERNAL_SECRET") }, fresh: true},
 	{name: "rotate persisted secret", fixture: "dev-minimal", file: ".env.secrets", key: "PLUGIN_INTERNAL_SECRET", value: "Vt4pN8sQ2xL6mK9rB3wY7cF1hJ5dG0aZu",
 		prep: func(t *testing.T, f *fixture) { dropEnvKey(t, f, "PLUGIN_INTERNAL_SECRET") }},
+	// A custom service reads .env.secrets through CS_N_ENV_FILE: its values
+	// are inlined into compose, so the plan must read the pending bytes too.
+	{name: "custom service env file", fixture: "dev-minimal", file: ".env.secrets", key: "CS_TOKEN", value: "newvalue222",
+		prep: func(t *testing.T, f *fixture) {
+			appendEnv(t, f, "CS_1=fn:node:9500\nCS_1_ENV_FILE=.env.secrets\n")
+			writeFile(t, filepath.Join(f.project, ".env.secrets"), "CS_TOKEN=oldvalue111\n", 0o600)
+		}, wantKinds: []ArtifactKind{KindCompose}},
 	{name: "prod layer", fixture: "prod-ssl", file: ".env.prod", key: "HASURA_GRAPHQL_ADMIN_SECRET", value: "Zq8vX3kLm9Pw2Rt7Yb4Nc6Hd1Jf5Gs0Qe"},
 }
 
@@ -470,4 +484,83 @@ func TestDiskEnvLikeConfigLoad(t *testing.T) {
 	if got := diskEnv(dir); got != "staging" {
 		t.Fatalf("a later layer wins: %q", got)
 	}
+}
+
+// appendEnv appends lines to the project's .env.
+func appendEnv(t *testing.T, f *fixture, lines string) {
+	t.Helper()
+	path := filepath.Join(f.project, ".env")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, path, string(raw)+"\n"+lines, 0o600)
+}
+
+// TestApplyRollbackOnPanic: a panic after the write rolls back, then the
+// panic continues to the caller.
+func TestApplyRollbackOnPanic(t *testing.T) {
+	f := loadFixture(t, "dev-minimal")
+	applyFixture(t, f)
+	oldBuild := buildBuild
+	t.Cleanup(func() { buildBuild = oldBuild })
+	buildBuild = func(string, nbuild.BuildOptions) (*nbuild.BuildResult, error) { panic("boom in write build") }
+	req := Request{Runtime: &fakeRuntime{}, ProjectDir: f.project, Seed: []byte("fixture-seed"),
+		EnvOverlay: map[string]map[string]string{".env": {"BASE_DOMAIN": "other.test"}}}
+	rolled := false
+	recovered := func() (r any) {
+		defer func() { r = recover() }()
+		_, _ = Apply(context.Background(), req, ApplyOptions{
+			BeforeWrite: func() error { writeLine(t, f, ".env", "BASE_DOMAIN", "other.test"); return nil },
+			Rollback:    func() error { rolled = true; return nil },
+		})
+		return nil
+	}()
+	if recovered == nil || !rolled {
+		t.Fatalf("panic propagated=%v rolled back=%v", recovered, rolled)
+	}
+}
+
+// TestPlanProdEnvLineOnlyNeedsConfirmation: on a prod-class env a pending
+// line that regenerates nothing is still a change that needs confirmation;
+// the confirmation and plan_id hold across the write (Apply with --yes).
+func TestPlanProdEnvLineOnlyNeedsConfirmation(t *testing.T) {
+	f := loadFixture(t, "prod-plugins")
+	applyFixture(t, f)
+	rt := &fakeRuntime{running: runningFromDisk(t, f)}
+	overlay := map[string]map[string]string{".env": {"NSELF_LIVE05_PROBE": "x"}}
+	p := planOf(t, f, func(r *Request) { r.Containers, r.Runtime, r.EnvOverlay = true, rt, overlay })
+	if !p.Empty || !p.PendingEnv || !p.RequiresConfirmation {
+		t.Fatalf("empty=%v pending_env=%v requires_confirmation=%v", p.Empty, p.PendingEnv, p.RequiresConfirmation)
+	}
+	if err := Confirm(*p, ApplyOptions{}, true, nil); err == nil {
+		t.Fatal("v1.5 non-interactive must refuse an env-line-only prod change")
+	}
+	name := fixtureProjectName(t, f)
+	writeLine(t, f, ".env", "PROJECT_NAME", name) // normalise the file the way config set writes it
+	same := planOf(t, f, func(r *Request) {
+		r.Containers, r.Runtime = true, rt
+		r.EnvOverlay = map[string]map[string]string{".env": {"PROJECT_NAME": name}}
+	})
+	if same.PendingEnv || same.RequiresConfirmation {
+		t.Fatalf("a line equal to the file changes nothing: %+v", same)
+	}
+	compattest.Set(t, true)
+	req := Request{Runtime: rt, Containers: true, ProjectDir: f.project, Seed: []byte("fixture-seed"), EnvOverlay: overlay}
+	if _, err := Apply(context.Background(), req, ApplyOptions{Yes: true,
+		BeforeWrite: func() error { writeLine(t, f, ".env", "NSELF_LIVE05_PROBE", "x"); return nil }}); err != nil {
+		t.Fatalf("--yes must apply an env-line-only prod change (stable plan across the write): %v", err)
+	}
+}
+
+// fixtureProjectName returns PROJECT_NAME from the fixture's .env.
+func fixtureProjectName(t *testing.T, f *fixture) string {
+	t.Helper()
+	for _, l := range strings.Split(readFixtureEnv(t, f), "\n") {
+		if v, ok := strings.CutPrefix(l, "PROJECT_NAME="); ok {
+			return v
+		}
+	}
+	t.Fatal("no PROJECT_NAME in the fixture")
+	return ""
 }

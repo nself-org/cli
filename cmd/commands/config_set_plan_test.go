@@ -386,6 +386,64 @@ func TestConfigSetRestoreKeepsSymlink(t *testing.T) {
 	}
 }
 
+// TestConfigSetRestoreReadOnlyDir: in a directory the restore cannot create a
+// temp file in, it rewrites the file in place, as the line write did.
+func TestConfigSetRestoreReadOnlyDir(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs unix directory permissions as a normal user")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	if err := os.WriteFile(path, []byte("KEY=old\n# c"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w := &envLineWrite{path: path}
+	if err := w.write("KEY", "new"); err != nil {
+		t.Fatal(err)
+	}
+	w.releaseSignals()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	if err := w.restore(); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFileT(t, path); got != "KEY=old\n# c" {
+		t.Fatalf("not restored: %q", got)
+	}
+}
+
+// TestConfigSetRestoreDanglingLink: a write through a link whose target did
+// not exist creates the target; the restore removes that file, keeps the link.
+func TestConfigSetRestoreDanglingLink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "outside"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, ".env.secrets")
+	if err := os.Symlink(filepath.Join("outside", "secrets.env"), link); err != nil {
+		t.Fatal(err)
+	}
+	w := &envLineWrite{path: link}
+	if err := w.write("KEY", "new"); err != nil {
+		t.Fatal(err)
+	}
+	w.releaseSignals()
+	if err := w.restore(); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the link must stay: %v %v", info, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "outside", "secrets.env")); !os.IsNotExist(err) {
+		t.Fatalf("the file the write created through the link must be removed: %v", err)
+	}
+}
+
 // TestConfigSetApplyErrorKeepsCodes: a refusal is re-issued as E403 naming
 // the key; any other error keeps its code and gains the key.
 func TestConfigSetApplyErrorKeepsCodes(t *testing.T) {

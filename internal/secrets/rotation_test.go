@@ -160,6 +160,10 @@ func TestLoadRotationStateMigratesLegacyName(t *testing.T) {
 			{SecretName: legacyAdminSecretName, CadenceDays: 180, LastRotated: "2025-01-01T00:00:00Z"},
 			{SecretName: "HASURA_GRAPHQL_ADMIN_SECRET", CadenceDays: 180, LastRotated: "2026-03-03T00:00:00Z"},
 		}, "2026-03-03T00:00:00Z"},
+		{"legacy row newer", []RotationSchedule{
+			{SecretName: "HASURA_GRAPHQL_ADMIN_SECRET", CadenceDays: 180, LastRotated: "2025-01-01T00:00:00Z"},
+			{SecretName: legacyAdminSecretName, CadenceDays: 180, LastRotated: "2026-04-04T00:00:00Z"},
+		}, "2026-04-04T00:00:00Z"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()

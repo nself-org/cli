@@ -69,23 +69,41 @@ const legacyAdminSecretName = "HASURA_" + "ADMIN_SECRET"
 
 // migrateScheduleNames renames persisted rows from legacy names (P7-LIVE-05):
 // the row keeps its cadence and its LastRotated/NextDue history. When the new
-// name already has a row, the legacy row is dropped. The change is written the
-// next time the state is saved.
+// name already has a row, the legacy row is dropped and its history is kept
+// only if it is the newer one. The change is written the next time the state
+// is saved.
 func migrateScheduleNames(state *RotationState) {
 	renames := map[string]string{legacyAdminSecretName: "HASURA_GRAPHQL_ADMIN_SECRET"}
-	have := map[string]bool{}
-	for _, s := range state.Schedules {
-		have[s.SecretName] = true
+	at := map[string]int{}
+	for i, s := range state.Schedules {
+		at[s.SecretName] = i
 	}
-	out := state.Schedules[:0]
+	out := make([]RotationSchedule, 0, len(state.Schedules))
 	for _, s := range state.Schedules {
-		if to, ok := renames[s.SecretName]; ok {
-			if have[to] {
-				continue
-			}
-			s.SecretName, have[to] = to, true
+		to, legacy := renames[s.SecretName]
+		if !legacy {
+			out = append(out, s)
+			continue
 		}
+		if j, ok := at[to]; ok {
+			if cur := &state.Schedules[j]; s.LastRotated > cur.LastRotated {
+				cur.LastRotated, cur.NextDue = s.LastRotated, s.NextDue
+			}
+			continue
+		}
+		s.SecretName = to
+		at[to] = -1
 		out = append(out, s)
+	}
+	// A target row copied before a later legacy row updated it is refreshed.
+	targets := map[string]bool{}
+	for _, to := range renames {
+		targets[to] = true
+	}
+	for i := range out {
+		if j, ok := at[out[i].SecretName]; ok && j >= 0 && targets[out[i].SecretName] {
+			out[i] = state.Schedules[j]
+		}
 	}
 	state.Schedules = out
 }

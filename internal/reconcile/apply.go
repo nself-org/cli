@@ -65,8 +65,14 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 	defer rollbackOnFailure(&opt, &err)()
 	// The env a pending line changes is resolved once, before anything is
 	// written: every render of this apply judges confirmation against it.
-	if len(req.EnvOverlay) > 0 && req.EnvBefore == "" {
-		req.EnvBefore = diskEnv(req.ProjectDir)
+	if len(req.EnvOverlay) > 0 {
+		if req.EnvBefore == "" {
+			req.EnvBefore = diskEnv(req.ProjectDir)
+		}
+		if _, req.envChanged, err = pendingEnv(req.ProjectDir, req.EnvOverlay); err != nil {
+			return nil, nil, err
+		}
+		req.envChangedSet = true
 	}
 
 	// P7-LIVE-04 (EPIC D5): the generated-state record tells a generated change
@@ -109,7 +115,7 @@ func ApplyBuild(ctx context.Context, req Request, opt ApplyOptions) (applied *Pl
 				WithFix("re-run nself build --plan and pass the new plan_id")
 		}
 	}
-	if req.Stderr != nil && !p.Empty && (p.RequiresConfirmation || len(HandEditedPaths(*p)) > 0) {
+	if req.Stderr != nil && (!p.Empty || p.RequiresConfirmation) && (p.RequiresConfirmation || len(HandEditedPaths(*p)) > 0) {
 		if err := RenderHuman(req.Stderr, *p); err != nil {
 			return nil, nil, err
 		}

@@ -176,6 +176,10 @@ type Plan struct {
 	// change sets ENV itself; empty otherwise. Not part of the contract: it only
 	// feeds RequiresConfirmation and the human header.
 	EnvBefore string `json:"-"`
+	// PendingEnv is true when a pending env line changes an env file
+	// (P7-LIVE-05). The line is the command's own change, so on a prod-class
+	// env it needs confirmation even when nothing generated changes.
+	PendingEnv bool `json:"-"`
 }
 
 // Finalize normalises the plan and computes every derived field.
@@ -200,8 +204,9 @@ func (p *Plan) Finalize() error {
 	p.DestructiveReasons = destructiveReasons(p)
 	p.Destructive = len(p.DestructiveReasons) > 0
 	// A change that leaves a prod-class env (EnvBefore) is confirmed like one
-	// that targets it: `config set ENV dev` on a prod box is a prod change.
-	p.RequiresConfirmation = (p.EnvClass == ClassProd || (p.EnvBefore != "" && EnvClass(p.EnvBefore) == ClassProd)) && !p.Empty
+	// that targets it: `config set ENV dev` on a prod box is a prod change. A
+	// pending env line is a change of its own (PendingEnv).
+	p.RequiresConfirmation = (p.EnvClass == ClassProd || (p.EnvBefore != "" && EnvClass(p.EnvBefore) == ClassProd)) && (!p.Empty || p.PendingEnv)
 	id, err := PlanID(*p)
 	if err != nil {
 		return err

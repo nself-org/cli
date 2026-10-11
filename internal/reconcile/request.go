@@ -65,6 +65,10 @@ type Request struct {
 	// dev-class one (`config set ENV dev` on a prod box). ApplyBuild resolves it
 	// once, before BeforeWrite, so its rechecks after the write agree.
 	EnvBefore string
+	// envChanged/envChangedSet fix, before the write, whether the pending
+	// lines change an env file, so the plan rendered after the write (which
+	// sees no difference) keeps the same confirmation and plan_id.
+	envChanged, envChangedSet bool
 }
 
 // ApplyOptions are the operator's answers to a plan.

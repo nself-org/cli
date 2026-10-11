@@ -61,9 +61,12 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 	if len(req.Seed) > 0 {
 		opts.Rand = newSeededRand(req.Seed)
 	}
-	env, err := pendingEnv(req.ProjectDir, req.EnvOverlay)
+	env, envChanged, err := pendingEnv(req.ProjectDir, req.EnvOverlay)
 	if err != nil {
 		return nil, err
+	}
+	if req.envChangedSet { // fixed by ApplyBuild before the write (P7-LIVE-05)
+		envChanged = req.envChanged
 	}
 	opts.EnvOverlay = env
 	res, err := nbuild.Build(req.ProjectDir, opts)
@@ -115,6 +118,7 @@ func compute(ctx context.Context, req Request) (*computed, error) {
 		p.Command = CmdBuild
 	}
 	if len(req.EnvOverlay) > 0 {
+		p.PendingEnv = envChanged
 		p.EnvBefore = req.EnvBefore
 		if p.EnvBefore == "" {
 			p.EnvBefore = diskEnv(req.ProjectDir)

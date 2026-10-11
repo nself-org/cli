@@ -34,7 +34,7 @@ func (st *buildState) generateCompose() error {
 	if profile == "" {
 		profile = compose.ProfileApp
 	}
-	composeGen := compose.NewGeneratorWithProfile(st.cfg, profile).WithWorkDir(st.workdir)
+	composeGen := compose.NewGeneratorWithProfile(st.cfg, profile).WithWorkDir(st.workdir).WithEnvOverlay(st.opts.EnvOverlay)
 	composeYAML, err := composeGen.Generate()
 	if err != nil {
 		return fmt.Errorf("generating docker-compose.yml: %w", err)

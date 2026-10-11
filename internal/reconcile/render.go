@@ -33,6 +33,9 @@ func RenderHuman(w io.Writer, p Plan) error {
 	if p.Empty {
 		sb.WriteString("(no changes)\n")
 	}
+	if p.PendingEnv {
+		sb.WriteString("Env: the pending line changes an env file (value not shown)\n")
+	}
 	if len(p.Artifacts) > 0 {
 		sb.WriteString("Artifacts:\n")
 		for _, a := range p.Artifacts {

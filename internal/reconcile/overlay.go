@@ -99,37 +99,42 @@ const pendingEnvPerm fs.FileMode = 0o600
 
 // pendingEnv renders Request.EnvOverlay against the disk: for each env file
 // (project-relative name) the bytes it will hold once every pending line is
-// written, by the same rewrite `config set` uses. It reads the disk each time,
+// written, by the same rewrite `config set` uses; changed reports whether any
+// file's bytes differ from the disk (or the file does not exist yet). It reads the disk each time,
 // so a plan recomputed after the line was written sees the same bytes
 // (EnvFileWithLine is idempotent) and an edit made meanwhile is not hidden.
-func pendingEnv(dir string, in map[string]map[string]string) (map[string][]byte, error) {
+func pendingEnv(dir string, in map[string]map[string]string) (map[string][]byte, bool, error) {
 	if len(in) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 	out := make(map[string][]byte, len(in))
+	changed := false
 	for name, kv := range in {
 		if !validEnvName(name) {
-			return nil, fmt.Errorf("env overlay: %q is not an env file at the project root", name)
+			return nil, false, fmt.Errorf("env overlay: %q is not an env file at the project root", name)
 		}
 		data, err := os.ReadFile(filepath.Join(dir, name))
 		exists := err == nil
 		if err != nil && !os.IsNotExist(err) {
-			return nil, fmt.Errorf("reading %s for the plan: %w", name, err)
+			return nil, false, fmt.Errorf("reading %s for the plan: %w", name, err)
 		}
+		was := string(data)
 		keys := make([]string, 0, len(kv))
 		for k := range kv {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
+		present := exists
 		for _, k := range keys {
-			if data, _, err = EnvFileWithLine(data, exists, k, kv[k]); err != nil {
-				return nil, fmt.Errorf("scanning %s: %w", name, err)
+			if data, _, err = EnvFileWithLine(data, present, k, kv[k]); err != nil {
+				return nil, false, fmt.Errorf("scanning %s: %w", name, err)
 			}
-			exists = true
+			present = true
 		}
+		changed = changed || !exists || string(data) != was
 		out[name] = data
 	}
-	return out, nil
+	return out, changed, nil
 }
 
 // validEnvName accepts a root-level ".env" or ".env.<suffix>" name.
@@ -218,6 +223,15 @@ func rollbackOnFailure(opt *ApplyOptions, err *error) func() {
 		return nil
 	}
 	return func() {
+		// A panic after the write rolls back too, then keeps panicking so the
+		// caller's recovery still reports it. recover works here: this closure
+		// is the deferred function itself.
+		if r := recover(); r != nil {
+			if wrote {
+				_ = opt.Rollback()
+			}
+			panic(r)
+		}
 		if *err != nil && wrote {
 			if rerr := opt.Rollback(); rerr != nil {
 				*err = errors.Join(*err, rerr)
