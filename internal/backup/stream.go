@@ -2,11 +2,13 @@
 //
 // The pipeline runs three concurrent goroutines:
 //
-//	pg_dump (streaming) | age (encrypt) | rclone (multipart upload)
+//	pg_dump (streaming) | age (encrypt) | destination (PutStream)
 //
 // No temp files are written. Encryption recipients may be age public keys,
 // SSH public keys, or GitHub user keys (fetched via github.com/users/<user>/keys).
-// The upload destination is any rclone-supported remote: s3://, r2://, b2://, gcs://, az://.
+// The upload destination is an rclone remote (s3://, r2://, b2://, gcs://, az://
+// or name:path), path://<abs dir> or host://<server>/<abs dir>: the same
+// grammar as backup create, parsed by internal/backup/destinations.
 package backup
 
 import (
@@ -18,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nself-org/cli/internal/backup/destinations"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -43,7 +46,7 @@ type StreamConfig struct {
 
 // StreamOptions holds CLI flag values for `nself backup stream`.
 type StreamOptions struct {
-	To         string   // destination URL (rclone remote path)
+	To         string   // destination: rclone remote, path:// or host://
 	Recipients []string // --recipient flags (may be specified multiple times)
 	DryRun     bool
 	// AllowUnencrypted permits streaming in the clear when no recipient
@@ -77,7 +80,7 @@ type StreamResult struct {
 //
 //  1. pg_dump stdout -> pgWriter
 //  2. age encrypts pgReader -> encWriter (skipped if no recipients)
-//  3. rclone rcat uploads encReader to Destination/Key
+//  3. the destination's PutStream uploads encReader to Destination/Key
 //
 // All three stages run in parallel goroutines. The first error from any stage
 // cancels the others via context cancellation.
@@ -96,13 +99,19 @@ func Stream(ctx context.Context, cfg *config.Config, opts StreamOptions) (*Strea
 		}
 	}
 
+	// Parse the destinations first: a refused value fails before any
+	// recipient lookup, process or dry-run output (D-0257).
+	targets, err := resolveStreamTargets(cfg, opts)
+	if err != nil {
+		return nil, err
+	}
+
 	recipients := opts.Recipients
 	if len(recipients) == 0 && cfg.Backup.AgeRecipients != "" {
 		recipients = strings.Fields(cfg.Backup.AgeRecipients)
 	}
 
 	// Resolve GitHub keys.
-	var err error
 	recipients, err = resolveRecipients(ctx, recipients)
 	if err != nil {
 		return nil, fmt.Errorf("resolve recipients: %w", err)
@@ -162,12 +171,8 @@ func Stream(ctx context.Context, cfg *config.Config, opts StreamOptions) (*Strea
 
 	// Row estimates are read BEFORE the dump so they describe the database the
 	// backup contains; an unreadable estimate is recorded as null, never as {}.
-	hbRemote := opts.HeartbeatTo
-	if hbRemote == "" {
-		hbRemote = cfg.Backup.HeartbeatRemote()
-	}
 	var approx map[string]int64
-	if hbRemote != "" {
+	if targets.hbRemote != "" {
 		var rowsErr error
 		if approx, rowsErr = ReadApproxRows(ctx, pgURL); rowsErr != nil {
 			slog.Warn("could not read row estimates; heartbeat approx_rows will be null", "err", rowsErr)
@@ -175,11 +180,11 @@ func Stream(ctx context.Context, cfg *config.Config, opts StreamOptions) (*Strea
 		}
 	}
 
-	result, err := runStreamPipeline(ctx, cfg, pgURL, opts.To, key, recipients)
+	result, err := runStreamPipeline(ctx, cfg, pgURL, opts.To, targets.put, key, recipients)
 	if err != nil {
 		// A failed backup never writes a heartbeat, and a truncated object
 		// that reached the remote is removed so nothing restores from it.
-		return nil, discardFailedObject(ctx, err, opts.To, key)
+		return nil, discardFailedObject(ctx, err, targets.del, key)
 	}
 	result.StartedAt = start
 	result.Duration = time.Since(start).String()
@@ -188,11 +193,11 @@ func Stream(ctx context.Context, cfg *config.Config, opts StreamOptions) (*Strea
 	// header, so this only happens with --no-encrypt and an empty dump). Fail
 	// the job instead of reporting green; no heartbeat is written either.
 	if result.Bytes == 0 {
-		return nil, discardFailedObject(ctx, fmt.Errorf("%w: the upload was empty (0 bytes)", errs.ErrBackupFailed), opts.To, key)
+		return nil, discardFailedObject(ctx, fmt.Errorf("%w: the upload was empty (0 bytes)", errs.ErrBackupFailed), targets.del, key)
 	}
 
-	if hbRemote != "" {
-		if hbErr := publishHeartbeat(ctx, cfg.ProjectName, hbRemote, result, approx); hbErr != nil {
+	if targets.hb != nil {
+		if hbErr := publishHeartbeatTo(ctx, cfg.ProjectName, targets.hb, result, approx); hbErr != nil {
 			slog.Warn("backup heartbeat not written", "err", hbErr)
 			if opts.HeartbeatRequired {
 				return result, fmt.Errorf("heartbeat: %w", hbErr)
@@ -203,12 +208,12 @@ func Stream(ctx context.Context, cfg *config.Config, opts StreamOptions) (*Strea
 }
 
 // runStreamPipeline wires the three concurrent goroutines and waits for all.
-func runStreamPipeline(ctx context.Context, cfg *config.Config, pgURL, destination, key string, recipients []string) (*StreamResult, error) {
+func runStreamPipeline(ctx context.Context, cfg *config.Config, pgURL, destination string, st destinations.Streamer, key string, recipients []string) (*StreamResult, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	// Stage plumbing: two io.Pipe connections.
-	//   pg_dump -> pgW | pgR -> (age) -> encW | encR -> rclone
+	//   pg_dump -> pgW | pgR -> (age) -> encW | encR -> destination
 	pgR, pgW := io.Pipe()
 	var uploadReader io.ReadCloser
 
@@ -254,14 +259,14 @@ func runStreamPipeline(ctx context.Context, cfg *config.Config, pgURL, destinati
 		}()
 	}
 
-	// ── Stage 3: rclone rcat upload ───────────────────────────────────
+	// ── Stage 3: upload through the destination ───────────────────────
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer func() { _ = uploadReader.Close() }()
-		if err := rcloneRcat(ctx, counter, destination, key); err != nil {
+		if err := st.PutStream(ctx, counter, key); err != nil {
 			cancel()
-			errc <- fmt.Errorf("rclone upload: %w", err)
+			errc <- fmt.Errorf("upload: %w", fmt.Errorf("%w: %v", errs.ErrBackupRemoteFailed, err))
 		}
 	}()
 

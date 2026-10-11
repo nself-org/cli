@@ -61,7 +61,14 @@ func fakeBin(t *testing.T) string {
 // pinning it.
 func hostFixture(t *testing.T) *Inventory {
 	t.Helper()
-	kh := filepath.Join(t.TempDir(), "kh")
+	// The pinned-keys directory must be 0700. t.TempDir follows the umask, so a
+	// host with umask 002 (ps1) would make it group-writable and the store
+	// would refuse it; create our own directory with an explicit mode.
+	dir := filepath.Join(t.TempDir(), "pin")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	kh := filepath.Join(dir, "kh")
 	pin := remote.PinnedHostKeys{Path: kh}
 	if err := pin.Add("nself-ci-bk1", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAA"); err != nil {
 		t.Fatal(err)

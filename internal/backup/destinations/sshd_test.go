@@ -76,7 +76,12 @@ func TestHostDestinationSSHD(t *testing.T) {
 	if len(f) < 3 {
 		t.Skipf("sshd container gave no host key (%q); docker logs:\n%s", scan, dockerLogs(cid))
 	}
-	kh := filepath.Join(tmp, "kh")
+	// The pinned-keys directory must be 0700 whatever the umask (see hostFixture).
+	pinDir := filepath.Join(tmp, "pin")
+	if err := os.Mkdir(pinDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	kh := filepath.Join(pinDir, "kh")
 	if err := (remote.PinnedHostKeys{Path: kh}).Add("nself-ci-sshd", f[len(f)-2]+" "+f[len(f)-1]); err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +106,23 @@ func TestHostDestinationSSHD(t *testing.T) {
 	}
 	if err := d.Get(t.Context(), "p/missing", filepath.Join(tmp, "m")); err == nil {
 		t.Fatal("get of a missing object succeeded")
+	}
+	// PutStream, Get round trip, then Remove.
+	if err := d.PutStream(t.Context(), strings.NewReader("sshd streamed"), "p/s.dump"); err != nil {
+		t.Fatalf("put stream: %v", err)
+	}
+	sback := filepath.Join(tmp, "sback")
+	if err := d.Get(t.Context(), "p/s.dump", sback); err != nil {
+		t.Fatalf("get streamed: %v", err)
+	}
+	if b, _ := os.ReadFile(sback); string(b) != "sshd streamed" {
+		t.Fatalf("streamed object came back as %q", b)
+	}
+	if err := d.Remove(t.Context(), "p/s.dump"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if err := d.Get(t.Context(), "p/s.dump", filepath.Join(tmp, "gone")); err == nil {
+		t.Fatal("removed object still downloads")
 	}
 }
 
