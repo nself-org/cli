@@ -24,7 +24,7 @@ import (
 )
 
 var generateVectorSearchCmd = &cobra.Command{
-	Use:   "vector-search <schema>.<table>.<column>",
+	Use:   "vector-search <schema.table.column>",
 	Short: "Generate a k-NN search function for a vector column and track it in Hasura",
 	Long: `Write migrations/<timestamp>_vector_search_<table>_<column>.sql: a STABLE SQL
 function <schema>.<table>_nearest_<column>(query vector(n)) that returns the
