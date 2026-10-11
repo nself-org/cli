@@ -1,0 +1,7 @@
+# Authored (not generated). Canon fragment "db_vector" (contract:cli.canon-fragments v1, P7-CANON-02).
+# Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
+schema_version: 1
+commands:
+  # cmd/commands/generate_vector.go writes migrations/<ts>_vector_search_<table>_<column>.sql; --track sends one targeted Hasura bulk call and edits on-disk metadata only when it shows no drift
+  # child of the generate command object (v1.4 spelling: generate vector-search); it moves with its parent
+  db generate vector-search: {side_effect: write}
