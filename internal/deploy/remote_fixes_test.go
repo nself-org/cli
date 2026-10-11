@@ -275,7 +275,7 @@ func TestCopiedParsersMatchDocker(t *testing.T) {
 	dir := t.TempDir()
 	cfg := `{"name":"p","services":{
 	  "a":{"restart":"no"},
-	  "b":{"restart":"always","healthcheck":{"test":["CMD","true"]}},
+	  "b":{"restart":"always","healthcheck":{"test":["CMD","true"],"interval":"10s","timeout":"5s","start_period":"20s","retries":2}},
 	  "c":{"restart":"no","healthcheck":{"test":["NONE"]}},
 	  "d":{"restart":"no","healthcheck":{"disable":true,"test":["CMD","x"]}},
 	  "e":{"healthcheck":{"test":"curl -f localhost"}}}}`
@@ -306,6 +306,10 @@ func TestCopiedParsersMatchDocker(t *testing.T) {
 		if got := mine.Services[sp.Name].Spec; got != sp {
 			t.Errorf("service %s: docker %+v, copy %+v", sp.Name, sp, got)
 		}
+	}
+	// declared healthcheck timing reaches the remote model: 20s + 2*(10s+5s)
+	if got := mine.Services["b"].Spec.HealthTimeout; got != 50*time.Second {
+		t.Errorf("service b HealthTimeout = %v, want 50s", got)
 	}
 	for _, form := range []string{"array", "lines"} {
 		t.Setenv("PSFORM", form)

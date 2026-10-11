@@ -14,8 +14,8 @@ package deploy
 //              `Container <name> Recreate|Creating` lines (stdout and stderr
 //              mixed, so the command merges them). Service order, the
 //              healthcheck and restart facts come from the same JSON document
-//              the local rolling restart reads (docker.ServiceSpec), parsed
-//              here only because internal/docker exports no parser for it.
+//              the local rolling restart reads, parsed by the same
+//              docker.ParseServiceSpecs.
 
 import (
 	"context"
