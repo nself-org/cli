@@ -57,6 +57,8 @@ When build renders `docker-compose.yml`, each service image is resolved in this 
 
 So a CLI upgrade never silently moves an existing project's images. To move one, change the env value, or delete its line from the lock and build.
 
+`nself init` writes `*_VERSION` defaults into `.env`. A value that names the same image as the pin (`HASURA_VERSION=v2.44.0` against a `hasura/graphql-engine:v2.44.0@sha256:...` pin) keeps the digest. A different value drops the pin, and build prints one notice naming the variable.
+
 ## The first lock
 
 A project that already has a `docker-compose.yml` gets a first lock that takes its pins from that file, for the services the CLI owns:
@@ -81,6 +83,10 @@ The lock is plain YAML, so a pull request shows exactly which image, plugin or b
 - an installed plugin version or checksum;
 - the installed bundles;
 - the CLI major.minor.
+
+The comparison covers every compose file `start` runs: the generated file, plugin fragments and `docker-compose.override.yml`. Docker lets the last file win, so an override that sets a CLI-owned service's `image:` shows up as an `image` mismatch, and `nself build` records it in the lock. Under `--frozen` a cli or plugin checksum that one side recorded and the other left empty also counts as a mismatch. A plain `start` still skips empty values.
+
+A service pinned by tag only (listed under `unpinned`) cannot detect a moved tag, so `--frozen` prints one warning that lists those services.
 
 A project with no lock also fails. Use it in CI and on servers, after `nself build` has run from the committed lock:
 
