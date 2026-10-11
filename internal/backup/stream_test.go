@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -368,6 +369,54 @@ func TestCronDOWName(t *testing.T) {
 		got := cronDOWName(in)
 		if got != want {
 			t.Errorf("cronDOWName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// ── schedule ENV selector (D-0277) ────────────────────────────────────
+
+// TestScheduleStreamEnvSelector: a project env is written as exactly one
+// Environment=ENV= line, directly after the PATH line.
+func TestScheduleStreamEnvSelector(t *testing.T) {
+	skipUnitTestOnWindows(t)
+	cfg := minimalConfig()
+	cfg.Env = "prod"
+	var out bytes.Buffer
+	err := ScheduleStream(cfg, ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", ProjectDir: t.TempDir(), BinaryPath: "/bin/sh", DryRun: true, Out: &out})
+	if err != nil {
+		t.Fatalf("ScheduleStream: %v", err)
+	}
+	got := out.String()
+	if n := strings.Count(got, "Environment=ENV=prod\n"); n != 1 {
+		t.Fatalf("want exactly one Environment=ENV=prod line, got %d:\n%s", n, got)
+	}
+	if strings.Count(got, "ENV=") != 1 {
+		t.Errorf("unexpected extra ENV= text:\n%s", got)
+	}
+	pathLine := "Environment=PATH=/usr/local/bin:/usr/bin:/bin\nEnvironment=ENV=prod\n"
+	if !strings.Contains(got, pathLine) {
+		t.Errorf("ENV line must follow the PATH line directly:\n%s", got)
+	}
+}
+
+// TestScheduleStreamEnvRefusesUnsafe: an env name that could add a directive or
+// expand in systemd is refused with nothing printed or written.
+func TestScheduleStreamEnvRefusesUnsafe(t *testing.T) {
+	skipUnitTestOnWindows(t)
+	for _, env := range []string{"prod\nExecStartPre=/x", "prod\r", "pr$od", "a b", "a%h", "a/b", "a\"b"} {
+		cfg := minimalConfig()
+		cfg.Env = env
+		var out bytes.Buffer
+		unitDir := t.TempDir()
+		err := ScheduleStream(cfg, ScheduleOptions{Cron: "0 3 * * *", To: "r2:b", ProjectDir: t.TempDir(), BinaryPath: "/bin/sh", UnitDir: unitDir, Out: &out})
+		if err == nil {
+			t.Errorf("env %q must be refused", env)
+		}
+		if out.Len() != 0 {
+			t.Errorf("env %q: nothing may be printed, got %q", env, out.String())
+		}
+		if entries, _ := os.ReadDir(unitDir); len(entries) != 0 {
+			t.Errorf("env %q: nothing may be written, found %d files", env, len(entries))
 		}
 	}
 }

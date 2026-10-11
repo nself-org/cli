@@ -5,7 +5,7 @@ package config
 // Purpose: Fill in unset Redis, MinIO, Mailpit, Functions, MLflow, Admin and Search fields on a loaded Config with the CLI's standard defaults, split out of defaults.go for file size.
 // Inputs: a *Config already populated by the loader.
 // Outputs: the same *Config with these service fields defaulted in place.
-// Constraints: pure move from defaults.go (CLI-R12 Batch F); no behaviour change. Keep in sync with ApplyDefaults in defaults.go, which calls these in order.
+// Constraints: a service's credential guard runs only when that service is enabled (D-0277). Keep in sync with ApplyDefaults in defaults.go, which calls these in order.
 
 import (
 	"fmt"
@@ -43,9 +43,15 @@ func applyDefaultsRedis(cfg *Config) {
 // applyDefaultsMinio sets MinIO object-storage defaults by delegating to credential and storage helpers.
 func applyDefaultsMinio(cfg *Config) error {
 	applyDefaultsMinioConn(cfg)
-	// Guard: reject minioadmin defaults in staging/prod before any container is started.
-	if err := ValidateMinioCredentials(cfg); err != nil {
-		return err
+	// Guard: reject minioadmin defaults in staging/prod before any container is
+	// started. Only when MinIO is enabled, like validator.go and the doctor
+	// checks: with MinIO off no container gets these credentials, and a prod
+	// project without MinIO must still load for commands such as `backup
+	// stream` (D-0277).
+	if cfg.Minio.Enabled {
+		if err := ValidateMinioCredentials(cfg); err != nil {
+			return err
+		}
 	}
 	applyDefaultsMinioStorage(cfg)
 	return nil

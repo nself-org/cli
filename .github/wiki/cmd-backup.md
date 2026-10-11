@@ -60,6 +60,8 @@ Stream a live backup to S3, R2, Backblaze B2, GCS, or Azure Blob. No temp files 
 pg_dump (streaming) | age (encrypt) | rclone rcat (multipart upload)
 ```
 
+The database password reaches `pg_dump` (and the `psql` row-estimate query) through `PGPASSWORD` in the child's environment, never on its command line, so `ps` on the host does not show it. A DSN whose password cannot be split off (a `password=` query parameter or keyword form) is refused.
+
 ### Usage
 
 ```bash
@@ -255,7 +257,7 @@ Install a systemd timer to run `nself backup stream` on a cron schedule.
 nself backup schedule --cron "0 2 * * *" --to <url> [--recipient <key>]... [--heartbeat-to <remote>] [--env-file <path>] [--dry-run]
 ```
 
-Run it from the project directory (it must hold a `.env` or `nself.yaml`; anywhere else the command refuses). The unit runs in that directory (`WorkingDirectory`) and calls the absolute path of the `nself` binary that is running now (symlinks resolved), so a different `nself` on PATH can never be picked up. The unit has no `EnvironmentFile` line unless `--env-file` is given; the project `.env` is read from the working directory as usual.
+Run it from the project directory (it must hold a `.env` plus an nSelf marker: `nself.yaml`, `nself.yml`, a `.nself/` directory or a `docker-compose.yml` written by `nself build`; anywhere else the command refuses). The unit runs in that directory (`WorkingDirectory`) and calls the absolute path of the `nself` binary that is running now (symlinks resolved), so a different `nself` on PATH can never be picked up. The unit has no `EnvironmentFile` line unless `--env-file` is given; the project `.env` is read from the working directory as usual. The unit carries `Environment=ENV=<env>`, the environment resolved when the schedule was made (shell `ENV`, else `ENV=` in `.env`, else `dev`), so the nightly run loads the same `.env` cascade.
 
 ### Flags
 
