@@ -90,9 +90,10 @@ func TestTrackPluginTablesIntegration(t *testing.T) {
 	run("run", "-d", "--name", "trk78_postgres", "--network", "trk78_net",
 		"--tmpfs", "/var/lib/postgresql/data", "-e", "POSTGRES_PASSWORD=fixture-pg-password", "-e", "POSTGRES_DB=nself", "postgres:16-alpine")
 	waitTrackIntegPostgres(t)
+	adminEnv := fmt.Sprintf("%s=%s", "HASURA_GRAPHQL_ADMIN_SECRET", trackIntegSecret)
 	run("run", "-d", "--name", "trk78_hasura", "--network", "trk78_net", "-p", "18078:8080",
 		"-e", "HASURA_GRAPHQL_DATABASE_URL=postgres://postgres:fixture-pg-password@trk78_postgres:5432/nself",
-		"-e", "HASURA_GRAPHQL_ADMIN_SECRET="+trackIntegSecret,
+		"-e", adminEnv,
 		"-e", "HASURA_GRAPHQL_ENABLE_CONSOLE=false", "hasura/graphql-engine:v2.44.0")
 
 	cfg := &config.Config{Env: "dev", ProjectName: "trk78"}
