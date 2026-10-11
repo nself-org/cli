@@ -9,8 +9,11 @@ package routemodel
 // variables in scope.
 // Outputs: one Location per mappable `location` block.
 // Constraints: a value that cannot be represented exactly is recorded, never
-// rounded. A proxy_pass with a URI part keeps its upstream AND is recorded (v1
-// cannot carry the path). Regex, named and ^~ locations, nested locations,
+// rounded. Every `set` of a location runs before its proxy_pass (rewrite
+// phase); a variable set twice, or beside an if, rewrite or break, is not
+// resolved. websocket needs proxy_http_version 1.1 (nginx defaults to 1.0).
+// A proxy_pass with a URI part keeps its upstream AND is recorded (v1 cannot
+// carry the path). Regex, named and ^~ locations, nested locations,
 // `if`, `client_max_body_size 0`, a `deny` other than `all`, a sub-second
 // timeout and any directive outside the table are recorded.
 
@@ -45,6 +48,7 @@ type locAcc struct {
 	done  map[string]bool // single-valued directives already seen
 	ret   *Block          // the mapped return, if any
 	h11   *Block          // proxy_http_version 1.1 in effect, if any (nginx defaults to 1.0)
+	flow  bool            // the server or location has an if, rewrite or break
 }
 
 // location maps one `location` block; the rest are recorded whole.
@@ -66,7 +70,7 @@ func (s *srv) location(l *Block) {
 		return
 	}
 	s.sn.disp[l] = "container"
-	acc := &locAcc{s: s, vars: map[string]*setVar{}, done: map[string]bool{},
+	acc := &locAcc{s: s, vars: map[string]*setVar{}, done: map[string]bool{}, flow: s.flow || rewriteFlow(l),
 		loc: Location{Path: path, Match: match, HeadersSet: map[string]string{}, AccessLog: true}}
 	for k, v := range s.vars {
 		acc.vars[k] = v
@@ -188,7 +192,8 @@ func (a *locAcc) limitExcept(d *Block) {
 }
 
 // proxyPass resolves the target to scheme, host and port. A `set` variable is
-// substituted literally when it is the only variable and is in scope; an
+// substituted literally when it is the only variable, is set once in its scope
+// and no if, rewrite or break could skip or change that set; an
 // upstream name resolves through upstream{}; a portless name defined as an
 // upstream in another file of the scan, or neither dotted nor an IP (it may be
 // defined outside the scan), is recorded.
@@ -198,7 +203,7 @@ func (a *locAcc) proxyPass(d *Block) {
 	if i := strings.IndexByte(raw, '$'); i >= 0 {
 		name := identRE.FindString(raw[i+1:])
 		rest := raw[i+1+len(name):]
-		if v := a.vars[name]; v != nil && !v.dup && !strings.ContainsAny(raw[:i]+rest, "$") {
+		if v := a.vars[name]; v != nil && !v.dup && !a.flow && !strings.ContainsAny(raw[:i]+rest, "$") {
 			raw, used = raw[:i]+v.val+rest, v
 		}
 	}

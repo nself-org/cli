@@ -124,6 +124,7 @@ type srv struct {
 	cipher *string
 	cert   string
 	tls    bool
+	flow   bool // an if, rewrite or break may skip or change a `set` (rewriteFlow)
 }
 
 type setVar struct {
@@ -160,6 +161,7 @@ func (sn *Snippet) server(b *Block, id, source, owner, file string) Route {
 	}
 	s := &srv{sn: sn, r: &r, vars: map[string]*setVar{}, rec: map[*Block]bool{}, protos: []string{}}
 	sn.disp[b] = "container"
+	s.flow = rewriteFlow(b)
 	var locs []*Block
 	var ret *Block // the first server-level return
 	listens := 0

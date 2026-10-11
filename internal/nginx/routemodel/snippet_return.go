@@ -8,6 +8,8 @@ package routemodel
 // Outputs: Return{Status, To}; a server-level return becomes the "/" location.
 // Constraints: a body (`return 200 "ok"`), a bare URL and a URL with an nginx
 // variable other than the canonical https redirect are recorded.
+// rewriteFlow flags the other rewrite-phase directives (if, rewrite, break)
+// that make a `set` variable unresolvable.
 
 import (
 	"strconv"
@@ -59,4 +61,16 @@ func parseReturn(d *Block) (ret *Return, ok, lossy bool) {
 	}
 	ret.To = &to
 	return ret, true, strings.Contains(to, "$") && !isHTTPSRedirect(ret)
+}
+
+// rewriteFlow reports whether b holds an if, rewrite or break: rewrite-phase
+// directives that can skip a later `set` or set a variable conditionally, so
+// a variable in proxy_pass cannot be resolved from the `set` lines alone.
+func rewriteFlow(b *Block) bool {
+	for _, d := range b.Children {
+		if d.Name == "if" || d.Name == "rewrite" || d.Name == "break" {
+			return true
+		}
+	}
+	return false
 }

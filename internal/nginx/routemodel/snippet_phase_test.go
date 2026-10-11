@@ -35,6 +35,22 @@ func TestSnippetSetRunsBeforeProxyPass(t *testing.T) {
 			t.Errorf("%s: upstream mapped to %+v", name, r.Locations[0].Upstream)
 		}
 	}
+	// An if, rewrite or break in the server or location may skip or change a set.
+	for name, text := range map[string]string{
+		"location if":      `server{listen 80;server_name a.test;set $up http://a.test:1;location /{if ($arg_x) {set $up http://b.test:2;} proxy_pass $up;}}`,
+		"location break":   `server{listen 80;server_name a.test;location /{break;set $up http://a.test:1;proxy_pass $up;}}`,
+		"location rewrite": `server{listen 80;server_name a.test;location /{rewrite ^ /x break;set $up http://a.test:1;proxy_pass $up;}}`,
+		"server if":        `server{listen 80;server_name a.test;set $up http://a.test:1;if ($host = b) {set $up http://b.test:2;} location /{proxy_pass $up;}}`,
+	} {
+		r := route(t, text)
+		if r.Locations[0].Upstream != nil || !contains(r.Unmodelled, "proxy_pass $up;") {
+			t.Errorf("%s: upstream=%+v unmodelled=%q", name, r.Locations[0].Upstream, r.Unmodelled)
+		}
+	}
+	// Without a variable, an if elsewhere does not block a literal upstream.
+	if u := route(t, `server{listen 80;server_name a.test;if ($host = b) {return 404;} location /{proxy_pass http://a.test:1;}}`).Locations[0].Upstream; u == nil {
+		t.Error("literal upstream refused")
+	}
 }
 
 func TestSnippetWebSocketNeedsHTTP11(t *testing.T) {
