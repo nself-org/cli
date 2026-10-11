@@ -95,15 +95,15 @@ func runInitCloneTemplate(name, destDir string, noSeed, dryRun, force, quiet boo
 // flag). The flutter/ starter is legacy (Flutter is eliminated for new
 // surfaces), so it is pointed at, never run.
 func printCloneNextSteps(w io.Writer, dest string, plugins []string) {
-	fmt.Fprintf(w, "\n  Next steps:\n")
-	fmt.Fprintf(w, "    cd %s\n", dest)
-	fmt.Fprintf(w, "    nself start\n")
-	fmt.Fprintf(w, "    nself db migrate\n")
-	fmt.Fprintf(w, "    nself db hasura metadata apply\n")
+	_, _ = fmt.Fprintf(w, "\n  Next steps:\n")
+	_, _ = fmt.Fprintf(w, "    cd %s\n", dest)
+	_, _ = fmt.Fprintf(w, "    nself start\n")
+	_, _ = fmt.Fprintf(w, "    nself db migrate\n")
+	_, _ = fmt.Fprintf(w, "    nself db hasura metadata apply\n")
 	if len(plugins) > 0 {
-		fmt.Fprintf(w, "    nself plugin install %s\n", strings.Join(plugins, " "))
+		_, _ = fmt.Fprintf(w, "    nself plugin install %s\n", strings.Join(plugins, " "))
 	}
-	fmt.Fprintf(w, "\n  The flutter/ folder holds a legacy starter app; see README.md.\n\n")
+	_, _ = fmt.Fprintf(w, "\n  The flutter/ folder holds a legacy starter app; see README.md.\n\n")
 }
 
 // runInitMarketplaceTemplate downloads a marketplace template tarball, verifies
