@@ -92,15 +92,32 @@ func inputFor(service, image string) ImageInput {
 	return *first
 }
 
-// Set returns the first variable of the row that is set to a non-blank value, in
-// precedence order, or "".
+// Set returns the first variable of the row that is explicitly set, in
+// precedence order, or "". A variable holding nothing, or the default of one of
+// the service's lock entries (what nself init writes into .env; Ref.IsDefaultVersion,
+// the test ImageRef applies), is not set: it renders the CLI default, so it must
+// not drop a pin.
 func (in ImageInput) Set(getenv func(string) string) string {
 	for _, v := range in.Vars {
-		if strings.TrimSpace(getenv(v)) != "" {
+		if val := strings.TrimSpace(getenv(v)); val != "" && !isServiceDefault(in.Service, val) {
 			return v
 		}
 	}
 	return ""
+}
+
+// isServiceDefault reports whether val is the default version of any lock entry
+// the service renders (postgres: the postgres entry and the pgvector entry).
+func isServiceDefault(service, val string) bool {
+	for _, row := range imageInputs {
+		if row.Service != service {
+			continue
+		}
+		if r, ok := LockedRef(row.Entry); ok && r.IsDefaultVersion(val) {
+			return true
+		}
+	}
+	return false
 }
 
 // ImageVars returns the full-reference variables (*_IMAGE) of the row: the only

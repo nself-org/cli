@@ -152,11 +152,7 @@ func TestImageInputsMatchTheGenerator(t *testing.T) {
 		base := renderImages(t, mergeEnv(enableAll, variant))
 		rows := map[string]ImageInput{}
 		for svc, img := range base {
-			pinKey := svc
-			if svc == AdminServiceName {
-				pinKey = "admin" // the compose service is nself-admin, the pin key is the lock entry
-			}
-			in := inputFor(pinKey, img)
+			in := inputFor(PinKey(svc), img) // the production mapping, no hand remap
 			if r, ok := LockedRef(in.Entry); !ok || repoOf(r.Repository) != repoOf(img) {
 				t.Fatalf("%s: service %s renders %q, which no row of image_inputs.go describes", vname, svc, img)
 			}

@@ -41,6 +41,7 @@ type matrixRow struct {
 	ver0, ver1, ver2    string
 	pin, eqImg, diffImg string
 	decoys              []string
+	defVer, legacyVer   string // the CLI default and the frozen legacy tag of the row's lock entry (what init writes into .env)
 }
 
 func newMatrixRow(t *testing.T, in compose.ImageInput) *matrixRow {
@@ -52,6 +53,9 @@ func newMatrixRow(t *testing.T, in compose.ImageInput) *matrixRow {
 	r := &matrixRow{ImageInput: in, env: env, iVar: envName(in.Service) + "_IMAGE", vVar: envName(in.Service) + "_VERSION", ver0: "1.2.3", ver1: "1.2.4", ver2: "1.2.5"}
 	if in.Service == "postgres" {
 		r.ver0, r.ver1, r.ver2 = "15-alpine", "17-alpine", "18-alpine"
+	}
+	if ref, ok := compose.LockedRef(in.Entry); ok {
+		r.defVer, r.legacyVer = ref.Version, ref.LegacyVersion()
 	}
 	listed := map[string]bool{}
 	for _, v := range in.Vars {
@@ -92,7 +96,8 @@ func (r *matrixRow) fixture(t *testing.T) {
 	render := func(name string, extra map[string]string) string {
 		var got string
 		t.Run(name, func(t *testing.T) {
-			got = compose.CanonicalRef(renderStack(t, merge(r.env, extra))[composeName(r.Service)])
+			img, _ := imageOfPin(renderStack(t, merge(r.env, extra)), r.Service)
+			got = compose.CanonicalRef(img)
 		})
 		return got
 	}
@@ -122,6 +127,8 @@ func (r *matrixRow) states() map[string]map[string]string {
 		"a-image-digest-ne": {r.iVar: r.eqImg + "@" + matrixOtherDigest},
 		"b-version-eq":      {r.vVar: r.ver0},
 		"b-version-diff":    {r.vVar: r.ver1},
+		"b-version-default": {r.vVar: r.defVer},
+		"b-version-legacy":  {r.vVar: r.legacyVer},
 		"c-eq-eq":           {r.iVar: r.eqImg, r.vVar: r.ver0},
 		"c-eq-diff":         {r.iVar: r.eqImg, r.vVar: r.ver1},
 		"c-diff-eq":         {r.iVar: r.diffImg, r.vVar: r.ver0},
@@ -138,48 +145,6 @@ func (r *matrixRow) states() map[string]map[string]string {
 	return st
 }
 
-// expect works out kept/dropped and the variable the notice names.
-func (r *matrixRow) expect(t *testing.T, env map[string]string, plain string) (kept bool, name string) {
-	t.Helper()
-	var set []string
-	for _, v := range r.Vars {
-		if strings.TrimSpace(env[v]) != "" {
-			set = append(set, v)
-		}
-	}
-	if len(set) == 0 {
-		return true, ""
-	}
-	kept = compose.CanonicalRef(plain) == compose.CanonicalRef(r.pin)
-	for _, v := range set {
-		if _, d, ok := strings.Cut(env[v], "@"); ok && strings.HasSuffix(v, "_IMAGE") && d != matrixPinDigest {
-			kept = false
-		}
-	}
-	if kept {
-		return true, ""
-	}
-	for _, v := range set {
-		lone := ""
-		only := map[string]string{}
-		for _, o := range set {
-			only[o] = "" // a lone render sees one variable of the state
-		}
-		only[v] = env[v]
-		t.Run("lone-"+v, func(t *testing.T) { lone = renderStack(t, merge(env, only))[composeName(r.Service)] })
-		if lone == plain {
-			if name != "" {
-				t.Fatalf("fixture is ambiguous: %s and %s render the same image %q", name, v, plain)
-			}
-			name = v
-		}
-	}
-	if name == "" {
-		t.Fatalf("no single variable renders %q", plain)
-	}
-	return false, name
-}
-
 func TestProjectLockPinMatrix(t *testing.T) {
 	for _, mode := range []string{"legacy", "lock"} {
 		for _, in := range compose.ImageInputs() {
@@ -193,24 +158,25 @@ func TestProjectLockPinMatrix(t *testing.T) {
 				t.Cleanup(func() { version.Version = oldVersion })
 				r.fixture(t)
 				for name, st := range r.states() {
-					t.Run(name, func(t *testing.T) { r.run(t, merge(r.env, st)) })
+					t.Run(name, func(t *testing.T) { r.run(t, name, merge(r.env, st)) })
 				}
 			})
 		}
 	}
 }
 
-func (r *matrixRow) run(t *testing.T, env map[string]string) {
+func (r *matrixRow) run(t *testing.T, state string, env map[string]string) {
 	t.Helper()
 	restore := compose.SetProjectPins(nil)
-	plain := renderStack(t, env)[composeName(r.Service)]
+	plain, _ := imageOfPin(renderStack(t, env), r.Service)
 	restore()
-	kept, name := r.expect(t, env, plain)
+	kept, name := r.expected(state)
 
 	defer compose.SetProjectPins(map[string]string{r.Service: r.pin})()
 	var notices bytes.Buffer
 	defer compose.PinNoticeSink(&notices)()
-	pinned := renderStack(t, env)[composeName(r.Service)]
+	stack := renderStack(t, env)
+	pinned, svcName := imageOfPin(stack, r.Service)
 	_ = renderStack(t, env) // a build installs the pins and renders more than once
 	n := strings.Count(notices.String(), "notice:")
 	switch {
@@ -221,7 +187,7 @@ func (r *matrixRow) run(t *testing.T, env map[string]string) {
 	}
 
 	dir := t.TempDir()
-	body := "services:\n  " + r.Service + ":\n    image: " + pinned + "\n"
+	body := "services:\n  " + svcName + ":\n    image: " + pinned + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "docker-compose.yml"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}

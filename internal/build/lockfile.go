@@ -127,7 +127,7 @@ func mergedComposeImages(workdir string, base []byte, paths []string, forCompare
 	if err != nil {
 		return lock.Merged{}, err
 	}
-	return lock.MergeDetailed(files, func(svc string) bool { _, ok := compose.LockedRef(svc); return ok }, forCompare)
+	return lock.MergeDetailed(files, compose.IsCLIOwned, forCompare)
 }
 
 // ledgerSources adapts internal/bundle and the plugin directory to the ledger's
@@ -167,7 +167,8 @@ func lockFromState(pluginDir, workdir string, composeYAML []byte, files []string
 	l.CLI = lock.CLIMinor(version.GetVersion())
 	l.Images, l.Unpinned = lock.Pin(compose.CLIOwned(m.Images), lock.Resolver{})
 	if prev != nil {
-		for _, svc := range m.Services {
+		for _, name := range m.Services {
+			svc := compose.PinKey(name) // the lock is keyed by pin key
 			if ref, ok := prev.Images[svc]; ok {
 				l.Images[svc] = ref
 				delete(l.Unpinned, svc)

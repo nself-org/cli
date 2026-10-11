@@ -57,6 +57,8 @@ When build renders `docker-compose.yml`, each service image is resolved in this 
 
 So a CLI upgrade never silently moves an existing project's images. To move one, change the env value, or delete its line from the lock and build.
 
+A `*_VERSION` that is empty, equal to the CLI default (the version `nself init` writes into `.env`) or equal to the frozen legacy tag the CLI shipped before the lock means "use the default". It is not an override and never drops a pin, even after a CLI upgrade moves that default. The image lock applies the same test when it renders an image, and it holds for every row in the table below. Only a value that differs from both is an override.
+
 `nself init` writes `*_VERSION` defaults into `.env`. A value that renders to the same image as the pin (`HASURA_VERSION=v2.44.0` against a `hasura/graphql-engine:v2.44.0@sha256:...` pin, with or without the `docker.io/` prefix, in legacy or lock pinning mode) keeps the digest. For postgres the comparison uses the image the generator renders (`POSTGRES_VERSION=16-alpine` matches a `pgvector/pgvector:pg16` pin). A different value drops the pin, and build prints one notice naming the variable, once per run. Only a variable the generator really reads for that image counts, whatever its name looks like. One table in the CLI source (`internal/compose/image_inputs.go`) lists them, and a test fails when it drifts from the generator:
 
 | Service | Variables that feed its image (first wins) |
@@ -67,7 +69,7 @@ So a CLI upgrade never silently moves an existing project's images. To move one,
 | redis | `REDIS_VERSION` |
 | minio | `MINIO_VERSION` |
 | mailpit | `MAILPIT_VERSION` |
-| admin | `NSELF_ADMIN_VERSION` |
+| admin (compose service `nself-admin`, pinned and compared as `admin`) | `NSELF_ADMIN_VERSION` |
 | functions | `FUNCTIONS_VERSION` for the node runtime; none for deno and python |
 | meilisearch | `MEILISEARCH_VERSION` |
 | typesense | `TYPESENSE_VERSION` |

@@ -248,13 +248,21 @@ func CLILockedRef(ref string) (string, bool) {
 	return "", false
 }
 
+// IsCLIOwned reports whether a compose service is one the CLI image lock names,
+// looked up under its pin key (nself-admin is pinned as "admin").
+func IsCLIOwned(service string) bool {
+	_, owned := LockedRef(PinKey(service))
+	return owned
+}
+
 // CLIOwned keeps the services the CLI image lock names and whose image is a
-// literal reference (no variable).
+// literal reference (no variable). The result is keyed by pin key (PinKey), the
+// key the project lock and ResolveImage use, not by compose service name.
 func CLIOwned(all map[string]string) map[string]string {
 	out := map[string]string{}
 	for svc, ref := range all {
-		if _, owned := LockedRef(svc); owned && !strings.Contains(ref, "$") {
-			out[svc] = ref
+		if IsCLIOwned(svc) && !strings.Contains(ref, "$") {
+			out[PinKey(svc)] = ref
 		}
 	}
 	return out

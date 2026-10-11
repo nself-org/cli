@@ -150,6 +150,23 @@ func TestImageInputsCoverEveryCallSite(t *testing.T) {
 			t.Errorf("row %s/%s names an entry the image lock lacks", in.Service, in.Entry)
 		}
 	}
+	// A row's Service is the key ResolveImage and the lock use: the generator's
+	// compose service name or, when the catalog gives one, its ImageKey.
+	generated := map[string]bool{}
+	for _, e := range serviceCatalog {
+		generated[e.Name], generated[PinKey(e.Name)] = true, true
+	}
+	for _, name := range []string{"meilisearch-init"} { // services built outside the catalog
+		generated[name] = true
+	}
+	for _, in := range ImageInputs() {
+		if !generated[in.Service] {
+			t.Errorf("row %s/%s: Service is neither a generated compose service nor a catalog ImageKey", in.Service, in.Entry)
+		}
+		if got := PinKey(in.Service); got != in.Service {
+			t.Errorf("row %s/%s: Service must be the pin key, PinKey maps it to %q", in.Service, in.Entry, got)
+		}
+	}
 	seen := map[string]bool{}
 	for _, s := range resolve {
 		for _, e := range s.entries {

@@ -105,11 +105,15 @@ func blankImageVars(t *testing.T) {
 	t.Setenv("ADMIN_IMAGE", "")
 }
 
-// composeName is the compose service key of a pin key: the admin image is
-// pinned as "admin" (its lock entry) but runs as the service "nself-admin".
-func composeName(pinKey string) string {
-	if pinKey == "admin" {
-		return compose.AdminServiceName
+// imageOfPin finds, in a rendered stack, the service the pin key names and
+// returns its image and its compose service name. The lookup goes through the
+// production mapping (compose.PinKey): the admin image is pinned as "admin" but
+// runs as the service "nself-admin", and no test may remap that by hand.
+func imageOfPin(stack map[string]string, pinKey string) (image, service string) {
+	for name, img := range stack {
+		if compose.PinKey(name) == pinKey {
+			return img, name
+		}
 	}
-	return pinKey
+	return "", ""
 }
