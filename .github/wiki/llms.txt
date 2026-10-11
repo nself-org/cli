@@ -57,6 +57,7 @@ Subcommands:
 - `health` — Check Admin service liveness
 - `logs` — Tail Admin container logs
 - `projects` — Manage multi-project admin configuration
+- `serve` — Serve the authenticated nSelf HTTP API
 - `start` — Start the Admin service
 - `stop` — Stop the Admin container
 
