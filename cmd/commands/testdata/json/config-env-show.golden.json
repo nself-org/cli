@@ -1,0 +1,17 @@
+{
+  "schema_version": "1",
+  "command": "config env show",
+  "data": {
+    "environment": "dev",
+    "pairs": [
+      {
+        "key": "POSTGRES_PASSWORD",
+        "value": "****"
+      },
+      {
+        "key": "PROJECT_NAME",
+        "value": "demo"
+      }
+    ]
+  }
+}

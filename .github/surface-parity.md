@@ -17,7 +17,7 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself build` | core | yes | yes | undocumented: NSELF_L03_REF_BIN, NSELF_PROFILE, PATH, UPDATE_GOLDEN | n/a (see below) |
 | `nself ci` | deploy | yes | no | undocumented: NSELF_CI_ALLOWED_REPOS, NSELF_CI_ALLOW_UNSANDBOXED, NSELF_FORGEJO_ADMIN_PASSWORD, NSELF_FORGEJO_ADMIN_USER | n/a (see below) |
 | `nself clean` | core | yes | no | n/a | n/a (see below) |
-| `nself config` | config | yes | yes | n/a | n/a (see below) |
+| `nself config` | config | yes | yes | undocumented: NSELF_INVOKED_BY, NSELF_REQUIRE_AGE | n/a (see below) |
 | `nself db` | data | yes | yes | n/a | n/a (see below) |
 | `nself deploy` | deploy | yes | yes | undocumented: API_URL, LAPTOP_ONLY, M_DEV, M_PROD, M_QA, M_SEC, NSELF_DEPLOY_ENV, NSELF_DEPLOY_HOST_, NSELF_DEPLOY_HOST_OPS, NSELF_FEATURE_BLUE_GREEN_DEPLOY, NSELF_HASURA_METADATA_STRICT, NSELF_REMOTE_PATH_, OPS_DEPLOY_HOST, PATH, VERCEL_TOKEN | n/a (see below) |
 | `nself doctor` | core | yes | yes | undocumented: NSELF_PING_API_URL, OLLAMA_BASE_URL, OLLAMA_HOST, PLUGIN_AI_INTERNAL_URL, PLUGIN_INTERNAL_SECRET | n/a (see below) |
@@ -37,4 +37,4 @@ One row per top-level command (CLI-R17), scored against the four surfaces a comm
 | `nself stop` | core | yes | yes | n/a | n/a (see below) |
 | `nself update` | account | yes | no | n/a | n/a (see below) |
 
-Total: 24 commands. Missing wiki page: 0. No MCP tool: 12. Env vars found but undocumented: 9.
+Total: 24 commands. Missing wiki page: 0. No MCP tool: 12. Env vars found but undocumented: 10.

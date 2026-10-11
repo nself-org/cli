@@ -177,7 +177,7 @@ One compact JSON object per line, keys in this order:
 | `decision` | `run`, `confirmation_required` or `refused` |
 | `confirm_kind` | `plan`, `request` or `null` |
 | `request_id` | the request id (nonces are never logged) |
-| `request` | `{args, argv, flags}` with secret-marked args and flags, flag values whose name looks secret (`config.IsSecretKey`: SECRET, PASSWORD, KEY, TOKEN) and free-form argv items replaced by `"[REDACTED]"`, then the usual redaction on every string |
+| `request` | `{args, argv, flags}` with secret-marked args and flags, flag values whose name looks secret (`config.IsSecretKey`: SECRET, PASS, KEY, TOKEN, CREDENTIAL, WEBHOOK, PRIVATE, DSN, SALT) and free-form argv items replaced by `"[REDACTED]"`, then the usual redaction on every string |
 | `exit_code` | the child's exit status, or `null` for a confirmation or an invoker refusal |
 | `error_code` | the invoker's `E42x`, the child's `error.code`, or `null` |
 | `duration_ms` | wall time of the invocation |

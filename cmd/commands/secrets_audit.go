@@ -36,6 +36,9 @@ Optionally filter by secret name with --secret.`,
 		if err != nil {
 			return err
 		}
+		if jsonEnvelopeOn(cmd) {
+			setData(cmd, newSecretsRotationLogData(log.Events, filterSecret))
+		}
 		if len(log.Events) == 0 {
 			fmt.Println("No rotation events recorded.")
 			return nil
@@ -75,6 +78,9 @@ var secretsDecryptOnDeployCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if jsonEnvelopeOn(cmd) { // CLI-only row: the decrypted values never cross a machine surface
+			setData(cmd, newSecretsDecryptData(secretsEnvFlag, output))
+		}
 		fmt.Print(output)
 		return nil
 	},
@@ -91,6 +97,9 @@ var secretsAuditCmd = &cobra.Command{
 		findings, err := secrets.Audit(cwd, secretsEnvFlag)
 		if err != nil {
 			return err
+		}
+		if jsonEnvelopeOn(cmd) {
+			setData(cmd, newSecretsAuditData(secretsEnvFlag, findings))
 		}
 		if len(findings) == 0 {
 			fmt.Println("All secrets are within rotation policy.")
@@ -117,6 +126,9 @@ var secretsLintCmd = &cobra.Command{
 		findings, err := secrets.LintSecrets(cwd)
 		if err != nil {
 			return err
+		}
+		if jsonEnvelopeOn(cmd) {
+			setData(cmd, newSecretsLintData(findings))
 		}
 		if len(findings) == 0 {
 			fmt.Println("No plaintext secrets detected.")

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -275,9 +276,9 @@ func TestIsSecretKey(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		got := isSecretKey(tc.key)
+		got := config.IsSecretKey(tc.key)
 		if got != tc.expected {
-			t.Errorf("isSecretKey(%q) = %v, want %v", tc.key, got, tc.expected)
+			t.Errorf("IsSecretKey(%q) = %v, want %v", tc.key, got, tc.expected)
 		}
 	}
 }

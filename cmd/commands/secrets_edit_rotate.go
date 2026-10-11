@@ -108,9 +108,17 @@ var secretsRotateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if newValue == "" {
+		switch {
+		case newValue == "":
 			fmt.Println("Secret requires manual rotation through the provider.")
-		} else {
+			if jsonEnvelopeOn(cmd) {
+				setData(cmd, dataResult{OK: false, Target: args[0]}) // nothing was rotated
+			}
+		case jsonEnvelopeOn(cmd):
+			// The new value is never printed in envelope mode: stderr is the
+			// machine E422 tail channel (P7-SURF-12).
+			fmt.Printf("Secret %s rotated.\n", args[0])
+		default:
 			fmt.Printf("Secret %s rotated. New value: %s\n", args[0], newValue)
 		}
 		return nil

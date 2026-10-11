@@ -20,15 +20,17 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ssl"
 	"github.com/nself-org/cli/internal/trust"
 	"github.com/nself-org/cli/internal/ui"
+	"github.com/spf13/cobra"
 )
 
 // runTrustStatusDetailed shows trusted cert CAs with expiry dates and warns
 // on certificates expiring within 30 days. Returns exit code 2 via error when
 // any component is missing or a cert is near-expiry.
-func runTrustStatusDetailed(cfg trust.TrustConfig) error {
+func runTrustStatusDetailed(cmd *cobra.Command, cfg trust.TrustConfig) error {
 	status := trust.CheckStatus(cfg)
 
 	fmt.Println()
@@ -129,6 +131,20 @@ func runTrustStatusDetailed(cfg trust.TrustConfig) error {
 
 	if !status.DNSRunning || !status.ResolverConfigured || !status.PortsForwarding {
 		hasWarning = true
+	}
+
+	if jsonEnvelopeOn(cmd) {
+		data := trustStatusData{MkcertInstalled: status.MkcertInstalled, CAInstalled: status.CAInstalled, CertsExist: status.CertsExist,
+			CertsValid: status.CertsValid, DNSInstalled: status.DNSInstalled, DNSRunning: status.DNSRunning,
+			ResolverConfigured: status.ResolverConfigured, PortsForwarding: status.PortsForwarding, Warnings: hasWarning}
+		if hasWarning {
+			// The verdict is the exit status; the document is still written.
+			if err := emitEnv(cmd, data, false); err != nil {
+				return err
+			}
+			return &plugin.ExitCodeError{Code: 1}
+		}
+		setData(cmd, data)
 	}
 
 	if hasWarning {

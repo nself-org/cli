@@ -92,9 +92,9 @@ commands:
   # cmd/commands/completion.go:30 RunE path changes no persistent state (prints/reads only)
   completion: {canon: pending, side_effect: read}
   # cmd/commands/config.go:22 RunE path changes no persistent state (prints/reads only)
-  config: {canon: core, side_effect: read}
+  config: {canon: core, side_effect: read, flags: {reveal: {cli_only: true}}}
   # cmd/commands/config_export_import.go:22 writes to stdout by default; --output escalates to write
-  config export: {side_effect: read, flags: {output: {side_effect: write}}}
+  config export: {side_effect: read, surface: cli-only, flags: {output: {side_effect: write}}}
   # cmd/commands/feature.go:48 RunE path changes no persistent state (prints/reads only)
   config features: {side_effect: read}
   config features disable: {side_effect: write}
@@ -102,9 +102,10 @@ commands:
   config features list: {side_effect: read, json: legacy}
   config features status: {side_effect: read, json: legacy}
   config get: {side_effect: read}
-  config import: {side_effect: write}
+  # cmd/commands/config_export_import.go:131 --force overwrites existing values without the prompt; the old values are not restorable
+  config import: {side_effect: write, flags: {force: {side_effect: destructive}}, confirm: {flags: []}}
   config list: {side_effect: read}
-  config set: {side_effect: write}
+  config set: {side_effect: write, secret_args: [value]}
   config show: {side_effect: read}
   config validate: {side_effect: read, exit_codes: {"1": "one or more validators fail (exits 0 when all pass)"}}
   # cmd/commands/db.go:27 RunE path changes no persistent state (prints/reads only)
@@ -244,12 +245,13 @@ commands:
   env: {canon: pending, side_effect: read}
   env copy: {side_effect: write}
   env diff: {side_effect: read}
-  env explain: {side_effect: read}
+  env explain: {side_effect: read, flags: {reveal: {cli_only: true}}}
   env list: {side_effect: read}
   env show: {side_effect: read}
   # cmd/commands/env_target.go:40 RunE path changes no persistent state (prints/reads only)
   env target: {side_effect: read}
-  env target add: {side_effect: write}
+  # cmd/commands/env_target_crud.go:119 runs ssh-keyscan against a caller-chosen host and can repoint a deploy target
+  env target add: {side_effect: remote, confirm: {flags: []}}
   env target list: {side_effect: read, json: legacy}
   env target migrate: {side_effect: write}
   # cmd/commands/env_target_probe.go:38 RunE path changes no persistent state (prints/reads only)
@@ -336,7 +338,7 @@ commands:
   # cmd/commands/oauth_refresh.go:18 RunE path changes no persistent state (prints/reads only)
   oauth: {canon: pending, side_effect: read}
   # cmd/commands/oauth_refresh.go:59 triggers a token refresh on the remote OAuth service
-  oauth refresh: {side_effect: remote}
+  oauth refresh: {side_effect: remote, confirm: {flags: []}}
   # cmd/commands/ops.go:46 RunE path changes no persistent state (prints/reads only)
   ops: {canon: pending, side_effect: read}
   ops deploy: {side_effect: remote, flags: {follow: {output: stream}}}
@@ -395,24 +397,26 @@ commands:
   # cmd/commands/secrets_audit.go:86 RunE path changes no persistent state (prints/reads only)
   secrets audit: {side_effect: read}
   # cmd/commands/secrets_audit.go:69 RunE path changes no persistent state (prints/reads only)
-  secrets decrypt-on-deploy: {side_effect: read}
+  secrets decrypt-on-deploy: {side_effect: read, surface: cli-only}
   secrets edit: {side_effect: write, output: interactive}
-  secrets get: {side_effect: read}
+  secrets get: {side_effect: read, surface: cli-only}
   secrets init: {side_effect: write}
   # cmd/commands/secrets_audit.go:112 RunE path changes no persistent state (prints/reads only)
   secrets lint: {side_effect: read}
   secrets list: {side_effect: read}
   # cmd/commands/secrets_schedule.go:103 RunE path changes no persistent state (prints/reads only)
   secrets list-schedules: {side_effect: read}
-  secrets rekey: {side_effect: write}
+  # cmd/commands/secrets_audit.go:133 re-encrypts the store; --remove can lock the caller out of it and the old ciphertext is not restorable without another key holder
+  secrets rekey: {side_effect: destructive, confirm: {flags: []}}
   # cmd/commands/secrets_edit_rotate.go:124 deletes the _PREVIOUS variant of a dual-window rotated secret
-  secrets retire: {side_effect: destructive}
+  secrets retire: {side_effect: destructive, confirm: {flags: []}}
   # cmd/commands/secrets_edit_rotate.go:94 replaces a secret with a new random value; the old value is not restorable without --dual-window
-  secrets rotate: {side_effect: destructive}
+  secrets rotate: {side_effect: destructive, confirm: {flags: []}}
   # cmd/commands/secrets_audit.go:29 RunE path changes no persistent state (prints/reads only)
   secrets rotation-log: {side_effect: read}
   secrets schedule: {side_effect: write}
-  secrets set: {side_effect: write}
+  # cmd/commands/secrets_core.go:40 overwrites a stored secret with a caller-chosen value; the old value is not restorable
+  secrets set: {side_effect: destructive, secret_args: [VALUE], confirm: {flags: []}}
   secrets verify: {side_effect: read}
   # cmd/commands/security.go:27 RunE path changes no persistent state (prints/reads only)
   security: {canon: pending, side_effect: read}
@@ -465,9 +469,9 @@ commands:
   trust dns: {side_effect: write}
   # cmd/commands/ssl.go:38 RunE path changes no persistent state (prints/reads only)
   trust ssl: {side_effect: read}
-  trust ssl add: {side_effect: write}
-  trust ssl renew: {side_effect: write}
-  trust ssl setup: {side_effect: write}
+  trust ssl add: {side_effect: remote, confirm: {flags: [agree-tos]}}
+  trust ssl renew: {side_effect: remote, confirm: {flags: [agree-tos]}}
+  trust ssl setup: {side_effect: remote, confirm: {flags: [agree-tos]}}
   trust ssl status: {side_effect: read}
   trust status: {side_effect: read, exit_codes: {"0": "all trust components configured and no expiry warnings", "2": "one or more components missing or cert expiry <30 days"}}
   # cmd/commands/uninstall.go:66 hidden shim: bare uninstall keeps volumes, so the target flags matter (deprecation registry)

@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "command": "config features status",
+  "data": {
+    "flag": {
+      "key": "",
+      "type": "",
+      "surface": "",
+      "description": "",
+      "default": false,
+      "introduced": ""
+    },
+    "enabled": false,
+    "overridden": false,
+    "source": "",
+    "updated_at": "0001-01-01T00:00:00Z"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "command": "config env explain",
+  "data": {
+    "environment": "",
+    "environment_source": "",
+    "cascade_mode": "",
+    "files": [],
+    "key": "",
+    "set": false,
+    "setters": [],
+    "revealed": false
+  }
+}

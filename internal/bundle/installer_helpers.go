@@ -2,16 +2,15 @@ package bundle
 
 // installer_helpers.go — supporting helpers for the bundle install orchestrator.
 //
-// Purpose: partial-install detection/rollback, dry-run plan printing, license checking and small config/plugin-dir lookups used by Install and InstallMultiple in installer.go, split out for file size.
+// Purpose: partial-install detection/rollback, dry-run plan printing and small config/plugin-dir lookups used by Install and InstallMultiple in installer.go, split out for file size.
 // Inputs: an InstallOpts and the plugin/bundle state on disk.
-// Outputs: rollback actions, printed plan output, or looked-up config/license values.
+// Outputs: rollback actions, printed plan output, or looked-up config values. The licence pre-flight is in installer_helpers_licence.go.
 // Constraints: pure move from installer.go (CLI-R12 Batch E); no behaviour change. License is still always validated regardless of --force.
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/nself-org/cli/internal/license"
 	"io"
 	"os"
 	"path/filepath"
@@ -127,85 +126,6 @@ func notInstallableError(b Bundle) error {
 		)
 	}
 	return fmt.Errorf("bundle %q is not installable as a unit: it has no plugins", b.Slug)
-}
-
-// defaultLicenseChecker validates every paid plugin in the bundle has license
-// coverage BEFORE the installer touches the filesystem. Implementation
-// strategy: rely on plugin.Install's internal license gate by NOT bypassing,
-// and pre-check via a lightweight cache probe. Production-grade validation
-// occurs inside plugin.Install for each plugin; this pre-flight surfaces
-// the failure earlier and lets us short-circuit before partial install.
-//
-// We do this by calling plugin.CheckEOLBlock as a registry-fetch probe (cheap)
-// and inspecting the manifest. If any plugin requires a license and no key is
-// configured, we return an error here.
-func defaultLicenseChecker(ctx context.Context, plugins []string) error {
-	// Quick sanity: at least one license key must exist when any plugin
-	// requires a license. plugin.Install does the deep validation per-plugin;
-	// this pre-flight just blocks an empty-key obvious miss.
-	if len(plugins) == 0 {
-		return nil
-	}
-	// Use plugin.FetchRegistry to look up which plugins require licenses.
-	reg, err := plugin.FetchRegistry(ctx, "", defaultRegistryCacheDir())
-	if err != nil {
-		// Network failure: defer to plugin.Install's offline cache logic.
-		return nil
-	}
-	manifests := make(map[string]plugin.PluginManifest, len(plugins))
-	for _, m := range reg.Plugins {
-		manifests[strings.ToLower(m.Name)] = m
-	}
-	for _, name := range plugins {
-		m, ok := manifests[strings.ToLower(name)]
-		if !ok {
-			// Missing from registry — plugin.Install will fail naturally;
-			// don't pre-error here so we get the proper "not found" message.
-			continue
-		}
-		// Free plugins don't need a license. The resolved manifest's own
-		// requires_license field is authoritative; the paidPlugins name map
-		// that used to be AND-ed in here is a pre-registry fallback that has
-		// drifted, and for a tier_pair slug (cron, notify) it reports "paid"
-		// even when the entry actually being installed is the free one —
-		// which made a wholly free bundle demand a license key.
-		if !m.RequiresLicense {
-			continue
-		}
-		// Paid plugin: ensure at least one license key is set. We don't
-		// validate ENTITLEMENTS here — plugin.Install does that per-plugin
-		// with cache + remote fallback. We're just catching the obvious
-		// "no key at all" case so the user sees one error, not N.
-		if !hasAnyLicenseKey() {
-			return errors.New("bundle requires at least one paid plugin; no license key configured. Run 'nself license set <key>' or visit nself.org/pricing")
-		}
-		// One paid plugin with a key present is enough to proceed; the
-		// per-plugin validator inside plugin.Install runs full checks.
-		break
-	}
-	return nil
-}
-
-// hasAnyLicenseKey returns true if the operator has any license key set
-// (env, cache, or legacy key file). Real validation is left to plugin.Install.
-func hasAnyLicenseKey() bool {
-	// license.CollectLicenseKeys is the canonical accessor: it reads
-	// NSELF_PLUGIN_LICENSE_KEY, the numbered NSELF_LICENSE_KEY_1..10 vars, and
-	// the stored key at ~/.nself/license/key — the exact file that
-	// `nself license set` writes.
-	//
-	// This used to hand-roll the lookup and checked ~/.nself/license.key, a
-	// LEGACY path with a dot where the current store has a directory
-	// separator. The effect was that `nself license set <key>` followed by
-	// `nself bundle install <paid bundle>` reported "no license key
-	// configured" while `nself license status` showed the same key as Active.
-	// Every paying customer hit that. Never re-derive the key locations here.
-	if len(license.CollectLicenseKeys()) > 0 {
-		return true
-	}
-	// The owner all-access key is a vault convenience the canonical collector
-	// does not know about.
-	return os.Getenv("NSELF_PLUGIN_LICENSE_KEY_OWNER") != ""
 }
 
 // isAlreadyInstalled reports whether the plugin's directory exists in pluginDir.
