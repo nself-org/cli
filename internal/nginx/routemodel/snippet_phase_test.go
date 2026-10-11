@@ -52,6 +52,9 @@ func TestSnippetSetRunsBeforeProxyPass(t *testing.T) {
 	if u := r.Locations[0].Upstream; u == nil || *u != (Upstream{"http", "b.test", 2}) {
 		t.Errorf("case-folded location set: upstream = %+v", u)
 	}
+	if u := route(t, `server{listen 80;server_name a.test;location /{set $up http://b.test:2;proxy_pass $UP;}}`).Locations[0].Upstream; u == nil || *u != (Upstream{"http", "b.test", 2}) {
+		t.Errorf("case-folded lookup: upstream = %+v", u)
+	}
 	// A second set differing only in case, or another writer of the variable
 	// (auth_request_set or set_by_lua in scope, map or js_set at the top of the
 	// file), may change it: the proxy_pass is recorded.
