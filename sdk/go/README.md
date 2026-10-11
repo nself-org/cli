@@ -55,7 +55,7 @@ Scaffold a new plugin:
 
 ```bash
 go run github.com/nself-org/cli/sdk/go/devkit/cmd/new-plugin \
-    --name mywidget --tier pro --bundle nClaw --dest paid/mywidget
+    --name mywidget --tier licensed --bundle nClaw --dest paid/mywidget
 cd paid/mywidget && go mod tidy && go test ./...
 ```
 
@@ -85,6 +85,7 @@ out, err := remote.RunArgv(ctx, remote.Target{Dest: "ci@node1", Options: opts}, 
 - `ResolveSSHHost` reads `ssh -G` for hostname, port, user, proxyjump and
   hostkeyalias.
 - `nself deploy` keeps its historical argv inside `internal/deploy`; this package has no relaxed mode.
+- `Target.Dest` must be the canonical destination a `HostSpec` renders (`[user@]host`, IPv6 in brackets). A port or a legacy `host:/path` in `Dest` is refused: pass the port as `-p` in `Target.Options`, which `HostSpec.Target` does for you. A bare IPv6 address is accepted only when `Options` carries `-p`.
 - `Rsync` caller options are an allowlist of self-contained flags (`-az`, `--delete`, `--exclude=x`; never `-e`, `--rsh`, `--files-from`, a bare `--`, or a flag whose value is a separate element). `Target.Options` accepts the D4 block plus `-o` keys ConnectTimeout, ServerAlive*, Port, User, IdentityFile, IdentitiesOnly, BatchMode, Compression, LogLevel, ConnectionAttempts, AddressFamily, PreferredAuthentications, and `-i`, `-p`, `-4`, `-6`, `-q`, `-v`. `RunArgv` needs a POSIX remote shell.
 
 ## Docker sshd fleets for integration tests (`simharness`)
