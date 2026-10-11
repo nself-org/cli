@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ type v15Remote struct {
 	tag    string
 	locked bool // the host's deploy lock is held by someone else
 	label  string
+	failOn string // a command containing this fails
 }
 
 func (r *v15Remote) Label() string {
@@ -54,6 +56,9 @@ func (r *v15Remote) Run(_ context.Context, cmd string) ([]byte, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.log = append(r.log, s)
+	if r.failOn != "" && strings.Contains(s, r.failOn) {
+		return nil, errors.New("exit status 1: injected")
+	}
 	switch {
 	case strings.HasPrefix(s, "if [ -d"):
 		return []byte("yes\n"), nil // the build context exists on the host
@@ -166,7 +171,7 @@ func TestDeployApplyV15Pipeline(t *testing.T) {
 		t.Fatalf("result %+v", res.Servers)
 	}
 	cmds := remote.commands()
-	order := []string{`"$HOME"`, "if mkdir", "tar -czf", "nself backup create", "nself backup verify", "rsync ", "stat -c", "config --format json", " pull", "up -d --dry-run", "up -d --no-deps -- 'web'", "hasura metadata apply"}
+	order := []string{`"$HOME"`, "nself backup create", "nself backup verify", "if mkdir", "tar -czf", "rsync ", "stat -c", "config --format json", " pull", "up -d --dry-run", "up -d --no-deps -- 'web'", "hasura metadata apply"}
 	prev := -1
 	for _, want := range order {
 		i := firstIndex(cmds, want)
@@ -311,5 +316,132 @@ func TestDeployRecordOnlyAfterSync(t *testing.T) {
 	}
 	if now, _ := os.ReadFile(filepath.Join(proj, deploy.DeployStateFile)); string(now) != string(snapshot) {
 		t.Errorf("a refused deploy rewrote deploy.json:\n%s\nvs\n%s", snapshot, now)
+	}
+}
+
+func prodInventory(servers ...controlplane.Server) *controlplane.Inventory {
+	return &controlplane.Inventory{SchemaVersion: 2, Environments: map[string]controlplane.Environment{
+		"prod": {Name: "prod", Kind: "remote", Tier: controlplane.TierProd, Servers: servers}}}
+}
+
+func prodServers(t *testing.T) []controlplane.Server {
+	key := filepath.Join(t.TempDir(), "id_ed25519")
+	if err := os.WriteFile(key, []byte("fake"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NSELF_TEST_DEPLOY_KEY", key)
+	return []controlplane.Server{
+		{Name: "app-1", Role: controlplane.RoleApp, Host: "deploy@app.example.test", SSHKeyRef: "NSELF_TEST_DEPLOY_KEY", RemotePath: "/opt/nself", Primary: true},
+		{Name: "app-2", Role: controlplane.RoleApp, Host: "deploy@app2.example.test", SSHKeyRef: "NSELF_TEST_DEPLOY_KEY", RemotePath: "/opt/nself"},
+	}
+}
+
+func yesCmd() *cobra.Command {
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.WithValue(context.Background(), deployYesKey{}, true))
+	return cmd
+}
+
+// G7: one verified database backup per env, on the primary, before any server is
+// touched; the record names the primary for both backup_id and backup_host.
+func TestOneVerifiedBackupPerEnv(t *testing.T) {
+	proj, primary := v15Project(t)
+	second := &v15Remote{label: "deploy@app2.example.test"}
+	deployRemoteOpen = func(_ context.Context, srv controlplane.Server, _, _ string) (deploy.Remote, error) {
+		if strings.Contains(srv.Host, "app2") {
+			return second, nil
+		}
+		return primary, nil
+	}
+	res, err := runDeployPipeline(yesCmd(), proj, prodInventory(prodServers(t)...), "prod", okProber{}, filepath.Join(proj, "docker-compose.yml"), "", "", true)
+	if err == nil {
+		err = failedServersError(res)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countCmds(primary, "nself backup create"); n != 1 {
+		t.Errorf("primary ran backup create %d times, want 1", n)
+	}
+	if firstIndex(second.commands(), "nself backup") >= 0 {
+		t.Errorf("the second server ran nself backup: %v", second.commands())
+	}
+	// The backup precedes the first sync on any server.
+	if bi, ri := firstIndex(primary.commands(), "nself backup verify"), firstIndex(primary.commands(), "rsync "); bi < 0 || bi > ri {
+		t.Errorf("backup verify (%d) must come before the first rsync (%d)", bi, ri)
+	}
+	st, _ := deploy.LoadDeployState(proj)
+	if st.BackupHost != "deploy@app.example.test" || !strings.HasPrefix(st.BackupID, "demo_full_") || len(st.PreDeployTars) != 2 {
+		t.Errorf("record %+v", st)
+	}
+}
+
+func countCmds(r *v15Remote, sub string) int {
+	n := 0
+	for _, c := range r.commands() {
+		if strings.Contains(c, sub) {
+			n++
+		}
+	}
+	return n
+}
+
+// G4: a deploy that failed before the first up and was restored leaves deploy.json
+// byte-identical.
+func TestRestoredFailureKeepsRecord(t *testing.T) {
+	proj, remote := v15Project(t)
+	inv := prodInventory(prodServers(t)[0])
+	run := func() error {
+		res, err := runDeployPipeline(yesCmd(), proj, inv, "prod", okProber{}, filepath.Join(proj, "docker-compose.yml"), "", "", true)
+		if err == nil {
+			err = failedServersError(res)
+		}
+		return err
+	}
+	if err := run(); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(filepath.Join(proj, deploy.DeployStateFile))
+	remote.failOn = " pull"
+	if err := run(); err == nil {
+		t.Fatal("want the pull failure")
+	}
+	if firstIndex(remote.commands(), "tar -xzf") < 0 {
+		t.Fatal("the failed deploy was not restored")
+	}
+	if after, _ := os.ReadFile(filepath.Join(proj, deploy.DeployStateFile)); string(after) != string(before) {
+		t.Errorf("a restored failure rewrote deploy.json:\n%s\nvs\n%s", before, after)
+	}
+}
+
+// G6: the database restore runs at most once per record, even when the re-apply
+// fails and the rollback is retried.
+func TestDBRestoreRunsOnce(t *testing.T) {
+	proj, remote := v15Project(t)
+	inv := prodInventory(prodServers(t)[0])
+	cmd := yesCmd()
+	if res, err := runDeployPipeline(cmd, proj, inv, "prod", okProber{}, filepath.Join(proj, "docker-compose.yml"), "", "", true); err != nil || failedServersError(res) != nil {
+		t.Fatal(err)
+	}
+	remote.mu.Lock()
+	remote.log = nil
+	remote.mu.Unlock()
+	remote.failOn = " pull" // the re-apply fails after the database restore
+	if handled, err := rollbackRemoteV15(cmd, proj, "prod"); !handled || err == nil {
+		t.Fatalf("first rollback: handled=%v err=%v, want a failure", handled, err)
+	}
+	st, _ := deploy.LoadDeployState(proj)
+	if st.DBRestoredAt == "" || st.RolledBack {
+		t.Fatalf("the restore must be persisted before the re-apply, the record not yet rolled back: %+v", st)
+	}
+	remote.failOn = ""
+	if handled, err := rollbackRemoteV15(cmd, proj, "prod"); !handled || err != nil {
+		t.Fatalf("retry: handled=%v err=%v", handled, err)
+	}
+	if n := countCmds(remote, "nself backup restore"); n != 1 {
+		t.Errorf("backup restore ran %d times, want exactly 1", n)
+	}
+	if st, _ := deploy.LoadDeployState(proj); !st.RolledBack || st.BackupID != "" {
+		t.Errorf("record after the retry: %+v", st)
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -62,12 +63,16 @@ func TakeTargetSnapshot(ctx context.Context, r Remote, remotePath string) (Targe
 	if err != nil {
 		return s, fmt.Errorf("target snapshot: reading plugins in %s: %w", s.PluginDir, err)
 	}
-	s.Plugins = parsePluginBlocks(string(out))
+	if s.Plugins, err = parsePluginBlocks(string(out)); err != nil {
+		return s, err
+	}
 	pems, err := r.Run(ctx, shScript(fmt.Sprintf(`find -L %s -maxdepth 2 -name '*.pem' -print 2>/dev/null || true`, q(path.Join(remotePath, "ssl", "certificates")))))
 	if err != nil {
 		return s, fmt.Errorf("target snapshot: listing certificates: %w", err)
 	}
-	s.SSL = parsePEMNames(string(pems))
+	if s.SSL, err = parsePEMNames(string(pems)); err != nil {
+		return s, err
+	}
 	return s, nil
 }
 
@@ -103,7 +108,7 @@ func pluginDirFrom(envLines, home, remotePath string) string {
 
 // parsePluginBlocks reads the "@D <path>" (.disabled markers) and "@F <path>"
 // (plugin.json follows) stream the snapshot command prints.
-func parsePluginBlocks(out string) []PluginRef {
+func parsePluginBlocks(out string) ([]PluginRef, error) {
 	disabled := map[string]bool{}
 	type block struct {
 		dir  string
@@ -132,15 +137,29 @@ func parsePluginBlocks(out string) []PluginRef {
 		if json.Unmarshal([]byte(strings.Join(b.body, "\n")), &m) != nil || m.Name == "" {
 			continue // an unreadable manifest is not an installed plugin, as the local loader treats it
 		}
+		if !hostNameOK.MatchString(m.Name) || (m.Version != "" && !hostVersionOK.MatchString(m.Version)) {
+			return nil, hostEntryError("plugin", m.Name+" "+m.Version)
+		}
 		refs = append(refs, PluginRef{Name: m.Name, Version: m.Version, Disabled: disabled[b.dir]})
 	}
 	sort.Slice(refs, func(i, j int) bool { return refs[i].Name < refs[j].Name })
-	return refs
+	return refs, nil
+}
+
+// Names read from the host are untrusted: they reach error text and, for cert
+// dirs, a local file path in the scratch build.
+var (
+	hostNameOK    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+	hostVersionOK = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`)
+)
+
+func hostEntryError(kind, entry string) error {
+	return errs.New("E485", fmt.Sprintf("target snapshot: the host reports a %s with an unusable name or version %q; allowed are letters, digits, '.', '_' and '-' (max 128); nothing was sent", kind, entry))
 }
 
 // parsePEMNames groups <dir>/<file>.pem paths by certificate dir. Hidden dirs
 // (the .<dir>.gen-N generations behind a symlink) are not certificate dirs.
-func parsePEMNames(out string) []CertDir {
+func parsePEMNames(out string) ([]CertDir, error) {
 	byDir := map[string]*CertDir{}
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
@@ -150,6 +169,9 @@ func parsePEMNames(out string) []CertDir {
 		dir, file := path.Base(path.Dir(line)), path.Base(line)
 		if dir == "" || dir == "." || strings.HasPrefix(dir, ".") || dir == "certificates" {
 			continue
+		}
+		if !hostNameOK.MatchString(dir) {
+			return nil, hostEntryError("certificate dir", dir)
 		}
 		c := byDir[dir]
 		if c == nil {
@@ -170,7 +192,7 @@ func parsePEMNames(out string) []CertDir {
 		certs = append(certs, *c)
 	}
 	sort.Slice(certs, func(i, j int) bool { return certs[i].Name < certs[j].Name })
-	return certs
+	return certs, nil
 }
 
 // activePlugins maps name to version for the enabled plugins.
@@ -192,14 +214,14 @@ func PluginDrift(local []PluginRef, target TargetSnapshot) []string {
 	for _, n := range sortedKeys(l) {
 		switch tv, ok := t[n]; {
 		case !ok:
-			diffs = append(diffs, fmt.Sprintf("plugin %s %s is installed locally but not on the target", n, l[n]))
+			diffs = append(diffs, fmt.Sprintf("plugin %q %q is installed locally but not on the target", n, l[n]))
 		case tv != l[n]:
-			diffs = append(diffs, fmt.Sprintf("plugin %s is %s locally but %s on the target", n, l[n], tv))
+			diffs = append(diffs, fmt.Sprintf("plugin %q is %q locally but %q on the target", n, l[n], tv))
 		}
 	}
 	for _, n := range sortedKeys(t) {
 		if _, ok := l[n]; !ok {
-			diffs = append(diffs, fmt.Sprintf("plugin %s %s is on the target but not installed locally", n, t[n]))
+			diffs = append(diffs, fmt.Sprintf("plugin %q %q is on the target but not installed locally", n, t[n]))
 		}
 	}
 	return diffs
@@ -219,14 +241,14 @@ func LayoutDrift(want, got TargetSnapshot) []string {
 	for _, n := range sortedCertKeys(w) {
 		switch gc, ok := g[n]; {
 		case !ok:
-			diffs = append(diffs, fmt.Sprintf("ssl dir %s is missing on this server", n))
+			diffs = append(diffs, fmt.Sprintf("ssl dir %q is missing on this server", n))
 		case gc != w[n]:
-			diffs = append(diffs, fmt.Sprintf("ssl dir %s has different files on this server", n))
+			diffs = append(diffs, fmt.Sprintf("ssl dir %q has different files on this server", n))
 		}
 	}
 	for _, n := range sortedCertKeys(g) {
 		if _, ok := w[n]; !ok {
-			diffs = append(diffs, fmt.Sprintf("ssl dir %s exists on this server but not on the one the build used", n))
+			diffs = append(diffs, fmt.Sprintf("ssl dir %q exists on this server but not on the one the build used", n))
 		}
 	}
 	return diffs

@@ -119,9 +119,10 @@ func PrunePrevious(ctx context.Context, r Remote, remotePath string, keep map[st
 }
 
 // PruneMarked removes, from the candidates (paths relative to remotePath), the
-// files that carry the generated marker in their first lines. A candidate that is
-// not a clean project-relative path, or sits under a conf.d* dir, is skipped. It
-// returns the files it removed.
+// files that carry the generated marker in their first lines. Entries that are not
+// safe project-relative paths (see pruneable) are skipped. A batch in which any
+// path has a symlink component is refused whole: nothing in it is deleted and the
+// error names the path. It returns the files it removed.
 func PruneMarked(ctx context.Context, r Remote, remotePath string, candidates []string) ([]string, error) {
 	var cand []string
 	for _, f := range candidates {
@@ -132,11 +133,13 @@ func PruneMarked(ctx context.Context, r Remote, remotePath string, candidates []
 	var removed []string
 	for len(cand) > 0 {
 		n := min(len(cand), 50)
-		script := fmt.Sprintf(`cd %s && for f in %s; do if [ -f "$f" ] && [ ! -L "$f" ] && head -n 5 -- "$f" 2>/dev/null | grep -qi %s; then rm -f -- "$f" && printf '%%s\n' "$f"; fi; done`,
-			q(remotePath), strings.Join(quoteAll(cand[:n]), " "), q(GeneratedMarker))
-		out, err := r.Run(ctx, shScript(script))
+		body := fmt.Sprintf(`for f in "$@"; do if [ -f "$f" ] && head -n 5 -- "$f" 2>/dev/null | grep -qi %s; then rm -f -- "$f" && printf '%%s\n' "$f"; fi; done`, q(GeneratedMarker))
+		out, err := r.Run(ctx, shScript(guardedScript(remotePath, cand[:n], body)))
 		if err != nil {
 			return removed, fmt.Errorf("pruning generated files on %s: %w", r.Label(), err)
+		}
+		if err := refusedPaths(out); err != nil {
+			return removed, err
 		}
 		for _, f := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 			if f != "" {
@@ -148,18 +151,55 @@ func PruneMarked(ctx context.Context, r Remote, remotePath string, candidates []
 	return removed, nil
 }
 
-// pruneable reports whether a relative path may even be considered: clean,
-// inside the project, and not under a conf.d* dir.
+// guardedScript runs body with the batch as "$@", from remotePath, after proving
+// that no component of any path is a symlink (so no deletion can reach outside
+// the project through a link). If one is, it prints "REFUSE <path>" for each and
+// exits before body runs.
+func guardedScript(remotePath string, paths []string, body string) string {
+	return fmt.Sprintf(`rp=%s; cd "$rp" || exit 1; set -- %s; refuse=0
+for f in "$@"; do d="$rp"; oi=$IFS; IFS=/; set -f; for c in $f; do d="$d/$c"; if [ -L "$d" ]; then printf 'REFUSE %%s\n' "$f"; refuse=1; break; fi; done; IFS=$oi; set +f; done
+if [ "$refuse" = 1 ]; then exit 0; fi
+%s`, q(remotePath), strings.Join(quoteAll(paths), " "), body)
+}
+
+// refusedPaths turns the REFUSE lines of a guardedScript into an error.
+func refusedPaths(out []byte) error {
+	var bad []string
+	for _, l := range strings.Split(string(out), "\n") {
+		if p, ok := strings.CutPrefix(l, "REFUSE "); ok {
+			bad = append(bad, fmt.Sprintf("%q", p))
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	return fmt.Errorf("refusing to delete through a symlink on the host (a component of %s is a symlink); nothing was deleted", strings.Join(bad, ", "))
+}
+
+// pruneable reports whether rel is a safe project-relative file path: not empty,
+// clean, no ".", ".." or empty component, not absolute, not the host's own .env,
+// no newline, and not under a conf.d* dir.
 func pruneable(rel string) bool {
-	if rel != path.Clean(rel) || strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, "../") || strings.Contains(rel, "\n") {
+	if rel == "" || rel != path.Clean(rel) || rel == ".env" || strings.HasPrefix(rel, "/") || strings.Contains(rel, "\n") {
 		return false
 	}
 	for _, seg := range strings.Split(rel, "/") {
-		if strings.HasPrefix(seg, "conf.d") {
+		if seg == "" || seg == "." || seg == ".." || strings.HasPrefix(seg, "conf.d") {
 			return false
 		}
 	}
 	return true
+}
+
+// checkPaths returns an error naming the first entry of a locally recorded list
+// that is not a safe path; such a list is never acted on.
+func checkPaths(what string, paths []string) error {
+	for _, p := range paths {
+		if !pruneable(p) {
+			return fmt.Errorf("%s holds an unsafe path %q; refusing to act on it", what, p)
+		}
+	}
+	return nil
 }
 
 func quoteAll(in []string) []string {

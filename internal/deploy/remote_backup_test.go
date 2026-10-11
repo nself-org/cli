@@ -87,10 +87,10 @@ func TestRemoteBackupTar(t *testing.T) {
 		t.Fatal("no tar for the empty first deploy")
 	}
 	_ = tarList(t, bk2.Tar) // a valid, readable archive
-	if got := readFile(t, bk2.Absent); got != "docker-compose.yml\n.nself/deploy-shipped.txt\n" {
+	if got := strings.Join(bk2.Absent, ","); got != "docker-compose.yml" {
 		t.Errorf("absent list on a first deploy = %q", got)
 	}
-	if got := readFile(t, bk.Absent); got != ".nself/compose-env-files.txt\n.nself/deploy-shipped.txt\n" {
+	if got := strings.Join(bk.Absent, ","); got != ".nself/compose-env-files.txt" {
 		t.Errorf("absent list = %q: only artifact paths the host did not have", got)
 	}
 }
@@ -101,10 +101,16 @@ func TestDeployRollbackInPlace(t *testing.T) {
 	rp := t.TempDir()
 	seedDeployedHost(t, rp)
 	ctx := context.Background()
-	bk, err := CreatePreDeployTar(ctx, f, rp, NewBackupID(time.Now()), []string{"docker-compose.yml", ".nself/compose-env-files.txt", ".env.prod", "nginx/sites/new-generated.conf"})
+	changed := []string{"docker-compose.yml", ".nself/compose-env-files.txt", ".env.prod", "nginx/sites/api.conf", "nginx/sites/new-generated.conf"}
+	bk, err := CreatePreDeployTar(ctx, f, rp, NewBackupID(time.Now()), changed)
 	if err != nil {
 		t.Fatal(err)
 	}
+	_ = err
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := RestoreSpec{Changed: changed, Absent: bk.Absent}
 	inode := func(p string) uint64 { return statIno(t, p) }
 	nginxIno, sitesIno := inode(filepath.Join(rp, "nginx")), inode(filepath.Join(rp, "nginx", "sites"))
 	foreign := readFile(t, filepath.Join(rp, "nginx", "sites", "foreign.conf"))
@@ -118,8 +124,7 @@ func TestDeployRollbackInPlace(t *testing.T) {
 	writeFile(t, filepath.Join(rp, ".env"), "SECRET=2\n", 0o600)
 	writeFile(t, filepath.Join(rp, ".nself", "compose-env-files.txt"), "created by the deploy\n", 0o644)
 
-	pruned, err := RestorePreDeployTar(ctx, f, rp, bk.Tar)
-	if err != nil {
+	if err := RestorePreDeployTar(ctx, f, rp, bk.Tar, spec); err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, filepath.Join(rp, "docker-compose.yml")); !strings.Contains(got, "# v1") {
@@ -128,11 +133,8 @@ func TestDeployRollbackInPlace(t *testing.T) {
 	if got := readFile(t, filepath.Join(rp, "nginx", "sites", "api.conf")); !strings.Contains(got, "# v1") {
 		t.Errorf("api.conf not restored: %q", got)
 	}
-	if got := readFile(t, filepath.Join(rp, ".env")); got != "SECRET=1\n" {
-		t.Errorf(".env not restored: %q", got)
-	}
-	if len(pruned) != 0 {
-		t.Errorf("marker prune removed %v: the absent list already covered what the deploy created", pruned)
+	if got := readFile(t, filepath.Join(rp, ".env")); got != "SECRET=2\n" {
+		t.Errorf("the host's own .env was reverted: %q (the deploy never ships it)", got)
 	}
 	if exists(filepath.Join(rp, ".nself", "compose-env-files.txt")) {
 		t.Error("a manifest the deploy created survived the restore")
@@ -154,7 +156,7 @@ func TestDeployRollbackInPlace(t *testing.T) {
 			t.Errorf("restore ran %q", c)
 		}
 	}
-	if _, err := RestorePreDeployTar(ctx, f, rp, "/etc/passwd"); err == nil {
+	if err := RestorePreDeployTar(ctx, f, rp, "/etc/passwd", spec); err == nil {
 		t.Error("restore accepted a tar outside the backup dir")
 	}
 }
@@ -175,7 +177,7 @@ func TestRollbackRemoteOrder(t *testing.T) {
 	f.log = nil
 	f.mu.Unlock()
 	writeFile(t, rp+"/.nself/compose-files.txt", "# broken by the second deploy\n", 0o644)
-	err = RollbackRemote(context.Background(), RollbackOptions{Remote: f, RemotePath: rp, Tar: res.PreDeployTar, BackupID: "backup-1", Clock: &fakeClock{now: time.Unix(0, 0)}})
+	err = RollbackRemote(context.Background(), RollbackOptions{Remote: f, RemotePath: rp, Tar: res.PreDeployTar, BackupID: "backup-1", Changed: res.Changed, Absent: res.Absent, Clock: &fakeClock{now: time.Unix(0, 0)}})
 	if err != nil {
 		t.Fatal(err)
 	}

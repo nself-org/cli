@@ -20,7 +20,7 @@ import (
 )
 
 // applyServices brings each service up in compose order and gates it, then
-// re-reads every gated service once and reloads nginx.
+// re-reads every gated service once. Callers reload nginx afterwards.
 func applyServices(ctx context.Context, o ApplyOptions, model ComposeModel) error {
 	r, rp, files, envs := o.Remote, o.RemotePath, o.Set.Compose, o.Set.EnvManifest
 	type gated struct {
@@ -63,7 +63,7 @@ func applyServices(ctx context.Context, o ApplyOptions, model ComposeModel) erro
 			return gateError(g.name, err)
 		}
 	}
-	return reloadNginx(ctx, o, model)
+	return nil
 }
 
 // reloadNginx reloads a running nginx service so it reads the config now on disk.

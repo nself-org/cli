@@ -109,13 +109,23 @@ func prepareRemoteApply(ctx context.Context, p v15Params) (*controlplane.RemoteA
 	if err != nil {
 		return nil, "", err
 	}
+	backupID, backupHost := "", ""
+	if p.prodClass {
+		// One verified database backup per env, on its primary, before any server is touched.
+		_, _ = fmt.Fprintf(out, "  [running] verified database backup on %s\n", p.srv.Name)
+		if backupID, err = controlplane.VerifiedSnapshot(ctx, r, rp, "pre-deploy-"+deploy.NewBackupID(time.Now())); err != nil {
+			return nil, "", err
+		}
+		backupHost = r.Label()
+	}
 	ra := &controlplane.RemoteApply{
+		BackupID: backupID, BackupHost: backupHost,
 		Set: set, Expected: snap, LocalPlugins: local, ProdClass: p.prodClass, Yes: p.yes, Confirm: ttyConfirm,
 		StrictHasura: hasuraStrictFor(p.workdir, p.target), Out: out, Clock: deployGateClock,
 		Open: func(c context.Context, s controlplane.Server, k, e string) (deploy.Remote, error) {
 			return openDeployRemote(c, s, k, e)
 		},
-		Record: recordRemoteApply(p.workdir, p.target, time.Now()),
+		Record: recordRemoteApply(p.workdir, p.target, time.Now(), backupID, backupHost),
 	}
 	return ra, filepath.Join(scratch, "docker-compose.yml"), nil
 }
@@ -140,27 +150,28 @@ func ttyConfirm(msg string) bool {
 	return strings.EqualFold(strings.TrimSpace(ans), "yes")
 }
 
-// recordRemoteApply writes deploy.json as servers finish. A server that never
-// reached the sync (drift, lock held, tar or backup failure, build context) left
-// its files alone, so it never overwrites the last good record. Each synced host
-// adds its pre-deploy tar to pre_deploy_tars; the primary (the first host when
-// none is primary) supplies backup_host and pre_deploy_tar; backup_id comes from
-// whichever server took the verified backup.
-func recordRemoteApply(workdir, target string, start time.Time) func(controlplane.Server, deploy.ApplyResult, error) {
-	st := deploy.StrategyState{Strategy: deploy.StrategyRolling, Target: target, StartedAt: start, Success: true}
+// recordRemoteApply writes deploy.json as servers finish. A server whose files
+// were left alone (refused before the sync, or restored in place after a failure)
+// reports Synced=false and never overwrites the last good record. Each server that
+// kept changes adds its tar and its change and absent lists, per host; the primary
+// (the first host when none is primary) supplies pre_deploy_tar. backup_id and
+// backup_host name the env's one verified backup, taken on the primary.
+func recordRemoteApply(workdir, target string, start time.Time, backupID, backupHost string) func(controlplane.Server, deploy.ApplyResult, error) {
+	st := deploy.StrategyState{Strategy: deploy.StrategyRolling, Target: target, StartedAt: start, Success: true, BackupID: backupID, BackupHost: backupHost}
 	return func(srv controlplane.Server, res deploy.ApplyResult, err error) {
 		if !res.Synced {
 			return
 		}
 		if st.PreDeployTars == nil {
-			st.PreDeployTars = map[string]string{}
+			st.PreDeployTars, st.PreDeployChanged, st.PreDeployAbsent = map[string]string{}, map[string][]string{}, map[string][]string{}
 		}
 		st.PreDeployTars[res.BackupHost] = res.PreDeployTar
+		st.PreDeployChanged[res.BackupHost], st.PreDeployAbsent[res.BackupHost] = res.Changed, res.Absent
 		if srv.Primary || st.PreDeployTar == "" {
-			st.BackupHost, st.PreDeployTar = res.BackupHost, res.PreDeployTar
-		}
-		if res.BackupID != "" {
-			st.BackupID = res.BackupID
+			st.PreDeployTar = res.PreDeployTar
+			if backupHost == "" {
+				st.BackupHost = res.BackupHost
+			}
 		}
 		st.CompletedAt = time.Now()
 		if err != nil {

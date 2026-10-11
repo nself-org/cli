@@ -116,7 +116,7 @@ func TestPluginDriftAndLayoutDrift(t *testing.T) {
 	local := []PluginRef{{Name: "alpha", Version: "1.3.0"}, {Name: "beta", Version: "0.9.1"}, {Name: "only-local", Version: "1"}}
 	diffs := PluginDrift(local, target)
 	joined := strings.Join(diffs, "|")
-	for _, want := range []string{"alpha is 1.3.0 locally but 1.2.0", "beta 0.9.1 is installed locally but not on the target", "only-local 1 is installed locally", "extra 1 is on the target but not installed locally"} {
+	for _, want := range []string{`plugin "alpha" is "1.3.0" locally but "1.2.0"`, `plugin "beta" "0.9.1" is installed locally but not on the target`, `plugin "only-local" "1" is installed locally`, `plugin "extra" "1" is on the target but not installed locally`} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing %q in %q", want, joined)
 		}
@@ -130,7 +130,7 @@ func TestPluginDriftAndLayoutDrift(t *testing.T) {
 	}
 	other := TargetSnapshot{Plugins: target.Plugins, SSL: []CertDir{{Name: "api"}, {Name: "new"}}}
 	ld := strings.Join(LayoutDrift(target, other), "|")
-	if !strings.Contains(ld, "ssl dir api has different files") || !strings.Contains(ld, "ssl dir new exists") {
+	if !strings.Contains(ld, `ssl dir "api" has different files`) || !strings.Contains(ld, `ssl dir "new" exists`) {
 		t.Fatalf("layout drift %q", ld)
 	}
 }

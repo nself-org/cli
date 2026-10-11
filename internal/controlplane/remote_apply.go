@@ -36,6 +36,10 @@ type RemoteApply struct {
 	StrictHasura bool
 	Clock        docker.Clock
 	Out          io.Writer
+	// BackupID is the one verified database backup of the env, taken on its
+	// primary (BackupHost) before any server was touched; other servers never run
+	// `nself backup`. Empty off tier prod.
+	BackupID, BackupHost string
 	// Record is called after each server's apply, whether it succeeded or not.
 	Record func(srv Server, res deploy.ApplyResult, err error)
 	// Open opens the remote of a server; nil means the strict-host-key ssh
@@ -81,9 +85,7 @@ func ApplyServer(ctx context.Context, envName string, srv Server, keyPath string
 	res, err := deploy.ApplyRemote(ctx, deploy.ApplyOptions{
 		Remote: r, RemotePath: srv.RemotePath, Set: ra.Set, Expected: &expected, LocalPlugins: ra.LocalPlugins,
 		ProdClass: ra.ProdClass, Yes: ra.Yes, Confirm: ra.Confirm, StrictHasura: ra.StrictHasura, Clock: ra.Clock, Out: ra.Out,
-		Snapshot: func(c context.Context, id string) (string, error) {
-			return VerifiedSnapshot(c, r, srv.RemotePath, id)
-		},
+		BackupID: ra.BackupID, Env: envName,
 	})
 	if ra.Record != nil {
 		ra.Record(srv, res, err)

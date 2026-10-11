@@ -248,7 +248,7 @@ func TestRemoteApplyRefusals(t *testing.T) {
 		o.LocalPlugins = []PluginRef{{Name: "ai", Version: "1.0.0"}}
 		_, err := ApplyRemote(context.Background(), o)
 		var ce *errs.CLIError
-		if !errors.As(err, &ce) || ce.Code != "E485" || !strings.Contains(err.Error(), "target drift") || !strings.Contains(err.Error(), "ai 1.0.0") {
+		if !errors.As(err, &ce) || ce.Code != "E485" || !strings.Contains(err.Error(), "target drift") || !strings.Contains(err.Error(), `"ai" "1.0.0"`) {
 			t.Fatalf("err = %v", err)
 		}
 		for _, s := range steps(f) {

@@ -29,8 +29,17 @@ type RollbackOptions struct {
 	RemotePath string
 	Tar        string // PreDeployTar of the record
 	BackupID   string // BackupID of the record; empty off prod-class
-	Clock      docker.Clock
-	Out        io.Writer
+	// Changed and Absent come from the local deploy.json record of this host.
+	Changed []string
+	Absent  []string
+	// DBRestored: the record says the database backup was already restored; it is
+	// not restored again. OnDBRestored runs right after a successful restore,
+	// before the re-apply, so the caller can persist it.
+	DBRestored   bool
+	OnDBRestored func() error
+	StrictHasura bool
+	Clock        docker.Clock
+	Out          io.Writer
 }
 
 // RollbackRemote undoes the last v1.5 remote apply on the host.
@@ -45,17 +54,21 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	}
 	defer release()
 	emit(o.Out, "  [running] restore %s in place on %s", path.Base(o.Tar), r.Label())
-	pruned, err := RestorePreDeployTar(ctx, r, rp, o.Tar)
-	if err != nil {
+	if err := RestorePreDeployTar(ctx, r, rp, o.Tar, RestoreSpec{Changed: o.Changed, Absent: o.Absent}); err != nil {
 		return err
 	}
-	for _, f := range pruned {
-		emit(o.Out, "  [pruned] %s (generated file the old set did not have)", f)
-	}
-	if o.BackupID != "" {
+	switch {
+	case o.BackupID != "" && o.DBRestored:
+		emit(o.Out, "  [skip] database backup %s was already restored by an earlier rollback; not restoring it again", o.BackupID)
+	case o.BackupID != "":
 		emit(o.Out, "  [running] restore database backup %s", o.BackupID)
 		if _, err := r.Run(ctx, fmt.Sprintf("cd %s && nself backup restore %s --yes", q(rp), q(o.BackupID))); err != nil {
 			return fmt.Errorf("restoring backup %s on %s: %w; the files are restored, the stack was not restarted", o.BackupID, r.Label(), err)
+		}
+		if o.OnDBRestored != nil {
+			if err := o.OnDBRestored(); err != nil {
+				return fmt.Errorf("the database backup was restored but the record could not be saved (do NOT run the rollback again): %w", err)
+			}
 		}
 	}
 	compose, err := remoteLines(ctx, r, path.Join(rp, ".nself", "compose-files.txt"))
@@ -83,7 +96,7 @@ func RollbackRemote(ctx context.Context, o RollbackOptions) error {
 	}
 	emit(o.Out, "  [running] re-apply the restored artifact set")
 	return ReapplyRemote(ctx, ApplyOptions{
-		Remote: r, RemotePath: rp, Set: ArtifactSet{Compose: compose, EnvManifest: envs}, Clock: o.Clock, Out: o.Out,
+		Remote: r, RemotePath: rp, Set: ArtifactSet{Compose: compose, EnvManifest: envs}, StrictHasura: o.StrictHasura, Clock: o.Clock, Out: o.Out,
 	})
 }
 

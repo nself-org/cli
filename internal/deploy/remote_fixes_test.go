@@ -195,7 +195,7 @@ func TestRestoreSurvivesCancellation(t *testing.T) {
 	writeFile(t, rp+"/docker-compose.yml", "# broken\n", 0o644)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := RestorePreDeployTar(ctx, f, rp, bk.Tar); err != nil {
+	if err := RestorePreDeployTar(ctx, f, rp, bk.Tar, RestoreSpec{Changed: []string{"docker-compose.yml"}, Absent: bk.Absent}); err != nil {
 		t.Fatalf("restore with a cancelled context: %v", err)
 	}
 	if got := readFile(t, rp+"/docker-compose.yml"); !strings.Contains(got, "# v1") {

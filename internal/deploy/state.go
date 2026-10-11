@@ -69,6 +69,14 @@ type StrategyState struct {
 	// PreDeployTars maps every host the deploy synced to its pre-deploy tar, so
 	// `deploy rollback` restores each server of the env, not just the primary.
 	PreDeployTars map[string]string `json:"pre_deploy_tars,omitempty"`
+	// PreDeployChanged and PreDeployAbsent are, per host, the relative paths the
+	// deploy shipped or pruned and the subset the host did not have before. A
+	// rollback restores and removes exactly these, never anything read from the host.
+	PreDeployChanged map[string][]string `json:"pre_deploy_changed,omitempty"`
+	PreDeployAbsent  map[string][]string `json:"pre_deploy_absent,omitempty"`
+	// DBRestoredAt is set (RFC 3339) right after `nself backup restore` succeeded,
+	// before the re-apply, so a retried rollback never restores the database twice.
+	DBRestoredAt string `json:"db_restored_at,omitempty"`
 }
 
 // LoadDeployState reads the deploy state from .nself/state/deploy.json.

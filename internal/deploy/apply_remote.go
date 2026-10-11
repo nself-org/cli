@@ -46,8 +46,12 @@ type ApplyOptions struct {
 	ProdClass bool
 	Yes       bool
 	Confirm   func(msg string) bool
+	// BackupID is a verified database backup the caller already took for the whole
+	// env (one per env, on its primary, before any server is touched). When set,
+	// no backup is taken here.
+	BackupID string
 	// Snapshot takes and verifies a database backup tagged with id and returns
-	// its backup id (E206 on failure). Required when ProdClass.
+	// its backup id (E206 on failure). Used when ProdClass and BackupID is empty.
 	Snapshot func(ctx context.Context, id string) (string, error)
 	// StrictHasura makes a failed metadata apply fail the deploy.
 	StrictHasura bool
@@ -61,9 +65,15 @@ type ApplyResult struct {
 	BackupID     string // verified database backup (prod-class only)
 	BackupHost   string
 	PreDeployTar string
-	// Synced is true once the artifact sync was started: the host's files may
-	// differ from before, so the deploy record must be written.
-	Synced    bool
+	// Synced is true once the artifact sync started and the host's files were not
+	// put back: the deploy record must be written. A deploy that failed before
+	// the first `up` and was restored in place reports false (the last good
+	// record stays); if that restore itself failed it stays true.
+	Synced bool
+	// Changed are the paths this deploy shipped or pruned, Absent the subset the
+	// host did not have before. Recorded locally; they drive a rollback.
+	Changed   []string
+	Absent    []string
 	Recreated []string
 }
 
@@ -108,10 +118,13 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 		return res, err
 	}
 	res.BackupHost, res.PreDeployTar = r.Label(), bk.Tar
-	if o.ProdClass {
-		if o.Snapshot == nil {
-			return res, errs.New("E206", "no verified backup function for a production target; nothing was applied")
-		}
+	res.Changed, res.Absent = o.Set.shippedPaths(), bk.Absent
+	switch {
+	case o.ProdClass && o.BackupID != "":
+		res.BackupID = o.BackupID
+	case o.ProdClass && o.Snapshot == nil:
+		return res, errs.New("E206", "no verified backup for a production target; nothing was applied")
+	case o.ProdClass:
 		say("verified database backup before any change")
 		if res.BackupID, err = o.Snapshot(ctx, "pre-deploy-"+id); err != nil {
 			return res, err
@@ -123,8 +136,13 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	touched := false
 	defer func() {
 		if err != nil && res.Synced && !touched {
-			if _, rerr := RestorePreDeployTar(ctx, r, rp, bk.Tar); rerr != nil {
+			if rerr := RestorePreDeployTar(ctx, r, rp, bk.Tar, RestoreSpec{Changed: res.Changed, Absent: res.Absent}); rerr != nil {
+				// The host may be half restored: keep the record, but never offer the
+				// database backup for a deploy that changed no containers.
+				res.BackupID = ""
 				err = fmt.Errorf("%w; restoring %s also failed: %v", err, bk.Tar, rerr)
+			} else {
+				res.Synced = false // exact revert done: the last good record stays
 			}
 		} else if err != nil && touched {
 			err = fmt.Errorf("%w; the new files are in place and the pre-deploy tar is %s: run 'nself deploy rollback %s'", err, bk.Tar, o.Env)
@@ -139,6 +157,7 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	}
 	for _, f := range pruned {
 		emit(o.Out, "  [pruned] %s (generated file the new set dropped)", f)
+		res.Changed = append(res.Changed, f)
 	}
 	if err = SyncArtifacts(ctx, r, o.Set); err != nil {
 		return res, err
@@ -173,12 +192,16 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	if err = applyServices(ctx, o, model); err != nil {
 		return res, err
 	}
+	if err = reloadNginx(ctx, o, model); err != nil {
+		return res, err
+	}
 	return res, applyHasuraMetadata(ctx, o)
 }
 
 // ReapplyRemote runs the pull and the service-by-service up with the health
-// gate over the manifests already on the host (rollback uses it after the
-// files are back in place).
+// gate over the manifests already on the host (rollback uses it after the files
+// are back in place), then validates the restored nginx config in a throwaway
+// container before reloading nginx, and applies the hasura metadata.
 func ReapplyRemote(ctx context.Context, o ApplyOptions) error {
 	if o.Out == nil {
 		o.Out = io.Discard
@@ -191,14 +214,20 @@ func ReapplyRemote(ctx context.Context, o ApplyOptions) error {
 	if _, err = o.Remote.Run(ctx, shScript(fmt.Sprintf("cd %s && %s pull", q(o.RemotePath), base))); err != nil {
 		return fmt.Errorf("remote pull on %s: %w", o.Remote.Label(), err)
 	}
-	return applyServices(ctx, o, model)
+	if err = applyServices(ctx, o, model); err != nil {
+		return err
+	}
+	if err = CheckNginx(ctx, o.Remote, o.RemotePath, model, o.Out); err != nil {
+		return fmt.Errorf("the restored nginx config does not pass nginx -t, nginx was not reloaded: %w", err)
+	}
+	if err = reloadNginx(ctx, o, model); err != nil {
+		return err
+	}
+	return applyHasuraMetadata(ctx, o)
 }
 
-// shippedPaths are the set's relative paths plus .env when the sync may create it.
+// shippedPaths are the set's relative paths plus the shipped list the sync writes.
+// The host's own .env is never one of them.
 func (s ArtifactSet) shippedPaths() []string {
-	out := append(append([]string{}, s.Files...), s.EnvFiles...)
-	if s.KeepHostEnv {
-		out = append(out, ".env")
-	}
-	return out
+	return append(append(append([]string{}, s.Files...), s.EnvFiles...), ShippedFile)
 }

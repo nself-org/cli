@@ -217,9 +217,7 @@ func runDeployPromote(cmd *cobra.Command, args []string) error {
 func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error) {
 	st, _ := deploy.LoadDeployState(workdir)
 	tars := st.PreDeployTars
-	if len(tars) == 0 && st.PreDeployTar != "" {
-		tars = map[string]string{st.BackupHost: st.PreDeployTar}
-	}
+
 	if target == "local" || len(tars) == 0 || st.Target != target {
 		return false, nil
 	}
@@ -235,6 +233,9 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 	var failed []string
 	for _, host := range hosts {
 		tar := tars[host]
+		if len(st.PreDeployChanged[host]) == 0 {
+			return true, fmt.Errorf("deploy rollback: the record for %s has no list of changed paths; it cannot be rolled back safely (nothing was changed)", host)
+		}
 		idx := strings.Index(tar, "/"+deploy.BackupDir+"/pre-deploy-")
 		if idx <= 0 {
 			return true, fmt.Errorf("deploy rollback: the recorded tar %q is not a pre-deploy tar; nothing was changed", tar)
@@ -258,7 +259,16 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 			if host == st.BackupHost {
 				backupID = st.BackupID
 			}
-			err = deploy.RollbackRemote(cmd.Context(), deploy.RollbackOptions{Remote: r, RemotePath: srv.RemotePath, Tar: tar, BackupID: backupID, Clock: deployGateClock, Out: os.Stdout})
+			err = deploy.RollbackRemote(cmd.Context(), deploy.RollbackOptions{
+				Remote: r, RemotePath: srv.RemotePath, Tar: tar, BackupID: backupID,
+				Changed: st.PreDeployChanged[host], Absent: st.PreDeployAbsent[host],
+				DBRestored: st.DBRestoredAt != "", StrictHasura: hasuraStrictFor(workdir, target),
+				OnDBRestored: func() error {
+					st.DBRestoredAt = time.Now().UTC().Format(time.RFC3339)
+					return deploy.SaveDeployState(workdir, st)
+				},
+				Clock: deployGateClock, Out: os.Stdout,
+			})
 		}
 		if err != nil {
 			failed = append(failed, fmt.Sprintf("%s: %v", host, err))
