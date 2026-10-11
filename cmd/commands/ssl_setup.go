@@ -91,6 +91,14 @@ func runSSLSetup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	// certbot would write its pair over certificates the ACME engine owns, and
+	// --install-cron would add a second writer (D-0411).
+	if f, lerr := acme.Load(filepath.Join(workdir, "ssl")); lerr != nil {
+		return fmt.Errorf("reading the ACME lineages: %w (fix ssl/.acme/lineages.json, or use --acme)", lerr)
+	} else if len(f.Lineages) > 0 {
+		return fmt.Errorf("the ACME engine manages this project's certificates (%s): use `nself trust ssl setup --acme`; certbot would overwrite them", acme.StateDir(filepath.Join(workdir, "ssl")))
+	}
+
 	if _, err := exec.LookPath("certbot"); err != nil {
 		return fmt.Errorf("certbot not found in PATH — install certbot and the DNS plugin first")
 	}
@@ -182,10 +190,7 @@ func runSSLSetup(cmd *cobra.Command, args []string) error {
 	ui.Success("SSL setup complete.")
 
 	if installCron {
-		// Its deploy hook would write over certificates the ACME engine owns (D-0411).
-		if f, lerr := acme.Load(filepath.Join(workdir, "ssl")); lerr != nil || len(f.Lineages) > 0 {
-			ui.Warn("Renewal timer not installed: the ACME engine manages this project's certificates (nself-acme-renew.timer).")
-		} else if err := installSSLRenewalCron(workdir); err != nil {
+		if err := installSSLRenewalCron(workdir); err != nil {
 			ui.Warn(fmt.Sprintf("Could not install renewal timer: %v", err))
 			ui.Info("Add manually to crontab: 30 3 * * * certbot renew --quiet")
 		} else {

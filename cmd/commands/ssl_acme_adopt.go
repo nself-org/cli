@@ -5,8 +5,10 @@ package commands
 // its names are served from, stores the DNS credential in the age store by
 // name, records the lineages as dns-01 (a webroot lineage with no credential: http-01, when a probe
 // token is answered by the served nginx) and never issues. A served target is
-// replaced from certbot's live files only when it is missing or older. After
-// adoption the certbot nself-ssl-renew.timer is disabled (D-0411).
+// replaced from certbot's live files only when it is missing or older.
+// Adoption refuses while a certbot hook copies into the ssl dir, then disables
+// the certbot nself-ssl-renew.timer, or with --install-cron installs the ACME
+// timer, which does both (D-0411).
 
 import (
 	"bytes"
@@ -59,9 +61,17 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 	if len(refused) > 0 || len(adopt) == 0 {
 		return e151(acmeRefuse("fix the lineages named above, or adopt selectively with --lineage <name>", "%d certbot lineage(s) cannot be adopted; nothing was changed", len(refused)))
 	}
+	if err := r.refuseCertbotHooks(dir); err != nil {
+		return err
+	}
+	cron, _ := r.cmd.Flags().GetBool("install-cron")
 	if r.dry {
 		r.say("dry run: nothing written")
-		return r.retireCertbot()
+		if cron {
+			return r.timer()
+		}
+		_, err := r.retireCertbot()
+		return err
 	}
 	if err := r.lock(); err != nil {
 		return err
@@ -82,7 +92,14 @@ func (r *acmeRun) adopt(ctx context.Context, args []string) error {
 		}
 	}
 	r.say("adopted %d lineage(s) (%s); certbot's files were not touched", len(adopt), adoptedKinds(adopt))
-	return r.retireCertbot()
+	if cron {
+		return r.timer()
+	}
+	if retired, err := r.retireCertbot(); err != nil || !retired {
+		return err
+	}
+	r.say("no renewal is scheduled now: run `nself trust ssl setup --acme --install-cron`")
+	return nil
 }
 
 // adoptedKinds names the challenges of the adopted lineages, e.g. "1 dns-01, 1 http-01".

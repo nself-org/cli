@@ -1,0 +1,165 @@
+package commands
+
+// ssl_certbot_retire_flow_test.go: D-0411 through the commands. `setup --acme`
+// (issue, --install-cron, --adopt-certbot) refuses while a certbot hook writes
+// into the ssl dir and disables nself-ssl-renew.timer; the v1.4 certbot
+// `ssl setup` refuses in a project whose certificates ACME manages. systemd is
+// the fakeSystemd of ssl_certbot_retire_test.go.
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
+	"github.com/nself-org/cli/internal/ssl/acme"
+)
+
+// TestACMETimerRetiresCertbotTimer: `setup --acme --install-cron` disables the
+// certbot timer before installing the ACME one; a re-run changes nothing; a
+// refused disable or a saved certbot hook installs nothing and names the fix;
+// --dry-run only reports.
+func TestACMETimerRetiresCertbotTimer(t *testing.T) {
+	f := newACMEFix(t)
+	le := useCertbotDir(t)
+	if err := acme.Save(f.ssl, acme.File{Contact: "ops@example.org", Lineages: []acme.Lineage{{Name: "x", Challenge: "dns-01", DNSProvider: "cloudflare", Targets: []string{"certificates/x"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	sd := &fakeSystemd{load: "loaded", file: "enabled", active: "active"}
+	useSystemd(t, sd)
+
+	hook := filepath.Join(le, "renewal", "x.conf")
+	acmeWriteFile(t, hook, []byte("[renewalparams]\n"+nselfDeployHook(f.project)))
+	for _, dry := range []string{"--dry-run=false", "--dry-run"} {
+		_, err := f.run(sslSetupCmd, "--acme", "--install-cron", dry)
+		if err == nil || codeOf(err) != "E151" || !strings.Contains(err.Error(), hook+":2") || sd.disables() != 0 || f.timers != 0 {
+			t.Fatalf("saved hook %s: err=%v disables=%d timers=%d (want E151 naming %s:2, nothing changed)", dry, err, sd.disables(), f.timers, hook)
+		}
+	}
+	_ = os.Remove(hook)
+
+	sd.disErr = errors.New("exit status 1")
+	_, err := f.run(sslSetupCmd, "--acme", "--install-cron")
+	if err == nil || codeOf(err) != "E151" || !strings.Contains(err.Error(), "systemctl disable --now "+certbotTimer) || f.timers != 0 {
+		t.Fatalf("refused disable: err=%v timers=%d (want E151 naming the command, no ACME timer)", err, f.timers)
+	}
+
+	sd.disErr, sd.calls = nil, nil
+	out, err := f.run(sslSetupCmd, "--acme", "--install-cron", "--dry-run")
+	if err != nil || !strings.Contains(out, "would disable "+certbotTimer) || sd.disables() != 0 || f.timers != 0 {
+		t.Fatalf("dry run: err=%v disables=%d timers=%d\n%s", err, sd.disables(), f.timers, out)
+	}
+
+	out, err = f.run(sslSetupCmd, "--acme", "--install-cron")
+	if err != nil || !strings.Contains(out, "disabled "+certbotTimer) || sd.disables() != 1 || f.timers != 1 || sd.file != "disabled" {
+		t.Fatalf("install: err=%v disables=%d timers=%d file=%s\n%s", err, sd.disables(), f.timers, sd.file, out)
+	}
+	if out, err = f.run(sslSetupCmd, "--acme", "--install-cron"); err != nil || strings.Contains(out, "disabled "+certbotTimer) || sd.disables() != 1 {
+		t.Fatalf("re-run must not disable again: err=%v disables=%d\n%s", err, sd.disables(), out)
+	}
+}
+
+// TestACMEAdoptRetiresCertbotTimer: adoption refuses, writing nothing, while a
+// saved certbot hook copies into the ssl dir; otherwise it disables the certbot
+// timer after the lineages are saved and says no renewal is scheduled, or with
+// --install-cron installs the ACME timer. A refused disable keeps the lineages.
+func TestACMEAdoptRetiresCertbotTimer(t *testing.T) {
+	f := newACMEFix(t)
+	le := adoptFix(t, f)
+	cred := filepath.Join(f.root, "cloudflare.ini")
+	acmeWriteFile(t, cred, []byte("# certbot\ndns_cloudflare_api_token = fake-token-not-a-secret\n"))
+	adopt := []string{"--acme", "--adopt-certbot=" + le, "--dns-credential-file=" + cred}
+	sd := &fakeSystemd{load: "loaded", file: "enabled", active: "active"}
+	useSystemd(t, sd)
+
+	hook := filepath.Join(le, "renewal-hooks", "deploy", "00-copy-cert.sh")
+	acmeWriteFile(t, hook, []byte("#!/bin/sh\ncp \"$RENEWED_LINEAGE\"/fullchain.pem "+filepath.Join(f.project, "ssl", "certificates", "api-task-nself-org")+"/\n"))
+	_, err := f.run(sslSetupCmd, adopt...)
+	if lf, _ := acme.Load(f.ssl); err == nil || !strings.Contains(err.Error(), hook+":2") || len(lf.Lineages) != 0 || len(f.set) != 0 || sd.disables() != 0 {
+		t.Fatalf("saved hook: err=%v lineages=%d secrets=%d disables=%d (want a refusal that writes nothing)", err, len(lf.Lineages), len(f.set), sd.disables())
+	}
+	_ = os.Remove(hook)
+
+	out, err := f.run(sslSetupCmd, append(adopt, "--dry-run")...)
+	if err != nil || !strings.Contains(out, "would disable "+certbotTimer) || sd.disables() != 0 {
+		t.Fatalf("dry run: err=%v disables=%d\n%s", err, sd.disables(), out)
+	}
+
+	sd.disErr = errors.New("exit status 1")
+	_, err = f.run(sslSetupCmd, adopt...)
+	if lf, _ := acme.Load(f.ssl); err == nil || !strings.Contains(err.Error(), "systemctl disable --now "+certbotTimer) || len(lf.Lineages) != 2 {
+		t.Fatalf("refused disable: err=%v lineages=%d (want the fix hint and both lineages kept)", err, len(lf.Lineages))
+	}
+
+	sd.disErr = nil
+	if out, err = f.run(sslSetupCmd, adopt...); err != nil || !strings.Contains(out, "disabled "+certbotTimer) || !strings.Contains(out, "no renewal is scheduled") || sd.file != "disabled" || f.timers != 0 {
+		t.Fatalf("adopt: err=%v file=%s timers=%d\n%s", err, sd.file, f.timers, out)
+	}
+	if out, err = f.run(sslSetupCmd, append(adopt, "--install-cron")...); err != nil || f.timers != 1 || strings.Contains(out, "no renewal is scheduled") {
+		t.Fatalf("adopt --install-cron: err=%v timers=%d\n%s", err, f.timers, out)
+	}
+}
+
+// TestACMEIssueRetiresCertbotTimer: a new lineage from `setup --acme` (no
+// --install-cron) disables the certbot timer once it is saved.
+func TestACMEIssueRetiresCertbotTimer(t *testing.T) {
+	f := newACMEFix(t)
+	useCertbotDir(t)
+	sd := &fakeSystemd{load: "loaded", file: "enabled", active: "active"}
+	useSystemd(t, sd)
+	out, err := f.run(sslSetupCmd, "--acme", "--agree-tos")
+	if lf, _ := acme.Load(f.ssl); err != nil || len(lf.Lineages) != 1 || sd.disables() != 1 || !strings.Contains(out, "disabled "+certbotTimer) {
+		t.Fatalf("issue: err=%v lineages=%d disables=%d\n%s", err, len(lf.Lineages), sd.disables(), out)
+	}
+}
+
+// TestCertbotSetupRefusesUnderACME: the v1.4 certbot `ssl setup` refuses before
+// running certbot in a project whose certificates ACME manages, or whose
+// lineages.json cannot be read; without lineages it runs as before.
+func TestCertbotSetupRefusesUnderACME(t *testing.T) {
+	log := certbotStubs(t)
+	compattest.Set(t, false)
+	t.Setenv("ENV", "dev")
+	crons := 0
+	oldCron := installSSLRenewalCron
+	installSSLRenewalCron = func(string) error { crons++; return nil }
+	live, oldLive := t.TempDir(), letsEncryptLiveDir
+	letsEncryptLiveDir = live
+	t.Cleanup(func() {
+		installSSLRenewalCron, letsEncryptLiveDir = oldCron, oldLive
+		acmeResetFlags(sslSetupCmd)
+	})
+	acmeWriteFile(t, filepath.Join(live, "example.org", "fullchain.pem"), []byte("c"))
+	acmeWriteFile(t, filepath.Join(live, "example.org", "privkey.pem"), []byte("k"))
+	project := t.TempDir()
+	acmeWriteFile(t, filepath.Join(project, ".env"), []byte("BASE_DOMAIN=example.org\nADMIN_EMAIL=ops@example.org\n"))
+	t.Chdir(project)
+	state := filepath.Join(project, "ssl", ".acme", "lineages.json")
+
+	for _, tc := range []struct {
+		name, lineages, wantErr string
+		wantCrons               int
+		certbotRuns             bool
+	}{
+		{name: "no ACME state", wantCrons: 1, certbotRuns: true},
+		{name: "ACME lineages", lineages: `{"schema_version":"1","lineages":[{"name":"example-org","targets":["certificates/example-org"]}]}`, wantErr: "ACME engine manages"},
+		{name: "unreadable lineages.json", lineages: "{", wantErr: "reading the ACME lineages"},
+	} {
+		_ = os.Remove(log)
+		if tc.lineages != "" {
+			acmeWriteFile(t, state, []byte(tc.lineages))
+		}
+		crons = 0
+		acmeResetFlags(sslSetupCmd)
+		_ = sslSetupCmd.Flags().Set("install-cron", "true")
+		err := runSSLSetup(sslSetupCmd, nil)
+		if (err == nil) != (tc.wantErr == "") || (err != nil && !strings.Contains(err.Error(), tc.wantErr)) {
+			t.Fatalf("%s: err=%v, want %q", tc.name, err, tc.wantErr)
+		}
+		if crons != tc.wantCrons || (readLog(log) != "") != tc.certbotRuns {
+			t.Errorf("%s: certbot timer installs=%d (want %d), certbot calls=%q", tc.name, crons, tc.wantCrons, readLog(log))
+		}
+	}
+}
