@@ -52,7 +52,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 <!-- BEGIN GENERATED:gated -->
 | Ticket | v1.4 behaviour (old) | v1.5 behaviour (new) | File |
 |---|---|---|---|
-| D-0287 | two plugins mapping to one nginx/sites file overwrite silently (warning) | E055 fails the build | `internal/build/plugin_nginx.go` |
+| D-0287 | two plugins mapping to one nginx/sites file overwrite silently (warning) | E055 fails the build | `internal/build/plugin_nginx_collision.go` |
 | P7-ADOPT-01 | writable absolute bind allowed | E502 | `internal/compose/custom_service_v2.go` |
 | P7-CANON-01 | same-owner breakout stays core in v1.4 | mounts from its plugin in v1.5 | `cmd/commands/plugin_mount.go` |
 | P7-CANON-02 | registry view with moved entries at their v1.4 paths | view at canonical paths plus deprecated-shim entries | `internal/canon/canon.go` |
