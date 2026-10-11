@@ -94,19 +94,37 @@ func LoadLatestRecord(projectRoot, target string) (*Record, error) {
 		return rec, nil
 	}
 	if rec.Target != target {
-		return nil, errs.Newf("E485", "promotion record is for %s, not %s; nothing was changed", rec.Target, target)
-	}
-	if rec.SchemaVersion != 1 || rec.ID == "" || rec.CompletedAt.IsZero() || (rec.Status != "ok" && rec.Status != "rollback_failed" && rec.Status != "rolled_back") {
-		return nil, errs.New("E485", "promotion record is unusable; nothing was changed")
+		return nil, nil
 	}
 	state, err := deploy.LoadDeployState(projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	if state.Target == target && state.CompletedAt.After(rec.CompletedAt) {
-		return nil, errs.New("E485", "promotion record was superseded by a later deploy; nothing was changed")
+	if state.Target == target && !rec.CompletedAt.IsZero() && state.CompletedAt.After(rec.CompletedAt) {
+		return nil, nil
+	}
+	if rec.SchemaVersion != 1 || rec.ID == "" || rec.CompletedAt.IsZero() || (rec.Status != "ok" && rec.Status != "rollback_failed" && rec.Status != "rolled_back") {
+		return nil, errs.New("E485", "promotion record is unusable; nothing was changed")
+	}
+	if rec.Status != "rolled_back" && !recordHasRestoreLists(rec) {
+		return nil, errs.New("E485", "promotion record has missing tar or changed lists; nothing was changed")
 	}
 	return rec, nil
+}
+
+// Purpose: Require local authority for every host before opening any remote.
+// Inputs: Current record. Outputs: Whether tar and changed lists are present.
+// Constraints: An empty per-host change list remains a valid recorded list.
+func recordHasRestoreLists(rec *Record) bool {
+	if len(rec.PreDeployTar) == 0 {
+		return false
+	}
+	for host, tar := range rec.PreDeployTar {
+		if _, ok := rec.Changed[host]; tar == "" || !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // RollbackRecord re-applies every saved stack before restoring the migrated DB.
@@ -114,6 +132,21 @@ func RollbackRecord(ctx context.Context, projectRoot string, rec *Record, remote
 	if rec == nil {
 		return fmt.Errorf("no promotion record")
 	}
+	ctx, release, err := AcquireRecordLock(ctx, projectRoot)
+	if err != nil {
+		return err
+	}
+	defer release()
+	// Reload under the same project lock as deploy apply: a caller's stale record
+	// must never authorize another database restore after a completed rollback.
+	latest, err := LoadLatestRecord(projectRoot, rec.Target)
+	if err != nil {
+		return errs.Wrap("E485", "promotion record is unusable; nothing was changed", err)
+	}
+	if latest == nil || latest.ID != rec.ID {
+		return errs.New("E485", "promotion record changed or is no longer applicable; nothing was changed")
+	}
+	*rec = *latest
 	if rec.Status == "rolled_back" {
 		return nil
 	}

@@ -62,6 +62,14 @@ func runPromoteRecordRollback(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+	ctx, release, err := cpromote.AcquireRecordLock(cmd.Context(), workdir)
+	if err != nil {
+		return err
+	}
+	defer release()
+	originalContext := cmd.Context()
+	cmd.SetContext(ctx)
+	defer cmd.SetContext(originalContext)
 	rec, err := cpromote.LoadRecord(workdir)
 	if err != nil {
 		return errs.Wrap("E485", "promotion record is unusable; nothing was changed", err)
@@ -87,6 +95,11 @@ func runPromoteRecordRollback(cmd *cobra.Command) error {
 }
 
 func rollbackPromoteForTarget(ctx context.Context, workdir, target string) (bool, error) {
+	ctx, release, err := cpromote.AcquireRecordLock(ctx, workdir)
+	if err != nil {
+		return true, err
+	}
+	defer release()
 	rec, err := cpromote.LoadLatestRecord(workdir, target)
 	if err != nil {
 		return true, err

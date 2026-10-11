@@ -3,7 +3,11 @@ package promote
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -32,20 +36,37 @@ func (r *recordRemote) Run(_ context.Context, cmd string) ([]byte, error) {
 }
 func (r *recordRemote) Rsync(context.Context, []string, string, string, string) error { return nil }
 
+func persistRollbackFixture(t *testing.T, root string, rec *Record) {
+	t.Helper()
+	rec.ID, rec.Target, rec.CompletedAt = "fixture", "prodsim", time.Now()
+	if rec.Status == "" {
+		rec.Status = "ok"
+	}
+	if rec.Changed == nil {
+		rec.Changed = map[string][]string{}
+		for host := range rec.PreDeployTar {
+			rec.Changed[host] = nil
+		}
+	}
+	if err := SaveRecord(root, *rec); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPromoteRecordLatest(t *testing.T) {
 	root := t.TempDir()
 	when := time.Unix(100, 0).UTC()
-	rec := Record{ID: "p1", Target: "prodsim", Status: "ok", CompletedAt: when}
+	rec := Record{ID: "p1", Target: "prodsim", Status: "ok", CompletedAt: when, PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"}, Changed: map[string][]string{"primary": {}}}
 	if err := SaveRecord(root, rec); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := LoadLatestRecord(root, "other"); err == nil || got != nil {
+	if got, err := LoadLatestRecord(root, "other"); err != nil || got != nil {
 		t.Fatalf("mismatched target = %#v, %v", got, err)
 	}
 	if err := deploy.SaveDeployState(root, deploy.StrategyState{Target: "prodsim", CompletedAt: when.Add(time.Second)}); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := LoadLatestRecord(root, "prodsim"); err == nil || got != nil {
+	if got, err := LoadLatestRecord(root, "prodsim"); err != nil || got != nil {
 		t.Fatalf("superseded record = %#v, %v", got, err)
 	}
 	if err := deploy.SaveDeployState(root, deploy.StrategyState{Target: "other", CompletedAt: when.Add(time.Hour)}); err != nil {
@@ -53,6 +74,87 @@ func TestPromoteRecordLatest(t *testing.T) {
 	}
 	if got, err := LoadLatestRecord(root, "prodsim"); err != nil || got == nil {
 		t.Fatalf("unrelated deploy hid record = %#v, %v", got, err)
+	}
+}
+
+type overlappingRecordRemote struct {
+	mu                        sync.Mutex
+	base                      recordRemote
+	restores                  atomic.Int32
+	entered, overlap, release chan struct{}
+}
+
+func (r *overlappingRecordRemote) Label() string { return r.base.label }
+func (r *overlappingRecordRemote) Rsync(context.Context, []string, string, string, string) error {
+	return nil
+}
+func (r *overlappingRecordRemote) Run(ctx context.Context, command string) ([]byte, error) {
+	if strings.Contains(command, "tar -tzf") {
+		return []byte("docker-compose.yml\n"), nil
+	}
+	if strings.Contains(command, "nself backup restore") {
+		if r.restores.Add(1) == 1 {
+			close(r.entered)
+		} else {
+			close(r.overlap)
+		}
+		<-r.release
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.base.Run(ctx, command)
+}
+
+func TestPromoteRecordRollbackConcurrent(t *testing.T) {
+	root := t.TempDir()
+	r := &overlappingRecordRemote{base: recordRemote{label: "primary"}, entered: make(chan struct{}), overlap: make(chan struct{}), release: make(chan struct{})}
+	var released sync.Once
+	cleanup := func() { released.Do(func() { close(r.release) }) }
+	t.Cleanup(cleanup)
+	rec := Record{ID: "fixture", Target: "prodsim", CompletedAt: time.Now(), Status: "ok", MigrateStarted: true,
+		BackupID: "backup-1", BackupHost: "primary", PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"}, Changed: map[string][]string{"primary": {"docker-compose.yml"}}}
+	if err := SaveRecord(root, rec); err != nil {
+		t.Fatal(err)
+	}
+	remotes, paths := map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}
+	first, second := rec, rec
+	one, two := make(chan error, 1), make(chan error, 1)
+	go func() { one <- RollbackRecord(context.Background(), root, &first, remotes, paths) }()
+	select {
+	case <-r.entered:
+	case err := <-one:
+		t.Fatalf("first rollback before restore: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("first rollback never reached restore")
+	}
+	go func() { two <- RollbackRecord(context.Background(), root, &second, remotes, paths) }()
+	var secondErr error
+	secondDone := false
+	select {
+	case secondErr = <-two:
+		secondDone = true
+	case <-r.overlap:
+	case <-time.After(5 * time.Second):
+	}
+	cleanup()
+	if err := <-one; err != nil {
+		t.Fatal(err)
+	}
+	if !secondDone {
+		secondErr = <-two
+	}
+	if got := r.restores.Load(); got != 1 {
+		t.Fatalf("overlapping rollbacks restored backup %d times", got)
+	}
+	if secondErr != nil && !strings.Contains(secondErr.Error(), "E460") {
+		t.Fatalf("second rollback = %v", secondErr)
+	}
+	// A stale caller must reload the completed record before deciding to restore.
+	if err := RollbackRecord(context.Background(), root, &rec, remotes, paths); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.restores.Load(); got != 1 {
+		t.Fatalf("stale rollback restored backup %d times", got)
 	}
 }
 
@@ -67,6 +169,7 @@ func TestPromoteRecordRollbackOnce(t *testing.T) {
 	}
 	remotes := map[string]deploy.Remote{"primary": r}
 	paths := map[string]string{"primary": "/srv/app"}
+	persistRollbackFixture(t, root, rec)
 	if err := RollbackRecord(context.Background(), root, rec, remotes, paths); err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +195,9 @@ func TestPromoteRecordMigrationEvidence(t *testing.T) {
 			r := &recordRemote{label: "primary"}
 			rec := &Record{Status: status, BackupID: "backup-1", BackupHost: r.label,
 				PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"}}
-			if err := RollbackRecord(context.Background(), t.TempDir(), rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
+			root := t.TempDir()
+			persistRollbackFixture(t, root, rec)
+			if err := RollbackRecord(context.Background(), root, rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
 				t.Fatal(err)
 			}
 			for _, call := range r.calls {
@@ -113,7 +218,9 @@ func TestPromoteRecordRestoreOrder(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"migrate_started":true}`), rec); err != nil {
 		t.Fatal(err)
 	}
-	if err := RollbackRecord(context.Background(), t.TempDir(), rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
+	root := t.TempDir()
+	persistRollbackFixture(t, root, rec)
+	if err := RollbackRecord(context.Background(), root, rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"}); err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(r.calls, "\n")
@@ -129,9 +236,42 @@ func TestPromoteRecordRestoreOrder(t *testing.T) {
 func TestPromoteRecordValidatesBeforeChange(t *testing.T) {
 	good := &recordRemote{label: "one"}
 	rec := &Record{PreDeployTar: map[string]string{"one": "/tmp/one.tar.gz", "two": "/tmp/two.tar.gz"}}
-	err := RollbackRecord(context.Background(), t.TempDir(), rec,
+	root := t.TempDir()
+	persistRollbackFixture(t, root, rec)
+	err := RollbackRecord(context.Background(), root, rec,
 		map[string]deploy.Remote{"one": good}, map[string]string{"one": "/srv/one", "two": "/srv/two"})
 	if err == nil || len(good.calls) != 0 {
 		t.Fatalf("validation error = %v, calls = %v", err, good.calls)
+	}
+}
+
+func TestPromoteRecordRollbackReloadAuthority(t *testing.T) {
+	for _, mutation := range []string{"missing", "superseded", "corrupt"} {
+		t.Run(mutation, func(t *testing.T) {
+			root := t.TempDir()
+			r := &recordRemote{label: "primary"}
+			rec := &Record{MigrateStarted: true, BackupID: "backup-1", BackupHost: "primary", PreDeployTar: map[string]string{"primary": "/srv/app/.nself/backups/pre-deploy-1.tar.gz"}}
+			persistRollbackFixture(t, root, rec)
+			switch mutation {
+			case "missing":
+				if err := os.Remove(filepath.Join(root, RecordFile)); err != nil {
+					t.Fatal(err)
+				}
+			case "superseded":
+				if err := deploy.SaveDeployState(root, deploy.StrategyState{Target: rec.Target, CompletedAt: rec.CompletedAt.Add(time.Second)}); err != nil {
+					t.Fatal(err)
+				}
+			case "corrupt":
+				changed := *rec
+				changed.Status = "unknown"
+				if err := SaveRecord(root, changed); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := RollbackRecord(context.Background(), root, rec, map[string]deploy.Remote{"primary": r}, map[string]string{"primary": "/srv/app"})
+			if err == nil || !strings.Contains(err.Error(), "E485") || len(r.calls) != 0 {
+				t.Fatalf("stale authority err=%v remote=%v", err, r.calls)
+			}
+		})
 	}
 }

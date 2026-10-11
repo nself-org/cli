@@ -100,7 +100,8 @@ cascade in a scratch directory. Production values never enter the operator's tre
 
 Compare proves per-platform image digest equality before taking a snapshot or
 changing the target. It resolves every staged compose fragment with the target's
-environment files and captures the source using its compose manifest.
+environment files and captures the source using its compose manifest. Each service's
+`platform` override selects its manifest; a source platform mismatch is drift.
 Drift exits 1 (`E490`) and names the affected services and lookup failures.
 Services with a compose `build:` context are unverifiable: prod refuses them;
 other tiers warn. The snapshot is created, located by tag, and verified before
@@ -116,8 +117,10 @@ changed or absent files. `nself deploy rollback <target>` and the v1.5
 using the verified backup on its recorded target host.
 Record rollback reapplies all saved stacks before restoring the database, only
 when migration started and the backup has not already been restored. An already
-rolled-back record changes nothing. Foreign, superseded, or unusable promotion
-records are refused; an absent promotion record uses the v1.5 deploy record.
+rolled-back record changes nothing. The project deploy operation lock covers record
+reload, file reapply, database restore, health, and persistence. For `deploy rollback`,
+foreign or superseded promotion records use the v1.5 deploy record; an unusable
+same-target record is refused with `E485` before remote writes.
 Promotions also update the record used by `deploy status` and the next deployment.
 
 With no arguments, `deploy promote` keeps the existing canary flip. In v1.4,

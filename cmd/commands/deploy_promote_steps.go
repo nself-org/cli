@@ -16,14 +16,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/controlplane"
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
 	"github.com/nself-org/cli/internal/deploy"
-	"github.com/nself-org/cli/internal/deploy/archguard"
 	"github.com/nself-org/cli/internal/errs"
 	remotesdk "github.com/nself-org/cli/sdk/go/v2/remote"
 	"github.com/spf13/cobra"
@@ -265,30 +263,16 @@ func runPromoteCompare(w *promoteWiring) func(context.Context, *cpromote.State) 
 		if err != nil {
 			return err
 		}
-		arch := strings.TrimSpace(w.targetServer.Arch)
-		if arch == "" {
-			raw, probeErr := w.targetRemote.Run(ctx, "uname -m")
-			if probeErr != nil {
-				return probeErr
-			}
-			arch = strings.TrimSpace(string(raw))
-		}
-		switch arch {
-		case "x86_64":
-			arch = "amd64"
-		case "aarch64":
-			arch = "arm64"
+		arch, err := cpromote.TargetArchitecture(ctx, w.targetServer.Arch, func(c context.Context, command string) ([]byte, error) {
+			return w.targetRemote.Run(c, command)
+		})
+		if err != nil {
+			return err
 		}
 		source, _ := st.Values["source_images"].([]cpromote.SourceImage)
 		if run, ok := st.Values["source_runner"].(cpromote.Runner); ok {
 			raw, _ := st.Values["source_raw"].([]byte)
-			replay := func(c context.Context, command string) ([]byte, error) {
-				if command == "docker compose images --format json" {
-					return raw, nil
-				}
-				return run(c, command)
-			}
-			source, err = cpromote.CaptureSource(ctx, replay, images, archguard.RegistryLookup)
+			source, err = cpromote.CaptureManifestSource(ctx, run, raw, nil)
 			if err != nil {
 				return err
 			}

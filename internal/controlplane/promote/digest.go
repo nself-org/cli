@@ -18,9 +18,10 @@ type Runner func(context.Context, string) ([]byte, error)
 
 // Image identifies one generated compose service and whether it has a build context.
 type Image struct {
-	Service string
-	Ref     string
-	Build   bool
+	Service  string
+	Ref      string
+	Platform string
+	Build    bool
 }
 
 // SourceImage is the per-platform identity captured from a running source.
@@ -89,6 +90,9 @@ func CaptureSource(ctx context.Context, run Runner, services []Image, lookup arc
 		identity, err := inspectSource(ctx, run, lookup, image.Service, ref, image.ID)
 		if err != nil {
 			return nil, err
+		}
+		if platform := declared[image.Service].Platform; platform != "" && platform != identity.Platform {
+			return nil, errs.Newf("E490", "release drift: service %s runs %s but source compose selects %s", image.Service, identity.Platform, platform)
 		}
 		out = append(out, identity)
 	}
@@ -177,7 +181,14 @@ func CompareDigests(ctx context.Context, source []SourceImage, target []Image, t
 			continue
 		}
 		delete(sourceByService, image.Service)
-		targetDigest, err := targetPlatformDigest(ctx, image.Ref, "linux/"+targetArch, lookup)
+		platform := image.Platform
+		if platform == "" {
+			platform = "linux/" + targetArch
+		}
+		targetDigest, err := targetPlatformDigest(ctx, image.Ref, platform, lookup)
+		if src.Platform != "" && src.Platform != platform {
+			err = fmt.Errorf("source runs %s; target selects %s", src.Platform, platform)
+		}
 		row := DigestRow{Service: image.Service, Source: src.Digest, Target: targetDigest, Status: "equal"}
 		if err != nil || src.Digest == "" || src.Digest != targetDigest {
 			row.Status = "drift"

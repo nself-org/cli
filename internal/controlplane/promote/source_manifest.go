@@ -31,10 +31,16 @@ func ResolvedComposeImages(ctx context.Context, run Runner, files, envFiles []st
 	if err != nil {
 		return nil, fmt.Errorf("resolve promotion compose: %w", err)
 	}
+	return parseResolvedImages(raw)
+}
+
+// parseResolvedImages preserves service overrides from Docker's resolved model.
+func parseResolvedImages(raw []byte) ([]Image, error) {
 	var doc struct {
 		Services map[string]struct {
-			Image string          `json:"image"`
-			Build json.RawMessage `json:"build"`
+			Image    string          `json:"image"`
+			Platform string          `json:"platform"`
+			Build    json.RawMessage `json:"build"`
 		} `json:"services"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
@@ -42,7 +48,7 @@ func ResolvedComposeImages(ctx context.Context, run Runner, files, envFiles []st
 	}
 	images := make([]Image, 0, len(doc.Services))
 	for service, value := range doc.Services {
-		images = append(images, Image{Service: service, Ref: value.Image, Build: len(value.Build) > 0 && string(value.Build) != "null"})
+		images = append(images, Image{Service: service, Ref: value.Image, Platform: value.Platform, Build: len(value.Build) > 0 && string(value.Build) != "null"})
 	}
 	sort.Slice(images, func(i, j int) bool { return images[i].Service < images[j].Service })
 	return images, nil

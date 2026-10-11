@@ -9,9 +9,11 @@ package sim_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -55,6 +57,39 @@ func TestPromoteSimRestoreFailureFixture(t *testing.T) {
 	}
 }
 
+// classifyPromoteCommands treats only the explicit pre-compare read commands as
+// reads. Every other command is a write, including newly introduced commands.
+func classifyPromoteCommands(source, target *simHost, commands []string) (reads, writes []string) {
+	q := remotesdk.ShellQuote
+	cd := "cd " + q(source.rp) + " && "
+	allowed := map[string]bool{
+		cd + "nself doctor": true,
+		cd + "docker compose -f " + q(source.rp+"/docker-compose.yml") + " images --format json":                                                                               true,
+		cd + "docker image inspect --format '{{json .RepoDigests}}|{{.Os}}/{{.Architecture}}' " + q("sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"): true,
+		`printf '%s\n' "$HOME"`: true,
+	}
+	for _, name := range []string{"compose-files.txt", "compose-env-files.txt"} {
+		manifest := q(source.rp + "/.nself/" + name)
+		allowed[cd+"if [ -f "+manifest+" ]; then cat "+manifest+"; else printf '__NSELF_ABSENT__'; fi"] = true
+	}
+	pluginDir := q(target.home + "/.nself/plugins")
+	for _, script := range []string{
+		fmt.Sprintf(`grep -E '^[[:space:]]*(NSELF_PLUGIN_DIR|PLUGIN_DIR)=' %s 2>/dev/null || true`, q(target.rp+"/.env")),
+		fmt.Sprintf(`[ -d %s ] || exit 0; find %s -maxdepth 2 -name .disabled -print | sed 's/^/@D /'; find %s -maxdepth 2 -name plugin.json -exec sh -c 'for f; do printf "@F %%s\n" "$f"; cat "$f"; printf "\n"; done' sh {} +`, pluginDir, pluginDir, pluginDir),
+		fmt.Sprintf(`find -L %s -maxdepth 2 -name '*.pem' -print 2>/dev/null || true`, q(target.rp+"/ssl/certificates")),
+	} {
+		allowed["sh -c "+q(script)] = true
+	}
+	for _, command := range commands {
+		if allowed[command] {
+			reads = append(reads, command)
+		} else {
+			writes = append(writes, command)
+		}
+	}
+	return reads, writes
+}
+
 func TestSimPromote(t *testing.T) {
 	source, target := startHost(t), startHost(t)
 	// startHost resets HOME for each fleet. Trust both keys again in the final
@@ -80,14 +115,29 @@ func TestSimPromote(t *testing.T) {
 	for _, h := range []*simHost{source, target} {
 		h.put("/usr/local/bin/nself", promoteNselfStub)
 		docker := strings.Replace(dockerStub, `case "$*" in`, `case "$*" in
-  *" images --format json"*) printf '[{"Service":"web","Repository":"example.invalid/web","Tag":"2","ID":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]' ;;
-  *"image inspect --format"*) printf '["example.invalid/web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]|linux/amd64' ;;`, 1)
+  *" images --format json"*)
+    if [ -f /tmp/sim-running-web ]; then
+      image=$(cat /tmp/sim-running-web); id=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      [ "$image" = web:2 ] && id=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      printf '[{"Service":"web","Repository":"%s","Tag":"%s","ID":"sha256:%s"}]' "${image%:*}" "${image##*:}" "$id"
+    else printf '[]'; fi ;;
+  *"image inspect --format"*)
+    for last; do :; done
+    digest=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    [ "$last" = sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc ] && digest=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    printf '["web@sha256:%s"]|linux/amd64' "$digest" ;;`, 1)
+		docker = strings.Replace(docker, `*"up -d --no-deps"*)`, `*"up -d --no-deps"*)
+    for last; do :; done
+    if [ "$last" = web ]; then
+      awk '/^  web:/{web=1; next} web && /^    image:/{print $2; exit}' docker-compose.yml > /tmp/sim-running-web
+    fi;`, 1)
 		h.put("/usr/local/bin/docker", docker)
 		h.sh("chmod 755 /usr/local/bin/nself /usr/local/bin/docker; printf original > /tmp/sim-db-fp; chown nself /tmp/sim-db-fp")
 		h.put(h.rp+"/docker-compose.yml", "old\n")
 		h.own()
 		h.scenario(" Container proj-web-1 Recreate\n")
 	}
+	source.sh("printf web:2 > /tmp/sim-running-web; chown nself /tmp/sim-running-web")
 	sourceRemote, targetRemote := source.remote(), target.remote()
 	tag := "pre-promote-1791720000-deadbeef"
 	recordRoot := t.TempDir()
@@ -111,7 +161,7 @@ func TestSimPromote(t *testing.T) {
 			sourceLookup := func(context.Context, string) (map[string]string, error) {
 				return map[string]string{"linux/amd64": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
 			}
-			images, err := promote.CaptureSource(ctx, capturedRun, []promote.Image{{Service: "web", Ref: "example.invalid/web:2"}}, sourceLookup)
+			images, err := promote.CaptureSource(ctx, capturedRun, []promote.Image{{Service: "web", Ref: "web:2"}}, sourceLookup)
 			st.Values["source_images"] = images
 			return err
 		}
@@ -128,7 +178,7 @@ func TestSimPromote(t *testing.T) {
 				return map[string]string{"linux/amd64": targetDigest}, nil
 			}
 			rows, err := promote.CompareDigests(ctx, st.Values["source_images"].([]promote.SourceImage),
-				[]promote.Image{{Service: "web", Ref: "example.invalid/web:2"}}, "amd64", st.TargetTier, lookup, nil)
+				[]promote.Image{{Service: "web", Ref: "web:2"}}, "amd64", st.TargetTier, lookup, nil)
 			st.Digests = rows
 			return err
 		}
@@ -170,6 +220,27 @@ func TestSimPromote(t *testing.T) {
 		}
 		if len(rec.Digests) != 1 || rec.Digests[0].Source != equalDigest || rec.Digests[0].Target != equalDigest || rec.Digests[0].Status != "equal" {
 			t.Fatalf("source and target digest identities differ: %#v", rec.Digests)
+		}
+		capture := func(host *simHost, remote *recordingRemote) []promote.SourceImage {
+			runner := func(ctx context.Context, command string) ([]byte, error) {
+				return remote.Run(ctx, "cd "+remotesdk.ShellQuote(host.rp)+" && "+command)
+			}
+			manifest, _, err := promote.CaptureSourceManifest(context.Background(), runner, host.rp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			images, err := promote.CaptureSource(context.Background(), manifest, []promote.Image{{Service: "web", Ref: "web:2"}},
+				func(_ context.Context, ref string) (map[string]string, error) {
+					return map[string]string{"linux/amd64": strings.Split(ref, "@")[1]}, nil
+				})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return images
+		}
+		sourceImages, targetImages := capture(source, sourceRemote), capture(target, targetRemote)
+		if len(sourceImages) == 0 || !reflect.DeepEqual(sourceImages, targetImages) {
+			t.Fatalf("running target identities = %#v, source = %#v", targetImages, sourceImages)
 		}
 	})
 	t.Run("health rollback", func(t *testing.T) {
@@ -218,16 +289,16 @@ func TestSimPromote(t *testing.T) {
 		}
 		target.sh("rm -f /tmp/sim-verify-fail")
 		targetRemote.log = nil
+		sourceRemote.log = nil
 		err = run("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 		var driftErr *errs.CLIError
 		driftLog := strings.Join(targetRemote.log, "\n")
 		if !errors.As(err, &driftErr) || driftErr.Code != "E490" {
 			t.Fatalf("drift failure = %v, want E490\n%s", err, driftLog)
 		}
-		for _, forbidden := range []string{"backup create", "db migrate", "docker compose", "rsync", "tar -czf"} {
-			if strings.Contains(driftLog, forbidden) {
-				t.Fatalf("drift reached remote write %q:\n%s", forbidden, driftLog)
-			}
+		reads, writes := classifyPromoteCommands(source, target, append(sourceRemote.log, targetRemote.log...))
+		if len(reads) == 0 || len(writes) != 0 {
+			t.Fatalf("drift commands: reads = %#v; writes = %#v", reads, writes)
 		}
 	})
 	t.Run("restore failure stops rollback", func(t *testing.T) {

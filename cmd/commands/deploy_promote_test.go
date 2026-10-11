@@ -211,6 +211,8 @@ func (r *promoteSafetyRemote) Run(_ context.Context, command string) ([]byte, er
 		return []byte("__NSELF_ABSENT__"), nil
 	case strings.Contains(command, " images --format json"):
 		return []byte(fmt.Sprintf(`[{"Service":"api","Repository":%q,"Tag":%q,"ID":%q}]`, r.repository, r.tag, r.imageID)), nil
+	case strings.Contains(command, " config --format json"):
+		return []byte(fmt.Sprintf(`{"services":{"api":{"image":%q}}}`, r.repository+":"+r.tag)), nil
 	case strings.Contains(command, "docker image inspect"):
 		return []byte(fmt.Sprintf(`[%q]|linux/amd64`, r.repository+"@"+r.index)), nil
 	case strings.Contains(command, "nself backup create"):
@@ -378,15 +380,72 @@ func TestPromoteRecordRollbackCommands(t *testing.T) {
 	}
 }
 
-func TestPromoteForeignRecordRefused(t *testing.T) {
-	compattest.Set(t, true)
-	root := promoteFixture(t)
-	if err := cpromote.SaveRecord(root, cpromote.Record{ID: "foreign", Target: "ls", Status: "ok", CompletedAt: time.Now()}); err != nil {
-		t.Fatal(err)
+func TestPromoteInapplicableRecordUsesDeployRecord(t *testing.T) {
+	for _, superseded := range []bool{false, true} {
+		t.Run(fmt.Sprint(superseded), func(t *testing.T) {
+			compattest.Set(t, true)
+			root := promoteFixture(t)
+			when := time.Now()
+			rec := cpromote.Record{ID: "foreign", Target: "ls", Status: "ok", CompletedAt: when}
+			if superseded {
+				rec.Target = "prodsim"
+			}
+			if err := cpromote.SaveRecord(root, rec); err != nil {
+				t.Fatal(err)
+			}
+			state := deploy.StrategyState{Target: "prodsim", CompletedAt: when.Add(time.Second), BackupHost: "prod-app", PreDeployTars: map[string]string{"prod-app": "/srv/fixture/.nself/backups/pre-deploy-fixture.tar.gz"}, PreDeployChanged: map[string][]string{"prod-app": {"docker-compose.yml"}}}
+			if err := deploy.SaveDeployState(root, state); err != nil {
+				t.Fatal(err)
+			}
+			r := &v15Remote{label: "prod-app"}
+			old := deployRemoteOpen
+			t.Cleanup(func() { deployRemoteOpen = old })
+			deployRemoteOpen = func(context.Context, controlplane.Server, string, string) (deploy.Remote, error) { return r, nil }
+			cmd := &cobra.Command{}
+			cmd.SetContext(context.Background())
+			if err := runDeployRollback(cmd, []string{"prodsim"}); err != nil {
+				t.Fatal(err)
+			}
+			if firstIndex(r.commands(), "tar -xzf") < 0 {
+				t.Fatalf("inapplicable promotion blocked deploy rollback: %v", r.commands())
+			}
+		})
 	}
-	handled, err := rollbackPromoteForTarget(context.Background(), root, "prodsim")
-	if !handled || err == nil || !strings.Contains(err.Error(), "nothing") {
-		t.Fatalf("foreign record handled=%v err=%v", handled, err)
+}
+
+func TestPromoteSameTargetCorruptRecordRefused(t *testing.T) {
+	for _, corruption := range []string{"json", "status", "tar", "changed"} {
+		t.Run(corruption, func(t *testing.T) {
+			compattest.Set(t, true)
+			root := promoteFixture(t)
+			rec := cpromote.Record{ID: "fixture", Target: "prodsim", Status: "ok", CompletedAt: time.Now(), PreDeployTar: map[string]string{"prod-app": "/srv/fixture/.nself/backups/pre-deploy-fixture.tar.gz"}, Changed: map[string][]string{"prod-app": {"docker-compose.yml"}}}
+			switch corruption {
+			case "status":
+				rec.Status = "unknown"
+			case "tar":
+				rec.PreDeployTar = nil
+			case "changed":
+				rec.Changed = nil
+			}
+			if err := cpromote.SaveRecord(root, rec); err != nil {
+				t.Fatal(err)
+			}
+			if corruption == "json" {
+				wf(t, filepath.Join(root, cpromote.RecordFile), `{"target":"prodsim",broken`)
+			}
+			r := &v15Remote{label: "prod-app"}
+			old := deployRemoteOpen
+			t.Cleanup(func() { deployRemoteOpen = old })
+			opens := 0
+			deployRemoteOpen = func(context.Context, controlplane.Server, string, string) (deploy.Remote, error) {
+				opens++
+				return r, nil
+			}
+			handled, err := rollbackPromoteForTarget(context.Background(), root, "prodsim")
+			if !handled || err == nil || !strings.Contains(err.Error(), "E485") || opens != 0 || len(r.commands()) != 0 {
+				t.Fatalf("handled=%v err=%v opens=%d remote=%v", handled, err, opens, r.commands())
+			}
+		})
 	}
 }
 
@@ -466,6 +525,36 @@ esac
 	}
 }
 
+func TestPromoteCompareServicePlatformFragment(t *testing.T) {
+	root := promoteFixture(t)
+	locked := compose.LockedImages()[0]
+	wf(t, filepath.Join(root, "docker-compose.yml"), "services:\n  api:\n    image: "+locked.String()+"\n")
+	wf(t, filepath.Join(root, "override.yml"), "services:\n  api:\n    platform: linux/arm64\n")
+	wf(t, filepath.Join(root, ".nself", "compose-files.txt"), "docker-compose.yml\noverride.yml\n")
+	bin := t.TempDir()
+	script := `#!/bin/sh
+case "$*" in
+ *"override.yml"*"config --format json"*) printf '%s' '{"services":{"api":{"image":"` + locked.String() + `","platform":"linux/arm64"}}}' ;;
+ *) exit 3 ;;
+esac
+`
+	wf(t, filepath.Join(bin, "docker"), script)
+	if err := os.Chmod(filepath.Join(bin, "docker"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	r := &promoteSafetyRemote{label: "prod-app"}
+	w := &promoteWiring{workdir: root, compose: filepath.Join(root, "docker-compose.yml"), targetServer: controlplane.Server{Arch: "amd64"}, targetRemote: r}
+	st := &cpromote.State{TargetTier: controlplane.TierProd, Values: map[string]any{"source_images": []cpromote.SourceImage{{Service: "api", Digest: locked.Platforms["linux/amd64"], Platform: "linux/amd64"}}}}
+	err := runPromoteCompare(w)(context.Background(), st)
+	if err == nil || !strings.Contains(err.Error(), "E490") || !strings.Contains(err.Error(), "api") {
+		t.Fatalf("service platform drift passed: %v", err)
+	}
+	if len(r.log) != 0 {
+		t.Fatalf("platform refusal reached target writes: %v", r.log)
+	}
+}
+
 func TestPromoteRolledBackRecordNoRemote(t *testing.T) {
 	compattest.Set(t, true)
 	root := promoteFixture(t)
@@ -518,6 +607,26 @@ func TestPromoteRollbackAbsentUsesDeployRecord(t *testing.T) {
 	}
 	if firstIndex(r.commands(), "tar -xzf") < 0 {
 		t.Fatal("absent promote did not use deploy record")
+	}
+}
+
+func TestPromoteRollbackNoLocalSnapshotFallback(t *testing.T) {
+	for _, shim := range []bool{false, true} {
+		t.Run(fmt.Sprint(shim), func(t *testing.T) {
+			compattest.Set(t, true)
+			promoteFixture(t)
+			cmd := &cobra.Command{}
+			cmd.SetContext(context.Background())
+			var err error
+			if shim {
+				err = runPromoteRecordRollback(cmd)
+			} else {
+				err = runDeployRollback(cmd, []string{"prodsim"})
+			}
+			if err == nil || !strings.Contains(err.Error(), "E485") || !strings.Contains(err.Error(), "no usable v1.5 rollback record") {
+				t.Fatalf("v1.5 rollback reached a local snapshot fallback: %v", err)
+			}
+		})
 	}
 }
 
