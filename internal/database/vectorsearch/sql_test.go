@@ -31,7 +31,7 @@ func TestRenderStaysInlinable(t *testing.T) {
 				t.Errorf("%s: SQL contains %q:\n%s", d, banned, got)
 			}
 		}
-		for _, need := range []string{"LANGUAGE sql", "STABLE", `RETURNS SETOF "public"."docs"`, "query vector(3)", `ORDER BY "embedding" ` + docsSpec(d).Operator() + " query"} {
+		for _, need := range []string{"LANGUAGE sql", "STABLE", `RETURNS SETOF "public"."docs"`, "query vector(3)", `ORDER BY "embedding" ` + docsSpec(d).Operator() + " $1"} {
 			if !strings.Contains(got, need) {
 				t.Errorf("%s: SQL lacks %q:\n%s", d, need, got)
 			}
@@ -45,6 +45,20 @@ func TestRenderStaysInlinable(t *testing.T) {
 		if strings.Count(got, "SELECT") != 1 {
 			t.Errorf("%s: want one SELECT:\n%s", d, got)
 		}
+	}
+}
+
+// TestRenderQueryNamedColumn: a column called query must not shadow the
+// argument, so the body never names the parameter.
+func TestRenderQueryNamedColumn(t *testing.T) {
+	s := docsSpec(Cosine)
+	s.Column = "query"
+	got, err := Render(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, `ORDER BY "query" <=> $1`) {
+		t.Errorf("body does not use $1:\n%s", got)
 	}
 }
 

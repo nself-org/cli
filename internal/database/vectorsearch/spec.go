@@ -70,11 +70,6 @@ func (s *Spec) Validate() error {
 			return fmt.Errorf("invalid %s: %w", id.what, err)
 		}
 	}
-	// A column named like the function parameter would shadow it inside the
-	// SQL body (SQL functions prefer column names) and silently order by itself.
-	if strings.EqualFold(s.Column, "query") {
-		return fmt.Errorf("column %q cannot be searched: it collides with the function parameter name query; rename the column", s.Column)
-	}
 	if n := len(s.FunctionName()); n > maxFuncNameLen {
 		return fmt.Errorf("function name %q is %d bytes, over the Postgres limit of %d; use a shorter table or column name", s.FunctionName(), n, maxFuncNameLen)
 	}

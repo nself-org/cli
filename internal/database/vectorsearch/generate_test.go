@@ -15,6 +15,7 @@ type harness struct {
 	colType  string
 	tracked  bool
 	present  bool
+	colErr   error
 	drift    []string
 	trackErr error
 	tracks   [][]string
@@ -30,9 +31,10 @@ func newHarness() *harness {
 		TableTracked: func(string, string, string) (bool, bool, error) {
 			return h.present, h.tracked, nil
 		},
-		Drift: func(context.Context, string) ([]string, error) { return h.drift, nil },
-		Track: func(_ context.Context, schema, name, table string, roles []string) error {
-			h.tracks = append(h.tracks, append([]string{schema, name, table}, roles...))
+		ColumnVisible: func(string, string, string, string) error { return h.colErr },
+		Drift:         func(context.Context, string) ([]string, error) { return h.drift, nil },
+		Track: func(_ context.Context, schema, name, table, column string, roles []string) error {
+			h.tracks = append(h.tracks, append([]string{schema, name, table, column}, roles...))
 			return h.trackErr
 		},
 		Now: func() time.Time { return h.clock },
@@ -66,13 +68,14 @@ func TestRunRejectsBeforeWriting(t *testing.T) {
 		"text column":      func(h *harness) { h.colType = "text" },
 		"untracked":        func(h *harness) { h.tracked = false },
 		"no disk metadata": func(h *harness) { h.present = false },
+		"hidden column":    func(h *harness) { h.colErr = errors.New("E514 stand-in") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			h, dir := newHarness(), t.TempDir()
 			mut(h)
 			_, err := Run(t.Context(), h.deps, opts(dir, true))
-			if err == nil || !strings.Contains(err.Error(), "E513") {
-				t.Fatalf("err = %v, want E513", err)
+			if err == nil || !strings.Contains(err.Error(), "E513") && !strings.Contains(err.Error(), "E514") {
+				t.Fatalf("err = %v, want E513 or E514", err)
 			}
 			if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 				t.Errorf("files written despite the error: %v", entries)
@@ -114,7 +117,7 @@ func TestRunTrackMirrorsWhenClean(t *testing.T) {
 	if !res.Tracked || res.DiskMetadata != "updated" || len(h.tracks) != 1 {
 		t.Fatalf("result = %+v tracks=%v", res, h.tracks)
 	}
-	if got := strings.Join(h.tracks[0], ","); got != "public,docs_nearest_embedding,docs,user" {
+	if got := strings.Join(h.tracks[0], ","); got != "public,docs_nearest_embedding,docs,embedding,user" {
 		t.Errorf("Track args = %s", got)
 	}
 	data, _ := os.ReadFile(file)

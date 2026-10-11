@@ -17,9 +17,9 @@ func init() {
 		CodeEntry{
 			Code:       "E514",
 			Category:   "adopt",
-			Summary:    "Role has no select permission on the table",
-			DefaultWhy: "A role named in --roles has no select permission on the searched table, so a search function granted to it would expose no rows.",
-			DefaultFix: "Add a select permission for the role on the table, or pass only roles that already have one (--roles).",
+			Summary:    "Role cannot use the vector search function",
+			DefaultWhy: "A role named in --roles has no select permission on the searched table, or a role with a select permission hides the vector column. The function orders by that column and Hasura exposes it to every select role, so ordering would reveal the hidden column.",
+			DefaultFix: "Give the role a select permission on the table, pass only roles that have one (--roles), and add the vector column to the select columns of every role (or remove that role's permission).",
 			DocsPath:   "reference/error-codes#e514",
 			Exit:       1,
 		},

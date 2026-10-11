@@ -72,11 +72,22 @@ func (f *fakeHasura) serve(t *testing.T) *config.Config {
 	return cfg
 }
 
-// liveDoc builds an export_metadata document.
+// liveDoc builds an export_metadata document. A select role is "name" (columns
+// id and embedding), "name:*" (all columns) or "name:id" (only the listed column).
+// Select columns are never read from the role name alone.
 func liveDoc(selectRoles []string, fnRoles []string, fnTracked bool) string {
 	var sel, fperm []string
 	for _, r := range selectRoles {
-		sel = append(sel, fmt.Sprintf(`{"role":%q,"permission":{"columns":["id"],"filter":{}}}`, r))
+		role, cols, _ := strings.Cut(r, ":")
+		switch cols {
+		case "":
+			cols = `["id","embedding"]`
+		case "*":
+			cols = `"*"`
+		default:
+			cols = fmt.Sprintf("[%q]", cols)
+		}
+		sel = append(sel, fmt.Sprintf(`{"role":%q,"permission":{"columns":%s,"filter":{}}}`, role, cols))
 	}
 	for _, r := range fnRoles {
 		fperm = append(fperm, fmt.Sprintf(`{"role":%q}`, r))
@@ -99,7 +110,7 @@ func opTypes(ops []map[string]any) []string {
 
 func TestTrackFunction(t *testing.T) {
 	track := func(f *fakeHasura, roles ...string) error {
-		return TrackFunction(context.Background(), f.serve(t), "public", "docs_nearest_embedding", "docs", roles)
+		return TrackFunction(context.Background(), f.serve(t), "public", "docs_nearest_embedding", "docs", "embedding", roles)
 	}
 
 	t.Run("tracks the function and a permission per role in one bulk", func(t *testing.T) {
@@ -184,6 +195,46 @@ func TestTrackFunction(t *testing.T) {
 		}
 		if len(f.bulks) != 0 {
 			t.Error("sent a bulk although a role lacks select")
+		}
+	})
+
+	t.Run("E514 when a --roles role hides the vector column", func(t *testing.T) {
+		f := &fakeHasura{exports: []string{liveDoc([]string{"user", "staff:id"}, nil, false)}}
+		err := track(f, "user", "staff")
+		if err == nil || !strings.Contains(err.Error(), "E514") || !strings.Contains(err.Error(), "staff") || !strings.Contains(err.Error(), "embedding") {
+			t.Fatalf("err = %v, want E514 naming staff and the column", err)
+		}
+		if len(f.bulks) != 0 {
+			t.Error("sent a bulk although a role hides the column")
+		}
+	})
+
+	t.Run("E514 when any select role hides the column, even outside --roles", func(t *testing.T) {
+		f := &fakeHasura{exports: []string{liveDoc([]string{"user", "viewer:id"}, nil, false)}}
+		err := track(f, "user")
+		if err == nil || !strings.Contains(err.Error(), "E514") || !strings.Contains(err.Error(), "viewer") || strings.Contains(err.Error(), "user,") {
+			t.Fatalf("err = %v, want E514 naming only viewer", err)
+		}
+		if len(f.bulks) != 0 {
+			t.Error("sent a bulk although a select role hides the column")
+		}
+	})
+
+	t.Run("star columns and a hidden-role fix pass", func(t *testing.T) {
+		f := &fakeHasura{exports: []string{liveDoc([]string{"user:*", "staff"}, nil, false)}}
+		if err := track(f, "user", "staff"); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("persistent already-tracked race is an error, never nil", func(t *testing.T) {
+		f := &fakeHasura{
+			exports:    []string{liveDoc([]string{"user"}, nil, false)},
+			bulkStatus: 400,
+			bulkBody:   `{"code":"already-tracked","error":"x","path":"$.args[0].args"}`,
+		}
+		if err := track(f, "user"); err == nil || !strings.Contains(err.Error(), "still lacks") {
+			t.Fatalf("err = %v, want an error naming what is missing", err)
 		}
 	})
 
@@ -274,5 +325,28 @@ func TestVectorMetadataDriftJSON(t *testing.T) {
 	}
 	if _, err := VectorMetadataDrift(t.Context(), cfg, t.TempDir()); err == nil {
 		t.Error("drift check without on-disk metadata must fail")
+	}
+}
+
+func TestCheckDiskColumnVisible(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "hasura", "metadata", "sources.yaml")
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	doc := func(cols string) string {
+		return "- name: default\n  tables:\n    - table: {name: docs, schema: public}\n      select_permissions:\n        - role: user\n          permission: {columns: " + cols + ", filter: {}}\n"
+	}
+	for cols, wantErr := range map[string]bool{"[id, embedding]": false, "'*'": false, "[id]": true, "[]": true} {
+		if err := os.WriteFile(file, []byte(doc(cols)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := CheckDiskColumnVisible(dir, "public", "docs", "embedding")
+		if wantErr != (err != nil) || (err != nil && !strings.Contains(err.Error(), "E514")) {
+			t.Errorf("columns %s: err = %v, want error=%v", cols, err, wantErr)
+		}
+	}
+	if err := CheckDiskColumnVisible(t.TempDir(), "public", "docs", "embedding"); err != nil {
+		t.Errorf("no metadata must pass here (the tracked check reports it): %v", err)
 	}
 }

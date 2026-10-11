@@ -9,5 +9,5 @@ RETURNS SETOF "public"."docs"
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT * FROM "public"."docs" ORDER BY "embedding" <=> query
+  SELECT * FROM "public"."docs" ORDER BY "embedding" <=> $1
 $$;

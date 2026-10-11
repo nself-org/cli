@@ -8,7 +8,7 @@
 # Env:     W        work dir that has the same path on the host and in the
 #                   container (default: a fresh mktemp dir)
 #          E2E_KEEP_STACK=1  leave the stack and work dir for inspection
-# Needs:   nself (on PATH), docker with compose v2, curl, jq, openssl.
+# Needs:   docker with compose v2, curl, jq, openssl and the nself binary on PATH.
 # Outputs: "PASS" or "FAIL: <reason>" on stdout.
 # Exit:    0 PASS, 1 FAIL, 3 precondition not met (no Docker).
 # Constraints: bash 3.2 compatible. Uses the fixed project name e2e-adopt-vsearch
@@ -101,6 +101,14 @@ meta() { # meta <json body>: Hasura metadata API as admin
   curl -fsS -X POST "$HASURA/v1/metadata" -H "X-Hasura-Admin-Secret: $ADMIN_SECRET" -H 'Content-Type: application/json' -d "$1"
 }
 
+DOCS='{"schema":"public","name":"docs"}'
+sel_perm() { # sel_perm <role> <columns json>: (re)create a select permission on docs for <role> with filter {}
+  meta '{"type":"pg_drop_select_permission","args":{"source":"default","table":'"$DOCS"',"role":"'"$1"'"}}' >/dev/null 2>&1 || true
+  meta '{"type":"pg_create_select_permission","args":{"source":"default","table":'"$DOCS"',"role":"'"$1"'","permission":{"columns":'"$2"',"filter":{}}}}' >>"$LOG"
+}
+drop_perm() { meta '{"type":"pg_drop_select_permission","args":{"source":"default","table":'"$DOCS"',"role":"'"$1"'"}}' >>"$LOG"; }
+live_funcs() { meta '{"type":"export_metadata","args":{}}' | jq '[.sources[].functions[]?] | length'; }
+
 b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
 
 mint() { # mint <user-id> <role>: HS256 JWT with a single allowed role
@@ -174,6 +182,18 @@ grep -q 'RETURNS SETOF "public"."docs"' "$FILE" || fail "the function does not r
 if grep -qi 'LIMIT\|SECURITY DEFINER' "$FILE"; then fail "the migration holds a LIMIT or SECURITY DEFINER"; fi
 nself db migrate up --migration-dir migrations >>"$LOG" 2>&1 || fail "applying the vector-search migration"
 
+step "E514: a select role that hides the vector column blocks --track and changes nothing"
+sel_perm staff '["id","owner"]' || fail "staff select permission"
+set +e
+nself db generate vector-search public.docs.embedding --track >"$W/e514hidden.out" 2>&1
+code=$?
+set -e
+[ "$code" != "0" ] && grep -q "E514" "$W/e514hidden.out" && grep -q "staff" "$W/e514hidden.out" \
+  || { cat "$W/e514hidden.out"; fail "a role hiding the column was not refused with E514 naming it (exit $code)"; }
+[ "$(live_funcs)" = "0" ] || fail "a refused --track changed live metadata"
+sel_perm staff '["id","owner","embedding"]' || fail "fixing the staff permission"
+nself db hasura metadata export >>"$LOG" 2>&1 || fail "nself db hasura metadata export (after the fix)"
+
 nself db generate vector-search public.docs.embedding --track --json >"$W/track1.json" 2>"$W/track1.err" || { cat "$W/track1.err"; fail "generate --track"; }
 jq -e '.data.tracked == true and .data.disk_metadata == "updated"' "$W/track1.json" >/dev/null \
   || { cat "$W/track1.json"; fail "first --track did not track and mirror the entry"; }
@@ -209,25 +229,41 @@ printf '%s' "$OUT" | jq -e '(.errors | length) > 0 and (.data == null)' >/dev/nu
   || fail "a request with no credentials returned data: $OUT"
 
 step "the function inlines (no Function Scan)"
-PLAN="$(psqlc "EXPLAIN SELECT * FROM public.docs_nearest_embedding('[1,0,0]') WHERE owner = 'alice' LIMIT 2")"
-printf '%s\n' "$PLAN" >>"$LOG"
-if printf '%s\n' "$PLAN" | grep -q "Function Scan"; then fail "the plan has a Function Scan: $PLAN"; fi
-printf '%s\n' "$PLAN" | grep -q "docs" || fail "the plan does not scan docs: $PLAN"
+EXPL="$(curl -sS -X POST "$HASURA/v1/graphql/explain" -H "X-Hasura-Admin-Secret: $ADMIN_SECRET" -H 'Content-Type: application/json' \
+  -d "$(jq -nc --arg q "$QUERY" '{query:{query:$q}, user:{"x-hasura-role":"user","x-hasura-user-id":"alice"}}')")"
+printf '%s\n' "$EXPL" >>"$LOG"
+printf '%s' "$EXPL" | jq -e '(.[0].plan | length) > 0' >/dev/null || fail "Hasura returned no plan: $EXPL"
+if printf '%s' "$EXPL" | grep -q "Function Scan"; then fail "the Hasura plan has a Function Scan: $EXPL"; fi
+printf '%s' "$EXPL" | grep -q "docs" || fail "the plan does not scan docs: $EXPL"
 
-step "E514, and a drifted disk is left alone"
+step "E514 for a role without select, and from the on-disk metadata"
 set +e
 nself db generate vector-search public.docs.embedding --track --roles guest >"$W/e514.out" 2>&1
 code=$?
 set -e
 [ "$code" != "0" ] && grep -q "E514" "$W/e514.out" || fail "a role without select was not refused with E514 (exit $code)"
-meta '{"type":"pg_create_select_permission","args":{"source":"default","table":{"schema":"public","name":"docs"},"role":"staff","permission":{"columns":["id","owner","embedding"],"filter":{}}}}' >>"$LOG" || fail "staff select permission"
+sel_perm viewer '["id","owner"]' || fail "viewer select permission"
+nself db hasura metadata export >>"$LOG" 2>&1 || fail "nself db hasura metadata export (viewer)"
+files_before="$(ls migrations | wc -l | tr -d ' ')"
+set +e
+nself db generate vector-search public.docs.embedding >"$W/e514disk.out" 2>&1
+code=$?
+set -e
+[ "$code" != "0" ] && grep -q "E514" "$W/e514disk.out" && grep -q "viewer" "$W/e514disk.out" \
+  || { cat "$W/e514disk.out"; fail "the on-disk hidden column was not refused with E514 naming viewer (exit $code)"; }
+[ "$(ls migrations | wc -l | tr -d ' ')" = "$files_before" ] || fail "the E514 run wrote a migration"
+drop_perm viewer || fail "dropping viewer"
+nself db hasura metadata export >>"$LOG" 2>&1 || fail "nself db hasura metadata export (viewer removed)"
+
+step "a drifted disk is left alone"
+sel_perm auditor '"*"' || fail "auditor select permission"
 SUM_BEFORE="$(cat hasura/metadata/*.yaml | openssl dgst -sha256 | awk '{print $NF}')"
-nself db generate vector-search public.docs.embedding --track --roles user,staff --json >"$W/track3.json" 2>/dev/null || fail "--track with a drifted disk"
+nself db generate vector-search public.docs.embedding --track --roles user,auditor --json >"$W/track3.json" 2>/dev/null || fail "--track with a drifted disk"
 jq -e '.data.tracked == true and .data.disk_metadata == "skipped" and (.data.note | length) > 0' "$W/track3.json" >/dev/null \
   || { cat "$W/track3.json"; fail "a drifted disk was not skipped with a note"; }
 SUM_AFTER="$(cat hasura/metadata/*.yaml | openssl dgst -sha256 | awk '{print $NF}')"
 [ "$SUM_BEFORE" = "$SUM_AFTER" ] || fail "on-disk metadata changed although it had drifted"
-meta '{"type":"export_metadata","args":{}}' | jq -e '[.sources[].functions[]? | select(.function.name=="docs_nearest_embedding") | .permissions[].role] | sort == ["staff","user"]' >/dev/null \
+meta '{"type":"export_metadata","args":{}}' | jq -e '[.sources[].functions[]? | select(.function.name=="docs_nearest_embedding") | .permissions[].role] | sort == ["auditor","user"]' >/dev/null \
   || fail "live metadata does not hold both roles after the drifted run"
 
 step "live metadata and the catalog are unchanged apart from the function"

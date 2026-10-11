@@ -3,7 +3,9 @@ package vectorsearch
 // sql.go renders the migration. The function must stay inlinable so Hasura's
 // limit and the table's select filter apply to the ordered query: LANGUAGE sql,
 // STABLE, one SELECT, returns SETOF the table, no LIMIT, no SECURITY DEFINER and
-// no SET clause on the function (EPIC D7, review F11).
+// no SET clause on the function (EPIC D7, review F11). The body reads the
+// argument as $1, so a table column that happens to be named query cannot
+// shadow it.
 
 import (
 	"bytes"
@@ -26,7 +28,7 @@ RETURNS SETOF {{.Schema}}.{{.Table}}
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT * FROM {{.Schema}}.{{.Table}} ORDER BY {{.Column}} {{.Op}} query
+  SELECT * FROM {{.Schema}}.{{.Table}} ORDER BY {{.Column}} {{.Op}} $1
 $$;
 `))
 

@@ -27,10 +27,13 @@ type Deps struct {
 	// TableTracked reports on-disk tracking: present is false when the project
 	// has no on-disk metadata at all.
 	TableTracked func(projectDir, schema, table string) (present, tracked bool, err error)
+	// ColumnVisible returns E514 when an on-disk select permission hides the
+	// column (ordering by it would reveal it); nil when all roles see it.
+	ColumnVisible func(projectDir, schema, table, column string) error
 	// Drift lists the on-disk metadata keys that differ from live Hasura.
 	Drift func(ctx context.Context, projectDir string) ([]string, error)
 	// Track sends one bulk call: pg_track_function plus a permission per role.
-	Track func(ctx context.Context, schema, name, table string, roles []string) error
+	Track func(ctx context.Context, schema, name, table, column string, roles []string) error
 	// Now stamps a new migration file name.
 	Now func() time.Time
 }
@@ -79,6 +82,9 @@ func Run(ctx context.Context, d Deps, o Options) (Result, error) {
 	if !tracked {
 		return Result{}, errs.Newf("E513", "table %s.%s is not tracked in the on-disk Hasura metadata", s.Schema, s.Table)
 	}
+	if err := d.ColumnVisible(o.ProjectDir, s.Schema, s.Table, s.Column); err != nil {
+		return Result{}, err
+	}
 	sqlText, err := Render(s)
 	if err != nil {
 		return Result{}, err
@@ -104,7 +110,7 @@ func track(ctx context.Context, d Deps, o Options, s Spec, res Result) (Result, 
 	if err != nil {
 		return res, fmt.Errorf("compare on-disk metadata with live Hasura: %w", err)
 	}
-	if err := d.Track(ctx, s.Schema, s.FunctionName(), s.Table, s.Roles); err != nil {
+	if err := d.Track(ctx, s.Schema, s.FunctionName(), s.Table, s.Column, s.Roles); err != nil {
 		return res, err
 	}
 	res.Tracked = true

@@ -27,12 +27,13 @@ func useVectorFakes(t *testing.T, f *vectorFakes) {
 	t.Cleanup(func() { vectorDepsFor = old })
 	vectorDepsFor = func(*config.Config) vectorsearch.Deps {
 		return vectorsearch.Deps{
-			Exec:         func(context.Context, string, []string) (string, string, error) { return f.colType + "\n", "", nil },
-			PG:           vectorsearch.PG{Container: "demo_postgres", User: "postgres", DB: "nself"},
-			TableTracked: func(string, string, string) (bool, bool, error) { return true, true, nil },
-			Drift:        func(context.Context, string) ([]string, error) { return []string{"sources"}, nil },
-			Track: func(_ context.Context, schema, name, table string, roles []string) error {
-				f.tracks = append(f.tracks, append([]string{schema, name, table}, roles...))
+			Exec:          func(context.Context, string, []string) (string, string, error) { return f.colType + "\n", "", nil },
+			PG:            vectorsearch.PG{Container: "demo_postgres", User: "postgres", DB: "nself"},
+			TableTracked:  func(string, string, string) (bool, bool, error) { return true, true, nil },
+			ColumnVisible: func(string, string, string, string) error { return nil },
+			Drift:         func(context.Context, string) ([]string, error) { return []string{"sources"}, nil },
+			Track: func(_ context.Context, schema, name, table, column string, roles []string) error {
+				f.tracks = append(f.tracks, append([]string{schema, name, table, column}, roles...))
 				return nil
 			},
 			Now: func() time.Time { return time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC) },
@@ -70,7 +71,7 @@ func TestGenerateVectorCommand(t *testing.T) {
 			t.Fatalf("files=%v tracks=%v out=%s", files, f.tracks, out)
 		}
 		got, _ := os.ReadFile(files[0])
-		for _, want := range []string{`CREATE OR REPLACE FUNCTION "public"."docs_nearest_embedding"(query vector(3))`, `ORDER BY "embedding" <=> query`} {
+		for _, want := range []string{`CREATE OR REPLACE FUNCTION "public"."docs_nearest_embedding"(query vector(3))`, `ORDER BY "embedding" <=> $1`} {
 			if !strings.Contains(string(got), want) {
 				t.Errorf("migration lacks %q:\n%s", want, got)
 			}
@@ -91,7 +92,7 @@ func TestGenerateVectorCommand(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
-		if len(f.tracks) != 1 || strings.Join(f.tracks[0], ",") != "public,docs_nearest_embedding,docs,user,staff" {
+		if len(f.tracks) != 1 || strings.Join(f.tracks[0], ",") != "public,docs_nearest_embedding,docs,embedding,user,staff" {
 			t.Fatalf("tracks = %v", f.tracks)
 		}
 		var env struct {

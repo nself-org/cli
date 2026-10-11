@@ -92,15 +92,20 @@ var vectorDepsFor = func(cfg *config.Config) vectorsearch.Deps {
 	if user == "" {
 		user = "postgres"
 	}
+	db := cfg.Postgres.DB
+	if db == "" {
+		db = "nself" // the default database name, as in the rest of internal/database
+	}
 	return vectorsearch.Deps{
-		Exec:         docker.ExecCapture,
-		PG:           vectorsearch.PG{Container: cfg.ProjectName + "_postgres", User: user, DB: cfg.Postgres.DB},
-		TableTracked: database.MetadataTracksTable,
+		Exec:          docker.ExecCapture,
+		PG:            vectorsearch.PG{Container: cfg.ProjectName + "_postgres", User: user, DB: db},
+		TableTracked:  database.MetadataTracksTable,
+		ColumnVisible: database.CheckDiskColumnVisible,
 		Drift: func(ctx context.Context, projectDir string) ([]string, error) {
 			return database.VectorMetadataDrift(ctx, cfg, projectDir)
 		},
-		Track: func(ctx context.Context, schema, name, table string, roles []string) error {
-			return database.TrackFunction(ctx, cfg, schema, name, table, roles)
+		Track: func(ctx context.Context, schema, name, table, column string, roles []string) error {
+			return database.TrackFunction(ctx, cfg, schema, name, table, column, roles)
 		},
 		Now: time.Now,
 	}

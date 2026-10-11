@@ -29,7 +29,6 @@ func TestSpecValidate(t *testing.T) {
 		{"bad schema", Spec{Schema: "pub;lic", Table: "docs", Column: "e"}, "invalid schema"},
 		{"quote in table", Spec{Schema: "public", Table: `do"cs`, Column: "e"}, "invalid table"},
 		{"bad column", Spec{Schema: "public", Table: "docs", Column: "e e"}, "invalid column"},
-		{"query column", Spec{Schema: "public", Table: "docs", Column: "Query"}, "collides"},
 		{"name too long", Spec{Schema: "public", Table: long, Column: long}, "over the Postgres limit"},
 		{"bad distance", Spec{Schema: "public", Table: "docs", Column: "e", Distance: "dot"}, "invalid --distance"},
 		{"bad role", Spec{Schema: "public", Table: "docs", Column: "e", Roles: []string{"Admin1"}}, "invalid role"},
