@@ -36,6 +36,10 @@ func (st *buildState) applyProxyProvider(g *compose.Generator) error {
 	if err := proxyComposeDiscoverable(st.workdir, pluginDir, provider); err != nil {
 		return err
 	}
+	if provider == ProviderNginx && st.planning() && proxyDeclaredTraefik(st.cfg, st.workdir, pluginDir) {
+		// Step 7.05 records the install; reconcile re-plans its services after it.
+		provider = ProviderTraefik
+	}
 	if provider != ProviderNginx {
 		if err := checkProviderRoutes(st.withSnippetRoutes(st.routes), provider, st.cfg, st.workdir); err != nil {
 			return err
@@ -67,24 +71,26 @@ func proxyFrontingStack(cfg *config.Config, workdir string) error {
 			WithWhy("A fronted project requires the fronting stack's nginx service.").
 			WithFix("Restore nginx in the fronting stack or unset NGINX_FRONTED_BY.")
 	}
-	data, err := os.ReadFile(filepath.Join(root, "docker-compose.yml"))
+	composePath := filepath.Join(root, "docker-compose.yml")
+	data, err := os.ReadFile(composePath)
 	if err != nil && !os.IsNotExist(err) {
-		return err
+		return refuse(composePath + ": " + err.Error())
 	}
 	if bytes.HasPrefix(data, []byte(ComposeGeneratedHeader)) {
 		var document struct {
 			Services map[string]yaml.Node `yaml:"services"`
 		}
 		if err := yaml.Unmarshal(data, &document); err != nil {
-			return err
+			return refuse(composePath + ": " + err.Error())
 		}
 		if _, ok := document.Services[ProviderNginx]; !ok {
 			return refuse("generated docker-compose.yml has no nginx service")
 		}
 	}
-	data, err = os.ReadFile(filepath.Join(root, composeManifestFile))
+	manifestPath := filepath.Join(root, composeManifestFile)
+	data, err = os.ReadFile(manifestPath)
 	if err != nil && !os.IsNotExist(err) {
-		return err
+		return refuse(manifestPath + ": " + err.Error())
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		file := strings.TrimSpace(line)

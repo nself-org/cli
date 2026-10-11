@@ -74,9 +74,23 @@ func proxyLocalDir(project, dir string) error {
 	return nil
 }
 
-// proxyComposeDiscoverable uses actual discovery with an isolated memory sink.
-// Normalisation records plan effects and writes only memory, never plugin files.
+// proxyComposeDiscoverable scans nginx leftovers without normalisation and uses
+// dry discovery only for traefik. Plan effects never rewrite plugin files.
 func proxyComposeDiscoverable(workdir, pluginDir, provider string) error {
+	if provider == ProviderNginx {
+		entries, _ := os.ReadDir(pluginDir)
+		for _, entry := range entries {
+			file := filepath.Join(pluginDir, entry.Name(), pluginComposeFilename)
+			if !entry.IsDir() || !proxyTraefikFragment(file) {
+				continue
+			}
+			if info, err := os.Stat(file); err == nil && !info.IsDir() {
+				return errs.New("E480", "a traefik fragment would load while nginx serves 80/443: "+file+"; remove it or reinstall traefik").
+					WithFix("Export NSELF_PLUGIN_DIR in the shell for nself add and set it in .env for builds, using this project's plugin directory.")
+			}
+		}
+		return nil
+	}
 	files, err := discoverPluginComposeFilesFx(&planEffects{}, newMemSink(workdir, ""), workdir, pluginDir)
 	expected, pathErr := filepath.Abs(filepath.Join(pluginDir, "traefik", pluginComposeFilename))
 	if pathErr != nil {
@@ -88,9 +102,6 @@ func proxyComposeDiscoverable(workdir, pluginDir, provider string) error {
 			return proxyMissingFragment(expected)
 		}
 	}
-	if errors.Is(err, syscall.ENOTDIR) && provider == ProviderNginx {
-		return nil
-	}
 	if err != nil {
 		return err
 	}
@@ -98,13 +109,6 @@ func proxyComposeDiscoverable(workdir, pluginDir, provider string) error {
 		if provider == ProviderTraefik && file == expected {
 			return nil
 		}
-		if provider == ProviderNginx && proxyTraefikFragment(file) {
-			return errs.New("E480", "a traefik fragment would load while nginx serves 80/443: "+file+"; remove it or reinstall traefik").
-				WithFix("Export NSELF_PLUGIN_DIR in the shell for nself add and set it in .env for builds, using this project's plugin directory.")
-		}
-	}
-	if provider == ProviderNginx {
-		return nil
 	}
 	if info, err := os.Lstat(filepath.Dir(expected)); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		return errs.New("E480", "traefik entry "+filepath.Dir(expected)+" is not loaded by compose discovery").

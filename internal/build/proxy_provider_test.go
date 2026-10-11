@@ -118,6 +118,88 @@ func proxyRefusedBuild(t *testing.T, f *planFixture, names ...string) {
 }
 
 func TestProxyProviderInstalled(t *testing.T) {
+	t.Run("safe declared traefik plan and write both omit nginx", func(t *testing.T) {
+		f := freshProxyFixture(t)
+		calls := declareProxy(t, f)
+		before := proxyHashes(t, f.workdir)
+		plan, err := Build(f.workdir, BuildOptions{Mode: ModePlan})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if *calls != 0 || !reflect.DeepEqual(before, proxyHashes(t, f.workdir)) {
+			t.Fatal("plan installed a plugin or changed project files")
+		}
+		planned := plan.Planned.Files["docker-compose.yml"].Data
+		if len(planned) == 0 || bytes.Contains(planned, []byte("  nginx:\n")) {
+			t.Fatal("declared traefik plan must render compose without nginx")
+		}
+		if _, err := Build(f.workdir, BuildOptions{Mode: ModeWrite, Force: true}); err != nil {
+			t.Fatal(err)
+		}
+		written, err := os.ReadFile(filepath.Join(f.workdir, "docker-compose.yml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if *calls != 1 || bytes.Contains(written, []byte("  nginx:\n")) {
+			t.Fatalf("write disagrees with plan: installs=%d", *calls)
+		}
+	})
+	t.Run("nginx check skips non-traefik foreign network discovery", func(t *testing.T) {
+		f := freshProxyFixture(t)
+		t.Setenv("NSELF_V15", "1")
+		fragment := filepath.Join(f.plugins, "echo", pluginComposeFilename)
+		writeFixtureFile(t, fragment, "services:\n  echo:\n    image: echo:fixture\n    networks: [foreign]\nnetworks:\n  foreign:\n    external: true\n", 0644)
+		before := proxyHashes(t, f.workdir)
+		if _, err := Build(f.workdir, BuildOptions{Check: true}); err != nil {
+			t.Fatalf("validation-only build reached plugin discovery: %v", err)
+		}
+		if !reflect.DeepEqual(before, proxyHashes(t, f.workdir)) {
+			t.Fatal("check changed project files")
+		}
+	})
+	t.Run("nginx plugin environment warning prints once per build", func(t *testing.T) {
+		f := freshProxyFixture(t)
+		fragment := filepath.Join(f.plugins, "echo", pluginComposeFilename)
+		// network_mode preserves the env_file-only shape in both compatibility modes.
+		content := "services:\n  echo:\n    image: echo:fixture\n    env_file: [fixture.env]\n    network_mode: none\n"
+		var logs bytes.Buffer
+		previous := slog.Default()
+		slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+		t.Cleanup(func() { slog.SetDefault(previous) })
+		for range 2 {
+			writeFixtureFile(t, fragment, content, 0644)
+			logs.Reset()
+			// Plugin warnings use ui.Warn on stderr; capture it alongside slog.
+			stderr := captureStderr(t, func() {
+				if _, err := Build(f.workdir, BuildOptions{Force: true}); err != nil {
+					t.Fatal(err)
+				}
+			})
+			output := logs.String() + stderr
+			if count := strings.Count(output, "can't safely extend"); count != 1 {
+				t.Fatalf("want one plugin environment warning, got %d: %s", count, output)
+			}
+		}
+	})
+	t.Run("nginx scan ignores unreadable or unrelated plugin entries", func(t *testing.T) {
+		f := freshProxyFixture(t)
+		file := filepath.Join(f.workdir, "not-a-directory")
+		writeFixtureFile(t, file, "fixture", 0644)
+		if err := proxyComposeDiscoverable(f.workdir, file, ProviderNginx); err != nil {
+			t.Fatal(err)
+		}
+		outside := filepath.Join(f.root, "outside")
+		installProxy(t, outside)
+		if err := os.MkdirAll(f.plugins, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(outside, "traefik"), filepath.Join(f.plugins, "traefik.prev")); err != nil {
+			t.Fatal(err)
+		}
+		if err := proxyComposeDiscoverable(f.workdir, f.plugins, ProviderNginx); err != nil {
+			t.Fatalf("symlink directory is not discoverable: %v", err)
+		}
+	})
 	t.Run("dry discovery records normalization without disk writes", func(t *testing.T) {
 		f := freshProxyFixture(t)
 		installProxy(t, f.plugins)
@@ -333,6 +415,28 @@ func TestProxyProviderSharedDirRefused(t *testing.T) {
 }
 
 func TestProxyRefusalFronted(t *testing.T) {
+	for _, kind := range []string{"compose read", "compose YAML", "manifest read"} {
+		t.Run("fronting error wraps E482 "+kind, func(t *testing.T) {
+			f := freshProxyFixture(t)
+			cfg := &config.Config{}
+			cfg.Nginx.FrontedBy = filepath.Base(f.workdir)
+			backend := filepath.Join(f.workdir, "backend")
+			writeFixtureFile(t, filepath.Join(f.workdir, "nginx", "sites", "front.conf"), "server {}\n", 0644)
+			path := filepath.Join(f.workdir, "docker-compose.yml")
+			if kind == "manifest read" {
+				path = filepath.Join(f.workdir, composeManifestFile)
+			}
+			if kind == "compose YAML" {
+				writeFixtureFile(t, path, ComposeGeneratedHeader+"services: [\n", 0644)
+			} else if err := os.MkdirAll(path, 0755); err != nil {
+				t.Fatal(err)
+			}
+			err := proxyFrontingStack(cfg, backend)
+			if err == nil || !strings.Contains(err.Error(), "E482") || !strings.Contains(err.Error(), path) {
+				t.Fatalf("want E482 naming %s: %v", path, err)
+			}
+		})
+	}
 	t.Run("declared traefik refuses before install or writes", func(t *testing.T) {
 		f := freshProxyFixture(t)
 		calls := declareProxy(t, f)
