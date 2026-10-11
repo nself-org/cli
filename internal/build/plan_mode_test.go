@@ -205,7 +205,7 @@ func writePlanPlugin(t *testing.T, pluginsDir, name string, port int, withNginx 
 	writeFixtureFile(t, filepath.Join(dir, pluginComposeFilename), fmt.Sprintf("services:\n  %s:\n    image: nself/%s:latest\n    ports:\n      - \"%d:%d\"\n", name, name, port, port), 0o644)
 	writeFixtureFile(t, filepath.Join(dir, "Dockerfile"), "FROM scratch\n", 0o644)
 	if withNginx {
-		writeFixtureFile(t, filepath.Join(dir, "nginx", "route.conf"), "server {\n  listen 80;\n  server_name ${PLUGIN_NAME}.example.org;\n}\n", 0o644)
+		writeFixtureFile(t, filepath.Join(dir, "nginx", "route.conf"), "server {\n  listen 80;\n  server_name nself-alpha.${BASE_DOMAIN};\n}\n", 0o644)
 	}
 }
 

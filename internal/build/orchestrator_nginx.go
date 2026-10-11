@@ -37,7 +37,7 @@ func (st *buildState) modelRoutes(hasSSL bool) (*routemodel.Model, error) {
 // hand-managed routes. m itself is not changed.
 func (st *buildState) withSnippetRoutes(m *routemodel.Model) *routemodel.Model {
 	set := &snippetSet{}
-	set.plugins(st.workdir, st.cfg)
+	set.plugins(st.workdir, st.cfg, m.DefaultServer.HTTP.RedirectHTTPS)
 	set.handManaged(st.workdir, st.cfg, m.Env)
 	set.parse()
 	out := *m
@@ -80,9 +80,10 @@ func (s *snippetSet) parse() {
 	}
 }
 
-// plugins parses the snippets injectPluginNginxRoutesVia copies, rendered the
-// same way. Read errors are left to the injection step, which reports them.
-func (s *snippetSet) plugins(workdir string, cfg *config.Config) {
+// plugins parses the snippets injectPluginNginxRoutesVia copies, rendered and
+// skipped (pluginSnippetSkip, hasSSL = the model's TLS) the same way; a
+// skipped snippet is recorded in global, not dropped. Read errors are left to the injection step, which reports them.
+func (s *snippetSet) plugins(workdir string, cfg *config.Config, hasSSL bool) {
 	pluginDir, err := resolvePluginNginxDir("", cfg)
 	if err != nil {
 		return
@@ -99,7 +100,12 @@ func (s *snippetSet) plugins(workdir string, cfg *config.Config) {
 		matches, _ := pluginConfPaths(pluginDir, e.Name())
 		for _, match := range matches {
 			if data, err := os.ReadFile(match); err == nil {
-				s.add("plugin", e.Name(), filepath.Base(match), renderPluginSnippet(string(data), vars))
+				text := renderPluginSnippet(string(data), vars)
+				if why := pluginSnippetSkip(text, vars, hasSSL); why != "" {
+					s.global = append(s.global, fmt.Sprintf("skipped plugin %s/%s: %s", e.Name(), filepath.Base(match), why))
+					continue
+				}
+				s.add("plugin", e.Name(), filepath.Base(match), text)
 			}
 		}
 	}
