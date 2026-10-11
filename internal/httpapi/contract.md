@@ -2,9 +2,12 @@
 
 `nself admin serve [--host 127.0.0.1] [--port 3857] [--allowed-host <name>]…
 [--timeout 300s]` serves one listener. Non-loopback binds require an explicitly
-configured machine token and allowed host on every start, and print a cleartext
+configured machine token of at least 32 bytes with no whitespace, and an allowed
+host on every start, and print a cleartext
 HTTP warning. Loopback starts resolve or create the machine token and print its
 file path only. Tokens are never arguments or request log fields.
+Weak non-loopback tokens are refused with E426 on every start; the Fix points to
+`~/.nself/mcp-token`, created by running `nself admin serve` on loopback.
 The listening line prints only after the listener binds successfully. A bind
 failure returns an error without printing that line.
 
@@ -20,9 +23,11 @@ Document responses use `application/json` and preserve the envelope bytes from
 `NSELF_V15=1 nself <path> --json`. Confirmations and server refusals are v1
 envelopes. `X-Nself-Exit-Code` carries the child exit status or the server error's
 exit class; `X-Nself-Request-Id` carries the invocation request ID. A success
-envelope with `data.confirmation_required: true` requires HTTP 428 and a second
+confirmation issued by the invoker requires HTTP 428 and a second
 request carrying the returned `confirm`. One server guard owns confirmations and
 the shared machine audit log; every call passes through `internal/invoke`.
+HTTP 428 comes only from trusted `Result.Confirmation`, never child data. Envelope
+keys `error`, `code`, `class` and `data` are matched exactly, including case.
 
 `config set`, `config trust` and `config trust dns` are cli-only until they gain
 a confirmation round trip (D-0403/D-0402). They have no HTTP routes exposed or
@@ -30,6 +35,12 @@ OpenAPI operations in v1.
 
 `Accept: application/x-ndjson` requests exposed read commands whose effective
 output is stream, including document commands with an enabled stream override.
+Transport selection uses the command's effective output and request flags. A
+stream command selects NDJSON when that media type has positive quality. Other
+requests use documents when JSON or a JSON wildcard is acceptable; a document
+command accepting only NDJSON receives 406 E430. Mixed JSON and NDJSON Accept
+values keep document commands on JSON. Stream commands requested as JSON are
+refused by the invoker with E421.
 The response carries the child's JSON stream records and final envelope,
 flushes each write, and has no invocation timeout. The child is killed within
 2 seconds after client disconnect. Once streaming begins the status is 200 and
@@ -54,6 +65,8 @@ Fix: `pass --allowed-host <name>; the server adds the port itself`.
 A present Origin must be `http://<allowed host>:<port>`; `null` is refused.
 Requests with more than one Origin header receive HTTP 403 and E429 before
 authentication.
+Host, Origin and authentication refusals always use an empty envelope command
+and a request ID computed from the empty path, independent of route existence.
 No Access-Control-* header is sent. Middleware order is Host, Origin,
 AuthHook, method, content type, size, strict decode, Accept, then a maximum of
 four in-flight invocations. Unknown registry paths return E432; existing but
@@ -68,7 +81,12 @@ carry `WWW-Authenticate: Bearer realm="nself"`.
 
 The server defaults to a 10-second ReadHeaderTimeout, 30-second ReadTimeout,
 60-second IdleTimeout, and no WriteTimeout. Context cancellation shuts it down
-gracefully within 5 seconds. Each request logs one stderr line containing method,
+gracefully for up to 5 seconds before closing active HTTP connections. After the
+HTTP server stops, shutdown drains invocation handlers, including child cleanup
+and mutation audit writes, for up to 11 additional seconds (5-second document
+kill delay plus 5-second audit flock bound plus 1 second). Serve returns after
+the drain completes; a drain exceeding the cap logs one line. Each request logs
+one stderr line containing method,
 path truncated to 200 bytes, status, and duration in milliseconds. No body,
 header, query string or token is logged.
 Non-context invocation errors add one stderr line, `invoke error: <Go error type

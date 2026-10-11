@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/nself-org/cli/internal/cmdregistry"
 	"github.com/nself-org/cli/internal/invoke"
 )
 
@@ -59,8 +60,10 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = http.NewResponseController(w).SetReadDeadline(time.Time{})
-	stream, ok := accepts(headerValue(r.Header, "Accept"))
-	if !ok {
+	ndjson, documentOK := accepts(headerValue(r.Header, "Accept"))
+	cmd, _ := s.o.Registry.Lookup(path)
+	stream := cmdregistry.EffectiveOutput(cmd, invoke.SetFlags(req)) == "stream" && ndjson
+	if !stream && !documentOK {
 		s.failure(w, r, "E430", 406)
 		return
 	}
@@ -76,7 +79,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		s.stream(w, r, path, req, o)
 		return
 	}
-	res, err := s.o.Invoker(r.Context(), s.o.Registry, path, req, o)
+	res, err := s.invokeTracked(r.Context(), path, req, o)
 	if err != nil {
 		s.logInvokeError(r, err)
 		if r.Context().Err() == nil {

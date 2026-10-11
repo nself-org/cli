@@ -32,6 +32,12 @@ const streamResult = "{\"schema_version\":\"1\",\"command\":\"stream\",\"data\":
 func TestMain(m *testing.M) {
 	if os.Getenv("HTTPAPI_STUB") == "1" {
 		switch os.Getenv("HTTPAPI_MODE") {
+		case "shutdown":
+			signal.Ignore(syscall.SIGTERM)
+			_ = os.WriteFile(os.Getenv("HTTPAPI_PID"), []byte(strconv.Itoa(os.Getpid())), 0600)
+			for {
+				time.Sleep(time.Second)
+			}
 		case "block":
 			_ = os.WriteFile(filepath.Join(os.Getenv("HTTPAPI_PID"), strconv.Itoa(os.Getpid())), []byte("ready"), 0600)
 			time.Sleep(30 * time.Second)
@@ -47,7 +53,11 @@ func TestMain(m *testing.M) {
 				time.Sleep(10 * time.Millisecond)
 			}
 		default:
-			fmt.Print(doc)
+			if body := os.Getenv("HTTPAPI_BODY"); body != "" {
+				fmt.Print(body)
+			} else {
+				fmt.Print(doc)
+			}
 		}
 		os.Exit(0)
 	}
@@ -103,6 +113,7 @@ func server(t *testing.T) *Server {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HTTPAPI_STUB", "1")
 	t.Setenv("HTTPAPI_MODE", "")
+	t.Setenv("HTTPAPI_BODY", "")
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -277,7 +288,7 @@ func TestStatusMapping(t *testing.T) {
 			t.Fatal(tc, got)
 		}
 	}
-	if status(invoke.Result{Stdout: []byte(`{"data":{"confirmation_required":true}}`)}) != 428 || status(invoke.Result{Stdout: []byte(doc), ExitCode: 10}) != 200 {
+	if status(invoke.Result{Stdout: []byte(`{"data":{"confirmation_required":true}}`), Confirmation: true}) != 428 || status(invoke.Result{Stdout: []byte(doc), ExitCode: 10}) != 200 {
 		t.Fatal("data status")
 	}
 }

@@ -76,7 +76,9 @@ func invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Req
 		return refuse(res, command, d.Refusal), nil
 	case DecisionConfirm:
 		tr.decision = DecisionConfirm
-		return confirmationResult(res, command, d.Confirmation), nil
+		res = confirmationResult(res, command, d.Confirmation)
+		res.Confirmation = res.ErrorCode == ""
+		return res, nil
 	}
 	argv, err := BuildArgvFor(cmd, req, transport)
 	if err != nil {

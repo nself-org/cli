@@ -88,6 +88,9 @@ type Result struct {
 	// ErrorCode is the E42x code when Stdout is an envelope written by this
 	// package (Invoke only); empty when Stdout is the child's own document.
 	ErrorCode string
+	// Confirmation is true only when Invoke issued a gate confirmation.
+	// Child output cannot set this trusted transport status metadata.
+	Confirmation bool
 }
 
 // Options configures Invoke.

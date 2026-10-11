@@ -23,25 +23,25 @@ func headerValue(h http.Header, key string) string {
 func (s *Server) authorized(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.hosts[strings.ToLower(r.Host)] {
-			s.failure(w, r, "E428", 421)
+			s.unauthenticatedFailure(w, "E428", 421)
 			return
 		}
 		origin := headerValue(r.Header, "Origin")
 		_, originPresent := r.Header["Origin"]
 		if len(r.Header.Values("Origin")) > 1 || originPresent && (!strings.HasPrefix(origin, "http://") || !s.hosts[strings.ToLower(strings.TrimPrefix(origin, "http://"))]) {
-			s.failure(w, r, "E429", 403)
+			s.unauthenticatedFailure(w, "E429", 403)
 			return
 		}
 		if _, err := s.o.Auth.Authenticate(r); err != nil {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="nself"`)
-			s.failure(w, r, "E426", 401)
+			s.unauthenticatedFailure(w, "E426", 401)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-func accepts(value string) (stream, ok bool) {
+func accepts(value string) (stream, document bool) {
 	if value == "" {
 		return false, true
 	}
@@ -57,11 +57,11 @@ func accepts(value string) (stream, ok bool) {
 			}
 		}
 		if typ == "application/x-ndjson" {
-			return true, true
+			stream = true
 		}
 		if typ == "application/json" || typ == "*/*" || typ == "application/*" {
-			ok = true
+			document = true
 		}
 	}
-	return false, ok
+	return stream, document
 }

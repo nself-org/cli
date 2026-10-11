@@ -40,7 +40,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request, path string, req
 	cmd, _ := s.o.Registry.Lookup(path)
 	f := &flushWriter{w: w, id: invoke.RequestID(path, cmd, req)}
 	o.Transport, o.Timeout, o.Stdout, o.KillDelay = invoke.TransportHTTPStream, 0, f, 1500*time.Millisecond
-	res, err := s.o.Invoker(r.Context(), s.o.Registry, path, req, o)
+	res, err := s.invokeTracked(r.Context(), path, req, o)
 	if err != nil {
 		s.logInvokeError(r, err)
 	}

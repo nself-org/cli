@@ -17,14 +17,13 @@ import (
 )
 
 func status(r invoke.Result) int {
-	var e struct {
-		Error *struct{ Code, Class string }
-		Data  json.RawMessage
-	}
+	var e map[string]json.RawMessage
 	_ = json.Unmarshal(r.Stdout, &e)
+	var failure map[string]json.RawMessage
+	_ = json.Unmarshal(e["error"], &failure)
 	code := r.ErrorCode
-	if e.Error != nil {
-		code = e.Error.Code
+	if failure != nil {
+		_ = json.Unmarshal(failure["code"], &code)
 	}
 	for _, row := range []struct {
 		code   string
@@ -36,25 +35,23 @@ func status(r invoke.Result) int {
 			return row.status
 		}
 	}
-	if e.Error != nil {
+	if r.Confirmation {
+		return 428
+	}
+	if failure != nil {
+		var class string
+		_ = json.Unmarshal(failure["class"], &class)
 		for _, row := range []struct {
 			class  string
 			status int
 		}{{"user", 422}, {"auth", 403}, {"destructive_blocked", 409}, {"infra", 502}} {
-			if row.class == e.Error.Class {
+			if row.class == class {
 				return row.status
 			}
 		}
 		return 500
 	}
-	if e.Data != nil {
-		var d struct {
-			ConfirmationRequired bool `json:"confirmation_required"`
-		}
-		_ = json.Unmarshal(e.Data, &d)
-		if d.ConfirmationRequired {
-			return 428
-		}
+	if e["data"] != nil {
 		return 200
 	}
 	return 500
@@ -72,7 +69,15 @@ func document(w http.ResponseWriter, r invoke.Result, code int) {
 }
 
 func (s *Server) failure(w http.ResponseWriter, r *http.Request, code string, httpCode int) {
-	path := s.routes[r.URL.Path]
+	failureAtPath(w, s.routes[r.URL.Path], code, httpCode)
+}
+
+// unauthenticatedFailure hides registry paths until authentication succeeds.
+func (s *Server) unauthenticatedFailure(w http.ResponseWriter, code string, httpCode int) {
+	failureAtPath(w, "", code, httpCode)
+}
+
+func failureAtPath(w http.ResponseWriter, path, code string, httpCode int) {
 	e := errs.New(code, errs.Registry[code].Summary)
 	var b bytes.Buffer
 	_ = output.EmitError(output.Writer{Out: &b, Err: io.Discard}, path, e)
