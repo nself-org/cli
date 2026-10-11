@@ -11,7 +11,8 @@ import (
 // validateConsumes checks that every plugin listed in the consuming plugin's
 // Consumes field is already installed on disk. A plugin in Consumes declares
 // that it will call that plugin's HTTP API via X-Source-Plugin; if the target
-// is not installed the call will always fail. This is a warning, not a hard
+// is not installed the call will always fail. A name that fails ValidateName is
+// a hard error (P7-PLUG-20). A missing plugin is a warning, not a hard
 // error, to avoid blocking installs in environments where the consumed plugin
 // will be installed separately (e.g., modular deploy). The warning is printed
 // to stderr. S43-T17.

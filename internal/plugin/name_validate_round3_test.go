@@ -188,3 +188,26 @@ func TestManifestNameLengthCap(t *testing.T) {
 		t.Fatalf("a %d-byte name: err = %v, want ErrPluginManifest", len(long.Name), err)
 	}
 }
+
+// TestServiceManifestWithMultiWordCommandsParses: retro-gaming (registry v1.2.6) has
+// no pluginType and cliCommands like "roms list". Its installed plugin.json must
+// still parse (else the plugin turns invisible to list, reverse-dependency checks
+// and ledger bootstrap), while publishing still refuses the derived binary name.
+func TestServiceManifestWithMultiWordCommandsParses(t *testing.T) {
+	m := PluginManifest{Name: "retro-gaming", Version: "1.2.6",
+		CLICommands: []CLICommand{{Name: "server"}, {Name: "roms list"}}}
+	if err := validateManifest(&m); err != nil {
+		t.Fatalf("service manifest with multi-word cliCommands refused: %v", err)
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := linkCLIBinary(t.TempDir(), m.Name, &m); err == nil {
+		t.Fatal(`linkCLIBinary published "nself-roms list"; want a refusal before any copy`)
+	}
+	cli := m
+	cli.PluginType = "cli"
+	if err := validateManifest(&cli); !errors.Is(err, errs.ErrPluginManifest) {
+		t.Fatalf("cli manifest with multi-word cliCommands: err = %v, want ErrPluginManifest", err)
+	}
+}

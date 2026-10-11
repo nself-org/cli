@@ -253,9 +253,13 @@ func validateManifest(m *PluginManifest) error {
 	}
 
 	// A published binary name is one plain file name (P7-PLUG-20): it is joined to the
-	// plugin bin directory on publish and unlink.
-	if err := validateCLIBinaries(m.Name, m); err != nil {
-		return fmt.Errorf("%v: %w", err, errs.ErrPluginManifest)
+	// plugin bin directory on publish and unlink. Only a declared cli plugin is refused
+	// here: a service plugin with multi-word cliCommands (retro-gaming's "roms list")
+	// must still parse, and linkCLIBinary/unlinkCLIBinary validate every name anyway.
+	if m.PluginType == "cli" {
+		if err := validateCLIBinaries(m.Name, m); err != nil {
+			return fmt.Errorf("%v: %w", err, errs.ErrPluginManifest)
+		}
 	}
 
 	// Validate consumes/provides entries: each must be a valid plugin name.
