@@ -64,8 +64,8 @@ func TestACMETimerRetiresCertbotTimer(t *testing.T) {
 // TestACMEAdoptRetiresCertbotTimer: adoption refuses, writing nothing, while a
 // certbot deploy script copies into the served ssl dir (outside the project, as
 // with NGINX_FRONTED_BY on prod); otherwise it disables the certbot
-// timer after the lineages are saved and says no renewal is scheduled, or with
-// --install-cron installs the ACME timer. A refused disable keeps the lineages.
+// timer before its first write and says no renewal is scheduled, or with
+// --install-cron installs the ACME timer. A refused disable writes nothing.
 func TestACMEAdoptRetiresCertbotTimer(t *testing.T) {
 	f := newACMEFix(t)
 	le := adoptFix(t, f)
@@ -92,9 +92,18 @@ func TestACMEAdoptRetiresCertbotTimer(t *testing.T) {
 
 	sd.disErr = errors.New("exit status 1")
 	_, err = f.run(sslSetupCmd, adopt...)
-	if lf, _ := acme.Load(f.ssl); err == nil || !strings.Contains(err.Error(), "systemctl disable --now "+certbotTimer) || len(lf.Lineages) != 2 {
-		t.Fatalf("refused disable: err=%v lineages=%d (want the fix hint and both lineages kept)", err, len(lf.Lineages))
+	if lf, _ := acme.Load(f.ssl); err == nil || !strings.Contains(err.Error(), "systemctl disable --now "+certbotTimer) || len(lf.Lineages) != 0 || len(f.set) != 0 {
+		t.Fatalf("refused disable: err=%v lineages=%d secrets=%d (want the fix hint and nothing written)", err, len(lf.Lineages), len(f.set))
 	}
+
+	// The tree certbot runs from is checked too, even when adopting from a clean copy.
+	sd.disErr, sd.calls = nil, nil
+	live := useCertbotDir(t)
+	acmeWriteFile(t, filepath.Join(live, "renewal", "api.task.nself.org.conf"), []byte("[renewalparams]\n"+nselfDeployHook(f.project)))
+	if _, err = f.run(sslSetupCmd, adopt...); err == nil || !strings.Contains(err.Error(), live) || sd.disables() != 0 {
+		t.Fatalf("hook in the live certbot tree: err=%v disables=%d", err, sd.disables())
+	}
+	_ = os.RemoveAll(filepath.Join(live, "renewal"))
 
 	sd.disErr = nil
 	if out, err = f.run(sslSetupCmd, adopt...); err != nil || !strings.Contains(out, "disabled "+certbotTimer) || !strings.Contains(out, "no renewal is scheduled") || sd.file != "disabled" || f.timers != 0 {
@@ -106,12 +115,17 @@ func TestACMEAdoptRetiresCertbotTimer(t *testing.T) {
 }
 
 // TestACMEIssueRetiresCertbotTimer: a new lineage from `setup --acme` (no
-// --install-cron) disables the certbot timer once it is saved.
+// --install-cron) disables the certbot timer before issuing; a refused disable
+// issues nothing.
 func TestACMEIssueRetiresCertbotTimer(t *testing.T) {
 	f := newACMEFix(t)
 	useCertbotDir(t)
-	sd := &fakeSystemd{load: "loaded", file: "enabled", active: "active"}
+	sd := &fakeSystemd{load: "loaded", file: "enabled", active: "active", disErr: errors.New("exit status 1")}
 	useSystemd(t, sd)
+	if _, err := f.run(sslSetupCmd, "--acme", "--agree-tos"); err == nil || len(f.runs) != 0 {
+		t.Fatalf("refused disable: err=%v lego runs=%d (want a refusal before issuing)", err, len(f.runs))
+	}
+	sd.disErr, sd.calls = nil, nil
 	out, err := f.run(sslSetupCmd, "--acme", "--agree-tos")
 	if lf, _ := acme.Load(f.ssl); err != nil || len(lf.Lineages) != 1 || sd.disables() != 1 || !strings.Contains(out, "disabled "+certbotTimer) {
 		t.Fatalf("issue: err=%v lineages=%d disables=%d\n%s", err, len(lf.Lineages), sd.disables(), out)

@@ -15,6 +15,7 @@ package commands
 // files are only read, never edited.
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -27,8 +28,12 @@ import (
 	"time"
 )
 
-// certbotTimer is the certbot renewal timer unit installSSLRenewalSystemd enables.
-const certbotTimer = "nself-ssl-renew.timer"
+// certbotTimer and certbotService are the certbot renewal units
+// installSSLRenewalSystemd writes.
+const (
+	certbotTimer   = "nself-ssl-renew.timer"
+	certbotService = "nself-ssl-renew.service"
+)
 
 // certbotDir is the certbot tree checked for saved hooks; a variable so tests redirect it.
 var certbotDir = "/etc/letsencrypt"
@@ -52,19 +57,22 @@ var systemctlRun = func(ctx context.Context, args ...string) (string, error) {
 	return string(out), err
 }
 
-// certbotTimerLive reports whether the certbot timer is enabled or running. No
-// systemctl, an unknown or masked unit, or an idle unit that is not enabled is
-// not live. When systemd cannot answer, only a unit file on disk counts as live.
-func certbotTimerLive(ctx context.Context) (bool, error) {
-	out, err := systemctlRun(ctx, "show", certbotTimer, "-p", "LoadState", "-p", "UnitFileState", "-p", "ActiveState")
+// unitState is what systemd says about one unit.
+type unitState struct{ enabled, active bool }
+
+// readUnit reads unit's state. No systemctl or an unknown unit is the zero
+// state; when systemd cannot answer, only a unit file on disk is an error. A
+// masked unit (UnitFileState "masked") is not enabled but can still be active.
+func readUnit(ctx context.Context, unit string) (unitState, error) {
+	out, err := systemctlRun(ctx, "show", unit, "-p", "LoadState", "-p", "UnitFileState", "-p", "ActiveState")
 	if errors.Is(err, errNoSystemctl) {
-		return false, nil
+		return unitState{}, nil
 	}
 	if err != nil {
-		if _, serr := os.Stat(filepath.Join(systemdUnitDir, certbotTimer)); errors.Is(serr, os.ErrNotExist) {
-			return false, nil
+		if _, serr := os.Stat(filepath.Join(systemdUnitDir, unit)); errors.Is(serr, os.ErrNotExist) {
+			return unitState{}, nil
 		}
-		return false, fmt.Errorf("%w: systemctl show %s: %v %s", errSystemdDown, certbotTimer, err, strings.TrimSpace(out))
+		return unitState{}, fmt.Errorf("%w: systemctl show %s: %v %s", errSystemdDown, unit, err, strings.TrimSpace(out))
 	}
 	p := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
@@ -72,66 +80,128 @@ func certbotTimerLive(ctx context.Context) (bool, error) {
 			p[k] = v
 		}
 	}
-	switch p["LoadState"] {
-	case "":
-		return false, fmt.Errorf("systemctl show %s: unexpected output %q", certbotTimer, strings.TrimSpace(out))
-	case "not-found", "masked":
-		return false, nil
-	}
-	switch p["ActiveState"] {
-	case "active", "activating", "reloading", "deactivating":
-		return true, nil
+	if p["LoadState"] == "" {
+		return unitState{}, fmt.Errorf("systemctl show %s: unexpected output %q", unit, strings.TrimSpace(out))
 	}
 	f := p["UnitFileState"]
-	return strings.HasPrefix(f, "enabled") || f == "alias" || f == "indirect", nil
+	return unitState{
+		enabled: strings.HasPrefix(f, "enabled") || f == "alias" || f == "indirect",
+		active:  slices.Contains([]string{"active", "activating", "reloading", "deactivating"}, p["ActiveState"]),
+	}, nil
 }
 
-// retireCertbotTimer disables and stops the certbot timer when it is live, then
-// re-checks it. The state is read first, so a re-run changes nothing; it
-// reports whether it disabled the timer.
+// certbotTimerLive reports whether the certbot timer is enabled or running.
+func certbotTimerLive(ctx context.Context) (bool, error) {
+	st, err := readUnit(ctx, certbotTimer)
+	return st.enabled || st.active, err
+}
+
+// retireCertbotTimer disables and stops the certbot timer when it is live
+// (stops it when it is only running, e.g. masked), then re-checks it. It
+// refuses while the certbot service is mid-run: stopping it could cut the
+// copy in half. The state is read first, so a re-run changes nothing; it
+// reports whether it changed the timer.
 func retireCertbotTimer(ctx context.Context) (bool, error) {
-	live, err := certbotTimerLive(ctx)
-	if err != nil || !live {
+	if svc, err := readUnit(ctx, certbotService); err != nil || svc.active {
+		return false, cmp.Or(err, fmt.Errorf("%s is running a certbot renewal now; re-run when it has finished", certbotService))
+	}
+	st, err := readUnit(ctx, certbotTimer)
+	if err != nil || !(st.enabled || st.active) {
 		return false, err
 	}
-	if out, err := systemctlRun(ctx, "disable", "--now", certbotTimer); err != nil {
-		return false, fmt.Errorf("systemctl disable --now %s: %v %s", certbotTimer, err, strings.TrimSpace(out))
+	args := []string{"stop", certbotTimer}
+	if st.enabled {
+		args = []string{"disable", "--now", certbotTimer}
 	}
-	if live, err = certbotTimerLive(ctx); err == nil && live {
-		err = fmt.Errorf("%s is still enabled or running after disable", certbotTimer)
+	if out, err := systemctlRun(ctx, args...); err != nil {
+		return false, fmt.Errorf("systemctl %s: %v %s", strings.Join(args, " "), err, strings.TrimSpace(out))
 	}
-	return err == nil, err
+	if live, err := certbotTimerLive(ctx); err != nil || live {
+		return false, cmp.Or(err, fmt.Errorf("%s is still enabled or running after disable", certbotTimer))
+	}
+	return true, nil
 }
 
-// certbotHooks lists the certbot hooks under dir that write into one of
-// sslDirs: deploy_hook/renew_hook lines saved in renewal/*.conf and the
-// executable scripts certbot runs from renewal-hooks/deploy (comment lines
-// skipped). A missing tree has none.
+// certbotHookFiles lists where certbot reads hooks under dir: cli.ini and
+// renewal/*.conf (confs), and the files it runs from renewal-hooks/{pre,deploy,post}
+// (scripts: regular, executable, no trailing '~', dot files included). Only
+// absence is tolerated; any other read error is returned.
+func certbotHookFiles(dir string) (confs, scripts []string, err error) {
+	list := func(d string) ([]string, error) {
+		es, err := os.ReadDir(d)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		var out []string
+		for _, e := range es {
+			out = append(out, filepath.Join(d, e.Name()))
+		}
+		return out, err
+	}
+	regular := func(p string) (os.FileInfo, bool, error) {
+		st, err := os.Stat(p)
+		if errors.Is(err, os.ErrNotExist) { // dangling link: nothing to run
+			return nil, false, nil
+		}
+		return st, err == nil && st.Mode().IsRegular(), err
+	}
+	renewal, err := list(filepath.Join(dir, "renewal"))
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, p := range append([]string{filepath.Join(dir, "cli.ini")}, renewal...) {
+		_, ok, err := regular(p)
+		if err != nil {
+			return nil, nil, err
+		}
+		if ok && (strings.HasSuffix(p, ".conf") || filepath.Base(p) == "cli.ini") {
+			confs = append(confs, p)
+		}
+	}
+	for _, sub := range []string{"pre", "deploy", "post"} {
+		ps, err := list(filepath.Join(dir, "renewal-hooks", sub))
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, p := range ps {
+			st, ok, err := regular(p)
+			if err != nil {
+				return nil, nil, err
+			}
+			if ok && !strings.HasSuffix(p, "~") && (runtime.GOOS == "windows" || st.Mode()&0o111 != 0) {
+				scripts = append(scripts, p)
+			}
+		}
+	}
+	return confs, scripts, nil
+}
+
+// certbotHooks lists the certbot hooks under dir that name one of sslDirs:
+// "*_hook"/"*-hook" lines in cli.ini and renewal/*.conf, and non-comment
+// lines of the scripts certbot runs. A missing tree has none.
 func certbotHooks(dir string, sslDirs ...string) ([]string, error) {
 	var needles []string
 	for _, d := range sslDirs {
-		needles = append(needles, filepath.Clean(d)+string(filepath.Separator))
+		needles = append(needles, filepath.Clean(d))
 		if real, err := filepath.EvalSymlinks(d); err == nil && real != filepath.Clean(d) {
-			needles = append(needles, real+string(filepath.Separator))
+			needles = append(needles, real)
 		}
 	}
+	confs, scripts, err := certbotHookFiles(dir)
+	if err != nil {
+		return nil, err
+	}
 	var hits []string
-	confs, _ := filepath.Glob(filepath.Join(dir, "renewal", "*.conf"))
-	scripts, _ := filepath.Glob(filepath.Join(dir, "renewal-hooks", "deploy", "*"))
 	for _, p := range append(confs, scripts...) {
-		isConf := strings.HasSuffix(p, ".conf") && filepath.Base(filepath.Dir(p)) == "renewal"
-		st, err := os.Stat(p)
-		if err != nil || st.IsDir() || (!isConf && runtime.GOOS != "windows" && st.Mode()&0o111 == 0) {
-			continue // gone since the glob, a directory, or a script certbot does not run
-		}
 		data, err := os.ReadFile(p) //nolint:gosec // certbot's tree, read only
 		if err != nil {
 			return nil, err
 		}
+		isConf := slices.Contains(confs, p)
 		for i, line := range strings.Split(string(data), "\n") {
 			k, _, _ := strings.Cut(line, "=")
 			k = strings.TrimSpace(k)
-			if (isConf && k != "deploy_hook" && k != "renew_hook") || (!isConf && strings.HasPrefix(strings.TrimSpace(line), "#")) {
+			if (isConf && !strings.HasSuffix(k, "_hook") && !strings.HasSuffix(k, "-hook")) || strings.HasPrefix(strings.TrimSpace(line), "#") {
 				continue
 			}
 			if slices.ContainsFunc(needles, func(n string) bool { return mentionsPath(line, n) }) {
@@ -142,35 +212,41 @@ func certbotHooks(dir string, sslDirs ...string) ([]string, error) {
 	return hits, nil
 }
 
-// mentionsPath reports whether dir (ending in a separator) starts a path in
-// line: at the line start or after a space, quote, '=' or ':'.
+// mentionsPath reports whether line names dir or a path under it: dir starts
+// at the line start or after a space, quote, '=' or ':', and ends at the line
+// end or before a separator, space, quote, ';' or ')'.
 func mentionsPath(line, dir string) bool {
 	for off := 0; ; {
 		i := strings.Index(line[off:], dir)
 		if i < 0 {
 			return false
 		}
-		if at := off + i; at == 0 || strings.ContainsRune(" \t\"'=:", rune(line[at-1])) {
+		at, end := off+i, off+i+len(dir)
+		before := at == 0 || strings.ContainsRune(" \t\"'=:", rune(line[at-1]))
+		after := end == len(line) || strings.ContainsRune(string(filepath.Separator)+"/ \t\"';)\r", rune(line[end]))
+		if before && after {
 			return true
 		}
-		off += i + 1
+		off = at + 1
 	}
 }
 
 // refuseCertbotHooks refuses (in every mode, before anything is written) while
-// a certbot hook under dir would copy certbot's files over ACME-managed ones:
-// into the served ssl dir (NGINX_FRONTED_BY moves it out of the project) or
-// the project's own ssl dir.
-func (r *acmeRun) refuseCertbotHooks(dir string) error {
-	hits, err := certbotHooks(dir, r.res.SSLDir, filepath.Join(r.workdir, "ssl"))
-	if err != nil {
-		return e151(acmeRefuse("run as the user that owns "+dir, "cannot read certbot's hooks: %v", err))
+// a certbot hook under one of dirs would copy certbot's files over
+// ACME-managed ones: into the served ssl dir (NGINX_FRONTED_BY moves it out of
+// the project) or the project's own ssl dir.
+func (r *acmeRun) refuseCertbotHooks(dirs ...string) error {
+	for _, dir := range slices.Compact(dirs) {
+		hits, err := certbotHooks(dir, r.res.SSLDir, filepath.Join(r.workdir, "ssl"))
+		if err != nil {
+			return e151(acmeRefuse("run as the user that owns "+dir, "cannot read certbot's hooks: %v", err))
+		}
+		if len(hits) > 0 {
+			return e151(acmeRefuse("remove those hook lines and move those renewal-hooks scripts out of "+dir+", then re-run",
+				"certbot would copy its certificates over the ACME-managed ones from: %s", strings.Join(hits, ", ")))
+		}
 	}
-	if len(hits) == 0 {
-		return nil
-	}
-	return e151(acmeRefuse("delete those deploy_hook/renew_hook lines and move those renewal-hooks/deploy scripts out of "+dir+", then re-run",
-		"certbot would copy its certificates over the ACME-managed ones from: %s", strings.Join(hits, ", ")))
+	return nil
 }
 
 // retireCertbot runs retireCertbotTimer for an ACME run and reports whether it
@@ -198,4 +274,12 @@ func (r *acmeRun) retireCertbot() (bool, error) {
 		r.say("disabled %s: its certbot deploy hook would overwrite ACME-managed certificates", certbotTimer)
 	}
 	return done, nil
+}
+
+// retiredHint tells the operator, when a run fails after it disabled the
+// certbot timer, that nothing renews until they re-run or go back to certbot.
+func (r *acmeRun) retiredHint(retired bool) {
+	if retired {
+		r.say("%s was disabled before this failure: re-run to finish, or `sudo systemctl enable --now %s` to go back to certbot renewal", certbotTimer, certbotTimer)
+	}
 }

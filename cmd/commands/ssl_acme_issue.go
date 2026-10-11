@@ -48,7 +48,7 @@ func runSSLSetupACME(cmd *cobra.Command, args []string) error {
 
 // issueNew prints l, then (unless --dry-run) issues, installs and records it.
 // Like adoption it refuses while a certbot hook copies into the ssl dir and
-// disables the certbot timer once the lineage is saved (D-0411).
+// disables the certbot timer before issuing (D-0411).
 func (r *acmeRun) issueNew(ctx context.Context, l acme.Lineage, cron bool) error {
 	r.printLineage(l)
 	if !r.staging {
@@ -72,19 +72,24 @@ func (r *acmeRun) issueNew(ctx context.Context, l acme.Lineage, cron bool) error
 	if err != nil {
 		return err
 	}
+	var retired bool // before the first write: no certbot copy lands on a new generation
+	if !r.staging {
+		if retired, err = r.retireCertbot(); err != nil {
+			return err
+		}
+	}
 	if err := r.issueInstall(ctx, &l, tos); err != nil || r.staging {
+		r.retiredHint(retired && err != nil)
 		return err
 	}
 	r.file.Contact = r.res.Contact
 	r.file.Lineages = append(r.file.Lineages, l)
 	if err := acme.Save(r.res.SSLDir, r.file); err != nil {
+		r.retiredHint(retired)
 		return e151(err)
 	}
 	if cron {
 		return r.timer()
-	}
-	if _, err := r.retireCertbot(); err != nil {
-		return err
 	}
 	r.say("renew with `nself trust ssl renew --acme`; add --install-cron for the timer")
 	return nil

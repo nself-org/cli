@@ -6,6 +6,7 @@ package commands
 // test here or elsewhere in the package reaches the host's systemctl.
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -42,13 +43,14 @@ func nselfDeployHook(workdir string) string {
 	return "renew_hook = safe=$(basename \"$RENEWED_LINEAGE\" | tr '.:' '--'); dest=" + filepath.Join(workdir, "ssl", "certificates") + "/$safe; mkdir -p \"$dest\"\n"
 }
 
-// fakeSystemd answers `systemctl show` and `systemctl disable --now` for the
-// certbot timer from in-memory unit state and records every call.
+// fakeSystemd answers `systemctl show|disable --now|stop` for the certbot
+// timer and service from in-memory unit state and records every call.
 type fakeSystemd struct {
-	load, file, active string // unit state; load "" means systemctl is not installed
-	raw                string // when set, `show` prints this instead
+	load, file, active string // timer state; load "" means systemctl is not installed
+	svcActive          string // the service's ActiveState ("" = inactive)
+	raw                string // when set, `show` of the timer prints this instead
 	showErr, disErr    error
-	sticky             bool // disable succeeds but leaves the unit enabled
+	sticky             bool // disable/stop succeed but change nothing
 	calls              []string
 }
 
@@ -62,18 +64,24 @@ func (s *fakeSystemd) run(_ context.Context, args ...string) (string, error) {
 		if s.showErr != nil {
 			return "System has not been booted with systemd", s.showErr
 		}
+		if args[1] == certbotService {
+			return fmt.Sprintf("LoadState=loaded\nActiveState=%s\nUnitFileState=static\n", cmp.Or(s.svcActive, "inactive")), nil
+		}
 		if s.raw != "" {
 			return s.raw, nil
 		}
 		return fmt.Sprintf("LoadState=%s\nActiveState=%s\nUnitFileState=%s\n", s.load, s.active, s.file), nil
-	case "disable":
+	case "disable", "stop":
 		if s.disErr != nil {
 			return "Access denied", s.disErr
 		}
 		if !s.sticky {
-			s.file, s.active = "disabled", "inactive"
+			s.active = "inactive"
+			if args[0] == "disable" {
+				s.file = "disabled"
+			}
 		}
-		return "Removed timers.target.wants/" + certbotTimer, nil
+		return "", nil
 	}
 	return "", fmt.Errorf("unexpected systemctl %v", args)
 }
@@ -97,8 +105,10 @@ func useSystemd(t *testing.T, s *fakeSystemd) {
 }
 
 func TestRetireCertbotTimer(t *testing.T) {
-	const show = "show " + certbotTimer + " -p LoadState -p UnitFileState -p ActiveState"
-	const disable = "disable --now " + certbotTimer
+	const props = " -p LoadState -p UnitFileState -p ActiveState"
+	const svc, show = "show " + certbotService + props, "show " + certbotTimer + props
+	const disable, stop = "disable --now " + certbotTimer, "stop " + certbotTimer
+	c := func(calls ...string) []string { return append([]string{svc}, calls...) }
 	for name, tc := range map[string]struct {
 		sd        fakeSystemd
 		unitFile  bool
@@ -106,25 +116,28 @@ func TestRetireCertbotTimer(t *testing.T) {
 		wantErr   string
 		wantCalls []string
 	}{
-		"no systemctl":           {wantCalls: []string{show}},
-		"unknown unit":           {sd: fakeSystemd{load: "not-found", active: "inactive"}, wantCalls: []string{show}},
-		"already disabled":       {sd: fakeSystemd{load: "loaded", file: "disabled", active: "inactive"}, wantCalls: []string{show}},
-		"masked":                 {sd: fakeSystemd{load: "masked", file: "masked", active: "inactive"}, wantCalls: []string{show}},
-		"enabled and waiting":    {sd: fakeSystemd{load: "loaded", file: "enabled", active: "active"}, retired: true, wantCalls: []string{show, disable, show}},
-		"enabled, last run fail": {sd: fakeSystemd{load: "loaded", file: "enabled", active: "failed"}, retired: true, wantCalls: []string{show, disable, show}},
-		"disabled but running":   {sd: fakeSystemd{load: "loaded", file: "disabled", active: "active"}, retired: true, wantCalls: []string{show, disable, show}},
-		"starting":               {sd: fakeSystemd{load: "loaded", file: "disabled", active: "activating"}, retired: true, wantCalls: []string{show, disable, show}},
-		"enabled-runtime, idle":  {sd: fakeSystemd{load: "loaded", file: "enabled-runtime", active: "inactive"}, retired: true, wantCalls: []string{show, disable, show}},
-		"static, idle":           {sd: fakeSystemd{load: "loaded", file: "static", active: "inactive"}, wantCalls: []string{show}},
-		"linked, idle":           {sd: fakeSystemd{load: "loaded", file: "linked", active: "inactive"}, wantCalls: []string{show}},
+		"no systemctl":           {wantCalls: c(show)},
+		"unknown unit":           {sd: fakeSystemd{load: "not-found", active: "inactive"}, wantCalls: c(show)},
+		"already disabled":       {sd: fakeSystemd{load: "loaded", file: "disabled", active: "inactive"}, wantCalls: c(show)},
+		"masked":                 {sd: fakeSystemd{load: "masked", file: "masked", active: "inactive"}, wantCalls: c(show)},
+		"masked but running":     {sd: fakeSystemd{load: "masked", file: "masked", active: "active"}, retired: true, wantCalls: c(show, stop, show)},
+		"enabled and waiting":    {sd: fakeSystemd{load: "loaded", file: "enabled", active: "active"}, retired: true, wantCalls: c(show, disable, show)},
+		"enabled, last run fail": {sd: fakeSystemd{load: "loaded", file: "enabled", active: "failed"}, retired: true, wantCalls: c(show, disable, show)},
+		"disabled but running":   {sd: fakeSystemd{load: "loaded", file: "disabled", active: "active"}, retired: true, wantCalls: c(show, stop, show)},
+		"starting":               {sd: fakeSystemd{load: "loaded", file: "disabled", active: "activating"}, retired: true, wantCalls: c(show, stop, show)},
+		"enabled-runtime, idle":  {sd: fakeSystemd{load: "loaded", file: "enabled-runtime", active: "inactive"}, retired: true, wantCalls: c(show, disable, show)},
+		"static, idle":           {sd: fakeSystemd{load: "loaded", file: "static", active: "inactive"}, wantCalls: c(show)},
+		"linked, idle":           {sd: fakeSystemd{load: "loaded", file: "linked", active: "inactive"}, wantCalls: c(show)},
+		"renewal running now": {sd: fakeSystemd{load: "loaded", file: "enabled", active: "active", svcActive: "activating"},
+			wantErr: "running a certbot renewal now", wantCalls: c()},
 		"disable refused": {sd: fakeSystemd{load: "loaded", file: "enabled", active: "active", disErr: errors.New("exit status 1")},
-			wantErr: "Access denied", wantCalls: []string{show, disable}},
+			wantErr: "Access denied", wantCalls: c(show, disable)},
 		"still enabled after disable": {sd: fakeSystemd{load: "loaded", file: "enabled", active: "active", sticky: true},
-			wantErr: "still enabled", wantCalls: []string{show, disable, show}},
-		"systemd down, no unit file": {sd: fakeSystemd{load: "loaded", showErr: errors.New("exit status 1")}, wantCalls: []string{show}},
+			wantErr: "still enabled", wantCalls: c(show, disable, show)},
+		"systemd down, no unit file": {sd: fakeSystemd{load: "loaded", showErr: errors.New("exit status 1")}, wantCalls: c(show)},
 		"systemd down, unit file present": {sd: fakeSystemd{load: "loaded", showErr: errors.New("exit status 1")}, unitFile: true,
-			wantErr: "not been booted", wantCalls: []string{show}},
-		"unexpected output": {sd: fakeSystemd{load: "loaded", raw: "garbage"}, wantErr: "unexpected output", wantCalls: []string{show}},
+			wantErr: "not been booted", wantCalls: c(show)},
+		"unexpected output": {sd: fakeSystemd{load: "loaded", raw: "garbage"}, wantErr: "unexpected output", wantCalls: c(show)},
 	} {
 		t.Run(name, func(t *testing.T) {
 			sd := tc.sd
@@ -176,9 +189,10 @@ func TestSystemctlRunReal(t *testing.T) {
 	}
 }
 
-// TestCertbotHooks: saved deploy_hook/renew_hook lines and executable deploy
-// scripts that write into an ssl dir are found; other keys, comments,
-// non-executable scripts, other projects and longer paths are not.
+// TestCertbotHooks: hook lines in renewal/*.conf and cli.ini and the scripts
+// certbot runs from renewal-hooks/{pre,deploy,post} that name an ssl dir are
+// found; other keys, comments, scripts certbot skips, other projects and
+// longer paths are not.
 func TestCertbotHooks(t *testing.T) {
 	tmp, _ := filepath.EvalSymlinks(t.TempDir()) // macOS: /var is a symlink
 	le, workdir := t.TempDir(), filepath.Join(tmp, "proj")
@@ -186,39 +200,53 @@ func TestCertbotHooks(t *testing.T) {
 	if hits, err := certbotHooks(filepath.Join(le, "absent"), sslDir); err != nil || len(hits) != 0 {
 		t.Fatalf("missing tree: hits=%v err=%v", hits, err)
 	}
-	script := func(name, body string) {
-		p := filepath.Join(le, "renewal-hooks", "deploy", name)
+	file := func(rel, body string, mode os.FileMode) string {
+		p := filepath.Join(le, filepath.FromSlash(rel))
 		acmeWriteFile(t, p, []byte(body))
-		_ = os.Chmod(p, 0o755)
+		_ = os.Chmod(p, mode)
+		return p
 	}
-	acmeWriteFile(t, filepath.Join(le, "renewal", "a.example.org.conf"), []byte("version = 2.9.0\n[renewalparams]\n"+nselfDeployHook(workdir)+"post_hook = docker compose exec nginx nginx -s reload\n"))
-	acmeWriteFile(t, filepath.Join(le, "renewal", "b.example.org.conf"), []byte("[renewalparams]\ndeploy_hook = cp x "+filepath.Join(sslDir, "b")+"/\n"))
-	acmeWriteFile(t, filepath.Join(le, "renewal", "c.example.org.conf"), []byte("[renewalparams]\npost_hook = ls "+sslDir+"/\nrenew_hook = cp x /srv/other/ssl/\n# deploy_hook = cp x "+sslDir+"/\n"))
-	script("00-copy-cert.sh", "#!/bin/sh\n# copies into "+sslDir+"/ (comment)\ncp \"$RENEWED_LINEAGE\"/*.pem '"+filepath.Join(sslDir, "certificates", "x")+"/'\n")
-	script("other.sh", "#!/bin/sh\nsystemctl reload postfix\ncp x /data"+sslDir+"/\n")
-	acmeWriteFile(t, filepath.Join(le, "renewal-hooks", "deploy", "00-copy-cert.sh.bak"), []byte("cp x "+sslDir+"/\n"))
-	acmeWriteFile(t, filepath.Join(le, "renewal-hooks", "deploy", "sub", "x"), []byte(sslDir+"/\n"))
+	var want []string
+	hit := func(p string, line int) { want = append(want, fmt.Sprintf("%s:%d", p, line)) }
+	hit(file("cli.ini", "deploy-hook = cp x "+sslDir+"\n", 0o644), 1)
+	hit(file("renewal/a.example.org.conf", "version = 2.9.0\n[renewalparams]\n"+nselfDeployHook(workdir)+"post_hook = docker compose exec nginx nginx -s reload\n", 0o644), 3)
+	hit(file("renewal/b.example.org.conf", "[renewalparams]\ndeploy_hook = cp x "+filepath.Join(sslDir, "b")+"/\n", 0o644), 2)
+	hit(file("renewal/c.example.org.conf", "[renewalparams]\npost_hook = DEST=\""+sslDir+"\"; cp x $DEST\nrenew_hook = cp x /srv/other/ssl/\n# deploy_hook = cp x "+sslDir+"/\nserver = "+sslDir+"\n", 0o644), 2)
+	file("renewal/d.example.org.conf.bak", "deploy_hook = cp x "+sslDir+"/\n", 0o644)
+	deploy := file("renewal-hooks/deploy/00-copy-cert.sh", "#!/bin/sh\n# copies into "+sslDir+"/ (comment)\ncp \"$RENEWED_LINEAGE\"/*.pem '"+filepath.Join(sslDir, "certificates", "x")+"/'\n", 0o755)
+	file("renewal-hooks/deploy/other.sh", "#!/bin/sh\nsystemctl reload postfix\ncp x /data"+sslDir+"/\ncp x "+sslDir+"-old/\n", 0o755)
+	file("renewal-hooks/deploy/00-copy-cert.sh~", "cp x "+sslDir+"/\n", 0o755)
+	notExec := file("renewal-hooks/deploy/00-copy-cert.sh.off", "cp x "+sslDir+"/\n", 0o644)
+	dot := file("renewal-hooks/post/.hidden", "cp x "+sslDir+"/a\n", 0o755)
+	file("renewal-hooks/deploy/sub/x", sslDir+"/\n", 0o755)
 	hits, err := certbotHooks(le, filepath.Join(t.TempDir(), "served", "ssl"), sslDir)
-	want := []string{
-		filepath.Join(le, "renewal", "a.example.org.conf") + ":3",
-		filepath.Join(le, "renewal", "b.example.org.conf") + ":2",
-		filepath.Join(le, "renewal-hooks", "deploy", "00-copy-cert.sh") + ":3",
+	hit(deploy, 3)
+	if runtime.GOOS == "windows" { // no exec bit: every regular file certbot would see counts
+		hit(notExec, 1)
 	}
-	if runtime.GOOS == "windows" { // no exec bit: every regular file in deploy/ counts
-		want = append(want, filepath.Join(le, "renewal-hooks", "deploy", "00-copy-cert.sh.bak")+":1")
-	}
+	hit(dot, 1)
 	if err != nil || strings.Join(hits, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("hits =\n%s\nwant\n%s (err %v)", strings.Join(hits, "\n"), strings.Join(want, "\n"), err)
 	}
 
+	if runtime.GOOS == "windows" {
+		return
+	}
 	// A symlinked ssl dir also matches a hook that names its real path.
-	if runtime.GOOS != "windows" {
-		link := filepath.Join(t.TempDir(), "ssl")
-		if err := os.Symlink(sslDir, link); err == nil {
-			_ = os.MkdirAll(sslDir, 0o750)
-			if hits, err := certbotHooks(le, link); err != nil || len(hits) != len(want) {
-				t.Errorf("symlinked ssl dir: hits=%v err=%v", hits, err)
-			}
+	link := filepath.Join(t.TempDir(), "ssl")
+	_ = os.MkdirAll(sslDir, 0o750)
+	if err := os.Symlink(sslDir, link); err == nil {
+		if hits, err := certbotHooks(le, link); err != nil || len(hits) != len(want) {
+			t.Errorf("symlinked ssl dir: hits=%v err=%v", hits, err)
+		}
+	}
+	// An unreadable hook dir is an error, not "no hooks" (root reads everything).
+	if os.Geteuid() != 0 {
+		locked := filepath.Join(le, "renewal-hooks", "deploy")
+		_ = os.Chmod(locked, 0o000)
+		t.Cleanup(func() { _ = os.Chmod(locked, 0o750) })
+		if _, err := certbotHooks(le, sslDir); err == nil {
+			t.Error("unreadable renewal-hooks/deploy: want an error")
 		}
 	}
 }
