@@ -100,6 +100,26 @@ func TestMigrateStatus_MissingTablesCreatesNothing(t *testing.T) {
 	}
 }
 
+// TestMigrateStatus_MissingTablesAreNeverRead: real Postgres errors on a query
+// against a missing table (the fake answers it), so with both tables absent
+// status may only probe with to_regclass, for flat and nested layouts alike.
+func TestMigrateStatus_MissingTablesAreNeverRead(t *testing.T) {
+	for name, dir := range map[string]string{"flat": mkMigDir(t, dirTestFiles), "nested": nestedDir(t, "001_x", "002_y")} {
+		t.Run(name, func(t *testing.T) {
+			swapStatusWarn(t)
+			sd := fakeDockerState(t, map[string]string{"q_legacy_exists": "no", "q_ops_exists": "no"})
+			if _, err := MigrateStatus(context.Background(), fakeCfg, dir); err != nil {
+				t.Fatal(err)
+			}
+			for _, c := range recordedCalls(t, sd) {
+				if strings.Contains(c, "FROM nself_ops.") || strings.Contains(c, "FROM np_common.") {
+					t.Errorf("status read a missing ledger table: %s", c)
+				}
+			}
+		})
+	}
+}
+
 func TestMigrateStatus_LegacyUpRowResolvedInMemoryWithWarning(t *testing.T) {
 	dir := nestedDir(t, "001_x", "002_y")
 	warn := swapStatusWarn(t)
