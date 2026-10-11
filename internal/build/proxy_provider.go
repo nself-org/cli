@@ -5,12 +5,14 @@ package build
 // Outputs: provider name or a deterministic refusal.
 // Constraints: no Docker calls or provider rendering; ADR 0027 and EPIC D3.
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
@@ -32,10 +34,13 @@ func ProxyProvider(cfg *config.Config, workdir, pluginDir string) (string, error
 		return "", err
 	}
 	dir, err := proxyRealPath(pluginDir, project)
+	if os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) {
+		return ProviderNginx, nil
+	}
 	if err != nil {
 		return "", err
 	}
-	if _, err := os.Stat(filepath.Join(dir, "traefik", "plugin.json")); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "traefik", "plugin.json")); os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) {
 		return ProviderNginx, nil
 	} else if err != nil {
 		return "", err
@@ -129,8 +134,14 @@ func proxyRouteLimitations(m *routemodel.Model) ([]string, map[string]bool) {
 		}
 		if r.Source != "plugin" && r.Source != "hand_managed" {
 			names[filepath.Base(r.File)] = true
-			u, err := url.Parse(r.RawUpstream)
-			if err == nil && ((u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery) {
+			raw := r.RawUpstream
+			if !strings.Contains(raw, "://") {
+				raw = "http://" + raw
+			}
+			u, err := url.Parse(raw)
+			if err != nil {
+				items = append(items, fmt.Sprintf("route %s: upstream %s cannot be parsed", r.ID, r.RawUpstream))
+			} else if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery {
 				items = append(items, fmt.Sprintf("route %s: upstream %s has a path or query routes.json v1 cannot carry (D-0310)", r.ID, r.RawUpstream))
 			}
 		}

@@ -37,16 +37,18 @@ Duplicate generated domains use the compatibility gate: v1.4 keeps the existing 
 
 ## Proxy provider (nginx or traefik)
 
-The installed `traefik` plugin selects the proxy provider. It must be enabled and installed in a plugin directory inside this project. There is no provider config key. Set `NSELF_PLUGIN_DIR` in the project's `.env`, for example `NSELF_PLUGIN_DIR=.nself/plugins`, before installing it. Without an enabled traefik plugin, the provider is nginx.
+The installed `traefik` plugin selects the proxy provider. It must be enabled and installed in a plugin directory inside this project. There is no provider config key. Set an absolute `NSELF_PLUGIN_DIR` in the project's `.env`, for example `/path/to/project/.nself/plugins`, before installing it. Without an enabled traefik plugin, the provider is nginx.
 
 The build checks the directory's resolved path, including symlinks. E480 refuses traefik in a shared directory such as `~/.nself/plugins`, or in the project root itself. A shared install would switch every project using that directory on its next build. Reinstall in a project subdirectory, or run `nself remove traefik` from the shared directory.
+
+E480 also refuses a missing Traefik compose fragment at the raw plugin directory used by compose discovery. The error names both the discovery path and the resolved installation path. Set an absolute `NSELF_PLUGIN_DIR` so builds from another working directory find the same plugin.
 
 Fronted mode is nginx-only. E482 refuses traefik when `NGINX_FRONTED_BY` is set. Keep nginx in this project and change the provider in the fronting project, or unset `NGINX_FRONTED_BY`.
 
 E481 lists every item that prevents a complete route swap:
 
 - Route directives in `unmodelled`, routes with `shadowed_by`, and entries in `unmodelled_global`.
-- Generated upstream URLs with a path other than `/`, or a query. The version 1 contract cannot carry these (D-0310).
+- Generated upstream URLs that cannot be parsed, have a path other than `/`, or have a query. Schemeless upstreams are checked as HTTP URLs. The version 1 contract cannot carry paths or queries (D-0310).
 - Foreign files in `nginx/sites/`, including hand-written files and marked files from another build that this build will not write.
 
 Remove or model the named items, or keep nginx with `nself remove traefik`. Both `nginx/` and `.nself/generated/routes.json` are always generated. With traefik selected, compose omits the nginx service. The plugin owns Traefik configuration and serves ports 80 and 443 through its file provider.

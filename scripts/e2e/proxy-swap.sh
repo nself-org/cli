@@ -11,9 +11,23 @@ esac
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 FIXTURE=$ROOT/scripts/e2e/fixtures/proxy
 PLUGINS_REF=${PLUGINS_REF:-3e6c7f54a8fabdd268ca261ecba400c0da3a6137}
-for tool in docker jq python3 curl openssl go sha256sum git; do
+for tool in docker jq python3 curl openssl go git; do
   command -v "$tool" >/dev/null || { echo "FAIL: required tool missing: $tool" >&2; exit 1; }
 done
+command -v sha256sum >/dev/null || command -v shasum >/dev/null || {
+  echo 'FAIL: sha256sum or shasum is required' >&2; exit 1;
+}
+sha256() {
+  if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi
+}
+epoch_ms() {
+  local value
+  value=$(date +%s%3N)
+  case $value in
+    ''|*[!0-9]*) python3 -c 'import time; print(time.time_ns() // 1000000)' ;;
+    *) printf '%s\n' "$value" ;;
+  esac
+}
 docker compose version >/dev/null || { echo 'FAIL: Docker Compose is unavailable' >&2; exit 1; }
 W=$(mktemp -d "${E2E_TMP:-${RUNNER_TEMP:-/tmp}}/proxy-swap.XXXXXX")
 EVIDENCE=${E2E_EVIDENCE:-$W/evidence}
@@ -74,6 +88,7 @@ else
 fi
 export HOME=$W/home
 export NSELF_V15=1
+export NSELF_LICENSE_SKIP_VERIFY=1
 # security.go documents this development opt-out; archive checksums still verify.
 export NSELF_PLUGIN_REQUIRE_CHECKSUM=0
 CGO_ENABLED=0 go build -mod=vendor -o "$W/nself" "$ROOT/cmd/nself"
@@ -81,7 +96,7 @@ cp "$FIXTURE/project.env.fixture" "$W/a/.env"
 cp "$FIXTURE/project.env.fixture" "$W/b/.env"
 chmod 600 "$W/a/.env" "$W/b/.env"
 for dir in "$W/a" "$W/b"; do
-  printf '\nNSELF_PLUGIN_DIR=%s/.nself/plugins\nPLUGIN_DIR=%s/.nself/plugins\n' "$dir" "$dir" >> "$dir/.env"
+  printf '\nNSELF_PLUGIN_DIR=%s/.nself/plugins\n' "$dir" >> "$dir/.env"
 done
 python3 - "$W/b/.env" <<'PY'
 import pathlib, sys
@@ -177,7 +192,7 @@ for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
 print('\n'.join(sorted(headers)))
 PY
     # whoami includes request headers and container identity; only version/health responses are stable.
-    case $id in core:hasura|core:auth|core:storage) printf 'body %s\n' "$(sha256sum "$W/body" | cut -d ' ' -f 1)" >> "$output" ;; esac
+    case $id in core:hasura|core:auth|core:storage) printf 'body %s\n' "$(sha256 "$W/body" | cut -d ' ' -f 1)" >> "$output" ;; esac
     redirect=$(curl --silent --show-error --noproxy '*' --resolve "$host:80:127.0.0.1" --max-time 10 -o /dev/null -w '%{http_code}' "http://$host$path")
     [[ $redirect == 301 || $redirect == 308 ]] || { echo "FAIL: $id HTTP redirect status $redirect" >&2; return 1; }
     printf 'redirect %s\n' "$redirect" >> "$output"
@@ -239,7 +254,7 @@ NSELF_V15=0 nself "$W/a" remove traefik
 rm "$W/a/nginx/conf.d/shadow.conf"
 (
   while :; do
-    timestamp=$(date +%s%3N)
+    timestamp=$(epoch_ms)
     status=$(curl --silent --noproxy '*' -k --max-time 1 --resolve 'hasura.proxy.test:443:127.0.0.1' -o /dev/null -w '%{http_code}' https://hasura.proxy.test/v1/version) || status=000
     printf '%s %s\n' "$timestamp" "$status"
     sleep .05

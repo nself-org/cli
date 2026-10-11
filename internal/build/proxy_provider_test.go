@@ -31,6 +31,7 @@ func proxyFixture(t *testing.T) *planFixture {
 func installProxy(t *testing.T, dir string) {
 	t.Helper()
 	writeFixtureFile(t, filepath.Join(dir, "traefik", "plugin.json"), `{"name":"traefik","version":"0.0.0-fixture"}`, 0644)
+	writeFixtureFile(t, filepath.Join(dir, "traefik", "docker-compose.plugin.yml"), "services:\n  traefik:\n    image: traefik:v3.3\n", 0644)
 }
 
 func proxyHashes(t *testing.T, dir string) map[string][32]byte {
@@ -76,6 +77,19 @@ func proxyRefusedBuild(t *testing.T, f *planFixture, names ...string) {
 }
 
 func TestProxyProviderInstalled(t *testing.T) {
+	t.Run("non-directory plugin paths mean nginx", func(t *testing.T) {
+		f := proxyFixture(t)
+		file := filepath.Join(f.workdir, "file")
+		writeFixtureFile(t, file, "not a directory", 0644)
+		for _, path := range []string{file, filepath.Join(file, "plugins"), f.plugins} {
+			if path == f.plugins {
+				writeFixtureFile(t, filepath.Join(path, "traefik"), "not a directory", 0644)
+			}
+			if p, err := ProxyProvider(nil, f.workdir, path); err != nil || p != ProviderNginx {
+				t.Fatalf("%s: provider=%s error=%v", path, p, err)
+			}
+		}
+	})
 	f := proxyFixture(t)
 	for _, tc := range []struct {
 		name, path        string
@@ -157,6 +171,19 @@ func TestProxyProviderInstalled(t *testing.T) {
 }
 
 func TestProxyProviderSharedDirRefused(t *testing.T) {
+	t.Run("relative discovery outside workdir", func(t *testing.T) {
+		f := proxyFixture(t)
+		installProxy(t, f.plugins)
+		t.Chdir(f.root)
+		t.Setenv("NSELF_PLUGIN_DIR", ".nself/plugins")
+		st := &buildState{cfg: &config.Config{}, workdir: f.workdir}
+		err := st.applyProxyProvider(compose.NewGenerator(st.cfg))
+		for _, want := range []string{"E480", ".nself/plugins/traefik/docker-compose.plugin.yml", filepath.Join(f.plugins, "traefik", pluginComposeFilename), "absolute NSELF_PLUGIN_DIR"} {
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("missing %q: %v", want, err)
+			}
+		}
+	})
 	f := proxyFixture(t)
 	if _, e := Build(f.workdir, BuildOptions{Force: true}); e != nil {
 		t.Fatal(e)
@@ -228,6 +255,8 @@ func TestProxyRefusalUnmodelled(t *testing.T) {
 	}{
 		{"http://up:80/path", true}, {"http://up:80?q=1", true},
 		{"http://up:80/", false}, {"http://up:80", false},
+		{"up:80/path", true}, {"up:80?q=1", true}, {"up:80/", false}, {"up:80", false},
+		{"up:80/%zz", true},
 	} {
 		t.Run(tc.raw, func(t *testing.T) {
 			model := &routemodel.Model{Routes: []routemodel.Route{{ID: "cs:1", Source: "custom_service", RawUpstream: tc.raw}}}
@@ -236,6 +265,9 @@ func TestProxyRefusalUnmodelled(t *testing.T) {
 				t.Fatalf("refused=%v error=%v", tc.refused, err)
 			}
 			if err != nil && !strings.Contains(err.Error(), "route cs:1: upstream "+tc.raw) {
+				t.Fatal(err)
+			}
+			if tc.raw == "up:80/%zz" && !strings.Contains(err.Error(), "cannot be parsed") {
 				t.Fatal(err)
 			}
 		})

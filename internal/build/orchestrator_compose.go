@@ -15,11 +15,13 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // applyProxyProvider applies the derived provider to the compose service gate.
@@ -29,6 +31,16 @@ func (st *buildState) applyProxyProvider(g *compose.Generator) error {
 		return err
 	}
 	if provider != ProviderNginx {
+		rawPath := filepath.Join(DefaultPluginDir(), "traefik", pluginComposeFilename)
+		if _, err := os.Stat(rawPath); err != nil {
+			resolved, resolveErr := proxyRealPath(DefaultPluginDir(), st.workdir)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			return errs.New("E480", fmt.Sprintf("traefik compose fragment is not visible at %s (provider installation: %s): %v", rawPath, filepath.Join(resolved, "traefik", pluginComposeFilename), err)).
+				WithWhy("Provider lookup and compose discovery must find the same project-local plugin.").
+				WithFix("Set an absolute NSELF_PLUGIN_DIR in this project's .env and reinstall traefik.")
+		}
 		g.OmitNginx()
 		// Compose is generated once per build, even when modelRoutes runs twice.
 		if proxyAPIDocsEnabled(st.cfg) {

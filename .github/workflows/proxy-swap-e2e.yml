@@ -17,6 +17,11 @@ on:
   pull_request:
     paths:
       - internal/build/proxy*
+      - internal/build/orchestrator_nginx.go
+      - internal/build/orchestrator_compose.go
+      - internal/build/orchestrator_build_compose.go
+      - internal/build/nginx_sites_prune.go
+      - internal/nginx/**
       - internal/compose/generator.go
       - internal/compose/proxy_omit*
       - scripts/e2e/**
@@ -51,7 +56,9 @@ jobs:
         run: bash scripts/e2e/proxy-swap.sh --add
       - name: Round-trip leg
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.leg == 'round-trip' }}
-        run: bash scripts/e2e/proxy-swap.sh --round-trip
+        run: |
+          echo 'The round-trip leg lands with P7-DEPL-04.'
+          bash scripts/e2e/proxy-swap.sh --round-trip
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
