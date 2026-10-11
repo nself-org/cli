@@ -300,6 +300,7 @@ Subcommands:
 
 - `heal` — Run targeted self-healing routines for nSelf components
 - `images` — Check availability of every locked image
+- `report` — Write a redacted support bundle (tar.gz) to share in an issue
 - `security` — Diagnose server security
 
 Flags:
