@@ -173,7 +173,7 @@ func verifyResponseSig(rawBody []byte, sigHex string) error {
 const replySkewSec = 300
 
 // replyMaxWindowSec is the longest a signed reply is trusted after its issued-at.
-const replyMaxWindowSec = int64(24 * time.Hour / time.Second)
+const replyMaxWindowSec int64 = 86400 // 24 h
 
 // replyBoundToKey is the v1.5 check on a verified /license/validate reply: its
 // signed bytes must name the requesting licence and be inside their validity
