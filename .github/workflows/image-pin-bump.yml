@@ -5,9 +5,11 @@ name: Image pin bump
 # Pins in internal/compose/images.yaml move only through one reviewed PR. Every
 # Monday this workflow runs tools/imagebump (policy: .github/image-bump-policy.yaml),
 # which rewrites the allowed versions and regenerates internal/compose/images.lock.json
-# through tools/imagelock -resolve. It then checks the result on the PR branch:
-# imagelock -check, the daily image probe (default-images-pullable.yml), the stack
-# smoke (e2e-golden-path.yml with source=local) and `mirror-images.sh --plan`. One PR
+# through tools/imagelock -resolve, and regenerates the dev-minimal build golden.
+# It then checks the result: imagelock -check, go test of internal/compose,
+# internal/config, cmd/commands and tools/imagebump, and on the PR branch the
+# daily image probe (default-images-pullable.yml), the stack smoke
+# (e2e-golden-path.yml with source=local) and `mirror-images.sh --plan`. One PR
 # (branch chore/image-pins, label image-pins) carries the results and is updated in
 # place while it is open. It is never merged automatically.
 #
@@ -49,6 +51,7 @@ permissions:
 env:
   GOFLAGS: -mod=vendor
   CGO_ENABLED: '0'
+  GOLDEN: internal/reconcile/testdata/fixtures/dev-minimal/golden-tree.txt
 
 jobs:
   bump:
@@ -94,9 +97,30 @@ jobs:
           if git diff --quiet; then
             echo "no pin changes"
             echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          # The dev-minimal golden pins the docker-compose.yml hash, which carries
+          # the image tags, so every bump regenerates it (D-0362). A failed regen
+          # stops the run before any PR: it would carry a stale golden.
+          UPDATE_GOLDEN=1 go test -count=1 ./cmd/commands -run '^TestBuildPlanDevGolden$'
+          git diff --stat -- "$GOLDEN"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Test the bumped tree
+        id: gotest
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          # D-0332: imagelock -check alone let a red-on-tests bump look green. The
+          # rc and the failing package/test names (never the log) go to the PR
+          # body, and the last step fails the run on a non-zero rc. Nothing is
+          # skipped. TestAcmeChallengeNginx (D-0286, needs a docker socket) is a
+          # known red in internal/nginx, which this list does not run.
+          rc=0
+          go test -count=1 ./internal/compose ./internal/config ./cmd/commands ./tools/imagebump/... > "$OUT/gotest.txt" 2>&1 || rc=$?
+          cat "$OUT/gotest.txt"
+          echo "$rc" > "$OUT/gotest.rc"
+          grep -E '^(--- FAIL: |FAIL[[:space:]])' "$OUT/gotest.txt" | sed -E 's/[[:space:]]+\([0-9.]+s\)$//; s/[[:space:]]+[0-9.]+s$//' | sort -u > "$OUT/gotest.fail" || true
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
 
       - name: Push the dry-run branch
         id: dry_push
@@ -106,7 +130,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          git add internal/compose/images.yaml internal/compose/images.lock.json
+          git add internal/compose/images.yaml internal/compose/images.lock.json "$GOLDEN"
           git commit -m "chore(images): weekly image pin bump"
           git push --force origin "$BRANCH"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -125,6 +149,7 @@ jobs:
           add-paths: |
             internal/compose/images.yaml
             internal/compose/images.lock.json
+            internal/reconcile/testdata/fixtures/dev-minimal/golden-tree.txt
           commit-message: 'chore(images): weekly image pin bump'
           title: 'chore(images): weekly image pin bump'
           body: 'Weekly image pin bump. The body is replaced with the check results when the workflow finishes.'
@@ -206,12 +231,13 @@ jobs:
       - name: Fail when a check failed
         if: steps.bump.outputs.changed == 'true'
         env:
+          GOTEST_RC: ${{ steps.gotest.outputs.rc }}
           PROBE_RC: ${{ steps.probe.outputs.rc }}
           SMOKE_RC: ${{ steps.smoke.outputs.rc }}
           MIRROR_RC: ${{ steps.mirror.outputs.rc }}
         run: |
           fail=0
-          for pair in "probe:$PROBE_RC" "smoke:$SMOKE_RC" "mirror plan:$MIRROR_RC"; do
+          for pair in "go test:$GOTEST_RC" "probe:$PROBE_RC" "smoke:$SMOKE_RC" "mirror plan:$MIRROR_RC"; do
             if [ "${pair#*:}" != "0" ]; then
               echo "check failed: ${pair%%:*} (exit ${pair#*:})" >&2
               fail=1
