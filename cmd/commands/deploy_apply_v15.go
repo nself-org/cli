@@ -150,33 +150,38 @@ func ttyConfirm(msg string) bool {
 	return strings.EqualFold(strings.TrimSpace(ans), "yes")
 }
 
-// recordRemoteApply writes deploy.json as servers finish. A server whose files
-// were left alone (refused before the sync, or restored in place after a failure)
-// reports Synced=false and never overwrites the last good record. Each server that
-// kept changes adds its tar and its change and absent lists, per host; the primary
-// (the first host when none is primary) supplies pre_deploy_tar. backup_id and
-// backup_host name the env's one verified backup, taken on the primary.
+// recordRemoteApply writes deploy.json as servers finish, but only once some
+// server kept changes (refused or restored servers alone leave the last good
+// record). Success and per-host outcomes cover every server seen, so a later
+// refused server makes the env success=false. Servers that kept changes add their
+// tar and change and absent lists per host; the primary supplies pre_deploy_tar.
 func recordRemoteApply(workdir, target string, start time.Time, backupID, backupHost string) func(controlplane.Server, deploy.ApplyResult, error) {
-	st := deploy.StrategyState{Strategy: deploy.StrategyRolling, Target: target, StartedAt: start, Success: true, BackupID: backupID, BackupHost: backupHost}
+	st := deploy.StrategyState{Strategy: deploy.StrategyRolling, Target: target, StartedAt: start, Success: true, BackupID: backupID, BackupHost: backupHost, HostOutcomes: map[string]string{}}
+	var failures []string
 	return func(srv controlplane.Server, res deploy.ApplyResult, err error) {
-		if !res.Synced {
-			return
+		st.HostOutcomes[srv.Name] = "ok"
+		if err != nil {
+			st.HostOutcomes[srv.Name] = map[bool]string{true: "failed: ", false: "not changed: "}[res.Synced] + err.Error()
+			failures = append(failures, srv.Name+": "+err.Error())
+			st.Success, st.Error = false, strings.Join(failures, "; ")
 		}
-		if st.PreDeployTars == nil {
-			st.PreDeployTars, st.PreDeployChanged, st.PreDeployAbsent = map[string]string{}, map[string][]string{}, map[string][]string{}
-		}
-		st.PreDeployTars[res.BackupHost] = res.PreDeployTar
-		st.PreDeployChanged[res.BackupHost], st.PreDeployAbsent[res.BackupHost] = res.Changed, res.Absent
-		if srv.Primary || st.PreDeployTar == "" {
-			st.PreDeployTar = res.PreDeployTar
-			if backupHost == "" {
-				st.BackupHost = res.BackupHost
+		if res.Synced {
+			if st.PreDeployTars == nil {
+				st.PreDeployTars, st.PreDeployChanged, st.PreDeployAbsent = map[string]string{}, map[string][]string{}, map[string][]string{}
+			}
+			st.PreDeployTars[res.BackupHost] = res.PreDeployTar
+			st.PreDeployChanged[res.BackupHost], st.PreDeployAbsent[res.BackupHost] = res.Changed, res.Absent
+			if srv.Primary || st.PreDeployTar == "" {
+				st.PreDeployTar = res.PreDeployTar
+				if backupHost == "" {
+					st.BackupHost = res.BackupHost
+				}
 			}
 		}
-		st.CompletedAt = time.Now()
-		if err != nil {
-			st.Success, st.Error = false, err.Error()
+		if len(st.PreDeployTars) == 0 {
+			return
 		}
+		st.CompletedAt = time.Now()
 		if serr := deploy.SaveDeployState(workdir, st); serr != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "warning: could not save the deploy record: %v\n", serr)
 		}

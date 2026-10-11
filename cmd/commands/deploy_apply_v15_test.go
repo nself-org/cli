@@ -482,3 +482,64 @@ func TestUnconfirmedRecreateKeepsRecord(t *testing.T) {
 		t.Errorf("an E403 refusal rewrote deploy.json:\n%s\nvs\n%s", before, after)
 	}
 }
+
+// twoHostProd opens a primary and a second prod server on separate recorders.
+func twoHostProd(t *testing.T) (proj string, primary, second *v15Remote, inv *controlplane.Inventory) {
+	proj, primary = v15Project(t)
+	second = &v15Remote{label: "deploy@app2.example.test"}
+	deployRemoteOpen = func(_ context.Context, srv controlplane.Server, _, _ string) (deploy.Remote, error) {
+		if strings.Contains(srv.Host, "app2") {
+			return second, nil
+		}
+		return primary, nil
+	}
+	return proj, primary, second, prodInventory(prodServers(t)...)
+}
+
+// G12: the record's success reflects the whole env. A later server refused before
+// its sync makes the env record success=false, with each host's outcome.
+func TestRecordReflectsWholeEnv(t *testing.T) {
+	proj, _, second, inv := twoHostProd(t)
+	second.locked = true // app-2 is refused at the deploy lock, before its sync
+	res, err := runDeployPipeline(yesCmd(), proj, inv, "prod", okProber{}, filepath.Join(proj, "docker-compose.yml"), "", "", true)
+	if err == nil {
+		err = failedServersError(res)
+	}
+	if err == nil {
+		t.Fatal("want app-2 refused")
+	}
+	st, _ := deploy.LoadDeployState(proj)
+	if st.Success || !strings.Contains(st.Error, "app-2") {
+		t.Errorf("the env record must say it failed and name app-2: success=%v error=%q", st.Success, st.Error)
+	}
+	if st.HostOutcomes["app-1"] != "ok" || !strings.HasPrefix(st.HostOutcomes["app-2"], "not changed") || len(st.PreDeployTars) != 1 {
+		t.Errorf("per-host outcomes: %v, tars %v", st.HostOutcomes, st.PreDeployTars)
+	}
+}
+
+// G12: a multi-host rollback that fails on a later host and is retried never
+// restores the database a second time.
+func TestPartialRollbackRetryRestoresDBOnce(t *testing.T) {
+	proj, primary, second, inv := twoHostProd(t)
+	cmd := yesCmd()
+	if res, err := runDeployPipeline(cmd, proj, inv, "prod", okProber{}, filepath.Join(proj, "docker-compose.yml"), "", "", true); err != nil || failedServersError(res) != nil {
+		t.Fatalf("deploy: %v", err)
+	}
+	second.failOn = " pull" // the second host's re-apply fails
+	if handled, err := rollbackRemoteV15(cmd, proj, "prod"); !handled || err == nil || !strings.Contains(err.Error(), "app2") {
+		t.Fatalf("first rollback: handled=%v err=%v, want a failure on app2", handled, err)
+	}
+	if st, _ := deploy.LoadDeployState(proj); st.DBRestoredAt == "" || st.RolledBack {
+		t.Fatalf("db_restored_at must be saved and the record not rolled back: %+v", st)
+	}
+	second.failOn = ""
+	if handled, err := rollbackRemoteV15(cmd, proj, "prod"); !handled || err != nil {
+		t.Fatalf("retry: handled=%v err=%v", handled, err)
+	}
+	if n := countCmds(primary, "nself backup restore") + countCmds(second, "nself backup restore"); n != 1 {
+		t.Errorf("backup restore ran %d times across the env, want exactly 1", n)
+	}
+	if st, _ := deploy.LoadDeployState(proj); !st.RolledBack {
+		t.Errorf("the retry should mark the record rolled back: %+v", st)
+	}
+}

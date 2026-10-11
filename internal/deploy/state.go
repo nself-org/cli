@@ -77,6 +77,10 @@ type StrategyState struct {
 	// DBRestoredAt is set (RFC 3339) right after `nself backup restore` succeeded,
 	// before the re-apply, so a retried rollback never restores the database twice.
 	DBRestoredAt string `json:"db_restored_at,omitempty"`
+	// HostOutcomes is, per server name, what the deploy did there: "ok", "failed:
+	// <err>" (changes kept) or "not changed: <err>" (refused or restored). Success
+	// is true only when every server of the env is "ok".
+	HostOutcomes map[string]string `json:"host_outcomes,omitempty"`
 }
 
 // LoadDeployState reads the deploy state from .nself/state/deploy.json.
