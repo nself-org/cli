@@ -12,7 +12,8 @@ on:
   push:
     branches:
       - main
-    paths: &sdk-remote-mutation-paths
+    # Spelled out, not an alias (repo convention, see coverage.yml).
+    paths:
       - "sdk/go/remote/**"
       - "sdk/go/go.mod"
       - "sdk/go/go.sum"
@@ -20,7 +21,13 @@ on:
       - "scripts/ci/sdk-remote-mutation*.sh"
       - ".github/workflows/sdk-go-remote-mutation.yml"
   pull_request:
-    paths: *sdk-remote-mutation-paths
+    paths:
+      - "sdk/go/remote/**"
+      - "sdk/go/go.mod"
+      - "sdk/go/go.sum"
+      - "scripts/mutation.sh"
+      - "scripts/ci/sdk-remote-mutation*.sh"
+      - ".github/workflows/sdk-go-remote-mutation.yml"
   workflow_dispatch:
 
 permissions:
@@ -28,7 +35,8 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A newer push to main must not cancel the gate run of the previous merge.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   mutation:

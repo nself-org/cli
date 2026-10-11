@@ -74,6 +74,15 @@ d="${WORK}/newfile"; fixture "${d}" "a.go,b.go"
 printf 'package remote\n\nfunc C() {}\n' > "${d}/sdk/go/remote/c.go"
 expect new-file-not-in-set 1 "${d}" "< c.go"
 
+# A custom build tag would hide a file from every mutant (Opus review 4).
+d="${WORK}/tagged"; fixture "${d}" "a.go,b.go"
+printf '//go:build integration\n\npackage remote\n\nfunc T() {}\n' > "${d}/sdk/go/remote/tagged.go"
+expect build-tagged-file-escapes 1 "${d}" "tagged.go is not compiled on linux or windows"
+
+d="${WORK}/golistfail"; fixture "${d}" "a.go,b.go"
+printf 'not a go.mod\n' > "${d}/sdk/go/go.mod"
+expect go-list-fails 1 "${d}" "go list ./remote (GOOS=linux) failed"
+
 d="${WORK}/stale"; fixture "${d}" "a.go,b.go,gone.go"
 expect stale-entry-in-set 1 "${d}" "> gone.go"
 

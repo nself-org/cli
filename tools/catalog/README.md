@@ -5,14 +5,17 @@ Epic P7-PLUG D3). It replaces the hand-edited registries, `plugins-pro:scripts/b
 and `plugins:scripts/plugin-counts.sh`. Every value derives from a manifest, `releases.json` or
 `bundles.json`; nothing is typed by hand.
 
-Run it in a plugin repo, built from a checkout of a pinned CLI tag:
+Run it in a plugin repo, built from a checkout of a pinned CLI ref (a tag or a full commit sha):
 
 ```sh
-tag=<cli tag>   # e.g. the version in the plugin repo's scripts/cli-tools.version
+ref=<cli tag or commit sha>
 src="$(mktemp -d)"
-git clone --quiet --depth 1 --branch "$tag" https://github.com/nself-org/cli "$src"
+git -C "$src" init --quiet
+git -C "$src" fetch --quiet --depth 1 https://github.com/nself-org/cli "$ref"
+git -C "$src" -c advice.detachedHead=false checkout --quiet FETCH_HEAD
 (cd "$src" && go build -mod=vendor -o "$src/catalog" ./tools/catalog)
 "$src/catalog" -mode free ...
+rm -rf "$src"
 ```
 
 `go run github.com/nself-org/cli/tools/catalog@<cli tag>` does not work: the cli `go.mod` holds

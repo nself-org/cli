@@ -121,8 +121,12 @@ jobs:
       AI_AUTO_INSTALL: 'false'
       # D-0413: the P7-SURF-12 config secrets leak gate
       # (TestConfigSecretsStoreHoldsNoSecret) fails instead of skipping when
-      # age is missing. The step below installs it on every leg.
-      NSELF_REQUIRE_AGE: '1'
+      # age is missing. The step below installs it on the Linux and macOS legs.
+      # Windows is left out: the leak test skips there anyway (its pilot
+      # harness needs a POSIX docker stub), and age on PATH un-skips
+      # TestSecretsEdit_RoundTrip, whose fake editor is a .sh file Windows
+      # cannot exec.
+      NSELF_REQUIRE_AGE: ${{ startsWith(matrix.os, 'windows') && '0' || '1' }}
 
     steps:
       - name: Checkout
@@ -133,16 +137,17 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # One pinned release on all five legs through the Go toolchain the job
-      # already has: Windows has neither apt nor brew, and apt and brew ship
-      # different age versions.
+      # One pinned release on every non-Windows leg through the Go toolchain
+      # the job already has (apt and brew ship different age versions).
       - name: Install age and age-keygen
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           go install filippo.io/age/cmd/age@v1.3.2 filippo.io/age/cmd/age-keygen@v1.3.2
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Check age is on PATH
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           age --version

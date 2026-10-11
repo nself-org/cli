@@ -4,7 +4,8 @@
 #          Line 1 of sdk/go/remote/testdata/mutation-allow.txt holds the
 #          command; this script takes the --only set from it, checks that the
 #          set names every non-test file the package compiles on linux (a new
-#          file must join the gate), then runs scripts/mutation.sh.
+#          file must join the gate) and that no file hides behind a custom
+#          build tag, then runs scripts/mutation.sh.
 # Inputs:  --dry-run: run the checks and print the gate command, do not run it.
 # Outputs: exit 0 no mutant lived; 1 a mutant lived, the header is missing or
 #          malformed, or the --only set differs from the package's files;
@@ -51,9 +52,32 @@ case "${only}" in
     ;;
 esac
 
+# golist GOOS TEMPLATE: go list over the remote package for one GOOS.
+golist() {
+  (cd sdk/go && GOOS="$1" GOFLAGS=-mod=mod GOWORK=off go list -f "$2" ./remote) || {
+    echo "sdk-remote-mutation: go list ./remote (GOOS=$1) failed" >&2
+    exit 1
+  }
+}
+
+# A non-test file go skips on linux escapes the gate unless another OS
+# compiles it (lock_other.go is !unix): a custom build tag (e.g. integration)
+# would hide code from every mutant, so it fails here.
+ignored_all="$(golist linux '{{range .IgnoredGoFiles}}{{.}}{{"\n"}}{{end}}')"
+ignored="$(printf '%s\n' "${ignored_all}" | grep -v -e '_test\.go$' -e '^$' || true)"
+if [ -n "${ignored}" ]; then
+  other_os="$(golist windows '{{range .GoFiles}}{{.}}{{"\n"}}{{end}}')"
+  for f in ${ignored}; do
+    if ! printf '%s\n' "${other_os}" | grep -qxF "${f}"; then
+      echo "sdk-remote-mutation: ${f} is not compiled on linux or windows (custom build tag?), so no mutant reaches it" >&2
+      exit 1
+    fi
+  done
+fi
+
 # The gate runs on a linux host, so the set must equal the files go compiles
 # there (lock_other.go is !unix and drops out on its own).
-pkg_files="$(cd sdk/go && GOOS=linux GOFLAGS=-mod=mod go list -f '{{join .GoFiles ","}}' ./remote)"
+pkg_files="$(golist linux '{{join .GoFiles ","}}')"
 want="$(printf '%s\n' "${pkg_files}" | tr ',' '\n' | sort)"
 got="$(printf '%s\n' "${only}" | tr ',' '\n' | sort)"
 if [ "${want}" != "${got}" ]; then

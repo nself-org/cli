@@ -88,6 +88,12 @@ d="$(case_dir sdk-test-edit-is-not-drift)"
 printf '\n// test-only change\n' >> "${d}/sdk/lib/lib_test.go"
 expect sdk-test-edit-is-not-drift 0 "${d}"
 
+# go mod vendor drops a symlinked .go file the build would compile (Opus review 6).
+d="$(case_dir sdk-symlinked-go-file)"
+printf 'package lib\n\nfunc Linked() {}\n' > "${d}/sdk/linked.src"
+ln -s ../linked.src "${d}/sdk/lib/linked.go"
+expect sdk-symlinked-go-file 1 "${d}" "symlinked Go files in ./sdk"
+
 d="$(case_dir go-mod-vendor-fails)"
 printf 'package main\n\nimport _ "github.com/nself-org/vsc-fixture/sdk/missing"\n' > "${d}/broken.go"
 expect go-mod-vendor-fails 2 "${d}" "go mod vendor failed"
