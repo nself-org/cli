@@ -6,7 +6,8 @@ package config
 //          `nself config env explain VAR`. Both commands render the same
 //          Explanation, so they can never disagree about the winner.
 // Inputs:  the project directory, the active environment name (see
-//          ResolveEnv) and the key. The escape hatch NSELF_LEGACY_ENV_ORDER is
+//          ResolveEnv; ExplainActive resolves it and keeps its source) and
+//          the key. The escape hatch NSELF_LEGACY_ENV_ORDER is
 //          read here exactly as Load() reads it.
 // Outputs: an Explanation: the cascade, every existing file that sets the
 //          key (lowest precedence first), the winning file, the process
@@ -17,6 +18,9 @@ package config
 //          applies every cascade file with godotenv.Overload, so a file that
 //          sets the key replaces a process environment value, and the process
 //          environment is the source only when no file sets the key.
+//          ENV is the one exception on the way in: ResolveEnv reads the
+//          process value first to choose the cascade files, before any file
+//          is applied, so the Explanation also carries EnvSource.
 // SPORT:   cli/internal/config — CLI-R18 env cascade canon.
 
 import (
@@ -44,6 +48,9 @@ type Explanation struct {
 	Default string
 	// Env is the active environment name the cascade was built for.
 	Env string
+	// EnvSource is where Env came from (ResolveEnv: "process environment",
+	// ".env" or "default"); empty when the caller passed Env directly.
+	EnvSource string
 	// Legacy reports that NSELF_LEGACY_ENV_ORDER selected the legacy order.
 	Legacy bool
 	// Cascade is every file the loader consults, lowest precedence first.
@@ -79,6 +86,26 @@ func (e Explanation) Effective() (source, value string) {
 		return "default", e.Default
 	}
 	return "unset", ""
+}
+
+// SelectsCascade reports whether the key is ENV, whose resolved value chooses
+// which cascade files are read. For ENV the process value is consulted first
+// (see ResolveEnv), so EnvSource can name the process environment even when a
+// file wins the final value.
+func (e Explanation) SelectsCascade() bool {
+	return e.Key == "ENV"
+}
+
+// ExplainActive is ExplainKey for the environment ResolveEnv picks in
+// projectDir, with ResolveEnv's source kept in EnvSource.
+func ExplainActive(projectDir, key string) (Explanation, error) {
+	env, source := ResolveEnv(projectDir)
+	exp, err := ExplainKey(projectDir, env, key)
+	if err != nil {
+		return Explanation{}, err
+	}
+	exp.EnvSource = source
+	return exp, nil
 }
 
 // ExplainKey walks the env cascade of projectDir for the active environment
