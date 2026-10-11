@@ -230,3 +230,105 @@ func TestReviewDoctorFixRespectsHandEditAndProdGate(t *testing.T) {
 		t.Fatal("refused fix changed compose")
 	}
 }
+
+// TestDoctorDriftVirtualPluginKeys covers D-0382: a plugin compose fragment is
+// recorded under the virtual key "@plugins/<name>/docker-compose.plugin.yml".
+// Doctor resolves it under the plugin directory, so a fresh install is clean,
+// --fix stays clean on every rerun, a hand edit is drift and a removed plugin
+// is not.
+func TestDoctorDriftVirtualPluginKeys(t *testing.T) {
+	dir := t.TempDir()
+	plugins := t.TempDir()
+	t.Setenv("NSELF_PLUGIN_DIR", plugins)
+	const key = reconcile.PluginsPrefix + "fxplug/docker-compose.plugin.yml"
+	fragment := filepath.Join(plugins, "fxplug", "docker-compose.plugin.yml")
+	if err := os.MkdirAll(filepath.Dir(fragment), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(plugins, "fxplug", "plugin.json"), []byte(`{"name":"fxplug","version":"1.0.0"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fragment, []byte("services:\n  fxplug:\n    image: example.test/fxplug:1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fx\nENV=dev\nBASE_DOMAIN=example.test\nSSL_MODE=none\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	req := doctorDriftRequest(dir)
+	req.Seed = []byte("doctor-seed")
+	if _, err := reconcile.Apply(context.Background(), req, reconcile.ApplyOptions{Yes: true}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := reconcile.LoadGeneratedState(dir)
+	if err != nil || state == nil {
+		t.Fatalf("state: %v, %v", state, err)
+	}
+	if _, ok := state.Files[key]; !ok {
+		t.Fatalf("the build did not record %s; recorded keys: %v", key, mapKeys(state.Files))
+	}
+
+	clean := func(stage string) {
+		t.Helper()
+		r, _, err := checkGeneratedDrift(context.Background(), dir)
+		if err != nil || r.Status != "pass" || r.Message != "no generated-file drift" {
+			t.Fatalf("%s: %+v, %v", stage, r, err)
+		}
+	}
+	clean("after install")
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("yes", true, "")
+	cmd.Flags().Bool("force", false, "")
+	for i := 1; i <= 2; i++ {
+		r, err := runDriftFix(context.Background(), cmd, dir)
+		if err != nil || r.Status != "pass" || r.Message != "no generated-file drift" {
+			t.Fatalf("fix run %d: %+v, %v", i, r, err)
+		}
+		clean(fmt.Sprintf("after fix run %d", i))
+	}
+
+	f, err := os.OpenFile(fragment, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("# hand edit\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r, _, err := checkGeneratedDrift(context.Background(), dir)
+	if err != nil || r.Status != "fail" || r.Message != "drift: "+key+" (hand-edited)" {
+		t.Fatalf("hand-edited fragment: %+v, %v", r, err)
+	}
+
+	if err := os.RemoveAll(filepath.Join(plugins, "fxplug")); err != nil {
+		t.Fatal(err)
+	}
+	clean("after the plugin directory was removed")
+}
+
+func TestVirtualStateKey(t *testing.T) {
+	for _, tc := range []struct {
+		key  string
+		want bool
+	}{
+		{reconcile.PluginsPrefix + "a/docker-compose.plugin.yml", true},
+		{reconcile.FrontingPrefix + "nginx/sites/a.conf", true},
+		{reconcile.AbsPrefix + "etc/nself/a.conf", true},
+		{"docker-compose.yml", false},
+		{"nginx/plugins/a.conf", false},
+		{"plugins@/a", false},
+	} {
+		if got := virtualStateKey(tc.key); got != tc.want {
+			t.Errorf("virtualStateKey(%q) = %v, want %v", tc.key, got, tc.want)
+		}
+	}
+}
+
+func mapKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
