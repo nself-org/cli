@@ -2,6 +2,8 @@ package config
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -275,5 +277,24 @@ func TestNormalizeEnv_Aliases(t *testing.T) {
 		if got != c.want {
 			t.Errorf("normalizeEnv(%q) = %q, want %q", c.input, got, c.want)
 		}
+	}
+}
+
+// TestLoadDiskDotenvErrorCarriesNoValue proves a bad file on disk reports
+// "invalid dotenv syntax in <path>" and never the parser text, which quotes
+// the offending line (a secret value).
+func TestLoadDiskDotenvErrorCarriesNoValue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env.secrets")
+	if err := os.WriteFile(path, []byte(fakeBadLine), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadWithOptions(dir, LoadOptions{})
+	want := "invalid dotenv syntax in " + path
+	if err == nil || err.Error() != want {
+		t.Fatalf("got %v, want %q", err, want)
+	}
+	if strings.Contains(err.Error(), "s3cr3t-FAKE-0000") {
+		t.Fatalf("error holds the secret: %v", err)
 	}
 }

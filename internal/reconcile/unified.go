@@ -22,7 +22,10 @@ const redactedValue = "[REDACTED]"
 // Env-kind paths (IsEnvPath) show KEY names only: every KEY=value line prints
 // as KEY=[REDACTED], and the continuation lines of a multi-line or quoted value
 // print as [REDACTED] (see redactEnvLines), before the line is written, so no
-// value reaches the text. When the change is too large for an edit script (over
+// value reaches the text. Every other path goes through redactSecretLines
+// (unified_secrets.go): a secret-named YAML key, KEY=value, JSON pair or
+// --flag value prints as [REDACTED], and URL credentials and token shapes are
+// masked, so a compose file never prints a secret. When the change is too large for an edit script (over
 // maxTraceDistance changed lines, or maxEditDistance) the text is the two
 // header lines and a one-line notice.
 func Unified(path string, a, b []byte) string {
@@ -44,6 +47,8 @@ func Unified(path string, a, b []byte) string {
 	}
 	if IsEnvPath(path) {
 		al, bl = redactEnvLines(al), redactEnvLines(bl)
+	} else {
+		al, bl = redactSecretLines(al), redactSecretLines(bl)
 	}
 	writeHunks(&sb, ops, al, bl)
 	return sb.String()
