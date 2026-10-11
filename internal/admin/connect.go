@@ -126,6 +126,8 @@ func adminSSHArgs(ctx context.Context, user, host string, port int) ([]string, e
 		return nil, err
 	}
 	var args []string
+	// v1.4 adds no host-key option (ssh_config/OpenSSH default, never accept-new;
+	// pinning would break unpinned users, ADR 0021).
 	// compat.V15(P7-DEPL-14): unpinned admin SSH -> pinned host-key policy.
 	if compat.V15() {
 		policy, err := adminHostKeyOptions(ctx, spec)
