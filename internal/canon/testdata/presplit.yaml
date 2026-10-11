@@ -469,9 +469,9 @@ commands:
   trust dns: {side_effect: write}
   # cmd/commands/ssl.go:38 RunE path changes no persistent state (prints/reads only)
   trust ssl: {side_effect: read}
-  trust ssl add: {side_effect: write, flags: {acme: {side_effect: remote}}, confirm: {flags: [agree-tos]}}
-  trust ssl renew: {side_effect: write, flags: {acme: {side_effect: remote}}, confirm: {flags: [agree-tos]}}
-  trust ssl setup: {side_effect: write, flags: {acme: {side_effect: remote}}, confirm: {flags: [agree-tos]}}
+  trust ssl add: {side_effect: remote, confirm: {flags: [agree-tos]}}
+  trust ssl renew: {side_effect: remote, confirm: {flags: [agree-tos]}}
+  trust ssl setup: {side_effect: remote, confirm: {flags: [agree-tos]}}
   trust ssl status: {side_effect: read}
   trust status: {side_effect: read, exit_codes: {"0": "all trust components configured and no expiry warnings", "2": "one or more components missing or cert expiry <30 days"}}
   # cmd/commands/uninstall.go:66 hidden shim: bare uninstall keeps volumes, so the target flags matter (deprecation registry)

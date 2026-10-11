@@ -80,9 +80,10 @@ commands:
   config trust dns: {side_effect: write}
   # cmd/commands/ssl.go:38 RunE path changes no persistent state (prints/reads only)
   config trust ssl: {side_effect: read}
-  config trust ssl add: {side_effect: write, flags: {acme: {side_effect: remote}}, confirm: {flags: [agree-tos]}}
-  config trust ssl renew: {side_effect: write, flags: {acme: {side_effect: remote}}, confirm: {flags: [agree-tos]}}
-  config trust ssl setup: {side_effect: write, flags: {acme: {side_effect: remote}}, confirm: {flags: [agree-tos]}}
+  # cmd/commands/ssl_renewal.go:38 v1.5 makes the ACME engine the default (P7-LIVE-22): add, renew and setup reach the CA; accepting its terms is the invoker-owned consent flag
+  config trust ssl add: {side_effect: remote, confirm: {flags: [agree-tos]}}
+  config trust ssl renew: {side_effect: remote, confirm: {flags: [agree-tos]}}
+  config trust ssl setup: {side_effect: remote, confirm: {flags: [agree-tos]}}
   config trust ssl status: {side_effect: read}
   config trust status: {side_effect: read, exit_codes: {"0": "all trust components configured and no expiry warnings", "2": "one or more components missing or cert expiry <30 days"}}
   config validate: {side_effect: read, exit_codes: {"1": "one or more validators fail (exits 0 when all pass)"}}
