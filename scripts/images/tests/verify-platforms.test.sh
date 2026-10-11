@@ -8,8 +8,9 @@
 #         are accepted. Runs the real tool's --apply path against a fake
 #         `docker` on PATH that serves the JSON manifests in fixtures/, so no
 #         container, registry or network is touched. Negative controls: a
-#         missing lock platform, an empty index and an unreadable manifest
-#         must all fail with exit 1 and print no PRESENT line.
+#         missing lock platform, an empty index, an unreadable manifest and
+#         an empty, blank or non-object manifest body must all fail with
+#         exit 1 and print no PRESENT line.
 # Usage:  bash scripts/images/tests/verify-platforms.test.sh
 # Inputs: jq, bash 4+; fixtures/*.json (synthetic digests only).
 # Output: one "ok N <what>" line per passing assertion; "FAIL ..." on stderr
@@ -168,5 +169,21 @@ want_rc 1
 want_out ""
 want_err "unreadable mirror manifest at $DST@$IDX"
 ok "a non-JSON mirror manifest fails closed"
+
+# crane exiting 0 with an empty or truncated body must not read as "nothing missing".
+for body in '' '   ' 'null' '[]'; do
+  printf '%s' "$body" > "$WORK/odd.json"
+  apply_with "$WORK/odd.json"
+  want_rc 1
+  want_out ""
+  want_err "unreadable mirror manifest at $DST@$IDX"
+done
+ok "an empty, blank, null or non-object manifest body fails closed"
+
+printf '{"schemaVersion":2,"manifests":[{},{"digest":"%s"}]}' "$AMD" > "$WORK/nodigest.json"
+apply_with "$WORK/nodigest.json"
+want_rc 1
+want_err "missing from the mirror index at $DST: $ARM\$"
+ok "index entries without a digest do not satisfy a lock platform"
 
 echo "PASS: $PASSED assertions"

@@ -168,8 +168,10 @@ verify_platforms() {
   local dst="$1" idx="$2" manifest missing
   shift 2
   manifest="$(crane_run manifest "$dst@$idx")" || fail "cannot read the mirror manifest at $dst@$idx"
-  missing="$(jq -r --arg self "$idx" \
-    '(if .manifests then [.manifests[].digest] else [$self] end) as $got
+  # -n + input: an empty body is an error, not zero outputs (fail closed).
+  missing="$(jq -nr --arg self "$idx" \
+    'input | if type != "object" then error("not a manifest") else . end
+     | (if .manifests then [.manifests[].digest] else [$self] end) as $got
      | $ARGS.positional - $got | join(" ")' --args "$@" <<<"$manifest")" \
     || fail "unreadable mirror manifest at $dst@$idx"
   [ -z "$missing" ] || fail "lock platform digest(s) missing from the mirror index at $dst: $missing"
