@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -90,6 +91,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 	}
 
 	var removed []string
+	var failed []error
 
 	// 1. docker-compose.yml
 	composePath := filepath.Join(projectDir, "docker-compose.yml")
@@ -98,6 +100,7 @@ func runClean(cmd *cobra.Command, args []string) error {
 			removed = append(removed, "docker-compose.yml")
 		} else {
 			fmt.Fprintf(os.Stderr, "Warning: could not remove docker-compose.yml: %v\n", removeErr)
+			failed = append(failed, fmt.Errorf("removing docker-compose.yml: %w", removeErr))
 		}
 	}
 
@@ -112,6 +115,8 @@ func runClean(cmd *cobra.Command, args []string) error {
 					entryPath := filepath.Join(nginxSitesDir, name)
 					if removeErr := os.Remove(entryPath); removeErr == nil {
 						removed = append(removed, filepath.Join("nginx", "sites", name))
+					} else {
+						failed = append(failed, fmt.Errorf("removing nginx/sites/%s: %w", name, removeErr))
 					}
 				}
 			}
@@ -121,11 +126,18 @@ func runClean(cmd *cobra.Command, args []string) error {
 	// 3. .nself/cache/ directory
 	nSelfCacheDir := filepath.Join(projectDir, ".nself", "cache")
 	if _, statErr := os.Stat(nSelfCacheDir); statErr == nil {
-		if removeErr := os.RemoveAll(nSelfCacheDir); removeErr == nil {
+		if removeErr := removeAll(nSelfCacheDir); removeErr == nil {
 			removed = append(removed, ".nself/cache/")
 		} else {
 			fmt.Fprintf(os.Stderr, "Warning: could not remove .nself/cache/: %v\n", removeErr)
+			failed = append(failed, fmt.Errorf("removing .nself/cache/: %w", removeErr))
 		}
+	}
+
+	// A generated file that could not be deleted fails JSON mode before any
+	// host-wide prune: the envelope would otherwise read as a clean project.
+	if len(failed) > 0 && jsonMode {
+		return errPartialRemoval("could not remove every generated artifact", errors.Join(failed...), removed)
 	}
 
 	// 4. Docker build cache (non-fatal if docker not available)

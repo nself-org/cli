@@ -57,7 +57,7 @@ func buildFixture(t *testing.T) string {
 	// Compose down is stubbed directly too: the PATH stub is a shell script
 	// that Windows cannot run, and a failed down is now a JSON-mode error.
 	origDown, origReset := composeDown, resetComposeDown
-	composeDown = func(context.Context, io.Writer, io.Writer, string, bool) error { return nil }
+	composeDown = func(context.Context, io.Writer, io.Writer, string, bool) (bool, error) { return true, nil }
 	resetComposeDown = func(context.Context, string) error { return nil }
 	t.Cleanup(func() { composeDown, resetComposeDown = origDown, origReset })
 	return dir
@@ -325,27 +325,50 @@ func TestBuildFragmentPurgeNeedsTheWord(t *testing.T) {
 	}
 }
 
-// A path that failed to delete is never reported as removed; in JSON mode the
-// failure is an infra error naming what was removed. Human mode keeps exit 0.
-func TestBuildFragmentRemovalFailure(t *testing.T) {
-	t.Setenv("NSELF_V15", "1")
+// alreadyRemoved returns the "already removed: ..." list of a partial-removal
+// error, or "" when the message has none.
+func alreadyRemoved(err error) string {
+	msg := err.Error()
+	i := strings.Index(msg, "already removed: ")
+	if i < 0 {
+		return ""
+	}
+	rest := msg[i+len("already removed: "):]
+	if j := strings.Index(rest, "):"); j >= 0 {
+		rest = rest[:j]
+	}
+	return rest
+}
+
+// failRemoveAll makes removeAll fail with EPERM for paths whose base is base.
+func failRemoveAll(t *testing.T, base string) {
+	t.Helper()
 	orig := removeAll
 	removeAll = func(p string) error {
-		if filepath.Base(p) == "volumes" {
+		if filepath.Base(p) == base {
 			return os.ErrPermission
 		}
 		return os.RemoveAll(p)
 	}
 	t.Cleanup(func() { removeAll = orig })
+}
+
+// A path that failed to delete is never reported as removed; in JSON mode the
+// failure is an infra error naming what was removed, the database volumes
+// first when compose down --volumes already ran. Human mode keeps exit 0.
+func TestBuildFragmentRemovalFailure(t *testing.T) {
+	t.Setenv("NSELF_V15", "1")
+	failRemoveAll(t, "volumes")
 
 	for _, name := range []string{"uninstall", "reset"} {
 		t.Run(name, func(t *testing.T) {
 			dir := buildFixture(t)
 			inDir(t, dir, func() {
 				out, err := runBuildCmd(t, name, "", "--json", "--yes", "--purge")
-				assertInfraFailure(t, out, err, "already removed: docker-compose.yml", ".nself/volumes")
-				if strings.Contains(err.Error(), "already removed: docker-compose.yml, nginx/sites/app.conf, .nself/cache/, .nself/volumes/") {
-					t.Fatalf("failed path reported as removed: %v", err)
+				assertInfraFailure(t, out, err, "removing .nself/volumes/")
+				got := alreadyRemoved(err)
+				if !strings.HasPrefix(got, volumesGone+", docker-compose.yml") || strings.Contains(got, "volumes/") {
+					t.Fatalf("already removed = %q: want the volumes first and never the failed path", got)
 				}
 			})
 			assertSurvives(t, dir, ".nself/volumes/pg/data")
@@ -356,6 +379,63 @@ func TestBuildFragmentRemovalFailure(t *testing.T) {
 			t.Fatalf("human mode keeps its exit 0 and warning, got %v", err)
 		}
 	})
+}
+
+// Bare reset and clean fail JSON mode on a generated file they could not
+// delete, instead of a success envelope that omits it.
+func TestBuildFragmentGeneratedRemovalFailure(t *testing.T) {
+	t.Setenv("NSELF_V15", "1")
+	t.Run("reset", func(t *testing.T) {
+		failRemoveAll(t, "app.conf")
+		inDir(t, buildFixture(t), func() {
+			out, err := runBuildCmd(t, "reset", "", "--json", "--yes")
+			assertInfraFailure(t, out, err, "removing nginx/sites/app.conf")
+			if got := alreadyRemoved(err); got != volumesGone+", docker-compose.yml, .env.computed" {
+				t.Fatalf("already removed = %q", got)
+			}
+		})
+	})
+	t.Run("clean", func(t *testing.T) {
+		failRemoveAll(t, "cache")
+		var pruned int
+		orig := dockerSystemPrune
+		dockerSystemPrune = func(context.Context, io.Writer, io.Writer) error { pruned++; return nil }
+		t.Cleanup(func() { dockerSystemPrune = orig })
+		inDir(t, buildFixture(t), func() {
+			out, err := runBuildCmd(t, "clean", "", "--json", "--all", "--yes")
+			assertInfraFailure(t, out, err, "removing .nself/cache/")
+			if got := alreadyRemoved(err); got != "docker-compose.yml, nginx/sites/app.conf" {
+				t.Fatalf("already removed = %q", got)
+			}
+		})
+		if pruned != 0 {
+			t.Fatal("host prune ran after a failed local clean")
+		}
+	})
+}
+
+// --purge with no compose file deletes no volume, so kept_data stays true.
+func TestBuildFragmentPurgeWithoutComposeKeepsData(t *testing.T) {
+	t.Setenv("NSELF_V15", "1")
+	for _, name := range []string{"reset", "uninstall"} {
+		t.Run(name, func(t *testing.T) {
+			dir := buildFixture(t)
+			composeDown = runDockerComposeDown // real: no compose file, docker never runs
+			if err := os.Remove(filepath.Join(dir, "docker-compose.yml")); err != nil {
+				t.Fatal(err)
+			}
+			var out string
+			inDir(t, dir, func() {
+				var err error
+				if out, err = runBuildCmd(t, name, "", "--json", "--yes", "--purge"); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if data := validateEnvelope(t, out, name); data["kept_data"] != true {
+				t.Fatalf("kept_data = %v, want true when no volume was deleted", data["kept_data"])
+			}
+		})
+	}
 }
 
 // A failed compose down stops JSON mode before the compose file is deleted
@@ -373,11 +453,11 @@ func TestBuildFragmentComposeDownFailure(t *testing.T) {
 	} {
 		t.Run(tc.name+strings.Join(tc.flags, ""), func(t *testing.T) {
 			dir := buildFixture(t)
-			composeDown = func(context.Context, io.Writer, io.Writer, string, bool) error { return downErr }
+			composeDown = func(context.Context, io.Writer, io.Writer, string, bool) (bool, error) { return true, downErr }
 			resetComposeDown = func(context.Context, string) error { return downErr }
 			inDir(t, dir, func() {
 				out, err := runBuildCmd(t, tc.name, "", tc.flags...)
-				assertInfraFailure(t, out, err, "docker compose down", "nothing was removed")
+				assertInfraFailure(t, out, err, "docker compose down", "no files were removed")
 				if !errors.Is(err, downErr) {
 					t.Fatalf("err %v does not wrap the down failure", err)
 				}
@@ -448,4 +528,15 @@ func TestReadAnswerOneLinePerCall(t *testing.T) {
 	if _, ok := readAnswer(r); ok {
 		t.Fatal("readAnswer at EOF must report ok=false")
 	}
+	if _, ok := readAnswer(strings.NewReader(strings.Repeat("y", 2048) + "\n")); ok {
+		t.Fatal("an over-long line must be a refusal")
+	}
+	if _, ok := readAnswer(stallReader{}); ok {
+		t.Fatal("a reader that never returns data must be a refusal")
+	}
 }
+
+// stallReader returns (0, nil) forever.
+type stallReader struct{}
+
+func (stallReader) Read([]byte) (int, error) { return 0, nil }

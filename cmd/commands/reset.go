@@ -2,11 +2,14 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/confirm"
@@ -120,34 +123,33 @@ func runReset(cmd *cobra.Command, args []string) error {
 		fmt.Println("No docker-compose.yml found — skipping container shutdown.")
 	}
 
-	// Remove generated files
+	// Remove generated files. A path that could not be deleted is never
+	// reported as removed; in JSON mode any such failure fails the command.
 	var removed []string
-
-	removed, _ = removeFile(filepath.Join(projectDir, "docker-compose.yml"), removed, []string{})
-	removed, _ = removeFile(filepath.Join(projectDir, ".env.computed"), removed, []string{})
-
-	// nginx/sites/ contents
-	nginxSitesDir := filepath.Join(projectDir, "nginx", "sites")
-	if info, statErr := os.Stat(nginxSitesDir); statErr == nil && info.IsDir() {
-		entries, _ := os.ReadDir(nginxSitesDir)
-		for _, entry := range entries {
-			entryPath := filepath.Join(nginxSitesDir, entry.Name())
-			if removeErr := os.RemoveAll(entryPath); removeErr == nil {
-				removed = append(removed, filepath.Join("nginx", "sites", entry.Name()))
+	var failed []error
+	record := func(rel string, remove func(string) error) {
+		var err error
+		if removed, err = recordIfExists(removed, projectDir, rel, remove); err != nil {
+			failed = append(failed, err)
+		}
+	}
+	record("docker-compose.yml", removeIfExists)
+	record(".env.computed", removeIfExists)
+	// nginx/sites/ and ssl/ contents
+	for _, dir := range []string{"nginx/sites", "ssl"} {
+		if info, statErr := os.Stat(filepath.Join(projectDir, filepath.FromSlash(dir))); statErr == nil && info.IsDir() {
+			entries, _ := os.ReadDir(filepath.Join(projectDir, filepath.FromSlash(dir)))
+			for _, entry := range entries {
+				record(dir+"/"+entry.Name(), removeDir)
 			}
 		}
 	}
-
-	// ssl/ contents
-	sslDir := filepath.Join(projectDir, "ssl")
-	if info, statErr := os.Stat(sslDir); statErr == nil && info.IsDir() {
-		entries, _ := os.ReadDir(sslDir)
-		for _, entry := range entries {
-			entryPath := filepath.Join(sslDir, entry.Name())
-			if removeErr := os.RemoveAll(entryPath); removeErr == nil {
-				removed = append(removed, filepath.Join("ssl", entry.Name()))
-			}
+	if len(failed) > 0 && buildEnvelopeWanted(cmd) {
+		done := removed
+		if volumesRemoved {
+			done = append([]string{volumesGone}, removed...)
 		}
+		return errPartialRemoval("could not remove every generated file", errors.Join(failed...), done)
 	}
 
 	fmt.Println()
@@ -170,22 +172,30 @@ var resetComposeDown = func(ctx context.Context, projectDir string) error {
 	return dcCmd.Run()
 }
 
-// removeFile removes a single file by path, appending its relative name (relative
-// to its containing directory for display) to the removed or notFound slice.
-func removeFile(path string, removed, notFound []string) ([]string, []string) {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		notFound = append(notFound, filepath.Base(path))
-		return removed, notFound
+// composeDown stops the project's containers and, when purge is true, removes
+// its volumes. A package variable so tests can make it fail without Docker.
+var composeDown = runDockerComposeDown
+
+// runDockerComposeDown stops and removes containers for the project.
+// If purge is true it also removes volumes. ran is false when there is no
+// compose file, so nothing was stopped and no volume was touched.
+// ctx is used to cancel the docker subprocess if the command context fires
+// (e.g. test harness deadline), preventing orphan I/O after the test exits.
+func runDockerComposeDown(ctx context.Context, stdout, stderr io.Writer, projectDir string, purge bool) (ran bool, err error) {
+	composeFile := filepath.Join(projectDir, "docker-compose.yml")
+	if _, err := os.Stat(composeFile); os.IsNotExist(err) {
+		return false, nil // nothing to stop
 	}
-	if err := os.Remove(path); err != nil {
-		// Append to notFound with an error note rather than propagating so the
-		// caller sees a full summary. Callers that care about hard errors should
-		// call os.Remove directly.
-		notFound = append(notFound, fmt.Sprintf("%s (remove failed: %v)", filepath.Base(path), err))
-		return removed, notFound
+
+	dockerArgs := []string{"compose", "--file", composeFile, "down"}
+	if purge {
+		dockerArgs = append(dockerArgs, "--volumes")
 	}
-	removed = append(removed, filepath.Base(path))
-	return removed, notFound
+	dcmd := exec.CommandContext(ctx, "docker", dockerArgs...)
+	dcmd.Stdout = stdout
+	dcmd.Stderr = stderr
+	dcmd.WaitDelay = 5 * time.Second
+	return true, dcmd.Run()
 }
 
 // recordIfExists runs remove on project-relative rel when it exists and
@@ -197,17 +207,22 @@ func recordIfExists(removed []string, root, rel string, remove func(string) erro
 		return removed, nil
 	}
 	if err := remove(path); err != nil {
-		return removed, err
+		return removed, fmt.Errorf("removing %s: %w", rel, err)
 	}
 	return append(removed, rel), nil
 }
 
+// volumesGone is the entry errPartialRemoval lists, ahead of the paths, once
+// compose down --volumes has run: the database volumes are already deleted.
+const volumesGone = "docker volumes (compose down --volumes)"
+
 // errPartialRemoval is what JSON mode returns when a destructive step failed:
-// an infra-class error (exit 2) whose message names the failure and every path
-// already removed, because an error envelope carries no data and the caller
-// must not read the failure as either success or "nothing changed".
+// an infra-class error (exit 2) whose message names the failure and everything
+// already removed (paths, plus volumesGone when compose down --volumes ran),
+// because an error envelope carries no data and the caller must not read the
+// failure as either success or "nothing changed".
 func errPartialRemoval(what string, cause error, removed []string) error {
-	done := "nothing was removed"
+	done := "no files were removed"
 	if len(removed) > 0 {
 		done = "already removed: " + strings.Join(jsonPaths(removed), ", ")
 	}
@@ -220,7 +235,7 @@ func removeIfExists(path string) error {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "  %s removing %s: %v\n",
 			ui.C(ui.Yellow, ui.IconWarning), path, err)
-		return fmt.Errorf("removing %s: %w", path, err)
+		return err
 	}
 	return nil
 }
@@ -231,7 +246,7 @@ func removeDir(path string) error {
 	if err := removeAll(path); err != nil {
 		fmt.Fprintf(os.Stderr, "  %s removing directory %s: %v\n",
 			ui.C(ui.Yellow, ui.IconWarning), path, err)
-		return fmt.Errorf("removing directory %s: %w", path, err)
+		return err
 	}
 	return nil
 }

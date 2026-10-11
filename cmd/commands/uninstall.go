@@ -1,15 +1,12 @@
 package commands
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -157,7 +154,11 @@ func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err e
 	jsonMode := buildEnvelopeWanted(cmd)
 
 	steps.Next() // Stopping containers
-	if err := composeDown(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cwd, purge); err != nil {
+	// volumesGone tracks whether compose down --volumes really ran: with no
+	// compose file nothing touched the named volumes, so the data is kept.
+	ran, err := composeDown(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cwd, purge)
+	volumesDeleted := purge && ran && err == nil
+	if err != nil {
 		// JSON mode stops here, before the compose file is deleted: the
 		// containers (and under --purge the volumes) are still there, and the
 		// caller needs the file to retry the shutdown.
@@ -204,7 +205,11 @@ func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err e
 	// JSON mode any such failure fails the command: kept_data false after a
 	// failed purge would tell the caller the data is gone when it is not.
 	if len(failed) > 0 && jsonMode {
-		return res, false, errPartialRemoval("could not remove every path", errors.Join(failed...), removed)
+		done := removed
+		if volumesDeleted {
+			done = append([]string{volumesGone}, removed...)
+		}
+		return res, false, errPartialRemoval("could not remove every path", errors.Join(failed...), done)
 	}
 
 	fmt.Println()
@@ -212,7 +217,7 @@ func uninstallProject(cmd *cobra.Command) (res UninstallResult, done bool, err e
 	fmt.Println()
 	fmt.Printf("  To start fresh: %s\n", ui.C(ui.Cyan, "nself init --force && nself build && nself start"))
 	fmt.Println()
-	return UninstallResult{Removed: removed, KeptData: !purge}, true, nil
+	return UninstallResult{Removed: removed, KeptData: !volumesDeleted}, true, nil
 }
 
 // abortedUninstall is the result of a declined prompt: nil in human mode (the
@@ -223,31 +228,6 @@ func abortedUninstall(cmd *cobra.Command) error {
 		return errConfirmRequired("uninstall")
 	}
 	return nil
-}
-
-// composeDown stops the project's containers and, when purge is true, removes
-// its volumes. A package variable so tests can make it fail without Docker.
-var composeDown = runDockerComposeDown
-
-// runDockerComposeDown stops and removes containers for the project.
-// If purge is true it also removes volumes.
-// ctx is used to cancel the docker subprocess if the command context fires
-// (e.g. test harness deadline), preventing orphan I/O after the test exits.
-func runDockerComposeDown(ctx context.Context, stdout, stderr io.Writer, projectDir string, purge bool) error {
-	composeFile := filepath.Join(projectDir, "docker-compose.yml")
-	if _, err := os.Stat(composeFile); os.IsNotExist(err) {
-		return nil // nothing to stop
-	}
-
-	dockerArgs := []string{"compose", "--file", composeFile, "down"}
-	if purge {
-		dockerArgs = append(dockerArgs, "--volumes")
-	}
-	dcmd := exec.CommandContext(ctx, "docker", dockerArgs...)
-	dcmd.Stdout = stdout
-	dcmd.Stderr = stderr
-	dcmd.WaitDelay = 5 * time.Second
-	return dcmd.Run()
 }
 
 // confirmPrompt prints the given prompt and returns true if the user typed
@@ -274,23 +254,32 @@ func confirmWord(cmd *cobra.Command, prompt, word string) bool {
 // lower-cased; ok is false at EOF with nothing read. It never reads past the
 // newline, so consecutive prompts on one piped stream each get their own line
 // (a bufio.Scanner per prompt would swallow the later answers).
+// A line longer than maxAnswerLen, or a reader that keeps returning nothing,
+// is a refusal, so `</dev/zero` cannot grow memory or spin forever.
 func readAnswer(r io.Reader) (answer string, ok bool) {
+	const maxAnswerLen, maxEmptyReads = 1024, 100
 	var line []byte
 	buf := make([]byte, 1)
-	for {
+	for empty := 0; ; {
 		n, err := r.Read(buf)
-		if n == 1 {
-			if buf[0] == '\n' {
-				break
+		switch {
+		case n == 1 && buf[0] == '\n':
+			return strings.TrimSpace(strings.ToLower(string(line))), true
+		case n == 1:
+			empty = 0
+			if line = append(line, buf[0]); len(line) > maxAnswerLen {
+				return "", false
 			}
-			line = append(line, buf[0])
+		case err == nil:
+			if empty++; empty >= maxEmptyReads {
+				return "", false
+			}
 		}
 		if err != nil {
 			if len(line) == 0 {
 				return "", false
 			}
-			break
+			return strings.TrimSpace(strings.ToLower(string(line))), true
 		}
 	}
-	return strings.TrimSpace(strings.ToLower(string(line))), true
 }
