@@ -139,3 +139,28 @@ func TestOpLockEffectiveClass(t *testing.T) {
 		}
 	}
 }
+
+// TestOpLockWrapPassesQuiet pins D-0241: --quiet reaches the guard, which
+// silences the platform notice with it.
+func TestOpLockWrapPassesQuiet(t *testing.T) {
+	compattest.Set(t, true)
+	projectDir(t)
+	var got []bool
+	old := guard
+	guard = func(ctx context.Context, r oplock.Request) (context.Context, func(), error) {
+		got = append(got, r.Quiet)
+		return ctx, func() {}, nil
+	}
+	t.Cleanup(func() { guard = old })
+	for _, args := range [][]string{{"thing"}, {"thing", "--quiet"}} {
+		root, c := newTree(write(), func(*cobra.Command) error { return nil })
+		c.Flags().BoolP("quiet", "q", false, "x")
+		root.SetArgs(args)
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(got) != 2 || got[0] || !got[1] {
+		t.Fatalf("Quiet per run = %v, want [false true]", got)
+	}
+}

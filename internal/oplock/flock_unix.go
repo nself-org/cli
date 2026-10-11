@@ -40,3 +40,13 @@ func tryLock(f *os.File) (held bool, err error) {
 func unlock(f *os.File) {
 	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 }
+
+// pidAlive reports whether pid is a running process. Signal 0 checks without
+// sending: EPERM means the process exists under another user.
+func pidAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
+}
