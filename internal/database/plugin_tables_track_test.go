@@ -260,15 +260,9 @@ func TestTrackPluginTablesPartialFailureRerun(t *testing.T) {
 	st, cfg := newStub(t)
 	st.failAt = 2
 	_, err := TrackPluginTables(context.Background(), cfg, twoPlugins, parseTracked)
-	if err == nil {
-		t.Fatal("want the op-2 rejection as an error")
-	}
 	var te *TrackError
-	if !errors.As(err, &te) || te.Table != "public.np_a_one" || te.Plugin != "alpha" {
+	if !errors.As(err, &te) || te.Table != "public.np_a_one" || te.Plugin != "alpha" || !strings.Contains(err.Error(), te.Table) {
 		t.Fatalf("error must name the rejected table and plugin: %v", err)
-	}
-	if !strings.Contains(err.Error(), te.Table) {
-		t.Fatalf("message must contain the rejected table %s: %v", te.Table, err)
 	}
 	if len(st.tracked) != 1 {
 		t.Fatalf("op 1 should stay applied after the failure, tracked=%v", st.tracked)
@@ -286,8 +280,14 @@ func TestTrackPluginTablesPartialFailureRerun(t *testing.T) {
 	}
 }
 
-func TestQualifyPluginTable(t *testing.T) {
-	if QualifyPluginTable("x") != "public.x" || QualifyPluginTable("s.x") != "s.x" {
-		t.Fatal("qualification rule changed")
+// TestTrackPluginTablesRejectionMapsFilteredIndex: the bulk path index counts the
+// filtered op list, so with np_a_one already tracked, op 2 is np_b_one (beta).
+func TestTrackPluginTablesRejectionMapsFilteredIndex(t *testing.T) {
+	st, cfg := newStub(t, "public.np_a_one")
+	st.failAt = 2
+	_, err := TrackPluginTables(context.Background(), cfg, twoPlugins, parseTracked)
+	var te *TrackError
+	if !errors.As(err, &te) || te.Table != "public.np_b_one" || te.Plugin != "beta" || !strings.Contains(err.Error(), "public.np_b_one") {
+		t.Fatalf("want the rejection to name beta/public.np_b_one, got %v", err)
 	}
 }

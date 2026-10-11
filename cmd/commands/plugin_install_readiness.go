@@ -43,20 +43,29 @@ var (
 	pluginWait         = readiness.Wait
 	pluginReadyEvery   time.Duration // 0 = readiness default
 	pluginTrack        = pluginInstallTracking
+	pluginStackState   = stackRunningState // tracking step: a docker error is not "stack down"
 )
 
-// stackRunning reports whether the project has a running container.
-func stackRunning(ctx context.Context, projectName string) bool {
+// stackRunningState reports whether the project has a running container, and
+// the docker error when it could not tell (docker ps failing is not "stack down").
+func stackRunningState(ctx context.Context, projectName string) (bool, error) {
 	svcs, err := docker.RunningConfigHashes(ctx, projectName)
 	if err != nil {
-		return false
+		return false, err
 	}
 	for _, s := range svcs {
 		if s.State == "running" {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
+}
+
+// stackRunning is the readiness check's view (unchanged since P7-PLUG-19): a
+// docker error reads as "not running" there.
+func stackRunning(ctx context.Context, projectName string) bool {
+	ok, err := stackRunningState(ctx, projectName)
+	return err == nil && ok
 }
 
 // officialInstalledNames keeps the official installs that have a directory here.
@@ -227,8 +236,12 @@ func pluginInstallTracking(cmd *cobra.Command, pluginDir string, installed []str
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if !pluginStackRunning(ctx, cfg.ProjectName) {
-		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "note: the stack is not running; the tables of "+strings.Join(memberNames(tracked), ", ")+" are tracked by the next `nself bundle install` or plugin install while it runs")
+	up, serr := pluginStackState(ctx, cfg.ProjectName)
+	if serr != nil {
+		return trackIssue(plugins, fmt.Errorf("checking whether the stack is running: %w", serr))
+	}
+	if !up {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "note: the stack is not running, so the tables of "+strings.Join(memberNames(tracked), ", ")+" are not tracked yet; once it is up, rerun `nself plugin install "+strings.Join(memberNames(tracked), " ")+"` (`nself start` does not track)")
 		return nil
 	}
 	if _, err := bundleTrackTables(ctx, cfg, plugins); err != nil {

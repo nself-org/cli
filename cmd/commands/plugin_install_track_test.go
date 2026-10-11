@@ -27,7 +27,7 @@ func init() {
 // realTracking runs the real tracking step for the test, with Hasura stubbed.
 func realTracking(t *testing.T, track func([]database.PluginTables) error, exportBody string, exportErr error) (calls, exports *int) {
 	t.Helper()
-	oldTrack, oldExport, oldStep := bundleTrackTables, bundleExportMetadata, pluginTrack
+	oldTrack, oldExport, oldStep, oldState := bundleTrackTables, bundleExportMetadata, pluginTrack, pluginStackState
 	calls, exports = new(int), new(int)
 	bundleTrackTables = func(_ context.Context, _ *config.Config, p []database.PluginTables) (database.TrackResult, error) {
 		*calls++
@@ -41,7 +41,11 @@ func realTracking(t *testing.T, track func([]database.PluginTables) error, expor
 		return []byte(exportBody), exportErr
 	}
 	pluginTrack = pluginInstallTracking
-	t.Cleanup(func() { bundleTrackTables, bundleExportMetadata, pluginTrack = oldTrack, oldExport, oldStep })
+	// Follow the readiness stub (stubReadinessSeams) unless a test overrides it.
+	pluginStackState = func(ctx context.Context, p string) (bool, error) { return pluginStackRunning(ctx, p), nil }
+	t.Cleanup(func() {
+		bundleTrackTables, bundleExportMetadata, pluginTrack, pluginStackState = oldTrack, oldExport, oldStep, oldState
+	})
 	return calls, exports
 }
 
@@ -174,7 +178,32 @@ func TestPluginInstallTrackSkipsWhenStackDown(t *testing.T) {
 	if err := pluginInstallReadiness(c, pluginDir, []string{"fine"}); err != nil {
 		t.Fatal(err)
 	}
-	if *calls != 0 || *exports != 0 || !strings.Contains(stderr.String(), "not running") {
+	if *calls != 0 || *exports != 0 || !strings.Contains(stderr.String(), "not running") || !strings.Contains(stderr.String(), "rerun `nself plugin install fine`") {
 		t.Fatalf("calls=%d exports=%d stderr=%q", *calls, *exports, stderr.String())
+	}
+}
+
+// TestPluginInstallTrackDockerErrorIsE140: docker ps failing in the tracking
+// step is not "stack down": it is E140 (exit 2) naming the plugin and the
+// docker error, and no Hasura request is sent.
+func TestPluginInstallTrackDockerErrorIsE140(t *testing.T) {
+	compattest.Set(t, true)
+	pluginDir := readinessProject(t, "fine", 1, 1)
+	stubReadinessSeams(t, true)
+	calls, exports := realTracking(t, nil, fineMeta, nil)
+	pluginStackState = func(context.Context, string) (bool, error) {
+		return false, errors.New("Cannot connect to the Docker daemon at unix:///var/run/docker.sock")
+	}
+	c, _ := readinessCmd()
+	err := pluginInstallReadiness(c, pluginDir, []string{"fine"})
+	d := errs.Describe(err)
+	if d == nil || d.Code != "E140" || d.ExitCode != 2 {
+		t.Fatalf("err = %v detail = %+v, want E140 exit 2", err, d)
+	}
+	if !strings.Contains(d.Message, "fine") || !strings.Contains(d.Message, "public.np_fine_items") || !strings.Contains(d.Cause, "Docker daemon") {
+		t.Errorf("message %q / cause %q must name the plugin, its tables and the docker error", d.Message, d.Cause)
+	}
+	if *calls != 0 || *exports != 0 {
+		t.Fatalf("Hasura requests sent: track=%d export=%d", *calls, *exports)
 	}
 }
