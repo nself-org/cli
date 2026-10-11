@@ -91,29 +91,26 @@ func parseComposeModel(raw []byte) (ComposeModel, error) {
 	var doc struct {
 		Name     string `json:"name"`
 		Services map[string]struct {
-			Image         string `json:"image"`
-			ContainerName string `json:"container_name"`
-			Restart       string `json:"restart"`
-			Healthcheck   *struct {
-				Test    json.RawMessage `json:"test"`
-				Disable bool            `json:"disable"`
-			} `json:"healthcheck"`
-			Volumes  []Mount                    `json:"volumes"`
-			Networks map[string]json.RawMessage `json:"networks"`
+			Image         string                     `json:"image"`
+			ContainerName string                     `json:"container_name"`
+			Volumes       []Mount                    `json:"volumes"`
+			Networks      map[string]json.RawMessage `json:"networks"`
 		} `json:"services"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return ComposeModel{}, fmt.Errorf("parsing docker compose config JSON: %w", err)
 	}
+	// the health specs come from docker's own parser, so the remote gate gets
+	// the same HasHealthcheck, Restart and HealthTimeout as the local one
+	specs, err := docker.ParseServiceSpecs(raw)
+	if err != nil {
+		return ComposeModel{}, err
+	}
 	m := ComposeModel{Project: doc.Name, Services: map[string]ModelService{}}
-	for name, s := range doc.Services {
-		has := false
-		if hc := s.Healthcheck; hc != nil && !hc.Disable {
-			var t []string
-			has = json.Unmarshal(hc.Test, &t) != nil || len(t) == 0 || t[0] != "NONE"
-		}
-		m.Services[name] = ModelService{
-			Spec:  docker.ServiceSpec{Name: name, HasHealthcheck: has, Restart: s.Restart},
+	for _, sp := range specs {
+		s := doc.Services[sp.Name]
+		m.Services[sp.Name] = ModelService{
+			Spec:  sp,
 			Image: s.Image, ContainerName: s.ContainerName, Mounts: s.Volumes, Aliases: networkAliases(s.Networks),
 		}
 	}

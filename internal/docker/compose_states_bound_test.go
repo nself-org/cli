@@ -144,7 +144,7 @@ func TestParseHealthValues(t *testing.T) {
 	}
 	for name, tc := range ok {
 		t.Run(name, func(t *testing.T) {
-			got, err := parseServiceSpecs([]byte(hc(tc.body)))
+			got, err := ParseServiceSpecs([]byte(hc(tc.body)))
 			if err != nil || len(got) != 1 || got[0].HealthTimeout != tc.want {
 				t.Errorf("got %+v, err %v; want %s", got, err, tc.want)
 			}
@@ -159,7 +159,7 @@ func TestParseHealthValues(t *testing.T) {
 		"retries overflows int64": {`"retries":99999999999999999999`, "retries"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := parseServiceSpecs([]byte(hc(tc.body)))
+			_, err := ParseServiceSpecs([]byte(hc(tc.body)))
 			if err == nil || !strings.Contains(err.Error(), "service s") || !strings.Contains(err.Error(), tc.field) {
 				t.Errorf("err = %v, want one naming service s and %s", err, tc.field)
 			}

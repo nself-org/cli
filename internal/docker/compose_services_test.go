@@ -26,7 +26,7 @@ func TestComposeServiceSpecs(t *testing.T) {
 	  "echo":{"healthcheck":{"test":["CMD","echo","NONE"]}},
 	  "dbg":{"restart":"no","healthcheck":{"test":["CMD","true"]}},
 	  "init":{"restart":"no"}}}`)
-	got, err := parseServiceSpecs(raw)
+	got, err := ParseServiceSpecs(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestComposeServiceSpecs(t *testing.T) {
 	if !got[3].OneShot() || got[6].OneShot() || got[1].OneShot() {
 		t.Error("only restart \"no\" without a healthcheck is a one-shot; a healthcheck or an absent restart is long-running")
 	}
-	if _, err := parseServiceSpecs([]byte("not json")); err == nil {
+	if _, err := ParseServiceSpecs([]byte("not json")); err == nil {
 		t.Error("malformed config JSON must error, not read as zero services")
 	}
 

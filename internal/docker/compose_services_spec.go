@@ -24,15 +24,18 @@ func ComposeServiceSpecs(ctx context.Context, compose *Compose, workdir string) 
 	if err != nil {
 		return nil, err
 	}
-	return parseServiceSpecs(out)
+	return ParseServiceSpecs(out)
 }
 
 // MaxHealthTimeout caps ServiceSpec.HealthTimeout: a healthcheck declared with
 // a huge retries or interval must not stall a deploy for hours.
 const MaxHealthTimeout = 10 * time.Minute
 
-// parseServiceSpecs decodes the `config --format json` document.
-func parseServiceSpecs(raw []byte) ([]ServiceSpec, error) {
+// ParseServiceSpecs decodes a `config --format json` document into one
+// ServiceSpec per service, sorted by name. internal/deploy reads the same
+// document fetched over ssh and uses this, so the local and remote health
+// gates see the same specs.
+func ParseServiceSpecs(raw []byte) ([]ServiceSpec, error) {
 	var doc struct {
 		Services map[string]struct {
 			Restart     string `json:"restart"`
