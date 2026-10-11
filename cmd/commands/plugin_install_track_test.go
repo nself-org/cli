@@ -7,8 +7,11 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -205,5 +208,31 @@ func TestPluginInstallTrackDockerErrorIsE140(t *testing.T) {
 	}
 	if *calls != 0 || *exports != 0 {
 		t.Fatalf("Hasura requests sent: track=%d export=%d", *calls, *exports)
+	}
+}
+
+// TestPluginInstallTrackSkipsNonBootMember: a member with tables but no
+// migrations.apply: boot is never tracked (no Hasura request) and the install
+// says so (kills a filter that only checks len(Tables) > 0).
+func TestPluginInstallTrackSkipsNonBootMember(t *testing.T) {
+	compattest.Set(t, true)
+	pluginDir := readinessProject(t, "legacy", 1, 1)
+	path := filepath.Join(pluginDir, "legacy", "plugin.json")
+	raw, _ := os.ReadFile(path)
+	var m map[string]any
+	_ = json.Unmarshal(raw, &m)
+	delete(m, "migrations")
+	out, _ := json.Marshal(m)
+	if err := os.WriteFile(path, out, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stubReadinessSeams(t, true)
+	calls, exports := realTracking(t, nil, fineMeta, nil)
+	c, stderr := readinessCmd()
+	if err := pluginInstallReadiness(c, pluginDir, []string{"legacy"}); err != nil {
+		t.Fatal(err)
+	}
+	if *calls != 0 || *exports != 0 || !strings.Contains(stderr.String(), "legacy") || !strings.Contains(stderr.String(), "not tracked") {
+		t.Fatalf("calls=%d exports=%d stderr=%q, want no Hasura request and a note naming legacy", *calls, *exports, stderr.String())
 	}
 }

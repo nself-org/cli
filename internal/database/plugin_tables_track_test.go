@@ -1,9 +1,7 @@
 package database
 
-// Purpose: unit tests for TrackPluginTables against an httptest Hasura stub
-// (no network beyond loopback, no Docker, no Postgres).
-// Constraints: the stub keeps the tracked set, applies bulk ops in order and can
-// fail one op after applying the ones before it (non-atomic bulk).
+// Purpose: TrackPluginTables unit tests against an httptest Hasura stub (loopback
+// only, no Docker); the stub applies bulk ops in order and can fail one (non-atomic).
 
 import (
 	"context"
@@ -183,11 +181,8 @@ func TestTrackPluginTablesIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Tracked) != 0 || len(res.Already) != 3 {
-		t.Fatalf("second run: tracked=%v already=%v", res.Tracked, res.Already)
-	}
-	if got := st.reqs[before:]; len(got) != 1 || got[0] != "export_metadata" {
-		t.Fatalf("second run must send only the export, got %v", got)
+	if got := st.reqs[before:]; len(res.Tracked) != 0 || len(res.Already) != 3 || len(got) != 1 || got[0] != "export_metadata" {
+		t.Fatalf("second run: tracked=%v already=%v reqs=%v, want only the export", res.Tracked, res.Already, got)
 	}
 }
 
@@ -195,15 +190,9 @@ func TestTrackPluginTablesMissingTableNamed(t *testing.T) {
 	st, cfg := newStub(t)
 	stubSeams(t, map[string]bool{"public.np_b_one": true})
 	_, err := TrackPluginTables(context.Background(), cfg, twoPlugins, parseTracked)
-	if err == nil {
-		t.Fatal("want an error for a table missing from Postgres")
-	}
-	if !strings.Contains(err.Error(), "beta") || !strings.Contains(err.Error(), "public.np_b_one") {
-		t.Fatalf("error must name plugin and table: %v", err)
-	}
 	var te *TrackError
-	if !errors.As(err, &te) || te.Plugin != "beta" || te.Table != "public.np_b_one" {
-		t.Fatalf("want a *TrackError for beta/public.np_b_one, got %#v", err)
+	if !errors.As(err, &te) || te.Plugin != "beta" || te.Table != "public.np_b_one" || !strings.Contains(err.Error(), "beta") || !strings.Contains(err.Error(), "public.np_b_one") {
+		t.Fatalf("want a *TrackError naming beta/public.np_b_one, got %v", err)
 	}
 	if st.count("bulk") != 0 {
 		t.Fatalf("no track request may be sent when a table is missing, got %v", st.reqs)
@@ -215,10 +204,8 @@ func TestTrackPluginTablesOnlyTrackOps(t *testing.T) {
 	if _, err := TrackPluginTables(context.Background(), cfg, twoPlugins, parseTracked); err != nil {
 		t.Fatal(err)
 	}
-	for _, r := range st.reqs {
-		if r != "export_metadata" && r != "bulk" {
-			t.Fatalf("unexpected request type %q (replace_metadata and friends are forbidden)", r)
-		}
+	if st.count("export_metadata")+st.count("bulk") != len(st.reqs) {
+		t.Fatalf("unexpected request type in %v (replace_metadata and friends are forbidden)", st.reqs)
 	}
 	if len(st.ops) != 1 {
 		t.Fatalf("want exactly one bulk request, got %d", len(st.ops))
@@ -264,24 +251,17 @@ func TestTrackPluginTablesPartialFailureRerun(t *testing.T) {
 	if !errors.As(err, &te) || te.Table != "public.np_a_one" || te.Plugin != "alpha" || !strings.Contains(err.Error(), te.Table) {
 		t.Fatalf("error must name the rejected table and plugin: %v", err)
 	}
-	if len(st.tracked) != 1 {
-		t.Fatalf("op 1 should stay applied after the failure, tracked=%v", st.tracked)
-	}
 	st.failAt = 0
 	res, err := TrackPluginTables(context.Background(), cfg, twoPlugins, parseTracked)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Tracked) != 2 || len(res.Already) != 1 {
-		t.Fatalf("rerun: tracked=%v already=%v", res.Tracked, res.Already)
-	}
-	if got := st.bulks[len(st.bulks)-1]; len(got) != 2 {
-		t.Fatalf("rerun must send only the 2 still-missing tables, got %v", got)
+	if got := st.bulks[len(st.bulks)-1]; len(res.Tracked) != 2 || len(res.Already) != 1 || len(got) != 2 {
+		t.Fatalf("rerun (op 1 stayed applied): tracked=%v already=%v bulk=%v, want the 2 still-missing", res.Tracked, res.Already, got)
 	}
 }
 
-// TestTrackPluginTablesRejectionMapsFilteredIndex: the bulk path index counts the
-// filtered op list, so with np_a_one already tracked, op 2 is np_b_one (beta).
+// TestTrackPluginTablesRejectionMapsFilteredIndex: the bulk path counts the filtered list.
 func TestTrackPluginTablesRejectionMapsFilteredIndex(t *testing.T) {
 	st, cfg := newStub(t, "public.np_a_one")
 	st.failAt = 2
@@ -289,5 +269,32 @@ func TestTrackPluginTablesRejectionMapsFilteredIndex(t *testing.T) {
 	var te *TrackError
 	if !errors.As(err, &te) || te.Table != "public.np_b_one" || te.Plugin != "beta" || !strings.Contains(err.Error(), "public.np_b_one") {
 		t.Fatalf("want the rejection to name beta/public.np_b_one, got %v", err)
+	}
+}
+
+func TestTrackPluginTablesDedupAcrossPlugins(t *testing.T) {
+	st, cfg := newStub(t)
+	dup := []PluginTables{{Plugin: "a", Tables: []string{"np_x"}}, {Plugin: "b", Tables: []string{"public.np_x"}}}
+	if res, err := TrackPluginTables(context.Background(), cfg, dup, parseTracked); err != nil || len(res.Tracked) != 1 {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	if len(st.bulks) != 1 || !reflect.DeepEqual(st.bulks[0], []string{"public.np_x"}) {
+		t.Fatalf("bulk tables = %v, want exactly one op", st.bulks)
+	}
+}
+
+// TestTrackPluginTablesExistenceCheckError: a failing Postgres check names the plugin and table, sends no bulk.
+func TestTrackPluginTablesExistenceCheckError(t *testing.T) {
+	st, cfg := newStub(t)
+	trackTableExists = func(context.Context, *config.Config, string, string) (bool, error) {
+		return false, errors.New("psql: container not running")
+	}
+	_, err := TrackPluginTables(context.Background(), cfg, twoPlugins, parseTracked)
+	var te *TrackError
+	if !errors.As(err, &te) || te.Plugin == "" || te.Table == "" || !strings.Contains(err.Error(), te.Plugin) || !strings.Contains(err.Error(), te.Table) || !strings.Contains(err.Error(), "container not running") {
+		t.Fatalf("want an error naming plugin, table and cause, got %v", err)
+	}
+	if st.count("bulk") != 0 {
+		t.Fatalf("no bulk after a failed existence check, got %v", st.reqs)
 	}
 }

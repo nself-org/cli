@@ -47,7 +47,8 @@ func stubTracker(t *testing.T, fn func([]database.PluginTables) error) *[][]data
 }
 
 // TestBundleAppReadyTrackHookWired: v1.5 wires TrackTables and it hands the
-// members' tables (entries as written) to the tracker; v1.4 wires nothing.
+// boot-migration members' tables (entries as written) to the tracker, never a
+// non-boot member's (no bulk op for it); v1.4 wires nothing.
 func TestBundleAppReadyTrackHookWired(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		h := newBundleAppReadyHooks(bundleInstallCmd, "task")
@@ -63,9 +64,10 @@ func TestBundleAppReadyTrackHookWired(t *testing.T) {
 		trackProject(t)
 		calls := stubTracker(t, nil)
 		members := []appready.Member{
-			{Name: "alpha", Tables: []string{"np_a_one", "ext.np_a_two"}},
+			{Name: "alpha", BootMigrations: true, Tables: []string{"np_a_one", "ext.np_a_two"}},
 			{Name: "empty"},
-			{Name: "beta", Tables: []string{"np_b_one"}},
+			{Name: "legacy", Tables: []string{"np_l_one"}}, // tables without migrations.apply: boot: never tracked
+			{Name: "beta", BootMigrations: true, Tables: []string{"np_b_one"}},
 		}
 		if err := h.TrackTables(context.Background(), members); err != nil {
 			t.Fatal(err)
@@ -74,10 +76,11 @@ func TestBundleAppReadyTrackHookWired(t *testing.T) {
 		if len(*calls) != 1 || !reflect.DeepEqual((*calls)[0], want) {
 			t.Fatalf("tracker calls = %+v, want one call with %+v", *calls, want)
 		}
-		// No member declares tables: no tracker call, no Hasura traffic.
+		// No trackable member (none with tables, or only non-boot ones): no tracker call.
 		*calls = nil
-		if err := h.TrackTables(context.Background(), []appready.Member{{Name: "empty"}}); err != nil || len(*calls) != 0 {
-			t.Fatalf("no tables: err=%v calls=%d", err, len(*calls))
+		none := []appready.Member{{Name: "empty"}, {Name: "legacy", Tables: []string{"np_l_one"}}}
+		if err := h.TrackTables(context.Background(), none); err != nil || len(*calls) != 0 {
+			t.Fatalf("nothing trackable: err=%v calls=%d", err, len(*calls))
 		}
 	})
 }
@@ -88,7 +91,7 @@ func TestBundleAppReadyTrackHookNamesPlugin(t *testing.T) {
 	compattest.Set(t, true)
 	trackProject(t)
 	h := newBundleAppReadyHooks(bundleInstallCmd, "task")
-	members := []appready.Member{{Name: "alpha", Tables: []string{"a"}}, {Name: "beta", Tables: []string{"b"}}}
+	members := []appready.Member{{Name: "alpha", BootMigrations: true, Tables: []string{"a"}}, {Name: "beta", BootMigrations: true, Tables: []string{"b"}}}
 
 	stubTracker(t, func([]database.PluginTables) error {
 		return &database.TrackError{Plugin: "beta", Table: "public.b", Err: errors.New("plugin beta: table public.b does not exist in Postgres")}

@@ -215,11 +215,9 @@ func pluginInstallTracking(cmd *cobra.Command, pluginDir string, installed []str
 	if err != nil {
 		return fmt.Errorf("reading the installed plugin manifests for table tracking: %w", err)
 	}
-	var tracked []appready.Member
-	for _, m := range members {
-		if m.BootMigrations && len(m.Tables) > 0 {
-			tracked = append(tracked, m)
-		}
+	tracked, skipped := trackableMembers(members)
+	if len(skipped) > 0 {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "note: "+strings.Join(skipped, ", ")+" declare tables but not migrations.apply: boot, so their tables are not tracked in Hasura")
 	}
 	plugins := pluginTablesOf(tracked)
 	if len(plugins) == 0 {

@@ -54,6 +54,23 @@ func pluginTablesOf(members []appready.Member) []database.PluginTables {
 	return out
 }
 
+// trackableMembers splits the members with manifest tables: those that declare
+// migrations.apply: boot (their tables exist once readiness passed, so they are
+// tracked) and the names of those that do not (nothing creates their tables at
+// boot, so tracking would fail on a table that does not exist yet).
+func trackableMembers(members []appready.Member) (track []appready.Member, skipped []string) {
+	for _, m := range members {
+		switch {
+		case len(m.Tables) == 0:
+		case m.BootMigrations:
+			track = append(track, m)
+		default:
+			skipped = append(skipped, m.Name)
+		}
+	}
+	return track, skipped
+}
+
 // trackStepError names the plugin a tracking failure is about so the E135
 // report says which plugin; a failure about no single plugin names them all.
 func trackStepError(err error, plugins []database.PluginTables) error {
@@ -173,7 +190,8 @@ func newBundleAppReadyHooks(cmd *cobra.Command, slug string) *appready.Hooks {
 	// compat.V15(P7-PLUG-78): bundle install only verifies Hasura tracking -> tracks the manifest tables first
 	if compat.V15() {
 		h.TrackTables = func(ctx context.Context, members []appready.Member) error {
-			plugins := pluginTablesOf(members)
+			track, _ := trackableMembers(members)
+			plugins := pluginTablesOf(track)
 			if len(plugins) == 0 {
 				return nil
 			}
