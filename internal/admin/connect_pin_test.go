@@ -3,6 +3,7 @@ package admin
 import (
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -109,10 +110,22 @@ func TestAdminPinFileOption(t *testing.T) {
 		{"posix space", "/Users/a b/.config/nself/deploy_known_hosts", `GlobalKnownHostsFile="/Users/a b/.config/nself/deploy_known_hosts"`, false},
 		{"windows slashed", "C:/Users/a b/.config/nself/deploy_known_hosts", `GlobalKnownHostsFile="C:/Users/a b/.config/nself/deploy_known_hosts"`, false},
 		{"quote", `/Users/a"b/kh`, "", true},
-		{"backslash", `/Users/a\b/kh`, "", true},
 		{"newline", "/Users/a\nb/kh", "", true},
 		{"tab", "/Users/a\tb/kh", "", true},
 		{"nul", "/Users/a\x00b/kh", "", true},
+	}
+	// ToSlash is the identity on POSIX, where a backslash is a real path byte and
+	// is refused; on Windows it is the separator and is converted.
+	if runtime.GOOS == "windows" {
+		cases = append(cases, struct {
+			name, in, want string
+			wantErr        bool
+		}{"windows native", `C:\Users\a b\.config\nself\deploy_known_hosts`, `GlobalKnownHostsFile="C:/Users/a b/.config/nself/deploy_known_hosts"`, false})
+	} else {
+		cases = append(cases, struct {
+			name, in, want string
+			wantErr        bool
+		}{"backslash", `/Users/a\b/kh`, "", true})
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
