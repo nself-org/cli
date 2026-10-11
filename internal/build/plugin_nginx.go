@@ -117,7 +117,8 @@ var placeholderRE = regexp.MustCompile(`\$\{[A-Z][A-Z0-9_]*\}`)
 // at the http{} level nginx/sites is included in, each one stops nginx with
 // "directive is not allowed here".
 var serverOnly = map[string]bool{"location": true, "if": true, "listen": true, "server_name": true,
-	"proxy_pass": true, "return": true, "rewrite": true, "try_files": true, "ssl_certificate": true, "ssl_certificate_key": true}
+	"proxy_pass": true, "fastcgi_pass": true, "uwsgi_pass": true, "scgi_pass": true, "grpc_pass": true,
+	"return": true, "rewrite": true, "try_files": true, "set": true, "alias": true, "internal": true, "limit_except": true}
 
 // pluginSnippetSkip returns why a rendered plugin snippet must stay out of
 // nginx/sites, or "" to inject it. One bad file in nginx/sites stops nginx,

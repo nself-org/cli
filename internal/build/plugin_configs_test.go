@@ -192,6 +192,8 @@ func TestPluginSnippetSkip(t *testing.T) {
 		{"unrendered route var", "server {\n    server_name ${GRAFANA_ROUTE}.example.com;\n}\n", true, "${GRAFANA_ROUTE}"},
 		{"bare location block", "location /plugins/documents/ {\n    proxy_pass http://documents:3000;\n}\n", true, "top-level location"},
 		{"does not parse", "server { listen 80;", true, "does not parse"},
+		{"top-level set", "set $upstream http://a:1;\nserver { listen 80; }\n", true, "top-level set"},
+		{"top-level cert pair is legal at http level", "ssl_certificate /etc/nginx/ssl/other/fullchain.pem;\nssl_certificate_key /etc/nginx/ssl/other/privkey.pem;\nserver { listen 80; }\n", true, ""},
 		{"base cert, TLS served", "server {\n    listen 443 ssl;\n" + cert + "}\n", true, ""},
 		{"base cert, no TLS served", "server {\n    listen 443 ssl;\n" + cert + "}\n", false, "TLS certificate"},
 	}
