@@ -1,6 +1,7 @@
-# D-0253 builder B: copy.go, ssh_allow.go, run.go, scan.go. Format: MUTATOR at file.go:line:col | reason
-# Equivalent mutants only; each reason says why no test can tell the mutant apart.
-
+# Equivalent mutants for: bash scripts/mutation.sh sdk/go/remote --only <every non-test .go file> --allow remote/testdata/mutation-allow.txt
+# Format: MUTATOR at file.go:line:col | reason. Line numbers are those of the current source; a moved line needs its entry moved (D-0253).
+ARITHMETIC_BASE at options.go:108:28 | `2*len(d4Options)` in make([]string, 0, cap) is only a capacity hint; a smaller capacity makes append grow the slice, so the returned elements and every observable result are identical
+ARITHMETIC_BASE at options.go:108:43 | `+2` in the same make() capacity hint; any non-negative capacity (2/len+2, 2*len-2) yields the same slice contents, only the allocation size differs, which no behavioural test can observe
 CONDITIONALS_BOUNDARY at scan.go:124:16 | `i < len(pairs)` vs `<=`: i starts at 1 and steps by 2 over CIOptions' flat "-o",value pairs, whose length is always even, so i never equals len(pairs) and the loop runs the same iterations
 CONDITIONALS_BOUNDARY at ssh_allow.go:110:51 | `s[n]|0x20 <= 'z'` vs `< 'z'`: a key stopped early at 'z' is followed by neither space nor '=', so rest becomes empty and the option is refused with the same error; no sshOptionKeys entry holds a 'z', so the verdict is identical for every input
 CONDITIONALS_BOUNDARY at ssh_allow.go:48:15 | `len(opts) >= 3` vs `> 3` in splitD4: with exactly -T -a -x the d4Options loop (never empty) hits i+1 >= len and returns (nil, opts), the same as the skipped branch, so splitD4's result is identical

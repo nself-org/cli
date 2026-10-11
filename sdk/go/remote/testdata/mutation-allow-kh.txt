@@ -1,1 +1,0 @@
-# D-0253 allowlist for knownhosts.go, knownhosts_check.go, lock_unix.go
