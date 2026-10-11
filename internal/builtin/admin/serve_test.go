@@ -26,7 +26,9 @@ func TestAdminServe(t *testing.T) {
 			name = "configured"
 		}
 		t.Run(name, func(t *testing.T) {
-			t.Setenv("HOME", t.TempDir())
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
 			t.Setenv(machineauth.EnvVar, "")
 			if configured {
 				t.Setenv(machineauth.EnvVar, "fake-token-0000")
@@ -116,7 +118,9 @@ func assertServeAuth(t *testing.T, s *httpapi.Server) {
 }
 
 func TestNonLoopbackBind(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv(machineauth.EnvVar, "")
 	for _, tc := range []struct {
 		name, token string

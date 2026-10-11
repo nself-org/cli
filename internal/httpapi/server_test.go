@@ -98,7 +98,9 @@ commands:
 
 func server(t *testing.T) *Server {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("HTTPAPI_STUB", "1")
 	t.Setenv("HTTPAPI_MODE", "")
 	exe, err := os.Executable()
