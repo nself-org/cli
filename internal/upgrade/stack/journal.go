@@ -122,7 +122,9 @@ func saveJournalWithIO(project string, j *Journal, ops journalIO) error {
 		return fmt.Errorf("create stack update journal temporary file: %w", err)
 	}
 	name := f.Name()
-	defer os.Remove(name)
+	// Best-effort cleanup of the temp file: after a successful rename it is already gone,
+	// and after a failure the write error is the one worth reporting.
+	defer func() { _ = os.Remove(name) }()
 	if err := json.NewEncoder(f).Encode(j); err != nil {
 		return fmt.Errorf("encode stack update journal: %w", closeJournal(f, err))
 	}

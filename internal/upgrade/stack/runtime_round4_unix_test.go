@@ -191,7 +191,8 @@ func TestUpdateStackRuntimeBackupTagHoldsFromPrune(t *testing.T) {
 		if err := os.MkdirAll(cfg.Backup.Dir, 0700); err != nil {
 			return err
 		}
-		return os.WriteFile(filepath.Join(cfg.Backup.Dir, "p_full_1_"+o.Tag+".dump"), []byte("PGDMP-x"), 0600)
+		name := backup.BackupFileName("my_proj", "full", "20261012_150405", "_"+o.Tag, ".dump")
+		return os.WriteFile(filepath.Join(cfg.Backup.Dir, name), []byte("PGDMP-x"), 0600)
 	}
 	j := &Journal{RunID: "r4", StartedAt: timeAgo()}
 	if err := r.createRunBackup(context.Background(), j); err != nil {
@@ -199,6 +200,10 @@ func TestUpdateStackRuntimeBackupTagHoldsFromPrune(t *testing.T) {
 	}
 	if !strings.HasPrefix(tag, "keep-stack-r4-") || !strings.Contains(j.BackupID, "_keep-stack-r4-") {
 		t.Fatalf("run backup is not held from prune: tag=%q id=%q", tag, j.BackupID)
+	}
+	// The real list parser must read the hold back from that real name.
+	if entries, err := backup.List(r.cfg, backup.ListOptions{}); err != nil || len(entries) != 1 || !strings.HasPrefix(entries[0].Tag, "keep-") {
+		t.Fatalf("list does not see the keep- tag: %+v %v", entries, err)
 	}
 }
 

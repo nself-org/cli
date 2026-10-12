@@ -77,7 +77,7 @@ func TestStackUpdateResumeVerifyFailureNeverSuggestsRestore(t *testing.T) {
 			assertCode(t, err, "E403")
 			// M1: this run could not re-verify the dump, so restore is never offered.
 			fix := cliFix(t, err)
-			if j.Steps[0].Result != "ok" || strings.Contains(fix, "backup restore") || !strings.Contains(fix, "nself backup verify 'step-one-backup'") || !strings.Contains(fix, "no longer be trusted") {
+			if j.Steps[0].Result != "ok" || strings.Contains(fix, "backup restore") || !strings.Contains(fix, "nself backup verify 'step-one-backup'") || !strings.Contains(fix, "no longer be trusted") || !strings.Contains(fix, "moving .nself/state/update-stack.json to .nself/state/update-stack."+j.RunID+".json") || !strings.Contains(fix, "verify and restore by hand") {
 				t.Fatalf("resume guidance offers an unverified restore: %+v %q", j, fix)
 			}
 		})

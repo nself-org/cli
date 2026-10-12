@@ -66,7 +66,7 @@ func execute(ctx context.Context, o Options, b Backend) (*Journal, error) {
 				}
 				// This run could not re-verify the dump: never offer it for restore.
 				e := errs.Wrap("E403", "Stack update backup verification failed on resume", err)
-				return j, e.WithFix(fmt.Sprintf("The step-one backup can no longer be trusted. Check it with: %s. Restore only a backup that verifies.", VerifyCommand(j.BackupID)))
+				return j, e.WithFix(fmt.Sprintf("The step-one backup can no longer be trusted. Check it with: %s. Restore only a backup that verifies. To leave this state, either verify and restore by hand, or archive the journal by moving %s to %s.", VerifyCommand(j.BackupID), ".nself/state/update-stack.json", ".nself/state/update-stack."+j.RunID+".json"))
 			}
 			return j, backupError(false, err)
 		}
