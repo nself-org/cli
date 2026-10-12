@@ -123,9 +123,11 @@ FINGER_A="$(pga 'SELECT count(*), sum(hashtextextended(t::text,0)::numeric) FROM
 nself db export --out "$W/bundle" --schemas public,app --json >"$W/summary.json" 2>>"$LOG" || fail export
 jq -e '.data.tables==2 and .data.users==3 and .data.objects==4' "$W/summary.json" >/dev/null || fail summary
 pass 'seeded project A exported (2 tables, 3 users, 4 objects)'
-# A second bundle holds only app2.t (a table B will not have) but also all four objects.
+# A second bundle holds only app2.t (a table B will not have) and the four objects, and no users
+# (A is discarded, so its users go first): only the object store check can refuse it.
+pga 'DELETE FROM auth.users' >>"$LOG" 2>&1 || fail 'delete users'
 nself db export --out "$W/bundle2" --schemas app2 --json >"$W/summary2.json" 2>>"$LOG" || fail 'export app2'
-jq -e '.data.tables==1 and .data.objects==4' "$W/summary2.json" >/dev/null || fail 'summary app2'
+jq -e '.data.tables==1 and .data.objects==4 and .data.users==0' "$W/summary2.json" >/dev/null || fail 'summary app2'
 # A is no longer needed; stopping it keeps the host small while B starts.
 nself stop >>"$LOG" 2>&1 || fail 'stop A'
 # ---- Project B: fresh, same plugin, import -----------------------------------------------
@@ -179,9 +181,15 @@ objs_b() {
   done | sha256sum
 }
 meta_hash() { meta_b '{"type":"export_metadata","version":2,"args":{}}' | jq -S '.metadata' | sha256sum; }
-# state_b: rows, users and Hasura metadata and every object's bytes in B, in one comparable line.
+# state_b: rows, users, objects' bytes and Hasura metadata in B as one comparable line. Each part is
+# read on its own so a failing read stops the run instead of making two lines equal.
 state_b() {
-  echo "$(pgb 'SELECT (SELECT count(*) FROM public.notes), (SELECT sum(hashtextextended(t::text,0)::numeric) FROM public.notes t), (SELECT count(*) FROM auth.users), (SELECT count(*) FROM app.extra), (SELECT count(*) FROM information_schema.schemata WHERE schema_name='"'"'app2'"'"')')|$(objs_b)|$(meta_hash)"
+  local rows objs meta
+  rows="$(pgb 'SELECT (SELECT count(*) FROM public.notes), (SELECT sum(hashtextextended(t::text,0)::numeric) FROM public.notes t), (SELECT count(*) FROM auth.users), (SELECT count(*) FROM app.extra), (SELECT count(*) FROM information_schema.schemata WHERE schema_name='"'"'app2'"'"')')" || fail 'read rows'
+  objs="$(objs_b)" || fail 'read objects'
+  meta="$(meta_hash)" || fail 'read metadata'
+  test -n "$rows" && test -n "$objs" && test -n "$meta" || fail 'empty state'
+  echo "$rows|$objs|$meta"
 }
 before="$(state_b)"
 if nself db import nself "$W/bundle" --json >"$W/rerun.json" 2>"$W/rerun.err"; then fail 'rerun accepted'; fi
@@ -197,6 +205,7 @@ done
 test "$(state_b)" = "$before" || fail 'object collision changed B'
 pass 'bundle that would overwrite existing objects refused (plan and run), B unchanged'
 # A damaged or foreign bundle is refused before anything is read into B, on a used target too.
+stages_before="$(find "$DIRB/.nself/import" -mindepth 2 -maxdepth 2 -name stage -print | wc -l)"
 cp -r "$W/bundle" "$W/flipped"
 chmod -R u+w "$W/flipped"
 dump="$W/flipped/db/data.dump"
@@ -209,7 +218,7 @@ sed -i 's/"schema_version": "1"/"schema_version": "2"/' "$W/v2/manifest.json"
 if nself db import nself "$W/v2" --json >"$W/v2.json" 2>"$W/v2.err"; then fail 'schema_version 2 accepted'; fi
 grep -q E515 "$W/v2.json" "$W/v2.err" || fail 'schema_version 2 without E515'
 test "$(state_b)" = "$before" || fail 'refused bundles changed B'
-test -z "$(find "$DIRB/.nself/import" -mindepth 2 -maxdepth 2 -name stage -print 2>/dev/null)" || fail 'a refused bundle left a stage'
+test "$(find "$DIRB/.nself/import" -mindepth 2 -maxdepth 2 -name stage -print | wc -l)" = "$stages_before" || fail 'a refused bundle left a stage'
 pass 'flipped byte refused with E516, schema_version 2 with E515, nothing staged'
 python3 --version >/dev/null 2>&1 || apk add -q python3 >/dev/null
 python3 - "$W" "$F_PG" "$F_HASURA" "$F_JWT" "$F_SMTP" "$F_S3S" <<'PY'
