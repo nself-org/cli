@@ -8,6 +8,16 @@
 # --dry-run       Print what would change; write nothing.
 # --homebrew      Phase 2: update homebrew formula after GitHub release exists.
 #                 Without this flag, the formula is skipped and a reminder printed.
+# --no-goldens    Skip the golden regeneration below (the release tool sets it for the
+#                 admin-only lockstep bump, which commits nothing from cli).
+#
+# Goldens (same run, after the files above): the four version-hash goldens hash
+# `.nself/build-version`, so every bump changes them. They are regenerated through
+# the tests' own UPDATE_GOLDEN=1 path; the script then checks that only
+# `.nself/build-version` lines changed and that the plain tests pass:
+#   cli/internal/build/testdata/plan-mode/golden-{dev-minimal,fronted,prod-plugins}.txt
+#   cli/internal/reconcile/testdata/fixtures/dev-minimal/golden-tree.txt
+# Skipped with a note when the golden tests are absent (fixture trees).
 #
 # Files updated (11 + 1 optional homebrew) — Flutter SDK removed 2026-06-30 (#159);
 # sdk/ts-sdk added 2026-07-06 (was missing, causing @nself/sdk version lag):
@@ -51,15 +61,17 @@ NSELF_ROOT="$(cd "${REPO_ROOT}/.." && pwd)"
 
 DRY_RUN=false
 HOMEBREW=false
+GOLDENS=true
 RAW_VERSION=""
 
 for arg in "$@"; do
   case "${arg}" in
     --dry-run)   DRY_RUN=true ;;
     --homebrew)  HOMEBREW=true ;;
+    --no-goldens) GOLDENS=false ;;
     -*)
       printf 'Unknown flag: %s\n' "${arg}" >&2
-      printf 'Usage: %s <version> [--dry-run] [--homebrew]\n' "$0" >&2
+      printf 'Usage: %s <version> [--dry-run] [--homebrew] [--no-goldens]\n' "$0" >&2
       exit 1
       ;;
     *)
@@ -75,7 +87,7 @@ done
 # ── Semver validation ─────────────────────────────────────────────────────────
 
 if [ -z "${RAW_VERSION}" ]; then
-  printf 'Usage: %s <version> [--dry-run] [--homebrew]\n' "$0" >&2
+  printf 'Usage: %s <version> [--dry-run] [--homebrew] [--no-goldens]\n' "$0" >&2
   exit 1
 fi
 
@@ -112,7 +124,9 @@ HOMEBREW_FORMULA="${NSELF_ROOT}/homebrew-nself/Formula/nself.rb"
 # ── Tmp file cleanup ───────────────────────────────────────────────────────────
 
 TMPFILES=()
+GOLD_BAK=""
 cleanup_tmpfiles() {
+  [ -z "${GOLD_BAK}" ] || rm -rf "${GOLD_BAK}"
   for f in "${TMPFILES[@]+"${TMPFILES[@]}"}"; do
     rm -f "${f}"
   done
@@ -435,6 +449,84 @@ update_homebrew_formula() {
   report "${f} (darwin-amd64 sha256)" "${old_sha_amd:0:12}..." "${sha_amd:0:12}..."
 }
 
+# Version-hash goldens. UPDATE_GOLDEN=1 rewrites each golden whole, so the guard
+# below refuses any change beyond the `.nself/build-version` lines: a bump must
+# never launder an unrelated tree change into the goldens.
+GOLDEN_FILES=(
+  internal/build/testdata/plan-mode/golden-dev-minimal.txt
+  internal/build/testdata/plan-mode/golden-fronted.txt
+  internal/build/testdata/plan-mode/golden-prod-plugins.txt
+  internal/reconcile/testdata/fixtures/dev-minimal/golden-tree.txt
+)
+
+# golden_tests [VAR=value...]: the two tests that own the goldens (the second
+# one reads internal/reconcile/testdata/fixtures/dev-minimal/golden-tree.txt).
+golden_tests() {
+  (cd "${REPO_ROOT}" \
+    && env "$@" go test -count=1 ./internal/build -run 'TestWriteModeGolden$' \
+    && env "$@" go test -count=1 ./cmd/commands -run 'TestBuildPlanDevGolden$')
+}
+
+# restore_goldens: put the pre-regeneration copies back.
+restore_goldens() {
+  local g n=0
+  for g in "${GOLDEN_FILES[@]}"; do
+    n=$((n+1)); cp "${GOLD_BAK}/${n}" "${REPO_ROOT}/${g}"
+  done
+}
+
+update_goldens() {
+  if [ ! -f "${REPO_ROOT}/internal/build/plan_mode_test.go" ] || [ ! -f "${REPO_ROOT}/cmd/commands/build_plan_test.go" ]; then
+    printf '  SKIP  version-hash goldens  (golden tests absent at this commit)\n'
+    return
+  fi
+  if [ "${DRY_RUN}" = "true" ]; then
+    printf '  [dry-run] Would regenerate %d version-hash goldens (UPDATE_GOLDEN=1 go test)\n' "${#GOLDEN_FILES[@]}"
+    return
+  fi
+  if ! command -v go >/dev/null 2>&1; then
+    printf 'ERROR: go is required to regenerate the version-hash goldens (or pass --no-goldens)\n' >&2
+    exit 1
+  fi
+  local g n=0 stray
+  for g in "${GOLDEN_FILES[@]}"; do
+    if [ ! -f "${REPO_ROOT}/${g}" ]; then
+      printf 'ERROR: Missing golden: %s\n' "${g}" >&2; exit 1
+    fi
+  done
+  GOLD_BAK="$(mktemp -d)"
+  for g in "${GOLDEN_FILES[@]}"; do
+    n=$((n+1)); cp "${REPO_ROOT}/${g}" "${GOLD_BAK}/${n}"
+  done
+  printf '  Regenerating version-hash goldens (UPDATE_GOLDEN=1)\n'
+  if ! golden_tests UPDATE_GOLDEN=1 >&2; then
+    restore_goldens
+    printf 'ERROR: golden regeneration failed; goldens restored\n' >&2
+    exit 1
+  fi
+  n=0
+  for g in "${GOLDEN_FILES[@]}"; do
+    n=$((n+1))
+    # diff exits 1 on a difference, which pipefail would turn into "no stray lines".
+    stray="$(diff "${GOLD_BAK}/${n}" "${REPO_ROOT}/${g}" | grep -E '^[<>]' | grep -v -F '.nself/build-version ' || true)"
+    if [ -n "${stray}" ]; then
+      restore_goldens
+      printf 'ERROR: %s changed beyond .nself/build-version lines; goldens restored.\n' "${g}" >&2
+      printf '  The tree drifted for another reason: fix that deliberately, never inside a bump.\n' >&2
+      exit 1
+    fi
+    if cmp -s "${GOLD_BAK}/${n}" "${REPO_ROOT}/${g}"; then
+      printf '  SKIP  %s  (build-version hash unchanged)\n' "${g}"
+    else
+      printf '  %-60s  build-version hash -> %s\n' "${g}" "${NEW_VERSION}"
+    fi
+  done
+  if ! golden_tests >&2; then
+    printf 'ERROR: golden tests still fail after regeneration\n' >&2
+    exit 1
+  fi
+}
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 printf '\n'
@@ -450,7 +542,7 @@ if [ "${HOMEBREW}" = "true" ]; then
   exit 0
 fi
 
-printf 'Phase 1 — updating 11 lockstep files (Homebrew deferred to phase 2)\n\n'
+printf 'Phase 1 — updating 11 lockstep files + 4 version-hash goldens (Homebrew deferred to phase 2)\n\n'
 
 update_version_file
 update_version_go
@@ -461,6 +553,9 @@ update_sdk_py_pyproject
 update_admin_pkg
 update_admin_cliver
 update_admin_dockerfile
+if [ "${GOLDENS}" = "true" ]; then
+  update_goldens
+fi
 
 printf '\n'
 if [ "${DRY_RUN}" = "true" ]; then
