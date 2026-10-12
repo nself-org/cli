@@ -119,8 +119,10 @@ func TestSimPromote(t *testing.T) {
     if [ -f /tmp/sim-running-web ]; then
       image=$(cat /tmp/sim-running-web); id=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
       [ "$image" = web:2 ] && id=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-      printf '[{"Service":"web","Repository":"%s","Tag":"%s","ID":"sha256:%s"}]' "${image%:*}" "${image##*:}" "$id"
+      printf '[{"ContainerName":"proj-web-1","Repository":"%s","Tag":"%s","ID":"sha256:%s"}]' "${image%:*}" "${image##*:}" "$id"
     else printf '[]'; fi ;;
+  *" ps --all --format json"*)
+    printf '{"Name":"proj-web-1","Service":"web","State":"running"}\n' ;;
   *"image inspect --format"*)
     for last; do :; done
     digest=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

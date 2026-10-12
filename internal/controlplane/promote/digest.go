@@ -33,10 +33,11 @@ type SourceImage struct {
 }
 
 type composeImage struct {
-	Service    string `json:"Service"`
-	Repository string `json:"Repository"`
-	Tag        string `json:"Tag"`
-	ID         string `json:"ID"`
+	Service       string `json:"Service"`
+	ContainerName string `json:"ContainerName"`
+	Repository    string `json:"Repository"`
+	Tag           string `json:"Tag"`
+	ID            string `json:"ID"`
 }
 
 // CaptureSource reads running compose images and inspects their platform identities.
@@ -57,6 +58,9 @@ func CaptureSource(ctx context.Context, run Runner, services []Image, lookup arc
 	if err != nil {
 		return nil, err
 	}
+	if running, err = resolveImageServices(ctx, run, running); err != nil {
+		return nil, err
+	}
 	if lookup == nil {
 		lookup = archguard.RegistryLookup
 	}
@@ -64,16 +68,19 @@ func CaptureSource(ctx context.Context, run Runner, services []Image, lookup arc
 	for _, service := range services {
 		declared[service.Service] = service
 	}
-	seen := make(map[string]bool, len(running))
+	seen := make(map[string]string, len(running))
 	var out []SourceImage
 	for _, image := range running {
 		if image.Service == "" {
 			return nil, fmt.Errorf("source compose image has no service name")
 		}
-		if seen[image.Service] {
+		if id, ok := seen[image.Service]; ok {
+			if id == image.ID {
+				continue // replicas of one service run one image
+			}
 			return nil, fmt.Errorf("source compose image repeats service %s", image.Service)
 		}
-		seen[image.Service] = true
+		seen[image.Service] = image.ID
 		if declared[image.Service].Build {
 			continue
 		}

@@ -210,8 +210,10 @@ func (r *promoteSafetyRemote) Run(_ context.Context, command string) ([]byte, er
 		return []byte("/home/deploy\n"), nil
 	case strings.Contains(command, "compose-files.txt") || strings.Contains(command, "compose-env-files.txt"):
 		return []byte("__NSELF_ABSENT__"), nil
+	case strings.Contains(command, " ps --all --format json"):
+		return []byte(`{"Name":"fixture-api-1","Service":"api","State":"running"}` + "\n"), nil
 	case strings.Contains(command, " images --format json"):
-		return []byte(fmt.Sprintf(`[{"Service":"api","Repository":%q,"Tag":%q,"ID":%q}]`, r.repository, r.tag, r.imageID)), nil
+		return []byte(fmt.Sprintf(`[{"ContainerName":"fixture-api-1","Repository":%q,"Tag":%q,"ID":%q}]`, r.repository, r.tag, r.imageID)), nil
 	case strings.Contains(command, " config --format json"):
 		return []byte(fmt.Sprintf(`{"services":{"api":{"image":%q}}}`, r.repository+":"+r.tag)), nil
 	case strings.Contains(command, "docker image inspect"):

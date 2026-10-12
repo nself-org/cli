@@ -3,6 +3,7 @@ package promote
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -18,25 +19,71 @@ var (
 )
 
 func parseComposeImages(raw []byte) ([]composeImage, error) {
-	var images []composeImage
-	if err := json.Unmarshal(raw, &images); err == nil {
-		return images, nil
+	return parseComposeRows[composeImage](raw, "docker compose images")
+}
+
+// parseComposeRows reads Compose JSON output as one array or one object per line.
+func parseComposeRows[T any](raw []byte, what string) ([]T, error) {
+	var rows []T
+	if err := json.Unmarshal(raw, &rows); err == nil {
+		return rows, nil
 	}
 	scanner := bufio.NewScanner(bytes.NewReader(raw))
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
 		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
 			continue
 		}
-		var image composeImage
-		if err := json.Unmarshal(scanner.Bytes(), &image); err != nil {
-			return nil, fmt.Errorf("parse docker compose images: %w", err)
+		var row T
+		if err := json.Unmarshal(scanner.Bytes(), &row); err != nil {
+			return nil, fmt.Errorf("parse %s: %w", what, err)
 		}
-		images = append(images, image)
+		rows = append(rows, row)
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("parse docker compose images: %w", err)
+		return nil, fmt.Errorf("parse %s: %w", what, err)
 	}
-	return images, nil
+	return rows, nil
+}
+
+// composeContainer is one row of `docker compose ps --format json`.
+type composeContainer struct {
+	Name    string `json:"Name"`
+	Service string `json:"Service"`
+}
+
+// resolveImageServices names the service of every image row.
+// Compose's images JSON carries ContainerName and no Service (checked against
+// Compose 5.6), so rows without a service are mapped through `docker compose ps`.
+// A container that ps does not name keeps an empty service and fails closed.
+func resolveImageServices(ctx context.Context, run Runner, images []composeImage) ([]composeImage, error) {
+	missing := false
+	for _, image := range images {
+		missing = missing || image.Service == ""
+	}
+	if !missing {
+		return images, nil
+	}
+	raw, err := run(ctx, "docker compose ps --all --format json")
+	if err != nil {
+		return nil, fmt.Errorf("list source compose containers: %w", err)
+	}
+	containers, err := parseComposeRows[composeContainer](raw, "docker compose ps")
+	if err != nil {
+		return nil, err
+	}
+	services := make(map[string]string, len(containers))
+	for _, c := range containers {
+		services[c.Name] = c.Service
+	}
+	out := make([]composeImage, len(images))
+	for i, image := range images {
+		if image.Service == "" && image.ContainerName != "" {
+			image.Service = services[image.ContainerName]
+		}
+		out[i] = image
+	}
+	return out, nil
 }
 
 func parseInspect(raw []byte, ref string) (string, string, error) {
