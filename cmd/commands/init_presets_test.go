@@ -1,8 +1,14 @@
 package commands
 
 import (
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 func TestInitPresetsRegistry(t *testing.T) {
@@ -131,4 +137,56 @@ func TestListInitPresetsCoversAllSeven(t *testing.T) {
 func TestPrintPresetPostInitUnknown(t *testing.T) {
 	// Should not panic on an unknown preset name.
 	printPresetPostInit("does-not-exist")
+}
+
+func TestInitPresetsWriteObjectStorage(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		dir := t.TempDir()
+		t.Chdir(dir)
+		t.Setenv("NSELF_TELEMETRY", "false")
+		cmd := newInitCmd()
+		cmd.SetArgs([]string{"init", "--non-interactive", "--quiet", "--demo", "--name", "storage-demo"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("demo init: %v", err)
+		}
+		data, err := os.ReadFile(filepath.Join(dir, ".env"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		env := string(data)
+		preset, ok := resolveInitPreset("media-hosting")
+		if !ok {
+			t.Fatal("media-hosting preset missing")
+		}
+		output, err := captureStdout(t, func() error {
+			printPresetPostInit("media-hosting")
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if compat.V15() {
+			for _, line := range []string{"OBJECT_STORAGE_ENABLED=true\n", "OBJECT_STORAGE_BUCKETS=uploads\n", "S3_ACCESS_KEY=nself\n", "S3_SECRET_KEY="} {
+				if !strings.Contains(env, line) {
+					t.Errorf("v1.5 demo env missing %s", strings.TrimSpace(line))
+				}
+			}
+			if strings.Contains(env, "MINIO_ENABLED=true") || strings.Contains(env, "MINIO_ROOT_") {
+				t.Error("v1.5 demo still enables core MinIO")
+			}
+			if !slices.Contains(preset.EnabledServices, "object-storage") || slices.Contains(preset.EnabledServices, "minio") {
+				t.Errorf("v1.5 media-hosting services = %v", preset.EnabledServices)
+			}
+			if !strings.Contains(output, "OBJECT_STORAGE_ENABLED=true") || !strings.Contains(output, "nself add minio") {
+				t.Error("v1.5 media-hosting notes omit object storage or existing MinIO guidance")
+			}
+		} else {
+			if !strings.Contains(env, "MINIO_ENABLED=true\n") || strings.Contains(env, "OBJECT_STORAGE_ENABLED") {
+				t.Error("v1.4 demo storage env changed")
+			}
+			if !slices.Contains(preset.EnabledServices, "minio") || !strings.Contains(output, "Configure MINIO_ACCESS_KEY in .env") || strings.Contains(output, "OBJECT_STORAGE_ENABLED") {
+				t.Error("v1.4 media-hosting recommendations changed")
+			}
+		}
+	})
 }
