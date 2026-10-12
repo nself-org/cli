@@ -41,11 +41,6 @@ type PromotionRecord struct {
 	Error       string    `json:"error,omitempty"`
 }
 
-// secretPatterns are env var names whose values should be redacted in diffs.
-var secretPatterns = []string{
-	"PASSWORD", "SECRET", "KEY", "TOKEN", "CREDENTIAL",
-}
-
 // DryRun computes the diff between source and target environments.
 func DryRun(ctx context.Context, projectDir, source, target string) (*DiffResult, error) {
 	result := &DiffResult{
