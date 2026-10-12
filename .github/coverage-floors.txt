@@ -74,6 +74,7 @@ internal/health 26  # measured 28.1 2026-10-05
 internal/httpapi 93  # measured 95.1 2026-10-11 (P7-SURF-02)
 internal/httptimeout 98  # measured 100.0 2026-10-05
 internal/importer 47  # measured 49.7 2026-10-12
+internal/importer/appwrite 77  # measured 79.3 2026-10-12
 internal/importer/firebase 78  # measured 81.9 2026-10-12
 internal/importer/hasuracloud 10  # measured 34.5 2026-10-12
 internal/importer/hasurameta 85  # measured 87.4 2026-10-12
