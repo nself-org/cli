@@ -85,6 +85,58 @@ func TestSecretFormsAreDistinctAndBounded(t *testing.T) {
 	}
 }
 
+// Client-chosen JSON escapes are stored verbatim by json and text columns.
+// Expected renderings are written by hand; ab/c+d-E9 is the fake secret.
+func TestScrubClientJSONEscapes(t *testing.T) {
+	secret := "ab/c+d-E9"
+	for _, tc := range []struct{ name, text string }{
+		{"php slash", `{"k":"ab\/c+d-E9"}`},
+		{"php slash in COPY", `{"k":"ab\\/c+d-E9"}`},
+		{"lower unicode", `{"k":"ab\u002fc\u002bd\u002dE9"}`},
+		{"upper unicode", `{"k":"ab\u002Fc\u002Bd\u002DE9"}`},
+		{"lower unicode in COPY", `{"k":"ab\\u002fc\\u002bd\\u002dE9"}`},
+		{"upper unicode in SQL literal", `COMMENT ON TABLE t IS '{"k":"ab\u002Fc\u002Bd\u002DE9"}';`},
+	} {
+		if hit, err := scan(strings.NewReader("x "+tc.text+" y"), secretPatterns([]string{secret})); !hit || err != nil {
+			t.Errorf("%s: secret missed (%v)", tc.name, err)
+		}
+	}
+	// A quote and a slash together: PHP writes \" and \/.
+	if hit, _ := scan(strings.NewReader(`{"k":"a\"b\/c9x"}`), secretPatterns([]string{`a"b/c9x`})); !hit {
+		t.Error("quote plus slash secret missed")
+	}
+}
+
+func TestClientJSONFormsExact(t *testing.T) {
+	want := []string{
+		`ab\/c`, `ab\u002fc`, `ab\u002Fc`,
+		`ab\\/c`, `ab\\u002fc`, `ab\\u002Fc`,
+	}
+	got := map[string]bool{}
+	for _, f := range clientJSONForms("ab/c") {
+		got[f] = true
+	}
+	for _, w := range want {
+		if !got[w] {
+			t.Errorf("missing form %q", w)
+		}
+	}
+	if len(got) > 12 {
+		t.Errorf("%d forms for a short secret", len(got))
+	}
+	if f := clientJSONForms("plainvalue123"); len(f) != 0 {
+		t.Errorf("alphanumeric secret produced %v", f)
+	}
+}
+
+func TestClientJSONFormsNoFalsePositive(t *testing.T) {
+	for _, text := range []string{`{"url":"https://example.invalid/a/b"}`, `{"k":"ab/c"}`, `{"k":"ab\u0041c"}`, "see /etc/hosts and a+b"} {
+		if hit, _ := scan(strings.NewReader(text), secretPatterns([]string{"ab/c+d-E9"})); hit {
+			t.Errorf("false positive on %s", text)
+		}
+	}
+}
+
 func TestJSONTextMatchesPostgres(t *testing.T) {
 	// jsonb_out leaves <, >, & and non-ASCII alone and escapes control bytes.
 	if got := jsonText("a<b>&é\x01\x1f\b\f"); got != `a<b>&`+"é"+`\u0001\u001f\b\f` {

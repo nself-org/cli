@@ -102,7 +102,13 @@ bundle and names only the affected member. Bcrypt password hashes in users.jsonl
 are permitted. **User object files are not scanned:** inspect them before sharing.
 E525 means insufficient disk; E527 means the output is occupied. Failed exports
 leave no new bundle. The scan also looks for each secret as it is printed inside
-json, jsonb, array, hstore and composite values, in COPY data and in SQL literals.
+json, jsonb, array, hstore and composite values, in COPY data and in SQL literals,
+and in the spellings an application picks when it writes JSON itself and Postgres
+stores it as text (`/` written as `\/`, punctuation written as `\u00xx` in lower- or
+upper-case hex). **Not detected:** XML entity encoding (`&amp;`, `&lt;`), base64 or
+any other application-level encoding, encrypted values, and values shorter than the
+six-byte minimum. If an app stores a secret in one of those forms, the scan cannot
+see it: inspect those columns before sharing.
 Interrupting the command (Ctrl-C, SIGTERM, closing the terminal) removes the private
 stage directory. A process killed outright (SIGKILL, power loss) can leave an
 unscrubbed `.nself-export-*` directory next to the output; the next export warns

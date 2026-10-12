@@ -78,8 +78,10 @@ var (
 	// A query parameter name that carries a credential word, mirroring the
 	// rule config.MaskURLCredentials applies (it exports no value finder).
 	secretParamName = regexp.MustCompile(`(?i)pass|pwd|token|secret|key|signature|auth|credential`)
-	// scheme://userinfo@ where the userinfo has no colon: a bare token.
-	tokenUserinfo = regexp.MustCompile(`://([^/:@?#\s]+)@`)
+	// scheme://user[:password]@ : group 1 is the username, which is a bare
+	// token when no password follows (https://TOKEN@host) and also the token
+	// in GitHub's https://TOKEN:x-oauth-basic@host form.
+	tokenUserinfo = regexp.MustCompile(`://([^/:@?#\s]+)(?::[^/@?#\s]*)?@`)
 )
 
 // Purpose: collect the widened secret class from the resolved environment.
@@ -116,6 +118,9 @@ func dbExportSecretValues(env []string) []string {
 		if u, err := url.Parse(v); err == nil && u.User != nil {
 			if p, ok := u.User.Password(); ok {
 				add(p)
+				if len(u.User.Username()) >= dbExportTokenUserMin {
+					add(u.User.Username())
+				}
 			}
 		}
 		if strings.Contains(v, "://") {

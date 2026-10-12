@@ -101,6 +101,44 @@ func secretForms(s string) []string {
 	return out
 }
 
+// clientJSONForms returns the spellings an application chooses when it
+// serializes JSON itself and Postgres stores the text verbatim (json columns,
+// text columns holding JSON): "/" written as "\/" (PHP json_encode), and every
+// non-alphanumeric ASCII byte written as \u00xx in lower- or upper-case hex
+// (.NET and others). Each is returned raw, in COPY text and as an SQL literal;
+// the set is deduplicated by the caller and skips the raw form itself.
+func clientJSONForms(s string) []string {
+	variants := []string{
+		strings.ReplaceAll(s, "/", `\/`),
+		strings.ReplaceAll(jsonText(s), "/", `\/`),
+		uEscapeASCII(s, "%04x"),
+		uEscapeASCII(s, "%04X"),
+	}
+	var out []string
+	for _, v := range variants {
+		if v == s {
+			continue
+		}
+		out = append(out, v, copyText(v), sqlLiteral(v), sqlLiteral(copyText(v)))
+	}
+	return out
+}
+
+// uEscapeASCII writes every ASCII byte that is not a letter or digit as
+// \u00XX using the given hex verb; other runes pass through unchanged.
+func uEscapeASCII(s, verb string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r < 0x80 && !(r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'):
+			fmt.Fprintf(&b, `\u`+verb, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // Purpose: match raw values and every encoded representation without false
 // negatives when a secret spans read boundaries. Inputs: resolved values.
 // Outputs: pattern set. Constraints: all patterns have at least six raw bytes.
@@ -122,6 +160,9 @@ func secretPatterns(secrets []string) [][]byte {
 		}
 		add(strings.TrimPrefix(url.UserPassword("", s).String(), ":"))
 		add(url.QueryEscape(s))
+		for _, f := range clientJSONForms(s) {
+			add(f)
+		}
 		add(hex.EncodeToString([]byte(s)))
 		// encoding/json also escapes <, > and & (as <); apps that
 		// serialize with it store that spelling, and a second JSON layer

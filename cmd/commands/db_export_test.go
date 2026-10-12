@@ -155,6 +155,20 @@ func TestDBExportSecretValuesWidened(t *testing.T) {
 	}
 }
 
+func TestDBExportSecretValuesUsernameWithPassword(t *testing.T) {
+	const token = "FAKEGHTOKEN0123456789abcdefghijklmnopqrs" // fake 40-character token in the username slot
+	values := dbExportSecretValues([]string{
+		"GIT_REMOTE=https://" + token + ":x-oauth-basic@github.example.invalid/org/repo",
+		"DB_URL=postgres://reporting:FAKE-DB-PASSWORD@localhost/db",
+	})
+	if len(token) != 40 || !containsString(values, token) || !containsString(values, "FAKE-DB-PASSWORD") {
+		t.Fatalf("username token missing from %v", values)
+	}
+	if containsString(values, "reporting") {
+		t.Fatalf("short username treated as secret: %v", values)
+	}
+}
+
 func TestDBExportComposeEnvJoinsValues(t *testing.T) {
 	dir := t.TempDir()
 	if got := dbExportComposeEnv(dir); got != nil {
