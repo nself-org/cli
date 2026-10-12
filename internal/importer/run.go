@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 var started = load.Started
@@ -201,7 +202,7 @@ func runBundle(ctx context.Context, cfg *config.Config, stage string, opts RunOp
 }
 
 // safeMessages are the fixed, credential-free texts a source or loader may surface unchanged.
-var safeMessages = []string{"source requires an environment variable name", "source environment variable is empty", "source connection configuration invalid", "source database unreachable", "source version unavailable", "source schema lookup failed", "source auth lookup failed", "target database connection failed", "target version unavailable", "source snapshot failed", "source snapshot export failed", "source tables unavailable", "source table hashing failed", "source key lookup failed", "independent source count failed", "target image unavailable", "snapshot staging unavailable", "pg_dump snapshot extraction failed", "bundle creation failed", "dump member write failed", "auth snapshot extraction failed", "snapshot commit failed", "bundle manifest write failed", "source partition lookup failed"}
+var safeMessages = []string{"source requires an environment variable name", "source environment variable is empty", "source connection configuration invalid", "source database unreachable", "source version unavailable", "source schema lookup failed", "source auth lookup failed", "target database connection failed", "target version unavailable", "source snapshot failed", "source snapshot export failed", "source tables unavailable", "source table hashing failed", "source key lookup failed", "independent source count failed", "target image unavailable", "snapshot staging unavailable", "pg_dump snapshot extraction failed", "bundle creation failed", "dump member write failed", "auth snapshot extraction failed", "snapshot commit failed", "bundle manifest write failed", "source partition lookup failed", "bundle directory required", "bundle staging failed", "bundle changed while it was staged"}
 
 var (
 	versionRe   = regexp.MustCompile(`POSTGRES_VERSION=([0-9]{1,3})`)
@@ -212,6 +213,13 @@ func publicError(err error, code, message string) error {
 	// Preserve only known source failure codes, with fresh credential-free text.
 	var cli *errs.CLIError
 	if errors.As(err, &cli) {
+		// A portable bundle error names only a member path; keep it unless it could garble a terminal.
+		if cli.Code == "E515" || cli.Code == "E516" {
+			if plainText(cli.What) {
+				return errs.New(cli.Code, cli.What)
+			}
+			return errs.New(cli.Code, "portable bundle failed its check")
+		}
 		for _, c := range []string{"E517", "E518", "E520", "E521"} {
 			if cli.Code == c {
 				for _, safe := range safeMessages {
@@ -236,4 +244,9 @@ func publicError(err error, code, message string) error {
 		}
 	}
 	return errs.New(code, message)
+}
+
+// plainText reports whether s is short and free of control characters.
+func plainText(s string) bool {
+	return len(s) <= 300 && strings.IndexFunc(s, unicode.IsControl) < 0
 }
