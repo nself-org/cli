@@ -34,7 +34,10 @@ import (
 const composeEnvFile = ".nself/compose.env"
 
 // SecretEnvMap returns env-var-name → resolved literal value for every secret
-// the compose generator may embed. Empty values are omitted.
+// the compose generator may embed, plus the plugin internal secrets every
+// plugin fragment reads as ${VAR} (D-0647: compose.env must carry the value
+// the loader generated and .env.secrets persisted, even when .env lacks it).
+// Empty values are omitted.
 func SecretEnvMap(cfg *config.Config) map[string]string {
 	m := make(map[string]string)
 	add := func(key, val string) {
@@ -62,6 +65,8 @@ func SecretEnvMap(cfg *config.Config) map[string]string {
 	add("SEARCH_API_KEY", cfg.Search.APIKey)
 	add("MEILISEARCH_MASTER_KEY", cfg.Search.MeiliSearch.MasterKey)
 	add("TYPESENSE_API_KEY", cfg.Search.Typesense.APIKey)
+	add("PLUGIN_INTERNAL_SECRET", cfg.PluginSystem.InternalSecret)
+	add("NOTIFY_INTERNAL_SECRET", cfg.PluginConfig.NotifySecret)
 
 	return m
 }

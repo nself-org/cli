@@ -146,3 +146,32 @@ func TestComposeEnvPluginSecretsPlanEqualsApply(t *testing.T) {
 		}
 	}
 }
+
+// TestSecretEnvMapCarriesPluginSecrets (D-0647): compose.env gets both keys
+// from SecretEnvMap alone, with no plugin env vars at all, and a blank value
+// is left out rather than written empty. Values are fake fixtures.
+func TestSecretEnvMapCarriesPluginSecrets(t *testing.T) {
+	cfg := secretTestConfig()
+	cfg.PluginSystem.InternalSecret = "fake-plugin-internal-Tz4Kp8Wq"
+	cfg.PluginConfig.NotifySecret = "fake-notify-internal-Rm7Yc2Hd"
+	dir := t.TempDir()
+	if err := WriteComposeEnv(dir, cfg, SecretEnvMap(cfg), nil); err != nil {
+		t.Fatalf("WriteComposeEnv: %v", err)
+	}
+	env := readComposeEnvMap(t, dir)
+	if env["PLUGIN_INTERNAL_SECRET"] != cfg.PluginSystem.InternalSecret {
+		t.Error("compose.env lacks PLUGIN_INTERNAL_SECRET without plugin env vars")
+	}
+	if env["NOTIFY_INTERNAL_SECRET"] != cfg.PluginConfig.NotifySecret {
+		t.Error("compose.env lacks NOTIFY_INTERNAL_SECRET without plugin env vars")
+	}
+
+	cfg.PluginSystem.InternalSecret = "  "
+	cfg.PluginConfig.NotifySecret = ""
+	m := SecretEnvMap(cfg)
+	for _, key := range pluginSecretKeys {
+		if _, ok := m[key]; ok {
+			t.Errorf("SecretEnvMap kept a blank %s", key)
+		}
+	}
+}
