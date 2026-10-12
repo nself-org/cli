@@ -672,8 +672,10 @@ Flags:
 - `--check` (default false) — Check for updates without installing
 - `--cli` (default false) — Only update the CLI binary
 - `--force` (default false) — Force update even if already up to date
+- `--plan` (default false) — Show the pin diff (CLI, images, plugins) and the upgrade steps; writes nothing
 - `--restart` (default false) — Restart services after update
 - `--version` (default "") — Download a specific version (e.g. v1.2.3)
+- `--yes` (default false) — Apply the image and plugin pins, rebuild, then update the CLI last (--cli=false skips the CLI)
 
 Full page: [[cmd-update]]
 

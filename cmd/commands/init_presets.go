@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/ui"
 )
 
@@ -134,7 +135,7 @@ func listInitPresets() {
 
 // printPresetPostInit prints preset-specific post-init notes.
 func printPresetPostInit(presetName string) {
-	p, ok := initPresets[presetName]
+	p, ok := resolveInitPreset(presetName)
 	if !ok {
 		return
 	}
@@ -144,4 +145,22 @@ func printPresetPostInit(presetName string) {
 		fmt.Printf("  %s%d.%s %s\n", ui.Bold, i+1, ui.Reset, note)
 	}
 	fmt.Println()
+}
+
+// Purpose: resolve preset recommendations for the current compatibility mode.
+// Inputs: registry name. Outputs: preset and presence flag.
+// Constraints: leave the shared registry unchanged; no environment writes.
+// SPORT: P7-PLUG-60.
+func resolveInitPreset(name string) (initPreset, bool) {
+	p, ok := initPresets[name]
+	// compat.V15(P7-PLUG-60): media-hosting recommends MinIO -> recommends core object storage and the MinIO plugin for existing data
+	if compat.V15() && name == "media-hosting" && ok {
+		p.EnabledServices = []string{"object-storage"}
+		p.Notes = []string{
+			"Enable SeaweedFS object storage: set OBJECT_STORAGE_ENABLED=true in .env",
+			"Set S3_ACCESS_KEY and S3_SECRET_KEY in .env.secrets",
+			"Keep existing MinIO data: nself add minio",
+		}
+	}
+	return p, ok
 }

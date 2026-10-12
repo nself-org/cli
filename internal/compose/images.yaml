@@ -18,7 +18,10 @@ schema_version: 1
 images:
   - {name: admin, role: optional, repository: docker.io/nself/nself-admin, version: latest, legacy_ref: "nself/nself-admin:latest", license: MIT, source: "https://github.com/nself-org/admin", platforms: [linux/amd64, linux/arm64]}
   - {name: alertmanager, role: monitoring, repository: docker.io/prom/alertmanager, version: v0.27.0, legacy_ref: "prom/alertmanager:v0.27.0", license: Apache-2.0, source: "https://github.com/prometheus/alertmanager", platforms: [linux/amd64, linux/arm64]}
-  - {name: auth, role: core, repository: docker.io/nhost/hasura-auth, version: 0.36.0, legacy_ref: "nhost/hasura-auth:0.36.0", license: MIT, source: "https://github.com/nhost/hasura-auth", platforms: [linux/amd64, linux/arm64]}
+  # auth: nhost/hasura-auth was renamed nhost/auth (0.36.0 has the same index digest under both names, checked 2026-10-11).
+  # v1.4 renders auth-v14, v1.5 renders auth (EPIC D17, P7-LIVE-20); 0.43.0 and later need AUTH_ENCRYPTION_KEY.
+  - {name: auth, role: core, repository: docker.io/nhost/auth, version: 0.52.0, legacy_ref: "nhost/auth:0.52.0", license: MIT, source: "https://github.com/nhost/nhost/tree/main/services/auth", platforms: [linux/amd64, linux/arm64]}
+  - {name: auth-v14, role: core, repository: docker.io/nhost/auth, version: 0.36.0, legacy_ref: "nhost/auth:0.36.0", license: MIT, source: "https://github.com/nhost/nhost/tree/main/services/auth", platforms: [linux/amd64, linux/arm64]}
   - {name: cadvisor, role: monitoring, repository: gcr.io/cadvisor/cadvisor, version: v0.49.1, legacy_ref: "gcr.io/cadvisor/cadvisor:v0.49.1", license: Apache-2.0, source: "https://github.com/google/cadvisor", platforms: [linux/amd64, linux/arm64]}
   - {name: deno, role: optional, repository: docker.io/denoland/deno, version: alpine, legacy_ref: "denoland/deno:alpine", license: MIT, source: "https://github.com/denoland/deno_docker", platforms: [linux/amd64, linux/arm64]}
   - {name: elasticsearch, role: optional, repository: docker.elastic.co/elasticsearch/elasticsearch, version: 8.11.3, legacy_ref: "docker.elastic.co/elasticsearch/elasticsearch:8.11.3", license: "Elastic-2.0 OR SSPL-1.0 OR AGPL-3.0", source: "https://github.com/elastic/elasticsearch", platforms: [linux/amd64, linux/arm64]}
@@ -48,3 +51,4 @@ images:
   - {name: storage, role: optional, repository: docker.io/nhost/hasura-storage, version: 0.6.1, legacy_ref: "nhost/hasura-storage:0.6.1", license: MIT, source: "https://github.com/nhost/hasura-storage", platforms: [linux/amd64, linux/arm64]}
   - {name: tempo, role: monitoring, repository: docker.io/grafana/tempo, version: latest, legacy_ref: "grafana/tempo:latest", license: AGPL-3.0, source: "https://github.com/grafana/tempo", platforms: [linux/amd64, linux/arm64]}
   - {name: typesense, role: optional, repository: docker.io/typesense/typesense, version: "27.1", legacy_ref: "typesense/typesense:27.1", license: GPL-3.0, source: "https://github.com/typesense/typesense", platforms: [linux/amd64, linux/arm64]}
+  - {name: valkey, role: optional, repository: docker.io/valkey/valkey, version: 8.1-alpine, legacy_ref: "valkey/valkey:8.1-alpine", license: BSD-3-Clause, source: "https://github.com/valkey-io/valkey", platforms: [linux/amd64, linux/arm64]}

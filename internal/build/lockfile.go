@@ -62,9 +62,8 @@ func (st *buildState) lockActive() bool {
 	return err == nil
 }
 
-// installLockPins installs the image pins for this render and returns the
-// function that restores the previous ones.
-func (st *buildState) installLockPins() (func(), error) {
+// installImagePins installs the lock's image pins (or the bootstrap pins).
+func (st *buildState) installImagePins() (func(), error) {
 	if !st.lockActive() {
 		return func() {}, nil
 	}

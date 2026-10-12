@@ -193,6 +193,9 @@ func newPlanFixture(t *testing.T, name string) *planFixture {
 		}
 		secrets = strings.Join(keep, "\n")
 	}
+	// An ordinary project does not use MinIO; `nself init` writes this line. Without it the
+	// MINIO_ROOT_* secrets below read as MinIO intent and v1.5 raises E138 (P7-PLUG-60).
+	env += "MINIO_ENABLED=false\n"
 	writeFixtureFile(t, filepath.Join(f.workdir, ".env"), env+secrets, 0o600)
 	return f
 }

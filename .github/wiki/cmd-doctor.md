@@ -115,7 +115,7 @@ Because a warning or failure here is a normal doctor result, `nself doctor` exit
 | `license` | License cache present and not in grace period |
 | `monitoring` | Prometheus, Grafana, Loki reachable |
 | `backups` | Last backup age (must be under 26 hours) |
-| `security` | JWT secret, container user, secret file permissions, exposed ports, weak SSL ciphers |
+| `security` | JWT secret, container user, secret file permissions, exposed ports, weak SSL ciphers, **SEC-GITIGNORE-01** certificate keys and `.env.secrets` kept out of git (see below) |
 | `ai-safety` | AI plugin moderation wire-up gap (see below) |
 | `performance` | **PERF-POOL-01**: pgxpool connection cap vs postgres_max_connections |
 | `security` | **PERM-RLS-01**: RLS enforcement for np_* tables (see below) |
@@ -213,6 +213,37 @@ nself doctor --deep --only security
 ```
 
 **See also:** [multi-tenant conventions](https://nself.org/docs/multi-tenancy/conventions) for the canonical wall doc on `source_account_id` vs `tenant_id`.
+
+---
+
+### SEC-GITIGNORE-01: Certificate Keys and Secrets Out of Git
+
+Fires during `nself doctor --deep` in the `security` section.
+
+`nself init` writes `/ssl/` and `.env.secrets` into the `.gitignore` of a new project only. A project created before that, or one whose `.gitignore` was edited, can still commit `ssl/certificates/<domain>/privkey.pem`. The check asks git itself, so nested `.gitignore` files, `!` negations and your global excludes count the way git counts them:
+
+1. `git check-ignore --no-index` on `ssl/privkey.pem`, `ssl/certificates/x/privkey.pem` and `.env.secrets`: each must be ignored.
+2. `git ls-files -- ssl/ .env.secrets`: must list nothing.
+
+It reads only; it never edits `.gitignore` or the index. Outside a git work tree, or without git installed, it passes as skipped.
+
+| Status | Meaning |
+|--------|---------|
+| `pass` | All three paths are ignored and nothing under `ssl/` or `.env.secrets` is tracked |
+| `warn` | A path is not ignored, or a key or secret file is already tracked |
+
+**Fix:**
+
+```bash
+# 1. Ignore the paths (a leading / keeps src/ssl/ trackable)
+printf '/ssl/\n.env.secrets\n' >> .gitignore
+
+# 2. If the check listed tracked files, untrack them (the files stay on disk)
+git rm --cached -r --ignore-unmatch -- ssl/ .env.secrets
+git commit -m "chore: stop tracking certificate keys and secrets"
+```
+
+A key or secret that was committed stays in git history, and anyone with a clone has it. Rotate it: replace the certificate with one issued on a new private key, and replace every secret that was in the committed file.
 
 ---
 

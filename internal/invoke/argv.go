@@ -32,47 +32,69 @@ func BuildArgv(cmd *cmdregistry.Command, r Request) ([]string, error) {
 }
 
 // BuildArgvFor is BuildArgv for a transport: only TransportHTTPStream accepts
-// the stream-override flags.
+// the stream-override flags. A secret value is a placeholder in the result
+// (secretenv.go); a caller that runs the argv uses BuildArgvSecrets.
 func BuildArgvFor(cmd *cmdregistry.Command, r Request, transport string) ([]string, error) {
+	argv, _, err := BuildArgvSecrets(cmd, r, transport)
+	return argv, err
+}
+
+// BuildArgvSecrets is BuildArgvFor plus the bundle of the secret values that
+// the argv carries as placeholders (D-0468): a registry-secret positional and
+// the value of a secret flag never sit on the child argv. The bundle is nil
+// when the request has no secret value. Limits apply to the real values.
+func BuildArgvSecrets(cmd *cmdregistry.Command, r Request, transport string) ([]string, *SecretBundle, error) {
 	if cmd == nil {
-		return nil, badRequest("no such command")
+		return nil, nil, badRequest("no such command")
 	}
 	path := strings.Fields(barePath(cmd.Path))
 	if len(path) == 0 {
-		return nil, badRequest("command has no path")
+		return nil, nil, badRequest("command has no path")
 	}
 	for _, tok := range path {
 		if !pathToken.MatchString(tok) {
-			return nil, badRequest("command path %s is not a valid argv word", quoteName(tok))
+			return nil, nil, badRequest("command path %s is not a valid argv word", quoteName(tok))
 		}
 	}
 	if r.Confirm != "" && cmd.Confirm == nil {
-		return nil, badRequest("this command takes no confirm")
+		return nil, nil, badRequest("this command takes no confirm")
 	}
 	argv := append(append([]string{}, path...), "--json")
 	if freeFormArgv(cmd) {
 		if len(r.Args) > 0 || len(r.Flags) > 0 {
-			return nil, badRequest("this command takes argv, not args or flags")
+			return nil, nil, badRequest("this command takes argv, not args or flags")
 		}
 		argv = append(argv, r.Argv...)
-		return argv, checkArgv(argv)
+		return argv, nil, checkArgv(argv)
 	}
 	if len(r.Argv) > 0 {
-		return nil, badRequest("argv is only for plugin commands that declare no args or flags")
+		return nil, nil, badRequest("argv is only for plugin commands that declare no args or flags")
 	}
-	flagArgv, err := buildFlags(cmd, r.Flags, transport)
+	flagArgv, flagSecret, err := buildFlags(cmd, r.Flags, transport)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	marks := map[int]int{}
+	for i, prefix := range flagSecret {
+		marks[len(argv)+i] = prefix
 	}
 	argv = append(argv, flagArgv...)
 	if err := checkArgCount(cmd, len(r.Args)); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(r.Args) > 0 {
 		argv = append(argv, "--")
+		for i := range r.Args {
+			if secretArg(cmd, i) {
+				marks[len(argv)+i] = 0
+			}
+		}
 		argv = append(argv, r.Args...)
 	}
-	return argv, checkArgv(argv)
+	if err := checkArgv(argv); err != nil {
+		return nil, nil, err
+	}
+	return hideSecrets(argv, marks)
 }
 
 // checkArgv rejects NUL bytes and oversized elements or argv.
@@ -110,8 +132,10 @@ func checkArgCount(cmd *cmdregistry.Command, n int) error {
 	return nil
 }
 
-// buildFlags renders the request flags in name order.
-func buildFlags(cmd *cmdregistry.Command, flags map[string]any, transport string) ([]string, error) {
+// buildFlags renders the request flags in name order. The second result maps
+// the index of every item of a secret flag to the length of its "--name="
+// prefix (D-0468).
+func buildFlags(cmd *cmdregistry.Command, flags map[string]any, transport string) ([]string, map[int]int, error) {
 	exposed := map[string]cmdregistry.Flag{}
 	for _, f := range ExposedFlags(cmd, transport) {
 		exposed[f.Name] = f
@@ -119,23 +143,29 @@ func buildFlags(cmd *cmdregistry.Command, flags map[string]any, transport string
 	names := make([]string, 0, len(flags))
 	for name := range flags {
 		if strings.IndexByte(name, 0) >= 0 {
-			return nil, badRequest("a flag name contains a NUL byte")
+			return nil, nil, badRequest("a flag name contains a NUL byte")
 		}
 		if _, ok := exposed[name]; !ok {
-			return nil, badRequest("flag %s is unknown or not exposed on this surface", quoteName(name))
+			return nil, nil, badRequest("flag %s is unknown or not exposed on this surface", quoteName(name))
 		}
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	var out []string
+	secret := map[int]int{}
 	for _, name := range names {
 		items, err := flagItems(exposed[name], flags[name])
 		if err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		if secretFlag(cmd, name) {
+			for i := range items {
+				secret[len(out)+i] = len("--" + name + "=")
+			}
 		}
 		out = append(out, items...)
 	}
-	return out, nil
+	return out, secret, nil
 }
 
 // flagItems renders one flag value as its argv elements.
@@ -208,6 +238,9 @@ func stringItems(f cmdregistry.Flag, v any) ([]string, error) {
 	}
 	out := make([]string, 0, len(items))
 	for _, s := range items {
+		if f.Type == "stringSlice" && s == "" {
+			return nil, badRequest("flag %s is a comma-separated list: an item cannot be empty", quoteName(f.Name))
+		}
 		if f.Type == "stringSlice" && strings.ContainsAny(s, ",\"\r\n") {
 			return nil, badRequest("flag %s is a comma-separated list: an item cannot hold a comma, quote or newline", quoteName(f.Name))
 		}
@@ -223,10 +256,10 @@ func integerText(v any, unsigned bool) (string, bool) {
 	var s string
 	switch x := v.(type) {
 	case json.Number:
-		if _, err := strconv.ParseInt(string(x), 10, 64); err == nil {
-			s = string(x)
-		} else if _, err := strconv.ParseUint(string(x), 10, 64); err == nil {
-			s = string(x)
+		if i, err := strconv.ParseInt(string(x), 10, 64); err == nil {
+			s = strconv.FormatInt(i, 10) // "-0" and "007" render as the digest sees them
+		} else if u, err := strconv.ParseUint(string(x), 10, 64); err == nil {
+			s = strconv.FormatUint(u, 10)
 		} else if f, err := strconv.ParseFloat(string(x), 64); err == nil && f == math.Trunc(f) && math.Abs(f) < 1<<53 {
 			s = strconv.FormatInt(int64(f), 10)
 		} else {

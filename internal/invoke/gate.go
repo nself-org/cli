@@ -211,12 +211,14 @@ func planGate(ctx context.Context, cmd *cmdregistry.Command, req Request, o Opti
 		return d, nil
 	}
 	transport := transportOf(o)
-	argv, err := BuildArgvFor(cmd, req, transport)
+	argv, secretBundle, err := BuildArgvSecrets(cmd, req, transport)
 	if err != nil {
 		return refused(d, err), nil
 	}
 	argv = withFlags(argv, "--"+plan.Flag+"=true")
-	ran, out, err := runChild(ctx, Result{}, barePath(cmd.Path), specFor(o, transport, argv), requestSecrets(cmd, req), false)
+	planSpec := specFor(o, transport, argv)
+	planSpec.Secrets = secretBundle
+	ran, out, err := runChild(ctx, Result{}, barePath(cmd.Path), planSpec, scrubSet(requestSecrets(cmd, req), secretBundle), false)
 	if err != nil {
 		return d, err
 	}

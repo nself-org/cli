@@ -86,3 +86,37 @@ func readBundlesCache() (*cachedBundlesDoc, error) {
 	}
 	return &entry, nil
 }
+
+// loadBundlesFromCache installs the last-known-good cached catalog after
+// re-validating its shape and member names (a cache file is as untrusted as a fetch).
+// cause is why the live document was not used. invalid is true when the fetch
+// succeeded but the document failed validation: that always prints one stderr
+// warning naming the failure. For a failed fetch, the warning is printed once
+// per process and only when the cache is older than bundlesStaleWarnAfter.
+// Returns (true, nil) when the cache was installed; (false, nil) when there is
+// no cache file; (false, err) when the cache exists but cannot be used. It
+// never writes the cache.
+func loadBundlesFromCache(cause error, invalid bool) (bool, error) {
+	cached, err := readBundlesCache()
+	if err != nil || cached == nil {
+		return false, nil
+	}
+	if err := validateDoc(cached.Doc); err != nil {
+		return false, fmt.Errorf("cached bundles.json: %w", err)
+	}
+	age := time.Since(time.Unix(cached.FetchedAt, 0))
+	switch {
+	case invalid:
+		fmt.Fprintf(os.Stderr,
+			"warning: fetched bundles.json failed validation (%v); using the local cache from %s ago.\n",
+			cause, age.Round(time.Minute))
+	case age > bundlesStaleWarnAfter:
+		staleWarnOnce.Do(func() {
+			fmt.Fprintf(os.Stderr,
+				"warning: bundles.json cache is %s stale (last fetch failed: %v); bundle membership may be outdated. Reconnect and retry.\n",
+				age.Round(time.Hour), cause)
+		})
+	}
+	setState(buildBundleMap(cached.Doc))
+	return true, nil
+}

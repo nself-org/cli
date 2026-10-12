@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 	"gopkg.in/yaml.v3"
@@ -57,6 +58,7 @@ func legacyRedisCompose(t *testing.T, pw string) []byte {
 // healthcheck) against itself changed and against the current generator's
 // output, and asserts no diff shows Hunter2Leak.
 func TestUnifiedHidesGeneratedRedisPassword(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	for _, pw := range []string{"pa ss Hunter2Leak", "Hunter2Leak$x", "Hunter2'Leak", `Hunter2"Leak`, `Hunter2\Leak`} {
 		t.Run(pw, func(t *testing.T) {
 			legacy := legacyRedisCompose(t, pw)

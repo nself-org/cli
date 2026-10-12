@@ -6,6 +6,7 @@ package build
 //          .nself/compose.env at container-start time.
 
 import (
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -71,6 +72,7 @@ func secretTestConfig() *config.Config {
 // run the real compose generator, apply secret templating, and assert the
 // output contains only ${VAR} references — zero literal secret values.
 func TestTemplateSecrets_NoLiteralSecretsInGeneratedCompose(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	cfg := secretTestConfig()
 	raw, err := compose.NewGenerator(cfg).Generate()
 	if err != nil {
@@ -117,6 +119,7 @@ func TestTemplateSecrets_NoLiteralSecretsInGeneratedCompose(t *testing.T) {
 // still has to rewrite a literal a generator puts in a command string; the
 // synthetic case below keeps that covered without a live fixture.
 func TestTemplateSecrets_CommandAndHealthcheckLiteralsRewritten(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	cfg := secretTestConfig()
 	cfg.Redis.Enabled = true
 	cfg.Redis.Password = "redis-pass-K9m3Bq7Wz2"
@@ -174,19 +177,6 @@ func TestTemplateSecrets_AliasKeyLeftAloneWhenValueDiffers(t *testing.T) {
 	out := string(TemplateSecrets([]byte(yaml), secrets))
 	if !strings.Contains(out, "AUTH_JWT_SECRET: some-other-independent-value") {
 		t.Errorf("alias key with independent value was clobbered:\n%s", out)
-	}
-}
-
-// TestTemplateSecrets_URLEscapedPasswordLeftLiteral: passwords that require
-// percent-encoding must not be substituted into URL credential positions
-// (compose interpolation would inject the raw, unescaped value).
-func TestTemplateSecrets_URLEscapedPasswordLeftLiteral(t *testing.T) {
-	pw := "has space%pw"
-	yaml := "      DATABASE_URL: postgresql://postgres:has%20space%25pw@postgres:5432/db\n"
-	secrets := map[string]string{"POSTGRES_PASSWORD": pw}
-	out := string(TemplateSecrets([]byte(yaml), secrets))
-	if strings.Contains(out, ":${POSTGRES_PASSWORD}@") {
-		t.Errorf("URL-escaped password must not be substituted, got:\n%s", out)
 	}
 }
 

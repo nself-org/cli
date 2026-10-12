@@ -1503,8 +1503,10 @@
       "--check",
       "--cli",
       "--force",
+      "--plan",
       "--restart",
-      "--version"
+      "--version",
+      "--yes"
     ],
     "subcommands": [
       {

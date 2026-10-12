@@ -10,10 +10,12 @@ package build
 // Outputs: compose YAML with ${VAR} references instead of literals, plus the
 //          .nself/compose.env interpolation file (0600) that `nself start`
 //          passes to docker compose via --env-file.
-// Constraints: Two-phase rewrite — exact env-key lines first, then
-//              URL-credential positions (":<pw>@"). URL rewrite only when the
-//              password needs no percent-encoding (raw == escaped), otherwise
-//              the literal is left and reported by LiteralSecretLeaks.
+// Constraints: env-key lines first, then URL-credential positions
+//              (":<pw>@" → ${VAR}; percent-encoded ":<enc>@" →
+//              ${VAR_URLENC:-${VAR}}), then any other literal. No literal may
+//              stay: compose interpolates it, so a "$" in a secret would
+//              resolve differently per consumer (D-0635). Anything left is
+//              reported by LiteralSecretLeaks.
 // SPORT: cli/internal/build — secret templating (S-secret-env-templating).
 
 import (
@@ -21,7 +23,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -74,6 +75,21 @@ var secretAliasKeys = map[string]string{
 	"AUTH_DB_PASSWORD":       "POSTGRES_PASSWORD", // Nhost Auth AUTH_DB_* alias set
 }
 
+// urlEncodedTwinKeys are the passwords WriteComposeEnv also writes
+// percent-encoded as <KEY>_URLENC, for compose references inside a URL.
+var urlEncodedTwinKeys = []string{"POSTGRES_PASSWORD", "REDIS_PASSWORD"}
+
+// twinSource returns the configured password behind a urlEncodedTwinKeys entry.
+func twinSource(cfg *config.Config, key string) string {
+	switch key {
+	case "POSTGRES_PASSWORD":
+		return cfg.Postgres.Password
+	case "REDIS_PASSWORD":
+		return cfg.Redis.Password
+	}
+	return ""
+}
+
 // TemplateSecrets rewrites generated compose YAML so no literal secret value
 // remains: env entries become ${VAR} references and URL-embedded database
 // credentials become :${VAR}@. Docker Compose interpolates the references at
@@ -94,10 +110,9 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		re := regexp.MustCompile(`(?m)^(\s+)` + regexp.QuoteMeta(key) + `:\s.*$`)
-		// $$ emits a literal $ in Go regexp replacement templates — the
-		// output must contain the un-expanded ${KEY} for docker compose.
-		out = re.ReplaceAllString(out, "${1}"+key+": $${"+key+"}")
+		out = rewriteKeyLines(out, key, func(string) (string, bool) {
+			return "${" + key + "}", true
+		})
 	}
 
 	// Phase A2: alias keys (e.g. AUTH_JWT_SECRET carries HASURA_JWT_KEY's
@@ -114,13 +129,11 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 		if !ok {
 			continue
 		}
-		re := regexp.MustCompile(`(?m)^(\s+)` + regexp.QuoteMeta(alias) + `:\s.*$`)
-		out = re.ReplaceAllStringFunc(out, func(line string) string {
-			if !strings.Contains(line, val) {
-				return line
+		out = rewriteKeyLines(out, alias, func(line string) (string, bool) {
+			if !strings.Contains(line, val) && !lineValueIs(line, val) {
+				return "", false
 			}
-			indent := line[:strings.Index(line, alias)]
-			return indent + alias + ": ${" + canonical + "}"
+			return "${" + canonical + "}", true
 		})
 	}
 
@@ -138,42 +151,26 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 		out = strings.ReplaceAll(out, ":"+val+"@", ":${"+key+"}@")
 	}
 
-	// Phase C: any other literal occurrence — a generator may embed a secret
-	// in a `command:` string or a healthcheck `test:` argument (Redis and
-	// Typesense did until D-0282) rather than a plain "KEY: value" env line
-	// or a URL credential position, so Phases A/B never see them. Safe to replace
-	// unconditionally for values that need no percent-encoding — those are
-	// exactly the values compose interpolation can substitute verbatim
-	// anywhere. Percent-encoding-sensitive values are left literal
-	// everywhere (same rationale as Phase B) and still caught by
-	// LiteralSecretLeaks as a defense-in-depth warning.
-	for _, key := range keys {
-		val := secrets[key]
-		if len(val) < 8 || url.PathEscape(val) != val {
+	// Phase B2: percent-encoded credential positions — ":<URLPassword(pw)>@"
+	// → ":${VAR_URLENC:-${VAR}}@" for every password WriteComposeEnv writes
+	// an encoded twin for. Phase B leaves these literal, and docker compose
+	// interpolates the literal: a "$" in it was expanded or rejected while
+	// ${VAR} consumers read the verbatim password (D-0635). The twin holds the
+	// exact encoded bytes, so the resolved URL is unchanged for every other
+	// password, and the fallback matches the fragment form (P7-PROD-31).
+	for _, key := range urlEncodedTwinKeys {
+		val, ok := secrets[key]
+		if !ok {
 			continue
 		}
-		out = strings.ReplaceAll(out, val, "${"+key+"}")
+		enc := config.URLPassword(val)
+		out = strings.ReplaceAll(out, ":"+enc+"@", ":${"+key+config.URLPasswordEnvSuffix+":-${"+key+"}}@")
 	}
+
+	// Phase C: any other literal occurrence (secrets_template_rewrite.go).
+	out = templateOtherLiterals(out, keys, secrets)
 
 	return []byte(out)
-}
-
-// LiteralSecretLeaks returns the names of secrets whose literal value (>= 8
-// chars) still appears in the compose YAML after templating. Callers surface
-// each as a build warning — the safety net behind TemplateSecrets.
-func LiteralSecretLeaks(composeYAML []byte, secrets map[string]string) []string {
-	var leaked []string
-	doc := string(composeYAML)
-	for key, val := range secrets {
-		if len(val) < 8 {
-			continue
-		}
-		if strings.Contains(doc, val) {
-			leaked = append(leaked, key)
-		}
-	}
-	sort.Strings(leaked)
-	return leaked
 }
 
 // WriteComposeEnv writes .nself/compose.env (0600) — the single interpolation
@@ -207,12 +204,9 @@ func writeComposeEnvVia(sink Sink, workdir string, cfg *config.Config, secrets, 
 	// (P7-PROD-31): compose can substitute but not encode. Encoded exactly once
 	// here; fragments use ${X_URLENC:-${X}} so an older compose.env without the
 	// twin renders what it always rendered. Empty passwords get no twin.
-	for _, pw := range []struct{ key, val string }{
-		{"POSTGRES_PASSWORD", cfg.Postgres.Password},
-		{"REDIS_PASSWORD", cfg.Redis.Password},
-	} {
-		if enc := config.URLPassword(pw.val); enc != "" {
-			merged[pw.key+config.URLPasswordEnvSuffix] = enc
+	for _, key := range urlEncodedTwinKeys {
+		if enc := config.URLPassword(twinSource(cfg, key)); enc != "" {
+			merged[key+config.URLPasswordEnvSuffix] = enc
 		}
 	}
 	merged["HASURA_GRAPHQL_ENABLE_CONSOLE"] = fmt.Sprintf("%t", cfg.Hasura.Console)

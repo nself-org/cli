@@ -142,9 +142,11 @@ func PlannedRecord(state *GeneratedState, pb *nbuild.PlannedBuild) (*GeneratedSt
 	next.RecordPlanned(pb)
 	keep := make(map[string]bool, len(pb.Files))
 	for key := range pb.Files {
-		keep[displayPath(key)] = true
+		keep[displayPath(pb.PluginDir, key)] = true
 	}
-	next.pruneGonePlugins(keep, pluginEntryExists) // D-0557: a removed plugin leaves the record
+	// D-0557: a removed plugin leaves the record. D-0607: judged under the
+	// build's plugin directory, not the process env the plan build restored.
+	next.pruneGonePlugins(keep, pluginEntryIn(pluginDirOr(pb.PluginDir)))
 	body, err := next.body()
 	if err != nil {
 		return nil, nil, err
@@ -209,10 +211,10 @@ func (s *GeneratedState) RecordPlanned(pb *nbuild.PlannedBuild) {
 	}
 	for key, f := range pb.Files {
 		sum := sha256.Sum256(f.Data)
-		s.Files[displayPath(key)] = hex.EncodeToString(sum[:])
+		s.Files[displayPath(pb.PluginDir, key)] = hex.EncodeToString(sum[:])
 	}
 	for _, key := range pb.Removed {
-		delete(s.Files, displayPath(key))
+		delete(s.Files, displayPath(pb.PluginDir, key))
 	}
 	for _, e := range pb.Effects {
 		if e.Kind == string(EffectHosts) || e.Kind == string(EffectTrustStore) {

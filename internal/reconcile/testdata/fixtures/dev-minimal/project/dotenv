@@ -2,3 +2,4 @@ PROJECT_NAME=fx
 ENV=dev
 BASE_DOMAIN=example.test
 SSL_MODE=none
+MINIO_ENABLED=false

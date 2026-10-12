@@ -36,6 +36,8 @@ const (
 
 // Environment names (EPIC D2, D16).
 const (
+	// SelfExecOverrideEnv points the re-exec at another binary; honoured only
+	// in a `go test` binary, ignored by release builds (D-0288).
 	SelfExecOverrideEnv = "NSELF_MCP_EXEC_OVERRIDE"
 	TokenEnv            = "NSELF_MCP_TOKEN"
 	InvokedByEnv        = "NSELF_INVOKED_BY"
@@ -43,6 +45,9 @@ const (
 	// PathEnv pins the command path the invoker classified; the child refuses
 	// to run when its own command lookup resolves a different command (E421).
 	PathEnv = "NSELF_INVOKE_PATH"
+	// SecretsEnv carries the secret values of a request to the child as JSON
+	// (SecretBundle), so they never sit on its argv (D-0468).
+	SecretsEnv = "NSELF_INVOKE_SECRETS"
 )
 
 // Redacted replaces secret values in ids, audit records and stderr tails.
@@ -66,6 +71,8 @@ type Spec struct {
 	// Stdout, when set, receives the child's stdout as it is produced (NDJSON);
 	// the child's output is then not captured and Result.Stdout is nil.
 	Stdout io.Writer
+	// Secrets holds the values the Argv placeholders stand for; nil when none.
+	Secrets *SecretBundle
 }
 
 // Result is the outcome of Exec and Invoke.

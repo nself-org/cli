@@ -1,6 +1,7 @@
 package compose_test
 
 import (
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -110,6 +111,7 @@ func resolveRefs(text string, env map[string]string) string {
 // emits must be a build.SecretEnvMap key, or .nself/compose.env never carries
 // the value and the container starts with an empty secret.
 func TestSecretRefNamesAreComposeEnvKeys(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	for _, engine := range []string{"meilisearch", "typesense"} {
 		cfg := optionalSecretsConfig(engine, setSecrets)
 		out, err := compose.NewGenerator(cfg).Generate()
@@ -135,6 +137,7 @@ func TestSecretRefNamesAreComposeEnvKeys(t *testing.T) {
 // TemplateSecrets, WriteComposeEnv) for each shape of secret and checks the
 // file holds no secret, while containers resolve the values they got before.
 func TestOptionalSecretsAfterTemplating(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	modes := []struct {
 		name string
 		sec  func(string) string

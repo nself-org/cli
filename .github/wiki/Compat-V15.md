@@ -53,6 +53,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | Ticket | v1.4 behaviour (old) | v1.5 behaviour (new) | File |
 |---|---|---|---|
 | D-0287 | two plugins mapping to one nginx/sites file overwrite silently (warning) | E055 fails the build | `internal/build/plugin_nginx_collision.go` |
+| D-0478 | PLUGIN_DIR "~/..." used as written, no plugin snippets on default config | "~" expanded, installed plugins' snippets injected | `internal/build/plugin_configs.go` |
 | P7-ADOPT-01 | writable absolute bind allowed | E502 | `internal/compose/custom_service_v2.go` |
 | P7-CANON-01 | same-owner breakout stays core in v1.4 | mounts from its plugin in v1.5 | `cmd/commands/plugin_mount.go` |
 | P7-CANON-02 | registry view with moved entries at their v1.4 paths | view at canonical paths plus deprecated-shim entries | `internal/canon/canon.go` |
@@ -89,8 +90,11 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-LIVE-06 | plugin removal leaves generated state for a later build | reconcile now | `cmd/commands/plugin_lifecycle.go` |
 | P7-LIVE-06 | post-install build hint | automatic reconcile | `cmd/commands/plugin_install.go` |
 | P7-LIVE-09 | the project lock is written and honoured only when nself.lock.yaml exists or --write-lock is given | always | `internal/build/lockfile.go` |
+| P7-LIVE-10 | plan keeps the redis pin | plan moves it to valkey | `cmd/commands/update_plan_sources.go` |
 | P7-LIVE-13 | a held lock is polled for 30 s, then a warning and the command runs unlocked | a held lock fails at once with E460 | `internal/oplock/guard.go` |
 | P7-LIVE-17 | IMAGE_PINNING defaults to legacy | lock | `internal/compose/images_lock.go` |
+| P7-LIVE-19 | the default cache engine is redis | valkey | `internal/compose/cache_service.go` |
+| P7-LIVE-20 | auth runs nhost/auth:0.36.0 (auth-v14) | the current nhost/auth release (auth) when AUTH_ENCRYPTION_KEY is set | `internal/compose/auth_image.go` |
 | P7-LIVE-22 | E151 for every ACME failure (exit of the failed process, else 2) | E470/E471 (exit 2) or E472 (exit 1) by failure class | `cmd/commands/ssl_renewal.go` |
 | P7-LIVE-22 | certbot is the default certificate path | the ACME engine is the default | `cmd/commands/ssl_renewal.go` |
 | P7-PLUG-01 | v1 plugin.json read silently | one deprecation line per process on stderr | `internal/plugin/manifestv2/warn.go` |
@@ -117,6 +121,14 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-20 | bundle remove drops plugin data by default (paid bundle) | keeps it unless --delete-data | `internal/bundle/remover_plan.go` |
 | P7-PLUG-20 | bundle remove of an unrecorded bundle removes its members | fails with E134 | `internal/bundle/remover_plan.go` |
 | P7-PLUG-20 | remove <plugin> of a bundle member proceeds | refuses with E133 unless --force | `internal/bundle/remove_guard.go` |
+| P7-PLUG-60 | MinIO endpoint | active core or plugin object store endpoint | `internal/compose/custom_services.go` |
+| P7-PLUG-60 | S3 keys infer MinIO intent | core object storage keys do not enable MinIO | `internal/config/loader_parse_env_storage.go` |
+| P7-PLUG-60 | S3 vars for every profile | none for profiles without object storage | `internal/compose/object_storage.go` |
+| P7-PLUG-60 | core MinIO generation | missing plugin fails before writes | `internal/compose/object_storage.go` |
+| P7-PLUG-60 | demo enables core MinIO | demo enables SeaweedFS object storage | `internal/setup/setup_env_files.go` |
+| P7-PLUG-60 | media-hosting recommends MinIO | recommends core object storage and the MinIO plugin for existing data | `cmd/commands/init_presets.go` |
+| P7-PLUG-60 | no object storage line | OBJECT_STORAGE_ENABLED=false listed with the optional services | `internal/setup/setup_env_files.go` |
+| P7-PLUG-60 | optional core MinIO | core SeaweedFS or MinIO plugin | `internal/compose/object_storage.go` |
 | P7-PLUG-63 | bundle reply trusted for any key and bundle | only a signed reply naming this key, this bundle and a live window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache age from the unsigned fetched_at | the older of fetched_at and the signed jwt iat | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache trusted whatever the clock says | refused when the clock is behind the signed iat or the highest time seen | `internal/license/cache.go` |

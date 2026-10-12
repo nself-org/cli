@@ -37,7 +37,7 @@ Secrets (passwords, API keys, JWT secrets) are managed through the `.env` cascad
 
 - `.env.secrets`, sensitive values, **never committed to git**
 - Secrets are passed to containers as environment variables, not files
-- `.env.secrets` must be in `.gitignore` (verified by `nself doctor`)
+- `.env.secrets` and `ssl/` (certificate private keys) must be ignored by git. `nself init` adds both to a new project's `.gitignore`; `nself doctor --deep` asks git whether they are ignored or already tracked (SEC-GITIGNORE-01)
 - Secret values are **redacted** from all CLI output (`***REDACTED***`)
 
 Secret env vars matching these patterns are automatically redacted:

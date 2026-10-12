@@ -131,6 +131,10 @@ type RedisConfig struct {
 	Memory   string `env:"REDIS_MEMORY"`    // 512M
 	CPU      string `env:"REDIS_CPU"`       // 0.5
 	PoolSize int    `env:"REDIS_POOL_SIZE"` // 50 (prod default); use 20 for dev
+	// Engine is REDIS_ENGINE: "valkey" or "redis" (lower case), or "" when not
+	// set. Empty is resolved at generation (internal/compose cacheEngine): the
+	// engine of the project lock's redis pin, else the mode default.
+	Engine string `env:"REDIS_ENGINE"`
 }
 
 // MinioConfig holds MinIO S3-compatible object storage configuration.

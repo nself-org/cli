@@ -235,9 +235,13 @@ func CanonicalRef(ref string) string {
 }
 
 // CLILockedRef finds the CLI image lock entry whose version a tag reference
-// names, in the short or the docker.io/ spelling.
+// names, in the short or the docker.io/ spelling. The pre-rename
+// nhost/hasura-auth spelling names nhost/auth (same digests, P7-LIVE-20).
 func CLILockedRef(ref string) (string, bool) {
 	c := CanonicalRef(ref)
+	if rest, ok := strings.CutPrefix(c, "nhost/hasura-auth:"); ok {
+		c = "nhost/auth:" + rest
+	}
 	for _, r := range LockedImages() {
 		for _, cand := range []string{r.LegacyRef, r.LegacyRepository() + ":" + r.Version, r.Repository + ":" + r.Version} {
 			if c == CanonicalRef(cand) {

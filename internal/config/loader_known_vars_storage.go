@@ -8,6 +8,12 @@ package config
 // Constraints: keep entries verbatim and in original order; see loader_known_vars.go header.
 
 var knownEnvVarsStorage = []string{
+	// Core object storage
+	"OBJECT_STORAGE_ENABLED",
+	"OBJECT_STORAGE_BUCKETS",
+	"SEAWEEDFS_PORT",
+	"SEAWEEDFS_VERSION",
+
 	// MinIO / Storage
 	"MINIO_ENABLED",
 	"STORAGE_ENABLED",

@@ -73,7 +73,7 @@ func TestRedactArgs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := redactArgs(tt.argv)
+			got := redactArgsWith(tt.argv, nil)
 			if got != tt.want {
 				t.Errorf("redactArgs(%v) = %q, want %q", tt.argv, got, tt.want)
 			}

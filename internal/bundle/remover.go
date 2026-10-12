@@ -7,10 +7,16 @@
 // Inputs: a bundle slug and RemoveOpts (dry-run, delete-data, confirmation).
 // Outputs: a RemoveResult; the plugins removed from the plugin directory and
 // the ledger at <pluginDir>/.nself-state/bundles.json updated to match.
-// Constraints: the plan, the removals and the ledger write all happen inside
-// one ledger Update, so a concurrent install cannot add a reference between
-// the plan and the delete. Removal stops at the first failure and the ledger
-// then reflects exactly what was removed, so a rerun continues from there.
+// Constraints: the plan, the removals and the ledger writes all happen inside
+// one ledger lock (Store.Locked), so a concurrent install cannot add a
+// reference between the plan and the delete. Before the first removal the
+// ledger is written (a bootstrap ledger included) and a remove intent is
+// recorded in .nself-state/remove-intent.json (remover_intent.go); the intent
+// shrinks after each member and is cleared on full success, so a kill or a
+// failed final write is resumed by running the same command again. Removal
+// stops at the first failure and the ledger then reflects exactly what was
+// removed. A member that an installed plugin outside the plan depends on is
+// kept and recorded explicit (remover_deps.go).
 // Plugin data is kept unless --delete-data (see remover_plan.go for the
 // v1.4/v1.5 rules and the confirmation gate). Members are removed in reverse
 // bundle order (a dependency before its dependents is removed last).
@@ -55,6 +61,13 @@ type RemoveOpts struct {
 
 	// remover is an internal hook for tests. nil → plugin.Remove.
 	remover func(ctx context.Context, cfg *config.Config, name, pluginDir string, keepData, force bool) error
+	// reverseDeps is an internal hook for tests. nil → plugin.ReverseDependencies.
+	reverseDeps func(pluginDir, name string) ([]string, error)
+	// writeHook is an internal hook for tests: it can fail a ledger or intent write.
+	writeHook func(path string) error
+	// noIntent is an internal hook for tests: it skips the remove intent and the
+	// checkpoint write (the pre-D-0368 behaviour). Production never sets it.
+	noIntent bool
 }
 
 // RemoveResult captures the outcome of a bundle remove call.
@@ -103,6 +116,9 @@ func Remove(ctx context.Context, bundleSlug string, opts RemoveOpts) (*RemoveRes
 		pluginDir = defaultPluginDir()
 	}
 	store := newLedgerStore(pluginDir)
+	if opts.writeHook != nil {
+		store.SetWriteHookForTest(opts.writeHook)
+	}
 
 	if opts.DryRun {
 		// Load never writes: a dry run leaves no ledger file behind.
@@ -110,7 +126,7 @@ func Remove(ctx context.Context, bundleSlug string, opts RemoveOpts) (*RemoveRes
 		if err != nil {
 			return result, err
 		}
-		plan, perr := computePlan(b, l, pluginDir)
+		plan, perr := planWithKeeps(b, l, pluginDir, opts)
 		if perr != nil {
 			return result, unrecordedBundle(out, b, store.Path(), perr)
 		}
@@ -120,26 +136,9 @@ func Remove(ctx context.Context, bundleSlug string, opts RemoveOpts) (*RemoveRes
 		return result, nil
 	}
 
-	var removeErr error
-	err := store.Update(func(l *ledger.Ledger) error {
-		plan, perr := computePlan(b, *l, pluginDir)
-		if perr != nil {
-			return perr // nothing is written
-		}
-		result.adopt(plan)
-		printRemovePlan(out, b, result, opts)
-		cfg := opts.Config
-		if cfg == nil && len(result.Planned) > 0 {
-			loaded, lerr := loadConfigOrDefault()
-			if lerr != nil {
-				return fmt.Errorf("loading project config: %w", lerr)
-			}
-			cfg = loaded
-		}
-		removeErr = removeMembers(ctx, out, result, cfg, pluginDir, opts.remover, deleteData)
-		settleLedger(l, plan.work, result.Removed, removeErr != nil)
-		return nil
-	})
+	run := &removeRun{b: b, opts: opts, out: out, pluginDir: pluginDir, deleteData: deleteData, result: result}
+	err := store.Locked(func(tx *ledger.Tx, l ledger.Ledger) error { return run.locked(ctx, tx, l) })
+	removeErr := run.removeErr
 	if errors.Is(err, errBundleNotRecorded) {
 		return result, unrecordedBundle(out, b, store.Path(), err)
 	}
@@ -163,10 +162,12 @@ func Remove(ctx context.Context, bundleSlug string, opts RemoveOpts) (*RemoveRes
 }
 
 // removeMembers removes result.Planned one at a time and stops at the first
-// failure. force=true to plugin.Remove keeps today's reverse-dependency bypass
-// (R4): the operator asked to tear the bundle down.
+// failure. force=true to plugin.Remove skips its own reverse-dependency check:
+// planned members may depend on each other, and a plugin outside the plan that
+// needs a member already made keepDependedOn keep that member. afterEach (may be
+// nil) runs after each member is removed.
 func removeMembers(ctx context.Context, out io.Writer, result *RemoveResult, cfg *config.Config, pluginDir string,
-	removeFn func(context.Context, *config.Config, string, string, bool, bool) error, deleteData bool) error {
+	removeFn func(context.Context, *config.Config, string, string, bool, bool) error, deleteData bool, afterEach func(name string)) error {
 	if removeFn == nil {
 		removeFn = plugin.Remove
 	}
@@ -181,6 +182,9 @@ func removeMembers(ctx context.Context, out io.Writer, result *RemoveResult, cfg
 		result.Removed = append(result.Removed, name)
 		result.Changed = true
 		_, _ = fmt.Fprintf(out, "  ✓ %s removed\n", name)
+		if afterEach != nil {
+			afterEach(name)
+		}
 	}
 	return nil
 }

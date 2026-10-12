@@ -110,6 +110,9 @@ func TestConfigDefaultVersionsStayPinned(t *testing.T) {
 		}
 	}
 	for name, key := range keys {
+		if name == "auth" { // auth renders the entry its mode picks (P7-LIVE-20)
+			name, _ = AuthEntry(nil)
+		}
 		r, ok := LockedRef(name)
 		if !ok {
 			continue
@@ -119,7 +122,8 @@ func TestConfigDefaultVersionsStayPinned(t *testing.T) {
 		}
 	}
 	for name, cfg := range fixtureConfigs(t) {
-		for svc, v := range map[string]string{"hasura": cfg.Hasura.Version, "auth": cfg.Auth.Version,
+		authEntry, _ := AuthEntry(cfg.Passthrough)
+		for svc, v := range map[string]string{"hasura": cfg.Hasura.Version, authEntry: cfg.Auth.Version,
 			"elasticsearch": cfg.Search.Elasticsearch.Version} {
 			if r, _ := LockedRef(svc); ImageRef(svc, v) != r.String() {
 				t.Errorf("%s: ApplyDefaults %s version %q is unpinned in lock mode", name, svc, v)
@@ -212,6 +216,9 @@ func fixtureConfigs(t *testing.T) map[string]*config.Config {
 		if mut != nil {
 			mut(c)
 		}
+		// These fixtures assert the redis image strings; the cache engine default
+		// is v1.5-dependent (P7-LIVE-19), so pin the engine and stay mode-independent.
+		c.Redis.Engine = "redis"
 		out, err := config.ApplyDefaults(c)
 		if err != nil {
 			t.Fatalf("ApplyDefaults: %v", err)
@@ -240,14 +247,16 @@ func fixtureConfigs(t *testing.T) map[string]*config.Config {
 }
 
 // legacyExpected are the image strings origin/main emitted for each fixture,
-// captured before the lock existed (sorted).
+// captured before the lock existed (sorted). One deliberate change since: auth
+// is nhost/auth:0.36.0, the same index digest as nhost/hasura-auth:0.36.0 (the
+// ungated rename, EPIC D17, P7-LIVE-20).
 var legacyExpected = map[string][]string{
-	"dev-minimal":           {"hasura/graphql-engine:v2.44.0", "nginx:alpine", "nhost/hasura-auth:0.36.0", "postgres:16-alpine"},
-	"prod":                  {"hasura/graphql-engine:v2.44.0", "nginx:alpine", "nhost/hasura-auth:0.36.0", "postgres:16-alpine", "redis:7-alpine"},
-	"python-pgvector":       {"hasura/graphql-engine:v2.44.0", "nginx:alpine", "nhost/hasura-auth:0.36.0", "pgvector/pgvector:pg16", "python:3.12-slim"},
-	"search-typesense-deno": {"denoland/deno:alpine", "hasura/graphql-engine:v2.44.0", "nginx:alpine", "nhost/hasura-auth:0.36.0", "postgres:16-alpine", "typesense/typesense:27.1"},
+	"dev-minimal":           {"hasura/graphql-engine:v2.44.0", "nginx:alpine", "nhost/auth:0.36.0", "postgres:16-alpine"},
+	"prod":                  {"hasura/graphql-engine:v2.44.0", "nginx:alpine", "nhost/auth:0.36.0", "postgres:16-alpine", "redis:7-alpine"},
+	"python-pgvector":       {"hasura/graphql-engine:v2.44.0", "nginx:alpine", "nhost/auth:0.36.0", "pgvector/pgvector:pg16", "python:3.12-slim"},
+	"search-typesense-deno": {"denoland/deno:alpine", "hasura/graphql-engine:v2.44.0", "nginx:alpine", "nhost/auth:0.36.0", "postgres:16-alpine", "typesense/typesense:27.1"},
 	"all-optional": {"axllent/mailpit:latest", "busybox:1.36", "docker.io/pgsty/minio:latest", "getmeili/meilisearch:v1.6", "hasura/graphql-engine:v2.44.0",
-		"nginx:alpine", "nhost/functions:latest", "nhost/hasura-auth:0.36.0", "nself/nself-admin:latest", "postgres:16-alpine", "redis:7-alpine"},
+		"nginx:alpine", "nhost/auth:0.36.0", "nhost/functions:latest", "nself/nself-admin:latest", "postgres:16-alpine", "redis:7-alpine"},
 }
 
 var imageLineRE = regexp.MustCompile(`(?m)^\s+image:\s*(\S+)`)
@@ -267,6 +276,7 @@ func generatedImages(t *testing.T, cfg *config.Config) []string {
 }
 
 func TestGeneratedImagesLegacyAreByteIdentical(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	setMode(t, PinningLegacy)
 	for name, cfg := range fixtureConfigs(t) {
 		if got, want := strings.Join(generatedImages(t, cfg), " "), strings.Join(legacyExpected[name], " "); got != want {
@@ -276,6 +286,7 @@ func TestGeneratedImagesLegacyAreByteIdentical(t *testing.T) {
 }
 
 func TestGeneratedImagesLockModeEqualsLockedRef(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	setMode(t, PinningLock)
 	byLegacy := map[string]Ref{}
 	for _, r := range LockedImages() {
@@ -316,7 +327,7 @@ func TestUserVersionOverrideTable(t *testing.T) {
 	} {
 		setMode(t, tc.mode)
 		cfg := minimalCfg()
-		cfg.Redis = config.RedisConfig{Enabled: true, Version: tc.version, Port: 6379}
+		cfg.Redis = config.RedisConfig{Enabled: true, Engine: "redis", Version: tc.version, Port: 6379}
 		if got := NewGenerator(cfg).buildRedisService().Image; got != tc.want {
 			t.Errorf("%s REDIS_VERSION=%q -> %q, want %q", tc.mode, tc.version, got, tc.want)
 		}

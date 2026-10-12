@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"regexp"
 	"strings"
 	"testing"
@@ -133,6 +134,7 @@ func TestSecretURLUserInfo(t *testing.T) {
 // TestOptionalServicesSecretLiterals is the D-0266 guard: no optional service
 // writes a secret value, or an empty literal, into the generated compose.
 func TestOptionalServicesSecretLiterals(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	for _, engine := range []string{"meilisearch", "typesense"} {
 		for _, set := range []bool{true, false} {
 			name := engine + "/unset"
@@ -166,6 +168,7 @@ func TestOptionalServicesSecretLiterals(t *testing.T) {
 // TestOptionalServicesSecretRefsPerService pins the reference each secret
 // position emits, so a refactor cannot silently drop one back to a literal.
 func TestOptionalServicesSecretRefsPerService(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	cases := []struct {
 		engine, service string
 		set             bool

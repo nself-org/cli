@@ -9,6 +9,7 @@ package compose_test
 // by a shell inside the container, is fine).
 
 import (
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"os"
 	"sort"
 	"strings"
@@ -135,25 +136,34 @@ func TestArgvSecretFindingsControl(t *testing.T) {
 // optional service, both search engines), templates it as nself build does,
 // and checks every command, entrypoint and healthcheck.
 func TestNoSecretOnGeneratedArgv(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	for _, engine := range []string{"meilisearch", "typesense"} {
-		cfg := optionalSecretsConfig(engine, setSecrets)
-		cfg.Minio.S3SecretKey = "s3SecretSentinel0123456789"
-		out, err := compose.NewGenerator(cfg).Generate()
-		if err != nil {
-			t.Fatalf("%s: Generate() error: %v", engine, err)
-		}
-		secrets := build.SecretEnvMap(cfg)
-		argv := argvStrings(t, build.TemplateSecrets(out, secrets))
-		for _, svc := range []string{"postgres", "hasura", "auth", "redis", "minio", "mailpit", engine} {
-			if _, ok := argv[svc+" healthcheck.test"]; !ok {
-				t.Fatalf("%s: service %q missing; the guard would not cover it", engine, svc)
+		// Both cache engines (P7-LIVE-19): neither may carry the password on argv,
+		// and each runs its own server and CLI binary.
+		for _, cache := range []string{"redis", "valkey"} {
+			cfg := optionalSecretsConfig(engine, setSecrets)
+			cfg.Redis.Engine = cache
+			cfg.Minio.S3SecretKey = "s3SecretSentinel0123456789"
+			out, err := compose.NewGenerator(cfg).Generate()
+			if err != nil {
+				t.Fatalf("%s/%s: Generate() error: %v", engine, cache, err)
 			}
-		}
-		for _, f := range argvSecretFindings(argv, secrets) {
-			t.Errorf("%s: %s", engine, f)
-		}
-		if got := argv["redis healthcheck.test"]; strings.Join(got, " ") != "CMD redis-cli ping" {
-			t.Errorf("%s: redis healthcheck = %q, want redis-cli reading REDISCLI_AUTH", engine, got)
+			secrets := build.SecretEnvMap(cfg)
+			argv := argvStrings(t, build.TemplateSecrets(out, secrets))
+			for _, svc := range []string{"postgres", "hasura", "auth", "redis", "minio", "mailpit", engine} {
+				if _, ok := argv[svc+" healthcheck.test"]; !ok {
+					t.Fatalf("%s/%s: service %q missing; the guard would not cover it", engine, cache, svc)
+				}
+			}
+			for _, f := range argvSecretFindings(argv, secrets) {
+				t.Errorf("%s/%s: %s", engine, cache, f)
+			}
+			if got := argv["redis healthcheck.test"]; strings.Join(got, " ") != "CMD "+cache+"-cli ping" {
+				t.Errorf("%s/%s: redis healthcheck = %q, want %s-cli reading REDISCLI_AUTH", engine, cache, got, cache)
+			}
+			if got := strings.Join(argv["redis command"], " "); !strings.Contains(got, `exec `+cache+`-server `) || !strings.Contains(got, `--requirepass "$$REDISCLI_AUTH"`) {
+				t.Errorf("%s/%s: redis command = %q, want %s-server reading $$REDISCLI_AUTH", engine, cache, got, cache)
+			}
 		}
 	}
 }

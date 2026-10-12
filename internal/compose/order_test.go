@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"strings"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 )
 
 func TestServiceOrder(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	cfg := &config.Config{
 		ProjectName: "test",
 		Minio:       config.MinioConfig{Enabled: true},

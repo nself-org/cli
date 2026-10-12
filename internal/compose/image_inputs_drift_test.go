@@ -28,14 +28,24 @@ import (
 var enableAll = map[string]string{
 	"ENV": "dev", "REDIS_ENABLED": "true", "MINIO_ENABLED": "true", "MAILPIT_ENABLED": "true",
 	"NSELF_ADMIN_ENABLED": "true", "FUNCTIONS_ENABLED": "true", "SEARCH_ENABLED": "true",
+	"NSELF_V15": "0", "OBJECT_STORAGE_ENABLED": "false", "STORAGE_ENABLED": "false",
+	"MINIO_ROOT_USER": "", "MINIO_ROOT_PASSWORD": "", "MINIO_ACCESS_KEY": "", "MINIO_SECRET_KEY": "",
 }
 
 // renderVariants together reach every row of the table: the functions runtime,
-// the search engine and the postgres flavour each change the rendered image.
+// the search engine, the cache engine, the postgres flavour and the auth entry each change the rendered image.
 var renderVariants = map[string]map[string]string{
-	"node-meili-plain":   {"FUNCTIONS_RUNTIME": "node", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp"},
-	"deno-typesense-pgv": {"FUNCTIONS_RUNTIME": "deno", "SEARCH_ENGINE": "typesense", "POSTGRES_EXTENSIONS": "uuid-ossp,pgvector"},
-	"python-meili-plain": {"FUNCTIONS_RUNTIME": "python", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp"},
+	"node-meili-plain":   {"FUNCTIONS_RUNTIME": "node", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis"},
+	"deno-typesense-pgv": {"FUNCTIONS_RUNTIME": "deno", "SEARCH_ENGINE": "typesense", "POSTGRES_EXTENSIONS": "uuid-ossp,pgvector", "REDIS_ENGINE": "valkey"},
+	"python-meili-plain": {"FUNCTIONS_RUNTIME": "python", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis"},
+	"v15-seaweedfs": {
+		"NSELF_V15": "1", "OBJECT_STORAGE_ENABLED": "true", "MINIO_ENABLED": "false",
+		"S3_ACCESS_KEY": "test-access-key", "S3_SECRET_KEY": "fake-secret-not-real-0000",
+		"FUNCTIONS_RUNTIME": "node", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis",
+	},
+	// v1.5 with an AUTH_ENCRYPTION_KEY (fake) renders the current auth entry; every other variant renders auth-v14 (P7-LIVE-20).
+	"node-meili-v15-authkey": {"FUNCTIONS_RUNTIME": "node", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis",
+		"NSELF_V15": "1", "MINIO_ENABLED": "false", AuthEncryptionKeyEnv: strings.Repeat("0f", 32)}, // v1.5 has no core MinIO (P7-PLUG-60)
 }
 
 // envCandidates lists every variable that could plausibly name an image.

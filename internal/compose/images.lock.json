@@ -36,17 +36,32 @@
     {
       "name": "auth",
       "role": "core",
-      "repository": "docker.io/nhost/hasura-auth",
+      "repository": "docker.io/nhost/auth",
+      "version": "0.52.0",
+      "index_digest": "sha256:dfdc0b0403eb1abf36da253d47c43a31b606876324dec7200557b5b33d6d3ef1",
+      "platforms": {
+        "linux/amd64": "sha256:831a4a1201f99a88a248468df12d73d66be390d1b2a2db7547bc165d18d1726c",
+        "linux/arm64": "sha256:473270241aa19ace38b48e75580bb1bc949866ebdf89c0888a9e1310f4ad3211"
+      },
+      "legacy_ref": "nhost/auth:0.52.0",
+      "license": "MIT",
+      "source": "https://github.com/nhost/nhost/tree/main/services/auth",
+      "mirror": "docker.io/nself/auth"
+    },
+    {
+      "name": "auth-v14",
+      "role": "core",
+      "repository": "docker.io/nhost/auth",
       "version": "0.36.0",
       "index_digest": "sha256:2e0713ef06e9c3c0af086c81289e9efbd87e4fa5dcda26891e5977b1e096caaf",
       "platforms": {
         "linux/amd64": "sha256:12c62b5e62f71d1b3c894c1748edf74c8631fa61495fd573737312c6f9a207d7",
         "linux/arm64": "sha256:4eb4a63373097c2ab14e2c08c806830f869a780c0b3cb19166f9684c4a2b7b65"
       },
-      "legacy_ref": "nhost/hasura-auth:0.36.0",
+      "legacy_ref": "nhost/auth:0.36.0",
       "license": "MIT",
-      "source": "https://github.com/nhost/hasura-auth",
-      "mirror": "docker.io/nself/auth"
+      "source": "https://github.com/nhost/nhost/tree/main/services/auth",
+      "mirror": "docker.io/nself/auth-v14"
     },
     {
       "name": "cadvisor",
@@ -499,6 +514,22 @@
       "license": "GPL-3.0",
       "source": "https://github.com/typesense/typesense",
       "mirror": "docker.io/nself/typesense"
+    },
+    {
+      "name": "valkey",
+      "role": "optional",
+      "repository": "docker.io/valkey/valkey",
+      "version": "8.1-alpine",
+      "index_digest": "sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507",
+      "platforms": {
+        "linux/amd64": "sha256:32627109abf6f741121096b45c732f758876803efd7b2e1018ebc0350d117119",
+        "linux/arm/v7": "sha256:77c4c915381ec215ed5a5a727482cbf96cc6fc4be26a18516e46c350b661c0be",
+        "linux/arm64": "sha256:6bd0360157519e3de7c49f6bae7d2bdfab574083bd7d266182db36b1646b0936"
+      },
+      "legacy_ref": "valkey/valkey:8.1-alpine",
+      "license": "BSD-3-Clause",
+      "source": "https://github.com/valkey-io/valkey",
+      "mirror": "docker.io/nself/valkey"
     }
   ]
 }

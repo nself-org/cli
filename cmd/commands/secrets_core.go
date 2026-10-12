@@ -9,9 +9,11 @@ package commands
 // shared --env flag).
 // Outputs: reads/writes the internal/secrets encrypted store; prints
 // confirmation or the requested value/listing.
-// Constraints: pure move — no behavior changes. Each var here is a
-// complete top-level cobra.Command declaration (RunE inline); moving it
-// does not touch its body.
+// Constraints: each var here is a complete top-level cobra.Command
+// declaration (RunE inline). `secrets set` takes VALUE on stdin or at a
+// no-echo prompt (secrets_core_stdin.go) so a secret need not sit on argv;
+// the two-argument form still works for machine surfaces, where the invoker
+// keeps the value off the child argv (internal/invoke, D-0468).
 
 import (
 	"fmt"
@@ -38,7 +40,13 @@ var secretsInitCmd = &cobra.Command{
 var secretsSetCmd = &cobra.Command{
 	Use:   "set <KEY> [VALUE]",
 	Short: "Set a secret value (prompts if value not provided)",
-	Args:  cobra.RangeArgs(1, 2),
+	Long: `Set a secret value in the selected environment.
+
+VALUE is optional. When it is omitted, or is "-", the value is read from stdin:
+a terminal gets a no-echo prompt on stderr, a pipe is read to the end (up to
+1 MiB, one trailing newline removed). Prefer that over typing VALUE in the
+command line, where the shell history and the process list can show it.`,
+	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -46,13 +54,12 @@ var secretsSetCmd = &cobra.Command{
 		}
 		key := args[0]
 		var value string
-		if len(args) > 1 {
+		if len(args) > 1 && args[1] != "-" {
 			value = args[1]
 		} else {
-			fmt.Printf("Enter value for %s: ", key)
-			var v string
-			if _, err := fmt.Scanln(&v); err != nil {
-				return fmt.Errorf("reading value: %w", err)
+			v, err := readSecretValue(cmd, key)
+			if err != nil {
+				return err
 			}
 			value = v
 		}

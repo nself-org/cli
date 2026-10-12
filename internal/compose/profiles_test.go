@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"testing"
 
 	"github.com/nself-org/cli/internal/config"
@@ -157,6 +158,7 @@ func TestGeneratorProfileOpsExcludesAppServices(t *testing.T) {
 // includes optional services when they are enabled — confirming no regression
 // from the pre-profile behaviour.
 func TestGeneratorProfileAppIsUnchanged(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	cfg := minimalConfig()
 	cfg.Redis = config.RedisConfig{Enabled: true, Port: 6379, Version: "7-alpine"}
 	cfg.Minio = config.MinioConfig{Enabled: true}

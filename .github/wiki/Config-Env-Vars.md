@@ -25,6 +25,7 @@ All ɳSelf project configuration lives in `.env` (and optionally `.env.local` fo
 - [ɳSelf Admin](#nself-admin)
 - [AI (Zero-Config AI Pool)](#ai-zero-config-ai-pool)
 - [Optional Service Toggles](#optional-service-toggles)
+- [Object Storage](#object-storage)
 - [Custom Services (CS\_N)](#custom-services-cs_n)
 - [Licensing](#licensing)
 - [Observability / Profiling](#observability--profiling)
@@ -83,6 +84,10 @@ nself env explain VAR         # which file wins for VAR (redacted; add --reveal 
 
 Use docker compose 2.20 or newer: 2.17 and older reject the whole file when a quoted value ends in a backslash.
 
+The generated `docker-compose.yml` holds no secret values. Every secret becomes a `${VAR}` reference, and a password inside a connection URL becomes `${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}` (the percent-encoded twin in `compose.env`). So the postgres server, the hasura and auth database URLs, custom services and healthchecks all see the same password, even when it holds `$`, quotes, `#`, spaces or a backslash.
+
+**Upgrading a v1.4 project whose `POSTGRES_PASSWORD` contains `$`:** older builds left the password literal in the database URLs, and docker compose expanded a `$name` inside it (usually to nothing) when the database was first created. The stored password can therefore differ from `.env`. If the stack cannot log in to Postgres after upgrading, reset the database password once to the value in `.env`. Generated passwords contain no `$` and are not affected.
+
 ---
 
 ## Core Project Settings
@@ -102,6 +107,7 @@ These vars control the top-level identity and behavior of a project.
 | `NSELF_UPDATE_CHECK` | `1` to opt in | unset (off) | No | Process environment only. With `1`, a successful command prints at most one stderr line per 24 h when a newer CLI release exists (cached in `~/.nself/cache/update-check.json`, refreshed in the background from `ping.nself.org/version`). Never in JSON mode, CI or with a non-TTY stderr. See [[Update-Notifications]]. |
 | `NSELF_MCP_TOKEN` | string | unset | No | Bearer token for the `sse` and `http` transports of `nself mcp`. Wins over `~/.nself/mcp-token` (mode `0600`). With neither, a v1.5 loopback start generates the file and prints only its path; a v1.4 loopback start serves open with one warning. A non-loopback `--host` needs this or the file plus `--allowed-host`. Never passed to commands the server runs. Secret names (`config.IsSecretKey`, see Masking below) are masked in output and redacted in the machine audit log. See [[MCP-Server]]. |
 | `NSELF_INVOKE_PATH` | string | unset | No | Internal. Set by the machine invoker (MCP, HTTP) on the `nself` child it runs: the command path it checked. The child refuses with `E421` when its own command lookup resolves a different command, and removes the variable before running. Never set it by hand. See [[MCP-Server]]. |
+| `NSELF_INVOKE_SECRETS` | JSON | unset | No | Internal. Set by the machine invoker (MCP, HTTP) on the `nself` child it runs: a JSON bundle (a nonce and the values) of the secret-marked arguments and flags, so the secrets never appear on the child argv. The child puts the values back before it parses its arguments, then removes the variable. It is ignored unless `NSELF_INVOKED_BY` is set, and a bad or unmatched bundle fails with `E421`. Never set it by hand. See [[MCP-Server]]. |
 | `IMAGE_PINNING` | `lock` or `legacy` | unset (`legacy` in 1.4.x, `lock` from 1.5.0) | No | How generated compose names images. `legacy` emits the exact pre-lock strings (`redis:7-alpine`); `lock` emits `repository:version@sha256:<index digest>` from the image lock. A `*_VERSION` other than the lock version is used as given, unpinned. Any other value is an error. See [[Image-Lock]]. |
 
 ---
@@ -310,13 +316,29 @@ These boolean flags enable optional bundled services. Each defaults to `false`. 
 |---|---|---|---|---|
 | `ADMIN_ENABLED` | bool | `false` | No | Bare (non-`NSELF_`-prefixed) form written by `nself init`'s generated `.env` template alongside the other optional-service toggles. Distinct from `NSELF_ADMIN_ENABLED` above, which is the toggle the Admin dashboard actually reads. |
 | `REDIS_ENABLED` | bool | `false` | No | Enable Redis (caching, sessions, queues). |
-| `MINIO_ENABLED` | bool | `false` | No | Enable MinIO (S3-compatible object storage). |
+| `REDIS_ENGINE` | `valkey` \| `redis` | unset | No | Cache engine behind the `redis` service. Precedence: this key (both compat modes) > the engine of the project lock's `redis` image pin > the mode default (v1.4 `redis`, v1.5 `valkey`). An existing project keeps its engine until it sets this key or runs `nself update`; a project with no lock keeps the redis image its `docker-compose.yml` runs. The service name `redis`, the `REDIS_*` variables and `REDIS_URL` do not change. Valkey keeps its data in the volume `valkey_data`; `redis_data` is never deleted or migrated, so queued jobs do not follow a switch and switching back reuses `redis_data`. Any other value fails `nself build` and every command that loads the config. See [[Image-Lock]]. |
+| `MINIO_ENABLED` | bool | `false` | No | Enable core MinIO in v1.4 mode. In v1.5, requires `nself add minio`; without the plugin, build fails with E138 before writing files. See [[Object-Storage]]. |
 | `SEARCH_ENABLED` | bool | `false` | No | Enable MeiliSearch (full-text search). |
 | `FUNCTIONS_ENABLED` | bool | `false` | No | Enable the serverless Functions runtime. |
 | `MAILPIT_ENABLED` | bool | `false` | No | Enable Mailpit (local email testing UI). |
 | `MLFLOW_ENABLED` | bool | `false` | No | Enable MLflow (ML experiment tracking). |
 
 > **Note:** Each optional service also exposes its own `*_VERSION`, `*_PORT`, `*_MEM_LIMIT`, and `*_CPU_LIMIT` vars. See the dedicated page for each service.
+
+---
+
+## Object Storage
+
+These variables configure core SeaweedFS in v1.5 mode (`NSELF_V15=1`). Core object storage wins over an installed MinIO plugin. See [[Object-Storage]] for bucket bootstrap, credentials and migration.
+
+| Variable | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `OBJECT_STORAGE_ENABLED` | bool | `false` | No | Generate core `seaweedfs` and `seaweedfs-init` services in v1.5 mode. Ignored in v1.4 mode. |
+| `OBJECT_STORAGE_BUCKETS` | string | *(empty)* | No | Comma-separated S3 bucket names to create idempotently after SeaweedFS is healthy. Empty creates none. Names must be 3–63 characters using lowercase letters, digits, hyphens or dots, following S3 naming rules. |
+| `SEAWEEDFS_PORT` | int | `8333` | No | Host S3 port, from 1 through 65535. Published only as `127.0.0.1:<port>:8333`; internal custom-service endpoint remains `http://seaweedfs:8333`. |
+| `SEAWEEDFS_VERSION` | string | *(image lock default)* | No | Override the SeaweedFS image version for both the server and bucket bootstrap services. Empty uses the image lock. |
+| `S3_ACCESS_KEY` | string | *(unset)* | Yes, with core object storage | S3 identity access key. Keep in `.env.secrets`; must be nonempty and contain neither double quotes nor backslashes. |
+| `S3_SECRET_KEY` | string | *(unset)* | Yes, with core object storage | S3 identity secret key. Keep in `.env.secrets`; must be nonempty and contain neither double quotes nor backslashes. |
 
 ---
 
@@ -374,6 +396,7 @@ This registers a Node.js service named `ping_api` accessible at `ping.{BASE_DOMA
 |---|---|---|---|---|
 | `NSELF_DEPLOY_KEY_PATH` | string | *(empty)* | No | Path to the SSH private key used for remote deploys. Overrides `NSELF_DEPLOY_SSH_KEY` when set. Example: `~/.ssh/nself_deploy_ed25519`. |
 | `NSELF_DEPLOY_HOST_<ENV>` | string | *(empty)* | No | Single-host deploy target for the environment `<ENV>`, as `user@host:/remote/path`. One variable per environment: `NSELF_DEPLOY_HOST_STAGING`, `NSELF_DEPLOY_HOST_PROD`, or any other such as `NSELF_DEPLOY_HOST_QA`, which makes `qa` a deploy target. `nself deploy <env>` deploys only that environment and refuses an unknown one with E483. |
+| `NSELF_DEPLOY_NGINX_INCLUDE` | string | *(empty)* | No | v1.5 remote deploy only. Comma-separated globs relative to `nginx/` (`sites/hand.conf,includes/*.conf`; `path.Match` per path segment) naming unmarked nginx files to ship besides the ones `nself build` generated; read from the target's env cascade. Absolute entries, `..` and anything under `conf.d` are refused (nothing is sent). Files not shipped are listed as `[not shipped]` in the deploy output. |
 | `HETZNER_NSELF_TOKEN` | string | *(empty)* | No | Hetzner Cloud API token. When set, `nself access grant` calls the Hetzner Cloud API after a successful grant and warns about any SSH key registered at the Hetzner project level that is absent from the target server's `authorized_keys` — a key added to the project believing it grants access everywhere does nothing for an already-running server. Unset skips the check entirely; it is never required for `nself access` itself to work. |
 
 ---

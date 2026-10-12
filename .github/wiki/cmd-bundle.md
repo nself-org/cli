@@ -158,8 +158,15 @@ nself bundle install nchat --dry-run
 
 ## nself bundle remove \<name\>
 
-Remove every plugin in a bundle. Plugin data (schema/tables) is dropped by
-default; pass `--keep-data` to preserve it for later reinstall.
+Remove the plugins of a bundle that nothing else needs. Plugin data
+(schema/tables) is kept from v1.5 unless you pass `--delete-data`; in v1.4 mode
+a paid bundle drops it by default, and `--keep-data` preserves it.
+
+An interrupted remove is resumed by running the same command again (the
+progress is kept in `.nself-state/remove-intent.json` in the plugin directory).
+A remove interrupted after the ledger file was deleted cannot resume: the
+leftover plugins are kept as explicit, and `nself plugin remove` removes them.
+A member that a kept plugin depends on is kept and recorded as explicit.
 
 ```
 nself bundle remove <name> [--dry-run] [--keep-data]

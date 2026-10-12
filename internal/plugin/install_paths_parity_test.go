@@ -32,6 +32,7 @@ func TestInstallAndRemovePathsShareTheirSteps(t *testing.T) {
 	required := []string{
 		"linkCLIBinary",    // publish the command, or the plugin installs dead
 		"pluginOwnsTables", // do not demand a database from a plugin with no tables
+		"checkCLIBinaries", // refuse colliding commands before extraction (D-0259)
 	}
 
 	// Remove is the third path, and it had drifted the same way: it never

@@ -15,7 +15,7 @@ an nSelf backend cannot serve a request.
 |---|---|---|---|
 | `postgres` | PostgreSQL database — the system of record for every nSelf stack | `POSTGRES_VERSION` | `pgvector/pgvector:pg16` |
 | `hasura` | Hasura GraphQL engine — the only supported data access path for apps | `HASURA_VERSION` | `hasura/graphql-engine:v2.44.0` |
-| `auth` | hasura-auth — issues the JWTs Hasura authorises against | `AUTH_VERSION` | `nhost/hasura-auth:0.36.0` |
+| `auth` | hasura-auth — issues the JWTs Hasura authorises against | `AUTH_VERSION` | `nhost/auth:0.36.0` |
 | `nginx` | Reverse proxy and TLS termination for every published route | `NGINX_VERSION` | `nginx:alpine` |
 
 ## Optional services
@@ -30,6 +30,8 @@ Added to the stack only when their enabling variable is `true`.
 | `meilisearch` | Full-text search index (SEARCH_ENGINE=meilisearch, the default) | `SEARCH_ENABLED=true` | `MEILISEARCH_VERSION` | `getmeili/meilisearch:v1.6` |
 | `minio` | S3-compatible object storage | `MINIO_ENABLED=true` | `MINIO_VERSION` | `docker.io/pgsty/minio:latest` |
 | `typesense` | Full-text search index (SEARCH_ENGINE=typesense alternative) | `SEARCH_ENABLED=true` | `TYPESENSE_VERSION` | `typesense/typesense:27.1` |
+| `seaweedfs` | v1.5: SeaweedFS S3 object storage (OBJECT_STORAGE_ENABLED); MinIO is the minio plugin | `OBJECT_STORAGE_ENABLED=true` | `SEAWEEDFS_VERSION` | `chrislusf/seaweedfs:4.48` |
+| `seaweedfs-init` | v1.5: one-shot bucket bootstrap for SeaweedFS (OBJECT_STORAGE_BUCKETS) | `OBJECT_STORAGE_ENABLED=true` | `SEAWEEDFS_VERSION` | `chrislusf/seaweedfs:4.48` |
 | `redis` | Cache and queue backend | `REDIS_ENABLED=true` | `REDIS_VERSION` | `redis:7-alpine` |
 
 ## Checking your own stack

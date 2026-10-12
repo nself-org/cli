@@ -188,7 +188,7 @@ func TestReviewCleanApplyHasNoDoctorDrift(t *testing.T) {
 func TestReviewDoctorFixRespectsHandEditAndProdGate(t *testing.T) {
 	t.Setenv("NSELF_V15", "1")
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fx\nENV=prod\nBASE_DOMAIN=example.test\nSSL_MODE=none\nMINIO_ROOT_USER=prod-storage-user\nMINIO_ROOT_PASSWORD=long-unique-storage-passphrase\nHASURA_GRAPHQL_CORS_DOMAIN=https://example.test\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fx\nENV=prod\nBASE_DOMAIN=example.test\nSSL_MODE=none\nMINIO_ENABLED=false\nMINIO_ROOT_USER=prod-storage-user\nMINIO_ROOT_PASSWORD=long-unique-storage-passphrase\nHASURA_GRAPHQL_CORS_DOMAIN=https://example.test\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	req := doctorDriftRequest(dir)

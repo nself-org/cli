@@ -106,10 +106,15 @@ SSL_MODE                                      (default: local (dev) / letsencryp
 EXTRA_SSL_DOMAINS                             (unset)                        unset
 REDIS_ENABLED                                 (default: false)               default
 REDIS_VERSION                                 (default: 7-alpine)            default
+REDIS_ENGINE                                  (default: valkey (v1.5) / redis (v1.4)) default
 REDIS_PORT                                    (default: 6379)                default
 REDIS_PASSWORD                                (unset)                        unset
 REDIS_MEMORY                                  (default: 512M)                default
 REDIS_CPU                                     (default: 0.5)                 default
+OBJECT_STORAGE_ENABLED                        (unset)                        unset
+OBJECT_STORAGE_BUCKETS                        (unset)                        unset
+SEAWEEDFS_PORT                                (unset)                        unset
+SEAWEEDFS_VERSION                             (unset)                        unset
 MINIO_ENABLED                                 (default: false)               default
 STORAGE_ENABLED                               (unset)                        unset
 MINIO_VERSION                                 (default: latest)              default
@@ -288,6 +293,7 @@ DOCKER_LOG_MAX_SIZE                           (default: 10m)                 def
 DOCKER_LOG_MAX_FILE                           (default: 3)                   default
 DOCKER_STOP_GRACE_PERIOD                      (default: 30s)                 default
 NSELF_DOCKER_BUILD_TIMEOUT                    (default: 300)                 default
+NSELF_DEPLOY_NGINX_INCLUDE                    (unset)                        unset
 NSELF_START_MODE                              (default: smart)               default
 NSELF_HEALTH_CHECK_TIMEOUT                    (default: 120)                 default
 NSELF_HEALTH_CHECK_INTERVAL                   (default: 2)                   default
