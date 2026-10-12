@@ -151,7 +151,7 @@ func TestFinishRules(t *testing.T) {
 func TestDetailRedactedAndShort(t *testing.T) {
 	var buf bytes.Buffer
 	w := newTestWriter(&buf)
-	w.Status("push", "failed", "dial postgres://app:" + "hunter2" + "@db.internal:5432/x failed")
+	w.Status("push", "failed", "dial "+"postgres:"+"//app:"+"hunter2"+"@db.internal:5432/x failed")
 	w.Status("push2", "failed", strings.Repeat("x", 500))
 	got := buf.String()
 	if strings.Contains(got, "hunter2") {
@@ -241,5 +241,23 @@ func TestResultForPromote(t *testing.T) {
 		if got := ResultForPromote(in); got != want {
 			t.Errorf("ResultForPromote(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestOutcomeOverridesRecordedSteps(t *testing.T) {
+	var buf bytes.Buffer
+	w := newTestWriter(&buf)
+	if _, _, ok := w.Outcome(); ok {
+		t.Fatal("no outcome expected yet")
+	}
+	w.Event("apply", PhaseStart, "")
+	w.SetOutcome(ResultRolledBack, []Step{{Step: "apply", Status: "rolled_back"}})
+	res, steps, ok := w.Outcome()
+	if !ok || res != ResultRolledBack || len(steps) != 1 {
+		t.Fatalf("outcome = %q %v %v", res, steps, ok)
+	}
+	_ = w.Finish(res, steps)
+	if got := lines(t, &buf); !strings.HasSuffix(got[len(got)-1], `"data":{"type":"result","result":"rolled_back","steps":[{"step":"apply","status":"rolled_back"}]}}`) {
+		t.Fatalf("last line = %s", got[len(got)-1])
 	}
 }

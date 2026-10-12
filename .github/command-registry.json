@@ -13978,6 +13978,23 @@
           "secret": false
         },
         {
+          "name": "stream",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Print NDJSON progress events and a final result line (requires --json)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": "stream",
+          "cli_only": false,
+          "secret": false
+        },
+        {
           "name": "yes",
           "shorthand": null,
           "type": "bool",
@@ -14835,6 +14852,23 @@
           "side_effect": null,
           "json": null,
           "output": null,
+          "cli_only": false,
+          "secret": false
+        },
+        {
+          "name": "stream",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Print NDJSON progress events and a final result line (requires --json); needs <source> <target>",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": "stream",
           "cli_only": false,
           "secret": false
         },

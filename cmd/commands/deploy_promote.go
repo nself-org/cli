@@ -172,9 +172,10 @@ func init() {
 	deployPromoteCmd.Flags().Bool("json", false, "Emit JSON output")
 }
 
-// runDeployPromote preserves the zero-argument canary flip and adds the v1.5
-// two-environment form.
-func runDeployPromote(cmd *cobra.Command, args []string) error {
+// runDeployPromoteBody preserves the zero-argument canary flip and adds the
+// v1.5 two-environment form. runDeployPromote (deploy_stream.go) wraps it for
+// --stream.
+func runDeployPromoteBody(cmd *cobra.Command, args []string) error {
 	// compat.V15(P7-DEPL-15): deploy promote ignored args as a canary flip -> two args promote environments
 	if !compat.V15() || len(args) == 0 {
 		return runDeployCanaryPromote(cmd, args)
@@ -184,6 +185,10 @@ func runDeployPromote(cmd *cobra.Command, args []string) error {
 	}
 	return runPromoteEnvironments(cmd, args[0], args[1])
 }
+
+// promoteEngineFn builds the promote engine. A variable so a test can run the
+// stream and rollback path with fake steps instead of remote hosts.
+var promoteEngineFn = preparePromoteEngine
 
 func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 	workdir, err := projectRoot()
@@ -198,15 +203,18 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 	}
 	ctx, stop := deploy.WithInterrupt(ctx)
 	defer stop()
-	eng, st, err := preparePromoteEngine(cmd, workdir, source, target, dryRun, jsonOut)
+	eng, st, err := promoteEngineFn(cmd, workdir, source, target, dryRun, jsonOut)
 	if err != nil {
 		return err
 	}
+	eng.Observer = promoteObserver(ctx, st.Target)
 	var result cpromote.Result
 	if dryRun {
 		result = cpromote.Result{Status: "ok", Source: st.Source, Target: st.Target, Steps: eng.Plan(), DryRun: true}
+		streamPromoteResult(ctx, result)
 	} else {
 		result, err = eng.Run(ctx, st)
+		streamPromoteResult(ctx, result)
 		if err != nil {
 			if result.FailedStep != "record" && st.SnapshotTag != "" {
 				if wiring, ok := st.Values["wiring"].(*promoteWiring); ok {
@@ -218,6 +226,9 @@ func runPromoteEnvironments(cmd *cobra.Command, source, target string) error {
 			}
 			return err
 		}
+	}
+	if streaming(ctx) {
+		return nil
 	}
 	if jsonOut {
 		return output.EmitData(pilotWriter(), "deploy promote", result)

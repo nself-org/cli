@@ -147,6 +147,28 @@ implementation. In v1.5, `promote <source> <target>` and
 `deploy promote-env <source> <target>` delegate to the environment promotion
 runner with one deprecation warning per process.
 
+## Progress stream (`--stream`)
+
+`nself deploy <env> --json --stream` and `nself deploy promote <source> <target> --json --stream` print one JSON envelope per line (NDJSON) while the run goes on. An agent can follow a long deploy without parsing text.
+
+- `--stream` needs `--json`. Without it the command exits 1 with `E401` and does nothing.
+- `deploy promote --stream` needs both `<source>` and `<target>` (v1.5). With no arguments (the canary flip) it exits 1 with `E401`.
+- stdout holds only envelopes. Human progress and any error text go to stderr.
+- `--json` without `--stream` is unchanged: one document, as before.
+- The exit status is the one the run has without `--stream`. A promote that rolled back exits 2 (`E488`).
+
+Every line is a compact v1 envelope. A progress line has `data.type` `progress` and these keys, all always present (`null` when unknown): `seq` (1, 2, 3, ...), `step`, `phase` (`start`, `done`, `failed`, `skipped` or `rollback`), `env`, `server`, `elapsed_ms` (since the stream began) and `detail`. The schema is `schemas/deploy-progress.v1.schema.json`.
+
+The last line is always a result line, also when the run failed: `data.type` `result`, `data.result` (`ok`, `failed`, `rolled_back` or `rollback_failed`) and `data.steps` (each step with its last status).
+
+```text
+$ nself deploy staging --json --stream --dry-run
+{"schema_version":"1","command":"deploy","data":{"type":"progress","seq":1,"step":"Deploy staging-app","phase":"skipped","env":"staging","server":"staging-app","elapsed_ms":2,"detail":"dry-run: capability manage"}}
+{"schema_version":"1","command":"deploy","data":{"type":"result","result":"ok","steps":[{"step":"Deploy staging-app","status":"planned"}]}}
+```
+
+The registry marks the `--stream` flag `output: stream`, so MCP and HTTP keep the single-document form of `deploy`.
+
 ## Deploy Strategies
 
 | Strategy | Status | Behavior |
@@ -827,6 +849,7 @@ configure an nginx static page via `nginx/conf.d/`.
 | `--skip-canary` |  | `bool` | `false` |  |  |  | Skip canary phase and flip directly to 100% green |
 | `--skip-health` |  | `bool` | `false` |  |  |  | Skip post-deploy health checks |
 | `--strategy` |  | `string` | `rolling` |  |  |  | Deploy strategy: rolling\|blue-green\|canary\|preview |
+| `--stream` |  | `bool` | `false` |  |  |  | Print NDJSON progress events and a final result line (requires --json) |
 | `--yes` |  | `bool` | `false` |  |  |  | Skip prod confirmation prompt (alias for --force) |
 | `--help` | `-h` | `bool` | `false` | | | | Show help |
 <!-- END GENERATED:flags -->

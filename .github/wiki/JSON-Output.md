@@ -32,6 +32,18 @@ Error: [E402] nself restart does not support --json
 
 The refusal happens before the command's own start-up work, so nothing is restarted, fetched or cached. The bare `nself --json` is refused the same way.
 
+## Streams: `deploy --stream`
+
+`nself deploy` and `nself deploy promote <source> <target>` take `--stream` with `--json` (without `--json` it is `E401`). Stdout is then NDJSON: every line is a compact v1 envelope. Progress lines carry a `progress` event in `data`; the last line is always the `result`, also on failure. The failure text goes to stderr and the exit status does not change. Plain `--json` is still one document.
+
+```text
+{"schema_version":"1","command":"deploy promote","data":{"type":"progress","seq":9,"step":"health","phase":"failed","env":"prodsim","server":null,"elapsed_ms":4210,"detail":"unhealthy"}}
+{"schema_version":"1","command":"deploy promote","data":{"type":"progress","seq":10,"step":"apply","phase":"rollback","env":"prodsim","server":null,"elapsed_ms":4390,"detail":"undone"}}
+{"schema_version":"1","command":"deploy promote","data":{"type":"result","result":"rolled_back","steps":[{"step":"health","status":"failed"},{"step":"apply","status":"rolled_back"}]}}
+```
+
+The event schema is `schemas/deploy-progress.v1.schema.json`. See [[cmd-deploy]].
+
 ## Compatibility (ADR 0021)
 
 Behaviour that would break an existing script is dormant in 1.4.x and becomes the default at v1.5.0. Opt in early with `NSELF_V15=1` ([[Compat-V15]]).
@@ -54,6 +66,7 @@ Every JSON contract is published as a JSON Schema (draft 2020-12) under `schemas
 | `schemas/commands/<command>.v1.schema.json` | The `data` of one envelope command; the path is the command with spaces as `-` (`help`, `status`, `backup create` as `backup-create`) |
 | `schemas/invoke/confirmation.v1.schema.json` | The `data` of a machine confirmation (contract `cli.machine-request` v1) |
 | `schemas/deploy-targets.v1.schema.json` | The `data` of `nself deploy targets --json` |
+| `schemas/deploy-progress.v1.schema.json` | The `data` of one progress line of `nself deploy --json --stream` and `nself deploy promote <source> <target> --json --stream` (contract `cli.deploy-progress` v1) |
 | `schemas/bundle-ledger.v1.schema.json` | The bundle install-state ledger (contract `cli.bundle-ledger` v1) |
 | `schemas/catalog.v1.schema.json` | The plugin catalog (contract `plugins.catalog` v1): one row per slug and tier, bundles and counts |
 | `schemas/releases.v1.schema.json` | `releases.json`: version, sha256, signature and tarball, written only by the release pipeline |

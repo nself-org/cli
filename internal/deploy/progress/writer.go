@@ -34,6 +34,8 @@ type sink struct {
 	steps    []Step
 	finished bool
 	err      error
+	outcome  string
+	oSteps   []Step
 }
 
 // Writer writes progress lines for one run. At returns views that share the
@@ -86,6 +88,29 @@ func (w *Writer) Steps() []Step {
 	w.s.mu.Lock()
 	defer w.s.mu.Unlock()
 	return append([]Step(nil), w.s.steps...)
+}
+
+// SetOutcome records the result and step list the stream should end with, for
+// a caller that knows them better than the recorded events do (the promote
+// engine's own result). The last call wins; Finish uses it when asked for no
+// result.
+func (w *Writer) SetOutcome(result string, steps []Step) {
+	if w == nil {
+		return
+	}
+	w.s.mu.Lock()
+	defer w.s.mu.Unlock()
+	w.s.outcome, w.s.oSteps = result, steps
+}
+
+// Outcome returns what SetOutcome recorded; ok is false when nothing was.
+func (w *Writer) Outcome() (result string, steps []Step, ok bool) {
+	if w == nil {
+		return "", nil, false
+	}
+	w.s.mu.Lock()
+	defer w.s.mu.Unlock()
+	return w.s.outcome, w.s.oSteps, w.s.outcome != ""
 }
 
 // Err returns the first write error, or nil.
