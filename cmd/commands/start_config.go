@@ -15,7 +15,9 @@ package commands
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
@@ -130,13 +132,39 @@ func runPostConfigChecks(ctx context.Context, cmd *cobra.Command, cfg *config.Co
 	checkLicenseHeartbeat(ctx, cfg, verbose)
 
 	// ── Cert expiry preflight ────────────────────────────────────────
-	certDirName := strings.ReplaceAll(cfg.BaseDomain, ".", "-")
-	certPath := filepath.Join(projectDir, "certificates", certDirName, "fullchain.pem")
-	if days, err := ssl.CheckCertExpiry(certPath); err != nil {
-		ui.Warn(fmt.Sprintf("TLS certificate issue: %v", err))
-	} else if days < 30 {
-		ui.Warn(fmt.Sprintf("TLS certificate expires in %d days — renew soon", days))
+	if msg := certExpiryWarning(startCertPath(projectDir, cfg.BaseDomain), ssl.NeedsCerts(cfg.SSLMode)); msg != "" {
+		ui.Warn(msg)
 	}
+}
+
+// startCertPath is the fullchain nginx serves for baseDomain:
+// <project>/ssl/certificates/<dir>/fullchain.pem, the path internal/ssl's
+// Generator writes and nginx's ssl_certificate reads. The old join left out
+// ssl/ and warned on every start (D-0503).
+func startCertPath(projectDir, baseDomain string) string {
+	dir := ssl.DomainToDirName(baseDomain)
+	if dir == "" {
+		dir = "localhost"
+	}
+	return filepath.Join(projectDir, "ssl", "certificates", dir, "fullchain.pem")
+}
+
+// certExpiryWarning returns the start warning for the certificate at
+// certPath, or "" when there is nothing to say. A missing file only warns
+// when the SSL mode expects nself to have generated one (needsCerts);
+// letsencrypt, custom and none projects may have no local pair yet.
+func certExpiryWarning(certPath string, needsCerts bool) string {
+	if _, err := os.Stat(certPath); errors.Is(err, fs.ErrNotExist) && !needsCerts {
+		return ""
+	}
+	days, err := ssl.CheckCertExpiry(certPath)
+	switch {
+	case err != nil:
+		return fmt.Sprintf("TLS certificate issue: %v", err)
+	case days < 30:
+		return fmt.Sprintf("TLS certificate expires in %d days — renew soon", days)
+	}
+	return ""
 }
 
 // loadStartComposeFiles reads the compose manifest (needed for
