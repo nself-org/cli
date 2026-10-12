@@ -111,10 +111,15 @@ func (r *Runtime) pluginEntries() (string, []os.DirEntry, error) {
 	if !filepath.IsAbs(dir) {
 		dir = filepath.Join(r.dir, dir)
 	}
-	entries, err := os.ReadDir(dir)
+	// Stat first: Windows reports reading a file as a directory as not-exist.
+	info, err := os.Stat(dir)
 	if os.IsNotExist(err) {
 		return dir, nil, nil
 	}
+	if err == nil && !info.IsDir() {
+		return "", nil, fmt.Errorf("read installed plugins: %s is not a directory", dir)
+	}
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return "", nil, fmt.Errorf("read installed plugins: %w", err)
 	}
