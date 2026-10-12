@@ -43,12 +43,25 @@ func requireKeygen(t *testing.T) {
 // TestSecretShippingPinsHostKeyV14: PushSecrets ships secrets, so it verifies
 // the host key in v1.4 as well. DeployViaSsh with an env file stays accept-new
 // in v1.4 (moved to P7-DEPL-29) and runs no ssh-keyscan.
+// pinHome returns a 0700 temp dir for HOME. t.TempDir follows the umask, so
+// on a host with umask 002 (ps1) it is 0775 and, under compat.V15, the pin
+// store refuses it as a group-writable ancestor of ~/.config/nself (D-0637).
+// The production check stays.
+func pinHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	if err := os.Chmod(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return home
+}
+
 func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 	requireKeygen(t)
 	for _, v15 := range []string{"", "0"} {
 		t.Run("PushSecrets NSELF_V15="+v15, func(t *testing.T) {
 			t.Setenv("NSELF_V15", v15)
-			t.Setenv("HOME", t.TempDir())
+			t.Setenv("HOME", pinHome(t))
 			read := installFakeSSHTools(t)
 			installFakeKeyscan(t)
 			cfg := SSHConfig{Host: "u@203.0.113.7", KeyPath: "/k/id", ServerName: "web"}
@@ -81,7 +94,7 @@ func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 	}
 	t.Run("DeployViaSsh env file v1.4 stays accept-new without a scan", func(t *testing.T) {
 		t.Setenv("NSELF_V15", "")
-		t.Setenv("HOME", t.TempDir())
+		t.Setenv("HOME", pinHome(t))
 		read := installFakeSSHTools(t)
 		scans := installFakeKeyscan(t)
 		cfg := SSHConfig{Host: "u@203.0.113.7", RemotePath: "/opt/nself", EnvName: "live", EnvFile: writeEnvFile(t), KeyPath: "/k/id"}
@@ -98,7 +111,7 @@ func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 	})
 	t.Run("DeployViaSsh strict in v1.5", func(t *testing.T) {
 		t.Setenv("NSELF_V15", "1")
-		t.Setenv("HOME", t.TempDir())
+		t.Setenv("HOME", pinHome(t))
 		read := installFakeSSHTools(t)
 		installFakeKeyscan(t)
 		cfg := SSHConfig{Host: "u@203.0.113.7", RemotePath: "/opt/nself", EnvName: "live", EnvFile: writeEnvFile(t), KeyPath: "/k/id"}
@@ -118,7 +131,7 @@ func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 	})
 	t.Run("compose-only v1.4 stays accept-new without a scan", func(t *testing.T) {
 		t.Setenv("NSELF_V15", "")
-		t.Setenv("HOME", t.TempDir())
+		t.Setenv("HOME", pinHome(t))
 		read := installFakeSSHTools(t)
 		scans := installFakeKeyscan(t)
 		cfg := SSHConfig{Host: "u@203.0.113.7", RemotePath: "/opt/nself", EnvName: "live", KeyPath: "/k/id"}
@@ -137,7 +150,7 @@ func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 
 func TestPinnedLookupRefusesForeignLine(t *testing.T) {
 	t.Setenv("NSELF_V15", "1")
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", pinHome(t))
 	read := installFakeSSHTools(t)
 	installFakeKeyscan(t)
 	pin := DeployKnownHostsPath()
@@ -169,7 +182,7 @@ func TestDeployKeyAliasIPHost(t *testing.T) {
 			t.Errorf("deployKeyAlias(%q) = %q, want %q", in, got, want)
 		}
 	}
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", pinHome(t))
 	installFakeKeyscan(t)
 	ctx := context.Background()
 	fp, err := remote.Fingerprint("h ssh-ed25519 AQID")
@@ -200,7 +213,7 @@ func TestSecretShippingOperatorKnownHost(t *testing.T) {
 		host, line := host, line
 		t.Run(host, func(t *testing.T) {
 			t.Setenv("NSELF_V15", "1")
-			home := t.TempDir()
+			home := pinHome(t)
 			t.Setenv("HOME", home)
 			if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 				t.Fatal(err)
