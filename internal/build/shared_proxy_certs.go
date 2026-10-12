@@ -226,14 +226,18 @@ func (st *buildState) installCert(sp *sharedProxy, dir string, replace bool) err
 			return err
 		}
 	}
-	if replace {
-		old := tmp + ".old"
-		if err := os.Rename(target, old); err != nil {
-			return err
-		}
-		defer func() { _ = os.RemoveAll(old) }()
+	if !replace {
+		return os.Rename(tmp, target)
 	}
-	return os.Rename(tmp, target)
+	old := tmp + ".old"
+	if err := os.Rename(target, old); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, target); err != nil {
+		_ = os.Rename(old, target) // put the working pair back
+		return err
+	}
+	return os.RemoveAll(old)
 }
 
 // checkCertTargets refuses, before any write, a certificate directory of the

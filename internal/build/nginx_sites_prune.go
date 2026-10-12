@@ -242,5 +242,11 @@ func isGeneratedNginxSiteFile(sink Sink, path string, headBytes int) bool {
 	if len(data) > headBytes {
 		data = data[:headBytes]
 	}
+	if bytes.Contains(data, []byte(nginxGeneratedMarker+" (project ")) {
+		// A fronted project's conf in shared mode (P7-ADOPT-03). Not this
+		// build's output even when its registration has not been written yet
+		// (a build that failed half way): leave it and report it.
+		return false
+	}
 	return bytes.Contains(data, []byte(nginxGeneratedMarker))
 }

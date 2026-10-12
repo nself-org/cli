@@ -29,6 +29,8 @@ func TestPruneSkipsRegisteredFiles(t *testing.T) {
 	put(filepath.Join(sites, "old.conf"), nginxGeneratedMarker+" - DO NOT EDIT MANUALLY\n")
 	put(filepath.Join(sites, "bproj.hasura.conf"), marked)
 	put(filepath.Join(sites, "hand.conf"), "server {}\n")
+	// A fronted project's conf whose registration was never written (a build that failed half way).
+	put(filepath.Join(sites, "cproj.hasura.conf"), nginxGeneratedMarker+" (project cproj)\nserver {}\n")
 	reg := sharedproxy.New("bproj", filepath.Join(root, "backend"))
 	reg.Files = []string{"nginx/sites/bproj.hasura.conf"}
 	data, err := sharedproxy.Marshal(reg)
@@ -41,8 +43,8 @@ func TestPruneSkipsRegisteredFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if removed != 2 || strings.Join(foreign, ",") != "hand.conf" {
-		t.Errorf("removed=%d foreign=%v, want 2 and [hand.conf] (registered files are neither)", removed, foreign)
+	if removed != 2 || strings.Join(foreign, ",") != "cproj.hasura.conf,hand.conf" {
+		t.Errorf("removed=%d foreign=%v, want 2 and [cproj.hasura.conf hand.conf] (registered files are neither)", removed, foreign)
 	}
 	if _, err := os.Stat(filepath.Join(sites, "bproj.hasura.conf")); err != nil {
 		t.Fatalf("a registered file was pruned: %v", err)
