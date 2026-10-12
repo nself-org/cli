@@ -69,5 +69,5 @@ func propKey(k string) string {
 // comment makes a one-line JSDoc body that cannot end the comment early.
 func comment(s string) string {
 	s = strings.Join(strings.Fields(s), " ")
-	return strings.ReplaceAll(s, "*/", "*​/")
+	return strings.ReplaceAll(s, "*/", "*\u200b/")
 }

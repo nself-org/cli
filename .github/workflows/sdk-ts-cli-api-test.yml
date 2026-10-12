@@ -60,6 +60,9 @@ jobs:
         working-directory: sdk/ts-cli-api
         run: pnpm test -- --testPathIgnorePatterns live
 
+      - name: Install age (the live suite stores a fixture secret)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age
+
       - name: Build nself
         run: CGO_ENABLED=0 go build -mod=vendor -o "$RUNNER_TEMP/nself-head" ./cmd/nself
 

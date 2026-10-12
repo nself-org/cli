@@ -52,6 +52,11 @@ suite("live nself admin serve", () => {
     chmodSync(join(shimDir, "docker"), 0o755);
     const env = { ...process.env, HOME: home, NSELF_V15: "1", NSELF_PLUGIN_DIR: join(home, "plugins"), PATH: `${shimDir}:${process.env.PATH ?? ""}` };
     execFileSync(bin as string, ["init", "--non-interactive", "--domain", "fixture.test"], { cwd: proj, env, stdio: "pipe" });
+    try {
+      execFileSync("age", ["--version"], { stdio: "pipe" });
+    } catch {
+      throw new Error("the live suite needs `age` on PATH (brew install age / apt-get install age)");
+    }
     execFileSync(bin as string, ["config", "secrets", "init"], { cwd: proj, env, stdio: "pipe" });
     const port = await freePort();
     baseUrl = `http://127.0.0.1:${port}`;
