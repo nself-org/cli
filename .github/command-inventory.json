@@ -1525,6 +1525,17 @@
         "hidden": false
       },
       {
+        "name": "stack",
+        "path": "nself update stack",
+        "short": "Upgrade the stack with a verified backup and resumable steps",
+        "hidden": false,
+        "flags": [
+          "--dry-run",
+          "--plan",
+          "--yes"
+        ]
+      },
+      {
         "name": "upgrade",
         "path": "nself update upgrade",
         "short": "Upgrade the nSelf CLI (detects install method)",

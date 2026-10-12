@@ -34,6 +34,9 @@ type RestoreOptions struct {
 	Only       []string // pg, minio, metadata — subset to restore
 	DecryptKey string   // path to age identity file
 	Yes        bool     // skip confirmation
+	// Strict makes any pg_restore "error:" line fail the restore whatever the
+	// compat mode. Callers that prove the restore another way leave it false.
+	Strict bool
 }
 
 // Restore recovers a backup by ID or "latest".
@@ -219,14 +222,14 @@ func restorePostgres(ctx context.Context, cfg *config.Config, backupFile, origNa
 
 	// If it's a pg_dump custom format, use pg_restore.
 	if strings.HasSuffix(strings.TrimSuffix(origName, ".age"), ".dump") {
-		return restorePgDump(ctx, container, user, db, backupFile)
+		return restorePgDump(ctx, container, user, db, backupFile, opts.Strict)
 	}
 
 	// For base backup tar format, use pg_basebackup restore flow.
 	return restoreBaseBackup(ctx, cfg, container, user, backupFile, opts)
 }
 
-func restorePgDump(ctx context.Context, container, user, db, backupFile string) error {
+func restorePgDump(ctx context.Context, container, user, db, backupFile string, strict bool) error {
 	// Stream backup file into pg_restore via docker exec.
 	f, err := os.Open(backupFile)
 	if err != nil {
@@ -259,7 +262,7 @@ func restorePgDump(ctx context.Context, container, user, db, backupFile string) 
 		if ctx.Err() != nil { // cancelled (SIGINT/SIGTERM): a killed restore is not a warning
 			return fmt.Errorf("%w: %v", errs.ErrBackupRestoreFailed, ctx.Err())
 		}
-		return restoreVerdict(string(errOutput))
+		return restoreVerdictMode(string(errOutput), strict)
 	}
 
 	return nil

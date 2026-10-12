@@ -280,12 +280,14 @@ func linkCount(fi os.FileInfo) uint64 {
 // restore and restore-remote (the drill applies the same fatalRestoreText).
 // v1.5: any "error:" line not on allowedRestoreErrors fails. v1.4: only FATAL
 // or "could not" fails, and unlisted error lines are logged with their count
-// and first lines.
-func restoreVerdict(stderr string) error {
+// and first lines. strict applies the v1.5 rule in every compat mode.
+func restoreVerdict(stderr string) error { return restoreVerdictMode(stderr, false) }
+
+func restoreVerdictMode(stderr string, strict bool) error {
 	stderr = strings.TrimSpace(stderr)
 	t := fatalRestoreText("pg_restore", stderr)
 	// compat.V15(P7-PROD-08): only FATAL or "could not" fails -> any unlisted pg_restore error: line fails
-	if compat.V15() && t != "" {
+	if (compat.V15() || strict) && t != "" {
 		return fmt.Errorf("%w: %s", errs.ErrBackupRestoreFailed, t)
 	} else if t != "" && strings.Contains(strings.ToLower(t), "error:") {
 		slog.Warn("pg_restore reported errors; this restore may be incomplete (v1.5 fails on them)", "errors", strings.Count(t, "; ")+1, "first", fmt.Sprintf("%.300s", t))

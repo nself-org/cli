@@ -134,6 +134,7 @@ func TestFragmentAssignment(t *testing.T) {
 		}
 	}
 	delete(where, "deploy targets")         // Added after the pre-split snapshot.
+	delete(where, "update stack")           // Added after the pre-split snapshot (P7-PLUG-31).
 	delete(where, "config explain")         // Added after the pre-split snapshot (P7-SURF-06).
 	delete(where, "admin serve")            // Added after the pre-split snapshot (P7-SURF-02).
 	delete(where, "generate vector-search") // Added after the pre-split snapshot (P7-ADOPT-07).
