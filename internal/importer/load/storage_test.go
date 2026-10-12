@@ -135,7 +135,7 @@ func TestApplyStorageDoesNotOverwriteAKeyThatAppearedMeanwhile(t *testing.T) {
 	defer srv.Close()
 	store := &objstore.Client{Endpoint: srv.URL, AccessKey: "fixture-access", SecretKey: "fixture-secret", Region: "us-east-1"}
 	_, err = ApplyStorage(context.Background(), r, store, false)
-	if err == nil || !strings.Contains(err.Error(), "E519") || put {
+	if err == nil || !strings.Contains(err.Error(), "E521") || put {
 		t.Fatalf("a key that appeared after the preflight must stop the write (put=%v): %v", put, err)
 	}
 	_ = m

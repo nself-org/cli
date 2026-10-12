@@ -228,8 +228,14 @@ func addStorage(ctx context.Context, in importer.Input) func(*portable.Writer, *
 		if snap.uploaded > maxFiles {
 			return errs.New("E520", msgTooManyFiles)
 		}
-		if dumped, ok := dumpedRows(m); (ok && dumped != snap.total) || int64(len(snap.rows)) != snap.uploaded {
+		// Fail closed: storage.files must be in the dump for the cross-check to mean anything.
+		if dumped, ok := dumpedRows(m); !ok || dumped != snap.total || int64(len(snap.rows)) != snap.uploaded {
 			return errs.New("E520", msgStorageChanged)
+		}
+		for _, r := range snap.rows {
+			if r.size == nil {
+				return errs.New("E520", msgNoSize)
+			}
 		}
 		bucket := in.Values["bucket"]
 		var total int64
@@ -242,18 +248,14 @@ func addStorage(ctx context.Context, in importer.Input) func(*portable.Writer, *
 			if e != nil {
 				return getFailure(e)
 			}
-			var src io.Reader = body
-			if r.size != nil {
-				// One byte past the recorded size is enough to prove a mismatch without letting a
-				// hostile endpoint fill the disk.
-				src = io.LimitReader(body, *r.size+1)
-			}
-			f, e := w.WriteFile(member, src)
+			// One byte past the recorded size is enough to prove a mismatch without letting a
+			// hostile endpoint fill the disk.
+			f, e := w.WriteFile(member, io.LimitReader(body, *r.size+1))
 			_ = body.Close()
 			if e != nil {
 				return errs.New("E520", msgObjectCopy)
 			}
-			if r.size != nil && *r.size != f.Bytes {
+			if *r.size != f.Bytes {
 				return errs.New("E520", msgObjectSizeDiff)
 			}
 			obj, e := portable.NewObject(bucket, r.id, f)

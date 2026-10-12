@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -74,7 +75,8 @@ func i64(n int64) *int64 { return &n }
 
 func build(t *testing.T, in importer.Input, count int64, rows []fileRow) (portable.Manifest, *portable.Reader, error) {
 	t.Helper()
-	return buildWith(t, in, storageSnapshot{uploaded: count, total: count, rows: rows}, nil)
+	files := portable.Table{Schema: "storage", Name: "files", Rows: count, Hash: "1"}
+	return buildWith(t, in, storageSnapshot{uploaded: count, total: count, rows: rows}, []portable.Table{files})
 }
 
 func buildWith(t *testing.T, in importer.Input, snap storageSnapshot, tables []portable.Table) (portable.Manifest, *portable.Reader, error) {
@@ -246,6 +248,14 @@ func TestStorageChangedAndLimits(t *testing.T) {
 	if _, _, err = buildWith(t, input(srv), storageSnapshot{uploaded: 1, total: 3, rows: []fileRow{row}}, []portable.Table{files}); err != nil {
 		t.Fatalf("equal totals refused: %v", err)
 	}
+	// storage.files missing from the dump fails closed.
+	if _, _, err = buildWith(t, input(srv), storageSnapshot{uploaded: 1, total: 3, rows: []fileRow{row}}, nil); err == nil || !strings.Contains(err.Error(), "source storage changed") {
+		t.Fatalf("a dump without storage.files must fail closed: %v", err)
+	}
+	// A row with no size cannot be checked.
+	if _, _, err = buildWith(t, input(srv), storageSnapshot{uploaded: 1, total: 3, rows: []fileRow{{row.id, nil}}}, []portable.Table{files}); err == nil || !strings.Contains(err.Error(), "has no size") {
+		t.Fatalf("a row with no size must be refused: %v", err)
+	}
 	_, _, err = buildWith(t, input(srv), storageSnapshot{uploaded: maxFiles + 1, total: maxFiles + 1}, nil)
 	if err == nil || !strings.Contains(err.Error(), "more than 100000 files") {
 		t.Fatalf("too many files must stop before any download: %v", err)
@@ -253,11 +263,25 @@ func TestStorageChangedAndLimits(t *testing.T) {
 }
 
 func TestObjectLongerThanItsRowIsCutAndRefused(t *testing.T) {
-	big := strings.Repeat("x", 100000)
-	srv := s3(t, map[string]string{"eeeeeeee-0000-0000-0000-000000000000": big})
-	_, _, err := build(t, input(srv), 1, []fileRow{{"eeeeeeee-0000-0000-0000-000000000000", i64(10)}})
+	const id = "eeeeeeee-0000-0000-0000-000000000000"
+	var sent atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		chunk := make([]byte, 64<<10)
+		for sent.Load() < 16<<20 {
+			n, err := w.Write(chunk)
+			sent.Add(int64(n))
+			if err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+	_, _, err := build(t, input(srv), 1, []fileRow{{id, i64(10)}})
 	if err == nil || !strings.Contains(err.Error(), "size differs") {
 		t.Fatalf("an object longer than storage.files.size must be refused: %v", err)
+	}
+	if got := sent.Load(); got >= 8<<20 {
+		t.Fatalf("the endpoint streamed %d bytes for a 10 byte row: the read is not bounded", got)
 	}
 }
 

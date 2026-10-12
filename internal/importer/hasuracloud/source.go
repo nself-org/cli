@@ -39,7 +39,7 @@ type rower interface {
 // source is the right one).
 func ownDatabase(ctx context.Context, q rower) error {
 	var auth int64
-	if q.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_schema = 'auth'`).Scan(&auth) != nil {
+	if q.QueryRow(ctx, `SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'auth' AND c.relkind IN ('r','p','v','m','f')`).Scan(&auth) != nil {
 		return errs.New("E517", msgLookup)
 	}
 	if auth > 0 {

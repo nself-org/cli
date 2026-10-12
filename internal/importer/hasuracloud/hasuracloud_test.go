@@ -66,11 +66,11 @@ func (f fakeDB) QueryRow(_ context.Context, sql string, _ ...any) pgx.Row {
 
 func TestOwnDatabaseRefusesAuthAndStorageData(t *testing.T) {
 	ctx := context.Background()
-	clean := fakeDB{"table_schema = 'auth'": int64(0), "to_regclass('storage.files')": false}
+	clean := fakeDB{"n.nspname = 'auth'": int64(0), "to_regclass('storage.files')": false}
 	if err := ownDatabase(ctx, clean); err != nil {
 		t.Fatalf("plain database refused: %v", err)
 	}
-	emptyStorage := fakeDB{"table_schema = 'auth'": int64(0), "to_regclass('storage.files')": true, "FROM storage.files": false}
+	emptyStorage := fakeDB{"n.nspname = 'auth'": int64(0), "to_regclass('storage.files')": true, "FROM storage.files": false}
 	if err := ownDatabase(ctx, emptyStorage); err != nil {
 		t.Fatalf("empty storage.files refused: %v", err)
 	}
@@ -78,8 +78,8 @@ func TestOwnDatabaseRefusesAuthAndStorageData(t *testing.T) {
 		db   fakeDB
 		want string
 	}{
-		"custom auth schema": {fakeDB{"table_schema = 'auth'": int64(2)}, "auth schema"},
-		"storage rows":       {fakeDB{"table_schema = 'auth'": int64(0), "to_regclass('storage.files')": true, "FROM storage.files": true}, "hasura-storage files"},
+		"custom auth schema": {fakeDB{"n.nspname = 'auth'": int64(2)}, "auth schema"},
+		"storage rows":       {fakeDB{"n.nspname = 'auth'": int64(0), "to_regclass('storage.files')": true, "FROM storage.files": true}, "hasura-storage files"},
 		"lookup failure":     {fakeDB{}, "lookup failed"},
 	}
 	for name, c := range cases {

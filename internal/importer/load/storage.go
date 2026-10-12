@@ -73,7 +73,8 @@ func ApplyStorage(ctx context.Context, r *portable.Reader, store *objstore.Clien
 			return nil, e
 		}
 		if exists {
-			return nil, errs.New("E519", "target object store gained an object from the bundle during the import")
+			// E521, not E519: the target was already written, and only the load errors carry the report hint.
+			return nil, errs.New("E521", "target object store gained an object from the bundle during the import")
 		}
 		f, e := r.Open(o.Member)
 		if e != nil {

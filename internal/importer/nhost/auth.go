@@ -19,18 +19,18 @@ func authExtrasIn(ctx context.Context, q rower) (authExtras, error) {
 	var out authExtras
 	var has bool
 	if q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='auth' AND table_name='users' AND column_name='active_mfa_type')`).Scan(&has) != nil {
-		return out, errs.New("E517", msgStorageLookup)
+		return out, errs.New("E517", msgAuthLookup)
 	}
 	if has && q.QueryRow(ctx, `SELECT count(*) FROM auth.users WHERE active_mfa_type IS NOT NULL AND active_mfa_type <> ''`).Scan(&out.mfa) != nil {
-		return out, errs.New("E517", msgStorageLookup)
+		return out, errs.New("E517", msgAuthLookup)
 	}
 	for table, dest := range map[string]*int64{"auth.user_providers": &out.providers, "auth.user_security_keys": &out.keys} {
 		var present bool
 		if q.QueryRow(ctx, `SELECT to_regclass('`+table+`') IS NOT NULL`).Scan(&present) != nil {
-			return out, errs.New("E517", msgStorageLookup)
+			return out, errs.New("E517", msgAuthLookup)
 		}
 		if present && q.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(dest) != nil {
-			return out, errs.New("E517", msgStorageLookup)
+			return out, errs.New("E517", msgAuthLookup)
 		}
 	}
 	return out, nil
