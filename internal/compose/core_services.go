@@ -204,9 +204,10 @@ func (g *Generator) buildHasuraService() (ServiceConfig, error) {
 // (EPIC D17, P7-LIVE-23): hasura-v14 (graphql-engine v2.44.0) in v1.4, hasura
 // (the current v2.51.0) in v1.5. The update plan asks it too.
 //
-// The v2.51 catalog migration is one way: a database it has started on cannot
-// go back to v2.44.0 without restoring the backup taken before the switch
-// (Image-Lock wiki page, Roll back).
+// The metadata catalog version is 48 on both v2.44.0 and v2.51.0 (P7-LIVE-23
+// smoke), and v2.44.0 started cleanly on a database v2.51.0 had run on. Rollback
+// is still supported only as restore-then-pin-back, by policy: the CLI does not
+// check the catalog version (Image-Lock wiki page, Roll back).
 func HasuraEntry() string {
 	// compat.V15(P7-LIVE-23): hasura runs graphql-engine v2.44.0 (hasura-v14) -> v2.51.0 (hasura)
 	if compat.V15() {
@@ -217,11 +218,13 @@ func HasuraEntry() string {
 
 // hasuraImage renders the hasura image for the config's HASURA_VERSION. Blank
 // or v2.44.0 (the config default nself init writes into .env) is no override
-// and renders the HasuraEntry entry; a version that is the other entry's
-// release renders that entry in any mode. Neither is an explicit override
-// (Ref.IsDefaultVersion), so a project lock pin wins over both, and a v1.5
-// project pinned to v2.44.0 stays on it until `nself update`. Any other value
-// is an explicit tag and is used as given, unpinned.
+// and renders the HasuraEntry entry: v2.44.0 in v1.4, v2.51.0 in v1.5 (in v1.5
+// without a lock pin, v2.44.0 is the init default and renders hasura). The
+// current release's own version (v2.51.0) renders hasura in any mode and, unlike
+// the init default, is an override (image_inputs.go NotInitDefault). A project
+// lock pin wins over the defaults, so a v1.5 project pinned to v2.44.0 stays on
+// it until `nself update`. Any other value is an explicit tag, used as given,
+// unpinned.
 func hasuraImage(version string) string {
 	version = strings.TrimSpace(version)
 	entry := HasuraEntry()

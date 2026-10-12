@@ -521,6 +521,8 @@ fi
 # ---- step 7: rollback, supported (restore the pre-switch backup) ---------------------
 step "7 restore the pre-switch backup, keep hasura-v14"
 if [ "$(lock_hasura_pin)" = "$REF_V14" ]; then pass "restore: lock still pins the hasura-v14 ref"; else fail "restore: lock still pins the hasura-v14 ref" "got $(lock_hasura_pin)"; fi
+# Rows right before the restore: the pin-back step inserted more after NROWS_AFTER was read.
+NROWS_BEFORE_RESTORE="$(dbq 'select count(*) from public.smoke_items;')"
 # Stop only Hasura (postgres must stay up for the restore).
 nsf stop hasura
 if [ "$RC" -eq 0 ]; then pass "restore: nself stop hasura exits 0"; else fail "restore: nself stop hasura exits 0" "rc=$RC $(nsf_tail)"; fi
@@ -559,7 +561,7 @@ else
   fail "restore: compose and container run the hasura-v14 ref" "compose=$(compose_hasura_image) running=$(running_hasura_image)"
 fi
 if [ "$(running_hasura_version)" = "$VER_V14" ]; then pass "restore: Hasura reports version $VER_V14"; else fail "restore: Hasura reports version $VER_V14" "got $(running_hasura_version)"; fi
-if [ "$(dbq 'select count(*) from public.smoke_items;')" = "$NROWS_BACKUP" ]; then pass "restore: smoke_items has the $NROWS_BACKUP rows of the backup (the $((NROWS_AFTER - NROWS_BACKUP)) post-switch rows are gone)"; else fail "restore: smoke_items has the $NROWS_BACKUP rows of the backup" "got $(dbq 'select count(*) from public.smoke_items;')"; fi
+if [ "$(dbq 'select count(*) from public.smoke_items;')" = "$NROWS_BACKUP" ]; then pass "restore: smoke_items has the $NROWS_BACKUP rows of the backup (the $((NROWS_BEFORE_RESTORE - NROWS_BACKUP)) rows added since are gone)"; else fail "restore: smoke_items has the $NROWS_BACKUP rows of the backup" "got $(dbq 'select count(*) from public.smoke_items;')"; fi
 if export_json "$WORK/meta-restored.json" && cmp -s "$WORK/meta-pre.json" "$WORK/meta-restored.json"; then
   pass "restore: metadata export equals the pre-switch export"
 else
