@@ -22805,14 +22805,14 @@
     }
   ],
   "counts": {
-    "commands": 385,
+    "commands": 386,
     "top_level": 24,
     "core": 20,
     "pending": 4,
     "deprecated_shims": 43,
     "plugin": 11,
     "core_missing": [],
-    "json_envelope": 194,
+    "json_envelope": 195,
     "json_legacy": 34
   }
 }
