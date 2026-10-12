@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -262,7 +264,58 @@ func TestStackCommandReleaseFailureJSON(t *testing.T) {
 	}
 }
 
-// TestStackDecoratedPreviewDoesNotWrite proves the actual invocation lock is bypassed.
+type stackPreviewEntry struct {
+	mode os.FileMode
+	data string
+}
+
+// stackPreviewTree records every path's mode and bytes except the invocation lock
+// and the directory created solely to hold it, mirroring the build-plan exclusion.
+func stackPreviewTree(t *testing.T, root string) map[string]stackPreviewEntry {
+	t.Helper()
+	tree := make(map[string]stackPreviewEntry)
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || path == root {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == ".nself/op.lock" {
+			return nil
+		}
+		if rel == ".nself" && d.IsDir() {
+			entries, err := os.ReadDir(path)
+			if err != nil {
+				return err
+			}
+			if len(entries) == 1 && entries[0].Name() == "op.lock" {
+				return nil
+			}
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		var data []byte
+		if !d.IsDir() {
+			data, err = os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+		}
+		tree[rel] = stackPreviewEntry{info.Mode(), string(data)}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tree
+}
+
+// TestStackDecoratedPreviewDoesNotWrite permits only the shared invocation lock.
 func TestStackDecoratedPreviewDoesNotWrite(t *testing.T) {
 	for _, flag := range []string{"--dry-run", "--plan"} {
 		t.Run(flag, func(t *testing.T) {
@@ -272,6 +325,7 @@ func TestStackDecoratedPreviewDoesNotWrite(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fixture\nENV=prod\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
+			before := stackPreviewTree(t, dir)
 			root := &cobra.Command{Use: "nself"}
 			parent := &cobra.Command{Use: "update"}
 			root.AddCommand(parent)
@@ -281,12 +335,11 @@ func TestStackDecoratedPreviewDoesNotWrite(t *testing.T) {
 			if err := root.Execute(); err != nil {
 				t.Fatal(err)
 			}
-			entries, err := os.ReadDir(dir)
-			if err != nil {
-				t.Fatal(err)
+			if after := stackPreviewTree(t, dir); !reflect.DeepEqual(before, after) {
+				t.Fatalf("preview changed project files: before=%v after=%v", before, after)
 			}
-			if len(entries) != 1 || entries[0].Name() != ".env" {
-				t.Fatalf("preview wrote project files: %v", entries)
+			if _, err := os.Stat(filepath.Join(dir, ".nself", "state", "update-stack.json")); !os.IsNotExist(err) {
+				t.Fatalf("preview wrote journal: %v", err)
 			}
 		})
 	}

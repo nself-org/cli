@@ -46,7 +46,7 @@ Moving an existing project to Valkey, the renamed `nhost/auth` image or the newe
 After reviewing and applying the desired pins, run:
 
 ```bash
-nself update stack --plan                 # list steps without probes or writes
+nself update stack --plan                 # take the project lock and list steps; writes nothing else
 nself update stack --dry-run --json       # one envelope with results and resume point
 nself update stack --yes                  # authorize the upgrade and recovery policy
 nself update stack --yes --json           # one envelope with measured step results
@@ -67,8 +67,9 @@ at boot; readiness waits for every declared boot migration to report
 
 `.nself/state/update-stack.json` records each step atomically before and after it
 runs, then fsyncs the state directory after renaming (except on Windows).
-`--dry-run` and `--plan` read an existing journal without probes or writes,
-show its recorded results and the first non-successful step to resume.
+`--dry-run` and `--plan` take the project lock (`.nself/op.lock`) but write
+nothing else, including the journal. They read an existing journal without probes
+and show its recorded results and the first non-successful step to resume.
 Retry the same command after interruption to resume the first non-successful
 step. A process killed during `start` resumes at `start`. The operation lock
 prevents two updaters from changing the project concurrently. A missing, stale,
