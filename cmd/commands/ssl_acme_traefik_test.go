@@ -7,15 +7,25 @@ package commands
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/docker"
+	"github.com/nself-org/cli/internal/ssl"
 	"github.com/nself-org/cli/internal/ssl/acme"
 )
+
+// Every test in the package reads a hermetic provider (never the developer's
+// real plugin directory); the traefik tests switch it with useTraefik.
+func init() {
+	acmeProxyProvider = func(*config.Config, string) (string, error) { return build.ProviderNginx, nil }
+}
 
 const traefikTestImage = "nself/nself-traefik-render:r2"
 
@@ -108,6 +118,89 @@ func TestAcmeTraefikReloadRollback(t *testing.T) {
 	if len(f.execs) != 0 {
 		t.Errorf("traefik must never exec in an nginx container: %v", f.execs)
 	}
+	if !reflect.DeepEqual((*renders)[2], (*renders)[1]) {
+		t.Error("the re-render after the restore must run the same one-shot")
+	}
+}
+
+// A failed reload whose re-render also fails says so: the restored pair is on
+// disk but dynamic.yml may still name the failed generation.
+func TestAcmeTraefikRestoreRenderFailureIsReported(t *testing.T) {
+	f := newACMEFix(t)
+	renders := f.useTraefik(0)
+	if _, err := f.run(sslSetupCmd, "--acme", "--agree-tos"); err != nil {
+		t.Fatal(err)
+	}
+	inner := acmeD.run
+	acmeD.run = func(ctx context.Context, s docker.RunSpec) (string, string, error) {
+		if s.Image == traefikTestImage {
+			*renders = append(*renders, s)
+			return "", "render: refused", errors.New("exit status 1")
+		}
+		return inner(ctx, s)
+	}
+	_, err := f.run(sslRenewCmd, "--acme", "--force")
+	if err == nil || !strings.Contains(err.Error(), "previous certificates restored") || !strings.Contains(err.Error(), "also failed") {
+		t.Fatalf("want the restore and the failed re-render reported, got %v", err)
+	}
+}
+
+// A failed served-certificate check under traefik: Install re-renders itself, so
+// the command must not render a second time.
+func TestAcmeTraefikVerifyRollback(t *testing.T) {
+	f := newACMEFix(t)
+	renders := f.useTraefik(0)
+	if _, err := f.run(sslSetupCmd, "--acme", "--agree-tos"); err != nil {
+		t.Fatal(err)
+	}
+	before := acmeServed(t, f)
+	acmeVerifyWait = time.Millisecond
+	t.Cleanup(func() { acmeVerifyWait = 500 * time.Millisecond })
+	acmeD.probe = func(context.Context, string, string, time.Duration) (ssl.ServedCert, error) {
+		return ssl.ServedCert{SHA256: "deadbeef"}, nil
+	}
+	if _, err := f.run(sslRenewCmd, "--acme", "--force"); err == nil || !strings.Contains(err.Error(), "serves another certificate") {
+		t.Fatalf("want a served-certificate mismatch, got %v", err)
+	}
+	if string(acmeServed(t, f)) != string(before) {
+		t.Error("previous generation not restored after a fingerprint mismatch")
+	}
+	if len(*renders) != 3 { // setup, the renewal's reload, Install's own re-render after the failed check
+		t.Errorf("renders = %d, want 3", len(*renders))
+	}
+}
+
+// The renderer runs as root without capabilities: generation directories (0700
+// as core writes them) must be traversable before it runs.
+func TestAcmeTraefikGenerationDirsTraversable(t *testing.T) {
+	f := newACMEFix(t)
+	f.useTraefik(0)
+	var seen []os.FileMode
+	inner := acmeD.run
+	acmeD.run = func(ctx context.Context, s docker.RunSpec) (string, string, error) {
+		if s.Image == traefikTestImage {
+			dirs, _ := filepath.Glob(filepath.Join(f.ssl, "certificates", ".*.gen-*"))
+			for _, d := range dirs {
+				fi, err := os.Stat(d)
+				if err != nil {
+					t.Fatal(err)
+				}
+				seen = append(seen, fi.Mode().Perm())
+			}
+		}
+		return inner(ctx, s)
+	}
+	if _, err := f.run(sslSetupCmd, "--acme", "--agree-tos"); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) == 0 {
+		t.Fatal("no generation directory existed when the renderer ran")
+	}
+	for _, m := range seen {
+		if m&0o011 != 0o011 {
+			t.Errorf("generation dir mode %v is not traversable by others", m)
+		}
+	}
 }
 
 func TestAcmeTraefikSpecRefusals(t *testing.T) {
@@ -115,6 +208,11 @@ func TestAcmeTraefikSpecRefusals(t *testing.T) {
 		"no service":   `{"services":{}}`,
 		"named volume": `{"services":{"traefik-config":{"image":"i","command":["x"],"volumes":[{"type":"volume","source":"v","target":"/d"}]}}}`,
 		"not json":     `nope`,
+		"no image":     `{"services":{"traefik-config":{"command":["x"]}}}`,
+		"no command":   `{"services":{"traefik-config":{"image":"i"}}}`,
+		"entrypoint":   `{"services":{"traefik-config":{"image":"i","command":["x"],"entrypoint":["/bin/sh"]}}}`,
+		"tmpfs":        `{"services":{"traefik-config":{"image":"i","command":["x"],"tmpfs":["/tmp"]}}}`,
+		"environment":  `{"services":{"traefik-config":{"image":"i","command":["x"],"environment":{"A":"b"}}}}`,
 	} {
 		if _, err := traefikConfigSpec([]byte(raw)); err == nil {
 			t.Errorf("%s: want a refusal", name)

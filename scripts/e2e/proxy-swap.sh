@@ -436,7 +436,7 @@ JSON
   export NSELF_ACME_DIRECTORY=https://pebble:14000/dir NSELF_ACME_CA_BUNDLE=$W/minica.pem NSELF_ACME_NETWORK=$acme_net
   dyn=$W/a/.nself/generated/traefik/dynamic.yml
   served_fp() { echo | openssl s_client -connect 127.0.0.1:443 -servername "$ACME_HOST" 2>/dev/null | openssl x509 -noout -fingerprint -sha256; }
-  cert_files() { grep -E 'certFile' "$dyn" | sed 's/^[[:space:]]*//' | sort -u; }
+  cert_files() { grep -E 'certFile' "$dyn" | grep proxy-test | sed 's/^[[:space:]]*//' | sort -u; }
   started() { docker inspect -f '{{.Id}} {{.State.StartedAt}}' "$traefik_id"; }
   renew() { nself "$W/a" trust ssl renew --acme --force --agree-tos 2>&1 | tee "$W/evidence/$1.log"; }
   fp0=$(served_fp); files0=$(cert_files); up0=$(started)
@@ -458,7 +458,8 @@ JSON
   cp "$routes" "$W/routes.json.bak"; printf '{' > "$routes"
   renew renew-fail || true
   cp "$W/routes.json.bak" "$routes"
-  grep -q 'previous certificates restored' "$W/evidence/renew-fail.log" || { echo 'FAIL: the failed render did not report the restore' >&2; exit 1; }
+  grep -q 'previous certificates restored' "$W/evidence/renew-fail.log" && grep -q 'traefik-config one-shot failed' "$W/evidence/renew-fail.log" || {
+    echo 'FAIL: the failed render did not report the failed one-shot and the restore' >&2; exit 1; }
   [[ $(readlink "$W/a/ssl/certificates/proxy-test") == "$link3" && $(served_fp) == "$fp2" && $(cert_files) == "$files2" ]] || {
     echo 'FAIL: the failed render changed the generation, certFile or served certificate' >&2; exit 1; }
   [[ $(started) == "$up0" ]] || { echo 'FAIL: traefik restarted around the failed render' >&2; exit 1; }

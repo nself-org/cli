@@ -238,8 +238,7 @@ func (r *acmeRun) install(ctx context.Context, l acme.Lineage, cert, key []byte)
 	gens, err := acme.Install(ctx, acme.InstallReq{SSLDir: r.res.SSLDir, Targets: l.Targets, Cert: cert, Key: key,
 		Reloader: r.reloader(), Verify: r.verifier(l, cert), Fault: r.hooks.Fault, Exit: acmeD.exit})
 	if err != nil {
-		r.restoreAfterFailedInstall(ctx)
-		return e151(err)
+		return e151(r.afterFailedInstall(ctx, err))
 	}
 	for _, t := range l.Targets {
 		r.say("lineage %s: installed %s as generation %d, %s reloaded, served certificate verified", l.Name, t, gens[t], r.proxyName())
