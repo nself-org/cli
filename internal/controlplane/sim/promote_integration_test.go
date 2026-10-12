@@ -67,6 +67,7 @@ func classifyPromoteCommands(source, target *simHost, commands []string) (reads,
 		cd + "docker compose -f " + q(source.rp+"/docker-compose.yml") + " images --format json":                                                                               true,
 		cd + "docker image inspect --format '{{json .RepoDigests}}|{{.Os}}/{{.Architecture}}' " + q("sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"): true,
 		`printf '%s\n' "$HOME"`: true,
+		cd + "docker compose -f " + q(source.rp+"/docker-compose.yml") + " ps --all --format json": true,
 	}
 	for _, name := range []string{"compose-files.txt", "compose-env-files.txt"} {
 		manifest := q(source.rp + "/.nself/" + name)
