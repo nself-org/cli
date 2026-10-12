@@ -24,7 +24,12 @@ type streamTargets struct {
 }
 
 // streamerFor parses uri and requires the Streamer (and Remover) interfaces.
+// A bare absolute path is settled first (stream_dest_compat.go, D-0676).
 func streamerFor(uri string, env ...string) (destinations.Streamer, destinations.Remover, error) {
+	uri, err := settleBarePath(uri)
+	if err != nil {
+		return nil, nil, err
+	}
 	dest, err := destinationFor(uri, env...)
 	if err != nil {
 		return nil, nil, err

@@ -32,6 +32,8 @@ Backup, restore, verify, and schedule ɳSelf project data.
 
 rclone behaviour is unchanged.
 
+**Bare paths** (`backup stream` and `backup schedule` only: `--to`, `BACKUP_REMOTE`, `--heartbeat-to`, `NSELF_BACKUP_HEARTBEAT_REMOTE`). nSelf v1.4.13 passed a bare absolute path such as `/mnt/backups` to rclone, which wrote it to local disk. In v1.4 mode a value that starts with `/` still works: it is streamed as `path:///mnt/backups` (the rules below apply; a destination directory that is itself a symlink is followed, as rclone did) and one notice line tells you to write `path:///mnt/backups`. With `NSELF_V15=1` a bare path is refused before anything runs. A relative path is refused in both modes.
+
 **path://** refuses `..`, a destination directory that is itself a symlink (use the real path), and any symlink below the directory, so a link cannot send a write outside it. A file is written to `<key>.tmp`, fsynced, renamed into place and re-read to compare its sha256. Directories are created `0700`, files `0600`.
 
 **host://** goes through the shared SSH funnel (`sdk/go/remote`): one `ssh` or `scp` argv builder, remote paths limited to `[a-zA-Z0-9/_.-]` with no `..`, and every unsafe name rejected before any connection. The server name must be in the inventory with a `host` (`user@host`); `ssh_key_ref` names an environment variable holding the key path. Host keys are pinned: ssh runs with `StrictHostKeyChecking=yes` against `~/.config/nself/backup_known_hosts` (override with `NSELF_BACKUP_KNOWN_HOSTS`), and the file must hold a key for the alias `nself-ci-<server>`. A server with no pinned key is refused. A file is copied to `<key>.tmp`, its sha256 compared, then moved into place.
@@ -74,9 +76,9 @@ nself backup stream --to <url> [--recipient <key>] [--heartbeat-to <remote>] [--
 
 | Flag | Default | Description |
 |---|---|---|
-| `--to` | `NSELF_BACKUP_DESTINATION` | Destination URL (rclone remote path) |
+| `--to` | `BACKUP_REMOTE` | Destination: rclone remote, `path:///<dir>` or `host://<server>/<dir>` (a bare `/dir` works in v1.4 mode with a notice, see [Destinations](#destination-kinds)) |
 | `--recipient` | `NSELF_BACKUP_RECIPIENT` | Encryption recipient: age key, SSH key, or `github:<user>` (repeatable) |
-| `--heartbeat-to` | `NSELF_BACKUP_HEARTBEAT_REMOTE` | rclone remote that receives `<project>/backup.json` after a successful upload |
+| `--heartbeat-to` | `NSELF_BACKUP_HEARTBEAT_REMOTE` | Remote (rclone, `path://` or `host://`) that receives `<project>/backup.json` after a successful upload |
 | `--heartbeat-required` | false | Exit non-zero when the heartbeat cannot be written. The backup itself is kept either way |
 | `--dry-run` | false | Preview without running |
 
@@ -135,7 +137,7 @@ nself backup stream --to r2:mybucket/backups --recipient age1abc123 --heartbeat-
 
 | Variable | Description |
 |---|---|
-| `NSELF_BACKUP_DESTINATION` | Default destination URL |
+| `BACKUP_REMOTE` | Default destination for `backup stream` and `backup schedule` (`NSELF_BACKUP_DESTINATION` is not read) |
 | `NSELF_BACKUP_RECIPIENT` | Default age/SSH public key (space-separated for multiple) |
 | `NSELF_BACKUP_NO_AUTO_KEY` | `1` keeps the refusal when no recipient is configured instead of creating an identity (v1.5) |
 | `NSELF_BACKUP_HEARTBEAT_REMOTE` | Default heartbeat remote (the `--heartbeat-to` flag wins). Environment only: `nself.yaml` has no config keys. |
@@ -266,7 +268,7 @@ Run it from the project directory (it must hold a `.env` plus an nSelf marker: `
 | Flag | Default | Description |
 |---|---|---|
 | `--cron` | — | Cron expression (e.g. `0 2 * * *`) |
-| `--to` | `NSELF_BACKUP_DESTINATION` | Destination URL |
+| `--to` | `BACKUP_REMOTE` | Destination, as for [backup stream](#backup-stream); written into the unit as given |
 | `--recipient` | — | Encryption recipient: age key, SSH key, or `github:<user>`. Repeatable; each one is written into the unit |
 | `--heartbeat-to` | — | Heartbeat remote written into the unit as `--heartbeat-to` (see [backup stream](#backup-stream)) |
 | `--env-file` | — | Absolute path of an environment file for the unit. No default: without it the unit has no `EnvironmentFile` line |
