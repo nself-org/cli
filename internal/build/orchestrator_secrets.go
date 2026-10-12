@@ -59,16 +59,21 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 		}
 	}
 
-	// Core credentials the loader generates when unset (D-0506). Persist only
-	// when no env file defines the key and the real process environment does
-	// not supply it: that source owns the value, and a file copy would shadow
-	// a later rotated export (files override the process env on load). The
-	// onDisk term stays: .env.secrets is shared by every env and loads after
-	// .env.<env>, so persisting a dev-generated value while .env.prod defines
-	// the key would shadow prod's real value on the next prod build.
-	// A running database may already hold a password rendered by an earlier
-	// build; adopt that live value (adoptLiveCredential) before keeping the
-	// freshly generated one, and set cfg so this build renders it too.
+	// Core credentials the loader generates when unset (D-0506). Persist a
+	// freshly generated value only when no env file defines the key and the
+	// real process environment does not supply it: that source owns the value,
+	// and a file copy would shadow a later rotated export (files override the
+	// process env on load). The onDisk term stays: .env.secrets is shared by
+	// every env and loads after .env.<env>, so persisting a dev-generated value
+	// while .env.prod (or any scanned env file) defines the key would shadow
+	// that file's real value on the next build of that env.
+	// A running database may already hold a value an earlier build rendered. It
+	// is adopted for THIS build's render only (adoptLiveCredential) and never
+	// written: .nself/compose.env cannot tell a generated value from one an
+	// earlier build took from a process export, and writing the latter would
+	// shadow a later rotated export. The next build adopts it again, because
+	// compose.env then carries the same value. Generated values are base64url
+	// (generateSecureRandom), so they need no quoting in .env.secrets.
 	for _, c := range []struct {
 		key string
 		dst *string
@@ -82,8 +87,9 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 		if live, ok := adoptLiveCredential(sink, workdir, c.key); ok {
 			*c.dst = live
 			if !fx.Planning() {
-				slog.Info("Adopted live credential from previous build", "key", c.key)
+				slog.Warn("key is in no env file; reusing the value the running stack was built with. Pin it by adding the key to .env.secrets (or your env file)", "key", c.key)
 			}
+			continue
 		}
 		toWrite = append(toWrite, secretEntry{c.key, *c.dst})
 	}

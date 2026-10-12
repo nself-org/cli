@@ -30,21 +30,51 @@ func projectWithComposeEnv(t *testing.T, composeEnv string) string {
 	return dir
 }
 
-func TestPersistGeneratedSecrets_AdoptsLiveCredentials(t *testing.T) {
+// Adoption is for this build's render only: cfg gets the live value, the key is
+// NOT written to .env.secrets (compose.env cannot tell a generated value from a
+// CI export), and the next build adopts the same value again.
+func TestPersistGeneratedSecrets_AdoptsLiveCredentialsWithoutPersisting(t *testing.T) {
 	dir := projectWithComposeEnv(t, "# GENERATED\nPOSTGRES_PASSWORD=fake-live-pg-password\nHASURA_GRAPHQL_ADMIN_SECRET='fake-live$admin-secret'\n")
-	cfg := genCfg()
-	if err := persistGeneratedSecrets(dir, cfg); err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Postgres.Password != "fake-live-pg-password" || cfg.Hasura.AdminSecret != "fake-live$admin-secret" {
+	first := buildOnce(t, dir)
+	if first.Postgres.Password != "fake-live-pg-password" || first.Hasura.AdminSecret != "fake-live$admin-secret" {
 		t.Fatal("cfg did not adopt the live credentials")
 	}
 	data := readSecrets(t, dir)
-	if !strings.Contains(data, "POSTGRES_PASSWORD=fake-live-pg-password\n") || !strings.Contains(data, "HASURA_GRAPHQL_ADMIN_SECRET=fake-live$admin-secret\n") {
-		t.Errorf(".env.secrets lacks the adopted values:\n%s", data)
+	for _, key := range []string{"POSTGRES_PASSWORD=", "HASURA_GRAPHQL_ADMIN_SECRET="} {
+		if strings.Contains(data, key) {
+			t.Errorf("adopted %s was written to .env.secrets", key)
+		}
 	}
-	if strings.Contains(data, "fake-generated") {
-		t.Error("generated value was persisted although a live one exists")
+	second := buildOnce(t, dir)
+	if second.Postgres.Password != first.Postgres.Password || second.Hasura.AdminSecret != first.Hasura.AdminSecret {
+		t.Error("second build did not adopt the same values")
+	}
+}
+
+// The CI-export repro: export A -> compose.env A; a build without the export
+// renders A and writes nothing; a build with the rotated export B renders B.
+func TestPersistGeneratedSecrets_RotatedExportStillWinsAfterAdoption(t *testing.T) {
+	clearSecretEnv(t)
+	dir := t.TempDir()
+	testWriteFile(t, filepath.Join(dir, ".env"), "PROJECT_NAME=test\n", 0600)
+	composeFor := func(pw string) {
+		testWriteFile(t, filepath.Join(dir, ".nself", "compose.env"), "POSTGRES_PASSWORD="+pw+"\n", 0600)
+	}
+	t.Setenv("POSTGRES_PASSWORD", "fake-ci-A")
+	if got := buildOnce(t, dir).Postgres.Password; got != "fake-ci-A" {
+		t.Fatalf("build 1 with export A rendered %q", got)
+	}
+	composeFor("fake-ci-A") // what build 1's render left behind
+	_ = os.Unsetenv("POSTGRES_PASSWORD")
+	if got := buildOnce(t, dir).Postgres.Password; got != "fake-ci-A" {
+		t.Fatalf("build 2 without export rendered %q, want A", got)
+	}
+	if strings.Contains(readSecrets(t, dir), "POSTGRES_PASSWORD=") {
+		t.Fatal("build 2 wrote the adopted value to .env.secrets; a rotated export would be shadowed")
+	}
+	t.Setenv("POSTGRES_PASSWORD", "fake-ci-B")
+	if got := buildOnce(t, dir).Postgres.Password; got != "fake-ci-B" {
+		t.Fatalf("build 3 with rotated export B rendered %q", got)
 	}
 }
 
@@ -139,8 +169,8 @@ func TestPersistGeneratedSecrets_NoWarningForInactiveEnvFile(t *testing.T) {
 	}
 }
 
-// Plan mode: the planned .env.secrets carries both keys (and the adopted
-// value), and nothing is written to disk.
+// Plan mode: the planned .env.secrets carries the generated key, and nothing is
+// written to disk.
 func TestPersistGeneratedSecrets_PlanModeWritesNothingToDisk(t *testing.T) {
 	dir := projectWithComposeEnv(t, "POSTGRES_PASSWORD=fake-live-pg-password\n")
 	sink := newMemSink(dir, "")
@@ -153,12 +183,63 @@ func TestPersistGeneratedSecrets_PlanModeWritesNothingToDisk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("planned .env.secrets: %v", err)
 	}
-	for _, want := range []string{"POSTGRES_PASSWORD=fake-live-pg-password\n", "HASURA_GRAPHQL_ADMIN_SECRET=fake-generated-admin-secret\n"} {
-		if !strings.Contains(string(planned), want) {
-			t.Errorf("planned bytes lack %q:\n%s", want, planned)
-		}
+	// The admin secret is generated (persisted); the Postgres password is adopted
+	// from compose.env (render only, never written).
+	if !strings.Contains(string(planned), "HASURA_GRAPHQL_ADMIN_SECRET=fake-generated-admin-secret\n") {
+		t.Errorf("planned bytes lack the generated admin secret:\n%s", planned)
+	}
+	if strings.Contains(string(planned), "POSTGRES_PASSWORD=") || cfg.Postgres.Password != "fake-live-pg-password" {
+		t.Errorf("adopted Postgres password must be used but not planned:\n%s", planned)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".env.secrets")); !os.IsNotExist(err) {
 		t.Errorf(".env.secrets reached disk in plan mode (stat err = %v)", err)
+	}
+}
+
+// Custom env files (.env.qa) are part of the scan: a dev build must not write a
+// generated value into the shared .env.secrets while .env.qa owns the key.
+func TestPersistGeneratedSecrets_CustomEnvFileKeyNotPersisted(t *testing.T) {
+	clearSecretEnv(t)
+	dir := t.TempDir()
+	testWriteFile(t, filepath.Join(dir, ".env"), "PROJECT_NAME=test\nENV=dev\n", 0600)
+	testWriteFile(t, filepath.Join(dir, ".env.qa"), "POSTGRES_PASSWORD=fake-qa-owned-password\n", 0600)
+	buildOnce(t, dir)
+	if strings.Contains(readSecrets(t, dir), "POSTGRES_PASSWORD=") {
+		t.Fatal("POSTGRES_PASSWORD was persisted although .env.qa defines it; it would shadow qa")
+	}
+}
+
+// The shadow warning considers a custom file when it precedes .env.secrets in
+// the active cascade (ENV=qa), and not otherwise.
+func TestPersistGeneratedSecrets_ShadowWarningCoversCustomEnvFile(t *testing.T) {
+	files := map[string]string{
+		".env.qa":      "POSTGRES_PASSWORD=fake-qa-password\n",
+		".env.secrets": "POSTGRES_PASSWORD=fake-secrets-password\n",
+	}
+	if out := captureWarnings(t, "qa", files); !strings.Contains(out, shadowMsg) || !strings.Contains(out, ".env.qa") {
+		t.Errorf("ENV=qa: expected a warning naming .env.qa:\n%s", out)
+	}
+	if out := captureWarnings(t, "dev", files); strings.Contains(out, shadowMsg) {
+		t.Errorf("ENV=dev: .env.qa is not loaded; no warning expected:\n%s", out)
+	}
+}
+
+// secretScanList asks config.EnvCascadeOrder which .env.<name> files cascade, so
+// it cannot drift from cascade.go: pin a few names.
+func TestSecretScanList_FollowsCascadeRule(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{".env.qa", ".env.live", ".env.example", ".env.computed", ".env.QA", ".env.bad name", ".env.-x", ".envrc"} {
+		testWriteFile(t, filepath.Join(dir, n), "A=1\n", 0600)
+	}
+	got := strings.Join(secretScanList(dir, newDiskSink(dir)), " ")
+	for _, want := range []string{".env.qa", ".env.live", ".env.secrets", ".env.prod"} {
+		if !strings.Contains(" "+got+" ", " "+want+" ") {
+			t.Errorf("scan list lacks %s: %s", want, got)
+		}
+	}
+	for _, bad := range []string{".env.example", ".env.computed", ".env.QA", ".env.bad name", ".env.-x", ".envrc"} {
+		if strings.Contains(" "+got+" ", " "+bad+" ") {
+			t.Errorf("scan list must not include %s: %s", bad, got)
+		}
 	}
 }

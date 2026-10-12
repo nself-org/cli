@@ -17,9 +17,33 @@ import (
 	"github.com/nself-org/cli/internal/config"
 )
 
-// secretScanFiles are the env files persistGeneratedSecrets looks at, in the
-// loader's cascade order (.env.secrets loads after the per-env files).
+// secretScanFiles are the fixed env files persistGeneratedSecrets looks at.
+// Custom env files (.env.qa, .env.live) are added by secretScanList.
 var secretScanFiles = []string{".env", ".env.dev", ".env.staging", ".env.prod", ".env.secrets", ".env.local"}
+
+// secretScanList is secretScanFiles plus every .env.<name> in workdir that the
+// loader could cascade for some ENV. config.EnvCascadeOrder owns that rule
+// (cascade.go customEnvNameRe), so ask it instead of mirroring the regex: a
+// file counts when it appears in the cascade of the env it is named for.
+// .env.example and .env.computed are never cascade files.
+func secretScanList(workdir string, sink Sink) []string {
+	list := slices.Clone(secretScanFiles)
+	entries, err := sink.ReadDir(workdir)
+	if err != nil {
+		return list
+	}
+	for _, e := range entries {
+		n := e.Name()
+		env, ok := strings.CutPrefix(n, ".env.")
+		if !ok || e.IsDir() || n == ".env.example" || n == ".env.computed" || slices.Contains(list, n) {
+			continue
+		}
+		if slices.Contains(config.EnvCascadeOrder(env, false), n) {
+			list = append(list, n)
+		}
+	}
+	return list
+}
 
 // persistedSecretKeys are the keys persistGeneratedSecrets owns.
 var persistedSecretKeys = []string{
@@ -33,7 +57,7 @@ var persistedSecretKeys = []string{
 func scanEnvFiles(workdir, envName string, sink Sink) map[string]bool {
 	onDisk := make(map[string]bool)
 	vals := make(map[string]map[string]string) // file name → key → parsed value
-	for _, name := range secretScanFiles {
+	for _, name := range secretScanList(workdir, sink) {
 		data, err := envLayerBytes(sink, filepath.Join(workdir, name))
 		if err != nil {
 			continue
