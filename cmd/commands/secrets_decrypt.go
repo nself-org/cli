@@ -10,7 +10,10 @@ package commands
 // values are all "[REDACTED]" (--json, v1.5).
 // Constraints: v1.4 prints as before. In v1.5 a text run whose stdout is not a
 // terminal and has no --reveal is refused (E401) before anything is decrypted.
-// The decrypted values never enter an envelope. The canon row marks --reveal
+// The decrypted values never enter an envelope, and --json never decrypts to
+// text: the key names come from secrets.DeployKeys (the store's key set), because
+// parsing the KEY=VALUE text would turn a line of a multi-line value (a PEM
+// body) into a key. The canon row marks --reveal
 // cli_only with json none, so --reveal --json is refused E402 in both modes.
 // SPORT: CLI-CMD-SECRETS-001
 
@@ -55,17 +58,21 @@ the envelope lists the key names and shows every value as [REDACTED].`,
 		if err != nil {
 			return err
 		}
-		output, err := secrets.DecryptForDeploy(cwd, secretsEnvFlag)
-		if err != nil {
-			return err
-		}
 		if envelope {
-			d := newSecretsDecryptData(secretsEnvFlag, output)
-			for k := range d.Values {
+			keys, err := secrets.DeployKeys(cwd, secretsEnvFlag)
+			if err != nil {
+				return err
+			}
+			d := secretsDecryptData{Environment: secretsEnvFlag, Values: map[string]string{}}
+			for _, k := range keys {
 				d.Values[k] = secretsRedacted
 			}
 			setData(cmd, d)
 			return nil
+		}
+		output, err := secrets.DecryptForDeploy(cwd, secretsEnvFlag)
+		if err != nil {
+			return err
 		}
 		fmt.Print(output)
 		return nil

@@ -97,3 +97,31 @@ func TestDecryptOnDeployJSONRedacted(t *testing.T) {
 		t.Errorf("values = %v, want DECRYPT_ITEM: [REDACTED]", values)
 	}
 }
+
+// TestDecryptOnDeployJSONMultilineValue: a multi-line value whose body has a
+// line shaped like KEY= must not become an envelope key, and no part of the
+// value may reach the output. The key names come from the store, not the text.
+func TestDecryptOnDeployJSONMultilineValue(t *testing.T) {
+	compattest.Set(t, true)
+	proj := decryptProject(t, true)
+	const tail = "FakeTailChunkAbc123=="
+	multi := "-----BEGIN FAKE KEY-----\n" + tail + "\n-----END FAKE KEY-----"
+	if r := runPilot(t, proj, true, nil, "config", "secrets", "set", "DECRYPT_PEM", "--", multi); r.code != 0 {
+		t.Fatalf("set DECRYPT_PEM: exit %d\n%s", r.code, r.stderr)
+	}
+	r := runPilot(t, proj, true, nil, "config", "secrets", "decrypt-on-deploy", "--json")
+	if r.code != 0 {
+		t.Fatalf("exit %d\n%s", r.code, r.stderr)
+	}
+	out := r.stdout + r.stderr
+	for _, leak := range []string{"FakeTailChunkAbc123", "BEGIN FAKE KEY", "END FAKE KEY", decryptFakeValue} {
+		if strings.Contains(out, leak) {
+			t.Errorf("%q reached the output: %s", leak, out)
+		}
+	}
+	data := validateEnvelope(t, r.stdout, "config secrets decrypt-on-deploy")
+	values, _ := data["values"].(map[string]any)
+	if len(values) != 2 || values["DECRYPT_ITEM"] != "[REDACTED]" || values["DECRYPT_PEM"] != "[REDACTED]" {
+		t.Errorf("values = %v, want exactly DECRYPT_ITEM and DECRYPT_PEM, both [REDACTED]", values)
+	}
+}
