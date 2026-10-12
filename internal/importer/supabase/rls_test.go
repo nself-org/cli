@@ -28,6 +28,10 @@ func TestTranslateOwnerEquality(t *testing.T) {
 		{"and clause", Policy{Permissive: true, Roles: []string{"public"}, Cmd: "SELECT", Using: "((auth.uid() = user_id) AND (title IS NOT NULL))"}, nil, "", "not `auth.uid() = <column>`"},
 		{"other column check", Policy{Permissive: true, Roles: []string{"public"}, Cmd: "UPDATE", Using: "(auth.uid() = user_id)", Check: "(auth.uid() = id)"}, nil, "", "differ"},
 		{"missing column", Policy{Permissive: true, Roles: []string{"public"}, Cmd: "SELECT", Using: "(auth.uid() = owner)"}, nil, "", "not a column"},
+		{"not equal", Policy{Permissive: true, Roles: []string{"public"}, Cmd: "SELECT", Using: "(auth.uid() <> user_id)"}, nil, "", "not `auth.uid() = <column>`"},
+		{"not equal reversed", Policy{Permissive: true, Roles: []string{"public"}, Cmd: "SELECT", Using: "(user_id <> auth.uid())"}, nil, "", "not `auth.uid() = <column>`"},
+		{"greater", Policy{Permissive: true, Roles: []string{"public"}, Cmd: "SELECT", Using: "(auth.uid() > user_id)"}, nil, "", "not `auth.uid() = <column>`"},
+		{"bang equal", Policy{Permissive: true, Roles: []string{"public"}, Cmd: "DELETE", Using: "(auth.uid() != user_id)"}, nil, "", "not `auth.uid() = <column>`"},
 		{"quoted column", Policy{Permissive: true, Roles: []string{"public"}, Cmd: "SELECT", Using: `(auth.uid() = "user_id")`}, []string{"select"}, "user_id", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
