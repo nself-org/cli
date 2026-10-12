@@ -86,15 +86,22 @@ func (c *client) assemble(ctx context.Context, in importer.Input, cols []*collec
 	}
 	m.Storage = st.Storage
 	var sum, read int64
+	capped := false
 	for i, t := range st.Totals {
 		sum += t.Total
 		read += int64(st.Storage.Buckets[i].Objects)
+		capped = capped || t.Total >= totalCap
 		if t.Total > 0 {
 			counts, exemptions = addCount(counts, exemptions, "objects", t.Bucket, "files", t.Total, int64(st.Storage.Buckets[i].Objects))
 		}
 	}
 	if len(st.Totals) > 0 {
-		counts, exemptions = addCount(counts, exemptions, "objects", "", "files", sum, read)
+		// The all-buckets count is only "not independent" when some bucket hit the list cap.
+		if capped {
+			counts, exemptions = addCount(counts, exemptions, "objects", "", "files", sum, read)
+		} else {
+			counts = append(counts, portable.SourceCount{Kind: "objects", Count: sum, Method: "files list total"})
+		}
 	}
 	meta, rels, err := hasuraMetadata(cols)
 	if err != nil {

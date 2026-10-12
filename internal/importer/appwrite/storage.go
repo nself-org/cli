@@ -87,7 +87,7 @@ func (c *client) exportStorage(ctx context.Context, w *portable.Writer) (storage
 			}
 			body, e := c.download(ctx, b.ID, f.ID)
 			if e != nil {
-				return e
+				return errs.New("E520", "source tables unavailable")
 			}
 			file, e := w.WriteFile(member, body)
 			_ = body.Close()

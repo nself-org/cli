@@ -134,7 +134,7 @@ func (c *client) schema(ctx context.Context) ([]*collection, error) {
 			if json.Unmarshal(raw, &meta) != nil {
 				return errs.New("E520", "source tables unavailable")
 			}
-			table, e := ident(meta.ID)
+			table, e := tableName(meta.ID)
 			if e != nil {
 				return e
 			}

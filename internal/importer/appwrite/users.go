@@ -79,7 +79,9 @@ func convertUser(u apiUser) (verify.User, error) {
 		out.HashAlgorithm, out.PasswordHash = "bcrypt", &u.Password
 	default:
 		out.HashAlgorithm = strings.ToLower(u.Hash)
-		if out.HashAlgorithm == "" {
+		// A hash tagged bcrypt that is not a bcrypt string, or an empty tag, cannot be carried
+		// and must still be listed for a reset (never "bcrypt" or "none" without a usable hash).
+		if out.HashAlgorithm == "" || out.HashAlgorithm == "bcrypt" || out.HashAlgorithm == "none" {
 			out.HashAlgorithm = "unsupported"
 		}
 	}

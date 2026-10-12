@@ -65,6 +65,19 @@ func ident(s string) (string, error) {
 // reservedSchemas are nSelf-owned or Postgres-owned; a database with such an id gets an aw_ prefix.
 var reservedSchemas = map[string]bool{"auth": true, "storage": true, "public": true, "hdb_catalog": true, "nself_ops": true, "information_schema": true}
 
+// tableName maps a collection id to a table name the loader will not treat as an nSelf table
+// (any name starting np_ is protected).
+func tableName(id string) (string, error) {
+	n, err := ident(id)
+	if err != nil {
+		return "", err
+	}
+	if strings.HasPrefix(n, "np_") {
+		n = "aw_" + n
+	}
+	return n, nil
+}
+
 // schemaName maps an Appwrite database id to a schema that cannot shadow a system schema.
 func schemaName(id string) (string, error) {
 	n, err := ident(id)

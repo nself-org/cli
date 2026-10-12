@@ -229,3 +229,14 @@ func TestNameMapping(t *testing.T) {
 		}
 	}
 }
+
+func TestTableAndHashEdgeCases(t *testing.T) {
+	if got, err := tableName("np_audit"); err != nil || got != "aw_np_audit" {
+		t.Fatalf("tableName = %q, %v", got, err)
+	}
+	// A hash tagged bcrypt that is not bcrypt must be listed for a reset, not claimed as bcrypt.
+	u, err := convertUser(apiUser{ID: "x", Registration: "2026-01-01T00:00:00.000+00:00", Password: "not-a-bcrypt-string", Hash: "bcrypt"})
+	if err != nil || u.HashAlgorithm != "unsupported" || u.PasswordHash != nil {
+		t.Fatalf("malformed bcrypt: %+v %v", u, err)
+	}
+}
