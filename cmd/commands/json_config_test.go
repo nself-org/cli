@@ -110,6 +110,31 @@ func TestConfigRevealCLIOnly(t *testing.T) {
 	}
 }
 
+// TestConfigSetIsConfirmedOverMachineSurfaces: `config set` is exposed over
+// MCP and HTTP, and its effective side effect is destructive with a confirm
+// block, so the invoke gate demands the nonce round trip (D-0403).
+func TestConfigSetIsConfirmedOverMachineSurfaces(t *testing.T) {
+	machine, err := machineRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, ok := machine.Lookup("nself config set")
+	if !ok {
+		t.Fatal("machine registry has no config set")
+	}
+	for _, transport := range []string{invoke.TransportMCP, invoke.TransportHTTP} {
+		if exposed, reason := invoke.Exposure(row, transport, nil); !exposed {
+			t.Errorf("config set over %s not exposed: %s", transport, reason)
+		}
+	}
+	if got := cmdregistry.EffectiveSideEffect(row, nil); got != "destructive" {
+		t.Errorf("config set effective side effect %q, want destructive", got)
+	}
+	if row.Confirm == nil || len(row.Confirm.Flags) != 1 || row.Confirm.Flags[0] != "yes" {
+		t.Errorf("config set confirm %+v, want flags [yes]", row.Confirm)
+	}
+}
+
 // TestConfigSecretArgsMarked: the machine registry marks the value argument
 // of config set and config secrets set secret (SURF-25 redaction guard).
 func TestConfigSecretArgsMarked(t *testing.T) {

@@ -19,7 +19,7 @@ nself config <subcommand> [flags]
 <!-- BEGIN PROSE:description -->
 `nself config` provides a complete interface for reading and writing ɳSelf configuration values. Config is stored in `.env` files, `nself config` reads and writes them safely, preserving comments and formatting.
 
-Secret keys (any key containing `SECRET`, `PASS`, `KEY`, `TOKEN`, `CREDENTIAL`, `WEBHOOK`, `PRIVATE`, `DSN` or `SALT`) are masked as `***` in output by default, and the credentials inside a URL value are masked (`postgres://****@db:5432/app`, `?password=****`). Pass `--reveal` to show plaintext values; `--reveal` is terminal-only and never offered over MCP or the HTTP API, and `config export`, `config secrets get` and `config secrets decrypt-on-deploy` are CLI-only. Use `--env` to target a specific environment file (e.g., `--env staging` reads `.env.staging`).
+Secret keys (any key containing `SECRET`, `PASS`, `KEY`, `TOKEN`, `CREDENTIAL`, `WEBHOOK`, `PRIVATE`, `DSN` or `SALT`) are masked as `***` in output by default, and the credentials inside a URL value are masked (`postgres://****@db:5432/app`, `?password=****`). Pass `--reveal` to show plaintext values; `--reveal` is terminal-only and never offered over MCP or the HTTP API, and `config export`, `config secrets get` and `config secrets decrypt-on-deploy` are CLI-only (in v1.5 `config secrets decrypt-on-deploy` also needs `--reveal` when stdout is not a terminal, and its `--json` shows names only). Use `--env` to target a specific environment file (e.g., `--env staging` reads `.env.staging`).
 
 ### Setting a value: what `config set` regenerates
 

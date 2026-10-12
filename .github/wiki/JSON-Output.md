@@ -19,7 +19,7 @@ nself <command> --json=false    # explicitly off, same as leaving it out
 - **Commands with their own JSON** (`legacy`, such as `status` and `version`) keep printing it, unchanged.
 - **stdout and stderr.** The monorepo notice (`Detected monorepo layout…`) goes to stderr when `--json` is on, so it never mixes into stdout. Without `--json` it stays on stdout.
 - **Plugins.** A plugin-proxied command receives `--json` unchanged (`nself sentry status --json` passes `--json` to the plugin) and owns its output. The CLI's other global flags (`--no-monorepo`, `--no-deprecation-warnings`) are still stripped.
-- **Secrets.** Commands that print secret values, such as `nself secrets decrypt-on-deploy`, have no JSON support, so JSON mode never emits them.
+- **Secrets.** Commands that print secret values, such as `nself secrets decrypt-on-deploy`, never put the values in JSON. In v1.5 `nself config secrets decrypt-on-deploy --json` lists the key names with every value `[REDACTED]`; the plaintext needs a terminal stdout or `--reveal` (text only).
 
 ## Commands that cannot produce JSON: E402
 
