@@ -23,7 +23,7 @@ func Render(w io.Writer, p Plan) error {
 		tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
 		_, _ = fmt.Fprintln(tw, "KIND\tNAME\tFROM\tTO\tNOTE")
 		for _, pin := range p.Pins {
-			to, note := pin.To, ""
+			to, note := pin.To, pin.Note
 			if !pin.Resolvable {
 				to, note = "unresolvable", pin.Reason
 			}

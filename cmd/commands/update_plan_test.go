@@ -95,6 +95,10 @@ type updRecorder struct {
 	cli   func() (string, string, error)
 	// buildErr, pluginErr make the build or the plugin update fail.
 	buildErr, pluginErr error
+	// installed overrides the version a plugin reports after its update; primed
+	// is the registry the plugin step wrote to the cache.
+	installed map[string]string
+	primed    *plugin.Registry
 }
 
 // install replaces newUpdateDeps with recording stubs.
@@ -116,6 +120,18 @@ func (r *updRecorder) install() {
 			updatePlugin: func(_ context.Context, _ string, slug string) error {
 				r.calls = append(r.calls, "plugins:"+slug)
 				return r.pluginErr
+			},
+			primeRegistry: func(reg *plugin.Registry) error { r.primed = reg; return nil },
+			installedVersion: func(_, slug string) (string, error) {
+				if v, ok := r.installed[slug]; ok {
+					return v, nil
+				}
+				for _, m := range r.reg {
+					if m.Name == slug {
+						return m.Version, nil
+					}
+				}
+				return "", nil
 			},
 			build: func(_ context.Context, dir string) error {
 				r.calls = append(r.calls, "build")

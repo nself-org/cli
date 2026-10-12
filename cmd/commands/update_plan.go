@@ -25,6 +25,7 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/output"
+	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/upgrade/plan"
 	"github.com/spf13/cobra"
 )
@@ -191,6 +192,15 @@ func runUpdateYes(cmd *cobra.Command, d updateDeps) error {
 		return err
 	}
 	target, _ := cmd.Flags().GetString("version")
+	// planReg is the registry the plan was computed from; the plugin step writes
+	// it to the shared cache so Install resolves the planned versions.
+	var planReg *plugin.Registry
+	fetch := d.registry
+	d.registry = func(c context.Context) (*plugin.Registry, error) {
+		r, err := fetch(c)
+		planReg = r
+		return r, err
+	}
 	p, err := gatherPlan(ctx, d, l, normalizeTarget(target))
 	if err != nil {
 		return err
@@ -207,7 +217,7 @@ func runUpdateYes(cmd *cobra.Command, d updateDeps) error {
 		for _, n := range []string{plan.StepImages, plan.StepPlugins, plan.StepBuild} {
 			st[n] = UpdateStep{Name: n, Status: "skipped", Detail: "--cli updates only the CLI"}
 		}
-	} else if err := applyLocalSteps(ctx, w, d, dir, l, p, st); err != nil {
+	} else if err := applyLocalSteps(ctx, w, d, dir, l, p, planReg, st); err != nil {
 		return err
 	}
 	st[plan.StepCLI] = UpdateStep{Name: plan.StepCLI, Status: "skipped", Detail: "no CLI update on offer"}
@@ -229,7 +239,7 @@ func runUpdateYes(cmd *cobra.Command, d updateDeps) error {
 }
 
 // applyLocalSteps runs images, plugins and build, in that order.
-func applyLocalSteps(ctx context.Context, w io.Writer, d updateDeps, dir string, l lock.Lock, p plan.Plan, st map[string]UpdateStep) (err error) {
+func applyLocalSteps(ctx context.Context, w io.Writer, d updateDeps, dir string, l lock.Lock, p plan.Plan, reg *plugin.Registry, st map[string]UpdateStep) (err error) {
 	changed := false
 	skip := func(n, why string) { st[n] = UpdateStep{Name: n, Status: "skipped", Detail: why} }
 	orig, rerr := os.ReadFile(lock.Path(dir))
@@ -253,11 +263,8 @@ func applyLocalSteps(ctx context.Context, w io.Writer, d updateDeps, dir string,
 		skip(plan.StepImages, "no image pin changes")
 	}
 	if plugs := pinsOf(p, plan.KindPlugin); len(plugs) > 0 {
-		for _, pin := range plugs {
-			progress(w, "Updating plugin %s: %s -> %s", pin.Name, pin.From, pin.To)
-			if err := d.updatePlugin(ctx, dir, pin.Name); err != nil {
-				return fmt.Errorf("updating plugin %q (plugins updated before it stay installed): %w", pin.Name, err)
-			}
+		if err := applyPluginPins(ctx, w, d, dir, reg, plugs); err != nil {
+			return err
 		}
 		st[plan.StepPlugins] = UpdateStep{Name: plan.StepPlugins, Status: "done", Detail: fmt.Sprintf("%d plugin(s)", len(plugs))}
 		changed = true

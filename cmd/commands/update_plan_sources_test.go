@@ -35,21 +35,21 @@ func TestUpdatePlanImageVariant(t *testing.T) {
 		t.Fatal("fixture assumption broken: the two variants are the same ref")
 	}
 	oldPgv := pgv.Repository + ":old@" + updOld
-	cand, found := imageCandidate("postgres", oldPgv)
+	cand, found := imageCandidate("postgres", oldPgv, "")
 	if !found || cand.Value != pgv.String() {
 		t.Fatalf("pgvector pin offered %+v, want %s (keying by service name offered %s)", cand, pgv.String(), plain.String())
 	}
-	if cand, _ := imageCandidate("postgres", plain.Repository+":old@"+updOld); cand.Value != plain.String() {
+	if cand, _ := imageCandidate("postgres", plain.Repository+":old@"+updOld, ""); cand.Value != plain.String() {
 		t.Fatalf("plain pin offered %+v", cand)
 	}
-	if cand, _ := imageCandidate("postgres", "docker.io/custom/pg:1@"+updOld); cand.Value != "" || cand.Reason == "" {
+	if cand, _ := imageCandidate("postgres", "docker.io/custom/pg:1@"+updOld, ""); cand.Value != "" || cand.Reason == "" {
 		t.Fatalf("a foreign repository must be unresolvable with a reason: %+v", cand)
 	}
 	deno, _ := compose.LockedRef("deno")
-	if cand, _ := imageCandidate("functions", deno.Repository+":old@"+updOld); cand.Value != deno.String() {
+	if cand, _ := imageCandidate("functions", deno.Repository+":old@"+updOld, ""); cand.Value != deno.String() {
 		t.Fatalf("deno runtime pin offered %+v, want %s", cand, deno.String())
 	}
-	if _, found := imageCandidate("no-such-service", "x:1"); found {
+	if _, found := imageCandidate("no-such-service", "x:1", ""); found {
 		t.Fatal("an unknown key must have no candidate")
 	}
 }

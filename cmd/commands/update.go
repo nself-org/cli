@@ -153,8 +153,12 @@ type updateDeps struct {
 	entitled     plugin.EntitlementFunc
 	writeLock    func(dir string, l lock.Lock) error
 	updatePlugin func(ctx context.Context, dir, slug string) error
-	build        func(ctx context.Context, dir string) error
-	selfUpdate   func(tag string) error
+	// primeRegistry writes the plan's registry into the shared registry cache
+	// before the plugin steps; installedVersion reads the installed manifest.
+	primeRegistry    func(reg *plugin.Registry) error
+	installedVersion func(dir, slug string) (string, error)
+	build            func(ctx context.Context, dir string) error
+	selfUpdate       func(tag string) error
 }
 
 // newUpdateDeps is a variable so tests can install fixtures.
@@ -169,6 +173,12 @@ var newUpdateDeps = func() updateDeps {
 		},
 		registry:  strictRegistry,
 		writeLock: writeLockFile,
+		primeRegistry: func(reg *plugin.Registry) error {
+			return plugin.WriteRegistryCache(plugin.DefaultCacheDir(), reg)
+		},
+		installedVersion: func(_, slug string) (string, error) {
+			return installedPluginVersion(resolvePluginDir(), slug)
+		},
 		updatePlugin: func(ctx context.Context, dir, slug string) error {
 			cfg, err := loadConfig()
 			if err != nil {

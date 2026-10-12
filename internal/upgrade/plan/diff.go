@@ -24,6 +24,8 @@ type Candidate struct {
 	// Reason is set when the source cannot offer the pin (for example it
 	// answered 404); Value is then ignored.
 	Reason string
+	// Note is carried to the Pin of a resolvable image candidate.
+	Note string
 }
 
 // Candidates is everything the sources offered. A key missing from Images or
@@ -65,7 +67,7 @@ func Diff(l lock.Lock, c Candidates) []Pin {
 		case cand.Reason != "":
 			pins = append(pins, Pin{Kind: KindImage, Name: k, From: cur[k], Reason: cand.Reason})
 		case !sameImage(cur[k], cand.Value):
-			pins = append(pins, Pin{Kind: KindImage, Name: k, From: cur[k], To: cand.Value, Resolvable: true})
+			pins = append(pins, Pin{Kind: KindImage, Name: k, From: cur[k], To: cand.Value, Resolvable: true, Note: cand.Note})
 		}
 	}
 	slugs := make([]string, 0, len(l.Plugins))

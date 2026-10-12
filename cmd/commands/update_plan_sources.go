@@ -18,13 +18,13 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/bundle"
 	"github.com/nself-org/cli/internal/bundle/ledger"
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/httptimeout"
@@ -45,8 +45,12 @@ func gatherPlan(ctx context.Context, d updateDeps, l lock.Lock, target string) (
 	default:
 		return plan.Plan{}, sourceFailure("the CLI release lookup", err)
 	}
+	engine, err := configuredCacheEngine()
+	if err != nil {
+		return plan.Plan{}, err
+	}
 	for k, pin := range l.Pins() {
-		if cand, ok := imageCandidate(k, pin); ok {
+		if cand, ok := imageCandidate(k, pin, engine); ok {
 			c.Images[k] = cand
 		}
 	}
@@ -78,11 +82,60 @@ func repoNoTag(ref string) string {
 	return r
 }
 
+// configuredCacheEngine is the REDIS_ENGINE the project sets ("valkey",
+// "redis", or "" when unset), read through the same config loader the build
+// uses so the .env file and the environment count the same way. An invalid
+// value is an error here, as it is in the build.
+func configuredCacheEngine() (string, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return "", fmt.Errorf("reading REDIS_ENGINE for the plan: %w", err)
+	}
+	return strings.ToLower(strings.TrimSpace(cfg.Redis.Engine)), nil
+}
+
+// cacheEngineEntry is the image lock entry the `redis` service moves to: the
+// engine REDIS_ENGINE names, else the mode default (valkey under v1.5, redis
+// before). The lock pin and the compose file do not decide it, because update
+// is the step that moves pins (LIVE D16).
+func cacheEngineEntry(engine string) string {
+	switch engine {
+	case compose.EngineValkey, compose.EngineRedis:
+		return engine
+	}
+	if compat.V15() { // compat.V15(P7-LIVE-10): plan keeps the redis pin -> plan moves it to valkey
+		return compose.EngineValkey
+	}
+	return compose.EngineRedis
+}
+
+// cacheMoveNote says what a redis <-> valkey pin move does to the project.
+func cacheMoveNote(pin, to string) string {
+	from := compose.EngineRedis
+	if strings.Contains(repoNoTag(pin), compose.EngineValkey) {
+		from = compose.EngineValkey
+	}
+	if from == to {
+		return ""
+	}
+	return fmt.Sprintf("cache engine %s -> %s: the cache is recreated on volume %s_data, the old volume %s_data is kept, queued jobs are not migrated", from, to, to, from)
+}
+
 // imageCandidate is what the CLI image lock offers for a lock key. A service
 // that renders several lock entries (postgres: postgres or pgvector;
 // functions: node, deno or python) offers the entry of the pinned repository,
-// and nothing when the pin is another variant. ok is false for an unknown key.
-func imageCandidate(key, pin string) (plan.Candidate, bool) {
+// and nothing when the pin is another variant. The cache service is the
+// exception: its entry is the engine chosen by cacheEngineEntry(engine), and a
+// move between engines carries a Note. ok is false for an unknown key.
+func imageCandidate(key, pin, engine string) (plan.Candidate, bool) {
+	if key == "redis" {
+		entry := cacheEngineEntry(engine)
+		r, ok := compose.LockedRef(entry)
+		if !ok {
+			return plan.Candidate{}, false
+		}
+		return plan.Candidate{Value: r.String(), Note: cacheMoveNote(pin, entry)}, true
+	}
 	var entries []string
 	for _, row := range compose.ImageInputs() {
 		if row.Service == key {
@@ -113,9 +166,9 @@ func imageCandidate(key, pin string) (plan.Candidate, bool) {
 }
 
 // strictRegistry fetches the plugin registry from its primary URL only: no
-// cache, no stale copy and no fallback host for a failed fetch. A non-200 answer is an error that
-// carries the status. The body is parsed by the plugin package through a
-// private one-file cache directory that is removed afterwards.
+// cache, no stale copy and no fallback host for a failed fetch. A non-200
+// answer, or a 200 whose body does not parse, is an error (the second one never
+// goes back to the network). The body is parsed in place by plugin.ParseRegistry.
 func strictRegistry(ctx context.Context) (*plugin.Registry, error) {
 	url := plugin.DefaultRegistryURL
 	if env := os.Getenv("NSELF_PLUGIN_REGISTRY"); env != "" {
@@ -142,15 +195,11 @@ func strictRegistry(ctx context.Context) (*plugin.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	tmp, err := os.MkdirTemp("", "nself-registry-")
+	reg, err := plugin.ParseRegistry(body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("registry %s answered 200 with a body that does not parse: %w", url, err)
 	}
-	defer func() { _ = os.RemoveAll(tmp) }()
-	if err := os.WriteFile(filepath.Join(tmp, "registry.json"), body, 0o600); err != nil {
-		return nil, err
-	}
-	return plugin.FetchRegistry(ctx, url, tmp) // fresh file in tmp: parsed, no network
+	return reg, nil
 }
 
 var sha256RE = regexp.MustCompile(`^[0-9a-f]{64}$`)

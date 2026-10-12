@@ -55,6 +55,9 @@ type Pin struct {
 	// that it does not exist; Reason then says why.
 	Resolvable bool   `json:"resolvable"`
 	Reason     string `json:"reason,omitempty"`
+	// Note is a caution about a resolvable pin (for example a stateful recreate);
+	// it never makes the pin unresolvable.
+	Note string `json:"note,omitempty"`
 }
 
 // Step is one stage of an upgrade.
