@@ -3,19 +3,13 @@ package compose
 // Purpose: the auth and nginx core-service builders for the Docker Compose generator, split out of core_services.go's postgres/hasura builders.
 // Inputs: a *Generator holding the resolved *config.Config.
 // Outputs: ServiceConfig entries for the auth and nginx services.
-// Constraints: split out of core_services.go as a pure move (CLI-R12). The auth image follows EPIC D17 (P7-LIVE-20):
-// the lock entry per compat mode, chosen by authImage.
+// Constraints: split out of core_services.go as a pure move (CLI-R12). The auth image is chosen in auth_image.go (P7-LIVE-20).
 
 import (
 	"fmt"
-	"io"
-	"os"
-	"regexp"
 	"sort"
 	"strings"
-	"sync/atomic"
 
-	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
@@ -98,8 +92,12 @@ func (g *Generator) buildAuthService() (ServiceConfig, error) {
 		}
 	}
 
+	image, err := g.authImage()
+	if err != nil {
+		return ServiceConfig{}, err
+	}
 	return ServiceConfig{
-		Image:         g.authImage(),
+		Image:         image,
 		ContainerName: fmt.Sprintf("%s_auth", cfg.ProjectName),
 		Restart:       "unless-stopped",
 		Networks:      []string{cfg.DockerNetwork},
@@ -127,76 +125,6 @@ func (g *Generator) buildAuthService() (ServiceConfig, error) {
 			},
 		},
 	}, nil
-}
-
-// AuthEncryptionKeyEnv (32 bytes, hex; authKeyRE) is required by nhost/auth 0.43.0+; it encrypts the TOTP secrets.
-const AuthEncryptionKeyEnv = "AUTH_ENCRYPTION_KEY"
-
-var authKeyRE = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
-
-// AuthEntry names the image lock entry the auth service runs by default:
-// auth-v14 (nhost/auth:0.36.0) in v1.4; in v1.5 auth (the current release) once
-// the env cascade (passthrough, config.Passthrough) sets a valid
-// AUTH_ENCRYPTION_KEY, which that release requires, else auth-v14 with
-// keyMissing true (P7-LIVE-20 lead ruling, LIVE Invalidations 2026-10-11).
-func AuthEntry(passthrough map[string]string) (entry string, keyMissing bool) {
-	// compat.V15(P7-LIVE-20): auth runs nhost/auth:0.36.0 (auth-v14) -> the current nhost/auth release (auth) when AUTH_ENCRYPTION_KEY is set
-	if !compat.V15() {
-		return "auth-v14", false
-	}
-	if authKeyRE.MatchString(strings.TrimSpace(passthrough[AuthEncryptionKeyEnv])) {
-		return "auth", false
-	}
-	return "auth-v14", true
-}
-
-// authImage renders the auth image. AUTH_VERSION blank or 0.36.0 (the config
-// default that nself init writes into .env) renders the AuthEntry entry; the
-// current release's version renders that entry in any mode when the key is set
-// (else auth-v14 and the notice). Neither is an
-// explicit override (Ref.IsDefaultVersion), so a project lock pin wins over both;
-// a pin in the pre-rename nhost/hasura-auth spelling is returned as is (same
-// digest; ResolveImage would drop it as another repository). Any other value is
-// an explicit nhost/auth tag and outranks the pin.
-func (g *Generator) authImage() string {
-	version := strings.TrimSpace(g.cfg.Auth.Version)
-	entry, keyMissing := AuthEntry(g.cfg.Passthrough)
-	v14, _ := LockedRef("auth-v14")
-	cur, _ := LockedRef("auth")
-	switch {
-	case v14.IsDefaultVersion(version):
-		version = ""
-	case cur.IsDefaultVersion(version): // the current release, but never without its key
-		version, entry, keyMissing = "", "auth", false
-		if !authKeyRE.MatchString(strings.TrimSpace(g.cfg.Passthrough[AuthEncryptionKeyEnv])) {
-			entry, keyMissing = "auth-v14", true
-		}
-	}
-	if version == "" {
-		pin := ProjectPins()["auth"]
-		if pin != "" && repoOf(pin) == "nhost/hasura-auth" {
-			return pin
-		}
-		if pin == "" && keyMissing && entry == "auth-v14" {
-			noticeAuthKey()
-		}
-	}
-	if entry == "auth" {
-		return ResolveImage("auth", ImageRef("auth", version))
-	}
-	return ResolveImage("auth", ImageRef("auth-v14", version))
-}
-
-var ( // authNoticeW receives the key notice, once per process (authNoticed)
-	authNoticeW io.Writer = os.Stderr
-	authNoticed atomic.Bool
-)
-
-// noticeAuthKey says once why v1.5 still runs auth 0.36.0; never the key itself.
-func noticeAuthKey() {
-	if !authNoticed.Swap(true) && authNoticeW != nil {
-		_, _ = fmt.Fprintf(authNoticeW, "notice: auth stays on nhost/auth 0.36.0 until %s is set (64 hex characters); the current release requires it\n", AuthEncryptionKeyEnv)
-	}
 }
 
 // buildNginxService returns the Nginx reverse proxy service configuration.

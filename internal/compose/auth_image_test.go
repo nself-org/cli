@@ -161,8 +161,12 @@ func TestAuthEntryExported(t *testing.T) {
 		if compat.V15() {
 			want = "auth"
 		}
-		if got, missing := AuthEntry(map[string]string{AuthEncryptionKeyEnv: " " + fakeAuthKey + " "}); got != want || missing {
+		if got, missing := AuthEntry(map[string]string{AuthEncryptionKeyEnv: fakeAuthKey}); got != want || missing {
 			t.Errorf("AuthEntry(with key) = %q, %t; want %q, false", got, missing, want)
+		}
+		// The key is forwarded verbatim, so a padded one is not valid.
+		if got, _ := AuthEntry(map[string]string{AuthEncryptionKeyEnv: " " + fakeAuthKey}); got != "auth-v14" {
+			t.Errorf("AuthEntry(padded key) = %q, want auth-v14", got)
 		}
 		if got, missing := AuthEntry(nil); got != "auth-v14" || missing != compat.V15() {
 			t.Errorf("AuthEntry(nil) = %q, %t; want auth-v14, %t", got, missing, compat.V15())
@@ -186,9 +190,43 @@ func TestAuthCatalogShowsModeEntry(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		setMode(t, PinningLock)
 		v14, _ := LockedRef("auth-v14")
+		n := 0
 		for _, e := range ServiceCatalog() {
-			if e.Name == "auth" && e.DefaultImage != v14.String() {
+			if e.Name != "auth" {
+				continue
+			}
+			n++
+			if e.DefaultImage != v14.String() {
 				t.Errorf("catalog auth image = %q, want %q", e.DefaultImage, v14.String())
+			}
+		}
+		if n != 1 {
+			t.Errorf("catalog has %d auth entries, want 1", n)
+		}
+	})
+}
+
+func TestAuthCurrentReleaseNeedsKey(t *testing.T) {
+	cur, _ := LockedRef("auth")
+	compattest.Both(t, func(t *testing.T) {
+		for _, mode := range []string{PinningLock, PinningLegacy} {
+			setMode(t, mode)
+			captureAuthNotice(t)
+			defer SetProjectPins(map[string]string{"auth": cur.String()})() // a pin nself update moved
+			for _, key := range []string{"", "not-hex", " " + fakeAuthKey} {
+				cfg := minimalConfig()
+				cfg.Auth.Version = "0.36.0"
+				cfg.Passthrough = map[string]string{AuthEncryptionKeyEnv: key}
+				_, err := NewGenerator(cfg).buildAuthService()
+				if err == nil || !strings.Contains(err.Error(), AuthEncryptionKeyEnv) {
+					t.Errorf("%s key=%q: err = %v, want the missing-key error", mode, key, err)
+				}
+				if err != nil && strings.Contains(err.Error(), fakeAuthKey) {
+					t.Error("the error must never echo a key")
+				}
+			}
+			if got := authImageFor(t, "0.36.0", fakeAuthKey); got != cur.String() {
+				t.Errorf("%s with key: auth image = %q, want the pin %q", mode, got, cur.String())
 			}
 		}
 	})

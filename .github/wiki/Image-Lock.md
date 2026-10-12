@@ -61,8 +61,9 @@ Upstream renamed `nhost/hasura-auth` to `nhost/auth`; the old name stops at 0.42
 |---|---|
 | v1.4 | `auth-v14`: `docker.io/nhost/auth:0.36.0@sha256:...` in lock mode, `nhost/auth:0.36.0` in legacy mode |
 | v1.5, no `AUTH_ENCRYPTION_KEY` | `auth-v14`; `nself build` prints one notice |
-| v1.5, `AUTH_ENCRYPTION_KEY` set (64 hex characters) | `auth` (0.52.0) |
-| `AUTH_VERSION=0.52.0` | `auth` with the key; without it `auth-v14` and the notice |
+| v1.5, `AUTH_ENCRYPTION_KEY` set (64 hex characters) before the first build, so no auth pin yet | `auth` (0.52.0) |
+| the lock pins 0.52.0 but the key is missing or malformed | `nself build` stops with an error naming `AUTH_ENCRYPTION_KEY` |
+| `AUTH_VERSION=0.52.0`, no lock pin | `auth` with the key; without it `auth-v14` and the notice |
 | the project lock pins auth 0.36.0 (either repository name) | the pin, in both modes, until `nself update` moves it |
 | `AUTH_VERSION` set to another tag | that tag of `nhost/auth`, unpinned, in any mode |
 
@@ -74,19 +75,20 @@ nhost/auth 0.43.0 and later refuse to start without `AUTH_ENCRYPTION_KEY` (32 by
 
 1. Take a verified backup: `nself backup create`, then `nself backup verify <id> --restore-test`. Copy `nself.lock.yaml` aside too: it pins auth 0.36.0.
 2. Add the key to `.env.secrets`: `AUTH_ENCRYPTION_KEY=<output of openssl rand -hex 32>`.
-3. Move the auth pin: `nself update` in v1.5. A v1.4 project sets `AUTH_VERSION=0.52.0` instead (it needs the key from step 2).
+3. Move to the new release. A project without an auth lock pin (v1.4 without `nself.lock.yaml`) sets `AUTH_VERSION=0.52.0`. A pinned project moves with `nself update` once it moves pins (P7-LIVE-10); until then it stays on 0.36.0.
 4. `nself build`, then `nself start`. Auth migrates its schema and encrypts the TOTP secrets on that first start.
 
-Signed-in users stay signed in: a refresh token issued by 0.36.0 is accepted once by 0.52.0, which returns a new refresh token and rejects the old one from then on (rotation, since 0.38.0). Clients must store the new token; the Nhost SDKs do.
+Signed-in users stay signed in: a refresh token issued by 0.36.0 is accepted once by 0.52.0, which returns a new refresh token and rejects the old one from then on (refresh-token rotation, introduced upstream in 0.38.0). Clients must store the new token; the Nhost SDKs do.
 
 ### Roll back
 
 Auth migrates its schema one way, so rolling back means restoring the backup from step 1:
 
-1. `nself db reset --yes` recreates the database. A plain restore over the migrated database fails (E207: `pg_restore --clean` cannot drop `auth.users` while objects the newer release added depend on it; debt D-0663).
-2. `nself backup restore <id> --only pg --yes`.
-3. Put the saved `nself.lock.yaml` back (a v1.4 project removes its `AUTH_VERSION=0.52.0` line instead).
-4. `nself build`, then `nself start`.
+1. `nself stop auth hasura`, so neither reconnects during the restore.
+2. `nself db reset --yes` recreates the database. A plain restore over the migrated database fails (E207: `pg_restore --clean` cannot drop `auth.users` while objects the newer release added depend on it; debt D-0663).
+3. `nself backup restore <id> --only pg --yes`.
+4. Put the saved `nself.lock.yaml` back (a project without a lock removes its `AUTH_VERSION=0.52.0` line instead).
+5. `nself build`, then `nself start`.
 
 Pinning back without the restore is unsupported: 0.36.0 starts on the migrated schema, but every TOTP sign-in fails because the secrets are now encrypted. `scripts/ci/auth-smoke.sh` proves the upgrade and both rollback paths on Linux with users, sessions, a refresh token and a TOTP user (`NSELF_V15=1 bash scripts/ci/auth-smoke.sh`; it needs Docker, Go, curl, python3 and free ports 80, 443, 4000, 5432 and 8080).
 
