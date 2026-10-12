@@ -6,7 +6,10 @@ package build
 //          .nself/compose.env at container-start time.
 
 import (
+	"bytes"
+	"fmt"
 	"github.com/nself-org/cli/internal/compat/compattest"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -16,6 +19,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
+	"gopkg.in/yaml.v3"
 )
 
 // secretTestConfig returns a config with distinctive secret values so literal
@@ -384,6 +388,9 @@ func TestWriteComposeEnv_URLEncDollarIsQuoted(t *testing.T) {
 // answers WRONGPASS to the encoded form) must never be fed a URL built from
 // the encoded variable. Shipped compose files and fixtures may run redis-cli
 // only with the raw variable via -a, never with a URL or a _URLENC reference.
+// The check is line based AND structural: a YAML list or a multi-line scalar
+// that spreads redis-cli and -u over several lines is joined before the test
+// (redisCLIURLViolations). A shipped file that does not parse as YAML fails.
 // Remaining consumers of encoded URLs are decoding libraries: postgres-exporter
 // (DATA_SOURCE_NAME, Go net/url) and the plugin services' DATABASE_URL and
 // REDIS_URL.
@@ -404,13 +411,134 @@ func TestURLEncConsumersAreDecoders(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for i, line := range strings.Split(string(data), "\n") {
-			if !strings.Contains(line, "redis-cli") {
-				continue
-			}
-			if strings.Contains(line, "_URLENC") || strings.Contains(line, "REDIS_URL") || strings.Contains(line, "redis://") || strings.Contains(line, " -u ") {
-				t.Errorf("%s:%d: redis-cli must use -a with the raw password variable, not a URL (it does not percent-decode)", filepath.Base(f), i+1)
+		for _, v := range redisCLIURLViolations(filepath.Base(f), data) {
+			t.Error(v)
+		}
+	}
+}
+
+const redisCLIURLMsg = "redis-cli must use -a with the raw password variable, not a URL (it does not percent-decode)"
+
+// redisCLIForbidden reports whether joined redis-cli text feeds it a URL or an
+// encoded variable: _URLENC, REDIS_URL, redis://, or a standalone -u / --uri.
+func redisCLIForbidden(joined string) bool {
+	if strings.Contains(joined, "_URLENC") || strings.Contains(joined, "REDIS_URL") || strings.Contains(joined, "redis://") {
+		return true
+	}
+	for _, tok := range strings.Fields(joined) {
+		if tok == "-u" || tok == "--uri" || strings.HasPrefix(tok, "--uri=") {
+			return true
+		}
+	}
+	return false
+}
+
+// redisCLILineViolations is the original per-line check. It cannot see a YAML
+// list that puts redis-cli and -u on different lines.
+func redisCLILineViolations(name string, data []byte) []string {
+	var out []string
+	for i, line := range strings.Split(string(data), "\n") {
+		if !strings.Contains(line, "redis-cli") {
+			continue
+		}
+		if strings.Contains(line, "_URLENC") || strings.Contains(line, "REDIS_URL") || strings.Contains(line, "redis://") || strings.Contains(line, " -u ") {
+			out = append(out, fmt.Sprintf("%s:%d: %s", name, i+1, redisCLIURLMsg))
+		}
+	}
+	return out
+}
+
+// redisCLIURLViolations runs the line check and a YAML walk. The walk joins
+// the scalar items of a sequence that mentions redis-cli, and normalises the
+// whitespace of a scalar (including | and > blocks) that mentions it, then
+// applies redisCLIForbidden. Results are "name:line: message", de-duplicated.
+func redisCLIURLViolations(name string, data []byte) []string {
+	out := redisCLILineViolations(name, data)
+	seen := map[string]bool{}
+	for _, v := range out {
+		seen[v] = true
+	}
+	add := func(line int) {
+		v := fmt.Sprintf("%s:%d: %s", name, line, redisCLIURLMsg)
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	for {
+		var doc yaml.Node
+		err := dec.Decode(&doc)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return append(out, fmt.Sprintf("%s: not valid YAML, cannot check redis-cli use: %v", name, err))
+		}
+		walkRedisCLI(&doc, add)
+	}
+	return out
+}
+
+// walkRedisCLI visits every node of n and calls add(line) for each sequence or
+// scalar that runs redis-cli with a forbidden URL form.
+func walkRedisCLI(n *yaml.Node, add func(line int)) {
+	switch n.Kind {
+	case yaml.SequenceNode:
+		var items []string
+		mentions := false
+		for _, c := range n.Content {
+			if c.Kind == yaml.ScalarNode {
+				items = append(items, c.Value)
+				if strings.Contains(c.Value, "redis-cli") {
+					mentions = true
+				}
 			}
 		}
+		if mentions && redisCLIForbidden(strings.Join(items, " ")) {
+			add(n.Line)
+		}
+	case yaml.ScalarNode:
+		if strings.Contains(n.Value, "redis-cli") && redisCLIForbidden(strings.Join(strings.Fields(n.Value), " ")) {
+			add(n.Line)
+		}
+	}
+	for _, c := range n.Content {
+		walkRedisCLI(c, add)
+	}
+}
+
+// TestRedisCLIURLGuardParsesYAMLLists proves the guard sees redis-cli calls
+// that a per-line scan misses.
+func TestRedisCLIURLGuardParsesYAMLLists(t *testing.T) {
+	cases := []struct {
+		name     string
+		yaml     string
+		flagged  bool
+		lineOnly bool // would the old line-only check flag it?
+	}{
+		{"flow list with -u and a URL", "test: [\"CMD\", \"redis-cli\", \"-u\", \"redis://r:6379\", \"ping\"]\n", true, true},
+		{"block list on separate lines", "test:\n  - redis-cli\n  - -u\n  - ${REDIS_URL}\n  - ping\n", true, false},
+		{"block list, -u and a plain host", "test:\n  - redis-cli\n  - -u\n  - cache-host\n", true, false},
+		{"literal block, -u on the next line", "command: |\n  redis-cli\n  -u ${REDIS_PASSWORD_URLENC}\n", true, false},
+		{"folded block, -u on the next line", "command: >\n  redis-cli\n  -u cache-host\n", true, false},
+		{"second document in the stream", "a: 1\n---\ntest:\n  - redis-cli\n  - --uri\n  - x\n", true, false},
+		{"clean CMD-SHELL with -a", "test: [\"CMD-SHELL\", \"redis-cli -a \\\"$$REDIS_PASSWORD\\\" ping\"]\n", false, false},
+		{"REDISCLI_AUTH environment form", "environment:\n  - REDISCLI_AUTH=${REDIS_PASSWORD}\ntest: [\"CMD\", \"redis-cli\", \"ping\"]\n", false, false},
+		{"URL on a service that is not redis-cli", "environment:\n  - REDIS_URL=redis://:${REDIS_PASSWORD_URLENC}@redis:6379\n", false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := redisCLIURLViolations("synthetic.yml", []byte(c.yaml))
+			if (len(got) > 0) != c.flagged {
+				t.Fatalf("flagged=%v, want %v: %v", len(got) > 0, c.flagged, got)
+			}
+			if lo := redisCLILineViolations("synthetic.yml", []byte(c.yaml)); (len(lo) > 0) != c.lineOnly {
+				t.Fatalf("line-only check flagged=%v, want %v: %v", len(lo) > 0, c.lineOnly, lo)
+			}
+		})
+	}
+	if got := redisCLIURLViolations("bad.yml", []byte("a: [unclosed\n")); len(got) != 1 || !strings.Contains(got[0], "not valid YAML") {
+		t.Fatalf("a YAML parse error must be reported, got %v", got)
 	}
 }
