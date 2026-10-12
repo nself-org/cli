@@ -7,8 +7,9 @@ package bundle
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
+
+	"github.com/nself-org/cli/internal/plugin"
 )
 
 // ---------------------------------------------------------------------------
@@ -38,7 +39,7 @@ func ResolveMaxVersion(pluginName string, versions []string) (string, error) {
 		}
 	}
 	// Validate the initial candidate too (catches bad first entry).
-	if _, err := parseSemver(versions[0]); err != nil {
+	if err := validateSemver(versions[0]); err != nil {
 		return "", fmt.Errorf("plugin %q: invalid semver %q: %w", pluginName, versions[0], err)
 	}
 	return max, nil
@@ -88,88 +89,15 @@ func hasConflict(versions []string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// Minimal semver helpers (no external dependency)
+// Semver helpers (one implementation: plugin.CompareSemver, D-0191)
 // ---------------------------------------------------------------------------
 
-// semver holds the parsed components of a version string.
-type semver struct {
-	major, minor, patch int
-	pre                 string // pre-release label (e.g. "alpha.1", "beta.2")
-	raw                 string // original string
-}
+// compareSemver returns the sign (-1, 0, 1) of a versus b, or an error when
+// either is not a valid version. It delegates to plugin.CompareSemver.
+func compareSemver(a, b string) (int, error) { return plugin.CompareSemver(a, b) }
 
-// parseSemver parses a semver string with an optional leading "v".
-// Supports MAJOR.MINOR.PATCH, MAJOR.MINOR, and MAJOR forms.
-// Pre-release labels after "-" are preserved for string comparison only;
-// a version with a pre-release label sorts lower than the same base version
-// without one (standard semver rule).
-func parseSemver(s string) (semver, error) {
-	raw := s
-	s = strings.TrimSpace(s)
-	s = strings.TrimPrefix(s, "v")
-	if s == "" {
-		return semver{}, fmt.Errorf("empty version string")
-	}
-
-	// Split off pre-release.
-	pre := ""
-	if idx := strings.IndexByte(s, '-'); idx >= 0 {
-		pre = s[idx+1:]
-		s = s[:idx]
-	}
-
-	parts := strings.SplitN(s, ".", 3)
-	var nums [3]int
-	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 {
-			return semver{}, fmt.Errorf("non-numeric component %q in %q", p, raw)
-		}
-		nums[i] = n
-	}
-	return semver{
-		major: nums[0],
-		minor: nums[1],
-		patch: nums[2],
-		pre:   pre,
-		raw:   raw,
-	}, nil
-}
-
-// compareSemver returns:
-//
-//	> 0 if a > b
-//	  0 if a == b
-//	< 0 if a < b
-func compareSemver(a, b string) (int, error) {
-	pa, err := parseSemver(a)
-	if err != nil {
-		return 0, err
-	}
-	pb, err := parseSemver(b)
-	if err != nil {
-		return 0, err
-	}
-
-	if d := pa.major - pb.major; d != 0 {
-		return d, nil
-	}
-	if d := pa.minor - pb.minor; d != 0 {
-		return d, nil
-	}
-	if d := pa.patch - pb.patch; d != 0 {
-		return d, nil
-	}
-
-	// Pre-release: no pre-release > pre-release (standard semver rule).
-	switch {
-	case pa.pre == "" && pb.pre == "":
-		return 0, nil
-	case pa.pre == "" && pb.pre != "":
-		return 1, nil
-	case pa.pre != "" && pb.pre == "":
-		return -1, nil
-	default:
-		return strings.Compare(pa.pre, pb.pre), nil
-	}
+// validateSemver returns an error when s is not a valid version string.
+func validateSemver(s string) error {
+	_, err := plugin.CompareSemver(s, s)
+	return err
 }
