@@ -213,6 +213,8 @@ func runUpdateYes(cmd *cobra.Command, d updateDeps) error {
 	for _, pin := range p.Pins {
 		if !pin.Resolvable {
 			progress(w, "Skipping %s %s: %s", pin.Kind, pin.Name, pin.Reason)
+		} else if pin.Note != "" && pin.From != pin.To {
+			progress(w, "Note on %s %s: %s", pin.Kind, pin.Name, pin.Note)
 		}
 	}
 	st := map[string]UpdateStep{}
