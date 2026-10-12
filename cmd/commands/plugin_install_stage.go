@@ -10,8 +10,13 @@ package commands
 // plans from the plugin dir, so the plugin has to be on disk for the plan. The
 // stage instead records which plugin directories exist before the install and
 // removes only the ones that appeared during it (dependencies included).
-// Plugins that were already installed are never touched. v1.4 never reconciles
-// here, so it never undoes anything.
+// Plugins that were already installed are never touched, so an in-place
+// upgrade of one is not undone. Any reconcile error undoes, not only the
+// refusals (E403/E480/E481): the plugin is kept only once the plan is confirmed
+// and the write succeeded. The snapshot is not taken under the install lock, so
+// a second process installing into the same plugin dir during a refused run
+// would have its new plugin undone too. v1.4 never reconciles here, so it
+// never undoes anything.
 
 import (
 	"context"
@@ -74,9 +79,9 @@ func (s *installStage) created() []string {
 }
 
 // reconcile runs reconcileFn. When it fails, every plugin this run created is
-// removed again (files, command binary, schema) and dropped from the bundle
-// ledger, so a refused build does not leave a half-added plugin behind. The
-// reconcile error is always returned; undo failures are joined to it.
+// removed again (files and command binary; never the schema) and dropped from
+// the bundle ledger, so a refused build does not leave a half-added plugin
+// behind. The reconcile error is always returned; undo failures are joined.
 func (s *installStage) reconcile(ctx context.Context, cfg *config.Config, w io.Writer, reconcileFn func() error) error {
 	rerr := reconcileFn()
 	if rerr == nil {

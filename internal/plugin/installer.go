@@ -93,11 +93,14 @@ func Install(ctx context.Context, cfg *config.Config, name string, pluginDir str
 }
 
 // UndoInstall reverses a fresh install that the caller's reconcile refused: it
-// unpublishes the plugin's command binary, drops its schema when it owns
-// tables, and deletes its directory. Unlike Remove it does not stop
-// containers, check reverse dependencies, touch a .prev backup, or print the
-// build hint. It takes the install lock, so it must not run inside Install.
-func UndoInstall(ctx context.Context, cfg *config.Config, name, pluginDir string) error {
+// unpublishes the plugin's command binary and deletes its directory. The
+// schema is never dropped: an install reuses a schema kept by an earlier
+// `remove --keep-data` or bundle remove, so dropping here could destroy kept
+// data; a schema this install created stays empty and `nself remove` drops
+// it. Unlike Remove it does not stop containers (the refused reconcile never
+// started any), check reverse dependencies, touch a .prev backup, or print
+// the build hint. It takes the install lock, so it must not run inside Install.
+func UndoInstall(_ context.Context, _ *config.Config, name, pluginDir string) error {
 	if err := ValidateName(name); err != nil {
 		return err
 	}
@@ -108,19 +111,12 @@ func UndoInstall(ctx context.Context, cfg *config.Config, name, pluginDir string
 	defer releaseInstallLock(lock, pluginDir)
 
 	destDir := filepath.Join(pluginDir, name)
-	// Nothing on disk means nothing to undo: without a manifest the schema
-	// check below would assume tables and drop a schema blind.
+	// Nothing on disk means nothing to undo.
 	if _, err := os.Stat(destDir); errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	manifest := readPluginManifest(destDir)
-	if err := unlinkCLIBinary(name, manifest); err != nil {
+	if err := unlinkCLIBinary(name, readPluginManifest(destDir)); err != nil {
 		return fmt.Errorf("unpublishing plugin %q command: %w", name, err)
-	}
-	if pluginOwnsTables(manifest) {
-		if err := dropPluginSchema(ctx, cfg, name); err != nil {
-			return fmt.Errorf("dropping schema for plugin %q: %w", name, err)
-		}
 	}
 	if err := os.RemoveAll(destDir); err != nil {
 		return fmt.Errorf("removing plugin directory %q: %w", destDir, err)

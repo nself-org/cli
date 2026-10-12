@@ -50,3 +50,31 @@ func TestUndoInstallRefusesInvalidName(t *testing.T) {
 		t.Fatalf("an unrelated dir was touched: %v", err)
 	}
 }
+
+// TestUndoInstallKeepsSchema: a plugin that owns tables is undone without
+// touching Postgres. The install may have reused a schema kept by an earlier
+// remove --keep-data, so undo must never drop it (D-0433 review). With the
+// drop in place this fails: there is no database to reach here.
+func TestUndoInstallKeepsSchema(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("USERPROFILE", fakeHome)
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "chatty")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"name":"chatty","version":"1.0.0","tables":["np_chatty_messages"]}`
+	if err := os.WriteFile(filepath.Join(dest, "plugin.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !pluginOwnsTables(readPluginManifest(dest)) {
+		t.Fatal("fixture must own tables for this test to mean anything")
+	}
+	if err := UndoInstall(context.Background(), &config.Config{}, "chatty", dir); err != nil {
+		t.Fatalf("UndoInstall reached for the schema: %v", err)
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Fatalf("plugin dir still present: %v", err)
+	}
+}
