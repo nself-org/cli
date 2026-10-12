@@ -117,7 +117,7 @@ services:
             - /tmp
             - /run
     auth:
-        image: nhost/hasura-auth:0.36.0
+        image: nhost/auth:0.36.0
         container_name: storage-fixture_auth
         restart: unless-stopped
         networks:

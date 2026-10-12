@@ -38,6 +38,9 @@ var imageInputs = []ImageInput{
 	{Service: "postgres", Entry: "pgvector", Vars: []string{"POSTGRES_IMAGE", "POSTGRES_VERSION"}},
 	{Service: "hasura", Entry: "hasura", Vars: []string{"HASURA_VERSION"}},
 	{Service: "auth", Entry: "auth", Vars: []string{"AUTH_VERSION"}},
+	// auth-v14: nhost/auth 0.36.0, what v1.4 runs and v1.5 until AUTH_ENCRYPTION_KEY is
+	// set (core_services_auth_nginx.go, P7-LIVE-20); the same variable picks the tag.
+	{Service: "auth", Entry: "auth-v14", Vars: []string{"AUTH_VERSION"}},
 	// nginx renders ImageRef("nginx", ""): NGINX_VERSION (written by nself init) is
 	// parsed into the config but never reaches the image.
 	{Service: "nginx", Entry: "nginx"},
@@ -75,9 +78,11 @@ func ImageInputs() []ImageInput {
 // apart by that repository; when none matches (a POSTGRES_IMAGE of another
 // repository) the service's first row answers, so a pin of another repository
 // is still judged by the variables the service reads. A service without rows
-// (not rendered through ResolveImage) has no override variable at all.
+// (not rendered through ResolveImage) has no override variable at all. Rows whose
+// entries share a repository (auth, auth-v14) are told apart by the entry's own
+// default reference first.
 func inputFor(service, image string) ImageInput {
-	var first *ImageInput
+	var first, sameRepo *ImageInput
 	for i := range imageInputs {
 		in := &imageInputs[i]
 		if in.Service != service {
@@ -86,9 +91,16 @@ func inputFor(service, image string) ImageInput {
 		if first == nil {
 			first = in
 		}
-		if r, ok := LockedRef(in.Entry); ok && repoOf(r.Repository) == repoOf(image) {
+		r, ok := LockedRef(in.Entry)
+		if ok && (CanonicalRef(image) == CanonicalRef(r.String()) || CanonicalRef(image) == CanonicalRef(r.LegacyRef)) {
 			return *in
 		}
+		if ok && sameRepo == nil && repoOf(r.Repository) == repoOf(image) {
+			sameRepo = in
+		}
+	}
+	if sameRepo != nil {
+		return *sameRepo
 	}
 	if first == nil {
 		return ImageInput{Service: service}

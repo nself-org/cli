@@ -3,7 +3,7 @@ package compose
 // Purpose: the auth and nginx core-service builders for the Docker Compose generator, split out of core_services.go's postgres/hasura builders.
 // Inputs: a *Generator holding the resolved *config.Config.
 // Outputs: ServiceConfig entries for the auth and nginx services.
-// Constraints: split out of core_services.go as a pure move (CLI-R12); no behavior change.
+// Constraints: split out of core_services.go as a pure move (CLI-R12). The auth image is chosen in auth_image.go (P7-LIVE-20).
 
 import (
 	"fmt"
@@ -92,8 +92,12 @@ func (g *Generator) buildAuthService() (ServiceConfig, error) {
 		}
 	}
 
+	image, err := g.authImage()
+	if err != nil {
+		return ServiceConfig{}, err
+	}
 	return ServiceConfig{
-		Image:         ResolveImage("auth", ImageRef("auth", cfg.Auth.Version)),
+		Image:         image,
 		ContainerName: fmt.Sprintf("%s_auth", cfg.ProjectName),
 		Restart:       "unless-stopped",
 		Networks:      []string{cfg.DockerNetwork},
