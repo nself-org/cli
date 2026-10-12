@@ -5,6 +5,7 @@
     "dry_run": true,
     "supported": true,
     "applied": false,
+    "failed": [],
     "steps": [
       {
         "name": "Allow SSH (22)",

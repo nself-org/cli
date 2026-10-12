@@ -100,13 +100,13 @@ func runSecuritySetup(cmd *cobra.Command, args []string) error {
 	ui.CommandHeader("nself security setup", "Baseline server hardening")
 
 	if runtime.GOOS != "linux" {
-		setData(cmd, newSecuritySetupData(!apply, false, false, nil))
+		setData(cmd, newSecuritySetupData(!apply, false, nil, nil))
 		fmt.Println("Server hardening is only supported on Linux hosts.")
 		return nil
 	}
 
 	steps := plannedHardeningSteps()
-	setData(cmd, newSecuritySetupData(!apply, true, false, steps))
+	setData(cmd, newSecuritySetupData(!apply, true, nil, steps))
 
 	if !apply {
 		fmt.Println("Dry-run — no changes will be made. Pass --apply to execute.")
@@ -122,6 +122,7 @@ func runSecuritySetup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("'nself security setup --apply' must be run as root (try sudo)")
 	}
 
+	var failed []string
 	for _, s := range steps {
 		fmt.Printf("→ %s\n", s.Name)
 		c := exec.Command(s.Cmd[0], s.Cmd[1:]...)
@@ -129,9 +130,10 @@ func runSecuritySetup(cmd *cobra.Command, args []string) error {
 		c.Stderr = os.Stderr
 		if err := c.Run(); err != nil {
 			fmt.Printf("  step failed: %v (continuing)\n", err)
+			failed = append(failed, s.Name)
 		}
 	}
-	setData(cmd, newSecuritySetupData(false, true, true, steps))
+	setData(cmd, newSecuritySetupData(false, true, failed, steps))
 	fmt.Println("\nHardening complete. Run 'nself security audit' to verify.")
 	return nil
 }

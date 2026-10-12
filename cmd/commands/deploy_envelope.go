@@ -165,9 +165,11 @@ func newSecurityFindings(fs []finding) []securityFinding {
 }
 
 // newSecuritySetupData builds the `deploy security setup` document from the
-// planned hardening steps (nil off Linux).
-func newSecuritySetupData(dryRun, supported, applied bool, steps []hardeningStep) securitySetupData {
-	d := securitySetupData{DryRun: dryRun, Supported: supported, Applied: applied, Steps: []securitySetupStep{}}
+// planned hardening steps (nil off Linux). failed names the steps that ran and
+// failed; the run applied everything only when none did and it was not a dry run.
+func newSecuritySetupData(dryRun, supported bool, failed []string, steps []hardeningStep) securitySetupData {
+	d := securitySetupData{DryRun: dryRun, Supported: supported, Failed: append([]string{}, failed...), Steps: []securitySetupStep{}}
+	d.Applied = supported && !dryRun && len(failed) == 0
 	for _, s := range steps {
 		d.Steps = append(d.Steps, securitySetupStep{Name: s.Name, Command: append([]string{}, s.Cmd...)})
 	}

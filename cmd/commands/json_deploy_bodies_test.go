@@ -19,6 +19,7 @@ import (
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/controlplane"
 	"github.com/nself-org/cli/internal/deploy/bluegreen"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -232,6 +233,12 @@ func TestDeployStatusCheckAccessEnvironmentsDocuments(t *testing.T) {
 	if err != nil || !strings.HasPrefix(bare, "{\n  \"environments\"") {
 		t.Fatalf("plain run changed: %q %v", bare, err)
 	}
+	// NSELF_JSON_LEGACY=1 keeps the bare document with --json too.
+	t.Setenv(output.LegacyEnvVar, "1")
+	out, err = jsonV15(t, deployEnvironmentsCmd, map[string]string{"json": "true"}, func() error { return runDeployEnvironments(deployEnvironmentsCmd, nil) })
+	if err != nil || !strings.HasPrefix(out, "{\n  \"environments\"") {
+		t.Fatalf("legacy form is the bare document: %q %v", out, err)
+	}
 }
 
 // TestSecurityDocuments: the audit and status checks run on this machine; the
@@ -246,11 +253,18 @@ func TestSecurityDocuments(t *testing.T) {
 	if err := json.Unmarshal(dataRaw(t, jsonOnly(out), "doctor security audit"), &audit); err != nil || len(audit.Findings) != len(runChecks()) || audit.Passed+audit.Failed != len(audit.Findings) {
 		t.Fatalf("audit data %+v: %v", audit, err)
 	}
-	if got := newSecuritySetupData(true, true, false, plannedHardeningSteps()); !got.DryRun || len(got.Steps) != len(plannedHardeningSteps()) || got.Steps[0].Command[0] == "" {
+	if got := newSecuritySetupData(true, true, nil, plannedHardeningSteps()); !got.DryRun || len(got.Steps) != len(plannedHardeningSteps()) || got.Steps[0].Command[0] == "" {
 		t.Fatalf("setup data %+v", got)
 	}
-	if got := newSecuritySetupData(false, false, false, nil); got.Steps == nil || got.Supported {
+	if got := newSecuritySetupData(false, false, nil, nil); got.Steps == nil || got.Supported || got.Applied {
 		t.Fatalf("unsupported setup data %+v", got)
+	}
+	// An applied run with a failed step is not "applied": the failure is named.
+	if got := newSecuritySetupData(false, true, []string{"Enable ufw"}, plannedHardeningSteps()); got.Applied || len(got.Failed) != 1 {
+		t.Fatalf("partial setup data %+v", got)
+	}
+	if got := newSecuritySetupData(false, true, nil, plannedHardeningSteps()); !got.Applied || got.Failed == nil {
+		t.Fatalf("full setup data %+v", got)
 	}
 }
 
@@ -263,5 +277,27 @@ func TestUpdateUpgradeData(t *testing.T) {
 		if got := newUpdateUpgradeData(tc.check, tc.rollback, tc.url, "").Action; got != tc.want {
 			t.Errorf("%+v: action %q, want %q", tc, got, tc.want)
 		}
+	}
+}
+
+// TestAfterDocumentIsSilentOnlyInEnvelopeMode: a failure after the run document
+// was printed keeps its exit status but prints no error envelope on stdout.
+func TestAfterDocumentIsSilentOnlyInEnvelopeMode(t *testing.T) {
+	boom := errors.New("follow failed")
+	compattest.Set(t, true)
+	var silencer errs.Silencer
+	got := afterDocument(true, boom)
+	if !errors.Is(got, boom) || !errors.As(got, &silencer) || !silencer.Silent() {
+		t.Fatalf("envelope mode: %v is not a silent wrapper of the failure", got)
+	}
+	if got := afterDocument(false, boom); got != boom {
+		t.Fatalf("no --json: %v", got)
+	}
+	compattest.Set(t, false)
+	if got := afterDocument(true, boom); got != boom {
+		t.Fatalf("v1.4: %v", got)
+	}
+	if afterDocument(true, nil) != nil {
+		t.Fatal("nil stays nil")
 	}
 }

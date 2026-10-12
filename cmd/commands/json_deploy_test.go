@@ -10,12 +10,15 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	cpromote "github.com/nself-org/cli/internal/controlplane/promote"
+	dprog "github.com/nself-org/cli/internal/deploy/progress"
 	"github.com/nself-org/cli/internal/output"
 )
 
@@ -62,13 +65,13 @@ func deployGoldenSample(path string, zero any) any {
 	case "deploy environments":
 		return deployEnvironmentsOutput{Environments: []envEnvironmentRow{{Name: "staging", Kind: "remote", Servers: []envServerRow{{Name: "staging-app", Role: "app", Capability: "manage"}}}}}
 	case "deploy security setup":
-		return securitySetupData{DryRun: true, Supported: true, Steps: []securitySetupStep{{Name: "Allow SSH (22)", Command: []string{"ufw", "allow", "22/tcp"}}}}
+		return securitySetupData{DryRun: true, Supported: true, Failed: []string{}, Steps: []securitySetupStep{{Name: "Allow SSH (22)", Command: []string{"ufw", "allow", "22/tcp"}}}}
 	case "doctor security audit":
 		return securityAuditData{Findings: []securityFinding{{Name: "firewall", OK: true, Detail: "ufw active"}}, Passed: 1}
 	case "doctor security status":
 		return securityStatusData{Findings: []securityFinding{{Name: "firewall", OK: true, Detail: "ufw active"}}, Score: 1, Total: 1, Percent: 100}
 	case "update images":
-		return updateImagesData{DryRun: true, Images: []updateImageRow{{Service: "postgres", Digest: strings.Repeat("a", 64), Status: "unchanged"}}}
+		return updateImagesData{DryRun: true, Images: []updateImageRow{{Service: "postgres", Digest: strings.Repeat("a", 64), Status: "unchanged"}}, Failed: []string{}}
 	case "update upgrade":
 		return updateUpgradeData{OK: true, Action: "check", CurrentVersion: "1.5.0"}
 	case "update verify-sbom":
@@ -179,3 +182,47 @@ func jsonOnly(out string) string {
 	}
 	return out
 }
+
+// TestDeployStreamLinesUnchanged pins the exact bytes of the deploy progress stream, so
+// moving the line writer onto output.StreamRecord and output.StreamEnd cannot change a
+// byte on the wire. The expected lines were captured from the writer before the move.
+func TestDeployStreamLinesUnchanged(t *testing.T) {
+	clock := time.Unix(1700000000, 0)
+	now := func() time.Time { clock = clock.Add(5 * time.Millisecond); return clock }
+	var buf bytes.Buffer
+	w := dprog.NewWriterClock(&buf, "deploy", now)
+	w.At("prod", "").Event("Build images", dprog.PhaseStart, "")
+	w.At("prod", "").Status("Build images", "done", "")
+	w.At("prod", "web-1").Status("Deploy web-1", "failed", "ssh: token=abc123 refused <&>\nsecond line")
+	w.Status("Deploy pipeline", "pending", "planned, not run (dry-run)")
+	if err := w.Finish(dprog.ResultFailed, nil); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		`{"schema_version":"1","command":"deploy","data":{"type":"progress","seq":1,"step":"Build images","phase":"start","env":"prod","server":null,"elapsed_ms":5,"detail":null}}`,
+		`{"schema_version":"1","command":"deploy","data":{"type":"progress","seq":2,"step":"Build images","phase":"done","env":"prod","server":null,"elapsed_ms":10,"detail":null}}`,
+		`{"schema_version":"1","command":"deploy","data":{"type":"progress","seq":3,"step":"Deploy web-1","phase":"failed","env":"prod","server":"web-1","elapsed_ms":15,"detail":"ssh: token=[REDACTED] refused <&>"}}`,
+		`{"schema_version":"1","command":"deploy","data":{"type":"progress","seq":4,"step":"Deploy pipeline","phase":"skipped","env":null,"server":null,"elapsed_ms":20,"detail":"planned, not run (dry-run)"}}`,
+		`{"schema_version":"1","command":"deploy","data":{"type":"result","result":"failed","steps":[{"step":"Build images","status":"done"},{"step":"Deploy web-1","status":"failed"},{"step":"Deploy pipeline","status":"pending"}]}}`,
+	}
+	got := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
+	if len(got) != len(want) {
+		t.Fatalf("got %d lines, want %d:\n%s", len(got), len(want), buf.String())
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d changed:\n got %s\nwant %s", i, got[i], want[i])
+		}
+	}
+
+	// A broken sink stops the stream after the first failed write.
+	bad := dprog.NewWriterClock(failWriter{}, "deploy", now)
+	bad.Event("x", dprog.PhaseStart, "")
+	if bad.Err() == nil {
+		t.Fatal("write error was not recorded")
+	}
+}
+
+type failWriter struct{}
+
+func (failWriter) Write([]byte) (int, error) { return 0, errors.New("closed") }

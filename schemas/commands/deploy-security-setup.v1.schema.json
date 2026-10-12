@@ -10,6 +10,15 @@
     "dry_run": {
       "type": "boolean"
     },
+    "failed": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "null",
+        "array"
+      ]
+    },
     "steps": {
       "items": {
         "additionalProperties": false,
@@ -46,6 +55,7 @@
     "dry_run",
     "supported",
     "applied",
+    "failed",
     "steps"
   ],
   "type": "object"

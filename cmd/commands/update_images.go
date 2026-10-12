@@ -51,7 +51,7 @@ func runUpdateImages(cmd *cobra.Command, args []string) error {
 
 	// Fetch digests for all default images.
 	newDigests := make(map[string]string)
-	data := updateImagesData{DryRun: dryRun, Images: []updateImageRow{}}
+	data := updateImagesData{DryRun: dryRun, Images: []updateImageRow{}, Failed: []string{}}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -68,6 +68,7 @@ func runUpdateImages(cmd *cobra.Command, args []string) error {
 		digest, fetchErr := fetchImageDigest(ctx, image)
 		if fetchErr != nil {
 			ui.Warn(fmt.Sprintf("  %s: failed to fetch digest (%v)", service, fetchErr))
+			data.Failed = append(data.Failed, service)
 			continue
 		}
 		newDigests[service] = digest

@@ -99,11 +99,14 @@ type securitySetupStep struct {
 }
 
 // securitySetupData is the envelope data of `deploy security setup`. Without
-// --apply nothing changed (dry_run true); Supported is false off Linux.
+// --apply nothing changed (dry_run true); Supported is false off Linux. With
+// --apply a step that fails does not stop the run: Failed names those steps and
+// Applied is true only when none failed.
 type securitySetupData struct {
 	DryRun    bool                `json:"dry_run"`
 	Supported bool                `json:"supported"`
 	Applied   bool                `json:"applied"`
+	Failed    []string            `json:"failed"`
 	Steps     []securitySetupStep `json:"steps"`
 }
 
@@ -114,11 +117,14 @@ type updateImageRow struct {
 	Status  string `json:"status"` // new | updated | unchanged
 }
 
-// updateImagesData is the envelope data of `update images`.
+// updateImagesData is the envelope data of `update images`. Failed names the
+// services whose digest could not be fetched; they are not in Images, so a
+// consumer never reads a partial refresh as a full one.
 type updateImagesData struct {
 	DryRun bool             `json:"dry_run"`
 	Saved  bool             `json:"saved"`
 	Images []updateImageRow `json:"images"`
+	Failed []string         `json:"failed"`
 }
 
 // updateUpgradeData is the envelope data of `update upgrade`: the operation
