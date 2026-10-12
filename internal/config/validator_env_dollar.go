@@ -104,7 +104,7 @@ func splitEnvLine(line string) (key, value string, ok bool) {
 	}
 	key = strings.TrimRight(s[:sep], " \t")
 	for _, c := range key {
-		if !(c == '_' || c == '.' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+		if c != '_' && c != '.' && (c < '0' || c > '9') && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') {
 			return "", "", false
 		}
 	}

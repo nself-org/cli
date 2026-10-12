@@ -164,7 +164,7 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 func warnUnquotedDollar(w io.Writer, projectDir string) {
 	env, _ := config.ResolveEnv(projectDir)
 	for _, f := range config.UnquotedDollarFindings(projectDir, env) {
-		fmt.Fprintf(w, "⚠ %s:%d: %s holds an unquoted '$' that the loader expands; single-quote the value if the '$' is literal (write ${NAME} for a reference)\n",
+		_, _ = fmt.Fprintf(w, "⚠ %s:%d: %s holds an unquoted '$' that the loader expands; single-quote the value if the '$' is literal (write ${NAME} for a reference)\n",
 			filepath.Base(f.File), f.Line, f.Key)
 	}
 }
