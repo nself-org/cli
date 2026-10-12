@@ -121,7 +121,7 @@ Long-lived responses (SSE streams, a tool call that runs for minutes) are not cu
 
 - Loopback hosts (`localhost`, any `127.0.0.0/8` address, `::1`) are always allowed.
 - Any other host, including the empty host, `0.0.0.0` and `::`, exits non-zero with `E426` unless at least one `--allowed-host <name>` is given and a token is configured on that run through `NSELF_MCP_TOKEN` or an existing `~/.nself/mcp-token`. A token that this run would generate does not count, and a second start after a generated run is refused the same way.
-- `--allowed-host` gates the bind only; the MCP server does not compare the request's Host header with it.
+- `--allowed-host` gates the bind. In v1.5 it also feeds the Host check: `sse` and `http` serve only a Host of `localhost`, `127.0.0.1`, `[::1]` or an `--allowed-host` name, each with the listener port (case-insensitive), and answer anything else `421` with `E428` before the token is checked. An invalid `--allowed-host` (a port, a URL, an unbracketed IPv6) exits `E430`. Behind a reverse proxy or TLS terminator in v1.5, forward Host as `<allowed-host>:<listener port>` (the same rule as `nself admin serve`); otherwise requests get `421` with `E428`. In v1.4 the Host header is not checked.
 - An accepted non-loopback start prints one warning that the bearer token crosses the network over cleartext HTTP. The server has no TLS: put a TLS terminator in front of it.
 
 The HTTP server sets `ReadHeaderTimeout` 10 s and `ReadTimeout` 30 s and no write timeout, so SSE streams stay open. The bearer check runs first, so an unauthenticated request is answered `401` before any body byte is read; an authenticated body is capped at 4 MiB (`413` above it). Headers, bodies and tokens are never logged.
@@ -137,7 +137,7 @@ The gate decides on the effective side effect of the request (flag escalation ap
 - `remote` or `destructive` without a plan form and no `confirm`: a confirmation of kind `request`, whose `confirm` is a nonce.
 - A server without a confirmation store refuses every remote and destructive command with `E421`.
 
-The gate is not a prompt-injection control: an agent that was told to confirm will confirm. The controls are the token, the loopback default, request validation, the confirmation round trip and the audit log; the HTTP API adds Host and Origin checks (`nself mcp` does not check the Host header).
+The gate is not a prompt-injection control: an agent that was told to confirm will confirm. The controls are the token, the loopback default, request validation, the confirmation round trip and the audit log; the HTTP API adds Host and Origin checks (`nself mcp` checks the Host header in v1.5, not the Origin).
 
 ## Confirmation round trip
 

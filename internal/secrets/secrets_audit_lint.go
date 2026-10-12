@@ -69,63 +69,76 @@ type AuditFinding struct {
 // DecryptForDeploy decrypts secrets and outputs them as KEY=VALUE lines
 // suitable for .env.computed or CI/CD injection.
 func DecryptForDeploy(projectRoot, env string) (string, error) {
-	// Check for DEPLOY_AGE_KEY env var (used in CI).
-	deployKey := os.Getenv("DEPLOY_AGE_KEY")
-	if deployKey != "" {
-		return decryptWithKey(projectRoot, env, deployKey)
-	}
-	// Fall back to local key.
-	store, err := loadStore(projectRoot, env)
+	store, err := deployStore(projectRoot, env)
 	if err != nil {
 		return "", err
 	}
-	var lines []string
-	var keys []string
-	for k := range store.Secrets {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	keys := sortedStoreKeys(store)
+	lines := make([]string, 0, len(keys))
 	for _, k := range keys {
 		lines = append(lines, fmt.Sprintf("%s=%s", k, store.Secrets[k].Value))
 	}
 	return strings.Join(lines, "\n"), nil
 }
 
-// decryptWithKey decrypts using a raw age private key string (for CI/CD).
-func decryptWithKey(projectRoot, env, key string) (string, error) {
+// DeployKeys returns the sorted key names of the store DecryptForDeploy reads,
+// on the same two paths (DEPLOY_AGE_KEY, else the local store). Callers that
+// must name the keys without handling the values (the --json envelope) use
+// this instead of parsing DecryptForDeploy's text, where a multi-line value can
+// look like a KEY= line.
+func DeployKeys(projectRoot, env string) ([]string, error) {
+	store, err := deployStore(projectRoot, env)
+	if err != nil {
+		return nil, err
+	}
+	return sortedStoreKeys(store), nil
+}
+
+// deployStore loads the store for a deploy: with the DEPLOY_AGE_KEY env var
+// (used in CI) when set, else with the local key.
+func deployStore(projectRoot, env string) (*SecretStore, error) {
+	if deployKey := os.Getenv("DEPLOY_AGE_KEY"); deployKey != "" {
+		return decryptWithKey(projectRoot, env, deployKey)
+	}
+	return loadStore(projectRoot, env)
+}
+
+// sortedStoreKeys returns the store's secret names in sorted order.
+func sortedStoreKeys(store *SecretStore) []string {
+	keys := make([]string, 0, len(store.Secrets))
+	for k := range store.Secrets {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// decryptWithKey decrypts the store using a raw age private key string (for CI/CD).
+func decryptWithKey(projectRoot, env, key string) (*SecretStore, error) {
 	path := filepath.Join(projectRoot, secretsDir(), envFileName(env))
 
 	// Write key to a temp file.
 	tmpKey, err := os.CreateTemp("", "nself-deploy-key-*")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer func() { _ = os.Remove(tmpKey.Name()) }()
 	if _, err := tmpKey.WriteString(key); err != nil {
-		return "", err
+		return nil, err
 	}
 	_ = tmpKey.Close()
 
 	cmd := exec.Command("age", "--decrypt", "-i", tmpKey.Name(), path)
 	output, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("decrypting with deploy key: %w", err)
+		return nil, fmt.Errorf("decrypting with deploy key: %w", err)
 	}
 
 	var store SecretStore
 	if err := json.Unmarshal(output, &store); err != nil {
-		return "", fmt.Errorf("parsing secrets: %w", err)
+		return nil, fmt.Errorf("parsing secrets: %w", err)
 	}
-	var lines []string
-	var keys []string
-	for k := range store.Secrets {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		lines = append(lines, fmt.Sprintf("%s=%s", k, store.Secrets[k].Value))
-	}
-	return strings.Join(lines, "\n"), nil
+	return &store, nil
 }
 
 // Rekey re-encrypts all secret files, removing the specified public key

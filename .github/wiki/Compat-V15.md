@@ -52,7 +52,9 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 <!-- BEGIN GENERATED:gated -->
 | Ticket | v1.4 behaviour (old) | v1.5 behaviour (new) | File |
 |---|---|---|---|
+| D-0216 | decrypt-on-deploy prints KEY=VALUE to any stdout and puts values in --json | plaintext needs a terminal stdout or --reveal; --json carries names only | `cmd/commands/secrets_decrypt.go` |
 | D-0287 | two plugins mapping to one nginx/sites file overwrite silently (warning) | E055 fails the build | `internal/build/plugin_nginx_collision.go` |
+| D-0327 | no Host check on mcp sse/http | Host must be localhost/127.0.0.1/[::1] or an --allowed-host, with the listener port | `cmd/commands/mcp_auth.go` |
 | D-0478 | PLUGIN_DIR "~/..." used as written, no plugin snippets on default config | "~" expanded, installed plugins' snippets injected | `internal/build/plugin_configs.go` |
 | D-0484 | pin store ancestor walk warns once and continues | refuses | `sdk/go/remote/knownhosts_compat.go` |
 | D-0676 | bare stream path streams as path:// with a notice | refused | `internal/backup/stream_dest_compat.go` |

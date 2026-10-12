@@ -74,9 +74,14 @@ func TestOpenAPIValidatesOAS31(t *testing.T) {
 			t.Errorf("exposed document command %s is missing", cmd.Path)
 		}
 	}
-	for _, path := range []string{"nself config export", "nself config set", "nself admin serve"} {
+	for _, path := range []string{"nself config export", "nself admin serve"} {
 		if _, present := paths[cmdregistry.RoutePath(path)]; present {
 			t.Errorf("%s must not have an operation", path)
 		}
+	}
+	// D-0403: config set is destructive with a confirm round trip, so it is
+	// served (it was cli-only before).
+	if _, present := paths[cmdregistry.RoutePath("nself config set")]; !present {
+		t.Error("nself config set must have an operation (D-0403)")
 	}
 }

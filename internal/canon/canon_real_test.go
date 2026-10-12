@@ -331,3 +331,40 @@ func TestSecuritySetupApplyIsDestructive(t *testing.T) {
 		t.Errorf("security setup = %+v, want read with --apply destructive", e)
 	}
 }
+
+// TestConfigSetIsConfirmedDestructive: `config set` can overwrite any .env
+// secret, and canon escalations key on flags, not argument values, so the
+// whole command is destructive with the --yes consent flag (D-0403). It is no
+// longer cli-only: machine callers take the confirmation round trip.
+func TestConfigSetIsConfirmedDestructive(t *testing.T) {
+	raw, err := canon.LoadRaw()
+	if err != nil {
+		t.Fatal(err)
+	}
+	views := map[string]*canon.File{"raw": raw}
+	for _, v15 := range []bool{false, true} {
+		f, err := canon.Effective(v15)
+		if err != nil {
+			t.Fatal(err)
+		}
+		views[map[bool]string{false: "v1.4", true: "v1.5"}[v15]] = f
+	}
+	for name, f := range views {
+		e, ok := f.Commands["config set"]
+		if !ok {
+			t.Fatalf("%s: no config set row", name)
+		}
+		if e.SideEffect != canon.SideEffectDestructive {
+			t.Errorf("%s: side_effect %q, want destructive", name, e.SideEffect)
+		}
+		if e.Confirm == nil || len(e.Confirm.Flags) != 1 || e.Confirm.Flags[0] != "yes" {
+			t.Errorf("%s: confirm %+v, want flags [yes]", name, e.Confirm)
+		}
+		if e.Surface == "cli-only" {
+			t.Errorf("%s: surface cli-only, want exposed", name)
+		}
+		if len(e.SecretArgs) != 1 || e.SecretArgs[0] != "value" {
+			t.Errorf("%s: secret_args %v, want [value]", name, e.SecretArgs)
+		}
+	}
+}

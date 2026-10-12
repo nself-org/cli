@@ -11,12 +11,7 @@ package commands
 // decrypting commands (get, decrypt-on-deploy) are CLI-only rows.
 // SPORT: P7-SURF-12, contract:cli.json-envelope
 
-import (
-	"regexp"
-	"strings"
-
-	"github.com/nself-org/cli/internal/secrets"
-)
+import "github.com/nself-org/cli/internal/secrets"
 
 // newSecretsListData builds `config secrets list`: one row per key in keys,
 // with the entry's timestamps. The value field of an entry is not read.
@@ -76,27 +71,6 @@ func newSecretsRotationLogData(events []secrets.RotationLogEntry, filter string)
 			continue
 		}
 		d.Events = append(d.Events, secretsRotationLogRow{Secret: e.SecretName, RotatedAt: e.RotatedAt, Status: e.Status, Note: e.Note})
-	}
-	return d
-}
-
-// secretLineKey matches the start of a KEY=VALUE line.
-var secretLineKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*=`)
-
-// newSecretsDecryptData parses the KEY=VALUE text DecryptForDeploy prints. A
-// line that does not start a new KEY= continues the previous value, so a
-// multi-line secret (a PEM key) is not truncated.
-func newSecretsDecryptData(env, text string) secretsDecryptData {
-	d := secretsDecryptData{Environment: env, Values: map[string]string{}}
-	key := ""
-	for _, line := range strings.Split(text, "\n") {
-		if secretLineKey.MatchString(line) {
-			k, v, _ := strings.Cut(line, "=")
-			key = k
-			d.Values[key] = v
-		} else if key != "" {
-			d.Values[key] += "\n" + line
-		}
 	}
 	return d
 }

@@ -1,9 +1,9 @@
 package commands
 
 // Purpose: The audit/compliance-facing `nself secrets` subcommands —
-// rotation-log (print rotation event history), decrypt-on-deploy (deploy
-// hook helper), audit (compliance report), lint (config sanity checks),
-// and rekey (rotate/remove recipient keys). Split out of secrets.go
+// rotation-log (print rotation event history), audit (compliance report),
+// lint (config sanity checks), and rekey (rotate/remove recipient keys).
+// decrypt-on-deploy moved to secrets_decrypt.go (D-0216). Split out of secrets.go
 // (CLI-R12); see secrets_core.go for the file-splitting rationale shared
 // by every secrets_*.go file in this split.
 // Inputs: cobra.Command args/flags per subcommand.
@@ -62,26 +62,6 @@ Optionally filter by secret name with --secret.`,
 		}
 		tbl.Render()
 		fmt.Printf("\n%d event(s).\n", count)
-		return nil
-	},
-}
-
-var secretsDecryptOnDeployCmd = &cobra.Command{
-	Use:   "decrypt-on-deploy",
-	Short: "Output decrypted secrets as KEY=VALUE for CI/CD",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-		output, err := secrets.DecryptForDeploy(cwd, secretsEnvFlag)
-		if err != nil {
-			return err
-		}
-		if jsonEnvelopeOn(cmd) { // CLI-only row: the decrypted values never cross a machine surface
-			setData(cmd, newSecretsDecryptData(secretsEnvFlag, output))
-		}
-		fmt.Print(output)
 		return nil
 	},
 }

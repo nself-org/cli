@@ -9,6 +9,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -107,6 +108,31 @@ func TestConfigRevealCLIOnly(t *testing.T) {
 		} else if exposed, reason := invoke.Exposure(mrow, invoke.TransportMCP, nil); !exposed {
 			t.Errorf("%s not exposed: %s", path, reason)
 		}
+	}
+}
+
+// TestConfigSetIsConfirmedOverMachineSurfaces: `config set` is exposed over
+// MCP and HTTP, and its effective side effect is destructive with a confirm
+// block, so the invoke gate demands the nonce round trip (D-0403).
+func TestConfigSetIsConfirmedOverMachineSurfaces(t *testing.T) {
+	machine, err := machineRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, ok := machine.Lookup("nself config set")
+	if !ok {
+		t.Fatal("machine registry has no config set")
+	}
+	for _, transport := range []string{invoke.TransportMCP, invoke.TransportHTTP} {
+		if exposed, reason := invoke.Exposure(row, transport, nil); !exposed {
+			t.Errorf("config set over %s not exposed: %s", transport, reason)
+		}
+	}
+	if got := cmdregistry.EffectiveSideEffect(row, nil); got != "destructive" {
+		t.Errorf("config set effective side effect %q, want destructive", got)
+	}
+	if row.Confirm == nil || len(row.Confirm.Flags) != 1 || row.Confirm.Flags[0] != "yes" {
+		t.Errorf("config set confirm %+v, want flags [yes]", row.Confirm)
 	}
 }
 
@@ -475,4 +501,40 @@ func cfgPathLen(argv []string) int {
 		}
 	}
 	return 2
+}
+
+// TestConfigSetGateDecision: the invoke gate, driven with the machine registry
+// row of config set and no server, child process or file write (D-0403). A
+// request without confirm gets a request confirmation with a nonce; a request
+// that sets yes itself is refused E425, because consent flags belong to the
+// invoker.
+func TestConfigSetGateDecision(t *testing.T) {
+	machine, err := machineRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, ok := machine.Lookup("nself config set")
+	if !ok {
+		t.Fatal("machine registry has no config set")
+	}
+	opts := invoke.Options{Transport: invoke.TransportMCP, Guard: invoke.NewGuard("")}
+
+	d, err := invoke.Gate(context.Background(), machine, row, invoke.Request{Args: []string{"FAKE_KEY", "fake-value-d0403"}}, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Kind != invoke.DecisionConfirm || d.Confirmation == nil {
+		t.Fatalf("no confirm: decision %q (refusal %v), want %q", d.Kind, d.Refusal, invoke.DecisionConfirm)
+	}
+	if d.Confirmation.Kind != invoke.ConfirmKindRequest || len(d.Confirmation.Confirm) != 64 {
+		t.Errorf("confirmation kind %q nonce length %d, want kind request and a 64-char nonce", d.Confirmation.Kind, len(d.Confirmation.Confirm))
+	}
+
+	d, err = invoke.Gate(context.Background(), machine, row, invoke.Request{Args: []string{"FAKE_KEY", "fake-value-d0403"}, Flags: map[string]any{"yes": true}}, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Kind != invoke.DecisionRefuse || d.Refusal == nil || !strings.Contains(d.Refusal.Error(), "E425") {
+		t.Errorf("request setting yes: decision %q refusal %v, want refused E425", d.Kind, d.Refusal)
+	}
 }
