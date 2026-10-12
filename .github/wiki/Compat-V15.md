@@ -53,6 +53,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | Ticket | v1.4 behaviour (old) | v1.5 behaviour (new) | File |
 |---|---|---|---|
 | D-0216 | decrypt-on-deploy prints KEY=VALUE to any stdout and puts values in --json | plaintext needs a terminal stdout or --reveal; --json carries names only | `cmd/commands/secrets_decrypt.go` |
+| D-0274 | installer prints 'run nself build' after every install | no hint when the caller reconciles | `internal/plugin/installer_hint.go` |
 | D-0287 | two plugins mapping to one nginx/sites file overwrite silently (warning) | E055 fails the build | `internal/build/plugin_nginx_collision.go` |
 | D-0327 | no Host check on mcp sse/http | Host must be localhost/127.0.0.1/[::1] or an --allowed-host, with the listener port | `cmd/commands/mcp_auth.go` |
 | D-0330 | remove <plugin> drops plugin data unless --keep-data | keeps it unless --delete-data, confirmed by --yes or a terminal | `cmd/commands/plugin_remove_data.go` |

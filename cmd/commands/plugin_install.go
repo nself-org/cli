@@ -102,7 +102,9 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	ctx := context.Background()
+	// D-0274: this command reconciles after the install loop, so the installer
+	// leaves out its own "run nself build" hint (v1.5).
+	ctx := plugin.WithCallerReconciles(context.Background())
 	registryURL := os.Getenv("NSELF_PLUGIN_REGISTRY")
 	// Third-party-only installs never touch the official registry, so skip
 	// the reachability check when there's nothing official to resolve.
@@ -149,6 +151,7 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	pluginDir := resolvePluginDir()
+	stage := beginInstallStage(pluginDir) // D-0433: what this run creates is undone if the reconcile refuses
 
 	// Install each named plugin. Collect per-plugin errors so that a failure on
 	// one plugin does not abort the remaining installs.
@@ -212,7 +215,9 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 	var reconcileErr error
 	// compat.V15(P7-LIVE-06): plugin install leaves generated state for a later build -> reconcile now
 	ferr := finishPluginInstall(compat.V15(), installed, failures, func() error {
-		reconcileErr = reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installed, ",")})
+		reconcileErr = stage.reconcile(ctx, cfg, os.Stderr, func() error {
+			return reconcileAfterExtension(cmd, reconcile.Trigger{Kind: reconcile.TriggerPlugin, Subject: strings.Join(installed, ",")})
+		})
 		return reconcileErr
 	})
 	// P7-PLUG-19: wait for boot migrations of what was installed (plugin_install_readiness.go).
@@ -225,22 +230,6 @@ func runPluginInstall(cmd *cobra.Command, args []string) error {
 		return rerr
 	}
 	return errors.Join(ferr, rerr)
-}
-
-// finishPluginInstall reconciles once after any successful install (v1.5) and
-// reports every failure together: a failed reconcile never hides the plugins
-// that failed to install, and vice versa (errors.Join, as bundle install does).
-func finishPluginInstall(v15 bool, installed, failures []string, reconcileFn func() error) error {
-	var all []error
-	if v15 && len(installed) > 0 {
-		if err := reconcileFn(); err != nil {
-			all = append(all, err)
-		}
-	}
-	if len(failures) > 0 {
-		all = append(all, fmt.Errorf("failed to install: %s", strings.Join(failures, ", ")))
-	}
-	return errors.Join(all...)
 }
 
 // runPluginInstallDryRun simulates bundle installation and shows what would change
