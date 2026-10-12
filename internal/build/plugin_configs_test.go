@@ -2,7 +2,8 @@ package build
 
 // plugin_configs_test.go — D-0478: ${SSL_DIR} renders to the base domain's
 // certificate dir the CLI writes, and the default "~/.nself/plugins" plugin
-// dir resolves under the home dir instead of the working dir.
+// dir resolves under the home dir instead of the working dir (v1.5 only,
+// D-0634).
 
 import (
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/nginx/routemodel"
 	"github.com/nself-org/cli/internal/nginxtopo"
@@ -86,10 +88,14 @@ func TestExpandHomeDir(t *testing.T) {
 // way `nself build` does (pluginDir "", config defaults, so PLUGIN_DIR is the
 // literal "~/.nself/plugins") and checks the backup snippet lands with the
 // certificate path the CLI's own routes use, nothing left unrendered, and
-// that the route model maps those lines to the base domain's ssl_dir.
+// that the route model maps those lines to the base domain's ssl_dir. The
+// default dir is expanded on v1.5 only (D-0634); v1.4 is covered in
+// plugin_nginx_snippet_compat_test.go.
 func TestInjectPluginNginxRoutes_DefaultDirRendersSSLDir(t *testing.T) {
+	compattest.Set(t, true)
 	home := t.TempDir()
 	setHome(t, home)
+	t.Chdir(t.TempDir())
 	confDir := filepath.Join(home, ".nself", "plugins", "backup", "nginx")
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
