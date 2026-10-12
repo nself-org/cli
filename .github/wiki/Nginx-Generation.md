@@ -67,6 +67,22 @@ nself start
 
 The add writes files through reconcile. The build removes the nginx orphan, and start brings up traefik. In v1.5, prod-class changes print the reconcile plan and require confirmation. A refused add leaves generated files and containers unchanged, but leaves traefik installed. Remove it with `nself remove traefik`, or fix the refusal before the next build. For measured downtime, see the e2e evidence.
 
+### Returning to nginx
+
+```bash
+nself remove traefik --yes
+nself build --remove-orphans --yes
+nself start
+```
+
+The remove deletes the plugin. The next build derives nginx again and deletes the renderer's two output directories, `.nself/generated/traefik/` and `.nself/generated/traefik-static/`, but only when the renderer's `.nself-generated` marker is inside each. A directory without that marker, a directory reached through a symlink, and every other path stay in place; the build prints one warning and carries on. The build also removes the traefik containers as orphans. After the sequence, the generated files, the compose service set and the containers match the project as it was before `nself add traefik`, and the request-parity matrix passes through nginx again.
+
+On Linux the `traefik-config` container runs as root and Docker creates its bind directories root-owned, so an unprivileged build cannot delete them. The build then warns (naming the directory), keeps the marker so the next build retries, and does not fail. Run the `sudo rm -rf` it prints, or `sudo chown -R "$USER" .nself/generated`, and build again. This is debt D-0782; the plugin's one-shot should run as the host user.
+
+Between the build that deletes the rendered files and the removal of the traefik container, a still-running traefik serves no routes (it watches the deleted directory). Nginx cannot bind ports 80 and 443 before that container is gone, so the swap back has the same short downtime window as the swap in; run the three commands together.
+
+If the remove is interrupted (a crash, `kill -9`), the generated files are already final, because the build writes them before it removes any container. Run `nself build --remove-orphans --yes` again (it is idempotent and removes whatever containers the interruption left), then `nself start` to bring nginx back. `nself start` alone does not remove orphaned containers, so a leftover traefik one-shot container would stay until that build. Both paths are tested on Linux by `scripts/e2e/proxy-swap.sh --round-trip --assert-identical` and `--kill-mid-remove`.
+
 ## Plugin and hand-managed routes
 
 `routes.json` also describes the nginx files nself does not render itself: every `nginx/*.conf` a plugin ships (rendered into `nginx/sites/<plugin>-<file>`, see [Plugin Route Injection](#plugin-route-injection)) and every hand-managed `nginx/conf.d/*.conf` and `nginx/conf.d-<env>/*.conf` (not `default.conf`). Each `server { }` block becomes one route:
