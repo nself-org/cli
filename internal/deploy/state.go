@@ -76,6 +76,13 @@ type StrategyState struct {
 	// rollback restores and removes exactly these, never anything read from the host.
 	PreDeployChanged map[string][]string `json:"pre_deploy_changed,omitempty"`
 	PreDeployAbsent  map[string][]string `json:"pre_deploy_absent,omitempty"`
+	// FrontTars, FrontChanged and FrontAbsent are the same per host for the
+	// fronting stack's root of a fronted project (D-0425): the front tar and the
+	// nginx/sites paths shipped or pruned there. Absent on every other deploy, so
+	// a record without them rolls back as before.
+	FrontTars    map[string]string   `json:"front_tars,omitempty"`
+	FrontChanged map[string][]string `json:"front_changed,omitempty"`
+	FrontAbsent  map[string][]string `json:"front_absent,omitempty"`
 	// DBRestoredAt is set (RFC 3339) right after `nself backup restore` succeeded,
 	// before the re-apply, so a retried rollback never restores the database twice.
 	DBRestoredAt string `json:"db_restored_at,omitempty"`

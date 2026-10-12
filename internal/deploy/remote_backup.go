@@ -135,10 +135,18 @@ for p in %s; do if [ ! -e "$p" ] && [ ! -L "$p" ]; then printf 'ABSENT %%s\n' "$
 // before anything is touched. It runs on a context that survives the caller's
 // cancellation, bounded by restoreTimeout.
 func RestorePreDeployTar(ctx context.Context, r Remote, remotePath, tar string, spec RestoreSpec) error {
+	return restoreIn(ctx, r, remotePath, remotePath, tar, spec)
+}
+
+// restoreIn is RestorePreDeployTar for a tar kept under home (the project's own
+// remote path) that restores paths relative to root: the project itself, or the
+// fronting stack's directory for the front tar (apply_remote_front.go).
+func restoreIn(ctx context.Context, r Remote, root, home, tar string, spec RestoreSpec) error {
+	remotePath := root
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), restoreTimeout)
 	defer cancel()
-	if !strings.HasPrefix(tar, path.Join(remotePath, BackupDir)+"/pre-deploy-") || strings.Contains(tar, "..") || !strings.HasSuffix(tar, ".tar.gz") {
-		return fmt.Errorf("refusing to restore %q: not a pre-deploy tar under %s", tar, path.Join(remotePath, BackupDir))
+	if !strings.HasPrefix(tar, path.Join(home, BackupDir)+"/pre-deploy-") || strings.Contains(tar, "..") || !strings.HasSuffix(tar, ".tar.gz") {
+		return fmt.Errorf("refusing to restore %q: not a pre-deploy tar under %s", tar, path.Join(home, BackupDir))
 	}
 	if err := checkPaths("the change list", spec.Changed); err != nil {
 		return err
@@ -185,7 +193,7 @@ func RestorePreDeployTar(ctx context.Context, r Remote, remotePath, tar string, 
 			return fmt.Errorf("cannot revert %q on %s: it is neither in %s nor recorded as created by the deploy; nothing was restored", c, r.Label(), path.Base(tar))
 		}
 	}
-	tmp := path.Join(remotePath, BackupDir, "restore-"+strings.TrimSuffix(path.Base(tar), ".tar.gz"))
+	tmp := path.Join(home, BackupDir, "restore-"+strings.TrimSuffix(path.Base(tar), ".tar.gz"))
 	script := fmt.Sprintf(`set -e; umask 077; tmp=%s; rm -rf "$tmp"; mkdir -p "$tmp"; tar -xzf %s -C "$tmp"`, q(tmp), q(tar))
 	script += fmt.Sprintf(`; rp=%s`, q(remotePath))
 	// One rsync per directory, over bare file names: no directory is ever
