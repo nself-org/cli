@@ -349,7 +349,7 @@ if [[ $MODE != add ]]; then
   [[ -f $W/a/.nself/generated/traefik/.nself-generated ]] || { echo 'FAIL: the swap left no renderer marker to clean' >&2; exit 1; }
   nself "$W/a" remove traefik --yes
   if [[ $MODE == round-trip ]]; then
-    # traefik-config runs as root and Docker creates its bind directories root-owned (D-0778): an
+    # traefik-config runs as root and Docker creates its bind directories root-owned (D-0782): an
     # unprivileged build must warn, keep them and still succeed. Then hand them over and build again.
     nself "$W/a" build --remove-orphans --yes 2>&1 | tee "$W/evidence/remove-root-owned.log"
     if [[ $(uname -s) == Linux ]]; then
