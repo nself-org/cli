@@ -40,22 +40,60 @@ func requireKeygen(t *testing.T) {
 	}
 }
 
-// TestSecretShippingPinsHostKeyV14: PushSecrets ships secrets, so it verifies
-// the host key in v1.4 as well. DeployViaSsh with an env file stays accept-new
-// in v1.4 (moved to P7-DEPL-29) and runs no ssh-keyscan.
-// pinHome returns a 0700 temp dir for HOME. t.TempDir follows the umask, so
-// on a host with umask 002 (ps1) it is 0775 and, under compat.V15, the pin
-// store refuses it as a group-writable ancestor of ~/.config/nself (D-0637).
-// The production check stays.
+// pinHome returns a 0700 temp dir for HOME (D-0637). t.TempDir follows the
+// umask, so on a host with umask 002 (ps1) it is 0775, and under compat.V15
+// the pin store refuses it as a group-writable ancestor of ~/.config/nself.
+// When a folder above the test temp dir is group/world writable too (a 0775
+// /Volumes/D5 on a dev Mac, a CI offload dir) the dir is made under /tmp
+// instead, so V15 tests see only what they set up. The production check stays.
 func pinHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	if err := os.Chmod(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if runtime.GOOS == "windows" || !writableAncestor(t, home) {
+		return home
+	}
+	home, err := os.MkdirTemp("/tmp", "nself-deploy-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
+	if writableAncestor(t, home) {
+		t.Skip("no temp dir without a group/world-writable ancestor on this host")
+	}
 	return home
 }
 
+// writableAncestor reports a group/world-writable folder above dir (given or
+// resolved path) that is not sticky, the case the pin store refuses.
+func writableAncestor(t *testing.T, dir string) bool {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, start := range []string{dir, resolved} {
+		for d := filepath.Dir(start); ; d = filepath.Dir(d) {
+			fi, err := os.Stat(d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fi.Mode().Perm()&0o022 != 0 && fi.Mode()&os.ModeSticky == 0 {
+				return true
+			}
+			if d == filepath.Dir(d) {
+				break
+			}
+		}
+	}
+	return false
+}
+
+// TestSecretShippingPinsHostKeyV14: PushSecrets ships secrets, so it verifies
+// the host key in v1.4 as well. DeployViaSsh with an env file stays accept-new
+// in v1.4 (moved to P7-DEPL-29) and runs no ssh-keyscan.
 func TestSecretShippingPinsHostKeyV14(t *testing.T) {
 	requireKeygen(t)
 	for _, v15 := range []string{"", "0"} {
@@ -162,7 +200,9 @@ func TestPinnedLookupRefusesForeignLine(t *testing.T) {
 	}
 	cfg := SSHConfig{Host: "u@host.example", RemotePath: "/opt/nself", EnvName: "live", EnvFile: writeEnvFile(t), KeyPath: "/k/id"}
 	err := DeployViaSsh(context.Background(), cfg, "/work/compose.yml")
-	if err == nil || !strings.Contains(err.Error(), "E487") || !strings.Contains(err.Error(), "refused") {
+	// "line 1": the refusal must come from the wildcard line, not from an
+	// ancestor or mode check that also says E487 ... refused.
+	if err == nil || !strings.Contains(err.Error(), "E487") || !strings.Contains(err.Error(), "line 1") {
 		t.Fatalf("foreign pin line: %v", err)
 	}
 	if n := len(read()); n != 0 {
