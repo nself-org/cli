@@ -31,18 +31,23 @@ var (
 
 // isBarePath reports whether rclone would have read uri as a local path: not
 // empty, not option-shaped, and no ":" before the first "/" (so no scheme, no
-// name:path remote and no :backend connection string). A value with padding
-// whitespace, a control character or an inline-credential shape (a "," in
-// the name part, e.g. "myr,pass=ab/cd:p") is left to the parser, which
-// refuses it without echoing it (D-0467).
+// name:path remote and no :backend connection string). A value starting with
+// "/" is always a path (no rclone remote starts with "/"), commas included.
+// A value with padding whitespace or a control character, and a relative
+// value with an inline-credential shape (a "," before a ":", e.g.
+// "myr,pass=ab/cd:p"), are left to the parser, which refuses them without
+// echoing them (D-0467).
 func isBarePath(uri string) bool {
 	if uri == "" || strings.HasPrefix(uri, "-") || uri != strings.TrimSpace(uri) {
 		return false
 	}
-	if destinations.HasInlineCredentials(uri) {
+	if strings.IndexFunc(uri, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
 		return false
 	}
-	if strings.IndexFunc(uri, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+	if strings.HasPrefix(uri, "/") {
+		return true
+	}
+	if strings.Contains(uri, ":") && destinations.HasInlineCredentials(uri) {
 		return false
 	}
 	head, _, _ := strings.Cut(uri, "/")
