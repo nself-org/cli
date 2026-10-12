@@ -289,6 +289,7 @@ DOCKER_LOG_MAX_SIZE                           (default: 10m)                 def
 DOCKER_LOG_MAX_FILE                           (default: 3)                   default
 DOCKER_STOP_GRACE_PERIOD                      (default: 30s)                 default
 NSELF_DOCKER_BUILD_TIMEOUT                    (default: 300)                 default
+NSELF_DEPLOY_NGINX_INCLUDE                    (unset)                        unset
 NSELF_START_MODE                              (default: smart)               default
 NSELF_HEALTH_CHECK_TIMEOUT                    (default: 120)                 default
 NSELF_HEALTH_CHECK_INTERVAL                   (default: 2)                   default

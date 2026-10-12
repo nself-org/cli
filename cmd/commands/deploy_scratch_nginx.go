@@ -36,12 +36,14 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/deploy"
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // deployNginxIncludeEnv is the operator allowlist: comma-separated globs
@@ -121,7 +123,8 @@ func reportNotShipped(w io.Writer, notShipped []string) {
 // ("nginx/<rel>", sorted): stale generated output. An allowlisted file was copied
 // and so is never listed.
 func staleGeneratedNginx(workdir, scratch string) []string {
-	root := filepath.Join(workdir, "nginx")
+	root, _ := nginxtopo.ServedNginxDir(workdir, "") // the project's own nginx dir
+	scratchNginx, _ := nginxtopo.ServedNginxDir(scratch, "")
 	var stale []string
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || !d.Type().IsRegular() {
@@ -138,8 +141,8 @@ func staleGeneratedNginx(workdir, scratch string) []string {
 		if !build.IsGeneratedNginxConf(head[:n]) {
 			return nil
 		}
-		if _, serr := os.Lstat(filepath.Join(scratch, "nginx", sub)); serr != nil {
-			stale = append(stale, "nginx/"+filepath.ToSlash(sub))
+		if _, serr := os.Lstat(filepath.Join(scratchNginx, sub)); serr != nil {
+			stale = append(stale, path.Join(filepath.Base(root), filepath.ToSlash(sub)))
 		}
 		return nil
 	})

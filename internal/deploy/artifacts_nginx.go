@@ -27,6 +27,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
 // nginxHeadBytes is how much of a file head the policy sees.
@@ -65,7 +67,7 @@ func ParseNginxInclude(raw string) ([]string, error) {
 		}
 		for _, seg := range strings.Split(e, "/") {
 			if seg == ".." {
-				return nil, fmt.Errorf("NSELF_DEPLOY_NGINX_INCLUDE entry %q holds ..", e)
+				return nil, fmt.Errorf("NSELF_DEPLOY_NGINX_INCLUDE entry %q holds a .. segment", e)
 			}
 			if _, err := path.Match(seg, ""); err != nil {
 				return nil, fmt.Errorf("NSELF_DEPLOY_NGINX_INCLUDE entry %q is not a valid glob: %w", e, err)
@@ -123,11 +125,20 @@ func readHead(p string) ([]byte, error) {
 	return buf[:n], nil
 }
 
+// nginxDirOf returns the project's own nginx dir under root (nginxtopo, the one
+// place that names it) and that dir's slash path relative to root, which is how
+// the shipped files are named on the host.
+func nginxDirOf(root string) (dir, rel string) {
+	dir, _ = nginxtopo.ServedNginxDir(root, "") // cannot fail with an empty frontedBy
+	r, _ := filepath.Rel(root, dir)
+	return dir, filepath.ToSlash(r)
+}
+
 // stageNginx copies the shippable files of <ScratchRoot>/nginx into the stage
 // dir (text rewritten to the remote layout) and returns their relative paths
 // ("nginx/...") and the sorted relative paths it left out.
 func stageNginx(in StageInput) (files, notShipped []string, err error) {
-	root := filepath.Join(in.Map.ScratchRoot, "nginx")
+	root, relRoot := nginxDirOf(in.Map.ScratchRoot)
 	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, werr error) error {
 		if werr != nil {
 			if os.IsNotExist(werr) && p == root {
@@ -144,7 +155,7 @@ func stageNginx(in StageInput) (files, notShipped []string, err error) {
 			}
 			return nil
 		}
-		rel := path.Join("nginx", sub)
+		rel := path.Join(relRoot, sub)
 		confD := strings.HasPrefix(sub, "conf.d/")
 		if !d.Type().IsRegular() {
 			// A symlink, socket or device is never shipped, and the operator hears of it

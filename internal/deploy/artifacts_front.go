@@ -67,13 +67,14 @@ func stageFront(in StageInput) (*FrontRoot, error) {
 	if err := os.MkdirAll(front.StageDir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating %s: %w", front.StageDir, err)
 	}
-	sites := filepath.Join(in.FrontScratch, "nginx", "sites")
+	nginxDir, relRoot := nginxDirOf(in.FrontScratch)
+	sites := filepath.Join(nginxDir, "sites")
 	entries, err := os.ReadDir(sites)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("reading %s: %w", sites, err)
 	}
 	for _, e := range entries {
-		rel := path.Join("nginx", "sites", e.Name())
+		rel := path.Join(relRoot, "sites", e.Name())
 		if !e.Type().IsRegular() || !strings.HasSuffix(e.Name(), ".conf") || !pruneable(rel) {
 			continue
 		}
