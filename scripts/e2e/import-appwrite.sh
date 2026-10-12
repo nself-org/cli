@@ -4,6 +4,8 @@
 # checks zero mismatches, the reset_required users, storage, the relationship and credential redaction.
 set -euo pipefail
 umask 022
+# nself build makes a self-signed certificate; the docker:cli image ships without openssl.
+command -v openssl >/dev/null || apk add -q openssl >/dev/null
 export NSELF_V15=1
 ROOT=$(pwd)
 : "${W:=$(mktemp -d)}"
@@ -12,6 +14,7 @@ export FIXTURE_PASSWORD
 FIXTURE_PASSWORD=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
 export FIXTURE_PORT=${FIXTURE_PORT:-$((22000 + RANDOM % 20000))}
 export TARGET_PG_PORT=$((FIXTURE_PORT + 2)) TARGET_HASURA_PORT=$((FIXTURE_PORT + 3)) TARGET_AUTH_PORT=$((FIXTURE_PORT + 4)) TARGET_HTTP_PORT=$((FIXTURE_PORT + 5)) TARGET_HTTPS_PORT=$((FIXTURE_PORT + 6))
+export SEAWEEDFS_PORT=$((FIXTURE_PORT + 7))
 FIXTURE=$ROOT/test/fixtures/import/appwrite/compose.yml
 PROJECT=a16-$(date +%s)-$RANDOM
 export FIXTURE_PROJECT="$PROJECT-src"
@@ -31,7 +34,7 @@ cd "$TARGET"
 nself init --non-interactive
 # Credentials go only into the private target environment, never arguments.
 {
-  for kv in "PROJECT_NAME=$PROJECT" POSTGRES_DB=nself POSTGRES_USER=postgres POSTGRES_VERSION=16 "POSTGRES_PORT=$TARGET_PG_PORT" "HASURA_PORT=$TARGET_HASURA_PORT" "AUTH_PORT=$TARGET_AUTH_PORT" "NGINX_HTTP_PORT=$TARGET_HTTP_PORT" "NGINX_HTTPS_PORT=$TARGET_HTTPS_PORT" PGVECTOR_ENABLED=false POSTGRES_EXTENSIONS= "POSTGRES_PASSWORD=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')" "HASURA_GRAPHQL_ADMIN_SECRET=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')" AUTH_ENABLED=true REDIS_ENABLED=false MAILPIT_ENABLED=false; do
+  for kv in "PROJECT_NAME=$PROJECT" POSTGRES_DB=nself POSTGRES_USER=postgres POSTGRES_VERSION=16 "POSTGRES_PORT=$TARGET_PG_PORT" "HASURA_PORT=$TARGET_HASURA_PORT" "AUTH_PORT=$TARGET_AUTH_PORT" "NGINX_HTTP_PORT=$TARGET_HTTP_PORT" "NGINX_HTTPS_PORT=$TARGET_HTTPS_PORT" PGVECTOR_ENABLED=false POSTGRES_EXTENSIONS= "POSTGRES_PASSWORD=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')" "HASURA_GRAPHQL_ADMIN_SECRET=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')" AUTH_ENABLED=true REDIS_ENABLED=false MAILPIT_ENABLED=false MINIO_ENABLED=false OBJECT_STORAGE_ENABLED=true "SEAWEEDFS_PORT=$SEAWEEDFS_PORT" "S3_ACCESS_KEY=$(head -c 12 /dev/urandom | od -An -tx1 | tr -d ' \n')" "S3_SECRET_KEY=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"; do
     printf '\n%s\n' "$kv" >> .env
   done
 }
