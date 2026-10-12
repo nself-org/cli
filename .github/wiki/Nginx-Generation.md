@@ -79,7 +79,7 @@ The remove deletes the plugin. The next build derives nginx again and deletes th
 
 On Linux the `traefik-config` container runs as root and Docker creates its bind directories root-owned, so an unprivileged build cannot delete them. The build then warns (naming the directory), keeps the marker so the next build retries, and does not fail. Run the `sudo rm -rf` it prints, or `sudo chown -R "$USER" .nself/generated`, and build again. This is debt D-0778; the plugin's one-shot should run as the host user.
 
-If the remove is interrupted (a crash, `kill -9`), the files are already final, because the build writes them before it removes any container. Run `nself start`: it removes the leftover traefik containers and starts nginx. Both paths are tested on Linux by `scripts/e2e/proxy-swap.sh --round-trip --assert-identical` and `--kill-mid-remove`.
+If the remove is interrupted (a crash, `kill -9`), the generated files are already final, because the build writes them before it removes any container. Run `nself build --remove-orphans --yes` again (it is idempotent and removes whatever containers the interruption left), then `nself start` to bring nginx back. `nself start` alone does not remove orphaned containers, so a leftover traefik one-shot container would stay until that build. Both paths are tested on Linux by `scripts/e2e/proxy-swap.sh --round-trip --assert-identical` and `--kill-mid-remove`.
 
 ## Plugin and hand-managed routes
 

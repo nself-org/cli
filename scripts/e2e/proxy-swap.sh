@@ -372,6 +372,9 @@ if [[ $MODE != add ]]; then
     wait "$build_pid" 2>/dev/null || true
     printf 'traefik gone: %s\nbuild still running at kill: %s\n' "$gone" "$alive" | tee "$W/evidence/kill-mid-remove.txt"
     [[ $gone == 1 ]] || { echo 'FAIL: the traefik container never stopped' >&2; exit 1; }
+    # Recovery re-runs the interrupted step: build is idempotent and removes the orphans the kill left
+    # (start never removes orphans, DEPL EPIC 2026-10-11 ruling 2), then start brings nginx back.
+    nself "$W/a" build --remove-orphans --yes
     finish_restore
     echo "PASS: proxy kill-mid-remove converged to rt-before.manifest; evidence: $EVIDENCE"
   fi
