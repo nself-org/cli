@@ -34,7 +34,6 @@ export type BackupConfigFlags = {
 export interface BackupConfigRequest {
   args?: BackupConfigArgs;
   flags?: BackupConfigFlags;
-  confirm?: string;
 }
 
 export type BackupCreateArgs = [];
@@ -64,7 +63,6 @@ export type BackupCreateFlags = {
 export interface BackupCreateRequest {
   args?: BackupCreateArgs;
   flags?: BackupCreateFlags;
-  confirm?: string;
 }
 
 export interface BackupData {
@@ -132,7 +130,6 @@ export type BackupDrillFlags = {
 export interface BackupDrillRequest {
   args?: BackupDrillArgs;
   flags?: BackupDrillFlags;
-  confirm?: string;
 }
 
 export type BackupFlags = Record<string, never>;
@@ -151,7 +148,6 @@ export type BackupInitKeyFlags = Record<string, never>;
 export interface BackupInitKeyRequest {
   args?: BackupInitKeyArgs;
   flags?: BackupInitKeyFlags;
-  confirm?: string;
 }
 
 export type BackupListArgs = [];
@@ -180,7 +176,6 @@ export type BackupListFlags = {
 export interface BackupListRequest {
   args?: BackupListArgs;
   flags?: BackupListFlags;
-  confirm?: string;
 }
 
 export type BackupPitrArgs = [];
@@ -202,7 +197,6 @@ export type BackupPitrBaseBackupFlags = {
 export interface BackupPitrBaseBackupRequest {
   args?: BackupPitrBaseBackupArgs;
   flags?: BackupPitrBaseBackupFlags;
-  confirm?: string;
 }
 
 export interface BackupPitrData {
@@ -226,7 +220,6 @@ export type BackupPitrDisableFlags = Record<string, never>;
 export interface BackupPitrDisableRequest {
   args?: BackupPitrDisableArgs;
   flags?: BackupPitrDisableFlags;
-  confirm?: string;
 }
 
 export type BackupPitrEnableArgs = [];
@@ -252,7 +245,6 @@ export type BackupPitrEnableFlags = {
 export interface BackupPitrEnableRequest {
   args?: BackupPitrEnableArgs;
   flags?: BackupPitrEnableFlags;
-  confirm?: string;
 }
 
 export type BackupPitrFlags = Record<string, never>;
@@ -261,7 +253,6 @@ export type BackupPitrFlags = Record<string, never>;
 export interface BackupPitrRequest {
   args?: BackupPitrArgs;
   flags?: BackupPitrFlags;
-  confirm?: string;
 }
 
 export type BackupPitrStatusArgs = [];
@@ -279,7 +270,6 @@ export type BackupPitrStatusFlags = Record<string, never>;
 export interface BackupPitrStatusRequest {
   args?: BackupPitrStatusArgs;
   flags?: BackupPitrStatusFlags;
-  confirm?: string;
 }
 
 export type BackupPruneArgs = [];
@@ -321,7 +311,6 @@ export interface BackupPruneRequest {
 export interface BackupRequest {
   args?: BackupArgs;
   flags?: BackupFlags;
-  confirm?: string;
 }
 
 export type BackupRestoreArgs = [string];
@@ -386,7 +375,6 @@ export type BackupResumeFlags = Record<string, never>;
 export interface BackupResumeRequest {
   args: BackupResumeArgs;
   flags?: BackupResumeFlags;
-  confirm?: string;
 }
 
 export type BackupScheduleArgs = [];
@@ -418,7 +406,6 @@ export type BackupScheduleFlags = {
 export interface BackupScheduleRequest {
   args?: BackupScheduleArgs;
   flags?: BackupScheduleFlags;
-  confirm?: string;
 }
 
 export type BackupStatusArgs = [];
@@ -487,7 +474,6 @@ export type BackupStatusFlags = {
 export interface BackupStatusRequest {
   args?: BackupStatusArgs;
   flags?: BackupStatusFlags;
-  confirm?: string;
 }
 
 export type BackupVerifyArgs = [string];
@@ -514,7 +500,6 @@ export type BackupVerifyFlags = {
 export interface BackupVerifyRequest {
   args: BackupVerifyArgs;
   flags?: BackupVerifyFlags;
-  confirm?: string;
 }
 
 export type BuildArgs = [];
@@ -644,7 +629,6 @@ export type ConfigEnvCopyFlags = Record<string, never>;
 export interface ConfigEnvCopyRequest {
   args: ConfigEnvCopyArgs;
   flags?: ConfigEnvCopyFlags;
-  confirm?: string;
 }
 
 export interface ConfigEnvData {
@@ -672,7 +656,6 @@ export type ConfigEnvDiffFlags = Record<string, never>;
 export interface ConfigEnvDiffRequest {
   args: ConfigEnvDiffArgs;
   flags?: ConfigEnvDiffFlags;
-  confirm?: string;
 }
 
 export type ConfigEnvExplainArgs = [string?];
@@ -702,7 +685,6 @@ export type ConfigEnvExplainFlags = Record<string, never>;
 export interface ConfigEnvExplainRequest {
   args?: ConfigEnvExplainArgs;
   flags?: ConfigEnvExplainFlags;
-  confirm?: string;
 }
 
 export type ConfigEnvFlags = Record<string, never>;
@@ -722,14 +704,12 @@ export type ConfigEnvListFlags = Record<string, never>;
 export interface ConfigEnvListRequest {
   args?: ConfigEnvListArgs;
   flags?: ConfigEnvListFlags;
-  confirm?: string;
 }
 
 /** Multi-environment management: switch, list, diff, copy */
 export interface ConfigEnvRequest {
   args?: ConfigEnvArgs;
   flags?: ConfigEnvFlags;
-  confirm?: string;
 }
 
 export type ConfigEnvShowArgs = [];
@@ -748,7 +728,6 @@ export type ConfigEnvShowFlags = Record<string, never>;
 export interface ConfigEnvShowRequest {
   args?: ConfigEnvShowArgs;
   flags?: ConfigEnvShowFlags;
-  confirm?: string;
 }
 
 export type ConfigEnvTargetAddArgs = [string, string];
@@ -819,7 +798,6 @@ export type ConfigEnvTargetListFlags = {
 export interface ConfigEnvTargetListRequest {
   args?: ConfigEnvTargetListArgs;
   flags?: ConfigEnvTargetListFlags;
-  confirm?: string;
 }
 
 export type ConfigEnvTargetMigrateArgs = [];
@@ -836,7 +814,6 @@ export type ConfigEnvTargetMigrateFlags = Record<string, never>;
 export interface ConfigEnvTargetMigrateRequest {
   args?: ConfigEnvTargetMigrateArgs;
   flags?: ConfigEnvTargetMigrateFlags;
-  confirm?: string;
 }
 
 export type ConfigEnvTargetProbeArgs = [string?];
@@ -860,7 +837,6 @@ export type ConfigEnvTargetProbeFlags = {
 export interface ConfigEnvTargetProbeRequest {
   args?: ConfigEnvTargetProbeArgs;
   flags?: ConfigEnvTargetProbeFlags;
-  confirm?: string;
 }
 
 export type ConfigEnvTargetRemoveArgs = [string, string];
@@ -877,14 +853,12 @@ export type ConfigEnvTargetRemoveFlags = Record<string, never>;
 export interface ConfigEnvTargetRemoveRequest {
   args: ConfigEnvTargetRemoveArgs;
   flags?: ConfigEnvTargetRemoveFlags;
-  confirm?: string;
 }
 
 /** Manage control-plane server targets */
 export interface ConfigEnvTargetRequest {
   args?: ConfigEnvTargetArgs;
   flags?: ConfigEnvTargetFlags;
-  confirm?: string;
 }
 
 export type ConfigEnvUseArgs = [string];
@@ -901,7 +875,6 @@ export type ConfigEnvUseFlags = Record<string, never>;
 export interface ConfigEnvUseRequest {
   args: ConfigEnvUseArgs;
   flags?: ConfigEnvUseFlags;
-  confirm?: string;
 }
 
 export type ConfigExplainArgs = [string, ...Array<string>];
@@ -943,7 +916,6 @@ export type ConfigExplainFlags = Record<string, never>;
 export interface ConfigExplainRequest {
   args: ConfigExplainArgs;
   flags?: ConfigExplainFlags;
-  confirm?: string;
 }
 
 export type ConfigFeaturesArgs = [];
@@ -969,7 +941,6 @@ export type ConfigFeaturesDisableFlags = Record<string, never>;
 export interface ConfigFeaturesDisableRequest {
   args: ConfigFeaturesDisableArgs;
   flags?: ConfigFeaturesDisableFlags;
-  confirm?: string;
 }
 
 export type ConfigFeaturesEnableArgs = [string];
@@ -986,7 +957,6 @@ export type ConfigFeaturesEnableFlags = Record<string, never>;
 export interface ConfigFeaturesEnableRequest {
   args: ConfigFeaturesEnableArgs;
   flags?: ConfigFeaturesEnableFlags;
-  confirm?: string;
 }
 
 export type ConfigFeaturesFlags = Record<string, never>;
@@ -1017,14 +987,12 @@ export type ConfigFeaturesListFlags = Record<string, never>;
 export interface ConfigFeaturesListRequest {
   args?: ConfigFeaturesListArgs;
   flags?: ConfigFeaturesListFlags;
-  confirm?: string;
 }
 
 /** Manage CLI-built-in feature flags */
 export interface ConfigFeaturesRequest {
   args?: ConfigFeaturesArgs;
   flags?: ConfigFeaturesFlags;
-  confirm?: string;
 }
 
 export type ConfigFeaturesStatusArgs = [string];
@@ -1053,7 +1021,6 @@ export type ConfigFeaturesStatusFlags = Record<string, never>;
 export interface ConfigFeaturesStatusRequest {
   args: ConfigFeaturesStatusArgs;
   flags?: ConfigFeaturesStatusFlags;
-  confirm?: string;
 }
 
 export type ConfigFlags = {
@@ -1076,7 +1043,6 @@ export type ConfigGetFlags = Record<string, never>;
 export interface ConfigGetRequest {
   args: ConfigGetArgs;
   flags?: ConfigGetFlags;
-  confirm?: string;
 }
 
 export type ConfigImportArgs = [string];
@@ -1118,7 +1084,6 @@ export type ConfigListFlags = Record<string, never>;
 export interface ConfigListRequest {
   args?: ConfigListArgs;
   flags?: ConfigListFlags;
-  confirm?: string;
 }
 
 export type ConfigOauthArgs = [];
@@ -1160,14 +1125,12 @@ export interface ConfigOauthRefreshRequest {
 export interface ConfigOauthRequest {
   args?: ConfigOauthArgs;
   flags?: ConfigOauthFlags;
-  confirm?: string;
 }
 
 /** Manage project configuration */
 export interface ConfigRequest {
   args?: ConfigArgs;
   flags?: ConfigFlags;
-  confirm?: string;
 }
 
 export type ConfigSecretsArgs = [];
@@ -1189,7 +1152,6 @@ export type ConfigSecretsAuditFlags = Record<string, never>;
 export interface ConfigSecretsAuditRequest {
   args?: ConfigSecretsAuditArgs;
   flags?: ConfigSecretsAuditFlags;
-  confirm?: string;
 }
 
 export interface ConfigSecretsData {
@@ -1218,7 +1180,6 @@ export type ConfigSecretsInitFlags = Record<string, never>;
 export interface ConfigSecretsInitRequest {
   args?: ConfigSecretsInitArgs;
   flags?: ConfigSecretsInitFlags;
-  confirm?: string;
 }
 
 export type ConfigSecretsLintArgs = [];
@@ -1238,7 +1199,6 @@ export type ConfigSecretsLintFlags = Record<string, never>;
 export interface ConfigSecretsLintRequest {
   args?: ConfigSecretsLintArgs;
   flags?: ConfigSecretsLintFlags;
-  confirm?: string;
 }
 
 export type ConfigSecretsListArgs = [];
@@ -1258,7 +1218,6 @@ export type ConfigSecretsListFlags = Record<string, never>;
 export interface ConfigSecretsListRequest {
   args?: ConfigSecretsListArgs;
   flags?: ConfigSecretsListFlags;
-  confirm?: string;
 }
 
 export type ConfigSecretsListSchedulesArgs = [];
@@ -1280,7 +1239,6 @@ export type ConfigSecretsListSchedulesFlags = Record<string, never>;
 export interface ConfigSecretsListSchedulesRequest {
   args?: ConfigSecretsListSchedulesArgs;
   flags?: ConfigSecretsListSchedulesFlags;
-  confirm?: string;
 }
 
 export type ConfigSecretsRecipientsArgs = [];
@@ -1301,7 +1259,6 @@ export type ConfigSecretsRecipientsFlags = {
 export interface ConfigSecretsRecipientsRequest {
   args?: ConfigSecretsRecipientsArgs;
   flags?: ConfigSecretsRecipientsFlags;
-  confirm?: string;
 }
 
 export type ConfigSecretsRekeyArgs = [string];
@@ -1328,7 +1285,6 @@ export interface ConfigSecretsRekeyRequest {
 export interface ConfigSecretsRequest {
   args?: ConfigSecretsArgs;
   flags?: ConfigSecretsFlags;
-  confirm?: string;
 }
 
 export type ConfigSecretsRetireArgs = [string];
@@ -1388,7 +1344,6 @@ export type ConfigSecretsRotationLogFlags = {
 export interface ConfigSecretsRotationLogRequest {
   args?: ConfigSecretsRotationLogArgs;
   flags?: ConfigSecretsRotationLogFlags;
-  confirm?: string;
 }
 
 export type ConfigSecretsScheduleArgs = [];
@@ -1418,7 +1373,6 @@ export type ConfigSecretsScheduleFlags = {
 export interface ConfigSecretsScheduleRequest {
   args?: ConfigSecretsScheduleArgs;
   flags?: ConfigSecretsScheduleFlags;
-  confirm?: string;
 }
 
 export type ConfigSecretsSetArgs = [string, string?];
@@ -1452,7 +1406,6 @@ export type ConfigSecretsVerifyFlags = Record<string, never>;
 export interface ConfigSecretsVerifyRequest {
   args: ConfigSecretsVerifyArgs;
   flags?: ConfigSecretsVerifyFlags;
-  confirm?: string;
 }
 
 export type ConfigSetArgs = [string, string];
@@ -1528,7 +1481,6 @@ export type ConfigShowFlags = {
 export interface ConfigShowRequest {
   args?: ConfigShowArgs;
   flags?: ConfigShowFlags;
-  confirm?: string;
 }
 
 export type ConfigTelemetryArgs = [];
@@ -1556,7 +1508,6 @@ export type ConfigTelemetryOffFlags = Record<string, never>;
 export interface ConfigTelemetryOffRequest {
   args?: ConfigTelemetryOffArgs;
   flags?: ConfigTelemetryOffFlags;
-  confirm?: string;
 }
 
 export type ConfigTelemetryOnArgs = [];
@@ -1573,14 +1524,12 @@ export type ConfigTelemetryOnFlags = Record<string, never>;
 export interface ConfigTelemetryOnRequest {
   args?: ConfigTelemetryOnArgs;
   flags?: ConfigTelemetryOnFlags;
-  confirm?: string;
 }
 
 /** Manage CLI telemetry preferences */
 export interface ConfigTelemetryRequest {
   args?: ConfigTelemetryArgs;
   flags?: ConfigTelemetryFlags;
-  confirm?: string;
 }
 
 export type ConfigTelemetryStatusArgs = [];
@@ -1598,7 +1547,6 @@ export type ConfigTelemetryStatusFlags = Record<string, never>;
 export interface ConfigTelemetryStatusRequest {
   args?: ConfigTelemetryStatusArgs;
   flags?: ConfigTelemetryStatusFlags;
-  confirm?: string;
 }
 
 export type ConfigTrustSslAddArgs = [string];
@@ -1674,7 +1622,6 @@ export interface ConfigTrustSslRenewRequest {
 export interface ConfigTrustSslRequest {
   args?: ConfigTrustSslArgs;
   flags?: ConfigTrustSslFlags;
-  confirm?: string;
 }
 
 export type ConfigTrustSslSetupArgs = [];
@@ -1733,7 +1680,6 @@ export type ConfigTrustSslStatusFlags = Record<string, never>;
 export interface ConfigTrustSslStatusRequest {
   args?: ConfigTrustSslStatusArgs;
   flags?: ConfigTrustSslStatusFlags;
-  confirm?: string;
 }
 
 export type ConfigTrustStatusArgs = [];
@@ -1759,7 +1705,6 @@ export type ConfigTrustStatusFlags = {
 export interface ConfigTrustStatusRequest {
   args?: ConfigTrustStatusArgs;
   flags?: ConfigTrustStatusFlags;
-  confirm?: string;
 }
 
 export type ConfigValidateArgs = [];
@@ -1781,7 +1726,6 @@ export type ConfigValidateFlags = Record<string, never>;
 export interface ConfigValidateRequest {
   args?: ConfigValidateArgs;
   flags?: ConfigValidateFlags;
-  confirm?: string;
 }
 
 export interface Confirmation {
@@ -1823,14 +1767,12 @@ export type DbBackupListFlags = {
 export interface DbBackupListRequest {
   args?: DbBackupListArgs;
   flags?: DbBackupListFlags;
-  confirm?: string;
 }
 
 /** Create pg_dump backup */
 export interface DbBackupRequest {
   args?: DbBackupArgs;
   flags?: DbBackupFlags;
-  confirm?: string;
 }
 
 export type DbBackupSyncArgs = [];
@@ -1873,7 +1815,6 @@ export type DbBackupSyncStatusFlags = Record<string, never>;
 export interface DbBackupSyncStatusRequest {
   args?: DbBackupSyncStatusArgs;
   flags?: DbBackupSyncStatusFlags;
-  confirm?: string;
 }
 
 export interface DbData {
@@ -1908,7 +1849,6 @@ export type DbDriftFixFlags = {
 export interface DbDriftFixRequest {
   args?: DbDriftFixArgs;
   flags?: DbDriftFixFlags;
-  confirm?: string;
 }
 
 export type DbDriftFlags = {
@@ -1922,7 +1862,6 @@ export type DbDriftFlags = {
 export interface DbDriftRequest {
   args?: DbDriftArgs;
   flags?: DbDriftFlags;
-  confirm?: string;
 }
 
 export type DbDriftScanArgs = [];
@@ -1950,7 +1889,6 @@ export type DbDriftScanFlags = {
 export interface DbDriftScanRequest {
   args?: DbDriftScanArgs;
   flags?: DbDriftScanFlags;
-  confirm?: string;
 }
 
 export type DbDropArgs = [];
@@ -1993,7 +1931,6 @@ export type DbExportFlags = {
 export interface DbExportRequest {
   args?: DbExportArgs;
   flags?: DbExportFlags;
-  confirm?: string;
 }
 
 export type DbFkIndexApplyArgs = [];
@@ -2013,7 +1950,6 @@ export type DbFkIndexApplyFlags = {
 export interface DbFkIndexApplyRequest {
   args?: DbFkIndexApplyArgs;
   flags?: DbFkIndexApplyFlags;
-  confirm?: string;
 }
 
 export type DbFkIndexArgs = [];
@@ -2037,7 +1973,6 @@ export type DbFkIndexAuditFlags = Record<string, never>;
 export interface DbFkIndexAuditRequest {
   args?: DbFkIndexAuditArgs;
   flags?: DbFkIndexAuditFlags;
-  confirm?: string;
 }
 
 export interface DbFkIndexData {
@@ -2053,7 +1988,6 @@ export type DbFkIndexFlags = Record<string, never>;
 export interface DbFkIndexRequest {
   args?: DbFkIndexArgs;
   flags?: DbFkIndexFlags;
-  confirm?: string;
 }
 
 export type DbFlags = Record<string, never>;
@@ -2085,7 +2019,6 @@ export type DbGenerateFlags = {
 export interface DbGenerateRequest {
   args?: DbGenerateArgs;
   flags?: DbGenerateFlags;
-  confirm?: string;
 }
 
 export type DbGenerateVectorSearchArgs = [string];
@@ -2119,7 +2052,6 @@ export type DbGenerateVectorSearchFlags = {
 export interface DbGenerateVectorSearchRequest {
   args: DbGenerateVectorSearchArgs;
   flags?: DbGenerateVectorSearchFlags;
-  confirm?: string;
 }
 
 export type DbHasuraApplyRefArgs = [string];
@@ -2145,7 +2077,6 @@ export type DbHasuraApplyRefFlags = {
 export interface DbHasuraApplyRefRequest {
   args: DbHasuraApplyRefArgs;
   flags?: DbHasuraApplyRefFlags;
-  confirm?: string;
 }
 
 export type DbHasuraArgs = [];
@@ -2162,7 +2093,6 @@ export type DbHasuraConsoleFlags = Record<string, never>;
 export interface DbHasuraConsoleRequest {
   args?: DbHasuraConsoleArgs;
   flags?: DbHasuraConsoleFlags;
-  confirm?: string;
 }
 
 export interface DbHasuraData {
@@ -2186,7 +2116,6 @@ export type DbHasuraDiffFlags = Record<string, never>;
 export interface DbHasuraDiffRequest {
   args?: DbHasuraDiffArgs;
   flags?: DbHasuraDiffFlags;
-  confirm?: string;
 }
 
 export type DbHasuraFlags = Record<string, never>;
@@ -2206,7 +2135,6 @@ export type DbHasuraGitStatusFlags = Record<string, never>;
 export interface DbHasuraGitStatusRequest {
   args?: DbHasuraGitStatusArgs;
   flags?: DbHasuraGitStatusFlags;
-  confirm?: string;
 }
 
 export type DbHasuraMetadataApplyArgs = [];
@@ -2232,7 +2160,6 @@ export type DbHasuraMetadataApplyFlags = {
 export interface DbHasuraMetadataApplyRequest {
   args?: DbHasuraMetadataApplyArgs;
   flags?: DbHasuraMetadataApplyFlags;
-  confirm?: string;
 }
 
 export type DbHasuraMetadataArgs = [];
@@ -2258,7 +2185,6 @@ export type DbHasuraMetadataDriftFlags = Record<string, never>;
 export interface DbHasuraMetadataDriftRequest {
   args?: DbHasuraMetadataDriftArgs;
   flags?: DbHasuraMetadataDriftFlags;
-  confirm?: string;
 }
 
 export type DbHasuraMetadataExportArgs = [];
@@ -2278,7 +2204,6 @@ export type DbHasuraMetadataExportFlags = {
 export interface DbHasuraMetadataExportRequest {
   args?: DbHasuraMetadataExportArgs;
   flags?: DbHasuraMetadataExportFlags;
-  confirm?: string;
 }
 
 export type DbHasuraMetadataFlags = Record<string, never>;
@@ -2297,14 +2222,12 @@ export type DbHasuraMetadataReloadFlags = Record<string, never>;
 export interface DbHasuraMetadataReloadRequest {
   args?: DbHasuraMetadataReloadArgs;
   flags?: DbHasuraMetadataReloadFlags;
-  confirm?: string;
 }
 
 /** Manage Hasura metadata */
 export interface DbHasuraMetadataRequest {
   args?: DbHasuraMetadataArgs;
   flags?: DbHasuraMetadataFlags;
-  confirm?: string;
 }
 
 export type DbHasuraPermissionsArgs = [];
@@ -2322,14 +2245,12 @@ export type DbHasuraPermissionsFlags = Record<string, never>;
 export interface DbHasuraPermissionsRequest {
   args?: DbHasuraPermissionsArgs;
   flags?: DbHasuraPermissionsFlags;
-  confirm?: string;
 }
 
 /** Hasura metadata operations */
 export interface DbHasuraRequest {
   args?: DbHasuraArgs;
   flags?: DbHasuraFlags;
-  confirm?: string;
 }
 
 export type DbHasuraSchemaArgs = [];
@@ -2367,7 +2288,6 @@ export type DbHasuraSchemaFlags = Record<string, never>;
 export interface DbHasuraSchemaRequest {
   args?: DbHasuraSchemaArgs;
   flags?: DbHasuraSchemaFlags;
-  confirm?: string;
 }
 
 export type DbHasuraSnapshotArgs = [];
@@ -2387,7 +2307,6 @@ export type DbHasuraSnapshotFlags = {
 export interface DbHasuraSnapshotRequest {
   args?: DbHasuraSnapshotArgs;
   flags?: DbHasuraSnapshotFlags;
-  confirm?: string;
 }
 
 export type DbHasuraSyncArgs = [];
@@ -2413,7 +2332,6 @@ export type DbHasuraSyncFlags = {
 export interface DbHasuraSyncRequest {
   args?: DbHasuraSyncArgs;
   flags?: DbHasuraSyncFlags;
-  confirm?: string;
 }
 
 export type DbHasuraValidateArgs = [];
@@ -2430,7 +2348,6 @@ export type DbHasuraValidateFlags = Record<string, never>;
 export interface DbHasuraValidateRequest {
   args?: DbHasuraValidateArgs;
   flags?: DbHasuraValidateFlags;
-  confirm?: string;
 }
 
 export type DbImportFirebaseArgs = [];
@@ -2458,7 +2375,6 @@ export type DbImportFirebaseFlags = {
 export interface DbImportFirebaseRequest {
   args?: DbImportFirebaseArgs;
   flags?: DbImportFirebaseFlags;
-  confirm?: string;
 }
 
 export type DbImportPostgresArgs = [];
@@ -2538,7 +2454,6 @@ export type DbImportPostgresFlags = {
 export interface DbImportPostgresRequest {
   args?: DbImportPostgresArgs;
   flags?: DbImportPostgresFlags;
-  confirm?: string;
 }
 
 export type DbImportSupabaseArgs = [];
@@ -2562,7 +2477,6 @@ export type DbImportSupabaseFlags = {
 export interface DbImportSupabaseRequest {
   args?: DbImportSupabaseArgs;
   flags?: DbImportSupabaseFlags;
-  confirm?: string;
 }
 
 export type DbLintArgs = [];
@@ -2627,7 +2541,6 @@ export type DbLintFlags = {
 export interface DbLintRequest {
   args?: DbLintArgs;
   flags?: DbLintFlags;
-  confirm?: string;
 }
 
 export type DbListArgs = [];
@@ -2644,7 +2557,6 @@ export type DbListFlags = Record<string, never>;
 export interface DbListRequest {
   args?: DbListArgs;
   flags?: DbListFlags;
-  confirm?: string;
 }
 
 export type DbMigrateApplyArgs = [];
@@ -2664,7 +2576,6 @@ export type DbMigrateApplyFlags = {
 export interface DbMigrateApplyRequest {
   args?: DbMigrateApplyArgs;
   flags?: DbMigrateApplyFlags;
-  confirm?: string;
 }
 
 export type DbMigrateArgs = [];
@@ -2688,7 +2599,6 @@ export type DbMigrateAuditFlags = Record<string, never>;
 export interface DbMigrateAuditRequest {
   args?: DbMigrateAuditArgs;
   flags?: DbMigrateAuditFlags;
-  confirm?: string;
 }
 
 export type DbMigrateBaselineArgs = [string, string?, ...Array<string>];
@@ -2712,7 +2622,6 @@ export type DbMigrateBaselineFlags = {
 export interface DbMigrateBaselineRequest {
   args: DbMigrateBaselineArgs;
   flags?: DbMigrateBaselineFlags;
-  confirm?: string;
 }
 
 export type DbMigrateCreateArgs = [string];
@@ -2729,7 +2638,6 @@ export type DbMigrateCreateFlags = Record<string, never>;
 export interface DbMigrateCreateRequest {
   args: DbMigrateCreateArgs;
   flags?: DbMigrateCreateFlags;
-  confirm?: string;
 }
 
 export interface DbMigrateData {
@@ -2769,7 +2677,6 @@ export type DbMigrateGenerateFlags = {
 export interface DbMigrateGenerateRequest {
   args: DbMigrateGenerateArgs;
   flags?: DbMigrateGenerateFlags;
-  confirm?: string;
 }
 
 export type DbMigrateIdempotentArgs = [string];
@@ -2786,7 +2693,6 @@ export type DbMigrateIdempotentFlags = Record<string, never>;
 export interface DbMigrateIdempotentRequest {
   args: DbMigrateIdempotentArgs;
   flags?: DbMigrateIdempotentFlags;
-  confirm?: string;
 }
 
 export type DbMigrateLintArgs = [string?, ...Array<string>];
@@ -2804,14 +2710,12 @@ export type DbMigrateLintFlags = {
 export interface DbMigrateLintRequest {
   args?: DbMigrateLintArgs;
   flags?: DbMigrateLintFlags;
-  confirm?: string;
 }
 
 /** Manage database migrations */
 export interface DbMigrateRequest {
   args?: DbMigrateArgs;
   flags?: DbMigrateFlags;
-  confirm?: string;
 }
 
 export type DbMigrateStatusArgs = [];
@@ -2841,7 +2745,6 @@ export type DbMigrateStatusFlags = {
 export interface DbMigrateStatusRequest {
   args?: DbMigrateStatusArgs;
   flags?: DbMigrateStatusFlags;
-  confirm?: string;
 }
 
 export type DbMigrateUpArgs = [];
@@ -2869,7 +2772,6 @@ export type DbMigrateUpFlags = {
 export interface DbMigrateUpRequest {
   args?: DbMigrateUpArgs;
   flags?: DbMigrateUpFlags;
-  confirm?: string;
 }
 
 export type DbPgbouncerArgs = [];
@@ -2897,14 +2799,12 @@ export type DbPgbouncerGenerateFlags = Record<string, never>;
 export interface DbPgbouncerGenerateRequest {
   args?: DbPgbouncerGenerateArgs;
   flags?: DbPgbouncerGenerateFlags;
-  confirm?: string;
 }
 
 /** PgBouncer connection pooler operations */
 export interface DbPgbouncerRequest {
   args?: DbPgbouncerArgs;
   flags?: DbPgbouncerFlags;
-  confirm?: string;
 }
 
 export type DbPgbouncerStatusArgs = [];
@@ -2924,7 +2824,6 @@ export type DbPgbouncerStatusFlags = Record<string, never>;
 export interface DbPgbouncerStatusRequest {
   args?: DbPgbouncerStatusArgs;
   flags?: DbPgbouncerStatusFlags;
-  confirm?: string;
 }
 
 export type DbPitrArgs = [];
@@ -2950,7 +2849,6 @@ export type DbPitrEnableFlags = Record<string, never>;
 export interface DbPitrEnableRequest {
   args?: DbPitrEnableArgs;
   flags?: DbPitrEnableFlags;
-  confirm?: string;
 }
 
 export type DbPitrFlags = Record<string, never>;
@@ -2959,7 +2857,6 @@ export type DbPitrFlags = Record<string, never>;
 export interface DbPitrRequest {
   args?: DbPitrArgs;
   flags?: DbPitrFlags;
-  confirm?: string;
 }
 
 export type DbPitrStatusArgs = [];
@@ -2979,7 +2876,6 @@ export type DbPitrStatusFlags = Record<string, never>;
 export interface DbPitrStatusRequest {
   args?: DbPitrStatusArgs;
   flags?: DbPitrStatusFlags;
-  confirm?: string;
 }
 
 export type DbPitrTestArgs = [];
@@ -2996,7 +2892,6 @@ export type DbPitrTestFlags = Record<string, never>;
 export interface DbPitrTestRequest {
   args?: DbPitrTestArgs;
   flags?: DbPitrTestFlags;
-  confirm?: string;
 }
 
 export type DbReconcileArgs = [];
@@ -3020,14 +2915,12 @@ export type DbReconcileFlags = {
 export interface DbReconcileRequest {
   args?: DbReconcileArgs;
   flags?: DbReconcileFlags;
-  confirm?: string;
 }
 
 /** Database operations: migrations, backups, restore, seed, shell */
 export interface DbRequest {
   args?: DbArgs;
   flags?: DbFlags;
-  confirm?: string;
 }
 
 export type DbResetArgs = [];
@@ -3107,14 +3000,12 @@ export type DbRestoreDrillListFlags = Record<string, never>;
 export interface DbRestoreDrillListRequest {
   args?: DbRestoreDrillListArgs;
   flags?: DbRestoreDrillListFlags;
-  confirm?: string;
 }
 
 /** Run a non-destructive restore drill */
 export interface DbRestoreDrillRequest {
   args?: DbRestoreDrillArgs;
   flags?: DbRestoreDrillFlags;
-  confirm?: string;
 }
 
 export type DbRestoreFlags = {
@@ -3148,7 +3039,6 @@ export type DbRlsApplyFlags = {
 export interface DbRlsApplyRequest {
   args?: DbRlsApplyArgs;
   flags?: DbRlsApplyFlags;
-  confirm?: string;
 }
 
 export type DbRlsApplyTableArgs = [string, string];
@@ -3165,7 +3055,6 @@ export type DbRlsApplyTableFlags = Record<string, never>;
 export interface DbRlsApplyTableRequest {
   args: DbRlsApplyTableArgs;
   flags?: DbRlsApplyTableFlags;
-  confirm?: string;
 }
 
 export type DbRlsArgs = [];
@@ -3189,7 +3078,6 @@ export type DbRlsAuditFlags = {
 export interface DbRlsAuditRequest {
   args?: DbRlsAuditArgs;
   flags?: DbRlsAuditFlags;
-  confirm?: string;
 }
 
 export interface DbRlsData {
@@ -3205,7 +3093,6 @@ export type DbRlsFlags = Record<string, never>;
 export interface DbRlsRequest {
   args?: DbRlsArgs;
   flags?: DbRlsFlags;
-  confirm?: string;
 }
 
 export type DbRlsRollbackArgs = [string, string];
@@ -3222,7 +3109,6 @@ export type DbRlsRollbackFlags = Record<string, never>;
 export interface DbRlsRollbackRequest {
   args: DbRlsRollbackArgs;
   flags?: DbRlsRollbackFlags;
-  confirm?: string;
 }
 
 export type DbSeedArgs = [];
@@ -3259,7 +3145,6 @@ export type DbSeedFixturesListFlags = Record<string, never>;
 export interface DbSeedFixturesListRequest {
   args?: DbSeedFixturesListArgs;
   flags?: DbSeedFixturesListFlags;
-  confirm?: string;
 }
 
 export type DbSeedFixturesManifestArgs = [string];
@@ -3279,14 +3164,12 @@ export type DbSeedFixturesManifestFlags = {
 export interface DbSeedFixturesManifestRequest {
   args: DbSeedFixturesManifestArgs;
   flags?: DbSeedFixturesManifestFlags;
-  confirm?: string;
 }
 
 /** Manage seed fixtures */
 export interface DbSeedFixturesRequest {
   args?: DbSeedFixturesArgs;
   flags?: DbSeedFixturesFlags;
-  confirm?: string;
 }
 
 export type DbSeedFixturesRunArgs = [string];
@@ -3303,7 +3186,6 @@ export type DbSeedFixturesRunFlags = Record<string, never>;
 export interface DbSeedFixturesRunRequest {
   args: DbSeedFixturesRunArgs;
   flags?: DbSeedFixturesRunFlags;
-  confirm?: string;
 }
 
 export type DbSeedFixturesVerifyArgs = [string];
@@ -3320,7 +3202,6 @@ export type DbSeedFixturesVerifyFlags = Record<string, never>;
 export interface DbSeedFixturesVerifyRequest {
   args: DbSeedFixturesVerifyArgs;
   flags?: DbSeedFixturesVerifyFlags;
-  confirm?: string;
 }
 
 export type DbSeedFlags = {
@@ -3348,7 +3229,6 @@ export type DbSeedGraphFlags = Record<string, never>;
 export interface DbSeedGraphRequest {
   args?: DbSeedGraphArgs;
   flags?: DbSeedGraphFlags;
-  confirm?: string;
 }
 
 export type DbSeedListArgs = [];
@@ -3369,7 +3249,6 @@ export type DbSeedListFlags = Record<string, never>;
 export interface DbSeedListRequest {
   args?: DbSeedListArgs;
   flags?: DbSeedListFlags;
-  confirm?: string;
 }
 
 export type DbSeedMatrixArgs = [];
@@ -3386,14 +3265,12 @@ export type DbSeedMatrixFlags = Record<string, never>;
 export interface DbSeedMatrixRequest {
   args?: DbSeedMatrixArgs;
   flags?: DbSeedMatrixFlags;
-  confirm?: string;
 }
 
 /** Database seeding: run, list, verify, graph */
 export interface DbSeedRequest {
   args?: DbSeedArgs;
   flags?: DbSeedFlags;
-  confirm?: string;
 }
 
 export type DbSeedRunArgs = [];
@@ -3417,7 +3294,6 @@ export type DbSeedRunFlags = {
 export interface DbSeedRunRequest {
   args?: DbSeedRunArgs;
   flags?: DbSeedRunFlags;
-  confirm?: string;
 }
 
 export type DbSeedVerifyArgs = [];
@@ -3441,7 +3317,6 @@ export type DbSeedVerifyFlags = {
 export interface DbSeedVerifyRequest {
   args?: DbSeedVerifyArgs;
   flags?: DbSeedVerifyFlags;
-  confirm?: string;
 }
 
 export type DbSoftDeleteApplyArgs = [string, string];
@@ -3458,7 +3333,6 @@ export type DbSoftDeleteApplyFlags = Record<string, never>;
 export interface DbSoftDeleteApplyRequest {
   args: DbSoftDeleteApplyArgs;
   flags?: DbSoftDeleteApplyFlags;
-  confirm?: string;
 }
 
 export type DbSoftDeleteArgs = [];
@@ -3481,7 +3355,6 @@ export type DbSoftDeleteAuditFlags = Record<string, never>;
 export interface DbSoftDeleteAuditRequest {
   args?: DbSoftDeleteAuditArgs;
   flags?: DbSoftDeleteAuditFlags;
-  confirm?: string;
 }
 
 export interface DbSoftDeleteData {
@@ -3507,14 +3380,12 @@ export type DbSoftDeleteGenerateFlags = Record<string, never>;
 export interface DbSoftDeleteGenerateRequest {
   args: DbSoftDeleteGenerateArgs;
   flags?: DbSoftDeleteGenerateFlags;
-  confirm?: string;
 }
 
 /** Manage soft-delete (deleted_at) patterns across tables */
 export interface DbSoftDeleteRequest {
   args?: DbSoftDeleteArgs;
   flags?: DbSoftDeleteFlags;
-  confirm?: string;
 }
 
 export type DbVerifyArgs = [];
@@ -3533,7 +3404,6 @@ export type DbVerifyChecksumsFlags = Record<string, never>;
 export interface DbVerifyChecksumsRequest {
   args?: DbVerifyChecksumsArgs;
   flags?: DbVerifyChecksumsFlags;
-  confirm?: string;
 }
 
 export interface DbVerifyData {
@@ -3551,7 +3421,6 @@ export type DbVerifyFlags = {
 export interface DbVerifyRequest {
   args?: DbVerifyArgs;
   flags?: DbVerifyFlags;
-  confirm?: string;
 }
 
 export type DeployTargetsArgs = [];
@@ -3581,7 +3450,6 @@ export type DeployTargetsFlags = Record<string, never>;
 export interface DeployTargetsRequest {
   args?: DeployTargetsArgs;
   flags?: DeployTargetsFlags;
-  confirm?: string;
 }
 
 export type DoctorArgs = [];
@@ -3696,7 +3564,6 @@ export type DoctorImagesFlags = Record<string, never>;
 export interface DoctorImagesRequest {
   args?: DoctorImagesArgs;
   flags?: DoctorImagesFlags;
-  confirm?: string;
 }
 
 export type DoctorReportArgs = [];
@@ -3719,14 +3586,12 @@ export type DoctorReportFlags = {
 export interface DoctorReportRequest {
   args?: DoctorReportArgs;
   flags?: DoctorReportFlags;
-  confirm?: string;
 }
 
 /** Run comprehensive system diagnostics */
 export interface DoctorRequest {
   args?: DoctorArgs;
   flags?: DoctorFlags;
-  confirm?: string;
 }
 
 export interface ErrorDetail {
@@ -3756,7 +3621,6 @@ export type HelpTopicsFlags = Record<string, never>;
 export interface HelpTopicsRequest {
   args?: HelpTopicsArgs;
   flags?: HelpTopicsFlags;
-  confirm?: string;
 }
 
 export type InitTemplateArgs = [];
@@ -3796,7 +3660,6 @@ export type InitTemplateInfoFlags = Record<string, never>;
 export interface InitTemplateInfoRequest {
   args: InitTemplateInfoArgs;
   flags?: InitTemplateInfoFlags;
-  confirm?: string;
 }
 
 export type InitTemplateListArgs = [];
@@ -3840,7 +3703,6 @@ export type InitTemplateListFlags = {
 export interface InitTemplateListRequest {
   args?: InitTemplateListArgs;
   flags?: InitTemplateListFlags;
-  confirm?: string;
 }
 
 export type InitTemplatePublishArgs = [];
@@ -3869,7 +3731,6 @@ export interface InitTemplatePublishRequest {
 export interface InitTemplateRequest {
   args?: InitTemplateArgs;
   flags?: InitTemplateFlags;
-  confirm?: string;
 }
 
 export type InitTemplateUpdateArgs = [];
@@ -3891,7 +3752,6 @@ export type InitTemplateUpdateFlags = {
 export interface InitTemplateUpdateRequest {
   args?: InitTemplateUpdateArgs;
   flags?: InitTemplateUpdateFlags;
-  confirm?: string;
 }
 
 export type LogsArgs = [string?];
@@ -3947,7 +3807,6 @@ export type LogsFlags = {
 export interface LogsRequest {
   args?: LogsArgs;
   flags?: LogsFlags;
-  confirm?: string;
 }
 
 export type ResetArgs = [];
@@ -4023,7 +3882,6 @@ export type StatusHealthCheckFlags = Record<string, never>;
 export interface StatusHealthCheckRequest {
   args?: StatusHealthCheckArgs;
   flags?: StatusHealthCheckFlags;
-  confirm?: string;
 }
 
 export type StatusHealthConfigArgs = [];
@@ -4043,7 +3901,6 @@ export type StatusHealthConfigFlags = Record<string, never>;
 export interface StatusHealthConfigRequest {
   args?: StatusHealthConfigArgs;
   flags?: StatusHealthConfigFlags;
-  confirm?: string;
 }
 
 export interface StatusHealthData {
@@ -4074,7 +3931,6 @@ export type StatusHealthEndpointFlags = Record<string, never>;
 export interface StatusHealthEndpointRequest {
   args: StatusHealthEndpointArgs;
   flags?: StatusHealthEndpointFlags;
-  confirm?: string;
 }
 
 export type StatusHealthFlags = {
@@ -4113,14 +3969,12 @@ export type StatusHealthHistoryFlags = Record<string, never>;
 export interface StatusHealthHistoryRequest {
   args?: StatusHealthHistoryArgs;
   flags?: StatusHealthHistoryFlags;
-  confirm?: string;
 }
 
 /** Health check management with continuous monitoring */
 export interface StatusHealthRequest {
   args?: StatusHealthArgs;
   flags?: StatusHealthFlags;
-  confirm?: string;
 }
 
 export type StatusHealthServiceArgs = [string];
@@ -4138,14 +3992,12 @@ export type StatusHealthServiceFlags = Record<string, never>;
 export interface StatusHealthServiceRequest {
   args: StatusHealthServiceArgs;
   flags?: StatusHealthServiceFlags;
-  confirm?: string;
 }
 
 /** Show health status of all services */
 export interface StatusRequest {
   args?: StatusArgs;
   flags?: StatusFlags;
-  confirm?: string;
 }
 
 export type StatusUrlsArgs = [];
@@ -4249,7 +4101,6 @@ export type StatusUrlsFlags = {
 export interface StatusUrlsRequest {
   args?: StatusUrlsArgs;
   flags?: StatusUrlsFlags;
-  confirm?: string;
 }
 
 export type UpdateArgs = [];
@@ -4321,7 +4172,6 @@ export type UpdateProjectDetectFlags = Record<string, never>;
 export interface UpdateProjectDetectRequest {
   args?: UpdateProjectDetectArgs;
   flags?: UpdateProjectDetectFlags;
-  confirm?: string;
 }
 
 export type UpdateProjectFromBashArgs = [];
@@ -4343,7 +4193,6 @@ export type UpdateProjectFromBashFlags = {
 export interface UpdateProjectFromBashRequest {
   args?: UpdateProjectFromBashArgs;
   flags?: UpdateProjectFromBashFlags;
-  confirm?: string;
 }
 
 export type UpdateProjectFromV099Args = [];
@@ -4365,7 +4214,6 @@ export type UpdateProjectFromV099Flags = {
 export interface UpdateProjectFromV099Request {
   args?: UpdateProjectFromV099Args;
   flags?: UpdateProjectFromV099Flags;
-  confirm?: string;
 }
 
 export type UpdateProjectRunArgs = [];
@@ -4382,14 +4230,12 @@ export type UpdateProjectRunFlags = Record<string, never>;
 export interface UpdateProjectRunRequest {
   args?: UpdateProjectRunArgs;
   flags?: UpdateProjectRunFlags;
-  confirm?: string;
 }
 
 /** Update the nSelf CLI and admin UI */
 export interface UpdateRequest {
   args?: UpdateArgs;
   flags?: UpdateFlags;
-  confirm?: string;
 }
 
 export type UpdateStackArgs = [];

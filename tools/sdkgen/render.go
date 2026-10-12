@@ -98,7 +98,7 @@ func requestDecls(name string, op Operation) ([]typeDecl, bool, error) {
 	}
 	args, flags := props["args"], props["flags"]
 	if args == nil {
-		args = &Schema{Type: []byte(`"array"`)}
+		args = &Schema{Type: []byte(`"array"`), Items: []byte("false")}
 	}
 	if flags == nil {
 		flags = &Schema{Type: []byte(`"object"`), Properties: map[string]*Schema{}, AdditionalProperties: []byte("false")}
@@ -109,7 +109,13 @@ func requestDecls(name string, op Operation) ([]typeDecl, bool, error) {
 			argsRequired = argsRequired || r == "args"
 		}
 	}
-	req := "{\n  args" + map[bool]string{true: "", false: "?"}[argsRequired] + ": " + name + "Args;\n  flags?: " + name + "Flags;\n  confirm?: string;\n}"
+	// confirm is only part of the request when the operation's schema declares it:
+	// the server rejects it ("this command takes no confirm") on the others.
+	confirm := ""
+	if c := props["confirm"]; c != nil {
+		confirm = "  confirm?: " + tsType(c, 1) + ";\n"
+	}
+	req := "{\n  args" + map[bool]string{true: "", false: "?"}[argsRequired] + ": " + name + "Args;\n  flags?: " + name + "Flags;\n" + confirm + "}"
 	decls := []typeDecl{
 		{Name: name + "Args", Body: tsType(args, 0), Kind: "type"},
 		{Name: name + "Flags", Body: tsType(flags, 0), Kind: "type"},

@@ -101,10 +101,13 @@ func tsArray(s *Schema, depth int) string {
 		}
 	}
 	if len(s.PrefixItems) == 0 {
-		if rest == "" {
+		switch {
+		case rest != "":
+			return "Array<" + rest + ">"
+		case isFalse(s.Items):
 			return "[]"
 		}
-		return "Array<" + rest + ">"
+		return "Array<unknown>" // no items keyword: any array
 	}
 	// JSON Schema: without minItems no element is required.
 	min := 0

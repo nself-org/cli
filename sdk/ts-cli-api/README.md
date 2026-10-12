@@ -32,7 +32,7 @@ const api = createClient({ token, baseUrl: "http://127.0.0.1:3857" });
 const { value } = await api.configGet({ args: ["BASE_DOMAIN"] });
 ```
 
-Every method takes `{ args?, flags?, confirm? }` and an optional `{ signal, onResponse }`. `onResponse` receives the HTTP status, `X-Nself-Exit-Code` (state exits 10 to 12 return `data` with a non-zero exit code), the request id and the envelope warnings.
+Every method takes `{ args?, flags? }` (plus `confirm?` on the operations that declare it) and an optional `{ signal, onResponse }`. `onResponse` receives the HTTP status, `X-Nself-Exit-Code` (state exits 10 to 12 return `data` with a non-zero exit code), the request id and the envelope warnings.
 
 ### Errors
 
@@ -88,7 +88,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 
 <!-- BEGIN GENERATED: operations (tools/sdkgen, DO NOT HAND EDIT) -->
 
-179 operations. Every method takes `{ args, flags, confirm }` and resolves to the typed `data` member.
+179 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
 
 | Method | Route | Summary |
 | --- | --- | --- |

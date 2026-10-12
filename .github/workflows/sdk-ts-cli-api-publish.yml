@@ -96,6 +96,8 @@ jobs:
       - name: Publish to npm
         if: vars.NSELF_PUBLISH_CLI_API == 'true' && !inputs.dry_run
         working-directory: sdk/ts-cli-api
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           # Re-running a partly failed release must not turn red once the version is live.
           if npm view "@nself/cli-api@${{ steps.version.outputs.version }}" version >/dev/null 2>&1; then

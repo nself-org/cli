@@ -55,7 +55,8 @@ func TestSdkgenTypeScript(t *testing.T) {
 		"ok?: unknown;",
 		"export type WidgetListData = Array<{\n  name?: string;\n}>;",
 		"export interface WidgetGetRequest {\n  args: WidgetGetArgs;",
-		"export interface WidgetListRequest {\n  args?: WidgetListArgs;",
+		"export interface WidgetListRequest {\n  args?: WidgetListArgs;\n  flags?: WidgetListFlags;\n  confirm?: string;",
+		"export interface WidgetGetRequest {\n  args: WidgetGetArgs;\n  flags?: WidgetGetFlags;\n}",
 		"export interface ErrorDetail {",
 		"Get a widget | with pipe *​/",
 	} {
@@ -155,6 +156,12 @@ func TestTupleEdges(t *testing.T) {
 		t.Errorf("tuple = %s, want %s", got, want)
 	}
 	rest := &Schema{Type: []byte(`"array"`), Items: []byte(`{"type":"string"}`), PrefixItems: []*Schema{{Type: []byte(`"string"`)}}, MinItems: &min1}
+	if got, want := tsType(&Schema{Type: []byte(`"array"`)}, 0), "Array<unknown>"; got != want {
+		t.Errorf("bare array = %s, want %s", got, want)
+	}
+	if got, want := tsType(&Schema{Type: []byte(`"array"`), Items: []byte("false"), MaxItems: new(int)}, 0), "[]"; got != want {
+		t.Errorf("empty tuple = %s, want %s", got, want)
+	}
 	if got, want := tsType(rest, 0), `[string, ...Array<string>]`; got != want {
 		t.Errorf("rest tuple = %s, want %s", got, want)
 	}

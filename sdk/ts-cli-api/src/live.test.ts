@@ -50,7 +50,9 @@ suite("live nself admin serve", () => {
     for (const d of [home, proj, shimDir]) mkdirSync(d, { recursive: true });
     writeFileSync(join(shimDir, "docker"), SHIM);
     chmodSync(join(shimDir, "docker"), 0o755);
-    const env = { ...process.env, HOME: home, NSELF_V15: "1", NSELF_PLUGIN_DIR: join(home, "plugins"), PATH: `${shimDir}:${process.env.PATH ?? ""}` };
+    // Drop NSELF_* and XDG_* so a developer's own token or config never reaches the throwaway server.
+    const inherited = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("NSELF_") && !k.startsWith("XDG_")));
+    const env = { ...inherited, HOME: home, NSELF_V15: "1", NSELF_PLUGIN_DIR: join(home, "plugins"), PATH: `${shimDir}:${process.env.PATH ?? ""}` };
     execFileSync(bin as string, ["init", "--non-interactive", "--domain", "fixture.test"], { cwd: proj, env, stdio: "pipe" });
     try {
       execFileSync("age", ["--version"], { stdio: "pipe" });

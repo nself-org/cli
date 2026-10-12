@@ -134,7 +134,7 @@ export function createTransport(options: ClientOptions): Transport {
     const type = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
     opts.onResponse?.(infoOf(res));
     if (type !== NDJSON) {
-      // A refusal before the first byte, or a command that answers with one document.
+      // A refusal before the first byte (including 406 E430 for a document-only command); a JSON 2xx is passed through as the final item.
       const env = decode(await res.text(), res);
       if (res.status >= 400 || env.error) throw fail(env, res);
       yield { final: true, envelope: env };

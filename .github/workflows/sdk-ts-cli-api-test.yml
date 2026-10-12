@@ -10,12 +10,18 @@ on:
       - 'sdk/ts-cli-api/**'
       - 'tools/sdkgen/**'
       - '.github/openapi.json'
+      - 'internal/httpapi/**'
+      - 'internal/invoke/**'
+      - 'internal/builtin/admin/**'
       - '.github/workflows/sdk-ts-cli-api-test.yml'
   pull_request:
     paths:
       - 'sdk/ts-cli-api/**'
       - 'tools/sdkgen/**'
       - '.github/openapi.json'
+      - 'internal/httpapi/**'
+      - 'internal/invoke/**'
+      - 'internal/builtin/admin/**'
       - '.github/workflows/sdk-ts-cli-api-test.yml'
 
 permissions:

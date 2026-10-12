@@ -24,7 +24,7 @@ func ReplaceReadmeRegion(readme []byte, ops []opView) ([]byte, error) {
 	}
 	var b bytes.Buffer
 	b.WriteString(s[:i] + readmeBegin + "\n\n")
-	fmt.Fprintf(&b, "%d operations. Every method takes `{ args, flags, confirm }` and resolves to the typed `data` member.\n\n", len(ops))
+	fmt.Fprintf(&b, "%d operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.\n\n", len(ops))
 	b.WriteString("| Method | Route | Summary |\n| --- | --- | --- |\n")
 	for _, o := range ops {
 		fmt.Fprintf(&b, "| `%s` | `POST %s` | %s |\n", o.Method, o.Path, strings.ReplaceAll(o.Summary, "|", "\\|"))
