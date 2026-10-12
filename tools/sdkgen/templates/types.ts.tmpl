@@ -1,0 +1,6 @@
+{{.Header}}
+// Source: .github/openapi.json (regenerate with: go run ./tools/sdkgen -lang ts)
+{{range .Decls}}
+{{if .Doc}}/** {{.Doc}} */
+{{end}}{{if eq .Kind "interface"}}export interface {{.Name}} {{.Body}}{{else}}export type {{.Name}} = {{.Body}};{{end}}
+{{end}}

@@ -1,0 +1,105 @@
+name: Publish @nself/cli-api to npm
+
+# Publishes the generated control-API client in lockstep with the CLI release tag.
+#
+# Gate (owner-named, P7-SURF-33): the job runs only when
+#   - workflow_dispatch with dry_run = true  (packaging check, never publishes), or
+#   - the repository variable NSELF_PUBLISH_CLI_API is the string 'true'.
+# The real `npm publish` step additionally requires that the variable is 'true'
+# and that dry_run is not set. Until the owner sets the variable, tag pushes skip
+# this workflow entirely.
+#
+# Requires an NPM_TOKEN secret with write access to the @nself scope.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Package and run npm publish --dry-run only (never publishes)'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+# cancel-in-progress: false: a publish must queue behind an in-flight one, never cancel it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish @nself/cli-api
+    if: inputs.dry_run == true || vars.NSELF_PUBLISH_CLI_API == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 9
+
+      - name: Check lockstep version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./sdk/ts-cli-api/package.json').version")
+          EXPECTED="$(cat .github/VERSION)"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            EXPECTED="${GITHUB_REF#refs/tags/v}"
+          fi
+          if [ "${VERSION}" != "${EXPECTED}" ]; then
+            echo "MISMATCH: @nself/cli-api is ${VERSION}, expected ${EXPECTED}"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        working-directory: sdk/ts-cli-api
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        working-directory: sdk/ts-cli-api
+        run: pnpm run typecheck
+
+      - name: Build
+        working-directory: sdk/ts-cli-api
+        run: pnpm run build
+
+      - name: Dry-run publish
+        working-directory: sdk/ts-cli-api
+        run: npm publish --dry-run --access public
+
+      # Same pnpm/.npmrc quirk as sdk-ts-sdk-publish.yml: write the resolved token.
+      - name: Authenticate to npm
+        if: vars.NSELF_PUBLISH_CLI_API == 'true' && !inputs.dry_run
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NPM_TOKEN:-}" ]; then
+            echo "NPM_TOKEN not set: refusing to publish unauthenticated."
+            exit 1
+          fi
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" >> "$HOME/.npmrc"
+
+      - name: Publish to npm
+        if: vars.NSELF_PUBLISH_CLI_API == 'true' && !inputs.dry_run
+        working-directory: sdk/ts-cli-api
+        run: |
+          # Re-running a partly failed release must not turn red once the version is live.
+          if npm view "@nself/cli-api@${{ steps.version.outputs.version }}" version >/dev/null 2>&1; then
+            echo "@nself/cli-api@${{ steps.version.outputs.version }} is already published; nothing to do."
+            exit 0
+          fi
+          pnpm publish --provenance --access public --no-git-checks
