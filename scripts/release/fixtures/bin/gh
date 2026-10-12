@@ -32,7 +32,8 @@ case "$cmd $sub" in
         if [ -f "$ST/required/$r" ]; then echo '{"strict":true,"contexts":["ci"],"checks":[{"context":"ci"}]}' | emit
         else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
       repos/nself-org/cli/milestones*)
-        if [ -f "$ST/no_milestone" ]; then echo '[]' | emit; else echo '[{"title":"v1.5.0","state":"closed"}]' | emit; fi ;;
+        if [ -f "$ST/no_milestone" ]; then echo '[]' | emit
+        elif [ -f "$ST/only_bare_milestone" ]; then echo '[{"title":"1.5.0","state":"closed"}]' | emit; else echo '[{"title":"v1.5.0","state":"closed"}]' | emit; fi ;;
       repos/nself-org/cli/commits/*)
         printf '{"sha":"%s"}\n' "$(git --git-dir="$(bare cli)" rev-parse "${path##*/}^{commit}")" | emit ;;
       repos/nself-org/*/actions/organization-secrets)
@@ -67,6 +68,10 @@ case "$cmd $sub" in
   "pr view")
     printf '{"state":"%s"}\n' "$(cat "$ST/pr/$REPO/$3.state")" | emit ;;
   "pr checks")
+    if printf '%s' "$*" | grep -q -- '--json'; then
+      if [ -f "$ST/missing_ctx" ]; then echo '[]' | emit; else echo '[{"name":"ci","bucket":"pass"}]' | emit; fi
+      exit 0
+    fi
     if [ -f "$ST/nochecks" ]; then echo "no required checks reported on the 'x' branch"; exit 1; fi
     if [ "${STUB_CHECKS_RED:-0}" = 1 ]; then echo "1 failing check"; exit 1; fi
     echo "all required checks passed" ;;

@@ -55,14 +55,14 @@ Every step first checks whether GitHub already shows it finished. If so it print
 `.github/release-denylist.json` has five rules. S4 evaluates the three that can be decided at tag time:
 
 - DENY-003: at least one commit since the prior tag.
-- DENY-004: the latest `license-audit.yml` run on `main` succeeded.
-- DENY-005: a closed milestone titled `vX.Y.Z` or `X.Y.Z` (either is accepted).
+- DENY-004: the latest `license-audit.yml` run on `main` succeeded. This is stricter than the gate: no run at all also stops S4. Recover with `gh workflow run license-audit.yml -R nself-org/cli --ref main`, wait for it to pass, then `--from S4`.
+- DENY-005: a closed milestone titled exactly `vX.Y.Z`, as `pre-release-gate.yml` requires. A milestone named `X.Y.Z` does not count.
 
 DENY-001 (cosign bundles) and DENY-002 (SBOMs) need the build output, so they are evaluated after the build by the Pre-Release Gate, the `denylist` job in `release.yml`. That job re-checks all five before anything is published. `scripts/release-create.sh` is not used here: it evaluates the post-build rules before the build exists, so it would always refuse at tag time. Recovery for a refusal: close the milestone or fix `license-audit.yml`, then `--from S4`.
 
 ## Merges are yours
 
-S2, S3 and S6 merge PRs on protected repos. For each one the script waits until the PR's required checks are green (red stops the run, nothing merges), then runs `scripts/admin-merge.sh --repo nself-org/<repo> --pr <n>` with your terminal attached. If a PR shows no checks yet, the script asks branch protection what is required: none means it goes on to your prompt, otherwise it retries six times and then stops without merging. That script snapshots branch protection, relaxes it for under a minute, merges, and restores it. You answer its `[y/N]` prompt. `--yes` does not cover it, and the script never pipes an answer in.
+S2, S3 and S6 merge PRs on protected repos. For each one the script waits until the PR's required checks are green (red stops the run, nothing merges), then runs `scripts/admin-merge.sh --repo nself-org/<repo> --pr <n>` with your terminal attached. If a PR shows no checks yet, the script asks branch protection what is required: none means it goes on to your prompt, otherwise it retries six times and then stops without merging. When checks come back green it also confirms each required check name is among the passing ones. That script snapshots branch protection, relaxes it for under a minute, merges, and restores it. You answer its `[y/N]` prompt. `--yes` does not cover it, and the script never pipes an answer in.
 
 If `admin-merge.sh` exits non-zero, protection may not be restored. Read its message and its audit log (`~/.nself/admin-merge-audit.log`) before you do anything else.
 

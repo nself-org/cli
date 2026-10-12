@@ -51,7 +51,8 @@ image_step() {
       || die_step "$IMG_S" "$IMG_ID" "the in-flight run on $IMG_REPO did not publish $IMG_HUB:$VERSION; check it, then --from $IMG_S"
     say "$IMG_S $IMG_ID: $IMG_HUB:$VERSION is up"; return 0
   fi
-  pub=$(gh release view "$TAG" -R nself-org/cli --json publishedAt --jq .publishedAt)
+  pub=$(gh release view "$TAG" -R nself-org/cli --json publishedAt --jq .publishedAt) \
+    || die_step "$IMG_S" "$IMG_ID" "cannot read the cli release $TAG (is S7 finished?); fix it, then --from $IMG_S"
   recent=$(gh run list -R "nself-org/$IMG_REPO" --workflow docker-publish.yml --limit 5 --json createdAt,conclusion \
     --jq "[.[] | select(.conclusion == \"success\" and .createdAt >= \"$pub\")] | length")
   if [ "${recent:-0}" -gt 0 ] && poll "$IMG_HUB:$VERSION after a recent run" 6 hub_ok_img; then

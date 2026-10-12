@@ -178,6 +178,20 @@ check "no required checks: says so" out_has "requires no status checks"
 check "no required checks: three merges" test "$(nlines "$ADMIN_LOG")" -eq 3
 rm -rf "$T"
 
+mk_env "$HAVE_GO"
+mkdir -p "$ST/required"; touch "$ST/required/admin" "$ST/missing_ctx"
+run_pty --version "$V" --from S2 --yes
+check "green but a required context missing exits 1" test "$RC" -eq 1
+check "missing context is named" out_has "(ci )"
+check "missing context never called admin-merge" test ! -s "$ADMIN_LOG"
+rm -rf "$T"
+mk_env "$HAVE_GO"
+mkdir -p "$ST/required"; touch "$ST/required/admin"
+run_pty --version "$V" --from S2 --yes
+check "green with every required context present proceeds" test "$RC" -eq 0
+check "required context present: three merges" test "$(nlines "$ADMIN_LOG")" -eq 3
+rm -rf "$T"
+
 # 9. S2/S3 done-detection; tag-time denylist and the tag guard ---------------------------
 mk_env "$HAVE_GO"
 bump_mains
@@ -210,6 +224,16 @@ git --git-dir="$FIX/cli.git" tag "v$V" "$old"
 run_pty --version "$V" --from S4 --yes
 check "a tag on another commit is refused" test "$RC" -eq 1
 check "a refused tag was not moved" test "$(git --git-dir="$FIX/cli.git" rev-parse "refs/tags/v$V")" = "$old"
+rm -rf "$T"
+
+mk_env "$HAVE_GO"; bump_mains; touch "$ST/only_bare_milestone"
+run_pty --version "$V" --from S4 --yes
+check "milestone without the v prefix does not pass DENY-005" test "$RC" -eq 1 -a -z "$(git --git-dir="$FIX/cli.git" tag -l "v$V")"
+check "bare milestone names DENY-005" out_has "DENY-005"
+rm -rf "$T"
+mk_env "$HAVE_GO"; bump_mains; touch "$ST/license_fail"
+run_pty --version "$V" --from S4 --yes
+check "DENY-004 message gives the recovery command" out_has "gh workflow run license-audit.yml -R nself-org/cli --ref main"
 rm -rf "$T"
 
 # 10. S6 done path still re-runs a failed lockstep job; S8 waits on an in-flight publish -

@@ -164,46 +164,68 @@ open_pr() {
   printf '%s\n' "${url##*/}"
 }
 
-# required_checks_count <repo>: how many required status checks main's protection
-# lists (GET). 404 (no protection, or none required) is 0; an unreadable answer is ?.
-required_checks_count() {
+# required_contexts <repo>: names of the status checks main's protection requires
+# (GET), one per line. Nothing for a 404 (no protection, or none required); "?" when
+# the answer cannot be read.
+required_contexts() {
   if gh_try api "repos/nself-org/$1/branches/main/protection/required_status_checks" \
-    --jq '((.contexts // []) + [(.checks // [])[].context]) | unique | length'; then
-    printf '%s\n' "${GH_OUT:-0}"
-  elif is_404; then printf '0\n'
-  else printf '?\n'; fi
+    --jq '((.contexts // []) + [(.checks // [])[].context]) | unique | .[]'; then
+    { printf '%s\n' "$GH_OUT" | grep . || true; }
+  elif ! is_404; then printf '?\n'; fi
+}
+
+# missing_required <repo> <n>: required contexts not reported as passing on the PR
+# (by name), space separated; "?" if unreadable; nothing when all are present.
+missing_required() {
+  local ctx got
+  ctx=$(required_contexts "$1")
+  if [ -z "$ctx" ]; then return 0; fi
+  if [ "$ctx" = "?" ]; then printf '?\n'; return 0; fi
+  got=$(gh pr checks "$2" -R "nself-org/$1" --required --json name,bucket \
+    --jq '.[] | select(.bucket == "pass") | .name') || { printf '?\n'; return 0; }
+  printf '%s\n' "$ctx" | while IFS= read -r c; do
+    printf '%s\n' "$got" | grep -qxF -- "$c" || printf '%s ' "$c"
+  done
 }
 
 # wait_checks <S#> <id> <repo> <n>: block until required checks are green.
-# Red stops the run. "No checks reported" is accepted only when the repo's
-# protection requires none; if checks are required but not reported yet, retry
-# six times, then stop. Nothing reaches admin-merge.sh on an unverified PR.
+# Red stops the run. Green must also name every required context from branch
+# protection as passing (--watch can return early when only some checks exist yet).
+# "No checks reported" is accepted only when protection requires none. Missing or
+# unreported required checks are retried six times, then the run stops. Nothing
+# reaches admin-merge.sh on an unverified PR.
 wait_checks() {
-  local s=$1 id=$2 repo=$3 n=$4 i=0 out rc req
+  local s=$1 id=$2 repo=$3 n=$4 i=0 out rc ctx miss
   out=$(mktemp "${TMPDIR:-/tmp}/nself-release-checks.XXXXXX")
   while :; do
     set +e
     gh pr checks "$n" -R "nself-org/$repo" --required --watch --interval 30 2>&1 | tee "$out"
     rc=${PIPESTATUS[0]}
     set -e
-    if [ "$rc" -eq 0 ]; then rm -f "$out"; return 0; fi
-    if ! grep -q -i -E 'no (required )?checks' "$out"; then
+    if [ "$rc" -eq 0 ]; then
+      miss=$(missing_required "$repo" "$n")
+      if [ -z "$miss" ]; then rm -f "$out"; return 0; fi
+      if [ "$miss" = "?" ]; then
+        rm -f "$out"; die_step "$s" "$id" "cannot read the required checks of $repo#$n; nothing was merged"
+      fi
+    elif grep -q -i -E 'no (required )?checks' "$out"; then
+      ctx=$(required_contexts "$repo")
+      if [ -z "$ctx" ]; then
+        say "$s $id: $repo requires no status checks on main; continuing to the owner prompt"
+        rm -f "$out"; return 0
+      fi
+      if [ "$ctx" = "?" ]; then
+        rm -f "$out"; die_step "$s" "$id" "cannot read the required checks of $repo; nothing was merged"
+      fi
+      miss=$(printf '%s' "$ctx" | tr '\n' ' ')
+    else
       rm -f "$out"
       die_step "$s" "$id" "required checks on $repo#$n are not green; nothing was merged"
-    fi
-    req=$(required_checks_count "$repo")
-    if [ "$req" = 0 ]; then
-      say "$s $id: $repo requires no status checks on main; continuing to the owner prompt"
-      rm -f "$out"; return 0
-    fi
-    if [ "$req" = "?" ]; then
-      rm -f "$out"
-      die_step "$s" "$id" "cannot read the required checks of $repo; nothing was merged"
     fi
     i=$((i + 1))
     if [ "$i" -ge 6 ]; then
       rm -f "$out"
-      die_step "$s" "$id" "$repo#$n has $req required checks but none reported after 6 tries; nothing was merged"
+      die_step "$s" "$id" "$repo#$n: required checks not reported as passing after 6 tries (${miss}); nothing was merged"
     fi
     sleep "$POLL_SECONDS"
   done

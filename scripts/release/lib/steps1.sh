@@ -114,17 +114,17 @@ deny_checks() {
   fi
   c=$(gh run list -R nself-org/cli --workflow license-audit.yml --branch main --limit 1 --json conclusion \
     --jq '.[0].conclusion // empty') || die_step S4 tag "cannot read the license-audit.yml runs"
-  [ "$c" = success ] || die_step S4 tag "DENY-004: latest license-audit.yml run on main is '${c:-none}'; fix the flagged licenses and let it pass, then --from S4"
+  [ "$c" = success ] || die_step S4 tag "DENY-004: latest license-audit.yml run on main is '${c:-none}'; a success is required. Start one with: gh workflow run license-audit.yml -R nself-org/cli --ref main (fix any flagged licenses first), wait for it to pass, then --from S4"
   ms=$(gh api "repos/nself-org/cli/milestones?state=closed&per_page=100" --paginate \
-    --jq ".[] | select(.title == \"$TAG\" or .title == \"$VERSION\") | .title") \
+    --jq ".[] | select(.title == \"$TAG\") | .title") \
     || die_step S4 tag "cannot read the cli milestones"
-  [ -n "$ms" ] || die_step S4 tag "DENY-005: no closed milestone titled $TAG or $VERSION (either is accepted); close it, then --from S4"
+  [ -n "$ms" ] || die_step S4 tag "DENY-005: no closed milestone titled exactly $TAG (a milestone named $VERSION does not count); create or close it, then --from S4"
 }
 
 step_tag() {
   local sha merged cur
   if [ "$PLAN" = 1 ]; then
-    plan_line S4 tag cli "gh api repos/nself-org/cli/milestones?state=closed (DENY-005: a closed milestone titled $TAG or $VERSION)"
+    plan_line S4 tag cli "gh api repos/nself-org/cli/milestones?state=closed (DENY-005: a closed milestone titled exactly $TAG)"
     plan_line S4 tag cli "gh run list -R nself-org/cli --workflow license-audit.yml --branch main --limit 1 (DENY-004: conclusion success)"
     plan_line S4 tag cli "git -C $WORK/cli rev-list --count PRIOR_TAG..SHA (DENY-003: more than 0 commits since the prior tag)"
     plan_line S4 tag cli "git -C $WORK/cli fetch origin main; verify merged sha == git rev-parse origin/main"
@@ -153,7 +153,7 @@ step_tag() {
   [ "$cur" = "$VERSION" ] || die_step S4 tag "origin/main carries version $cur, not $VERSION (S3 not merged?)"
   deny_checks "$sha"
   if [ "$(git -C "$WORK/cli" rev-parse -q --verify "refs/tags/$TAG^{commit}" || true)" != "$sha" ]; then
-    git -C "$WORK/cli" tag -a "$TAG" -m "$TAG" "$sha" || die_step S4 tag "could not create the local tag (a stale $TAG in $WORK/cli? remove the clone)"
+    git -C "$WORK/cli" tag -a "$TAG" -m "$TAG" "$sha" || die_step S4 tag "could not create the local tag (a stale $TAG in $WORK/cli, or git user.name / user.email unset?)"
   fi
   git -C "$WORK/cli" push -q origin "refs/tags/$TAG" || die_step S4 tag "push of $TAG was refused"
   cur=$(git -C "$WORK/cli" ls-remote origin "refs/tags/$TAG^{}" | awk '{print $1}')
