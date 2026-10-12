@@ -87,6 +87,9 @@ var knownEnvVarsOps = []string{
 	"DOCKER_STOP_GRACE_PERIOD",
 	"NSELF_DOCKER_BUILD_TIMEOUT",
 
+	// Deploy (v1.5 remote apply)
+	"NSELF_DEPLOY_NGINX_INCLUDE",
+
 	// Start/Stop
 	"NSELF_START_MODE",
 	"NSELF_HEALTH_CHECK_TIMEOUT",
