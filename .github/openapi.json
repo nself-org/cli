@@ -4507,6 +4507,15 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "compat_shims": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "detection": {
             "additionalProperties": false,
             "properties": {
@@ -4797,6 +4806,7 @@
           "storage",
           "hasura",
           "untranslated_policies",
+          "compat_shims",
           "exemptions",
           "mismatches",
           "wrote"
@@ -4809,6 +4819,15 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "compat_shims": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "detection": {
             "additionalProperties": false,
             "properties": {
@@ -5099,6 +5118,7 @@
           "storage",
           "hasura",
           "untranslated_policies",
+          "compat_shims",
           "exemptions",
           "mismatches",
           "wrote"

@@ -2404,6 +2404,7 @@ export interface DbImportFirebaseRequest {
 export type DbImportHasuraCloudArgs = [];
 
 export interface DbImportHasuraCloudData {
+  compat_shims: null | Array<string>;
   detection?: null | {
     kind: string;
     notes: null | Array<string>;
@@ -2487,6 +2488,7 @@ export interface DbImportHasuraCloudRequest {
 export type DbImportNhostArgs = [];
 
 export interface DbImportNhostData {
+  compat_shims: null | Array<string>;
   detection?: null | {
     kind: string;
     notes: null | Array<string>;
