@@ -1,0 +1,50 @@
+package load
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"github.com/nself-org/cli/internal/importer/verify"
+	"github.com/nself-org/cli/internal/portable"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestStorageMissingAndExemptions(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "stage")
+	writer, err := portable.NewWriter(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bytes := "fixture-object"
+	hash := sha256.Sum256([]byte(bytes))
+	member, err := portable.StorageMember("bucket", "nested/key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = writer.WriteFile(member, strings.NewReader(bytes)); err != nil {
+		t.Fatal(err)
+	}
+	m := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "bucket", Key: "nested/key", Member: member, SHA256: hex.EncodeToString(hash[:]), Bytes: int64(len(bytes))}}}, SourceCounts: []portable.SourceCount{{Kind: "objects", Count: 1, Method: "independent list"}}}
+	m, err = writer.Finish(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := portable.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = StoragePreflight(m, nil, false); err == nil || !strings.Contains(err.Error(), "E529") {
+		t.Fatal("missing store not refused")
+	}
+	exemptions, err := ApplyStorage(context.Background(), r, nil, true)
+	if err != nil || len(exemptions) != 1 || exemptions[0].ID != "bucket/nested/key" {
+		t.Fatalf("exemptions: %+v %v", exemptions, err)
+	}
+	m.Exemptions = exemptions
+	diffs := verify.CompareState(verify.State{Objects: map[string]string{}, Counts: map[string]int64{"objects\x00": 0}}, m, nil, nil)
+	if len(diffs) != 0 {
+		t.Fatalf("skip must pass with independent counts: %+v", diffs)
+	}
+}

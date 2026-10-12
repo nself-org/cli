@@ -84,6 +84,7 @@ edges:
   - {from: internal/upgrade, to: internal/database}
   - {from: internal/upgrade, to: internal/reconcile}
   - {from: internal/upgrade, to: internal/plugin}
+  - {from: internal/importer, to: internal/database} # P7-ADOPT-10 additive bundle metadata
   - {from: internal/backup, to: internal/controlplane}   # added after the forge basis (P7-PROD-06/07); needs the overview 4.2 line
   - {from: internal/build, to: internal/bundle}
   - {from: internal/build, to: internal/plugin}
