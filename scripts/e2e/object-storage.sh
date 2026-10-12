@@ -68,7 +68,7 @@ umask 077
 cat >"$WORK/run.sh" <<'RUNNER'
 #!/usr/bin/env bash
 set -euo pipefail
-umask 022 # known CLI debt D-0: nself build fails under umask 077 (E452); secret files get chmod 600 below
+umask 022 # known CLI debt D-0664: nself build fails under umask 077 (E452); secret files get chmod 600 below
 export DOCKER_HOST=unix:///var/run/docker.sock NSELF_V15=1
 export NSELF_PLUGIN_DIR=/work/plugins
 mkdir -p "$HOME" "$NSELF_PLUGIN_DIR" /work/project
