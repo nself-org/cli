@@ -17,21 +17,20 @@ package commands
 //              whatever the leaf is, and runScratchBuild has no remote path
 //              (its call site is not changed). The host layout is checked in
 //              deploy.Stage (E485 unless basename(dir(remote_path)) equals
-//              FrontedBy). The v1.5 apply cannot ship the fronting stack's
-//              files yet, so a fronted project that stages any is refused
-//              (fail closed) after the report; the apply side is a follow-up.
+//              FrontedBy). The fronting stack's files ship as ArtifactSet.Front
+//              (deploy.ApplyRemote). The stub ssl tree of the fronting stack
+//              mirrors <front>/ssl/certificates from the target snapshot
+//              (TargetSnapshot.FrontSSL), not the project's own ssl dir.
 
 import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"unicode"
 
 	"github.com/nself-org/cli/internal/deploy"
-	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
@@ -60,7 +59,8 @@ func scratchProjectDir(workdir, env, frontedBy string) string {
 	return filepath.Join(scratchDirFor(workdir, env), frontedBy, frontedLeaf)
 }
 
-// writeFrontStubSSL lays the same ssl stubs where the fronting stack reads them
+// writeFrontStubSSL lays ssl stubs mirroring the fronting stack's certificates
+// (the snapshot's FrontSSL) where the fronting stack reads them
 // (nginxtopo.ServedSSLDir) for a fronted project. The build's own ssl step reads
 // <scratch>/ssl, which runScratchBuild fills for every project.
 func writeFrontStubSSL(scratch, frontedBy string, certs []deploy.CertDir) error {
@@ -74,19 +74,12 @@ func writeFrontStubSSL(scratch, frontedBy string, certs []deploy.CertDir) error 
 	return writeStubSSLDir(dir, certs)
 }
 
-// finishScratchStage reports what the stage left out and fails closed on a
-// fronting stack's files the apply cannot ship yet.
-func finishScratchStage(w io.Writer, set deploy.ArtifactSet, frontedBy string, stale []string) (deploy.ArtifactSet, error) {
+// finishScratchStage reports what the stage left out. The fronting stack's
+// files ship with the set (deploy.ApplyRemote, D-0425), so nothing is refused.
+func finishScratchStage(w io.Writer, set deploy.ArtifactSet, stale []string) (deploy.ArtifactSet, error) {
 	reportNotShipped(w, set.NotShipped)
 	reportStale(w, stale)
-	if set.Front == nil || len(set.Front.Files) == 0 {
-		return set, nil
-	}
-	for _, rel := range set.Front.Files {
-		_, _ = fmt.Fprintf(w, "  [staged, not shipped] %s\n", path.Join(set.Front.RemotePath, rel))
-	}
-	return deploy.ArtifactSet{}, errs.New("E485", fmt.Sprintf("NGINX_FRONTED_BY=%s: the v1.5 apply cannot ship the fronting stack's nginx/sites yet (follow-up of D-0425); nothing was sent", frontedBy)).
-		WithFix("deploy this project with compat v1.4 (unset NSELF_V15) until the v1.5 apply can ship the fronting stack's nginx/sites")
+	return set, nil
 }
 
 // clearScratch removes the scratch root of env (both layouts).
