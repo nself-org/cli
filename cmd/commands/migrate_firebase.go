@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/migrate/firebase"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -36,8 +37,27 @@ Artifacts written to <output-dir> (default: <export-dir>/nself-migration):
 No live Firebase connection is required. The command operates entirely on
 the exported JSON files.
 
+v1.5 (NSELF_V15=1): the command runs the import pipeline against the live project
+instead (also reachable as ` + "`nself db import firebase`" + `):
+  nself db import firebase --project <id> --credentials-file <key.json> \
+      --auth-export ./auth-users.json [--bucket <name>] [--plan]
+With FIRESTORE_EMULATOR_HOST set, no credentials file is needed.
+
 See: https://github.com/nself-org/cli/wiki/cmd-migrate-firebase`,
-	RunE: dataEnv(runMigrateFirebase),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// compat.V15(P7-ADOPT-14): artifact generator -> import pipeline
+		if compat.V15() {
+			return runFirebaseImport(cmd)
+		}
+		// The v1.5 flags exist so help and docs describe the import, but v1.4 never had them:
+		// refuse them with cobra's old text instead of ignoring them and writing artifacts.
+		for _, name := range firebaseV15OnlyFlags {
+			if cmd.Flags().Changed(name) {
+				return fmt.Errorf("unknown flag: --%s", name)
+			}
+		}
+		return dataEnv(runMigrateFirebase)(cmd, args)
+	},
 }
 
 func init() {
@@ -46,7 +66,13 @@ func init() {
 	migrateFirebaseCmd.Flags().String("output-dir", "", "Directory for generated artifacts (default: <export-dir>/nself-migration)")
 	migrateFirebaseCmd.Flags().String("project-name", "firebase_import", "Project name used in generated SQL and file names")
 	migrateFirebaseCmd.Flags().Bool("dry-run", false, "Generate migration artifacts without applying them to a running nSelf instance")
-	_ = migrateFirebaseCmd.MarkFlagRequired("export-dir")
+	// v1.5 import pipeline flags (ignored in v1.4 mode); --export-dir is checked in runMigrateFirebase.
+	migrateFirebaseCmd.Flags().String("project", "", "Firebase project id (v1.5 import)")
+	migrateFirebaseCmd.Flags().String("credentials-file", "", "Service-account key file (v1.5 import; not needed with FIRESTORE_EMULATOR_HOST)")
+	migrateFirebaseCmd.Flags().String("bucket", "", "Cloud Storage bucket to copy (v1.5 import)")
+	migrateFirebaseCmd.Flags().Bool("plan", false, "Check source and target and print the import plan without writing (v1.5 import)")
+	migrateFirebaseCmd.Flags().Bool("keep-stage", false, "Keep the private portable bundle after a successful import (v1.5 import)")
+	migrateFirebaseCmd.Flags().Bool("skip-storage", false, "Exempt each storage object from this import (v1.5 import)")
 	migrateCmd.AddCommand(migrateFirebaseCmd)
 }
 
@@ -55,6 +81,9 @@ func runMigrateFirebase(cmd *cobra.Command, _ []string) error {
 	authExport, _ := cmd.Flags().GetString("auth-export")
 	outputDir, _ := cmd.Flags().GetString("output-dir")
 	projectName, _ := cmd.Flags().GetString("project-name")
+	if exportDir == "" {
+		return fmt.Errorf("required flag(s) \"export-dir\" not set")
+	}
 
 	ui.CommandHeader("nself migrate firebase", "Firebase → nSelf migration scaffold")
 	fmt.Println()

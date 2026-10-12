@@ -65,6 +65,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-ADOPT-01 | writable absolute bind allowed | E502 | `internal/compose/custom_service_v2.go` |
 | P7-ADOPT-13 | --project-ref and --supabase-key required | optional | `cmd/commands/db_import_src_supabase.go` |
 | P7-ADOPT-13 | artifact generator | import pipeline | `cmd/commands/migrate_supabase.go` |
+| P7-ADOPT-14 | artifact generator | import pipeline | `cmd/commands/migrate_firebase.go` |
 | P7-CANON-01 | same-owner breakout stays core in v1.4 | mounts from its plugin in v1.5 | `cmd/commands/plugin_mount.go` |
 | P7-CANON-02 | registry view with moved entries at their v1.4 paths | view at canonical paths plus deprecated-shim entries | `internal/canon/canon.go` |
 | P7-CANON-05 | help | next step + help | `cmd/commands/root.go` |

@@ -1,0 +1,44 @@
+CREATE SCHEMA firebase;
+CREATE TABLE "firebase"."notes" (
+  "id" text NOT NULL,
+  "data" jsonb NOT NULL,
+  "views" bigint,
+  PRIMARY KEY ("id")
+);
+CREATE TABLE "firebase"."users" (
+  "id" text NOT NULL,
+  "data" jsonb NOT NULL,
+  "active" boolean,
+  "joined" timestamptz,
+  "name" text,
+  "nick" text,
+  "score" double precision,
+  PRIMARY KEY ("id")
+);
+CREATE TABLE "firebase"."users__orders" (
+  "parent_path" text NOT NULL,
+  "parent_id" text NOT NULL,
+  "id" text NOT NULL,
+  "data" jsonb NOT NULL,
+  "total" bigint,
+  PRIMARY KEY ("parent_path", "id")
+);
+-- notes (id,data,views)
+"n1","{""Title"":""collides"",""id"":""shadow"",""title"":""one""}",
+"n2","{""title"":"""",""views"":0}","0"
+"n3","{""title"":""three"",""views"":9007199254740993}","9007199254740993"
+"n4","{}",
+-- users (id,data,active,joined,name,nick,score)
+"u1","{""active"":true,""age"":30,""joined"":""2024-05-01T12:00:00.123456Z"",""name"":""Ann"",""nick"":null,""profile"":{""city"":""Oslo"",""zip"":150},""score"":1.5,""tags"":[""a"",""b""]}","true","2024-05-01T12:00:00.123456Z","Ann",,"1.5"
+"u2","{""active"":false,""age"":""unknown"",""joined"":""2024-05-02T08:30:00Z"",""name"":""Bob"",""score"":2}","false","2024-05-02T08:30:00Z","Bob",,"2"
+"u3","{""active"":true,""age"":41,""name"":""Cy"",""nick"":""cyc""}","true",,"Cy","cyc",
+-- users__orders (parent_path,parent_id,id,data,total)
+"users/u1","u1","o1","{""total"":10}","10"
+"users/u1","u1","o2","{""total"":20}","20"
+"users/u1","u1","o3","{""total"":30}","30"
+"users/u2","u2","o1","{""total"":5}","5"
+"users/u2","u2","o2","{""total"":6}","6"
+-- note firebase.notes.id: column name collides after sanitising; kept in data only
+-- note firebase.notes.Title: column name collides after sanitising; kept in data only
+-- note firebase.notes.title: column name collides after sanitising; kept in data only
+-- note firebase.users.age: field types differ (integer,string); kept in data only

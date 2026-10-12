@@ -66,7 +66,6 @@ var dataEnvelopeTypes = map[string]any{
 	"db hasura snapshot":          dataResult{},
 	"db hasura sync":              dataResult{},
 	"db hasura validate":          dataResult{},
-	"db import firebase":          dataResult{},
 	"db import supabase":          dataResult{},
 	"db lint":                     dbLintData{},
 	"db list":                     dataResult{},
