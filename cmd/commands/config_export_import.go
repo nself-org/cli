@@ -13,9 +13,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/ui"
 
-	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
@@ -34,12 +34,12 @@ func runConfigExport(cmd *cobra.Command, args []string) error {
 	}
 
 	envFile := envFileName(projectDir, envFlag)
-	pairs, err := godotenv.Read(envFile)
+	pairs, err := config.ReadEnvFile(envFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("env file not found: %s", envFile)
 		}
-		return fmt.Errorf("reading %s: %w", envFile, err)
+		return config.EnvReadError(envFile, err)
 	}
 
 	keys := make([]string, 0, len(pairs))
@@ -111,12 +111,12 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 	}
 
 	// Read source file.
-	incoming, err := godotenv.Read(srcFile)
+	incoming, err := config.ReadEnvFile(srcFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("import file not found: %s", srcFile)
 		}
-		return fmt.Errorf("reading import file %s: %w", srcFile, err)
+		return config.EnvReadError(srcFile, err)
 	}
 
 	envFile := envFileName(projectDir, envFlag)
@@ -124,9 +124,9 @@ func runConfigImport(cmd *cobra.Command, args []string) error {
 	// Read current env file (may not exist yet).
 	current := make(map[string]string)
 	if _, statErr := os.Stat(envFile); statErr == nil {
-		current, err = godotenv.Read(envFile)
+		current, err = config.ReadEnvFile(envFile)
 		if err != nil {
-			return fmt.Errorf("reading %s: %w", envFile, err)
+			return config.EnvReadError(envFile, err)
 		}
 	}
 

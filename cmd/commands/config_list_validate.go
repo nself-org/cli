@@ -19,7 +19,6 @@ import (
 	"github.com/nself-org/cli/internal/output"
 	"github.com/nself-org/cli/internal/plugin"
 
-	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
@@ -36,9 +35,9 @@ func runConfigList(cmd *cobra.Command, args []string) error {
 	// Read the env file if it exists. Missing file is not an error for list.
 	var pairs map[string]string
 	if _, statErr := os.Stat(envFile); statErr == nil {
-		pairs, err = godotenv.Read(envFile)
+		pairs, err = config.ReadEnvFile(envFile)
 		if err != nil {
-			return fmt.Errorf("reading %s: %w", envFile, err)
+			return config.EnvReadError(envFile, err)
 		}
 	} else {
 		pairs = make(map[string]string)
@@ -131,6 +130,8 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	warnUnquotedDollar(cmd.ErrOrStderr(), projectDir)
+
 	var manifest bytes.Buffer
 	errorCount += reportNselfYAML(io.MultiWriter(cmd.ErrOrStderr(), &manifest), projectDir)
 
@@ -155,6 +156,17 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	return fmt.Errorf("one or more validators failed")
+}
+
+// warnUnquotedDollar prints one warning per env-file value whose '$' the loader
+// expands (D-0552). Warnings only: no exit-code or JSON change, and never the
+// value itself.
+func warnUnquotedDollar(w io.Writer, projectDir string) {
+	env, _ := config.ResolveEnv(projectDir)
+	for _, f := range config.UnquotedDollarFindings(projectDir, env) {
+		fmt.Fprintf(w, "⚠ %s:%d: %s holds an unquoted '$' that the loader expands; single-quote the value if the '$' is literal (write ${NAME} for a reference)\n",
+			filepath.Base(f.File), f.Line, f.Key)
+	}
 }
 
 // manifestLines splits the nself.yaml findings text into one string per line,

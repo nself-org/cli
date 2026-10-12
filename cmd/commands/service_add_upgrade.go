@@ -17,18 +17,17 @@ package commands
 // split — their signatures and behavior are unchanged.
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"regexp"
 	"strings"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/reconcile"
 	"github.com/nself-org/cli/internal/scaffold"
 	"github.com/nself-org/cli/internal/security"
 	"github.com/nself-org/cli/internal/ui"
 
-	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
@@ -211,56 +210,29 @@ func readEnvValues(filename string) (map[string]string, error) {
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		return make(map[string]string), nil
 	}
-	values, err := godotenv.Read(filename)
+	values, err := config.ReadEnvFile(filename)
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", filename, err)
+		return nil, config.EnvReadError(filename, err)
 	}
 	return values, nil
 }
 
-// setEnvKeyInFile reads filename, replaces or appends KEY=value, and writes it back.
-// Preserves comments and line ordering. Safe for files that do not yet exist.
+// setEnvKeyInFile sets KEY=value in filename and writes it back (0600), using
+// reconcile.EnvFileWithLine, the encoder `config set` uses: comments and line
+// order are kept and the value is stored so the loader reads it back unchanged
+// ('$' is escaped, never expanded). Safe for files that do not yet exist.
 func setEnvKeyInFile(filename, key, value string) error {
-	// Read existing content (if any).
-	var lines []string
-	if _, err := os.Stat(filename); err == nil {
-		f, err := os.Open(filename)
-		if err != nil {
-			return fmt.Errorf("opening %s: %w", filename, err)
-		}
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			lines = append(lines, scanner.Text())
-		}
-		_ = f.Close()
-		if err := scanner.Err(); err != nil {
-			return fmt.Errorf("reading %s: %w", filename, err)
-		}
+	old, readErr := os.ReadFile(filename)
+	exists := readErr == nil
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return fmt.Errorf("reading %s: %w", filename, readErr)
 	}
-
-	// Search for an existing line that sets this key.
-	prefix := key + "="
-	found := false
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		// Match KEY=... lines (skip comments).
-		if strings.HasPrefix(trimmed, prefix) || trimmed == key {
-			lines[i] = key + "=" + config.QuoteEnvValue(value)
-			found = true
-			break
-		}
+	content, _, encErr := reconcile.EnvFileWithLine(old, exists, key, value)
+	if encErr != nil {
+		return fmt.Errorf("encoding %s for %s: %w", key, filename, encErr)
 	}
-
-	if !found {
-		lines = append(lines, key+"="+config.QuoteEnvValue(value))
-	}
-
-	// Write back. Env files must be 0600 (user-readable only).
-	content := strings.Join(lines, "\n")
-	if len(lines) > 0 {
-		content += "\n"
-	}
-	if err := os.WriteFile(filename, []byte(content), 0600); err != nil {
+	// Env files must be 0600 (user-readable only).
+	if err := os.WriteFile(filename, content, 0600); err != nil {
 		return fmt.Errorf("writing %s: %w", filename, err)
 	}
 	if err := security.EnforceFilePermissions(filename, 0600); err != nil {

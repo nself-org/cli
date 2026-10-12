@@ -29,8 +29,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joho/godotenv"
-
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/nginxtopo"
 )
 
@@ -183,7 +182,7 @@ func ServedEnv(root, fallbackEnv string) (map[string]string, error) {
 
 // readEnvFile parses an env file; missing is empty.
 func readEnvFile(p string) (map[string]string, error) {
-	m, err := godotenv.Read(p)
+	m, err := config.ReadEnvFile(p)
 	if errors.Is(err, fs.ErrNotExist) {
 		return map[string]string{}, nil
 	}

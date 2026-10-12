@@ -13,9 +13,9 @@ import (
 	"strings"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/output"
 
-	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
@@ -30,12 +30,12 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 	}
 
 	envFile := envFileName(projectDir, envFlag)
-	pairs, err := godotenv.Read(envFile)
+	pairs, err := config.ReadEnvFile(envFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("env file not found: %s", envFile)
 		}
-		return fmt.Errorf("reading %s: %w", envFile, err)
+		return config.EnvReadError(envFile, err)
 	}
 
 	// Sort keys for deterministic output.
@@ -94,12 +94,12 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 	}
 
 	envFile := envFileName(projectDir, envFlag)
-	pairs, err := godotenv.Read(envFile)
+	pairs, err := config.ReadEnvFile(envFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("env file not found: %s", envFile)
 		}
-		return fmt.Errorf("reading %s: %w", envFile, err)
+		return config.EnvReadError(envFile, err)
 	}
 
 	val, ok := pairs[key]
