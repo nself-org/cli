@@ -55,6 +55,7 @@ internal/database/vectorsearch 94  # measured 96.9 2026-10-10
 internal/deploy 53  # measured 55.2 2026-10-05
 internal/deploy/archguard 76  # measured 78.6 2026-10-09
 internal/deploy/bluegreen 44  # measured 46.3 2026-10-05
+internal/deploy/progress 86  # measured 88.8 2026-10-12
 internal/deprecation 75  # measured 77.3 2026-10-05
 internal/docker 52  # measured 54.7 2026-10-05
 internal/docker/dockertest 85  # measured 89.5 (darwin, local) 2026-10-11; new package (D-0286)
