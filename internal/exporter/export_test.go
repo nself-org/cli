@@ -10,7 +10,16 @@ import (
 	"github.com/nself-org/cli/internal/config"
 )
 
+// fakeUID makes the platform check pass on hosts without a numeric uid.
+func fakeUID(t *testing.T) {
+	t.Helper()
+	old := currentUID
+	currentUID = func() int { return 1000 }
+	t.Cleanup(func() { currentUID = old })
+}
+
 func TestExportPreflightNoWrites(t *testing.T) {
+	fakeUID(t)
 	dir := t.TempDir()
 	out := filepath.Join(dir, "bundle")
 	if _, err := Export(context.Background(), nil, Options{Out: out}); err == nil {
@@ -52,6 +61,7 @@ func TestExportPreflightNoWrites(t *testing.T) {
 }
 
 func TestExportParentMustExist(t *testing.T) {
+	fakeUID(t)
 	dir := t.TempDir()
 	_, err := Export(context.Background(), &config.Config{}, Options{Out: filepath.Join(dir, "missing", "bundle")})
 	if err == nil || !strings.Contains(err.Error(), "parent directory") {

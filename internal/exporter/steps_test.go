@@ -82,6 +82,7 @@ func TestStaleStageWarning(t *testing.T) {
 }
 
 func TestExportWarnsAboutStaleStageBeforeStarting(t *testing.T) {
+	fakeUID(t)
 	parent := t.TempDir()
 	if err := os.Mkdir(filepath.Join(parent, stagePrefix+"FAKE5678"), 0o700); err != nil {
 		t.Fatal(err)

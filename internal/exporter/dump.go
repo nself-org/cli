@@ -25,7 +25,7 @@ func tool(ctx context.Context, cfg *config.Config, stage string, args []string) 
 	if err != nil {
 		return safeFailure("resolve postgres image")
 	}
-	_, _, err = runTool(ctx, docker.RunSpec{Image: container.Image, Args: args, EnvPass: map[string]string{"PGPASSWORD": cfg.Postgres.Password}, User: fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()), Network: cfg.ProjectName + "_network", Mounts: []docker.Mount{{Source: stage, Destination: "/stage"}}})
+	_, _, err = runTool(ctx, docker.RunSpec{Image: container.Image, Args: args, EnvPass: map[string]string{"PGPASSWORD": cfg.Postgres.Password}, User: fmt.Sprintf("%d:%d", currentUID(), os.Getgid()), Network: cfg.ProjectName + "_network", Mounts: []docker.Mount{{Source: stage, Destination: "/stage"}}})
 	if err != nil {
 		return safeFailure("postgres tool")
 	}
