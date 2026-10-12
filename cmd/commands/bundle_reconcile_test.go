@@ -231,8 +231,9 @@ func TestPluginInstallProdClassRefusal(t *testing.T) {
 		if err == nil || errs.ExitCodeFor(err) != 4 || !strings.Contains(err.Error(), "E403") || !strings.Contains(err.Error(), "nself build --plan") {
 			t.Fatalf("want exit 4 E403 with plan hint, got %v", err)
 		}
-		if _, err := os.Stat(filepath.Join(p.plugins, "zzfixture", "plugin.json")); err != nil {
-			t.Fatalf("plugin files missing after refusal: %v", err)
+		// D-0433: a refused reconcile removes what this run installed.
+		if _, err := os.Stat(filepath.Join(p.plugins, "zzfixture")); !os.IsNotExist(err) {
+			t.Fatalf("plugin files remain after the refusal: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(p.project, "nginx", "sites", "zzfixture-route.conf")); !os.IsNotExist(err) {
 			t.Fatalf("regeneration ran despite refusal: %v", err)

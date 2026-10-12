@@ -290,7 +290,7 @@ func installLocked(ctx context.Context, cfg *config.Config, name string, pluginD
 	}
 
 	// Step 8: post-install reporting (split out — see installer_finish.go).
-	finishInstall(name, manifest)
+	finishInstall(ctx, name, manifest)
 
 	return nil
 }

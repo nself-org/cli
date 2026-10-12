@@ -10,6 +10,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -89,4 +90,40 @@ func Install(ctx context.Context, cfg *config.Config, name string, pluginDir str
 	defer releaseInstallLock(lock, pluginDir)
 
 	return installLocked(ctx, cfg, name, pluginDir)
+}
+
+// UndoInstall reverses a fresh install that the caller's reconcile refused: it
+// unpublishes the plugin's command binary, drops its schema when it owns
+// tables, and deletes its directory. Unlike Remove it does not stop
+// containers, check reverse dependencies, touch a .prev backup, or print the
+// build hint. It takes the install lock, so it must not run inside Install.
+func UndoInstall(ctx context.Context, cfg *config.Config, name, pluginDir string) error {
+	if err := ValidateName(name); err != nil {
+		return err
+	}
+	lock, err := acquireInstallLock(pluginDir)
+	if err != nil {
+		return err
+	}
+	defer releaseInstallLock(lock, pluginDir)
+
+	destDir := filepath.Join(pluginDir, name)
+	// Nothing on disk means nothing to undo: without a manifest the schema
+	// check below would assume tables and drop a schema blind.
+	if _, err := os.Stat(destDir); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	manifest := readPluginManifest(destDir)
+	if err := unlinkCLIBinary(name, manifest); err != nil {
+		return fmt.Errorf("unpublishing plugin %q command: %w", name, err)
+	}
+	if pluginOwnsTables(manifest) {
+		if err := dropPluginSchema(ctx, cfg, name); err != nil {
+			return fmt.Errorf("dropping schema for plugin %q: %w", name, err)
+		}
+	}
+	if err := os.RemoveAll(destDir); err != nil {
+		return fmt.Errorf("removing plugin directory %q: %w", destDir, err)
+	}
+	return nil
 }
