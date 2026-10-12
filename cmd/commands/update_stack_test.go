@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,25 @@ import (
 	"github.com/nself-org/cli/internal/upgrade/stack"
 	"github.com/spf13/cobra"
 )
+
+// TestStackUpdateSafetyDocumentation pins the recovery and environment contract.
+func TestStackUpdateSafetyDocumentation(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "wiki", "cmd-update.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, phrase := range []string{
+		"`reconcile.EnvClass`", "`prod`, `production`, `staging`, and `stage`",
+		"same classifier used by", "30-minute timeout",
+		"between the dump and count", "update-stack.<run_id>.json",
+		"`rollback-running` and `rollback-failed` remain blocked",
+		"fsyncs the state directory", "verified backup",
+	} {
+		if !strings.Contains(string(data), phrase) {
+			t.Errorf("stack safety documentation omits %q", phrase)
+		}
+	}
+}
 
 func stackTestCommand(t *testing.T) (*cobra.Command, *bytes.Buffer) {
 	t.Helper()
