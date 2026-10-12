@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/nself-org/cli/internal/docker"
@@ -152,6 +153,17 @@ func pinSnapshot(data []byte, images map[string]string) ([]byte, error) {
 	return out, nil
 }
 
+// privateRegularFile reports whether info describes a regular, owner-only file.
+// Inputs: Lstat result. Outputs: true for a regular non-symlink file.
+// Constraints: Windows reports 0666 for every file, so the permission bits are
+// checked only on other platforms; writers still chmod 0600.
+func privateRegularFile(info os.FileInfo) bool {
+	if !info.Mode().IsRegular() {
+		return false
+	}
+	return runtime.GOOS == "windows" || info.Mode().Perm()&0077 == 0
+}
+
 // verifySnapshot binds retained private bytes and immutable images to this journal.
 func (r *Runtime) verifySnapshot(j *Journal) error {
 	dir, err := r.privateState()
@@ -165,7 +177,7 @@ func (r *Runtime) verifySnapshot(j *Journal) error {
 	if err != nil {
 		return fmt.Errorf("stat recovery snapshot: %w", err)
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+	if !privateRegularFile(info) {
 		return fmt.Errorf("recovery snapshot must be a private regular file")
 	}
 	data, err := os.ReadFile(j.PreviousCompose)

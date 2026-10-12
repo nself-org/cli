@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -27,6 +28,9 @@ func TestUpdateStackRuntimeSnapshotValidation(t *testing.T) {
 		{"build retained", `{"services":{"pg":{"image":"sha256:old","pull_policy":"never","build":"."}}}`, "not pinned", 0600, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "public" && runtime.GOOS == "windows" {
+				t.Skip("Windows reports 0666 for every file; permission bits are not checked there")
+			}
 			r := NewRuntime(t.TempDir(), &config.Config{}, nil)
 			state, err := r.privateState()
 			if err != nil {
