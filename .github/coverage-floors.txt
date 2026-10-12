@@ -75,7 +75,7 @@ internal/httpapi 93  # measured 95.1 2026-10-11 (P7-SURF-02)
 internal/httptimeout 98  # measured 100.0 2026-10-05
 internal/importer 47  # measured 49.7 2026-10-12
 internal/importer/load 6  # measured 8.4 2026-10-12
-internal/importer/nself 69  # measured 71.8 2026-10-12
+internal/importer/nself 73  # measured 75.9 2026-10-12
 internal/importer/postgres 8  # measured 10.8 2026-10-12
 internal/importer/scratch 37  # measured 39.2 2026-10-12
 internal/importer/testkit 60  # measured 62.5 2026-10-12

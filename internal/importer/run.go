@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 var started = load.Started
@@ -213,7 +214,7 @@ func publicError(err error, code, message string) error {
 	// Preserve only known source failure codes, with fresh credential-free text.
 	var cli *errs.CLIError
 	if errors.As(err, &cli) {
-		// A portable bundle error names only a member path; keep it unless it could garble a terminal.
+		// A portable bundle error names a member path or manifest value; keep it unless it could garble a terminal.
 		if cli.Code == "E515" || cli.Code == "E516" {
 			if plainText(cli.What) {
 				return errs.New(cli.Code, cli.What)
@@ -246,7 +247,7 @@ func publicError(err error, code, message string) error {
 	return errs.New(code, message)
 }
 
-// plainText reports whether s is short and free of control characters.
+// plainText reports whether s is short, valid UTF-8 and free of control and format (bidi) characters.
 func plainText(s string) bool {
-	return len(s) <= 300 && strings.IndexFunc(s, unicode.IsControl) < 0
+	return len(s) <= 300 && utf8.ValidString(s) && strings.IndexFunc(s, func(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }) < 0
 }

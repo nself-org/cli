@@ -1,7 +1,8 @@
 // Package nself registers the portable-bundle importer: the re-import half of `nself db export`.
 // Purpose: validate a v1 bundle and stage it unchanged so the shared loader and verifier run on it.
 // Inputs: the bundle directory (Values["dir"]). Outputs: a staged byte-identical bundle.
-// Constraints: the bundle is never modified; no bundle content appears in errors beyond member paths.
+// Constraints: the bundle is never modified; errors carry the portable reader's text (member paths and
+// manifest values), which the shared run filters before it reaches the user.
 package nself
 
 import (

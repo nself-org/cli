@@ -7,6 +7,7 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/importer"
 	"github.com/nself-org/cli/internal/portable"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -141,5 +142,44 @@ func TestExtractHonoursCancel(t *testing.T) {
 	cancel()
 	if _, err := (Source{}).Extract(ctx, input(makeBundle(t)), filepath.Join(t.TempDir(), "stage")); codeOf(err) != "E520" {
 		t.Fatalf("want E520 on cancel, got %v", err)
+	}
+}
+func TestHardLinkedMemberIsE516(t *testing.T) {
+	dir := makeBundle(t)
+	if err := os.Link(filepath.Join(dir, "db", "schema.sql"), filepath.Join(t.TempDir(), "alias")); err != nil {
+		t.Skip("hard links unavailable: " + err.Error())
+	}
+	if _, err := (Source{}).Detect(context.Background(), input(dir)); codeOf(err) != "E516" {
+		t.Fatalf("want E516 for a linked member, got %v", err)
+	}
+}
+func TestCopyManifestRefusesSwaps(t *testing.T) {
+	dir := makeBundle(t)
+	real := filepath.Join(dir, portable.ManifestName)
+	link := filepath.Join(t.TempDir(), "link.json")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("symlinks unavailable: " + err.Error())
+	}
+	if err := copyManifest(context.Background(), link, filepath.Join(t.TempDir(), "out.json")); err == nil {
+		t.Fatal("a symlinked manifest was copied")
+	}
+	if err := copyManifest(context.Background(), dir, filepath.Join(t.TempDir(), "out.json")); err == nil {
+		t.Fatal("a directory was copied as the manifest")
+	}
+	out := filepath.Join(t.TempDir(), "out.json")
+	if err := copyManifest(context.Background(), real, out); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := os.ReadFile(real)
+	if b, _ := os.ReadFile(out); !bytes.Equal(a, b) {
+		t.Fatal("manifest copy differs")
+	}
+}
+func TestCopyStopsWhenCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	src := io.NopCloser(strings.NewReader("data"))
+	if err := writeMember(ctx, src, filepath.Join(t.TempDir(), "out")); codeOf(err) != "E520" {
+		t.Fatalf("want E520 on a cancelled copy, got %v", err)
 	}
 }
