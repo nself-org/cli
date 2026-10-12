@@ -53,6 +53,35 @@ Valkey runs `valkey-server` with the same flags, user, port and network, and its
 
 Queued jobs are not migrated: Valkey starts on an empty `valkey_data` volume, and the plan shows a stateful recreate of the `redis` service. `redis_data` is kept, so setting `REDIS_ENGINE=redis` again reuses it.
 
+## Auth: nhost/auth
+
+Upstream renamed `nhost/hasura-auth` to `nhost/auth`; the old name stops at 0.42.x. `nhost/auth:0.36.0` has the same index digest as `nhost/hasura-auth:0.36.0` (`sha256:2e0713ef…`), so every mode now names `nhost/auth` and nothing that runs changes. The lock carries two auth entries: `auth-v14` (`docker.io/nhost/auth:0.36.0`) and `auth` (`docker.io/nhost/auth:0.52.0`, the current release).
+
+| Project | Auth image |
+|---|---|
+| v1.4 | `auth-v14`: `docker.io/nhost/auth:0.36.0@sha256:...` in lock mode, `nhost/auth:0.36.0` in legacy mode |
+| v1.5, no `AUTH_ENCRYPTION_KEY` | `auth-v14`; `nself build` prints one notice |
+| v1.5, `AUTH_ENCRYPTION_KEY` set (64 hex characters) | `auth` (0.52.0) |
+| the project lock pins auth 0.36.0 (either repository name) | the pin, in both modes, until `nself update` moves it |
+| `AUTH_VERSION` set to another tag | that tag of `nhost/auth`, unpinned, in any mode |
+
+`AUTH_VERSION=0.36.0` (what `nself init` writes into `.env`) and `AUTH_VERSION=0.52.0` are defaults, not overrides: neither drops a lock pin.
+
+nhost/auth 0.43.0 and later refuse to start without `AUTH_ENCRYPTION_KEY` (32 bytes, hex) and encrypt every TOTP secret in `auth.users` with it on first start. The CLI does not generate the key yet, so v1.5 moves to the current release only once you set it. Keep the key with your backups: after the first start, losing or changing it locks out every user who signs in with TOTP.
+
+### Upgrade an existing project (one way)
+
+1. Take a verified backup: `nself backup create`, then `nself backup verify <id>`.
+2. Add the key to `.env.secrets`: `AUTH_ENCRYPTION_KEY=<output of openssl rand -hex 32>`.
+3. Move the auth pin: `nself update` in v1.5. A v1.4 project (no lock) sets `AUTH_VERSION=0.52.0` instead.
+4. `nself build`, then `nself start`. Auth migrates its schema and encrypts the TOTP secrets on that first start.
+
+Signed-in users stay signed in. Since 0.38.0 `/token` rotates refresh tokens: a refresh returns a new refresh token, and clients that reuse the old one must store the new one (the Nhost SDKs do).
+
+### Roll back
+
+Restore the backup taken before the upgrade (`nself backup restore <id> --yes`), then pin auth back to `auth-v14` (remove the `AUTH_VERSION` line, or pin it with `nself update`) and start. Pinning back without the restore is unsupported: 0.36.0 then runs on a migrated schema and cannot read the encrypted TOTP secrets. `scripts/ci/auth-smoke.sh` proves both paths on Linux: the upgrade with users, sessions, a refresh token and a TOTP user, the restore-then-pin-back rollback, and the breakage of a bare pin-back.
+
 ## How pins move
 
 1. Edit the entry's `version` in `internal/compose/images.yaml` (a version bump is its own reviewed change). Leave `legacy_ref` alone. The weekly bump (`tools/imagebump`, `.github/workflows/image-pin-bump.yml`) does the same.
