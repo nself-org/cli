@@ -18,6 +18,7 @@ package build
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -149,6 +150,30 @@ func (sp *sharedProxy) check() error {
 			}
 			return errs.New("E504", msg).
 				WithFix("Point the route at a container name (<PROJECT_NAME>_<service>) or at a host name no other project uses. Nothing was written.")
+		}
+	}
+	return nil
+}
+
+// checkProjectName refuses a project whose name makes the `<project>.` prefix
+// ambiguous: if one of its own conf names already starts with `<project>.`
+// (PROJECT_NAME=hasura and hasura.conf), the sink would not prefix it and the
+// file would replace the owner's.
+func (sp *sharedProxy) checkProjectName(m *routemodel.Model, set *snippetSet) error {
+	prefix := sp.project + "."
+	names := []string{"api-docs.conf"}
+	for _, r := range m.Routes {
+		names = append(names, filepath.Base(r.File))
+	}
+	for _, f := range set.files {
+		if f.source == "plugin" {
+			names = append(names, f.owner+"-"+f.file)
+		}
+	}
+	for _, n := range names {
+		if strings.HasPrefix(n, prefix) {
+			return errs.New("E503", fmt.Sprintf("project name %q would make the site file %s collide with the owner's file of that name", sp.project, n)).
+				WithFix("Give this project a PROJECT_NAME that is not the name of one of its own services or routes.")
 		}
 	}
 	return nil

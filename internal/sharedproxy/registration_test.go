@@ -144,3 +144,21 @@ func TestUnregister(t *testing.T) {
 		t.Fatalf("a second Unregister must be a no-op: %v %v", removed, err)
 	}
 }
+
+func TestParseUnderSymlinkedOwner(t *testing.T) {
+	real := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(real, "b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	data, _ := Marshal(sample("b", filepath.Join(real, "b")))
+	if _, err := Parse("b.json", data, link); err != nil {
+		t.Fatalf("owner reached through a symlink: %v", err)
+	}
+	if _, err := Parse("b.json", data, filepath.Join(t.TempDir(), "elsewhere")); err == nil {
+		t.Fatal("a project_dir outside the owner must still be refused")
+	}
+}

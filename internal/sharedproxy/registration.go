@@ -144,6 +144,16 @@ func under(ownerDir, dir string) bool {
 	if ownerDir == "" || dir == "" {
 		return false
 	}
-	rel, err := filepath.Rel(filepath.Clean(ownerDir), filepath.Clean(dir))
+	if lexicalUnder(filepath.Clean(ownerDir), filepath.Clean(dir)) {
+		return true
+	}
+	// The same directory reached through a symlink (for example ~/Sites).
+	o, err1 := filepath.EvalSymlinks(ownerDir)
+	d, err2 := filepath.EvalSymlinks(dir)
+	return err1 == nil && err2 == nil && lexicalUnder(o, d)
+}
+
+func lexicalUnder(root, dir string) bool {
+	rel, err := filepath.Rel(root, dir)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

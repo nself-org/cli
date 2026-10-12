@@ -101,10 +101,7 @@ func (sp *sharedProxy) planCert(dir string, haveSource bool) (certAction, error)
 	target := filepath.Join(sp.sslDir, "certificates", dir)
 	fi, err := os.Lstat(target)
 	if err != nil {
-		if !haveSource {
-			return certSkip, nil
-		}
-		return certCopy, nil
+		return certCopy, nil // absent: written once the pair exists (the cert step may not have run yet)
 	}
 	paths := []string{target}
 	for _, f := range certFiles {
@@ -122,7 +119,13 @@ func (sp *sharedProxy) planCert(dir string, haveSource bool) (certAction, error)
 		return certSkip, certRefusal("%s exists and is not a directory", target)
 	}
 	if !haveSource {
-		return certSkip, nil
+		// No local pair yet (a first build, or ssl/ was cleaned): this project's own
+		// directory stays as it is and stays listed; anyone else's cannot be proven
+		// identical, so it is refused before any file is written.
+		if sp.ownsCert(dir) {
+			return certKeep, nil
+		}
+		return certSkip, certRefusal("certificate directory %s already exists in the owner's ssl and is not this project's (project %q)", target, sp.project)
 	}
 	src := filepath.Join(sp.workdir, "ssl", "certificates", dir)
 	if sp.ownsCert(dir) {

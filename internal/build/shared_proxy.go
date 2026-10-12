@@ -102,15 +102,18 @@ func (st *buildState) sharedBegin(m *routemodel.Model) error {
 	}
 	sp.container = st.sharedServices()
 	routemodel.QualifyUpstreams(m, sp.qualify)
-	if sp.role == sharedFronted {
-		routemodel.PrefixSiteFiles(m, sp.project)
-	}
 	set := &snippetSet{}
 	set.plugins(st.workdir, st.cfg, m.DefaultServer.HTTP.RedirectHTTPS)
 	if sp.role == sharedOwner {
 		set.handManaged(st.workdir, st.cfg, m.Env)
 	}
 	set.parse()
+	if sp.role == sharedFronted {
+		if err := sp.checkProjectName(m, set); err != nil {
+			return err
+		}
+		routemodel.PrefixSiteFiles(m, sp.project)
+	}
 	sp.facts = sp.collect(m, set)
 	if err := sp.check(); err != nil {
 		return err

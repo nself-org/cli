@@ -64,14 +64,16 @@ func (st *buildState) finishOwner(sp *sharedProxy) error {
 // finishFronted installs certificates, removes stale files and writes the registration.
 func (st *buildState) finishFronted(sp *sharedProxy) error {
 	type step struct {
-		dir    string
-		action certAction
+		dir        string
+		action     certAction
+		haveSource bool
 	}
 	var steps []step
 	for dir := range sp.certDirs {
 		_, e1 := os.Stat(filepath.Join(sp.workdir, "ssl", "certificates", dir, certFiles[0]))
 		_, e2 := os.Stat(filepath.Join(sp.workdir, "ssl", "certificates", dir, certFiles[1]))
-		action, err := sp.planCert(dir, e1 == nil && e2 == nil)
+		have := e1 == nil && e2 == nil
+		action, err := sp.planCert(dir, have)
 		if err != nil {
 			return err
 		}
@@ -80,12 +82,16 @@ func (st *buildState) finishFronted(sp *sharedProxy) error {
 				return err
 			}
 		}
-		steps = append(steps, step{dir, action})
+		steps = append(steps, step{dir, action, have})
 	}
 	files := keys(sp.files)
 	for _, s := range steps {
 		switch s.action {
 		case certCopy, certReplace:
+			if !s.haveSource {
+				warnOnce("shared proxy: " + sp.project + " has no certificate pair in ssl/certificates/" + s.dir + " to copy to the owner yet; its confs will not load until it does")
+				continue
+			}
 			if err := st.installCert(sp, s.dir, s.action == certReplace); err != nil {
 				return err
 			}

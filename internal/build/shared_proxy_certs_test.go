@@ -94,17 +94,21 @@ func TestSharedProxyCerts(t *testing.T) {
 	// R2: a directory that is not this project's, with other bytes, is E503.
 	writeCert(t, filepath.Join(x.other(), "ssl", "certificates", "c-test"), soon)
 	writeCert(t, x.served("c-test"), soon)
-	before := treeDigest(t, filepath.Join(x.owner, "nginx"), filepath.Join(x.owner, "ssl"))
+	guard := func() string { return treeDigest(t, filepath.Join(x.owner, "nginx"), filepath.Join(x.owner, "ssl")) }
+	before := guard()
 	wantCode(t, x.build(t, x.other(), x.tlsEnv("cproj", "c.test")), "E503", "c-test")
+	if guard() != before {
+		t.Error("the refused cproj build changed the owner's nginx/ssl tree")
+	}
 	// R2: a symlink in the owner's ssl/certificates is refused, nothing written.
 	writeCert(t, filepath.Join(x.other(), "ssl", "certificates", "d-test"), soon)
 	if err := os.Symlink(t.TempDir(), x.served("d-test")); err != nil {
 		t.Skip("symlinks unavailable:", err)
 	}
+	before = guard()
 	wantCode(t, x.build(t, x.other(), x.tlsEnv("dproj", "d.test")), "E503", "d-test")
-	if got := treeDigest(t, filepath.Join(x.owner, "nginx"), filepath.Join(x.owner, "ssl")); got == before {
-		// the planted c-test/d-test dirs changed the tree; the refusal itself must add nothing
-		t.Log("tree digest includes the planted fixtures")
+	if guard() != before {
+		t.Error("the refused dproj build changed the owner's nginx/ssl tree")
 	}
 	if _, err := os.Stat(filepath.Join(x.shared(), "dproj.json")); err == nil {
 		t.Error("a refused build registered itself")
@@ -179,5 +183,53 @@ func TestSharedProxyUnregister(t *testing.T) {
 	x.mustBuild(t, x.backend(), x.frontedEnv("bproj", "b.test"))
 	if _, err := os.Stat(filepath.Join(x.shared(), "bproj.json")); !os.IsNotExist(err) {
 		t.Error("the registration should go once the owner dropped shared mode")
+	}
+}
+
+// A pair that does not exist locally yet (first build, or ssl/ cleaned).
+func TestSharedProxyCertsWithoutSource(t *testing.T) {
+	x := newSharedFx(t)
+	x.mustBuild(t, x.owner, x.ownerEnv())
+	abs := x.backend()
+	sp := &sharedProxy{project: "bproj", workdir: abs, ownerRoot: x.owner, sslDir: filepath.Join(x.owner, "ssl"),
+		prev: &sharedproxy.Registration{Files: []string{"ssl/certificates/b-test/fullchain.pem"}}}
+	writeCert(t, x.served("b-test"), time.Now().Add(48*time.Hour))
+	if a, err := sp.planCert("b-test", false); err != nil || a != certKeep {
+		t.Fatalf("own dir without a local pair: %v %v, want keep (never removed as stale)", a, err)
+	}
+	writeCert(t, x.served("c-test"), time.Now().Add(48*time.Hour))
+	if _, err := sp.planCert("c-test", false); err == nil {
+		t.Fatal("a foreign dir cannot be proven identical without a local pair: want E503 before any write")
+	}
+	if a, err := sp.planCert("new-test", false); err != nil || a != certCopy {
+		t.Fatalf("absent dir: %v %v, want copy", a, err)
+	}
+}
+
+// PROJECT_NAME equal to one of its own conf stems would overwrite the owner's file.
+func TestSharedProxyProjectNameCollision(t *testing.T) {
+	x := newSharedFx(t)
+	x.mustBuild(t, x.owner, x.ownerEnv())
+	before := treeDigest(t, filepath.Join(x.owner, "nginx"))
+	wantCode(t, x.build(t, x.backend(), x.frontedEnv("hasura", "b.test")), "E503", "hasura.conf")
+	if treeDigest(t, filepath.Join(x.owner, "nginx")) != before {
+		t.Error("the refused build changed the owner's nginx tree")
+	}
+}
+
+// Without nginx/shared/ a fronted project stays in legacy mode: bare names and upstreams.
+func TestSharedProxyLegacyFrontedUnchanged(t *testing.T) {
+	x := newSharedFx(t)
+	x.mustBuild(t, x.owner, x.env("owna", "a.test")) // no NGINX_MODE
+	x.mustBuild(t, x.backend(), x.frontedEnv("bproj", "b.test"))
+	conf := readText(t, filepath.Join(x.sites(), "hasura.conf"))
+	if !strings.Contains(conf, "http://hasura:8080") || strings.Contains(conf, "(project") {
+		t.Errorf("legacy fronted conf changed:\n%s", conf)
+	}
+	if _, err := os.Stat(filepath.Join(x.sites(), "bproj.hasura.conf")); err == nil {
+		t.Error("a prefixed file appeared without nginx/shared/")
+	}
+	if _, err := os.Stat(x.shared()); err == nil {
+		t.Error("nginx/shared/ appeared without NGINX_MODE=shared")
 	}
 }
