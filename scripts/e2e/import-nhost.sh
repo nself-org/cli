@@ -43,7 +43,7 @@ waitfor() { # description, command...
 
 # 1. The nhost stack: postgres, hasura, minio first; the bucket; then hasura-auth and hasura-storage,
 #    which create the auth and storage schemas and track them in Hasura.
-docker compose -p "$PROJECT-src" -f "$FIXTURE/compose.yml" up -d postgres minio hasura --wait
+docker compose -p "$PROJECT-src" -f "$FIXTURE/compose.yml" up -d postgres minio hasura --wait || { docker compose -p "$PROJECT-src" -f "$FIXTURE/compose.yml" logs --tail 30 hasura postgres; exit 1; }
 waitfor 'minio' curl -fsS "$SRC_S3/minio/health/live"
 curl -fsS -o /dev/null --aws-sigv4 'aws:amz:us-east-1:s3' --user "$S3AUTH" -X PUT "$SRC_S3/$FIXTURE_S3_BUCKET"
 docker compose -p "$PROJECT-src" -f "$FIXTURE/compose.yml" up -d auth storage
