@@ -25,6 +25,8 @@ type fakeDB struct {
 type fakeDoc struct {
 	ID     string
 	Fields map[string]any // REST typed values
+	// Missing marks a parent that holds no data (listed only with showMissing=true, never counted).
+	Missing bool
 }
 
 func sv(s string) any                         { return map[string]any{"stringValue": s} }
@@ -43,24 +45,24 @@ func fixtureDB() *fakeDB {
 		perPage: 2,
 		docs: map[string][]fakeDoc{
 			"users": {
-				{"u1", fields(map[string]any{"name": sv("Ann"), "age": iv(30), "active": bv(true), "score": dv(1.5), "joined": tv("2024-05-01T12:00:00.123456Z"), "tags": av(sv("a"), sv("b")), "profile": mv(map[string]any{"city": sv("Oslo"), "zip": iv(150)}), "nick": nv()})},
-				{"u2", fields(map[string]any{"name": sv("Bob"), "age": sv("unknown"), "active": bv(false), "score": dv(2), "joined": tv("2024-05-02T08:30:00Z")})},
-				{"u3", fields(map[string]any{"name": sv("Cy"), "age": iv(41), "active": bv(true), "nick": sv("cyc")})},
+				{ID: "u1", Fields: fields(map[string]any{"name": sv("Ann"), "age": iv(30), "active": bv(true), "score": dv(1.5), "joined": tv("2024-05-01T12:00:00.123456Z"), "tags": av(sv("a"), sv("b")), "profile": mv(map[string]any{"city": sv("Oslo"), "zip": iv(150)}), "nick": nv()})},
+				{ID: "u2", Fields: fields(map[string]any{"name": sv("Bob"), "age": sv("unknown"), "active": bv(false), "score": dv(2), "joined": tv("2024-05-02T08:30:00Z")})},
+				{ID: "u3", Fields: fields(map[string]any{"name": sv("Cy"), "age": iv(41), "active": bv(true), "nick": sv("cyc")})},
 			},
 			"notes": {
-				{"n1", fields(map[string]any{"title": sv("one"), "Title": sv("collides"), "id": sv("shadow")})},
-				{"n2", fields(map[string]any{"title": sv(""), "views": iv(0)})},
-				{"n3", fields(map[string]any{"title": sv("three"), "views": iv(9007199254740993)})},
-				{"n4", fields(map[string]any{})},
+				{ID: "n1", Fields: fields(map[string]any{"title": sv("one"), "Title": sv("collides"), "id": sv("shadow")})},
+				{ID: "n2", Fields: fields(map[string]any{"title": sv(""), "views": iv(0)})},
+				{ID: "n3", Fields: fields(map[string]any{"title": sv("three"), "views": iv(9007199254740993)})},
+				{ID: "n4", Fields: fields(map[string]any{})},
 			},
 			"users/u1/orders": {
-				{"o1", fields(map[string]any{"total": iv(10)})},
-				{"o2", fields(map[string]any{"total": iv(20)})},
-				{"o3", fields(map[string]any{"total": iv(30)})},
+				{ID: "o1", Fields: fields(map[string]any{"total": iv(10)})},
+				{ID: "o2", Fields: fields(map[string]any{"total": iv(20)})},
+				{ID: "o3", Fields: fields(map[string]any{"total": iv(30)})},
 			},
 			"users/u2/orders": {
-				{"o1", fields(map[string]any{"total": iv(5)})},
-				{"o2", fields(map[string]any{"total": iv(6)})},
+				{ID: "o1", Fields: fields(map[string]any{"total": iv(5)})},
+				{ID: "o2", Fields: fields(map[string]any{"total": iv(6)})},
 			},
 		},
 		subs:    map[string][]string{"": {"users", "notes"}, "users/u1": {"orders"}, "users/u2": {"orders"}},
@@ -104,7 +106,7 @@ func (d *fakeDB) handler(project, bucket string) http.Handler {
 			if parent != "" {
 				path = parent + "/" + path
 			}
-			writeJSON(w, []any{map[string]any{"result": map[string]any{"aggregateFields": map[string]any{"n": map[string]any{"integerValue": strconv.Itoa(len(d.docs[path]))}}}}})
+			writeJSON(w, []any{map[string]any{"result": map[string]any{"aggregateFields": map[string]any{"n": map[string]any{"integerValue": strconv.Itoa(d.existing(path))}}}}})
 		default:
 			d.serveDocs(w, r, rest, prefix)
 		}
@@ -112,7 +114,12 @@ func (d *fakeDB) handler(project, bucket string) http.Handler {
 }
 
 func (d *fakeDB) serveDocs(w http.ResponseWriter, r *http.Request, path, prefix string) {
-	all := d.docs[path]
+	all := []fakeDoc{}
+	for _, doc := range d.docs[path] {
+		if !doc.Missing || r.URL.Query().Get("showMissing") == "true" {
+			all = append(all, doc)
+		}
+	}
 	if d.dropLast && len(all) > 0 {
 		keep := (len(all) - 1) / d.perPage * d.perPage // drop the whole last page
 		all = all[:keep]
@@ -127,7 +134,11 @@ func (d *fakeDB) serveDocs(w http.ResponseWriter, r *http.Request, path, prefix 
 	}
 	docs := []any{}
 	for _, doc := range all[min(start, end):end] {
-		docs = append(docs, map[string]any{"name": "projects/p/databases/(default)/documents/" + path + "/" + doc.ID, "fields": doc.Fields})
+		entry := map[string]any{"name": "projects/p/databases/(default)/documents/" + path + "/" + doc.ID}
+		if !doc.Missing {
+			entry["fields"], entry["createTime"] = doc.Fields, "2024-01-01T00:00:00Z"
+		}
+		docs = append(docs, entry)
 	}
 	out["documents"] = docs
 	writeJSON(w, out)
@@ -161,6 +172,16 @@ func (d *fakeDB) serveStorage(w http.ResponseWriter, r *http.Request, base strin
 		return
 	}
 	_, _ = w.Write([]byte(body))
+}
+
+func (d *fakeDB) existing(path string) int {
+	n := 0
+	for _, doc := range d.docs[path] {
+		if !doc.Missing {
+			n++
+		}
+	}
+	return n
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

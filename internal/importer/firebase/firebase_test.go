@@ -1,12 +1,14 @@
 package firebase
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/importer"
 	"github.com/nself-org/cli/internal/importer/verify"
@@ -103,8 +105,8 @@ func TestSanitizeAndFit(t *testing.T) {
 func TestTableNameCollisionRenamed(t *testing.T) {
 	d := fixtureDB()
 	d.subs[""] = []string{"Users", "users"}
-	d.docs["Users"] = []fakeDoc{{"a", map[string]any{}}}
-	d.docs["users"] = []fakeDoc{{"b", map[string]any{}}}
+	d.docs["Users"] = []fakeDoc{{ID: "a", Fields: map[string]any{}}}
+	d.docs["users"] = []fakeDoc{{ID: "b", Fields: map[string]any{}}}
 	d.subs["users/u1"], d.subs["users/u2"] = nil, nil
 	col, dir := collectFixture(t, d)
 	_, copies, notes, err := emit(col.sorted(), dir)
@@ -150,15 +152,32 @@ func TestDecodeValueKinds(t *testing.T) {
 	}
 }
 
+// readUsers runs the auth export reader and decodes the JSON lines it wrote.
+func readUsers(t *testing.T, path string) (authResult, []verify.User, error) {
+	t.Helper()
+	var buf bytes.Buffer
+	res, err := readAuthExport(path, &buf)
+	users := []verify.User{}
+	dec := json.NewDecoder(&buf)
+	for dec.More() {
+		var u verify.User
+		if e := dec.Decode(&u); e != nil {
+			t.Fatal(e)
+		}
+		users = append(users, u)
+	}
+	return res, users, err
+}
+
 func TestAuthExportMarksScryptUsersForReset(t *testing.T) {
-	res, err := readAuthExport(authFixture)
+	res, users, err := readUsers(t, authFixture)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Count != 3 || len(res.Users) != 3 || len(res.ResetRequired) != 3 || res.Algorithms["unsupported"] != 3 {
+	if res.Count != 3 || len(users) != 3 || res.Written != 3 || len(res.ResetRequired) != 3 || res.Algorithms["unsupported"] != 3 {
 		t.Fatalf("%+v", res)
 	}
-	for _, u := range res.Users {
+	for _, u := range users {
 		if u.PasswordHash != nil {
 			t.Fatal("password hash must never enter the bundle")
 		}
@@ -166,45 +185,45 @@ func TestAuthExportMarksScryptUsersForReset(t *testing.T) {
 			t.Fatalf("user %+v", u)
 		}
 	}
-	if res.Users[0].CreatedAt != "2023-11-14T22:13:20Z" || !res.Users[2].Disabled {
-		t.Fatalf("fields %+v %+v", res.Users[0], res.Users[2])
+	if users[0].CreatedAt != "2023-11-14T22:13:20Z" || !users[2].Disabled {
+		t.Fatalf("fields %+v %+v", users[0], users[2])
 	}
-	again, _ := readAuthExport(authFixture)
-	if again.Users[0].ID != res.Users[0].ID {
+	_, again, _ := readUsers(t, authFixture)
+	if again[0].ID != users[0].ID {
 		t.Fatal("user ids must be deterministic")
 	}
-	fb := res.Users[1].Metadata["firebase"].(map[string]any)
+	fb := users[1].Metadata["firebase"].(map[string]any)
 	if fb["uid"] != "fbuid-bob-0002" || fb["custom_attributes"].(map[string]any)["plan"] != "free" {
 		t.Fatalf("metadata %v", fb)
 	}
 }
 
 func TestAuthExportMixedUsers(t *testing.T) {
-	res, err := readAuthExport("testdata/auth-mixed.json")
+	res, users, err := readUsers(t, "testdata/auth-mixed.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Count != 4 || len(res.Users) != 3 || len(res.Exemptions) != 1 || res.Exemptions[0].Kind != "user" || res.Exemptions[0].Reason != "duplicate email" {
+	if res.Count != 4 || len(users) != 3 || res.Written != 3 || len(res.Exemptions) != 1 || res.Exemptions[0].Kind != "user" || res.Exemptions[0].Reason != "duplicate email" {
 		t.Fatalf("%+v", res)
 	}
 	if len(res.ResetRequired) != 1 || res.Algorithms["none"] != 2 || res.Algorithms["unsupported"] != 1 {
 		t.Fatalf("%+v", res)
 	}
-	if res.Users[0].Email == nil || res.Users[2].Email != nil || res.Users[2].Phone == nil {
-		t.Fatalf("nullable identity fields %+v", res.Users)
+	if users[0].Email == nil || users[2].Email != nil || users[2].Phone == nil {
+		t.Fatalf("nullable identity fields %+v", users)
 	}
 }
 
 func TestAuthExportRejectsBadFiles(t *testing.T) {
 	dir := t.TempDir()
-	for name, body := range map[string]string{"nousers.json": `{"kind":"x"}`, "notobj.json": `[1]`, "nolocal.json": `{"users":[{"email":"a@b"}]}`, "trunc.json": `{"users":[{"localId":"a"`} {
+	for name, body := range map[string]string{"nousers.json": `{"kind":"x"}`, "notobj.json": `[1]`, "nolocal.json": `{"users":[{"email":"a@b"}]}`, "trunc.json": `{"users":[{"localId":"a"`, "baddate.json": `{"users":[{"localId":"a","createdAt":"yesterday"}]}`, "badattrs.json": `{"users":[{"localId":"a","customAttributes":"{oops"}]}`} {
 		p := filepath.Join(dir, name)
 		_ = os.WriteFile(p, []byte(body), 0o600)
-		if _, err := readAuthExport(p); err == nil {
+		if _, _, err := readUsers(t, p); err == nil {
 			t.Fatalf("%s accepted", name)
 		}
 	}
-	if _, err := readAuthExport(filepath.Join(dir, "missing.json")); err == nil {
+	if _, _, err := readUsers(t, filepath.Join(dir, "missing.json")); err == nil {
 		t.Fatal("missing file accepted")
 	}
 }
@@ -224,6 +243,7 @@ func TestResolveInputs(t *testing.T) {
 		"no credentials":    {Values: map[string]string{"project": "demo-nself", "auth-export": "a"}, Env: env(nil)},
 		"bad bucket":        {Values: map[string]string{"project": "demo-nself", "auth-export": "a", "credentials-file": "k", "bucket": "Bad Bucket"}},
 		"bad emulator host": {Values: good, Env: env(map[string]string{"FIRESTORE_EMULATOR_HOST": "http://evil/x"})},
+		"key and emulator":  {Values: good, Env: env(map[string]string{"FIRESTORE_EMULATOR_HOST": "127.0.0.1:8080"})},
 	} {
 		if err := CheckInput(in); err == nil {
 			t.Fatalf("%s accepted", name)
@@ -264,5 +284,46 @@ func TestPlantedPaginationBugShowsSourceCountMismatch(t *testing.T) {
 		if tb.listed != tb.counted {
 			t.Fatalf("healthy listing differs for %s", tb.pattern)
 		}
+	}
+}
+
+// TestLongCollisionNamesTerminate: collection ids longer than 54 bytes that clash after
+// sanitising must still get distinct names (the counter is part of the hash key).
+func TestLongCollisionNamesTerminate(t *testing.T) {
+	long := strings.Repeat("A", 70)
+	tables := []*tableAcc{{pattern: long}, {pattern: strings.ToLower(long)}, {pattern: strings.Repeat("a", 70) + "-"}}
+	done := make(chan struct{})
+	go func() { assignNames(tables); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("assignNames did not terminate")
+	}
+	seen := map[string]bool{}
+	for _, tb := range tables {
+		if len(tb.name) > 63 || seen[tb.name] {
+			t.Fatalf("names not distinct and short: %q", tb.name)
+		}
+		seen[tb.name] = true
+	}
+}
+
+// TestSubcollectionsUnderMissingParentAreWalked: a deleted parent document keeps its
+// sub-collections; they are imported and the parent is never a row.
+func TestSubcollectionsUnderMissingParentAreWalked(t *testing.T) {
+	d := fixtureDB()
+	d.docs["users"] = append(d.docs["users"], fakeDoc{ID: "gone", Missing: true})
+	d.subs["users/gone"] = []string{"orders"}
+	d.docs["users/gone/orders"] = []fakeDoc{{ID: "x1", Fields: map[string]any{"total": iv(7)}}}
+	col, _ := collectFixture(t, d)
+	byPattern := map[string]*tableAcc{}
+	for _, tb := range col.sorted() {
+		byPattern[tb.pattern] = tb
+	}
+	if byPattern["users"].listed != 3 || byPattern["users"].counted != 3 {
+		t.Fatalf("the missing parent must not be a row: %+v", byPattern["users"])
+	}
+	if o := byPattern["users/*/orders"]; o.listed != 6 || o.counted != 6 {
+		t.Fatalf("orders under the missing parent were dropped: listed %d counted %d", o.listed, o.counted)
 	}
 }

@@ -10,7 +10,8 @@ You need three things from Firebase:
    (`--credentials-file`). The key stays on disk where you keep it. The importer reads it, signs a
    short-lived token with the standard library and holds both only in memory. Neither appears in
    output, reports or errors. With the Firebase emulator, set `FIRESTORE_EMULATOR_HOST` (and
-   `STORAGE_EMULATOR_HOST` for a bucket) and no key file is needed.
+   `STORAGE_EMULATOR_HOST` for a bucket) and no key file is needed. Giving both a key file and an
+   emulator host is refused, so a stale host variable cannot read the wrong data.
 3. A user export: `firebase auth:export auth-users.json --format=json` (`--auth-export`).
 
 ```bash
@@ -21,7 +22,7 @@ nself db import firebase --project my-project --credentials-file ./key.json --au
 In v1.4 mode `nself migrate firebase --export-dir <dir>` keeps writing migration artifacts from a
 Firestore export. In v1.5 mode the same command, and `nself db import firebase`, run this import.
 `--bucket` is optional; without it no storage is copied. `--plan` checks the inputs, the source
-and the target and writes nothing.
+and the target and writes nothing; the old `--dry-run` flag means `--plan` in v1.5 mode.
 
 ## What is copied
 
@@ -66,8 +67,8 @@ code is 1.
 ## Limits
 
 - Firestore Security Rules and indexes are not translated. Add Hasura permissions after the import.
-- A document that exists only as the parent of a sub-collection (no fields of its own) is not
-  listed by Firestore, so its sub-collections are not found.
+- A document that was deleted but still has sub-collections is not a row; its sub-collections are
+  still imported (the listing asks Firestore for such parents).
 - Each document costs one `listCollectionIds` read to find sub-collections.
 - Object versions other than the live one are not copied.
 

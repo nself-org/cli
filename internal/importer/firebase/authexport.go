@@ -44,7 +44,8 @@ type exportUser struct {
 }
 
 type authResult struct {
-	Users         []verify.User
+	// Written is how many users went to the output (the export minus the exemptions).
+	Written       int
 	ResetRequired []string
 	Algorithms    map[string]int
 	Exemptions    []portable.Exemption
@@ -106,10 +107,11 @@ func countExportUsers(path string) (int64, error) {
 	return n, nil
 }
 
-// readAuthExport maps every export user. Users that cannot be loaded (a repeated email or phone,
+// readAuthExport maps every export user and writes it as one JSON line to out, so memory stays
+// O(one user) plus the email/phone sets. Users that cannot be loaded (a repeated email or phone,
 // which hasura-auth keeps unique) are left out and recorded as user exemptions.
-func readAuthExport(path string) (authResult, error) {
-	res := authResult{Users: []verify.User{}, Algorithms: map[string]int{}}
+func readAuthExport(path string, out io.Writer) (authResult, error) {
+	res := authResult{Algorithms: map[string]int{}}
 	count, err := countExportUsers(path)
 	if err != nil {
 		return res, err
@@ -120,13 +122,17 @@ func readAuthExport(path string) (authResult, error) {
 		return res, err
 	}
 	defer func() { _ = f.Close() }()
+	enc := json.NewEncoder(out)
 	emails, phones := map[string]bool{}, map[string]bool{}
 	for dec.More() {
 		var e exportUser
 		if err = dec.Decode(&e); err != nil || e.LocalID == "" {
 			return res, errors.New("auth export user invalid")
 		}
-		u := mapUser(e)
+		u, err := mapUser(e)
+		if err != nil {
+			return res, err
+		}
 		reason := ""
 		if lower := strings.ToLower(e.Email); e.Email != "" && emails[lower] {
 			reason = "duplicate email"
@@ -137,17 +143,25 @@ func readAuthExport(path string) (authResult, error) {
 			res.Exemptions = append(res.Exemptions, portable.Exemption{Kind: "user", ID: u.ID, Reason: reason})
 			continue
 		}
-		emails[strings.ToLower(e.Email)], phones[e.PhoneNumber] = e.Email != "", e.PhoneNumber != ""
+		if e.Email != "" {
+			emails[strings.ToLower(e.Email)] = true
+		}
+		if e.PhoneNumber != "" {
+			phones[e.PhoneNumber] = true
+		}
 		if u.HashAlgorithm == "unsupported" {
 			res.ResetRequired = append(res.ResetRequired, u.ID)
 		}
+		if err = enc.Encode(u); err != nil {
+			return res, errors.New("auth users write failed")
+		}
 		res.Algorithms[u.HashAlgorithm]++
-		res.Users = append(res.Users, u)
+		res.Written++
 	}
 	return res, nil
 }
 
-func mapUser(e exportUser) verify.User {
+func mapUser(e exportUser) (verify.User, error) {
 	u := verify.User{ID: uuid.NewSHA1(userNamespace, []byte("firebase:"+e.LocalID)).String(), EmailVerified: e.EmailVerified, Disabled: e.Disabled, HashAlgorithm: "none", Roles: []string{}}
 	if e.Email != "" {
 		u.Email = &e.Email
@@ -161,7 +175,10 @@ func mapUser(e exportUser) verify.User {
 	if e.PasswordHash != "" {
 		u.HashAlgorithm = "unsupported"
 	}
-	u.CreatedAt = epochMillis(e.CreatedAt)
+	var err error
+	if u.CreatedAt, err = epochMillis(e.CreatedAt); err != nil {
+		return u, err
+	}
 	meta := map[string]any{"uid": e.LocalID}
 	if e.PhotoURL != "" {
 		meta["photo_url"] = e.PhotoURL
@@ -170,8 +187,14 @@ func mapUser(e exportUser) verify.User {
 	if lastRaw == nil {
 		lastRaw = e.LastLoginAt
 	}
-	if last := epochMillis(lastRaw); lastRaw != nil && last != "1970-01-01T00:00:00Z" {
-		meta["last_signed_in_at"] = last
+	if lastRaw != nil {
+		last, err := epochMillis(lastRaw)
+		if err != nil {
+			return u, err
+		}
+		if last != epochZero {
+			meta["last_signed_in_at"] = last
+		}
 	}
 	var providers []string
 	for _, p := range e.Providers {
@@ -182,31 +205,35 @@ func mapUser(e exportUser) verify.User {
 	if len(providers) > 0 {
 		meta["providers"] = providers
 	}
-	var attrs map[string]any
-	if e.CustomAttributes != "" && json.Unmarshal([]byte(e.CustomAttributes), &attrs) == nil && len(attrs) > 0 {
-		meta["custom_attributes"] = attrs
-	}
-	u.Metadata = map[string]any{"firebase": meta}
-	return u
-}
-
-// epochMillis turns Firebase's createdAt (a string or number of epoch milliseconds) into RFC 3339.
-func epochMillis(raw json.RawMessage) string {
-	lit := strings.Trim(string(raw), `" `)
-	ms, err := strconv.ParseInt(lit, 10, 64)
-	if err != nil || ms <= 0 {
-		return "1970-01-01T00:00:00Z"
-	}
-	return time.UnixMilli(ms).UTC().Format(time.RFC3339Nano)
-}
-
-// writeUsers writes users as JSON lines, one per user.
-func writeUsers(w io.Writer, users []verify.User) error {
-	enc := json.NewEncoder(w)
-	for _, u := range users {
-		if err := enc.Encode(u); err != nil {
-			return errors.New("auth users write failed")
+	if e.CustomAttributes != "" {
+		var attrs map[string]any
+		if json.Unmarshal([]byte(e.CustomAttributes), &attrs) != nil {
+			return u, errors.New("auth export customAttributes is not a JSON object")
+		}
+		if len(attrs) > 0 {
+			meta["custom_attributes"] = attrs
 		}
 	}
-	return nil
+	u.Metadata = map[string]any{"firebase": meta}
+	return u, nil
+}
+
+const epochZero = "1970-01-01T00:00:00Z"
+
+// epochMillis turns Firebase's createdAt (a string or number of epoch milliseconds) into RFC 3339.
+// An absent or null value is the epoch; a present value that is not a number is an error, never a
+// silent default.
+func epochMillis(raw json.RawMessage) (string, error) {
+	lit := strings.Trim(strings.TrimSpace(string(raw)), `"`)
+	if lit == "" || lit == "null" {
+		return epochZero, nil
+	}
+	ms, err := strconv.ParseInt(lit, 10, 64)
+	if err != nil || ms < 0 {
+		return "", errors.New("auth export timestamp is not epoch milliseconds")
+	}
+	if ms == 0 {
+		return epochZero, nil
+	}
+	return time.UnixMilli(ms).UTC().Format(time.RFC3339Nano), nil
 }

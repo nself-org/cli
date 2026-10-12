@@ -118,7 +118,7 @@ func newKeyToken(path, endpoint string) (*keyToken, error) {
 		endpoint = tokenURL
 	}
 	u, err := url.Parse(endpoint)
-	if err != nil || u.Scheme != "https" || !(u.Hostname() == "googleapis.com" || strings.HasSuffix(u.Hostname(), ".googleapis.com")) {
+	if err != nil || u.Scheme != "https" || (u.Hostname() != "googleapis.com" && !strings.HasSuffix(u.Hostname(), ".googleapis.com")) {
 		return nil, errors.New("credentials token endpoint is not a googleapis.com https URL")
 	}
 	return &keyToken{key: key, issuer: sk.ClientEmail, endpoint: endpoint, client: httptimeout.NoProxy(30 * time.Second), now: time.Now}, nil

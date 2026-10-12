@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/nself-org/cli/internal/database"
@@ -68,8 +69,10 @@ func assignNames(tables []*tableAcc) []portable.Exemption {
 			base = t.parent.name + "__" + base
 		}
 		name := fit(base, t.pattern)
+		// The counter is part of the hash key: a long base is cut to the same 54 bytes for every
+		// n, and only the hash suffix tells the candidates apart.
 		for n := 2; used[name]; n++ {
-			name = fit(fmt.Sprintf("%s_%d", base, n), t.pattern)
+			name = fit(fmt.Sprintf("%s_%d", base, n), t.pattern+"#"+strconv.Itoa(n))
 		}
 		used[name] = true
 		t.name = name

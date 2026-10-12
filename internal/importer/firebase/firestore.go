@@ -60,22 +60,27 @@ func (f *firestore) collectionIDs(ctx context.Context, parent string) ([]string,
 type document struct {
 	ID     string
 	Fields map[string]json.RawMessage
+	// Missing is true for a document that holds no data of its own and exists only as the parent of
+	// sub-collections (Firestore keeps those after the parent is deleted). It is listed with
+	// showMissing=true so its sub-collections are still walked; it is never a table row.
+	Missing bool
 }
 
-// listDocs streams every document of a collection path ("users" or "users/u1/orders") to fn and
-// returns how many it saw.
+// listDocs streams every document of a collection path ("users" or "users/u1/orders"), missing
+// parents included, to fn and returns how many existing documents it saw.
 func (f *firestore) listDocs(ctx context.Context, collection string, fn func(document) error) (int64, error) {
 	var n int64
 	token := ""
 	for {
-		u := f.docsURL(collection) + "?pageSize=" + strconv.Itoa(pageSize)
+		u := f.docsURL(collection) + "?showMissing=true&pageSize=" + strconv.Itoa(pageSize)
 		if token != "" {
 			u += "&pageToken=" + url.QueryEscape(token)
 		}
 		var page struct {
 			Documents []struct {
-				Name   string                     `json:"name"`
-				Fields map[string]json.RawMessage `json:"fields"`
+				Name       string                     `json:"name"`
+				Fields     map[string]json.RawMessage `json:"fields"`
+				CreateTime string                     `json:"createTime"`
 			} `json:"documents"`
 			NextPageToken string `json:"nextPageToken"`
 		}
@@ -90,10 +95,13 @@ func (f *firestore) listDocs(ctx context.Context, collection string, fn func(doc
 			if err := checkText(id); err != nil {
 				return n, err
 			}
-			if err := fn(document{ID: id, Fields: d.Fields}); err != nil {
+			missing := d.CreateTime == "" && len(d.Fields) == 0
+			if err := fn(document{ID: id, Fields: d.Fields, Missing: missing}); err != nil {
 				return n, err
 			}
-			n++
+			if !missing {
+				n++
+			}
 		}
 		if page.NextPageToken == "" {
 			return n, nil

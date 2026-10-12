@@ -5,7 +5,6 @@ package firebase
 // Constraints: the scratch Postgres bundle is rebuilt into the final writer so users and objects
 // join the same manifest; work files live in a private directory removed on return.
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -43,10 +42,6 @@ func (Source) Extract(ctx context.Context, in importer.Input, stage string) (imp
 	if err != nil {
 		return importer.Extracted{}, err
 	}
-	auth, err := readAuthExport(s.AuthExport)
-	if err != nil {
-		return importer.Extracted{}, fail(err.Error())
-	}
 	col := newCollector(fs, work)
 	walkErr := col.walk(ctx, "", nil)
 	if err = col.close(); walkErr == nil {
@@ -74,13 +69,15 @@ func (Source) Extract(ctx context.Context, in importer.Input, stage string) (imp
 	if err = copyDBMembers(filepath.Join(work, "db-bundle"), w); err != nil {
 		return importer.Extracted{}, fail("dump member write failed")
 	}
-	m := portable.Manifest{Producer: portable.Producer{Tool: "nself", Version: "1", Source: "firebase"}, DB: built.DB, Exemptions: append(notes, auth.Exemptions...)}
+	m := portable.Manifest{Producer: portable.Producer{Tool: "nself", Version: "1", Source: "firebase"}, DB: built.DB}
 	for _, t := range tables {
 		m.SourceCounts = append(m.SourceCounts, portable.SourceCount{Kind: "table", ID: schemaName + "." + t.name, Count: t.counted, Method: "firestore runAggregationQuery COUNT"})
 	}
-	if err = addUsers(w, &m, auth); err != nil {
+	userExempt, err := addUsers(w, &m, s.AuthExport, work)
+	if err != nil {
 		return importer.Extracted{}, fail(err.Error())
 	}
+	m.Exemptions = append(notes, userExempt...)
 	if store != nil {
 		if err = addObjects(ctx, w, &m, store); err != nil {
 			return importer.Extracted{}, fail("storage read failed: " + err.Error())
@@ -112,22 +109,35 @@ func copyDBMembers(scratchDir string, w *portable.Writer) error {
 	return nil
 }
 
-// addUsers writes auth/users.jsonl and the matching manifest fields. The independent source count
-// is the raw element count of the export minus the users deliberately left out (exemptions).
-func addUsers(w *portable.Writer, m *portable.Manifest, a authResult) error {
-	m.Auth = portable.Auth{Users: len(a.Users), HashAlgorithms: a.Algorithms, ResetRequired: a.ResetRequired}
+// addUsers reads the auth export into a spool file, then writes it as auth/users.jsonl and fills
+// the manifest fields. The independent source count is the raw element count of the export minus
+// the users deliberately left out (exemptions).
+func addUsers(w *portable.Writer, m *portable.Manifest, exportPath, work string) ([]portable.Exemption, error) {
+	spool, err := os.Create(filepath.Join(work, "users.jsonl"))
+	if err != nil {
+		return nil, errors.New("auth users spool unavailable")
+	}
+	a, err := readAuthExport(exportPath, spool)
+	if cerr := spool.Close(); err == nil && cerr != nil {
+		err = errors.New("auth users write failed")
+	}
+	if err != nil {
+		return nil, err
+	}
+	m.Auth = portable.Auth{Users: a.Written, HashAlgorithms: a.Algorithms, ResetRequired: a.ResetRequired}
 	m.SourceCounts = append(m.SourceCounts, portable.SourceCount{Kind: "users", Count: a.Count - int64(len(a.Exemptions)), Method: "auth export JSON element count"})
-	if len(a.Users) == 0 {
-		return nil
+	if a.Written == 0 {
+		return a.Exemptions, nil
 	}
-	var buf bytes.Buffer
-	if err := writeUsers(&buf, a.Users); err != nil {
-		return err
+	f, err := os.Open(filepath.Join(work, "users.jsonl"))
+	if err != nil {
+		return nil, errors.New("auth users spool unreadable")
 	}
-	if _, err := w.WriteFile("auth/users.jsonl", &buf); err != nil {
-		return errors.New("auth users write failed")
+	defer func() { _ = f.Close() }()
+	if _, err = w.WriteFile("auth/users.jsonl", f); err != nil {
+		return nil, errors.New("auth users write failed")
 	}
-	return nil
+	return a.Exemptions, nil
 }
 
 // addObjects copies every bucket object into the bundle. The first listing drives the copy; a
@@ -137,7 +147,7 @@ func addObjects(ctx context.Context, w *portable.Writer, m *portable.Manifest, s
 	if err != nil {
 		return err
 	}
-	second, err := store.list(ctx, 100)
+	second, err := store.count(ctx, 100)
 	if err != nil {
 		return err
 	}
@@ -166,6 +176,6 @@ func addObjects(ctx context.Context, w *portable.Writer, m *portable.Manifest, s
 		bucket.Bytes += f.Bytes
 	}
 	m.Storage.Buckets = append(m.Storage.Buckets, bucket)
-	m.SourceCounts = append(m.SourceCounts, portable.SourceCount{Kind: "objects", ID: store.bucket, Count: int64(len(second)), Method: "gcs bucket listing (second pass)"})
+	m.SourceCounts = append(m.SourceCounts, portable.SourceCount{Kind: "objects", ID: store.bucket, Count: second, Method: "gcs bucket listing (second pass)"})
 	return nil
 }

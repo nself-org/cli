@@ -38,6 +38,13 @@ func runFirebaseImport(cmd *cobra.Command) error {
 			values[name] = f.Value.String()
 		}
 	}
+	// The v1.4 --dry-run promised "without applying"; in the pipeline that is --plan.
+	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
+		if err := child.Flags().Set("plan", "true"); err != nil {
+			return err
+		}
+		values["plan"] = "true"
+	}
 	if err := firebase.CheckInput(importer.Input{Values: values, Env: os.Getenv}); err != nil {
 		return err
 	}

@@ -103,8 +103,10 @@ func (c *collector) walk(ctx context.Context, parent string, parentTable *tableA
 		}
 		t.counted += n
 		_, err = c.fs.listDocs(ctx, path, func(d document) error {
-			if err := c.add(t, parent, d); err != nil {
-				return err
+			if !d.Missing {
+				if err := c.add(t, parent, d); err != nil {
+					return err
+				}
 			}
 			return c.walk(ctx, path+"/"+d.ID, t)
 		})

@@ -24,9 +24,8 @@ type objectInfo struct {
 	Size string `json:"size"`
 }
 
-// list returns every object name, reading pages of the given size.
-func (g *gcs) list(ctx context.Context, maxResults int) ([]objectInfo, error) {
-	var out []objectInfo
+// pages reads the bucket listing in pages of the given size and passes each item to fn.
+func (g *gcs) pages(ctx context.Context, maxResults int, fn func(objectInfo)) error {
 	token := ""
 	for {
 		u := g.base + "/storage/v1/b/" + url.PathEscape(g.bucket) + "/o?maxResults=" + strconv.Itoa(maxResults)
@@ -38,14 +37,30 @@ func (g *gcs) list(ctx context.Context, maxResults int) ([]objectInfo, error) {
 			NextPageToken string       `json:"nextPageToken"`
 		}
 		if err := g.c.getJSON(ctx, u, &page); err != nil {
-			return nil, err
+			return err
 		}
-		out = append(out, page.Items...)
+		for _, it := range page.Items {
+			fn(it)
+		}
 		if page.NextPageToken == "" {
-			return out, nil
+			return nil
 		}
 		token = page.NextPageToken
 	}
+}
+
+// list returns every object name.
+func (g *gcs) list(ctx context.Context, maxResults int) ([]objectInfo, error) {
+	var out []objectInfo
+	err := g.pages(ctx, maxResults, func(it objectInfo) { out = append(out, it) })
+	return out, err
+}
+
+// count returns the listing total without keeping the items.
+func (g *gcs) count(ctx context.Context, maxResults int) (int64, error) {
+	var n int64
+	err := g.pages(ctx, maxResults, func(objectInfo) { n++ })
+	return n, err
 }
 
 // open streams one object's bytes.
@@ -53,7 +68,7 @@ func (g *gcs) open(ctx context.Context, name string) (io.ReadCloser, error) {
 	if name == "" || strings.IndexByte(name, 0) >= 0 {
 		return nil, errors.New("object name invalid")
 	}
-	resp, err := g.c.open(ctx, "GET", g.base+"/storage/v1/b/"+url.PathEscape(g.bucket)+"/o/"+url.PathEscape(name)+"?alt=media", nil)
+	resp, err := g.c.send(ctx, g.c.bulk, "GET", g.base+"/storage/v1/b/"+url.PathEscape(g.bucket)+"/o/"+url.PathEscape(name)+"?alt=media", nil)
 	if err != nil {
 		return nil, err
 	}

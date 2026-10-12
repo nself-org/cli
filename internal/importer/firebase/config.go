@@ -62,6 +62,9 @@ func resolve(in importer.Input) (settings, error) {
 		}
 		s.StorageBase, s.StorageEmulator = "http://"+host, true
 	}
+	if s.CredentialsFile != "" && (s.FirestoreEmulator || s.StorageEmulator) {
+		return s, errs.New("E517", "--credentials-file and an emulator host are both set; unset one (a stale FIRESTORE_EMULATOR_HOST would read the wrong data)")
+	}
 	needKey := !s.FirestoreEmulator || (s.Bucket != "" && !s.StorageEmulator)
 	if needKey && s.CredentialsFile == "" {
 		return s, errs.New("E517", "firebase source requires --credentials-file (or FIRESTORE_EMULATOR_HOST for the emulator)")

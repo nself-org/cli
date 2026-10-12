@@ -20,13 +20,20 @@ import (
 const maxPage = 64 << 20
 
 type client struct {
-	http    *http.Client
+	http *http.Client
+	// bulk has no overall timeout, only a response-header timeout, so a large object can stream
+	// for as long as it keeps flowing; the request context still bounds it.
+	bulk    *http.Client
 	tokens  tokenSource
 	backoff func(attempt int) time.Duration
 }
 
 func newClient(t tokenSource) *client {
-	return &client{http: httptimeout.NoProxy(5 * time.Minute), tokens: t, backoff: func(a int) time.Duration { return time.Duration(a) * 500 * time.Millisecond }}
+	bulk := httptimeout.NoProxy(0)
+	if tr, ok := bulk.Transport.(*http.Transport); ok {
+		tr.ResponseHeaderTimeout = 2 * time.Minute
+	}
+	return &client{http: httptimeout.NoProxy(5 * time.Minute), bulk: bulk, tokens: t, backoff: func(a int) time.Duration { return time.Duration(a) * 500 * time.Millisecond }}
 }
 
 type statusError struct{ Status int }
@@ -35,11 +42,16 @@ func (e statusError) Error() string { return fmt.Sprintf("source API returned HT
 
 // retryable statuses are retried a few times; everything else fails at once.
 func retryable(status int) bool {
-	return status == http.StatusTooManyRequests || status == http.StatusServiceUnavailable || status == http.StatusBadGateway
+	return status == http.StatusTooManyRequests || status == http.StatusInternalServerError || status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
 }
 
 // open sends the request and returns the response for a 2xx status.
 func (c *client) open(ctx context.Context, method, url string, body any) (*http.Response, error) {
+	return c.send(ctx, c.http, method, url, body)
+}
+
+// send is open with an explicit HTTP client.
+func (c *client) send(ctx context.Context, hc *http.Client, method, url string, body any) (*http.Response, error) {
 	var payload []byte
 	if body != nil {
 		var err error
@@ -60,7 +72,7 @@ func (c *client) open(ctx context.Context, method, url string, body any) (*http.
 		if body != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
-		resp, err := c.http.Do(req)
+		resp, err := hc.Do(req)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()

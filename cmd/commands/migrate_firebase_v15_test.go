@@ -108,7 +108,9 @@ func firebaseV15Runs(t *testing.T) {
 	}
 	migrateFirebaseCmd.SetContext(context.Background())
 	setFirebaseFlags(t, map[string]string{"project": "demo-nself", "auth-export": firebaseAuthFixture, "bucket": "demo-bucket", "plan": "true", "json": "true"})
-	out, err := captureHasuraOutput(func() error { return migrateFirebaseCmd.RunE(migrateFirebaseCmd, nil) })
+	// runFirebaseImport is the body RunE delegates to; RunE itself may be wrapped by the
+	// invocation guard (which, on the old spelling, refuses --json), so the JSON check calls it.
+	out, err := captureHasuraOutput(func() error { return runFirebaseImport(migrateFirebaseCmd) })
 	if err != nil || !called {
 		t.Fatalf("pipeline not run: %v called=%v", err, called)
 	}
@@ -121,6 +123,13 @@ func firebaseV15Runs(t *testing.T) {
 	}
 	if _, e := os.Stat(filepath.Join(filepath.Dir(firebaseAuthFixture), "nself-migration")); e == nil {
 		t.Fatal("v1.5 wrote artifacts")
+	}
+	// RunE routes to the same pipeline (no --json here: see above).
+	called = false
+	_ = migrateFirebaseCmd.Flags().Set("json", "false")
+	decorate(migrateFirebaseCmd) // as the command tree does at startup; idempotent
+	if _, err = captureHasuraOutput(func() error { return migrateFirebaseCmd.RunE(migrateFirebaseCmd, nil) }); err != nil || !called {
+		t.Fatalf("RunE did not route to the pipeline: %v called=%v", err, called)
 	}
 }
 
@@ -145,5 +154,27 @@ func TestMigrateFirebaseV15RefusesBadFlags(t *testing.T) {
 func TestFirebaseImportRegistered(t *testing.T) {
 	if _, ok := jsonDataTypes["db import firebase"].(importer.Report); !ok {
 		t.Fatalf("db import firebase report type = %T", jsonDataTypes["db import firebase"])
+	}
+}
+
+// TestMigrateFirebaseV15DryRunIsPlan: the old --dry-run flag must never turn into a real import.
+func TestMigrateFirebaseV15DryRunIsPlan(t *testing.T) {
+	compattest.Set(t, true)
+	resetFirebaseFlags(t)
+	t.Setenv("FIRESTORE_EMULATOR_HOST", "127.0.0.1:8080")
+	old := importRun
+	t.Cleanup(func() { importRun = old })
+	planned := false
+	importRun = func(_ context.Context, _ *config.Config, _ importer.Source, _ importer.Input, opts importer.RunOptions) (importer.Report, error) {
+		planned = opts.Plan
+		return importer.Report{Source: "firebase", Result: "pass"}, nil
+	}
+	migrateFirebaseCmd.SetContext(context.Background())
+	setFirebaseFlags(t, map[string]string{"project": "demo-nself", "auth-export": firebaseAuthFixture, "dry-run": "true"})
+	if _, err := captureHasuraOutput(func() error { return runFirebaseImport(migrateFirebaseCmd) }); err != nil {
+		t.Fatal(err)
+	}
+	if !planned {
+		t.Fatal("--dry-run ran a real import")
 	}
 }
