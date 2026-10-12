@@ -132,6 +132,29 @@ func FetchRegistry(ctx context.Context, registryURL string, cacheDir string) (*R
 	return client.Fetch(ctx)
 }
 
+// ParseRegistry parses a registry response body (the object or the array
+// plugin format) without touching the network, a cache or the fallback host. A
+// body that does not parse is an error. Callers that must not fall back (the
+// strict reads of `nself update`, P7-LIVE-10) use it instead of FetchRegistry.
+func ParseRegistry(body []byte) (*Registry, error) {
+	return parseRegistryJSON(body)
+}
+
+// WriteRegistryCache stores reg as the shared registry cache file
+// (cacheDir/registry.json, mode 0600), in the same normalised form a normal
+// fetch writes, so the next Install within the cache TTL resolves versions from
+// reg. `nself update --yes` uses it to pin the plugin steps to the registry the
+// plan was computed from.
+func WriteRegistryCache(cacheDir string, reg *Registry) error {
+	if cacheDir == "" {
+		return fmt.Errorf("write registry cache: empty cache directory")
+	}
+	if reg == nil {
+		return fmt.Errorf("write registry cache: nil registry")
+	}
+	return (&registryHTTPClient{cacheDir: cacheDir}).writeCache(reg)
+}
+
 // enforceRegistryHTTPS validates that a registry URL uses HTTPS.
 // HTTP is allowed only for localhost/127.0.0.1 (dev use). Non-HTTPS
 // URLs are replaced with the default secure registry URL.

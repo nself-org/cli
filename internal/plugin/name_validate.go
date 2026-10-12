@@ -65,11 +65,16 @@ var binaryNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 //     np_common.plugin_schema_versions) created by database/migrate_ledger.go and
 //     plugin/schema_reconcile.go. Removing plugin "common" would run
 //     DROP SCHEMA "np_common" CASCADE.
+//   - "status": schema np_status, created by the licensed nself-status-page plugin
+//     (plugins-pro). A table-owning plugin named "status" removed without
+//     --keep-data would run DROP SCHEMA "np_status" CASCADE and delete the
+//     status-page data.
 //
 // np_plugins and np_ai_usage are tables, not schemas, so they do not collide.
 var reservedNames = map[string]string{
 	"bin":    "it is the shared plugin command-binary directory",
 	"common": "it maps to np_common, the shared ledger schema",
+	"status": "it maps to np_status, the schema of the nself-status-page plugin",
 }
 
 // slugReason returns why name is not a plain single-element slug, or "".

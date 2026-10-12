@@ -20,7 +20,7 @@ import (
 
 // mustBeReserved is the set derived from code (see reservedNames); listed here so
 // emptying the map cannot make the tests below pass vacuously.
-var mustBeReserved = []string{"bin", "common"}
+var mustBeReserved = []string{"bin", "common", "status"}
 
 func TestReservedNamesRefusedEverywhere(t *testing.T) {
 	for _, name := range mustBeReserved {

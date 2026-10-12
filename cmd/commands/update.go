@@ -1,12 +1,16 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/lock"
+	"github.com/nself-org/cli/internal/plugin"
+	"github.com/nself-org/cli/internal/reconcile"
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/nself-org/cli/internal/version"
 
@@ -34,8 +38,14 @@ var updateCmd = &cobra.Command{
 	Short: "Update the nSelf CLI and admin UI",
 	Long: `Check for and install updates to the nSelf CLI binary and the
 admin Docker image. Use --check to see if an update is available
-without installing it.`,
+without installing it.
+
+Use --plan to see the pin diff of nself.lock.yaml (CLI, images, plugins) and
+the upgrade steps without changing anything, and --yes to apply it.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if handled, err := runUpdatePlanMode(cmd); handled {
+			return err
+		}
 		check, _ := cmd.Flags().GetBool("check")
 		cliOnly, _ := cmd.Flags().GetBool("cli")
 		adminOnly, _ := cmd.Flags().GetBool("admin")
@@ -132,7 +142,67 @@ func (e *alreadyLatestError) Error() string {
 	return fmt.Sprintf("Already on latest version (%s)", e.version)
 }
 
+// updateDeps is everything `update --plan|--yes` reaches outside the project
+// files, so tests substitute fixtures (P7-LIVE-10).
+type updateDeps struct {
+	runningVersion func() string
+	// latestRelease resolves the CLI target: "" is the latest release.
+	latestRelease func(target string) (tag, url string, err error)
+	registry      func(ctx context.Context) (*plugin.Registry, error)
+	// entitled decides a free/licensed tier pair; nil is the licence check.
+	entitled     plugin.EntitlementFunc
+	writeLock    func(dir string, l lock.Lock) error
+	updatePlugin func(ctx context.Context, dir, slug string) error
+	// primeRegistry writes the plan's registry into the shared registry cache
+	// before the plugin steps; installedVersion reads the installed manifest.
+	primeRegistry    func(reg *plugin.Registry) error
+	installedVersion func(dir, slug string) (string, error)
+	build            func(ctx context.Context, dir string) error
+	selfUpdate       func(tag string) error
+}
+
+// newUpdateDeps is a variable so tests can install fixtures.
+var newUpdateDeps = func() updateDeps {
+	return updateDeps{
+		runningVersion: version.GetVersion,
+		latestRelease: func(target string) (string, string, error) {
+			if target == "" {
+				return fetchLatestRelease()
+			}
+			return fetchReleaseByTag(target)
+		},
+		registry:  strictRegistry,
+		writeLock: writeLockFile,
+		primeRegistry: func(reg *plugin.Registry) error {
+			return plugin.WriteRegistryCache(plugin.DefaultCacheDir(), reg)
+		},
+		installedVersion: func(_, slug string) (string, error) {
+			return installedPluginVersion(resolvePluginDir(), slug)
+		},
+		updatePlugin: func(ctx context.Context, dir, slug string) error {
+			cfg, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			if err := plugin.Update(ctx, cfg, slug, resolvePluginDir()); err != nil {
+				return err
+			}
+			// plugin.Update leaves the bundle ledger, which supplies the build's
+			// plugin pins, on the old version and checksum.
+			return refreshBundleLedger(resolvePluginDir(), slug)
+		},
+		build: func(ctx context.Context, dir string) error {
+			_, _, err := reconcile.ApplyBuild(ctx, reconcile.Request{
+				ProjectDir: dir, Command: reconcile.CmdBuild, Trigger: reconcile.Trigger{Kind: reconcile.TriggerBuild},
+			}, reconcile.ApplyOptions{Yes: true})
+			return err
+		},
+		selfUpdate: selfUpdate,
+	}
+}
+
 func init() {
+	addUpdatePlanFlags(updateCmd)
 	updateCmd.Flags().Bool("check", false, "Check for updates without installing")
 	updateCmd.Flags().Bool("cli", false, "Only update the CLI binary")
 	updateCmd.Flags().Bool("admin", false, "Only update the admin UI")

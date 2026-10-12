@@ -82,36 +82,37 @@ func bundlesURL() string {
 
 // Load eager-fetches and validates bundles.json, populating the resolver
 // used by Get/Names/All/IsInstallable. Call once at command start. On fetch
-// failure, falls back to the local cache (with a staleness warning past
-// bundlesStaleWarnAfter); with no fetch and no cache, returns an error
-// naming the network issue rather than leaving the resolver empty.
+// failure, or when the fetched document fails validation, falls back to the
+// validated local cache (see loadBundlesFromCache); with no usable cache,
+// returns an error rather than leaving the resolver empty.
 func Load(ctx context.Context) error {
 	data, fetchErr := fetchBundlesJSON(ctx, bundlesURL())
 	if fetchErr == nil {
-		if err := LoadBytes(data); err != nil {
-			return fmt.Errorf("validating bundles.json: %w", err)
+		loadErr := LoadBytes(data)
+		if loadErr == nil {
+			_ = writeBundlesCache(data)
+			return nil
 		}
-		_ = writeBundlesCache(data)
-		return nil
+		// The live document is unusable: keep the last-known-good cache and
+		// never overwrite it with the bad payload.
+		used, cacheErr := loadBundlesFromCache(loadErr, true)
+		if used {
+			return nil
+		}
+		if cacheErr != nil {
+			return fmt.Errorf("validating bundles.json: %w (cached copy unusable: %v)", loadErr, cacheErr)
+		}
+		return fmt.Errorf("validating bundles.json: %w", loadErr)
 	}
 
-	cached, cacheErr := readBundlesCache()
-	if cacheErr != nil || cached == nil {
-		return fmt.Errorf("fetching bundles.json from %s: %w (no local cache available)", bundlesURL(), fetchErr)
+	used, cacheErr := loadBundlesFromCache(fetchErr, false)
+	if used {
+		return nil
 	}
-	age := time.Since(time.Unix(cached.FetchedAt, 0))
-	if age > bundlesStaleWarnAfter {
-		staleWarnOnce.Do(func() {
-			fmt.Fprintf(os.Stderr,
-				"warning: bundles.json cache is %s stale (last fetch failed: %v); bundle membership may be outdated. Reconnect and retry.\n",
-				age.Round(time.Hour), fetchErr)
-		})
+	if cacheErr != nil {
+		return cacheErr
 	}
-	if err := validateCatalogNames(cached.Doc); err != nil {
-		return fmt.Errorf("cached bundles.json: %w", err)
-	}
-	setState(buildBundleMap(cached.Doc))
-	return nil
+	return fmt.Errorf("fetching bundles.json from %s: %w (no local cache available)", bundlesURL(), fetchErr)
 }
 
 // EnsureLoaded populates the resolver if it has not been loaded yet in this
@@ -145,17 +146,23 @@ func LoadBytes(data []byte) error {
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return fmt.Errorf("invalid bundles.json: %w", err)
 	}
+	if err := validateDoc(doc); err != nil {
+		return err
+	}
+	setState(buildBundleMap(doc))
+	return nil
+}
+
+// validateDoc is the one shape check for a catalog, fetched or cached: schema
+// 2.x, at least one bundle, and plain plugin-slug member names.
+func validateDoc(doc bundlesDoc) error {
 	if !strings.HasPrefix(doc.SchemaVersion, "2.") {
 		return fmt.Errorf("unsupported bundles.json schema_version %q (expected 2.x)", doc.SchemaVersion)
 	}
 	if len(doc.Bundles) == 0 {
 		return fmt.Errorf("bundles.json has no bundles")
 	}
-	if err := validateCatalogNames(doc); err != nil {
-		return err
-	}
-	setState(buildBundleMap(doc))
-	return nil
+	return validateCatalogNames(doc)
 }
 
 // validateCatalogNames refuses a catalog whose member plugin names are not plain
