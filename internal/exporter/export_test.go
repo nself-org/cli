@@ -51,6 +51,17 @@ func TestExportPreflightNoWrites(t *testing.T) {
 	}
 }
 
+func TestExportParentMustExist(t *testing.T) {
+	dir := t.TempDir()
+	_, err := Export(context.Background(), &config.Config{}, Options{Out: filepath.Join(dir, "missing", "bundle")})
+	if err == nil || !strings.Contains(err.Error(), "parent directory") {
+		t.Fatal("missing parent not reported clearly", err)
+	}
+	if _, serr := os.Lstat(filepath.Join(dir, "missing")); !os.IsNotExist(serr) {
+		t.Fatal("export created the parent")
+	}
+}
+
 func TestPublishPreservesOccupiedOutput(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "out")

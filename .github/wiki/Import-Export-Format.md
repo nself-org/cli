@@ -26,7 +26,7 @@ Library: `internal/portable` (Writer, Reader, Manifest), `internal/postgres/tabl
   db/data.dump                  pg_dump -Fc --no-owner --no-privileges (schemas in manifest db.schemas)
   auth/users.jsonl              one JSON object per user, sorted by id
   storage/objects/<sha256 hex>  object bytes (see "Object names")
-  hasura/metadata.json          export_metadata v3 subset for db.schemas
+  hasura/metadata.json          export_metadata v3 subset for db.schemas (tables: definition, configuration, relationships, computed fields, permissions; event triggers, remote relationships, remote schemas, actions and connection configuration are not exported)
   config/keys.txt               sorted config key NAMES, never values (nself sources only)
   db/compat.sql                 optional source shims applied before pre-data
 ```
@@ -43,7 +43,7 @@ The bundle directory is mode 0700 and its files 0600. A bundle never holds a sec
 | `producer` | `tool`, `version`, `source` (`nself`, `postgres`, `nhost`, `hasura-cloud`, `supabase`, `firebase`, `appwrite`) |
 | `postgres` | `server_version`, `major` of the source |
 | `db` | `schemas`, and `tables[]` with `schema`, `name`, `rows`, `hash`, `pk`; `(schema, name)` is unique and `hash` is canonical (`0`, or a decimal with no leading zero, no `+`, no `-0`) |
-| `auth` | `users`, `hash_algorithms` (algorithm to count), `reset_required` |
+| `auth` | `users`, `hash_algorithms` (algorithm to count; keys `bcrypt`, `unknown` for a stored hash in another format, `none` for no hash), `reset_required` |
 | `storage` | `buckets[]` (`name`, `objects`, `bytes`) and `objects[]` (`bucket`, `key`, `member`, `sha256`, `bytes`); `(bucket, key)` is unique and every object names a listed file with the same `sha256` and `bytes` |
 | `hasura` | counts of tables, relationships, permissions, functions, and `skipped` kinds |
 | `exemptions` | items deliberately left out: `kind` (`table`, `user`, `object`, `metadata`), `id`, `reason` |

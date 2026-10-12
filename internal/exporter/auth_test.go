@@ -26,6 +26,18 @@ func (r *fakeUserRows) Scan(dest ...any) error {
 }
 func (r *fakeUserRows) Err() error { return r.errorAtEnd }
 
+func TestAuthUnknownHashAlgorithm(t *testing.T) {
+	rows := &fakeUserRows{data: []string{`{"id":"fake-user-3","password_hash":"fake-argon-hash"}`, `{"id":"fake-user-4"}`}}
+	var b bytes.Buffer
+	a := portable.Auth{HashAlgorithms: map[string]int{}}
+	if err := streamAuth(rows, &b, &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.HashAlgorithms["unknown"] != 1 || a.HashAlgorithms["none"] != 1 || a.HashAlgorithms["bcrypt"] != 0 {
+		t.Fatal("wrong algorithm classes", a.HashAlgorithms)
+	}
+}
+
 func TestAuthPortableFields(t *testing.T) {
 	rows := &fakeUserRows{data: []string{`{"id":"fake-user-1","password_hash":"$2b$FAKE-HASH","metadata":{"fixture":true},"roles":["user"]}`, `{"id":"fake-user-2","password_hash":null}`}}
 	var b bytes.Buffer

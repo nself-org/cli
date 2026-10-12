@@ -194,6 +194,10 @@ func TestArchiveCanonicalHeader(t *testing.T) {
 			t.Fatal("bad header accepted")
 		}
 	}
+	long := strings.Repeat("x", 200<<10)
+	if got, err := io.ReadAll(newSQLReader(strings.NewReader("INSERT " + long + ";\n"))); err != nil || len(got) != len(long)+9 {
+		t.Fatal("long schema line failed", err)
+	}
 	r := &sqlReader{scanner: bufio.NewScanner(strings.NewReader("-- schema\n\\restrict random\nSELECT 1;\n\\unrestrict random\n"))}
 	b, err := io.ReadAll(r)
 	if err != nil || string(b) != "-- schema\nSELECT 1;\n" {

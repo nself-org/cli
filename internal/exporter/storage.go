@@ -65,9 +65,12 @@ func listStorage(ctx context.Context, cfg *config.Config, skip bool) (storagePla
 // Inputs: loaded config and store mode. Outputs: client, or nil without a store.
 // Constraints: credentials stay in memory; arbitrary remote endpoints ignored.
 func storageClient(cfg *config.Config) (*objstore.Client, error) {
-	home, _ := os.UserHomeDir()
 	plugins := os.Getenv("NSELF_PLUGIN_DIR")
 	if plugins == "" {
+		home, herr := os.UserHomeDir()
+		if herr != nil {
+			return nil, safeFailure("resolve plugin directory")
+		}
 		plugins = filepath.Join(home, ".nself", "plugins")
 	}
 	fi, err := os.Stat(filepath.Join(plugins, "minio", "plugin.json"))
@@ -135,7 +138,13 @@ func listBuckets(ctx context.Context, c *objstore.Client) ([]string, error) {
 // Outputs: manifest records. Constraints: size changes fail closed.
 func (p storagePlan) write(ctx context.Context, w *portable.Writer, m *portable.Manifest) error {
 	m.Storage = portable.Storage{Buckets: []portable.Bucket{}, Objects: []portable.Object{}}
-	for name, objects := range p.buckets {
+	names := make([]string, 0, len(p.buckets))
+	for name := range p.buckets {
+		names = append(names, name)
+	}
+	sort.Strings(names) // member write order must not depend on map order
+	for _, name := range names {
+		objects := p.buckets[name]
 		b := portable.Bucket{Name: name}
 		for _, o := range objects {
 			member, err := portable.StorageMember(name, o.Key)

@@ -68,7 +68,7 @@ func dump(ctx context.Context, cfg *config.Config, w *portable.Writer, id string
 		}
 		var r io.Reader = f
 		if item.name == "db/schema.sql" {
-			r = &sqlReader{scanner: bufio.NewScanner(f)}
+			r = newSQLReader(f)
 		}
 		_, err = w.WriteFile(item.name, r)
 		_ = f.Close()
@@ -89,6 +89,13 @@ func pgPattern(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) 
 type sqlReader struct {
 	scanner *bufio.Scanner
 	pending []byte
+}
+
+// newSQLReader allows lines up to 64 MiB (long INSERT and COPY rows).
+func newSQLReader(src io.Reader) *sqlReader {
+	sc := bufio.NewScanner(src)
+	sc.Buffer(make([]byte, 64<<10), 64<<20)
+	return &sqlReader{scanner: sc}
 }
 
 func (r *sqlReader) Read(p []byte) (int, error) {

@@ -105,7 +105,7 @@ func metadataTables(records []any, allowed map[string]bool, counts *portable.Has
 		if !allowed[schema+"."+name] {
 			continue
 		}
-		out = append(out, t)
+		out = append(out, portableTable(t))
 		counts.Tables++
 		for _, k := range []string{"object_relationships", "array_relationships"} {
 			counts.Relationships += len(array(t[k]))
@@ -115,6 +115,25 @@ func metadataTables(records []any, allowed map[string]bool, counts *portable.Has
 		}
 	}
 	return out, nil
+}
+
+// portableTableKeys is the allowlist of table metadata an export keeps. Event
+// triggers (webhook URLs, literal header values), remote relationships and any
+// key a future Hasura adds are dropped: only the table definition, its
+// relationships, computed fields and permissions are portable.
+var portableTableKeys = []string{"table", "is_enum", "configuration", "object_relationships", "array_relationships", "computed_fields", "select_permissions", "insert_permissions", "update_permissions", "delete_permissions"}
+
+// Purpose: copy only the portable keys of one table record.
+// Inputs: a Hasura table record. Outputs: a new record without triggers.
+// Constraints: allowlist, so unknown credential-bearing keys cannot leak.
+func portableTable(t map[string]any) map[string]any {
+	out := make(map[string]any, len(portableTableKeys))
+	for _, k := range portableTableKeys {
+		if v, ok := t[k]; ok {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // Purpose: retain functions in exported schemas. Inputs: source functions.

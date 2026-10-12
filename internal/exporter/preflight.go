@@ -33,6 +33,9 @@ func prepareExport(ctx context.Context, cfg *config.Config, opts Options) (expor
 	if hit, err := scan(strings.NewReader(p.out), secretPatterns(opts.SecretValues)); hit || err != nil {
 		return p, safeFailure("output path contains a configured secret")
 	}
+	if fi, serr := os.Stat(filepath.Dir(p.out)); serr != nil || !fi.IsDir() {
+		return p, errors.New("export: the parent directory of --out must exist before export starts")
+	}
 	if err = emptyOutput(p.out); err != nil {
 		return p, err
 	}

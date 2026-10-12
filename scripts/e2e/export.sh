@@ -72,7 +72,10 @@ nself build --force >>"$LOG" 2>&1 || fail build
 owned=1
 nself start --timeout 300 --skip-build >>"$LOG" 2>&1 || fail start
 PGC="${PROJECT}_postgres"
-pg() { docker exec "$PGC" psql -X -U postgres -d nself -v ON_ERROR_STOP=1 -At -c "$1"; }
+# init derives POSTGRES_DB from the project name (dashes become underscores).
+PGDB="$(cat .env .env.local 2>/dev/null | sed -n 's/^POSTGRES_DB=//p' | tail -1)"
+PGDB="${PGDB:-e2e_adopt_export}"
+pg() { docker exec "$PGC" psql -X -U postgres -d "$PGDB" -v ON_ERROR_STOP=1 -At -c "$1"; }
 pg 'CREATE SCHEMA app; CREATE TABLE public.notes(id integer PRIMARY KEY, body text); INSERT INTO public.notes SELECT i, md5(i::text) FROM generate_series(1,1000) i; CREATE TABLE app.extra(id integer PRIMARY KEY, body text); INSERT INTO app.extra VALUES(1, '\''fixture'\''); CREATE TABLE public.np_export_private(id int); CREATE SCHEMA np_export_private; CREATE TABLE np_export_private.private(id int);' >>"$LOG" 2>&1 || fail seed
 for i in 1 2 3; do
   curl -fsS 'http://127.0.0.1:19400/signup/email-password' -H 'Content-Type: application/json' \

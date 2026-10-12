@@ -1,11 +1,14 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
+	"os/signal"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/exporter"
@@ -40,14 +43,21 @@ func runDBExport(cmd *cobra.Command, _ []string) error {
 	out, _ := cmd.Flags().GetString("out")
 	schemas, _ := cmd.Flags().GetStringSlice("schemas")
 	skip, _ := cmd.Flags().GetBool("no-storage")
-	values, keys := dbExportSecretValues(os.Environ())
+	// Values come from the project cascade and the process environment: more
+	// values only make the scrubber stricter. Key names come from the project
+	// cascade alone, so the same project exports the same list from any shell.
+	values, keys := dbExportSecretValues(os.Environ()), dbExportProjectKeys(dir)
 	// Defaults do not necessarily appear as environment variables.
 	for _, v := range []string{cfg.Postgres.Password, cfg.Hasura.AdminSecret, cfg.Hasura.JWTKey, cfg.Auth.SMTPPass, cfg.Minio.RootUser, cfg.Minio.RootPassword, cfg.Minio.S3AccessKey, cfg.Minio.S3SecretKey} {
 		if len(v) >= 6 {
 			values = append(values, v)
 		}
 	}
-	summary, err := exportProject(cmd.Context(), cfg, exporter.Options{Out: out, Schemas: schemas, NoStorage: skip, SecretValues: values, Keys: keys, ProjectDir: dir})
+	// SIGINT and SIGTERM cancel the export so its deferred cleanup removes the
+	// unscrubbed stage directory instead of the process dying with it in place.
+	ctx, stop := dbExportContext(cmd.Context())
+	defer stop()
+	summary, err := exportProject(ctx, cfg, exporter.Options{Out: out, Schemas: schemas, NoStorage: skip, SecretValues: values, Keys: keys, ProjectDir: dir})
 	if err != nil {
 		return err
 	}
@@ -58,17 +68,26 @@ func runDBExport(cmd *cobra.Command, _ []string) error {
 	return err
 }
 
+// Purpose: derive the export context. Inputs: the command context (may be nil).
+// Outputs: a context cancelled on SIGINT or SIGTERM, and its release function.
+// Constraints: the exporter removes its stage on every error return.
+func dbExportContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+}
+
 // Purpose: collect the widened secret class from the resolved environment.
-// Inputs: KEY=value pairs. Outputs: sorted distinct values and names only.
+// Inputs: KEY=value pairs. Outputs: sorted distinct secret values only.
 // Constraints: URL userinfo passwords count even on an ordinary URL key.
-func dbExportSecretValues(env []string) ([]string, []string) {
-	values, names := map[string]bool{}, map[string]bool{}
+func dbExportSecretValues(env []string) []string {
+	values := map[string]bool{}
 	for _, pair := range env {
 		key, v, ok := strings.Cut(pair, "=")
 		if !ok {
 			continue
 		}
-		names[key] = true
 		secret := config.IsSecretKey(key)
 		for _, term := range []string{"SECRET", "PASSWORD", "PASS", "KEY", "TOKEN", "CREDENTIAL", "PRIVATE", "DSN"} {
 			if strings.Contains(strings.ToUpper(key), term) {
@@ -84,14 +103,10 @@ func dbExportSecretValues(env []string) ([]string, []string) {
 			}
 		}
 	}
-	vs, ks := []string{}, []string{}
+	vs := []string{}
 	for v := range values {
 		vs = append(vs, v)
 	}
-	for k := range names {
-		ks = append(ks, k)
-	}
 	sort.Strings(vs)
-	sort.Strings(ks)
-	return vs, ks
+	return vs
 }

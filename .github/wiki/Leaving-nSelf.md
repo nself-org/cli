@@ -15,6 +15,9 @@ leave additional room for large metadata, auth records and the SQL scan.
 The bundle contains a custom-format PostgreSQL archive, a readable schema dump,
 table counts and content hashes, portable auth users with bcrypt password hashes,
 S3 objects, Hasura metadata for selected tables, and configuration key **names**.
+The metadata keeps table configuration, relationships, computed fields and permissions.
+Event triggers (webhook URLs and header values), remote relationships, remote schemas,
+actions and source connection settings are not exported; recreate them at the destination.
 Database reads and both dumps share one repeatable-read snapshot. S3 and Hasura
 have no cross-service transaction: avoid changing objects or metadata during export.
 An object's size changing between enumeration and download fails the export.

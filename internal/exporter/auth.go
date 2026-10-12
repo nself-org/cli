@@ -72,9 +72,12 @@ func streamAuth(rows userRows, w io.Writer, auth *portable.Auth) error {
 		if err := json.Unmarshal(data, &user); err != nil {
 			return err
 		}
-		algo := "none"
-		if hash, ok := user["password_hash"].(string); ok && bcryptHash.MatchString(hash) {
-			algo = "bcrypt"
+		algo := "none" // no stored hash (null or absent)
+		if v := user["password_hash"]; v != nil {
+			algo = "unknown"
+			if hash, ok := v.(string); ok && bcryptHash.MatchString(hash) {
+				algo = "bcrypt"
+			}
 		}
 		user["hash_algorithm"] = algo
 		if err := enc.Encode(user); err != nil {
