@@ -38,6 +38,14 @@ var (
 	authVersionRE = regexp.MustCompile(`^v?(\d+)\.(\d+)\.\d+(-[0-9A-Za-z.-]+)?$`)
 )
 
+// AuthRefNeedsKey reports whether an auth image reference is a release from
+// 0.43.0 (tag) or the current lock entry (digest-only), so it needs the key and
+// has migrated a database it ran on one way. The update plan asks it (D-0661).
+func AuthRefNeedsKey(ref string) bool {
+	cur, _ := LockedRef("auth")
+	return authTagNeedsKey(authTag(ref)) || (cur.IndexDigest != "" && strings.HasSuffix(ref, "@"+cur.IndexDigest))
+}
+
 // authTag is the tag of an image reference (digest dropped), "" when it has none.
 func authTag(ref string) string {
 	base := imageBase(ref)
@@ -125,8 +133,7 @@ func (g *Generator) authImage() (string, error) {
 	default:
 		image = ResolveImage("auth", ImageRef("auth-v14", version))
 	}
-	needsKey := authTagNeedsKey(authTag(image)) || (cur.IndexDigest != "" && strings.HasSuffix(image, "@"+cur.IndexDigest))
-	if version == "" && needsKey && !authKeySet(g.cfg.Passthrough) {
+	if version == "" && AuthRefNeedsKey(image) && !authKeySet(g.cfg.Passthrough) {
 		return "", fmt.Errorf("auth image %s needs %s (64 hex characters) in the env: put back the key this project ran with (.env.secrets); a database it migrated cannot go back to 0.36.0 without restoring the pre-upgrade backup (Image-Lock wiki page, Roll back)", imageBase(image), AuthEncryptionKeyEnv)
 	}
 	return image, nil

@@ -45,12 +45,14 @@ func gatherPlan(ctx context.Context, d updateDeps, l lock.Lock, target string) (
 	default:
 		return plan.Plan{}, sourceFailure("the CLI release lookup", err)
 	}
-	engine, err := configuredCacheEngine()
+	engine, passthrough, err := configuredCacheEngine()
 	if err != nil {
 		return plan.Plan{}, err
 	}
 	for k, pin := range l.Pins() {
-		if cand, ok := imageCandidate(k, pin, engine); ok {
+		if k == "auth" {
+			c.Images[k] = authCandidate(pin, passthrough)
+		} else if cand, ok := imageCandidate(k, pin, engine); ok {
 			c.Images[k] = cand
 		}
 	}
@@ -83,15 +85,31 @@ func repoNoTag(ref string) string {
 }
 
 // configuredCacheEngine is the REDIS_ENGINE the project sets ("valkey",
-// "redis", or "" when unset), read through the same config loader the build
-// uses so the .env file and the environment count the same way. An invalid
-// value is an error here, as it is in the build.
-func configuredCacheEngine() (string, error) {
+// "redis", or "" when unset), plus the AUTH_* passthrough the auth row needs,
+// read through the same config loader the build uses so the .env file and the
+// environment count the same way. An invalid value is an error here, as it is
+// in the build.
+func configuredCacheEngine() (string, map[string]string, error) {
 	cfg, err := loadConfig()
 	if err != nil {
-		return "", fmt.Errorf("reading REDIS_ENGINE for the plan: %w", err)
+		return "", nil, fmt.Errorf("reading REDIS_ENGINE for the plan: %w", err)
 	}
-	return strings.ToLower(strings.TrimSpace(cfg.Redis.Engine)), nil
+	return strings.ToLower(strings.TrimSpace(cfg.Redis.Engine)), cfg.Passthrough, nil
+}
+
+// authCandidate is the auth row (D-0661): the entry compose.AuthEntry picks for
+// the mode and AUTH_ENCRYPTION_KEY, never a step back from a release that has
+// migrated the database (that needs the pre-upgrade backup restored).
+func authCandidate(pin string, passthrough map[string]string) plan.Candidate {
+	entry, _ := compose.AuthEntry(passthrough)
+	r, _ := compose.LockedRef(entry)
+	switch {
+	case compose.AuthRefNeedsKey(pin) && !compose.AuthRefNeedsKey(r.String()):
+		return plan.Candidate{Reason: "the pinned auth release has migrated the database one way; going back needs the pre-upgrade backup restored (Image-Lock wiki, Roll back)"}
+	case !compose.AuthRefNeedsKey(pin) && compose.AuthRefNeedsKey(r.String()):
+		return plan.Candidate{Value: r.String(), Note: "auth " + r.Version + " migrates the auth schema and encrypts TOTP secrets one way on first start: take a verified backup first"}
+	}
+	return plan.Candidate{Value: r.String()}
 }
 
 // cacheEngineEntry is the image lock entry the `redis` service moves to: the
