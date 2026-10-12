@@ -68,41 +68,44 @@ func TestPluginRemoveDataPolicyCmd(t *testing.T) {
 			{[]string{"delete-data", "yes"}, false, false, false, "", ""},
 		}
 		for _, c := range cases {
-			p := chatFixture(t)
-			installSoloPlugin(t, p.plugins, "solo")
-			calls := recordPluginRemove(t)
-			setFlags(t, removeCmd, c.flags...)
-			var err error
-			stderr := captureStderr(t, func() { err = runPluginRemove(removeCmd, []string{"solo"}) })
-			for _, f := range c.flags {
-				resetFlag(removeCmd, f)
-			}
-			if compat.V15() && c.e403In15 {
-				if d := errs.Describe(err); d == nil || d.Code != "E403" || errs.ExitCodeFor(err) != 4 {
-					t.Errorf("%v: err = %v, want E403 exit 4", c.flags, err)
+			c := c
+			t.Run(strings.Join(append([]string{"flags"}, c.flags...), "-"), func(t *testing.T) {
+				p := chatFixture(t)
+				installSoloPlugin(t, p.plugins, "solo")
+				calls := recordPluginRemove(t)
+				setFlags(t, removeCmd, c.flags...)
+				var err error
+				stderr := captureStderr(t, func() { err = runPluginRemove(removeCmd, []string{"solo"}) })
+				for _, f := range c.flags {
+					resetFlag(removeCmd, f)
 				}
-				if len(*calls) != 0 {
-					t.Errorf("%v: an unconfirmed --delete-data removed the plugin: %+v", c.flags, *calls)
+				if compat.V15() && c.e403In15 {
+					if d := errs.Describe(err); d == nil || d.Code != "E403" || errs.ExitCodeFor(err) != 4 {
+						t.Errorf("%v: err = %v, want E403 exit 4", c.flags, err)
+					}
+					if len(*calls) != 0 {
+						t.Errorf("%v: an unconfirmed --delete-data removed the plugin: %+v", c.flags, *calls)
+					}
+					return
 				}
-				continue
-			}
-			if err != nil {
-				t.Errorf("%v: %v", c.flags, err)
-				continue
-			}
-			want, warn := c.wantKeep14, c.warn14
-			if compat.V15() {
-				want, warn = c.wantKeep15, c.warn15
-			}
-			if len(*calls) != 1 || (*calls)[0].keep != want {
-				t.Errorf("%v: calls = %+v, want one with keep=%v", c.flags, *calls, want)
-			}
-			if warn != "" && !strings.Contains(stderr, warn) {
-				t.Errorf("%v: stderr lacks %q:\n%s", c.flags, warn, stderr)
-			}
-			if compat.V15() && c.flags == nil && strings.Contains(stderr, "warning:") {
-				t.Errorf("v1.5 default remove warned:\n%s", stderr)
-			}
+				if err != nil {
+					t.Errorf("%v: %v", c.flags, err)
+					return
+				}
+				want, warn := c.wantKeep14, c.warn14
+				if compat.V15() {
+					want, warn = c.wantKeep15, c.warn15
+				}
+				if len(*calls) != 1 || (*calls)[0].keep != want {
+					t.Errorf("%v: calls = %+v, want one with keep=%v", c.flags, *calls, want)
+				}
+				if warn != "" && !strings.Contains(stderr, warn) {
+					t.Errorf("%v: stderr lacks %q:\n%s", c.flags, warn, stderr)
+				}
+				if compat.V15() && c.flags == nil && strings.Contains(stderr, "warning:") {
+					t.Errorf("v1.5 default remove warned:\n%s", stderr)
+				}
+			})
 		}
 	})
 }
