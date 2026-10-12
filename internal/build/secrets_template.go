@@ -266,7 +266,9 @@ func ComposeEnvFiles(workdir string) []string {
 	}
 	// The default project .env is only useful alongside compose.env; docker
 	// compose reads it implicitly anyway when it is the sole file present.
-	if len(files) == 1 && strings.HasSuffix(files[0], ".env") && !strings.HasSuffix(files[0], composeEnvFile) {
+	// Compare whole paths: a suffix test against the slash-form composeEnvFile
+	// never matched a Windows path, so a compose.env-only project got nil.
+	if len(files) == 1 && files[0] == filepath.Join(workdir, ".env") {
 		return nil
 	}
 	return files
