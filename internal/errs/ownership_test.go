@@ -29,7 +29,7 @@ func TestOwnership_Mutations(t *testing.T) {
 		{"existing fragment grows past its range", "codes_cli.go", "E408", true},
 		{"cli codes from the wrong fragment", "codes_docker.go", "E409", true},
 		{"spare E440 in cli block", "codes_cli.go", "E440", true},
-		{"adopt owner registers shared-proxy code", "codes_shared_proxy.go", "E503", false},
+		{"shared-proxy fragment strays into a neighbour range", "codes_shared_proxy.go", "E506", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			snapshotRegistry(t)

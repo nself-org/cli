@@ -123,7 +123,7 @@ func (st *buildState) writeFinalArtifacts() (*BuildResult, error) {
 
 		// Write the nginx site config (full server block, served on docs.<base>).
 		apiDocsNginxConf := apidocs.NginxConf(apiDocsCfg.Path, st.cfg.BaseDomain)
-		if _, err := writeAPIDocsSiteConfVia(st.sink, st.workdir, st.cfg.Nginx.FrontedBy, []byte(apiDocsNginxConf)); err != nil {
+		if _, err := writeAPIDocsSiteConfVia(st.siteSink(), st.workdir, st.cfg.Nginx.FrontedBy, []byte(apiDocsNginxConf)); err != nil {
 			return nil, err
 		}
 		// Best-effort cleanup of the legacy bare-location file, if present from a

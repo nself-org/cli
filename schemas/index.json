@@ -948,6 +948,10 @@
     {
       "path": "releases.v1.schema.json",
       "id": "urn:nself:cli:schema:releases:v1"
+    },
+    {
+      "path": "shared-proxy.v1.schema.json",
+      "id": "urn:nself:cli:schema:shared-proxy:v1"
     }
   ]
 }

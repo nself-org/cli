@@ -120,6 +120,12 @@ type NginxConfig struct {
 	// per-project flag — and belongs in a follow-up once the desired shape
 	// of that wiring is decided.
 	FrontedBy string `env:"NGINX_FRONTED_BY"`
+
+	// Mode is NGINX_MODE: "" (this stack's nginx serves this project only) or
+	// "shared" (this project owns a host nginx that fronted projects nested
+	// under it register with, contract:cli.shared-proxy). Any other value is
+	// reported by NginxModeProblem. See nginx_mode.go.
+	Mode string `env:"NGINX_MODE"`
 }
 
 // RedisConfig holds Redis cache/queue configuration.

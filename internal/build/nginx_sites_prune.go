@@ -35,6 +35,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/nself-org/cli/internal/sharedproxy"
 )
 
 // nginxGeneratedMarker is the first line every nginx conf this CLI
@@ -189,9 +191,16 @@ func pruneGeneratedNginxSitesVia(sink Sink, sitesDir string) (removed int, forei
 		return 0, nil, fmt.Errorf("reading %s: %w", sitesDir, readErr)
 	}
 
+	// Files a fronted project registered under a shared host proxy are its own
+	// (P7-ADOPT-03, contract:cli.shared-proxy): never removed, never reported.
+	registered, regErr := registeredSiteFiles(sitesDir)
+	if regErr != nil {
+		return 0, nil, regErr
+	}
+
 	const headBytes = 128
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.IsDir() || registered["nginx/sites/"+e.Name()] {
 			continue
 		}
 		path := filepath.Join(sitesDir, e.Name())
@@ -206,6 +215,19 @@ func pruneGeneratedNginxSitesVia(sink Sink, sitesDir string) (removed int, forei
 	}
 	sort.Strings(foreign)
 	return removed, foreign, nil
+}
+
+// registeredSiteFiles returns every owner-relative file any registration under
+// <sitesDir>/../shared lists. No shared dir is an empty set; a registration that
+// does not validate refuses the prune (an unreadable ownership record must not
+// become permission to delete).
+func registeredSiteFiles(sitesDir string) (map[string]bool, error) {
+	owner := filepath.Dir(filepath.Dir(sitesDir))
+	set, err := sharedproxy.Load(filepath.Join(filepath.Dir(sitesDir), sharedproxy.Dir), owner)
+	if err != nil {
+		return nil, fmt.Errorf("not pruning %s: a shared proxy registration does not validate: %w", sitesDir, err)
+	}
+	return set.RegisteredFiles(), nil
 }
 
 // isGeneratedNginxSiteFile reports whether path's first headBytes bytes

@@ -55,6 +55,7 @@
 - [[Config-Hasura]]
 - [[Config-Auth]]
 - [[Config-Nginx]]
+- [[Shared-Proxy]]
 - [[Config-Optional-Services]]
 - [[Config-Custom-Services]]
 - [[Config-System]]

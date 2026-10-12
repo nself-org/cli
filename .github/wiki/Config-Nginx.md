@@ -16,7 +16,7 @@ This page covers every `NGINX_*` and `SSL_*` environment variable, how `BASE_DOM
 | `NGINX_BIND_IP` | `127.0.0.1` (dev) / `0.0.0.0` (prod) | IP address Nginx binds to on the host. The default changes automatically based on `ENV`: `127.0.0.1` in dev restricts access to localhost only; `0.0.0.0` in prod allows external traffic. Override this explicitly if you need non-default behaviour. |
 | `NGINX_CLIENT_MAX_BODY_SIZE` | `100M` | Maximum allowed size for a single request body. Affects file uploads to Storage and any API endpoint. Use standard Docker memory notation: `50M`, `1G`, etc. |
 | `NGINX_GZIP_ENABLED` | `true` | Enables gzip compression on responses. Set to `false` if a CDN or upstream proxy is handling compression. |
-| `NGINX_MODE` | *(empty)* | Set to `shared` to enable multi-project mode, where a single Nginx instance routes traffic for multiple ɳSelf projects on the same host. Leave empty for standard single-project operation. |
+| `NGINX_MODE` | *(empty)* | Set to `shared` on the project that owns the host's Nginx, so fronted projects nested under it can register with it. Any other value is a warning in v1.4 and error E505 in v1.5. Leave empty for standard single-project operation. See [Shared-Proxy](Shared-Proxy). |
 | `NGINX_MEM_LIMIT` | `256m` | Docker memory limit for the Nginx container. |
 | `NGINX_FRONTED_BY` | *(empty)* | Names another stack whose Nginx already fronts this project's domains, for a project that has no ingress Nginx of its own. See [Fronted by another stack](#fronted-by-another-stack) below. |
 | `SSL_MODE` | `local` | SSL mode to use. One of `local`, `letsencrypt`, `custom`, or `none`. See SSL Modes below. |
@@ -204,6 +204,8 @@ With this set, `nself build` omits the Nginx service from the generated `docker-
 Without it, a fronted project still generates an Nginx that can never start: `nself start` fails its port check with 80/443 held by the fronting stack's `docker-proxy`, and `nself status` reports one permanently unhealthy service that nothing can clear.
 
 **This flag removes the container that cannot run. It does not wire the two projects' networks together.** The fronting Nginx resolves upstreams through Docker's embedded DNS at `127.0.0.11`, which only answers for container names on a network that Nginx is attached to. Routing `auth.task.example.com` to this project's `auth` container still requires the two projects to share a Docker network — declared as `external` in both compose files, or attached by hand. Automatically rewriting a project's network topology from a single flag is a larger change and is deliberately not part of this one.
+
+To get container-name upstreams, prefixed site files and per-project registration, the owner sets `NGINX_MODE=shared`. See [Shared-Proxy](Shared-Proxy).
 
 ---
 

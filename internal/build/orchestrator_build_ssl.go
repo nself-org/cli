@@ -129,6 +129,7 @@ func (st *buildState) generateSSLAndNginx() error {
 	// (nginx.conf, conf.d/default.conf, includes/rate-limits.conf) stays
 	// under this project's own workdir/nginx regardless of FrontedBy.
 	const sitesPrefix = "nginx/sites/"
+	siteSink := st.siteSink() // P7-ADOPT-03: prefixes a fronted project's confs in shared mode
 	for relPath, content := range nginxFiles {
 		var absPath string
 		if strings.HasPrefix(relPath, sitesPrefix) {
@@ -137,10 +138,14 @@ func (st *buildState) generateSSLAndNginx() error {
 			absPath = filepath.Join(st.workdir, relPath)
 		}
 		dir := filepath.Dir(absPath)
-		if err := st.sink.MkdirAll(dir, 0755); err != nil {
+		out := st.sink
+		if strings.HasPrefix(relPath, sitesPrefix) {
+			out = siteSink
+		}
+		if err := out.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("creating directory for %s: %w", relPath, err)
 		}
-		if err := st.sink.WriteFile(absPath, []byte(content), 0644); err != nil {
+		if err := out.WriteFile(absPath, []byte(content), 0644); err != nil {
 			return fmt.Errorf("writing %s: %w", relPath, err)
 		}
 		st.filesGenerated++
@@ -161,7 +166,7 @@ func (st *buildState) generateSSLAndNginx() error {
 	}
 
 	// ── Step 7.1: Inject plugin nginx routes ────────────────────────
-	pluginRoutes, err := injectPluginNginxRoutesVia(st.sink, st.workdir, "", st.cfg, nginxGen.HasSSL())
+	pluginRoutes, err := injectPluginNginxRoutesVia(st.siteSink(), st.workdir, "", st.cfg, nginxGen.HasSSL())
 	if err != nil {
 		return fmt.Errorf("injecting plugin nginx routes: %w", err)
 	}
