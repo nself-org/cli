@@ -260,6 +260,14 @@ requires `--yes` in a noninteractive session; otherwise it returns E403
 remote nself CLI that supports `--archive -`.
 
 ---
+## db pitr restore
+
+```bash
+nself db pitr restore --target 2026-01-15T14:30:00Z [--yes]
+```
+
+Restores the database to a point in time and overwrites what is there now. In v1.4 it warns when called without `--yes`. In v1.5 (`NSELF_V15=1`) it refuses with `[E403]` unless you pass `--yes` or answer `y` on a terminal. The same rule applies to `nself backup pitr restore`.
+
 <!-- END PROSE:description -->
 
 ## Flags
