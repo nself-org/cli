@@ -1,0 +1,10 @@
+{
+  "kind": "identitytoolkit#DownloadAccountResponse",
+  "users": [
+    {"localId": "g-1", "email": "Dup@Example.test", "emailVerified": true, "createdAt": 1700000000000,
+     "providerUserInfo": [{"providerId": "google.com"}]},
+    {"localId": "p-2", "email": "pw@example.test", "passwordHash": "ZmFrZQ==", "salt": "c2FsdA==", "createdAt": "1700000300000"},
+    {"localId": "d-3", "email": "dup@example.test", "createdAt": "1700000400000"},
+    {"localId": "ph-4", "phoneNumber": "+15550001111", "createdAt": "1700000500000"}
+  ]
+}

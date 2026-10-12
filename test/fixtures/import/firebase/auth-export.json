@@ -1,0 +1,36 @@
+{
+  "users": [
+    {
+      "localId": "fbuid-ann-0001",
+      "email": "ann@example.test",
+      "emailVerified": true,
+      "passwordHash": "ZmFrZS1oYXNoLWFubi1ub3QtcmVhbA==",
+      "salt": "ZmFrZS1zYWx0LWFubg==",
+      "displayName": "Ann Example",
+      "createdAt": "1700000000000",
+      "lastSignedInAt": "1700001000000",
+      "providerUserInfo": [{"providerId": "password", "rawId": "ann@example.test", "email": "ann@example.test"}]
+    },
+    {
+      "localId": "fbuid-bob-0002",
+      "email": "bob@example.test",
+      "emailVerified": false,
+      "passwordHash": "ZmFrZS1oYXNoLWJvYi1ub3QtcmVhbA==",
+      "salt": "ZmFrZS1zYWx0LWJvYg==",
+      "displayName": "Bob Example",
+      "createdAt": "1700000100000",
+      "customAttributes": "{\"plan\":\"free\"}",
+      "providerUserInfo": [{"providerId": "password", "rawId": "bob@example.test", "email": "bob@example.test"}]
+    },
+    {
+      "localId": "fbuid-cy-0003",
+      "email": "cy@example.test",
+      "emailVerified": true,
+      "passwordHash": "ZmFrZS1oYXNoLWN5LW5vdC1yZWFs",
+      "salt": "ZmFrZS1zYWx0LWN5",
+      "createdAt": "1700000200000",
+      "disabled": true,
+      "providerUserInfo": [{"providerId": "password", "rawId": "cy@example.test", "email": "cy@example.test"}]
+    }
+  ]
+}
