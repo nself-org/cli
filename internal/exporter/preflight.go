@@ -26,12 +26,12 @@ type exportPlan struct {
 func prepareExport(ctx context.Context, cfg *config.Config, opts Options) (exportPlan, error) {
 	var p exportPlan
 	var err error
-	if hit, err := scan(strings.NewReader(opts.Out), secretPatterns(opts.SecretValues)); hit || err != nil {
-		return p, safeFailure("output path contains a configured secret")
-	}
 	p.out, err = filepath.Abs(opts.Out)
 	if err != nil {
 		return p, safeFailure("resolve output")
+	}
+	if hit, err := scan(strings.NewReader(p.out), secretPatterns(opts.SecretValues)); hit || err != nil {
+		return p, safeFailure("output path contains a configured secret")
 	}
 	if err = emptyOutput(p.out); err != nil {
 		return p, err

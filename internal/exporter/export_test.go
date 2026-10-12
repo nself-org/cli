@@ -26,6 +26,10 @@ func TestExportPreflightNoWrites(t *testing.T) {
 	if _, err := os.Lstat(secretOut); !os.IsNotExist(err) {
 		t.Fatal("unsafe output path was written")
 	}
+	t.Chdir(dir)
+	if _, err := Export(context.Background(), &config.Config{}, Options{Out: "relative-bundle", SecretValues: []string{dir}}); err == nil || strings.Contains(err.Error(), dir) {
+		t.Fatal("absolute output summary could expose a configured secret")
+	}
 	if err := os.Mkdir(out, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -44,5 +48,41 @@ func TestExportPreflightNoWrites(t *testing.T) {
 	}
 	if strings.Contains(safeFailure("postgres tool").Error(), "password") {
 		t.Fatal("unsafe failure")
+	}
+}
+
+func TestPublishPreservesOccupiedOutput(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "out")
+	stage := filepath.Join(dir, "stage")
+	if err := os.Mkdir(stage, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(out, []byte("fake existing file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertCode(t, publishBundle(stage, out), "E527")
+	data, err := os.ReadFile(out)
+	if err != nil || string(data) != "fake existing file" {
+		t.Fatal("existing output file changed")
+	}
+	if err = os.Remove(out); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Mkdir(out, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(out, "keep"), []byte("fake existing member"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertCode(t, publishBundle(stage, out), "E527")
+	if _, err = os.Stat(filepath.Join(out, "keep")); err != nil {
+		t.Fatal("existing output member changed")
+	}
+	if err = os.Remove(filepath.Join(out, "keep")); err != nil {
+		t.Fatal(err)
+	}
+	if err = publishBundle(stage, out); err != nil {
+		t.Fatal("empty destination rejected", err)
 	}
 }

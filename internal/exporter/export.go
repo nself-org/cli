@@ -101,13 +101,9 @@ func publishBundle(stage, out string) error {
 	if err := emptyOutput(out); err != nil {
 		return err
 	}
-	var err error
-	if _, err = os.Lstat(out); err == nil {
-		if err = os.Remove(out); err != nil {
-			return safeFailure("publish bundle")
-		}
-	}
-	if err = os.Rename(stage, out); err != nil {
+	// A directory rename cannot replace a file or a non-empty directory. Avoid
+	// unlinking a destination that could have changed since the occupancy read.
+	if err := renameBundle(stage, out); err != nil {
 		return safeFailure("publish bundle")
 	}
 	return nil
