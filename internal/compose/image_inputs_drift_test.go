@@ -28,6 +28,8 @@ import (
 var enableAll = map[string]string{
 	"ENV": "dev", "REDIS_ENABLED": "true", "MINIO_ENABLED": "true", "MAILPIT_ENABLED": "true",
 	"NSELF_ADMIN_ENABLED": "true", "FUNCTIONS_ENABLED": "true", "SEARCH_ENABLED": "true",
+	"NSELF_V15": "0", "OBJECT_STORAGE_ENABLED": "false", "STORAGE_ENABLED": "false",
+	"MINIO_ROOT_USER": "", "MINIO_ROOT_PASSWORD": "", "MINIO_ACCESS_KEY": "", "MINIO_SECRET_KEY": "",
 }
 
 // renderVariants together reach every row of the table: the functions runtime,
@@ -36,6 +38,10 @@ var renderVariants = map[string]map[string]string{
 	"node-meili-plain":   {"FUNCTIONS_RUNTIME": "node", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis"},
 	"deno-typesense-pgv": {"FUNCTIONS_RUNTIME": "deno", "SEARCH_ENGINE": "typesense", "POSTGRES_EXTENSIONS": "uuid-ossp,pgvector", "REDIS_ENGINE": "valkey"},
 	"python-meili-plain": {"FUNCTIONS_RUNTIME": "python", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis"},
+	"v15-seaweedfs": {
+		"NSELF_V15": "1", "OBJECT_STORAGE_ENABLED": "true", "MINIO_ENABLED": "false",
+		"FUNCTIONS_RUNTIME": "node", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis",
+	},
 }
 
 // envCandidates lists every variable that could plausibly name an image.

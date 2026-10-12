@@ -46,6 +46,7 @@ var imageInputs = []ImageInput{
 	// a valkey image (cache_service.go, P7-LIVE-19); the engine decides the entry.
 	{Service: "redis", Entry: "valkey", Vars: []string{"REDIS_VERSION"}},
 	{Service: "minio", Entry: "minio", Vars: []string{"MINIO_VERSION"}},
+	{Service: "seaweedfs", Entry: "seaweedfs", Vars: []string{"SEAWEEDFS_VERSION"}},
 	{Service: "mailpit", Entry: "mailpit", Vars: []string{"MAILPIT_VERSION"}},
 	// admin reads NSELF_ADMIN_VERSION only; ADMIN_VERSION is not a variable.
 	{Service: "admin", Entry: "admin", Vars: []string{"NSELF_ADMIN_VERSION"}},

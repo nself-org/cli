@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -74,6 +75,11 @@ func fixedCoreEnvVars(cfg *config.Config, svc config.CustomService) map[string]s
 func addOptionalStoreEnvVars(env map[string]string, cfg *config.Config) {
 	if cfg.Redis.Enabled {
 		env["REDIS_URL"] = fmt.Sprintf("redis://%s@redis:%d", config.URLUserInfo("", cfg.Redis.Password), cfg.Redis.Port)
+	}
+	// compat.V15(P7-PLUG-60): MinIO endpoint -> active core or plugin object store endpoint
+	if compat.V15() {
+		addActiveStoreEnvVars(env, cfg)
+		return
 	}
 	if cfg.Minio.Enabled {
 		env["S3_ENDPOINT"] = fmt.Sprintf("http://minio:%d", cfg.Minio.Port)
