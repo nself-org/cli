@@ -40,30 +40,7 @@ FROM auth.users u ORDER BY u.id`)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		var failure error
-		defer func() { _ = pw.CloseWithError(failure) }()
-		enc := json.NewEncoder(pw)
-		for rows.Next() {
-			var data []byte
-			if failure = rows.Scan(&data); failure != nil {
-				return
-			}
-			var user map[string]any
-			if failure = json.Unmarshal(data, &user); failure != nil {
-				return
-			}
-			algo := "none"
-			if hash, ok := user["password_hash"].(string); ok && bcryptHash.MatchString(hash) {
-				algo = "bcrypt"
-			}
-			user["hash_algorithm"] = algo
-			if failure = enc.Encode(user); failure != nil {
-				return
-			}
-			m.Auth.Users++
-			m.Auth.HashAlgorithms[algo]++
-		}
-		failure = rows.Err()
+		_ = pw.CloseWithError(streamAuth(rows, pw, &m.Auth))
 	}()
 	_, err = w.WriteFile("auth/users.jsonl", pr)
 	_ = pr.CloseWithError(err)
@@ -73,4 +50,38 @@ FROM auth.users u ORDER BY u.id`)
 	}
 	m.SourceCounts = append(m.SourceCounts, portable.SourceCount{Kind: "users", ID: "auth.users", Count: int64(m.Auth.Users), Method: "snapshot auth.users"})
 	return nil
+}
+
+type userRows interface {
+	Next() bool
+	Scan(...any) error
+	Err() error
+}
+
+// Purpose: stream portable user records without holding the user set in memory.
+// Inputs: snapshot rows and a private writer. Outputs: JSONL and algorithm counts.
+// Constraints: only portable fields arrive from the explicit auth query.
+func streamAuth(rows userRows, w io.Writer, auth *portable.Auth) error {
+	enc := json.NewEncoder(w)
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return err
+		}
+		var user map[string]any
+		if err := json.Unmarshal(data, &user); err != nil {
+			return err
+		}
+		algo := "none"
+		if hash, ok := user["password_hash"].(string); ok && bcryptHash.MatchString(hash) {
+			algo = "bcrypt"
+		}
+		user["hash_algorithm"] = algo
+		if err := enc.Encode(user); err != nil {
+			return err
+		}
+		auth.Users++
+		auth.HashAlgorithms[algo]++
+	}
+	return rows.Err()
 }

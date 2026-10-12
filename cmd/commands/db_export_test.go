@@ -27,7 +27,7 @@ func TestDBExportCommand(t *testing.T) {
 	exportProject = func(_ context.Context, cfg *config.Config, opts exporter.Options) (exporter.Summary, error) {
 		called = true
 		if cfg.ProjectName != "e2e-adopt-export" || opts.Out != "bundle" || opts.ProjectDir != project {
-			t.Fatalf("bad request %+v", opts)
+			t.Fatal("bad export request")
 		}
 		return exporter.Summary{Out: "bundle"}, nil
 	}

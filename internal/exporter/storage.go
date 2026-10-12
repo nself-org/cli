@@ -33,37 +33,14 @@ func listStorage(ctx context.Context, cfg *config.Config, skip bool) (storagePla
 	if skip {
 		return p, "Storage omitted by --no-storage", nil
 	}
-	home, _ := os.UserHomeDir()
-	plugins := os.Getenv("NSELF_PLUGIN_DIR")
-	if plugins == "" {
-		plugins = filepath.Join(home, ".nself", "plugins")
+	client, err := storageClient(cfg)
+	if err != nil {
+		return p, "", err
 	}
-	fi, err := os.Stat(filepath.Join(plugins, "minio", "plugin.json"))
-	store := compose.ActiveStore(cfg, err == nil && !fi.IsDir())
-	if store == "none" {
+	if client == nil {
 		return p, "No object store enabled", nil
 	}
-	port, key, secret, region := cfg.Minio.Port, cfg.Minio.RootUser, cfg.Minio.RootPassword, cfg.Minio.Region
-	if port == 0 {
-		port = 9000
-	}
-	if store == "seaweedfs" {
-		port = 8333
-		if raw := os.Getenv("SEAWEEDFS_PORT"); raw != "" {
-			port, err = strconv.Atoi(raw)
-			if err != nil || port < 1 || port > 65535 {
-				return p, "", safeFailure("store port")
-			}
-		}
-		key, secret = cfg.Minio.S3AccessKey, cfg.Minio.S3SecretKey
-	}
-	if key == "" || secret == "" {
-		return p, "", safeFailure("store credentials")
-	}
-	if region == "" {
-		region = "us-east-1"
-	}
-	p.client = &objstore.Client{Endpoint: fmt.Sprintf("http://127.0.0.1:%d", port), AccessKey: key, SecretKey: secret, Region: region}
+	p.client = client
 	names, err := listBuckets(ctx, p.client)
 	if err != nil {
 		return p, "", err
@@ -82,6 +59,43 @@ func listStorage(ctx context.Context, cfg *config.Config, skip bool) (storagePla
 		}
 	}
 	return p, "", nil
+}
+
+// Purpose: select the active store's loopback S3 connection.
+// Inputs: loaded config and store mode. Outputs: client, or nil without a store.
+// Constraints: credentials stay in memory; arbitrary remote endpoints ignored.
+func storageClient(cfg *config.Config) (*objstore.Client, error) {
+	home, _ := os.UserHomeDir()
+	plugins := os.Getenv("NSELF_PLUGIN_DIR")
+	if plugins == "" {
+		plugins = filepath.Join(home, ".nself", "plugins")
+	}
+	fi, err := os.Stat(filepath.Join(plugins, "minio", "plugin.json"))
+	store := compose.ActiveStore(cfg, err == nil && !fi.IsDir())
+	if store == "none" {
+		return nil, nil
+	}
+	port, key, secret, region := cfg.Minio.Port, cfg.Minio.RootUser, cfg.Minio.RootPassword, cfg.Minio.Region
+	if port == 0 {
+		port = 9000
+	}
+	if store == "seaweedfs" {
+		port = 8333
+		if raw := os.Getenv("SEAWEEDFS_PORT"); raw != "" {
+			port, err = strconv.Atoi(raw)
+			if err != nil || port < 1 || port > 65535 {
+				return nil, safeFailure("store port")
+			}
+		}
+		key, secret = cfg.Minio.S3AccessKey, cfg.Minio.S3SecretKey
+	}
+	if key == "" || secret == "" {
+		return nil, safeFailure("store credentials")
+	}
+	if region == "" {
+		region = "us-east-1"
+	}
+	return &objstore.Client{Endpoint: fmt.Sprintf("http://127.0.0.1:%d", port), AccessKey: key, SecretKey: secret, Region: region}, nil
 }
 
 // Purpose: S3 ListBuckets (objstore exposes only per-bucket ListObjectsV2).

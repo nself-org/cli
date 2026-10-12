@@ -12,6 +12,50 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
+type exportPlan struct {
+	out   string
+	db    *snapshot
+	store storagePlan
+	note  string
+}
+
+// Purpose: prepare a read plan without writing output. Inputs: export options.
+// Outputs: open snapshot and enumerated objects. Constraints: failed preflight
+// closes the snapshot and never creates a stage directory.
+func prepareExport(ctx context.Context, cfg *config.Config, opts Options) (exportPlan, error) {
+	var p exportPlan
+	var err error
+	p.out, err = filepath.Abs(opts.Out)
+	if err != nil {
+		return p, safeFailure("resolve output")
+	}
+	if err = emptyOutput(p.out); err != nil {
+		return p, err
+	}
+	if err = started(ctx, cfg, opts.ProjectDir); err != nil {
+		return p, err
+	}
+	p.db, err = openSnapshot(ctx, cfg, opts.Schemas)
+	if err != nil {
+		return p, err
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			p.db.close(ctx)
+		}
+	}()
+	p.store, p.note, err = listStorage(ctx, cfg, opts.NoStorage)
+	if err != nil {
+		return p, safeFailure("list storage")
+	}
+	if err = diskCheck(p.out, p.db.bytes, p.store.bytes, opts.FreeSpace); err != nil {
+		return p, err
+	}
+	ok = true
+	return p, nil
+}
+
 // Purpose: refuse occupied outputs before any writes. Inputs: absolute path.
 // Outputs: E527 or nil. Constraints: symlinks are never accepted.
 func emptyOutput(out string) error {

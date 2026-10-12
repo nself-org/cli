@@ -61,45 +61,13 @@ func filterMetadata(raw []byte, db portable.DB) ([]byte, portable.Hasura, error)
 			continue
 		}
 		out := map[string]any{"name": source["name"], "kind": source["kind"], "tables": []any{}, "functions": []any{}}
-		for _, item := range array(source["tables"]) {
-			t, ok := item.(map[string]any)
-			if !ok {
-				return nil, counts, safeFailure("metadata table")
-			}
-			ref, ok := t["table"].(map[string]any)
-			if !ok {
-				continue
-			}
-			schema, _ := ref["schema"].(string)
-			name, _ := ref["name"].(string)
-			if !allowed[schema+"."+name] {
-				continue
-			}
-			out["tables"] = append(array(out["tables"]), t)
-			counts.Tables++
-			for _, k := range []string{"object_relationships", "array_relationships"} {
-				counts.Relationships += len(array(t[k]))
-			}
-			for _, k := range []string{"select_permissions", "insert_permissions", "update_permissions", "delete_permissions"} {
-				counts.Permissions += len(array(t[k]))
-			}
+		tables, err := metadataTables(array(source["tables"]), allowed, &counts)
+		if err != nil {
+			return nil, counts, err
 		}
-		for _, item := range array(source["functions"]) {
-			f, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
-			ref, ok := f["function"].(map[string]any)
-			if !ok {
-				continue
-			}
-			schema, _ := ref["schema"].(string)
-			name, _ := ref["name"].(string)
-			if schemas[schema] && !strings.HasPrefix(name, "np_") {
-				out["functions"] = append(array(out["functions"]), f)
-				counts.Functions++
-			}
-		}
+		functions := metadataFunctions(array(source["functions"]), schemas)
+		out["tables"], out["functions"] = tables, functions
+		counts.Functions += len(functions)
 		// API metadata arrays are not a canonical order; sort by encoded identity.
 		for _, key := range []string{"tables", "functions"} {
 			items := array(out[key])
@@ -117,3 +85,56 @@ func filterMetadata(raw []byte, db portable.DB) ([]byte, portable.Hasura, error)
 }
 
 func array(v any) []any { a, _ := v.([]any); return a }
+
+// Purpose: retain dumped tables and count their portable metadata.
+// Inputs: records and exact table set. Outputs: selected records.
+// Constraints: connections are excluded at the source level.
+func metadataTables(records []any, allowed map[string]bool, counts *portable.Hasura) ([]any, error) {
+	out := []any{}
+	for _, item := range records {
+		t, ok := item.(map[string]any)
+		if !ok {
+			return nil, safeFailure("metadata table")
+		}
+		ref, ok := t["table"].(map[string]any)
+		if !ok {
+			continue
+		}
+		schema, _ := ref["schema"].(string)
+		name, _ := ref["name"].(string)
+		if !allowed[schema+"."+name] {
+			continue
+		}
+		out = append(out, t)
+		counts.Tables++
+		for _, k := range []string{"object_relationships", "array_relationships"} {
+			counts.Relationships += len(array(t[k]))
+		}
+		for _, k := range []string{"select_permissions", "insert_permissions", "update_permissions", "delete_permissions"} {
+			counts.Permissions += len(array(t[k]))
+		}
+	}
+	return out, nil
+}
+
+// Purpose: retain functions in exported schemas. Inputs: source functions.
+// Outputs: selected records. Constraints: plugin functions excluded.
+func metadataFunctions(records []any, schemas map[string]bool) []any {
+	out := []any{}
+	for _, item := range records {
+		f, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		ref, ok := f["function"].(map[string]any)
+		if !ok {
+			continue
+		}
+		schema, _ := ref["schema"].(string)
+		name, _ := ref["name"].(string)
+		if schemas[schema] && !strings.HasPrefix(name, "np_") {
+			out = append(out, f)
+		}
+	}
+	return out
+}

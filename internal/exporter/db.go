@@ -55,32 +55,10 @@ func (s *snapshot) close(ctx context.Context) {
 // Inputs: explicit schemas or all user schemas. Outputs: sorted catalog.
 // Constraints: plugin and platform data cannot be selected explicitly.
 func (s *snapshot) catalog(ctx context.Context, requested []string) error {
-	rows, err := s.tx.Query(ctx, `SELECT nspname::text FROM pg_catalog.pg_namespace ORDER BY nspname COLLATE "C"`)
+	var err error
+	s.schemas, err = selectedSchemas(ctx, s.tx, requested)
 	if err != nil {
 		return err
-	}
-	wanted := map[string]bool{}
-	for _, name := range requested {
-		wanted[name] = true
-	}
-	for rows.Next() {
-		var name string
-		if err = rows.Scan(&name); err != nil {
-			rows.Close()
-			return err
-		}
-		if !excludedSchema(name) && (len(requested) == 0 || wanted[name]) {
-			s.schemas = append(s.schemas, name)
-			delete(wanted, name)
-		}
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return err
-	}
-	if len(wanted) > 0 {
-		return safeFailure("select schemas")
 	}
 	all, err := tablehash.ListTables(ctx, s.tx, s.schemas)
 	if err != nil {
@@ -102,6 +80,39 @@ func (s *snapshot) catalog(ctx context.Context, requested []string) error {
 		s.bytes += size
 	}
 	return nil
+}
+
+// Purpose: resolve requested schemas against the snapshot catalog.
+// Inputs: explicit names or all schemas. Outputs: sorted user schema names.
+// Constraints: missing and platform/plugin schemas are refused, never widened.
+func selectedSchemas(ctx context.Context, tx pgx.Tx, requested []string) ([]string, error) {
+	rows, err := tx.Query(ctx, `SELECT nspname::text FROM pg_catalog.pg_namespace ORDER BY nspname COLLATE "C"`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var schemas []string
+	wanted := map[string]bool{}
+	for _, name := range requested {
+		wanted[name] = true
+	}
+	for rows.Next() {
+		var name string
+		if err = rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		if !excludedSchema(name) && (len(requested) == 0 || wanted[name]) {
+			schemas = append(schemas, name)
+			delete(wanted, name)
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(wanted) > 0 {
+		return nil, safeFailure("select schemas")
+	}
+	return schemas, nil
 }
 
 func excludedSchema(name string) bool {

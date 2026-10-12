@@ -40,29 +40,12 @@ func Export(ctx context.Context, cfg *config.Config, opts Options) (Summary, err
 	if cfg == nil || opts.Out == "" {
 		return Summary{}, errors.New("export: config and --out are required")
 	}
-	out, err := filepath.Abs(opts.Out)
-	if err != nil {
-		return Summary{}, errors.New("export: resolve output")
-	}
-	if err = emptyOutput(out); err != nil {
-		return Summary{}, err
-	}
-	if err = started(ctx, cfg, opts.ProjectDir); err != nil {
-		return Summary{}, err
-	}
-	db, err := openSnapshot(ctx, cfg, opts.Schemas)
+	p, err := prepareExport(ctx, cfg, opts)
 	if err != nil {
 		return Summary{}, err
 	}
-	defer db.close(ctx)
-	store, note, err := listStorage(ctx, cfg, opts.NoStorage)
-	if err != nil {
-		return Summary{}, safeFailure("list storage")
-	}
-	if err = diskCheck(out, db.bytes, store.bytes, opts.FreeSpace); err != nil {
-		return Summary{}, err
-	}
-	stage, err := os.MkdirTemp(filepath.Dir(out), ".nself-export-")
+	defer p.db.close(ctx)
+	stage, err := os.MkdirTemp(filepath.Dir(p.out), ".nself-export-")
 	if err != nil {
 		return Summary{}, safeFailure("create stage")
 	}
@@ -71,41 +54,63 @@ func Export(ctx context.Context, cfg *config.Config, opts Options) (Summary, err
 	if err != nil {
 		return Summary{}, safeFailure("create bundle")
 	}
-	m := portable.Manifest{Producer: portable.Producer{Tool: "nself", Version: version.GetVersion(), Source: "nself"}, Postgres: db.info, DB: portable.DB{Schemas: db.schemas}, Exemptions: []portable.Exemption{}, SourceCounts: []portable.SourceCount{}, Compat: []string{}}
-	if err = db.write(ctx, cfg, w, &m); err != nil {
-		return Summary{}, err
-	}
-	if err = writeAuth(ctx, db.tx, w, &m); err != nil {
-		return Summary{}, safeFailure("read auth")
-	}
-	if err = store.write(ctx, w, &m); err != nil {
-		return Summary{}, safeFailure("read storage")
-	}
-	if err = writeMetadata(ctx, cfg, w, &m, opts.Keys); err != nil {
-		return Summary{}, safeFailure("read metadata")
-	}
-	if err = db.tx.Commit(ctx); err != nil {
-		return Summary{}, safeFailure("finish snapshot")
-	}
-	m, err = w.Finish(m)
+	m, err := writeBundle(ctx, cfg, p, w, opts.Keys)
 	if err != nil {
-		return Summary{}, safeFailure("finish manifest")
+		return Summary{}, err
 	}
 	if err = scrubBundle(ctx, cfg, stage, m, opts.SecretValues); err != nil {
 		return Summary{}, err
 	}
-	if err = emptyOutput(out); err != nil {
+	if err = publishBundle(stage, p.out); err != nil {
 		return Summary{}, err
 	}
+	return Summary{Out: p.out, Tables: len(m.DB.Tables), Users: m.Auth.Users, Objects: len(m.Storage.Objects), StorageNote: p.note}, nil
+}
+
+// Purpose: finish all bundle members while the database snapshot remains live.
+// Inputs: prepared read plan and writer. Outputs: finalized manifest.
+// Constraints: errors withhold source details; publication belongs to Export.
+func writeBundle(ctx context.Context, cfg *config.Config, p exportPlan, w *portable.Writer, keys []string) (portable.Manifest, error) {
+	m := portable.Manifest{Producer: portable.Producer{Tool: "nself", Version: version.GetVersion(), Source: "nself"}, Postgres: p.db.info, DB: portable.DB{Schemas: p.db.schemas}, Exemptions: []portable.Exemption{}, SourceCounts: []portable.SourceCount{}, Compat: []string{}}
+	if err := p.db.write(ctx, cfg, w, &m); err != nil {
+		return m, err
+	}
+	if err := writeAuth(ctx, p.db.tx, w, &m); err != nil {
+		return m, safeFailure("read auth")
+	}
+	if err := p.store.write(ctx, w, &m); err != nil {
+		return m, safeFailure("read storage")
+	}
+	if err := writeMetadata(ctx, cfg, w, &m, keys); err != nil {
+		return m, safeFailure("read metadata")
+	}
+	if err := p.db.tx.Commit(ctx); err != nil {
+		return m, safeFailure("finish snapshot")
+	}
+	m, err := w.Finish(m)
+	if err != nil {
+		return m, safeFailure("finish manifest")
+	}
+	return m, nil
+}
+
+// Purpose: publish scrubbed output with a final occupancy check.
+// Inputs: owned private stage and destination. Outputs: rename or safe refusal.
+// Constraints: never overwrite a file, symlink or non-empty directory.
+func publishBundle(stage, out string) error {
+	if err := emptyOutput(out); err != nil {
+		return err
+	}
+	var err error
 	if _, err = os.Lstat(out); err == nil {
 		if err = os.Remove(out); err != nil {
-			return Summary{}, safeFailure("publish bundle")
+			return safeFailure("publish bundle")
 		}
 	}
 	if err = os.Rename(stage, out); err != nil {
-		return Summary{}, safeFailure("publish bundle")
+		return safeFailure("publish bundle")
 	}
-	return Summary{Out: out, Tables: len(m.DB.Tables), Users: m.Auth.Users, Objects: len(m.Storage.Objects), StorageNote: note}, nil
+	return nil
 }
 
 func safeFailure(step string) error {
