@@ -164,6 +164,12 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 					// --delete-data, so both rows declare confirm {flags: [yes]}
 					// (a surface-only field the frozen pre-split table lacks).
 					got.Confirm = nil
+				case "backup pitr restore", "db pitr restore", "db migrate down", "migrate rollback", "backup prune":
+					// D-0285: the five data-loss commands gained a --yes consent flag, so
+					// their rows declare confirm {flags: [yes]} and no longer say
+					// surface cli-only (the frozen pre-split table has neither).
+					got.Confirm, want.Confirm = nil, nil
+					want.Surface = got.Surface
 				case "clean":
 					got.Confirm, got.Flags = nil, nil
 					want.SideEffect = SideEffectWrite
