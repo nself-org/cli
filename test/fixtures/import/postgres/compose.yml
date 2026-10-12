@@ -1,0 +1,22 @@
+services:
+  source16:
+    image: postgres:16@sha256:75adc2a65806c96bc0e59030230bfe3f1c1b0d6d8f8181a8913e2b8b53bdc166
+    environment:
+      POSTGRES_PASSWORD: ${FIXTURE_PASSWORD:?}
+    ports: ["127.0.0.1:${FIXTURE_PORT:-25416}:5432"]
+    volumes: ["./seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+  source17:
+    image: postgres:17@sha256:3cec7eb015ba8adb28139fa5c83b8489cdf0e666e53dfdf20f598ae0cc8739e3
+    environment:
+      POSTGRES_PASSWORD: ${FIXTURE_PASSWORD:?}
+    ports: ["127.0.0.1:${FIXTURE17_PORT:-25417}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
