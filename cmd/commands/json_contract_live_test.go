@@ -9,9 +9,12 @@ package commands
 // catch a live-output drift; this does.
 //
 // Inputs: contractLiveCommands. Each command runs in a fresh child of this
-// test binary that sets os.Args and calls Execute(), the same dispatch main()
-// uses (argv rewrite, v1.5 tree preparation, invocation decorator), so no
-// separate binary is built and no global state leaks between commands.
+// test binary that sets os.Args and calls Execute(), the commands-package entry
+// main() calls (argv rewrite, v1.5 tree preparation, invocation decorator), so
+// no separate binary is built and no global state leaks between commands.
+// main()'s panic recovery and error-envelope report are not on this path: the
+// set covers success envelopes; error envelopes are covered by the pilot
+// binary tests and internal/output.
 //
 // Constraints: temp HOME and project; a failing `docker` stub first on PATH;
 // proxy variables point at a closed local port and each child has a deadline,
@@ -36,6 +39,9 @@ import (
 
 // contractLiveChildEnv carries the child's argv (unit-separator joined).
 const contractLiveChildEnv = "NSELF_JSON_CONTRACT_CHILD_ARGS"
+
+// errContractLiveTimeout marks a child killed at its deadline.
+var errContractLiveTimeout = errors.New("timed out (network or docker wait?)")
 
 // contractLiveSecret is the fake password in the fixture .env; no command in
 // the set may print it.
@@ -92,6 +98,9 @@ func TestJSONContractLive(t *testing.T) {
 				t.Fatalf("%q is not a bound envelope command", c.command)
 			}
 			stdout, stderr, err := contractLiveRun(t, c.args)
+			if errors.Is(err, errContractLiveTimeout) {
+				t.Fatalf("nself %s --json: %v\nstderr:\n%s", strings.Join(c.args, " "), err, stderr)
+			}
 			var exit *exec.ExitError
 			code := 0
 			if errors.As(err, &exit) {
@@ -175,7 +184,7 @@ func contractLiveRun(t *testing.T, args []string) (string, string, error) {
 	cmd.Stdout, cmd.Stderr = &o, &e
 	err := cmd.Run()
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		err = fmt.Errorf("timed out (network or docker wait?): %w", err)
+		err = fmt.Errorf("%w (%v)", errContractLiveTimeout, err)
 	}
 	return o.String(), e.String(), err
 }
