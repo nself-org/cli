@@ -2401,6 +2401,186 @@ export interface DbImportFirebaseRequest {
   flags?: DbImportFirebaseFlags;
 }
 
+export type DbImportHasuraCloudArgs = [];
+
+export interface DbImportHasuraCloudData {
+  compat_shims: null | Array<string>;
+  detection?: null | {
+    kind: string;
+    notes: null | Array<string>;
+    schemas: null | Array<string>;
+    source_users?: number;
+    version: string;
+  };
+  exemptions: null | Array<{
+    id: string;
+    kind: string;
+    reason: string;
+  }>;
+  hasura: {
+    diffs: null | Array<{
+      detail: string;
+      id: string;
+      kind: string;
+    }>;
+    equal: boolean;
+  };
+  last_step?: string;
+  mismatches: null | Array<{
+    detail: string;
+    id: string;
+    kind: string;
+  }>;
+  result: string;
+  run_id: string;
+  source: string;
+  steps?: null | Array<string>;
+  storage: {
+    equal: boolean;
+    source_objects: number;
+    target_objects: number;
+  };
+  tables: null | Array<{
+    equal: boolean;
+    name: string;
+    schema: string;
+    source_rows: number;
+    target_rows: number;
+  }>;
+  untranslated_policies: null | Array<{
+    policy: string;
+    reason: string;
+    table: string;
+  }>;
+  users: {
+    equal: boolean;
+    reset_required: null | Array<{
+      email: string;
+      id: string;
+    }>;
+    source: number;
+    target: number;
+  };
+  wrote: boolean;
+}
+
+export type DbImportHasuraCloudFlags = {
+  /** Environment variable containing the Hasura admin secret */
+  "admin-secret-env"?: string;
+  /** Environment variable containing the PostgreSQL URL of the database Hasura is connected to */
+  "db-url-env"?: string;
+  /** Base URL of the Hasura project (https, or http on loopback) */
+  "hasura-url"?: string;
+  /** Keep the private portable bundle after a successful import */
+  "keep-stage"?: boolean;
+  /** Check source and target and print the import plan without writing */
+  plan?: boolean;
+  /** Exempt each storage object from this import */
+  "skip-storage"?: boolean;
+};
+
+/** Import and verify data from hasura-cloud */
+export interface DbImportHasuraCloudRequest {
+  args?: DbImportHasuraCloudArgs;
+  flags?: DbImportHasuraCloudFlags;
+}
+
+export type DbImportNhostArgs = [];
+
+export interface DbImportNhostData {
+  compat_shims: null | Array<string>;
+  detection?: null | {
+    kind: string;
+    notes: null | Array<string>;
+    schemas: null | Array<string>;
+    source_users?: number;
+    version: string;
+  };
+  exemptions: null | Array<{
+    id: string;
+    kind: string;
+    reason: string;
+  }>;
+  hasura: {
+    diffs: null | Array<{
+      detail: string;
+      id: string;
+      kind: string;
+    }>;
+    equal: boolean;
+  };
+  last_step?: string;
+  mismatches: null | Array<{
+    detail: string;
+    id: string;
+    kind: string;
+  }>;
+  result: string;
+  run_id: string;
+  source: string;
+  steps?: null | Array<string>;
+  storage: {
+    equal: boolean;
+    source_objects: number;
+    target_objects: number;
+  };
+  tables: null | Array<{
+    equal: boolean;
+    name: string;
+    schema: string;
+    source_rows: number;
+    target_rows: number;
+  }>;
+  untranslated_policies: null | Array<{
+    policy: string;
+    reason: string;
+    table: string;
+  }>;
+  users: {
+    equal: boolean;
+    reset_required: null | Array<{
+      email: string;
+      id: string;
+    }>;
+    source: number;
+    target: number;
+  };
+  wrote: boolean;
+}
+
+export type DbImportNhostFlags = {
+  /** Environment variable containing the Hasura admin secret */
+  "admin-secret-env"?: string;
+  /** S3 bucket that hasura-storage writes to */
+  bucket?: string;
+  /** Environment variable containing the nhost PostgreSQL URL */
+  "db-url-env"?: string;
+  /** Base URL of the nhost Hasura (https, or http on loopback) */
+  "hasura-url"?: string;
+  /** Keep the private portable bundle after a successful import */
+  "keep-stage"?: boolean;
+  /** Check source and target and print the import plan without writing */
+  plan?: boolean;
+  /** Environment variable containing the S3 access key */
+  "s3-access-key-env"?: string;
+  /** S3 region of the bucket (default us-east-1) */
+  "s3-region"?: string;
+  /** S3 root folder hasura-storage writes under, if it was configured with one */
+  "s3-root-folder"?: string;
+  /** Environment variable containing the S3 secret key */
+  "s3-secret-env"?: string;
+  /** Exempt each storage object from this import */
+  "skip-storage"?: boolean;
+  /** S3 endpoint URL of the hasura-storage bucket (https, or http on loopback) */
+  "storage-endpoint"?: string;
+};
+
+/** Import and verify data from nhost */
+export interface DbImportNhostRequest {
+  args?: DbImportNhostArgs;
+  flags?: DbImportNhostFlags;
+}
+
 export type DbImportNselfArgs = [string];
 
 export interface DbImportNselfData {

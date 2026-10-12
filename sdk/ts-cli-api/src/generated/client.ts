@@ -212,6 +212,10 @@ export interface Operations {
   dbHasuraValidate(request?: T.DbHasuraValidateRequest, options?: CallOptions): Promise<T.DbHasuraValidateData>;
   /** Generate nSelf migration artifacts from a Firebase export (POST /v1/commands/db/import/firebase) */
   dbImportFirebase(request?: T.DbImportFirebaseRequest, options?: CallOptions): Promise<T.DbImportFirebaseData>;
+  /** Import and verify data from hasura-cloud (POST /v1/commands/db/import/hasura-cloud) */
+  dbImportHasuraCloud(request?: T.DbImportHasuraCloudRequest, options?: CallOptions): Promise<T.DbImportHasuraCloudData>;
+  /** Import and verify data from nhost (POST /v1/commands/db/import/nhost) */
+  dbImportNhost(request?: T.DbImportNhostRequest, options?: CallOptions): Promise<T.DbImportNhostData>;
   /** Import and verify a portable bundle written by `nself db export` (POST /v1/commands/db/import/nself) */
   dbImportNself(request: T.DbImportNselfRequest, options?: CallOptions): Promise<T.DbImportNselfData>;
   /** Import and verify data from postgres (POST /v1/commands/db/import/postgres) */
@@ -522,6 +526,8 @@ export function createOperations(transport: Transport): Operations {
     dbHasuraSync: (request, options) => transport.call<T.DbHasuraSyncData>("/v1/commands/db/hasura/sync", request, options),
     dbHasuraValidate: (request, options) => transport.call<T.DbHasuraValidateData>("/v1/commands/db/hasura/validate", request, options),
     dbImportFirebase: (request, options) => transport.call<T.DbImportFirebaseData>("/v1/commands/db/import/firebase", request, options),
+    dbImportHasuraCloud: (request, options) => transport.call<T.DbImportHasuraCloudData>("/v1/commands/db/import/hasura-cloud", request, options),
+    dbImportNhost: (request, options) => transport.call<T.DbImportNhostData>("/v1/commands/db/import/nhost", request, options),
     dbImportNself: (request, options) => transport.call<T.DbImportNselfData>("/v1/commands/db/import/nself", request, options),
     dbImportPostgres: (request, options) => transport.call<T.DbImportPostgresData>("/v1/commands/db/import/postgres", request, options),
     dbImportSupabase: (request, options) => transport.call<T.DbImportSupabaseData>("/v1/commands/db/import/supabase", request, options),

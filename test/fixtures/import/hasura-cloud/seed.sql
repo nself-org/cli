@@ -1,0 +1,12 @@
+-- Two tables with a foreign key, a few rows, and a SQL function Hasura exposes as a query.
+CREATE TABLE public.authors (id uuid PRIMARY KEY, name text NOT NULL);
+CREATE TABLE public.posts (id uuid PRIMARY KEY, author_id uuid NOT NULL REFERENCES public.authors (id), owner_id uuid NOT NULL, title text NOT NULL, body text);
+INSERT INTO public.authors VALUES
+  ('a0000000-0000-4000-8000-000000000001', 'Ada'),
+  ('a0000000-0000-4000-8000-000000000002', 'Grace');
+INSERT INTO public.posts VALUES
+  ('b0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'c0000000-0000-4000-8000-000000000001', 'Engines', 'first'),
+  ('b0000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000001', 'c0000000-0000-4000-8000-000000000002', 'Notes on engines', 'second'),
+  ('b0000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000002', 'c0000000-0000-4000-8000-000000000001', 'Compilers', 'third'),
+  ('b0000000-0000-4000-8000-000000000004', 'a0000000-0000-4000-8000-000000000002', 'c0000000-0000-4000-8000-000000000002', 'Bugs', NULL);
+CREATE FUNCTION public.search_posts(q text) RETURNS SETOF public.posts LANGUAGE sql STABLE AS $$ SELECT * FROM public.posts WHERE title ILIKE '%' || q || '%' $$;

@@ -1,0 +1,15 @@
+{
+  "type": "bulk",
+  "args": [
+    {"type": "pg_track_table", "args": {"source": "default", "table": {"schema": "public", "name": "authors"}}},
+    {"type": "pg_track_table", "args": {"source": "default", "table": {"schema": "public", "name": "posts"}}},
+    {"type": "pg_create_object_relationship", "args": {"source": "default", "table": {"schema": "public", "name": "posts"}, "name": "author", "using": {"foreign_key_constraint_on": "author_id"}}},
+    {"type": "pg_create_array_relationship", "args": {"source": "default", "table": {"schema": "public", "name": "authors"}, "name": "posts", "using": {"foreign_key_constraint_on": {"table": {"schema": "public", "name": "posts"}, "column": "author_id"}}}},
+    {"type": "pg_create_select_permission", "args": {"source": "default", "table": {"schema": "public", "name": "authors"}, "role": "user", "permission": {"columns": ["id", "name"], "filter": {}}}},
+    {"type": "pg_create_select_permission", "args": {"source": "default", "table": {"schema": "public", "name": "posts"}, "role": "user", "permission": {"columns": ["id", "author_id", "owner_id", "title", "body"], "filter": {"owner_id": {"_eq": "X-Hasura-User-Id"}}}}},
+    {"type": "pg_create_insert_permission", "args": {"source": "default", "table": {"schema": "public", "name": "posts"}, "role": "user", "permission": {"columns": ["id", "author_id", "owner_id", "title", "body"], "check": {"owner_id": {"_eq": "X-Hasura-User-Id"}}}}},
+    {"type": "pg_create_select_permission", "args": {"source": "default", "table": {"schema": "public", "name": "posts"}, "role": "editor", "permission": {"columns": ["id", "author_id", "title"], "filter": {}}}},
+    {"type": "pg_create_update_permission", "args": {"source": "default", "table": {"schema": "public", "name": "posts"}, "role": "editor", "permission": {"columns": ["title"], "filter": {}, "check": null}}},
+    {"type": "pg_track_function", "args": {"source": "default", "function": {"schema": "public", "name": "search_posts"}}}
+  ]
+}
