@@ -270,6 +270,7 @@ func generatedImages(t *testing.T, cfg *config.Config) []string {
 }
 
 func TestGeneratedImagesLegacyAreByteIdentical(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	setMode(t, PinningLegacy)
 	for name, cfg := range fixtureConfigs(t) {
 		if got, want := strings.Join(generatedImages(t, cfg), " "), strings.Join(legacyExpected[name], " "); got != want {
@@ -279,6 +280,7 @@ func TestGeneratedImagesLegacyAreByteIdentical(t *testing.T) {
 }
 
 func TestGeneratedImagesLockModeEqualsLockedRef(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	setMode(t, PinningLock)
 	byLegacy := map[string]Ref{}
 	for _, r := range LockedImages() {
