@@ -145,7 +145,7 @@ func (c *client) each(ctx context.Context, path, key string, fn func(json.RawMes
 func (c *client) walk(ctx context.Context, path, key string, cursor bool, fn func(json.RawMessage) error) (int64, error) {
 	after, total, seen := "", int64(0), 0
 	for first := true; ; first = false {
-		offset := 0
+		offset, prev := 0, after
 		if !cursor {
 			offset = seen
 		}
@@ -170,6 +170,13 @@ func (c *client) walk(ctx context.Context, path, key string, cursor bool, fn fun
 				return 0, err
 			}
 			seen++
+		}
+		// A server that repeats a page (or ignores the cursor) must not loop forever.
+		if cursor && len(p.Items) > 0 && after == prev {
+			return 0, errs.New("E517", "source schema lookup failed")
+		}
+		if !cursor && int64(seen) > total+pageSize {
+			return 0, errs.New("E517", "source schema lookup failed")
 		}
 		if len(p.Items) < pageSize {
 			return total, nil

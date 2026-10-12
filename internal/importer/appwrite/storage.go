@@ -7,6 +7,7 @@ package appwrite
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
@@ -45,6 +46,8 @@ type storageResult struct {
 	Storage portable.Storage
 	// Totals holds each bucket's files-list `total`, in bucket order.
 	Totals []bucketTotal
+	// Notes are exemptions for what the import does not carry (permissions, renamed files, empty buckets).
+	Notes []portable.Exemption
 }
 
 type bucketTotal struct {
@@ -57,7 +60,8 @@ func (c *client) exportStorage(ctx context.Context, w *portable.Writer) (storage
 	seen := map[string]bool{}
 	_, err := c.each(ctx, "/storage/buckets", "buckets", func(raw json.RawMessage) error {
 		var b struct {
-			ID string `json:"$id"`
+			ID    string   `json:"$id"`
+			Perms []string `json:"$permissions"`
 		}
 		if json.Unmarshal(raw, &b) != nil {
 			return errs.New("E520", "source tables unavailable")
@@ -71,16 +75,24 @@ func (c *client) exportStorage(ctx context.Context, w *portable.Writer) (storage
 		}
 		seen[name] = true
 		bucket := portable.Bucket{Name: name}
+		var filePerms int64
 		total, e := c.each(ctx, "/storage/buckets/"+url.PathEscape(b.ID)+"/files", "files", func(raw json.RawMessage) error {
 			var f struct {
-				ID, Name string
+				ID    string   `json:"$id"`
+				Name  string   `json:"name"`
+				Size  int64    `json:"sizeOriginal"`
+				Perms []string `json:"$permissions"`
 			}
-			var fields map[string]json.RawMessage
-			if json.Unmarshal(raw, &fields) != nil || json.Unmarshal(fields["$id"], &f.ID) != nil {
+			if json.Unmarshal(raw, &f) != nil || f.ID == "" {
 				return errs.New("E520", "source tables unavailable")
 			}
-			_ = json.Unmarshal(fields["name"], &f.Name)
+			if len(f.Perms) > 0 {
+				filePerms++
+			}
 			key := objectKey(f.ID, f.Name)
+			if strings.ContainsAny(f.Name, `/\`) {
+				res.Notes = append(res.Notes, portable.Exemption{Kind: "metadata", ID: "bucket:" + name + "#renamed:" + f.ID, Reason: "file name contains a path separator; stored as " + key})
+			}
 			member, e := portable.StorageMember(name, key)
 			if e != nil {
 				return errs.New("E520", "source tables unavailable")
@@ -95,7 +107,7 @@ func (c *client) exportStorage(ctx context.Context, w *portable.Writer) (storage
 				return errs.New("E520", "dump member write failed")
 			}
 			obj, e := portable.NewObject(name, key, file)
-			if e != nil {
+			if e != nil || (f.Size > 0 && f.Size != file.Bytes) {
 				return errs.New("E520", "dump member write failed")
 			}
 			res.Storage.Objects = append(res.Storage.Objects, obj)
@@ -105,6 +117,12 @@ func (c *client) exportStorage(ctx context.Context, w *portable.Writer) (storage
 		})
 		if e != nil {
 			return e
+		}
+		if len(b.Perms) > 0 || filePerms > 0 {
+			res.Notes = append(res.Notes, portable.Exemption{Kind: "metadata", ID: "bucket:" + name + "#permissions", Reason: fmt.Sprintf("Appwrite permissions not mapped (bucket: %d, files with permissions: %d)", len(b.Perms), filePerms)})
+		}
+		if total == 0 {
+			res.Notes = append(res.Notes, portable.Exemption{Kind: "metadata", ID: "bucket:" + name + "#empty", Reason: "bucket has no files; the target creates buckets only for objects, so it is not created"})
 		}
 		res.Storage.Buckets = append(res.Storage.Buckets, bucket)
 		res.Totals = append(res.Totals, bucketTotal{name, total})

@@ -22,6 +22,9 @@ type copied struct {
 	Path        string
 	Rows, Total int64
 	DocPerms    int64
+	// Missing counts, per attribute key, the documents whose JSON had no such key at all (an
+	// unset attribute comes back as null; an absent key means the server did not send the value).
+	Missing map[string]int64
 }
 
 func (c *client) copyDocuments(ctx context.Context, db string, col *collection, path string) (copied, error) {
@@ -30,7 +33,7 @@ func (c *client) copyDocuments(ctx context.Context, db string, col *collection, 
 		return copied{}, errs.New("E520", "snapshot staging unavailable")
 	}
 	w := bufio.NewWriter(f)
-	out := copied{Path: path}
+	out := copied{Path: path, Missing: map[string]int64{}}
 	var werr error
 	total, err := c.each(ctx, fmt.Sprintf("/databases/%s/collections/%s/documents", url.PathEscape(db), url.PathEscape(col.ID)), "documents", func(raw json.RawMessage) error {
 		doc := map[string]any{}
@@ -44,7 +47,11 @@ func (c *client) copyDocuments(ctx context.Context, db string, col *collection, 
 		}
 		cells := make([]string, len(col.Columns))
 		for i, cl := range col.Columns {
-			cells[i] = cell(cl, doc[cl.Key])
+			v, present := doc[cl.Key]
+			if !present && !strings.HasPrefix(cl.Key, "$") {
+				out.Missing[cl.Key]++
+			}
+			cells[i] = cell(cl, v)
 		}
 		if _, werr = w.WriteString(strings.Join(cells, ",") + "\n"); werr != nil {
 			return errs.New("E520", "snapshot staging unavailable")

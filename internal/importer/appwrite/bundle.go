@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/importer"
@@ -35,6 +36,14 @@ func (c *client) assemble(ctx context.Context, in importer.Input, cols []*collec
 		// Exemption ids carry a #suffix so they never silence a tracking or relationship check.
 		if len(col.Permissions) > 0 || got.DocPerms > 0 {
 			exemptions = append(exemptions, portable.Exemption{Kind: "metadata", ID: id + "#permissions", Reason: fmt.Sprintf("Appwrite permissions not mapped to Hasura permissions (collection: %d, documents with $permissions: %d)", len(col.Permissions), got.DocPerms)})
+		}
+		keys := make([]string, 0, len(got.Missing))
+		for k := range got.Missing {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			exemptions = append(exemptions, portable.Exemption{Kind: "metadata", ID: id + "#missing:" + k, Reason: fmt.Sprintf("%d documents had no value for attribute %s in the API response; their column is NULL (some Appwrite versions do not return relationship values unless asked)", got.Missing[k], k)})
 		}
 		for _, n := range col.notes {
 			exemptions = append(exemptions, portable.Exemption{Kind: "metadata", ID: id + "#" + n.ID, Reason: n.Reason})
@@ -69,22 +78,26 @@ func (c *client) assemble(ctx context.Context, in importer.Input, cols []*collec
 		}
 	}
 	m.Producer.Source, m.Files = "appwrite", nil
-	jsonl, auth, total, err := c.exportUsers(ctx)
+	us, err := c.exportUsers(ctx)
 	if err != nil {
 		return err
 	}
-	if auth.Users > 0 {
-		if _, err = w.WriteFile("auth/users.jsonl", bytes.NewReader(jsonl)); err != nil {
+	if us.Auth.Users > 0 {
+		if _, err = w.WriteFile("auth/users.jsonl", bytes.NewReader(us.JSONL)); err != nil {
 			return errs.New("E520", "auth snapshot extraction failed")
 		}
 	}
-	m.Auth = auth
-	counts, exemptions = addCount(counts, exemptions, "users", "", "users", total, int64(auth.Users))
+	m.Auth = us.Auth
+	counts, exemptions = addCount(counts, exemptions, "users", "", "users", us.Total, int64(us.Auth.Users))
 	st, err := c.exportStorage(ctx, w)
 	if err != nil {
 		return err
 	}
 	m.Storage = st.Storage
+	exemptions = append(exemptions, st.Notes...)
+	if us.MFA > 0 {
+		exemptions = append(exemptions, portable.Exemption{Kind: "metadata", ID: "users#mfa", Reason: fmt.Sprintf("%d users have MFA enabled in Appwrite; MFA does not transfer and they must enrol again", us.MFA)})
+	}
 	var sum, read int64
 	capped := false
 	for i, t := range st.Totals {

@@ -60,6 +60,14 @@ with a one-off `UPDATE ... FROM auth.users WHERE metadata->>'appwrite_id' = ...`
 An attribute whose name collides with `id`, `created_at` or `updated_at` is stored as
 `attr_<name>`. Two attributes that map to the same column name stop the import.
 
+The import is tested against Appwrite 1.5.x. If your server leaves an attribute out of the
+document JSON (some newer versions do not return relationship values unless asked), the
+column is NULL and the report lists the attribute and the number of documents under
+`exemptions` (id ending `#missing:<attribute>`); check those before you trust the data.
+Buckets are created in nSelf only for the objects they hold, so an empty bucket is listed in
+the report instead. A file name containing `/` or `\` has it replaced by `_`, and the file is
+listed in the report. Each downloaded file must match Appwrite's `sizeOriginal`.
+
 ## Passwords
 
 Appwrite stores one hash per user and the algorithm beside it. Users whose hash is
@@ -68,13 +76,16 @@ algorithm cannot be verified by nSelf auth: those users are imported with no
 password and listed in the report's `users.reset_required` with their email. Send
 them through the hasura-auth password reset (`/user/password/reset`). The count is
 never silent. Users without a password (OAuth, anonymous, phone-only) import as they
-are.
+are. MFA does not transfer: users who had it enabled are counted in the report
+(`exemptions`, id `users#mfa`) and must enrol again. Phone verification is kept as
+`metadata.phone_verified`.
 
 ## Permissions
 
-Appwrite collection and document permissions have no Hasura equivalent. They are not
-translated. Every collection that has collection-level permissions, or documents with
-document-level permissions, appears in the report's `exemptions` with the counts.
+Appwrite collection, document, bucket and file permissions have no Hasura or storage
+equivalent. They are not translated. Every collection or bucket that has permissions, or
+documents or files with their own permissions, appears in the report's `exemptions` with the
+counts.
 Review them and write Hasura permissions for the roles you use.
 
 ## Verification

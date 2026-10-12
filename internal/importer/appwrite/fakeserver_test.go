@@ -19,6 +19,8 @@ type fake struct {
 	t           *testing.T
 	gotBadKey   bool
 	downloadErr bool
+	omit        string // attribute key left out of every document
+	repeat      bool   // planted bug: the server ignores cursorAfter and repeats page one
 }
 
 // cursorLimit reads the limit and cursorAfter values from the queries[] parameters.
@@ -75,7 +77,7 @@ func (f *fake) handler(w http.ResponseWriter, r *http.Request) {
 	case p == "/users":
 		f.users(w)
 	case p == "/storage/buckets":
-		writeList(w, "buckets", 1, []map[string]any{{"$id": "Files_One"}})
+		writeList(w, "buckets", 1, []map[string]any{{"$id": "Files_One", "$permissions": []string{`read("any")`}}})
 	case p == "/storage/buckets/Files_One/files":
 		writeList(w, "files", 2, []map[string]any{{"$id": "f1", "name": "a.txt"}, {"$id": "f2", "name": "dir/b.txt"}})
 	case strings.HasPrefix(p, "/storage/buckets/Files_One/files/") && strings.HasSuffix(p, "/download"):
@@ -87,13 +89,18 @@ func (f *fake) handler(w http.ResponseWriter, r *http.Request) {
 
 func (f *fake) documents(w http.ResponseWriter, limit int, after string) {
 	start := 0
-	if after != "" {
+	if after != "" && !f.repeat {
 		fmt.Sscanf(after, "n%d", &start)
 		start++
 	}
 	items := []map[string]any{}
 	for i := start; i < f.docs && len(items) < limit; i++ {
 		items = append(items, map[string]any{"$id": fmt.Sprintf("n%d", i), "$createdAt": "2026-01-01T00:00:00.000+00:00", "$updatedAt": "2026-01-02T00:00:00.000+00:00", "$permissions": []string{}, "title": fmt.Sprintf("note \"%d\", with comma", i), "views": i, "author": map[string]any{"$id": "a1", "name": "Ada"}})
+	}
+	if f.omit != "" {
+		for _, it := range items {
+			delete(it, f.omit)
+		}
 	}
 	if f.dropLast && len(items) < limit && start > 0 {
 		items = nil // the last (short) page is lost
@@ -105,7 +112,7 @@ func (f *fake) users(w http.ResponseWriter) {
 	bcrypt := "$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234"
 	writeList(w, "users", 4, []map[string]any{
 		{"$id": "u1", "$createdAt": "2026-01-01T00:00:00.000+00:00", "registration": "2026-01-01T00:00:00.000+00:00", "name": "One", "email": "One@example.invalid", "password": bcrypt, "hash": "bcrypt", "status": true, "emailVerification": true},
-		{"$id": "u2", "$createdAt": "2026-01-01T00:00:00.000+00:00", "registration": "2026-01-01T00:00:00.000+00:00", "email": "two@example.invalid", "password": "$argon2id$v=19$m=65536,t=4,p=1$fake$fake", "hash": "argon2", "status": true},
+		{"$id": "u2", "$createdAt": "2026-01-01T00:00:00.000+00:00", "registration": "2026-01-01T00:00:00.000+00:00", "email": "two@example.invalid", "password": "$argon2id$v=19$m=65536,t=4,p=1$fake$fake", "hash": "argon2", "status": true, "mfa": true},
 		{"$id": "u3", "$createdAt": "2026-01-01T00:00:00.000+00:00", "registration": "2026-01-01T00:00:00.000+00:00", "email": "three@example.invalid", "password": "fakescrypt", "hash": "scrypt", "status": false},
 		{"$id": "u4", "$createdAt": "2026-01-01T00:00:00.000+00:00", "registration": "2026-01-01T00:00:00.000+00:00", "phone": "+15550100", "status": true},
 	})

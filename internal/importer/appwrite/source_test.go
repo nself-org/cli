@@ -46,9 +46,10 @@ func TestAttributeNameCollision(t *testing.T) {
 
 func TestUsersHashHandling(t *testing.T) {
 	_, c := newFake(t, 0)
-	jsonl, auth, total, err := c.exportUsers(context.Background())
-	if err != nil || total != 4 || auth.Users != 4 {
-		t.Fatalf("users %v total=%d auth=%+v", err, total, auth)
+	us, err := c.exportUsers(context.Background())
+	jsonl, auth := us.JSONL, us.Auth
+	if err != nil || us.Total != 4 || auth.Users != 4 || us.MFA != 1 {
+		t.Fatalf("users %v total=%d auth=%+v mfa=%d", err, us.Total, auth, us.MFA)
 	}
 	if auth.HashAlgorithms["bcrypt"] != 1 || auth.HashAlgorithms["argon2"] != 1 || auth.HashAlgorithms["scrypt"] != 1 || auth.HashAlgorithms["none"] != 1 {
 		t.Fatalf("algorithms %v", auth.HashAlgorithms)
@@ -172,8 +173,17 @@ func TestExtractBuildsPortableBundle(t *testing.T) {
 	if len(want) != 0 {
 		t.Errorf("missing source counts %v", want)
 	}
-	if len(m.Exemptions) != 1 || !strings.Contains(m.Exemptions[0].Reason, "permissions") || m.Exemptions[0].ID != "main.notes#permissions" {
-		t.Errorf("permissions not reported under a #-suffixed id: %+v", m.Exemptions)
+	ids := map[string]bool{}
+	for _, e := range m.Exemptions {
+		ids[e.ID] = true
+		if !strings.Contains(e.ID, "#") {
+			t.Errorf("exemption id %q lacks a #suffix and could silence a verify check", e.ID)
+		}
+	}
+	for _, want := range []string{"main.notes#permissions", "bucket:files-one#permissions", "bucket:files-one#renamed:f2", "users#mfa"} {
+		if !ids[want] {
+			t.Errorf("missing exemption %s in %+v", want, m.Exemptions)
+		}
 	}
 	if m.Storage.Objects[0].Bucket != "files-one" || !strings.HasPrefix(m.Storage.Objects[0].Key, "f1/") {
 		t.Errorf("object naming %+v", m.Storage.Objects)
@@ -238,5 +248,24 @@ func TestTableAndHashEdgeCases(t *testing.T) {
 	u, err := convertUser(apiUser{ID: "x", Registration: "2026-01-01T00:00:00.000+00:00", Password: "not-a-bcrypt-string", Hash: "bcrypt"})
 	if err != nil || u.HashAlgorithm != "unsupported" || u.PasswordHash != nil {
 		t.Fatalf("malformed bcrypt: %+v %v", u, err)
+	}
+}
+
+func TestMissingAttributeKeyIsCounted(t *testing.T) {
+	f, c := newFake(t, 7)
+	f.omit = "author"
+	got := rowsOf(t, c, 7)
+	if got.Rows != 7 || got.Missing["author"] != 7 || got.Missing["title"] != 0 {
+		t.Fatalf("missing %v rows %d", got.Missing, got.Rows)
+	}
+}
+
+func TestRepeatedPageEndsWithError(t *testing.T) {
+	f, c := newFake(t, 250)
+	f.repeat = true
+	cols, _, _ := mapAttributes([]attribute{{Key: "title", Type: "string"}})
+	_, err := c.copyDocuments(context.Background(), "main", &collection{ID: "notes", Columns: cols}, filepath.Join(t.TempDir(), "n.csv"))
+	if err == nil {
+		t.Fatal("a server that repeats page one must not loop forever or succeed")
 	}
 }

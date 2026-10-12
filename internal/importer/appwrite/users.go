@@ -44,6 +44,8 @@ type apiUser struct {
 	Status       *bool          `json:"status"`
 	EmailVerify  bool           `json:"emailVerification"`
 	Labels       []string       `json:"labels"`
+	MFA          bool           `json:"mfa"`
+	PhoneVerify  bool           `json:"phoneVerification"`
 	Prefs        map[string]any `json:"prefs"`
 }
 
@@ -66,6 +68,9 @@ func convertUser(u apiUser) (verify.User, error) {
 		return verify.User{}, errs.New("E520", "auth snapshot extraction failed")
 	}
 	meta := map[string]any{"appwrite_id": u.ID}
+	if u.PhoneVerify {
+		meta["phone_verified"] = true
+	}
 	if len(u.Labels) > 0 {
 		meta["labels"] = u.Labels
 	}
@@ -88,11 +93,20 @@ func convertUser(u apiUser) (verify.User, error) {
 	return out, nil
 }
 
-// exportUsers reads every user and returns the JSONL, the auth summary and the API total.
-func (c *client) exportUsers(ctx context.Context) ([]byte, portable.Auth, int64, error) {
+// usersOut is the result of reading every user: the JSONL, the manifest auth summary, the API
+// total and how many users had MFA enabled (MFA does not transfer).
+type usersOut struct {
+	JSONL []byte
+	Auth  portable.Auth
+	Total int64
+	MFA   int
+}
+
+func (c *client) exportUsers(ctx context.Context) (usersOut, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
-	auth := portable.Auth{HashAlgorithms: map[string]int{}, ResetRequired: []string{}}
+	out := usersOut{Auth: portable.Auth{HashAlgorithms: map[string]int{}, ResetRequired: []string{}}}
+	auth := &out.Auth
 	total, err := c.each(ctx, "/users", "users", func(raw json.RawMessage) error {
 		var u apiUser
 		if json.Unmarshal(raw, &u) != nil {
@@ -102,6 +116,9 @@ func (c *client) exportUsers(ctx context.Context) ([]byte, portable.Auth, int64,
 		if e != nil {
 			return e
 		}
+		if u.MFA {
+			out.MFA++
+		}
 		if rec.HashAlgorithm != "bcrypt" && rec.HashAlgorithm != "none" {
 			auth.ResetRequired = append(auth.ResetRequired, rec.ID)
 		}
@@ -109,5 +126,6 @@ func (c *client) exportUsers(ctx context.Context) ([]byte, portable.Auth, int64,
 		auth.Users++
 		return enc.Encode(rec)
 	})
-	return buf.Bytes(), auth, total, err
+	out.JSONL, out.Total = buf.Bytes(), total
+	return out, err
 }
