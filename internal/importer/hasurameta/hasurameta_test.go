@@ -222,3 +222,22 @@ func TestExtractFailuresLeaveNoIntermediateAndDoNotDumpOnBadSecret(t *testing.T)
 		t.Fatal("recompose of a missing bundle must fail")
 	}
 }
+
+func TestRedirectsAreNeverFollowed(t *testing.T) {
+	leaked := false
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked = r.Header.Get("X-Hasura-Admin-Secret") != ""
+	}))
+	defer other.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/v1/metadata", http.StatusTemporaryRedirect)
+	}))
+	defer srv.Close()
+	base, _ := Base(srv.URL)
+	if _, err := Export(context.Background(), base, secret); err == nil || !strings.Contains(err.Error(), "E517") {
+		t.Fatalf("redirect must fail the call: %v", err)
+	}
+	if leaked {
+		t.Fatal("admin secret reached the redirect target")
+	}
+}

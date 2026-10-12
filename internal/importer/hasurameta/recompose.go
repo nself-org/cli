@@ -7,7 +7,6 @@ package hasurameta
 // Outputs: the new sealed bundle. Constraints: members stream through the verifying reader
 // and the hashing writer (nothing is held in memory); the old bundle is the caller's to remove.
 import (
-	"fmt"
 	"io"
 
 	"github.com/nself-org/cli/internal/errs"
@@ -19,16 +18,16 @@ import (
 func Recompose(from, to, source string, add func(*portable.Writer, *portable.Manifest) error) error {
 	r, err := portable.Open(from)
 	if err != nil {
-		return errs.New("E520", "extracted bundle failed integrity checks")
+		return errs.New("E520", msgBundleIntegrity)
 	}
 	w, err := portable.NewWriter(to)
 	if err != nil {
-		return errs.New("E520", "bundle creation failed")
+		return errs.New("E520", msgBundleCreate)
 	}
 	m := r.Manifest()
 	for _, f := range m.Files {
 		if err = copyMember(r, w, f.Path); err != nil {
-			return errs.New("E520", "bundle member copy failed")
+			return errs.New("E520", msgMemberCopy)
 		}
 	}
 	m.Producer.Source = source
@@ -36,7 +35,7 @@ func Recompose(from, to, source string, add func(*portable.Writer, *portable.Man
 		return err
 	}
 	if _, err = w.Finish(m); err != nil {
-		return errs.New("E520", fmt.Sprintf("bundle manifest write failed: %v", err))
+		return errs.New("E520", msgManifest)
 	}
 	return nil
 }

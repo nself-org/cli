@@ -23,7 +23,7 @@ var portableTableKeys = []string{"table", "is_enum", "configuration", "object_re
 func Filter(raw []byte, db portable.DB) ([]byte, portable.Hasura, error) {
 	var root map[string]any
 	if err := json.Unmarshal(raw, &root); err != nil {
-		return nil, portable.Hasura{}, errs.New("E520", "source Hasura metadata unreadable")
+		return nil, portable.Hasura{}, errs.New("E520", msgMetadata)
 	}
 	if inner, ok := root["metadata"].(map[string]any); ok {
 		root = inner
@@ -41,7 +41,7 @@ func Filter(raw []byte, db portable.DB) ([]byte, portable.Hasura, error) {
 	for _, item := range list(root["sources"]) {
 		src, ok := item.(map[string]any)
 		if !ok {
-			return nil, counts, errs.New("E520", "source Hasura metadata has an invalid source")
+			return nil, counts, errs.New("E520", msgMetadataSource)
 		}
 		if src["name"] != "default" {
 			continue
@@ -58,7 +58,7 @@ func Filter(raw []byte, db portable.DB) ([]byte, portable.Hasura, error) {
 	enc := json.NewEncoder(&buf)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(map[string]any{"version": 3, "sources": sources}); err != nil {
-		return nil, counts, errs.New("E520", "source Hasura metadata not encodable")
+		return nil, counts, errs.New("E520", msgMetadataEncode)
 	}
 	return buf.Bytes(), counts, nil
 }
@@ -86,7 +86,7 @@ func keepTables(records []any, allowed map[string]bool, counts *portable.Hasura)
 	for _, item := range records {
 		t, ok := item.(map[string]any)
 		if !ok {
-			return nil, errs.New("E520", "source Hasura metadata has an invalid table")
+			return nil, errs.New("E520", msgMetadataTable)
 		}
 		ref, ok := t["table"].(map[string]any)
 		if !ok {

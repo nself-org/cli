@@ -17,7 +17,12 @@ import (
 // Source is the hasura-cloud importer.
 type Source struct{}
 
-func init()                 { importer.Register(Source{}) }
+const msgAuthUsers = "source database has auth.users: use `nself db import nhost` for an nhost project, or `nself db import postgres`"
+
+func init() {
+	importer.AllowMessages(msgAuthUsers)
+	importer.Register(Source{})
+}
 func (Source) Name() string { return "hasura-cloud" }
 
 // Flags lists the hasura-cloud inputs.
@@ -43,7 +48,7 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 	}
 	for _, n := range d.Notes {
 		if n == "looks like nhost" {
-			return d, errs.New("E517", "source database has auth.users: use `nself db import nhost` for an nhost project, or `nself db import postgres`")
+			return d, errs.New("E517", msgAuthUsers)
 		}
 	}
 	base, err := hasurameta.Base(in.Values["hasura-url"])

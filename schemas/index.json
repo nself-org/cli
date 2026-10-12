@@ -462,6 +462,14 @@
       "id": "urn:nself:cli:schema:commands:db-import-firebase:v1"
     },
     {
+      "path": "commands/db-import-hasura-cloud.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-import-hasura-cloud:v1"
+    },
+    {
+      "path": "commands/db-import-nhost.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-import-nhost:v1"
+    },
+    {
       "path": "commands/db-import-postgres.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:db-import-postgres:v1"
     },

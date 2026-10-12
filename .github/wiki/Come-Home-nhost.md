@@ -41,7 +41,7 @@ when the source holds files) and the target, and writes nothing.
 | Tables | One repeatable-read snapshot of every schema except `auth`, `hdb_catalog` and nSelf's own, including `storage.files` and `storage.buckets` and the foreign keys your tables hold into `auth.users` and `storage.files`. |
 | Users | Every row of `auth.users` with its roles, email, phone, display name, metadata and password hash. Hashes are bcrypt in both stacks and carry over unchanged. A hash in another format is listed in `users.reset_required` and the user resets the password. |
 | Files | Every `storage.files` row with an uploaded object is fetched from the bucket, checked against the recorded size, hashed (SHA-256) and written to the target store under the same bucket name and key (the file id). A row whose object is missing stops the import. |
-| Metadata | Tracked tables, relationships, computed fields and permissions for the tables that came across, and tracked functions in those schemas. |
+| Metadata | Tracked tables, relationships, computed fields and permissions for the tables that came across. Tracked functions are recorded in the bundle and the SQL functions come across with the schema, but the load does not track them in Hasura yet: track them again after the import. |
 
 Not carried: event triggers, actions, remote schemas, cron triggers and query
 collections (their endpoints and secrets belong to your new setup; the manifest

@@ -36,7 +36,7 @@ func Extract(ctx context.Context, pg importer.Source, pgIn importer.Input, stage
 			return e
 		}
 		if _, e = w.WriteFile("hasura/metadata.json", bytes.NewReader(filtered)); e != nil {
-			return errs.New("E520", "metadata member write failed")
+			return errs.New("E520", msgMetadataMember)
 		}
 		m.Hasura = counts
 		if extra != nil {

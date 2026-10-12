@@ -23,7 +23,7 @@ type rower interface {
 func uploadedFilter(ctx context.Context, q rower) (string, error) {
 	var has bool
 	if q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='storage' AND table_name='files' AND column_name='is_uploaded')`).Scan(&has) != nil {
-		return "", errs.New("E517", "source storage lookup failed")
+		return "", errs.New("E517", msgStorageLookup)
 	}
 	if has {
 		return "is_uploaded", nil
@@ -35,7 +35,7 @@ func uploadedFilter(ctx context.Context, q rower) (string, error) {
 func uploadedFiles(ctx context.Context, q rower) (int64, error) {
 	var present bool
 	if q.QueryRow(ctx, `SELECT to_regclass('storage.files') IS NOT NULL`).Scan(&present) != nil {
-		return 0, errs.New("E517", "source storage lookup failed")
+		return 0, errs.New("E517", msgStorageLookup)
 	}
 	if !present {
 		return 0, nil
@@ -46,7 +46,7 @@ func uploadedFiles(ctx context.Context, q rower) (int64, error) {
 	}
 	var n int64
 	if q.QueryRow(ctx, "SELECT count(*) FROM storage.files WHERE "+filter).Scan(&n) != nil {
-		return 0, errs.New("E517", "source storage lookup failed")
+		return 0, errs.New("E517", msgStorageLookup)
 	}
 	return n, nil
 }
@@ -55,7 +55,7 @@ func uploadedFiles(ctx context.Context, q rower) (int64, error) {
 func needStorageFlags(in importer.Input) error {
 	for _, f := range []string{"storage-endpoint", "s3-access-key-env", "s3-secret-env", "bucket"} {
 		if in.Values[f] == "" {
-			return errs.New("E517", "source holds uploaded files: --storage-endpoint, --s3-access-key-env, --s3-secret-env and --bucket are required")
+			return errs.New("E517", msgStorageFlags)
 		}
 	}
 	_, err := s3Client(in)
@@ -65,7 +65,7 @@ func needStorageFlags(in importer.Input) error {
 func s3Client(in importer.Input) (*objstore.Client, error) {
 	base, err := hasurameta.Base(in.Values["storage-endpoint"])
 	if err != nil || base.Path != "" {
-		return nil, errs.New("E517", "source S3 endpoint must be https (or http on loopback) with no path")
+		return nil, errs.New("E517", msgS3Endpoint)
 	}
 	access, err := in.Secret("s3-access-key-env")
 	if err != nil {
@@ -92,7 +92,7 @@ func readFiles(ctx context.Context, in importer.Input) ([]fileRow, error) {
 	defer func() { _ = db.Close(ctx) }()
 	tx, err := db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return nil, errs.New("E520", "source storage snapshot failed")
+		return nil, errs.New("E520", msgSnapshot)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	filter, err := uploadedFilter(ctx, tx)
@@ -101,19 +101,19 @@ func readFiles(ctx context.Context, in importer.Input) ([]fileRow, error) {
 	}
 	rows, err := tx.Query(ctx, "SELECT id::text, size::bigint FROM storage.files WHERE "+filter+" ORDER BY id")
 	if err != nil {
-		return nil, errs.New("E520", "source storage listing failed")
+		return nil, errs.New("E520", msgListing)
 	}
 	defer rows.Close()
 	var out []fileRow
 	for rows.Next() {
 		var r fileRow
 		if rows.Scan(&r.id, &r.size) != nil {
-			return nil, errs.New("E520", "source storage listing failed")
+			return nil, errs.New("E520", msgListing)
 		}
 		out = append(out, r)
 	}
 	if rows.Err() != nil {
-		return nil, errs.New("E520", "source storage listing failed")
+		return nil, errs.New("E520", msgListing)
 	}
 	return out, nil
 }
@@ -151,23 +151,23 @@ func addStorage(ctx context.Context, in importer.Input) func(*portable.Writer, *
 		for _, r := range rows {
 			member, e := portable.StorageMember(bucket, r.id)
 			if e != nil {
-				return errs.New("E520", "source object name unsupported")
+				return errs.New("E520", msgObjectName)
 			}
 			body, e := client.Get(ctx, bucket, r.id)
 			if e != nil {
-				return errs.New("E520", "source object unavailable for a storage.files row")
+				return errs.New("E520", msgObjectMissing)
 			}
 			f, e := w.WriteFile(member, body)
 			_ = body.Close()
 			if e != nil {
-				return errs.New("E520", "source object copy failed")
+				return errs.New("E520", msgObjectCopy)
 			}
 			if r.size != nil && *r.size != f.Bytes {
-				return errs.New("E520", "source object size differs from storage.files")
+				return errs.New("E520", msgObjectSizeDiff)
 			}
 			obj, e := portable.NewObject(bucket, r.id, f)
 			if e != nil {
-				return errs.New("E520", "source object name unsupported")
+				return errs.New("E520", msgObjectName)
 			}
 			m.Storage.Objects = append(m.Storage.Objects, obj)
 			total += f.Bytes

@@ -35,7 +35,7 @@ writes nothing.
 | Part | How |
 |---|---|
 | Tables | Every user schema's tables with their data, constraints and indexes (not `hdb_catalog`, `auth` or nSelf's own). |
-| Metadata | Tracked tables, relationships, computed fields and per-role permissions for the tables that came across, and tracked functions in those schemas. Connection strings are never copied. |
+| Metadata | Tracked tables, relationships, computed fields and per-role permissions for the tables that came across. Connection strings are never copied. Tracked functions are recorded in the bundle and the SQL functions themselves come across with the schema, but the load does not track them in Hasura yet: track them again after the import. |
 
 Not carried: event triggers, actions, remote schemas, cron triggers, inherited roles
 and query collections. The manifest counts the skipped actions and remote schemas.

@@ -17,6 +17,14 @@ import (
 	"github.com/nself-org/cli/internal/httptimeout"
 )
 
+// client never follows a redirect: Go would re-send the custom admin-secret header to the new
+// location, so a redirecting endpoint (or a man in the middle) could collect the secret.
+var client = func() *http.Client {
+	c := httptimeout.WithTimeout(httptimeout.Default.Timeout)
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return c
+}()
+
 // maxBody bounds one Hasura response; real metadata documents are far smaller.
 const maxBody = 64 << 20
 
@@ -26,16 +34,16 @@ const maxBody = 64 << 20
 func Base(raw string) (*url.URL, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return nil, errs.New("E517", "source Hasura URL invalid")
+		return nil, errs.New("E517", msgURLInvalid)
 	}
 	switch u.Scheme {
 	case "https":
 	case "http":
 		if !loopback(u.Hostname()) {
-			return nil, errs.New("E517", "source Hasura URL must use https unless it is loopback")
+			return nil, errs.New("E517", msgURLHTTP)
 		}
 	default:
-		return nil, errs.New("E517", "source Hasura URL invalid")
+		return nil, errs.New("E517", msgURLInvalid)
 	}
 	u.Path = strings.TrimSuffix(strings.TrimSuffix(strings.TrimRight(u.Path, "/"), "/v1/graphql"), "/")
 	return u, nil
@@ -54,7 +62,7 @@ func call(ctx context.Context, base *url.URL, secret, method, path string, body 
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			return nil, errs.New("E517", "source Hasura request invalid")
+			return nil, errs.New("E517", msgRequestInvalid)
 		}
 		rd = bytes.NewReader(b)
 	}
@@ -62,26 +70,26 @@ func call(ctx context.Context, base *url.URL, secret, method, path string, body 
 	u.Path += path
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), rd)
 	if err != nil {
-		return nil, errs.New("E517", "source Hasura request invalid")
+		return nil, errs.New("E517", msgRequestInvalid)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if secret != "" {
 		req.Header.Set("X-Hasura-Admin-Secret", secret)
 	}
-	resp, err := httptimeout.Default.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, errs.New("E517", "source Hasura unreachable")
+		return nil, errs.New("E517", msgUnreachable)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil || len(b) > maxBody {
-		return nil, errs.New("E517", "source Hasura response unreadable")
+		return nil, errs.New("E517", msgResponse)
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return nil, errs.New("E517", "source Hasura refused the admin secret")
+		return nil, errs.New("E517", msgRefusedSecret)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, errs.New("E517", "source Hasura request failed")
+		return nil, errs.New("E517", msgRequestFailed)
 	}
 	return b, nil
 }
@@ -96,7 +104,7 @@ func Version(ctx context.Context, base *url.URL) (string, error) {
 		Version string `json:"version"`
 	}
 	if json.Unmarshal(b, &v) != nil || v.Version == "" {
-		return "", errs.New("E517", "source Hasura version unreadable")
+		return "", errs.New("E517", msgVersion)
 	}
 	return v.Version, nil
 }

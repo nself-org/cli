@@ -214,10 +214,8 @@ func publicError(err error, code, message string) error {
 	if errors.As(err, &cli) {
 		for _, c := range []string{"E517", "E518", "E520", "E521"} {
 			if cli.Code == c {
-				for _, safe := range safeMessages {
-					if cli.What == safe {
-						return errs.New(c, safe)
-					}
+				if isSafeMessage(cli.What) {
+					return errs.New(c, cli.What)
 				}
 				if c == "E520" && strings.HasPrefix(cli.What, PartitionedPrefix) && safeName(strings.TrimPrefix(cli.What, PartitionedPrefix)) {
 					return errs.New(c, cli.What)
