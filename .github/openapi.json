@@ -4484,20 +4484,299 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "dry_run": {
-            "type": "boolean"
+          "detection": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "notes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "schemas": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "source_users": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "version",
+              "notes",
+              "schemas"
+            ],
+            "type": [
+              "null",
+              "object"
+            ]
           },
-          "ok": {
-            "type": "boolean"
+          "exemptions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "id",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
           },
-          "target": {
+          "hasura": {
+            "additionalProperties": false,
+            "properties": {
+              "diffs": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "detail": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id",
+                    "detail"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "equal": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "equal",
+              "diffs"
+            ],
+            "type": "object"
+          },
+          "last_step": {
             "type": "string"
+          },
+          "mismatches": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "detail": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "id",
+                "detail"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "result": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "storage": {
+            "additionalProperties": false,
+            "properties": {
+              "equal": {
+                "type": "boolean"
+              },
+              "source_objects": {
+                "type": "integer"
+              },
+              "target_objects": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "source_objects",
+              "target_objects",
+              "equal"
+            ],
+            "type": "object"
+          },
+          "tables": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "equal": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "schema": {
+                  "type": "string"
+                },
+                "source_rows": {
+                  "type": "integer"
+                },
+                "target_rows": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "schema",
+                "name",
+                "source_rows",
+                "target_rows",
+                "equal"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "untranslated_policies": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "policy": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "table": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "table",
+                "policy",
+                "reason"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "users": {
+            "additionalProperties": false,
+            "properties": {
+              "equal": {
+                "type": "boolean"
+              },
+              "reset_required": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "email"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "source": {
+                "type": "integer"
+              },
+              "target": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "source",
+              "target",
+              "equal",
+              "reset_required"
+            ],
+            "type": "object"
+          },
+          "wrote": {
+            "type": "boolean"
           }
         },
         "required": [
-          "ok",
-          "dry_run",
-          "target"
+          "source",
+          "run_id",
+          "result",
+          "tables",
+          "users",
+          "storage",
+          "hasura",
+          "untranslated_policies",
+          "exemptions",
+          "mismatches",
+          "wrote"
         ],
         "type": "object"
       },
@@ -23601,6 +23880,16 @@
                         "description": "Path to Firebase Auth JSON export (optional)",
                         "type": "string"
                       },
+                      "bucket": {
+                        "default": "",
+                        "description": "Cloud Storage bucket to copy (v1.5 import)",
+                        "type": "string"
+                      },
+                      "credentials-file": {
+                        "default": "",
+                        "description": "Service-account key file (v1.5 import; not needed with FIRESTORE_EMULATOR_HOST)",
+                        "type": "string"
+                      },
                       "dry-run": {
                         "default": false,
                         "description": "Generate migration artifacts without applying them to a running nSelf instance",
@@ -23611,15 +23900,35 @@
                         "description": "Directory produced by `firebase firestore:export` (required)",
                         "type": "string"
                       },
+                      "keep-stage": {
+                        "default": false,
+                        "description": "Keep the private portable bundle after a successful import (v1.5 import)",
+                        "type": "boolean"
+                      },
                       "output-dir": {
                         "default": "",
                         "description": "Directory for generated artifacts (default: <export-dir>/nself-migration)",
+                        "type": "string"
+                      },
+                      "plan": {
+                        "default": false,
+                        "description": "Check source and target and print the import plan without writing (v1.5 import)",
+                        "type": "boolean"
+                      },
+                      "project": {
+                        "default": "",
+                        "description": "Firebase project id (v1.5 import)",
                         "type": "string"
                       },
                       "project-name": {
                         "default": "firebase_import",
                         "description": "Project name used in generated SQL and file names",
                         "type": "string"
+                      },
+                      "skip-storage": {
+                        "default": false,
+                        "description": "Exempt each storage object from this import (v1.5 import)",
+                        "type": "boolean"
                       }
                     },
                     "type": "object"
