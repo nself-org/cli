@@ -13,6 +13,7 @@ var canonTable = canonTableT{
 		{From: []string{"migrate", "generate"}, To: []string{"db", "migrate", "generate"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"migrate", "hasura-cloud"}, To: []string{"db", "import", "hasura-cloud"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"migrate", "nhost"}, To: []string{"db", "import", "nhost"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
+		{From: []string{"migrate", "nself"}, To: []string{"db", "import", "nself"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"migrate", "postgres"}, To: []string{"db", "import", "postgres"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"migrate", "rollback"}, To: []string{"update", "project", "rollback"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},
 		{From: []string{"migrate", "run"}, To: []string{"update", "project", "run"}, Since: "v1.5.0", RemovalAt: "v1.6.0"},

@@ -470,6 +470,10 @@
       "id": "urn:nself:cli:schema:commands:db-import-nhost:v1"
     },
     {
+      "path": "commands/db-import-nself.v1.schema.json",
+      "id": "urn:nself:cli:schema:commands:db-import-nself:v1"
+    },
+    {
       "path": "commands/db-import-postgres.v1.schema.json",
       "id": "urn:nself:cli:schema:commands:db-import-postgres:v1"
     },

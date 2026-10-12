@@ -19,6 +19,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 var started = load.Started
@@ -57,6 +59,23 @@ func checkTarget(ctx context.Context, cfg *config.Config, d Detection) error {
 		return err
 	}
 	return load.AuthPreflight(ctx, db, d.SourceUsers)
+}
+
+// planObjects runs the object-store preflights of the real run (E529 missing store, E519 existing
+// keys, D-0723) during --plan, so a plan never reports pass for a bundle the run would refuse.
+func planObjects(ctx context.Context, cfg *config.Config, d Detection, skip bool) error {
+	if skip || len(d.Objects) == 0 {
+		return nil
+	}
+	store, err := load.Store(cfg)
+	if err != nil {
+		return err
+	}
+	m := portable.Manifest{Storage: portable.Storage{Objects: d.Objects}}
+	if err = load.StoragePreflight(m, store, skip); err != nil || store == nil {
+		return err
+	}
+	return load.StorageCollisions(ctx, m, store, skip)
 }
 func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOptions) (Report, error) {
 	report := Report{Result: "failed", Tables: []TableReport{}, Exemptions: []portable.Exemption{}, Mismatches: []verify.Mismatch{}, UntranslatedPolicies: []Policy{}, Hasura: HasuraReport{Diffs: []verify.Mismatch{}}}
@@ -101,6 +120,11 @@ func Run(ctx context.Context, cfg *config.Config, s Source, in Input, opts RunOp
 	}
 	if err = targetChecks(ctx, cfg, detection); err != nil {
 		return report, err
+	}
+	if opts.Plan {
+		if err = planObjects(ctx, cfg, detection, opts.SkipStorage); err != nil {
+			return report, err
+		}
 	}
 	report.Detection = &detection
 	report.Steps = []string{"extract snapshot", "check portable bundle", "restore pre-data and data", "load auth users", "load storage", "restore post-data", "apply additive metadata", "verify zero mismatches"}
@@ -201,7 +225,7 @@ func runBundle(ctx context.Context, cfg *config.Config, stage string, opts RunOp
 }
 
 // safeMessages are the fixed, credential-free texts a source or loader may surface unchanged.
-var safeMessages = []string{"source requires an environment variable name", "source environment variable is empty", "source connection configuration invalid", "source database unreachable", "source version unavailable", "source schema lookup failed", "source auth lookup failed", "target database connection failed", "target version unavailable", "source snapshot failed", "source snapshot export failed", "source tables unavailable", "source table hashing failed", "source key lookup failed", "independent source count failed", "target image unavailable", "snapshot staging unavailable", "pg_dump snapshot extraction failed", "bundle creation failed", "dump member write failed", "auth snapshot extraction failed", "snapshot commit failed", "bundle manifest write failed", "source partition lookup failed"}
+var safeMessages = []string{"source requires an environment variable name", "source environment variable is empty", "source connection configuration invalid", "source database unreachable", "source version unavailable", "source schema lookup failed", "source auth lookup failed", "target database connection failed", "target version unavailable", "source snapshot failed", "source snapshot export failed", "source tables unavailable", "source table hashing failed", "source key lookup failed", "independent source count failed", "target image unavailable", "snapshot staging unavailable", "pg_dump snapshot extraction failed", "bundle creation failed", "dump member write failed", "auth snapshot extraction failed", "snapshot commit failed", "bundle manifest write failed", "source partition lookup failed", "bundle directory required", "bundle staging failed", "bundle changed while it was staged"}
 
 var (
 	versionRe   = regexp.MustCompile(`POSTGRES_VERSION=([0-9]{1,3})`)
@@ -212,6 +236,13 @@ func publicError(err error, code, message string) error {
 	// Preserve only known source failure codes, with fresh credential-free text.
 	var cli *errs.CLIError
 	if errors.As(err, &cli) {
+		// A portable bundle error names a member path or manifest value; keep it unless it could garble a terminal.
+		if cli.Code == "E515" || cli.Code == "E516" {
+			if plainText(cli.What) {
+				return errs.New(cli.Code, cli.What)
+			}
+			return errs.New(cli.Code, "portable bundle failed its check")
+		}
 		for _, c := range []string{"E517", "E518", "E520", "E521"} {
 			if cli.Code == c {
 				if isSafeMessage(cli.What) {
@@ -234,4 +265,9 @@ func publicError(err error, code, message string) error {
 		}
 	}
 	return errs.New(code, message)
+}
+
+// plainText reports whether s is short, valid UTF-8 and free of control and format (bidi) characters.
+func plainText(s string) bool {
+	return len(s) <= 300 && utf8.ValidString(s) && strings.IndexFunc(s, func(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }) < 0
 }

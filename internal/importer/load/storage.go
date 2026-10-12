@@ -9,6 +9,7 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/objstore"
 	"github.com/nself-org/cli/internal/portable"
+	"strings"
 )
 
 func StoragePreflight(m portable.Manifest, store *objstore.Client, skip bool) error {
@@ -18,38 +19,65 @@ func StoragePreflight(m portable.Manifest, store *objstore.Client, skip bool) er
 	return nil
 }
 
-// objectExists reports whether bucket/key is already in the store. A missing key or bucket is
-// absent; any other failure (forbidden, server error, unreachable) is an error, so the check
-// fails closed.
-func objectExists(ctx context.Context, store *objstore.Client, bucket, key string) (bool, error) {
-	body, err := store.Get(ctx, bucket, key)
-	if err == nil {
-		_ = body.Close()
-		return true, nil
-	}
-	var apiErr *objstore.Error
-	if errors.As(err, &apiErr) && apiErr.IsNotFound() {
-		return false, nil
-	}
-	return false, errs.New("E521", "target object store lookup failed")
+// lister is the part of the object store client that StorageCollisions reads.
+type lister interface {
+	List(ctx context.Context, bucket, prefix string) ([]objstore.Object, error)
 }
 
-// ObjectsAbsent refuses, before the first write, a bundle whose object keys already exist in the
-// target store (D-0723): the load is an unconditional PUT, so it would replace a target object and
-// verify would still pass because the sha equals the source's. Read-only; it names no key and stops
-// at the first clash. ApplyStorage checks each key again right before its PUT, which narrows the
-// window in which another writer could create the key between this check and the write.
-func ObjectsAbsent(ctx context.Context, m portable.Manifest, store *objstore.Client, skip bool) error {
-	if skip || store == nil {
+// canonicalKey returns the key as the default object store (SeaweedFS) will keep it: empty path
+// segments are dropped, so "a//b" and "/a/b" are both "a/b". A "." or ".." segment, or a key with
+// no segment at all, has no canonical form.
+func canonicalKey(key string) (string, bool) {
+	var out []string
+	for _, seg := range strings.Split(key, "/") {
+		if seg == "" {
+			continue
+		}
+		if seg == "." || seg == ".." {
+			return "", false
+		}
+		out = append(out, seg)
+	}
+	return strings.Join(out, "/"), len(out) > 0
+}
+
+// StorageCollisions refuses, before the first write, a bundle whose objects would replace objects
+// the target store already holds (D-0723): the load is an unconditional PUT and verification
+// compares against the bundle, so an overwrite would otherwise pass. Keys are compared in the
+// store's canonical form, because a PUT to "a//b" replaces "a/b" without listing differently; a key
+// with no canonical form, or two bundle keys that share one, are refused. A bucket the target does
+// not have yet is empty. Errors name no key.
+func StorageCollisions(ctx context.Context, m portable.Manifest, store lister, skip bool) error {
+	if skip || len(m.Storage.Objects) == 0 {
 		return nil
 	}
+	want := map[string]map[string]bool{}
 	for _, o := range m.Storage.Objects {
-		exists, err := objectExists(ctx, store, o.Bucket, o.Key)
-		if err != nil {
-			return err
+		key, ok := canonicalKey(o.Key)
+		if !ok {
+			return errs.New("E519", "bundle holds an object key the target object store cannot keep as written")
 		}
-		if exists {
-			return errs.New("E519", "target object store already holds an object from the bundle; nothing was written")
+		if want[o.Bucket] == nil {
+			want[o.Bucket] = map[string]bool{}
+		}
+		if want[o.Bucket][key] {
+			return errs.New("E519", "bundle holds two object keys that the target object store would store as one")
+		}
+		want[o.Bucket][key] = true
+	}
+	for bucket, keys := range want {
+		held, err := store.List(ctx, bucket, "")
+		var apiErr *objstore.Error
+		if errors.As(err, &apiErr) && apiErr.IsNotFound() {
+			continue
+		}
+		if err != nil {
+			return errs.New("E521", "target object store check failed")
+		}
+		for _, o := range held {
+			if key, ok := canonicalKey(o.Key); ok && keys[key] {
+				return errs.New("E519", "target object store already has an object the bundle would overwrite")
+			}
 		}
 	}
 	return nil
@@ -67,14 +95,6 @@ func ApplyStorage(ctx context.Context, r *portable.Reader, store *objstore.Clien
 		}
 		if err := store.EnsureBucket(ctx, o.Bucket); err != nil {
 			return nil, errs.New("E521", "object bucket load failed")
-		}
-		exists, e := objectExists(ctx, store, o.Bucket, o.Key)
-		if e != nil {
-			return nil, e
-		}
-		if exists {
-			// E521, not E519: the target was already written, and only the load errors carry the report hint.
-			return nil, errs.New("E521", "target object store gained an object from the bundle during the import")
 		}
 		f, e := r.Open(o.Member)
 		if e != nil {

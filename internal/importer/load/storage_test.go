@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"github.com/nself-org/cli/internal/importer/verify"
 	"github.com/nself-org/cli/internal/objstore"
 	"github.com/nself-org/cli/internal/portable"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -52,91 +52,66 @@ func TestStorageMissingAndExemptions(t *testing.T) {
 	}
 }
 
-func TestObjectsAbsentRefusesExistingKeys(t *testing.T) {
-	held := map[string]bool{"/bucket/held": true}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if held[r.URL.Path] {
-			_, _ = w.Write([]byte("existing"))
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`<Error><Code>NoSuchKey</Code></Error>`))
-	}))
-	defer srv.Close()
-	store := &objstore.Client{Endpoint: srv.URL, AccessKey: "fixture-access", SecretKey: "fixture-secret", Region: "us-east-1"}
-	obj := func(key string) portable.Object { return portable.Object{Bucket: "bucket", Key: key} }
+type fakeLister struct {
+	held map[string][]string
+	err  error
+}
+
+func (f fakeLister) List(_ context.Context, bucket, _ string) ([]objstore.Object, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	objs := []objstore.Object{}
+	for _, k := range f.held[bucket] {
+		objs = append(objs, objstore.Object{Key: k})
+	}
+	return objs, nil
+}
+
+func TestStorageCollisions(t *testing.T) {
+	m := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: "one.txt"}, {Bucket: "b", Key: "nested/two.txt"}}}}
 	ctx := context.Background()
-	free := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{obj("new")}}}
-	if err := ObjectsAbsent(ctx, free, store, false); err != nil {
-		t.Fatalf("absent keys refused: %v", err)
+	if err := StorageCollisions(ctx, m, fakeLister{held: map[string][]string{"b": {"other.txt", "ONE.txt"}}}, false); err != nil {
+		t.Fatalf("different keys (case-sensitive) must pass: %v", err)
 	}
-	clash := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{obj("new"), obj("held")}}}
-	err := ObjectsAbsent(ctx, clash, store, false)
-	if err == nil || !strings.Contains(err.Error(), "E519") || strings.Contains(err.Error(), "bucket/held") {
-		t.Fatalf("existing key must be refused with E519 and no key name: %v", err)
+	err := StorageCollisions(ctx, m, fakeLister{held: map[string][]string{"b": {"x", "nested/two.txt"}}}, false)
+	if codeOf(err) != "E519" || strings.Contains(err.Error(), "two.txt") {
+		t.Fatalf("an existing key must be refused with E519 and no key name: %v", err)
 	}
-	if ObjectsAbsent(ctx, clash, store, true) != nil || ObjectsAbsent(ctx, clash, nil, false) != nil {
-		t.Fatal("skip-storage and no store must not check")
+	if err = StorageCollisions(ctx, m, fakeLister{err: &objstore.Error{Op: "list", Status: http.StatusNotFound, Code: "NoSuchBucket"}}, false); err != nil {
+		t.Fatalf("a missing bucket is empty: %v", err)
 	}
-}
-
-func TestObjectsAbsentFailsClosedOnLookupErrors(t *testing.T) {
-	obj := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "bucket", Key: "k"}}}}
-	for _, status := range []int{http.StatusForbidden, http.StatusInternalServerError} {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) }))
-		store := &objstore.Client{Endpoint: srv.URL, AccessKey: "fixture-access", SecretKey: "fixture-secret", Region: "us-east-1"}
-		err := ObjectsAbsent(context.Background(), obj, store, false)
-		srv.Close()
-		if err == nil || !strings.Contains(err.Error(), "E521") {
-			t.Errorf("status %d must refuse with E521, got %v", status, err)
+	if codeOf(StorageCollisions(ctx, m, fakeLister{err: errors.New("boom")}, false)) != "E521" {
+		t.Fatal("a failed listing must stop the import before any write")
+	}
+	if err = StorageCollisions(ctx, m, fakeLister{err: errors.New("boom")}, true); err != nil {
+		t.Fatalf("--skip-storage loads no object, so nothing can collide: %v", err)
+	}
+	if err = StorageCollisions(ctx, portable.Manifest{}, fakeLister{err: errors.New("boom")}, false); err != nil {
+		t.Fatalf("a bundle without objects never lists: %v", err)
+	}
+	// SeaweedFS stores "a//one.txt" and "/a/one.txt" as "a/one.txt": they must collide with it.
+	for _, key := range []string{"a//one.txt", "/a/one.txt", "a/one.txt/"} {
+		bm := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: key}}}}
+		if codeOf(StorageCollisions(ctx, bm, fakeLister{held: map[string][]string{"b": {"a/one.txt"}}}, false)) != "E519" {
+			t.Fatalf("key %q must collide with a/one.txt", key)
+		}
+		if err = StorageCollisions(ctx, bm, fakeLister{held: map[string][]string{"b": {"other"}}}, false); err != nil {
+			t.Fatalf("key %q with nothing held must pass: %v", key, err)
 		}
 	}
-	dead := httptest.NewServer(http.NotFoundHandler())
-	endpoint := dead.URL
-	dead.Close()
-	err := ObjectsAbsent(context.Background(), obj, &objstore.Client{Endpoint: endpoint, AccessKey: "fixture-access", SecretKey: "fixture-secret"}, false)
-	if err == nil || !strings.Contains(err.Error(), "E521") {
-		t.Errorf("unreachable store must refuse with E521, got %v", err)
-	}
-	if err = ObjectsAbsent(context.Background(), portable.Manifest{}, &objstore.Client{Endpoint: endpoint}, false); err != nil {
-		t.Errorf("a bundle with no objects needs no store: %v", err)
-	}
-}
-
-func TestApplyStorageDoesNotOverwriteAKeyThatAppearedMeanwhile(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "stage")
-	writer, err := portable.NewWriter(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	payload := "bundle-object"
-	sum := sha256.Sum256([]byte(payload))
-	member, _ := portable.StorageMember("bucket", "key")
-	if _, err = writer.WriteFile(member, strings.NewReader(payload)); err != nil {
-		t.Fatal(err)
-	}
-	m, err := writer.Finish(portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "bucket", Key: "key", Member: member, SHA256: hex.EncodeToString(sum[:]), Bytes: int64(len(payload))}}}, SourceCounts: []portable.SourceCount{{Kind: "objects", Count: 1, Method: "independent list"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, err := portable.Open(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	put := false
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		switch {
-		case req.Method == http.MethodPut && req.URL.Path == "/bucket/key":
-			put = true
-		case req.Method == http.MethodGet && req.URL.Path == "/bucket/key":
-			_, _ = w.Write([]byte("someone else's object"))
+	for _, key := range []string{"a/../b", "./a", "a/./b", "/", "//"} {
+		bm := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: key}}}}
+		if codeOf(StorageCollisions(ctx, bm, fakeLister{}, false)) != "E519" {
+			t.Fatalf("key %q has no canonical form and must be refused", key)
 		}
-	}))
-	defer srv.Close()
-	store := &objstore.Client{Endpoint: srv.URL, AccessKey: "fixture-access", SecretKey: "fixture-secret", Region: "us-east-1"}
-	_, err = ApplyStorage(context.Background(), r, store, false)
-	if err == nil || !strings.Contains(err.Error(), "E521") || put {
-		t.Fatalf("a key that appeared after the preflight must stop the write (put=%v): %v", put, err)
 	}
-	_ = m
+	twin := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: "a/x"}, {Bucket: "b", Key: "a//x"}}}}
+	if codeOf(StorageCollisions(ctx, twin, fakeLister{}, false)) != "E519" {
+		t.Fatal("two keys that collapse to one must be refused")
+	}
+	other := portable.Manifest{Storage: portable.Storage{Objects: []portable.Object{{Bucket: "b", Key: "a/x"}, {Bucket: "c", Key: "a//x"}}}}
+	if err = StorageCollisions(ctx, other, fakeLister{}, false); err != nil {
+		t.Fatalf("the same key in two buckets is fine: %v", err)
+	}
 }

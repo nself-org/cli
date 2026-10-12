@@ -140,7 +140,7 @@ curl -fsS -o /dev/null --aws-sigv4 'aws:amz:us-east-1:s3' --user "$T_S3A:$T_S3S"
 printf 'target-owned object' | curl -fsS -o /dev/null --aws-sigv4 'aws:amz:us-east-1:s3' --user "$T_S3A:$T_S3S" -X PUT --data-binary @- "$TARGET_S3/$FIXTURE_S3_BUCKET/$FIRST"
 if "${IMPORT[@]}" --json > "$W/seeded.json" 2> "$W/seeded.err"; then echo 'FAIL: import over an existing target object accepted'; exit 1; fi
 grep -q E519 "$W/seeded.json" "$W/seeded.err"
-grep -q 'already holds' "$W/seeded.json" "$W/seeded.err"
+grep -q 'already has an object' "$W/seeded.json" "$W/seeded.err"
 jq -e '.wrote==false' "$(ls -dt .nself/import/*/report.json | head -1)"
 test "$(PGPASSWORD="$(sed -n 's/^POSTGRES_PASSWORD=//p' .env | tail -1)" psql -h 127.0.0.1 -p "$TARGET_PG_PORT" -U postgres -d nself -X -At -c 'SELECT count(*) FROM auth.users')" = 0
 test "$(curl -fsS --aws-sigv4 'aws:amz:us-east-1:s3' --user "$T_S3A:$T_S3S" "$TARGET_S3/$FIXTURE_S3_BUCKET/$FIRST")" = 'target-owned object'
