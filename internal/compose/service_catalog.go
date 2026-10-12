@@ -138,14 +138,14 @@ var serviceCatalog = []CatalogEntry{
 	{
 		Name:       "seaweedfs",
 		Tier:       TierOptional,
-		Purpose:    "Core S3-compatible object storage in v1.5",
+		Purpose:    "v1.5: SeaweedFS S3 object storage (OBJECT_STORAGE_ENABLED); MinIO is the minio plugin",
 		EnableEnv:  "OBJECT_STORAGE_ENABLED",
 		VersionEnv: "SEAWEEDFS_VERSION",
 	},
 	{
 		Name:       "seaweedfs-init",
 		Tier:       TierOptional,
-		Purpose:    "one-shot bucket bootstrap for SeaweedFS (OBJECT_STORAGE_BUCKETS)",
+		Purpose:    "v1.5: one-shot bucket bootstrap for SeaweedFS (OBJECT_STORAGE_BUCKETS)",
 		EnableEnv:  "OBJECT_STORAGE_ENABLED",
 		VersionEnv: "SEAWEEDFS_VERSION",
 		ImageKey:   "seaweedfs",

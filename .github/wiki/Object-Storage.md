@@ -21,7 +21,7 @@ The `seaweedfs` and `seaweedfs-init` services use the pinned image lock. `SEAWEE
 
 ## Endpoints and active store
 
-Custom services receive `S3_ENDPOINT=http://seaweedfs:8333` and the S3 credential references when core object storage is enabled. If core object storage is disabled and the `minio` plugin is installed, they receive `S3_ENDPOINT=http://minio:9000` with the existing MinIO key mapping. With neither store, no endpoint is injected.
+Custom services receive `S3_ENDPOINT=http://seaweedfs:8333` and the S3 credential references when core object storage is enabled. If core object storage is disabled, the `minio` plugin is installed and the project still declares MinIO (`MINIO_ENABLED=true`, or `MINIO_ROOT_*` credentials), they receive `S3_ENDPOINT=http://minio:9000` with the existing MinIO key mapping. An installed plugin alone does nothing for a project that does not use MinIO, because the plugin is machine-wide. With neither store, no `S3_*` variable is injected. Profiles without object storage, such as `ops`, never inject them.
 
 With both core object storage enabled and the MinIO plugin installed, custom services get the core SeaweedFS endpoint. Choose one store deliberately before moving an application to its endpoint.
 
@@ -37,7 +37,7 @@ To keep your existing store, run:
 nself add minio
 ```
 
-The plugin keeps the `minio` service name and attaches the existing `minio_data` volume. Installing it is not a data migration.
+The plugin keeps the `minio` service name and attaches the existing `minio_data` volume. Installing it is not a data migration. Keep `MINIO_ENABLED=true` in `.env` after `nself add minio`: it is what tells the project to use the plugin's store.
 
 To move to SeaweedFS, first back up and export the old store. Keep the old store available while copying objects with `mc mirror` or `aws s3 sync` between its endpoint and the new endpoint. SeaweedFS starts with a separate, empty `seaweedfs_data` volume. Verify objects and application access, recreate bucket policies and CORS settings as needed, then change application endpoints. Remove `MINIO_ENABLED` and set `OBJECT_STORAGE_ENABLED=true` for the new core store. Do not discard the backup or old volume until verification is complete.
 

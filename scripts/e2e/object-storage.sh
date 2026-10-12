@@ -35,6 +35,26 @@ cleanup() {
 trap cleanup EXIT
 fail() { echo "FAIL: $1"; exit 1; }
 
+# golang images set GOTOOLCHAIN=local; if go.mod needs a newer go, let go fetch it.
+version_lt() { # true when dotted version $1 is older than $2 (missing parts are 0)
+  awk -v a="$1" -v b="$2" 'BEGIN {
+    na = split(a, x, "."); nb = split(b, y, ".");
+    for (i = 1; i <= 3; i++) {
+      if (x[i] + 0 < y[i] + 0) exit 0
+      if (x[i] + 0 > y[i] + 0) exit 1
+    }
+    exit 1 }'
+}
+GO_HAVE="$(GOTOOLCHAIN=local go env GOVERSION | sed 's/^go//')"
+for gomod in "$REPO_ROOT/go.mod" "$SUITE_DIR/../../go.mod"; do
+  [ -f "$gomod" ] || continue
+  GO_NEED="$(awk '$1 == "go" { print $2; exit }' "$gomod")"
+  if version_lt "$GO_HAVE" "$GO_NEED"; then
+    export GOTOOLCHAIN=auto
+    echo "INFO: go $GO_HAVE is older than $gomod (go $GO_NEED); GOTOOLCHAIN=auto fetches the required toolchain"
+  fi
+done
+echo "INFO: toolchain in use: $(cd "$REPO_ROOT" && go version)"
 (cd "$REPO_ROOT" && CGO_ENABLED=0 go build -mod=vendor -o "$WORK/nself" ./cmd/nself) || fail "CLI build"
 (cd "$SUITE_DIR/../.." && CGO_ENABLED=0 go test -mod=vendor -c -tags s3coverage \
   -o "$WORK/s3cov.test" ./test/s3coverage) || fail "S3 coverage build"

@@ -17,7 +17,10 @@ import (
 	"github.com/nself-org/cli/internal/errs"
 )
 
-// minioPluginInstalled is a package seam for filesystem-independent tests.
+// Purpose: report whether the minio plugin manifest is installed on this machine.
+// Inputs: NSELF_PLUGIN_DIR, else ~/.nself/plugins (the internal/build default).
+// Outputs: true when <dir>/minio/plugin.json is a regular file.
+// Constraints: package-level seam so tests need no filesystem; compose cannot import build.
 var minioPluginInstalled = func() bool {
 	dir := os.Getenv("NSELF_PLUGIN_DIR")
 	if dir == "" {
@@ -31,7 +34,11 @@ var minioPluginInstalled = func() bool {
 	return err == nil && !info.IsDir()
 }
 
-// ActiveStore identifies the store; missing-plugin intent is validated separately.
+// Purpose: name the object store custom services should reach.
+// Inputs: loaded config and whether the minio plugin is installed.
+// Outputs: "seaweedfs", "minio-plugin", "minio-core" (v1.4 only) or "none".
+// Constraints: v1.4 follows cfg.Minio.Enabled unchanged; in v1.5 the core store wins over
+// the plugin, and missing-plugin MinIO intent is rejected separately (E138).
 func ActiveStore(cfg *config.Config, installed bool) string {
 	// compat.V15(P7-PLUG-60): optional core MinIO -> core SeaweedFS or MinIO plugin
 	if compat.V15() {
@@ -49,6 +56,10 @@ func ActiveStore(cfg *config.Config, installed bool) string {
 	return "none"
 }
 
+// Purpose: read OBJECT_STORAGE_ENABLED from the process env.
+// Inputs: env (the config loader has already loaded .env into it).
+// Outputs: true for true, 1, yes, on or enabled in any case, matching config getEnvBool.
+// Constraints: pure read, no side effects.
 func objectStorageEnabled() bool {
 	switch strings.ToLower(os.Getenv("OBJECT_STORAGE_ENABLED")) {
 	case "true", "1", "yes", "on", "enabled":
@@ -57,6 +68,11 @@ func objectStorageEnabled() bool {
 	return false
 }
 
+// Purpose: add the object store services the profile and mode call for.
+// Inputs: the generator config and profile; the compose being built.
+// Outputs: minio (v1.4), or seaweedfs, seaweedfs-init and the seaweedfs_data volume (v1.5).
+// Constraints: returns E138 in v1.5 when MinIO is wanted without the plugin, before any write;
+// profiles without object storage (ops) never fail or add services.
 func (g *Generator) addObjectStorage(dc *DockerCompose) error {
 	if !g.profile.Minio {
 		return nil
@@ -82,6 +98,11 @@ func (g *Generator) addObjectStorage(dc *DockerCompose) error {
 	return nil
 }
 
+// Purpose: render the SeaweedFS server service.
+// Inputs: SEAWEEDFS_PORT and SEAWEEDFS_VERSION from env; S3 identity from config.
+// Outputs: the service, or an error naming SEAWEEDFS_PORT when it is not 1..65535.
+// Constraints: image comes from the lock; credentials are ${...} refs only; S3 publishes on
+// 127.0.0.1 alone; the identity file lives on tmpfs and never reaches a project file.
 func (g *Generator) buildSeaweedService() (ServiceConfig, error) {
 	port := 8333
 	if raw := os.Getenv("SEAWEEDFS_PORT"); raw != "" {
@@ -127,6 +148,10 @@ umask 077
 printf '{"identities":[{"name":"nself","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}\n' "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json
 exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json`
 
+// Purpose: render the one-shot bucket bootstrap service.
+// Inputs: OBJECT_STORAGE_BUCKETS and SEAWEEDFS_VERSION from env.
+// Outputs: a restart-no service that waits for a healthy SeaweedFS.
+// Constraints: shares the seaweedfs lock entry and pin; carries no credentials.
 func (g *Generator) buildSeaweedInit() ServiceConfig {
 	return ServiceConfig{
 		Image:         ResolveImage("seaweedfs", ImageRef("seaweedfs", os.Getenv("SEAWEEDFS_VERSION"))),
@@ -172,10 +197,23 @@ for bucket in $$OBJECT_STORAGE_BUCKETS; do
       exit 1
     fi
   fi
+done
+printf 's3.bucket.list\n' | weed shell -master=seaweedfs:9333 > /tmp/buckets
+for bucket in $$OBJECT_STORAGE_BUCKETS; do
+  if ! awk '{print $$1}' /tmp/buckets | grep -F -x "$$bucket" >/dev/null; then
+    printf 'OBJECT_STORAGE_BUCKETS bucket missing after create: %s\n' "$$bucket" >&2
+    exit 1
+  fi
 done`
 
+// Purpose: add S3_* connection vars for the active store to a custom service.
+// Inputs: the env map being built and the loaded config.
+// Outputs: S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET; nothing with no store.
+// Constraints: v1.5 only. The plugin endpoint applies only with MinIO intent
+// (cfg.Minio.Enabled), so a machine-wide plugin never injects empty keys into an unrelated
+// project. Secrets are env refs.
 func addActiveStoreEnvVars(env map[string]string, cfg *config.Config) {
-	switch ActiveStore(cfg, minioPluginInstalled()) {
+	switch ActiveStore(cfg, minioPluginInstalled() && cfg.Minio.Enabled) {
 	case "seaweedfs":
 		env["S3_ENDPOINT"] = "http://seaweedfs:8333"
 		env["S3_ACCESS_KEY"] = secretRef("S3_ACCESS_KEY", cfg.Minio.S3AccessKey)
@@ -186,5 +224,18 @@ func addActiveStoreEnvVars(env map[string]string, cfg *config.Config) {
 		env["S3_ACCESS_KEY"] = cfg.Minio.RootUser
 		env["S3_SECRET_KEY"] = secretRef("MINIO_ROOT_PASSWORD", cfg.Minio.RootPassword)
 		env["S3_BUCKET"] = cfg.Minio.DefaultBuckets
+	}
+}
+
+// Purpose: remove S3_* vars from a custom service env for a profile without object storage.
+// Inputs: the env map being built. Outputs: none; mutates env.
+// Constraints: v1.5 only; v1.4 keeps injecting whatever cfg.Minio asks for.
+func dropStoreEnvVars(env map[string]string) {
+	// compat.V15(P7-PLUG-60): S3 vars for every profile -> none for profiles without object storage
+	if !compat.V15() {
+		return
+	}
+	for _, key := range []string{"S3_ENDPOINT", "S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET"} {
+		delete(env, key)
 	}
 }

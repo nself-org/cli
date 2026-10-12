@@ -117,6 +117,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-20 | remove <plugin> of a bundle member proceeds | refuses with E133 unless --force | `internal/bundle/remove_guard.go` |
 | P7-PLUG-60 | MinIO endpoint | active core or plugin object store endpoint | `internal/compose/custom_services.go` |
 | P7-PLUG-60 | S3 keys infer MinIO intent | core object storage keys do not enable MinIO | `internal/config/loader_parse_env_storage.go` |
+| P7-PLUG-60 | S3 vars for every profile | none for profiles without object storage | `internal/compose/object_storage.go` |
 | P7-PLUG-60 | core MinIO generation | missing plugin fails before writes | `internal/compose/object_storage.go` |
 | P7-PLUG-60 | demo enables core MinIO | demo enables SeaweedFS object storage | `internal/setup/setup_env_files.go` |
 | P7-PLUG-60 | media-hosting recommends MinIO | recommends core object storage and the MinIO plugin for existing data | `cmd/commands/init_presets.go` |

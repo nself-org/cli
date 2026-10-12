@@ -25,14 +25,15 @@ func parseEnvStorage(cfg *Config) {
 	// never set the ENABLED toggle — the storage service must still generate.
 	_, minioEnabledSet := os.LookupEnv("MINIO_ENABLED")
 	_, storageEnabledSet := os.LookupEnv("STORAGE_ENABLED")
-	minioIntentVars := []string{
+	minioCredentialVars := []string{
 		"MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD",
 		"MINIO_ACCESS_KEY", "MINIO_SECRET_KEY",
-		"S3_ACCESS_KEY", "S3_SECRET_KEY",
 	}
+	coreS3KeyVars := []string{"S3_ACCESS_KEY", "S3_SECRET_KEY"}
+	minioIntentVars := append(append([]string{}, minioCredentialVars...), coreS3KeyVars...)
 	// compat.V15(P7-PLUG-60): S3 keys infer MinIO intent -> core object storage keys do not enable MinIO
 	if compat.V15() && getEnvBool("OBJECT_STORAGE_ENABLED", false) {
-		minioIntentVars = minioIntentVars[:4]
+		minioIntentVars = minioCredentialVars
 	}
 	hasMinioIntent := false
 	for _, k := range minioIntentVars {

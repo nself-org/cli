@@ -280,16 +280,19 @@ func TestSeaweedPortLoopback(t *testing.T) {
 func TestS3EndpointCustomServices(t *testing.T) {
 	compattest.Set(t, true)
 	for _, tc := range []struct {
-		name           string
-		object, plugin bool
-		endpoint       string
+		name                  string
+		object, plugin, minio bool
+		endpoint              string
 	}{
-		{"core-wins", true, true, "http://seaweedfs:8333"},
-		{"plugin", false, true, "http://minio:9000"}, {"none", false, false, ""},
+		{"core-wins", true, true, true, "http://seaweedfs:8333"},
+		{"core-only", true, false, false, "http://seaweedfs:8333"},
+		{"plugin-with-minio-intent", false, true, true, "http://minio:9000"},
+		{"plugin-without-minio-intent", false, true, false, ""},
+		{"none", false, false, false, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			storagePluginSeam(t, tc.plugin)
-			cfg := storageFixture(t, false, tc.object, true)
+			cfg := storageFixture(t, tc.minio, tc.object, true)
 			dc, err := NewGenerator(cfg).buildDockerCompose()
 			if err != nil {
 				t.Fatal(err)
@@ -299,12 +302,27 @@ func TestS3EndpointCustomServices(t *testing.T) {
 				t.Fatalf("S3_ENDPOINT=%q want %q", env["S3_ENDPOINT"], tc.endpoint)
 			}
 			if tc.endpoint == "" {
-				if _, ok := env["S3_ACCESS_KEY"]; ok {
-					t.Fatal("credential without store")
+				for _, key := range []string{"S3_ACCESS_KEY", "S3_SECRET_KEY", "S3_BUCKET"} {
+					if _, ok := env[key]; ok {
+						t.Fatalf("%s injected without a store", key)
+					}
 				}
 			}
 		})
 	}
+	t.Run("no-object-storage-profile", func(t *testing.T) {
+		storagePluginSeam(t, true)
+		cfg := storageFixture(t, true, true, true)
+		cs := config.CustomService{Name: "worker", Port: 3000}
+		if env := coreEnvVarsFor(cfg, cs, nil, true); env["S3_ENDPOINT"] == "" {
+			t.Fatal("storage profile must inject the endpoint")
+		}
+		for key := range coreEnvVarsFor(cfg, cs, nil, false) {
+			if strings.HasPrefix(key, "S3_") {
+				t.Fatalf("profile without object storage injected %s", key)
+			}
+		}
+	})
 }
 
 func TestSeaweedVersionOverride(t *testing.T) {
@@ -326,13 +344,14 @@ func TestSeaweedVersionOverride(t *testing.T) {
 
 func TestSeaweedBucketScript(t *testing.T) {
 	for _, tc := range []struct {
-		name, buckets, existing, fail, wantCreates string
-		wantFailure                                bool
+		name, buckets, existing, fail, drop, wantCreates string
+		wantFailure                                      bool
 	}{
 		{name: "empty"},
 		{name: "missing", buckets: "uploads,assets", wantCreates: "uploads\nassets\n"},
 		{name: "existing-formatted-list", buckets: "uploads,assets", existing: "uploads\nassets\n"},
 		{name: "create-failure", buckets: "uploads", fail: "uploads", wantFailure: true, wantCreates: "uploads\n"},
+		{name: "create-lost", buckets: "uploads", drop: "uploads", wantFailure: true, wantCreates: "uploads\n"},
 		{name: "invalid-name", buckets: "uploads,Bad_Name", wantFailure: true},
 		{name: "invalid-short", buckets: "ab", wantFailure: true},
 		{name: "invalid-long", buckets: strings.Repeat("a", 64), wantFailure: true},
@@ -361,6 +380,9 @@ case "$command" in
       printf '%s\n' 'error: bucket creation failed' >&2
       exit 1
     fi
+    if [ "$bucket" = "$MOCK_DROP" ]; then
+      exit 0
+    fi
     if grep -F -x "$bucket" "$MOCK_STATE" >/dev/null; then
       printf '%s\n' 'error: bucket already exists' >&2
       exit 1
@@ -378,7 +400,7 @@ esac
 				t.Helper()
 				cmd := exec.Command("/bin/sh", "-c", script)
 				cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "OBJECT_STORAGE_BUCKETS="+tc.buckets,
-					"MOCK_STATE="+state, "MOCK_CREATES="+creates, "MOCK_FAIL="+tc.fail)
+					"MOCK_STATE="+state, "MOCK_CREATES="+creates, "MOCK_FAIL="+tc.fail, "MOCK_DROP="+tc.drop)
 				output, err := cmd.CombinedOutput()
 				if (err != nil) != tc.wantFailure {
 					t.Fatalf("script failure=%v, want %v: %s", err, tc.wantFailure, output)
