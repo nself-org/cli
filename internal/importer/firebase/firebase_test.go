@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -203,7 +204,7 @@ func TestAuthExportMixedUsers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Count != 4 || len(users) != 3 || res.Written != 3 || len(res.Exemptions) != 1 || res.Exemptions[0].Kind != "user" || res.Exemptions[0].Reason != "duplicate email" {
+	if res.Count != 4 || len(users) != 3 || res.Written != 3 || len(res.Exemptions) != 1 || res.Exemptions[0].Kind != "user" || res.Exemptions[0].Reason != "duplicate email; Firebase uid d-3" {
 		t.Fatalf("%+v", res)
 	}
 	if len(res.ResetRequired) != 1 || res.Algorithms["none"] != 2 || res.Algorithms["unsupported"] != 1 {
@@ -325,5 +326,94 @@ func TestSubcollectionsUnderMissingParentAreWalked(t *testing.T) {
 	}
 	if o := byPattern["users/*/orders"]; o.listed != 6 || o.counted != 6 {
 		t.Fatalf("orders under the missing parent were dropped: listed %d counted %d", o.listed, o.counted)
+	}
+}
+
+// TestDotLineValuesAreNotPromoted: a promoted text value with a line of backslash-dot would end
+// psql's client-side \copy early, so the column is dropped and the value stays in data.
+func TestDotLineValuesAreNotPromoted(t *testing.T) {
+	d := fixtureDB()
+	d.docs["notes"] = []fakeDoc{{ID: "n1", Fields: map[string]any{"snippet": sv("a\n\\.\nb"), "plain": sv("x")}}}
+	d.subs["users/u1"], d.subs["users/u2"] = nil, nil
+	col, dir := collectFixture(t, d)
+	script, _, notes, err := emit(col.sorted(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(script, `"snippet"`) || !strings.Contains(script, `"plain"`) {
+		t.Fatalf("snippet must stay out of the columns:\n%s", script)
+	}
+	found := false
+	for _, n := range notes {
+		found = found || (n.ID == "firebase.notes.snippet" && strings.Contains(n.Reason, "backslash dot"))
+	}
+	if !found {
+		t.Fatalf("no note: %v", notes)
+	}
+	if !hasDotLine("x\r\n\\.\r\ny") || hasDotLine("a\\.b") || hasDotLine("") {
+		t.Fatal("hasDotLine misjudges")
+	}
+	d.docs["notes"] = []fakeDoc{{ID: "bad\n\\.\nid", Fields: map[string]any{}}}
+	fs, _, _ := fakeClient(t, d)
+	if err = newCollector(fs, t.TempDir()).walk(context.Background(), "", nil); err == nil {
+		t.Fatal("an id with a dot line must stop the import")
+	}
+}
+
+// TestTypedColumnsAreCapped: a collection keyed by date or uid at the top level must not exceed
+// the Postgres column limit; the most common fields win and the rest stay in data.
+func TestTypedColumnsAreCapped(t *testing.T) {
+	fields := map[string]any{}
+	for i := 0; i < maxTypedColumns+50; i++ {
+		fields[fmt.Sprintf("day_%04d", i)] = iv(int64(i))
+	}
+	fields["common"] = sv("kept")
+	d := fixtureDB()
+	d.docs["notes"] = []fakeDoc{{ID: "a", Fields: fields}, {ID: "b", Fields: map[string]any{"common": sv("also")}}}
+	d.subs["users/u1"], d.subs["users/u2"] = nil, nil
+	col, dir := collectFixture(t, d)
+	script, _, notes, err := emit(col.sorted(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(script, `"common" text`) {
+		t.Fatal("the most common field must be a column")
+	}
+	if got := strings.Count(strings.Split(script, `CREATE TABLE "firebase"."users"`)[0], " bigint"); got != maxTypedColumns-1 {
+		t.Fatalf("typed bigint columns in notes = %d, want %d", got, maxTypedColumns-1)
+	}
+	capped := 0
+	for _, n := range notes {
+		if strings.Contains(n.Reason, "more than 200 typed columns") {
+			capped++
+		}
+	}
+	if capped != 51 {
+		t.Fatalf("capped notes %d, want 51", capped)
+	}
+}
+
+func TestEmulatorHostAcceptsHTTPScheme(t *testing.T) {
+	in := importer.Input{Values: map[string]string{"project": "demo-nself", "auth-export": "a.json", "bucket": "demo-nself.appspot.com"}, Env: func(k string) string {
+		return map[string]string{"FIRESTORE_EMULATOR_HOST": "127.0.0.1:8080", "STORAGE_EMULATOR_HOST": "http://127.0.0.1:9199"}[k]
+	}}
+	s, err := resolve(in)
+	if err != nil || s.StorageBase != "http://127.0.0.1:9199" {
+		t.Fatalf("%+v %v", s, err)
+	}
+	in.Env = func(k string) string {
+		return map[string]string{"FIRESTORE_EMULATOR_HOST": "https://127.0.0.1:8080"}[k]
+	}
+	if _, err = resolve(in); err == nil {
+		t.Fatal("https emulator host accepted")
+	}
+}
+
+func TestAnonymousUsersAreCounted(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "a.json")
+	_ = os.WriteFile(p, []byte(`{"users":[{"localId":"anon-1","createdAt":"1700000000000"},{"localId":"g","email":"g@example.test","providerUserInfo":[{"providerId":"google.com"}]}]}`), 0o600)
+	res, users, err := readUsers(t, p)
+	if err != nil || res.Anonymous != 1 || users[0].Metadata["firebase"].(map[string]any)["anonymous"] != true {
+		t.Fatalf("%+v %v", res, err)
 	}
 }

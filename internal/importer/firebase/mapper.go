@@ -25,7 +25,11 @@ import (
 	"github.com/nself-org/cli/internal/portable"
 )
 
-const schemaName = "firebase"
+const (
+	schemaName = "firebase"
+	// maxTypedColumns bounds the promoted columns per table (Postgres stops at 1600).
+	maxTypedColumns = 200
+)
 
 var (
 	badIdent = regexp.MustCompile(`[^a-z0-9_]`)
@@ -77,7 +81,7 @@ func assignNames(tables []*tableAcc) []portable.Exemption {
 		used[name] = true
 		t.name = name
 		if name != base {
-			notes = append(notes, portable.Exemption{Kind: "metadata", ID: schemaName + "." + name, Reason: "collection " + t.pattern + " renamed (name collision or length)"})
+			notes = append(notes, portable.Exemption{Kind: "metadata", ID: schemaName + "." + name + "#renamed", Reason: "collection " + t.pattern + " renamed (name collision or length)"})
 		}
 	}
 	return notes
@@ -108,6 +112,10 @@ func columnsFor(t *tableAcc) ([]column, []portable.Exemption) {
 			note(f, "field types differ ("+strings.Join(seen, ",")+"); kept in data only")
 			continue
 		}
+		if len(seen) == 1 && promotable(kind(seen[0])) && t.unsafe[f] {
+			note(f, "a text value has a line psql cannot copy (backslash dot); kept in data only")
+			continue
+		}
 		if len(seen) == 1 && promotable(kind(seen[0])) {
 			c := column{Field: f, Name: fit(sanitize(f), f), K: kind(seen[0])}
 			groups[c.Name] = append(groups[c.Name], c)
@@ -127,6 +135,16 @@ func columnsFor(t *tableAcc) ([]column, []portable.Exemption) {
 			continue
 		}
 		cols = append(cols, g[0])
+	}
+	// Postgres allows 1600 columns; a collection keyed by date or uid at the top level can have
+	// thousands of fields that each appear once. Keep the most common ones.
+	if len(cols) > maxTypedColumns {
+		sort.SliceStable(cols, func(i, j int) bool { return t.present[cols[i].Field] > t.present[cols[j].Field] })
+		for _, c := range cols[maxTypedColumns:] {
+			note(c.Field, fmt.Sprintf("more than %d typed columns; kept in data only", maxTypedColumns))
+		}
+		cols = cols[:maxTypedColumns]
+		sort.Slice(cols, func(i, j int) bool { return cols[i].Name < cols[j].Name })
 	}
 	return cols, notes
 }

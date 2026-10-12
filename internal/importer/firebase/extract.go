@@ -6,10 +6,14 @@ package firebase
 // join the same manifest; work files live in a private directory removed on return.
 import (
 	"context"
+	"crypto/md5"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/importer"
@@ -113,7 +117,7 @@ func copyDBMembers(scratchDir string, w *portable.Writer) error {
 // the manifest fields. The independent source count is the raw element count of the export minus
 // the users deliberately left out (exemptions).
 func addUsers(w *portable.Writer, m *portable.Manifest, exportPath, work string) ([]portable.Exemption, error) {
-	spool, err := os.Create(filepath.Join(work, "users.jsonl"))
+	spool, err := os.OpenFile(filepath.Join(work, "users.jsonl"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return nil, errors.New("auth users spool unavailable")
 	}
@@ -126,8 +130,12 @@ func addUsers(w *portable.Writer, m *portable.Manifest, exportPath, work string)
 	}
 	m.Auth = portable.Auth{Users: a.Written, HashAlgorithms: a.Algorithms, ResetRequired: a.ResetRequired}
 	m.SourceCounts = append(m.SourceCounts, portable.SourceCount{Kind: "users", Count: a.Count - int64(len(a.Exemptions)), Method: "auth export JSON element count"})
+	notes := a.Exemptions
+	if a.Anonymous > 0 {
+		notes = append(notes, portable.Exemption{Kind: "metadata", ID: "firebase.auth#anonymous", Reason: fmt.Sprintf("%d anonymous users imported as ordinary accounts without any credential (metadata.firebase.anonymous)", a.Anonymous)})
+	}
 	if a.Written == 0 {
-		return a.Exemptions, nil
+		return notes, nil
 	}
 	f, err := os.Open(filepath.Join(work, "users.jsonl"))
 	if err != nil {
@@ -137,7 +145,19 @@ func addUsers(w *portable.Writer, m *portable.Manifest, exportPath, work string)
 	if _, err = w.WriteFile("auth/users.jsonl", f); err != nil {
 		return nil, errors.New("auth users write failed")
 	}
-	return a.Exemptions, nil
+	return notes, nil
+}
+
+// checkObject compares the streamed bytes with the size and MD5 the bucket listing reported, so a
+// truncated or re-encoded download cannot pass as the stored object. A composite object has no MD5.
+func checkObject(it objectInfo, written int64, md5sum []byte) error {
+	if n, err := strconv.ParseInt(it.Size, 10, 64); it.Size != "" && (err != nil || n != written) {
+		return errors.New("object size differs from the bucket listing")
+	}
+	if it.MD5Hash != "" && it.MD5Hash != base64.StdEncoding.EncodeToString(md5sum) {
+		return errors.New("object checksum differs from the bucket listing")
+	}
+	return nil
 }
 
 // addObjects copies every bucket object into the bundle. The first listing drives the copy; a
@@ -162,10 +182,14 @@ func addObjects(ctx context.Context, w *portable.Writer, m *portable.Manifest, s
 			_ = rc.Close()
 			return errors.New("object name unsupported")
 		}
-		f, werr := w.WriteFile(member, io.Reader(rc))
+		sum := md5.New()
+		f, werr := w.WriteFile(member, io.TeeReader(rc, sum))
 		_ = rc.Close()
 		if werr != nil {
 			return errors.New("object write failed")
+		}
+		if err = checkObject(it, f.Bytes, sum.Sum(nil)); err != nil {
+			return err
 		}
 		o, oerr := portable.NewObject(store.bucket, it.Name, f)
 		if oerr != nil {

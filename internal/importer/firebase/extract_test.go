@@ -2,10 +2,16 @@ package firebase
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/base64"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/importer"
@@ -133,5 +139,73 @@ func TestSourceRegistered(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("firebase not registered")
+	}
+}
+
+func TestCheckObjectCatchesTruncationAndRecoding(t *testing.T) {
+	sum := md5.Sum([]byte("hello"))
+	good := objectInfo{Name: "a", Size: "5", MD5Hash: base64.StdEncoding.EncodeToString(sum[:])}
+	if err := checkObject(good, 5, sum[:]); err != nil {
+		t.Fatal(err)
+	}
+	if checkObject(good, 4, sum[:]) == nil {
+		t.Fatal("short object accepted")
+	}
+	other := md5.Sum([]byte("HELLO"))
+	if checkObject(good, 5, other[:]) == nil {
+		t.Fatal("different bytes accepted")
+	}
+	if err := checkObject(objectInfo{Name: "composite", Size: "5"}, 5, other[:]); err != nil {
+		t.Fatalf("an object without MD5 is judged by size only: %v", err)
+	}
+}
+
+// TestObjectDownloadsAskForStoredBytes: the bulk client sends Accept-Encoding gzip and does not
+// decode, so an object stored gzip-encoded is copied as stored.
+func TestObjectDownloadsAskForStoredBytes(t *testing.T) {
+	var seen string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Get("Accept-Encoding")
+		w.Header().Set("Content-Encoding", "gzip")
+		_, _ = w.Write([]byte("STORED-GZIP-BYTES"))
+	}))
+	defer srv.Close()
+	c := newClient(ownerToken{})
+	g := &gcs{c: c, base: srv.URL, bucket: "b"}
+	rc, err := g.open(context.Background(), "x.gz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rc.Close() }()
+	b, _ := io.ReadAll(rc)
+	if seen != "gzip" || string(b) != "STORED-GZIP-BYTES" {
+		t.Fatalf("accept-encoding %q body %q", seen, b)
+	}
+}
+
+func TestRequestsRetryTransientFailures(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls < 3 {
+			if calls == 1 {
+				hj, _ := w.(http.Hijacker)
+				conn, _, _ := hj.Hijack()
+				_ = conn.Close() // transport reset
+				return
+			}
+			w.Header().Set("Retry-After", "0")
+			http.Error(w, "busy", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte(`{"collectionIds":["a"]}`))
+	}))
+	defer srv.Close()
+	c := newClient(ownerToken{})
+	c.backoff = func(int) time.Duration { return 0 }
+	f := &firestore{c: c, project: "demo-nself", base: srv.URL}
+	ids, err := f.collectionIDs(context.Background(), "")
+	if err != nil || len(ids) != 1 || calls != 3 {
+		t.Fatalf("ids %v err %v calls %d", ids, err, calls)
 	}
 }

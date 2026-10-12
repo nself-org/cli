@@ -49,6 +49,13 @@ See: https://github.com/nself-org/cli/wiki/cmd-migrate-firebase`,
 		if compat.V15() {
 			return runFirebaseImport(cmd)
 		}
+		// The v1.5 flags exist so help and docs describe the import, but v1.4 never had them:
+		// refuse them with cobra's old text instead of ignoring them and writing artifacts.
+		for _, name := range firebaseV15OnlyFlags {
+			if cmd.Flags().Changed(name) {
+				return fmt.Errorf("unknown flag: --%s", name)
+			}
+		}
 		return dataEnv(runMigrateFirebase)(cmd, args)
 	},
 }
@@ -66,7 +73,6 @@ func init() {
 	migrateFirebaseCmd.Flags().Bool("plan", false, "Check source and target and print the import plan without writing (v1.5 import)")
 	migrateFirebaseCmd.Flags().Bool("keep-stage", false, "Keep the private portable bundle after a successful import (v1.5 import)")
 	migrateFirebaseCmd.Flags().Bool("skip-storage", false, "Exempt each storage object from this import (v1.5 import)")
-	migrateFirebaseCmd.Flags().Bool("json", false, "Print the structured import report (v1.5 import)")
 	migrateCmd.AddCommand(migrateFirebaseCmd)
 }
 

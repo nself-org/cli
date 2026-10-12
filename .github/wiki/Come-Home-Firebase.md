@@ -37,8 +37,14 @@ becomes a table in the schema `firebase`:
 | Columns | `id text` (primary key), `data jsonb` (the whole document) |
 | Typed columns | a top-level field becomes a column when every document that has it agrees on one scalar type: string `text`, integer `bigint`, double `double precision`, boolean `boolean`, timestamp `timestamptz` |
 | Disagreement | a field whose documents disagree on type, or whose column name clashes after sanitising (`Title` and `title`, or `id`), gets no column; the value stays in `data`, and the report lists the field in `exemptions` (kind `metadata`) |
+| Column limit | at most 200 typed columns per table, the most common fields first; the rest stay in `data` and are listed |
+| Unsafe text | a text value with a line that is only a backslash and a dot would end the `psql \copy` early, so that field gets no column (the value stays in `data`) |
 | Sub-collections | table `<parent>__<sub>` with `parent_path` (for example `users/u1`) and `parent_id`; the key is `(parent_path, id)` because document ids repeat across parents |
 | Nested maps, arrays, geo points, references, bytes | stay in `data` only (bytes as base64, references as the resource name) |
+
+In `data`, bytes, references and timestamps are plain strings, a `NaN` or infinite double is the
+string `"NaN"` or `"Infinity"`, and a whole-number double reads the same as an integer; the typed
+columns keep the exact type.
 
 No type is ever guessed. There is no data exemption: every document and every field is in a table.
 A document that holds a NUL character in a string cannot be stored by Postgres and stops the import.
@@ -48,9 +54,12 @@ users arrive **without a password** and `users.reset_required` in the report lis
 its id and email. The hash is never copied into the bundle. Send each user through hasura-auth's
 `/user/password/reset`. A user id is a UUIDv5 of the Firebase uid, so a re-run gives the same ids;
 the uid stays in `auth.users.metadata.firebase.uid`, with providers and custom attributes.
-Users that only sign in through a provider have no hash and are not in the reset list. A user
+Users that only sign in through a provider (Google, Apple) have no hash and are not in the reset
+list; they keep `metadata.firebase.providers` and sign in again after re-linking the provider.
+Anonymous users (no email, phone or provider) are imported as ordinary accounts without any
+credential, flagged `metadata.firebase.anonymous`, and counted in one report note. A user
 whose email or phone number repeats (hasura-auth keeps them unique) is left out and listed as an
-exemption of kind `user`.
+exemption of kind `user` that names the Firebase uid.
 
 **Storage.** With `--bucket`, every object is read through the Cloud Storage JSON API and loaded
 into the project's object store. Without an enabled store the import stops with E529 unless you
@@ -70,6 +79,8 @@ code is 1.
 - A document that was deleted but still has sub-collections is not a row; its sub-collections are
   still imported (the listing asks Firestore for such parents).
 - Each document costs one `listCollectionIds` read to find sub-collections.
+- Objects are copied as stored (a gzip-encoded object stays gzip) and each one is checked against the
+  size and MD5 the bucket listing reports. Failed requests are retried with a growing wait.
 - Object versions other than the live one are not copied.
 
 ## After a failed import

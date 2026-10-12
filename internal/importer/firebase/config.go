@@ -7,6 +7,7 @@ package firebase
 import (
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/importer"
@@ -37,6 +38,13 @@ func env(in importer.Input, name string) string {
 	return os.Getenv(name)
 }
 
+// emulatorHost reads an emulator variable; firebase-tools exports STORAGE_EMULATOR_HOST with an
+// http:// scheme for the client libraries, so one is accepted and dropped. Anything else after it
+// (https, a path) fails the host:port check.
+func emulatorHost(in importer.Input, name string) string {
+	return strings.TrimPrefix(env(in, name), "http://")
+}
+
 // resolve validates the flag values and picks the API endpoints. The error text is fixed and
 // credential-free; it names the flag, never its value.
 func resolve(in importer.Input) (settings, error) {
@@ -50,20 +58,20 @@ func resolve(in importer.Input) (settings, error) {
 	if s.Bucket != "" && !bucketRe.MatchString(s.Bucket) {
 		return s, errs.New("E517", "firebase --bucket is not a valid bucket name")
 	}
-	if host := env(in, "FIRESTORE_EMULATOR_HOST"); host != "" {
+	if host := emulatorHost(in, "FIRESTORE_EMULATOR_HOST"); host != "" {
 		if !hostRe.MatchString(host) {
 			return s, errs.New("E517", "FIRESTORE_EMULATOR_HOST must be host:port")
 		}
 		s.FirestoreBase, s.FirestoreEmulator = "http://"+host, true
 	}
-	if host := env(in, "STORAGE_EMULATOR_HOST"); host != "" && s.Bucket != "" {
+	if host := emulatorHost(in, "STORAGE_EMULATOR_HOST"); host != "" && s.Bucket != "" {
 		if !hostRe.MatchString(host) {
 			return s, errs.New("E517", "STORAGE_EMULATOR_HOST must be host:port")
 		}
 		s.StorageBase, s.StorageEmulator = "http://"+host, true
 	}
 	if s.CredentialsFile != "" && (s.FirestoreEmulator || s.StorageEmulator) {
-		return s, errs.New("E517", "--credentials-file and an emulator host are both set; unset one (a stale FIRESTORE_EMULATOR_HOST would read the wrong data)")
+		return s, errs.New("E517", "--credentials-file cannot be combined with FIRESTORE_EMULATOR_HOST or STORAGE_EMULATOR_HOST (the Firestore emulator cannot be mixed with a live bucket); unset one side")
 	}
 	needKey := !s.FirestoreEmulator || (s.Bucket != "" && !s.StorageEmulator)
 	if needKey && s.CredentialsFile == "" {

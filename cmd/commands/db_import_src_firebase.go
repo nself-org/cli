@@ -8,10 +8,17 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/importer"
 	"github.com/nself-org/cli/internal/importer/firebase"
 	"github.com/spf13/cobra"
 )
+
+// firebaseV15OnlyFlags did not exist on `migrate firebase` before v1.5; v1.4 mode refuses them.
+var firebaseV15OnlyFlags = []string{"project", "credentials-file", "bucket", "plan", "keep-stage", "skip-storage"}
+
+// firebaseV14Flags are the artifact generator's inputs; the live import does not use them.
+var firebaseV14Flags = []string{"export-dir", "output-dir", "project-name"}
 
 // firebaseImportFlags are copied from the migrate firebase command to the source command.
 var firebaseImportFlags = []string{"project", "credentials-file", "auth-export", "bucket", "plan", "keep-stage", "skip-storage", "json"}
@@ -26,6 +33,11 @@ func runFirebaseImport(cmd *cobra.Command) error {
 	}
 	if source == nil {
 		return fmt.Errorf("firebase importer source is not registered")
+	}
+	for _, name := range firebaseV14Flags {
+		if cmd.Flags().Changed(name) {
+			return errs.New("E517", "--"+name+" belongs to the v1.4 offline scaffold; the v1.5 import reads the live project: use --project, --credentials-file and --auth-export (or unset NSELF_V15 for the scaffold)")
+		}
 	}
 	child := importSourceCommand(source)
 	child.SetContext(cmd.Context())

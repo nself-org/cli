@@ -51,6 +51,8 @@ type authResult struct {
 	Exemptions    []portable.Exemption
 	// Count is the independent element count of the users array (a second, raw pass).
 	Count int64
+	// Anonymous counts users with no email, phone or provider (Firebase anonymous auth).
+	Anonymous int
 }
 
 // openUsers positions a decoder on the first element of the `users` array.
@@ -135,9 +137,9 @@ func readAuthExport(path string, out io.Writer) (authResult, error) {
 		}
 		reason := ""
 		if lower := strings.ToLower(e.Email); e.Email != "" && emails[lower] {
-			reason = "duplicate email"
+			reason = "duplicate email; Firebase uid " + e.LocalID
 		} else if e.PhoneNumber != "" && phones[e.PhoneNumber] {
-			reason = "duplicate phone number"
+			reason = "duplicate phone number; Firebase uid " + e.LocalID
 		}
 		if reason != "" {
 			res.Exemptions = append(res.Exemptions, portable.Exemption{Kind: "user", ID: u.ID, Reason: reason})
@@ -151,6 +153,9 @@ func readAuthExport(path string, out io.Writer) (authResult, error) {
 		}
 		if u.HashAlgorithm == "unsupported" {
 			res.ResetRequired = append(res.ResetRequired, u.ID)
+		}
+		if fb, ok := u.Metadata["firebase"].(map[string]any); ok && fb["anonymous"] == true {
+			res.Anonymous++
 		}
 		if err = enc.Encode(u); err != nil {
 			return res, errors.New("auth users write failed")
@@ -204,6 +209,9 @@ func mapUser(e exportUser) (verify.User, error) {
 	}
 	if len(providers) > 0 {
 		meta["providers"] = providers
+	}
+	if e.Email == "" && e.PhoneNumber == "" && len(providers) == 0 {
+		meta["anonymous"] = true // no credential of any kind: Firebase anonymous auth
 	}
 	if e.CustomAttributes != "" {
 		var attrs map[string]any

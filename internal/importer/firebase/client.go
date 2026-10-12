@@ -12,12 +12,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/nself-org/cli/internal/httptimeout"
 )
 
-const maxPage = 64 << 20
+const (
+	maxPage     = 96 << 20
+	maxAttempts = 7
+)
 
 type client struct {
 	http *http.Client
@@ -32,8 +36,10 @@ func newClient(t tokenSource) *client {
 	bulk := httptimeout.NoProxy(0)
 	if tr, ok := bulk.Transport.(*http.Transport); ok {
 		tr.ResponseHeaderTimeout = 2 * time.Minute
+		// Object bytes must arrive as stored: no transparent gzip handling on our side.
+		tr.DisableCompression = true
 	}
-	return &client{http: httptimeout.NoProxy(5 * time.Minute), bulk: bulk, tokens: t, backoff: func(a int) time.Duration { return time.Duration(a) * 500 * time.Millisecond }}
+	return &client{http: httptimeout.NoProxy(5 * time.Minute), bulk: bulk, tokens: t, backoff: func(a int) time.Duration { return min(time.Duration(a*a)*500*time.Millisecond, 20*time.Second) }}
 }
 
 type statusError struct{ Status int }
@@ -69,27 +75,40 @@ func (c *client) send(ctx context.Context, hc *http.Client, method, url string, 
 			return nil, errors.New("request invalid")
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
+		if hc == c.bulk {
+			// Without this GCS inflates objects stored with Content-Encoding: gzip.
+			req.Header.Set("Accept-Encoding", "gzip")
+		}
 		if body != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
+		// Every request this importer sends only reads, so a retry is always safe.
 		resp, err := hc.Do(req)
-		if err != nil {
+		wait := c.backoff(attempt)
+		switch {
+		case err != nil:
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
-			return nil, errors.New("source API unreachable")
-		}
-		if resp.StatusCode/100 == 2 {
+			if attempt >= maxAttempts {
+				return nil, errors.New("source API unreachable")
+			}
+		case resp.StatusCode/100 == 2:
 			return resp, nil
-		}
-		_ = resp.Body.Close()
-		if !retryable(resp.StatusCode) || attempt >= 4 {
-			return nil, statusError{resp.StatusCode}
+		default:
+			status, after := resp.StatusCode, resp.Header.Get("Retry-After")
+			_ = resp.Body.Close()
+			if !retryable(status) || attempt >= maxAttempts {
+				return nil, statusError{status}
+			}
+			if secs, e := strconv.Atoi(after); e == nil && secs > 0 && time.Duration(secs)*time.Second > wait {
+				wait = min(time.Duration(secs)*time.Second, time.Minute)
+			}
 		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(c.backoff(attempt)):
+		case <-time.After(wait):
 		}
 	}
 }

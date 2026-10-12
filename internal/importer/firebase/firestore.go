@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-const pageSize = 300
+const pageSize = 40
 
 type firestore struct {
 	c       *client

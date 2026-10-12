@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 // record is one spooled document. Scalars holds the text of each promotable top-level value.
@@ -32,6 +33,8 @@ type tableAcc struct {
 	listed  int64  // documents the listing returned
 	counted int64  // sum of COUNT aggregations over every parent
 	kinds   map[string]map[kind]bool
+	present map[string]int  // documents that hold each top-level field
+	unsafe  map[string]bool // fields with a text value psql \copy would cut short
 	spool   string
 	file    *os.File
 	w       *bufio.Writer
@@ -58,7 +61,7 @@ func (c *collector) table(pattern string, parent *tableAcc) (*tableAcc, error) {
 		return nil, errors.New("firestore spool unavailable")
 	}
 	w := bufio.NewWriterSize(f, 1<<20)
-	t := &tableAcc{pattern: pattern, parent: parent, kinds: map[string]map[kind]bool{}, spool: spool, file: f, w: w, enc: json.NewEncoder(w)}
+	t := &tableAcc{pattern: pattern, parent: parent, kinds: map[string]map[kind]bool{}, present: map[string]int{}, unsafe: map[string]bool{}, spool: spool, file: f, w: w, enc: json.NewEncoder(w)}
 	c.tables[pattern] = t
 	return t, nil
 }
@@ -123,6 +126,9 @@ func (c *collector) add(t *tableAcc, parentPath string, d document) error {
 	if err != nil {
 		return err
 	}
+	if hasDotLine(d.ID) || hasDotLine(parentPath) {
+		return errors.New("document id holds a line that psql would read as end of data")
+	}
 	r := record{ID: d.ID, ParentPath: parentPath, Data: data, Scalars: map[string]string{}}
 	if parentPath != "" {
 		r.ParentID = parentPath[lastSlash(parentPath)+1:]
@@ -132,8 +138,14 @@ func (c *collector) add(t *tableAcc, parentPath string, d document) error {
 			t.kinds[name] = map[kind]bool{}
 		}
 		t.kinds[name][k] = true
+		t.present[name]++
 		if promotable(k) {
-			r.Scalars[name] = scalarText(data[name])
+			text := scalarText(data[name])
+			if hasDotLine(text) {
+				t.unsafe[name] = true
+				continue
+			}
+			r.Scalars[name] = text
 		}
 	}
 	if err = t.enc.Encode(r); err != nil {
@@ -141,6 +153,20 @@ func (c *collector) add(t *tableAcc, parentPath string, d document) error {
 	}
 	t.listed++
 	return nil
+}
+
+// hasDotLine reports whether s has a line that is exactly `\.`; psql's client-side \copy reads
+// that as the end of the data even inside a quoted CSV field, so such a value is never promoted.
+func hasDotLine(s string) bool {
+	if !strings.Contains(s, "\\.") {
+		return false
+	}
+	for _, line := range strings.Split(s, "\n") {
+		if strings.TrimSuffix(line, "\r") == "\\." {
+			return true
+		}
+	}
+	return false
 }
 
 func lastSlash(s string) int {

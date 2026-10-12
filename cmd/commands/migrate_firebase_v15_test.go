@@ -25,12 +25,15 @@ const firebaseAuthFixture = "../../test/fixtures/import/firebase/auth-export.jso
 // resetFirebaseFlags restores every migrate firebase flag to its default after a test.
 func resetFirebaseFlags(t *testing.T) {
 	t.Helper()
-	t.Cleanup(func() {
+	_ = migrateFirebaseCmd.InheritedFlags() // merges the root's persistent --json into Flags()
+	reset := func() {
 		migrateFirebaseCmd.Flags().VisitAll(func(f *pflag.Flag) {
 			_ = f.Value.Set(f.DefValue)
 			f.Changed = false
 		})
-	})
+	}
+	reset()
+	t.Cleanup(reset)
 }
 
 func setFirebaseFlags(t *testing.T, kv map[string]string) {
@@ -176,5 +179,35 @@ func TestMigrateFirebaseV15DryRunIsPlan(t *testing.T) {
 	}
 	if !planned {
 		t.Fatal("--dry-run ran a real import")
+	}
+}
+
+// TestMigrateFirebaseV14RefusesV15Flags: v1.4 never had these flags; accepting and ignoring them
+// would turn a plan request into artifact writes.
+func TestMigrateFirebaseV14RefusesV15Flags(t *testing.T) {
+	compattest.Set(t, false)
+	for _, name := range []string{"project", "credentials-file", "bucket", "plan", "keep-stage", "skip-storage"} {
+		resetFirebaseFlags(t)
+		val := "x"
+		if name == "plan" || name == "keep-stage" || name == "skip-storage" {
+			val = "true"
+		}
+		setFirebaseFlags(t, map[string]string{"export-dir": t.TempDir(), name: val})
+		if err := migrateFirebaseCmd.RunE(migrateFirebaseCmd, nil); err == nil || err.Error() != "unknown flag: --"+name {
+			t.Fatalf("--%s in v1.4: %v", name, err)
+		}
+	}
+	if migrateFirebaseCmd.Flags().Lookup("json") != nil && migrateFirebaseCmd.LocalFlags().Lookup("json") != nil {
+		t.Fatal("a local --json would shadow the root flag and skip its E402 refusal")
+	}
+}
+
+// TestMigrateFirebaseV15RefusesScaffoldFlags names the new inputs instead of dropping the old ones.
+func TestMigrateFirebaseV15RefusesScaffoldFlags(t *testing.T) {
+	compattest.Set(t, true)
+	resetFirebaseFlags(t)
+	setFirebaseFlags(t, map[string]string{"export-dir": "./export"})
+	if err := runFirebaseImport(migrateFirebaseCmd); err == nil || !strings.Contains(err.Error(), "--export-dir") || !strings.Contains(err.Error(), "--project") {
+		t.Fatalf("err %v", err)
 	}
 }

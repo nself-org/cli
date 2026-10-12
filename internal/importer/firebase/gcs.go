@@ -20,8 +20,9 @@ type gcs struct {
 }
 
 type objectInfo struct {
-	Name string `json:"name"`
-	Size string `json:"size"`
+	Name    string `json:"name"`
+	Size    string `json:"size"`
+	MD5Hash string `json:"md5Hash"`
 }
 
 // pages reads the bucket listing in pages of the given size and passes each item to fn.
