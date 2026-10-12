@@ -1,0 +1,47 @@
+{
+  "schema_version": "1",
+  "command": "update stack",
+  "data": {
+    "run_id": "1791780040683216000",
+    "status": "planned",
+    "dry_run": true,
+    "resume_step": "backup",
+    "steps": [
+      {
+        "name": "backup",
+        "result": "pending",
+        "duration_ms": 0
+      },
+      {
+        "name": "pull",
+        "result": "pending",
+        "duration_ms": 0
+      },
+      {
+        "name": "build",
+        "result": "pending",
+        "duration_ms": 0
+      },
+      {
+        "name": "start",
+        "result": "pending",
+        "duration_ms": 0
+      },
+      {
+        "name": "migrate",
+        "result": "pending",
+        "duration_ms": 0
+      },
+      {
+        "name": "readiness",
+        "result": "pending",
+        "duration_ms": 0
+      },
+      {
+        "name": "health",
+        "result": "pending",
+        "duration_ms": 0
+      }
+    ]
+  }
+}

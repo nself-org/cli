@@ -41,6 +41,109 @@ The step list is shared with `nself update stack`: backup, images, plugins, buil
 
 Moving an existing project to Valkey, the renamed `nhost/auth` image or the newer Hasura: run `nself update --plan`, read the image rows (`redis`, `auth`, `hasura`), then `nself update --yes`. The `redis` row follows `REDIS_ENGINE` when it is set, else the mode default (Valkey under v1.5, Redis before); the lock pin does not decide it. A move shows a note on the row: the cache is recreated on volume `valkey_data` (or `redis_data`), the old volume is kept, and queued jobs are not migrated; the auth and Hasura catalog migrations are one-way, so take a backup first (`nself backup create`) and, to roll back, restore it before pinning back.
 
+## Resumable stack upgrade
+
+After reviewing and applying the desired pins, run:
+
+```bash
+nself update stack --plan                 # take the project lock and list steps; writes nothing else
+nself update stack --dry-run --json       # one envelope with results and resume point
+nself update stack --yes                  # authorize the upgrade and recovery policy
+nself update stack --yes --json           # one envelope with measured step results
+```
+
+The executor runs **backup → pull → build → start → migrate → readiness → health**.
+The backup is created with a unique run tag, verified in the current invocation,
+and bound to the journal by its digest. Build uses the reconcile preview and
+apply path; production and staging show the planned changes before applying.
+Production class comes from `reconcile.EnvClass`, the same classifier used by
+build and update: `prod`, `production`, `staging`, and `stage` all count as
+production, on the safe side. Pull and migrate each have a 30-minute timeout;
+the other dispatched steps have a 10-minute timeout, with health checks capped
+at five minutes. All these bounds also respect the caller's context.
+Core database migrations use the `db migrate` API. Plugins apply their own SQL
+at boot; readiness waits for every declared boot migration to report
+`applied == expected`.
+
+`.nself/state/update-stack.json` records each step atomically before and after it
+runs, then fsyncs the state directory after renaming (except on Windows).
+`--dry-run` and `--plan` take the project lock (`.nself/op.lock`) but write
+nothing else, including the journal. They read an existing journal without probes
+and show its recorded results and the first non-successful step to resume.
+Retry the same command after interruption to resume the first non-successful
+step. A process killed during `start` resumes at `start`. The operation lock
+prevents two updaters from changing the project concurrently. A missing, stale,
+changed or unverifiable production backup stops execution with E403 (exit 4)
+before pulling or changing the stack. Changing the environment class while a run
+is unfinished is also refused. A terminal confirmation or `--yes` is required
+before any step; unattended execution without `--yes` returns E403.
+
+On a non-production migration failure, recovery runs in this order and stops at
+the first failure:
+
+1. Check that every pinned previous image still exists (`docker image inspect`).
+   If one is missing, nothing is stopped or restored, the database is untouched,
+   and the run ends `rollback-failed`.
+2. Stop the app services with `docker compose stop`. Postgres stays up. No
+   container, volume or backup is removed.
+3. Restore the step-one backup. Any `pg_restore` error line fails the restore,
+   whatever the compat mode.
+4. Start the saved immutable previous image set with
+   `docker compose -f <snapshot> up -d --remove-orphans`, which removes services
+   the update added (containers only, never volumes), then wait for health.
+5. Compare every table's exact row count with the counts captured immediately
+   after creating the dump, before pulling images.
+
+Concurrent writes during the dump or between the dump and count can still cause a
+mismatch; quiesce writers for an exact recovery comparison.
+Recovery has its own 30-minute timeout, tied to the migration timeout, covering
+all of the above together. It runs independently
+of the failed operation's cancellation or deadline.
+The backup and volumes remain retained. After successful recovery (`rolled-back`),
+the next run atomically archives the old journal as
+`.nself/state/update-stack.<run_id>.json` and starts a fresh update.
+`rollback-running` and `rollback-failed` remain blocked: inspect the retained
+backup, restored table counts, and previous image health, then archive the journal
+before a new update. A failed recovery, and every blocked resume, prints the
+step-one restore command, the pinned snapshot path
+(`.nself/state/update-stack-previous-*.json`) and the exact restart command.
+
+Production and staging never restore automatically. A failed `start`, `migrate`,
+`readiness` or `health` step records `awaiting-operator`, returns E139 (exit 2),
+and prints the exact `nself backup restore '<backup-id>'` command plus the
+snapshot restart command, because the database may have changed. It also tells
+you to archive the journal (move `.nself/state/update-stack.json` to
+`.nself/state/update-stack.<run_id>.json`) after a manual restore: a retry without
+archiving resumes the run at the failed step, which is right only when you fixed
+the cause and did not restore. A failed `pull`
+or `build` changes nothing: the message says so, tells you to retry, and prints no
+restore command. If a resume cannot re-verify the step-one backup (digest changed,
+file missing or truncated), it returns E403 and prints `nself backup verify
+'<backup-id>'` and a warning that the backup can no longer be trusted. It never
+prints a restore command for a backup it could not verify.
+
+If step-one verification fails, the journal's backup evidence is cleared (the
+dump file stays on disk) and the message names the backup, so the next
+`nself update stack --yes` takes a fresh dump.
+
+The run backup is tagged `keep-stack-<run_id>-<nonce>`. `nself backup prune`
+never deletes a backup tagged `keep` or `keep-*`, so it survives while a journal
+references it. nself never deletes it. To release it after a complete run, rename
+the file in the backup directory, replacing the `keep-` prefix of the tag with
+`stack-`; normal retention then applies.
+
+After the readiness step, the run tracks the manifest tables of the active plugins
+that apply migrations at boot in Hasura (`database.TrackPluginTables`, which
+retries once if Hasura metadata changes concurrently). A tracking failure fails
+the readiness step with E139.
+
+If releasing the project lock fails after a complete run, the command prints a
+warning and still succeeds; after a failed run both errors are reported.
+Inspect the failed step before retrying; a retry re-verifies the backup first.
+Successful JSON output contains `data.steps[]` with `name`, `result`, and
+`duration_ms`. Failures use the standard error envelope; detailed step results
+remain in the journal.
+
 ## v0.9 legacy detection
 
 When running on a v0.9 CLI (any `0.x.y` binary), `nself update --check` queries `ping.nself.org/version`, receives a migration block in the response, and surfaces the migration guide URL directly in the terminal:
@@ -78,6 +181,7 @@ The check is read-only and non-destructive. It does not install anything. See [[
 |---|---|
 | `images` | Refresh Docker image digests from registries |
 | `project` | Upgrade a project's layout from an older nself |
+| `stack` | Upgrade the stack with a verified backup and resumable steps |
 | `upgrade` | Upgrade the ɳSelf CLI (detects install method) |
 | `verify-sbom` | Verify the SBOM signature for a CLI release |
 <!-- END GENERATED:subcommands -->

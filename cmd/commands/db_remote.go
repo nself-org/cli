@@ -284,6 +284,11 @@ func dispatchRemoteIfNeeded(cmd *cobra.Command, remoteArgs ...string) (handled b
 		target.AllowVersionDrift = true
 	}
 
+	remoteArgs, err = withRemotePluginFlag(cmd, remoteArgs)
+	if err != nil {
+		return true, err
+	}
+
 	if !cmd.Flags().Changed("json") {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Running 'nself %s' on %s:%s (env=%s)...\n", strings.Join(remoteArgs, " "), target.SSHTarget, target.RemotePath, target.EnvName)
 	}

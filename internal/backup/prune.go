@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
@@ -19,6 +20,11 @@ type PruneOptions struct {
 	KeepMonthly int
 }
 
+// isKeepTag reports whether a backup tag holds the backup out of retention.
+// Inputs: the tag parsed from the file name. Outputs: true for "keep" and
+// "keep-*". Constraints: pure; "keeper" and other look-alikes are not holds.
+func isKeepTag(tag string) bool { return tag == "keep" || strings.HasPrefix(tag, "keep-") }
+
 // PruneResult summarizes what was (or would be) pruned.
 type PruneResult struct {
 	Kept   []string
@@ -28,7 +34,8 @@ type PruneResult struct {
 
 // Prune removes old backups according to the retention policy.
 // Retention: keep last N daily, N weekly (Sundays), N monthly (1st of month).
-// Backups tagged "keep" are never deleted.
+// Backups tagged "keep", or "keep-<anything>" (a caller-owned retention hold
+// such as the update-stack run backup), are never deleted.
 // WAL segments newer than the oldest surviving base backup are never deleted.
 func Prune(cfg *config.Config, opts PruneOptions) (*PruneResult, error) {
 	backupDir := cfg.Backup.Dir
@@ -68,8 +75,8 @@ func Prune(cfg *config.Config, opts PruneOptions) (*PruneResult, error) {
 	monthlySlots := make(map[string]int) // "2006-01" -> count
 
 	for _, e := range entries {
-		// Tagged "keep" are always preserved.
-		if e.Tag == "keep" {
+		// Tagged "keep" or "keep-..." are always preserved.
+		if isKeepTag(e.Tag) {
 			keep[e.ID] = true
 			continue
 		}

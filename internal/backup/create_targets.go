@@ -36,7 +36,7 @@ func createFullBackup(ctx context.Context, cfg *config.Config, backupDir, ts, ta
 		db = "nself"
 	}
 
-	filename := fmt.Sprintf("%s_full_%s%s.dump", cfg.ProjectName, ts, tag)
+	filename := BackupFileName(cfg.ProjectName, "full", ts, tag, ".dump")
 	outputPath := filepath.Join(backupDir, filename)
 
 	if err := os.MkdirAll(backupDir, 0700); err != nil {
@@ -140,7 +140,7 @@ func createFullBackup(ctx context.Context, cfg *config.Config, backupDir, ts, ta
 
 // createMetadataBackup dumps Hasura metadata and env config.
 func createMetadataBackup(ctx context.Context, cfg *config.Config, backupDir, ts, tag string) error {
-	filename := fmt.Sprintf("%s_metadata_%s%s.tar.gz", cfg.ProjectName, ts, tag)
+	filename := BackupFileName(cfg.ProjectName, "metadata", ts, tag, ".tar.gz")
 	outputPath := filepath.Join(backupDir, filename)
 
 	if err := os.MkdirAll(backupDir, 0700); err != nil {

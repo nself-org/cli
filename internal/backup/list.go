@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -93,12 +94,28 @@ func newBackupEntry(name string, size int64, mod time.Time) BackupEntry {
 		Type:      inferBackupType(name),
 		Encrypted: strings.HasSuffix(name, ".age"),
 	}
-	// Extract tag if present (format: project_type_timestamp_tag.ext).
-	parts := strings.Split(be.ID, "_")
-	if len(parts) > 3 {
-		be.Tag = strings.Join(parts[3:], "_")
-	}
+	be.Tag = parseBackupTag(be.ID)
 	return be
+}
+
+// backupTagPattern matches "<project>_<type>_<YYYYMMDD>_<HHMMSS>[_<tag>]" as
+// create.go names it. The timestamp itself holds "_", and a project name may
+// too, so the tag is whatever follows the type token and the timestamp.
+var backupTagPattern = regexp.MustCompile(`^(?:.*?_)?(?:full|metadata|minio|wal)_\d{8}_\d{6}(?:_(.*))?$`)
+
+// parseBackupTag returns the tag of a backup ID, or "" when it has none.
+// Inputs: ID (file name without .age and extension). Outputs: the tag text.
+// Constraints: a name that does not follow create.go's layout keeps the legacy
+// split (fourth "_" field onward) so hand-named backups parse as before.
+func parseBackupTag(id string) string {
+	if m := backupTagPattern.FindStringSubmatch(id); m != nil {
+		return m[1]
+	}
+	parts := strings.Split(id, "_")
+	if len(parts) > 3 {
+		return strings.Join(parts[3:], "_")
+	}
+	return ""
 }
 
 // listRemote lists backups at opts.Remote, newest first.

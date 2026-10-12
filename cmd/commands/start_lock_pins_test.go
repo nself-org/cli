@@ -57,6 +57,9 @@ func newMatrixRow(t *testing.T, in compose.ImageInput) *matrixRow {
 	if ref, ok := compose.LockedRef(in.Entry); ok {
 		r.defVer, r.legacyVer = ref.Version, ref.LegacyVersion()
 	}
+	if in.NotInitDefault { // init never writes this entry's version, so setting it is an override (P7-LIVE-23)
+		r.defVer, r.legacyVer = "", ""
+	}
 	listed := map[string]bool{}
 	for _, v := range in.Vars {
 		listed[v] = true

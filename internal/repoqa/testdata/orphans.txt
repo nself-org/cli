@@ -19,5 +19,4 @@ internal/model
 internal/plugin/lifecycle
 internal/runbook
 internal/runtime
-internal/upgrade
 internal/webhook

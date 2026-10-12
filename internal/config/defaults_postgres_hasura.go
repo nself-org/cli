@@ -36,6 +36,8 @@ func applyDefaultsPostgres(cfg *Config) error {
 		slog.Debug("default", "key", "POSTGRES_USER", "value", cfg.Postgres.User)
 	}
 	if cfg.Postgres.Password == "" {
+		// Generated for the first build only: build persists it to .env.secrets
+		// (internal/build/orchestrator_secrets.go) so later loads read it back.
 		secret, err := generateSecureRandom(24)
 		if err != nil {
 			return fmt.Errorf("generating POSTGRES_PASSWORD: %w", err)
@@ -78,6 +80,8 @@ func applyDefaultsHasuraCreds(cfg *Config) error {
 		slog.Debug("default", "key", "HASURA_VERSION", "value", cfg.Hasura.Version)
 	}
 	if cfg.Hasura.AdminSecret == "" {
+		// Generated for the first build only: build persists it to .env.secrets
+		// (internal/build/orchestrator_secrets.go) so later loads read it back.
 		secret, err := generateSecureRandom(44)
 		if err != nil {
 			return fmt.Errorf("generating HASURA_GRAPHQL_ADMIN_SECRET: %w", err)

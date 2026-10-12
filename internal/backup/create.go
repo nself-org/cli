@@ -165,6 +165,14 @@ func emitMetric(cfg *config.Config, bt BackupType, start time.Time, backupDir st
 	}
 }
 
+// BackupFileName builds the file name for a project backup. It is the single
+// naming rule behind full and metadata backups; parseBackupTag reads it back.
+// Inputs: project name, type token (full|metadata), timestamp, "_tag" or "",
+// extension with its dot. Outputs: "<project>_<type>_<ts><tag><ext>".
+func BackupFileName(project, typ, ts, tag, ext string) string {
+	return fmt.Sprintf("%s_%s_%s%s%s", project, typ, ts, tag, ext)
+}
+
 func createSingle(ctx context.Context, cfg *config.Config, bt BackupType, backupDir string, opts CreateOptions) error {
 	ts := time.Now().Format("20060102_150405")
 	tag := ""
