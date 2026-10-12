@@ -50,7 +50,7 @@ jobs:
     # Valid job-level `if:` (github context only — no secrets reference).
     if: github.event_name == 'workflow_dispatch'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Verify ping_api service directory exists
         run: |

@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Run security lint
         run: bash scripts/sec-lint.sh internal
@@ -38,7 +38,7 @@ jobs:
     # .claude/docs/doctrines/ci-cd-green.md § The ACCEPTED/Expiry Exception Pattern.
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Run CI-masking lint
         run: bash scripts/ci-masking-lint.sh

@@ -50,7 +50,7 @@ jobs:
       HETZNER_NSELF_TOKEN: ${{ secrets.HETZNER_NSELF_TOKEN }}
       SOAK_RUN_T09: ${{ inputs.run_t09 == 'true' && '1' || '0' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Install deps
         run: |

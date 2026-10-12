@@ -55,7 +55,7 @@ jobs:
       CGO_ENABLED: 0
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -102,10 +102,10 @@ jobs:
     needs: extract-version
     steps:
       - name: Checkout CLI repo
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: Checkout Admin repo
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: nself-org/admin
           path: admin-repo
@@ -172,7 +172,7 @@ jobs:
     needs: extract-version
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: Install syft
         uses: anchore/sbom-action/download-syft@v0

@@ -52,7 +52,7 @@ jobs:
 
       - name: Checkout
         if: ${{ inputs.arch == 'both' || inputs.arch == matrix.goarch }}
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: Set up Go
         if: ${{ inputs.arch == 'both' || inputs.arch == matrix.goarch }}
