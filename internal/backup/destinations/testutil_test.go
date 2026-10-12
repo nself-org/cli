@@ -57,18 +57,28 @@ func fakeBin(t *testing.T) string {
 	return filepath.Join(dir, "log")
 }
 
+// pinPath returns a pin file path in a fresh 0700 directory whose parent is
+// 0700 too (D-0637). t.TempDir follows the umask, so on a host with umask 002
+// (ps1) it is 0775: the store refuses a group-writable pin dir, and under
+// compat.V15 a group-writable parent as well. The production checks stay.
+func pinPath(t *testing.T) string {
+	t.Helper()
+	base := t.TempDir()
+	if err := os.Chmod(base, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(base, "pin")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(dir, "kh")
+}
+
 // hostFixture returns an inventory with server "bk1" and a known_hosts file
 // pinning it.
 func hostFixture(t *testing.T) *Inventory {
 	t.Helper()
-	// The pinned-keys directory must be 0700. t.TempDir follows the umask, so a
-	// host with umask 002 (ps1) would make it group-writable and the store
-	// would refuse it; create our own directory with an explicit mode.
-	dir := filepath.Join(t.TempDir(), "pin")
-	if err := os.Mkdir(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	kh := filepath.Join(dir, "kh")
+	kh := pinPath(t)
 	pin := remote.PinnedHostKeys{Path: kh}
 	if err := pin.Add("nself-ci-bk1", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAA"); err != nil {
 		t.Fatal(err)

@@ -26,10 +26,7 @@ func TestOwner_UIDRule(t *testing.T) {
 }
 
 func TestOwner_OwnFileAndDirPass(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.Chmod(dir, 0o700); err != nil { // a 002 umask makes TempDir 0775
-		t.Fatal(err)
-	}
+	dir := safeTempDir(t) // 0700, and no writable ancestor under compat.V15
 	f := filepath.Join(dir, "f")
 	if err := os.WriteFile(f, nil, 0o600); err != nil {
 		t.Fatal(err)

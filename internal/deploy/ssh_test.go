@@ -10,7 +10,7 @@ import (
 
 func TestComposeOnlyDeployRequiresKnownHost(t *testing.T) {
 	t.Setenv("NSELF_V15", "1")
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", pinHome(t))
 	bin := t.TempDir()
 	marker := filepath.Join(bin, "rsync-ran")
 	for name, body := range map[string]string{

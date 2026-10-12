@@ -153,7 +153,7 @@ func TestGoldenArgv_DeployViaSshDefaultRemotePath(t *testing.T) {
 // policy, a HostKeyAlias for the IP host, and an absolute local operand.
 func TestGoldenArgv_PushSecrets(t *testing.T) {
 	requireKeygen(t)
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", pinHome(t))
 	read := installFakeSSHTools(t)
 	installFakeKeyscan(t)
 	if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {

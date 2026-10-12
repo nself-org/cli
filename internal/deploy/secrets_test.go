@@ -171,7 +171,7 @@ func TestPushSecretsRemotePathValidation(t *testing.T) {
 // reaches scp as an absolute path.
 func TestPushSecretsLocalOperand(t *testing.T) {
 	requireKeygen(t)
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", pinHome(t))
 	read := installFakeSSHTools(t)
 	installFakeKeyscan(t)
 	if err := (remote.PinnedHostKeys{Path: DeployKnownHostsPath()}).Add("nself-203.0.113.7-22", "ssh-ed25519 AQID"); err != nil {
@@ -203,7 +203,7 @@ func TestPushSecretsLocalOperand(t *testing.T) {
 // the host key; an unknown key is refused and scp never runs.
 func TestPushSecretsUnknownHostRefused(t *testing.T) {
 	t.Setenv("NSELF_V15", "")
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", pinHome(t))
 	read := installFakeSSHTools(t)
 	installFakeKeyscan(t)
 	dir := t.TempDir()

@@ -165,7 +165,7 @@ func TestSSHTransportBuilder(t *testing.T) {
 }
 
 func TestDeployArgvHostileInputs(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	t.Setenv("HOME", pinHome(t))
 	t.Setenv("NSELF_V15", "")
 	read := installFakeSSHTools(t)
 	scans := installFakeKeyscan(t)

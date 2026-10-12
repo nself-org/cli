@@ -19,7 +19,8 @@
 //              unix they must also be owned by the effective user or root.
 //              Every ancestor directory (given and resolved path) must be
 //              owned by the effective user or root and not group/world
-//              writable unless root-owned and sticky (sshd's secure_path).
+//              writable unless root-owned and sticky (sshd's secure_path);
+//              under compat.V15 only, v1.4 warns once and goes on (D-0675).
 //              The flock is polled and refused after pinLockWait (30s).
 //              Lines are tokenised as ssh does (' ' and '\t' only, one
 //              trailing '\r' dropped); a control byte anywhere in a key line
