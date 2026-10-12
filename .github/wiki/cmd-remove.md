@@ -3,6 +3,8 @@
 
 <!-- BEGIN PROSE:summary -->
 > Remove an installed plugin or bundle.
+
+**Plugin data.** In v1.4 mode a plugin remove drops the plugin's schema/tables unless `--keep-data`, and warns when it does so by default. From v1.5 (`NSELF_V15=1`) a plugin remove keeps the data, as a bundle remove does; `--delete-data` drops it and needs `--yes` or a `y` answer on a terminal, otherwise it stops with E403 (exit 4) and removes nothing. `--force` past E133 (a plugin a bundle still references) does not change this. See [[Compat-V15]].
 <!-- END PROSE:summary -->
 
 ## Synopsis
@@ -55,6 +57,7 @@ name removes the whole bundle.
 ```bash
 nself remove waf
   nself remove nchat
+  nself remove waf --delete-data --yes   # v1.5: also drop the plugin's data
 ```
 <!-- END PROSE:examples -->
 

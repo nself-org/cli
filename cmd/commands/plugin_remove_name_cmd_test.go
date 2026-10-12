@@ -2,7 +2,8 @@ package commands
 
 // Purpose: P7-PLUG-20 fix, command level: `remove` and `plugin remove` refuse a
 // path-shaped plugin name before the dry-run plan, the bundle ledger lookup and
-// the removal, in v1.4 and v1.5 mode, with and without --force.
+// the removal, in v1.4 and v1.5 mode, with and without --force, and with
+// --dry-run on the plugin route (D-0546).
 // Inputs: chatFixture (plugins bots and livekit, bundle chat recorded) plus a
 // victim directory next to the plugin directory.
 
@@ -36,6 +37,9 @@ func TestRemoveRefusesPathShapedNamesCmd(t *testing.T) {
 		runners := []runner{
 			{"plugin remove", func(a []string) error { return runPluginRemove(pluginRemoveCmd, a) }, pluginRemoveCmd, []string{"", "force"}},
 			{"remove", func(a []string) error { return runRemove(removeCmd, a) }, removeCmd, []string{"", "force", "dry-run"}},
+			// D-0546: the plugin route's own guard; runRemove validates first, so only a direct
+			// call reaches runPluginRemove's dry-run plan with a path-shaped name.
+			{"plugin route", func(a []string) error { return runPluginRemove(removeCmd, a) }, removeCmd, []string{"dry-run"}},
 		}
 		for _, r := range runners {
 			for _, name := range []string{"./bots", "../victim", "bots/", "../plugins/bots", "../../victim"} {

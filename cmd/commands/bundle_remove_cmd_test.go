@@ -174,19 +174,19 @@ func TestPluginRemoveDryRunCmd(t *testing.T) {
 		if !bytes.Equal(before, after) {
 			t.Error("a dry run changed the ledger")
 		}
-		want := "would proceed"
+		want, data := "would proceed", "data: drop"
 		if compat.V15() {
-			want = "would refuse"
+			want, data = "would refuse", "data: preserve" // D-0330: v1.5 keeps plugin data by default
 		}
-		for _, w := range []string{"(dry-run) no changes made.", "chat", want, "data: drop"} {
+		for _, w := range []string{"(dry-run) no changes made.", "chat", want, data} {
 			if !strings.Contains(stderr, w) {
 				t.Errorf("dry-run output lacks %q:\n%s", w, stderr)
 			}
 		}
-		// --delete-data on a plugin target matches the default; with --keep-data it is contradictory
+		// a dry run with --delete-data needs no confirmation; with --keep-data it is contradictory
 		setFlags(t, removeCmd, "delete-data")
 		if runErr = runPluginRemove(removeCmd, []string{"bots"}); runErr != nil {
-			t.Errorf("--delete-data on a plugin (no-op) failed: %v", runErr)
+			t.Errorf("--delete-data dry run failed: %v", runErr)
 		}
 		setFlags(t, removeCmd, "keep-data")
 		if runErr = runPluginRemove(removeCmd, []string{"bots"}); runErr == nil || !strings.Contains(runErr.Error(), "cannot be used together") {
