@@ -26,6 +26,9 @@ on:
       - internal/compose/generator.go
       - internal/compose/proxy_omit*
       - scripts/e2e/**
+      - cmd/commands/ssl_acme*.go
+      - internal/ssl/acme/**
+      - internal/docker/run_oneshot*
       - .github/workflows/proxy-swap-e2e.yml
 
 permissions:
@@ -62,7 +65,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.leg == 'round-trip' }}
         run: bash scripts/e2e/proxy-swap.sh --kill-mid-remove
       - name: Renew leg
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.leg == 'renew' }}
+        if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.leg == 'renew') }}
         run: bash scripts/e2e/proxy-swap.sh --renew
       - name: Upload evidence
         if: always()

@@ -190,10 +190,9 @@ func (r *acmeRun) printLineage(l acme.Lineage) {
 // probeHTTP checks that the served nginx answers the HTTP-01 challenge location
 // for host, so a missing location fails here with a remediation, not at the CA.
 func (r *acmeRun) probeHTTP(ctx context.Context, host string) error {
-	env, _ := ssl.ServedEnv(r.res.Root, r.cfg.Env)
-	if err := acmeProbeHTTP(ctx, r.res.SSLDir, httpProbeAddr(env), host, nil); err != nil {
-		return e151(acmeRefuse("run `nself build` and restart nginx so the challenge location is served",
-			"the served nginx does not answer the HTTP-01 challenge location for %s: %v", host, err))
+	if err := acmeProbeHTTP(ctx, r.res.SSLDir, httpProbeAddr(r.servedEnv()), host, nil); err != nil {
+		return e151(acmeRefuse("run `nself build` and restart "+r.proxyName()+" so the challenge location is served",
+			"the served %s does not answer the HTTP-01 challenge location for %s: %v", r.proxyName(), host, err))
 	}
 	return nil
 }
@@ -253,8 +252,7 @@ func (r *acmeRun) verifier(l acme.Lineage, cert []byte) func(context.Context) er
 		return func(context.Context) error { return errors.New("issued certificate is not PEM") }
 	}
 	sum := sha256.Sum256(b.Bytes)
-	env, _ := ssl.ServedEnv(r.res.Root, r.cfg.Env)
-	addr, snis := ssl.ServedAddr(env), r.probeHosts(l)
+	addr, snis := ssl.ServedAddr(r.servedEnv()), r.probeHosts(l)
 	return func(ctx context.Context) error {
 		for _, sni := range snis {
 			if err := pollServed(ctx, addr, sni, hex.EncodeToString(sum[:])); err != nil {

@@ -14,12 +14,11 @@ package commands
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/config"
@@ -55,6 +54,7 @@ var traefikComposeConfig = func(ctx context.Context, workdir string) ([]byte, er
 // traefikReloader implements acme.Reloader for the traefik provider.
 type traefikReloader struct {
 	workdir, sslDir string
+	roots           []string // host paths the one-shot may mount from: the project and the served stack
 	config          func(context.Context, string) ([]byte, error)
 	run             func(context.Context, docker.RunSpec) (string, string, error)
 }
@@ -63,14 +63,14 @@ type traefikReloader struct {
 // previous dynamic.yml in place (the renderer writes atomically), so a failure
 // here means nothing was reloaded.
 func (t traefikReloader) Reload(ctx context.Context) error {
-	if err := traversableGenerations(t.sslDir); err != nil {
+	if err := prepareGenerations(t.workdir, t.sslDir); err != nil {
 		return err
 	}
 	raw, err := t.config(ctx, t.workdir)
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", traefikConfigService, err)
 	}
-	spec, err := traefikConfigSpec(raw)
+	spec, err := traefikConfigSpec(raw, t.roots)
 	if err != nil {
 		return err
 	}
@@ -81,79 +81,13 @@ func (t traefikReloader) Reload(ctx context.Context) error {
 	return nil
 }
 
-// traversableGenerations lets the renderer stat the files inside ACME generation
-// directories. Core writes them 0700 (files 0600) as the operator; the renderer
-// runs as root with every capability dropped, which can neither enter nor stat
-// inside a directory owned by another uid ("fullchain.pem missing"). Adding the
-// execute bit for others lets it stat; the key files stay 0600 and unreadable.
-func traversableGenerations(sslDir string) error {
-	dirs, err := filepath.Glob(filepath.Join(sslDir, "certificates", ".*.gen-*"))
-	if err != nil {
-		return err
-	}
-	for _, d := range dirs {
-		fi, err := os.Lstat(d)
-		if err != nil || !fi.IsDir() || fi.Mode().Perm()&0o001 != 0 {
-			continue
-		}
-		if err := os.Chmod(d, fi.Mode().Perm()|0o011); err != nil {
-			return fmt.Errorf("making %s traversable for the renderer: %w", d, err)
-		}
-	}
-	return nil
-}
-
-// traefikConfigSpec turns the compose model of traefik-config into a one-shot
-// run that keeps the service's own hardening: read-only root, no capabilities,
-// no-new-privileges, and no network (the renderer needs none).
-func traefikConfigSpec(raw []byte) (docker.RunSpec, error) {
-	var doc struct {
-		Services map[string]struct {
-			Image       string         `json:"image"`
-			Command     []string       `json:"command"`
-			Entrypoint  []string       `json:"entrypoint"`
-			Environment map[string]any `json:"environment"`
-			Tmpfs       []string       `json:"tmpfs"`
-			User        string         `json:"user"`
-			ReadOnly    bool           `json:"read_only"`
-			CapDrop     []string       `json:"cap_drop"`
-			SecurityOpt []string       `json:"security_opt"`
-			Volumes     []struct {
-				Type     string `json:"type"`
-				Source   string `json:"source"`
-				Target   string `json:"target"`
-				ReadOnly bool   `json:"read_only"`
-			} `json:"volumes"`
-		} `json:"services"`
-	}
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return docker.RunSpec{}, fmt.Errorf("parsing the compose model of %s: %w", traefikConfigService, err)
-	}
-	s, ok := doc.Services[traefikConfigService]
-	if !ok || s.Image == "" || len(s.Command) == 0 {
-		return docker.RunSpec{}, fmt.Errorf("the compose model has no usable %s service (is the traefik plugin installed and built?)", traefikConfigService)
-	}
-	if len(s.Entrypoint) > 0 || len(s.Environment) > 0 || len(s.Tmpfs) > 0 {
-		return docker.RunSpec{}, fmt.Errorf("%s sets an entrypoint, environment or tmpfs, which a one-shot run does not carry over; refusing rather than rendering differently", traefikConfigService)
-	}
-	spec := docker.RunSpec{Image: s.Image, Args: s.Command, User: s.User, Network: "none",
-		ReadOnly: s.ReadOnly, CapDrop: s.CapDrop, SecurityOpt: s.SecurityOpt}
-	for _, v := range s.Volumes {
-		if v.Type != "bind" {
-			return docker.RunSpec{}, fmt.Errorf("%s mounts %s as a %s volume; only bind mounts are supported", traefikConfigService, v.Target, v.Type)
-		}
-		spec.Mounts = append(spec.Mounts, docker.Mount{Source: v.Source, Destination: v.Target, Type: "bind", ReadOnly: v.ReadOnly})
-	}
-	return spec, nil
-}
-
 // useProvider records the proxy provider and, for traefik, points the preflight
 // at the traefik container and its /nself/ssl mount instead of nginx's.
 func (r *acmeRun) useProvider(in *acme.Input) error {
 	var err error
 	if r.provider, err = acmeProxyProvider(r.cfg, r.workdir); err != nil {
 		// `nself build` refuses the same configuration; renewal must not stop serving nginx stacks over it.
-		r.say("warning: proxy provider not determined (%v); assuming nginx", err)
+		slog.Warn("proxy provider not determined; assuming nginx", "error", err)
 		r.provider = build.ProviderNginx
 	}
 	if r.provider != build.ProviderTraefik {
@@ -186,7 +120,8 @@ func (r *acmeRun) useProvider(in *acme.Input) error {
 // reloader is the install step that makes the serving proxy pick up new files.
 func (r *acmeRun) reloader() acme.Reloader {
 	if r.provider == build.ProviderTraefik {
-		return traefikReloader{workdir: r.workdir, sslDir: r.res.SSLDir, config: traefikComposeConfig, run: acmeD.run}
+		return traefikReloader{workdir: r.workdir, sslDir: r.res.SSLDir, roots: []string{r.workdir, r.res.Root},
+			config: traefikComposeConfig, run: acmeD.run}
 	}
 	return acme.NginxReloader{Container: r.res.Container, Exec: acmeD.exec}
 }
@@ -210,18 +145,41 @@ func (r *acmeRun) printResolution() {
 
 // afterFailedInstall re-renders the proxy configuration once Install restored
 // the previous generation, so dynamic.yml names the restored pair even if the
-// failed attempt got as far as writing it. Install itself re-renders after a
-// failed served-certificate check; this covers a failed reload. A failing
-// re-render is added to the error: the restored pair is on disk but traefik may
-// still be pointed at the failed generation.
+// failed attempt got as far as writing it. It always runs (a render that is
+// already right is a no-op for traefik) and does not depend on ctx: a cancelled
+// or expired ctx is exactly when Install's own re-render could not run. A
+// failing re-render is added to the error: the restored pair is on disk but
+// traefik may still be pointed at the failed generation.
 func (r *acmeRun) afterFailedInstall(ctx context.Context, err error) error {
-	if r.provider != build.ProviderTraefik || strings.Contains(err.Error(), "served certificate check failed") {
+	if r.provider != build.ProviderTraefik {
 		return err
 	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	defer cancel()
 	if rerr := r.reloader().Reload(ctx); rerr != nil {
 		return errors.Join(err, fmt.Errorf("re-rendering %s after the restore also failed (dynamic.yml may still name the failed generation; fix the cause and re-run): %w", traefikConfigService, rerr))
 	}
 	return err
+}
+
+// servedEnv is the served stack's env as the probes read it. traefik publishes
+// ${NSELF_HTTPS_PORT:-443} and ${NSELF_HTTP_PORT:-80} on every address, so the
+// nginx keys (NGINX_SSL_PORT, NGINX_HTTP_PORT, NGINX_BIND_IP) are replaced by
+// those, else the probes would dial a port traefik does not serve.
+func (r *acmeRun) servedEnv() map[string]string {
+	env, _ := ssl.ServedEnv(r.res.Root, r.cfg.Env)
+	if r.provider != build.ProviderTraefik {
+		return env
+	}
+	out := map[string]string{}
+	for k, v := range env {
+		out[k] = v
+	}
+	for _, k := range []string{"NGINX_SSL_PORT", "NGINX_HTTPS_PORT", "NGINX_HTTP_PORT", "NGINX_BIND_IP"} {
+		delete(out, k)
+	}
+	out["NGINX_HTTPS_PORT"], out["NGINX_HTTP_PORT"] = env["NSELF_HTTPS_PORT"], env["NSELF_HTTP_PORT"]
+	return out
 }
 
 // probeHosts picks one served host per target. Under nginx it is the first host

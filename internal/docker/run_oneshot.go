@@ -39,6 +39,8 @@ type RunSpec struct {
 	User string
 	// Network is a docker network name; empty leaves the default bridge.
 	Network string
+	// PullNever refuses to pull a missing image (`--pull never`): the image must already exist locally.
+	PullNever bool
 	// ReadOnly mounts the root filesystem read-only (`--read-only`).
 	ReadOnly bool
 	// CapDrop lists capabilities to drop (`--cap-drop X`); "ALL" drops every one.
@@ -59,6 +61,9 @@ func buildRunArgs(spec RunSpec) ([]string, error) {
 	}
 	if spec.Network != "" {
 		args = append(args, "--network", spec.Network)
+	}
+	if spec.PullNever {
+		args = append(args, "--pull", "never")
 	}
 	if spec.ReadOnly {
 		args = append(args, "--read-only")

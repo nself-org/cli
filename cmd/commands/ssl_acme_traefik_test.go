@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -29,13 +30,16 @@ func init() {
 
 const traefikTestImage = "nself/nself-traefik-render:r2"
 
-// traefikComposeJSON is `docker compose config --format json` for traefik-config.
-const traefikComposeJSON = `{"services":{"traefik-config":{"image":"` + traefikTestImage + `","user":"0:0",
+// traefikComposeJSON is `docker compose config --format json` for traefik-config,
+// with its mounts under the fixture's project and served stack.
+func traefikComposeJSON(project, served string) string {
+	return `{"services":{"traefik-config":{"image":"` + traefikTestImage + `","user":"0:0",
  "command":["--routes","/nself/routes.json","--out","/dynamic","--ssl","/nself/ssl","--static-out","/static"],
  "read_only":true,"cap_drop":["ALL"],"security_opt":["no-new-privileges:true"],
- "volumes":[{"type":"bind","source":"/p/.nself/generated/routes.json","target":"/nself/routes.json","read_only":true},
-  {"type":"bind","source":"/p/ssl","target":"/nself/ssl","read_only":true},
-  {"type":"bind","source":"/p/.nself/generated/traefik","target":"/dynamic"}]}}}`
+ "volumes":[{"type":"bind","source":"` + project + `/.nself/generated/routes.json","target":"/nself/routes.json","read_only":true},
+  {"type":"bind","source":"` + served + `/ssl","target":"/nself/ssl","read_only":true},
+  {"type":"bind","source":"` + project + `/.nself/generated/traefik","target":"/dynamic"}]}}}`
+}
 
 // useTraefik switches the fixture to the traefik provider. renders records the
 // traefik-config one-shots; failOn (1-based) makes that render fail.
@@ -45,7 +49,9 @@ func (f *acmeFix) useTraefik(failOn int) (renders *[]docker.RunSpec) {
 	t := f.t
 	t.Cleanup(func() { acmeProxyProvider, traefikComposeConfig = oldP, oldC })
 	acmeProxyProvider = func(*config.Config, string) (string, error) { return build.ProviderTraefik, nil }
-	traefikComposeConfig = func(context.Context, string) ([]byte, error) { return []byte(traefikComposeJSON), nil }
+	traefikComposeConfig = func(context.Context, string) ([]byte, error) {
+		return []byte(traefikComposeJSON(f.project, f.served)), nil
+	}
 	acmeD.run = func(ctx context.Context, s docker.RunSpec) (string, string, error) {
 		if s.Image != traefikTestImage {
 			return f.fakeLego(ctx, s)
@@ -88,7 +94,7 @@ func TestAcmeReloaderSelect(t *testing.T) {
 		t.Fatalf("traefik renew: err=%v execs=%v renders=%d\n%s", err, f.execs, len(*renders), out)
 	}
 	spec := (*renders)[0]
-	if spec.Network != "none" || !spec.ReadOnly || !reflect.DeepEqual(spec.CapDrop, []string{"ALL"}) ||
+	if spec.Network != "none" || !spec.PullNever || !spec.ReadOnly || !reflect.DeepEqual(spec.CapDrop, []string{"ALL"}) ||
 		!reflect.DeepEqual(spec.SecurityOpt, []string{"no-new-privileges:true"}) || spec.User != "0:0" || len(spec.Mounts) != 3 {
 		t.Errorf("traefik-config run lost the service's hardening: %+v", spec)
 	}
@@ -145,8 +151,9 @@ func TestAcmeTraefikRestoreRenderFailureIsReported(t *testing.T) {
 	}
 }
 
-// A failed served-certificate check under traefik: Install re-renders itself, so
-// the command must not render a second time.
+// A failed served-certificate check under traefik: Install re-renders itself
+// (with the dead ctx when the check timed out), and the command renders once
+// more, detached from ctx, so the restored pair is what dynamic.yml names.
 func TestAcmeTraefikVerifyRollback(t *testing.T) {
 	f := newACMEFix(t)
 	renders := f.useTraefik(0)
@@ -165,8 +172,8 @@ func TestAcmeTraefikVerifyRollback(t *testing.T) {
 	if string(acmeServed(t, f)) != string(before) {
 		t.Error("previous generation not restored after a fingerprint mismatch")
 	}
-	if len(*renders) != 3 { // setup, the renewal's reload, Install's own re-render after the failed check
-		t.Errorf("renders = %d, want 3", len(*renders))
+	if len(*renders) != 4 { // setup, the renewal's reload, Install's re-render after the failed check, ours (idempotent)
+		t.Errorf("renders = %d, want 4", len(*renders))
 	}
 }
 
@@ -204,18 +211,116 @@ func TestAcmeTraefikGenerationDirsTraversable(t *testing.T) {
 }
 
 func TestAcmeTraefikSpecRefusals(t *testing.T) {
+	roots := []string{"/p"}
+	mount := func(src, dst string, ro bool) string {
+		return `{"type":"bind","source":"` + src + `","target":"` + dst + `","read_only":` + map[bool]string{true: "true", false: "false"}[ro] + `}`
+	}
+	svc := func(extra string) string {
+		return `{"services":{"traefik-config":{"image":"nself/r:1","command":["x"]` + extra + `}}}`
+	}
 	for name, raw := range map[string]string{
-		"no service":   `{"services":{}}`,
-		"named volume": `{"services":{"traefik-config":{"image":"i","command":["x"],"volumes":[{"type":"volume","source":"v","target":"/d"}]}}}`,
-		"not json":     `nope`,
-		"no image":     `{"services":{"traefik-config":{"command":["x"]}}}`,
-		"no command":   `{"services":{"traefik-config":{"image":"i"}}}`,
-		"entrypoint":   `{"services":{"traefik-config":{"image":"i","command":["x"],"entrypoint":["/bin/sh"]}}}`,
-		"tmpfs":        `{"services":{"traefik-config":{"image":"i","command":["x"],"tmpfs":["/tmp"]}}}`,
-		"environment":  `{"services":{"traefik-config":{"image":"i","command":["x"],"environment":{"A":"b"}}}}`,
+		"no service":        `{"services":{}}`,
+		"named volume":      svc(`,"volumes":[{"type":"volume","source":"v","target":"/d"}]`),
+		"not json":          `nope`,
+		"no image":          `{"services":{"traefik-config":{"command":["x"]}}}`,
+		"no command":        `{"services":{"traefik-config":{"image":"i"}}}`,
+		"entrypoint":        svc(`,"entrypoint":["/bin/sh"]`),
+		"tmpfs":             svc(`,"tmpfs":["/tmp"]`),
+		"environment":       svc(`,"environment":{"A":"b"}`),
+		"image as a flag":   `{"services":{"traefik-config":{"image":"-v=/:/h","command":["x"]}}}`,
+		"image with space":  `{"services":{"traefik-config":{"image":"a b","command":["x"]}}}`,
+		"mount outside":     svc(`,"volumes":[` + mount("/etc", "/nself/ssl", true) + `]`),
+		"mount of the root": svc(`,"volumes":[` + mount("/p", "/nself/ssl", true) + `]`),
+		"dotdot source":     svc(`,"volumes":[` + mount("/p/../etc", "/nself/ssl", true) + `]`),
+		"writable ssl":      svc(`,"volumes":[` + mount("/p/ssl", "/nself/ssl", false) + `]`),
+		"relative target":   svc(`,"volumes":[` + mount("/p/x", "dynamic", false) + `]`),
 	} {
-		if _, err := traefikConfigSpec([]byte(raw)); err == nil {
+		if _, err := traefikConfigSpec([]byte(raw), roots); err == nil {
 			t.Errorf("%s: want a refusal", name)
 		}
+	}
+	ok := svc(`,"volumes":[` + mount("/p/ssl", "/nself/ssl", true) + `,` + mount("/p/d", "/dynamic", false) + `]`)
+	if spec, err := traefikConfigSpec([]byte(ok), roots); err != nil || !spec.PullNever || len(spec.Mounts) != 2 {
+		t.Errorf("valid spec refused or without --pull never: %+v %v", spec, err)
+	}
+}
+
+// The renewal timer runs as root: the new generation is handed to the ids the
+// build exported for traefik, and nothing moves without them or when not root.
+func TestAcmeTraefikGenerationHandOver(t *testing.T) {
+	root := t.TempDir()
+	gen := filepath.Join(root, "ssl", "certificates", ".x.gen-3")
+	if err := os.MkdirAll(gen, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gen, "privkey.pem"), []byte("k"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var chowned []string
+	oldE, oldC := traefikEuid, traefikChown
+	t.Cleanup(func() { traefikEuid, traefikChown = oldE, oldC })
+	traefikChown = func(p string, uid, gid int) error {
+		chowned = append(chowned, p+" "+strconv.Itoa(uid)+":"+strconv.Itoa(gid))
+		return nil
+	}
+	run := func(euid int) []string {
+		chowned = nil
+		traefikEuid = func() int { return euid }
+		if err := prepareGenerations(root, filepath.Join(root, "ssl")); err != nil {
+			t.Fatal(err)
+		}
+		return chowned
+	}
+	if got := run(0); len(got) != 0 {
+		t.Errorf("no exported ids: nothing may move, got %v", got)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".nself"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".nself", "compose.env"), []byte("NSELF_HOST_UID=1001\nNSELF_HOST_GID=1002\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := run(1001); len(got) != 0 {
+		t.Errorf("not root: nothing may move, got %v", got)
+	}
+	got := run(0)
+	if len(got) != 2 || got[0] != gen+" 1001:1002" || got[1] != filepath.Join(gen, "privkey.pem")+" 1001:1002" {
+		t.Errorf("hand-over = %v", got)
+	}
+	if fi, _ := os.Stat(gen); fi.Mode().Perm() != 0o711 {
+		t.Errorf("generation dir mode = %v, want 0711", fi.Mode().Perm())
+	}
+}
+
+// Install's own re-render uses the dead ctx when a served-certificate check timed
+// out; ours must not.
+func TestAcmeTraefikRerenderIgnoresCancelledContext(t *testing.T) {
+	f := newACMEFix(t)
+	f.useTraefik(0)
+	var live []bool
+	acmeD.run = func(ctx context.Context, s docker.RunSpec) (string, string, error) {
+		live = append(live, ctx.Err() == nil)
+		return "", "", nil
+	}
+	r := &acmeRun{provider: build.ProviderTraefik, workdir: f.project, res: &acme.Resolution{SSLDir: f.ssl, Root: f.served}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	cause := errors.New("served certificate check failed")
+	if err := r.afterFailedInstall(ctx, cause); !errors.Is(err, cause) || len(live) != 1 || !live[0] {
+		t.Errorf("err=%v live=%v: the re-render must run with a live context", err, live)
+	}
+}
+
+// traefik publishes NSELF_HTTPS_PORT / NSELF_HTTP_PORT, not the nginx keys.
+func TestAcmeTraefikServedEnv(t *testing.T) {
+	f := newACMEFix(t)
+	acmeWriteFile(t, filepath.Join(f.served, ".env"), []byte("NGINX_SSL_PORT=8443\nNGINX_HTTP_PORT=8080\nNGINX_BIND_IP=10.0.0.5\nNSELF_HTTPS_PORT=9443\n"))
+	r := &acmeRun{provider: build.ProviderNginx, cfg: &config.Config{Env: "dev"}, res: &acme.Resolution{Root: f.served}}
+	if got := ssl.ServedAddr(r.servedEnv()); got != "10.0.0.5:8443" {
+		t.Errorf("nginx addr = %s", got)
+	}
+	r.provider = build.ProviderTraefik
+	if got, http := ssl.ServedAddr(r.servedEnv()), httpProbeAddr(r.servedEnv()); got != "127.0.0.1:9443" || http != "127.0.0.1:80" {
+		t.Errorf("traefik addrs = %s %s, want 127.0.0.1:9443 and 127.0.0.1:80", got, http)
 	}
 }
