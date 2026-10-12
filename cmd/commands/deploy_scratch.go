@@ -71,7 +71,8 @@ func runScratchBuild(ctx context.Context, workdir, env string, snap deploy.Targe
 	if env == "" || env != filepath.Base(env) || strings.HasPrefix(env, ".") {
 		return "", fmt.Errorf("deploy: %q is not a valid environment name for a scratch directory", env)
 	}
-	if _, err := nginxPolicyFor(workdir, env); err != nil { // a bad allowlist fails before the build
+	policy, err := nginxPolicyFor(workdir, env) // a bad allowlist fails before the build
+	if err != nil {
 		return "", err
 	}
 	frontedBy, err := scratchFrontedBy(workdir, env)
@@ -82,7 +83,7 @@ func runScratchBuild(ctx context.Context, workdir, env string, snap deploy.Targe
 	if err := clearScratch(workdir, env); err != nil {
 		return "", err
 	}
-	if err := scratchCopyProject(workdir, scratch); err != nil {
+	if err := scratchCopyProject(workdir, scratch, policy); err != nil {
 		return "", fmt.Errorf("deploy: copying the project to %s: %w", scratch, err)
 	}
 	if err := writeStubSSL(scratch, snap.SSL); err != nil {
@@ -168,7 +169,7 @@ func stageScratch(p v15Params, scratch string) (deploy.ArtifactSet, error) {
 	if err != nil {
 		return set, err
 	}
-	return finishScratchStage(deployOut(p.jsonOut), set, frontedBy)
+	return finishScratchStage(deployOut(p.jsonOut), set, frontedBy, staleGeneratedNginx(p.workdir, scratch))
 }
 
 // localPluginRefs lists the plugins the build will read.

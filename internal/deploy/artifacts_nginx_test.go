@@ -176,12 +176,39 @@ func TestNginxPolicyAllowsPerSegment(t *testing.T) {
 		"sites/x.conf": true, "sites/x.txt": false, "sites/sub/x.conf": false, "includes/ab.conf": true, "includes/abc.conf": false,
 		"conf.d/x.conf": false, "x.conf": false,
 	} {
-		if p.allows(rel) != want {
+		if p.Allows(rel) != want {
 			t.Errorf("allows(%q) = %v", rel, !want)
 		}
 	}
 	var nilPolicy *NginxPolicy
-	if nilPolicy.allows("sites/x.conf") || nilPolicy.generated([]byte(buildMarker)) {
+	if nilPolicy.Allows("sites/x.conf") || nilPolicy.generated([]byte(buildMarker)) {
 		t.Error("a nil policy allows nothing and generates nothing")
+	}
+}
+
+func TestStageNginxReportsSymlinksAndOtherNonRegularFiles(t *testing.T) {
+	in := nginxScratch(t, testPolicy("sites/linked.conf"))
+	sites := filepath.Join(in.Map.ScratchRoot, "nginx", "sites")
+	if err := os.Symlink("api.conf", filepath.Join(sites, "linked.conf")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink("../includes", filepath.Join(sites, "dirlink")); err != nil {
+		t.Fatal(err)
+	}
+	// A symlink under conf.d is skipped as before and not reported.
+	if err := os.Symlink("default.conf", filepath.Join(in.Map.ScratchRoot, "nginx", "conf.d", "alias.conf")); err != nil {
+		t.Fatal(err)
+	}
+	set, err := Stage(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"nginx/sites/linked.conf", "nginx/sites/dirlink"} {
+		if !contains(set.NotShipped, want) || contains(set.Files, want) || exists(filepath.Join(in.StageDir, filepath.FromSlash(want))) {
+			t.Errorf("%s must be reported not shipped and not staged: files %v, not shipped %v", want, set.Files, set.NotShipped)
+		}
+	}
+	if contains(set.NotShipped, "nginx/conf.d/alias.conf") || contains(set.Files, "nginx/conf.d/alias.conf") {
+		t.Errorf("conf.d symlink: files %v, not shipped %v", set.Files, set.NotShipped)
 	}
 }

@@ -67,7 +67,7 @@ func nginxProject(t *testing.T, env string) string {
 func TestScratchCopyLeavesOnlyStaleGeneratedNginxFiles(t *testing.T) {
 	proj := nginxProject(t, "")
 	scratch := filepath.Join(t.TempDir(), "scratch")
-	if err := scratchCopyProject(proj, scratch); err != nil {
+	if err := scratchCopyProject(proj, scratch, &deploy.NginxPolicy{Generated: build.IsGeneratedNginxConf}); err != nil {
 		t.Fatal(err)
 	}
 	for _, gone := range []string{"nginx/sites/stale.conf", "nginx/conf.d/default.conf"} {
@@ -148,7 +148,7 @@ func TestScratchStageShipsGeneratedAndAllowlisted(t *testing.T) {
 					t.Errorf("no report line %q in:\n%s", want, out)
 				}
 			}
-			if len(c.notShipped) == 0 && strings.Contains(out, "[not shipped]") {
+			if len(c.notShipped) == 0 && strings.Contains(strings.ReplaceAll(out, "  [not shipped] nginx/sites/stale.conf (stale generated output this build did not regenerate)", ""), "[not shipped]") {
 				t.Errorf("unexpected report:\n%s", out)
 			}
 			if i, j := strings.Index(out, "includes/extra.conf"), strings.Index(out, "sites/hand.conf"); i >= 0 && j >= 0 && i > j {
@@ -295,5 +295,80 @@ func TestFrontedByIsOneSafePathElement(t *testing.T) {
 	scratch, err := runScratchBuild(context.Background(), proj, "staging", deploy.TargetSnapshot{})
 	if err != nil || scratch != scratchDirFor(proj, "staging") {
 		t.Errorf("unfronted scratch %q err %v", scratch, err)
+	}
+}
+
+// The deploy side keeps its own copy of the marker text (it cannot import build);
+// this pins it to the build's exported marker test, both directions.
+func TestDeployNginxMarkerMatchesBuild(t *testing.T) {
+	m := deploy.BuildNginxMarker
+	if !build.IsGeneratedNginxConf([]byte(m)) {
+		t.Errorf("build does not accept deploy.BuildNginxMarker %q", m)
+	}
+	if build.IsGeneratedNginxConf([]byte(m[:len(m)-1])) {
+		t.Errorf("deploy.BuildNginxMarker %q is longer than the build marker", m)
+	}
+	if build.IsGeneratedNginxConf([]byte(strings.ToLower(m))) {
+		t.Error("the marker test must be case-sensitive")
+	}
+}
+
+func stageWithStub(t *testing.T, proj string) (deploy.ArtifactSet, string) {
+	t.Helper()
+	ran := 0
+	useScratchBuild(t, scratchBuildStub(t, &ran, nil))
+	scratch, err := runScratchBuild(context.Background(), proj, "staging", deploy.TargetSnapshot{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := v15Params{workdir: proj, target: "staging", srv: controlplane.Server{Name: "s1", RemotePath: "/opt/nself"}}
+	var set deploy.ArtifactSet
+	out := stdoutOf(t, func() { set, err = stageScratch(p, scratch) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	return set, out
+}
+
+func TestScratchReportsStaleGeneratedOutputTheBuildDidNotRegenerate(t *testing.T) {
+	proj := nginxProject(t, "")
+	_, out := stageWithStub(t, proj)
+	if want := "  [not shipped] nginx/sites/stale.conf (stale generated output this build did not regenerate)\n"; !strings.Contains(out, want) {
+		t.Errorf("no %q in:\n%s", want, out)
+	}
+	// conf.d/default.conf is marked too, but the build wrote it again.
+	if strings.Contains(out, "conf.d/default.conf (stale") {
+		t.Errorf("a regenerated file is reported stale:\n%s", out)
+	}
+	if strings.Contains(out, "nginx/sites/api.conf") {
+		t.Errorf("the build's own output is reported:\n%s", out)
+	}
+}
+
+func TestScratchAllowlistedMarkedFileIsCopiedAndShipped(t *testing.T) {
+	proj := nginxProject(t, "NSELF_DEPLOY_NGINX_INCLUDE=includes/*.conf,sites/stale.conf\n")
+	wf(t, filepath.Join(proj, "nginx", "includes", "copy.conf"), testBuildMarker+"# hand copy of generated output\n")
+	set, out := stageWithStub(t, proj)
+	for _, want := range []string{"nginx/includes/copy.conf", "nginx/sites/stale.conf", "nginx/includes/extra.conf"} {
+		if !contains(set.Files, want) {
+			t.Errorf("%s was not shipped: %v", want, set.Files)
+		}
+	}
+	if strings.Contains(out, "stale generated output") || strings.Contains(out, "includes/copy.conf") || strings.Contains(out, "sites/stale.conf") {
+		t.Errorf("an allowlisted file was reported:\n%s", out)
+	}
+}
+
+func TestScratchReportsSymlinksUnderNginx(t *testing.T) {
+	proj := nginxProject(t, "NSELF_DEPLOY_NGINX_INCLUDE=sites/link.conf\n")
+	if err := os.Symlink("hand.conf", filepath.Join(proj, "nginx", "sites", "link.conf")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	set, out := stageWithStub(t, proj)
+	if contains(set.Files, "nginx/sites/link.conf") || !contains(set.NotShipped, "nginx/sites/link.conf") {
+		t.Errorf("files %v, not shipped %v", set.Files, set.NotShipped)
+	}
+	if !strings.Contains(out, "  [not shipped] nginx/sites/link.conf (") {
+		t.Errorf("the symlink is not reported:\n%s", out)
 	}
 }

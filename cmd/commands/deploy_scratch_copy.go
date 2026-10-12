@@ -12,11 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/nself-org/cli/internal/deploy"
 )
 
 // copyProject copies src to dst without the entries scratchSkipTop and
 // scratchSkipAny name and without deploy env snapshots.
-func scratchCopyProject(src, dst string) error {
+func scratchCopyProject(src, dst string, policy *deploy.NginxPolicy) error {
 	if err := os.MkdirAll(dst, 0o755); err != nil {
 		return err
 	}
@@ -43,7 +45,7 @@ func scratchCopyProject(src, dst string) error {
 		case info.Mode()&os.ModeSymlink != 0:
 			return scratchCopyLink(src, p, out)
 		case info.Mode().IsRegular():
-			if scratchLeavesGenerated(p, rel) {
+			if scratchLeavesGenerated(p, rel, policy) {
 				return nil // stale generated nginx output: the build writes what it owns
 			}
 			return scratchCopyFile(p, out, info)
@@ -65,6 +67,8 @@ func scratchCopyLink(src, link, out string) error {
 	return os.Symlink(target, out)
 }
 
+// scratchCopyFile copies one regular file, keeping its mode and mtime; the
+// target must not exist yet (O_EXCL), so a copy never writes through a link.
 func scratchCopyFile(from, to string, info os.FileInfo) error {
 	in, err := os.Open(from)
 	if err != nil {

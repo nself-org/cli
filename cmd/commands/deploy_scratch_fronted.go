@@ -76,8 +76,9 @@ func writeFrontStubSSL(scratch, frontedBy string, certs []deploy.CertDir) error 
 
 // finishScratchStage reports what the stage left out and fails closed on a
 // fronting stack's files the apply cannot ship yet.
-func finishScratchStage(w io.Writer, set deploy.ArtifactSet, frontedBy string) (deploy.ArtifactSet, error) {
+func finishScratchStage(w io.Writer, set deploy.ArtifactSet, frontedBy string, stale []string) (deploy.ArtifactSet, error) {
 	reportNotShipped(w, set.NotShipped)
+	reportStale(w, stale)
 	if set.Front == nil || len(set.Front.Files) == 0 {
 		return set, nil
 	}

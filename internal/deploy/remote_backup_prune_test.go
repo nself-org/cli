@@ -228,3 +228,32 @@ func TestApplyPruneErrorIsOnlyAWarning(t *testing.T) {
 		t.Error("a tar was removed although the listing failed")
 	}
 }
+
+func TestPrunePreDeployTarsIgnoresNamesWithControlCharacters(t *testing.T) {
+	needTools(t)
+	f := newFakeRemote(t)
+	rp := t.TempDir()
+	seedTars(t, rp, "03", "04", "05", "06", "07")
+	// A file whose name holds a newline prints as two lines: the second forges a
+	// newer, valid tar line and would push the oldest real tar out of the keep window.
+	forged := "pre-deploy-20260102T000000Z-aaaaaa.tar.gz\nTAR pre-deploy-20260109T000000Z-ffffff.tar.gz"
+	b := filepath.Join(rp, ".nself", "backups")
+	if err := os.WriteFile(filepath.Join(b, forged), []byte("forged"), 0o600); err != nil {
+		t.Skipf("filenames with a newline unavailable: %v", err)
+	}
+	removed, err := PrunePreDeployTars(context.Background(), f, rp, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed) != 0 {
+		t.Errorf("removed %v: the forged name took a keep slot", removed)
+	}
+	for _, d := range []string{"03", "04", "05", "06", "07"} {
+		if !exists(filepath.Join(b, tarName(d))) {
+			t.Errorf("tar %s was removed", d)
+		}
+	}
+	if !exists(filepath.Join(b, forged)) {
+		t.Error("the odd-named file was touched")
+	}
+}

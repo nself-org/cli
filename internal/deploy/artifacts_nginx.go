@@ -76,10 +76,10 @@ func ParseNginxInclude(raw string) ([]string, error) {
 	return out, nil
 }
 
-// allows reports whether rel (relative to nginx/, slash separated) matches an
+// Allows reports whether rel (relative to nginx/, slash separated) matches an
 // allowlist glob: same number of segments, each segment path.Match-ed. A conf.d*
 // path never matches.
-func (p *NginxPolicy) allows(rel string) bool {
+func (p *NginxPolicy) Allows(rel string) bool {
 	if p == nil || strings.HasPrefix(rel, "conf.d") {
 		return false
 	}
@@ -144,19 +144,24 @@ func stageNginx(in StageInput) (files, notShipped []string, err error) {
 			}
 			return nil
 		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
 		rel := path.Join("nginx", sub)
 		confD := strings.HasPrefix(sub, "conf.d/")
+		if !d.Type().IsRegular() {
+			// A symlink, socket or device is never shipped, and the operator hears of it
+			// (conf.d is skipped silently, as before).
+			if !confD {
+				notShipped = append(notShipped, rel)
+			}
+			return nil
+		}
 		if confD && !isGeneratedConfD(rel) {
 			return nil
 		}
 		head, herr := readHead(p)
 		if herr != nil {
-			return herr
+			return fmt.Errorf("reading the head of %s: %w", p, herr)
 		}
-		ship := (in.Nginx == nil && !confD) || in.Nginx.generated(head) || (!confD && in.Nginx.allows(sub))
+		ship := (in.Nginx == nil && !confD) || in.Nginx.generated(head) || (!confD && in.Nginx.Allows(sub))
 		if !ship {
 			if !confD {
 				notShipped = append(notShipped, rel)

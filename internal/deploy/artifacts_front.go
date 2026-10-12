@@ -62,15 +62,15 @@ func stageFront(in StageInput) (*FrontRoot, error) {
 	}
 	front := &FrontRoot{StageDir: in.StageDir + "-front", RemotePath: path.Dir(in.Map.RemotePath)}
 	if err := os.RemoveAll(front.StageDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("clearing %s: %w", front.StageDir, err)
 	}
 	if err := os.MkdirAll(front.StageDir, 0o700); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating %s: %w", front.StageDir, err)
 	}
 	sites := filepath.Join(in.FrontScratch, "nginx", "sites")
 	entries, err := os.ReadDir(sites)
 	if err != nil && !os.IsNotExist(err) {
-		return nil, err
+		return nil, fmt.Errorf("reading %s: %w", sites, err)
 	}
 	for _, e := range entries {
 		rel := path.Join("nginx", "sites", e.Name())
@@ -80,7 +80,7 @@ func stageFront(in StageInput) (*FrontRoot, error) {
 		src := filepath.Join(sites, e.Name())
 		head, err := readHead(src)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("reading the head of %s: %w", src, err)
 		}
 		if !in.Nginx.generated(head) {
 			continue // not written by this build: never shipped from the front root

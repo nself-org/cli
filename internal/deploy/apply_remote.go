@@ -131,10 +131,16 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	if err != nil {
 		return res, err
 	}
-	for _, f := range kept {
-		emit(o.Out, "  [kept] %s (hand-written on the host; not overwritten)", f)
+	keptPaths := make([]string, 0, len(kept))
+	for _, k := range kept {
+		keptPaths = append(keptPaths, k.Path)
+		if k.DefaultServerIn != "" {
+			emit(o.Out, "  [kept] %s (the host already declares a default_server in %s; not shipped)", k.Path, k.DefaultServerIn)
+		} else {
+			emit(o.Out, "  [kept] %s (hand-written on the host; not overwritten)", k.Path)
+		}
 	}
-	o.Set = o.Set.Without(kept)
+	o.Set = o.Set.Without(keptPaths)
 	if err := CheckNotOverwritingForeign(ctx, r, rp, o.Set.Files, o.Previous); err != nil {
 		return res, err
 	}

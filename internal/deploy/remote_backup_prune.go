@@ -13,7 +13,9 @@ package deploy
 //              dir are never touched. A symlink is never removed. Nothing is
 //              listed or removed before the backups dir is proven (cd -P) to
 //              resolve strictly inside the real remote_path; the proof is
-//              repeated in the removing script. keep < 1 is an error, so a
+//              repeated in the removing script. A name with a control character
+//              (a newline could forge a "TAR <id>" line) is skipped in the shell.
+//              keep < 1 is an error, so a
 //              caller bug can never remove every tar. A prune failure after a
 //              good deploy is a warning, never a deploy failure
 //              (pruneOldTars).
@@ -45,7 +47,7 @@ func PrunePreDeployTars(ctx context.Context, r Remote, remotePath string, keep i
 		return nil, fmt.Errorf("refusing to prune pre-deploy tars on %s: keep must be at least 1, got %d", r.Label(), keep)
 	}
 	list := fmt.Sprintf(backupsDirProof, q(remotePath)) +
-		`cd "$x" || exit 0; for f in pre-deploy-*.tar.gz; do if [ -f "$f" ] && [ ! -L "$f" ]; then printf 'TAR %s\n' "$f"; fi; done`
+		`cd "$x" || exit 0; for f in pre-deploy-*.tar.gz; do case "$f" in *[[:cntrl:]]*) continue;; esac; if [ -f "$f" ] && [ ! -L "$f" ]; then printf 'TAR %s\n' "$f"; fi; done`
 	out, err := r.Run(ctx, shScript(list))
 	if err != nil {
 		return nil, fmt.Errorf("listing pre-deploy tars on %s: %w", r.Label(), err)
