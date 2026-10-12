@@ -1,0 +1,19 @@
+services:
+  emulator:
+    # Firebase emulator suite (Firestore, Auth, Storage); pinned by digest.
+    image: andreysenov/firebase-tools@sha256:6c444d84fc5951c30830b3c320238f5250e8ec654dcb49fa4b2bab5ff2009e45
+    command: ["firebase", "emulators:start", "--only", "firestore,auth,storage", "--project", "demo-nself"]
+    working_dir: /home/node
+    volumes:
+      - ./firebase.json:/home/node/firebase.json:ro
+      - ./firestore.rules:/home/node/firestore.rules:ro
+      - ./storage.rules:/home/node/storage.rules:ro
+    ports:
+      - "127.0.0.1:${FB_FIRESTORE_PORT:-28080}:8080"
+      - "127.0.0.1:${FB_AUTH_PORT:-29099}:9099"
+      - "127.0.0.1:${FB_STORAGE_PORT:-29199}:9199"
+    healthcheck:
+      test: ["CMD", "node", "-e", "Promise.all([8080,9099,9199].map(p=>fetch('http://127.0.0.1:'+p))).then(()=>process.exit(0),()=>process.exit(1))"]
+      interval: 3s
+      timeout: 5s
+      retries: 60

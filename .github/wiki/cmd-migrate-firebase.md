@@ -33,14 +33,31 @@ The migration process does not apply any changes to your nSelf project automatic
 4. Review the generated files in `<export-dir>/nself-migration/`.
 5. Apply the schema and metadata to your nSelf project.
 
+## v1.5 mode: import pipeline
+
+With `NSELF_V15=1` the command (also `nself db import firebase`) imports the live project instead of
+writing artifacts: Firestore through the REST API, users from an `auth:export` file, objects from
+Cloud Storage. It loads into a started nSelf project and verifies every count. See [[Come-Home-Firebase]].
+
+```bash
+nself db import firebase --project my-project --credentials-file ./key.json --auth-export ./auth-users.json --plan
+```
+
 ## Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--export-dir` | — | Directory produced by `firebase firestore:export`. **Required.** |
+| `--export-dir` | — | Directory produced by `firebase firestore:export`. **Required in v1.4 mode.** |
 | `--auth-export` | `""` | Path to Firebase Auth JSON export (optional) |
 | `--output-dir` | `<export-dir>/nself-migration` | Directory for generated artifacts |
 | `--project-name` | `firebase_import` | Project name used in generated SQL schema names and file prefixes |
+| `--project` | `""` | v1.5 import: Firebase project id |
+| `--credentials-file` | `""` | v1.5 import: service-account key file (not needed with `FIRESTORE_EMULATOR_HOST`) |
+| `--bucket` | `""` | v1.5 import: Cloud Storage bucket to copy |
+| `--plan` | `false` | v1.5 import: check the source and target, write nothing |
+| `--keep-stage` | `false` | v1.5 import: keep the private portable bundle after a pass |
+| `--skip-storage` | `false` | v1.5 import: list each storage object as an exemption instead of loading it |
+| `--json` | `false` | v1.5 import: print the structured import report |
 
 ## Generated artifacts
 

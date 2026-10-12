@@ -36,6 +36,7 @@ type exportUser struct {
 	Disabled         bool            `json:"disabled"`
 	CreatedAt        json.RawMessage `json:"createdAt"`
 	LastSignedInAt   json.RawMessage `json:"lastSignedInAt"`
+	LastLoginAt      json.RawMessage `json:"lastLoginAt"` // the key the Identity Toolkit API (and so auth:export) uses
 	CustomAttributes string          `json:"customAttributes"`
 	Providers        []struct {
 		ProviderID string `json:"providerId"`
@@ -165,7 +166,11 @@ func mapUser(e exportUser) verify.User {
 	if e.PhotoURL != "" {
 		meta["photo_url"] = e.PhotoURL
 	}
-	if last := epochMillis(e.LastSignedInAt); e.LastSignedInAt != nil && last != "1970-01-01T00:00:00Z" {
+	lastRaw := e.LastSignedInAt
+	if lastRaw == nil {
+		lastRaw = e.LastLoginAt
+	}
+	if last := epochMillis(lastRaw); lastRaw != nil && last != "1970-01-01T00:00:00Z" {
 		meta["last_signed_in_at"] = last
 	}
 	var providers []string
