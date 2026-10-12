@@ -63,9 +63,9 @@ func emitDeployDoc(command string, legacy, data any, runErr error) error {
 		if runErr != nil {
 			return runErr
 		}
-		return output.EmitData(pilotWriter(), command, data)
+		return output.EmitData(output.Default(), command, data)
 	}
-	if err := output.EmitLegacyCompatible(pilotWriter(), command, legacy); err != nil && runErr == nil {
+	if err := output.EmitLegacyCompatible(output.Default(), command, legacy); err != nil && runErr == nil {
 		return err
 	}
 	return runErr

@@ -102,7 +102,7 @@ func runDeployEnvironments(cmd *cobra.Command, _ []string) error {
 	}
 
 	if jsonEnvelopeOn(cmd) {
-		return output.EmitData(pilotWriter(), "deploy environments", out)
+		return output.EmitData(output.Default(), "deploy environments", out)
 	}
 	b, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
