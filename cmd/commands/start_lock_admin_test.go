@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
@@ -75,6 +76,7 @@ func writeStack(t *testing.T, dir string, stack map[string]string) {
 // TestLockPinsEveryCLIOwnedServiceOfARender: each CLI-owned service of a real
 // render is in the lock under its pin key; the admin UI is pinned as "admin".
 func TestLockPinsEveryCLIOwnedServiceOfARender(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	dir, stack := adminProject(t)
 	l, err := build.CurrentLock(dir)
 	if err != nil {
@@ -107,6 +109,7 @@ func TestLockPinsEveryCLIOwnedServiceOfARender(t *testing.T) {
 // TestStartFrozenAdminImageEdited: --frozen passes on the rendered project and
 // fails with E455 naming the admin image once its compose image is edited.
 func TestStartFrozenAdminImageEdited(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	dir, stack := adminProject(t)
 	var out bytes.Buffer
 	if err := checkStartLock(dir, true, &out); err != nil {

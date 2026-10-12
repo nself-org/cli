@@ -204,6 +204,7 @@ func TestProjectPinEnvDifferentDropsPin(t *testing.T) {
 // was taken from, so a runtime switch or pgvector turned off renders the new
 // image (adversarial M3), and deno, python and meilisearch-init honour pins.
 func TestProjectPinRepositoryMustMatch(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	for _, mode := range []string{PinningLegacy, PinningLock} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv(EnvImagePinning, mode)

@@ -136,6 +136,21 @@ var serviceCatalog = []CatalogEntry{
 		VersionEnv: "TYPESENSE_VERSION",
 	},
 	{
+		Name:       "seaweedfs",
+		Tier:       TierOptional,
+		Purpose:    "v1.5: SeaweedFS S3 object storage (OBJECT_STORAGE_ENABLED); MinIO is the minio plugin",
+		EnableEnv:  "OBJECT_STORAGE_ENABLED",
+		VersionEnv: "SEAWEEDFS_VERSION",
+	},
+	{
+		Name:       "seaweedfs-init",
+		Tier:       TierOptional,
+		Purpose:    "v1.5: one-shot bucket bootstrap for SeaweedFS (OBJECT_STORAGE_BUCKETS)",
+		EnableEnv:  "OBJECT_STORAGE_ENABLED",
+		VersionEnv: "SEAWEEDFS_VERSION",
+		ImageKey:   "seaweedfs",
+	},
+	{
 		Name:       "redis",
 		Tier:       TierOptional,
 		Purpose:    "Cache and queue backend",

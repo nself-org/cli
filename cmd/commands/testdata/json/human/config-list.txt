@@ -111,6 +111,10 @@ REDIS_PORT                                    (default: 6379)                def
 REDIS_PASSWORD                                (unset)                        unset
 REDIS_MEMORY                                  (default: 512M)                default
 REDIS_CPU                                     (default: 0.5)                 default
+OBJECT_STORAGE_ENABLED                        (unset)                        unset
+OBJECT_STORAGE_BUCKETS                        (unset)                        unset
+SEAWEEDFS_PORT                                (unset)                        unset
+SEAWEEDFS_VERSION                             (unset)                        unset
 MINIO_ENABLED                                 (default: false)               default
 STORAGE_ENABLED                               (unset)                        unset
 MINIO_VERSION                                 (default: latest)              default

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/compat"
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/nginx"
@@ -38,6 +39,10 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 	repin()
 	if err != nil {
 		return nil, fmt.Errorf("loading config: %w", err)
+	}
+	// ── Step 1.2: v1.5 object storage preflight (E138) before any write ──
+	if err := compose.ObjectStoragePreflight(st.cfg, st.opts.Profile); err != nil {
+		return nil, err
 	}
 
 	// ── Step 1.5: Persist auto-generated secrets to .env.secrets ────

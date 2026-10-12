@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -28,8 +29,17 @@ import (
 // the map already resolved (rather than a file path) so this function stays
 // pure and easy to unit test without touching the filesystem.
 func coreEnvVars(cfg *config.Config, svc config.CustomService, envFileVars map[string]string) map[string]string {
+	return coreEnvVarsFor(cfg, svc, envFileVars, true)
+}
+
+// coreEnvVarsFor is coreEnvVars for a profile that may omit object storage:
+// storeProfile false (the ops profile) injects no S3_* vars in v1.5.
+func coreEnvVarsFor(cfg *config.Config, svc config.CustomService, envFileVars map[string]string, storeProfile bool) map[string]string {
 	env := fixedCoreEnvVars(cfg, svc)
 	addOptionalStoreEnvVars(env, cfg)
+	if !storeProfile {
+		dropStoreEnvVars(env)
+	}
 	applyEnvPassthrough(env, svc)
 	// CS_N_ENV_FILE — merged after passthrough, before CS_N_ENV, so an
 	// explicit CS_N_ENV entry still wins on conflict.
@@ -74,6 +84,11 @@ func fixedCoreEnvVars(cfg *config.Config, svc config.CustomService) map[string]s
 func addOptionalStoreEnvVars(env map[string]string, cfg *config.Config) {
 	if cfg.Redis.Enabled {
 		env["REDIS_URL"] = fmt.Sprintf("redis://%s@redis:%d", config.URLUserInfo("", cfg.Redis.Password), cfg.Redis.Port)
+	}
+	// compat.V15(P7-PLUG-60): MinIO endpoint -> active core or plugin object store endpoint
+	if compat.V15() {
+		addActiveStoreEnvVars(env, cfg)
+		return
 	}
 	if cfg.Minio.Enabled {
 		env["S3_ENDPOINT"] = fmt.Sprintf("http://minio:%d", cfg.Minio.Port)
@@ -198,7 +213,7 @@ func (g *Generator) buildCustomService(cs config.CustomService) (ServiceConfig, 
 		DependsOn: map[string]DepOn{
 			"postgres": {Condition: "service_healthy"},
 		},
-		Environment: coreEnvVars(cfg, cs, envFileVars),
+		Environment: coreEnvVarsFor(cfg, cs, envFileVars, g.profile.Minio),
 		Ports: []string{
 			fmt.Sprintf("127.0.0.1:%d:%d", cs.Port, cs.Port),
 		},

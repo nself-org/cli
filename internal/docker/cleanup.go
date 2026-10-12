@@ -11,15 +11,27 @@ import (
 	"time"
 )
 
-// CleanupInitContainers finds containers with label "nself.type=init-container"
-// and force-removes them. Init containers (minio-init, meilisearch-init, etc.)
-// complete their job and sit in "exited" state. This cleans them up.
+// initContainerListArgs is the `docker ps` argument list that selects init
+// containers safe to remove: labelled nself.type=init-container, exited, with
+// exit code 0. Running ones (a start in progress, or a service that uses the
+// label) and failed ones (kept for `docker logs`) are left alone.
+func initContainerListArgs() []string {
+	return []string{"ps", "-aq",
+		"--filter", "label=nself.type=init-container",
+		"--filter", "status=exited",
+		"--filter", "exited=0",
+	}
+}
+
+// cleanupInitContainers removes finished init containers (minio-init,
+// meilisearch-init, seaweedfs-init, ...): the ones that exited with code 0.
+// Running and failed init containers are kept.
 func cleanupInitContainers(ctx context.Context) error {
-	ids, err := findContainersByLabel(ctx, "nself.type=init-container")
+	out, err := exec.CommandContext(ctx, "docker", initContainerListArgs()...).Output()
 	if err != nil {
 		return fmt.Errorf("finding init containers: %w", err)
 	}
-	for _, id := range ids {
+	for _, id := range parseLines(string(out)) {
 		if err := forceRemoveContainer(ctx, id); err != nil {
 			// Best-effort: log but don't fail on individual removals.
 			continue

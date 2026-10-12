@@ -2,3 +2,4 @@ PROJECT_NAME=fx
 ENV=staging
 BASE_DOMAIN=example.org
 SSL_MODE=letsencrypt
+MINIO_ENABLED=false

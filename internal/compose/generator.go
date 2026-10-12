@@ -130,8 +130,8 @@ func (g *Generator) buildDockerCompose() (*DockerCompose, error) {
 	if p.Redis && g.cfg.Redis.Enabled {
 		dc.AddService("redis", g.buildRedisService())
 	}
-	if p.Minio && g.cfg.Minio.Enabled {
-		dc.AddService("minio", g.buildMinioService())
+	if err := g.addObjectStorage(dc); err != nil {
+		return nil, err
 	}
 	if p.Mailpit && g.cfg.Mailpit.Enabled {
 		dc.AddService("mailpit", g.buildMailpitService())
@@ -211,6 +211,7 @@ func (g *Generator) postProcess(dc *DockerCompose) {
 	// by the service-wide resource policy (they exit before any limit matters).
 	initContainers := map[string]bool{
 		"meilisearch-init": true,
+		"seaweedfs-init":   true,
 	}
 
 	for name, svc := range dc.Services {

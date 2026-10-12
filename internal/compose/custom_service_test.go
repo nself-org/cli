@@ -2,6 +2,7 @@ package compose
 
 import (
 	"fmt"
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -212,6 +213,7 @@ func TestCoreEnvVars_MinioAbsent(t *testing.T) {
 // TestCoreEnvVars_MinioPresent verifies that S3_* vars are injected when Minio
 // is enabled and reference the internal container address.
 func TestCoreEnvVars_MinioPresent(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	cfg := minimalConfigWithCS()
 	cfg.Minio.Enabled = true
 	cfg.Minio.Port = 9000

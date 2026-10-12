@@ -1,0 +1,376 @@
+name: storage-fixture
+networks:
+    storage-fixture_network:
+        driver: bridge
+        name: storage-fixture_network
+volumes:
+    minio_data: {}
+    postgres_data: {}
+services:
+    postgres:
+        image: postgres:16-alpine
+        container_name: storage-fixture_postgres
+        restart: unless-stopped
+        shm_size: 256mb
+        user: 70:70
+        networks:
+            - test_network
+        environment:
+            POSTGRES_DB: nself
+            POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+            POSTGRES_PASSWORD: password
+            POSTGRES_USER: postgres
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+            - ./postgres/init:/docker-entrypoint-initdb.d:ro
+        ports:
+            - 127.0.0.1:5432:5432
+        command:
+            - postgres
+            - -c
+            - max_connections=200
+            - -c
+            - shared_buffers=256MB
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - pg_isready -U postgres
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        deploy:
+            resources:
+                limits:
+                    memory: 512m
+                    cpus: "1.0"
+                    pids: 100
+                reservations:
+                    memory: 256m
+        logging:
+            driver: json-file
+            options:
+                max-file: ""
+                max-size: ""
+        security_opt:
+            - no-new-privileges:true
+        cap_drop:
+            - ALL
+        cap_add:
+            - CHOWN
+            - SETUID
+            - SETGID
+            - IPC_LOCK
+        read_only: true
+        tmpfs:
+            - /tmp
+            - /run/postgresql
+    hasura:
+        image: hasura/graphql-engine:v2.36.0
+        container_name: storage-fixture_hasura
+        restart: unless-stopped
+        user: 1001:1001
+        networks:
+            - test_network
+        depends_on:
+            postgres:
+                condition: service_healthy
+        environment:
+            HASURA_GRAPHQL_ADMIN_SECRET: secret
+            HASURA_GRAPHQL_CORS_DOMAIN: ""
+            HASURA_GRAPHQL_DATABASE_URL: postgresql://postgres:password@postgres:5432/nself
+            HASURA_GRAPHQL_DEV_MODE: ${HASURA_GRAPHQL_DEV_MODE:-false}
+            HASURA_GRAPHQL_ENABLE_CONSOLE: ${HASURA_GRAPHQL_ENABLE_CONSOLE:-false}
+            HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
+            HASURA_GRAPHQL_JWT_SECRET: '{"key":"testsecretkey12345678901234567890","type":"HS256"}'
+            HASURA_GRAPHQL_LOG_LEVEL: ""
+            HASURA_GRAPHQL_UNAUTHORIZED_ROLE: public
+        ports:
+            - 127.0.0.1:8080:8080
+        healthcheck:
+            test:
+                - CMD
+                - curl
+                - -f
+                - http://localhost:8080/healthz
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 15s
+        deploy:
+            resources:
+                limits:
+                    memory: 1g
+                    cpus: "1.0"
+                    pids: 100
+                reservations:
+                    memory: 256m
+        logging:
+            driver: json-file
+            options:
+                max-file: ""
+                max-size: ""
+        security_opt:
+            - no-new-privileges:true
+        cap_drop:
+            - ALL
+        read_only: true
+        tmpfs:
+            - /tmp
+            - /run
+    auth:
+        image: nhost/auth:0.36.0
+        container_name: storage-fixture_auth
+        restart: unless-stopped
+        networks:
+            - test_network
+        depends_on:
+            hasura:
+                condition: service_healthy
+            postgres:
+                condition: service_healthy
+        environment:
+            AUTH_ACCESS_TOKEN_EXPIRES_IN: "900"
+            AUTH_ALLOWED_REDIRECT_URLS: https://localhost,https://*.localhost,http://localhost:3000
+            AUTH_CLIENT_URL: http://localhost:3000
+            AUTH_DATABASE_URL: postgresql://postgres:password@postgres:5432/nself
+            AUTH_DB_HOST: postgres
+            AUTH_DB_NAME: nself
+            AUTH_DB_PASSWORD: password
+            AUTH_DB_PORT: "5432"
+            AUTH_DB_URL: postgresql://postgres:password@postgres:5432/nself
+            AUTH_DB_USER: postgres
+            AUTH_EMAIL_SIGNIN_EMAIL_VERIFIED_REQUIRED: "false"
+            AUTH_HOST: 0.0.0.0
+            AUTH_JWT_SECRET: testsecretkey12345678901234567890
+            AUTH_JWT_TYPE: HS256
+            AUTH_LOG_LEVEL: ""
+            AUTH_PORT: "4000"
+            AUTH_REFRESH_TOKEN_EXPIRES_IN: "2592000"
+            AUTH_SERVER_URL: http://localhost:4000
+            AUTH_SMTP_HOST: mailpit
+            AUTH_SMTP_PASS: ""
+            AUTH_SMTP_PORT: "1025"
+            AUTH_SMTP_SECURE: "false"
+            AUTH_SMTP_SENDER: noreply@localhost
+            AUTH_SMTP_USER: ""
+            AUTH_WEBAUTHN_ENABLED: "false"
+            DATABASE_URL: postgresql://postgres:password@postgres:5432/nself
+            HASURA_GRAPHQL_ADMIN_SECRET: secret
+            HASURA_GRAPHQL_DATABASE_URL: postgresql://postgres:password@postgres:5432/nself
+            HASURA_GRAPHQL_GRAPHQL_URL: http://hasura:8080/v1/graphql
+            HASURA_GRAPHQL_JWT_SECRET: '{"key":"testsecretkey12345678901234567890","type":"HS256"}'
+            POSTGRES_HOST: postgres
+            POSTGRES_PORT: "5432"
+        ports:
+            - 127.0.0.1:4000:4000
+        healthcheck:
+            test:
+                - CMD
+                - wget
+                - -qO-
+                - http://localhost:4000/healthz
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+        deploy:
+            resources:
+                limits:
+                    memory: 256m
+                    cpus: "0.25"
+                    pids: 100
+                reservations:
+                    memory: 256m
+        logging:
+            driver: json-file
+            options:
+                max-file: ""
+                max-size: ""
+        security_opt:
+            - no-new-privileges:true
+        cap_drop:
+            - ALL
+        read_only: true
+        tmpfs:
+            - /tmp
+            - /run
+    minio:
+        image: docker.io/pgsty/minio:latest
+        container_name: storage-fixture_minio
+        restart: unless-stopped
+        networks:
+            - test_network
+        environment:
+            MINIO_DEFAULT_BUCKETS: ""
+            MINIO_DISABLE_XATTR: "on"
+            MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+            MINIO_ROOT_USER: test-access-key
+        volumes:
+            - minio_data:/data
+        ports:
+            - 127.0.0.1:9000:9000
+            - 127.0.0.1:9001:9001
+        command: server /data --console-address ":9001"
+        healthcheck:
+            test:
+                - CMD
+                - mc
+                - ready
+                - local
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 30s
+        deploy:
+            resources:
+                limits:
+                    memory: 512m
+                    cpus: "1.0"
+                    pids: 100
+                reservations:
+                    memory: 256m
+        logging:
+            driver: json-file
+            options:
+                max-file: ""
+                max-size: ""
+        security_opt:
+            - no-new-privileges:true
+        cap_drop:
+            - ALL
+        cap_add:
+            - CHOWN
+            - SETUID
+            - SETGID
+        read_only: true
+        tmpfs:
+            - /tmp
+            - /run
+    worker:
+        build:
+            context: ./services/worker
+            dockerfile: Dockerfile
+        container_name: storage-fixture_worker
+        restart: unless-stopped
+        networks:
+            - test_network
+        depends_on:
+            postgres:
+                condition: service_healthy
+        environment:
+            AUTH_CLIENT_URL: http://localhost:3000
+            AUTH_SERVER_URL: http://auth:4000
+            BASE_DOMAIN: localhost
+            DATABASE_URL: postgresql://postgres:password@postgres:5432/nself
+            ENV: dev
+            HASURA_GRAPHQL_ADMIN_SECRET: secret
+            HASURA_GRAPHQL_ENDPOINT: http://hasura:8080/v1/graphql
+            POSTGRES_DB: nself
+            POSTGRES_HOST: postgres
+            POSTGRES_PASSWORD: password
+            POSTGRES_PORT: "5432"
+            POSTGRES_USER: postgres
+            PROJECT_NAME: storage-fixture
+            S3_ACCESS_KEY: test-access-key
+            S3_BUCKET: ""
+            S3_ENDPOINT: http://minio:0
+            S3_SECRET_KEY: fake-secret-not-real-0000
+            SERVICE_NAME: worker
+            SERVICE_PORT: "3000"
+            SERVICE_ROUTE: ""
+            TABLE_PREFIX: ""
+        ports:
+            - 127.0.0.1:3000:3000
+        healthcheck:
+            test:
+                - CMD
+                - wget
+                - -qO-
+                - http://127.0.0.1:3000/health
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 60s
+        deploy:
+            resources:
+                limits:
+                    memory: 512m
+                    cpus: "1.0"
+                    pids: 100
+                reservations:
+                    memory: 256m
+        logging:
+            driver: json-file
+            options:
+                max-file: ""
+                max-size: ""
+        security_opt:
+            - no-new-privileges:true
+        cap_drop:
+            - ALL
+        read_only: true
+        tmpfs:
+            - /tmp
+            - /run
+    nginx:
+        image: nginx:alpine
+        container_name: storage-fixture_nginx
+        restart: unless-stopped
+        networks:
+            - test_network
+        depends_on:
+            auth:
+                condition: service_healthy
+            hasura:
+                condition: service_healthy
+            worker:
+                condition: service_started
+        environment:
+            BASE_DOMAIN: localhost
+            ENV: dev
+            PROJECT_NAME: storage-fixture
+        volumes:
+            - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+            - ./nginx/conf.d:/etc/nginx/conf.d:ro
+            - ./nginx/conf.d-dev:/etc/nginx/conf.d-dev:ro
+            - ./nginx/sites:/etc/nginx/sites:ro
+            - ./nginx/includes:/etc/nginx/includes:ro
+            - ./ssl:/etc/nginx/ssl:ro
+        ports:
+            - :0:80
+            - :0:443
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - wget --no-check-certificate --no-verbose --tries=1 -O /dev/null https://127.0.0.1/health 2>/dev/null || exit 1
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 10s
+        deploy:
+            resources:
+                limits:
+                    memory: 256m
+                    cpus: "0.5"
+                    pids: 100
+                reservations:
+                    memory: 256m
+        logging:
+            driver: json-file
+            options:
+                max-file: ""
+                max-size: ""
+        security_opt:
+            - no-new-privileges:true
+        cap_drop:
+            - ALL
+        cap_add:
+            - NET_BIND_SERVICE
+            - DAC_READ_SEARCH
+            - CHOWN
+            - SETUID
+            - SETGID
+        read_only: true
+        tmpfs:
+            - /var/cache/nginx:uid=101,gid=101,mode=0777
+            - /var/run:uid=101,gid=101,mode=0777

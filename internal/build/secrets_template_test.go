@@ -6,6 +6,7 @@ package build
 //          .nself/compose.env at container-start time.
 
 import (
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -71,6 +72,7 @@ func secretTestConfig() *config.Config {
 // run the real compose generator, apply secret templating, and assert the
 // output contains only ${VAR} references — zero literal secret values.
 func TestTemplateSecrets_NoLiteralSecretsInGeneratedCompose(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	cfg := secretTestConfig()
 	raw, err := compose.NewGenerator(cfg).Generate()
 	if err != nil {
@@ -117,6 +119,7 @@ func TestTemplateSecrets_NoLiteralSecretsInGeneratedCompose(t *testing.T) {
 // still has to rewrite a literal a generator puts in a command string; the
 // synthetic case below keeps that covered without a live fixture.
 func TestTemplateSecrets_CommandAndHealthcheckLiteralsRewritten(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	cfg := secretTestConfig()
 	cfg.Redis.Enabled = true
 	cfg.Redis.Password = "redis-pass-K9m3Bq7Wz2"

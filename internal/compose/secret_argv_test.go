@@ -9,6 +9,7 @@ package compose_test
 // by a shell inside the container, is fine).
 
 import (
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"os"
 	"sort"
 	"strings"
@@ -135,6 +136,7 @@ func TestArgvSecretFindingsControl(t *testing.T) {
 // optional service, both search engines), templates it as nself build does,
 // and checks every command, entrypoint and healthcheck.
 func TestNoSecretOnGeneratedArgv(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	for _, engine := range []string{"meilisearch", "typesense"} {
 		// Both cache engines (P7-LIVE-19): neither may carry the password on argv,
 		// and each runs its own server and CLI binary.
