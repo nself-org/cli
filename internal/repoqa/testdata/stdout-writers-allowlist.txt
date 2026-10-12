@@ -11,7 +11,7 @@ internal/builtin/admin/cmd_start.go 10
 internal/builtin/admin/cmd_stop.go 2
 internal/builtin/admin/connect_helpers.go 1
 internal/database/cross_region_backup.go 1
-internal/deploy/bluegreen/bluegreen_exec.go 4
+internal/deploy/bluegreen/bluegreen_exec.go 1
 internal/deploy/secrets.go 2
 internal/deploy/slo_rollback_helpers.go 2
 internal/deploy/ssh.go 1

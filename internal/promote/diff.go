@@ -1,9 +1,9 @@
 package promote
 
-// Purpose: the env/directory/image diffing helpers, secret redaction, and record/backup persistence backing DryRun/Execute/Rollback in promote.go.
+// Purpose: the env/directory/image diffing helpers, secret redaction (config.IsSecretKey + MaskURLCredentials, D-0415), and record/backup persistence backing DryRun/Execute/Rollback in promote.go.
 // Inputs: parsed .env maps and directory paths for source/target environments.
 // Outputs: []DiffEntry comparisons, a saved PromotionRecord, and backup-tag discovery for rollback.
-// Constraints: split out of promote.go as a pure move (CLI-R12); no behavior change.
+// Constraints: split out of promote.go (CLI-R12); redaction follows the shared config rule and never prints a character of a secret.
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/nself-org/cli/internal/config"
 )
 
 // loadEnvFile reads a .env file into a key-value map.
@@ -73,17 +75,19 @@ func diffMaps(source, target map[string]string) []DiffEntry {
 	return entries
 }
 
+// redactIfSecret masks a diff value with the shared rule (D-0415): a key that
+// config.IsSecretKey names prints as "****" in full, and any other value has
+// its URL credentials masked by config.MaskURLCredentials. No character of a
+// secret is shown; DiffEntry.Status still says whether it changed. An empty
+// value stays empty.
 func redactIfSecret(key, value string) string {
-	upper := strings.ToUpper(key)
-	for _, pat := range secretPatterns {
-		if strings.Contains(upper, pat) {
-			if len(value) > 4 {
-				return value[:2] + "***" + value[len(value)-2:]
-			}
-			return "***"
-		}
+	if value == "" {
+		return value
 	}
-	return value
+	if config.IsSecretKey(key) {
+		return "****"
+	}
+	return config.MaskURLCredentials(value)
 }
 
 func diffDirectories(source, target string) []DiffEntry {

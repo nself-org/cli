@@ -19,8 +19,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/nself-org/cli/internal/compat/compattest"
 )
 
 // TestInstallRenewedCertIfDue_InstallsWhenRenewed proves the T15 fix: when
@@ -142,5 +145,53 @@ func TestInstallRenewedCertIfDue_SkipsWhenNotDue(t *testing.T) {
 	certDir := filepath.Join(workdir, "ssl", "certificates", domainToFilesafe(domain))
 	if _, statErr := os.Stat(certDir); !os.IsNotExist(statErr) {
 		t.Errorf("expected %s to not be created on a not-yet-due renewal, stat err: %v", certDir, statErr)
+	}
+}
+
+// TestCertbotRenewRefusesUnderACME: the v1.4 certbot `ssl renew <domain>`
+// refuses before running certbot in a project whose certificates ACME
+// manages, or whose lineages.json cannot be read (D-0461); without lineages
+// it still reaches certbot (positive control), and without a domain it only
+// reloads nginx.
+func TestCertbotRenewRefusesUnderACME(t *testing.T) {
+	log := certbotStubs(t)
+	compattest.Set(t, false)
+	t.Setenv("ENV", "dev")
+	live, oldLive := t.TempDir(), letsEncryptLiveDir
+	letsEncryptLiveDir = live
+	t.Cleanup(func() { letsEncryptLiveDir = oldLive; acmeResetFlags(sslRenewCmd) })
+	project := t.TempDir()
+	acmeWriteFile(t, filepath.Join(project, ".env"), []byte("BASE_DOMAIN=localhost\n"))
+	t.Chdir(project)
+	state := filepath.Join(project, "ssl", ".acme", "lineages.json")
+	const lineage = `{"schema_version":"1","lineages":[{"name":"localhost","targets":["certificates/localhost"]}]}`
+
+	for _, tc := range []struct {
+		name, lineages, wantErr string
+		args                    []string
+		certbotRuns             bool
+	}{
+		// certbot runs; the stub renews nothing, so the install step reports it.
+		{name: "no ACME state", args: []string{"localhost"}, wantErr: "did certbot succeed", certbotRuns: true},
+		{name: "ACME lineages", lineages: lineage, args: []string{"localhost"}, wantErr: "nself trust ssl renew --acme"},
+		{name: "unreadable lineages.json", lineages: "{", args: []string{"localhost"}, wantErr: "reading the ACME lineages"},
+		{name: "reload only under ACME", lineages: lineage},
+	} {
+		_ = os.Remove(log)
+		_ = os.Remove(state)
+		if tc.lineages != "" {
+			acmeWriteFile(t, state, []byte(tc.lineages))
+		}
+		acmeResetFlags(sslRenewCmd)
+		err := runSSLRenew(sslRenewCmd, tc.args)
+		if (err == nil) != (tc.wantErr == "") || (err != nil && !strings.Contains(err.Error(), tc.wantErr)) {
+			t.Fatalf("%s: err=%v, want %q", tc.name, err, tc.wantErr)
+		}
+		if got := strings.Contains(readLog(log), "certbot renew"); got != tc.certbotRuns {
+			t.Errorf("%s: certbot ran=%v (want %v), calls=%q", tc.name, got, tc.certbotRuns, readLog(log))
+		}
+	}
+	if _, err := os.Stat(filepath.Join(project, "ssl", "certificates")); !os.IsNotExist(err) {
+		t.Errorf("ssl/certificates was written: %v (want nothing installed)", err)
 	}
 }

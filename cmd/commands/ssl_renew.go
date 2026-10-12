@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/ssl/acme"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -42,6 +43,12 @@ func runSSLRenew(cmd *cobra.Command, args []string) error {
 	workdir, err := config.FindNSelfRoot(cwd)
 	if err != nil {
 		return fmt.Errorf("no nself project found in current directory or parents: run 'nself init' to create a project")
+	}
+
+	if len(args) > 0 {
+		if err := refuseCertbotOverACME(workdir); err != nil {
+			return err
+		}
 	}
 
 	// 1. certbot if available and domain provided. This MUST run before any
@@ -143,4 +150,19 @@ func installRenewedCertIfDue(domain, workdir string, beforeMtime time.Time) (boo
 		return false, err
 	}
 	return true, nil
+}
+
+// refuseCertbotOverACME stops a certbot renew before it runs when the ACME
+// engine manages workdir's certificates: installRenewedCertIfDue would copy
+// certbot's pair through the generation symlink, in place and outside the
+// ACME lock (D-0461). An unreadable lineages.json refuses too. Same rule as
+// `ssl setup` (D-0411).
+func refuseCertbotOverACME(workdir string) error {
+	sslDir := filepath.Join(workdir, "ssl")
+	if f, err := acme.Load(sslDir); err != nil {
+		return fmt.Errorf("reading the ACME lineages: %w (fix ssl/.acme/lineages.json, or use --acme)", err)
+	} else if len(f.Lineages) > 0 {
+		return fmt.Errorf("the ACME engine manages this project's certificates (%s): use `nself trust ssl renew --acme`; certbot would overwrite them", acme.StateDir(sslDir))
+	}
+	return nil
 }

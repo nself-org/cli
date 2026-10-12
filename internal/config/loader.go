@@ -23,8 +23,6 @@ import (
 	"path/filepath"
 
 	"github.com/nself-org/cli/internal/version"
-
-	"github.com/joho/godotenv"
 )
 
 // Load reads the .env cascade from projectDir, populates a Config struct from
@@ -214,7 +212,7 @@ func ResolveEnv(projectDir string) (value string, source string) {
 // without touching os.Environ or loading the rest of the file. Returns
 // ok=false if the file is missing, unreadable, or does not define the key.
 func readEnvKeyFromFile(path, key string) (value string, ok bool) {
-	m, err := godotenv.Read(path)
+	m, err := ReadEnvFile(path)
 	if err != nil {
 		return "", false
 	}

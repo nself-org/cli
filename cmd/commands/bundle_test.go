@@ -81,7 +81,22 @@ func TestMain(m *testing.M) {
 func newBundleTestCmd() *cobra.Command {
 	root := &cobra.Command{Use: "nself", RunE: func(cmd *cobra.Command, args []string) error { return nil }}
 	root.AddCommand(bundleCmd)
+	// bundleCmd carries the GroupID the shared RootCmd tree assigned it; cobra
+	// panics on Execute when that group is not defined on the parent, so register
+	// the groups on this root too (otherwise the result depends on test order).
+	applyGroups(root)
+	// Flag values live on the package-level subcommands and survive an Execute;
+	// without a reset, --installed from one test empties the list of the next.
+	resetBundleFlags(bundleCmd)
 	return root
+}
+
+// resetBundleFlags restores every flag under c to its default.
+func resetBundleFlags(c *cobra.Command) {
+	resetFlags(c)
+	for _, sub := range c.Commands() {
+		resetBundleFlags(sub)
+	}
 }
 
 // ── Registration ─────────────────────────────────────────────────────
@@ -469,6 +484,7 @@ func TestBundleCmd_UnknownSubcommand(t *testing.T) {
 	cmd := &cobra.Command{Use: "nself"}
 	parent := *bundleCmd // shallow copy to avoid mutation
 	cmd.AddCommand(&parent)
+	applyGroups(cmd) // the copy keeps bundleCmd's GroupID; see newBundleTestCmd
 	cmd.SetArgs([]string{"bundle", "badcmd"})
 	buf := &bytes.Buffer{}
 	cmd.SetErr(buf)

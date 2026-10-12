@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/nself-org/cli/internal/compat"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/ssl"
 	"github.com/nself-org/cli/internal/trust"
@@ -139,17 +140,21 @@ func runTrustStatusDetailed(cmd *cobra.Command, cfg trust.TrustConfig) error {
 			ResolverConfigured: status.ResolverConfigured, PortsForwarding: status.PortsForwarding, Warnings: hasWarning}
 		if hasWarning {
 			// The verdict is the exit status; the document is still written.
+			// Exit 2 is the canon's warning class (internal/canon/domains/config.yaml, D-0430).
 			if err := emitEnv(cmd, data, false); err != nil {
 				return err
 			}
-			return &plugin.ExitCodeError{Code: 1}
+			return &plugin.ExitCodeError{Code: 2}
 		}
 		setData(cmd, data)
 	}
 
 	if hasWarning {
 		ui.Warn("Some trust components need attention. Run 'nself trust' to fix.")
-		// Return a sentinel that produces exit code 2 (warning, not hard error).
+		// compat.V15(D-0430): "Error: trust warnings present (exit code 2)" and exit 1 -> silent exit 2, the canon's warning class
+		if compat.V15() {
+			return &plugin.ExitCodeError{Code: 2}
+		}
 		return fmt.Errorf("trust warnings present (exit code 2)")
 	}
 
