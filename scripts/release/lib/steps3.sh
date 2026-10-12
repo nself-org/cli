@@ -55,7 +55,7 @@ image_step() {
   pending=$GH_OUT
   if [ "${pending:-0}" -gt 0 ]; then
     say "$IMG_S $IMG_ID: a docker-publish.yml run is in flight on $IMG_REPO; waiting for $IMG_HUB:$VERSION"
-    poll "$IMG_HUB:$VERSION" 90 hub_ok_img \
+    poll "$IMG_HUB:$VERSION" "$IMAGE_WAIT_POLLS" hub_ok_img \
       || die_step "$IMG_S" "$IMG_ID" "the in-flight run on $IMG_REPO did not publish $IMG_HUB:$VERSION; check it, then --from $IMG_S"
     say "$IMG_S $IMG_ID: $IMG_HUB:$VERSION is up"; return 0
   fi
@@ -74,7 +74,7 @@ image_step() {
     || die_step "$IMG_S" "$IMG_ID" "could not dispatch docker-publish.yml on $IMG_REPO"
   say "$IMG_S $IMG_ID: dispatched docker-publish.yml on $IMG_REPO"
   sleep "$POLL_SECONDS"
-  poll "$IMG_HUB:$VERSION" 90 image_ready \
+  poll "$IMG_HUB:$VERSION" "$IMAGE_WAIT_POLLS" image_ready \
     || die_step "$IMG_S" "$IMG_ID" "$IMG_HUB:$VERSION (amd64 + arm64) not on Docker Hub after the wait budget"
   say "$IMG_S $IMG_ID: $IMG_HUB:$VERSION is up (linux/amd64, linux/arm64)"
 }

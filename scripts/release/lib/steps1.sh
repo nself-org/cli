@@ -59,7 +59,7 @@ step_admin_lockstep() {
   step_confirm S2 admin-lockstep
   if [ -z "$PR_INFO" ]; then
     ensure_clone cli; ensure_clone admin; reset_clone cli; reset_clone admin
-    bump_all || die_step S2 admin-lockstep "scripts/bump-version.sh failed in the cli clone"
+    bump_all --no-goldens || die_step S2 admin-lockstep "scripts/bump-version.sh failed in the cli clone"
     git -C "$WORK/admin" checkout -q -B "$br" || die_step S2 admin-lockstep "could not create branch $br"
     commit_all admin "chore(release): bump admin to v${VERSION} (lockstep with cli)" \
       || die_step S2 admin-lockstep "bump changed nothing in admin"
@@ -74,7 +74,7 @@ step_admin_lockstep() {
 step_cli_version() {
   local br="release/v${VERSION}"
   if [ "$PLAN" = 1 ]; then
-    plan_line S3 cli-version cli "scripts/bump-version.sh $VERSION (cwd $WORK/cli)"
+    plan_line S3 cli-version cli "scripts/bump-version.sh $VERSION (cwd $WORK/cli; also regenerates the 4 version-hash goldens: UPDATE_GOLDEN=1 go test ./internal/build ./cmd/commands, then re-runs them plain)"
     plan_line S3 cli-version cli "go run -mod=vendor ./tools/facts && go run -mod=vendor ./tools/facts -readme README.md (facts regeneration, only when tools/facts exists)"
     plan_line S3 cli-version cli "git -C $WORK/cli checkout -b $br; git commit; git push origin $br; gh pr create -R nself-org/cli --base main --head $br"
     plan_line S3 cli-version cli "gh pr checks N -R nself-org/cli --required (polled, 45 min budget)"

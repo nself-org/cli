@@ -7,6 +7,10 @@
 #          printed or stored: only the ambient `gh` session is used.
 
 POLL_SECONDS=20
+# Docker image wait: 180 polls x 20 s = 60 min. The multi-arch admin build takes about
+# 40 min under QEMU (v1.4.14), which the old 90 polls (30 min) never covered.
+# shellcheck disable=SC2034  # read by image_step in steps3.sh
+IMAGE_WAIT_POLLS=180
 
 say() { printf '%s\n' "$*"; }
 err() { printf 'release: %s\n' "$*" >&2; }
@@ -157,7 +161,9 @@ commit_all() {
 }
 
 # bump_all: cli's own bump-version.sh edits cli and ../admin (idempotent).
-bump_all() { (cd "$WORK/cli" && bash scripts/bump-version.sh "$VERSION") >/dev/null; }
+# bump_all [--no-goldens]: S3 keeps the goldens (they go in the release PR); S2 passes
+# --no-goldens because only admin files are committed there.
+bump_all() { (cd "$WORK/cli" && bash scripts/bump-version.sh "$VERSION" "$@") >/dev/null; }
 
 # --- pull requests ---
 # pr_info <repo> <branch>: PR_INFO = "<n> <STATE>" for the branch, or empty.

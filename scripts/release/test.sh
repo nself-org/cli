@@ -80,6 +80,9 @@ run_plain --version 2.0.0;              check "non-plan without a TTY exits 2" t
 check "non-plan without a TTY made no gh call" test ! -s "$GH_LOG"
 rm -rf "$T"
 
+# shellcheck disable=SC1091
+. "$FIXTURES/cases4.sh"
+
 if [ "$HAVE_PTY" = 0 ]; then
   skip "pty cases (full run, rerun, --from S6, facts absent, red checks)" "script(1) not found"
 else
