@@ -120,7 +120,7 @@ for key in one.txt TWO.txt two.txt nested/four.txt; do
   curl -fsS --aws-sigv4 'aws:amz:us-east-1:s3' --user "$S3_AUTH" -X PUT --data-binary "@$W/object" "http://127.0.0.1:$((A_BASE + 333))/export-fixture/$key" >>"$LOG" || fail object
 done
 FINGER_A="$(pga 'SELECT count(*), sum(hashtextextended(t::text,0)::numeric) FROM public.notes t')"
-nself db export --out "$W/bundle" --json >"$W/summary.json" 2>>"$LOG" || fail export
+nself db export --out "$W/bundle" --schemas public,app --json >"$W/summary.json" 2>>"$LOG" || fail export
 jq -e '.data.tables==2 and .data.users==3 and .data.objects==4' "$W/summary.json" >/dev/null || fail summary
 pass 'seeded project A exported (2 tables, 3 users, 4 objects)'
 # A second bundle holds only app2.t (a table B will not have) but also all four objects.
