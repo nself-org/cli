@@ -76,7 +76,7 @@ nhost/auth 0.43.0 and later refuse to start without `AUTH_ENCRYPTION_KEY` (32 by
 
 1. Take a verified backup: `nself backup create`, then `nself backup verify <id> --restore-test`. Copy `nself.lock.yaml` aside too: it pins auth 0.36.0.
 2. Add the key to `.env.secrets`: `AUTH_ENCRYPTION_KEY=<output of openssl rand -hex 32>`.
-3. Move to the new release. A project without an auth lock pin (v1.4 without `nself.lock.yaml`) sets `AUTH_VERSION=0.52.0`. A pinned project moves with `nself update` once it moves pins (P7-LIVE-10); until then it stays on 0.36.0.
+3. Move to the new release. A v1.4 project without `nself.lock.yaml` sets `AUTH_VERSION=0.52.0`. Every other project has an auth pin: a v1.5 build pins the image the project already runs (its first lock takes it from the existing `docker-compose.yml`), and the pin wins over `AUTH_VERSION=0.52.0`. A pinned project moves with `nself update` once it moves pins (P7-LIVE-10); until then it stays on 0.36.0.
 4. `nself build`, then `nself start`. Auth migrates its schema and encrypts the TOTP secrets on that first start.
 
 Signed-in users stay signed in: a refresh token issued by 0.36.0 is accepted once by 0.52.0, which returns a new refresh token and rejects the old one from then on (refresh-token rotation, introduced upstream in 0.38.0). Clients must store the new token; the Nhost SDKs do.
