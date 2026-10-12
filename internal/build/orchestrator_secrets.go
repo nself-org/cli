@@ -14,7 +14,6 @@ package build
 // because env files override the process env and would shadow a later rotation.
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -50,24 +49,7 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 
 	// Collect env keys already present in any .env file on disk (or pending
 	// in a plan's env overlay, P7-LIVE-05).
-	onDisk := make(map[string]bool)
-	for _, name := range []string{".env", ".env.dev", ".env.staging", ".env.prod", ".env.secrets", ".env.local"} {
-		p := filepath.Join(workdir, name)
-		data, err := envLayerBytes(sink, p)
-		if err != nil {
-			continue
-		}
-		sc := bufio.NewScanner(bytes.NewReader(data))
-		for sc.Scan() {
-			line := strings.TrimSpace(sc.Text())
-			if line == "" || line[0] == '#' {
-				continue
-			}
-			if idx := strings.IndexByte(line, '='); idx > 0 {
-				onDisk[line[:idx]] = true
-			}
-		}
-	}
+	onDisk := scanEnvFiles(workdir, cfg.Env, sink)
 
 	// Determine which secrets need persisting.
 	var toWrite []secretEntry
@@ -80,14 +62,30 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 	// Core credentials the loader generates when unset (D-0506). Persist only
 	// when no env file defines the key and the real process environment does
 	// not supply it: that source owns the value, and a file copy would shadow
-	// a later rotated export (files override the process env on load).
-	for _, s := range []secretEntry{
-		{"POSTGRES_PASSWORD", cfg.Postgres.Password},
-		{"HASURA_GRAPHQL_ADMIN_SECRET", cfg.Hasura.AdminSecret},
+	// a later rotated export (files override the process env on load). The
+	// onDisk term stays: .env.secrets is shared by every env and loads after
+	// .env.<env>, so persisting a dev-generated value while .env.prod defines
+	// the key would shadow prod's real value on the next prod build.
+	// A running database may already hold a password rendered by an earlier
+	// build; adopt that live value (adoptLiveCredential) before keeping the
+	// freshly generated one, and set cfg so this build renders it too.
+	for _, c := range []struct {
+		key string
+		dst *string
+	}{
+		{"POSTGRES_PASSWORD", &cfg.Postgres.Password},
+		{"HASURA_GRAPHQL_ADMIN_SECRET", &cfg.Hasura.AdminSecret},
 	} {
-		if s.value != "" && !onDisk[s.envKey] && os.Getenv(s.envKey) == "" {
-			toWrite = append(toWrite, s)
+		if *c.dst == "" || onDisk[c.key] || os.Getenv(c.key) != "" {
+			continue
 		}
+		if live, ok := adoptLiveCredential(sink, workdir, c.key); ok {
+			*c.dst = live
+			if !fx.Planning() {
+				slog.Info("Adopted live credential from previous build", "key", c.key)
+			}
+		}
+		toWrite = append(toWrite, secretEntry{c.key, *c.dst})
 	}
 
 	// HASURA_GRAPHQL_JWT_SECRET: Hasura is a core service, so if the JWT

@@ -144,3 +144,53 @@ func TestPersistGeneratedSecrets_KeyInEnvFileNotRepersisted(t *testing.T) {
 		})
 	}
 }
+
+// credsFile is a fake env file body carrying the two core credentials.
+const credsFile = "POSTGRES_PASSWORD=fake-pg-password-for-test\nHASURA_GRAPHQL_ADMIN_SECRET=fake-admin-secret-for-test\n"
+
+// Keys in the active env's file (.env.dev, ENV=dev) load back every build, so
+// they are stable and must not be copied into .env.secrets.
+func TestPersistGeneratedSecrets_LoadKeysInActiveEnvFileNotPersisted(t *testing.T) {
+	clearSecretEnv(t)
+	dir := t.TempDir()
+	testWriteFile(t, filepath.Join(dir, ".env"), "PROJECT_NAME=test\nENV=dev\n", 0600)
+	testWriteFile(t, filepath.Join(dir, ".env.dev"), credsFile, 0600)
+
+	first := buildOnce(t, dir)
+	second := buildOnce(t, dir)
+	if first.Postgres.Password != "fake-pg-password-for-test" || second.Postgres.Password != first.Postgres.Password {
+		t.Error("POSTGRES_PASSWORD from .env.dev is not stable across builds")
+	}
+	if first.Hasura.AdminSecret != "fake-admin-secret-for-test" || second.Hasura.AdminSecret != first.Hasura.AdminSecret {
+		t.Error("HASURA_GRAPHQL_ADMIN_SECRET from .env.dev is not stable across builds")
+	}
+	data := readSecrets(t, dir)
+	for _, key := range []string{"POSTGRES_PASSWORD=", "HASURA_GRAPHQL_ADMIN_SECRET="} {
+		if strings.Contains(data, key) {
+			t.Errorf("%s from .env.dev was copied into .env.secrets", key)
+		}
+	}
+}
+
+// Pins the lead ruling: a key defined only in an inactive env's file (.env.prod
+// while ENV=dev) is NOT persisted. .env.secrets is shared by every env and
+// loads after .env.<env>, so a dev-generated value written there would shadow
+// prod's real value on the next prod build. The dev build regenerates instead,
+// which is the safe side.
+func TestPersistGeneratedSecrets_LoadKeysOnlyInInactiveEnvNotPersisted(t *testing.T) {
+	clearSecretEnv(t)
+	dir := t.TempDir()
+	testWriteFile(t, filepath.Join(dir, ".env"), "PROJECT_NAME=test\nENV=dev\n", 0600)
+	testWriteFile(t, filepath.Join(dir, ".env.prod"), credsFile, 0600)
+
+	cfg := buildOnce(t, dir)
+	if cfg.Postgres.Password == "fake-pg-password-for-test" {
+		t.Fatal("inactive .env.prod leaked into the dev cascade")
+	}
+	data := readSecrets(t, dir)
+	for _, key := range []string{"POSTGRES_PASSWORD=", "HASURA_GRAPHQL_ADMIN_SECRET="} {
+		if strings.Contains(data, key) {
+			t.Errorf("%s was persisted although .env.prod defines it; it would shadow prod", key)
+		}
+	}
+}

@@ -6,8 +6,9 @@ package commands
 // Outputs: the argv with "--plugin <name>" appended, or the E401 error from
 // validatePluginFlag for an invalid name.
 // Constraints: no I/O. The argv is copied, never mutated in place. A caller
-// that already forwards --plugin is left alone. Quoting happens later in
-// shellQuoteArgs. An invalid name fails before any SSH call.
+// that already forwards --plugin is left alone; the dedup matches the exact
+// "--plugin" token because no builder emits the "--plugin=x" form. Quoting
+// happens later in shellQuoteArgs. An invalid name fails before any SSH call.
 // SPORT: cli/cmd/commands — see D-0232, db_remote.go, plugin_flag.go.
 
 import "github.com/spf13/cobra"
