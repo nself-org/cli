@@ -55,9 +55,16 @@ deny_checks() {
     pending) die_step S4 tag "DENY-004: a license-audit.yml run is still in flight after 30 minutes; the Pre-Release Gate reads the newest run on any branch. Let it finish, then --from S4" ;;
     *) die_step S4 tag "DENY-004: pre-release-gate.yml reads the newest license-audit.yml run on ANY branch and it is '$LIC' (a PR-branch run?), so the gate would fail after the tag is pushed. Start a newer run: gh workflow run license-audit.yml -R nself-org/cli --ref main, wait for it to pass, then --from S4" ;;
   esac
-  gh_need "the cli milestones" api "repos/nself-org/cli/milestones?state=closed&per_page=100" --paginate \
-    --jq ".[] | select(.title == \"$TAG\") | .title"
+  # The gate reads every milestone titled exactly $TAG (any state) and needs the result
+  # to be exactly "closed": one milestone, closed.
+  gh_need "the cli milestones" api "repos/nself-org/cli/milestones?state=all&per_page=100" --paginate \
+    --jq ".[] | select(.title == \"$TAG\") | .state"
   [ -n "$GH_OUT" ] || die_step S4 tag "DENY-005: no closed milestone titled exactly $TAG (a milestone named $VERSION does not count); create or close it, then --from S4"
+  if printf '%s\n' "$GH_OUT" | grep -qv '^closed$'; then
+    die_step S4 tag "DENY-005: a milestone titled $TAG is not closed (an open duplicate?); close or delete the duplicate so exactly one closed milestone has that title, then --from S4"
+  fi
+  [ "$(printf '%s\n' "$GH_OUT" | wc -l | tr -d ' ')" = 1 ] \
+    || die_step S4 tag "DENY-005: more than one milestone is titled $TAG; pre-release-gate.yml needs exactly one (closed). Delete the duplicates, then --from S4"
 }
 
 step_tag() {
@@ -68,7 +75,7 @@ step_tag() {
     plan_line S4 tag cli "git -C $WORK/cli rev-list --count PRIOR_TAG..SHA (DENY-003: more than 0 commits since the prior tag)"
     plan_line S4 tag cli "gh run list -R nself-org/cli --workflow license-audit.yml --branch main --limit 1 (DENY-004: waits up to 30 min while running; success required)"
     plan_line S4 tag cli "gh run list -R nself-org/cli --workflow license-audit.yml --limit 1 (DENY-004 as pre-release-gate.yml reads it: any branch)"
-    plan_line S4 tag cli "gh api repos/nself-org/cli/milestones?state=closed&per_page=100 --paginate (DENY-005: a closed milestone titled exactly $TAG)"
+    plan_line S4 tag cli "gh api repos/nself-org/cli/milestones?state=all&per_page=100 --paginate (DENY-005: exactly one milestone titled $TAG, and it is closed)"
     plan_line S4 tag cli "git -C $WORK/cli tag -a $TAG -m $TAG SHA && git -C $WORK/cli push origin refs/tags/$TAG"
     return 0
   fi

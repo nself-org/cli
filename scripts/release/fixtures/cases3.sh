@@ -123,3 +123,22 @@ run_pty --version "$V" --from S2 --yes
 check "a reverted bump gets its own message" test "$RC" -eq 1
 check "reverted bump message" out_has "main does not carry v$V"
 rm -rf "$T"
+
+# 18. skipped required check, duplicate milestone, admin bump commit ----------------------------------
+mk_env "$HAVE_GO"
+mkdir -p "$ST/required"; touch "$ST/required/admin" "$ST/skip_ctx"
+run_pty --version "$V" --from S2 --yes
+check "a skipped required check counts as satisfied" test "$RC" -eq 0 -a "$(nlines "$ADMIN_LOG")" -eq 3
+rm -rf "$T"
+mk_env "$HAVE_GO"; bump_mains; touch "$ST/dup_open_milestone"
+run_pty --version "$V" --from S4 --yes
+check "an open duplicate milestone stops S4" test "$RC" -eq 1 -a -z "$(cli_tag)"
+check "the duplicate milestone is named" out_has "is not closed (an open duplicate?)"
+rm -rf "$T"
+mk_env "$HAVE_GO"; bump_mains admin; advance_main admin
+git --git-dir="$FIX/cli.git" tag "v$V" main; touch "$ST/published"
+bump=$(git --git-dir="$FIX/admin.git" log --format=%H -1 -- package.json)
+run_pty --version "$V" --from S9 --yes
+check "without a PR record the admin tag goes on the bump commit" test "$RC" -eq 0 -a "$(git --git-dir="$FIX/admin.git" rev-parse "refs/tags/v$V^{commit}")" = "$bump"
+check "the admin tag is not on the tip of main" test "$bump" != "$(git --git-dir="$FIX/admin.git" rev-parse main)"
+rm -rf "$T"

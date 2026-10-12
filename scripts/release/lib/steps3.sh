@@ -89,6 +89,20 @@ step_docker_verify() {
   image_step S8 docker-verify cli nself/nself
 }
 
+# admin_bump_commit: no merged lockstep PR was found, so ADMIN_SHA = the oldest commit
+# of the newest run of commits that carry package.json at VERSION (the bump itself, not
+# the tip of main). Looks back over the last 20 commits that touched package.json.
+admin_bump_commit() {
+  local c prev=""
+  gh_need "the admin commits that touched package.json" api "repos/nself-org/admin/commits?path=package.json&per_page=20" --jq '.[].sha'
+  for c in $GH_OUT; do
+    gh_need "admin package.json at $c" api -H 'Accept: application/vnd.github.raw' "repos/nself-org/admin/contents/package.json?ref=$c"
+    if [ "$(printf '%s' "$GH_OUT" | jq -r .version 2>/dev/null || true)" = "$VERSION" ]; then prev=$c; else break; fi
+  done
+  [ -n "$prev" ] || die_step S9 admin-image "no admin commit sets package.json to $VERSION and no merged lockstep PR was found; run S2" S2
+  ADMIN_SHA=$prev
+}
+
 # admin_tag: annotated tag vX.Y.Z on admin's S2 merge commit, pushed from the admin
 # clone. admin's hygiene release-tag-drift check fails 6 h after the bump without it.
 # An existing tag on another commit stops the run; a tag is never moved.
@@ -97,11 +111,7 @@ admin_tag() {
     --json mergeCommit --jq '.[0].mergeCommit.oid // empty'
   ADMIN_SHA=$GH_OUT
   if [ -z "$ADMIN_SHA" ]; then
-    gh_need "admin package.json" api -H 'Accept: application/vnd.github.raw' repos/nself-org/admin/contents/package.json
-    [ "$(printf '%s' "$GH_OUT" | jq -r .version 2>/dev/null || true)" = "$VERSION" ] \
-      || die_step S9 admin-image "admin main is not at $VERSION and no merged lockstep PR was found; run S2" S2
-    gh_need "admin main" api repos/nself-org/admin/commits/main --jq .sha
-    ADMIN_SHA=$GH_OUT
+    admin_bump_commit
   fi
   if repo_tag_sha admin "$TAG"; then
     [ "$TAG_SHA" = "$ADMIN_SHA" ] || die_step S9 admin-image "admin tag $TAG is at $TAG_SHA but the lockstep release commit is $ADMIN_SHA; tags are never moved, inspect by hand"

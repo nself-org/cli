@@ -20,14 +20,14 @@ required_contexts() {
 }
 
 # missing_required <repo> <n>: required contexts not reported as passing on the PR
-# (by name), space separated; "?" if unreadable; nothing when all are present.
+# (by name; a skipped check counts as satisfied), space separated; "?" if unreadable; nothing when all are present.
 missing_required() {
   local ctx got
   ctx=$(required_contexts "$1")
   if [ -z "$ctx" ]; then return 0; fi
   if [ "$ctx" = "?" ]; then printf '?\n'; return 0; fi
   got=$(gh pr checks "$2" -R "nself-org/$1" --required --json name,bucket \
-    --jq '.[] | select(.bucket == "pass") | .name') || { printf '?\n'; return 0; }
+    --jq '.[] | select(.bucket == "pass" or .bucket == "skipping") | .name') || { printf '?\n'; return 0; }
   printf '%s\n' "$ctx" | while IFS= read -r c; do
     printf '%s\n' "$got" | grep -qxF -- "$c" || printf '%s ' "$c"
   done
