@@ -55,7 +55,7 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 | `nself urls` | `nself status urls` | move | v1.5.0 | v1.6.0 |
 | `nself verify-sbom` | `nself update verify-sbom` | move | v1.5.0 | v1.6.0 |
 
-Total rows: 45
+Total rows: 46
 
 <!-- END GENERATED:canon-table -->
 

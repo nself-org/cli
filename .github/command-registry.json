@@ -24085,14 +24085,14 @@
     }
   ],
   "counts": {
-    "commands": 394,
+    "commands": 396,
     "top_level": 24,
     "core": 20,
     "pending": 4,
-    "deprecated_shims": 47,
+    "deprecated_shims": 48,
     "plugin": 11,
     "core_missing": [],
-    "json_envelope": 220,
+    "json_envelope": 221,
     "json_legacy": 27
   }
 }
