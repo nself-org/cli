@@ -6,6 +6,11 @@ package deploy
 //          prune and remove then go through the real path, re-resolved right
 //          before each write or delete. A link that leaves remote_path is
 //          refused with E485 before the lock and the tar, nothing sent.
+//          Also here: the host guards that run before the lock. A nginx/ file
+//          the host holds without the marker is never overwritten
+//          (CheckNotOverwritingForeign, E485), and a hand-written
+//          nginx/conf.d/<name>.conf is kept and dropped from the set
+//          (KeptHostConfD, D-0424).
 // Inputs:  a Remote, the remote path, relative paths or directories.
 // Outputs: dir -> real path for links that stay inside; an E485 error otherwise.
 // Constraints: one quoted remote script per call. Everything reachable through
@@ -176,4 +181,43 @@ func CheckNotOverwritingForeign(ctx context.Context, r Remote, remotePath string
 		}
 	}
 	return nil
+}
+
+// KeptHostConfD returns the nginx/conf.d/<name>.conf candidates of files that a
+// deploy must not overwrite on the host (D-0424): the path exists as a regular
+// file without the generated marker in its first 5 lines (the grep of
+// CheckNotOverwritingForeign), or is a symlink or anything that is not a regular
+// file. The previous deploy's record and the host's shipped list are ignored for
+// conf.d: the host file's own marker alone decides, so a hand-written
+// default.conf survives even when an earlier deploy shipped one. A missing file
+// or a marked one is not kept. The printed paths are always taken from files,
+// never from the host's output. The caller drops the returned paths from the set
+// and goes on; this is not an error.
+func KeptHostConfD(ctx context.Context, r Remote, remotePath string, files []string) ([]string, error) {
+	var cand []string
+	inSet := map[string]bool{}
+	for _, f := range files {
+		if isGeneratedConfD(f) {
+			cand = append(cand, f)
+			inSet[f] = true
+		}
+	}
+	if len(cand) == 0 {
+		return nil, nil
+	}
+	script := fmt.Sprintf(`cd %s 2>/dev/null || exit 0; for f in %s; do if [ -L "$f" ]; then printf 'KEEP %%s\n' "$f"; elif [ -f "$f" ]; then if ! head -n 5 -- "$f" 2>/dev/null | grep -qi %s; then printf 'KEEP %%s\n' "$f"; fi; elif [ -e "$f" ]; then printf 'KEEP %%s\n' "$f"; fi; done; exit 0`,
+		q(remotePath), strings.Join(quoteAll(cand), " "), q(GeneratedMarker))
+	out, err := r.Run(ctx, shScript(script))
+	if err != nil {
+		return nil, fmt.Errorf("checking existing nginx/conf.d files on %s: %w", r.Label(), err)
+	}
+	var kept []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if p, ok := strings.CutPrefix(line, "KEEP "); ok && inSet[p] {
+			kept = append(kept, p)
+			inSet[p] = false // each path once
+		}
+	}
+	sort.Strings(kept)
+	return kept, nil
 }

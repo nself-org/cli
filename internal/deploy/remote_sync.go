@@ -9,7 +9,9 @@ package deploy
 // Constraints: no rsync --delete, no other delete over a directory. The prune
 //              reads the first lines of each candidate for the marker before
 //              it removes that one file. Nothing under a conf.d*/ dir and no
-//              unmarked file is ever a candidate. No directory is moved.
+//              unmarked file is ever a candidate (a shipped nginx/conf.d/<name>.conf
+//              is synced and restored but never pruned: PrunePrevious uses
+//              pruneable, not shippable). No directory is moved.
 
 import (
 	"context"
@@ -219,10 +221,12 @@ func pruneable(rel string) bool {
 }
 
 // checkPaths returns an error naming the first entry of a locally recorded list
-// that is not a safe path; such a list is never acted on.
+// that is not a safe shippable path (shippable: a pruneable path or a generated
+// nginx/conf.d/<name>.conf); such a list is never acted on. It gates the
+// pre-deploy tar and the restore, which therefore cover the shipped conf.d files.
 func checkPaths(what string, paths []string) error {
 	for _, p := range paths {
-		if !pruneable(p) {
+		if !shippable(p) {
 			return fmt.Errorf("%s holds an unsafe path %q; refusing to act on it", what, p)
 		}
 	}

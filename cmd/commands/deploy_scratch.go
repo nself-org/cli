@@ -11,7 +11,10 @@ package commands
 // Constraints: the copy leaves out .nself/, .git, node_modules, ssl/, the backup
 //              and data dirs, logs and the previously generated
 //              docker-compose.yml (so the build freshness check proves this build
-//              wrote it). The stub PEM files are never shipped: the artifact set
+//              wrote it) and the nginx/ files that carry the build's generated
+//              marker (stale output; only files this build writes ship, see
+//              deploy_scratch_nginx.go). A project with NGINX_FRONTED_BY builds
+//              in <env>/<FrontedBy>/backend (deploy_scratch_fronted.go). The stub PEM files are never shipped: the artifact set
 //              has no ssl entries. A symlink is copied only when it points inside
 //              the project, so a build can never write through one into the
 //              operator's tree.
@@ -68,14 +71,24 @@ func runScratchBuild(ctx context.Context, workdir, env string, snap deploy.Targe
 	if env == "" || env != filepath.Base(env) || strings.HasPrefix(env, ".") {
 		return "", fmt.Errorf("deploy: %q is not a valid environment name for a scratch directory", env)
 	}
-	scratch := scratchDirFor(workdir, env)
-	if err := os.RemoveAll(scratch); err != nil {
-		return "", fmt.Errorf("deploy: clearing %s: %w", scratch, err)
+	if _, err := nginxPolicyFor(workdir, env); err != nil { // a bad allowlist fails before the build
+		return "", err
+	}
+	frontedBy, err := scratchFrontedBy(workdir, env)
+	if err != nil {
+		return "", err
+	}
+	scratch := scratchProjectDir(workdir, env, frontedBy)
+	if err := clearScratch(workdir, env); err != nil {
+		return "", err
 	}
 	if err := scratchCopyProject(workdir, scratch); err != nil {
 		return "", fmt.Errorf("deploy: copying the project to %s: %w", scratch, err)
 	}
 	if err := writeStubSSL(scratch, snap.SSL); err != nil {
+		return "", fmt.Errorf("deploy: writing the stub ssl tree: %w", err)
+	}
+	if err := writeFrontStubSSL(scratch, frontedBy, snap.SSL); err != nil {
 		return "", fmt.Errorf("deploy: writing the stub ssl tree: %w", err)
 	}
 	if _, err := deployScratchBuildFn(ctx, scratch, true, nil); err != nil {
@@ -84,79 +97,17 @@ func runScratchBuild(ctx context.Context, workdir, env string, snap deploy.Targe
 	return scratch, nil
 }
 
-// copyProject copies src to dst without the entries scratchSkipTop and
-// scratchSkipAny name and without deploy env snapshots.
-func scratchCopyProject(src, dst string) error {
-	if err := os.MkdirAll(dst, 0o755); err != nil {
-		return err
-	}
-	return filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, _ := filepath.Rel(src, p)
-		if rel == "." {
-			return nil
-		}
-		top := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]
-		skip := scratchSkipTop[top] || scratchSkipAny[info.Name()] || strings.HasPrefix(info.Name(), ".nself-deploy-env-")
-		if skip {
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		out := filepath.Join(dst, rel)
-		switch {
-		case info.IsDir():
-			return os.MkdirAll(out, 0o755)
-		case info.Mode()&os.ModeSymlink != 0:
-			return scratchCopyLink(src, p, out)
-		case info.Mode().IsRegular():
-			return scratchCopyFile(p, out, info)
-		}
-		return nil
-	})
-}
-
-// copyLink recreates a symlink only when it is relative and stays inside src.
-func scratchCopyLink(src, link, out string) error {
-	target, err := os.Readlink(link)
-	if err != nil || filepath.IsAbs(target) {
-		return nil
-	}
-	resolved := filepath.Clean(filepath.Join(filepath.Dir(link), target))
-	if resolved != src && !strings.HasPrefix(resolved, src+string(filepath.Separator)) {
-		return nil
-	}
-	return os.Symlink(target, out)
-}
-
-func scratchCopyFile(from, to string, info os.FileInfo) error {
-	in, err := os.Open(from)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = in.Close() }()
-	out, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close()
-		return err
-	}
-	if err := out.Close(); err != nil {
-		return err
-	}
-	return os.Chtimes(to, info.ModTime(), info.ModTime())
-}
-
 // writeStubSSL lays ssl/certificates/<dir>/<file>.pem stubs mirroring the
 // target's names and presence. The content is a marker, never key material.
 func writeStubSSL(scratch string, certs []deploy.CertDir) error {
+	return writeStubSSLDir(filepath.Join(scratch, "ssl"), certs)
+}
+
+// writeStubSSLDir is writeStubSSL for an ssl dir that is not <scratch>/ssl (the
+// fronting stack's, see deploy_scratch_fronted.go).
+func writeStubSSLDir(sslDir string, certs []deploy.CertDir) error {
 	for _, c := range certs {
-		dir := filepath.Join(scratch, "ssl", "certificates", c.Name)
+		dir := filepath.Join(sslDir, "certificates", c.Name)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
@@ -198,10 +149,26 @@ func stageScratch(p v15Params, scratch string) (deploy.ArtifactSet, error) {
 	if err := os.MkdirAll(stage, 0o700); err != nil {
 		return deploy.ArtifactSet{}, err
 	}
-	return deploy.Stage(deploy.StageInput{
+	policy, err := nginxPolicyFor(p.workdir, p.target)
+	if err != nil {
+		return deploy.ArtifactSet{}, err
+	}
+	frontedBy, err := scratchFrontedBy(p.workdir, p.target)
+	if err != nil {
+		return deploy.ArtifactSet{}, err
+	}
+	in := deploy.StageInput{
 		Map:      deploy.PathMap{ScratchRoot: scratch, OperatorRoot: p.workdir, PluginDir: build.DefaultPluginDir(), Home: deploy.DefaultHome(), RemotePath: p.srv.RemotePath},
-		StageDir: stage, Compose: files, EnvFiles: envs, EnvSnapshot: envSnap, EnvName: cascade,
-	})
+		StageDir: stage, Compose: files, EnvFiles: envs, EnvSnapshot: envSnap, EnvName: cascade, Nginx: policy,
+	}
+	if frontedBy != "" {
+		in.FrontedBy, in.FrontScratch = frontedBy, filepath.Dir(scratch)
+	}
+	set, err := deploy.Stage(in)
+	if err != nil {
+		return set, err
+	}
+	return finishScratchStage(deployOut(p.jsonOut), set, frontedBy)
 }
 
 // localPluginRefs lists the plugins the build will read.

@@ -29,6 +29,10 @@ type PathMap struct {
 	PluginDir    string // the local plugin dir the build read
 	Home         string // the operator's home dir (reported, never mapped)
 	RemotePath   string // the project dir on the target
+	// FrontRoot is, for a project fronted by another stack's nginx (D-0425), the
+	// local scratch root of that stack: the parent of ScratchRoot. It maps to
+	// path.Dir(RemotePath), after ScratchRoot -> RemotePath (longest first).
+	FrontRoot string
 }
 
 // RemotePlugins is where plugin fragments live on the target.
@@ -48,6 +52,9 @@ func (m PathMap) pairs() []pathPair {
 	add(m.PluginDir, m.RemotePlugins())
 	add(m.ScratchRoot, m.RemotePath)
 	add(m.OperatorRoot, m.RemotePath)
+	if m.FrontRoot != "" {
+		add(m.FrontRoot, path.Dir(m.RemotePath))
+	}
 	sort.SliceStable(ps, func(i, j int) bool { return len(ps[i].from) > len(ps[j].from) })
 	return ps
 }
@@ -83,7 +90,7 @@ func (m PathMap) Leftovers(s string) []string {
 	var left []string
 	for _, r := range []struct{ name, root string }{
 		{"the scratch project", m.ScratchRoot}, {"the operator project", m.OperatorRoot},
-		{"the local plugin dir", m.PluginDir}, {"the home dir", m.Home},
+		{"the fronting scratch root", m.FrontRoot}, {"the local plugin dir", m.PluginDir}, {"the home dir", m.Home},
 	} {
 		for _, sp := range rootSpellings(r.root) {
 			if hasPath(s, sp) {
