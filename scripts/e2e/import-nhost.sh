@@ -61,13 +61,13 @@ signup carol@example.invalid "$PW_CAROL"
 test "$(srcpsql 'SELECT count(*) FROM auth.users')" = 3
 test "$(srcpsql "SELECT count(*) FROM auth.users WHERE password_hash LIKE '\$2%'")" = 3
 
-# 3. Four stored objects through hasura-storage (different sizes, one binary, one empty).
+# 3. Four stored objects through hasura-storage (different sizes, one binary, one a single byte: hasura-storage refuses empty files).
 mkdir -p "$W/up"
 printf 'alpha object\n' > "$W/up/alpha.txt"
 head -c 70000 /dev/urandom > "$W/up/binary.bin"
-printf '' > "$W/up/empty.dat"
+printf 'x' > "$W/up/tiny.dat"
 python3 -c 'print("unicode ✓ " * 500)' > "$W/up/unicode.txt"
-for f in alpha.txt binary.bin empty.dat unicode.txt; do
+for f in alpha.txt binary.bin tiny.dat unicode.txt; do
   curl -fsS -H "X-Hasura-Admin-Secret: $FIXTURE_ADMIN_SECRET" -F 'bucket-id=default' -F "file[]=@$W/up/$f" "$SRC_STORAGE/v1/files" > "$W/upload-$f.json"
   jq -e '.processedFiles|length==1' "$W/upload-$f.json" >/dev/null
 done
@@ -135,7 +135,7 @@ BUNDLE=$(ls -d .nself/import/*/stage | head -1)
 jq -e '.producer.source=="nhost" and .auth.users==3 and .auth.hash_algorithms.bcrypt==3 and (.storage.objects|length)==4 and (.storage.objects|all(.sha256|length==64))' "$BUNDLE/manifest.json"
 jq -e '[.source_counts[]|select(.kind=="users")|.count]==[3] and [.source_counts[]|select(.kind=="objects")|.count]==[4]' "$BUNDLE/manifest.json"
 jq -se 'all(.[]; .hash_algorithm=="bcrypt")' "$BUNDLE/auth/users.jsonl"
-test "$(jq -r '.storage.objects|map(.bytes)|add' "$BUNDLE/manifest.json")" = "$(( $(wc -c < "$W/up/alpha.txt") + 70000 + 0 + $(wc -c < "$W/up/unicode.txt") ))"
+test "$(jq -r '.storage.objects|map(.bytes)|add' "$BUNDLE/manifest.json")" = "$(( $(wc -c < "$W/up/alpha.txt") + 70000 + $(wc -c < "$W/up/tiny.dat") + $(wc -c < "$W/up/unicode.txt") ))"
 
 # 8. A migrated user signs in against the target hasura-auth with the original password.
 signin() { curl -sS -o "$W/signin.json" -w '%{http_code}' -H 'Content-Type: application/json' --data "$(jq -cn --arg e "$1" --arg p "$2" '{email:$e,password:$p}')" "$TARGET_AUTH/signin/email-password"; }
