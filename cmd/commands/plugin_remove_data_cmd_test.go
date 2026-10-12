@@ -185,13 +185,15 @@ func TestPluginRemoveDryRunDataLineCmd(t *testing.T) {
 }
 
 // TestPluginRemoveProjectPluginDirCmd (D-0504): the project .env NSELF_PLUGIN_DIR is
-// read before the plugin directory is chosen, for the removal and the dry run.
+// read before the plugin directory is chosen, for the removal and the dry run. Only
+// the project dir's ledger records solo in a bundle, so the plan proves the dir too.
 func TestPluginRemoveProjectPluginDirCmd(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		p := chatFixture(t)
 		t.Setenv("NSELF_PLUGIN_DIR", "")
 		projectDir := filepath.Join(t.TempDir(), "project-plugins")
 		installSoloPlugin(t, projectDir, "solo")
+		seedBundleLedger(t, projectDir, "chat", "solo")
 		envPath := filepath.Join(p.project, ".env")
 		body, err := os.ReadFile(envPath)
 		if err != nil {
@@ -205,16 +207,61 @@ func TestPluginRemoveProjectPluginDirCmd(t *testing.T) {
 		setFlags(t, removeCmd, "dry-run")
 		stderr := captureStderr(t, func() { err = runPluginRemove(removeCmd, []string{"solo"}) })
 		resetFlag(removeCmd, "dry-run")
-		if err != nil || !strings.Contains(stderr, "bundles: none reference this plugin") {
+		if err != nil || !strings.Contains(stderr, "bundles: referenced by chat") {
 			t.Errorf("dry run: err = %v, want the plan for the project dir:\n%s", err, stderr)
 		}
-		_ = os.Setenv("NSELF_PLUGIN_DIR", "")
+		t.Setenv("NSELF_PLUGIN_DIR", "") // the dry run exported the project value; the removal must load it again
+		setFlags(t, removeCmd, "force")
 		captureStderr(t, func() { err = runPluginRemove(removeCmd, []string{"solo"}) })
 		if err != nil {
 			t.Fatalf("remove: %v", err)
 		}
 		if len(*calls) != 1 || (*calls)[0].dir != projectDir {
 			t.Errorf("calls = %+v, want one in %s", *calls, projectDir)
+		}
+	})
+}
+
+// TestPluginRemoveDryRunWithoutConfigCmd: a dry run still prints its plan when the
+// project config does not load (it planned without one before D-0504).
+func TestPluginRemoveDryRunWithoutConfigCmd(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		p := chatFixture(t)
+		calls := recordPluginRemove(t)
+		if err := os.WriteFile(filepath.Join(p.project, ".env"), []byte("A=1\x00\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		setFlags(t, removeCmd, "dry-run")
+		var err error
+		stderr := captureStderr(t, func() { err = runPluginRemove(removeCmd, []string{"bots"}) })
+		resetFlag(removeCmd, "dry-run")
+		if err != nil || !strings.Contains(stderr, "did not load") || !strings.Contains(stderr, "(dry-run) no changes made.") {
+			t.Errorf("dry run: err = %v, want a warning and the plan:\n%s", err, stderr)
+		}
+		if err = runPluginRemove(removeCmd, []string{"bots"}); err == nil || len(*calls) != 0 {
+			t.Errorf("real remove with a broken config: err = %v, calls = %+v, want a config error and no removal", err, *calls)
+		}
+	})
+}
+
+// TestPluginRemoveLegacyVerbDataNoteCmd: v1.5 `nself plugin remove` (no --delete-data
+// flag) keeps data and names the flag that drops it; v1.4 prints no such note.
+func TestPluginRemoveLegacyVerbDataNoteCmd(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		p := chatFixture(t)
+		installSoloPlugin(t, p.plugins, "solo")
+		calls := recordPluginRemove(t)
+		var err error
+		stderr := captureStderr(t, func() { err = runPluginRemove(pluginRemoveCmd, []string{"solo"}) })
+		if err != nil || len(*calls) != 1 {
+			t.Fatalf("err = %v, calls = %+v", err, *calls)
+		}
+		note := strings.Contains(stderr, "`nself remove <name> --delete-data` drops it")
+		if compat.V15() && (!note || !(*calls)[0].keep) {
+			t.Errorf("v1.5: keep = %v, want true and the note:\n%s", (*calls)[0].keep, stderr)
+		}
+		if !compat.V15() && note {
+			t.Errorf("v1.4 printed the v1.5 note:\n%s", stderr)
 		}
 	})
 }

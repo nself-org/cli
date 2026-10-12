@@ -13,7 +13,8 @@ package commands
 // Constraints: v1.4 keeps its rule (drop unless --keep-data; --delete-data is
 // a no-op) and only adds a warning, so a forced removal of a bundle member is
 // never silent. v1.5 keeps data unless --delete-data. `nself plugin remove`
-// has no --delete-data flag: it moves to `nself remove` in v1.5.
+// has no --delete-data flag (it moves to `nself remove` in v1.5), so v1.5
+// prints a note there naming the flag.
 
 import (
 	"errors"
@@ -56,7 +57,12 @@ func planPluginRemoveData(cmd *cobra.Command) (pluginDataPlan, error) {
 			return pluginDataPlan{keep: true, reason: "the default from v1.5",
 				notice: "warning: --keep-data is deprecated and has no effect from v1.5 (data is kept by default); it is removed in v1.6.0. Use --delete-data to drop data."}, nil
 		}
-		return pluginDataPlan{keep: true, reason: "the default from v1.5; --delete-data drops it"}, nil
+		d := pluginDataPlan{keep: true, reason: "the default from v1.5; --delete-data drops it"}
+		if cmd.Flags().Lookup("delete-data") == nil {
+			// `nself plugin remove` has no --delete-data; say where it is.
+			d.notice = "note: the plugin's data is kept; `nself remove <name> --delete-data` drops it."
+		}
+		return d, nil
 	}
 	switch {
 	case keepData:

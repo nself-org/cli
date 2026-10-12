@@ -43,14 +43,18 @@ func runPluginRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	// D-0504: the project config loads first; it exports the project .env, so a
-	// project NSELF_PLUGIN_DIR decides the plugin directory.
+	// project NSELF_PLUGIN_DIR decides the plugin directory. A dry run still plans
+	// when the config does not load, as it did before it loaded one.
 	cfg, err := loadConfig()
-	if err != nil {
+	if err != nil && !dryRun {
 		return err
 	}
 	pluginDir := resolvePluginDir()
-	// A --dry-run that deletes is a bug fix, not a behaviour change, so it is not V15-gated (P7-PLUG-20 S1).
 	if dryRun {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: the project config did not load (%v); planning with plugin dir %s\n", err, pluginDir)
+		}
+		// A --dry-run that deletes is a bug fix, not a behaviour change, so it is not V15-gated (P7-PLUG-20 S1).
 		return printPluginRemovePlan(pluginDir, name, data, force)
 	}
 
