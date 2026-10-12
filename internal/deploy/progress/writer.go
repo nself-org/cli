@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nself-org/cli/internal/observability"
 	"github.com/nself-org/cli/internal/output"
 )
 
@@ -219,7 +218,7 @@ func nullable(v string) *string {
 
 // clean redacts secrets, keeps the first line and shortens it.
 func clean(detail string) string {
-	detail = strings.TrimSpace(observability.Redact(detail))
+	detail = strings.TrimSpace(redactText(detail))
 	if i := strings.IndexAny(detail, "\r\n"); i >= 0 {
 		detail = detail[:i]
 	}

@@ -467,6 +467,64 @@ func TestPromoteStreamRollback(t *testing.T) {
 	}
 }
 
+// TestPromoteStreamRollbackFailed: health fails after apply and the undo of
+// apply fails too. The stream ends with result rollback_failed, rollback events
+// are present, the exit status is the E489 class, and stdout holds envelopes only.
+func TestPromoteStreamRollbackFailed(t *testing.T) {
+	compattest.Set(t, true)
+	promoteFixture(t)
+	dest := streamDest(t)
+	old := promoteEngineFn
+	t.Cleanup(func() { promoteEngineFn = old })
+	promoteEngineFn = func(_ *cobra.Command, _, source, target string, dry, _ bool) (cpromote.Engine, *cpromote.State, error) {
+		st := &cpromote.State{Source: source, Target: target, DryRun: dry, Values: map[string]any{}}
+		var steps []cpromote.Step
+		for _, name := range cpromote.StepNames {
+			step := cpromote.Step{Name: name, Run: func(context.Context, *cpromote.State) error { return nil }}
+			switch name {
+			case "apply":
+				step.Undo = func(context.Context, *cpromote.State) error { return errors.New("injected undo failure") }
+			case "health":
+				step.Run = func(context.Context, *cpromote.State) error { return errors.New("injected health failure") }
+			}
+			steps = append(steps, step)
+		}
+		return cpromote.Engine{Steps: steps}, st, nil
+	}
+	var err error
+	stdout, stderr := captureStd(t, func() {
+		err = runDeployPromote(streamPromoteCmd(&bytes.Buffer{}, false, true, true), []string{"ls", "prodsim"})
+	})
+	if stdout != "" {
+		t.Fatalf("stdout must stay empty (the stream goes to the writer), got %q", stdout)
+	}
+	var ce *errs.CLIError
+	if err == nil || !isSilent(err) || !errors.As(err, &ce) || ce.Code != "E489" || errs.ExitCodeFor(err) != 2 {
+		t.Fatalf("err = %v (silent %v), want E489 / exit 2", err, isSilent(err))
+	}
+	if !strings.Contains(stderr, "E489") {
+		t.Errorf("the failure text belongs on stderr: %q", stderr)
+	}
+	// checkStream proves every line is a v1 envelope, every line but the last
+	// validates as a progress event with seq 1..n, and the last is the result.
+	events, res := checkStream(t, dest.String(), "deploy promote", "rollback_failed")
+	rollbacks := 0
+	for _, e := range events {
+		if e.Phase == "rollback" {
+			rollbacks++
+		}
+	}
+	if rollbacks == 0 || phases(events, "apply") != "start,done,rollback" || phases(events, "health") != "start,failed" {
+		t.Errorf("rollbacks=%d apply=%q health=%q", rollbacks, phases(events, "apply"), phases(events, "health"))
+	}
+	if !strings.Contains(dest.String(), "rollback failed: injected undo failure") {
+		t.Errorf("the failed undo is not reported in an event detail")
+	}
+	if len(res.Steps) == 0 {
+		t.Error("result has no steps")
+	}
+}
+
 // TestPromoteStreamDryRun: the plan is reported as skipped events and the
 // stream ends ok.
 func TestPromoteStreamDryRun(t *testing.T) {
