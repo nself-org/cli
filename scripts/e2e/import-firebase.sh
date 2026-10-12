@@ -43,7 +43,9 @@ doc users u1 "{\"name\":$(s Ann),\"age\":$(i 30),\"active\":$(b true),\"joined\"
 doc users u2 "{\"name\":$(s Bob),\"age\":$(s unknown),\"active\":$(b false)}"
 doc users u3 "{\"name\":$(s Cy),\"age\":$(i 41),\"active\":$(b true)}"
 for n in 1 2 3; do doc users/u1/orders "o$n" "{\"total\":$(i $((n * 10)))}"; done
-for n in 1 2; do doc users/u2/orders "o$n" "{\"total\":$(i $((n * 5)))}"; done
+doc users/u2/orders o1 "{\"total\":$(i 5)}"
+# users/gone is never created: it exists only as the parent of a sub-collection (a "missing" document).
+doc users/gone/orders x1 "{\"total\":$(i 7)}"
 doc notes n1 "{\"title\":$(s one)}"
 doc notes n2 "{\"title\":$(s '')}"
 doc notes n3 "{\"title\":$(s three),\"views\":$(i 9007199254740993)}"
@@ -87,6 +89,7 @@ q() { docker compose exec -T postgres psql -U postgres -d nself -Atc "$1"; }
 test "$(q 'SELECT count(*) FROM firebase.users')" = 3
 test "$(q 'SELECT count(*) FROM firebase.notes')" = 4
 test "$(q 'SELECT count(*) FROM firebase.users__orders')" = 5
+test "$(q "SELECT count(*) FROM firebase.users__orders WHERE parent_path='users/gone'")" = 1
 test "$(q "SELECT data->'profile'->>'city' FROM firebase.users WHERE id='u1'")" = Oslo
 test "$(q "SELECT data_type FROM information_schema.columns WHERE table_schema='firebase' AND table_name='users' AND column_name='name'")" = text
 test "$(q "SELECT count(*) FROM information_schema.columns WHERE table_schema='firebase' AND table_name='users' AND column_name='age'")" = 0
