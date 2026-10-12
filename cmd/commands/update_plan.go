@@ -217,6 +217,11 @@ func runUpdateYes(cmd *cobra.Command, d updateDeps) error {
 			progress(w, "Note on %s %s: %s", pin.Kind, pin.Name, pin.Note)
 		}
 	}
+	if !onlyCLI {
+		if err := authKeyPreflight(l); err != nil {
+			return err
+		}
+	}
 	st := map[string]UpdateStep{}
 	if onlyCLI {
 		for _, n := range []string{plan.StepImages, plan.StepPlugins, plan.StepBuild} {

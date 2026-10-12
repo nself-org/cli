@@ -99,32 +99,6 @@ func configuredCacheEngine() (string, map[string]string, error) {
 	return strings.ToLower(strings.TrimSpace(cfg.Redis.Engine)), cfg.Passthrough, nil
 }
 
-// authCandidate is the auth row (D-0661): the entry compose.AuthEntry picks for
-// the mode and AUTH_ENCRYPTION_KEY, never a step back from a release that has
-// migrated the database (that needs the pre-upgrade backup restored), and never a
-// move of a digest-only pin whose release the lock cannot name.
-func authCandidate(pin string, passthrough map[string]string) plan.Candidate {
-	entry, keyMissing := compose.AuthEntry(passthrough)
-	r, ok := compose.LockedRef(entry)
-	v14, _ := compose.LockedRef("auth-v14")
-	if !ok {
-		return plan.Candidate{Reason: plan.ReasonNoImage}
-	}
-	base, digest, _ := strings.Cut(pin, "@")
-	tagless := strings.LastIndex(base, ":") <= strings.LastIndex(base, "/")
-	switch {
-	case tagless && digest != v14.IndexDigest && !compose.AuthRefNeedsKey(pin):
-		return plan.Candidate{Reason: "the auth pin names a digest the CLI image lock does not know, so update cannot tell whether it migrated the database; it is left as is"}
-	case compose.AuthRefNeedsKey(pin) && !compose.AuthRefNeedsKey(r.String()) && keyMissing:
-		return plan.Candidate{Reason: "the pinned auth release needs AUTH_ENCRYPTION_KEY: put back the key this project ran with; going back to 0.36.0 needs the pre-upgrade backup restored"}
-	case compose.AuthRefNeedsKey(pin) && !compose.AuthRefNeedsKey(r.String()):
-		return plan.Candidate{Reason: "the pinned auth release has migrated the database one way; going back needs the pre-upgrade backup restored (Image-Lock wiki, Roll back)"}
-	case !compose.AuthRefNeedsKey(pin) && compose.AuthRefNeedsKey(r.String()):
-		return plan.Candidate{Value: r.String(), Note: "auth " + r.Version + " migrates the auth schema and encrypts TOTP secrets one way on first start: take a verified backup first"}
-	}
-	return plan.Candidate{Value: r.String()}
-}
-
 // cacheEngineEntry is the image lock entry the `redis` service moves to: the
 // engine REDIS_ENGINE names, else the mode default (valkey under v1.5, redis
 // before). The lock pin and the compose file do not decide it, because update

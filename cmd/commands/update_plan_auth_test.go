@@ -130,3 +130,42 @@ func TestUpdatePlanAuthFromConfig(t *testing.T) {
 		})
 	}
 }
+
+// --yes with a migrated auth pin and no key stops before any local change: no
+// plugin install, no image pin move, no CLI update, and the tree is untouched.
+func TestUpdateYesAuthKeyPreflight(t *testing.T) {
+	cur, _ := compose.LockedRef("auth")
+	dir := updateProject(t)
+	t.Setenv(compose.AuthEncryptionKeyEnv, "")
+	_ = os.Unsetenv(compose.AuthEncryptionKeyEnv)
+	l, err := lock.Load(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.Images["auth"] = cur.String()
+	if err := writeLockFile(dir, *l); err != nil {
+		t.Fatal(err)
+	}
+	r := newUpdateRecorder(t)
+	before := hashTree(t, dir)
+	_, _, err = runUpdate(t, "--yes")
+	if err == nil || !strings.Contains(err.Error(), compose.AuthEncryptionKeyEnv) || !strings.Contains(err.Error(), "nothing was changed") {
+		t.Fatalf("err = %v, want the missing-key preflight error", err)
+	}
+	if len(r.calls) != 0 {
+		t.Fatalf("--yes applied something before the preflight: %v", r.calls)
+	}
+	if after := hashTree(t, dir); after != before {
+		t.Fatal("--yes changed the project tree")
+	}
+	// With the key in .env the preflight passes and the update proceeds.
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=t\n"+compose.AuthEncryptionKeyEnv+"="+fakeUpdateAuthKey+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runUpdate(t, "--yes"); err != nil {
+		t.Fatalf("--yes with the key: %v", err)
+	}
+	if len(r.calls) == 0 {
+		t.Fatal("--yes with the key applied nothing")
+	}
+}

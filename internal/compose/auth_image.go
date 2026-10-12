@@ -61,9 +61,9 @@ func authTagNeedsKey(tag string) bool {
 	return m != nil && (m[1] != "0" || len(m[2]) > 2 || (len(m[2]) == 2 && m[2] >= "43"))
 }
 
-// authKeySet reports whether passthrough (config.Passthrough, forwarded to the
+// AuthKeySet reports whether passthrough (config.Passthrough, forwarded to the
 // container verbatim) holds a valid AUTH_ENCRYPTION_KEY.
-func authKeySet(passthrough map[string]string) bool {
+func AuthKeySet(passthrough map[string]string) bool {
 	return authKeyRE.MatchString(passthrough[AuthEncryptionKeyEnv])
 }
 
@@ -76,7 +76,7 @@ func AuthEntry(passthrough map[string]string) (entry string, keyMissing bool) {
 	if !compat.V15() {
 		return "auth-v14", false
 	}
-	if authKeySet(passthrough) {
+	if AuthKeySet(passthrough) {
 		return "auth", false
 	}
 	return "auth-v14", true
@@ -103,7 +103,7 @@ func (g *Generator) authImage() (string, error) {
 		version = ""
 	case cur.IsDefaultVersion(version): // the current release, but never without its key
 		version, entry, keyMissing = "", "auth", false
-		if !authKeySet(g.cfg.Passthrough) {
+		if !AuthKeySet(g.cfg.Passthrough) {
 			entry, keyMissing = "auth-v14", true
 		}
 	}
@@ -115,7 +115,7 @@ func (g *Generator) authImage() (string, error) {
 		// and latest there would be 0.52+ (lens and adversarial reviews, cli#702).
 		return frozenAuthRepo + ":" + version, nil
 	case version != "":
-		if !authKeySet(g.cfg.Passthrough) {
+		if !AuthKeySet(g.cfg.Passthrough) {
 			noticeAuth("AUTH_VERSION=%s needs %s (64 hex characters); auth will not start without it", version, AuthEncryptionKeyEnv)
 		}
 	default:
@@ -133,7 +133,7 @@ func (g *Generator) authImage() (string, error) {
 	default:
 		image = ResolveImage("auth", ImageRef("auth-v14", version))
 	}
-	if version == "" && AuthRefNeedsKey(image) && !authKeySet(g.cfg.Passthrough) {
+	if version == "" && AuthRefNeedsKey(image) && !AuthKeySet(g.cfg.Passthrough) {
 		return "", fmt.Errorf("auth image %s needs %s (64 hex characters) in the env: put back the key this project ran with (.env.secrets); a database it migrated cannot go back to 0.36.0 without restoring the pre-upgrade backup (Image-Lock wiki page, Roll back)", imageBase(image), AuthEncryptionKeyEnv)
 	}
 	return image, nil
