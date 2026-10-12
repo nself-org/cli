@@ -32,7 +32,7 @@ func (r *promoteSignalRemote) Run(ctx context.Context, command string) ([]byte, 
 		return nil, ctx.Err()
 	}
 	raw, err := r.v15Remote.Run(ctx, command)
-	if err == nil && (strings.Contains(command, "images --format json") || strings.Contains(command, "image inspect") || strings.Contains(command, "config --format json --no-env-resolution") || strings.Contains(command, "__NSELF_ABSENT__")) {
+	if err == nil && (strings.Contains(command, "images --format json") || strings.Contains(command, " ps --all --format json") || strings.Contains(command, "image inspect") || strings.Contains(command, "config --format json --no-env-resolution") || strings.Contains(command, "__NSELF_ABSENT__")) {
 		return r.proof.Run(ctx, command)
 	}
 	return raw, err
