@@ -1,0 +1,68 @@
+name: Proxy swap e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      leg:
+        description: Proxy swap leg
+        type: choice
+        options:
+          - add
+          - round-trip
+        default: add
+      plugins_ref:
+        description: Plugins checkout revision
+        type: string
+        default: b3f4cc1fc2c6a4e6636f9e6dc607d30c247dd931
+  pull_request:
+    paths:
+      - internal/build/proxy*
+      - internal/build/orchestrator_nginx.go
+      - internal/build/orchestrator_compose.go
+      - internal/build/orchestrator_build_compose.go
+      - internal/build/nginx_sites_prune.go
+      - internal/nginx/**
+      - internal/compose/generator.go
+      - internal/compose/proxy_omit*
+      - scripts/e2e/**
+      - .github/workflows/proxy-swap-e2e.yml
+
+permissions:
+  contents: read
+
+jobs:
+  proxy-swap:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      PLUGINS_DIR: ${{ github.workspace }}/.e2e-plugins
+      PLUGINS_REF: ${{ inputs.plugins_ref || 'b3f4cc1fc2c6a4e6636f9e6dc607d30c247dd931' }}
+      E2E_EVIDENCE: ${{ github.workspace }}/.e2e-evidence/proxy-swap
+    steps:
+      - name: Checkout CLI
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Checkout plugins
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: nself-org/plugins
+          ref: ${{ env.PLUGINS_REF }}
+          path: .e2e-plugins
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Add leg
+        if: ${{ github.event_name == 'pull_request' || inputs.leg == 'add' }}
+        run: bash scripts/e2e/proxy-swap.sh --add
+      - name: Round-trip leg
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.leg == 'round-trip' }}
+        run: |
+          echo 'The round-trip leg lands with P7-DEPL-04.'
+          bash scripts/e2e/proxy-swap.sh --round-trip
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: proxy-swap-evidence
+          path: ${{ env.E2E_EVIDENCE }}
+          if-no-files-found: warn

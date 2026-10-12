@@ -1,0 +1,13 @@
+{
+  "manifest_version": 2,
+  "name": "echo",
+  "version": "1.0.0",
+  "description": "Local proxy parity fixture",
+  "category": "infrastructure",
+  "maturity": "experimental",
+  "tier": "free",
+  "license": "free",
+  "licenseType": "free",
+  "status": "experimental",
+  "service": {"kind": "compose", "compose": "docker-compose.plugin.yml", "port": 80, "healthcheck": "http://127.0.0.1:80/"}
+}

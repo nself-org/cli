@@ -13,12 +13,94 @@ package build
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/nginxtopo"
+	"gopkg.in/yaml.v3"
 )
+
+// applyProxyProvider applies the derived provider to the compose service gate.
+func (st *buildState) applyProxyProvider(g *compose.Generator) error {
+	// Step 8 reuses the plugin directory resolved at Step 7.05.
+	pluginDir := st.pluginDir
+	provider, err := ProxyProvider(st.cfg, st.workdir, pluginDir)
+	if err != nil {
+		return err
+	}
+	if err := proxyComposeDiscoverable(st.workdir, pluginDir, provider); err != nil {
+		return err
+	}
+	if provider == ProviderNginx && st.planning() && proxyDeclaredTraefik(st.cfg, st.workdir, pluginDir) {
+		// Step 7.05 records the install; reconcile re-plans its services after it.
+		provider = ProviderTraefik
+	}
+	if provider != ProviderNginx {
+		if err := checkProviderRoutes(st.withSnippetRoutes(st.routes), provider, st.cfg, st.workdir); err != nil {
+			return err
+		}
+		g.OmitNginx()
+		// Compose is generated once per build, even when modelRoutes runs twice.
+		if proxyAPIDocsEnabled(st.cfg) {
+			slog.Warn("docs." + st.cfg.BaseDomain + " is not served by traefik (D-0310); api-docs is an accepted difference (API_DOCS_* parsing debt D-0455)")
+		}
+	} else if err := proxyFrontingStack(st.cfg, st.workdir); err != nil {
+		return err
+	}
+	return nil
+}
+
+// proxyFrontingStack verifies that the served nginx tree still has a consumer.
+// Missing compose files are allowed for a fronting stack's first build.
+func proxyFrontingStack(cfg *config.Config, workdir string) error {
+	if cfg.Nginx.FrontedBy == "" {
+		return nil
+	}
+	nginxDir, err := nginxtopo.ServedNginxDir(workdir, cfg.Nginx.FrontedBy)
+	if err != nil {
+		return nil // The existing topology validation reports unresolved layouts.
+	}
+	root := filepath.Dir(nginxDir)
+	refuse := func(reason string) error {
+		return errs.New("E482", "fronting stack "+root+" cannot serve nginx routes: "+reason).
+			WithWhy("A fronted project requires the fronting stack's nginx service.").
+			WithFix("Restore nginx in the fronting stack or unset NGINX_FRONTED_BY.")
+	}
+	composePath := filepath.Join(root, "docker-compose.yml")
+	data, err := os.ReadFile(composePath)
+	if err != nil && !os.IsNotExist(err) {
+		return refuse(composePath + ": " + err.Error())
+	}
+	if bytes.HasPrefix(data, []byte(ComposeGeneratedHeader)) {
+		var document struct {
+			Services map[string]yaml.Node `yaml:"services"`
+		}
+		if err := yaml.Unmarshal(data, &document); err != nil {
+			return refuse(composePath + ": " + err.Error())
+		}
+		if _, ok := document.Services[ProviderNginx]; !ok {
+			return refuse("generated docker-compose.yml has no nginx service")
+		}
+	}
+	manifestPath := filepath.Join(root, composeManifestFile)
+	data, err = os.ReadFile(manifestPath)
+	if err != nil && !os.IsNotExist(err) {
+		return refuse(manifestPath + ": " + err.Error())
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		file := strings.TrimSpace(line)
+		if file != "" && !strings.HasPrefix(file, "#") && proxyTraefikFragment(file) {
+			return refuse("compose manifest loads a traefik fragment: " + file)
+		}
+	}
+	return nil
+}
 
 // buildEnvComputed generates the .env.computed file content with computed
 // values that other tools (e.g., Hasura migrations) depend on. The extra

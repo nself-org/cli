@@ -45,6 +45,9 @@ func (st *buildState) loadValidateConfig() (*BuildResult, error) {
 		return nil, err
 	}
 
+	if err := st.preflightProxy(); err != nil {
+		return nil, err
+	}
 	// ── Step 1.5: Persist auto-generated secrets to .env.secrets ────
 	// Skipped entirely for --check. "--check" means "validate only" — it
 	// must be a pure read. Before this fix it ran unconditionally, so a

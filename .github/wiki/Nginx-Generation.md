@@ -1,6 +1,6 @@
 # Nginx Generation
 
-Nginx is the single entry point for all external traffic in a ɳSelf stack. Rather than asking you to write or maintain nginx configuration by hand, `nself build` generates the full nginx configuration automatically based on which services are enabled, what SSL mode you have selected, and which plugins are installed. The generated files are written to an `nginx/` directory in your project root and are consumed by the nginx container at startup.
+Nginx is the default entry point for external traffic in a ɳSelf stack. `nself build` generates its configuration from the enabled services, SSL mode, and installed plugins. The generated files are written to `nginx/` in your project root.
 
 ---
 
@@ -34,6 +34,38 @@ The docs site is listed as the core route `core:api-docs` (server name `docs.<BA
 The nginx renderer reads this model. A route suppressed by a hand-managed `conf.d` file remains in the JSON with `shadowed_by` set, while its generated `nginx/sites/` file is omitted. Plugin snippets and hand-managed server blocks are in the same file; see [Plugin and hand-managed routes](#plugin-and-hand-managed-routes).
 
 Duplicate generated domains use the compatibility gate: v1.4 keeps the existing build preflight refusal text for duplicates it already detects and warns once for additional duplicates found by the renderer. With `NSELF_V15=1`, every duplicate is refused as E055 with both route IDs. Give each service a distinct route before rebuilding.
+
+## Proxy provider (nginx or traefik)
+
+The installed `traefik` plugin selects the proxy provider. It must be enabled and installed in a plugin directory inside this project. There is no provider config key. Export an absolute `NSELF_PLUGIN_DIR` in the shell for `nself add`, for example `/path/to/project/.nself/plugins`, and set the same value in the project's `.env` for builds. Without an enabled traefik plugin, the provider is nginx. Preflight also treats declared traefik in `nself.yaml` or `nself.yml` as the provider when the build would auto-install it. `NSELF_AUTO_INSTALL_PLUGINS=false` disables that auto-install. This check fails closed even if an offline or failed install would have left the project using nginx. For declared traefik, the plan shows nginx removed; Traefik services appear in the re-plan after the plugin installs, through `reconcile.Apply`'s second render.
+
+The build checks the directory's resolved path, including symlinks. E480 refuses traefik in a shared directory such as `~/.nself/plugins`, or in the project root itself. A shared install would switch every project using that directory on its next build. Reinstall in a project subdirectory, or run `nself remove traefik` from the shared directory.
+
+Before persisting secrets or changing file modes, the build checks the real compose discovery result for traefik without rewriting plugin fragments. E480 refuses a symlinked `traefik` entry or a missing installed Traefik compose fragment. With nginx selected, it only scans real plugin directories for fragments from `traefik` or `traefik.*`, including compose-only installs and update leftovers. A disabled traefik plugin is ignored. The scan does not normalise other plugins or surface their discovery warnings and errors during preflight. Remove those Traefik fragments or reinstall traefik. Compose discovery loads real plugin directories only. Install the plugin as a real directory inside this project. Relative `NSELF_PLUGIN_DIR` paths resolve against the process working directory, including when it differs from the project directory. A leading `~/` is a literal directory name, not a home-directory expansion. Export an absolute `NSELF_PLUGIN_DIR` for `nself add` and set it in `.env` so builds from another working directory find the same plugin.
+
+Fronted mode is nginx-only. E482 refuses traefik when `NGINX_FRONTED_BY` is set. It also refuses a fronting stack whose generated `docker-compose.yml` has no nginx service or whose `.nself/compose-files.txt` lists a traefik fragment. Keep nginx in both projects, or unset `NGINX_FRONTED_BY` and build this project with its own proxy.
+
+On Linux, with traefik selected, the build writes `NSELF_HOST_UID` and `NSELF_HOST_GID` (the ids of the user running the build, who owns the generated 0600 private keys) to `.nself/compose.env`. The traefik fragment runs as that user with every capability dropped except `NET_BIND_SERVICE`, so it can read the keys. Other hosts and nginx projects get no such keys, and the fragment falls back to `0:0`.
+
+E481 lists every item that prevents a complete route swap:
+
+- Route directives in `unmodelled`, routes with `shadowed_by`, and entries in `unmodelled_global`.
+- Generated upstream URLs that cannot be parsed, have a path other than `/`, or have a query. Schemeless upstreams are checked as HTTP URLs. The version 1 contract cannot carry paths or queries (D-0310).
+- Foreign files in `nginx/sites/`, including hand-written files and marked files from another build that this build will not write.
+
+Remove or model the named items, or keep nginx with `nself remove traefik`. Both `nginx/` and `.nself/generated/routes.json` are always generated. With traefik selected, compose omits the nginx service. The plugin owns Traefik configuration and serves ports 80 and 443 through its file provider.
+
+Enabled API docs are an accepted difference (D-0310), not an E481 refusal. Traefik does not serve `docs.<base>`, because the docs host is absent from the version 1 route contract. Each build warns once and still writes its own `nginx/sites/api-docs.conf`. The config loader does not parse any `API_DOCS_*` variables (D-0455), so environment-only projects cannot disable docs through those variables. The e2e parity matrix excludes the docs host.
+
+Use this sequence to switch a running project:
+
+```bash
+nself add traefik --yes
+nself build --remove-orphans --yes
+nself start
+```
+
+The add writes files through reconcile. The build removes the nginx orphan, and start brings up traefik. In v1.5, prod-class changes print the reconcile plan and require confirmation. A refused add leaves generated files and containers unchanged, but leaves traefik installed. Remove it with `nself remove traefik`, or fix the refusal before the next build. For measured downtime, see the e2e evidence.
 
 ## Plugin and hand-managed routes
 
