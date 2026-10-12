@@ -92,7 +92,7 @@ func requireDataLossConsent(cmd *cobra.Command, what string) error {
 	}
 	if !warningsSilenced(os.Args) {
 		path := strings.TrimPrefix(cmd.CommandPath(), "nself ")
-		fmt.Fprintf(cmd.ErrOrStderr(), "warning: nself %s without --yes is deprecated (%s); from v1.5 it needs --yes or a terminal confirmation. Pass --yes now.\n", path, what)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: nself %s without --yes is deprecated (%s); from v1.5 it needs --yes or a terminal confirmation. Pass --yes now.\n", path, what)
 	}
 	return nil
 }
