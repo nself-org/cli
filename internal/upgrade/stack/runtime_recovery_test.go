@@ -101,6 +101,7 @@ func TestUpdateStackRuntimePluginDirectoryAndManifest(t *testing.T) {
 		}
 	}
 	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir) // os.UserHomeDir reads this on Windows
 	if err := os.Mkdir(filepath.Join(dir, "plugins"), 0700); err != nil {
 		t.Fatal(err)
 	}

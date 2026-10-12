@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -16,6 +17,9 @@ import (
 // an error line and exits 1, as a DROP blocked by a dependency does.
 func fakeDockerPgRestoreError(t *testing.T) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("docker stub is a shell script")
+	}
 	bin := t.TempDir()
 	script := "#!/bin/sh\ncat >/dev/null\necho 'pg_restore: error: ERROR:  cannot drop table x' >&2\nexit 1\n"
 	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o755); err != nil {
