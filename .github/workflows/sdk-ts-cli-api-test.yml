@@ -1,0 +1,79 @@
+name: SDK cli-api Tests
+
+# Tests @nself/cli-api (sdk/ts-cli-api): generator drift, unit tests with a mock
+# fetch, and the live contract test against a freshly built `nself admin serve`.
+# The live suite uses an isolated HOME and project; nothing leaves the runner.
+
+on:
+  push:
+    paths:
+      - 'sdk/ts-cli-api/**'
+      - 'tools/sdkgen/**'
+      - '.github/openapi.json'
+      - 'internal/httpapi/**'
+      - 'internal/invoke/**'
+      - 'internal/builtin/admin/**'
+      - '.github/workflows/sdk-ts-cli-api-test.yml'
+  pull_request:
+    paths:
+      - 'sdk/ts-cli-api/**'
+      - 'tools/sdkgen/**'
+      - '.github/openapi.json'
+      - 'internal/httpapi/**'
+      - 'internal/invoke/**'
+      - 'internal/builtin/admin/**'
+      - '.github/workflows/sdk-ts-cli-api-test.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sdk-ts-cli-api:
+    name: cli-api generator + client tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 9
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '20'
+
+      - name: Generated client is current
+        run: CGO_ENABLED=0 go run -mod=vendor ./tools/sdkgen -lang ts -check
+
+      - name: Install dependencies
+        working-directory: sdk/ts-cli-api
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        working-directory: sdk/ts-cli-api
+        run: pnpm run typecheck
+
+      - name: Unit tests (mock fetch)
+        working-directory: sdk/ts-cli-api
+        run: pnpm test -- --testPathIgnorePatterns live
+
+      - name: Install age (the live suite stores a fixture secret)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age
+
+      - name: Build nself
+        run: CGO_ENABLED=0 go build -mod=vendor -o "$RUNNER_TEMP/nself-head" ./cmd/nself
+
+      - name: Live contract tests (nself admin serve)
+        working-directory: sdk/ts-cli-api
+        env:
+          NSELF_BIN: ${{ runner.temp }}/nself-head
+        run: pnpm test -- live

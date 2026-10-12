@@ -111,7 +111,8 @@
           "--format",
           "--keep-daily",
           "--keep-monthly",
-          "--keep-weekly"
+          "--keep-weekly",
+          "--yes"
         ]
       },
       {

@@ -6,6 +6,7 @@ package importer
 import (
 	"context"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/portable"
 )
 
 type FlagSpec struct {
@@ -25,6 +26,9 @@ type Detection struct {
 	// SourceUsers counts the source auth users seen at detection; --plan uses it to run the
 	// same auth.users preflight as the real run.
 	SourceUsers int `json:"source_users,omitempty"`
+	// Objects lists the bucket/key pairs a bundle source will load, for the --plan object-store check.
+	// It never reaches the report: keys can be user file names.
+	Objects []portable.Object `json:"-"`
 }
 type Extracted struct{ Stage string }
 type Source interface {

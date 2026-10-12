@@ -105,15 +105,18 @@ nself db migrate apply --file ~/.nself/plugins/claw/migrations/20240115_rls.sql
 Revert the most recently applied migration.
 
 ```bash
-nself db migrate down [--migration-dir <path> [--steps N]]
+nself db migrate down [--migration-dir <path> [--steps N]] [--yes]
 ```
 
 Without `--migration-dir`, looks for a corresponding `.down.sql` file next to the original migration.
+
+Reverting drops what the migration created, so it needs consent. In v1.4 it warns when called without `--yes`. In v1.5 (`NSELF_V15=1`) it refuses with `[E403]` unless you pass `--yes` or answer `y` on a terminal.
 
 | Flag | Description |
 |---|---|
 | `--migration-dir <path>` | Revert directory migrations: each reverted file `<name>.sql` needs `<name>_down.sql` or `<name>.down.sql` in `<path>` |
 | `--steps N` | With `--migration-dir`: number of most recent migrations to revert (default 1) |
+| `--yes` | Confirm the revert without a prompt (required from v1.5 unless you answer a terminal prompt) |
 
 With `--migration-dir`, every step runs the down file and removes the migration's rows from both ledgers in one transaction. The newest applied migration must be a file of `<path>`; otherwise nothing is reverted and the error names it. A missing down file is an error naming both expected paths, and every step is checked before the first one runs. The ledger keys on the file name only, so `down` also requires the file in `<path>` to match the checksum recorded for that name in `nself_ops.migrations`; a same-named file from another directory (or an edited one) is refused. `--steps` without `--migration-dir` is an error.
 
@@ -258,6 +261,14 @@ requires `--yes` in a noninteractive session; otherwise it returns E403
 remote nself CLI that supports `--archive -`.
 
 ---
+## db pitr restore
+
+```bash
+nself db pitr restore --target 2026-01-15T14:30:00Z [--yes]
+```
+
+Restores the database to a point in time and overwrites what is there now. In v1.4 it warns when called without `--yes`. In v1.5 (`NSELF_V15=1`) it refuses with `[E403]` unless you pass `--yes` or answer `y` on a terminal. The same rule applies to `nself backup pitr restore`.
+
 <!-- END PROSE:description -->
 
 ## Flags
