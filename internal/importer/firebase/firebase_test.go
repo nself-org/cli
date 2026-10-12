@@ -355,7 +355,10 @@ func TestDotLineValuesAreNotPromoted(t *testing.T) {
 	}
 	d.docs["notes"] = []fakeDoc{{ID: "bad\n\\.\nid", Fields: map[string]any{}}}
 	fs, _, _ := fakeClient(t, d)
-	if err = newCollector(fs, t.TempDir()).walk(context.Background(), "", nil); err == nil {
+	bad := newCollector(fs, t.TempDir())
+	err = bad.walk(context.Background(), "", nil)
+	_ = bad.close() // Windows cannot remove the temp dir while a spool is open
+	if err == nil {
 		t.Fatal("an id with a dot line must stop the import")
 	}
 }
