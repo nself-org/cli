@@ -12,7 +12,7 @@
 #
 # Usage: protection_snapshot_test.sh [--case round-trip|mismatch|review-fields|
 #                                             dry-run|watchdog-timeout|merge-flow|
-#                                             slow-ci|relax-ambiguous|force-restore]
+#                                             slow-ci|merge-verify|relax-ambiguous|force-restore]
 # With no --case every case runs. Exit 0 when all pass, 1 otherwise.
 
 # shellcheck disable=SC2016,SC2015,SC2119,SC2120,SC1091  # bash -c bodies are single-quoted on purpose
@@ -46,8 +46,8 @@ if [ -x /bin/bash ]; then ln -s /bin/bash "${TMP}/bin/bash"; fi
 
 # -- helpers ------------------------------------------------------------------
 setup() { # <fixture-name>: fresh server state and logs
-  unset STUB_DROP STUB_PUT_FAIL STUB_KILL_PARENT STUB_SLOW_CI STUB_FAIL_AFTER_LAND_ONCE STUB_GET_STDERR
-  rm -rf "${STUB_DIR}/calls" "${STUB_DIR}/watchdog.rc" "${STUB_DIR}/runcount" "${STUB_DIR}/landed" "${HOME}/.nself" "${TMP}"/work/*
+  unset STUB_DROP STUB_PUT_FAIL STUB_KILL_PARENT STUB_SLOW_CI STUB_FAIL_AFTER_LAND_ONCE STUB_GET_STDERR STUB_MERGE_MODE STUB_MERGE_LAG
+  rm -rf "${STUB_DIR}/calls" "${STUB_DIR}/watchdog.rc" "${STUB_DIR}/runcount" "${STUB_DIR}/landed" "${STUB_DIR}/automerge" "${STUB_DIR}/viewcount" "${HOME}/.nself" "${TMP}"/work/*
   cp "${FX}/$1.json" "${STUB_DIR}/state.json"
   cp "${FX}/$1.json" "${STUB_DIR}/snapshot.json"
 }
@@ -89,18 +89,20 @@ case_round_trip() {
   body="$(snapshot_to_put_body "$(cat "${FX}/cli-like.json")")"
   check "cli-like: enforce_admins, conversation resolution, linear history all true" \
     bash -c 'jq -e ".enforce_admins and .required_conversation_resolution and .required_linear_history" <<< "$1"' _ "${body}"
-  check "cli-like: unpinned checks sent as checks with app_id -1 and contexts []" \
-    bash -c 'jq -e "(.required_status_checks.contexts==[]) and ([.required_status_checks.checks[].app_id]|unique==[-1])" <<< "$1"' _ "${body}"
-  check "stub rejects a body without contexts (schema guard works)" \
-    bash -c '! printf "%s" "{\"required_status_checks\":{\"strict\":true,\"checks\":[]},\"enforce_admins\":true,\"required_pull_request_reviews\":null,\"restrictions\":null}" | gh api "$1" -X PUT --input -' _ "${API}"
+  check "cli-like: unpinned checks sent as checks with app_id -1, no contexts key" \
+    bash -c 'jq -e "(.required_status_checks|has(\"contexts\")|not) and ([.required_status_checks.checks[].app_id]|unique==[-1])" <<< "$1"' _ "${body}"
+  check "stub accepts checks alone" \
+    bash -c 'printf "%s" "{\"required_status_checks\":{\"strict\":true,\"checks\":[]},\"enforce_admins\":true,\"required_pull_request_reviews\":null,\"restrictions\":null}" | gh api "$1" -X PUT --input -' _ "${API}"
+  check "stub rejects contexts together with checks (HTTP 422, as GitHub does)" \
+    bash -c '! printf "%s" "{\"required_status_checks\":{\"strict\":true,\"contexts\":[],\"checks\":[]},\"enforce_admins\":true,\"required_pull_request_reviews\":null,\"restrictions\":null}" | gh api "$1" -X PUT --input -' _ "${API}"
   setup plugins-like
   body="$(snapshot_to_put_body "$(cat "${FX}/plugins-like.json")")"
   check "plugins-like: enforce_admins stays false, no forced stale-review dismissal" \
     bash -c 'jq -e "(.enforce_admins|not) and (.required_pull_request_reviews.dismiss_stale_reviews|not)" <<< "$1"' _ "${body}"
   setup checks-app-ids
   body="$(snapshot_to_put_body "$(cat "${FX}/checks-app-ids.json")")"
-  check "checks-app-ids: checks carry app ids (15368, -1), contexts empty" \
-    bash -c 'jq -e "(.required_status_checks.contexts==[]) and ([.required_status_checks.checks[].app_id]|sort==[-1,15368,15368])" <<< "$1"' _ "${body}"
+  check "checks-app-ids: checks carry app ids (15368, -1), no contexts key" \
+    bash -c 'jq -e "(.required_status_checks|has(\"contexts\")|not) and ([.required_status_checks.checks[].app_id]|sort==[-1,15368,15368])" <<< "$1"' _ "${body}"
 }
 
 case_mismatch() {
@@ -218,6 +220,38 @@ case_slow_ci() {
   unset WATCHDOG_DEADLINE CI_POLL_SECONDS
 }
 
+case_merge_verify() {
+  # Table: mode lag verify-seconds | expected exit, merged?, CI polled?, audit line.
+  # `gh pr merge --auto` exits 0 when it only enables auto-merge; the script must
+  # read the state back, skip the CI wait when the PR is not MERGED, restore
+  # protection (verified) and exit non-zero.
+  local mode lag secs want_rc want_ci want_audit rc d
+  export WATCHDOG_DEADLINE=30 MERGE_POLL_SECONDS=1 CI_POLL_SECONDS=1
+  while read -r d mode lag secs want_rc want_ci want_audit; do
+    [ -n "${d}" ] || continue
+    setup cli-like
+    [ "${mode}" = merge ] || export STUB_MERGE_MODE="${mode}"
+    export STUB_MERGE_LAG="${lag}" MERGE_VERIFY_SECONDS="${secs}"; rc=0
+    printf 'y\n' | bash "${AM}" --repo "${REPO}" --branch feat --pr 7 --wait-minutes 1 > "${TMP}/am.out" 2>&1 || rc=$?
+    check "${d}: exit ${want_rc}" test "${rc}" -eq "${want_rc}"
+    check "${d}: audit MERGE ${want_audit}" audit_has "MERGE .*result=${want_audit}"
+    if [ "${want_ci}" = yes ]; then
+      check "${d}: CI polled" test -f "${STUB_DIR}/runcount"
+    else
+      check "${d}: CI wait skipped" test ! -f "${STUB_DIR}/runcount"
+    fi
+    check "${d}: protection restored and equals the snapshot" compare "$(cat "${FX}/cli-like.json")" "$(server)"
+    check "${d}: restore audited, no RESTORE_FAILED" bash -c 'grep -q "RESTORE .*post_merge" "$1" && ! grep -qE "RESTORE_FAILED|restore_mismatch" "$1"' _ "${AUDIT_LOG}"
+    wait_watchdog || true
+  done <<'TABLE'
+    merged-at-once    merge 0 5 0 yes success
+    auto-then-merged  auto  2 20 0 yes success
+    auto-only         auto  999 3 1 no  auto_merge_only
+    merge-call-fails  fail  0 3 1 no  failed
+TABLE
+  unset WATCHDOG_DEADLINE MERGE_POLL_SECONDS CI_POLL_SECONDS MERGE_VERIFY_SECONDS
+}
+
 case_relax_ambiguous() {
   # The relax PUT lands but gh reports failure: protection must be restored.
   local rc=0
@@ -249,7 +283,7 @@ case_force_restore() {
 # -- main ---------------------------------------------------------------------
 want=""
 if [ "${1:-}" = "--case" ]; then want="${2:-}"; fi
-for c in round-trip mismatch review-fields dry-run watchdog-timeout merge-flow slow-ci relax-ambiguous force-restore; do
+for c in round-trip mismatch review-fields dry-run watchdog-timeout merge-flow slow-ci merge-verify relax-ambiguous force-restore; do
   if [ -z "${want}" ] || [ "${want}" = "${c}" ]; then
     printf '== %s\n' "${c}"
     "case_$(printf '%s' "${c}" | tr '-' '_')"

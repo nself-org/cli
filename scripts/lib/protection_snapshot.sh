@@ -26,8 +26,8 @@
 #                                    body and calls nothing.
 #
 # Audit lines go to ${AUDIT_LOG} (default ~/.nself/admin-merge-audit.log).
-# Status checks are always sent as `checks` (explicit app_id, -1 = any app) with
-# `contexts: []`. Bash 3.2 compatible; needs jq and gh.
+# Status checks are always sent as `checks` (explicit app_id, -1 = any app) and
+# never together with `contexts`. Bash 3.2 compatible; needs jq and gh.
 #
 # Authority: P7-HYG-40; Constitution 14.3 (restore from the snapshot, verify)
 # and 4.1 (no silent wrong answer).
@@ -72,10 +72,11 @@ def en(k): (.[k].enabled // false);
     allow_fork_syncing: en("allow_fork_syncing")
   }'
 
-# Canonical shape -> PUT body. GitHub's schema requires `contexts` (deprecated)
-# next to `checks`, so it is sent empty; every check carries an explicit app_id
-# (-1 = any app), which also stops GitHub auto-pinning unpinned contexts.
-PS_JQ_PUT='.required_status_checks |= (if . == null then null else {strict: .strict, contexts: [], checks: .checks} end)'
+# Canonical shape -> PUT body. Only `checks` is sent: GitHub rejects a PUT that
+# carries both `contexts` and `checks` (HTTP 422, seen on the v1.4.14 release).
+# Every check carries an explicit app_id (-1 = any app), which also stops
+# GitHub auto-pinning unpinned contexts.
+PS_JQ_PUT='.required_status_checks |= (if . == null then null else {strict: .strict, checks: .checks} end)'
 
 ps_audit() {
   local log="${AUDIT_LOG:-${HOME}/.nself/admin-merge-audit.log}"

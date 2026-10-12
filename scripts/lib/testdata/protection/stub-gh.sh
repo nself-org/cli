@@ -2,8 +2,12 @@
 # Stub gh. State: $STUB_DIR/state.json (GET shape). Env: STUB_DROP="field ..."
 # (server forgets those fields on PUT), STUB_PUT_FAIL=1, STUB_KILL_PARENT=1,
 # STUB_SLOW_CI=1 (first 3 `run list` calls say in_progress), STUB_FAIL_AFTER_LAND_ONCE=1
-# (first PUT lands but exits 1), STUB_GET_STDERR=1 (GET also writes to stderr).
-# PUT bodies are checked against the documented schema (422 when invalid).
+# (first PUT lands but exits 1), STUB_GET_STDERR=1 (GET also writes to stderr),
+# STUB_MERGE_MODE=auto (`pr merge` only sets auto-merge: `pr view` says OPEN) |
+# fail (`pr merge` exits 1); STUB_MERGE_LAG=N (with auto: OPEN for the first N
+# `pr view` calls, then MERGED). Default: `pr merge` merges at once.
+# PUT bodies are checked against the documented schema (422 when invalid, incl.
+# `contexts` and `checks` sent together).
 D="${STUB_DIR:?}"
 case "$1" in
   auth) echo "Token scopes: 'repo'"; exit 0 ;;
@@ -14,6 +18,13 @@ case "$1" in
   pr)
     echo "pr $2" >> "${D}/calls"
     if [ "$2" = merge ] && [ "${STUB_KILL_PARENT:-0}" = 1 ]; then kill -9 "${PPID}"; fi
+    if [ "$2" = merge ] && [ "${STUB_MERGE_MODE:-}" = fail ]; then echo "stub: merge failed" >&2; exit 1; fi
+    if [ "$2" = merge ] && [ "${STUB_MERGE_MODE:-}" = auto ]; then touch "${D}/automerge"; echo "will be automatically merged"; fi
+    if [ "$2" = view ]; then
+      n=$(cat "${D}/viewcount" 2>/dev/null || echo 0); echo $((n + 1)) > "${D}/viewcount"
+      if [ -f "${D}/automerge" ] && [ "${n}" -ge "${STUB_MERGE_LAG:-999999}" ]; then rm -f "${D}/automerge"; fi
+      if [ -f "${D}/automerge" ]; then echo OPEN; else echo MERGED; fi
+    fi
     exit 0 ;;
   api) ;;
   *) exit 0 ;;
@@ -31,7 +42,7 @@ if [ "${method}" = PUT ]; then
     ((keys - ["required_status_checks","enforce_admins","required_pull_request_reviews","restrictions","required_linear_history","allow_force_pushes","allow_deletions","block_creations","required_conversation_resolution","lock_branch","allow_fork_syncing"]) | length == 0)
     and ((["required_status_checks","enforce_admins","required_pull_request_reviews","restrictions"] - keys) | length == 0)
     and (.enforce_admins | type == "boolean")
-    and (.required_status_checks == null or ((.required_status_checks.strict | type == "boolean") and (.required_status_checks.contexts | type == "array")))
+    and (.required_status_checks == null or ((.required_status_checks.strict | type == "boolean") and ((.required_status_checks | has("contexts") and has("checks")) | not) and ((.required_status_checks.contexts // .required_status_checks.checks) | type == "array")))
     and (.restrictions == null or ((.restrictions.users | type == "array") and (.restrictions.teams | type == "array")))' > /dev/null \
     || { echo "HTTP 422 stub: body violates the documented schema" >&2; exit 1; }
   landfail=0
