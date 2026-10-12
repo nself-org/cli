@@ -27,6 +27,14 @@ case "$cmd $sub" in
         printf '{"tag_name":"%s"}\n' "$(cat "$ST/latest")" | emit ;;
       repos/nself-org/cli/git/ref/tags/*)
         if has_tag "${path##*/}"; then echo '{"ref":"tag"}' | emit; else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
+      repos/nself-org/*/branches/main/protection/required_status_checks)
+        r=${path#repos/nself-org/}; r=${r%%/*}
+        if [ -f "$ST/required/$r" ]; then echo '{"strict":true,"contexts":["ci"],"checks":[{"context":"ci"}]}' | emit
+        else echo "gh: Not Found (HTTP 404)" >&2; exit 1; fi ;;
+      repos/nself-org/cli/milestones*)
+        if [ -f "$ST/no_milestone" ]; then echo '[]' | emit; else echo '[{"title":"v1.5.0","state":"closed"}]' | emit; fi ;;
+      repos/nself-org/cli/commits/*)
+        printf '{"sha":"%s"}\n' "$(git --git-dir="$(bare cli)" rev-parse "${path##*/}^{commit}")" | emit ;;
       repos/nself-org/*/actions/organization-secrets)
         echo '{"secrets":[{"name":"DOCKERHUB_TOKEN"}]}' | emit ;;
       repos/nself-org/*/contents/*)
@@ -59,6 +67,7 @@ case "$cmd $sub" in
   "pr view")
     printf '{"state":"%s"}\n' "$(cat "$ST/pr/$REPO/$3.state")" | emit ;;
   "pr checks")
+    if [ -f "$ST/nochecks" ]; then echo "no required checks reported on the 'x' branch"; exit 1; fi
     if [ "${STUB_CHECKS_RED:-0}" = 1 ]; then echo "1 failing check"; exit 1; fi
     echo "all required checks passed" ;;
   "run list")
@@ -70,9 +79,13 @@ case "$cmd $sub" in
     case "$wf" in
       release.yml)
         if has_tag "$br"; then echo '[{"databaseId":5551,"status":"completed","conclusion":"success","event":"push"}]' | emit; else echo '[]' | emit; fi ;;
+      license-audit.yml)
+        if [ -f "$ST/license_fail" ]; then echo '[{"conclusion":"failure"}]' | emit; else echo '[{"conclusion":"success"}]' | emit; fi ;;
       docker-publish.yml)
-        if [ "$ev" = workflow_dispatch ] && [ -f "$ST/dispatch/$wf@$REPO" ]; then
-          echo '[{"databaseId":7001,"status":"completed","conclusion":"success"}]' | emit
+        if [ -z "$ev" ] && [ -f "$ST/inflight@$REPO" ]; then
+          echo '[{"databaseId":7000,"status":"in_progress","createdAt":"2026-01-02T00:00:00Z"}]' | emit
+        elif [ -f "$ST/dispatch/$wf@$REPO" ]; then
+          echo '[{"databaseId":7001,"status":"completed","conclusion":"success","createdAt":"2026-01-02T00:00:00Z"}]' | emit
         else echo '[]' | emit; fi ;;
       *)
         if [ -f "$ST/dispatch/$wf@$REPO" ]; then echo '[{"status":"completed","conclusion":"success"}]' | emit; else echo '[]' | emit; fi ;;
@@ -81,7 +94,8 @@ case "$cmd $sub" in
     if printf '%s' "$*" | grep -q -- 'jobs'; then
       c=$(cat "$ST/buildviews" 2>/dev/null || echo 0); echo $((c + 1)) > "$ST/buildviews"
       st=completed; [ "$c" -lt 2 ] && st=in_progress
-      printf '{"jobs":[{"name":"Build release artifacts","status":"%s","conclusion":"success"}]}\n' "$st" | emit
+      lc=failure; [ -f "$ST/rerun" ] && lc=success
+      printf '{"jobs":[{"name":"Build release artifacts","status":"%s","conclusion":"success"},{"name":"Verify Homebrew formula lockstep","status":"completed","conclusion":"%s"}]}\n' "$st" "$lc" | emit
     else
       concl=failure; [ -f "$ST/rerun" ] && concl=success
       printf '{"status":"completed","conclusion":"%s"}\n' "$concl" | emit
@@ -92,7 +106,7 @@ case "$cmd $sub" in
   "run rerun") touch "$ST/rerun" ;;
   "release view")
     has_tag "$3" || { echo "release not found" >&2; exit 1; }
-    printf '{"assets":[{"name":"checksums.txt"},{"name":"nself-1.5.0-darwin-arm64.tar.gz"}]}\n' | emit ;;
+    printf '{"publishedAt":"2026-01-01T00:00:00Z","assets":[{"name":"checksums.txt"},{"name":"nself-1.5.0-darwin-arm64.tar.gz"}]}\n' | emit ;;
   "release download")
     dir=""; prev=""; for a in "$@"; do [ "$prev" = -D ] && dir=$a; prev=$a; done
     mkdir -p "$dir"; cp "$FIXTURES/checksums.txt" "$dir/checksums.txt" ;;

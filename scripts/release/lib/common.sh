@@ -76,21 +76,64 @@ poll() {
 # gh_raw <repo> <path>: file content of main via the contents API (GET).
 gh_raw() { gh api -H 'Accept: application/vnd.github.raw' "repos/nself-org/$1/contents/$2"; }
 
+# gh_try <gh args...>: run gh with stdout in GH_OUT and stderr in GH_ERR (never
+# mixed, so a warning cannot corrupt a value); returns gh's exit status.
+GH_OUT=""; GH_ERR=""
+gh_try() {
+  local ef rc=0
+  ef=$(mktemp "${TMPDIR:-/tmp}/nself-release-err.XXXXXX")
+  GH_OUT=$(gh "$@" 2>"$ef") || rc=$?
+  GH_ERR=$(cat "$ef")
+  rm -f "$ef"
+  return "$rc"
+}
+is_404() { printf '%s' "$GH_ERR" | grep -q -E '404|Not Found|not protected|not enabled'; }
+
 # tag_exists: 0 exists, 1 absent (404); any other failure stops the run, because
 # an unreadable answer must never read as "absent".
 tag_exists() {
-  local out
-  if out=$(gh api "repos/nself-org/cli/git/ref/tags/$TAG" 2>&1); then return 0; fi
-  if printf '%s' "$out" | grep -q -E '404|Not Found'; then return 1; fi
-  err "cannot check tag $TAG: $out"
+  if gh_try api "repos/nself-org/cli/git/ref/tags/$TAG"; then return 0; fi
+  if is_404; then return 1; fi
+  err "cannot check tag $TAG: $GH_ERR"
   exit 1
 }
 
 # --- clones: sibling layout under $WORK so cli/scripts/bump-version.sh finds ../admin ---
+# CUR_S / CUR_ID name the running step for error messages (set by release.sh).
+CUR_S="S?"; CUR_ID="?"
 ensure_clone() {
-  if [ -d "$WORK/$1/.git" ]; then return 0; fi
+  local d="$WORK/$1"
+  if [ -d "$d/.git" ]; then return 0; fi
+  if [ -e "$d" ]; then
+    die_step "$CUR_S" "$CUR_ID" "$d exists but is not a git clone; remove it ($d), then re-run"
+  fi
   mkdir -p "$WORK"
-  gh repo clone "nself-org/$1" "$WORK/$1" -- --quiet
+  gh repo clone "nself-org/$1" "$d" -- --quiet || die_step "$CUR_S" "$CUR_ID" "clone of $1 failed"
+}
+# reset_clone <repo>: back to a clean origin/main. The clone is ours, so -f and clean are safe.
+reset_clone() {
+  local d="$WORK/$1"
+  { git -C "$d" fetch -q --tags origin main \
+    && git -C "$d" checkout -q -f --detach origin/main \
+    && git -C "$d" clean -fdq; } \
+    || die_step "$CUR_S" "$CUR_ID" "could not refresh the clone of $1; remove $d and re-run"
+}
+# checkout_branch <repo> <branch>: the clone on the remote copy of the branch (PR already open).
+checkout_branch() {
+  local d="$WORK/$1"
+  ensure_clone "$1"
+  git -C "$d" ls-remote --exit-code --heads origin "$2" >/dev/null 2>&1 \
+    || die_step "$CUR_S" "$CUR_ID" "a PR exists on $1 but branch $2 is gone; close the PR and re-run"
+  { git -C "$d" fetch -q origin "$2" \
+    && git -C "$d" checkout -q -f -B "$2" FETCH_HEAD \
+    && git -C "$d" clean -fdq; } \
+    || die_step "$CUR_S" "$CUR_ID" "could not check out $2 in $d"
+}
+# commit_all <repo> <message>: the clone is ours, so `add -A` takes only the bump.
+commit_all() {
+  git -C "$WORK/$1" add -A
+  if git -C "$WORK/$1" diff --cached --quiet; then return 1; fi
+  git -C "$WORK/$1" commit -q -m "$2"
 }
 
 # bump_all: cli's own bump-version.sh edits cli and ../admin (idempotent).
@@ -105,34 +148,65 @@ pr_state() { gh pr view "$2" -R "nself-org/$1" --json state --jq .state; }
 
 # open_pr <S#> <id> <repo> <branch> <title> <body>: commit is already made in
 # $WORK/<repo>; push the branch and open the PR; prints the PR number.
+# A branch left on the remote by an earlier attempt is reused only when it holds
+# exactly this commit's tree; otherwise the run stops with the delete command.
 open_pr() {
-  local s=$1 id=$2 repo=$3 br=$4 url
-  git -C "$WORK/$repo" push -q origin "$br" \
-    || die_step "$s" "$id" "push of $br to $repo was refused (does the branch already exist? delete it, then retry)"
+  local s=$1 id=$2 repo=$3 br=$4 d="$WORK/$3" url
+  if git -C "$d" ls-remote --exit-code --heads origin "$br" >/dev/null 2>&1; then
+    git -C "$d" fetch -q origin "$br"
+    git -C "$d" diff --quiet FETCH_HEAD HEAD 2>/dev/null \
+      || die_step "$s" "$id" "branch $br already exists on $repo with different content; delete it: gh api -X DELETE repos/nself-org/$repo/git/refs/heads/$br"
+  else
+    git -C "$d" push -q origin "$br" || die_step "$s" "$id" "push of $br to $repo was refused"
+  fi
   url=$(gh pr create -R "nself-org/$repo" --base main --head "$br" --title "$5" --body "$6") \
     || die_step "$s" "$id" "gh pr create failed on $repo"
   printf '%s\n' "${url##*/}"
 }
 
+# required_checks_count <repo>: how many required status checks main's protection
+# lists (GET). 404 (no protection, or none required) is 0; an unreadable answer is ?.
+required_checks_count() {
+  if gh_try api "repos/nself-org/$1/branches/main/protection/required_status_checks" \
+    --jq '((.contexts // []) + [(.checks // [])[].context]) | unique | length'; then
+    printf '%s\n' "${GH_OUT:-0}"
+  elif is_404; then printf '0\n'
+  else printf '?\n'; fi
+}
+
 # wait_checks <S#> <id> <repo> <n>: block until required checks are green.
-# Red -> exit 1. "No checks yet" is retried: a PR seconds old reports none.
+# Red stops the run. "No checks reported" is accepted only when the repo's
+# protection requires none; if checks are required but not reported yet, retry
+# six times, then stop. Nothing reaches admin-merge.sh on an unverified PR.
 wait_checks() {
-  local s=$1 id=$2 repo=$3 n=$4 i=0 out rc
+  local s=$1 id=$2 repo=$3 n=$4 i=0 out rc req
   out=$(mktemp "${TMPDIR:-/tmp}/nself-release-checks.XXXXXX")
-  while [ "$i" -lt 6 ]; do
+  while :; do
     set +e
     gh pr checks "$n" -R "nself-org/$repo" --required --watch --interval 30 2>&1 | tee "$out"
     rc=${PIPESTATUS[0]}
     set -e
     if [ "$rc" -eq 0 ]; then rm -f "$out"; return 0; fi
-    if grep -q -i -E 'no (required )?checks' "$out"; then
-      i=$((i + 1)); sleep "$POLL_SECONDS"; continue
+    if ! grep -q -i -E 'no (required )?checks' "$out"; then
+      rm -f "$out"
+      die_step "$s" "$id" "required checks on $repo#$n are not green; nothing was merged"
     fi
-    rm -f "$out"
-    die_step "$s" "$id" "required checks on $repo#$n are not green; nothing was merged"
+    req=$(required_checks_count "$repo")
+    if [ "$req" = 0 ]; then
+      say "$s $id: $repo requires no status checks on main; continuing to the owner prompt"
+      rm -f "$out"; return 0
+    fi
+    if [ "$req" = "?" ]; then
+      rm -f "$out"
+      die_step "$s" "$id" "cannot read the required checks of $repo; nothing was merged"
+    fi
+    i=$((i + 1))
+    if [ "$i" -ge 6 ]; then
+      rm -f "$out"
+      die_step "$s" "$id" "$repo#$n has $req required checks but none reported after 6 tries; nothing was merged"
+    fi
+    sleep "$POLL_SECONDS"
   done
-  rm -f "$out"
-  err "$s $id: $repo#$n reports no required checks after 6 tries; continuing to the owner prompt"
 }
 
 # merge_pr <S#> <id> <repo> <n>: green checks, then admin-merge.sh with the

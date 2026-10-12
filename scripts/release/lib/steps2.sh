@@ -52,18 +52,25 @@ formula_version() {
   gh_raw homebrew-nself Formula/nself.rb | sed -n 's/^[[:space:]]*version "\([^"]*\)".*/\1/p' | head -1
 }
 
-# rerun_lockstep: once the formula is on main, re-run the lockstep job that failed.
+# rerun_lockstep <wait 0|1>: with the formula on main, re-run the lockstep job of
+# the release run if that job failed and the run is not successful. With wait=0 a
+# run still in progress is left alone.
 rerun_lockstep() {
-  local id c
+  local id c j
   id=$(release_run_id)
   if [ -z "$id" ]; then return 0; fi
   RUN_ID=$id
-  poll "run $id to settle" 60 release_finished || return 0
+  if [ "$1" = 1 ]; then poll "run $id to settle" 60 release_finished || return 0; fi
   c=$(release_state "$id")
-  if [ "$c" != success ]; then
+  if [ "$c" = success ] || [ "$c" = pending ]; then return 0; fi
+  j=$(gh run view "$id" -R nself-org/cli --json jobs \
+    --jq '[.jobs[] | select(.name | test("Homebrew"; "i")) | .conclusion] | first // empty')
+  if [ "$j" = failure ]; then
     gh run rerun "$id" -R nself-org/cli --failed || die_step S6 homebrew-formula "could not re-run the failed jobs of run $id"
     say "S6 homebrew-formula: re-ran failed jobs of run $id"
     sleep "$POLL_SECONDS"
+  else
+    say "S6 homebrew-formula: run $id concluded '$c' but its lockstep job did not fail; not re-running"
   fi
 }
 
@@ -77,14 +84,18 @@ step_homebrew_formula() {
     plan_line S6 homebrew-formula cli "gh run rerun <run-id> -R nself-org/cli --failed (the verify-homebrew-lockstep job)"
     return 0
   fi
-  if [ "$(formula_version)" = "$VERSION" ]; then step_done S6 homebrew-formula; return 0; fi
+  if [ "$(formula_version)" = "$VERSION" ]; then
+    step_done S6 homebrew-formula
+    rerun_lockstep 0
+    return 0
+  fi
   info=$(pr_info homebrew-nself "$br")
   case "$info" in *CLOSED) die_step S6 homebrew-formula "PR ${info%% *} was closed unmerged; delete branch $br and retry" ;; esac
   step_confirm S6 homebrew-formula
   if [ -z "$info" ]; then
     f=$(ensure_checksums) || die_step S6 homebrew-formula "no checksums.txt (run S5 first)"
-    ensure_clone homebrew-nself
-    git -C "$WORK/homebrew-nself" checkout -q -b "$br"
+    ensure_clone homebrew-nself; reset_clone homebrew-nself
+    git -C "$WORK/homebrew-nself" checkout -q -B "$br" || die_step S6 homebrew-formula "could not create branch $br"
     (cd "$WORK/homebrew-nself" && bash .github/scripts/update-formula.sh --version "$TAG" --checksums-file "$f") \
       || die_step S6 homebrew-formula "update-formula.sh refused the checksums"
     commit_all homebrew-nself "chore(formula): nself ${TAG}" || die_step S6 homebrew-formula "formula unchanged"
@@ -93,16 +104,17 @@ step_homebrew_formula() {
   fi
   pr_flow S6 homebrew-formula homebrew-nself "$br" brew_pr "chore(formula): nself ${TAG}" \
     "Formula for cli ${TAG}, written by .github/scripts/update-formula.sh from the build run's checksums.txt (both darwin hashes). Opened by scripts/release/release.sh in the cli repo."
-  rerun_lockstep
+  rerun_lockstep 1
 }
 
 web_pr() {
   local br="release/cli-v${VERSION}" info url
   info=$(pr_info web "$br")
   if [ -n "$info" ]; then say "S7 release-wait web done (PR #${info%% *}, ${info##* })"; return 0; fi
+  command -v node >/dev/null 2>&1 || die_step S7 release-wait "node is not installed (needed for update-lock.mjs)"
   step_confirm S7 release-wait
-  ensure_clone web
-  git -C "$WORK/web" checkout -q -b "$br"
+  ensure_clone web; reset_clone web
+  git -C "$WORK/web" checkout -q -B "$br" || die_step S7 release-wait "could not create branch $br"
   (cd "$WORK/web" && node org/scripts/sources/update-lock.mjs cli "$TAG") \
     || die_step S7 release-wait "update-lock.mjs failed in the web clone"
   if ! commit_all web "chore(sources): pin cli ${TAG}"; then

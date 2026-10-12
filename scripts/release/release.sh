@@ -9,9 +9,10 @@
 #                     always asks the owner at the terminal
 # Outputs: progress on stdout; errors on stderr. Exit 0 ok, 1 a step failed (message
 #          names the step and the recovery), 2 refused input (no/invalid --version, not a
-#          TTY on a real run, version not newer than the latest release or tag exists).
+#          TTY on a real run, version older than the latest release, or a fresh start
+#          when the version is the latest or its tag exists).
 # Constraints: bash 3.2; PRs on protected repos merge only through admin-merge.sh after
-#          required checks are green; the tag is made only by release-create.sh.
+#          required checks are green; the tag is annotated and pushed by S4 after the denylist pre-checks.
 #          Runbook: .github/wiki/Release-Process.md. State: $TMPDIR/nself-release-<v>.state
 # YES, VERSION, TAG and friends are read by the sourced lib files.
 # shellcheck disable=SC2034
@@ -19,7 +20,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ADMIN_MERGE="$SCRIPT_DIR/../admin-merge.sh"
-RELEASE_CREATE="$SCRIPT_DIR/../release-create.sh"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/common.sh"
 # shellcheck disable=SC1091
@@ -66,42 +66,48 @@ if [ "$PLAN" = 0 ] && [ ! -t 0 ]; then
 fi
 command -v gh >/dev/null 2>&1 || { err "gh is not installed"; exit 1; }
 if [ "$PLAN" = 0 ]; then
-  [ -f "$ADMIN_MERGE" ] && [ -f "$RELEASE_CREATE" ] || { err "admin-merge.sh or release-create.sh missing next to scripts/release/"; exit 1; }
+  [ -f "$ADMIN_MERGE" ] || { err "admin-merge.sh missing next to scripts/release/"; exit 1; }
 fi
 
-# Latest guard (GET only). A fresh start must beat the latest release and have no
-# tag. A resume (--from S2 or later) is an in-flight release, so the tag and the
-# version == latest case (published, finishing S7-S10) are allowed; older is not.
-if latest=$(gh api repos/nself-org/cli/releases/latest --jq .tag_name 2>&1); then
+# Latest guard (GET only). Older than the latest release is always refused.
+# A fresh start (no --from, or S1..S3) also needs version > latest and no tag.
+# S4 may run with the tag present (it checks the tag sits on the merged commit and
+# never moves it). Equal to latest is allowed only from S5, when the release is in
+# flight or published and S5..S10 are finishing it.
+if gh_try api repos/nself-org/cli/releases/latest --jq .tag_name; then
+  latest=$(printf '%s\n' "$GH_OUT" | head -1)
   latest="${latest#v}"
-elif printf '%s' "$latest" | grep -q -E '404|Not Found'; then
+  if ! printf '%s' "$latest" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
+    err "unexpected latest release tag '$latest'"; exit 1
+  fi
+elif is_404; then
   latest=""
 else
-  err "cannot read the latest cli release: $latest"; exit 1
+  err "cannot read the latest cli release: $GH_ERR"; exit 1
 fi
-if [ "$FROM_N" -le 1 ]; then
-  if [ -n "$latest" ] && ! ver_gt "$VERSION" "$latest"; then
-    err "version $VERSION is not newer than the latest release v$latest"; exit 2
-  fi
-  if tag_exists; then
-    err "tag $TAG already exists; resume with --from S<n> instead"; exit 2
-  fi
-elif [ -n "$latest" ] && ver_gt "$latest" "$VERSION"; then
+if [ -n "$latest" ] && ver_gt "$latest" "$VERSION"; then
   err "version $VERSION is older than the latest release v$latest"; exit 2
+fi
+if [ "$FROM_N" -le 4 ] && [ -n "$latest" ] && [ "$latest" = "$VERSION" ]; then
+  err "version $VERSION is already the latest release; resume a finished release with --from S5 or later"; exit 2
+fi
+if [ "$FROM_N" -le 3 ] && tag_exists; then
+  err "tag $TAG already exists; resume with --from S4 or later"; exit 2
 fi
 
 run_step() {
+  CUR_S="S$1"
   case "$1" in
-    1) step_preflight ;;
-    2) step_admin_lockstep ;;
-    3) step_cli_version ;;
-    4) step_tag ;;
-    5) step_build_wait ;;
-    6) step_homebrew_formula ;;
-    7) step_release_wait ;;
-    8) step_docker_verify ;;
-    9) step_admin_image ;;
-    10) step_sdk_publish ;;
+    1) CUR_ID=preflight; step_preflight ;;
+    2) CUR_ID=admin-lockstep; step_admin_lockstep ;;
+    3) CUR_ID=cli-version; step_cli_version ;;
+    4) CUR_ID=tag; step_tag ;;
+    5) CUR_ID=build-wait; step_build_wait ;;
+    6) CUR_ID=homebrew-formula; step_homebrew_formula ;;
+    7) CUR_ID=release-wait; step_release_wait ;;
+    8) CUR_ID=docker-verify; step_docker_verify ;;
+    9) CUR_ID=admin-image; step_admin_image ;;
+    10) CUR_ID=sdk-publish; step_sdk_publish ;;
   esac
 }
 

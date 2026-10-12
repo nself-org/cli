@@ -2,7 +2,7 @@
 # Purpose: build one isolated release.sh test environment (sourced by test.sh).
 # Inputs:  ROOT (worktree root), RELDIR, FIXTURES, BASE (scratch dir), HAVE_GO, ORIG_PATH
 # Outputs: globals T FIX ST REL; bare fixture repos cli/admin/homebrew-nself/web, a
-#          copy of scripts/release next to STUB admin-merge.sh / release-create.sh,
+#          copy of scripts/release next to a STUB admin-merge.sh,
 #          stub gh/curl/sleep/node on PATH, a clone $T/cwd of cli to run from.
 # shellcheck disable=SC2034
 # Constraints: no network, no real GitHub; everything lives under $BASE.
@@ -43,14 +43,14 @@ mk_env() { # <with-facts 0|1>
   T=$(mktemp -d "$BASE/env.XXXXXX")
   FIX=$T/fix; ST=$T/st; mkdir -p "$FIX" "$ST" "$T/home" "$T/tmp" "$T/tree/scripts"
   export HOME=$T/home FIX ST FIXTURES TMPDIR=$T/tmp GOTOOLCHAIN=local GOCACHE=$BASE/gocache GOPATH=$BASE/gopath
-  export GH_LOG=$T/gh.log CURL_LOG=$T/curl.log NODE_LOG=$T/node.log ADMIN_LOG=$T/admin.log RC_LOG=$T/rc.log
+  export GH_LOG=$T/gh.log CURL_LOG=$T/curl.log NODE_LOG=$T/node.log ADMIN_LOG=$T/admin.log
   export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.invalid GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.invalid
   export PATH="$FIXTURES/bin:$ORIG_PATH"
-  : > "$GH_LOG"; : > "$CURL_LOG"; : > "$NODE_LOG"; : > "$ADMIN_LOG"; : > "$RC_LOG"
+  : > "$GH_LOG"; : > "$CURL_LOG"; : > "$NODE_LOG"; : > "$ADMIN_LOG"
   echo v1.4.13 > "$ST/latest"
   mkdir -p "$T/tree/scripts/release"
   cp -R "$RELDIR/release.sh" "$RELDIR/lib" "$T/tree/scripts/release/"
-  cp "$FIXTURES/admin-merge.sh" "$FIXTURES/release-create.sh" "$T/tree/scripts/"
+  cp "$FIXTURES/admin-merge.sh" "$T/tree/scripts/"
   REL=$T/tree/scripts/release/release.sh
   seed_cli "$1"
   seed_begin admin
@@ -67,6 +67,28 @@ mk_env() { # <with-facts 0|1>
   echo '{"cli":"v1.4.13"}' | put org/sources.lock.json
   seed_end web
   git clone -q "$FIX/cli.git" "$T/cwd"
+}
+
+# bump_mains: commit the 1.5.0 bump straight onto admin and cli main (as if S2/S3 had merged).
+bump_mains() {
+  local r
+  for r in admin cli; do
+    git clone -q "$FIX/$r.git" "$T/bm-$r"
+    if [ "$r" = admin ]; then
+      echo '{"name":"admin","version":"1.5.0"}' > "$T/bm-$r/package.json"
+    else
+      echo 1.5.0 > "$T/bm-$r/.github/VERSION"
+    fi
+    git -C "$T/bm-$r" commit -q -am bump && git -C "$T/bm-$r" push -q origin HEAD:main
+  done
+}
+
+# bump_brew: the homebrew formula on main already carries 1.5.0 (as if S6 had merged).
+bump_brew() {
+  git clone -q "$FIX/homebrew-nself.git" "$T/bm-brew"
+  sed 's/version "1.4.13"/version "1.5.0"/' "$T/bm-brew/Formula/nself.rb" > "$T/bm-brew/f.new"
+  mv "$T/bm-brew/f.new" "$T/bm-brew/Formula/nself.rb"
+  git -C "$T/bm-brew" commit -q -am bump && git -C "$T/bm-brew" push -q origin HEAD:main
 }
 
 # snap: one checksum over every ref of every fixture repo.

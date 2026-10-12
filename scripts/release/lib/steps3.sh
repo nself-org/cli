@@ -36,18 +36,26 @@ image_ready() {
 
 hub_ok_img() { hub_ok "$IMG_HUB"; }
 
-# image_step <S#> <id> <repo> <hub-repo> <wait-for-inflight 0|1>
+# image_step <S#> <id> <repo> <hub-repo>: done if the image is up; wait on a
+# docker-publish.yml run that is in flight or finished since the release; dispatch
+# only when none exists.
 image_step() {
   IMG_S=$1; IMG_ID=$2; IMG_REPO=$3; IMG_HUB=$4
-  local inflight
+  local pending pub recent
   if hub_ok "$IMG_HUB"; then step_done "$IMG_S" "$IMG_ID"; return 0; fi
-  if [ "$5" = 1 ]; then
-    inflight=$(gh run list -R "nself-org/$IMG_REPO" --workflow docker-publish.yml --event workflow_run --limit 1 \
-      --json status --jq '.[0].status // "none"')
-    case "$inflight" in
-      queued|in_progress|waiting|pending)
-        poll "$IMG_HUB:$VERSION from the Release-triggered publish" 90 hub_ok_img && { say "$IMG_S $IMG_ID: $IMG_HUB:$VERSION is up"; return 0; } ;;
-    esac
+  pending=$(gh run list -R "nself-org/$IMG_REPO" --workflow docker-publish.yml --limit 5 --json status \
+    --jq '[.[] | select(.status != "completed")] | length')
+  if [ "${pending:-0}" -gt 0 ]; then
+    say "$IMG_S $IMG_ID: a docker-publish.yml run is in flight on $IMG_REPO; waiting for $IMG_HUB:$VERSION"
+    poll "$IMG_HUB:$VERSION" 90 hub_ok_img \
+      || die_step "$IMG_S" "$IMG_ID" "the in-flight run on $IMG_REPO did not publish $IMG_HUB:$VERSION; check it, then --from $IMG_S"
+    say "$IMG_S $IMG_ID: $IMG_HUB:$VERSION is up"; return 0
+  fi
+  pub=$(gh release view "$TAG" -R nself-org/cli --json publishedAt --jq .publishedAt)
+  recent=$(gh run list -R "nself-org/$IMG_REPO" --workflow docker-publish.yml --limit 5 --json createdAt,conclusion \
+    --jq "[.[] | select(.conclusion == \"success\" and .createdAt >= \"$pub\")] | length")
+  if [ "${recent:-0}" -gt 0 ] && poll "$IMG_HUB:$VERSION after a recent run" 6 hub_ok_img; then
+    say "$IMG_S $IMG_ID: $IMG_HUB:$VERSION is up"; return 0
   fi
   step_confirm "$IMG_S" "$IMG_ID"
   IMG_BEFORE=$(newest_dispatch '.[0].databaseId // 0')
@@ -66,7 +74,7 @@ step_docker_verify() {
     plan_line S8 docker-verify cli "gh workflow run docker-publish.yml -R nself-org/cli -f version=$VERSION (once, only if the tag is absent), then wait and re-check"
     return 0
   fi
-  image_step S8 docker-verify cli nself/nself 1
+  image_step S8 docker-verify cli nself/nself
 }
 
 step_admin_image() {
@@ -75,7 +83,7 @@ step_admin_image() {
     plan_line S9 admin-image admin "curl -fsS $HUB_API/nself/nself-admin/tags/$VERSION (need linux/amd64 and linux/arm64)"
     return 0
   fi
-  image_step S9 admin-image admin nself/nself-admin 0
+  image_step S9 admin-image admin nself/nself-admin
 }
 
 # sdk_files <ref>: names of the sdk publish workflows on that ref.
