@@ -115,6 +115,12 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-PLUG-20 | bundle remove drops plugin data by default (paid bundle) | keeps it unless --delete-data | `internal/bundle/remover_plan.go` |
 | P7-PLUG-20 | bundle remove of an unrecorded bundle removes its members | fails with E134 | `internal/bundle/remover_plan.go` |
 | P7-PLUG-20 | remove <plugin> of a bundle member proceeds | refuses with E133 unless --force | `internal/bundle/remove_guard.go` |
+| P7-PLUG-60 | MinIO endpoint | active core or plugin object store endpoint | `internal/compose/custom_services.go` |
+| P7-PLUG-60 | S3 keys infer MinIO intent | core object storage keys do not enable MinIO | `internal/config/loader_parse_env_storage.go` |
+| P7-PLUG-60 | core MinIO generation | missing plugin fails before writes | `internal/compose/object_storage.go` |
+| P7-PLUG-60 | demo enables core MinIO | demo enables SeaweedFS object storage | `internal/setup/setup_env_files.go` |
+| P7-PLUG-60 | media-hosting recommends MinIO | recommends core object storage and the MinIO plugin for existing data | `cmd/commands/init_presets.go` |
+| P7-PLUG-60 | optional core MinIO | core SeaweedFS or MinIO plugin | `internal/compose/object_storage.go` |
 | P7-PLUG-63 | bundle reply trusted for any key and bundle | only a signed reply naming this key, this bundle and a live window | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache age from the unsigned fetched_at | the older of fetched_at and the signed jwt iat | `internal/license/cache_entry.go` |
 | P7-PLUG-63 | cache trusted whatever the clock says | refused when the clock is behind the signed iat or the highest time seen | `internal/license/cache.go` |

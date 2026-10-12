@@ -25,6 +25,7 @@ All ɳSelf project configuration lives in `.env` (and optionally `.env.local` fo
 - [ɳSelf Admin](#nself-admin)
 - [AI (Zero-Config AI Pool)](#ai-zero-config-ai-pool)
 - [Optional Service Toggles](#optional-service-toggles)
+- [Object Storage](#object-storage)
 - [Custom Services (CS\_N)](#custom-services-cs_n)
 - [Licensing](#licensing)
 - [Observability / Profiling](#observability--profiling)
@@ -316,13 +317,28 @@ These boolean flags enable optional bundled services. Each defaults to `false`. 
 | `ADMIN_ENABLED` | bool | `false` | No | Bare (non-`NSELF_`-prefixed) form written by `nself init`'s generated `.env` template alongside the other optional-service toggles. Distinct from `NSELF_ADMIN_ENABLED` above, which is the toggle the Admin dashboard actually reads. |
 | `REDIS_ENABLED` | bool | `false` | No | Enable Redis (caching, sessions, queues). |
 | `REDIS_ENGINE` | `valkey` \| `redis` | unset | No | Cache engine behind the `redis` service. Precedence: this key (both compat modes) > the engine of the project lock's `redis` image pin > the mode default (v1.4 `redis`, v1.5 `valkey`). An existing project keeps its engine until it sets this key or runs `nself update`; a project with no lock keeps the redis image its `docker-compose.yml` runs. The service name `redis`, the `REDIS_*` variables and `REDIS_URL` do not change. Valkey keeps its data in the volume `valkey_data`; `redis_data` is never deleted or migrated, so queued jobs do not follow a switch and switching back reuses `redis_data`. Any other value fails `nself build` and every command that loads the config. See [[Image-Lock]]. |
-| `MINIO_ENABLED` | bool | `false` | No | Enable MinIO (S3-compatible object storage). |
+| `MINIO_ENABLED` | bool | `false` | No | Enable core MinIO in v1.4 mode. In v1.5, requires `nself add minio`; without the plugin, build fails with E138 before writing files. See [[Object-Storage]]. |
 | `SEARCH_ENABLED` | bool | `false` | No | Enable MeiliSearch (full-text search). |
 | `FUNCTIONS_ENABLED` | bool | `false` | No | Enable the serverless Functions runtime. |
 | `MAILPIT_ENABLED` | bool | `false` | No | Enable Mailpit (local email testing UI). |
 | `MLFLOW_ENABLED` | bool | `false` | No | Enable MLflow (ML experiment tracking). |
 
 > **Note:** Each optional service also exposes its own `*_VERSION`, `*_PORT`, `*_MEM_LIMIT`, and `*_CPU_LIMIT` vars. See the dedicated page for each service.
+
+---
+
+## Object Storage
+
+These variables configure core SeaweedFS in v1.5 mode (`NSELF_V15=1`). Core object storage wins over an installed MinIO plugin. See [[Object-Storage]] for bucket bootstrap, credentials and migration.
+
+| Variable | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `OBJECT_STORAGE_ENABLED` | bool | `false` | No | Generate core `seaweedfs` and `seaweedfs-init` services in v1.5 mode. Ignored in v1.4 mode. |
+| `OBJECT_STORAGE_BUCKETS` | string | *(empty)* | No | Comma-separated S3 bucket names to create idempotently after SeaweedFS is healthy. Empty creates none. Names must be 3–63 characters using lowercase letters, digits, hyphens or dots, following S3 naming rules. |
+| `SEAWEEDFS_PORT` | int | `8333` | No | Host S3 port, from 1 through 65535. Published only as `127.0.0.1:<port>:8333`; internal custom-service endpoint remains `http://seaweedfs:8333`. |
+| `SEAWEEDFS_VERSION` | string | *(image lock default)* | No | Override the SeaweedFS image version for both the server and bucket bootstrap services. Empty uses the image lock. |
+| `S3_ACCESS_KEY` | string | *(unset)* | Yes, with core object storage | S3 identity access key. Keep in `.env.secrets`; must be nonempty and contain neither double quotes nor backslashes. |
+| `S3_SECRET_KEY` | string | *(unset)* | Yes, with core object storage | S3 identity secret key. Keep in `.env.secrets`; must be nonempty and contain neither double quotes nor backslashes. |
 
 ---
 
