@@ -106,6 +106,7 @@ SSL_MODE                                      (default: local (dev) / letsencryp
 EXTRA_SSL_DOMAINS                             (unset)                        unset
 REDIS_ENABLED                                 (default: false)               default
 REDIS_VERSION                                 (default: 7-alpine)            default
+REDIS_ENGINE                                  (default: valkey (v1.5) / redis (v1.4)) default
 REDIS_PORT                                    (default: 6379)                default
 REDIS_PASSWORD                                (unset)                        unset
 REDIS_MEMORY                                  (default: 512M)                default

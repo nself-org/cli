@@ -21,9 +21,24 @@ import (
 func validateImagePinning() error {
 	switch v := strings.ToLower(strings.TrimSpace(os.Getenv("IMAGE_PINNING"))); v {
 	case "", "lock", "legacy":
-		return nil
+		return validateRedisEngine()
 	default:
 		return fmt.Errorf("IMAGE_PINNING=%q is not valid: set it to \"lock\" or \"legacy\", or unset it for the default", os.Getenv("IMAGE_PINNING"))
+	}
+}
+
+// validateRedisEngine rejects a REDIS_ENGINE value that is not valkey or redis
+// (case and surrounding space ignored; unset or empty lets the generator
+// decide). Same reasoning as validateImagePinning: a silent fallback would let a
+// typo keep the wrong cache engine. It is called by validateImagePinning, the
+// one post-parse check Load runs (internal/config/loader.go is outside the
+// P7-LIVE-19 write scope; a later change may give each check its own call).
+func validateRedisEngine() error {
+	switch v := strings.ToLower(strings.TrimSpace(os.Getenv("REDIS_ENGINE"))); v {
+	case "", "valkey", "redis":
+		return nil
+	default:
+		return fmt.Errorf("REDIS_ENGINE=%q is not valid: set it to \"valkey\" or \"redis\", or unset it for the default", os.Getenv("REDIS_ENGINE"))
 	}
 }
 
@@ -174,6 +189,7 @@ func parseEnvCore(cfg *Config) {
 		Password: os.Getenv("REDIS_PASSWORD"),
 		Memory:   os.Getenv("REDIS_MEMORY"),
 		CPU:      os.Getenv("REDIS_CPU"),
+		Engine:   strings.ToLower(strings.TrimSpace(os.Getenv("REDIS_ENGINE"))),
 	}
 
 }

@@ -310,6 +310,7 @@ These boolean flags enable optional bundled services. Each defaults to `false`. 
 |---|---|---|---|---|
 | `ADMIN_ENABLED` | bool | `false` | No | Bare (non-`NSELF_`-prefixed) form written by `nself init`'s generated `.env` template alongside the other optional-service toggles. Distinct from `NSELF_ADMIN_ENABLED` above, which is the toggle the Admin dashboard actually reads. |
 | `REDIS_ENABLED` | bool | `false` | No | Enable Redis (caching, sessions, queues). |
+| `REDIS_ENGINE` | `valkey` \| `redis` | unset | No | Cache engine behind the `redis` service. Precedence: this key (both compat modes) > the engine of the project lock's `redis` image pin > the mode default (v1.4 `redis`, v1.5 `valkey`). An existing project keeps its engine until it sets this key or runs `nself update`; a project with no lock keeps the redis image its `docker-compose.yml` runs. The service name `redis`, the `REDIS_*` variables and `REDIS_URL` do not change. Valkey keeps its data in the volume `valkey_data`; `redis_data` is never deleted or migrated, so queued jobs do not follow a switch and switching back reuses `redis_data`. Any other value fails `nself build` and every command that loads the config. See [[Image-Lock]]. |
 | `MINIO_ENABLED` | bool | `false` | No | Enable MinIO (S3-compatible object storage). |
 | `SEARCH_ENABLED` | bool | `false` | No | Enable MeiliSearch (full-text search). |
 | `FUNCTIONS_ENABLED` | bool | `false` | No | Enable the serverless Functions runtime. |

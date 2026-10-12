@@ -212,6 +212,7 @@ func TestBuildRedisService_NoPassword(t *testing.T) {
 	cfg := minimalCfg()
 	cfg.Redis = config.RedisConfig{
 		Enabled: true,
+		Engine:  "redis", // the default engine is v1.5-dependent (P7-LIVE-19)
 		Version: "7-alpine",
 		Port:    6379,
 		Memory:  "512M",
@@ -238,6 +239,7 @@ func TestBuildRedisService_WithPassword(t *testing.T) {
 	cfg := minimalCfg()
 	cfg.Redis = config.RedisConfig{
 		Enabled:  true,
+		Engine:   "redis",
 		Version:  "7-alpine",
 		Port:     6379,
 		Password: "strongredispassword123",

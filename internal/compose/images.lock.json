@@ -499,6 +499,22 @@
       "license": "GPL-3.0",
       "source": "https://github.com/typesense/typesense",
       "mirror": "docker.io/nself/typesense"
+    },
+    {
+      "name": "valkey",
+      "role": "optional",
+      "repository": "docker.io/valkey/valkey",
+      "version": "8.1-alpine",
+      "index_digest": "sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507",
+      "platforms": {
+        "linux/amd64": "sha256:32627109abf6f741121096b45c732f758876803efd7b2e1018ebc0350d117119",
+        "linux/arm/v7": "sha256:77c4c915381ec215ed5a5a727482cbf96cc6fc4be26a18516e46c350b661c0be",
+        "linux/arm64": "sha256:6bd0360157519e3de7c49f6bae7d2bdfab574083bd7d266182db36b1646b0936"
+      },
+      "legacy_ref": "valkey/valkey:8.1-alpine",
+      "license": "BSD-3-Clause",
+      "source": "https://github.com/valkey-io/valkey",
+      "mirror": "docker.io/nself/valkey"
     }
   ]
 }

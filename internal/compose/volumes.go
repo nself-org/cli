@@ -9,7 +9,7 @@ func (g *Generator) buildVolumes() map[string]VolumeConfig {
 	}
 
 	if g.cfg.Redis.Enabled {
-		vols["redis_data"] = VolumeConfig{}
+		vols[g.cacheVolume()] = VolumeConfig{}
 	}
 
 	if g.cfg.Minio.Enabled {

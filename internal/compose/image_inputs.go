@@ -42,6 +42,9 @@ var imageInputs = []ImageInput{
 	// parsed into the config but never reaches the image.
 	{Service: "nginx", Entry: "nginx"},
 	{Service: "redis", Entry: "redis", Vars: []string{"REDIS_VERSION"}},
+	// valkey: the same service and variable when REDIS_ENGINE=valkey or the lock pins
+	// a valkey image (cache_service.go, P7-LIVE-19); the engine decides the entry.
+	{Service: "redis", Entry: "valkey", Vars: []string{"REDIS_VERSION"}},
 	{Service: "minio", Entry: "minio", Vars: []string{"MINIO_VERSION"}},
 	{Service: "mailpit", Entry: "mailpit", Vars: []string{"MAILPIT_VERSION"}},
 	// admin reads NSELF_ADMIN_VERSION only; ADMIN_VERSION is not a variable.

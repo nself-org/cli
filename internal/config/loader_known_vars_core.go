@@ -161,6 +161,7 @@ var knownEnvVarsCore = []string{
 	// Redis
 	"REDIS_ENABLED",
 	"REDIS_VERSION",
+	"REDIS_ENGINE",
 	"REDIS_PORT",
 	"REDIS_PASSWORD",
 	"REDIS_MEMORY",
