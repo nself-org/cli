@@ -12,7 +12,7 @@ esac
 [[ $(uname -s) == Linux ]] || echo 'PROVISIONAL (Constitution §10.3): Linux evidence is required'
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 FIXTURE=$ROOT/scripts/e2e/fixtures/proxy
-PLUGINS_REF=${PLUGINS_REF:-3e6c7f54a8fabdd268ca261ecba400c0da3a6137}
+PLUGINS_REF=${PLUGINS_REF:-b3f4cc1fc2c6a4e6636f9e6dc607d30c247dd931}
 for tool in docker jq python3 curl openssl go git; do
   command -v "$tool" >/dev/null || { echo "FAIL: required tool missing: $tool" >&2; exit 1; }
 done

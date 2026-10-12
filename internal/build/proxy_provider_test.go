@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -25,7 +26,12 @@ func proxyFixture(t *testing.T) *planFixture {
 	t.Setenv("NSELF_PLUGIN_DIR", f.plugins)
 	// API_DOCS_* is not parsed (D-0455), so docs retain their enabled default.
 	stubHostTools(t, f.root)
-	writeFixtureFile(t, filepath.Join(f.root, "stub-bin", "nginx"), "#!/bin/sh\nexit 0\n", 0755)
+	if runtime.GOOS == "windows" {
+		// stubHostTools wrote nginx.bat with exit 1; LookPath ignores a bare sh script here.
+		writeFixtureFile(t, filepath.Join(f.root, "stub-bin", "nginx.bat"), "@echo off\r\nexit /b 0\r\n", 0755)
+	} else {
+		writeFixtureFile(t, filepath.Join(f.root, "stub-bin", "nginx"), "#!/bin/sh\nexit 0\n", 0755)
+	}
 	return f
 }
 
