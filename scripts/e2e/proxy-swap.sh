@@ -4,11 +4,11 @@ set -euo pipefail
 export LC_ALL=C
 # Keep every install/telemetry path away from the live ping service.
 export NSELF_PING_URL=http://127.0.0.1:9
-usage() { echo 'usage: proxy-swap.sh --add | --round-trip [--assert-identical] | --kill-mid-remove' >&2; exit 2; }
+usage() { echo 'usage: proxy-swap.sh --add | --round-trip [--assert-identical] | --kill-mid-remove | --renew' >&2; exit 2; }
 MODE='' ASSERT=0
 for arg in "$@"; do
   case $arg in
-    --add|--round-trip|--kill-mid-remove) [[ -z $MODE ]] || usage; MODE=${arg#--} ;;
+    --add|--round-trip|--kill-mid-remove|--renew) [[ -z $MODE ]] || usage; MODE=${arg#--} ;;
     --assert-identical) ASSERT=1 ;;
     *) usage ;;
   esac
@@ -40,7 +40,7 @@ docker compose version >/dev/null || { echo 'FAIL: Docker Compose is unavailable
 W=$(mktemp -d "${E2E_TMP:-${RUNNER_TEMP:-/tmp}}/proxy-swap.XXXXXX")
 EVIDENCE=${E2E_EVIDENCE:-$W/evidence}
 mkdir -p "$W/evidence" "$W/home" "$W/registry" "$W/a" "$W/b"
-registry_pid='' probe_pid='' swap_started=0
+registry_pid='' probe_pid='' swap_started=0 acme_ctrs='' acme_net=''
 compose() {
   local dir=$1 path
   shift
@@ -125,6 +125,8 @@ cleanup() {
   for dir in "$W/a" "$W/b"; do
     [[ ! -f $dir/.nself/compose-files.txt ]] || compose "$dir" down -v --remove-orphans 2>&1 | redact_logs >"$W/evidence/cleanup-$(basename "$dir").log" || true
   done
+  for c in $acme_ctrs; do docker rm -f "$c" >/dev/null 2>&1 || true; done
+  [[ -z $acme_net ]] || docker network rm "$acme_net" >/dev/null 2>&1 || true
   [[ -z $registry_pid ]] || kill "$registry_pid" 2>/dev/null || true
   # Containers may own generated fixture files; restore only this mktemp tree.
   if [[ $(uname -s) == Linux ]] && command -v sudo >/dev/null; then
@@ -255,6 +257,9 @@ pin_fixture_credentials "$W/a"
 # D2 snippet cert parsing accepts the flat cert dir; core writes certificates/<dir>.
 # Alias only fixture certificate bytes, without editing generated configuration.
 ln -s certificates/proxy-test "$W/a/ssl/proxy-test"
+# traefik-acme mounts ssl/.acme-webroot; Docker would create it root-owned and lego (running as this uid) could not
+# write challenge tokens into it, so the renew leg creates it first (nginx never needed this: the CLI creates it).
+[[ $MODE != renew ]] || install -d -m 755 "$W/a/ssl/.acme-webroot"
 nself "$W/a" start --timeout 180
 wait_healthy nginx
 nself "$W/b" build --yes
@@ -318,7 +323,7 @@ PY
   [[ -s $output ]]
 }
 matrix nginx
-if [[ $MODE != add ]]; then
+if [[ $MODE != add && $MODE != renew ]]; then
   # P7-DEPL-04: D5 round trip. rt-before is taken with nginx serving, before the add.
   manifest "$W/a" rt-before.manifest
   swap_started=1
@@ -388,6 +393,81 @@ if [[ $MODE != add ]]; then
     finish_restore
     echo "PASS: proxy kill-mid-remove converged to rt-before.manifest; evidence: $EVIDENCE"
   fi
+  exit 0
+fi
+if [[ $MODE == renew ]]; then
+  # P7-DEPL-25 (EPIC D25): certificates keep renewing after the swap. Pebble stands in for the CA; the lineage is
+  # HTTP-01 for a host no route owns, so the challenge is answered by traefik's default server from the
+  # traefik-acme webroot, never by a route. lineages.json is written by hand: `trust ssl add --acme` would write a
+  # conf.d file, which is exactly what the swap refuses (E481).
+  PEBBLE_IMG=ghcr.io/letsencrypt/pebble@sha256:c156cabea562e43ed0060bddc03539c07de40e311b52c6b0e5ea710a496e56b8
+  CHALL_IMG=ghcr.io/letsencrypt/pebble-challtestsrv@sha256:26789c714fc40ab2de771fb34c06d13232b8ca4f96f77995483d5dfe8744f276
+  ACME_HOST=acme.proxy.test
+  swap_started=1
+  NSELF_V15=1 nself "$W/a" add traefik --force --yes
+  nself "$W/a" build --remove-orphans --yes
+  nself "$W/a" start --timeout 180
+  wait_healthy traefik
+  matrix traefik
+  same nginx.matrix traefik.matrix
+  acme_net=proxy-swap-acme-$$
+  acme_ctrs="proxy-swap-chall-$$ proxy-swap-pebble-$$"
+  docker network create "$acme_net" >/dev/null
+  docker run -d --name "proxy-swap-chall-$$" --network "$acme_net" --network-alias challtestsrv -p 127.0.0.1::8055 "$CHALL_IMG" \
+    -defaultIPv6 "" -defaultIPv4 10.0.0.9 -http01 "" -https01 "" -tlsalpn01 "" >/dev/null
+  cat > "$W/pebble-config.json" <<'JSON'
+{"pebble":{"listenAddress":"0.0.0.0:14000","managementListenAddress":"0.0.0.0:15000","certificate":"test/certs/localhost/cert.pem","privateKey":"test/certs/localhost/key.pem","httpPort":80,"tlsPort":5001,"ocspResponderURL":"","externalAccountBindingRequired":false,"domainBlocklist":["blocked-domain.example"],"retryAfter":{"authz":3,"order":5},"profiles":{"default":{"description":"90 days","validityPeriod":7776000}}}}
+JSON
+  docker run -d --name "proxy-swap-pebble-$$" --network "$acme_net" --network-alias pebble -e PEBBLE_VA_NOSLEEP=1 -e PEBBLE_WFE_NONCEREJECT=0 \
+    -v "$W/pebble-config.json:/pebble-config.json:ro" "$PEBBLE_IMG" -config /pebble-config.json -dnsserver challtestsrv:8053 >/dev/null
+  for _ in $(seq 1 30); do docker logs "proxy-swap-pebble-$$" 2>&1 | grep -q 'Listening on' && break; sleep 1; done
+  docker cp "proxy-swap-pebble-$$:/test/certs/pebble.minica.pem" "$W/minica.pem"
+  # Pebble validates over the docker network: the traefik container joins it and the test host resolves to it.
+  traefik_id=$(compose "$W/a" ps -q traefik)
+  docker network connect "$acme_net" "$traefik_id"
+  traefik_ip=$(docker inspect -f "{{(index .NetworkSettings.Networks \"$acme_net\").IPAddress}}" "$traefik_id")
+  chall_port=$(docker port "proxy-swap-chall-$$" 8055/tcp | head -n 1 | sed 's/.*://')
+  curl -fsS -d "{\"host\":\"$ACME_HOST\",\"addresses\":[\"$traefik_ip\"]}" "http://127.0.0.1:$chall_port/add-a" >/dev/null
+  install -d -m 700 "$W/a/ssl/.acme"
+  cat > "$W/a/ssl/.acme/lineages.json" <<JSON
+{"schema_version":"1","contact":"ops@proxy.test","lineages":[{"name":"proxy-test","domains":["$ACME_HOST"],"challenge":"http-01","dns_provider":"","credential_secrets":[],"targets":["certificates/proxy-test"],"key_type":"","adopted_from":null,"last_issued":null}]}
+JSON
+  chmod 600 "$W/a/ssl/.acme/lineages.json"
+  export NSELF_ACME_DIRECTORY=https://pebble:14000/dir NSELF_ACME_CA_BUNDLE=$W/minica.pem NSELF_ACME_NETWORK=$acme_net
+  dyn=$W/a/.nself/generated/traefik/dynamic.yml
+  served_fp() { echo | openssl s_client -connect 127.0.0.1:443 -servername "$ACME_HOST" 2>/dev/null | openssl x509 -noout -fingerprint -sha256; }
+  cert_files() { grep -E 'certFile' "$dyn" | sed 's/^[[:space:]]*//' | sort -u; }
+  started() { docker inspect -f '{{.Id}} {{.State.StartedAt}}' "$traefik_id"; }
+  renew() { nself "$W/a" trust ssl renew --acme --force --agree-tos 2>&1 | tee "$W/evidence/$1.log"; }
+  fp0=$(served_fp); files0=$(cert_files); up0=$(started)
+  [[ -n $fp0 && -n $files0 ]] || { echo 'FAIL: no served certificate or certFile before the renewal' >&2; exit 1; }
+  renew renew-1
+  grep -q 'lineage proxy-test: http-01' "$W/evidence/renew-1.log" || { echo 'FAIL: the renewal was not HTTP-01' >&2; exit 1; }
+  grep -q 'traefik reloaded, served certificate verified' "$W/evidence/renew-1.log" || { echo 'FAIL: no traefik reload line' >&2; exit 1; }
+  fp1=$(served_fp); files1=$(cert_files)
+  [[ $fp1 != "$fp0" ]] || { echo 'FAIL: the served fingerprint did not change' >&2; exit 1; }
+  [[ $files1 != "$files0" && $files1 == *'.proxy-test.gen-'* ]] || { echo "FAIL: certFile does not name the new generation: $files1" >&2; exit 1; }
+  [[ $fp1 == "$(openssl x509 -in "$W/a/ssl/certificates/proxy-test/fullchain.pem" -noout -fingerprint -sha256)" ]] || { echo 'FAIL: served certificate is not the installed one' >&2; exit 1; }
+  [[ $(started) == "$up0" ]] || { echo 'FAIL: traefik restarted during the renewal' >&2; exit 1; }
+  # a second renewal moves to the next generation
+  renew renew-2
+  fp2=$(served_fp); files2=$(cert_files)
+  [[ $fp2 != "$fp1" && $files2 != "$files1" ]] || { echo 'FAIL: the second renewal changed neither fingerprint nor certFile' >&2; exit 1; }
+  # an injected render failure (routes.json the renderer refuses) rolls back to the previous generation
+  link3=$(readlink "$W/a/ssl/certificates/proxy-test"); routes=$W/a/.nself/generated/routes.json
+  cp "$routes" "$W/routes.json.bak"; printf '{' > "$routes"
+  renew renew-fail || true
+  cp "$W/routes.json.bak" "$routes"
+  grep -q 'previous certificates restored' "$W/evidence/renew-fail.log" || { echo 'FAIL: the failed render did not report the restore' >&2; exit 1; }
+  [[ $(readlink "$W/a/ssl/certificates/proxy-test") == "$link3" && $(served_fp) == "$fp2" && $(cert_files) == "$files2" ]] || {
+    echo 'FAIL: the failed render changed the generation, certFile or served certificate' >&2; exit 1; }
+  [[ $(started) == "$up0" ]] || { echo 'FAIL: traefik restarted around the failed render' >&2; exit 1; }
+  # and the next renewal, with the render working again, succeeds
+  renew renew-3
+  [[ $(served_fp) != "$fp2" ]] || { echo 'FAIL: renewal after the failed render did not change the served certificate' >&2; exit 1; }
+  docker logs "proxy-swap-pebble-$$" > "$W/evidence/pebble.log" 2>&1 || true
+  printf 'fp0 %s\nfp1 %s\nfp2 %s\nfiles1\n%s\nfiles2\n%s\n' "$fp0" "$fp1" "$fp2" "$files1" "$files2" > "$W/evidence/renew.txt"
+  echo "PASS: renewal after the swap (HTTP-01 via traefik-acme, certFile moved, fingerprint changed, no restart, failed render rolled back); evidence: $EVIDENCE"
   exit 0
 fi
 python3 - "$W/a/.env" <<'PY'

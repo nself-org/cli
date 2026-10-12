@@ -39,6 +39,12 @@ type RunSpec struct {
 	User string
 	// Network is a docker network name; empty leaves the default bridge.
 	Network string
+	// ReadOnly mounts the root filesystem read-only (`--read-only`).
+	ReadOnly bool
+	// CapDrop lists capabilities to drop (`--cap-drop X`); "ALL" drops every one.
+	CapDrop []string
+	// SecurityOpt lists `--security-opt` values, e.g. "no-new-privileges:true".
+	SecurityOpt []string
 }
 
 // dockerSocketPath is the daemon socket no one-shot container may mount.
@@ -53,6 +59,15 @@ func buildRunArgs(spec RunSpec) ([]string, error) {
 	}
 	if spec.Network != "" {
 		args = append(args, "--network", spec.Network)
+	}
+	if spec.ReadOnly {
+		args = append(args, "--read-only")
+	}
+	for _, c := range spec.CapDrop {
+		args = append(args, "--cap-drop", c)
+	}
+	for _, o := range spec.SecurityOpt {
+		args = append(args, "--security-opt", o)
 	}
 	for _, m := range spec.Mounts {
 		if strings.HasSuffix(m.Source, dockerSocketPath) {
