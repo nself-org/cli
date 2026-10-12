@@ -133,3 +133,48 @@ func TestProxyRestorePlanModeOnlyRecords(t *testing.T) {
 		t.Fatal("plan mode did not record the removal")
 	}
 }
+
+func TestProxyRestoreStaticDirAlsoCleaned(t *testing.T) {
+	workdir, _ := restoreProject(t, testRendererMarker)
+	static := proxyOutputPath(workdir, "traefik-static")
+	writeFixtureFile(t, filepath.Join(static, "traefik.yml"), "# fixture\n", 0644)
+	writeFixtureFile(t, filepath.Join(static, proxyGeneratedMarker), testRendererMarker, 0644)
+	if err := cleanupProviderOutput(newDiskSink(workdir), workdir, ProviderNginx); err != nil {
+		t.Fatal(err)
+	}
+	if exists(static) {
+		t.Fatal("traefik-static survived")
+	}
+}
+
+func TestProxyRestoreDanglingLinkPlanMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on windows")
+	}
+	workdir, dir := restoreProject(t, testRendererMarker)
+	if err := os.Symlink(filepath.Join(workdir, "gone"), filepath.Join(dir, "dangling")); err != nil {
+		t.Fatal(err)
+	}
+	for name, sink := range map[string]Sink{"plan": newMemSink(workdir, ""), "apply": newDiskSink(workdir)} {
+		if err := cleanupProviderOutput(sink, workdir, ProviderNginx); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestProxyRestoreRootOwnedWarnsAndKeeps(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs unix permissions and a non-root user")
+	}
+	workdir, dir := restoreProject(t, testRendererMarker)
+	if err := os.Chmod(dir, 0555); err != nil { // no unlink inside, as for a root-owned dir
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0755) })
+	if err := cleanupProviderOutput(newDiskSink(workdir), workdir, ProviderNginx); err != nil {
+		t.Fatalf("a permission failure must warn, not fail the build: %v", err)
+	}
+	if !exists(filepath.Join(dir, proxyGeneratedMarker)) {
+		t.Fatal("the marker must stay so the next build retries")
+	}
+}

@@ -118,6 +118,7 @@ cleanup() {
   local rc=$?
   trap - EXIT
   [[ -z $probe_pid ]] || kill "$probe_pid" 2>/dev/null || true
+  [[ -z ${build_pid:-} ]] || kill -9 "$build_pid" 2>/dev/null || true
   if [[ $rc != 0 && $swap_started == 1 ]]; then
     swap_diagnostics >"$W/evidence/swap-diagnostics.stdout" 2>"$W/evidence/swap-diagnostics.stderr" || true
   fi
@@ -344,6 +345,11 @@ if [[ $MODE != add ]]; then
   matrix traefik
   same nginx.matrix traefik.matrix
   [[ -f $W/a/.nself/generated/traefik/.nself-generated ]] || { echo 'FAIL: the swap left no renderer marker to clean' >&2; exit 1; }
+  # traefik-config runs as root and Docker creates its bind directories root-owned, so an unprivileged
+  # build warns and keeps them (D-0778). Hand them to the runner user first, as cleanup() does for the fixture.
+  if [[ $(uname -s) == Linux ]]; then
+    sudo -n chown -R "$(id -u):$(id -g)" "$W/a/.nself/generated" || { echo 'FAIL: could not chown the rendered output' >&2; exit 1; }
+  fi
   nself "$W/a" remove traefik --yes
   if [[ $MODE == round-trip ]]; then
     nself "$W/a" build --remove-orphans --yes
@@ -351,12 +357,13 @@ if [[ $MODE != add ]]; then
     echo "PASS: proxy round trip; rt-before.manifest vs rt-after.manifest compared; request parity restored; evidence: $EVIDENCE"
   else
     # kill -9 once the traefik service container is gone; this build is what stops it.
+    project=$(compose "$W/a" config --format json | jq -er .name)
     (cd "$W/a" && NSELF_PLUGIN_DIR="$W/a/.nself/plugins" exec "$W/nself" build --remove-orphans --yes) &
     build_pid=$!
-    project=$(compose "$W/a" config --format json | jq -er .name)
     gone=0
     for _ in $(seq 1 1200); do
-      if [[ -z $(docker ps -aq --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=traefik') ]]; then gone=1; break; fi
+      # An empty answer counts only when docker itself succeeded.
+      if left=$(docker ps -aq --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=traefik') && [[ -z $left ]]; then gone=1; break; fi
       sleep .02
     done
     alive=no

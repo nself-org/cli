@@ -75,7 +75,9 @@ nself build --remove-orphans --yes
 nself start
 ```
 
-The remove deletes the plugin. The next build derives nginx again and deletes `.nself/generated/traefik/`, but only when the renderer's `.nself-generated` marker is inside it. A directory without that marker, a directory reached through a symlink, and every other path stay in place; the build prints one warning and carries on. The build also removes the traefik containers as orphans. After the sequence, the generated files, the compose service set and the containers match the project as it was before `nself add traefik`, and the request-parity matrix passes through nginx again.
+The remove deletes the plugin. The next build derives nginx again and deletes the renderer's two output directories, `.nself/generated/traefik/` and `.nself/generated/traefik-static/`, but only when the renderer's `.nself-generated` marker is inside each. A directory without that marker, a directory reached through a symlink, and every other path stay in place; the build prints one warning and carries on. The build also removes the traefik containers as orphans. After the sequence, the generated files, the compose service set and the containers match the project as it was before `nself add traefik`, and the request-parity matrix passes through nginx again.
+
+On Linux the `traefik-config` container runs as root and Docker creates its bind directories root-owned, so an unprivileged build cannot delete them. The build then warns (naming the directory), keeps the marker so the next build retries, and does not fail. Run the `sudo rm -rf` it prints, or `sudo chown -R "$USER" .nself/generated`, and build again. This is debt D-0778; the plugin's one-shot should run as the host user.
 
 If the remove is interrupted (a crash, `kill -9`), the files are already final, because the build writes them before it removes any container. Run `nself start`: it removes the leftover traefik containers and starts nginx. Both paths are tested on Linux by `scripts/e2e/proxy-swap.sh --round-trip --assert-identical` and `--kill-mid-remove`.
 
