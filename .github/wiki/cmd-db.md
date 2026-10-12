@@ -105,10 +105,12 @@ nself db migrate apply --file ~/.nself/plugins/claw/migrations/20240115_rls.sql
 Revert the most recently applied migration.
 
 ```bash
-nself db migrate down [--migration-dir <path> [--steps N]]
+nself db migrate down [--migration-dir <path> [--steps N]] [--yes]
 ```
 
 Without `--migration-dir`, looks for a corresponding `.down.sql` file next to the original migration.
+
+Reverting drops what the migration created, so it needs consent. In v1.4 it warns when called without `--yes`. In v1.5 (`NSELF_V15=1`) it refuses with `[E403]` unless you pass `--yes` or answer `y` on a terminal.
 
 | Flag | Description |
 |---|---|

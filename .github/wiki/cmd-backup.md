@@ -346,8 +346,10 @@ nself backup list [--remote <name>] [--since 24h] [--format table|json]
 Remove backups beyond the retention policy.
 
 ```bash
-nself backup prune [--keep-daily 7] [--keep-weekly 4] [--keep-monthly 12] [--dry-run]
+nself backup prune [--keep-daily 7] [--keep-weekly 4] [--keep-monthly 12] [--dry-run] [--yes]
 ```
+
+Prune deletes backups for good. In v1.4 it warns when called without `--yes`. In v1.5 (`NSELF_V15=1`) it refuses with `[E403]` unless you pass `--yes` or answer `y` on a terminal. `--dry-run` only previews, so it never needs `--yes`.
 
 ---
 

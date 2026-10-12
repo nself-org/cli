@@ -16,10 +16,11 @@ commands:
   backup pitr base-backup: {side_effect: write}
   backup pitr disable: {side_effect: write}
   backup pitr enable: {side_effect: write}
-  # surface cli-only: overwrites the live data directory and has no consent flag or plan form; a flag is a behaviour change (debt)
-  backup pitr restore: {side_effect: destructive, surface: cli-only}
+  # cmd/commands/pitr.go:77 overwrites the live data directory; --yes is the consent flag (D-0285)
+  backup pitr restore: {side_effect: destructive, confirm: {flags: [yes]}}
   backup pitr status: {side_effect: read}
-  backup prune: {side_effect: destructive, json: legacy, confirm: {flags: []}}
+  # cmd/commands/backup_verify_prune.go:53 deletes old backups; --yes is the consent flag, --dry-run previews (D-0285)
+  backup prune: {side_effect: destructive, json: legacy, confirm: {flags: [yes]}}
   backup restore: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/backup_restore.go:85 downloads a backup from a remote and restores it over the database
   backup restore-remote: {side_effect: destructive, confirm: {flags: [yes]}}
@@ -88,8 +89,8 @@ commands:
   db migrate baseline: {side_effect: write}
   db migrate create: {side_effect: write}
   # cmd/commands/db_migrate.go:87 rolls a migration back; dropped objects and data are not restorable by a command
-  # surface cli-only: rolls a migration back with no consent flag or plan form; a flag is a behaviour change (debt)
-  db migrate down: {side_effect: destructive, surface: cli-only}
+  # cmd/commands/db.go:62 --yes is the consent flag (D-0285)
+  db migrate down: {side_effect: destructive, confirm: {flags: [yes]}}
   db migrate generate: {side_effect: write}
   db migrate idempotent: {side_effect: write}
   # cmd/commands/db_migrate_lint.go:45 RunE path changes no persistent state (prints/reads only)
@@ -110,8 +111,8 @@ commands:
   # cmd/commands/db_pitr.go:19 RunE path changes no persistent state (prints/reads only)
   db pitr: {side_effect: read}
   db pitr enable: {side_effect: write}
-  # surface cli-only: overwrites the live database and has no consent flag or plan form; a flag is a behaviour change (debt)
-  db pitr restore: {side_effect: destructive, surface: cli-only}
+  # cmd/commands/db_pitr.go:42 overwrites the live database; --yes is the consent flag (D-0285)
+  db pitr restore: {side_effect: destructive, confirm: {flags: [yes]}}
   db pitr status: {side_effect: read}
   db pitr test: {side_effect: write}
   # cmd/commands/db_reconcile.go:40 dry-run by default (prints the plan); --apply escalates to write
@@ -175,8 +176,8 @@ commands:
   update project detect: {side_effect: read}
   update project from-bash: {side_effect: write}
   update project from-v099: {side_effect: write}
-  # surface cli-only: restores an older project layout with no consent flag or plan form; a flag is a behaviour change (debt)
-  update project rollback: {side_effect: destructive, surface: cli-only}
+  # cmd/commands/migrate.go:52 restores an older project layout; --yes is the consent flag, --list only reads (D-0285)
+  update project rollback: {side_effect: destructive, confirm: {flags: [yes]}}
   update project run: {side_effect: write}
 hubs:
   - {path: db import, summary: "Import data from another platform"}
