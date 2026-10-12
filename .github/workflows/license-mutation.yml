@@ -48,7 +48,7 @@ jobs:
 
       - name: Keep the gremlins report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: license-mutation-report
           path: ${{ runner.temp }}/license-mutation.txt

@@ -454,7 +454,7 @@ jobs:
 
       - name: Upload cold start results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: cold-start-gate-json
           path: ${{ runner.temp }}/perf-out/
@@ -546,7 +546,7 @@ jobs:
             | tee bench-output.txt
 
       - name: Upload benchmark results
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: cli-bench-output
           path: bench-output.txt

@@ -84,7 +84,7 @@ jobs:
           cat report.md
 
       - name: Upload report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: go-updates-${{ github.run_id }}
           path: |
