@@ -49,10 +49,11 @@ func markFrontPrevious(set *deploy.ArtifactSet, workdir, target string) {
 
 // recordFront adds the host's front tar and lists to the deploy record. A deploy
 // that changed nothing in the front root (no file shipped, nothing pruned) records
-// no front part: there is nothing to restore, and rollback then treats the host as
+// no front part: there is nothing to restore (the same when the front sync never
+// started, FrontSynced false: the front root was not touched), and rollback then treats the host as
 // it did before the front root existed.
 func recordFront(st *deploy.StrategyState, res deploy.ApplyResult) {
-	if res.FrontTar == "" || len(res.FrontChanged) == 0 {
+	if res.FrontTar == "" || len(res.FrontChanged) == 0 || !res.FrontSynced {
 		return
 	}
 	if st.FrontTars == nil {

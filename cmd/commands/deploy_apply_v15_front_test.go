@@ -148,7 +148,7 @@ func TestRecordFrontAndPreviousRoundTrip(t *testing.T) {
 		t.Fatalf("recorded a front without a tar: %+v", st)
 	}
 	var res deploy.ApplyResult
-	res.BackupHost, res.FrontTar = "h1", "/srv/a/backend/.nself/backups/pre-deploy-x-front.tar.gz"
+	res.BackupHost, res.FrontTar, res.FrontSynced = "h1", "/srv/a/backend/.nself/backups/pre-deploy-x-front.tar.gz", true
 	res.FrontChanged, res.FrontAbsent = []string{"nginx/sites/a.conf", "nginx/sites/b.conf", "nginx/sites/pruned.conf"}, []string{"nginx/sites/b.conf"}
 	res.FrontShipped = []string{"nginx/sites/a.conf", "nginx/sites/b.conf"} // pruned.conf was pruned, not shipped
 	res.FrontNames = map[string][]string{"nginx/sites/a.conf": {"a.example.org"}, "nginx/sites/b.conf": {}}
@@ -162,6 +162,14 @@ func TestRecordFrontAndPreviousRoundTrip(t *testing.T) {
 	recordFront(&st, res)
 	// A host whose deploy changed nothing in the front root records no front part.
 	recordFront(&st, deploy.ApplyResult{BackupHost: "h3", FrontRecord: deploy.FrontRecord{FrontTar: "/srv/a/backend/.nself/backups/pre-deploy-y-front.tar.gz"}})
+	// The front sync never started (the re-check refused, then the main restore failed and kept the record): no front part.
+	recordFront(&st, deploy.ApplyResult{BackupHost: "h4", FrontRecord: deploy.FrontRecord{FrontTar: "/srv/a/backend/.nself/backups/pre-deploy-z-front.tar.gz",
+		FrontChanged: []string{"nginx/sites/z.conf"}, FrontShipped: []string{"nginx/sites/z.conf"}, FrontNames: map[string][]string{"nginx/sites/z.conf": {"z.example.org"}}}})
+	for _, host := range []string{"h3", "h4"} {
+		if _, ok := st.FrontTars[host]; ok || len(st.FrontChanged[host])+len(st.FrontAbsent[host])+len(st.FrontShipped[host])+len(st.FrontNames[host]) != 0 {
+			t.Errorf("%s: a deploy whose front sync never started carries front fields: %+v", host, st)
+		}
+	}
 	if _, ok := st.FrontTars["h3"]; ok {
 		t.Error("a deploy with an empty front change list recorded a front part")
 	}

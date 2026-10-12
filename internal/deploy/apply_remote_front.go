@@ -43,6 +43,11 @@ type FrontRecord struct {
 	FrontShipped []string
 	// FrontNames is the server_name set of each shipped file (the file as shipped).
 	FrontNames map[string][]string
+	// FrontSynced is true once the front sync started (the first front write was
+	// allowed). A record carries the front fields only then: a deploy that stopped
+	// before it (the re-check refused) changed nothing in the front root, and a
+	// rollback must not restore a tar over files the deploy never touched.
+	FrontSynced bool
 }
 
 // frontPathRe is the only shape of path that ships from or is pruned in the front root.
@@ -225,7 +230,7 @@ func (fa *frontApply) sync(ctx context.Context, o ApplyOptions, res *ApplyResult
 	if _, err := fa.hostChecks(ctx, r); err != nil {
 		return err
 	}
-	fa.synced = true
+	fa.synced, res.FrontSynced = true, true
 	prune, kept, err := frontPrunable(ctx, r, front, fa.view())
 	if err != nil {
 		return err

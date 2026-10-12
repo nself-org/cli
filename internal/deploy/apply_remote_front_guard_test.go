@@ -322,6 +322,34 @@ func TestFrontHostFileChangedBetweenGuardAndSync(t *testing.T) {
 	if len(x.d.execLog()) != 0 {
 		t.Errorf("exec ran: %v", x.d.execLog())
 	}
+	if res.FrontSynced {
+		t.Error("FrontSynced is true although the re-check refused before the first front write")
+	}
+
+	// The main restore then fails and keeps the record (Synced true): the front fields
+	// must still be marked as never synced, so the record carries no front part.
+	y := frontFixture(t)
+	base2, reads2 := y.f.handler, 0
+	hostY := filepath.Join(y.front, "nginx", "sites", "api.conf")
+	y.f.handler = func(s string) (string, bool) {
+		if strings.Contains(s, "head -c") && strings.Contains(s, "@@") {
+			if reads2++; reads2 == 2 {
+				writeFile(t, hostY, sibling, 0o644)
+			}
+		}
+		return base2(s)
+	}
+	y.f.fail["tar -xzf"] = errBoom
+	res2, err := ApplyRemote(context.Background(), y.o)
+	if err == nil || !res2.Synced {
+		t.Fatalf("err = %v synced = %v, want the failed restore to keep the record", err, res2.Synced)
+	}
+	if res2.FrontSynced || res2.FrontTar == "" {
+		t.Errorf("front record %+v: want a tar taken but FrontSynced false", res2.FrontRecord)
+	}
+	if got := readFile(t, hostY); got != sibling {
+		t.Errorf("the sibling's file changed: %q", got)
+	}
 }
 
 func TestFrontSyncCreatesOnlyAMissingSitesLeaf(t *testing.T) {
