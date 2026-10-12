@@ -523,6 +523,18 @@
         ]
       },
       {
+        "name": "export",
+        "path": "nself db export",
+        "short": "Export a portable bundle from a started project",
+        "hidden": false,
+        "flags": [
+          "--json",
+          "--no-storage",
+          "--out",
+          "--schemas"
+        ]
+      },
+      {
         "name": "fk-index",
         "path": "nself db fk-index",
         "short": "Audit and create indexes for foreign key columns",

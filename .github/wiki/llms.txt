@@ -221,6 +221,7 @@ Subcommands:
 - `backup-sync-status` — Show cross-region backup sync status
 - `drift` — Schema drift detection: scan np_* tables for Theme 25 column compliance
 - `drop` — Drop the project database (DESTRUCTIVE)
+- `export` — Export a portable bundle from a started project
 - `fk-index` — Audit and create indexes for foreign key columns
 - `generate` — Generate type-safe client SDK types from the live Hasura schema
 - `hasura` — Hasura metadata operations

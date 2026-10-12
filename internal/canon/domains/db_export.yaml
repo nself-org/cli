@@ -1,0 +1,4 @@
+# Authored portable-export command fragment (P7-ADOPT-17).
+schema_version: 1
+commands:
+  db export: {side_effect: read}

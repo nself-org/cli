@@ -77,6 +77,7 @@ rules:
   - {match: "internal/exporter/**", layer: L2}
   - {match: "internal/cmd/ci/**", layer: L2}
 edges:
+  - {from: internal/exporter, to: internal/database} # P7-ADOPT-17; overview mirror is lead-owned
   - {from: internal/backup, to: internal/controlplane}   # added after the forge basis (P7-PROD-06/07); needs the overview 4.2 line
   - {from: internal/build, to: internal/bundle}
   - {from: internal/build, to: internal/plugin}

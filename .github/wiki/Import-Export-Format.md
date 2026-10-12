@@ -1,5 +1,18 @@
 # Import / Export Format (portable bundle v1)
 
+## Export from a started project
+
+`nself db export --out <dir> [--schemas a,b] [--no-storage] [--json]` reads a
+started project's database under one exported snapshot and writes this format.
+Objects come from the active store's loopback S3 port (SeaweedFS in v1.5).
+The manifest maps each bucket/key to its content-addressed member; all object
+writes use the portable writer. Config lists names only; Hasura source connection
+configuration is omitted. Plugin-owned tables and schemas are excluded.
+The scrubber fails closed on read/render errors or a secret in text/SQL (E526),
+removing staging output. Auth bcrypt hashes are allowed; user object bytes are
+not scanned. Nonempty output (E527) and insufficient disk (E525) are refused
+before writing. See [[Leaving-nSelf]] for restore instructions and limitations.
+
 The portable bundle is the vendor-neutral directory that `nself db export` writes and every importer reads. It is contract `cli.portable-export` v1. The manifest schema is generated: `schemas/portable-export.v1.schema.json`.
 
 Library: `internal/portable` (Writer, Reader, Manifest), `internal/postgres/tablehash` (count and hash per table), `internal/objstore` (S3 client for bucket contents).
