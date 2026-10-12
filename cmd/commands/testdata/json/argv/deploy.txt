@@ -4,13 +4,20 @@
 # setup --apply, update verify-sbom, the pipeline and blue/green runs) are covered by the
 # Go tests in cmd/commands/json_deploy_test.go and json_deploy_bodies_test.go against the
 # loopback fixtures, not by this table.
-deploy access
+# Moved spellings: the v1.4 row compares the human output with the base; the canonical-path
+# row below it validates the v1.5 envelope.
+access #| no-json=envelope-checked-by-deploy-access
+deploy access #| human-skip=v1.4 has no such spelling; the access row compares the human output
 deploy status #| legacy-json
 deploy check-access #| legacy-json
 deploy environments
-deploy local --dry-run #| legacy-json
-doctor security audit
-doctor security status
-deploy security setup
-update upgrade --check
+deploy local --dry-run #| legacy-json human-skip=the summary line prints the elapsed milliseconds
+security audit #| no-json=envelope-checked-by-doctor-security-audit
+doctor security audit #| human-skip=v1.4 has no such spelling; the security audit row compares the human output
+security status #| no-json=envelope-checked-by-doctor-security-status
+doctor security status #| human-skip=v1.4 has no such spelling; the security status row compares the human output
+security setup #| no-json=envelope-checked-by-deploy-security-setup
+deploy security setup #| human-skip=v1.4 has no such spelling; the security setup row compares the human output
+upgrade --check #| no-json=envelope-checked-by-update-upgrade
+update upgrade --check #| human-skip=v1.4 has no such spelling; the upgrade row compares the human output
 update images --dry-run
