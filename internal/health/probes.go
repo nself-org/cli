@@ -6,59 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/nself-org/cli/internal/httptimeout"
 )
 
 const probeTimeout = 5 * time.Second
-
-// ProbeRedis runs a Redis PING via docker exec and returns healthy if the
-// response is "PONG". The containerID argument should be the running container
-// name or ID (e.g. "myproject_redis").
-func ProbeRedis(ctx context.Context, containerID, password string) *HealthResult {
-	start := time.Now()
-
-	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
-	defer cancel()
-
-	args := []string{"exec", containerID, "redis-cli"}
-	if password != "" {
-		args = append(args, "-a", password)
-	}
-	args = append(args, "ping")
-
-	out, err := exec.CommandContext(ctx, "docker", args...).Output()
-	elapsed := time.Since(start)
-
-	if err != nil {
-		return &HealthResult{
-			Service:  "redis",
-			Status:   "unhealthy",
-			Duration: elapsed,
-			Details:  fmt.Sprintf("docker exec failed: %v", err),
-		}
-	}
-
-	response := strings.TrimSpace(string(out))
-	if response == "PONG" {
-		return &HealthResult{
-			Service:  "redis",
-			Status:   "healthy",
-			Duration: elapsed,
-			Details:  "PONG received",
-		}
-	}
-
-	return &HealthResult{
-		Service:  "redis",
-		Status:   "unhealthy",
-		Duration: elapsed,
-		Details:  fmt.Sprintf("expected PONG, got: %q", response),
-	}
-}
 
 // ProbeMinIO performs an HTTP GET to /minio/health/live on the given host:port.
 // MinIO returns HTTP 200 when healthy.

@@ -10,17 +10,22 @@ package commands
 // filesystem state under the user's config dir (isFirstStart).
 // Outputs: a populated startOpts, a bool for first-run detection, and a
 // short categorical string safe to attach to telemetry events.
-// Constraints: pure move — no behavior changes. resolveStartOpts must keep
-// reading the same flag names and env var fallbacks (NSELF_EMBEDDED_PG,
-// NSELF_SKIP_DB_INIT, NSELF_PROFILE) that runStart and its tests depend on.
+// Constraints: resolveStartOpts must keep reading the same flag names and env
+// var fallbacks (NSELF_EMBEDDED_PG, NSELF_SKIP_DB_INIT, NSELF_PROFILE) that
+// runStart and its tests depend on. It ends with checkComposeMinimum (D-0548),
+// which refuses a docker compose older than 2.20 and fails open when the
+// version cannot be read or is not recognised.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/oplock"
 	"github.com/nself-org/cli/internal/ui"
 
@@ -110,6 +115,14 @@ func resolveStartOpts(cmd *cobra.Command) (startOpts, error) {
 		timeout = 600
 	}
 
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := checkComposeMinimum(ctx); err != nil {
+		return startOpts{}, err
+	}
+
 	return startOpts{
 		verbose:          verbose,
 		debug:            debug,
@@ -127,6 +140,25 @@ func resolveStartOpts(cmd *cobra.Command) (startOpts, error) {
 		skipDBInit:       skipDBInit,
 		profile:          profile,
 	}, nil
+}
+
+// composeRefusalSuffix ends the error checkComposeMinimum returns.
+const composeRefusalSuffix = " nself start refuses to run with this version."
+
+// checkComposeMinimum refuses to start on a docker compose older than 2.20.
+// It fails open: an unreadable or unrecognised version returns nil, because
+// checkDockerAvailable reports a missing docker later in the start path.
+func checkComposeMinimum(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	version, err := dockerComposeVersion(ctx)
+	if err != nil {
+		return nil
+	}
+	if docker.CheckComposeVersion(version) == docker.ComposeTooOld {
+		return fmt.Errorf("%s%s", docker.ComposeTooOldMessage(version), composeRefusalSuffix)
+	}
+	return nil
 }
 
 // isFirstStart returns true when ~/.config/nself/onboarding.json does not yet
@@ -156,6 +188,8 @@ func classifyStartError(err error) string {
 	}
 	msg := err.Error()
 	switch {
+	case strings.Contains(msg, "older than 2.20"):
+		return "compose-too-old"
 	case containsAny(msg, "port", "already in use", "bind: address"):
 		return "port-collision"
 	case containsAny(msg, "docker", "Docker", "cannot connect to the Docker", "docker not found", "docker info"):

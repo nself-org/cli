@@ -3,7 +3,9 @@ package commands
 // Purpose: doctor checks for the local environment: Docker install/running/
 // compose version, git, disk space, memory, and network reachability. Inputs
 // are a context and a verbose flag; outputs are doctorCheckResult values.
-// Constraints: split out of doctor.go (CLI-R12) as a pure move, no behavior change.
+// Constraints: split out of doctor.go (CLI-R12). The compose version check
+// also warns below the minimum compose version (D-0548). The check reads the
+// version through the dockerComposeVersion seam so tests run no subprocess.
 
 import (
 	"context"
@@ -11,8 +13,13 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/maintenance"
 )
+
+// dockerComposeVersion reads the installed docker compose version. A package
+// variable so tests can stub it.
+var dockerComposeVersion = docker.ComposeVersion
 
 // checkDockerInstalled verifies the docker binary is on PATH.
 func checkDockerInstalled(verbose bool) doctorCheckResult {
@@ -54,16 +61,25 @@ func checkDockerRunning(ctx context.Context, verbose bool) doctorCheckResult {
 	return doctorCheckResult{Name: name, Status: "pass", Message: "Docker daemon is responsive", Detail: detail}
 }
 
-// checkDockerComposeVersion verifies docker compose v2 is available and reports its version.
+// checkDockerComposeVersion verifies docker compose v2 is available, reports
+// its version, and warns when it is older than docker.MinComposeVersion.
 func checkDockerComposeVersion(ctx context.Context, verbose bool) doctorCheckResult {
 	name := "Docker Compose v2"
-	cmd := exec.CommandContext(ctx, "docker", "compose", "version", "--short")
-	out, err := cmd.Output()
+	version, err := dockerComposeVersion(ctx)
 	if err != nil {
 		printCheck("fail", name, "docker compose not available", verbose)
 		return doctorCheckResult{Name: name, Status: "fail", Message: "docker compose not available"}
 	}
-	version := strings.TrimSpace(string(out))
+	switch docker.CheckComposeVersion(version) {
+	case docker.ComposeTooOld:
+		msg := docker.ComposeTooOldMessage(version)
+		printCheck("warn", name, msg, verbose)
+		return doctorCheckResult{Name: name, Status: "warn", Message: msg, Detail: version}
+	case docker.ComposeUnknown:
+		msg := fmt.Sprintf("docker compose %s (version not recognised; the minimum is %s)", version, docker.MinComposeVersion)
+		printCheck("pass", name, msg, verbose)
+		return doctorCheckResult{Name: name, Status: "pass", Message: msg, Detail: version}
+	}
 	msg := fmt.Sprintf("docker compose %s", version)
 	printCheck("pass", name, msg, verbose)
 	return doctorCheckResult{Name: name, Status: "pass", Message: msg, Detail: version}
