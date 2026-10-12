@@ -1,11 +1,17 @@
 package build
 
 // orchestrator_secrets.go — persists auto-generated secrets (plugin
-// internal secrets, Hasura JWT secret) to .env.secrets during build.
-// Split from orchestrator.go (T-P6-E2-W1-S1-T3).
+// internal secrets, Hasura JWT secret, and the generated Postgres password and
+// Hasura admin secret) to .env.secrets during build. Split from
+// orchestrator.go (T-P6-E2-W1-S1-T3).
 // Inputs:  workdir, resolved *config.Config.
 // Outputs: error — writes .env.secrets as a side effect.
-// Constraints: pure move, same checks/output/errors, no behavior change.
+// Constraints: a generated credential must survive a rebuild (D-0506): the
+// config loader generates POSTGRES_PASSWORD and HASURA_GRAPHQL_ADMIN_SECRET on
+// every load when unset, so build 2 would render values that no longer match
+// the running database. They are written once and read back by later loads.
+// A value owned by the real process environment (CI export) is never written,
+// because env files override the process env and would shadow a later rotation.
 
 import (
 	"bufio"
@@ -14,6 +20,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -66,6 +73,19 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 	var toWrite []secretEntry
 	for _, s := range candidates {
 		if s.value != "" && !onDisk[s.envKey] {
+			toWrite = append(toWrite, s)
+		}
+	}
+
+	// Core credentials the loader generates when unset (D-0506). Persist only
+	// when no env file defines the key and the real process environment does
+	// not supply it: that source owns the value, and a file copy would shadow
+	// a later rotated export (files override the process env on load).
+	for _, s := range []secretEntry{
+		{"POSTGRES_PASSWORD", cfg.Postgres.Password},
+		{"HASURA_GRAPHQL_ADMIN_SECRET", cfg.Hasura.AdminSecret},
+	} {
+		if s.value != "" && !onDisk[s.envKey] && os.Getenv(s.envKey) == "" {
 			toWrite = append(toWrite, s)
 		}
 	}
