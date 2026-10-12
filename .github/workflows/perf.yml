@@ -65,7 +65,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0  # need full history to find the merge-base
           # The PR head, not the synthetic merge commit: HEAD must be the
@@ -294,7 +294,7 @@ jobs:
       RUN_RUNS: "30"
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           # The PR head, not the synthetic merge commit (see Binary Size Gate).
@@ -527,7 +527,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - uses: actions/setup-go@v7
         with:

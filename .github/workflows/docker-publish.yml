@@ -55,7 +55,7 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       # Single source of proceed/version/latest. Fails closed: secrets absent, a
       # non-tag head_branch, a tag with no GitHub release, or a failed Release

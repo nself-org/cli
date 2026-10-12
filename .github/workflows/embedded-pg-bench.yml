@@ -33,7 +33,7 @@ jobs:
           - macos-14          # Apple Silicon — primary deployment target
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - uses: actions/setup-go@v7
         with:
