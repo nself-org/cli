@@ -4,8 +4,8 @@
 // Constraints: never echoes a key blob. The parent dir may be a symlink (the
 //              target is checked); the pin file may not (rename would replace
 //              the link). Every ancestor of the parent dir, on the path as
-//              given and with symlinks resolved, gets sshd's secure_path test.
-//              Mode and owner checks are skipped on windows.
+//              given and with symlinks resolved, gets sshd's secure_path test
+//              (refused under compat.V15, one warning on v1.4: knownhosts_compat.go). Mode and owner checks are skipped on windows.
 //              Nothing here chmods a user directory. Lock is the sidecar
 //              "<Path>.lock" (0600, never truncated, left in place, opened
 //              O_NOFOLLOW|O_NONBLOCK, and must be a regular file
@@ -121,7 +121,7 @@ func checkDir(dir string) error {
 	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o022 != 0 {
 		return fmt.Errorf("pinned host keys directory %s has mode %04o: group/world writable; chmod it 0700", dir, fi.Mode().Perm())
 	}
-	return checkAncestors(dir)
+	return ancestorGate(dir, checkAncestors(dir))
 }
 
 // checkAncestors is sshd's secure_path over every directory above dir, up to
@@ -241,7 +241,7 @@ func (p PinnedHostKeys) acquire(write bool) (func(), error) {
 	dir := filepath.Dir(p.Path)
 	flags := os.O_RDONLY
 	if write {
-		if err := checkBeforeMkdir(dir); err != nil {
+		if err := ancestorGate(dir, checkBeforeMkdir(dir)); err != nil {
 			return nil, err
 		}
 		if err := os.MkdirAll(dir, 0o700); err != nil {

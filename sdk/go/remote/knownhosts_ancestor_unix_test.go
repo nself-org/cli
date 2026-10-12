@@ -3,7 +3,8 @@
 package remote
 
 // Purpose: tests for the sshd secure_path check over the pin directory's
-// ancestors (D-0484). No network, no root needed.
+// ancestors (D-0484), run under compat.V15 where the walk refuses; the v1.4
+// warn path is in knownhosts_compat_unix_test.go. No network, no root needed.
 
 import (
 	"fmt"
@@ -74,6 +75,7 @@ func TestAncestor_WritableAncestorRefused(t *testing.T) {
 		ok   bool
 	}{{0o755, true}, {0o700, true}, {0o777, false}, {0o775, false}, {0o757, false}, {os.ModeSticky | 0o777, false}} {
 		t.Run(fmt.Sprintf("%v", tc.mode), func(t *testing.T) {
+			v15(t)
 			p, shared := nestedPin(t)
 			if err := p.Add("n1", keyA); err != nil {
 				t.Fatal(err)
@@ -115,6 +117,7 @@ func TestAncestor_ResolvedPathChecked(t *testing.T) {
 		ok   bool
 	}{{0o755, true}, {0o777, false}} {
 		t.Run(fmt.Sprintf("%04o", tc.mode), func(t *testing.T) {
+			v15(t)
 			p, home := pinFile(t)
 			open := filepath.Join(home, "open")
 			real := filepath.Join(open, "real")
@@ -134,8 +137,14 @@ func TestAncestor_ResolvedPathChecked(t *testing.T) {
 				}
 				return
 			}
-			if aerr == nil || !strings.Contains(aerr.Error(), "ancestor "+open+" ") {
-				t.Errorf("link into a %04o tree: %v", tc.mode, aerr)
+			// The refusal names the resolved path: on macOS t.TempDir() sits
+			// under /var, a link to /private/var (D-0677).
+			want, err := filepath.EvalSymlinks(open)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if aerr == nil || !strings.Contains(aerr.Error(), "ancestor "+want+" ") {
+				t.Errorf("link into a %04o tree: %v, want ancestor %s", tc.mode, aerr, want)
 			}
 			if _, err := os.Stat(filepath.Join(real, "known_hosts")); err == nil {
 				t.Error("pin file written under a world-writable ancestor")
@@ -153,6 +162,7 @@ func TestAncestor_NothingCreatedUnderWritableAncestor(t *testing.T) {
 		ok   bool
 	}{{0o755, true}, {0o777, false}} {
 		t.Run(fmt.Sprintf("%04o", tc.mode), func(t *testing.T) {
+			v15(t)
 			_, home := pinFile(t)
 			open := filepath.Join(home, "open")
 			if err := os.Mkdir(open, 0o700); err != nil {
@@ -189,6 +199,7 @@ func TestAncestor_DeepAncestorRefused(t *testing.T) {
 		ok   bool
 	}{{0o755, true}, {0o777, false}} {
 		t.Run(fmt.Sprintf("%04o", tc.mode), func(t *testing.T) {
+			v15(t)
 			_, home := pinFile(t)
 			open := filepath.Join(home, "open")
 			p := PinnedHostKeys{Path: filepath.Join(open, "a", "b", "known_hosts")}

@@ -76,7 +76,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `PinnedHostKeys` (D-0484): every directory above the pin directory, on the
   given path and with symlinks resolved, must be owned by you or root and not
   group/world writable (a root-owned sticky directory such as `/tmp` passes),
-  as sshd's secure_path checks; the error names the ancestor. The lock on
+  as sshd's secure_path checks; the error names the ancestor. This ancestor
+  rule refuses only under `compat.V15` (`NSELF_V15=1`); in v1.4 mode it prints
+  one warning per pin directory to stderr and goes on, as v1.4.13 did (D-0675).
+  The pin directory's own owner and mode check refuses in both modes. The lock on
   `<Path>.lock` is polled with `LOCK_NB` and refused after 30 seconds instead
   of waiting forever on a hung holder.
 - `ResolveSSHHost` checks its argument with `ParseHostSpec` instead of

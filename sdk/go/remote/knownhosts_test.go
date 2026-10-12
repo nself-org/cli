@@ -13,13 +13,34 @@ const (
 	keyR = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAAQQABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj9A"
 )
 
-func pinFile(t *testing.T) (PinnedHostKeys, string) {
+// safeTempDir is a 0700 t.TempDir(), or a 0700 dir under /tmp when a folder
+// above the test temp dir is group/world writable (a 0775 /Volumes/D5 on a
+// dev Mac, a CI offload dir). Then the compat.V15 ancestor tests see only the
+// folders they set up, not the host's layout.
+func safeTempDir(t *testing.T) string {
 	t.Helper()
-	home := t.TempDir()
-	// A 002 umask makes TempDir 0775, which the ancestor check refuses.
-	if err := os.Chmod(home, 0o700); err != nil {
+	d := t.TempDir()
+	// A 002 umask makes TempDir 0775, which the pin dir check refuses.
+	if err := os.Chmod(d, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if checkAncestors(d) == nil {
+		return d
+	}
+	d, err := os.MkdirTemp("/tmp", "nself-remote-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(d) })
+	if err := checkAncestors(d); err != nil {
+		t.Skipf("no temp dir with safe ancestors on this host: %v", err)
+	}
+	return d
+}
+
+func pinFile(t *testing.T) (PinnedHostKeys, string) {
+	t.Helper()
+	home := safeTempDir(t)
 	t.Setenv("HOME", home) // proves ~/.ssh/known_hosts is never touched
 	p := filepath.Join(home, "ci", "known_hosts")
 	return PinnedHostKeys{Path: p}, home

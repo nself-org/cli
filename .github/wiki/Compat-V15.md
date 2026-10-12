@@ -54,6 +54,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 |---|---|---|---|
 | D-0287 | two plugins mapping to one nginx/sites file overwrite silently (warning) | E055 fails the build | `internal/build/plugin_nginx_collision.go` |
 | D-0478 | PLUGIN_DIR "~/..." used as written, no plugin snippets on default config | "~" expanded, installed plugins' snippets injected | `internal/build/plugin_configs.go` |
+| D-0484 | pin store ancestor walk warns once and continues | refuses | `sdk/go/remote/knownhosts_compat.go` |
 | P7-ADOPT-01 | writable absolute bind allowed | E502 | `internal/compose/custom_service_v2.go` |
 | P7-CANON-01 | same-owner breakout stays core in v1.4 | mounts from its plugin in v1.5 | `cmd/commands/plugin_mount.go` |
 | P7-CANON-02 | registry view with moved entries at their v1.4 paths | view at canonical paths plus deprecated-shim entries | `internal/canon/canon.go` |
