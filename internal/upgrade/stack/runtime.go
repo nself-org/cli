@@ -38,6 +38,9 @@ func stepTimeout(name string) time.Duration {
 	return 10 * time.Minute
 }
 
+// recoveryTimeout keeps restore, restart and row counts bounded by the migration budget.
+func recoveryTimeout() time.Duration { return stepTimeout("migrate") }
+
 // NewRuntime prepares adapters without reading or mutating the project.
 func NewRuntime(dir string, cfg *config.Config, stderr io.Writer) *Runtime {
 	copy := *cfg

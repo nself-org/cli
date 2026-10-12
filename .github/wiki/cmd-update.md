@@ -83,6 +83,9 @@ restarts the saved immutable previous image set, and compares every table's exac
 row count with the counts captured immediately after creating the dump, before
 pulling images. Concurrent writes during the dump or between the dump and count
 can still cause a mismatch; quiesce writers for an exact recovery comparison.
+Recovery has its own 30-minute timeout, tied to the migration timeout, covering
+restore, restart of the previous images, and row counts together. It runs independently
+of the failed operation's cancellation or deadline.
 The backup and volumes remain retained. After successful recovery (`rolled-back`),
 the next run atomically archives the old journal as
 `.nself/state/update-stack.<run_id>.json` and starts a fresh update.

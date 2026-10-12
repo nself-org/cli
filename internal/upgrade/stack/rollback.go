@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"strings"
-	"time"
 
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -27,7 +26,7 @@ func failedStep(ctx context.Context, o Options, b Backend, j *Journal, i int, ca
 		if err := saveJournal(o.ProjectDir, j); err != nil {
 			return errs.Wrap("E139", "Cannot record rollback before restoring", errors.Join(cause, err))
 		}
-		recovery, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+		recovery, cancel := context.WithTimeout(context.WithoutCancel(ctx), recoveryTimeout())
 		defer cancel()
 		if err := rollback(recovery, b, j); err != nil {
 			cause = errors.Join(cause, err)
