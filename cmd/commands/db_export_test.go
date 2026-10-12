@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -122,4 +123,66 @@ func TestDBExportSecretValues(t *testing.T) {
 	if !reflect.DeepEqual(values, want) {
 		t.Fatalf("secret class mismatch %v", values)
 	}
+}
+
+func TestDBExportSecretValuesWidened(t *testing.T) {
+	jwt := `{"type":"HS256","key":"FAKE-JWT-LEAF-VALUE","claims_namespace":"FAKE-NS-NOT-SECRET","tags":{"api_token":["FAKE-TOKEN-IN-ARRAY"]}}`
+	sa := `{"client_email":"fake@example.invalid","private_key":"-----BEGIN FAKE-----\nFAKELINE\n-----END FAKE-----\n","private_key_id":"FAKE-KEY-ID-0001","project_id":"FAKE-PROJECT-ID"}`
+	values := dbExportSecretValues([]string{
+		"ALERT_URL=https://fake.example.invalid/hook?id=1&access_token=FAKE-QUERY-TOKEN&api_key=%46AKE%2BEN%20Q",
+		"SIGNED_URL=https://fake.example.invalid/o?X-Amz-Signature=FAKE-SIGNATURE-0001;plain=notasecret",
+		"REPO_URL=https://FAKE-GITHUB-TOKEN-0000000000@github.example.invalid/org/repo",
+		"DB_URL=postgres://postgres@localhost/db",
+		"SHORT_USER_URL=https://admin@fake.example.invalid/x",
+		"HASURA_GRAPHQL_JWT_SECRET=" + jwt,
+		"SOME_JSON_BLOB=" + `{"password":"FAKE-BLOB-PASSWORD"}`,
+		"SERVICE_ACCOUNT_JSON=" + sa,
+		"DOC_URL=https://fake.example.invalid/page?id=123456&mode=readonly",
+	})
+	for _, want := range []string{"FAKE-QUERY-TOKEN", "FAKE-SIGNATURE-0001", "FAKE-GITHUB-TOKEN-0000000000", "FAKE-JWT-LEAF-VALUE", "FAKE-BLOB-PASSWORD", "FAKE-TOKEN-IN-ARRAY", "FAKE-KEY-ID-0001", jwt, "-----BEGIN FAKE-----\nFAKELINE\n-----END FAKE-----\n"} {
+		if !containsString(values, want) {
+			t.Errorf("missing %q in %v", want, values)
+		}
+	}
+	for _, unwanted := range []string{"postgres", "admin", "FAKE-NS-NOT-SECRET", "FAKE-PROJECT-ID", "notasecret", "readonly", "123456"} {
+		if containsString(values, unwanted) {
+			t.Errorf("ordinary value %q treated as secret", unwanted)
+		}
+	}
+	// The percent-decoded form of a query secret is collected next to the raw one.
+	if !containsString(values, "FAKE+EN Q") || !containsString(values, "%46AKE%2BEN%20Q") {
+		t.Fatalf("query secret forms missing: %v", values)
+	}
+}
+
+func TestDBExportComposeEnvJoinsValues(t *testing.T) {
+	dir := t.TempDir()
+	if got := dbExportComposeEnv(dir); got != nil {
+		t.Fatalf("absent compose.env gave %v", got)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".nself"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".nself", "compose.env"), []byte("AUTH_SMTP_PASS=FAKE-STALE-RUNNING-PASS\nPLAIN=harmless\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	values := dbExportSecretValues(dbExportComposeEnv(dir))
+	if !reflect.DeepEqual(values, []string{"FAKE-STALE-RUNNING-PASS"}) {
+		t.Fatalf("compose.env values %v", values)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".nself", "compose.env"), []byte("=\x00broken\n\"unterminated"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := dbExportComposeEnv(dir); got != nil {
+		t.Fatalf("unparsable compose.env gave %v", got)
+	}
+}
+
+func containsString(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+	return false
 }

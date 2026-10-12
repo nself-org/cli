@@ -3,6 +3,8 @@ package exporter
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -26,6 +28,10 @@ type exportPlan struct {
 func prepareExport(ctx context.Context, cfg *config.Config, opts Options) (exportPlan, error) {
 	var p exportPlan
 	var err error
+	// The tool containers run as the caller's uid:gid; Windows has none.
+	if currentUID() < 0 {
+		return p, errors.New("export: db export supports Linux and macOS only (this platform has no numeric user id for the tool containers)")
+	}
 	p.out, err = filepath.Abs(opts.Out)
 	if err != nil {
 		return p, safeFailure("resolve output")
@@ -39,6 +45,7 @@ func prepareExport(ctx context.Context, cfg *config.Config, opts Options) (expor
 	if err = emptyOutput(p.out); err != nil {
 		return p, err
 	}
+	warnStaleStages(opts.Warn, filepath.Dir(p.out))
 	if err = started(ctx, cfg, opts.ProjectDir); err != nil {
 		return p, err
 	}
@@ -118,15 +125,26 @@ func started(ctx context.Context, cfg *config.Config, dir string) error {
 
 // Purpose: check free bytes before creating stage. Inputs: relation/object sizes.
 // Outputs: E525 or nil. Constraints: arithmetic overflow fails closed.
+// The stage holds the archive (about 1.2 times the relation bytes, counting
+// the tool's output file before it is copied into the bundle) and, during the
+// secret scan, a full plain-SQL rendering of that archive. COPY text and hex
+// bytea can be larger than the relations, so the scan allowance is 2.5 times
+// the relation bytes. Objects are copied once.
 func diskCheck(out string, relations, objects uint64, probe func(string) (uint64, error)) error {
-	if relations > (math.MaxUint64-objects)/6*5 {
+	if relations > math.MaxUint64/6 {
 		return errs.New("E525", "")
 	}
-	estimate := relations + (relations+4)/5
-	if estimate > math.MaxUint64-objects {
+	estimate, ok := uint64(0), true
+	for _, part := range []uint64{relations, (relations + 4) / 5, relations/2*5 + relations%2*3, objects} {
+		if estimate > math.MaxUint64-part {
+			ok = false
+			break
+		}
+		estimate += part
+	}
+	if !ok {
 		return errs.New("E525", "")
 	}
-	estimate += objects
 	if probe == nil {
 		probe = freeSpace
 	}
@@ -149,4 +167,30 @@ func diskCheck(out string, relations, objects uint64, probe func(string) (uint64
 		return errs.New("E525", "")
 	}
 	return nil
+}
+
+// currentUID is a test seam for the unsupported-platform refusal.
+var currentUID = os.Getuid
+
+// Purpose: tell the operator about stage directories an interrupted export
+// left behind. Inputs: warning writer (stderr when nil) and the --out parent.
+// Outputs: one stderr line naming the directories. Constraints: names only,
+// never contents or secrets; failures to list are silent (nothing to act on).
+func warnStaleStages(w io.Writer, parent string) {
+	if w == nil {
+		w = os.Stderr
+	}
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), stagePrefix) {
+			names = append(names, e.Name())
+		}
+	}
+	if len(names) > 0 {
+		_, _ = fmt.Fprintf(w, "warning: %s holds unscrubbed export stage directories from an interrupted run (%s); if no export is running, remove them with: rm -rf %s/%s*\n", parent, strings.Join(names, ", "), parent, stagePrefix)
+	}
 }

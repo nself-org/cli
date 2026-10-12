@@ -3,10 +3,8 @@ package exporter
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,6 +47,8 @@ func scrubBundle(ctx context.Context, cfg *config.Config, dir string, m portable
 		return safeFailure("create SQL scan")
 	}
 	_ = f.Close()
+	// On an error path Export removes the whole stage; the success path must
+	// prove the plaintext rendering is gone before anything is published.
 	defer func() { _ = os.Remove(path) }()
 	if err = tool(ctx, cfg, dir, []string{"pg_restore", "-f", "/stage/.scan.sql", "/stage/db/data.dump"}); err != nil {
 		return err
@@ -65,33 +65,17 @@ func scrubBundle(ctx context.Context, cfg *config.Config, dir string, m portable
 	if hit {
 		return secretFound("db/data.dump")
 	}
+	if err = removeScan(path); err != nil {
+		return safeFailure("remove SQL scan")
+	}
 	return nil
 }
 
+// removeScan is a test seam for proving a failed removal fails the export.
+var removeScan = os.Remove
+
 func secretFound(member string) error {
 	return errs.New("E526", "Secret found in "+member+"; bundle removed")
-}
-
-// Purpose: match raw values and JSON-escaped representations without false
-// negatives when a secret spans read boundaries. Inputs: resolved values.
-// Outputs: pattern set. Constraints: all patterns have at least six raw bytes.
-func secretPatterns(secrets []string) [][]byte {
-	var p [][]byte
-	for _, s := range secrets {
-		if len(s) < 6 {
-			continue
-		}
-		p = append(p, []byte(s))
-		p = append(p, []byte(strings.TrimPrefix(url.UserPassword("", s).String(), ":")), []byte(url.QueryEscape(s)))
-		p = append(p, []byte(strings.ReplaceAll(s, "'", "''")))
-		copyEscaped := strings.NewReplacer("\\", "\\\\", "\n", "\\n", "\r", "\\r", "\t", "\\t", "\b", "\\b", "\f", "\\f", "\v", "\\v").Replace(s)
-		p = append(p, []byte(copyEscaped), []byte(hex.EncodeToString([]byte(s))))
-		b, _ := json.Marshal(s)
-		p = append(p, b[1:len(b)-1])
-		b, _ = json.Marshal(string(b[1 : len(b)-1]))
-		p = append(p, b[1:len(b)-1])
-	}
-	return p
 }
 
 func scan(r io.Reader, patterns [][]byte) (bool, error) {
@@ -124,6 +108,7 @@ func scan(r io.Reader, patterns [][]byte) (bool, error) {
 
 func scanUsers(r io.Reader, patterns [][]byte) (bool, error) {
 	dec := json.NewDecoder(r)
+	dec.UseNumber()
 	for {
 		var u map[string]any
 		err := dec.Decode(&u)

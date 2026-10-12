@@ -4,6 +4,7 @@ package exporter
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -22,7 +23,12 @@ type Options struct {
 	Keys         []string
 	ProjectDir   string
 	FreeSpace    func(string) (uint64, error)
+	// Warn receives non-secret preflight warnings; nil means os.Stderr.
+	Warn io.Writer
 }
+
+// stagePrefix names the private scratch directory next to --out.
+const stagePrefix = ".nself-export-"
 
 // Summary is the command's envelope data; it never includes credentials.
 type Summary struct {
@@ -45,7 +51,7 @@ func Export(ctx context.Context, cfg *config.Config, opts Options) (Summary, err
 		return Summary{}, err
 	}
 	defer p.db.close(ctx)
-	stage, err := os.MkdirTemp(filepath.Dir(p.out), ".nself-export-")
+	stage, err := os.MkdirTemp(filepath.Dir(p.out), stagePrefix)
 	if err != nil {
 		return Summary{}, safeFailure("create stage")
 	}
@@ -67,31 +73,58 @@ func Export(ctx context.Context, cfg *config.Config, opts Options) (Summary, err
 	return Summary{Out: p.out, Tables: len(m.DB.Tables), Users: m.Auth.Users, Objects: len(m.Storage.Objects), StorageNote: p.note}, nil
 }
 
-// Purpose: finish all bundle members while the database snapshot remains live.
-// Inputs: prepared read plan and writer. Outputs: finalized manifest.
-// Constraints: errors withhold source details; publication belongs to Export.
+// Purpose: finish all bundle members; the snapshot lives only as long as the
+// reads that need it. Inputs: prepared read plan and writer. Outputs: finalized
+// manifest. Constraints: errors withhold source details; publication belongs to Export.
 func writeBundle(ctx context.Context, cfg *config.Config, p exportPlan, w *portable.Writer, keys []string) (portable.Manifest, error) {
 	m := portable.Manifest{Producer: portable.Producer{Tool: "nself", Version: version.GetVersion(), Source: "nself"}, Postgres: p.db.info, DB: portable.DB{Schemas: p.db.schemas}, Exemptions: []portable.Exemption{}, SourceCounts: []portable.SourceCount{}, Compat: []string{}}
-	if err := p.db.write(ctx, cfg, w, &m); err != nil {
+	err := runBundleSteps(bundleSteps{
+		database: func() error { return p.db.write(ctx, cfg, w, &m) },
+		auth:     func() error { return writeAuth(ctx, p.db.tx, w, &m) },
+		commit:   func() error { return p.db.tx.Commit(ctx) },
+		storage:  func() error { return p.store.write(ctx, w, &m) },
+		metadata: func() error { return writeMetadata(ctx, cfg, w, &m, keys) },
+	})
+	if err != nil {
 		return m, err
 	}
-	if err := writeAuth(ctx, p.db.tx, w, &m); err != nil {
-		return m, safeFailure("read auth")
-	}
-	if err := p.store.write(ctx, w, &m); err != nil {
-		return m, safeFailure("read storage")
-	}
-	if err := writeMetadata(ctx, cfg, w, &m, keys); err != nil {
-		return m, safeFailure("read metadata")
-	}
-	if err := p.db.tx.Commit(ctx); err != nil {
-		return m, safeFailure("finish snapshot")
-	}
-	m, err := w.Finish(m)
+	m, err = w.Finish(m)
 	if err != nil {
 		return m, safeFailure("finish manifest")
 	}
 	return m, nil
+}
+
+// bundleSteps are the ordered reads of one export. database and auth need the
+// snapshot; storage and metadata do not.
+type bundleSteps struct {
+	database, auth, commit, storage, metadata func() error
+}
+
+// Purpose: run the reads in the one safe order. Inputs: the steps.
+// Outputs: the first failure as a withheld-details error.
+// Constraints: the read-only snapshot transaction ends right after the last
+// step that uses it (table hashes, pg_dump with --snapshot, auth). Left open
+// it would hold ACCESS SHARE on every exported table through the object
+// download and the Hasura call, queueing any concurrent ALTER TABLE and with
+// it every application query on that table, and would pin vacuum's xmin.
+func runBundleSteps(s bundleSteps) error {
+	if err := s.database(); err != nil {
+		return err
+	}
+	if err := s.auth(); err != nil {
+		return safeFailure("read auth")
+	}
+	if err := s.commit(); err != nil {
+		return safeFailure("finish snapshot")
+	}
+	if err := s.storage(); err != nil {
+		return safeFailure("read storage")
+	}
+	if err := s.metadata(); err != nil {
+		return safeFailure("read metadata")
+	}
+	return nil
 }
 
 // Purpose: publish scrubbed output with a final occupancy check.

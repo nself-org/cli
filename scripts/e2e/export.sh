@@ -143,4 +143,17 @@ test ! -e "$W/row-bundle" || fail 'row bundle remains'
 grep -q 'db/data.dump' "$W/refusal.json" "$W/refusal.err" || fail 'row file unnamed'
 test -z "$(find "$W" -maxdepth 1 -name '.nself-export-*' -print)" || fail 'private stage remains'
 pass 'comment and archive-only secret rejected with full cleanup'
+# A secret that only lives inside a jsonb value reaches the archive as jsonb
+# text inside COPY text (backslashes doubled again). Reset the row leg first and
+# prove the clean database exports, so the refusal below is not left over.
+pg "UPDATE public.notes SET body=md5(id::text) WHERE id=1;" >>"$LOG"
+nself db export --out "$W/clean-bundle" --json >"$W/summary3.json" 2>>"$LOG" || fail 'export after reset'
+test -f "$W/clean-bundle/manifest.json" || fail 'clean bundle missing'
+pg "CREATE TABLE public.settings(id int PRIMARY KEY, cfg jsonb); INSERT INTO public.settings VALUES(1, jsonb_build_object('note', 'x'||chr(34)||'y'||chr(92)||'z', 'smtp', jsonb_build_object('pass', '$F_S3S')));" >>"$LOG" || fail 'jsonb seed'
+expect_refusal "$W/jsonb-bundle" E526
+test ! -e "$W/jsonb-bundle" || fail 'jsonb bundle remains'
+grep -q 'db/data.dump' "$W/refusal.json" "$W/refusal.err" || fail 'jsonb file unnamed'
+! grep -q "$F_S3S" "$W/refusal.json" "$W/refusal.err" || fail 'jsonb secret in error'
+test -z "$(find "$W" -maxdepth 1 -name '.nself-export-*' -print)" || fail 'private stage remains after jsonb leg'
+pass 'secret held only in a jsonb value rejected with full cleanup'
 echo 'EXPORT E2E PASS'

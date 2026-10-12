@@ -58,9 +58,18 @@ func TestScrubUsers(t *testing.T) {
 			t.Fatal("metadata secret missed", err)
 		}
 	}
-	hit, err := scanUsers(strings.NewReader(`{"password_hash":"$2b$FAKE-EXPORT-SECRET-ONLY","email":"fake@example.invalid"}`), secretPatterns([]string{secret}))
+	hashSecret := "FAKEEXPORTHASHSECRET"
+	fullHash := "$2b$10$" + hashSecret + strings.Repeat("a", 33)
+	hit, err := scanUsers(strings.NewReader(`{"password_hash":"`+fullHash+`","email":"fake@example.invalid"}`), secretPatterns([]string{hashSecret}))
 	if hit || err != nil {
 		t.Fatal("bcrypt exemption failed", err)
+	}
+	// A prefix alone is not a bcrypt hash: such text is scanned.
+	for _, bad := range []string{"$2b$" + hashSecret, "$2b$10$" + hashSecret, "$2x$10$" + hashSecret + strings.Repeat("a", 33), fullHash + "x"} {
+		hit, err = scanUsers(strings.NewReader(`{"password_hash":"`+bad+`"}`), secretPatterns([]string{hashSecret}))
+		if !hit || err != nil {
+			t.Fatalf("non-bcrypt text %q skipped the scan: %v", bad, err)
+		}
 	}
 	if _, err = scanUsers(strings.NewReader(`{"broken":`), nil); err == nil {
 		t.Fatal("malformed auth accepted")
@@ -91,8 +100,8 @@ func TestPreflightRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertCode(t, emptyOutput(out), "E527")
-	assertCode(t, diskCheck(out, 100, 40, func(string) (uint64, error) { return 159, nil }), "E525")
-	if err := diskCheck(out, 100, 40, func(string) (uint64, error) { return 160, nil }); err != nil {
+	assertCode(t, diskCheck(out, 100, 40, func(string) (uint64, error) { return 409, nil }), "E525")
+	if err := diskCheck(out, 100, 40, func(string) (uint64, error) { return 410, nil }); err != nil {
 		t.Fatal(err)
 	}
 	if err := diskCheck(out, 100, 0, func(string) (uint64, error) { return 0, io.ErrUnexpectedEOF }); err == nil {

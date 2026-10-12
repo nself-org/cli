@@ -1,6 +1,7 @@
 package exporter
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -11,7 +12,10 @@ import (
 	"github.com/nself-org/cli/internal/portable"
 )
 
-var bcryptHash = regexp.MustCompile(`^\$2[aby]\$`)
+// bcryptHash is the full modular-crypt bcrypt shape: version, two-digit cost
+// and 53 salt-plus-hash characters. A looser prefix match would let any text
+// that starts with $2b$ skip the secret scan.
+var bcryptHash = regexp.MustCompile(`^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$`)
 
 // Purpose: export only portable auth user fields, never sessions or tokens.
 // Inputs: the database snapshot. Outputs: sorted JSONL and algorithm counts.
@@ -68,8 +72,11 @@ func streamAuth(rows userRows, w io.Writer, auth *portable.Auth) error {
 		if err := rows.Scan(&data); err != nil {
 			return err
 		}
+		// UseNumber keeps integers beyond float64 precision intact.
 		var user map[string]any
-		if err := json.Unmarshal(data, &user); err != nil {
+		dec := json.NewDecoder(bytes.NewReader(data))
+		dec.UseNumber()
+		if err := dec.Decode(&user); err != nil {
 			return err
 		}
 		algo := "none" // no stored hash (null or absent)
