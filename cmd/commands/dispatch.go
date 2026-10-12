@@ -103,6 +103,10 @@ func warnRelocatedCommand(cmdName string) bool {
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main().
 func Execute() error {
+	// Secret values arrive by environment, not argv (D-0468): restore them first.
+	if err := restoreSecretArgv(); err != nil {
+		return err
+	}
 	// Rewrite argv and prepare the tree (EPIC P7-CANON D2): legacy and canon
 	// spellings, command relocation, groups, plugin mounts. See tree_prepare.go.
 	if err := prepareInvocation(); err != nil {

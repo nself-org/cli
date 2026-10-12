@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -41,6 +42,19 @@ func SelfExecutable() (string, error) {
 var ownedEnv = map[string]bool{
 	TokenEnv: true, "NSELF_V15": true, "NSELF_NONINTERACTIVE": true, "CI": true,
 	"NO_COLOR": true, InvokedByEnv: true, DeadlineEnv: true, PathEnv: true,
+	SecretsEnv: true,
+}
+
+// envCaseInsensitive is true where environment names compare case-insensitively
+// (Windows). A variable so a test can flip it.
+var envCaseInsensitive = runtime.GOOS == "windows"
+
+// owned reports whether the invoker sets name itself.
+func owned(name string) bool {
+	if envCaseInsensitive {
+		name = strings.ToUpper(name)
+	}
+	return ownedEnv[name]
 }
 
 // childEnv builds the child environment. deadline <= 0 means no deadline
@@ -58,7 +72,7 @@ func childEnv(parent []string, transport, path string, deadline time.Duration) (
 	env := make([]string, 0, len(parent)+6)
 	for _, kv := range parent {
 		name, _, found := strings.Cut(kv, "=")
-		if found && !ownedEnv[name] {
+		if found && !owned(name) {
 			env = append(env, kv)
 		}
 	}
@@ -148,6 +162,10 @@ func Exec(ctx context.Context, s Spec) (Result, error) {
 	}
 	env, err := childEnv(os.Environ(), s.Transport, s.Path, remaining)
 	if err != nil {
+		return res, err
+	}
+
+	if env, err = withSecretsEnv(env, s.Secrets); err != nil {
 		return res, err
 	}
 

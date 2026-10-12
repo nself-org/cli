@@ -17,6 +17,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -80,7 +82,7 @@ func invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Req
 		res.Confirmation = res.ErrorCode == ""
 		return res, nil
 	}
-	argv, err := BuildArgvFor(cmd, req, transport)
+	argv, secretBundle, err := BuildArgvSecrets(cmd, req, transport)
 	if err != nil {
 		return refuse(res, command, err), nil
 	}
@@ -92,11 +94,15 @@ func invoke(ctx context.Context, reg *cmdregistry.Registry, path string, req Req
 	}
 	tr.decision = DecisionRun
 	spec := specFor(o, transport, withFlags(argv, d.Flags...))
-	out, refusal, err := runChild(ctx, res, command, spec, requestSecrets(cmd, req), transport == TransportHTTPStream)
+	spec.Secrets = secretBundle
+	out, refusal, err := runChild(ctx, res, command, spec, scrubSet(requestSecrets(cmd, req), secretBundle), transport == TransportHTTPStream)
 	switch {
 	case err != nil:
 		return res, err
 	case refusal != nil:
+		if tr.side == canon.SideEffectRead {
+			tr.decision = DecisionRefuse // a read that ran is not audited, but a refused one is
+		}
 		return *refusal, nil
 	}
 	return out, nil
@@ -206,7 +212,7 @@ func notOneDocument(r Result) string {
 		return "the command was killed by a signal"
 	}
 	code := r.ExitCode
-	body := bytes.TrimSpace(r.Stdout)
+	body := bytes.Trim(r.Stdout, " \t\r\n")
 	if len(body) == 0 || body[0] != '{' {
 		return fmt.Sprintf("exit %d, stdout is not a JSON object", code)
 	}
@@ -229,6 +235,11 @@ func scrub(s string, secrets []string) string {
 		forms := []string{v}
 		if b, err := json.Marshal(v); err == nil && len(b) > 2 {
 			forms = append(forms, string(b[1:len(b)-1]))
+		}
+		for _, q := range []string{strconv.Quote(v), strconv.QuoteToASCII(v)} {
+			if inner := q[1 : len(q)-1]; inner != "" && !slices.Contains(forms, inner) {
+				forms = append(forms, inner)
+			}
 		}
 		for _, f := range forms {
 			s = strings.ReplaceAll(s, f, Redacted)
