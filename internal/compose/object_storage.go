@@ -38,14 +38,15 @@ var minioPluginInstalled = func() bool {
 // Inputs: loaded config and whether the minio plugin is installed.
 // Outputs: "seaweedfs", "minio-plugin", "minio-core" (v1.4 only) or "none".
 // Constraints: v1.4 follows cfg.Minio.Enabled unchanged; in v1.5 the core store wins over
-// the plugin, and missing-plugin MinIO intent is rejected separately (E138).
+// the plugin, the plugin counts only with MinIO intent (cfg.Minio.Enabled), and
+// missing-plugin MinIO intent is rejected separately (E138).
 func ActiveStore(cfg *config.Config, installed bool) string {
 	// compat.V15(P7-PLUG-60): optional core MinIO -> core SeaweedFS or MinIO plugin
 	if compat.V15() {
 		if objectStorageEnabled() {
 			return "seaweedfs"
 		}
-		if installed {
+		if installed && cfg.Minio.Enabled {
 			return "minio-plugin"
 		}
 		return "none"
@@ -78,9 +79,8 @@ func (g *Generator) addObjectStorage(dc *DockerCompose) error {
 		return nil
 	}
 	installed := minioPluginInstalled()
-	// compat.V15(P7-PLUG-60): core MinIO generation -> missing plugin fails before writes
-	if compat.V15() && g.cfg.Minio.Enabled && !installed {
-		return errs.New("E138", "MinIO is no longer a core service in v1.5: run nself add minio to keep the minio_data volume, or set OBJECT_STORAGE_ENABLED=true and MINIO_ENABLED=false for a new empty SeaweedFS store, or set MINIO_ENABLED=false if this project does not use MinIO (see Object-Storage.md)")
+	if err := minioWithoutPlugin(g.cfg, installed); err != nil {
+		return err
 	}
 	store := ActiveStore(g.cfg, installed)
 	switch store {
@@ -94,6 +94,30 @@ func (g *Generator) addObjectStorage(dc *DockerCompose) error {
 		dc.Volumes["seaweedfs_data"] = VolumeConfig{}
 		dc.AddService("seaweedfs", svc)
 		dc.AddService("seaweedfs-init", g.buildSeaweedInit())
+	}
+	return nil
+}
+
+// Purpose: stop a v1.5 build that wants MinIO without the minio plugin before it writes anything.
+// Inputs: the loaded config and the build profile ("" means app).
+// Outputs: E138 under the same rule as Generate; nil for profiles without object storage.
+// Constraints: read-only; internal/build calls it right after config load (before secrets,
+// dirs, SSL and nginx), and Generate keeps its own check for other callers.
+func ObjectStoragePreflight(cfg *config.Config, profile ProfileName) error {
+	if set, _ := ProfileForName(profile); !set.Minio {
+		return nil
+	}
+	return minioWithoutPlugin(cfg, minioPluginInstalled())
+}
+
+// Purpose: the E138 rule shared by ObjectStoragePreflight and addObjectStorage.
+// Inputs: the loaded config and whether the minio plugin is installed.
+// Outputs: E138 in v1.5 when MinIO is wanted and the plugin is missing, else nil.
+// Constraints: pure; v1.4 never fails.
+func minioWithoutPlugin(cfg *config.Config, installed bool) error {
+	// compat.V15(P7-PLUG-60): core MinIO generation -> missing plugin fails before writes
+	if compat.V15() && cfg.Minio.Enabled && !installed {
+		return errs.New("E138", "MinIO is no longer a core service in v1.5: run nself add minio to keep the minio_data volume, or set OBJECT_STORAGE_ENABLED=true and MINIO_ENABLED=false for a new empty SeaweedFS store, or set MINIO_ENABLED=false if this project does not use MinIO (see Object-Storage.md)")
 	}
 	return nil
 }
@@ -178,11 +202,11 @@ func (g *Generator) buildSeaweedInit() ServiceConfig {
 // Purpose: add S3_* connection vars for the active store to a custom service.
 // Inputs: the env map being built and the loaded config.
 // Outputs: S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET; nothing with no store.
-// Constraints: v1.5 only. The plugin endpoint applies only with MinIO intent
+// Constraints: v1.5 only. ActiveStore names the plugin only with MinIO intent
 // (cfg.Minio.Enabled), so a machine-wide plugin never injects empty keys into an unrelated
 // project. Secrets are env refs.
 func addActiveStoreEnvVars(env map[string]string, cfg *config.Config) {
-	switch ActiveStore(cfg, minioPluginInstalled() && cfg.Minio.Enabled) {
+	switch ActiveStore(cfg, minioPluginInstalled()) {
 	case "seaweedfs":
 		env["S3_ENDPOINT"] = "http://seaweedfs:8333"
 		env["S3_ACCESS_KEY"] = secretRef("S3_ACCESS_KEY", cfg.Minio.S3AccessKey)

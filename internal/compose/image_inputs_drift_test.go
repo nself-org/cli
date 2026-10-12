@@ -45,7 +45,7 @@ var renderVariants = map[string]map[string]string{
 	},
 	// v1.5 with an AUTH_ENCRYPTION_KEY (fake) renders the current auth entry; every other variant renders auth-v14 (P7-LIVE-20).
 	"node-meili-v15-authkey": {"FUNCTIONS_RUNTIME": "node", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis",
-		"NSELF_V15": "1", AuthEncryptionKeyEnv: strings.Repeat("0f", 32)},
+		"NSELF_V15": "1", "MINIO_ENABLED": "false", AuthEncryptionKeyEnv: strings.Repeat("0f", 32)}, // v1.5 has no core MinIO (P7-PLUG-60)
 }
 
 // envCandidates lists every variable that could plausibly name an image.

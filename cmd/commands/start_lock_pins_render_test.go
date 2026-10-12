@@ -26,8 +26,8 @@ var rowEnv = map[string]map[string]string{
 	"postgres/postgres": {"POSTGRES_EXTENSIONS": "uuid-ossp"},
 	"postgres/pgvector": {"POSTGRES_EXTENSIONS": "uuid-ossp,pgvector"},
 	"hasura/hasura":     {},
-	"auth/auth":         {"NSELF_V15": "1", "AUTH_ENCRYPTION_KEY": strings.Repeat("0f", 32)}, // fake key (P7-LIVE-20)
-	"auth/auth-v14":     {"AUTH_ENCRYPTION_KEY": strings.Repeat("0f", 32)},                   // the matrix pins 1.2.3, a release that needs the key
+	"auth/auth":         {"NSELF_V15": "1", "MINIO_ENABLED": "false", "AUTH_ENCRYPTION_KEY": strings.Repeat("0f", 32)}, // fake key (P7-LIVE-20); v1.5 has no core MinIO (P7-PLUG-60)
+	"auth/auth-v14":     {"AUTH_ENCRYPTION_KEY": strings.Repeat("0f", 32)},                                             // the matrix pins 1.2.3, a release that needs the key
 	"nginx/nginx":       {},
 	"redis/redis":       {"REDIS_ENABLED": "true", "REDIS_ENGINE": "redis"},
 	"redis/valkey":      {"REDIS_ENABLED": "true", "REDIS_ENGINE": "valkey"},
