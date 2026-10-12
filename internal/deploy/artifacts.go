@@ -2,7 +2,9 @@ package deploy
 
 // Purpose: the artifact set a v1.5 remote deploy ships (D24): the rewritten
 //          manifests and merged compose files, plugin fragments, env files,
-//          nginx/ (never conf.d*/) and hasura/, laid out in a staging dir
+//          nginx/ (only files this build generated or the operator allowlisted;
+//          conf.d only as nginx/conf.d/<name>.conf; D-0423, D-0424) and hasura/,
+//          laid out in a staging dir
 //          exactly as they will sit under <remote_path>.
 // Inputs:  the scratch build output, the path map, the local compose and env
 //          file lists (build.ReadComposeManifest / ReadComposeEnvManifest,
@@ -41,6 +43,13 @@ type ArtifactSet struct {
 	// nself reads it); the operator's copy would replace it with local values.
 	// A sync only creates it, empty and 0600, when the host has none.
 	KeepHostEnv bool
+	// NotShipped are the nginx/ files of the scratch tree that were left out
+	// (relative to RemotePath, sorted): not written by this build and not on the
+	// operator's NSELF_DEPLOY_NGINX_INCLUDE allowlist (D-0423).
+	NotShipped []string
+	// Front is the fronting stack's second artifact root (D-0425); nil for a
+	// project that runs its own nginx.
+	Front *FrontRoot
 }
 
 // StageInput is what Stage reads.
@@ -51,11 +60,24 @@ type StageInput struct {
 	EnvFiles    []string // local env files in order (the compose env manifest)
 	EnvSnapshot string   // local resolved env snapshot, shipped as .env.<EnvName> (optional)
 	EnvName     string
+	// Nginx decides which scratch nginx/ files ship; nil ships every non-conf.d
+	// file (and no conf.d file). See NginxPolicy.
+	Nginx *NginxPolicy
+	// FrontScratch is the local scratch root of the fronting stack (the parent
+	// of Map.ScratchRoot) and FrontedBy its NGINX_FRONTED_BY name; both empty
+	// for a project that runs its own nginx. See artifacts_front.go.
+	FrontScratch, FrontedBy string
 }
 
 // Stage builds the artifact set in in.StageDir.
 func Stage(in StageInput) (ArtifactSet, error) {
 	set := ArtifactSet{StageDir: in.StageDir, RemotePath: in.Map.RemotePath}
+	if in.FrontScratch != "" {
+		in.Map.FrontRoot = in.FrontScratch
+	}
+	if err := checkFrontLayout(in); err != nil {
+		return set, err
+	}
 	put := func(rel string, data []byte, mode os.FileMode) error {
 		dst := filepath.Join(in.StageDir, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
@@ -122,12 +144,18 @@ func Stage(in StageInput) (ArtifactSet, error) {
 		}
 		set.Files = append(set.Files, rel)
 	}
-	for _, dir := range []string{"nginx", "hasura"} {
-		rels, err := copyTree(filepath.Join(in.Map.ScratchRoot, dir), in.StageDir, dir, in.Map, dir == "nginx")
-		if err != nil {
-			return set, err
-		}
-		set.Files = append(set.Files, rels...)
+	hasura, err := copyTree(filepath.Join(in.Map.ScratchRoot, "hasura"), in.StageDir, "hasura", in.Map, false)
+	if err != nil {
+		return set, err
+	}
+	nginxFiles, notShipped, err := stageNginx(in)
+	if err != nil {
+		return set, err
+	}
+	set.Files = append(append(set.Files, hasura...), nginxFiles...)
+	set.NotShipped = notShipped
+	if set.Front, err = stageFront(in); err != nil {
+		return set, err
 	}
 	set.Files, set.EnvFiles = uniqueSorted(set.Files), uniqueSorted(set.EnvFiles)
 	return set, checkNoLocalPaths(in.Map, in.StageDir, append(append([]string{}, set.Files...), set.EnvFiles...))

@@ -9,7 +9,9 @@ package deploy
 // Constraints: no rsync --delete, no other delete over a directory. The prune
 //              reads the first lines of each candidate for the marker before
 //              it removes that one file. Nothing under a conf.d*/ dir and no
-//              unmarked file is ever a candidate. No directory is moved.
+//              unmarked file is ever a candidate (a shipped nginx/conf.d/<name>.conf
+//              is synced and restored but never pruned: PrunePrevious uses
+//              pruneable, not shippable). No directory is moved.
 
 import (
 	"context"
@@ -33,6 +35,9 @@ const ShippedFile = ".nself/deploy-shipped.txt"
 // SyncArtifacts copies the set into remotePath in place, then checks the env
 // file modes. It never deletes anything.
 func SyncArtifacts(ctx context.Context, r Remote, set ArtifactSet) error {
+	if err := checkConfDFiles(set.Files); err != nil {
+		return err
+	}
 	if set.KeepHostEnv {
 		script := fmt.Sprintf(`umask 077; mkdir -p %s; if [ ! -e %s ]; then : > %s; fi`, q(set.RemotePath), q(path.Join(set.RemotePath, ".env")), q(path.Join(set.RemotePath, ".env")))
 		if _, err := r.Run(ctx, shScript(script)); err != nil {
@@ -53,6 +58,17 @@ func SyncArtifacts(ctx context.Context, r Remote, set ArtifactSet) error {
 		}
 	}
 	return writeShipped(ctx, r, set)
+}
+
+// checkConfDFiles refuses a set that lists a path under a conf.d* dir other than
+// a generated nginx/conf.d/<name>.conf (see shippable): conf.d stays hand-managed.
+func checkConfDFiles(files []string) error {
+	for _, f := range files {
+		if strings.Contains(f, "conf.d") && !shippable(f) {
+			return fmt.Errorf("the artifact set lists %q under conf.d, which only a generated nginx/conf.d/<name>.conf may enter; nothing was synced", f)
+		}
+	}
+	return nil
 }
 
 // writeShipped records what this deploy shipped (atomically: temp file, rename).
@@ -219,10 +235,12 @@ func pruneable(rel string) bool {
 }
 
 // checkPaths returns an error naming the first entry of a locally recorded list
-// that is not a safe path; such a list is never acted on.
+// that is not a safe shippable path (shippable: a pruneable path or a generated
+// nginx/conf.d/<name>.conf); such a list is never acted on. It gates the
+// pre-deploy tar and the restore, which therefore cover the shipped conf.d files.
 func checkPaths(what string, paths []string) error {
 	for _, p := range paths {
-		if !pruneable(p) {
+		if !shippable(p) {
 			return fmt.Errorf("%s holds an unsafe path %q; refusing to act on it", what, p)
 		}
 	}

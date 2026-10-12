@@ -97,6 +97,11 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	}
 	r, rp := o.Remote, o.RemotePath
 	say := func(format string, a ...any) { emit(o.Out, "  [running] "+format, a...) }
+	// Defence in depth (D-0425): the apply has no way to ship a fronting stack's
+	// files yet, so a set that holds some is refused before any host contact.
+	if o.Set.Front != nil && len(o.Set.Front.Files) > 0 {
+		return res, errs.New("E485", fmt.Sprintf("this deploy has %d file(s) for the fronting stack at %s, which the v1.5 apply cannot ship yet; nothing was sent", len(o.Set.Front.Files), o.Set.Front.RemotePath))
+	}
 
 	say("target snapshot on %s", r.Label())
 	snap, err := TakeTargetSnapshot(ctx, r, rp)
@@ -120,6 +125,22 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 		return res, err
 	}
 	noticeLinks(o.Out, linked, o.Set.shippedPaths())
+	// A hand-written nginx/conf.d file on the host is kept, not overwritten and not
+	// an error (D-0424): it leaves the set before the lock, the tar and the sync.
+	kept, err := KeptHostConfD(ctx, r, rp, o.Set.Files)
+	if err != nil {
+		return res, err
+	}
+	keptPaths := make([]string, 0, len(kept))
+	for _, k := range kept {
+		keptPaths = append(keptPaths, k.Path)
+		if k.DefaultServerIn != "" {
+			emit(o.Out, "  [kept] %s (the host already declares a default_server in %s; not shipped)", k.Path, k.DefaultServerIn)
+		} else {
+			emit(o.Out, "  [kept] %s (hand-written on the host; not overwritten)", k.Path)
+		}
+	}
+	o.Set = o.Set.Without(keptPaths)
 	if err := CheckNotOverwritingForeign(ctx, r, rp, o.Set.Files, o.Previous); err != nil {
 		return res, err
 	}
@@ -233,7 +254,12 @@ func ApplyRemote(ctx context.Context, o ApplyOptions) (res ApplyResult, err erro
 	if err = reloadNginx(ctx, o, model); err != nil {
 		return res, err
 	}
-	return res, applyHasuraMetadata(ctx, o)
+	if err = applyHasuraMetadata(ctx, o); err != nil {
+		return res, err
+	}
+	// Fully successful: trim old pre-deploy tars, keeping this deploy's own (D-0421).
+	pruneOldTars(ctx, o, bk.Tar)
+	return res, nil
 }
 
 // ReapplyRemote runs the pull and the service-by-service up with the health

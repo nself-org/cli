@@ -12,7 +12,7 @@ package deploy
 //          deploy did not ship are never restored or removed.
 // Inputs:  a Remote, the remote project path, the artifact paths, RestoreSpec.
 // Outputs: the backup id, tar path and absent list; an error from the restore.
-// Constraints: every path is validated (pruneable) before use; removal refuses a
+// Constraints: every path is validated (shippable) before use; removal refuses a
 //              path with a symlink component; rsync follows a symlinked dir
 //              (--keep-dirlinks) and never replaces it. The restore runs on a
 //              context that survives cancellation, bounded by restoreTimeout.
@@ -20,8 +20,13 @@ package deploy
 //              nginx/ keeps its inode. The tar follows symlinks (-h) so a
 //              symlinked nginx/ contributes its contents, not the link.
 //              rsync -ac: tar keeps whole-second mtimes.
-//              conf.d*/ is excluded from the tar and from every list. The tar is
-//              mode 0600 (it holds env files).
+//              conf.d*/ is excluded from the tree the tar takes. The one exception
+//              is a shipped nginx/conf.d/<name>.conf (D-0424, see shippable): it
+//              is in the lists, and when the host has it a second step appends it
+//              to the tar (tar -r on the unpacked tar, then gzip), so a rollback
+//              restores it; when the host lacks it, it is reported ABSENT and a
+//              rollback removes the created file. The tar is mode 0600 (it holds
+//              env files).
 
 import (
 	"context"
@@ -83,6 +88,22 @@ func CreatePreDeployTar(ctx context.Context, r Remote, remotePath, id string, pa
 		return PreDeployBackup{}, err
 	}
 	tar := path.Join(remotePath, BackupDir, "pre-deploy-"+id+".tar.gz")
+	// Generated conf.d files are taken in a second step (see the header): the
+	// first tar excludes conf.d*, so they are kept out of the first loop.
+	var tree, confD []string
+	for _, p := range paths {
+		if isGeneratedConfD(p) {
+			confD = append(confD, p)
+		} else {
+			tree = append(tree, p)
+		}
+	}
+	appendConfD := ""
+	if len(confD) > 0 {
+		appendConfD = fmt.Sprintf(`set --
+for c in %s; do if [ -f "$c" ]; then set -- "$@" "$c"; fi; done
+if [ "$#" -gt 0 ]; then t="$out.tmp"; trap 'rm -f "$t" "$t.gz"' EXIT; gzip -dc "$out" > "$t"; tar -hrf "$t" "$@"; gzip -n -c "$t" > "$t.gz"; mv -f "$t.gz" "$out"; rm -f "$t"; fi`, strings.Join(quoteAll(confD), " "))
+	}
 	script := fmt.Sprintf(`set -e; umask 077; rp=%s; out=%s; mkdir -p "$rp/%s"; cd "$rp"; set --
 for p in %s %s; do if [ -e "$p" ]; then set -- "$@" "$p"; fi; done
 for f in .env.*; do if [ -f "$f" ]; then set -- "$@" "$f"; fi; done
@@ -90,10 +111,11 @@ l="$rp/%s/.list-%s"; : > "$l"
 if [ -d .nself/plugins ]; then find -H .nself/plugins -type f -name '*.yml' > "$l"; fi
 while IFS= read -r f; do set -- "$@" "$f"; done < "$l"; rm -f "$l"
 if [ "$#" -eq 0 ]; then e="$rp/%s/.empty-%s"; mkdir -p "$e"; tar -czf "$out" -C "$e" .; rmdir "$e"; else tar -hczf "$out" --exclude='conf.d*' "$@"; fi
+%s
 tar -tzf "$out" >/dev/null
 for p in %s; do if [ ! -e "$p" ] && [ ! -L "$p" ]; then printf 'ABSENT %%s\n' "$p"; fi; done`,
-		q(remotePath), q(tar), BackupDir, strings.Join(quoteAll(tarSources), " "), strings.Join(quoteAll(paths), " "), BackupDir, id, BackupDir, id,
-		strings.Join(quoteAll(paths), " "))
+		q(remotePath), q(tar), BackupDir, strings.Join(quoteAll(tarSources), " "), strings.Join(quoteAll(tree), " "), BackupDir, id, BackupDir, id,
+		appendConfD, strings.Join(quoteAll(paths), " "))
 	out, err := r.Run(ctx, shScript(script))
 	if err != nil {
 		return PreDeployBackup{}, fmt.Errorf("pre-deploy backup on %s failed, nothing was sent: %w", r.Label(), err)
