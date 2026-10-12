@@ -7,8 +7,9 @@ package cmdlog
 // Constraints: no second rule here. Secret names go through
 // config.IsSecretKey and URL credentials through config.MaskURLCredentials
 // (internal/config/secretkeys.go, SPORT cap:cli.machine-auth). internal/config
-// does not import this package, so there is no cycle. Matching over-masks
-// (--keyboard hides its value); that is the safe side.
+// does not import this package, so there is no cycle. The one addition is
+// AUTH on flag names (see secretFlagName). Matching over-masks (--keyboard
+// and --author hide their value); that is the safe side.
 
 import (
 	"strings"
@@ -17,12 +18,17 @@ import (
 )
 
 // secretFlagName reports whether a long flag name (with its leading dashes and
-// no "=value") names a secret, by the config secret-name rule.
+// no "=value") names a secret: the config secret-name rule plus AUTH. argv
+// carries bearer and authorization values under names that are not env keys
+// (--auth, --authorization, --auth-header), so the command log adds AUTH on
+// top of the canon rule. config stays unchanged so env display and the audit
+// log do not widen.
 func secretFlagName(name string) bool {
 	if !strings.HasPrefix(name, "--") {
 		return false
 	}
-	return config.IsSecretKey(strings.TrimLeft(name, "-"))
+	bare := strings.TrimLeft(name, "-")
+	return config.IsSecretKey(bare) || strings.Contains(strings.ToUpper(bare), "AUTH")
 }
 
 // maskURLCredentials masks the credentials of every URL value in s by the
