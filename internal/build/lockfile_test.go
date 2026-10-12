@@ -249,7 +249,7 @@ func TestLockV14OptIn(t *testing.T) {
 	}
 	// The earlier v1.4 build left a tag-only compose; the first lock takes its
 	// pins from it, with the digest from the CLI image lock (the versions match).
-	hasura, _ := compose.LockedRef("hasura")
+	hasura, _ := compose.LockedRef("hasura-v14") // what v1.4 runs (P7-LIVE-23)
 	if l := readLock(t, f); l.Images["hasura"] != hasura.String() {
 		t.Fatalf("first v1.4 lock pins hasura %q, want the CLI image lock's %q: %+v", l.Images["hasura"], hasura.String(), l)
 	}

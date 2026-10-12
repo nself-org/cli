@@ -98,6 +98,7 @@ The table is generated. Never hand-edit it; run `compat-markers.sh --write-wiki`
 | P7-LIVE-20 | auth runs nhost/auth:0.36.0 (auth-v14) | the current nhost/auth release (auth) when AUTH_ENCRYPTION_KEY is set | `internal/compose/auth_image.go` |
 | P7-LIVE-22 | E151 for every ACME failure (exit of the failed process, else 2) | E470/E471 (exit 2) or E472 (exit 1) by failure class | `cmd/commands/ssl_renewal.go` |
 | P7-LIVE-22 | certbot is the default certificate path | the ACME engine is the default | `cmd/commands/ssl_renewal.go` |
+| P7-LIVE-23 | hasura runs graphql-engine v2.44.0 (hasura-v14) | v2.51.0 (hasura) | `internal/compose/core_services.go` |
 | P7-PLUG-01 | v1 plugin.json read silently | one deprecation line per process on stderr | `internal/plugin/manifestv2/warn.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_marketplace_cmds.go` |
 | P7-PLUG-11 | tier pro | license licensed | `cmd/commands/plugin_query.go` |

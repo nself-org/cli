@@ -28,6 +28,10 @@ type ImageInput struct {
 	Service string   // compose service name; also the lock pin key
 	Entry   string   // image lock entry the generator renders for it
 	Vars    []string // variables that feed the rendered reference, precedence order
+	// NotInitDefault marks an entry whose version nself init never writes into .env
+	// (hasura: init writes v2.44.0, the hasura-v14 entry). Setting a variable to that
+	// version is a deliberate choice, so it is an override and not a default.
+	NotInitDefault bool
 }
 
 var imageInputs = []ImageInput{
@@ -36,7 +40,12 @@ var imageInputs = []ImageInput{
 	// pgvector repository from the major version.
 	{Service: "postgres", Entry: "postgres", Vars: []string{"POSTGRES_IMAGE", "POSTGRES_VERSION"}},
 	{Service: "postgres", Entry: "pgvector", Vars: []string{"POSTGRES_IMAGE", "POSTGRES_VERSION"}},
-	{Service: "hasura", Entry: "hasura", Vars: []string{"HASURA_VERSION"}},
+	// hasura: the current release (v2.51.0). init does not write it, so a project that
+	// sets HASURA_VERSION to it moves off a lock pin of v2.44.0 (P7-LIVE-23).
+	{Service: "hasura", Entry: "hasura", Vars: []string{"HASURA_VERSION"}, NotInitDefault: true},
+	// hasura-v14: graphql-engine v2.44.0, what v1.4 runs and the version nself init
+	// writes into .env (core_services.go, P7-LIVE-23); the same variable picks the tag.
+	{Service: "hasura", Entry: "hasura-v14", Vars: []string{"HASURA_VERSION"}},
 	{Service: "auth", Entry: "auth", Vars: []string{"AUTH_VERSION"}},
 	// auth-v14: nhost/auth 0.36.0, what v1.4 runs and v1.5 until AUTH_ENCRYPTION_KEY is
 	// set (core_services_auth_nginx.go, P7-LIVE-20); the same variable picks the tag.
@@ -126,7 +135,7 @@ func (in ImageInput) Set(getenv func(string) string) string {
 // the service renders (postgres: the postgres entry and the pgvector entry).
 func isServiceDefault(service, val string) bool {
 	for _, row := range imageInputs {
-		if row.Service != service {
+		if row.Service != service || row.NotInitDefault {
 			continue
 		}
 		if r, ok := LockedRef(row.Entry); ok && r.IsDefaultVersion(val) {

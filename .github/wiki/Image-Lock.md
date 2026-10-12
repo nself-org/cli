@@ -93,6 +93,38 @@ Auth migrates its schema one way, so rolling back means restoring the backup fro
 
 Pinning back without the restore is unsupported: 0.36.0 starts on the migrated schema, but every TOTP sign-in fails because the secrets are now encrypted. `scripts/ci/auth-smoke.sh` proves the upgrade and both rollback paths on Linux with users, sessions, a refresh token and a TOTP user (`NSELF_V15=1 bash scripts/ci/auth-smoke.sh`; it needs Docker, Go, curl, python3 and free ports 80, 443, 4000, 5432 and 8080).
 
+## Hasura: graphql-engine v2.51
+
+The lock carries two Hasura entries on `docker.io/hasura/graphql-engine`: `hasura-v14` (`v2.44.0`) and `hasura` (`v2.51.0`, the current v2 release).
+
+| Project | Hasura image |
+|---|---|
+| v1.4 | `hasura-v14`: `docker.io/hasura/graphql-engine:v2.44.0@sha256:...` in lock mode, `hasura/graphql-engine:v2.44.0` in legacy mode |
+| v1.5, no lock pin yet (a new project) | `hasura` (v2.51.0) |
+| the project lock pins v2.44.0 | the pin, in both modes, until `nself update` moves it |
+| `HASURA_VERSION=v2.44.0` (what `nself init` writes into `.env`) or blank | the mode default, or the pin if there is one: a default, not an override |
+| `HASURA_VERSION=v2.51.0` | `hasura` in any mode; it is an override, so it drops a lock pin of v2.44.0 with one notice |
+| any other `HASURA_VERSION` (`v2.45.0`) | `hasura/graphql-engine:<tag>`, unpinned, in any mode |
+
+Hasura v2.51.0 does not change the metadata format or the migration contract. `scripts/ci/hasura-upgrade-smoke.sh` starts a project on v2.44.0 with a migrated fixture (tables and rows) and metadata (tracked tables, a relationship, a select permission, an event trigger to a webhook, a remote schema), takes a verified backup, switches the pin to v2.51.0 and checks that the rows are readable, that the metadata export is identical before and after (the `nself db hasura metadata export` tree and the normalised API JSON), that apply then export round-trips, and that a mutation, a subscription event, a remote schema call and an event trigger delivery work. The metadata catalog version is 48 on both releases.
+
+### Upgrade an existing project
+
+1. Take a verified backup: `nself backup create`, then `nself backup verify <id> --restore-test`. Copy `nself.lock.yaml` aside too: it pins v2.44.0.
+2. Move the pin with `nself update` (`nself update --plan` shows the move with a note, `--yes` applies it), or set `HASURA_VERSION=v2.51.0` for a project without a lock. In v1.4 `nself update` keeps v2.44.0 and never moves a newer pin back.
+3. `nself build`, then `nself start`. Hasura applies its catalog migrations on that first start.
+
+### Roll back
+
+Treat the catalog migrations as one way: a Hasura release that raises the catalog version may leave an older engine unable to use the database (Hasura ships its own downgrade command for that). Rolling back means restoring the backup from step 1:
+
+1. `nself stop hasura`.
+2. `nself backup restore <id> --only pg --yes`. If it fails on dependencies of the newer catalog (E207), run `nself db reset --yes` first and repeat the restore (debt D-0663).
+3. Put the saved `nself.lock.yaml` back (the v2.44.0 pin), or remove `HASURA_VERSION=v2.51.0` from the env.
+4. `nself build`, then `nself start`.
+
+Pinning back without the restore is unsupported: the CLI does not check the catalog version, so a future pair of releases may refuse to start. For this pair the smoke observed that v2.44.0 starts on a v2.51.0 database (catalog version 48 on both) and passes every functional check, but rows written on v2.51.0 stay in the database and nothing restores the pre-switch state. The smoke proves both paths on Linux (`NSELF_V15=1 bash scripts/ci/hasura-upgrade-smoke.sh`; without `NSELF_V15` it runs the same functional checks on v2.44.0 as the baseline; it needs Docker, curl, python3, openssl and free ports 80, 443, 5432 and 8080).
+
 ## How pins move
 
 1. Edit the entry's `version` in `internal/compose/images.yaml` (a version bump is its own reviewed change). Leave `legacy_ref` alone. The weekly bump (`tools/imagebump`, `.github/workflows/image-pin-bump.yml`) does the same.
