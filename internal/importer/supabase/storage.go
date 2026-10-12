@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/errs"
+	"github.com/nself-org/cli/internal/httptimeout"
 )
 
 const (
@@ -50,7 +51,12 @@ func newAPI(raw, key string) (*api, error) {
 		return nil, bad
 	}
 	u.Path = ""
-	hc := &http.Client{Timeout: 0, Transport: &http.Transport{ResponseHeaderTimeout: 60 * time.Second, TLSHandshakeTimeout: 15 * time.Second}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	// NoProxy: the service key must reach only the checked host and no redirect is followed.
+	// No whole-request timeout, so a large object can take as long as it needs (bound by ctx).
+	hc := httptimeout.NoProxy(0)
+	if tr, ok := hc.Transport.(*http.Transport); ok {
+		tr.ResponseHeaderTimeout = 60 * time.Second
+	}
 	return &api{base: u, key: key, hc: hc}, nil
 }
 
