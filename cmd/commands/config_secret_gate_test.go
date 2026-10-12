@@ -88,8 +88,9 @@ func TestConfigSecretsStoreHoldsNoSecret(t *testing.T) {
 	}
 }
 
-// TestConfigVerdictFailurePaths: config validate and config trust status
-// exit 1 on a failed verdict and still write exactly one envelope. A project
+// TestConfigVerdictFailurePaths: config validate exits 1 and config trust
+// status exits 2 (D-0430) on a failed verdict, and each still writes exactly
+// one envelope. A project
 // that cannot even load is the error-envelope path (one document, exit 1).
 func TestConfigVerdictFailurePaths(t *testing.T) {
 	proj := cfgFixtureProject(t)
@@ -131,8 +132,8 @@ func TestConfigVerdictFailurePaths(t *testing.T) {
 		t.Fatalf("unloadable project: the value reached stdout: %s", load.stdout)
 	}
 	tr := runPilot(t, cfgFixtureProject(t), true, nil, "config", "trust", "status", "--json")
-	if tr.code != 1 {
-		t.Fatalf("config trust status with warnings: exit %d, want 1\n%s", tr.code, tr.stderr)
+	if tr.code != 2 {
+		t.Fatalf("config trust status with warnings: exit %d, want 2 (canon warning class, D-0430)\n%s", tr.code, tr.stderr)
 	}
 	if data := validateEnvelope(t, tr.stdout, "config trust status"); data["warnings"] != true {
 		t.Fatalf("trust status data = %v, want warnings:true", data)

@@ -52,7 +52,8 @@ func TestIsSecretKey(t *testing.T) {
 }
 
 // TestMaskURLCredentials: user and password are masked up to the last @, so a
-// password with @, /, : or a space never leaks.
+// password with @, /, : or a space never leaks; query, matrix and fragment
+// parameters are matched on their percent-decoded name (D-0430).
 func TestMaskURLCredentials(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"postgres://app:pw@db:5432/app", "postgres://****@db:5432/app"},
@@ -68,6 +69,18 @@ func TestMaskURLCredentials(t *testing.T) {
 		{"https://h/cb?client_secret=FAKE3;api-key=FAKE4", "https://h/cb?client_secret=****;api-key=****"},
 		{"https://s3.test/o?X-Amz-Signature=FAKE5&auth=FAKE6", "https://s3.test/o?X-Amz-Signature=****&auth=****"},
 		{"https://h/p?page=2&sort=name", "https://h/p?page=2&sort=name"},
+		// D-0430: percent-encoded names and fragment parameters.
+		{"https://example.test/?access%5Ftoken=FAKETOK7", "https://example.test/?access%5Ftoken=****"},
+		{"https://example.test/#access_token=FAKETOK8&state=s1", "https://example.test/#access_token=****&state=s1"},
+		{"https://example.test/cb#state=s1&id%5Ftoken=FAKE9", "https://example.test/cb#state=s1&id%5Ftoken=****"},
+		{"https://h/?access%255Ftoken=FAKE10", "https://h/?access%255Ftoken=****"},
+		{"https://h/?%61uth=FAKE11&x=1", "https://h/?%61uth=****&x=1"},
+		{"https://h/?%zz%74oken=FAKE12", "https://h/?%zz%74oken=****"},
+		{"https://h/#/route?refresh_token=FAKE13", "https://h/#/route?refresh_token=****"},
+		{"https://h/p;Api%2DKey=FAKE14", "https://h/p;Api%2DKey=****"},
+		{"https://h/p?page=2#section=intro", "https://h/p?page=2#section=intro"},
+		{"https://h/?q=%5Ftoken&next=%2Fpass", "https://h/?q=%5Ftoken&next=%2Fpass"},
+		{"https://h/?%5F=1", "https://h/?%5F=1"},
 		{"https://example.test/path", "https://example.test/path"},
 		{"user@example.test", "user@example.test"},
 		{"plain-value", "plain-value"},
