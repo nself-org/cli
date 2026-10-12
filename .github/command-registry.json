@@ -1885,6 +1885,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm the data loss without a prompt (required from v1.5 unless you answer a terminal prompt)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -1894,8 +1911,13 @@
       "json": "envelope",
       "data_schema": "schemas/commands/backup-pitr-restore.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
-      "surface": "cli-only"
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
+      "surface": "all"
     },
     {
       "path": "nself backup pitr status",
@@ -2015,6 +2037,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm the data loss without a prompt (required from v1.5 unless you answer a terminal prompt)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -2025,7 +2064,9 @@
       "data_schema": "schemas/commands/backup-prune.v1.schema.json",
       "exit_codes": {},
       "confirm": {
-        "flags": [],
+        "flags": [
+          "yes"
+        ],
         "plan": null
       },
       "surface": "all"
@@ -12204,6 +12245,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm the data loss without a prompt (required from v1.5 unless you answer a terminal prompt)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -12213,8 +12271,13 @@
       "json": "envelope",
       "data_schema": "schemas/commands/db-migrate-down.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
-      "surface": "cli-only"
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
+      "surface": "all"
     },
     {
       "path": "nself db migrate generate",
@@ -12891,6 +12954,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm the data loss without a prompt (required from v1.5 unless you answer a terminal prompt)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -12900,8 +12980,13 @@
       "json": "envelope",
       "data_schema": "schemas/commands/db-pitr-restore.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
-      "surface": "cli-only"
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
+      "surface": "all"
     },
     {
       "path": "nself db pitr status",
@@ -22731,6 +22816,23 @@
           "output": null,
           "cli_only": false,
           "secret": false
+        },
+        {
+          "name": "yes",
+          "shorthand": null,
+          "type": "bool",
+          "default": "false",
+          "usage": "Confirm the data loss without a prompt (required from v1.5 unless you answer a terminal prompt)",
+          "hidden": false,
+          "deprecated": null,
+          "required": false,
+          "persistent": false,
+          "env": null,
+          "side_effect": null,
+          "json": null,
+          "output": null,
+          "cli_only": false,
+          "secret": false
         }
       ],
       "canon": "subcommand",
@@ -22740,8 +22842,13 @@
       "json": "envelope",
       "data_schema": "schemas/commands/update-project-rollback.v1.schema.json",
       "exit_codes": {},
-      "confirm": null,
-      "surface": "cli-only"
+      "confirm": {
+        "flags": [
+          "yes"
+        ],
+        "plan": null
+      },
+      "surface": "all"
     },
     {
       "path": "nself update project run",

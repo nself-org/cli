@@ -346,8 +346,10 @@ nself backup list [--remote <name>] [--since 24h] [--format table|json]
 Remove backups beyond the retention policy.
 
 ```bash
-nself backup prune [--keep-daily 7] [--keep-weekly 4] [--keep-monthly 12] [--dry-run]
+nself backup prune [--keep-daily 7] [--keep-weekly 4] [--keep-monthly 12] [--dry-run] [--yes]
 ```
+
+Prune deletes backups for good. In v1.4 it warns when called without `--yes`. In v1.5 (`NSELF_V15=1`) it refuses with `[E403]` unless you pass `--yes` or answer `y` on a terminal. `--dry-run` only previews, so it never needs `--yes`.
 
 ---
 
@@ -474,6 +476,17 @@ nself backup init-key
 ```
 
 Outputs the public key to add to `.env` as `BACKUP_AGE_RECIPIENTS`.
+
+---
+
+## Commands that need --yes
+
+```bash
+nself backup prune [--dry-run] [--yes]
+nself backup pitr restore --to <time> [--yes]
+```
+
+`backup prune` and `backup pitr restore` destroy data. In v1.4 they warn when called without `--yes`. In v1.5 (`NSELF_V15=1`) they refuse with `[E403]` unless you pass `--yes` or answer `y` on a terminal. `prune --dry-run` only previews, so it never needs `--yes`. An agent or HTTP caller gets a confirmation round trip first; the CLI adds `--yes` once the caller confirms.
 
 ---
 
