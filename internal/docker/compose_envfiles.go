@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // composeEnvFile is the interpolation file `nself build` writes, relative to
@@ -70,6 +71,14 @@ func (c *Compose) projectCmd(ctx context.Context, workdir string, p ProjectRun, 
 	cmd := exec.CommandContext(ctx, c.dockerBin(), append(full, args...)...)
 	cmd.Dir = workdir
 	cmd.Env = append(os.Environ(), p.Env...)
+	// As in Run: a cancelled call kills compose's whole process group, and a
+	// plugin child still holding a pipe cannot block Wait past WaitDelay.
+	cmd.WaitDelay = 5 * time.Second
+	setProcGroupAttr(cmd)
+	cmd.Cancel = func() error {
+		killProcessGroup(cmd)
+		return cmd.Process.Kill()
+	}
 	return cmd
 }
 
@@ -89,8 +98,9 @@ func (c *Compose) RunProject(ctx context.Context, workdir string, p ProjectRun, 
 	return nil
 }
 
-// OutputProject runs args against p.Project in workdir and returns stdout
-// (p.Stdout and p.Stderr are not used). A failure carries the last stderr line.
+// OutputProject runs args against p.Project in workdir and returns stdout.
+// p.Stdout and p.Stderr are ignored: stderr is kept for the error, which
+// carries its last line.
 func (c *Compose) OutputProject(ctx context.Context, workdir string, p ProjectRun, args ...string) ([]byte, error) {
 	cmd := c.projectCmd(ctx, workdir, p, args)
 	var se bytes.Buffer

@@ -184,8 +184,8 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 // DOCKER_NETWORK), and plugin env vars. CLI compose calls on the project
 // pass it via --env-file: ComposeEnvFiles, or docker.ProjectEnvFiles where
 // internal/build cannot be imported. Sites that still shell out to docker
-// compose directly (the repoqa docker-exec allowlist) may not; they are
-// tracked in hq debt. Every value goes through
+// compose directly (the repoqa docker-exec allowlist) may not; hq debt
+// D-0747 tracks them. Every value goes through
 // config.QuoteComposeEnvValue, so compose reads back the exact bytes even
 // for secrets holding whitespace, '#', '$', quotes or backslashes (D-0333).
 func WriteComposeEnv(workdir string, cfg *config.Config, secrets, pluginEnvVars map[string]string) error {
