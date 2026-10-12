@@ -467,6 +467,11 @@ golden_tests() {
     && env "$@" go test -count=1 ./cmd/commands -run 'TestBuildPlanDevGolden$')
 }
 
+# mask_version_hash FILE: FILE with the hash on each `.nself/build-version` line replaced by HASH.
+mask_version_hash() {
+  sed -E 's#^(f [0-7]{4} ([^ ]*/)?\.nself/build-version )[0-9a-f]{64}$#\1HASH#' "$1"
+}
+
 # restore_goldens: put the pre-regeneration copies back.
 restore_goldens() {
   local g n=0
@@ -507,8 +512,10 @@ update_goldens() {
   n=0
   for g in "${GOLDEN_FILES[@]}"; do
     n=$((n+1))
-    # diff exits 1 on a difference, which pipefail would turn into "no stray lines".
-    stray="$(diff "${GOLD_BAK}/${n}" "${REPO_ROOT}/${g}" | grep -E '^[<>]' | grep -v -F '.nself/build-version ' || true)"
+    # Only the 64-hex hash of a `.nself/build-version` line may differ: mask it in both
+    # copies and require the rest to be byte-identical, so a deleted, added, re-moded or
+    # re-pathed line (or any other tree change) is refused, not just a stray non-version line.
+    stray="$(diff <(mask_version_hash "${GOLD_BAK}/${n}") <(mask_version_hash "${REPO_ROOT}/${g}") | grep -E '^[<>]' || true)"
     if [ -n "${stray}" ]; then
       restore_goldens
       printf 'ERROR: %s changed beyond .nself/build-version lines; goldens restored.\n' "${g}" >&2

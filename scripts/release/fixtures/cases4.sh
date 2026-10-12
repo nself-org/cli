@@ -6,6 +6,9 @@
 #          call and, under UPDATE_GOLDEN=1, rewrites the `.nself/build-version` lines.
 
 GOLD_PATHS="internal/build/testdata/plan-mode/golden-dev-minimal.txt internal/build/testdata/plan-mode/golden-fronted.txt internal/build/testdata/plan-mode/golden-prod-plugins.txt internal/reconcile/testdata/fixtures/dev-minimal/golden-tree.txt"
+# Fake sha256-shaped hashes (the guard masks 64 hex digits); obviously synthetic.
+OLDH=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+NEWH=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 # mk_bump_env: a nself/{cli,admin} tree at 1.4.13 with the golden tests present and a stub go.
 mk_bump_env() {
@@ -24,7 +27,7 @@ mk_bump_env() {
   : > "$C/internal/build/plan_mode_test.go"; : > "$C/cmd/commands/build_plan_test.go"
   for g in $GOLD_PATHS; do
     mkdir -p "$C/$(dirname "$g")"
-    printf 'd 0755 project/.nself\nf 0644 project/.nself/build-version oldhash\nf 0644 project/other keep\n' > "$C/$g"
+    printf 'd 0755 project/.nself\nf 0644 project/.nself/build-version %s\nf 0644 project/other keep\n' "$OLDH" > "$C/$g"
   done
   cat > "$B/bin/go" <<'STUB'
 #!/usr/bin/env bash
@@ -32,15 +35,19 @@ echo "UPDATE_GOLDEN=${UPDATE_GOLDEN:-} $*" >> "$GO_LOG"
 [ "${STUB_GO_FAIL_PLAIN:-}" = 1 ] && [ -z "${UPDATE_GOLDEN:-}" ] && exit 1
 if [ "${UPDATE_GOLDEN:-}" = 1 ]; then
   for g in $GOLD_PATHS; do
-    sed 's/build-version oldhash/build-version newhash/' "$GOLD_ROOT/$g" > "$GOLD_ROOT/$g.new"
+    sed "s/build-version $OLDH/build-version $NEWH/" "$GOLD_ROOT/$g" > "$GOLD_ROOT/$g.new"
     [ "${STUB_GO_DRIFT:-}" = 1 ] && sed 's/other keep/other changed/' "$GOLD_ROOT/$g.new" > "$GOLD_ROOT/$g.new2" && mv "$GOLD_ROOT/$g.new2" "$GOLD_ROOT/$g.new"
+    # Edits to the build-version line itself that are not a plain hash swap.
+    [ "${STUB_GO_DELETE:-}" = 1 ] && sed '/build-version/d' "$GOLD_ROOT/$g.new" > "$GOLD_ROOT/$g.new2" && mv "$GOLD_ROOT/$g.new2" "$GOLD_ROOT/$g.new"
+    [ "${STUB_GO_MODE:-}" = 1 ] && sed 's/^f 0644 \(.*build-version\)/f 0600 \1/' "$GOLD_ROOT/$g.new" > "$GOLD_ROOT/$g.new2" && mv "$GOLD_ROOT/$g.new2" "$GOLD_ROOT/$g.new"
+    [ "${STUB_GO_EXTRA:-}" = 1 ] && printf 'f 0644 project/.nself/build-version-extra %s\n' "$NEWH" >> "$GOLD_ROOT/$g.new"
     mv "$GOLD_ROOT/$g.new" "$GOLD_ROOT/$g"
   done
 fi
 exit 0
 STUB
   chmod +x "$B/bin/go"
-  export GO_LOG=$B/go.log GOLD_PATHS GOLD_ROOT=$C; : > "$GO_LOG"
+  export GO_LOG=$B/go.log GOLD_PATHS GOLD_ROOT=$C OLDH NEWH; : > "$GO_LOG"
 }
 run_bump() { PATH="$B/bin:$ORIG_PATH" bash "$C/scripts/bump-version.sh" "$@" >"$B/out" 2>"$B/err"; RC=$?; }
 gold_all() { local g; for g in $GOLD_PATHS; do grep -q "$1" "$C/$g" || return 1; done; }
@@ -50,7 +57,7 @@ mk_bump_env
 run_bump 9.9.9
 check "bump exits 0" test "$RC" -eq 0
 check "bump updated version.go" grep -q '"9.9.9"' "$C/internal/version/version.go"
-check "bump regenerated all four goldens" gold_all 'build-version newhash'
+check "bump regenerated all four goldens" gold_all "build-version $NEWH"
 check "bump kept the other golden lines" gold_all 'other keep'
 check "bump ran the build golden with UPDATE_GOLDEN=1" grep -q '^UPDATE_GOLDEN=1 test .*./internal/build ' "$GO_LOG"
 check "bump ran the cmd golden with UPDATE_GOLDEN=1" grep -q '^UPDATE_GOLDEN=1 test .*./cmd/commands ' "$GO_LOG"
@@ -62,8 +69,19 @@ mk_bump_env
 export STUB_GO_DRIFT=1; run_bump 9.9.9; unset STUB_GO_DRIFT
 check "drift in a golden exits 1" test "$RC" -eq 1
 check "drift is named" grep -q 'changed beyond .nself/build-version' "$B/err"
-check "drift restored the goldens" gold_all 'build-version oldhash'
+check "drift restored the goldens" gold_all "build-version $OLDH"
 rm -rf "$B"
+
+# 14b. the guard accepts only the hash on a build-version line: deleting, re-moding or
+# adding such a line is refused too (each one restores the goldens) --------------------------
+for mode in DELETE MODE EXTRA; do
+  mk_bump_env
+  export "STUB_GO_$mode=1"; run_bump 9.9.9; unset "STUB_GO_$mode"
+  check "$mode of a build-version line exits 1" test "$RC" -eq 1
+  check "$mode of a build-version line is named" grep -q 'changed beyond .nself/build-version' "$B/err"
+  check "$mode of a build-version line restored the goldens" gold_all "build-version $OLDH"
+  rm -rf "$B"
+done
 
 # 15. a red plain run after regeneration fails the bump ------------------------------------
 mk_bump_env
@@ -77,7 +95,7 @@ mk_bump_env
 run_bump 9.9.9 --no-goldens
 check "--no-goldens exits 0" test "$RC" -eq 0
 check "--no-goldens made no go call" test ! -s "$GO_LOG"
-check "--no-goldens left the goldens" gold_all 'build-version oldhash'
+check "--no-goldens left the goldens" gold_all "build-version $OLDH"
 rm -rf "$B"
 mk_bump_env
 run_bump 9.9.9 --dry-run
