@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -374,6 +375,9 @@ func TestSeaweedVersionOverride(t *testing.T) {
 }
 
 func TestSeaweedBucketScript(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("runs the container script with a POSIX /bin/sh")
+	}
 	for _, tc := range []struct {
 		name, buckets, existing, fail, drop, wantCreates string
 		wantFailure                                      bool
@@ -456,6 +460,9 @@ esac
 // bad credentials stop it before any identity file exists; good ones render
 // the identity into the tmpfs path and never put a key on weed's argv.
 func TestSeaweedServerScript(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("runs the container script with a POSIX /bin/sh")
+	}
 	for _, tc := range []struct {
 		name, access, secret string
 		wantFailure          bool
