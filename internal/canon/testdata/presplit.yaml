@@ -9,10 +9,10 @@ verbs: [init, start, stop, restart, status, logs, doctor, build, reset, clean, a
 commands:
   # cmd/commands/access.go:35 RunE path changes no persistent state (prints/reads only)
   access: {canon: pending, side_effect: read}
-  access grant: {side_effect: remote}
+  access grant: {side_effect: remote, confirm: {flags: [yes]}}
   access list: {side_effect: read, json: legacy}
   # cmd/commands/access_revoke.go:21 removes one authorized_keys entry on the remote host; `access grant` restores it
-  access revoke: {side_effect: remote}
+  access revoke: {side_effect: remote, confirm: {flags: [yes]}}
   # cmd/commands/account.go:25 RunE path changes no persistent state (prints/reads only)
   account: {canon: pending, side_effect: read, json: legacy}
   # cmd/commands/account_devices.go:36 lists devices; --revoke removes one on the account server
@@ -225,7 +225,7 @@ commands:
   db verify: {side_effect: read}
   # cmd/commands/db_hasura.go:91 RunE path changes no persistent state (prints/reads only)
   db verify-checksums: {side_effect: read}
-  deploy: {canon: core, side_effect: remote, json: legacy, flags: {follow: {output: stream}}}
+  deploy: {canon: core, side_effect: remote, json: legacy, flags: {follow: {output: stream}}, confirm: {flags: [yes]}}
   # cmd/commands/deploy_diagnostics.go:121 RunE path changes no persistent state (prints/reads only)
   deploy check-access: {side_effect: read, json: legacy}
   # cmd/commands/deploy_environments.go:41 RunE path changes no persistent state (prints/reads only)
@@ -233,11 +233,11 @@ commands:
   # cmd/commands/deploy_diagnostics.go:73 RunE path changes no persistent state (prints/reads only)
   deploy health: {side_effect: read, json: legacy}
   deploy logs: {side_effect: read, output: stream}
-  deploy promote: {side_effect: remote}
-  deploy rollback: {side_effect: destructive}
+  deploy promote: {side_effect: remote, confirm: {flags: [yes]}}
+  deploy rollback: {side_effect: destructive, confirm: {flags: [yes]}}
   deploy status: {side_effect: read, json: legacy}
   # cmd/commands/deploy_web_run.go:20 builds locally and publishes the prebuilt output to Vercel
-  deploy web: {side_effect: remote}
+  deploy web: {side_effect: remote, confirm: {flags: []}}
   dev: {canon: pending, side_effect: write, output: stream}
   # cmd/commands/doctor.go:51 diagnostics only; --fix and --ai write (doctor_ai*.go honours --json)
   doctor: {canon: core, side_effect: read, exit_codes: {"1": "one or more checks failed", "2": "warnings only, no failures"}, exit_codes_v15: {"10": "one or more checks failed", "12": "warnings only, no failures"}, flags: {ai: {side_effect: write, json: legacy}, fix: {side_effect: write}, install-check: {json: legacy}}}
@@ -341,7 +341,7 @@ commands:
   oauth refresh: {side_effect: remote, confirm: {flags: []}}
   # cmd/commands/ops.go:46 RunE path changes no persistent state (prints/reads only)
   ops: {canon: pending, side_effect: read}
-  ops deploy: {side_effect: remote, flags: {follow: {output: stream}}}
+  ops deploy: {side_effect: remote, flags: {follow: {output: stream}}, confirm: {flags: []}}
   # cmd/commands/plugin.go:21 proxies arbitrary args to a plugin binary (plugin.ProxyCommand): effect unbounded, worst case
   plugin: {canon: pending, side_effect: destructive}
   # cmd/commands/plugin_audit.go:59 RunE path changes no persistent state (prints/reads only)
@@ -383,8 +383,8 @@ commands:
   plugin update: {side_effect: write}
   # cmd/commands/plugin_lifecycle.go:101 RunE path changes no persistent state (prints/reads only)
   plugin updates: {side_effect: read}
-  promote: {canon: pending, side_effect: remote, json: legacy}
-  promote rollback: {side_effect: destructive}
+  promote: {canon: pending, side_effect: remote, json: legacy, confirm: {flags: [yes]}}
+  promote rollback: {side_effect: destructive, confirm: {flags: [yes]}}
   remove: {canon: core, side_effect: destructive}
   reset: {canon: core, side_effect: destructive}
   restart: {canon: core, side_effect: write}
@@ -423,7 +423,7 @@ commands:
   # cmd/commands/security_commands.go:26 RunE path changes no persistent state (prints/reads only)
   security audit: {side_effect: read}
   # cmd/commands/security_commands.go:96 prints the plan by default; --apply runs sed -i on /etc/ssh/sshd_config (no backup, password and root login off), ufw --force enable and apt installs (security_commands.go:75-130); a lock-out is not restored by re-running
-  security setup: {side_effect: read, flags: {apply: {side_effect: destructive}}}
+  security setup: {side_effect: read, flags: {apply: {side_effect: destructive}}, confirm: {flags: [apply]}}
   security status: {side_effect: read}
   # cmd/commands/self_heal.go:36 prints help unless --jwt is given
   self-heal: {canon: pending, side_effect: read, flags: {jwt: {side_effect: write}}}
@@ -476,7 +476,7 @@ commands:
   trust status: {side_effect: read, exit_codes: {"0": "all trust components configured and no expiry warnings", "2": "one or more components missing or cert expiry <30 days"}}
   # cmd/commands/uninstall.go:66 hidden shim: bare uninstall keeps volumes, so the target flags matter (deprecation registry)
   uninstall: {canon: deprecated-shim, target: reset, side_effect: destructive}
-  update: {canon: core, side_effect: write}
+  update: {canon: core, side_effect: write, confirm: {flags: [yes]}}
   update images: {side_effect: write}
   update upgrade: {side_effect: write}
   urls: {canon: pending, side_effect: read, json: legacy}

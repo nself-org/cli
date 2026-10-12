@@ -1,0 +1,9 @@
+{
+  "schema_version": "1",
+  "command": "update verify-sbom",
+  "data": {
+    "version": "v1.5.0",
+    "repo": "nself-org/cli",
+    "verified": true
+  }
+}

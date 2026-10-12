@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "command": "update images",
+  "data": {
+    "dry_run": true,
+    "saved": false,
+    "images": [
+      {
+        "service": "postgres",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "unchanged"
+      }
+    ]
+  }
+}

@@ -2,36 +2,36 @@
 # Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
 schema_version: 1
 commands:
-  deploy: {canon: core, side_effect: remote, json: legacy, flags: {follow: {output: stream}, stream: {output: stream}}}
+  deploy: {canon: core, side_effect: remote, json: legacy, flags: {follow: {output: stream}, stream: {output: stream}}, confirm: {flags: [yes]}}
   # cmd/commands/access.go:35 RunE path changes no persistent state (prints/reads only)
   deploy access: {side_effect: read}
-  deploy access grant: {side_effect: remote}
+  deploy access grant: {side_effect: remote, confirm: {flags: [yes]}}
   deploy access list: {side_effect: read, json: legacy}
   # cmd/commands/access_revoke.go:21 removes one authorized_keys entry on the remote host; `access grant` restores it
-  deploy access revoke: {side_effect: remote}
+  deploy access revoke: {side_effect: remote, confirm: {flags: [yes]}}
   # cmd/commands/deploy_diagnostics.go:121 RunE path changes no persistent state (prints/reads only)
   deploy check-access: {side_effect: read, json: legacy}
   # cmd/commands/deploy_environments.go:41 RunE path changes no persistent state (prints/reads only)
   deploy environments: {side_effect: read}
   # cmd/commands/deploy_diagnostics.go:73 RunE path changes no persistent state (prints/reads only)
   deploy health: {side_effect: read, json: legacy}
-  deploy logs: {side_effect: read, output: stream}
+  deploy logs: {side_effect: read, output: stream} # follows container logs until interrupted: a stream has no single document
   # cmd/commands/ops.go:81 builds locally then deploys to the configured remote ops host
-  deploy ops: {side_effect: remote, flags: {follow: {output: stream}}}
+  deploy ops: {side_effect: remote, flags: {follow: {output: stream}}, confirm: {flags: []}}
   # The v1.5 envelope is derived from its registered Go type; dry-run only reads inventory.
   # --stream prints NDJSON progress lines (contract:cli.deploy-progress v1); plain --json stays one document.
-  deploy promote: {side_effect: remote, flags: {stream: {output: stream}}}
+  deploy promote: {side_effect: remote, flags: {stream: {output: stream}}, confirm: {flags: [yes]}}
   # cmd/commands/promote.go:23 promotes environment state to the selected target
-  deploy promote-env: {side_effect: remote, json: legacy}
-  deploy promote-env rollback: {side_effect: destructive}
-  deploy rollback: {side_effect: destructive}
+  deploy promote-env: {side_effect: remote, json: legacy, confirm: {flags: [yes]}}
+  deploy promote-env rollback: {side_effect: destructive, confirm: {flags: [yes]}}
+  deploy rollback: {side_effect: destructive, confirm: {flags: [yes]}}
   # cmd/commands/security.go:44 prints a dry-run plan unless --apply is passed
-  deploy security setup: {side_effect: read, flags: {apply: {side_effect: destructive}}}
+  deploy security setup: {side_effect: read, flags: {apply: {side_effect: destructive}}, confirm: {flags: [apply]}}
   deploy status: {side_effect: read, json: legacy}
   # cmd/commands/deploy_targets.go:28 inspects inventory and local SSH configuration without connecting to a deploy host
   deploy targets: {side_effect: read, output: document}
   # cmd/commands/deploy_web_run.go:20 builds locally and publishes the prebuilt output to Vercel
-  deploy web: {side_effect: remote}
+  deploy web: {side_effect: remote, confirm: {flags: []}}
   # cmd/commands/security_commands.go:26 inspects host security without changes
   doctor security audit: {side_effect: read}
   doctor security status: {side_effect: read}
@@ -39,7 +39,7 @@ commands:
   ops: {canon: pending, side_effect: read, mode: v1.4}
   # cmd/commands/security.go:27 RunE path changes no persistent state (prints/reads only)
   security: {canon: pending, side_effect: read, mode: v1.4}
-  update: {canon: core, side_effect: write}
+  update: {canon: core, side_effect: write, confirm: {flags: [yes]}}
   update images: {side_effect: write}
   update upgrade: {side_effect: write}
   # cmd/commands/verify_sbom.go:41 RunE path changes no persistent state (prints/reads only)

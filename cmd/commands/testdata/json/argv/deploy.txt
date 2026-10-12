@@ -1,0 +1,16 @@
+# Deploy conversion fixture (P7-SURF-15). See README.md for tags.
+# Rows that need a remote host, ssh, cosign, a TTY or a running stack (deploy access
+# grant|list|revoke, deploy ops|web|rollback|promote-env, deploy health, deploy security
+# setup --apply, update verify-sbom, the pipeline and blue/green runs) are covered by the
+# Go tests in cmd/commands/json_deploy_test.go and json_deploy_bodies_test.go against the
+# loopback fixtures, not by this table.
+deploy access
+deploy status #| legacy-json
+deploy check-access #| legacy-json
+deploy environments
+deploy local --dry-run #| legacy-json
+doctor security audit
+doctor security status
+deploy security setup
+update upgrade --check
+update images --dry-run

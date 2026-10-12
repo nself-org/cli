@@ -69,7 +69,8 @@ func runAccessList(cmd *cobra.Command, args []string) error {
 	}
 
 	if jsonOut {
-		return ui.PrintJSON(rows)
+		host := accessHostRow{Host: t.Describe(), Entries: rows, ForeignCount: result.ForeignCount, Status: "ok"}
+		return emitDeployDoc("deploy access list", rows, accessListData{Hosts: []accessHostRow{host}}, nil)
 	}
 
 	if len(rows) == 0 {
@@ -140,10 +141,7 @@ func listSelectedAccess(cmd *cobra.Command, targets []accessTarget, jsonOut bool
 		rows = append(rows, row)
 	}
 	if jsonOut {
-		if err := ui.PrintJSON(rows); err != nil {
-			return err
-		}
-		return errors.Join(failures...)
+		return emitDeployDoc("deploy access list", rows, accessListData{Hosts: rows}, errors.Join(failures...))
 	}
 	for _, row := range rows {
 		if row.Status == "failed" {

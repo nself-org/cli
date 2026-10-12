@@ -4,7 +4,7 @@ import "github.com/nself-org/cli/internal/deploy/progress"
 
 // deploy-progress.v1.schema.json is the data of one progress line of
 // `nself deploy --json --stream` (contract:cli.deploy-progress v1, P7-DEPL-17).
-// The last line of the stream carries progress.Result, which is not registered:
+// The last line of the stream carries progress.ResultBody (plus the type member output.StreamEnd adds), which is not registered:
 // the contract publishes the event schema only.
 func init() {
 	Register(Spec{Out: "deploy-progress.v1.schema.json", Type: progress.Event{}, Overrides: []Override{

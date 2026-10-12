@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "command": "deploy access",
+  "data": {
+    "subcommands": [
+      {
+        "name": "grant",
+        "summary": "Grant a person SSH key access to a host"
+      }
+    ]
+  }
+}

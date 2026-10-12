@@ -87,6 +87,7 @@ func runVerifySBOM(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cosign verification FAILED: %w", err)
 	}
 
+	setData(cmd, verifySBOMData{Version: version, Repo: repo, Verified: true})
 	fmt.Printf("\nSBOM for %s: VERIFIED\n", version)
 	return nil
 }

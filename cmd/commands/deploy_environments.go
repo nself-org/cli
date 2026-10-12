@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"github.com/nself-org/cli/internal/controlplane"
+	"github.com/nself-org/cli/internal/output"
 
 	"github.com/spf13/cobra"
 )
@@ -100,6 +101,9 @@ func runDeployEnvironments(cmd *cobra.Command, _ []string) error {
 		out.Environments = append(out.Environments, row)
 	}
 
+	if jsonEnvelopeOn(cmd) {
+		return output.EmitData(pilotWriter(), "deploy environments", out)
+	}
 	b, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		return fmt.Errorf("deploy environments: marshal: %w", err)

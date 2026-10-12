@@ -2,14 +2,13 @@ package progress
 
 // Purpose: the line writer of contract:cli.deploy-progress v1.
 // Inputs: an io.Writer, the command path for the envelope, step events.
-// Outputs: compact v1 envelopes, one per line, written with one Write each.
+// Outputs: compact v1 envelopes, one per line, written with one Write each by
+// output.StreamRecord (progress lines) and output.StreamEnd (the last line).
 // Constraints: a nil *Writer is a no-op, so call sites need no stream check;
 // after the first failed write the stream stops and Err reports why.
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -142,7 +141,9 @@ func (w *Writer) Finish(result string, steps []Step) error {
 	if steps == nil {
 		steps = []Step{}
 	}
-	s.writeLine(Result{Type: TypeResult, Result: result, Steps: steps})
+	if err := output.StreamEnd(s.w, s.command, ResultBody{Result: result, Steps: steps}, nil); err != nil {
+		s.err = fmt.Errorf("progress: result line: %w", err)
+	}
 	return s.err
 }
 
@@ -164,7 +165,9 @@ func (w *Writer) emit(step, phase, detail, status string) {
 	if ev.ElapsedMS < 0 {
 		ev.ElapsedMS = 0
 	}
-	s.writeLine(ev)
+	if err := output.StreamRecord(s.w, s.command, ev); err != nil {
+		s.err = fmt.Errorf("progress: record line: %w", err)
+	}
 }
 
 // record sets the status of step, appending it on first sight.
@@ -176,24 +179,6 @@ func (s *sink) record(step, status string) {
 		}
 	}
 	s.steps = append(s.steps, Step{Step: step, Status: status})
-}
-
-// writeLine renders data as one compact v1 envelope line. The caller holds mu.
-func (s *sink) writeLine(data any) {
-	var doc bytes.Buffer
-	if err := output.EmitData(output.Writer{Out: &doc}, s.command, data); err != nil {
-		s.err = fmt.Errorf("progress: render: %w", err)
-		return
-	}
-	var line bytes.Buffer
-	if err := json.Compact(&line, doc.Bytes()); err != nil {
-		s.err = fmt.Errorf("progress: compact: %w", err)
-		return
-	}
-	line.WriteByte('\n')
-	if _, err := s.w.Write(line.Bytes()); err != nil {
-		s.err = err
-	}
 }
 
 // statusForPhase is the step status recorded for an event with no deploy
