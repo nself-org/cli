@@ -23,6 +23,9 @@
               "name": {
                 "type": "string"
               },
+              "note": {
+                "type": "string"
+              },
               "reason": {
                 "type": "string"
               },
@@ -71,6 +74,9 @@
                       "type": "string"
                     },
                     "name": {
+                      "type": "string"
+                    },
+                    "note": {
                       "type": "string"
                     },
                     "reason": {

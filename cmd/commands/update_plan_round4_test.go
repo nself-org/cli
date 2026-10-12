@@ -18,6 +18,7 @@ import (
 
 	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/compose"
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/lock"
 	"github.com/nself-org/cli/internal/plugin"
 	"github.com/nself-org/cli/internal/upgrade/plan"
@@ -214,5 +215,41 @@ func TestUpdateStrictRegistryBadBodyNoFallback(t *testing.T) {
 	}
 	if time.Since(start) > 10*time.Second {
 		t.Fatal("strictRegistry took long enough to suggest a fallback fetch")
+	}
+}
+
+// Round 5: --check only reports, so combined with --plan or --yes it is a usage
+// error raised before any dependency runs (it used to apply changes).
+func TestUpdateCheckWithYesOrPlanIsUsageError(t *testing.T) {
+	updateProject(t)
+	r := newUpdateRecorder(t)
+	for _, args := range [][]string{{"--check", "--yes"}, {"--check", "--plan"}, {"--check", "--yes", "--json"}} {
+		_, _, err := runUpdate(t, args...)
+		if err == nil || errs.Describe(err).Code != "E401" {
+			t.Fatalf("%v: err = %v, want E401", args, err)
+		}
+		if len(r.calls) != 0 || r.primed != nil {
+			t.Fatalf("%v ran deps: calls=%v primed=%v", args, r.calls, r.primed)
+		}
+	}
+}
+
+// The update schema accepts an engine-switch envelope: a redis pin moving to
+// valkey carries the optional note, in data.pins and in the images step.
+func TestUpdateEngineSwitchEnvelopeMatchesSchema(t *testing.T) {
+	compattest.Set(t, true)
+	updateProject(t)
+	t.Setenv("REDIS_ENGINE", "")
+	newUpdateRecorder(t)
+	out, _ := pilotBuffers(t)
+	if _, _, err := runUpdate(t, "--plan", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	data := updateEnvelope(t, out.String(), "update")
+	if !strings.Contains(out.String(), `"note"`) || !strings.Contains(out.String(), "valkey_data") {
+		t.Fatalf("envelope carries no engine-switch note:\n%s", out.String())
+	}
+	if data["applied"] != false {
+		t.Fatalf("applied = %v, want false", data["applied"])
 	}
 }

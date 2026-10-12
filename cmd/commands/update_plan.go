@@ -45,6 +45,9 @@ func runUpdatePlanMode(cmd *cobra.Command) (handled bool, err error) {
 	if jerr != nil {
 		return true, jerr
 	}
+	if check, _ := cmd.Flags().GetBool("check"); check && (doPlan || yes) {
+		return true, errs.New("E401", "--check cannot be combined with --plan or --yes: --check only reports the CLI release, it never applies changes")
+	}
 	switch {
 	case doPlan && yes:
 		return true, errs.New("E401", "--plan and --yes cannot be combined: --plan shows the changes, --yes applies them")

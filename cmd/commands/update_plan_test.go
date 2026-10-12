@@ -170,6 +170,7 @@ func runUpdate(t *testing.T, args ...string) (stdout, stderr string, err error) 
 	addUpdatePlanFlags(c)
 	c.Flags().Bool("cli", false, "")
 	c.Flags().Bool("admin", false, "")
+	c.Flags().Bool("check", false, "")
 	c.Flags().String("version", "", "")
 	c.Flags().Bool("json", false, "")
 	var out, errOut bytes.Buffer
