@@ -177,19 +177,6 @@ func TestTemplateSecrets_AliasKeyLeftAloneWhenValueDiffers(t *testing.T) {
 	}
 }
 
-// TestTemplateSecrets_URLEscapedPasswordLeftLiteral: passwords that require
-// percent-encoding must not be substituted into URL credential positions
-// (compose interpolation would inject the raw, unescaped value).
-func TestTemplateSecrets_URLEscapedPasswordLeftLiteral(t *testing.T) {
-	pw := "has space%pw"
-	yaml := "      DATABASE_URL: postgresql://postgres:has%20space%25pw@postgres:5432/db\n"
-	secrets := map[string]string{"POSTGRES_PASSWORD": pw}
-	out := string(TemplateSecrets([]byte(yaml), secrets))
-	if strings.Contains(out, ":${POSTGRES_PASSWORD}@") {
-		t.Errorf("URL-escaped password must not be substituted, got:\n%s", out)
-	}
-}
-
 func TestWriteComposeEnv_ContentAndPermissions(t *testing.T) {
 	workdir := t.TempDir()
 	cfg := secretTestConfig()

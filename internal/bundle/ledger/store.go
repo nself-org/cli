@@ -5,7 +5,8 @@
 // optional Sources func used to bootstrap. The ledger lives with the plugins it
 // describes (D-0284 option A), so it is the same for every project that shares
 // that plugin directory and needs no project root.
-// Outputs: Load (read only), Update (read, change, validate, write).
+// Outputs: Load (read only), Update (read, change, validate, write), Locked (a
+// held writer lock for several steps with durable writes in between, tx.go).
 // Constraints: writers take an OS lock on bundles.json.lock (next to the
 // ledger), write a temp file in the same directory, fsync it, then rename over
 // the ledger, so a reader sees the old or the new file, never a partial one,
@@ -33,6 +34,8 @@ const (
 	fileName = "bundles.json"
 	lockName = "bundles.json.lock"
 	lockWait = 15 * time.Second
+
+	ledgerTempPattern = ".bundles.json.*.tmp"
 )
 
 // Store is the ledger of one plugin directory.
@@ -50,6 +53,9 @@ type Store struct {
 	// beforeRename is a test seam: an error here aborts the write after the
 	// temp file is complete and before it replaces the ledger.
 	beforeRename func() error
+	// writeHook is a test seam (store_testhook.go): an error here fails a write
+	// to that path before any temp file exists.
+	writeHook func(path string) error
 }
 
 // StateDirName is the directory inside the plugin directory that holds the ledger.
@@ -121,39 +127,24 @@ func (s *Store) load(persist bool) (l Ledger, persisted bool, err error) {
 // missing) under the writer lock and writes the result. fn's error aborts the
 // write. Two concurrent Updates never lose each other's change.
 func (s *Store) Update(fn func(*Ledger) error) error {
-	if err := os.MkdirAll(s.Dir(), 0o700); err != nil {
-		return fmt.Errorf("ledger: create %s: %w", s.Dir(), err)
-	}
-	lf, err := openLockFile(filepath.Join(s.Dir(), lockName))
-	if err != nil {
-		return fmt.Errorf("ledger: open lock: %w", err)
-	}
-	defer func() { _ = lf.Close() }()
-	unlock, err := lockFile(lf, lockWait)
-	if err != nil {
-		return fmt.Errorf("ledger: lock: %w", err)
-	}
-	defer unlock()
-	s.removeStaleTemps()
-
-	l, _, err := s.load(true)
-	if err != nil {
-		return err
-	}
-	if err := fn(&l); err != nil {
-		return err
-	}
-	return s.write(l)
+	return s.Locked(func(tx *Tx, l Ledger) error {
+		if err := fn(&l); err != nil {
+			return err
+		}
+		return tx.Write(l)
+	})
 }
 
 // removeStaleTemps deletes temp files a killed writer left behind. The caller
 // holds the lock, so no live writer owns one; the age guard (older than the lock
 // wait) is a second safeguard.
 func (s *Store) removeStaleTemps() {
-	old, _ := filepath.Glob(filepath.Join(s.Dir(), ".bundles.json.*.tmp"))
-	for _, p := range old {
-		if st, err := os.Lstat(p); err == nil && time.Since(st.ModTime()) > lockWait {
-			_ = os.Remove(p)
+	for _, pattern := range tempPatterns {
+		old, _ := filepath.Glob(filepath.Join(s.Dir(), pattern))
+		for _, p := range old {
+			if st, err := os.Lstat(p); err == nil && time.Since(st.ModTime()) > lockWait {
+				_ = os.Remove(p)
+			}
 		}
 	}
 }
@@ -204,43 +195,5 @@ func (s *Store) write(l Ledger) error {
 	if len(data) > MaxBytes {
 		return fmt.Errorf("ledger: refusing to write %d bytes: over the %d-byte limit Load accepts", len(data), MaxBytes)
 	}
-	tmp, err := os.CreateTemp(s.Dir(), ".bundles.json.*.tmp")
-	if err != nil {
-		return fmt.Errorf("ledger: temp file: %w", err)
-	}
-	tmpName := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpName) }
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return fmt.Errorf("ledger: write temp: %w", err)
-	}
-	if err := tmp.Chmod(0o644); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return fmt.Errorf("ledger: chmod temp: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return fmt.Errorf("ledger: sync temp: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		cleanup()
-		return fmt.Errorf("ledger: close temp: %w", err)
-	}
-	if s.beforeRename != nil {
-		if err := s.beforeRename(); err != nil {
-			cleanup()
-			return err
-		}
-	}
-	if err := os.Rename(tmpName, s.Path()); err != nil {
-		cleanup()
-		return fmt.Errorf("ledger: replace %s: %w", s.Path(), err)
-	}
-	if err := syncDir(s.Dir()); err != nil {
-		return fmt.Errorf("ledger: %s was replaced but its directory could not be flushed, so the change may not survive a crash: %w", s.Path(), err)
-	}
-	return nil
+	return s.writeAtomic(s.Path(), ledgerTempPattern, data)
 }
