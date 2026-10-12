@@ -280,11 +280,9 @@ func linkCount(fi os.FileInfo) uint64 {
 // restore and restore-remote (the drill applies the same fatalRestoreText).
 // v1.5: any "error:" line not on allowedRestoreErrors fails. v1.4: only FATAL
 // or "could not" fails, and unlisted error lines are logged with their count
-// and first lines.
+// and first lines. strict applies the v1.5 rule in every compat mode.
 func restoreVerdict(stderr string) error { return restoreVerdictMode(stderr, false) }
 
-// restoreVerdictMode is restoreVerdict with an optional strict mode: strict
-// fails on any unlisted pg_restore "error:" line in every compat mode.
 func restoreVerdictMode(stderr string, strict bool) error {
 	stderr = strings.TrimSpace(stderr)
 	t := fatalRestoreText("pg_restore", stderr)
