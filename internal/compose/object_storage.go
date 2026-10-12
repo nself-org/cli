@@ -80,7 +80,7 @@ func (g *Generator) addObjectStorage(dc *DockerCompose) error {
 	installed := minioPluginInstalled()
 	// compat.V15(P7-PLUG-60): core MinIO generation -> missing plugin fails before writes
 	if compat.V15() && g.cfg.Minio.Enabled && !installed {
-		return errs.New("E138", "MinIO is no longer a core service in v1.5: run nself add minio to keep the minio_data volume, or set OBJECT_STORAGE_ENABLED=true and remove MINIO_ENABLED for a new empty SeaweedFS store, or set MINIO_ENABLED=false if this project does not use MinIO (see Object-Storage.md)")
+		return errs.New("E138", "MinIO is no longer a core service in v1.5: run nself add minio to keep the minio_data volume, or set OBJECT_STORAGE_ENABLED=true and MINIO_ENABLED=false for a new empty SeaweedFS store, or set MINIO_ENABLED=false if this project does not use MinIO (see Object-Storage.md)")
 	}
 	store := ActiveStore(g.cfg, installed)
 	switch store {
@@ -112,6 +112,13 @@ func (g *Generator) buildSeaweedService() (ServiceConfig, error) {
 		}
 		port = parsed
 	}
+	for _, key := range []struct{ name, value string }{
+		{"S3_ACCESS_KEY", g.cfg.Minio.S3AccessKey}, {"S3_SECRET_KEY", g.cfg.Minio.S3SecretKey},
+	} {
+		if problem := objectStorageKeyProblem(key.value); problem != "" {
+			return ServiceConfig{}, errs.New("E142", key.name+" is "+problem+": OBJECT_STORAGE_ENABLED=true needs S3_ACCESS_KEY and S3_SECRET_KEY in .env.secrets (no quote, backslash or control character)")
+		}
+	}
 	return ServiceConfig{
 		Image:         ResolveImage("seaweedfs", ImageRef("seaweedfs", os.Getenv("SEAWEEDFS_VERSION"))),
 		ContainerName: g.cfg.ProjectName + "_seaweedfs", Restart: "unless-stopped",
@@ -133,20 +140,19 @@ func (g *Generator) buildSeaweedService() (ServiceConfig, error) {
 	}, nil
 }
 
-// seaweedUser is the uid:gid of the seaweed account baked into the SeaweedFS image.
-const seaweedUser = "1000:1000"
-
-const seaweedServerScript = `set -eu
-for key in "$${S3_ACCESS_KEY:-}" "$${S3_SECRET_KEY:-}"; do
-  case "$$key" in
-    ''|*'"'*|*'\'*|*[[:cntrl:]]*)
-      printf '%s\n' 'S3_ACCESS_KEY and S3_SECRET_KEY must be nonempty and contain no quotes, backslashes or control characters' >&2
-      exit 1 ;;
-  esac
-done
-umask 077
-printf '{"identities":[{"name":"nself","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}\n' "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json
-exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json`
+// Purpose: check one S3 identity value against the rule the container script enforces.
+// Inputs: the value of S3_ACCESS_KEY or S3_SECRET_KEY. Outputs: "" when usable, else a short
+// reason ("empty" or "unusable"); the value itself is never returned.
+// Constraints: keep in step with seaweedServerScript (empty, quote, backslash, control char).
+func objectStorageKeyProblem(value string) string {
+	if value == "" {
+		return "empty"
+	}
+	if strings.ContainsAny(value, "\"\\\x7f") || strings.IndexFunc(value, func(r rune) bool { return r < 0x20 }) >= 0 {
+		return "unusable"
+	}
+	return ""
+}
 
 // Purpose: render the one-shot bucket bootstrap service.
 // Inputs: OBJECT_STORAGE_BUCKETS and SEAWEEDFS_VERSION from env.
@@ -156,9 +162,11 @@ func (g *Generator) buildSeaweedInit() ServiceConfig {
 	return ServiceConfig{
 		Image:         ResolveImage("seaweedfs", ImageRef("seaweedfs", os.Getenv("SEAWEEDFS_VERSION"))),
 		ContainerName: g.cfg.ProjectName + "_seaweedfs_init", Restart: "no",
-		Networks:   []string{g.cfg.DockerNetwork},
-		DependsOn:  map[string]DepOn{"seaweedfs": {Condition: "service_healthy"}},
-		Entrypoint: []string{"/bin/sh", "-c"}, Command: []string{seaweedBucketScript},
+		// Shares the server's network namespace: it reaches the master on 127.0.0.1 and
+		// needs no network or port of its own (the master and filer stay closed to the network).
+		NetworkMode: "service:seaweedfs",
+		DependsOn:   map[string]DepOn{"seaweedfs": {Condition: "service_healthy"}},
+		Entrypoint:  []string{"/bin/sh", "-c"}, Command: []string{seaweedBucketScript},
 		Environment: map[string]string{"OBJECT_STORAGE_BUCKETS": os.Getenv("OBJECT_STORAGE_BUCKETS")},
 		Tmpfs:       []string{"/tmp"},
 		Labels: map[string]string{
@@ -166,45 +174,6 @@ func (g *Generator) buildSeaweedInit() ServiceConfig {
 		},
 	}
 }
-
-const seaweedBucketScript = `set -eu
-set -f
-[ -n "$${OBJECT_STORAGE_BUCKETS:-}" ] || exit 0
-case "$$OBJECT_STORAGE_BUCKETS" in
-  ,*|*,|*,,*) printf '%s\n' 'Invalid OBJECT_STORAGE_BUCKETS: empty bucket name' >&2; exit 1 ;;
-esac
-IFS=,
-for bucket in $$OBJECT_STORAGE_BUCKETS; do
-  if [ "$${#bucket}" -lt 3 ] || [ "$${#bucket}" -gt 63 ]; then
-    printf '%s\n' 'Invalid OBJECT_STORAGE_BUCKETS name: expected 3-63 characters' >&2
-    exit 1
-  fi
-  case "$$bucket" in
-    *[!a-z0-9.-]*|[!a-z0-9]*|*[!a-z0-9]|*..*|*.-*|*-.*|xn--*|sthree-*|amzn-s3-demo-*|*-s3alias|*--ol-s3|*.mrap|*--x-s3|*--table-s3)
-      printf '%s\n' 'Invalid OBJECT_STORAGE_BUCKETS name: expected a lowercase S3 bucket name' >&2
-      exit 1 ;;
-  esac
-  if printf '%s\n' "$$bucket" | awk -F. 'NF == 4 && $$1 ~ /^[0-9]+$$/ && $$2 ~ /^[0-9]+$$/ && $$3 ~ /^[0-9]+$$/ && $$4 ~ /^[0-9]+$$/ { found=1 } END { exit !found }'; then
-    printf '%s\n' 'Invalid OBJECT_STORAGE_BUCKETS name: IP address names are not allowed' >&2
-    exit 1
-  fi
-done
-for bucket in $$OBJECT_STORAGE_BUCKETS; do
-  printf 's3.bucket.list\n' | weed shell -master=seaweedfs:9333 > /tmp/buckets
-  if ! awk '{print $$1}' /tmp/buckets | grep -F -x "$$bucket" >/dev/null; then
-    if ! printf 's3.bucket.create -name %s\n' "$$bucket" | weed shell -master=seaweedfs:9333; then
-      printf 'Failed to create OBJECT_STORAGE_BUCKETS bucket: %s\n' "$$bucket" >&2
-      exit 1
-    fi
-  fi
-done
-printf 's3.bucket.list\n' | weed shell -master=seaweedfs:9333 > /tmp/buckets
-for bucket in $$OBJECT_STORAGE_BUCKETS; do
-  if ! awk '{print $$1}' /tmp/buckets | grep -F -x "$$bucket" >/dev/null; then
-    printf 'OBJECT_STORAGE_BUCKETS bucket missing after create: %s\n' "$$bucket" >&2
-    exit 1
-  fi
-done`
 
 // Purpose: add S3_* connection vars for the active store to a custom service.
 // Inputs: the env map being built and the loaded config.

@@ -177,6 +177,9 @@ func TestInitPresetsWriteObjectStorage(t *testing.T) {
 			if !slices.Contains(preset.EnabledServices, "object-storage") || slices.Contains(preset.EnabledServices, "minio") {
 				t.Errorf("v1.5 media-hosting services = %v", preset.EnabledServices)
 			}
+			if strings.Contains(output, "nTV") {
+				t.Error("v1.5 media-hosting notes still mention the cancelled nTV bundle")
+			}
 			if !strings.Contains(output, "OBJECT_STORAGE_ENABLED=true") || !strings.Contains(output, "nself add minio") {
 				t.Error("v1.5 media-hosting notes omit object storage or existing MinIO guidance")
 			}

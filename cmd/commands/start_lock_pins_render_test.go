@@ -32,7 +32,7 @@ var rowEnv = map[string]map[string]string{
 	"redis/valkey":      {"REDIS_ENABLED": "true", "REDIS_ENGINE": "valkey"},
 	// core MinIO exists only in v1.4; SeaweedFS only in v1.5 (P7-PLUG-60)
 	"minio/minio":                       {"NSELF_V15": "0", "MINIO_ENABLED": "true"},
-	"seaweedfs/seaweedfs":               {"NSELF_V15": "1", "OBJECT_STORAGE_ENABLED": "true", "MINIO_ENABLED": "false"},
+	"seaweedfs/seaweedfs":               {"NSELF_V15": "1", "OBJECT_STORAGE_ENABLED": "true", "MINIO_ENABLED": "false", "S3_ACCESS_KEY": "test-access-key", "S3_SECRET_KEY": "fake-secret-not-real-0000"},
 	"mailpit/mailpit":                   {"MAILPIT_ENABLED": "true"},
 	"admin/admin":                       {"NSELF_ADMIN_ENABLED": "true"},
 	"functions/functions":               {"FUNCTIONS_ENABLED": "true", "FUNCTIONS_RUNTIME": "node"},

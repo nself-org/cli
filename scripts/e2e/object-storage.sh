@@ -97,7 +97,7 @@ echo 'PASS: SeaweedFS healthy (wget /healthz)'
 # one-shot seaweedfs-init may be gone before it can be inspected. Only that service creates these
 # buckets, so seeing both listed proves the bootstrap ran.
 n=0
-until printf 's3.bucket.list\n' | docker exec -i "$store" weed shell -master=seaweedfs:9333 >/work/buckets.out 2>&1 \
+until printf 's3.bucket.list\n' | docker exec -i "$store" weed shell -master=127.0.0.1:9333 >/work/buckets.out 2>&1 \
   && awk '{print $1}' /work/buckets.out >/work/bucket-names \
   && grep -Fqx p60-uploads /work/bucket-names && grep -Fqx p60-archives /work/bucket-names; do
   n=$((n + 1)); [ "$n" -le 120 ] || fail "bucket init timeout"

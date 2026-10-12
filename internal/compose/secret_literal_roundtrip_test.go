@@ -20,6 +20,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/nself-org/cli/internal/build"
+	"github.com/nself-org/cli/internal/compat/compattest"
 	"github.com/nself-org/cli/internal/compose"
 	"github.com/nself-org/cli/internal/config"
 )
@@ -248,6 +249,7 @@ var d0635Passwords = map[string]string{
 // REDISCLI_AUTH (redis server and healthcheck) and the custom-service
 // REDIS_URL, plus DATABASE_URL in compose.env for host-side CLI paths.
 func TestSecretConsumersResolveIdentically(t *testing.T) {
+	compattest.Set(t, false) // core MinIO exists only in v1.4 (P7-PLUG-60)
 	for name, pw := range d0635Passwords {
 		t.Run(name, func(t *testing.T) {
 			cfg := optionalSecretsConfig("meilisearch", setSecrets)
@@ -317,6 +319,61 @@ func TestSecretConsumersResolveIdentically(t *testing.T) {
 				t.Errorf("literal secrets left in generated compose: %v", leaks)
 			}
 			for _, leak := range decodedLeaks(t, templated, []string{pg, rd, cfg.Minio.RootPassword, cfg.Hasura.AdminSecret}) {
+				t.Errorf("secret left literal in generated compose: %s", leak)
+			}
+		})
+	}
+}
+
+// TestSecretConsumersResolveIdenticallyV15 sends the same hostile shapes through the
+// v1.5 core object store: S3_ACCESS_KEY and S3_SECRET_KEY reach seaweedfs and the custom
+// service as ${S3_*} references only and resolve to the configured bytes. Shapes the
+// SeaweedFS identity file cannot hold (double quote, backslash, control character) are
+// refused at build time with E142 instead.
+func TestSecretConsumersResolveIdenticallyV15(t *testing.T) {
+	compattest.Set(t, true)
+	t.Setenv("OBJECT_STORAGE_ENABLED", "true")
+	t.Setenv("OBJECT_STORAGE_BUCKETS", "")
+	t.Setenv("SEAWEEDFS_PORT", "")
+	t.Setenv("SEAWEEDFS_VERSION", "")
+	for name, pw := range d0635Passwords {
+		t.Run(name, func(t *testing.T) {
+			cfg := optionalSecretsConfig("meilisearch", setSecrets)
+			cfg.Minio = config.MinioConfig{S3AccessKey: "test-access-key", S3SecretKey: pw}
+			cfg.CustomServices = []config.CustomService{
+				{Index: 1, Name: "api", Template: "go", Port: 8001, Route: "api", Memory: "256m", CPU: "0.5"},
+			}
+			out, err := compose.NewGenerator(cfg).WithWorkDir(t.TempDir()).Generate()
+			if strings.ContainsAny(pw, "\"\\") || strings.IndexFunc(pw, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+				if err == nil || !strings.Contains(err.Error(), "E142") || strings.Contains(err.Error(), pw) {
+					t.Fatalf("want E142 without the value, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Generate() error: %v", err)
+			}
+			secrets := build.SecretEnvMap(cfg)
+			templated := build.TemplateSecrets(out, secrets)
+			env := readComposeEnv(t, cfg, secrets)
+			svcs := resolvedServices(t, templated, env)
+			for _, svc := range []string{"seaweedfs", "api"} {
+				if got := svcs[svc]["S3_SECRET_KEY"]; got != pw {
+					t.Errorf("%s S3_SECRET_KEY resolves to %q, want %q", svc, got, pw)
+				}
+				if got := svcs[svc]["S3_ACCESS_KEY"]; got != "test-access-key" {
+					t.Errorf("%s S3_ACCESS_KEY resolves to %q", svc, got)
+				}
+			}
+			for _, ref := range []string{"${S3_ACCESS_KEY}", "${S3_SECRET_KEY}"} {
+				if !strings.Contains(string(out), ref) {
+					t.Errorf("generated compose has no %s reference", ref)
+				}
+			}
+			if leaks := build.LiteralSecretLeaks(templated, secrets); len(leaks) > 0 {
+				t.Errorf("literal secrets left in generated compose: %v", leaks)
+			}
+			for _, leak := range decodedLeaks(t, templated, []string{pw}) {
 				t.Errorf("secret left literal in generated compose: %s", leak)
 			}
 		})

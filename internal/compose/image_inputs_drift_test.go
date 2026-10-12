@@ -40,6 +40,7 @@ var renderVariants = map[string]map[string]string{
 	"python-meili-plain": {"FUNCTIONS_RUNTIME": "python", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis"},
 	"v15-seaweedfs": {
 		"NSELF_V15": "1", "OBJECT_STORAGE_ENABLED": "true", "MINIO_ENABLED": "false",
+		"S3_ACCESS_KEY": "test-access-key", "S3_SECRET_KEY": "fake-secret-not-real-0000",
 		"FUNCTIONS_RUNTIME": "node", "SEARCH_ENGINE": "meilisearch", "POSTGRES_EXTENSIONS": "uuid-ossp", "REDIS_ENGINE": "redis",
 	},
 }

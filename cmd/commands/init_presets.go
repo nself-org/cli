@@ -160,7 +160,6 @@ func resolveInitPreset(name string) (initPreset, bool) {
 			"Enable SeaweedFS object storage: set OBJECT_STORAGE_ENABLED=true in .env",
 			"Set S3_ACCESS_KEY and S3_SECRET_KEY in .env.secrets",
 			"Keep existing MinIO data: nself add minio",
-			"Install nTV bundle: nself plugin install media-processing streaming",
 		}
 	}
 	return p, ok

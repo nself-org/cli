@@ -145,6 +145,19 @@ func TestObjectStorageSeaweedGenerated(t *testing.T) {
 	if _, ok := dc.Volumes["seaweedfs_data"]; !ok {
 		t.Fatal("named volume missing")
 	}
+	cmd := strings.Join(svc.Command.([]string), "\n")
+	for _, flag := range []string{"-ip=127.0.0.1", "-ip.bind=127.0.0.1", "-s3.ip.bind=0.0.0.0", "-s3.port=8333"} {
+		if !strings.Contains(cmd, flag) {
+			t.Fatalf("server command lacks %s", flag)
+		}
+	}
+	init := dc.Services["seaweedfs-init"]
+	if init.NetworkMode != "service:seaweedfs" || len(init.Networks) != 0 || len(init.Ports) != 0 {
+		t.Fatalf("init network=%q networks=%v ports=%v, want service:seaweedfs with none", init.NetworkMode, init.Networks, init.Ports)
+	}
+	if !strings.Contains(strings.Join(init.Command.([]string), "\n"), "-master=127.0.0.1:9333") || strings.Contains(strings.Join(init.Command.([]string), "\n"), "seaweedfs:9333") {
+		t.Fatal("init must reach the master on loopback")
+	}
 	if svc.User != "1000:1000" {
 		t.Fatalf("user=%q, want the image seaweed account", svc.User)
 	}
@@ -474,5 +487,84 @@ func TestSeaweedServerScript(t *testing.T) {
 				t.Fatalf("identity missing credentials: %s", ident)
 			}
 		})
+	}
+}
+
+// TestSeaweedCredentialsE142 checks the build-time identity check: a missing or unusable
+// key stops the build with E142 naming the variable, never its value.
+func TestSeaweedCredentialsE142(t *testing.T) {
+	compattest.Set(t, true)
+	storagePluginSeam(t, false)
+	for _, tc := range []struct{ name, access, secret, variable string }{
+		{"missing-access-key", "", "fake-secret-not-real-0000", "S3_ACCESS_KEY"},
+		{"missing-secret-key", "test-access-key", "", "S3_SECRET_KEY"},
+		{"quote", "test-access-key", `fake"secret-not-real`, "S3_SECRET_KEY"},
+		{"backslash", `test\access-key`, "fake-secret-not-real-0000", "S3_ACCESS_KEY"},
+		{"control", "test-access-key", "fake\tsecret-not-real", "S3_SECRET_KEY"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := storageFixture(t, false, true, false)
+			cfg.Minio.S3AccessKey, cfg.Minio.S3SecretKey = tc.access, tc.secret
+			_, err := NewGenerator(cfg).Generate()
+			var cliErr *errs.CLIError
+			if !errors.As(err, &cliErr) || cliErr.Code != "E142" || errs.ExitCodeFor(err) != 1 {
+				t.Fatalf("want E142 with exit 1, got %v", err)
+			}
+			if !strings.Contains(err.Error(), tc.variable) {
+				t.Fatalf("error does not name %s: %v", tc.variable, err)
+			}
+			for _, value := range []string{tc.access, tc.secret} {
+				if value != "" && strings.Contains(err.Error(), value) {
+					t.Fatal("error contains a credential value")
+				}
+			}
+		})
+	}
+	t.Run("profile-without-object-storage", func(t *testing.T) {
+		cfg := storageFixture(t, false, true, false)
+		cfg.Minio.S3AccessKey = ""
+		if _, err := NewGeneratorWithProfile(cfg, ProfileOps).Generate(); err != nil {
+			t.Fatalf("ops profile must not check object storage keys: %v", err)
+		}
+	})
+}
+
+// TestMinioE138RemedyTwo applies the second E138 remedy to a v1.4 demo-shaped env (MinIO
+// credentials still present): core object storage on, MinIO off, and the build passes.
+func TestMinioE138RemedyTwo(t *testing.T) {
+	compattest.Set(t, true)
+	storagePluginSeam(t, false)
+	for _, key := range []string{"MINIO_ENABLED", "STORAGE_ENABLED", "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD",
+		"MINIO_ACCESS_KEY", "MINIO_SECRET_KEY", "S3_ACCESS_KEY", "S3_SECRET_KEY", "OBJECT_STORAGE_ENABLED",
+		"ENV", "PROJECT_NAME", "BASE_DOMAIN"} {
+		t.Setenv(key, "")
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base := "ENV=dev\nPROJECT_NAME=storage-fixture\nBASE_DOMAIN=localhost\nMINIO_ROOT_USER=nself\nMINIO_ROOT_PASSWORD=fake-secret-not-real-0000\n"
+	load := func(extra string) (*config.Config, error) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(base+extra), 0600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := config.Load(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = NewGenerator(cfg).WithWorkDir(dir).Generate()
+		for _, key := range []string{"MINIO_ENABLED", "OBJECT_STORAGE_ENABLED", "S3_ACCESS_KEY", "S3_SECRET_KEY"} {
+			_ = os.Unsetenv(key)
+		}
+		return cfg, err
+	}
+	if _, err := load("MINIO_ENABLED=true\n"); err == nil || !strings.Contains(err.Error(), "E138") {
+		t.Fatalf("demo-shaped v1.4 env must raise E138 in v1.5, got %v", err)
+	}
+	if _, err := load("MINIO_ENABLED=false\nOBJECT_STORAGE_ENABLED=true\nS3_ACCESS_KEY=test-access-key\nS3_SECRET_KEY=fake-secret-not-real-0000\n"); err != nil {
+		t.Fatalf("remedy 2 must clear E138: %v", err)
+	}
+	if _, err := load("MINIO_ENABLED=false\n"); err != nil {
+		t.Fatalf("remedy 3 must clear E138: %v", err)
 	}
 }
