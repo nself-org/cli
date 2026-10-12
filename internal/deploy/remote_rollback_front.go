@@ -18,6 +18,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -31,8 +32,8 @@ type frontRollback struct {
 }
 
 func prepareFrontRollback(ctx context.Context, o RollbackOptions) (*frontRollback, error) {
-	if o.FrontTar == "" {
-		return nil, nil
+	if o.FrontTar == "" || len(o.FrontChanged) == 0 {
+		return nil, nil // no front part: a deploy that shipped and pruned nothing there has nothing to restore
 	}
 	if !strings.HasPrefix(o.FrontTar, path.Join(o.RemotePath, BackupDir)+"/pre-deploy-") || !strings.HasSuffix(o.FrontTar, "-front.tar.gz") || strings.Contains(o.FrontTar, "..") {
 		return nil, fmt.Errorf("deploy rollback: the recorded front tar %q is not a front pre-deploy tar under %s; nothing was changed", o.FrontTar, path.Join(o.RemotePath, BackupDir))
@@ -45,24 +46,34 @@ func prepareFrontRollback(ctx context.Context, o RollbackOptions) (*frontRollbac
 		}
 	}
 	r, front := o.Remote, path.Dir(o.RemotePath)
-	if len(o.FrontChanged) == 0 || front == "/" {
-		return nil, errs.New("E485", "the front record has no list of changed paths or no front root; it cannot be rolled back safely (nothing was changed)")
+	if front == "/" {
+		return nil, errs.New("E485", "the front record has no front root; it cannot be rolled back safely (nothing was changed)")
 	}
 	realFront, err := checkFrontParent(ctx, r, front, o.RemotePath)
 	if err != nil {
 		return nil, err
 	}
-	if _, err = ResolveDirs(ctx, r, front, []string{"nginx", "nginx/sites"}); err != nil {
+	if _, err = ResolveFrontDirs(ctx, r, front, o.FrontChanged); err != nil {
 		return nil, err
 	}
 	ctr, err := resolveFrontContainer(ctx, r, front, realFront)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		err = ctr.checkMounts(ctx, r, front, realFront)
 	}
-	if err = ctr.checkMounts(ctx, r, front, realFront); err != nil {
-		return nil, err
+	if err != nil {
+		return nil, rollbackFix(err, front)
 	}
 	return &frontRollback{root: front, ctr: ctr}, nil
+}
+
+// rollbackFix gives a container refusal the rollback's own fix text: the main root
+// is not rolled back while the fronting nginx cannot be tested and reloaded.
+func rollbackFix(err error, front string) error {
+	var ce *errs.CLIError
+	if !errors.As(err, &ce) {
+		return err
+	}
+	return ce.WithFix(fmt.Sprintf("start the fronting stack's nginx (docker compose up -d nginx in %s), then run nself deploy rollback <env> again; nothing was changed", safeText(front)))
 }
 
 // restore puts the front files back in place from the recorded tar.

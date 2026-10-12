@@ -127,15 +127,16 @@ func TestRollbackWithoutFrontRecordIsUnchanged(t *testing.T) {
 	if s.idx("docker ps") >= 0 || s.idx("docker exec") >= 0 {
 		t.Errorf("an old record touched docker:\n%s", strings.Join(s.log, "\n"))
 	}
-	// A front tar with no change list cannot be rolled back, and nothing is changed.
-	bad := frontRecord(true)
-	bad.FrontChanged = nil
+	// A front tar with an empty change list is no front part: the main root rolls back, docker is not asked.
+	odd := frontRecord(true)
+	odd.FrontChanged = nil
 	s2 := openFrontStub(t)
-	if err := deploy.SaveDeployState(proj, bad); err != nil {
+	proj2 := t.TempDir()
+	if err := deploy.SaveDeployState(proj2, odd); err != nil {
 		t.Fatal(err)
 	}
-	if handled, err := rollbackRemoteV15(yesCmd(), proj, "prod"); !handled || err == nil || !strings.Contains(err.Error(), "front record") || len(s2.log) != 0 {
-		t.Errorf("handled=%v err=%v log=%v", handled, err, s2.log)
+	if handled, err := rollbackRemoteV15(yesCmd(), proj2, "prod"); !handled || err != nil || s2.idx("docker ps") >= 0 || s2.idx("tar -tzf") < 0 {
+		t.Errorf("handled=%v err=%v\n%s", handled, err, strings.Join(s2.log, "\n"))
 	}
 }
 
@@ -154,9 +155,20 @@ func TestRecordFrontAndPreviousRoundTrip(t *testing.T) {
 	if err := deploy.SaveDeployState(proj, st); err != nil {
 		t.Fatal(err)
 	}
+	// A second host with a different record: each host sees only its own paths.
+	res.BackupHost, res.FrontChanged, res.FrontAbsent = "h2", []string{"nginx/sites/c.conf"}, nil
+	recordFront(&st, res)
+	// A host whose deploy changed nothing in the front root records no front part.
+	recordFront(&st, deploy.ApplyResult{BackupHost: "h3", FrontRecord: deploy.FrontRecord{FrontTar: "/srv/a/backend/.nself/backups/pre-deploy-y-front.tar.gz"}})
+	if _, ok := st.FrontTars["h3"]; ok {
+		t.Error("a deploy with an empty front change list recorded a front part")
+	}
+	if err := deploy.SaveDeployState(proj, st); err != nil {
+		t.Fatal(err)
+	}
 	set := deploy.ArtifactSet{Front: &deploy.FrontRoot{}}
 	markFrontPrevious(&set, proj, "prod")
-	if strings.Join(set.Front.Previous, ",") != "nginx/sites/a.conf,nginx/sites/b.conf" {
+	if strings.Join(set.Front.Previous["h1"], ",") != "nginx/sites/a.conf,nginx/sites/b.conf" || strings.Join(set.Front.Previous["h2"], ",") != "nginx/sites/c.conf" || len(set.Front.Previous) != 2 {
 		t.Errorf("previous = %v", set.Front.Previous)
 	}
 	other := deploy.ArtifactSet{Front: &deploy.FrontRoot{}}

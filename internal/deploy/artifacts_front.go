@@ -34,9 +34,10 @@ type FrontRoot struct {
 	StageDir   string   // where the files are staged locally
 	RemotePath string   // the fronting stack's directory on the host
 	Files      []string // relative to StageDir and RemotePath ("nginx/sites/<x>.conf")
-	// Previous are the front paths this project's previous deploy shipped (the
-	// local deploy.json record); only they may be pruned. Set by the command.
-	Previous []string
+	// Previous are, per host (the Remote label), the front paths this project's
+	// previous deploy shipped there (the local deploy.json record); only they may
+	// be pruned. Set by the command.
+	Previous map[string][]string
 }
 
 // checkFrontLayout validates the fronted inputs of in: both or neither of

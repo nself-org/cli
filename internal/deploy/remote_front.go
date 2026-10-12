@@ -141,7 +141,11 @@ func (c frontContainer) stillRunning(ctx context.Context, r Remote) error {
 		return errs.New("E485", "the fronting nginx container id is not a plain container id")
 	}
 	out, err := r.Run(ctx, shScript(fmt.Sprintf(`docker inspect --format %s %s`, q("{{.State.Running}}"), q(c.ID))))
-	if err != nil || strings.TrimSpace(string(out)) != "true" {
+	if err != nil {
+		return errs.Wrap("E485", fmt.Sprintf("the fronting nginx container %s (%s) could not be inspected on %s: %v; nginx was not tested or reloaded", safeText(c.Name), safeText(c.ID), r.Label(), err), err).
+			WithFix("check that docker answers on the host and the fronting stack's nginx still exists, then deploy again (or run 'nself deploy rollback' to put the files back)")
+	}
+	if strings.TrimSpace(string(out)) != "true" {
 		return errs.New("E485", fmt.Sprintf("the fronting nginx container %s (%s) is no longer running on %s; nginx was not tested or reloaded", safeText(c.Name), safeText(c.ID), r.Label())).
 			WithFix("start the fronting stack's nginx, then deploy again (or run 'nself deploy rollback' to put the files back)")
 	}

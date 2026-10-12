@@ -36,7 +36,10 @@ type frontDocker struct {
 	ps      string // rows of `docker ps`: id TAB name TAB working_dir
 	mounts  string
 	running string
-	execs   []string
+	// runSeq, when set, answers the State.Running re-checks one by one (the last
+	// answer repeats): a container that runs at ps and mount time and stops later.
+	runSeq []string
+	execs  []string
 }
 
 func psRows(rows ...[3]string) string {
@@ -57,6 +60,13 @@ func (d *frontDocker) handler(base func(string) (string, bool)) func(string) (st
 		case strings.Contains(s, "docker inspect --format '{{range .Mounts}}"):
 			return d.mounts, true
 		case strings.Contains(s, "docker inspect --format '{{.State.Running}}'"):
+			if len(d.runSeq) > 0 {
+				v := d.runSeq[0]
+				if len(d.runSeq) > 1 {
+					d.runSeq = d.runSeq[1:]
+				}
+				return v + "\n", true
+			}
 			return d.running + "\n", true
 		case strings.Contains(s, "docker exec "):
 			d.execs = append(d.execs, s)
@@ -303,6 +313,17 @@ func TestFrontRefusalsBeforeLock(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, "must be the parent of remote_path"},
+		{"a shipped front file is a symlink that leaves the fronting stack", func(x *frontFx) {
+			out := filepath.Join(t.TempDir(), "elsewhere.conf")
+			writeFile(t, out, markedConf+"# elsewhere\n", 0o644)
+			p := filepath.Join(x.front, "nginx", "sites", "api.conf")
+			if err := os.Remove(p); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(out, p); err != nil {
+				t.Fatal(err)
+			}
+		}, "symlink outside"},
 		{"front paths other than nginx/sites", func(x *frontFx) { x.o.Set.Front.Files = []string{"nginx/sites/api.conf", ".env"} }, "unsafe path"},
 		{"front root is not the directory of remote_path", func(x *frontFx) { x.o.Set.Front.RemotePath = filepath.Dir(x.front) }, "is not the directory of remote_path"},
 	}
@@ -326,7 +347,7 @@ func TestFrontPreDeployTarOnlyShippedPaths(t *testing.T) {
 	x := frontFixture(t)
 	// An earlier deploy shipped old.conf; it is a prune candidate now, so the tar holds it too.
 	writeFile(t, filepath.Join(x.front, "nginx", "sites", "old.conf"), markedConf+"# old\n", 0o644)
-	x.o.Set.Front.Previous = []string{"nginx/sites/old.conf"}
+	x.o.Set.Front.Previous = map[string][]string{"fake-host": {"nginx/sites/old.conf"}}
 	res, err := ApplyRemote(context.Background(), x.o)
 	if err != nil {
 		t.Fatal(err)
@@ -387,7 +408,7 @@ func TestFrontNginxTestFailureRestores(t *testing.T) {
 	})
 	t.Run("the container stopped before step 8", func(t *testing.T) {
 		x := frontFixture(t)
-		x.d.running = "false"
+		x.d.runSeq = []string{"false"} // listed and mounted at the guards, stopped at the step-8 re-check
 		res, err := ApplyRemote(context.Background(), x.o)
 		check(t, x, res, err)
 		if !e485(err) || !strings.Contains(err.Error(), "no longer running") {
@@ -399,12 +420,35 @@ func TestFrontNginxTestFailureRestores(t *testing.T) {
 	})
 }
 
+func TestFrontContainerStopsBeforeReload(t *testing.T) {
+	x := frontFixture(t)
+	x.d.runSeq = []string{"true", "false"} // runs for nginx -t, stopped at the reload re-check (containers already touched)
+	res, err := ApplyRemote(context.Background(), x.o)
+	if !e485(err) || !strings.Contains(err.Error(), "no longer running") || !strings.Contains(err.Error(), "nself deploy rollback") {
+		t.Fatalf("err = %v, want E485 at the reload re-check naming the rollback", err)
+	}
+	ex := x.d.execLog()
+	if len(ex) != 1 || !strings.Contains(ex[0], "nginx -t") {
+		t.Errorf("exec log %v, want only nginx -t", ex)
+	}
+	// Past the first `up` nothing is restored: the new files stay and the record is kept for the rollback.
+	if got := readFile(t, filepath.Join(x.front, "nginx", "sites", "api.conf")); got != frontNew {
+		t.Errorf("api.conf = %q, want the shipped bytes", got)
+	}
+	if !res.Synced || !res.Touched || res.FrontTar == "" {
+		t.Errorf("result %+v: the record must be kept", res)
+	}
+}
+
 func TestFrontPruneOnlyOwnShipped(t *testing.T) {
 	x := frontFixture(t)
 	sites := filepath.Join(x.front, "nginx", "sites")
 	writeFile(t, filepath.Join(sites, "old.conf"), markedConf+"# shipped by the previous deploy\n", 0o644)
 	writeFile(t, filepath.Join(sites, "mine-but-edited.conf"), "# hand edited, marker removed\n", 0o644)
-	x.o.Set.Front.Previous = []string{"nginx/sites/old.conf", "nginx/sites/mine-but-edited.conf", "nginx/sites/api.conf", ".env", "nginx/sites/../../.env"}
+	x.o.Set.Front.Previous = map[string][]string{
+		"fake-host":  {"nginx/sites/old.conf", "nginx/sites/mine-but-edited.conf", "nginx/sites/api.conf", ".env", "nginx/sites/../../.env"},
+		"other-host": {"nginx/sites/sibling.conf"}, // another host's record never prunes here
+	}
 	res, err := ApplyRemote(context.Background(), x.o)
 	if err != nil {
 		t.Fatal(err)
@@ -502,5 +546,88 @@ func TestDeployRollbackRestoresFront(t *testing.T) {
 	bad.FrontChanged = []string{".env"}
 	if err := RollbackRemote(context.Background(), bad); err == nil || !strings.Contains(err.Error(), "unsafe path") {
 		t.Errorf("tampered record: %v", err)
+	}
+
+	t.Run("a deploy that changed nothing in the front root rolls back the main root", func(t *testing.T) {
+		w := frontFixture(t)
+		w.o.Set.Front.Files = nil
+		w.o.Set.Front.Previous = map[string][]string{"fake-host": {"nginx/sites/gone.conf"}} // a record, but nothing left to prune
+		r3, err := ApplyRemote(context.Background(), w.o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r3.FrontTar == "" || len(r3.FrontChanged) != 0 {
+			t.Fatalf("front record %+v, want a tar and no changed paths", r3.FrontRecord)
+		}
+		w.f.mu.Lock()
+		w.f.log = nil
+		w.f.mu.Unlock()
+		err = RollbackRemote(context.Background(), RollbackOptions{Remote: w.f, RemotePath: w.rp, Tar: r3.PreDeployTar, Changed: r3.Changed, Absent: r3.Absent,
+			FrontTar: r3.FrontTar, FrontChanged: r3.FrontChanged, FrontAbsent: r3.FrontAbsent, Clock: &fakeClock{now: time.Unix(0, 0)}})
+		if err != nil {
+			t.Fatalf("rollback refused: %v", err)
+		}
+		if got := readFile(t, filepath.Join(w.rp, "docker-compose.yml")); !strings.Contains(got, "# v1") {
+			t.Errorf("the main root was not restored: %q", got)
+		}
+		if w.index("docker ps") >= 0 {
+			t.Error("the front was consulted for an empty change list")
+		}
+	})
+
+	t.Run("the fronting nginx is down at rollback", func(t *testing.T) {
+		w := frontFixture(t)
+		r4, err := ApplyRemote(context.Background(), w.o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.d.mu.Lock()
+		w.d.ps = ""
+		w.d.mu.Unlock()
+		err = RollbackRemote(context.Background(), RollbackOptions{Remote: w.f, RemotePath: w.rp, Tar: r4.PreDeployTar, Changed: r4.Changed, Absent: r4.Absent,
+			FrontTar: r4.FrontTar, FrontChanged: r4.FrontChanged, FrontAbsent: r4.FrontAbsent, Clock: &fakeClock{now: time.Unix(0, 0)}})
+		var ce *errs.CLIError
+		if !errors.As(err, &ce) || ce.Code != "E485" || !strings.Contains(ce.Fix, "docker compose up -d nginx in "+w.front) || !strings.Contains(ce.Fix, "nself deploy rollback") || !strings.Contains(ce.Fix, "nothing was changed") {
+			t.Fatalf("err = %v (fix %q)", err, ce)
+		}
+		if got := readFile(t, filepath.Join(w.front, "nginx", "sites", "api.conf")); got != frontNew {
+			t.Errorf("a refused rollback changed the front: %q", got)
+		}
+		if w.index("tar -xzf") >= 0 {
+			t.Error("files were restored before the refusal")
+		}
+	})
+}
+
+func TestFrontGuardTouchesOnlyNginxNames(t *testing.T) {
+	x := frontFixture(t)
+	// The fronting stack's own names may be symlinks that leave its directory: they are no business of the deploy.
+	shared := filepath.Join(t.TempDir(), "shared.env")
+	writeFile(t, shared, frontOwn, 0o600)
+	for _, n := range []string{".env", "docker-compose.yml"} {
+		p := filepath.Join(x.front, n)
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(shared, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := ApplyRemote(context.Background(), x.o); err != nil {
+		t.Fatalf("the fronting stack's own symlinked names blocked the deploy: %v", err)
+	}
+	for _, c := range x.f.commands() {
+		if strings.Contains(c, "rp="+q(x.front)) && (strings.Contains(c, ".env") || strings.Contains(c, "compose")) {
+			t.Errorf("a front-root script names the fronting stack's own files: %q", c)
+		}
+	}
+}
+
+func TestFrontStillRunningWrapsInspectError(t *testing.T) {
+	f := newFakeRemote(t)
+	f.fail["docker inspect"] = errBoom
+	err := frontContainer{ID: "abc1", Name: "n"}.stillRunning(context.Background(), f)
+	if !e485(err) || !errors.Is(err, errBoom) {
+		t.Errorf("err = %v, want E485 wrapping the inspect error", err)
 	}
 }

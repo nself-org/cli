@@ -32,22 +32,26 @@ func snapshotFrontSSL(ctx context.Context, r deploy.Remote, p v15Params, snap *d
 	return err
 }
 
-// markFrontPrevious sets the front paths the target's last recorded deploy
-// shipped or pruned on set.Front, on every host. Without a readable record
+// markFrontPrevious sets, per host, the front paths the target's last recorded
+// deploy shipped or pruned there on set.Front. Without a readable record
 // nothing is set and nothing in the front root is pruned.
 func markFrontPrevious(set *deploy.ArtifactSet, workdir, target string) {
 	st, err := deploy.LoadDeployState(workdir)
 	if set.Front == nil || err != nil || st.Target != target {
 		return
 	}
-	for _, paths := range st.FrontChanged {
-		set.Front.Previous = append(set.Front.Previous, paths...)
+	set.Front.Previous = map[string][]string{} // per host: a host prunes only what its own record says
+	for host, paths := range st.FrontChanged {
+		set.Front.Previous[host] = append([]string{}, paths...)
 	}
 }
 
-// recordFront adds the host's front tar and lists to the deploy record.
+// recordFront adds the host's front tar and lists to the deploy record. A deploy
+// that changed nothing in the front root (no file shipped, nothing pruned) records
+// no front part: there is nothing to restore, and rollback then treats the host as
+// it did before the front root existed.
 func recordFront(st *deploy.StrategyState, res deploy.ApplyResult) {
-	if res.FrontTar == "" {
+	if res.FrontTar == "" || len(res.FrontChanged) == 0 {
 		return
 	}
 	if st.FrontTars == nil {

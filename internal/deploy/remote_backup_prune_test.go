@@ -257,3 +257,38 @@ func TestPrunePreDeployTarsIgnoresNamesWithControlCharacters(t *testing.T) {
 		t.Error("the odd-named file was touched")
 	}
 }
+
+func TestPrunePreDeployTarsDropsFrontTarsWithTheirMain(t *testing.T) {
+	needTools(t)
+	f := newFakeRemote(t)
+	rp := t.TempDir()
+	seedTars(t, rp, "01", "02", "03", "04", "05", "06", "07", "08")
+	b := filepath.Join(rp, ".nself", "backups")
+	front := func(d string) string { return strings.TrimSuffix(tarName(d), ".tar.gz") + "-front.tar.gz" }
+	for _, d := range []string{"01", "02", "05"} {
+		writeFile(t, filepath.Join(b, front(d)), "front "+d, 0o600)
+	}
+	// 03's front tar is a symlink: never removed. 09 has a front tar but no main tar: not a candidate.
+	outside := filepath.Join(t.TempDir(), "outside")
+	writeFile(t, outside, "must survive", 0o600)
+	if err := os.Symlink(outside, filepath.Join(b, front("03"))); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	writeFile(t, filepath.Join(b, front("09")), "orphan", 0o600)
+	removed, err := PrunePreDeployTars(context.Background(), f, rp, 5, filepath.Join(b, tarName("01")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(removed)
+	if got, want := strings.Join(removed, ","), front("02")+","+tarName("02")+","+tarName("03"); got != want {
+		t.Errorf("removed %q, want %q", got, want)
+	}
+	for _, n := range []string{front("01"), front("05"), front("09"), front("03")} {
+		if !exists(filepath.Join(b, n)) {
+			t.Errorf("%s was removed", n)
+		}
+	}
+	if readFile(t, outside) != "must survive" {
+		t.Error("a symlinked front tar was followed")
+	}
+}

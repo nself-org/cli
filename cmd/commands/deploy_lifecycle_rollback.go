@@ -57,9 +57,6 @@ func rollbackRemoteV15(cmd *cobra.Command, workdir, target string) (bool, error)
 		if strings.Index(tars[host], "/"+deploy.BackupDir+"/pre-deploy-") <= 0 {
 			return true, fmt.Errorf("deploy rollback: the recorded tar %q for %s is not a pre-deploy tar; nothing was changed", tars[host], host)
 		}
-		if st.FrontTars[host] != "" && len(st.FrontChanged[host]) == 0 { // a front record needs its change list (D-0425)
-			return true, fmt.Errorf("deploy rollback: the front record for %s has no list of changed paths; it cannot be rolled back safely (nothing was changed)", host)
-		}
 	}
 	manualDB := st.BackupID != "" && tars[st.BackupHost] == ""
 	if manualDB {

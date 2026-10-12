@@ -64,7 +64,7 @@ func prepareFront(ctx context.Context, o ApplyOptions) (*frontApply, error) {
 		return nil, nil
 	}
 	fa := &frontApply{fr: fr}
-	for _, p := range fr.Previous {
+	for _, p := range fr.Previous[o.Remote.Label()] { // this host's own record only
 		if frontPathOK(p) {
 			fa.prev = append(fa.prev, p)
 		}
@@ -85,7 +85,7 @@ func prepareFront(ctx context.Context, o ApplyOptions) (*frontApply, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err = ResolveDirs(ctx, r, front, []string{"nginx", "nginx/sites"}); err != nil {
+	if _, err = ResolveFrontDirs(ctx, r, front, append(append([]string{}, fr.Files...), fa.prev...)); err != nil {
 		return nil, err
 	}
 	if err = CheckNotOverwritingForeign(ctx, r, front, fr.Files, fa.prev); err != nil {
@@ -213,10 +213,7 @@ func (fa *frontApply) sync(ctx context.Context, o ApplyOptions, res *ApplyResult
 	if len(fa.fr.Files) == 0 {
 		return nil
 	}
-	// -c: compare by checksum, not size and mtime. The files are tiny, and a stale
-	// front conf after a reported success is the dangerous outcome (a restore leaves
-	// whole-second mtimes, so a same-size new conf could be skipped otherwise).
-	return rsyncList(ctx, r, ArtifactSet{StageDir: fa.fr.StageDir, RemotePath: front}, fa.fr.Files, []string{"-c"})
+	return syncFrontFiles(ctx, r, front, fa.fr.StageDir, fa.fr.Files)
 }
 
 // restore puts the front root back in place (changed restored, absent removed).

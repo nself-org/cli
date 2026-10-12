@@ -26,7 +26,6 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"unicode"
 
 	"github.com/nself-org/cli/internal/errs"
 )
@@ -80,27 +79,7 @@ exit 0`, q(remotePath), strings.Join(quoteAll(dirs), " "), strings.Join(quoteAll
 	if err != nil {
 		return nil, fmt.Errorf("resolving symlinked directories on %s: %w", r.Label(), err)
 	}
-	var outside []string
-	for _, line := range strings.Split(string(raw), "\n") {
-		if rest, ok := strings.CutPrefix(line, "OUTSIDE "); ok {
-			if p, real, ok := strings.Cut(rest, "\t"); ok {
-				outside = append(outside, fmt.Sprintf("%q -> %q", p, real))
-			}
-		} else if rest, ok := strings.CutPrefix(line, "LINK "); ok {
-			if d, real, ok := strings.Cut(rest, "\t"); ok && strings.HasPrefix(real, "/") {
-				if strings.ContainsFunc(real, unicode.IsControl) { // never trust a host path with control characters
-					outside = append(outside, fmt.Sprintf("%q -> %q", d, real))
-					continue
-				}
-				out[d] = real
-			}
-		}
-	}
-	if len(outside) > 0 {
-		return nil, errs.New("E485", "symlink outside remote_path: "+strings.Join(outside, ", ")).
-			WithFix("replace the link with a real directory or point it inside the project directory; nothing was sent")
-	}
-	return out, nil
+	return parseResolved(string(raw))
 }
 
 // guardedScript runs body once per path as the function act (arguments: the
