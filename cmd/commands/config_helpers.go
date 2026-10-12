@@ -12,8 +12,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/errs"
 )
 
 // maskValue returns "***" when reveal is false and the key is a secret key,
@@ -36,6 +38,25 @@ func envFileName(projectDir, envFlag string) string {
 		return filepath.Join(projectDir, ".env")
 	}
 	return filepath.Join(projectDir, ".env."+envFlag)
+}
+
+// mcpEnvNameRe is the shape of an env suffix taken from an MCP tool argument:
+// lowercase letters, digits and hyphens, starting with a letter or digit.
+var mcpEnvNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// validateMCPEnvName checks the env argument of the legacy MCP config tools
+// before it reaches envFileName, which joins ".env."+env onto the project
+// directory. An empty name means the plain .env file and is accepted; anything
+// else must match mcpEnvNameRe, so path separators, "..", absolute paths and
+// control characters are refused (D-0738).
+// Inputs: the raw env argument. Outputs: nil, or an E401 usage error with why/fix.
+func validateMCPEnvName(env string) error {
+	if env == "" || mcpEnvNameRe.MatchString(env) {
+		return nil
+	}
+	return errs.Newf("E401", "invalid env name %q", env).
+		WithWhy("the env name becomes part of a file name (.env.<env>) inside the project, so it may hold only lowercase letters, digits and hyphens").
+		WithFix("Use a name such as dev, staging or prod, or leave env empty for the plain .env file.")
 }
 
 // resolveProjectDir returns the nself project root, used by all config
