@@ -9,6 +9,13 @@ package commands
 // unknown fields disallowed. .github/command-registry.json must validate
 // against the registry schema.
 //
+// Binding (debt D-0243): envelope.v1 keeps `data` open by design; the
+// committed registry binds each envelope command to its data schema
+// (data_schema). contractValidateBound validates a whole document through that
+// binding, keyed on the document's own `command`, and the binding must be
+// total and exact (json_contract_bind_test.go). json_contract_live_test.go
+// runs real commands through it.
+//
 // Constraints: reads only committed files; nothing here runs a command body.
 
 import (
@@ -90,7 +97,7 @@ func TestJSONContract(t *testing.T) {
 	if len(jsonDataTypes) == 0 {
 		t.Fatal("no envelope commands registered")
 	}
-	envelope := contractResolve(t, "envelope.v1.schema.json")
+	bindings := contractBindings(t)
 	for path, zero := range jsonDataTypes {
 		path, zero := path, zero
 		t.Run(path, func(t *testing.T) {
@@ -102,8 +109,8 @@ func TestJSONContract(t *testing.T) {
 			if err != nil {
 				t.Fatalf("envelope command %q has no golden fixture: %v", path, err)
 			}
-			if err := contractValidate(envelope, fixture); err != nil {
-				t.Fatalf("fixture does not validate against the envelope schema: %v", err)
+			if err := contractValidateBound(t, bindings, fixture); err != nil {
+				t.Fatalf("fixture: %v", err)
 			}
 			var doc struct {
 				SchemaVersion string          `json:"schema_version"`
@@ -115,9 +122,6 @@ func TestJSONContract(t *testing.T) {
 			}
 			if doc.Command != path {
 				t.Fatalf("fixture command = %q, want %q", doc.Command, path)
-			}
-			if err := contractValidate(contractResolve(t, schemaFile), doc.Data); err != nil {
-				t.Fatalf("fixture data does not validate against %s: %v", schemaFile, err)
 			}
 			// Round trip through the Go type, rejecting unknown fields.
 			typed := reflect.New(reflect.TypeOf(zero))
