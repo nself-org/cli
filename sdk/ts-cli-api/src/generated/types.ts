@@ -2377,22 +2377,89 @@ export interface DbHasuraValidateRequest {
 export type DbImportFirebaseArgs = [];
 
 export interface DbImportFirebaseData {
-  dry_run: boolean;
-  ok: boolean;
-  target: string;
+  compat_shims: null | Array<string>;
+  detection?: null | {
+    kind: string;
+    notes: null | Array<string>;
+    schemas: null | Array<string>;
+    source_users?: number;
+    version: string;
+  };
+  exemptions: null | Array<{
+    id: string;
+    kind: string;
+    reason: string;
+  }>;
+  hasura: {
+    diffs: null | Array<{
+      detail: string;
+      id: string;
+      kind: string;
+    }>;
+    equal: boolean;
+  };
+  last_step?: string;
+  mismatches: null | Array<{
+    detail: string;
+    id: string;
+    kind: string;
+  }>;
+  result: string;
+  run_id: string;
+  source: string;
+  steps?: null | Array<string>;
+  storage: {
+    equal: boolean;
+    source_objects: number;
+    target_objects: number;
+  };
+  tables: null | Array<{
+    equal: boolean;
+    name: string;
+    schema: string;
+    source_rows: number;
+    target_rows: number;
+  }>;
+  untranslated_policies: null | Array<{
+    policy: string;
+    reason: string;
+    table: string;
+  }>;
+  users: {
+    equal: boolean;
+    reset_required: null | Array<{
+      email: string;
+      id: string;
+    }>;
+    source: number;
+    target: number;
+  };
+  wrote: boolean;
 }
 
 export type DbImportFirebaseFlags = {
   /** Path to Firebase Auth JSON export (optional) */
   "auth-export"?: string;
+  /** Cloud Storage bucket to copy (v1.5 import) */
+  bucket?: string;
+  /** Service-account key file (v1.5 import; not needed with FIRESTORE_EMULATOR_HOST) */
+  "credentials-file"?: string;
   /** Generate migration artifacts without applying them to a running nSelf instance */
   "dry-run"?: boolean;
   /** Directory produced by `firebase firestore:export` (required) */
   "export-dir"?: string;
+  /** Keep the private portable bundle after a successful import (v1.5 import) */
+  "keep-stage"?: boolean;
   /** Directory for generated artifacts (default: <export-dir>/nself-migration) */
   "output-dir"?: string;
+  /** Check source and target and print the import plan without writing (v1.5 import) */
+  plan?: boolean;
+  /** Firebase project id (v1.5 import) */
+  project?: string;
   /** Project name used in generated SQL and file names */
   "project-name"?: string;
+  /** Exempt each storage object from this import (v1.5 import) */
+  "skip-storage"?: boolean;
 };
 
 /** Generate nSelf migration artifacts from a Firebase export */
