@@ -26,6 +26,8 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 | `nself migrate from-bash` | `nself update project from-bash` | move | v1.5.0 | v1.6.0 |
 | `nself migrate from-v099` | `nself update project from-v099` | move | v1.5.0 | v1.6.0 |
 | `nself migrate generate` | `nself db migrate generate` | move | v1.5.0 | v1.6.0 |
+| `nself migrate hasura-cloud` | `nself db import hasura-cloud` | move | v1.5.0 | v1.6.0 |
+| `nself migrate nhost` | `nself db import nhost` | move | v1.5.0 | v1.6.0 |
 | `nself migrate postgres` | `nself db import postgres` | move | v1.5.0 | v1.6.0 |
 | `nself migrate rollback` | `nself update project rollback` | move | v1.5.0 | v1.6.0 |
 | `nself migrate run` | `nself update project run` | move | v1.5.0 | v1.6.0 |
@@ -51,7 +53,7 @@ Where every old command spelling went in the v1.5 canon (ADR 0016). The change a
 | `nself urls` | `nself status urls` | move | v1.5.0 | v1.6.0 |
 | `nself verify-sbom` | `nself update verify-sbom` | move | v1.5.0 | v1.6.0 |
 
-Total rows: 42
+Total rows: 44
 
 <!-- END GENERATED:canon-table -->
 
