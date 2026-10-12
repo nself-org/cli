@@ -36,6 +36,8 @@ const (
 
 // Environment names (EPIC D2, D16).
 const (
+	// SelfExecOverrideEnv points the re-exec at another binary; honoured only
+	// in a `go test` binary, ignored by release builds (D-0288).
 	SelfExecOverrideEnv = "NSELF_MCP_EXEC_OVERRIDE"
 	TokenEnv            = "NSELF_MCP_TOKEN"
 	InvokedByEnv        = "NSELF_INVOKED_BY"
