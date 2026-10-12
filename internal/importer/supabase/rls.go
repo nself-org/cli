@@ -103,9 +103,13 @@ func Translate(p Policy, columns map[string]bool) (Translation, string) {
 	if strings.EqualFold(p.Cmd, "INSERT") {
 		read, write = "", p.Check
 	}
+	// Select, update and delete decide which rows are visible from USING; a policy that has only a
+	// WITH CHECK would not grant that, so it is not guessed at.
 	need := read
-	if need == "" {
+	if strings.EqualFold(p.Cmd, "INSERT") {
 		need = write
+	} else if read == "" {
+		return Translation{}, "policy has no USING expression"
 	}
 	col, ok := ownerColumn(need)
 	if !ok {

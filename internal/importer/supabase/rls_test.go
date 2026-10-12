@@ -93,3 +93,53 @@ func TestPlanORsPermissivePoliciesOfOneCommand(t *testing.T) {
 		t.Fatalf("two policies on one command must OR: %s", res.Doc)
 	}
 }
+
+func TestPlanRestrictivePolicyBlocksTranslationOfTheTable(t *testing.T) {
+	res, err := Plan([]Table{{Schema: "public", Name: "notes", Columns: []string{"id", "user_id", "archived"}, Policies: []Policy{
+		{Name: "own_sel", Permissive: true, Roles: []string{"authenticated"}, Cmd: "SELECT", Using: "(auth.uid() = user_id)"},
+		{Name: "no_archived", Permissive: false, Roles: []string{"public"}, Cmd: "SELECT", Using: "(NOT archived)"},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Doc != nil || res.Permissions != 0 || len(res.Untranslated) != 2 {
+		t.Fatalf("a restrictive policy must stop the permissive one being translated: %+v", res)
+	}
+	if !strings.Contains(res.Untranslated[0].Reason, "restrictive policy no_archived") {
+		t.Fatalf("reason: %q", res.Untranslated[0].Reason)
+	}
+}
+
+func TestPlanSkipsKindsTheRoleCannotUse(t *testing.T) {
+	tbl := Table{Schema: "public", Name: "notes", Columns: []string{"id", "user_id"}, Granted: map[string]bool{"select": true}, Policies: []Policy{
+		{Name: "own_all", Permissive: true, Roles: []string{"authenticated"}, Cmd: "ALL", Using: "(auth.uid() = user_id)"},
+	}}
+	res, _ := Plan([]Table{tbl})
+	doc := string(res.Doc)
+	if !strings.Contains(doc, "select_permissions") || strings.Contains(doc, "delete_permissions") || strings.Contains(doc, "insert_permissions") {
+		t.Fatalf("only the granted kind may be translated: %s", doc)
+	}
+	tbl.Granted = map[string]bool{}
+	res, _ = Plan([]Table{tbl})
+	if res.Doc != nil || len(res.Untranslated) != 1 || !strings.Contains(res.Untranslated[0].Reason, "privilege") {
+		t.Fatalf("no grant must list the policy: %+v", res)
+	}
+}
+
+func TestTranslateNeedsUsingForReadCommands(t *testing.T) {
+	_, bad := Translate(Policy{Permissive: true, Roles: []string{"public"}, Cmd: "ALL", Check: "(auth.uid() = user_id)"}, cols)
+	if !strings.Contains(bad, "no USING") {
+		t.Fatalf("reason %q", bad)
+	}
+	if _, bad = Translate(Policy{Permissive: true, Roles: []string{"public"}, Cmd: "INSERT", Check: "(auth.uid() = user_id)"}, cols); bad != "" {
+		t.Fatalf("insert with only a check is fine: %q", bad)
+	}
+}
+
+func TestPlanDoesNotReorderTheCallersSlice(t *testing.T) {
+	in := []Table{{Schema: "z", Name: "b"}, {Schema: "a", Name: "b"}}
+	_, _ = Plan(in)
+	if in[0].Schema != "z" {
+		t.Fatal("Plan sorted the caller's slice")
+	}
+}

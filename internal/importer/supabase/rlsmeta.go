@@ -16,6 +16,10 @@ type Table struct {
 	Schema, Name string
 	Columns      []string
 	Policies     []Policy
+	// Granted lists the permission kinds (select, insert, update, delete) the Supabase role
+	// `authenticated` holds on the table. A policy for a kind without the grant gives no access in
+	// Postgres, so it is not translated. A nil map means every kind (unit tests).
+	Granted map[string]bool
 }
 
 // Result is the outcome of translating every table.
@@ -33,6 +37,7 @@ type Result struct {
 func Plan(tables []Table) (Result, error) {
 	res := Result{Untranslated: []importer.Policy{}, Exemptions: []portable.Exemption{}}
 	records := []map[string]any{}
+	tables = append([]Table(nil), tables...)
 	sort.Slice(tables, func(i, j int) bool {
 		return tables[i].Schema+"."+tables[i].Name < tables[j].Schema+"."+tables[j].Name
 	})
@@ -42,18 +47,37 @@ func Plan(tables []Table) (Result, error) {
 			cols[c] = true
 		}
 		owners := map[string][]string{}
+		restrictive := ""
+		for _, p := range t.Policies {
+			if !p.Permissive && restrictive == "" {
+				restrictive = p.Name
+			}
+		}
 		for _, p := range t.Policies {
 			id := t.Schema + "." + t.Name
+			exemptionID := "policy:" + id + "#" + p.Name
 			tr, reason := Translate(p, cols)
+			if reason == "" && restrictive != "" {
+				// A restrictive policy ANDs with the permissive ones; Hasura has no such rule, so
+				// translating the permissive ones alone would grant more than Postgres does.
+				reason = "table has restrictive policy " + restrictive + "; permissive policies are not translated because Hasura would grant more"
+			}
+			if reason == "" {
+				if kinds, ok := grantedKinds(t, tr.Kinds); !ok {
+					reason = "role authenticated has no matching privilege on the table"
+				} else {
+					tr.Kinds = kinds
+				}
+			}
 			if reason != "" {
 				res.Untranslated = append(res.Untranslated, importer.Policy{Table: id, Policy: describe(p), Reason: reason})
-				res.Exemptions = append(res.Exemptions, portable.Exemption{Kind: "metadata", ID: "policy:" + id + "." + p.Name, Reason: "RLS policy not restored; listed in untranslated_policies"})
+				res.Exemptions = append(res.Exemptions, portable.Exemption{Kind: "metadata", ID: exemptionID, Reason: "RLS policy not restored; listed in untranslated_policies"})
 				continue
 			}
 			for _, k := range tr.Kinds {
 				owners[k] = append(owners[k], tr.Column)
 			}
-			res.Exemptions = append(res.Exemptions, portable.Exemption{Kind: "metadata", ID: "policy:" + id + "." + p.Name, Reason: "RLS policy not restored; translated to Hasura permission"})
+			res.Exemptions = append(res.Exemptions, portable.Exemption{Kind: "metadata", ID: exemptionID, Reason: "RLS policy not restored; translated to Hasura permission"})
 		}
 		if len(owners) == 0 {
 			continue
@@ -109,4 +133,18 @@ func describe(p Policy) string {
 		s += " WITH CHECK " + p.Check
 	}
 	return s
+}
+
+// grantedKinds keeps the kinds the table grants to authenticated; ok is false when none remain.
+func grantedKinds(t Table, kinds []string) ([]string, bool) {
+	if t.Granted == nil {
+		return kinds, true
+	}
+	var out []string
+	for _, k := range kinds {
+		if t.Granted[k] {
+			out = append(out, k)
+		}
+	}
+	return out, len(out) > 0
 }

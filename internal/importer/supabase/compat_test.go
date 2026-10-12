@@ -32,3 +32,10 @@ func TestBuildCompatEmptyWhenNothingReferenced(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 }
+
+func TestBuildCompatListsExtensionTypesWithoutShim(t *testing.T) {
+	c := BuildCompat(`CREATE TABLE public.t (id int, q extensions.citext, v extensions.vector(3));`)
+	if c.SQL != "" || len(c.Exemptions) != 2 || c.Exemptions[0].ID != "compat:extensions.citext" || c.Exemptions[1].ID != "compat:extensions.vector" {
+		t.Fatalf("%+v", c)
+	}
+}

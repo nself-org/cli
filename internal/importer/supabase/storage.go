@@ -22,6 +22,8 @@ import (
 const (
 	listPage    = 100
 	maxJSONBody = 16 << 20
+	// maxFolderDepth bounds the folder recursion against a server that never ends.
+	maxFolderDepth = 64
 )
 
 type api struct {
@@ -116,8 +118,11 @@ func (a *api) buckets(ctx context.Context) ([]string, error) {
 // null id in the listing.
 func (a *api) keys(ctx context.Context, bucket string) ([]string, error) {
 	var out []string
-	var walk func(prefix string) error
-	walk = func(prefix string) error {
+	var walk func(prefix string, depth int) error
+	walk = func(prefix string, depth int) error {
+		if depth > maxFolderDepth {
+			return apiErr()
+		}
 		for offset := 0; ; offset += listPage {
 			body, _ := json.Marshal(map[string]any{"prefix": prefix, "limit": listPage, "offset": offset, "sortBy": map[string]string{"column": "name", "order": "asc"}})
 			var rows []struct {
@@ -128,8 +133,11 @@ func (a *api) keys(ctx context.Context, bucket string) ([]string, error) {
 				return err
 			}
 			for _, r := range rows {
+				if r.Name == "" || strings.Contains(r.Name, "/") {
+					return apiErr()
+				}
 				if r.ID == nil {
-					if err := walk(prefix + r.Name + "/"); err != nil {
+					if err := walk(prefix+r.Name+"/", depth+1); err != nil {
 						return err
 					}
 					continue
@@ -141,7 +149,7 @@ func (a *api) keys(ctx context.Context, bucket string) ([]string, error) {
 			}
 		}
 	}
-	return out, walk("")
+	return out, walk("", 0)
 }
 
 // get opens one object for streaming.

@@ -87,9 +87,12 @@ func TestMigrateSupabaseModes(t *testing.T) {
 		if !pulled || ran {
 			t.Fatalf("v1.4 must run the artifact generator only (pulled=%v ran=%v)", pulled, ran)
 		}
-		for _, name := range []string{"supabase-migration.sql", "hasura-metadata.yaml", "import-auth-users.sh"} {
-			if _, err = os.Stat(filepath.Join(out, name)); err != nil {
-				t.Fatalf("v1.4 artifact %s missing: %v", name, err)
+		// The artifacts are byte for byte what the generator produces (the merge-base behaviour).
+		want := spmigrate.Generate("abcdefghijklmnopqrst", &spmigrate.PullResult{Tables: []spmigrate.Table{{Schema: "public", Name: "notes"}}})
+		for name, content := range map[string]string{"supabase-migration.sql": want.MigrationSQL, "hasura-metadata.yaml": want.HasuraMetadata, "import-auth-users.sh": want.AuthImportScript} {
+			got, rerr := os.ReadFile(filepath.Join(out, name))
+			if rerr != nil || string(got) != content {
+				t.Fatalf("v1.4 artifact %s differs from the generator output (err=%v)", name, rerr)
 			}
 		}
 	})

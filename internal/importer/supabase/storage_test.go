@@ -147,3 +147,21 @@ func TestFinishNeedsAPIWhenObjectsExist(t *testing.T) {
 		t.Fatalf("no objects must pass: %v", err)
 	}
 }
+
+func TestKeysStopsAtEmptyNamesAndRunawayDepth(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Every listing returns one more folder: a server that never ends.
+		_, _ = w.Write([]byte(`[{"name":"d","id":null}]`))
+	}))
+	defer srv.Close()
+	a, _ := newAPI(srv.URL, fixtureKey)
+	if _, err := a.keys(context.Background(), "avatars"); err == nil {
+		t.Fatal("endless folders accepted")
+	}
+	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`[{"name":"","id":null}]`)) }))
+	defer empty.Close()
+	b, _ := newAPI(empty.URL, fixtureKey)
+	if _, err := b.keys(context.Background(), "avatars"); err == nil {
+		t.Fatal("empty folder name accepted")
+	}
+}

@@ -65,6 +65,14 @@ func (Source) Extract(ctx context.Context, in importer.Input, stage string) (imp
 		_ = db.Close(ctx)
 		return importer.Extracted{}, err
 	}
+	// Fail before the dump when storage objects exist but no storage API was configured.
+	if n, qerr := storageObjects(ctx, db); qerr != nil || (n > 0 && client == nil) {
+		_ = db.Close(ctx)
+		if qerr != nil {
+			return importer.Extracted{}, qerr
+		}
+		return importer.Extracted{}, errs.New("E520", "source has storage objects; --api-url (or --project-ref) and --service-key-env are required")
+	}
 	r := &run{api: client}
 	ext, err := postgres.Snapshot(ctx, db, d, in.Target, stage, postgres.Options{Source: "supabase", InTx: r.inTx, Finish: r.finish})
 	ext.UntranslatedPolicies = r.untranslated

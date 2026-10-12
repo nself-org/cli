@@ -47,6 +47,11 @@ policy for `authenticated` or `public` becomes a Hasura permission for the `user
 `select`, `update` and `delete` filter on `{"<column>": {"_eq": "X-Hasura-User-Id"}}`,
 `insert` checks it. Several policies for one command are combined with `_or`.
 
+A translated permission covers only the kinds that the role `authenticated` can use on the table
+(it needs the privilege), and a read command needs a `USING` expression. A table with a
+restrictive policy has none of its policies translated, because Hasura has no AND rule and
+would grant more than Postgres did.
+
 Every other policy (restrictive policies, other roles, any other expression) is listed
 in the report under `untranslated_policies` with its text and the reason. Hasura denies
 a role that has no permission, so an untranslated policy means that access is **closed**
@@ -73,7 +78,17 @@ listed as exemptions (`compat:<name>`); define them in the target before relying
 - A bucket name that the object store rejects (uppercase or underscore) stops the import
   with a clear message; rename the bucket in Supabase first.
 - A user whose hash is not bcrypt is listed in `users.reset_required`.
-- Edge functions, realtime and cron jobs are not moved.
+- Bucket settings (public flag, size limit, allowed types) are not carried; set them in the
+  target. `auth.identities` is not carried, so a user who only signed in through an OAuth
+  provider has no password on the target (hash algorithm `none`).
+- The snapshot and the storage listing are read at slightly different moments. If someone uploads
+  or deletes an object during the import, the count check stops it ("storage listing differs from
+  the storage catalog"); rerun on a quiet source.
+- A schema that uses `extensions.*` functions or types without a shim (for example `crypt`,
+  `digest`, `citext`, `vector`) lists them as exemptions and the restore stops where it needs them.
+  Install the extension in the target first.
+- Edge functions, realtime and cron jobs are not moved. Row level security stays off in the target
+  (the `ENABLE ROW LEVEL SECURITY` switch is not restored); access is governed by Hasura permissions.
 
 ## After the import
 

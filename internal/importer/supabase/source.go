@@ -30,7 +30,7 @@ func (Source) Flags() []importer.FlagSpec {
 
 // ownedSchemas are the schemas Supabase manages; they are never dumped. The Supabase roles
 // (anon, authenticated, service_role) are never recreated: the dump uses --no-owner --no-privileges.
-var ownedSchemas = []string{"auth", "storage", "realtime", "supabase_functions", "extensions", "graphql", "graphql_public", "pgbouncer", "pgsodium", "vault", "net", "supabase_migrations", "information_schema", "hdb_catalog", "nself_ops"}
+var ownedSchemas = []string{"_realtime", "_analytics", "_supavisor", "cron", "pgsodium_masks", "pgmq", "pgtle", "dbdev", "auth", "storage", "realtime", "supabase_functions", "extensions", "graphql", "graphql_public", "pgbouncer", "pgsodium", "vault", "net", "supabase_migrations", "information_schema", "hdb_catalog", "nself_ops"}
 
 func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection, error) {
 	db, err := dial(ctx, in)
@@ -81,12 +81,21 @@ func detect(ctx context.Context, db *pgx.Conn, in importer.Input) (importer.Dete
 	if db.QueryRow(ctx, `SELECT count(*) FROM auth.users`).Scan(&d.SourceUsers) != nil {
 		return d, errs.New("E517", "source auth lookup failed")
 	}
-	var objects int
-	if db.QueryRow(ctx, `SELECT CASE WHEN to_regclass('storage.objects') IS NULL THEN 0 ELSE (SELECT count(*) FROM storage.objects) END`).Scan(&objects) != nil {
-		return d, errs.New("E517", "source storage lookup failed")
+	objects, err := storageObjects(ctx, db)
+	if err != nil {
+		return d, err
 	}
 	if objects > 0 {
 		d.Notes = append(d.Notes, "source has storage objects; the storage API is required")
 	}
 	return d, nil
+}
+
+// storageObjects counts storage.objects (0 when the table is absent).
+func storageObjects(ctx context.Context, db *pgx.Conn) (int64, error) {
+	var n int64
+	if db.QueryRow(ctx, `SELECT CASE WHEN to_regclass('storage.objects') IS NULL THEN 0 ELSE (SELECT count(*) FROM storage.objects) END`).Scan(&n) != nil {
+		return 0, errs.New("E517", "source storage lookup failed")
+	}
+	return n, nil
 }

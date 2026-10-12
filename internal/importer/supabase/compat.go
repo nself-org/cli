@@ -24,7 +24,9 @@ var extensionShims = map[string]string{
 }
 
 var (
-	extRef    = regexp.MustCompile(`(?i)\bextensions\.([a-z_][a-z0-9_]*)\s*\(`)
+	// Any extensions.<name> reference (function, type or operator): shimmed when a plain
+	// equivalent exists, otherwise listed.
+	extRef    = regexp.MustCompile(`(?i)\bextensions\.([a-z_][a-z0-9_]*)`)
 	authUIDRe = regexp.MustCompile(`(?i)\bauth\.uid\s*\(`)
 	authOther = regexp.MustCompile(`(?i)\bauth\.(role|jwt|email)\s*\(`)
 )

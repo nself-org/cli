@@ -23,7 +23,7 @@ func readTables(ctx context.Context, tx pgx.Tx, m *portable.Manifest) ([]Table, 
 		byID[id] = &Table{Schema: t.Schema, Name: t.Name}
 		order = append(order, id)
 	}
-	rows, err := tx.Query(ctx, `SELECT table_schema::text, table_name::text, column_name::text FROM information_schema.columns WHERE table_schema = ANY($1) ORDER BY table_schema, table_name, ordinal_position`, m.DB.Schemas)
+	rows, err := tx.Query(ctx, `SELECT n.nspname::text, c.relname::text, a.attname::text FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname = ANY($1) AND c.relkind IN ('r','p') AND a.attnum > 0 AND NOT a.attisdropped ORDER BY n.nspname, c.relname, a.attnum`, m.DB.Schemas)
 	if err != nil {
 		return nil, false, policyErr()
 	}
@@ -61,6 +61,9 @@ func readTables(ctx context.Context, tx pgx.Tx, m *portable.Manifest) ([]Table, 
 	if rows.Err() != nil {
 		return nil, false, policyErr()
 	}
+	if err = readGrants(ctx, tx, byID); err != nil {
+		return nil, false, err
+	}
 	var rls bool
 	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relrowsecurity AND n.nspname = ANY($1))`, m.DB.Schemas).Scan(&rls) != nil {
 		return nil, false, policyErr()
@@ -70,4 +73,26 @@ func readTables(ctx context.Context, tx pgx.Tx, m *portable.Manifest) ([]Table, 
 		out = append(out, *byID[id])
 	}
 	return out, found || rls, nil
+}
+
+// readGrants records which kinds the role authenticated can use on each dumped table. Without
+// the role (not a Supabase database) nothing is granted, so nothing is translated.
+func readGrants(ctx context.Context, tx pgx.Tx, byID map[string]*Table) error {
+	var has bool
+	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='authenticated')`).Scan(&has) != nil {
+		return policyErr()
+	}
+	for id, t := range byID {
+		t.Granted = map[string]bool{}
+		if !has {
+			continue
+		}
+		var s, i, u, d bool
+		if tx.QueryRow(ctx, `SELECT has_table_privilege('authenticated', to_regclass(quote_ident($1)||'.'||quote_ident($2)), 'SELECT'), has_table_privilege('authenticated', to_regclass(quote_ident($1)||'.'||quote_ident($2)), 'INSERT'), has_table_privilege('authenticated', to_regclass(quote_ident($1)||'.'||quote_ident($2)), 'UPDATE'), has_table_privilege('authenticated', to_regclass(quote_ident($1)||'.'||quote_ident($2)), 'DELETE')`, t.Schema, t.Name).Scan(&s, &i, &u, &d) != nil {
+			return policyErr()
+		}
+		t.Granted["select"], t.Granted["insert"], t.Granted["update"], t.Granted["delete"] = s, i, u, d
+		_ = id
+	}
+	return nil
 }
