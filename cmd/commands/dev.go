@@ -4,14 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/nself-org/cli/internal/build"
 	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/docker"
 	"github.com/nself-org/cli/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -48,11 +49,7 @@ func runDev(cmd *cobra.Command, args []string) error {
 
 	// Start the stack
 	ui.Info("Starting development stack...")
-	startCmd := exec.CommandContext(cmd.Context(), "docker", "compose", "up", "-d")
-	startCmd.Dir = workdir
-	startCmd.Stdout = os.Stdout
-	startCmd.Stderr = os.Stderr
-	if err := startCmd.Run(); err != nil {
+	if err := startDevStack(cmd.Context(), workdir); err != nil {
 		return fmt.Errorf("starting stack: %w", err)
 	}
 
@@ -172,12 +169,22 @@ func extractPluginName(filePath, pluginsDir string) string {
 	return parts[0]
 }
 
+// startDevStack runs `docker compose up -d` for the project in workdir.
+func startDevStack(ctx context.Context, workdir string) error {
+	return newDevCompose(workdir).ComposeUp(ctx, workdir)
+}
+
 // rebuildPlugin rebuilds a single plugin's container without restarting others.
 func rebuildPlugin(ctx context.Context, workdir, pluginName string) error {
-	// docker compose up -d --no-deps --build <service>
-	rebuildCmd := exec.CommandContext(ctx, "docker", "compose", "up", "-d", "--no-deps", "--build", pluginName)
-	rebuildCmd.Dir = workdir
-	rebuildCmd.Stdout = os.Stdout
-	rebuildCmd.Stderr = os.Stderr
-	return rebuildCmd.Run()
+	return newDevCompose(workdir).ComposeUpBuild(ctx, workdir, pluginName)
+}
+
+// newDevCompose returns the compose client of `nself dev`; tests replace it.
+// It passes the project's env files like start/stop/restart do, so ${VAR}
+// values that live only in .nself/compose.env resolve (D-0550). No -f flags:
+// compose discovers docker-compose.yml in workdir, as dev always did.
+var newDevCompose = func(workdir string) *docker.Compose {
+	c := docker.NewCompose()
+	c.EnvFiles = build.ComposeEnvFiles(workdir)
+	return c
 }

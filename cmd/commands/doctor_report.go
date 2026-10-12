@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/nself-org/cli/internal/build"
-	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/doctor"
 	"github.com/nself-org/cli/internal/doctor/report"
 	"github.com/nself-org/cli/internal/nginxtopo"
@@ -85,7 +84,7 @@ func runDoctorReport(cmd *cobra.Command, _ []string) error {
 	if src.Now == nil {
 		src.Now = time.Now
 	}
-	opts := report.Options{ProjectDir: projectDir, LogLines: lines, ComposeFragments: ds.ComposeFiles, ComposeEnvFiles: build.ComposeEnvFiles(projectDir)}
+	opts := report.Options{ProjectDir: projectDir, LogLines: lines, ComposeFragments: ds.ComposeFiles, ComposeEnvFiles: ds.EnvFiles}
 	if setupNote != "" {
 		opts.Notes = append(opts.Notes, setupNote)
 	}
@@ -162,11 +161,9 @@ func reportDockerSetup(projectDir string) (ds report.DockerSetup, note string) {
 	if len(ds.ComposeFiles) == 0 {
 		ds.ComposeFiles = []string{filepath.Join(projectDir, "docker-compose.yml")}
 	}
-	env, _ := config.ResolveEnv(projectDir)
-	for _, f := range config.EnvCascade(projectDir, env, config.LegacyOrderActive()) {
-		if f.Exists {
-			ds.EnvFiles = append(ds.EnvFiles, f.Path)
-		}
-	}
+	// The env files start/stop/restart pass, so the report reads the stack the
+	// way compose resolved it: a value only in .nself/compose.env interpolates
+	// (D-0539). nil (no compose.env) leaves compose its default .env discovery.
+	ds.EnvFiles = build.ComposeEnvFiles(projectDir)
 	return ds, note
 }

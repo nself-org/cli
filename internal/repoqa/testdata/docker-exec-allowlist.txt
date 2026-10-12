@@ -8,7 +8,6 @@ cmd/commands/db_migrate.go 1
 cmd/commands/deploy_diagnostics.go 1
 cmd/commands/deploy_lifecycle.go 1
 cmd/commands/deploy_run.go 1
-cmd/commands/dev.go 2
 cmd/commands/doctor_checks_env.go 4
 cmd/commands/functions_deploy.go 1
 cmd/commands/functions_logs.go 1
@@ -43,7 +42,6 @@ internal/database/readiness.go 1
 internal/database/restore.go 1
 internal/database/restore_drill_exec.go 1
 internal/database/seed.go 1
-internal/deploy/bluegreen/bluegreen_exec.go 5
 internal/deploy/bluegreen/bluegreen_traffic.go 2
 internal/deploy/slo_rollback_helpers.go 1
 internal/doctor/deep_db.go 4

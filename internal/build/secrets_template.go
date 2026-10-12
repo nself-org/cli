@@ -181,8 +181,11 @@ func TemplateSecrets(composeYAML []byte, secrets map[string]string) []byte {
 // WriteComposeEnv writes .nself/compose.env (0600) — the single interpolation
 // file that resolves every ${VAR} reference in the generated compose set:
 // secrets, Hasura console/dev-mode toggles, computed values (DATABASE_URL,
-// DOCKER_NETWORK), and plugin env vars. All CLI docker compose invocations
-// pass it via --env-file (see ComposeEnvFiles). Every value goes through
+// DOCKER_NETWORK), and plugin env vars. CLI compose calls on the project
+// pass it via --env-file: ComposeEnvFiles, or docker.ProjectEnvFiles where
+// internal/build cannot be imported. Sites that still shell out to docker
+// compose directly (the repoqa docker-exec allowlist) may not; hq debt
+// D-0747 tracks them. Every value goes through
 // config.QuoteComposeEnvValue, so compose reads back the exact bytes even
 // for secrets holding whitespace, '#', '$', quotes or backslashes (D-0333).
 func WriteComposeEnv(workdir string, cfg *config.Config, secrets, pluginEnvVars map[string]string) error {
@@ -263,7 +266,9 @@ func ComposeEnvFiles(workdir string) []string {
 	}
 	// The default project .env is only useful alongside compose.env; docker
 	// compose reads it implicitly anyway when it is the sole file present.
-	if len(files) == 1 && strings.HasSuffix(files[0], ".env") && !strings.HasSuffix(files[0], composeEnvFile) {
+	// Compare whole paths: a suffix test against the slash-form composeEnvFile
+	// never matched a Windows path, so a compose.env-only project got nil.
+	if len(files) == 1 && files[0] == filepath.Join(workdir, ".env") {
 		return nil
 	}
 	return files
