@@ -52,5 +52,5 @@ func printBuildHint(ctx context.Context, name string) {
 	if out == nil {
 		out = os.Stderr
 	}
-	fmt.Fprintf(out, "\nℹ Run 'nself build' to include %s in your stack.\n", name)
+	_, _ = fmt.Fprintf(out, "\nℹ Run 'nself build' to include %s in your stack.\n", name)
 }
