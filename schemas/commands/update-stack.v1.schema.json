@@ -7,6 +7,9 @@
     "dry_run": {
       "type": "boolean"
     },
+    "resume_step": {
+      "type": "string"
+    },
     "run_id": {
       "type": "string"
     },

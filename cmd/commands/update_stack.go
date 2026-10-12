@@ -24,10 +24,11 @@ import (
 
 // StackUpdateResult is the public report, excluding recovery files and row data.
 type StackUpdateResult struct {
-	RunID  string       `json:"run_id"`
-	Status string       `json:"status"`
-	DryRun bool         `json:"dry_run"`
-	Steps  []stack.Step `json:"steps"`
+	RunID      string       `json:"run_id"`
+	Status     string       `json:"status"`
+	DryRun     bool         `json:"dry_run"`
+	ResumeStep string       `json:"resume_step,omitempty"`
+	Steps      []stack.Step `json:"steps"`
 }
 
 // stackBackend is the runtime seam; constructing it must not mutate the project.
@@ -64,7 +65,16 @@ func runUpdateStack(cmd *cobra.Command, _ []string) (err error) {
 		return err
 	}
 	if dry || preview {
-		j, err := stack.Execute(cmd.Context(), stack.Options{DryRun: true}, nil)
+		dir, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("resolve stack preview directory: %w", err)
+		}
+		// A fresh plan also works outside a project; existing projects use
+		// their root so previews read the same journal as an authorized run.
+		if project, resolveErr := stackProjectDir(); resolveErr == nil {
+			dir = project
+		}
+		j, err := stack.Execute(cmd.Context(), stack.Options{ProjectDir: dir, DryRun: true}, nil)
 		if err != nil {
 			return err
 		}
@@ -103,7 +113,9 @@ func runUpdateStack(cmd *cobra.Command, _ []string) (err error) {
 // Inputs: completed journal and final error. Outputs: one envelope. Constraints: no duplicate on release failure.
 func finishStackInvocation(cmd *cobra.Command, journal *stack.Journal, jsonOn bool, err error) error {
 	if err == nil && journal != nil {
-		err = emitStackResult(journal, journal.Status == "planned", jsonOn)
+		dry, _ := cmd.Flags().GetBool("dry-run")
+		preview, _ := cmd.Flags().GetBool("plan")
+		err = emitStackResult(journal, dry || preview, jsonOn)
 	}
 	return finishStackError(cmd, err)
 }
@@ -173,7 +185,14 @@ func takeStackLock(cmd *cobra.Command, dir string) (func() error, error) {
 // emitStackResult emits only public facts, never recovery compose or credentials.
 func emitStackResult(j *stack.Journal, dry, jsonOn bool) error {
 	if jsonOn {
-		return output.EmitData(pilotWriter(), "update stack", StackUpdateResult{RunID: j.RunID, Status: j.Status, DryRun: dry, Steps: j.Steps})
+		result := StackUpdateResult{RunID: j.RunID, Status: j.Status, DryRun: dry, Steps: j.Steps}
+		if dry {
+			result.ResumeStep = stack.ResumeStep(j)
+		}
+		return output.EmitData(pilotWriter(), "update stack", result)
+	}
+	if dry {
+		ui.Info(fmt.Sprintf("Journal: %s; resume step: %s", j.Status, stack.ResumeStep(j)))
 	}
 	for _, s := range j.Steps {
 		ui.Info(fmt.Sprintf("%s: %s (%d ms)", s.Name, s.Result, s.DurationMS))

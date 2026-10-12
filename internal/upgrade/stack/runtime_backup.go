@@ -23,6 +23,11 @@ import (
 
 var runtimeRunID = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
+// Adapter seams use the same backup implementation in production and isolated tests.
+var runtimeBackupCreate = backup.Create
+var runtimeBackupVerify = backup.Verify
+var runtimeBackupCountRows = backup.CountRows
+
 // Backup snapshots immutable old images and creates a newly named full dump.
 func (r *Runtime) Backup(ctx context.Context, j *Journal) error {
 	if !runtimeRunID.MatchString(j.RunID) {
@@ -34,12 +39,15 @@ func (r *Runtime) Backup(ctx context.Context, j *Journal) error {
 	if err := r.snapshot(ctx, j); err != nil {
 		return err
 	}
+	if err := r.createRunBackup(ctx, j); err != nil {
+		return err
+	}
 	rows, err := r.countRows(ctx)
 	if err != nil {
 		return fmt.Errorf("count pre-update rows: %w", err)
 	}
 	j.BeforeRows = rows
-	return r.createRunBackup(ctx, j)
+	return nil
 }
 
 // createRunBackup binds the uniquely tagged new artifact and its digest.
@@ -56,7 +64,7 @@ func (r *Runtime) createRunBackup(ctx context.Context, j *Journal) error {
 		return fmt.Errorf("draw backup attempt identity: %w", err)
 	}
 	tag := "stack-" + j.RunID + "-" + hex.EncodeToString(nonce[:])
-	if err := backup.Create(ctx, r.cfg, backup.CreateOptions{Type: backup.BackupTypeFull, Tag: tag}); err != nil {
+	if err := runtimeBackupCreate(ctx, r.cfg, backup.CreateOptions{Type: backup.BackupTypeFull, Tag: tag}); err != nil {
 		return fmt.Errorf("create stack backup: %w", err)
 	}
 	after, err := r.backupNames()
@@ -187,7 +195,7 @@ func (r *Runtime) VerifyBackup(ctx context.Context, j *Journal) error {
 	if digest != j.BackupSHA256 {
 		return fmt.Errorf("stack backup digest changed")
 	}
-	result, err := backup.Verify(ctx, r.cfg, backup.VerifyOptions{BackupID: j.BackupID})
+	result, err := runtimeBackupVerify(ctx, r.cfg, backup.VerifyOptions{BackupID: j.BackupID})
 	if err != nil {
 		return fmt.Errorf("verify stack backup: %w", err)
 	}
@@ -215,7 +223,7 @@ func (r *Runtime) Restore(ctx context.Context, j *Journal) error {
 // countRows reuses the exact backup verification oracle against the live database.
 func (r *Runtime) countRows(ctx context.Context) (map[string]int64, error) {
 	c := &backup.Container{Name: r.cfg.ProjectName + "_postgres", User: r.cfg.Postgres.User, DB: r.cfg.Postgres.DB}
-	rows, err := backup.CountRows(ctx, c)
+	rows, err := runtimeBackupCountRows(ctx, c)
 	if err != nil {
 		return nil, fmt.Errorf("count database rows: %w", err)
 	}

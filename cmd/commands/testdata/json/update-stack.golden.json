@@ -5,6 +5,7 @@
     "run_id": "1791780040683216000",
     "status": "planned",
     "dry_run": true,
+    "resume_step": "backup",
     "steps": [
       {
         "name": "backup",

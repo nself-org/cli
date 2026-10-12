@@ -25,6 +25,19 @@ type Runtime struct {
 	stderr io.Writer
 }
 
+// Adapter seams preserve the shared implementation while allowing isolated tests.
+var runtimeCompute = reconcile.Compute
+var runtimeApplyBuild = reconcile.ApplyBuild
+var runtimeMigrateUp = database.MigrateUp
+
+// stepTimeout allows slow pulls and migrations without extending every step.
+func stepTimeout(name string) time.Duration {
+	if name == "pull" || name == "migrate" {
+		return 30 * time.Minute
+	}
+	return 10 * time.Minute
+}
+
 // NewRuntime prepares adapters without reading or mutating the project.
 func NewRuntime(dir string, cfg *config.Config, stderr io.Writer) *Runtime {
 	copy := *cfg
@@ -55,13 +68,13 @@ func (r *Runtime) compose() (*docker.Compose, error) {
 
 // Run dispatches one shared-plan stack step; unknown steps fail closed.
 func (r *Runtime) Run(ctx context.Context, name string, j *Journal) error {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, stepTimeout(name))
 	defer cancel()
 	switch name {
 	case "build":
 		return r.build(ctx)
 	case "migrate":
-		_, err := database.MigrateUp(ctx, r.cfg, "")
+		_, err := runtimeMigrateUp(ctx, r.cfg, "")
 		return err
 	case "readiness":
 		return r.readiness(ctx)
@@ -85,7 +98,7 @@ func (r *Runtime) Run(ctx context.Context, name string, j *Journal) error {
 func (r *Runtime) build(ctx context.Context) error {
 	req := reconcile.Request{ProjectDir: r.dir, Command: reconcile.CmdBuild, Stderr: r.stderr}
 	if reconcile.EnvClass(r.cfg.Env) == reconcile.ClassProd {
-		p, err := reconcile.Compute(ctx, req)
+		p, err := runtimeCompute(ctx, req)
 		if err != nil {
 			return fmt.Errorf("preview build: %w", err)
 		}
@@ -95,7 +108,7 @@ func (r *Runtime) build(ctx context.Context) error {
 			}
 		}
 	}
-	_, _, err := reconcile.ApplyBuild(ctx, req, reconcile.ApplyOptions{Yes: true})
+	_, _, err := runtimeApplyBuild(ctx, req, reconcile.ApplyOptions{Yes: true})
 	if err != nil {
 		return fmt.Errorf("apply build: %w", err)
 	}

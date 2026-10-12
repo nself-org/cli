@@ -20,24 +20,7 @@ import (
 
 // privateState refuses symlinked state ancestors before creating recovery artifacts.
 func (r *Runtime) privateState() (string, error) {
-	p := r.dir
-	for _, name := range []string{".nself", "state"} {
-		p = filepath.Join(p, name)
-		info, err := os.Lstat(p)
-		if os.IsNotExist(err) {
-			if err = os.Mkdir(p, 0700); err != nil {
-				return "", fmt.Errorf("create recovery directory: %w", err)
-			}
-			continue
-		}
-		if err != nil {
-			return "", fmt.Errorf("inspect recovery directory: %w", err)
-		}
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return "", fmt.Errorf("recovery directory must be a real directory")
-		}
-	}
-	return p, nil
+	return stateDirectory(r.dir, true)
 }
 
 // snapshot pins every running service to its actual Docker image content ID.

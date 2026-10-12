@@ -47,7 +47,7 @@ After reviewing and applying the desired pins, run:
 
 ```bash
 nself update stack --plan                 # list steps without probes or writes
-nself update stack --dry-run --json       # one envelope with pending steps
+nself update stack --dry-run --json       # one envelope with results and resume point
 nself update stack --yes                  # authorize the upgrade and recovery policy
 nself update stack --yes --json           # one envelope with measured step results
 ```
@@ -56,12 +56,20 @@ The executor runs **backup → pull → build → start → migrate → readines
 The backup is created with a unique run tag, verified in the current invocation,
 and bound to the journal by its digest. Build uses the reconcile preview and
 apply path; production and staging show the planned changes before applying.
+Production class comes from `reconcile.EnvClass`, the same classifier used by
+build and update: `prod`, `production`, `staging`, and `stage` all count as
+production, on the safe side. Pull and migrate each have a 30-minute timeout;
+the other dispatched steps have a 10-minute timeout, with health checks capped
+at five minutes. All these bounds also respect the caller's context.
 Core database migrations use the `db migrate` API. Plugins apply their own SQL
 at boot; readiness waits for every declared boot migration to report
 `applied == expected`.
 
 `.nself/state/update-stack.json` records each step atomically before and after it
-runs. Retry the same command after interruption to resume the first non-successful
+runs, then fsyncs the state directory after renaming (except on Windows).
+`--dry-run` and `--plan` read an existing journal without probes or writes,
+show its recorded results and the first non-successful step to resume.
+Retry the same command after interruption to resume the first non-successful
 step. A process killed during `start` resumes at `start`. The operation lock
 prevents two updaters from changing the project concurrently. A missing, stale,
 changed or unverifiable production backup stops execution with E403 (exit 4)
@@ -71,14 +79,21 @@ before any step; unattended execution without `--yes` returns E403.
 
 On a non-production migration failure, recovery restores the step-one backup,
 restarts the saved immutable previous image set, and compares every table's exact
-row count with the pre-update counts. The backup and volumes remain retained.
-Recovery records `rolled-back`, `rollback-running`, or `rollback-failed`; those
-states require operator reconciliation before a new upgrade. Inspect and archive
-the journal after recovery rather than resuming migrations against restored data.
+row count with the counts captured immediately after creating the dump, before
+pulling images. Concurrent writes during the dump or between the dump and count
+can still cause a mismatch; quiesce writers for an exact recovery comparison.
+The backup and volumes remain retained. After successful recovery (`rolled-back`),
+the next run atomically archives the old journal as
+`.nself/state/update-stack.<run_id>.json` and starts a fresh update.
+`rollback-running` and `rollback-failed` remain blocked: inspect the retained
+backup, restored table counts, and previous image health, then archive the journal
+before a new update. A failed recovery also prints the step-one restore command.
 
-Production and staging never restore automatically. A failed step records
+Production and staging never restore automatically. A failed later step records
 `awaiting-operator`, returns E139 (exit 2), and prints an exact
-`nself backup restore '<backup-id>'` command naming the retained run backup.
+`nself backup restore '<backup-id>'` command only when step one completed with
+a verified backup. A failed backup verification returns E403 without a restore
+instruction when no later step has failed.
 Inspect the failed step before retrying; a retry re-verifies the backup first.
 Successful JSON output contains `data.steps[]` with `name`, `result`, and
 `duration_ms`. Failures use the standard error envelope; detailed step results

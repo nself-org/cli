@@ -103,11 +103,21 @@ func validateJournal(j *Journal) error {
 // Inputs: project directory and execution state. Outputs: durable atomic journal.
 // Constraints: temporary files contain no secrets and are removed on errors.
 func saveJournal(project string, j *Journal) error {
+	return saveJournalWithIO(project, j, journalIO{
+		createTemp: func(dir, pattern string) (journalFile, error) { return os.CreateTemp(dir, pattern) },
+		rename:     os.Rename, syncDirectory: syncStateDirectory,
+	})
+}
+
+// saveJournalWithIO exposes filesystem failure seams without global hooks.
+// Inputs: project, execution state and file operations. Outputs: atomic journal.
+// Constraints: failed writes leave the previous journal intact.
+func saveJournalWithIO(project string, j *Journal, ops journalIO) error {
 	path := journalPath(project)
 	if _, err := stateDirectory(project, true); err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".update-stack-*")
+	f, err := ops.createTemp(filepath.Dir(path), ".update-stack-*")
 	if err != nil {
 		return fmt.Errorf("create stack update journal temporary file: %w", err)
 	}
@@ -122,10 +132,10 @@ func saveJournal(project string, j *Journal) error {
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("close stack update journal: %w", err)
 	}
-	if err := os.Rename(name, path); err != nil {
+	if err := ops.rename(name, path); err != nil {
 		return fmt.Errorf("replace stack update journal: %w", err)
 	}
-	return nil
+	return ops.syncDirectory(filepath.Dir(path))
 }
 
 // stateDirectory validates machine-owned ancestors before any state access.
@@ -155,9 +165,9 @@ func stateDirectory(project string, create bool) (string, error) {
 // closeJournal preserves a write error and reports a secondary close failure.
 // Inputs: open file and primary error. Outputs: wrapped operation error.
 // Constraints: failures are never silently replaced by a successful close.
-func closeJournal(f *os.File, primary error) error {
+func closeJournal(f journalFile, primary error) error {
 	if err := f.Close(); err != nil {
-		return fmt.Errorf("%w; close temporary journal: %v", primary, err)
+		return errors.Join(primary, fmt.Errorf("close temporary journal: %w", err))
 	}
 	return primary
 }

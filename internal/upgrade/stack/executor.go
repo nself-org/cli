@@ -21,7 +21,14 @@ func Execute(ctx context.Context, o Options, b Backend) (*Journal, error) {
 // Constraints: callers use Execute to preserve the stack error exit contract.
 func execute(ctx context.Context, o Options, b Backend) (*Journal, error) {
 	if o.DryRun {
-		j := newJournal(o.Prod)
+		j, err := loadJournal(o.ProjectDir)
+		if err != nil {
+			return nil, errs.Wrap("E139", "Cannot preview stack update", err)
+		}
+		if j != nil {
+			return j, nil
+		}
+		j = newJournal(o.Prod)
 		j.Status = "planned"
 		return j, nil
 	}
@@ -32,14 +39,20 @@ func execute(ctx context.Context, o Options, b Backend) (*Journal, error) {
 	if err != nil {
 		return nil, errs.Wrap("E139", "Cannot resume stack update", err)
 	}
+	if j != nil && j.Status == "rolled-back" {
+		if err := archiveJournal(o.ProjectDir, j); err != nil {
+			return j, errs.Wrap("E139", "Cannot archive recovered stack update", err)
+		}
+		j = nil
+	}
 	if j == nil || j.Status == "complete" {
 		j = newJournal(o.Prod)
 	}
 	if j.Prod != o.Prod {
 		return j, errs.New("E403", "Stack update environment differs from its journal")
 	}
-	if j.Status == "rollback-running" || j.Status == "rolled-back" || j.Status == "rollback-failed" {
-		return j, errs.New("E139", "Stack update recovery requires operator reconciliation").WithFix("Inspect the retained backup and images, then archive .nself/state/update-stack.json before starting a new update.")
+	if j.Status == "rollback-running" || j.Status == "rollback-failed" {
+		return j, errs.New("E139", "Stack update recovery requires operator reconciliation").WithFix("Check that restoring the step-one backup, restarting the previous images, and per-table row counts all succeeded; then archive .nself/state/update-stack.json before starting a new update.")
 	}
 	if b == nil {
 		return j, errs.New("E139", "Stack update backend is unavailable")
@@ -52,7 +65,7 @@ func execute(ctx context.Context, o Options, b Backend) (*Journal, error) {
 					err = fmt.Errorf("%w; persist production backup refusal: %v", err, saveErr)
 				}
 				e := errs.Wrap("E403", "Stack update backup verification failed on resume", err)
-				if j.BackupID != "" {
+				if verifiedBackupWithFailedStep(j) {
 					e = e.WithFix(RestoreCommand(j.BackupID))
 				}
 				return j, e
@@ -108,6 +121,22 @@ func firstPending(j *Journal) int {
 		}
 	}
 	return len(j.Steps)
+}
+
+// ResumeStep reports the operation a real invocation would attempt next.
+// Inputs: validated journal. Outputs: next step name or empty for blocked recovery.
+// Constraints: completed and recovered runs begin a fresh backup on the next run.
+func ResumeStep(j *Journal) string {
+	if j == nil || j.Status == "rollback-running" || j.Status == "rollback-failed" {
+		return ""
+	}
+	if j.Status == "complete" || j.Status == "rolled-back" {
+		return "backup"
+	}
+	if i := firstPending(j); i < len(j.Steps) {
+		return j.Steps[i].Name
+	}
+	return ""
 }
 
 // runStep captures and verifies a backup before any image or database mutation.

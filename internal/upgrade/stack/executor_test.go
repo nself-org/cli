@@ -201,10 +201,11 @@ func TestStackUpdateRollbackNonProd(t *testing.T) {
 		t.Fatalf("wrong recovery calls: %v", b.calls)
 	}
 	b.calls = nil
-	_, err = Execute(context.Background(), o, b)
-	assertCode(t, err, "E139")
-	if len(b.calls) != 0 {
-		t.Fatalf("unsafe resume after rollback: %v", b.calls)
+	b.fail = ""
+	recoveredID := j.RunID
+	j, err = Execute(context.Background(), o, b)
+	if err != nil || j.Status != "complete" || j.RunID == recoveredID || b.calls[0] != "backup" {
+		t.Fatalf("did not start new run after recovery: %+v %v %v", j, b.calls, err)
 	}
 	t.Run("row-count-negative-control", func(t *testing.T) {
 		b := newFixture()

@@ -6,6 +6,3 @@ commands:
     side_effect: destructive
     output: document
     confirm: {flags: [yes]}
-    flags:
-      dry-run: {output: stream}
-      plan: {output: stream}

@@ -7537,6 +7537,9 @@
           "dry_run": {
             "type": "boolean"
           },
+          "resume_step": {
+            "type": "string"
+          },
           "run_id": {
             "type": "string"
           },
@@ -30051,7 +30054,18 @@
                   },
                   "flags": {
                     "additionalProperties": false,
-                    "properties": {},
+                    "properties": {
+                      "dry-run": {
+                        "default": false,
+                        "description": "List the steps without changing anything",
+                        "type": "boolean"
+                      },
+                      "plan": {
+                        "default": false,
+                        "description": "List the steps without changing anything (alias of --dry-run)",
+                        "type": "boolean"
+                      }
+                    },
                     "type": "object"
                   }
                 },

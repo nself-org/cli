@@ -40,10 +40,25 @@ func failedStep(ctx context.Context, o Options, b Backend, j *Journal, i int, ca
 		cause = errors.Join(cause, err)
 	}
 	e := errs.Wrap(code, fmt.Sprintf("Stack update step %s failed", j.Steps[i].Name), cause)
-	if o.Prod && j.BackupID != "" {
+	if (o.Prod && verifiedBackupWithFailedStep(j)) || (j.BackupID != "" && j.Status == "rollback-failed") {
 		e = e.WithFix(RestoreCommand(j.BackupID))
 	}
 	return e
+}
+
+// verifiedBackupWithFailedStep gates manual restore guidance on durable evidence.
+// Inputs: journal. Outputs: whether a verified backup preceded a failed later step.
+// Constraints: a backup identifier alone never authorizes restore guidance.
+func verifiedBackupWithFailedStep(j *Journal) bool {
+	if j.BackupID == "" || len(j.Steps) == 0 || j.Steps[0].Result != "ok" {
+		return false
+	}
+	for _, step := range j.Steps[1:] {
+		if step.Result == "failed" {
+			return true
+		}
+	}
+	return false
 }
 
 // rollback restores data and the exact previous image set, then proves row equality.

@@ -112,7 +112,9 @@ func TestStackIntegrationChild(t *testing.T) {
 		return
 	}
 	b := &integrationBackend{dir: dir, compose: docker.NewCompose(filepath.Join(dir, "compose.yaml")), blockStart: true}
-	if _, err := Execute(context.Background(), Options{ProjectDir: dir, Yes: true}, b); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if _, err := Execute(ctx, Options{ProjectDir: dir, Yes: true}, b); err != nil {
 		t.Fatalf("child execution: %v; cause: %v", err, errors.Unwrap(err))
 	}
 }

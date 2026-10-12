@@ -22375,7 +22375,7 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": "stream",
+          "output": null,
           "cli_only": false,
           "secret": false
         },
@@ -22392,7 +22392,7 @@
           "env": null,
           "side_effect": null,
           "json": null,
-          "output": "stream",
+          "output": null,
           "cli_only": false,
           "secret": false
         },

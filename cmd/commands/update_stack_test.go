@@ -78,6 +78,82 @@ func TestStackUpdateDryRunJSON(t *testing.T) {
 	if e := c.Commands["update stack"]; e.SideEffect != "destructive" {
 		t.Fatalf("unsafe canon row: %+v", e)
 	}
+	for _, flag := range []string{"dry-run", "plan"} {
+		if e := c.Commands["update stack"]; e.Output != canon.OutputDocument || e.Flags[flag].Output != "" {
+			t.Fatalf("%s must inherit document output: %+v", flag, e)
+		}
+	}
+}
+
+// TestStackCommandPreviewExistingJournal proves previews describe the actual resume.
+func TestStackCommandPreviewExistingJournal(t *testing.T) {
+	for _, flag := range []string{"dry-run", "plan"} {
+		t.Run(flag, func(t *testing.T) {
+			c, out := stackTestCommand(t)
+			dir := t.TempDir()
+			state := filepath.Join(dir, ".nself", "state")
+			if err := os.MkdirAll(state, 0700); err != nil {
+				t.Fatal(err)
+			}
+			j := stack.Journal{RunID: "preview-existing", StartedAt: time.Now(), Status: "running", Prod: true}
+			for i, s := range stack.ExecutionPlan() {
+				result := "pending"
+				if i < 3 {
+					result = "ok"
+				}
+				if i == 3 {
+					result = "running"
+				}
+				j.Steps = append(j.Steps, stack.Step{Name: s.Name, Result: result, DurationMS: int64(i)})
+			}
+			data, err := json.Marshal(j)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(state, "update-stack.json")
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldDir, oldBackend := stackProjectDir, stackBackend
+			stackProjectDir = func() (string, error) { return dir, nil }
+			stackBackend = func(string, *config.Config, io.Writer) stack.Backend { t.Fatal("preview reached backend"); return nil }
+			stackLock = func(*cobra.Command, string) (func() error, error) { t.Fatal("preview acquired lock"); return nil, nil }
+			t.Cleanup(func() { stackProjectDir, stackBackend = oldDir, oldBackend })
+			if err := c.Flags().Set(flag, "true"); err != nil {
+				t.Fatal(err)
+			}
+			if err := c.Flags().Set("json", "true"); err != nil {
+				t.Fatal(err)
+			}
+			if err := runUpdateStack(c, nil); err != nil {
+				t.Fatal(err)
+			}
+			var env struct {
+				Data StackUpdateResult `json:"data"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+				t.Fatal(err)
+			}
+			if !env.Data.DryRun || env.Data.RunID != j.RunID || env.Data.Status != j.Status || env.Data.ResumeStep != "start" || env.Data.Steps[2].Result != "ok" || env.Data.Steps[3].DurationMS != 3 {
+				t.Fatalf("preview lost resume evidence: %+v", env.Data)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(data, after) || !before.ModTime().Equal(info.ModTime()) {
+				t.Fatal("preview changed journal")
+			}
+		})
+	}
 }
 
 // TestStackCommandNoConsent prevents backend construction before refusal.
@@ -168,27 +244,31 @@ func TestStackCommandReleaseFailureJSON(t *testing.T) {
 
 // TestStackDecoratedPreviewDoesNotWrite proves the actual invocation lock is bypassed.
 func TestStackDecoratedPreviewDoesNotWrite(t *testing.T) {
-	c, _ := stackTestCommand(t)
-	dir := t.TempDir()
-	t.Chdir(dir)
-	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fixture\nENV=prod\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	root := &cobra.Command{Use: "nself"}
-	parent := &cobra.Command{Use: "update"}
-	root.AddCommand(parent)
-	parent.AddCommand(c)
-	installInvocationDecorator(root)
-	root.SetArgs([]string{"update", "stack", "--dry-run", "--json"})
-	if err := root.Execute(); err != nil {
-		t.Fatal(err)
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 || entries[0].Name() != ".env" {
-		t.Fatalf("preview wrote project files: %v", entries)
+	for _, flag := range []string{"--dry-run", "--plan"} {
+		t.Run(flag, func(t *testing.T) {
+			c, _ := stackTestCommand(t)
+			dir := t.TempDir()
+			t.Chdir(dir)
+			if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fixture\nENV=prod\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			root := &cobra.Command{Use: "nself"}
+			parent := &cobra.Command{Use: "update"}
+			root.AddCommand(parent)
+			parent.AddCommand(c)
+			installInvocationDecorator(root)
+			root.SetArgs([]string{"update", "stack", flag, "--json"})
+			if err := root.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 1 || entries[0].Name() != ".env" {
+				t.Fatalf("preview wrote project files: %v", entries)
+			}
+		})
 	}
 }
 
