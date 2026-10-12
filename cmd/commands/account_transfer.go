@@ -9,6 +9,7 @@ package commands
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -84,9 +85,12 @@ func handleAuthError(err error) error {
 	if err == nil {
 		return nil
 	}
+	if errors.Is(err, auth.ErrNotLoggedIn) {
+		return errAccountRelogin()
+	}
 	if apiErr, ok := err.(*auth.AuthAPIError); ok {
 		switch apiErr.Status {
-		case 401, 403:
+		case 403:
 			return fmt.Errorf("permission denied — your tier does not include this feature")
 		case 429:
 			return fmt.Errorf("rate limited — try again in a moment")

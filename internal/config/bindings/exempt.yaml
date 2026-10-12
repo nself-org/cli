@@ -14,8 +14,8 @@ exempt:
   - {command: config plugins dev, flag: debug, reason: "attaches the dlv debugger; unrelated to the DEBUG key"}
   - {command: db import firebase, flag: project-name, reason: "names generated SQL files; it is not the PROJECT_NAME of the project"}
   - {command: backup list, flag: env, reason: "filters backup rows by environment label; it does not select the local ENV cascade"}
-  - {command: db drift, flag: env, reason: "carries a project directory (usage text: Project directory to read hasura/metadata/**), not an environment name"}
-  - {command: db reconcile, flag: env, reason: "carries a project directory (usage text: Project directory to read hasura/metadata/**), not an environment name"}
+  - {command: db drift, flag: env, reason: "selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml); an existing project directory is still accepted for back-compat; not the local ENV cascade"}
+  - {command: db reconcile, flag: env, reason: "selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml); an existing project directory is still accepted for back-compat; not the local ENV cascade"}
   - {command: db generate, flag: env, reason: "names the target environment of the generated output (local, staging or prod), not the local ENV cascade"}
   - {command: db hasura apply-ref, flag: env, reason: "selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml), not the local ENV cascade"}
   - {command: db hasura metadata apply, flag: env, reason: "selects a deploy inventory target (NSELF_DEPLOY_HOST_<ENV> or control-plane.yaml), not the local ENV cascade"}
