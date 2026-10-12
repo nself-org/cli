@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -42,33 +41,23 @@ func validateConsumes(pluginDir, pluginName string, consumes []string) error {
 	return nil
 }
 
-// compareSemver compares two dotted-numeric version strings (e.g. "1.2.3").
-// It returns -1 if a < b, 0 if a == b, and 1 if a > b. Missing segments are
-// treated as zero, so "1.2" equals "1.2.0".
+// compareSemver compares two version strings with CompareSemver and returns
+// -1, 0 or 1. It never fails: a version CompareSemver cannot parse sorts below
+// any parseable one, and two unparseable versions compare equal (0). Unlike the
+// old lenient parser it reads "v1.2.3" as 1.2.3 (it used to read 0.2.3) and
+// orders a pre-release below its release.
 func compareSemver(a, b string) int {
-	aParts := strings.Split(a, ".")
-	bParts := strings.Split(b, ".")
-
-	max := len(aParts)
-	if len(bParts) > max {
-		max = len(bParts)
+	if c, err := CompareSemver(a, b); err == nil {
+		return c
 	}
-
-	for i := 0; i < max; i++ {
-		av := 0
-		bv := 0
-		if i < len(aParts) {
-			av, _ = strconv.Atoi(aParts[i])
-		}
-		if i < len(bParts) {
-			bv, _ = strconv.Atoi(bParts[i])
-		}
-		if av < bv {
-			return -1
-		}
-		if av > bv {
-			return 1
-		}
+	_, errA := parseSemver(a)
+	_, errB := parseSemver(b)
+	switch {
+	case errA != nil && errB != nil:
+		return 0
+	case errA != nil:
+		return -1
+	default:
+		return 1
 	}
-	return 0
 }
