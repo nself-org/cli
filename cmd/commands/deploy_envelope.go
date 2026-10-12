@@ -159,7 +159,7 @@ func newDeployCheckAccessData(rows []deployAccessRow, allOK bool) deployCheckAcc
 func newSecurityFindings(fs []finding) []securityFinding {
 	out := make([]securityFinding, 0, len(fs))
 	for _, f := range fs {
-		out = append(out, securityFinding{Name: f.Name, OK: f.OK, Detail: f.Detail})
+		out = append(out, securityFinding(f))
 	}
 	return out
 }
