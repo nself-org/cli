@@ -156,6 +156,7 @@ func Snapshot(ctx context.Context, db *pgx.Conn, detection importer.Detection, t
 		return importer.Extracted{}, errs.New("E520", "snapshot commit failed")
 	}
 	if opt.Finish != nil {
+		_ = db.Close(ctx) // the source stays idle while Finish may download for a long time
 		if err = opt.Finish(ctx, writer, &m); err != nil {
 			return importer.Extracted{}, publicSourceError(err, "E520", "source extraction failed")
 		}

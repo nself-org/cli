@@ -75,8 +75,22 @@ listed as exemptions (`compat:<name>`); define them in the target before relying
 
 - Partitioned tables are refused. Foreign keys into Supabase-owned tables other than
   `auth.users` (for example `storage.objects`) are not supported.
-- A bucket name that the object store rejects (uppercase or underscore) stops the import
-  with a clear message; rename the bucket in Supabase first.
+- A bucket name that the object store rejects (uppercase or underscore, for example
+  `user_uploads`) stops the import with a clear message in this version. Supabase cannot
+  rename a bucket, so create a new bucket with a valid name, copy the objects, delete the old
+  bucket and repeat the import. `--skip-storage` does not bypass the check.
+- Policies on Supabase-owned tables (for example `storage.objects` rules) and user triggers on
+  `auth.users` or `storage.objects` (for example a profile trigger) are not moved. They are listed
+  in the report (`untranslated_policies`, and exemptions `trigger:<table>#<name>`); recreate them.
+  A schema with triggers that call Supabase-owned functions (database webhooks:
+  `supabase_functions.http_request`) is refused before anything is written.
+- Users whose email differs only by case, or whose phone repeats, are refused before anything is
+  written (hasura-auth keeps both unique). Soft-deleted users (`deleted_at`) and users with a ban
+  in the future are imported as disabled; a dated ban becomes a plain disabled flag.
+- The shim `auth.uid()` reads the session Hasura sets for mutations. It serves column defaults on
+  insert; use Hasura permissions for access rules.
+- After a failed import the private stage under `.nself/import/<run-id>/` keeps the user hashes
+  (mode 0700); delete it once you no longer need it.
 - A user whose hash is not bcrypt is listed in `users.reset_required`.
 - Bucket settings (public flag, size limit, allowed types) are not carried; set them in the
   target. `auth.identities` is not carried, so a user who only signed in through an OAuth

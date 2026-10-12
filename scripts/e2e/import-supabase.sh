@@ -116,7 +116,8 @@ nself db import supabase --db-url-env SUPA_DB --api-url "$STORAGE_ORIGIN" --serv
 jq -e '.data.result=="pass" and (.data.mismatches|length)==0 and (.data.tables|length)==2 and ([.data.tables[].equal]|all)' "$W/import.json" >/dev/null || fail 'tables'
 jq -e '.data.users.source==3 and .data.users.target==3 and .data.users.equal==true and (.data.users.reset_required|length)==0' "$W/import.json" >/dev/null || fail users
 jq -e '.data.storage.source_objects==3 and .data.storage.target_objects==3 and .data.storage.equal==true' "$W/import.json" >/dev/null || fail storage
-jq -e '(.data.untranslated_policies|length)==1 and .data.untranslated_policies[0].table=="public.announcements"' "$W/import.json" >/dev/null || fail 'untranslated policies'
+jq -e '(.data.untranslated_policies|length)==2 and ([.data.untranslated_policies[].table]|sort)==["public.announcements","storage.objects"]' "$W/import.json" >/dev/null || fail 'untranslated policies'
+jq -e '[.data.exemptions[].id]|index("trigger:auth.users#on_auth_user_created")!=null' "$W/import.json" >/dev/null || fail 'auth trigger not reported'
 jq -e '(.data.compat_shims|index("auth.uid"))!=null and (.data.compat_shims|index("extensions.uuid_generate_v4"))!=null' "$W/import.json" >/dev/null || fail 'compat shims'
 jq -e '.data.hasura.equal==true' "$W/import.json" >/dev/null || fail hasura
 # No policy, no row-level-security flag and no Supabase schema reached the target.
@@ -157,4 +158,4 @@ for f in "$W"/plan.json "$W"/import.json "$W"/import.err "$W"/rerun.json "$W"/re
 done
 test "$count" -ge 4 || fail 'redaction scan read too few files'
 echo "PASS redaction; files read=$count"
-echo 'PASS Linux Supabase import: snapshot without policies, bcrypt users sign in, 3 objects, 1 untranslated policy, shims, auth.uid() default'
+echo 'PASS Linux Supabase import: snapshot without policies, bcrypt users sign in, 3 objects, 2 listed policies, shims, auth.uid() default'

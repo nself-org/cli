@@ -6,6 +6,7 @@ package supabase
 // objects and source counts. Constraints: bucket names must be valid for the target store.
 import (
 	"context"
+	"io"
 	"regexp"
 	"sort"
 
@@ -15,6 +16,9 @@ import (
 )
 
 // s3Bucket is the object store's bucket rule (internal/objstore).
+// maxObjectBytes is the largest single object the target store takes (S3 single PUT limit).
+const maxObjectBytes = 5 << 30
+
 var s3Bucket = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
 
 func (r *run) catalogCounts(ctx context.Context, tx pgx.Tx, m *portable.Manifest) error {
@@ -24,6 +28,7 @@ func (r *run) catalogCounts(ctx context.Context, tx pgx.Tx, m *portable.Manifest
 		return fail
 	}
 	r.catalog = map[string]int64{}
+	r.names = map[string]map[string]int64{}
 	if !has {
 		return nil
 	}
@@ -46,6 +51,27 @@ func (r *run) catalogCounts(ctx context.Context, tx pgx.Tx, m *portable.Manifest
 		m.SourceCounts = append(m.SourceCounts, portable.SourceCount{Kind: "objects", ID: bucket, Count: n, Method: "count(*) storage.objects per bucket"})
 	}
 	if rows.Err() != nil {
+		return fail
+	}
+	rows.Close()
+	// The exact key set and sizes of the snapshot: the listing and the bytes must match them.
+	names, err := tx.Query(ctx, `SELECT bucket_id::text, name::text, coalesce((metadata->>'size')::bigint, -1) FROM storage.objects`)
+	if err != nil {
+		return fail
+	}
+	defer names.Close()
+	for names.Next() {
+		var bucket, name string
+		var size int64
+		if names.Scan(&bucket, &name, &size) != nil {
+			return fail
+		}
+		if r.names[bucket] == nil {
+			r.names[bucket] = map[string]int64{}
+		}
+		r.names[bucket][name] = size
+	}
+	if names.Err() != nil {
 		return fail
 	}
 	if r.total > 0 {
@@ -75,12 +101,17 @@ func (r *run) finish(ctx context.Context, w *portable.Writer, m *portable.Manife
 			}
 			continue
 		}
-		keys, err := r.api.keys(ctx, bucket)
+		keys, err := r.api.keys(ctx, bucket, r.catalog[bucket])
 		if err != nil {
 			return err
 		}
 		if int64(len(keys)) != r.catalog[bucket] {
 			return errs.New("E520", "storage listing differs from the storage catalog")
+		}
+		for _, key := range keys {
+			if _, ok := r.names[bucket][key]; !ok {
+				return errs.New("E520", "storage listing differs from the storage catalog")
+			}
 		}
 		b := portable.Bucket{Name: bucket, Objects: len(keys)}
 		for _, key := range keys {
@@ -92,10 +123,18 @@ func (r *run) finish(ctx context.Context, w *portable.Writer, m *portable.Manife
 			if err != nil {
 				return err
 			}
-			f, err := w.WriteFile(member, body)
+			// Never read past the catalog size (or the single-object limit when it is unknown).
+			limit := r.names[bucket][key]
+			if limit < 0 {
+				limit = maxObjectBytes
+			}
+			f, err := w.WriteFile(member, io.LimitReader(body, limit+1))
 			_ = body.Close()
 			if err != nil {
 				return err
+			}
+			if want := r.names[bucket][key]; (want >= 0 && f.Bytes != want) || f.Bytes > maxObjectBytes {
+				return errs.New("E520", "storage object does not match the storage catalog")
 			}
 			o, err := portable.NewObject(bucket, key, f)
 			if err != nil {

@@ -61,7 +61,7 @@ func TestAPIListsAndStreamsObjects(t *testing.T) {
 	if err != nil || strings.Join(buckets, ",") != "avatars,docs" {
 		t.Fatalf("buckets %v %v", buckets, err)
 	}
-	keys, err := a.keys(ctx, "avatars")
+	keys, err := a.keys(ctx, "avatars", 10)
 	if err != nil || strings.Join(keys, ",") != "a.png,dir/b.png" {
 		t.Fatalf("keys %v %v", keys, err)
 	}
@@ -109,7 +109,7 @@ func finishWith(t *testing.T, catalog map[string]int64) (portable.Manifest, erro
 	var seen []string
 	srv := storageServer(t, &seen)
 	a, _ := newAPI(srv.URL, fixtureKey)
-	r := &run{api: a, catalog: catalog}
+	r := &run{api: a, catalog: catalog, names: map[string]map[string]int64{"avatars": {"a.png": 3, "dir/b.png": 4}}}
 	for _, n := range catalog {
 		r.total += n
 	}
@@ -155,13 +155,63 @@ func TestKeysStopsAtEmptyNamesAndRunawayDepth(t *testing.T) {
 	}))
 	defer srv.Close()
 	a, _ := newAPI(srv.URL, fixtureKey)
-	if _, err := a.keys(context.Background(), "avatars"); err == nil {
+	if _, err := a.keys(context.Background(), "avatars", 1000); err == nil {
 		t.Fatal("endless folders accepted")
 	}
 	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`[{"name":"","id":null}]`)) }))
 	defer empty.Close()
 	b, _ := newAPI(empty.URL, fixtureKey)
-	if _, err := b.keys(context.Background(), "avatars"); err == nil {
+	if _, err := b.keys(context.Background(), "avatars", 1000); err == nil {
 		t.Fatal("empty folder name accepted")
+	}
+}
+
+func TestKeysRejectsDotSegmentsAndRunawayBreadth(t *testing.T) {
+	dots := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`[{"name":"..","id":"1"}]`)) }))
+	defer dots.Close()
+	a, _ := newAPI(dots.URL, fixtureKey)
+	if _, err := a.keys(context.Background(), "avatars", 10); err == nil {
+		t.Fatal("dot segment accepted")
+	}
+	// A server that ignores offset returns the same full page forever; the catalog count bounds it.
+	page := "["
+	for i := 0; i < listPage; i++ {
+		if i > 0 {
+			page += ","
+		}
+		page += `{"name":"k` + string(rune('a'+i%26)) + string(rune('a'+i/26)) + `","id":"1"}`
+	}
+	page += "]"
+	loop := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(page)) }))
+	defer loop.Close()
+	b, _ := newAPI(loop.URL, fixtureKey)
+	if _, err := b.keys(context.Background(), "avatars", 250); err == nil {
+		t.Fatal("endless pages accepted")
+	}
+}
+
+func TestFinishChecksKeySetAndSizes(t *testing.T) {
+	var seen []string
+	srv := storageServer(t, &seen)
+	a, _ := newAPI(srv.URL, fixtureKey)
+	run := func(names map[string]int64) error {
+		r := &run{api: a, catalog: map[string]int64{"avatars": 2}, total: 2, names: map[string]map[string]int64{"avatars": names}}
+		w, err := portable.NewWriter(filepath.Join(t.TempDir(), "stage"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.finish(context.Background(), w, &portable.Manifest{})
+	}
+	if err := run(map[string]int64{"a.png": 3, "dir/b.png": 4}); err != nil {
+		t.Fatalf("matching catalog refused: %v", err)
+	}
+	if err := run(map[string]int64{"a.png": 3, "other.png": 4}); err == nil || !strings.Contains(err.Error(), "differs") {
+		t.Fatalf("a different key set must stop the import: %v", err)
+	}
+	if err := run(map[string]int64{"a.png": 3, "dir/b.png": 99}); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("a different size must stop the import: %v", err)
+	}
+	if err := run(map[string]int64{"a.png": -1, "dir/b.png": -1}); err != nil {
+		t.Fatalf("unknown sizes are accepted: %v", err)
 	}
 }

@@ -10,17 +10,18 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nself-org/cli/internal/errs"
 	"github.com/nself-org/cli/internal/portable"
 )
 
 // authUID reads the signed-in user's id from the session Hasura sets on every request.
-const authUID = `CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT (nullif(current_setting('hasura.user', true), '')::json->>'x-hasura-user-id')::uuid $$;
+const authUID = `CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE SET search_path = pg_catalog AS $$ SELECT (nullif(current_setting('hasura.user', true), '')::json->>'x-hasura-user-id')::uuid $$;
 `
 
 // extensionShims are the extensions.* functions with a plain-Postgres equivalent.
 var extensionShims = map[string]string{
-	"uuid_generate_v4": "CREATE OR REPLACE FUNCTION extensions.uuid_generate_v4() RETURNS uuid LANGUAGE sql VOLATILE AS $$ SELECT gen_random_uuid() $$;\n",
-	"gen_random_uuid":  "CREATE OR REPLACE FUNCTION extensions.gen_random_uuid() RETURNS uuid LANGUAGE sql VOLATILE AS $$ SELECT gen_random_uuid() $$;\n",
+	"uuid_generate_v4": "CREATE OR REPLACE FUNCTION extensions.uuid_generate_v4() RETURNS uuid LANGUAGE sql VOLATILE SET search_path = pg_catalog AS $$ SELECT pg_catalog.gen_random_uuid() $$;\n",
+	"gen_random_uuid":  "CREATE OR REPLACE FUNCTION extensions.gen_random_uuid() RETURNS uuid LANGUAGE sql VOLATILE SET search_path = pg_catalog AS $$ SELECT pg_catalog.gen_random_uuid() $$;\n",
 }
 
 var (
@@ -28,7 +29,10 @@ var (
 	// equivalent exists, otherwise listed.
 	extRef    = regexp.MustCompile(`(?i)\bextensions\.([a-z_][a-z0-9_]*)`)
 	authUIDRe = regexp.MustCompile(`(?i)\bauth\.uid\s*\(`)
-	authOther = regexp.MustCompile(`(?i)\bauth\.(role|jwt|email)\s*\(`)
+	// A trigger that calls a function of a schema the import does not move would stop the restore
+	// half way, so it is refused before anything is written.
+	foreignTrigger = regexp.MustCompile(`(?i)EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+"?(supabase_functions|net|vault|pgsodium|realtime|graphql|graphql_public|storage|auth)"?\.`)
+	authOther      = regexp.MustCompile(`(?i)\bauth\.(role|jwt|email)\s*\(`)
 )
 
 // Compat is the generated shim file and what it covers.
@@ -77,4 +81,13 @@ func BuildCompat(schemaSQL string) Compat {
 	sort.Slice(out.Exemptions, func(i, j int) bool { return out.Exemptions[i].ID < out.Exemptions[j].ID })
 	out.SQL = body.String()
 	return out
+}
+
+// CheckForeignTriggers refuses a schema whose triggers call functions of Supabase-owned schemas
+// (for example database webhooks: supabase_functions.http_request).
+func CheckForeignTriggers(schemaSQL string) error {
+	if m := foreignTrigger.FindStringSubmatch(schemaSQL); m != nil {
+		return errs.New("E520", "source has triggers that call Supabase-owned functions; drop or replace them in the source first")
+	}
+	return nil
 }

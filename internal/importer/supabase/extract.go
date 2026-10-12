@@ -27,6 +27,7 @@ type run struct {
 	api          *api
 	catalog      map[string]int64 // objects per bucket in storage.objects
 	total        int64
+	names        map[string]map[string]int64 // bucket -> key -> size (-1 when unknown)
 	untranslated []importer.Policy
 }
 
@@ -103,8 +104,12 @@ func (r *run) policies(ctx context.Context, tx pgx.Tx, w *portable.Writer, m *po
 	if err != nil {
 		return err
 	}
-	m.Exemptions = append(m.Exemptions, res.Exemptions...)
-	r.untranslated = res.Untranslated
+	foreignPolicies, foreignExemptions, err := readForeign(ctx, tx, m)
+	if err != nil {
+		return err
+	}
+	m.Exemptions = append(append(m.Exemptions, res.Exemptions...), foreignExemptions...)
+	r.untranslated = append(res.Untranslated, foreignPolicies...)
 	if res.Doc != nil {
 		if _, err = w.WriteFile("hasura/metadata.json", bytes.NewReader(res.Doc)); err != nil {
 			return err
@@ -126,6 +131,9 @@ func (r *run) compat(w *portable.Writer, m *portable.Manifest, work string) erro
 	defer func() { _ = f.Close() }()
 	b, err := io.ReadAll(io.LimitReader(f, 256<<20))
 	if err != nil {
+		return err
+	}
+	if err = CheckForeignTriggers(string(b)); err != nil {
 		return err
 	}
 	c := BuildCompat(string(b))

@@ -39,3 +39,12 @@ func TestBuildCompatListsExtensionTypesWithoutShim(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 }
+
+func TestCheckForeignTriggersRefusesWebhooks(t *testing.T) {
+	if err := CheckForeignTriggers(`CREATE TRIGGER hook AFTER INSERT ON public.t FOR EACH ROW EXECUTE FUNCTION supabase_functions.http_request('https://x');`); err == nil {
+		t.Fatal("webhook trigger accepted")
+	}
+	if err := CheckForeignTriggers(`CREATE TRIGGER touch BEFORE UPDATE ON public.t FOR EACH ROW EXECUTE FUNCTION public.touch();`); err != nil {
+		t.Fatalf("local trigger refused: %v", err)
+	}
+}

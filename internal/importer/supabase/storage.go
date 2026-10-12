@@ -116,7 +116,7 @@ func (a *api) buckets(ctx context.Context) ([]string, error) {
 
 // keys returns every object key in a bucket, descending into folders. Folder entries have a
 // null id in the listing.
-func (a *api) keys(ctx context.Context, bucket string) ([]string, error) {
+func (a *api) keys(ctx context.Context, bucket string, limit int64) ([]string, error) {
 	var out []string
 	var walk func(prefix string, depth int) error
 	walk = func(prefix string, depth int) error {
@@ -133,7 +133,7 @@ func (a *api) keys(ctx context.Context, bucket string) ([]string, error) {
 				return err
 			}
 			for _, r := range rows {
-				if r.Name == "" || strings.Contains(r.Name, "/") {
+				if r.Name == "" || r.Name == "." || r.Name == ".." || strings.Contains(r.Name, "/") {
 					return apiErr()
 				}
 				if r.ID == nil {
@@ -143,6 +143,9 @@ func (a *api) keys(ctx context.Context, bucket string) ([]string, error) {
 					continue
 				}
 				out = append(out, prefix+r.Name)
+				if int64(len(out)) > limit {
+					return apiErr()
+				}
 			}
 			if len(rows) < listPage {
 				return nil
