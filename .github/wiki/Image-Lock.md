@@ -120,10 +120,12 @@ Treat the catalog migrations as one way: a Hasura release that raises the catalo
 
 1. `nself stop hasura`.
 2. `nself backup restore <id> --only pg --yes`. If it fails on dependencies of the newer catalog (E207), run `nself db reset --yes` first and repeat the restore (debt D-0663).
-3. Put the saved `nself.lock.yaml` back (the v2.44.0 pin), or remove `HASURA_VERSION=v2.51.0` from the env.
+3. Put the saved `nself.lock.yaml` back (the v2.44.0 pin) together with the database backup. On a project with a lock this is the route: the build that applied `HASURA_VERSION=v2.51.0` rewrote the lock pin, so removing the variable from the env alone leaves the lock and the compose file on v2.51.0. Only a project without `nself.lock.yaml` can go back by removing `HASURA_VERSION=v2.51.0` from the env.
 4. `nself build`, then `nself start`.
 
 Pinning back without the restore is unsupported: the CLI does not check the catalog version, so a future pair of releases may refuse to start. For this pair the smoke observed that v2.44.0 starts on a v2.51.0 database (catalog version 48 on both) and passes every functional check, but rows written on v2.51.0 stay in the database and nothing restores the pre-switch state. The smoke proves both paths on Linux (`NSELF_V15=1 bash scripts/ci/hasura-upgrade-smoke.sh`; without `NSELF_V15` it runs the same functional checks on v2.44.0 as the baseline; it needs Docker, curl, python3, openssl and free ports 80, 443, 5432 and 8080).
+
+Caution: with no `nself.lock.yaml` and no `docker-compose.yml` (for example after `nself clean`), a v1.5 build has no pin to keep and starts Hasura on v2.51.0 with no notice. Take a verified backup before building an existing project with a v1.5 binary (tracked as debt).
 
 ## How pins move
 

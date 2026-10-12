@@ -28,7 +28,7 @@ images:
   - {name: functions, role: optional, repository: docker.io/nhost/functions, version: latest, legacy_ref: "nhost/functions:latest", license: MIT, source: "https://github.com/nhost/functions", platforms: [linux/amd64, linux/arm64]}
   - {name: grafana, role: monitoring, repository: docker.io/grafana/grafana, version: 11.1.0, legacy_ref: "grafana/grafana:11.1.0", license: AGPL-3.0, source: "https://github.com/grafana/grafana", platforms: [linux/amd64, linux/arm64]}
   # hasura: v1.4 renders hasura-v14 (v2.44.0), v1.5 renders hasura (v2.51.0); explicit HASURA_VERSION wins (EPIC D17, P7-LIVE-23).
-  # The v2.51 catalog migrations are one-way: rolling back means restoring the pre-update backup, then pinning back.
+  # The metadata catalog version is 48 on both releases, yet the move is treated as one way: rollback = restore the pre-update backup, then pin back.
   - {name: hasura, role: core, repository: docker.io/hasura/graphql-engine, version: v2.51.0, legacy_ref: "hasura/graphql-engine:v2.51.0", license: Apache-2.0, source: "https://github.com/hasura/graphql-engine", platforms: [linux/amd64, linux/arm64]}
   - {name: hasura-v14, role: core, repository: docker.io/hasura/graphql-engine, version: v2.44.0, legacy_ref: "hasura/graphql-engine:v2.44.0", license: Apache-2.0, source: "https://github.com/hasura/graphql-engine", platforms: [linux/amd64, linux/arm64]}
   - {name: lego, role: tool, repository: docker.io/goacme/lego, version: v4.35.2, legacy_ref: "goacme/lego:v4.35.2", license: MIT, source: "https://github.com/go-acme/lego", platforms: [linux/amd64, linux/arm64]}
