@@ -794,6 +794,10 @@
       "id": "urn:nself:cli:schema:control-plane:v2"
     },
     {
+      "path": "deploy-progress.v1.schema.json",
+      "id": "urn:nself:cli:schema:deploy-progress:v1"
+    },
+    {
       "path": "deploy-targets.v1.schema.json",
       "id": "urn:nself:cli:schema:deploy-targets:v1"
     },

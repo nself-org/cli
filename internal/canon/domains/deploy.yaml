@@ -2,7 +2,7 @@
 # Keys are canonical (v1.5) command paths without the leading "nself ", sorted. Rules: internal/canon/domains.go.
 schema_version: 1
 commands:
-  deploy: {canon: core, side_effect: remote, json: legacy, flags: {follow: {output: stream}}}
+  deploy: {canon: core, side_effect: remote, json: legacy, flags: {follow: {output: stream}, stream: {output: stream}}}
   # cmd/commands/access.go:35 RunE path changes no persistent state (prints/reads only)
   deploy access: {side_effect: read}
   deploy access grant: {side_effect: remote}
@@ -19,7 +19,8 @@ commands:
   # cmd/commands/ops.go:81 builds locally then deploys to the configured remote ops host
   deploy ops: {side_effect: remote, flags: {follow: {output: stream}}}
   # The v1.5 envelope is derived from its registered Go type; dry-run only reads inventory.
-  deploy promote: {side_effect: remote}
+  # --stream prints NDJSON progress lines (contract:cli.deploy-progress v1); plain --json stays one document.
+  deploy promote: {side_effect: remote, flags: {stream: {output: stream}}}
   # cmd/commands/promote.go:23 promotes environment state to the selected target
   deploy promote-env: {side_effect: remote, json: legacy}
   deploy promote-env rollback: {side_effect: destructive}

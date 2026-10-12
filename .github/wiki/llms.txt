@@ -286,6 +286,7 @@ Flags:
 - `--skip-canary` (default false) — Skip canary phase and flip directly to 100% green
 - `--skip-health` (default false) — Skip post-deploy health checks
 - `--strategy` (default rolling) — Deploy strategy: rolling|blue-green|canary|preview
+- `--stream` (default false) — Print NDJSON progress events and a final result line (requires --json)
 - `--yes` (default false) — Skip prod confirmation prompt (alias for --force)
 
 Full page: [[cmd-deploy]]

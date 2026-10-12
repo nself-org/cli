@@ -101,23 +101,21 @@ func rollingRestart(ctx context.Context, plan rollingPlan) ([]deployStep, error)
 			// config --services and config --format json read the same manifest; a
 			// miss means they disagree, and a guessed gate could skip a wait.
 			err := fmt.Errorf("service %s is in the restart order but missing from the resolved compose config", svc)
-			return []deployStep{{Name: "Restart " + svc, Status: "failed"}}, errs.Wrap("E252", "rolling restart: "+err.Error(), err)
+			return addStep(ctx, nil, deployStep{Name: "Restart " + svc, Status: "failed"}), errs.Wrap("E252", "rolling restart: "+err.Error(), err)
 		}
 	}
 	steps := []deployStep{}
 	var gated []gatedService
 	for _, svc := range plan.order {
 		stepName := fmt.Sprintf("Restart %s", svc)
-		if !plan.jsonOut {
-			fmt.Printf("  [running] Restart %s (sequenced rolling)\n", svc)
-		}
+		announce(ctx, plan.jsonOut, stepName, fmt.Sprintf("  [running] Restart %s (sequenced rolling)", svc))
 		spec := byName[svc]
 		marks, err := plan.compose.StartMarks(ctx, plan.workdir, svc)
 		if err != nil {
-			return append(steps, deployStep{Name: stepName, Status: "failed"}), gateError(svc, markErr(ctx, err))
+			return addStep(ctx, steps, deployStep{Name: stepName, Status: "failed"}), gateError(svc, markErr(ctx, err))
 		}
 		if err := plan.compose.ComposeUpNoDeps(ctx, plan.workdir, svc); err != nil {
-			steps = append(steps, deployStep{Name: stepName, Status: "failed"})
+			steps = addStep(ctx, steps, deployStep{Name: stepName, Status: "failed"})
 			return steps, fmt.Errorf("rolling restart: service %s restart failed: %w\nRun 'nself logs %s' for details", svc, err, svc)
 		}
 		if !plan.jsonOut {
@@ -132,9 +130,9 @@ func rollingRestart(ctx context.Context, plan rollingPlan) ([]deployStep, error)
 			return cs, err
 		}
 		if err := docker.HealthGate(ctx, spec, states, plan.clock); err != nil {
-			return append(steps, deployStep{Name: stepName, Status: gateFailStatus(err)}), gateError(svc, err)
+			return addStep(ctx, steps, deployStep{Name: stepName, Status: gateFailStatus(err)}), gateError(svc, err)
 		}
-		steps = append(steps, deployStep{Name: stepName, Status: "done"})
+		steps = addStep(ctx, steps, deployStep{Name: stepName, Status: "done"})
 		gated = append(gated, gatedService{name: svc, step: len(steps) - 1, seen: seen})
 		if !plan.jsonOut {
 			fmt.Printf("  [done] %s ready\n", svc)
@@ -167,6 +165,7 @@ func recheckGated(ctx context.Context, plan rollingPlan, steps []deployStep, gat
 		}
 		if err != nil {
 			steps[g.step].Status = "failed"
+			streamStepFailed(ctx, steps[g.step].Name, "failed the final re-check: "+err.Error())
 			return steps, gateError(g.name, err)
 		}
 	}
@@ -225,9 +224,7 @@ func gateError(svc string, err error) error {
 // runDeployHealthCheck calls nself doctor and gates the deploy result.
 // Returns an error with the failed service name when any service is unhealthy.
 func runDeployHealthCheck(ctx context.Context, workdir string, jsonOut bool) (deployStep, error) {
-	if !jsonOut {
-		fmt.Println("  [running] Health checks (calling nself health)")
-	}
+	announce(ctx, jsonOut, "Health checks", "  [running] Health checks (calling nself health)")
 	bin, err := os.Executable()
 	if err != nil || bin == "" {
 		bin, _ = exec.LookPath("nself")

@@ -166,6 +166,10 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 	if dryRun {
 		prober := newDeployProber(workdir)
 		statuses := controlplane.Resolve(inv, prober)
+		if streaming(cmd.Context()) {
+			streamTopology(cmd.Context(), statuses)
+			return true, nil
+		}
 		if !jsonOut {
 			fmt.Printf("  [dry-run] Topology plan for target %q:\n", target)
 			for _, ts := range statuses {
@@ -203,9 +207,12 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 	// Either failing stops here, before any probe or remote change.
 	envFile, envName := "", ""
 	if target != "local" {
+		streamStart(cmd.Context(), "Build images")
 		if _, buildErr := deployBuildStepFn(cmd.Context(), workdir, true, nil); buildErr != nil {
+			streamStepFailed(cmd.Context(), "Build images", buildErr.Error())
 			return true, fmt.Errorf("deploy: remote build failed, nothing was sent: %w", buildErr)
 		}
+		streamStepDone(cmd.Context(), "Build images")
 		envName = deployCascadeEnv(workdir, target)
 		snap, cleanup, snapErr := resolveDeployEnvSnapshot(workdir, envName)
 		if snapErr != nil {
@@ -223,7 +230,9 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 		ui.CommandHeader(fmt.Sprintf("nself deploy %s (pipeline)", target), fmt.Sprintf("strategy=%s server=%s", strategy, serverFilter))
 	}
 
+	streamStart(cmd.Context(), "Deploy pipeline")
 	result, pipeErr := runDeployPipeline(cmd, workdir, inv, target, prober, composePath, envFile, envName, jsonOut)
+	streamServers(cmd.Context(), result, pipeErr)
 	if pipeErr != nil {
 		return true, fmt.Errorf("deploy pipeline: %w", pipeErr)
 	}
@@ -232,7 +241,7 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 	if result.PrimarySkipped {
 		if !jsonOut {
 			ui.Warn("Primary server was skipped (read-only capability) — deploy incomplete")
-		} else {
+		} else if !streaming(cmd.Context()) {
 			b, _ := json.MarshalIndent(result.Servers, "", "  ")
 			fmt.Println(string(b))
 		}
@@ -240,7 +249,7 @@ func runDeployControlPlanePipeline(cmd *cobra.Command, workdir, target, strategy
 	}
 
 	failedErr := failedServersError(result)
-	if jsonOut {
+	if jsonOut && !streaming(cmd.Context()) {
 		b, _ := json.MarshalIndent(result.Servers, "", "  ")
 		fmt.Println(string(b))
 	} else {

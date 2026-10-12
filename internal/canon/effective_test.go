@@ -167,6 +167,19 @@ func TestEffectivePresplitEquivalence(t *testing.T) {
 				case "clean":
 					got.Confirm, got.Flags = nil, nil
 					want.SideEffect = SideEffectWrite
+				case "deploy", "deploy promote":
+					// P7-DEPL-17: both rows carry `stream: {output: stream}` (the NDJSON
+					// progress stream, contract:cli.deploy-progress v1), a flag the frozen
+					// pre-split table lacks. Compare the rest of the entry unchanged.
+					rest := map[string]FlagOverride{}
+					for name, f := range got.Flags {
+						if name != "stream" {
+							rest[name] = f
+						}
+					}
+					if got.Flags = rest; len(rest) == 0 {
+						got.Flags = want.Flags
+					}
 				case "plugin info":
 					// P7-PLUG-17 (lead ruling 2026-10-10): `config plugins info`
 					// is json legacy, so `plugin info <n> --json` is not refused
