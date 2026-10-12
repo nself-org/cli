@@ -602,12 +602,8 @@ service, or place its context on the host.
 
 - Only generated `nginx/conf.d/<name>.conf` files ship from `conf.d` (see step 6); `conf.d-<env>/`,
   nested paths and unmarked files never do. `api-docs.conf` is a site conf under `nginx/sites`.
-- A project fronted by an external nginx (`NGINX_FRONTED_BY`) is built in the scratch dir under a
-  fronting-stack mapping (`.nself/deploy-build/<env>/<stack>/backend`), and the fronting stack's
-  generated `nginx/sites` are staged for `path.Dir(remote_path)`. The apply cannot ship them yet, so
-  it stops with `E485` after listing them (`[staged, not shipped] ...`); nothing is sent. Deploy such
-  a project with compat v1.4 (unset `NSELF_V15`) meanwhile. A `remote_path` that is not directly
-  under a directory named like `NGINX_FRONTED_BY` is refused with `E485` as well.
+- A `remote_path` that is not directly under a directory named like `NGINX_FRONTED_BY` is refused
+  with `E485` (see "Projects fronted by another stack's nginx" below).
 - A deploy refused at `E403` (unconfirmed stateful recreate) is restored, but the images the pull
   fetched stay on the host.
 - A symlinked directory under the project dir is followed only when its real path is inside the
@@ -675,6 +671,44 @@ and skips file restoration. An interrupted apply without matching tar evidence
 refuses with `E485` and names the verified backup for operator recovery.
 
 All ssh and rsync commands use the strict host-key policy; an unknown key is `E487`.
+
+### Projects fronted by another stack's nginx (`NGINX_FRONTED_BY`)
+
+A project that sets `NGINX_FRONTED_BY=<stack>` has no nginx service of its own. The host layout is
+`<dir>/<stack>/<project>`: `remote_path` sits directly under the fronting stack's directory (the
+front root, `path.Dir(remote_path)`). The build writes the per-service `nginx/sites/*.conf` there,
+and the v1.5 deploy ships them as a second artifact root with the same guards as the project root.
+
+- **Target snapshot.** Besides the project's own `ssl/certificates`, the snapshot lists the front
+  root's `ssl/certificates` (directory names and which PEM files exist, never a key), and the scratch
+  build's stub ssl tree for the fronting stack mirrors it. The apply checks it did not change.
+- **Container rule (before the lock).** The deploy finds the fronting nginx by compose labels:
+  exactly one running container with `com.docker.compose.service=nginx` whose
+  `com.docker.compose.project.working_dir` is the front root (as given or its real path). Zero or
+  several is `E485`, naming every running nginx-service container with its working_dir label and the
+  fix; nothing is sent. The container must bind-mount `<front>/nginx` or `<front>/nginx/sites`
+  (else `E485`). The container ID is kept, never a guessed name, and the deploy only runs
+  `docker exec <id> nginx -t` and `docker exec <id> nginx -s reload`: nothing on the fronting stack
+  is restarted or recreated, and its `.env`, compose files and `ssl/` are never read, archived,
+  copied or removed. The container is re-checked running before `nginx -t`, before the reload and
+  before the rollback reload.
+- **Guards (before the lock).** The real front root must be the parent of the real `remote_path`,
+  its `nginx/` dirs must resolve inside it, and a `nginx/sites/<name>.conf` the deploy ships is never
+  written over an unmarked file the last recorded deploy did not ship (`E485`).
+- **Front tar.** Right after the project's tar, `<remote_path>/.nself/backups/pre-deploy-<id>-front.tar.gz`
+  holds the shipped front paths that already exist (and the files the previous deploy shipped that
+  this one may prune). Only `nginx/sites/<name>.conf` paths are ever in it.
+- **Sync and prune.** Right after the project sync, the front files are copied without `--delete`.
+  A front file is pruned only when this project's previous deploy shipped it (recorded in
+  `deploy.json`) and it carries the generated marker; another project's sites are never touched.
+- **Test and reload.** Step 7 runs `docker exec <id> nginx -t` in the live fronting container (it
+  tests what will actually be loaded) instead of the throwaway container; step 9 reloads it with
+  `nginx -s reload`. A failure before the first `up`, including `nginx -t` or a container that
+  stopped, restores both roots in place (changed files back, created files removed).
+- **Rollback.** `deploy.json` records, per host, `front_tars`, `front_changed` and `front_absent`.
+  `nself deploy rollback` resolves the container first (same `E485` rules), restores the front
+  files in place from the front tar, then runs `nginx -t` and `nginx -s reload` there. A record
+  without these fields rolls back as before.
 
 ### Rollback in v1.5 mode
 

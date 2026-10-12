@@ -15,6 +15,10 @@ package deploy
 //   8 nginx -t   9 save image ids, pull   10 recreate preview + stateful confirm (E403)
 //   11 per service in compose order: up -d --no-deps, health gate (E250/E251)
 //   12 final regression recheck, nginx reload   13 hasura metadata apply.
+// A fronted project (Set.Front, D-0425) adds its fronting stack's nginx/sites as a
+// second root (apply_remote_front.go): guards and container lookup before the lock,
+// its own tar after step 4, its sync right after step 6, `docker exec <id> nginx -t`
+// as step 8 and the reload in step 12; a failure before the first `up` restores both.
 // A failure in steps 6-10 happens before any container is touched, so the
 // pre-deploy tar is restored in place (files only, plus removal of what the
 // deploy created), image tags the pull moved point back at their old images,

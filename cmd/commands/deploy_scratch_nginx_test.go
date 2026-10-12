@@ -198,12 +198,15 @@ func frontedStub(t *testing.T, ran *int, ranIn *string, extra func(front string)
 	})
 }
 
-func TestFrontedScratchLayoutAndFailClosedStage(t *testing.T) {
+func TestFrontedScratchStagesFront(t *testing.T) {
 	proj := frontedProject(t)
 	var ran int
 	var ranIn string
 	useScratchBuild(t, frontedStub(t, &ran, &ranIn, nil))
-	snap := deploy.TargetSnapshot{SSL: []deploy.CertDir{{Name: "api-example-com", Fullchain: true}}}
+	snap := deploy.TargetSnapshot{
+		SSL:      []deploy.CertDir{{Name: "project-example-com", Fullchain: true}},
+		FrontSSL: []deploy.CertDir{{Name: "api-example-com", Fullchain: true, Privkey: true}},
+	}
 	scratch, err := runScratchBuild(context.Background(), proj, "staging", snap)
 	if err != nil {
 		t.Fatal(err)
@@ -212,10 +215,18 @@ func TestFrontedScratchLayoutAndFailClosedStage(t *testing.T) {
 	if want := filepath.Join(front, "backend"); scratch != want || ranIn != want {
 		t.Fatalf("scratch %q, build ran in %q, want %q", scratch, ranIn, want)
 	}
-	for _, stub := range []string{filepath.Join(scratch, "ssl"), filepath.Join(front, "ssl")} {
-		if _, err := os.Stat(filepath.Join(stub, "certificates", "api-example-com", "fullchain.pem")); err != nil {
+	// The project's stub mirrors the project's certs; the fronting stack's mirrors
+	// <front>/ssl/certificates from the snapshot (FrontSSL), PEM presence included.
+	for stub, c := range map[string]string{filepath.Join(scratch, "ssl"): "project-example-com", filepath.Join(front, "ssl"): "api-example-com"} {
+		if _, err := os.Stat(filepath.Join(stub, "certificates", c, "fullchain.pem")); err != nil {
 			t.Errorf("ssl stub missing in %s: %v", stub, err)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(front, "ssl", "certificates", "api-example-com", "privkey.pem")); err != nil {
+		t.Errorf("the front stub lost the privkey.pem presence: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(front, "ssl", "certificates", "project-example-com")); err == nil {
+		t.Error("the front stub mirrors the project's certs instead of the fronting stack's")
 	}
 	if _, err := os.Stat(filepath.Join(proj, ".nself", "deploy-build", "staging", "docker-compose.yml")); err == nil {
 		t.Error("the flat layout was used for a fronted project")
@@ -232,18 +243,14 @@ func TestFrontedScratchLayoutAndFailClosedStage(t *testing.T) {
 	p := v15Params{workdir: proj, target: "staging", srv: controlplane.Server{Name: "s1", RemotePath: "/srv/nself-web/backend"}}
 	var set deploy.ArtifactSet
 	out := stdoutOf(t, func() { set, err = stageScratch(p, scratch) })
-	var ce *errs.CLIError
-	if !errors.As(err, &ce) || ce.Code != "E485" || !strings.Contains(err.Error(), "NGINX_FRONTED_BY=nself-web") || !strings.Contains(err.Error(), "nothing was sent") || ce.Fix == "" {
-		t.Fatalf("err = %v (fix %q), want an E485 refusal with a fix", err, ce)
+	if err != nil {
+		t.Fatalf("a fronted project must stage, not be refused: %v", err)
 	}
-	if len(set.Files) != 0 {
-		t.Errorf("a refused stage returned files: %v", set.Files)
+	if set.Front == nil || set.Front.RemotePath != "/srv/nself-web" || strings.Join(set.Front.Files, ",") != "nginx/sites/api.conf" {
+		t.Fatalf("front root = %+v, want /srv/nself-web with nginx/sites/api.conf only", set.Front)
 	}
-	if want := "  [staged, not shipped] /srv/nself-web/nginx/sites/api.conf\n"; !strings.Contains(out, want) {
-		t.Errorf("no %q in:\n%s", want, out)
-	}
-	if strings.Contains(out, "other-stack.conf") {
-		t.Errorf("a file the build did not generate was staged:\n%s", out)
+	if strings.Contains(out, "[staged, not shipped]") || strings.Contains(out, "other-stack.conf") {
+		t.Errorf("unexpected report:\n%s", out)
 	}
 	staged := filepath.Join(scratch, ".nself", "deploy-stage-front", "nginx", "sites", "api.conf")
 	b, rerr := os.ReadFile(staged)
