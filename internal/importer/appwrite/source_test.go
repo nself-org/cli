@@ -206,7 +206,7 @@ func TestDetectNeverEchoesKey(t *testing.T) {
 	}
 	t.Setenv("FAKE_APPWRITE_KEY", fakeKey)
 	d, err := (Source{}).Detect(context.Background(), in)
-	if err != nil || d.Kind != "appwrite" || d.Version != "1.5.10" || d.SourceUsers != 4 || len(d.Schemas) != 1 {
+	if err != nil || d.Kind != "appwrite" || d.Version != "1.5.10" || d.SourceUsers != 4 || len(d.Schemas) != 1 || len(d.Objects) != 2 || d.Objects[0].Bucket != "files-one" || d.Objects[0].Key != "f1/a.txt" {
 		t.Fatalf("detect %+v %v", d, err)
 	}
 }

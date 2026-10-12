@@ -130,3 +130,34 @@ func (c *client) exportStorage(ctx context.Context, w *portable.Writer) (storage
 	})
 	return res, err
 }
+
+// listObjects returns the bucket/key pairs the import will load, without downloading anything.
+// Detect fills Detection.Objects with it so --plan runs the object-store preflights of the real run.
+func (c *client) listObjects(ctx context.Context) ([]portable.Object, error) {
+	out := []portable.Object{}
+	_, err := c.each(ctx, "/storage/buckets", "buckets", func(raw json.RawMessage) error {
+		var b struct {
+			ID string `json:"$id"`
+		}
+		if json.Unmarshal(raw, &b) != nil {
+			return errs.New("E517", "source schema lookup failed")
+		}
+		name, e := bucketName(b.ID)
+		if e != nil {
+			return errs.New("E517", "source schema lookup failed")
+		}
+		_, e = c.each(ctx, "/storage/buckets/"+url.PathEscape(b.ID)+"/files", "files", func(raw json.RawMessage) error {
+			var f struct {
+				ID   string `json:"$id"`
+				Name string `json:"name"`
+			}
+			if json.Unmarshal(raw, &f) != nil {
+				return errs.New("E517", "source schema lookup failed")
+			}
+			out = append(out, portable.Object{Bucket: name, Key: objectKey(f.ID, f.Name)})
+			return nil
+		})
+		return e
+	})
+	return out, err
+}

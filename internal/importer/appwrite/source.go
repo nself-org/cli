@@ -73,6 +73,9 @@ func (Source) Detect(ctx context.Context, in importer.Input) (importer.Detection
 		return d, errs.New("E517", "source auth lookup failed")
 	}
 	d.SourceUsers = int(users.Total)
+	if d.Objects, err = c.listObjects(ctx); err != nil {
+		return d, err
+	}
 	d.Notes = append(d.Notes, fmt.Sprintf("%d users; document permissions are reported, not mapped", users.Total))
 	return d, nil
 }
