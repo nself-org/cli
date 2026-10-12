@@ -134,7 +134,7 @@ func proxyOwnedDir(workdir, dir string) (bool, string) {
 	if err != nil {
 		return false, "the " + proxyGeneratedMarker + " marker is unreadable"
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if _, err := io.ReadFull(f, head); err != nil || !bytes.Equal(head, []byte(proxyMarkerPrefix)) {
 		return false, "the " + proxyGeneratedMarker + " file is not a renderer marker"
 	}
