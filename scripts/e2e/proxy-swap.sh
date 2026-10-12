@@ -284,13 +284,19 @@ matrix() {
       echo "FAIL: $id $host$path unexpected status $status (websocket=$ws)" >&2; return 1
     fi
     printf 'route %s %s status %s\n' "$id" "$host" "$status" >> "$output"
-    python3 - "$W/headers" >> "$output" <<'PY'
+    python3 - "$W/headers" "$ws" >> "$output" <<'PY'
 import pathlib, sys
+# Accepted differences (P7-DEPL-03 lead ruling 2026-10-12): transport framing and Vary are proxy-owned, and Traefik
+# adds no response headers to a 101 upgrade, so a websocket row keeps only its handshake headers.
+skip={'date','server','connection','content-length','transfer-encoding','keep-alive','vary'}
+handshake={'upgrade','sec-websocket-accept'}
 headers=[]
 for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
     if ':' not in line: continue
     k,v=line.split(':',1)
-    if k.lower() not in ('date','server'): headers.append(k.lower()+': '+v.strip())
+    k=k.lower()
+    if k in skip or (sys.argv[2]=='1' and k not in handshake): continue
+    headers.append(k+': '+v.strip())
 print('\n'.join(sorted(headers)))
 PY
     # whoami includes request headers and container identity; only version/health responses are stable.
