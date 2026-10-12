@@ -44,13 +44,15 @@ var statusCmd = &cobra.Command{
 
 Exit codes:
   0  All services healthy
-  1  Error running checks (v1.4 mode only: also services still starting)
-  2  One or more services unhealthy (v1.4 mode)
+  1  Error running checks
+  2  One or more services unhealthy
 
-With NSELF_V15=1 (the default from v1.5.0) the state uses the reserved codes,
-in human and --json mode alike, and 1 then means only an error running checks:
+With NSELF_V15=1 (the default from v1.5.0) the state uses the reserved codes
+instead of 2, in human and --json mode alike; 1 still means an error running
+checks:
   10  One or more services unhealthy
-  11  Services still starting (transitional)`,
+  11  Services still starting (transitional; without NSELF_V15 such a service
+      counts as unhealthy and the exit code is 2)`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		jsonOut, _ := cmd.Flags().GetBool("json")
@@ -139,13 +141,10 @@ in human and --json mode alike, and 1 then means only an error running checks:
 		// State-aware suggestions.
 		printStatusSuggestions(report)
 
-		// Exit code: 2 if any unhealthy, 1 if some in intermediate state
-		// (10 and 11 in v1.5 mode, see statusExit).
+		// Exit code: 2 if any unhealthy, starting included (10 and 11 in v1.5
+		// mode, see statusExit). Exit 1 is only a returned error.
 		if code := statusExit(report.Results, report.Unhealthy > 0, false); code != 0 {
 			cmd.Root().SetContext(context.WithValue(cmd.Root().Context(), exitCodeKey, code))
-		} else if report.Healthy < report.Total {
-			// Some services in intermediate state (starting, etc.) — warning
-			cmd.Root().SetContext(context.WithValue(cmd.Root().Context(), exitCodeKey, 1))
 		}
 		return nil
 	},

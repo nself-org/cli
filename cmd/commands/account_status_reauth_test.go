@@ -145,3 +145,19 @@ func TestHandleAuthError_Mapping(t *testing.T) {
 		})
 	}
 }
+
+// TestAccountStatus_JSON_RejectedTokenIsAnError: --json must not print cached
+// account data for a rejected token; it fails with the re-login message.
+func TestAccountStatus_JSON_RejectedTokenIsAnError(t *testing.T) {
+	home := isolateHome(t)
+	writeTestAuthFile(t, home, &auth.AuthFile{AccessToken: "fake-token-not-real", Email: "alice@example.com", Tier: "pro"})
+	setAuthServer(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusUnauthorized) })
+	if err := accountStatusCmd.Flags().Set("json", "true"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = accountStatusCmd.Flags().Set("json", "false") })
+	err := accountStatusCmd.RunE(accountStatusCmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "nself login --force") {
+		t.Fatalf("want the re-login error, got %v", err)
+	}
+}

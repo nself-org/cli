@@ -45,7 +45,7 @@ func resolveDBMetadataDir(cmd *cobra.Command, remoteArgs ...string) (dir string,
 			// staging` is never silently a local run.
 			if _, nameErr := resolveTarget(envVal); nameErr == nil {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-					"note: --env %q is a directory here and also an environment name; using the directory (the environment is not contacted)\n", envVal)
+					"note: --env %q is a directory here and also an environment name; using the directory and not contacting the environment (rename or remove ./%[1]s to target the environment)\n", envVal)
 			}
 			return envVal, false, nil
 		}

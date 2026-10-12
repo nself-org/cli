@@ -27,7 +27,8 @@ func TestResolveDBMetadataDir_DirShadowingEnvNameWarns(t *testing.T) {
 	if err != nil || handled || dir != "staging" {
 		t.Fatalf("dir=%q handled=%v err=%v, want the directory used", dir, handled, err)
 	}
-	if !strings.Contains(stderr.String(), "directory here and also an environment name") {
+	if !strings.Contains(stderr.String(), "directory here and also an environment name") ||
+		!strings.Contains(stderr.String(), "rename or remove ./staging") {
 		t.Errorf("no shadow notice on stderr: %q", stderr.String())
 	}
 }
