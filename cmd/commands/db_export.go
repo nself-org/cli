@@ -1,0 +1,78 @@
+package commands
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/nself-org/cli/internal/config"
+	"github.com/nself-org/cli/internal/exporter"
+	"github.com/nself-org/cli/internal/output"
+	"github.com/spf13/cobra"
+)
+
+// Purpose: register read-only portable export. Inputs: output/schemas flags.
+// Outputs: summary envelope. Constraints: no secret values in diagnostics.
+var dbExportCmd = &cobra.Command{Use: "export", Short: "Export a portable bundle from a started project", Args: cobra.NoArgs, RunE: runDBExport}
+var exportProject = exporter.Export
+
+func init() {
+	f := dbExportCmd.Flags()
+	f.String("out", "", "New or empty output directory (required)")
+	f.StringSlice("schemas", nil, "Schemas to export (default all user schemas)")
+	f.Bool("no-storage", false, "Omit user storage objects")
+	f.Bool("json", false, "Emit a v1 JSON envelope")
+	_ = dbExportCmd.MarkFlagRequired("out")
+	dbCmd.AddCommand(dbExportCmd)
+}
+
+func runDBExport(cmd *cobra.Command, _ []string) error {
+	dir, err := resolveProjectDir()
+	if err != nil {
+		return err
+	}
+	cfg, err := config.Load(dir)
+	if err != nil {
+		return fmt.Errorf("export: project config could not be resolved")
+	}
+	out, _ := cmd.Flags().GetString("out")
+	schemas, _ := cmd.Flags().GetStringSlice("schemas")
+	skip, _ := cmd.Flags().GetBool("no-storage")
+	// Values come from the project cascade and the process environment: more
+	// values only make the scrubber stricter. Key names come from the project
+	// cascade alone, so the same project exports the same list from any shell.
+	// .nself/compose.env is what the containers actually run with; it can
+	// differ from the cascade when .env files changed since the last build.
+	values, keys := dbExportSecretValues(append(os.Environ(), dbExportComposeEnv(dir)...)), dbExportProjectKeys(dir)
+	// Defaults do not necessarily appear as environment variables.
+	for _, v := range []string{cfg.Postgres.Password, cfg.Hasura.AdminSecret, cfg.Hasura.JWTKey, cfg.Auth.SMTPPass, cfg.Minio.RootUser, cfg.Minio.RootPassword, cfg.Minio.S3AccessKey, cfg.Minio.S3SecretKey} {
+		if len(v) >= 6 {
+			values = append(values, v)
+		}
+	}
+	// SIGINT, SIGTERM and SIGHUP cancel the export so its deferred cleanup removes the
+	// unscrubbed stage directory instead of the process dying with it in place.
+	ctx, stop := dbExportContext(cmd.Context())
+	defer stop()
+	summary, err := exportProject(ctx, cfg, exporter.Options{Out: out, Schemas: schemas, NoStorage: skip, SecretValues: values, Keys: keys, ProjectDir: dir})
+	if err != nil {
+		return err
+	}
+	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON {
+		return output.EmitData(output.Default(), "db export", summary)
+	}
+	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Exported %d tables, %d users and %d objects to %s\n%s\n", summary.Tables, summary.Users, summary.Objects, summary.Out, summary.StorageNote)
+	return err
+}
+
+// Purpose: derive the export context. Inputs: the command context (may be nil).
+// Outputs: a context cancelled on SIGINT, SIGTERM or SIGHUP (terminal closed), and its release function.
+// Constraints: the exporter removes its stage on every error return.
+func dbExportContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+}

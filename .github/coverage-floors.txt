@@ -66,6 +66,7 @@ internal/embedded 78  # measured 80.8 2026-10-05
 internal/env 19  # measured 21.7 2026-10-05
 internal/errs 93  # measured 95.8 2026-10-05
 internal/eval 77  # measured 79.1 2026-10-05
+internal/exporter 58  # measured 60.2 2026-10-12 (P7-ADOPT-17; snapshot, pg_dump and auth reads need a live Postgres, covered by scripts/e2e/export.sh)
 internal/featureflags 69  # measured 71.7 2026-10-05
 internal/generate 65  # measured 67.5 2026-10-05
 internal/hasura 87  # measured 89.1 2026-10-05

@@ -78,6 +78,7 @@ rules:
   - {match: "internal/exporter/**", layer: L2}
   - {match: "internal/cmd/ci/**", layer: L2}
 edges:
+  - {from: internal/exporter, to: internal/database} # P7-ADOPT-17; overview mirror is lead-owned
   - {from: internal/upgrade, to: internal/build}
   - {from: internal/upgrade, to: internal/backup}
   - {from: internal/upgrade, to: internal/database}
