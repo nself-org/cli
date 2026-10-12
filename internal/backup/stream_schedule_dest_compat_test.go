@@ -46,7 +46,7 @@ func TestScheduleStreamBarePath(t *testing.T) {
 				if !strings.Contains(out.String(), " "+v) {
 					t.Errorf("%s %q: the unit does not carry the value as written: %q", flag, v, out.String())
 				}
-				if !strings.Contains(buf.String(), filepath.Join(opts.ProjectDir, "nightly-bk")) && v == "nightly-bk" {
+				if v == "nightly-bk" && !strings.Contains(buf.String(), filepath.Join(opts.ProjectDir, "nightly-bk")) {
 					t.Errorf("%s: relative value not resolved against the project dir: %q", flag, buf)
 				}
 				if noticeLines(buf) != 1 {

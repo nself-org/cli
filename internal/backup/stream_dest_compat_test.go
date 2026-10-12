@@ -72,6 +72,8 @@ func TestSettleBarePath(t *testing.T) {
 		{"r2:bkt/x", "r2:bkt/x", false},
 		{"s3://bucket/p", "s3://bucket/p", false},
 		{":s3:b", ":s3:b", false},
+		{"myr,pass=fake/secret-not-real:p", "myr,pass=fake/secret-not-real:p", false},
+		{"s3,secret_access_key=fake/secret-not-real:b", "s3,secret_access_key=fake/secret-not-real:b", false},
 		{"-x", "-x", false},
 		{" /mnt/backups", " /mnt/backups", false},
 		{"/mnt/a\nb", "/mnt/a\nb", false},

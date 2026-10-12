@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/nself-org/cli/internal/backup/destinations"
 	"github.com/nself-org/cli/internal/compat"
 )
 
@@ -31,9 +32,14 @@ var (
 // isBarePath reports whether rclone would have read uri as a local path: not
 // empty, not option-shaped, and no ":" before the first "/" (so no scheme, no
 // name:path remote and no :backend connection string). A value with padding
-// whitespace or a control character is left to the parser, which refuses it.
+// whitespace, a control character or an inline-credential shape (a "," in
+// the name part, e.g. "myr,pass=ab/cd:p") is left to the parser, which
+// refuses it without echoing it (D-0467).
 func isBarePath(uri string) bool {
 	if uri == "" || strings.HasPrefix(uri, "-") || uri != strings.TrimSpace(uri) {
+		return false
+	}
+	if destinations.HasInlineCredentials(uri) {
 		return false
 	}
 	if strings.IndexFunc(uri, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
