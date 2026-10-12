@@ -9,7 +9,9 @@ package commands
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -107,22 +109,23 @@ var (
 // root (the systemd timer) the new generation is root's, so it is handed to the
 // ids the build exported in .nself/compose.env. Without those ids nothing moves.
 func prepareGenerations(workdir, sslDir string) error {
-	dirs, err := filepath.Glob(filepath.Join(sslDir, "certificates", ".*.gen-*"))
+	certs := filepath.Join(sslDir, "certificates") // acme.Install creates it 0750 when absent
+	dirs, err := filepath.Glob(filepath.Join(certs, ".*.gen-*"))
 	if err != nil {
 		return err
 	}
 	uid, gid := hostOwner(workdir)
-	for _, d := range dirs {
+	for _, d := range append([]string{certs}, dirs...) {
 		fi, err := os.Lstat(d)
 		if err != nil || !fi.IsDir() {
 			continue
 		}
 		if fi.Mode().Perm()&0o001 == 0 {
-			if err := os.Chmod(d, fi.Mode().Perm()|0o011); err != nil {
+			if err := os.Chmod(d, fi.Mode().Perm()|0o011); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return fmt.Errorf("making %s traversable for the renderer: %w", d, err)
 			}
 		}
-		if uid < 0 || traefikEuid() != 0 {
+		if d == certs || uid < 0 || traefikEuid() != 0 {
 			continue
 		}
 		entries, _ := os.ReadDir(d)
@@ -131,7 +134,7 @@ func prepareGenerations(workdir, sslDir string) error {
 			if e != nil {
 				p = filepath.Join(d, e.Name())
 			}
-			if err := traefikChown(p, uid, gid); err != nil {
+			if err := traefikChown(p, uid, gid); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return fmt.Errorf("handing %s to traefik's user %d:%d: %w", p, uid, gid, err)
 			}
 		}

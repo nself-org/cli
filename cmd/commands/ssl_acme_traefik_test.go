@@ -253,6 +253,9 @@ func TestAcmeTraefikGenerationHandOver(t *testing.T) {
 	if err := os.MkdirAll(gen, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(filepath.Dir(gen), 0o750); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(gen, "privkey.pem"), []byte("k"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -289,6 +292,9 @@ func TestAcmeTraefikGenerationHandOver(t *testing.T) {
 	}
 	if fi, _ := os.Stat(gen); fi.Mode().Perm() != 0o711 {
 		t.Errorf("generation dir mode = %v, want 0711", fi.Mode().Perm())
+	}
+	if fi, _ := os.Stat(filepath.Dir(gen)); fi.Mode().Perm()&0o001 == 0 {
+		t.Errorf("certificates dir mode = %v is not traversable", fi.Mode().Perm())
 	}
 }
 
