@@ -52,10 +52,12 @@ var persistedSecretKeys = []string{
 }
 
 // scanEnvFiles returns the set of keys defined in any scanned env file (or
-// pending in a plan's env overlay, P7-LIVE-05) and warns about shadowing.
+// pending in a plan's env overlay, P7-LIVE-05), the file names that define each
+// key, and warns about shadowing.
 // envName is cfg.Env; it picks the cascade order the warning relies on.
-func scanEnvFiles(workdir, envName string, sink Sink) map[string]bool {
+func scanEnvFiles(workdir, envName string, sink Sink) (map[string]bool, map[string][]string) {
 	onDisk := make(map[string]bool)
+	definedIn := make(map[string][]string)
 	vals := make(map[string]map[string]string) // file name → key → parsed value
 	for _, name := range secretScanList(workdir, sink) {
 		data, err := envLayerBytes(sink, filepath.Join(workdir, name))
@@ -71,13 +73,16 @@ func scanEnvFiles(workdir, envName string, sink Sink) map[string]bool {
 			}
 			if idx := strings.IndexByte(line, '='); idx > 0 {
 				onDisk[line[:idx]] = true
+				if _, dup := kv[line[:idx]]; !dup {
+					definedIn[line[:idx]] = append(definedIn[line[:idx]], name)
+				}
 				kv[line[:idx]] = parseEnvValue(line[idx+1:])
 			}
 		}
 		vals[name] = kv
 	}
 	warnShadowedSecrets(vals, config.EnvCascadeOrder(envName, config.LegacyOrderActive()))
-	return onDisk
+	return onDisk, definedIn
 }
 
 // warnShadowedSecrets logs once per owned key that .env.secrets defines with a

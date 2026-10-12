@@ -49,7 +49,7 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 
 	// Collect env keys already present in any .env file on disk (or pending
 	// in a plan's env overlay, P7-LIVE-05).
-	onDisk := scanEnvFiles(workdir, cfg.Env, sink)
+	onDisk, definedIn := scanEnvFiles(workdir, cfg.Env, sink)
 
 	// Determine which secrets need persisting.
 	var toWrite []secretEntry
@@ -59,21 +59,22 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 		}
 	}
 
-	// Core credentials the loader generates when unset (D-0506). Persist a
-	// freshly generated value only when no env file defines the key and the
-	// real process environment does not supply it: that source owns the value,
-	// and a file copy would shadow a later rotated export (files override the
-	// process env on load). The onDisk term stays: .env.secrets is shared by
-	// every env and loads after .env.<env>, so persisting a dev-generated value
-	// while .env.prod (or any scanned env file) defines the key would shadow
-	// that file's real value on the next build of that env.
-	// A running database may already hold a value an earlier build rendered. It
-	// is adopted for THIS build's render only (adoptLiveCredential) and never
-	// written: .nself/compose.env cannot tell a generated value from one an
-	// earlier build took from a process export, and writing the latter would
-	// shadow a later rotated export. The next build adopts it again, because
-	// compose.env then carries the same value. Generated values are base64url
-	// (generateSecureRandom), so they need no quoting in .env.secrets.
+	// Core credentials the loader generates when unset (D-0506). Order per key:
+	//  1. os.Getenv(key) != "": an active cascade file or a real export supplies
+	//     it (the loader exports active files into the process env). Skip.
+	//  2. A live value in .nself/compose.env is adopted for THIS build's render
+	//     only and never written: compose.env (whichever env built last) cannot
+	//     tell a generated value from one an earlier build took from a process
+	//     export, and writing the latter would shadow a later rotated export.
+	//     This holds even when an inactive env file defines the key, so a dev
+	//     build does not lock out the running dev database.
+	//  3. No env file defines it: persist the generated value (base64url from
+	//     generateSecureRandom, so no quoting is needed).
+	//  4. Only an inactive env file defines it and nothing is live: keep the
+	//     generated value for this render, write nothing (.env.secrets is shared
+	//     by every env and loads after .env.<env>, so a dev value written there
+	//     would shadow the other env's real one), and warn. The next build
+	//     adopts the value from compose.env, so it stays stable.
 	for _, c := range []struct {
 		key string
 		dst *string
@@ -81,13 +82,20 @@ func persistGeneratedSecretsFx(workdir string, cfg *config.Config, fx Effects, s
 		{"POSTGRES_PASSWORD", &cfg.Postgres.Password},
 		{"HASURA_GRAPHQL_ADMIN_SECRET", &cfg.Hasura.AdminSecret},
 	} {
-		if *c.dst == "" || onDisk[c.key] || os.Getenv(c.key) != "" {
+		if *c.dst == "" || os.Getenv(c.key) != "" {
 			continue
 		}
 		if live, ok := adoptLiveCredential(sink, workdir, c.key); ok {
 			*c.dst = live
 			if !fx.Planning() {
-				slog.Warn("key is in no env file; reusing the value the running stack was built with. Pin it by adding the key to .env.secrets (or your env file)", "key", c.key)
+				slog.Warn("key is not supplied by the active env files; reusing the value the running stack was built with. Pin it by adding the key to .env.secrets (or your env file)", "key", c.key)
+			}
+			continue
+		}
+		if onDisk[c.key] {
+			if !fx.Planning() {
+				slog.Warn("key is defined only in an env file that is not loaded for this env; this render uses a generated value. Set it in .env.<env> or .env.secrets to pin it",
+					"key", c.key, "files", strings.Join(definedIn[c.key], ","), "env", cfg.Env)
 			}
 			continue
 		}
