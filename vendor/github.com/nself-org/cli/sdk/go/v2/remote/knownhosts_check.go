@@ -3,9 +3,9 @@
 // Outputs: errors naming the path and 1-based line numbers; a release func.
 // Constraints: never echoes a key blob. The parent dir may be a symlink (the
 //              target is checked); the pin file may not (rename would replace
-//              the link). Every ancestor of the parent dir, on the path as
-//              given and with symlinks resolved, gets sshd's secure_path test
-//              (refused under compat.V15, one warning on v1.4: knownhosts_compat.go). Mode and owner checks are skipped on windows.
+//              the link). Every ancestor (given and resolved path) gets sshd's
+//              secure_path test: refused under compat.V15, warned once on v1.4
+//              (knownhosts_compat.go). Mode and owner checks skip windows.
 //              Nothing here chmods a user directory. Lock is the sidecar
 //              "<Path>.lock" (0600, never truncated, left in place, opened
 //              O_NOFOLLOW|O_NONBLOCK, and must be a regular file

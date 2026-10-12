@@ -13,15 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nself-org/cli/sdk/go/v2/compat"
+	"github.com/nself-org/cli/sdk/go/v2/compat/compattest"
 )
-
-// v15 selects v1.5 behaviour for the rest of the test, where the ancestor walk
-// refuses instead of warning.
-func v15(t *testing.T) {
-	t.Helper()
-	t.Setenv(compat.EnvVar, "1")
-}
 
 // captureWarn sends the v1.4 ancestor warning to a buffer for the rest of
 // the test.
@@ -39,6 +32,7 @@ func captureWarn(t *testing.T) *bytes.Buffer {
 // tree is refused and the pin file is left alone.
 func TestAncestor_V14WarnsOnceV15Refuses(t *testing.T) {
 	skipWindows(t)
+	compattest.Set(t, false)
 	buf := captureWarn(t)
 	p, shared := nestedPin(t)
 	if err := p.Add("n1", keyA); err != nil {
@@ -65,7 +59,7 @@ func TestAncestor_V14WarnsOnceV15Refuses(t *testing.T) {
 		t.Fatalf("v1.4 warning = %q, want one line naming %s", w, shared)
 	}
 	before := readPin(t, p)
-	v15(t)
+	compattest.Set(t, true)
 	_, lerr := p.Lookup("n2")
 	aerr := p.Add("n3", keyA)
 	for op, err := range map[string]error{"Lookup": lerr, "Add": aerr} {
@@ -85,6 +79,7 @@ func TestAncestor_V14WarnsOnceV15Refuses(t *testing.T) {
 // v1.4.13, with one warning; the pin dir itself is still made 0700.
 func TestAncestor_V14CreatesUnderWritableAncestor(t *testing.T) {
 	skipWindows(t)
+	compattest.Set(t, false)
 	buf := captureWarn(t)
 	_, home := pinFile(t)
 	open := filepath.Join(home, "open")
@@ -111,6 +106,7 @@ func TestAncestor_V14CreatesUnderWritableAncestor(t *testing.T) {
 // v1.4 too, and that refusal is not turned into a warning.
 func TestAncestor_V14StillRefusesWritablePinDir(t *testing.T) {
 	skipWindows(t)
+	compattest.Set(t, false)
 	buf := captureWarn(t)
 	p, _ := pinFile(t)
 	if err := os.MkdirAll(filepath.Dir(p.Path), 0o700); err != nil {
@@ -130,14 +126,39 @@ func TestAncestor_V14StillRefusesWritablePinDir(t *testing.T) {
 // ancestorGate passes nil through on both modes without a warning.
 func TestAncestorGate_NilIsSilent(t *testing.T) {
 	buf := captureWarn(t)
+	compattest.Set(t, false)
 	if err := ancestorGate("/pin", nil); err != nil {
 		t.Errorf("v1.4 ancestorGate(nil) = %v", err)
 	}
-	v15(t)
+	compattest.Set(t, true)
 	if err := ancestorGate("/pin", nil); err != nil {
 		t.Errorf("v1.5 ancestorGate(nil) = %v", err)
 	}
 	if buf.Len() != 0 {
 		t.Errorf("ancestorGate(nil) warned: %q", buf)
+	}
+}
+
+// The warn-once key is the pin dir: a second pin dir under a writable
+// ancestor gets its own warning, a repeat call on either gets none.
+func TestAncestor_V14WarnsOncePerPinDir(t *testing.T) {
+	skipWindows(t)
+	compattest.Set(t, false)
+	buf := captureWarn(t)
+	p1, shared1 := nestedPin(t)
+	p2, shared2 := nestedPin(t)
+	for _, d := range []string{shared1, shared2} {
+		if err := os.Chmod(d, 0o775); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, p := range []PinnedHostKeys{p1, p2, p1, p2} {
+		if err := p.Add("n1", keyA); err != nil {
+			t.Fatalf("v1.4 Add %s: %v", p.Path, err)
+		}
+	}
+	w := buf.String()
+	if strings.Count(w, "\n") != 2 || !strings.Contains(w, "ancestor "+shared1+" ") || !strings.Contains(w, "ancestor "+shared2+" ") {
+		t.Errorf("warnings = %q, want one per pin dir", w)
 	}
 }

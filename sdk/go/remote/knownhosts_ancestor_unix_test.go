@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/nself-org/cli/sdk/go/v2/compat/compattest"
 )
 
 // fakeInfo is a FileInfo with a chosen mode and owner.
@@ -75,7 +77,7 @@ func TestAncestor_WritableAncestorRefused(t *testing.T) {
 		ok   bool
 	}{{0o755, true}, {0o700, true}, {0o777, false}, {0o775, false}, {0o757, false}, {os.ModeSticky | 0o777, false}} {
 		t.Run(fmt.Sprintf("%v", tc.mode), func(t *testing.T) {
-			v15(t)
+			compattest.Set(t, true)
 			p, shared := nestedPin(t)
 			if err := p.Add("n1", keyA); err != nil {
 				t.Fatal(err)
@@ -117,7 +119,7 @@ func TestAncestor_ResolvedPathChecked(t *testing.T) {
 		ok   bool
 	}{{0o755, true}, {0o777, false}} {
 		t.Run(fmt.Sprintf("%04o", tc.mode), func(t *testing.T) {
-			v15(t)
+			compattest.Set(t, true)
 			p, home := pinFile(t)
 			open := filepath.Join(home, "open")
 			real := filepath.Join(open, "real")
@@ -162,7 +164,7 @@ func TestAncestor_NothingCreatedUnderWritableAncestor(t *testing.T) {
 		ok   bool
 	}{{0o755, true}, {0o777, false}} {
 		t.Run(fmt.Sprintf("%04o", tc.mode), func(t *testing.T) {
-			v15(t)
+			compattest.Set(t, true)
 			_, home := pinFile(t)
 			open := filepath.Join(home, "open")
 			if err := os.Mkdir(open, 0o700); err != nil {
@@ -199,7 +201,7 @@ func TestAncestor_DeepAncestorRefused(t *testing.T) {
 		ok   bool
 	}{{0o755, true}, {0o777, false}} {
 		t.Run(fmt.Sprintf("%04o", tc.mode), func(t *testing.T) {
-			v15(t)
+			compattest.Set(t, true)
 			_, home := pinFile(t)
 			open := filepath.Join(home, "open")
 			p := PinnedHostKeys{Path: filepath.Join(open, "a", "b", "known_hosts")}

@@ -5,7 +5,10 @@
 // Constraints: v1.4.13 had no ancestor walk, so on v1.4 a group/world
 //              writable or foreign-owned folder above the pin dir must not
 //              stop a backup or deploy that worked before. The pin dir's
-//              own owner and mode check (checkDir) is not gated here.
+//              own owner and mode check (checkDir) is not gated here. Every
+//              walk error is gated, not only a policy refusal: a Stat or
+//              EvalSymlinks error on an ancestor also refuses under V15 and
+//              only warns on v1.4, because v1.4.13 never walked at all.
 
 package remote
 
