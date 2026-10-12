@@ -16,6 +16,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// isolateDoctorHome points HOME, USERPROFILE, XDG_CONFIG_HOME and
+// NSELF_PLUGIN_DIR at empty temp dirs, so doctor's plugin discovery never
+// reads the host's real ~/.nself/plugins (D-0678: a CI host with a real
+// plugin dir failed the V15 run with E128).
+func isolateDoctorHome(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("NSELF_PLUGIN_DIR", filepath.Join(home, ".nself", "plugins"))
+}
+
 func doctorTreeHash(t *testing.T, dir string) string {
 	t.Helper()
 	h := sha256.New()
@@ -44,6 +57,7 @@ func doctorTreeHash(t *testing.T, dir string) string {
 }
 
 func TestDoctorGeneratedDriftFixPlanIdempotent(t *testing.T) {
+	isolateDoctorHome(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fx\nENV=dev\nBASE_DOMAIN=example.test\nSSL_MODE=none\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -103,6 +117,7 @@ func TestDoctorGeneratedDriftFixPlanIdempotent(t *testing.T) {
 }
 
 func TestDoctorFreshProjectSecondFixNoop(t *testing.T) {
+	isolateDoctorHome(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fx\nENV=dev\nBASE_DOMAIN=example.test\nSSL_MODE=none\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -124,6 +139,7 @@ func TestDoctorFreshProjectSecondFixNoop(t *testing.T) {
 
 func TestDoctorGeneratedDriftBothModes(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
+		isolateDoctorHome(t)
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fx\nENV=dev\nBASE_DOMAIN=example.test\nSSL_MODE=none\n"), 0o644); err != nil {
 			t.Fatal(err)
@@ -140,6 +156,7 @@ func TestDoctorGeneratedDriftBothModes(t *testing.T) {
 }
 
 func TestDoctorDeepFixMessagesPrinted(t *testing.T) {
+	isolateDoctorHome(t)
 	read, write, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -167,6 +184,7 @@ func TestDoctorDeepFixMessagesPrinted(t *testing.T) {
 }
 
 func TestReviewCleanApplyHasNoDoctorDrift(t *testing.T) {
+	isolateDoctorHome(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fx\nENV=dev\nBASE_DOMAIN=example.test\nSSL_MODE=none\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -186,7 +204,8 @@ func TestReviewCleanApplyHasNoDoctorDrift(t *testing.T) {
 }
 
 func TestReviewDoctorFixRespectsHandEditAndProdGate(t *testing.T) {
-	t.Setenv("NSELF_V15", "1")
+	isolateDoctorHome(t)
+	compattest.Set(t, true)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("PROJECT_NAME=fx\nENV=prod\nBASE_DOMAIN=example.test\nSSL_MODE=none\nMINIO_ENABLED=false\nMINIO_ROOT_USER=prod-storage-user\nMINIO_ROOT_PASSWORD=long-unique-storage-passphrase\nHASURA_GRAPHQL_CORS_DOMAIN=https://example.test\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -237,6 +256,7 @@ func TestReviewDoctorFixRespectsHandEditAndProdGate(t *testing.T) {
 // --fix stays clean on every rerun, a hand edit is drift and a removed plugin
 // is not.
 func TestDoctorDriftVirtualPluginKeys(t *testing.T) {
+	isolateDoctorHome(t)
 	dir := t.TempDir()
 	plugins := t.TempDir()
 	t.Setenv("NSELF_PLUGIN_DIR", plugins)
