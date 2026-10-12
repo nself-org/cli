@@ -84,7 +84,7 @@ func init() {
 	dbDriftScanCmd.Flags().String("schema", "", "Filter to specific schema")
 	dbDriftFixCmd.Flags().Bool("all", false, "Fix drift on all drifted tables")
 	dbDriftCmd.Flags().Bool("metadata", false, "Detect Hasura metadata drift (permissions, relationships, table tracking) instead of column drift")
-	dbDriftCmd.Flags().String("env", "", "Project directory to read hasura/metadata/** from (default: current directory)")
+	dbDriftCmd.Flags().String("env", "", "Environment name to run against (an existing project directory still works and wins over an environment of the same name; default: current directory)")
 
 	dbDriftCmd.AddCommand(dbDriftScanCmd)
 	dbDriftCmd.AddCommand(dbDriftFixCmd)

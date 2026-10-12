@@ -7,6 +7,7 @@ package commands
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -15,6 +16,13 @@ import (
 	"github.com/nself-org/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
+
+// accountReloginMsg is the one message every account command shows when the
+// auth server rejects the stored device token (401).
+const accountReloginMsg = "the auth server rejected your saved login (revoked, or its signing key rotated) — run: nself login --force"
+
+// errAccountRelogin returns the re-login error for a rejected device token.
+func errAccountRelogin() error { return errors.New(accountReloginMsg) }
 
 var accountStatusCmd = &cobra.Command{
 	Use:   "status",
@@ -44,6 +52,11 @@ func runAccountStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	info, infoErr := auth.GetSession(cmdCtx(cmd), af.AccessToken)
+	if errors.Is(infoErr, auth.ErrNotLoggedIn) {
+		// 401: the server answered and rejected the token. Cached info would
+		// hide that, so fail with the one re-login message (D-0480).
+		return errAccountRelogin()
+	}
 	if infoErr != nil {
 		// Fall back to cached data.
 		if jsonOut {

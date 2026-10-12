@@ -39,7 +39,7 @@ func GetTeamMembers(ctx context.Context, accessToken string) ([]TeamMember, erro
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, parseAPIError(resp)
+		return nil, parseSessionError(resp)
 	}
 
 	var result struct {
@@ -68,7 +68,7 @@ func InviteTeamMember(ctx context.Context, accessToken, email string) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return parseAPIError(resp)
+		return parseSessionError(resp)
 	}
 	return nil
 }
@@ -88,7 +88,7 @@ func RemoveTeamMember(ctx context.Context, accessToken, email string) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return parseAPIError(resp)
+		return parseSessionError(resp)
 	}
 	return nil
 }
@@ -110,7 +110,7 @@ func SetTeamMemberRole(ctx context.Context, accessToken, email, role string) err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return parseAPIError(resp)
+		return parseSessionError(resp)
 	}
 	return nil
 }
@@ -132,7 +132,7 @@ func ActivateLicense(ctx context.Context, accessToken, licenseID string) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return parseAPIError(resp)
+		return parseSessionError(resp)
 	}
 	return nil
 }

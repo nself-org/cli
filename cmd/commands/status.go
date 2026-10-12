@@ -44,11 +44,11 @@ var statusCmd = &cobra.Command{
 
 Exit codes:
   0  All services healthy
-  1  Error running checks
-  2  One or more services unhealthy
+  1  Error running checks (v1.4 mode only: also services still starting)
+  2  One or more services unhealthy (v1.4 mode)
 
 With NSELF_V15=1 (the default from v1.5.0) the state uses the reserved codes,
-in human and --json mode alike:
+in human and --json mode alike, and 1 then means only an error running checks:
   10  One or more services unhealthy
   11  Services still starting (transitional)`,
 	Args: cobra.MaximumNArgs(1),

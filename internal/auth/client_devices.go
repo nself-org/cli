@@ -41,7 +41,7 @@ func GetDevices(ctx context.Context, accessToken string) ([]DeviceEntry, error) 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, parseAPIError(resp)
+		return nil, parseSessionError(resp)
 	}
 
 	var result struct {
@@ -68,7 +68,7 @@ func RevokeDevice(ctx context.Context, accessToken, deviceID string) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return parseAPIError(resp)
+		return parseSessionError(resp)
 	}
 	return nil
 }
@@ -92,12 +92,25 @@ func TransferLicense(ctx context.Context, accessToken, licenseID, toEmail string
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return parseAPIError(resp)
+		return parseSessionError(resp)
 	}
 	return nil
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// parseSessionError is parseAPIError for calls that carry the device token.
+// A 401 there means the auth server rejected the token (revoked, or its signing
+// key rotated), so it maps to ErrNotLoggedIn for every caller instead of an
+// AuthAPIError that commands misread as a tier denial or an unreachable server.
+// A 403 stays an AuthAPIError (tier denial).
+func parseSessionError(resp *http.Response) error {
+	if resp.StatusCode == http.StatusUnauthorized {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return ErrNotLoggedIn
+	}
+	return parseAPIError(resp)
+}
 
 func parseAPIError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
