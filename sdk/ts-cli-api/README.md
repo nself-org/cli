@@ -88,7 +88,7 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 
 <!-- BEGIN GENERATED: operations (tools/sdkgen, DO NOT HAND EDIT) -->
 
-184 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
+186 operations. Every method takes `{ args, flags }` (plus `confirm` where the operation declares it) and resolves to the typed `data` member.
 
 | Method | Route | Summary |
 | --- | --- | --- |
@@ -196,6 +196,8 @@ The version always equals `.github/VERSION` (`sdk-version-sync.yml` fails otherw
 | `dbHasuraSync` | `POST /v1/commands/db/hasura/sync` | Export live Hasura metadata and commit to git |
 | `dbHasuraValidate` | `POST /v1/commands/db/hasura/validate` | Validate Hasura metadata consistency and permission coverage |
 | `dbImportFirebase` | `POST /v1/commands/db/import/firebase` | Generate nSelf migration artifacts from a Firebase export |
+| `dbImportHasuraCloud` | `POST /v1/commands/db/import/hasura-cloud` | Import and verify data from hasura-cloud |
+| `dbImportNhost` | `POST /v1/commands/db/import/nhost` | Import and verify data from nhost |
 | `dbImportNself` | `POST /v1/commands/db/import/nself` | Import and verify a portable bundle written by `nself db export` |
 | `dbImportPostgres` | `POST /v1/commands/db/import/postgres` | Import and verify data from postgres |
 | `dbImportSupabase` | `POST /v1/commands/db/import/supabase` | Migrate a Supabase project to nSelf |
