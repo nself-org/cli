@@ -90,9 +90,29 @@ func TestRemoveKeepsMemberAnOutsiderDependsOn(t *testing.T) {
 	})
 }
 
-// NEGATIVE CONTROL: without the dependency the member goes, so the test above
-// is detecting the keep and not a general failure to remove.
-func TestRemoveWithoutDependencyRemovesMember(t *testing.T) {
+// NEGATIVE CONTROL: the same fixture as the keep test with the dependency scan
+// stubbed to find nothing. The member goes, so the keep test detects the scan.
+func TestRemoveKeepControlStubbedScanRemovesMember(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		dir := chatDir(t)
+		setDeps(t, dir, "outsider", "px")
+		_, out, rec, err := removeChat(t, dir, func(o *RemoveOpts) {
+			o.reverseDeps = func(string, string) ([]string, error) { return nil, nil }
+		})
+		if err != nil {
+			t.Fatalf("remove: %v\n%s", err, out)
+		}
+		if !sameStrings(rec.names(), []string{"py", "px"}) || isAlreadyInstalled(dir, "px") {
+			t.Errorf("removed %v, want [py px]", rec.names())
+		}
+		if strings.Contains(out, "needed by") {
+			t.Errorf("unexpected keep:\n%s", out)
+		}
+	})
+}
+
+// Nothing depends on the members: both go.
+func TestRemoveNoDeclaredDependencyRemovesMembers(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		dir := chatDir(t)
 		_, out, rec, err := removeChat(t, dir, nil)

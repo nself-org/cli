@@ -8,9 +8,10 @@
 // Inputs: the held ledger Tx and ledger, the bundle, the plugin directory and
 // the Remove options.
 // Outputs: members removed; the ledger and the remove intent kept in step.
-// Constraints: all of it runs inside ONE Store.Locked. Order: recover, plan,
-// checkpoint the ledger, record the intent, remove members (intent shrinks
-// after each), write the final ledger, clear the intent. If either checkpoint
+// Constraints: all of it runs inside ONE Store.Locked. Order: read the intent,
+// plan, checkpoint the ledger, record the intent, remove members (intent shrinks
+// after each), on full success clear the intent, then write the final ledger
+// (a kill between the last two is harmless: see locked). If either checkpoint
 // write fails nothing is removed. A failed intent shrink is only a warning:
 // the intent then over-approximates and a gone member plans as not installed.
 // RemoveOpts.noIntent (tests only) skips the intent and the checkpoint to
@@ -56,11 +57,10 @@ func (r *removeRun) locked(ctx context.Context, tx *ledger.Tx, l ledger.Ledger) 
 	slug := strings.ToLower(r.b.Slug)
 	started := time.Now().UTC()
 	if !r.opts.noIntent {
-		rl, in, had, err := recoverIntent(tx, l, r.b, r.pluginDir, r.out)
+		in, had, err := recoverIntent(tx, l, r.b, r.out)
 		if err != nil {
 			return err
 		}
-		l = rl
 		if had {
 			started = in.StartedAt
 		}
@@ -100,15 +100,16 @@ func (r *removeRun) locked(ctx context.Context, tx *ledger.Tx, l ledger.Ledger) 
 	}
 	r.removeErr = removeMembers(ctx, r.out, r.result, cfg, r.pluginDir, r.opts.remover, r.deleteData, afterEach)
 	settleLedger(&l, plan.work, r.result.Removed, r.removeErr != nil)
-	if err := tx.Write(l); err != nil {
-		return err // the intent stays: a rerun resumes
-	}
+	// On full success the intent goes BEFORE the final write: a kill between the
+	// two leaves the checkpoint ledger recording the bundle and nothing on disk,
+	// so a rerun plans nothing and finishes cleanly. After a member failure the
+	// intent stays.
 	if r.removeErr == nil && !r.opts.noIntent {
 		if err := tx.ClearRemoveIntent(slug); err != nil {
 			_, _ = fmt.Fprintf(r.out, "warning: the remove finished but the remove intent could not be cleared: %v\n", err)
 		}
 	}
-	return nil
+	return tx.Write(l)
 }
 
 func lowerAll(in []string) []string {

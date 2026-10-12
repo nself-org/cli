@@ -217,8 +217,8 @@ func TestRemoveFinalLedgerWriteFails(t *testing.T) {
 		if _, ok := loadLedger(t, dir).Bundles["family"]; !ok {
 			t.Fatal("the on-disk ledger lost the bundle: the checkpoint did not hold")
 		}
-		if in, ok := intentOf(t, dir, "family"); !ok || len(in.Remaining) != 0 {
-			t.Fatalf("intent = %+v ok=%v, want present with nothing remaining", in, ok)
+		if intentFileExists(dir) {
+			t.Fatal("the intent must be cleared before the final write")
 		}
 		out.Reset()
 		if _, err := Remove(context.Background(), "family", baseOpts(dir, &out, &recorder{})); err != nil {

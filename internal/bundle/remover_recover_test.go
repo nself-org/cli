@@ -1,8 +1,8 @@
 package bundle
 
-// remover_recover_test.go — D-0368: a remove intent whose bundle the ledger no
-// longer records is resumed (members on disk) or cleared (stale), never E134
-// for work this command started itself.
+// remover_recover_test.go — D-0368: an intent whose bundle the ledger does not
+// record is only cleared; the normal path follows (E134 on v1.5, a no-op
+// warning on v1.4) and nothing is removed or rebuilt from the intent.
 
 import (
 	"bytes"
@@ -44,7 +44,19 @@ func ledgerWithout(t *testing.T, dir string) {
 	}
 }
 
-func TestRecoverLostBundleResumesRemainingMembers(t *testing.T) {
+// expectUnrecorded asserts the normal unrecorded-bundle outcome of a Remove.
+func expectUnrecorded(t *testing.T, err error, out string) {
+	t.Helper()
+	if compat.V15() {
+		if d := errs.Describe(err); d == nil || d.Code != "E134" {
+			t.Errorf("v1.5: err = %v, want E134", err)
+		}
+	} else if err != nil || !strings.Contains(out, "not recorded") {
+		t.Errorf("v1.4: err=%v out=%s, want the no-op warning", err, out)
+	}
+}
+
+func TestRecoverLostBundleOnlyClearsTheIntent(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		useOverlapBundles(t)
 		dir := t.TempDir()
@@ -53,56 +65,73 @@ func TestRecoverLostBundleResumesRemainingMembers(t *testing.T) {
 		writeIntent(t, dir, "d1", "d2")
 		var out bytes.Buffer
 		rec := &recorder{}
-		res, err := Remove(context.Background(), "family", baseOpts(dir, &out, rec))
-		if err != nil {
-			t.Fatalf("remove: %v\n%s", err, out.String())
+		_, err := Remove(context.Background(), "family", baseOpts(dir, &out, rec))
+		expectUnrecorded(t, err, out.String())
+		if len(rec.calls) != 0 || !isAlreadyInstalled(dir, "d1") || !isAlreadyInstalled(dir, "d2") {
+			t.Errorf("removed %v from an unrecorded bundle", rec.names())
 		}
-		if !sameStrings(res.Removed, []string{"d2", "d1"}) {
-			t.Errorf("removed %v, want [d2 d1]", res.Removed)
-		}
-		if !strings.Contains(out.String(), "resuming an interrupted remove of bundle family (started 2026-10-10T08:00:00Z)") {
-			t.Errorf("no resume line:\n%s", out.String())
-		}
-		l := loadLedger(t, dir)
-		if _, ok := l.Bundles["family"]; ok || len(l.Plugins) != 1 {
-			t.Errorf("ledger = %+v, want only the unrelated record", l)
+		if strings.Contains(out.String(), "resuming") {
+			t.Errorf("resume line for an unrecorded bundle:\n%s", out.String())
 		}
 		if intentFileExists(dir) {
-			t.Error("intent file survived")
+			t.Error("the stale intent was not cleared")
+		}
+		if _, ok := loadLedger(t, dir).Bundles["family"]; ok {
+			t.Error("the bundle was rebuilt from the intent")
 		}
 	})
 }
 
-// A re-bootstrap marks leftover plugins explicit. The restore must not touch
-// that flag, so they are kept and nothing is deleted on a guess.
-func TestRecoverKeepsExplicitFlags(t *testing.T) {
+// The ledger file is deleted after a partial remove: the re-bootstrap marks the
+// leftovers explicit, so the rerun keeps them and removes nothing.
+func TestRecoverDeletedLedgerKeepsLeftovers(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		dir := familyDir(t)
+		crashBetweenMembers(t, dir, false)
+		if err := os.Remove(newLedgerStore(dir).Path()); err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		rec := &recorder{}
+		_, err := Remove(context.Background(), "family", baseOpts(dir, &out, rec))
+		expectUnrecorded(t, err, out.String())
+		if len(rec.calls) != 0 || !isAlreadyInstalled(dir, "d1") || !isAlreadyInstalled(dir, "d2") {
+			t.Errorf("removed %v after the ledger was deleted", rec.names())
+		}
+		l := loadLedger(t, dir)
+		if !l.Plugins["d1"].Explicit || !l.Plugins["d2"].Explicit {
+			t.Errorf("leftovers are not explicit: %+v", l.Plugins)
+		}
+		if intentFileExists(dir) {
+			t.Error("the stale intent survived")
+		}
+	})
+}
+
+// A dry run and a real run agree on an intent that names an unrecorded bundle;
+// only the real run clears the intent.
+func TestRecoverDryRunAndRealRunAgree(t *testing.T) {
 	compattest.Both(t, func(t *testing.T) {
 		useOverlapBundles(t)
 		dir := t.TempDir()
 		installPlugins(t, dir, "d1", "d2")
 		ledgerWithout(t, dir)
-		err := newLedgerStore(dir).Update(func(l *ledger.Ledger) error {
-			for _, n := range []string{"d1", "d2"} {
-				l.Plugins[n] = ledger.PluginRecord{InstalledBy: []string{}, Explicit: true, Tier: ledger.TierFree, Version: "1.0.0"}
-			}
-			return nil
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
 		writeIntent(t, dir, "d1", "d2")
-		var out bytes.Buffer
-		rec := &recorder{}
-		res, err := Remove(context.Background(), "family", baseOpts(dir, &out, rec))
-		if err != nil || len(rec.calls) != 0 || len(res.Kept) != 2 {
-			t.Fatalf("err=%v calls=%v kept=%+v; want two explicit members kept\n%s", err, rec.names(), res.Kept, out.String())
+		var dry, real bytes.Buffer
+		opts := baseOpts(dir, &dry, &recorder{})
+		opts.DryRun = true
+		_, dryErr := Remove(context.Background(), "family", opts)
+		expectUnrecorded(t, dryErr, dry.String())
+		if !intentFileExists(dir) {
+			t.Fatal("a dry run cleared the intent")
 		}
-		l := loadLedger(t, dir)
-		if !l.Plugins["d1"].Explicit || !l.Plugins["d2"].Explicit {
-			t.Error("explicit flags were changed")
+		_, realErr := Remove(context.Background(), "family", baseOpts(dir, &real, &recorder{}))
+		expectUnrecorded(t, realErr, real.String())
+		if (dryErr == nil) != (realErr == nil) {
+			t.Errorf("dry run err=%v, real run err=%v", dryErr, realErr)
 		}
-		if _, ok := l.Bundles["family"]; ok || intentFileExists(dir) {
-			t.Error("bundle or intent left behind")
+		if intentFileExists(dir) {
+			t.Error("the real run left the stale intent")
 		}
 	})
 }
@@ -123,13 +152,7 @@ func TestRecoverStaleIntentIsCleared(t *testing.T) {
 		if len(rec.calls) != 0 {
 			t.Errorf("removed %v", rec.names())
 		}
-		if compat.V15() {
-			if d := errs.Describe(err); d == nil || d.Code != "E134" {
-				t.Errorf("v1.5: err = %v, want the normal E134 path", err)
-			}
-		} else if err != nil || !strings.Contains(out.String(), "not recorded") {
-			t.Errorf("v1.4: err=%v out=%s, want the no-op warning", err, out.String())
-		}
+		expectUnrecorded(t, err, out.String())
 	})
 }
 

@@ -52,3 +52,46 @@ func TestRemoveDryRunWritesNoIntent(t *testing.T) {
 		t.Error("a dry run wrote state")
 	}
 }
+
+// A kill after the intent is cleared and before the final ledger write: the
+// checkpoint ledger still records the bundle, nothing is on disk, and the rerun
+// finishes cleanly.
+func TestRemoveKillBeforeFinalWriteResumesCleanly(t *testing.T) {
+	compattest.Both(t, func(t *testing.T) {
+		dir := familyDir(t)
+		var out bytes.Buffer
+		opts := baseOpts(dir, &out, &recorder{})
+		path := newLedgerStore(dir).Path()
+		n := 0
+		opts.writeHook = func(p string) error {
+			if p == path {
+				if n++; n == 2 {
+					panic("simulated kill before the final ledger write")
+				}
+			}
+			return nil
+		}
+		if _, _, panicked := removeCatching(opts); !panicked {
+			t.Fatal("the simulated kill did not happen")
+		}
+		if intentFileExists(dir) {
+			t.Fatal("the intent must already be cleared")
+		}
+		if _, ok := loadLedger(t, dir).Bundles["family"]; !ok {
+			t.Fatal("the checkpoint ledger lost the bundle")
+		}
+		for _, n := range []string{"d1", "d2", "d3"} {
+			if isAlreadyInstalled(dir, n) {
+				t.Fatalf("setup: %s is still installed", n)
+			}
+		}
+		out.Reset()
+		if _, err := Remove(context.Background(), "family", baseOpts(dir, &out, &recorder{})); err != nil {
+			t.Fatalf("rerun: %v\n%s", err, out.String())
+		}
+		l := loadLedger(t, dir)
+		if _, ok := l.Bundles["family"]; ok || len(l.Plugins) != 0 {
+			t.Errorf("bundle not forgotten: %+v", l)
+		}
+	})
+}

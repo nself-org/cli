@@ -164,6 +164,8 @@ a paid bundle drops it by default, and `--keep-data` preserves it.
 
 An interrupted remove is resumed by running the same command again (the
 progress is kept in `.nself-state/remove-intent.json` in the plugin directory).
+A remove interrupted after the ledger file was deleted cannot resume: the
+leftover plugins are kept as explicit, and `nself plugin remove` removes them.
 A member that a kept plugin depends on is kept and recorded as explicit.
 
 ```
