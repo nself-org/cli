@@ -26,7 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joho/godotenv"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nself-org/cli/internal/backup"
@@ -59,9 +58,9 @@ func mcpConfigGetHandler() server.ToolHandlerFunc {
 			return mcpErrorResult("Error: %v", err)
 		}
 		envFile := envFileName(projectDir, envFlag)
-		pairs, err := godotenv.Read(envFile)
+		pairs, err := config.ReadEnvFile(envFile)
 		if err != nil {
-			return mcpErrorResult("Error reading %s: %v", envFile, err)
+			return mcpErrorResult("Error: %v", config.EnvReadError(envFile, err))
 		}
 		val, ok := pairs[key]
 		if !ok {
@@ -90,9 +89,9 @@ func mcpConfigShowHandler() server.ToolHandlerFunc {
 			return mcpErrorResult("Error: %v", err)
 		}
 		envFile := envFileName(projectDir, envFlag)
-		pairs, err := godotenv.Read(envFile)
+		pairs, err := config.ReadEnvFile(envFile)
 		if err != nil {
-			return mcpErrorResult("Error reading %s: %v", envFile, err)
+			return mcpErrorResult("Error: %v", config.EnvReadError(envFile, err))
 		}
 
 		values := make(map[string]string, len(pairs))

@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/joho/godotenv"
-
 	"github.com/nself-org/cli/internal/config"
 )
 
@@ -102,7 +100,7 @@ func resolveCascade(projectDir string) map[string]string {
 	merged := make(map[string]string)
 	for _, name := range config.EnvCascadeOrder(envName, config.LegacyOrderActive()) {
 		path := filepath.Join(projectDir, name)
-		vals, err := godotenv.Read(path)
+		vals, err := config.ReadEnvFile(path)
 		if err != nil {
 			continue // absent or unreadable: the cascade skips it, as Load does
 		}

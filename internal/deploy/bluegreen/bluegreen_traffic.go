@@ -18,8 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/joho/godotenv"
-
 	"github.com/nself-org/cli/internal/config"
 	"github.com/nself-org/cli/internal/health"
 	"github.com/nself-org/cli/internal/nginxtopo"
@@ -85,7 +83,7 @@ func frontedByFor(projectRoot string) string {
 	value := os.Getenv("NGINX_FRONTED_BY")
 	env, _ := config.ResolveEnv(projectRoot)
 	for _, name := range config.EnvCascadeOrder(env, config.LegacyOrderActive()) {
-		m, err := godotenv.Read(filepath.Join(projectRoot, name))
+		m, err := config.ReadEnvFile(filepath.Join(projectRoot, name))
 		if err != nil {
 			continue
 		}

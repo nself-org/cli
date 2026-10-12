@@ -26,7 +26,6 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/joho/godotenv"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nself-org/cli/internal/compose"
@@ -83,9 +82,9 @@ func mcpConfigResourceHandler() server.ResourceHandlerFunc {
 			return nil, err
 		}
 		envFile := envFileName(projectDir, "")
-		pairs, err := godotenv.Read(envFile)
+		pairs, err := config.ReadEnvFile(envFile)
 		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", envFile, err)
+			return nil, config.EnvReadError(envFile, err)
 		}
 		values := make(map[string]string, len(pairs))
 		for k, v := range pairs {
@@ -137,7 +136,7 @@ func mcpEnvResourceHandler() server.ResourceHandlerFunc {
 			entry := envCascadeFile{File: name}
 			if _, statErr := os.Stat(path); statErr == nil {
 				entry.Exists = true
-				if pairs, readErr := godotenv.Read(path); readErr == nil {
+				if pairs, readErr := config.ReadEnvFile(path); readErr == nil {
 					entry.Values = make(map[string]string, len(pairs))
 					for k, v := range pairs {
 						entry.Values[k] = maskValue(k, v, false)
