@@ -594,13 +594,18 @@
         ],
         "canon": "subcommand",
         "target": null,
-        "side_effect": "write",
+        "side_effect": "destructive",
         "output": "document",
         "json": "envelope",
         "data_schema": "schemas/commands/config-set.v1.schema.json",
         "exit_codes": {},
-        "confirm": null,
-        "surface": "cli-only"
+        "confirm": {
+          "flags": [
+            "yes"
+          ],
+          "plan": null
+        },
+        "surface": "all"
       },
       {
         "path": "nself config show",
