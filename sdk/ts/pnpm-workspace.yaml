@@ -2,6 +2,7 @@
 # (Dependabot runs `pnpm update -r`) also picks up templates/package.json, the
 # scaffold for new plugins, and fails to resolve its @nself/plugin-sdk range.
 # Overrides stay under "pnpm" in package.json: packageManager pins pnpm 9 (the
-# version CI uses), and pnpm 9 does not read overrides from this file.
+# version CI uses), and pnpm 9 does not read overrides from this file. If the pin
+# moves to pnpm 10 or later, move the overrides here in the same change.
 packages:
   - '.'
