@@ -83,6 +83,10 @@ nself env explain VAR         # which file wins for VAR (redacted; add --reveal 
 
 Use docker compose 2.20 or newer: 2.17 and older reject the whole file when a quoted value ends in a backslash.
 
+The generated `docker-compose.yml` holds no secret values. Every secret becomes a `${VAR}` reference, and a password inside a connection URL becomes `${POSTGRES_PASSWORD_URLENC:-${POSTGRES_PASSWORD}}` (the percent-encoded twin in `compose.env`). So the postgres server, the hasura and auth database URLs, custom services and healthchecks all see the same password, even when it holds `$`, quotes, `#`, spaces or a backslash.
+
+**Upgrading a v1.4 project whose `POSTGRES_PASSWORD` contains `$`:** older builds left the password literal in the database URLs, and docker compose expanded a `$name` inside it (usually to nothing) when the database was first created. The stored password can therefore differ from `.env`. If the stack cannot log in to Postgres after upgrading, reset the database password once to the value in `.env`. Generated passwords contain no `$` and are not affected.
+
 ---
 
 ## Core Project Settings

@@ -93,12 +93,16 @@ func checkRequired(data []byte) error {
 // checkStructure walks every token of the document. The first key must be
 // _generated, and no object, at any depth, may repeat a key (encoding/json
 // would silently keep the last one).
-func checkStructure(data []byte) error {
+func checkStructure(data []byte) error { return checkStructureWith(data, allowedKeys) }
+
+// checkStructureWith is checkStructure for another file shape: allowed returns
+// the permitted keys of the object at a path, or nil for a free-form level.
+func checkStructureWith(data []byte, allowed func(path []string) map[string]bool) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
 		return fmt.Errorf("ledger: not a JSON object")
 	}
-	if err := walkObject(dec, nil); err != nil {
+	if err := walkObject(dec, nil, allowed); err != nil {
 		return err
 	}
 	return nil
@@ -137,9 +141,9 @@ func allowedKeys(path []string) map[string]bool {
 
 // walkObject reads object members up to and including the closing brace. The
 // opening brace is already consumed. path holds the keys leading here.
-func walkObject(dec *json.Decoder, path []string) error {
+func walkObject(dec *json.Decoder, path []string, allowedFn func([]string) map[string]bool) error {
 	seen := map[string]bool{}
-	allowed := allowedKeys(path)
+	allowed := allowedFn(path)
 	for first := true; dec.More(); first = false {
 		kt, err := dec.Token()
 		if err != nil {
@@ -156,7 +160,7 @@ func walkObject(dec *json.Decoder, path []string) error {
 			return fmt.Errorf("ledger: duplicate key %q", key)
 		}
 		seen[key] = true
-		if err := walkValue(dec, append(append([]string(nil), path...), key)); err != nil {
+		if err := walkValue(dec, append(append([]string(nil), path...), key), allowedFn); err != nil {
 			return err
 		}
 	}
@@ -168,17 +172,17 @@ func walkObject(dec *json.Decoder, path []string) error {
 }
 
 // walkValue reads one value, recursing into objects and arrays.
-func walkValue(dec *json.Decoder, path []string) error {
+func walkValue(dec *json.Decoder, path []string, allowedFn func([]string) map[string]bool) error {
 	t, err := dec.Token()
 	if err != nil {
 		return fmt.Errorf("ledger: decode: %w", err)
 	}
 	switch t {
 	case json.Delim('{'):
-		return walkObject(dec, path)
+		return walkObject(dec, path, allowedFn)
 	case json.Delim('['):
 		for dec.More() {
-			if err := walkValue(dec, append(append([]string(nil), path...), "[]")); err != nil {
+			if err := walkValue(dec, append(append([]string(nil), path...), "[]"), allowedFn); err != nil {
 				return err
 			}
 		}

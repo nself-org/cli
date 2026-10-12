@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"testing"
 	"time"
 )
 
@@ -29,11 +30,21 @@ import (
 // tests can shorten it; production keeps the 5 s of EPIC D2.
 var killDelay = 5 * time.Second
 
-// SelfExecutable resolves the binary to run: NSELF_MCP_EXEC_OVERRIDE (tests),
-// else this process's own executable. It never resolves a bare "nself" on PATH.
+// selfExecOverrideAllowed is true only in a binary built by `go test`, so a
+// release build never reads NSELF_MCP_EXEC_OVERRIDE (D-0288). A variable so a
+// test can take the release path.
+var selfExecOverrideAllowed = testing.Testing()
+
+// SelfExecutable resolves the binary to run: this process's own executable. A
+// test binary also honours NSELF_MCP_EXEC_OVERRIDE, so tests can point the
+// re-exec at a built nself; a release build ignores it, so whoever sets the
+// server env cannot redirect machine invocations. It never resolves a bare
+// "nself" on PATH.
 func SelfExecutable() (string, error) {
-	if override := os.Getenv(SelfExecOverrideEnv); override != "" {
-		return override, nil
+	if selfExecOverrideAllowed {
+		if override := os.Getenv(SelfExecOverrideEnv); override != "" {
+			return override, nil
+		}
 	}
 	return os.Executable()
 }
